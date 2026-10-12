@@ -327,12 +327,15 @@ export interface Flight {
   posted: {
     landing: boolean
     bags: boolean
+    /** Outbound bags loaded at board. */
+    bagsLoad: boolean
     fuel: boolean
     catering: boolean
     bagDrop: boolean
   }
   waitingOn: {
     bags: boolean
+    bagsLoad: boolean
     fuel: boolean
     catering: boolean
     paxOut: number
@@ -373,6 +376,8 @@ export interface PendingEmergency {
   airline: AirlineId | null
 }
 
+export type TruckMission = 'unload' | 'load' | 'fuel' | 'cater' | 'patrol'
+
 export interface Truck {
   id: string
   kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police'
@@ -385,6 +390,10 @@ export interface Truck {
   returning: boolean
   dwell: number
   patrol: boolean
+  /** Real-life role — bags unload vs load, etc. */
+  mission: TruckMission
+  /** Home shed / farm tile to return to. */
+  home: Vec | null
 }
 
 export type PaxStop =

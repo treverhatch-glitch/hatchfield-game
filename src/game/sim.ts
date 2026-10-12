@@ -169,6 +169,7 @@ import type {
   Tile,
   Tool,
   Truck,
+  TruckMission,
   Vec,
   Weather,
 } from './types'
@@ -3067,12 +3068,14 @@ export class Game {
       posted: {
         landing: false,
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         bagDrop: false,
       },
       waitingOn: {
         bags: false,
+        bagsLoad: false,
         fuel: Boolean(this.fuelBrand && this.fuelLoads > 0),
         catering: false,
         paxOut: 0,
@@ -4523,12 +4526,14 @@ export class Game {
       posted: {
         landing: false,
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         bagDrop: false,
       },
       waitingOn: {
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         paxOut: 0,
@@ -4605,12 +4610,14 @@ export class Game {
       posted: {
         landing: false,
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         bagDrop: false,
       },
       waitingOn: {
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         paxOut: 0,
@@ -4825,7 +4832,7 @@ export class Game {
         const p = nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
         if (p) {
           f.waitingOn.fuel = true
-          this.spawnTruck('fuel', f, p)
+          this.spawnTruck('fuel', f, p, 'fuel', farmsQuick[0])
         }
       }
       return
@@ -4833,9 +4840,12 @@ export class Game {
 
     if (f.cargo) {
       const shed = tilesOf(this.tiles, 'cargo')
-      if (shed.length && nearestPath(this.tiles, f.stand, shed, 'truck')) {
-        f.waitingOn.bags = true
-        this.spawnTruck('bags', f, nearestPath(this.tiles, f.stand, shed, 'truck')!)
+      if (shed.length && f.stand) {
+        const cargoPath = nearestPath(this.tiles, shed[0], [f.stand], 'truck')
+        if (cargoPath) {
+          f.waitingOn.bags = true
+          this.spawnTruck('bags', f, cargoPath, 'unload', shed[0])
+        }
       }
     }
 
@@ -4847,19 +4857,21 @@ export class Game {
     const fit = this.roomsAt(f.stand)
 
     if (!f.cargo) {
-      const bagPath =
-        bagBuild.length > 0 ? nearestPath(this.tiles, f.stand, bagBuild, 'truck') : null
-      if (bagPath) {
-        f.waitingOn.bags = true
-        this.spawnTruck('bags', f, bagPath)
+      // Arrival unload: bags building → plane → back (or continue).
+      if (bagBuild.length > 0 && f.stand) {
+        const bagPath = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
+        if (bagPath) {
+          f.waitingOn.bags = true
+          this.spawnTruck('bags', f, bagPath, 'unload', bagBuild[0])
+        }
       }
       const snackPath =
-        this.caterBrand && snackBuild.length > 0
+        this.caterBrand && snackBuild.length > 0 && f.stand
           ? nearestPath(this.tiles, snackBuild[0], [f.stand], 'truck')
           : null
       if (snackPath) {
         f.waitingOn.catering = true
-        this.spawnTruck('catering', f, snackPath)
+        this.spawnTruck('catering', f, snackPath, 'cater', snackBuild[0])
       }
       // Cabin clean — AT/CEO turnaround service. Posts only after the jet is on stand.
       if (!f.posted.catering) {
@@ -4876,7 +4888,7 @@ export class Game {
       const p = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
       if (p) {
         f.waitingOn.fuel = true
-        this.spawnTruck('fuel', f, p)
+        this.spawnTruck('fuel', f, p, 'fuel', farms[0])
       }
     }
 
@@ -4937,12 +4949,14 @@ export class Game {
       posted: {
         landing: false,
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         bagDrop: false,
       },
       waitingOn: {
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         paxOut: 0,
@@ -5008,12 +5022,14 @@ export class Game {
       posted: {
         landing: false,
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         bagDrop: false,
       },
       waitingOn: {
         bags: false,
+        bagsLoad: false,
         fuel: false,
         catering: false,
         paxOut: 0,
@@ -5031,8 +5047,17 @@ export class Game {
     )
   }
 
-  spawnTruck(kind: Truck['kind'], f: Flight | null, path: Vec[]) {
+  spawnTruck(
+    kind: Truck['kind'],
+    f: Flight | null,
+    path: Vec[],
+    mission?: TruckMission,
+    home?: Vec | null,
+  ) {
     const start = path[0]
+    const resolved: TruckMission =
+      mission ??
+      (kind === 'bags' ? 'unload' : kind === 'fuel' ? 'fuel' : kind === 'catering' ? 'cater' : 'patrol')
     this.trucks.push({
       id: uid('trk'),
       kind,
@@ -5045,6 +5070,8 @@ export class Game {
       returning: false,
       dwell: 0,
       patrol: !f,
+      mission: resolved,
+      home: home ?? (path.length ? path[0] : null),
     })
   }
 
@@ -5053,29 +5080,43 @@ export class Game {
     const f = this.flights.find((x) => x.id === t.flightId)
     if (!f) return
     const airline = this.airline(f.airline)
-    if (t.kind === 'bags' && !f.posted.bags) {
-      f.posted.bags = true
-      f.waitingOn.bags = false
-      if (!f.cargo) this.earn(airline.bags, `${f.flightNo} bag handling`, f)
-      else {
-        let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
-        if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
-        this.earn(
-          Math.round(airline.landing * 0.35 * cargoMult),
-          `${f.flightNo} cargo handling`,
-          f,
-        )
-      }
-      const fit = this.roomsAt(f.stand)
-      if (
-        !f.cargo &&
-        fit &&
-        fit.rooms.bagdrop > 0 &&
-        tilesOf(this.tiles, 'bags').length &&
-        !f.posted.bagDrop
-      ) {
-        f.posted.bagDrop = true
-        this.earn(BAG_DROP_PAY, `${f.flightNo} bag drop`, f)
+    if (t.kind === 'bags') {
+      if (t.mission === 'load') {
+        if (!f.posted.bagsLoad) {
+          f.posted.bagsLoad = true
+          f.waitingOn.bagsLoad = false
+          if (!f.cargo) {
+            this.earn(
+              Math.round(airline.bags * 0.55),
+              `${f.flightNo} outbound bags`,
+              f,
+            )
+          }
+        }
+      } else if (!f.posted.bags) {
+        f.posted.bags = true
+        f.waitingOn.bags = false
+        if (!f.cargo) this.earn(airline.bags, `${f.flightNo} bag handling`, f)
+        else {
+          let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
+          if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
+          this.earn(
+            Math.round(airline.landing * 0.35 * cargoMult),
+            `${f.flightNo} cargo handling`,
+            f,
+          )
+        }
+        const fit = this.roomsAt(f.stand)
+        if (
+          !f.cargo &&
+          fit &&
+          fit.rooms.bagdrop > 0 &&
+          tilesOf(this.tiles, 'bags').length &&
+          !f.posted.bagDrop
+        ) {
+          f.posted.bagDrop = true
+          this.earn(BAG_DROP_PAY, `${f.flightNo} bag drop`, f)
+        }
       }
     }
     if (t.kind === 'fuel' && !f.posted.fuel && this.fuelBrand && this.fuelLoads > 0) {
@@ -5094,6 +5135,34 @@ export class Game {
     }
   }
 
+  /** After a bags run, keep the truck busy on another stand if one is waiting. */
+  retargetBagsTruck(t: Truck): boolean {
+    if (t.kind !== 'bags' || !t.home) return false
+    const busy = new Set(
+      this.trucks
+        .filter((x) => x.kind === 'bags' && x.id !== t.id && x.flightId)
+        .map((x) => x.flightId!),
+    )
+    const next = this.flights.find((f) => {
+      if (!f.stand || busy.has(f.id)) return false
+      if (f.phase === 'servicing' && f.waitingOn.bags && !f.posted.bags) return true
+      if (f.phase === 'board' && f.waitingOn.bagsLoad && !f.posted.bagsLoad) return true
+      return false
+    })
+    if (!next?.stand) return false
+    const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const path = nearestPath(this.tiles, from, [next.stand], 'truck')
+    if (!path || path.length < 2) return false
+    t.flightId = next.id
+    t.mission = next.phase === 'board' ? 'load' : 'unload'
+    t.path = path
+    t.seg = 0
+    t.t = 0
+    t.returning = false
+    t.dwell = 0
+    return true
+  }
+
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
     const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
@@ -5101,6 +5170,15 @@ export class Game {
     const fit = this.roomsAt(f.stand)
     this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'depart')
+    // Outbound bags: shed picks up luggage → plane.
+    const bagBuild = tilesOf(this.tiles, 'bags')
+    if (bagBuild.length && !f.posted.bagsLoad) {
+      const path = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
+      if (path) {
+        f.waitingOn.bagsLoad = true
+        this.spawnTruck('bags', f, path, 'load', bagBuild[0])
+      }
+    }
   }
 
   departurePath(f: Flight): Vec[] | null {
@@ -5499,8 +5577,11 @@ export class Game {
         // Occupies stand until releaseGa / auto leave in tickParking.
       } else if (f.phase === 'board') {
         const boardLimit = f.boardingSlow ? 22 : 16
+        const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
         const boardReady =
-          f.waitingOn.paxIn <= 0 && f.phaseTime > (f.boardingSlow ? 9 : 5)
+          f.waitingOn.paxIn <= 0 &&
+          bagsReady &&
+          f.phaseTime > (f.boardingSlow ? 9 : 5)
         if (f.boardingSlow && f.phaseTime > 8 && f.phaseTime < 8.4) {
           const next = this.openSchedule().find(
             (s) => s.id !== f.scheduleId && (s.status === 'scheduled' || s.status === 'delayed'),
@@ -5579,16 +5660,34 @@ export class Game {
         t.dwell -= step
         if (t.dwell <= 0 && !t.returning) {
           this.finishTruck(t)
+          // Bags may continue to another stand instead of deadheading home.
+          if (t.kind === 'bags' && this.retargetBagsTruck(t)) {
+            continue
+          }
           t.returning = true
-          t.path = [...t.path].reverse()
+          if (t.home) {
+            const from = { c: Math.round(t.x), r: Math.round(t.y) }
+            const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+            t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
+          } else {
+            t.path = [...t.path].reverse()
+          }
           t.seg = 0
           t.t = 0
         }
         continue
       }
       const done = this.followPath(t, 1.8, step)
-      if (done && !t.returning) t.dwell = t.kind === 'fuel' ? 3.2 : 2.2
-      else if (done && t.returning) t.dwell = -99
+      if (done && !t.returning) {
+        t.dwell =
+          t.kind === 'fuel' ? 3.2 : t.mission === 'load' ? 2.6 : 2.2
+      } else if (done && t.returning) {
+        // Back at shed — try one more continue from home, else park.
+        if (t.kind === 'bags' && this.retargetBagsTruck(t)) {
+          continue
+        }
+        t.dwell = -99
+      }
     }
     this.trucks = this.trucks.filter((t) => t.dwell !== -99)
 

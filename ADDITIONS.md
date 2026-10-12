@@ -264,7 +264,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 **C2 — CEO scale**
 
-10. **Baggage belt lite** + franchise brands.
+10. **Baggage trucks** — ~~shed→stand unload/load + return or continue~~ **shipped**; belt lite + franchise brands still open.
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
