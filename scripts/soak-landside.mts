@@ -24,8 +24,16 @@ if (g.parkTerms['17,12'] !== 'long' && g.parkTerms[`${roadC + 1},12`] !== 'long'
   issues.push(`park term missing: ${JSON.stringify(g.parkTerms)}`)
 }
 
+const pot = g.landsidePotential()
+if (pot < 1000) issues.push(`landside potential too low ${pot}`)
+g.landsideUses = 0
+const idle = g.landsideIncome()
+g.landsideUses = 50
 const income = g.landsideIncome()
-if (income < 1000) issues.push(`landside income too low ${income}`)
+if (!(income > idle)) issues.push(`usage should lift income ${idle}→${income}`)
+if (income < 800) issues.push(`busy landside income too low ${income}`)
+const upkeep = g.landsideUpkeep()
+if (upkeep < 100) issues.push(`upkeep too low ${upkeep}`)
 
 g.hireJanitor()
 if (g.janitors < 1) issues.push('janitor not hired')
@@ -55,7 +63,10 @@ if (!open.has('dayhotel')) {
 const out = {
   ok: issues.length === 0,
   issues,
+  pot,
+  idle,
   income,
+  upkeep,
   inbound: after,
   strips: g.runwayStripCount(),
   janitors: g.janitors,

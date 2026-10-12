@@ -108,6 +108,7 @@ import {
   type HallNode,
   type HallStaff,
   type PaxTag,
+  type SpendKind,
   type StaffPost,
 } from './guests'
 import {
@@ -268,6 +269,8 @@ export class Game {
   deskStaff = 0
   deskStaffCool = 0
   hallStaff: HallStaff[] = []
+  /** Recent landside touchpoints (exits / day rooms / park cues) for usage income. */
+  landsideUses = 0
   interestCool = 60
   public = false
   sharePrice = 0
@@ -389,6 +392,7 @@ export class Game {
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.landsideUses = 0
     this.interestCool = 60
     this.public = false
     this.sharePrice = 0
@@ -1098,7 +1102,8 @@ export class Game {
     return m
   }
 
-  landsideIncome(): number {
+  /** Sticker potential before usage / upkeep. */
+  landsidePotential(): number {
     let n = HOTEL_INCOME[clamp(this.hotelLevel, 0, 2)] ?? 0
     if (this.carParkShort) n += CARPARK_SHORT_INCOME
     if (this.carParkLong) n += CARPARK_LONG_INCOME
@@ -1110,6 +1115,36 @@ export class Game {
       }
     }
     return n
+  }
+
+  /** Upkeep always bites — empty hotels/parks bleed cash. */
+  landsideUpkeep(): number {
+    const pot = this.landsidePotential()
+    if (pot <= 0) return 0
+    return Math.round(pot * 0.28)
+  }
+
+  /** Usage-scaled landside take (pax must actually touch the field). */
+  landsideIncome(): number {
+    const pot = this.landsidePotential()
+    if (pot <= 0) return 0
+    const capacity = Math.max(
+      1,
+      tilesOf(this.tiles, 'hotel').length * 8 +
+        tilesOf(this.tiles, 'park_s').length * 3 +
+        tilesOf(this.tiles, 'park_l').length * 5 +
+        tilesOf(this.tiles, 'park_g').length * 7 +
+        tilesOf(this.tiles, 'park_u').length * 6 +
+        (this.hotelLevel > 0 ? 6 : 0) +
+        (this.carParkShort || this.carParkLong ? 4 : 0),
+    )
+    const usage = clamp(this.landsideUses / capacity, 0, 1.25)
+    // Crumb floor for airport workers; real money needs pax traffic.
+    return Math.round(pot * (0.12 + 0.88 * usage))
+  }
+
+  noteLandsideUse(n = 1) {
+    this.landsideUses += n
   }
 
   runwayStripCount(): number {
@@ -1926,6 +1961,31 @@ export class Game {
     }
   }
 
+  /**
+   * RCT-style purchase — prefs + wallet gate the spend.
+   * Desperate needs (hunger/energy) can override weak prefs.
+   */
+  tryGuestPay(
+    g: HallGuest,
+    pay: number,
+    kind: SpendKind,
+    desperate = false,
+  ): { ok: boolean; why?: string } {
+    if (pay <= 0) return { ok: true }
+    const pref = g.prefs[kind]
+    if (!desperate && pref < 0.28) {
+      return { ok: false, why: 'not interested' }
+    }
+    if (g.wallet < pay) {
+      return { ok: false, why: 'broke' }
+    }
+    g.wallet -= pay
+    g.spent += pay
+    this.cash += pay
+    this.revenue += pay
+    return { ok: true }
+  }
+
   /** Uncleared body on airside — eject + fine + heat. */
   secureBreach(g: HallGuest) {
     if (g.clearedSec || !isAirside(g.node)) return
@@ -2012,43 +2072,59 @@ export class Game {
     if (n === 'food') {
       let pay = g.tag === 'premium' ? 28 : 14
       let happy = 6
-      // Budget snack franchise — only that carrier's pax (or their transfers).
+      let brand = false
       if (g.airlineId && this.hasReward(g.airlineId, 'budget_perk')) {
         pay = Math.round(pay * 1.55)
         happy += 2
-        g.thought = `${this.airline(g.airlineId).name} franchise meal (−$${pay})`
-      } else {
-        g.thought = `Ate (−$${pay})`
+        brand = true
       }
-      g.needs.hunger = Math.max(0, g.needs.hunger - 50)
-      g.spent += pay
-      this.cash += pay
-      this.revenue += pay
-      this.mealSold = true
-      g.happiness += happy
+      const buy = this.tryGuestPay(g, pay, 'food', g.needs.hunger >= 70)
+      if (!buy.ok) {
+        g.needs.hunger = Math.max(0, g.needs.hunger - 12)
+        g.happiness -= buy.why === 'broke' ? 3 : 1
+        g.thought =
+          buy.why === 'broke' ? 'Hungry but broke' : 'Skipped the counter — not hungry for that'
+      } else {
+        g.needs.hunger = Math.max(0, g.needs.hunger - 50)
+        this.mealSold = true
+        g.happiness += happy
+        g.thought = brand
+          ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
+          : `Ate (−$${pay})`
+      }
     }
     if (n === 'shop') {
       const pay = g.tag === 'premium' ? 42 : 18
-      g.needs.shop = Math.max(0, g.needs.shop - 60)
-      g.spent += pay
-      this.cash += pay
-      this.revenue += pay
-      g.happiness += 5
-      g.thought = `Bought a souvenir (−$${pay})`
+      const buy = this.tryGuestPay(g, pay, 'shop', g.needs.shop >= 75)
+      if (!buy.ok) {
+        g.needs.shop = Math.max(0, g.needs.shop - 20)
+        g.happiness -= buy.why === 'broke' ? 2 : 0
+        g.thought =
+          buy.why === 'broke' ? 'Wanted a gift — wallet empty' : 'Browsed, did not buy'
+      } else {
+        g.needs.shop = Math.max(0, g.needs.shop - 60)
+        g.happiness += 5
+        g.thought = `Bought a souvenir (−$${pay})`
+      }
     }
     if (n === 'lounge' && g.tag === 'premium') {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
       let happy = 8
       let pay = 0
-      // Luxury first-class lounge — only that carrier's premium pax.
       if (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge')) {
-        happy += 10
         pay = 55
-        g.spent += pay
-        this.cash += pay
-        this.revenue += pay
-        g.thought = `${this.airline(g.airlineId).name} first-class lounge (−$${pay})`
-        this.adjustHeat(g.airlineId, 0.2)
+        const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 60)
+        if (buy.ok) {
+          happy += 10
+          g.thought = `${this.airline(g.airlineId).name} first-class lounge (−$${pay})`
+          this.adjustHeat(g.airlineId, 0.2)
+        } else {
+          g.thought =
+            buy.why === 'broke'
+              ? 'Lounge fee too rich'
+              : 'Skipped the branded lounge'
+          happy = 3
+        }
       } else {
         g.thought = 'Lounge calm'
       }
@@ -2056,45 +2132,62 @@ export class Game {
     }
     if (n === 'dayhotel') {
       const pay = g.transfer ? 65 : g.tag === 'premium' ? 48 : 28
-      g.needs.energy = Math.max(0, g.needs.energy - 55)
-      g.needs.boarding = Math.min(99, g.needs.boarding + 8)
-      g.spent += pay
-      this.cash += pay
-      this.revenue += pay
-      g.happiness += g.transfer ? 12 : 7
-      g.thought = g.transfer
-        ? `Day room nap (−$${pay}) — layover gold`
-        : `Rented a day room (−$${pay})`
-      if (g.transfer && g.airlineId) this.adjustHeat(g.airlineId, 0.15)
+      const buy = this.tryGuestPay(g, pay, 'nap', g.transfer || g.needs.energy >= 70)
+      if (!buy.ok) {
+        g.needs.energy = Math.max(0, g.needs.energy - 10)
+        g.happiness -= buy.why === 'broke' ? 2 : 0
+        g.thought =
+          buy.why === 'broke' ? 'Day room too expensive' : 'Skipped the day room'
+      } else {
+        g.needs.energy = Math.max(0, g.needs.energy - 55)
+        g.needs.boarding = Math.min(99, g.needs.boarding + 8)
+        g.happiness += g.transfer ? 12 : 7
+        g.thought = g.transfer
+          ? `Day room nap (−$${pay}) — layover gold`
+          : `Rented a day room (−$${pay})`
+        this.noteLandsideUse(2)
+        if (g.transfer && g.airlineId) this.adjustHeat(g.airlineId, 0.15)
+      }
     }
     if (n === 'golf') {
       const pay = g.tag === 'premium' ? 55 : 28
-      g.needs.play = Math.max(0, g.needs.play - 70)
-      g.needs.energy = Math.max(0, g.needs.energy - 20)
-      g.spent += pay
-      this.cash += pay
-      this.revenue += pay
-      g.happiness += 10
-      g.thought = `Indoor golf (−$${pay})`
+      const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 70)
+      if (!buy.ok) {
+        g.needs.play = Math.max(0, g.needs.play - 15)
+        g.thought = buy.why === 'broke' ? 'Golf bay — no cash' : 'Skipped golf'
+      } else {
+        g.needs.play = Math.max(0, g.needs.play - 70)
+        g.needs.energy = Math.max(0, g.needs.energy - 20)
+        g.happiness += 10
+        g.thought = `Indoor golf (−$${pay})`
+      }
     }
     if (n === 'waterfall') {
       const pay = g.tag === 'premium' ? 36 : 12
-      g.needs.play = Math.max(0, g.needs.play - 55)
-      g.needs.energy = Math.max(0, g.needs.energy - 25)
-      g.spent += pay
-      this.cash += pay
-      this.revenue += pay
-      g.happiness += 9
-      g.thought = 'Watching the falls'
+      const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 65)
+      if (!buy.ok) {
+        g.needs.play = Math.max(0, g.needs.play - 12)
+        g.needs.energy = Math.max(0, g.needs.energy - 8)
+        g.thought = 'Looked at the falls for free'
+        g.happiness += 2
+      } else {
+        g.needs.play = Math.max(0, g.needs.play - 55)
+        g.needs.energy = Math.max(0, g.needs.energy - 25)
+        g.happiness += 9
+        g.thought = `Falls tip (−$${pay})`
+      }
     }
     if (n === 'gaming') {
       const pay = g.tag === 'premium' ? 40 : 22
-      g.needs.play = Math.max(0, g.needs.play - 65)
-      g.spent += pay
-      this.cash += pay
-      this.revenue += pay
-      g.happiness += 7
-      g.thought = `Gaming den (−$${pay})`
+      const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 70)
+      if (!buy.ok) {
+        g.needs.play = Math.max(0, g.needs.play - 15)
+        g.thought = buy.why === 'broke' ? 'Games — wallet dry' : 'Skipped the den'
+      } else {
+        g.needs.play = Math.max(0, g.needs.play - 65)
+        g.happiness += 7
+        g.thought = `Gaming den (−$${pay})`
+      }
     }
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
@@ -2122,6 +2215,7 @@ export class Game {
       g.thought = 'Left the airport'
       g.dead = true
       this.paxServed += 1
+      this.noteLandsideUse(1)
       this.reputation = Math.min(100, this.reputation + 0.3)
     }
   }
@@ -3694,15 +3788,34 @@ export class Game {
     if (this.payrollCool > 0) return
     this.payrollCool = 30
     const landside = this.landsideIncome()
+    const upkeep = this.landsideUpkeep()
     if (landside > 0) {
       this.earn(landside, 'Landside (hotel / car park)')
     }
+    if (upkeep > 0) {
+      this.charge(upkeep)
+    }
+    // Usage window decays — empty hotels stop printing after traffic dies.
+    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.55))
     const bill = this.payrollPreview()
-    if (bill <= 0) return
+    const netLand = landside - upkeep
+    if (bill <= 0) {
+      if (upkeep > 0 || landside > 0) {
+        this.pushNews(
+          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (use ${this.landsideUses} · upkeep ${moneyLeft(upkeep)}).`,
+          netLand >= 0 ? 'ok' : 'bad',
+        )
+      }
+      return
+    }
     if (this.cash >= bill) {
       this.cash -= bill
       this.pushNews(
-        `Ops payroll ${moneyLeft(bill)}${landside ? ` · landside +${moneyLeft(landside)}` : ''} (sliders × staff × shops).`,
+        `Ops payroll ${moneyLeft(bill)}${
+          landside || upkeep
+            ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)}`
+            : ''
+        } (sliders × staff × shops).`,
         'ok',
       )
       return

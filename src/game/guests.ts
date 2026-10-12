@@ -47,6 +47,17 @@ export interface GuestNeeds {
   play: number
 }
 
+/** 0–1 spend appetite by category (RCT-style taste). */
+export interface GuestPrefs {
+  food: number
+  shop: number
+  play: number
+  lounge: number
+  nap: number
+}
+
+export type SpendKind = keyof GuestPrefs
+
 export interface HallGuest {
   id: string
   flightId: string
@@ -58,6 +69,9 @@ export interface HallGuest {
   seg: number
   t: number
   needs: GuestNeeds
+  /** Cash in pocket — random per guest; gates purchases. */
+  wallet: number
+  prefs: GuestPrefs
   happiness: number
   patience: number
   spent: number
@@ -242,6 +256,22 @@ export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   return 'shop'
 }
 
+function rollPrefs(tag: PaxTag, transfer: boolean): GuestPrefs {
+  const premium = tag === 'premium'
+  return {
+    food: premium ? 0.35 + Math.random() * 0.5 : 0.45 + Math.random() * 0.5,
+    shop: premium ? 0.4 + Math.random() * 0.55 : 0.15 + Math.random() * 0.45,
+    play: premium ? 0.35 + Math.random() * 0.55 : 0.25 + Math.random() * 0.5,
+    lounge: premium ? 0.55 + Math.random() * 0.4 : 0.05 + Math.random() * 0.25,
+    nap: transfer ? 0.55 + Math.random() * 0.4 : premium ? 0.2 + Math.random() * 0.4 : 0.05 + Math.random() * 0.2,
+  }
+}
+
+function rollWallet(tag: PaxTag, transfer: boolean): number {
+  if (tag === 'premium') return Math.round(90 + Math.random() * 160 + (transfer ? 40 : 0))
+  return Math.round(22 + Math.random() * 55 + (transfer ? 25 : 0))
+}
+
 export function spawnHallGuest(
   flightId: string,
   job: 'depart' | 'arrive',
@@ -269,6 +299,8 @@ export function spawnHallGuest(
       shop: (transfer ? 40 : premium ? 25 : 10) + Math.random() * (premium ? 40 : 25),
       play: (transfer ? 30 : premium ? 35 : 15) + Math.random() * (premium ? 45 : 35),
     },
+    wallet: rollWallet(tag, transfer),
+    prefs: rollPrefs(tag, transfer),
     happiness: transfer ? 65 : 70,
     patience: premium ? 55 : transfer ? 80 : 70,
     spent: 0,
