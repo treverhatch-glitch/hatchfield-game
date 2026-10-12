@@ -69,14 +69,16 @@ button {
 
 .view-chip {
   position: absolute;
-  top: 58px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 30;
+  /* Sit under the top bar, left of center — never cover Pause / 1x / 3x. */
+  top: 56px;
+  left: 16px;
+  transform: none;
+  z-index: 21;
   pointer-events: auto;
   cursor: pointer;
   padding: 4px 12px;
   border-radius: 999px;
+  max-width: min(360px, 40vw);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
