@@ -361,12 +361,16 @@ export interface Flight {
     fuel: boolean
     catering: boolean
     bagDrop: boolean
+    /** Line MX mechanic visited from hangar. */
+    mx: boolean
   }
   waitingOn: {
     bags: boolean
     bagsLoad: boolean
     fuel: boolean
     catering: boolean
+    /** Line MX en route from hangar (does not hard-block turn). */
+    mx: boolean
     paxOut: number
     paxIn: number
   }
@@ -375,10 +379,16 @@ export interface Flight {
   /** Linked timetable slot when spawned from the schedule. */
   scheduleId?: string | null
   boardingSlow?: boolean
+  /** GA: clock when leave was requested; must depart by parkLeaveBy. */
+  parkLeaveRequestedAt?: number | null
   /** GA parking — must depart by this clock or fine. */
   parkLeaveBy?: number | null
   /** Independent general aviation (not a signed airline). */
   ga?: boolean
+  /** Parking fee already collected on accept. */
+  parkFee?: number
+  /** Planned park duration before they request departure. */
+  parkStaySec?: number
 }
 
 /** Live security event the player must answer. */
@@ -415,7 +425,22 @@ export interface PendingEmergency {
   }
 }
 
-export type TruckMission = 'unload' | 'load' | 'fuel' | 'cater' | 'patrol'
+/**
+ * Real apron GSE roles:
+ * bags: unload (shed→plane) → to_claim (plane→shed/claim) → home/continue
+ *       pickup (→shed makeup) → load (shed→plane) → home/continue
+ * fuel: fuel_reload at farm → fuel (farm→plane) → reload or continue
+ * mx:   hangar mechanic walk (people), not a truck
+ */
+export type TruckMission =
+  | 'unload'
+  | 'to_claim'
+  | 'pickup'
+  | 'load'
+  | 'fuel'
+  | 'fuel_reload'
+  | 'cater'
+  | 'patrol'
 
 export interface Truck {
   id: string
@@ -428,6 +453,8 @@ export interface Truck {
   t: number
   returning: boolean
   dwell: number
+  /** Makeup / farm bottom-load before the truck rolls. */
+  preDwell: number
   patrol: boolean
   /** Real-life role — bags unload vs load, etc. */
   mission: TruckMission
@@ -465,6 +492,8 @@ export interface Person {
   stage: number
   paidFood: boolean
   paidGift: boolean
+  /** Line MX payout posted when mechanic finishes at the stand. */
+  mxPay?: number
 }
 
 export interface News {

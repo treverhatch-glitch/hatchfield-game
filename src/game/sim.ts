@@ -28,9 +28,12 @@ import {
   FIELD_TASK_FAIL_FINE,
   FIELD_TASK_HEAT_FAIL,
   FIELD_TASK_HEAT_OK,
+  GA_LEAVE_WINDOW,
   GA_OVERSTAY_FINE,
+  GA_PARK_DAY_RATE,
   GA_PARK_FEE_MAX,
   GA_PARK_FEE_MIN,
+  GA_PARK_RATE_COOL,
   GA_PARK_STAY_MAX,
   GA_PARK_STAY_MIN,
   HUB_BAN_THRESHOLD,
@@ -238,6 +241,31 @@ function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, 
   }
 }
 
+function emptyPosted(): Flight['posted'] {
+  return {
+    landing: false,
+    bags: false,
+    bagsLoad: false,
+    fuel: false,
+    catering: false,
+    bagDrop: false,
+    mx: false,
+  }
+}
+
+function emptyWaiting(partial?: Partial<Flight['waitingOn']>): Flight['waitingOn'] {
+  return {
+    bags: false,
+    bagsLoad: false,
+    fuel: false,
+    catering: false,
+    mx: false,
+    paxOut: 0,
+    paxIn: 0,
+    ...partial,
+  }
+}
+
 export class Game {
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
@@ -330,6 +358,8 @@ export class Game {
   hubAirlines: AirlineId[] = []
   parkingOffer: ParkingOffer | null = null
   parkingCool = 65
+  /** Day-rate cool for independent parked GA. */
+  parkRateCool = 0
   schedule: ScheduleSlot[] = []
   scheduleAuto = true
   schedulePlanCool = 8
@@ -460,6 +490,7 @@ export class Game {
     this.hubAirlines = []
     this.parkingOffer = null
     this.parkingCool = 65
+    this.parkRateCool = 0
     this.schedule = []
     this.scheduleAuto = true
     this.schedulePlanCool = 8
@@ -3369,13 +3400,45 @@ export class Game {
   }
 
   tickParking(dt: number) {
-    // Overstay / auto-release parked GA.
+    // Independent GA parking — day-rate, leave request, auto/manual release, overstay.
+    this.parkRateCool = Math.max(0, this.parkRateCool - dt)
+    let dayCharged = false
     for (const f of this.flights) {
-      if (f.phase !== 'parked' || !f.ga || !f.parkLeaveBy) continue
+      if (f.phase !== 'parked' || !f.ga) continue
+
+      // Soft day-rate while occupying a stand.
+      if (!dayCharged && this.parkRateCool <= 0) {
+        this.earn(GA_PARK_DAY_RATE, `${f.flightNo} parking day-rate`, f)
+        this.parkRateCool = GA_PARK_RATE_COOL
+        dayCharged = true
+      }
+
+      // After planned stay, pilot requests departure → 20h ops leave window.
+      const stayNeed = f.parkStaySec ?? GA_PARK_STAY_MIN
+      if (f.parkLeaveRequestedAt == null && f.phaseTime >= stayNeed) {
+        f.parkLeaveRequestedAt = this.clock
+        f.parkLeaveBy = this.clock + GA_LEAVE_WINDOW
+        this.pushNews(
+          `${f.flightNo} requests departure — ${Math.round(GA_LEAVE_WINDOW)}s (~20h) to leave or overstay fine. Auto tower ${
+            this.scheduleAuto ? 'ON' : 'OFF'
+          }.`,
+          'ok',
+        )
+        this.emit()
+      }
+
+      if (f.parkLeaveRequestedAt == null || !f.parkLeaveBy) continue
       const left = f.parkLeaveBy - this.clock
-      if (left <= 12 && left > 0 && this.scheduleAuto && f.phaseTime > 6) {
-        this.releaseGa(f.id, true)
-        continue
+      // Auto-schedule: release when leave requested and pavement free.
+      if (this.scheduleAuto && f.phaseTime > 4) {
+        if (this.releaseGa(f.id, true)) continue
+      }
+      // Manual players get a nudge near the deadline.
+      if (!this.scheduleAuto && left <= 18 && left > 0 && Math.random() < dt * 0.08) {
+        this.pushNews(
+          `${f.flightNo} leave window closing (${Math.ceil(left)}s) — Release parking or enable auto schedule.`,
+          'bad',
+        )
       }
       if (this.clock >= f.parkLeaveBy) {
         if (!this.releaseGa(f.id, true)) {
@@ -3435,7 +3498,7 @@ export class Game {
       deadline: 24,
     }
     this.pushNews(
-      `GA parking ask — ${this.parkingOffer.callsign} (${af.name}) for ${moneyLeft(fee)}, ~${stay}s stay.`,
+      `Independent parking ask — ${this.parkingOffer.callsign} (${af.name}) · fee ${moneyLeft(fee)} · ~${stay}s then leave request.`,
       'good',
     )
     this.emit()
@@ -3453,7 +3516,7 @@ export class Game {
       this.emit()
       return
     }
-    this.earn(o.fee, `${o.callsign} parking`)
+    this.earn(o.fee, `${o.callsign} parking fee`)
     const start = route[0]
     const f: Flight = {
       id: uid('ga'),
@@ -3475,34 +3538,25 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: 0,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting({
         fuel: Boolean(this.fuelBrand && this.fuelLoads > 0),
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      }),
       phaseTime: 0,
       ledger: [],
       scheduleId: null,
       ga: true,
-      parkLeaveBy: this.clock + o.staySec + 20,
+      parkFee: o.fee,
+      parkStaySec: o.staySec,
+      parkLeaveRequestedAt: null,
+      parkLeaveBy: null,
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
     this.parkingOffer = null
     this.parkingCool = 55
     this.pushNews(
-      `${o.callsign} inbound for parking — leave by +${o.staySec}s or overstay fine.`,
+      `${o.callsign} inbound — independent parking (not a carrier). Fee posted; they'll request leave after ~${o.staySec}s.`,
       'good',
     )
     this.emit()
@@ -3541,6 +3595,7 @@ export class Game {
     f.phase = 'taxi_out'
     f.phaseTime = 0
     f.parkLeaveBy = null
+    f.parkLeaveRequestedAt = null
     if (!quiet) {
       this.pushNews(`${f.flightNo} released from parking.`, 'ok')
       this.emit()
@@ -5085,22 +5140,8 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: Math.random() * Math.PI * 2,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
       scheduleId: slot.id,
@@ -5168,22 +5209,8 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: 0,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
     }
@@ -5411,7 +5438,8 @@ export class Game {
         const pay = Math.round(
           airline.landing * (airline.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120,
         )
-        this.earn(pay, `${f.flightNo} line MX`, f)
+        // Hangar → stand walk; pay when the mechanic finishes the visit.
+        this.dispatchLineMx(f, pay)
       } else if (
         this.mxSigned.includes(f.airline) &&
         (this.mechanics < 1 || this.budgets.maintenance < 40)
@@ -5462,7 +5490,7 @@ export class Game {
     const fit = this.roomsAt(f.stand)
 
     if (!f.cargo) {
-      // Arrival unload: bags building → plane → back (or continue).
+      // Arrival unload: shed → plane → claim/sort at shed → continue or park.
       if (bagBuild.length > 0 && f.stand) {
         const bagPath = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
         if (bagPath) {
@@ -5587,22 +5615,8 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: 0,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
     }
@@ -5661,22 +5675,8 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: 0,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
     }
@@ -5700,6 +5700,9 @@ export class Game {
     const resolved: TruckMission =
       mission ??
       (kind === 'bags' ? 'unload' : kind === 'fuel' ? 'fuel' : kind === 'catering' ? 'cater' : 'patrol')
+    // Real ops: makeup load at shed / bottom-load at farm before rolling.
+    const pre =
+      resolved === 'load' ? 1.7 : resolved === 'fuel' ? 1.3 : resolved === 'fuel_reload' ? 1.6 : 0
     this.trucks.push({
       id: uid('trk'),
       kind,
@@ -5711,8 +5714,9 @@ export class Game {
       t: 0,
       returning: false,
       dwell: 0,
+      preDwell: pre,
       patrol: !f,
-      mission: resolved,
+      mission: resolved === 'fuel_reload' ? 'fuel' : resolved,
       home: home ?? (path.length ? path[0] : null),
     })
   }
@@ -5735,7 +5739,8 @@ export class Game {
             )
           }
         }
-      } else if (!f.posted.bags) {
+      } else if (t.mission === 'unload' && !f.posted.bags) {
+        // Aircraft unload complete — pay; claim delivery is the next leg.
         f.posted.bags = true
         f.waitingOn.bags = false
         if (!f.cargo) this.earn(airline.bags, `${f.flightNo} bag handling`, f)
@@ -5759,9 +5764,14 @@ export class Game {
           f.posted.bagDrop = true
           this.earn(BAG_DROP_PAY, `${f.flightNo} bag drop`, f)
         }
+      } else if (t.mission === 'to_claim' && !f.cargo) {
+        // Bags injected into terminal claim / sort — hall arrivals can clear.
+        if (Math.random() < 0.35) {
+          this.pushNews(`${f.flightNo} bags on the claim belt.`, 'ok')
+        }
       }
     }
-    if (t.kind === 'fuel' && !f.posted.fuel && this.fuelBrand && this.fuelLoads > 0) {
+    if (t.kind === 'fuel' && t.mission === 'fuel' && !f.posted.fuel && this.fuelBrand && this.fuelLoads > 0) {
       f.posted.fuel = true
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
@@ -5777,7 +5787,10 @@ export class Game {
     }
   }
 
-  /** After a bags run, keep the truck busy on another stand if one is waiting. */
+  /**
+   * After claim delivery / home return — assign next bags job.
+   * Outbound loads always pickup at the shed first (makeup); unloads can go direct.
+   */
   retargetBagsTruck(t: Truck): boolean {
     if (t.kind !== 'bags' || !t.home) return false
     const busy = new Set(
@@ -5793,19 +5806,54 @@ export class Game {
     })
     if (!next?.stand) return false
     const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const atHome =
+      Math.abs(from.c - t.home.c) + Math.abs(from.r - t.home.r) <= 1
+
+    if (next.phase === 'board') {
+      // Makeup: must load carts at the shed before rolling to the stand.
+      if (!atHome) {
+        const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+        if (!homePath || homePath.length < 2) return false
+        t.flightId = next.id
+        t.mission = 'pickup'
+        t.path = homePath
+        t.seg = 0
+        t.t = 0
+        t.returning = true
+        t.dwell = 0
+        t.preDwell = 0
+        return true
+      }
+      const path = nearestPath(this.tiles, t.home, [next.stand], 'truck')
+      if (!path || path.length < 2) return false
+      t.flightId = next.id
+      t.mission = 'load'
+      t.path = path
+      t.seg = 0
+      t.t = 0
+      t.returning = false
+      t.dwell = 0
+      t.preDwell = 1.7
+      return true
+    }
+
     const path = nearestPath(this.tiles, from, [next.stand], 'truck')
     if (!path || path.length < 2) return false
     t.flightId = next.id
-    t.mission = next.phase === 'board' ? 'load' : 'unload'
+    t.mission = 'unload'
     t.path = path
     t.seg = 0
     t.t = 0
     t.returning = false
     t.dwell = 0
+    t.preDwell = 0
     return true
   }
 
-  /** Fuel bowser continues to the next thirsty jet instead of deadheading every time. */
+  /**
+   * Fuel bowser: continue to next jet if farm stock remains (partial tank),
+   * else deadhead to farm for bottom-load reload.
+   */
   retargetFuelTruck(t: Truck): boolean {
     if (t.kind !== 'fuel' || !t.home || this.fuelLoads < 1) return false
     const busy = new Set(
@@ -5823,6 +5871,37 @@ export class Game {
     )
     if (!next?.stand) return false
     const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const atFarm =
+      Math.abs(from.c - t.home.c) + Math.abs(from.r - t.home.r) <= 1
+
+    // After a delivery, prefer farm reload then roll (real bowser cycle).
+    if (!atFarm && t.mission === 'fuel_reload') {
+      const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+      if (!homePath || homePath.length < 2) return false
+      t.flightId = next.id
+      t.mission = 'fuel_reload'
+      t.path = homePath
+      t.seg = 0
+      t.t = 0
+      t.returning = true
+      t.dwell = 0
+      t.preDwell = 0
+      return true
+    }
+    if (atFarm || t.mission === 'fuel_reload') {
+      const path = nearestPath(this.tiles, t.home, [next.stand], 'truck')
+      if (!path || path.length < 2) return false
+      t.flightId = next.id
+      t.mission = 'fuel'
+      t.path = path
+      t.seg = 0
+      t.t = 0
+      t.returning = false
+      t.dwell = 0
+      t.preDwell = 1.4
+      return true
+    }
+    // Still have product — continue apron-to-apron (hydrant-style multi-stop).
     const path = nearestPath(this.tiles, from, [next.stand], 'truck')
     if (!path || path.length < 2) return false
     t.flightId = next.id
@@ -5832,6 +5911,7 @@ export class Game {
     t.t = 0
     t.returning = false
     t.dwell = 0
+    t.preDwell = 0
     return true
   }
 
@@ -5842,7 +5922,7 @@ export class Game {
     const fit = this.roomsAt(f.stand)
     this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'depart')
-    // Outbound bags: shed picks up luggage → plane.
+    // Outbound bags: shed makeup pickup → plane deposit.
     const bagBuild = tilesOf(this.tiles, 'bags')
     if (bagBuild.length && !f.posted.bagsLoad) {
       const path = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
@@ -5851,6 +5931,43 @@ export class Game {
         this.spawnTruck('bags', f, path, 'load', bagBuild[0])
       }
     }
+  }
+
+  /** Line MX: mechanic walks hangar → stand → hangar (real GSE delivery). */
+  dispatchLineMx(f: Flight, payout: number) {
+    if (!f.stand || f.posted.mx || f.waitingOn.mx) return
+    const hangars = tilesOf(this.tiles, 'hangar')
+    if (!hangars.length || this.mechanics < 1) return
+    const path =
+      nearestPath(this.tiles, hangars[0], [f.stand], 'mechanic') ??
+      nearestPath(this.tiles, hangars[0], [f.stand], 'truck')
+    if (!path || path.length < 2) {
+      // No path — pay at hangar (remote line check radio).
+      this.earn(payout, `${f.flightNo} line MX`, f)
+      f.posted.mx = true
+      return
+    }
+    f.waitingOn.mx = true
+    this.people.push({
+      id: uid('mx'),
+      flightId: f.id,
+      x: hangars[0].c,
+      y: hangars[0].r,
+      path,
+      seg: 0,
+      t: 0,
+      color: '#7a9bb8',
+      job: 'mechanic',
+      itinerary: [],
+      label: 'Line MX',
+      wantBag: false,
+      wantFood: false,
+      wantGift: false,
+      stage: 0,
+      paidFood: false,
+      paidGift: false,
+      mxPay: payout,
+    })
   }
 
   departurePath(f: Flight): Vec[] | null {
@@ -6032,22 +6149,8 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: 0,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
     }
@@ -6106,22 +6209,8 @@ export class Game {
       seg: 0,
       t: 0,
       holdAngle: 0,
-      posted: {
-        landing: false,
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        bagDrop: false,
-      },
-      waitingOn: {
-        bags: false,
-        bagsLoad: false,
-        fuel: false,
-        catering: false,
-        paxOut: 0,
-        paxIn: 0,
-      },
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
     }
@@ -6712,20 +6801,49 @@ export class Game {
     this.flights = this.flights.filter((f) => f.phase !== 'gone')
 
     for (const t of this.trucks) {
+      // Makeup / farm bottom-load before rolling.
+      if (t.preDwell > 0) {
+        t.preDwell -= step
+        continue
+      }
       if (t.dwell > 0) {
         t.dwell -= step
         if (t.dwell <= 0 && !t.returning) {
           this.finishTruck(t)
-          // Bags / fuel may continue to another stand instead of deadheading home.
-          if (t.kind === 'bags' && this.retargetBagsTruck(t)) {
+          const from = { c: Math.round(t.x), r: Math.round(t.y) }
+          // Arrival bags: plane → shed/claim before any continue.
+          if (t.kind === 'bags' && t.mission === 'unload' && t.home) {
+            const claimPath = nearestPath(this.tiles, from, [t.home], 'truck')
+            t.mission = 'to_claim'
+            t.returning = true
+            t.path = claimPath && claimPath.length > 1 ? claimPath : [...t.path].reverse()
+            t.seg = 0
+            t.t = 0
             continue
           }
-          if (t.kind === 'fuel' && this.retargetFuelTruck(t)) {
+          // Fuel: mark reload needed, deadhead to farm (or continue if stock left).
+          if (t.kind === 'fuel') {
+            if (this.fuelLoads >= 1 && Math.random() < 0.45 && this.retargetFuelTruck(t)) {
+              continue
+            }
+            t.mission = 'fuel_reload'
+            t.returning = true
+            if (t.home) {
+              const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+              t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
+            } else {
+              t.path = [...t.path].reverse()
+            }
+            t.seg = 0
+            t.t = 0
+            continue
+          }
+          // Load / cater — continue or return home.
+          if (t.kind === 'bags' && t.mission === 'load' && this.retargetBagsTruck(t)) {
             continue
           }
           t.returning = true
           if (t.home) {
-            const from = { c: Math.round(t.x), r: Math.round(t.y) }
             const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
             t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
           } else {
@@ -6738,14 +6856,34 @@ export class Game {
       }
       const done = this.followPath(t, 1.8, step)
       if (done && !t.returning) {
+        // Service dwell at the aircraft (fuel = bond + pump).
         t.dwell =
-          t.kind === 'fuel' ? 3.2 : t.mission === 'load' ? 2.6 : 2.2
+          t.kind === 'fuel' ? 3.6 : t.mission === 'load' ? 2.6 : t.mission === 'unload' ? 2.4 : 2.2
       } else if (done && t.returning) {
-        // Back at shed / farm — try one more continue from home, else park.
-        if (t.kind === 'bags' && this.retargetBagsTruck(t)) {
+        // Arrived home / claim / farm.
+        if (t.kind === 'bags' && t.mission === 'to_claim') {
+          this.finishTruck(t) // inject onto claim / sort belt
+          if (this.retargetBagsTruck(t)) continue
+          t.dwell = -99
           continue
         }
-        if (t.kind === 'fuel' && this.retargetFuelTruck(t)) {
+        if (t.kind === 'bags' && t.mission === 'pickup') {
+          // Makeup carts staged — roll to the outbound stand.
+          if (this.retargetBagsTruck(t)) continue
+          t.dwell = -99
+          continue
+        }
+        if (t.kind === 'bags') {
+          if (this.retargetBagsTruck(t)) continue
+          t.dwell = -99
+          continue
+        }
+        if (t.kind === 'fuel') {
+          // Bottom-load at farm, then continue if work remains.
+          t.preDwell = 1.5
+          t.mission = 'fuel_reload'
+          if (this.fuelLoads >= 1 && this.retargetFuelTruck(t)) continue
+          t.dwell = -99
           continue
         }
         t.dwell = -99
@@ -6769,6 +6907,40 @@ export class Game {
         continue
       }
       if (p.job === 'mechanic') {
+        // Line MX visit: pay at stand, then walk home to hangar.
+        if (p.mxPay != null && p.flightId) {
+          const f = this.flights.find((x) => x.id === p.flightId)
+          if (f && !f.posted.mx) {
+            this.earn(p.mxPay, `${f.flightNo} line MX`, f)
+            f.posted.mx = true
+            f.waitingOn.mx = false
+          }
+          p.mxPay = undefined
+          const hangars = tilesOf(this.tiles, 'hangar')
+          if (hangars.length) {
+            const home = nearestPath(
+              this.tiles,
+              { c: Math.round(p.x), r: Math.round(p.y) },
+              hangars,
+              'mechanic',
+            )
+            if (home && home.length > 1) {
+              p.path = home
+              p.seg = 0
+              p.t = 0
+              p.flightId = ''
+              p.label = 'mx-home'
+              continue
+            }
+          }
+          p.stage = 99
+          continue
+        }
+        // Finished MX return — despawn at hangar. Idle pavement walkers linger.
+        if (p.label === 'mx-home') {
+          p.stage = 99
+          continue
+        }
         p.path = [{ c: Math.round(p.x), r: Math.round(p.y) }]
         p.seg = 0
         p.t = 0
