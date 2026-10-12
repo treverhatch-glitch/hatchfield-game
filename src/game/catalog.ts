@@ -110,6 +110,11 @@ export const DEFAULT_BUDGETS: Record<BudgetKey, number> = {
   fire: 100,
   ambulance: 100,
 }
+/** One-time fee to host a Guard / military transit agreement (Boise-style). */
+export const MIL_AGREE_COST = 18_000
+export const MIL_LANDING = 7800
+export const AIR_AMBULANCE_FEE = 3200
+export const THREAT_SCRAMBLE_COST = 2200
 
 const baseReq = {
   stands: 1,
