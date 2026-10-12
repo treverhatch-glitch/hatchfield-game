@@ -659,10 +659,21 @@ export function personaBlurb(p: AirlinePersona): string {
 }
 
 export const REWARD_LABEL: Record<AirlineRewardId, string> = {
-  brand_lounge: 'Brand lounge',
+  brand_lounge: 'First-class lounge',
   budget_perk: 'Snack franchise',
   biz_priority: 'Priority slots',
   cargo_night: 'Night waiver',
+}
+
+export const REWARD_DETAIL: Record<AirlineRewardId, string> = {
+  brand_lounge:
+    'Luxury: branded first-class lounge — their premium pax tip hard and calm faster.',
+  budget_perk:
+    'Budget: snack franchise on the counter — their pax spend more on food every visit.',
+  biz_priority:
+    'Business: priority landing fees + denser bank slots and snappier boarding.',
+  cargo_night:
+    'Night cargo: freighter handling premium + extra RP on night departures.',
 }
 
 /** Persona → one-time high-heat perk. */
@@ -683,6 +694,10 @@ export function rewardForPersona(p: AirlinePersona): AirlineRewardId {
 
 export function rewardBlurb(id: AirlineRewardId): string {
   return REWARD_LABEL[id]
+}
+
+export function rewardDetail(id: AirlineRewardId): string {
+  return REWARD_DETAIL[id]
 }
 
 export interface ResearchNode {

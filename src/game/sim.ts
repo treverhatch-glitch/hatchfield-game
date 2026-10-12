@@ -34,6 +34,7 @@ import {
   HUB_LAYOVER_WINS,
   RESEARCH_NODES,
   rewardForPersona,
+  REWARD_DETAIL,
   REWARD_LABEL,
   RP_PER_50_PAX,
   RP_PER_FLIGHT,
@@ -615,17 +616,50 @@ export class Game {
     const a = this.airline(id)
     const reward = rewardForPersona(a.persona)
     this.airlineReward[id] = reward
+    // Persona-flavored unlocks — physical hall / bank payoffs.
+    if (reward === 'brand_lounge') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit) fit.rooms.lounge = Math.max(fit.rooms.lounge ?? 0, 1) + 1
+      this.pushNews(
+        `${a.name} First-class lounge open — their premium pax get the branded calm.`,
+        'good',
+      )
+    } else if (reward === 'budget_perk') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit && (fit.rooms.food ?? 0) < 1) fit.rooms.food = 1
+      this.pushNews(
+        `${a.name} snack franchise live — budget pax overpay for fries in their colors.`,
+        'good',
+      )
+    } else if (reward === 'biz_priority') {
+      this.seedScheduleForAirline(id, 2)
+      this.pushNews(
+        `${a.name} priority slots — denser bank + richer landing fees.`,
+        'good',
+      )
+    } else if (reward === 'cargo_night') {
+      this.pushNews(
+        `${a.name} night waiver — freighter handling pays up after dark.`,
+        'good',
+      )
+    }
     this.pushNews(
-      `${a.name} unlocked ${REWARD_LABEL[reward]} — heat hit ${HEAT_REWARD_THRESHOLD}.`,
+      `${a.name} unlocked ${REWARD_LABEL[reward]} (heat ${HEAT_REWARD_THRESHOLD}+). ${REWARD_DETAIL[reward]}`,
       'good',
     )
     this.reputation = Math.min(100, this.reputation + 2)
   }
 
-  /** Carrier walks after sustained dead heat — fine + drop contract. */
+  /** Airlines currently under a warn flag. */
+  warnedAirlines(): AirlineId[] {
+    return this.signed.filter((id) => this.airlineWarned[id] && !this.isBanned(id))
+  }
+
+  /** Carrier walks after sustained dead heat — fine + drop contract + strip perk. */
   abandonAirline(id: AirlineId, reason: string) {
     if (!this.signed.includes(id)) return
     const a = this.airline(id)
+    const lost = this.airlineReward[id] ?? null
     this.signed = this.signed.filter((x) => x !== id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
@@ -634,6 +668,32 @@ export class Game {
     delete this.airlineLowAcc[id]
     this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_ABANDON_THRESHOLD)
     this.charge(ABANDON_FINE)
+    // Reverse persona unlocks — empty lounge / franchise leaves a scar.
+    if (lost === 'brand_lounge') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit && (fit.rooms.lounge ?? 0) > 0) {
+        fit.rooms.lounge = Math.max(0, (fit.rooms.lounge ?? 0) - 1)
+      }
+      this.pushNews(
+        `${a.name} pulled their first-class lounge — premium tips dry up.`,
+        'bad',
+      )
+    } else if (lost === 'budget_perk') {
+      this.pushNews(
+        `${a.name} franchise signs come down — snack spend cools.`,
+        'bad',
+      )
+    } else if (lost === 'biz_priority') {
+      this.pushNews(
+        `${a.name} priority slots voided — bank thins.`,
+        'bad',
+      )
+    } else if (lost === 'cargo_night') {
+      this.pushNews(
+        `${a.name} night waiver revoked — freighter premiums gone.`,
+        'bad',
+      )
+    }
     if (this.layover?.airline === id) this.layover = null
     if (this.layoverOffer?.airline === id) this.layoverOffer = null
     if (this.hubOffer?.airline === id) this.hubOffer = null
@@ -648,11 +708,16 @@ export class Game {
         s.delayReason = 'carrier abandoned'
       }
     }
+    // Contagion — other signed carriers cool a notch.
+    for (const other of this.signed) {
+      this.adjustHeat(other, -4)
+    }
+    const perkBit = lost ? ` Lost ${REWARD_LABEL[lost]}.` : ''
     this.pushNews(
-      `${a.name} abandoned the field (${reason}). Fine ${moneyLeft(ABANDON_FINE)}.`,
+      `${a.name} abandoned the field (${reason}). Fine ${moneyLeft(ABANDON_FINE)}.${perkBit}`,
       'bad',
     )
-    this.reputation = Math.max(0, this.reputation - 8)
+    this.reputation = Math.max(0, this.reputation - (lost ? 11 : 8))
   }
 
   landingFeeMult(airlineId: AirlineId): number {
@@ -1844,20 +1909,21 @@ export class Game {
     }
     if (n === 'food') {
       let pay = g.tag === 'premium' ? 28 : 14
-      // Budget snack franchise perk — signed carrier's brand on the counter.
-      if (
-        this.anyReward('budget_perk') ||
-        (g.airlineId && this.hasReward(g.airlineId, 'budget_perk'))
-      ) {
-        pay = Math.round(pay * 1.4)
+      let happy = 6
+      // Budget snack franchise — only that carrier's pax (or their transfers).
+      if (g.airlineId && this.hasReward(g.airlineId, 'budget_perk')) {
+        pay = Math.round(pay * 1.55)
+        happy += 2
+        g.thought = `${this.airline(g.airlineId).name} franchise meal (−$${pay})`
+      } else {
+        g.thought = `Ate (−$${pay})`
       }
       g.needs.hunger = Math.max(0, g.needs.hunger - 50)
       g.spent += pay
       this.cash += pay
       this.revenue += pay
       this.mealSold = true
-      g.happiness += 6
-      g.thought = `Ate (−$${pay})`
+      g.happiness += happy
     }
     if (n === 'shop') {
       const pay = g.tag === 'premium' ? 42 : 18
@@ -1871,12 +1937,16 @@ export class Game {
     if (n === 'lounge' && g.tag === 'premium') {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
       let happy = 8
-      if (
-        this.anyReward('brand_lounge') ||
-        (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge'))
-      ) {
-        happy += 4
-        g.thought = 'Brand lounge — carrier perk'
+      let pay = 0
+      // Luxury first-class lounge — only that carrier's premium pax.
+      if (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge')) {
+        happy += 10
+        pay = 55
+        g.spent += pay
+        this.cash += pay
+        this.revenue += pay
+        g.thought = `${this.airline(g.airlineId).name} first-class lounge (−$${pay})`
+        this.adjustHeat(g.airlineId, 0.2)
       } else {
         g.thought = 'Lounge calm'
       }
@@ -2906,8 +2976,13 @@ export class Game {
       }
       if (heat <= HEAT_WARN_THRESHOLD && !this.airlineWarned[id]) {
         this.airlineWarned[id] = true
+        const a = this.airline(id)
+        const perk = this.airlineReward[id]
+        const atRisk = perk
+          ? ` ${REWARD_LABEL[perk]} at risk.`
+          : ` Keep heat above ${HEAT_REWARD_THRESHOLD} to unlock ${REWARD_LABEL[rewardForPersona(a.persona)]}.`
         this.pushNews(
-          `${this.airline(id).name} warning — heat ${Math.round(heat)}. Fix the hall or they walk.`,
+          `${a.name} warning — heat ${Math.round(heat)}. Fix the hall before ${HEAT_ABANDON_THRESHOLD}.${atRisk}`,
           'bad',
         )
       }

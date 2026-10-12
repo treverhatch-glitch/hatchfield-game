@@ -22,8 +22,13 @@ import {
   personaBlurb,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
+  HEAT_ABANDON_THRESHOLD,
+  HEAT_REWARD_THRESHOLD,
+  HEAT_WARN_THRESHOLD,
   RESEARCH_NODES,
   rewardBlurb,
+  rewardDetail,
+  rewardForPersona,
   ROOMS,
   RUNWAY_PREFAB_COST,
   SHORT_RUNWAY_COST,
@@ -173,6 +178,29 @@ export function Hud({ game }: { game: Game }) {
           ? 'Apron · build outside · click hall to enter'
           : 'Hall · landside ↔ airside · Esc back out'}
       </button>
+
+      {game.warnedAirlines().length ? (
+        <div className="offer warn">
+          <div>
+            <strong>Relations cooling</strong>
+            <p>
+              {game
+                .warnedAirlines()
+                .map((id) => {
+                  const a = game.airline(id)
+                  const perk = game.rewardOf(id)
+                  const heat = Math.round(game.heatOf(id))
+                  return perk
+                    ? `${a.name} heat ${heat} — ${rewardBlurb(perk)} at risk`
+                    : `${a.name} heat ${heat} — walk at ${HEAT_ABANDON_THRESHOLD}`
+                })
+                .join(' · ')}
+              . Heat ≤{HEAT_WARN_THRESHOLD} warns; ≤{HEAT_ABANDON_THRESHOLD} for ~
+              26s and they abandon (fine + lost perk).
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {game.offer && offerAirline ? (
         <div className="offer">
@@ -729,6 +757,9 @@ export function Hud({ game }: { game: Game }) {
             {ready.tower
               ? ` · tower queues ${game.maxInbound()} inbound`
               : ' · no tower (single approach)'}
+            {' · '}
+            perk at heat {HEAT_REWARD_THRESHOLD}+ · warn ≤{HEAT_WARN_THRESHOLD} ·
+            abandon ≤{HEAT_ABANDON_THRESHOLD}
           </p>
           <ul className="airlines">
             {game.allAirlines().map((a) => {
@@ -740,6 +771,7 @@ export function Hud({ game }: { game: Game }) {
               const reward = game.rewardOf(a.id)
               const warned = Boolean(game.airlineWarned[a.id])
               const hub = game.isHub(a.id)
+              const targetPerk = rewardForPersona(a.persona)
               return (
                 <li key={a.id}>
                   <b style={{ color: a.color }}>
@@ -764,12 +796,10 @@ export function Hud({ game }: { game: Game }) {
                       ? 'Suspended after a bad layover / hall'
                       : signed
                         ? reward
-                          ? `${rewardBlurb(reward)} active`
-                          : a.kind === 'cargo'
-                            ? 'Freighters scheduled'
-                            : a.likesLayovers
-                              ? 'Pax + may offer layovers'
-                              : 'Pax flights scheduled'
+                          ? rewardDetail(reward)
+                          : warned
+                            ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}. Unlock ${rewardBlurb(targetPerk)} at ${HEAT_REWARD_THRESHOLD}+.`
+                            : `Chase ${rewardBlurb(targetPerk)} at heat ${HEAT_REWARD_THRESHOLD}+. ${rewardDetail(targetPerk)}`
                         : miss.slice(0, 4).join(', ') || 'Waiting to call'}
                   </span>
                 </li>
