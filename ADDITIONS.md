@@ -30,7 +30,9 @@ We copied the *spirit*:
 
 ## Parallel views
 
-- **Apron** (3D AT3 field) and **Hall** (2D terminal crowd) toggle — same money, different game.
+- **Apron** (3D AT3 field) and **Hall** (2D terminal crowd) crossfade — same money, different game.
+- **Enter/exit:** pan-click a terminal tile, Apron/Hall buttons, chip toggle, or **H** / **Esc**.
+- **Build split:** outside stamps on the apron; inside rooms via Hall furnish. Hall map marks **landside ↔ secure line ↔ airside**.
 
 ## Added in the continued loop
 

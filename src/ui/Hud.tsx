@@ -33,7 +33,8 @@ const BUDGET_KEYS: BudgetKey[] = [
   'ambulance',
 ]
 
-const TOOLS: Tool[] = [
+/** Outside pavement / buildings — apron only. */
+const APRON_TOOLS: Tool[] = [
   'pan',
   'runway_short',
   'runway',
@@ -131,9 +132,16 @@ export function Hud({ game }: { game: Game }) {
         </div>
       </header>
 
-      <div className="view-chip">
-        {game.view === 'apron' ? 'Apron · build outside' : 'Hall · furnish inside'}
-      </div>
+      <button
+        type="button"
+        className="view-chip"
+        onClick={() => game.setView(game.view === 'apron' ? 'hall' : 'apron')}
+        title="Toggle Apron / Hall (H). Click a terminal tile to enter."
+      >
+        {game.view === 'apron'
+          ? 'Apron · build outside · click hall to enter'
+          : 'Hall · landside ↔ airside · Esc back out'}
+      </button>
 
       {game.offer && offerAirline ? (
         <div className="offer">
@@ -646,33 +654,49 @@ export function Hud({ game }: { game: Game }) {
 
       <div className="dock">
         <div className="tools">
-          {TOOLS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={game.tool === t ? 'on' : ''}
-              onClick={() => game.setTool(t)}
-            >
-              {TOOL_LABEL[t]}
-            </button>
-          ))}
-          <button type="button" onClick={() => game.rotatePiece()}>
-            Rotate {game.facing === 'h' ? 'H' : 'V'}
-          </button>
+          {game.view === 'hall' ? (
+            <>
+              <button type="button" className="on" onClick={() => game.exitHall()}>
+                ← Apron outside
+              </button>
+              <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+                Inside: furnish rooms in the Hall panel (check-in → security → gate)
+              </span>
+            </>
+          ) : (
+            <>
+              {APRON_TOOLS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={game.tool === t ? 'on' : ''}
+                  onClick={() => game.setTool(t)}
+                >
+                  {TOOL_LABEL[t]}
+                </button>
+              ))}
+              <button type="button" onClick={() => game.rotatePiece()}>
+                Rotate {game.facing === 'h' ? 'H' : 'V'}
+              </button>
+              <button type="button" onClick={() => game.setView('hall')}>
+                Enter hall
+              </button>
+            </>
+          )}
         </div>
         <p className="hint">
-          {game.tool === 'runway_short'
+          {game.view === 'hall'
+            ? 'Inside the terminal: landside doors on the left, airside gates on the right. Buy rooms in Hall furnish. Esc / H returns to the apron.'
+            : game.tool === 'runway_short'
             ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15. A320+ and heavies refuse.`
             : game.tool === 'runway'
               ? `Regional strip 14×2 (${money(RUNWAY_PREFAB_COST)}) — A320 / 737 / A321 / 757F. Widebodies still refuse.`
               : game.tool === 'runway_heavy'
                 ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — takes everything: 787 / A350 / 747-8F / C-17.`
                 : game.tool === 'premade'
-                ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
+                ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — then pan-click it to walk inside.`
                 : game.tool === 'pan'
-                  ? game.view === 'hall'
-                    ? 'Hall view (inside): guests chase hunger, WC, shop, play (golf/falls/games), boarding clocks. Furnish in the side panel.'
-                    : 'Apron view (outside): stamp runways/stands/helipads. Toggle Hall to build rooms inside the terminal.'
+                  ? 'Apron (outside): stamp pavement. Pan-click a terminal tile or press H to go inside and furnish.'
                   : tip
                     ? `${tip.blurb} ${money(tip.cost)}`
                     : 'Clear refunds 40%.'}

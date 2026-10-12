@@ -34,19 +34,21 @@ button {
   position: absolute;
   inset: 0;
   z-index: 0;
-  transition: opacity 0.35s ease, filter 0.35s ease;
+  transition: opacity 0.45s ease, filter 0.45s ease, transform 0.45s ease;
 }
 
 .view-layer.live {
   opacity: 1;
   pointer-events: auto;
   filter: none;
+  transform: scale(1);
 }
 
 .view-layer.dim {
   opacity: 0;
   pointer-events: none;
-  filter: blur(2px);
+  filter: blur(3px);
+  transform: scale(1.02);
 }
 
 .field,
@@ -72,7 +74,11 @@ button {
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  background: rgba(18, 36, 28, 0.88);
+  color: #e8eef4;
   padding: 4px 12px;
   border-radius: 999px;
   font-size: 11px;
