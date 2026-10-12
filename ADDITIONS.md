@@ -199,12 +199,84 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 11. **AGM / shareholder votes**
 12. **Godot Steam rebuild**
 
+## Airport CEO deep dive — us vs them (Oct 2026)
+
+Sources: Airport CEO wiki (Flights, Flight Planner, Contracts), Steam R&D guide (Alpha 35+). CEO = 2D construction + staffed secure zones + drag-drop planner + research unlocks. Hatchfield = AT3 stamp loop + RCT hall + ops risk + HATCH.
+
+### Where Hatchfield is already ahead of Airport CEO
+
+| Area | Airport CEO | Hatchfield |
+| --- | --- | --- |
+| Guest AI | Passengers mostly flow to desks; satisfaction is softer | RCT needs, miss clocks, capped pathfinding, angry exits → heat |
+| Airline drama | Contracts + tasks; relations are quieter | Personas, heat, layover banks, bans+fines, proc regionals |
+| Fantasy / spice | Franchise shops/cafés (research) | Golf / waterfall / gaming dens + layover captive spend |
+| Capital fantasy | Economy panel, no public equity market | **IPO / HATCH** ticker, street missions, crisis dumps |
+| Dual fantasy view | One continuous 2D campus | Apron 3D + Hall 2D with landside/secure/airside read |
+| Military spice | Emergencies exist; not a Guard-host fantasy | Boise-style Guard host + named olive metal |
+| Turnaround picture | Services exist but denser UI | Money posts when truck/pax picture completes (AT3 rule) |
+| Session length | Long authentic build | Starter kit → Northline money in minutes (better sketch loop) |
+
+### Where Airport CEO still beats us (steal these)
+
+| CEO feature | Why it hurts that we lack it | Hatchfield upgrade |
+| --- | --- | --- |
+| **R&D / research tree** | We dump tools day one; no progression spine | Research points from flights/pax → unlock heavy metal, de-ice, night bank, hotel, 2nd runway |
+| **Flight Planner (drag-drop, days ahead)** | Our timetable is ETA bank, not a week grid | Expand schedule into a simple planner (day strip + stand column); keep auto COO toggle |
+| **Secure zone / international zone tools** | We label landside/airside; walls don’t enforce | Zone paint that gates hall graph edges (wrong-side shop ≠ boarding help) |
+| **Staffed desks** (agents, screeners, ramp) | Budgets are sliders, not bodies | Named posts on check-in/security/boarding; understaff = queues |
+| **Stand sizes** (small/med/large) + remote vs attached | One stand tile fits all that strip allows | Stand class + remote stand service truck |
+| **Pushback / stairs / belt loaders** | Servicing is abstract timers + trucks | Visible pushback + belt before taxi-out |
+| **Night flights unlock** | Weather exists; no curfew politics | Night bank research: freighter money vs city noise/heat |
+| **De-icing permit + pad** | Storms raise crashes; no de-ice verb | Winter ops: de-ice truck or holds/cancels |
+| **Baggage belt system** | Bags are a shed + truck | Conveyor path check-in→makeup→stand (skill layout) |
+| **Franchise contracts** (shops/cafés) | Hall spend is organic only | Sign brand → guaranteed spend + brand crisis |
+| **Airline lounges** (research) | Generic lounge room | Persona-branded lounge rewards at high heat |
+| **GA traffic** | Helos/exec only | Small GA ramp (easy money, blocks stands if neglected) |
+| **Multiple terminal ops** (late research) | One hall fit | 2nd terminal research + per-hall stand pools |
+| **Contract task deadlines** | Sign & forget | Airline tasks (“add WC”, “security ×2”) with bonus/fail |
+| **Emergencies panel** | Threat scramble only | Divert / firefighter tanker asks; refuse = broad heat hit |
+
+### Verdict
+
+- **CEO construction authenticity:** they win (zones, staff bodies, belts, pushback, R&D).
+- **Readable fun in a short session:** we win (starter kit, money=picture, layover tension, HATCH).
+- **Airline personality:** we win today; steal their **lounge + franchise + task contracts** to stay ahead.
+- **Scheduling:** they win on planner UX; we win on delay cascading drama — merge both.
+
+Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research → night/de-ice/belts) and *planner craft* without becoming a spreadsheet.
+
+### CEO-aligned upgrade plan (merge with AT3 P0–P2)
+
+**C0 — CEO spine (next, overlaps AT3 P0)**
+
+1. **Research desk** — points from turnarounds + pax served; admins optional later. Unlocks: night bank, de-ice, franchise, stand classes, heavy pack.
+2. **Airline tasks + rewards/abandon** — contract checklist; high heat → brand lounge / budget perk; dead heat → abandon.
+3. **Planner v2** — day strip UI on current timetable (drag ETA / assign stand); auto remains default.
+4. **Field Rating** — AT3-readable blend (already on AT3 P0).
+
+**C1 — CEO authenticity**
+
+5. **Secure-zone enforcement** on hall graph.
+6. **Staff posts** on key desks (security/check-in/boarding).
+7. **De-ice + night curfew**.
+8. **Stand class + pushback beat**.
+9. **Emergency asks** (weather divert, firefighter tanker).
+
+**C2 — CEO scale**
+
+10. **Baggage belt lite** + franchise brands.
+11. **Multi-terminal** + GA ramp.
+12. **Godot** after C0–C1 feel unfair-fun.
+
+Dependency note: **Research first** unlocks half of CEO’s catalog without dumping UI. Airline rewards/abandon ships next to heat (already live). Planner v2 builds on our timetable.
+
 ### Explicit calls on open design questions
 
 - **Premade vs random airlines:** Hybrid. Premade for identity and tutorials; thin procedural regionals for variety. Full random-only dilutes AT3’s “I know who Summit is” fantasy.
 - **Layover bans:** Yes — short ban + cash fine + news blurb. Teaches hall quality without deleting the save.
 - **Military:** Keep as **host agreement** (not a full player-controlled air force). Occasional tasking missions later (“clear stand 2 for ANG”).
 - **Browser vs Godot:** Browser stays the design lab. Godot is the shipping skin once loops are sacred.
+- **AT3 vs CEO pull:** Steal AT3’s growth silhouette (hubs, jetways, scenarios) and CEO’s progression spine (R&D, zones, planner, de-ice/night). Do not clone CEO’s contractor/admin commute sim.
 
 ### Nice-to-haves (park, don’t chase)
 
