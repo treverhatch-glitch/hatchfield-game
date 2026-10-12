@@ -101,50 +101,103 @@ Rule for new features: deepen one of these four. Don’t open a fifth parallel g
 - **AT3 first, HatchTag spice second** — fantasy amenities and IPO are seasoning on a readable airport.
 - **Sawyer cap** — never perfect pathfinding for thousands; keep hall graph shallow.
 
-### Gap analysis (full experience)
+## AT3 deep dive — us vs them (Oct 2026)
+
+Sources: AT3 FAQ/strategy (Dudeitsme411), MobyGames/wiki blurbs. AT3 = stamp land → contracts → rating. Hatchfield = that loop plus RCT hall + ops risk + HATCH.
+
+### Where Hatchfield is already ahead of AT3
+
+| Area | AT3 | Hatchfield |
+| --- | --- | --- |
+| Pax AI | Soft “satisfaction / rating” blob | RCT needs (hunger/WC/energy/shop/play), boarding clocks, miss penalties, capped hall pathfinding |
+| Airlines | Master / flight / HUB contracts, rating gate | Personas (budget→luxury, cargo-night), heat, layover banks, short bans+fines, proc regionals |
+| Money = picture | Fees often opaque | Landing/bags/fuel/catering/MX/pad fees post when trucks/pax move |
+| Ops risk | Weather + collisions mentioned | Budgets, mechanics, runway condition, crash odds, threat scramble |
+| Capital | Budget management | Loans, parcels, rail, **IPO / HATCH** missions (AT3 never had a public market) |
+| Dual view | One isometric world | Apron 3D + Hall 2D with landside/airside cut |
+| Metal | Size vs runway meters | Named real types + scale + strip gates (short/regional/heavy) |
+| Schedule | Flight contracts auto-renew | Timetable with storm/boarding/backlog delays + cascade heat |
+
+### Where AT3 still beats us (steal these)
+
+| AT3 feature | Why it hurts that we lack it | Hatchfield upgrade |
+| --- | --- | --- |
+| **Terminal ladder** (1-story → mega with many jetways) | Our hall is one premade/shell; growth doesn’t *look* like a bigger airport | Multi-terminal campuses + jetway/stand counts per hall |
+| **HUB contracts** as a distinct tier | We have layover banks; AT3 HUBs are the “you’re a real base” fantasy | Promote layover → **Hub status** (extra slots, exclusive lounge, harder ban) |
+| **Master vs per-flight contracts** | We sign airline once; no per-rotation paper | Optional flight-contract renewals on the timetable (auto/manual) |
+| **Jetways on multi-story terminals** | Stands are flat tiles; boarding is abstract | Gate jetway stamp linking stand↔hall node |
+| **Hotels / gas / external services** | City is rail stub only | Landside hotel + parking that feed departures (noise vs money) |
+| **Scenario mode** (city, years, goal) | We have sandbox + IPO missions only | 3–5 scenarios (“4 contracts”, “cargo Kiln”, “Guard neighbor”) |
+| **City presets** (weather, demand mix) | City vs factory plots only | More sites: tourist / military town / megacity |
+| **Airport rating as a first-class meter** | We split rep / heat / wear | Unified **Field Rating** derived from those (AT3-readable) |
+| **Bigger build catalog** | Thin vs AT3’s service menus | Research unlocks expand the stamp list without dumping everything day one |
+| **True multi-runway ATC** | Longest strip wins; one ops bank | Second strip with independent capacity when tower is staffed |
+
+### Verdict
+
+- **AT3 core loop:** we match or beat it (stamp → contract → turnaround money).
+- **AT3 scale fantasy:** they win (big terminals, jetways, hotels, scenarios).
+- **Modern depth:** we win (RCT guests, heat/layovers, budgets/crashes, HATCH, schedule drama).
+
+Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub tier, scenarios) without copying its opaque rating goo.
+
+### Gap analysis (updated)
 
 | Pillar | Have now | Missing for “complete” feel |
 | --- | --- | --- |
-| Build | Prefab stamps, 3 runway lengths, helipad | Custom terminal walls/doors; landside vs airside zones; multi-building campuses |
-| Airlines | 6 premade + Guard host | Stronger personalities; layover contracts; bans; optional procedural fillers |
-| Aircraft | Named frames + size/fees | Pushback queues; gate assignment; weight/noise classes; GA / flight school |
-| Pax | Budget/premium + needs + clocks | Traits (family, business, transfer); layover dwell; complaint → airline heat |
-| Cargo | 3 freighters | Night banks, warehouse chains, customs delay mini-loop |
-| City | Rail stub, parcels | Curfew, noise complaints, tourism campaigns, competing airport |
-| Staff | Budget sliders + mechanics | Named crew, shift coverage, union events |
-| Meta | IPO + missions | AGM votes, difficulty campaigns, sandbox vs scenario |
+| Build | Prefabs, 3 strip lengths, helipad, apron↔hall | Custom walls/doors; multi-terminal; jetways; 2nd runway ATC |
+| Airlines | 6 premade + Guard + proc fillers; personas; heat; layovers; bans | Hub-tier contracts; brand lounges/rewards; abandon on dead heat |
+| Aircraft | Named frames + roles + strip gates | A380 / An-124 / C-5; pushback; noise/weight classes |
+| Pax | Budget/premium + needs + clocks + transfers | Deeper traits (family/business); complaint cards |
+| Cargo | 3 freighters + shed | Night banks, customs delay |
+| City | Rail, parcels, two plots | Hotels, curfew, more site presets |
+| Staff | Budget sliders + mechanics | Research-gated units; shifts |
+| Meta | IPO + street missions | Scenarios, AGM, Godot ship |
 
-### Recommended ship order (not calendar — dependency order)
+### Upgrade plan (dependency order — beat AT3)
+
+**P0 — AT3 growth silhouette (next)**
+
+1. **Field Rating** meter (0–100) = blend of reputation, avg airline heat, wear inverse, security — shown like AT3’s rating.
+2. **Hub contract tier** — after N successful layovers / heat 75+, offer Hub: +slots, brand lounge room, harsher ban if you fail.
+3. **Airline rewards / abandon** — high heat unlocks persona perk (luxury lounge / budget snack franchise / cargo night waiver); heat floor → warning → abandon + fine.
+4. **Second terminal + jetway lite** — second hall fit assigns its own stands; jetway flag on stand↔gate.
+
+**P1 — AT3 catalog + ATC**
+
+5. **Research tree** — points from flights/pax/IPO; unlocks heavy metal, de-ice, hotel, 2nd runway ops.
+6. **Multi-runway capacity** — two strips add inbound slots when tower funded.
+7. **Emergency asks** — weather-tied divert / firefighter tanker; refuse = rep + heat hit on many carriers.
+8. **Heavy pack** — A380, An-124, C-5 (research or Hub + heavy strip).
+
+**P2 — AT3 meta AT3 never stuck the landing on**
+
+9. **Scenarios** — timed goals on preset sites.
+10. **Hotels / landside city** — money vs curfew noise.
+11. **Custom terminal painter** — walls rewrite hall graph (skill ceiling).
+12. **Godot Steam** — only after P0–P1 feel unfair-fun.
+
+### Recommended ship order (legacy tiers, still valid)
 
 **Tier A — make the airport feel built by you**
 
-1. **Custom terminal painter** — stamp walls/floors, place doors that rewrite the hall graph. Biggest skill gap vs premade box.
-2. **Landside / airside clarity** — secure line as a real cut; wrong-side amenities don’t help departures.
-3. **Gate & stand assignment** — jets pick a gate; tower + multiple stands create queues (tower finally “pays”).
+1. **Custom terminal painter** — stamp walls/floors, place doors that rewrite the hall graph.
+2. **Landside / airside clarity** — ~~secure line as a real cut~~ (map labels live); enforce amenity side later.
+3. **Gate & stand assignment** — ~~lite live~~; deepen with jetways + multi-hall.
 
-**Tier B — airline drama (HatchTag + your layover idea)**
-
-4. **Airline personalities (premade core, light proc spice)**  
-   - Keep handcrafted majors (Northline → Summit, UPPS → EXFED, Guard).  
-   - Add **persona tags**: luxury / business / budget / cargo-night / military-gov.  
-   - Optional **random regional filler** airlines (name + color + 1–2 quirks) so the phone isn’t always the same six faces — but story beats stay premade.
-5. **Layover hub contracts** — airline pays more to dump transfer pax for N hours.  
-   - Upside: captive spend (food/shop/play).  
-   - Downside: hall load, wear, missed connections.  
-   - **Ban + fine** if happiness/rep dips below threshold while hosting their layover — excellent tension, ship it.
-6. **Airline heat meter** — soft score per carrier; bans are temporary (30–90 sim-min) not save-ruining.
+**Tier B — airline drama** — mostly **shipped** (personas, proc, layovers, bans, heat). Next: Hub tier + rewards/abandon.
 
 **Tier C — day/night & seasons (CEO depth)**
 
-7. **Slot / curfew clock** — city noise vs night freighter money; tower + rail change the politics.
-8. **De-ice / winter ops** — seasonal budget line + truck; storms without de-ice = holds/cancels.
-9. **Franchise retail** — sign a coffee/duty-free brand; guaranteed spend, brand crisis events.
+7. **Slot / curfew clock**
+8. **De-ice / winter ops**
+9. **Franchise retail**
 
 **Tier D — meta & Steam**
 
-10. **Scenarios** — “Cargo only Kiln”, “IPO in 20 minutes”, “Guard base neighbor”.
-11. **AGM / shareholder votes** when public — expand vs dividend vs security spend.
-12. **Godot Steam rebuild** — only after Tier A–B loops feel unfair in a fun way, not unfinished.
+10. **Scenarios**
+11. **AGM / shareholder votes**
+12. **Godot Steam rebuild**
 
 ### Explicit calls on open design questions
 
