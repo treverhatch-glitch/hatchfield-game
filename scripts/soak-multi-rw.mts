@@ -18,8 +18,10 @@ const strips = runwayStrips(g.tiles, MIN_RUNWAY)
 if (strips.length < 3) issues.push(`expected ≥3 strips got ${strips.length}`)
 
 const inbound = g.maxInbound()
-// tower + 3 strips → 1+3 = 4 (capped)
-if (inbound < 4) issues.push(`inbound too low for 3 strips: ${inbound}`)
+// tower + N strips scale inbound (no hard 2-RW ceiling)
+if (inbound < 4) issues.push(`inbound too low for multi strips: ${inbound}`)
+const cap = g.scheduleCap()
+if (cap < 18) issues.push(`schedule cap should grow with strips, got ${cap}`)
 
 for (let i = 0; i < 400; i++) {
   g.tick(0.25)
@@ -50,6 +52,7 @@ const out = {
   issues,
   strips: strips.length,
   inbound,
+  scheduleCap: cap,
   prefs: prefs.slice(0, 8),
   used: [...used],
   rw0: rw0.length,

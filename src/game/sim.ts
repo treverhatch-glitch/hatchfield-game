@@ -3240,8 +3240,9 @@ export class Game {
       return
     }
     const open = this.openSchedule().length
-    if (open >= 12) {
-      this.pushNews('Timetable full (12). Cancel or wait.', 'bad')
+    const cap = this.scheduleCap()
+    if (open >= cap) {
+      this.pushNews(`Timetable full (${cap}). Cancel or wait.`, 'bad')
       this.emit()
       return
     }
@@ -3586,11 +3587,12 @@ export class Game {
         )
       }
     }
-    // Auto-fill timetable so the bank stays ~4–8 deep when enabled.
+    // Auto-fill timetable — deeper banks when more strips are stamped.
     if (this.scheduleAuto && this.schedulePlanCool <= 0 && this.signed.length) {
       this.schedulePlanCool = 18
       const open = this.openSchedule()
-      if (open.length < 5) {
+      const want = Math.min(this.scheduleCap() - 2, 4 + this.runwayStripCount() * 2)
+      if (open.length < want) {
         const pool = this.signed.filter((id) => !this.isBanned(id))
         if (pool.length) {
           // Bias toward cargo if freighters are starving vs pax bank.
@@ -3605,7 +3607,8 @@ export class Game {
               : cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
                 ? pick(cargo)
                 : pick(pool)
-          this.seedScheduleForAirline(pickId, 2)
+          const batch = this.runwayStripCount() >= 3 ? 3 : 2
+          this.seedScheduleForAirline(pickId, batch)
         }
       }
     }
@@ -5491,17 +5494,23 @@ export class Game {
     ).length
   }
 
+  /** Open timetable slots scale with stamped strips (not a hard 2-RW world). */
+  scheduleCap(): number {
+    const strips = Math.max(1, this.runwayStripCount())
+    return Math.min(28, 10 + strips * 4)
+  }
+
   maxInbound(): number {
     // Tower unlocks parallel approaches; each stamped strip adds a bank.
     // No hard 2-strip ceiling — more asphalt = more simultaneous inbound.
     const tower = tilesOf(this.tiles, 'tower').length > 0
     if (!tower) return 1
     const strips = this.runwayStripCount()
-    let n = 1 + Math.min(5, Math.max(1, strips))
+    let n = 1 + Math.min(6, Math.max(1, strips))
     if (this.hasResearch('stand_class')) n += 1
-    // Second terminal campus — one more simultaneous approach.
-    if (this.fits.length >= 2) n += 1
-    return Math.min(8, n)
+    // Extra terminal campuses — one more simultaneous approach each (cap 2).
+    if (this.fits.length >= 2) n += Math.min(2, this.fits.length - 1)
+    return Math.min(10, n)
   }
 
   /** Least-busy strip index for auto bank; null if only one strip. */
