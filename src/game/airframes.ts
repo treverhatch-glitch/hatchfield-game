@@ -185,3 +185,22 @@ export function pickAirframe(
   if (!pool.length) return null
   return pool[Math.floor(Math.random() * pool.length)]
 }
+
+/** Prefer `kind`, then step down to anything that fits the strip (no helos/mil). */
+export function pickAirframeWithFallback(
+  preferred: AircraftKind,
+  longestRunway: number,
+  cargo: boolean,
+): Airframe | null {
+  const order: AircraftKind[] = cargo
+    ? [preferred, 'freighter']
+    : [preferred, 'narrowbody', 'regional']
+  const seen = new Set<AircraftKind>()
+  for (const k of order) {
+    if (seen.has(k)) continue
+    seen.add(k)
+    const af = pickAirframe(k, longestRunway)
+    if (af) return af
+  }
+  return null
+}
