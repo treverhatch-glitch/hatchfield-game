@@ -170,6 +170,13 @@ A new player can, without a wiki:
 
 If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 
+## Shipped — runway timetable (this loop)
+
+- **Auto + manual schedule** — signed airlines bank ETA slots; player can add / bump / cancel.
+- **Delays** — storms, runway backlog, slow boarding, short-strip refusals push the bank.
+- **Cascade** — a delay slides later slots and cools airline heat.
+- Cancel / rearrange costs heat so the timetable is a real lever.
+
 ## Shipped — Tier B airline drama + gate lite (this loop)
 
 - **Airline personas** on majors: budget / business / luxury / cargo-night / military-gov.

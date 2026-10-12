@@ -106,6 +106,7 @@ import type {
   Phase,
   RoomId,
   RunwayClass,
+  ScheduleSlot,
   SiteKind,
   Speed,
   TerminalFit,
@@ -220,6 +221,9 @@ export class Game {
   layoverOfferCool = 50
   layover: LayoverContract | null = null
   layoverSpawnAcc = 0
+  schedule: ScheduleSlot[] = []
+  scheduleAuto = true
+  schedulePlanCool = 8
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -307,6 +311,9 @@ export class Game {
     this.layoverOfferCool = 50
     this.layover = null
     this.layoverSpawnAcc = 0
+    this.schedule = []
+    this.scheduleAuto = true
+    this.schedulePlanCool = 8
     this.flights = []
     this.trucks = []
     this.people = []
@@ -1016,6 +1023,8 @@ export class Game {
       airlineHeat: this.airlineHeat,
       airlineBanUntil: this.airlineBanUntil,
       layover: this.layover,
+      schedule: this.schedule.filter((s) => s.status === 'scheduled' || s.status === 'delayed'),
+      scheduleAuto: this.scheduleAuto,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -1076,6 +1085,13 @@ export class Game {
       this.layoverOffer = null
       this.layoverOfferCool = 20
       this.layoverSpawnAcc = 0
+      this.schedule = (s.schedule ?? []).map((slot) => ({
+        ...slot,
+        status: slot.status === 'inbound' ? 'scheduled' : slot.status,
+        flightId: null,
+      }))
+      this.scheduleAuto = s.scheduleAuto ?? true
+      this.schedulePlanCool = 6
       this.mission = null
       this.mxOffer = null
       this.pendingThreat = null
@@ -1608,11 +1624,195 @@ export class Game {
     this.offerCool = 25
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
+    this.seedScheduleForAirline(id, 3)
     this.pushNews(
-      `${a.name} signed${a.procedural ? ' (filler regional)' : ''}. Flights will schedule.`,
+      `${a.name} signed${a.procedural ? ' (filler regional)' : ''}. Flights hit the timetable.`,
       'good',
     )
     this.emit()
+  }
+
+  setScheduleAuto(on: boolean) {
+    this.scheduleAuto = on
+    this.pushNews(
+      on ? 'Tower auto-banking slots again.' : 'Auto schedule off — you own the bank.',
+      'ok',
+    )
+    this.emit()
+  }
+
+  openSchedule(): ScheduleSlot[] {
+    // Prune orphan inbound slots whose flight already left.
+    for (const s of this.schedule) {
+      if (s.status === 'inbound' && s.flightId && !this.flights.some((f) => f.id === s.flightId)) {
+        s.status = 'done'
+      }
+    }
+    return this.schedule
+      .filter((s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound')
+      .slice()
+      .sort((a, b) => a.eta - b.eta)
+  }
+
+  seedScheduleForAirline(airlineId: AirlineId, count: number) {
+    if (this.isBanned(airlineId)) return
+    const a = this.airline(airlineId)
+    let t = this.clock + 10 + Math.random() * 8
+    const last = this.schedule
+      .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
+      .sort((x, y) => y.eta - x.eta)[0]
+    if (last) t = Math.max(t, last.eta + 14)
+    for (let i = 0; i < count; i++) {
+      this.flightSeq += 1
+      this.schedule.push({
+        id: uid('slot'),
+        airline: airlineId,
+        flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+        eta: t + i * (16 + Math.random() * 10),
+        status: 'scheduled',
+        delaySec: 0,
+        delayReason: null,
+        manual: false,
+        flightId: null,
+      })
+    }
+  }
+
+  /** Player places a slot ~N seconds out for a signed airline. */
+  addManualSlot(airlineId: AirlineId, inSeconds = 20) {
+    if (!this.signed.includes(airlineId)) {
+      this.pushNews('Sign that airline first.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.isBanned(airlineId)) {
+      this.pushNews(`${this.airline(airlineId).name} is banned — no slots.`, 'bad')
+      this.emit()
+      return
+    }
+    const open = this.openSchedule().length
+    if (open >= 12) {
+      this.pushNews('Timetable full (12). Cancel or wait.', 'bad')
+      this.emit()
+      return
+    }
+    const a = this.airline(airlineId)
+    this.flightSeq += 1
+    const eta = this.clock + Math.max(8, inSeconds)
+    this.schedule.push({
+      id: uid('slot'),
+      airline: airlineId,
+      flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+      eta,
+      status: 'scheduled',
+      delaySec: 0,
+      delayReason: null,
+      manual: true,
+      flightId: null,
+    })
+    this.pushNews(
+      `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  cancelSlot(slotId: string) {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || s.status === 'inbound' || s.status === 'done') return
+    s.status = 'cancelled'
+    this.adjustHeat(s.airline, s.manual ? -1.5 : -3.5)
+    this.pushNews(
+      `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} heat ${Math.round(this.heatOf(s.airline))}.`,
+      'bad',
+    )
+    this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
+    this.emit()
+  }
+
+  /** Push a delayed slot later; ripples the bank behind it. */
+  bumpSlot(slotId: string, bySec = 18) {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+    this.delaySlot(s, bySec, 'Tower rearrange')
+    this.pushNews(
+      `Bumped ${s.flightNo} +${bySec}s — later slots slide.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  delaySlot(slot: ScheduleSlot, sec: number, reason: string) {
+    const add = Math.min(22, Math.max(6, sec))
+    slot.eta += add
+    slot.delaySec = Math.min(120, slot.delaySec + add)
+    slot.status = 'delayed'
+    slot.delayReason = reason
+    // Ripple later slots that would collide — capped so the bank doesn't explode.
+    const later = this.schedule
+      .filter(
+        (x) =>
+          x.id !== slot.id &&
+          (x.status === 'scheduled' || x.status === 'delayed') &&
+          x.eta >= slot.eta - add &&
+          x.eta < slot.eta + 36,
+      )
+      .sort((a, b) => a.eta - b.eta)
+      .slice(0, 4)
+    let cursor = slot.eta + 14
+    for (const x of later) {
+      if (x.eta < cursor) {
+        const push = Math.min(18, cursor - x.eta)
+        x.eta += push
+        x.delaySec = Math.min(120, x.delaySec + push)
+        x.status = 'delayed'
+        x.delayReason = x.delayReason ?? 'Cascade from earlier delay'
+        this.adjustHeat(x.airline, -0.35)
+        cursor = x.eta + 14
+      } else {
+        cursor = Math.max(cursor, x.eta + 14)
+      }
+    }
+    this.adjustHeat(slot.airline, -0.7)
+  }
+
+  tickSchedule(dt: number) {
+    this.schedulePlanCool = Math.max(0, this.schedulePlanCool - dt)
+    // Storm at destination / on field — random inbound delay.
+    if (this.weather === 'storm' && Math.random() < dt * 0.04) {
+      const soon = this.openSchedule().find((s) => s.eta - this.clock < 30)
+      if (soon && soon.status === 'scheduled') {
+        this.delaySlot(soon, 12 + Math.random() * 16, 'Storm / dest weather')
+        this.pushNews(
+          `${soon.flightNo} delayed ${Math.round(soon.delaySec)}s — storm bank.`,
+          'bad',
+        )
+      }
+    }
+    // Auto-fill timetable so the bank stays ~4–8 deep when enabled.
+    if (this.scheduleAuto && this.schedulePlanCool <= 0 && this.signed.length) {
+      this.schedulePlanCool = 18
+      const open = this.openSchedule()
+      if (open.length < 5) {
+        const pool = this.signed.filter((id) => !this.isBanned(id))
+        if (pool.length) this.seedScheduleForAirline(pick(pool), 2)
+      }
+    }
+    // Drop finished noise.
+    if (this.schedule.length > 40) {
+      this.schedule = this.schedule.filter(
+        (s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound',
+      )
+    }
+  }
+
+  nextDueSlot(): ScheduleSlot | null {
+    const due = this.openSchedule().filter(
+      (s) =>
+        (s.status === 'scheduled' || s.status === 'delayed') &&
+        s.eta <= this.clock + 1.5,
+    )
+    return due[0] ?? null
   }
 
   declineOffer() {
@@ -2598,23 +2798,43 @@ export class Game {
 
   trySpawn() {
     if (this.spawnCool > 0 || !this.signed.length) return
-    const inbound = this.flights.filter((f) =>
-      (['hold', 'approach', 'landing', 'taxi_in'] as Phase[]).includes(f.phase),
-    )
-    if (inbound.length >= this.maxInbound()) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     if (!tilesOf(this.tiles, 'stand').length) return
 
-    const site = this.site ? LAND[this.site] : null
-    const active = this.signed.filter((id) => !this.isBanned(id))
-    if (!active.length) return
-    const pool = active.filter((id) => {
-      const a = this.airline(id)
-      if (!site) return true
-      if (a.kind === 'cargo') return Math.random() < 0.45 * site.cargoMult
-      return Math.random() < 0.55 * site.paxMult
-    })
-    const airlineId = pick(pool.length ? pool : active)
+    const inbound = this.flights.filter((f) =>
+      (['hold', 'approach', 'landing', 'taxi_in'] as Phase[]).includes(f.phase),
+    )
+
+    // Prefer the timetable. If nothing is due, only seed when auto and bank empty.
+    const slot = this.nextDueSlot()
+    if (!slot) {
+      if (!this.scheduleAuto) return
+      const open = this.openSchedule().filter((s) => s.status !== 'inbound')
+      if (open.length > 0) return // wait for ETA
+      const active = this.signed.filter((id) => !this.isBanned(id))
+      if (active.length) this.seedScheduleForAirline(pick(active), 2)
+      return
+    }
+    if (this.isBanned(slot.airline)) {
+      slot.status = 'cancelled'
+      this.pushNews(`${slot.flightNo} scrubbed — airline banned.`, 'bad')
+      return
+    }
+
+    // At inbound capacity or pavement jammed — slip the due slot instead of soft-locking the bank.
+    if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
+      this.delaySlot(slot, 10 + Math.random() * 8, 'Runway backlog')
+      if (Math.random() < 0.45) {
+        this.pushNews(
+          `${slot.flightNo} slipped — runway backlog. Cascade may hit later slots.`,
+          'bad',
+        )
+      }
+      this.spawnCool = 5
+      return
+    }
+
+    const airlineId = slot.airline
     const def = this.airline(airlineId)
     const preferred = this.pickAircraftKind(airlineId)
     const af = pickAirframeWithFallback(
@@ -2623,26 +2843,18 @@ export class Game {
       def.kind === 'cargo',
     )
     if (!af) {
-      this.spawnCool = 10
-      if (Math.random() < 0.35) {
-        this.pushNews(
-          `${def.name} overflew — longest strip ${this.longestRunway()} cells can't take their fleet.`,
-          'bad',
-        )
-      }
-      return
-    }
-    if (af.kind !== preferred && Math.random() < 0.25) {
+      this.delaySlot(slot, 20, 'Strip too short')
       this.pushNews(
-        `${def.name} swapped to a ${af.name} — strip too short for ${this.aircraftLabel(preferred)}.`,
-        'ok',
+        `${slot.flightNo} delayed — strip ${this.longestRunway()}c can't take their metal.`,
+        'bad',
       )
+      this.spawnCool = 8
+      return
     }
     const stand = this.assignStand()
     const route = stand ? this.landingRoute(stand) : null
     const busy = this.groundBusy() || !stand || !route
     const start = route?.[0] ?? { c: 1, r: -3 }
-    this.flightSeq += 1
     const pax =
       af.paxMax <= 0
         ? 0
@@ -2651,7 +2863,7 @@ export class Game {
     const f: Flight = {
       id: uid('flt'),
       airline: airlineId,
-      flightNo: `${def.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+      flightNo: slot.flightNo,
       airframeId: af.id,
       airframeName: af.name,
       pax,
@@ -2684,16 +2896,21 @@ export class Game {
       },
       phaseTime: 0,
       ledger: [],
+      scheduleId: slot.id,
+      boardingSlow: Math.random() < 0.12,
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
-    this.spawnCool = tilesOf(this.tiles, 'tower').length ? 12 : 16
+    slot.status = 'inbound'
+    slot.flightId = f.id
+    this.spawnCool = tilesOf(this.tiles, 'tower').length ? 10 : 14
     this.selectedFlight = this.selectedFlight ?? f.id
     const role = craftRoleLabel(af.kind)
+    const late = slot.delaySec > 0 ? ` (${Math.round(slot.delaySec)}s late)` : ''
     this.pushNews(
-      `${def.name} ${f.flightNo} · ${role} ${af.name} → ${gate}` +
+      `${def.name} ${f.flightNo}${late} · ${role} ${af.name} → ${gate}` +
         (busy ? ' — holding for pavement.' : '.'),
-      'ok',
+      slot.delaySec > 0 ? 'bad' : 'ok',
     )
   }
 
@@ -3401,6 +3618,7 @@ export class Game {
     this.considerMxOffers()
     this.tickLayover(step)
     this.tickAirlineRelations(step)
+    this.tickSchedule(step)
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
     this.milCool = Math.max(0, this.milCool - step)
@@ -3495,7 +3713,26 @@ export class Game {
           }
         }
       } else if (f.phase === 'board') {
-        if ((f.waitingOn.paxIn <= 0 && f.phaseTime > 5) || f.phaseTime > 16) {
+        const boardLimit = f.boardingSlow ? 22 : 16
+        const boardReady =
+          f.waitingOn.paxIn <= 0 && f.phaseTime > (f.boardingSlow ? 9 : 5)
+        if (f.boardingSlow && f.phaseTime > 8 && f.phaseTime < 8.4) {
+          const next = this.openSchedule().find(
+            (s) => s.id !== f.scheduleId && (s.status === 'scheduled' || s.status === 'delayed'),
+          )
+          if (next) {
+            this.delaySlot(next, 12 + Math.random() * 10, 'Slow boarding upstream')
+            this.pushNews(
+              `${f.flightNo} slow boarding — ${next.flightNo} and the bank slide.`,
+              'bad',
+            )
+          } else {
+            this.adjustHeat(f.airline, -2)
+            this.pushNews(`${f.flightNo} slow boarding — heat dips.`, 'bad')
+          }
+          f.boardingSlow = false
+        }
+        if (boardReady || f.phaseTime > boardLimit) {
           const out = this.departurePath(f)
           if (out && !this.groundBusy()) {
             f.path = out
@@ -3503,6 +3740,11 @@ export class Game {
             f.t = 0
             f.phase = 'taxi_out'
             f.phaseTime = 0
+          } else if (f.phaseTime > boardLimit + 6) {
+            const next = this.openSchedule()[0]
+            if (next && Math.random() < step * 0.35) {
+              this.delaySlot(next, 8, 'Departure blocked')
+            }
           }
         }
       } else if (f.phase === 'taxi_out') {
@@ -3521,6 +3763,10 @@ export class Game {
           this.paxServed += f.pax
           if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.adjustHeat(f.airline, 1.8)
+          }
+          if (f.scheduleId) {
+            const slot = this.schedule.find((s) => s.id === f.scheduleId)
+            if (slot) slot.status = 'done'
           }
           this.pushNews(`${f.flightNo} airborne.`, 'ok')
           this.spawnCool = Math.min(this.spawnCool, 8)

@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v11'
+export const SAVE_KEY = 'apron-save-v12'
 
 export type Tile =
   | 'grass'
@@ -189,6 +189,28 @@ export interface RoomDef {
   blurb: string
 }
 
+export type ScheduleStatus =
+  | 'scheduled'
+  | 'delayed'
+  | 'inbound'
+  | 'done'
+  | 'cancelled'
+
+/** Runway timetable entry — auto-filled or player-placed. */
+export interface ScheduleSlot {
+  id: string
+  airline: AirlineId
+  flightNo: string
+  /** Sim-clock ETA for approach push. */
+  eta: number
+  status: ScheduleStatus
+  delaySec: number
+  delayReason: string | null
+  /** Player-placed vs tower auto bank. */
+  manual: boolean
+  flightId: string | null
+}
+
 export interface ContractOffer {
   airline: AirlineId
   age: number
@@ -259,6 +281,9 @@ export interface Flight {
   }
   phaseTime: number
   ledger: { label: string; amount: number }[]
+  /** Linked timetable slot when spawned from the schedule. */
+  scheduleId?: string | null
+  boardingSlow?: boolean
 }
 
 /** Live security event the player must answer. */
@@ -390,4 +415,6 @@ export interface GameSnapshot {
   airlineHeat?: Record<string, number>
   airlineBanUntil?: Record<string, number>
   layover?: LayoverContract | null
+  schedule?: ScheduleSlot[]
+  scheduleAuto?: boolean
 }

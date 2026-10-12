@@ -450,6 +450,67 @@ export function Hud({ game }: { game: Game }) {
         </section>
 
         <section>
+          <h2>Runway schedule</h2>
+          <p className="muted">
+            {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
+            {game.openSchedule().length} open
+            {game.weather === 'storm' ? ' · storm may delay' : ''}
+          </p>
+          <div className="row">
+            <button type="button" className={game.scheduleAuto ? 'on' : ''} onClick={() => game.setScheduleAuto(true)}>
+              Auto
+            </button>
+            <button type="button" className={!game.scheduleAuto ? 'on' : ''} onClick={() => game.setScheduleAuto(false)}>
+              Manual
+            </button>
+          </div>
+          <div className="row">
+            {game.signed.slice(0, 3).map((id) => (
+              <button key={id} type="button" onClick={() => game.addManualSlot(id, 18)}>
+                +{game.airline(id).name.slice(0, 6)}
+              </button>
+            ))}
+          </div>
+          <ul className="airlines">
+            {game.openSchedule().slice(0, 8).length === 0 ? (
+              <li>
+                <span className="muted">No slots — sign an airline or add manual.</span>
+              </li>
+            ) : (
+              game.openSchedule().slice(0, 8).map((s) => {
+                const eta = Math.max(0, Math.round(s.eta - game.clock))
+                return (
+                  <li key={s.id}>
+                    <b style={{ color: game.airline(s.airline).color }}>
+                      {s.flightNo}{' '}
+                      <span className="muted">
+                        {s.status}
+                        {s.delaySec > 0 ? ` +${Math.round(s.delaySec)}s` : ''}
+                        {s.manual ? ' · manual' : ''}
+                      </span>
+                    </b>
+                    <span className="muted">
+                      {game.airline(s.airline).name} · ETA {eta}s
+                      {s.delayReason ? ` · ${s.delayReason}` : ''}
+                    </span>
+                    {s.status !== 'inbound' ? (
+                      <span className="row" style={{ marginTop: 4 }}>
+                        <button type="button" onClick={() => game.bumpSlot(s.id)}>
+                          Bump
+                        </button>
+                        <button type="button" onClick={() => game.cancelSlot(s.id)}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : null}
+                  </li>
+                )
+              })
+            )}
+          </ul>
+        </section>
+
+        <section>
           <h2>Airline desk</h2>
           <p className="muted">
             Signed:{' '}
