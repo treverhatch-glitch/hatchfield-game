@@ -21,7 +21,7 @@ Open the printed local URL (port **45217**).
 
 See `DESIGN.md` and `ADDITIONS.md` for the backlog and what already shipped.
 
-New game overwrites the browser save (`apron-save-v17`).
+New game overwrites the browser save (`apron-save-v18`).
 
 ## Loop
 
@@ -32,7 +32,8 @@ New game overwrites the browser save (`apron-save-v17`).
 5. Host a **layover** → clear it at high heat for a **Hub plaque** (denser slots + brand lounge).
 6. Earn **research points** from turnarounds → unlock night bank, de-ice, stand classes, heavy metal (A380 / An-124 / C-5).
 7. Answer **emergency asks** (weather divert / firefighter tanker) and **GA parking** requests.
-8. Hall (RCT needs), budgets/weather/crashes, then IPO/HATCH when ready.
+8. Grow landside — **hotel**, short/long **car parks**, city rail — for passive income and denser pax.
+9. Furnish the hall (food, lounge, golf, waterfall, gaming…) then IPO/HATCH when ready.
 
 ## Later
 

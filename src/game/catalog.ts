@@ -63,13 +63,25 @@ export const CLEANING_FEE = 900
 /** Deep-clean hall WC / security after budget wear. */
 export const HALL_SCRUB_COST = 2800
 export const BULLDOZE_REFUND = 0.4
-export const LOAN_PRINCIPAL = 40_000
-export const LOAN_FEE = 2_500
+export const LOAN_PRINCIPAL = 45_000
+export const LOAN_FEE = 2_800
 /** Interest charged every ~60 sim-seconds while a loan is open. */
-export const LOAN_INTEREST = 900
+export const LOAN_INTEREST = 1_100
 export const PARCEL_COST = 28_000
 export const RAIL_CITY_COST = 22_000
-export const STARTER_KIT_COST = 98_000
+/**
+ * Starter kit must be buyable after city land on standard (150k − 95k = 55k).
+ * Loan is for growth + second carriers, not the first stamp.
+ */
+export const STARTER_KIT_COST = 48_000
+export const HOTEL_COST = 32_000
+export const HOTEL_COST_L2 = 48_000
+export const CARPARK_SHORT_COST = 11_000
+export const CARPARK_LONG_COST = 16_500
+/** Passive landside income per ~30s payroll tick. */
+export const HOTEL_INCOME = [0, 900, 1600] as const
+export const CARPARK_SHORT_INCOME = 420
+export const CARPARK_LONG_INCOME = 680
 /** Cash + reputation needed before Wall Street will list you. */
 export const IPO_MIN_CASH = 40_000
 export const IPO_MIN_REP = 55

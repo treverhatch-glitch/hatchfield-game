@@ -62,6 +62,13 @@ import {
   PARCEL_COST,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
+  HOTEL_COST,
+  HOTEL_COST_L2,
+  HOTEL_INCOME,
+  CARPARK_SHORT_COST,
+  CARPARK_LONG_COST,
+  CARPARK_SHORT_INCOME,
+  CARPARK_LONG_INCOME,
   ROOMS,
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
@@ -225,6 +232,9 @@ export class Game {
   loanBalance = 0
   parcels = 1
   railLinked = false
+  hotelLevel = 0
+  carParkShort = false
+  carParkLong = false
   interestCool = 60
   public = false
   sharePrice = 0
@@ -334,6 +344,9 @@ export class Game {
     this.loanBalance = 0
     this.parcels = 1
     this.railLinked = false
+    this.hotelLevel = 0
+    this.carParkShort = false
+    this.carParkLong = false
     this.interestCool = 60
     this.public = false
     this.sharePrice = 0
@@ -755,8 +768,11 @@ export class Game {
     this.speed = 1
     this.parcels = 1
     this.railLinked = false
+    this.hotelLevel = 0
+    this.carParkShort = false
+    this.carParkLong = false
     this.pushNews(
-      `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit for a Northline-ready field.`,
+      `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit ($${STARTER_KIT_COST.toLocaleString()}) for a Northline-ready field.`,
       'ok',
     )
     this.persist()
@@ -897,6 +913,70 @@ export class Game {
       'good',
     )
     this.emit()
+  }
+
+  buyHotel() {
+    if (!this.site) return
+    if (this.hotelLevel >= 2) {
+      this.pushNews('Hotel already at two wings.', 'ok')
+      this.emit()
+      return
+    }
+    const cost = this.hotelLevel === 0 ? HOTEL_COST : HOTEL_COST_L2
+    if (!this.spend(cost, this.hotelLevel === 0 ? 'airport hotel' : 'hotel wing 2')) return
+    this.hotelLevel += 1
+    this.reputation = Math.min(100, this.reputation + 3)
+    this.pushNews(
+      this.hotelLevel === 1
+        ? 'Airport hotel open — overnight pax + landside income.'
+        : 'Second hotel wing — more beds, more walk-up traffic.',
+      'good',
+    )
+    this.emit()
+  }
+
+  buyCarPark(kind: 'short' | 'long') {
+    if (!this.site) return
+    if (kind === 'short') {
+      if (this.carParkShort) {
+        this.pushNews('Short-term car park already open.', 'ok')
+        this.emit()
+        return
+      }
+      if (!this.spend(CARPARK_SHORT_COST, 'short-term car park')) return
+      this.carParkShort = true
+      this.pushNews('Short-term car park open — kiss-and-fly money.', 'good')
+    } else {
+      if (this.carParkLong) {
+        this.pushNews('Long-term car park already open.', 'ok')
+        this.emit()
+        return
+      }
+      if (!this.spend(CARPARK_LONG_COST, 'long-term car park')) return
+      this.carParkLong = true
+      this.reputation = Math.min(100, this.reputation + 1)
+      this.pushNews('Long-stay car park open — weekenders leave cars for days.', 'good')
+    }
+    this.emit()
+  }
+
+  /** Site pax mult with hotel / rail / car park landside boosts. */
+  landsidePaxMult(): number {
+    const base = this.site ? LAND[this.site].paxMult : 1
+    let m = base
+    if (this.railLinked) m *= 1.08
+    if (this.hotelLevel >= 1) m *= 1.06
+    if (this.hotelLevel >= 2) m *= 1.05
+    if (this.carParkShort) m *= 1.03
+    if (this.carParkLong) m *= 1.04
+    return m
+  }
+
+  landsideIncome(): number {
+    let n = HOTEL_INCOME[clamp(this.hotelLevel, 0, 2)] ?? 0
+    if (this.carParkShort) n += CARPARK_SHORT_INCOME
+    if (this.carParkLong) n += CARPARK_LONG_INCOME
+    return n
   }
 
   canIpo(): { ok: boolean; why: string } {
@@ -1281,6 +1361,9 @@ export class Game {
       loanBalance: this.loanBalance,
       parcels: this.parcels,
       railLinked: this.railLinked,
+      hotelLevel: this.hotelLevel,
+      carParkShort: this.carParkShort,
+      carParkLong: this.carParkLong,
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -1345,6 +1428,9 @@ export class Game {
       this.loanBalance = s.loanBalance ?? 0
       this.parcels = s.parcels ?? 1
       this.railLinked = s.railLinked ?? false
+      this.hotelLevel = s.hotelLevel ?? 0
+      this.carParkShort = s.carParkShort ?? false
+      this.carParkLong = s.carParkLong ?? false
       this.public = s.public ?? false
       this.sharePrice = s.sharePrice ?? 0
       this.sharesOwned = s.sharesOwned ?? 0
@@ -1947,7 +2033,7 @@ export class Game {
       if (a.procedural && procSigned >= 3) return false
       if (!this.meetsReq(a.id)) return false
       if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) return false
-      if (a.kind === 'pax' && site && site.paxMult < 0.9 && Math.random() > 0.35) return false
+      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) return false
       return true
     })
     if (!candidates.length) return
@@ -2941,11 +3027,18 @@ export class Game {
     this.payrollCool -= dt
     if (this.payrollCool > 0) return
     this.payrollCool = 30
+    const landside = this.landsideIncome()
+    if (landside > 0) {
+      this.earn(landside, 'Landside (hotel / car park)')
+    }
     const bill = this.payrollPreview()
     if (bill <= 0) return
     if (this.cash >= bill) {
       this.cash -= bill
-      this.pushNews(`Ops payroll ${moneyLeft(bill)} (sliders × staff × shops).`, 'ok')
+      this.pushNews(
+        `Ops payroll ${moneyLeft(bill)}${landside ? ` · landside +${moneyLeft(landside)}` : ''} (sliders × staff × shops).`,
+        'ok',
+      )
       return
     }
     // Partial pay — never drive cash below zero from payroll alone.

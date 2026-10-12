@@ -5,8 +5,12 @@ import {
   BUILDINGS,
   CATER,
   FUEL,
+  CARPARK_LONG_COST,
+  CARPARK_SHORT_COST,
   HALL_SCRUB_COST,
   HEAVY_RUNWAY_COST,
+  HOTEL_COST,
+  HOTEL_COST_L2,
   LAND,
   LOAN_PRINCIPAL,
   MECHANIC_HIRE,
@@ -360,9 +364,28 @@ export function Hud({ game }: { game: Game }) {
               City rail {money(RAIL_CITY_COST)}
             </button>
           </div>
+          <div className="row">
+            <button type="button" onClick={() => game.buyHotel()}>
+              Hotel{' '}
+              {game.hotelLevel >= 2
+                ? 'max'
+                : money(game.hotelLevel === 0 ? HOTEL_COST : HOTEL_COST_L2)}
+            </button>
+            <button type="button" onClick={() => game.buyCarPark('short')}>
+              Short park {game.carParkShort ? '✓' : money(CARPARK_SHORT_COST)}
+            </button>
+            <button type="button" onClick={() => game.buyCarPark('long')}>
+              Long park {game.carParkLong ? '✓' : money(CARPARK_LONG_COST)}
+            </button>
+          </div>
           <p className="muted">
             Loan owed {money(game.loanBalance)} · parcels {game.parcels}
-            {game.railLinked ? ' · rail linked' : ''}
+            {game.railLinked ? ' · rail' : ''}
+            {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
+            {game.carParkShort || game.carParkLong ? ' · car parks' : ''}
+            {' · '}
+            landside ~{money(game.landsideIncome())}/30s · pax ×
+            {game.landsidePaxMult().toFixed(2)}
           </p>
         </section>
 
