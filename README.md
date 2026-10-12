@@ -48,7 +48,7 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 - Emergencies: weather divert, firefighting plane refuel / refuel+MX
 - Guard host on a hangar-side mil ramp (not pax gates)
 
-**Landside:** stamp **inn / business / resort** hotels (outside buildings), **four car parks** (small lot, large lot, multi-level garage, underground) each with **Short/Long** term toggle, **bus curb**, and **rail station** (after City rail). Inside the hall, **airside day rooms** keep layover pax spending. Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand.
+**Landside:** stamp **inn / business / resort** hotels (outside buildings), **four car parks** (small lot, large lot, multi-level garage, underground) each with **Short/Long** term toggle, **bus curb**, and **rail station** (after City rail). Inside the hall, **airside day rooms** keep layover pax spending. Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand. **Money is passenger-driven:** buildings charge fixed expenses every ~30s; empty stamps bleed. Fees only when pax actually use hotels/lots/bus/rail/amenities.
 
 **Hall spend:** furnish food, souvenirs, lounge, golf simulators, gaming den, waterfall, day rooms, **massage spa**, and **airside pool** — pax pay when needs hit.
 

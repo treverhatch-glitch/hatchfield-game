@@ -42,20 +42,21 @@ g.serveNode(poor, g.hallOpen())
 if (poor.happiness >= happy) issues.push('broke food should hurt')
 if (!/broke|Hungry/i.test(poor.thought)) issues.push(`poor thought ${poor.thought}`)
 
-// Landside usage income
+// Landside: place → expense; fees only from passenger window
 g.tiles[5][5] = 'hotel'
+g.hotelClass['5,5'] = 'business'
 g.parkTerms['6,6'] = 'short'
 g.tiles[6][6] = 'park_s'
-const pot = g.landsidePotential()
-if (pot <= 0) issues.push('landside potential 0')
-g.landsideUses = 0
-const empty = g.landsideIncome()
-g.landsideUses = 40
-const busy = g.landsideIncome()
-if (!(busy > empty)) issues.push(`usage should raise income ${empty}→${busy}`)
 const up = g.landsideUpkeep()
 if (up <= 0) issues.push('upkeep should bite')
-if (up >= pot) issues.push('upkeep should be fraction of potential')
+g.landsideFeeWindow = 0
+const empty = g.landsideIncome()
+if (empty !== 0) issues.push(`idle fees should be 0 got ${empty}`)
+g.landsideFeeWindow = 220
+const busy = g.landsideIncome()
+if (!(busy > empty)) issues.push(`passenger fees should raise income ${empty}→${busy}`)
+// tryGuestPay already credited fee window above
+if (g.landsideFeeWindow < 220) issues.push('fee window should retain guest spends')
 
 const out = {
   ok: issues.length === 0,
@@ -64,7 +65,6 @@ const out = {
   empty,
   busy,
   up,
-  pot,
   richWallet: rich.wallet,
 }
 console.log(JSON.stringify(out, null, 2))

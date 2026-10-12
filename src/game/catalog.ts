@@ -94,10 +94,13 @@ export const HOTEL_COST = 28_000
 export const HOTEL_COST_L2 = 48_000
 export const CARPARK_SHORT_COST = 11_000
 export const CARPARK_LONG_COST = 16_500
-/** Passive landside income per ~30s payroll tick (legacy meta buys). */
-export const HOTEL_INCOME = [0, 900, 1600] as const
-export const CARPARK_SHORT_INCOME = 420
-export const CARPARK_LONG_INCOME = 680
+/**
+ * Legacy meta hotel/carpark "sticker" tables — kept for save migration / audits.
+ * Live economy: passenger fees pay; buildings charge fixed expenses (see *_EXPENSE).
+ */
+export const HOTEL_INCOME = [0, 0, 0] as const
+export const CARPARK_SHORT_INCOME = 0
+export const CARPARK_LONG_INCOME = 0
 /** Outside hotel stamps — three grades on the apron landside. */
 export const HOTEL_INN_COST = 18_000
 export const HOTEL_BIZ_COST = 28_000
@@ -108,33 +111,77 @@ export const PARK_S_COST = 8_500
 export const PARK_L_COST = 14_000
 export const PARK_G_COST = 22_000
 export const PARK_U_COST = 18_000
-/** Income / 30s by stamped park size × term. */
-export const PARK_INCOME: Record<
+/**
+ * Fixed operating expense / ~30s payroll tick — billed whether used or not.
+ * Empty landside bleeds; passenger fees must cover this to stay green.
+ */
+export const PARK_EXPENSE: Record<
   'park_s' | 'park_l' | 'park_g' | 'park_u',
   { short: number; long: number }
 > = {
-  park_s: { short: 280, long: 420 },
-  park_l: { short: 520, long: 780 },
-  park_g: { short: 900, long: 1400 },
-  park_u: { short: 700, long: 1100 },
+  park_s: { short: 160, long: 210 },
+  park_l: { short: 280, long: 360 },
+  park_g: { short: 420, long: 560 },
+  park_u: { short: 340, long: 450 },
 }
-/** Base income / 30s by outside hotel grade (before usage). */
-export const HOTEL_CLASS_INCOME: Record<'inn' | 'business' | 'resort', number> = {
-  inn: 520,
-  business: 900,
-  resort: 1450,
+/** @deprecated — parks no longer print sticker income; use PARK_EXPENSE + guest fees. */
+export const PARK_INCOME = PARK_EXPENSE
+export const HOTEL_CLASS_EXPENSE: Record<'inn' | 'business' | 'resort', number> = {
+  inn: 280,
+  business: 480,
+  resort: 780,
 }
-export const HOTEL_TILE_INCOME = 850
+/** @deprecated — hotels no longer print sticker income; use HOTEL_CLASS_EXPENSE. */
+export const HOTEL_CLASS_INCOME = HOTEL_CLASS_EXPENSE
+export const HOTEL_META_EXPENSE = [0, 360, 620] as const
+export const CARPARK_META_EXPENSE_SHORT = 180
+export const CARPARK_META_EXPENSE_LONG = 240
+export const BUS_EXPENSE = 160
+export const RAIL_EXPENSE = 260
+export const HOTEL_TILE_INCOME = 0
+/** Hall amenity upkeep / 30s when furnished — idle spas and pools still cost. */
+export const HALL_AMENITY_EXPENSE: Partial<
+  Record<
+    'dayhotel' | 'spa' | 'pool' | 'golf' | 'waterfall' | 'gaming' | 'lounge' | 'souvenir' | 'food',
+    number
+  >
+> = {
+  dayhotel: 240,
+  spa: 200,
+  pool: 280,
+  golf: 170,
+  waterfall: 150,
+  gaming: 130,
+  lounge: 100,
+  souvenir: 60,
+  food: 80,
+}
 /** Landside curb — city buses drop departing pax. */
 export const BUS_CURB_COST = 8_500
 /** Rail station beside the city rail stub — needs City rail investment first. */
 export const RAIL_STATION_COST = 16_000
-/** One-shot fees when a guest uses landside infra. */
-export const PARK_SHORT_FEE = 18
-export const PARK_LONG_FEE = 42
+/** Per-passenger fees when a guest actually uses the infra. */
+export const PARK_USE_FEE: Record<
+  'park_s' | 'park_l' | 'park_g' | 'park_u',
+  { short: number; long: number }
+> = {
+  park_s: { short: 24, long: 42 },
+  park_l: { short: 36, long: 62 },
+  park_g: { short: 48, long: 88 },
+  park_u: { short: 40, long: 74 },
+}
+/** Fallback flat park fees (meta carpark buys with no stamped lot). */
+export const PARK_SHORT_FEE = 28
+export const PARK_LONG_FEE = 58
+export const HOTEL_CLASS_FEE: Record<'inn' | 'business' | 'resort', number> = {
+  inn: 72,
+  business: 110,
+  resort: 175,
+}
+/** Fallback when only meta hotel wings exist. */
 export const HOTEL_NIGHT_FEE = 95
-export const BUS_FARE = 8
-export const RAIL_FARE = 14
+export const BUS_FARE = 12
+export const RAIL_FARE = 22
 export const JANITOR_HIRE = 3200
 export const JANITOR_WAGE = 260
 export const RESEARCHER_HIRE = 4800
