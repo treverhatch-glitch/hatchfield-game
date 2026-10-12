@@ -58,9 +58,19 @@ for (const s of g.openSchedule()) {
 }
 for (const id of g.signed) {
   if (g.isBanned(id)) banEvents += 1
-  if (g.heatOf(id) <= 0) {
-    issues.push({ sev: 'balance', msg: `${g.airline(id).name} heat floored at 0` })
+  if (g.heatOf(id) < 15 && g.layover?.airline !== id) {
+    issues.push({
+      sev: 'balance',
+      msg: `${g.airline(id).name} heat ${Math.round(g.heatOf(id))} below soft floor 15`,
+    })
   }
+}
+const missHeadlines = g.news.filter((n) => /Missed gate|left angry/i.test(n.text)).length
+if (missHeadlines > 6) {
+  issues.push({
+    sev: 'balance',
+    msg: `Hall miss headline spam: ${missHeadlines} in recent news window`,
+  })
 }
 for (const n of g.news) {
   if (/CRASH/i.test(n.text)) crashEvents += 1
