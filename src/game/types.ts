@@ -18,10 +18,11 @@ export type Tile =
   | 'hangar'
   | 'helipad'
 
-export type RunwayClass = 'regional' | 'heavy'
+export type RunwayClass = 'short' | 'regional' | 'heavy'
 
 export type Tool =
   | 'pan'
+  | 'runway_short'
   | 'runway'
   | 'runway_heavy'
   | 'helipad'
@@ -72,6 +73,9 @@ export type RoomId =
   | 'bagdrop'
   | 'lounge'
   | 'bathroom'
+  | 'golf'
+  | 'waterfall'
+  | 'gaming'
 
 export type Vec = { c: number; r: number }
 
@@ -185,6 +189,10 @@ export interface Flight {
   id: string
   airline: AirlineId
   flightNo: string
+  /** Real airframe id from airframes catalog (e.g. b738). */
+  airframeId: string
+  /** Display name cached at spawn (Boeing 737-800). */
+  airframeName: string
   pax: number
   cargo: boolean
   /** Jets use runway+stand; helos use a helipad as stand. */

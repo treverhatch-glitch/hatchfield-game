@@ -67,22 +67,28 @@ We copied the *spirit*:
 
 - Alerts pause as a **Scramble / Ignore** choice instead of an instant fine. Scramble costs cash; success scales with security level, police, and security budget.
 
+## Runway lengths + real airframes
+
+- **Short / regional / heavy** strips (10 / 14 / 20 cells). Longest continuous strip gates what can land.
+- **Named metal** — CRJ-700, E175, A320neo, 737-800, A321, 787-9, A350-900, 767F, 747-8F, C-130H, KC-135R, Citation Latitude, AW139, S-76. Scale + fees follow the airframe.
+
+## Amenity dens (live)
+
+- Furnish **indoor golf**, **waterfall court**, **gaming den** — guests grow a `play` need and spend there.
+
 ## Strategy backlog (idea gen — ship next)
 
-Priority order for a fuller AT3/CEO slice:
-
-1. **Custom terminal painter** — wall/floor stamp, door links for the hall graph (biggest layout skill gap).
-2. **Amenity dens** — golf / waterfall / gaming as premium desire sinks (HatchTag fantasy layer).
-3. **Slot & curfew clock** — city noise complaints vs night freighter money.
-4. **Multi-stand pushback / ground holds** — tower value becomes visible under traffic.
-5. **Franchise retail contracts** — hall shops as signed brands, not only guest spend.
-6. **Seasonal weather campaigns** — winter ops budget line, de-ice trucks.
-7. **Shareholder AGM events** — public missions with player votes (expand / dividend / security).
+1. **Custom terminal painter** — wall/floor stamp, door links for the hall graph.
+2. **Smooth apron ↔ hall ↔ airside** — deeper “walk inside the building” feel (Hall view exists; custom walls next).
+3. **Slot & curfew clock** — city noise vs night freighter money.
+4. **Multi-stand pushback / ground holds** — tower value under traffic.
+5. **Franchise retail contracts** — signed hall brands.
+6. **Seasonal weather / de-ice trucks**.
+7. **Shareholder AGM events**.
 8. **Godot Steam rebuild** — after browser loops feel complete.
 
 ## Still later (on your list, not finished)
 
 - Full custom terminal wall painting
-- Golf / waterfall / gaming dens
 - Slot/curfew + de-ice
 - Godot Steam rebuild

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { AIRFRAMES } from '../game/airframes'
 import { AIRLINES } from '../game/catalog'
 import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
@@ -594,7 +595,10 @@ export class World {
       transparent: true,
       opacity: 0.38,
     })
-    const stampRunway = game.tool === 'runway' || game.tool === 'runway_heavy'
+    const stampRunway =
+      game.tool === 'runway' ||
+      game.tool === 'runway_heavy' ||
+      game.tool === 'runway_short'
     const runwayReady =
       stampRunway &&
       cells.length > 1 &&
@@ -647,23 +651,8 @@ export class World {
         if (rotor) rotor.rotation.y += 0.55
       }
       const sel = game.selectedFlight === f.id
-      const size =
-        f.kind === 'widebody'
-          ? sel
-            ? 1.45
-            : 1.38
-          : f.kind === 'regional' || f.kind === 'air_ambulance'
-            ? sel
-              ? 0.95
-              : 0.88
-            : helo
-              ? sel
-                ? 1.05
-                : 0.95
-              : sel
-                ? 1.22
-                : 1.15
-      mesh.scale.setScalar(size)
+      const base = AIRFRAMES[f.airframeId]?.scale ?? (helo ? 0.95 : 1.15)
+      mesh.scale.setScalar(sel ? base * 1.06 : base)
     }
     for (const [id, m] of this.jets) {
       if (!seenJ.has(id)) {

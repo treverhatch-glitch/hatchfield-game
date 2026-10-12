@@ -31,6 +31,9 @@ export const LAND: Record<'city' | 'factory', LandSite> = {
   },
 }
 
+export const SHORT_RUNWAY_COST = 22000
+export const SHORT_RUNWAY_LEN = 10
+export const SHORT_RUNWAY_WID = 2
 export const RUNWAY_PREFAB_COST = 38000
 export const RUNWAY_PREFAB_LEN = 14
 export const RUNWAY_PREFAB_WID = 2
@@ -427,10 +430,19 @@ export const ROOMS: RoomDef[] = [
   { id: 'bagdrop', name: 'Bag drop', cost: 1800, blurb: 'Extra $180 with outside sort.' },
   { id: 'lounge', name: 'Airline lounge', cost: 4800, blurb: 'Keeps premium pax calm. Softens Summit.' },
   { id: 'bathroom', name: 'Restrooms', cost: 1600, blurb: 'Basic need. Missing toilets hurts reputation.' },
+  { id: 'golf', name: 'Indoor golf', cost: 9200, blurb: 'Premium desire sink. HatchTag fantasy — calm energy.' },
+  {
+    id: 'waterfall',
+    name: 'Waterfall court',
+    cost: 11000,
+    blurb: 'Spectacle amenity. Premium pax linger and tip.',
+  },
+  { id: 'gaming', name: 'Gaming den', cost: 8600, blurb: 'Budget + premium kill time before boarding.' },
 ]
 
 export const TOOL_LABEL: Record<Tool, string> = {
   pan: 'Look',
+  runway_short: 'Short strip',
   runway: 'Runway',
   runway_heavy: 'Heavy strip',
   helipad: 'Helipad',
