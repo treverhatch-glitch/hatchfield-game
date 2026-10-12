@@ -18,6 +18,7 @@ import {
   RAIL_CITY_COST,
   ROOMS,
   RUNWAY_PREFAB_COST,
+  SHORT_RUNWAY_COST,
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
@@ -34,6 +35,7 @@ const BUDGET_KEYS: BudgetKey[] = [
 
 const TOOLS: Tool[] = [
   'pan',
+  'runway_short',
   'runway',
   'runway_heavy',
   'helipad',
@@ -78,8 +80,8 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat">{game.signed.length} airlines</div>
         <div className="stat">Sec {ready.security}</div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
-        <div className="stat" title="Runway condition">
-          RW {Math.round(game.runwayCondition)}%
+        <div className="stat" title="Runway condition / longest strip">
+          RW {Math.round(game.runwayCondition)}% · {game.longestRunway()}c
         </div>
         <div className="stat">{game.weatherLabel()}</div>
         {game.public ? (
@@ -326,27 +328,26 @@ export function Hud({ game }: { game: Game }) {
               <p
                 className="fn"
                 style={{
-                  color: flight.craft === 'helo' && flight.flightNo.startsWith('MED')
-                    ? '#b33a2a'
-                    : airline.color,
+                  color:
+                    flight.kind === 'military'
+                      ? '#8a9a6a'
+                      : flight.kind === 'air_ambulance' || flight.kind === 'helo_med'
+                        ? '#b33a2a'
+                        : airline.color,
                 }}
               >
-                {flight.craft === 'helo'
-                  ? flight.flightNo.startsWith('MED')
-                    ? 'Medevac'
-                    : 'Executive'
-                  : airline.name}{' '}
+                {flight.kind === 'military'
+                  ? 'Military'
+                  : flight.kind === 'helo_med' || flight.kind === 'air_ambulance'
+                    ? 'Emergency'
+                    : flight.kind === 'helo_exec'
+                      ? 'Executive'
+                      : airline.name}{' '}
                 {flight.flightNo}
               </p>
               <p className="phase">
-                {labelPhase(flight.phase, flight.craft)}
-                {' · '}
-                {game.aircraftLabel(flight.kind)}
-                {flight.kind === 'military' || flight.kind === 'freighter'
-                  ? ''
-                  : flight.craft === 'helo'
-                    ? ''
-                    : ` · ${flight.pax} pax`}
+                {flight.airframeName} · {labelPhase(flight.phase, flight.craft)}
+                {flight.pax > 0 ? ` · ${flight.pax} pax` : ''}
               </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
@@ -496,11 +497,13 @@ export function Hud({ game }: { game: Game }) {
           </button>
         </div>
         <p className="hint">
-          {game.tool === 'runway'
-            ? `Stamp a regional runway (${money(RUNWAY_PREFAB_COST)}). Rotate for the other axis.`
-            : game.tool === 'runway_heavy'
-              ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — Summit / EXFED require this. Rotate for axis.`
-              : game.tool === 'premade'
+          {game.tool === 'runway_short'
+            ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — CRJ / E-Jets / Citations. Long metal refuses.`
+            : game.tool === 'runway'
+              ? `Regional strip 14×2 (${money(RUNWAY_PREFAB_COST)}) — A320 / 737 class. Rotate for axis.`
+              : game.tool === 'runway_heavy'
+                ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — 787 / A350 / 747F. Rotate for axis.`
+                : game.tool === 'premade'
                 ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
                 : game.tool === 'pan'
                   ? game.view === 'hall'

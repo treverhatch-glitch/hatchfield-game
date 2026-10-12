@@ -36,6 +36,9 @@ import {
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
   HEAVY_RUNWAY_WID,
+  SHORT_RUNWAY_COST,
+  SHORT_RUNWAY_LEN,
+  SHORT_RUNWAY_WID,
   RUNWAY_PREFAB_COST,
   RUNWAY_PREFAB_LEN,
   RUNWAY_PREFAB_WID,
@@ -53,6 +56,7 @@ import {
   type HallNode,
   type PaxTag,
 } from './guests'
+import { AIRFRAMES, pickAirframe } from './airframes'
 import {
   advancePaxItinerary,
   spawnArrivalPax,
@@ -127,13 +131,16 @@ const emptyRooms = (): Record<RoomId, number> => ({
   bagdrop: 0,
   lounge: 0,
   bathroom: 0,
+  golf: 0,
+  waterfall: 0,
+  gaming: 0,
 })
 
-function emptyFit(origin: Vec, premade: boolean, rooms?: Record<RoomId, number>): TerminalFit {
+function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, number>>): TerminalFit {
   return {
     origin,
     premade,
-    rooms: rooms ?? emptyRooms(),
+    rooms: { ...emptyRooms(), ...(rooms ?? {}) },
     wearBath: 0,
     wearSec: 0,
   }
@@ -533,6 +540,13 @@ export class Game {
     return runwayStrips(this.tiles, HEAVY_RUNWAY_LEN).length > 0
   }
 
+  /** Longest continuous runway strip in cells — gates real airframes. */
+  longestRunway(): number {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    if (!strips.length) return 0
+    return Math.max(...strips.map((s) => s.length))
+  }
+
   maxWear(): number {
     let m = 0
     for (const f of this.fits) {
@@ -864,6 +878,7 @@ export class Game {
       this.tiles = s.tiles
       this.fits = (s.terminalFits ?? []).map((f) => ({
         ...f,
+        rooms: { ...emptyRooms(), ...(f.rooms ?? {}) },
         wearBath: f.wearBath ?? 0,
         wearSec: f.wearSec ?? 0,
       }))
@@ -1024,6 +1039,7 @@ export class Game {
       g.needs.bladder = Math.min(100, g.needs.bladder + dt * 1.4 * drain * wearBoost)
       g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1)
       g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6)
+      g.needs.play = Math.min(100, g.needs.play + dt * (g.tag === 'premium' ? 1.1 : 0.7))
       if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.55)
       if (g.job === 'arrive') g.needs.bags = Math.max(0, g.needs.bags - (g.node === 'claim' ? dt * 12 : 0))
 
@@ -1153,6 +1169,35 @@ export class Game {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
       g.happiness += 8
       g.thought = 'Lounge calm'
+    }
+    if (n === 'golf') {
+      const pay = g.tag === 'premium' ? 55 : 28
+      g.needs.play = Math.max(0, g.needs.play - 70)
+      g.needs.energy = Math.max(0, g.needs.energy - 20)
+      g.spent += pay
+      this.cash += pay
+      this.revenue += pay
+      g.happiness += 10
+      g.thought = `Indoor golf (−$${pay})`
+    }
+    if (n === 'waterfall') {
+      const pay = g.tag === 'premium' ? 36 : 12
+      g.needs.play = Math.max(0, g.needs.play - 55)
+      g.needs.energy = Math.max(0, g.needs.energy - 25)
+      g.spent += pay
+      this.cash += pay
+      this.revenue += pay
+      g.happiness += 9
+      g.thought = 'Watching the falls'
+    }
+    if (n === 'gaming') {
+      const pay = g.tag === 'premium' ? 40 : 22
+      g.needs.play = Math.max(0, g.needs.play - 65)
+      g.spent += pay
+      this.cash += pay
+      this.revenue += pay
+      g.happiness += 7
+      g.thought = `Gaming den (−$${pay})`
     }
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
@@ -1770,6 +1815,10 @@ export class Game {
       this.clearTile(v)
       return
     }
+    if (this.tool === 'runway_short') {
+      this.placeRunway(v, 'short')
+      return
+    }
     if (this.tool === 'runway') {
       this.placeRunway(v, 'regional')
       return
@@ -1865,8 +1914,18 @@ export class Game {
   }
 
   prefabRunway(origin: Vec, klass: RunwayClass = 'regional'): Vec[] {
-    const len = klass === 'heavy' ? HEAVY_RUNWAY_LEN : RUNWAY_PREFAB_LEN
-    const wid = klass === 'heavy' ? HEAVY_RUNWAY_WID : RUNWAY_PREFAB_WID
+    const len =
+      klass === 'heavy'
+        ? HEAVY_RUNWAY_LEN
+        : klass === 'short'
+          ? SHORT_RUNWAY_LEN
+          : RUNWAY_PREFAB_LEN
+    const wid =
+      klass === 'heavy'
+        ? HEAVY_RUNWAY_WID
+        : klass === 'short'
+          ? SHORT_RUNWAY_WID
+          : RUNWAY_PREFAB_WID
     const cells: Vec[] = []
     if (this.facing === 'h') {
       for (let r = 0; r < wid; r++) {
@@ -1887,25 +1946,35 @@ export class Game {
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
     const cells = this.prefabRunway(v, klass)
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
-      this.pushNews(
+      const tip =
         klass === 'heavy'
           ? 'Need a clear plot for the heavy strip (20×3). Rotate if it hangs off.'
-          : 'Need a clear plot for the runway. Hit Rotate if it hangs off.',
-        'bad',
-      )
+          : klass === 'short'
+            ? 'Need a clear plot for the short strip (10×2). Regionals only.'
+            : 'Need a clear plot for the runway. Hit Rotate if it hangs off.'
+      this.pushNews(tip, 'bad')
       this.emit()
       return
     }
-    const cost = klass === 'heavy' ? HEAVY_RUNWAY_COST : RUNWAY_PREFAB_COST
-    if (!this.spend(cost, klass === 'heavy' ? 'heavy runway' : 'runway')) {
+    const cost =
+      klass === 'heavy'
+        ? HEAVY_RUNWAY_COST
+        : klass === 'short'
+          ? SHORT_RUNWAY_COST
+          : RUNWAY_PREFAB_COST
+    const label =
+      klass === 'heavy' ? 'heavy runway' : klass === 'short' ? 'short runway' : 'runway'
+    if (!this.spend(cost, label)) {
       this.emit()
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'runway'
     this.pushNews(
       klass === 'heavy'
-        ? 'Heavy strip stamped — Summit and EXFED will notice.'
-        : 'Regional runway stamped.',
+        ? 'Heavy strip stamped — widebodies and 747Fs can land.'
+        : klass === 'short'
+          ? 'Short strip stamped — CRJ / E-Jets / Citations only. Long metal will refuse.'
+          : 'Regional runway stamped — A320 / 737 class OK.',
       'good',
     )
     this.emit()
@@ -1990,6 +2059,7 @@ export class Game {
 
   ghostCells(hover: Vec | null): Vec[] {
     if (!hover) return []
+    if (this.tool === 'runway_short') return this.prefabRunway(hover, 'short')
     if (this.tool === 'runway') return this.prefabRunway(hover, 'regional')
     if (this.tool === 'runway_heavy') return this.prefabRunway(hover, 'heavy')
     if (this.tool === 'terminal') {
@@ -2100,7 +2170,17 @@ export class Game {
     const airlineId = pick(pool.length ? pool : this.signed)
     const def = AIRLINES[airlineId]
     const kind = this.pickAircraftKind(airlineId)
-    if (kind === 'widebody' && !this.hasHeavyRunway()) return
+    const af = pickAirframe(kind, this.longestRunway())
+    if (!af) {
+      this.spawnCool = 10
+      if (Math.random() < 0.35) {
+        this.pushNews(
+          `${def.name} overflew — longest strip ${this.longestRunway()} cells is too short for their ${this.aircraftLabel(kind)}.`,
+          'bad',
+        )
+      }
+      return
+    }
     const free = this.freeStands()
     const stand = free[0] ?? null
     const route = stand ? this.landingRoute(stand) : null
@@ -2108,21 +2188,19 @@ export class Game {
     const start = route?.[0] ?? { c: 1, r: -3 }
     this.flightSeq += 1
     const pax =
-      def.kind === 'cargo'
+      af.paxMax <= 0
         ? 0
-        : kind === 'widebody'
-          ? def.paxMax
-          : kind === 'regional'
-            ? Math.max(def.paxMin, Math.min(def.paxMax, def.paxMin + 20))
-            : def.paxMin + Math.floor(Math.random() * (def.paxMax - def.paxMin + 1))
+        : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
     const f: Flight = {
       id: uid('flt'),
       airline: airlineId,
       flightNo: `${def.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+      airframeId: af.id,
+      airframeName: af.name,
       pax,
       cargo: def.kind === 'cargo',
       craft: 'jet',
-      kind,
+      kind: af.kind,
       phase: busy ? 'hold' : 'approach',
       stand,
       x: start.c - 4,
@@ -2154,7 +2232,7 @@ export class Game {
     this.spawnCool = 16
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
-      `${def.name} ${f.flightNo} (${this.aircraftLabel(kind)}) inbound` +
+      `${def.name} ${f.flightNo} · ${af.name} inbound` +
         (busy ? ' — holding for pavement.' : '.'),
       'ok',
     )
@@ -2187,14 +2265,17 @@ export class Game {
     const airlineId: AirlineId = this.signed[0] ?? 'harbor'
     this.flightSeq += 1
     const call = medevac ? `MED${this.flightSeq}` : `EXE${this.flightSeq}`
+    const af = medevac ? AIRFRAMES.aw139 : AIRFRAMES.s76
     const f: Flight = {
       id: uid('helo'),
       airline: airlineId,
       flightNo: call,
-      pax: medevac ? 2 : 3 + Math.floor(Math.random() * 4),
+      airframeId: af.id,
+      airframeName: af.name,
+      pax: af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1)),
       cargo: false,
       craft: 'helo',
-      kind: medevac ? 'helo_med' : 'helo_exec',
+      kind: af.kind,
       phase: 'approach',
       stand: pad,
       x: pad.c + 5.5,
@@ -2225,10 +2306,10 @@ export class Game {
     this.flights.push(f)
     this.heloCool = 40 + Math.random() * 25
     this.selectedFlight = this.selectedFlight ?? f.id
-    this.pushNews(
+      this.pushNews(
       medevac
-        ? `${call} medevac inbound — pad ${pad.c},${pad.r}.`
-        : `${call} executive chopper inbound.`,
+        ? `${call} · ${af.name} medevac inbound — pad ${pad.c},${pad.r}.`
+        : `${call} · ${af.name} executive inbound.`,
       'ok',
     )
   }
@@ -2373,13 +2454,13 @@ export class Game {
     if (!f.posted.landing) {
       f.posted.landing = true
       if (f.kind === 'military') {
-        this.earn(MIL_LANDING, `${f.flightNo} military landing`, f)
+        const mult = AIRFRAMES[f.airframeId]?.landingMult ?? 1
+        this.earn(Math.round(MIL_LANDING * mult), `${f.flightNo} ${f.airframeName} landing`, f)
       } else if (f.kind === 'air_ambulance') {
-        this.earn(AIR_AMBULANCE_FEE, `${f.flightNo} ambulance pad/runway`, f)
+        this.earn(AIR_AMBULANCE_FEE, `${f.flightNo} ${f.airframeName}`, f)
       } else {
-        const mult =
-          f.kind === 'widebody' ? 1.35 : f.kind === 'regional' ? 0.85 : f.kind === 'freighter' ? 1.1 : 1
-        this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing fee`, f)
+        const mult = AIRFRAMES[f.airframeId]?.landingMult ?? 1
+        this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing (${f.airframeName})`, f)
       }
       if (
         (f.craft ?? 'jet') === 'jet' &&
@@ -2493,14 +2574,19 @@ export class Game {
     const stand = free[0]
     const route = this.landingRoute(stand)
     if (!route) return
-    // Heavy strip preferred for transports; fighters can use regional.
-    const transport = this.hasHeavyRunway() && Math.random() < 0.55
+    const af = pickAirframe('military', this.longestRunway())
+    if (!af) {
+      this.milCool = 25
+      return
+    }
     this.flightSeq += 1
-    const call = transport ? `ANG${this.flightSeq}` : `RDR${this.flightSeq}`
+    const call = af.id === 'kc135' ? `ANG${this.flightSeq}` : `RDR${this.flightSeq}`
     const f: Flight = {
       id: uid('mil'),
       airline: this.signed[0] ?? 'harbor',
       flightNo: call,
+      airframeId: af.id,
+      airframeName: af.name,
       pax: 0,
       cargo: true,
       craft: 'jet',
@@ -2535,12 +2621,7 @@ export class Game {
     this.flights.push(f)
     this.milCool = 70 + Math.random() * 40
     this.selectedFlight = this.selectedFlight ?? f.id
-    this.pushNews(
-      transport
-        ? `${call} Guard transport inbound — hangar transient.`
-        : `${call} military transit inbound.`,
-      'ok',
-    )
+    this.pushNews(`${call} · ${af.name} military transit inbound.`, 'ok')
   }
 
   trySpawnAirAmbulance() {
@@ -2549,6 +2630,11 @@ export class Game {
     if (this.budgets.ambulance < 50) return
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.groundBusy()) return
+    const af = pickAirframe('air_ambulance', this.longestRunway())
+    if (!af) {
+      this.ambuCool = 30
+      return
+    }
     const free = this.freeStands()
     if (!free.length || !runwayStrips(this.tiles, MIN_RUNWAY).length) return
     const stand = free[0]
@@ -2560,7 +2646,9 @@ export class Game {
       id: uid('amb'),
       airline: this.signed[0] ?? 'harbor',
       flightNo: call,
-      pax: 2,
+      airframeId: af.id,
+      airframeName: af.name,
+      pax: af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1)),
       cargo: false,
       craft: 'jet',
       kind: 'air_ambulance',
@@ -2593,7 +2681,7 @@ export class Game {
     }
     this.flights.push(f)
     this.ambuCool = 90 + Math.random() * 50
-    this.pushNews(`${call} fixed-wing air ambulance inbound.`, 'ok')
+    this.pushNews(`${call} · ${af.name} air ambulance inbound.`, 'ok')
   }
 
   spawnTruck(kind: Truck['kind'], f: Flight | null, path: Vec[]) {

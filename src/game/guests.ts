@@ -7,7 +7,14 @@
  * so thousands of decisions stay cheap — same spirit, airport rooms instead of rides.
  */
 
-export type NeedId = 'hunger' | 'bladder' | 'energy' | 'boarding' | 'bags' | 'shop'
+export type NeedId =
+  | 'hunger'
+  | 'bladder'
+  | 'energy'
+  | 'boarding'
+  | 'bags'
+  | 'shop'
+  | 'play'
 
 export type HallNode =
   | 'entrance'
@@ -17,6 +24,9 @@ export type HallNode =
   | 'food'
   | 'shop'
   | 'lounge'
+  | 'golf'
+  | 'waterfall'
+  | 'gaming'
   | 'gate'
   | 'claim'
   | 'info'
@@ -32,6 +42,8 @@ export interface GuestNeeds {
   boarding: number
   bags: number
   shop: number
+  /** HatchTag fantasy amenities — golf / waterfall / gaming. */
+  play: number
 }
 
 export interface HallGuest {
@@ -64,10 +76,17 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['security', 'shop'],
   ['security', 'lounge'],
   ['security', 'gate'],
+  ['security', 'gaming'],
   ['food', 'shop'],
   ['food', 'bathroom'],
+  ['food', 'waterfall'],
   ['shop', 'lounge'],
+  ['shop', 'gaming'],
   ['lounge', 'gate'],
+  ['lounge', 'golf'],
+  ['lounge', 'waterfall'],
+  ['golf', 'waterfall'],
+  ['gaming', 'gate'],
   ['claim', 'exit'],
   ['claim', 'food'],
   ['claim', 'shop'],
@@ -86,6 +105,9 @@ export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }>
   food: { x: 0.58, y: 0.55, label: 'Food' },
   shop: { x: 0.72, y: 0.38, label: 'Shop' },
   lounge: { x: 0.72, y: 0.68, label: 'Lounge' },
+  golf: { x: 0.82, y: 0.82, label: 'Golf' },
+  waterfall: { x: 0.62, y: 0.88, label: 'Falls' },
+  gaming: { x: 0.84, y: 0.48, label: 'Games' },
   gate: { x: 0.9, y: 0.28, label: 'Gate' },
   claim: { x: 0.48, y: 0.78, label: 'Bag claim' },
   info: { x: 0.22, y: 0.48, label: 'Info' },
@@ -149,6 +171,7 @@ export function strongestNeed(g: HallGuest): NeedId | null {
     ['hunger', g.needs.hunger],
     ['energy', g.needs.energy],
     ['shop', g.needs.shop],
+    ['play', g.needs.play],
   ]
   entries.sort((a, b) => b[1] - a[1])
   if (entries[0][1] < 35) return null
@@ -161,6 +184,10 @@ export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   if (need === 'bladder') return 'bathroom'
   if (need === 'hunger') return 'food'
   if (need === 'energy') return job === 'depart' ? 'lounge' : 'food'
+  if (need === 'play') {
+    if (job === 'depart') return Math.random() < 0.4 ? 'golf' : Math.random() < 0.5 ? 'gaming' : 'waterfall'
+    return Math.random() < 0.5 ? 'gaming' : 'waterfall'
+  }
   return 'shop'
 }
 
@@ -187,6 +214,7 @@ export function spawnHallGuest(
       boarding: job === 'depart' ? 18 + Math.random() * 22 : 99,
       bags: job === 'arrive' ? 70 + Math.random() * 25 : 0,
       shop: premium ? 25 + Math.random() * 40 : 10 + Math.random() * 25,
+      play: premium ? 35 + Math.random() * 45 : 15 + Math.random() * 35,
     },
     happiness: 70,
     patience: premium ? 55 : 70,
@@ -213,6 +241,9 @@ export function openNodesFromRooms(rooms: {
   bagdrop: number
   lounge: number
   bathroom: number
+  golf?: number
+  waterfall?: number
+  gaming?: number
 }): Set<HallNode> {
   const open = new Set<HallNode>(['entrance', 'exit', 'info'])
   if (rooms.checkin > 0 || rooms.bagdrop > 0) open.add('checkin')
@@ -221,6 +252,9 @@ export function openNodesFromRooms(rooms: {
   if (rooms.food > 0) open.add('food')
   if (rooms.souvenir > 0) open.add('shop')
   if (rooms.lounge > 0) open.add('lounge')
+  if ((rooms.golf ?? 0) > 0) open.add('golf')
+  if ((rooms.waterfall ?? 0) > 0) open.add('waterfall')
+  if ((rooms.gaming ?? 0) > 0) open.add('gaming')
   if (rooms.gate > 0) open.add('gate')
   if (rooms.bagclaim > 0) open.add('claim')
   // Premade / partial halls still allow walking past missing rooms via security↔gate if both exist
