@@ -76,8 +76,13 @@ export const HALL_SCRUB_COST = 2800
 export const BULLDOZE_REFUND = 0.4
 export const LOAN_PRINCIPAL = 45_000
 export const LOAN_FEE = 2_800
-/** Interest charged every ~60 sim-seconds while a loan is open. */
-export const LOAN_INTEREST = 1_100
+/**
+ * Floor interest every loan tick while open.
+ * Cash pays max(this, ~1.2% of balance); unpaid shortfalls capitalize (capped ~2.1×).
+ */
+export const LOAN_INTEREST = 1_250
+/** Seconds between loan interest ticks (was 60 — tighter leash). */
+export const LOAN_INTEREST_EVERY = 55
 export const PARCEL_COST = 28_000
 export const RAIL_CITY_COST = 22_000
 /**
@@ -138,11 +143,11 @@ export const MECHANIC_HIRE = 4500
 export const MECHANIC_WAGE = 380
 /** Base ops payroll charged ~every 30 sim-seconds at 100% for each line. */
 export const BUDGET_BASE: Record<BudgetKey, number> = {
-  maintenance: 520,
-  security: 640,
-  cleaning: 480,
-  fire: 700,
-  ambulance: 560,
+  maintenance: 580,
+  security: 720,
+  cleaning: 540,
+  fire: 780,
+  ambulance: 620,
 }
 export const BUDGET_LABEL: Record<BudgetKey, string> = {
   maintenance: 'Maintenance',

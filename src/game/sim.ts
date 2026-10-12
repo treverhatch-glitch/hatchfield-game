@@ -69,6 +69,7 @@ import {
   IPO_SHARES,
   LOAN_FEE,
   LOAN_INTEREST,
+  LOAN_INTEREST_EVERY,
   LOAN_PRINCIPAL,
   MECHANIC_HIRE,
   MECHANIC_WAGE,
@@ -1289,9 +1290,9 @@ export class Game {
     }
     this.loanBalance = LOAN_PRINCIPAL + LOAN_FEE
     this.cash += LOAN_PRINCIPAL
-    this.interestCool = 60
+    this.interestCool = LOAN_INTEREST_EVERY
     this.pushNews(
-      `Bank wired ${moneyLeft(LOAN_PRINCIPAL)}. You owe ${moneyLeft(this.loanBalance)}. Interest ticks while it is open.`,
+      `Bank wired ${moneyLeft(LOAN_PRINCIPAL)}. You owe ${moneyLeft(this.loanBalance)}. Interest scales with the balance — pay it down.`,
       'ok',
     )
     this.emit()
@@ -3807,12 +3808,27 @@ export class Game {
     this.emit()
   }
 
+  /**
+   * Busy fields cost more to run — signed carriers, extra stands, and turn volume
+   * scale ops payroll so mid/late game stays a money puzzle (capped).
+   */
+  fieldOpsMult(): number {
+    const stands = tilesOf(this.tiles, 'stand').length
+    const signed = this.signed.length
+    const load =
+      1 +
+      Math.max(0, signed - 1) * 0.055 +
+      Math.max(0, stands - 2) * 0.04 +
+      Math.min(0.35, this.flightsDone * 0.0035)
+    return Math.min(1.65, load)
+  }
+
   payrollPreview(): number {
     let total = 0
     for (const key of Object.keys(BUDGET_BASE) as BudgetKey[]) {
       total += this.lineCost(key)
     }
-    return Math.round(total)
+    return Math.round(total * this.fieldOpsMult())
   }
 
   hireJanitor() {
@@ -4418,12 +4434,18 @@ export class Game {
     }
     if (this.cash >= bill) {
       this.cash -= bill
+      // Soft prosperity levy — clips late-game snowballs without a hard tax cliff.
+      let levy = 0
+      if (this.cash > 140_000) {
+        levy = Math.round((this.cash - 140_000) * 0.03)
+        this.cash -= levy
+      }
       this.pushNews(
         `Ops payroll ${moneyLeft(bill)}${
           landside || upkeep
             ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)}`
             : ''
-        } (sliders × staff × shops).`,
+        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (sliders × staff × shops).`,
         'ok',
       )
       return
@@ -6790,10 +6812,39 @@ export class Game {
     if (this.loanBalance > 0) {
       this.interestCool -= step
       if (this.interestCool <= 0) {
-        this.interestCool = 60
-        this.loanBalance += LOAN_INTEREST
-        this.charge(LOAN_INTEREST)
-        this.pushNews(`Loan interest ${moneyLeft(LOAN_INTEREST)}. Owed ${moneyLeft(this.loanBalance)}.`, 'bad')
+        this.interestCool = LOAN_INTEREST_EVERY
+        const opened = LOAN_PRINCIPAL + LOAN_FEE
+        // Cash feels full interest; balance creeps slower and caps — pressure, not a death spiral.
+        const tick = Math.max(
+          LOAN_INTEREST,
+          Math.round(this.loanBalance * 0.012),
+        )
+        if (this.cash >= tick) {
+          this.cash -= tick
+        } else {
+          const paid = Math.max(0, this.cash)
+          this.cash = 0
+          const short = tick - paid
+          this.loanBalance = Math.min(opened * 2.1, this.loanBalance + short)
+          this.reputation = Math.max(0, this.reputation - 1.5)
+        }
+        // Carrying fee — part of the tick capitalizes, hard-capped.
+        this.loanBalance = Math.min(
+          opened * 2.1,
+          this.loanBalance + Math.round(tick * 0.35),
+        )
+        if (this.loanBalance > opened * 1.25) {
+          this.reputation = Math.max(0, this.reputation - 0.45)
+          this.pushNews(
+            `Loan interest ${moneyLeft(tick)} — debt heavy (owed ${moneyLeft(this.loanBalance)}). Pay it down.`,
+            'bad',
+          )
+        } else {
+          this.pushNews(
+            `Loan interest ${moneyLeft(tick)}. Owed ${moneyLeft(this.loanBalance)}.`,
+            'bad',
+          )
+        }
       }
     }
     // City rail soft-boosts pax demand via reputation drip.

@@ -516,7 +516,11 @@ export function Hud({ game }: { game: Game }) {
         <section>
           <h2>Ops budgets</h2>
           <p className="muted">
-            Payroll ~{money(game.payrollPreview())} / 30s · crash risk{' '}
+            Payroll ~{money(game.payrollPreview())} / 30s
+            {game.fieldOpsMult() > 1.05
+              ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
+              : ''}{' '}
+            · crash risk{' '}
             {Math.round(game.crashChance() * 1000) / 10}% · RW {Math.round(game.runwayCondition)}%
             · {game.weatherLabel()}
           </p>
