@@ -18,8 +18,11 @@ Open **[http://127.0.0.1:45217](http://127.0.0.1:45217)** (or the URL Vite print
 3. **Sign** Northline when they call
 4. Hit **3x** and watch the first jet land → gate → trucks → takeoff
 5. Optional: **Hall** to walk the terminal; stamp a **Hangar** + hardstand later for Guard / military
+6. After the first takeoff, watch for **airline field asks** (police, hangar, hotel…) — bonus if you beat the clock
 
 **Standard field** is the leaner empty-plot challenge. **Continue field** resumes the browser save.
+
+Night pax hold until you research **Night bank**. Storms hurt less after **De-ice ops**.
 
 ### Controls
 

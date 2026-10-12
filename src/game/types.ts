@@ -277,6 +277,33 @@ export interface ContractOffer {
   age: number
 }
 
+/** CEO-style airline ask after the first turn — concrete field goals with a clock. */
+export type FieldTaskKind =
+  | 'bathroom'
+  | 'food'
+  | 'fire'
+  | 'desk'
+  | 'police'
+  | 'hangar'
+  | 'janitor'
+  | 'cargo'
+  | 'helipad'
+  | 'hotel'
+  | 'park'
+  | 'desk_extra'
+
+export interface FieldTask {
+  id: string
+  airline: AirlineId
+  kind: FieldTaskKind
+  title: string
+  blurb: string
+  bonus: number
+  /** Sim clock when the ask expires. */
+  deadline: number
+  age: number
+}
+
 /** Airline line-maintenance contract offer (hangar work for their jets). */
 export interface MxOffer {
   airline: AirlineId
@@ -531,4 +558,5 @@ export interface GameSnapshot {
   deskStaff?: number
   /** First-hour coach dismissed (or auto-cleared after first takeoff). */
   coachDismissed?: boolean
+  fieldTask?: FieldTask | null
 }

@@ -276,6 +276,20 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.fieldTask ? (
+        <div className="offer field-task" data-testid="field-task">
+          <div>
+            <strong>
+              {game.airline(game.fieldTask.airline).name} ask · {game.fieldTask.title}
+            </strong>
+            <p>
+              {game.fieldTask.blurb} · {money(game.fieldTask.bonus)} if done ·{' '}
+              {Math.ceil(game.fieldTaskLeft())}s left
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {game.layoverOffer && layoverAirline ? (
         <div className="offer layover">
           <div>

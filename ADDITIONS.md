@@ -336,9 +336,14 @@ If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 - **First hour** checklist (bottom-left): stamp field → sign → inbound → first takeoff. Dismissible; auto-hides after first civilian turnaround; persisted in browser save.
 - First takeoff news + small reputation bump so the loop lands as a win, not just a ticker line.
 
+## Shipped — last overnight (field asks + night curfew)
+
+- **Airline field tasks** — after the first turnaround, signed carriers ask for concrete upgrades (police, hangar, janitor, hotel, car park, cargo shed, helipad, second desk…). Clock + cash bonus / fail fine + heat. Persona-weighted picks. Persists in save.
+- **Soft night curfew** — without Night bank research, pax slots slip after dark with a heat nick; freighter night bank still the unlock path.
+
 ## Still later (on your list, not finished)
 
 - Full custom terminal wall painting (Tier A #1) + landside/airside
-- Slot/curfew + de-ice (Tier C)
+- De-ice pad stamp / glycol truck verb (research odds cut + night curfew already live)
 - Baggage belts / franchise brands (belt lite still open)
 - Godot Steam rebuild (Tier D)

@@ -425,6 +425,12 @@ button {
   background: rgba(18, 28, 36, 0.96);
 }
 
+.offer.field-task {
+  top: 472px;
+  border-color: #c9a227;
+  background: rgba(22, 32, 18, 0.96);
+}
+
 .offer.warn {
   top: auto;
   bottom: 14px;
