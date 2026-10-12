@@ -56,9 +56,33 @@ We copied the *spirit*:
 - **Runway condition + weather** — neglect + storms raise crash odds on landing/takeoff; ambulance/fire budgets soften outcomes.
 - **Underfunding effects** — security threats, hall wear growth, apron fires, choppers refusing thin medic cover.
 
+## Aircraft mix (queued ask)
+
+- **Passenger sizes** — regional / narrowbody / widebody (wide needs heavy strip; fees scale).
+- **Freighters** — cargo metal, distinct paint.
+- **Emergency** — medevac helos + fixed-wing air ambulance (ambulance budget gate).
+- **Military / Guard host** — Boise-style agreement (hangar + tower + police + rep); olive transports transit for fat landing fees.
+
+## Threat intercept
+
+- Alerts pause as a **Scramble / Ignore** choice instead of an instant fine. Scramble costs cash; success scales with security level, police, and security budget.
+
+## Strategy backlog (idea gen — ship next)
+
+Priority order for a fuller AT3/CEO slice:
+
+1. **Custom terminal painter** — wall/floor stamp, door links for the hall graph (biggest layout skill gap).
+2. **Amenity dens** — golf / waterfall / gaming as premium desire sinks (HatchTag fantasy layer).
+3. **Slot & curfew clock** — city noise complaints vs night freighter money.
+4. **Multi-stand pushback / ground holds** — tower value becomes visible under traffic.
+5. **Franchise retail contracts** — hall shops as signed brands, not only guest spend.
+6. **Seasonal weather campaigns** — winter ops budget line, de-ice trucks.
+7. **Shareholder AGM events** — public missions with player votes (expand / dividend / security).
+8. **Godot Steam rebuild** — after browser loops feel complete.
+
 ## Still later (on your list, not finished)
 
 - Full custom terminal wall painting
-- Bomb/threat minigame beyond fines
 - Golf / waterfall / gaming dens
+- Slot/curfew + de-ice
 - Godot Steam rebuild

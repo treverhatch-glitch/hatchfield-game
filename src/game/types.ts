@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v9'
+export const SAVE_KEY = 'apron-save-v10'
 
 export type Tile =
   | 'grass'
@@ -170,6 +170,17 @@ export interface SignedContract {
   day: number
 }
 
+/** What the metal is for — drives size, fees, and whether the hall cares. */
+export type AircraftKind =
+  | 'regional'
+  | 'narrowbody'
+  | 'widebody'
+  | 'freighter'
+  | 'helo_med'
+  | 'helo_exec'
+  | 'military'
+  | 'air_ambulance'
+
 export interface Flight {
   id: string
   airline: AirlineId
@@ -178,6 +189,7 @@ export interface Flight {
   cargo: boolean
   /** Jets use runway+stand; helos use a helipad as stand. */
   craft: 'jet' | 'helo'
+  kind: AircraftKind
   phase: Phase
   stand: Vec | null
   x: number
@@ -204,6 +216,16 @@ export interface Flight {
   }
   phaseTime: number
   ledger: { label: string; amount: number }[]
+}
+
+/** Live security event the player must answer. */
+export interface PendingThreat {
+  id: string
+  severity: 'soft' | 'hard'
+  blurb: string
+  age: number
+  /** Seconds left before it auto-resolves as ignored. */
+  deadline: number
 }
 
 export interface Truck {
@@ -320,4 +342,5 @@ export interface GameSnapshot {
   mxSigned?: AirlineId[]
   runwayCondition?: number
   weather?: Weather
+  milAgreement?: boolean
 }

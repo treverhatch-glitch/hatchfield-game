@@ -9,10 +9,14 @@ import {
   CLEANING_FEE,
   DEFAULT_BUDGETS,
   FUEL,
+  AIR_AMBULANCE_FEE,
   HALL_SCRUB_COST,
   HELO_LANDING,
   LAND,
   LOADS_PER_BUY,
+  MIL_AGREE_COST,
+  MIL_LANDING,
+  THREAT_SCRAMBLE_COST,
   IPO_FOUNDER_SHARES,
   IPO_LISTING_FEE,
   IPO_MIN_CASH,
@@ -64,6 +68,7 @@ import {
 } from './path'
 import { SAVE_KEY, SIZE, type AirlineId } from './types'
 import type {
+  AircraftKind,
   BudgetKey,
   Budgets,
   CaterBrand,
@@ -75,6 +80,7 @@ import type {
   MarketMission,
   MxOffer,
   News,
+  PendingThreat,
   Person,
   Phase,
   RoomId,
@@ -156,6 +162,7 @@ export class Game {
   mxOfferCool = 30
   mxSigned: AirlineId[] = []
   threatCool = 40
+  pendingThreat: PendingThreat | null = null
   securityIncidents = 0
   reputation = 40
   loanBalance = 0
@@ -179,6 +186,9 @@ export class Game {
   payrollCool = 30
   crashCool = 8
   fireIncidentCool = 60
+  milAgreement = false
+  milCool = 55
+  ambuCool = 70
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -230,6 +240,7 @@ export class Game {
     this.mxOfferCool = 30
     this.mxSigned = []
     this.threatCool = 45
+    this.pendingThreat = null
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
@@ -253,6 +264,9 @@ export class Game {
     this.payrollCool = 30
     this.crashCool = 8
     this.fireIncidentCool = 60
+    this.milAgreement = false
+    this.milCool = 55
+    this.ambuCool = 70
     this.flights = []
     this.trucks = []
     this.people = []
@@ -269,6 +283,59 @@ export class Game {
     this.paxServed = 0
     this.revenue = 0
     this.mechanicCool = 0
+  }
+
+  pickAircraftKind(airlineId: AirlineId): AircraftKind {
+    const a = AIRLINES[airlineId]
+    if (a.kind === 'cargo') return 'freighter'
+    if (a.req.heavyRunway && this.hasHeavyRunway()) return 'widebody'
+    if (a.id === 'northline' || a.id === 'harbor') {
+      return Math.random() < 0.55 ? 'regional' : 'narrowbody'
+    }
+    return 'narrowbody'
+  }
+
+  aircraftLabel(kind: AircraftKind): string {
+    const map: Record<AircraftKind, string> = {
+      regional: 'Regional',
+      narrowbody: 'Narrowbody',
+      widebody: 'Widebody',
+      freighter: 'Freighter',
+      helo_med: 'Medevac helo',
+      helo_exec: 'Exec helo',
+      military: 'Military',
+      air_ambulance: 'Air ambulance',
+    }
+    return map[kind]
+  }
+
+  canHostMilitary(): { ok: boolean; why: string } {
+    if (this.milAgreement) return { ok: false, why: 'Guard agreement already active.' }
+    if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return { ok: false, why: 'Need a runway.' }
+    if (!tilesOf(this.tiles, 'hangar').length) return { ok: false, why: 'Need a hangar.' }
+    if (!tilesOf(this.tiles, 'tower').length) return { ok: false, why: 'Need a control tower.' }
+    if (!tilesOf(this.tiles, 'police').length) return { ok: false, why: 'Need police on field.' }
+    if (this.reputation < 48) return { ok: false, why: 'Need reputation 48+.' }
+    if (this.cash < MIL_AGREE_COST) return { ok: false, why: `Need ${moneyLeft(MIL_AGREE_COST)}.` }
+    return { ok: true, why: 'Ready to host Guard / military transit.' }
+  }
+
+  signMilitaryAgreement() {
+    const gate = this.canHostMilitary()
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(MIL_AGREE_COST, 'military host agreement')) return
+    this.milAgreement = true
+    this.milCool = 20
+    this.reputation = Math.min(100, this.reputation + 5)
+    this.pushNews(
+      'Guard host agreement signed — expect olive transports and the odd fighter drag (Boise vibes).',
+      'good',
+    )
+    this.emit()
   }
 
   buyLand(kind: SiteKind): boolean {
@@ -776,6 +843,7 @@ export class Game {
       mxSigned: this.mxSigned,
       runwayCondition: this.runwayCondition,
       weather: this.weather,
+      milAgreement: this.milAgreement,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -827,8 +895,10 @@ export class Game {
       this.mxSigned = s.mxSigned ?? []
       this.runwayCondition = s.runwayCondition ?? 100
       this.weather = s.weather ?? 'clear'
+      this.milAgreement = s.milAgreement ?? false
       this.mission = null
       this.mxOffer = null
+      this.pendingThreat = null
       this.analystCool = 40
       this.flights = []
       this.trucks = []
@@ -2029,19 +2099,30 @@ export class Game {
     })
     const airlineId = pick(pool.length ? pool : this.signed)
     const def = AIRLINES[airlineId]
+    const kind = this.pickAircraftKind(airlineId)
+    if (kind === 'widebody' && !this.hasHeavyRunway()) return
     const free = this.freeStands()
     const stand = free[0] ?? null
     const route = stand ? this.landingRoute(stand) : null
     const busy = this.groundBusy() || !stand || !route
     const start = route?.[0] ?? { c: 1, r: -3 }
     this.flightSeq += 1
+    const pax =
+      def.kind === 'cargo'
+        ? 0
+        : kind === 'widebody'
+          ? def.paxMax
+          : kind === 'regional'
+            ? Math.max(def.paxMin, Math.min(def.paxMax, def.paxMin + 20))
+            : def.paxMin + Math.floor(Math.random() * (def.paxMax - def.paxMin + 1))
     const f: Flight = {
       id: uid('flt'),
       airline: airlineId,
       flightNo: `${def.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
-      pax: def.kind === 'cargo' ? 0 : def.paxMin + Math.floor(Math.random() * (def.paxMax - def.paxMin + 1)),
+      pax,
       cargo: def.kind === 'cargo',
       craft: 'jet',
+      kind,
       phase: busy ? 'hold' : 'approach',
       stand,
       x: start.c - 4,
@@ -2073,7 +2154,8 @@ export class Game {
     this.spawnCool = 16
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
-      `${def.name} ${f.flightNo} inbound` + (busy ? ' — holding for pavement.' : '.'),
+      `${def.name} ${f.flightNo} (${this.aircraftLabel(kind)}) inbound` +
+        (busy ? ' — holding for pavement.' : '.'),
       'ok',
     )
   }
@@ -2112,6 +2194,7 @@ export class Game {
       pax: medevac ? 2 : 3 + Math.floor(Math.random() * 4),
       cargo: false,
       craft: 'helo',
+      kind: medevac ? 'helo_med' : 'helo_exec',
       phase: 'approach',
       stand: pad,
       x: pad.c + 5.5,
@@ -2289,9 +2372,19 @@ export class Game {
     const airline = AIRLINES[f.airline]
     if (!f.posted.landing) {
       f.posted.landing = true
-      this.earn(airline.landing, `${f.flightNo} landing fee`, f)
+      if (f.kind === 'military') {
+        this.earn(MIL_LANDING, `${f.flightNo} military landing`, f)
+      } else if (f.kind === 'air_ambulance') {
+        this.earn(AIR_AMBULANCE_FEE, `${f.flightNo} ambulance pad/runway`, f)
+      } else {
+        const mult =
+          f.kind === 'widebody' ? 1.35 : f.kind === 'regional' ? 0.85 : f.kind === 'freighter' ? 1.1 : 1
+        this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing fee`, f)
+      }
       if (
         (f.craft ?? 'jet') === 'jet' &&
+        f.kind !== 'military' &&
+        f.kind !== 'air_ambulance' &&
         this.mxSigned.includes(f.airline) &&
         tilesOf(this.tiles, 'hangar').length &&
         this.mechanics > 0 &&
@@ -2310,6 +2403,26 @@ export class Game {
           'bad',
         )
       }
+    }
+
+    if (f.kind === 'military' || f.kind === 'air_ambulance') {
+      // Quick turn — fuel only if farm exists; no hall / bags circus.
+      const farmsQuick = tilesOf(this.tiles, 'fuel').filter((p) =>
+        farmBesidePavement(this.tiles, p),
+      )
+      if (
+        this.fuelBrand &&
+        this.fuelLoads > 0 &&
+        farmsQuick.length &&
+        nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
+      ) {
+        const p = nearestPath(this.tiles, farmsQuick[0], [f.stand], 'truck')
+        if (p) {
+          f.waitingOn.fuel = true
+          this.spawnTruck('fuel', f, p)
+        }
+      }
+      return
     }
 
     if (f.cargo) {
@@ -2367,6 +2480,120 @@ export class Game {
     f.waitingOn.paxOut = visual
     this.people.push(...spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'arrive')
+  }
+
+  trySpawnMilitary() {
+    if (!this.milAgreement) return
+    this.milCool = Math.max(0, this.milCool)
+    if (this.milCool > 0) return
+    if (this.groundBusy()) return
+    if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
+    const free = this.freeStands()
+    if (!free.length) return
+    const stand = free[0]
+    const route = this.landingRoute(stand)
+    if (!route) return
+    // Heavy strip preferred for transports; fighters can use regional.
+    const transport = this.hasHeavyRunway() && Math.random() < 0.55
+    this.flightSeq += 1
+    const call = transport ? `ANG${this.flightSeq}` : `RDR${this.flightSeq}`
+    const f: Flight = {
+      id: uid('mil'),
+      airline: this.signed[0] ?? 'harbor',
+      flightNo: call,
+      pax: 0,
+      cargo: true,
+      craft: 'jet',
+      kind: 'military',
+      phase: 'approach',
+      stand,
+      x: route[0].c - 4,
+      y: route[0].r - 2,
+      z: 9,
+      heading: 0,
+      path: route,
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: {
+        landing: false,
+        bags: false,
+        fuel: false,
+        catering: false,
+        bagDrop: false,
+      },
+      waitingOn: {
+        bags: false,
+        fuel: false,
+        catering: false,
+        paxOut: 0,
+        paxIn: 0,
+      },
+      phaseTime: 0,
+      ledger: [],
+    }
+    this.flights.push(f)
+    this.milCool = 70 + Math.random() * 40
+    this.selectedFlight = this.selectedFlight ?? f.id
+    this.pushNews(
+      transport
+        ? `${call} Guard transport inbound — hangar transient.`
+        : `${call} military transit inbound.`,
+      'ok',
+    )
+  }
+
+  trySpawnAirAmbulance() {
+    this.ambuCool = Math.max(0, this.ambuCool)
+    if (this.ambuCool > 0) return
+    if (this.budgets.ambulance < 50) return
+    if (!tilesOf(this.tiles, 'fire').length) return
+    if (this.groundBusy()) return
+    const free = this.freeStands()
+    if (!free.length || !runwayStrips(this.tiles, MIN_RUNWAY).length) return
+    const stand = free[0]
+    const route = this.landingRoute(stand)
+    if (!route) return
+    this.flightSeq += 1
+    const call = `LIF${this.flightSeq}`
+    const f: Flight = {
+      id: uid('amb'),
+      airline: this.signed[0] ?? 'harbor',
+      flightNo: call,
+      pax: 2,
+      cargo: false,
+      craft: 'jet',
+      kind: 'air_ambulance',
+      phase: 'approach',
+      stand,
+      x: route[0].c - 3,
+      y: route[0].r - 2,
+      z: 8,
+      heading: 0,
+      path: route,
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: {
+        landing: false,
+        bags: false,
+        fuel: false,
+        catering: false,
+        bagDrop: false,
+      },
+      waitingOn: {
+        bags: false,
+        fuel: false,
+        catering: false,
+        paxOut: 0,
+        paxIn: 0,
+      },
+      phaseTime: 0,
+      ledger: [],
+    }
+    this.flights.push(f)
+    this.ambuCool = 90 + Math.random() * 50
+    this.pushNews(`${call} fixed-wing air ambulance inbound.`, 'ok')
   }
 
   spawnTruck(kind: Truck['kind'], f: Flight | null, path: Vec[]) {
@@ -2477,6 +2704,12 @@ export class Game {
   }
 
   tickThreats(dt: number) {
+    if (this.pendingThreat) {
+      this.pendingThreat.age += dt
+      this.pendingThreat.deadline -= dt
+      if (this.pendingThreat.deadline <= 0) this.resolveThreat('ignore')
+      return
+    }
     this.threatCool -= dt
     if (this.threatCool > 0) return
     this.threatCool = 50 + Math.random() * 40
@@ -2485,29 +2718,82 @@ export class Game {
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
     const staffGap = 1 - this.budgets.security / 100
-    // Risk rises when flights run with weak screening, worn lanes, or starved staff.
     const risk = clamp(
       0.55 - sec * 0.12 - police * 0.08 + wearSec * 0.002 + staffGap * 0.22,
       0.05,
       0.72,
     )
     if (Math.random() > risk) return
+    const hard = sec < 2 || this.budgets.security < 35
+    this.pendingThreat = {
+      id: uid('thr'),
+      severity: hard ? 'hard' : 'soft',
+      blurb: hard
+        ? 'Hard alarm — possible threat past a weak lane. Scramble police or eat the headline.'
+        : 'Suspicious bag on an outbound. Scramble screeners or hope the tape stays quiet.',
+      age: 0,
+      deadline: hard ? 18 : 24,
+    }
+    this.pushNews(`THREAT ALERT — decide now. ${this.pendingThreat.blurb}`, 'bad')
+    this.emit()
+  }
+
+  resolveThreat(choice: 'scramble' | 'ignore') {
+    const t = this.pendingThreat
+    if (!t) return
+    this.pendingThreat = null
+    this.threatCool = 55 + Math.random() * 30
+    const sec = this.securityLevel()
+    const police = tilesOf(this.tiles, 'police').length
+    const staff = this.budgets.security / 100
+
+    if (choice === 'scramble') {
+      if (!this.spend(THREAT_SCRAMBLE_COST, 'threat scramble')) {
+        this.pushNews('Could not fund scramble — treated as ignore.', 'bad')
+        choice = 'ignore'
+      } else {
+        const success =
+          Math.random() < clamp(0.35 + sec * 0.12 + police * 0.15 + staff * 0.25, 0.2, 0.92)
+        if (success) {
+          this.reputation = Math.min(100, this.reputation + 3)
+          if (this.public) {
+            this.sharePrice = Math.round((this.sharePrice * 1.02) * 100) / 100
+          }
+          this.pushNews(
+            'Scramble held — bag cleared, cameras love a clean intercept.',
+            'good',
+          )
+          this.emit()
+          return
+        }
+        this.pushNews('Scramble late — something still slipped. Damage control.', 'bad')
+      }
+    }
+
     this.securityIncidents += 1
     if (this.mission?.goal === 'noIncident') this.mission.progress = 0
-    const fine = this.public ? (sec < 2 ? 18000 : 9000) : sec < 2 ? 4000 : 2500
-    if (sec < 2) {
+    const fine =
+      this.public
+        ? t.severity === 'hard'
+          ? 18000
+          : 9000
+        : t.severity === 'hard'
+          ? 4000
+          : 2500
+    if (t.severity === 'hard') {
       this.shockStock(
-        'SECURITY FAILURE — a threat slipped past screening onto a departure.',
+        'SECURITY FAILURE — threat reached a departure.',
         this.public ? 0.55 : 1,
         fine,
       )
     } else {
       this.shockStock(
-        'Suspicious bag intercepted — markets hate the headline anyway.',
+        'Suspicious bag story hits the wire.',
         this.public ? 0.82 : 1,
         fine,
       )
     }
+    this.emit()
   }
 
   tick(dt: number) {
@@ -2544,7 +2830,11 @@ export class Game {
     this.considerMxOffers()
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
+    this.milCool = Math.max(0, this.milCool - step)
+    this.ambuCool = Math.max(0, this.ambuCool - step)
     this.trySpawnHelo()
+    this.trySpawnMilitary()
+    this.trySpawnAirAmbulance()
     this.releaseHold()
     this.tickPatrols(step)
     this.tickThreats(step)
@@ -2599,7 +2889,13 @@ export class Game {
           f.phaseTime = 0
         }
       } else if (f.phase === 'servicing') {
-        if (f.phaseTime > 2.5 && !f.ledger.some((r) => r.label.includes('cleaning'))) {
+        const special =
+          f.kind === 'military' || f.kind === 'air_ambulance' || f.kind === 'freighter'
+        if (
+          !special &&
+          f.phaseTime > 2.5 &&
+          !f.ledger.some((r) => r.label.includes('cleaning'))
+        ) {
           this.earn(CLEANING_FEE, `${f.flightNo} cabin cleaning`, f)
         }
         const waiting =
@@ -2610,7 +2906,7 @@ export class Game {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
           f.waitingOn.catering = false
-          if (f.cargo) {
+          if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
             const out = this.departurePath(f)
             if (out && !this.groundBusy()) {
               f.path = out

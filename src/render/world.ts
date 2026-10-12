@@ -618,12 +618,19 @@ export class World {
       const helo = f.craft === 'helo'
       if (!mesh) {
         const a = AIRLINES[f.airline]
-        mesh = helo
-          ? this.makeHelo(
-              f.flightNo.startsWith('MED') ? '#b33a2a' : a.color,
-              f.flightNo.startsWith('MED') ? '#f0c040' : a.stripe,
-            )
-          : this.makeJet(a.color, a.stripe)
+        let color = a.color
+        let stripe = a.stripe
+        if (f.kind === 'military') {
+          color = '#3d4a32'
+          stripe = '#c9a227'
+        } else if (f.kind === 'air_ambulance' || f.kind === 'helo_med') {
+          color = '#b33a2a'
+          stripe = '#f0c040'
+        } else if (f.kind === 'freighter') {
+          color = '#5a5348'
+          stripe = '#d9a441'
+        }
+        mesh = helo ? this.makeHelo(color, stripe) : this.makeJet(color, stripe)
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
@@ -640,7 +647,23 @@ export class World {
         if (rotor) rotor.rotation.y += 0.55
       }
       const sel = game.selectedFlight === f.id
-      mesh.scale.setScalar(helo ? (sel ? 1.05 : 0.95) : sel ? 1.22 : 1.15)
+      const size =
+        f.kind === 'widebody'
+          ? sel
+            ? 1.45
+            : 1.38
+          : f.kind === 'regional' || f.kind === 'air_ambulance'
+            ? sel
+              ? 0.95
+              : 0.88
+            : helo
+              ? sel
+                ? 1.05
+                : 0.95
+              : sel
+                ? 1.22
+                : 1.15
+      mesh.scale.setScalar(size)
     }
     for (const [id, m] of this.jets) {
       if (!seenJ.has(id)) {

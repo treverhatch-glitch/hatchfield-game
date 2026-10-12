@@ -11,6 +11,7 @@ import {
   LAND,
   LOAN_PRINCIPAL,
   MECHANIC_HIRE,
+  MIL_AGREE_COST,
   money,
   PARCEL_COST,
   PREMADE_TERMINAL_COST,
@@ -149,6 +150,27 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.pendingThreat ? (
+        <div className="offer threat">
+          <div>
+            <strong>
+              {game.pendingThreat.severity === 'hard' ? 'HARD THREAT' : 'Security alert'}
+            </strong>
+            <p>
+              {game.pendingThreat.blurb} ({Math.ceil(game.pendingThreat.deadline)}s)
+            </p>
+          </div>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.resolveThreat('scramble')}>
+              Scramble
+            </button>
+            <button type="button" onClick={() => game.resolveThreat('ignore')}>
+              Ignore
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <aside className="side">
         <section>
           <h2>Build & bank</h2>
@@ -201,6 +223,16 @@ export function Hud({ game }: { game: Game }) {
               ? ` · MX: ${game.mxSigned.map((id) => AIRLINES[id].name).join(', ')}`
               : ' · no airline MX yet (need hangar + mechanic)'}
           </p>
+          {game.milAgreement ? (
+            <p className="muted">Guard host active — military metal will transit.</p>
+          ) : (
+            <>
+              <button type="button" className="wide" onClick={() => game.signMilitaryAgreement()}>
+                Host military / Guard · {money(MIL_AGREE_COST)}
+              </button>
+              <p className="muted">{game.canHostMilitary().why}</p>
+            </>
+          )}
           <ul className="budgets">
             {BUDGET_KEYS.map((key) => (
               <li key={key}>
@@ -308,10 +340,12 @@ export function Hud({ game }: { game: Game }) {
               </p>
               <p className="phase">
                 {labelPhase(flight.phase, flight.craft)}
-                {flight.craft === 'helo'
-                  ? ' · rotary'
-                  : flight.cargo
-                    ? ' · cargo'
+                {' · '}
+                {game.aircraftLabel(flight.kind)}
+                {flight.kind === 'military' || flight.kind === 'freighter'
+                  ? ''
+                  : flight.craft === 'helo'
+                    ? ''
                     : ` · ${flight.pax} pax`}
               </p>
               <ul className="ledger">
