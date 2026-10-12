@@ -477,12 +477,44 @@ export function Hud({ game }: { game: Game }) {
         </section>
 
         <section>
-          <h2>Runway schedule</h2>
+          <h2>Flight planner</h2>
           <p className="muted">
             {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
             {game.openSchedule().length} open
             {game.weather === 'storm' ? ' · storm may delay' : ''}
+            {' · '}
+            pull / bump ETA · cycle stand
           </p>
+          {(() => {
+            const strip = game.plannerStrip(120)
+            return (
+              <div
+                className="day-strip"
+                title="Next 120s — click a bar to select that slot in the list"
+              >
+                <div className="day-strip-rail">
+                  <span className="day-strip-now">now</span>
+                  <span className="day-strip-end">+2m</span>
+                  {strip.slots.map((s) => {
+                    const left = Math.min(96, (s.t / strip.horizon) * 100)
+                    return (
+                      <span
+                        key={s.id}
+                        className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}`}
+                        style={{
+                          left: `${left}%`,
+                          background: game.airline(s.airline).color,
+                        }}
+                        title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand}`}
+                      >
+                        {s.flightNo.slice(-3)}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
           <div className="row">
             <button type="button" className={game.scheduleAuto ? 'on' : ''} onClick={() => game.setScheduleAuto(true)}>
               Auto
@@ -506,6 +538,7 @@ export function Hud({ game }: { game: Game }) {
             ) : (
               game.openSchedule().slice(0, 8).map((s) => {
                 const eta = Math.max(0, Math.round(s.eta - game.clock))
+                const stand = s.standPref ? game.gateLabel(s.standPref) : 'auto'
                 return (
                   <li key={s.id}>
                     <b style={{ color: game.airline(s.airline).color }}>
@@ -514,6 +547,8 @@ export function Hud({ game }: { game: Game }) {
                         {s.status}
                         {s.delaySec > 0 ? ` +${Math.round(s.delaySec)}s` : ''}
                         {s.manual ? ' · manual' : ''}
+                        {' · '}
+                        {stand}
                       </span>
                     </b>
                     <span className="muted">
@@ -522,8 +557,14 @@ export function Hud({ game }: { game: Game }) {
                     </span>
                     {s.status !== 'inbound' ? (
                       <span className="row" style={{ marginTop: 4 }}>
+                        <button type="button" onClick={() => game.pullSlot(s.id)}>
+                          Pull
+                        </button>
                         <button type="button" onClick={() => game.bumpSlot(s.id)}>
                           Bump
+                        </button>
+                        <button type="button" onClick={() => game.cycleSlotStand(s.id)}>
+                          Stand
                         </button>
                         <button type="button" onClick={() => game.cancelSlot(s.id)}>
                           Cancel

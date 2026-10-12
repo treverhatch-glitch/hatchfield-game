@@ -251,7 +251,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 1. **Research desk** — ~~points from turnarounds + pax; unlocks night bank → de-ice → stand classes → heavy pack~~ **shipped**.
 2. **Airline rewards/abandon** — ~~high heat → persona perk; warn → abandon + fine~~ **shipped** (`brand_lounge` / `budget_perk` / `biz_priority` / `cargo_night`).
-3. **Planner v2** — day strip UI on current timetable (drag ETA / assign stand); auto remains default. *Next.*
+3. **Planner v2** — ~~day strip + pull/bump ETA + stand assign~~ **shipped** (auto bank remains default).
 4. **Field Rating** — ~~AT3-readable blend~~ **shipped** (rep × heat × wear × security).
 
 **C1 — CEO authenticity**
@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: Research desk + airline rewards/abandon + Field Rating are live. Planner v2 builds on our timetable. Hotel / 2nd runway / emergency asks still open.
+Dependency note: C0 spine mostly live (research, rewards/abandon, Field Rating, planner v2). Hotel / 2nd runway / emergency asks / Hub tier still open.
 
 ### Explicit calls on open design questions
 

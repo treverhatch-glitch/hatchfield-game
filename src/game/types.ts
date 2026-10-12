@@ -223,6 +223,8 @@ export interface ScheduleSlot {
   /** Player-placed vs tower auto bank. */
   manual: boolean
   flightId: string | null
+  /** Planner v2 — preferred stand; null = tower picks. */
+  standPref?: Vec | null
 }
 
 export interface ContractOffer {
