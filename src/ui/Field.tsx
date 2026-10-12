@@ -21,11 +21,7 @@ export function Field({ game }: { game: Game }) {
     }
     window.addEventListener('keydown', onKey)
     let raf = 0
-    let last = performance.now()
-    const loop = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)
-      last = now
-      game.tick(dt)
+    const loop = () => {
       world.render(game)
       raf = requestAnimationFrame(loop)
     }

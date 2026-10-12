@@ -19,6 +19,16 @@ import {
   TERMINAL_COST,
 } from './catalog'
 import {
+  hallPath,
+  needToNode,
+  openNodesFromRooms,
+  spawnHallGuest,
+  strongestNeed,
+  type HallGuest,
+  type HallNode,
+  type PaxTag,
+} from './guests'
+import {
   astar,
   farmBesidePavement,
   inBounds,
@@ -107,9 +117,12 @@ export class Game {
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
+  hallGuests: HallGuest[] = []
   news: News[] = []
   selectedFlight: string | null = null
   selectedTile: Vec | null = null
+  selectedGuest: string | null = null
+  view: 'apron' | 'hall' = 'apron'
   spawnCool = 8
   flightSeq = 100
   flightsDone = 0
@@ -152,9 +165,12 @@ export class Game {
     this.flights = []
     this.trucks = []
     this.people = []
+    this.hallGuests = []
     this.news = []
     this.selectedFlight = null
     this.selectedTile = null
+    this.selectedGuest = null
+    this.view = 'apron'
     this.spawnCool = 10
     this.flightSeq = 100
     this.flightsDone = 0
@@ -245,7 +261,9 @@ export class Game {
       this.flights = []
       this.trucks = []
       this.people = []
+      this.hallGuests = []
       this.offer = null
+      this.view = 'apron'
       this.pushNews('Field restored. Clock paused.', 'ok')
       this.emit()
       return Boolean(this.site)
@@ -294,6 +312,182 @@ export class Game {
   setSpeed(speed: Speed) {
     this.speed = speed
     this.emit()
+  }
+
+  setView(view: 'apron' | 'hall') {
+    this.view = view
+    this.emit()
+  }
+
+  selectGuest(id: string | null) {
+    this.selectedGuest = id
+    this.emit()
+  }
+
+  activeHall(): TerminalFit | null {
+    if (this.fits.length === 0) return null
+    const origin = this.selectedTerminalOrigin()
+    if (origin) {
+      const fit = this.fits.find((f) => f.origin.c === origin.c && f.origin.r === origin.r)
+      if (fit) return fit
+    }
+    return this.fits[0]
+  }
+
+  hallOpen(): Set<HallNode> {
+    const fit = this.activeHall()
+    if (!fit) return new Set()
+    return openNodesFromRooms(fit.rooms)
+  }
+
+  seedHallForFlight(f: Flight, job: 'depart' | 'arrive') {
+    if (f.cargo || !this.fits.length) return
+    const count = Math.max(4, Math.min(14, Math.round(f.pax / 8)))
+    const premiumBias =
+      f.airline === 'summit' ? 0.65 : f.airline === 'harbor' ? 0.4 : 0.2
+    for (let i = 0; i < count; i++) {
+      const tag: PaxTag = Math.random() < premiumBias ? 'premium' : 'budget'
+      this.hallGuests.push(spawnHallGuest(f.id, job, tag))
+    }
+  }
+
+  tickHall(dt: number) {
+    const open = this.hallOpen()
+    if (!open.size) {
+      this.hallGuests = []
+      return
+    }
+    for (const g of this.hallGuests) {
+      if (g.dead) continue
+      // Needs drift — budget fills hunger/bladder faster (wear on facilities later).
+      const drain = g.tag === 'budget' ? 1.25 : 0.85
+      g.needs.hunger = Math.min(100, g.needs.hunger + dt * 1.8 * drain)
+      g.needs.bladder = Math.min(100, g.needs.bladder + dt * 1.4 * drain)
+      g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1)
+      g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6)
+      if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.55)
+      if (g.job === 'arrive') g.needs.bags = Math.max(0, g.needs.bags - (g.node === 'claim' ? dt * 12 : 0))
+
+      if (g.path.length && g.seg < g.path.length - 1) {
+        g.t += dt * 1.35
+        while (g.t >= 1 && g.seg < g.path.length - 1) {
+          g.t -= 1
+          g.seg += 1
+          g.node = g.path[g.seg]
+          this.serveNode(g, open)
+        }
+        continue
+      }
+
+      // Decision point — pick strongest need and search a short path (RCT-capped).
+      const need = strongestNeed(g)
+      if (!need) {
+        if (g.job === 'depart' && open.has('gate')) {
+          this.routeGuest(g, 'gate', open)
+        } else if (g.job === 'arrive' && g.needs.bags < 15) {
+          this.routeGuest(g, 'exit', open)
+        } else {
+          g.thought = 'Wandering…'
+        }
+        continue
+      }
+      const dest = needToNode(need, g.job)
+      if (!open.has(dest)) {
+        g.happiness -= dt * 4
+        g.thought = `Can't find ${dest}`
+        g.patience -= dt * 3
+        if (g.patience <= 0) {
+          g.dead = true
+          this.reputation = Math.max(0, this.reputation - 2)
+          this.pushNews(`${g.name} left angry — missing ${dest}.`, 'bad')
+        }
+        continue
+      }
+      if (g.node === dest) this.serveNode(g, open)
+      else this.routeGuest(g, dest, open)
+
+      if (g.job === 'depart' && g.needs.boarding <= 0 && g.node !== 'gate') {
+        g.happiness -= 30
+        g.dead = true
+        this.reputation = Math.max(0, this.reputation - 5)
+        this.pushNews(`${g.name} missed ${g.flightId.slice(0, 8)} — late to the gate.`, 'bad')
+      }
+    }
+    this.hallGuests = this.hallGuests.filter((g) => !g.dead)
+    // Cap population for sim health (Sawyer lesson).
+    if (this.hallGuests.length > 80) this.hallGuests.length = 80
+  }
+
+  routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
+    const path = hallPath(g.node, dest, open, g.tag === 'premium' ? 7 : 5)
+    if (!path || path.length < 2) {
+      g.thought = 'Lost in the hall'
+      g.happiness -= 0.5
+      return
+    }
+    g.path = path
+    g.seg = 0
+    g.t = 0
+    g.thought = `Heading to ${dest}`
+  }
+
+  serveNode(g: HallGuest, open: Set<HallNode>) {
+    const n = g.node
+    if (n === 'checkin' && g.job === 'depart') {
+      g.thought = 'Checked in'
+      if (open.has('security')) this.routeGuest(g, 'security', open)
+    }
+    if (n === 'security') {
+      g.thought = 'Cleared security'
+      g.happiness += 2
+    }
+    if (n === 'bathroom') {
+      g.needs.bladder = Math.max(0, g.needs.bladder - 55)
+      g.happiness += 4
+      g.thought = 'Relief'
+    }
+    if (n === 'food') {
+      const pay = g.tag === 'premium' ? 28 : 14
+      g.needs.hunger = Math.max(0, g.needs.hunger - 50)
+      g.spent += pay
+      this.cash += pay
+      this.revenue += pay
+      this.mealSold = true
+      g.happiness += 6
+      g.thought = `Ate (−$${pay})`
+    }
+    if (n === 'shop') {
+      const pay = g.tag === 'premium' ? 42 : 18
+      g.needs.shop = Math.max(0, g.needs.shop - 60)
+      g.spent += pay
+      this.cash += pay
+      this.revenue += pay
+      g.happiness += 5
+      g.thought = `Bought a souvenir (−$${pay})`
+    }
+    if (n === 'lounge' && g.tag === 'premium') {
+      g.needs.energy = Math.max(0, g.needs.energy - 45)
+      g.happiness += 8
+      g.thought = 'Lounge calm'
+    }
+    if (n === 'gate' && g.job === 'depart') {
+      g.thought = 'At the gate'
+      g.needs.boarding = Math.max(g.needs.boarding, 8)
+      if (g.needs.hunger < 40 && g.needs.bladder < 40) {
+        g.dead = true
+        this.paxServed += 1
+        this.reputation = Math.min(100, this.reputation + 0.4)
+      }
+    }
+    if (n === 'claim' && g.job === 'arrive') {
+      g.needs.bags = Math.max(0, g.needs.bags - 40)
+      g.thought = 'Bag belt'
+    }
+    if (n === 'exit' && g.job === 'arrive') {
+      g.dead = true
+      this.paxServed += 1
+      this.reputation = Math.min(100, this.reputation + 0.3)
+    }
   }
 
   signFuel(brand: FuelBrand) {
@@ -971,7 +1165,7 @@ export class Game {
 
     if (f.cargo) return
 
-    const visual = Math.max(6, Math.round(f.pax / 10))
+    const visual = Math.max(4, Math.round(f.pax / 14))
     f.waitingOn.paxOut = visual
     const hall = tilesOf(this.tiles, 'terminal')
     const bagGoal = bagBuild[0]
@@ -1002,6 +1196,7 @@ export class Game {
         paidGift: false,
       })
     }
+    this.seedHallForFlight(f, 'arrive')
   }
 
   spawnTruck(kind: Truck['kind'], f: Flight | null, path: Vec[]) {
@@ -1061,7 +1256,7 @@ export class Game {
 
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
-    const visual = Math.max(5, Math.round(f.pax / 12))
+    const visual = Math.max(4, Math.round(f.pax / 14))
     f.waitingOn.paxIn = visual
     const hall = tilesOf(this.tiles, 'terminal')
     const start = hall[0] ?? neighbors(f.stand.c, f.stand.r)[0] ?? f.stand
@@ -1085,6 +1280,7 @@ export class Game {
         paidGift: false,
       })
     }
+    this.seedHallForFlight(f, 'depart')
   }
 
   departurePath(f: Flight): Vec[] | null {
@@ -1169,6 +1365,7 @@ export class Game {
     this.releaseHold()
     this.tickPatrols(step)
     this.tickThreats(step)
+    this.tickHall(step)
 
     for (const f of this.flights) {
       if (f.phase === 'gone') continue

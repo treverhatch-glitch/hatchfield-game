@@ -25,3 +25,9 @@ Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come afte
 - Land expansion, loans
 
 Graphics in the sketch are placeholder. Priority is loops and money = picture.
+
+See `ADDITIONS.md` for features added from research that were not in HatchTag prompts.
+
+## Terminal hall (RCT-inspired)
+
+Apron / Hall toggle. Guests have needs (hunger, bathroom, energy, shop, bags, boarding clock). Short graph pathfinding with capped lookahead — Chris Sawyer’s lesson: perfect routing that stalls the sim is worse than guests who can get lost.
