@@ -267,7 +267,7 @@ Sources: Airport CEO wiki (Flights, Flight Planner, Contracts, Baggage, Stands),
 
 #### Explicit non-goals (do not steal)
 
-- Admin commute / bus stops for researchers  
+- Admin commute / bus stops for researchers (soft off-shift exit leave is enough)  
 - Full 2D wall/foundation painter before belts+planner  
 - Cloning CEO’s email inbox UI  
 - Making the first hour as slow as CEO’s commercial license grind  
@@ -376,7 +376,8 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 
 See **Upgrade plan — make ours better** above (Waves A→C). Short list:
 
-- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L — **shipped** (pad stamp, glycol truck holds pushback in storm/fog, S/M/L stamps + class gate, planner night column + ETA/stand pin)  
+- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L — **shipped** (pad stamp, glycol truck holds pushback in storm/fog, S/M/L stamps + class gate, planner night column + ETA/stand pin)
+- **Research lab bodies** — hire researchers; furnish landside R&D desk / chalkboard / lab bench; they walk stations in Hall; RP only while working; breaks + soft off-shift “home” (exit leave, not CEO bus commute); night = slower drip + more off-shift.  
 - Wave B: Belt lite · Franchise brands · Intl zone  
 - Wave C: Remote stands · Multi-T research gate · Stairs/loader · Godot  
 - Parked: custom wall painter (after belts+planner)

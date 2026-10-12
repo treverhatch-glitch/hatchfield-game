@@ -505,6 +505,8 @@ export interface Person {
   paidGift: boolean
   /** Line MX payout posted when mechanic finishes at the stand. */
   mxPay?: number
+  /** Seconds left on current researcher duty (desk/board/lab/break/home). */
+  dutySec?: number
 }
 
 export interface News {
