@@ -56,7 +56,7 @@ import {
   type HallNode,
   type PaxTag,
 } from './guests'
-import { AIRFRAMES, pickAirframe } from './airframes'
+import { AIRFRAMES, pickAirframe, pickAirframeWithFallback } from './airframes'
 import {
   advancePaxItinerary,
   spawnArrivalPax,
@@ -2192,17 +2192,27 @@ export class Game {
     })
     const airlineId = pick(pool.length ? pool : this.signed)
     const def = AIRLINES[airlineId]
-    const kind = this.pickAircraftKind(airlineId)
-    const af = pickAirframe(kind, this.longestRunway())
+    const preferred = this.pickAircraftKind(airlineId)
+    const af = pickAirframeWithFallback(
+      preferred,
+      this.longestRunway(),
+      def.kind === 'cargo',
+    )
     if (!af) {
       this.spawnCool = 10
       if (Math.random() < 0.35) {
         this.pushNews(
-          `${def.name} overflew — longest strip ${this.longestRunway()} cells is too short for their ${this.aircraftLabel(kind)}.`,
+          `${def.name} overflew — longest strip ${this.longestRunway()} cells can't take their fleet.`,
           'bad',
         )
       }
       return
+    }
+    if (af.kind !== preferred && Math.random() < 0.25) {
+      this.pushNews(
+        `${def.name} swapped to a ${af.name} — strip too short for ${this.aircraftLabel(preferred)}.`,
+        'ok',
+      )
     }
     const free = this.freeStands()
     const stand = free[0] ?? null
