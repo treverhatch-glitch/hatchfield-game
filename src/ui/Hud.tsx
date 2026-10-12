@@ -431,11 +431,11 @@ export function Hud({ game }: { game: Game }) {
       {game.parkingOffer ? (
         <div className="offer parking">
           <div>
-            <strong>GA parking · {game.parkingOffer.callsign}</strong>
+            <strong>Independent parking · {game.parkingOffer.callsign}</strong>
             <p>
-              {AIRFRAMES[game.parkingOffer.airframeId]?.name ?? 'Aircraft'} ·{' '}
-              {money(game.parkingOffer.fee)} · stay ~{game.parkingOffer.staySec}s (
-              {Math.ceil(game.parkingOffer.deadline)}s to answer)
+              {AIRFRAMES[game.parkingOffer.airframeId]?.name ?? 'Aircraft'} · fee{' '}
+              {money(game.parkingOffer.fee)} · ~{game.parkingOffer.staySec}s then leave request ·
+              not a signed airline ({Math.ceil(game.parkingOffer.deadline)}s to answer)
             </p>
           </div>
           <div className="row">
@@ -675,8 +675,10 @@ export function Hud({ game }: { game: Game }) {
                 {(flight.craft ?? 'jet') === 'jet'
                   ? ` · ${game.gateLabel(flight.stand)}`
                   : ' · helipad'}
-                {flight.ga && flight.phase === 'parked' && flight.parkLeaveBy
-                  ? ` · leave ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
+                {flight.ga && flight.phase === 'parked'
+                  ? flight.parkLeaveRequestedAt && flight.parkLeaveBy
+                    ? ` · LEAVE WINDOW ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
+                    : ` · parked ${Math.round(flight.phaseTime)}s / ask ~${flight.parkStaySec ?? '?'}s`
                   : ''}
               </p>
               {flight.ga && flight.phase === 'parked' ? (
@@ -685,7 +687,9 @@ export function Hud({ game }: { game: Game }) {
                   className="wide"
                   onClick={() => game.releaseGa(flight.id)}
                 >
-                  Release parking
+                  {flight.parkLeaveRequestedAt
+                    ? 'Release (manual departure)'
+                    : 'Release early'}
                 </button>
               ) : null}
               <p className="muted">

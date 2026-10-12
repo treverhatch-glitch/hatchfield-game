@@ -59,6 +59,7 @@ export function walkableFor(
       tile === 'fuel'
     )
   }
+  // Apron foot traffic — hangar included so line-MX / staff can cross the shop door.
   return (
     tile === 'taxi' ||
     tile === 'stand' ||
@@ -67,7 +68,10 @@ export function walkableFor(
     tile === 'bags' ||
     tile === 'road' ||
     tile === 'police' ||
-    tile === 'cargo'
+    tile === 'cargo' ||
+    tile === 'hangar' ||
+    tile === 'fuel' ||
+    tile === 'fire'
   )
 }
 
@@ -130,7 +134,7 @@ export function nearestPath(
   tiles: Tile[][],
   start: Vec,
   goals: Vec[],
-  kind: 'jet' | 'truck' | 'person',
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
 ): Vec[] | null {
   let best: Vec[] | null = null
   for (const goal of goals) {

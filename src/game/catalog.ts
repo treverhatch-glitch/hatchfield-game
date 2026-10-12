@@ -801,12 +801,21 @@ export const HUB_LAYOVER_WINS = 1
 export const HUB_HEAT_NEED = 75
 /** Hub carriers ban slightly earlier during layover failures. */
 export const HUB_BAN_THRESHOLD = 34
-/** GA parking fee / stay band. */
+/** GA parking fee / stay band (independent metal — not a signed airline). */
 export const GA_PARK_FEE_MIN = 2800
 export const GA_PARK_FEE_MAX = 6500
-export const GA_PARK_STAY_MIN = 55
-export const GA_PARK_STAY_MAX = 110
+/** Min park before the pilot requests departure. */
+export const GA_PARK_STAY_MIN = 40
+export const GA_PARK_STAY_MAX = 75
+/**
+ * Leave window after they request departure.
+ * Sim day ≈ 180s = 24h ops → 20h ≈ 150s.
+ */
+export const GA_LEAVE_WINDOW = 150
 export const GA_OVERSTAY_FINE = 5000
+/** Soft day-rate while parked (charged on a cool). */
+export const GA_PARK_DAY_RATE = 380
+export const GA_PARK_RATE_COOL = 32
 
 /** Airline field-task asks — clock + bonus / fail fine. */
 export const FIELD_TASK_DEADLINE = 95

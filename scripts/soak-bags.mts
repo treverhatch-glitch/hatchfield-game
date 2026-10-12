@@ -22,21 +22,26 @@ if (bags[0] && stands[0]) {
 }
 
 let sawUnload = false
+let sawToClaim = false
 let sawLoad = false
+let sawPickup = false
 let sawReturning = false
 let homeMatchesShed = false
-let continued = false
+let sawPreDwell = false
 let bagHandlingPay = 0
 let outboundPay = 0
 
-for (let i = 0; i < 1800; i++) {
+for (let i = 0; i < 2000; i++) {
   g.tick(0.25)
   if (g.offer) g.acceptOffer()
   for (const t of g.trucks) {
     if (t.kind !== 'bags') continue
     if (t.mission === 'unload') sawUnload = true
+    if (t.mission === 'to_claim') sawToClaim = true
     if (t.mission === 'load') sawLoad = true
+    if (t.mission === 'pickup') sawPickup = true
     if (t.returning) sawReturning = true
+    if (t.preDwell > 0) sawPreDwell = true
     if (
       t.home &&
       bags[0] &&
@@ -45,14 +50,6 @@ for (let i = 0; i < 1800; i++) {
     ) {
       homeMatchesShed = true
     }
-  }
-  const needing = g.flights.filter(
-    (f) =>
-      (f.waitingOn.bags && !f.posted.bags) ||
-      (f.waitingOn.bagsLoad && !f.posted.bagsLoad),
-  )
-  if (needing.length >= 2 && g.trucks.some((t) => t.kind === 'bags')) {
-    continued = true
   }
   for (const f of g.flights) {
     for (const row of f.ledger) {
@@ -63,9 +60,11 @@ for (let i = 0; i < 1800; i++) {
 }
 
 if (!sawUnload) issues.push('never saw unload bags truck')
+if (!sawToClaim) issues.push('never saw to_claim (plane→shed/claim) leg')
 if (!sawLoad) issues.push('never saw outbound load bags truck')
 if (!homeMatchesShed) issues.push('bags truck home is not the shed')
-if (!sawReturning) issues.push('bags truck never entered return leg')
+if (!sawReturning) issues.push('bags truck never entered return/claim leg')
+if (!sawPreDwell) issues.push('outbound load never staged makeup preDwell at shed')
 if (bagHandlingPay < 1) issues.push('no bag handling ledger pays')
 if (outboundPay < 1) issues.push('no outbound bags ledger pays')
 
@@ -73,13 +72,14 @@ const out = {
   ok: issues.length === 0,
   issues,
   sawUnload,
+  sawToClaim,
   sawLoad,
+  sawPickup,
   homeMatchesShed,
   sawReturning,
-  continued,
+  sawPreDwell,
   bagHandlingPay,
   outboundPay,
-  done: g.flightsDone,
 }
 console.log(JSON.stringify(out, null, 2))
 process.exit(issues.length ? 1 : 0)
