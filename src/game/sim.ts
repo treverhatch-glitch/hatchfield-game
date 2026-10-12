@@ -82,7 +82,7 @@ import {
   HOTEL_COST,
   HOTEL_COST_L2,
   HOTEL_INCOME,
-  HOTEL_TILE_INCOME,
+  HOTEL_CLASS_INCOME,
   BUS_CURB_COST,
   BUS_FARE,
   CARPARK_SHORT_COST,
@@ -175,6 +175,7 @@ import type {
   Flight,
   FuelBrand,
   GameSnapshot,
+  HotelClass,
   HubOffer,
   LayoverContract,
   LayoverOffer,
@@ -322,6 +323,8 @@ export class Game {
   parkTerms: Record<string, ParkTerm> = {}
   /** Term used when stamping the next park tile. */
   parkTerm: ParkTerm = 'short'
+  /** Stamped hotel tiles: "c,r" → inn / business / resort. */
+  hotelClass: Record<string, HotelClass> = {}
   /** Stand tile "c,r" → S/M/L. Missing defaults to M. */
   standClass: Record<string, StandClass> = {}
   janitors = 0
@@ -463,6 +466,7 @@ export class Game {
     this.carParkLong = false
     this.parkTerms = {}
     this.parkTerm = 'short'
+    this.hotelClass = {}
     this.standClass = {}
     this.janitors = 0
     this.janitorCool = 0
@@ -1199,6 +1203,7 @@ export class Game {
     this.carParkShort = false
     this.carParkLong = false
     this.parkTerms = {}
+    this.hotelClass = {}
     this.standClass = {}
     this.janitors = 0
     this.researchers = 0
@@ -1586,7 +1591,10 @@ export class Game {
     let n = HOTEL_INCOME[clamp(this.hotelLevel, 0, 2)] ?? 0
     if (this.carParkShort) n += CARPARK_SHORT_INCOME
     if (this.carParkLong) n += CARPARK_LONG_INCOME
-    n += tilesOf(this.tiles, 'hotel').length * HOTEL_TILE_INCOME
+    for (const p of tilesOf(this.tiles, 'hotel')) {
+      const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
+      n += HOTEL_CLASS_INCOME[cls]
+    }
     for (const kind of ['park_s', 'park_l', 'park_g', 'park_u'] as const) {
       for (const p of tilesOf(this.tiles, kind)) {
         const term = this.parkTerms[`${p.c},${p.r}`] ?? 'short'
@@ -1605,21 +1613,29 @@ export class Game {
     return Math.round(pot * 0.28)
   }
 
-  /** Usage-scaled landside take (pax must actually touch the field). */
-  landsideIncome(): number {
-    const pot = this.landsidePotential()
-    if (pot <= 0) return 0
-    const capacity = Math.max(
+  /** Beds / stalls capacity for usage scaling. */
+  landsideCapacity(): number {
+    let beds = this.hotelLevel > 0 ? 6 : 0
+    for (const p of tilesOf(this.tiles, 'hotel')) {
+      const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
+      beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
+    }
+    return Math.max(
       1,
-      tilesOf(this.tiles, 'hotel').length * 8 +
+      beds +
         tilesOf(this.tiles, 'park_s').length * 3 +
         tilesOf(this.tiles, 'park_l').length * 5 +
         tilesOf(this.tiles, 'park_g').length * 7 +
         tilesOf(this.tiles, 'park_u').length * 6 +
-        (this.hotelLevel > 0 ? 6 : 0) +
         (this.carParkShort || this.carParkLong ? 4 : 0),
     )
-    const usage = clamp(this.landsideUses / capacity, 0, 1.25)
+  }
+
+  /** Usage-scaled landside take (pax must actually touch the field). */
+  landsideIncome(): number {
+    const pot = this.landsidePotential()
+    if (pot <= 0) return 0
+    const usage = clamp(this.landsideUses / this.landsideCapacity(), 0, 1.25)
     // Crumb floor for airport workers; real money needs pax traffic.
     return Math.round(pot * (0.12 + 0.88 * usage))
   }
@@ -2018,6 +2034,7 @@ export class Game {
       carParkShort: this.carParkShort,
       carParkLong: this.carParkLong,
       parkTerms: this.parkTerms,
+      hotelClass: this.hotelClass,
       standClass: this.standClass,
       janitors: this.janitors,
       researchers: this.researchers,
@@ -2092,6 +2109,12 @@ export class Game {
       this.carParkShort = s.carParkShort ?? false
       this.carParkLong = s.carParkLong ?? false
       this.parkTerms = s.parkTerms ?? {}
+      this.hotelClass = s.hotelClass ?? {}
+      // Migrate bare hotel tiles from older saves → business grade.
+      for (const p of tilesOf(this.tiles, 'hotel')) {
+        const k = `${p.c},${p.r}`
+        if (!this.hotelClass[k]) this.hotelClass[k] = 'business'
+      }
       this.standClass = s.standClass ?? {}
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
@@ -4915,7 +4938,7 @@ export class Game {
     return best
   }
 
-  refundFor(tile: Tile): number {
+  refundFor(tile: Tile, at?: Vec): number {
     if (tile === 'grass') return 0
     if (tile === 'runway') {
       // Blend regional + heavy unit cost so bulldozing either class is fair-ish.
@@ -4926,6 +4949,13 @@ export class Game {
       return Math.round(unit * BULLDOZE_REFUND)
     }
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
+    if (tile === 'hotel' && at) {
+      const cls = this.hotelClass[`${at.c},${at.r}`] ?? 'business'
+      const tool =
+        cls === 'inn' ? 'hotel_inn' : cls === 'resort' ? 'hotel_resort' : 'hotel_biz'
+      const b = BUILDINGS.find((x) => x.tool === tool)
+      return b ? Math.round(b.cost * BULLDOZE_REFUND) : 0
+    }
     const b = BUILDINGS.find((x) => x.tile === tile)
     return b ? Math.round(b.cost * BULLDOZE_REFUND) : 0
   }
@@ -4970,9 +5000,11 @@ export class Game {
         )
       }
     } else {
-      this.cash += this.refundFor(cur)
+      this.cash += this.refundFor(cur, v)
       this.tiles[v.r][v.c] = 'grass'
       delete this.parkTerms[`${v.c},${v.r}`]
+      delete this.hotelClass[`${v.c},${v.r}`]
+      delete this.standClass[`${v.c},${v.r}`]
     }
     this.emit()
   }
@@ -5183,6 +5215,15 @@ export class Game {
         `${building.name} (${this.parkTerm}-term) stamped.`,
         'ok',
       )
+    } else if (building.tile === 'hotel') {
+      const cls: HotelClass =
+        this.tool === 'hotel_inn'
+          ? 'inn'
+          : this.tool === 'hotel_resort'
+            ? 'resort'
+            : 'business'
+      this.hotelClass[`${v.c},${v.r}`] = cls
+      this.pushNews(`${building.name} stamped on the landside.`, 'good')
     } else if (building.tile === 'stand') {
       const cls: StandClass =
         this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'

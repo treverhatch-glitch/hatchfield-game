@@ -1,7 +1,8 @@
 /**
- * Hotel / short+long parking / bus curb / rail station — pax modes + income.
+ * Hotel grades + 4 park versions × short/long / bus curb / rail — pax modes + income.
  */
 import { Game } from '../src/game/sim.ts'
+import { HOTEL_CLASS_INCOME, PARK_INCOME } from '../src/game/catalog.ts'
 
 const issues: string[] = []
 const g = new Game()
@@ -9,24 +10,44 @@ g.beginNew('easy')
 g.buyLand('city')
 g.buildStarterKit()
 g.takeLoan()
-g.cash += 120_000
+g.cash += 200_000
 
 const roadC = 16
-g.tiles[10][roadC - 1] = 'grass'
-g.tool = 'hotel'
-g.placeSingle({ c: roadC - 1, r: 10 })
-if (g.tiles[10][roadC - 1] !== 'hotel') issues.push('hotel not stamped')
+// Three outside hotel grades on road edge
+for (const [tool, r, want] of [
+  ['hotel_inn', 9, 'inn'],
+  ['hotel_biz', 10, 'business'],
+  ['hotel_resort', 11, 'resort'],
+] as const) {
+  g.tiles[r][roadC - 1] = 'grass'
+  g.tool = tool
+  g.placeSingle({ c: roadC - 1, r })
+  if (g.tiles[r][roadC - 1] !== 'hotel') issues.push(`${tool} not stamped`)
+  if (g.hotelClass[`${roadC - 1},${r}`] !== want) {
+    issues.push(`${tool} class want ${want} got ${g.hotelClass[`${roadC - 1},${r}`]}`)
+  }
+}
 
-g.setParkTerm('short')
-g.tool = 'park_s'
-g.tiles[8][roadC + 1] = 'grass'
-g.placeSingle({ c: roadC + 1, r: 8 })
+// Four park versions: S short, L short, G long, U long
+const parkJobs: Array<
+  ['park_s' | 'park_l' | 'park_g' | 'park_u', 'short' | 'long', number]
+> = [
+  ['park_s', 'short', 7],
+  ['park_l', 'short', 8],
+  ['park_g', 'long', 12],
+  ['park_u', 'long', 13],
+]
+for (const [tool, term, r] of parkJobs) {
+  g.setParkTerm(term)
+  g.tool = tool
+  g.tiles[r][roadC + 1] = 'grass'
+  g.placeSingle({ c: roadC + 1, r })
+  if (g.tiles[r][roadC + 1] !== tool) issues.push(`${tool} not stamped`)
+  if (g.parkTerms[`${roadC + 1},${r}`] !== term) {
+    issues.push(`${tool} term want ${term}`)
+  }
+}
 if (!g.hasShortParking()) issues.push('short parking missing')
-
-g.setParkTerm('long')
-g.tool = 'park_g'
-g.tiles[12][roadC + 1] = 'grass'
-g.placeSingle({ c: roadC + 1, r: 12 })
 if (!g.hasLongParking()) issues.push('long parking missing')
 
 g.tool = 'bus'
@@ -49,12 +70,26 @@ g.placeSingle({ c: roadC - 1, r: 14 })
 if (!g.hasRailStation()) issues.push('rail station missing after invest')
 
 const pot = g.landsidePotential()
-if (pot < 1500) issues.push(`landside potential too low ${pot}`)
+const expectHotel =
+  HOTEL_CLASS_INCOME.inn + HOTEL_CLASS_INCOME.business + HOTEL_CLASS_INCOME.resort
+const expectPark =
+  PARK_INCOME.park_s.short +
+  PARK_INCOME.park_l.short +
+  PARK_INCOME.park_g.long +
+  PARK_INCOME.park_u.long
+if (pot < expectHotel + expectPark) {
+  issues.push(`landside potential too low ${pot} (want ≥${expectHotel + expectPark})`)
+}
 g.landsideUses = 0
 const idle = g.landsideIncome()
 g.landsideUses = 50
 const income = g.landsideIncome()
 if (!(income > idle)) issues.push(`usage should lift income ${idle}→${income}`)
+
+// Inside-terminal dayhotel still separate (layover extract)
+g.selectedTile = g.fits[0]?.origin ?? null
+g.buyRoom('dayhotel')
+if (!g.hallOpen().has('dayhotel')) issues.push('dayhotel missing from hall')
 
 const multBare = (() => {
   const t = new Game()
@@ -147,13 +182,6 @@ g.janitorCool = 0
 g.tickJanitors(1)
 if ((g.fits[0].wearBath ?? 0) >= 40) issues.push('janitor did not scrub')
 
-g.selectedTile = g.fits[0]?.origin ?? null
-g.buyRoom('dayhotel')
-const open = g.hallOpen()
-if (!open.has('dayhotel')) {
-  issues.push(`dayhotel not in hall graph (rooms=${JSON.stringify(g.fits[0]?.rooms)})`)
-}
-
 const out = {
   ok: issues.length === 0,
   issues,
@@ -162,6 +190,8 @@ const out = {
   income,
   multBare,
   multFull,
+  hotelClasses: g.hotelClass,
+  parkTerms: g.parkTerms,
   modes: { sawBus, sawRail, sawPark, sawHotel, sawMissThought },
   has: {
     hotel: g.hasHotelBeds(),
@@ -169,6 +199,7 @@ const out = {
     long: g.hasLongParking(),
     bus: g.hasBusCurb(),
     rail: g.hasRailStation(),
+    dayhotel: g.hallOpen().has('dayhotel'),
   },
 }
 console.log(JSON.stringify(out, null, 2))

@@ -3,7 +3,7 @@ import { AIRFRAMES } from '../game/airframes'
 import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
-import type { Tile, Vec } from '../game/types'
+import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
 
 export const CELL = 6.2
 
@@ -319,7 +319,15 @@ export class World {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}:${v}`)
       .join(';')
-    const hash = `${game.tiles.flat().join('')}|${classHash}`
+    const parkHash = Object.entries(game.parkTerms)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(';')
+    const hotelHash = Object.entries(game.hotelClass)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(';')
+    const hash = `${game.tiles.flat().join('')}|${classHash}|${parkHash}|${hotelHash}`
     if (hash === this.tileHash) return
     this.tileHash = hash
     this.tilesGroup.clear()
@@ -363,12 +371,22 @@ export class World {
           }
           continue
         }
-        this.tilesGroup.add(this.building(tile, pos))
+        const key = `${c},${r}`
+        this.tilesGroup.add(
+          this.building(tile, pos, {
+            hotelClass: game.hotelClass[key],
+            parkTerm: game.parkTerms[key],
+          }),
+        )
       }
     }
   }
 
-  building(tile: Tile, pos: THREE.Vector3): THREE.Group {
+  building(
+    tile: Tile,
+    pos: THREE.Vector3,
+    opts: { hotelClass?: HotelClass; parkTerm?: ParkTerm } = {},
+  ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
     if (tile === 'terminal') {
@@ -489,59 +507,14 @@ export class World {
       body.castShadow = true
       g.add(body)
     } else if (tile === 'hotel') {
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.88, 3.6, CELL * 0.78),
-        new THREE.MeshStandardMaterial({ color: '#c4b49a', roughness: 0.55 }),
-      )
-      body.position.y = 1.8
-      body.castShadow = true
-      const roof = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.95, 0.25, CELL * 0.85),
-        new THREE.MeshStandardMaterial({ color: '#5a4030' }),
-      )
-      roof.position.y = 3.7
-      g.add(body, roof)
+      this.addHotelBuilding(g, opts.hotelClass ?? 'business')
     } else if (
       tile === 'park_s' ||
       tile === 'park_l' ||
       tile === 'park_g' ||
       tile === 'park_u'
     ) {
-      const pad = new THREE.Mesh(
-        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
-        new THREE.MeshLambertMaterial({
-          color:
-            tile === 'park_u' ? '#2a3038' : tile === 'park_g' ? '#3a4550' : '#3d4248',
-        }),
-      )
-      pad.rotation.x = -Math.PI / 2
-      pad.position.y = tile === 'park_u' ? 0.02 : 0.04
-      pad.receiveShadow = true
-      g.add(pad)
-      if (tile === 'park_g') {
-        const deck = new THREE.Mesh(
-          new THREE.BoxGeometry(CELL * 0.9, 1.4, CELL * 0.9),
-          new THREE.MeshStandardMaterial({ color: '#6a7480', roughness: 0.7 }),
-        )
-        deck.position.y = 0.9
-        deck.castShadow = true
-        g.add(deck)
-      } else if (tile === 'park_l') {
-        const lamp = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.08, 0.08, 1.8, 6),
-          new THREE.MeshStandardMaterial({ color: '#c9c4b0' }),
-        )
-        lamp.position.set(CELL * 0.3, 0.9, CELL * 0.3)
-        g.add(lamp)
-      } else if (tile === 'park_u') {
-        const ramp = new THREE.Mesh(
-          new THREE.BoxGeometry(CELL * 0.4, 0.35, CELL * 0.7),
-          new THREE.MeshStandardMaterial({ color: '#4a5058' }),
-        )
-        ramp.position.set(0, 0.2, 0)
-        ramp.rotation.x = -0.25
-        g.add(ramp)
-      }
+      this.addParkBuilding(g, tile, opts.parkTerm ?? 'short')
     } else if (tile === 'helipad') {
       const pad = new THREE.Mesh(
         new THREE.CylinderGeometry(CELL * 0.42, CELL * 0.42, 0.12, 24),
@@ -641,6 +614,386 @@ export class World {
       g.add(pad, hall, canopy)
     }
     return g
+  }
+
+  /** Outside hotel grades — real buildings, not flat pads. */
+  addHotelBuilding(g: THREE.Group, cls: HotelClass) {
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.96, 0.18, CELL * 0.96),
+      new THREE.MeshStandardMaterial({ color: '#6a6e76', roughness: 0.8 }),
+    )
+    plinth.position.y = 0.09
+    plinth.receiveShadow = true
+    g.add(plinth)
+
+    if (cls === 'inn') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.82, 2.6, CELL * 0.7),
+        new THREE.MeshStandardMaterial({ color: '#c9b08a', roughness: 0.55 }),
+      )
+      body.position.y = 1.45
+      body.castShadow = true
+      const roof = new THREE.Mesh(
+        new THREE.ConeGeometry(CELL * 0.62, 1.1, 4),
+        new THREE.MeshStandardMaterial({ color: '#6b3a2a', roughness: 0.65 }),
+      )
+      roof.position.y = 3.3
+      roof.rotation.y = Math.PI / 4
+      roof.castShadow = true
+      const awning = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.45, 0.1, CELL * 0.28),
+        new THREE.MeshStandardMaterial({ color: '#2f6f9a' }),
+      )
+      awning.position.set(0, 1.55, CELL * 0.38)
+      const door = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 1.1, 0.08),
+        new THREE.MeshStandardMaterial({ color: '#3a2a1a' }),
+      )
+      door.position.set(0, 0.75, CELL * 0.36)
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.35, 0.28, 0.06),
+        new THREE.MeshStandardMaterial({
+          color: '#c9a227',
+          emissive: '#6a5010',
+          emissiveIntensity: 0.2,
+        }),
+      )
+      sign.position.set(0, 2.35, CELL * 0.37)
+      for (const dx of [-0.9, 0.9]) {
+        const win = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 0.55, 0.06),
+          new THREE.MeshStandardMaterial({
+            color: '#7ec3e8',
+            emissive: '#1a3a55',
+            emissiveIntensity: 0.25,
+            roughness: 0.15,
+          }),
+        )
+        win.position.set(dx, 1.85, CELL * 0.36)
+        g.add(win)
+      }
+      g.add(body, roof, awning, door, sign)
+      return
+    }
+
+    if (cls === 'resort') {
+      const tower = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.72, 7.2, CELL * 0.62),
+        new THREE.MeshStandardMaterial({ color: '#d8e0e8', roughness: 0.35, metalness: 0.15 }),
+      )
+      tower.position.y = 3.7
+      tower.castShadow = true
+      const glass = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.58, 5.8, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: '#5eb8d8',
+          emissive: '#163848',
+          emissiveIntensity: 0.3,
+          roughness: 0.1,
+          metalness: 0.45,
+        }),
+      )
+      glass.position.set(0, 3.4, CELL * 0.32)
+      const wing = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.95, 2.2, CELL * 0.55),
+        new THREE.MeshStandardMaterial({ color: '#b8c4ce', roughness: 0.45 }),
+      )
+      wing.position.set(0, 1.2, -CELL * 0.12)
+      wing.castShadow = true
+      const canopy = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 0.12, CELL * 0.45),
+        new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.3 }),
+      )
+      canopy.position.set(0, 2.4, CELL * 0.4)
+      const crown = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.78, 0.45, CELL * 0.68),
+        new THREE.MeshStandardMaterial({
+          color: '#2f6f9a',
+          emissive: '#1a3a55',
+          emissiveIntensity: 0.15,
+        }),
+      )
+      crown.position.y = 7.5
+      const mast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 1.2, 6),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
+      )
+      mast.position.y = 8.2
+      g.add(tower, glass, wing, canopy, crown, mast)
+      // Window grid on sides
+      for (let floor = 0; floor < 5; floor++) {
+        for (const side of [-1, 1] as const) {
+          const win = new THREE.Mesh(
+            new THREE.BoxGeometry(0.06, 0.45, 0.7),
+            new THREE.MeshStandardMaterial({
+              color: '#7ec3e8',
+              emissive: '#1a3a55',
+              emissiveIntensity: 0.2,
+            }),
+          )
+          win.position.set(side * CELL * 0.37, 2.2 + floor * 1.05, 0)
+          g.add(win)
+        }
+      }
+      return
+    }
+
+    // Business mid-rise
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.86, 4.8, CELL * 0.74),
+      new THREE.MeshStandardMaterial({ color: '#c4b49a', roughness: 0.5 }),
+    )
+    body.position.y = 2.5
+    body.castShadow = true
+    const roof = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.92, 0.28, CELL * 0.8),
+      new THREE.MeshStandardMaterial({ color: '#4a4038' }),
+    )
+    roof.position.y = 5.05
+    const entry = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.5, 1.6, CELL * 0.22),
+      new THREE.MeshStandardMaterial({ color: '#8a9088', roughness: 0.4 }),
+    )
+    entry.position.set(0, 0.9, CELL * 0.42)
+    entry.castShadow = true
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.62, 0.1, CELL * 0.35),
+      new THREE.MeshStandardMaterial({ color: '#2f6f9a' }),
+    )
+    canopy.position.set(0, 1.85, CELL * 0.48)
+    g.add(body, roof, entry, canopy)
+    for (let floor = 0; floor < 3; floor++) {
+      for (const dx of [-1.15, 0, 1.15]) {
+        const win = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.55, 0.06),
+          new THREE.MeshStandardMaterial({
+            color: '#7ec3e8',
+            emissive: '#1a3a55',
+            emissiveIntensity: 0.22,
+            roughness: 0.12,
+          }),
+        )
+        win.position.set(dx, 2.4 + floor * 0.95, CELL * 0.38)
+        g.add(win)
+      }
+    }
+  }
+
+  /** Four park versions × short/long term paint — real buildings / structures. */
+  addParkBuilding(
+    g: THREE.Group,
+    kind: 'park_s' | 'park_l' | 'park_g' | 'park_u',
+    term: ParkTerm,
+  ) {
+    const accent = term === 'short' ? '#3a8fd4' : '#d4782a'
+    const pad = new THREE.Mesh(
+      new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+      new THREE.MeshLambertMaterial({
+        color: kind === 'park_u' ? '#2a3038' : kind === 'park_g' ? '#3a4550' : '#3d4248',
+      }),
+    )
+    pad.rotation.x = -Math.PI / 2
+    pad.position.y = 0.03
+    pad.receiveShadow = true
+    g.add(pad)
+
+    // Stall stripes on surface lots
+    if (kind === 'park_s' || kind === 'park_l') {
+      for (let i = 0; i < (kind === 'park_l' ? 5 : 3); i++) {
+        const stripe = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.08, CELL * 0.55),
+          new THREE.MeshLambertMaterial({ color: '#e8eef4' }),
+        )
+        stripe.rotation.x = -Math.PI / 2
+        stripe.position.set(-CELL * 0.28 + i * (kind === 'park_l' ? 0.55 : 0.7), 0.04, 0.15)
+        g.add(stripe)
+      }
+    }
+
+    if (kind === 'park_s') {
+      // Small lot — ticket booth + boom arm
+      const booth = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 1.5, 1.1),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4', roughness: 0.45 }),
+      )
+      booth.position.set(-CELL * 0.28, 0.85, -CELL * 0.28)
+      booth.castShadow = true
+      const boothRoof = new THREE.Mesh(
+        new THREE.BoxGeometry(1.35, 0.15, 1.35),
+        new THREE.MeshStandardMaterial({ color: accent }),
+      )
+      boothRoof.position.set(-CELL * 0.28, 1.7, -CELL * 0.28)
+      const window = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.45, 0.06),
+        new THREE.MeshStandardMaterial({
+          color: '#7ec3e8',
+          emissive: '#1a3a55',
+          emissiveIntensity: 0.2,
+        }),
+      )
+      window.position.set(-CELL * 0.28, 1.05, -CELL * 0.28 + 0.56)
+      const boom = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 0.08, 0.08),
+        new THREE.MeshStandardMaterial({ color: '#e8c44a' }),
+      )
+      boom.position.set(CELL * 0.05, 0.95, -CELL * 0.28)
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 1.0, 6),
+        new THREE.MeshStandardMaterial({ color: '#c9c4b0' }),
+      )
+      pole.position.set(-CELL * 0.05, 0.55, -CELL * 0.28)
+      g.add(booth, boothRoof, window, boom, pole)
+      return
+    }
+
+    if (kind === 'park_l') {
+      // Large lot — entry canopy building + dual lamps
+      const office = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 2.2, CELL * 0.4),
+        new THREE.MeshStandardMaterial({ color: '#b8c0c8', roughness: 0.5 }),
+      )
+      office.position.set(-CELL * 0.2, 1.2, -CELL * 0.28)
+      office.castShadow = true
+      const canopy = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.9, 0.14, CELL * 0.55),
+        new THREE.MeshStandardMaterial({ color: accent, metalness: 0.25 }),
+      )
+      canopy.position.set(0.2, 2.45, -CELL * 0.1)
+      canopy.castShadow = true
+      const pillarL = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.12, 2.3, 8),
+        new THREE.MeshStandardMaterial({ color: '#8a9098' }),
+      )
+      pillarL.position.set(-CELL * 0.25, 1.15, CELL * 0.12)
+      const pillarR = pillarL.clone()
+      pillarR.position.set(CELL * 0.35, 1.15, CELL * 0.12)
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.4, 0.35, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: accent,
+          emissive: accent,
+          emissiveIntensity: 0.15,
+        }),
+      )
+      sign.position.set(-CELL * 0.2, 2.0, -CELL * 0.08)
+      for (const [x, z] of [
+        [CELL * 0.32, CELL * 0.32],
+        [-CELL * 0.32, CELL * 0.32],
+      ] as const) {
+        const lamp = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.07, 0.07, 2.4, 6),
+          new THREE.MeshStandardMaterial({ color: '#c9c4b0' }),
+        )
+        lamp.position.set(x, 1.2, z)
+        const head = new THREE.Mesh(
+          new THREE.BoxGeometry(0.45, 0.12, 0.25),
+          new THREE.MeshStandardMaterial({
+            color: '#f0f4a8',
+            emissive: '#a0a040',
+            emissiveIntensity: 0.35,
+          }),
+        )
+        head.position.set(x, 2.45, z)
+        g.add(lamp, head)
+      }
+      g.add(office, canopy, pillarL, pillarR, sign)
+      return
+    }
+
+    if (kind === 'park_g') {
+      // Multi-level parking garage building
+      const shell = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.92, 4.6, CELL * 0.92),
+        new THREE.MeshStandardMaterial({ color: '#7a8490', roughness: 0.65 }),
+      )
+      shell.position.y = 2.4
+      shell.castShadow = true
+      shell.receiveShadow = true
+      g.add(shell)
+      for (let floor = 0; floor < 4; floor++) {
+        const deck = new THREE.Mesh(
+          new THREE.BoxGeometry(CELL * 0.94, 0.16, CELL * 0.94),
+          new THREE.MeshStandardMaterial({ color: '#5a646e' }),
+        )
+        deck.position.y = 0.9 + floor * 1.15
+        g.add(deck)
+        // Open parking bays on front face
+        for (const dx of [-1.2, 0, 1.2]) {
+          const bay = new THREE.Mesh(
+            new THREE.BoxGeometry(0.95, 0.75, 0.08),
+            new THREE.MeshStandardMaterial({
+              color: '#1a2028',
+              roughness: 0.9,
+            }),
+          )
+          bay.position.set(dx, 1.35 + floor * 1.15, CELL * 0.47)
+          g.add(bay)
+        }
+      }
+      const ramp = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.35, 0.2, CELL * 0.85),
+        new THREE.MeshStandardMaterial({ color: '#4a5058' }),
+      )
+      ramp.position.set(CELL * 0.28, 0.55, 0)
+      ramp.rotation.x = -0.35
+      const badge = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.5, 0.4, 0.1),
+        new THREE.MeshStandardMaterial({
+          color: accent,
+          emissive: accent,
+          emissiveIntensity: 0.2,
+        }),
+      )
+      badge.position.set(0, 5.0, CELL * 0.48)
+      const parapet = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.96, 0.35, CELL * 0.96),
+        new THREE.MeshStandardMaterial({ color: '#6a7480' }),
+      )
+      parapet.position.y = 4.85
+      g.add(ramp, badge, parapet)
+      return
+    }
+
+    // Underground — portal building + ramp into ground
+    const portal = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.7, 2.8, CELL * 0.45),
+      new THREE.MeshStandardMaterial({ color: '#8a949e', roughness: 0.45 }),
+    )
+    portal.position.set(0, 1.5, -CELL * 0.2)
+    portal.castShadow = true
+    const atrium = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.5, 1.6, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: '#5eb8d8',
+        emissive: '#163848',
+        emissiveIntensity: 0.25,
+        roughness: 0.12,
+        metalness: 0.4,
+      }),
+    )
+    atrium.position.set(0, 1.7, -CELL * 0.2 + 0.24)
+    const mouth = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.55, 1.4, CELL * 0.5),
+      new THREE.MeshStandardMaterial({ color: '#1a2028', roughness: 0.9 }),
+    )
+    mouth.position.set(0, 0.75, CELL * 0.15)
+    const ramp = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.5, 0.18, CELL * 0.7),
+      new THREE.MeshStandardMaterial({ color: '#3a4048' }),
+    )
+    ramp.position.set(0, 0.25, CELL * 0.2)
+    ramp.rotation.x = 0.4
+    const roof = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.8, 0.2, CELL * 0.55),
+      new THREE.MeshStandardMaterial({ color: accent }),
+    )
+    roof.position.set(0, 3.0, -CELL * 0.2)
+    const vent = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.25, 0.3, 0.7, 8),
+      new THREE.MeshStandardMaterial({ color: '#5a6068' }),
+    )
+    vent.position.set(CELL * 0.28, 0.4, CELL * 0.28)
+    g.add(portal, atrium, mouth, ramp, roof, vent)
   }
 
   makeJet(color: string, stripe: string): THREE.Group {

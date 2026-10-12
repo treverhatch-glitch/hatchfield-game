@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v23'
+export const SAVE_KEY = 'apron-save-v24'
 
 export type Tile =
   | 'grass'
@@ -38,6 +38,8 @@ export type ArriveMode =
 export type RunwayClass = 'short' | 'regional' | 'heavy'
 /** Car park term — set when stamping a park tile. */
 export type ParkTerm = 'short' | 'long'
+/** Outside hotel grade — inn / business / resort. */
+export type HotelClass = 'inn' | 'business' | 'resort'
 /** Stand size class — S regional / M narrow / L wide+freight+mil. */
 export type StandClass = 'S' | 'M' | 'L'
 
@@ -62,7 +64,9 @@ export type Tool =
   | 'road'
   | 'tower'
   | 'hangar'
-  | 'hotel'
+  | 'hotel_inn'
+  | 'hotel_biz'
+  | 'hotel_resort'
   | 'park_s'
   | 'park_l'
   | 'park_g'
@@ -610,6 +614,8 @@ export interface GameSnapshot {
   carParkLong?: boolean
   /** Park tile key "c,r" → short/long term. */
   parkTerms?: Record<string, ParkTerm>
+  /** Hotel tile key "c,r" → inn / business / resort. */
+  hotelClass?: Record<string, HotelClass>
   /** Stand tile key "c,r" → S/M/L class. */
   standClass?: Record<string, StandClass>
   janitors?: number

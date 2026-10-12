@@ -98,7 +98,12 @@ export const CARPARK_LONG_COST = 16_500
 export const HOTEL_INCOME = [0, 900, 1600] as const
 export const CARPARK_SHORT_INCOME = 420
 export const CARPARK_LONG_INCOME = 680
-export const HOTEL_TILE_COST = 24_000
+/** Outside hotel stamps — three grades on the apron landside. */
+export const HOTEL_INN_COST = 18_000
+export const HOTEL_BIZ_COST = 28_000
+export const HOTEL_RESORT_COST = 42_000
+/** @deprecated use HOTEL_INN_COST — kept for meta wing buy copy */
+export const HOTEL_TILE_COST = HOTEL_BIZ_COST
 export const PARK_S_COST = 8_500
 export const PARK_L_COST = 14_000
 export const PARK_G_COST = 22_000
@@ -112,6 +117,12 @@ export const PARK_INCOME: Record<
   park_l: { short: 520, long: 780 },
   park_g: { short: 900, long: 1400 },
   park_u: { short: 700, long: 1100 },
+}
+/** Base income / 30s by outside hotel grade (before usage). */
+export const HOTEL_CLASS_INCOME: Record<'inn' | 'business' | 'resort', number> = {
+  inn: 520,
+  business: 900,
+  resort: 1450,
 }
 export const HOTEL_TILE_INCOME = 850
 /** Landside curb — city buses drop departing pax. */
@@ -603,39 +614,53 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Medevac and executive choppers land here. Needs fire coverage nearby in spirit.',
   },
   {
-    tool: 'hotel',
+    tool: 'hotel_inn',
     tile: 'hotel',
-    name: 'Airport hotel',
-    cost: HOTEL_TILE_COST,
-    blurb: 'Landside beds outside the hall. Overnight pax + income. Stamp on grass near road.',
+    name: 'Airport inn',
+    cost: HOTEL_INN_COST,
+    blurb: 'Budget landside inn — outside the terminal. Overnight beds + modest income.',
+  },
+  {
+    tool: 'hotel_biz',
+    tile: 'hotel',
+    name: 'Business hotel',
+    cost: HOTEL_BIZ_COST,
+    blurb: 'Mid-rise landside hotel — business pax overnight. Stamp on grass near road.',
+  },
+  {
+    tool: 'hotel_resort',
+    tile: 'hotel',
+    name: 'Airport resort',
+    cost: HOTEL_RESORT_COST,
+    blurb: 'Premium landside resort tower — luxury overnight + high landside take.',
   },
   {
     tool: 'park_s',
     tile: 'park_s',
     name: 'Small lot',
     cost: PARK_S_COST,
-    blurb: 'Compact surface lot. Toggle Short/Long term before stamping.',
+    blurb: 'Surface lot + booth. Toggle Short/Long term before stamping.',
   },
   {
     tool: 'park_l',
     tile: 'park_l',
     name: 'Large lot',
     cost: PARK_L_COST,
-    blurb: 'Big surface lot. Toggle Short/Long term before stamping.',
+    blurb: 'Big surface lot + entry canopy. Toggle Short/Long term.',
   },
   {
     tool: 'park_g',
     tile: 'park_g',
     name: 'Parking garage',
     cost: PARK_G_COST,
-    blurb: 'Multi-level garage. Toggle Short/Long term before stamping.',
+    blurb: 'Multi-level parking garage building. Toggle Short/Long term.',
   },
   {
     tool: 'park_u',
     tile: 'park_u',
     name: 'Underground park',
     cost: PARK_U_COST,
-    blurb: 'Underground deck. Toggle Short/Long term before stamping.',
+    blurb: 'Underground parking with portal building. Toggle Short/Long term.',
   },
   {
     tool: 'bus',
@@ -675,7 +700,8 @@ export const ROOMS: RoomDef[] = [
     id: 'dayhotel',
     name: 'Airside day rooms',
     cost: 14_000,
-    blurb: 'Inside-terminal hotel rooms — layover transfers pay to nap and spend.',
+    blurb:
+      'Inside-terminal hotel — keep layover pax airside for max spend (nap → food → shop → spa).',
   },
   {
     id: 'spa',
@@ -730,7 +756,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   road: 'Road',
   tower: 'Tower',
   hangar: 'Hangar',
-  hotel: 'Hotel',
+  hotel_inn: 'Inn',
+  hotel_biz: 'Biz hotel',
+  hotel_resort: 'Resort',
   park_s: 'Lot S',
   park_l: 'Lot L',
   park_g: 'Garage',
@@ -739,6 +767,10 @@ export const TOOL_LABEL: Record<Tool, string> = {
   bus: 'Bus',
   rail: 'Rail',
   clear: 'Clear',
+}
+
+export function hotelClassLabel(c: 'inn' | 'business' | 'resort'): string {
+  return c === 'inn' ? 'Inn' : c === 'resort' ? 'Resort' : 'Business hotel'
 }
 
 export function standClassLabel(c: StandClass): string {
@@ -977,14 +1009,14 @@ export const FIELD_TASK_DEFS: FieldTaskDef[] = [
   {
     kind: 'hotel',
     title: 'Landside hotel',
-    blurb: 'Stamp a hotel near the road for overnight pax.',
+    blurb: 'Stamp an inn, business hotel, or resort near the road for overnight pax.',
     bonus: 7000,
     personas: ['luxury', 'business'],
   },
   {
     kind: 'park',
     title: 'Car park',
-    blurb: 'Stamp a short or long car park on the landside grass.',
+    blurb: 'Stamp a short or long car park (lot / garage / underground) on the landside grass.',
     bonus: 4800,
     personas: ['budget', 'business'],
   },
