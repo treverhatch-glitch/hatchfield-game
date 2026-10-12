@@ -807,3 +807,102 @@ export const GA_PARK_FEE_MAX = 6500
 export const GA_PARK_STAY_MIN = 55
 export const GA_PARK_STAY_MAX = 110
 export const GA_OVERSTAY_FINE = 5000
+
+/** Airline field-task asks — clock + bonus / fail fine. */
+export const FIELD_TASK_DEADLINE = 95
+export const FIELD_TASK_COOL = 52
+export const FIELD_TASK_FAIL_FINE = 1600
+export const FIELD_TASK_HEAT_OK = 4.5
+export const FIELD_TASK_HEAT_FAIL = -5.5
+
+export type FieldTaskDef = {
+  kind: import('./types').FieldTaskKind
+  title: string
+  blurb: string
+  bonus: number
+  /** Prefer for these personas when available. */
+  personas?: import('./types').AirlinePersona[]
+}
+
+export const FIELD_TASK_DEFS: FieldTaskDef[] = [
+  {
+    kind: 'bathroom',
+    title: 'Add restrooms',
+    blurb: 'Furnish a WC in the hall — angry bladders cool heat.',
+    bonus: 4200,
+  },
+  {
+    kind: 'food',
+    title: 'Open food',
+    blurb: 'Snack bar tile or hall food room so pax can eat.',
+    bonus: 4500,
+  },
+  {
+    kind: 'fire',
+    title: 'ARFF cover',
+    blurb: 'Stamp a fire station on the apron.',
+    bonus: 4800,
+  },
+  {
+    kind: 'desk',
+    title: 'Staff a desk',
+    blurb: 'Hire a desk agent so check-in / gate stay manned.',
+    bonus: 3800,
+  },
+  {
+    kind: 'police',
+    title: 'Police post',
+    blurb: 'Stamp police on the field — security alerts get softer.',
+    bonus: 5200,
+    personas: ['business', 'luxury'],
+  },
+  {
+    kind: 'hangar',
+    title: 'Hangar bay',
+    blurb: 'Stamp a hangar for overnight checks / line MX.',
+    bonus: 6000,
+    personas: ['cargo_night', 'military_gov', 'business'],
+  },
+  {
+    kind: 'janitor',
+    title: 'Hire a janitor',
+    blurb: 'Hall wear piles up without a scrub crew.',
+    bonus: 3600,
+    personas: ['luxury', 'budget'],
+  },
+  {
+    kind: 'cargo',
+    title: 'Cargo shed',
+    blurb: 'Stamp a cargo shed so freighters can bank properly.',
+    bonus: 5500,
+    personas: ['cargo_night'],
+  },
+  {
+    kind: 'helipad',
+    title: 'Helipad',
+    blurb: 'Stamp a pad — medevac / exec choppers need somewhere to sit.',
+    bonus: 5000,
+    personas: ['military_gov', 'business'],
+  },
+  {
+    kind: 'hotel',
+    title: 'Landside hotel',
+    blurb: 'Stamp a hotel near the road for overnight pax.',
+    bonus: 7000,
+    personas: ['luxury', 'business'],
+  },
+  {
+    kind: 'park',
+    title: 'Car park',
+    blurb: 'Stamp a short or long car park on the landside grass.',
+    bonus: 4800,
+    personas: ['budget', 'business'],
+  },
+  {
+    kind: 'desk_extra',
+    title: 'Second desk body',
+    blurb: 'Hire another desk agent — empty counters miss gates.',
+    bonus: 4000,
+    personas: ['business', 'luxury'],
+  },
+]

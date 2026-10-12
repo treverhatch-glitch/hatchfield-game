@@ -22,6 +22,12 @@ import {
   DIVERT_FEE_MAX,
   DIVERT_FEE_MIN,
   EMERGENCY_REFUSE_FINE,
+  FIELD_TASK_COOL,
+  FIELD_TASK_DEADLINE,
+  FIELD_TASK_DEFS,
+  FIELD_TASK_FAIL_FINE,
+  FIELD_TASK_HEAT_FAIL,
+  FIELD_TASK_HEAT_OK,
   GA_OVERSTAY_FINE,
   GA_PARK_FEE_MAX,
   GA_PARK_FEE_MIN,
@@ -148,6 +154,8 @@ import type {
   ContractOffer,
   Difficulty,
   EmergencyKind,
+  FieldTask,
+  FieldTaskKind,
   Flight,
   FuelBrand,
   GameSnapshot,
@@ -352,6 +360,11 @@ export class Game {
   /** First-session coach card dismissed (or auto-cleared after first takeoff). */
   coachDismissed = false
   private firstTakeoffNoted = false
+  /** Active airline field ask (CEO-style task clock). */
+  fieldTask: FieldTask | null = null
+  fieldTaskCool = 28
+  /** Night curfew news / slip rate-limit. */
+  nightCurfewCool = 0
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -466,6 +479,9 @@ export class Game {
     this.mechanicCool = 0
     this.coachDismissed = false
     this.firstTakeoffNoted = false
+    this.fieldTask = null
+    this.fieldTaskCool = 28
+    this.nightCurfewCool = 0
   }
 
   /** Morning checklist — hides once dismissed or after the first takeoff. */
@@ -515,6 +531,118 @@ export class Game {
   dismissCoach() {
     this.coachDismissed = true
     this.emit()
+  }
+
+  fieldTaskMet(kind: FieldTaskKind): boolean {
+    const fit = this.activeHall()
+    const rooms = fit?.rooms
+    switch (kind) {
+      case 'bathroom':
+        return (rooms?.bathroom ?? 0) > 0
+      case 'food':
+        return (rooms?.food ?? 0) > 0 || tilesOf(this.tiles, 'snack').length > 0
+      case 'fire':
+        return tilesOf(this.tiles, 'fire').length > 0
+      case 'desk':
+        return this.deskStaff >= 1
+      case 'police':
+        return tilesOf(this.tiles, 'police').length > 0
+      case 'hangar':
+        return tilesOf(this.tiles, 'hangar').length > 0
+      case 'janitor':
+        return this.janitors >= 1
+      case 'cargo':
+        return tilesOf(this.tiles, 'cargo').length > 0
+      case 'helipad':
+        return tilesOf(this.tiles, 'helipad').length > 0
+      case 'hotel':
+        return this.hotelLevel > 0 || tilesOf(this.tiles, 'hotel').length > 0
+      case 'park':
+        return (
+          this.carParkShort ||
+          this.carParkLong ||
+          tilesOf(this.tiles, 'park_s').length > 0 ||
+          tilesOf(this.tiles, 'park_l').length > 0 ||
+          tilesOf(this.tiles, 'park_g').length > 0 ||
+          tilesOf(this.tiles, 'park_u').length > 0
+        )
+      case 'desk_extra':
+        return this.deskStaff >= 2
+      default:
+        return false
+    }
+  }
+
+  considerFieldTasks() {
+    if (this.fieldTask || this.fieldTaskCool > 0) return
+    if (this.signed.length < 1 || this.flightsDone < 1) return
+    const pool = this.signed.filter((id) => !this.isBanned(id))
+    if (!pool.length) return
+    const airlineId = pick(pool)
+    const a = this.airline(airlineId)
+    const open = FIELD_TASK_DEFS.filter((d) => !this.fieldTaskMet(d.kind))
+    if (!open.length) return
+    const preferred = open.filter((d) => d.personas?.includes(a.persona))
+    const pickDef = preferred.length && Math.random() < 0.7 ? pick(preferred) : pick(open)
+    this.fieldTask = {
+      id: uid('task'),
+      airline: airlineId,
+      kind: pickDef.kind,
+      title: pickDef.title,
+      blurb: pickDef.blurb,
+      bonus: pickDef.bonus,
+      deadline: this.clock + FIELD_TASK_DEADLINE,
+      age: 0,
+    }
+    this.pushNews(
+      `${a.name} field ask: ${pickDef.title} — ${Math.round(FIELD_TASK_DEADLINE)}s on the clock.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  tickFieldTask(dt: number) {
+    this.fieldTaskCool = Math.max(0, this.fieldTaskCool - dt)
+    if (!this.fieldTask) {
+      this.considerFieldTasks()
+      return
+    }
+    const t = this.fieldTask
+    t.age += dt
+    if (this.fieldTaskMet(t.kind)) {
+      const a = this.airline(t.airline)
+      this.cash += t.bonus
+      this.revenue += t.bonus
+      this.adjustHeat(t.airline, FIELD_TASK_HEAT_OK)
+      this.reputation = Math.min(100, this.reputation + 2)
+      this.pushNews(
+        `${a.name} ask done — ${t.title}. Bonus ${moneyLeft(t.bonus)}.`,
+        'good',
+      )
+      this.fieldTask = null
+      this.fieldTaskCool = FIELD_TASK_COOL
+      this.emit()
+      return
+    }
+    if (this.clock >= t.deadline) {
+      const a = this.airline(t.airline)
+      this.charge(FIELD_TASK_FAIL_FINE)
+      this.adjustHeat(t.airline, FIELD_TASK_HEAT_FAIL)
+      this.reputation = Math.max(0, this.reputation - 1.5)
+      this.pushNews(
+        `${a.name} ask failed — ${t.title}. Fine ${moneyLeft(FIELD_TASK_FAIL_FINE)}.`,
+        'bad',
+      )
+      this.fieldTask = null
+      this.fieldTaskCool = FIELD_TASK_COOL + 12
+      this.emit()
+    }
+  }
+
+  /** Seconds left on the active field ask, if any. */
+  fieldTaskLeft(): number {
+    if (!this.fieldTask) return 0
+    return Math.max(0, this.fieldTask.deadline - this.clock)
   }
 
   noteCraft(kind: AircraftKind) {
@@ -1697,6 +1825,7 @@ export class Game {
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
+      fieldTask: this.fieldTask,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -1770,6 +1899,9 @@ export class Game {
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
       this.firstTakeoffNoted = this.flightsDone >= 1
+      this.fieldTask = s.fieldTask ?? null
+      this.fieldTaskCool = this.fieldTask ? 0 : 18
+      this.nightCurfewCool = 0
       this.hubOffer = null
       this.hubOfferCool = 40
       this.layover = s.layover ?? null
@@ -2933,6 +3065,29 @@ export class Game {
 
   tickSchedule(dt: number) {
     this.schedulePlanCool = Math.max(0, this.schedulePlanCool - dt)
+    this.nightCurfewCool = Math.max(0, this.nightCurfewCool - dt)
+    // Soft night curfew — pax slip after dark until Night bank is researched.
+    if (
+      this.isNight() &&
+      !this.hasResearch('night_bank') &&
+      this.nightCurfewCool <= 0 &&
+      Math.random() < dt * 0.055
+    ) {
+      const soon = this.openSchedule().find((s) => {
+        if (s.eta - this.clock > 40) return false
+        if (s.status !== 'scheduled' && s.status !== 'delayed') return false
+        return this.airline(s.airline).kind === 'pax'
+      })
+      if (soon) {
+        this.delaySlot(soon, 14 + Math.random() * 12, 'Night curfew')
+        this.nightCurfewCool = 28
+        this.adjustHeat(soon.airline, -0.35)
+        this.pushNews(
+          `${soon.flightNo} held for night curfew — research Night bank to open the bank after dark.`,
+          'bad',
+        )
+      }
+    }
     // Storm / fog at destination or on field — random inbound delay (de-ice cuts storm odds).
     const stormOdds = this.hasResearch('deice') ? dt * 0.018 : dt * 0.045
     const fogOdds = dt * 0.02
@@ -6264,6 +6419,7 @@ export class Game {
     this.mxOfferCool = Math.max(0, this.mxOfferCool - step)
     if (this.mxOffer) this.mxOffer.age += step
     this.considerMxOffers()
+    this.tickFieldTask(step)
     this.tickLayover(step)
     this.tickHub(step)
     this.tickParking(step)
