@@ -55,6 +55,14 @@ export const LOAN_INTEREST = 900
 export const PARCEL_COST = 28_000
 export const RAIL_CITY_COST = 22_000
 export const STARTER_KIT_COST = 98_000
+/** Cash + reputation needed before Wall Street will list you. */
+export const IPO_MIN_CASH = 40_000
+export const IPO_MIN_REP = 55
+export const IPO_MIN_FLIGHTS = 3
+export const IPO_SHARES = 1000
+/** Founder keeps this many shares after IPO; rest float on the market. */
+export const IPO_FOUNDER_SHARES = 550
+export const IPO_LISTING_FEE = 12_000
 export const MIN_RUNWAY = 6
 export const BAG_DROP_PAY = 180
 export const LOADS_PER_BUY = 4

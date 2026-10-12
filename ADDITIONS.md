@@ -41,6 +41,7 @@ We copied the *spirit*:
 - **Airline minRep gates** — Summit / EXFED ignore low reputation.
 - **Info desk** in the hall graph (RCT “park map” longer lookahead).
 - **Visible multi-stop passenger itineraries** on the apron: arrivals plane→bags→food/shop→road exit; departures road→hall→gate→plane. Hall guests chain gate→claim→exit / entrance→check-in→security→gate.
+- **IPO / HATCH ticker** — list the airport, buy/sell shares, fair-value drift, market missions, security breaches tank the stock when public.
 
 ## Still later (on your list, not finished)
 
