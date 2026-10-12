@@ -5540,8 +5540,13 @@ export class Game {
     }
     if (n.stand && !this.freeStands().length) return 'no free stand'
     if (n.fire && !tilesOf(this.tiles, 'fire').length) return 'no ARFF / fire station'
-    if (n.fuel && !tilesOf(this.tiles, 'fuel').length) return 'no fuel farm'
+    if (n.fuel) {
+      if (!tilesOf(this.tiles, 'fuel').length) return 'no fuel farm'
+      if (!this.fuelBrand) return 'no fuel contract'
+      if (this.fuelLoads < 1) return 'fuel farm empty'
+    }
     if (n.hangar && !tilesOf(this.tiles, 'hangar').length) return 'no hangar'
+    if (n.hangar && this.mechanics < 1) return 'no mechanics for line MX'
     if (this.groundBusy() && !this.freeStands().length) return 'pavement jammed'
     return null
   }
@@ -5654,19 +5659,30 @@ export class Game {
     return true
   }
 
-  /** Firefighter tanker / tanker+MX — quick-turn special landing. */
+  /** Pick CL-415 / AT-802 when the strip fits; fall back to medevac metal. */
+  private pickAirtankerFrame() {
+    const rw = this.longestRunway()
+    const pool = [AIRFRAMES.cl415, AIRFRAMES.at802, AIRFRAMES.c130].filter(
+      (a) => a && rw >= a.minRunway,
+    )
+    if (pool.length) return pick(pool)
+    return (
+      pickAirframe('air_ambulance', rw, this.researchUnlocked) ??
+      AIRFRAMES.at802 ??
+      AIRFRAMES.citation
+    )
+  }
+
+  /** Firefighting plane — refuel-only or refuel + hangar MX. */
   private spawnEmergencyTanker(mx: boolean): boolean {
     if (this.groundBusy() && !this.assignStand()) return false
     const stand = this.assignStand()
     const route = stand ? this.landingRoute(stand) : null
     if (!stand || !route) return false
-    const af =
-      pickAirframe('air_ambulance', this.longestRunway(), this.researchUnlocked) ??
-      AIRFRAMES.citation ??
-      AIRFRAMES.pc12
+    const af = this.pickAirtankerFrame()
     if (!af) return false
     this.flightSeq += 1
-    const call = mx ? `TNKMX${this.flightSeq}` : `TNKR${this.flightSeq}`
+    const call = mx ? `ATMX${this.flightSeq}` : `TANK${this.flightSeq}`
     const start = route[0]
     const f: Flight = {
       id: uid('tnk'),
@@ -5711,15 +5727,16 @@ export class Game {
     this.noteCraft('air_ambulance')
     this.selectedFlight = this.selectedFlight ?? f.id
     this.runwayCondition = Math.min(100, this.runwayCondition + (mx ? 5 : 3))
-    this.fireIncidentCool = Math.max(this.fireIncidentCool, mx ? 55 : 40)
+    this.fireIncidentCool = Math.max(this.fireIncidentCool, mx ? 60 : 45)
+    // Hot-turn bonus on accept — bowser pay lands when the truck finishes.
     if (mx && this.mechanics > 0 && tilesOf(this.tiles, 'hangar').length) {
-      const mxPay = 900 + this.mechanics * 180
-      this.earn(mxPay, `${call} tanker line MX`)
+      const mxPay = 1200 + this.mechanics * 220
+      this.earn(mxPay, `${call} airtanker line MX`)
     }
     this.pushNews(
       mx
-        ? `${call} tanker + MX inbound → ${this.gateLabel(stand)}. Hangar clearing a bay.`
-        : `${call} firefighter tanker inbound → ${this.gateLabel(stand)}.`,
+        ? `${call} · ${af.name} inbound for refuel + MX → ${this.gateLabel(stand)}.`
+        : `${call} · ${af.name} firefighting plane inbound for refuel only → ${this.gateLabel(stand)}.`,
       'ok',
     )
     return true
@@ -5738,23 +5755,32 @@ export class Game {
 
     const stormy = this.weather === 'storm' || this.weather === 'fog'
     const storm = this.weather === 'storm'
+    const dry = this.weather === 'clear' // wildfire-season feel — airtankers thirsty
     const fireThin = this.budgets.fire < 45
-    // Storms stack asks; clear days still roll a thin random chance.
+    const hasFuel =
+      tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads > 0
+    const hasHangar = tilesOf(this.tiles, 'hangar').length > 0
+    // Storms stack divert asks; dry clear days stack firefighting planes.
     this.emergencyCool = stormy
       ? 32 + Math.random() * 28
-      : 55 + Math.random() * 50
+      : dry
+        ? 40 + Math.random() * 35
+        : 55 + Math.random() * 50
 
     const roll = Math.random()
     const pDivert =
       (storm ? 0.42 : this.weather === 'fog' ? 0.38 : 0.06) +
       (this.signed.length ? 0 : -1)
+    // Firefighting planes: dry clear + storms (lightning starts) + thin ARFF.
     const pTanker =
-      (storm ? 0.28 : fireThin ? 0.22 : 0.05) +
-      (tilesOf(this.tiles, 'fire').length ? 0 : -0.15)
+      (dry ? 0.32 : storm ? 0.24 : fireThin ? 0.18 : 0.05) +
+      (hasFuel ? 0.08 : -0.12) +
+      (tilesOf(this.tiles, 'fire').length ? 0 : -0.1)
     const pTankerMx =
-      (storm ? 0.18 : 0.04) +
-      (tilesOf(this.tiles, 'hangar').length ? 0.08 : -0.08) +
-      (fireThin ? 0.06 : 0)
+      (dry ? 0.2 : storm ? 0.14 : 0.04) +
+      (hasHangar ? 0.1 : -0.12) +
+      (hasFuel ? 0.06 : -0.1) +
+      (fireThin ? 0.05 : 0)
 
     let kind: EmergencyKind | null = null
     // Weighted pick among kinds that rolled; weather can stack multiple hits.
@@ -5766,11 +5792,11 @@ export class Game {
     if (roll < pTankerMx + 0.08 && pTankerMx > 0) {
       hits.push({ k: 'tanker_mx', w: Math.max(0.01, pTankerMx) })
     }
-    // Pure random spark — even calm days get occasional mutual-aid drama.
-    if (!hits.length && Math.random() < (stormy ? 0.35 : 0.08)) {
+    // Pure random spark — even calm days get occasional firefighting traffic.
+    if (!hits.length && Math.random() < (stormy || dry ? 0.35 : 0.08)) {
       const pool: EmergencyKind[] = ['tanker']
       if (this.signed.some((id) => !this.isBanned(id))) pool.push('divert')
-      if (tilesOf(this.tiles, 'hangar').length) pool.push('tanker_mx')
+      if (hasHangar) pool.push('tanker_mx')
       kind = pick(pool)
     } else if (hits.length) {
       const sum = hits.reduce((s, h) => s + h.w, 0)
@@ -5786,7 +5812,7 @@ export class Game {
     }
     if (!kind) return
 
-    const deadline = storm ? 16 : stormy ? 18 : 22
+    const deadline = storm ? 16 : stormy || dry ? 18 : 22
     if (kind === 'divert') {
       const pool = this.signed.filter((id) => !this.isBanned(id))
       const airline = pool.length ? pick(pool) : null
@@ -5822,8 +5848,9 @@ export class Game {
       this.pendingEmergency = {
         id: uid('emg'),
         kind: 'tanker_mx',
-        blurb:
-          'Mutual-aid tanker needs a pad, ARFF handoff, fuel top-off, and a hangar bay for line MX. Host or the region talks.',
+        blurb: dry
+          ? 'Firefighting plane off the fire line — needs Jet-A top-off AND a hangar bay for line MX. Refuel + maintenance ask.'
+          : 'Aerial tanker wants a quick turn: refuel at the farm, then hangar MX before the next drop. Host or the region talks.',
         fee: TANKER_MX_FEE,
         age: 0,
         deadline: deadline + 2,
@@ -5840,8 +5867,9 @@ export class Game {
       this.pendingEmergency = {
         id: uid('emg'),
         kind: 'tanker',
-        blurb:
-          'Mutual-aid firefighter tanker needs a pad and ARFF handoff. One-time landing — refuse and neighbors talk.',
+        blurb: dry
+          ? 'Firefighting plane low on fuel — wants a one-time landing for a bowser top-off only, then back to the line.'
+          : 'Aerial firefighter inbound for refuel only. Need stand, ARFF, and a live fuel farm — refuse and the drop gets delayed.',
         fee: TANKER_FEE,
         age: 0,
         deadline,
@@ -5849,7 +5877,7 @@ export class Game {
         needs: {
           stand: true,
           fire: true,
-          fuel: false,
+          fuel: true,
           hangar: false,
           minRunway: MIN_RUNWAY,
         },
@@ -5860,8 +5888,8 @@ export class Game {
       this.pendingEmergency.kind === 'divert'
         ? 'EMERGENCY ASK — weather divert wants a one-time landing.'
         : this.pendingEmergency.kind === 'tanker_mx'
-          ? 'EMERGENCY ASK — tanker + hangar MX on the horn.'
-          : 'EMERGENCY ASK — firefighter tanker on the horn.'
+          ? 'EMERGENCY ASK — firefighting plane wants refuel + MX.'
+          : 'EMERGENCY ASK — firefighting plane wants refuel only.'
     this.pushNews(label, 'bad')
     this.emit()
   }
@@ -5900,8 +5928,8 @@ export class Game {
         e.kind === 'divert'
           ? 'Divert host fee'
           : e.kind === 'tanker_mx'
-            ? 'Tanker+MX host fee'
-            : 'Tanker host fee'
+            ? 'Airtanker refuel+MX fee'
+            : 'Airtanker refuel fee'
       this.earn(e.fee, feeLabel)
       this.reputation = Math.min(100, this.reputation + (e.kind === 'tanker_mx' ? 3 : 2))
       if (e.kind === 'divert' && e.airline) {
@@ -5917,8 +5945,8 @@ export class Game {
         for (const id of this.signed) this.adjustHeat(id, 1.2)
         this.pushNews(
           e.kind === 'tanker_mx'
-            ? `Tanker + MX hosted — +${moneyLeft(e.fee)}. Region notices a capable field.`
-            : `Firefighter tanker hosted — +${moneyLeft(e.fee)}. ARFF steadied.`,
+            ? `Firefighting plane hosted for refuel + MX — +${moneyLeft(e.fee)}. Region notices.`
+            : `Firefighting plane hosted for refuel — +${moneyLeft(e.fee)}. Bowser rolling.`,
           'good',
         )
       }
@@ -5942,8 +5970,8 @@ export class Game {
       for (const id of this.signed) this.adjustHeat(id, -1.8)
       this.pushNews(
         e.kind === 'tanker_mx'
-          ? `Refused tanker+MX mutual aid. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — region cools.`
-          : `Refused tanker mutual aid. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — carriers notice.`,
+          ? `Refused firefighting plane (refuel+MX). Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — region cools.`
+          : `Refused firefighting plane refuel. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — carriers notice.`,
         'bad',
       )
     }

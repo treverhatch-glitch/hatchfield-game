@@ -363,8 +363,9 @@ export interface PendingThreat {
   deadline: number
 }
 
-/** Weather / ARFF ask — accept for fee, refuse for heat. */
+/** Weather divert or firefighting-plane ask — accept for fee, refuse for heat. */
 export type EmergencyKind = 'divert' | 'tanker' | 'tanker_mx'
+/** tanker = airtanker refuel-only; tanker_mx = refuel + hangar line MX. */
 
 export interface PendingEmergency {
   id: string

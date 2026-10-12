@@ -167,7 +167,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 5. **Research tree** — ~~points from flights/pax; unlocks night/de-ice/stand class/heavy~~ **shipped** (hotel / 2nd runway ops still open).
 6. **Multi-runway capacity** — two strips add inbound slots when tower funded.
-7. **Emergency asks** — ~~weather divert / firefighter tanker / tanker+MX; weather-weighted one-time landings; can't-host = fail fine + broad heat~~ **shipped**.
+7. **Emergency asks** — ~~weather divert / firefighting plane refuel / refuel+MX; CL-415·AT-802; can't-host fail fine~~ **shipped**.
 8. **Heavy pack** — ~~A380, An-124, C-5 behind research~~ **shipped** (needs heavy strip + R&D).
 
 **P2 — AT3 meta AT3 never stuck the landing on**
@@ -260,7 +260,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 6. **Staff posts** on key desks — ~~shipped~~ hire desk agents (bodies on check-in/security/gate); empty desks slow pax and soft-cut security level.
 7. **De-ice + night curfew**.
 8. **Stand class + pushback beat**.
-9. **Emergency asks** — ~~weather divert / tanker / tanker+MX; one-time landings; fail-host fines~~ **shipped**.
+9. **Emergency asks** — ~~weather divert / airtanker refuel / refuel+MX; one-time landings; fail-host fines~~ **shipped**.
 
 **C2 — CEO scale**
 
