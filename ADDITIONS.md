@@ -331,8 +331,14 @@ If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 - **Procedural regionals** — light name/color fillers on the phone after you have one major.
 - **Gate / stand assignment lite** — jets prefer stands nearest the hall; tower raises inbound cap to 2; HUD shows Gate / Hold.
 
+## Shipped — wake-up first hour (this loop)
+
+- **First hour** checklist (bottom-left): stamp field → sign → inbound → first takeoff. Dismissible; auto-hides after first civilian turnaround; persisted in browser save.
+- First takeoff news + small reputation bump so the loop lands as a win, not just a ticker line.
+
 ## Still later (on your list, not finished)
 
 - Full custom terminal wall painting (Tier A #1) + landside/airside
 - Slot/curfew + de-ice (Tier C)
+- Baggage belts / franchise brands (belt lite still open)
 - Godot Steam rebuild (Tier D)

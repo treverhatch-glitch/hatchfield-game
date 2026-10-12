@@ -14,7 +14,7 @@ Open **[http://127.0.0.1:45217](http://127.0.0.1:45217)** (or the URL Vite print
 ### Morning path (about 2 minutes)
 
 1. **Easy grant** → **Riverside City plot**
-2. Click **Starter kit** (yellow, right panel) — runway, hall, fuel, fire, lounge, mechanic + desk agent
+2. Follow the **First hour** checklist (bottom-left) — or just hit yellow **Starter kit**
 3. **Sign** Northline when they call
 4. Hit **3x** and watch the first jet land → gate → trucks → takeoff
 5. Optional: **Hall** to walk the terminal; stamp a **Hangar** + hardstand later for Guard / military

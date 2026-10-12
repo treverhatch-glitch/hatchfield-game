@@ -87,6 +87,84 @@ button {
   color: #c9a227;
 }
 
+.coach {
+  position: absolute;
+  left: 16px;
+  bottom: 118px;
+  width: min(280px, 90vw);
+  z-index: 26;
+  pointer-events: auto;
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 10px;
+  padding: 12px 14px;
+  animation: coach-in 0.45s ease-out;
+}
+
+@keyframes coach-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.coach-head strong {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: #c9a227;
+}
+
+.coach-head .ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #b7c4b8;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.coach ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.coach li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  margin: 5px 0;
+  color: #d5e0d6;
+}
+
+.coach li[data-done='1'] {
+  color: #8ee0a8;
+}
+
+.coach .mark {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  width: 1em;
+  flex-shrink: 0;
+}
+
+.coach .muted {
+  margin: 8px 0 0;
+}
+
 .guest-card {
   position: absolute;
   left: 16px;
