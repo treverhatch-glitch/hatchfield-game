@@ -6,7 +6,16 @@ import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { TitleScreen } from './ui/TitleScreen'
 
-const game = new Game()
+/** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
+function getGame(): Game {
+  const hot = import.meta.hot
+  if (hot?.data?.game instanceof Game) return hot.data.game as Game
+  const g = new Game()
+  if (hot) hot.data.game = g
+  return g
+}
+
+const game = getGame()
 const SCREEN_KEY = 'hatchfield-screen'
 
 type Screen = 'title' | 'land' | 'play'
@@ -29,23 +38,32 @@ function writeScreen(s: Screen) {
   }
 }
 
+function bootScreen(): Screen {
+  // In-memory plot wins (HMR remount).
+  if (game.site) return 'play'
+  // Reload mid-session — restore save before showing title.
+  if (Game.hasSave() && game.load()) return 'play'
+  return readScreen()
+}
+
 export default function App() {
-  const [screen, setScreenState] = useState<Screen>(() => {
-    // HMR / remount recovery — keep play if the in-memory field still has a plot.
-    if (game.site) return 'play'
-    return readScreen()
-  })
+  const [screen, setScreenState] = useState<Screen>(() => bootScreen())
 
   const setScreen = (s: Screen) => {
     writeScreen(s)
     setScreenState(s)
   }
 
-  // If React remounted onto title but the singleton game still owns a plot, jump back in.
+  // Keep screen aligned with game ownership; never dump a saved field to title.
   useEffect(() => {
-    if (screen === 'title' && game.site) setScreen('play')
-    if (screen === 'land' && game.site) setScreen('play')
-    if (screen === 'play' && !game.site) setScreen('title')
+    if (game.site) {
+      if (screen !== 'play') setScreen('play')
+      return
+    }
+    if (screen === 'play') {
+      if (Game.hasSave() && game.load()) return
+      setScreen('title')
+    }
   }, [screen])
 
   useEffect(() => {
@@ -55,7 +73,11 @@ export default function App() {
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      game.tick(dt)
+      try {
+        game.tick(dt)
+      } catch (err) {
+        console.error('tick failed', err)
+      }
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -105,6 +127,12 @@ export default function App() {
         game.budgets.fire,
         game.budgets.ambulance,
         game.milAgreement,
+        game.hotelLevel,
+        game.landsideUses,
+        Math.round(game.landsideFeeWindow),
+        game.janitors,
+        game.parkTerm,
+        game.plannerRwFilter,
       ].join('|'),
     () => 'ssr',
   )
