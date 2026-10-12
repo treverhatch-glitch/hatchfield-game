@@ -463,6 +463,60 @@ export class World {
       body.position.y = 1.6
       body.castShadow = true
       g.add(body)
+    } else if (tile === 'hotel') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.88, 3.6, CELL * 0.78),
+        new THREE.MeshStandardMaterial({ color: '#c4b49a', roughness: 0.55 }),
+      )
+      body.position.y = 1.8
+      body.castShadow = true
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.95, 0.25, CELL * 0.85),
+        new THREE.MeshStandardMaterial({ color: '#5a4030' }),
+      )
+      roof.position.y = 3.7
+      g.add(body, roof)
+    } else if (
+      tile === 'park_s' ||
+      tile === 'park_l' ||
+      tile === 'park_g' ||
+      tile === 'park_u'
+    ) {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({
+          color:
+            tile === 'park_u' ? '#2a3038' : tile === 'park_g' ? '#3a4550' : '#3d4248',
+        }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = tile === 'park_u' ? 0.02 : 0.04
+      pad.receiveShadow = true
+      g.add(pad)
+      if (tile === 'park_g') {
+        const deck = new THREE.Mesh(
+          new THREE.BoxGeometry(CELL * 0.9, 1.4, CELL * 0.9),
+          new THREE.MeshStandardMaterial({ color: '#6a7480', roughness: 0.7 }),
+        )
+        deck.position.y = 0.9
+        deck.castShadow = true
+        g.add(deck)
+      } else if (tile === 'park_l') {
+        const lamp = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.08, 1.8, 6),
+          new THREE.MeshStandardMaterial({ color: '#c9c4b0' }),
+        )
+        lamp.position.set(CELL * 0.3, 0.9, CELL * 0.3)
+        g.add(lamp)
+      } else if (tile === 'park_u') {
+        const ramp = new THREE.Mesh(
+          new THREE.BoxGeometry(CELL * 0.4, 0.35, CELL * 0.7),
+          new THREE.MeshStandardMaterial({ color: '#4a5058' }),
+        )
+        ramp.position.set(0, 0.2, 0)
+        ramp.rotation.x = -0.25
+        g.add(ramp)
+      }
     } else if (tile === 'helipad') {
       const pad = new THREE.Mesh(
         new THREE.CylinderGeometry(CELL * 0.42, CELL * 0.42, 0.12, 24),

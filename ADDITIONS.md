@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: C0 + Hub + emergencies + GA parking live. Hotel / 2nd runway / secure zones / staffed desks still open.
+Dependency note: Landside hotel/car-park tiles, janitors, 2nd-runway inbound capacity, airside day rooms live. Secure zones / staff posts / pushback still open.
 
 ### Explicit calls on open design questions
 

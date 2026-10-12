@@ -27,6 +27,7 @@ export type HallNode =
   | 'golf'
   | 'waterfall'
   | 'gaming'
+  | 'dayhotel'
   | 'gate'
   | 'claim'
   | 'info'
@@ -88,8 +89,11 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['lounge', 'gate'],
   ['lounge', 'golf'],
   ['lounge', 'waterfall'],
+  ['lounge', 'dayhotel'],
   ['golf', 'waterfall'],
   ['gaming', 'gate'],
+  ['dayhotel', 'gate'],
+  ['dayhotel', 'food'],
   ['claim', 'exit'],
   ['claim', 'food'],
   ['claim', 'shop'],
@@ -111,6 +115,7 @@ export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }>
   golf: { x: 0.82, y: 0.82, label: 'Golf' },
   waterfall: { x: 0.62, y: 0.88, label: 'Falls' },
   gaming: { x: 0.84, y: 0.48, label: 'Games' },
+  dayhotel: { x: 0.78, y: 0.58, label: 'Day rooms' },
   gate: { x: 0.9, y: 0.28, label: 'Gate' },
   claim: { x: 0.48, y: 0.78, label: 'Bag claim' },
   info: { x: 0.22, y: 0.48, label: 'Info' },
@@ -186,7 +191,10 @@ export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   if (need === 'bags') return 'claim'
   if (need === 'bladder') return 'bathroom'
   if (need === 'hunger') return 'food'
-  if (need === 'energy') return job === 'depart' ? 'lounge' : 'food'
+  if (need === 'energy') {
+    if (job === 'depart') return Math.random() < 0.35 ? 'dayhotel' : 'lounge'
+    return 'food'
+  }
   if (need === 'play') {
     if (job === 'depart') return Math.random() < 0.4 ? 'golf' : Math.random() < 0.5 ? 'gaming' : 'waterfall'
     return Math.random() < 0.5 ? 'gaming' : 'waterfall'
@@ -255,6 +263,7 @@ export function openNodesFromRooms(rooms: {
   golf?: number
   waterfall?: number
   gaming?: number
+  dayhotel?: number
 }): Set<HallNode> {
   const open = new Set<HallNode>(['entrance', 'exit', 'info'])
   if (rooms.checkin > 0 || rooms.bagdrop > 0) open.add('checkin')
@@ -266,6 +275,7 @@ export function openNodesFromRooms(rooms: {
   if ((rooms.golf ?? 0) > 0) open.add('golf')
   if ((rooms.waterfall ?? 0) > 0) open.add('waterfall')
   if ((rooms.gaming ?? 0) > 0) open.add('gaming')
+  if ((rooms.dayhotel ?? 0) > 0) open.add('dayhotel')
   if (rooms.gate > 0) open.add('gate')
   if (rooms.bagclaim > 0) open.add('claim')
   // Premade / partial halls still allow walking past missing rooms via security↔gate if both exist
