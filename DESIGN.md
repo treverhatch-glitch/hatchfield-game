@@ -1,48 +1,27 @@
 # Hatchfield design notes
 
-HatchTag’s prompts are the source of truth. Grok’s writeup was research and suggestions, not a spec. Do not keep a tiny 16×16 puzzle plot or drag-to-paint runways because a manifesto said so.
+## Primary goal
 
-## What we are making
+Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come after that loop feels real.
 
-A Steam-bound airport tycoon. This repo is the **browser sketch**. The shipping game is meant to be **Godot 4** later.
+### AT3 core
 
-- **Look and build loop:** Airport Tycoon 3 — 3D field you orbit, **prebuilt pieces you stamp** (a whole runway, not a tile you drag).
-- **Management:** Airport CEO — bags, fuel, security, hall layout. The jet on screen and the money in the book are the same flight.
-- **After the airport exists:** the game is still on. AT 2000/3 were basically won once planes landed. We do not copy that.
+1. Start with limited funds.
+2. **Purchase land** — near city (passengers) vs near factories (cargo).
+3. Enter **build mode** and stamp prefab buildings (not drag-paint runways).
+4. Need **fuel tanks, fuel trucks, fuel contract**, fire, police, and other plane-service buildings to attract airlines.
+5. When satisfaction / requirements are met, an **airline approaches with a contract**. Different airlines and aircraft types want different things.
+6. Players can buy a **premade terminal** with working check-in/security/gates/claim, **or** custom-furnish their own.
+7. Bad security is dangerous (threats / bombs). Police patrol.
 
-## Site choice and expansion
+### HatchTag layer (after AT3 loop)
 
-Like Airport Tycoon’s land purchase:
+- RCT guests + pathfinding + flight clocks
+- Budget vs premium tags and desires (later golf / waterfall / gaming)
+- Airside vs terminal as parallel games
+- Heavier runway classes, helicopters
+- Cargo: Umazon, UPPS, EXFED
+- City road / rail / subway investment
+- Land expansion, loans
 
-- **Near the city** — expensive plot, easier passenger / airline demand.
-- **Near factories** — better cargo demand, different midgame.
-- That first choice is also a **goal**: passenger hub vs cargo field.
-- Later: buy adjacent parcels and grow the airport.
-
-Access infrastructure:
-
-- **Roads** to the city can be mostly off-map; player builds the on-plot end.
-- **Rail / subway:** player funds a city investment → city builds to the map edge → player builds the last link into the airport.
-
-## Cargo carriers (working names)
-
-- **Umazon** (Amazon-flavored)
-- **UPPS** (UPS-flavored)
-- **EXFED** (FedEx-flavored)
-
-## Locked for later (do not drop)
-
-- Larger / heavier **runway classes** for bigger aircraft.
-- **Helicopters**.
-- **Airside vs terminal** as two parallel experiences (jets/trucks outside, RCT crowd inside).
-- RCT guests: pathfinding to needs. Preference is not persona — a starting tag (budget vs premium) plus desires (food, bag, seat, later golf sim / waterfall / gaming den).
-- **Flight clock** — departing people can miss the gate.
-- Budget traffic wears cheap facilities and clogs space; premium traffic only comes if the hall and the airline are worth it. Attracting high-grade airlines is mid/late game.
-- **Loans** once bankruptcy is real.
-- Next real feature after a playable stamp-field: a **guest you can click** with a need and a clock.
-
-## Placement now
-
-Click a catalog piece, click the field, the whole prefab lands. Rotate the piece (horizontal / vertical). Easy grant starts with a live starter airport so a jet can arrive without a construction tutorial.
-
-Graphics in the sketch are placeholder. Priority is loops, bugs, and “money = picture.”
+Graphics in the sketch are placeholder. Priority is loops and money = picture.

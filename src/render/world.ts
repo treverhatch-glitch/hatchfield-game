@@ -404,6 +404,65 @@ export class World {
       tank.position.y = 1.2
       tank.castShadow = true
       g.add(tank)
+    } else if (tile === 'fire') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.75, 2.2, CELL * 0.7),
+        new THREE.MeshStandardMaterial({ color: '#b33a2a' }),
+      )
+      body.position.y = 1.1
+      body.castShadow = true
+      const bay = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.5, 1.1, 0.12),
+        new THREE.MeshStandardMaterial({ color: '#f0c040' }),
+      )
+      bay.position.set(0, 0.9, CELL * 0.36)
+      g.add(body, bay)
+    } else if (tile === 'police') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 2.0, CELL * 0.65),
+        new THREE.MeshStandardMaterial({ color: '#1e3a5f' }),
+      )
+      body.position.y = 1.0
+      body.castShadow = true
+      g.add(body)
+    } else if (tile === 'cargo') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.9, 2.6, CELL * 0.85),
+        new THREE.MeshStandardMaterial({ color: '#6a6258' }),
+      )
+      body.position.y = 1.3
+      body.castShadow = true
+      g.add(body)
+    } else if (tile === 'road') {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.98, CELL * 0.98),
+        new THREE.MeshLambertMaterial({ color: '#3a3d42' }),
+      )
+      mesh.rotation.x = -Math.PI / 2
+      mesh.position.y = 0.03
+      mesh.receiveShadow = true
+      g.add(mesh)
+    } else if (tile === 'tower') {
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.9, 5.2, 8),
+        new THREE.MeshStandardMaterial({ color: '#cfd8e3' }),
+      )
+      shaft.position.y = 2.6
+      shaft.castShadow = true
+      const cab = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.3, 1.1, 1.1, 8),
+        new THREE.MeshStandardMaterial({ color: '#2f6f9a', metalness: 0.3 }),
+      )
+      cab.position.y = 5.4
+      g.add(shaft, cab)
+    } else if (tile === 'hangar') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.95, 3.2, CELL * 0.95),
+        new THREE.MeshStandardMaterial({ color: '#7a8490' }),
+      )
+      body.position.y = 1.6
+      body.castShadow = true
+      g.add(body)
     }
     return g
   }
@@ -446,19 +505,7 @@ export class World {
 
   syncGhost(game: Game) {
     this.ghostGroup.clear()
-    const cells =
-      game.tool === 'runway'
-        ? game.ghostRunway(game.hover ?? game.runwayStart ?? { c: -1, r: -1 })
-        : game.hover
-          ? game.tool === 'terminal'
-            ? [
-                game.hover,
-                { c: game.hover.c + 1, r: game.hover.r },
-                { c: game.hover.c, r: game.hover.r + 1 },
-                { c: game.hover.c + 1, r: game.hover.r + 1 },
-              ]
-            : [game.hover]
-          : []
+    const cells = game.ghostCells(game.hover)
     const geo = new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95)
     geo.rotateX(-Math.PI / 2)
     const ok = new THREE.MeshBasicMaterial({

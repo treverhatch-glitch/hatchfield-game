@@ -1,8 +1,12 @@
 import {
   AIRLINES,
+  airlineList,
   BUILDINGS,
+  CATER,
   FUEL,
+  LAND,
   money,
+  PREMADE_TERMINAL_COST,
   ROOMS,
   RUNWAY_PREFAB_COST,
   TOOL_LABEL,
@@ -13,12 +17,19 @@ import type { Speed, Tool } from '../game/types'
 const TOOLS: Tool[] = [
   'pan',
   'runway',
+  'road',
   'taxi',
   'stand',
+  'premade',
   'terminal',
   'snack',
   'bags',
   'fuel',
+  'fire',
+  'police',
+  'cargo',
+  'tower',
+  'hangar',
   'clear',
 ]
 
@@ -30,17 +41,23 @@ export function Hud({ game }: { game: Game }) {
     ? game.fits.find((f) => f.origin.c === origin.c && f.origin.r === origin.r)
     : null
   const tip = BUILDINGS.find((b) => b.tool === game.tool)
+  const ready = game.readiness()
+  const site = game.site ? LAND[game.site] : null
 
   return (
     <div className="hud">
       <header className="top">
         <div className="brand">
           <strong>Hatchfield</strong>
-          <span>AT3-style field · CEO books</span>
+          <span>
+            {site ? site.name : 'No plot'} · AT3 build loop
+          </span>
         </div>
         <div className="stat cash">{money(game.cash)}</div>
         <div className="stat">{formatClock(game.clock)}</div>
-        <div className="stat">{game.flightsDone} turns</div>
+        <div className="stat">{game.signed.length} airlines</div>
+        <div className="stat">Sec {ready.security}</div>
+        <div className="stat">Rep {Math.round(game.reputation)}</div>
         <div className="speeds">
           {([0, 1, 3] as Speed[]).map((s) => (
             <button
@@ -55,6 +72,23 @@ export function Hud({ game }: { game: Game }) {
         </div>
       </header>
 
+      {game.offer ? (
+        <div className="offer">
+          <div>
+            <strong>{AIRLINES[game.offer.airline].name} wants a contract</strong>
+            <p>{AIRLINES[game.offer.airline].blurb}</p>
+          </div>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.acceptOffer()}>
+              Sign
+            </button>
+            <button type="button" onClick={() => game.declineOffer()}>
+              Decline
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <aside className="side">
         <section>
           <h2>Flight</h2>
@@ -63,7 +97,10 @@ export function Hud({ game }: { game: Game }) {
               <p className="fn" style={{ color: airline.color }}>
                 {airline.name} {flight.flightNo}
               </p>
-              <p className="phase">{labelPhase(flight.phase)} · {flight.pax} pax</p>
+              <p className="phase">
+                {labelPhase(flight.phase)}
+                {flight.cargo ? ' · cargo' : ` · ${flight.pax} pax`}
+              </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
                   <li>Nothing posted yet — wait until the picture earns it.</li>
@@ -76,14 +113,40 @@ export function Hud({ game }: { game: Game }) {
                   ))
                 )}
               </ul>
-              <p className="muted">
-                Bags {flight.posted.bags ? 'in' : '—'} · Fuel {flight.posted.fuel ? 'in' : '—'} ·
-                Catering {flight.posted.catering ? 'in' : '—'}
-              </p>
             </div>
           ) : (
-            <p className="muted">Build a 6-tile runway, taxi, and stand. Northline will call.</p>
+            <p className="muted">
+              No flights until an airline signs. Meet their checklist, then answer the phone.
+            </p>
           )}
+        </section>
+
+        <section>
+          <h2>Airline desk</h2>
+          <p className="muted">
+            Signed: {game.signed.length ? game.signed.map((id) => AIRLINES[id].name).join(', ') : 'none'}
+          </p>
+          <ul className="airlines">
+            {airlineList().map((a) => {
+              const signed = game.signed.includes(a.id)
+              const ok = game.meetsReq(a.id)
+              const miss = game.missingReq(a.id)
+              return (
+                <li key={a.id}>
+                  <b style={{ color: a.color }}>
+                    {a.name} {signed ? '· signed' : ok ? '· ready' : ''}
+                  </b>
+                  <span className="muted">
+                    {signed
+                      ? a.kind === 'cargo'
+                        ? 'Freighters scheduled'
+                        : 'Pax flights scheduled'
+                      : miss.slice(0, 4).join(', ') || 'Waiting to call'}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
         </section>
 
         <section>
@@ -91,20 +154,37 @@ export function Hud({ game }: { game: Game }) {
           <p className="muted">
             {game.fuelBrand
               ? `${FUEL[game.fuelBrand].name} · ${game.fuelLoads} loads`
-              : 'No carrier. Jets still leave — they just do not buy your pump.'}
+              : 'No carrier. Airlines that need fuel will not sign.'}
           </p>
           <div className="row">
             <button type="button" onClick={() => game.signFuel('apex')}>
-              Sign Apex {money(FUEL.apex.sign)}
+              Apex {money(FUEL.apex.sign)}
             </button>
             <button type="button" onClick={() => game.signFuel('kiln')}>
-              Sign Kiln {money(FUEL.kiln.sign)}
+              Kiln {money(FUEL.kiln.sign)}
             </button>
           </div>
           <button type="button" className="wide" onClick={() => game.buyLoads()}>
             Buy 4 loads
             {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
           </button>
+        </section>
+
+        <section>
+          <h2>Catering desk</h2>
+          <p className="muted">
+            {game.caterBrand
+              ? `${CATER[game.caterBrand].name} · ×${CATER[game.caterBrand].payoutMult} payout`
+              : 'No catering vendor. Harbor / Summit will not sign without one + a snack bar.'}
+          </p>
+          <div className="row">
+            <button type="button" onClick={() => game.signCater('skybite')}>
+              SkyBite {money(CATER.skybite.sign)}
+            </button>
+            <button type="button" onClick={() => game.signCater('galleyprime')}>
+              GalleyPrime {money(CATER.galleyprime.sign)}
+            </button>
+          </div>
         </section>
 
         <section>
@@ -123,7 +203,9 @@ export function Hud({ game }: { game: Game }) {
               ))}
             </ul>
           ) : (
-            <p className="muted">Select a terminal to place check-in, security, claim, food, gifts.</p>
+            <p className="muted">
+              Stamp a Premade hall or an empty Shell, then select it to furnish. Weak security = threats.
+            </p>
           )}
         </section>
 
@@ -152,18 +234,20 @@ export function Hud({ game }: { game: Game }) {
             </button>
           ))}
           <button type="button" onClick={() => game.rotatePiece()}>
-            Rotate {game.facing === 'h' ? 'horizontal' : 'vertical'}
+            Rotate {game.facing === 'h' ? 'H' : 'V'}
           </button>
         </div>
         <p className="hint">
           {game.tool === 'runway'
-            ? `Click once to stamp a regional runway (${money(RUNWAY_PREFAB_COST)}). Rotate for the other axis. Later: longer strips for heavier jets.`
-            : game.tool === 'pan'
-              ? 'Click a jet or stand. Drag to look around the field.'
-              : tip
-                ? `${tip.blurb} ${money(tip.cost)}`
-                : 'Clear refunds 40%.'}
-          {game.harborUnlocked ? ' · Harbor Air is flying.' : ''}
+            ? `Stamp a regional runway (${money(RUNWAY_PREFAB_COST)}). Rotate for the other axis.`
+            : game.tool === 'premade'
+              ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
+              : game.tool === 'pan'
+                ? 'Look around. Airlines call when fire, fuel, road, hall, and stands match their list.'
+                : tip
+                  ? `${tip.blurb} ${money(tip.cost)}`
+                  : 'Clear refunds 40%.'}
+          {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
         </p>
       </div>
     </div>
@@ -177,7 +261,7 @@ function labelPhase(phase: string): string {
     landing: 'Landing',
     taxi_in: 'Taxi in',
     deboard: 'Deboarding',
-    servicing: 'Bags / fuel / catering',
+    servicing: 'Servicing',
     board: 'Boarding',
     taxi_out: 'Taxi out',
     takeoff: 'Takeoff',
