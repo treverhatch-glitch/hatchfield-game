@@ -213,12 +213,28 @@ export function Hud({ game }: { game: Game }) {
           <h2>Flight</h2>
           {flight && airline ? (
             <div className="flight">
-              <p className="fn" style={{ color: airline.color }}>
-                {airline.name} {flight.flightNo}
+              <p
+                className="fn"
+                style={{
+                  color: flight.craft === 'helo' && flight.flightNo.startsWith('MED')
+                    ? '#b33a2a'
+                    : airline.color,
+                }}
+              >
+                {flight.craft === 'helo'
+                  ? flight.flightNo.startsWith('MED')
+                    ? 'Medevac'
+                    : 'Executive'
+                  : airline.name}{' '}
+                {flight.flightNo}
               </p>
               <p className="phase">
-                {labelPhase(flight.phase)}
-                {flight.cargo ? ' · cargo' : ` · ${flight.pax} pax`}
+                {labelPhase(flight.phase, flight.craft)}
+                {flight.craft === 'helo'
+                  ? ' · rotary'
+                  : flight.cargo
+                    ? ' · cargo'
+                    : ` · ${flight.pax} pax`}
               </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
@@ -390,7 +406,16 @@ export function Hud({ game }: { game: Game }) {
   )
 }
 
-function labelPhase(phase: string): string {
+function labelPhase(phase: string, craft?: string): string {
+  if (craft === 'helo') {
+    const helo: Record<string, string> = {
+      approach: 'Hover in',
+      landing: 'Settling',
+      servicing: 'On pad',
+      takeoff: 'Lifting',
+    }
+    return helo[phase] ?? phase
+  }
   const map: Record<string, string> = {
     hold: 'Holding',
     approach: 'On approach',

@@ -163,6 +163,8 @@ export interface Flight {
   flightNo: string
   pax: number
   cargo: boolean
+  /** Jets use runway+stand; helos use a helipad as stand. */
+  craft: 'jet' | 'helo'
   phase: Phase
   stand: Vec | null
   x: number

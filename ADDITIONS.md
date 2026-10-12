@@ -49,10 +49,10 @@ We copied the *spirit*:
 - **Helipad** stamp (visual + readiness flag; chopper ops later).
 - **Facility wear** — budget hall traffic scuffs WC / security; scrub costs cash; high wear softens security level and feeds exposés.
 - **Analyst crises** while public — fuel spikes, short rumors, downgrades, “needs heavy strip” notes, wear exposés, plus missions `heavy_ready` / `scrub_the_hall`.
+- **Live helipad ops** — medevac / executive choppers hover in, pay pad fee, lift off (needs helipad + fire).
 
 ## Still later (on your list, not finished)
 
-- Live helicopter / medevac flights
 - Full custom terminal wall painting
 - Bomb/threat minigame beyond fines
 - Golf / waterfall / gaming dens

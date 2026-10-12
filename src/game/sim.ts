@@ -8,6 +8,7 @@ import {
   CLEANING_FEE,
   FUEL,
   HALL_SCRUB_COST,
+  HELO_LANDING,
   LAND,
   LOADS_PER_BUY,
   IPO_FOUNDER_SHARES,
@@ -169,6 +170,7 @@ export class Game {
   selectedGuest: string | null = null
   view: 'apron' | 'hall' = 'apron'
   spawnCool = 8
+  heloCool = 22
   flightSeq = 100
   flightsDone = 0
   paxServed = 0
@@ -230,6 +232,7 @@ export class Game {
     this.selectedGuest = null
     this.view = 'apron'
     this.spawnCool = 10
+    this.heloCool = 22
     this.flightSeq = 100
     this.flightsDone = 0
     this.paxServed = 0
@@ -1553,8 +1556,10 @@ export class Game {
   }
 
   groundBusy(): boolean {
-    return this.flights.some((f) =>
-      (['landing', 'taxi_in', 'taxi_out', 'takeoff'] as Phase[]).includes(f.phase),
+    return this.flights.some(
+      (f) =>
+        (f.craft ?? 'jet') === 'jet' &&
+        (['landing', 'taxi_in', 'taxi_out', 'takeoff'] as Phase[]).includes(f.phase),
     )
   }
 
@@ -1562,13 +1567,32 @@ export class Game {
     const stands = tilesOf(this.tiles, 'stand')
     const used = new Set(
       this.flights
-        .filter((f) => f.stand && f.phase !== 'gone' && f.phase !== 'takeoff')
+        .filter(
+          (f) =>
+            (f.craft ?? 'jet') === 'jet' &&
+            f.stand &&
+            f.phase !== 'gone' &&
+            f.phase !== 'takeoff',
+        )
         .map((f) => `${f.stand!.c},${f.stand!.r}`),
     )
     return stands.filter((s) => {
       if (used.has(`${s.c},${s.r}`)) return false
       return Boolean(this.pathStandToRunway(s))
     })
+  }
+
+  freePads(): Vec[] {
+    const pads = tilesOf(this.tiles, 'helipad')
+    const used = new Set(
+      this.flights
+        .filter(
+          (f) =>
+            f.craft === 'helo' && f.stand && f.phase !== 'gone' && f.phase !== 'takeoff',
+        )
+        .map((f) => `${f.stand!.c},${f.stand!.r}`),
+    )
+    return pads.filter((p) => !used.has(`${p.c},${p.r}`))
   }
 
   pathStandToRunway(stand: Vec): Vec[] | null {
@@ -1628,6 +1652,7 @@ export class Game {
       flightNo: `${def.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
       pax: def.kind === 'cargo' ? 0 : def.paxMin + Math.floor(Math.random() * (def.paxMax - def.paxMin + 1)),
       cargo: def.kind === 'cargo',
+      craft: 'jet',
       phase: busy ? 'hold' : 'approach',
       stand,
       x: start.c - 4,
@@ -1664,6 +1689,119 @@ export class Game {
     )
   }
 
+  trySpawnHelo() {
+    this.heloCool = Math.max(0, this.heloCool)
+    if (this.heloCool > 0) return
+    const pads = this.freePads()
+    if (!pads.length) return
+    // Fire station is the AT3-style “you’re serious about rotary” gate.
+    if (!tilesOf(this.tiles, 'fire').length) return
+    if (this.flights.some((f) => f.craft === 'helo' && f.phase !== 'gone')) return
+
+    const pad = pads[0]
+    const medevac = Math.random() < 0.45
+    const airlineId: AirlineId = this.signed[0] ?? 'harbor'
+    this.flightSeq += 1
+    const call = medevac ? `MED${this.flightSeq}` : `EXE${this.flightSeq}`
+    const f: Flight = {
+      id: uid('helo'),
+      airline: airlineId,
+      flightNo: call,
+      pax: medevac ? 2 : 3 + Math.floor(Math.random() * 4),
+      cargo: false,
+      craft: 'helo',
+      phase: 'approach',
+      stand: pad,
+      x: pad.c + 5.5,
+      y: pad.r - 4.5,
+      z: 11,
+      heading: Math.atan2(pad.r - (pad.r - 4.5), pad.c - (pad.c + 5.5)),
+      path: [pad],
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: {
+        landing: false,
+        bags: false,
+        fuel: false,
+        catering: false,
+        bagDrop: false,
+      },
+      waitingOn: {
+        bags: false,
+        fuel: false,
+        catering: false,
+        paxOut: 0,
+        paxIn: 0,
+      },
+      phaseTime: 0,
+      ledger: [],
+    }
+    this.flights.push(f)
+    this.heloCool = 40 + Math.random() * 25
+    this.selectedFlight = this.selectedFlight ?? f.id
+    this.pushNews(
+      medevac
+        ? `${call} medevac inbound — pad ${pad.c},${pad.r}.`
+        : `${call} executive chopper inbound.`,
+      'ok',
+    )
+  }
+
+  tickHelo(f: Flight, step: number) {
+    if (!f.stand) {
+      f.phase = 'gone'
+      return
+    }
+    const pad = f.stand
+    if (f.phase === 'approach' || f.phase === 'landing' || f.phase === 'taxi_in') {
+      // Straight-in hover to the pad.
+      const dx = pad.c - f.x
+      const dy = pad.r - f.y
+      const dist = Math.hypot(dx, dy)
+      f.heading = Math.atan2(dy, dx)
+      const speed = 1.9
+      if (dist > 0.12) {
+        f.x += (dx / dist) * Math.min(dist, speed * step)
+        f.y += (dy / dist) * Math.min(dist, speed * step)
+      }
+      f.z = lerp(f.z, dist < 0.8 ? 0.35 : 2.2, 1 - Math.pow(0.08, step))
+      if (dist < 0.2 && f.z < 0.55) {
+        f.phase = 'servicing'
+        f.phaseTime = 0
+        f.z = 0.28
+        if (!f.posted.landing) {
+          f.posted.landing = true
+          this.earn(HELO_LANDING, `${f.flightNo} pad fee`, f)
+          this.reputation = Math.min(100, this.reputation + 1)
+        }
+      } else if (f.phase === 'approach' && f.phaseTime > 1.2) {
+        f.phase = 'landing'
+      }
+      return
+    }
+    if (f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board') {
+      f.phase = 'servicing'
+      if (f.phaseTime > 7) {
+        f.phase = 'takeoff'
+        f.phaseTime = 0
+        f.heading = Math.random() * Math.PI * 2
+      }
+      return
+    }
+    if (f.phase === 'takeoff') {
+      f.z += step * 2.8
+      f.x += Math.cos(f.heading) * step * 2.1
+      f.y += Math.sin(f.heading) * step * 2.1
+      if (f.phaseTime > 5 || f.z > 12) {
+        f.phase = 'gone'
+        this.flightsDone += 1
+        this.paxServed += f.pax
+        this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
+      }
+    }
+  }
+
   releaseHold() {
     const hasTower = tilesOf(this.tiles, 'tower').length > 0
     if (this.groundBusy() && !hasTower) return
@@ -1677,7 +1815,7 @@ export class Game {
       return
     }
     if (!hasTower && this.groundBusy()) return
-    const f = this.flights.find((x) => x.phase === 'hold')
+    const f = this.flights.find((x) => x.phase === 'hold' && (x.craft ?? 'jet') === 'jet')
     if (!f) return
     const free = this.freeStands()
     if (!free.length) return
@@ -1979,6 +2117,8 @@ export class Game {
 
     this.considerOffers()
     this.trySpawn()
+    this.heloCool = Math.max(0, this.heloCool - step)
+    this.trySpawnHelo()
     this.releaseHold()
     this.tickPatrols(step)
     this.tickThreats(step)
@@ -1988,6 +2128,10 @@ export class Game {
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
       f.phaseTime += step
+      if (f.craft === 'helo') {
+        this.tickHelo(f, step)
+        continue
+      }
       if (f.phase === 'hold') {
         f.holdAngle += step * 0.35
         f.x = SIZE / 2 + Math.cos(f.holdAngle) * 9
