@@ -240,6 +240,8 @@ const emptyRooms = (): Record<RoomId, number> => ({
   waterfall: 0,
   gaming: 0,
   dayhotel: 0,
+  spa: 0,
+  pool: 0,
   rdesk: 0,
   rboard: 0,
   rmachine: 0,
@@ -2440,9 +2442,20 @@ export class Game {
           // Transfers use boarding as connection clock — linger until it runs down.
           g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.35)
           if (g.needs.boarding > 8) {
-            const linger = (['food', 'shop', 'lounge', 'dayhotel', 'bathroom', 'gaming', 'waterfall'] as const).find(
-              (n) => open.has(n),
-            )
+            const linger = (
+              [
+                'food',
+                'shop',
+                'lounge',
+                'dayhotel',
+                'spa',
+                'pool',
+                'bathroom',
+                'gaming',
+                'waterfall',
+                'golf',
+              ] as const
+            ).find((n) => open.has(n))
             if (linger && g.node !== linger) this.routeGuest(g, linger, open)
             else g.thought = 'Killing time until the connection'
           } else if (open.has('gate')) {
@@ -2771,6 +2784,36 @@ export class Game {
         g.needs.play = Math.max(0, g.needs.play - 65)
         g.happiness += 7
         g.thought = `Gaming den (−$${pay})`
+      }
+    }
+    if (n === 'spa') {
+      const pay = g.transfer ? 72 : g.tag === 'premium' ? 58 : 32
+      const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 65 || g.transfer)
+      if (!buy.ok) {
+        g.needs.energy = Math.max(0, g.needs.energy - 12)
+        g.thought =
+          buy.why === 'broke' ? 'Massage chairs — too rich' : 'Skipped the spa'
+        g.happiness -= buy.why === 'broke' ? 1 : 0
+      } else {
+        g.needs.energy = Math.max(0, g.needs.energy - 50)
+        g.needs.boarding = Math.min(99, g.needs.boarding + 5)
+        g.happiness += g.tag === 'premium' ? 12 : 8
+        g.thought = `Massage spa (−$${pay})`
+        if (g.airlineId && g.tag === 'premium') this.adjustHeat(g.airlineId, 0.12)
+      }
+    }
+    if (n === 'pool') {
+      const pay = g.transfer ? 48 : g.tag === 'premium' ? 40 : 22
+      const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 60 || g.transfer)
+      if (!buy.ok) {
+        g.needs.play = Math.max(0, g.needs.play - 12)
+        g.needs.energy = Math.max(0, g.needs.energy - 6)
+        g.thought = buy.why === 'broke' ? 'Pool — no cash' : 'Skipped the pool'
+      } else {
+        g.needs.play = Math.max(0, g.needs.play - 55)
+        g.needs.energy = Math.max(0, g.needs.energy - 30)
+        g.happiness += 9
+        g.thought = `Airside pool (−$${pay})`
       }
     }
     if (n === 'gate' && g.job === 'depart') {
@@ -3473,7 +3516,9 @@ export class Game {
       (fit.rooms.lounge ?? 0) +
         (fit.rooms.golf ?? 0) +
         (fit.rooms.waterfall ?? 0) +
-        (fit.rooms.gaming ?? 0) >
+        (fit.rooms.gaming ?? 0) +
+        (fit.rooms.spa ?? 0) +
+        (fit.rooms.pool ?? 0) >
       0
     return food && (shop || amenity)
   }
