@@ -96,7 +96,9 @@ import {
 } from './catalog'
 import {
   hallPath,
+  isAirside,
   needToNode,
+  openForGuest,
   openNodesFromRooms,
   spawnHallGuest,
   strongestNeed,
@@ -1747,10 +1749,11 @@ export class Game {
         else if (open.has('exit')) this.routeGuest(g, 'exit', open)
       } else {
         g.node = 'entrance'
+        g.clearedSec = false
         g.thought = 'Inbound — find check-in'
         if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
         else if (open.has('security')) this.routeGuest(g, 'security', open)
-        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+        else g.thought = 'No security lane — stuck landside'
       }
       this.hallGuests.push(g)
     }
@@ -1788,6 +1791,8 @@ export class Game {
           g.t -= 1
           g.seg += 1
           g.node = g.path[g.seg]
+          if (g.node === 'security') g.clearedSec = true
+          this.secureBreach(g)
           this.serveNode(g, open)
         }
         continue
@@ -1872,16 +1877,58 @@ export class Game {
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
-    const path = hallPath(g.node, dest, open, g.tag === 'premium' ? 7 : 5)
+    // Uncleared departures only see landside + security lane.
+    const view = openForGuest(open, g.clearedSec)
+    let target = dest
+    if (!g.clearedSec && isAirside(dest)) {
+      if (view.has('security')) {
+        target = 'security'
+        g.thought = 'Need to clear security first'
+      } else {
+        g.thought = 'Airside locked — no security lane'
+        g.happiness -= 1.2
+        g.patience -= 2
+        return
+      }
+    }
+    const path = hallPath(g.node, target, view, g.tag === 'premium' ? 7 : 5)
     if (!path || path.length < 2) {
-      g.thought = 'Lost in the hall'
-      g.happiness -= 0.5
+      if (!g.clearedSec && isAirside(dest)) {
+        g.thought = 'Blocked at the secure line'
+        g.happiness -= 0.8
+      } else {
+        g.thought = 'Lost in the hall'
+        g.happiness -= 0.5
+      }
       return
     }
     g.path = path
     g.seg = 0
     g.t = 0
-    g.thought = `Heading to ${dest}`
+    if (!g.thought.startsWith('Need to clear')) {
+      g.thought = `Heading to ${target}`
+    }
+  }
+
+  /** Uncleared body on airside — eject + fine + heat. */
+  secureBreach(g: HallGuest) {
+    if (g.clearedSec || !isAirside(g.node)) return
+    const open = this.hallOpen()
+    g.path = []
+    g.seg = 0
+    g.t = 0
+    g.node = open.has('security') ? 'security' : 'entrance'
+    g.happiness -= 12
+    g.thought = 'Security pulled me — breach'
+    this.securityIncidents += 1
+    this.charge(1800)
+    this.reputation = Math.max(0, this.reputation - 2)
+    const aid = this.guestAirlineId(g)
+    if (aid) this.adjustHeat(aid, -3)
+    this.pushNews(
+      `Secure-zone breach — fine $1,800. Uncleared pax cannot walk airside.`,
+      'bad',
+    )
   }
 
   serveNode(g: HallGuest, open: Set<HallNode>) {
@@ -1894,28 +1941,29 @@ export class Game {
       const need = strongestNeed(g)
       if (need) {
         const dest = needToNode(need, g.job)
-        const path = hallPath(g.node, dest, open, 8)
-        if (path) {
-          g.path = path
-          g.seg = 0
-          g.t = 0
-        }
+        this.routeGuest(g, dest, open)
       }
     }
     if (n === 'checkin' && g.job === 'depart') {
       g.thought = 'Checked in — next security'
       if (open.has('security')) this.routeGuest(g, 'security', open)
-      else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      else {
+        g.thought = 'No security lane — cannot reach the gate'
+        g.happiness -= 2
+      }
     }
-    if (n === 'security' && g.job === 'depart') {
-      const wear = this.bumpWear('sec', g.tag === 'budget' ? 2.2 : 0.6)
-      const slow = wear >= 50
-      g.thought = slow
-        ? 'Security lane sticky — slow clear'
-        : 'Cleared security — walk to gate'
-      g.happiness += slow ? -1 : 2
-      if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
-      else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+    if (n === 'security') {
+      g.clearedSec = true
+      if (g.job === 'depart') {
+        const wear = this.bumpWear('sec', g.tag === 'budget' ? 2.2 : 0.6)
+        const slow = wear >= 50
+        g.thought = slow
+          ? 'Security lane sticky — slow clear'
+          : 'Cleared security — walk to gate'
+        g.happiness += slow ? -1 : 2
+        if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
+        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
     }
     if (n === 'bathroom') {
       const wear = this.bumpWear('bath', g.tag === 'budget' ? 2.8 : 0.7)

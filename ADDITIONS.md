@@ -256,7 +256,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 **C1 — CEO authenticity**
 
-5. **Secure-zone enforcement** on hall graph.
+5. **Secure-zone enforcement** on hall graph — ~~shipped~~ uncleared departures only see landside+security; airside breach = fine + incident; no soft security corridor.
 6. **Staff posts** on key desks (security/check-in/boarding).
 7. **De-ice + night curfew**.
 8. **Stand class + pushback beat**.
