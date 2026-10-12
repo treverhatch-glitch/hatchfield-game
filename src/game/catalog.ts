@@ -648,3 +648,10 @@ export const RESEARCH_NODES: ResearchNode[] = [
 export const RP_PER_FLIGHT = 3
 /** Research points per 50 pax boarded/served on departure. */
 export const RP_PER_50_PAX = 1
+
+/** Weather divert accept fee band. */
+export const DIVERT_FEE_MIN = 4500
+export const DIVERT_FEE_MAX = 9000
+/** Firefighter tanker mutual-aid fee. */
+export const TANKER_FEE = 6200
+export const EMERGENCY_REFUSE_FINE = 2500

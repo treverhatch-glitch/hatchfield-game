@@ -167,7 +167,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 5. **Research tree** — ~~points from flights/pax; unlocks night/de-ice/stand class/heavy~~ **shipped** (hotel / 2nd runway ops still open).
 6. **Multi-runway capacity** — two strips add inbound slots when tower funded.
-7. **Emergency asks** — weather-tied divert / firefighter tanker; refuse = rep + heat hit on many carriers.
+7. **Emergency asks** — ~~weather divert / firefighter tanker; refuse = rep + heat~~ **shipped**.
 8. **Heavy pack** — ~~A380, An-124, C-5 behind research~~ **shipped** (needs heavy strip + R&D).
 
 **P2 — AT3 meta AT3 never stuck the landing on**
@@ -260,7 +260,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 6. **Staff posts** on key desks (security/check-in/boarding).
 7. **De-ice + night curfew**.
 8. **Stand class + pushback beat**.
-9. **Emergency asks** (weather divert, firefighter tanker).
+9. **Emergency asks** — ~~weather divert / firefighter tanker~~ **shipped**.
 
 **C2 — CEO scale**
 
@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: C0 spine mostly live (research, rewards/abandon, Field Rating, planner v2). Hotel / 2nd runway / emergency asks / Hub tier still open.
+Dependency note: C0 + emergency asks live. Hub tier / hotel / 2nd runway / secure zones still open.
 
 ### Explicit calls on open design questions
 

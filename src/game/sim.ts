@@ -19,11 +19,15 @@ import {
   HEAT_REWARD_THRESHOLD,
   HEAT_WARN_THRESHOLD,
   HELO_LANDING,
+  DIVERT_FEE_MAX,
+  DIVERT_FEE_MIN,
+  EMERGENCY_REFUSE_FINE,
   RESEARCH_NODES,
   rewardForPersona,
   REWARD_LABEL,
   RP_PER_50_PAX,
   RP_PER_FLIGHT,
+  TANKER_FEE,
   LAND,
   LAYOVER_BAN_FINE,
   LAYOVER_BAN_SECONDS,
@@ -112,6 +116,7 @@ import type {
   MarketMission,
   MxOffer,
   News,
+  PendingEmergency,
   PendingThreat,
   Person,
   Phase,
@@ -201,6 +206,8 @@ export class Game {
   mxSigned: AirlineId[] = []
   threatCool = 40
   pendingThreat: PendingThreat | null = null
+  pendingEmergency: PendingEmergency | null = null
+  emergencyCool = 70
   securityIncidents = 0
   reputation = 40
   loanBalance = 0
@@ -301,6 +308,8 @@ export class Game {
     this.mxSigned = []
     this.threatCool = 45
     this.pendingThreat = null
+    this.pendingEmergency = null
+    this.emergencyCool = 70
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
@@ -1289,6 +1298,8 @@ export class Game {
       this.mission = null
       this.mxOffer = null
       this.pendingThreat = null
+      this.pendingEmergency = null
+      this.emergencyCool = 45
       this.analystCool = 40
       this.flights = []
       this.trucks = []
@@ -3928,6 +3939,121 @@ export class Game {
     this.emit()
   }
 
+  tickEmergencies(dt: number) {
+    if (this.pendingEmergency) {
+      this.pendingEmergency.age += dt
+      this.pendingEmergency.deadline -= dt
+      if (this.pendingEmergency.deadline <= 0) this.resolveEmergency('refuse')
+      return
+    }
+    if (this.pendingThreat) return
+    this.emergencyCool -= dt
+    if (this.emergencyCool > 0 || !this.site) return
+    this.emergencyCool = 55 + Math.random() * 45
+
+    const stormy = this.weather === 'storm' || this.weather === 'fog'
+    const fireThin = this.budgets.fire < 45
+    const wantDivert = stormy && this.signed.length > 0 && Math.random() < 0.55
+    const wantTanker =
+      (this.weather === 'storm' || fireThin) &&
+      tilesOf(this.tiles, 'fire').length > 0 &&
+      Math.random() < 0.4
+
+    if (!wantDivert && !wantTanker) return
+    if (wantTanker && (!wantDivert || Math.random() < 0.45)) {
+      this.pendingEmergency = {
+        id: uid('emg'),
+        kind: 'tanker',
+        blurb:
+          'Mutual-aid firefighter tanker needs a pad and ARFF handoff. Accept for a hosting fee — refuse and neighbors talk.',
+        fee: TANKER_FEE,
+        age: 0,
+        deadline: 22,
+        airline: null,
+      }
+    } else {
+      const pool = this.signed.filter((id) => !this.isBanned(id))
+      const airline = pool.length ? pick(pool) : null
+      const fee =
+        DIVERT_FEE_MIN + Math.floor(Math.random() * (DIVERT_FEE_MAX - DIVERT_FEE_MIN))
+      const name = airline ? this.airline(airline).name : 'A regional'
+      this.pendingEmergency = {
+        id: uid('emg'),
+        kind: 'divert',
+        blurb: `${name} divert inbound — weather closed their dest. Host for ${moneyLeft(fee)} or eat the heat.`,
+        fee,
+        age: 0,
+        deadline: 20,
+        airline,
+      }
+    }
+    this.pushNews(
+      this.pendingEmergency.kind === 'tanker'
+        ? 'EMERGENCY ASK — firefighter tanker on the horn.'
+        : 'EMERGENCY ASK — weather divert wants a stand.',
+      'bad',
+    )
+    this.emit()
+  }
+
+  resolveEmergency(choice: 'accept' | 'refuse') {
+    const e = this.pendingEmergency
+    if (!e) return
+    this.pendingEmergency = null
+    this.emergencyCool = 60 + Math.random() * 40
+
+    if (choice === 'accept') {
+      this.earn(e.fee, e.kind === 'tanker' ? 'Tanker host fee' : 'Divert host fee')
+      this.reputation = Math.min(100, this.reputation + 2)
+      if (e.kind === 'divert' && e.airline) {
+        this.adjustHeat(e.airline, 6)
+        // Force a quick inbound if stands exist.
+        if (!this.isBanned(e.airline)) {
+          this.addManualSlot(e.airline, 10)
+          const slot = this.openSchedule().find(
+            (s) => s.airline === e.airline && s.manual && s.eta - this.clock <= 12,
+          )
+          if (slot) slot.delayReason = 'Weather divert'
+        }
+        this.pushNews(
+          `Hosted ${this.airline(e.airline).name} divert — +${moneyLeft(e.fee)}.`,
+          'good',
+        )
+      } else {
+        // Tanker: bump fire readiness feel + small runway condition help.
+        this.runwayCondition = Math.min(100, this.runwayCondition + 3)
+        this.fireIncidentCool = Math.max(this.fireIncidentCool, 40)
+        this.pushNews(
+          `Firefighter tanker hosted — +${moneyLeft(e.fee)}. ARFF steadied.`,
+          'good',
+        )
+      }
+      this.emit()
+      return
+    }
+
+    // Refuse / timeout
+    this.charge(EMERGENCY_REFUSE_FINE)
+    this.reputation = Math.max(0, this.reputation - 4)
+    if (e.kind === 'divert' && e.airline) {
+      this.adjustHeat(e.airline, -8)
+      for (const id of this.signed) {
+        if (id !== e.airline) this.adjustHeat(id, -1.2)
+      }
+      this.pushNews(
+        `Refused divert — ${this.airline(e.airline).name} furious. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)}.`,
+        'bad',
+      )
+    } else {
+      for (const id of this.signed) this.adjustHeat(id, -1.5)
+      this.pushNews(
+        `Refused tanker mutual aid. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — carriers notice.`,
+        'bad',
+      )
+    }
+    this.emit()
+  }
+
   resolveThreat(choice: 'scramble' | 'ignore') {
     const t = this.pendingThreat
     if (!t) return
@@ -4031,6 +4157,7 @@ export class Game {
     this.releaseHold()
     this.tickPatrols(step)
     this.tickThreats(step)
+    this.tickEmergencies(step)
     this.tickMarket(step)
     this.tickHall(step)
     this.tickWeather(step)

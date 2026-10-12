@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v14'
+export const SAVE_KEY = 'apron-save-v15'
 
 export type Tile =
   | 'grass'
@@ -310,6 +310,20 @@ export interface PendingThreat {
   age: number
   /** Seconds left before it auto-resolves as ignored. */
   deadline: number
+}
+
+/** Weather / ARFF ask — accept for fee, refuse for heat. */
+export type EmergencyKind = 'divert' | 'tanker'
+
+export interface PendingEmergency {
+  id: string
+  kind: EmergencyKind
+  blurb: string
+  fee: number
+  age: number
+  deadline: number
+  /** Airline flavor for divert (null = tanker / mutual aid). */
+  airline: AirlineId | null
 }
 
 export interface Truck {
