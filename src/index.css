@@ -320,6 +320,12 @@ button {
   background: rgba(48, 18, 18, 0.96);
 }
 
+.offer.emergency {
+  top: 336px;
+  border-color: #e09a4a;
+  background: rgba(40, 28, 12, 0.96);
+}
+
 .budgets {
   list-style: none;
   margin: 8px 0 0;

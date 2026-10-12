@@ -264,6 +264,35 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.pendingEmergency ? (
+        <div className="offer emergency">
+          <div>
+            <strong>
+              {game.pendingEmergency.kind === 'tanker'
+                ? 'Firefighter tanker'
+                : 'Weather divert'}
+            </strong>
+            <p>
+              {game.pendingEmergency.blurb} (
+              {Math.ceil(game.pendingEmergency.deadline)}s ·{' '}
+              {money(game.pendingEmergency.fee)})
+            </p>
+          </div>
+          <div className="row">
+            <button
+              type="button"
+              className="on"
+              onClick={() => game.resolveEmergency('accept')}
+            >
+              Host
+            </button>
+            <button type="button" onClick={() => game.resolveEmergency('refuse')}>
+              Refuse
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <aside className="side">
         <section>
           <h2>Build & bank</h2>
