@@ -63,6 +63,7 @@ import {
   MECHANIC_WAGE,
   MIN_RUNWAY,
   PARCEL_COST,
+  JETWAY_RANGE,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   HOTEL_COST,
@@ -1781,23 +1782,107 @@ export class Game {
     return this.fits[0]
   }
 
-  hallOpen(): Set<HallNode> {
-    const fit = this.activeHall()
+  hallKey(fit: TerminalFit): string {
+    return `${fit.origin.c},${fit.origin.r}`
+  }
+
+  /** T1 / T2 labels in stamp order. */
+  hallLabel(fit: TerminalFit): string {
+    const i = this.fits.findIndex(
+      (f) => f.origin.c === fit.origin.c && f.origin.r === fit.origin.r,
+    )
+    return `T${i >= 0 ? i + 1 : 1}`
+  }
+
+  fitByKey(key: string | undefined | null): TerminalFit | null {
+    if (!key) return null
+    return this.fits.find((f) => this.hallKey(f) === key) ?? null
+  }
+
+  hallOpenFor(fit: TerminalFit | null): Set<HallNode> {
     if (!fit) return new Set()
     return openNodesFromRooms(fit.rooms)
   }
 
+  hallOpen(): Set<HallNode> {
+    return this.hallOpenFor(this.activeHall())
+  }
+
+  /** Open graph for a guest's home hall (falls back to active / first). */
+  openForGuest(g: HallGuest): Set<HallNode> {
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
+    return this.hallOpenFor(fit)
+  }
+
+  /**
+   * Nearest hall within jetway range of a stand — null = remote hardstand.
+   * Lite jetway: proximity link, no separate stamp.
+   */
+  jetwayHall(stand: Vec | null): TerminalFit | null {
+    if (!stand || !this.fits.length) return null
+    let best: TerminalFit | null = null
+    let bestD = JETWAY_RANGE + 1
+    for (const f of this.fits) {
+      const d = Math.abs(f.origin.c - stand.c) + Math.abs(f.origin.r - stand.r)
+      if (d < bestD) {
+        bestD = d
+        best = f
+      }
+    }
+    return bestD <= JETWAY_RANGE ? best : null
+  }
+
+  standsForHall(fit: TerminalFit): Vec[] {
+    return tilesOf(this.tiles, 'stand').filter((s) => {
+      const h = this.jetwayHall(s)
+      return h != null && h.origin.c === fit.origin.c && h.origin.r === fit.origin.r
+    })
+  }
+
+  jetwayCount(): number {
+    return tilesOf(this.tiles, 'stand').filter((s) => this.jetwayHall(s)).length
+  }
+
+  occupiedAtHall(fit: TerminalFit): number {
+    const keys = new Set(this.standsForHall(fit).map((s) => `${s.c},${s.r}`))
+    return this.flights.filter(
+      (f) =>
+        (f.craft ?? 'jet') === 'jet' &&
+        f.stand &&
+        keys.has(`${f.stand.c},${f.stand.r}`) &&
+        f.phase !== 'gone' &&
+        f.phase !== 'takeoff',
+    ).length
+  }
+
+  campusLine(): string {
+    if (!this.fits.length) return 'No terminal'
+    const halls = this.fits.map((f) => this.hallLabel(f)).join(' · ')
+    const jw = this.jetwayCount()
+    const remote = tilesOf(this.tiles, 'stand').length - jw
+    return `${this.fits.length} hall${this.fits.length > 1 ? 's' : ''} (${halls}) · ${jw} jetway${jw === 1 ? '' : 's'}${remote > 0 ? ` · ${remote} remote` : ''}`
+  }
+
+  /** Focus a campus hall (from HUD chips or pan-click). */
+  selectHall(fit: TerminalFit) {
+    this.selectedTile = { ...fit.origin }
+    this.setView('hall')
+  }
+
   seedHallForFlight(f: Flight, job: 'depart' | 'arrive') {
     if (f.cargo || !this.fits.length) return
-    const open = this.hallOpen()
+    const fit = this.roomsAt(f.stand) ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return
+    const open = this.hallOpenFor(fit)
     if (!open.size) return
+    const hallId = this.hallKey(fit)
     const count = Math.max(6, Math.min(16, Math.round(f.pax / 7)))
     const a = this.airline(f.airline)
     const premiumBias =
       a.persona === 'luxury' ? 0.65 : a.persona === 'business' ? 0.4 : 0.2
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = Math.random() < premiumBias ? 'premium' : 'budget'
-      const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline })
+      const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
       // Kick them onto a clear first leg so you see the flow immediately.
       if (job === 'arrive') {
         g.node = 'gate'
@@ -1824,13 +1909,19 @@ export class Game {
   }
 
   tickHall(dt: number) {
-    const open = this.hallOpen()
-    if (!open.size) {
+    if (!this.fits.length) {
+      this.hallGuests = []
+      return
+    }
+    const anyOpen = this.fits.some((f) => this.hallOpenFor(f).size > 0)
+    if (!anyOpen) {
       this.hallGuests = []
       return
     }
     for (const g of this.hallGuests) {
       if (g.dead) continue
+      const open = this.openForGuest(g)
+      if (!open.size) continue
       // Needs drift — budget fills hunger/bladder faster; wear makes WC less satisfying.
       const drain = g.tag === 'budget' ? 1.25 : 0.85
       const wearBoost = 1 + this.maxWear() / 200
@@ -3148,14 +3239,16 @@ export class Game {
   }
 
   spawnTransferGuest(airlineId: AirlineId) {
-    const open = this.hallOpen()
-    if (!open.size) return
+    const fit = this.activeHall() ?? this.fits[0]
+    const open = this.hallOpenFor(fit)
+    if (!open.size || !fit) return
     const a = this.airline(airlineId)
     const tag: PaxTag =
       Math.random() < (a.persona === 'business' ? 0.45 : 0.2) ? 'premium' : 'budget'
     const g = spawnHallGuest(`layover:${airlineId}`, 'arrive', tag, {
       transfer: true,
       airlineId,
+      hallId: this.hallKey(fit),
     })
     g.node = 'gate'
     g.thought = `${a.name} transfer — kill time in the hall`
@@ -4217,7 +4310,13 @@ export class Game {
     for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
     this.fits.push(emptyFit(v, false))
     this.selectedTile = v
-    this.pushNews('Empty shell up. Furnish security or airlines will stay away.', 'ok')
+    const n = this.fits.length
+    this.pushNews(
+      n >= 2
+        ? `${this.hallLabel(this.fits[n - 1])} shell up — campus now ${n} halls. Stands nearby get jetways.`
+        : 'Empty shell up. Furnish security or airlines will stay away.',
+      n >= 2 ? 'good' : 'ok',
+    )
     this.emit()
   }
 
@@ -4250,7 +4349,14 @@ export class Game {
       }),
     )
     this.selectedTile = v
-    this.pushNews('Premade terminal online — check-in, security, gates, claim, food.', 'good')
+    const n = this.fits.length
+    const label = this.hallLabel(this.fits[n - 1])
+    this.pushNews(
+      n >= 2
+        ? `${label} premade online — multi-terminal campus. Jetway stands auto-link within ${JETWAY_RANGE}c.`
+        : 'Premade terminal online — check-in, security, gates, claim, food.',
+      'good',
+    )
     this.emit()
   }
 
@@ -4362,7 +4468,10 @@ export class Game {
     })
   }
 
-  /** Prefer stands closest to a terminal hall — lite gate assignment. */
+  /**
+   * Prefer jetway-linked stands, load-balance across halls, then nearest hall.
+   * Multi-terminal lite — second hall pulls its own bank of gates.
+   */
   assignStand(pref?: Vec | null): Vec | null {
     const free = this.freeStands()
     if (!free.length) return null
@@ -4370,20 +4479,41 @@ export class Game {
       const hit = free.find((s) => s.c === pref.c && s.r === pref.r)
       if (hit) return hit
     }
-    const halls = this.fits.map((f) => f.origin)
-    const terms = halls.length ? halls : tilesOf(this.tiles, 'terminal')
-    if (!terms.length) return free[0]
-    free.sort((a, b) => {
-      const da = Math.min(...terms.map((t) => Math.abs(t.c - a.c) + Math.abs(t.r - a.r)))
-      const db = Math.min(...terms.map((t) => Math.abs(t.c - b.c) + Math.abs(t.r - b.r)))
-      return da - db
+    if (!this.fits.length) {
+      const terms = tilesOf(this.tiles, 'terminal')
+      if (!terms.length) return free[0]
+      free.sort((a, b) => {
+        const da = Math.min(...terms.map((t) => Math.abs(t.c - a.c) + Math.abs(t.r - a.r)))
+        const db = Math.min(...terms.map((t) => Math.abs(t.c - b.c) + Math.abs(t.r - b.r)))
+        return da - db
+      })
+      return free[0]
+    }
+    const scored = free.map((s) => {
+      const hall = this.jetwayHall(s)
+      const load = hall ? this.occupiedAtHall(hall) : 99
+      const d = hall
+        ? Math.abs(hall.origin.c - s.c) + Math.abs(hall.origin.r - s.r)
+        : 99
+      return { s, jet: hall != null, load, d }
     })
-    return free[0]
+    scored.sort((a, b) => {
+      if (a.jet !== b.jet) return a.jet ? -1 : 1
+      if (a.load !== b.load) return a.load - b.load
+      return a.d - b.d
+    })
+    return scored[0].s
   }
 
-  /** Gate label from stand index — tower desk copy. */
+  /** Gate label — T1·G2 when jetway-linked, else G# hardstand. */
   gateLabel(stand: Vec | null): string {
     if (!stand) return '—'
+    const hall = this.jetwayHall(stand)
+    if (hall) {
+      const local = this.standsForHall(hall)
+      const idx = local.findIndex((s) => s.c === stand.c && s.r === stand.r)
+      return `${this.hallLabel(hall)}·G${idx >= 0 ? idx + 1 : '?'}`
+    }
     const stands = tilesOf(this.tiles, 'stand')
     const idx = stands.findIndex((s) => s.c === stand.c && s.r === stand.r)
     return idx >= 0 ? `G${idx + 1}` : `${stand.c},${stand.r}`
@@ -4403,7 +4533,9 @@ export class Game {
     const strips = this.runwayStripCount()
     let n = 1 + Math.min(5, Math.max(1, strips))
     if (this.hasResearch('stand_class')) n += 1
-    return Math.min(7, n)
+    // Second terminal campus — one more simultaneous approach.
+    if (this.fits.length >= 2) n += 1
+    return Math.min(8, n)
   }
 
   /** Least-busy strip index for auto bank; null if only one strip. */

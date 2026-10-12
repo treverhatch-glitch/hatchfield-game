@@ -83,6 +83,8 @@ export interface HallGuest {
   /** Layover-bank transfer — longer dwell, captive spend. */
   transfer?: boolean
   airlineId?: string
+  /** Which terminal campus hall this guest belongs to (`c,r` origin key). */
+  hallId?: string
 }
 
 /** Past the secure line — uncleared departures may not enter. */
@@ -276,7 +278,7 @@ export function spawnHallGuest(
   flightId: string,
   job: 'depart' | 'arrive',
   tag: PaxTag,
-  opts?: { transfer?: boolean; airlineId?: string },
+  opts?: { transfer?: boolean; airlineId?: string; hallId?: string },
 ): HallGuest {
   const premium = tag === 'premium'
   const transfer = Boolean(opts?.transfer)
@@ -317,6 +319,7 @@ export function spawnHallGuest(
     clearedSec: job === 'arrive' || transfer,
     transfer,
     airlineId: opts?.airlineId,
+    hallId: opts?.hallId,
   }
 }
 

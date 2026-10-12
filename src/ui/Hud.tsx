@@ -112,6 +112,13 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
         </div>
+        {game.fits.length ? (
+          <div className="stat" title={game.campusLine()}>
+            {game.fits.length > 1
+              ? `${game.fits.length}T · ${game.jetwayCount()} JW`
+              : `${game.jetwayCount()} JW`}
+          </div>
+        ) : null}
         <div className="stat">Sec {ready.security}</div>
         <div
           className="stat"
@@ -157,6 +164,24 @@ export function Hud({ game }: { game: Game }) {
           >
             Hall
           </button>
+          {game.fits.length > 1
+            ? game.fits.map((f) => {
+                const active =
+                  game.activeHall()?.origin.c === f.origin.c &&
+                  game.activeHall()?.origin.r === f.origin.r
+                return (
+                  <button
+                    key={`${f.origin.c},${f.origin.r}`}
+                    type="button"
+                    className={active && game.view === 'hall' ? 'on' : ''}
+                    title={`${game.hallLabel(f)} · ${game.standsForHall(f).length} jetway stands`}
+                    onClick={() => game.selectHall(f)}
+                  >
+                    {game.hallLabel(f)}
+                  </button>
+                )
+              })
+            : null}
           {([0, 1, 3] as Speed[]).map((s) => (
             <button
               key={s}

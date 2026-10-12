@@ -48,6 +48,8 @@ export const HELIPAD_COST = 9000
 /** Flat fee when a chopper sits the pad (medevac / executive). */
 export const HELO_LANDING = 2400
 export const PREMADE_TERMINAL_COST = 52000
+/** Manhattan cells — stand within this of a hall origin counts as jetway-linked. */
+export const JETWAY_RANGE = 8
 export const TAXI_COST = 700
 export const STAND_COST = 6200
 export const TERMINAL_COST = 14800
