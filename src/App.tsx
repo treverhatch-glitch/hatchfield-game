@@ -30,7 +30,46 @@ export default function App() {
   useSyncExternalStore(
     game.subscribe,
     () =>
-      `${game.cash}|${game.speed}|${game.tool}|${game.facing}|${game.site}|${game.view}|${game.offer?.airline}|${game.signed.join(',')}|${game.selectedFlight}|${game.selectedGuest}|${game.news[0]?.id}|${game.fuelLoads}|${game.caterBrand}|${Math.round(game.reputation)}|${game.loanBalance}|${game.parcels}|${game.railLinked}|${game.public}|${game.sharePrice}|${game.sharesOwned}|${game.mission?.id}|${Math.floor(game.clock)}|${game.flights[0]?.phase}|${game.hallGuests.length}|${game.fits.length}`,
+      [
+        game.cash,
+        game.speed,
+        game.tool,
+        game.facing,
+        game.site,
+        game.view,
+        game.offer?.airline,
+        game.mxOffer?.airline,
+        game.pendingThreat?.id,
+        game.signed.join(','),
+        game.selectedFlight,
+        game.selectedGuest,
+        game.news[0]?.id,
+        game.fuelLoads,
+        game.caterBrand,
+        Math.round(game.reputation),
+        game.loanBalance,
+        game.parcels,
+        game.railLinked,
+        game.public,
+        game.sharePrice,
+        game.sharesOwned,
+        game.mission?.id,
+        Math.floor(game.clock),
+        game.flights[0]?.phase,
+        game.flights[0]?.airframeId,
+        game.hallGuests.length,
+        game.fits.length,
+        game.mechanics,
+        game.runwayCondition,
+        game.weather,
+        game.longestRunway(),
+        game.budgets.maintenance,
+        game.budgets.security,
+        game.budgets.cleaning,
+        game.budgets.fire,
+        game.budgets.ambulance,
+        game.milAgreement,
+      ].join('|'),
     () => 'ssr',
   )
 
@@ -58,7 +97,12 @@ export default function App() {
 
   return (
     <div className="shell">
-      {game.view === 'hall' ? <TerminalView game={game} /> : <Field game={game} />}
+      <div className={`view-layer ${game.view === 'apron' ? 'live' : 'dim'}`}>
+        <Field game={game} />
+      </div>
+      <div className={`view-layer ${game.view === 'hall' ? 'live' : 'dim'}`}>
+        <TerminalView game={game} />
+      </div>
       <Hud game={game} />
     </div>
   )
