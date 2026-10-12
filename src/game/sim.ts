@@ -1029,7 +1029,7 @@ export class Game {
         food: 1,
         souvenir: 1,
         bagdrop: 1,
-        lounge: 0,
+        lounge: 1,
         bathroom: 2,
       }),
     ]
@@ -1038,10 +1038,13 @@ export class Game {
     this.caterBrand = 'skybite'
     this.mechanics = 1
     this.spawnMechanicPawn()
+    // One desk body so the first bank doesn't miss gates on an empty counter.
+    this.deskStaff = 1
+    this.assignHallStaff()
     this.offerCool = 2
     this.spawnCool = 6
     this.pushNews(
-      'Starter kit down — connected pavement, one mechanic on the strip. Northline should call.',
+      'Starter kit down — connected pavement, lounge, one mechanic + desk agent. Northline should call.',
       'good',
     )
     this.emit()
