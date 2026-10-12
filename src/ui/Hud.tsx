@@ -13,6 +13,7 @@ import {
   HOTEL_COST_L2,
   JANITOR_HIRE,
   RESEARCHER_HIRE,
+  DESK_STAFF_HIRE,
   LAND,
   LOAN_PRINCIPAL,
   MECHANIC_HIRE,
@@ -444,12 +445,19 @@ export function Hud({ game }: { game: Game }) {
             <button type="button" onClick={() => game.hireResearcher()}>
               Hire researcher · {money(RESEARCHER_HIRE)}
             </button>
+            <button type="button" onClick={() => game.hireDeskStaff()}>
+              Hire desk agent · {money(DESK_STAFF_HIRE)}
+            </button>
             <button type="button" onClick={() => game.fireMechanic()}>
               Lay off
             </button>
           </div>
           <p className="muted">
-            {game.mechanics} mechanics · {game.researchers} researchers
+            {game.mechanics} mechanics · {game.researchers} researchers ·{' '}
+            {game.deskStaff} desk
+            {game.staffedPost('checkin') ? ' · check-in' : ''}
+            {game.staffedPost('security') ? ' · security' : ''}
+            {game.staffedPost('gate') ? ' · gate' : ''}
             {game.mxSigned.length
               ? ` · MX: ${game.mxSigned.map((id) => game.airline(id).name).join(', ')}`
               : ' · no airline MX yet (need hangar + mechanic)'}

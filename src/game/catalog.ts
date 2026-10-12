@@ -103,6 +103,8 @@ export const JANITOR_HIRE = 3200
 export const JANITOR_WAGE = 260
 export const RESEARCHER_HIRE = 4800
 export const RESEARCHER_WAGE = 340
+export const DESK_STAFF_HIRE = 3600
+export const DESK_STAFF_WAGE = 280
 /** Soft RP/sec per working researcher when lab gear is present. */
 export const RP_RATE_DESK = 0.09
 export const RP_RATE_BOARD = 0.05

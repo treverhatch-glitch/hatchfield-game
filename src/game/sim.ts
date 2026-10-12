@@ -75,6 +75,8 @@ import {
   JANITOR_WAGE,
   RESEARCHER_HIRE,
   RESEARCHER_WAGE,
+  DESK_STAFF_HIRE,
+  DESK_STAFF_WAGE,
   RP_RATE_BARE,
   RP_RATE_BOARD,
   RP_RATE_DESK,
@@ -104,7 +106,9 @@ import {
   strongestNeed,
   type HallGuest,
   type HallNode,
+  type HallStaff,
   type PaxTag,
+  type StaffPost,
 } from './guests'
 import {
   AIRFRAMES,
@@ -261,6 +265,9 @@ export class Game {
   janitorCool = 0
   researchers = 0
   researcherCool = 0
+  deskStaff = 0
+  deskStaffCool = 0
+  hallStaff: HallStaff[] = []
   interestCool = 60
   public = false
   sharePrice = 0
@@ -379,6 +386,9 @@ export class Game {
     this.janitorCool = 0
     this.researchers = 0
     this.researcherCool = 0
+    this.deskStaff = 0
+    this.deskStaffCool = 0
+    this.hallStaff = []
     this.interestCool = 60
     this.public = false
     this.sharePrice = 0
@@ -871,6 +881,9 @@ export class Game {
     this.janitors = 0
     this.researchers = 0
     this.researcherCool = 0
+    this.deskStaff = 0
+    this.deskStaffCool = 0
+    this.hallStaff = []
     this.pushNews(
       `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit ($${STARTER_KIT_COST.toLocaleString()}) for a Northline-ready field.`,
       'ok',
@@ -1491,6 +1504,7 @@ export class Game {
       parkTerms: this.parkTerms,
       janitors: this.janitors,
       researchers: this.researchers,
+      deskStaff: this.deskStaff,
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -1561,6 +1575,8 @@ export class Game {
       this.parkTerms = s.parkTerms ?? {}
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
+      this.deskStaff = s.deskStaff ?? 0
+      this.hallStaff = []
       this.public = s.public ?? false
       this.sharePrice = s.sharePrice ?? 0
       this.sharesOwned = s.sharesOwned ?? 0
@@ -1945,7 +1961,14 @@ export class Game {
       }
     }
     if (n === 'checkin' && g.job === 'depart') {
-      g.thought = 'Checked in — next security'
+      if (!this.staffedPost('checkin')) {
+        g.thought = 'Empty check-in — waiting on a clerk'
+        g.happiness -= 1.5
+        g.needs.boarding = Math.max(0, g.needs.boarding - 1.5)
+      } else {
+        g.thought = 'Checked in — next security'
+        g.happiness += 1
+      }
       if (open.has('security')) this.routeGuest(g, 'security', open)
       else {
         g.thought = 'No security lane — cannot reach the gate'
@@ -1956,13 +1979,27 @@ export class Game {
       g.clearedSec = true
       if (g.job === 'depart') {
         const wear = this.bumpWear('sec', g.tag === 'budget' ? 2.2 : 0.6)
-        const slow = wear >= 50
-        g.thought = slow
-          ? 'Security lane sticky — slow clear'
-          : 'Cleared security — walk to gate'
-        g.happiness += slow ? -1 : 2
+        const unstaffed = !this.staffedPost('security')
+        const slow = wear >= 50 || unstaffed
+        g.thought = unstaffed
+          ? 'No officer at the lane — slow clear'
+          : slow
+            ? 'Security lane sticky — slow clear'
+            : 'Cleared security — walk to gate'
+        g.happiness += unstaffed ? -2 : slow ? -1 : 2
+        if (unstaffed) g.needs.boarding = Math.max(0, g.needs.boarding - 2)
         if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
         else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
+    }
+    if (n === 'gate' && g.job === 'depart') {
+      if (!this.staffedPost('gate')) {
+        g.thought = 'Boarding desk empty — holding'
+        g.happiness -= 1
+        g.needs.boarding = Math.max(0, g.needs.boarding - 1)
+      } else if (!g.thought.includes('Cleared')) {
+        g.thought = 'Gate agent ready — boarding'
+        g.happiness += 1
       }
     }
     if (n === 'bathroom') {
@@ -2120,6 +2157,11 @@ export class Game {
     this.emit()
   }
 
+  /** True when a body is working that desk (not on break). */
+  staffedPost(post: StaffPost): boolean {
+    return this.hallStaff.some((s) => s.node === post && s.stage === 0)
+  }
+
   securityLevel(): number {
     let n = 0
     for (const f of this.fits) {
@@ -2129,6 +2171,9 @@ export class Game {
       else if ((f.wearSec ?? 0) >= 40) n -= 0.5
     }
     if (tilesOf(this.tiles, 'police').length) n += 1
+    // Bodies at the lane beat empty desks.
+    if (this.staffedPost('security')) n += 0.75
+    else if (this.deskStaff < 1 && n > 0) n -= 0.5
     // Underfunded security staff can't staff the lanes they built.
     const staff = this.budgets.security / 100
     if (staff < 0.35) n -= 1
@@ -3365,6 +3410,117 @@ export class Game {
     this.researchPoints += rate * workFrac * night * dt
   }
 
+  hireDeskStaff() {
+    if (this.deskStaff >= 8) {
+      this.pushNews('Desk crew maxed (8).', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.fits.length) {
+      this.pushNews('Stamp a hall before hiring desk staff.', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(DESK_STAFF_HIRE, 'hire desk staff')) return
+    this.deskStaff += 1
+    this.assignHallStaff()
+    this.pushNews(
+      `Hired desk agent #${this.deskStaff}. Bodies cover check-in, security, and gate.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  assignHallStaff() {
+    const open = this.hallOpen()
+    const posts: StaffPost[] = []
+    if (open.has('checkin')) posts.push('checkin')
+    if (open.has('security')) posts.push('security')
+    if (open.has('gate')) posts.push('gate')
+    if (!posts.length) {
+      this.hallStaff = []
+      return
+    }
+    // Keep existing bodies; resize to deskStaff.
+    while (this.hallStaff.length < this.deskStaff) {
+      const node = posts[this.hallStaff.length % posts.length]
+      this.hallStaff.push({
+        id: uid('desk'),
+        node,
+        label:
+          node === 'checkin'
+            ? 'Clerk'
+            : node === 'security'
+              ? 'Screener'
+              : 'Gate agent',
+        color: node === 'security' ? '#c9a227' : node === 'gate' ? '#6a9ec8' : '#8aaf7a',
+        stage: 0,
+      })
+    }
+    if (this.hallStaff.length > this.deskStaff) {
+      this.hallStaff.length = this.deskStaff
+    }
+    // Rebalance coverage — prefer empty posts.
+    const covered = new Set(this.hallStaff.filter((s) => s.stage === 0).map((s) => s.node))
+    for (const s of this.hallStaff) {
+      if (s.stage !== 0) continue
+      if (!posts.includes(s.node)) {
+        s.node = posts[0]
+        s.label =
+          s.node === 'checkin' ? 'Clerk' : s.node === 'security' ? 'Screener' : 'Gate agent'
+      }
+    }
+    for (const post of posts) {
+      if (covered.has(post)) continue
+      const free = this.hallStaff.find((s) => s.stage === 0 && covered.has(s.node) &&
+        this.hallStaff.filter((x) => x.node === s.node && x.stage === 0).length > 1)
+      if (free) {
+        free.node = post
+        free.label =
+          post === 'checkin' ? 'Clerk' : post === 'security' ? 'Screener' : 'Gate agent'
+        covered.add(post)
+      }
+    }
+  }
+
+  tickDeskStaff(dt: number) {
+    if (this.deskStaff < 1) {
+      this.hallStaff = []
+      return
+    }
+    this.deskStaffCool -= dt
+    this.assignHallStaff()
+    if (this.deskStaffCool > 0) return
+    this.deskStaffCool = 14
+    for (const s of this.hallStaff) {
+      if (s.stage === 1) {
+        s.stage = 0
+        continue
+      }
+      if (Math.random() < 0.16) {
+        s.stage = 1
+        s.label = `${s.label.split(' ·')[0]} · break`
+      }
+    }
+    // Rotate working staff across posts so one hire still covers over time.
+    const open = this.hallOpen()
+    const posts: StaffPost[] = []
+    if (open.has('checkin')) posts.push('checkin')
+    if (open.has('security')) posts.push('security')
+    if (open.has('gate')) posts.push('gate')
+    if (posts.length < 2) return
+    for (const s of this.hallStaff) {
+      if (s.stage !== 0) continue
+      if (Math.random() < 0.35) {
+        const next = posts[Math.floor(Math.random() * posts.length)]
+        s.node = next
+        s.label =
+          next === 'checkin' ? 'Clerk' : next === 'security' ? 'Screener' : 'Gate agent'
+        s.color = next === 'security' ? '#c9a227' : next === 'gate' ? '#6a9ec8' : '#8aaf7a'
+      }
+    }
+  }
+
   lineCost(key: BudgetKey): number {
     const pct = this.budgets[key] / 100
     let base = BUDGET_BASE[key] * pct
@@ -3380,6 +3536,7 @@ export class Game {
     if (key === 'security') {
       const posts = tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0)
       base *= 1 + posts * 0.12
+      base += this.deskStaff * DESK_STAFF_WAGE * Math.max(0.4, pct)
     }
     if (key === 'cleaning') {
       const rooms = this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0)
@@ -5121,6 +5278,7 @@ export class Game {
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickResearchers(step)
+    this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
     this.trySpawn()
