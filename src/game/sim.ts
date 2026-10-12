@@ -62,7 +62,12 @@ import {
   type HallNode,
   type PaxTag,
 } from './guests'
-import { AIRFRAMES, pickAirframe, pickAirframeWithFallback } from './airframes'
+import {
+  AIRFRAMES,
+  craftRoleLabel,
+  pickAirframe,
+  pickAirframeWithFallback,
+} from './airframes'
 import {
   advancePaxItinerary,
   spawnArrivalPax,
@@ -227,6 +232,8 @@ export class Game {
   flightsDone = 0
   paxServed = 0
   revenue = 0
+  /** Session tally of craft roles that landed — for the fleet strip. */
+  craftSeen: Partial<Record<AircraftKind, number>> = {}
   listeners = new Set<() => void>()
   saveTimer = 0
   uiAcc = 0
@@ -312,7 +319,33 @@ export class Game {
     this.flightsDone = 0
     this.paxServed = 0
     this.revenue = 0
+    this.craftSeen = {}
     this.mechanicCool = 0
+  }
+
+  noteCraft(kind: AircraftKind) {
+    this.craftSeen[kind] = (this.craftSeen[kind] ?? 0) + 1
+  }
+
+  fleetMixLine(): string {
+    const roles: { label: string; kinds: AircraftKind[] }[] = [
+      { label: 'Pax', kinds: ['regional', 'narrowbody', 'widebody'] },
+      { label: 'Cargo', kinds: ['freighter'] },
+      { label: 'Emergency', kinds: ['helo_med', 'air_ambulance'] },
+      { label: 'Exec', kinds: ['helo_exec'] },
+      { label: 'Military', kinds: ['military'] },
+    ]
+    const parts = roles
+      .map((r) => {
+        const n = r.kinds.reduce((s, k) => s + (this.craftSeen[k] ?? 0), 0)
+        return n > 0 ? `${r.label} ${n}` : null
+      })
+      .filter(Boolean)
+    return parts.length ? parts.join(' · ') : 'No metal yet'
+  }
+
+  roleLabel(kind: AircraftKind): string {
+    return craftRoleLabel(kind)
   }
 
   /** Premade + live procedural regionals. */
@@ -420,7 +453,7 @@ export class Game {
     this.milCool = 20
     this.reputation = Math.min(100, this.reputation + 5)
     this.pushNews(
-      'Guard host agreement signed — expect olive transports and the odd fighter drag (Boise vibes).',
+      'Guard host signed (Boise vibes) — C-130 / C-17 / KC-135 transit plus the odd F-15 drag.',
       'good',
     )
     this.emit()
@@ -2618,10 +2651,12 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.noteCraft(af.kind)
     this.spawnCool = tilesOf(this.tiles, 'tower').length ? 12 : 16
     this.selectedFlight = this.selectedFlight ?? f.id
+    const role = craftRoleLabel(af.kind)
     this.pushNews(
-      `${def.name} ${f.flightNo} · ${af.name} → ${gate}` +
+      `${def.name} ${f.flightNo} · ${role} ${af.name} → ${gate}` +
         (busy ? ' — holding for pavement.' : '.'),
       'ok',
     )
@@ -2693,12 +2728,13 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.noteCraft(af.kind)
     this.heloCool = 40 + Math.random() * 25
     this.selectedFlight = this.selectedFlight ?? f.id
-      this.pushNews(
+    this.pushNews(
       medevac
-        ? `${call} · ${af.name} medevac inbound — pad ${pad.c},${pad.r}.`
-        : `${call} · ${af.name} executive inbound.`,
+        ? `${call} · Emergency ${af.name} medevac → pad ${pad.c},${pad.r}.`
+        : `${call} · Executive ${af.name} inbound.`,
       'ok',
     )
   }
@@ -2963,9 +2999,8 @@ export class Game {
     if (this.milCool > 0) return
     if (this.groundBusy()) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
-    const free = this.freeStands()
-    if (!free.length) return
-    const stand = free[0]
+    const stand = this.assignStand()
+    if (!stand) return
     const route = this.landingRoute(stand)
     if (!route) return
     const af = pickAirframe('military', this.longestRunway())
@@ -2974,7 +3009,16 @@ export class Game {
       return
     }
     this.flightSeq += 1
-    const call = af.id === 'kc135' ? `ANG${this.flightSeq}` : `RDR${this.flightSeq}`
+    const prefix =
+      af.id === 'f15'
+        ? 'VIPER'
+        : af.id === 'kc135'
+          ? 'ANG'
+          : af.id === 'c17'
+            ? 'REACH'
+            : 'RDR'
+    const call = `${prefix}${this.flightSeq}`
+    const fighter = af.id === 'f15'
     const f: Flight = {
       id: uid('mil'),
       airline: this.signed[0] ?? 'harbor',
@@ -2982,14 +3026,14 @@ export class Game {
       airframeId: af.id,
       airframeName: af.name,
       pax: 0,
-      cargo: true,
+      cargo: !fighter,
       craft: 'jet',
       kind: 'military',
       phase: 'approach',
       stand,
       x: route[0].c - 4,
       y: route[0].r - 2,
-      z: 9,
+      z: fighter ? 10 : 9,
       heading: 0,
       path: route,
       seg: 0,
@@ -3013,9 +3057,15 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
-    this.milCool = 70 + Math.random() * 40
+    this.noteCraft('military')
+    this.milCool = fighter ? 45 + Math.random() * 25 : 70 + Math.random() * 40
     this.selectedFlight = this.selectedFlight ?? f.id
-    this.pushNews(`${call} · ${af.name} military transit inbound.`, 'ok')
+    this.pushNews(
+      fighter
+        ? `${call} · ${af.name} fighter drag inbound (Guard host).`
+        : `${call} · ${af.name} military transit → ${this.gateLabel(stand)}.`,
+      'ok',
+    )
   }
 
   trySpawnAirAmbulance() {
@@ -3029,9 +3079,9 @@ export class Game {
       this.ambuCool = 30
       return
     }
-    const free = this.freeStands()
-    if (!free.length || !runwayStrips(this.tiles, MIN_RUNWAY).length) return
-    const stand = free[0]
+    if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
+    const stand = this.assignStand()
+    if (!stand) return
     const route = this.landingRoute(stand)
     if (!route) return
     this.flightSeq += 1
@@ -3074,8 +3124,12 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.noteCraft('air_ambulance')
     this.ambuCool = 90 + Math.random() * 50
-    this.pushNews(`${call} · ${af.name} air ambulance inbound.`, 'ok')
+    this.pushNews(
+      `${call} · Emergency ${af.name} air ambulance → ${this.gateLabel(stand)}.`,
+      'ok',
+    )
   }
 
   spawnTruck(kind: Truck['kind'], f: Flight | null, path: Vec[]) {
