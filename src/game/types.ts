@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v21'
+export const SAVE_KEY = 'apron-save-v22'
 
 export type Tile =
   | 'grass'
@@ -22,10 +22,13 @@ export type Tile =
   | 'park_l'
   | 'park_g'
   | 'park_u'
+  | 'deice'
 
 export type RunwayClass = 'short' | 'regional' | 'heavy'
 /** Car park term — set when stamping a park tile. */
 export type ParkTerm = 'short' | 'long'
+/** Stand size class — S regional / M narrow / L wide+freight+mil. */
+export type StandClass = 'S' | 'M' | 'L'
 
 export type Tool =
   | 'pan'
@@ -34,7 +37,9 @@ export type Tool =
   | 'runway_heavy'
   | 'helipad'
   | 'taxi'
+  | 'stand_s'
   | 'stand'
+  | 'stand_l'
   | 'terminal'
   | 'premade'
   | 'snack'
@@ -51,6 +56,7 @@ export type Tool =
   | 'park_l'
   | 'park_g'
   | 'park_u'
+  | 'deice'
   | 'clear'
 
 export type Speed = 0 | 1 | 3
@@ -363,6 +369,8 @@ export interface Flight {
     bagDrop: boolean
     /** Line MX mechanic visited from hangar. */
     mx: boolean
+    /** Glycol / de-ice service completed this turn. */
+    deiced: boolean
   }
   waitingOn: {
     bags: boolean
@@ -371,6 +379,8 @@ export interface Flight {
     catering: boolean
     /** Line MX en route from hangar (does not hard-block turn). */
     mx: boolean
+    /** Storm/fog de-ice truck en route before pushback. */
+    deice: boolean
     paxOut: number
     paxIn: number
   }
@@ -439,12 +449,13 @@ export type TruckMission =
   | 'load'
   | 'fuel'
   | 'fuel_reload'
+  | 'deice'
   | 'cater'
   | 'patrol'
 
 export interface Truck {
   id: string
-  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police'
+  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice'
   flightId: string | null
   x: number
   y: number
@@ -582,6 +593,8 @@ export interface GameSnapshot {
   carParkLong?: boolean
   /** Park tile key "c,r" → short/long term. */
   parkTerms?: Record<string, ParkTerm>
+  /** Stand tile key "c,r" → S/M/L class. */
+  standClass?: Record<string, StandClass>
   janitors?: number
   researchers?: number
   deskStaff?: number

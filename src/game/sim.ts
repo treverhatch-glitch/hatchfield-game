@@ -9,6 +9,8 @@ import {
   CLEANING_FEE,
   createProcAirline,
   DEFAULT_BUDGETS,
+  DEICE_FEE,
+  DEICE_PAD_COST,
   FUEL,
   AIR_AMBULANCE_FEE,
   HALL_SCRUB_COST,
@@ -105,6 +107,7 @@ import {
   RUNWAY_PREFAB_COST,
   RUNWAY_PREFAB_LEN,
   RUNWAY_PREFAB_WID,
+  standClassRank,
   STARTER_KIT_COST,
   START_CASH,
   TERMINAL_COST,
@@ -131,6 +134,7 @@ import {
   jetAirframesFitting,
   pickAirframe,
   pickAirframeWithFallback,
+  standClassFor,
   stripTier,
 } from './airframes'
 import {
@@ -181,6 +185,7 @@ import type {
   ScheduleStatus,
   SiteKind,
   Speed,
+  StandClass,
   TerminalFit,
   Tile,
   Tool,
@@ -250,6 +255,7 @@ function emptyPosted(): Flight['posted'] {
     catering: false,
     bagDrop: false,
     mx: false,
+    deiced: false,
   }
 }
 
@@ -260,6 +266,7 @@ function emptyWaiting(partial?: Partial<Flight['waitingOn']>): Flight['waitingOn
     fuel: false,
     catering: false,
     mx: false,
+    deice: false,
     paxOut: 0,
     paxIn: 0,
     ...partial,
@@ -304,6 +311,8 @@ export class Game {
   parkTerms: Record<string, ParkTerm> = {}
   /** Term used when stamping the next park tile. */
   parkTerm: ParkTerm = 'short'
+  /** Stand tile "c,r" → S/M/L. Missing defaults to M. */
+  standClass: Record<string, StandClass> = {}
   janitors = 0
   janitorCool = 0
   researchers = 0
@@ -443,6 +452,7 @@ export class Game {
     this.carParkLong = false
     this.parkTerms = {}
     this.parkTerm = 'short'
+    this.standClass = {}
     this.janitors = 0
     this.janitorCool = 0
     this.researchers = 0
@@ -1178,6 +1188,7 @@ export class Game {
     this.carParkShort = false
     this.carParkLong = false
     this.parkTerms = {}
+    this.standClass = {}
     this.janitors = 0
     this.researchers = 0
     this.researcherCool = 0
@@ -1233,6 +1244,8 @@ export class Game {
     // Stands AFTER hall so they are not overwritten by the 3×3 terminal stamp.
     this.tiles[21][12] = 'stand'
     this.tiles[21][20] = 'stand'
+    this.standClass['12,21'] = 'M'
+    this.standClass['20,21'] = 'M'
     // Link hall to taxi + stands
     this.tiles[22][12] = 'taxi'
     this.tiles[22][15] = 'taxi'
@@ -1836,6 +1849,7 @@ export class Game {
       carParkShort: this.carParkShort,
       carParkLong: this.carParkLong,
       parkTerms: this.parkTerms,
+      standClass: this.standClass,
       janitors: this.janitors,
       researchers: this.researchers,
       deskStaff: this.deskStaff,
@@ -1909,6 +1923,7 @@ export class Game {
       this.carParkShort = s.carParkShort ?? false
       this.carParkLong = s.carParkLong ?? false
       this.parkTerms = s.parkTerms ?? {}
+      this.standClass = s.standClass ?? {}
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
@@ -2987,6 +3002,34 @@ export class Game {
     this.emit()
   }
 
+  /** Pin a slot to a specific stand (or null = tower auto). Planner drag target. */
+  setSlotStandPref(slotId: string, stand: Vec | null) {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+    if (stand) {
+      const hit = tilesOf(this.tiles, 'stand').find(
+        (st) => st.c === stand.c && st.r === stand.r,
+      )
+      if (!hit) {
+        this.pushNews('That stand is gone.', 'bad')
+        this.emit()
+        return
+      }
+      s.standPref = { ...hit }
+      this.pushNews(`${s.flightNo} stand → ${this.gateLabel(s.standPref)}.`, 'ok')
+    } else {
+      s.standPref = null
+      this.pushNews(`${s.flightNo} stand → tower auto.`, 'ok')
+    }
+    this.emit()
+  }
+
+  /** Nudge ETA by delta seconds (floor 6s ahead). Planner drag polish. */
+  nudgeSlotEta(slotId: string, deltaSec: number) {
+    if (deltaSec < 0) this.pullSlot(slotId, Math.abs(deltaSec))
+    else if (deltaSec > 0) this.bumpSlot(slotId, deltaSec)
+  }
+
   /** Cycle preferred runway strip across every stamped strip. */
   cycleSlotRunway(slotId: string) {
     const s = this.schedule.find((x) => x.id === slotId)
@@ -3045,6 +3088,26 @@ export class Game {
           runway: this.runwayLabel(s.runwayPref),
         })),
     }
+  }
+
+  /**
+   * First contiguous night band inside the planner horizon (sim day = 180s, night ≥120).
+   * Used to paint the night column on the day strip.
+   */
+  plannerNightBand(horizon = 120): { from: number; to: number } | null {
+    let from: number | null = null
+    let to = 0
+    for (let t = 0; t <= horizon; t++) {
+      const night = (this.clock + t) % 180 >= 120
+      if (night) {
+        if (from == null) from = t
+        to = t
+      } else if (from != null) {
+        break
+      }
+    }
+    if (from == null) return null
+    return { from, to }
   }
 
   /**
@@ -4744,6 +4807,21 @@ export class Game {
       this.emit()
       return
     }
+    if (building.tile === 'deice' && !farmBesidePavement(this.tiles, v)) {
+      this.pushNews('De-ice pad needs taxi / stand / runway edge.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.tool === 'stand_l' && !this.hasResearch('stand_class')) {
+      this.pushNews('Stand L locked — research Stand classes first.', 'bad')
+      this.emit()
+      return
+    }
+    if (building.tile === 'deice' && !this.hasResearch('deice')) {
+      this.pushNews('De-ice pad locked — research De-ice ops first.', 'bad')
+      this.emit()
+      return
+    }
     const isLandside =
       building.tile === 'hotel' ||
       building.tile === 'park_s' ||
@@ -4779,6 +4857,19 @@ export class Game {
         `${building.name} (${this.parkTerm}-term) stamped.`,
         'ok',
       )
+    } else if (building.tile === 'stand') {
+      const cls: StandClass =
+        this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
+      this.standClass[`${v.c},${v.r}`] = cls
+      this.pushNews(`${building.name} stamped.`, 'ok')
+      if (tilesOf(this.tiles, 'hangar').length && this.milCapableStands().length) {
+        this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
+      }
+    } else if (building.tile === 'deice') {
+      this.pushNews(
+        `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`,
+        'good',
+      )
     } else if (building.tile === 'hangar') {
       if (!this.milCapableStands().length) {
         this.pushNews(
@@ -4788,12 +4879,17 @@ export class Game {
       } else {
         this.pushNews('Hangar up — mil ramp pads linked.', 'good')
       }
-    } else if (building.tile === 'stand' && tilesOf(this.tiles, 'hangar').length) {
-      if (this.milCapableStands().length) {
-        this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
-      }
     }
     this.emit()
+  }
+
+  standClassAt(stand: Vec | null): StandClass {
+    if (!stand) return 'M'
+    return this.standClass[`${stand.c},${stand.r}`] ?? 'M'
+  }
+
+  standFitsClass(stand: Vec, need: StandClass): boolean {
+    return standClassRank(this.standClassAt(stand)) >= standClassRank(need)
   }
 
   ghostCells(hover: Vec | null): Vec[] {
@@ -4855,13 +4951,15 @@ export class Game {
   /**
    * Prefer jetway-linked stands, load-balance across halls, then nearest hall.
    * Multi-terminal lite — second hall pulls its own bank of gates.
+   * Optional `need` filters by stand S/M/L class.
    */
-  assignStand(pref?: Vec | null): Vec | null {
-    const free = this.freeStands()
+  assignStand(pref?: Vec | null, need?: StandClass): Vec | null {
+    let free = this.freeStands()
+    if (need) free = free.filter((s) => this.standFitsClass(s, need))
     if (!free.length) return null
     if (pref) {
       const hit = free.find((s) => s.c === pref.c && s.r === pref.r)
-      if (hit) return hit
+      if (hit && (!need || this.standFitsClass(hit, need))) return hit
     }
     if (!this.fits.length) {
       const terms = tilesOf(this.tiles, 'terminal')
@@ -4889,18 +4987,19 @@ export class Game {
     return scored[0].s
   }
 
-  /** Gate label — T1·G2 when jetway-linked, else G# hardstand. */
+  /** Gate label — T1·G2·M when jetway-linked, else G#·class hardstand. */
   gateLabel(stand: Vec | null): string {
     if (!stand) return '—'
+    const cls = this.standClassAt(stand)
     const hall = this.jetwayHall(stand)
     if (hall) {
       const local = this.standsForHall(hall)
       const idx = local.findIndex((s) => s.c === stand.c && s.r === stand.r)
-      return `${this.hallLabel(hall)}·G${idx >= 0 ? idx + 1 : '?'}`
+      return `${this.hallLabel(hall)}·G${idx >= 0 ? idx + 1 : '?'}·${cls}`
     }
     const stands = tilesOf(this.tiles, 'stand')
     const idx = stands.findIndex((s) => s.c === stand.c && s.r === stand.r)
-    return idx >= 0 ? `G${idx + 1}` : `${stand.c},${stand.r}`
+    return idx >= 0 ? `G${idx + 1}·${cls}` : `${stand.c},${stand.r}·${cls}`
   }
 
   holdingCount(): number {
@@ -5107,10 +5206,18 @@ export class Game {
       this.spawnCool = 4
       return
     }
-    const stand = this.assignStand(slot.standPref ?? null)
+    const needCls = standClassFor(af.kind)
+    const stand = this.assignStand(slot.standPref ?? null, needCls)
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     if (!stand || !route) {
-      this.delaySlot(slot, 10 + Math.random() * 8, 'No gate / path')
+      const anyFree = this.freeStands().length > 0
+      this.delaySlot(slot, 10 + Math.random() * 8, anyFree ? 'Stand class short' : 'No gate / path')
+      if (anyFree) {
+        this.pushNews(
+          `${slot.flightNo} needs Stand ${needCls}+ — class or path missing.`,
+          'bad',
+        )
+      }
       this.spawnCool = 5
       return
     }
@@ -5699,10 +5806,26 @@ export class Game {
     const start = path[0]
     const resolved: TruckMission =
       mission ??
-      (kind === 'bags' ? 'unload' : kind === 'fuel' ? 'fuel' : kind === 'catering' ? 'cater' : 'patrol')
-    // Real ops: makeup load at shed / bottom-load at farm before rolling.
+      (kind === 'bags'
+        ? 'unload'
+        : kind === 'fuel'
+          ? 'fuel'
+          : kind === 'catering'
+            ? 'cater'
+            : kind === 'deice'
+              ? 'deice'
+              : 'patrol')
+    // Real ops: makeup load at shed / bottom-load at farm / glycol fill at pad before rolling.
     const pre =
-      resolved === 'load' ? 1.7 : resolved === 'fuel' ? 1.3 : resolved === 'fuel_reload' ? 1.6 : 0
+      resolved === 'load'
+        ? 1.7
+        : resolved === 'fuel'
+          ? 1.3
+          : resolved === 'fuel_reload'
+            ? 1.6
+            : resolved === 'deice'
+              ? 1.1
+              : 0
     this.trucks.push({
       id: uid('trk'),
       kind,
@@ -5719,6 +5842,54 @@ export class Game {
       mission: resolved === 'fuel_reload' ? 'fuel' : resolved,
       home: home ?? (path.length ? path[0] : null),
     })
+  }
+
+  /** Storm/fog + De-ice ops research + stamped pad → glycol truck before pushback. */
+  needsDeiceService(f: Flight): boolean {
+    if ((f.craft ?? 'jet') !== 'jet') return false
+    if (f.posted.deiced) return false
+    if (!this.hasResearch('deice')) return false
+    if (this.weather !== 'storm' && this.weather !== 'fog') return false
+    if (!tilesOf(this.tiles, 'deice').length) return false
+    return true
+  }
+
+  /**
+   * Dispatch de-ice truck from pad → stand. Returns true when clear to push
+   * (not needed, already sprayed, or force-timeout caller).
+   */
+  ensureDeice(f: Flight): boolean {
+    if (!this.needsDeiceService(f)) {
+      f.waitingOn.deice = false
+      return true
+    }
+    if (f.posted.deiced) {
+      f.waitingOn.deice = false
+      return true
+    }
+    const enroute = this.trucks.some(
+      (t) => t.kind === 'deice' && t.flightId === f.id && !t.returning,
+    )
+    if (enroute) {
+      f.waitingOn.deice = true
+      return false
+    }
+    const pads = tilesOf(this.tiles, 'deice')
+    if (!f.stand || !pads.length) {
+      f.waitingOn.deice = false
+      return true
+    }
+    const path = nearestPath(this.tiles, pads[0], [f.stand], 'truck')
+    if (!path || path.length < 2) {
+      f.waitingOn.deice = true
+      return false
+    }
+    f.waitingOn.deice = true
+    this.spawnTruck('deice', f, path, 'deice', pads[0])
+    if (Math.random() < 0.55) {
+      this.pushNews(`${f.flightNo} holding for de-ice.`, 'ok')
+    }
+    return false
   }
 
   finishTruck(t: Truck) {
@@ -5784,6 +5955,12 @@ export class Game {
       this.earn(pay, `${f.flightNo} catering (${CATER[this.caterBrand].name})`, f)
       this.mealSold = true
       this.reputation = Math.min(100, this.reputation + 1)
+    }
+    if (t.kind === 'deice' && t.mission === 'deice' && !f.posted.deiced) {
+      f.posted.deiced = true
+      f.waitingOn.deice = false
+      this.earn(DEICE_FEE, `${f.flightNo} de-ice`, f)
+      this.pushNews(`${f.flightNo} de-iced — clear to push.`, 'good')
     }
   }
 
@@ -6656,7 +6833,18 @@ export class Game {
               'ok',
             )
           } else if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
-            if (!this.groundBusy() || f.phaseTime > 24) {
+            const deiceOk =
+              (f.phaseTime > 3 ? this.ensureDeice(f) : !this.needsDeiceService(f)) ||
+              f.phaseTime > 28
+            if (deiceOk && (!this.groundBusy() || f.phaseTime > 24)) {
+              if (!f.posted.deiced && this.needsDeiceService(f)) {
+                f.waitingOn.deice = false
+                this.adjustHeat(f.airline, -1.2)
+                this.pushNews(
+                  `${f.flightNo} pushed without glycol — heat dips.`,
+                  'bad',
+                )
+              }
               f.phase = 'pushback'
               f.phaseTime = 0
               if (f.stand) {
@@ -6702,9 +6890,20 @@ export class Game {
           }
           f.boardingSlow = false
         }
+        if (f.phaseTime > 3) this.ensureDeice(f)
         if (boardReady || f.phaseTime > boardLimit) {
+          const deiceOk =
+            this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
-          if (!this.groundBusy() || f.phaseTime > boardLimit + 4) {
+          if (deiceOk && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+            if (!f.posted.deiced && this.needsDeiceService(f)) {
+              f.waitingOn.deice = false
+              this.adjustHeat(f.airline, -1.5)
+              this.pushNews(
+                `${f.flightNo} pushed without glycol — heat dips.`,
+                'bad',
+              )
+            }
             f.phase = 'pushback'
             f.phaseTime = 0
             if (f.stand) {
@@ -6720,7 +6919,7 @@ export class Game {
             if (Math.random() < 0.35) {
               this.pushNews(`${f.flightNo} pushback — clear the alley.`, 'ok')
             }
-          } else if (f.phaseTime > boardLimit + 6) {
+          } else if (f.phaseTime > boardLimit + 6 && deiceOk) {
             const next = this.openSchedule()[0]
             if (next && Math.random() < step * 0.35) {
               this.delaySlot(next, 8, 'Departure blocked')
@@ -6856,9 +7055,17 @@ export class Game {
       }
       const done = this.followPath(t, 1.8, step)
       if (done && !t.returning) {
-        // Service dwell at the aircraft (fuel = bond + pump).
+        // Service dwell at the aircraft (fuel = bond + pump; deice = spray).
         t.dwell =
-          t.kind === 'fuel' ? 3.6 : t.mission === 'load' ? 2.6 : t.mission === 'unload' ? 2.4 : 2.2
+          t.kind === 'fuel'
+            ? 3.6
+            : t.kind === 'deice'
+              ? 3.2
+              : t.mission === 'load'
+                ? 2.6
+                : t.mission === 'unload'
+                  ? 2.4
+                  : 2.2
       } else if (done && t.returning) {
         // Arrived home / claim / farm.
         if (t.kind === 'bags' && t.mission === 'to_claim') {

@@ -315,7 +315,11 @@ export class World {
   }
 
   rebuildTiles(game: Game) {
-    const hash = game.tiles.flat().join('')
+    const classHash = Object.entries(game.standClass)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(';')
+    const hash = `${game.tiles.flat().join('')}|${classHash}`
     if (hash === this.tileHash) return
     this.tileHash = hash
     this.tilesGroup.clear()
@@ -338,6 +342,25 @@ export class World {
           mesh.position.copy(pos)
           mesh.receiveShadow = true
           this.tilesGroup.add(mesh)
+          if (tile === 'stand') {
+            const cls = game.standClass[`${c},${r}`] ?? 'M'
+            const tint =
+              cls === 'S' ? '#6aae7a' : cls === 'L' ? '#c97816' : '#c9a227'
+            const badge = new THREE.Mesh(
+              new THREE.BoxGeometry(CELL * 0.22, 0.12, CELL * 0.22),
+              new THREE.MeshStandardMaterial({
+                color: tint,
+                emissive: tint,
+                emissiveIntensity: 0.15,
+                roughness: 0.45,
+              }),
+            )
+            badge.position.copy(pos)
+            badge.position.y = 0.12
+            badge.position.x += CELL * 0.28
+            badge.position.z -= CELL * 0.28
+            this.tilesGroup.add(badge)
+          }
           continue
         }
         this.tilesGroup.add(this.building(tile, pos))
@@ -543,6 +566,39 @@ export class World {
       )
       cross.position.y = 0.16
       g.add(pad, ring, bar, cross)
+    } else if (tile === 'deice') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({ color: '#3a4a58' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.04
+      pad.receiveShadow = true
+      const tank = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.65, 1.6, 12),
+        new THREE.MeshStandardMaterial({
+          color: '#4aa8c8',
+          metalness: 0.35,
+          roughness: 0.35,
+        }),
+      )
+      tank.position.set(-CELL * 0.18, 0.85, 0)
+      tank.castShadow = true
+      const boom = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 0.12, 0.18),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
+      )
+      boom.position.set(CELL * 0.12, 1.35, 0)
+      const drip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.55, 0.14),
+        new THREE.MeshStandardMaterial({
+          color: '#7ec8e0',
+          emissive: '#2a6070',
+          emissiveIntensity: 0.25,
+        }),
+      )
+      drip.position.set(CELL * 0.32, 1.0, 0)
+      g.add(pad, tank, boom, drip)
     }
     return g
   }
@@ -726,7 +782,14 @@ export class World {
       seenT.add(t.id)
       let mesh = this.trucks.get(t.id)
       if (!mesh) {
-        const color = t.kind === 'fuel' ? '#c9a227' : t.kind === 'bags' ? '#6b7280' : '#c45c26'
+        const color =
+          t.kind === 'fuel'
+            ? '#c9a227'
+            : t.kind === 'bags'
+              ? '#6b7280'
+              : t.kind === 'deice'
+                ? '#4aa8c8'
+                : '#c45c26'
         mesh = new THREE.Mesh(
           truckGeo,
           new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),

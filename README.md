@@ -39,13 +39,14 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 ## What’s in
 
 - Personas, heat, rewards / abandon, layovers → Hub plaques
-- Flight planner (pull / bump / runway prefs), N-strip inbound banks
-- Multi-terminal jetways (`T1·G2`), landside hotel / car parks
+- Flight planner (day strip + night column, ETA drag, stand pin), N-strip inbound banks
+- Stand S / M / L stamps · de-ice pad + glycol trucks in storm/fog
+- Multi-terminal jetways (`T1·G2·M`), landside hotel / car parks
 - Research: night bank → de-ice → stand classes → heavy pack (A380 / An-124) → military ramp (C-5M)
 - Emergencies: weather divert, firefighting plane refuel / refuel+MX
 - Guard host on a hangar-side mil ramp (not pax gates)
 
-Browser save key: `apron-save-v21`. New game overwrites it.
+Browser save key: `apron-save-v22`. New game overwrites it.
 
 ## Verify
 

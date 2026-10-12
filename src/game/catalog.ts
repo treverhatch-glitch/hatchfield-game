@@ -10,6 +10,7 @@ import type {
   ParkTerm,
   ResearchId,
   RoomDef,
+  StandClass,
   Tool,
 } from './types'
 
@@ -53,7 +54,9 @@ export const JETWAY_RANGE = 8
 /** Manhattan cells — stand within this of a hangar counts as military ramp. */
 export const MIL_RAMP_RANGE = 10
 export const TAXI_COST = 700
+export const STAND_S_COST = 4800
 export const STAND_COST = 6200
+export const STAND_L_COST = 9800
 export const TERMINAL_COST = 14800
 export const SNACK_COST = 3600
 export const BAGS_COST = 4800
@@ -64,6 +67,9 @@ export const CARGO_COST = 16000
 export const ROAD_COST = 450
 export const TOWER_COST = 18000
 export const HANGAR_COST = 14000
+export const DEICE_PAD_COST = 11_500
+/** Fee when glycol truck clears a jet. */
+export const DEICE_FEE = 1400
 export const CLEANING_FEE = 900
 /** Deep-clean hall WC / security after budget wear. */
 export const HALL_SCRUB_COST = 2800
@@ -484,11 +490,32 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Pavement jets and trucks follow.',
   },
   {
+    tool: 'stand_s',
+    tile: 'stand',
+    name: 'Stand S',
+    cost: STAND_S_COST,
+    blurb: 'Small stand — regionals / GA. Cheap bay.',
+  },
+  {
     tool: 'stand',
     tile: 'stand',
-    name: 'Stand',
+    name: 'Stand M',
     cost: STAND_COST,
-    blurb: 'Parking bay. Jets only pay after they park here.',
+    blurb: 'Medium stand — narrowbodies. Default gate.',
+  },
+  {
+    tool: 'stand_l',
+    tile: 'stand',
+    name: 'Stand L',
+    cost: STAND_L_COST,
+    blurb: 'Large stand — widebody / freighter / mil. Needs Stand classes research.',
+  },
+  {
+    tool: 'deice',
+    tile: 'deice',
+    name: 'De-ice pad',
+    cost: DEICE_PAD_COST,
+    blurb: 'Glycol pad beside taxi/strip. Storm holds clear when De-ice ops is researched.',
   },
   {
     tool: 'terminal',
@@ -648,7 +675,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   runway_heavy: 'Heavy strip',
   helipad: 'Helipad',
   taxi: 'Taxiway',
-  stand: 'Stand',
+  stand_s: 'Stand S',
+  stand: 'Stand M',
+  stand_l: 'Stand L',
   terminal: 'Shell',
   premade: 'Premade hall',
   snack: 'Snack',
@@ -665,7 +694,16 @@ export const TOOL_LABEL: Record<Tool, string> = {
   park_l: 'Lot L',
   park_g: 'Garage',
   park_u: 'Under',
+  deice: 'De-ice',
   clear: 'Clear',
+}
+
+export function standClassLabel(c: StandClass): string {
+  return c === 'S' ? 'Stand S' : c === 'L' ? 'Stand L' : 'Stand M'
+}
+
+export function standClassRank(c: StandClass): number {
+  return c === 'S' ? 1 : c === 'M' ? 2 : 3
 }
 
 export function parkTermLabel(t: ParkTerm): string {
@@ -753,14 +791,14 @@ export const RESEARCH_NODES: ResearchNode[] = [
     id: 'deice',
     name: 'De-ice ops',
     cost: 34,
-    blurb: 'Glycol pads cut storm crash risk and weather slip delays.',
+    blurb: 'Stamp glycol pads + dispatch de-ice trucks in storm/fog. Cuts crash risk.',
     requires: 'night_bank',
   },
   {
     id: 'stand_class',
     name: 'Stand classes',
     cost: 40,
-    blurb: 'Coded stands raise inbound capacity when the tower is funded.',
+    blurb: 'Unlock Stand L stamps + smarter inbound capacity. S/M always available.',
     requires: 'deice',
   },
   {

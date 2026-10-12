@@ -493,6 +493,39 @@ button {
     rgba(80, 100, 90, 0.06)
   );
   border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.day-strip-night {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(40, 55, 90, 0.55),
+    rgba(30, 40, 70, 0.7)
+  );
+  border-left: 1px solid rgba(140, 170, 220, 0.35);
+  pointer-events: none;
+}
+
+.day-strip-night.locked {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(40, 45, 60, 0.65),
+    rgba(40, 45, 60, 0.65) 4px,
+    rgba(70, 50, 50, 0.55) 4px,
+    rgba(70, 50, 50, 0.55) 8px
+  );
+  opacity: 0.85;
+}
+
+.planner-drag {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(201, 162, 39, 0.18);
+  border-radius: 6px;
+  background: rgba(8, 16, 12, 0.4);
 }
 
 .day-strip-now,
@@ -519,17 +552,24 @@ button {
   transform: translateX(-50%);
   min-width: 28px;
   padding: 2px 5px;
+  border: none;
   border-radius: 4px;
   font-size: 10px;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   color: #0a1410;
   text-align: center;
-  pointer-events: none;
+  cursor: pointer;
+  z-index: 1;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
 .day-strip-slot.delayed {
   outline: 1px solid rgba(230, 120, 80, 0.85);
+}
+
+.day-strip-slot.selected {
+  outline: 2px solid #e8eef4;
+  z-index: 2;
 }
 
 .airlines {
