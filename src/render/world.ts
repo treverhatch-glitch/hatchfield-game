@@ -463,6 +463,30 @@ export class World {
       body.position.y = 1.6
       body.castShadow = true
       g.add(body)
+    } else if (tile === 'helipad') {
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(CELL * 0.42, CELL * 0.42, 0.12, 24),
+        new THREE.MeshStandardMaterial({ color: '#3a3f48', roughness: 0.55 }),
+      )
+      pad.position.y = 0.08
+      pad.receiveShadow = true
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(CELL * 0.32, 0.05, 8, 28),
+        new THREE.MeshStandardMaterial({ color: '#c9a227', roughness: 0.4 }),
+      )
+      ring.rotation.x = Math.PI / 2
+      ring.position.y = 0.16
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.08, 0.06, CELL * 0.42),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
+      )
+      bar.position.y = 0.16
+      const cross = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.42, 0.06, CELL * 0.08),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
+      )
+      cross.position.y = 0.16
+      g.add(pad, ring, bar, cross)
     }
     return g
   }
@@ -518,15 +542,16 @@ export class World {
       transparent: true,
       opacity: 0.38,
     })
+    const stampRunway = game.tool === 'runway' || game.tool === 'runway_heavy'
     const runwayReady =
-      game.tool === 'runway' &&
+      stampRunway &&
       cells.length > 1 &&
       cells.every((p) => inBounds(p.c, p.r) && game.tile(p) === 'grass')
     for (const p of cells) {
       if (p.c < 0) continue
       const t = game.tile(p)
       const clear = t === 'grass' || game.tool === 'clear'
-      const ready = game.tool === 'runway' ? runwayReady : clear
+      const ready = stampRunway ? runwayReady : clear
       const mesh = new THREE.Mesh(geo, ready ? ok : bad)
       mesh.position.copy(toWorld(p.c, p.r, 0.12))
       this.ghostGroup.add(mesh)

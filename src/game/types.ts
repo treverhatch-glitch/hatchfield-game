@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v7'
+export const SAVE_KEY = 'apron-save-v8'
 
 export type Tile =
   | 'grass'
@@ -16,10 +16,15 @@ export type Tile =
   | 'road'
   | 'tower'
   | 'hangar'
+  | 'helipad'
+
+export type RunwayClass = 'regional' | 'heavy'
 
 export type Tool =
   | 'pan'
   | 'runway'
+  | 'runway_heavy'
+  | 'helipad'
   | 'taxi'
   | 'stand'
   | 'terminal'
@@ -90,6 +95,7 @@ export interface AirlineReq {
   cargo: boolean
   road: boolean
   tower: boolean
+  heavyRunway: boolean
 }
 
 export interface Airline {
@@ -243,6 +249,8 @@ export type MarketMissionId =
   | 'earnings_beat'
   | 'calm_the_board'
   | 'restore_trust'
+  | 'heavy_ready'
+  | 'scrub_the_hall'
 
 export interface MarketMission {
   id: MarketMissionId
@@ -251,7 +259,7 @@ export interface MarketMission {
   /** Sim-seconds left. */
   deadline: number
   /** What completes it. */
-  goal: 'security3' | 'revenueBurst' | 'rep60' | 'noIncident'
+  goal: 'security3' | 'revenueBurst' | 'rep60' | 'noIncident' | 'heavyRunway' | 'lowWear'
   progress: number
   target: number
   rewardCash: number
@@ -262,6 +270,9 @@ export interface TerminalFit {
   origin: Vec
   rooms: Record<RoomId, number>
   premade: boolean
+  /** 0–100 wear from budget traffic. High wear softens security and WC. */
+  wearBath: number
+  wearSec: number
 }
 
 export interface GameSnapshot {

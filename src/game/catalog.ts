@@ -33,6 +33,10 @@ export const LAND: Record<'city' | 'factory', LandSite> = {
 export const RUNWAY_PREFAB_COST = 38000
 export const RUNWAY_PREFAB_LEN = 14
 export const RUNWAY_PREFAB_WID = 2
+export const HEAVY_RUNWAY_COST = 72000
+export const HEAVY_RUNWAY_LEN = 20
+export const HEAVY_RUNWAY_WID = 3
+export const HELIPAD_COST = 9000
 export const PREMADE_TERMINAL_COST = 52000
 export const TAXI_COST = 700
 export const STAND_COST = 6200
@@ -47,6 +51,8 @@ export const ROAD_COST = 450
 export const TOWER_COST = 18000
 export const HANGAR_COST = 14000
 export const CLEANING_FEE = 900
+/** Deep-clean hall WC / security after budget wear. */
+export const HALL_SCRUB_COST = 2800
 export const BULLDOZE_REFUND = 0.4
 export const LOAN_PRINCIPAL = 40_000
 export const LOAN_FEE = 2_500
@@ -81,6 +87,7 @@ const baseReq = {
   cargo: false,
   road: true,
   tower: false,
+  heavyRunway: false,
 }
 
 export const AIRLINES: Record<string, Airline> = {
@@ -142,8 +149,9 @@ export const AIRLINES: Record<string, Airline> = {
       catering: true,
       security: 3,
       tower: true,
+      heavyRunway: true,
     },
-    blurb: 'Premium pax. Three stands, tower, GalleyPrime-tier catering preferred, serious security.',
+    blurb: 'Premium pax. Heavy strip, three stands, tower, GalleyPrime-tier catering, serious security.',
   },
   umazon: {
     id: 'umazon',
@@ -171,6 +179,7 @@ export const AIRLINES: Record<string, Airline> = {
       cargo: true,
       road: true,
       tower: false,
+      heavyRunway: false,
     },
     blurb: 'Night freighters. Cargo shed, fuel, fire, police, road — no passenger hall required.',
   },
@@ -200,6 +209,7 @@ export const AIRLINES: Record<string, Airline> = {
       cargo: true,
       road: true,
       tower: false,
+      heavyRunway: false,
     },
     blurb: 'Brown-box freighter. First cargo contract most fields can earn.',
   },
@@ -229,8 +239,9 @@ export const AIRLINES: Record<string, Airline> = {
       cargo: true,
       road: true,
       tower: true,
+      heavyRunway: true,
     },
-    blurb: 'Priority freighters. Two stands, police, tower, and a proper cargo apron.',
+    blurb: 'Priority freighters. Heavy strip, two stands, police, tower, cargo apron.',
   },
 }
 
@@ -354,6 +365,13 @@ export const BUILDINGS: BuildDef[] = [
     cost: HANGAR_COST,
     blurb: 'Overnight checks. Raises reputation when stands are busy.',
   },
+  {
+    tool: 'helipad',
+    tile: 'helipad',
+    name: 'Helipad',
+    cost: HELIPAD_COST,
+    blurb: 'Later: medevac and executive choppers. Stamps a pad for now.',
+  },
 ]
 
 export const ROOMS: RoomDef[] = [
@@ -371,6 +389,8 @@ export const ROOMS: RoomDef[] = [
 export const TOOL_LABEL: Record<Tool, string> = {
   pan: 'Look',
   runway: 'Runway',
+  runway_heavy: 'Heavy strip',
+  helipad: 'Helipad',
   taxi: 'Taxiway',
   stand: 'Stand',
   terminal: 'Shell',

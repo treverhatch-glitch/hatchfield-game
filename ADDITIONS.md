@@ -43,11 +43,17 @@ We copied the *spirit*:
 - **Visible multi-stop passenger itineraries** on the apron: arrivals plane→bags→food/shop→road exit; departures road→hall→gate→plane. Hall guests chain gate→claim→exit / entrance→check-in→security→gate.
 - **IPO / HATCH ticker** — list the airport, buy/sell shares, fair-value drift, market missions, security breaches tank the stock when public.
 
+## Added next loop
+
+- **Heavy strip** tool (20×3) — Summit / EXFED require it; regional starter stays 14×2.
+- **Helipad** stamp (visual + readiness flag; chopper ops later).
+- **Facility wear** — budget hall traffic scuffs WC / security; scrub costs cash; high wear softens security level and feeds exposés.
+- **Analyst crises** while public — fuel spikes, short rumors, downgrades, “needs heavy strip” notes, wear exposés, plus missions `heavy_ready` / `scrub_the_hall`.
+
 ## Still later (on your list, not finished)
 
-- Heavier runway classes / helicopters
+- Live helicopter / medevac flights
 - Full custom terminal wall painting
 - Bomb/threat minigame beyond fines
-- Wear from budget crowds
 - Golf / waterfall / gaming dens
 - Godot Steam rebuild
