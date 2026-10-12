@@ -348,6 +348,15 @@ If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 - **mil_ramp** cost 48 → 42 so the research spine finishes in one sitting.
 - `scripts/playthrough-full.mts` exercises boot → IPO → Guard → save/load.
 
+## Real-ops GSE + independent parking
+
+Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bottom-load, hangar line MX):
+
+- **Bags** — shed → aircraft unload → **to_claim** (plane→shed/claim inject) → continue or park; outbound **makeup pickup** at shed (`preDwell`) → load at stand → home/continue.
+- **Fuel** — bowser bottom-loads at the farm, fuels on stand (bond/pump dwell), then reloads at farm or continues if stock remains.
+- **Line MX** — mechanic walks hangar → stand → hangar; pay posts when the visit finishes (not on landing).
+- **Independent parking** — random GA asks (not signed airlines), parking fee + day-rate, pilot **requests leave** after stay, **~20h ops window** (`GA_LEAVE_WINDOW` = 150s of 180s day) with auto tower release or manual Release; overstay fine if they miss it.
+
 ## Still later (on your list, not finished)
 
 - Full custom terminal wall painting (Tier A #1) + landside/airside
