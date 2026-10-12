@@ -9,12 +9,18 @@ import {
   FUEL,
   LAND,
   LOADS_PER_BUY,
+  LOAN_FEE,
+  LOAN_INTEREST,
+  LOAN_PRINCIPAL,
   MIN_RUNWAY,
+  PARCEL_COST,
   PREMADE_TERMINAL_COST,
+  RAIL_CITY_COST,
   ROOMS,
   RUNWAY_PREFAB_COST,
   RUNWAY_PREFAB_LEN,
   RUNWAY_PREFAB_WID,
+  STARTER_KIT_COST,
   START_CASH,
   TERMINAL_COST,
 } from './catalog'
@@ -29,11 +35,15 @@ import {
   type PaxTag,
 } from './guests'
 import {
+  advancePaxItinerary,
+  spawnArrivalPax,
+  spawnDeparturePax,
+} from './pax'
+import {
   astar,
   farmBesidePavement,
   inBounds,
   nearestPath,
-  neighbors,
   runwayStrips,
   tilesOf,
 } from './path'
@@ -114,6 +124,10 @@ export class Game {
   threatCool = 40
   securityIncidents = 0
   reputation = 40
+  loanBalance = 0
+  parcels = 1
+  railLinked = false
+  interestCool = 60
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -162,6 +176,10 @@ export class Game {
     this.threatCool = 45
     this.securityIncidents = 0
     this.reputation = 40
+    this.loanBalance = 0
+    this.parcels = 1
+    this.railLinked = false
+    this.interestCool = 60
     this.flights = []
     this.trucks = []
     this.people = []
@@ -190,8 +208,10 @@ export class Game {
     this.tiles = emptyTiles()
     this.seedAccessStub()
     this.speed = 1
+    this.parcels = 1
+    this.railLinked = false
     this.pushNews(
-      `${land.name} purchased. ${moneyLeft(this.cash)} left. Enter build mode — stamp a runway, services, then wait for airlines.`,
+      `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit for a Northline-ready field.`,
       'ok',
     )
     this.persist()
@@ -202,6 +222,135 @@ export class Game {
   seedAccessStub() {
     // City edge hint — short road stub from north edge so players see the connection idea.
     for (let r = 0; r < 3; r++) this.tiles[r][Math.floor(SIZE / 2)] = 'road'
+  }
+
+  /** One-click AT3 regional field that meets Northline’s checklist. */
+  buildStarterKit() {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
+      return
+    }
+    if (runwayStrips(this.tiles, MIN_RUNWAY).length) {
+      this.pushNews('Field already has a runway — kit is for empty plots.', 'bad')
+      return
+    }
+    if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
+
+    this.facing = 'h'
+    for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
+    // Continuous taxi spine so pax can path plane → bags → hall → road
+    for (let c = 8; c <= 22; c++) this.tiles[23][c] = 'taxi'
+    for (let c = 8; c <= 22; c++) this.tiles[22][c] = 'taxi'
+    this.tiles[21][12] = 'stand'
+    this.tiles[21][16] = 'stand'
+    this.tiles[21][8] = 'fuel'
+    this.tiles[21][10] = 'bags'
+    this.tiles[21][14] = 'snack'
+    this.tiles[20][8] = 'fire'
+    this.tiles[19][12] = 'tower'
+    // Road from north city edge down to the hall
+    const roadC = 16
+    for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
+    this.tiles[18][15] = 'road'
+    this.tiles[18][17] = 'road'
+    // Premade hall touching taxi + road
+    const origin = { c: 15, r: 19 }
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) this.tiles[origin.r + r][origin.c + c] = 'terminal'
+    }
+    // Link hall to taxi
+    this.tiles[22][15] = 'taxi'
+    this.tiles[22][16] = 'taxi'
+    this.tiles[22][17] = 'taxi'
+    this.fits = [
+      {
+        origin,
+        premade: true,
+        rooms: {
+          checkin: 2,
+          security: 2,
+          gate: 2,
+          bagclaim: 1,
+          food: 1,
+          souvenir: 1,
+          bagdrop: 1,
+          lounge: 0,
+          bathroom: 2,
+        },
+      },
+    ]
+    this.fuelBrand = 'apex'
+    this.fuelLoads = 4
+    this.caterBrand = 'skybite'
+    this.offerCool = 2
+    this.spawnCool = 6
+    this.pushNews(
+      'Starter kit down — connected pavement so passengers can walk plane→bags→hall→road. Northline should call.',
+      'good',
+    )
+    this.emit()
+  }
+
+  takeLoan() {
+    if (this.loanBalance > 0) {
+      this.pushNews('Pay off the open loan first.', 'bad')
+      return
+    }
+    this.loanBalance = LOAN_PRINCIPAL + LOAN_FEE
+    this.cash += LOAN_PRINCIPAL
+    this.interestCool = 60
+    this.pushNews(
+      `Bank wired ${moneyLeft(LOAN_PRINCIPAL)}. You owe ${moneyLeft(this.loanBalance)}. Interest ticks while it is open.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  repayLoan() {
+    if (this.loanBalance <= 0) return
+    if (!this.spend(this.loanBalance, 'loan payoff')) return
+    this.loanBalance = 0
+    this.reputation = Math.min(100, this.reputation + 3)
+    this.pushNews('Loan cleared.', 'good')
+    this.emit()
+  }
+
+  buyParcel() {
+    if (!this.site) return
+    if (this.parcels >= 4) {
+      this.pushNews('No more parcels on this map sketch.', 'bad')
+      return
+    }
+    if (!this.spend(PARCEL_COST * this.parcels, 'land parcel')) return
+    this.parcels += 1
+    // Paint a strip of buildable grass marker as road fringe on the east
+    const edge = 6 + this.parcels * 4
+    for (let r = 4; r < SIZE - 4; r++) {
+      if (edge < SIZE && this.tiles[r][edge] === 'grass') {
+        /* parcel unlock is soft — more cash runway later; for now reputation + news */
+      }
+    }
+    this.reputation = Math.min(100, this.reputation + 2)
+    this.pushNews(`Parcel ${this.parcels} bought. Room to grow the apron.`, 'good')
+    this.emit()
+  }
+
+  investRail() {
+    if (!this.site) return
+    if (this.railLinked) {
+      this.pushNews('City rail already reaches the fence.', 'ok')
+      return
+    }
+    if (!this.spend(RAIL_CITY_COST, 'city rail investment')) return
+    this.railLinked = true
+    // City builds to the west edge; player sees a stub.
+    for (let c = 0; c < 4; c++) this.tiles[Math.floor(SIZE / 2)][c] = 'road'
+    this.reputation = Math.min(100, this.reputation + 5)
+    this.pushNews(
+      'City laid rail to the west fence. Connect roads from there — passengers arrive easier.',
+      'good',
+    )
+    this.emit()
   }
 
   persist() {
@@ -224,6 +373,9 @@ export class Game {
       revenue: this.revenue,
       securityIncidents: this.securityIncidents,
       reputation: this.reputation,
+      loanBalance: this.loanBalance,
+      parcels: this.parcels,
+      railLinked: this.railLinked,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -258,6 +410,9 @@ export class Game {
       this.revenue = s.revenue
       this.securityIncidents = s.securityIncidents ?? 0
       this.reputation = s.reputation ?? 40
+      this.loanBalance = s.loanBalance ?? 0
+      this.parcels = s.parcels ?? 1
+      this.railLinked = s.railLinked ?? false
       this.flights = []
       this.trucks = []
       this.people = []
@@ -342,12 +497,28 @@ export class Game {
 
   seedHallForFlight(f: Flight, job: 'depart' | 'arrive') {
     if (f.cargo || !this.fits.length) return
-    const count = Math.max(4, Math.min(14, Math.round(f.pax / 8)))
+    const open = this.hallOpen()
+    if (!open.size) return
+    const count = Math.max(6, Math.min(16, Math.round(f.pax / 7)))
     const premiumBias =
       f.airline === 'summit' ? 0.65 : f.airline === 'harbor' ? 0.4 : 0.2
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = Math.random() < premiumBias ? 'premium' : 'budget'
-      this.hallGuests.push(spawnHallGuest(f.id, job, tag))
+      const g = spawnHallGuest(f.id, job, tag)
+      // Kick them onto a clear first leg so you see the flow immediately.
+      if (job === 'arrive') {
+        g.node = 'gate'
+        g.thought = 'Off the jet — need bags'
+        if (open.has('claim')) this.routeGuest(g, 'claim', open)
+        else if (open.has('exit')) this.routeGuest(g, 'exit', open)
+      } else {
+        g.node = 'entrance'
+        g.thought = 'Inbound — find check-in'
+        if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
+        else if (open.has('security')) this.routeGuest(g, 'security', open)
+        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
+      this.hallGuests.push(g)
     }
   }
 
@@ -433,13 +604,32 @@ export class Game {
 
   serveNode(g: HallGuest, open: Set<HallNode>) {
     const n = g.node
-    if (n === 'checkin' && g.job === 'depart') {
-      g.thought = 'Checked in'
-      if (open.has('security')) this.routeGuest(g, 'security', open)
-    }
-    if (n === 'security') {
-      g.thought = 'Cleared security'
+    if (n === 'info') {
+      g.patience = Math.min(100, g.patience + 8)
       g.happiness += 2
+      g.thought = 'Got directions'
+      // Info desk extends lookahead once — like an RCT park map.
+      const need = strongestNeed(g)
+      if (need) {
+        const dest = needToNode(need, g.job)
+        const path = hallPath(g.node, dest, open, 8)
+        if (path) {
+          g.path = path
+          g.seg = 0
+          g.t = 0
+        }
+      }
+    }
+    if (n === 'checkin' && g.job === 'depart') {
+      g.thought = 'Checked in — next security'
+      if (open.has('security')) this.routeGuest(g, 'security', open)
+      else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+    }
+    if (n === 'security' && g.job === 'depart') {
+      g.thought = 'Cleared security — walk to gate'
+      g.happiness += 2
+      if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
+      else if (open.has('gate')) this.routeGuest(g, 'gate', open)
     }
     if (n === 'bathroom') {
       g.needs.bladder = Math.max(0, g.needs.bladder - 55)
@@ -480,10 +670,20 @@ export class Game {
       }
     }
     if (n === 'claim' && g.job === 'arrive') {
-      g.needs.bags = Math.max(0, g.needs.bags - 40)
-      g.thought = 'Bag belt'
+      g.needs.bags = Math.max(0, g.needs.bags - 55)
+      g.thought = 'Got bags — heading landside'
+      if (g.needs.hunger > 50 && open.has('food')) this.routeGuest(g, 'food', open)
+      else if (g.needs.shop > 45 && open.has('shop')) this.routeGuest(g, 'shop', open)
+      else if (open.has('exit')) this.routeGuest(g, 'exit', open)
+    }
+    if (n === 'food' && g.job === 'arrive') {
+      if (open.has('exit')) this.routeGuest(g, 'exit', open)
+    }
+    if (n === 'shop' && g.job === 'arrive') {
+      if (open.has('exit')) this.routeGuest(g, 'exit', open)
     }
     if (n === 'exit' && g.job === 'arrive') {
+      g.thought = 'Left the airport'
       g.dead = true
       this.paxServed += 1
       this.reputation = Math.min(100, this.reputation + 0.3)
@@ -552,6 +752,7 @@ export class Game {
     const a = AIRLINES[id]
     const r = this.readiness()
     if (!r.runway) return false
+    if (this.reputation < a.minRep) return false
     const q = a.req
     return (
       r.stands >= q.stands &&
@@ -574,6 +775,7 @@ export class Game {
     const a = AIRLINES[id]
     const r = this.readiness()
     const miss: string[] = []
+    if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
     if (!r.runway) miss.push('runway')
     if (r.stands < a.req.stands) miss.push(`${a.req.stands} stands`)
     if (a.req.fuelContract && !r.fuelContract) miss.push('fuel contract')
@@ -1165,37 +1367,9 @@ export class Game {
 
     if (f.cargo) return
 
-    const visual = Math.max(4, Math.round(f.pax / 14))
+    const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
     f.waitingOn.paxOut = visual
-    const hall = tilesOf(this.tiles, 'terminal')
-    const bagGoal = bagBuild[0]
-    const snackGoal = snackBuild[0]
-    const claim = fit && fit.rooms.bagclaim > 0 ? hall[0] : null
-
-    for (let i = 0; i < visual; i++) {
-      const wantBag = Math.random() < 0.75 && Boolean(bagGoal || claim)
-      const wantFood = Math.random() < 0.55
-      const wantGift = Math.random() < 0.35
-      const goal = wantBag && bagGoal ? bagGoal : snackGoal ?? claim ?? hall[0] ?? f.stand
-      const path = astar(this.tiles, f.stand, goal, 'person') ?? [f.stand]
-      this.people.push({
-        id: uid('p'),
-        flightId: f.id,
-        x: f.stand.c,
-        y: f.stand.r,
-        path,
-        seg: 0,
-        t: 0,
-        color: pick(['#d9c7a3', '#c4a574', '#8b6b4a', '#f0d9b5']),
-        job: 'arrive',
-        wantBag,
-        wantFood,
-        wantGift,
-        stage: 0,
-        paidFood: false,
-        paidGift: false,
-      })
-    }
+    this.people.push(...spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'arrive')
   }
 
@@ -1256,30 +1430,10 @@ export class Game {
 
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
-    const visual = Math.max(4, Math.round(f.pax / 14))
+    const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
     f.waitingOn.paxIn = visual
-    const hall = tilesOf(this.tiles, 'terminal')
-    const start = hall[0] ?? neighbors(f.stand.c, f.stand.r)[0] ?? f.stand
-    for (let i = 0; i < visual; i++) {
-      const path = astar(this.tiles, start, f.stand, 'person') ?? [start, f.stand]
-      this.people.push({
-        id: uid('p'),
-        flightId: f.id,
-        x: start.c,
-        y: start.r,
-        path,
-        seg: 0,
-        t: Math.random() * -0.4,
-        color: pick(['#3a5a7a', '#5c4033', '#2d4739']),
-        job: 'board',
-        wantBag: false,
-        wantFood: false,
-        wantGift: false,
-        stage: 0,
-        paidFood: false,
-        paidGift: false,
-      })
-    }
+    const fit = this.roomsAt(f.stand)
+    this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'depart')
   }
 
@@ -1315,6 +1469,8 @@ export class Game {
       t: 0,
       color: '#1e3a5f',
       job: 'patrol',
+      itinerary: [],
+      label: 'Patrol',
       wantBag: false,
       wantFood: false,
       wantGift: false,
@@ -1359,6 +1515,20 @@ export class Game {
     }
     for (const n of this.news) n.age += step
     if (this.offer) this.offer.age += step
+
+    if (this.loanBalance > 0) {
+      this.interestCool -= step
+      if (this.interestCool <= 0) {
+        this.interestCool = 60
+        this.loanBalance += LOAN_INTEREST
+        this.cash -= LOAN_INTEREST
+        this.pushNews(`Loan interest ${moneyLeft(LOAN_INTEREST)}. Owed ${moneyLeft(this.loanBalance)}.`, 'bad')
+      }
+    }
+    // City rail soft-boosts pax demand via reputation drip.
+    if (this.railLinked && Math.random() < step * 0.02) {
+      this.reputation = Math.min(100, this.reputation + 0.05)
+    }
 
     this.considerOffers()
     this.trySpawn()
@@ -1485,54 +1655,26 @@ export class Game {
         p.t += step
         continue
       }
-      const done = this.followPath(p, p.job === 'patrol' ? 1.0 : 1.25, step)
+      const done = this.followPath(p, p.job === 'patrol' ? 1.0 : 1.15, step)
       if (!done) continue
       if (p.job === 'patrol') {
         p.stage = 99
         continue
       }
       const f = this.flights.find((x) => x.id === p.flightId)
-      if (p.job === 'board') {
+      const fit = this.roomsAt(f?.stand ?? null)
+      const result = advancePaxItinerary(p, this.tiles, f?.stand ?? null, fit, (amount, kind) => {
+        this.cash += amount
+        this.revenue += amount
+        if (kind === 'food') this.mealSold = true
+      })
+      if (result === 'done') {
         p.stage = 99
-        if (f) f.waitingOn.paxIn = Math.max(0, f.waitingOn.paxIn - 1)
-        continue
-      }
-      const tc = Math.round(p.x)
-      const tr = Math.round(p.y)
-      const tileHere = inBounds(tc, tr) ? this.tiles[tr][tc] : 'grass'
-      if (tileHere === 'bags' && p.wantBag) p.wantBag = false
-      if ((tileHere === 'snack' || tileHere === 'terminal') && p.wantFood && !p.paidFood) {
-        p.paidFood = true
-        p.wantFood = false
-        this.cash += 14
-        this.revenue += 14
-        this.mealSold = true
-      }
-      if (tileHere === 'terminal' && p.wantGift && !p.paidGift) {
-        const fit = this.roomsAt(f?.stand ?? null)
-        if (fit && fit.rooms.souvenir > 0) {
-          p.paidGift = true
-          this.cash += 22
-          this.revenue += 22
-        }
-        p.wantGift = false
-      }
-      if (tileHere === 'terminal' && f) f.waitingOn.paxOut = Math.max(0, f.waitingOn.paxOut - 1)
-      if (tileHere === 'snack' || tileHere === 'bags') {
-        const hall = tilesOf(this.tiles, 'terminal')
-        if (hall.length && p.stage < 4) {
-          const np = astar(this.tiles, { c: tc, r: tr }, hall[0], 'person')
-          if (np) {
-            p.path = np
-            p.seg = 0
-            p.t = 0
-            p.stage += 1
-            continue
-          }
+        if (f) {
+          if (p.job === 'arrive') f.waitingOn.paxOut = Math.max(0, f.waitingOn.paxOut - 1)
+          if (p.job === 'board') f.waitingOn.paxIn = Math.max(0, f.waitingOn.paxIn - 1)
         }
       }
-      p.stage = 99
-      if (f && p.job === 'arrive') f.waitingOn.paxOut = Math.max(0, f.waitingOn.paxOut - 1)
     }
     this.people = this.people.filter((p) => p.stage < 99)
 

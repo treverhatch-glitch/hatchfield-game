@@ -48,6 +48,13 @@ export const TOWER_COST = 18000
 export const HANGAR_COST = 14000
 export const CLEANING_FEE = 900
 export const BULLDOZE_REFUND = 0.4
+export const LOAN_PRINCIPAL = 40_000
+export const LOAN_FEE = 2_500
+/** Interest charged every ~60 sim-seconds while a loan is open. */
+export const LOAN_INTEREST = 900
+export const PARCEL_COST = 28_000
+export const RAIL_CITY_COST = 22_000
+export const STARTER_KIT_COST = 98_000
 export const MIN_RUNWAY = 6
 export const BAG_DROP_PAY = 180
 export const LOADS_PER_BUY = 4
@@ -80,6 +87,7 @@ export const AIRLINES: Record<string, Airline> = {
     bags: 1100,
     paxMin: 48,
     paxMax: 72,
+    minRep: 0,
     req: { ...baseReq, police: false, snack: false, security: 1 },
     blurb: 'Regional jets. Needs a runway, stand, fuel, fire cover, a hall with security, bags, and a road out.',
   },
@@ -94,6 +102,7 @@ export const AIRLINES: Record<string, Airline> = {
     bags: 1800,
     paxMin: 64,
     paxMax: 96,
+    minRep: 45,
     req: {
       ...baseReq,
       stands: 2,
@@ -116,6 +125,7 @@ export const AIRLINES: Record<string, Airline> = {
     bags: 2400,
     paxMin: 80,
     paxMax: 120,
+    minRep: 70,
     req: {
       ...baseReq,
       stands: 3,
@@ -138,6 +148,7 @@ export const AIRLINES: Record<string, Airline> = {
     bags: 0,
     paxMin: 0,
     paxMax: 0,
+    minRep: 40,
     req: {
       stands: 1,
       fuelContract: true,
@@ -166,6 +177,7 @@ export const AIRLINES: Record<string, Airline> = {
     bags: 0,
     paxMin: 0,
     paxMax: 0,
+    minRep: 20,
     req: {
       stands: 1,
       fuelContract: true,
@@ -194,6 +206,7 @@ export const AIRLINES: Record<string, Airline> = {
     bags: 0,
     paxMin: 0,
     paxMax: 0,
+    minRep: 55,
     req: {
       stands: 2,
       fuelContract: true,

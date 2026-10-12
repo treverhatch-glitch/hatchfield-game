@@ -252,7 +252,9 @@ button {
   color: #b7c4b8;
 }
 
-.offer .on {
+.offer .on,
+.side button.on,
+.wide.on {
   background: #c9a227;
   color: #1a1406;
   border-color: #e6c85a;

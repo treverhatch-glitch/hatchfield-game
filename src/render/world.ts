@@ -587,20 +587,26 @@ export class World {
     }
 
     const seenP = new Set<string>()
-    const pgeo = new THREE.CapsuleGeometry(0.12, 0.34, 3, 6)
     for (const p of game.people) {
       seenP.add(p.id)
       let mesh = this.people.get(p.id)
       if (!mesh) {
+        const tall = p.job === 'board' ? 0.42 : 0.38
         mesh = new THREE.Mesh(
-          pgeo,
+          new THREE.CapsuleGeometry(0.18, tall, 3, 6),
           new THREE.MeshLambertMaterial({ color: p.color }),
         )
         mesh.castShadow = true
         this.people.set(p.id, mesh)
         this.entGroup.add(mesh)
       }
-      mesh.position.copy(toWorld(p.x, p.y, 0.4))
+      mesh.position.copy(toWorld(p.x, p.y, 0.55))
+      // Face travel direction so flow reads clearly
+      if (p.path.length > 1) {
+        const a = p.path[Math.min(p.seg, p.path.length - 1)]
+        const b = p.path[Math.min(p.seg + 1, p.path.length - 1)]
+        mesh.rotation.y = -Math.atan2(b.r - a.r, b.c - a.c)
+      }
     }
     for (const [id, m] of this.people) {
       if (!seenP.has(id)) {
