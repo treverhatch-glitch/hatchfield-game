@@ -50,7 +50,7 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 **Landside:** stamp **inn / business / resort** hotels (outside buildings), **four car parks** (small lot, large lot, multi-level garage, underground) each with **Short/Long** term toggle, **bus curb**, and **rail station** (after City rail). Inside the hall, **airside day rooms** keep layover pax spending. Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand. **Money is passenger-driven:** buildings charge fixed expenses every ~30s; empty stamps bleed. Fees only when pax actually use hotels/lots/bus/rail/amenities.
 
-**Hall spend:** furnish food, souvenirs, lounge, golf simulators, gaming den, waterfall, day rooms, **massage spa**, and **airside pool** — pax pay when needs hit.
+**Hall spend:** furnish food, souvenirs, lounge, golf simulators, gaming den, waterfall, day rooms, **massage spa**, and **airside pool**. Guests are RCT-style: **budget / family / business / premium** with random wallets + taste prefs — they only buy what they like and can afford.
 
 Browser save key: `apron-save-v24`. New game overwrites it.
 

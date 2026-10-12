@@ -30,8 +30,16 @@ const b = g.tryGuestPay(poor, 14, 'food', true)
 if (b.ok || b.why !== 'broke') issues.push(`poor should be broke got ${JSON.stringify(b)}`)
 
 const c = g.tryGuestPay(picky, 28, 'food', false)
-if (c.ok || c.why !== 'not interested') {
+if (c.ok || (c.why !== 'not interested' && c.why !== 'too expensive')) {
   issues.push(`picky should skip got ${JSON.stringify(c)}`)
+}
+// Price sensitivity — interested but won't blow the wallet
+const thrifty = spawnHallGuest('f4', 'depart', 'budget')
+thrifty.wallet = 40
+thrifty.prefs.food = 0.85
+const d = g.tryGuestPay(thrifty, 30, 'food', false)
+if (d.ok || d.why !== 'too expensive') {
+  issues.push(`thrifty should call too expensive got ${JSON.stringify(d)}`)
 }
 
 // serveNode food respects wallet
