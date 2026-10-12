@@ -15,6 +15,7 @@ export function Field({ game }: { game: Game }) {
     world.onClick = (v) => {
       game.clickTile(v)
     }
+    world.getTool = () => game.tool
     let raf = 0
     let last = performance.now()
     const loop = (now: number) => {

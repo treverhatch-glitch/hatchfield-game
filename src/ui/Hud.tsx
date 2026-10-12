@@ -146,7 +146,7 @@ export function Hud({ game }: { game: Game }) {
         </div>
         <p className="hint">
           {game.tool === 'runway'
-            ? 'Two clicks, straight, at least 6 tiles. Ghost shows the strip.'
+            ? 'Click a start, then drag the far end. The strip snaps straight. Green ghost at 6+ tiles lays it.'
             : game.tool === 'pan'
               ? 'Click a jet or stand. Drag to look around the field.'
               : tip

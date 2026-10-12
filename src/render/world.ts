@@ -97,7 +97,7 @@ export class World {
   yaw = 0.72
   pitch = 0.92
   dist = 92
-  dragging: 'orbit' | 'pan' | 'pending' | null = null
+  dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
   downX = 0
@@ -116,6 +116,8 @@ export class World {
   sun: THREE.DirectionalLight
   onHover: (v: Vec | null) => void = () => {}
   onClick: (v: Vec, shift: boolean) => void = () => {}
+  getTool: () => string = () => 'pan'
+  lastPaint: Vec | null = null
   private grassM: THREE.MeshLambertMaterial
   private rwM: THREE.MeshLambertMaterial
   private taxiM: THREE.MeshLambertMaterial
@@ -195,17 +197,39 @@ export class World {
   bind(canvas: HTMLCanvasElement) {
     canvas.addEventListener('contextmenu', (e) => e.preventDefault())
     canvas.addEventListener('pointerdown', (e) => {
-      this.dragging = e.button === 2 ? 'orbit' : e.button === 0 ? 'pending' : 'orbit'
+      const tool = this.getTool()
+      if (e.button === 2) this.dragging = 'orbit'
+      else if (e.button === 0 && tool !== 'pan') this.dragging = 'paint'
+      else if (e.button === 0) this.dragging = 'pending'
+      else this.dragging = 'orbit'
       this.lastX = e.clientX
       this.lastY = e.clientY
       this.downX = e.clientX
       this.downY = e.clientY
+      this.lastPaint = null
+      if (this.dragging === 'paint') {
+        const v = this.pick(e)
+        if (v) {
+          this.lastPaint = v
+          this.onClick(v, false)
+        }
+      }
       canvas.setPointerCapture(e.pointerId)
     })
     canvas.addEventListener('pointermove', (e) => {
       const v = this.pick(e)
       this.onHover(v)
       if (!this.dragging) return
+      if (this.dragging === 'paint') {
+        const tool = this.getTool()
+        if ((tool === 'taxi' || tool === 'clear') && v) {
+          if (!this.lastPaint || this.lastPaint.c !== v.c || this.lastPaint.r !== v.r) {
+            this.lastPaint = v
+            this.onClick(v, false)
+          }
+        }
+        return
+      }
       if (this.dragging === 'pending') {
         const dist = Math.hypot(e.clientX - this.downX, e.clientY - this.downY)
         if (dist < 8) return
@@ -234,10 +258,15 @@ export class World {
     canvas.addEventListener('pointerup', (e) => {
       const was = this.dragging
       this.dragging = null
+      if (was === 'paint' && this.getTool() === 'runway' && e.button === 0) {
+        const v = this.pick(e)
+        if (v) this.onClick(v, false)
+      }
       if (was === 'pending' && e.button === 0) {
         const v = this.pick(e)
         if (v) this.onClick(v, e.shiftKey)
       }
+      this.lastPaint = null
     })
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
@@ -437,10 +466,14 @@ export class World {
       transparent: true,
       opacity: 0.38,
     })
+    const runwayReady =
+      game.tool === 'runway' && game.runwayStart !== null && cells.length >= 6
     for (const p of cells) {
       if (p.c < 0) continue
       const t = game.tile(p)
-      const mesh = new THREE.Mesh(geo, t === 'grass' || game.tool === 'clear' ? ok : bad)
+      const clear = t === 'grass' || game.tool === 'clear'
+      const ready = game.tool === 'runway' ? clear && (runwayReady || !game.runwayStart) : clear
+      const mesh = new THREE.Mesh(geo, ready ? ok : bad)
       mesh.position.copy(toWorld(p.c, p.r, 0.12))
       this.ghostGroup.add(mesh)
     }

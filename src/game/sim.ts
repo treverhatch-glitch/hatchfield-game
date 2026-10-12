@@ -414,44 +414,56 @@ export class Game {
     this.emit()
   }
 
-  placeRunway(v: Vec) {
-    if (this.tile(v) !== 'grass') {
-      this.pushNews('Runway needs open grass.', 'bad')
-      this.emit()
-      return
+  snapRunwayEnd(a: Vec, b: Vec): Vec {
+    const dc = Math.abs(b.c - a.c)
+    const dr = Math.abs(b.r - a.r)
+    if (dc >= dr) return { c: b.c, r: a.r }
+    return { c: a.c, r: b.r }
+  }
+
+  runwayStrip(a: Vec, b: Vec): Vec[] {
+    const e = this.snapRunwayEnd(a, b)
+    const cells: Vec[] = []
+    if (e.r === a.r) {
+      const c0 = Math.min(a.c, e.c)
+      const c1 = Math.max(a.c, e.c)
+      for (let c = c0; c <= c1; c++) cells.push({ c, r: a.r })
+    } else {
+      const r0 = Math.min(a.r, e.r)
+      const r1 = Math.max(a.r, e.r)
+      for (let r = r0; r <= r1; r++) cells.push({ c: a.c, r })
     }
+    return cells.filter((p) => inBounds(p.c, p.r))
+  }
+
+  placeRunway(v: Vec) {
     if (!this.runwayStart) {
+      if (this.tile(v) !== 'grass') {
+        this.pushNews('Start the runway on grass.', 'bad')
+        this.emit()
+        return
+      }
       this.runwayStart = v
-      this.pushNews('Runway start set. Click the far end — straight, 6 tiles or more.', 'ok')
+      this.pushNews('Start set. Drag or click the far end — it snaps straight. Need 6 tiles.', 'ok')
       this.emit()
       return
     }
     const a = this.runwayStart
-    this.runwayStart = null
-    const sameRow = a.r === v.r
-    const sameCol = a.c === v.c
-    if (!sameRow && !sameCol) {
-      this.pushNews('Runway must be straight.', 'bad')
+    const cells = this.runwayStrip(a, v)
+    if (cells.length <= 1) {
       this.emit()
       return
     }
-    const cells: Vec[] = []
-    if (sameRow) {
-      const c0 = Math.min(a.c, v.c)
-      const c1 = Math.max(a.c, v.c)
-      for (let c = c0; c <= c1; c++) cells.push({ c, r: a.r })
-    } else {
-      const r0 = Math.min(a.r, v.r)
-      const r1 = Math.max(a.r, v.r)
-      for (let r = r0; r <= r1; r++) cells.push({ c: a.c, r })
-    }
     if (cells.length < MIN_RUNWAY) {
-      this.pushNews(`Need ${MIN_RUNWAY} tiles. That strip is ${cells.length}.`, 'bad')
+      this.pushNews(
+        `Need ${MIN_RUNWAY} tiles. That ghost is ${cells.length} — keep dragging the far end.`,
+        'bad',
+      )
       this.emit()
       return
     }
     if (cells.some((p) => this.tile(p) !== 'grass')) {
-      this.pushNews('Strip is blocked.', 'bad')
+      this.pushNews('Strip is blocked. Move the far end or clear first.', 'bad')
       this.emit()
       return
     }
@@ -461,6 +473,8 @@ export class Game {
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'runway'
+    this.runwayStart = null
+    this.pushNews(`Runway down · ${cells.length} tiles.`, 'good')
     this.emit()
   }
 
@@ -520,20 +534,9 @@ export class Game {
   }
 
   ghostRunway(hover: Vec): Vec[] {
-    if (this.tool !== 'runway' || !this.runwayStart) return hover ? [hover] : []
-    const a = this.runwayStart
-    if (a.r !== hover.r && a.c !== hover.c) return [a, hover]
-    const cells: Vec[] = []
-    if (a.r === hover.r) {
-      const c0 = Math.min(a.c, hover.c)
-      const c1 = Math.max(a.c, hover.c)
-      for (let c = c0; c <= c1; c++) cells.push({ c, r: a.r })
-    } else {
-      const r0 = Math.min(a.r, hover.r)
-      const r1 = Math.max(a.r, hover.r)
-      for (let r = r0; r <= r1; r++) cells.push({ c: a.c, r })
-    }
-    return cells
+    if (this.tool !== 'runway') return hover ? [hover] : []
+    if (!this.runwayStart) return hover ? [hover] : []
+    return this.runwayStrip(this.runwayStart, hover)
   }
 
   groundBusy(): boolean {
