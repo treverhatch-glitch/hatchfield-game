@@ -81,17 +81,23 @@ import {
   RAIL_CITY_COST,
   HOTEL_COST,
   HOTEL_COST_L2,
-  HOTEL_INCOME,
-  HOTEL_CLASS_INCOME,
+  HOTEL_META_EXPENSE,
+  HOTEL_CLASS_EXPENSE,
+  HOTEL_CLASS_FEE,
   BUS_CURB_COST,
+  BUS_EXPENSE,
   BUS_FARE,
   CARPARK_SHORT_COST,
   CARPARK_LONG_COST,
-  CARPARK_SHORT_INCOME,
-  CARPARK_LONG_INCOME,
+  CARPARK_META_EXPENSE_SHORT,
+  CARPARK_META_EXPENSE_LONG,
+  HALL_AMENITY_EXPENSE,
   HOTEL_NIGHT_FEE,
+  PARK_EXPENSE,
+  PARK_USE_FEE,
   PARK_LONG_FEE,
   PARK_SHORT_FEE,
+  RAIL_EXPENSE,
   RAIL_FARE,
   RAIL_STATION_COST,
   JANITOR_HIRE,
@@ -104,7 +110,6 @@ import {
   RP_RATE_BOARD,
   RP_RATE_DESK,
   RP_RATE_MACHINE,
-  PARK_INCOME,
   ROOMS,
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
@@ -334,8 +339,10 @@ export class Game {
   deskStaff = 0
   deskStaffCool = 0
   hallStaff: HallStaff[] = []
-  /** Recent landside touchpoints (exits / day rooms / park cues) for usage income. */
+  /** Recent landside touchpoints (exits / day rooms / park cues) for usage meters. */
   landsideUses = 0
+  /** Passenger landside fees collected since last payroll window (HUD). */
+  landsideFeeWindow = 0
   /** Planner filter: null = all banks; 0..n-1 = that strip; -1 = tower-auto only. */
   plannerRwFilter: number | null = null
   interestCool = 60
@@ -476,6 +483,7 @@ export class Game {
     this.deskStaffCool = 0
     this.hallStaff = []
     this.landsideUses = 0
+    this.landsideFeeWindow = 0
     this.interestCool = 60
     this.public = false
     this.sharePrice = 0
@@ -1517,13 +1525,13 @@ export class Game {
     }
     let fee = 0
     if (mode === 'car_short' && this.modeAvailable('car_short')) {
-      fee = PARK_SHORT_FEE
+      fee = this.parkUseFee('short')
       this.noteLandsideUse(1)
     } else if (mode === 'car_long' && this.modeAvailable('car_long')) {
-      fee = PARK_LONG_FEE
+      fee = this.parkUseFee('long')
       this.noteLandsideUse(2)
     } else if (mode === 'hotel' && this.modeAvailable('hotel')) {
-      fee = HOTEL_NIGHT_FEE
+      fee = this.hotelUseFee(g.tag)
       this.noteLandsideUse(2)
       g.needs.energy = Math.max(0, g.needs.energy - 25)
     } else if (mode === 'bus' && this.modeAvailable('bus')) {
@@ -1532,9 +1540,8 @@ export class Game {
     } else if (mode === 'rail' && this.modeAvailable('rail')) {
       fee = RAIL_FARE
       this.noteLandsideUse(1)
-    } else {
-      this.noteLandsideUse(1)
     }
+    // Drop-off / missing infra — no fee, no fake "usage" credit.
     if (fee > 0) {
       const pay = Math.min(g.wallet, fee)
       g.wallet -= pay
@@ -1542,6 +1549,7 @@ export class Game {
       // Quiet ledger — per-guest fees would spam the ticker.
       this.cash += pay
       this.revenue += pay
+      this.landsideFeeWindow += pay
       if (!missed) {
         g.happiness += 3
         g.thought =
@@ -1558,6 +1566,36 @@ export class Game {
                     : g.thought
       }
     }
+  }
+
+  /** Best matching park fee for term — stamped lots first, else meta flat. */
+  parkUseFee(term: ParkTerm): number {
+    let best = 0
+    for (const kind of ['park_g', 'park_u', 'park_l', 'park_s'] as const) {
+      for (const p of tilesOf(this.tiles, kind)) {
+        if ((this.parkTerms[`${p.c},${p.r}`] ?? 'short') !== term) continue
+        best = Math.max(best, PARK_USE_FEE[kind][term])
+      }
+    }
+    if (best > 0) return best
+    if (term === 'short' && this.carParkShort) return PARK_SHORT_FEE
+    if (term === 'long' && this.carParkLong) return PARK_LONG_FEE
+    return term === 'short' ? PARK_SHORT_FEE : PARK_LONG_FEE
+  }
+
+  /** Hotel night fee — premium pax prefer resort beds when present. */
+  hotelUseFee(tag: PaxTag): number {
+    const classes = tilesOf(this.tiles, 'hotel').map(
+      (p) => this.hotelClass[`${p.c},${p.r}`] ?? 'business',
+    )
+    if (classes.length) {
+      if (tag === 'premium' && classes.includes('resort')) return HOTEL_CLASS_FEE.resort
+      if (classes.includes('business')) return HOTEL_CLASS_FEE.business
+      if (classes.includes('inn')) return HOTEL_CLASS_FEE.inn
+      if (classes.includes('resort')) return HOTEL_CLASS_FEE.resort
+    }
+    if (this.hotelLevel > 0) return HOTEL_NIGHT_FEE
+    return HOTEL_CLASS_FEE.business
   }
 
   /** Site pax mult with hotel / rail / car park / bus landside boosts. */
@@ -1586,34 +1624,44 @@ export class Game {
     return m
   }
 
-  /** Sticker potential before usage / upkeep. */
-  landsidePotential(): number {
-    let n = HOTEL_INCOME[clamp(this.hotelLevel, 0, 2)] ?? 0
-    if (this.carParkShort) n += CARPARK_SHORT_INCOME
-    if (this.carParkLong) n += CARPARK_LONG_INCOME
+  /**
+   * Fixed landside + hall-amenity operating expense / payroll tick.
+   * Billed in full whether used or idle — empty stamps bleed cash.
+   */
+  landsideUpkeep(): number {
+    let n = HOTEL_META_EXPENSE[clamp(this.hotelLevel, 0, 2)] ?? 0
+    if (this.carParkShort) n += CARPARK_META_EXPENSE_SHORT
+    if (this.carParkLong) n += CARPARK_META_EXPENSE_LONG
     for (const p of tilesOf(this.tiles, 'hotel')) {
       const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
-      n += HOTEL_CLASS_INCOME[cls]
+      n += HOTEL_CLASS_EXPENSE[cls]
     }
     for (const kind of ['park_s', 'park_l', 'park_g', 'park_u'] as const) {
       for (const p of tilesOf(this.tiles, kind)) {
         const term = this.parkTerms[`${p.c},${p.r}`] ?? 'short'
-        n += PARK_INCOME[kind][term]
+        n += PARK_EXPENSE[kind][term]
       }
     }
-    n += tilesOf(this.tiles, 'bus').length * 320
-    if (this.hasRailStation()) n += tilesOf(this.tiles, 'rail').length * 520
-    return n
+    n += tilesOf(this.tiles, 'bus').length * BUS_EXPENSE
+    if (this.hasRailStation()) n += tilesOf(this.tiles, 'rail').length * RAIL_EXPENSE
+    // Hall amenities — furnished but empty still costs lights/staff.
+    for (const fit of this.fits) {
+      for (const [room, rate] of Object.entries(HALL_AMENITY_EXPENSE) as Array<
+        [keyof typeof HALL_AMENITY_EXPENSE, number]
+      >) {
+        const count = fit.rooms[room] ?? 0
+        if (count > 0) n += rate * Math.min(3, count)
+      }
+    }
+    return Math.round(n)
   }
 
-  /** Upkeep always bites — empty hotels/parks bleed cash. */
-  landsideUpkeep(): number {
-    const pot = this.landsidePotential()
-    if (pot <= 0) return 0
-    return Math.round(pot * 0.28)
+  /** @deprecated alias — expense is the only "potential" now. */
+  landsidePotential(): number {
+    return this.landsideUpkeep()
   }
 
-  /** Beds / stalls capacity for usage scaling. */
+  /** Beds / stalls capacity for usage meters (HUD). */
   landsideCapacity(): number {
     let beds = this.hotelLevel > 0 ? 6 : 0
     for (const p of tilesOf(this.tiles, 'hotel')) {
@@ -1627,17 +1675,23 @@ export class Game {
         tilesOf(this.tiles, 'park_l').length * 5 +
         tilesOf(this.tiles, 'park_g').length * 7 +
         tilesOf(this.tiles, 'park_u').length * 6 +
+        tilesOf(this.tiles, 'bus').length * 4 +
+        (this.hasRailStation() ? tilesOf(this.tiles, 'rail').length * 6 : 0) +
         (this.carParkShort || this.carParkLong ? 4 : 0),
     )
   }
 
-  /** Usage-scaled landside take (pax must actually touch the field). */
+  /**
+   * Passenger fees collected this payroll window — not sticker income.
+   * Place alone pays $0; pax using hotels/lots/bus/rail fill this.
+   */
   landsideIncome(): number {
-    const pot = this.landsidePotential()
-    if (pot <= 0) return 0
-    const usage = clamp(this.landsideUses / this.landsideCapacity(), 0, 1.25)
-    // Crumb floor for airport workers; real money needs pax traffic.
-    return Math.round(pot * (0.12 + 0.88 * usage))
+    return Math.round(this.landsideFeeWindow)
+  }
+
+  /** 0–1+ fill rate for HUD (uses / capacity). */
+  landsideUsageRate(): number {
+    return clamp(this.landsideUses / this.landsideCapacity(), 0, 1.5)
   }
 
   noteLandsideUse(n = 1) {
@@ -2603,6 +2657,8 @@ export class Game {
     g.spent += pay
     this.cash += pay
     this.revenue += pay
+    // Passenger spend covers amenity / landside expense in the payroll window.
+    this.landsideFeeWindow += pay
     return { ok: true }
   }
 
@@ -4662,22 +4718,22 @@ export class Game {
     this.payrollCool -= dt
     if (this.payrollCool > 0) return
     this.payrollCool = 30
-    const landside = this.landsideIncome()
+    // Fees already hit cash per guest — do NOT re-earn sticker income.
+    const fees = this.landsideIncome()
     const upkeep = this.landsideUpkeep()
-    if (landside > 0) {
-      this.earn(landside, 'Landside (hotel / car park)')
-    }
     if (upkeep > 0) {
       this.charge(upkeep)
     }
-    // Usage window decays — empty hotels stop printing after traffic dies.
-    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.55))
+    const netLand = fees - upkeep
+    const useRate = this.landsideUsageRate()
+    // Decay usage / fee windows — idle stamps keep paying expense next tick.
+    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45))
+    this.landsideFeeWindow = 0
     const bill = this.payrollPreview()
-    const netLand = landside - upkeep
     if (bill <= 0) {
-      if (upkeep > 0 || landside > 0) {
+      if (upkeep > 0 || fees > 0) {
         this.pushNews(
-          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (use ${this.landsideUses} · upkeep ${moneyLeft(upkeep)}).`,
+          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%).`,
           netLand >= 0 ? 'ok' : 'bad',
         )
       }
@@ -4693,11 +4749,11 @@ export class Game {
       }
       this.pushNews(
         `Ops payroll ${moneyLeft(bill)}${
-          landside || upkeep
-            ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)}`
+          fees || upkeep
+            ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (fees − expense)`
             : ''
         }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (sliders × staff × shops).`,
-        'ok',
+        netLand < 0 && upkeep > 0 ? 'bad' : 'ok',
       )
       return
     }

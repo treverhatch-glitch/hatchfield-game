@@ -511,8 +511,9 @@ export function Hud({ game }: { game: Game }) {
             {' · '}
             strips {game.runwayStripCount()} · inbound {game.maxInbound()}
             {' · '}
-            landside ~{money(game.landsideIncome())}/30s (upkeep{' '}
-            {money(game.landsideUpkeep())} · uses {game.landsideUses}) · pax ×
+            pax fees {money(game.landsideIncome())} / expense{' '}
+            {money(game.landsideUpkeep())}/30s · fill{' '}
+            {Math.round(game.landsideUsageRate() * 100)}% · pax ×
             {game.landsidePaxMult().toFixed(2)}
             {' · '}
             {[

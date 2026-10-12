@@ -69,7 +69,7 @@ g.tool = 'rail'
 g.placeSingle({ c: roadC - 1, r: 14 })
 if (!g.hasRailStation()) issues.push('rail station missing after invest')
 
-const pot = g.landsidePotential()
+const expense = g.landsideUpkeep()
 const expectHotel =
   HOTEL_CLASS_INCOME.inn + HOTEL_CLASS_INCOME.business + HOTEL_CLASS_INCOME.resort
 const expectPark =
@@ -77,19 +77,26 @@ const expectPark =
   PARK_INCOME.park_l.short +
   PARK_INCOME.park_g.long +
   PARK_INCOME.park_u.long
-if (pot < expectHotel + expectPark) {
-  issues.push(`landside potential too low ${pot} (want ≥${expectHotel + expectPark})`)
+if (expense < expectHotel + expectPark) {
+  issues.push(`landside expense too low ${expense} (want ≥${expectHotel + expectPark})`)
 }
+// Place alone → $0 fees. Passenger touch → fee window fills.
 g.landsideUses = 0
+g.landsideFeeWindow = 0
 const idle = g.landsideIncome()
-g.landsideUses = 50
+if (idle !== 0) issues.push(`idle fees should be 0, got ${idle}`)
+g.landsideFeeWindow = 400
 const income = g.landsideIncome()
-if (!(income > idle)) issues.push(`usage should lift income ${idle}→${income}`)
+if (!(income > idle)) issues.push(`passenger fees should lift income ${idle}→${income}`)
+g.landsideFeeWindow = 0
 
 // Inside-terminal dayhotel still separate (layover extract)
 g.selectedTile = g.fits[0]?.origin ?? null
 g.buyRoom('dayhotel')
 if (!g.hallOpen().has('dayhotel')) issues.push('dayhotel missing from hall')
+if (!(g.landsideUpkeep() > expense)) {
+  issues.push('dayhotel should add amenity expense')
+}
 
 const multBare = (() => {
   const t = new Game()
@@ -185,7 +192,7 @@ if ((g.fits[0].wearBath ?? 0) >= 40) issues.push('janitor did not scrub')
 const out = {
   ok: issues.length === 0,
   issues,
-  pot,
+  expense,
   idle,
   income,
   multBare,
