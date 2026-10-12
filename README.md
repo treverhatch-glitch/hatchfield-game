@@ -50,6 +50,8 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 **Landside:** stamp **hotel**, **short/long lots** (toggle term), **bus curb**, and **rail station** (after City rail). Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand.
 
+**Hall spend:** furnish food, souvenirs, lounge, golf simulators, gaming den, waterfall, day rooms, **massage spa**, and **airside pool** — pax pay when needs hit.
+
 Browser save key: `apron-save-v23`. New game overwrites it.
 
 ## Verify

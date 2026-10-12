@@ -663,7 +663,7 @@ export const ROOMS: RoomDef[] = [
   { id: 'bagdrop', name: 'Bag drop', cost: 1800, blurb: 'Extra $180 with outside sort.' },
   { id: 'lounge', name: 'Airline lounge', cost: 4800, blurb: 'Keeps premium pax calm. Softens Summit.' },
   { id: 'bathroom', name: 'Restrooms', cost: 1600, blurb: 'Basic need. Missing toilets hurts reputation.' },
-  { id: 'golf', name: 'Indoor golf', cost: 9200, blurb: 'Premium desire sink. HatchTag fantasy — calm energy.' },
+  { id: 'golf', name: 'Indoor golf', cost: 9200, blurb: 'Golf simulator bays. Premium desire sink — calm energy.' },
   {
     id: 'waterfall',
     name: 'Waterfall court',
@@ -676,6 +676,18 @@ export const ROOMS: RoomDef[] = [
     name: 'Airside day rooms',
     cost: 14_000,
     blurb: 'Inside-terminal hotel rooms — layover transfers pay to nap and spend.',
+  },
+  {
+    id: 'spa',
+    name: 'Massage spa',
+    cost: 12_500,
+    blurb: 'Massage chairs + calm booths. Premium energy sink — big tips when tense.',
+  },
+  {
+    id: 'pool',
+    name: 'Airside pool',
+    cost: 16_000,
+    blurb: 'Indoor swim court. Play + energy for transfers and luxury pax.',
   },
   {
     id: 'rdesk',

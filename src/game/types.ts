@@ -117,6 +117,8 @@ export type RoomId =
   | 'waterfall'
   | 'gaming'
   | 'dayhotel'
+  | 'spa'
+  | 'pool'
   | 'rdesk'
   | 'rboard'
   | 'rmachine'

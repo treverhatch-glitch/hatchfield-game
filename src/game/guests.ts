@@ -32,6 +32,8 @@ export type HallNode =
   | 'waterfall'
   | 'gaming'
   | 'dayhotel'
+  | 'spa'
+  | 'pool'
   | 'gate'
   | 'claim'
   | 'info'
@@ -108,6 +110,8 @@ export const AIRSIDE_NODES: ReadonlySet<HallNode> = new Set([
   'waterfall',
   'gaming',
   'dayhotel',
+  'spa',
+  'pool',
   'gate',
 ])
 
@@ -158,10 +162,18 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['lounge', 'golf'],
   ['lounge', 'waterfall'],
   ['lounge', 'dayhotel'],
+  ['lounge', 'spa'],
   ['golf', 'waterfall'],
+  ['golf', 'pool'],
   ['gaming', 'gate'],
+  ['gaming', 'pool'],
   ['dayhotel', 'gate'],
   ['dayhotel', 'food'],
+  ['dayhotel', 'spa'],
+  ['spa', 'gate'],
+  ['spa', 'pool'],
+  ['pool', 'gate'],
+  ['pool', 'waterfall'],
   ['claim', 'exit'],
   ['claim', 'food'],
   ['claim', 'shop'],
@@ -190,6 +202,8 @@ export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }>
   waterfall: { x: 0.62, y: 0.88, label: 'Falls' },
   gaming: { x: 0.84, y: 0.48, label: 'Games' },
   dayhotel: { x: 0.78, y: 0.58, label: 'Day rooms' },
+  spa: { x: 0.68, y: 0.48, label: 'Spa' },
+  pool: { x: 0.86, y: 0.68, label: 'Pool' },
   gate: { x: 0.9, y: 0.28, label: 'Gate' },
   claim: { x: 0.48, y: 0.78, label: 'Bag claim' },
   info: { x: 0.22, y: 0.48, label: 'Info' },
@@ -269,12 +283,23 @@ export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   if (need === 'bladder') return 'bathroom'
   if (need === 'hunger') return 'food'
   if (need === 'energy') {
-    if (job === 'depart') return Math.random() < 0.35 ? 'dayhotel' : 'lounge'
-    return 'food'
+    if (job === 'depart') {
+      const r = Math.random()
+      if (r < 0.28) return 'spa'
+      if (r < 0.55) return 'dayhotel'
+      return 'lounge'
+    }
+    return Math.random() < 0.35 ? 'spa' : 'food'
   }
   if (need === 'play') {
-    if (job === 'depart') return Math.random() < 0.4 ? 'golf' : Math.random() < 0.5 ? 'gaming' : 'waterfall'
-    return Math.random() < 0.5 ? 'gaming' : 'waterfall'
+    if (job === 'depart') {
+      const r = Math.random()
+      if (r < 0.28) return 'pool'
+      if (r < 0.52) return 'golf'
+      if (r < 0.76) return 'gaming'
+      return 'waterfall'
+    }
+    return Math.random() < 0.4 ? 'pool' : Math.random() < 0.5 ? 'gaming' : 'waterfall'
   }
   return 'shop'
 }
@@ -362,6 +387,8 @@ export function openNodesFromRooms(rooms: {
   waterfall?: number
   gaming?: number
   dayhotel?: number
+  spa?: number
+  pool?: number
   rdesk?: number
   rboard?: number
   rmachine?: number
@@ -377,6 +404,8 @@ export function openNodesFromRooms(rooms: {
   if ((rooms.waterfall ?? 0) > 0) open.add('waterfall')
   if ((rooms.gaming ?? 0) > 0) open.add('gaming')
   if ((rooms.dayhotel ?? 0) > 0) open.add('dayhotel')
+  if ((rooms.spa ?? 0) > 0) open.add('spa')
+  if ((rooms.pool ?? 0) > 0) open.add('pool')
   if (rooms.gate > 0) open.add('gate')
   if (rooms.bagclaim > 0) open.add('claim')
   if ((rooms.rdesk ?? 0) > 0) open.add('lab_desk')
