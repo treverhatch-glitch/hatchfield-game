@@ -16,6 +16,7 @@ import {
   personaBlurb,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
+  rewardBlurb,
   ROOMS,
   RUNWAY_PREFAB_COST,
   SHORT_RUNWAY_COST,
@@ -92,6 +93,12 @@ export function Hud({ game }: { game: Game }) {
           Gate {freeGates} · Hold {holding}
         </div>
         <div className="stat">Sec {ready.security}</div>
+        <div
+          className="stat"
+          title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}. Blend of rep, airline heat, hall wear, security.`}
+        >
+          Field {game.fieldRating()} · {game.fieldRatingLabel()}
+        </div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
         <div
           className="stat"
@@ -536,6 +543,8 @@ export function Hud({ game }: { game: Game }) {
               const miss = game.missingReq(a.id)
               const banned = game.isBanned(a.id)
               const heat = Math.round(game.heatOf(a.id))
+              const reward = game.rewardOf(a.id)
+              const warned = Boolean(game.airlineWarned[a.id])
               return (
                 <li key={a.id}>
                   <b style={{ color: a.color }}>
@@ -547,7 +556,9 @@ export function Hud({ game }: { game: Game }) {
                     {banned
                       ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
                       : signed
-                        ? `· heat ${heat}`
+                        ? `· heat ${heat}${warned ? ' · WARN' : ''}${
+                            reward ? ` · ${rewardBlurb(reward)}` : ''
+                          }`
                         : ok
                           ? '· ready'
                           : ''}
@@ -556,11 +567,13 @@ export function Hud({ game }: { game: Game }) {
                     {banned
                       ? 'Suspended after a bad layover / hall'
                       : signed
-                        ? a.kind === 'cargo'
-                          ? 'Freighters scheduled'
-                          : a.likesLayovers
-                            ? 'Pax + may offer layovers'
-                            : 'Pax flights scheduled'
+                        ? reward
+                          ? `${rewardBlurb(reward)} active`
+                          : a.kind === 'cargo'
+                            ? 'Freighters scheduled'
+                            : a.likesLayovers
+                              ? 'Pax + may offer layovers'
+                              : 'Pax flights scheduled'
                         : miss.slice(0, 4).join(', ') || 'Waiting to call'}
                   </span>
                 </li>

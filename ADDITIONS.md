@@ -158,9 +158,9 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 **P0 — AT3 growth silhouette (next)**
 
-1. **Field Rating** meter (0–100) = blend of reputation, avg airline heat, wear inverse, security — shown like AT3’s rating.
+1. **Field Rating** meter — ~~blend of reputation, avg airline heat, wear inverse, security~~ **shipped**.
 2. **Hub contract tier** — after N successful layovers / heat 75+, offer Hub: +slots, brand lounge room, harsher ban if you fail.
-3. **Airline rewards / abandon** — high heat unlocks persona perk (luxury lounge / budget snack franchise / cargo night waiver); heat floor → warning → abandon + fine.
+3. **Airline rewards / abandon** — ~~high heat unlocks persona perk; heat floor → warning → abandon + fine~~ **shipped**.
 4. **Second terminal + jetway lite** — second hall fit assigns its own stands; jetway flag on stand↔gate.
 
 **P1 — AT3 catalog + ATC**
@@ -247,12 +247,12 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 ### CEO-aligned upgrade plan (merge with AT3 P0–P2)
 
-**C0 — CEO spine (next, overlaps AT3 P0)**
+**C0 — CEO spine (overlaps AT3 P0)**
 
-1. **Research desk** — points from turnarounds + pax served; admins optional later. Unlocks: night bank, de-ice, franchise, stand classes, heavy pack.
-2. **Airline tasks + rewards/abandon** — contract checklist; high heat → brand lounge / budget perk; dead heat → abandon.
+1. **Research desk** — points from turnarounds + pax served; admins optional later. Unlocks: night bank, de-ice, franchise, stand classes, heavy pack. *Next.*
+2. **Airline rewards/abandon** — ~~high heat → persona perk; warn → abandon + fine~~ **shipped** (`brand_lounge` / `budget_perk` / `biz_priority` / `cargo_night`).
 3. **Planner v2** — day strip UI on current timetable (drag ETA / assign stand); auto remains default.
-4. **Field Rating** — AT3-readable blend (already on AT3 P0).
+4. **Field Rating** — ~~AT3-readable blend~~ **shipped** (rep × heat × wear × security).
 
 **C1 — CEO authenticity**
 
@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: **Research first** unlocks half of CEO’s catalog without dumping UI. Airline rewards/abandon ships next to heat (already live). Planner v2 builds on our timetable.
+Dependency note: **Research next** unlocks half of CEO’s catalog without dumping UI. Airline rewards/abandon + Field Rating are live. Planner v2 builds on our timetable.
 
 ### Explicit calls on open design questions
 

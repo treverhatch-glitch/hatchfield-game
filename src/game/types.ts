@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v12'
+export const SAVE_KEY = 'apron-save-v13'
 
 export type Tile =
   | 'grass'
@@ -134,6 +134,13 @@ export interface Airline {
   heatSensitivity: number
   procedural?: boolean
 }
+
+/** High-heat perk unlocked per carrier — persona picks the flavor. */
+export type AirlineRewardId =
+  | 'brand_lounge'
+  | 'budget_perk'
+  | 'biz_priority'
+  | 'cargo_night'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -417,4 +424,6 @@ export interface GameSnapshot {
   layover?: LayoverContract | null
   schedule?: ScheduleSlot[]
   scheduleAuto?: boolean
+  airlineReward?: Record<string, AirlineRewardId>
+  airlineWarned?: Record<string, boolean>
 }

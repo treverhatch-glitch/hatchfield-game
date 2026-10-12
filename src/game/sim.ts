@@ -12,8 +12,15 @@ import {
   FUEL,
   AIR_AMBULANCE_FEE,
   HALL_SCRUB_COST,
+  ABANDON_ACC_SECONDS,
+  ABANDON_FINE,
+  HEAT_ABANDON_THRESHOLD,
   HEAT_BAN_THRESHOLD,
+  HEAT_REWARD_THRESHOLD,
+  HEAT_WARN_THRESHOLD,
   HELO_LANDING,
+  rewardForPersona,
+  REWARD_LABEL,
   LAND,
   LAYOVER_BAN_FINE,
   LAYOVER_BAN_SECONDS,
@@ -88,6 +95,7 @@ import { SAVE_KEY, SIZE, type AirlineId } from './types'
 import type {
   AircraftKind,
   Airline,
+  AirlineRewardId,
   BudgetKey,
   Budgets,
   CaterBrand,
@@ -217,6 +225,12 @@ export class Game {
   extraAirlines: Airline[] = []
   airlineHeat: Record<string, number> = {}
   airlineBanUntil: Record<string, number> = {}
+  /** One-time persona perk unlocked at high heat. */
+  airlineReward: Record<string, AirlineRewardId> = {}
+  /** Warned once before abandon clock starts biting. */
+  airlineWarned: Record<string, boolean> = {}
+  /** Accrued sim-seconds under abandon heat threshold. */
+  airlineLowAcc: Record<string, number> = {}
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
   layover: LayoverContract | null = null
@@ -309,6 +323,9 @@ export class Game {
     this.extraAirlines = []
     this.airlineHeat = {}
     this.airlineBanUntil = {}
+    this.airlineReward = {}
+    this.airlineWarned = {}
+    this.airlineLowAcc = {}
     this.layoverOffer = null
     this.layoverOfferCool = 50
     this.layover = null
@@ -423,6 +440,101 @@ export class Game {
       'bad',
     )
     this.reputation = Math.max(0, this.reputation - 6)
+  }
+
+  /**
+   * AT3-readable Field Rating 0–100.
+   * Blend of reputation, avg airline heat, hall wear inverse, security budget.
+   */
+  fieldRating(): number {
+    const rep = this.reputation
+    const heats = this.signed.map((id) => this.heatOf(id))
+    const avgHeat = heats.length
+      ? heats.reduce((s, h) => s + h, 0) / heats.length
+      : 55
+    const wear = this.avgWear()
+    const wearScore = 100 - (wear.bath * 0.55 + wear.sec * 0.45)
+    const secScore = this.budgets.security
+    const incidents = Math.min(20, this.securityIncidents)
+    const raw =
+      rep * 0.34 +
+      avgHeat * 0.32 +
+      wearScore * 0.2 +
+      secScore * 0.14 -
+      incidents * 1.2
+    return clamp(Math.round(raw), 0, 100)
+  }
+
+  fieldRatingLabel(): string {
+    const r = this.fieldRating()
+    if (r >= 85) return 'Hub grade'
+    if (r >= 70) return 'Solid'
+    if (r >= 55) return 'Serviceable'
+    if (r >= 40) return 'Thin'
+    return 'At risk'
+  }
+
+  rewardOf(id: AirlineId): AirlineRewardId | null {
+    return this.airlineReward[id] ?? null
+  }
+
+  hasReward(id: AirlineId, kind: AirlineRewardId): boolean {
+    return this.airlineReward[id] === kind
+  }
+
+  /** Any signed carrier holding this perk. */
+  anyReward(kind: AirlineRewardId): boolean {
+    return this.signed.some((id) => this.airlineReward[id] === kind)
+  }
+
+  grantReward(id: AirlineId) {
+    if (this.airlineReward[id]) return
+    const a = this.airline(id)
+    const reward = rewardForPersona(a.persona)
+    this.airlineReward[id] = reward
+    this.pushNews(
+      `${a.name} unlocked ${REWARD_LABEL[reward]} — heat hit ${HEAT_REWARD_THRESHOLD}.`,
+      'good',
+    )
+    this.reputation = Math.min(100, this.reputation + 2)
+  }
+
+  /** Carrier walks after sustained dead heat — fine + drop contract. */
+  abandonAirline(id: AirlineId, reason: string) {
+    if (!this.signed.includes(id)) return
+    const a = this.airline(id)
+    this.signed = this.signed.filter((x) => x !== id)
+    this.mxSigned = this.mxSigned.filter((x) => x !== id)
+    delete this.airlineReward[id]
+    delete this.airlineWarned[id]
+    delete this.airlineLowAcc[id]
+    this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_ABANDON_THRESHOLD)
+    this.charge(ABANDON_FINE)
+    if (this.layover?.airline === id) this.layover = null
+    if (this.layoverOffer?.airline === id) this.layoverOffer = null
+    if (this.offer?.airline === id) this.offer = null
+    if (this.mxOffer?.airline === id) this.mxOffer = null
+    for (const s of this.schedule) {
+      if (
+        s.airline === id &&
+        (s.status === 'scheduled' || s.status === 'delayed')
+      ) {
+        s.status = 'cancelled'
+        s.delayReason = 'carrier abandoned'
+      }
+    }
+    this.pushNews(
+      `${a.name} abandoned the field (${reason}). Fine ${moneyLeft(ABANDON_FINE)}.`,
+      'bad',
+    )
+    this.reputation = Math.max(0, this.reputation - 8)
+  }
+
+  landingFeeMult(airlineId: AirlineId): number {
+    const r = this.rewardOf(airlineId)
+    if (r === 'biz_priority') return 1.14
+    if (r === 'cargo_night') return 1.2
+    return 1
   }
 
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
@@ -1037,6 +1149,8 @@ export class Game {
       layover: this.layover,
       schedule: this.schedule.filter((s) => s.status === 'scheduled' || s.status === 'delayed'),
       scheduleAuto: this.scheduleAuto,
+      airlineReward: this.airlineReward,
+      airlineWarned: this.airlineWarned,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -1093,6 +1207,9 @@ export class Game {
       this.extraAirlines = s.extraAirlines ?? []
       this.airlineHeat = s.airlineHeat ?? {}
       this.airlineBanUntil = s.airlineBanUntil ?? {}
+      this.airlineReward = s.airlineReward ?? {}
+      this.airlineWarned = s.airlineWarned ?? {}
+      this.airlineLowAcc = {}
       this.layover = s.layover ?? null
       this.layoverOffer = null
       this.layoverOfferCool = 20
@@ -1434,7 +1551,14 @@ export class Game {
       g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
     }
     if (n === 'food') {
-      const pay = g.tag === 'premium' ? 28 : 14
+      let pay = g.tag === 'premium' ? 28 : 14
+      // Budget snack franchise perk — signed carrier's brand on the counter.
+      if (
+        this.anyReward('budget_perk') ||
+        (g.airlineId && this.hasReward(g.airlineId, 'budget_perk'))
+      ) {
+        pay = Math.round(pay * 1.4)
+      }
       g.needs.hunger = Math.max(0, g.needs.hunger - 50)
       g.spent += pay
       this.cash += pay
@@ -1454,8 +1578,17 @@ export class Game {
     }
     if (n === 'lounge' && g.tag === 'premium') {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
-      g.happiness += 8
-      g.thought = 'Lounge calm'
+      let happy = 8
+      if (
+        this.anyReward('brand_lounge') ||
+        (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge'))
+      ) {
+        happy += 4
+        g.thought = 'Brand lounge — carrier perk'
+      } else {
+        g.thought = 'Lounge calm'
+      }
+      g.happiness += happy
     }
     if (n === 'golf') {
       const pay = g.tag === 'premium' ? 55 : 28
@@ -2037,14 +2170,41 @@ export class Game {
     if (Math.random() < 0.2) this.bumpWear('sec', 0.25)
   }
 
-  /** Soft heat drift + ban expiry news. */
+  /** Soft heat drift, rewards, warnings, abandon, ban expiry. */
   tickAirlineRelations(dt: number) {
-    for (const id of this.signed) {
+    for (const id of [...this.signed]) {
       if (this.isBanned(id)) continue
       // Slow recovery toward 70 when not in crisis.
       const h = this.heatOf(id)
       if (h < 70) this.airlineHeat[id] = Math.min(70, h + dt * 0.14)
       else if (h > 78) this.airlineHeat[id] = Math.max(70, h - dt * 0.04)
+
+      const heat = this.heatOf(id)
+      if (heat >= HEAT_REWARD_THRESHOLD && !this.airlineReward[id]) {
+        this.grantReward(id)
+      }
+
+      // Outside layover bans: warn → accumulate → abandon.
+      if (this.layover?.airline === id) {
+        this.airlineLowAcc[id] = 0
+        continue
+      }
+      if (heat <= HEAT_WARN_THRESHOLD && !this.airlineWarned[id]) {
+        this.airlineWarned[id] = true
+        this.pushNews(
+          `${this.airline(id).name} warning — heat ${Math.round(heat)}. Fix the hall or they walk.`,
+          'bad',
+        )
+      }
+      if (heat <= HEAT_ABANDON_THRESHOLD) {
+        this.airlineLowAcc[id] = (this.airlineLowAcc[id] ?? 0) + dt
+        if ((this.airlineLowAcc[id] ?? 0) >= ABANDON_ACC_SECONDS) {
+          this.abandonAirline(id, 'dead heat')
+        }
+      } else if (heat > HEAT_WARN_THRESHOLD + 8) {
+        this.airlineLowAcc[id] = Math.max(0, (this.airlineLowAcc[id] ?? 0) - dt * 0.6)
+        if (heat >= 55) this.airlineWarned[id] = false
+      }
     }
     for (const id of Object.keys(this.airlineBanUntil)) {
       const until = this.airlineBanUntil[id]
@@ -3215,7 +3375,9 @@ export class Game {
       } else if (f.kind === 'air_ambulance') {
         this.earn(AIR_AMBULANCE_FEE, `${f.flightNo} ${f.airframeName}`, f)
       } else {
-        const mult = AIRFRAMES[f.airframeId]?.landingMult ?? 1
+        const mult =
+          (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
+          this.landingFeeMult(f.airline)
         this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing (${f.airframeName})`, f)
       }
       if (
@@ -3484,7 +3646,14 @@ export class Game {
       f.posted.bags = true
       f.waitingOn.bags = false
       if (!f.cargo) this.earn(airline.bags, `${f.flightNo} bag handling`, f)
-      else this.earn(Math.round(airline.landing * 0.35), `${f.flightNo} cargo handling`, f)
+      else {
+        const cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
+        this.earn(
+          Math.round(airline.landing * 0.35 * cargoMult),
+          `${f.flightNo} cargo handling`,
+          f,
+        )
+      }
       const fit = this.roomsAt(f.stand)
       if (
         !f.cargo &&
