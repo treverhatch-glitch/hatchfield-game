@@ -150,7 +150,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 | Aircraft | Named frames + roles + strip gates | A380 / An-124 / C-5; pushback; noise/weight classes |
 | Pax | Budget/premium + needs + clocks + transfers | Deeper traits (family/business); complaint cards |
 | Cargo | 3 freighters + shed | Night banks, customs delay |
-| City | Rail, parcels, two plots | Hotels, curfew, more site presets |
+| City | Rail, parcels, hotel + car parks, two plots | Curfew, more site presets |
 | Staff | Budget sliders + mechanics | Research-gated units; shifts |
 | Meta | IPO + street missions | Scenarios, AGM, Godot ship |
 
