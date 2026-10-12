@@ -114,6 +114,16 @@ export const PARK_INCOME: Record<
   park_u: { short: 700, long: 1100 },
 }
 export const HOTEL_TILE_INCOME = 850
+/** Landside curb — city buses drop departing pax. */
+export const BUS_CURB_COST = 8_500
+/** Rail station beside the city rail stub — needs City rail investment first. */
+export const RAIL_STATION_COST = 16_000
+/** One-shot fees when a guest uses landside infra. */
+export const PARK_SHORT_FEE = 18
+export const PARK_LONG_FEE = 42
+export const HOTEL_NIGHT_FEE = 95
+export const BUS_FARE = 8
+export const RAIL_FARE = 14
 export const JANITOR_HIRE = 3200
 export const JANITOR_WAGE = 260
 export const RESEARCHER_HIRE = 4800
@@ -627,6 +637,20 @@ export const BUILDINGS: BuildDef[] = [
     cost: PARK_U_COST,
     blurb: 'Underground deck. Toggle Short/Long term before stamping.',
   },
+  {
+    tool: 'bus',
+    tile: 'bus',
+    name: 'Bus curb',
+    cost: BUS_CURB_COST,
+    blurb: 'City bus stop on a road edge. Budget pax arrive here — missing curb angers them.',
+  },
+  {
+    tool: 'rail',
+    tile: 'rail',
+    name: 'Rail station',
+    cost: RAIL_STATION_COST,
+    blurb: 'Passenger rail hall on the city link. Needs City rail first. Business pax love it.',
+  },
 ]
 
 export const ROOMS: RoomDef[] = [
@@ -700,6 +724,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   park_g: 'Garage',
   park_u: 'Under',
   deice: 'De-ice',
+  bus: 'Bus',
+  rail: 'Rail',
   clear: 'Clear',
 }
 

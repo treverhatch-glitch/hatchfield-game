@@ -61,7 +61,7 @@ export function walkableFor(
       tile === 'deice'
     )
   }
-  // Apron foot traffic — hangar included so line-MX / staff can cross the shop door.
+  // Apron / landside foot traffic — hotel, parks, bus curb, rail hall included.
   return (
     tile === 'taxi' ||
     tile === 'stand' ||
@@ -74,7 +74,14 @@ export function walkableFor(
     tile === 'hangar' ||
     tile === 'fuel' ||
     tile === 'fire' ||
-    tile === 'deice'
+    tile === 'deice' ||
+    tile === 'hotel' ||
+    tile === 'park_s' ||
+    tile === 'park_l' ||
+    tile === 'park_g' ||
+    tile === 'park_u' ||
+    tile === 'bus' ||
+    tile === 'rail'
   )
 }
 

@@ -7,6 +7,10 @@
  * so thousands of decisions stay cheap — same spirit, airport rooms instead of rides.
  */
 
+import type { ArriveMode } from './types'
+
+export type { ArriveMode }
+
 export type NeedId =
   | 'hunger'
   | 'bladder'
@@ -89,6 +93,10 @@ export interface HallGuest {
   airlineId?: string
   /** Which terminal campus hall this guest belongs to (`c,r` origin key). */
   hallId?: string
+  /** Landside arrival / leave mode — hotel, short/long park, bus, rail, drop-off. */
+  arriveMode?: ArriveMode
+  /** Preferred mode before fallback (for missing-infra anger). */
+  preferMode?: ArriveMode
 }
 
 /** Past the secure line — uncleared departures may not enter. */

@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v22'
+export const SAVE_KEY = 'apron-save-v23'
 
 export type Tile =
   | 'grass'
@@ -23,6 +23,17 @@ export type Tile =
   | 'park_g'
   | 'park_u'
   | 'deice'
+  | 'bus'
+  | 'rail'
+
+/** How a hall guest reached (or will leave) the airport. */
+export type ArriveMode =
+  | 'dropoff'
+  | 'car_short'
+  | 'car_long'
+  | 'bus'
+  | 'rail'
+  | 'hotel'
 
 export type RunwayClass = 'short' | 'regional' | 'heavy'
 /** Car park term — set when stamping a park tile. */
@@ -57,6 +68,8 @@ export type Tool =
   | 'park_g'
   | 'park_u'
   | 'deice'
+  | 'bus'
+  | 'rail'
   | 'clear'
 
 export type Speed = 0 | 1 | 3
