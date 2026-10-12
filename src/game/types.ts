@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v16'
+export const SAVE_KEY = 'apron-save-v17'
 
 export type Tile =
   | 'grass'
@@ -66,6 +66,7 @@ export type Phase =
   | 'deboard'
   | 'servicing'
   | 'board'
+  | 'parked'
   | 'taxi_out'
   | 'takeoff'
   | 'gone'
@@ -181,6 +182,18 @@ export interface HubOffer {
 export interface HubContract {
   airline: AirlineId
   signedAt: number
+}
+
+/** Independent GA parking request — not a signed airline. */
+export interface ParkingOffer {
+  id: string
+  callsign: string
+  airframeId: string
+  fee: number
+  /** Sim-seconds they will stay once accepted. */
+  staySec: number
+  age: number
+  deadline: number
 }
 
 export interface FuelContract {
@@ -312,6 +325,10 @@ export interface Flight {
   /** Linked timetable slot when spawned from the schedule. */
   scheduleId?: string | null
   boardingSlow?: boolean
+  /** GA parking — must depart by this clock or fine. */
+  parkLeaveBy?: number | null
+  /** Independent general aviation (not a signed airline). */
+  ga?: boolean
 }
 
 /** Live security event the player must answer. */

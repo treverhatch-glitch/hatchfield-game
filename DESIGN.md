@@ -4,9 +4,9 @@
 
 Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come after that loop feels real.
 
-**AT3 comparison (live):** we already beat AT3 on guest AI, airline drama, ops risk, and IPO. They still win on terminal growth, HUB tier, jetways, hotels, and scenarios. Steal that *growth silhouette* next — see `ADDITIONS.md` → “AT3 deep dive”.
+**AT3 comparison (live):** we beat AT3 on guest AI, airline drama, ops risk, and IPO. **Hub tier**, Field Rating, and heavy pack are now in. They still win on jetways, hotels, and scenarios.
 
-**Airport CEO comparison (live):** we beat CEO on readable short-session fun, RCT guests, airline heat/layovers, and HATCH. They win on R&D progression, flight planner craft, secure zones, staffed desks, de-ice/night, baggage belts, franchises. Steal the *progression spine* — see `ADDITIONS.md` → “Airport CEO deep dive” / C0 plan.
+**Airport CEO comparison (live):** we beat CEO on short-session fun, RCT guests, heat/layovers/Hub, and HATCH. **Research desk**, planner v2, de-ice/night (via R&D), and emergency asks shipped. They still win on secure zones, staffed desks, baggage belts, franchises, multi-terminal.
 
 ### AT3 core
 
