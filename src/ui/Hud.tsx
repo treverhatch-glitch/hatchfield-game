@@ -598,10 +598,15 @@ export function Hud({ game }: { game: Game }) {
           <h2>Flight planner</h2>
           <p className="muted">
             {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
-            {game.openSchedule().length} open
-            {game.weather === 'storm' ? ' · storm may delay' : ''}
+            {game.openSchedule().length} open · {game.runwayStripCount()} strip
+            {game.runwayStripCount() === 1 ? '' : 's'}
+            {game.weather === 'storm'
+              ? ' · storm delays'
+              : game.weather === 'fog'
+                ? ' · fog slips'
+                : ''}
             {' · '}
-            pull / bump ETA · cycle stand
+            slow boarding / weather cascades slide the bank — bump/pull/cancel costs heat
           </p>
           {(() => {
             const strip = game.plannerStrip(120)
@@ -623,7 +628,7 @@ export function Hud({ game }: { game: Game }) {
                           left: `${left}%`,
                           background: game.airline(s.airline).color,
                         }}
-                        title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand}`}
+                        title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`}
                       >
                         {s.flightNo.slice(-3)}
                       </span>
@@ -657,6 +662,7 @@ export function Hud({ game }: { game: Game }) {
               game.openSchedule().slice(0, 8).map((s) => {
                 const eta = Math.max(0, Math.round(s.eta - game.clock))
                 const stand = s.standPref ? game.gateLabel(s.standPref) : 'auto'
+                const rw = game.runwayLabel(s.runwayPref)
                 return (
                   <li key={s.id}>
                     <b style={{ color: game.airline(s.airline).color }}>
@@ -666,7 +672,7 @@ export function Hud({ game }: { game: Game }) {
                         {s.delaySec > 0 ? ` +${Math.round(s.delaySec)}s` : ''}
                         {s.manual ? ' · manual' : ''}
                         {' · '}
-                        {stand}
+                        {rw}/{stand}
                       </span>
                     </b>
                     <span className="muted">
@@ -675,16 +681,33 @@ export function Hud({ game }: { game: Game }) {
                     </span>
                     {s.status !== 'inbound' ? (
                       <span className="row" style={{ marginTop: 4 }}>
-                        <button type="button" onClick={() => game.pullSlot(s.id)}>
+                        <button
+                          type="button"
+                          title="Pull earlier — may jump ahead of others (heat)"
+                          onClick={() => game.pullSlot(s.id)}
+                        >
                           Pull
                         </button>
-                        <button type="button" onClick={() => game.bumpSlot(s.id)}>
+                        <button
+                          type="button"
+                          title="Bump later — cascades the bank (heat)"
+                          onClick={() => game.bumpSlot(s.id)}
+                        >
                           Bump
                         </button>
                         <button type="button" onClick={() => game.cycleSlotStand(s.id)}>
                           Stand
                         </button>
-                        <button type="button" onClick={() => game.cancelSlot(s.id)}>
+                        {game.runwayStripCount() >= 2 ? (
+                          <button type="button" onClick={() => game.cycleSlotRunway(s.id)}>
+                            RW
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          title="Cancel — clears bank, hurts airline heat"
+                          onClick={() => game.cancelSlot(s.id)}
+                        >
                           Cancel
                         </button>
                       </span>

@@ -263,6 +263,8 @@ export interface ScheduleSlot {
   flightId: string | null
   /** Planner v2 — preferred stand; null = tower picks. */
   standPref?: Vec | null
+  /** Preferred runway strip index (0-based); null = tower picks. */
+  runwayPref?: number | null
 }
 
 export interface ContractOffer {
