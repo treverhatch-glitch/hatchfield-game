@@ -755,7 +755,8 @@ export function Hud({ game }: { game: Game }) {
           <h2>Flight planner</h2>
           <p className="muted">
             {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
-            {game.openSchedule().length} open · {game.runwayStripCount()} strip
+            {game.openSchedule().length}/{game.scheduleCap()} open ·{' '}
+            {game.runwayStripCount()} strip
             {game.runwayStripCount() === 1 ? '' : 's'} · inbound{' '}
             {game.maxInbound()}
             {game.weather === 'storm'
@@ -764,9 +765,9 @@ export function Hud({ game }: { game: Game }) {
                 ? ' · fog slips'
                 : ''}
             {' · '}
-            each strip has its own bank — RW cycles / filter below
+            stamp more strips for more banks — cycle RW on each slot
           </p>
-          {game.runwayStripCount() >= 2 ? (
+          {game.runwayStripCount() >= 1 ? (
             <div className="row">
               <button
                 type="button"

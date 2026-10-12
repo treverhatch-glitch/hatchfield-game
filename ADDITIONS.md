@@ -131,7 +131,7 @@ Sources: AT3 FAQ/strategy (Dudeitsme411), MobyGames/wiki blurbs. AT3 = stamp lan
 | **City presets** (weather, demand mix) | City vs factory plots only | More sites: tourist / military town / megacity |
 | **Airport rating as a first-class meter** | We split rep / heat / wear | Unified **Field Rating** derived from those (AT3-readable) |
 | **Bigger build catalog** | Thin vs AT3’s service menus | Research unlocks expand the stamp list without dumping everything day one |
-| **True multi-runway ATC** | Longest strip wins; one ops bank | Second strip with independent capacity when tower is staffed |
+| **True multi-runway ATC** | ~~Longest strip wins~~ **N strips** with per-slot RW banks + inbound scaling | Crosswind / independent parallel ops polish |
 
 ### Verdict
 
@@ -145,7 +145,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 | Pillar | Have now | Missing for “complete” feel |
 | --- | --- | --- |
-| Build | Prefabs, 3 strip lengths, helipad, apron↔hall | Custom walls/doors; multi-terminal; jetways; 2nd runway ATC |
+| Build | Prefabs, 3 strip lengths, helipad, apron↔hall, N-runway banks | Custom walls/doors; richer jetway art |
 | Airlines | 6 premade + Guard + proc fillers; personas; heat; layovers; bans | Hub-tier contracts; brand lounges/rewards; abandon on dead heat |
 | Aircraft | Named frames + roles + strip gates | A380 / An-124 / C-5; pushback; noise/weight classes |
 | Pax | Budget/premium + needs + clocks + transfers | Deeper traits (family/business); complaint cards |
@@ -165,8 +165,8 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 **P1 — AT3 catalog + ATC**
 
-5. **Research tree** — ~~points from flights/pax; unlocks night/de-ice/stand class/heavy~~ **shipped** (hotel / 2nd runway ops still open).
-6. **Multi-runway + multi-terminal pathing** — ~~N strips scale inbound; stand→strip A* with pref fallback; T# jetways~~ **shipped**.
+5. **Research tree** — ~~points from flights/pax; unlocks night/de-ice/stand class/heavy~~ **shipped**.
+6. **Multi-runway + multi-terminal pathing** — ~~N strips scale inbound + per-strip schedule banks; stand→strip A* with pref fallback; T# jetways; timetable/inbound scale with strip count~~ **shipped**.
 7. **Emergency asks** — ~~weather divert / firefighting plane refuel / refuel+MX; CL-415·AT-802; can't-host fail fine~~ **shipped**.
 8. **Heavy pack + mil ramp** — ~~A380 / An-124 (heavy_pack); C-5M behind mil_ramp + Guard hangar-side pads~~ **shipped**.
 
