@@ -199,76 +199,91 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 11. **AGM / shareholder votes**
 12. **Godot Steam rebuild**
 
-## Airport CEO deep dive — us vs them (Oct 2026)
+## Airport CEO deep dive — us vs them (refreshed Oct 2026)
 
-Sources: Airport CEO wiki (Flights, Flight Planner, Contracts), Steam R&D guide (Alpha 35+). CEO = 2D construction + staffed secure zones + drag-drop planner + research unlocks. Hatchfield = AT3 stamp loop + RCT hall + ops risk + HATCH.
+Sources: Airport CEO wiki (Flights, Flight Planner, Contracts, Baggage, Stands), Steam R&D guide (Commercial → Extended → Ultimate license; Night flights; De-icing; Belts; Franchises; Multi-terminal). CEO = 2D construction authenticity + staffed zones + drag-drop planner + admin R&D. Hatchfield = AT3 stamp loop + RCT hall + ops risk + HATCH + real-ops GSE sketch.
 
-### Where Hatchfield is already ahead of Airport CEO
+### Scorecard (current ship)
 
-| Area | Airport CEO | Hatchfield |
-| --- | --- | --- |
-| Guest AI | Passengers mostly flow to desks; satisfaction is softer | RCT needs, miss clocks, capped pathfinding, angry exits → heat |
-| Airline drama | Contracts + tasks; relations are quieter | Personas, heat, layover banks, bans+fines, proc regionals |
-| Fantasy / spice | Franchise shops/cafés (research) | Golf / waterfall / gaming dens + layover captive spend |
-| Capital fantasy | Economy panel, no public equity market | **IPO / HATCH** ticker, street missions, crisis dumps |
-| Dual fantasy view | One continuous 2D campus | Apron 3D + Hall 2D with landside/secure/airside read |
-| Military spice | Emergencies exist; not a Guard-host fantasy | Boise-style Guard host + named olive metal |
-| Turnaround picture | Services exist but denser UI | Money posts when truck/pax picture completes (AT3 rule) |
-| Session length | Long authentic build | Starter kit → Northline money in minutes (better sketch loop) |
+| System | Airport CEO | Hatchfield now | Who wins today |
+| --- | --- | --- | --- |
+| **R&D spine** | Admin desks + long project tree (commercial → medium/large permits, night, de-ice, belts, franchises, multi-T) | RP + lab pawns; tree Night→De-ice→Stand class→Heavy→Mil | **Tie** — they have breadth; we have a readable spine that finishes in one sitting |
+| **Flight planner** | Drag-drop grid, hours/days ahead, night gate, stand rows, auto via COO/CIO | Day strip, pull/bump, runway prefs, auto/manual, cascade drama | **CEO** on UX craft; **us** on delay tension |
+| **Secure / intl zones** | Paint secure + international; passport desks; wrong zone = broken flow | Landside↔security↔airside graph enforcement; breach = incident | **CEO** (intl/passport tools); **us** partial |
+| **Staffed desks** | Agents, screeners, ramp, admins with commute | Desk agents on check-in/security/gate; empty = queues | **Close** — they have more roles; we have the fun body→queue link |
+| **Stands** | Small/med/large, remote vs attached, service roads, night access | One stand tile; strip length + stand_class research; mil hardstands | **CEO** |
+| **Pushback** | Required vehicle for med/large | Boarding → pushback beat → taxi | **Us** for readability; they for vehicle authenticity |
+| **Night ops** | Night Flights R&D; 05:00–22:00 else | Night bank research; soft curfew slips without it | **Tie** |
+| **De-ice** | Permit + pad + truck + fluid | Research softens storm pulse/crash; no pad/truck verb | **CEO** |
+| **Baggage** | Belt layout skill (check-in→scan→bay→truck→plane; claim loops) | Real tug cycle shed↔plane↔claim; no conveyor skill | **CEO** on skill depth; **us** on visible GSE |
+| **Fuel / MX** | Depot + trucks; service rounds | Farm bottom-load bowser; hangar→stand MX walk | **Us** for picture clarity |
+| **Franchises** | Research-locked shop/café brands | Budget heat perk snack franchise only | **CEO** |
+| **GA** | Core early loop; multi-hour park | Independent asks, fee/day-rate, leave request, ~20h window | **Tie** (they earlier; we spicier leave drama) |
+| **Multi-terminal** | Late Ultimate-license research | Lite now (N halls, T#·G# jetways, pathing) | **Us** for availability; **CEO** for gated progression |
+| **Airline drama** | Contracts + relationship + service requests | Personas, heat, layovers/bans, field asks, Hub, abandon | **Us** |
+| **Guest AI** | Desk flow + satisfaction | RCT needs, miss clocks, anger→heat | **Us** |
+| **Capital** | Economy panel | IPO / HATCH / street missions | **Us** |
+| **Session feel** | Long authentic build | Starter kit → money in minutes | **Us** |
+| **Military** | Emergencies | Guard host + named metal + mil ramp | **Us** |
 
-### Where Airport CEO still beats us (steal these)
+### Verdict (honest)
 
-| CEO feature | Why it hurts that we lack it | Hatchfield upgrade |
-| --- | --- | --- |
-| **R&D / research tree** | We dump tools day one; no progression spine | Research points from flights/pax → unlock heavy metal, de-ice, night bank, hotel, 2nd runway |
-| **Flight Planner (drag-drop, days ahead)** | Our timetable is ETA bank, not a week grid | Expand schedule into a simple planner (day strip + stand column); keep auto COO toggle |
-| **Secure zone / international zone tools** | We label landside/airside; walls don’t enforce | Zone paint that gates hall graph edges (wrong-side shop ≠ boarding help) |
-| **Staffed desks** (agents, screeners, ramp) | Budgets are sliders, not bodies | Named posts on check-in/security/boarding; understaff = queues |
-| **Stand sizes** (small/med/large) + remote vs attached | One stand tile fits all that strip allows | Stand class + remote stand service truck |
-| **Pushback / stairs / belt loaders** | Servicing is abstract timers + trucks | Visible pushback + belt before taxi-out |
-| **Night flights unlock** | Weather exists; no curfew politics | Night bank research: freighter money vs city noise/heat |
-| **De-icing permit + pad** | Storms raise crashes; no de-ice verb | Winter ops: de-ice truck or holds/cancels |
-| **Baggage belt system** | Bags are a shed + truck | Conveyor path check-in→makeup→stand (skill layout) |
-| **Franchise contracts** (shops/cafés) | Hall spend is organic only | Sign brand → guaranteed spend + brand crisis |
-| **Airline lounges** (research) | Generic lounge room | Persona-branded lounge rewards at high heat |
-| **GA traffic** | Helos/exec only | Small GA ramp (easy money, blocks stands if neglected) |
-| **Multiple terminal ops** (late research) | One hall fit | 2nd terminal research + per-hall stand pools |
-| **Contract task deadlines** | Sign & forget | Airline tasks (“add WC”, “security ×2”) with bonus/fail |
-| **Emergencies panel** | Threat scramble only | Divert / tanker / tanker+MX one-time landings; can't-host fail fine + broad heat |
+- **Is Hatchfield “better” overall?** Not yet as an Airport CEO replacement. We are **better at short-session fun, airline personality, guest drama, capital spice, and readable turnarounds**. They are **better at construction authenticity** (zones, belts, stand classes, drag-drop planner, franchise brands, de-ice verb).
+- **If the goal is “unfair-fun AT3 sketch that steals CEO’s spine”** — we are ahead of where CEO feels in the first hour, and behind where CEO feels at hour ten.
+- **Do not clone** CEO’s admin commute / staff-room bureaucracy. Steal the *verbs* that teach layout skill (belts, zone paint, stand class, planner craft).
 
-### Verdict
+### Where we still lose (steal next)
 
-- **CEO construction authenticity:** they win (zones, staff bodies, belts, pushback, R&D).
-- **Readable fun in a short session:** we win (starter kit, money=picture, layover tension, HATCH).
-- **Airline personality:** we win today; steal their **lounge + franchise + task contracts** to stay ahead.
-- **Scheduling:** they win on planner UX; we win on delay cascading drama — merge both.
+1. **Planner craft** — drag/slot on a day+ grid, not just pull/bump buttons  
+2. **Baggage belt lite** — check-in→makeup→bay path skill (trucks already real)  
+3. **De-ice verb** — pad stamp + glycol truck in storms  
+4. **Stand sizes** — S/M/L stamps; remote vs jetway  
+5. **Franchise brands** — signable shop/café contracts beyond heat perk  
+6. **International zone** — passport desk + intl airside graph cut  
+7. **Stairs / belt loader GSE** — visible boarding hardware for larger metal  
 
-Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research → night/de-ice/belts) and *planner craft* without becoming a spreadsheet.
+### Upgrade plan — make ours better (ordered)
 
-### CEO-aligned upgrade plan (merge with AT3 P0–P2)
+**Principle:** Keep starter→Northline money sacred. Every CEO steal must show in the picture (truck/body/belt), not a spreadsheet.
 
-**C0 — CEO spine (overlaps AT3 P0)**
+#### Wave A — Planner + winter (highest “CEO catch-up” per effort)
 
-1. **Research desk** — ~~points from turnarounds + pax; unlocks night bank → de-ice → stand classes → heavy pack~~ **shipped** + **lab staff** (hire researchers; furnish desk/chalkboard/lab bench; walking pawns bank RP with breaks/home).
-2. **Airline rewards/abandon** — ~~high heat → persona perk; warn → abandon + fine~~ **shipped + deepened** — luxury first-class lounge ($55 tips), budget snack franchise (1.55× food), business priority slots, cargo night waiver; HUD warn banner; abandon strips perk + cools peers.
-3. **Planner v2** — ~~day strip + pull/bump ETA + stand assign~~ **shipped** (auto bank remains default).
-4. **Field Rating** — ~~AT3-readable blend~~ **shipped** (rep × heat × wear × security).
+1. **Planner v3** — horizontal day strip with stand rows; click-drag ETA; 2–3 “days” of compressed clock; night column locked until Night bank. Keep cascade drama.  
+2. **De-ice pad + truck** — stamp pad near strip; in storm/fog, jets hold until glycol truck (from pad/hangar) clears; research still required.  
+3. **Stand class stamps** — S / M / L (or regional / narrow / heavy stand); wrong class = refuse or remote-only; stand_class research unlocks M/L.
 
-**C1 — CEO authenticity**
+#### Wave B — Layout skill (CEO’s best lesson)
 
-5. **Secure-zone enforcement** on hall graph — ~~shipped~~ uncleared departures only see landside+security; airside breach = fine + incident; no soft security corridor.
-6. **Staff posts** on key desks — ~~shipped~~ hire desk agents (bodies on check-in/security/gate); empty desks slow pax and soft-cut security level.
-7. **De-ice + night curfew**.
-8. **Stand class + pushback beat**.
-9. **Emergency asks** — ~~weather divert / airtanker refuel / refuel+MX; one-time landings; fail-host fines~~ **shipped**.
+4. **Baggage belt lite** — paint belt tiles: check-in drop → makeup → bay; trucks only load/unload at connected bays; broken path = delayed bags + heat. Claim loop optional v1.  
+5. **Franchise brand contracts** — CounterBite / SkyGlass offers; sign fee → guaranteed hall spend mult + rare brand crisis mission.  
+6. **International zone lite** — passport room + `intl` hall flag; Summit/Harbor intl flights need it; domestic still uses secure only.
 
-**C2 — CEO scale**
+#### Wave C — Scale fantasy (stay ahead of CEO)
 
-10. **Baggage trucks** — ~~shed→stand unload/load + return or continue~~ **shipped**; belt lite + franchise brands still open.
-11. **Multi-terminal** + GA ramp.
-12. **Godot** after C0–C1 feel unfair-fun.
+7. **Remote stand service** — bus/stair for non-jetway stands; pay cut if missing.  
+8. **Multi-terminal research gate** — 2nd hall free early stays; 3rd+ needs “Campus ops” research; per-hall schedule filter.  
+9. **Stairs / belt loader GSE** — widebody/heavy show loader + stair before board complete.  
+10. **Godot Steam shell** — only after Waves A–B feel unfair-fun; browser remains design lab.
 
-Dependency note: Landside, janitors, N-strip banks, bags trucks, secure zones, desk staff, wallets/prefs, usage landside, pushback, multi-terminal jetway lite all live. Belts / franchises / custom painter still open.
+#### Explicit non-goals (do not steal)
+
+- Admin commute / bus stops for researchers  
+- Full 2D wall/foundation painter before belts+planner  
+- Cloning CEO’s email inbox UI  
+- Making the first hour as slow as CEO’s commercial license grind  
+
+### Success tests (CEO parity without CEO boredom)
+
+A player can, without a wiki:
+
+1. Boot → starter → Northline money in ~2 minutes (**we already win**).  
+2. Open planner, drag a slot onto a stand/night cell, see cascade if they collide.  
+3. Storm hits → de-ice truck rolls or jet holds — visible.  
+4. Break a belt path → bags late → airline heat dips → fix belt → recover.  
+5. Sign a franchise → hall spend jumps; fail a brand crisis → fine.  
+6. Still beat CEO on layover ban drama + HATCH IPO in the same session.
+
+If 1–4 work, we match CEO’s skill spine. If 5–6 work, we are **better** than CEO for HatchTag’s fantasy.
 
 ### Debug pass (hold deadlock)
 
@@ -359,7 +374,9 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 
 ## Still later (on your list, not finished)
 
-- Full custom terminal wall painting (Tier A #1) + landside/airside
-- De-ice pad stamp / glycol truck verb (research odds cut + night curfew already live)
-- Baggage belts / franchise brands (belt lite still open)
-- Godot Steam rebuild (Tier D)
+See **Upgrade plan — make ours better** above (Waves A→C). Short list:
+
+- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L  
+- Wave B: Belt lite · Franchise brands · Intl zone  
+- Wave C: Remote stands · Multi-T research gate · Stairs/loader · Godot  
+- Parked: custom wall painter (after belts+planner)
