@@ -45,11 +45,12 @@ g.researchPoints = 5
 const early = g.canBuyResearch('deice')
 if (early.ok) issues.push('deice should require night_bank')
 
-g.researchPoints = 200
+g.researchPoints = 400
 const inbound0 = g.maxInbound()
 
 for (const n of RESEARCH_NODES) {
   if (g.hasResearch(n.id)) continue
+  g.researchPoints = Math.max(g.researchPoints, n.cost)
   g.buyResearch(n.id)
   if (!g.hasResearch(n.id)) {
     issues.push(`failed unlock ${n.id}: ${g.canBuyResearch(n.id).why}`)
@@ -60,11 +61,7 @@ if (!g.hasResearch('night_bank')) issues.push('night_bank missing')
 if (!g.hasResearch('deice')) issues.push('deice missing')
 if (!g.hasResearch('stand_class')) issues.push('stand_class missing')
 if (!g.hasResearch('heavy_pack')) issues.push('heavy_pack missing')
-if (!g.hasResearch('mil_ramp')) {
-  g.researchPoints = Math.max(g.researchPoints, 80)
-  g.buyResearch('mil_ramp')
-  if (!g.hasResearch('mil_ramp')) issues.push('mil_ramp missing')
-}
+if (!g.hasResearch('mil_ramp')) issues.push('mil_ramp missing')
 
 const inbound1 = g.maxInbound()
 if (!(inbound1 > inbound0)) {
