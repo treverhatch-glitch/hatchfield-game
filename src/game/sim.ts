@@ -65,10 +65,14 @@ import {
   HOTEL_COST,
   HOTEL_COST_L2,
   HOTEL_INCOME,
+  HOTEL_TILE_INCOME,
   CARPARK_SHORT_COST,
   CARPARK_LONG_COST,
   CARPARK_SHORT_INCOME,
   CARPARK_LONG_INCOME,
+  JANITOR_HIRE,
+  JANITOR_WAGE,
+  PARK_INCOME,
   ROOMS,
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
@@ -133,6 +137,7 @@ import type {
   LayoverOffer,
   MarketMission,
   ParkingOffer,
+  ParkTerm,
   MxOffer,
   News,
   PendingEmergency,
@@ -189,6 +194,7 @@ const emptyRooms = (): Record<RoomId, number> => ({
   golf: 0,
   waterfall: 0,
   gaming: 0,
+  dayhotel: 0,
 })
 
 function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, number>>): TerminalFit {
@@ -235,6 +241,12 @@ export class Game {
   hotelLevel = 0
   carParkShort = false
   carParkLong = false
+  /** Stamped park tiles: "c,r" → short/long. */
+  parkTerms: Record<string, ParkTerm> = {}
+  /** Term used when stamping the next park tile. */
+  parkTerm: ParkTerm = 'short'
+  janitors = 0
+  janitorCool = 0
   interestCool = 60
   public = false
   sharePrice = 0
@@ -347,6 +359,10 @@ export class Game {
     this.hotelLevel = 0
     this.carParkShort = false
     this.carParkLong = false
+    this.parkTerms = {}
+    this.parkTerm = 'short'
+    this.janitors = 0
+    this.janitorCool = 0
     this.interestCool = 60
     this.public = false
     this.sharePrice = 0
@@ -771,6 +787,8 @@ export class Game {
     this.hotelLevel = 0
     this.carParkShort = false
     this.carParkLong = false
+    this.parkTerms = {}
+    this.janitors = 0
     this.pushNews(
       `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit ($${STARTER_KIT_COST.toLocaleString()}) for a Northline-ready field.`,
       'ok',
@@ -960,6 +978,11 @@ export class Game {
     this.emit()
   }
 
+  setParkTerm(term: ParkTerm) {
+    this.parkTerm = term
+    this.emit()
+  }
+
   /** Site pax mult with hotel / rail / car park landside boosts. */
   landsidePaxMult(): number {
     const base = this.site ? LAND[this.site].paxMult : 1
@@ -969,6 +992,14 @@ export class Game {
     if (this.hotelLevel >= 2) m *= 1.05
     if (this.carParkShort) m *= 1.03
     if (this.carParkLong) m *= 1.04
+    const hotels = tilesOf(this.tiles, 'hotel').length
+    if (hotels) m *= 1 + Math.min(0.18, hotels * 0.05)
+    const parks =
+      tilesOf(this.tiles, 'park_s').length +
+      tilesOf(this.tiles, 'park_l').length +
+      tilesOf(this.tiles, 'park_g').length +
+      tilesOf(this.tiles, 'park_u').length
+    if (parks) m *= 1 + Math.min(0.16, parks * 0.03)
     return m
   }
 
@@ -976,7 +1007,18 @@ export class Game {
     let n = HOTEL_INCOME[clamp(this.hotelLevel, 0, 2)] ?? 0
     if (this.carParkShort) n += CARPARK_SHORT_INCOME
     if (this.carParkLong) n += CARPARK_LONG_INCOME
+    n += tilesOf(this.tiles, 'hotel').length * HOTEL_TILE_INCOME
+    for (const kind of ['park_s', 'park_l', 'park_g', 'park_u'] as const) {
+      for (const p of tilesOf(this.tiles, kind)) {
+        const term = this.parkTerms[`${p.c},${p.r}`] ?? 'short'
+        n += PARK_INCOME[kind][term]
+      }
+    }
     return n
+  }
+
+  runwayStripCount(): number {
+    return runwayStrips(this.tiles, MIN_RUNWAY).length
   }
 
   canIpo(): { ok: boolean; why: string } {
@@ -1364,6 +1406,8 @@ export class Game {
       hotelLevel: this.hotelLevel,
       carParkShort: this.carParkShort,
       carParkLong: this.carParkLong,
+      parkTerms: this.parkTerms,
+      janitors: this.janitors,
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -1431,6 +1475,8 @@ export class Game {
       this.hotelLevel = s.hotelLevel ?? 0
       this.carParkShort = s.carParkShort ?? false
       this.carParkLong = s.carParkLong ?? false
+      this.parkTerms = s.parkTerms ?? {}
+      this.janitors = s.janitors ?? 0
       this.public = s.public ?? false
       this.sharePrice = s.sharePrice ?? 0
       this.sharesOwned = s.sharesOwned ?? 0
@@ -1672,7 +1718,7 @@ export class Game {
           // Transfers use boarding as connection clock — linger until it runs down.
           g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.35)
           if (g.needs.boarding > 8) {
-            const linger = (['food', 'shop', 'lounge', 'bathroom', 'gaming', 'waterfall'] as const).find(
+            const linger = (['food', 'shop', 'lounge', 'dayhotel', 'bathroom', 'gaming', 'waterfall'] as const).find(
               (n) => open.has(n),
             )
             if (linger && g.node !== linger) this.routeGuest(g, linger, open)
@@ -1835,6 +1881,19 @@ export class Game {
         g.thought = 'Lounge calm'
       }
       g.happiness += happy
+    }
+    if (n === 'dayhotel') {
+      const pay = g.transfer ? 65 : g.tag === 'premium' ? 48 : 28
+      g.needs.energy = Math.max(0, g.needs.energy - 55)
+      g.needs.boarding = Math.min(99, g.needs.boarding + 8)
+      g.spent += pay
+      this.cash += pay
+      this.revenue += pay
+      g.happiness += g.transfer ? 12 : 7
+      g.thought = g.transfer
+        ? `Day room nap (−$${pay}) — layover gold`
+        : `Rented a day room (−$${pay})`
+      if (g.transfer && g.airlineId) this.adjustHeat(g.airlineId, 0.15)
     }
     if (n === 'golf') {
       const pay = g.tag === 'premium' ? 55 : 28
@@ -2735,6 +2794,7 @@ export class Game {
     g.needs.boarding = 35 + Math.random() * 40
     if (open.has('food')) this.routeGuest(g, 'food', open)
     else if (open.has('shop')) this.routeGuest(g, 'shop', open)
+    else if (open.has('dayhotel')) this.routeGuest(g, 'dayhotel', open)
     else if (open.has('lounge')) this.routeGuest(g, 'lounge', open)
     else if (open.has('claim')) this.routeGuest(g, 'claim', open)
     this.hallGuests.push(g)
@@ -2861,6 +2921,71 @@ export class Game {
     return Math.round(total)
   }
 
+  hireJanitor() {
+    if (this.janitors >= 6) {
+      this.pushNews('Janitor crew maxed (6).', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(JANITOR_HIRE, 'hire janitor')) return
+    this.janitors += 1
+    this.spawnJanitorPawn()
+    this.pushNews(
+      `Hired janitor #${this.janitors}. They scrub WC/security when cleaning budget is funded.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  spawnJanitorPawn() {
+    const origin = this.fits[0]?.origin
+    if (!origin) return
+    this.people.push({
+      id: uid('jan'),
+      flightId: '',
+      x: origin.c + 0.5,
+      y: origin.r + 0.5,
+      path: [],
+      seg: 0,
+      t: 0,
+      color: '#5a8a6a',
+      job: 'janitor',
+      itinerary: [],
+      label: 'Janitor',
+      wantBag: false,
+      wantFood: false,
+      wantGift: false,
+      stage: 0,
+      paidFood: false,
+      paidGift: false,
+    })
+  }
+
+  tickJanitors(dt: number) {
+    this.janitorCool -= dt
+    const clean = this.budgets.cleaning / 100
+    if (this.janitors < 1 || clean < 0.2 || !this.fits.length) return
+    if (this.janitorCool > 0) return
+    this.janitorCool = 8
+    const live = this.people.filter((p) => p.job === 'janitor').length
+    if (live < this.janitors) this.spawnJanitorPawn()
+    const cut = (1.8 + this.janitors * 0.9) * clean
+    for (const f of this.fits) {
+      f.wearBath = Math.max(0, (f.wearBath ?? 0) - cut)
+      f.wearSec = Math.max(0, (f.wearSec ?? 0) - cut * 0.75)
+    }
+    // Wander janitors toward hall origin.
+    for (const p of this.people) {
+      if (p.job !== 'janitor') continue
+      const fit = this.fits[0]
+      if (!fit) continue
+      const tx = fit.origin.c + Math.random() * 2
+      const ty = fit.origin.r + Math.random() * 2
+      p.x = lerp(p.x, tx, 1 - Math.pow(0.15, dt))
+      p.y = lerp(p.y, ty, 1 - Math.pow(0.15, dt))
+    }
+  }
+
   lineCost(key: BudgetKey): number {
     const pct = this.budgets[key] / 100
     let base = BUDGET_BASE[key] * pct
@@ -2876,6 +3001,7 @@ export class Game {
     if (key === 'cleaning') {
       const rooms = this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0)
       base *= 1 + rooms * 0.08
+      base += this.janitors * JANITOR_WAGE * pct
     }
     if (key === 'fire') {
       const stations = Math.max(1, tilesOf(this.tiles, 'fire').length)
@@ -3335,6 +3461,7 @@ export class Game {
     } else {
       this.cash += this.refundFor(cur)
       this.tiles[v.r][v.c] = 'grass'
+      delete this.parkTerms[`${v.c},${v.r}`]
     }
     this.emit()
   }
@@ -3475,11 +3602,42 @@ export class Game {
       this.emit()
       return
     }
+    const isLandside =
+      building.tile === 'hotel' ||
+      building.tile === 'park_s' ||
+      building.tile === 'park_l' ||
+      building.tile === 'park_g' ||
+      building.tile === 'park_u'
+    if (isLandside) {
+      const nearRoad = [
+        { c: v.c + 1, r: v.r },
+        { c: v.c - 1, r: v.r },
+        { c: v.c, r: v.r + 1 },
+        { c: v.c, r: v.r - 1 },
+      ].some((p) => inBounds(p.c, p.r) && this.tile(p) === 'road')
+      if (!nearRoad) {
+        this.pushNews('Hotel / car parks need a road edge.', 'bad')
+        this.emit()
+        return
+      }
+    }
     if (!this.spend(building.cost, building.name)) {
       this.emit()
       return
     }
     this.tiles[v.r][v.c] = building.tile
+    if (
+      building.tile === 'park_s' ||
+      building.tile === 'park_l' ||
+      building.tile === 'park_g' ||
+      building.tile === 'park_u'
+    ) {
+      this.parkTerms[`${v.c},${v.r}`] = this.parkTerm
+      this.pushNews(
+        `${building.name} (${this.parkTerm}-term) stamped.`,
+        'ok',
+      )
+    }
     this.emit()
   }
 
@@ -3572,10 +3730,13 @@ export class Game {
 
   maxInbound(): number {
     // Tower pays: two approaches at once; without it, one.
-    // Stand classes research adds a third bank when the tower is up.
+    // Second strip + tower adds capacity; stand_class research adds another bank.
     const tower = tilesOf(this.tiles, 'tower').length > 0
     if (!tower) return 1
-    return this.hasResearch('stand_class') ? 3 : 2
+    let n = 2
+    if (this.runwayStripCount() >= 2) n += 1
+    if (this.hasResearch('stand_class')) n += 1
+    return n
   }
 
   freePads(): Vec[] {
@@ -4572,6 +4733,7 @@ export class Game {
     this.tickLayover(step)
     this.tickHub(step)
     this.tickParking(step)
+    this.tickJanitors(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
     this.trySpawn()

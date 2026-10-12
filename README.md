@@ -21,7 +21,7 @@ Open the printed local URL (port **45217**).
 
 See `DESIGN.md` and `ADDITIONS.md` for the backlog and what already shipped.
 
-New game overwrites the browser save (`apron-save-v18`).
+New game overwrites the browser save (`apron-save-v19`).
 
 ## Loop
 

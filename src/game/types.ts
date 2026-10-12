@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v18'
+export const SAVE_KEY = 'apron-save-v19'
 
 export type Tile =
   | 'grass'
@@ -17,8 +17,15 @@ export type Tile =
   | 'tower'
   | 'hangar'
   | 'helipad'
+  | 'hotel'
+  | 'park_s'
+  | 'park_l'
+  | 'park_g'
+  | 'park_u'
 
 export type RunwayClass = 'short' | 'regional' | 'heavy'
+/** Car park term — set when stamping a park tile. */
+export type ParkTerm = 'short' | 'long'
 
 export type Tool =
   | 'pan'
@@ -39,6 +46,11 @@ export type Tool =
   | 'road'
   | 'tower'
   | 'hangar'
+  | 'hotel'
+  | 'park_s'
+  | 'park_l'
+  | 'park_g'
+  | 'park_u'
   | 'clear'
 
 export type Speed = 0 | 1 | 3
@@ -84,6 +96,7 @@ export type RoomId =
   | 'golf'
   | 'waterfall'
   | 'gaming'
+  | 'dayhotel'
 
 export type Vec = { c: number; r: number }
 
@@ -389,7 +402,7 @@ export interface Person {
   seg: number
   t: number
   color: string
-  job: 'arrive' | 'board' | 'staff' | 'patrol' | 'mechanic'
+  job: 'arrive' | 'board' | 'staff' | 'patrol' | 'mechanic' | 'janitor'
   /** Ordered stops still ahead (plane→bags→food→exit or landside→gate→plane). */
   itinerary: PaxStop[]
   label: string
@@ -485,4 +498,7 @@ export interface GameSnapshot {
   hotelLevel?: number
   carParkShort?: boolean
   carParkLong?: boolean
+  /** Park tile key "c,r" → short/long term. */
+  parkTerms?: Record<string, ParkTerm>
+  janitors?: number
 }

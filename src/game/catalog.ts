@@ -7,6 +7,7 @@ import type {
   CaterContract,
   FuelContract,
   LandSite,
+  ParkTerm,
   ResearchId,
   RoomDef,
   Tool,
@@ -74,14 +75,32 @@ export const RAIL_CITY_COST = 22_000
  * Loan is for growth + second carriers, not the first stamp.
  */
 export const STARTER_KIT_COST = 48_000
-export const HOTEL_COST = 32_000
+export const HOTEL_COST = 28_000
 export const HOTEL_COST_L2 = 48_000
 export const CARPARK_SHORT_COST = 11_000
 export const CARPARK_LONG_COST = 16_500
-/** Passive landside income per ~30s payroll tick. */
+/** Passive landside income per ~30s payroll tick (legacy meta buys). */
 export const HOTEL_INCOME = [0, 900, 1600] as const
 export const CARPARK_SHORT_INCOME = 420
 export const CARPARK_LONG_INCOME = 680
+export const HOTEL_TILE_COST = 24_000
+export const PARK_S_COST = 8_500
+export const PARK_L_COST = 14_000
+export const PARK_G_COST = 22_000
+export const PARK_U_COST = 18_000
+/** Income / 30s by stamped park size × term. */
+export const PARK_INCOME: Record<
+  'park_s' | 'park_l' | 'park_g' | 'park_u',
+  { short: number; long: number }
+> = {
+  park_s: { short: 280, long: 420 },
+  park_l: { short: 520, long: 780 },
+  park_g: { short: 900, long: 1400 },
+  park_u: { short: 700, long: 1100 },
+}
+export const HOTEL_TILE_INCOME = 850
+export const JANITOR_HIRE = 3200
+export const JANITOR_WAGE = 260
 /** Cash + reputation needed before Wall Street will list you. */
 export const IPO_MIN_CASH = 40_000
 export const IPO_MIN_REP = 55
@@ -527,6 +546,41 @@ export const BUILDINGS: BuildDef[] = [
     cost: HELIPAD_COST,
     blurb: 'Medevac and executive choppers land here. Needs fire coverage nearby in spirit.',
   },
+  {
+    tool: 'hotel',
+    tile: 'hotel',
+    name: 'Airport hotel',
+    cost: HOTEL_TILE_COST,
+    blurb: 'Landside beds outside the hall. Overnight pax + income. Stamp on grass near road.',
+  },
+  {
+    tool: 'park_s',
+    tile: 'park_s',
+    name: 'Small lot',
+    cost: PARK_S_COST,
+    blurb: 'Compact surface lot. Toggle Short/Long term before stamping.',
+  },
+  {
+    tool: 'park_l',
+    tile: 'park_l',
+    name: 'Large lot',
+    cost: PARK_L_COST,
+    blurb: 'Big surface lot. Toggle Short/Long term before stamping.',
+  },
+  {
+    tool: 'park_g',
+    tile: 'park_g',
+    name: 'Parking garage',
+    cost: PARK_G_COST,
+    blurb: 'Multi-level garage. Toggle Short/Long term before stamping.',
+  },
+  {
+    tool: 'park_u',
+    tile: 'park_u',
+    name: 'Underground park',
+    cost: PARK_U_COST,
+    blurb: 'Underground deck. Toggle Short/Long term before stamping.',
+  },
 ]
 
 export const ROOMS: RoomDef[] = [
@@ -547,6 +601,12 @@ export const ROOMS: RoomDef[] = [
     blurb: 'Spectacle amenity. Premium pax linger and tip.',
   },
   { id: 'gaming', name: 'Gaming den', cost: 8600, blurb: 'Budget + premium kill time before boarding.' },
+  {
+    id: 'dayhotel',
+    name: 'Airside day rooms',
+    cost: 14_000,
+    blurb: 'Inside-terminal hotel rooms — layover transfers pay to nap and spend.',
+  },
 ]
 
 export const TOOL_LABEL: Record<Tool, string> = {
@@ -568,7 +628,16 @@ export const TOOL_LABEL: Record<Tool, string> = {
   road: 'Road',
   tower: 'Tower',
   hangar: 'Hangar',
+  hotel: 'Hotel',
+  park_s: 'Lot S',
+  park_l: 'Lot L',
+  park_g: 'Garage',
+  park_u: 'Under',
   clear: 'Clear',
+}
+
+export function parkTermLabel(t: ParkTerm): string {
+  return t === 'short' ? 'Short-term' : 'Long-term'
 }
 
 export function money(n: number): string {

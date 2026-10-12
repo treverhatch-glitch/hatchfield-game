@@ -11,12 +11,14 @@ import {
   HEAVY_RUNWAY_COST,
   HOTEL_COST,
   HOTEL_COST_L2,
+  JANITOR_HIRE,
   LAND,
   LOAN_PRINCIPAL,
   MECHANIC_HIRE,
   MIL_AGREE_COST,
   money,
   PARCEL_COST,
+  parkTermLabel,
   personaBlurb,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
@@ -59,6 +61,11 @@ const APRON_TOOLS: Tool[] = [
   'cargo',
   'tower',
   'hangar',
+  'hotel',
+  'park_s',
+  'park_l',
+  'park_g',
+  'park_u',
   'clear',
 ]
 
@@ -382,7 +389,9 @@ export function Hud({ game }: { game: Game }) {
             Loan owed {money(game.loanBalance)} · parcels {game.parcels}
             {game.railLinked ? ' · rail' : ''}
             {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
-            {game.carParkShort || game.carParkLong ? ' · car parks' : ''}
+            {game.janitors ? ` · janitors ${game.janitors}` : ''}
+            {' · '}
+            strips {game.runwayStripCount()} · inbound {game.maxInbound()}
             {' · '}
             landside ~{money(game.landsideIncome())}/30s · pax ×
             {game.landsidePaxMult().toFixed(2)}
@@ -399,6 +408,9 @@ export function Hud({ game }: { game: Game }) {
           <div className="row">
             <button type="button" className="on" onClick={() => game.hireMechanic()}>
               Hire mechanic · {money(MECHANIC_HIRE)}
+            </button>
+            <button type="button" onClick={() => game.hireJanitor()}>
+              Hire janitor · {money(JANITOR_HIRE)}
             </button>
             <button type="button" onClick={() => game.fireMechanic()}>
               Lay off
@@ -890,6 +902,22 @@ export function Hud({ game }: { game: Game }) {
               ))}
               <button type="button" onClick={() => game.rotatePiece()}>
                 Rotate {game.facing === 'h' ? 'H' : 'V'}
+              </button>
+              <button
+                type="button"
+                className={game.parkTerm === 'short' ? 'on' : ''}
+                onClick={() => game.setParkTerm('short')}
+                title="Short-term parking when stamping lots"
+              >
+                {parkTermLabel('short')}
+              </button>
+              <button
+                type="button"
+                className={game.parkTerm === 'long' ? 'on' : ''}
+                onClick={() => game.setParkTerm('long')}
+                title="Long-term parking when stamping lots"
+              >
+                {parkTermLabel('long')}
               </button>
               <button type="button" onClick={() => game.setView('hall')}>
                 Enter hall
