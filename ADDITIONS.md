@@ -270,6 +270,11 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 Dependency note: Landside, janitors, N-strip banks (inbound scales with strips; planner RW filters), bags trucks, secure zones, desk staff, wallets/prefs, usage landside all live. Pushback / belts / multi-terminal still open.
 
+### Debug pass (hold deadlock)
+
+- **Bug:** jets spawned into `hold` while already reserved a stand; `releaseHold()` called `assignStand()` which never returned that stand → forever holds, inbound bank jammed, cascades.
+- **Fix:** slip slots when pavement busy; `releaseHold` reuses reserved stand; 95s hold watchdog diverts and frees the gate.
+
 ### Explicit calls on open design questions
 
 - **Premade vs random airlines:** Hybrid. Premade for identity and tutorials; thin procedural regionals for variety. Full random-only dilutes AT3’s “I know who Summit is” fantasy.
