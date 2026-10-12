@@ -527,6 +527,58 @@ export class World {
     return g
   }
 
+  makeHelo(color: string, stripe: string): THREE.Group {
+    const g = new THREE.Group()
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.38, 1.4, 6, 10),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.35 }),
+    )
+    body.rotation.z = Math.PI / 2
+    body.castShadow = true
+    const cabin = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 10, 8),
+      new THREE.MeshStandardMaterial({
+        color: stripe,
+        roughness: 0.2,
+        metalness: 0.25,
+        transparent: true,
+        opacity: 0.85,
+      }),
+    )
+    cabin.position.set(0.55, 0.1, 0)
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.08, 0.55, 8),
+      new THREE.MeshStandardMaterial({ color: '#333' }),
+    )
+    mast.position.set(0, 0.55, 0)
+    const rotor = new THREE.Mesh(
+      new THREE.BoxGeometry(3.6, 0.04, 0.18),
+      new THREE.MeshStandardMaterial({ color: '#222', metalness: 0.5 }),
+    )
+    rotor.position.set(0, 0.82, 0)
+    rotor.name = 'rotor'
+    const rotor2 = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.04, 3.6),
+      new THREE.MeshStandardMaterial({ color: '#222', metalness: 0.5 }),
+    )
+    rotor2.position.set(0, 0.82, 0)
+    const tail = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.12, 0.18),
+      new THREE.MeshStandardMaterial({ color }),
+    )
+    tail.position.set(-1.2, 0.15, 0)
+    const skidL = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.06, 0.08),
+      new THREE.MeshStandardMaterial({ color: '#444' }),
+    )
+    skidL.position.set(0.1, -0.45, 0.35)
+    const skidR = skidL.clone()
+    skidR.position.z = -0.35
+    g.add(body, cabin, mast, rotor, rotor2, tail, skidL, skidR)
+    g.scale.setScalar(0.95)
+    return g
+  }
+
   syncGhost(game: Game) {
     this.ghostGroup.clear()
     const cells = game.ghostCells(game.hover)
@@ -563,18 +615,32 @@ export class World {
     for (const f of game.flights) {
       seenJ.add(f.id)
       let mesh = this.jets.get(f.id)
+      const helo = f.craft === 'helo'
       if (!mesh) {
         const a = AIRLINES[f.airline]
-        mesh = this.makeJet(a.color, a.stripe)
+        mesh = helo
+          ? this.makeHelo(
+              f.flightNo.startsWith('MED') ? '#b33a2a' : a.color,
+              f.flightNo.startsWith('MED') ? '#f0c040' : a.stripe,
+            )
+          : this.makeJet(a.color, a.stripe)
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
       const p = toWorld(f.x, f.y, 0.55 + f.z * 1.15)
       mesh.position.copy(p)
       mesh.rotation.y = -f.heading
-      mesh.rotation.x = f.phase === 'takeoff' || f.phase === 'approach' ? -0.12 : 0
+      mesh.rotation.x = helo
+        ? 0
+        : f.phase === 'takeoff' || f.phase === 'approach'
+          ? -0.12
+          : 0
+      if (helo) {
+        const rotor = mesh.getObjectByName('rotor')
+        if (rotor) rotor.rotation.y += 0.55
+      }
       const sel = game.selectedFlight === f.id
-      mesh.scale.setScalar(sel ? 1.22 : 1.15)
+      mesh.scale.setScalar(helo ? (sel ? 1.05 : 0.95) : sel ? 1.22 : 1.15)
     }
     for (const [id, m] of this.jets) {
       if (!seenJ.has(id)) {

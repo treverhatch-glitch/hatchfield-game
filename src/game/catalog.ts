@@ -37,6 +37,8 @@ export const HEAVY_RUNWAY_COST = 72000
 export const HEAVY_RUNWAY_LEN = 20
 export const HEAVY_RUNWAY_WID = 3
 export const HELIPAD_COST = 9000
+/** Flat fee when a chopper sits the pad (medevac / executive). */
+export const HELO_LANDING = 2400
 export const PREMADE_TERMINAL_COST = 52000
 export const TAXI_COST = 700
 export const STAND_COST = 6200
@@ -370,7 +372,7 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'helipad',
     name: 'Helipad',
     cost: HELIPAD_COST,
-    blurb: 'Later: medevac and executive choppers. Stamps a pad for now.',
+    blurb: 'Medevac and executive choppers land here. Needs fire coverage nearby in spirit.',
   },
 ]
 
