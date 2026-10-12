@@ -682,9 +682,9 @@ export class World {
       seenP.add(p.id)
       let mesh = this.people.get(p.id)
       if (!mesh) {
-        const tall = p.job === 'board' ? 0.42 : 0.38
+        const tall = p.job === 'mechanic' ? 0.48 : p.job === 'board' ? 0.42 : 0.38
         mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.18, tall, 3, 6),
+          new THREE.CapsuleGeometry(p.job === 'mechanic' ? 0.22 : 0.18, tall, 3, 6),
           new THREE.MeshLambertMaterial({ color: p.color }),
         )
         mesh.castShadow = true

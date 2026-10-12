@@ -24,6 +24,7 @@ Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come afte
 - City road / rail / subway investment
 - Land expansion, loans
 - Budget-crowd facility wear + hall scrub
+- Ops budget sliders, mechanics, airline MX, runway condition / weather crashes
 
 Graphics in the sketch are placeholder. Priority is loops and money = picture.
 

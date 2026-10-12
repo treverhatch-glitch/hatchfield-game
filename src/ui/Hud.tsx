@@ -1,6 +1,8 @@
 import {
   AIRLINES,
   airlineList,
+  BUDGET_BLURB,
+  BUDGET_LABEL,
   BUILDINGS,
   CATER,
   FUEL,
@@ -8,6 +10,7 @@ import {
   HEAVY_RUNWAY_COST,
   LAND,
   LOAN_PRINCIPAL,
+  MECHANIC_HIRE,
   money,
   PARCEL_COST,
   PREMADE_TERMINAL_COST,
@@ -18,7 +21,15 @@ import {
   TOOL_LABEL,
 } from '../game/catalog'
 import { formatClock, type Game } from '../game/sim'
-import type { Speed, Tool } from '../game/types'
+import type { BudgetKey, Speed, Tool } from '../game/types'
+
+const BUDGET_KEYS: BudgetKey[] = [
+  'maintenance',
+  'security',
+  'cleaning',
+  'fire',
+  'ambulance',
+]
 
 const TOOLS: Tool[] = [
   'pan',
@@ -66,6 +77,10 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat">{game.signed.length} airlines</div>
         <div className="stat">Sec {ready.security}</div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
+        <div className="stat" title="Runway condition">
+          RW {Math.round(game.runwayCondition)}%
+        </div>
+        <div className="stat">{game.weatherLabel()}</div>
         {game.public ? (
           <div className="stat cash">HATCH ${game.sharePrice.toFixed(2)}</div>
         ) : null}
@@ -114,6 +129,26 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.mxOffer ? (
+        <div className="offer mx">
+          <div>
+            <strong>{AIRLINES[game.mxOffer.airline].name} wants line MX</strong>
+            <p>
+              Hangar turnaround fee {money(game.mxOffer.payout)} per visit. Needs funded
+              mechanics.
+            </p>
+          </div>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.acceptMxOffer()}>
+              Sign MX
+            </button>
+            <button type="button" onClick={() => game.declineMxOffer()}>
+              Decline
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <aside className="side">
         <section>
           <h2>Build & bank</h2>
@@ -143,6 +178,49 @@ export function Hud({ game }: { game: Game }) {
             Loan owed {money(game.loanBalance)} · parcels {game.parcels}
             {game.railLinked ? ' · rail linked' : ''}
           </p>
+        </section>
+
+        <section>
+          <h2>Ops budgets</h2>
+          <p className="muted">
+            Payroll ~{money(game.payrollPreview())} / 30s · crash risk{' '}
+            {Math.round(game.crashChance() * 1000) / 10}% · RW {Math.round(game.runwayCondition)}%
+            · {game.weatherLabel()}
+          </p>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.hireMechanic()}>
+              Hire mechanic · {money(MECHANIC_HIRE)}
+            </button>
+            <button type="button" onClick={() => game.fireMechanic()}>
+              Lay off
+            </button>
+          </div>
+          <p className="muted">
+            {game.mechanics} mechanics
+            {game.mxSigned.length
+              ? ` · MX: ${game.mxSigned.map((id) => AIRLINES[id].name).join(', ')}`
+              : ' · no airline MX yet (need hangar + mechanic)'}
+          </p>
+          <ul className="budgets">
+            {BUDGET_KEYS.map((key) => (
+              <li key={key}>
+                <label>
+                  <span>
+                    {BUDGET_LABEL[key]} · {game.budgets[key]}%
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={game.budgets[key]}
+                    onChange={(e) => game.setBudget(key, Number(e.target.value))}
+                  />
+                </label>
+                <small>{BUDGET_BLURB[key]}</small>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section>

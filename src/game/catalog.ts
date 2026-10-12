@@ -1,5 +1,6 @@
 import type {
   Airline,
+  BudgetKey,
   BuildDef,
   CaterContract,
   FuelContract,
@@ -74,6 +75,41 @@ export const IPO_LISTING_FEE = 12_000
 export const MIN_RUNWAY = 6
 export const BAG_DROP_PAY = 180
 export const LOADS_PER_BUY = 4
+/** Hire one apron mechanic (line + pavement crew). */
+export const MECHANIC_HIRE = 4500
+/** Wage paid each payroll tick per mechanic at 100% maintenance budget. */
+export const MECHANIC_WAGE = 380
+/** Base ops payroll charged ~every 30 sim-seconds at 100% for each line. */
+export const BUDGET_BASE: Record<BudgetKey, number> = {
+  maintenance: 520,
+  security: 640,
+  cleaning: 480,
+  fire: 700,
+  ambulance: 560,
+}
+export const BUDGET_LABEL: Record<BudgetKey, string> = {
+  maintenance: 'Maintenance',
+  security: 'Security staff',
+  cleaning: 'Cleaning staff',
+  fire: 'Fire crews',
+  ambulance: 'Ambulances',
+}
+export const BUDGET_BLURB: Record<BudgetKey, string> = {
+  maintenance:
+    'Mechanics + pavement. Low = runway decay, higher crash odds in weather.',
+  security: 'Screeners and patrols. Low = more threats slip through.',
+  cleaning: 'Hall janitors. Low = WC/security wear piles up faster.',
+  fire: 'ARFF readiness. Low = apron fires and crash fines get brutal.',
+  ambulance: 'Medics on call. Low = crash injuries cost more; medevac cools off.',
+}
+/** Default full funding. */
+export const DEFAULT_BUDGETS: Record<BudgetKey, number> = {
+  maintenance: 100,
+  security: 100,
+  cleaning: 100,
+  fire: 100,
+  ambulance: 100,
+}
 
 const baseReq = {
   stands: 1,
