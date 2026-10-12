@@ -92,6 +92,28 @@ export const AIRFRAMES: Record<string, Airframe> = {
     landingMult: 1.5,
     blurb: 'Long-haul widebody.',
   },
+  atr72: {
+    id: 'atr72',
+    name: 'ATR 72-600',
+    kind: 'regional',
+    minRunway: 8,
+    paxMin: 68,
+    paxMax: 78,
+    scale: 0.88,
+    landingMult: 0.78,
+    blurb: 'Turboprop regional — loves short strips.',
+  },
+  b752f: {
+    id: 'b752f',
+    name: 'Boeing 757-200F',
+    kind: 'freighter',
+    minRunway: 14,
+    paxMin: 0,
+    paxMax: 0,
+    scale: 1.2,
+    landingMult: 1.08,
+    blurb: 'Hot-and-high freighter — regional strip OK.',
+  },
   b763f: {
     id: 'b763f',
     name: 'Boeing 767-300F',
@@ -123,7 +145,18 @@ export const AIRFRAMES: Record<string, Airframe> = {
     paxMax: 0,
     scale: 1.2,
     landingMult: 1.2,
-    blurb: 'Guard transport — hangar transient.',
+    blurb: 'Guard transport — Boise-style hangar transient.',
+  },
+  c17: {
+    id: 'c17',
+    name: 'Boeing C-17A Globemaster III',
+    kind: 'military',
+    minRunway: 16,
+    paxMin: 0,
+    paxMax: 0,
+    scale: 1.5,
+    landingMult: 1.6,
+    blurb: 'Strategic airlifter — fat landing fee.',
   },
   kc135: {
     id: 'kc135',
@@ -136,6 +169,17 @@ export const AIRFRAMES: Record<string, Airframe> = {
     landingMult: 1.45,
     blurb: 'Tanker — wants heavy pavement.',
   },
+  f15: {
+    id: 'f15',
+    name: 'McDonnell Douglas F-15C',
+    kind: 'military',
+    minRunway: 10,
+    paxMin: 0,
+    paxMax: 0,
+    scale: 0.72,
+    landingMult: 0.95,
+    blurb: 'Fighter drag / diversion — quick turn, olive paint.',
+  },
   citation: {
     id: 'citation',
     name: 'Cessna Citation Latitude',
@@ -146,6 +190,17 @@ export const AIRFRAMES: Record<string, Airframe> = {
     scale: 0.75,
     landingMult: 0.7,
     blurb: 'Fixed-wing medevac.',
+  },
+  pc12: {
+    id: 'pc12',
+    name: 'Pilatus PC-12',
+    kind: 'air_ambulance',
+    minRunway: 8,
+    paxMin: 2,
+    paxMax: 6,
+    scale: 0.78,
+    landingMult: 0.72,
+    blurb: 'STOL air ambulance — short strip hero.',
   },
   aw139: {
     id: 'aw139',
@@ -171,6 +226,27 @@ export const AIRFRAMES: Record<string, Airframe> = {
   },
 }
 
+/** Human-readable role for HUD / news. */
+export function craftRoleLabel(kind: AircraftKind): string {
+  switch (kind) {
+    case 'regional':
+    case 'narrowbody':
+    case 'widebody':
+      return 'Passenger'
+    case 'freighter':
+      return 'Cargo'
+    case 'helo_med':
+    case 'air_ambulance':
+      return 'Emergency'
+    case 'helo_exec':
+      return 'Executive'
+    case 'military':
+      return 'Military'
+    default:
+      return 'Aircraft'
+  }
+}
+
 export function airframesForKind(kind: AircraftKind): Airframe[] {
   return Object.values(AIRFRAMES).filter((a) => a.kind === kind)
 }
@@ -194,7 +270,7 @@ export function pickAirframeWithFallback(
 ): Airframe | null {
   const order: AircraftKind[] = cargo
     ? [preferred, 'freighter']
-    : [preferred, 'narrowbody', 'regional']
+    : [preferred, 'narrowbody', 'regional', 'widebody']
   const seen = new Set<AircraftKind>()
   for (const k of order) {
     if (seen.has(k)) continue

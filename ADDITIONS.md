@@ -56,12 +56,12 @@ We copied the *spirit*:
 - **Runway condition + weather** — neglect + storms raise crash odds on landing/takeoff; ambulance/fire budgets soften outcomes.
 - **Underfunding effects** — security threats, hall wear growth, apron fires, choppers refusing thin medic cover.
 
-## Aircraft mix (queued ask)
+## Aircraft mix (live)
 
-- **Passenger sizes** — regional / narrowbody / widebody (wide needs heavy strip; fees scale).
-- **Freighters** — cargo metal, distinct paint.
-- **Emergency** — medevac helos + fixed-wing air ambulance (ambulance budget gate).
-- **Military / Guard host** — Boise-style agreement (hangar + tower + police + rep); olive transports transit for fat landing fees.
+- **Passenger** — ATR 72 / CRJ-700 / E175 / A320neo / 737-800 / A321 / 787-9 / A350 (size + strip gates fees).
+- **Cargo** — 757F / 767F / 747-8F for Umazon, UPPS, EXFED (distinct paint, no hall).
+- **Emergency** — AW139 medevac + S-76 exec helos; Citation Latitude + Pilatus PC-12 air ambulance (ambulance budget).
+- **Military / Guard host** — Boise-style agreement (hangar + tower + police + rep); C-130H, C-17A, KC-135R, F-15C fighter drag. HUD **Fleet today** tallies roles.
 
 ## Threat intercept
 

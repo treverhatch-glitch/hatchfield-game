@@ -624,14 +624,18 @@ export class World {
         let color = a.color
         let stripe = a.stripe
         if (f.kind === 'military') {
-          color = '#3d4a32'
-          stripe = '#c9a227'
+          // Fighters read darker/sleeker; transports stay olive + gold.
+          color = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
+          stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
         } else if (f.kind === 'air_ambulance' || f.kind === 'helo_med') {
           color = '#b33a2a'
           stripe = '#f0c040'
         } else if (f.kind === 'freighter') {
           color = '#5a5348'
           stripe = '#d9a441'
+        } else if (f.kind === 'helo_exec') {
+          color = '#1a3a4a'
+          stripe = '#c9a227'
         }
         mesh = helo ? this.makeHelo(color, stripe) : this.makeJet(color, stripe)
         this.jets.set(f.id, mesh)

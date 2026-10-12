@@ -382,6 +382,7 @@ export function Hud({ game }: { game: Game }) {
 
         <section>
           <h2>Flight</h2>
+          <p className="muted">Fleet today: {game.fleetMixLine()}</p>
           {flight && airline ? (
             <div className="flight">
               <p
@@ -392,25 +393,27 @@ export function Hud({ game }: { game: Game }) {
                       ? '#8a9a6a'
                       : flight.kind === 'air_ambulance' || flight.kind === 'helo_med'
                         ? '#b33a2a'
-                        : airline.color,
+                        : flight.kind === 'freighter'
+                          ? '#c97816'
+                          : airline.color,
                 }}
               >
-                {flight.kind === 'military'
-                  ? 'Military'
-                  : flight.kind === 'helo_med' || flight.kind === 'air_ambulance'
-                    ? 'Emergency'
-                    : flight.kind === 'helo_exec'
-                      ? 'Executive'
-                      : airline.name}{' '}
+                {game.roleLabel(flight.kind)}
+                {flight.kind === 'military' ||
+                flight.kind === 'helo_med' ||
+                flight.kind === 'air_ambulance' ||
+                flight.kind === 'helo_exec'
+                  ? ''
+                  : ` · ${airline.name}`}{' '}
                 {flight.flightNo}
               </p>
               <p className="phase">
                 {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
                 {labelPhase(flight.phase, flight.craft)}
-                {flight.pax > 0 ? ` · ${flight.pax} pax` : ''}
+                {flight.pax > 0 ? ` · ${flight.pax} pax` : flight.cargo ? ' · freight' : ''}
                 {(flight.craft ?? 'jet') === 'jet'
                   ? ` · ${game.gateLabel(flight.stand)}`
-                  : ''}
+                  : ' · helipad'}
               </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
