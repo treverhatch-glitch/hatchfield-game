@@ -1,4 +1,4 @@
-import type { AircraftKind, ResearchId } from './types'
+import type { AircraftKind, ResearchId, StandClass } from './types'
 
 /** Real-world-flavored metal. minRunway is apron cells of continuous strip needed. */
 export interface Airframe {
@@ -321,6 +321,20 @@ export function jetAirframesBlocked(
       a.minRunway > 0 &&
       (longestRunway < a.minRunway || !researchOk(a, unlocked)),
   )
+}
+
+/** Minimum stand class the metal needs (S ≤ M ≤ L). */
+export function standClassFor(kind: AircraftKind): StandClass {
+  if (
+    kind === 'regional' ||
+    kind === 'helo_med' ||
+    kind === 'helo_exec' ||
+    kind === 'air_ambulance'
+  ) {
+    return 'S'
+  }
+  if (kind === 'narrowbody') return 'M'
+  return 'L'
 }
 
 /** Human-readable role for HUD / news. */

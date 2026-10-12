@@ -46,7 +46,8 @@ export function walkableFor(
       tile === 'police' ||
       tile === 'cargo' ||
       tile === 'road' ||
-      tile === 'hangar'
+      tile === 'hangar' ||
+      tile === 'deice'
     )
   }
   if (kind === 'mechanic') {
@@ -56,7 +57,8 @@ export function walkableFor(
       tile === 'stand' ||
       tile === 'hangar' ||
       tile === 'road' ||
-      tile === 'fuel'
+      tile === 'fuel' ||
+      tile === 'deice'
     )
   }
   // Apron foot traffic — hangar included so line-MX / staff can cross the shop door.
@@ -71,7 +73,8 @@ export function walkableFor(
     tile === 'cargo' ||
     tile === 'hangar' ||
     tile === 'fuel' ||
-    tile === 'fire'
+    tile === 'fire' ||
+    tile === 'deice'
   )
 }
 

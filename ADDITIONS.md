@@ -246,11 +246,11 @@ Sources: Airport CEO wiki (Flights, Flight Planner, Contracts, Baggage, Stands),
 
 **Principle:** Keep starter→Northline money sacred. Every CEO steal must show in the picture (truck/body/belt), not a spreadsheet.
 
-#### Wave A — Planner + winter (highest “CEO catch-up” per effort)
+#### Wave A — Planner + winter — **SHIPPED**
 
-1. **Planner v3** — horizontal day strip with stand rows; click-drag ETA; 2–3 “days” of compressed clock; night column locked until Night bank. Keep cascade drama.  
-2. **De-ice pad + truck** — stamp pad near strip; in storm/fog, jets hold until glycol truck (from pad/hangar) clears; research still required.  
-3. **Stand class stamps** — S / M / L (or regional / narrow / heavy stand); wrong class = refuse or remote-only; stand_class research unlocks M/L.
+1. **Planner v3** — day strip + night column (locked hatch until Night bank); click slot → ETA ±10 / pin stand by class label; pull/bump cascade kept.  
+2. **De-ice pad + truck** — stamp pad (needs De-ice ops); storm/fog dispatches glycol truck from pad; pushback holds until sprayed (timeout = heat dip).  
+3. **Stand class stamps** — S / M always; L needs Stand classes research; inbound metal filtered by class; labels `T1·G2·M`.
 
 #### Wave B — Layout skill (CEO’s best lesson)
 
@@ -376,7 +376,7 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 
 See **Upgrade plan — make ours better** above (Waves A→C). Short list:
 
-- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L  
+- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L — **shipped** (pad stamp, glycol truck holds pushback in storm/fog, S/M/L stamps + class gate, planner night column + ETA/stand pin)  
 - Wave B: Belt lite · Franchise brands · Intl zone  
 - Wave C: Remote stands · Multi-T research gate · Stairs/loader · Godot  
 - Parked: custom wall painter (after belts+planner)

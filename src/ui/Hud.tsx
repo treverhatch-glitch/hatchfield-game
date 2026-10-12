@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
 import {
   BUDGET_BLURB,
@@ -37,6 +38,7 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
+import { tilesOf } from '../game/path'
 import { formatClock, type Game } from '../game/sim'
 import type { BudgetKey, Speed, Tool } from '../game/types'
 
@@ -57,7 +59,10 @@ const APRON_TOOLS: Tool[] = [
   'helipad',
   'road',
   'taxi',
+  'stand_s',
   'stand',
+  'stand_l',
+  'deice',
   'premade',
   'terminal',
   'snack',
@@ -77,6 +82,7 @@ const APRON_TOOLS: Tool[] = [
 ]
 
 export function Hud({ game }: { game: Game }) {
+  const [selSlot, setSelSlot] = useState<string | null>(null)
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
@@ -700,6 +706,11 @@ export function Hud({ game }: { game: Game }) {
                 {' · '}
                 size ×{(AIRFRAMES[flight.airframeId]?.scale ?? 1).toFixed(2)} · field{' '}
                 {game.stripCapabilityLine()}
+                {flight.waitingOn.deice
+                  ? ' · waiting de-ice'
+                  : flight.posted.deiced
+                    ? ' · de-iced'
+                    : ''}
               </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
@@ -766,34 +777,89 @@ export function Hud({ game }: { game: Game }) {
           ) : null}
           {(() => {
             const strip = game.plannerStrip(120)
+            const night = game.plannerNightBand(120)
+            const nightUnlocked = game.hasResearch('night_bank')
             return (
               <div
                 className="day-strip"
-                title="Next 120s — click a bar to select that slot in the list"
+                title="Next 120s — click a bar to select that slot for drag / stand pin"
               >
                 <div className="day-strip-rail">
                   <span className="day-strip-now">now</span>
                   <span className="day-strip-end">+2m</span>
+                  {night ? (
+                    <span
+                      className={`day-strip-night${nightUnlocked ? '' : ' locked'}`}
+                      style={{
+                        left: `${(night.from / strip.horizon) * 100}%`,
+                        width: `${Math.max(2, ((night.to - night.from) / strip.horizon) * 100)}%`,
+                      }}
+                      title={
+                        nightUnlocked
+                          ? 'Night bank open'
+                          : 'Night column — research Night bank to clear curfew'
+                      }
+                    />
+                  ) : null}
                   {strip.slots.map((s) => {
                     const left = Math.min(96, (s.t / strip.horizon) * 100)
                     return (
-                      <span
+                      <button
                         key={s.id}
-                        className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}`}
+                        type="button"
+                        className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}${selSlot === s.id ? ' selected' : ''}`}
                         style={{
                           left: `${left}%`,
                           background: game.airline(s.airline).color,
                         }}
                         title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`}
+                        onClick={() => setSelSlot(s.id)}
                       >
                         {s.flightNo.slice(-3)}
-                      </span>
+                      </button>
                     )
                   })}
                 </div>
               </div>
             )
           })()}
+          {selSlot ? (
+            <div className="planner-drag">
+              <p className="muted">
+                Selected{' '}
+                {game.schedule.find((s) => s.id === selSlot)?.flightNo ?? 'slot'} — drag
+                ETA / pin stand
+              </p>
+              <div className="row">
+                <button type="button" onClick={() => game.nudgeSlotEta(selSlot, -10)}>
+                  ETA −10
+                </button>
+                <button type="button" onClick={() => game.nudgeSlotEta(selSlot, 10)}>
+                  ETA +10
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    game.setSlotStandPref(selSlot, null)
+                  }}
+                >
+                  Auto stand
+                </button>
+              </div>
+              <div className="row">
+                {tilesOf(game.tiles, 'stand').map((st) => (
+                  <button
+                    key={`${st.c},${st.r}`}
+                    type="button"
+                    title={`Pin ${game.gateLabel(st)}`}
+                    onClick={() => game.setSlotStandPref(selSlot, st)}
+                  >
+                    {game.gateLabel(st)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="row">
             <button type="button" className={game.scheduleAuto ? 'on' : ''} onClick={() => game.setScheduleAuto(true)}>
               Auto
