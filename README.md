@@ -1,40 +1,53 @@
 # Hatchfield
 
-Browser sketch of a **3D airport tycoon** aimed at Steam later (Godot). The field is an Airport Tycoon 3–style view you orbit from above. The books follow Airport CEO: bags, fuel, catering, and hall rooms only pay when the truck or the passenger actually gets there.
+Browser sketch of a **3D airport tycoon** (Airport Tycoon 3 field + Airport CEO books). Orbit the apron, stamp pavement, sign carriers, and make money only when trucks and passengers actually finish their jobs. Steam / Godot comes later — this is the playable loop.
 
-This is the playable loop, not the finished Steam game.
-
-## Play
+## Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the printed local URL (port **45217**).
+Open **[http://127.0.0.1:45217](http://127.0.0.1:45217)** (or the URL Vite prints).
 
-- **Easy grant** — cash + live starter airport (a jet should inbound)
-- **Standard field** — leaner empty plot
-- Buildings stamp in one click (Airport Tycoon style). Rotate the runway with the Rotate button or `R`
-- Left drag pans, right drag orbits, scroll zooms
-- Sign a fuel carrier, buy loads, park the farm on pavement or the pump never posts
+### Morning path (about 2 minutes)
 
-See `DESIGN.md` and `ADDITIONS.md` for the backlog and what already shipped.
+1. **Easy grant** → **Riverside City plot**
+2. Click **Starter kit** (yellow, right panel) — runway, hall, fuel, fire, lounge, mechanic + desk agent
+3. **Sign** Northline when they call
+4. Hit **3x** and watch the first jet land → gate → trucks → takeoff
+5. Optional: **Hall** to walk the terminal; stamp a **Hangar** + hardstand later for Guard / military
 
-New game overwrites the browser save (`apron-save-v19`).
+**Standard field** is the leaner empty-plot challenge. **Continue field** resumes the browser save.
 
-## Loop
+### Controls
 
-1. Buy land → **Starter kit** (or stamp your own field).
-2. Answer the phone — majors + procedural regionals. Each carrier has a **persona**, **heat**, and can unlock **rewards** or **abandon**.
-3. Jet lands → assigned gate → trucks/pax move → money posts. Tower raises inbound capacity.
-4. Use the **Flight planner** (day strip, pull/bump ETA, stand preference) — auto bank or manual.
-5. Host a **layover** → clear it at high heat for a **Hub plaque** (denser slots + brand lounge).
-6. Earn **research points** from turnarounds → unlock night bank, de-ice, stand classes, heavy metal (A380 / An-124 / C-5).
-7. Answer **emergency asks** (weather divert / firefighter tanker) and **GA parking** requests.
-8. Grow landside — **hotel**, short/long **car parks**, city rail — for passive income and denser pax.
-9. Furnish the hall (food, lounge, golf, waterfall, gaming…) then IPO/HATCH when ready.
+| Input | Action |
+| --- | --- |
+| Left drag | Pan |
+| Right drag | Orbit |
+| Scroll | Zoom |
+| `R` | Rotate runway / piece |
+| `H` / Esc | Hall ↔ Apron |
+| Click terminal tile | Enter that hall |
 
-## Later
+## What’s in
 
-Rebuild this same loop in Godot 4 for a Windows/Steam build. Do not wrap this sketch and ship it as the store product. Still open before a serious port: secure zones, staffed desks, multi-terminal pathfinding, baggage-belt realism, and a longer playtest pass.
+- Personas, heat, rewards / abandon, layovers → Hub plaques
+- Flight planner (pull / bump / runway prefs), N-strip inbound banks
+- Multi-terminal jetways (`T1·G2`), landside hotel / car parks
+- Research: night bank → de-ice → stand classes → heavy pack (A380 / An-124) → military ramp (C-5M)
+- Emergencies: weather divert, firefighting plane refuel / refuel+MX
+- Guard host on a hangar-side mil ramp (not pax gates)
+
+Browser save key: `apron-save-v21`. New game overwrites it.
+
+## Verify
+
+```bash
+npx tsx scripts/playthrough-wake.mts   # title → kit → sign → 3x → continue
+npx tsx scripts/soak-full.mts
+```
+
+See `ADDITIONS.md` for the backlog and what shipped overnight.
