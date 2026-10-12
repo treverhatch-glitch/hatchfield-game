@@ -167,9 +167,17 @@ A new player can, without a wiki:
 
 If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 
+## Shipped — Tier B airline drama + gate lite (this loop)
+
+- **Airline personas** on majors: budget / business / luxury / cargo-night / military-gov.
+- **Heat meter** per carrier — hall anger and missed gates cool it; smooth turnarounds warm it.
+- **Temporary bans + fine** when layover heat crashes (short clock, not save-ruining).
+- **Layover hub contracts** — up-front fee, drip transfer pax into the hall, happiness sampled, ban risk.
+- **Procedural regionals** — light name/color fillers on the phone after you have one major.
+- **Gate / stand assignment lite** — jets prefer stands nearest the hall; tower raises inbound cap to 2; HUD shows Gate / Hold.
+
 ## Still later (on your list, not finished)
 
-- Full custom terminal wall painting (Tier A #1)
+- Full custom terminal wall painting (Tier A #1) + landside/airside
 - Slot/curfew + de-ice (Tier C)
-- Layover hub contracts + airline bans (Tier B)
 - Godot Steam rebuild (Tier D)

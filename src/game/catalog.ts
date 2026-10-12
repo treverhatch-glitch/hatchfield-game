@@ -1,5 +1,6 @@
 import type {
   Airline,
+  AirlinePersona,
   BudgetKey,
   BuildDef,
   CaterContract,
@@ -118,6 +119,20 @@ export const MIL_AGREE_COST = 18_000
 export const MIL_LANDING = 7800
 export const AIR_AMBULANCE_FEE = 3200
 export const THREAT_SCRAMBLE_COST = 2200
+/** Up-front fee band for layover hub deals. */
+export const LAYOVER_FEE_MIN = 6000
+export const LAYOVER_FEE_MAX = 14000
+export const LAYOVER_BAN_SECONDS = 90
+export const LAYOVER_BAN_FINE = 8000
+/** Heat 0–100; at/below this while on layover → ban. */
+export const HEAT_BAN_THRESHOLD = 28
+export const PERSONA_LABEL: Record<AirlinePersona, string> = {
+  budget: 'Budget',
+  business: 'Business',
+  luxury: 'Luxury',
+  cargo_night: 'Night cargo',
+  military_gov: 'Gov / military',
+}
 
 const baseReq = {
   stands: 1,
@@ -143,6 +158,7 @@ export const AIRLINES: Record<string, Airline> = {
     color: '#2f6f9a',
     stripe: '#e8eef5',
     kind: 'pax',
+    persona: 'budget',
     landing: 5200,
     catering: 1600,
     bags: 1100,
@@ -150,7 +166,9 @@ export const AIRLINES: Record<string, Airline> = {
     paxMax: 72,
     minRep: 0,
     req: { ...baseReq, police: false, snack: false, security: 1 },
-    blurb: 'Regional jets. Needs a runway, stand, fuel, fire cover, a hall with security, bags, and a road out.',
+    blurb: 'Budget regionals. Runway, stand, fuel, fire, hall security, bags, road.',
+    likesLayovers: true,
+    heatSensitivity: 0.9,
   },
   harbor: {
     id: 'harbor',
@@ -158,6 +176,7 @@ export const AIRLINES: Record<string, Airline> = {
     color: '#1f6b57',
     stripe: '#f3d27a',
     kind: 'pax',
+    persona: 'business',
     landing: 7400,
     catering: 2100,
     bags: 1800,
@@ -173,7 +192,9 @@ export const AIRLINES: Record<string, Airline> = {
       security: 2,
       tower: true,
     },
-    blurb: 'Busier schedules. Two stands, police, tower, catering contract + snack, tighter security.',
+    blurb: 'Business schedules. Two stands, police, tower, catering + snack, security ×2.',
+    likesLayovers: true,
+    heatSensitivity: 1.1,
   },
   summit: {
     id: 'summit',
@@ -181,6 +202,7 @@ export const AIRLINES: Record<string, Airline> = {
     color: '#5c3d8a',
     stripe: '#f0e6ff',
     kind: 'pax',
+    persona: 'luxury',
     landing: 11000,
     catering: 3200,
     bags: 2400,
@@ -197,7 +219,9 @@ export const AIRLINES: Record<string, Airline> = {
       tower: true,
       heavyRunway: true,
     },
-    blurb: 'Premium pax. Heavy strip, three stands, tower, GalleyPrime-tier catering, serious security.',
+    blurb: 'Luxury widebodies. Heavy strip, three stands, tower, serious security.',
+    likesLayovers: false,
+    heatSensitivity: 1.45,
   },
   umazon: {
     id: 'umazon',
@@ -205,6 +229,7 @@ export const AIRLINES: Record<string, Airline> = {
     color: '#c97816',
     stripe: '#222',
     kind: 'cargo',
+    persona: 'cargo_night',
     landing: 9000,
     catering: 0,
     bags: 0,
@@ -227,7 +252,9 @@ export const AIRLINES: Record<string, Airline> = {
       tower: false,
       heavyRunway: false,
     },
-    blurb: 'Night freighters. Cargo shed, fuel, fire, police, road — no passenger hall required.',
+    blurb: 'Night freighters. Cargo shed, fuel, fire, police, road — no hall.',
+    likesLayovers: false,
+    heatSensitivity: 0.7,
   },
   upps: {
     id: 'upps',
@@ -235,6 +262,7 @@ export const AIRLINES: Record<string, Airline> = {
     color: '#3d5c2e',
     stripe: '#c9a227',
     kind: 'cargo',
+    persona: 'cargo_night',
     landing: 7800,
     catering: 0,
     bags: 0,
@@ -258,6 +286,8 @@ export const AIRLINES: Record<string, Airline> = {
       heavyRunway: false,
     },
     blurb: 'Brown-box freighter. First cargo contract most fields can earn.',
+    likesLayovers: false,
+    heatSensitivity: 0.65,
   },
   exfed: {
     id: 'exfed',
@@ -265,6 +295,7 @@ export const AIRLINES: Record<string, Airline> = {
     color: '#6b1d1d',
     stripe: '#f0c040',
     kind: 'cargo',
+    persona: 'cargo_night',
     landing: 10500,
     catering: 0,
     bags: 0,
@@ -288,7 +319,58 @@ export const AIRLINES: Record<string, Airline> = {
       heavyRunway: true,
     },
     blurb: 'Priority freighters. Heavy strip, two stands, police, tower, cargo apron.',
+    likesLayovers: false,
+    heatSensitivity: 0.85,
   },
+}
+
+const PROC_NAMES = [
+  'CedarLink',
+  'Prairie Hop',
+  'Bay Circlet',
+  'Mesa Runner',
+  'Lakeline',
+  'Copper State',
+  'Fogbank Air',
+  'Redrock Express',
+]
+const PROC_COLORS = ['#4a6fa5', '#6a8f4e', '#8a5a3a', '#5a4a7a', '#2a6a6a', '#7a4a4a']
+
+/** Light procedural regional — variety on the phone without replacing majors. */
+export function createProcAirline(): Airline {
+  const name = PROC_NAMES[Math.floor(Math.random() * PROC_NAMES.length)]
+  const color = PROC_COLORS[Math.floor(Math.random() * PROC_COLORS.length)]
+  const budget = Math.random() < 0.65
+  const id = `proc-${Math.random().toString(36).slice(2, 7)}`
+  return {
+    id,
+    name,
+    color,
+    stripe: '#e8eef4',
+    kind: 'pax',
+    persona: budget ? 'budget' : 'business',
+    landing: budget ? 4800 : 6200,
+    catering: budget ? 1200 : 1800,
+    bags: budget ? 900 : 1400,
+    paxMin: budget ? 40 : 55,
+    paxMax: budget ? 68 : 90,
+    minRep: budget ? 10 : 35,
+    req: {
+      ...baseReq,
+      stands: budget ? 1 : 2,
+      police: !budget,
+      snack: !budget,
+      catering: !budget,
+      security: budget ? 1 : 2,
+      tower: !budget,
+    },
+    blurb: budget
+      ? 'Procedural budget hopper. Easy to please — until the hall fails a layover.'
+      : 'Procedural business regional. Wants a tidy hall and a second stand.',
+    likesLayovers: true,
+    heatSensitivity: budget ? 1 : 1.2,
+    procedural: true,
+  }
 }
 
 export const FUEL: Record<'apex' | 'kiln', FuelContract> = {
@@ -469,4 +551,13 @@ export function money(n: number): string {
 
 export function airlineList(): Airline[] {
   return Object.values(AIRLINES)
+}
+
+/** Premade majors only — procedural fillers live on Game.extraAirlines. */
+export function premadeAirlineList(): Airline[] {
+  return Object.values(AIRLINES)
+}
+
+export function personaBlurb(p: AirlinePersona): string {
+  return PERSONA_LABEL[p]
 }

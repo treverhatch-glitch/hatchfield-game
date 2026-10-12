@@ -296,13 +296,23 @@ button {
   border-color: #e6c85a;
 }
 
-.offer.mx {
+.offer.layover {
   top: 132px;
+  border-color: #6a9e7a;
+  background: rgba(16, 36, 28, 0.96);
+}
+
+.offer.layover.live {
+  border-style: dashed;
+}
+
+.offer.mx {
+  top: 200px;
   border-color: #7a9bb8;
 }
 
 .offer.threat {
-  top: 200px;
+  top: 268px;
   border-color: #ff6b6b;
   background: rgba(48, 18, 18, 0.96);
 }
