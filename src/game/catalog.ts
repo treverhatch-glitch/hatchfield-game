@@ -1,6 +1,7 @@
 import type {
   Airline,
   AirlinePersona,
+  AirlineRewardId,
   BudgetKey,
   BuildDef,
   CaterContract,
@@ -126,6 +127,15 @@ export const LAYOVER_BAN_SECONDS = 90
 export const LAYOVER_BAN_FINE = 8000
 /** Heat 0–100; at/below this while on layover → ban. */
 export const HEAT_BAN_THRESHOLD = 28
+/** Heat at/above this unlocks a one-time persona reward. */
+export const HEAT_REWARD_THRESHOLD = 82
+/** Heat at/below this fires a one-shot warning while signed. */
+export const HEAT_WARN_THRESHOLD = 36
+/** Sustained heat at/below this → abandon (outside layover bans). */
+export const HEAT_ABANDON_THRESHOLD = 20
+/** Sim-seconds under abandon threshold before they walk. */
+export const ABANDON_ACC_SECONDS = 26
+export const ABANDON_FINE = 12_000
 export const PERSONA_LABEL: Record<AirlinePersona, string> = {
   budget: 'Budget',
   business: 'Business',
@@ -564,4 +574,31 @@ export function premadeAirlineList(): Airline[] {
 
 export function personaBlurb(p: AirlinePersona): string {
   return PERSONA_LABEL[p]
+}
+
+export const REWARD_LABEL: Record<AirlineRewardId, string> = {
+  brand_lounge: 'Brand lounge',
+  budget_perk: 'Snack franchise',
+  biz_priority: 'Priority slots',
+  cargo_night: 'Night waiver',
+}
+
+/** Persona → one-time high-heat perk. */
+export function rewardForPersona(p: AirlinePersona): AirlineRewardId {
+  switch (p) {
+    case 'luxury':
+      return 'brand_lounge'
+    case 'budget':
+      return 'budget_perk'
+    case 'business':
+      return 'biz_priority'
+    case 'cargo_night':
+      return 'cargo_night'
+    case 'military_gov':
+      return 'biz_priority'
+  }
+}
+
+export function rewardBlurb(id: AirlineRewardId): string {
+  return REWARD_LABEL[id]
 }
