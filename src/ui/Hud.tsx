@@ -59,6 +59,20 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat">Sec {ready.security}</div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
         <div className="speeds">
+          <button
+            type="button"
+            className={game.view === 'apron' ? 'on' : ''}
+            onClick={() => game.setView('apron')}
+          >
+            Apron
+          </button>
+          <button
+            type="button"
+            className={game.view === 'hall' ? 'on' : ''}
+            onClick={() => game.setView('hall')}
+          >
+            Hall
+          </button>
           {([0, 1, 3] as Speed[]).map((s) => (
             <button
               key={s}
@@ -243,11 +257,14 @@ export function Hud({ game }: { game: Game }) {
             : game.tool === 'premade'
               ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
               : game.tool === 'pan'
-                ? 'Look around. Airlines call when fire, fuel, road, hall, and stands match their list.'
+                ? game.view === 'hall'
+                  ? 'Hall view: guests chase needs (hunger, WC, shop, boarding clock). Missing rooms = lost / angry.'
+                  : 'Apron view. Airlines call when fire, fuel, road, hall, and stands match their list.'
                 : tip
                   ? `${tip.blurb} ${money(tip.cost)}`
                   : 'Clear refunds 40%.'}
           {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
+          {game.hallGuests.length ? ` · ${game.hallGuests.length} in hall` : ''}
         </p>
       </div>
     </div>
