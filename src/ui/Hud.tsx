@@ -330,14 +330,23 @@ export function Hud({ game }: { game: Game }) {
         <div className="offer emergency">
           <div>
             <strong>
-              {game.pendingEmergency.kind === 'tanker'
-                ? 'Firefighter tanker'
-                : 'Weather divert'}
+              {game.pendingEmergency.kind === 'tanker_mx'
+                ? 'Tanker + hangar MX'
+                : game.pendingEmergency.kind === 'tanker'
+                  ? 'Firefighter tanker'
+                  : 'Weather divert'}
             </strong>
             <p>
               {game.pendingEmergency.blurb} (
               {Math.ceil(game.pendingEmergency.deadline)}s ·{' '}
               {money(game.pendingEmergency.fee)})
+            </p>
+            <p className="muted">
+              Needs {game.emergencyNeedsLine(game.pendingEmergency)}
+              {(() => {
+                const gap = game.emergencyHostGap(game.pendingEmergency)
+                return gap ? ` · RISK: ${gap}` : ' · ready to host'
+              })()}
             </p>
           </div>
           <div className="row">
@@ -346,7 +355,7 @@ export function Hud({ game }: { game: Game }) {
               className="on"
               onClick={() => game.resolveEmergency('accept')}
             >
-              Host
+              Host landing
             </button>
             <button type="button" onClick={() => game.resolveEmergency('refuse')}>
               Refuse

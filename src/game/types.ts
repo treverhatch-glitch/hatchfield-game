@@ -364,7 +364,7 @@ export interface PendingThreat {
 }
 
 /** Weather / ARFF ask — accept for fee, refuse for heat. */
-export type EmergencyKind = 'divert' | 'tanker'
+export type EmergencyKind = 'divert' | 'tanker' | 'tanker_mx'
 
 export interface PendingEmergency {
   id: string
@@ -375,6 +375,15 @@ export interface PendingEmergency {
   deadline: number
   /** Airline flavor for divert (null = tanker / mutual aid). */
   airline: AirlineId | null
+  /** What the field must have to host without failing. */
+  needs: {
+    stand: boolean
+    fire: boolean
+    fuel: boolean
+    hangar: boolean
+    /** Min continuous runway cells. */
+    minRunway: number
+  }
 }
 
 export type TruckMission = 'unload' | 'load' | 'fuel' | 'cater' | 'patrol'
