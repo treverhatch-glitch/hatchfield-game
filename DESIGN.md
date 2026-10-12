@@ -10,6 +10,26 @@ A Steam-bound airport tycoon. This repo is the **browser sketch**. The shipping 
 - **Management:** Airport CEO — bags, fuel, security, hall layout. The jet on screen and the money in the book are the same flight.
 - **After the airport exists:** the game is still on. AT 2000/3 were basically won once planes landed. We do not copy that.
 
+## Site choice and expansion
+
+Like Airport Tycoon’s land purchase:
+
+- **Near the city** — expensive plot, easier passenger / airline demand.
+- **Near factories** — better cargo demand, different midgame.
+- That first choice is also a **goal**: passenger hub vs cargo field.
+- Later: buy adjacent parcels and grow the airport.
+
+Access infrastructure:
+
+- **Roads** to the city can be mostly off-map; player builds the on-plot end.
+- **Rail / subway:** player funds a city investment → city builds to the map edge → player builds the last link into the airport.
+
+## Cargo carriers (working names)
+
+- **Umazon** (Amazon-flavored)
+- **UPPS** (UPS-flavored)
+- **EXFED** (FedEx-flavored)
+
 ## Locked for later (do not drop)
 
 - Larger / heavier **runway classes** for bigger aircraft.
@@ -24,3 +44,5 @@ A Steam-bound airport tycoon. This repo is the **browser sketch**. The shipping 
 ## Placement now
 
 Click a catalog piece, click the field, the whole prefab lands. Rotate the piece (horizontal / vertical). Easy grant starts with a live starter airport so a jet can arrive without a construction tutorial.
+
+Graphics in the sketch are placeholder. Priority is loops, bugs, and “money = picture.”
