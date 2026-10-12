@@ -2179,6 +2179,7 @@ export class Game {
         manual: false,
         flightId: null,
         standPref: null,
+        runwayPref: null,
       })
     }
   }
@@ -2215,6 +2216,7 @@ export class Game {
       manual: true,
       flightId: null,
       standPref: null,
+      runwayPref: null,
     })
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s.`,
@@ -2227,28 +2229,32 @@ export class Game {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || s.status === 'inbound' || s.status === 'done') return
     s.status = 'cancelled'
-    this.adjustHeat(s.airline, s.manual ? -1.5 : -3.5)
+    // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
+    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2)
     this.pushNews(
-      `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} heat ${Math.round(this.heatOf(s.airline))}.`,
+      `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} heat ${Math.round(this.heatOf(s.airline))}. Bank clears, relations don't.`,
       'bad',
     )
     this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
     this.emit()
   }
 
-  /** Push a slot later; ripples the bank behind it. */
+  /** Push a slot later; ripples the bank behind it — costs heat on bumped carriers. */
   bumpSlot(slotId: string, bySec = 18) {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
-    this.delaySlot(s, bySec, 'Tower rearrange')
+    const cascaded = this.delaySlot(s, bySec, 'Tower rearrange', true)
+    this.adjustHeat(s.airline, -1.2)
     this.pushNews(
-      `Bumped ${s.flightNo} +${bySec}s — later slots slide.`,
-      'ok',
+      cascaded > 0
+        ? `Bumped ${s.flightNo} — ${cascaded} later slot${cascaded > 1 ? 's' : ''} slid. Airlines notice.`
+        : `Bumped ${s.flightNo} +${bySec}s. Heat dips.`,
+      'bad',
     )
     this.emit()
   }
 
-  /** Pull a slot earlier (planner craft) — no ripple, floors at now+6s. */
+  /** Pull a slot earlier (planner craft) — can heat the airline you jump ahead of. */
   pullSlot(slotId: string, bySec = 12) {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
@@ -2259,15 +2265,23 @@ export class Game {
       this.emit()
       return
     }
+    const jumped = this.openSchedule().filter(
+      (x) => x.id !== s.id && x.eta >= next && x.eta < s.eta,
+    )
     s.eta = next
     s.delayReason = 'Tower pull-forward'
     if (s.status === 'delayed' && s.delaySec > 0) {
       s.delaySec = Math.max(0, s.delaySec - bySec)
       if (s.delaySec <= 0) s.status = 'scheduled'
     }
+    for (const x of jumped.slice(0, 3)) {
+      this.adjustHeat(x.airline, -0.8)
+    }
     this.pushNews(
-      `Pulled ${s.flightNo} — ETA ${Math.round(s.eta - this.clock)}s.`,
-      'ok',
+      jumped.length
+        ? `Pulled ${s.flightNo} ahead of ${jumped.length} — queue heat dips.`
+        : `Pulled ${s.flightNo} — ETA ${Math.round(s.eta - this.clock)}s.`,
+      jumped.length ? 'bad' : 'ok',
     )
     this.emit()
   }
@@ -2299,10 +2313,48 @@ export class Game {
     this.emit()
   }
 
+  /** Cycle preferred runway strip when multiple strips exist. */
+  cycleSlotRunway(slotId: string) {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    if (strips.length < 2) {
+      this.pushNews('Need a second strip to assign runways.', 'ok')
+      this.emit()
+      return
+    }
+    const cur = s.runwayPref ?? -1
+    const next = cur + 1
+    if (next >= strips.length) {
+      s.runwayPref = null
+      this.pushNews(`${s.flightNo} runway → tower auto.`, 'ok')
+    } else {
+      s.runwayPref = next
+      this.pushNews(
+        `${s.flightNo} runway → RW${next + 1} (${strips[next].length}c).`,
+        'ok',
+      )
+    }
+    this.emit()
+  }
+
+  runwayLabel(pref: number | null | undefined): string {
+    if (pref == null) return 'auto'
+    return `RW${pref + 1}`
+  }
+
   /** Day-strip window: slots in the next `horizon` sim-seconds. */
   plannerStrip(horizon = 120): {
     horizon: number
-    slots: { id: string; flightNo: string; airline: AirlineId; t: number; status: ScheduleStatus; stand: string }[]
+    slots: {
+      id: string
+      flightNo: string
+      airline: AirlineId
+      t: number
+      status: ScheduleStatus
+      stand: string
+      runway: string
+    }[]
   } {
     const open = this.openSchedule()
     return {
@@ -2316,11 +2368,21 @@ export class Game {
           t: Math.max(0, s.eta - this.clock),
           status: s.status,
           stand: s.standPref ? this.gateLabel(s.standPref) : 'auto',
+          runway: this.runwayLabel(s.runwayPref),
         })),
     }
   }
 
-  delaySlot(slot: ScheduleSlot, sec: number, reason: string) {
+  /**
+   * Delay a slot and cascade later ETAs that would collide.
+   * Returns how many downstream slots were pushed (airline heat already applied).
+   */
+  delaySlot(
+    slot: ScheduleSlot,
+    sec: number,
+    reason: string,
+    playerRearrange = false,
+  ): number {
     const add = Math.min(22, Math.max(6, sec))
     slot.eta += add
     slot.delaySec = Math.min(120, slot.delaySec + add)
@@ -2333,37 +2395,57 @@ export class Game {
           x.id !== slot.id &&
           (x.status === 'scheduled' || x.status === 'delayed') &&
           x.eta >= slot.eta - add &&
-          x.eta < slot.eta + 36,
+          x.eta < slot.eta + 40,
       )
       .sort((a, b) => a.eta - b.eta)
-      .slice(0, 4)
+      .slice(0, 5)
     let cursor = slot.eta + 14
+    let cascaded = 0
     for (const x of later) {
       if (x.eta < cursor) {
         const push = Math.min(18, cursor - x.eta)
         x.eta += push
         x.delaySec = Math.min(120, x.delaySec + push)
         x.status = 'delayed'
-        x.delayReason = x.delayReason ?? 'Cascade from earlier delay'
-        this.adjustHeat(x.airline, -0.2)
+        x.delayReason = 'Cascade from earlier delay'
+        // Player rearrange hurts relations more than weather acts of god.
+        this.adjustHeat(x.airline, playerRearrange ? -1.1 : -0.35)
+        cascaded += 1
         cursor = x.eta + 14
       } else {
         cursor = Math.max(cursor, x.eta + 14)
       }
     }
-    this.adjustHeat(slot.airline, -0.45)
+    this.adjustHeat(slot.airline, playerRearrange ? -0.6 : -0.45)
+    if (cascaded >= 2 && !playerRearrange) {
+      this.pushNews(
+        `Schedule cascade — ${cascaded} flights slid after ${slot.flightNo}.`,
+        'bad',
+      )
+    }
+    return cascaded
   }
 
   tickSchedule(dt: number) {
     this.schedulePlanCool = Math.max(0, this.schedulePlanCool - dt)
-    // Storm at destination / on field — random inbound delay (de-ice cuts odds).
-    const stormOdds = this.hasResearch('deice') ? dt * 0.018 : dt * 0.04
+    // Storm / fog at destination or on field — random inbound delay (de-ice cuts storm odds).
+    const stormOdds = this.hasResearch('deice') ? dt * 0.018 : dt * 0.045
+    const fogOdds = dt * 0.02
     if (this.weather === 'storm' && Math.random() < stormOdds) {
-      const soon = this.openSchedule().find((s) => s.eta - this.clock < 30)
+      const soon = this.openSchedule().find((s) => s.eta - this.clock < 35)
       if (soon && soon.status === 'scheduled') {
         this.delaySlot(soon, 12 + Math.random() * 16, 'Storm / dest weather')
         this.pushNews(
           `${soon.flightNo} delayed ${Math.round(soon.delaySec)}s — storm bank.`,
+          'bad',
+        )
+      }
+    } else if (this.weather === 'fog' && Math.random() < fogOdds) {
+      const soon = this.openSchedule().find((s) => s.eta - this.clock < 40)
+      if (soon && soon.status === 'scheduled') {
+        this.delaySlot(soon, 8 + Math.random() * 10, 'Fog / dest weather')
+        this.pushNews(
+          `${soon.flightNo} slipped in fog — bank may need a bump.`,
           'bad',
         )
       }
@@ -3752,15 +3834,18 @@ export class Game {
     return pads.filter((p) => !used.has(`${p.c},${p.r}`))
   }
 
-  pathStandToRunway(stand: Vec): Vec[] | null {
+  pathStandToRunway(stand: Vec, runwayPref?: number | null): Vec[] | null {
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
-    const runwayCells = strips.flat()
-    if (!runwayCells.length) return null
-    return nearestPath(this.tiles, stand, runwayCells, 'jet')
+    if (!strips.length) return null
+    const targets =
+      runwayPref != null && strips[runwayPref]
+        ? strips[runwayPref]
+        : strips.flat()
+    return nearestPath(this.tiles, stand, targets, 'jet')
   }
 
-  landingRoute(stand: Vec): Vec[] | null {
-    const toRunway = this.pathStandToRunway(stand)
+  landingRoute(stand: Vec, runwayPref?: number | null): Vec[] | null {
+    const toRunway = this.pathStandToRunway(stand, runwayPref)
     if (!toRunway || toRunway.length < 2) return null
     const entry = toRunway[toRunway.length - 1]
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
@@ -3836,7 +3921,7 @@ export class Game {
       return
     }
     const stand = this.assignStand(slot.standPref ?? null)
-    const route = stand ? this.landingRoute(stand) : null
+    const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     const busy = this.groundBusy() || !stand || !route
     const start = route?.[0] ?? { c: 1, r: -3 }
     const pax =
@@ -3881,7 +3966,7 @@ export class Game {
       phaseTime: 0,
       ledger: [],
       scheduleId: slot.id,
-      boardingSlow: Math.random() < 0.12,
+      boardingSlow: Math.random() < 0.18,
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
