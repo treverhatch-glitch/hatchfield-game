@@ -4,6 +4,8 @@
 
 Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come after that loop feels real.
 
+**AT3 comparison (live):** we already beat AT3 on guest AI, airline drama, ops risk, and IPO. They still win on terminal growth, HUB tier, jetways, hotels, and scenarios. Steal that *growth silhouette* next — see `ADDITIONS.md` → “AT3 deep dive” / P0 upgrade plan.
+
 ### AT3 core
 
 1. Start with limited funds.
