@@ -60,6 +60,11 @@ if (!g.hasResearch('night_bank')) issues.push('night_bank missing')
 if (!g.hasResearch('deice')) issues.push('deice missing')
 if (!g.hasResearch('stand_class')) issues.push('stand_class missing')
 if (!g.hasResearch('heavy_pack')) issues.push('heavy_pack missing')
+if (!g.hasResearch('mil_ramp')) {
+  g.researchPoints = Math.max(g.researchPoints, 80)
+  g.buyResearch('mil_ramp')
+  if (!g.hasResearch('mil_ramp')) issues.push('mil_ramp missing')
+}
 
 const inbound1 = g.maxInbound()
 if (!(inbound1 > inbound0)) {

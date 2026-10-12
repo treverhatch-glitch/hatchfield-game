@@ -112,11 +112,13 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
         </div>
-        {game.fits.length ? (
-          <div className="stat" title={game.campusLine()}>
+        {game.fits.length || game.runwayStripCount() > 0 ? (
+          <div className="stat" title={`${game.campusLine()} · ${game.campusPathLine()}`}>
             {game.fits.length > 1
-              ? `${game.fits.length}T · ${game.jetwayCount()} JW`
-              : `${game.jetwayCount()} JW`}
+              ? `${game.fits.length}T · ${game.runwayStripCount()}RW · ${game.jetwayCount()}JW`
+              : game.fits.length
+                ? `${game.jetwayCount()}JW · ${game.runwayStripCount()}RW`
+                : `${game.runwayStripCount()}RW`}
           </div>
         ) : null}
         <div className="stat">Sec {ready.security}</div>
@@ -503,13 +505,17 @@ export function Hud({ game }: { game: Game }) {
               : ' · no airline MX yet (need hangar + mechanic)'}
           </p>
           {game.milAgreement ? (
-            <p className="muted">Guard host active — military metal will transit.</p>
+            <p className="muted">
+              Guard host active — {game.milRampLine()}
+              {game.hasResearch('mil_ramp') ? ' · C-5M eligible' : ''}
+            </p>
           ) : (
             <>
               <button type="button" className="wide" onClick={() => game.signMilitaryAgreement()}>
                 Host military / Guard · {money(MIL_AGREE_COST)}
               </button>
               <p className="muted">{game.canHostMilitary().why}</p>
+              <p className="muted">{game.milRampLine()}</p>
             </>
           )}
           <ul className="budgets">
