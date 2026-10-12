@@ -119,6 +119,7 @@ import type {
   RoomId,
   RunwayClass,
   ScheduleSlot,
+  ScheduleStatus,
   SiteKind,
   Speed,
   TerminalFit,
@@ -1931,6 +1932,7 @@ export class Game {
         delayReason: null,
         manual: false,
         flightId: null,
+        standPref: null,
       })
     }
   }
@@ -1966,6 +1968,7 @@ export class Game {
       delayReason: null,
       manual: true,
       flightId: null,
+      standPref: null,
     })
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s.`,
@@ -1987,7 +1990,7 @@ export class Game {
     this.emit()
   }
 
-  /** Push a delayed slot later; ripples the bank behind it. */
+  /** Push a slot later; ripples the bank behind it. */
   bumpSlot(slotId: string, bySec = 18) {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
@@ -1997,6 +2000,78 @@ export class Game {
       'ok',
     )
     this.emit()
+  }
+
+  /** Pull a slot earlier (planner craft) — no ripple, floors at now+6s. */
+  pullSlot(slotId: string, bySec = 12) {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+    const floor = this.clock + 6
+    const next = Math.max(floor, s.eta - bySec)
+    if (next >= s.eta - 0.5) {
+      this.pushNews(`${s.flightNo} already as early as the tower allows.`, 'ok')
+      this.emit()
+      return
+    }
+    s.eta = next
+    s.delayReason = 'Tower pull-forward'
+    if (s.status === 'delayed' && s.delaySec > 0) {
+      s.delaySec = Math.max(0, s.delaySec - bySec)
+      if (s.delaySec <= 0) s.status = 'scheduled'
+    }
+    this.pushNews(
+      `Pulled ${s.flightNo} — ETA ${Math.round(s.eta - this.clock)}s.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  /** Cycle preferred stand: auto → G1 → G2… → auto. */
+  cycleSlotStand(slotId: string) {
+    const s = this.schedule.find((x) => x.id === slotId)
+    if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+    const stands = tilesOf(this.tiles, 'stand')
+    if (!stands.length) {
+      this.pushNews('No stands stamped.', 'bad')
+      this.emit()
+      return
+    }
+    const key = (v: Vec) => `${v.c},${v.r}`
+    const cur = s.standPref ? key(s.standPref) : null
+    const idx = cur ? stands.findIndex((st) => key(st) === cur) : -1
+    const nextIdx = idx + 1
+    if (nextIdx >= stands.length) {
+      s.standPref = null
+      this.pushNews(`${s.flightNo} stand → tower auto.`, 'ok')
+    } else {
+      s.standPref = { ...stands[nextIdx] }
+      this.pushNews(
+        `${s.flightNo} stand → ${this.gateLabel(s.standPref)}.`,
+        'ok',
+      )
+    }
+    this.emit()
+  }
+
+  /** Day-strip window: slots in the next `horizon` sim-seconds. */
+  plannerStrip(horizon = 120): {
+    horizon: number
+    slots: { id: string; flightNo: string; airline: AirlineId; t: number; status: ScheduleStatus; stand: string }[]
+  } {
+    const open = this.openSchedule()
+    return {
+      horizon,
+      slots: open
+        .filter((s) => s.eta <= this.clock + horizon)
+        .map((s) => ({
+          id: s.id,
+          flightNo: s.flightNo,
+          airline: s.airline,
+          t: Math.max(0, s.eta - this.clock),
+          status: s.status,
+          stand: s.standPref ? this.gateLabel(s.standPref) : 'auto',
+        })),
+    }
   }
 
   delaySlot(slot: ScheduleSlot, sec: number, reason: string) {
@@ -3027,9 +3102,13 @@ export class Game {
   }
 
   /** Prefer stands closest to a terminal hall — lite gate assignment. */
-  assignStand(): Vec | null {
+  assignStand(pref?: Vec | null): Vec | null {
     const free = this.freeStands()
     if (!free.length) return null
+    if (pref) {
+      const hit = free.find((s) => s.c === pref.c && s.r === pref.r)
+      if (hit) return hit
+    }
     const halls = this.fits.map((f) => f.origin)
     const terms = halls.length ? halls : tilesOf(this.tiles, 'terminal')
     if (!terms.length) return free[0]
@@ -3159,7 +3238,7 @@ export class Game {
       this.spawnCool = 8
       return
     }
-    const stand = this.assignStand()
+    const stand = this.assignStand(slot.standPref ?? null)
     const route = stand ? this.landingRoute(stand) : null
     const busy = this.groundBusy() || !stand || !route
     const start = route?.[0] ?? { c: 1, r: -3 }
