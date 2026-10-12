@@ -640,15 +640,44 @@ export function Hud({ game }: { game: Game }) {
           <p className="muted">
             {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
             {game.openSchedule().length} open · {game.runwayStripCount()} strip
-            {game.runwayStripCount() === 1 ? '' : 's'}
+            {game.runwayStripCount() === 1 ? '' : 's'} · inbound{' '}
+            {game.maxInbound()}
             {game.weather === 'storm'
               ? ' · storm delays'
               : game.weather === 'fog'
                 ? ' · fog slips'
                 : ''}
             {' · '}
-            slow boarding / weather cascades slide the bank — bump/pull/cancel costs heat
+            each strip has its own bank — RW cycles / filter below
           </p>
+          {game.runwayStripCount() >= 2 ? (
+            <div className="row">
+              <button
+                type="button"
+                className={game.plannerRwFilter == null ? 'on' : ''}
+                onClick={() => game.setPlannerRwFilter(null)}
+              >
+                All banks
+              </button>
+              {Array.from({ length: game.runwayStripCount() }, (_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={game.plannerRwFilter === i ? 'on' : ''}
+                  onClick={() => game.setPlannerRwFilter(i)}
+                >
+                  RW{i + 1} ({game.scheduleForRunway(i).length})
+                </button>
+              ))}
+              <button
+                type="button"
+                className={game.plannerRwFilter === -1 ? 'on' : ''}
+                onClick={() => game.setPlannerRwFilter(-1)}
+              >
+                Auto
+              </button>
+            </div>
+          ) : null}
           {(() => {
             const strip = game.plannerStrip(120)
             return (
@@ -695,12 +724,12 @@ export function Hud({ game }: { game: Game }) {
             ))}
           </div>
           <ul className="airlines">
-            {game.openSchedule().slice(0, 8).length === 0 ? (
+            {game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).length === 0 ? (
               <li>
                 <span className="muted">No slots — sign an airline or add manual.</span>
               </li>
             ) : (
-              game.openSchedule().slice(0, 8).map((s) => {
+              game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).map((s) => {
                 const eta = Math.max(0, Math.round(s.eta - game.clock))
                 const stand = s.standPref ? game.gateLabel(s.standPref) : 'auto'
                 const rw = game.runwayLabel(s.runwayPref)
@@ -739,8 +768,12 @@ export function Hud({ game }: { game: Game }) {
                         <button type="button" onClick={() => game.cycleSlotStand(s.id)}>
                           Stand
                         </button>
-                        {game.runwayStripCount() >= 2 ? (
-                          <button type="button" onClick={() => game.cycleSlotRunway(s.id)}>
+                        {game.runwayStripCount() >= 1 ? (
+                          <button
+                            type="button"
+                            title="Cycle preferred runway strip (any count)"
+                            onClick={() => game.cycleSlotRunway(s.id)}
+                          >
                             RW
                           </button>
                         ) : null}
