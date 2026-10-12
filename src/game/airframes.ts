@@ -1,4 +1,4 @@
-import type { AircraftKind } from './types'
+import type { AircraftKind, ResearchId } from './types'
 
 /** Real-world-flavored metal. minRunway is apron cells of continuous strip needed. */
 export interface Airframe {
@@ -12,6 +12,8 @@ export interface Airframe {
   scale: number
   landingMult: number
   blurb: string
+  /** Locked until this research node is bought. */
+  research?: ResearchId
 }
 
 export const AIRFRAMES: Record<string, Airframe> = {
@@ -224,6 +226,42 @@ export const AIRFRAMES: Record<string, Airframe> = {
     landingMult: 1,
     blurb: 'Executive rotary — helipad only.',
   },
+  a380: {
+    id: 'a380',
+    name: 'Airbus A380-800',
+    kind: 'widebody',
+    minRunway: 22,
+    paxMin: 400,
+    paxMax: 525,
+    scale: 2.05,
+    landingMult: 1.95,
+    blurb: 'Superjumbo — research + longest heavy strip.',
+    research: 'heavy_pack',
+  },
+  an124: {
+    id: 'an124',
+    name: 'Antonov An-124 Ruslan',
+    kind: 'freighter',
+    minRunway: 22,
+    paxMin: 0,
+    paxMax: 0,
+    scale: 1.95,
+    landingMult: 1.85,
+    blurb: 'Outsize freighter — research gated.',
+    research: 'heavy_pack',
+  },
+  c5: {
+    id: 'c5',
+    name: 'Lockheed C-5M Super Galaxy',
+    kind: 'military',
+    minRunway: 20,
+    paxMin: 0,
+    paxMax: 0,
+    scale: 1.88,
+    landingMult: 1.75,
+    blurb: 'Strategic airlifter — Guard + heavy pack.',
+    research: 'heavy_pack',
+  },
 }
 
 /** Short / regional / heavy tier from continuous cell count. */
@@ -235,15 +273,30 @@ export function stripTier(cells: number): 'none' | 'short' | 'regional' | 'heavy
   return 'none'
 }
 
-export function jetAirframesFitting(longestRunway: number): Airframe[] {
+function researchOk(a: Airframe, unlocked: ResearchId[] = []): boolean {
+  return !a.research || unlocked.includes(a.research)
+}
+
+export function jetAirframesFitting(
+  longestRunway: number,
+  unlocked: ResearchId[] = [],
+): Airframe[] {
   return Object.values(AIRFRAMES).filter(
-    (a) => a.minRunway > 0 && longestRunway >= a.minRunway,
+    (a) =>
+      a.minRunway > 0 &&
+      longestRunway >= a.minRunway &&
+      researchOk(a, unlocked),
   )
 }
 
-export function jetAirframesBlocked(longestRunway: number): Airframe[] {
+export function jetAirframesBlocked(
+  longestRunway: number,
+  unlocked: ResearchId[] = [],
+): Airframe[] {
   return Object.values(AIRFRAMES).filter(
-    (a) => a.minRunway > 0 && longestRunway < a.minRunway,
+    (a) =>
+      a.minRunway > 0 &&
+      (longestRunway < a.minRunway || !researchOk(a, unlocked)),
   )
 }
 
@@ -275,9 +328,12 @@ export function airframesForKind(kind: AircraftKind): Airframe[] {
 export function pickAirframe(
   kind: AircraftKind,
   longestRunway: number,
+  unlocked: ResearchId[] = [],
 ): Airframe | null {
   const pool = airframesForKind(kind).filter(
-    (a) => a.minRunway === 0 || longestRunway >= a.minRunway,
+    (a) =>
+      (a.minRunway === 0 || longestRunway >= a.minRunway) &&
+      researchOk(a, unlocked),
   )
   if (!pool.length) return null
   return pool[Math.floor(Math.random() * pool.length)]
@@ -288,6 +344,7 @@ export function pickAirframeWithFallback(
   preferred: AircraftKind,
   longestRunway: number,
   cargo: boolean,
+  unlocked: ResearchId[] = [],
 ): Airframe | null {
   const order: AircraftKind[] = cargo
     ? [preferred, 'freighter']
@@ -296,7 +353,7 @@ export function pickAirframeWithFallback(
   for (const k of order) {
     if (seen.has(k)) continue
     seen.add(k)
-    const af = pickAirframe(k, longestRunway)
+    const af = pickAirframe(k, longestRunway, unlocked)
     if (af) return af
   }
   return null
