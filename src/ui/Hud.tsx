@@ -990,7 +990,7 @@ export function Hud({ game }: { game: Game }) {
         </div>
         <p className="hint">
           {game.view === 'hall'
-            ? 'Inside the terminal: landside doors on the left, airside gates on the right. Buy rooms in Hall furnish. Esc / H returns to the apron.'
+            ? 'Inside the terminal: landside→security→airside. Uncleared departures cannot reach gates/food/lounge. Esc / H returns to the apron.'
             : game.tool === 'runway_short'
             ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15. A320+ and heavies refuse.`
             : game.tool === 'runway'

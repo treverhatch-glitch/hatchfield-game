@@ -64,9 +64,37 @@ export interface HallGuest {
   thought: string
   color: string
   dead: boolean
+  /** Passed the secure line (or arrived airside off a jet). */
+  clearedSec: boolean
   /** Layover-bank transfer — longer dwell, captive spend. */
   transfer?: boolean
   airlineId?: string
+}
+
+/** Past the secure line — uncleared departures may not enter. */
+export const AIRSIDE_NODES: ReadonlySet<HallNode> = new Set([
+  'food',
+  'shop',
+  'lounge',
+  'golf',
+  'waterfall',
+  'gaming',
+  'dayhotel',
+  'gate',
+])
+
+export function isAirside(node: HallNode): boolean {
+  return AIRSIDE_NODES.has(node)
+}
+
+/** Open nodes visible to a guest given clearance. */
+export function openForGuest(open: Set<HallNode>, cleared: boolean): Set<HallNode> {
+  if (cleared) return open
+  const s = new Set<HallNode>()
+  for (const n of open) {
+    if (!isAirside(n)) s.add(n)
+  }
+  return s
 }
 
 /** Undirected hall graph — edges are decision points. */
@@ -241,6 +269,8 @@ export function spawnHallGuest(
       ? pick(['#5c3d8a', '#2f6f9a', '#1f6b57'])
       : pick(['#8b6b4a', '#6a4a32', '#3a5a7a', '#5c4033']),
     dead: false,
+    // Arrivals / transfers start airside; departures must clear security.
+    clearedSec: job === 'arrive' || transfer,
     transfer,
     airlineId: opts?.airlineId,
   }
@@ -278,11 +308,6 @@ export function openNodesFromRooms(rooms: {
   if ((rooms.dayhotel ?? 0) > 0) open.add('dayhotel')
   if (rooms.gate > 0) open.add('gate')
   if (rooms.bagclaim > 0) open.add('claim')
-  // Premade / partial halls still allow walking past missing rooms via security↔gate if both exist
-  if (open.has('security') && open.has('gate')) {
-    /* ok */
-  } else if (open.has('checkin') && open.has('gate')) {
-    open.add('security') // soft corridor so custom halls are not soft-locked
-  }
+  // No soft security corridor — missing lanes means airside stays locked for uncleared pax.
   return open
 }

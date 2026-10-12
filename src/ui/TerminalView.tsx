@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { HALL_EDGES, NODE_POS, type HallNode } from '../game/guests'
+import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
 import type { Game } from '../game/sim'
 
 export function TerminalView({ game }: { game: Game }) {
@@ -94,13 +94,15 @@ export function TerminalView({ game }: { game: Game }) {
         ctx.stroke()
       }
 
+      const hasSec = open.has('security')
       // Rooms
       for (const id of Object.keys(NODE_POS) as HallNode[]) {
         const p = NODE_POS[id]
         const x = p.x * w
         const y = p.y * h
         const live = open.has(id)
-        ctx.fillStyle = live ? '#2f6f9a' : '#3a4448'
+        const lockedAir = live && isAirside(id) && !hasSec
+        ctx.fillStyle = lockedAir ? '#5a3a2a' : live ? '#2f6f9a' : '#3a4448'
         ctx.beginPath()
         ctx.moveTo(x - 34, y - 20)
         ctx.lineTo(x + 34, y - 20)
@@ -112,14 +114,14 @@ export function TerminalView({ game }: { game: Game }) {
         ctx.lineTo(x - 42, y - 12)
         ctx.closePath()
         ctx.fill()
-        ctx.strokeStyle = live ? '#c9a227' : '#555'
+        ctx.strokeStyle = lockedAir ? '#e09a4a' : live ? '#c9a227' : '#555'
         ctx.lineWidth = 2
         ctx.stroke()
         ctx.fillStyle = live ? '#e8eef4' : '#888'
         ctx.font = '600 12px IBM Plex Sans, sans-serif'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillText(p.label, x, y)
+        ctx.fillText(lockedAir ? `${p.label}!` : p.label, x, y)
       }
 
       // Guests
@@ -156,7 +158,7 @@ export function TerminalView({ game }: { game: Game }) {
       ctx.font = '12px IBM Plex Sans, sans-serif'
       ctx.fillText(
         fit
-          ? `${game.hallGuests.length} guests · furnish landside→airside · Esc / H back to apron`
+          ? `${game.hallGuests.length} guests · secure line ${hasSec ? 'open' : 'LOCKED'} · Esc / H apron`
           : 'Stamp a Premade hall or furnish a Shell outside first.',
         28,
         58,
