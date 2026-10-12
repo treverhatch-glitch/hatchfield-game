@@ -22,6 +22,11 @@ import {
   DIVERT_FEE_MAX,
   DIVERT_FEE_MIN,
   EMERGENCY_REFUSE_FINE,
+  GA_OVERSTAY_FINE,
+  GA_PARK_FEE_MAX,
+  GA_PARK_FEE_MIN,
+  GA_PARK_STAY_MAX,
+  GA_PARK_STAY_MIN,
   HUB_BAN_THRESHOLD,
   HUB_FEE_MAX,
   HUB_FEE_MIN,
@@ -120,6 +125,7 @@ import type {
   LayoverContract,
   LayoverOffer,
   MarketMission,
+  ParkingOffer,
   MxOffer,
   News,
   PendingEmergency,
@@ -260,6 +266,8 @@ export class Game {
   hubOffer: HubOffer | null = null
   hubOfferCool = 80
   hubAirlines: AirlineId[] = []
+  parkingOffer: ParkingOffer | null = null
+  parkingCool = 65
   schedule: ScheduleSlot[] = []
   scheduleAuto = true
   schedulePlanCool = 8
@@ -363,6 +371,8 @@ export class Game {
     this.hubOffer = null
     this.hubOfferCool = 80
     this.hubAirlines = []
+    this.parkingOffer = null
+    this.parkingCool = 65
     this.schedule = []
     this.scheduleAuto = true
     this.schedulePlanCool = 8
@@ -417,6 +427,41 @@ export class Game {
   }
 
   airline(id: AirlineId): Airline {
+    if (id === 'ga') {
+      return {
+        id: 'ga',
+        name: 'General Aviation',
+        color: '#9aa7b0',
+        stripe: '#c5d0d8',
+        kind: 'pax',
+        persona: 'business',
+        landing: 2200,
+        catering: 0,
+        bags: 0,
+        paxMin: 2,
+        paxMax: 8,
+        minRep: 0,
+        req: {
+          stands: 1,
+          fuelContract: false,
+          fuelFarm: false,
+          fire: false,
+          police: false,
+          terminal: false,
+          security: 0,
+          bags: false,
+          snack: false,
+          catering: false,
+          cargo: false,
+          road: false,
+          tower: false,
+          heavyRunway: false,
+        },
+        blurb: 'Independent transient parking — not a signed carrier.',
+        likesLayovers: false,
+        heatSensitivity: 1,
+      }
+    }
     return (
       AIRLINES[id] ??
       this.extraAirlines.find((a) => a.id === id) ??
@@ -2411,6 +2456,184 @@ export class Game {
     }
   }
 
+  tickParking(dt: number) {
+    // Overstay / auto-release parked GA.
+    for (const f of this.flights) {
+      if (f.phase !== 'parked' || !f.ga || !f.parkLeaveBy) continue
+      const left = f.parkLeaveBy - this.clock
+      if (left <= 12 && left > 0 && this.scheduleAuto && f.phaseTime > 6) {
+        this.releaseGa(f.id, true)
+        continue
+      }
+      if (this.clock >= f.parkLeaveBy) {
+        if (!this.releaseGa(f.id, true)) {
+          this.charge(GA_OVERSTAY_FINE)
+          this.reputation = Math.max(0, this.reputation - 3)
+          this.pushNews(
+            `${f.flightNo} overstayed parking — fine ${moneyLeft(GA_OVERSTAY_FINE)}. Stand blocked.`,
+            'bad',
+          )
+          f.parkLeaveBy = this.clock + 28
+        }
+      }
+    }
+
+    if (this.parkingOffer) {
+      this.parkingOffer.age += dt
+      this.parkingOffer.deadline -= dt
+      if (this.parkingOffer.deadline <= 0) {
+        this.pushNews(`${this.parkingOffer.callsign} took parking elsewhere.`, 'ok')
+        this.parkingOffer = null
+        this.parkingCool = 40
+      }
+      return
+    }
+    if (
+      this.pendingThreat ||
+      this.pendingEmergency ||
+      this.hubOffer ||
+      this.layoverOffer
+    ) {
+      return
+    }
+    this.parkingCool -= dt
+    if (this.parkingCool > 0 || !this.site) return
+    this.parkingCool = 50 + Math.random() * 40
+    if (!this.freeStands().length) return
+    if (Math.random() > 0.45) return
+
+    const frames = ['citation', 'pc12', 'crj700', 'atr72'].filter((id) => AIRFRAMES[id])
+    const afId = pick(frames)
+    const af = AIRFRAMES[afId]
+    if (this.longestRunway() < af.minRunway) return
+    this.flightSeq += 1
+    const fee =
+      GA_PARK_FEE_MIN +
+      Math.floor(Math.random() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN))
+    const stay =
+      GA_PARK_STAY_MIN +
+      Math.floor(Math.random() * (GA_PARK_STAY_MAX - GA_PARK_STAY_MIN))
+    this.parkingOffer = {
+      id: uid('park'),
+      callsign: `N${100 + (this.flightSeq % 800)}${String.fromCharCode(65 + (this.flightSeq % 26))}`,
+      airframeId: afId,
+      fee,
+      staySec: stay,
+      age: 0,
+      deadline: 24,
+    }
+    this.pushNews(
+      `GA parking ask — ${this.parkingOffer.callsign} (${af.name}) for ${moneyLeft(fee)}, ~${stay}s stay.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  acceptParking() {
+    const o = this.parkingOffer
+    if (!o) return
+    const af = AIRFRAMES[o.airframeId]
+    if (!af) return
+    const stand = this.assignStand()
+    const route = stand ? this.landingRoute(stand) : null
+    if (!stand || !route) {
+      this.pushNews('No free stand for GA parking.', 'bad')
+      this.emit()
+      return
+    }
+    this.earn(o.fee, `${o.callsign} parking`)
+    const start = route[0]
+    const f: Flight = {
+      id: uid('ga'),
+      airline: 'ga',
+      flightNo: o.callsign,
+      airframeId: af.id,
+      airframeName: af.name,
+      pax: af.paxMin + Math.floor(Math.random() * Math.max(1, af.paxMax - af.paxMin + 1)),
+      cargo: false,
+      craft: 'jet',
+      kind: af.kind,
+      phase: 'approach',
+      stand,
+      x: start.c - 3,
+      y: start.r - 2,
+      z: 7,
+      heading: 0,
+      path: route,
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: {
+        landing: false,
+        bags: false,
+        fuel: false,
+        catering: false,
+        bagDrop: false,
+      },
+      waitingOn: {
+        bags: false,
+        fuel: Boolean(this.fuelBrand && this.fuelLoads > 0),
+        catering: false,
+        paxOut: 0,
+        paxIn: 0,
+      },
+      phaseTime: 0,
+      ledger: [],
+      scheduleId: null,
+      ga: true,
+      parkLeaveBy: this.clock + o.staySec + 20,
+    }
+    this.flights.push(f)
+    this.noteCraft(af.kind)
+    this.parkingOffer = null
+    this.parkingCool = 55
+    this.pushNews(
+      `${o.callsign} inbound for parking — leave by +${o.staySec}s or overstay fine.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  declineParking() {
+    if (!this.parkingOffer) return
+    this.pushNews(`${this.parkingOffer.callsign} waved off.`, 'ok')
+    this.parkingOffer = null
+    this.parkingCool = 35
+    this.emit()
+  }
+
+  /** Push a parked GA to taxi out. Returns false if pavement busy. */
+  releaseGa(flightId: string, quiet = false): boolean {
+    const f = this.flights.find((x) => x.id === flightId)
+    if (!f || f.phase !== 'parked' || !f.ga) return false
+    if (this.groundBusy()) {
+      if (!quiet) {
+        this.pushNews(`${f.flightNo} waiting for pavement to leave.`, 'ok')
+        this.emit()
+      }
+      return false
+    }
+    const out = this.departurePath(f)
+    if (!out) {
+      if (!quiet) {
+        this.pushNews(`${f.flightNo} can't find a push path.`, 'bad')
+        this.emit()
+      }
+      return false
+    }
+    f.path = out
+    f.seg = 0
+    f.t = 0
+    f.phase = 'taxi_out'
+    f.phaseTime = 0
+    f.parkLeaveBy = null
+    if (!quiet) {
+      this.pushNews(`${f.flightNo} released from parking.`, 'ok')
+      this.emit()
+    }
+    return true
+  }
+
   spawnTransferGuest(airlineId: AirlineId) {
     const open = this.hallOpen()
     if (!open.size) return
@@ -4255,6 +4478,7 @@ export class Game {
     this.considerMxOffers()
     this.tickLayover(step)
     this.tickHub(step)
+    this.tickParking(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
     this.trySpawn()
@@ -4336,7 +4560,14 @@ export class Game {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
           f.waitingOn.catering = false
-          if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
+          if (f.ga) {
+            f.phase = 'parked'
+            f.phaseTime = 0
+            this.pushNews(
+              `${f.flightNo} parked at ${this.gateLabel(f.stand)} — leave by ${Math.max(0, Math.round((f.parkLeaveBy ?? this.clock) - this.clock))}s.`,
+              'ok',
+            )
+          } else if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
             const out = this.departurePath(f)
             if (out && !this.groundBusy()) {
               f.path = out
@@ -4351,6 +4582,8 @@ export class Game {
             this.beginBoarding(f)
           }
         }
+      } else if (f.phase === 'parked') {
+        // Occupies stand until releaseGa / auto leave in tickParking.
       } else if (f.phase === 'board') {
         const boardLimit = f.boardingSlow ? 22 : 16
         const boardReady =

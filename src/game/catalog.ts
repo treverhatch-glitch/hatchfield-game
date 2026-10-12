@@ -662,3 +662,9 @@ export const HUB_LAYOVER_WINS = 1
 export const HUB_HEAT_NEED = 75
 /** Hub carriers ban slightly earlier during layover failures. */
 export const HUB_BAN_THRESHOLD = 34
+/** GA parking fee / stay band. */
+export const GA_PARK_FEE_MIN = 2800
+export const GA_PARK_FEE_MAX = 6500
+export const GA_PARK_STAY_MIN = 55
+export const GA_PARK_STAY_MAX = 110
+export const GA_OVERSTAY_FINE = 5000

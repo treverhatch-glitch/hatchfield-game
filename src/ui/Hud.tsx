@@ -314,6 +314,27 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.parkingOffer ? (
+        <div className="offer parking">
+          <div>
+            <strong>GA parking · {game.parkingOffer.callsign}</strong>
+            <p>
+              {AIRFRAMES[game.parkingOffer.airframeId]?.name ?? 'Aircraft'} ·{' '}
+              {money(game.parkingOffer.fee)} · stay ~{game.parkingOffer.staySec}s (
+              {Math.ceil(game.parkingOffer.deadline)}s to answer)
+            </p>
+          </div>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.acceptParking()}>
+              Host parking
+            </button>
+            <button type="button" onClick={() => game.declineParking()}>
+              Wave off
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <aside className="side">
         <section>
           <h2>Build & bank</h2>
@@ -496,7 +517,19 @@ export function Hud({ game }: { game: Game }) {
                 {(flight.craft ?? 'jet') === 'jet'
                   ? ` · ${game.gateLabel(flight.stand)}`
                   : ' · helipad'}
+                {flight.ga && flight.phase === 'parked' && flight.parkLeaveBy
+                  ? ` · leave ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
+                  : ''}
               </p>
+              {flight.ga && flight.phase === 'parked' ? (
+                <button
+                  type="button"
+                  className="wide"
+                  onClick={() => game.releaseGa(flight.id)}
+                >
+                  Release parking
+                </button>
+              ) : null}
               <p className="muted">
                 Needs{' '}
                 {flight.craft === 'helo'
@@ -891,6 +924,7 @@ function labelPhase(phase: string, craft?: string): string {
     deboard: 'Deboarding',
     servicing: 'Servicing',
     board: 'Boarding',
+    parked: 'Parked (GA)',
     taxi_out: 'Taxi out',
     takeoff: 'Takeoff',
     gone: 'Airborne',
