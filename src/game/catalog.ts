@@ -50,6 +50,8 @@ export const HELO_LANDING = 2400
 export const PREMADE_TERMINAL_COST = 52000
 /** Manhattan cells — stand within this of a hall origin counts as jetway-linked. */
 export const JETWAY_RANGE = 8
+/** Manhattan cells — stand within this of a hangar counts as military ramp. */
+export const MIL_RAMP_RANGE = 10
 export const TAXI_COST = 700
 export const STAND_COST = 6200
 export const TERMINAL_COST = 14800
@@ -765,8 +767,15 @@ export const RESEARCH_NODES: ResearchNode[] = [
     id: 'heavy_pack',
     name: 'Heavy metal pack',
     cost: 55,
-    blurb: 'Unlock A380, An-124, and C-5 when the strip is long enough.',
+    blurb: 'Unlock A380 and An-124 Ruslan when the heavy strip is stamped.',
     requires: 'stand_class',
+  },
+  {
+    id: 'mil_ramp',
+    name: 'Military ramp',
+    cost: 48,
+    blurb: 'C-5M Super Galaxy + dedicated Guard apron (hangar-side hardstands, not pax gates).',
+    requires: 'heavy_pack',
   },
 ]
 

@@ -166,6 +166,7 @@ export type ResearchId =
   | 'deice'
   | 'stand_class'
   | 'heavy_pack'
+  | 'mil_ramp'
 
 export interface LayoverOffer {
   airline: AirlineId

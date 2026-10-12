@@ -64,6 +64,7 @@ import {
   MIN_RUNWAY,
   PARCEL_COST,
   JETWAY_RANGE,
+  MIL_RAMP_RANGE,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   HOTEL_COST,
@@ -818,6 +819,7 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
+    // Summit / EXFED-class — heavy strip + heavy_pack opens widebody (A380 in the pool).
     if (a.req.heavyRunway && this.hasHeavyRunway()) return 'widebody'
     if (a.persona === 'budget' || a.id === 'northline' || a.procedural) {
       return Math.random() < 0.6 ? 'regional' : 'narrowbody'
@@ -826,6 +828,58 @@ export class Game {
       return Math.random() < 0.45 ? 'regional' : 'narrowbody'
     }
     return 'narrowbody'
+  }
+
+  /**
+   * Stands on the Guard / cargo side — near a hangar, not glued to a pax jetway.
+   * Military metal should not steal T1·G2 from Northline.
+   */
+  milCapableStands(): Vec[] {
+    const hangars = tilesOf(this.tiles, 'hangar')
+    if (!hangars.length) return []
+    return tilesOf(this.tiles, 'stand').filter((s) => {
+      const nearHangar = hangars.some(
+        (h) => Math.abs(h.c - s.c) + Math.abs(h.r - s.r) <= MIL_RAMP_RANGE,
+      )
+      if (!nearHangar) return false
+      const hall = this.jetwayHall(s)
+      if (hall) {
+        const dHall =
+          Math.abs(hall.origin.c - s.c) + Math.abs(hall.origin.r - s.r)
+        // Keep mil hardstands off the close-in pax gate ring.
+        if (dHall <= Math.min(5, JETWAY_RANGE - 2)) return false
+      }
+      return Boolean(this.pathStandToRunway(s))
+    })
+  }
+
+  milRampLine(): string {
+    const n = this.milCapableStands().length
+    const cargo = tilesOf(this.tiles, 'cargo').length > 0
+    const heavy = this.hasHeavyRunway()
+    const pack = this.hasResearch('mil_ramp')
+    if (!n) return 'No mil ramp — hangar-side hardstand + taxi to strip'
+    return `Mil ramp ${n} pad${n === 1 ? '' : 's'}${cargo ? ' · cargo' : ' · need cargo'}${
+      heavy ? ' · heavy strip' : ''
+    }${pack ? ' · C-5 unlocked' : ''}`
+  }
+
+  assignMilStand(): Vec | null {
+    const freeKeys = new Set(this.freeStands().map((s) => `${s.c},${s.r}`))
+    const pool = this.milCapableStands().filter((s) => freeKeys.has(`${s.c},${s.r}`))
+    if (!pool.length) return null
+    // Prefer stands closest to hangar.
+    const hangars = tilesOf(this.tiles, 'hangar')
+    pool.sort((a, b) => {
+      const da = Math.min(
+        ...hangars.map((h) => Math.abs(h.c - a.c) + Math.abs(h.r - a.r)),
+      )
+      const db = Math.min(
+        ...hangars.map((h) => Math.abs(h.c - b.c) + Math.abs(h.r - b.r)),
+      )
+      return da - db
+    })
+    return pool[0]
   }
 
   aircraftLabel(kind: AircraftKind): string {
@@ -848,9 +902,23 @@ export class Game {
     if (!tilesOf(this.tiles, 'hangar').length) return { ok: false, why: 'Need a hangar.' }
     if (!tilesOf(this.tiles, 'tower').length) return { ok: false, why: 'Need a control tower.' }
     if (!tilesOf(this.tiles, 'police').length) return { ok: false, why: 'Need police on field.' }
+    if (!tilesOf(this.tiles, 'cargo').length) {
+      return { ok: false, why: 'Need a cargo shed for Guard logistics.' }
+    }
+    if (!this.milCapableStands().length) {
+      return {
+        ok: false,
+        why: `Need a hangar-side hardstand (≤${MIL_RAMP_RANGE}c, not a close pax jetway) with taxi to the strip.`,
+      }
+    }
     if (this.reputation < 48) return { ok: false, why: 'Need reputation 48+.' }
     if (this.cash < MIL_AGREE_COST) return { ok: false, why: `Need ${moneyLeft(MIL_AGREE_COST)}.` }
-    return { ok: true, why: 'Ready to host Guard / military transit.' }
+    return {
+      ok: true,
+      why: this.hasResearch('mil_ramp')
+        ? 'Ready — Guard host + C-5M when the heavy strip is live.'
+        : 'Ready for Guard transit (C-130 / C-17 / KC-135 / F-15). Research Military ramp for C-5M.',
+    }
   }
 
   signMilitaryAgreement() {
@@ -865,7 +933,9 @@ export class Game {
     this.milCool = 20
     this.reputation = Math.min(100, this.reputation + 5)
     this.pushNews(
-      'Guard host signed (Boise vibes) — C-130 / C-17 / KC-135 transit plus the odd F-15 drag.',
+      this.hasResearch('mil_ramp')
+        ? 'Guard host signed — mil ramp live. C-130 through C-5M can use hangar-side pads.'
+        : 'Guard host signed — mil ramp live. C-130 / C-17 / KC-135 / F-15 for now; research Military ramp for C-5M.',
       'good',
     )
     this.emit()
@@ -4593,14 +4663,27 @@ export class Game {
     return pads.filter((p) => !used.has(`${p.c},${p.r}`))
   }
 
+  /**
+   * Taxi path stand → a runway strip.
+   * Multi-runway: honor pref when that strip is reachable; otherwise fall back to the
+   * nearest reachable strip so a second terminal / far pad isn't soft-locked.
+   */
   pathStandToRunway(stand: Vec, runwayPref?: number | null): Vec[] | null {
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
     if (!strips.length) return null
-    const targets =
-      runwayPref != null && strips[runwayPref]
-        ? strips[runwayPref]
-        : strips.flat()
-    return nearestPath(this.tiles, stand, targets, 'jet')
+    const pathTo = (idx: number) => nearestPath(this.tiles, stand, strips[idx], 'jet')
+    if (runwayPref != null && strips[runwayPref]) {
+      const pref = pathTo(runwayPref)
+      if (pref) return pref
+    }
+    let best: Vec[] | null = null
+    for (let i = 0; i < strips.length; i++) {
+      if (runwayPref != null && i === runwayPref) continue
+      const p = pathTo(i)
+      if (p && (!best || p.length < best.length)) best = p
+    }
+    // Last resort — any cell on any strip (same as legacy flatten).
+    return best ?? nearestPath(this.tiles, stand, strips.flat(), 'jet')
   }
 
   landingRoute(stand: Vec, runwayPref?: number | null): Vec[] | null {
@@ -4621,6 +4704,22 @@ export class Game {
       if (!last || last.c !== p.c || last.r !== p.r) merged.push(p)
     }
     return merged
+  }
+
+  /** How many stands can still reach at least one strip — campus health check. */
+  connectedStandCount(): number {
+    return tilesOf(this.tiles, 'stand').filter((s) => this.pathStandToRunway(s)).length
+  }
+
+  campusPathLine(): string {
+    const strips = this.runwayStripCount()
+    const stands = tilesOf(this.tiles, 'stand').length
+    const linked = this.connectedStandCount()
+    const halls = this.fits.length
+    const orphan = stands - linked
+    return `${halls}T · ${strips} RW · ${linked}/${stands} stands linked${
+      orphan > 0 ? ` · ${orphan} orphan` : ''
+    }`
   }
 
   trySpawn() {
@@ -5146,15 +5245,49 @@ export class Game {
     if (this.milCool > 0) return
     if (this.groundBusy()) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
-    const stand = this.assignStand()
-    if (!stand) return
+    // Prefer dedicated mil ramp; never steal a busy pax jetway if a hardstand exists.
+    const stand = this.assignMilStand()
+    if (!stand) {
+      this.milCool = 18
+      if (Math.random() < 0.35) {
+        this.pushNews(
+          'Guard holding — mil ramp busy or missing hangar-side hardstand.',
+          'ok',
+        )
+      }
+      return
+    }
     const route = this.landingRoute(stand)
-    if (!route) return
+    if (!route) {
+      this.milCool = 15
+      return
+    }
     const af = pickAirframe('military', this.longestRunway(), this.researchUnlocked)
     if (!af) {
       this.milCool = 25
       return
     }
+    // C-5 needs heavy strip even with mil_ramp research.
+    if (af.id === 'c5' && !this.hasHeavyRunway()) {
+      const lighter = pickAirframe(
+        'military',
+        this.longestRunway(),
+        this.researchUnlocked.filter((id) => id !== 'mil_ramp'),
+      )
+      if (!lighter) {
+        this.milCool = 30
+        return
+      }
+      return this.spawnMilitaryFlight(lighter, stand, route)
+    }
+    this.spawnMilitaryFlight(af, stand, route)
+  }
+
+  private spawnMilitaryFlight(
+    af: (typeof AIRFRAMES)[string],
+    stand: Vec,
+    route: Vec[],
+  ) {
     this.flightSeq += 1
     const prefix =
       af.id === 'f15'
@@ -5163,7 +5296,9 @@ export class Game {
           ? 'ANG'
           : af.id === 'c17'
             ? 'REACH'
-            : 'RDR'
+            : af.id === 'c5'
+              ? 'REACH'
+              : 'RDR'
     const call = `${prefix}${this.flightSeq}`
     const fighter = af.id === 'f15'
     const f: Flight = {
@@ -5209,10 +5344,11 @@ export class Game {
     this.noteCraft('military')
     this.milCool = fighter ? 70 + Math.random() * 35 : 100 + Math.random() * 50
     this.selectedFlight = this.selectedFlight ?? f.id
+    const gate = this.gateLabel(stand)
     this.pushNews(
       fighter
         ? `${call} · ${af.name} fighter drag inbound (Guard host).`
-        : `${call} · ${af.name} military transit → ${this.gateLabel(stand)}.`,
+        : `${call} · ${af.name} military transit → ${gate} (mil ramp).`,
       'ok',
     )
   }

@@ -166,9 +166,9 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 **P1 — AT3 catalog + ATC**
 
 5. **Research tree** — ~~points from flights/pax; unlocks night/de-ice/stand class/heavy~~ **shipped** (hotel / 2nd runway ops still open).
-6. **Multi-runway capacity** — two strips add inbound slots when tower funded.
+6. **Multi-runway + multi-terminal pathing** — ~~N strips scale inbound; stand→strip A* with pref fallback; T# jetways~~ **shipped**.
 7. **Emergency asks** — ~~weather divert / firefighting plane refuel / refuel+MX; CL-415·AT-802; can't-host fail fine~~ **shipped**.
-8. **Heavy pack** — ~~A380, An-124, C-5 behind research~~ **shipped** (needs heavy strip + R&D).
+8. **Heavy pack + mil ramp** — ~~A380 / An-124 (heavy_pack); C-5M behind mil_ramp + Guard hangar-side pads~~ **shipped**.
 
 **P2 — AT3 meta AT3 never stuck the landing on**
 
