@@ -1276,7 +1276,7 @@ export class Game {
       g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1)
       g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6)
       g.needs.play = Math.min(100, g.needs.play + dt * (g.tag === 'premium' ? 1.1 : 0.7))
-      if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.55)
+      if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
       if (g.job === 'arrive') g.needs.bags = Math.max(0, g.needs.bags - (g.node === 'claim' ? dt * 12 : 0))
 
       if (g.path.length && g.seg < g.path.length - 1) {
@@ -1625,15 +1625,15 @@ export class Game {
       this.extraAirlines.filter((a) => a.procedural).length < 5 &&
       Math.random() < 0.4
     ) {
-      const proc = createProcAirline()
-      const nameTaken = this.extraAirlines.some(
-        (a) => a.name === proc.name && a.persona === proc.persona,
-      )
-      if (!nameTaken) this.extraAirlines.push(proc)
+      const used = this.allAirlines().map((a) => a.name)
+      const proc = createProcAirline(used)
+      if (!this.extraAirlines.some((a) => a.id === proc.id)) this.extraAirlines.push(proc)
     }
+    const procSigned = this.signed.filter((id) => this.airline(id).procedural).length
     const candidates = this.allAirlines().filter((a) => {
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
+      if (a.procedural && procSigned >= 3) return false
       if (!this.meetsReq(a.id)) return false
       if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) return false
       if (a.kind === 'pax' && site && site.paxMult < 0.9 && Math.random() > 0.35) return false
@@ -1698,18 +1698,19 @@ export class Game {
   seedScheduleForAirline(airlineId: AirlineId, count: number) {
     if (this.isBanned(airlineId)) return
     const a = this.airline(airlineId)
-    let t = this.clock + 10 + Math.random() * 8
+    let t = this.clock + 12 + Math.random() * 10
     const last = this.schedule
       .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
       .sort((x, y) => y.eta - x.eta)[0]
-    if (last) t = Math.max(t, last.eta + 14)
+    if (last) t = Math.max(t, last.eta + 16)
+    const spacing = a.kind === 'cargo' ? 22 + Math.random() * 12 : 18 + Math.random() * 10
     for (let i = 0; i < count; i++) {
       this.flightSeq += 1
       this.schedule.push({
         id: uid('slot'),
         airline: airlineId,
         flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
-        eta: t + i * (16 + Math.random() * 10),
+        eta: t + i * spacing,
         status: 'scheduled',
         delaySec: 0,
         delayReason: null,
@@ -1836,7 +1837,17 @@ export class Game {
       const open = this.openSchedule()
       if (open.length < 5) {
         const pool = this.signed.filter((id) => !this.isBanned(id))
-        if (pool.length) this.seedScheduleForAirline(pick(pool), 2)
+        if (pool.length) {
+          // Bias toward cargo if freighters are starving vs pax bank.
+          const cargo = pool.filter((id) => this.airline(id).kind === 'cargo')
+          const paxSeen = (this.craftSeen.regional ?? 0) + (this.craftSeen.narrowbody ?? 0)
+          const freightSeen = this.craftSeen.freighter ?? 0
+          const pickId =
+            cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
+              ? pick(cargo)
+              : pick(pool)
+          this.seedScheduleForAirline(pickId, 2)
+        }
       }
     }
     // Drop finished noise.
@@ -2014,7 +2025,7 @@ export class Game {
       if (this.isBanned(id)) continue
       // Slow recovery toward 70 when not in crisis.
       const h = this.heatOf(id)
-      if (h < 70) this.airlineHeat[id] = Math.min(70, h + dt * 0.08)
+      if (h < 70) this.airlineHeat[id] = Math.min(70, h + dt * 0.14)
       else if (h > 78) this.airlineHeat[id] = Math.max(70, h - dt * 0.04)
     }
     for (const id of Object.keys(this.airlineBanUntil)) {
@@ -3026,7 +3037,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
-    this.heloCool = 40 + Math.random() * 25
+    this.heloCool = 75 + Math.random() * 40
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
       medevac
@@ -3355,7 +3366,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft('military')
-    this.milCool = fighter ? 45 + Math.random() * 25 : 70 + Math.random() * 40
+    this.milCool = fighter ? 70 + Math.random() * 35 : 100 + Math.random() * 50
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
       fighter
@@ -3422,7 +3433,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft('air_ambulance')
-    this.ambuCool = 90 + Math.random() * 50
+    this.ambuCool = 130 + Math.random() * 70
     this.pushNews(
       `${call} · Emergency ${af.name} air ambulance → ${this.gateLabel(stand)}.`,
       'ok',
