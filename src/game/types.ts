@@ -78,6 +78,7 @@ export type Phase =
   | 'deboard'
   | 'servicing'
   | 'board'
+  | 'pushback'
   | 'parked'
   | 'taxi_out'
   | 'takeoff'
