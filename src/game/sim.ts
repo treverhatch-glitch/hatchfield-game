@@ -365,6 +365,10 @@ export class Game {
   fieldTaskCool = 28
   /** Night curfew news / slip rate-limit. */
   nightCurfewCool = 0
+  /** Rate-limit cascade headlines so the ticker stays readable. */
+  cascadeNewsCool = 0
+  /** While storming, pulse a bank slip so weather stays legible. */
+  stormPulseCool = 0
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -482,6 +486,8 @@ export class Game {
     this.fieldTask = null
     this.fieldTaskCool = 28
     this.nightCurfewCool = 0
+    this.cascadeNewsCool = 0
+    this.stormPulseCool = 0
   }
 
   /** Morning checklist — hides once dismissed or after the first takeoff. */
@@ -3053,12 +3059,18 @@ export class Game {
         cursor = Math.max(cursor, x.eta + 14)
       }
     }
-    this.adjustHeat(slot.airline, playerRearrange ? -0.6 : -0.45)
-    if (cascaded >= 2 && !playerRearrange) {
+    // Runway backlog is ops pressure, not an airline insult — lighter heat nick.
+    const backlog = reason === 'Runway backlog' || reason === 'Pavement busy'
+    this.adjustHeat(
+      slot.airline,
+      playerRearrange ? -0.6 : backlog ? -0.25 : -0.45,
+    )
+    if (cascaded >= 2 && !playerRearrange && this.cascadeNewsCool <= 0) {
       this.pushNews(
         `Schedule cascade — ${cascaded} flights slid after ${slot.flightNo}.`,
         'bad',
       )
+      this.cascadeNewsCool = 22
     }
     return cascaded
   }
@@ -3066,6 +3078,29 @@ export class Game {
   tickSchedule(dt: number) {
     this.schedulePlanCool = Math.max(0, this.schedulePlanCool - dt)
     this.nightCurfewCool = Math.max(0, this.nightCurfewCool - dt)
+    this.cascadeNewsCool = Math.max(0, this.cascadeNewsCool - dt)
+    this.stormPulseCool = Math.max(0, this.stormPulseCool - dt)
+    // Storm pulse — even with de-ice, the bank should feel the weather once a beat.
+    if (this.weather === 'storm' && this.stormPulseCool <= 0) {
+      const soon = this.openSchedule().find(
+        (s) =>
+          (s.status === 'scheduled' || s.status === 'delayed') &&
+          s.eta - this.clock < 45,
+      )
+      if (soon) {
+        const slip = this.hasResearch('deice') ? 7 + Math.random() * 6 : 12 + Math.random() * 14
+        this.delaySlot(soon, slip, 'Storm / dest weather')
+        this.stormPulseCool = this.hasResearch('deice') ? 38 : 24
+        this.pushNews(
+          this.hasResearch('deice')
+            ? `${soon.flightNo} storm slip ${Math.round(soon.delaySec)}s — de-ice pads holding the worst of it.`
+            : `${soon.flightNo} delayed ${Math.round(soon.delaySec)}s — storm bank. Research De-ice ops.`,
+          'bad',
+        )
+      } else {
+        this.stormPulseCool = 12
+      }
+    }
     // Soft night curfew — pax slip after dark until Night bank is researched.
     if (
       this.isNight() &&
@@ -3088,19 +3123,9 @@ export class Game {
         )
       }
     }
-    // Storm / fog at destination or on field — random inbound delay (de-ice cuts storm odds).
-    const stormOdds = this.hasResearch('deice') ? dt * 0.018 : dt * 0.045
+    // Fog slips (storms use the pulse above so the ticker stays readable).
     const fogOdds = dt * 0.02
-    if (this.weather === 'storm' && Math.random() < stormOdds) {
-      const soon = this.openSchedule().find((s) => s.eta - this.clock < 35)
-      if (soon && soon.status === 'scheduled') {
-        this.delaySlot(soon, 12 + Math.random() * 16, 'Storm / dest weather')
-        this.pushNews(
-          `${soon.flightNo} delayed ${Math.round(soon.delaySec)}s — storm bank.`,
-          'bad',
-        )
-      }
-    } else if (this.weather === 'fog' && Math.random() < fogOdds) {
+    if (this.weather === 'fog' && Math.random() < fogOdds) {
       const soon = this.openSchedule().find((s) => s.eta - this.clock < 40)
       if (soon && soon.status === 'scheduled') {
         this.delaySlot(soon, 8 + Math.random() * 10, 'Fog / dest weather')
@@ -4164,7 +4189,13 @@ export class Game {
     if (next !== this.weather) {
       this.weather = next
       if (next === 'storm') {
-        this.pushNews('Storm cell over the field — wet strip, high crash risk if pavement is soft.', 'bad')
+        this.stormPulseCool = 0
+        this.pushNews(
+          this.hasResearch('deice')
+            ? 'Storm cell over the field — de-ice pads online; expect soft slips, not a washout.'
+            : 'Storm cell over the field — wet strip, high crash risk if pavement is soft. Research De-ice ops.',
+          'bad',
+        )
       } else if (next === 'clear' && this.runwayCondition < 50) {
         this.pushNews('Skies clear, but the runway still needs work.', 'ok')
       } else if (next !== 'clear') {
@@ -4693,6 +4724,19 @@ export class Game {
         `${building.name} (${this.parkTerm}-term) stamped.`,
         'ok',
       )
+    } else if (building.tile === 'hangar') {
+      if (!this.milCapableStands().length) {
+        this.pushNews(
+          'Hangar up — stamp a hardstand beside it (away from pax gates) + taxi to the strip for Guard host.',
+          'ok',
+        )
+      } else {
+        this.pushNews('Hangar up — mil ramp pads linked.', 'good')
+      }
+    } else if (building.tile === 'stand' && tilesOf(this.tiles, 'hangar').length) {
+      if (this.milCapableStands().length) {
+        this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
+      }
     }
     this.emit()
   }
@@ -4938,7 +4982,7 @@ export class Game {
   }
 
   trySpawn() {
-    if (this.spawnCool > 0 || !this.signed.length) return
+    if (!this.signed.length) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     if (!tilesOf(this.tiles, 'stand').length) return
 
@@ -4948,6 +4992,13 @@ export class Game {
 
     // Prefer the timetable. If nothing is due, only seed when auto and bank empty.
     const slot = this.nextDueSlot()
+    // Spawn cool must not leave due slots rotting past ETA (bank soft-lock).
+    if (this.spawnCool > 0) {
+      if (slot && slot.eta < this.clock - 6) {
+        this.delaySlot(slot, 6 + Math.random() * 5, 'Tower sequencing')
+      }
+      return
+    }
     if (!slot) {
       if (!this.scheduleAuto) return
       const open = this.openSchedule().filter((s) => s.status !== 'inbound')
@@ -6629,7 +6680,7 @@ export class Game {
             this.coachDismissed = true
             this.reputation = Math.min(100, this.reputation + 2)
             this.pushNews(
-              `First turn in the book — ${f.flightNo} airborne. Field Rating ${this.fieldRating()}. Keep the bank moving.`,
+              `First turn in the book — ${f.flightNo} airborne. Field Rating ${this.fieldRating()}. Airlines will start asking for upgrades; hangar-side pads unlock Guard.`,
               'good',
             )
           }
