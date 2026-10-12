@@ -63,6 +63,9 @@ export interface HallGuest {
   thought: string
   color: string
   dead: boolean
+  /** Layover-bank transfer — longer dwell, captive spend. */
+  transfer?: boolean
+  airlineId?: string
 }
 
 /** Undirected hall graph — edges are decision points. */
@@ -195,35 +198,43 @@ export function spawnHallGuest(
   flightId: string,
   job: 'depart' | 'arrive',
   tag: PaxTag,
+  opts?: { transfer?: boolean; airlineId?: string },
 ): HallGuest {
   const premium = tag === 'premium'
+  const transfer = Boolean(opts?.transfer)
   return {
     id: `g-${Math.random().toString(36).slice(2, 8)}`,
     flightId,
     name: NAMES[Math.floor(Math.random() * NAMES.length)],
     tag,
     job,
-    node: job === 'depart' ? 'entrance' : 'gate',
+    node: job === 'depart' ? 'entrance' : transfer ? 'gate' : 'gate',
     path: [],
     seg: 0,
     t: 0,
     needs: {
-      hunger: 20 + Math.random() * (premium ? 40 : 55),
+      hunger: (transfer ? 35 : 20) + Math.random() * (premium ? 40 : 55),
       bladder: 15 + Math.random() * 50,
       energy: premium ? 40 + Math.random() * 40 : 10 + Math.random() * 30,
-      boarding: job === 'depart' ? 18 + Math.random() * 22 : 99,
-      bags: job === 'arrive' ? 70 + Math.random() * 25 : 0,
-      shop: premium ? 25 + Math.random() * 40 : 10 + Math.random() * 25,
-      play: premium ? 35 + Math.random() * 45 : 15 + Math.random() * 35,
+      boarding: job === 'depart' ? 18 + Math.random() * 22 : transfer ? 40 + Math.random() * 30 : 99,
+      bags: job === 'arrive' && !transfer ? 70 + Math.random() * 25 : 0,
+      shop: (transfer ? 40 : premium ? 25 : 10) + Math.random() * (premium ? 40 : 25),
+      play: (transfer ? 30 : premium ? 35 : 15) + Math.random() * (premium ? 45 : 35),
     },
-    happiness: 70,
-    patience: premium ? 55 : 70,
+    happiness: transfer ? 65 : 70,
+    patience: premium ? 55 : transfer ? 80 : 70,
     spent: 0,
-    thought: job === 'depart' ? 'Where is check-in?' : 'Where are my bags?',
+    thought: transfer
+      ? 'Long layover — need food and a seat'
+      : job === 'depart'
+        ? 'Where is check-in?'
+        : 'Where are my bags?',
     color: premium
       ? pick(['#5c3d8a', '#2f6f9a', '#1f6b57'])
       : pick(['#8b6b4a', '#6a4a32', '#3a5a7a', '#5c4033']),
     dead: false,
+    transfer,
+    airlineId: opts?.airlineId,
   }
 }
 

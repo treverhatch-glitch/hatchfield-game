@@ -7,12 +7,18 @@ import {
   BUILDINGS,
   CATER,
   CLEANING_FEE,
+  createProcAirline,
   DEFAULT_BUDGETS,
   FUEL,
   AIR_AMBULANCE_FEE,
   HALL_SCRUB_COST,
+  HEAT_BAN_THRESHOLD,
   HELO_LANDING,
   LAND,
+  LAYOVER_BAN_FINE,
+  LAYOVER_BAN_SECONDS,
+  LAYOVER_FEE_MAX,
+  LAYOVER_FEE_MIN,
   LOADS_PER_BUY,
   MIL_AGREE_COST,
   MIL_LANDING,
@@ -73,6 +79,7 @@ import {
 import { SAVE_KEY, SIZE, type AirlineId } from './types'
 import type {
   AircraftKind,
+  Airline,
   BudgetKey,
   Budgets,
   CaterBrand,
@@ -81,6 +88,8 @@ import type {
   Flight,
   FuelBrand,
   GameSnapshot,
+  LayoverContract,
+  LayoverOffer,
   MarketMission,
   MxOffer,
   News,
@@ -196,6 +205,13 @@ export class Game {
   milAgreement = false
   milCool = 55
   ambuCool = 70
+  extraAirlines: Airline[] = []
+  airlineHeat: Record<string, number> = {}
+  airlineBanUntil: Record<string, number> = {}
+  layoverOffer: LayoverOffer | null = null
+  layoverOfferCool = 50
+  layover: LayoverContract | null = null
+  layoverSpawnAcc = 0
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -274,6 +290,13 @@ export class Game {
     this.milAgreement = false
     this.milCool = 55
     this.ambuCool = 70
+    this.extraAirlines = []
+    this.airlineHeat = {}
+    this.airlineBanUntil = {}
+    this.layoverOffer = null
+    this.layoverOfferCool = 50
+    this.layover = null
+    this.layoverSpawnAcc = 0
     this.flights = []
     this.trucks = []
     this.people = []
@@ -292,12 +315,70 @@ export class Game {
     this.mechanicCool = 0
   }
 
+  /** Premade + live procedural regionals. */
+  allAirlines(): Airline[] {
+    return [...airlineList(), ...this.extraAirlines]
+  }
+
+  airline(id: AirlineId): Airline {
+    return (
+      AIRLINES[id] ??
+      this.extraAirlines.find((a) => a.id === id) ??
+      AIRLINES.northline
+    )
+  }
+
+  heatOf(id: AirlineId): number {
+    return this.airlineHeat[id] ?? 70
+  }
+
+  isBanned(id: AirlineId): boolean {
+    return (this.airlineBanUntil[id] ?? 0) > this.clock
+  }
+
+  banRemaining(id: AirlineId): number {
+    return Math.max(0, (this.airlineBanUntil[id] ?? 0) - this.clock)
+  }
+
+  adjustHeat(id: AirlineId, delta: number) {
+    const a = this.airline(id)
+    let h = this.heatOf(id)
+    if (delta < 0) h += delta * a.heatSensitivity
+    else h += delta
+    this.airlineHeat[id] = clamp(h, 0, 100)
+    if (
+      this.airlineHeat[id] <= HEAT_BAN_THRESHOLD &&
+      this.layover?.airline === id &&
+      !this.isBanned(id)
+    ) {
+      this.banAirline(id, 'layover heat crashed')
+    }
+  }
+
+  banAirline(id: AirlineId, reason: string) {
+    if (this.isBanned(id)) return
+    const a = this.airline(id)
+    this.airlineBanUntil[id] = this.clock + LAYOVER_BAN_SECONDS
+    this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_BAN_THRESHOLD - 2)
+    this.charge(LAYOVER_BAN_FINE)
+    if (this.layover?.airline === id) this.layover = null
+    if (this.layoverOffer?.airline === id) this.layoverOffer = null
+    this.pushNews(
+      `${a.name} banned you for ${LAYOVER_BAN_SECONDS}s (${reason}). Fine ${moneyLeft(LAYOVER_BAN_FINE)}.`,
+      'bad',
+    )
+    this.reputation = Math.max(0, this.reputation - 6)
+  }
+
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
-    const a = AIRLINES[airlineId]
+    const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
     if (a.req.heavyRunway && this.hasHeavyRunway()) return 'widebody'
-    if (a.id === 'northline' || a.id === 'harbor') {
-      return Math.random() < 0.55 ? 'regional' : 'narrowbody'
+    if (a.persona === 'budget' || a.id === 'northline' || a.procedural) {
+      return Math.random() < 0.6 ? 'regional' : 'narrowbody'
+    }
+    if (a.persona === 'business' || a.id === 'harbor') {
+      return Math.random() < 0.45 ? 'regional' : 'narrowbody'
     }
     return 'narrowbody'
   }
@@ -788,7 +869,7 @@ export class Game {
       this.startMission('scrub_the_hall')
       return
     }
-    if (!this.hasHeavyRunway() && this.signed.some((id) => AIRLINES[id].kind === 'pax') && roll < 0.28) {
+    if (!this.hasHeavyRunway() && this.signed.some((id) => this.airline(id).kind === 'pax') && roll < 0.28) {
       this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.93) * 100) / 100)
       this.pushNews(
         `Analyst note: “Regional strip caps growth.” HATCH $${this.sharePrice.toFixed(2)}. Stamp a heavy runway.`,
@@ -863,6 +944,10 @@ export class Game {
       runwayCondition: this.runwayCondition,
       weather: this.weather,
       milAgreement: this.milAgreement,
+      extraAirlines: this.extraAirlines,
+      airlineHeat: this.airlineHeat,
+      airlineBanUntil: this.airlineBanUntil,
+      layover: this.layover,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -916,6 +1001,13 @@ export class Game {
       this.runwayCondition = s.runwayCondition ?? 100
       this.weather = s.weather ?? 'clear'
       this.milAgreement = s.milAgreement ?? false
+      this.extraAirlines = s.extraAirlines ?? []
+      this.airlineHeat = s.airlineHeat ?? {}
+      this.airlineBanUntil = s.airlineBanUntil ?? {}
+      this.layover = s.layover ?? null
+      this.layoverOffer = null
+      this.layoverOfferCool = 20
+      this.layoverSpawnAcc = 0
       this.mission = null
       this.mxOffer = null
       this.pendingThreat = null
@@ -1013,11 +1105,12 @@ export class Game {
     const open = this.hallOpen()
     if (!open.size) return
     const count = Math.max(6, Math.min(16, Math.round(f.pax / 7)))
+    const a = this.airline(f.airline)
     const premiumBias =
-      f.airline === 'summit' ? 0.65 : f.airline === 'harbor' ? 0.4 : 0.2
+      a.persona === 'luxury' ? 0.65 : a.persona === 'business' ? 0.4 : 0.2
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = Math.random() < premiumBias ? 'premium' : 'budget'
-      const g = spawnHallGuest(f.id, job, tag)
+      const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline })
       // Kick them onto a clear first leg so you see the flow immediately.
       if (job === 'arrive') {
         g.node = 'gate'
@@ -1033,6 +1126,13 @@ export class Game {
       }
       this.hallGuests.push(g)
     }
+  }
+
+  guestAirlineId(g: HallGuest): AirlineId | null {
+    if (g.airlineId) return g.airlineId
+    if (g.flightId.startsWith('layover:')) return g.flightId.slice('layover:'.length)
+    const f = this.flights.find((x) => x.id === g.flightId)
+    return f?.airline ?? null
   }
 
   tickHall(dt: number) {
@@ -1068,7 +1168,24 @@ export class Game {
       // Decision point — pick strongest need and search a short path (RCT-capped).
       const need = strongestNeed(g)
       if (!need) {
-        if (g.job === 'depart' && open.has('gate')) {
+        if (g.transfer) {
+          // Transfers use boarding as connection clock — linger until it runs down.
+          g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.35)
+          if (g.needs.boarding > 8) {
+            const linger = (['food', 'shop', 'lounge', 'bathroom', 'gaming', 'waterfall'] as const).find(
+              (n) => open.has(n),
+            )
+            if (linger && g.node !== linger) this.routeGuest(g, linger, open)
+            else g.thought = 'Killing time until the connection'
+          } else if (open.has('gate')) {
+            this.routeGuest(g, 'gate', open)
+            if (g.node === 'gate' && g.needs.boarding <= 0) {
+              g.dead = true
+              const aid = this.guestAirlineId(g)
+              if (aid) this.adjustHeat(aid, g.happiness >= 55 ? 2.5 : -2)
+            }
+          }
+        } else if (g.job === 'depart' && open.has('gate')) {
           this.routeGuest(g, 'gate', open)
         } else if (g.job === 'arrive' && g.needs.bags < 15) {
           this.routeGuest(g, 'exit', open)
@@ -1085,6 +1202,8 @@ export class Game {
         if (g.patience <= 0) {
           g.dead = true
           this.reputation = Math.max(0, this.reputation - 2)
+          const aid = this.guestAirlineId(g)
+          if (aid) this.adjustHeat(aid, g.transfer ? -6 : -3.5)
           this.pushNews(`${g.name} left angry — missing ${dest}.`, 'bad')
         }
         continue
@@ -1096,7 +1215,21 @@ export class Game {
         g.happiness -= 30
         g.dead = true
         this.reputation = Math.max(0, this.reputation - 5)
+        const aid = this.guestAirlineId(g)
+        if (aid) this.adjustHeat(aid, g.transfer ? -8 : -5)
         this.pushNews(`${g.name} missed ${g.flightId.slice(0, 8)} — late to the gate.`, 'bad')
+      }
+    }
+    // Sample layover happiness into the active contract.
+    if (this.layover) {
+      const transfers = this.hallGuests.filter(
+        (g) => g.transfer && g.airlineId === this.layover!.airline && !g.dead,
+      )
+      if (transfers.length) {
+        let sum = 0
+        for (const g of transfers) sum += g.happiness
+        this.layover.happySum += sum / transfers.length
+        this.layover.samples += 1
       }
     }
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
@@ -1312,7 +1445,7 @@ export class Game {
   }
 
   meetsReq(id: AirlineId): boolean {
-    const a = AIRLINES[id]
+    const a = this.airline(id)
     const r = this.readiness()
     if (!r.runway) return false
     if (a.req.heavyRunway && !r.heavyRunway) return false
@@ -1336,7 +1469,7 @@ export class Game {
   }
 
   missingReq(id: AirlineId): string[] {
-    const a = AIRLINES[id]
+    const a = this.airline(id)
     const r = this.readiness()
     const miss: string[] = []
     if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
@@ -1361,40 +1494,227 @@ export class Game {
   considerOffers() {
     if (this.offer || this.offerCool > 0) return
     const site = this.site ? LAND[this.site] : null
-    const candidates = airlineList().filter((a) => {
+    // Light procedural regionals — keep the phone from always being the same six faces.
+    if (
+      this.signed.length >= 1 &&
+      this.extraAirlines.filter((a) => a.procedural).length < 5 &&
+      Math.random() < 0.4
+    ) {
+      const proc = createProcAirline()
+      const nameTaken = this.extraAirlines.some(
+        (a) => a.name === proc.name && a.persona === proc.persona,
+      )
+      if (!nameTaken) this.extraAirlines.push(proc)
+    }
+    const candidates = this.allAirlines().filter((a) => {
       if (this.signed.includes(a.id)) return false
+      if (this.isBanned(a.id)) return false
       if (!this.meetsReq(a.id)) return false
       if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) return false
       if (a.kind === 'pax' && site && site.paxMult < 0.9 && Math.random() > 0.35) return false
       return true
     })
     if (!candidates.length) return
-    // Prefer cheaper first airline
-    candidates.sort((a, b) => a.landing - b.landing)
-    const pickA = candidates[0]
+    // Prefer cheaper first airline; sprinkle procedurals after one major is signed.
+    candidates.sort((a, b) => {
+      if (Boolean(a.procedural) !== Boolean(b.procedural)) return a.procedural ? 1 : -1
+      return a.landing - b.landing
+    })
+    const procs = candidates.filter((c) => c.procedural)
+    const pickA =
+      this.signed.length >= 1 && procs.length && Math.random() < 0.4
+        ? pick(procs)
+        : candidates[0]
     this.offer = { airline: pickA.id, age: 0 }
-    this.pushNews(`${pickA.name} is on the phone — they want a contract.`, 'good')
+    const tag = pickA.procedural ? ' (regional)' : ''
+    this.pushNews(`${pickA.name}${tag} is on the phone — they want a contract.`, 'good')
   }
 
   acceptOffer() {
     if (!this.offer) return
     const id = this.offer.airline
+    const a = this.airline(id)
     this.signed.push(id)
+    if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.offer = null
     this.offerCool = 25
     this.spawnCool = Math.min(this.spawnCool, 4)
-    this.reputation = Math.min(100, this.reputation + 8)
-    this.pushNews(`${AIRLINES[id].name} signed. Flights will schedule.`, 'good')
+    this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
+    this.pushNews(
+      `${a.name} signed${a.procedural ? ' (filler regional)' : ''}. Flights will schedule.`,
+      'good',
+    )
     this.emit()
   }
 
   declineOffer() {
     if (!this.offer) return
     const id = this.offer.airline
+    const a = this.airline(id)
     this.offer = null
     this.offerCool = 40
-    this.pushNews(`${AIRLINES[id].name} hung up. They may call again later.`, 'ok')
+    this.adjustHeat(id, -2)
+    this.pushNews(`${a.name} hung up. They may call again later.`, 'ok')
     this.emit()
+  }
+
+  hallReadyForLayover(): boolean {
+    const fit = this.activeHall()
+    if (!fit) return false
+    const food = fit.rooms.food > 0 || tilesOf(this.tiles, 'snack').length > 0
+    const shop = fit.rooms.souvenir > 0
+    const amenity =
+      (fit.rooms.lounge ?? 0) +
+        (fit.rooms.golf ?? 0) +
+        (fit.rooms.waterfall ?? 0) +
+        (fit.rooms.gaming ?? 0) >
+      0
+    return food && (shop || amenity)
+  }
+
+  considerLayoverOffers() {
+    if (this.layover || this.layoverOffer || this.layoverOfferCool > 0) return
+    if (!this.hallReadyForLayover()) return
+    const pool = this.signed.filter((id) => {
+      const a = this.airline(id)
+      return a.kind === 'pax' && a.likesLayovers && !this.isBanned(id) && this.heatOf(id) >= 40
+    })
+    if (!pool.length) return
+    const id = pick(pool)
+    const a = this.airline(id)
+    const fee = Math.round(
+      LAYOVER_FEE_MIN + Math.random() * (LAYOVER_FEE_MAX - LAYOVER_FEE_MIN),
+    )
+    const duration = 55 + Math.floor(Math.random() * 40)
+    const transferPax = 18 + Math.floor(Math.random() * 22) + (a.persona === 'business' ? 8 : 0)
+    this.layoverOffer = { airline: id, age: 0, fee, duration, transferPax }
+    this.pushNews(
+      `${a.name} wants a layover bank — $${fee.toLocaleString()} up front, ${transferPax} transfers for ~${duration}s. Keep them happy or get banned.`,
+      'good',
+    )
+  }
+
+  acceptLayover() {
+    if (!this.layoverOffer) return
+    const o = this.layoverOffer
+    const a = this.airline(o.airline)
+    this.earn(o.fee, `${a.name} layover fee`)
+    this.layover = {
+      airline: o.airline,
+      endsAt: this.clock + o.duration,
+      remaining: o.duration,
+      spawned: 0,
+      transferPax: o.transferPax,
+      happySum: 0,
+      samples: 0,
+      fee: o.fee,
+    }
+    this.layoverOffer = null
+    this.layoverOfferCool = 70
+    this.layoverSpawnAcc = 0
+    this.pushNews(
+      `${a.name} layover live — transfers dumping into the hall. Heat ${Math.round(this.heatOf(o.airline))}.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  declineLayover() {
+    if (!this.layoverOffer) return
+    const id = this.layoverOffer.airline
+    const a = this.airline(id)
+    this.layoverOffer = null
+    this.layoverOfferCool = 55
+    this.adjustHeat(id, -1.5)
+    this.pushNews(`${a.name} layover talk died.`, 'ok')
+    this.emit()
+  }
+
+  tickLayover(dt: number) {
+    this.layoverOfferCool = Math.max(0, this.layoverOfferCool - dt)
+    if (this.layoverOffer) this.layoverOffer.age += dt
+    this.considerLayoverOffers()
+    if (!this.layover) return
+    const L = this.layover
+    L.remaining = Math.max(0, L.endsAt - this.clock)
+    const a = this.airline(L.airline)
+
+    // Soft heat recovery / decay from hall load during the bank.
+    const transfers = this.hallGuests.filter((g) => g.transfer && g.airlineId === L.airline)
+    if (transfers.length >= 10) this.adjustHeat(L.airline, -0.15 * dt)
+    else if (transfers.length && L.samples > 0) {
+      const avg = L.happySum / L.samples
+      if (avg >= 62) this.adjustHeat(L.airline, 0.12 * dt)
+      else if (avg < 45) this.adjustHeat(L.airline, -0.25 * dt)
+    }
+
+    // Drip transfer pax into the hall.
+    if (L.spawned < L.transferPax && this.fits.length) {
+      this.layoverSpawnAcc += dt
+      const every = 2.2
+      while (this.layoverSpawnAcc >= every && L.spawned < L.transferPax) {
+        this.layoverSpawnAcc -= every
+        this.spawnTransferGuest(L.airline)
+        L.spawned += 1
+      }
+    }
+
+    if (this.clock >= L.endsAt) {
+      const avg = L.samples > 0 ? L.happySum / L.samples : 55
+      const heat = this.heatOf(L.airline)
+      this.layover = null
+      if (avg < 48 || heat < HEAT_BAN_THRESHOLD + 5) {
+        this.banAirline(L.airline, avg < 48 ? 'miserable transfers' : 'thin heat')
+      } else {
+        this.adjustHeat(L.airline, 8)
+        this.reputation = Math.min(100, this.reputation + 3)
+        this.pushNews(
+          `${a.name} layover cleared — avg happiness ${Math.round(avg)}. They'll be back.`,
+          'good',
+        )
+      }
+    }
+  }
+
+  spawnTransferGuest(airlineId: AirlineId) {
+    const open = this.hallOpen()
+    if (!open.size) return
+    const a = this.airline(airlineId)
+    const tag: PaxTag =
+      Math.random() < (a.persona === 'business' ? 0.45 : 0.2) ? 'premium' : 'budget'
+    const g = spawnHallGuest(`layover:${airlineId}`, 'arrive', tag, {
+      transfer: true,
+      airlineId,
+    })
+    g.node = 'gate'
+    g.thought = `${a.name} transfer — kill time in the hall`
+    g.needs.boarding = 35 + Math.random() * 40
+    if (open.has('food')) this.routeGuest(g, 'food', open)
+    else if (open.has('shop')) this.routeGuest(g, 'shop', open)
+    else if (open.has('lounge')) this.routeGuest(g, 'lounge', open)
+    else if (open.has('claim')) this.routeGuest(g, 'claim', open)
+    this.hallGuests.push(g)
+    // Transfers scuff the hall faster.
+    if (Math.random() < 0.35) this.bumpWear('bath', 0.4)
+    if (Math.random() < 0.2) this.bumpWear('sec', 0.25)
+  }
+
+  /** Soft heat drift + ban expiry news. */
+  tickAirlineRelations(dt: number) {
+    for (const id of this.signed) {
+      if (this.isBanned(id)) continue
+      // Slow recovery toward 70 when not in crisis.
+      const h = this.heatOf(id)
+      if (h < 70) this.airlineHeat[id] = Math.min(70, h + dt * 0.08)
+      else if (h > 78) this.airlineHeat[id] = Math.max(70, h - dt * 0.04)
+    }
+    for (const id of Object.keys(this.airlineBanUntil)) {
+      const until = this.airlineBanUntil[id]
+      if (until > 0 && until <= this.clock && until > this.clock - dt) {
+        this.airlineHeat[id] = 45
+        this.pushNews(`${this.airline(id).name} ban lifted — they're watching the hall.`, 'ok')
+      }
+    }
   }
 
   buyRoom(id: RoomId) {
@@ -1557,7 +1877,7 @@ export class Game {
     const candidates = this.signed.filter((id) => !this.mxSigned.includes(id))
     if (!candidates.length) return
     const id = pick(candidates)
-    const a = AIRLINES[id]
+    const a = this.airline(id)
     const payout = Math.round(a.landing * (a.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120)
     this.mxOffer = { airline: id, age: 0, payout }
     this.pushNews(
@@ -1572,7 +1892,7 @@ export class Game {
     this.mxSigned.push(id)
     this.mxOffer = null
     this.mxOfferCool = 40
-    this.pushNews(`${AIRLINES[id].name} MX signed. Their jets will pay shop fees on stand.`, 'good')
+    this.pushNews(`${this.airline(id).name} MX signed. Their jets will pay shop fees on stand.`, 'good')
     this.emit()
   }
 
@@ -1581,7 +1901,7 @@ export class Game {
     const id = this.mxOffer.airline
     this.mxOffer = null
     this.mxOfferCool = 55
-    this.pushNews(`${AIRLINES[id].name} MX talk died. They may call again.`, 'ok')
+    this.pushNews(`${this.airline(id).name} MX talk died. They may call again.`, 'ok')
     this.emit()
   }
 
@@ -2134,6 +2454,40 @@ export class Game {
     })
   }
 
+  /** Prefer stands closest to a terminal hall — lite gate assignment. */
+  assignStand(): Vec | null {
+    const free = this.freeStands()
+    if (!free.length) return null
+    const halls = this.fits.map((f) => f.origin)
+    const terms = halls.length ? halls : tilesOf(this.tiles, 'terminal')
+    if (!terms.length) return free[0]
+    free.sort((a, b) => {
+      const da = Math.min(...terms.map((t) => Math.abs(t.c - a.c) + Math.abs(t.r - a.r)))
+      const db = Math.min(...terms.map((t) => Math.abs(t.c - b.c) + Math.abs(t.r - b.r)))
+      return da - db
+    })
+    return free[0]
+  }
+
+  /** Gate label from stand index — tower desk copy. */
+  gateLabel(stand: Vec | null): string {
+    if (!stand) return '—'
+    const stands = tilesOf(this.tiles, 'stand')
+    const idx = stands.findIndex((s) => s.c === stand.c && s.r === stand.r)
+    return idx >= 0 ? `G${idx + 1}` : `${stand.c},${stand.r}`
+  }
+
+  holdingCount(): number {
+    return this.flights.filter(
+      (f) => (f.craft ?? 'jet') === 'jet' && f.phase === 'hold',
+    ).length
+  }
+
+  maxInbound(): number {
+    // Tower pays: two approaches at once; without it, one.
+    return tilesOf(this.tiles, 'tower').length > 0 ? 2 : 1
+  }
+
   freePads(): Vec[] {
     const pads = tilesOf(this.tiles, 'helipad')
     const used = new Set(
@@ -2179,19 +2533,21 @@ export class Game {
     const inbound = this.flights.filter((f) =>
       (['hold', 'approach', 'landing', 'taxi_in'] as Phase[]).includes(f.phase),
     )
-    if (inbound.length >= 1) return
+    if (inbound.length >= this.maxInbound()) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     if (!tilesOf(this.tiles, 'stand').length) return
 
     const site = this.site ? LAND[this.site] : null
-    const pool = this.signed.filter((id) => {
-      const a = AIRLINES[id]
+    const active = this.signed.filter((id) => !this.isBanned(id))
+    if (!active.length) return
+    const pool = active.filter((id) => {
+      const a = this.airline(id)
       if (!site) return true
       if (a.kind === 'cargo') return Math.random() < 0.45 * site.cargoMult
       return Math.random() < 0.55 * site.paxMult
     })
-    const airlineId = pick(pool.length ? pool : this.signed)
-    const def = AIRLINES[airlineId]
+    const airlineId = pick(pool.length ? pool : active)
+    const def = this.airline(airlineId)
     const preferred = this.pickAircraftKind(airlineId)
     const af = pickAirframeWithFallback(
       preferred,
@@ -2214,8 +2570,7 @@ export class Game {
         'ok',
       )
     }
-    const free = this.freeStands()
-    const stand = free[0] ?? null
+    const stand = this.assignStand()
     const route = stand ? this.landingRoute(stand) : null
     const busy = this.groundBusy() || !stand || !route
     const start = route?.[0] ?? { c: 1, r: -3 }
@@ -2224,6 +2579,7 @@ export class Game {
       af.paxMax <= 0
         ? 0
         : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
+    const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
       airline: airlineId,
@@ -2262,10 +2618,10 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
-    this.spawnCool = 16
+    this.spawnCool = tilesOf(this.tiles, 'tower').length ? 12 : 16
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
-      `${def.name} ${f.flightNo} · ${af.name} inbound` +
+      `${def.name} ${f.flightNo} · ${af.name} → ${gate}` +
         (busy ? ' — holding for pavement.' : '.'),
       'ok',
     )
@@ -2416,9 +2772,8 @@ export class Game {
     if (!hasTower && this.groundBusy()) return
     const f = this.flights.find((x) => x.phase === 'hold' && (x.craft ?? 'jet') === 'jet')
     if (!f) return
-    const free = this.freeStands()
-    if (!free.length) return
-    const stand = free[0]
+    const stand = this.assignStand()
+    if (!stand) return
     const route = this.landingRoute(stand)
     if (!route) return
     f.stand = stand
@@ -2430,6 +2785,12 @@ export class Game {
     f.z = 8
     f.x = route[0].c - 3
     f.y = route[0].r - 2
+    if (Math.random() < 0.4) {
+      this.pushNews(
+        `${f.flightNo} cleared to ${this.gateLabel(stand)}${hasTower ? ' (tower)' : ''}.`,
+        'ok',
+      )
+    }
   }
 
   followPath(
@@ -2483,7 +2844,7 @@ export class Game {
 
   beginServicing(f: Flight) {
     if (!f.stand) return
-    const airline = AIRLINES[f.airline]
+    const airline = this.airline(f.airline)
     if (!f.posted.landing) {
       f.posted.landing = true
       if (f.kind === 'military') {
@@ -2738,7 +3099,7 @@ export class Game {
     if (!t.flightId) return
     const f = this.flights.find((x) => x.id === t.flightId)
     if (!f) return
-    const airline = AIRLINES[f.airline]
+    const airline = this.airline(f.airline)
     if (t.kind === 'bags' && !f.posted.bags) {
       f.posted.bags = true
       f.waitingOn.bags = false
@@ -2949,6 +3310,8 @@ export class Game {
     this.mxOfferCool = Math.max(0, this.mxOfferCool - step)
     if (this.mxOffer) this.mxOffer.age += step
     this.considerMxOffers()
+    this.tickLayover(step)
+    this.tickAirlineRelations(step)
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
     this.milCool = Math.max(0, this.milCool - step)
@@ -3067,6 +3430,9 @@ export class Game {
           f.phase = 'gone'
           this.flightsDone += 1
           this.paxServed += f.pax
+          if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
+            this.adjustHeat(f.airline, 1.8)
+          }
           this.pushNews(`${f.flightNo} airborne.`, 'ok')
           this.spawnCool = Math.min(this.spawnCool, 8)
         }

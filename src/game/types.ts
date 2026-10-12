@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v10'
+export const SAVE_KEY = 'apron-save-v11'
 
 export type Tile =
   | 'grass'
@@ -46,7 +46,14 @@ export type Difficulty = 'easy' | 'standard'
 export type SiteKind = 'city' | 'factory'
 export type FuelBrand = 'apex' | 'kiln'
 export type CaterBrand = 'skybite' | 'galleyprime'
-export type AirlineId = 'northline' | 'harbor' | 'summit' | 'umazon' | 'upps' | 'exfed'
+/** Premade ids or `proc-xxxx` regional fillers. */
+export type AirlineId = string
+export type AirlinePersona =
+  | 'budget'
+  | 'business'
+  | 'luxury'
+  | 'cargo_night'
+  | 'military_gov'
 /** Ops budget lines — 0–100% of full allocation. */
 export type BudgetKey = 'maintenance' | 'security' | 'cleaning' | 'fire' | 'ambulance'
 export type Weather = 'clear' | 'rain' | 'fog' | 'storm'
@@ -111,6 +118,7 @@ export interface Airline {
   color: string
   stripe: string
   kind: 'pax' | 'cargo'
+  persona: AirlinePersona
   landing: number
   catering: number
   bags: number
@@ -120,6 +128,33 @@ export interface Airline {
   minRep: number
   req: AirlineReq
   blurb: string
+  /** Wants layover-hub deals when hall amenities exist. */
+  likesLayovers: boolean
+  /** How fast heat drops on bad hall outcomes (higher = thinner skin). */
+  heatSensitivity: number
+  procedural?: boolean
+}
+
+export interface LayoverOffer {
+  airline: AirlineId
+  age: number
+  /** Flat fee paid up front when signed. */
+  fee: number
+  /** Sim-seconds the bank of transfer pax stays. */
+  duration: number
+  /** How many transfer guests to drip into the hall. */
+  transferPax: number
+}
+
+export interface LayoverContract {
+  airline: AirlineId
+  endsAt: number
+  remaining: number
+  spawned: number
+  transferPax: number
+  happySum: number
+  samples: number
+  fee: number
 }
 
 export interface FuelContract {
@@ -351,4 +386,8 @@ export interface GameSnapshot {
   runwayCondition?: number
   weather?: Weather
   milAgreement?: boolean
+  extraAirlines?: Airline[]
+  airlineHeat?: Record<string, number>
+  airlineBanUntil?: Record<string, number>
+  layover?: LayoverContract | null
 }

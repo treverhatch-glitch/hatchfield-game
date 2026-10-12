@@ -19,16 +19,17 @@ Open the printed local URL (port **45217**).
 - Left drag pans, right drag orbits, scroll zooms
 - Sign a fuel carrier, buy loads, park the farm on pavement or the pump never posts
 
-See `DESIGN.md` for the longer backlog (heavier runways, helicopters, RCT guests, loans).
+See `DESIGN.md` and `ADDITIONS.md` for the backlog and what already shipped.
 
-New game overwrites the browser save (`apron-save-v1`).
+New game overwrites the browser save (`apron-save-v11`).
 
 ## Loop
 
-1. Lay runway, taxiway, stand (and a hall / snack / bag sort / fuel farm as you can afford).
-2. Northline inbound. Harbor Air unlocks after a meal is sold and you have two stands.
-3. Jet lands → taxis → parks → people and trucks move → money posts for landing, bags, fuel, catering, retail.
-4. Skip a shop and you skip that sale. The landing fee stays.
+1. Buy land → **Starter kit** (or stamp your own field).
+2. Answer the phone — majors + light procedural regionals. Each carrier has a **persona** and a **heat** meter.
+3. Jet lands → assigned gate → trucks/pax move → money posts. Tower raises inbound capacity.
+4. Host a **layover bank** for transfer spend — keep the hall happy or take a short ban + fine.
+5. Hall (RCT needs), budgets/weather/crashes, then IPO/HATCH when ready.
 
 ## Later
 

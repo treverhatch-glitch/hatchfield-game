@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import { AIRFRAMES } from '../game/airframes'
-import { AIRLINES } from '../game/catalog'
 import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
@@ -621,7 +620,7 @@ export class World {
       let mesh = this.jets.get(f.id)
       const helo = f.craft === 'helo'
       if (!mesh) {
-        const a = AIRLINES[f.airline]
+        const a = game.airline(f.airline)
         let color = a.color
         let stripe = a.stripe
         if (f.kind === 'military') {

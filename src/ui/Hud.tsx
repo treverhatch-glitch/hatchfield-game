@@ -1,6 +1,4 @@
 import {
-  AIRLINES,
-  airlineList,
   BUDGET_BLURB,
   BUDGET_LABEL,
   BUILDINGS,
@@ -14,6 +12,7 @@ import {
   MIL_AGREE_COST,
   money,
   PARCEL_COST,
+  personaBlurb,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   ROOMS,
@@ -57,7 +56,7 @@ const TOOLS: Tool[] = [
 
 export function Hud({ game }: { game: Game }) {
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
-  const airline = flight ? AIRLINES[flight.airline] : null
+  const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
   const fit = origin
     ? game.fits.find((f) => f.origin.c === origin.c && f.origin.r === origin.r)
@@ -65,6 +64,15 @@ export function Hud({ game }: { game: Game }) {
   const tip = BUILDINGS.find((b) => b.tool === game.tool)
   const ready = game.readiness()
   const site = game.site ? LAND[game.site] : null
+  const offerAirline = game.offer ? game.airline(game.offer.airline) : null
+  const mxAirline = game.mxOffer ? game.airline(game.mxOffer.airline) : null
+  const layoverAirline = game.layoverOffer
+    ? game.airline(game.layoverOffer.airline)
+    : game.layover
+      ? game.airline(game.layover.airline)
+      : null
+  const holding = game.holdingCount()
+  const freeGates = game.freeStands().length
 
   return (
     <div className="hud">
@@ -78,6 +86,9 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat cash">{money(game.cash)}</div>
         <div className="stat">{formatClock(game.clock)}</div>
         <div className="stat">{game.signed.length} airlines</div>
+        <div className="stat" title="Free stands / jets holding">
+          Gate {freeGates} · Hold {holding}
+        </div>
         <div className="stat">Sec {ready.security}</div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
         <div className="stat" title="Runway condition / longest strip">
@@ -119,11 +130,16 @@ export function Hud({ game }: { game: Game }) {
         {game.view === 'apron' ? 'Apron · build outside' : 'Hall · furnish inside'}
       </div>
 
-      {game.offer ? (
+      {game.offer && offerAirline ? (
         <div className="offer">
           <div>
-            <strong>{AIRLINES[game.offer.airline].name} wants a contract</strong>
-            <p>{AIRLINES[game.offer.airline].blurb}</p>
+            <strong>
+              {offerAirline.name} wants a contract
+              {offerAirline.procedural ? ' · regional' : ''}
+            </strong>
+            <p>
+              {personaBlurb(offerAirline.persona)} · {offerAirline.blurb}
+            </p>
           </div>
           <div className="row">
             <button type="button" className="on" onClick={() => game.acceptOffer()}>
@@ -136,10 +152,49 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
-      {game.mxOffer ? (
+      {game.layoverOffer && layoverAirline ? (
+        <div className="offer layover">
+          <div>
+            <strong>{layoverAirline.name} layover bank</strong>
+            <p>
+              {money(game.layoverOffer.fee)} up front · {game.layoverOffer.transferPax}{' '}
+              transfers · ~{game.layoverOffer.duration}s. Keep heat above the ban line or
+              they fine you.
+            </p>
+          </div>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.acceptLayover()}>
+              Host layover
+            </button>
+            <button type="button" onClick={() => game.declineLayover()}>
+              Decline
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {game.layover && !game.layoverOffer ? (
+        <div className="offer layover live">
+          <div>
+            <strong>
+              {game.airline(game.layover.airline).name} layover live
+            </strong>
+            <p>
+              {game.layover.spawned}/{game.layover.transferPax} transfers ·{' '}
+              {Math.ceil(game.layover.remaining)}s left · heat{' '}
+              {Math.round(game.heatOf(game.layover.airline))}
+              {game.layover.samples
+                ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}`
+                : ''}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {game.mxOffer && mxAirline ? (
         <div className="offer mx">
           <div>
-            <strong>{AIRLINES[game.mxOffer.airline].name} wants line MX</strong>
+            <strong>{mxAirline.name} wants line MX</strong>
             <p>
               Hangar turnaround fee {money(game.mxOffer.payout)} per visit. Needs funded
               mechanics.
@@ -226,7 +281,7 @@ export function Hud({ game }: { game: Game }) {
           <p className="muted">
             {game.mechanics} mechanics
             {game.mxSigned.length
-              ? ` · MX: ${game.mxSigned.map((id) => AIRLINES[id].name).join(', ')}`
+              ? ` · MX: ${game.mxSigned.map((id) => game.airline(id).name).join(', ')}`
               : ' · no airline MX yet (need hangar + mechanic)'}
           </p>
           {game.milAgreement ? (
@@ -353,6 +408,9 @@ export function Hud({ game }: { game: Game }) {
                 {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
                 {labelPhase(flight.phase, flight.craft)}
                 {flight.pax > 0 ? ` · ${flight.pax} pax` : ''}
+                {(flight.craft ?? 'jet') === 'jet'
+                  ? ` · ${game.gateLabel(flight.stand)}`
+                  : ''}
               </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
@@ -377,24 +435,47 @@ export function Hud({ game }: { game: Game }) {
         <section>
           <h2>Airline desk</h2>
           <p className="muted">
-            Signed: {game.signed.length ? game.signed.map((id) => AIRLINES[id].name).join(', ') : 'none'}
+            Signed:{' '}
+            {game.signed.length
+              ? game.signed.map((id) => game.airline(id).name).join(', ')
+              : 'none'}
+            {ready.tower
+              ? ` · tower queues ${game.maxInbound()} inbound`
+              : ' · no tower (single approach)'}
           </p>
           <ul className="airlines">
-            {airlineList().map((a) => {
+            {game.allAirlines().map((a) => {
               const signed = game.signed.includes(a.id)
               const ok = game.meetsReq(a.id)
               const miss = game.missingReq(a.id)
+              const banned = game.isBanned(a.id)
+              const heat = Math.round(game.heatOf(a.id))
               return (
                 <li key={a.id}>
                   <b style={{ color: a.color }}>
-                    {a.name} {signed ? '· signed' : ok ? '· ready' : ''}
+                    {a.name}{' '}
+                    <span className="muted">
+                      {personaBlurb(a.persona)}
+                      {a.procedural ? ' · proc' : ''}
+                    </span>{' '}
+                    {banned
+                      ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
+                      : signed
+                        ? `· heat ${heat}`
+                        : ok
+                          ? '· ready'
+                          : ''}
                   </b>
                   <span className="muted">
-                    {signed
-                      ? a.kind === 'cargo'
-                        ? 'Freighters scheduled'
-                        : 'Pax flights scheduled'
-                      : miss.slice(0, 4).join(', ') || 'Waiting to call'}
+                    {banned
+                      ? 'Suspended after a bad layover / hall'
+                      : signed
+                        ? a.kind === 'cargo'
+                          ? 'Freighters scheduled'
+                          : a.likesLayovers
+                            ? 'Pax + may offer layovers'
+                            : 'Pax flights scheduled'
+                        : miss.slice(0, 4).join(', ') || 'Waiting to call'}
                   </span>
                 </li>
               )
@@ -518,8 +599,15 @@ export function Hud({ game }: { game: Game }) {
                     ? `${tip.blurb} ${money(tip.cost)}`
                     : 'Clear refunds 40%.'}
           {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
-          {game.hallGuests.length ? ` · ${game.hallGuests.length} in hall` : ''}
+          {game.hallGuests.length
+            ? ` · ${game.hallGuests.length} in hall${
+                game.hallGuests.some((g) => g.transfer)
+                  ? ` (${game.hallGuests.filter((g) => g.transfer).length} transfer)`
+                  : ''
+              }`
+            : ''}
           {game.maxWear() >= 25 ? ` · wear ${Math.round(game.maxWear())}` : ''}
+          {holding ? ` · ${holding} holding` : ''}
         </p>
       </div>
     </div>
