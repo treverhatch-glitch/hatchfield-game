@@ -19,6 +19,7 @@ export type HallNode =
   | 'lounge'
   | 'gate'
   | 'claim'
+  | 'info'
   | 'exit'
 
 export type PaxTag = 'budget' | 'premium'
@@ -71,6 +72,9 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['claim', 'food'],
   ['claim', 'shop'],
   ['claim', 'bathroom'],
+  ['entrance', 'info'],
+  ['checkin', 'info'],
+  ['security', 'info'],
   ['exit', 'entrance'],
 ]
 
@@ -84,6 +88,7 @@ export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }>
   lounge: { x: 0.72, y: 0.68, label: 'Lounge' },
   gate: { x: 0.9, y: 0.28, label: 'Gate' },
   claim: { x: 0.48, y: 0.78, label: 'Bag claim' },
+  info: { x: 0.22, y: 0.48, label: 'Info' },
   exit: { x: 0.12, y: 0.82, label: 'Landside' },
 }
 
@@ -209,7 +214,7 @@ export function openNodesFromRooms(rooms: {
   lounge: number
   bathroom: number
 }): Set<HallNode> {
-  const open = new Set<HallNode>(['entrance', 'exit'])
+  const open = new Set<HallNode>(['entrance', 'exit', 'info'])
   if (rooms.checkin > 0 || rooms.bagdrop > 0) open.add('checkin')
   if (rooms.security > 0) open.add('security')
   if (rooms.bathroom > 0) open.add('bathroom')

@@ -5,10 +5,14 @@ import {
   CATER,
   FUEL,
   LAND,
+  LOAN_PRINCIPAL,
   money,
+  PARCEL_COST,
   PREMADE_TERMINAL_COST,
+  RAIL_CITY_COST,
   ROOMS,
   RUNWAY_PREFAB_COST,
+  STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
 import { formatClock, type Game } from '../game/sim'
@@ -104,6 +108,55 @@ export function Hud({ game }: { game: Game }) {
       ) : null}
 
       <aside className="side">
+        <section>
+          <h2>Build & bank</h2>
+          <button type="button" className="wide on" onClick={() => game.buildStarterKit()}>
+            Starter kit · {money(STARTER_KIT_COST)}
+          </button>
+          <p className="muted">
+            Drops a Northline-ready regional field + Apex + SkyBite. Empty plot only.
+          </p>
+          <div className="row">
+            <button type="button" onClick={() => game.takeLoan()}>
+              Loan {money(LOAN_PRINCIPAL)}
+            </button>
+            <button type="button" onClick={() => game.repayLoan()}>
+              Pay loan
+            </button>
+          </div>
+          <div className="row">
+            <button type="button" onClick={() => game.buyParcel()}>
+              Parcel {money(PARCEL_COST * game.parcels)}
+            </button>
+            <button type="button" onClick={() => game.investRail()}>
+              City rail {money(RAIL_CITY_COST)}
+            </button>
+          </div>
+          <p className="muted">
+            Loan owed {money(game.loanBalance)} · parcels {game.parcels}
+            {game.railLinked ? ' · rail linked' : ''}
+          </p>
+        </section>
+
+        <section>
+          <h2>Passenger flow</h2>
+          <p className="muted">
+            Apron walkers: {game.people.filter((p) => p.job === 'arrive' || p.job === 'board').length}
+            {' · '}Hall: {game.hallGuests.length}
+          </p>
+          <ul className="airlines">
+            {game.people
+              .filter((p) => p.job === 'arrive' || p.job === 'board')
+              .slice(0, 6)
+              .map((p) => (
+                <li key={p.id}>
+                  <b>{p.job === 'arrive' ? 'Arrival' : 'Departure'}</b>
+                  <span className="muted">{p.label}</span>
+                </li>
+              ))}
+          </ul>
+        </section>
+
         <section>
           <h2>Flight</h2>
           {flight && airline ? (

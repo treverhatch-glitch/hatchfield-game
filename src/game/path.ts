@@ -56,7 +56,8 @@ export function walkableFor(
     tile === 'snack' ||
     tile === 'bags' ||
     tile === 'road' ||
-    tile === 'police'
+    tile === 'police' ||
+    tile === 'cargo'
   )
 }
 

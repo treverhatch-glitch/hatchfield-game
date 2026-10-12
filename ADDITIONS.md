@@ -32,14 +32,21 @@ We copied the *spirit*:
 
 - **Apron** (3D AT3 field) and **Hall** (2D terminal crowd) toggle — same money, different game.
 
+## Added in the continued loop
+
+- **Starter kit** — one-click Northline-ready regional field + Apex + SkyBite (connected pavement for walking).
+- **Loans** with principal, fee, and ticking interest.
+- **Parcel buys** (soft expansion counter + reputation).
+- **City rail investment** — city stubs a west-edge link; reputation drip.
+- **Airline minRep gates** — Summit / EXFED ignore low reputation.
+- **Info desk** in the hall graph (RCT “park map” longer lookahead).
+- **Visible multi-stop passenger itineraries** on the apron: arrivals plane→bags→food/shop→road exit; departures road→hall→gate→plane. Hall guests chain gate→claim→exit / entrance→check-in→security→gate.
+
 ## Still later (on your list, not finished)
 
-- Parcel expansion after land buy
-- City-funded rail/subway to map edge
-- Helicopter pads / heavy runway classes
+- Heavier runway classes / helicopters
 - Full custom terminal wall painting
 - Bomb/threat minigame beyond fines
 - Wear from budget crowds
 - Golf / waterfall / gaming dens
-- Loans
 - Godot Steam rebuild

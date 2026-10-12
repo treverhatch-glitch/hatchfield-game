@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v5'
+export const SAVE_KEY = 'apron-save-v6'
 
 export type Tile =
   | 'grass'
@@ -103,6 +103,8 @@ export interface Airline {
   bags: number
   paxMin: number
   paxMax: number
+  /** Soft gate — they ignore you below this reputation. */
+  minRep: number
   req: AirlineReq
   blurb: string
 }
@@ -197,6 +199,17 @@ export interface Truck {
   patrol: boolean
 }
 
+export type PaxStop =
+  | 'bags'
+  | 'claim'
+  | 'food'
+  | 'shop'
+  | 'exit'
+  | 'checkin'
+  | 'security'
+  | 'gate'
+  | 'plane'
+
 export interface Person {
   id: string
   flightId: string
@@ -207,6 +220,9 @@ export interface Person {
   t: number
   color: string
   job: 'arrive' | 'board' | 'staff' | 'patrol'
+  /** Ordered stops still ahead (plane→bags→food→exit or landside→gate→plane). */
+  itinerary: PaxStop[]
+  label: string
   wantBag: boolean
   wantFood: boolean
   wantGift: boolean
@@ -246,4 +262,7 @@ export interface GameSnapshot {
   revenue: number
   securityIncidents: number
   reputation: number
+  loanBalance: number
+  parcels: number
+  railLinked: boolean
 }
