@@ -1,5 +1,5 @@
-export const SIZE = 28
-export const SAVE_KEY = 'apron-save-v3'
+export const SIZE = 32
+export const SAVE_KEY = 'apron-save-v5'
 
 export type Tile =
   | 'grass'
@@ -10,6 +10,12 @@ export type Tile =
   | 'snack'
   | 'bags'
   | 'fuel'
+  | 'fire'
+  | 'police'
+  | 'cargo'
+  | 'road'
+  | 'tower'
+  | 'hangar'
 
 export type Tool =
   | 'pan'
@@ -17,15 +23,24 @@ export type Tool =
   | 'taxi'
   | 'stand'
   | 'terminal'
+  | 'premade'
   | 'snack'
   | 'bags'
   | 'fuel'
+  | 'fire'
+  | 'police'
+  | 'cargo'
+  | 'road'
+  | 'tower'
+  | 'hangar'
   | 'clear'
 
 export type Speed = 0 | 1 | 3
 export type Difficulty = 'easy' | 'standard'
+export type SiteKind = 'city' | 'factory'
 export type FuelBrand = 'apex' | 'kiln'
-export type AirlineId = 'northline' | 'harbor'
+export type CaterBrand = 'skybite' | 'galleyprime'
+export type AirlineId = 'northline' | 'harbor' | 'summit' | 'umazon' | 'upps' | 'exfed'
 
 export type Phase =
   | 'hold'
@@ -47,19 +62,49 @@ export type RoomId =
   | 'food'
   | 'souvenir'
   | 'bagdrop'
+  | 'lounge'
+  | 'bathroom'
 
 export type Vec = { c: number; r: number }
+
+export interface LandSite {
+  id: SiteKind
+  name: string
+  blurb: string
+  cost: number
+  paxMult: number
+  cargoMult: number
+}
+
+export interface AirlineReq {
+  stands: number
+  fuelContract: boolean
+  fuelFarm: boolean
+  fire: boolean
+  police: boolean
+  terminal: boolean
+  security: number
+  bags: boolean
+  snack: boolean
+  catering: boolean
+  cargo: boolean
+  road: boolean
+  tower: boolean
+}
 
 export interface Airline {
   id: AirlineId
   name: string
   color: string
   stripe: string
+  kind: 'pax' | 'cargo'
   landing: number
   catering: number
   bags: number
   paxMin: number
   paxMax: number
+  req: AirlineReq
+  blurb: string
 }
 
 export interface FuelContract {
@@ -70,8 +115,17 @@ export interface FuelContract {
   pump: number
 }
 
+export interface CaterContract {
+  id: CaterBrand
+  name: string
+  sign: number
+  /** Multiplier on airline catering fee when the truck completes. */
+  payoutMult: number
+  blurb: string
+}
+
 export interface BuildDef {
-  tool: Exclude<Tool, 'pan' | 'clear' | 'runway'>
+  tool: Exclude<Tool, 'pan' | 'clear' | 'runway' | 'premade'>
   tile: Tile
   name: string
   cost: number
@@ -85,11 +139,22 @@ export interface RoomDef {
   blurb: string
 }
 
+export interface ContractOffer {
+  airline: AirlineId
+  age: number
+}
+
+export interface SignedContract {
+  airline: AirlineId
+  day: number
+}
+
 export interface Flight {
   id: string
   airline: AirlineId
   flightNo: string
   pax: number
+  cargo: boolean
   phase: Phase
   stand: Vec | null
   x: number
@@ -120,8 +185,8 @@ export interface Flight {
 
 export interface Truck {
   id: string
-  kind: 'fuel' | 'bags' | 'catering'
-  flightId: string
+  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police'
+  flightId: string | null
   x: number
   y: number
   path: Vec[]
@@ -129,6 +194,7 @@ export interface Truck {
   t: number
   returning: boolean
   dwell: number
+  patrol: boolean
 }
 
 export interface Person {
@@ -140,7 +206,7 @@ export interface Person {
   seg: number
   t: number
   color: string
-  job: 'arrive' | 'board' | 'staff'
+  job: 'arrive' | 'board' | 'staff' | 'patrol'
   wantBag: boolean
   wantFood: boolean
   wantGift: boolean
@@ -159,6 +225,7 @@ export interface News {
 export interface TerminalFit {
   origin: Vec
   rooms: Record<RoomId, number>
+  premade: boolean
 }
 
 export interface GameSnapshot {
@@ -166,13 +233,17 @@ export interface GameSnapshot {
   terminalFits: TerminalFit[]
   cash: number
   difficulty: Difficulty
+  site: SiteKind | null
   clock: number
   speed: Speed
   fuelBrand: FuelBrand | null
   fuelLoads: number
+  caterBrand: CaterBrand | null
   mealSold: boolean
-  harborUnlocked: boolean
+  signed: AirlineId[]
   flightsDone: number
   paxServed: number
   revenue: number
+  securityIncidents: number
+  reputation: number
 }

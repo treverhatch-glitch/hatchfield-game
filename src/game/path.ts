@@ -41,7 +41,12 @@ export function walkableFor(
       tile === 'fuel' ||
       tile === 'bags' ||
       tile === 'snack' ||
-      tile === 'terminal'
+      tile === 'terminal' ||
+      tile === 'fire' ||
+      tile === 'police' ||
+      tile === 'cargo' ||
+      tile === 'road' ||
+      tile === 'hangar'
     )
   }
   return (
@@ -49,7 +54,9 @@ export function walkableFor(
     tile === 'stand' ||
     tile === 'terminal' ||
     tile === 'snack' ||
-    tile === 'bags'
+    tile === 'bags' ||
+    tile === 'road' ||
+    tile === 'police'
   )
 }
 
@@ -69,7 +76,6 @@ export function astar(
   const open: string[] = [startK]
   const came = new Map<string, string>()
   const g = new Map<string, number>([[startK, 0]])
-
   const h = (c: number, r: number) => Math.abs(c - goal.c) + Math.abs(r - goal.r)
 
   while (open.length) {
@@ -116,8 +122,8 @@ export function nearestPath(
   kind: 'jet' | 'truck' | 'person',
 ): Vec[] | null {
   let best: Vec[] | null = null
-  for (const g of goals) {
-    const p = astar(tiles, start, g, kind)
+  for (const goal of goals) {
+    const p = astar(tiles, start, goal, kind)
     if (p && (!best || p.length < best.length)) best = p
   }
   return best
@@ -134,25 +140,22 @@ export function tilesOf(tiles: Tile[][], type: Tile | Tile[]): Vec[] {
   return out
 }
 
-export function adjacent(a: Vec, b: Vec): boolean {
-  return Math.abs(a.c - b.c) + Math.abs(a.r - b.r) === 1
+export function farmBesidePavement(tiles: Tile[][], farm: Vec): boolean {
+  return neighbors(farm.c, farm.r).some((n) => {
+    const t = tiles[n.r][n.c]
+    return t === 'taxi' || t === 'stand' || t === 'runway' || t === 'road'
+  })
 }
 
-/** Straight runway strips of length >= min, axis-aligned. */
 export function runwayStrips(tiles: Tile[][], min: number): Vec[][] {
   const strips: Vec[][] = []
-  const seen = new Set<string>()
-
   for (let r = 0; r < SIZE; r++) {
     let run: Vec[] = []
     for (let c = 0; c <= SIZE; c++) {
       const isRw = c < SIZE && tiles[r][c] === 'runway'
       if (isRw) run.push({ c, r })
       if (!isRw || c === SIZE) {
-        if (run.length >= min) {
-          strips.push(run)
-          for (const t of run) seen.add(key(t.c, t.r))
-        }
+        if (run.length >= min) strips.push(run)
         run = []
       }
     }
@@ -161,13 +164,7 @@ export function runwayStrips(tiles: Tile[][], min: number): Vec[][] {
     let run: Vec[] = []
     for (let r = 0; r <= SIZE; r++) {
       const isRw = r < SIZE && tiles[r][c] === 'runway'
-      if (isRw) {
-        if (!seen.has(key(c, r))) run.push({ c, r })
-        else {
-          if (run.length >= min) strips.push(run)
-          run = []
-        }
-      }
+      if (isRw) run.push({ c, r })
       if (!isRw || r === SIZE) {
         if (run.length >= min) strips.push(run)
         run = []
@@ -175,11 +172,4 @@ export function runwayStrips(tiles: Tile[][], min: number): Vec[][] {
     }
   }
   return strips
-}
-
-export function farmBesidePavement(tiles: Tile[][], farm: Vec): boolean {
-  return neighbors(farm.c, farm.r).some((n) => {
-    const t = tiles[n.r][n.c]
-    return t === 'taxi' || t === 'stand' || t === 'runway'
-  })
 }
