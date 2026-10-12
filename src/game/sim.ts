@@ -39,6 +39,8 @@ import {
   RP_PER_50_PAX,
   RP_PER_FLIGHT,
   TANKER_FEE,
+  TANKER_MX_FEE,
+  EMERGENCY_FAIL_FINE,
   LAND,
   LAYOVER_BAN_FINE,
   LAYOVER_BAN_SECONDS,
@@ -143,6 +145,7 @@ import type {
   CaterBrand,
   ContractOffer,
   Difficulty,
+  EmergencyKind,
   Flight,
   FuelBrand,
   GameSnapshot,
@@ -5394,6 +5397,202 @@ export class Game {
     this.emit()
   }
 
+  /** What the field is missing for this emergency ask (null = can host). */
+  emergencyHostGap(e: PendingEmergency): string | null {
+    const n = e.needs
+    if (n.minRunway > 0 && this.longestRunway() < n.minRunway) {
+      return `strip only ${this.longestRunway()}c (need ${n.minRunway}c)`
+    }
+    if (!runwayStrips(this.tiles, Math.max(MIN_RUNWAY, n.minRunway || MIN_RUNWAY)).length) {
+      return 'no usable runway'
+    }
+    if (n.stand && !this.freeStands().length) return 'no free stand'
+    if (n.fire && !tilesOf(this.tiles, 'fire').length) return 'no ARFF / fire station'
+    if (n.fuel && !tilesOf(this.tiles, 'fuel').length) return 'no fuel farm'
+    if (n.hangar && !tilesOf(this.tiles, 'hangar').length) return 'no hangar'
+    if (this.groundBusy() && !this.freeStands().length) return 'pavement jammed'
+    return null
+  }
+
+  canHostEmergency(e: PendingEmergency): boolean {
+    return this.emergencyHostGap(e) == null
+  }
+
+  emergencyNeedsLine(e: PendingEmergency): string {
+    const bits: string[] = []
+    if (e.needs.stand) bits.push('stand')
+    if (e.needs.fire) bits.push('ARFF')
+    if (e.needs.fuel) bits.push('fuel')
+    if (e.needs.hangar) bits.push('hangar')
+    if (e.needs.minRunway > 0) bits.push(`${e.needs.minRunway}c strip`)
+    return bits.length ? bits.join(' · ') : 'clear pad'
+  }
+
+  private failEmergencyHost(e: PendingEmergency, why: string) {
+    this.charge(EMERGENCY_FAIL_FINE)
+    this.reputation = Math.max(0, this.reputation - 7)
+    this.runwayCondition = Math.max(20, this.runwayCondition - 3)
+    // Chaos — next fire risk sooner; carriers lose trust across the board.
+    this.fireIncidentCool = Math.min(this.fireIncidentCool, 12)
+    for (const id of this.signed) this.adjustHeat(id, -2.8)
+    if (e.kind === 'divert' && e.airline) this.adjustHeat(e.airline, -7)
+    if (this.public) {
+      this.shockStock(
+        `Failed emergency host — ${why}.`,
+        this.public ? 0.78 : 1,
+        Math.round(EMERGENCY_FAIL_FINE * 0.4),
+      )
+    } else {
+      this.pushNews(
+        `FAILED HOST — ${why}. Fine ${moneyLeft(EMERGENCY_FAIL_FINE)}; carriers cool on us.`,
+        'bad',
+      )
+    }
+  }
+
+  /** One-shot divert landing — not a banked timetable slot. */
+  private spawnEmergencyDivert(airline: AirlineId): boolean {
+    if (this.isBanned(airline)) return false
+    if (this.groundBusy() && !this.assignStand()) return false
+    const stand = this.assignStand()
+    const route = stand ? this.landingRoute(stand) : null
+    if (!stand || !route) return false
+    const preferred = this.pickAircraftKind(airline)
+    const af = pickAirframeWithFallback(
+      preferred,
+      this.longestRunway(),
+      this.airline(airline).kind === 'cargo',
+      this.researchUnlocked,
+    )
+    if (!af) return false
+    this.flightSeq += 1
+    const a = this.airline(airline)
+    const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
+    const pax =
+      af.paxMax <= 0
+        ? 0
+        : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
+    const start = route[0]
+    const f: Flight = {
+      id: uid('div'),
+      airline,
+      flightNo: call,
+      airframeId: af.id,
+      airframeName: af.name,
+      pax,
+      cargo: a.kind === 'cargo' || af.kind === 'freighter',
+      craft: 'jet',
+      kind: af.kind,
+      phase: 'approach',
+      stand,
+      x: start.c - 4,
+      y: start.r - 2,
+      z: 9,
+      heading: 0,
+      path: route,
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: {
+        landing: false,
+        bags: false,
+        bagsLoad: false,
+        fuel: false,
+        catering: false,
+        bagDrop: false,
+      },
+      waitingOn: {
+        bags: false,
+        bagsLoad: false,
+        fuel: false,
+        catering: false,
+        paxOut: 0,
+        paxIn: 0,
+      },
+      phaseTime: 0,
+      ledger: [],
+    }
+    this.flights.push(f)
+    this.noteCraft(af.kind)
+    this.selectedFlight = this.selectedFlight ?? f.id
+    this.pushNews(
+      `DIVERT ${call} · ${af.name} inbound now → ${this.gateLabel(stand)}.`,
+      'ok',
+    )
+    return true
+  }
+
+  /** Firefighter tanker / tanker+MX — quick-turn special landing. */
+  private spawnEmergencyTanker(mx: boolean): boolean {
+    if (this.groundBusy() && !this.assignStand()) return false
+    const stand = this.assignStand()
+    const route = stand ? this.landingRoute(stand) : null
+    if (!stand || !route) return false
+    const af =
+      pickAirframe('air_ambulance', this.longestRunway(), this.researchUnlocked) ??
+      AIRFRAMES.citation ??
+      AIRFRAMES.pc12
+    if (!af) return false
+    this.flightSeq += 1
+    const call = mx ? `TNKMX${this.flightSeq}` : `TNKR${this.flightSeq}`
+    const start = route[0]
+    const f: Flight = {
+      id: uid('tnk'),
+      airline: this.signed[0] ?? 'harbor',
+      flightNo: call,
+      airframeId: af.id,
+      airframeName: af.name,
+      pax: 0,
+      cargo: false,
+      craft: 'jet',
+      kind: 'air_ambulance',
+      phase: 'approach',
+      stand,
+      x: start.c - 3,
+      y: start.r - 2,
+      z: 8,
+      heading: 0,
+      path: route,
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: {
+        landing: false,
+        bags: false,
+        bagsLoad: false,
+        fuel: false,
+        catering: false,
+        bagDrop: false,
+      },
+      waitingOn: {
+        bags: false,
+        bagsLoad: false,
+        fuel: false,
+        catering: false,
+        paxOut: 0,
+        paxIn: 0,
+      },
+      phaseTime: 0,
+      ledger: [],
+    }
+    this.flights.push(f)
+    this.noteCraft('air_ambulance')
+    this.selectedFlight = this.selectedFlight ?? f.id
+    this.runwayCondition = Math.min(100, this.runwayCondition + (mx ? 5 : 3))
+    this.fireIncidentCool = Math.max(this.fireIncidentCool, mx ? 55 : 40)
+    if (mx && this.mechanics > 0 && tilesOf(this.tiles, 'hangar').length) {
+      const mxPay = 900 + this.mechanics * 180
+      this.earn(mxPay, `${call} tanker line MX`)
+    }
+    this.pushNews(
+      mx
+        ? `${call} tanker + MX inbound → ${this.gateLabel(stand)}. Hangar clearing a bay.`
+        : `${call} firefighter tanker inbound → ${this.gateLabel(stand)}.`,
+      'ok',
+    )
+    return true
+  }
+
   tickEmergencies(dt: number) {
     if (this.pendingEmergency) {
       this.pendingEmergency.age += dt
@@ -5404,50 +5603,134 @@ export class Game {
     if (this.pendingThreat) return
     this.emergencyCool -= dt
     if (this.emergencyCool > 0 || !this.site) return
-    this.emergencyCool = 55 + Math.random() * 45
 
     const stormy = this.weather === 'storm' || this.weather === 'fog'
+    const storm = this.weather === 'storm'
     const fireThin = this.budgets.fire < 45
-    const wantDivert = stormy && this.signed.length > 0 && Math.random() < 0.55
-    const wantTanker =
-      (this.weather === 'storm' || fireThin) &&
-      tilesOf(this.tiles, 'fire').length > 0 &&
-      Math.random() < 0.4
+    // Storms stack asks; clear days still roll a thin random chance.
+    this.emergencyCool = stormy
+      ? 32 + Math.random() * 28
+      : 55 + Math.random() * 50
 
-    if (!wantDivert && !wantTanker) return
-    if (wantTanker && (!wantDivert || Math.random() < 0.45)) {
+    const roll = Math.random()
+    const pDivert =
+      (storm ? 0.42 : this.weather === 'fog' ? 0.38 : 0.06) +
+      (this.signed.length ? 0 : -1)
+    const pTanker =
+      (storm ? 0.28 : fireThin ? 0.22 : 0.05) +
+      (tilesOf(this.tiles, 'fire').length ? 0 : -0.15)
+    const pTankerMx =
+      (storm ? 0.18 : 0.04) +
+      (tilesOf(this.tiles, 'hangar').length ? 0.08 : -0.08) +
+      (fireThin ? 0.06 : 0)
+
+    let kind: EmergencyKind | null = null
+    // Weighted pick among kinds that rolled; weather can stack multiple hits.
+    const hits: { k: EmergencyKind; w: number }[] = []
+    if (this.signed.some((id) => !this.isBanned(id)) && roll < pDivert) {
+      hits.push({ k: 'divert', w: pDivert })
+    }
+    if (roll < pTanker + 0.12 && pTanker > 0) hits.push({ k: 'tanker', w: Math.max(0.01, pTanker) })
+    if (roll < pTankerMx + 0.08 && pTankerMx > 0) {
+      hits.push({ k: 'tanker_mx', w: Math.max(0.01, pTankerMx) })
+    }
+    // Pure random spark — even calm days get occasional mutual-aid drama.
+    if (!hits.length && Math.random() < (stormy ? 0.35 : 0.08)) {
+      const pool: EmergencyKind[] = ['tanker']
+      if (this.signed.some((id) => !this.isBanned(id))) pool.push('divert')
+      if (tilesOf(this.tiles, 'hangar').length) pool.push('tanker_mx')
+      kind = pick(pool)
+    } else if (hits.length) {
+      const sum = hits.reduce((s, h) => s + h.w, 0)
+      let r = Math.random() * sum
+      kind = hits[hits.length - 1].k
+      for (const h of hits) {
+        r -= h.w
+        if (r <= 0) {
+          kind = h.k
+          break
+        }
+      }
+    }
+    if (!kind) return
+
+    const deadline = storm ? 16 : stormy ? 18 : 22
+    if (kind === 'divert') {
+      const pool = this.signed.filter((id) => !this.isBanned(id))
+      const airline = pool.length ? pick(pool) : null
+      if (!airline) return
+      const fee =
+        DIVERT_FEE_MIN + Math.floor(Math.random() * (DIVERT_FEE_MAX - DIVERT_FEE_MIN))
+      const name = this.airline(airline).name
+      const minRw = Math.max(MIN_RUNWAY, Math.min(14, this.longestRunway() || MIN_RUNWAY))
+      const needs = {
+        stand: true,
+        fire: true,
+        fuel: false,
+        hangar: false,
+        minRunway: minRw,
+      }
+      const weatherBit =
+        this.weather === 'storm'
+          ? 'Storm closed their dest'
+          : this.weather === 'fog'
+            ? 'Fog diverted them off the airway'
+            : 'Weather / ATC divert'
+      this.pendingEmergency = {
+        id: uid('emg'),
+        kind: 'divert',
+        blurb: `${name} divert inbound — ${weatherBit.toLowerCase()}. One-time landing for ${moneyLeft(fee)}. Need stand + ARFF.`,
+        fee,
+        age: 0,
+        deadline,
+        airline,
+        needs,
+      }
+    } else if (kind === 'tanker_mx') {
+      this.pendingEmergency = {
+        id: uid('emg'),
+        kind: 'tanker_mx',
+        blurb:
+          'Mutual-aid tanker needs a pad, ARFF handoff, fuel top-off, and a hangar bay for line MX. Host or the region talks.',
+        fee: TANKER_MX_FEE,
+        age: 0,
+        deadline: deadline + 2,
+        airline: null,
+        needs: {
+          stand: true,
+          fire: true,
+          fuel: true,
+          hangar: true,
+          minRunway: MIN_RUNWAY,
+        },
+      }
+    } else {
       this.pendingEmergency = {
         id: uid('emg'),
         kind: 'tanker',
         blurb:
-          'Mutual-aid firefighter tanker needs a pad and ARFF handoff. Accept for a hosting fee — refuse and neighbors talk.',
+          'Mutual-aid firefighter tanker needs a pad and ARFF handoff. One-time landing — refuse and neighbors talk.',
         fee: TANKER_FEE,
         age: 0,
-        deadline: 22,
+        deadline,
         airline: null,
-      }
-    } else {
-      const pool = this.signed.filter((id) => !this.isBanned(id))
-      const airline = pool.length ? pick(pool) : null
-      const fee =
-        DIVERT_FEE_MIN + Math.floor(Math.random() * (DIVERT_FEE_MAX - DIVERT_FEE_MIN))
-      const name = airline ? this.airline(airline).name : 'A regional'
-      this.pendingEmergency = {
-        id: uid('emg'),
-        kind: 'divert',
-        blurb: `${name} divert inbound — weather closed their dest. Host for ${moneyLeft(fee)} or eat the heat.`,
-        fee,
-        age: 0,
-        deadline: 20,
-        airline,
+        needs: {
+          stand: true,
+          fire: true,
+          fuel: false,
+          hangar: false,
+          minRunway: MIN_RUNWAY,
+        },
       }
     }
-    this.pushNews(
-      this.pendingEmergency.kind === 'tanker'
-        ? 'EMERGENCY ASK — firefighter tanker on the horn.'
-        : 'EMERGENCY ASK — weather divert wants a stand.',
-      'bad',
-    )
+
+    const label =
+      this.pendingEmergency.kind === 'divert'
+        ? 'EMERGENCY ASK — weather divert wants a one-time landing.'
+        : this.pendingEmergency.kind === 'tanker_mx'
+          ? 'EMERGENCY ASK — tanker + hangar MX on the horn.'
+          : 'EMERGENCY ASK — firefighter tanker on the horn.'
+    this.pushNews(label, 'bad')
     this.emit()
   }
 
@@ -5455,31 +5738,55 @@ export class Game {
     const e = this.pendingEmergency
     if (!e) return
     this.pendingEmergency = null
-    this.emergencyCool = 60 + Math.random() * 40
+    this.emergencyCool = 55 + Math.random() * 45
 
     if (choice === 'accept') {
-      this.earn(e.fee, e.kind === 'tanker' ? 'Tanker host fee' : 'Divert host fee')
-      this.reputation = Math.min(100, this.reputation + 2)
+      const gap = this.emergencyHostGap(e)
+      if (gap) {
+        this.failEmergencyHost(e, gap)
+        this.emit()
+        return
+      }
+
+      // Spawn the one-time landing first — fee only if metal actually arrives.
+      let spawned = false
       if (e.kind === 'divert' && e.airline) {
-        this.adjustHeat(e.airline, 6)
-        // Force a quick inbound if stands exist.
-        if (!this.isBanned(e.airline)) {
-          this.addManualSlot(e.airline, 10)
-          const slot = this.openSchedule().find(
-            (s) => s.airline === e.airline && s.manual && s.eta - this.clock <= 12,
-          )
-          if (slot) slot.delayReason = 'Weather divert'
+        spawned = this.spawnEmergencyDivert(e.airline)
+      } else if (e.kind === 'tanker_mx') {
+        spawned = this.spawnEmergencyTanker(true)
+      } else {
+        spawned = this.spawnEmergencyTanker(false)
+      }
+
+      if (!spawned) {
+        this.failEmergencyHost(e, 'could not clear a landing path')
+        this.emit()
+        return
+      }
+
+      const feeLabel =
+        e.kind === 'divert'
+          ? 'Divert host fee'
+          : e.kind === 'tanker_mx'
+            ? 'Tanker+MX host fee'
+            : 'Tanker host fee'
+      this.earn(e.fee, feeLabel)
+      this.reputation = Math.min(100, this.reputation + (e.kind === 'tanker_mx' ? 3 : 2))
+      if (e.kind === 'divert' && e.airline) {
+        this.adjustHeat(e.airline, 7)
+        for (const id of this.signed) {
+          if (id !== e.airline) this.adjustHeat(id, 0.6)
         }
         this.pushNews(
-          `Hosted ${this.airline(e.airline).name} divert — +${moneyLeft(e.fee)}.`,
+          `Hosted ${this.airline(e.airline).name} divert — +${moneyLeft(e.fee)}. One-time landing inbound.`,
           'good',
         )
       } else {
-        // Tanker: bump fire readiness feel + small runway condition help.
-        this.runwayCondition = Math.min(100, this.runwayCondition + 3)
-        this.fireIncidentCool = Math.max(this.fireIncidentCool, 40)
+        for (const id of this.signed) this.adjustHeat(id, 1.2)
         this.pushNews(
-          `Firefighter tanker hosted — +${moneyLeft(e.fee)}. ARFF steadied.`,
+          e.kind === 'tanker_mx'
+            ? `Tanker + MX hosted — +${moneyLeft(e.fee)}. Region notices a capable field.`
+            : `Firefighter tanker hosted — +${moneyLeft(e.fee)}. ARFF steadied.`,
           'good',
         )
       }
@@ -5487,22 +5794,24 @@ export class Game {
       return
     }
 
-    // Refuse / timeout
+    // Refuse / timeout — cleaner than a failed host, still hurts.
     this.charge(EMERGENCY_REFUSE_FINE)
     this.reputation = Math.max(0, this.reputation - 4)
     if (e.kind === 'divert' && e.airline) {
       this.adjustHeat(e.airline, -8)
       for (const id of this.signed) {
-        if (id !== e.airline) this.adjustHeat(id, -1.2)
+        if (id !== e.airline) this.adjustHeat(id, -1.4)
       }
       this.pushNews(
         `Refused divert — ${this.airline(e.airline).name} furious. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)}.`,
         'bad',
       )
     } else {
-      for (const id of this.signed) this.adjustHeat(id, -1.5)
+      for (const id of this.signed) this.adjustHeat(id, -1.8)
       this.pushNews(
-        `Refused tanker mutual aid. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — carriers notice.`,
+        e.kind === 'tanker_mx'
+          ? `Refused tanker+MX mutual aid. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — region cools.`
+          : `Refused tanker mutual aid. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — carriers notice.`,
         'bad',
       )
     }

@@ -778,7 +778,11 @@ export const DIVERT_FEE_MIN = 4500
 export const DIVERT_FEE_MAX = 9000
 /** Firefighter tanker mutual-aid fee. */
 export const TANKER_FEE = 6200
+/** Tanker that also wants line MX / hangar time. */
+export const TANKER_MX_FEE = 7800
 export const EMERGENCY_REFUSE_FINE = 2500
+/** Failed host after accepting — worse than a clean refuse. */
+export const EMERGENCY_FAIL_FINE = 4500
 /** Hub tier — denser slots after successful layovers. */
 export const HUB_FEE_MIN = 14_000
 export const HUB_FEE_MAX = 22_000
