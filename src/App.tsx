@@ -7,11 +7,46 @@ import { TerminalView } from './ui/TerminalView'
 import { TitleScreen } from './ui/TitleScreen'
 
 const game = new Game()
+const SCREEN_KEY = 'hatchfield-screen'
 
 type Screen = 'title' | 'land' | 'play'
 
+function readScreen(): Screen {
+  try {
+    const s = sessionStorage.getItem(SCREEN_KEY)
+    if (s === 'land' || s === 'play' || s === 'title') return s
+  } catch {
+    /* ignore */
+  }
+  return 'title'
+}
+
+function writeScreen(s: Screen) {
+  try {
+    sessionStorage.setItem(SCREEN_KEY, s)
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('title')
+  const [screen, setScreenState] = useState<Screen>(() => {
+    // HMR / remount recovery — keep play if the in-memory field still has a plot.
+    if (game.site) return 'play'
+    return readScreen()
+  })
+
+  const setScreen = (s: Screen) => {
+    writeScreen(s)
+    setScreenState(s)
+  }
+
+  // If React remounted onto title but the singleton game still owns a plot, jump back in.
+  useEffect(() => {
+    if (screen === 'title' && game.site) setScreen('play')
+    if (screen === 'land' && game.site) setScreen('play')
+    if (screen === 'play' && !game.site) setScreen('title')
+  }, [screen])
 
   useEffect(() => {
     if (screen !== 'play') return
@@ -40,6 +75,7 @@ export default function App() {
         game.offer?.airline,
         game.mxOffer?.airline,
         game.pendingThreat?.id,
+        game.pendingEmergency?.id,
         game.signed.join(','),
         game.selectedFlight,
         game.selectedGuest,

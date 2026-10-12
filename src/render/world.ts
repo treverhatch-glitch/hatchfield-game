@@ -28,6 +28,8 @@ function makeTex(
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 8
+  // Three r18x: keep flipY off — avoids FLIP_Y / PREMULTIPLY_ALPHA upload warnings.
+  tex.flipY = false
   tex.needsUpdate = true
   return tex
 }
@@ -133,7 +135,7 @@ export class World {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace

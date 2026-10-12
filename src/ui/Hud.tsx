@@ -413,7 +413,12 @@ export function Hud({ game }: { game: Game }) {
       <aside className="side">
         <section>
           <h2>Build & bank</h2>
-          <button type="button" className="wide on" onClick={() => game.buildStarterKit()}>
+          <button
+            type="button"
+            className="wide on"
+            data-testid="starter-kit"
+            onClick={() => game.buildStarterKit()}
+          >
             Starter kit · {money(STARTER_KIT_COST)}
           </button>
           <p className="muted">
