@@ -423,7 +423,8 @@ export function Hud({ game }: { game: Game }) {
             {' · '}
             strips {game.runwayStripCount()} · inbound {game.maxInbound()}
             {' · '}
-            landside ~{money(game.landsideIncome())}/30s · pax ×
+            landside ~{money(game.landsideIncome())}/30s (upkeep{' '}
+            {money(game.landsideUpkeep())} · uses {game.landsideUses}) · pax ×
             {game.landsidePaxMult().toFixed(2)}
           </p>
         </section>

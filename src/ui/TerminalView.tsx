@@ -239,7 +239,9 @@ export function TerminalView({ game }: { game: Game }) {
               <li>Bags {Math.round(guest.needs.bags)}</li>
             )}
             <li>Happiness {Math.round(guest.happiness)}</li>
-            <li>Spent ${guest.spent}</li>
+            <li>
+              Wallet ${guest.wallet} · spent ${guest.spent}
+            </li>
           </ul>
         </aside>
       ) : null}
