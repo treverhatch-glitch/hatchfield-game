@@ -19,10 +19,11 @@ Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come afte
 - RCT guests + pathfinding + flight clocks
 - Budget vs premium tags and desires (later golf / waterfall / gaming)
 - Airside vs terminal as parallel games
-- Heavier runway classes, helicopters
+- Heavier runway classes + helipad stub (live)
 - Cargo: Umazon, UPPS, EXFED
 - City road / rail / subway investment
 - Land expansion, loans
+- Budget-crowd facility wear + hall scrub
 
 Graphics in the sketch are placeholder. Priority is loops and money = picture.
 

@@ -4,6 +4,8 @@ import {
   BUILDINGS,
   CATER,
   FUEL,
+  HALL_SCRUB_COST,
+  HEAVY_RUNWAY_COST,
   LAND,
   LOAN_PRINCIPAL,
   money,
@@ -21,6 +23,8 @@ import type { Speed, Tool } from '../game/types'
 const TOOLS: Tool[] = [
   'pan',
   'runway',
+  'runway_heavy',
+  'helipad',
   'road',
   'taxi',
   'stand',
@@ -305,21 +309,32 @@ export function Hud({ game }: { game: Game }) {
         <section>
           <h2>Hall furnish</h2>
           {origin ? (
-            <ul className="rooms">
-              {ROOMS.map((r) => (
-                <li key={r.id}>
-                  <button type="button" onClick={() => game.buyRoom(r.id)}>
-                    {r.name}
-                    <span>
-                      {fit?.rooms[r.id] ?? 0} · {money(r.cost)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <p className="muted">
+                Wear WC {Math.round(fit?.wearBath ?? 0)} · Sec {Math.round(fit?.wearSec ?? 0)}
+                {ready.heavyRunway ? ' · heavy strip ready' : ''}
+                {ready.helipad ? ' · helipad' : ''}
+              </p>
+              <button type="button" className="wide" onClick={() => game.scrubHall()}>
+                Scrub hall · {money(HALL_SCRUB_COST)}
+              </button>
+              <ul className="rooms">
+                {ROOMS.map((r) => (
+                  <li key={r.id}>
+                    <button type="button" onClick={() => game.buyRoom(r.id)}>
+                      {r.name}
+                      <span>
+                        {fit?.rooms[r.id] ?? 0} · {money(r.cost)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : (
             <p className="muted">
               Stamp a Premade hall or an empty Shell, then select it to furnish. Weak security = threats.
+              Budget crowds wear WC and lanes — scrub or the street writes exposés.
             </p>
           )}
         </section>
@@ -355,17 +370,20 @@ export function Hud({ game }: { game: Game }) {
         <p className="hint">
           {game.tool === 'runway'
             ? `Stamp a regional runway (${money(RUNWAY_PREFAB_COST)}). Rotate for the other axis.`
-            : game.tool === 'premade'
-              ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
-              : game.tool === 'pan'
-                ? game.view === 'hall'
-                  ? 'Hall view: guests chase needs (hunger, WC, shop, boarding clock). Missing rooms = lost / angry.'
-                  : 'Apron view. Airlines call when fire, fuel, road, hall, and stands match their list.'
-                : tip
-                  ? `${tip.blurb} ${money(tip.cost)}`
-                  : 'Clear refunds 40%.'}
+            : game.tool === 'runway_heavy'
+              ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — Summit / EXFED require this. Rotate for axis.`
+              : game.tool === 'premade'
+                ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
+                : game.tool === 'pan'
+                  ? game.view === 'hall'
+                    ? 'Hall view: guests chase needs (hunger, WC, shop, boarding clock). Missing rooms = lost / angry.'
+                    : 'Apron view. Airlines call when fire, fuel, road, hall, and stands match their list.'
+                  : tip
+                    ? `${tip.blurb} ${money(tip.cost)}`
+                    : 'Clear refunds 40%.'}
           {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
           {game.hallGuests.length ? ` · ${game.hallGuests.length} in hall` : ''}
+          {game.maxWear() >= 25 ? ` · wear ${Math.round(game.maxWear())}` : ''}
         </p>
       </div>
     </div>

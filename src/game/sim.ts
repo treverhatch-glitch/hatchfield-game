@@ -7,6 +7,7 @@ import {
   CATER,
   CLEANING_FEE,
   FUEL,
+  HALL_SCRUB_COST,
   LAND,
   LOADS_PER_BUY,
   IPO_FOUNDER_SHARES,
@@ -23,6 +24,9 @@ import {
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   ROOMS,
+  HEAVY_RUNWAY_COST,
+  HEAVY_RUNWAY_LEN,
+  HEAVY_RUNWAY_WID,
   RUNWAY_PREFAB_COST,
   RUNWAY_PREFAB_LEN,
   RUNWAY_PREFAB_WID,
@@ -66,6 +70,7 @@ import type {
   Person,
   Phase,
   RoomId,
+  RunwayClass,
   SiteKind,
   Speed,
   TerminalFit,
@@ -109,6 +114,16 @@ const emptyRooms = (): Record<RoomId, number> => ({
   bathroom: 0,
 })
 
+function emptyFit(origin: Vec, premade: boolean, rooms?: Record<RoomId, number>): TerminalFit {
+  return {
+    origin,
+    premade,
+    rooms: rooms ?? emptyRooms(),
+    wearBath: 0,
+    wearSec: 0,
+  }
+}
+
 export class Game {
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
@@ -141,6 +156,7 @@ export class Game {
   sharesFloat = 0
   ipoPrice = 0
   marketCool = 8
+  analystCool = 55
   mission: MarketMission | null = null
   revenueWindow = 0
   flights: Flight[] = []
@@ -201,6 +217,7 @@ export class Game {
     this.sharesFloat = 0
     this.ipoPrice = 0
     this.marketCool = 8
+    this.analystCool = 55
     this.mission = null
     this.revenueWindow = 0
     this.flights = []
@@ -286,21 +303,17 @@ export class Game {
     this.tiles[22][16] = 'taxi'
     this.tiles[22][17] = 'taxi'
     this.fits = [
-      {
-        origin,
-        premade: true,
-        rooms: {
-          checkin: 2,
-          security: 2,
-          gate: 2,
-          bagclaim: 1,
-          food: 1,
-          souvenir: 1,
-          bagdrop: 1,
-          lounge: 0,
-          bathroom: 2,
-        },
-      },
+      emptyFit(origin, true, {
+        checkin: 2,
+        security: 2,
+        gate: 2,
+        bagclaim: 1,
+        food: 1,
+        souvenir: 1,
+        bagdrop: 1,
+        lounge: 0,
+        bathroom: 2,
+      }),
     ]
     this.fuelBrand = 'apex'
     this.fuelLoads = 4
@@ -392,16 +405,45 @@ export class Game {
   }
 
   fairSharePrice(): number {
+    const heavy = this.hasHeavyRunway() ? 5 : 0
+    const pad = tilesOf(this.tiles, 'helipad').length ? 1.5 : 0
+    const wearHit = this.maxWear() * 0.04
     const base =
       8 +
       this.reputation * 0.35 +
       this.signed.length * 4 +
       this.flightsDone * 0.4 +
       (this.railLinked ? 3 : 0) +
-      this.parcels * 1.5 -
+      this.parcels * 1.5 +
+      heavy +
+      pad -
+      wearHit -
       this.securityIncidents * 2.5 -
       (this.loanBalance > 0 ? 4 : 0)
     return Math.max(2, Math.round(base * 100) / 100)
+  }
+
+  hasHeavyRunway(): boolean {
+    return runwayStrips(this.tiles, HEAVY_RUNWAY_LEN).length > 0
+  }
+
+  maxWear(): number {
+    let m = 0
+    for (const f of this.fits) {
+      m = Math.max(m, f.wearBath ?? 0, f.wearSec ?? 0)
+    }
+    return m
+  }
+
+  avgWear(): { bath: number; sec: number } {
+    if (!this.fits.length) return { bath: 0, sec: 0 }
+    let bath = 0
+    let sec = 0
+    for (const f of this.fits) {
+      bath += f.wearBath ?? 0
+      sec += f.wearSec ?? 0
+    }
+    return { bath: bath / this.fits.length, sec: sec / this.fits.length }
   }
 
   goPublic() {
@@ -503,6 +545,24 @@ export class Game {
         rewardCash: 10000,
         rewardRep: 8,
       },
+      heavy_ready: {
+        title: 'Widebody ready',
+        blurb: 'Stamp a heavy strip (20×3) so Summit / EXFED can land — street wants scale.',
+        deadline: 160,
+        goal: 'heavyRunway',
+        target: 1,
+        rewardCash: 12000,
+        rewardRep: 6,
+      },
+      scrub_the_hall: {
+        title: 'Scrub the hall',
+        blurb: 'Budget crowds trashed WC and lanes. Scrub wear so cleanliness hits 80+.',
+        deadline: 100,
+        goal: 'lowWear',
+        target: 80,
+        rewardCash: 7000,
+        rewardRep: 5,
+      },
     }
     const m = table[id]
     this.mission = { id, progress: 0, ...m }
@@ -552,6 +612,8 @@ export class Game {
       }
     }
 
+    this.tickAnalyst(dt)
+
     if (!this.mission) return
     const m = this.mission
     m.deadline -= dt
@@ -559,6 +621,8 @@ export class Game {
     if (m.goal === 'revenueBurst') m.progress = Math.max(0, this.revenue - this.revenueWindow)
     if (m.goal === 'rep60') m.progress = this.reputation
     if (m.goal === 'noIncident') m.progress += dt
+    if (m.goal === 'heavyRunway') m.progress = this.hasHeavyRunway() ? 1 : 0
+    if (m.goal === 'lowWear') m.progress = Math.max(0, 100 - this.maxWear())
 
     if (m.progress >= m.target) {
       this.cash += m.rewardCash
@@ -576,6 +640,68 @@ export class Game {
       this.reputation = Math.max(0, this.reputation - 4)
       this.pushNews(`Mission failed: ${m.title}. Stock slips to $${this.sharePrice.toFixed(2)}.`, 'bad')
       this.mission = null
+    }
+  }
+
+  /** Public-market flavor crises beyond security bombs. */
+  tickAnalyst(dt: number) {
+    if (!this.public) return
+    this.analystCool -= dt
+    if (this.analystCool > 0) return
+    this.analystCool = 45 + Math.random() * 50
+    if (this.mission) return
+
+    const wear = this.maxWear()
+    const roll = Math.random()
+
+    if (wear >= 55 && roll < 0.35) {
+      this.shockStock(
+        'TRAVEL BLOG EXPOSÉ — filthy restrooms and sticky security lanes go viral.',
+        0.72,
+        6500,
+      )
+      this.startMission('scrub_the_hall')
+      return
+    }
+    if (!this.hasHeavyRunway() && this.signed.some((id) => AIRLINES[id].kind === 'pax') && roll < 0.28) {
+      this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.93) * 100) / 100)
+      this.pushNews(
+        `Analyst note: “Regional strip caps growth.” HATCH $${this.sharePrice.toFixed(2)}. Stamp a heavy runway.`,
+        'bad',
+      )
+      this.startMission('heavy_ready')
+      return
+    }
+    if (this.reputation < 45 && roll < 0.3) {
+      this.shockStock('Downgrade — soft reputation, soft ticket.', 0.88, 4000)
+      this.startMission('calm_the_board')
+      return
+    }
+    if (this.fuelLoads <= 1 && this.fuelBrand && roll < 0.25) {
+      const spike = 3500 + Math.floor(Math.random() * 2500)
+      this.cash -= spike
+      this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.94) * 100) / 100)
+      this.pushNews(
+        `Jet-A spike hits the tape. Spot buy ${moneyLeft(spike)}. HATCH $${this.sharePrice.toFixed(2)}.`,
+        'bad',
+      )
+      return
+    }
+    if (roll < 0.18) {
+      // Short rumor — paper cut, no mission
+      this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.96) * 100) / 100)
+      this.pushNews(
+        `Short seller rumor on the wire. HATCH dips to $${this.sharePrice.toFixed(2)}.`,
+        'bad',
+      )
+      return
+    }
+    if (roll < 0.3 && this.railLinked && this.reputation >= 60) {
+      this.sharePrice = Math.round((this.sharePrice * 1.04) * 100) / 100
+      this.pushNews(
+        `Upgrade: “Rail + clean ops.” HATCH $${this.sharePrice.toFixed(2)}.`,
+        'good',
+      )
     }
   }
 
@@ -624,7 +750,11 @@ export class Game {
     try {
       const s = JSON.parse(raw) as GameSnapshot
       this.tiles = s.tiles
-      this.fits = s.terminalFits ?? []
+      this.fits = (s.terminalFits ?? []).map((f) => ({
+        ...f,
+        wearBath: f.wearBath ?? 0,
+        wearSec: f.wearSec ?? 0,
+      }))
       this.cash = s.cash
       this.difficulty = s.difficulty
       this.site = s.site
@@ -649,6 +779,7 @@ export class Game {
       this.sharesFloat = s.sharesFloat ?? 0
       this.ipoPrice = this.sharePrice
       this.mission = null
+      this.analystCool = 40
       this.flights = []
       this.trucks = []
       this.people = []
@@ -766,10 +897,11 @@ export class Game {
     }
     for (const g of this.hallGuests) {
       if (g.dead) continue
-      // Needs drift — budget fills hunger/bladder faster (wear on facilities later).
+      // Needs drift — budget fills hunger/bladder faster; wear makes WC less satisfying.
       const drain = g.tag === 'budget' ? 1.25 : 0.85
+      const wearBoost = 1 + this.maxWear() / 200
       g.needs.hunger = Math.min(100, g.needs.hunger + dt * 1.8 * drain)
-      g.needs.bladder = Math.min(100, g.needs.bladder + dt * 1.4 * drain)
+      g.needs.bladder = Math.min(100, g.needs.bladder + dt * 1.4 * drain * wearBoost)
       g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1)
       g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6)
       if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.55)
@@ -862,15 +994,21 @@ export class Game {
       else if (open.has('gate')) this.routeGuest(g, 'gate', open)
     }
     if (n === 'security' && g.job === 'depart') {
-      g.thought = 'Cleared security — walk to gate'
-      g.happiness += 2
+      const wear = this.bumpWear('sec', g.tag === 'budget' ? 2.2 : 0.6)
+      const slow = wear >= 50
+      g.thought = slow
+        ? 'Security lane sticky — slow clear'
+        : 'Cleared security — walk to gate'
+      g.happiness += slow ? -1 : 2
       if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
       else if (open.has('gate')) this.routeGuest(g, 'gate', open)
     }
     if (n === 'bathroom') {
-      g.needs.bladder = Math.max(0, g.needs.bladder - 55)
-      g.happiness += 4
-      g.thought = 'Relief'
+      const wear = this.bumpWear('bath', g.tag === 'budget' ? 2.8 : 0.7)
+      const relief = wear >= 60 ? 30 : wear >= 35 ? 42 : 55
+      g.needs.bladder = Math.max(0, g.needs.bladder - relief)
+      g.happiness += wear >= 60 ? -2 : 4
+      g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
     }
     if (n === 'food') {
       const pay = g.tag === 'premium' ? 28 : 14
@@ -959,9 +1097,14 @@ export class Game {
 
   securityLevel(): number {
     let n = 0
-    for (const f of this.fits) n += f.rooms.security
+    for (const f of this.fits) {
+      n += f.rooms.security
+      // Worn lanes soft-cap effective screening.
+      if ((f.wearSec ?? 0) >= 70) n -= 1
+      else if ((f.wearSec ?? 0) >= 40) n -= 0.5
+    }
     if (tilesOf(this.tiles, 'police').length) n += 1
-    return n
+    return Math.max(0, Math.floor(n))
   }
 
   readiness() {
@@ -979,8 +1122,12 @@ export class Game {
       cargo: tilesOf(this.tiles, 'cargo').length > 0,
       road: tilesOf(this.tiles, 'road').length >= 3,
       runway: runwayStrips(this.tiles, MIN_RUNWAY).length > 0,
+      heavyRunway: this.hasHeavyRunway(),
+      helipad: tilesOf(this.tiles, 'helipad').length > 0,
       tower: tilesOf(this.tiles, 'tower').length > 0,
       hangar: tilesOf(this.tiles, 'hangar').length > 0,
+      wearBath: this.avgWear().bath,
+      wearSec: this.avgWear().sec,
     }
   }
 
@@ -988,6 +1135,7 @@ export class Game {
     const a = AIRLINES[id]
     const r = this.readiness()
     if (!r.runway) return false
+    if (a.req.heavyRunway && !r.heavyRunway) return false
     if (this.reputation < a.minRep) return false
     const q = a.req
     return (
@@ -1013,6 +1161,7 @@ export class Game {
     const miss: string[] = []
     if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
     if (!r.runway) miss.push('runway')
+    if (a.req.heavyRunway && !r.heavyRunway) miss.push('heavy runway')
     if (r.stands < a.req.stands) miss.push(`${a.req.stands} stands`)
     if (a.req.fuelContract && !r.fuelContract) miss.push('fuel contract')
     if (a.req.fuelFarm && !r.fuelFarm) miss.push('fuel farm')
@@ -1079,11 +1228,43 @@ export class Game {
     if (!this.spend(def.cost, def.name)) return
     let fit = this.fits.find((f) => f.origin.c === origin.c && f.origin.r === origin.r)
     if (!fit) {
-      fit = { origin, rooms: emptyRooms(), premade: false }
+      fit = emptyFit(origin, false)
       this.fits.push(fit)
     }
     fit.rooms[id] += 1
     this.pushNews(`Furnished ${def.name}.`, 'ok')
+    this.emit()
+  }
+
+  /** Budget traffic scuffs WC / security. Returns average wear after bump. */
+  bumpWear(kind: 'bath' | 'sec', amount: number): number {
+    if (!this.fits.length) return 0
+    let sum = 0
+    for (const f of this.fits) {
+      if (kind === 'bath') f.wearBath = Math.min(100, (f.wearBath ?? 0) + amount)
+      else f.wearSec = Math.min(100, (f.wearSec ?? 0) + amount)
+      sum += kind === 'bath' ? f.wearBath : f.wearSec
+    }
+    return sum / this.fits.length
+  }
+
+  scrubHall() {
+    if (!this.fits.length) {
+      this.pushNews('No hall to scrub.', 'bad')
+      return
+    }
+    if (this.maxWear() < 5) {
+      this.pushNews('Hall is already clean enough.', 'ok')
+      this.emit()
+      return
+    }
+    if (!this.spend(HALL_SCRUB_COST, 'hall scrub')) return
+    for (const f of this.fits) {
+      f.wearBath = Math.max(0, (f.wearBath ?? 0) - 45)
+      f.wearSec = Math.max(0, (f.wearSec ?? 0) - 40)
+    }
+    this.reputation = Math.min(100, this.reputation + 2)
+    this.pushNews('Crew scrubbed WC and security lanes.', 'good')
     this.emit()
   }
 
@@ -1128,7 +1309,11 @@ export class Game {
       return
     }
     if (this.tool === 'runway') {
-      this.placeRunway(v)
+      this.placeRunway(v, 'regional')
+      return
+    }
+    if (this.tool === 'runway_heavy') {
+      this.placeRunway(v, 'heavy')
       return
     }
     if (this.tool === 'terminal') {
@@ -1159,9 +1344,12 @@ export class Game {
   refundFor(tile: Tile): number {
     if (tile === 'grass') return 0
     if (tile === 'runway') {
-      return Math.round(
-        (RUNWAY_PREFAB_COST / (RUNWAY_PREFAB_LEN * RUNWAY_PREFAB_WID)) * BULLDOZE_REFUND,
-      )
+      // Blend regional + heavy unit cost so bulldozing either class is fair-ish.
+      const unit =
+        (RUNWAY_PREFAB_COST / (RUNWAY_PREFAB_LEN * RUNWAY_PREFAB_WID) +
+          HEAVY_RUNWAY_COST / (HEAVY_RUNWAY_LEN * HEAVY_RUNWAY_WID)) /
+        2
+      return Math.round(unit * BULLDOZE_REFUND)
     }
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
     const b = BUILDINGS.find((x) => x.tile === tile)
@@ -1214,17 +1402,19 @@ export class Game {
     this.emit()
   }
 
-  prefabRunway(origin: Vec): Vec[] {
+  prefabRunway(origin: Vec, klass: RunwayClass = 'regional'): Vec[] {
+    const len = klass === 'heavy' ? HEAVY_RUNWAY_LEN : RUNWAY_PREFAB_LEN
+    const wid = klass === 'heavy' ? HEAVY_RUNWAY_WID : RUNWAY_PREFAB_WID
     const cells: Vec[] = []
     if (this.facing === 'h') {
-      for (let r = 0; r < RUNWAY_PREFAB_WID; r++) {
-        for (let c = 0; c < RUNWAY_PREFAB_LEN; c++) {
+      for (let r = 0; r < wid; r++) {
+        for (let c = 0; c < len; c++) {
           cells.push({ c: origin.c + c, r: origin.r + r })
         }
       }
     } else {
-      for (let c = 0; c < RUNWAY_PREFAB_WID; c++) {
-        for (let r = 0; r < RUNWAY_PREFAB_LEN; r++) {
+      for (let c = 0; c < wid; c++) {
+        for (let r = 0; r < len; r++) {
           cells.push({ c: origin.c + c, r: origin.r + r })
         }
       }
@@ -1232,19 +1422,30 @@ export class Game {
     return cells
   }
 
-  placeRunway(v: Vec) {
-    const cells = this.prefabRunway(v)
+  placeRunway(v: Vec, klass: RunwayClass = 'regional') {
+    const cells = this.prefabRunway(v, klass)
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
-      this.pushNews('Need a clear plot for the runway. Hit Rotate if it hangs off.', 'bad')
+      this.pushNews(
+        klass === 'heavy'
+          ? 'Need a clear plot for the heavy strip (20×3). Rotate if it hangs off.'
+          : 'Need a clear plot for the runway. Hit Rotate if it hangs off.',
+        'bad',
+      )
       this.emit()
       return
     }
-    if (!this.spend(RUNWAY_PREFAB_COST, 'runway')) {
+    const cost = klass === 'heavy' ? HEAVY_RUNWAY_COST : RUNWAY_PREFAB_COST
+    if (!this.spend(cost, klass === 'heavy' ? 'heavy runway' : 'runway')) {
       this.emit()
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'runway'
-    this.pushNews('Regional runway stamped.', 'good')
+    this.pushNews(
+      klass === 'heavy'
+        ? 'Heavy strip stamped — Summit and EXFED will notice.'
+        : 'Regional runway stamped.',
+      'good',
+    )
     this.emit()
   }
 
@@ -1265,7 +1466,7 @@ export class Game {
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
-    this.fits.push({ origin: v, rooms: emptyRooms(), premade: false })
+    this.fits.push(emptyFit(v, false))
     this.selectedTile = v
     this.pushNews('Empty shell up. Furnish security or airlines will stay away.', 'ok')
     this.emit()
@@ -1286,10 +1487,8 @@ export class Game {
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
-    this.fits.push({
-      origin: v,
-      premade: true,
-      rooms: {
+    this.fits.push(
+      emptyFit(v, true, {
         checkin: 2,
         security: 2,
         gate: 2,
@@ -1299,8 +1498,8 @@ export class Game {
         bagdrop: 1,
         lounge: 1,
         bathroom: 2,
-      },
-    })
+      }),
+    )
     this.selectedTile = v
     this.pushNews('Premade terminal online — check-in, security, gates, claim, food.', 'good')
     this.emit()
@@ -1329,7 +1528,8 @@ export class Game {
 
   ghostCells(hover: Vec | null): Vec[] {
     if (!hover) return []
-    if (this.tool === 'runway') return this.prefabRunway(hover)
+    if (this.tool === 'runway') return this.prefabRunway(hover, 'regional')
+    if (this.tool === 'runway_heavy') return this.prefabRunway(hover, 'heavy')
     if (this.tool === 'terminal') {
       return [
         hover,
@@ -1723,8 +1923,13 @@ export class Game {
     if (!this.signed.length || !this.flights.some((f) => !f.cargo && f.phase !== 'gone')) return
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
-    // Risk rises when flights run with weak screening.
-    const risk = clamp(0.55 - sec * 0.12 - police * 0.08, 0.05, 0.55)
+    const wearSec = this.avgWear().sec
+    // Risk rises when flights run with weak screening or worn lanes.
+    const risk = clamp(
+      0.55 - sec * 0.12 - police * 0.08 + wearSec * 0.002,
+      0.05,
+      0.62,
+    )
     if (Math.random() > risk) return
     this.securityIncidents += 1
     if (this.mission?.goal === 'noIncident') this.mission.progress = 0
