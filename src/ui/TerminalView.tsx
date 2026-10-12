@@ -280,7 +280,18 @@ export function TerminalView({ game }: { game: Game }) {
         <aside className="guest-card">
           <h2>
             {guest.name}{' '}
-            <span style={{ color: guest.tag === 'premium' ? '#c9a227' : '#b7c4b8' }}>
+            <span
+              style={{
+                color:
+                  guest.tag === 'premium'
+                    ? '#c9a227'
+                    : guest.tag === 'business'
+                      ? '#6a9ec8'
+                      : guest.tag === 'family'
+                        ? '#7aaf78'
+                        : '#b7c4b8',
+              }}
+            >
               {guest.tag}
             </span>
           </h2>
@@ -298,6 +309,11 @@ export function TerminalView({ game }: { game: Game }) {
             <li>Happiness {Math.round(guest.happiness)}</li>
             <li>
               Wallet ${guest.wallet} · spent ${guest.spent}
+            </li>
+            <li className="muted" style={{ fontSize: 12 }}>
+              Prefs food {guest.prefs.food.toFixed(2)} · shop{' '}
+              {guest.prefs.shop.toFixed(2)} · play {guest.prefs.play.toFixed(2)} · nap{' '}
+              {guest.prefs.nap.toFixed(2)} · landside {guest.prefs.landside.toFixed(2)}
             </li>
           </ul>
         </aside>

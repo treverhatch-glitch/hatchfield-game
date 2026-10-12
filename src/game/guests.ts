@@ -43,7 +43,11 @@ export type HallNode =
   | 'lab_board'
   | 'lab_bench'
 
-export type PaxTag = 'budget' | 'premium'
+/**
+ * Passenger class — RCT-style guest types with different cash bands + tastes.
+ * Rolled per body; airline persona only biases the mix.
+ */
+export type PaxTag = 'budget' | 'family' | 'business' | 'premium'
 
 export interface GuestNeeds {
   hunger: number
@@ -64,6 +68,8 @@ export interface GuestPrefs {
   play: number
   lounge: number
   nap: number
+  /** Hotel overnight / car park willingness. */
+  landside: number
 }
 
 export type SpendKind = keyof GuestPrefs
@@ -304,20 +310,136 @@ export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   return 'shop'
 }
 
-function rollPrefs(tag: PaxTag, transfer: boolean): GuestPrefs {
-  const premium = tag === 'premium'
+/** Airline persona only biases the mix — each body still rolls its own cash/taste. */
+export function rollPaxTag(
+  persona:
+    | 'budget'
+    | 'business'
+    | 'luxury'
+    | 'cargo_night'
+    | 'military_gov',
+): PaxTag {
+  const r = Math.random()
+  if (persona === 'luxury') {
+    if (r < 0.5) return 'premium'
+    if (r < 0.78) return 'business'
+    if (r < 0.92) return 'family'
+    return 'budget'
+  }
+  if (persona === 'business') {
+    if (r < 0.38) return 'business'
+    if (r < 0.58) return 'premium'
+    if (r < 0.82) return 'family'
+    return 'budget'
+  }
+  if (persona === 'cargo_night' || persona === 'military_gov') {
+    if (r < 0.55) return 'budget'
+    if (r < 0.85) return 'family'
+    return 'business'
+  }
+  // budget carriers
+  if (r < 0.5) return 'budget'
+  if (r < 0.78) return 'family'
+  if (r < 0.93) return 'business'
+  return 'premium'
+}
+
+export function paxTagLabel(tag: PaxTag): string {
+  return tag === 'budget'
+    ? 'Budget'
+    : tag === 'family'
+      ? 'Family'
+      : tag === 'business'
+        ? 'Business'
+        : 'Premium'
+}
+
+export function paxTagColor(tag: PaxTag): string {
+  return tag === 'premium'
+    ? '#c9a227'
+    : tag === 'business'
+      ? '#6a9ec8'
+      : tag === 'family'
+        ? '#7aaf78'
+        : '#b7c4b8'
+}
+
+/** True for lounge / high-ticket paths. */
+export function tagSpendsUp(tag: PaxTag): boolean {
+  return tag === 'premium' || tag === 'business'
+}
+
+/**
+ * RCT wallet roll — wide random band per type, rare broke / whale outliers.
+ * Transfer layovers get a small bump (captive spenders).
+ */
+export function rollWallet(tag: PaxTag, transfer = false): number {
+  const band =
+    tag === 'premium'
+      ? { lo: 80, hi: 260, broke: 0.04, brokeMax: 35, whale: 0.1, whaleMax: 420 }
+      : tag === 'business'
+        ? { lo: 50, hi: 175, broke: 0.05, brokeMax: 28, whale: 0.08, whaleMax: 300 }
+        : tag === 'family'
+          ? { lo: 30, hi: 120, broke: 0.06, brokeMax: 18, whale: 0.07, whaleMax: 200 }
+          : { lo: 6, hi: 52, broke: 0.1, brokeMax: 8, whale: 0.05, whaleMax: 95 }
+  let n: number
+  const r = Math.random()
+  if (r < band.broke) n = 1 + Math.random() * band.brokeMax
+  else if (r > 1 - band.whale) n = band.hi + Math.random() * (band.whaleMax - band.hi)
+  else n = band.lo + Math.random() * (band.hi - band.lo)
+  if (transfer) n += 20 + Math.random() * 35
+  return Math.max(0, Math.round(n))
+}
+
+/** RCT taste roll — type biases the means; each guest still differs. */
+export function rollPrefs(tag: PaxTag, transfer = false): GuestPrefs {
+  const jitter = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
+  if (tag === 'premium') {
+    return {
+      food: jitter(0.3, 0.85),
+      shop: jitter(0.4, 0.95),
+      play: jitter(0.35, 0.9),
+      lounge: jitter(0.55, 0.98),
+      nap: transfer ? jitter(0.55, 0.95) : jitter(0.2, 0.65),
+      landside: jitter(0.45, 0.95),
+    }
+  }
+  if (tag === 'business') {
+    return {
+      food: jitter(0.35, 0.8),
+      shop: jitter(0.25, 0.7),
+      play: jitter(0.15, 0.55),
+      lounge: jitter(0.4, 0.9),
+      nap: transfer ? jitter(0.5, 0.9) : jitter(0.15, 0.55),
+      landside: jitter(0.4, 0.85),
+    }
+  }
+  if (tag === 'family') {
+    return {
+      food: jitter(0.5, 0.95),
+      shop: jitter(0.35, 0.85),
+      play: jitter(0.45, 0.95),
+      lounge: jitter(0.05, 0.35),
+      nap: transfer ? jitter(0.4, 0.8) : jitter(0.1, 0.4),
+      landside: jitter(0.25, 0.7),
+    }
+  }
   return {
-    food: premium ? 0.35 + Math.random() * 0.5 : 0.45 + Math.random() * 0.5,
-    shop: premium ? 0.4 + Math.random() * 0.55 : 0.15 + Math.random() * 0.45,
-    play: premium ? 0.35 + Math.random() * 0.55 : 0.25 + Math.random() * 0.5,
-    lounge: premium ? 0.55 + Math.random() * 0.4 : 0.05 + Math.random() * 0.25,
-    nap: transfer ? 0.55 + Math.random() * 0.4 : premium ? 0.2 + Math.random() * 0.4 : 0.05 + Math.random() * 0.2,
+    food: jitter(0.4, 0.9),
+    shop: jitter(0.1, 0.5),
+    play: jitter(0.2, 0.65),
+    lounge: jitter(0.02, 0.25),
+    nap: transfer ? jitter(0.35, 0.75) : jitter(0.02, 0.25),
+    landside: jitter(0.15, 0.55),
   }
 }
 
-function rollWallet(tag: PaxTag, transfer: boolean): number {
-  if (tag === 'premium') return Math.round(90 + Math.random() * 160 + (transfer ? 40 : 0))
-  return Math.round(22 + Math.random() * 55 + (transfer ? 25 : 0))
+/** Menu price ladder by passenger type. */
+export function tagPrice(tag: PaxTag, budget: number, family: number, biz: number, premium: number): number {
+  if (tag === 'premium') return premium
+  if (tag === 'business') return biz
+  if (tag === 'family') return family
+  return budget
 }
 
 export function spawnHallGuest(
@@ -326,7 +448,7 @@ export function spawnHallGuest(
   tag: PaxTag,
   opts?: { transfer?: boolean; airlineId?: string; hallId?: string },
 ): HallGuest {
-  const premium = tag === 'premium'
+  const up = tagSpendsUp(tag)
   const transfer = Boolean(opts?.transfer)
   return {
     id: `g-${Math.random().toString(36).slice(2, 8)}`,
@@ -339,27 +461,34 @@ export function spawnHallGuest(
     seg: 0,
     t: 0,
     needs: {
-      hunger: (transfer ? 35 : 20) + Math.random() * (premium ? 40 : 55),
+      hunger: (transfer ? 35 : 20) + Math.random() * (up ? 40 : 55),
       bladder: 15 + Math.random() * 50,
-      energy: premium ? 40 + Math.random() * 40 : 10 + Math.random() * 30,
+      energy: up ? 40 + Math.random() * 40 : 10 + Math.random() * 30,
       boarding: job === 'depart' ? 18 + Math.random() * 22 : transfer ? 40 + Math.random() * 30 : 99,
       bags: job === 'arrive' && !transfer ? 70 + Math.random() * 25 : 0,
-      shop: (transfer ? 40 : premium ? 25 : 10) + Math.random() * (premium ? 40 : 25),
-      play: (transfer ? 30 : premium ? 35 : 15) + Math.random() * (premium ? 45 : 35),
+      shop: (transfer ? 40 : up ? 25 : 10) + Math.random() * (up ? 40 : 25),
+      play:
+        (transfer ? 30 : tag === 'family' ? 40 : up ? 35 : 15) +
+        Math.random() * (tag === 'family' ? 50 : up ? 45 : 35),
     },
     wallet: rollWallet(tag, transfer),
     prefs: rollPrefs(tag, transfer),
     happiness: transfer ? 65 : 70,
-    patience: premium ? 55 : transfer ? 80 : 70,
+    patience: tag === 'premium' ? 55 : tag === 'business' ? 60 : transfer ? 80 : 70,
     spent: 0,
     thought: transfer
       ? 'Long layover — need food and a seat'
       : job === 'depart'
         ? 'Where is check-in?'
         : 'Where are my bags?',
-    color: premium
-      ? pick(['#5c3d8a', '#2f6f9a', '#1f6b57'])
-      : pick(['#8b6b4a', '#6a4a32', '#3a5a7a', '#5c4033']),
+    color:
+      tag === 'premium'
+        ? pick(['#5c3d8a', '#2f6f9a', '#1f6b57'])
+        : tag === 'business'
+          ? pick(['#3a6a8a', '#4a7a9a', '#2f5a70'])
+          : tag === 'family'
+            ? pick(['#6a8a4a', '#5a7a3a', '#4a6a50'])
+            : pick(['#8b6b4a', '#6a4a32', '#3a5a7a', '#5c4033']),
     dead: false,
     // Arrivals / transfers start airside; departures must clear security.
     clearedSec: job === 'arrive' || transfer,

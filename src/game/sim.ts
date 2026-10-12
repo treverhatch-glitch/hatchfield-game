@@ -131,8 +131,11 @@ import {
   needToNode,
   openForGuest,
   openNodesFromRooms,
+  rollPaxTag,
   spawnHallGuest,
   strongestNeed,
+  tagPrice,
+  tagSpendsUp,
   type ArriveMode,
   type HallGuest,
   type HallNode,
@@ -1471,19 +1474,17 @@ export class Game {
   pickGuestMode(
     tag: PaxTag,
     persona: Airline['persona'],
-    job: 'depart' | 'arrive',
+    _job: 'depart' | 'arrive',
   ): { prefer: ArriveMode; actual: ArriveMode } {
     const pool: ArriveMode[] =
-      persona === 'luxury'
-        ? job === 'arrive'
-          ? ['hotel', 'car_long', 'rail', 'dropoff', 'car_short']
-          : ['hotel', 'car_long', 'rail', 'dropoff', 'car_short']
-        : persona === 'business'
+      persona === 'luxury' || tag === 'premium'
+        ? ['hotel', 'car_long', 'rail', 'dropoff', 'car_short']
+        : persona === 'business' || tag === 'business'
           ? ['rail', 'car_short', 'dropoff', 'hotel', 'bus']
           : persona === 'cargo_night' || persona === 'military_gov'
             ? ['dropoff', 'car_short', 'bus']
-            : tag === 'premium'
-              ? ['rail', 'car_short', 'hotel', 'dropoff', 'bus']
+            : tag === 'family'
+              ? ['car_long', 'bus', 'dropoff', 'car_short', 'rail']
               : ['bus', 'car_long', 'dropoff', 'rail', 'car_short']
     const prefer = pool[Math.floor(Math.random() * Math.min(3, pool.length))]
     if (this.modeAvailable(prefer)) return { prefer, actual: prefer }
@@ -1524,46 +1525,58 @@ export class Game {
                   : 'Landside scramble'
     }
     let fee = 0
+    let spendKind: SpendKind | null = null
     if (mode === 'car_short' && this.modeAvailable('car_short')) {
       fee = this.parkUseFee('short')
-      this.noteLandsideUse(1)
+      spendKind = 'landside'
     } else if (mode === 'car_long' && this.modeAvailable('car_long')) {
       fee = this.parkUseFee('long')
-      this.noteLandsideUse(2)
+      spendKind = 'landside'
     } else if (mode === 'hotel' && this.modeAvailable('hotel')) {
       fee = this.hotelUseFee(g.tag)
-      this.noteLandsideUse(2)
-      g.needs.energy = Math.max(0, g.needs.energy - 25)
+      spendKind = 'nap'
     } else if (mode === 'bus' && this.modeAvailable('bus')) {
       fee = BUS_FARE
-      this.noteLandsideUse(1)
+      spendKind = 'landside'
     } else if (mode === 'rail' && this.modeAvailable('rail')) {
       fee = RAIL_FARE
-      this.noteLandsideUse(1)
+      spendKind = 'landside'
     }
-    // Drop-off / missing infra — no fee, no fake "usage" credit.
-    if (fee > 0) {
-      const pay = Math.min(g.wallet, fee)
-      g.wallet -= pay
-      g.spent += pay
-      // Quiet ledger — per-guest fees would spam the ticker.
-      this.cash += pay
-      this.revenue += pay
-      this.landsideFeeWindow += pay
-      if (!missed) {
-        g.happiness += 3
-        g.thought =
-          mode === 'hotel'
-            ? `Hotel stay (−$${pay})`
-            : mode === 'bus'
-              ? `Bus in (−$${pay})`
-              : mode === 'rail'
-                ? `Rail in (−$${pay})`
-                : mode === 'car_long'
-                  ? `Long park (−$${pay})`
-                  : mode === 'car_short'
-                    ? `Short park (−$${pay})`
-                    : g.thought
+    // Drop-off / missing infra — no fee. Prefs + wallet gate the rest (RCT).
+    if (fee > 0 && spendKind) {
+      const buy = this.tryGuestPay(g, fee, spendKind, false)
+      if (!buy.ok) {
+        if (buy.why === 'broke' || buy.why === 'too expensive') {
+          g.happiness -= 2
+          g.thought =
+            mode === 'hotel'
+              ? buy.why === 'broke'
+                ? 'Hotel too rich for my wallet'
+                : 'Skipped hotel — saving cash'
+              : buy.why === 'broke'
+                ? 'Landside fee — broke'
+                : 'Skipped landside fee — not worth it'
+        } else if (!missed) {
+          g.thought = 'Skipped landside spend'
+        }
+      } else {
+        this.noteLandsideUse(mode === 'hotel' || mode === 'car_long' ? 2 : 1)
+        if (mode === 'hotel') g.needs.energy = Math.max(0, g.needs.energy - 25)
+        if (!missed) {
+          g.happiness += 3
+          g.thought =
+            mode === 'hotel'
+              ? `Hotel stay (−$${fee})`
+              : mode === 'bus'
+                ? `Bus in (−$${fee})`
+                : mode === 'rail'
+                  ? `Rail in (−$${fee})`
+                  : mode === 'car_long'
+                    ? `Long park (−$${fee})`
+                    : mode === 'car_short'
+                      ? `Short park (−$${fee})`
+                      : g.thought
+        }
       }
     }
   }
@@ -1583,13 +1596,14 @@ export class Game {
     return term === 'short' ? PARK_SHORT_FEE : PARK_LONG_FEE
   }
 
-  /** Hotel night fee — premium pax prefer resort beds when present. */
+  /** Hotel night fee — premium/business prefer resort beds when present. */
   hotelUseFee(tag: PaxTag): number {
     const classes = tilesOf(this.tiles, 'hotel').map(
       (p) => this.hotelClass[`${p.c},${p.r}`] ?? 'business',
     )
     if (classes.length) {
-      if (tag === 'premium' && classes.includes('resort')) return HOTEL_CLASS_FEE.resort
+      if (tagSpendsUp(tag) && classes.includes('resort')) return HOTEL_CLASS_FEE.resort
+      if (tag === 'family' && classes.includes('inn')) return HOTEL_CLASS_FEE.inn
       if (classes.includes('business')) return HOTEL_CLASS_FEE.business
       if (classes.includes('inn')) return HOTEL_CLASS_FEE.inn
       if (classes.includes('resort')) return HOTEL_CLASS_FEE.resort
@@ -2438,10 +2452,8 @@ export class Game {
     const hallId = this.hallKey(fit)
     const count = Math.max(6, Math.min(16, Math.round(f.pax / 7)))
     const a = this.airline(f.airline)
-    const premiumBias =
-      a.persona === 'luxury' ? 0.65 : a.persona === 'business' ? 0.4 : 0.2
     for (let i = 0; i < count; i++) {
-      const tag: PaxTag = Math.random() < premiumBias ? 'premium' : 'budget'
+      const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
       const modes = this.pickGuestMode(tag, a.persona, job)
       g.preferMode = modes.prefer
@@ -2488,14 +2500,18 @@ export class Game {
       if (g.dead) continue
       const open = this.openForGuest(g)
       if (!open.size) continue
-      // Needs drift — budget fills hunger/bladder faster; wear makes WC less satisfying.
-      const drain = g.tag === 'budget' ? 1.25 : 0.85
+      // Needs drift — budget/family fill hunger faster; wear makes WC less satisfying.
+      const drain =
+        g.tag === 'budget' ? 1.25 : g.tag === 'family' ? 1.1 : g.tag === 'business' ? 0.9 : 0.85
       const wearBoost = 1 + this.maxWear() / 200
       g.needs.hunger = Math.min(100, g.needs.hunger + dt * 1.8 * drain)
       g.needs.bladder = Math.min(100, g.needs.bladder + dt * 1.4 * drain * wearBoost)
       g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1)
       g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6)
-      g.needs.play = Math.min(100, g.needs.play + dt * (g.tag === 'premium' ? 1.1 : 0.7))
+      g.needs.play = Math.min(
+        100,
+        g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
+      )
       if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
       if (g.job === 'arrive') g.needs.bags = Math.max(0, g.needs.bags - (g.node === 'claim' ? dt * 12 : 0))
 
@@ -2616,7 +2632,7 @@ export class Game {
         return
       }
     }
-    const path = hallPath(g.node, target, view, g.tag === 'premium' ? 7 : 5)
+    const path = hallPath(g.node, target, view, tagSpendsUp(g.tag) ? 7 : 5)
     if (!path || path.length < 2) {
       if (!g.clearedSec && isAirside(dest)) {
         g.thought = 'Blocked at the secure line'
@@ -2636,8 +2652,8 @@ export class Game {
   }
 
   /**
-   * RCT-style purchase — prefs + wallet gate the spend.
-   * Desperate needs (hunger/energy) can override weak prefs.
+   * RCT-style purchase — prefs + wallet + price sensitivity gate the spend.
+   * Desperate needs (hunger/energy) can override weak prefs, not empty wallets.
    */
   tryGuestPay(
     g: HallGuest,
@@ -2646,12 +2662,17 @@ export class Game {
     desperate = false,
   ): { ok: boolean; why?: string } {
     if (pay <= 0) return { ok: true }
-    const pref = g.prefs[kind]
+    const pref = g.prefs[kind] ?? 0
     if (!desperate && pref < 0.28) {
       return { ok: false, why: 'not interested' }
     }
     if (g.wallet < pay) {
       return { ok: false, why: 'broke' }
+    }
+    // Won't blow most of the wallet on a weak preference (RCT "too expensive").
+    const maxShare = desperate ? 0.55 + pref * 0.4 : 0.22 + pref * 0.55
+    if (pay > g.wallet * maxShare + 0.01) {
+      return { ok: false, why: 'too expensive' }
     }
     g.wallet -= pay
     g.spent += pay
@@ -2714,7 +2735,10 @@ export class Game {
     if (n === 'security') {
       g.clearedSec = true
       if (g.job === 'depart') {
-        const wear = this.bumpWear('sec', g.tag === 'budget' ? 2.2 : 0.6)
+        const wear = this.bumpWear(
+          'sec',
+          g.tag === 'budget' ? 2.2 : g.tag === 'family' ? 1.5 : 0.6,
+        )
         const unstaffed = !this.staffedPost('security')
         const slow = wear >= 50 || unstaffed
         g.thought = unstaffed
@@ -2739,14 +2763,17 @@ export class Game {
       }
     }
     if (n === 'bathroom') {
-      const wear = this.bumpWear('bath', g.tag === 'budget' ? 2.8 : 0.7)
+      const wear = this.bumpWear(
+        'bath',
+        g.tag === 'budget' ? 2.8 : g.tag === 'family' ? 1.8 : 0.7,
+      )
       const relief = wear >= 60 ? 30 : wear >= 35 ? 42 : 55
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
       g.happiness += wear >= 60 ? -2 : 4
       g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
     }
     if (n === 'food') {
-      let pay = g.tag === 'premium' ? 28 : 14
+      let pay = tagPrice(g.tag, 12, 18, 24, 32)
       let happy = 6
       let brand = false
       if (g.airlineId && this.hasReward(g.airlineId, 'budget_perk')) {
@@ -2759,7 +2786,11 @@ export class Game {
         g.needs.hunger = Math.max(0, g.needs.hunger - 12)
         g.happiness -= buy.why === 'broke' ? 3 : 1
         g.thought =
-          buy.why === 'broke' ? 'Hungry but broke' : 'Skipped the counter — not hungry for that'
+          buy.why === 'broke'
+            ? 'Hungry but broke'
+            : buy.why === 'too expensive'
+              ? 'Meal too pricey for my wallet'
+              : 'Skipped the counter — not hungry for that'
       } else {
         g.needs.hunger = Math.max(0, g.needs.hunger - 50)
         this.mealSold = true
@@ -2770,25 +2801,29 @@ export class Game {
       }
     }
     if (n === 'shop') {
-      const pay = g.tag === 'premium' ? 42 : 18
+      const pay = tagPrice(g.tag, 14, 24, 36, 48)
       const buy = this.tryGuestPay(g, pay, 'shop', g.needs.shop >= 75)
       if (!buy.ok) {
         g.needs.shop = Math.max(0, g.needs.shop - 20)
         g.happiness -= buy.why === 'broke' ? 2 : 0
         g.thought =
-          buy.why === 'broke' ? 'Wanted a gift — wallet empty' : 'Browsed, did not buy'
+          buy.why === 'broke'
+            ? 'Wanted a gift — wallet empty'
+            : buy.why === 'too expensive'
+              ? 'Souvenir — not blowing the trip fund'
+              : 'Browsed, did not buy'
       } else {
         g.needs.shop = Math.max(0, g.needs.shop - 60)
         g.happiness += 5
         g.thought = `Bought a souvenir (−$${pay})`
       }
     }
-    if (n === 'lounge' && g.tag === 'premium') {
+    if (n === 'lounge' && tagSpendsUp(g.tag)) {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
       let happy = 8
       let pay = 0
       if (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge')) {
-        pay = 55
+        pay = tagPrice(g.tag, 40, 45, 55, 65)
         const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 60)
         if (buy.ok) {
           happy += 10
@@ -2796,7 +2831,7 @@ export class Game {
           this.adjustHeat(g.airlineId, 0.2)
         } else {
           g.thought =
-            buy.why === 'broke'
+            buy.why === 'broke' || buy.why === 'too expensive'
               ? 'Lounge fee too rich'
               : 'Skipped the branded lounge'
           happy = 3
@@ -2807,13 +2842,17 @@ export class Game {
       g.happiness += happy
     }
     if (n === 'dayhotel') {
-      const pay = g.transfer ? 65 : g.tag === 'premium' ? 48 : 28
+      const pay = g.transfer
+        ? tagPrice(g.tag, 40, 52, 65, 78)
+        : tagPrice(g.tag, 22, 32, 44, 55)
       const buy = this.tryGuestPay(g, pay, 'nap', g.transfer || g.needs.energy >= 70)
       if (!buy.ok) {
         g.needs.energy = Math.max(0, g.needs.energy - 10)
         g.happiness -= buy.why === 'broke' ? 2 : 0
         g.thought =
-          buy.why === 'broke' ? 'Day room too expensive' : 'Skipped the day room'
+          buy.why === 'broke' || buy.why === 'too expensive'
+            ? 'Day room too expensive'
+            : 'Skipped the day room'
       } else {
         g.needs.energy = Math.max(0, g.needs.energy - 55)
         g.needs.boarding = Math.min(99, g.needs.boarding + 8)
@@ -2826,11 +2865,14 @@ export class Game {
       }
     }
     if (n === 'golf') {
-      const pay = g.tag === 'premium' ? 55 : 28
+      const pay = tagPrice(g.tag, 22, 32, 45, 58)
       const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 70)
       if (!buy.ok) {
         g.needs.play = Math.max(0, g.needs.play - 15)
-        g.thought = buy.why === 'broke' ? 'Golf bay — no cash' : 'Skipped golf'
+        g.thought =
+          buy.why === 'broke' || buy.why === 'too expensive'
+            ? 'Golf bay — no cash'
+            : 'Skipped golf'
       } else {
         g.needs.play = Math.max(0, g.needs.play - 70)
         g.needs.energy = Math.max(0, g.needs.energy - 20)
@@ -2839,7 +2881,7 @@ export class Game {
       }
     }
     if (n === 'waterfall') {
-      const pay = g.tag === 'premium' ? 36 : 12
+      const pay = tagPrice(g.tag, 10, 16, 28, 38)
       const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 65)
       if (!buy.ok) {
         g.needs.play = Math.max(0, g.needs.play - 12)
@@ -2854,11 +2896,14 @@ export class Game {
       }
     }
     if (n === 'gaming') {
-      const pay = g.tag === 'premium' ? 40 : 22
+      const pay = tagPrice(g.tag, 16, 24, 34, 44)
       const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 70)
       if (!buy.ok) {
         g.needs.play = Math.max(0, g.needs.play - 15)
-        g.thought = buy.why === 'broke' ? 'Games — wallet dry' : 'Skipped the den'
+        g.thought =
+          buy.why === 'broke' || buy.why === 'too expensive'
+            ? 'Games — wallet dry'
+            : 'Skipped the den'
       } else {
         g.needs.play = Math.max(0, g.needs.play - 65)
         g.happiness += 7
@@ -2866,23 +2911,29 @@ export class Game {
       }
     }
     if (n === 'spa') {
-      const pay = g.transfer ? 72 : g.tag === 'premium' ? 58 : 32
+      const pay = g.transfer
+        ? tagPrice(g.tag, 48, 58, 72, 85)
+        : tagPrice(g.tag, 28, 40, 52, 62)
       const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 65 || g.transfer)
       if (!buy.ok) {
         g.needs.energy = Math.max(0, g.needs.energy - 12)
         g.thought =
-          buy.why === 'broke' ? 'Massage chairs — too rich' : 'Skipped the spa'
+          buy.why === 'broke' || buy.why === 'too expensive'
+            ? 'Massage chairs — too rich'
+            : 'Skipped the spa'
         g.happiness -= buy.why === 'broke' ? 1 : 0
       } else {
         g.needs.energy = Math.max(0, g.needs.energy - 50)
         g.needs.boarding = Math.min(99, g.needs.boarding + 5)
-        g.happiness += g.tag === 'premium' ? 12 : 8
+        g.happiness += tagSpendsUp(g.tag) ? 12 : 8
         g.thought = `Massage spa (−$${pay})`
-        if (g.airlineId && g.tag === 'premium') this.adjustHeat(g.airlineId, 0.12)
+        if (g.airlineId && tagSpendsUp(g.tag)) this.adjustHeat(g.airlineId, 0.12)
       }
     }
     if (n === 'pool') {
-      const pay = g.transfer ? 48 : g.tag === 'premium' ? 40 : 22
+      const pay = g.transfer
+        ? tagPrice(g.tag, 28, 38, 48, 58)
+        : tagPrice(g.tag, 16, 24, 34, 44)
       const buy = this.tryGuestPay(g, pay, 'play', g.needs.play >= 60 || g.transfer)
       if (!buy.ok) {
         g.needs.play = Math.max(0, g.needs.play - 12)
@@ -3979,8 +4030,7 @@ export class Game {
     const open = this.hallOpenFor(fit)
     if (!open.size || !fit) return
     const a = this.airline(airlineId)
-    const tag: PaxTag =
-      Math.random() < (a.persona === 'business' ? 0.45 : 0.2) ? 'premium' : 'budget'
+    const tag: PaxTag = rollPaxTag(a.persona)
     const g = spawnHallGuest(`layover:${airlineId}`, 'arrive', tag, {
       transfer: true,
       airlineId,
