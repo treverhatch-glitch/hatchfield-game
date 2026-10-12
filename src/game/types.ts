@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v20'
+export const SAVE_KEY = 'apron-save-v21'
 
 export type Tile =
   | 'grass'
@@ -507,4 +507,5 @@ export interface GameSnapshot {
   parkTerms?: Record<string, ParkTerm>
   janitors?: number
   researchers?: number
+  deskStaff?: number
 }

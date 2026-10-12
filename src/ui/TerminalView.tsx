@@ -124,6 +124,18 @@ export function TerminalView({ game }: { game: Game }) {
         ctx.fillText(lockedAir ? `${p.label}!` : p.label, x, y)
       }
 
+      // Desk staff bodies (squares) — not just budget sliders.
+      for (const s of game.hallStaff) {
+        const p = NODE_POS[s.node]
+        const x = p.x * w + (s.id.charCodeAt(4) % 5) - 2
+        const y = p.y * h - 18
+        ctx.fillStyle = s.stage === 0 ? s.color : '#666'
+        ctx.fillRect(x - 5, y - 5, 10, 10)
+        ctx.strokeStyle = '#e8eef4'
+        ctx.lineWidth = 1
+        ctx.strokeRect(x - 5, y - 5, 10, 10)
+      }
+
       // Guests
       for (const g of game.hallGuests) {
         let x = NODE_POS[g.node].x * w
@@ -158,7 +170,7 @@ export function TerminalView({ game }: { game: Game }) {
       ctx.font = '12px IBM Plex Sans, sans-serif'
       ctx.fillText(
         fit
-          ? `${game.hallGuests.length} guests · secure line ${hasSec ? 'open' : 'LOCKED'} · Esc / H apron`
+          ? `${game.hallGuests.length} guests · staff ${game.hallStaff.filter((s) => s.stage === 0).length}/${game.deskStaff} · secure ${hasSec ? 'open' : 'LOCKED'}`
           : 'Stamp a Premade hall or furnish a Shell outside first.',
         28,
         58,

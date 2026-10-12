@@ -87,6 +87,18 @@ export function isAirside(node: HallNode): boolean {
   return AIRSIDE_NODES.has(node)
 }
 
+/** Desk posts that can be staffed with bodies. */
+export type StaffPost = 'checkin' | 'security' | 'gate'
+
+export interface HallStaff {
+  id: string
+  node: StaffPost
+  label: string
+  color: string
+  /** 0 working · 1 break */
+  stage: number
+}
+
 /** Open nodes visible to a guest given clearance. */
 export function openForGuest(open: Set<HallNode>, cleared: boolean): Set<HallNode> {
   if (cleared) return open
