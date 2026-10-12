@@ -1484,17 +1484,28 @@ export class Game {
     if (missed) {
       g.happiness -= g.tag === 'premium' ? 10 : 6
       g.patience -= 8
+      const leave = job === 'arrive'
       g.thought =
         g.preferMode === 'bus'
-          ? 'No bus curb — paid for a drop-off'
+          ? leave
+            ? 'No bus home — expensive taxi'
+            : 'No bus curb — paid for a drop-off'
           : g.preferMode === 'rail'
-            ? 'No rail station — scrambled landside'
+            ? leave
+              ? 'No rail out — scrambled exit'
+              : 'No rail station — scrambled landside'
             : g.preferMode === 'hotel'
-              ? 'No hotel beds — exhausted already'
+              ? leave
+                ? 'No hotel overnight — wiped'
+                : 'No hotel beds — exhausted already'
               : g.preferMode === 'car_short'
-                ? 'No short-term lot — circling'
+                ? leave
+                  ? 'No short-term pickup lot'
+                  : 'No short-term lot — circling'
                 : g.preferMode === 'car_long'
-                  ? 'No long-term lot — awkward drop-off'
+                  ? leave
+                    ? 'No long-term lot for the car'
+                    : 'No long-term lot — awkward drop-off'
                   : 'Landside scramble'
     }
     let fee = 0
