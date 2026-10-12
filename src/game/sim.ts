@@ -73,6 +73,12 @@ import {
   CARPARK_LONG_INCOME,
   JANITOR_HIRE,
   JANITOR_WAGE,
+  RESEARCHER_HIRE,
+  RESEARCHER_WAGE,
+  RP_RATE_BARE,
+  RP_RATE_BOARD,
+  RP_RATE_DESK,
+  RP_RATE_MACHINE,
   PARK_INCOME,
   ROOMS,
   HEAVY_RUNWAY_COST,
@@ -196,6 +202,9 @@ const emptyRooms = (): Record<RoomId, number> => ({
   waterfall: 0,
   gaming: 0,
   dayhotel: 0,
+  rdesk: 0,
+  rboard: 0,
+  rmachine: 0,
 })
 
 function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, number>>): TerminalFit {
@@ -248,6 +257,8 @@ export class Game {
   parkTerm: ParkTerm = 'short'
   janitors = 0
   janitorCool = 0
+  researchers = 0
+  researcherCool = 0
   interestCool = 60
   public = false
   sharePrice = 0
@@ -364,6 +375,8 @@ export class Game {
     this.parkTerm = 'short'
     this.janitors = 0
     this.janitorCool = 0
+    this.researchers = 0
+    this.researcherCool = 0
     this.interestCool = 60
     this.public = false
     this.sharePrice = 0
@@ -854,6 +867,8 @@ export class Game {
     this.carParkLong = false
     this.parkTerms = {}
     this.janitors = 0
+    this.researchers = 0
+    this.researcherCool = 0
     this.pushNews(
       `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit ($${STARTER_KIT_COST.toLocaleString()}) for a Northline-ready field.`,
       'ok',
@@ -1473,6 +1488,7 @@ export class Game {
       carParkLong: this.carParkLong,
       parkTerms: this.parkTerms,
       janitors: this.janitors,
+      researchers: this.researchers,
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -1542,6 +1558,7 @@ export class Game {
       this.carParkLong = s.carParkLong ?? false
       this.parkTerms = s.parkTerms ?? {}
       this.janitors = s.janitors ?? 0
+      this.researchers = s.researchers ?? 0
       this.public = s.public ?? false
       this.sharePrice = s.sharePrice ?? 0
       this.sharesOwned = s.sharesOwned ?? 0
@@ -3143,6 +3160,163 @@ export class Game {
     }
   }
 
+  /** Lab gear counts across all halls. */
+  labGear(): { desks: number; boards: number; machines: number } {
+    let desks = 0
+    let boards = 0
+    let machines = 0
+    for (const f of this.fits) {
+      desks += f.rooms.rdesk ?? 0
+      boards += f.rooms.rboard ?? 0
+      machines += f.rooms.rmachine ?? 0
+    }
+    return { desks, boards, machines }
+  }
+
+  /** RP/sec when every researcher is working the current lab. */
+  researchRate(): number {
+    if (this.researchers < 1) return 0
+    const { desks, boards, machines } = this.labGear()
+    const stations = Math.max(1, desks + boards + machines)
+    const workingCap = Math.min(this.researchers, Math.max(1, desks || (stations > 0 ? 1 : 0)))
+    if (desks + boards + machines < 1) {
+      return this.researchers * RP_RATE_BARE
+    }
+    const gear =
+      Math.min(desks, workingCap) * RP_RATE_DESK +
+      Math.min(boards, workingCap) * RP_RATE_BOARD +
+      Math.min(machines, workingCap) * RP_RATE_MACHINE
+    // Extra warm bodies beyond gear still drip a little.
+    const overflow = Math.max(0, this.researchers - workingCap) * RP_RATE_BARE
+    return gear + overflow
+  }
+
+  hireResearcher() {
+    if (this.researchers >= 6) {
+      this.pushNews('Research crew maxed (6).', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.fits.length) {
+      this.pushNews('Stamp a hall before hiring researchers.', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(RESEARCHER_HIRE, 'hire researcher')) return
+    this.researchers += 1
+    this.spawnResearcherPawn()
+    const { desks } = this.labGear()
+    this.pushNews(
+      desks < 1
+        ? `Hired researcher #${this.researchers}. Furnish a Research desk or they barely bank RP.`
+        : `Hired researcher #${this.researchers}. They walk desk → board → lab bench.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  spawnResearcherPawn() {
+    const origin = this.fits[0]?.origin
+    if (!origin) return
+    this.people.push({
+      id: uid('rnd'),
+      flightId: '',
+      x: origin.c + 0.5,
+      y: origin.r + 0.5,
+      path: [],
+      seg: 0,
+      t: 0,
+      color: '#7a9ec8',
+      job: 'researcher',
+      itinerary: [],
+      label: 'Researcher',
+      wantBag: false,
+      wantFood: false,
+      wantGift: false,
+      // 0 desk · 1 board · 2 machine · 3 break · 4 home
+      stage: 0,
+      paidFood: false,
+      paidGift: false,
+    })
+  }
+
+  tickResearchers(dt: number) {
+    if (this.researchers < 1) return
+    this.researcherCool -= dt
+    const live = this.people.filter((p) => p.job === 'researcher').length
+    if (live < this.researchers && this.fits.length) this.spawnResearcherPawn()
+
+    const { desks, boards, machines } = this.labGear()
+    const fit = this.activeHall() ?? this.fits[0]
+    let working = 0
+    for (const p of this.people) {
+      if (p.job !== 'researcher') continue
+      // Advance task every ~9s.
+      if (this.researcherCool <= 0) {
+        if (p.stage === 3 || p.stage === 4) {
+          // Back from break/home.
+          p.stage = 0
+          p.label = 'Researcher · desk'
+        } else if (Math.random() < 0.18) {
+          p.stage = Math.random() < 0.45 ? 4 : 3
+          p.label = p.stage === 4 ? 'Researcher · home' : 'Researcher · break'
+        } else {
+          const opts: number[] = []
+          if (desks > 0) opts.push(0)
+          if (boards > 0) opts.push(1)
+          if (machines > 0) opts.push(2)
+          if (!opts.length) {
+            // No furniture — still "working" at bare rate, just wandering.
+            p.stage = 0
+            p.label = 'Researcher · idle'
+          } else {
+            p.stage = opts[Math.floor(Math.random() * opts.length)]
+            p.label =
+              p.stage === 0
+                ? 'Researcher · desk'
+                : p.stage === 1
+                  ? 'Researcher · board'
+                  : 'Researcher · lab'
+          }
+        }
+      }
+      if (p.stage <= 2) working += 1
+
+      if (!fit) continue
+      let ox = fit.origin.c
+      let oy = fit.origin.r
+      if (p.stage === 0) {
+        ox += 0.4
+        oy += 0.3
+      } else if (p.stage === 1) {
+        ox += 1.6
+        oy += 0.5
+      } else if (p.stage === 2) {
+        ox += 1.1
+        oy += 1.7
+      } else if (p.stage === 3) {
+        ox += 2.2
+        oy += 1.2
+      } else {
+        // Home — drift toward road stub / off hall.
+        ox = Math.max(0, fit.origin.c - 2)
+        oy = Math.max(0, fit.origin.r - 1)
+      }
+      const tx = ox + Math.random() * 0.4
+      const ty = oy + Math.random() * 0.4
+      p.x = lerp(p.x, tx, 1 - Math.pow(0.12, dt))
+      p.y = lerp(p.y, ty, 1 - Math.pow(0.12, dt))
+    }
+    if (this.researcherCool <= 0) this.researcherCool = 9
+
+    const rate = this.researchRate()
+    const staff = this.people.filter((p) => p.job === 'researcher')
+    const workFrac = staff.length ? working / staff.length : 0
+    // Night lab is quieter — half drip.
+    const night = this.isNight() ? 0.55 : 1
+    this.researchPoints += rate * workFrac * night * dt
+  }
+
   lineCost(key: BudgetKey): number {
     const pct = this.budgets[key] / 100
     let base = BUDGET_BASE[key] * pct
@@ -3150,6 +3324,10 @@ export class Game {
       base += this.mechanics * MECHANIC_WAGE * pct
       // Hangar on field adds a shop overhead even at low slider (tools still cost).
       if (tilesOf(this.tiles, 'hangar').length) base += 90 * Math.max(0.25, pct)
+      // Lab staff wages ride the MX slider — empty labs still cost if hired.
+      base += this.researchers * RESEARCHER_WAGE * Math.max(0.35, pct)
+      const { desks, boards, machines } = this.labGear()
+      base += (desks * 40 + boards * 25 + machines * 70) * Math.max(0.2, pct)
     }
     if (key === 'security') {
       const posts = tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0)
@@ -4894,6 +5072,7 @@ export class Game {
     this.tickHub(step)
     this.tickParking(step)
     this.tickJanitors(step)
+    this.tickResearchers(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
     this.trySpawn()

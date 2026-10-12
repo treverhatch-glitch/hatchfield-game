@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v19'
+export const SAVE_KEY = 'apron-save-v20'
 
 export type Tile =
   | 'grass'
@@ -97,6 +97,9 @@ export type RoomId =
   | 'waterfall'
   | 'gaming'
   | 'dayhotel'
+  | 'rdesk'
+  | 'rboard'
+  | 'rmachine'
 
 export type Vec = { c: number; r: number }
 
@@ -404,7 +407,7 @@ export interface Person {
   seg: number
   t: number
   color: string
-  job: 'arrive' | 'board' | 'staff' | 'patrol' | 'mechanic' | 'janitor'
+  job: 'arrive' | 'board' | 'staff' | 'patrol' | 'mechanic' | 'janitor' | 'researcher'
   /** Ordered stops still ahead (plane→bags→food→exit or landside→gate→plane). */
   itinerary: PaxStop[]
   label: string
@@ -503,4 +506,5 @@ export interface GameSnapshot {
   /** Park tile key "c,r" → short/long term. */
   parkTerms?: Record<string, ParkTerm>
   janitors?: number
+  researchers?: number
 }
