@@ -43,16 +43,16 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 - Personas, heat, rewards / abandon, layovers → Hub plaques
 - Flight planner (day strip + night column, ETA drag, stand pin), N-strip inbound banks
 - Stand S / M / L stamps · de-ice pad + glycol trucks in storm/fog
-- Multi-terminal jetways (`T1·G2·M`), landside hotel / car parks
+- Multi-terminal jetways (`T1·G2·M`), landside hotels / car parks
 - Research: night bank → de-ice → stand classes → heavy pack (A380 / An-124) → military ramp (C-5M)
 - Emergencies: weather divert, firefighting plane refuel / refuel+MX
 - Guard host on a hangar-side mil ramp (not pax gates)
 
-**Landside:** stamp **hotel**, **short/long lots** (toggle term), **bus curb**, and **rail station** (after City rail). Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand.
+**Landside:** stamp **inn / business / resort** hotels (outside buildings), **four car parks** (small lot, large lot, multi-level garage, underground) each with **Short/Long** term toggle, **bus curb**, and **rail station** (after City rail). Inside the hall, **airside day rooms** keep layover pax spending. Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand.
 
 **Hall spend:** furnish food, souvenirs, lounge, golf simulators, gaming den, waterfall, day rooms, **massage spa**, and **airside pool** — pax pay when needs hit.
 
-Browser save key: `apron-save-v23`. New game overwrites it.
+Browser save key: `apron-save-v24`. New game overwrites it.
 
 ## Verify
 
