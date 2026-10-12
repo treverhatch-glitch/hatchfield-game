@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: Landside hotel/car-park tiles, janitors, 2nd-runway inbound capacity, airside day rooms live. Secure zones + desk staff shipped. Passenger wallets/prefs + usage-scaled landside income shipped. Pushback / belts / multi-terminal still open.
+Dependency note: Landside, janitors, N-strip banks (inbound scales with strips; planner RW filters), bags trucks, secure zones, desk staff, wallets/prefs, usage landside all live. Pushback / belts / multi-terminal still open.
 
 ### Explicit calls on open design questions
 

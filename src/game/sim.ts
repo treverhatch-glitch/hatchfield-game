@@ -272,6 +272,8 @@ export class Game {
   hallStaff: HallStaff[] = []
   /** Recent landside touchpoints (exits / day rooms / park cues) for usage income. */
   landsideUses = 0
+  /** Planner filter: null = all banks; 0..n-1 = that strip; -1 = tower-auto only. */
+  plannerRwFilter: number | null = null
   interestCool = 60
   public = false
   sharePrice = 0
@@ -2454,7 +2456,8 @@ export class Game {
         manual: false,
         flightId: null,
         standPref: null,
-        runwayPref: null,
+        // Spread auto bank across every stamped strip.
+        runwayPref: this.pickBalancedRunway(),
       })
     }
   }
@@ -2480,6 +2483,7 @@ export class Game {
     const a = this.airline(airlineId)
     this.flightSeq += 1
     const eta = this.clock + Math.max(8, inSeconds)
+    const rw = this.pickBalancedRunway()
     this.schedule.push({
       id: uid('slot'),
       airline: airlineId,
@@ -2491,10 +2495,12 @@ export class Game {
       manual: true,
       flightId: null,
       standPref: null,
-      runwayPref: null,
+      runwayPref: rw,
     })
     this.pushNews(
-      `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s.`,
+      `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s${
+        rw != null ? ` · ${this.runwayLabel(rw)}` : ''
+      }.`,
       'good',
     )
     this.emit()
@@ -2588,13 +2594,13 @@ export class Game {
     this.emit()
   }
 
-  /** Cycle preferred runway strip when multiple strips exist. */
+  /** Cycle preferred runway strip across every stamped strip. */
   cycleSlotRunway(slotId: string) {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
-    if (strips.length < 2) {
-      this.pushNews('Need a second strip to assign runways.', 'ok')
+    if (strips.length < 1) {
+      this.pushNews('Stamp a strip before assigning runways.', 'ok')
       this.emit()
       return
     }
@@ -4385,14 +4391,56 @@ export class Game {
   }
 
   maxInbound(): number {
-    // Tower pays: two approaches at once; without it, one.
-    // Second strip + tower adds capacity; stand_class research adds another bank.
+    // Tower unlocks parallel approaches; each stamped strip adds a bank.
+    // No hard 2-strip ceiling — more asphalt = more simultaneous inbound.
     const tower = tilesOf(this.tiles, 'tower').length > 0
     if (!tower) return 1
-    let n = 2
-    if (this.runwayStripCount() >= 2) n += 1
+    const strips = this.runwayStripCount()
+    let n = 1 + Math.min(5, Math.max(1, strips))
     if (this.hasResearch('stand_class')) n += 1
-    return n
+    return Math.min(7, n)
+  }
+
+  /** Least-busy strip index for auto bank; null if only one strip. */
+  pickBalancedRunway(): number | null {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    if (strips.length < 2) return null
+    const load = strips.map(() => 0)
+    for (const s of this.openSchedule()) {
+      const pref = s.runwayPref
+      if (pref != null && pref >= 0 && pref < load.length) load[pref] += 1
+      else {
+        // Unassigned count as soft load on every strip (tower will pick).
+        for (let i = 0; i < load.length; i++) load[i] += 0.35
+      }
+    }
+    for (const f of this.flights) {
+      if (f.phase === 'gone' || f.craft === 'helo') continue
+      // Prefer strip their landing path used if we stored pref on schedule.
+      const slot = f.scheduleId
+        ? this.schedule.find((x) => x.id === f.scheduleId)
+        : null
+      const pref = slot?.runwayPref
+      if (pref != null && pref >= 0 && pref < load.length) load[pref] += 1.2
+    }
+    let best = 0
+    for (let i = 1; i < load.length; i++) {
+      if (load[i] < load[best]) best = i
+    }
+    return best
+  }
+
+  /** Open slots filtered by runway bank (`null` = all; `-1` = auto-only). */
+  scheduleForRunway(rw: number | null): ScheduleSlot[] {
+    const open = this.openSchedule()
+    if (rw == null) return open
+    if (rw === -1) return open.filter((s) => s.runwayPref == null)
+    return open.filter((s) => s.runwayPref === rw)
+  }
+
+  setPlannerRwFilter(rw: number | null) {
+    this.plannerRwFilter = rw
+    this.emit()
   }
 
   freePads(): Vec[] {
@@ -4495,6 +4543,7 @@ export class Game {
       return
     }
     const stand = this.assignStand(slot.standPref ?? null)
+    if (slot.runwayPref == null) slot.runwayPref = this.pickBalancedRunway()
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     const busy = this.groundBusy() || !stand || !route
     const start = route?.[0] ?? { c: 1, r: -3 }
