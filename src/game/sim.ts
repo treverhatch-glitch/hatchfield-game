@@ -22,6 +22,11 @@ import {
   DIVERT_FEE_MAX,
   DIVERT_FEE_MIN,
   EMERGENCY_REFUSE_FINE,
+  HUB_BAN_THRESHOLD,
+  HUB_FEE_MAX,
+  HUB_FEE_MIN,
+  HUB_HEAT_NEED,
+  HUB_LAYOVER_WINS,
   RESEARCH_NODES,
   rewardForPersona,
   REWARD_LABEL,
@@ -111,6 +116,7 @@ import type {
   Flight,
   FuelBrand,
   GameSnapshot,
+  HubOffer,
   LayoverContract,
   LayoverOffer,
   MarketMission,
@@ -249,6 +255,11 @@ export class Game {
   layoverOfferCool = 50
   layover: LayoverContract | null = null
   layoverSpawnAcc = 0
+  /** Successful layover clears per airline — gates Hub tier. */
+  layoverWins: Record<string, number> = {}
+  hubOffer: HubOffer | null = null
+  hubOfferCool = 80
+  hubAirlines: AirlineId[] = []
   schedule: ScheduleSlot[] = []
   scheduleAuto = true
   schedulePlanCool = 8
@@ -348,6 +359,10 @@ export class Game {
     this.layoverOfferCool = 50
     this.layover = null
     this.layoverSpawnAcc = 0
+    this.layoverWins = {}
+    this.hubOffer = null
+    this.hubOfferCool = 80
+    this.hubAirlines = []
     this.schedule = []
     this.scheduleAuto = true
     this.schedulePlanCool = 8
@@ -430,7 +445,7 @@ export class Game {
     const floor = this.layover?.airline === id ? 0 : 15
     this.airlineHeat[id] = clamp(h, floor, 100)
     if (
-      this.airlineHeat[id] <= HEAT_BAN_THRESHOLD &&
+      this.airlineHeat[id] <= this.banThreshold(id) &&
       this.layover?.airline === id &&
       !this.isBanned(id)
     ) {
@@ -445,19 +460,35 @@ export class Game {
     this.pushNews(text, 'bad')
   }
 
+  isHub(id: AirlineId): boolean {
+    return this.hubAirlines.includes(id)
+  }
+
+  banThreshold(id: AirlineId): number {
+    return this.isHub(id) ? HUB_BAN_THRESHOLD : HEAT_BAN_THRESHOLD
+  }
+
   banAirline(id: AirlineId, reason: string) {
     if (this.isBanned(id)) return
     const a = this.airline(id)
-    this.airlineBanUntil[id] = this.clock + LAYOVER_BAN_SECONDS
-    this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_BAN_THRESHOLD - 2)
-    this.charge(LAYOVER_BAN_FINE)
+    const wasHub = this.isHub(id)
+    const banSecs = wasHub ? LAYOVER_BAN_SECONDS + 40 : LAYOVER_BAN_SECONDS
+    const fine = wasHub ? LAYOVER_BAN_FINE + 4000 : LAYOVER_BAN_FINE
+    this.airlineBanUntil[id] = this.clock + banSecs
+    this.airlineHeat[id] = Math.min(this.heatOf(id), this.banThreshold(id) - 2)
+    this.charge(fine)
     if (this.layover?.airline === id) this.layover = null
     if (this.layoverOffer?.airline === id) this.layoverOffer = null
+    if (this.hubOffer?.airline === id) this.hubOffer = null
+    if (wasHub) {
+      this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+      this.pushNews(`${a.name} pulled the Hub plaque after the ban.`, 'bad')
+    }
     this.pushNews(
-      `${a.name} banned you for ${LAYOVER_BAN_SECONDS}s (${reason}). Fine ${moneyLeft(LAYOVER_BAN_FINE)}.`,
+      `${a.name} banned you for ${banSecs}s (${reason}). Fine ${moneyLeft(fine)}.`,
       'bad',
     )
-    this.reputation = Math.max(0, this.reputation - 6)
+    this.reputation = Math.max(0, this.reputation - (wasHub ? 10 : 6))
   }
 
   /**
@@ -523,6 +554,7 @@ export class Game {
     const a = this.airline(id)
     this.signed = this.signed.filter((x) => x !== id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
+    this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
     delete this.airlineReward[id]
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
@@ -530,6 +562,7 @@ export class Game {
     this.charge(ABANDON_FINE)
     if (this.layover?.airline === id) this.layover = null
     if (this.layoverOffer?.airline === id) this.layoverOffer = null
+    if (this.hubOffer?.airline === id) this.hubOffer = null
     if (this.offer?.airline === id) this.offer = null
     if (this.mxOffer?.airline === id) this.mxOffer = null
     for (const s of this.schedule) {
@@ -1223,6 +1256,8 @@ export class Game {
       airlineWarned: this.airlineWarned,
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
+      hubAirlines: this.hubAirlines,
+      layoverWins: this.layoverWins,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -1284,6 +1319,10 @@ export class Game {
       this.airlineLowAcc = {}
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
+      this.hubAirlines = s.hubAirlines ?? []
+      this.layoverWins = s.layoverWins ?? {}
+      this.hubOffer = null
+      this.hubOfferCool = 40
       this.layover = s.layover ?? null
       this.layoverOffer = null
       this.layoverOfferCool = 20
@@ -1930,8 +1969,14 @@ export class Game {
       .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
-    const spacing = a.kind === 'cargo' ? 22 + Math.random() * 12 : 18 + Math.random() * 10
-    for (let i = 0; i < count; i++) {
+    const hub = this.isHub(airlineId)
+    const spacing = a.kind === 'cargo'
+      ? 22 + Math.random() * 12
+      : hub
+        ? 12 + Math.random() * 8
+        : 18 + Math.random() * 10
+    const n = hub ? count + 1 : count
+    for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       this.schedule.push({
         id: uid('slot'),
@@ -2289,16 +2334,80 @@ export class Game {
       const avg = L.samples > 0 ? L.happySum / L.samples : 55
       const heat = this.heatOf(L.airline)
       this.layover = null
-      if (avg < 48 || heat < HEAT_BAN_THRESHOLD + 5) {
+      if (avg < 48 || heat < this.banThreshold(L.airline) + 5) {
         this.banAirline(L.airline, avg < 48 ? 'miserable transfers' : 'thin heat')
       } else {
         this.adjustHeat(L.airline, 8)
         this.reputation = Math.min(100, this.reputation + 3)
+        this.layoverWins[L.airline] = (this.layoverWins[L.airline] ?? 0) + 1
         this.pushNews(
           `${a.name} layover cleared — avg happiness ${Math.round(avg)}. They'll be back.`,
           'good',
         )
+        this.considerHubOffer(L.airline)
       }
+    }
+  }
+
+  considerHubOffer(airlineId: AirlineId) {
+    if (this.hubOffer || this.isHub(airlineId) || this.isBanned(airlineId)) return
+    if (this.hubOfferCool > 0) return
+    if ((this.layoverWins[airlineId] ?? 0) < HUB_LAYOVER_WINS) return
+    if (this.heatOf(airlineId) < HUB_HEAT_NEED) return
+    if (!this.signed.includes(airlineId)) return
+    const a = this.airline(airlineId)
+    if (a.kind === 'cargo' || a.persona === 'military_gov') return
+    const fee =
+      HUB_FEE_MIN + Math.floor(Math.random() * (HUB_FEE_MAX - HUB_FEE_MIN))
+    this.hubOffer = { airline: airlineId, age: 0, fee }
+    this.pushNews(
+      `${a.name} offers Hub status — denser slots + brand lounge for ${moneyLeft(fee)}. Fail a layover and the ban is brutal.`,
+      'good',
+    )
+  }
+
+  acceptHub() {
+    if (!this.hubOffer) return
+    const o = this.hubOffer
+    const a = this.airline(o.airline)
+    if (!this.spend(o.fee, `${a.name} Hub plaque`)) {
+      this.emit()
+      return
+    }
+    this.hubAirlines.push(o.airline)
+    this.hubOffer = null
+    this.hubOfferCool = 90
+    // Brand lounge room on the active hall.
+    const fit = this.activeHall() ?? this.fits[0]
+    if (fit) {
+      fit.rooms.lounge = (fit.rooms.lounge ?? 0) + 1
+    }
+    this.seedScheduleForAirline(o.airline, 4)
+    this.grantReward(o.airline)
+    this.reputation = Math.min(100, this.reputation + 5)
+    this.pushNews(
+      `${a.name} is a Hub carrier — denser bank, brand lounge live. Don't blow the next layover.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  declineHub() {
+    if (!this.hubOffer) return
+    const id = this.hubOffer.airline
+    const a = this.airline(id)
+    this.hubOffer = null
+    this.hubOfferCool = 70
+    this.adjustHeat(id, -2)
+    this.pushNews(`${a.name} Hub talk cooled off.`, 'ok')
+    this.emit()
+  }
+
+  tickHub(dt: number) {
+    this.hubOfferCool = Math.max(0, this.hubOfferCool - dt)
+    if (this.hubOffer) {
+      this.hubOffer.age += dt
+      if (this.hubOffer.age > 45) this.declineHub()
     }
   }
 
@@ -4145,6 +4254,7 @@ export class Game {
     if (this.mxOffer) this.mxOffer.age += step
     this.considerMxOffers()
     this.tickLayover(step)
+    this.tickHub(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
     this.trySpawn()

@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v15'
+export const SAVE_KEY = 'apron-save-v16'
 
 export type Tile =
   | 'grass'
@@ -169,6 +169,18 @@ export interface LayoverContract {
   happySum: number
   samples: number
   fee: number
+}
+
+/** Hub-tier deal — denser slots + brand lounge, harsher failure. */
+export interface HubOffer {
+  airline: AirlineId
+  age: number
+  fee: number
+}
+
+export interface HubContract {
+  airline: AirlineId
+  signedAt: number
 }
 
 export interface FuelContract {
@@ -451,4 +463,6 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
+  hubAirlines?: AirlineId[]
+  layoverWins?: Record<string, number>
 }
