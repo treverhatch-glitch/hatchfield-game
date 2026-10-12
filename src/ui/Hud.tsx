@@ -356,9 +356,9 @@ export function Hud({ game }: { game: Game }) {
           <div>
             <strong>
               {game.pendingEmergency.kind === 'tanker_mx'
-                ? 'Tanker + hangar MX'
+                ? 'Firefighting plane · refuel + MX'
                 : game.pendingEmergency.kind === 'tanker'
-                  ? 'Firefighter tanker'
+                  ? 'Firefighting plane · refuel only'
                   : 'Weather divert'}
             </strong>
             <p>

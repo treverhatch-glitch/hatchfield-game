@@ -135,16 +135,16 @@ if (broadDrop < Math.max(1, Math.floor(g.signed.length * 0.5))) {
 // Restore fire
 for (const t of fireTiles) g.tiles[t.r][t.c] = 'fire'
 
-// Tanker refuse path
+// Firefighting plane refuel-only refuse
 g.pendingEmergency = {
   id: 'test-tank',
   kind: 'tanker',
-  blurb: 'test tanker',
+  blurb: 'test airtanker refuel',
   fee: TANKER_FEE,
   age: 0,
   deadline: 20,
   airline: null,
-  needs: baseNeeds(),
+  needs: baseNeeds({ fuel: true }),
 }
 const cash1 = g.cash
 const heats = Object.fromEntries(g.signed.map((id) => [id, g.heatOf(id)]))
@@ -162,11 +162,64 @@ for (const f of g.flights) {
 }
 g.flights = g.flights.filter((f) => f.phase !== 'gone')
 
-// Tanker MX accept with hangar + fuel
+// Refuel-only accept — needs fuel farm + contract + loads
+g.fuelBrand = g.fuelBrand ?? 'apex'
+g.fuelLoads = Math.max(2, g.fuelLoads)
+g.pendingEmergency = {
+  id: 'test-refuel',
+  kind: 'tanker',
+  blurb: 'test refuel only',
+  fee: TANKER_FEE,
+  age: 0,
+  deadline: 20,
+  airline: null,
+  needs: baseNeeds({ fuel: true }),
+}
+if (!g.canHostEmergency(g.pendingEmergency)) {
+  issues.push(`refuel-only should be hostable: ${g.emergencyHostGap(g.pendingEmergency)}`)
+}
+const cashRefuel = g.cash
+const flightsRefuel = g.flights.length
+g.resolveEmergency('accept')
+if (g.cash < cashRefuel + TANKER_FEE - 1) {
+  issues.push(`refuel fee missing: ${cashRefuel} → ${g.cash}`)
+}
+if (g.flights.length <= flightsRefuel) issues.push('refuel-only should spawn landing')
+const refuelAf = g.flights[g.flights.length - 1]?.airframeId
+if (refuelAf && !['cl415', 'at802', 'c130', 'citation', 'pc12'].includes(refuelAf)) {
+  issues.push(`unexpected airtanker frame ${refuelAf}`)
+}
+
+// Clear again for MX
+for (const f of g.flights) {
+  f.phase = 'gone'
+  f.stand = null
+}
+g.flights = []
+g.mechanics = Math.max(1, g.mechanics)
+
+// Fail refuel without fuel loads
+g.fuelLoads = 0
+g.pendingEmergency = {
+  id: 'test-nofuel',
+  kind: 'tanker',
+  blurb: 'empty farm',
+  fee: TANKER_FEE,
+  age: 0,
+  deadline: 20,
+  airline: null,
+  needs: baseNeeds({ fuel: true }),
+}
+if (g.canHostEmergency(g.pendingEmergency)) {
+  issues.push('empty fuel farm should block refuel host')
+}
+g.fuelLoads = 3
+
+// Refuel + MX accept with hangar + fuel + mechanic
 g.pendingEmergency = {
   id: 'test-mx',
   kind: 'tanker_mx',
-  blurb: 'test tanker mx',
+  blurb: 'test airtanker mx',
   fee: TANKER_MX_FEE,
   age: 0,
   deadline: 20,
@@ -184,11 +237,30 @@ if (g.cash < cashMx + TANKER_MX_FEE - 1) {
 }
 if (g.flights.length <= flightsMx) issues.push('tanker_mx should spawn landing')
 
+// Dry weather should be able to spawn an airtanker ask
+g.flights = []
+g.pendingEmergency = null
+g.weather = 'clear'
+g.emergencyCool = 0
+g.pendingThreat = null
+let dryAsk: string | null = null
+for (let i = 0; i < 50 && !dryAsk; i++) {
+  g.emergencyCool = 0
+  g.tickEmergencies(1)
+  if (g.pendingEmergency && g.pendingEmergency.kind !== 'divert') {
+    dryAsk = g.pendingEmergency.kind
+  } else if (g.pendingEmergency) {
+    g.pendingEmergency = null
+  }
+}
+
 const out = {
   ok: issues.length === 0,
   issues,
   spawnedAsk,
+  dryAsk,
   fee: TANKER_FEE,
+  mxFee: TANKER_MX_FEE,
   failFine: EMERGENCY_FAIL_FINE,
   news: g.news.slice(0, 8).map((n) => n.text),
 }
