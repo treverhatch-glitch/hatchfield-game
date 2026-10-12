@@ -773,7 +773,7 @@ export const RESEARCH_NODES: ResearchNode[] = [
   {
     id: 'mil_ramp',
     name: 'Military ramp',
-    cost: 48,
+    cost: 42,
     blurb: 'C-5M Super Galaxy + dedicated Guard apron (hangar-side hardstands, not pax gates).',
     requires: 'heavy_pack',
   },

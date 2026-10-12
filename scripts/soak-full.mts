@@ -11,15 +11,21 @@ g.takeLoan()
 g.speed = 3
 g.scheduleAuto = true
 
-// Unlock Guard + cargo path
+// Unlock Guard + cargo path (hangar-side hardstand away from pax jetways)
 g.tiles[20][10] = 'hangar'
-g.tiles[20][14] = 'police'
-g.tiles[21][16] = 'cargo'
-g.tiles[18][10] = 'helipad'
+g.tiles[18][10] = 'cargo'
+g.tiles[20][6] = 'stand'
+for (let r = 21; r <= 22; r++) g.tiles[r][6] = 'taxi'
+for (let c = 6; c <= 8; c++) g.tiles[22][c] = 'taxi'
+g.tiles[19][9] = 'police'
+g.tiles[18][12] = 'helipad'
 g.reputation = 55
 g.cash += 80_000
 g.budgets.ambulance = 85
 g.signMilitaryAgreement()
+if (!g.milAgreement) {
+  issues.push({ sev: 'bug', msg: `military agreement failed: ${g.canHostMilitary().why}` })
+}
 if (g.meetsReq('upps') && !g.signed.includes('upps')) {
   g.signed.push('upps')
   g.airlineHeat.upps = 70

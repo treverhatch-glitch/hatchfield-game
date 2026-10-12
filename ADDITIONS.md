@@ -341,6 +341,13 @@ If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 - **Airline field tasks** — after the first turnaround, signed carriers ask for concrete upgrades (police, hangar, janitor, hotel, car park, cargo shed, helipad, second desk…). Clock + cash bonus / fail fine + heat. Persona-weighted picks. Persists in save.
 - **Soft night curfew** — without Night bank research, pax slots slip after dark with a heat nick; freighter night bank still the unlock path.
 
+## Playability pass (full playthrough loop)
+
+- **Storm pulse** — storms always nick the bank on a cool (de-ice softens); hangar stamp tips for Guard pads.
+- **Cascade headline rate-limit** + lighter heat on runway-backlog slips so the ticker stays readable.
+- **mil_ramp** cost 48 → 42 so the research spine finishes in one sitting.
+- `scripts/playthrough-full.mts` exercises boot → IPO → Guard → save/load.
+
 ## Still later (on your list, not finished)
 
 - Full custom terminal wall painting (Tier A #1) + landside/airside
