@@ -10,19 +10,23 @@ export function Field({ game }: { game: Game }) {
     if (!canvas) return
     const world = new World(canvas)
     world.onHover = (v) => {
+      if (game.view !== 'apron') return
       game.hover = v
     }
     world.onClick = (v) => {
+      if (game.view !== 'apron') return
       game.clickTile(v)
     }
     world.getTool = () => game.tool
     const onKey = (e: KeyboardEvent) => {
+      if (game.view !== 'apron') return
       if (e.key === 'r' || e.key === 'R') game.rotatePiece()
     }
     window.addEventListener('keydown', onKey)
     let raf = 0
     const loop = () => {
-      world.render(game)
+      // Skip GL work while Hall is front — both layers stay mounted for crossfade.
+      if (game.view === 'apron') world.render(game)
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)

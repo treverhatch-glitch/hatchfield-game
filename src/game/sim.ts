@@ -390,8 +390,6 @@ export class Game {
     // Continuous taxi spine so pax can path plane → bags → hall → road
     for (let c = 8; c <= 22; c++) this.tiles[23][c] = 'taxi'
     for (let c = 8; c <= 22; c++) this.tiles[22][c] = 'taxi'
-    this.tiles[21][12] = 'stand'
-    this.tiles[21][16] = 'stand'
     this.tiles[21][8] = 'fuel'
     this.tiles[21][10] = 'bags'
     this.tiles[21][14] = 'snack'
@@ -402,15 +400,20 @@ export class Game {
     for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
     this.tiles[18][15] = 'road'
     this.tiles[18][17] = 'road'
-    // Premade hall touching taxi + road
+    // Premade hall touching taxi + road (c15–17, r19–21)
     const origin = { c: 15, r: 19 }
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) this.tiles[origin.r + r][origin.c + c] = 'terminal'
     }
-    // Link hall to taxi
+    // Stands AFTER hall so they are not overwritten by the 3×3 terminal stamp.
+    this.tiles[21][12] = 'stand'
+    this.tiles[21][20] = 'stand'
+    // Link hall to taxi + stands
+    this.tiles[22][12] = 'taxi'
     this.tiles[22][15] = 'taxi'
     this.tiles[22][16] = 'taxi'
     this.tiles[22][17] = 'taxi'
+    this.tiles[22][20] = 'taxi'
     this.fits = [
       emptyFit(origin, true, {
         checkin: 2,
@@ -427,10 +430,12 @@ export class Game {
     this.fuelBrand = 'apex'
     this.fuelLoads = 4
     this.caterBrand = 'skybite'
+    this.mechanics = 1
+    this.spawnMechanicPawn()
     this.offerCool = 2
     this.spawnCool = 6
     this.pushNews(
-      'Starter kit down — connected pavement so passengers can walk plane→bags→hall→road. Northline should call.',
+      'Starter kit down — connected pavement, one mechanic on the strip. Northline should call.',
       'good',
     )
     this.emit()
@@ -692,13 +697,13 @@ export class Game {
 
   shockStock(reason: string, mult: number, fine: number) {
     if (!this.public) {
-      this.cash -= fine
+      this.charge(fine)
       this.pushNews(reason, 'bad')
       return
     }
     const before = this.sharePrice
     this.sharePrice = Math.max(1.5, Math.round(this.sharePrice * mult * 100) / 100)
-    this.cash -= fine
+    this.charge(fine)
     this.reputation = Math.max(0, this.reputation - 10)
     const paper = Math.round((this.sharePrice - before) * this.sharesOwned)
     this.pushNews(
@@ -799,7 +804,7 @@ export class Game {
     }
     if (this.fuelLoads <= 1 && this.fuelBrand && roll < 0.25) {
       const spike = 3500 + Math.floor(Math.random() * 2500)
-      this.cash -= spike
+      this.charge(spike)
       this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.94) * 100) / 100)
       this.pushNews(
         `Jet-A spike hits the tape. Spot buy ${moneyLeft(spike)}. HATCH $${this.sharePrice.toFixed(2)}.`,
@@ -946,6 +951,12 @@ export class Game {
     }
     this.cash -= amount
     return true
+  }
+
+  /** Fines / interest — may go into debt, but floors so the tape can't spiral forever. */
+  charge(amount: number) {
+    this.cash -= amount
+    if (this.cash < -25_000) this.cash = -25_000
   }
 
   earn(amount: number, label: string, flight?: Flight) {
@@ -1626,12 +1637,24 @@ export class Game {
     this.payrollCool = 30
     const bill = this.payrollPreview()
     if (bill <= 0) return
-    this.cash -= bill
-    this.pushNews(`Ops payroll ${moneyLeft(bill)} (sliders × staff × shops).`, 'ok')
-    if (this.cash < 0) {
-      this.reputation = Math.max(0, this.reputation - 3)
-      this.pushNews('Payroll bounced — crews walking slow. Reputation dips.', 'bad')
+    if (this.cash >= bill) {
+      this.cash -= bill
+      this.pushNews(`Ops payroll ${moneyLeft(bill)} (sliders × staff × shops).`, 'ok')
+      return
     }
+    // Partial pay — never drive cash below zero from payroll alone.
+    const paid = Math.max(0, this.cash)
+    this.cash = 0
+    this.reputation = Math.max(0, this.reputation - 4)
+    // Starved lines bite harder next cycle.
+    if (this.budgets.maintenance > 20) this.budgets.maintenance = Math.max(20, this.budgets.maintenance - 10)
+    if (this.budgets.security > 20) this.budgets.security = Math.max(20, this.budgets.security - 10)
+    this.pushNews(
+      paid > 0
+        ? `Payroll short — paid ${moneyLeft(paid)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
+        : `Payroll missed entirely (${moneyLeft(bill)} due). Crews walking. Reputation dips.`,
+      'bad',
+    )
   }
 
   tickMaintenance(dt: number) {
@@ -1713,7 +1736,7 @@ export class Game {
       return
     }
     const fine = Math.round(5000 + (1 - firePct) * 12000)
-    this.cash -= fine
+    this.charge(fine)
     this.reputation = Math.max(0, this.reputation - (firePct < 0.3 ? 8 : 4))
     if (this.public) {
       this.sharePrice = Math.max(1.5, Math.round((this.sharePrice * (0.9 + firePct * 0.05)) * 100) / 100)
@@ -1742,7 +1765,7 @@ export class Game {
     const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.round(baseFine * (1.4 - mitigate * 0.5))
-    this.cash -= fine
+    this.charge(fine)
     this.reputation = Math.max(0, this.reputation - (amb < 0.3 ? 14 : 8))
     this.runwayCondition = clamp(this.runwayCondition - 12, 0, 100)
     this.securityIncidents += 1
@@ -1768,7 +1791,7 @@ export class Game {
     }
     if (amb < 0.2) {
       this.pushNews('No medics on call — city hospital bill piles on. Fund ambulances.', 'bad')
-      this.cash -= 4000
+      this.charge(4000)
     } else if (amb >= 0.8) {
       this.reputation = Math.min(100, this.reputation + 2)
       this.pushNews('Ambulance crews pulled survivors fast — softens the headline.', 'ok')
@@ -2903,7 +2926,7 @@ export class Game {
       if (this.interestCool <= 0) {
         this.interestCool = 60
         this.loanBalance += LOAN_INTEREST
-        this.cash -= LOAN_INTEREST
+        this.charge(LOAN_INTEREST)
         this.pushNews(`Loan interest ${moneyLeft(LOAN_INTEREST)}. Owed ${moneyLeft(this.loanBalance)}.`, 'bad')
       }
     }
