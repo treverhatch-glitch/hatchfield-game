@@ -172,6 +172,13 @@ A new player can, without a wiki:
 
 If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 
+## Balance pass (retest loop)
+
+- Unique procedural airline names; cap **3 signed procs** so majors stay readable.
+- Slowed helo / Guard / air-ambulance cools — schedule pax + cargo stay the spine.
+- Timetable biases freighter slots when cargo is starving; boarding clocks slightly kinder; heat recovers a bit faster after cascades.
+- Full soak: ~50+ turnarounds, no stuck ETAs, no cash-floor hits, mixed fleet healthy.
+
 ## Shipped — runway timetable (this loop)
 
 - **Auto + manual schedule** — signed airlines bank ETA slots; player can add / bump / cancel.

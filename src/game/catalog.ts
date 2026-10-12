@@ -337,8 +337,12 @@ const PROC_NAMES = [
 const PROC_COLORS = ['#4a6fa5', '#6a8f4e', '#8a5a3a', '#5a4a7a', '#2a6a6a', '#7a4a4a']
 
 /** Light procedural regional — variety on the phone without replacing majors. */
-export function createProcAirline(): Airline {
-  const name = PROC_NAMES[Math.floor(Math.random() * PROC_NAMES.length)]
+export function createProcAirline(usedNames: string[] = []): Airline {
+  const taken = new Set(usedNames.map((n) => n.toLowerCase()))
+  const free = PROC_NAMES.filter((n) => !taken.has(n.toLowerCase()))
+  const name = free.length
+    ? free[Math.floor(Math.random() * free.length)]
+    : `${PROC_NAMES[Math.floor(Math.random() * PROC_NAMES.length)]} ${10 + Math.floor(Math.random() * 89)}`
   const color = PROC_COLORS[Math.floor(Math.random() * PROC_COLORS.length)]
   const budget = Math.random() < 0.65
   const id = `proc-${Math.random().toString(36).slice(2, 7)}`
