@@ -76,19 +76,100 @@ We copied the *spirit*:
 
 - Furnish **indoor golf**, **waterfall court**, **gaming den** — guests grow a `play` need and spend there.
 
-## Strategy backlog (idea gen — ship next)
+## Strategy — fuller experience (idea gen, Oct 2026)
 
-1. **Custom terminal painter** — wall/floor stamp, door links for the hall graph.
-2. **Smooth apron ↔ hall ↔ airside** — deeper “walk inside the building” feel (Hall view exists; custom walls next).
-3. **Slot & curfew clock** — city noise vs night freighter money.
-4. **Multi-stand pushback / ground holds** — tower value under traffic.
-5. **Franchise retail contracts** — signed hall brands.
-6. **Seasonal weather / de-ice trucks**.
-7. **Shareholder AGM events**.
-8. **Godot Steam rebuild** — after browser loops feel complete.
+### What already carries the game
+
+Four loops are real enough to build on:
+
+1. **AT3 stamp loop** — land → prefabs → fuel/fire/road/hall → airline phone → money from turnarounds.
+2. **Hall RCT loop** — needs, capped pathfinding, missed gates, wear, amenities (golf/falls/games).
+3. **Ops risk loop** — budgets, mechanics, runway condition, weather, crashes, threat scramble.
+4. **Capital loop** — loans, parcels, rail, IPO/HATCH, analyst missions.
+
+Rule for new features: deepen one of these four. Don’t open a fifth parallel game until custom terminal layout feels like a skill.
+
+### Pillars to protect
+
+- **Money = picture** — every fee should show a truck, guest, jet, or ticker move.
+- **Layout matters** — missing rooms / soft pavement / thin security must hurt visibly.
+- **AT3 first, HatchTag spice second** — fantasy amenities and IPO are seasoning on a readable airport.
+- **Sawyer cap** — never perfect pathfinding for thousands; keep hall graph shallow.
+
+### Gap analysis (full experience)
+
+| Pillar | Have now | Missing for “complete” feel |
+| --- | --- | --- |
+| Build | Prefab stamps, 3 runway lengths, helipad | Custom terminal walls/doors; landside vs airside zones; multi-building campuses |
+| Airlines | 6 premade + Guard host | Stronger personalities; layover contracts; bans; optional procedural fillers |
+| Aircraft | Named frames + size/fees | Pushback queues; gate assignment; weight/noise classes; GA / flight school |
+| Pax | Budget/premium + needs + clocks | Traits (family, business, transfer); layover dwell; complaint → airline heat |
+| Cargo | 3 freighters | Night banks, warehouse chains, customs delay mini-loop |
+| City | Rail stub, parcels | Curfew, noise complaints, tourism campaigns, competing airport |
+| Staff | Budget sliders + mechanics | Named crew, shift coverage, union events |
+| Meta | IPO + missions | AGM votes, difficulty campaigns, sandbox vs scenario |
+
+### Recommended ship order (not calendar — dependency order)
+
+**Tier A — make the airport feel built by you**
+
+1. **Custom terminal painter** — stamp walls/floors, place doors that rewrite the hall graph. Biggest skill gap vs premade box.
+2. **Landside / airside clarity** — secure line as a real cut; wrong-side amenities don’t help departures.
+3. **Gate & stand assignment** — jets pick a gate; tower + multiple stands create queues (tower finally “pays”).
+
+**Tier B — airline drama (HatchTag + your layover idea)**
+
+4. **Airline personalities (premade core, light proc spice)**  
+   - Keep handcrafted majors (Northline → Summit, UPPS → EXFED, Guard).  
+   - Add **persona tags**: luxury / business / budget / cargo-night / military-gov.  
+   - Optional **random regional filler** airlines (name + color + 1–2 quirks) so the phone isn’t always the same six faces — but story beats stay premade.
+5. **Layover hub contracts** — airline pays more to dump transfer pax for N hours.  
+   - Upside: captive spend (food/shop/play).  
+   - Downside: hall load, wear, missed connections.  
+   - **Ban + fine** if happiness/rep dips below threshold while hosting their layover — excellent tension, ship it.
+6. **Airline heat meter** — soft score per carrier; bans are temporary (30–90 sim-min) not save-ruining.
+
+**Tier C — day/night & seasons (CEO depth)**
+
+7. **Slot / curfew clock** — city noise vs night freighter money; tower + rail change the politics.
+8. **De-ice / winter ops** — seasonal budget line + truck; storms without de-ice = holds/cancels.
+9. **Franchise retail** — sign a coffee/duty-free brand; guaranteed spend, brand crisis events.
+
+**Tier D — meta & Steam**
+
+10. **Scenarios** — “Cargo only Kiln”, “IPO in 20 minutes”, “Guard base neighbor”.
+11. **AGM / shareholder votes** when public — expand vs dividend vs security spend.
+12. **Godot Steam rebuild** — only after Tier A–B loops feel unfair in a fun way, not unfinished.
+
+### Explicit calls on open design questions
+
+- **Premade vs random airlines:** Hybrid. Premade for identity and tutorials; thin procedural regionals for variety. Full random-only dilutes AT3’s “I know who Summit is” fantasy.
+- **Layover bans:** Yes — short ban + cash fine + news blurb. Teaches hall quality without deleting the save.
+- **Military:** Keep as **host agreement** (not a full player-controlled air force). Occasional tasking missions later (“clear stand 2 for ANG”).
+- **Browser vs Godot:** Browser stays the design lab. Godot is the shipping skin once loops are sacred.
+
+### Nice-to-haves (park, don’t chase)
+
+- Flight school / GA ramp  
+- Water aerodrome / second airport rival AI  
+- Multiplayer share price sabotage (too spicy for v1)  
+- Full bomb minigame (keep scramble/ignore unless it becomes a verb players love)
+
+### Success tests for “fuller”
+
+A new player can, without a wiki:
+
+1. Boot → land → starter → sign Northline → watch a named jet earn money.  
+2. Open Hall, see a guest fail without a WC, fix it, see happiness recover.  
+3. Neglect maintenance in a storm, nearly crash, hire mechanics, recover.  
+4. Sign a layover deal, get rich on shop spend, then almost get banned.  
+5. IPO and survive one public crisis by scrambling security.
+
+If 1–3 work, we’re an AT3 sketch. If 4–5 work, we’re Hatchfield.
 
 ## Still later (on your list, not finished)
 
-- Full custom terminal wall painting
-- Slot/curfew + de-ice
-- Godot Steam rebuild
+- Full custom terminal wall painting (Tier A #1)
+- Slot/curfew + de-ice (Tier C)
+- Layover hub contracts + airline bans (Tier B)
+- Godot Steam rebuild (Tier D)
