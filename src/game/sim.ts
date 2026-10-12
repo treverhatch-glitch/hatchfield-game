@@ -224,6 +224,8 @@ export class Game {
   schedule: ScheduleSlot[] = []
   scheduleAuto = true
   schedulePlanCool = 8
+  /** Rate-limit hall miss headlines: key → clock ready. */
+  hallMissCool: Record<string, number> = {}
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -314,6 +316,7 @@ export class Game {
     this.schedule = []
     this.scheduleAuto = true
     this.schedulePlanCool = 8
+    this.hallMissCool = {}
     this.flights = []
     this.trucks = []
     this.people = []
@@ -388,7 +391,9 @@ export class Game {
     let h = this.heatOf(id)
     if (delta < 0) h += delta * a.heatSensitivity
     else h += delta
-    this.airlineHeat[id] = clamp(h, 0, 100)
+    // Soft floor outside an active layover — schedule cascades shouldn't zero a carrier overnight.
+    const floor = this.layover?.airline === id ? 0 : 15
+    this.airlineHeat[id] = clamp(h, floor, 100)
     if (
       this.airlineHeat[id] <= HEAT_BAN_THRESHOLD &&
       this.layover?.airline === id &&
@@ -396,6 +401,13 @@ export class Game {
     ) {
       this.banAirline(id, 'layover heat crashed')
     }
+  }
+
+  /** One hall-miss headline per flight / destination window. */
+  hallMissNews(key: string, text: string) {
+    if ((this.hallMissCool[key] ?? 0) > this.clock) return
+    this.hallMissCool[key] = this.clock + 14
+    this.pushNews(text, 'bad')
   }
 
   banAirline(id: AirlineId, reason: string) {
@@ -1326,10 +1338,13 @@ export class Game {
         g.patience -= dt * 3
         if (g.patience <= 0) {
           g.dead = true
-          this.reputation = Math.max(0, this.reputation - 2)
+          this.reputation = Math.max(0, this.reputation - 0.5)
           const aid = this.guestAirlineId(g)
-          if (aid) this.adjustHeat(aid, g.transfer ? -6 : -3.5)
-          this.pushNews(`${g.name} left angry — missing ${dest}.`, 'bad')
+          if (aid) this.adjustHeat(aid, g.transfer ? -2 : -1.2)
+          this.hallMissNews(
+            `miss-${dest}`,
+            `${g.name} left angry — missing ${dest}. Others peeling off too.`,
+          )
         }
         continue
       }
@@ -1339,10 +1354,13 @@ export class Game {
       if (g.job === 'depart' && g.needs.boarding <= 0 && g.node !== 'gate') {
         g.happiness -= 30
         g.dead = true
-        this.reputation = Math.max(0, this.reputation - 5)
+        this.reputation = Math.max(0, this.reputation - 0.8)
         const aid = this.guestAirlineId(g)
-        if (aid) this.adjustHeat(aid, g.transfer ? -8 : -5)
-        this.pushNews(`${g.name} missed ${g.flightId.slice(0, 8)} — late to the gate.`, 'bad')
+        if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
+        this.hallMissNews(
+          `gate-${g.flightId}`,
+          `Missed gate on ${g.flightId.slice(0, 10)} — pax boiling, heat dips.`,
+        )
       }
     }
     // Sample layover happiness into the active contract.
@@ -1809,13 +1827,13 @@ export class Game {
         x.delaySec = Math.min(120, x.delaySec + push)
         x.status = 'delayed'
         x.delayReason = x.delayReason ?? 'Cascade from earlier delay'
-        this.adjustHeat(x.airline, -0.35)
+        this.adjustHeat(x.airline, -0.2)
         cursor = x.eta + 14
       } else {
         cursor = Math.max(cursor, x.eta + 14)
       }
     }
-    this.adjustHeat(slot.airline, -0.7)
+    this.adjustHeat(slot.airline, -0.45)
   }
 
   tickSchedule(dt: number) {
