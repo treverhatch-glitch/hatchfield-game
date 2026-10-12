@@ -796,7 +796,7 @@ export class Game {
     }
     this.researchPoints -= node.cost
     this.researchUnlocked.push(id)
-    this.pushNews(`R&D unlocked: ${node.name}.`, 'good')
+    this.pushNews(`R&D unlocked: ${node.name} — ${node.blurb}`, 'good')
     this.reputation = Math.min(100, this.reputation + 1)
     this.emit()
   }
