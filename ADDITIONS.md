@@ -69,8 +69,11 @@ We copied the *spirit*:
 
 ## Runway lengths + real airframes
 
-- **Short / regional / heavy** strips (10 / 14 / 20 cells). Longest continuous strip gates what can land.
-- **Named metal** — CRJ-700, E175, A320neo, 737-800, A321, 787-9, A350-900, 767F, 747-8F, C-130H, KC-135R, Citation Latitude, AW139, S-76. Scale + fees follow the airframe.
+- **Short / regional / heavy** strips (10×2 / 14×2 / 20×3). Longest continuous strip gates named metal.
+- Short: ATR / CRJ / E175 / Citation / PC-12 / F-15. A320+ and heavies **overfly**.
+- Regional: adds A320 / 737 / A321 / 757F / C-130. Widebodies still refuse.
+- Heavy: takes everything (787 / A350 / 747-8F / C-17 / KC-135).
+- **Named metal + size** — real type names; 3D scale from fighter (×0.55) to 747-8F (×1.78). HUD shows strip tier + needs Nc.
 
 ## Amenity dens (live)
 

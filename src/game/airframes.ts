@@ -22,7 +22,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 60,
     paxMax: 78,
-    scale: 0.85,
+    scale: 0.78,
     landingMult: 0.8,
     blurb: 'Regional jet — short strip friendly.',
   },
@@ -33,7 +33,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 10,
     paxMin: 76,
     paxMax: 88,
-    scale: 0.9,
+    scale: 0.84,
     landingMult: 0.85,
     blurb: 'Workhorse regional.',
   },
@@ -44,9 +44,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 12,
     paxMin: 150,
     paxMax: 180,
-    scale: 1.12,
+    scale: 1.08,
     landingMult: 1,
-    blurb: 'Single-aisle mainline.',
+    blurb: 'Single-aisle mainline — needs regional strip+.',
   },
   b738: {
     id: 'b738',
@@ -55,9 +55,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 12,
     paxMin: 160,
     paxMax: 189,
-    scale: 1.15,
+    scale: 1.12,
     landingMult: 1.05,
-    blurb: 'Everywhere jet.',
+    blurb: 'Everywhere jet — needs regional strip+.',
   },
   a321: {
     id: 'a321',
@@ -68,7 +68,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     paxMax: 220,
     scale: 1.22,
     landingMult: 1.12,
-    blurb: 'Stretched narrowbody — wants a proper strip.',
+    blurb: 'Stretched narrowbody — full regional strip.',
   },
   b789: {
     id: 'b789',
@@ -77,7 +77,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 18,
     paxMin: 250,
     paxMax: 290,
-    scale: 1.42,
+    scale: 1.55,
     landingMult: 1.4,
     blurb: 'Widebody — heavy strip required.',
   },
@@ -88,9 +88,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 18,
     paxMin: 300,
     paxMax: 350,
-    scale: 1.48,
+    scale: 1.62,
     landingMult: 1.5,
-    blurb: 'Long-haul widebody.',
+    blurb: 'Long-haul widebody — heavy strip.',
   },
   atr72: {
     id: 'atr72',
@@ -99,7 +99,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 68,
     paxMax: 78,
-    scale: 0.88,
+    scale: 0.7,
     landingMult: 0.78,
     blurb: 'Turboprop regional — loves short strips.',
   },
@@ -110,7 +110,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 14,
     paxMin: 0,
     paxMax: 0,
-    scale: 1.2,
+    scale: 1.18,
     landingMult: 1.08,
     blurb: 'Hot-and-high freighter — regional strip OK.',
   },
@@ -121,9 +121,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 16,
     paxMin: 0,
     paxMax: 0,
-    scale: 1.28,
+    scale: 1.35,
     landingMult: 1.15,
-    blurb: 'Mid freighter.',
+    blurb: 'Mid freighter — wants long pavement.',
   },
   b748f: {
     id: 'b748f',
@@ -132,9 +132,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 20,
     paxMin: 0,
     paxMax: 0,
-    scale: 1.55,
+    scale: 1.78,
     landingMult: 1.55,
-    blurb: 'Queen of freighters — longest strip.',
+    blurb: 'Queen of freighters — heavy strip only.',
   },
   c130: {
     id: 'c130',
@@ -143,7 +143,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 12,
     paxMin: 0,
     paxMax: 0,
-    scale: 1.2,
+    scale: 1.18,
     landingMult: 1.2,
     blurb: 'Guard transport — Boise-style hangar transient.',
   },
@@ -154,7 +154,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 16,
     paxMin: 0,
     paxMax: 0,
-    scale: 1.5,
+    scale: 1.58,
     landingMult: 1.6,
     blurb: 'Strategic airlifter — fat landing fee.',
   },
@@ -165,7 +165,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 18,
     paxMin: 0,
     paxMax: 0,
-    scale: 1.35,
+    scale: 1.42,
     landingMult: 1.45,
     blurb: 'Tanker — wants heavy pavement.',
   },
@@ -176,7 +176,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 10,
     paxMin: 0,
     paxMax: 0,
-    scale: 0.72,
+    scale: 0.55,
     landingMult: 0.95,
     blurb: 'Fighter drag / diversion — quick turn, olive paint.',
   },
@@ -187,9 +187,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 2,
     paxMax: 4,
-    scale: 0.75,
+    scale: 0.58,
     landingMult: 0.7,
-    blurb: 'Fixed-wing medevac.',
+    blurb: 'Fixed-wing medevac — short strip OK.',
   },
   pc12: {
     id: 'pc12',
@@ -198,7 +198,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 2,
     paxMax: 6,
-    scale: 0.78,
+    scale: 0.62,
     landingMult: 0.72,
     blurb: 'STOL air ambulance — short strip hero.',
   },
@@ -209,9 +209,9 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 0,
     paxMin: 2,
     paxMax: 4,
-    scale: 0.95,
+    scale: 0.88,
     landingMult: 1,
-    blurb: 'Medevac rotary.',
+    blurb: 'Medevac rotary — helipad only.',
   },
   s76: {
     id: 's76',
@@ -220,10 +220,31 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 0,
     paxMin: 4,
     paxMax: 8,
-    scale: 0.9,
+    scale: 0.82,
     landingMult: 1,
-    blurb: 'Executive rotary.',
+    blurb: 'Executive rotary — helipad only.',
   },
+}
+
+/** Short / regional / heavy tier from continuous cell count. */
+export function stripTier(cells: number): 'none' | 'short' | 'regional' | 'heavy' {
+  if (cells <= 0) return 'none'
+  if (cells >= 18) return 'heavy'
+  if (cells >= 12) return 'regional'
+  if (cells >= 8) return 'short'
+  return 'none'
+}
+
+export function jetAirframesFitting(longestRunway: number): Airframe[] {
+  return Object.values(AIRFRAMES).filter(
+    (a) => a.minRunway > 0 && longestRunway >= a.minRunway,
+  )
+}
+
+export function jetAirframesBlocked(longestRunway: number): Airframe[] {
+  return Object.values(AIRFRAMES).filter(
+    (a) => a.minRunway > 0 && longestRunway < a.minRunway,
+  )
 }
 
 /** Human-readable role for HUD / news. */
