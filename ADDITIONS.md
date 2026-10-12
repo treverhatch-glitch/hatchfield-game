@@ -159,7 +159,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 **P0 — AT3 growth silhouette (next)**
 
 1. **Field Rating** meter — ~~blend of reputation, avg airline heat, wear inverse, security~~ **shipped**.
-2. **Hub contract tier** — after N successful layovers / heat 75+, offer Hub: +slots, brand lounge room, harsher ban if you fail.
+2. **Hub contract tier** — ~~after successful layover / heat 75+, Hub plaque: denser slots, brand lounge, harsher ban~~ **shipped**.
 3. **Airline rewards / abandon** — ~~high heat unlocks persona perk; heat floor → warning → abandon + fine~~ **shipped**.
 4. **Second terminal + jetway lite** — second hall fit assigns its own stands; jetway flag on stand↔gate.
 
@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: C0 + emergency asks live. Hub tier / hotel / 2nd runway / secure zones still open.
+Dependency note: C0 + Hub + emergencies live. Hotel / 2nd runway / secure zones / GA parking still open.
 
 ### Explicit calls on open design questions
 

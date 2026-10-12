@@ -655,3 +655,10 @@ export const DIVERT_FEE_MAX = 9000
 /** Firefighter tanker mutual-aid fee. */
 export const TANKER_FEE = 6200
 export const EMERGENCY_REFUSE_FINE = 2500
+/** Hub tier — denser slots after successful layovers. */
+export const HUB_FEE_MIN = 14_000
+export const HUB_FEE_MAX = 22_000
+export const HUB_LAYOVER_WINS = 1
+export const HUB_HEAT_NEED = 75
+/** Hub carriers ban slightly earlier during layover failures. */
+export const HUB_BAN_THRESHOLD = 34

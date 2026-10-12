@@ -75,6 +75,7 @@ export function Hud({ game }: { game: Game }) {
     : game.layover
       ? game.airline(game.layover.airline)
       : null
+  const hubAirline = game.hubOffer ? game.airline(game.hubOffer.airline) : null
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
 
@@ -219,6 +220,26 @@ export function Hud({ game }: { game: Game }) {
                 ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}`
                 : ''}
             </p>
+          </div>
+        </div>
+      ) : null}
+
+      {game.hubOffer && hubAirline ? (
+        <div className="offer hub">
+          <div>
+            <strong>{hubAirline.name} Hub plaque</strong>
+            <p>
+              {money(game.hubOffer.fee)} · denser slots, brand lounge, persona reward.
+              Fail a layover and the ban is harsher.
+            </p>
+          </div>
+          <div className="row">
+            <button type="button" className="on" onClick={() => game.acceptHub()}>
+              Take Hub
+            </button>
+            <button type="button" onClick={() => game.declineHub()}>
+              Decline
+            </button>
           </div>
         </div>
       ) : null}
@@ -627,6 +648,7 @@ export function Hud({ game }: { game: Game }) {
               const heat = Math.round(game.heatOf(a.id))
               const reward = game.rewardOf(a.id)
               const warned = Boolean(game.airlineWarned[a.id])
+              const hub = game.isHub(a.id)
               return (
                 <li key={a.id}>
                   <b style={{ color: a.color }}>
@@ -634,6 +656,7 @@ export function Hud({ game }: { game: Game }) {
                     <span className="muted">
                       {personaBlurb(a.persona)}
                       {a.procedural ? ' · proc' : ''}
+                      {hub ? ' · HUB' : ''}
                     </span>{' '}
                     {banned
                       ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
