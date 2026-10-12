@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { AIRLINES } from '../game/catalog'
+import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { Tile, Vec } from '../game/types'
@@ -96,7 +97,7 @@ export class World {
   pivot = new THREE.Vector3(0, 0, 0)
   yaw = 0.72
   pitch = 0.92
-  dist = 92
+  dist = 88
   dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
@@ -161,7 +162,7 @@ export class World {
 
     const earth = new THREE.Mesh(
       new THREE.CircleGeometry(220, 48),
-      new THREE.MeshLambertMaterial({ color: '#4f8f55' }),
+      new THREE.MeshLambertMaterial({ color: '#2d5a34' }),
     )
     earth.rotation.x = -Math.PI / 2
     earth.position.y = -0.08
@@ -176,8 +177,22 @@ export class World {
     this.scene.add(this.tilesGroup)
     this.scene.add(this.entGroup)
     this.scene.add(this.ghostGroup)
+    this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
+  }
+
+  addPlotFence() {
+    const e = (SIZE * CELL) / 2
+    const pts = [
+      new THREE.Vector3(-e, 0.25, -e),
+      new THREE.Vector3(e, 0.25, -e),
+      new THREE.Vector3(e, 0.25, e),
+      new THREE.Vector3(-e, 0.25, e),
+      new THREE.Vector3(-e, 0.25, -e),
+    ]
+    const geo = new THREE.BufferGeometry().setFromPoints(pts)
+    this.scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: '#e6c85a' })))
   }
 
   addHorizon() {
@@ -220,16 +235,7 @@ export class World {
       const v = this.pick(e)
       this.onHover(v)
       if (!this.dragging) return
-      if (this.dragging === 'paint') {
-        const tool = this.getTool()
-        if ((tool === 'taxi' || tool === 'clear') && v) {
-          if (!this.lastPaint || this.lastPaint.c !== v.c || this.lastPaint.r !== v.r) {
-            this.lastPaint = v
-            this.onClick(v, false)
-          }
-        }
-        return
-      }
+      if (this.dragging === 'paint') return
       if (this.dragging === 'pending') {
         const dist = Math.hypot(e.clientX - this.downX, e.clientY - this.downY)
         if (dist < 8) return
@@ -258,10 +264,6 @@ export class World {
     canvas.addEventListener('pointerup', (e) => {
       const was = this.dragging
       this.dragging = null
-      if (was === 'paint' && this.getTool() === 'runway' && e.button === 0) {
-        const v = this.pick(e)
-        if (v) this.onClick(v, false)
-      }
       if (was === 'pending' && e.button === 0) {
         const v = this.pick(e)
         if (v) this.onClick(v, e.shiftKey)
@@ -284,8 +286,11 @@ export class World {
     if (!ok) return null
     const c = Math.round(this.hit.x / CELL + (SIZE - 1) / 2)
     const r = Math.round(this.hit.z / CELL + (SIZE - 1) / 2)
-    if (c < 0 || r < 0 || c >= SIZE || r >= SIZE) return null
-    return { c, r }
+    if (c < -1 || r < -1 || c > SIZE || r > SIZE) return null
+    return {
+      c: clamp(c, 0, SIZE - 1),
+      r: clamp(r, 0, SIZE - 1),
+    }
   }
 
   placeCam() {
@@ -467,12 +472,14 @@ export class World {
       opacity: 0.38,
     })
     const runwayReady =
-      game.tool === 'runway' && game.runwayStart !== null && cells.length >= 6
+      game.tool === 'runway' &&
+      cells.length > 1 &&
+      cells.every((p) => inBounds(p.c, p.r) && game.tile(p) === 'grass')
     for (const p of cells) {
       if (p.c < 0) continue
       const t = game.tile(p)
       const clear = t === 'grass' || game.tool === 'clear'
-      const ready = game.tool === 'runway' ? clear && (runwayReady || !game.runwayStart) : clear
+      const ready = game.tool === 'runway' ? runwayReady : clear
       const mesh = new THREE.Mesh(geo, ready ? ok : bad)
       mesh.position.copy(toWorld(p.c, p.r, 0.12))
       this.ghostGroup.add(mesh)

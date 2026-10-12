@@ -20,7 +20,7 @@ export function TitleScreen({
           spirit of Airport Tycoon 3, with Airport CEO’s bags, fuel, and hall.
         </p>
         <ul className="beats">
-          <li>Lay a straight runway (6+ tiles), taxiway, and a stand.</li>
+          <li>Easy grant opens a live starter field. Buildings stamp in one click, Airport Tycoon style.</li>
           <li>A jet lands, parks, gets bags and fuel, boards, and pays only for what actually happened.</li>
           <li>Left drag pans. Right drag orbits. Scroll zooms. Click a jet to read its ledger.</li>
         </ul>
@@ -34,7 +34,7 @@ export function TitleScreen({
             }}
           >
             Easy grant
-            <span>{money(START_CASH.easy)} · room to learn the pavement</span>
+            <span>{money(START_CASH.easy)} · starter airport, a jet already inbound</span>
           </button>
           <button
             type="button"

@@ -16,6 +16,10 @@ export function Field({ game }: { game: Game }) {
       game.clickTile(v)
     }
     world.getTool = () => game.tool
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'r' || e.key === 'R') game.rotatePiece()
+    }
+    window.addEventListener('keydown', onKey)
     let raf = 0
     let last = performance.now()
     const loop = (now: number) => {
@@ -27,6 +31,7 @@ export function Field({ game }: { game: Game }) {
     }
     raf = requestAnimationFrame(loop)
     return () => {
+      window.removeEventListener('keydown', onKey)
       cancelAnimationFrame(raf)
       world.dispose()
     }
