@@ -249,7 +249,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 **C0 — CEO spine (overlaps AT3 P0)**
 
-1. **Research desk** — ~~points from turnarounds + pax; unlocks night bank → de-ice → stand classes → heavy pack~~ **shipped**.
+1. **Research desk** — ~~points from turnarounds + pax; unlocks night bank → de-ice → stand classes → heavy pack~~ **shipped** + **lab staff** (hire researchers; furnish desk/chalkboard/lab bench; walking pawns bank RP with breaks/home).
 2. **Airline rewards/abandon** — ~~high heat → persona perk; warn → abandon + fine~~ **shipped + deepened** — luxury first-class lounge ($55 tips), budget snack franchise (1.55× food), business priority slots, cargo night waiver; HUD warn banner; abandon strips perk + cools peers.
 3. **Planner v2** — ~~day strip + pull/bump ETA + stand assign~~ **shipped** (auto bank remains default).
 4. **Field Rating** — ~~AT3-readable blend~~ **shipped** (rep × heat × wear × security).

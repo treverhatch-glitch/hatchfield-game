@@ -12,6 +12,7 @@ import {
   HOTEL_COST,
   HOTEL_COST_L2,
   JANITOR_HIRE,
+  RESEARCHER_HIRE,
   LAND,
   LOAN_PRINCIPAL,
   MECHANIC_HIRE,
@@ -440,12 +441,15 @@ export function Hud({ game }: { game: Game }) {
             <button type="button" onClick={() => game.hireJanitor()}>
               Hire janitor · {money(JANITOR_HIRE)}
             </button>
+            <button type="button" onClick={() => game.hireResearcher()}>
+              Hire researcher · {money(RESEARCHER_HIRE)}
+            </button>
             <button type="button" onClick={() => game.fireMechanic()}>
               Lay off
             </button>
           </div>
           <p className="muted">
-            {game.mechanics} mechanics
+            {game.mechanics} mechanics · {game.researchers} researchers
             {game.mxSigned.length
               ? ` · MX: ${game.mxSigned.map((id) => game.airline(id).name).join(', ')}`
               : ' · no airline MX yet (need hangar + mechanic)'}
@@ -811,11 +815,17 @@ export function Hud({ game }: { game: Game }) {
         <section>
           <h2>Research desk</h2>
           <p className="muted">
-            {Math.floor(game.researchPoints)} RP · earn from turnarounds
+            {Math.floor(game.researchPoints)} RP · turnarounds + lab drip ~
+            {game.researchRate().toFixed(2)}/s
+            {(() => {
+              const g = game.labGear()
+              return ` · gear D${g.desks}/B${g.boards}/M${g.machines}`
+            })()}
+            {game.researchers ? ` · ${game.researchers} staff` : ' · hire staff in Ops'}
             {game.researchUnlocked.length
               ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
               : ' · no unlocks yet'}
-            {game.isNight() ? ' · night window' : ''}
+            {game.isNight() ? ' · night lab slow' : ''}
           </p>
           <ul className="airlines">
             {RESEARCH_NODES.map((n) => {

@@ -101,6 +101,14 @@ export const PARK_INCOME: Record<
 export const HOTEL_TILE_INCOME = 850
 export const JANITOR_HIRE = 3200
 export const JANITOR_WAGE = 260
+export const RESEARCHER_HIRE = 4800
+export const RESEARCHER_WAGE = 340
+/** Soft RP/sec per working researcher when lab gear is present. */
+export const RP_RATE_DESK = 0.09
+export const RP_RATE_BOARD = 0.05
+export const RP_RATE_MACHINE = 0.12
+/** Bare researcher with no lab furniture — almost nothing. */
+export const RP_RATE_BARE = 0.015
 /** Cash + reputation needed before Wall Street will list you. */
 export const IPO_MIN_CASH = 40_000
 export const IPO_MIN_REP = 55
@@ -606,6 +614,24 @@ export const ROOMS: RoomDef[] = [
     name: 'Airside day rooms',
     cost: 14_000,
     blurb: 'Inside-terminal hotel rooms — layover transfers pay to nap and spend.',
+  },
+  {
+    id: 'rdesk',
+    name: 'Research desk',
+    cost: 3600,
+    blurb: 'Staff need a desk to bank research points. Hire researchers at Ops.',
+  },
+  {
+    id: 'rboard',
+    name: 'Chalkboard',
+    cost: 2200,
+    blurb: 'Whiteboard / chalkboard — researchers bounce ideas here for extra RP.',
+  },
+  {
+    id: 'rmachine',
+    name: 'Lab bench',
+    cost: 5400,
+    blurb: 'Test gear. Highest RP drip when researchers operate it.',
   },
 ]
 
