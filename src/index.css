@@ -88,11 +88,14 @@ button {
 }
 
 .coach {
+  /* Top-left under the HUD — never cover the bottom tool dock (was z>dock). */
   position: absolute;
   left: 16px;
-  bottom: 118px;
+  top: 72px;
   width: min(280px, 90vw);
-  z-index: 26;
+  max-height: min(42vh, 360px);
+  overflow: auto;
+  z-index: 23;
   pointer-events: auto;
   background: rgba(10, 20, 16, 0.92);
   border: 1px solid rgba(201, 162, 39, 0.45);
@@ -601,7 +604,8 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   padding: 10px 12px;
-  z-index: 25;
+  /* Above coach / offers so tool clicks always land. */
+  z-index: 30;
   pointer-events: auto;
 }
 

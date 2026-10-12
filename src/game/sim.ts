@@ -1306,6 +1306,7 @@ export class Game {
       'Starter kit down — connected pavement, lounge, one mechanic + desk agent. Northline should call.',
       'good',
     )
+    this.persist()
     this.emit()
   }
 

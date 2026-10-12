@@ -110,8 +110,13 @@ try {
     notes.push(`loan ok ${beforeLoan} → ${afterLoan}`)
   }
 
-  // Tool select
-  await page.getByRole('button', { name: /^Hangar$/ }).click()
+  // Dismiss coach if present — then tool select must work (dock above overlays).
+  const gotIt = page.getByRole('button', { name: /^Got it$/ })
+  if (await gotIt.isVisible().catch(() => false)) {
+    await gotIt.click()
+    notes.push('dismissed coach')
+  }
+  await page.getByRole('button', { name: /^Hangar$/ }).click({ force: false })
   await page.waitForTimeout(200)
   const hangarOn = await page.getByRole('button', { name: /^Hangar$/ }).evaluate((b) =>
     b.classList.contains('on'),
