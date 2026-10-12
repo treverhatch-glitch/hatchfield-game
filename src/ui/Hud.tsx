@@ -1,3 +1,4 @@
+import { AIRFRAMES } from '../game/airframes'
 import {
   BUDGET_BLURB,
   BUDGET_LABEL,
@@ -91,8 +92,12 @@ export function Hud({ game }: { game: Game }) {
         </div>
         <div className="stat">Sec {ready.security}</div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
-        <div className="stat" title="Runway condition / longest strip">
-          RW {Math.round(game.runwayCondition)}% · {game.longestRunway()}c
+        <div
+          className="stat"
+          title={game.stripCapabilityLine()}
+        >
+          {game.stripTierLabel()} {game.longestRunway()}c · RW{' '}
+          {Math.round(game.runwayCondition)}%
         </div>
         <div className="stat">{game.weatherLabel()}</div>
         {game.public ? (
@@ -415,6 +420,15 @@ export function Hud({ game }: { game: Game }) {
                   ? ` · ${game.gateLabel(flight.stand)}`
                   : ' · helipad'}
               </p>
+              <p className="muted">
+                Needs{' '}
+                {flight.craft === 'helo'
+                  ? 'helipad'
+                  : `${AIRFRAMES[flight.airframeId]?.minRunway ?? '?'}c strip`}
+                {' · '}
+                size ×{(AIRFRAMES[flight.airframeId]?.scale ?? 1).toFixed(2)} · field{' '}
+                {game.stripCapabilityLine()}
+              </p>
               <ul className="ledger">
                 {flight.ledger.length === 0 ? (
                   <li>Nothing posted yet — wait until the picture earns it.</li>
@@ -587,11 +601,11 @@ export function Hud({ game }: { game: Game }) {
         </div>
         <p className="hint">
           {game.tool === 'runway_short'
-            ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — CRJ / E-Jets / Citations. Long metal refuses.`
+            ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15. A320+ and heavies refuse.`
             : game.tool === 'runway'
-              ? `Regional strip 14×2 (${money(RUNWAY_PREFAB_COST)}) — A320 / 737 class. Rotate for axis.`
+              ? `Regional strip 14×2 (${money(RUNWAY_PREFAB_COST)}) — A320 / 737 / A321 / 757F. Widebodies still refuse.`
               : game.tool === 'runway_heavy'
-                ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — 787 / A350 / 747F. Rotate for axis.`
+                ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — takes everything: 787 / A350 / 747-8F / C-17.`
                 : game.tool === 'premade'
                 ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
                 : game.tool === 'pan'

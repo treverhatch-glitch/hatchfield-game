@@ -65,8 +65,11 @@ import {
 import {
   AIRFRAMES,
   craftRoleLabel,
+  jetAirframesBlocked,
+  jetAirframesFitting,
   pickAirframe,
   pickAirframeWithFallback,
+  stripTier,
 } from './airframes'
 import {
   advancePaxItinerary,
@@ -664,6 +667,38 @@ export class Game {
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
     if (!strips.length) return 0
     return Math.max(...strips.map((s) => s.length))
+  }
+
+  stripTierLabel(): string {
+    const t = stripTier(this.longestRunway())
+    if (t === 'none') return 'No strip'
+    if (t === 'short') return 'Short'
+    if (t === 'regional') return 'Regional'
+    return 'Heavy'
+  }
+
+  /** What real named metal this strip can / can't take. */
+  stripCapabilityLine(): string {
+    const n = this.longestRunway()
+    if (n <= 0) return 'Stamp a strip — short / regional / heavy'
+    const ok = jetAirframesFitting(n)
+    const no = jetAirframesBlocked(n)
+    const okNames = ok
+      .slice()
+      .sort((a, b) => a.minRunway - b.minRunway)
+      .slice(0, 4)
+      .map((a) => a.name)
+    const noNames = no
+      .slice()
+      .sort((a, b) => a.minRunway - b.minRunway)
+      .slice(0, 3)
+      .map((a) => a.name)
+    if (!no.length) {
+      return `${this.stripTierLabel()} ${n}c · takes everything (incl. 747-8F / A350)`
+    }
+    return `${this.stripTierLabel()} ${n}c · OK: ${okNames.join(', ')}${
+      ok.length > 4 ? '…' : ''
+    } · blocked: ${noNames.join(', ')}${no.length > 3 ? '…' : ''}`
   }
 
   maxWear(): number {
