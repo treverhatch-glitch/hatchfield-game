@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v8'
+export const SAVE_KEY = 'apron-save-v9'
 
 export type Tile =
   | 'grass'
@@ -46,6 +46,9 @@ export type SiteKind = 'city' | 'factory'
 export type FuelBrand = 'apex' | 'kiln'
 export type CaterBrand = 'skybite' | 'galleyprime'
 export type AirlineId = 'northline' | 'harbor' | 'summit' | 'umazon' | 'upps' | 'exfed'
+/** Ops budget lines — 0–100% of full allocation. */
+export type BudgetKey = 'maintenance' | 'security' | 'cleaning' | 'fire' | 'ambulance'
+export type Weather = 'clear' | 'rain' | 'fog' | 'storm'
 
 export type Phase =
   | 'hold'
@@ -152,6 +155,16 @@ export interface ContractOffer {
   age: number
 }
 
+/** Airline line-maintenance contract offer (hangar work for their jets). */
+export interface MxOffer {
+  airline: AirlineId
+  age: number
+  /** Per-turnaround payout when you service their craft. */
+  payout: number
+}
+
+export type Budgets = Record<BudgetKey, number>
+
 export interface SignedContract {
   airline: AirlineId
   day: number
@@ -227,7 +240,7 @@ export interface Person {
   seg: number
   t: number
   color: string
-  job: 'arrive' | 'board' | 'staff' | 'patrol'
+  job: 'arrive' | 'board' | 'staff' | 'patrol' | 'mechanic'
   /** Ordered stops still ahead (plane→bags→food→exit or landside→gate→plane). */
   itinerary: PaxStop[]
   label: string
@@ -302,4 +315,9 @@ export interface GameSnapshot {
   sharePrice: number
   sharesOwned: number
   sharesFloat: number
+  budgets?: Budgets
+  mechanics?: number
+  mxSigned?: AirlineId[]
+  runwayCondition?: number
+  weather?: Weather
 }

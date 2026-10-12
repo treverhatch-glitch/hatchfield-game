@@ -2,10 +2,12 @@ import {
   AIRLINES,
   airlineList,
   BAG_DROP_PAY,
+  BUDGET_BASE,
   BULLDOZE_REFUND,
   BUILDINGS,
   CATER,
   CLEANING_FEE,
+  DEFAULT_BUDGETS,
   FUEL,
   HALL_SCRUB_COST,
   HELO_LANDING,
@@ -20,6 +22,8 @@ import {
   LOAN_FEE,
   LOAN_INTEREST,
   LOAN_PRINCIPAL,
+  MECHANIC_HIRE,
+  MECHANIC_WAGE,
   MIN_RUNWAY,
   PARCEL_COST,
   PREMADE_TERMINAL_COST,
@@ -60,6 +64,8 @@ import {
 } from './path'
 import { SAVE_KEY, SIZE, type AirlineId } from './types'
 import type {
+  BudgetKey,
+  Budgets,
   CaterBrand,
   ContractOffer,
   Difficulty,
@@ -67,6 +73,7 @@ import type {
   FuelBrand,
   GameSnapshot,
   MarketMission,
+  MxOffer,
   News,
   Person,
   Phase,
@@ -79,6 +86,7 @@ import type {
   Tool,
   Truck,
   Vec,
+  Weather,
 } from './types'
 
 function emptyTiles(): Tile[][] {
@@ -144,6 +152,9 @@ export class Game {
   signed: AirlineId[] = []
   offer: ContractOffer | null = null
   offerCool = 12
+  mxOffer: MxOffer | null = null
+  mxOfferCool = 30
+  mxSigned: AirlineId[] = []
   threatCool = 40
   securityIncidents = 0
   reputation = 40
@@ -160,6 +171,14 @@ export class Game {
   analystCool = 55
   mission: MarketMission | null = null
   revenueWindow = 0
+  budgets: Budgets = { ...DEFAULT_BUDGETS }
+  mechanics = 0
+  runwayCondition = 100
+  weather: Weather = 'clear'
+  weatherCool = 45
+  payrollCool = 30
+  crashCool = 8
+  fireIncidentCool = 60
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -179,6 +198,7 @@ export class Game {
   saveTimer = 0
   uiAcc = 0
   patrolCool = 0
+  mechanicCool = 0
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -206,6 +226,9 @@ export class Game {
     this.signed = []
     this.offer = null
     this.offerCool = 8
+    this.mxOffer = null
+    this.mxOfferCool = 30
+    this.mxSigned = []
     this.threatCool = 45
     this.securityIncidents = 0
     this.reputation = 40
@@ -222,6 +245,14 @@ export class Game {
     this.analystCool = 55
     this.mission = null
     this.revenueWindow = 0
+    this.budgets = { ...DEFAULT_BUDGETS }
+    this.mechanics = 0
+    this.runwayCondition = 100
+    this.weather = 'clear'
+    this.weatherCool = 45
+    this.payrollCool = 30
+    this.crashCool = 8
+    this.fireIncidentCool = 60
     this.flights = []
     this.trucks = []
     this.people = []
@@ -237,6 +268,7 @@ export class Game {
     this.flightsDone = 0
     this.paxServed = 0
     this.revenue = 0
+    this.mechanicCool = 0
   }
 
   buyLand(kind: SiteKind): boolean {
@@ -411,6 +443,8 @@ export class Game {
     const heavy = this.hasHeavyRunway() ? 5 : 0
     const pad = tilesOf(this.tiles, 'helipad').length ? 1.5 : 0
     const wearHit = this.maxWear() * 0.04
+    const pavement = (this.runwayCondition - 50) * 0.04
+    const mxDesk = this.mxSigned.length * 2 + this.mechanics * 0.8
     const base =
       8 +
       this.reputation * 0.35 +
@@ -419,7 +453,9 @@ export class Game {
       (this.railLinked ? 3 : 0) +
       this.parcels * 1.5 +
       heavy +
-      pad -
+      pad +
+      pavement +
+      mxDesk -
       wearHit -
       this.securityIncidents * 2.5 -
       (this.loanBalance > 0 ? 4 : 0)
@@ -735,6 +771,11 @@ export class Game {
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
       sharesFloat: this.sharesFloat,
+      budgets: this.budgets,
+      mechanics: this.mechanics,
+      mxSigned: this.mxSigned,
+      runwayCondition: this.runwayCondition,
+      weather: this.weather,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -781,7 +822,13 @@ export class Game {
       this.sharesOwned = s.sharesOwned ?? 0
       this.sharesFloat = s.sharesFloat ?? 0
       this.ipoPrice = this.sharePrice
+      this.budgets = { ...DEFAULT_BUDGETS, ...(s.budgets ?? {}) }
+      this.mechanics = s.mechanics ?? 0
+      this.mxSigned = s.mxSigned ?? []
+      this.runwayCondition = s.runwayCondition ?? 100
+      this.weather = s.weather ?? 'clear'
       this.mission = null
+      this.mxOffer = null
       this.analystCool = 40
       this.flights = []
       this.trucks = []
@@ -1107,6 +1154,10 @@ export class Game {
       else if ((f.wearSec ?? 0) >= 40) n -= 0.5
     }
     if (tilesOf(this.tiles, 'police').length) n += 1
+    // Underfunded security staff can't staff the lanes they built.
+    const staff = this.budgets.security / 100
+    if (staff < 0.35) n -= 1
+    else if (staff < 0.6) n -= 0.5
     return Math.max(0, Math.floor(n))
   }
 
@@ -1261,14 +1312,352 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(HALL_SCRUB_COST, 'hall scrub')) return
+    // Cleaning budget softens the sticker — full crew does more per dollar.
+    const cleanPct = this.budgets.cleaning / 100
+    const cost = Math.round(HALL_SCRUB_COST * (1.35 - cleanPct * 0.35))
+    if (!this.spend(cost, 'hall scrub')) return
+    const cut = 30 + cleanPct * 25
     for (const f of this.fits) {
-      f.wearBath = Math.max(0, (f.wearBath ?? 0) - 45)
-      f.wearSec = Math.max(0, (f.wearSec ?? 0) - 40)
+      f.wearBath = Math.max(0, (f.wearBath ?? 0) - cut)
+      f.wearSec = Math.max(0, (f.wearSec ?? 0) - cut * 0.9)
     }
     this.reputation = Math.min(100, this.reputation + 2)
-    this.pushNews('Crew scrubbed WC and security lanes.', 'good')
+    this.pushNews(
+      cleanPct < 0.4
+        ? 'Thin cleaning crew scrubbed — still sticky in places.'
+        : 'Crew scrubbed WC and security lanes.',
+      cleanPct < 0.4 ? 'ok' : 'good',
+    )
     this.emit()
+  }
+
+  setBudget(key: BudgetKey, pct: number) {
+    this.budgets[key] = clamp(Math.round(pct), 0, 100)
+    this.emit()
+  }
+
+  payrollPreview(): number {
+    let total = 0
+    for (const key of Object.keys(BUDGET_BASE) as BudgetKey[]) {
+      total += this.lineCost(key)
+    }
+    return Math.round(total)
+  }
+
+  lineCost(key: BudgetKey): number {
+    const pct = this.budgets[key] / 100
+    let base = BUDGET_BASE[key] * pct
+    if (key === 'maintenance') {
+      base += this.mechanics * MECHANIC_WAGE * pct
+      // Hangar on field adds a shop overhead even at low slider (tools still cost).
+      if (tilesOf(this.tiles, 'hangar').length) base += 90 * Math.max(0.25, pct)
+    }
+    if (key === 'security') {
+      const posts = tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0)
+      base *= 1 + posts * 0.12
+    }
+    if (key === 'cleaning') {
+      const rooms = this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0)
+      base *= 1 + rooms * 0.08
+    }
+    if (key === 'fire') {
+      const stations = Math.max(1, tilesOf(this.tiles, 'fire').length)
+      base *= stations
+      if (!tilesOf(this.tiles, 'fire').length) base *= 0.35 // skeleton ARFF desk
+    }
+    if (key === 'ambulance') {
+      if (!this.signed.length && !tilesOf(this.tiles, 'helipad').length) base *= 0.4
+    }
+    return base
+  }
+
+  hireMechanic() {
+    if (this.mechanics >= 8) {
+      this.pushNews('Shop is full — 8 mechanics max for this field.', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(MECHANIC_HIRE, 'hire mechanic')) return
+    this.mechanics += 1
+    this.spawnMechanicPawn()
+    this.pushNews(
+      `Hired mechanic #${this.mechanics}. They walk the strip and hangar when maintenance budget is funded.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  fireMechanic() {
+    if (this.mechanics <= 0) return
+    this.mechanics -= 1
+    const mech = this.people.find((p) => p.job === 'mechanic')
+    if (mech) mech.stage = 99
+    this.pushNews(`Laid off a mechanic. ${this.mechanics} left on payroll.`, 'ok')
+    this.emit()
+  }
+
+  spawnMechanicPawn() {
+    const hangars = tilesOf(this.tiles, 'hangar')
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY).flat()
+    const start = hangars[0] ?? strips[0] ?? tilesOf(this.tiles, 'stand')[0]
+    if (!start) return
+    const goal = strips.length ? pick(strips) : hangars[0] ?? start
+    const path = astar(this.tiles, start, goal, 'mechanic') ?? [start]
+    this.people.push({
+      id: uid('mx'),
+      flightId: '',
+      x: start.c,
+      y: start.r,
+      path,
+      seg: 0,
+      t: 0,
+      color: '#6b5b3a',
+      job: 'mechanic',
+      itinerary: [],
+      label: 'Mechanic',
+      wantBag: false,
+      wantFood: false,
+      wantGift: false,
+      stage: 0,
+      paidFood: false,
+      paidGift: false,
+    })
+  }
+
+  considerMxOffers() {
+    if (this.mxOffer || this.mxOfferCool > 0) return
+    if (!tilesOf(this.tiles, 'hangar').length || this.mechanics < 1) return
+    if (this.budgets.maintenance < 35) return
+    const candidates = this.signed.filter((id) => !this.mxSigned.includes(id))
+    if (!candidates.length) return
+    const id = pick(candidates)
+    const a = AIRLINES[id]
+    const payout = Math.round(a.landing * (a.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120)
+    this.mxOffer = { airline: id, age: 0, payout }
+    this.pushNews(
+      `${a.name} wants a line-maintenance contract — $${payout.toLocaleString()} per turnaround in your hangar.`,
+      'good',
+    )
+  }
+
+  acceptMxOffer() {
+    if (!this.mxOffer) return
+    const id = this.mxOffer.airline
+    this.mxSigned.push(id)
+    this.mxOffer = null
+    this.mxOfferCool = 40
+    this.pushNews(`${AIRLINES[id].name} MX signed. Their jets will pay shop fees on stand.`, 'good')
+    this.emit()
+  }
+
+  declineMxOffer() {
+    if (!this.mxOffer) return
+    const id = this.mxOffer.airline
+    this.mxOffer = null
+    this.mxOfferCool = 55
+    this.pushNews(`${AIRLINES[id].name} MX talk died. They may call again.`, 'ok')
+    this.emit()
+  }
+
+  weatherLabel(): string {
+    return (
+      {
+        clear: 'Clear',
+        rain: 'Rain',
+        fog: 'Fog',
+        storm: 'Storm',
+      } as const
+    )[this.weather]
+  }
+
+  weatherCrashMult(): number {
+    if (this.weather === 'storm') return 2.4
+    if (this.weather === 'fog') return 1.7
+    if (this.weather === 'rain') return 1.35
+    return 1
+  }
+
+  /** Chance (0–1) a jet has a serious pavement incident this check. */
+  crashChance(): number {
+    const cond = this.runwayCondition / 100
+    const mx = this.budgets.maintenance / 100
+    const staff = clamp(this.mechanics / 3, 0, 1)
+    const neglect = (1 - cond) * (1.15 - mx * 0.55) * (1.1 - staff * 0.35)
+    return clamp(neglect * 0.045 * this.weatherCrashMult(), 0, 0.35)
+  }
+
+  tickWeather(dt: number) {
+    this.weatherCool -= dt
+    if (this.weatherCool > 0) return
+    this.weatherCool = 35 + Math.random() * 40
+    const roll = Math.random()
+    const next: Weather =
+      roll < 0.55 ? 'clear' : roll < 0.75 ? 'rain' : roll < 0.9 ? 'fog' : 'storm'
+    if (next !== this.weather) {
+      this.weather = next
+      if (next === 'storm') {
+        this.pushNews('Storm cell over the field — wet strip, high crash risk if pavement is soft.', 'bad')
+      } else if (next === 'clear' && this.runwayCondition < 50) {
+        this.pushNews('Skies clear, but the runway still needs work.', 'ok')
+      } else if (next !== 'clear') {
+        this.pushNews(`Weather: ${this.weatherLabel()}.`, 'ok')
+      }
+    }
+  }
+
+  tickPayroll(dt: number) {
+    this.payrollCool -= dt
+    if (this.payrollCool > 0) return
+    this.payrollCool = 30
+    const bill = this.payrollPreview()
+    if (bill <= 0) return
+    this.cash -= bill
+    this.pushNews(`Ops payroll ${moneyLeft(bill)} (sliders × staff × shops).`, 'ok')
+    if (this.cash < 0) {
+      this.reputation = Math.max(0, this.reputation - 3)
+      this.pushNews('Payroll bounced — crews walking slow. Reputation dips.', 'bad')
+    }
+  }
+
+  tickMaintenance(dt: number) {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    if (!strips.length) return
+    const mx = this.budgets.maintenance / 100
+    const staff = this.mechanics
+    // Traffic wears pavement; storms chew it faster.
+    const liveJets = this.flights.filter(
+      (f) => (f.craft ?? 'jet') === 'jet' && f.phase !== 'gone' && f.phase !== 'hold',
+    ).length
+    const decay =
+      dt *
+      (0.35 + liveJets * 0.25 + (this.weather === 'storm' ? 0.55 : this.weather === 'rain' ? 0.25 : 0)) *
+      (1.4 - mx * 0.6)
+    this.runwayCondition = clamp(this.runwayCondition - decay, 0, 100)
+
+    // Funded mechanics repair.
+    if (staff > 0 && mx > 0.05) {
+      const repair = dt * (0.55 + staff * 0.45) * mx * (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1)
+      this.runwayCondition = clamp(this.runwayCondition + repair, 0, 100)
+    } else if (mx < 0.2 && Math.random() < dt * 0.04) {
+      this.pushNews('Pavement soft — rubber and cracks. Hire mechanics or fund maintenance.', 'bad')
+    }
+
+    // Cleaning budget slowly fights hall wear; starved cleaning grows it.
+    const clean = this.budgets.cleaning / 100
+    for (const f of this.fits) {
+      if (clean >= 0.7) {
+        f.wearBath = Math.max(0, (f.wearBath ?? 0) - dt * 0.8)
+        f.wearSec = Math.max(0, (f.wearSec ?? 0) - dt * 0.6)
+      } else if (clean < 0.35) {
+        f.wearBath = Math.min(100, (f.wearBath ?? 0) + dt * (0.9 - clean))
+        f.wearSec = Math.min(100, (f.wearSec ?? 0) + dt * (0.7 - clean * 0.5))
+      }
+    }
+
+    // Mechanic pawns wander when funded
+    this.mechanicCool -= dt
+    if (this.mechanicCool <= 0 && staff > 0 && mx >= 0.25) {
+      this.mechanicCool = 14
+      const live = this.people.filter((p) => p.job === 'mechanic').length
+      if (live < staff) this.spawnMechanicPawn()
+      for (const p of this.people) {
+        if (p.job !== 'mechanic' || p.path.length > 1) continue
+        const goals = [
+          ...runwayStrips(this.tiles, MIN_RUNWAY).flat(),
+          ...tilesOf(this.tiles, 'hangar'),
+          ...tilesOf(this.tiles, 'stand'),
+        ]
+        if (!goals.length) continue
+        const g = pick(goals)
+        const path = astar(
+          this.tiles,
+          { c: Math.round(p.x), r: Math.round(p.y) },
+          g,
+          'mechanic',
+        )
+        if (path) {
+          p.path = path
+          p.seg = 0
+          p.t = 0
+        }
+      }
+    }
+  }
+
+  tickFireRisk(dt: number) {
+    this.fireIncidentCool -= dt
+    if (this.fireIncidentCool > 0) return
+    this.fireIncidentCool = 50 + Math.random() * 40
+    if (!tilesOf(this.tiles, 'fuel').length && !this.flights.length) return
+    const firePct = this.budgets.fire / 100
+    const stations = tilesOf(this.tiles, 'fire').length
+    const risk = clamp(0.22 - stations * 0.08 - firePct * 0.15, 0.02, 0.28)
+    if (Math.random() > risk) return
+    if (firePct >= 0.65 && stations > 0) {
+      this.pushNews('ARFF drilled a hot brake — crews ready, no damage.', 'ok')
+      return
+    }
+    const fine = Math.round(5000 + (1 - firePct) * 12000)
+    this.cash -= fine
+    this.reputation = Math.max(0, this.reputation - (firePct < 0.3 ? 8 : 4))
+    if (this.public) {
+      this.sharePrice = Math.max(1.5, Math.round((this.sharePrice * (0.9 + firePct * 0.05)) * 100) / 100)
+    }
+    this.pushNews(
+      firePct < 0.25
+        ? `APRON FIRE — skeleton ARFF. Fine ${moneyLeft(fine)}. Fund fire crews.`
+        : `Hot brake incident. Thin fire budget cost ${moneyLeft(fine)}.`,
+      'bad',
+    )
+  }
+
+  checkCrash(f: Flight, moment: 'landing' | 'takeoff') {
+    if ((f.craft ?? 'jet') !== 'jet') return false
+    if (this.crashCool > 0) return false
+    const chance = this.crashChance() * (moment === 'landing' ? 1 : 0.85)
+    if (Math.random() > chance) return false
+    this.crashCool = 25
+    this.crashFlight(f, moment)
+    return true
+  }
+
+  crashFlight(f: Flight, moment: 'landing' | 'takeoff') {
+    const amb = this.budgets.ambulance / 100
+    const fire = this.budgets.fire / 100
+    const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
+    const mitigate = 0.45 + amb * 0.3 + fire * 0.25
+    const fine = Math.round(baseFine * (1.4 - mitigate * 0.5))
+    this.cash -= fine
+    this.reputation = Math.max(0, this.reputation - (amb < 0.3 ? 14 : 8))
+    this.runwayCondition = clamp(this.runwayCondition - 12, 0, 100)
+    this.securityIncidents += 1
+    if (this.mission?.goal === 'noIncident') this.mission.progress = 0
+    f.phase = 'gone'
+    f.waitingOn.paxOut = 0
+    f.waitingOn.paxIn = 0
+    this.people = this.people.filter((p) => p.flightId !== f.id)
+    this.hallGuests = this.hallGuests.filter((g) => g.flightId !== f.id)
+    const weatherBit =
+      this.weather === 'clear' ? '' : ` ${this.weatherLabel()} + soft pavement.`
+    if (this.public) {
+      this.shockStock(
+        `CRASH on ${moment}${weatherBit} Runway ${Math.round(this.runwayCondition)}%.`,
+        amb < 0.35 ? 0.5 : 0.62,
+        fine,
+      )
+    } else {
+      this.pushNews(
+        `CRASH on ${moment}.${weatherBit} Fine ${moneyLeft(fine)}. Ambulances ${Math.round(amb * 100)}% · fire ${Math.round(fire * 100)}%.`,
+        'bad',
+      )
+    }
+    if (amb < 0.2) {
+      this.pushNews('No medics on call — city hospital bill piles on. Fund ambulances.', 'bad')
+      this.cash -= 4000
+    } else if (amb >= 0.8) {
+      this.reputation = Math.min(100, this.reputation + 2)
+      this.pushNews('Ambulance crews pulled survivors fast — softens the headline.', 'ok')
+    }
   }
 
   selectedTerminalOrigin(): Vec | null {
@@ -1697,9 +2086,22 @@ export class Game {
     // Fire station is the AT3-style “you’re serious about rotary” gate.
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.flights.some((f) => f.craft === 'helo' && f.phase !== 'gone')) return
+    // Starved ambulance budget — medevac and exec both cool their heels.
+    if (this.budgets.ambulance < 20) {
+      if (Math.random() < 0.08) {
+        this.pushNews('Choppers overflew — no medics on the pad budget.', 'bad')
+      }
+      this.heloCool = 20
+      return
+    }
 
     const pad = pads[0]
     const medevac = Math.random() < 0.45
+    if (medevac && this.budgets.ambulance < 45) {
+      // Executives still come; medevac wants real ambulance cover.
+      this.heloCool = 12
+      return
+    }
     const airlineId: AirlineId = this.signed[0] ?? 'harbor'
     this.flightSeq += 1
     const call = medevac ? `MED${this.flightSeq}` : `EXE${this.flightSeq}`
@@ -1888,6 +2290,26 @@ export class Game {
     if (!f.posted.landing) {
       f.posted.landing = true
       this.earn(airline.landing, `${f.flightNo} landing fee`, f)
+      if (
+        (f.craft ?? 'jet') === 'jet' &&
+        this.mxSigned.includes(f.airline) &&
+        tilesOf(this.tiles, 'hangar').length &&
+        this.mechanics > 0 &&
+        this.budgets.maintenance >= 40
+      ) {
+        const pay = Math.round(
+          airline.landing * (airline.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120,
+        )
+        this.earn(pay, `${f.flightNo} line MX`, f)
+      } else if (
+        this.mxSigned.includes(f.airline) &&
+        (this.mechanics < 1 || this.budgets.maintenance < 40)
+      ) {
+        this.pushNews(
+          `${airline.name} MX skipped — need funded mechanics in the hangar.`,
+          'bad',
+        )
+      }
     }
 
     if (f.cargo) {
@@ -2062,11 +2484,12 @@ export class Game {
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
-    // Risk rises when flights run with weak screening or worn lanes.
+    const staffGap = 1 - this.budgets.security / 100
+    // Risk rises when flights run with weak screening, worn lanes, or starved staff.
     const risk = clamp(
-      0.55 - sec * 0.12 - police * 0.08 + wearSec * 0.002,
+      0.55 - sec * 0.12 - police * 0.08 + wearSec * 0.002 + staffGap * 0.22,
       0.05,
-      0.62,
+      0.72,
     )
     if (Math.random() > risk) return
     this.securityIncidents += 1
@@ -2116,6 +2539,9 @@ export class Game {
     }
 
     this.considerOffers()
+    this.mxOfferCool = Math.max(0, this.mxOfferCool - step)
+    if (this.mxOffer) this.mxOffer.age += step
+    this.considerMxOffers()
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
     this.trySpawnHelo()
@@ -2124,6 +2550,11 @@ export class Game {
     this.tickThreats(step)
     this.tickMarket(step)
     this.tickHall(step)
+    this.tickWeather(step)
+    this.tickPayroll(step)
+    this.tickMaintenance(step)
+    this.tickFireRisk(step)
+    this.crashCool = Math.max(0, this.crashCool - step)
 
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
@@ -2148,6 +2579,7 @@ export class Game {
         }
       } else if (f.phase === 'landing') {
         f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
+        if (this.checkCrash(f, 'landing')) continue
         const arrived = this.followPath(f, 1.35, step)
         const onStand = f.stand && Math.hypot(f.x - f.stand.c, f.y - f.stand.r) < 0.35
         if (onStand || arrived) {
@@ -2210,6 +2642,7 @@ export class Game {
           f.phaseTime = 0
         }
       } else if (f.phase === 'takeoff') {
+        if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
         f.z += step * 3.2
         f.x += Math.cos(f.heading) * step * 2.4
         f.y += Math.sin(f.heading) * step * 2.4
@@ -2247,10 +2680,20 @@ export class Game {
         p.t += step
         continue
       }
-      const done = this.followPath(p, p.job === 'patrol' ? 1.0 : 1.15, step)
+      const done = this.followPath(
+        p,
+        p.job === 'patrol' || p.job === 'mechanic' ? 1.0 : 1.15,
+        step,
+      )
       if (!done) continue
       if (p.job === 'patrol') {
         p.stage = 99
+        continue
+      }
+      if (p.job === 'mechanic') {
+        p.path = [{ c: Math.round(p.x), r: Math.round(p.y) }]
+        p.seg = 0
+        p.t = 0
         continue
       }
       const f = this.flights.find((x) => x.id === p.flightId)

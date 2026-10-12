@@ -30,7 +30,7 @@ export function neighbors(c: number, r: number): Vec[] {
 }
 
 export function walkableFor(
-  kind: 'jet' | 'truck' | 'person',
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
   tile: Tile,
 ): boolean {
   if (kind === 'jet') return tile === 'runway' || tile === 'taxi' || tile === 'stand'
@@ -49,6 +49,16 @@ export function walkableFor(
       tile === 'hangar'
     )
   }
+  if (kind === 'mechanic') {
+    return (
+      tile === 'runway' ||
+      tile === 'taxi' ||
+      tile === 'stand' ||
+      tile === 'hangar' ||
+      tile === 'road' ||
+      tile === 'fuel'
+    )
+  }
   return (
     tile === 'taxi' ||
     tile === 'stand' ||
@@ -65,7 +75,7 @@ export function astar(
   tiles: Tile[][],
   start: Vec,
   goal: Vec,
-  kind: 'jet' | 'truck' | 'person',
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return null
   if (start.c === goal.c && start.r === goal.r) return [start]

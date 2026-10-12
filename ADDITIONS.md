@@ -50,6 +50,11 @@ We copied the *spirit*:
 - **Facility wear** — budget hall traffic scuffs WC / security; scrub costs cash; high wear softens security level and feeds exposés.
 - **Analyst crises** while public — fuel spikes, short rumors, downgrades, “needs heavy strip” notes, wear exposés, plus missions `heavy_ready` / `scrub_the_hall`.
 - **Live helipad ops** — medevac / executive choppers hover in, pay pad fee, lift off (needs helipad + fire).
+- **Ops budget sliders** (0–100%): maintenance, security, cleaning, fire, ambulances — payroll every ~30s.
+- **Mechanics** — hire/lay off; they walk runway/hangar; repair pavement when maintenance is funded.
+- **Airline line-MX contracts** — hangar + mechanic unlocks offers; payouts on turnaround if funded.
+- **Runway condition + weather** — neglect + storms raise crash odds on landing/takeoff; ambulance/fire budgets soften outcomes.
+- **Underfunding effects** — security threats, hall wear growth, apron fires, choppers refusing thin medic cover.
 
 ## Still later (on your list, not finished)
 
