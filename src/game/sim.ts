@@ -19,8 +19,11 @@ import {
   HEAT_REWARD_THRESHOLD,
   HEAT_WARN_THRESHOLD,
   HELO_LANDING,
+  RESEARCH_NODES,
   rewardForPersona,
   REWARD_LABEL,
+  RP_PER_50_PAX,
+  RP_PER_FLIGHT,
   LAND,
   LAYOVER_BAN_FINE,
   LAYOVER_BAN_SECONDS,
@@ -112,6 +115,7 @@ import type {
   PendingThreat,
   Person,
   Phase,
+  ResearchId,
   RoomId,
   RunwayClass,
   ScheduleSlot,
@@ -231,6 +235,8 @@ export class Game {
   airlineWarned: Record<string, boolean> = {}
   /** Accrued sim-seconds under abandon heat threshold. */
   airlineLowAcc: Record<string, number> = {}
+  researchPoints = 0
+  researchUnlocked: ResearchId[] = []
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
   layover: LayoverContract | null = null
@@ -326,6 +332,8 @@ export class Game {
     this.airlineReward = {}
     this.airlineWarned = {}
     this.airlineLowAcc = {}
+    this.researchPoints = 0
+    this.researchUnlocked = []
     this.layoverOffer = null
     this.layoverOfferCool = 50
     this.layover = null
@@ -535,6 +543,58 @@ export class Game {
     if (r === 'biz_priority') return 1.14
     if (r === 'cargo_night') return 1.2
     return 1
+  }
+
+  hasResearch(id: ResearchId): boolean {
+    return this.researchUnlocked.includes(id)
+  }
+
+  /** Sim day cycle ~180s; night is the last third. */
+  isNight(): boolean {
+    return this.clock % 180 >= 120
+  }
+
+  canBuyResearch(id: ResearchId): { ok: boolean; why: string } {
+    const node = RESEARCH_NODES.find((n) => n.id === id)
+    if (!node) return { ok: false, why: 'Unknown project.' }
+    if (this.hasResearch(id)) return { ok: false, why: 'Already unlocked.' }
+    if (node.requires && !this.hasResearch(node.requires)) {
+      const need = RESEARCH_NODES.find((n) => n.id === node.requires)
+      return { ok: false, why: `Need ${need?.name ?? node.requires} first.` }
+    }
+    if (this.researchPoints < node.cost) {
+      return {
+        ok: false,
+        why: `Need ${node.cost} RP (have ${Math.floor(this.researchPoints)}).`,
+      }
+    }
+    return { ok: true, why: '' }
+  }
+
+  buyResearch(id: ResearchId) {
+    const gate = this.canBuyResearch(id)
+    const node = RESEARCH_NODES.find((n) => n.id === id)
+    if (!node) return
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    this.researchPoints -= node.cost
+    this.researchUnlocked.push(id)
+    this.pushNews(`R&D unlocked: ${node.name}.`, 'good')
+    this.reputation = Math.min(100, this.reputation + 1)
+    this.emit()
+  }
+
+  /** Award RP when a jet/helo finishes takeoff. */
+  grantResearchForFlight(f: Flight) {
+    let rp = RP_PER_FLIGHT
+    if (f.pax > 0) rp += Math.floor(f.pax / 50) * RP_PER_50_PAX
+    if (f.kind === 'freighter' && this.hasResearch('night_bank') && this.isNight()) {
+      rp += 1
+    }
+    this.researchPoints += rp
   }
 
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
@@ -812,8 +872,8 @@ export class Game {
   stripCapabilityLine(): string {
     const n = this.longestRunway()
     if (n <= 0) return 'Stamp a strip — short / regional / heavy'
-    const ok = jetAirframesFitting(n)
-    const no = jetAirframesBlocked(n)
+    const ok = jetAirframesFitting(n, this.researchUnlocked)
+    const no = jetAirframesBlocked(n, this.researchUnlocked)
     const okNames = ok
       .slice()
       .sort((a, b) => a.minRunway - b.minRunway)
@@ -1151,6 +1211,8 @@ export class Game {
       scheduleAuto: this.scheduleAuto,
       airlineReward: this.airlineReward,
       airlineWarned: this.airlineWarned,
+      researchPoints: this.researchPoints,
+      researchUnlocked: this.researchUnlocked,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -1210,6 +1272,8 @@ export class Game {
       this.airlineReward = s.airlineReward ?? {}
       this.airlineWarned = s.airlineWarned ?? {}
       this.airlineLowAcc = {}
+      this.researchPoints = s.researchPoints ?? 0
+      this.researchUnlocked = s.researchUnlocked ?? []
       this.layover = s.layover ?? null
       this.layoverOffer = null
       this.layoverOfferCool = 20
@@ -1971,8 +2035,9 @@ export class Game {
 
   tickSchedule(dt: number) {
     this.schedulePlanCool = Math.max(0, this.schedulePlanCool - dt)
-    // Storm at destination / on field — random inbound delay.
-    if (this.weather === 'storm' && Math.random() < dt * 0.04) {
+    // Storm at destination / on field — random inbound delay (de-ice cuts odds).
+    const stormOdds = this.hasResearch('deice') ? dt * 0.018 : dt * 0.04
+    if (this.weather === 'storm' && Math.random() < stormOdds) {
       const soon = this.openSchedule().find((s) => s.eta - this.clock < 30)
       if (soon && soon.status === 'scheduled') {
         this.delaySlot(soon, 12 + Math.random() * 16, 'Storm / dest weather')
@@ -1993,10 +2058,14 @@ export class Game {
           const cargo = pool.filter((id) => this.airline(id).kind === 'cargo')
           const paxSeen = (this.craftSeen.regional ?? 0) + (this.craftSeen.narrowbody ?? 0)
           const freightSeen = this.craftSeen.freighter ?? 0
+          const nightCargo =
+            this.hasResearch('night_bank') && this.isNight() && cargo.length
           const pickId =
-            cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
+            nightCargo && Math.random() < 0.7
               ? pick(cargo)
-              : pick(pool)
+              : cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
+                ? pick(cargo)
+                : pick(pool)
           this.seedScheduleForAirline(pickId, 2)
         }
       }
@@ -2415,9 +2484,10 @@ export class Game {
   }
 
   weatherCrashMult(): number {
-    if (this.weather === 'storm') return 2.4
-    if (this.weather === 'fog') return 1.7
-    if (this.weather === 'rain') return 1.35
+    const deice = this.hasResearch('deice') ? 0.72 : 1
+    if (this.weather === 'storm') return 2.4 * deice
+    if (this.weather === 'fog') return 1.7 * (this.hasResearch('deice') ? 0.85 : 1)
+    if (this.weather === 'rain') return 1.35 * deice
     return 1
   }
 
@@ -2987,7 +3057,10 @@ export class Game {
 
   maxInbound(): number {
     // Tower pays: two approaches at once; without it, one.
-    return tilesOf(this.tiles, 'tower').length > 0 ? 2 : 1
+    // Stand classes research adds a third bank when the tower is up.
+    const tower = tilesOf(this.tiles, 'tower').length > 0
+    if (!tower) return 1
+    return this.hasResearch('stand_class') ? 3 : 2
   }
 
   freePads(): Vec[] {
@@ -3075,6 +3148,7 @@ export class Game {
       preferred,
       this.longestRunway(),
       def.kind === 'cargo',
+      this.researchUnlocked,
     )
     if (!af) {
       this.delaySlot(slot, 20, 'Strip too short')
@@ -3274,6 +3348,7 @@ export class Game {
         f.phase = 'gone'
         this.flightsDone += 1
         this.paxServed += f.pax
+        this.grantResearchForFlight(f)
         this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
       }
     }
@@ -3491,7 +3566,7 @@ export class Game {
     if (!stand) return
     const route = this.landingRoute(stand)
     if (!route) return
-    const af = pickAirframe('military', this.longestRunway())
+    const af = pickAirframe('military', this.longestRunway(), this.researchUnlocked)
     if (!af) {
       this.milCool = 25
       return
@@ -3562,7 +3637,11 @@ export class Game {
     if (this.budgets.ambulance < 50) return
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.groundBusy()) return
-    const af = pickAirframe('air_ambulance', this.longestRunway())
+    const af = pickAirframe(
+      'air_ambulance',
+      this.longestRunway(),
+      this.researchUnlocked,
+    )
     if (!af) {
       this.ambuCool = 30
       return
@@ -3647,7 +3726,8 @@ export class Game {
       f.waitingOn.bags = false
       if (!f.cargo) this.earn(airline.bags, `${f.flightNo} bag handling`, f)
       else {
-        const cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
+        let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
+        if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
         this.earn(
           Math.round(airline.landing * 0.35 * cargoMult),
           `${f.flightNo} cargo handling`,
@@ -4004,8 +4084,22 @@ export class Game {
           f.phase = 'gone'
           this.flightsDone += 1
           this.paxServed += f.pax
+          this.grantResearchForFlight(f)
           if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.adjustHeat(f.airline, 1.8)
+          }
+          // Night bank: freighter money vs city noise on pax carriers.
+          if (
+            f.kind === 'freighter' &&
+            this.hasResearch('night_bank') &&
+            this.isNight()
+          ) {
+            for (const id of this.signed) {
+              const a = this.airline(id)
+              if (a.persona === 'luxury' || a.persona === 'business') {
+                this.adjustHeat(id, -0.35)
+              }
+            }
           }
           if (f.scheduleId) {
             const slot = this.schedule.find((s) => s.id === f.scheduleId)

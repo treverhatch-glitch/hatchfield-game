@@ -7,6 +7,7 @@ import type {
   CaterContract,
   FuelContract,
   LandSite,
+  ResearchId,
   RoomDef,
   Tool,
 } from './types'
@@ -602,3 +603,48 @@ export function rewardForPersona(p: AirlinePersona): AirlineRewardId {
 export function rewardBlurb(id: AirlineRewardId): string {
   return REWARD_LABEL[id]
 }
+
+export interface ResearchNode {
+  id: ResearchId
+  name: string
+  cost: number
+  blurb: string
+  /** Prior unlock required, if any. */
+  requires?: ResearchId
+}
+
+/** CEO-style R&D desk — points from turnarounds + pax. */
+export const RESEARCH_NODES: ResearchNode[] = [
+  {
+    id: 'night_bank',
+    name: 'Night bank',
+    cost: 28,
+    blurb: 'Night freighter premium + denser cargo slots. City carriers notice the noise.',
+  },
+  {
+    id: 'deice',
+    name: 'De-ice ops',
+    cost: 34,
+    blurb: 'Glycol pads cut storm crash risk and weather slip delays.',
+    requires: 'night_bank',
+  },
+  {
+    id: 'stand_class',
+    name: 'Stand classes',
+    cost: 40,
+    blurb: 'Coded stands raise inbound capacity when the tower is funded.',
+    requires: 'deice',
+  },
+  {
+    id: 'heavy_pack',
+    name: 'Heavy metal pack',
+    cost: 55,
+    blurb: 'Unlock A380, An-124, and C-5 when the strip is long enough.',
+    requires: 'stand_class',
+  },
+]
+
+/** Research points per completed takeoff. */
+export const RP_PER_FLIGHT = 3
+/** Research points per 50 pax boarded/served on departure. */
+export const RP_PER_50_PAX = 1

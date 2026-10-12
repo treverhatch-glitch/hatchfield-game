@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v13'
+export const SAVE_KEY = 'apron-save-v14'
 
 export type Tile =
   | 'grass'
@@ -141,6 +141,13 @@ export type AirlineRewardId =
   | 'budget_perk'
   | 'biz_priority'
   | 'cargo_night'
+
+/** R&D unlocks — CEO-style progression spine. */
+export type ResearchId =
+  | 'night_bank'
+  | 'deice'
+  | 'stand_class'
+  | 'heavy_pack'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -426,4 +433,6 @@ export interface GameSnapshot {
   scheduleAuto?: boolean
   airlineReward?: Record<string, AirlineRewardId>
   airlineWarned?: Record<string, boolean>
+  researchPoints?: number
+  researchUnlocked?: ResearchId[]
 }

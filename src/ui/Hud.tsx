@@ -16,6 +16,7 @@ import {
   personaBlurb,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
+  RESEARCH_NODES,
   rewardBlurb,
   ROOMS,
   RUNWAY_PREFAB_COST,
@@ -98,6 +99,17 @@ export function Hud({ game }: { game: Game }) {
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}. Blend of rep, airline heat, hall wear, security.`}
         >
           Field {game.fieldRating()} · {game.fieldRatingLabel()}
+        </div>
+        <div
+          className="stat"
+          title={`Research points. Unlocked: ${
+            game.researchUnlocked.length
+              ? game.researchUnlocked.join(', ')
+              : 'none'
+          }. ${game.isNight() ? 'Night bank window.' : 'Day ops.'}`}
+        >
+          RP {Math.floor(game.researchPoints)}
+          {game.isNight() ? ' · Night' : ''}
         </div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
         <div
@@ -576,6 +588,45 @@ export function Hud({ game }: { game: Game }) {
                               : 'Pax flights scheduled'
                         : miss.slice(0, 4).join(', ') || 'Waiting to call'}
                   </span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+
+        <section>
+          <h2>Research desk</h2>
+          <p className="muted">
+            {Math.floor(game.researchPoints)} RP · earn from turnarounds
+            {game.researchUnlocked.length
+              ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
+              : ' · no unlocks yet'}
+            {game.isNight() ? ' · night window' : ''}
+          </p>
+          <ul className="airlines">
+            {RESEARCH_NODES.map((n) => {
+              const owned = game.hasResearch(n.id)
+              const gate = game.canBuyResearch(n.id)
+              return (
+                <li key={n.id}>
+                  <b>
+                    {n.name}{' '}
+                    <span className="muted">
+                      {owned ? '· live' : `· ${n.cost} RP`}
+                    </span>
+                  </b>
+                  <span className="muted">{n.blurb}</span>
+                  {!owned ? (
+                    <button
+                      type="button"
+                      className="wide"
+                      disabled={!gate.ok}
+                      title={gate.ok ? `Buy ${n.name}` : gate.why}
+                      onClick={() => game.buyResearch(n.id)}
+                    >
+                      {gate.ok ? `Unlock · ${n.cost} RP` : gate.why}
+                    </button>
+                  ) : null}
                 </li>
               )
             })}

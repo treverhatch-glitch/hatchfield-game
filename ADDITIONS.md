@@ -165,10 +165,10 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 **P1 — AT3 catalog + ATC**
 
-5. **Research tree** — points from flights/pax/IPO; unlocks heavy metal, de-ice, hotel, 2nd runway ops.
+5. **Research tree** — ~~points from flights/pax; unlocks night/de-ice/stand class/heavy~~ **shipped** (hotel / 2nd runway ops still open).
 6. **Multi-runway capacity** — two strips add inbound slots when tower funded.
 7. **Emergency asks** — weather-tied divert / firefighter tanker; refuse = rep + heat hit on many carriers.
-8. **Heavy pack** — A380, An-124, C-5 (research or Hub + heavy strip).
+8. **Heavy pack** — ~~A380, An-124, C-5 behind research~~ **shipped** (needs heavy strip + R&D).
 
 **P2 — AT3 meta AT3 never stuck the landing on**
 
@@ -249,9 +249,9 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 
 **C0 — CEO spine (overlaps AT3 P0)**
 
-1. **Research desk** — points from turnarounds + pax served; admins optional later. Unlocks: night bank, de-ice, franchise, stand classes, heavy pack. *Next.*
+1. **Research desk** — ~~points from turnarounds + pax; unlocks night bank → de-ice → stand classes → heavy pack~~ **shipped**.
 2. **Airline rewards/abandon** — ~~high heat → persona perk; warn → abandon + fine~~ **shipped** (`brand_lounge` / `budget_perk` / `biz_priority` / `cargo_night`).
-3. **Planner v2** — day strip UI on current timetable (drag ETA / assign stand); auto remains default.
+3. **Planner v2** — day strip UI on current timetable (drag ETA / assign stand); auto remains default. *Next.*
 4. **Field Rating** — ~~AT3-readable blend~~ **shipped** (rep × heat × wear × security).
 
 **C1 — CEO authenticity**
@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: **Research next** unlocks half of CEO’s catalog without dumping UI. Airline rewards/abandon + Field Rating are live. Planner v2 builds on our timetable.
+Dependency note: Research desk + airline rewards/abandon + Field Rating are live. Planner v2 builds on our timetable. Hotel / 2nd runway / emergency asks still open.
 
 ### Explicit calls on open design questions
 
