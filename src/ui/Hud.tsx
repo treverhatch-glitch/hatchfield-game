@@ -115,6 +115,10 @@ export function Hud({ game }: { game: Game }) {
         </div>
       </header>
 
+      <div className="view-chip">
+        {game.view === 'apron' ? 'Apron · build outside' : 'Hall · furnish inside'}
+      </div>
+
       {game.offer ? (
         <div className="offer">
           <div>
@@ -507,8 +511,8 @@ export function Hud({ game }: { game: Game }) {
                 ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — security included.`
                 : game.tool === 'pan'
                   ? game.view === 'hall'
-                    ? 'Hall view: guests chase needs (hunger, WC, shop, boarding clock). Missing rooms = lost / angry.'
-                    : 'Apron view. Airlines call when fire, fuel, road, hall, and stands match their list.'
+                    ? 'Hall view (inside): guests chase hunger, WC, shop, play (golf/falls/games), boarding clocks. Furnish in the side panel.'
+                    : 'Apron view (outside): stamp runways/stands/helipads. Toggle Hall to build rooms inside the terminal.'
                   : tip
                     ? `${tip.blurb} ${money(tip.cost)}`
                     : 'Clear refunds 40%.'}

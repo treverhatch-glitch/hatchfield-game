@@ -30,6 +30,25 @@ button {
   height: 100%;
 }
 
+.view-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+.view-layer.live {
+  opacity: 1;
+  pointer-events: auto;
+  filter: none;
+}
+
+.view-layer.dim {
+  opacity: 0;
+  pointer-events: none;
+  filter: blur(2px);
+}
+
 .field,
 .hall-canvas {
   position: absolute;
@@ -45,6 +64,23 @@ button {
   position: absolute;
   inset: 0;
   z-index: 0;
+}
+
+.view-chip {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: rgba(10, 20, 16, 0.75);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  color: #c9a227;
 }
 
 .guest-card {
