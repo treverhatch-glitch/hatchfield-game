@@ -208,6 +208,29 @@ export function Hud({ game }: { game: Game }) {
           : 'Hall · landside ↔ airside · Esc back out'}
       </button>
 
+      {game.showCoach() ? (
+        <div className="coach" data-testid="coach">
+          <div className="coach-head">
+            <strong>First hour</strong>
+            <button type="button" className="ghost" onClick={() => game.dismissCoach()}>
+              Got it
+            </button>
+          </div>
+          <ol>
+            {game.coachSteps().map((s) => (
+              <li key={s.id} data-done={s.done ? '1' : '0'}>
+                <span className="mark">{s.done ? '✓' : '·'}</span>
+                {s.label}
+              </li>
+            ))}
+          </ol>
+          <p className="muted">
+            Field {game.fieldRating()} · {game.fieldRatingLabel()} — heat, hall, and security
+            all count.
+          </p>
+        </div>
+      ) : null}
+
       {game.warnedAirlines().length ? (
         <div className="offer warn">
           <div>

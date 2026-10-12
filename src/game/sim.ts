@@ -349,6 +349,9 @@ export class Game {
   uiAcc = 0
   patrolCool = 0
   mechanicCool = 0
+  /** First-session coach card dismissed (or auto-cleared after first takeoff). */
+  coachDismissed = false
+  private firstTakeoffNoted = false
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -461,6 +464,57 @@ export class Game {
     this.revenue = 0
     this.craftSeen = {}
     this.mechanicCool = 0
+    this.coachDismissed = false
+    this.firstTakeoffNoted = false
+  }
+
+  /** Morning checklist — hides once dismissed or after the first takeoff. */
+  coachSteps(): { id: string; label: string; done: boolean }[] {
+    const hasStrip = runwayStrips(this.tiles, MIN_RUNWAY).length > 0
+    const hasStand = tilesOf(this.tiles, 'stand').length > 0
+    const fieldUp = hasStrip && hasStand
+    const signed = this.signed.length > 0
+    const inbound = this.flights.some(
+      (f) =>
+        (f.craft ?? 'jet') === 'jet' &&
+        !['gone', 'takeoff'].includes(f.phase),
+    )
+    const turned = this.flightsDone >= 1
+    return [
+      {
+        id: 'field',
+        label: fieldUp
+          ? 'Field stamped (strip + stand)'
+          : 'Stamp Starter kit (or your own strip + stand)',
+        done: fieldUp,
+      },
+      {
+        id: 'sign',
+        label: signed ? `Signed ${this.signed.length} airline(s)` : 'Sign an airline when they call',
+        done: signed,
+      },
+      {
+        id: 'inbound',
+        label: inbound || turned ? 'Jet on the field' : 'Wait for the first inbound (try 3x)',
+        done: inbound || turned,
+      },
+      {
+        id: 'turn',
+        label: turned ? 'First takeoff in the book' : 'Turn a flight — trucks + pax, then airborne',
+        done: turned,
+      },
+    ]
+  }
+
+  showCoach(): boolean {
+    if (this.coachDismissed || !this.site) return false
+    if (this.flightsDone >= 1) return false
+    return true
+  }
+
+  dismissCoach() {
+    this.coachDismissed = true
+    this.emit()
   }
 
   noteCraft(kind: AircraftKind) {
@@ -1642,6 +1696,7 @@ export class Game {
       researchUnlocked: this.researchUnlocked,
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
+      coachDismissed: this.coachDismissed,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -1713,6 +1768,8 @@ export class Game {
       this.researchUnlocked = s.researchUnlocked ?? []
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
+      this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
+      this.firstTakeoffNoted = this.flightsDone >= 1
       this.hubOffer = null
       this.hubOfferCool = 40
       this.layover = s.layover ?? null
@@ -6411,6 +6468,15 @@ export class Game {
           this.flightsDone += 1
           this.paxServed += f.pax
           this.grantResearchForFlight(f)
+          if (!this.firstTakeoffNoted && f.kind !== 'military' && f.kind !== 'air_ambulance') {
+            this.firstTakeoffNoted = true
+            this.coachDismissed = true
+            this.reputation = Math.min(100, this.reputation + 2)
+            this.pushNews(
+              `First turn in the book — ${f.flightNo} airborne. Field Rating ${this.fieldRating()}. Keep the bank moving.`,
+              'good',
+            )
+          }
           if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.adjustHeat(f.airline, 1.8)
           }

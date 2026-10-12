@@ -529,4 +529,6 @@ export interface GameSnapshot {
   janitors?: number
   researchers?: number
   deskStaff?: number
+  /** First-hour coach dismissed (or auto-cleared after first takeoff). */
+  coachDismissed?: boolean
 }
