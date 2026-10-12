@@ -25,6 +25,8 @@ Open **[http://127.0.0.1:45217](http://127.0.0.1:45217)** (or the URL Vite print
 
 Night pax hold until you research **Night bank**. Storms hurt less after **De-ice ops**. Bags trucks run shed→plane→claim; fuel bowsers load at the farm; line MX walks from the hangar.
 
+**Money:** Standard leaves ~$7k after city + starter kit — take the loan for air, then **pay it down**; interest scales if you carry it. Ops payroll climbs with field load (airlines / stands / turns), so mid and late game still pinch when you expand.
+
 ### Controls
 
 | Input | Action |

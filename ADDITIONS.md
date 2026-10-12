@@ -377,7 +377,8 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 See **Upgrade plan — make ours better** above (Waves A→C). Short list:
 
 - Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L — **shipped** (pad stamp, glycol truck holds pushback in storm/fog, S/M/L stamps + class gate, planner night column + ETA/stand pin)
-- **Research lab bodies** — hire researchers; furnish landside R&D desk / chalkboard / lab bench; they walk stations in Hall; RP only while working; breaks + soft off-shift “home” (exit leave, not CEO bus commute); night = slower drip + more off-shift.  
+- **Research lab bodies** — hire researchers; furnish landside R&D desk / chalkboard / lab bench; they walk stations in Hall; RP only while working; breaks + soft off-shift “home” (exit leave, not CEO bus commute); night = slower drip + more off-shift.
+- **Economy leash** — standard after kit is ~$7k (loan almost required); loan interest scales with balance and capitalizes when unpaid (capped); payroll gains a field-load multiplier from signed carriers / stands / turn volume so mid/late stays a money puzzle; thrifty+loan forever is a trap, grow+repay is the healthy path.  
 - Wave B: Belt lite · Franchise brands · Intl zone  
 - Wave C: Remote stands · Multi-T research gate · Stairs/loader · Godot  
 - Parked: custom wall painter (after belts+planner)

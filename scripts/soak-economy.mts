@@ -1,6 +1,7 @@
 import { Game } from '../src/game/sim.ts'
 import {
   HOTEL_COST,
+  LOAN_FEE,
   LOAN_PRINCIPAL,
   STARTER_KIT_COST,
   START_CASH,
@@ -54,6 +55,18 @@ if (g.flightsDone < 1) issues.push('zero turnarounds on standard')
 const runaway = g.cash > withLoan + 500_000 && g.loanBalance === 0
 if (runaway) issues.push(`cash runaway ${Math.round(g.cash)}`)
 if (g.cash < -80_000) issues.push(`death spiral cash ${Math.round(g.cash)}`)
+// Carrying fee should grow an unpaid loan above the opening balance.
+if (g.loanBalance > 0 && g.loanBalance <= LOAN_PRINCIPAL + LOAN_FEE) {
+  issues.push('loan balance should grow while open')
+}
+// Field ops mult should engage once airlines sign.
+if (g.signed.length >= 2 && g.fieldOpsMult() <= 1.05) {
+  issues.push(`field ops mult too flat: ${g.fieldOpsMult()}`)
+}
+// Interest must bite thrifty cash at least once below the post-loan peak.
+if (minCash >= withLoan) {
+  issues.push('loan/payroll never dipped cash below post-loan peak')
+}
 
 const e = new Game()
 e.beginNew('easy')
