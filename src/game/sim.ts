@@ -4334,7 +4334,9 @@ export class Game {
     return this.flights.some(
       (f) =>
         (f.craft ?? 'jet') === 'jet' &&
-        (['landing', 'taxi_in', 'taxi_out', 'takeoff'] as Phase[]).includes(f.phase),
+        (['landing', 'taxi_in', 'pushback', 'taxi_out', 'takeoff'] as Phase[]).includes(
+          f.phase,
+        ),
     )
   }
 
@@ -5266,6 +5268,36 @@ export class Game {
     return true
   }
 
+  /** Fuel bowser continues to the next thirsty jet instead of deadheading every time. */
+  retargetFuelTruck(t: Truck): boolean {
+    if (t.kind !== 'fuel' || !t.home || this.fuelLoads < 1) return false
+    const busy = new Set(
+      this.trucks
+        .filter((x) => x.kind === 'fuel' && x.id !== t.id && x.flightId)
+        .map((x) => x.flightId!),
+    )
+    const next = this.flights.find(
+      (f) =>
+        f.stand &&
+        !busy.has(f.id) &&
+        f.phase === 'servicing' &&
+        f.waitingOn.fuel &&
+        !f.posted.fuel,
+    )
+    if (!next?.stand) return false
+    const from = { c: Math.round(t.x), r: Math.round(t.y) }
+    const path = nearestPath(this.tiles, from, [next.stand], 'truck')
+    if (!path || path.length < 2) return false
+    t.flightId = next.id
+    t.mission = 'fuel'
+    t.path = path
+    t.seg = 0
+    t.t = 0
+    t.returning = false
+    t.dwell = 0
+    return true
+  }
+
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
     const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
@@ -5663,13 +5695,20 @@ export class Game {
               'ok',
             )
           } else if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
-            const out = this.departurePath(f)
-            if (out && !this.groundBusy()) {
-              f.path = out
-              f.seg = 0
-              f.t = 0
-              f.phase = 'taxi_out'
+            if (!this.groundBusy() || f.phaseTime > 24) {
+              f.phase = 'pushback'
               f.phaseTime = 0
+              if (f.stand) {
+                f.path = [
+                  f.stand,
+                  {
+                    c: f.stand.c - 0.7,
+                    r: f.stand.r,
+                  },
+                ]
+                f.seg = 0
+                f.t = 0
+              }
             }
           } else {
             f.phase = 'board'
@@ -5703,6 +5742,34 @@ export class Game {
           f.boardingSlow = false
         }
         if (boardReady || f.phaseTime > boardLimit) {
+          // Pushback beat — tug-out before the taxi bank clears.
+          if (!this.groundBusy() || f.phaseTime > boardLimit + 4) {
+            f.phase = 'pushback'
+            f.phaseTime = 0
+            if (f.stand) {
+              // Nudge off the nose — visual push, then real taxi path.
+              const back = {
+                c: f.stand.c - Math.cos(f.heading || 0) * 0.8,
+                r: f.stand.r - Math.sin(f.heading || 0) * 0.8,
+              }
+              f.path = [f.stand, back]
+              f.seg = 0
+              f.t = 0
+            }
+            if (Math.random() < 0.35) {
+              this.pushNews(`${f.flightNo} pushback — clear the alley.`, 'ok')
+            }
+          } else if (f.phaseTime > boardLimit + 6) {
+            const next = this.openSchedule()[0]
+            if (next && Math.random() < step * 0.35) {
+              this.delaySlot(next, 8, 'Departure blocked')
+            }
+          }
+        }
+      } else if (f.phase === 'pushback') {
+        // Short shove off the stand, then join the outbound taxi.
+        this.followPath(f, 0.55, step)
+        if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
           if (out && !this.groundBusy()) {
             f.path = out
@@ -5710,11 +5777,15 @@ export class Game {
             f.t = 0
             f.phase = 'taxi_out'
             f.phaseTime = 0
-          } else if (f.phaseTime > boardLimit + 6) {
-            const next = this.openSchedule()[0]
-            if (next && Math.random() < step * 0.35) {
-              this.delaySlot(next, 8, 'Departure blocked')
+          } else if (f.phaseTime > 8) {
+            // Force clear — don't soft-lock the gate on pushback.
+            if (out) {
+              f.path = out
+              f.seg = 0
+              f.t = 0
             }
+            f.phase = 'taxi_out'
+            f.phaseTime = 0
           }
         }
       } else if (f.phase === 'taxi_out') {
@@ -5764,8 +5835,11 @@ export class Game {
         t.dwell -= step
         if (t.dwell <= 0 && !t.returning) {
           this.finishTruck(t)
-          // Bags may continue to another stand instead of deadheading home.
+          // Bags / fuel may continue to another stand instead of deadheading home.
           if (t.kind === 'bags' && this.retargetBagsTruck(t)) {
+            continue
+          }
+          if (t.kind === 'fuel' && this.retargetFuelTruck(t)) {
             continue
           }
           t.returning = true
@@ -5786,8 +5860,11 @@ export class Game {
         t.dwell =
           t.kind === 'fuel' ? 3.2 : t.mission === 'load' ? 2.6 : 2.2
       } else if (done && t.returning) {
-        // Back at shed — try one more continue from home, else park.
+        // Back at shed / farm — try one more continue from home, else park.
         if (t.kind === 'bags' && this.retargetBagsTruck(t)) {
+          continue
+        }
+        if (t.kind === 'fuel' && this.retargetFuelTruck(t)) {
           continue
         }
         t.dwell = -99

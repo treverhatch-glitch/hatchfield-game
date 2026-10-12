@@ -1080,6 +1080,7 @@ function labelPhase(phase: string, craft?: string): string {
     deboard: 'Deboarding',
     servicing: 'Servicing',
     board: 'Boarding',
+    pushback: 'Pushback',
     parked: 'Parked (GA)',
     taxi_out: 'Taxi out',
     takeoff: 'Takeoff',
