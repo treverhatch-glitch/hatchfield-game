@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v17'
+export const SAVE_KEY = 'apron-save-v18'
 
 export type Tile =
   | 'grass'
@@ -482,4 +482,7 @@ export interface GameSnapshot {
   researchUnlocked?: ResearchId[]
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
+  hotelLevel?: number
+  carParkShort?: boolean
+  carParkLong?: boolean
 }
