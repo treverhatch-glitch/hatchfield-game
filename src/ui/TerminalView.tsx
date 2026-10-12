@@ -13,6 +13,10 @@ export function TerminalView({ game }: { game: Game }) {
 
     let raf = 0
     const draw = () => {
+      if (game.view !== 'hall') {
+        raf = requestAnimationFrame(draw)
+        return
+      }
       const w = canvas.clientWidth
       const h = canvas.clientHeight
       if (canvas.width !== w || canvas.height !== h) {
@@ -132,6 +136,7 @@ export function TerminalView({ game }: { game: Game }) {
     raf = requestAnimationFrame(draw)
 
     const onClick = (e: MouseEvent) => {
+      if (game.view !== 'hall') return
       const rect = canvas.getBoundingClientRect()
       const mx = e.clientX - rect.left
       const my = e.clientY - rect.top

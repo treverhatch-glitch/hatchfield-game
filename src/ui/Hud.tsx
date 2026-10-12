@@ -350,7 +350,8 @@ export function Hud({ game }: { game: Game }) {
                 {flight.flightNo}
               </p>
               <p className="phase">
-                {flight.airframeName} · {labelPhase(flight.phase, flight.craft)}
+                {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
+                {labelPhase(flight.phase, flight.craft)}
                 {flight.pax > 0 ? ` · ${flight.pax} pax` : ''}
               </p>
               <ul className="ledger">
