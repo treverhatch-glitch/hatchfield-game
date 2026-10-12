@@ -161,7 +161,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 1. **Field Rating** meter — ~~blend of reputation, avg airline heat, wear inverse, security~~ **shipped**.
 2. **Hub contract tier** — ~~after successful layover / heat 75+, Hub plaque: denser slots, brand lounge, harsher ban~~ **shipped**.
 3. **Airline rewards / abandon** — ~~high heat unlocks persona perk; heat floor → warning → abandon + fine~~ **shipped**.
-4. **Second terminal + jetway lite** — second hall fit assigns its own stands; jetway flag on stand↔gate.
+4. **Second terminal + jetway lite** — ~~second hall fit assigns its own stands; proximity jetways; T#·G# gates; hall chips~~ **shipped**.
 
 **P1 — AT3 catalog + ATC**
 
@@ -183,7 +183,7 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 
 1. **Custom terminal painter** — stamp walls/floors, place doors that rewrite the hall graph.
 2. **Landside / airside clarity** — ~~secure line as a real cut~~ (map labels live); enforce amenity side later.
-3. **Gate & stand assignment** — ~~lite live~~; deepen with jetways + multi-hall.
+3. **Gate & stand assignment** — ~~lite live + multi-hall jetways (T#·G#)~~ **shipped**; custom painter later.
 
 **Tier B — airline drama** — mostly **shipped** (personas, proc, layovers, bans, heat). Next: Hub tier + rewards/abandon.
 
@@ -268,7 +268,7 @@ Goal: keep HatchTag/AT3 readability; steal CEO’s *progression spine* (research
 11. **Multi-terminal** + GA ramp.
 12. **Godot** after C0–C1 feel unfair-fun.
 
-Dependency note: Landside, janitors, N-strip banks (inbound scales with strips; planner RW filters), bags trucks, secure zones, desk staff, wallets/prefs, usage landside all live. Pushback / belts / multi-terminal still open.
+Dependency note: Landside, janitors, N-strip banks, bags trucks, secure zones, desk staff, wallets/prefs, usage landside, pushback, multi-terminal jetway lite all live. Belts / franchises / custom painter still open.
 
 ### Debug pass (hold deadlock)
 

@@ -136,8 +136,13 @@ export function TerminalView({ game }: { game: Game }) {
         ctx.strokeRect(x - 5, y - 5, 10, 10)
       }
 
-      // Guests
-      for (const g of game.hallGuests) {
+      const hallKey = fit ? game.hallKey(fit) : null
+      const hallGuests = game.hallGuests.filter(
+        (g) => !g.hallId || !hallKey || g.hallId === hallKey,
+      )
+
+      // Guests — only this campus hall's crowd
+      for (const g of hallGuests) {
         let x = NODE_POS[g.node].x * w
         let y = NODE_POS[g.node].y * h
         if (g.path.length && g.seg < g.path.length - 1) {
@@ -161,16 +166,20 @@ export function TerminalView({ game }: { game: Game }) {
       }
 
       ctx.fillStyle = 'rgba(10,20,16,0.72)'
-      ctx.fillRect(16, 16, 280, fit ? 64 : 48)
+      ctx.fillRect(16, 16, 300, fit ? 64 : 48)
       ctx.fillStyle = '#e8eef4'
       ctx.font = '600 14px IBM Plex Sans, sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText('Inside the terminal', 28, 38)
+      ctx.fillText(
+        fit ? `Inside ${game.hallLabel(fit)}` : 'Inside the terminal',
+        28,
+        38,
+      )
       ctx.fillStyle = '#b7c4b8'
       ctx.font = '12px IBM Plex Sans, sans-serif'
       ctx.fillText(
         fit
-          ? `${game.hallGuests.length} guests · staff ${game.hallStaff.filter((s) => s.stage === 0).length}/${game.deskStaff} · secure ${hasSec ? 'open' : 'LOCKED'}`
+          ? `${hallGuests.length} guests · ${game.standsForHall(fit).length} jetways · staff ${game.hallStaff.filter((s) => s.stage === 0).length}/${game.deskStaff} · secure ${hasSec ? 'open' : 'LOCKED'}`
           : 'Stamp a Premade hall or furnish a Shell outside first.',
         28,
         58,
@@ -189,7 +198,10 @@ export function TerminalView({ game }: { game: Game }) {
       const h = canvas.clientHeight
       let best: string | null = null
       let dist = 16
+      const clickHall = game.activeHall()
+      const clickKey = clickHall ? game.hallKey(clickHall) : null
       for (const g of game.hallGuests) {
+        if (g.hallId && clickKey && g.hallId !== clickKey) continue
         let x = NODE_POS[g.node].x * w
         let y = NODE_POS[g.node].y * h
         if (g.path.length && g.seg < g.path.length - 1) {
