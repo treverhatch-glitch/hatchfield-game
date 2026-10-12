@@ -48,7 +48,9 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 - Emergencies: weather divert, firefighting plane refuel / refuel+MX
 - Guard host on a hangar-side mil ramp (not pax gates)
 
-Browser save key: `apron-save-v22`. New game overwrites it.
+**Landside:** stamp **hotel**, **short/long lots** (toggle term), **bus curb**, and **rail station** (after City rail). Guests pick arrival modes by airline persona — missing curb/lots/hotel angers them and cuts demand.
+
+Browser save key: `apron-save-v23`. New game overwrites it.
 
 ## Verify
 

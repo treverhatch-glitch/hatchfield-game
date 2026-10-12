@@ -599,6 +599,46 @@ export class World {
       )
       drip.position.set(CELL * 0.32, 1.0, 0)
       g.add(pad, tank, boom, drip)
+    } else if (tile === 'bus') {
+      const curb = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.55),
+        new THREE.MeshLambertMaterial({ color: '#3d4248' }),
+      )
+      curb.rotation.x = -Math.PI / 2
+      curb.position.y = 0.05
+      curb.receiveShadow = true
+      const shelter = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 1.4, 0.35),
+        new THREE.MeshStandardMaterial({ color: '#c9a227', roughness: 0.45 }),
+      )
+      shelter.position.set(0, 0.75, -CELL * 0.25)
+      shelter.castShadow = true
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 2.2, 6),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
+      )
+      pole.position.set(CELL * 0.28, 1.1, CELL * 0.1)
+      g.add(curb, shelter, pole)
+    } else if (tile === 'rail') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({ color: '#2a3238' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.04
+      pad.receiveShadow = true
+      const hall = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 2.4, CELL * 0.55),
+        new THREE.MeshStandardMaterial({ color: '#8a9aaa', roughness: 0.4 }),
+      )
+      hall.position.y = 1.2
+      hall.castShadow = true
+      const canopy = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.9, 0.12, CELL * 0.75),
+        new THREE.MeshStandardMaterial({ color: '#c9a227' }),
+      )
+      canopy.position.y = 2.5
+      g.add(pad, hall, canopy)
     }
     return g
   }

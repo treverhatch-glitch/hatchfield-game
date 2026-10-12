@@ -83,10 +83,17 @@ import {
   HOTEL_COST_L2,
   HOTEL_INCOME,
   HOTEL_TILE_INCOME,
+  BUS_CURB_COST,
+  BUS_FARE,
   CARPARK_SHORT_COST,
   CARPARK_LONG_COST,
   CARPARK_SHORT_INCOME,
   CARPARK_LONG_INCOME,
+  HOTEL_NIGHT_FEE,
+  PARK_LONG_FEE,
+  PARK_SHORT_FEE,
+  RAIL_FARE,
+  RAIL_STATION_COST,
   JANITOR_HIRE,
   JANITOR_WAGE,
   RESEARCHER_HIRE,
@@ -121,6 +128,7 @@ import {
   openNodesFromRooms,
   spawnHallGuest,
   strongestNeed,
+  type ArriveMode,
   type HallGuest,
   type HallNode,
   type HallStaff,
@@ -1395,15 +1403,156 @@ export class Game {
     this.emit()
   }
 
-  /** Site pax mult with hotel / rail / car park landside boosts. */
+  /** True when short-term parking exists (meta buy or stamped short lots). */
+  hasShortParking(): boolean {
+    if (this.carParkShort) return true
+    return (['park_s', 'park_l', 'park_g', 'park_u'] as const).some((k) =>
+      tilesOf(this.tiles, k).some((p) => (this.parkTerms[`${p.c},${p.r}`] ?? 'short') === 'short'),
+    )
+  }
+
+  /** True when long-term parking exists (meta buy or stamped long lots). */
+  hasLongParking(): boolean {
+    if (this.carParkLong) return true
+    return (['park_s', 'park_l', 'park_g', 'park_u'] as const).some((k) =>
+      tilesOf(this.tiles, k).some((p) => this.parkTerms[`${p.c},${p.r}`] === 'long'),
+    )
+  }
+
+  hasHotelBeds(): boolean {
+    return this.hotelLevel > 0 || tilesOf(this.tiles, 'hotel').length > 0
+  }
+
+  hasBusCurb(): boolean {
+    return tilesOf(this.tiles, 'bus').length > 0
+  }
+
+  hasRailStation(): boolean {
+    return this.railLinked && tilesOf(this.tiles, 'rail').length > 0
+  }
+
+  /** Mode available on the field right now. */
+  modeAvailable(mode: ArriveMode): boolean {
+    switch (mode) {
+      case 'dropoff':
+        return tilesOf(this.tiles, 'road').length > 0
+      case 'car_short':
+        return this.hasShortParking()
+      case 'car_long':
+        return this.hasLongParking()
+      case 'bus':
+        return this.hasBusCurb()
+      case 'rail':
+        return this.hasRailStation()
+      case 'hotel':
+        return this.hasHotelBeds()
+    }
+  }
+
+  /**
+   * Persona-weighted preferred landside mode, then fallback if infra missing.
+   * Luxury → hotel/long park; business → rail/short; budget → bus/long.
+   */
+  pickGuestMode(
+    tag: PaxTag,
+    persona: Airline['persona'],
+    job: 'depart' | 'arrive',
+  ): { prefer: ArriveMode; actual: ArriveMode } {
+    const pool: ArriveMode[] =
+      persona === 'luxury'
+        ? job === 'arrive'
+          ? ['hotel', 'car_long', 'rail', 'dropoff', 'car_short']
+          : ['hotel', 'car_long', 'rail', 'dropoff', 'car_short']
+        : persona === 'business'
+          ? ['rail', 'car_short', 'dropoff', 'hotel', 'bus']
+          : persona === 'cargo_night' || persona === 'military_gov'
+            ? ['dropoff', 'car_short', 'bus']
+            : tag === 'premium'
+              ? ['rail', 'car_short', 'hotel', 'dropoff', 'bus']
+              : ['bus', 'car_long', 'dropoff', 'rail', 'car_short']
+    const prefer = pool[Math.floor(Math.random() * Math.min(3, pool.length))]
+    if (this.modeAvailable(prefer)) return { prefer, actual: prefer }
+    for (const m of pool) {
+      if (this.modeAvailable(m)) return { prefer, actual: m }
+    }
+    return { prefer, actual: 'dropoff' }
+  }
+
+  applyGuestLandside(g: HallGuest, job: 'depart' | 'arrive') {
+    const mode = g.arriveMode ?? 'dropoff'
+    const missed = g.preferMode && g.preferMode !== mode
+    if (missed) {
+      g.happiness -= g.tag === 'premium' ? 10 : 6
+      g.patience -= 8
+      g.thought =
+        g.preferMode === 'bus'
+          ? 'No bus curb — paid for a drop-off'
+          : g.preferMode === 'rail'
+            ? 'No rail station — scrambled landside'
+            : g.preferMode === 'hotel'
+              ? 'No hotel beds — exhausted already'
+              : g.preferMode === 'car_short'
+                ? 'No short-term lot — circling'
+                : g.preferMode === 'car_long'
+                  ? 'No long-term lot — awkward drop-off'
+                  : 'Landside scramble'
+    }
+    let fee = 0
+    if (mode === 'car_short' && this.modeAvailable('car_short')) {
+      fee = PARK_SHORT_FEE
+      this.noteLandsideUse(1)
+    } else if (mode === 'car_long' && this.modeAvailable('car_long')) {
+      fee = PARK_LONG_FEE
+      this.noteLandsideUse(2)
+    } else if (mode === 'hotel' && this.modeAvailable('hotel')) {
+      fee = HOTEL_NIGHT_FEE
+      this.noteLandsideUse(2)
+      g.needs.energy = Math.max(0, g.needs.energy - 25)
+    } else if (mode === 'bus' && this.modeAvailable('bus')) {
+      fee = BUS_FARE
+      this.noteLandsideUse(1)
+    } else if (mode === 'rail' && this.modeAvailable('rail')) {
+      fee = RAIL_FARE
+      this.noteLandsideUse(1)
+    } else {
+      this.noteLandsideUse(1)
+    }
+    if (fee > 0) {
+      const pay = Math.min(g.wallet, fee)
+      g.wallet -= pay
+      g.spent += pay
+      // Quiet ledger — per-guest fees would spam the ticker.
+      this.cash += pay
+      this.revenue += pay
+      if (!missed) {
+        g.happiness += 3
+        g.thought =
+          mode === 'hotel'
+            ? `Hotel stay (−$${pay})`
+            : mode === 'bus'
+              ? `Bus in (−$${pay})`
+              : mode === 'rail'
+                ? `Rail in (−$${pay})`
+                : mode === 'car_long'
+                  ? `Long park (−$${pay})`
+                  : mode === 'car_short'
+                    ? `Short park (−$${pay})`
+                    : g.thought
+      }
+    }
+  }
+
+  /** Site pax mult with hotel / rail / car park / bus landside boosts. */
   landsidePaxMult(): number {
     const base = this.site ? LAND[this.site].paxMult : 1
     let m = base
-    if (this.railLinked) m *= 1.08
+    if (this.railLinked) m *= 1.06
+    if (this.hasRailStation()) m *= 1.1
+    if (this.hasBusCurb()) m *= 1.05
     if (this.hotelLevel >= 1) m *= 1.06
     if (this.hotelLevel >= 2) m *= 1.05
-    if (this.carParkShort) m *= 1.03
-    if (this.carParkLong) m *= 1.04
+    if (this.carParkShort || this.hasShortParking()) m *= 1.03
+    if (this.carParkLong || this.hasLongParking()) m *= 1.04
     const hotels = tilesOf(this.tiles, 'hotel').length
     if (hotels) m *= 1 + Math.min(0.18, hotels * 0.05)
     const parks =
@@ -1412,6 +1561,10 @@ export class Game {
       tilesOf(this.tiles, 'park_g').length +
       tilesOf(this.tiles, 'park_u').length
     if (parks) m *= 1 + Math.min(0.16, parks * 0.03)
+    // Thin landside — city pax stay home.
+    if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
+      m *= 0.92
+    }
     return m
   }
 
@@ -1427,6 +1580,8 @@ export class Game {
         n += PARK_INCOME[kind][term]
       }
     }
+    n += tilesOf(this.tiles, 'bus').length * 320
+    if (this.hasRailStation()) n += tilesOf(this.tiles, 'rail').length * 520
     return n
   }
 
@@ -2198,6 +2353,9 @@ export class Game {
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = Math.random() < premiumBias ? 'premium' : 'budget'
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
+      const modes = this.pickGuestMode(tag, a.persona, job)
+      g.preferMode = modes.prefer
+      g.arriveMode = modes.actual
       // Kick them onto a clear first leg so you see the flow immediately.
       if (job === 'arrive') {
         g.node = 'gate'
@@ -2207,7 +2365,10 @@ export class Game {
       } else {
         g.node = 'entrance'
         g.clearedSec = false
-        g.thought = 'Inbound — find check-in'
+        this.applyGuestLandside(g, 'depart')
+        if (!g.thought || g.thought === 'Where is check-in?') {
+          g.thought = 'Inbound — find check-in'
+        }
         if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
         else if (open.has('security')) this.routeGuest(g, 'security', open)
         else g.thought = 'No security lane — stuck landside'
@@ -2624,11 +2785,22 @@ export class Game {
       if (open.has('exit')) this.routeGuest(g, 'exit', open)
     }
     if (n === 'exit' && g.job === 'arrive') {
-      g.thought = 'Left the airport'
+      // Pick leave mode (hotel overnight / long park / bus / rail) as they exit.
+      const aid = this.guestAirlineId(g)
+      const persona = aid ? this.airline(aid).persona : 'budget'
+      const modes = this.pickGuestMode(g.tag, persona, 'arrive')
+      g.preferMode = modes.prefer
+      g.arriveMode = modes.actual
+      this.applyGuestLandside(g, 'arrive')
+      if (!g.thought.startsWith('No ') && !g.thought.includes('Hotel') && !g.thought.includes('park')) {
+        g.thought = 'Left the airport'
+      }
       g.dead = true
       this.paxServed += 1
-      this.noteLandsideUse(1)
-      this.reputation = Math.min(100, this.reputation + 0.3)
+      this.reputation = Math.min(
+        100,
+        this.reputation + (g.happiness >= 55 ? 0.35 : 0.1),
+      )
     }
   }
 
@@ -4918,7 +5090,9 @@ export class Game {
       building.tile === 'park_s' ||
       building.tile === 'park_l' ||
       building.tile === 'park_g' ||
-      building.tile === 'park_u'
+      building.tile === 'park_u' ||
+      building.tile === 'bus' ||
+      building.tile === 'rail'
     if (isLandside) {
       const nearRoad = [
         { c: v.c + 1, r: v.r },
@@ -4927,10 +5101,15 @@ export class Game {
         { c: v.c, r: v.r - 1 },
       ].some((p) => inBounds(p.c, p.r) && this.tile(p) === 'road')
       if (!nearRoad) {
-        this.pushNews('Hotel / car parks need a road edge.', 'bad')
+        this.pushNews('Landside stamps need a road edge.', 'bad')
         this.emit()
         return
       }
+    }
+    if (building.tile === 'rail' && !this.railLinked) {
+      this.pushNews('Rail station locked — invest in City rail first.', 'bad')
+      this.emit()
+      return
     }
     if (!this.spend(building.cost, building.name)) {
       this.emit()
@@ -4959,6 +5138,16 @@ export class Game {
     } else if (building.tile === 'deice') {
       this.pushNews(
         `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`,
+        'good',
+      )
+    } else if (building.tile === 'bus') {
+      this.pushNews(
+        `Bus curb online ($${BUS_CURB_COST.toLocaleString()}). Budget pax can ride in.`,
+        'good',
+      )
+    } else if (building.tile === 'rail') {
+      this.pushNews(
+        `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`,
         'good',
       )
     } else if (building.tile === 'hangar') {

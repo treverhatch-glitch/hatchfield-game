@@ -78,6 +78,8 @@ const APRON_TOOLS: Tool[] = [
   'park_l',
   'park_g',
   'park_u',
+  'bus',
+  'rail',
   'clear',
 ]
 
@@ -510,6 +512,16 @@ export function Hud({ game }: { game: Game }) {
             landside ~{money(game.landsideIncome())}/30s (upkeep{' '}
             {money(game.landsideUpkeep())} · uses {game.landsideUses}) · pax ×
             {game.landsidePaxMult().toFixed(2)}
+            {' · '}
+            {[
+              game.hasHotelBeds() ? 'hotel' : null,
+              game.hasShortParking() ? 'lot-S' : null,
+              game.hasLongParking() ? 'lot-L' : null,
+              game.hasBusCurb() ? 'bus' : null,
+              game.hasRailStation() ? 'rail' : null,
+            ]
+              .filter(Boolean)
+              .join('/') || 'no arrival modes'}
           </p>
         </section>
 
