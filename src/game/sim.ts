@@ -4542,11 +4542,22 @@ export class Game {
       this.spawnCool = 8
       return
     }
-    const stand = this.assignStand(slot.standPref ?? null)
     if (slot.runwayPref == null) slot.runwayPref = this.pickBalancedRunway()
+    // If pavement is busy, slip the slot instead of parking a hold that
+    // reserves a stand forever (that deadlocked releaseHold).
+    if (this.groundBusy()) {
+      this.delaySlot(slot, 8 + Math.random() * 6, 'Pavement busy')
+      this.spawnCool = 4
+      return
+    }
+    const stand = this.assignStand(slot.standPref ?? null)
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
-    const busy = this.groundBusy() || !stand || !route
-    const start = route?.[0] ?? { c: 1, r: -3 }
+    if (!stand || !route) {
+      this.delaySlot(slot, 10 + Math.random() * 8, 'No gate / path')
+      this.spawnCool = 5
+      return
+    }
+    const start = route[0]
     const pax =
       af.paxMax <= 0
         ? 0
@@ -4562,13 +4573,13 @@ export class Game {
       cargo: def.kind === 'cargo',
       craft: 'jet',
       kind: af.kind,
-      phase: busy ? 'hold' : 'approach',
+      phase: 'approach',
       stand,
       x: start.c - 4,
       y: start.r - 2,
       z: 8,
       heading: 0,
-      path: route ?? [],
+      path: route,
       seg: 0,
       t: 0,
       holdAngle: Math.random() * Math.PI * 2,
@@ -4602,8 +4613,7 @@ export class Game {
     const role = craftRoleLabel(af.kind)
     const late = slot.delaySec > 0 ? ` (${Math.round(slot.delaySec)}s late)` : ''
     this.pushNews(
-      `${def.name} ${f.flightNo}${late} · ${role} ${af.name} → ${gate}` +
-        (busy ? ' — holding for pavement.' : '.'),
+      `${def.name} ${f.flightNo}${late} · ${role} ${af.name} → ${gate}.`,
       slot.delaySec > 0 ? 'bad' : 'ok',
     )
   }
@@ -4755,12 +4765,29 @@ export class Game {
       return
     }
     if (!hasTower && this.groundBusy()) return
-    const f = this.flights.find((x) => x.phase === 'hold' && (x.craft ?? 'jet') === 'jet')
+    // Prefer holds that already reserved a stand — those were deadlocking
+    // assignStand() because freeStands() treated the reservation as occupied.
+    const held = this.flights.filter(
+      (x) => x.phase === 'hold' && (x.craft ?? 'jet') === 'jet',
+    )
+    const f = held.find((x) => x.stand) ?? held[0]
     if (!f) return
-    const stand = this.assignStand()
+    const slot = f.scheduleId
+      ? this.schedule.find((s) => s.id === f.scheduleId)
+      : null
+    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null)
     if (!stand) return
-    const route = this.landingRoute(stand)
-    if (!route) return
+    const route =
+      this.landingRoute(stand, slot?.runwayPref ?? null) ??
+      this.landingRoute(stand, null)
+    if (!route) {
+      // Bad pref path — drop reservation so another hold can try.
+      if (f.phaseTime > 40) {
+        f.stand = null
+        f.path = []
+      }
+      return
+    }
     f.stand = stand
     f.path = route
     f.seg = 0
@@ -4776,6 +4803,33 @@ export class Game {
         'ok',
       )
     }
+  }
+
+  /** Abort ancient holds so reserved gates and inbound slots free up. */
+  tickHoldWatchdog(dt: number) {
+    for (const f of this.flights) {
+      if (f.phase !== 'hold' || (f.craft ?? 'jet') !== 'jet') continue
+      if (f.phaseTime < 95) continue
+      // Divert — free the stand, scrub the slot, ding heat.
+      if (f.stand) f.stand = null
+      f.path = []
+      f.phase = 'gone'
+      f.phaseTime = 0
+      if (f.scheduleId) {
+        const slot = this.schedule.find((s) => s.id === f.scheduleId)
+        if (slot) {
+          slot.status = 'cancelled'
+          slot.delayReason = 'hold timeout'
+        }
+      }
+      this.adjustHeat(f.airline, -4)
+      this.reputation = Math.max(0, this.reputation - 1)
+      this.pushNews(
+        `${f.flightNo} diverted after long hold — gate freed, heat dips.`,
+        'bad',
+      )
+    }
+    void dt
   }
 
   followPath(
@@ -5529,6 +5583,7 @@ export class Game {
     this.trySpawnMilitary()
     this.trySpawnAirAmbulance()
     this.releaseHold()
+    this.tickHoldWatchdog(step)
     this.tickPatrols(step)
     this.tickThreats(step)
     this.tickEmergencies(step)
