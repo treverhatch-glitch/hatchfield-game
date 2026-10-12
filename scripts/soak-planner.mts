@@ -41,7 +41,8 @@ if (!slot) {
     issues.push('stand cycle should assign G1')
   } else {
     const label = g.gateLabel(slot.standPref)
-    if (!/^G\d/.test(label)) issues.push(`bad gate label ${label}`)
+    // Multi-terminal jetway lite: T1·G1 (legacy G1 also OK).
+    if (!/^(T\d+·)?G\d+/.test(label)) issues.push(`bad gate label ${label}`)
   }
   // Cycle until auto
   for (let i = 0; i < 8; i++) g.cycleSlotStand(slot.id)

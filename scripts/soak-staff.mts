@@ -8,7 +8,11 @@ g.buyLand('city')
 g.buildStarterKit()
 g.cash += 50_000
 
-if (g.deskStaff !== 0) issues.push('desk staff should start 0')
+// Starter kit ships one desk agent so the first bank isn't empty-counter pain.
+if (g.deskStaff < 1) issues.push('starter should include a desk agent')
+// Isolate the staffing unit test from the starter body.
+g.deskStaff = 0
+g.hallStaff = []
 if (g.staffedPost('security')) issues.push('security staffed without hire')
 
 const secBefore = g.securityLevel()
