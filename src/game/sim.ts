@@ -7,7 +7,9 @@ import {
   LOADS_PER_BUY,
   MIN_RUNWAY,
   ROOMS,
-  RUNWAY_TILE,
+  RUNWAY_PREFAB_COST,
+  RUNWAY_PREFAB_LEN,
+  RUNWAY_PREFAB_WID,
   START_CASH,
   TERMINAL_COST,
 } from './catalog'
@@ -80,6 +82,7 @@ export class Game {
   speed: Speed = 1
   tool: Tool = 'pan'
   runwayStart: Vec | null = null
+  facing: 'h' | 'v' = 'h'
   hover: Vec | null = null
   fuelBrand: FuelBrand | null = null
   fuelLoads = 0
@@ -126,6 +129,7 @@ export class Game {
     this.speed = 1
     this.tool = 'pan'
     this.runwayStart = null
+    this.facing = 'h'
     this.fuelBrand = null
     this.fuelLoads = 0
     this.mealSold = false
@@ -141,14 +145,55 @@ export class Game {
     this.flightsDone = 0
     this.paxServed = 0
     this.revenue = 0
-    this.pushNews(
-      difficulty === 'easy'
-        ? 'Grant landed. Lay a runway of 6+, a taxiway, and a stand. The jet only pays if it parks.'
-        : 'Tight budget. One runway, one stand, one honest turnaround. Do not skip the pavement.',
-      'ok',
-    )
+    if (difficulty === 'easy') {
+      this.seedStarterField()
+      this.fuelBrand = 'apex'
+      this.fuelLoads = 4
+      this.spawnCool = 3
+      this.pushNews(
+        'Starter field is live. Watch the first jet. Landing fee posts when it parks — not before.',
+        'ok',
+      )
+    } else {
+      this.pushNews(
+        'Empty plot. Click Runway once on the grass square to drop a strip, then taxi + stand.',
+        'ok',
+      )
+    }
     this.persist()
     this.emit()
+  }
+
+  seedStarterField() {
+    this.facing = 'h'
+    for (const p of this.prefabRunway({ c: 7, r: 22 })) this.tiles[p.r][p.c] = 'runway'
+    for (let c = 7; c <= 20; c++) this.tiles[21][c] = 'taxi'
+    this.tiles[20][10] = 'stand'
+    this.tiles[20][16] = 'stand'
+    this.tiles[20][7] = 'fuel'
+    this.tiles[19][12] = 'snack'
+    this.tiles[19][18] = 'bags'
+    const origin = { c: 13, r: 16 }
+    for (const p of [
+      origin,
+      { c: 14, r: 16 },
+      { c: 13, r: 17 },
+      { c: 14, r: 17 },
+    ]) {
+      this.tiles[p.r][p.c] = 'terminal'
+    }
+    this.fits.push({
+      origin,
+      rooms: {
+        checkin: 1,
+        security: 1,
+        gate: 1,
+        bagclaim: 1,
+        food: 1,
+        souvenir: 0,
+        bagdrop: 0,
+      },
+    })
   }
 
   persist() {
@@ -236,6 +281,11 @@ export class Game {
   setTool(tool: Tool) {
     this.tool = tool
     this.runwayStart = null
+    this.emit()
+  }
+
+  rotatePiece() {
+    this.facing = this.facing === 'h' ? 'v' : 'h'
     this.emit()
   }
 
@@ -364,7 +414,11 @@ export class Game {
 
   refundFor(tile: Tile): number {
     if (tile === 'grass') return 0
-    if (tile === 'runway') return Math.round(RUNWAY_TILE * BULLDOZE_REFUND)
+    if (tile === 'runway') {
+      return Math.round(
+        (RUNWAY_PREFAB_COST / (RUNWAY_PREFAB_LEN * RUNWAY_PREFAB_WID)) * BULLDOZE_REFUND,
+      )
+    }
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
     const b = BUILDINGS.find((x) => x.tile === tile)
     return b ? Math.round(b.cost * BULLDOZE_REFUND) : 0
@@ -414,67 +468,37 @@ export class Game {
     this.emit()
   }
 
-  snapRunwayEnd(a: Vec, b: Vec): Vec {
-    const dc = Math.abs(b.c - a.c)
-    const dr = Math.abs(b.r - a.r)
-    if (dc >= dr) return { c: b.c, r: a.r }
-    return { c: a.c, r: b.r }
-  }
-
-  runwayStrip(a: Vec, b: Vec): Vec[] {
-    const e = this.snapRunwayEnd(a, b)
+  prefabRunway(origin: Vec): Vec[] {
     const cells: Vec[] = []
-    if (e.r === a.r) {
-      const c0 = Math.min(a.c, e.c)
-      const c1 = Math.max(a.c, e.c)
-      for (let c = c0; c <= c1; c++) cells.push({ c, r: a.r })
+    if (this.facing === 'h') {
+      for (let r = 0; r < RUNWAY_PREFAB_WID; r++) {
+        for (let c = 0; c < RUNWAY_PREFAB_LEN; c++) {
+          cells.push({ c: origin.c + c, r: origin.r + r })
+        }
+      }
     } else {
-      const r0 = Math.min(a.r, e.r)
-      const r1 = Math.max(a.r, e.r)
-      for (let r = r0; r <= r1; r++) cells.push({ c: a.c, r })
+      for (let c = 0; c < RUNWAY_PREFAB_WID; c++) {
+        for (let r = 0; r < RUNWAY_PREFAB_LEN; r++) {
+          cells.push({ c: origin.c + c, r: origin.r + r })
+        }
+      }
     }
-    return cells.filter((p) => inBounds(p.c, p.r))
+    return cells
   }
 
   placeRunway(v: Vec) {
-    if (!this.runwayStart) {
-      if (this.tile(v) !== 'grass') {
-        this.pushNews('Start the runway on grass.', 'bad')
-        this.emit()
-        return
-      }
-      this.runwayStart = v
-      this.pushNews('Start set. Drag or click the far end — it snaps straight. Need 6 tiles.', 'ok')
+    const cells = this.prefabRunway(v)
+    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
+      this.pushNews('Need a clear plot for the whole runway. Hit Rotate if it hangs off the field.', 'bad')
       this.emit()
       return
     }
-    const a = this.runwayStart
-    const cells = this.runwayStrip(a, v)
-    if (cells.length <= 1) {
-      this.emit()
-      return
-    }
-    if (cells.length < MIN_RUNWAY) {
-      this.pushNews(
-        `Need ${MIN_RUNWAY} tiles. That ghost is ${cells.length} — keep dragging the far end.`,
-        'bad',
-      )
-      this.emit()
-      return
-    }
-    if (cells.some((p) => this.tile(p) !== 'grass')) {
-      this.pushNews('Strip is blocked. Move the far end or clear first.', 'bad')
-      this.emit()
-      return
-    }
-    const cost = cells.length * RUNWAY_TILE
-    if (!this.spend(cost, 'runway')) {
+    if (!this.spend(RUNWAY_PREFAB_COST, 'runway')) {
       this.emit()
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'runway'
-    this.runwayStart = null
-    this.pushNews(`Runway down · ${cells.length} tiles.`, 'good')
+    this.pushNews('Regional runway stamped. Later: longer strips for heavier jets.', 'good')
     this.emit()
   }
 
@@ -534,9 +558,8 @@ export class Game {
   }
 
   ghostRunway(hover: Vec): Vec[] {
-    if (this.tool !== 'runway') return hover ? [hover] : []
-    if (!this.runwayStart) return hover ? [hover] : []
-    return this.runwayStrip(this.runwayStart, hover)
+    if (this.tool !== 'runway' || !hover) return hover ? [hover] : []
+    return this.prefabRunway(hover)
   }
 
   groundBusy(): boolean {

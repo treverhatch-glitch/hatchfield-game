@@ -9,6 +9,10 @@ import type {
 export const START_CASH = { easy: 120_000, standard: 64_000 } as const
 
 export const RUNWAY_TILE = 2800
+/** One-click regional strip (Airport Tycoon style). Later: heavy / long-haul classes. */
+export const RUNWAY_PREFAB_COST = 38000
+export const RUNWAY_PREFAB_LEN = 14
+export const RUNWAY_PREFAB_WID = 2
 export const TAXI_COST = 700
 export const STAND_COST = 6200
 export const TERMINAL_COST = 14800

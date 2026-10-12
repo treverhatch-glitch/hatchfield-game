@@ -13,11 +13,13 @@ npm run dev
 
 Open the printed local URL (port **45217**).
 
-- **Easy grant** — $120,000
-- **Standard field** — $64,000
+- **Easy grant** — $120,000 and a live starter airport (a jet should inbound)
+- **Standard field** — $64,000 empty plot
+- Buildings stamp in one click (Airport Tycoon style). Rotate the runway with the Rotate button or `R`
 - Left drag pans, right drag orbits, scroll zooms
-- Runway is two clicks, straight, at least 6 tiles
 - Sign a fuel carrier, buy loads, park the farm on pavement or the pump never posts
+
+See `DESIGN.md` for the longer backlog (heavier runways, helicopters, RCT guests, loans).
 
 New game overwrites the browser save (`apron-save-v1`).
 

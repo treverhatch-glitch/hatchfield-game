@@ -1,4 +1,12 @@
-import { AIRLINES, BUILDINGS, FUEL, money, ROOMS, TOOL_LABEL } from '../game/catalog'
+import {
+  AIRLINES,
+  BUILDINGS,
+  FUEL,
+  money,
+  ROOMS,
+  RUNWAY_PREFAB_COST,
+  TOOL_LABEL,
+} from '../game/catalog'
 import { formatClock, type Game } from '../game/sim'
 import type { Speed, Tool } from '../game/types'
 
@@ -143,10 +151,13 @@ export function Hud({ game }: { game: Game }) {
               {TOOL_LABEL[t]}
             </button>
           ))}
+          <button type="button" onClick={() => game.rotatePiece()}>
+            Rotate {game.facing === 'h' ? 'horizontal' : 'vertical'}
+          </button>
         </div>
         <p className="hint">
           {game.tool === 'runway'
-            ? 'Click a start, then drag the far end. The strip snaps straight. Green ghost at 6+ tiles lays it.'
+            ? `Click once to stamp a regional runway (${money(RUNWAY_PREFAB_COST)}). Rotate for the other axis. Later: longer strips for heavier jets.`
             : game.tool === 'pan'
               ? 'Click a jet or stand. Drag to look around the field.'
               : tip

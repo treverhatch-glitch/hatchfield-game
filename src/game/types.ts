@@ -1,5 +1,5 @@
-export const SIZE = 16
-export const SAVE_KEY = 'apron-save-v1'
+export const SIZE = 28
+export const SAVE_KEY = 'apron-save-v3'
 
 export type Tile =
   | 'grass'

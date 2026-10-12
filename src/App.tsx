@@ -11,7 +11,7 @@ export default function App() {
   useSyncExternalStore(
     game.subscribe,
     () =>
-      `${game.cash}|${game.speed}|${game.tool}|${game.selectedFlight}|${game.news[0]?.id}|${game.fuelLoads}|${game.fuelBrand}|${Math.floor(game.clock)}|${game.flights[0]?.phase}|${game.harborUnlocked}|${game.fits.length}`,
+      `${game.cash}|${game.speed}|${game.tool}|${game.facing}|${game.selectedFlight}|${game.news[0]?.id}|${game.fuelLoads}|${game.fuelBrand}|${Math.floor(game.clock)}|${game.flights[0]?.phase}|${game.harborUnlocked}|${game.fits.length}`,
     () => 'ssr',
   )
 
