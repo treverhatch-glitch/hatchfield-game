@@ -1,0 +1,290 @@
+@import 'tailwindcss';
+
+:root {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: #e8eef4;
+  background: #0f1c16;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.field {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.hud {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+.hud * {
+  pointer-events: auto;
+}
+
+.top {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(to bottom, rgba(12, 22, 18, 0.82), transparent);
+}
+
+.brand strong {
+  display: block;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+.brand span,
+.muted,
+.hint,
+.kicker,
+.phase {
+  color: #b7c4b8;
+  font-size: 12px;
+}
+
+.stat {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  background: rgba(12, 24, 20, 0.72);
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.stat.cash {
+  color: #e7c56a;
+  font-weight: 600;
+}
+
+.speeds,
+.row,
+.tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.speeds button,
+.tools button,
+.side button,
+.starts button {
+  background: rgba(18, 36, 28, 0.9);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+.speeds button.on,
+.tools button.on {
+  background: #c9a227;
+  color: #1a1406;
+  border-color: #e6c85a;
+}
+
+.side {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  width: min(320px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100% - 150px);
+  overflow: auto;
+}
+
+.side section,
+.title-card {
+  background: rgba(10, 20, 16, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.side h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.fn {
+  font-weight: 700;
+  margin: 0;
+}
+
+.ledger,
+.rooms,
+.news ul,
+.beats {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.ledger li,
+.rooms button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+}
+
+.rooms li {
+  margin-bottom: 4px;
+}
+
+.news li {
+  font-size: 12px;
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+
+.news li[data-tone='good'] {
+  color: #8ee0a8;
+}
+
+.news li[data-tone='bad'] {
+  color: #ff9b8f;
+}
+
+.wide {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.dock {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(10, 20, 16, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.hint {
+  margin: 8px 0 0;
+}
+
+.title-wrap {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse at 20% 0%, #2f6f9a55, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, #c9a22733, transparent 45%),
+    #102018;
+}
+
+.title-card {
+  max-width: 640px;
+}
+
+.kicker {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+
+h1 {
+  font-size: clamp(40px, 7vw, 64px);
+  margin: 0 0 12px;
+  letter-spacing: -0.03em;
+}
+
+.lede {
+  color: #d5e0d6;
+  line-height: 1.5;
+}
+
+.beats li {
+  margin: 6px 0;
+  padding-left: 0;
+  color: #c5d2c6;
+  font-size: 14px;
+}
+
+.starts {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.starts button {
+  text-align: left;
+  padding: 12px 14px;
+}
+
+.starts button span {
+  display: block;
+  color: #b7c4b8;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.starts .primary {
+  background: #c9a227;
+  color: #1a1406;
+  border-color: #e6c85a;
+}
+
+.starts .ghost {
+  background: transparent;
+}
+
+@media (max-width: 800px) {
+  .side {
+    position: static;
+    width: auto;
+    max-height: none;
+    padding: 0 8px 120px;
+  }
+  .hud {
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .field {
+    height: 52vh;
+  }
+  .shell {
+    overflow: auto;
+    height: 100%;
+  }
+}
