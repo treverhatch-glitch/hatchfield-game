@@ -19,6 +19,14 @@ export function Field({ game }: { game: Game }) {
     }
     world.getTool = () => game.tool
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        game.exitHall()
+        return
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        game.setView(game.view === 'hall' ? 'apron' : 'hall')
+        return
+      }
       if (game.view !== 'apron') return
       if (e.key === 'r' || e.key === 'R') game.rotatePiece()
     }

@@ -50,6 +50,37 @@ export function TerminalView({ game }: { game: Game }) {
       const open = game.hallOpen()
       const fit = game.activeHall()
 
+      // Landside (city doors) vs airside (gates) wash — reads the cut.
+      const land = ctx.createLinearGradient(0, 0, w * 0.45, 0)
+      land.addColorStop(0, 'rgba(90, 140, 110, 0.14)')
+      land.addColorStop(1, 'rgba(90, 140, 110, 0)')
+      ctx.fillStyle = land
+      ctx.fillRect(0, 0, w * 0.42, h)
+      const air = ctx.createLinearGradient(w * 0.55, 0, w, 0)
+      air.addColorStop(0, 'rgba(70, 120, 170, 0)')
+      air.addColorStop(1, 'rgba(70, 120, 170, 0.16)')
+      ctx.fillStyle = air
+      ctx.fillRect(w * 0.55, 0, w * 0.45, h)
+      ctx.fillStyle = 'rgba(232,238,244,0.35)'
+      ctx.font = '700 13px IBM Plex Sans, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText('LANDSIDE', 24, h - 28)
+      ctx.textAlign = 'right'
+      ctx.fillText('AIRSIDE', w - 24, h - 28)
+      // Secure line marker near security x
+      const secX = NODE_POS.security.x * w
+      ctx.strokeStyle = 'rgba(201,162,39,0.45)'
+      ctx.setLineDash([6, 6])
+      ctx.beginPath()
+      ctx.moveTo(secX, 48)
+      ctx.lineTo(secX, h - 48)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = 'rgba(201,162,39,0.7)'
+      ctx.font = '600 11px IBM Plex Sans, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('secure line', secX, 40)
+
       // Edges
       ctx.lineWidth = 6
       for (const [a, b] of HALL_EDGES) {
@@ -120,13 +151,13 @@ export function TerminalView({ game }: { game: Game }) {
       ctx.fillStyle = '#e8eef4'
       ctx.font = '600 14px IBM Plex Sans, sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillText('Terminal hall · RCT-style needs', 28, 38)
+      ctx.fillText('Inside the terminal', 28, 38)
       ctx.fillStyle = '#b7c4b8'
       ctx.font = '12px IBM Plex Sans, sans-serif'
       ctx.fillText(
         fit
-          ? `${game.hallGuests.length} guests · click a dot · missing rooms = lost people`
-          : 'Stamp a Premade hall or furnish a Shell first.',
+          ? `${game.hallGuests.length} guests · furnish landside→airside · Esc / H back to apron`
+          : 'Stamp a Premade hall or furnish a Shell outside first.',
         28,
         58,
       )

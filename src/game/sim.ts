@@ -1143,6 +1143,15 @@ export class Game {
   }
 
   setTool(tool: Tool) {
+    // Outdoor stamps only work on the apron — kick you outside smoothly.
+    if (
+      this.view === 'hall' &&
+      tool !== 'pan' &&
+      tool !== 'premade' &&
+      tool !== 'terminal'
+    ) {
+      this.view = 'apron'
+    }
     this.tool = tool
     this.runwayStart = null
     this.emit()
@@ -1159,8 +1168,40 @@ export class Game {
   }
 
   setView(view: 'apron' | 'hall') {
+    if (view === 'hall' && !this.fits.length) {
+      this.pushNews('Stamp a Premade hall or empty Shell outside first.', 'bad')
+      this.emit()
+      return
+    }
+    const prev = this.view
     this.view = view
+    if (view === 'hall') {
+      this.tool = 'pan'
+      if (prev !== 'hall') {
+        this.pushNews(
+          'Inside the terminal — landside doors → security → airside gates. Furnish in the side panel. Esc / Apron to leave.',
+          'ok',
+        )
+      }
+    } else if (prev !== 'apron') {
+      this.pushNews('Back on the apron — build runways, stands, and outside kit here.', 'ok')
+    }
     this.emit()
+  }
+
+  /** Pan-click a terminal tile to walk inside. */
+  enterHallAt(tile: Vec) {
+    this.selectedTile = tile
+    if (!this.fits.length) {
+      this.pushNews('No furnished hall yet — stamp Premade or a Shell.', 'bad')
+      this.emit()
+      return
+    }
+    this.setView('hall')
+  }
+
+  exitHall() {
+    if (this.view === 'hall') this.setView('apron')
   }
 
   selectGuest(id: string | null) {
@@ -2417,6 +2458,10 @@ export class Game {
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
+      if (this.tile(v) === 'terminal') {
+        this.enterHallAt(v)
+        return
+      }
       const f = this.nearestFlight(v)
       if (f) this.selectedFlight = f.id
       this.emit()
