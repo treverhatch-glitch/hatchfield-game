@@ -62,6 +62,9 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat">{game.signed.length} airlines</div>
         <div className="stat">Sec {ready.security}</div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
+        {game.public ? (
+          <div className="stat cash">HATCH ${game.sharePrice.toFixed(2)}</div>
+        ) : null}
         <div className="speeds">
           <button
             type="button"
@@ -136,6 +139,51 @@ export function Hud({ game }: { game: Game }) {
             Loan owed {money(game.loanBalance)} · parcels {game.parcels}
             {game.railLinked ? ' · rail linked' : ''}
           </p>
+        </section>
+
+        <section>
+          <h2>Exchange · HATCH</h2>
+          {game.public ? (
+            <>
+              <p className="fn" style={{ color: '#c9a227' }}>
+                ${game.sharePrice.toFixed(2)}{' '}
+                <span className="muted">
+                  IPO ${game.ipoPrice.toFixed(2)} · you own {game.sharesOwned} / float{' '}
+                  {game.sharesFloat}
+                </span>
+              </p>
+              <p className="muted">
+                Stake mark {money(Math.round(game.sharePrice * game.sharesOwned))} · fair ~
+                ${game.fairSharePrice().toFixed(2)}
+              </p>
+              <div className="row">
+                <button type="button" onClick={() => game.buyShares(10)}>
+                  Buy 10
+                </button>
+                <button type="button" onClick={() => game.sellShares(10)}>
+                  Sell 10
+                </button>
+              </div>
+              {game.mission ? (
+                <p className="muted">
+                  Mission: {game.mission.title} — {Math.round(game.mission.progress)}/
+                  {game.mission.target} · {Math.ceil(game.mission.deadline)}s
+                </p>
+              ) : (
+                <p className="muted">No active street mission. Keep the hall clean.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="muted">{game.canIpo().why}</p>
+              <button type="button" className="wide on" onClick={() => game.goPublic()}>
+                IPO the airport
+              </button>
+              <p className="muted">
+                Listing invites capital — and crises. A bomb past security will tank HATCH.
+              </p>
+            </>
+          )}
         </section>
 
         <section>

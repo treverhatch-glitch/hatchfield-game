@@ -9,6 +9,12 @@ import {
   FUEL,
   LAND,
   LOADS_PER_BUY,
+  IPO_FOUNDER_SHARES,
+  IPO_LISTING_FEE,
+  IPO_MIN_CASH,
+  IPO_MIN_FLIGHTS,
+  IPO_MIN_REP,
+  IPO_SHARES,
   LOAN_FEE,
   LOAN_INTEREST,
   LOAN_PRINCIPAL,
@@ -55,6 +61,7 @@ import type {
   Flight,
   FuelBrand,
   GameSnapshot,
+  MarketMission,
   News,
   Person,
   Phase,
@@ -128,6 +135,14 @@ export class Game {
   parcels = 1
   railLinked = false
   interestCool = 60
+  public = false
+  sharePrice = 0
+  sharesOwned = 0
+  sharesFloat = 0
+  ipoPrice = 0
+  marketCool = 8
+  mission: MarketMission | null = null
+  revenueWindow = 0
   flights: Flight[] = []
   trucks: Truck[] = []
   people: Person[] = []
@@ -180,6 +195,14 @@ export class Game {
     this.parcels = 1
     this.railLinked = false
     this.interestCool = 60
+    this.public = false
+    this.sharePrice = 0
+    this.sharesOwned = 0
+    this.sharesFloat = 0
+    this.ipoPrice = 0
+    this.marketCool = 8
+    this.mission = null
+    this.revenueWindow = 0
     this.flights = []
     this.trucks = []
     this.people = []
@@ -353,6 +376,209 @@ export class Game {
     this.emit()
   }
 
+  canIpo(): { ok: boolean; why: string } {
+    if (this.public) return { ok: false, why: 'Already listed.' }
+    if (this.flightsDone < IPO_MIN_FLIGHTS) {
+      return { ok: false, why: `Need ${IPO_MIN_FLIGHTS} completed turns first.` }
+    }
+    if (this.reputation < IPO_MIN_REP) {
+      return { ok: false, why: `Need reputation ${IPO_MIN_REP}+.` }
+    }
+    if (this.cash < IPO_MIN_CASH + IPO_LISTING_FEE) {
+      return { ok: false, why: `Need ~${moneyLeft(IPO_MIN_CASH + IPO_LISTING_FEE)} on hand.` }
+    }
+    if (this.signed.length < 1) return { ok: false, why: 'Sign at least one airline.' }
+    return { ok: true, why: 'Ready to list.' }
+  }
+
+  fairSharePrice(): number {
+    const base =
+      8 +
+      this.reputation * 0.35 +
+      this.signed.length * 4 +
+      this.flightsDone * 0.4 +
+      (this.railLinked ? 3 : 0) +
+      this.parcels * 1.5 -
+      this.securityIncidents * 2.5 -
+      (this.loanBalance > 0 ? 4 : 0)
+    return Math.max(2, Math.round(base * 100) / 100)
+  }
+
+  goPublic() {
+    const gate = this.canIpo()
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(IPO_LISTING_FEE, 'IPO listing')) return
+    const price = this.fairSharePrice()
+    const float = IPO_SHARES - IPO_FOUNDER_SHARES
+    const raise = Math.round(float * price)
+    this.public = true
+    this.sharePrice = price
+    this.ipoPrice = price
+    this.sharesOwned = IPO_FOUNDER_SHARES
+    this.sharesFloat = float
+    this.cash += raise
+    this.reputation = Math.min(100, this.reputation + 6)
+    this.pushNews(
+      `HATCH lists at $${price.toFixed(2)}. Raised ${moneyLeft(raise)}. You keep ${IPO_FOUNDER_SHARES} shares — the street owns the rest. Protect security or the ticker dies.`,
+      'good',
+    )
+    this.startMission('earnings_beat')
+    this.emit()
+  }
+
+  buyShares(n = 10) {
+    if (!this.public) {
+      this.pushNews('IPO first.', 'bad')
+      return
+    }
+    const qty = Math.min(n, this.sharesFloat)
+    if (qty <= 0) {
+      this.pushNews('No float left to buy.', 'bad')
+      return
+    }
+    const cost = Math.round(qty * this.sharePrice)
+    if (!this.spend(cost, 'share buyback')) return
+    this.sharesOwned += qty
+    this.sharesFloat -= qty
+    this.sharePrice = Math.round((this.sharePrice * 1.02) * 100) / 100
+    this.pushNews(`Bought ${qty} shares @ $${this.sharePrice.toFixed(2)}.`, 'ok')
+    this.emit()
+  }
+
+  sellShares(n = 10) {
+    if (!this.public) return
+    const qty = Math.min(n, this.sharesOwned)
+    if (qty <= 0) {
+      this.pushNews('No shares to sell.', 'bad')
+      return
+    }
+    const gain = Math.round(qty * this.sharePrice)
+    this.sharesOwned -= qty
+    this.sharesFloat += qty
+    this.cash += gain
+    this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.97) * 100) / 100)
+    this.pushNews(`Sold ${qty} shares for ${moneyLeft(gain)}.`, 'ok')
+    this.emit()
+  }
+
+  startMission(id: MarketMission['id']) {
+    const table: Record<MarketMission['id'], Omit<MarketMission, 'id' | 'progress'>> = {
+      secure_the_line: {
+        title: 'Secure the line',
+        blurb: 'Board wants security level 3 before the next earnings call.',
+        deadline: 120,
+        goal: 'security3',
+        target: 3,
+        rewardCash: 8000,
+        rewardRep: 5,
+      },
+      earnings_beat: {
+        title: 'Beat the street',
+        blurb: 'Post $25,000 more revenue while listed — or the stock drifts.',
+        deadline: 150,
+        goal: 'revenueBurst',
+        target: 25000,
+        rewardCash: 5000,
+        rewardRep: 4,
+      },
+      calm_the_board: {
+        title: 'Calm the board',
+        blurb: 'Push reputation back to 60 after the scare.',
+        deadline: 100,
+        goal: 'rep60',
+        target: 60,
+        rewardCash: 6000,
+        rewardRep: 6,
+      },
+      restore_trust: {
+        title: 'Restore trust',
+        blurb: 'Zero new security incidents for a stretch. Prove the hall is clean.',
+        deadline: 90,
+        goal: 'noIncident',
+        target: 90,
+        rewardCash: 10000,
+        rewardRep: 8,
+      },
+    }
+    const m = table[id]
+    this.mission = { id, progress: 0, ...m }
+    this.revenueWindow = this.revenue
+    this.pushNews(`Market mission: ${m.title}. ${m.blurb}`, 'ok')
+  }
+
+  shockStock(reason: string, mult: number, fine: number) {
+    if (!this.public) {
+      this.cash -= fine
+      this.pushNews(reason, 'bad')
+      return
+    }
+    const before = this.sharePrice
+    this.sharePrice = Math.max(1.5, Math.round(this.sharePrice * mult * 100) / 100)
+    this.cash -= fine
+    this.reputation = Math.max(0, this.reputation - 10)
+    const paper = Math.round((this.sharePrice - before) * this.sharesOwned)
+    this.pushNews(
+      `${reason} HATCH $${before.toFixed(2)} → $${this.sharePrice.toFixed(2)} (${paper < 0 ? '' : '+'}${moneyLeft(paper)} on your stake). Fine ${moneyLeft(fine)}.`,
+      'bad',
+    )
+    this.startMission(mult < 0.7 ? 'restore_trust' : 'secure_the_line')
+  }
+
+  tickMarket(dt: number) {
+    if (!this.public) return
+    this.marketCool -= dt
+    // Gentle drift toward fair value
+    if (this.marketCool <= 0) {
+      this.marketCool = 6 + Math.random() * 4
+      const fair = this.fairSharePrice()
+      this.sharePrice = Math.round((this.sharePrice * 0.85 + fair * 0.15) * 100) / 100
+      // Random retail flow
+      if (Math.random() < 0.35 && this.sharesFloat > 5) {
+        const n = 3 + Math.floor(Math.random() * 8)
+        const buy = Math.random() < 0.55
+        if (buy) {
+          const qty = Math.min(n, this.sharesFloat)
+          this.sharesFloat -= qty
+          // street buys from float — price up, founder stake unchanged
+          this.sharePrice = Math.round((this.sharePrice * 1.015) * 100) / 100
+        } else if (this.sharesOwned > IPO_FOUNDER_SHARES * 0.3) {
+          /* ignore — only founder sells manually */
+          this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.99) * 100) / 100)
+        }
+      }
+    }
+
+    if (!this.mission) return
+    const m = this.mission
+    m.deadline -= dt
+    if (m.goal === 'security3') m.progress = this.securityLevel()
+    if (m.goal === 'revenueBurst') m.progress = Math.max(0, this.revenue - this.revenueWindow)
+    if (m.goal === 'rep60') m.progress = this.reputation
+    if (m.goal === 'noIncident') m.progress += dt
+
+    if (m.progress >= m.target) {
+      this.cash += m.rewardCash
+      this.reputation = Math.min(100, this.reputation + m.rewardRep)
+      this.sharePrice = Math.round((this.sharePrice * 1.08) * 100) / 100
+      this.pushNews(
+        `Mission cleared: ${m.title}. +${moneyLeft(m.rewardCash)}, stock pops to $${this.sharePrice.toFixed(2)}.`,
+        'good',
+      )
+      this.mission = null
+      return
+    }
+    if (m.deadline <= 0) {
+      this.sharePrice = Math.max(1.5, Math.round((this.sharePrice * 0.88) * 100) / 100)
+      this.reputation = Math.max(0, this.reputation - 4)
+      this.pushNews(`Mission failed: ${m.title}. Stock slips to $${this.sharePrice.toFixed(2)}.`, 'bad')
+      this.mission = null
+    }
+  }
+
   persist() {
     if (!this.site) return
     const snap: GameSnapshot = {
@@ -376,6 +602,10 @@ export class Game {
       loanBalance: this.loanBalance,
       parcels: this.parcels,
       railLinked: this.railLinked,
+      public: this.public,
+      sharePrice: this.sharePrice,
+      sharesOwned: this.sharesOwned,
+      sharesFloat: this.sharesFloat,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -413,6 +643,12 @@ export class Game {
       this.loanBalance = s.loanBalance ?? 0
       this.parcels = s.parcels ?? 1
       this.railLinked = s.railLinked ?? false
+      this.public = s.public ?? false
+      this.sharePrice = s.sharePrice ?? 0
+      this.sharesOwned = s.sharesOwned ?? 0
+      this.sharesFloat = s.sharesFloat ?? 0
+      this.ipoPrice = this.sharePrice
+      this.mission = null
       this.flights = []
       this.trucks = []
       this.people = []
@@ -1491,15 +1727,21 @@ export class Game {
     const risk = clamp(0.55 - sec * 0.12 - police * 0.08, 0.05, 0.55)
     if (Math.random() > risk) return
     this.securityIncidents += 1
-    const fine = 4000 + sec * 0
-    this.cash -= fine
-    this.reputation = Math.max(0, this.reputation - (sec < 2 ? 12 : 4))
-    this.pushNews(
-      sec < 2
-        ? `Security breach — undeclared threat on a departure. Fine ${moneyLeft(fine)}. Build screening and police.`
-        : `Suspicious bag intercepted. Ops delay and ${moneyLeft(fine)} in overtime.`,
-      'bad',
-    )
+    if (this.mission?.goal === 'noIncident') this.mission.progress = 0
+    const fine = this.public ? (sec < 2 ? 18000 : 9000) : sec < 2 ? 4000 : 2500
+    if (sec < 2) {
+      this.shockStock(
+        'SECURITY FAILURE — a threat slipped past screening onto a departure.',
+        this.public ? 0.55 : 1,
+        fine,
+      )
+    } else {
+      this.shockStock(
+        'Suspicious bag intercepted — markets hate the headline anyway.',
+        this.public ? 0.82 : 1,
+        fine,
+      )
+    }
   }
 
   tick(dt: number) {
@@ -1535,6 +1777,7 @@ export class Game {
     this.releaseHold()
     this.tickPatrols(step)
     this.tickThreats(step)
+    this.tickMarket(step)
     this.tickHall(step)
 
     for (const f of this.flights) {

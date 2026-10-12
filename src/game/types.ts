@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v6'
+export const SAVE_KEY = 'apron-save-v7'
 
 export type Tile =
   | 'grass'
@@ -238,6 +238,26 @@ export interface News {
   age: number
 }
 
+export type MarketMissionId =
+  | 'secure_the_line'
+  | 'earnings_beat'
+  | 'calm_the_board'
+  | 'restore_trust'
+
+export interface MarketMission {
+  id: MarketMissionId
+  title: string
+  blurb: string
+  /** Sim-seconds left. */
+  deadline: number
+  /** What completes it. */
+  goal: 'security3' | 'revenueBurst' | 'rep60' | 'noIncident'
+  progress: number
+  target: number
+  rewardCash: number
+  rewardRep: number
+}
+
 export interface TerminalFit {
   origin: Vec
   rooms: Record<RoomId, number>
@@ -265,4 +285,8 @@ export interface GameSnapshot {
   loanBalance: number
   parcels: number
   railLinked: boolean
+  public: boolean
+  sharePrice: number
+  sharesOwned: number
+  sharesFloat: number
 }

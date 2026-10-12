@@ -28,6 +28,10 @@ Graphics in the sketch are placeholder. Priority is loops and money = picture.
 
 See `ADDITIONS.md` for features added from research that were not in HatchTag prompts.
 
+## Public market
+
+Players can **IPO** once the field has traction. After listing: buy/sell HATCH shares, street missions, and public crises — a security breach / bomb slip **tanks the stock** and piles on fines. This is the progression AT3 never had after planes started landing.
+
 ## Terminal hall (RCT-inspired)
 
 Apron / Hall toggle. Guests have needs (hunger, bathroom, energy, shop, bags, boarding clock). Short graph pathfinding with capped lookahead — Chris Sawyer’s lesson: perfect routing that stalls the sim is worse than guests who can get lost.
