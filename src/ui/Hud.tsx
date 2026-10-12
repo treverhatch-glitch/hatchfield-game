@@ -1015,11 +1015,16 @@ export function Hud({ game }: { game: Game }) {
               const g = game.labGear()
               return ` · gear D${g.desks}/B${g.boards}/M${g.machines}`
             })()}
-            {game.researchers ? ` · ${game.researchers} staff` : ' · hire staff in Ops'}
+            {game.researchers
+              ? (() => {
+                  const c = game.labCrewStatus()
+                  return ` · ${c.working} working / ${c.break} break / ${c.home} home`
+                })()
+              : ' · hire researchers in Ops, furnish desk/board/bench in Hall'}
             {game.researchUnlocked.length
               ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
               : ' · no unlocks yet'}
-            {game.isNight() ? ' · night lab slow' : ''}
+            {game.isNight() ? ' · night lab slow + more off-shift' : ''}
           </p>
           <ul className="airlines">
             {RESEARCH_NODES.map((n) => {

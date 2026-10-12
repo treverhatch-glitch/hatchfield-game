@@ -32,6 +32,10 @@ export type HallNode =
   | 'claim'
   | 'info'
   | 'exit'
+  /** Landside R&D — researchers only; guests rarely path here. */
+  | 'lab_desk'
+  | 'lab_board'
+  | 'lab_bench'
 
 export type PaxTag = 'budget' | 'premium'
 
@@ -158,6 +162,12 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['checkin', 'info'],
   ['security', 'info'],
   ['exit', 'entrance'],
+  // Landside R&D corner — short spur off doors/info (not guest need targets).
+  ['entrance', 'lab_desk'],
+  ['info', 'lab_desk'],
+  ['lab_desk', 'lab_board'],
+  ['lab_board', 'lab_bench'],
+  ['lab_desk', 'lab_bench'],
 ]
 
 export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }> = {
@@ -176,6 +186,9 @@ export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }>
   claim: { x: 0.48, y: 0.78, label: 'Bag claim' },
   info: { x: 0.22, y: 0.48, label: 'Info' },
   exit: { x: 0.12, y: 0.82, label: 'Landside' },
+  lab_desk: { x: 0.08, y: 0.22, label: 'R&D desk' },
+  lab_board: { x: 0.18, y: 0.14, label: 'Chalkboard' },
+  lab_bench: { x: 0.28, y: 0.16, label: 'Lab bench' },
 }
 
 const NAMES = [
@@ -341,6 +354,9 @@ export function openNodesFromRooms(rooms: {
   waterfall?: number
   gaming?: number
   dayhotel?: number
+  rdesk?: number
+  rboard?: number
+  rmachine?: number
 }): Set<HallNode> {
   const open = new Set<HallNode>(['entrance', 'exit', 'info'])
   if (rooms.checkin > 0 || rooms.bagdrop > 0) open.add('checkin')
@@ -355,6 +371,9 @@ export function openNodesFromRooms(rooms: {
   if ((rooms.dayhotel ?? 0) > 0) open.add('dayhotel')
   if (rooms.gate > 0) open.add('gate')
   if (rooms.bagclaim > 0) open.add('claim')
+  if ((rooms.rdesk ?? 0) > 0) open.add('lab_desk')
+  if ((rooms.rboard ?? 0) > 0) open.add('lab_board')
+  if ((rooms.rmachine ?? 0) > 0) open.add('lab_bench')
   // No soft security corridor — missing lanes means airside stays locked for uncleared pax.
   return open
 }

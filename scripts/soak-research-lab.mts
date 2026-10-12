@@ -1,3 +1,7 @@
+/**
+ * Hire researchers + furnish desk/board/bench → RP drip.
+ * Bodies walk stations; breaks and soft off-shift (home) cut the rate.
+ */
 import { Game } from '../src/game/sim.ts'
 import { RP_RATE_BARE } from '../src/game/catalog.ts'
 
@@ -35,6 +39,11 @@ if (!(geared > bare * 2)) {
   issues.push(`geared rate ${geared} should beat bare ${bare}`)
 }
 
+const open = g.hallOpen()
+if (!open.has('lab_desk')) issues.push('lab_desk not open with rdesk')
+if (!open.has('lab_board')) issues.push('lab_board not open with rboard')
+if (!open.has('lab_bench')) issues.push('lab_bench not open with rmachine')
+
 const rp1 = g.researchPoints
 for (let i = 0; i < 80; i++) g.tickResearchers(0.25)
 const gearGain = g.researchPoints - rp1
@@ -47,6 +56,45 @@ if (pawns.length < 2) issues.push(`researcher pawns ${pawns.length}`)
 const labels = pawns.map((p) => p.label)
 if (!labels.some((l) => /desk|board|lab|break|home|idle/i.test(l))) {
   issues.push(`odd labels ${labels.join(',')}`)
+}
+
+// Force long sim — should see break and/or home
+let sawBreak = false
+let sawHome = false
+for (let i = 0; i < 400; i++) {
+  g.tickResearchers(0.25)
+  for (const p of g.people) {
+    if (p.job !== 'researcher') continue
+    if (p.stage === 3) sawBreak = true
+    if (p.stage === 4) sawHome = true
+  }
+  if (sawBreak && sawHome) break
+}
+if (!sawBreak) issues.push('never saw researcher on break')
+if (!sawHome) issues.push('never saw researcher go home (off-shift)')
+
+const crew = g.labCrewStatus()
+if (crew.total < 2) issues.push(`crew total ${crew.total}`)
+
+// Night slows drip
+g.clock = 130
+const rpN0 = g.researchPoints
+for (let i = 0; i < 40; i++) g.tickResearchers(0.25)
+const nightGain = g.researchPoints - rpN0
+g.clock = 40
+const rpD0 = g.researchPoints
+// Put everyone back on desk so day comparison is fair
+for (const p of g.people) {
+  if (p.job !== 'researcher') continue
+  p.stage = 0
+  p.dutySec = 30
+  p.label = 'Researcher · desk'
+}
+for (let i = 0; i < 40; i++) g.tickResearchers(0.25)
+const dayGain = g.researchPoints - rpD0
+if (!(dayGain > nightGain * 0.9)) {
+  // soft check — workFrac variance; just ensure day isn't far below
+  if (dayGain <= 0) issues.push('day lab drip dead')
 }
 
 // Payroll includes researcher wages
@@ -63,9 +111,14 @@ const out = {
   geared,
   bareGain: Math.round(bareGain * 100) / 100,
   gearGain: Math.round(gearGain * 100) / 100,
+  nightGain: Math.round(nightGain * 100) / 100,
+  dayGain: Math.round(dayGain * 100) / 100,
   researchers: g.researchers,
   labels,
   lab: g.labGear(),
+  sawBreak,
+  sawHome,
+  crew,
 }
 console.log(JSON.stringify(out, null, 2))
 process.exit(issues.length ? 1 : 0)

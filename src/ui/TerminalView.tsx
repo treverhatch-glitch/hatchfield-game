@@ -136,6 +136,50 @@ export function TerminalView({ game }: { game: Game }) {
         ctx.strokeRect(x - 5, y - 5, 10, 10)
       }
 
+      // Researchers walk R&D desk → chalkboard → lab bench; break/home leave the corner.
+      for (const p of game.people) {
+        if (p.job !== 'researcher') continue
+        let node: HallNode =
+          p.stage === 1
+            ? 'lab_board'
+            : p.stage === 2
+              ? 'lab_bench'
+              : p.stage === 3
+                ? open.has('food')
+                  ? 'food'
+                  : open.has('bathroom')
+                    ? 'bathroom'
+                    : 'exit'
+                : p.stage === 4
+                  ? 'exit'
+                  : open.has('lab_desk')
+                    ? 'lab_desk'
+                    : 'info'
+        if (p.stage === 1 && !open.has('lab_board')) node = open.has('lab_desk') ? 'lab_desk' : 'info'
+        if (p.stage === 2 && !open.has('lab_bench')) {
+          node = open.has('lab_board')
+            ? 'lab_board'
+            : open.has('lab_desk')
+              ? 'lab_desk'
+              : 'info'
+        }
+        const np = NODE_POS[node]
+        const jx = ((p.id.charCodeAt(4) % 5) - 2) * 3
+        const jy = ((p.id.charCodeAt(5) % 5) - 2) * 3
+        const x = np.x * w + jx
+        const y = np.y * h + jy - 14
+        ctx.fillStyle = p.stage >= 3 ? '#5a6570' : p.color
+        ctx.beginPath()
+        ctx.moveTo(x, y - 6)
+        ctx.lineTo(x + 5, y + 5)
+        ctx.lineTo(x - 5, y + 5)
+        ctx.closePath()
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(232,238,244,0.55)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+      }
+
       const hallKey = fit ? game.hallKey(fit) : null
       const hallGuests = game.hallGuests.filter(
         (g) => !g.hallId || !hallKey || g.hallId === hallKey,
@@ -177,9 +221,10 @@ export function TerminalView({ game }: { game: Game }) {
       )
       ctx.fillStyle = '#b7c4b8'
       ctx.font = '12px IBM Plex Sans, sans-serif'
+      const lab = game.labCrewStatus()
       ctx.fillText(
         fit
-          ? `${hallGuests.length} guests · ${game.standsForHall(fit).length} jetways · staff ${game.hallStaff.filter((s) => s.stage === 0).length}/${game.deskStaff} · secure ${hasSec ? 'open' : 'LOCKED'}`
+          ? `${hallGuests.length} guests · ${game.standsForHall(fit).length} jetways · staff ${game.hallStaff.filter((s) => s.stage === 0).length}/${game.deskStaff} · R&D ${lab.working}/${lab.total} · secure ${hasSec ? 'open' : 'LOCKED'}`
           : 'Stamp a Premade hall or furnish a Shell outside first.',
         28,
         58,

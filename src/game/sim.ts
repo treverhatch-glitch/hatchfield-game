@@ -3938,103 +3938,172 @@ export class Game {
   spawnResearcherPawn() {
     const origin = this.fits[0]?.origin
     if (!origin) return
+    const { desks } = this.labGear()
     this.people.push({
       id: uid('rnd'),
       flightId: '',
-      x: origin.c + 0.5,
-      y: origin.r + 0.5,
+      x: origin.c + 0.35,
+      y: origin.r + 0.25,
       path: [],
       seg: 0,
       t: 0,
       color: '#7a9ec8',
       job: 'researcher',
       itinerary: [],
-      label: 'Researcher',
+      label: desks > 0 ? 'Researcher · desk' : 'Researcher · idle',
       wantBag: false,
       wantFood: false,
       wantGift: false,
-      // 0 desk · 1 board · 2 machine · 3 break · 4 home
+      // 0 desk · 1 board · 2 machine · 3 break · 4 home (off-shift)
       stage: 0,
       paidFood: false,
       paidGift: false,
+      dutySec: 10 + Math.random() * 8,
     })
+  }
+
+  /** Live researcher roster — working vs break vs off-shift. */
+  labCrewStatus(): { working: number; break: number; home: number; total: number } {
+    const staff = this.people.filter((p) => p.job === 'researcher')
+    let working = 0
+    let onBreak = 0
+    let home = 0
+    for (const p of staff) {
+      if (p.stage === 3) onBreak += 1
+      else if (p.stage === 4) home += 1
+      else working += 1
+    }
+    return { working, break: onBreak, home, total: staff.length }
+  }
+
+  /** Pick next researcher duty. Soft home = off-shift exit, not CEO bus commute. */
+  private assignResearcherDuty(p: Person, desks: number, boards: number, machines: number) {
+    const night = this.isNight()
+    // Coming back from break/home → always work first.
+    if (p.stage === 3 || p.stage === 4) {
+      const opts: number[] = []
+      if (desks > 0) opts.push(0)
+      if (boards > 0) opts.push(1)
+      if (machines > 0) opts.push(2)
+      if (!opts.length) {
+        p.stage = 0
+        p.label = 'Researcher · idle'
+        p.dutySec = 12 + Math.random() * 6
+        return
+      }
+      p.stage = opts[Math.floor(Math.random() * opts.length)]
+      p.label =
+        p.stage === 0
+          ? 'Researcher · desk'
+          : p.stage === 1
+            ? 'Researcher · board'
+            : 'Researcher · lab'
+      p.dutySec = 14 + Math.random() * 10
+      return
+    }
+    // Chance to leave the lab — higher at night; home lasts longer than break.
+    const leaveRoll = Math.random()
+    const homeOdds = night ? 0.22 : 0.1
+    const breakOdds = night ? 0.16 : 0.2
+    if (leaveRoll < homeOdds) {
+      p.stage = 4
+      p.label = 'Researcher · home'
+      p.dutySec = (night ? 36 : 26) + Math.random() * 14
+      return
+    }
+    if (leaveRoll < homeOdds + breakOdds) {
+      p.stage = 3
+      p.label = 'Researcher · break'
+      p.dutySec = 8 + Math.random() * 8
+      return
+    }
+    const opts: number[] = []
+    if (desks > 0) opts.push(0)
+    if (boards > 0) opts.push(1)
+    if (machines > 0) opts.push(2)
+    if (!opts.length) {
+      p.stage = 0
+      p.label = 'Researcher · idle'
+      p.dutySec = 10 + Math.random() * 6
+      return
+    }
+    p.stage = opts[Math.floor(Math.random() * opts.length)]
+    p.label =
+      p.stage === 0
+        ? 'Researcher · desk'
+        : p.stage === 1
+          ? 'Researcher · board'
+          : 'Researcher · lab'
+    p.dutySec = 12 + Math.random() * 10
   }
 
   tickResearchers(dt: number) {
     if (this.researchers < 1) return
-    this.researcherCool -= dt
     const live = this.people.filter((p) => p.job === 'researcher').length
     if (live < this.researchers && this.fits.length) this.spawnResearcherPawn()
 
     const { desks, boards, machines } = this.labGear()
     const fit = this.activeHall() ?? this.fits[0]
+    const open = fit ? openNodesFromRooms(fit.rooms) : new Set<HallNode>()
     let working = 0
     for (const p of this.people) {
       if (p.job !== 'researcher') continue
-      // Advance task every ~9s.
-      if (this.researcherCool <= 0) {
-        if (p.stage === 3 || p.stage === 4) {
-          // Back from break/home.
-          p.stage = 0
-          p.label = 'Researcher · desk'
-        } else if (Math.random() < 0.18) {
-          p.stage = Math.random() < 0.45 ? 4 : 3
-          p.label = p.stage === 4 ? 'Researcher · home' : 'Researcher · break'
-        } else {
-          const opts: number[] = []
-          if (desks > 0) opts.push(0)
-          if (boards > 0) opts.push(1)
-          if (machines > 0) opts.push(2)
-          if (!opts.length) {
-            // No furniture — still "working" at bare rate, just wandering.
-            p.stage = 0
-            p.label = 'Researcher · idle'
-          } else {
-            p.stage = opts[Math.floor(Math.random() * opts.length)]
-            p.label =
-              p.stage === 0
-                ? 'Researcher · desk'
-                : p.stage === 1
-                  ? 'Researcher · board'
-                  : 'Researcher · lab'
-          }
-        }
+      p.dutySec = (p.dutySec ?? 0) - dt
+      if (p.dutySec <= 0) {
+        this.assignResearcherDuty(p, desks, boards, machines)
       }
       if (p.stage <= 2) working += 1
 
       if (!fit) continue
+      // Walk targets: lab stations on the hall footprint; break → food/WC; home → road exit.
       let ox = fit.origin.c
       let oy = fit.origin.r
       if (p.stage === 0) {
-        ox += 0.4
-        oy += 0.3
+        ox += 0.25
+        oy += 0.2
       } else if (p.stage === 1) {
-        ox += 1.6
-        oy += 0.5
+        ox += 0.9
+        oy += 0.15
       } else if (p.stage === 2) {
-        ox += 1.1
-        oy += 1.7
+        ox += 1.55
+        oy += 0.35
       } else if (p.stage === 3) {
-        ox += 2.2
-        oy += 1.2
+        if (open.has('food')) {
+          ox += 1.4
+          oy += 1.5
+        } else if (open.has('bathroom')) {
+          ox += 0.6
+          oy += 1.8
+        } else {
+          ox += 2.0
+          oy += 1.4
+        }
       } else {
-        // Home — drift toward road stub / off hall.
-        ox = Math.max(0, fit.origin.c - 2)
-        oy = Math.max(0, fit.origin.r - 1)
+        // Off-shift — leave via landside road, not a bus-stop sim.
+        ox = Math.max(0, fit.origin.c - 2.5)
+        oy = Math.max(0, fit.origin.r - 1.5)
       }
-      const tx = ox + Math.random() * 0.4
-      const ty = oy + Math.random() * 0.4
-      p.x = lerp(p.x, tx, 1 - Math.pow(0.12, dt))
-      p.y = lerp(p.y, ty, 1 - Math.pow(0.12, dt))
+      const jitter = p.id.charCodeAt(4) % 5
+      const tx = ox + (jitter * 0.08)
+      const ty = oy + ((jitter % 3) * 0.08)
+      p.x = lerp(p.x, tx, 1 - Math.pow(0.1, dt))
+      p.y = lerp(p.y, ty, 1 - Math.pow(0.1, dt))
     }
-    if (this.researcherCool <= 0) this.researcherCool = 9
 
     const rate = this.researchRate()
     const staff = this.people.filter((p) => p.job === 'researcher')
     const workFrac = staff.length ? working / staff.length : 0
-    // Night lab is quieter — half drip.
+    // Night lab is quieter — half drip; off-shift bodies don't bank RP.
     const night = this.isNight() ? 0.55 : 1
     this.researchPoints += rate * workFrac * night * dt
+
+    if (
+      staff.length >= 2 &&
+      workFrac < 0.35 &&
+      Math.random() < dt * 0.04
+    ) {
+      this.pushNews('Lab quiet — researchers on break or off-shift.', 'ok')
+    }
   }
 
   hireDeskStaff() {

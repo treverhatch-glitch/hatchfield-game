@@ -652,19 +652,19 @@ export const ROOMS: RoomDef[] = [
     id: 'rdesk',
     name: 'Research desk',
     cost: 3600,
-    blurb: 'Staff need a desk to bank research points. Hire researchers at Ops.',
+    blurb: 'Landside R&D desk — hired researchers walk here to bank RP. Bare staff barely drip.',
   },
   {
     id: 'rboard',
     name: 'Chalkboard',
     cost: 2200,
-    blurb: 'Whiteboard / chalkboard — researchers bounce ideas here for extra RP.',
+    blurb: 'Whiteboard / chalkboard — researchers cycle here for extra RP between desk work.',
   },
   {
     id: 'rmachine',
     name: 'Lab bench',
     cost: 5400,
-    blurb: 'Test gear. Highest RP drip when researchers operate it.',
+    blurb: 'Test gear. Highest RP when a researcher is operating it. They take breaks and go home.',
   },
 ]
 
