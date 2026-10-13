@@ -100,6 +100,9 @@ export type Phase =
   | 'taxi_in'
   | 'deboard'
   | 'servicing'
+  | 'mx_taxi'
+  | 'mx_bay'
+  | 'mx_return'
   | 'board'
   | 'pushback'
   | 'parked'
@@ -426,6 +429,22 @@ export interface Flight {
   parkFee?: number
   /** Planned park duration before they request departure. */
   parkStaySec?: number
+  /** Soft next city / route label for hover inspect. */
+  destination?: string
+  /** 0–1 fuel state (hover bars). */
+  fuelLevel?: number
+  /** 0–1 catering / cabin service state (hover bars). */
+  caterLevel?: number
+  /** Hangar tile reserved for line MX bay visit. */
+  hangarBay?: Vec | null
+  /** Sim clock when hangar MX finishes. */
+  mxEndsAt?: number | null
+  /** Total hangar MX dwell (for progress bar). */
+  mxDuration?: number
+  /** Payout waiting when hangar MX completes. */
+  mxPay?: number
+  /** Airline MX contract wants a hangar visit this turn. */
+  mxPending?: boolean
 }
 
 /** Live security event the player must answer. */

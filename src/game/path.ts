@@ -33,7 +33,10 @@ export function walkableFor(
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
   tile: Tile,
 ): boolean {
-  if (kind === 'jet') return tile === 'runway' || tile === 'taxi' || tile === 'stand'
+  // Hangar bay is apron-accessible so line-MX jets can taxi in and park.
+  if (kind === 'jet') {
+    return tile === 'runway' || tile === 'taxi' || tile === 'stand' || tile === 'hangar'
+  }
   if (kind === 'truck') {
     return (
       tile === 'taxi' ||

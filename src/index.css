@@ -50,6 +50,12 @@ button {
   /* No blur — filter:blur on a full WebGL layer was a major hitch source. */
 }
 
+.field-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
 .field,
 .hall-canvas {
   position: absolute;
@@ -59,6 +65,102 @@ button {
   display: block;
   touch-action: none;
   z-index: 0;
+}
+
+.inspect-card {
+  position: absolute;
+  left: 16px;
+  top: 72px;
+  width: min(280px, 86vw);
+  z-index: 18;
+  pointer-events: none;
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  animation: coach-in 0.2s ease-out;
+}
+
+.inspect-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.inspect-card header strong {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.inspect-model {
+  margin: 6px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8eef4;
+}
+
+.inspect-line,
+.inspect-activity,
+.inspect-next,
+.inspect-mx {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.inspect-activity {
+  color: #d5e0d6;
+}
+
+.inspect-mx {
+  color: #7ab0d4;
+}
+
+.service-bars {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.service-bars label {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  grid-template-areas: 'name val val' 'bar bar bar';
+  gap: 2px 8px;
+  align-items: center;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9eb0a0;
+}
+
+.service-bars label span:first-child {
+  grid-area: name;
+}
+
+.service-bars .bar-val {
+  grid-area: val;
+  justify-self: end;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  color: #e7c56a;
+}
+
+.service-bars .bar {
+  grid-area: bar;
+  display: block;
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.service-bars .bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3d7a55, #c9a227);
+  border-radius: inherit;
 }
 
 .hall-wrap {
