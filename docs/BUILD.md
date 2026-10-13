@@ -3,6 +3,8 @@
 **Stop planning-only. Ship code in this order.**  
 North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wave board: [EXECUTION](./EXECUTION.md)
 
+> **IMPORTANT:** [HAND_OFFS.md](./HAND_OFFS.md) — Manor Lords load/unload on every service. New movers must ship travel + dwell + visible load + pay-on-clear. Cross-cuts all slices.
+
 ## Already shipped (do not re-litigate)
 
 - E1 belt lite · E2 jam/stolen-slot · E2b Standing vocabulary  
