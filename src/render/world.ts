@@ -446,6 +446,37 @@ export class World {
       body.position.y = 1.05
       body.castShadow = true
       g.add(body)
+    } else if (tile === 'belt') {
+      // Low conveyor strip — distinct from taxi/road so broken chains read on the apron.
+      const deck = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.42),
+        new THREE.MeshLambertMaterial({ color: '#2a3238' }),
+      )
+      deck.rotation.x = -Math.PI / 2
+      deck.position.y = 0.05
+      deck.receiveShadow = true
+      const railA = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.88, 0.08, 0.06),
+        new THREE.MeshStandardMaterial({
+          color: '#c9a227',
+          emissive: '#5a4810',
+          emissiveIntensity: 0.25,
+          roughness: 0.45,
+        }),
+      )
+      railA.position.set(0, 0.1, -CELL * 0.14)
+      const railB = railA.clone()
+      railB.position.z = CELL * 0.14
+      const roller = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 0.06, CELL * 0.18),
+        new THREE.MeshStandardMaterial({
+          color: '#5a6a78',
+          metalness: 0.35,
+          roughness: 0.4,
+        }),
+      )
+      roller.position.y = 0.09
+      g.add(deck, railA, railB, roller)
     } else if (tile === 'fuel') {
       const tank = new THREE.Mesh(
         new THREE.CylinderGeometry(1.1, 1.1, 2.4, 16),

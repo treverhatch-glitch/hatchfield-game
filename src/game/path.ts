@@ -43,6 +43,7 @@ export function walkableFor(
       tile === 'stand' ||
       tile === 'fuel' ||
       tile === 'bags' ||
+      tile === 'belt' ||
       tile === 'snack' ||
       tile === 'terminal' ||
       tile === 'fire' ||
@@ -72,6 +73,7 @@ export function walkableFor(
     tile === 'terminal' ||
     tile === 'snack' ||
     tile === 'bags' ||
+    tile === 'belt' ||
     tile === 'road' ||
     tile === 'police' ||
     tile === 'cargo' ||
@@ -157,6 +159,49 @@ export function nearestPath(
     if (p && (!best || p.length < best.length)) best = p
   }
   return best
+}
+
+/** Bag-belt graph: painted belt + makeup (bags) + stand bay + terminal drop. */
+export function beltNode(tile: Tile): boolean {
+  return tile === 'belt' || tile === 'bags' || tile === 'stand' || tile === 'terminal'
+}
+
+/** BFS on the belt graph — used to validate check-in → makeup → bay. */
+export function beltReachable(tiles: Tile[][], start: Vec, goal: Vec): boolean {
+  if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return false
+  if (!beltNode(tiles[start.r][start.c]) || !beltNode(tiles[goal.r][goal.c])) return false
+  if (start.c === goal.c && start.r === goal.r) return true
+  const seen = new Set<string>([key(start.c, start.r)])
+  const q: Vec[] = [start]
+  while (q.length) {
+    const cur = q.shift()!
+    for (const n of neighbors(cur.c, cur.r)) {
+      const nk = key(n.c, n.r)
+      if (seen.has(nk)) continue
+      if (!beltNode(tiles[n.r][n.c])) continue
+      if (n.c === goal.c && n.r === goal.r) return true
+      seen.add(nk)
+      q.push(n)
+    }
+  }
+  return false
+}
+
+/** True when makeup can reach the stand and a terminal via belt tiles. */
+export function standBeltLinked(tiles: Tile[][], stand: Vec): boolean {
+  const makeups = tilesOf(tiles, 'bags')
+  const halls = tilesOf(tiles, 'terminal')
+  if (!makeups.length || !halls.length) return false
+  for (const m of makeups) {
+    if (!beltReachable(tiles, m, stand)) continue
+    if (halls.some((h) => beltReachable(tiles, m, h))) return true
+  }
+  return false
+}
+
+/** Any belt tile stamped — once true, broken links start to hurt. */
+export function hasBeltNetwork(tiles: Tile[][]): boolean {
+  return tilesOf(tiles, 'belt').length > 0
 }
 
 export function tilesOf(tiles: Tile[][], type: Tile | Tile[]): Vec[] {

@@ -67,6 +67,8 @@ export const TERMBUS_COST = 12_500
 export const TERMINAL_COST = 14800
 export const SNACK_COST = 3600
 export const BAGS_COST = 4800
+/** Cheap paint for check-in → makeup → bay bag belts. */
+export const BELT_COST = 900
 export const FUEL_COST = 5600
 export const FIRE_COST = 12000
 export const POLICE_COST = 11000
@@ -856,7 +858,14 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'bags',
     name: 'Bag sort',
     cost: BAGS_COST,
-    blurb: 'Outside sort — carts must reach it.',
+    blurb: 'Makeup hub — paint Belt tiles to the hall and stands.',
+  },
+  {
+    tool: 'belt',
+    tile: 'belt',
+    name: 'Bag belt',
+    cost: BELT_COST,
+    blurb: 'Link hall ↔ bag sort ↔ stand. Break the chain → late bags + heat.',
   },
   {
     tool: 'fuel',
@@ -1043,6 +1052,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   premade: 'Premade hall',
   snack: 'Snack',
   bags: 'Bags',
+  belt: 'Belt',
   fuel: 'Fuel',
   fire: 'Fire',
   police: 'Police',

@@ -9,6 +9,8 @@ export type Tile =
   | 'terminal'
   | 'snack'
   | 'bags'
+  /** Painted bag belt — links hall ↔ bag sort ↔ stands. */
+  | 'belt'
   | 'fuel'
   | 'fire'
   | 'police'
@@ -66,6 +68,7 @@ export type Tool =
   | 'premade'
   | 'snack'
   | 'bags'
+  | 'belt'
   | 'fuel'
   | 'fire'
   | 'police'
