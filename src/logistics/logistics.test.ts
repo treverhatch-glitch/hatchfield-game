@@ -45,7 +45,10 @@ describe('turnaround needs', () => {
     expect(needsFor('b748f').services).not.toContain('catering')
     expect(needsFor('b748f').services).toContain('fuel')
     expect(needsFor('aw139').services).not.toContain('pushback')
-    expect(needsFor('a320neo').services).toEqual(['fuel', 'catering', 'baggage', 'gpu', 'pushback'])
+    expect(needsFor('a320neo').services).toEqual([
+      'deplane', 'bag_unload', 'cargo_unload', 'loader', 'fuel', 'catering', 'cleaning',
+      'gpu', 'boarding', 'bag_load', 'cargo_load', 'door_close', 'pushback',
+    ])
   })
 
   it('every type has positive fuel need', () => {
@@ -97,7 +100,7 @@ describe('turnarounds', () => {
     const t = sim.getTurnaround(id)!
     expect(t.completedAt).not.toBeNull()
     expect(Object.values(t.services).every((s) => s === 'done')).toBe(true)
-    const types = ev.map((e) => e.type)
+    const types = ev.filter((e) => e.type !== 'money').map((e) => e.type)
     expect(types).toContain('truck_arrive')
     const start = ev.find((e) => e.type === 'refuel_start')!
     const stop = ev.find((e) => e.type === 'refuel_stop')!
@@ -118,7 +121,8 @@ describe('turnarounds', () => {
     expect(fuelArrivals).toHaveLength(0)
     const start = ev.find((e) => e.type === 'refuel_start')!
     expect(start.type === 'refuel_start' && start.method).toBe('hydrant')
-    expect(start.time).toBe(0)
+    const deplaned = ev.find((e) => e.type === 'pax_deplaned')!
+    expect(start.time).toBeCloseTo(deplaned.time)
   })
 
   it('draws fuel and meals from stock', () => {
@@ -140,7 +144,7 @@ describe('turnarounds', () => {
   })
 
   it('second aircraft waits for the only fuel truck: delayed with no_vehicle', () => {
-    const sim = new LogisticsSim(defaultConfig({ vehicles: { fuel_truck: 1, catering_truck: 2, baggage_tug: 3, pushback_tug: 2, gpu: 3 } }))
+    const sim = new LogisticsSim(defaultConfig({ vehicles: { ...defaultConfig().vehicles, fuel_truck: 1 } }))
     const ev = record(sim)
     const a = sim.startTurnaround('stand-2', 'b789', 70)
     const b = sim.startTurnaround('stand-3', 'b789', 70)
@@ -264,7 +268,11 @@ describe('stock and money', () => {
     const n = needsFor('a320neo')
     expect(sim.ledger.fuelSales).toBeCloseTo(n.fuelLitres * 0.7 * 1.15)
     expect(sim.ledger.cateringFees).toBeCloseTo(n.meals * 9)
-    const perDay = 2 * 180 + 2 * 120 + 3 * 60 + 2 * 90 + 3 * 40
+    const cfg = defaultConfig()
+    const perDay = Object.entries(cfg.vehicles).reduce(
+      (s, [k, n]) => s + (n ?? 0) * cfg.vehicleSpecs[k as keyof typeof cfg.vehicleSpecs].upkeepPerDay,
+      0,
+    )
     expect(sim.ledger.vehicleUpkeep).toBeCloseTo((perDay * sim.now) / 1440)
     expect(sim.profit).toBeCloseTo(sim.ledger.fuelSales + sim.ledger.cateringFees - sim.ledger.vehicleUpkeep)
   })
@@ -280,7 +288,9 @@ describe('stock and money', () => {
 
 describe('determinism', () => {
   function scenario(step: number): string {
-    const sim = new LogisticsSim(defaultConfig({ vehicles: { fuel_truck: 1, catering_truck: 1, baggage_tug: 1, pushback_tug: 1, gpu: 1 } }))
+    const sim = new LogisticsSim(defaultConfig({
+      vehicles: { fuel_truck: 1, catering_truck: 1, baggage_tug: 2, pushback_tug: 1, gpu: 1, pax_bus: 1, belt_loader: 1, uld_loader: 1 },
+    }))
     const ev = record(sim)
     sim.startTurnaround('stand-1', 'a359', 60)
     sim.startTurnaround('stand-2', 'b738', 50)
@@ -340,7 +350,7 @@ describe('adapter', () => {
     const s = ad.snapshot()
     expect(s.time).toBe(20)
     expect(s.busyVehicles).toBeGreaterThan(0)
-    expect(s.totalVehicles).toBe(12)
+    expect(s.totalVehicles).toBe(23)
     expect(ad.delayAt('stand-4')).toBe(0)
   })
 
