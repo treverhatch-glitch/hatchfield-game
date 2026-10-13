@@ -3,6 +3,21 @@ import { isAirside, spawnHallGuest } from './guests.ts'
 import { Game } from './sim.ts'
 import { laneStats, schemeRows, schemeSigns, type PlacedItem } from './terminal.ts'
 
+/** Mulberry32 so an overload wave does not depend on whichever test ran first. */
+function withSeed(seed: number, run: () => void) {
+  const orig = Math.random
+  let s = seed >>> 0
+  Math.random = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+    return s / 4294967296
+  }
+  try {
+    run()
+  } finally {
+    Math.random = orig
+  }
+}
+
 function prep(tier: 1 | 2 | 3) {
   const game = new Game()
   game.sandbox = false
@@ -20,23 +35,24 @@ function prep(tier: 1 | 2 | 3) {
 describe('prefab overload', () => {
   for (const tier of [1, 2, 3] as const) {
     it(`prefab ${tier} keeps every passenger and asks for an upgrade when the bank is too big`, () => {
-      const game = prep(tier)
-      const fit = game.fits[0]
-      const rows = schemeRows(tier)
-      expect(fit.zones?.length).toBe(rows.length)
-      expect(fit.zones?.[0]?.length).toBe(rows[0].length)
-      expect(fit.signs).toBe(schemeSigns(tier))
-      expect(rows[0].startsWith('C')).toBe(true)
-      expect(rows.some((row) => row.includes('S'))).toBe(true)
-      expect(rows.some((row) => row.includes('A'))).toBe(true)
+      withSeed(11, () => {
+        const game = prep(tier)
+        const fit = game.fits[0]
+        const rows = schemeRows(tier)
+        expect(fit.zones?.length).toBe(rows.length)
+        expect(fit.zones?.[0]?.length).toBe(rows[0].length)
+        expect(fit.signs).toBe(schemeSigns(tier))
+        expect(rows[0].startsWith('C')).toBe(true)
+        expect(rows.some((row) => row.includes('S'))).toBe(true)
+        expect(rows.some((row) => row.includes('A'))).toBe(true)
 
-      const open = game.hallOpenFor(fit)
-      const hallId = game.hallKey(fit)
-      const lane = laneStats({
-        premade: true,
-        tier,
-        items: fit.items as PlacedItem[] | undefined,
-        roomsSecurity: fit.rooms.security,
+        const open = game.hallOpenFor(fit)
+        const hallId = game.hallKey(fit)
+        const lane = laneStats({
+          premade: true,
+          tier,
+          items: fit.items as PlacedItem[] | undefined,
+          roomsSecurity: fit.rooms.security,
       })
       const departures = (fit.capGuests ?? 28) + 12
       const arrivals = Math.max(8, Math.round((fit.capGuests ?? 28) * 0.35))
@@ -89,6 +105,7 @@ describe('prefab overload', () => {
       expect(note).toBeTruthy()
       expect(note?.fix).toMatch(/Upgrade the prefab|expand|design your own terminal/i)
       expect(game.missedFlights).toBeGreaterThan(0)
+      })
     })
   }
 })

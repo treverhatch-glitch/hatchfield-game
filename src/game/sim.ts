@@ -161,10 +161,16 @@ import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
+  advanceBagTags,
   advanceScreen,
+  checkedPieceCount,
   freshBook,
   keepPrefabBags,
+  makeBagTag,
+  markClaimLate,
+  ownerClaimReady,
   type BagBook,
+  type BagTag,
   type LuggageMotion,
 } from './luggage'
 import {
@@ -458,11 +464,14 @@ export class Game {
   lostSpend = 0
   /** Checked bags that disappeared. Prefab halls keep this at zero. */
   bagsLost = 0
+  /** Late bags and missed connections. Prefab halls stay at zero under normal load. */
+  bagsMishandled = 0
   /** 0–1 parade clock for belts and carousels. */
   bagPhase = 0
   /** Screenshot latch so the hall can show the whole chain at once. */
   private bagShow: LuggageMotion | null = null
   private bagBooks = new Map<string, BagBook>()
+  private bagTags: BagTag[] = []
   shelfCool = 0
   /** Open info-view submenu. Hotspots stay drawn either way. */
   infoOpen: string | null = null
@@ -695,9 +704,11 @@ export class Game {
     this.shopShelf = 0
     this.lostSpend = 0
     this.bagsLost = 0
+    this.bagsMishandled = 0
     this.bagPhase = 0
     this.bagShow = null
     this.bagBooks.clear()
+    this.bagTags = []
     this.shelfCool = 0
     this.infoOpen = null
     this.fuelHoldNoted.clear()
@@ -2740,6 +2751,7 @@ export class Game {
       shopShelf: this.shopShelf,
       lostSpend: this.lostSpend,
       bagsLost: this.bagsLost,
+      bagsMishandled: this.bagsMishandled,
       caterBrand: this.caterBrand,
       mealSold: this.mealSold,
       signed: this.signed,
@@ -2835,7 +2847,9 @@ export class Game {
       this.shopShelf = s.shopShelf ?? this.shelfCap('shop')
       this.lostSpend = s.lostSpend ?? 0
       this.bagsLost = s.bagsLost ?? 0
+      this.bagsMishandled = s.bagsMishandled ?? 0
       this.bagBooks.clear()
+      this.bagTags = []
       this.bagShow = null
       this.caterBrand = s.caterBrand ?? null
       this.mealSold = s.mealSold
@@ -3252,12 +3266,106 @@ export class Game {
     return book
   }
 
-  private noteBagDrop(f: Flight, units: number) {
+  private noteBagDrop(f: Flight, units: number, ownerId?: string, paxTag?: PaxTag) {
     const book = this.ensureBagBook(f)
     book.dropped += units
     book.units = Math.max(book.units, f.bagUnits ?? 0, book.dropped)
     f.bagsDeposited = book.dropped
     if ((f.bagUnits ?? 0) < book.units) f.bagUnits = book.units
+    if (ownerId && paxTag) this.issueBagTags(ownerId, f.id, paxTag, null, 'out')
+  }
+
+  /** Checked-bag records for one passenger. */
+  bagTagsFor(ownerId: string): BagTag[] {
+    return this.bagTags.filter((t) => t.ownerPassengerId === ownerId)
+  }
+
+  /** Bags sitting on the lost-bag desk. Capped so the picture stays a handful of meshes. */
+  bagDeskPile(): number {
+    return Math.min(
+      4,
+      this.bagTags.filter((t) => t.fault && !t.picked).length,
+    )
+  }
+
+  private issueBagTags(
+    ownerId: string,
+    flightId: string,
+    paxTag: PaxTag,
+    connectFlightId: string | null,
+    kind: BagTag['kind'],
+  ) {
+    if (this.bagTags.some((t) => t.ownerPassengerId === ownerId && t.kind === kind)) return
+    const pieces = checkedPieceCount(paxTag)
+    for (let i = 0; i < pieces; i++) {
+      this.bagTags.push(makeBagTag(ownerId, flightId, i, connectFlightId, kind))
+    }
+  }
+
+  /** Onward flight still on the ground, or an open connection id. */
+  private pickConnectFlight(airlineId: AirlineId): string {
+    const onward = this.flights.find(
+      (f) =>
+        f.airline === airlineId &&
+        !f.cargo &&
+        f.phase !== 'gone' &&
+        f.phase !== 'takeoff' &&
+        f.phase !== 'taxi_out' &&
+        f.phase !== 'pushback',
+    )
+    return onward?.id ?? `connect:${airlineId}`
+  }
+
+  private flightDeparted(id: string): boolean {
+    if (id.startsWith('connect:')) return false
+    const f = this.flights.find((x) => x.id === id)
+    if (!f) return true
+    return (
+      f.phase === 'pushback' ||
+      f.phase === 'taxi_out' ||
+      f.phase === 'takeoff' ||
+      f.phase === 'gone'
+    )
+  }
+
+  private bagClock() {
+    const prefab = this.fits.some((f) => f.premade && !f.redesigned)
+    return {
+      prefab,
+      normal: !this.hallOverloaded,
+      departed: (id: string) => this.flightDeparted(id),
+      stage: (id: string) => this.flights.find((f) => f.id === id)?.bagStage,
+    }
+  }
+
+  private pickUpOwnBags(g: HallGuest, fl: Flight) {
+    let pieces = 0
+    for (const tag of this.bagTags) {
+      if (tag.ownerPassengerId !== g.id || tag.kind !== 'in') continue
+      tag.onClaim = true
+      tag.picked = true
+      pieces += 1
+    }
+    const book = this.ensureBagBook(fl)
+    const cap = Math.max(book.units, book.dropped, pieces, 1)
+    book.claimed = Math.min(cap, book.claimed + Math.max(1, pieces))
+  }
+
+  private mishandleGuest(ownerId: string, fault: 'late' | 'missed_connection') {
+    const g = this.hallGuests.find((x) => x.id === ownerId && !x.dead)
+    if (!g || g.bagFault) return
+    g.bagFault = fault
+    g.atBagDesk = true
+    g.deskTime = 0
+    g.happiness = Math.max(0, g.happiness - 8)
+    g.node = 'claim'
+    g.path = []
+    g.seg = 0
+    g.t = 0
+    g.thought =
+      fault === 'missed_connection'
+        ? 'Lost-bag desk — my bag missed the connection'
+        : 'Lost-bag desk — my bag is late'
   }
 
   /** Teaching halls never lose a bag. A redesigned hall can. */
@@ -3329,6 +3437,19 @@ export class Game {
       }
       if (prefab) keepPrefabBags(book, f.bagStage)
     }
+    const clock = this.bagClock()
+    const fresh = advanceBagTags(this.bagTags, dt, clock)
+    if (fresh > 0) {
+      this.bagsMishandled += fresh
+      for (const tag of this.bagTags) {
+        if (tag.fault) this.mishandleGuest(tag.ownerPassengerId, tag.fault)
+      }
+    }
+    this.bagTags = this.bagTags.filter((tag) => {
+      if (!tag.picked && !tag.fault) return true
+      const owner = this.hallGuests.find((g) => g.id === tag.ownerPassengerId)
+      return !owner?.dead
+    })
   }
 
   /** Seconds of visible load/unload/process work from bag units. */
@@ -3744,7 +3865,7 @@ export class Game {
           g.hasChecked = false
           const fl = this.flights.find((x) => x.id === g.flightId)
           if (fl && !fl.cargo) {
-            this.noteBagDrop(fl, bagUnitsForTag(g.tag))
+            this.noteBagDrop(fl, bagUnitsForTag(g.tag), g.id, g.tag)
             const need = fl.bagUnits ?? 1
             const early =
               !fl.bagStage ||
@@ -3764,33 +3885,72 @@ export class Game {
       }
       if (g.job === 'arrive' && g.node === 'claim' && !g.transfer) {
         const fl = this.flights.find((x) => x.id === g.flightId)
-        // Bags only clear once the inbound cart has hit the assigned claim.
-        if (fl && fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
+        if (!fl) {
+          const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
+          const rate = this.claimClearRate(fit)
+          g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
+          if (g.needs.bags > 0) {
+            g.thought = 'Waiting at the carousel'
+            continue
+          }
+          if (!g.hasChecked) {
+            g.hasChecked = true
+            g.thought = 'Got my bag'
+          }
+        } else if (g.atBagDesk) {
+          g.deskTime = (g.deskTime ?? 0) + dt
+          g.thought =
+            g.bagFault === 'missed_connection'
+              ? 'Lost-bag desk — my bag missed the connection'
+              : 'Lost-bag desk — my bag is late'
+          if ((g.deskTime ?? 0) < 4) continue
+          this.pickUpOwnBags(g, fl)
+          g.atBagDesk = false
+          g.hasChecked = true
+          g.needs.bags = 0
+          g.thought = 'Got my bag'
+          fl.bagStage = 'complete'
+        } else if (fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
+          this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
+          g.claimWait = (g.claimWait ?? 0) + dt
           g.thought =
             fl.bagStage === 'unload_aircraft' || fl.bagStage === 'inbound_sort'
               ? `Waiting — bags processing for claim ${fl.claimLane ?? '?'}`
               : fl.bagStage === 'deliver_claim'
                 ? `Waiting — bags rolling to claim ${fl.claimLane ?? '?'}`
-                : 'Waiting for bags off the aircraft…'
-          continue
-        }
-        const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
-        const rate = this.claimClearRate(fit)
-        g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
-        if (g.needs.bags > 0) {
-          g.thought = 'Waiting at the carousel'
-          continue
-        }
-        if (!g.hasChecked) {
-          g.hasChecked = true
-          g.thought = 'Got my bag'
-          if (fl && !fl.cargo) {
-            const book = this.ensureBagBook(fl)
-            const cap = Math.max(book.units, book.dropped, bagUnitsForTag(g.tag))
-            book.claimed = Math.min(cap, book.claimed + bagUnitsForTag(g.tag))
+                : 'Waiting for my bag off the aircraft…'
+          const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
+            prefab: this.prefabFlight(fl),
+            normal: !this.hallOverloaded,
+          })
+          if (late.length) {
+            this.bagsMishandled += late.length
+            this.mishandleGuest(g.id, 'late')
           }
+          continue
+        } else {
+          this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
+          if (!ownerClaimReady(this.bagTags, g.id)) {
+            g.claimWait = (g.claimWait ?? 0) + dt
+            g.thought = 'Waiting for my bag'
+            const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
+              prefab: this.prefabFlight(fl),
+              normal: !this.hallOverloaded,
+            })
+            if (late.length) {
+              this.bagsMishandled += late.length
+              this.mishandleGuest(g.id, 'late')
+            }
+            continue
+          }
+          if (!g.hasChecked) {
+            this.pickUpOwnBags(g, fl)
+            g.hasChecked = true
+            g.needs.bags = 0
+            g.thought = 'Got my bag'
+          }
+          fl.bagStage = 'complete'
         }
-        if (fl) fl.bagStage = 'complete'
       }
 
       if (g.job === 'depart' && g.node === 'security' && !g.clearedSec && g.path.length === 0) {
@@ -4295,6 +4455,7 @@ export class Game {
         `${moving} turns still waiting on bags`,
         `${reasons} bag delays on the board`,
         `${this.bagsLost} bags lost`,
+        `${this.bagsMishandled} mishandled`,
       ]
     }
     if (id === 'fuel') {
@@ -6398,6 +6559,8 @@ export class Game {
     g.node = 'gate'
     // Through-checked bags — pax stay airside; bags transfer off claim.
     g.needs.bags = 0
+    g.connectFlightId = this.pickConnectFlight(airlineId)
+    this.issueBagTags(g.id, g.flightId, tag, g.connectFlightId, 'transfer')
     g.thought = `${a.name} transfer — bags through-checked, kill time in the hall`
     g.needs.boarding = 35 + Math.random() * 40
     if (open.has('food')) this.routeGuest(g, 'food', open)

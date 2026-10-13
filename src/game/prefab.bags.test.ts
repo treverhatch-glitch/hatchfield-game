@@ -155,6 +155,7 @@ describe('prefab bags', () => {
       expect(done.lost).toBe(0)
       expect(done.claimed).toBe(done.units)
       expect(game.bagsLost).toBe(0)
+      expect(game.bagsMishandled).toBe(0)
       expect(game.lostPaxCount()).toBe(0)
     })
   }
@@ -177,5 +178,114 @@ describe('prefab bags', () => {
     expect(book?.dropped).toBeGreaterThan(0)
     expect(book?.lost).toBe(book?.dropped)
     expect(game.bagsLost).toBeGreaterThan(0)
+  })
+
+  it('pairs each arrival with their own bags and keeps a normal prefab free of mishandled bags', () => {
+    const game = quiet(1)
+    const flight = parked(game, 'pair')
+    flight.bagStage = 'on_claim'
+    const hallId = game.hallKey(game.fits[0])
+    const people = []
+    for (let i = 0; i < 2; i++) {
+      const g = spawnHallGuest(flight.id, 'arrive', 'family', { hallId, airlineId: 'northline' })
+      g.node = 'claim'
+      g.path = []
+      g.clearedSec = true
+      g.hasChecked = false
+      g.needs.bags = 40
+      g.needs.hunger = 2
+      g.needs.bladder = 2
+      g.needs.shop = 2
+      g.needs.play = 2
+      g.needs.energy = 2
+      people.push(g)
+      game.hallGuests.push(g)
+    }
+    game.tick(0.5)
+    for (const g of people) {
+      const tags = game.bagTagsFor(g.id)
+      expect(tags.length).toBe(2)
+      expect(tags.every((t) => t.ownerPassengerId === g.id && t.flightId === flight.id && t.kind === 'in')).toBe(
+        true,
+      )
+    }
+    const [fast, slow] = people
+    for (const tag of game.bagTagsFor(fast.id)) {
+      tag.releaseAt = 0
+      tag.wait = 0
+      tag.onClaim = false
+    }
+    for (const tag of game.bagTagsFor(slow.id)) {
+      tag.releaseAt = 8
+      tag.wait = 0
+      tag.onClaim = false
+    }
+    game.tick(0.5)
+    game.tick(0.5)
+    expect(fast.hasChecked).toBe(true)
+    expect(fast.needs.bags).toBe(0)
+    expect(fast.thought).toBe('Heading to exit')
+    expect(fast.path[fast.path.length - 1]).toBe('exit')
+    expect(game.bagTagsFor(fast.id).every((t) => t.picked && t.onClaim)).toBe(true)
+    expect(slow.hasChecked).toBe(false)
+    expect(slow.thought).toBe('Waiting for my bag')
+    expect(game.bagTagsFor(slow.id).every((t) => !t.picked && !t.onClaim)).toBe(true)
+    expect(game.bagsMishandled).toBe(0)
+    expect(game.bagsLost).toBe(0)
+  })
+
+  it('keeps a transfer bag on the connecting flight in a prefab, and sends a missed one to the desk', () => {
+    const game = quiet(1)
+    const gone = parked(game, 'gone-conn')
+    gone.phase = 'gone'
+    game.spawnTransferGuest('northline')
+    const guest = game.hallGuests.find((g) => g.transfer)
+    expect(guest).toBeTruthy()
+    const tags = game.bagTagsFor(guest!.id)
+    expect(tags.length).toBeGreaterThan(0)
+    expect(tags.every((t) => t.kind === 'transfer' && t.ownerPassengerId === guest!.id)).toBe(true)
+    game.tick(0.5)
+    expect(game.bagsMishandled).toBe(0)
+    expect(game.bagTagsFor(guest!.id).every((t) => t.loaded && t.fault == null)).toBe(true)
+
+    game.fits[0].redesigned = true
+    const custom = quiet(1)
+    custom.fits[0].redesigned = true
+    const missed = parked(custom, 'missed-conn')
+    missed.phase = 'gone'
+    custom.spawnTransferGuest('northline')
+    const who = custom.hallGuests.find((g) => g.transfer)!
+    const before = who.happiness
+    for (const tag of custom.bagTagsFor(who.id)) tag.connectFlightId = 'missed-conn'
+    custom.tick(0.5)
+    expect(custom.bagsMishandled).toBeGreaterThan(0)
+    expect(who.atBagDesk).toBe(true)
+    expect(who.bagFault).toBe('missed_connection')
+    expect(who.happiness).toBeLessThan(before)
+    expect(who.thought.startsWith('Lost-bag desk')).toBe(true)
+  })
+
+  it('a prefab under normal load does not call a slow carousel mishandled', () => {
+    const game = quiet(1)
+    const flight = parked(game, 'slow-claim')
+    flight.bagStage = 'inbound_sort'
+    const g = spawnHallGuest(flight.id, 'arrive', 'budget', {
+      hallId: game.hallKey(game.fits[0]),
+      airlineId: 'northline',
+    })
+    g.node = 'claim'
+    g.path = []
+    g.clearedSec = true
+    g.needs.bags = 40
+    g.needs.hunger = 2
+    g.needs.bladder = 2
+    g.needs.shop = 2
+    g.needs.play = 2
+    g.needs.energy = 2
+    game.hallGuests.push(g)
+    for (let t = 0; t < 24; t += 0.5) game.tick(0.5)
+    expect(game.bagsMishandled).toBe(0)
+    expect(g.atBagDesk).toBeFalsy()
+    expect(g.bagFault == null).toBe(true)
   })
 })

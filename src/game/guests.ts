@@ -113,6 +113,16 @@ export interface HallGuest {
   carryOn?: boolean
   /** Checked suitcase still on the passenger (before drop, or after claim). */
   hasChecked?: boolean
+  /** Onward flight for a through-checked bag. */
+  connectFlightId?: string | null
+  /** Standing at the lost-bag desk. */
+  atBagDesk?: boolean
+  /** Seconds at the desk after a late or missed bag. */
+  deskTime?: number
+  /** Seconds at the carousel waiting for this passenger's own bags. */
+  claimWait?: number
+  /** Set once when a bag is mishandled, so the happiness hit lands one time. */
+  bagFault?: 'late' | 'missed_connection' | null
   /** Custom hall with no path. A full queue does not set this. */
   lost?: boolean
   /** Seconds left at the scanner. 0 means waiting, not being served. */

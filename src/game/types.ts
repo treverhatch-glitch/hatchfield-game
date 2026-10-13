@@ -771,6 +771,8 @@ export interface GameSnapshot {
   lostSpend?: number
   /** Checked bags that left the system. Prefab halls stay at zero. */
   bagsLost?: number
+  /** Late bags and missed connections. */
+  bagsMishandled?: number
   caterBrand: CaterBrand | null
   mealSold: boolean
   signed: AirlineId[]

@@ -358,6 +358,28 @@ The graphics agent's terminal-life render (`src/render/world` from that PR) was 
 
 **Tests.** 115 passing. Eight new ones: the book (carry-on on every passenger, a checked bag on departures, prefab screening, a bare custom hall losing a drop, a skipped cart that still conserves units) and a stress pass on each prefab tier from the desk through the aircraft to the carousel with zero bags lost. The three overload waves still finish with zero lost passengers.
 
+## Bag tags — 13 Oct
+
+Each checked bag is now a lightweight record with the passenger's id and the flight's id. The book of units stays. Bags do not pathfind. Only the ones on screen get a mesh, and the lost-bag desk draws at most four.
+
+What you see:
+
+- At reclaim, each arrival waits until their own bags reach the carousel, picks them up, and walks to the exit. Two people on the same flight do not collect at the same moment.
+- A transfer bag follows that passenger onto the connecting flight.
+- A missed connection, or a bag that never reaches the belt, sends the passenger to the lost-bag desk beside claim. Happiness drops by 8, once. The thought reads "Lost-bag desk — my bag missed the connection" or "Lost-bag desk — my bag is late". After a short wait the desk hands the bag over. The mishandled count stays.
+- The Bags submenu includes how many were mishandled.
+
+Prefab halls I, II, and III show zero mishandled bags under a normal load. A slow carousel makes people wait. It does not mark the bag late. An overloaded hall, or one you redesigned, can miss a connection or run late. Prefab overload waves still lose no passengers.
+
+**Bugs.** Still ten.
+
+**Tests.** 121 passing. Six new ones cover the tag itself, staggered reclaim, a transfer that makes the connection, a missed connection at the desk, a prefab that waits out a slow carousel, and owner pairing on a live arrival wave. The overload waves use a fixed seed so a missed flight does not depend on which test ran first.
+
+**Media**
+
+- `docs/devlog/media/LUGGAGE-desk.png` — lost-bag desk, yellow bags on the counter, thought "Lost-bag desk — my bag missed the connection", chrome hidden
+
+
 **Media**
 
 - `docs/devlog/media/LUGGAGE-hall.png` — check-in, baggage hall, carousel, carry-ons and checked bags, chrome hidden
