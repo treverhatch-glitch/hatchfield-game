@@ -3,7 +3,7 @@ import { hashSeed, jit, mulberry32 } from './rng';
 
 /** Mirrors the ids in src/game/airframes.ts (AIRFRAMES). */
 export const AIRCRAFT_TYPE_IDS = [
-  'crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'a359', 'atr72', 'b752f', 'b763f', 'b748f',
+  'crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f',
   'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5',
 ] as const;
 export type AircraftTypeId = (typeof AIRCRAFT_TYPE_IDS)[number];
@@ -71,6 +71,7 @@ export const AIRCRAFT_PROFILES: Record<AircraftTypeId, AircraftProfile> = {
   b738: P('b738', 'narrowbodyTwin', 2, 1.12, 0.98, 1.1, 0.35, 'CFM56 buzzsaw'),
   a321: P('a321', 'narrowbodyTwin', 2, 1.22, 0.95, 1.0, 0.25, 'heavier narrowbody, longer roll'),
   b789: P('b789', 'widebodyTwin', 2, 1.55, 0.9, 0.85, 0.15, 'GEnx/Trent 1000, smooth deep'),
+  b77w: P('b77w', 'widebodyTwin', 2, 1.7, 0.86, 0.9, 0.22, 'GE90, deep twin'),
   a359: P('a359', 'widebodyTwin', 2, 1.62, 0.88, 0.8, 0.12, 'Trent XWB, very smooth'),
   atr72: P('atr72', 'twinTurboprop', 2, 0.7, 1.0, 1.0, 0.3, 'PW127 six-blade drone'),
   b752f: P('b752f', 'narrowbodyTwin', 2, 1.18, 0.86, 1.2, 0.45, 'RB211 hot-rod, loud climb'),
