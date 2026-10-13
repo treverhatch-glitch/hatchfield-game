@@ -867,6 +867,8 @@ export interface GameSnapshot {
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
+  /** Late-game disruption engine. Missing on older saves. */
+  disruptions?: string
 }
 
 /** A placed building that is still a construction site. */
