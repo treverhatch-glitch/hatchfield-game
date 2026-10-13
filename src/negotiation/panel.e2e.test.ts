@@ -8,14 +8,16 @@ describe('negotiation panel', () => {
   it('opens and closes without blocking the field', async () => {
     const port = 46117
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-      cwd: '/workspace',
+      cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
       await waitForVite(vite)
+      const fs = await import('node:fs')
+      const chromePath = fs.existsSync(CHROME) ? CHROME : undefined
       const browser = await chromium.launch({
         headless: true,
-        executablePath: CHROME,
+        ...(chromePath ? { executablePath: chromePath } : {}),
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
       })
       try {
