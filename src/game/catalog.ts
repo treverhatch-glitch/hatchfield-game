@@ -10,6 +10,7 @@ import type {
   ParkTerm,
   ResearchId,
   RoomDef,
+  StandAccess,
   StandClass,
   Tool,
 } from './types'
@@ -57,6 +58,10 @@ export const TAXI_COST = 700
 export const STAND_S_COST = 4800
 export const STAND_COST = 6200
 export const STAND_L_COST = 9800
+/** Jetway-equipped stands cost this multiplier over the remote bay. */
+export const STAND_JETWAY_MULT = 1.85
+/** Apron depot that runs terminal buses to remote stands. */
+export const TERMBUS_COST = 12_500
 export const TERMINAL_COST = 14800
 export const SNACK_COST = 3600
 export const BAGS_COST = 4800
@@ -567,21 +572,28 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'stand',
     name: 'Stand S',
     cost: STAND_S_COST,
-    blurb: 'Small stand — regionals / GA. Cheap bay.',
+    blurb: 'Small remote bay — walk or terminal-bus. Toggle Jetway for a pre-attached gate (pricier).',
   },
   {
     tool: 'stand',
     tile: 'stand',
     name: 'Stand M',
     cost: STAND_COST,
-    blurb: 'Medium stand — narrowbodies. Default gate.',
+    blurb: 'Medium remote bay. Jetway toggle attaches a hall gate for fast board/deboard.',
   },
   {
     tool: 'stand_l',
     tile: 'stand',
     name: 'Stand L',
     cost: STAND_L_COST,
-    blurb: 'Large stand — widebody / freighter / mil. Needs Stand classes research.',
+    blurb: 'Large remote bay — widebody / freighter / mil. Jetway toggle for attached gates.',
+  },
+  {
+    tool: 'term_bus',
+    tile: 'termbus',
+    name: 'Terminal bus depot',
+    cost: TERMBUS_COST,
+    blurb: 'Apron buses ferry remote-stand pax. Without this, remote stands walk the pavement (slow + traffic).',
   },
   {
     tool: 'deice',
@@ -812,8 +824,13 @@ export const TOOL_LABEL: Record<Tool, string> = {
   park_u: 'Under',
   deice: 'De-ice',
   bus: 'Bus',
+  term_bus: 'Term bus',
   rail: 'Rail',
   clear: 'Clear',
+}
+
+export function standAccessLabel(a: StandAccess): string {
+  return a === 'jetway' ? 'Jetway gate' : 'Remote bay'
 }
 
 export function hotelClassLabel(c: 'inn' | 'business' | 'resort'): string {

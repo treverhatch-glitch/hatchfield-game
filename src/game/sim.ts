@@ -120,9 +120,11 @@ import {
   RUNWAY_PREFAB_COST,
   RUNWAY_PREFAB_LEN,
   RUNWAY_PREFAB_WID,
+  STAND_JETWAY_MULT,
   standClassRank,
   STARTER_KIT_COST,
   START_CASH,
+  TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
 import {
@@ -203,7 +205,9 @@ import type {
   ScheduleStatus,
   SiteKind,
   Speed,
+  StandAccess,
   StandClass,
+  StandPaxMode,
   TerminalFit,
   Tile,
   Tool,
@@ -377,6 +381,10 @@ export class Game {
   hotelClass: Record<string, HotelClass> = {}
   /** Stand tile "c,r" → S/M/L. Missing defaults to M. */
   standClass: Record<string, StandClass> = {}
+  /** Stand key → remote bay vs jetway-attached gate. */
+  standAccess: Record<string, StandAccess> = {}
+  /** Build toggle — next stand stamp is jetway (expensive) or remote. */
+  standAccessMode: StandAccess = 'remote'
   janitors = 0
   janitorCool = 0
   researchers = 0
@@ -520,6 +528,8 @@ export class Game {
     this.parkTerm = 'short'
     this.hotelClass = {}
     this.standClass = {}
+    this.standAccess = {}
+    this.standAccessMode = 'remote'
     this.janitors = 0
     this.janitorCool = 0
     this.researchers = 0
@@ -1258,6 +1268,8 @@ export class Game {
     this.parkTerms = {}
     this.hotelClass = {}
     this.standClass = {}
+    this.standAccess = {}
+    this.standAccessMode = 'remote'
     this.janitors = 0
     this.researchers = 0
     this.researcherCool = 0
@@ -1315,6 +1327,8 @@ export class Game {
     this.tiles[21][20] = 'stand'
     this.standClass['12,21'] = 'M'
     this.standClass['20,21'] = 'M'
+    this.standAccess['12,21'] = 'jetway'
+    this.standAccess['20,21'] = 'jetway'
     // Link hall to taxi + stands
     this.tiles[22][12] = 'taxi'
     this.tiles[22][15] = 'taxi'
@@ -1465,6 +1479,37 @@ export class Game {
   setParkTerm(term: ParkTerm) {
     this.parkTerm = term
     this.emit()
+  }
+
+  setStandAccessMode(mode: StandAccess) {
+    this.standAccessMode = mode
+    this.emit()
+  }
+
+  standAccessAt(stand: Vec | null): StandAccess {
+    if (!stand) return 'remote'
+    const k = `${stand.c},${stand.r}`
+    if (this.standAccess[k]) return this.standAccess[k]
+    // Grandfather older saves: proximity used to mean jetway.
+    if (!this.fits.length) return 'remote'
+    let bestD = JETWAY_RANGE + 1
+    for (const f of this.fits) {
+      const d = Math.abs(f.origin.c - stand.c) + Math.abs(f.origin.r - stand.r)
+      if (d < bestD) bestD = d
+    }
+    return bestD <= JETWAY_RANGE ? 'jetway' : 'remote'
+  }
+
+  /** How this stand moves pax this turn — jetway / terminal bus / walk. */
+  standPaxMode(stand: Vec | null): StandPaxMode {
+    if (!stand) return 'walk'
+    if (this.jetwayHall(stand)) return 'jetway'
+    const depots = tilesOf(this.tiles, 'termbus')
+    if (depots.length) {
+      const path = nearestPath(this.tiles, depots[0], [stand], 'truck')
+      if (path && path.length >= 2) return 'bus'
+    }
+    return 'walk'
   }
 
   /** True when short-term parking exists (meta buy or stamped short lots). */
@@ -2150,6 +2195,7 @@ export class Game {
       parkTerms: this.parkTerms,
       hotelClass: this.hotelClass,
       standClass: this.standClass,
+      standAccess: this.standAccess,
       janitors: this.janitors,
       researchers: this.researchers,
       deskStaff: this.deskStaff,
@@ -2230,6 +2276,8 @@ export class Game {
         if (!this.hotelClass[k]) this.hotelClass[k] = 'business'
       }
       this.standClass = s.standClass ?? {}
+      this.standAccess = s.standAccess ?? {}
+      this.standAccessMode = 'remote'
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
@@ -2435,11 +2483,12 @@ export class Game {
   }
 
   /**
-   * Nearest hall within jetway range of a stand — null = remote hardstand.
-   * Lite jetway: proximity link, no separate stamp.
+   * Nearest hall within jetway range of a jetway-equipped stand.
+   * Remote bays never auto-link — they need terminal buses or walking pax.
    */
   jetwayHall(stand: Vec | null): TerminalFit | null {
     if (!stand || !this.fits.length) return null
+    if (this.standAccessAt(stand) !== 'jetway') return null
     let best: TerminalFit | null = null
     let bestD = JETWAY_RANGE + 1
     for (const f of this.fits) {
@@ -2496,7 +2545,12 @@ export class Game {
     const open = this.hallOpenFor(fit)
     if (!open.size) return
     const hallId = this.hallKey(fit)
-    const count = Math.max(6, Math.min(16, Math.round(f.pax / 7)))
+    const mode = this.standPaxMode(f.stand)
+    // Jetway turns are quick — more bodies linger and spend. Walkers are rushed.
+    const count = Math.max(
+      6,
+      Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
+    )
     const a = this.airline(f.airline)
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = rollPaxTag(a.persona)
@@ -2504,10 +2558,26 @@ export class Game {
       const modes = this.pickGuestMode(tag, a.persona, job)
       g.preferMode = modes.prefer
       g.arriveMode = modes.actual
+      if (mode === 'jetway') {
+        g.needs.boarding = Math.min(99, g.needs.boarding + 18)
+        g.needs.shop = Math.min(99, g.needs.shop + 14)
+        g.needs.play = Math.min(99, g.needs.play + 10)
+        g.needs.hunger = Math.min(99, g.needs.hunger + 8)
+      } else if (mode === 'walk') {
+        g.needs.boarding = Math.max(6, g.needs.boarding - 14)
+      } else if (mode === 'bus') {
+        g.needs.boarding = Math.min(99, g.needs.boarding + 6)
+        g.needs.shop = Math.min(99, g.needs.shop + 6)
+      }
       // Kick them onto a clear first leg so you see the flow immediately.
       if (job === 'arrive') {
         g.node = 'gate'
-        g.thought = 'Off the jet — need bags'
+        g.thought =
+          mode === 'jetway'
+            ? 'Jetway in — time to spend before bags'
+            : mode === 'bus'
+              ? 'Bus from the remote stand — into the hall'
+              : 'Long walk from the stand — need bags'
         if (open.has('claim')) this.routeGuest(g, 'claim', open)
         else if (open.has('exit')) this.routeGuest(g, 'exit', open)
       } else {
@@ -2515,7 +2585,10 @@ export class Game {
         g.clearedSec = false
         this.applyGuestLandside(g, 'depart')
         if (!g.thought || g.thought === 'Where is check-in?') {
-          g.thought = 'Inbound — find check-in'
+          g.thought =
+            mode === 'jetway'
+              ? 'Jetway gate — browse before boarding'
+              : 'Inbound — find check-in'
         }
         if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
         else if (open.has('security')) this.routeGuest(g, 'security', open)
@@ -5256,8 +5329,15 @@ export class Game {
         return `Landing → taxi to ${gate}`
       case 'taxi_in':
         return `Taxiing in to ${gate}`
-      case 'deboard':
-        return f.cargo ? 'Unloading freight' : 'Deplaning passengers'
+      case 'deboard': {
+        if (f.cargo) return 'Unloading freight'
+        const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        return mode === 'jetway'
+          ? 'Deplaning via jetway (no apron walk)'
+          : mode === 'bus'
+            ? 'Deplaning — terminal bus ferry'
+            : 'Deplaning — walking the apron'
+      }
       case 'servicing':
         return 'Turnaround on stand (fuel / bags / catering)'
       case 'mx_taxi':
@@ -5266,8 +5346,15 @@ export class Game {
         return `In hangar — MX · ${Math.ceil(Math.max(0, (f.mxEndsAt ?? this.clock) - this.clock))}s left`
       case 'mx_return':
         return `Leaving hangar → back to ${gate}`
-      case 'board':
-        return f.cargo ? 'Loading freight' : 'Boarding passengers'
+      case 'board': {
+        if (f.cargo) return 'Loading freight'
+        const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        return mode === 'jetway'
+          ? 'Boarding via jetway'
+          : mode === 'bus'
+            ? 'Boarding — waiting on terminal bus'
+            : 'Boarding — pax walking from hall'
+      }
       case 'pushback':
         return 'Pushback from stand'
       case 'parked':
@@ -5428,6 +5515,7 @@ export class Game {
       delete this.parkTerms[`${v.c},${v.r}`]
       delete this.hotelClass[`${v.c},${v.r}`]
       delete this.standClass[`${v.c},${v.r}`]
+      delete this.standAccess[`${v.c},${v.r}`]
     }
     this.emit()
   }
@@ -5622,7 +5710,12 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(building.cost, building.name)) {
+    const jetwayStand =
+      building.tile === 'stand' && this.standAccessMode === 'jetway'
+    const stampCost = jetwayStand
+      ? Math.round(building.cost * STAND_JETWAY_MULT)
+      : building.cost
+    if (!this.spend(stampCost, jetwayStand ? `${building.name} + jetway` : building.name)) {
       this.emit()
       return
     }
@@ -5651,10 +5744,29 @@ export class Game {
       const cls: StandClass =
         this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
       this.standClass[`${v.c},${v.r}`] = cls
-      this.pushNews(`${building.name} stamped.`, 'ok')
+      this.standAccess[`${v.c},${v.r}`] = this.standAccessMode
+      const linked = this.jetwayHall(v)
+      if (this.standAccessMode === 'jetway') {
+        this.pushNews(
+          linked
+            ? `${building.name} + jetway linked to ${this.hallLabel(linked)} (${moneyLeft(stampCost)}). Fast board — no apron walk.`
+            : `${building.name} + jetway stamped (${moneyLeft(stampCost)}) — build a hall within ${JETWAY_RANGE}c to attach the gate.`,
+          linked ? 'good' : 'ok',
+        )
+      } else {
+        this.pushNews(
+          `${building.name} remote bay stamped. Add a Terminal bus depot or pax walk the pavement.`,
+          'ok',
+        )
+      }
       if (tilesOf(this.tiles, 'hangar').length && this.milCapableStands().length) {
         this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
       }
+    } else if (building.tile === 'termbus') {
+      this.pushNews(
+        `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`,
+        'good',
+      )
     } else if (building.tile === 'deice') {
       this.pushNews(
         `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`,
@@ -5787,7 +5899,7 @@ export class Game {
     return scored[0].s
   }
 
-  /** Gate label — T1·G2·M when jetway-linked, else G#·class hardstand. */
+  /** Gate label — T1·G2·M·JW when jetway-linked, else G#·class·bus/walk. */
   gateLabel(stand: Vec | null): string {
     if (!stand) return '—'
     const cls = this.standClassAt(stand)
@@ -5795,11 +5907,13 @@ export class Game {
     if (hall) {
       const local = this.standsForHall(hall)
       const idx = local.findIndex((s) => s.c === stand.c && s.r === stand.r)
-      return `${this.hallLabel(hall)}·G${idx >= 0 ? idx + 1 : '?'}·${cls}`
+      return `${this.hallLabel(hall)}·G${idx >= 0 ? idx + 1 : '?'}·${cls}·JW`
     }
     const stands = tilesOf(this.tiles, 'stand')
     const idx = stands.findIndex((s) => s.c === stand.c && s.r === stand.r)
-    return idx >= 0 ? `G${idx + 1}·${cls}` : `${stand.c},${stand.r}·${cls}`
+    const mode = this.standPaxMode(stand)
+    const suffix = mode === 'bus' ? 'bus' : this.standAccessAt(stand) === 'jetway' ? 'JW?' : 'walk'
+    return idx >= 0 ? `G${idx + 1}·${cls}·${suffix}` : `${stand.c},${stand.r}·${cls}`
   }
 
   holdingCount(): number {
@@ -6280,8 +6394,46 @@ export class Game {
     void dt
   }
 
+  /** Nearby jets / trucks / apron walkers slow everyone — bad layouts jam. */
+  congestionAt(x: number, y: number, selfId?: string): number {
+    let n = 0
+    const R = 1.15
+    for (const f of this.flights) {
+      if (f.id === selfId || f.phase === 'gone' || f.phase === 'hold') continue
+      if (
+        (f.craft ?? 'jet') === 'jet' &&
+        (f.phase === 'taxi_in' ||
+          f.phase === 'taxi_out' ||
+          f.phase === 'pushback' ||
+          f.phase === 'mx_taxi' ||
+          f.phase === 'mx_return' ||
+          f.phase === 'landing')
+      ) {
+        if (Math.hypot(f.x - x, f.y - y) < R) n++
+      }
+    }
+    for (const t of this.trucks) {
+      if (t.id === selfId) continue
+      if (Math.hypot(t.x - x, t.y - y) < R) n++
+    }
+    for (const p of this.people) {
+      if (p.id === selfId) continue
+      if (p.job !== 'arrive' && p.job !== 'board' && p.job !== 'mechanic') continue
+      if (Math.hypot(p.x - x, p.y - y) < R) n++
+    }
+    return n
+  }
+
   followPath(
-    ent: { x: number; y: number; heading?: number; path: Vec[]; seg: number; t: number },
+    ent: {
+      id?: string
+      x: number
+      y: number
+      heading?: number
+      path: Vec[]
+      seg: number
+      t: number
+    },
     speed: number,
     dt: number,
   ): boolean {
@@ -6292,10 +6444,12 @@ export class Game {
       ent.y = last.r
       return true
     }
+    const cong = this.congestionAt(ent.x, ent.y, ent.id)
+    const factor = 1 / (1 + Math.max(0, cong) * 0.65)
     const a = ent.path[ent.seg]
     const b = ent.path[ent.seg + 1]
     const dist = Math.abs(b.c - a.c) + Math.abs(b.r - a.r) || 1
-    ent.t += (speed * dt) / dist
+    ent.t += (speed * factor * dt) / dist
     while (ent.t >= 1 && ent.seg < ent.path.length - 1) {
       ent.t -= 1
       ent.seg += 1
@@ -6447,10 +6601,24 @@ export class Game {
 
     if (f.cargo) return
 
-    const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
-    f.waitingOn.paxOut = visual
-    this.people.push(...spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'arrive')
+    const mode = this.standPaxMode(f.stand)
+    if (mode === 'jetway') {
+      // Jetway — no apron walkers; deboard timer only.
+      f.waitingOn.paxOut = 0
+    } else if (mode === 'bus' && this.dispatchTermBus(f, 'arrive')) {
+      f.waitingOn.paxOut = 1
+    } else {
+      const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
+      f.waitingOn.paxOut = visual
+      this.people.push(...spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual))
+      if (mode !== 'walk') {
+        this.pushNews(
+          `${f.flightNo} walking remote stand — bus depot missing or blocked.`,
+          'ok',
+        )
+      }
+    }
   }
 
   trySpawnMilitary() {
@@ -6909,11 +7077,18 @@ export class Game {
 
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
-    const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
-    f.waitingOn.paxIn = visual
     const fit = this.roomsAt(f.stand)
-    this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
     this.seedHallForFlight(f, 'depart')
+    const mode = this.standPaxMode(f.stand)
+    if (mode === 'jetway') {
+      f.waitingOn.paxIn = 0
+    } else if (mode === 'bus' && this.dispatchTermBus(f, 'depart')) {
+      f.waitingOn.paxIn = 1
+    } else {
+      const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
+      f.waitingOn.paxIn = visual
+      this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
+    }
     // Outbound bags: shed makeup pickup → plane deposit.
     const bagBuild = tilesOf(this.tiles, 'bags')
     if (bagBuild.length && !f.posted.bagsLoad) {
@@ -6923,6 +7098,33 @@ export class Game {
         this.spawnTruck('bags', f, path, 'load', bagBuild[0])
       }
     }
+  }
+
+  /** Terminal bus ferry for remote stands — depot ↔ stand. */
+  dispatchTermBus(f: Flight, leg: 'arrive' | 'depart'): boolean {
+    if (!f.stand) return false
+    const depots = tilesOf(this.tiles, 'termbus')
+    if (!depots.length) return false
+    const home = depots[0]
+    const path = nearestPath(this.tiles, home, [f.stand], 'truck')
+    if (!path || path.length < 2) return false
+    this.trucks.push({
+      id: uid('tbus'),
+      kind: 'termbus',
+      flightId: f.id,
+      x: home.c,
+      y: home.r,
+      path,
+      seg: 0,
+      t: 0,
+      returning: false,
+      dwell: 0,
+      preDwell: leg === 'depart' ? 1.2 : 0.4,
+      patrol: false,
+      mission: leg === 'arrive' ? 'ferry_arr' : 'ferry_dep',
+      home,
+    })
+    return true
   }
 
   /** Line MX: mechanic walks hangar → stand → hangar (real GSE delivery). */
@@ -7671,7 +7873,15 @@ export class Game {
           this.beginServicing(f)
         }
       } else if (f.phase === 'deboard') {
-        if ((f.phaseTime > 6 && f.waitingOn.paxOut <= 2) || f.phaseTime > 14 || f.cargo) {
+        const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        const deboardReady =
+          f.cargo ||
+          (mode === 'jetway' && f.phaseTime > 3.2) ||
+          (mode === 'bus' &&
+            ((f.waitingOn.paxOut <= 0 && f.phaseTime > 4.5) || f.phaseTime > 18)) ||
+          (mode === 'walk' &&
+            ((f.phaseTime > 6 && f.waitingOn.paxOut <= 2) || f.phaseTime > 16))
+        if (deboardReady) {
           f.phase = 'servicing'
           f.phaseTime = 0
         }
@@ -7802,12 +8012,24 @@ export class Game {
       } else if (f.phase === 'parked') {
         // Occupies stand until releaseGa / auto leave in tickParking.
       } else if (f.phase === 'board') {
-        const boardLimit = f.boardingSlow ? 22 : 16
+        const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        const boardLimit =
+          mode === 'jetway'
+            ? f.boardingSlow
+              ? 11
+              : 7.5
+            : mode === 'bus'
+              ? f.boardingSlow
+                ? 18
+                : 13
+              : f.boardingSlow
+                ? 24
+                : 17
         const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
+        const minBoard =
+          mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5
         const boardReady =
-          f.waitingOn.paxIn <= 0 &&
-          bagsReady &&
-          f.phaseTime > (f.boardingSlow ? 9 : 5)
+          f.waitingOn.paxIn <= 0 && bagsReady && f.phaseTime > minBoard
         if (f.boardingSlow && f.phaseTime > 8 && f.phaseTime < 8.4) {
           const next = this.openSchedule().find(
             (s) => s.id !== f.scheduleId && (s.status === 'scheduled' || s.status === 'delayed'),
@@ -7944,6 +8166,18 @@ export class Game {
         if (t.dwell <= 0 && !t.returning) {
           this.finishTruck(t)
           const from = { c: Math.round(t.x), r: Math.round(t.y) }
+          if (t.kind === 'termbus') {
+            t.returning = true
+            if (t.home) {
+              const homePath = nearestPath(this.tiles, from, [t.home], 'truck')
+              t.path = homePath && homePath.length > 1 ? homePath : [...t.path].reverse()
+            } else {
+              t.path = [...t.path].reverse()
+            }
+            t.seg = 0
+            t.t = 0
+            continue
+          }
           // Arrival bags: plane → shed/claim before any continue.
           if (t.kind === 'bags' && t.mission === 'unload' && t.home) {
             const claimPath = nearestPath(this.tiles, from, [t.home], 'truck')
@@ -7987,19 +8221,28 @@ export class Game {
         }
         continue
       }
-      const done = this.followPath(t, 1.8, step)
+      const done = this.followPath(t, t.kind === 'termbus' ? 1.55 : 1.8, step)
       if (done && !t.returning) {
         // Service dwell at the aircraft (fuel = bond + pump; deice = spray).
-        t.dwell =
-          t.kind === 'fuel'
-            ? 3.6
-            : t.kind === 'deice'
-              ? 3.2
-              : t.mission === 'load'
-                ? 2.6
-                : t.mission === 'unload'
-                  ? 2.4
-                  : 2.2
+        if (t.kind === 'termbus') {
+          const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
+          if (fl) {
+            if (t.mission === 'ferry_arr') fl.waitingOn.paxOut = 0
+            if (t.mission === 'ferry_dep') fl.waitingOn.paxIn = 0
+          }
+          t.dwell = 1.8
+        } else {
+          t.dwell =
+            t.kind === 'fuel'
+              ? 3.6
+              : t.kind === 'deice'
+                ? 3.2
+                : t.mission === 'load'
+                  ? 2.6
+                  : t.mission === 'unload'
+                    ? 2.4
+                    : 2.2
+        }
       } else if (done && t.returning) {
         // Arrived home / claim / farm.
         if (t.kind === 'bags' && t.mission === 'to_claim') {
