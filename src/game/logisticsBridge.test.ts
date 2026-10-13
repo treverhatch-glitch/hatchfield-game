@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { RoadGraph } from '../logistics/roads.ts'
-import { buildLogisticsConfig, FUEL_OUTAGE_SLOT_SEC } from './logisticsBridge.ts'
+import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { Game } from './sim.ts'
 import { SIZE, type Flight, type Vec } from './types.ts'
 import { walkableFor } from './path.ts'
@@ -200,5 +200,101 @@ describe('ground logistics wiring', () => {
     expect(f.phase).toBe('gone')
     expect(game.news.some((n) => n.text.includes('cancelled') && n.text.includes('no fuel'))).toBe(true)
     expect(game.flights.some((x) => x.id === f.id)).toBe(false)
+  })
+})
+
+describe('logisticsBridge edge cases and cause lines', () => {
+  it('returns appropriate groundCauseLine for all delay causes and unknown causes', () => {
+    const causes = [
+      'no_vehicle',
+      'no_loader',
+      'no_fuel',
+      'no_meals',
+      'no_bridge',
+      'boarding_slow',
+      'late_pax',
+      'late_bags',
+      'bag_offload',
+      'vehicle_breakdown',
+      'undersized_vehicle',
+    ] as const
+
+    for (const c of causes) {
+      const line = groundCauseLine(c)
+      expect(typeof line).toBe('string')
+      expect(line.length).toBeGreaterThan(0)
+    }
+
+    expect(groundCauseLine('unknown_cause' as any)).toBe('')
+  })
+
+  it('returns helpful advice in delayFix for empty, single, and multiple causes', () => {
+    expect(delayFix([])).toMatch(/give the ramp another minute/i)
+    expect(delayFix(['no_fuel'])).toMatch(/farm/i)
+    expect(delayFix(['no_meals'])).toMatch(/catering kitchen/i)
+    expect(delayFix(['no_loader'])).toMatch(/vehicle depot/i)
+    expect(delayFix(['no_vehicle'])).toMatch(/vehicle depot/i)
+    expect(delayFix(['no_bridge'])).toMatch(/jetway stand/i)
+    expect(delayFix(['late_pax'])).toMatch(/hall/i)
+    expect(delayFix(['boarding_slow'])).toMatch(/hall/i)
+    expect(delayFix(['late_bags'])).toMatch(/bag belt/i)
+    expect(delayFix(['bag_offload'])).toMatch(/bag belt/i)
+    expect(delayFix(['vehicle_breakdown'])).toMatch(/shop/i)
+    expect(delayFix(['undersized_vehicle'])).toMatch(/heavy kit/i)
+  })
+
+  it('handles buildLogisticsConfig edge cases (empty tiles, NaN options, negative options, large values)', () => {
+    // Empty or invalid tiles grid
+    expect(buildLogisticsConfig([], {}, false)).toBeNull()
+    expect(buildLogisticsConfig([[]], {}, false)).toBeNull()
+
+    // Valid layout with edge-case options
+    const game = field()
+    game.tiles[10][15] = 'depot'
+    game.tiles[10][17] = 'fuel'
+    game.bumpMap()
+
+    const configZero = buildLogisticsConfig(game.tiles, game.standAccess, false, {
+      capacityLitres: 0,
+      initialLitres: 0,
+      fleet: { fuel_truck: 0, belt_loader: 0 },
+    })
+    expect(configZero).toBeTruthy()
+    expect(configZero!.fuelFarm.capacityLitres).toBe(0)
+    expect(configZero!.fuelFarm.initialLitres).toBe(0)
+
+    const configNan = buildLogisticsConfig(game.tiles, game.standAccess, false, {
+      capacityLitres: NaN,
+      initialLitres: NaN,
+      fleet: { fuel_truck: NaN as any },
+    })
+    expect(configNan).toBeTruthy()
+    expect(Number.isNaN(configNan!.fuelFarm.capacityLitres)).toBe(false)
+    expect(Number.isNaN(configNan!.fuelFarm.initialLitres)).toBe(false)
+
+    const configNeg = buildLogisticsConfig(game.tiles, game.standAccess, false, {
+      capacityLitres: -5000,
+      initialLitres: -1000,
+      fleet: { fuel_truck: -5 },
+    })
+    expect(configNeg).toBeTruthy()
+    expect(configNeg!.fuelFarm.capacityLitres).toBe(0)
+    expect(configNeg!.fuelFarm.initialLitres).toBe(0)
+
+    const configLarge = buildLogisticsConfig(game.tiles, game.standAccess, true, {
+      capacityLitres: 1e9,
+      initialLitres: 1e9,
+      fleet: { fuel_truck: 1e5 },
+      strict: true,
+      hydrant: true,
+    })
+    expect(configLarge).toBeTruthy()
+    expect(configLarge!.fuelFarm.capacityLitres).toBe(1e9)
+    expect(configLarge!.strictSizeTiers).toBe(true)
+
+    // Verify determinism
+    const run1 = buildLogisticsConfig(game.tiles, game.standAccess, false)
+    const run2 = buildLogisticsConfig(game.tiles, game.standAccess, false)
+    expect(run1).toEqual(run2)
   })
 })
