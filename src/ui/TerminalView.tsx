@@ -99,7 +99,7 @@ export function TerminalView({ game }: { game: Game }) {
       <canvas ref={ref} className="hall-canvas" />
       <div className="hall-chrome">
         <p className="muted">
-          Roof cut away · WASD pan · Q/E rotate · click a person
+          Roof cut away · WASD pan · Q/E rotate · click a person · Esc leaves · H hides UI
           {game.hasSecurityChoke() ? ' · security choke live' : ' · NO SECURITY LANE'}
           {' · '}
           {game.hallGuests.length} pax
