@@ -30,7 +30,10 @@ export interface ContractMovement {
   status: TtFlight['status']
   delaySec?: number
   delayReason?: string | null
-  runwayIndex?: number | null
+  /** Arrival runway id (SlotInstance.runwayId). */
+  runwayId?: string | null
+  /** Departure runway id (SlotInstance.depRunwayId). */
+  depRunwayId?: string | null
   /** Paired rotation id: arr and dep with the same rotation share one stand bar. */
   rotationId?: string
 }
@@ -48,6 +51,8 @@ export interface ContractsSource {
   pull?(movementId: string): void
   bump?(movementId: string): void
   cancel?(movementId: string): void
+  /** Assign the movement's runway (arr → runwayId, dep → depRunwayId); null = auto. */
+  assignRunway?(movementId: string, runwayId: string | null): void
 }
 
 export function contractsAdapter(src: ContractsSource): TimetableAdapter {
@@ -75,7 +80,8 @@ export function contractsAdapter(src: ContractsSource): TimetableAdapter {
       pinned: !!m.standPinned,
       icao: m.icao,
       aircraft: m.aircraft,
-      runwayIndex: m.runwayIndex ?? null,
+      runwayId: (m.direction === 'dep' ? m.depRunwayId ?? m.runwayId : m.runwayId) ?? null,
+      depRunwayId: m.depRunwayId ?? null,
       manual: false,
       contractId: m.contractId,
       turnTarget: m.turnTarget,
@@ -93,6 +99,7 @@ export function contractsAdapter(src: ContractsSource): TimetableAdapter {
       swap: !!src.swapStands,
       pullBump: !!src.pull && !!src.bump,
       cancel: !!src.cancel,
+      runway: !!src.assignRunway,
     },
     dayLength: src.dayLength,
     now: () => src.now(),
@@ -117,5 +124,6 @@ export function contractsAdapter(src: ContractsSource): TimetableAdapter {
     pull: (id) => src.pull?.(real(id)),
     bump: (id) => src.bump?.(real(id)),
     cancel: (id) => src.cancel?.(real(id)),
+    setRunway: (id, rw) => src.assignRunway?.(real(id), rw),
   }
 }

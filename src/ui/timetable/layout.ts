@@ -114,15 +114,22 @@ export interface HourBucket {
   over: boolean
 }
 
-/** Runway lane: movements per in-game hour vs combined strip capacity. */
+/**
+ * Movements per in-game hour vs capacity. Pass `runwayId` to count one strip
+ * against its own cap ('auto' = flights with no runway yet, cap 0); omit it
+ * for the combined total against the summed cap.
+ */
 export function runwayBuckets(
   flights: TtFlight[],
   runways: TtRunway[],
   span: ViewSpan,
   dayLength: number,
+  runwayId?: string,
 ): HourBucket[] {
   const h = hourSecs(dayLength)
-  const cap = runways.reduce((s, r) => s + r.hourlyCap, 0)
+  const own = runwayId && runwayId !== 'auto' ? runways.find((r) => r.id === runwayId) : undefined
+  const cap = runwayId === undefined ? runways.reduce((s, r) => s + r.hourlyCap, 0) : own?.hourlyCap ?? 0
+  if (runwayId !== undefined) flights = flights.filter((f) => (runwayOf(f) ?? 'auto') === runwayId)
   const out: HourBucket[] = []
   for (let t = Math.floor(span.from / h) * h; t < span.to; t += h) {
     let arr = 0
@@ -137,6 +144,61 @@ export function runwayBuckets(
     out.push({ start: t, label: clockLabel(t, dayLength), arr, dep, cap, over: arr + dep > cap })
   }
   return out
+}
+
+/** Runway a movement uses: departures prefer their own depRunwayId. */
+export function runwayOf(f: TtFlight): string | null {
+  return f.direction === 'dep' ? f.depRunwayId ?? f.runwayId : f.runwayId
+}
+
+export interface RunwayLaneModel {
+  id: string
+  label: string
+  cap: number
+  buckets: HourBucket[]
+  flights: TtFlight[]
+}
+
+/** One lane per runway, an Auto lane if any movement is unassigned, and a combined Total. */
+export function runwayLanes(
+  flights: TtFlight[],
+  runways: TtRunway[],
+  span: ViewSpan,
+  dayLength: number,
+): { lanes: RunwayLaneModel[]; total: RunwayLaneModel } {
+  const live = flights.filter((f) => f.status !== 'cancelled' && f.time >= span.from && f.time <= span.to)
+  const known = new Set(runways.map((r) => r.id))
+  const lanes: RunwayLaneModel[] = runways.map((r) => ({
+    id: r.id,
+    label: r.label,
+    cap: r.hourlyCap,
+    buckets: runwayBuckets(flights, runways, span, dayLength, r.id),
+    flights: live.filter((f) => runwayOf(f) === r.id),
+  }))
+  const loose = live.filter((f) => !runwayOf(f) || !known.has(runwayOf(f)!))
+  if (loose.length) {
+    lanes.push({
+      id: 'auto',
+      label: 'Auto',
+      cap: 0,
+      buckets: runwayBuckets(
+        flights.map((f) => (runwayOf(f) && !known.has(runwayOf(f)!) ? { ...f, runwayId: null, depRunwayId: null } : f)),
+        runways,
+        span,
+        dayLength,
+        'auto',
+      ),
+      flights: loose,
+    })
+  }
+  const total: RunwayLaneModel = {
+    id: 'total',
+    label: 'Total',
+    cap: runways.reduce((s, r) => s + r.hourlyCap, 0),
+    buckets: runwayBuckets(flights, runways, span, dayLength),
+    flights: live,
+  }
+  return { lanes, total }
 }
 
 export interface BoardRow {

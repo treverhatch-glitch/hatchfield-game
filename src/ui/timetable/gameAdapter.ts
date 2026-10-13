@@ -24,6 +24,8 @@ export type ScheduleGame = Pick<
   | 'bumpSlot'
   | 'cancelSlot'
   | 'setSlotStandPref'
+  | 'cycleSlotRunway'
+  | 'scheduleForRunway'
 >
 
 export const DAY_LENGTH = 180
@@ -60,6 +62,10 @@ export function icaoForAirframe(id: string | null | undefined, kind?: AircraftKi
 function turnFor(icao: IcaoCode): number {
   return icao === 'F' ? TURN.L : icao === 'E' || icao === 'D' ? TURN.M : TURN.S
 }
+
+/** Game runway strip index ↔ timetable runway id. */
+export const rwId = (i: number) => `rw${i}`
+export const rwIndex = (id: string) => Number(id.replace(/^rw/, ''))
 
 const key = (v: Vec) => `${v.c},${v.r}`
 const unkey = (s: string): Vec => {
@@ -107,7 +113,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
       pinned: !!slot.standPref,
       icao,
       aircraft: flight?.airframeName ?? 'TBA',
-      runwayIndex: slot.runwayPref ?? null,
+      runwayId: slot.runwayPref != null ? rwId(slot.runwayPref) : null,
       manual: slot.manual,
       movable: slot.status === 'scheduled' || slot.status === 'delayed',
     }
@@ -163,7 +169,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         pinned: false,
         icao,
         aircraft: f.airframeName,
-        runwayIndex: null,
+        runwayId: null,
         manual: false,
         movable: false,
       },
@@ -174,11 +180,20 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
 
   return {
     source: 'Tower bank',
-    caps: { move: true, pin: true, swap: true, pullBump: true, cancel: true },
+    caps: { move: true, pin: true, swap: true, pullBump: true, cancel: true, runway: true },
     dayLength: DAY_LENGTH,
     now: () => game.clock,
     flights() {
       const out: TtFlight[] = []
+      // Authoritative runway membership straight from the game's per-strip query.
+      const onRunway = new Map<string, number>()
+      const strips = Math.max(1, game.runwayStripCount())
+      for (let i = 0; i < strips; i++) for (const s of game.scheduleForRunway(i)) onRunway.set(s.id, i)
+      const stamp = (rows: TtFlight[], slotId: string) => {
+        const i = onRunway.get(slotId)
+        for (const r of rows) if (i != null) r.runwayId = rwId(i)
+        return rows
+      }
       const linked = new Set<string>()
       for (const s of game.schedule) {
         if (s.status === 'done' && !s.flightId) continue
@@ -188,7 +203,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
           if (flight) out.push(...groundRows(flight))
           continue
         }
-        out.push(...slotRows(s))
+        out.push(...stamp(slotRows(s), s.id))
       }
       for (const f of game.flights) if (!linked.has(f.id)) out.push(...groundRows(f))
       return out
@@ -205,9 +220,11 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
       // scale by tower parallel approaches so the number tracks real game limits.
       const perHour = Math.max(1, Math.round(hourSecs(DAY_LENGTH) / 2.5))
       const parallel = Math.max(1, game.maxInbound())
+      // Spread the tower's parallel-approach bonus across strips (rounded down per strip).
       return Array.from({ length: n }, (_, i) => ({
+        id: rwId(i),
         index: i,
-        label: `RWY ${i + 1}`,
+        label: `RW${i + 1}`,
         hourlyCap: Math.min(perHour * 2, perHour + Math.floor(parallel / n)),
       }))
     },
@@ -245,6 +262,16 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     cancel: (id) => {
       const s = slotOf(id)
       if (s) game.cancelSlot(s.id)
+    },
+    setRunway(id, runwayId) {
+      // The game only exposes cycleSlotRunway (auto → RW1 → … → RWn → auto),
+      // so step the cycle until the slot lands on the requested strip.
+      const s = slotOf(id)
+      if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+      const n = Math.max(1, game.runwayStripCount())
+      const want = runwayId == null ? null : rwIndex(runwayId)
+      if (want != null && (want < 0 || want >= n)) return
+      for (let i = 0; i <= n + 1 && (s.runwayPref ?? null) !== want; i++) game.cycleSlotRunway(s.id)
     },
   }
 }

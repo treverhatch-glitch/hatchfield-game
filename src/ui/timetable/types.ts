@@ -48,7 +48,10 @@ export interface TtFlight {
   pinned: boolean
   icao: IcaoCode
   aircraft: string
-  runwayIndex: number | null
+  /** Assigned runway id (matches TtRunway.id); null = tower/auto picks. */
+  runwayId: string | null
+  /** Departure runway when it differs from the arrival one (contracts). */
+  depRunwayId?: string | null
   manual: boolean
   /** Contract id when the flight comes from a contract. */
   contractId?: string | null
@@ -69,6 +72,7 @@ export interface TtStand {
 }
 
 export interface TtRunway {
+  id: string
   index: number
   label: string
   /** Movements per sim-hour the strip can absorb. */
@@ -81,6 +85,8 @@ export interface TtCaps {
   swap: boolean
   pullBump: boolean
   cancel: boolean
+  /** Player can change the assigned runway. */
+  runway: boolean
 }
 
 export interface TimetableAdapter {
@@ -100,4 +106,6 @@ export interface TimetableAdapter {
   pull(id: string): void
   bump(id: string): void
   cancel(id: string): void
+  /** Assign a runway (null = auto). No-op when caps.runway is false. */
+  setRunway(id: string, runwayId: string | null): void
 }
