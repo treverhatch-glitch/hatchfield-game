@@ -1,0 +1,204 @@
+/**
+ * Terminal kit meshes — low-poly food counters, seats, and decorations.
+ * Every part of every placed item is batched into one InstancedMesh per
+ * (primitive, colour), so a food court of forty benches is a handful of draw calls.
+ * Sizes are real meters.
+ */
+import * as THREE from 'three'
+import { cellCenter, HALL_D, HALL_W, itemDef, type PlacedItem } from '../game/terminal'
+import { itemSize } from '../game/terminalKit'
+
+type Prim = 'box' | 'cyl' | 'cone' | 'ico'
+
+interface Part {
+  prim: Prim
+  /** Width, height, depth in meters. */
+  size: [number, number, number]
+  /** Center offset from the item origin, y up from the floor. */
+  pos: [number, number, number]
+  color: string
+}
+
+const p = (prim: Prim, size: Part['size'], pos: Part['pos'], color: string): Part => ({
+  prim,
+  size,
+  pos,
+  color,
+})
+
+const counter = (color: string, awning: string): Part[] => [
+  p('box', [2.6, 0.95, 1], [0, 0.48, 0.4], color),
+  p('box', [2.6, 2.4, 0.2], [0, 1.2, -0.6], '#3a3430'),
+  p('box', [2.8, 0.12, 1.2], [0, 2.5, -0.2], awning),
+]
+
+export const KIT_MESH: Record<string, Part[]> = {
+  fast_food: [...counter('#d8d2c4', '#d4402c'), p('box', [1.8, 0.6, 0.06], [0, 1.9, -0.48], '#f2c230')],
+  cafe: [...counter('#a07850', '#5a3a24'), p('cyl', [0.5, 0.75, 0.5], [-1.4, 0.38, 1.6], '#6a4a30')],
+  restaurant: [
+    ...counter('#e8e2d6', '#2a5a3a'),
+    p('cyl', [1, 0.75, 1], [-1.4, 0.38, 1.8], '#8a6a4a'),
+    p('cyl', [1, 0.75, 1], [1.4, 0.38, 1.8], '#8a6a4a'),
+    p('box', [0.5, 0.45, 0.5], [-2.2, 0.23, 1.8], '#4a5a6a'),
+    p('box', [0.5, 0.45, 0.5], [2.2, 0.23, 1.8], '#4a5a6a'),
+  ],
+  bench: [
+    p('box', [1.8, 0.08, 0.5], [0, 0.45, 0], '#6a7a88'),
+    p('box', [1.8, 0.5, 0.06], [0, 0.72, -0.24], '#6a7a88'),
+    p('box', [0.08, 0.45, 0.45], [-0.8, 0.22, 0], '#2a2e32'),
+    p('box', [0.08, 0.45, 0.45], [0.8, 0.22, 0], '#2a2e32'),
+  ],
+  seat_row: [
+    p('box', [2.4, 0.1, 0.55], [0, 0.45, 0], '#2f5f9a'),
+    p('box', [2.4, 0.55, 0.08], [0, 0.75, -0.25], '#2f5f9a'),
+    p('box', [2.3, 0.4, 0.1], [0, 0.2, 0], '#2a2e32'),
+  ],
+  plant: [
+    p('cyl', [0.6, 0.55, 0.6], [0, 0.28, 0], '#8a5a3a'),
+    p('ico', [0.9, 1.1, 0.9], [0, 1.05, 0], '#3f8a46'),
+  ],
+  art: [
+    p('box', [0.8, 1, 0.8], [0, 0.5, 0], '#e8e4dc'),
+    p('ico', [0.7, 0.9, 0.7], [0, 1.5, 0], '#c9a227'),
+  ],
+  info_screen: [
+    p('box', [0.12, 2.2, 0.12], [0, 1.1, 0], '#2a2e32'),
+    p('box', [1.6, 0.9, 0.08], [0, 2.4, 0], '#10141a'),
+    p('box', [1.45, 0.75, 0.02], [0, 2.4, 0.05], '#3a8ad8'),
+  ],
+  info_kiosk: [
+    p('box', [0.5, 1.4, 0.4], [0, 0.7, 0], '#d8dde2'),
+    p('box', [0.42, 0.32, 0.03], [0, 1.2, 0.21], '#4ac0a0'),
+  ],
+  fountain: [
+    p('cyl', [2.8, 0.5, 2.8], [0, 0.25, 0], '#b8b4aa'),
+    p('cyl', [2.5, 0.05, 2.5], [0, 0.48, 0], '#4aa8d8'),
+    p('cyl', [0.3, 1.4, 0.3], [0, 0.9, 0], '#b8b4aa'),
+    p('cone', [0.9, 0.6, 0.9], [0, 1.75, 0], '#8ad0f0'),
+  ],
+}
+
+const GEOS: Record<Prim, THREE.BufferGeometry> = {
+  box: new THREE.BoxGeometry(1, 1, 1),
+  cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
+  cone: new THREE.ConeGeometry(0.5, 1, 8),
+  ico: new THREE.IcosahedronGeometry(0.5, 0),
+}
+
+const MATS = new Map<string, THREE.MeshLambertMaterial>()
+function mat(color: string): THREE.MeshLambertMaterial {
+  let m = MATS.get(color)
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({ color, flatShading: true })
+    MATS.set(color, m)
+  }
+  return m
+}
+
+export function hasKitMesh(def: string): boolean {
+  return def in KIT_MESH
+}
+
+/**
+ * Center of an item inside its cell. A cell has four quarter slots;
+ * items fill them in placement order.
+ */
+export function slotCenter(
+  c: number,
+  r: number,
+  start: number,
+  size: number,
+  cols: number,
+  rows: number,
+): { x: number; z: number } {
+  const base = cellCenter(c, r, cols, rows)
+  if (size >= 4) return base
+  const qx = HALL_W / cols / 4
+  const qz = HALL_D / rows / 4
+  const quad = (i: number) => ({ x: (i % 2 ? 1 : -1) * qx, z: (i >= 2 ? 1 : -1) * qz })
+  const a = quad(start)
+  const b = quad(Math.min(3, start + size - 1))
+  return { x: base.x + (a.x + b.x) / 2, z: base.z + (a.z + b.z) / 2 }
+}
+
+export interface KitPlacement {
+  item: PlacedItem
+  x: number
+  z: number
+}
+
+/** World position for every item, honouring shared cells. */
+export function layoutItems(items: readonly PlacedItem[], cols: number, rows: number): KitPlacement[] {
+  const load = new Map<string, number>()
+  const out: KitPlacement[] = []
+  for (const item of items) {
+    const key = `${item.c},${item.r}`
+    const start = load.get(key) ?? 0
+    const size = itemSize(itemDef(item.def))
+    load.set(key, start + size)
+    const at = slotCenter(item.c, item.r, start, size, cols, rows)
+    out.push({ item, x: at.x, z: at.z })
+  }
+  return out
+}
+
+const tmpItem = new THREE.Matrix4()
+const tmpPart = new THREE.Matrix4()
+const tmpQuat = new THREE.Quaternion()
+const up = new THREE.Vector3(0, 1, 0)
+
+function partMatrix(part: Part, x: number, z: number, rot: number, out: THREE.Matrix4) {
+  tmpQuat.setFromAxisAngle(up, (rot * Math.PI) / 2)
+  tmpItem.compose(new THREE.Vector3(x, 0.07, z), tmpQuat, new THREE.Vector3(1, 1, 1))
+  tmpPart.compose(
+    new THREE.Vector3(...part.pos),
+    new THREE.Quaternion(),
+    new THREE.Vector3(...part.size),
+  )
+  return out.multiplyMatrices(tmpItem, tmpPart)
+}
+
+/** One InstancedMesh per (primitive, colour) for all kit items in the hall. */
+export function buildKitInstances(placed: readonly KitPlacement[]): THREE.Group {
+  const batches = new Map<string, { prim: Prim; color: string; mats: THREE.Matrix4[] }>()
+  for (const { item, x, z } of placed) {
+    const parts = KIT_MESH[item.def]
+    if (!parts) continue
+    for (const part of parts) {
+      const key = `${part.prim}|${part.color}`
+      let b = batches.get(key)
+      if (!b) {
+        b = { prim: part.prim, color: part.color, mats: [] }
+        batches.set(key, b)
+      }
+      b.mats.push(partMatrix(part, x, z, item.rot ?? 0, new THREE.Matrix4()))
+    }
+  }
+  const group = new THREE.Group()
+  for (const b of batches.values()) {
+    const mesh = new THREE.InstancedMesh(GEOS[b.prim], mat(b.color), b.mats.length)
+    b.mats.forEach((m, i) => mesh.setMatrixAt(i, m))
+    mesh.instanceMatrix.needsUpdate = true
+    group.add(mesh)
+  }
+  return group
+}
+
+/** Frees instance buffers. Shared geometries and materials stay cached. */
+export function disposeKitInstances(group: THREE.Group) {
+  for (const child of group.children) (child as THREE.InstancedMesh).dispose?.()
+  group.clear()
+}
+
+/** Translucent preview of an item. Recoloured green / red by the caller. */
+export function buildGhost(def: string, material: THREE.Material): THREE.Group {
+  const group = new THREE.Group()
+  const parts = KIT_MESH[def] ?? [p('box', [1.6, 1.2, 1.6], [0, 0.6, 0], '#ffffff')]
+  for (const part of parts) {
+    const mesh = new THREE.Mesh(GEOS[part.prim], material)
+    mesh.position.set(...part.pos)
+    mesh.scale.set(...part.size)
+    group.add(mesh)
+  }
+  return group
+}

@@ -1420,6 +1420,121 @@ button {
   border-radius: 6px;
 }
 
+/* Terminal kit — slim CS2-style bar. Cards close after a place; never a modal. */
+/* Sits above the HUD dock, left of the hall panel. Cards open upward. */
+.kit-bar {
+  position: absolute;
+  left: 16px;
+  bottom: 172px;
+  right: 340px;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.kit-bar > * {
+  pointer-events: auto;
+}
+
+.kit-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 20, 16, 0.85);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.kit-tabs button {
+  background: transparent;
+  color: #e8eef4;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.kit-tabs button.on {
+  background: #c9a227;
+  color: #1a1406;
+}
+
+.kit-status {
+  font-size: 11px;
+  color: #b7c4b8;
+  padding: 0 6px;
+}
+
+.kit-cards {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px 2px 2px;
+}
+
+.kit-card {
+  flex: 0 0 auto;
+  width: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: rgba(18, 36, 28, 0.95);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.kit-card span {
+  color: #b7c4b8;
+}
+
+.kit-card:hover:not(:disabled) {
+  transform: translateY(-4px);
+  border-color: #c9a227;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+
+.kit-card:disabled {
+  opacity: 0.45;
+}
+
+.kit-tip {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #e8eef4;
+}
+
+.kit-tip .good,
+.hall-build .good {
+  color: #8ee0a8;
+}
+
+.kit-tip .bad,
+.hall-build .bad {
+  color: #ff9a8a;
+}
+
 .hint {
   margin: 8px 0 0;
 }
