@@ -1,9 +1,23 @@
 import * as THREE from 'three'
-import { AIRFRAMES } from '../game/airframes'
 import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
+import {
+  createAircraft,
+  createBridges,
+  disposeAircraftLibrary,
+  gatePreviewId,
+  bridgeYawToward,
+  loadAircraftQuality,
+  ParkedFleet,
+  releaseAircraft,
+  setAircraftNight,
+  updateAircraft,
+  WORLD_PER_METER,
+  type Livery,
+  type ParkedPlane,
+} from './aircraft/index'
 import {
   initWorldRender,
   parseQuality,
@@ -91,8 +105,8 @@ export class World {
   camera: THREE.PerspectiveCamera
   pivot = new THREE.Vector3(0, 0, 0)
   yaw = 0.72
-  pitch = 0.92
-  dist = 88
+  pitch = 0.68
+  dist = 54
   dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
@@ -102,7 +116,11 @@ export class World {
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   siteGroup = new THREE.Group()
+  /** Empty-gate jet bridges. Kept off tilesGroup so releaseTiles cannot dispose shared bridge geometry. */
+  gateGroup = new THREE.Group()
+  parkedFleet = new ParkedFleet()
   tileHash = ''
+  private gateHash = ''
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
   trucks = new Map<string, THREE.Object3D>()
@@ -154,7 +172,7 @@ export class World {
     this.scene.background = new THREE.Color('#87b7d9')
     this.scene.fog = new THREE.Fog('#9fc5dd', 90, 220)
 
-    this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 500)
+    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 500)
     this.placeCam()
 
     const hemi = new THREE.HemisphereLight('#e8f3ff', '#6b8a4a', 0.85)
@@ -181,10 +199,14 @@ export class World {
     earth.receiveShadow = true
     this.scene.add(earth)
 
+    this.gateGroup.name = 'gate-bridges'
     this.scene.add(this.tilesGroup)
+    this.scene.add(this.gateGroup)
     this.scene.add(this.entGroup)
+    this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
+    loadAircraftQuality()
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
@@ -394,22 +416,96 @@ export class World {
   rebuildTiles(game: Game) {
     // Cheap revision check — avoid flattening 32² tiles into a string every frame.
     const hash = String(game.mapRev)
-    if (hash === this.tileHash) return
-    this.tileHash = hash
-    this.releaseTiles()
+    if (hash !== this.tileHash) {
+      this.tileHash = hash
+      this.releaseTiles()
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const tile = game.tiles[r][c]
+          // The world layer redraws these. A second mesh per cell was most of the frame cost.
+          if (REPLACED_TILES.has(tile)) continue
+          const pos = toWorld(c, r, 0.02)
+          const key = `${c},${r}`
+          this.tilesGroup.add(
+            this.building(tile, pos, {
+              hotelClass: game.hotelClass[key],
+              parkTerm: game.parkTerms[key],
+            }),
+          )
+        }
+      }
+      this.gateHash = ''
+    }
+    this.syncGateBridges(game)
+  }
+
+  /** Stand class and jetway links can change without a map revision. */
+  private gateSig(game: Game): string {
+    const cls = Object.entries(game.standClass)
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join(',')
+    const acc = Object.entries(game.standAccess)
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join(',')
+    return `${game.mapRev}|${game.standAccessMode}|${game.fits.length}|${cls}|${acc}`
+  }
+
+  private syncGateBridges(game: Game) {
+    const sig = this.gateSig(game)
+    if (sig !== this.gateHash) {
+      this.gateHash = sig
+      this.rebuildGateBridges(game)
+    }
+    const parked = new Set<string>()
+    for (const f of game.flights) {
+      if (f.phase !== 'parked' || !f.stand) continue
+      parked.add(`${f.stand.c},${f.stand.r}`)
+    }
+    for (const child of this.gateGroup.children) {
+      const key = child.userData.standKey as string
+      child.visible = !parked.has(key)
+    }
+  }
+
+  /**
+   * Preview bridges on empty jetway stands. Local +Z aims at the nearest terminal.
+   * Shared bridge materials stay alive — this group is not released with the tiles.
+   */
+  private rebuildGateBridges(game: Game) {
+    this.gateGroup.clear()
+    const terminals: Vec[] = []
     for (let r = 0; r < SIZE; r++) {
+      const row = game.tiles[r]
+      if (!row) continue
       for (let c = 0; c < SIZE; c++) {
-        const tile = game.tiles[r][c]
-        // The world layer redraws these. A second mesh per cell was most of the frame cost.
-        if (REPLACED_TILES.has(tile)) continue
-        const pos = toWorld(c, r, 0.02)
-        const key = `${c},${r}`
-        this.tilesGroup.add(
-          this.building(tile, pos, {
-            hotelClass: game.hotelClass[key],
-            parkTerm: game.parkTerms[key],
-          }),
-        )
+        if (row[c] === 'terminal') terminals.push({ c, r })
+      }
+    }
+    if (!terminals.length) return
+    for (let r = 0; r < SIZE; r++) {
+      const row = game.tiles[r]
+      if (!row) continue
+      for (let c = 0; c < SIZE; c++) {
+        if (row[c] !== 'stand') continue
+        const stand = { c, r }
+        if (game.standAccessAt(stand) !== 'jetway') continue
+        let best = terminals[0]
+        let bestD = Infinity
+        for (const t of terminals) {
+          const d = Math.abs(t.c - c) + Math.abs(t.r - r)
+          if (d < bestD) {
+            best = t
+            bestD = d
+          }
+        }
+        if (bestD > 8) continue
+        const preview = createBridges(gatePreviewId(game.standClassAt(stand)))
+        preview.position.copy(toWorld(c, r, 0.04))
+        preview.rotation.y = bridgeYawToward(stand, best)
+        preview.userData.standKey = `${c},${r}`
+        this.gateGroup.add(preview)
       }
     }
   }
@@ -1140,94 +1236,6 @@ export class World {
     g.add(portal, atrium, mouth, ramp, roof, vent)
   }
 
-  makeJet(color: string, stripe: string): THREE.Group {
-    const g = new THREE.Group()
-    const fus = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.42, 3.4, 6, 12),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.45 }),
-    )
-    fus.rotation.z = Math.PI / 2
-    fus.castShadow = true
-    const wing = new THREE.Mesh(
-      new THREE.BoxGeometry(3.6, 0.08, 1.05),
-      new THREE.MeshStandardMaterial({ color: stripe, roughness: 0.4 }),
-    )
-    wing.position.y = -0.05
-    const tail = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 1.1, 0.7),
-      new THREE.MeshStandardMaterial({ color }),
-    )
-    tail.position.set(-1.7, 0.55, 0)
-    const stab = new THREE.Mesh(
-      new THREE.BoxGeometry(1.3, 0.06, 0.4),
-      new THREE.MeshStandardMaterial({ color: stripe }),
-    )
-    stab.position.set(-1.65, 0.15, 0)
-    const engL = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.2, 0.7, 10),
-      new THREE.MeshStandardMaterial({ color: '#333' }),
-    )
-    engL.rotation.z = Math.PI / 2
-    engL.position.set(0.2, -0.22, 1.15)
-    const engR = engL.clone()
-    engR.position.z = -1.15
-    g.add(fus, wing, tail, stab, engL, engR)
-    g.scale.setScalar(1.15)
-    return g
-  }
-
-  makeHelo(color: string, stripe: string): THREE.Group {
-    const g = new THREE.Group()
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.38, 1.4, 6, 10),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.35 }),
-    )
-    body.rotation.z = Math.PI / 2
-    body.castShadow = true
-    const cabin = new THREE.Mesh(
-      new THREE.SphereGeometry(0.42, 10, 8),
-      new THREE.MeshStandardMaterial({
-        color: stripe,
-        roughness: 0.2,
-        metalness: 0.25,
-        transparent: true,
-        opacity: 0.85,
-      }),
-    )
-    cabin.position.set(0.55, 0.1, 0)
-    const mast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.08, 0.55, 8),
-      new THREE.MeshStandardMaterial({ color: '#333' }),
-    )
-    mast.position.set(0, 0.55, 0)
-    const rotor = new THREE.Mesh(
-      new THREE.BoxGeometry(3.6, 0.04, 0.18),
-      new THREE.MeshStandardMaterial({ color: '#222', metalness: 0.5 }),
-    )
-    rotor.position.set(0, 0.82, 0)
-    rotor.name = 'rotor'
-    const rotor2 = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.04, 3.6),
-      new THREE.MeshStandardMaterial({ color: '#222', metalness: 0.5 }),
-    )
-    rotor2.position.set(0, 0.82, 0)
-    const tail = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 0.12, 0.18),
-      new THREE.MeshStandardMaterial({ color }),
-    )
-    tail.position.set(-1.2, 0.15, 0)
-    const skidL = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.06, 0.08),
-      new THREE.MeshStandardMaterial({ color: '#444' }),
-    )
-    skidL.position.set(0.1, -0.45, 0.35)
-    const skidR = skidL.clone()
-    skidR.position.z = -0.35
-    g.add(body, cabin, mast, rotor, rotor2, tail, skidL, skidR)
-    g.scale.setScalar(0.95)
-    return g
-  }
-
   /**
    * 5× fast-forward asks the world layer for its light mode (shadows and the grass ring off).
    * Leaving 5× must not force shadows back on — a low quality preset keeps them off.
@@ -1278,57 +1286,90 @@ export class World {
     }
   }
 
-  syncEntities(game: Game) {
-    const seenJ = new Set<string>()
+  /**
+   * Scaled airframes (0.45 world units per meter). Jetway bridges parent on the
+   * aircraft root while parked. Remote duplicates share a parked batch.
+   */
+  private syncAircraft(game: Game) {
+    const groups = new Map<string, Game['flights']>()
     for (const f of game.flights) {
-      seenJ.add(f.id)
+      if (f.phase !== 'parked' || f.craft === 'helo' || game.selectedFlight === f.id) continue
+      const cell = { c: Math.round(f.x), r: Math.round(f.y) }
+      if (game.standAccessAt(cell) === 'jetway') continue
+      const paint = flightLivery(game, f)
+      const key = `${f.airframeId}|${paint.body}|${paint.stripe}`
+      const list = groups.get(key)
+      if (list) list.push(f)
+      else groups.set(key, [f])
+    }
+    const batched = new Set<string>()
+    const planes: ParkedPlane[] = []
+    for (const list of groups.values()) {
+      if (list.length < 2) continue
+      for (const f of list) {
+        batched.add(f.id)
+        const alt = Math.max(0, f.z - 0.1)
+        _euler.set(0, -f.heading, 0)
+        _quat.setFromEuler(_euler)
+        _scale.set(WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
+        planes.push({
+          id: f.id,
+          airframeId: f.airframeId || 'b738',
+          livery: flightLivery(game, f),
+          matrix: new THREE.Matrix4().compose(toWorld(f.x, f.y, 0.04 + alt), _quat, _scale),
+        })
+      }
+    }
+    for (const id of batched) {
+      const old = this.jets.get(id)
+      if (!old) continue
+      releaseAircraft(old)
+      this.jets.delete(id)
+    }
+    this.parkedFleet.sync(planes, this.camera)
+
+    const seen = new Set<string>()
+    for (const f of game.flights) {
+      if (batched.has(f.id)) continue
+      seen.add(f.id)
       let mesh = this.jets.get(f.id)
-      const helo = f.craft === 'helo'
+      const paint = flightLivery(game, f)
       if (!mesh) {
-        const a = game.airline(f.airline)
-        let color = a.color
-        let stripe = a.stripe
-        if (f.kind === 'military') {
-          // Fighters read darker/sleeker; transports stay olive + gold.
-          color = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
-          stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
-        } else if (f.kind === 'air_ambulance' || f.kind === 'helo_med') {
-          color = '#b33a2a'
-          stripe = '#f0c040'
-        } else if (f.kind === 'freighter') {
-          color = '#5a5348'
-          stripe = '#d9a441'
-        } else if (f.kind === 'helo_exec') {
-          color = '#1a3a4a'
-          stripe = '#c9a227'
-        }
-        mesh = helo ? this.makeHelo(color, stripe) : this.makeJet(color, stripe)
+        mesh = createAircraft(f.airframeId || 'b738', paint)
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
-      const p = toWorld(f.x, f.y, 0.55 + f.z * 1.15)
-      mesh.position.copy(p)
+      const alt = Math.max(0, f.z - 0.1)
+      mesh.position.copy(toWorld(f.x, f.y, 0.04 + alt))
       mesh.rotation.y = -f.heading
-      mesh.rotation.x = helo
-        ? 0
-        : f.phase === 'takeoff' || f.phase === 'approach'
-          ? -0.12
-          : 0
-      if (helo) {
-        const rotor = mesh.getObjectByName('rotor')
-        if (rotor) rotor.rotation.y += 0.55
+      mesh.rotation.x =
+        f.craft === 'helo' ? 0 : f.phase === 'takeoff' || f.phase === 'approach' ? -0.12 : 0
+      const gearDown = !(
+        f.phase === 'hold' ||
+        f.phase === 'gone' ||
+        (f.phase === 'takeoff' && f.z > 1.6) ||
+        (f.phase === 'approach' && f.z > 3.2)
+      )
+      updateAircraft(mesh, gearDown)
+      const cell = { c: Math.round(f.x), r: Math.round(f.y) }
+      const jetway = f.craft !== 'helo' && f.phase === 'parked' && game.standAccessAt(cell) === 'jetway'
+      const bridges = mesh.getObjectByName('bridges')
+      if (jetway) {
+        if (!bridges) mesh.add(createBridges(f.airframeId || 'b738'))
+      } else if (bridges) {
+        mesh.remove(bridges)
       }
-      const sel = game.selectedFlight === f.id
-      const base = AIRFRAMES[f.airframeId]?.scale ?? (helo ? 0.95 : 1.15)
-      mesh.scale.setScalar(sel ? base * 1.06 : base)
+      mesh.scale.setScalar(game.selectedFlight === f.id ? 1.06 : 1)
     }
-    for (const [id, m] of this.jets) {
-      if (!seenJ.has(id)) {
-        this.entGroup.remove(m)
-        disposeObject(m)
-        this.jets.delete(id)
-      }
+    for (const [id, mesh] of this.jets) {
+      if (seen.has(id)) continue
+      releaseAircraft(mesh)
+      this.jets.delete(id)
     }
+  }
+
+  syncEntities(game: Game) {
+    this.syncAircraft(game)
 
     const seenT = new Set<string>()
     for (const t of game.trucks) {
@@ -1703,6 +1744,7 @@ export class World {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
     this.lastFrame = now
+    setAircraftNight(game.isNight())
     this.resize()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
@@ -1714,6 +1756,11 @@ export class World {
   }
 
   dispose() {
+    for (const mesh of this.jets.values()) releaseAircraft(mesh)
+    this.jets.clear()
+    this.parkedFleet.dispose()
+    this.gateGroup.clear()
+    disposeAircraftLibrary()
     this.wr.dispose()
     this.releaseTiles()
     const canvas = this.canvas
@@ -1728,6 +1775,30 @@ export class World {
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
+}
+
+const _euler = new THREE.Euler()
+const _quat = new THREE.Quaternion()
+const _scale = new THREE.Vector3()
+
+function flightLivery(game: Game, f: Game['flights'][number]): Livery {
+  const a = game.airline(f.airline)
+  let body = a.color
+  let stripe = a.stripe
+  if (f.kind === 'military') {
+    body = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
+    stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
+  } else if (f.kind === 'air_ambulance' || f.kind === 'helo_med') {
+    body = '#b33a2a'
+    stripe = '#f0c040'
+  } else if (f.kind === 'freighter') {
+    body = '#5a5348'
+    stripe = '#d9a441'
+  } else if (f.kind === 'helo_exec') {
+    body = '#1a3a4a'
+    stripe = '#c9a227'
+  }
+  return { body, stripe, tail: stripe }
 }
 
 function disposeObject(root: THREE.Object3D) {

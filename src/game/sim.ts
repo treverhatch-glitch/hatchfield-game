@@ -133,6 +133,8 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
+import { getAircraftSpec } from '../render/aircraft/specs'
+import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import {
   hallPath,
   isAirside,
@@ -6988,7 +6990,7 @@ export class Game {
     if (!o) return
     const af = AIRFRAMES[o.airframeId]
     if (!af) return
-    const stand = this.assignStand()
+    const stand = this.assignStand(null, undefined, undefined, af.id)
     const route = stand ? this.landingRoute(stand) : null
     if (!stand || !route) {
       this.pushNews('No free stand for GA parking.', 'bad')
@@ -8964,6 +8966,39 @@ export class Game {
     return standClassRank(this.standClassAt(stand)) >= standClassRank(need)
   }
 
+  /**
+   * ICAO fit: S/M/L map to B/C/F. Helicopters are not sent through that map.
+   * The wingspan disc must also miss other parked aircraft and the terminal.
+   */
+  standFitsAirframe(stand: Vec, airframeId: string): boolean {
+    const spec = getAircraftSpec(airframeId)
+    if (spec.icao === 'H') return false
+    if (!standAccepts(standLetter(this.standClassAt(stand)), spec.icao)) return false
+    const others = this.flights
+      .filter(
+        (f) =>
+          f.stand &&
+          (f.craft ?? 'jet') === 'jet' &&
+          f.phase !== 'gone' &&
+          f.phase !== 'takeoff' &&
+          !(f.stand.c === stand.c && f.stand.r === stand.r),
+      )
+      .map((f) => ({
+        c: f.stand!.c,
+        r: f.stand!.r,
+        spanM: getAircraftSpec(f.airframeId || 'b738').spanM,
+      }))
+    const blocks: { c: number; r: number }[] = []
+    for (let r = 0; r < this.tiles.length; r++) {
+      const row = this.tiles[r]
+      if (!row) continue
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] === 'terminal') blocks.push({ c, r })
+      }
+    }
+    return !wingDiscsClash(stand, spec.spanM, others, blocks)
+  }
+
   ghostCells(hover: Vec | null): Vec[] {
     if (!hover) return []
     if (this.tool === 'runway_short') return this.prefabRunway(hover, 'short')
@@ -9025,9 +9060,15 @@ export class Game {
    * Multi-terminal lite — second hall pulls its own bank of gates.
    * Optional `need` filters by stand S/M/L class.
    */
-  assignStand(pref?: Vec | null, need?: StandClass, airlineId?: AirlineId): Vec | null {
+  assignStand(
+    pref?: Vec | null,
+    need?: StandClass,
+    airlineId?: AirlineId,
+    airframeId?: string,
+  ): Vec | null {
     let free = this.freeStands()
-    if (need) free = free.filter((s) => this.standFitsClass(s, need))
+    if (airframeId) free = free.filter((s) => this.standFitsAirframe(s, airframeId))
+    else if (need) free = free.filter((s) => this.standFitsClass(s, need))
     if (airlineId) {
       const refuse = this.diplomacy?.refusedGates(airlineId) ?? 0
       if (refuse > 0) free = free.slice(refuse)
@@ -9035,7 +9076,7 @@ export class Game {
     if (!free.length) return null
     if (pref) {
       const hit = free.find((s) => s.c === pref.c && s.r === pref.r)
-      if (hit && (!need || this.standFitsClass(hit, need))) return hit
+      if (hit) return hit
     }
     if (!this.fits.length) {
       const terms = tilesOf(this.tiles, 'terminal')
@@ -9301,7 +9342,7 @@ export class Game {
       return
     }
     const needCls = standClassFor(af.kind)
-    const stand = this.assignStand(slot.standPref ?? null, needCls, airlineId)
+    const stand = this.assignStand(slot.standPref ?? null, needCls, airlineId, af.id)
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     if (!stand || !route) {
       const anyFree = this.freeStands().length > 0
@@ -9543,7 +9584,7 @@ export class Game {
     const slot = f.scheduleId
       ? this.schedule.find((s) => s.id === f.scheduleId)
       : null
-    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null, undefined, f.airline)
+    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null, undefined, f.airline, f.airframeId)
     if (!stand) return
     const route =
       this.landingRoute(stand, slot?.runwayPref ?? null) ??
@@ -9880,7 +9921,7 @@ export class Game {
       this.milCool = 15
       return
     }
-    const af = pickAirframe('military', this.longestRunway(), this.researchUnlocked)
+    let af = pickAirframe('military', this.longestRunway(), this.researchUnlocked)
     if (!af) {
       this.milCool = 25
       return
@@ -9896,9 +9937,21 @@ export class Game {
         this.milCool = 30
         return
       }
-      return this.spawnMilitaryFlight(lighter, stand, route)
+      af = lighter
     }
-    this.spawnMilitaryFlight(af, stand, route)
+    let gate = stand
+    let path = route
+    if (!this.standFitsAirframe(gate, af.id)) {
+      const alt = this.assignStand(null, undefined, undefined, af.id)
+      const altRoute = alt ? this.landingRoute(alt) : null
+      if (!alt || !altRoute) {
+        this.milCool = 20
+        return
+      }
+      gate = alt
+      path = altRoute
+    }
+    this.spawnMilitaryFlight(af, gate, path)
   }
 
   private spawnMilitaryFlight(
@@ -9974,7 +10027,7 @@ export class Game {
       return
     }
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
-    const stand = this.assignStand()
+    const stand = this.assignStand(null, undefined, undefined, af.id)
     if (!stand) return
     const route = this.landingRoute(stand)
     if (!route) return
@@ -10619,9 +10672,6 @@ export class Game {
   private spawnEmergencyDivert(airline: AirlineId): boolean {
     if (this.isBanned(airline)) return false
     if (this.groundBusy() && !this.assignStand()) return false
-    const stand = this.assignStand()
-    const route = stand ? this.landingRoute(stand) : null
-    if (!stand || !route) return false
     const preferred = this.pickAircraftKind(airline)
     const af = pickAirframeWithFallback(
       preferred,
@@ -10630,6 +10680,9 @@ export class Game {
       this.researchUnlocked,
     )
     if (!af) return false
+    const stand = this.assignStand(null, undefined, airline, af.id)
+    const route = stand ? this.landingRoute(stand) : null
+    if (!stand || !route) return false
     this.flightSeq += 1
     const a = this.airline(airline)
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
@@ -10696,11 +10749,11 @@ export class Game {
   /** Firefighting plane — refuel-only or refuel + hangar MX. */
   private spawnEmergencyTanker(mx: boolean): boolean {
     if (this.groundBusy() && !this.assignStand()) return false
-    const stand = this.assignStand()
-    const route = stand ? this.landingRoute(stand) : null
-    if (!stand || !route) return false
     const af = this.pickAirtankerFrame()
     if (!af) return false
+    const stand = this.assignStand(null, undefined, undefined, af.id)
+    const route = stand ? this.landingRoute(stand) : null
+    if (!stand || !route) return false
     this.flightSeq += 1
     const call = mx ? `ATMX${this.flightSeq}` : `TANK${this.flightSeq}`
     const inbound = this.armApproach(route)

@@ -12,6 +12,9 @@ export function Field({ game }: { game: Game }) {
     if (!canvas) return
     const world = new World(canvas)
     worldRef.current = world
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __world?: World }).__world = world
+    }
     world.onHover = (v) => {
       if (game.view !== 'apron') {
         setInspect(null)
@@ -116,6 +119,8 @@ export function Field({ game }: { game: Game }) {
       window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
       worldRef.current = null
+      const probe = window as unknown as { __world?: World }
+      if (probe.__world === world) probe.__world = undefined
       world.dispose()
     }
   }, [game])
