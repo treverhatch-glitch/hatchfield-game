@@ -8,6 +8,7 @@ export {
   dailyPax,
   generosity,
   termsAtRatio,
+  negotiatedBagTurnFee,
   postedCostPerSeat,
 } from './valuation.ts'
 export { createNegotiation, NegotiationDesk, faceFor, formatBump } from './engine.ts'

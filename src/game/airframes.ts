@@ -32,6 +32,36 @@ export interface Airframe {
 }
 
 export const AIRFRAMES: Record<string, Airframe> = {
+  bn2: {
+    id: 'bn2',
+    name: 'BN-2 Islander',
+    kind: 'regional',
+    minRunway: 6,
+    paxMin: 6,
+    paxMax: 9,
+    seats: 9,
+    bagVolume: 4,
+    cargoHold: 0.2,
+    fuelLoad: 0.4,
+    scale: 0.36,
+    landingMult: 0.55,
+    blurb: 'Nine-seat commuter — Bushline’s short-strip twin.',
+  },
+  dhc6: {
+    id: 'dhc6',
+    name: 'DHC-6 Twin Otter',
+    kind: 'regional',
+    minRunway: 6,
+    paxMin: 9,
+    paxMax: 19,
+    seats: 19,
+    bagVolume: 8,
+    cargoHold: 0.4,
+    fuelLoad: 0.9,
+    scale: 0.48,
+    landingMult: 0.7,
+    blurb: 'Nineteen-seat commuter — the Twin Otter Bushline sells.',
+  },
   crj700: {
     id: 'crj700',
     name: 'CRJ-700',
@@ -527,6 +557,39 @@ export function turnaroundScale(af: Airframe | undefined, cargo: boolean): numbe
 
 export function airframesForKind(kind: AircraftKind): Airframe[] {
   return Object.values(AIRFRAMES).filter((a) => a.kind === kind)
+}
+
+const PAX_KINDS = new Set<AircraftKind>(['regional', 'narrowbody', 'widebody'])
+
+/** Passenger types whose seat band overlaps the contract. */
+export function airframesForPaxBand(paxMin: number, paxMax: number): Airframe[] {
+  const lo = Math.min(paxMin, paxMax)
+  const hi = Math.max(paxMin, paxMax)
+  if (!(hi > 0)) return []
+  return Object.values(AIRFRAMES).filter((af) => {
+    if (!PAX_KINDS.has(af.kind) || af.seats <= 0) return false
+    const overlap = Math.min(af.paxMax, hi) - Math.max(af.paxMin, lo) + 1
+    if (overlap > 0) return true
+    return af.seats >= lo && af.seats <= Math.round(hi * 1.1)
+  })
+}
+
+/**
+ * Metal this carrier is allowed to send. A named fleet wins. Otherwise the
+ * seat band. Never substitutes a 737 for a 19-seat contract.
+ */
+export function contractedAirframes(
+  fleetIds: readonly string[] | undefined,
+  paxMin: number,
+  paxMax: number,
+): Airframe[] {
+  if (fleetIds && fleetIds.length) {
+    const listed = fleetIds
+      .map((id) => AIRFRAMES[id])
+      .filter((af): af is Airframe => Boolean(af))
+    if (listed.length) return listed
+  }
+  return airframesForPaxBand(paxMin, paxMax)
 }
 
 export function pickAirframe(

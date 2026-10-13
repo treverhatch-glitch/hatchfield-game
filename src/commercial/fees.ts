@@ -27,6 +27,25 @@ import { finite, nonNegative } from './num.ts'
 
 /** Meals on one catering cart. Kitchen feePerMeal × this = the cart price. */
 export const CATERING_MEALS_PER_CART = 30
+
+/**
+ * Galley bill for one turn. A signed brand with a $0 airline catering rate
+ * still sells a share of a cart (SkyBite on a commuter is not free).
+ * `perCart` is the published cart price; the fee slider scales it later.
+ */
+export function cateringTurnFee(
+  airlineCatering: number,
+  payoutMult: number,
+  pax: number,
+  perCart: number,
+): number {
+  const mult = payoutMult > 0 ? payoutMult : 1
+  const fromAirline = Math.round(Math.max(0, airlineCatering) * mult)
+  if (fromAirline > 0) return fromAirline
+  if (!(pax > 0) || !(perCart > 0)) return 0
+  const share = Math.min(1, pax / CATERING_MEALS_PER_CART)
+  return Math.max(1, Math.round(perCart * mult * share))
+}
 /** Logistics kitchen fee per meal (defaults.ts feePerMeal). */
 export const KITCHEN_FEE_PER_MEAL = 6
 /** Logistics fuel-farm throughput fee, dollars per litre. */

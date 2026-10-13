@@ -41,6 +41,17 @@ export function loansAvailable<T extends Pick<LoanProduct, 'minFieldLevel' | 'mi
   return products.filter((p) => fieldLevel >= p.minFieldLevel && rep >= p.minRep)
 }
 
+/** Staffing floor is billed once per game day (180s), not on the old 30s tick. */
+export const PAYROLL_PERIOD = 'day'
+
+export function payrollPreviewLabel(amount: number, formatMoney: (n: number) => string): string {
+  return `Payroll ~${formatMoney(amount)} / ${PAYROLL_PERIOD}`
+}
+
+export function payrollPreviewTitle(daySeconds: number): string {
+  return `Staffing floor, charged once per game day (${daySeconds}s). Cash can still rise between days.`
+}
+
 export function payrollAmount(lineCosts: readonly number[], opsMult: number): number {
   let total = 0
   for (const cost of lineCosts) total += cost

@@ -120,6 +120,7 @@ function hudSnapshot(game: Game): string {
     game.sites.map((s) => Math.round(s.elapsed)).join(','),
     game.hover ? `${game.hover.c},${game.hover.r}` : '',
     game.pendingYearReport()?.year ?? 0,
+    Math.floor(game.researchPoints),
     Math.round(game.tycoonDemand() * 100),
     Math.round(game.tycoonAirlineInterest() * 100),
   ].join('|')
@@ -263,7 +264,14 @@ export default function App() {
       <div className={`view-layer ${game.view === 'hall' ? 'live' : 'dim'}`}>
         <TerminalView game={game} />
       </div>
-      <Hud game={game} />
+      <Hud
+        game={game}
+        onNewGame={() => {
+          // Owning a plot forces the play screen. Drop the field first so New Game can reach the title.
+          game.beginNew(game.sandbox ? 'easy' : game.difficulty)
+          setScreen('title')
+        }}
+      />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
     </div>

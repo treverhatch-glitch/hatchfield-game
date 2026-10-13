@@ -1,5 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import { PremiumPanel } from './PremiumPanel.tsx'
+import { payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
+import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
@@ -210,7 +212,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'rival', label: 'Rival', tip: 'Bellwater Intl — fees, roster, catchment' },
 ]
 
-export function Hud({ game }: { game: Game }) {
+export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panelPick, setPanel] = useState<PanelId>(null)
@@ -310,6 +312,15 @@ export function Hud({ game }: { game: Game }) {
             {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
           </span>
         </div>
+        <button
+          type="button"
+          className="stat"
+          data-testid="hud-new-game"
+          title="Back to the title — New Game and Continue live there"
+          onClick={() => onNewGame?.()}
+        >
+          New Game
+        </button>
         <button
           type="button"
           className="stat cash top-cash"
@@ -996,8 +1007,12 @@ export function Hud({ game }: { game: Game }) {
                   {ecoTab === 'expenses' ? (
                     <section data-testid="eco-expenses">
                       <h3>Expenses</h3>
-                      <p className="muted eco-line" data-testid="budget-payroll">
-                        Payroll ~{money(game.payrollPreview())} / 30s
+                      <p
+                        className="muted eco-line"
+                        data-testid="budget-payroll"
+                        title={payrollPreviewTitle(REAL_SECONDS_PER_GAME_DAY)}
+                      >
+                        {payrollPreviewLabel(game.payrollPreview(), money)}
                         {game.fieldOpsMult() > 1.05
                           ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                           : ''}{' '}
@@ -1063,21 +1078,27 @@ export function Hud({ game }: { game: Game }) {
                       {money(game.landsideUpkeep())}/day · fill{' '}
                       {Math.round(game.landsideUsageRate() * 100)}%
                     </p>
-                    <button
-                      type="button"
-                      className="wide on"
-                      data-testid="starter-kit"
-                      onClick={() => game.buildStarterKit()}
-                    >
-                      Starter kit · {money(STARTER_KIT_COST)}
-                    </button>
-                    <p className="muted">
-                      {game.startFocus === 'cargo'
-                        ? 'Cargo kit: strip, freighter stand, guard → shed, Apex — no pax hall. Empty plot only.'
-                        : game.startFocus === 'hybrid'
-                          ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
-                          : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). Empty plot only.'}
-                    </p>
+                    {game.starterFieldUp() ? (
+                      <p className="muted">Starter kit is down. Build from the bar.</p>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="wide on"
+                          data-testid="starter-kit"
+                          onClick={() => game.buildStarterKit()}
+                        >
+                          Starter kit · {money(STARTER_KIT_COST)}
+                        </button>
+                        <p className="muted">
+                          {game.startFocus === 'cargo'
+                            ? 'Cargo kit: strip, freighter stand, guard → shed, Apex — no pax hall. Empty plot only.'
+                            : game.startFocus === 'hybrid'
+                              ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
+                              : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). The kit is also the first button on the build bar.'}
+                        </p>
+                      </>
+                    )}
                     <p className="muted">
                       Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}{' '}
                       · recent {money(game.incomeRate())}/hr
@@ -1226,6 +1247,16 @@ export function Hud({ game }: { game: Game }) {
 
               {panel === 'settings' ? (
                 <section data-testid="settings-panel">
+                  <h3>Game</h3>
+                  <button
+                    type="button"
+                    className="wide"
+                    data-testid="settings-new-game"
+                    onClick={() => onNewGame?.()}
+                  >
+                    New Game
+                  </button>
+                  <p className="muted">Back to the title. Start again from there, or continue this field.</p>
                   <h3>Hints</h3>
                   <label className="sandbox-toggle">
                     <input
@@ -1249,8 +1280,12 @@ export function Hud({ game }: { game: Game }) {
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
-                  <p className="muted" data-testid="budget-payroll">
-                    Payroll ~{money(game.payrollPreview())} / 30s
+                  <p
+                    className="muted"
+                    data-testid="budget-payroll"
+                    title={payrollPreviewTitle(REAL_SECONDS_PER_GAME_DAY)}
+                  >
+                    {payrollPreviewLabel(game.payrollPreview(), money)}
                     {game.fieldOpsMult() > 1.05
                       ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                       : ''}{' '}
@@ -1340,7 +1375,9 @@ export function Hud({ game }: { game: Game }) {
                           const c = game.labCrewStatus()
                           return ` · ${c.working} working / ${c.break} break / ${c.home} home`
                         })()
-                      : ' · hire researchers in Budget, furnish desk/board/bench in Hall'}
+                      : game.opsResearchRate() > 0
+                        ? ' · operations trickle is running — a lab crew speeds it up'
+                        : ' · stamp a strip and a stand to start the operations trickle'}
                     {game.researchUnlocked.length
                       ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
                       : ' · no unlocks yet'}
@@ -2068,6 +2105,29 @@ export function Hud({ game }: { game: Game }) {
             ) : (
               <>
                 <div className="build-menus">
+                  {!game.starterFieldUp() ? (
+                    <>
+                      <button
+                        type="button"
+                        className="on"
+                        data-testid="starter-kit-dock"
+                        title="First stamp. A lone runway spends this budget and the kit then reads short."
+                        onClick={() => game.buildStarterKit()}
+                      >
+                        Starter kit · {money(STARTER_KIT_COST)}
+                      </button>
+                      {game.starterKitProtected() ? (
+                        <button
+                          type="button"
+                          data-testid="build-freehand-dock"
+                          title="Release the kit budget and build the strip yourself"
+                          onClick={() => game.chooseFreehand()}
+                        >
+                          Build freehand
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     className={game.tool === 'pan' ? 'on' : ''}
