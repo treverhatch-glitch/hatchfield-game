@@ -163,6 +163,22 @@ import {
   type StaffPost,
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
+import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
+import {
+  hintKind,
+  mergeHints,
+  muteHintKind,
+  newGameHintPrefs,
+  readHintSettings,
+  sanitizeHintPrefs,
+  setAllHintsEnabled,
+  visibleHints,
+  writeHintSettings,
+  type HintPrefs,
+} from './hints.ts'
+import { HINT_REFRESH_SEC } from './hintsData.ts'
+import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
+import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
@@ -231,8 +247,10 @@ import {
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
 import {
+  binFull,
   cellAt,
   dropLitterAt,
+  isBin,
   snackKind,
   snackMinutes,
   litterAdvice,
@@ -763,6 +781,21 @@ export class Game {
   advisorCells: { c: number; r: number }[] = []
   /** Apron tiles highlighted by a ground-services note (fuel farm, kitchen, depot). */
   apronFocus: { c: number; r: number }[] = []
+  /** Hint switches for this game. Saved, and mirrored to settings. */
+  hintPrefs: HintPrefs = newGameHintPrefs()
+  /** Pregame "Enable hints" box. Read once by beginNew. */
+  enableHintsAtStart = true
+  /** Live operational problems (stuck aircraft, fuel out, full hall, ...). */
+  alerts = new AlertStack()
+  private alertScanCool = 0
+  /** One side panel at a time: the HUD rollout or the hint list. */
+  sidePanel: 'hud' | 'hints' | null = null
+  /** Where "Show me" / "Pan to problem" last asked the camera to go. Renderers ease toward it. */
+  camGoal: { view: 'apron' | 'hall'; c: number; r: number; seq: number } | null = null
+  /** Terminal-plan hints, recomputed only when the hall layout changes. */
+  private planAdvice: { key: string; list: Advice[] } = { key: '', list: [] }
+  /** An apron build or bulldoze happened; refresh the advisor on the next frame. */
+  private adviceDirty = false
   /** Ground-logistics ledger. Posted into cash as it happens. */
   groundBooks = {
     fuelSales: 0,
@@ -1024,6 +1057,14 @@ export class Game {
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
+    // New games start with All hints enabled unless the pregame box was unchecked.
+    this.hintPrefs = newGameHintPrefs(this.enableHintsAtStart)
+    writeHintSettings(this.hintPrefs)
+    this.alerts.reset()
+    this.alertScanCool = 0
+    this.sidePanel = null
+    this.camGoal = null
+    this.planAdvice = { key: '', list: [] }
     this.firstTakeoffNoted = false
     this.fieldTask = null
     this.fieldTaskCool = 28
@@ -1049,7 +1090,11 @@ export class Game {
     try {
       sessionStorage.setItem(
         'hatchfield-pending',
-        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty }),
+        JSON.stringify({
+          sandbox: this.sandbox,
+          difficulty: this.difficulty,
+          enableHints: this.enableHintsAtStart,
+        }),
       )
     } catch {
       /* node / private mode */
@@ -3282,6 +3327,7 @@ export class Game {
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
+      hintPrefs: this.hintPrefs,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
@@ -3402,6 +3448,11 @@ export class Game {
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
+      // The save wins; older saves fall back to the settings mirror, then to defaults.
+      this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
+      writeHintSettings(this.hintPrefs)
+      this.alerts.reset()
+      this.planAdvice = { key: '', list: [] }
       this.firstTakeoffNoted = this.flightsDone >= 1
       this.fieldTask = s.fieldTask ?? null
       this.fieldTaskCool = this.fieldTask ? 0 : 18
@@ -3464,6 +3515,7 @@ export class Game {
   /** Call after any apron tile or stand/park/hotel class stamp changes. */
   bumpMap() {
     this.mapRev += 1
+    this.adviceDirty = true
   }
 
   spend(amount: number, label: string): boolean {
@@ -4924,7 +4976,7 @@ export class Game {
     }
     this.litterAdviceCool -= dt
     if (this.litterAdviceCool <= 0) {
-      this.litterAdviceCool = 5
+      this.litterAdviceCool = HINT_REFRESH_SEC
       this.refreshAdvice()
     }
   }
@@ -5547,8 +5599,9 @@ export class Game {
         scope: 'apron',
       })
     }
+    hall.push(...this.planHints(fit))
     hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
-    this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
+    this.advice = mergeHints(hall, standingNotes, this.groundNotes, this.cargoNotes)
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
@@ -5561,6 +5614,196 @@ export class Game {
       )
       if (!still) this.apronFocus = []
     }
+  }
+
+  /** Terminal-plan hints for a hall. Cached by layout so the periodic refresh stays cheap. */
+  private planHints(fit: TerminalFit): Advice[] {
+    const key = `${this.hallKey(fit)}:${this.hallRev}:${fit.items?.length ?? 0}:${fit.zones?.length ?? 0}`
+    if (this.planAdvice.key !== key) {
+      this.planAdvice = {
+        key,
+        list: liveHallAdvice({ zones: fit.zones, items: fit.items }),
+      }
+    }
+    return this.planAdvice.list
+  }
+
+  /** Hints the panel and its badge show, after the player's mutes. Worst first. */
+  visibleHints(): Advice[] {
+    return visibleHints(this.advice, this.hintPrefs)
+  }
+
+  /** "Don't show hints of this type." Turns All hints enabled off. */
+  muteHint(id: string) {
+    this.hintPrefs = muteHintKind(this.hintPrefs, hintKind(id))
+    writeHintSettings(this.hintPrefs)
+    if (!this.visibleHints().length) this.setSidePanel(null)
+    this.focusAdvice(null)
+  }
+
+  /** Settings → All hints enabled. The only way muted kinds come back. */
+  setAllHints(on: boolean) {
+    this.hintPrefs = setAllHintsEnabled(on)
+    writeHintSettings(this.hintPrefs)
+    if (!on && this.sidePanel === 'hints') this.sidePanel = null
+    this.emit()
+  }
+
+  setSidePanel(panel: 'hud' | 'hints' | null) {
+    if (this.sidePanel === panel) return
+    this.sidePanel = panel
+    this.emit()
+  }
+
+  /** Move the camera to a spot and mark it. Hall cells use the hall grid, apron cells the field grid. */
+  focusAt(at: AlertFocus) {
+    const cell = at.cells[0]
+    if (at.view === 'hall') {
+      if (!this.fits.length) return
+      if (at.hall) {
+        const fit = this.fitByKey(at.hall)
+        if (fit) this.selectedTile = { ...fit.origin }
+      }
+      this.advisorCells = at.cells
+      this.apronFocus = []
+    } else {
+      this.apronFocus = at.cells
+      this.advisorCells = []
+    }
+    if (this.view !== at.view) this.setView(at.view)
+    if (cell) this.camGoal = { view: at.view, c: cell.c, r: cell.r, seq: (this.camGoal?.seq ?? 0) + 1 }
+    this.emit()
+  }
+
+  /** Hint panel "Show me": pan to the note and highlight it. */
+  showHint(id: string) {
+    const hit = this.advice.find((a) => a.id === id)
+    if (!hit) return
+    const view = hit.scope === 'apron' ? 'apron' : 'hall'
+    const fit = this.activeHall() ?? this.fits[0]
+    if (view === 'hall' && !hit.cells.length && fit) {
+      // No cell to point at: still walk inside so the player sees the hall in question.
+      this.focusAt({ view, cells: [], hall: this.hallKey(fit) })
+      return
+    }
+    this.focusAt({ view, cells: hit.cells, hall: fit ? this.hallKey(fit) : undefined })
+  }
+
+  /** Alert "Pan to problem". */
+  panToAlert(id: string) {
+    const a = this.alerts.active.find((x) => x.id === id)
+    if (a?.at) this.focusAt(a.at)
+  }
+
+  dismissAlert(id: string) {
+    this.alerts.dismiss(id, this.clock)
+    this.emit()
+  }
+
+  ignoreAlert(id: string) {
+    this.alerts.ignore(id)
+    this.emit()
+  }
+
+  minimiseAlerts(on: boolean) {
+    this.alerts.setMinimised(on)
+    this.emit()
+  }
+
+  /** Raise an operational alert. Debounced by key inside the stack. */
+  raiseAlert(input: AlertInput) {
+    const before = this.alerts.rev
+    this.alerts.raise(input, this.clock)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  /** Live condition scan. Throttled; cheap reads only. */
+  private scanAlerts(dt: number) {
+    this.alerts.tick(this.clock)
+    this.alertScanCool -= dt
+    if (this.alertScanCool > 0) return
+    this.alertScanCool = ALERT_TUNING.scanSec
+    const T = ALERT_TUNING
+    const live = new Set<string>()
+    const raise = (input: AlertInput) => {
+      live.add(input.key)
+      this.raiseAlert(input)
+    }
+
+    for (const f of this.flights) {
+      if ((f.craft ?? 'jet') !== 'jet') continue
+      const onGround = (STUCK_PHASES as readonly string[]).includes(f.phase)
+      const stuck = (onGround && f.phaseTime > T.stuckSec) || (f.phase === 'hold' && f.phaseTime > T.holdStuckSec)
+      if (!stuck) continue
+      const spot = f.path[f.seg] ?? f.path[f.path.length - 1] ?? f.stand
+      raise({
+        key: `cond:stuck:${f.id}`,
+        severity: 'warning',
+        title: f.phase === 'hold' ? `${f.flightNo} stuck in the hold` : `${f.flightNo} stuck on the ground`,
+        detail:
+          f.phase === 'hold'
+            ? 'No free stand or runway slot to land into.'
+            : `No progress for ${Math.round(f.phaseTime)}s. Check the taxi route and stand.`,
+        at: spot ? { view: 'apron', cells: [{ c: spot.c, r: spot.r }] } : undefined,
+      })
+    }
+
+    const ground = this.ground?.snapshot()
+    const farm = tilesOf(this.tiles, 'fuel')[0]
+    if (ground && farm && ground.fuelLitres <= 0) {
+      raise({
+        key: 'cond:fuel-out',
+        severity: 'critical',
+        title: 'Fuel farm is empty',
+        detail: 'Departures needing fuel will wait until the next tanker arrives.',
+        at: { view: 'apron', cells: [farm] },
+      })
+    }
+
+    const fit = this.activeHall()
+    if (fit && this.hallOverloaded) {
+      const key = this.hallKey(fit)
+      raise({
+        key: `cond:hall-full:${key}`,
+        severity: 'warning',
+        title: `${this.hallLabel(fit)} over capacity`,
+        detail: 'Queues are longer than this hall can clear.',
+        at: { view: 'hall', hall: key, cells: this.zoneCellsOf(fit, 'security').slice(0, 1) },
+      })
+    }
+    for (const f of this.fits) {
+      const full = ((f.items ?? []) as PlacedItem[]).filter((it) => isBin(it) && binFull(it))
+      const pieces = f.litter?.length ?? 0
+      if (!full.length || pieces < LITTER_TUNING.adviseLitterAt) continue
+      const key = this.hallKey(f)
+      raise({
+        key: `cond:bins:${key}`,
+        severity: 'warning',
+        title: `${this.hallLabel(f)}: bins full, litter piling up`,
+        detail: `${full.length} full can${full.length === 1 ? '' : 's'}, ${pieces} pieces on the floor.`,
+        at: { view: 'hall', hall: key, cells: full.map((b) => ({ c: b.c, r: b.r })) },
+      })
+    }
+
+    if (!this.sandbox && this.cash < T.lowCash) {
+      raise({
+        key: 'cond:cash',
+        severity: this.cash < 0 ? 'critical' : 'warning',
+        title: this.cash < 0 ? 'Cash is negative' : 'Cash is low',
+        detail: `${moneyLeft(this.cash)} in the bank. Upkeep and payroll keep drawing.`,
+      })
+    }
+    this.alerts.sync('cond:', live)
+  }
+
+  private zoneCellsOf(fit: TerminalFit, zone: ZoneId): { c: number; r: number }[] {
+    const out: { c: number; r: number }[] = []
+    fit.zones?.forEach((row, r) =>
+      row.forEach((z, c) => {
+        if (z === zone) out.push({ c, r })
+      }),
+    )
+    return out
   }
 
   focusAdvice(id: string | null) {
@@ -10747,6 +10990,13 @@ export class Game {
         `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
         'bad',
       )
+      this.raiseAlert({
+        key: 'event:inbound-failed',
+        severity: 'critical',
+        title: 'Inbound flight diverted',
+        detail: `${f.flightNo} held too long and went elsewhere. Free a stand or a runway slot.`,
+        event: true,
+      })
     }
     void dt
   }
@@ -11766,6 +12016,13 @@ export class Game {
     this.fireIncidentCool = Math.min(this.fireIncidentCool, 12)
     for (const id of this.signed) this.adjustHeat(id, -2.8)
     if (e.kind === 'divert' && e.airline) this.adjustHeat(e.airline, -7)
+    this.raiseAlert({
+      key: 'event:inbound-failed',
+      severity: 'critical',
+      title: 'Emergency inbound failed',
+      detail: `Could not host it: ${why}.`,
+      event: true,
+    })
     if (this.public) {
       this.shockStock(
         `Failed emergency host — ${why}.`,
@@ -12211,9 +12468,16 @@ export class Game {
   }
 
   tick(dt: number) {
+    // Apron builds and bulldozes coalesce into one advisor pass per frame, paused or not.
+    if (this.adviceDirty && this.site) {
+      this.adviceDirty = false
+      this.refreshAdvice()
+      this.emit()
+    }
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
     this.clock += step
+    this.scanAlerts(step)
     this.simClock.advanceRealSeconds(dt, this.speed)
     this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
     this.tickAmbience(dt)

@@ -299,6 +299,8 @@ export class World {
   bind(canvas: HTMLCanvasElement) {
     this.onContextMenu = (e) => e.preventDefault()
     this.onPointerDown = (e: PointerEvent) => {
+      // The player grabbed the camera: stop easing toward a "Show me" target.
+      this.goalTo = null
       const tool = this.getTool()
       this.paintedThisGesture = false
       // Middle (1) or right (2) = orbit. Left + build tool = one stamp. Left + select = click/pan.
@@ -403,6 +405,28 @@ export class World {
       c: clamp(c, 0, SIZE - 1),
       r: clamp(r, 0, SIZE - 1),
     }
+  }
+
+  private goalSeq = 0
+  private goalTo: THREE.Vector3 | null = null
+
+  /** Ease the pivot toward the last "Show me" / "Pan to problem" cell. A few cheap lerps, then done. */
+  private easeToGoal(game: Game, dt: number) {
+    const g = game.camGoal
+    if (g && g.view === 'apron' && g.seq !== this.goalSeq) {
+      this.goalSeq = g.seq
+      this.goalTo = toWorld(g.c, g.r, this.pivot.y)
+    }
+    if (!this.goalTo) return
+    const k = 1 - Math.exp(-Math.max(0, dt) * 6)
+    this.pivot.x += (this.goalTo.x - this.pivot.x) * k
+    this.pivot.z += (this.goalTo.z - this.pivot.z) * k
+    if (Math.hypot(this.goalTo.x - this.pivot.x, this.goalTo.z - this.pivot.z) < 0.05) {
+      this.pivot.x = this.goalTo.x
+      this.pivot.z = this.goalTo.z
+      this.goalTo = null
+    }
+    this.placeCam()
   }
 
   placeCam() {
@@ -1782,6 +1806,7 @@ export class World {
     this.lastFrame = now
     setAircraftNight(game.isNight())
     this.resize()
+    this.easeToGoal(game, dt)
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.syncGhost(game)
