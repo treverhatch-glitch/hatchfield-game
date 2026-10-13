@@ -605,10 +605,26 @@ export type TruckMission =
   | 'city_shed'
   /** City cargo: leave field after delivery. */
   | 'city_depart'
+  /** Contractor van: off-map → guard. */
+  | 'build_guard'
+  /** Contractor / delivery: guard → site, then unload. */
+  | 'build_site'
+  /** Leave the field after the drop. */
+  | 'build_out'
 
 export interface Truck {
   id: string
-  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice' | 'termbus' | 'citycargo'
+  kind:
+    | 'fuel'
+    | 'bags'
+    | 'catering'
+    | 'fire'
+    | 'police'
+    | 'deice'
+    | 'termbus'
+    | 'citycargo'
+    | 'contractor'
+    | 'delivery'
   flightId: string | null
   x: number
   y: number
@@ -795,4 +811,30 @@ export interface GameSnapshot {
   cargoVolume?: CargoVolumeJob | null
   startFocus?: StartFocus
   sandbox?: boolean
+  /** In-progress construction. Grass stays until the timer finishes. */
+  sites?: BuildSite[]
+}
+
+/** A placed building that is still a construction site. */
+export interface BuildSite {
+  id: string
+  kind: 'single' | 'runway' | 'terminal' | 'premade'
+  cells: Vec[]
+  tile: Tile
+  cost: number
+  name: string
+  elapsed: number
+  duration: number
+  warned: boolean
+  vanArrived: boolean
+  delivered: boolean
+  crewSpawned: boolean
+  news?: string
+  tool?: string
+  standClass?: StandClass
+  standAccess?: StandAccess
+  hotelClass?: HotelClass
+  parkTerm?: ParkTerm
+  runwayClass?: RunwayClass
+  origin?: Vec
 }

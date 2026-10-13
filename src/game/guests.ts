@@ -109,7 +109,7 @@ export interface HallGuest {
   bagDepositLeft?: number
   /** Finished check-in bag drop for this journey. */
   bagsDropped?: boolean
-  /** No path, or the security queue turned them away. */
+  /** Custom hall with no path. A full queue does not set this. */
   lost?: boolean
   /** Seconds left at the scanner. 0 means waiting, not being served. */
   serviceLeft?: number
@@ -319,6 +319,36 @@ export function strongestNeed(g: HallGuest): NeedId | null {
   entries.sort((a, b) => b[1] - a[1])
   if (entries[0][1] < 35) return null
   return entries[0][0]
+}
+
+const NEED_FALLBACKS: Record<NeedId, HallNode[]> = {
+  boarding: ['gate'],
+  bags: ['claim', 'exit'],
+  bladder: ['bathroom'],
+  hunger: ['food', 'lounge', 'shop'],
+  energy: ['lounge', 'food', 'shop'],
+  shop: ['shop', 'food'],
+  play: ['shop', 'food', 'lounge'],
+}
+
+/**
+ * A need the guest can actually walk to. Closed rooms (spa, pool, golf…)
+ * fall back to an open substitute so a crowd never stalls on a missing door.
+ */
+export function reachableNeed(
+  need: NeedId,
+  job: HallGuest['job'],
+  open: Set<HallNode>,
+): HallNode | null {
+  const preferred = needToNode(need, job)
+  if (open.has(preferred)) return preferred
+  for (const n of NEED_FALLBACKS[need]) {
+    if (open.has(n)) return n
+  }
+  if (job === 'depart' && open.has('gate')) return 'gate'
+  if (job === 'arrive' && open.has('exit')) return 'exit'
+  if (open.has('entrance')) return 'entrance'
+  return null
 }
 
 export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {

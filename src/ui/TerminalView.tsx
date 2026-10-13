@@ -182,9 +182,15 @@ export function TerminalView({ game }: { game: Game }) {
         ) : (
           <p className="muted">Pick a zone. The menu only lists what fits there.</p>
         )}
-        <div className="zone-plan" data-testid="zone-plan">
-          {Array.from({ length: GRID_R }, (_, r) =>
-            Array.from({ length: GRID_C }, (_, c) => {
+        <div
+          className="zone-plan"
+          data-testid="zone-plan"
+          style={{
+            gridTemplateColumns: `repeat(${zones?.[0]?.length || GRID_C}, 1fr)`,
+          }}
+        >
+          {Array.from({ length: zones?.length || GRID_R }, (_, r) =>
+            Array.from({ length: zones?.[r]?.length || zones?.[0]?.length || GRID_C }, (_, c) => {
               const painted = (zones?.[r]?.[c] ?? null) as ZoneId | null
               const color = painted ? zoneDef(painted).color : '#2a3840'
               return (

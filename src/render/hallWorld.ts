@@ -54,6 +54,8 @@ export class HallWorld {
   lastY = 0
   roomGroup = new THREE.Group()
   guestGroup = new THREE.Group()
+  /** Routes, heat, and advisor marks. Hidden unless the player asks or a note is focused. */
+  overlay = new THREE.Group()
   guests = new Map<string, THREE.Mesh>()
   roomHash = ''
   private floor: THREE.Mesh
@@ -103,6 +105,8 @@ export class HallWorld {
 
     this.scene.add(this.roomGroup)
     this.scene.add(this.guestGroup)
+    this.overlay.visible = false
+    this.scene.add(this.overlay)
 
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointermove', this.onMove)
@@ -229,8 +233,8 @@ export class HallWorld {
     this.roomGroup.add(mesh)
   }
 
-  /** Perimeter shell with door gaps, plus the security wall with a walk-through. */
-  private buildShell() {
+  /** Perimeter shell with door gaps, plus walls where security meets the curb side. */
+  private buildShell(zones: ZoneId[][]) {
     const h = 3.15
     const t = 0.38
     const y = h / 2
@@ -253,16 +257,39 @@ export class HallWorld {
     // Cornice only — no roof slab.
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
-    // Security walls on both sides of column 3, gap at the lane (z ≈ -3).
-    const gap = 3.6
-    const gapZ = -3.2
-    for (const x of [-6, 0]) {
-      const northLen = gapZ - gap / 2 - -halfD
-      const southLen = halfD - (gapZ + gap / 2)
-      this.box(t, h, Math.max(0.4, northLen), '#c9a27a', x, y, -halfD + northLen / 2)
-      this.box(t, h, Math.max(0.4, southLen), '#c9a27a', x, y, halfD - southLen / 2)
-      // Arch over the walk-through.
-      this.box(t + 0.05, 0.35, gap, '#e8eef4', x, h - 0.2, gapZ)
+    this.buildSecureWalls(zones)
+  }
+
+  /** Wall a security cell against check-in or arrivals. Leave the gate side open. */
+  private buildSecureWalls(zones: ZoneId[][]) {
+    const rows = zones.length
+    const cols = zones[0]?.length ?? 0
+    if (!rows || !cols) return
+    const cw = HALL_W / cols
+    const rh = HALL_D / rows
+    const h = 3.15
+    const t = 0.28
+    const blocks = (a: ZoneId, b: ZoneId) => {
+      if (a === b) return false
+      const air = (z: ZoneId) => z === 'gates' || z === 'retail'
+      if ((a === 'security' && air(b)) || (b === 'security' && air(a))) return false
+      return a === 'security' || b === 'security'
+    }
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const z = zones[r][c]
+        if (!z) continue
+        if (c + 1 < cols && zones[r][c + 1] && blocks(z, zones[r][c + 1])) {
+          const x = -HALL_W / 2 + (c + 1) * cw
+          const zpos = -HALL_D / 2 + (r + 0.5) * rh
+          this.box(t, h, rh * 0.9, '#c9a27a', x, h / 2, zpos)
+        }
+        if (r + 1 < rows && zones[r + 1][c] && blocks(z, zones[r + 1][c])) {
+          const x = -HALL_W / 2 + (c + 0.5) * cw
+          const zpos = -HALL_D / 2 + (r + 1) * rh
+          this.box(cw * 0.9, h, t, '#c9a27a', x, h / 2, zpos)
+        }
+      }
     }
   }
 
@@ -284,15 +311,17 @@ export class HallWorld {
       else if (mat) mat.dispose()
     })
     this.roomGroup.clear()
-    this.buildShell()
+    const cols = zones[0]?.length || GRID_C
+    const rows = zones.length || GRID_R
+    this.buildShell(zones as ZoneId[][])
 
-    const cw = HALL_W / GRID_C
-    const rh = HALL_D / GRID_R
+    const cw = HALL_W / cols
+    const rh = HALL_D / rows
     for (let r = 0; r < zones.length; r++) {
       for (let c = 0; c < zones[r].length; c++) {
         const z = zones[r][c] as ZoneId | null
         if (!z) continue
-        const pos = cellCenter(c, r)
+        const pos = cellCenter(c, r, cols, rows)
         const tile = new THREE.Mesh(
           new THREE.BoxGeometry(cw - 0.18, 0.06, rh - 0.18),
           new THREE.MeshLambertMaterial({ color: zoneDef(z).color }),
@@ -322,7 +351,7 @@ export class HallWorld {
     }
 
     for (const it of fit?.items ?? []) {
-      const pos = cellCenter(it.c, it.r)
+      const pos = cellCenter(it.c, it.r, cols, rows)
       const worn = it.wear >= 55 ? '#8a5a4a' : (ROOM_COLOR[it.def as HallNode] ?? '#e8eef2')
       const tall = String(it.def).includes('security') ? 1.5 : 0.7
       this.box(1.4, tall, 1.1, worn, pos.x, tall / 2 + 0.05, pos.z)
@@ -377,11 +406,123 @@ export class HallWorld {
     }
   }
 
+  private clearOverlay() {
+    this.overlay.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      mesh.geometry?.dispose()
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+      else mat?.dispose()
+    })
+    this.overlay.clear()
+  }
+
+  /**
+   * Separate layer. Hidden unless Show passenger flows is on.
+   * An advisor highlight draws only the marked cells, not the flow lines.
+   */
+  syncOverlay(game: Game) {
+    const show = game.showFlows
+    const marks = game.advisorCells
+    this.clearOverlay()
+    this.overlay.visible = show || marks.length > 0
+    if (!this.overlay.visible) return
+    const fit = game.activeHall()
+    const zones = fit?.zones ?? []
+    const cols = zones[0]?.length || GRID_C
+    const rows = zones.length || GRID_R
+    if (marks.length) {
+      for (const cell of marks) {
+        const pos = cellCenter(cell.c, cell.r, cols, rows)
+        const tile = new THREE.Mesh(
+          new THREE.BoxGeometry(HALL_W / cols - 0.05, 0.12, HALL_D / rows - 0.05),
+          new THREE.MeshBasicMaterial({ color: '#f0c14a', transparent: true, opacity: 0.85 }),
+        )
+        tile.position.set(pos.x, 0.2, pos.z)
+        this.overlay.add(tile)
+      }
+    }
+    if (!show) return
+    const open = game.hallOpen()
+    const load = new Map<HallNode, number>()
+    for (const g of game.hallGuests) {
+      if (g.dead) continue
+      load.set(g.node, (load.get(g.node) ?? 0) + 1)
+      if (g.path.length > 1) {
+        for (let i = 0; i < g.path.length - 1; i++) {
+          const a = nodeWorld(g.path[i])
+          const b = nodeWorld(g.path[i + 1])
+          const mid = a.clone().add(b).multiplyScalar(0.5)
+          const len = a.distanceTo(b)
+          const line = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(0.15, len), 0.04, 0.12),
+            new THREE.MeshBasicMaterial({ color: '#8fd0ff', transparent: true, opacity: 0.45 }),
+          )
+          line.position.set(mid.x, 0.35, mid.z)
+          line.lookAt(b.x, 0.35, b.z)
+          line.rotateY(Math.PI / 2)
+          this.overlay.add(line)
+        }
+      }
+    }
+    for (const [a, b] of HALL_EDGES) {
+      if (!open.has(a) || !open.has(b)) continue
+      const pa = nodeWorld(a)
+      const pb = nodeWorld(b)
+      const mid = pa.clone().add(pb).multiplyScalar(0.5)
+      const len = pa.distanceTo(pb)
+      const flow = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(0.2, len), 0.03, 0.22),
+        new THREE.MeshBasicMaterial({ color: '#7dffb2', transparent: true, opacity: 0.28 }),
+      )
+      flow.position.set(mid.x, 0.16, mid.z)
+      flow.lookAt(pb.x, 0.16, pb.z)
+      flow.rotateY(Math.PI / 2)
+      this.overlay.add(flow)
+    }
+    const signs = fit?.signs ?? 0
+    const reach = 1.1 + signs * 0.45
+    for (const node of open) {
+      const degree = HALL_EDGES.filter(([a, b]) => a === node || b === node).length
+      if (degree < 3 && node !== 'info') continue
+      const p = nodeWorld(node)
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(reach * 0.35, reach * 0.55, 18),
+        new THREE.MeshBasicMaterial({
+          color: node === 'info' ? '#f0c14a' : '#9ad0ff',
+          transparent: true,
+          opacity: 0.55,
+          side: THREE.DoubleSide,
+        }),
+      )
+      ring.rotation.x = -Math.PI / 2
+      ring.position.set(p.x, 0.22, p.z)
+      this.overlay.add(ring)
+    }
+    for (const [node, n] of load) {
+      if (n < 2) continue
+      const p = nodeWorld(node)
+      const heat = new THREE.Mesh(
+        new THREE.CircleGeometry(0.35 + Math.min(6, n) * 0.18, 16),
+        new THREE.MeshBasicMaterial({
+          color: n > 8 ? '#e23b2f' : n > 4 ? '#e07a2f' : '#e0c14a',
+          transparent: true,
+          opacity: 0.4,
+          side: THREE.DoubleSide,
+        }),
+      )
+      heat.rotation.x = -Math.PI / 2
+      heat.position.set(p.x, 0.12, p.z)
+      this.overlay.add(heat)
+    }
+  }
+
   render(game: Game) {
     this.game = game
     this.resize()
     this.rebuildRooms(game)
     this.syncGuests(game)
+    this.syncOverlay(game)
     this.renderer.render(this.scene, this.camera)
   }
 
