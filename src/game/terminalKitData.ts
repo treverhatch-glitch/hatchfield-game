@@ -9,7 +9,7 @@ import type { PaxTag } from './guests.ts'
 
 import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
 
-export type KitCategory = 'food' | 'seating' | 'decor' | 'links'
+export type KitCategory = 'food' | 'seating' | 'decor' | 'links' | 'service'
 
 /** One hall cell holds this many slots. Desks and lanes fill the whole cell. */
 export const CELL_SLOTS = 4
@@ -210,6 +210,22 @@ export const KIT_ITEMS: ItemDef[] = [
     category: 'links',
     size: 4,
     perk: 'Faster walk along the belt',
+  },
+  {
+    id: 'trash_can',
+    name: 'Trash can',
+    blurb: 'Catches wrappers and cups within ~12 m. Fills up — janitors empty it.',
+    zones: ANY_PUBLIC,
+    servers: 0,
+    queueCap: 0,
+    serviceSec: 0,
+    cost: 150,
+    upkeep: 1,
+    staff: 0,
+    minFieldLevel: 1,
+    wearPerUse: 0,
+    category: 'service',
+    size: 1,
   },
 ]
 

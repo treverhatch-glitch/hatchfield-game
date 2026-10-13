@@ -37,6 +37,7 @@ export type ItemId =
   | 'info_kiosk'
   | 'fountain'
   | 'walkway'
+  | 'trash_can'
 
 export const GRID_C = 8
 export const GRID_R = 5
@@ -579,6 +580,8 @@ export interface PlacedItem {
   rot?: number
   /** Food sales taken at this outlet. */
   revenue?: number
+  /** Trash can: pieces inside. Full at LITTER_TUNING.binCap. */
+  fill?: number
 }
 
 export interface Ceilings {

@@ -26,6 +26,10 @@ const RUN_DAYS = LONG ? Math.max(DAYS, 12) : DAYS
 const OUT = arg('out', `/workspace/qa/${LABEL}-${SCENARIO}`)
 const FPS_FLOOR = Number(arg('fps-floor', process.env.FPS_FLOOR ?? 12))
 const VIDEO = arg('video', '1') !== '0'
+// --profile: per-subsystem ms/frame (src/core/perf.ts) at every FPS probe, written to result.json.
+const PROFILE = process.argv.includes('--profile')
+// Sim methods timed as their own spans in --profile runs (wrapped from outside; sim.ts is untouched).
+const PROFILE_SIM = ['tickGround', 'tickHall', 'tickLuggage', 'tickSchedule', 'persist', 'tickCargo', 'tickCatering', 'tickPatrols', 'tickJanitors', 'considerOffers', 'servicePoses', 'cateringPoses', 'emit']
 mkdirSync(OUT, { recursive: true })
 
 // Movement-weighted mix. Kind weights drive the game's own airframe picker;
@@ -55,7 +59,7 @@ const MIXES = {
   },
 }
 const MIX = MIXES[SCENARIO]
-const NAMES = { a380: 'Airbus A380-800', an124: 'Antonov An-124', b748f: 'Boeing 747-8F', b763f: 'Boeing 767-300F', b752f: 'Boeing 757-200F', b789: 'Boeing 787-9', a359: 'Airbus A350-900', a320neo: 'Airbus A320neo', b738: 'Boeing 737-800', a321: 'Airbus A321', e175: 'Embraer E175', crj700: 'Bombardier CRJ700', atr72: 'ATR 72-600' }
+const NAMES = { a380: 'Airbus A380-800', an124: 'Antonov An-124', b748f: 'Boeing 747-8F', b763f: 'Boeing 767-300F', b752f: 'Boeing 757-200F', b789: 'Boeing 787-9', b77w: 'Boeing 777-300ER', a359: 'Airbus A350-900', a320neo: 'Airbus A320neo', b738: 'Boeing 737-800', a321: 'Airbus A321', e175: 'Embraer E175', crj700: 'Bombardier CRJ700', atr72: 'ATR 72-600' }
 
 const consoleErrors = []
 const findings = []
@@ -148,7 +152,14 @@ try {
     g.sandbox = false
     g.cash += 3_000_000
     g.reputation = 70
+    g.fieldXp = 700
+    g.researchPoints = 4000
     for (let c = 4; c < 24; c++) g.tiles[6][c] = 'runway'
+    // Connected starter strip has to be long enough for a 787 and an A380.
+    for (let c = 8; c < 28; c++) {
+      g.tiles[26][c] = 'runway'
+      g.tiles[27][c] = 'runway'
+    }
     for (let c = 4; c < 18; c++) g.tiles[7][c] = 'taxi'
     for (let r = 7; r <= 22; r++) g.tiles[r][8] = 'taxi'
     const t2 = { c: 22, r: 14 }
@@ -178,14 +189,67 @@ try {
     g.tiles[19][9] = 'police'
     g.tiles[18][12] = 'helipad'
     g.tiles[18][14] = 'fire' // fire station gates helicopters + air ambulance
-    g.researchPoints = 1000
-    for (const id of ['night_bank', 'deice', 'stand_class', 'heavy_pack', 'mil_ramp']) {
+    g.researchPoints = 4000
+    const research = [
+      'night_bank', 'deice', 'stand_class', 'widebody_ops', 'heavy_pack', 'mil_ramp',
+      'hydrant_fuel', 'rail_fuel', 'tank_farm_ii', 'tank_farm_iii',
+      'bag_sorter', 'bag_bhs', 'self_service', 'ct_lanes', 'egates',
+      'travelator', 'skywalk', 'people_mover',
+    ]
+    for (const id of research) {
       try {
         if (!g.hasResearch(id)) g.buyResearch(id)
       } catch (e) {
         out.notes.push(`research ${id}: ${e.message}`)
       }
     }
+    // Jumbo pillar on grass, clear of the belt, the curb, and the taxi lead-ins.
+    g.standClass['20,21'] = 'L'
+    g.standScale['20,21'] = 'jumbo'
+    g.standAccess['20,21'] = 'jetway'
+    // Grass pocket between the two lead-ins, touching the starter hall.
+    g.tiles[24][19] = 'stand'
+    g.standClass['19,24'] = 'L'
+    g.standScale['19,24'] = 'jumbo'
+    g.standAccess['19,24'] = 'jetway'
+    const paint = (tile, cells) => {
+      for (const [c, r] of cells) g.tiles[r][c] = tile
+    }
+    paint('travelator', [[17, 22], [18, 22], [18, 23], [19, 23]])
+    paint('skywalk', [[16, 22], [16, 23], [16, 24], [17, 24], [18, 24]])
+    paint('mover', [[15, 22], [15, 23], [15, 24], [15, 25], [16, 25], [17, 25], [18, 25], [19, 25]])
+    g.hangarScale['10,20'] = 'jumbo'
+    g.tiles[21][8] = 'fuel'
+    g.tiles[21][7] = 'oil'
+    for (let r = 22; r < 32; r++) g.tiles[r][7] = 'fuel_rail'
+    g.bagSystem = 'bhs'
+    g.paxDesks = 4
+    g.paxKiosks = 4
+    g.paxBagDrops = 2
+    g.scannerLanes = 2
+    g.eGates = 2
+    g.tankTier = 3
+    g.contractId = 'mega_jumbo'
+    g.fuelSupply = 'rail'
+    g.scaleFleet = {
+      heavy_fuel_truck: 1,
+      uld_loader: 1,
+      heavy_baggage_tug: 3,
+      hydrant_dispenser: 1,
+      heavy_tug: 1,
+      highlift_catering: 1,
+      main_deck_loader: 1,
+    }
+    g.bumpMap()
+    const report = (id) => {
+      const r = g.scaleReport(id)
+      return { ok: r.ok, hints: r.hints.map((h) => h.id) }
+    }
+    out.b789 = report('b789')
+    out.a380 = report('a380')
+    out.tankTier = g.tankTier
+    out.fuelTiles = g.tiles.flat().filter((t) => t === 'fuel').length
+    out.railTiles = g.tiles.flat().filter((t) => t === 'fuel_rail').length
     try {
       g.signMilitaryAgreement()
     } catch (e) {
@@ -234,6 +298,8 @@ try {
   if (!setup.heavy) find('high', 'Heavy runway not recognised', JSON.stringify(setup), steps.slice())
   if (!setup.research.includes('heavy_pack'))
     find('medium', 'heavy_pack research could not be bought in setup', JSON.stringify(setup), steps.slice())
+  if (setup && setup.a380 && setup.a380.ok === false)
+    find('high', 'Jumbo pillar was not ready', JSON.stringify(setup.a380), steps.slice())
   // Pull the camera back so the apron, stands and both terminals are in frame.
   await page.mouse.move(640, 330)
   for (let i = 0; i < 7; i++) {
@@ -242,6 +308,75 @@ try {
   }
   await page.waitForTimeout(500)
   await shot('setup')
+
+  if (PROFILE) {
+    await page.evaluate((names) => {
+      const g = window.__hatch
+      const p = window.__perf
+      if (!p) return
+      for (const name of names) {
+        const fn = g[name]
+        if (typeof fn !== 'function') continue
+        g[name] = function (...a) {
+          if (!p.enabled) return fn.apply(this, a)
+          const t0 = performance.now()
+          try {
+            return fn.apply(this, a)
+          } finally {
+            const d = performance.now() - t0
+            const b = p.buckets.get(`sim.${name}`) ?? { ms: 0, n: 0, max: 0 }
+            b.ms += d
+            b.n++
+            b.max = Math.max(b.max, d)
+            p.buckets.set(`sim.${name}`, b)
+          }
+        }
+      }
+    }, PROFILE_SIM)
+  }
+  const profiles = []
+  // JS spans with the GPU free-running, then a second window that blocks on gl.finish()
+  // so `world.gl` shows what the GPU process (SwiftShader) spends per frame.
+  const profileWindow = async (ms) => {
+    const one = async (sync) => {
+      await page.evaluate((s) => {
+        window.__perf.syncGpu = s
+        window.__perf.enabled = true
+        window.__perf.reset()
+      }, sync)
+      await page.waitForTimeout(ms)
+      return page.evaluate(() => {
+        const r = window.__perf.report()
+        window.__perf.enabled = false
+        window.__perf.syncGpu = false
+        return r
+      })
+    }
+    // Chrome CPU profile over the same span: self time by function catches work outside
+    // the rAF spans (React commits, GC, layout).
+    const cdp = await context.newCDPSession(page)
+    await cdp.send('Profiler.enable')
+    await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
+    await cdp.send('Profiler.start')
+    const js = await one(false)
+    const { profile } = await cdp.send('Profiler.stop')
+    await cdp.detach().catch(() => {})
+    const self = new Map()
+    const byId = new Map(profile.nodes.map((n) => [n.id, n]))
+    let total = 0
+    profile.samples.forEach((id, i) => {
+      const dt = (profile.timeDeltas[i] ?? 0) / 1000
+      total += dt
+      const cf = byId.get(id).callFrame
+      const key = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop().split('?')[0]}:${cf.lineNumber + 1}`
+      self.set(key, (self.get(key) ?? 0) + dt)
+    })
+    const cpu = [...self]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([k, ms]) => ({ fn: k, msPerFrame: Math.round((ms / Math.max(1, js.frames)) * 100) / 100, pct: Math.round((ms / total) * 1000) / 10 }))
+    return { js, gpu: await one(true), cpu }
+  }
 
   const CHUNK = 30
     const total = RUN_DAYS * 180
@@ -354,7 +489,7 @@ try {
         const checkin = g.hallGuests.filter((x) => !x.dead && x.job === 'depart' && x.node === 'checkin').length
         res.state = {
           clock: g.clock, day: Math.floor(g.clock / 180) + 1, cash: g.cash, cashFinite: Number.isFinite(g.cash),
-          lostPax: g.lostPaxCount(), missed: g.missedFlights, flights: g.flights.length, phases,
+          lostPax: g.lostPaxCount(), bagsLost: g.bagsLost ?? 0, missed: g.missedFlights, flights: g.flights.length, phases,
           trucks: g.trucks.length, guests: g.hallGuests.length, signed: g.signed.length,
           done: g.flightsDone, overloaded: Boolean(g.hallOverloaded),
           security: sec.length,
@@ -379,6 +514,11 @@ try {
       const f = await fps(1000)
       fpsMin = Math.min(fpsMin, f)
       s.state.fps = f
+      if (PROFILE) {
+        const prof = await profileWindow(3000)
+        profiles.push({ day: s.state.day, flights: s.state.flights, guests: s.state.guests, trucks: s.state.trucks, fps: f, ...prof })
+        step(`profile day ${s.state.day}: fps=${f} frame=${Math.round(prof.js.wallMs / prof.js.frames)}ms ` + prof.gpu.rows.slice(0, 6).map((r) => `${r.label}=${r.msPerFrame}`).join(' ') + '\n  cpu: ' + prof.cpu.slice(0, 12).map((r) => `${r.fn}=${r.msPerFrame}ms(${r.pct}%)`).join('\n       '))
+      }
     }
     if (!a380Shot && s.state.a380.some((p) => ['taxi_in', 'deboard', 'servicing', 'board'].includes(p))) {
       a380Shot = true
@@ -403,6 +543,7 @@ try {
   await page.waitForTimeout(500)
   await shot('apron-end')
   setup.fpsMin = fpsMin
+  if (PROFILE) setup.profiles = profiles
 } catch (err) {
   find('critical', 'Bot run crashed', err?.stack ?? String(err), steps.slice())
   await page.screenshot({ path: join(OUT, '99-crash.png') }).catch(() => {})
@@ -432,6 +573,8 @@ const nanAt = samples.find((s) => !s.state.cashFinite || s.state.nanFields.lengt
 if (nanAt) find('critical', 'Non-finite money/stat', `${JSON.stringify(nanAt.state.nanFields)} cash=${nanAt.state.cash} at clock ${Math.round(nanAt.state.clock)}`, repro(`Run to day ${nanAt.state.day}`))
 const maxLost = Math.max(0, ...samples.map((s) => s.state.lostPax))
 if (maxLost > 0) find('high', 'Lost passengers in prefab terminals', `peak lostPaxCount=${maxLost}; missedFlights=${last?.missed}`, repro('Check lostPaxCount() each poll'))
+const maxBagsLost = Math.max(0, ...samples.map((s) => s.state.bagsLost ?? 0))
+if (maxBagsLost > 0) find('high', 'Lost bags', `peak bagsLost=${maxBagsLost}`, repro('Check bagsLost each poll'))
 if ((last?.missed ?? 0) > 0) find(last.missed > 10 ? 'medium' : 'low', 'Missed flights (passengers)', `missedFlights=${last.missed} (hallOverloaded=${last.overloaded})`, repro('Only expected when a prefab is overloaded'))
 const gone = samples.flatMap((s) => s.gone)
 const byClass = {}
@@ -495,7 +638,7 @@ for (const t of samples.flatMap((s) => s.stuckTrucks)) (groupedT[`${t.kind}/${t.
 for (const [k, list] of Object.entries(groupedT)) find('high', `Stuck service vehicle: ${k}`, `${list.length}× motionless >240 game-s; e.g. ${JSON.stringify(list[0])}`, repro('Track truck x/y per poll'))
 if (setup && Number.isFinite(setup.fpsMin) && setup.fpsMin < FPS_FLOOR) find('medium', `FPS below floor (${FPS_FLOOR})`, `min ${setup.fpsMin} fps (headless SwiftShader CPU renderer, 1280×800)`, repro('Measure rAF rate at 5x'))
 const seen = new Set(samples.flatMap((s) => s.newFlights.map((f) => f.af)))
-const ALL = ['crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'a359', 'atr72', 'b752f', 'b763f', 'b748f', 'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5']
+const ALL = ['crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f', 'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5']
 const never = ALL.filter((a) => !seen.has(a))
 if (!seen.has('a380')) find('medium', 'A380 never arrived', 'Mix asked for A380s but none spawned', repro('Heavy runway + heavy_pack + widebody slots'), 'heavy')
 const sevRank = { critical: 0, high: 1, medium: 2, low: 3 }

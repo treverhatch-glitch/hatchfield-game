@@ -7,6 +7,8 @@
 import * as THREE from 'three'
 import { cellCenter, HALL_D, HALL_W, itemDef, type PlacedItem } from '../game/terminal'
 import { itemSize } from '../game/terminalKit'
+import { binFull } from '../game/litter'
+import { TRASH_CAN } from '../game/litterData'
 
 type Prim = 'box' | 'cyl' | 'cone' | 'ico'
 
@@ -83,6 +85,21 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('cyl', [0.3, 1.4, 0.3], [0, 0.9, 0], '#b8b4aa'),
     p('cone', [0.9, 0.6, 0.9], [0, 1.75, 0], '#8ad0f0'),
   ],
+  trash_can: [
+    p('cyl', [0.5, 0.9, 0.5], [0, 0.45, 0], '#4a5a64'),
+    p('cyl', [0.54, 0.06, 0.54], [0, 0.93, 0], '#2a2e32'),
+  ],
+  /** Full can: overflowing lid and a red band, readable from the camera. */
+  trash_can_full: [
+    p('cyl', [0.5, 0.9, 0.5], [0, 0.45, 0], '#4a5a64'),
+    p('cyl', [0.52, 0.12, 0.52], [0, 0.7, 0], '#d4402c'),
+    p('ico', [0.5, 0.3, 0.5], [0, 1.02, 0], '#e6dcc2'),
+  ],
+}
+
+/** Mesh variant for an item — a full trash can swaps to its overflowing look. */
+export function kitMeshKey(item: PlacedItem): string {
+  return item.def === TRASH_CAN && binFull(item) ? 'trash_can_full' : item.def
 }
 
 const GEOS: Record<Prim, THREE.BufferGeometry> = {
@@ -169,7 +186,7 @@ function partMatrix(part: Part, x: number, z: number, rot: number, out: THREE.Ma
 export function buildKitInstances(placed: readonly KitPlacement[]): THREE.Group {
   const batches = new Map<string, { prim: Prim; color: string; mats: THREE.Matrix4[] }>()
   for (const { item, x, z } of placed) {
-    const parts = KIT_MESH[item.def]
+    const parts = KIT_MESH[kitMeshKey(item)]
     if (!parts) continue
     for (const part of parts) {
       const key = `${part.prim}|${part.color}`

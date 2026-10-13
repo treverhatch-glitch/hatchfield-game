@@ -1,3 +1,5 @@
+import type { InboundState } from '../inbound/types.ts'
+
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
 
@@ -37,10 +39,16 @@ export type Tile =
   | 'xferbus'
   /** Covered bridge between terminal halls. */
   | 'skywalk'
+  /** Moving walkway on the apron. Passengers on it move faster. */
+  | 'travelator'
   /** Catering production for the ground fleet. */
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
   | 'depot'
+  /** Fuel-supply rail. Delivery starts only when this reaches the map edge. */
+  | 'fuel_rail'
+  /** Unloads a fuel train into the tank farm. */
+  | 'oil'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -101,10 +109,18 @@ export type Tool =
   | 'term_bus'
   | 'people_mover'
   | 'xfer_bus'
-  | 'skywalk'
+  | 'hub_skywalk'
   | 'rail'
   | 'kitchen'
   | 'depot'
+  | 'stand_w'
+  | 'hangar_w'
+  | 'hangar_j'
+  | 'fuel_rail'
+  | 'oil'
+  | 'travelator'
+  | 'skywalk'
+  | 'mover'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -260,10 +276,23 @@ export type ResearchId =
   | 'night_bank'
   | 'deice'
   | 'stand_class'
+  | 'widebody_ops'
   | 'heavy_pack'
   | 'mil_ramp'
   | 'transfer_centre'
   | 'rfid_bag_line'
+  | 'hydrant_fuel'
+  | 'rail_fuel'
+  | 'tank_farm_ii'
+  | 'tank_farm_iii'
+  | 'bag_sorter'
+  | 'bag_bhs'
+  | 'self_service'
+  | 'ct_lanes'
+  | 'egates'
+  | 'travelator'
+  | 'skywalk'
+  | 'people_mover'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -340,6 +369,8 @@ export interface BuildDef {
   blurb: string
   /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
   minFieldLevel?: number
+  /** Project that must be bought before the stamp is offered. */
+  research?: ResearchId
 }
 
 export interface RoomDef {
@@ -565,6 +596,10 @@ export interface Flight {
   bagsOffloaded?: number
   /** Inbound units that did not fit the claim hall. */
   claimLeft?: number
+  /** Inbound visit that owns this arrival. The stand stays occupied until release. */
+  inboundVisitId?: string
+  /** Sim clock when this inbound visit frees the stand. */
+  inboundReleaseAt?: number
 }
 
 /** Timed bag journey — aggregate units, not per-suitcase agents. */
@@ -773,7 +808,12 @@ export interface TerminalFit {
     bundle?: boolean
     rot?: number
     revenue?: number
+    fill?: number
   }[]
+  /** Rubbish on the floor, one decal per piece. */
+  litter?: { id: string; c: number; r: number; ox: number; oz: number }[]
+  /** 0–100. Rises with restroom visits; janitors service it down. */
+  restroomDirt?: number
   /** Wayfinding signs. Each one extends the pathfinding junction cap. */
   signs?: number
   bagAllowance?: number
@@ -858,6 +898,23 @@ export interface GameSnapshot {
   strandedGates?: string[]
   /** Plain-language reason the link is stopped. */
   linkExplanation?: string
+  /** Hub-priced link stamps, keyed by cell. Pier links are not in this map. */
+  hubLinksBuilt?: Record<string, 'people_mover' | 'xferbus' | 'skywalk'>
+  /** Size-pillar purchases: fuel contract, tank, fleet, bags, and passenger kit. */
+  pillar?: {
+    contractId: string | null
+    tankTier: 1 | 2 | 3
+    litres: number
+    supply: 'road' | 'rail'
+    roadMinutes: number
+    fleet: Record<string, number>
+    bagSystem: 'carts' | 'sorter' | 'bhs'
+    desks: number
+    kiosks: number
+    bagDrops: number
+    scannerLanes: number
+    eGates: number
+  }
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
@@ -871,6 +928,10 @@ export interface GameSnapshot {
   standClass?: Record<string, StandClass>
   /** Stand tile key "c,r" → remote hardstand vs jetway gate. */
   standAccess?: Record<string, StandAccess>
+  /** Stand key → small / wide / jumbo. Missing L stands stay jumbo for older saves. */
+  standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
+  /** Hangar key → bay size. Missing hangars stay small. */
+  hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   janitors?: number
   researchers?: number
   deskStaff?: number
@@ -890,6 +951,8 @@ export interface GameSnapshot {
   diplomacySeed?: number
   /** Negotiation desk (offers, rival, ULCC research). */
   negotiation?: string
+  /** Inbound offers, visits, and Guard contracts. */
+  inbound?: InboundState
 }
 
 /** A placed building that is still a construction site. */
@@ -910,6 +973,8 @@ export interface BuildSite {
   tool?: string
   standClass?: StandClass
   standAccess?: StandAccess
+  standScale?: 'small' | 'wide' | 'jumbo'
+  hangarScale?: 'small' | 'wide' | 'jumbo'
   hotelClass?: HotelClass
   parkTerm?: ParkTerm
   runwayClass?: RunwayClass

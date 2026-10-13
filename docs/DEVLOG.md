@@ -744,4 +744,24 @@ PR #45 is on this branch and closes #26. A covered payroll bill, including a rem
 
 **Tests.** `tsc -b` clean. Vitest 771 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-CYIt_ytm.js`, 1,636.42 kB, with `index-eP-pqaTd.css`.
 
+## Litter, trash cans, and janitors — 13 Oct
+
+PR #58 (issue #41) is on this branch, including the follow-up that drops rubbish where the food is finished. A meal or coffee stays in the passenger's hand and lands in a trash can within range of that spot, or on the floor there if the can is full or missing. Boarding or leaving early drops it at the last hall spot. The kit bar has a Service tab with a $150 trash can. Hired janitors sweep litter, empty cans, and service restrooms when the cleaning budget is funded. The hall-route check that an uncleared departure stays landside of security now measures movement in the plane, so a north-south step no longer fails the assertion.
+
+**Tests.** `tsc -b` clean. Vitest 784 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-0Py0oJVZ.js`, 1,646.13 kB, with `index-eP-pqaTd.css`.
+
+## Scale pillars — 13 Oct
+
+PR #48 is on this branch. Aircraft, trucks, fuel, stands, hangars, bags, and passenger processing share small, widebody, and jumbo tiers. A widebody slot waits when the field cannot turn it. Rail fuel moves only when the line reaches the map edge and an oil transfer station sits on that line. Scale advice sits on the same list as the litter notes and the Standing cards. `src/diplomacy` is unchanged.
+
+**Tests.** `tsc -b` clean. Vitest 801 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-BzLWkglV.js`, 1,686.21 kB, with `index-eP-pqaTd.css`.
+
+## Inbound requests — 13 Oct
+
+PR #42 is on this branch. The clock can open one accept-or-refuse card at a time: weather divert, medical, fuel-low, technical, VIP, medevac, firefighting tanker, tanker plus line maintenance, a one-shot military arrival, and general traffic (GA, bizjet, charter, ferry, storage). Ignoring the card for 60 seconds counts as a refuse. An accepted arrival takes a real stand, the inbound ledger posts the landing fee once, and the aircraft stays until the visit's departure day. A refused priority ask posts the catalog fine. General traffic posts none. Storage and hotel income use the same ledger. Signing the existing Guard agreement does not charge the host fee again; the next tick lists a contract at the top of the Airlines panel, with sign, early cancel, and the security-clearance licence. Diplomacy internals are unchanged. Negotiation, payroll settlement, litter, hall scope, and scale advice stay.
+
+A fresh passenger game with the sandbox off refused a charter and the cash stayed at $7,000. Accepting a firefighting tanker posted $6,800 and put TANK101 on approach. The card is 280px wide and the apron beside it still receives clicks. The Airlines contracts list signed a training detachment, and buying the clearance licence moved cash by $12,000 to "clearance held". A free refuse used to leave the card on screen because cash and the news tape did not change; the HUD snapshot now includes the open request.
+
+**Tests.** `tsc -b` clean. Vitest 825 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-C_kqyg27.js`, 1,718.64 kB, with `index-BkTnL8_N.css`.
+
 
