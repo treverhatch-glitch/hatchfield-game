@@ -83,7 +83,8 @@ import {
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
   MIN_RUNWAY,
-  PARCEL_COST,
+  LAND_PLOT,
+  TILE_UTILITY,
   JETWAY_RANGE,
   MIL_RAMP_RANGE,
   PREMADE_TERMINAL_COST,
@@ -226,6 +227,15 @@ import {
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
+import {
+  commitPlot,
+  dailySinks,
+  nextPlotOffer,
+  restoreOwned,
+  starterHolding,
+  type OwnedPlot,
+  type PlotOffer,
+} from '../land/index.ts'
 import {
   budgetLineCost,
   cityLevy,
@@ -552,6 +562,10 @@ export class Game {
   /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
   fieldXp = 0
   parcels = 1
+  /** Owned expansion plots. Empty until the city or factory site is bought. */
+  ownedPlots: OwnedPlot[] = []
+  /** Optional outsourced pavement crew. Daily fee, faster repair. */
+  maintenanceContract = false
   railLinked = false
   hotelLevel = 0
   carParkShort = false
@@ -829,6 +843,8 @@ export class Game {
     this.loanOpened = 0
     this.fieldXp = 0
     this.parcels = 1
+    this.ownedPlots = []
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -2051,7 +2067,9 @@ export class Game {
     this.tiles = emptyTiles()
     this.seedAccessStub()
     this.speed = 1
+    this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -2249,35 +2267,130 @@ export class Game {
     this.emit()
   }
 
-  buyParcel() {
-    if (!this.site) return
-    if (this.parcels >= 4) {
-      this.pushNews('No more parcels on this map sketch.', 'bad')
-      return
+  /** Next expansion the parcel button would buy. Null when the grid is full or land is unsold. */
+  nextParcelOffer(): PlotOffer | null {
+    if (!this.site || !this.ownedPlots.length) return null
+    return nextPlotOffer(this.ownedPlots, this.fieldLevel(), LAND_PLOT)
+  }
+
+  /**
+   * Buys the cheapest adjacent plot that field level allows.
+   * Returns false when the buy does not happen.
+   */
+  buyParcel(): boolean {
+    const offer = this.nextParcelOffer()
+    if (!offer) {
+      this.pushNews(this.site ? 'No more parcels on this map.' : 'Buy land first.', 'bad')
+      this.emit()
+      return false
     }
-    // CS-style: more land needs field level (parcel 2 → Lv2, etc.).
-    const needLv = Math.min(5, this.parcels) as AirlineTier
-    if (this.fieldLevel() < needLv) {
-      this.pushNews(
-        `Parcel ${this.parcels + 1} locked — reach Field Level ${needLv} first.`,
-        'bad',
-      )
+    if (offer.locked) {
+      this.pushNews(offer.reason, 'bad')
+      this.emit()
+      return false
+    }
+    return this.buyPlot(offer.id)
+  }
+
+  buyPlot(id: string): boolean {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
+      this.emit()
+      return false
+    }
+    const quote = commitPlot(this.ownedPlots, id, this.fieldLevel(), LAND_PLOT)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(quote.price, quote.name)) return false
+    this.ownedPlots = quote.owned
+    this.parcels = this.ownedPlots.length
+    this.grantFieldXp(10, 'parcel')
+    this.reputation = Math.min(100, this.reputation + 2)
+    this.pushNews(`${quote.name} bought. Room to grow the apron.`, 'good')
+    this.emit()
+    return true
+  }
+
+  toggleMaintenanceContract() {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
       this.emit()
       return
     }
-    if (!this.spend(PARCEL_COST * this.parcels, 'land parcel')) return
-    this.parcels += 1
-    this.grantFieldXp(10, 'parcel')
-    // Paint a strip of buildable grass marker as road fringe on the east
-    const edge = 6 + this.parcels * 4
-    for (let r = 4; r < SIZE - 4; r++) {
-      if (edge < SIZE && this.tiles[r][edge] === 'grass') {
-        /* parcel unlock is soft — more cash runway later; for now reputation + news */
+    this.maintenanceContract = !this.maintenanceContract
+    this.pushNews(
+      this.maintenanceContract
+        ? `Maintenance contract signed — ${moneyLeft(LAND_PLOT.maintenanceContract)} a day, pavement repairs faster.`
+        : 'Maintenance contract cancelled.',
+      this.maintenanceContract ? 'ok' : 'bad',
+    )
+    this.emit()
+  }
+
+  /** Land tax, insurance, utilities, and licences due at the next day close. Sandbox is zero. */
+  dailyHoldingQuote(): number {
+    return this.landSinkReport().chargedTotal
+  }
+
+  private landSinkReport() {
+    const loads = this.utilityLoads()
+    const product =
+      this.loanProduct(this.loanProductId) ??
+      (this.loanBalance > 0 ? LOAN_PRODUCTS.find((row) => row.id === 'bridge') : undefined)
+    return dailySinks(
+      {
+        plots: this.site ? this.ownedPlots : [],
+        assetValue: this.builtAssetValue(),
+        incidents: this.securityIncidents,
+        fieldLevel: this.fieldLevel(),
+        operational: this.fieldIsOperating(),
+        powerLoad: loads.power,
+        waterLoad: loads.water,
+        fireStations: tilesOf(this.tiles, 'fire').length,
+        intl: this.hasHeavyRunway() || this.fieldLevel() >= 4,
+        maintenanceContract: this.maintenanceContract,
+        loanBalance: this.loanBalance,
+        loanRate: product?.rate ?? 0,
+        loanFloor: product?.interestFloor ?? 0,
+        loanEverySeconds: product?.every ?? 0,
+        sandbox: this.sandbox,
+      },
+      LAND_PLOT,
+    )
+  }
+
+  private fieldIsOperating(): boolean {
+    return Boolean(this.site) && (this.runwayStripCount() > 0 || this.signed.length > 0 || this.fits.length > 0)
+  }
+
+  private utilityLoads(): { power: number; water: number } {
+    let power = 0
+    let water = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        const load = TILE_UTILITY[tile]
+        if (!load) continue
+        power += load.power ?? 0
+        water += load.water ?? 0
       }
     }
-    this.reputation = Math.min(100, this.reputation + 2)
-    this.pushNews(`Parcel ${this.parcels} bought. Room to grow the apron.`, 'good')
-    this.emit()
+    return { power, water }
+  }
+
+  /** Replacement cost of stamped tiles, used as the insurance asset base. */
+  private builtAssetValue(): number {
+    let total = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile === 'grass') continue
+        const building = BUILDINGS.find((item) => item.tile === tile)
+        if (building) total += building.cost
+      }
+    }
+    return total
   }
 
   investRail() {
@@ -3074,6 +3187,8 @@ export class Game {
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
       parcels: this.parcels,
+      ownedPlots: this.ownedPlots,
+      maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
       carParkShort: this.carParkShort,
@@ -3186,6 +3301,9 @@ export class Game {
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
+      this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
+      if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
+      this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
       this.carParkShort = s.carParkShort ?? false
@@ -8454,16 +8572,23 @@ export class Game {
     const fees = this.landsideIncome()
     const upkeep = this.landsideUpkeep() * 6
     if (upkeep > 0) this.charge(upkeep)
+    const holding = this.site ? this.dailyHoldingQuote() : 0
+    if (holding > 0) {
+      this.charge(holding)
+      this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
     this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
     this.landsideFeeWindow = 0
     const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (bill <= 0) {
-      if (upkeep > 0 || fees > 0) {
+      if (upkeep > 0 || fees > 0 || holding > 0) {
         this.pushNews(
-          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%).`,
-          netLand >= 0 ? 'ok' : 'bad',
+          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%)${
+            holding ? ` · land holding ${moneyLeft(holding)}` : ''
+          }.`,
+          netLand >= 0 && holding === 0 ? 'ok' : 'bad',
         )
       }
       return
@@ -8484,7 +8609,9 @@ export class Game {
           fees || upkeep
             ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (fees − expense)`
             : ''
-        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (day's income × staff floor).`,
+        }${holding ? ` · land holding ${moneyLeft(holding)}` : ''}${
+          levy ? ` · city levy ${moneyLeft(levy)}` : ''
+        } (day's income × staff floor).`,
         netLand < 0 && upkeep > 0 ? 'bad' : 'ok',
       )
       return
@@ -8556,8 +8683,15 @@ export class Game {
 
     // Funded mechanics repair.
     if (staff > 0 && mx > 0.05) {
-      const repair = dt * (0.55 + staff * 0.45) * mx * (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1)
+      const repair =
+        dt *
+        (0.55 + staff * 0.45) *
+        mx *
+        (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1) *
+        (this.maintenanceContract ? LAND_PLOT.contractRepair : 1)
       this.runwayCondition = clamp(this.runwayCondition + repair, 0, 100)
+    } else if (this.maintenanceContract && this.site) {
+      this.runwayCondition = clamp(this.runwayCondition + dt * LAND_PLOT.contractRepairRate, 0, 100)
     } else if (mx < 0.2 && Math.random() < dt * 0.04) {
       this.pushNews('Pavement soft — rubber and cracks. Hire mechanics or fund maintenance.', 'bad')
     }
