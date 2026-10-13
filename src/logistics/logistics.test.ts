@@ -21,9 +21,10 @@ function runUntilDone(sim: LogisticsSim, id: string, step = 1, max = 2000): void
 }
 
 describe('turnaround needs', () => {
-  it('covers all 25 airframes', () => {
-    expect(Object.keys(AIRFRAMES)).toHaveLength(25)
-    expect(allNeeds()).toHaveLength(25)
+  it('covers all airframes', () => {
+    const total = Object.keys(AIRFRAMES).length
+    expect(Object.keys(AIRFRAMES)).toHaveLength(total)
+    expect(allNeeds()).toHaveLength(total)
     for (const id of Object.keys(AIRFRAMES)) expect(needsFor(id).airframeId).toBe(id)
   })
 
