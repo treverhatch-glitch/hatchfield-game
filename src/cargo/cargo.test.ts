@@ -8,6 +8,7 @@ import {
   starterCargoTerminal,
   type CargoFlowLinkDef,
   type CargoFlowNodeDef,
+  type CargoEvent,
 } from './index.ts'
 
 describe('cargo units and airframes', () => {
@@ -168,15 +169,22 @@ describe('CargoSim', () => {
 
   it('adapts money, logistics payloads and flow registration without importing their modules', () => {
     const addMoney = vi.fn()
+    const postMoney = vi.fn()
     const addHandlerMoney = vi.fn()
-    const adapter = createCargoAdapter({ addMoney, addHandlerMoney })
+    const adapter = createCargoAdapter({ addMoney, postMoney, addHandlerMoney })
     adapter.acceptContract({ id: 'adapter-1', kind: 'general', tonnes: 5, deadline: 500 })
     adapter.tick(160)
     const load = adapter.prepareFlight('flight-1', 'b789', { capacityTonnes: 5 })
     expect(load.tonnes).toBeCloseTo(5)
     adapter.flightDeparted('flight-1')
-    expect(addMoney).toHaveBeenCalledWith(4_322.5, 'cargo_airport_revenue', 'adapter-1')
-    expect(addHandlerMoney).toHaveBeenCalledWith(8_027.5, 'adapter-1')
+    expect(postMoney).toHaveBeenCalledWith({
+      time: 160,
+      amount: 1_235,
+      category: 'cargo_airport_revenue',
+      referenceId: 'adapter-1',
+    })
+    expect(addMoney).not.toHaveBeenCalled()
+    expect(addHandlerMoney).toHaveBeenCalledWith(11_115, 'adapter-1')
 
     const nodes: CargoFlowNodeDef[] = []
     const links: CargoFlowLinkDef[] = []
@@ -365,5 +373,34 @@ describe('CargoSim', () => {
         supportedUnits: ['ake'],
       }),
     ).toThrow(/finite/)
+  })
+
+  it('timestamps every emitted event in sim minutes', () => {
+    const sim = new CargoSim(starterCargoTerminal())
+    const events: CargoEvent[] = []
+    sim.on((event) => events.push(event))
+    sim.acceptContract({ id: 'timed', kind: 'general', tonnes: 2, deadline: 200 })
+    sim.tick(80)
+
+    expect(events.length).toBeGreaterThan(0)
+    expect(events.every((event) => Number.isFinite(event.time))).toBe(true)
+    expect(events.every((event, index) => index === 0 || event.time >= events[index - 1].time)).toBe(true)
+    expect(events.some((event) => event.type === 'flow' && event.time > 0)).toBe(true)
+  })
+
+  it('migrates legacy shed stock directly to the ready rack without duplicate trucks', () => {
+    const adapter = createCargoAdapter()
+    adapter.seedLegacyReadyCargo({
+      id: 'legacy-shed-stock',
+      kind: 'general',
+      tonnes: 42,
+      deadline: 10_000,
+      revenuePerTonne: 0,
+      penaltyPerTonne: 0,
+    })
+    const snapshot = adapter.snapshot()
+    expect(snapshot.facilities.find((facility) => facility.id === 'ready')?.queuedTonnes).toBe(42)
+    expect(snapshot.trucks).toHaveLength(0)
+    expect(snapshot.pendingExportTruckTonnes).toBe(0)
   })
 })

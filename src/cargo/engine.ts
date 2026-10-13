@@ -24,6 +24,7 @@ import {
 
 const EPSILON = 1e-7
 const MAX_STEP_MINUTES = 1
+type WithoutTime<T> = T extends unknown ? Omit<T, 'time'> : never
 
 interface CargoBatch {
   ownerId: string
@@ -159,6 +160,27 @@ export class CargoSim {
   }
 
   acceptContract(input: CargoContractInput): CargoContract {
+    const contract = this.createContract(input)
+    this.scheduleContractTrucks(contract)
+    return contract
+  }
+
+  /** Save-migration hook: legacy shed stock is already screened and ready. */
+  seedLegacyReadyCargo(input: CargoContractInput): CargoContract {
+    const contract = this.createContract(input)
+    contract.deliveredTonnes = contract.tonnes
+    this.queue('ready').push({
+      ownerId: contract.id,
+      direction: 'export',
+      kind: contract.kind,
+      tonnes: contract.tonnes,
+      unitKind: contract.unitKind,
+    })
+    this.emit({ type: 'flow', stage: 'ready', direction: 'in', tonnes: contract.tonnes })
+    return contract
+  }
+
+  private createContract(input: CargoContractInput): CargoContract {
     if (this.contracts.has(input.id)) throw new Error(`Duplicate cargo contract: ${input.id}`)
     if (!Number.isFinite(input.tonnes) || input.tonnes <= 0) throw new Error('Cargo contract tonnes must be finite and positive')
     if (!Number.isFinite(input.deadline) || input.deadline <= this.time) throw new Error('Cargo contract deadline must be finite and in the future')
@@ -187,7 +209,6 @@ export class CargoSim {
       revenueEarned: 0,
     }
     this.contracts.set(contract.id, contract)
-    this.scheduleContractTrucks(contract)
     return contract
   }
 
@@ -830,7 +851,8 @@ export class CargoSim {
     return index >= 0 && index + 1 < chain.length ? [chain[index + 1]] : []
   }
 
-  private emit(event: CargoEvent): void {
-    for (const listener of this.listeners) listener(event)
+  private emit(event: WithoutTime<CargoEvent>): void {
+    const timed = { ...event, time: this.time } as CargoEvent
+    for (const listener of this.listeners) listener(timed)
   }
 }

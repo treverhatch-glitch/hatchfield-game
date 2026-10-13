@@ -68,7 +68,18 @@ export interface CargoLoaderReservationPort {
   release(reservationId: string): void
 }
 
+/** Structural posting shape for the planned src/core/bank.ts money bus. */
+export interface CargoMoneyPosting {
+  time: number
+  amount: number
+  category: 'cargo_airport_revenue' | 'cargo_penalty'
+  referenceId: string
+}
+
 export interface CargoHost {
+  /** Preferred integration: pass each posting to bank.post(). */
+  postMoney?(posting: CargoMoneyPosting): void
+  /** Compatibility callback until src/core/bank.ts is on the base branch. */
   addMoney?(
     amount: number,
     category: 'cargo_airport_revenue' | 'cargo_penalty',
@@ -88,6 +99,7 @@ export interface CargoHost {
 export interface CargoAdapter {
   tick(dtMinutes: number): void
   acceptContract(input: CargoContractInput): CargoContract
+  seedLegacyReadyCargo(input: CargoContractInput): CargoContract
   setStaff(stage: CargoStage, assigned: number): void
   /**
    * Call before logistics.onAircraftParked. The returned kg is passed as
@@ -129,6 +141,13 @@ export function createCargoAdapter(
       case 'money':
         if (event.category === 'cargo_handler_revenue') {
           host.addHandlerMoney?.(event.amount, event.contractId)
+        } else if (host.postMoney) {
+          host.postMoney({
+            time: event.time,
+            amount: event.amount,
+            category: event.category,
+            referenceId: event.contractId,
+          })
         } else {
           host.addMoney?.(event.amount, event.category, event.contractId)
         }
@@ -165,6 +184,7 @@ export function createCargoAdapter(
     sim,
     tick: (dtMinutes) => sim.tick(dtMinutes),
     acceptContract: (input) => sim.acceptContract(input),
+    seedLegacyReadyCargo: (input) => sim.seedLegacyReadyCargo(input),
     setStaff: (stage, assigned) => sim.setStaff(stage, assigned),
     prepareFlight(flightId, airframeId, overrides = {}) {
       const profile = airframeCargoProfile(airframeId)

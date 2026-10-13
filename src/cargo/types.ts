@@ -236,7 +236,7 @@ export interface CargoSnapshot {
   bottlenecks: CargoBottleneck[]
 }
 
-export type CargoEvent =
+export type CargoEvent = { time: number } & (
   | {
       type: 'money'
       amount: number
@@ -248,5 +248,6 @@ export type CargoEvent =
   | { type: 'import_status'; shipmentId: string; status: ImportShipmentStatus }
   | { type: 'flow'; stage: CargoStage; direction: 'in' | 'out'; tonnes: number }
   | { type: 'bottlenecks'; bottlenecks: CargoBottleneck[] }
+)
 
 export type CargoListener = (event: CargoEvent) => void

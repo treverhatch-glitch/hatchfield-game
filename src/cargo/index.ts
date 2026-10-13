@@ -18,6 +18,7 @@ export type {
   CargoLoaderReservation,
   CargoLoaderReservationPort,
   CargoLoaderType,
+  CargoMoneyPosting,
 } from './adapter.ts'
 export { CARGO_STAGES, EXPORT_STAGES, IMPORT_STAGES } from './types.ts'
 export type {

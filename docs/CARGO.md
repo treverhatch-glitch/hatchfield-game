@@ -1,6 +1,6 @@
 # Cargo slice
 
-Status: self-contained implementation in `src/cargo/`. It does not import `sim.ts`, `src/logistics`, `src/flow`, UI, or rendering code. The terminal owner can wire it after the logistics and flow branches merge.
+Status: self-contained replacement for the trunk `cargoWarehouse` / cargo-volume shed simulation. It lives in `src/cargo/` and does not import `sim.ts`, `src/logistics`, `src/flow`, UI, or rendering code. The terminal owner should remove the parallel trunk authority when wiring this module.
 
 ## Player model
 
@@ -59,7 +59,7 @@ The $2,470/t general baseline is the 2025 worldwide air-cargo average of $2.47/k
 
 `confirmFlightDeparted` posts revenue. Cargo and its loader committed to a turnaround before cutoff remain reserved through departure, so a late ground turn cannot desynchronize the cargo and logistics manifests. Otherwise, missing a deadline posts the penalty on every unshipped tonne exactly once, cancels unarrived trucks, and returns freight to the shipper. `cancelFlight` returns a reservation to the ready rack; if it is already late, the next tick expires it normally.
 
-The rates above are gross shipper rates. `CargoTerminalConfig.revenueShare` defaults to 35% airport / 65% handler and must total 1. Departure emits separate `cargo_airport_revenue` and `cargo_handler_revenue` ledger entries while retaining gross revenue on the contract and snapshot.
+The rates above are gross shipper rates. `CargoTerminalConfig.revenueShare` defaults to **10% airport / 90% handler** and must total 1. Departure emits separate `cargo_airport_revenue` and `cargo_handler_revenue` ledger entries while retaining gross revenue on the contract and snapshot. Only the airport share enters player cash.
 
 ## Terminal integration
 
@@ -67,9 +67,7 @@ The rates above are gross shipper rates. `CargoTerminalConfig.revenueShare` defa
 import { createCargoAdapter } from '../cargo'
 
 const cargo = createCargoAdapter({
-  addMoney: (amount, category, contractId) => {
-    // Player/airport cash receives only airport revenue (and penalties).
-  },
+  postMoney: (posting) => bank.post(posting),
   addHandlerMoney: (amount, contractId) => {
     // Separate handler ledger; do not add this to airport cash.
   },
@@ -92,6 +90,12 @@ cargo.tick(dtGameMinutes)
 ```
 
 Do not tick with wall-clock seconds. Logistics and cargo both use game minutes.
+
+Every `CargoEvent`, including money, truck/contract/import status, flow and bottleneck events, carries `time` in absolute sim minutes. This lets audio, replay, reports and the bank order cargo beside logistics events without translating timestamps.
+
+### Money bus (planned `src/core/bank.ts`, PR #11)
+
+`CargoHost.postMoney` is the preferred integration. Its `{ time, amount, category, referenceId }` shape is intentionally structural so the terminal agent can forward it to `bank.post()` without cargo importing core. `addMoney` remains a temporary compatibility callback while the bank is absent from this base branch. Handler revenue uses `addHandlerMoney`; it is reported but must not increase airport cash.
 
 ### Logistics handoff
 
@@ -137,6 +141,25 @@ Flow IDs are stable and include both directions:
 
 The cargo info view can therefore use the flow branch's standard `infoView('cargo')`, `audit()`, and route tracing without special cargo UI types.
 
+## Replacing the trunk cargo shed
+
+PR #10 is the new cargo authority, not an optional second warehouse. Terminal migration order:
+
+1. Construct one `CargoAdapter` and tick it in **sim minutes** from the shared clock.
+2. Replace `Game.cargoWarehouse`, `cargoWarehouseFill()`, `tickCityCargo()`, `finishCityCargo()`, `creditCargoVolume()`, `considerCargoVolume()` and `tickCargoVolume()` with adapter calls/snapshot selectors.
+3. Retire `CARGO_INTAKE_FEE`, `CARGO_WAREHOUSE_CAP`, `CARGO_VOLUME_FEE_MIN/MAX`, `CARGO_VOLUME_COOL` and `CARGO_VOLUME_FAIL_FINE` after call sites move. Do not keep charging the old intake fee: new revenue posts at aircraft departure.
+4. Replace the trunk freighter block that subtracts `cargoWarehouse` and spawns a baggage tug with `prepareFlight()` plus logistics `outboundCargoKg`. Logistics owns apron tug/loader motion; cargo owns inventory and contracts.
+5. Replace HUD reads of `game.cargoWarehouse` / `cargoVolume` with `CargoSnapshot.facilities`, contracts and bottlenecks.
+6. Add a terminal-owned save codec for contracts, imports, buffers, trucks and reservations before deleting the old save fields. `CargoSnapshot` is a read model, not yet a restore API.
+
+### Existing-save compatibility
+
+- Treat one legacy warehouse unit as one tonne for the first migration pass; keep the ratio as a terminal constant if playtest balance changes it.
+- Call `seedLegacyReadyCargo()` once with ID `legacy-shed-stock`, `tonnes: save.cargoWarehouse`, a long migration deadline, and zero revenue/penalty. This places already accepted stock on the ready rack without spawning duplicate city trucks or granting a windfall.
+- For an active `CargoVolumeJob`, create one new general contract for `max(0, targetUnits - delivered)` tonnes. Convert its remaining trunk seconds to sim minutes through the shared clock; do not assume seconds equal sim minutes. Preserve airline ownership in the terminal bridge because cargo contracts intentionally use string IDs rather than importing trunk airline types.
+- After a successful migrated save, omit `cargoWarehouse` and `cargoVolume` on the next save. Loading them again would duplicate stock.
+- Saves with no cargo fields start empty. A built trunk cargo tile should instantiate the starter terminal configuration until building tiers are mapped.
+
 ## Design-advisor hooks
 
 `detectBottlenecks()` and the periodic `onBottlenecks` callback report:
@@ -170,6 +193,6 @@ Real terminals quote annual tonnes and shipment/ULD operations, while gameplay n
 
 ## Remaining integration questions
 
-1. The revenue split defaults to 35/65; economy balancing may choose another split.
+1. The revenue split now follows the integration review at 10/90; rerun the shared balance model after trunk payroll and fuel changes land.
 2. Cold storage protects routing and capacity, but progressive temperature excursions/spoilage remain a possible later simulation layer.
 3. The current `grok/logistics` adapter exposes no reserve/release API or turnaround reservation field. The terminal owner must add a bridge implementing `CargoLoaderReservationPort` over its vehicle dispatcher; the cargo adapter rejects loader-served freight when that bridge is absent or cannot reserve a compatible vehicle.

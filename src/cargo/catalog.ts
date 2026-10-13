@@ -226,8 +226,8 @@ export function starterCargoTerminal(): CargoTerminalConfig {
       unloadTonnesPerMin: 1,
     },
     revenueShare: {
-      airport: 0.35,
-      handler: 0.65,
+      airport: 0.1,
+      handler: 0.9,
     },
     advisorSampleMinutes: 5,
   }
