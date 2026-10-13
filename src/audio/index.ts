@@ -6,4 +6,5 @@ export * from './aircraft';
 export * from './weather';
 export * from './services';
 export * from './events';
+export * from './bindings';
 export { hashSeed, mulberry32 } from './rng';
