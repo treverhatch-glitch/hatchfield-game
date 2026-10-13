@@ -2,9 +2,11 @@
 
 **Source of truth for what the game is.** User prompts beat agent guesses. Changelog: `ADDITIONS.md`. North-star narrative: [VISION.md](./VISION.md).
 
+> **IMPORTANT:** Every traffic flow and transported item needs a **Manor Lords–style load/unload hand-off** (visible travel + dwell + clear). Full law: **[HAND_OFFS.md](./HAND_OFFS.md)**.
+
 ## Pitch
 
-Browser airport tycoon: **Airport Tycoon 3** stamp-and-contract loop first, then HatchTag depth (RCT hall guests, ops risk, HATCH IPO). **Passengers are the default campaign; cargo is a full parallel path.** Emergencies and military hosting are side seasons. Money must equal picture — fees post when trucks, jets, or passengers finish a job.
+Browser airport tycoon: **Airport Tycoon 3** stamp-and-contract loop first, then HatchTag depth (RCT hall guests, ops risk, HATCH IPO). **Passengers are the default campaign; cargo is a full parallel path.** Emergencies and military hosting are side seasons. Money must equal picture — fees post when trucks, jets, or passengers finish a job. **Planes must look serviced** — pax, bags, cater, fuel, freight pass through with timed hand-offs ([HAND_OFFS](./HAND_OFFS.md)).
 
 ## Player vocabulary (not code names)
 

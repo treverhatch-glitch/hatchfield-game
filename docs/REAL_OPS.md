@@ -129,11 +129,14 @@ Cargo should feel like **Manor Lords crates + AT3 contracts**, not a shed stamp.
 **Real typical narrowbody order (simplified):** chocks → passengers off → bags off → fuel / cater / clean (parallel where safe) → bags on → passengers on → doors → pushback → taxi → takeoff.  
 Widebody / freighter add loaders, more fuel volume, longer dwell.
 
+**IMPORTANT — game hand-offs:** each of those steps is a **Manor Lords–style load/unload picture** (travel + dwell + clear). Full law + coverage table: **[HAND_OFFS.md](./HAND_OFFS.md)**.
+
 **Game (target fidelity):**
 - GSE with **real capacity** (bowser liters / ULD count), not infinite magic trucks.
 - Fuel farm **stock**; refill via city tanker contract or bulk buy.
 - De-ice already gated by weather + pad — keep that realism.
 - Pushback / taxi / jam already model ground movement pressure.
+- Deboard / board / bags / cater / fuel must *look* like service, not flag flips.
 - Optional later: TOBT-like “ready for push” when all posted services done (Planner already tracks phases).
 
 ---
