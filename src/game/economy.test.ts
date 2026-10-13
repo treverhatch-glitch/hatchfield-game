@@ -129,6 +129,79 @@ describe('economy', () => {
     expect(payrollAmount(lines, 1)).toBe(Math.round(lines.reduce((n, c) => n + c, 0)))
   })
 
+  it('handles edge cases in payrollAmount without returning NaN or negative amounts', () => {
+    expect(payrollAmount([], 1)).toBe(0)
+    expect(payrollAmount([0, 0, 0], 1.2)).toBe(0)
+    expect(payrollAmount([100, 200], 0)).toBe(0)
+    expect(payrollAmount([100, 200], -1)).toBe(0)
+    expect(payrollAmount([100, 200], Number.NaN)).toBe(0)
+    expect(payrollAmount([100, Number.NaN, -50, 200], 1)).toBe(300)
+    expect(payrollAmount([12.34, 56.78], 1.5)).toBe(Math.round((12.34 + 56.78) * 1.5))
+    expect(payrollAmount([1e9, 2e9], 1.5)).toBe(4_500_000_000)
+  })
+
+  it('handles edge cases across all exported economy functions safely', () => {
+    // fieldOpsMultiplier
+    expect(fieldOpsMultiplier(-5, -2, -10)).toBe(1)
+    expect(fieldOpsMultiplier(Number.NaN, Number.NaN, Number.NaN)).toBe(1)
+    expect(fieldOpsMultiplier(10_000, 10_000, 10_000)).toBe(1.65)
+
+    // loanInterestDue
+    expect(loanInterestDue(-100, 0.05, 10)).toBe(10)
+    expect(loanInterestDue(100, -0.05, 10)).toBe(10)
+    expect(loanInterestDue(100, 0.05, -10)).toBe(5)
+    expect(loanInterestDue(Number.NaN, Number.NaN, Number.NaN)).toBe(0)
+
+    // nextLoanBalance
+    expect(nextLoanBalance(-100, -50, -200)).toBe(0)
+    expect(nextLoanBalance(Number.NaN, Number.NaN, Number.NaN)).toBe(0)
+
+    // loansAvailable
+    expect(loansAvailable(LOAN_PRODUCTS, Number.NaN, Number.NaN, false)).toEqual([])
+    expect(loansAvailable(LOAN_PRODUCTS, 1, Number.NaN, false)).toEqual(['micro', 'bridge'].map(id => LOAN_PRODUCTS.find(p => p.id === id)))
+
+    // cityLevy
+    expect(cityLevy(Number.NaN)).toBe(0)
+    expect(cityLevy(-100_000)).toBe(0)
+
+    // budgetLineCost
+    expect(
+      budgetLineCost({
+        ...emptyLine,
+        key: 'security',
+        budgetPct: -50,
+        deskStaff: -10,
+        securityPosts: Number.NaN,
+      }),
+    ).toBe(0)
+    expect(
+      budgetLineCost({
+        ...emptyLine,
+        key: 'maintenance',
+        budgetPct: Number.NaN,
+        mechanics: Number.NaN,
+        hangars: Number.NaN,
+        researchers: Number.NaN,
+        desks: Number.NaN,
+        boards: Number.NaN,
+        machines: Number.NaN,
+      }),
+    ).toBe(0)
+    expect(
+      budgetLineCost({
+        ...emptyLine,
+        key: 'maintenance',
+        budgetPct: 100,
+        mechanics: 10_000,
+        hangars: 50,
+        researchers: 500,
+        desks: 1_000,
+        boards: 500,
+        machines: 200,
+      }),
+    ).toBeGreaterThan(1_000_000)
+  })
+
   it('clips surplus cash with a small levy and leaves a sandbox pile alone', () => {
     const easyAfterKit = START_CASH.easy - LAND.city.cost - STARTER_KIT_COST
     const standardAfterLand = START_CASH.standard - LAND.city.cost
