@@ -2122,8 +2122,8 @@ h1 {
 .rival-card {
   pointer-events: auto;
   position: absolute;
-  top: 72px;
-  max-height: calc(100% - 96px);
+  top: 108px;
+  max-height: calc(100% - 128px);
   overflow: auto;
   background: rgba(10, 18, 16, 0.92);
   color: #e8eef4;
