@@ -1,4 +1,5 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { PremiumState } from '../premium/types.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -951,6 +952,8 @@ export interface GameSnapshot {
   >
   commercialLead?: Record<string, { signDay: number; leadDays: number; opened: boolean }>
   feeStandingApplied?: number
+  /** Premium check-in, fast-track lanes, and the VIP room. */
+  premium?: PremiumState
 }
 
 /** A placed building that is still a construction site. */
