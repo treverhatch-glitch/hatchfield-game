@@ -35,6 +35,14 @@ export type Tile =
   | 'rail'
   /** Apron terminal-bus depot — ferries remote-stand pax. */
   | 'termbus'
+  /** Guideway between terminals. Pods run while the link is open. */
+  | 'mover'
+  /** Airside buses for connecting passengers. */
+  | 'xferbus'
+  /** Covered bridge between terminal halls. */
+  | 'skywalk'
+  /** Moving walkway on the apron. Passengers on it move faster. */
+  | 'travelator'
   /** Catering production for the ground fleet. */
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
@@ -43,12 +51,6 @@ export type Tile =
   | 'fuel_rail'
   /** Unloads a fuel train into the tank farm. */
   | 'oil'
-  /** Moving walkway. Passengers on it move faster. */
-  | 'travelator'
-  /** Elevated link between a terminal and a pier. */
-  | 'skywalk'
-  /** Automated people-mover guideway. */
-  | 'mover'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -107,6 +109,9 @@ export type Tool =
   | 'deice'
   | 'bus'
   | 'term_bus'
+  | 'people_mover'
+  | 'xfer_bus'
+  | 'hub_skywalk'
   | 'rail'
   | 'kitchen'
   | 'depot'
@@ -891,6 +896,16 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
+  /** Wear on the people mover and the airside transfer bus. */
+  linkWear?: { mover: number; bus: number }
+  /** True when that link is stopped after a breakdown. */
+  linkDown?: { mover: boolean; bus: boolean }
+  /** Gates named by the last people-mover breakdown. */
+  strandedGates?: string[]
+  /** Plain-language reason the link is stopped. */
+  linkExplanation?: string
+  /** Hub-priced link stamps, keyed by cell. Pier links are not in this map. */
+  hubLinksBuilt?: Record<string, 'people_mover' | 'xferbus' | 'skywalk'>
   /** Size-pillar purchases: fuel contract, tank, fleet, bags, and passenger kit. */
   pillar?: {
     contractId: string | null

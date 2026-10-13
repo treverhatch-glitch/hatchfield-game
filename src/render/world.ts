@@ -910,6 +910,27 @@ export class World {
       truck.position.set(0, 0.35, CELL * 0.22)
       truck.castShadow = true
       g.add(shed, bay, truck)
+    } else if (tile === 'xferbus') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({ color: '#243038' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.04
+      const shed = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 1.6, CELL * 0.5),
+        new THREE.MeshStandardMaterial({ color: '#c47a3a', roughness: 0.5 }),
+      )
+      shed.position.y = 0.85
+      shed.castShadow = true
+      const bus = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.62, 0.72, CELL * 0.26),
+        new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.4 }),
+      )
+      bus.position.set(0, 0.46, CELL * 0.28)
+      bus.name = 'xfer-bus'
+      bus.castShadow = true
+      g.add(pad, shed, bus)
     }
     return g
   }
@@ -1845,6 +1866,19 @@ export class World {
     }
   }
 
+  /** Pods shuttle while the people mover is open. A breakdown parks them. */
+  private animateLinks(game: Game) {
+    const moving = !game.linkStopped('people_mover')
+    const t = performance.now() / 1000
+    this.tilesGroup.traverse((obj) => {
+      if (obj.name !== 'pod') return
+      const home = typeof obj.userData.home === 'number' ? obj.userData.home : 0
+      obj.position.x = moving ? home + Math.sin(t * 1.3) * CELL * 0.22 : home
+      const glass = obj.parent?.getObjectByName('pod-glass')
+      if (glass) glass.position.x = obj.position.x
+    })
+  }
+
   render(game: Game) {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
@@ -1856,6 +1890,7 @@ export class World {
     this.easeToGoal(game, dt)
     this.applyPerfMode(game)
     this.rebuildTiles(game)
+    this.animateLinks(game)
     this.syncGhost(game)
     perfEnd('world.tiles', t)
     t = perfStart()

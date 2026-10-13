@@ -90,7 +90,18 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt', 'travelator', 'skywalk', 'mover'],
+    tools: [
+      'premade',
+      'terminal',
+      'term_bus',
+      'people_mover',
+      'xfer_bus',
+      'hub_skywalk',
+      'belt',
+      'travelator',
+      'skywalk',
+      'mover',
+    ],
   },
   {
     id: 'ops',

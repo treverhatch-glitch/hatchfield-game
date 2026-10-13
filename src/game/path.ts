@@ -55,6 +55,8 @@ export function walkableFor(
       tile === 'hangar' ||
       tile === 'deice' ||
       tile === 'termbus' ||
+      tile === 'mover' ||
+      tile === 'xferbus' ||
       tile === 'kitchen' ||
       tile === 'depot'
     )
@@ -93,10 +95,11 @@ export function walkableFor(
     tile === 'park_u' ||
     tile === 'bus' ||
     tile === 'termbus' ||
-    tile === 'rail' ||
-    tile === 'travelator' ||
+    tile === 'mover' ||
+    tile === 'xferbus' ||
     tile === 'skywalk' ||
-    tile === 'mover'
+    tile === 'travelator' ||
+    tile === 'rail'
   )
 }
 
