@@ -707,4 +707,16 @@ The published margins stay 10.0% early and 24.4% mid-game. With the new holding 
 | 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, cash finite. Missed 56 while overloaded. One plot, holding about $1,497 a day after the starter kit. |
 | Margins | Pass | 10.0% early and 24.4% mid-game on the published model. 8.8% early and 23.5% mid-game once land holding is in the day. |
 
+## Multi-hall history — 13 Oct
+
+PR #34 is merged onto this branch. The hall-scoped capacity, rooms, wear, and claim behavior was already here, so the merge kept that tree and did not bring back the old instant security clear. `tsc -b` clean. Vitest 748 passed, 2 skipped. Lint warnings are the ones already in the tree.
+
+## Standing advisor — 13 Oct
+
+PR #38. A signed airline whose Standing trend points at a leave inside about 3 game days gets one Advisor Warning letter for that episode. The letter names Standing, the predicted days, and the top two causes with a fix. Dismiss clears it. It returns only after Standing recovers past 55, or the trend stretches past 4.5 days, and then drops again. The warning-line Standing card is still posted. Diplomacy internals are unchanged; the letter reads Standing through the adapter this pull request already had.
+
+A fresh passenger game showed the Northline letter (Standing 32, about 0.1 game days, hall amenities and baggage) and Dismiss removed it.
+
+**Tests.** `tsc -b` clean. Vitest 757 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
 
