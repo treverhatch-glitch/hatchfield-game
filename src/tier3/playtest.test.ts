@@ -50,6 +50,7 @@ describe('tier III multi-day run', () => {
     game.tiles[22][14] = 'taxi'
     game.tool = 'mro'
     game.placeSingle({ c: 10, r: 23 })
+    game.tickConstruction(40)
     game.placeSingle({ c: 14, r: 23 })
     game.tool = 'nighthub'
     game.placeSingle({ c: 8, r: 12 })

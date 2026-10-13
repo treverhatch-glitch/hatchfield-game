@@ -31,6 +31,8 @@ export interface WorldView {
   weather?: Weather
   speed?: number
   standClass?: Record<string, StandClass>
+  /** Wide is code E, jumbo is code F. Missing on an L stand means jumbo. */
+  standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   standAccessAt?: (v: Vec | null) => StandAccess
   fits?: { origin: Vec; rooms?: Partial<Record<string, number>> }[]
   deskStaff?: number

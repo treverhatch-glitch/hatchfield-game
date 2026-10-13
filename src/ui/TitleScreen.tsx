@@ -1,5 +1,5 @@
-import { SANDBOX_CASH } from '../game/types'
-import { money } from '../game/catalog'
+import { money, START_CASH } from '../game/catalog'
+import { sandboxChoiceLabel } from '../game/economy'
 import { Game } from '../game/sim'
 
 export function TitleScreen({
@@ -36,10 +36,7 @@ export function TitleScreen({
             onChange={(e) => onSandboxChange(e.target.checked)}
             data-testid="sandbox-toggle"
           />
-          <span>
-            Sandbox (unlimited money)
-            {sandbox ? ` · ${money(SANDBOX_CASH)}` : ' · off'}
-          </span>
+          <span>{sandboxChoiceLabel(sandbox)}</span>
         </label>
         <label className="sandbox-toggle" title="Advisor hints in the bottom-right panel. Change later in Settings.">
           <input
@@ -59,8 +56,9 @@ export function TitleScreen({
           >
             New Game
             <span>
-              Pick Passenger or Cargo — then stamp the field
-              {sandbox ? ' · sandbox cash' : ''}
+              {sandbox
+                ? 'Pick Passenger or Cargo — then stamp the field · sandbox cash'
+                : `Pick Passenger or Cargo — standard · ${money(START_CASH.standard)}`}
             </span>
           </button>
           {hasSave ? (

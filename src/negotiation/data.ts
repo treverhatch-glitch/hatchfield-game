@@ -87,6 +87,11 @@ export const NEGOTIATION = {
     { id: 'high', label: 'High', costRatio: 0.045, cashFraction: 0.15 },
   ] as const satisfies readonly { id: DepositTier; label: string; costRatio: number; cashFraction: number }[],
   terms: [6, 12, 24] as const,
+  /**
+   * Daily take by contract length. A short term pays a premium per day.
+   * A long term discounts the daily rate. 12 months is the baseline (×1).
+   */
+  termDailyRate: { 6: 1.12, 12: 1, 24: 0.86 } as Record<number, number>,
   parkingHours: [0, 2, 4, 8] as const,
   fuelDiscounts: [0, 5, 10, 15] as const,
   marketingFunds: [0, 5_000, 15_000, 40_000] as const,

@@ -3,7 +3,7 @@ import { hashSeed, jit, mulberry32 } from './rng';
 
 /** Mirrors the ids in src/game/airframes.ts (AIRFRAMES). */
 export const AIRCRAFT_TYPE_IDS = [
-  'crj700', 'e175', 'a223', 'e195e2', 'a320neo', 'b738', 'a321', 'b38m', 'a21xlr', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f',
+  'bn2', 'dhc6', 'crj700', 'e175', 'a223', 'e195e2', 'a320neo', 'b738', 'a321', 'b38m', 'a21xlr', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f',
   'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5',
 ] as const;
 export type AircraftTypeId = (typeof AIRCRAFT_TYPE_IDS)[number];
@@ -65,6 +65,8 @@ const P = (typeId: AircraftTypeId, engineClass: EngineClass, engines: number, si
   ({ typeId, engineClass, engines, size, pitch, brightness, roughness, note });
 
 export const AIRCRAFT_PROFILES: Record<AircraftTypeId, AircraftProfile> = {
+  bn2: P('bn2', 'twinTurboprop', 2, 0.36, 1.18, 1.05, 0.45, 'Islander piston-twin rasp'),
+  dhc6: P('dhc6', 'twinTurboprop', 2, 0.48, 1.08, 1.0, 0.35, 'Twin Otter PT6 drone'),
   crj700: P('crj700', 'regionalJet', 2, 0.78, 1.12, 1.15, 0.2, 'rear-mounted CF34, shrill whine'),
   e175: P('e175', 'regionalJet', 2, 0.84, 1.04, 1.05, 0.2, 'underwing CF34, smoother'),
   a223: P('a223', 'regionalJet', 2, 0.98, 1.02, 0.95, 0.18, 'GTF1500G geared turbofan, quiet hum'),

@@ -1,4 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { pngName, savePng } from '../camera/capture.ts'
+import { cameraSession } from '../camera/session.ts'
 import { money } from '../game/catalog'
 import { lockTip, unlockLevel } from '../progression/unlocks'
 import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
@@ -180,6 +183,7 @@ export function TerminalView({ game }: { game: Game }) {
     }
     world.onPlaced = () => setBuild(null)
     world.onHover = setHover
+    world.onCaptured = (url) => savePng(url, pngName(new Date()))
     world.setBuild(buildRef.current)
     const keys = new Set<string>()
     const onKeyDown = (e: KeyboardEvent) => {
@@ -215,6 +219,7 @@ export function TerminalView({ game }: { game: Game }) {
           if (fx || fy) w.nudgePan(fx, fy)
           if (keys.has('q')) w.nudgeYaw(1.4 * dt)
           if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+          if (cameraSession.consumeCapture()) w.requestCapture()
           w.render(game)
         }
       }
@@ -275,7 +280,9 @@ export function TerminalView({ game }: { game: Game }) {
       </div>
       <KitBar game={game} build={build} setBuild={setBuild} />
       <KitTooltip build={build} hover={hover} />
-      <aside className="hall-build" data-testid="hall-build">
+      {game.view === 'hall'
+        ? createPortal(
+            <aside className="hall-build" data-testid="hall-build">
         <div data-testid="prefab-ceilings">
           <strong>{prefab ? PREFAB_TIERS[tier].label : 'Custom hall'}</strong>
           <p>
@@ -339,6 +346,9 @@ export function TerminalView({ game }: { game: Game }) {
         </div>
         {zone ? (
           <div className="item-menu" data-testid="item-menu">
+            {zoneItems.length === 0 ? (
+              <p className="muted">Nothing in this zone is for sale yet.</p>
+            ) : null}
             {zoneItems.map((item) => {
               const need = Math.max(item.minFieldLevel, unlockLevel(item.id))
               const locked = game.fieldLevel() < need
@@ -350,7 +360,9 @@ export function TerminalView({ game }: { game: Game }) {
                   className={locked ? 'locked' : ''}
                   disabled={locked}
                   title={locked ? lockTip(item.name, need, item.blurb) : `${item.blurb} · $${item.upkeep}/day`}
-                  onClick={() => game.placeHallItem(item.id)}
+                  onClick={() => {
+                    setBuild({ kind: 'place', def: item.id, rot: 0 })
+                  }}
                 >
                   <span>{item.name}</span>
                   <span>
@@ -361,7 +373,7 @@ export function TerminalView({ game }: { game: Game }) {
             })}
           </div>
         ) : (
-          <p className="muted">Pick a zone. The menu only lists what fits there.</p>
+          <p className="muted">Pick a zone. Placing uses the same hall cursor as the build bar.</p>
         )}
         <div
           className="zone-plan"
@@ -382,6 +394,12 @@ export function TerminalView({ game }: { game: Game }) {
                   style={{ background: color }}
                   title={painted ? zoneDef(painted).label : 'Bare'}
                   onClick={() => {
+                    // A coloured cell is the zone. Selecting it lists what fits there.
+                    // Painting a new colour still happens when a different zone is armed.
+                    if (painted && (!zone || zone === painted)) {
+                      setZone(painted)
+                      return
+                    }
                     if (zone) game.paintHallCell(c, r, zone)
                   }}
                 />
@@ -389,7 +407,10 @@ export function TerminalView({ game }: { game: Game }) {
             }),
           )}
         </div>
-      </aside>
+      </aside>,
+              document.body,
+            )
+        : null}
       {guest ? (
         <aside className="guest-card" data-testid="guest-card">
           <h2>
