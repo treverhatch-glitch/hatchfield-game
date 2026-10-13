@@ -12,7 +12,8 @@ node tests/e2e-bot/bot.mjs --url http://127.0.0.1:5173/ --label trunk --scenario
 ```
 
 Flags: `--out <dir>` (default `/workspace/qa/<label>-<scenario>`), `--fps-floor <n>` (default 12),
-`--video 0` to skip recording. Output: `result.json`, numbered screenshots, `run.webm`.
+`--video 0` to skip recording, `--ramp <n>` to sign only that many passenger carriers (no extra cargo),
+`--long` to run at least 12 in-game days. Output: `result.json`, numbered screenshots, `run.webm`.
 
 ## What the bot does
 
@@ -48,7 +49,7 @@ Military (C-130, C-17, KC-135, F-15, C-5), GA/bizjet (Citation, PC-12), ambulanc
 | NaN money or stats | critical | `cash, reputation, loanBalance, researchPoints` must be finite |
 | Lost passengers in prefabs | high | `lostPaxCount()` must stay 0 |
 | Missed flights | low/medium | `missedFlights` (expected only when `hallOverloaded`) |
-| Outbound bags short at takeoff | medium | `bagsDeposited < bagUnits` at taxi-out/takeoff on pax flights, unless `bagsOffloaded` covers the gap |
+| Outbound bags short at takeoff | medium | `bagsLoaded + bagsOffloaded` short of `bagUnits` at taxi-out/takeoff on pax flights |
 | Stuck flight | high (medium if airborne) | phase timer over a per-phase limit (e.g. servicing 700 s, taxi 240–300 s) |
 | Stuck vehicle | high | truck motionless > 240 game-s while not dwelling and not on patrol |
 | FPS floor | medium | rAF rate sampled at 5×, compared to `--fps-floor` |

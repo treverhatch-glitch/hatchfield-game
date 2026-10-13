@@ -329,7 +329,8 @@ describe('prefab bags', () => {
     game.tick(0.5)
     expect(['pushback', 'taxi_out', 'takeoff']).toContain(flight.phase)
     expect(flight.bagsOffloaded).toBe(193)
-    expect((flight.bagsDeposited ?? 0) + (flight.bagsOffloaded ?? 0)).toBeGreaterThanOrEqual(flight.bagUnits ?? 0)
+    expect(flight.bagsLoaded).toBe(0)
+    expect((flight.bagsLoaded ?? 0) + (flight.bagsOffloaded ?? 0)).toBe(flight.bagUnits ?? 0)
     expect(flight.posted.bagsLoad).toBe(false)
     expect(flight.bagStage).not.toBe('inflight')
     expect(game.bagBook(flight.id)?.offloaded).toBe(193)
@@ -373,6 +374,7 @@ describe('prefab bags', () => {
     game.finishTruck(bagTruck(flight.id, 'load'))
     expect(flight.posted.bagsLoad).toBe(true)
     expect(flight.bagsOffloaded ?? 0).toBe(0)
+    expect(flight.bagsLoaded).toBe(97)
     expect(flight.bagStage).toBe('inflight')
 
     flight.phaseTime = 40

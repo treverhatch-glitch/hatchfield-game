@@ -578,3 +578,19 @@ The hall card on a fresh starter kit reads 40 passengers, security 34/min, bags 
 **Media**
 
 - `docs/devlog/media/OCT13-prefab-security.png` — hall card, Prefab I at 40 passengers and 34/min, upgrade to Prefab II at 48 and 60/min
+
+## Security release — 13 Oct
+
+The lane was screening people. A line of twelve at the checkpoint got two scanners working, and a one-airline field cleared 158 passengers over four days. They were not leaving the node.
+
+Once a passenger was through, a later walk back to food or the gate was pathed through security again, because that node is the first neighbour of the gate. Stepping on it called the old instant-clear, which threw away the path and started a new route from security. Progress on the edge reset every couple of ticks. The daily count of bodies standing on that node climbed, check-in stayed near zero because that desk is a short dwell, and flights were missed by people who never stayed at the gate.
+
+A cleared passenger who steps on security now keeps the path they already have. A trip that starts and ends after security takes the airside corridor when one exists. Uncleared departures still stop and wait for a scanner. Lane counts, service times, and the comfort cap are unchanged. The batch of departing passengers still arrives together at boarding, so missed flights under that spawn are still expected. A show-up curve is a separate piece of work.
+
+Each departure now carries `bagsLoaded` and `bagsOffloaded`. The hall panel Close button is `panel-close`. The QA bot can sign one carrier with `--ramp 1`, and `--long` runs at least 12 days.
+
+**Bugs.** Seventeen. BUG-017 is this stall.
+
+**Tests.** A line at security is screened and then leaves. A screened passenger walks to food without re-entering the checkpoint. One airline over four days keeps the end-of-day security node under 16, and the waiting line under 16. `tsc -b` clean. Vitest 639 passing, 2 skipped.
+
+**QA.** One carrier, mixed, 6 days: security waiting stayed in the teens with both scanners busy, then the node was empty. Lost passengers 0. Missed flights 93 with the hall overloaded. That is the batch spawn, not a stuck scanner. The 12-day mixed run and the 4-day heavy run were the same shape: lost passengers 0, no short bag ledger, scanners still serving when a line was up. SwiftShader frame rate was 9–11 fps.
