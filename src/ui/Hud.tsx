@@ -1,6 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { projectCash } from './cashForecast'
+import { PremiumPanel } from './PremiumPanel.tsx'
+import { GameTimetable } from './timetable/GameTimetable'
+import { AirlinesDesk } from './AirlinesDesk'
+import { DiplomacyLetters } from './DiplomacyLetters'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
+import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
 import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
 import {
@@ -45,11 +51,18 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
+import { capstoneCost, SPEC_PATHS, type SpecPath } from '../progression/specializations'
+import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
+import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
+import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
+import { FeesPanel } from './FeesPanel'
+import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
+import type { TycoonTab } from '../tycoon/types.ts'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -80,7 +93,18 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt', 'travelator', 'skywalk', 'mover'],
+    tools: [
+      'premade',
+      'terminal',
+      'term_bus',
+      'people_mover',
+      'xfer_bus',
+      'hub_skywalk',
+      'belt',
+      'travelator',
+      'skywalk',
+      'mover',
+    ],
   },
   {
     id: 'ops',
@@ -100,6 +124,8 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
       'hangar',
       'hangar_w',
       'hangar_j',
+      'mro',
+      'nighthub',
       'fuel_rail',
       'oil',
     ],
@@ -134,6 +160,10 @@ type PanelId =
   | 'airlines'
   | 'planner'
   | 'services'
+  | 'settings'
+  | 'premium'
+  | 'tycoon'
+  | 'rival'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -189,20 +219,40 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
-  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
+  { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+  { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
+  { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
+  { id: 'tycoon', label: 'Tycoon', tip: 'Shop bids, ad campaigns, awards, year report' },
+  { id: 'rival', label: 'Rival', tip: 'Bellwater Intl — fees, roster, catchment' },
 ]
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
-  const [panel, setPanel] = useState<PanelId>(null)
+  const [panelPick, setPanel] = useState<PanelId>(null)
+  // One panel at a time: an open hint list folds the HUD rollout away.
+  const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [cashOpen, setCashOpen] = useState(false)
+  const [feesOpen, setFeesOpen] = useState(false)
+  const pendingYear = game.pendingYearReport()?.year ?? null
+  const [yearShown, setYearShown] = useState<number | null>(null)
+  if (panel === 'tycoon' && pendingYear !== yearShown) {
+    setYearShown(pendingYear)
+    if (pendingYear != null) setTycoonTab('year')
+  }
+  useEffect(() => {
+    game.pokeTycoon()
+  }, [game, panel])
+  const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
+  const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
   const menuTools = buildMenu
     ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
     : []
@@ -225,22 +275,39 @@ export function Hud({ game }: { game: Game }) {
   const hubAirline = game.hubOffer ? game.airline(game.hubOffer.airline) : null
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
+  const rival = game.rivalPanel()
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key !== 'l' && e.key !== 'L') return
+      e.preventDefault()
+      setPanel((cur) => {
+        if (cur === 'airlines') {
+          setChromePinned(false)
+          return null
+        }
+        setChromePinned(true)
+        return 'airlines'
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
-    setPanel((cur) => {
-      if (cur === id) {
-        setChromePinned(false)
-        return null
-      }
-      setChromePinned(true)
-      return id
-    })
+    const closing = panel === id
+    setPanel(closing ? null : id)
+    setChromePinned(!closing)
+    game.setSidePanel(closing ? null : 'hud')
   }
 
   /** Open a tab without accidental close when already selected. */
   const openPanel = (id: Exclude<PanelId, null>) => {
     setPanel(id)
     setChromePinned(true)
+    game.setSidePanel('hud')
   }
 
   const ticker = game.news.slice(0, 5)
@@ -254,10 +321,33 @@ export function Hud({ game }: { game: Game }) {
   if (game.apronJamLine()) alerts.push('Apron jam')
   if (game.securityQueueCount() >= 3) alerts.push('Security queue')
   if (game.lostPaxCount() > 0) alerts.push('Lost pax')
+  const power = game.powerReport()
+  if (power.brownout) alerts.push('Power')
+  const powerGate = canUpgradePower(game.powerPlantTier, game.fieldLevel())
   if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
+  for (const item of game.disruptionFeed()) alerts.push(item.title)
 
   return (
     <div className="hud">
+      {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
+      <button
+        type="button"
+        className={`fees-toggle${feesOpen ? ' on' : ''}`}
+        title="Landing, passenger, and service prices"
+        data-testid="tab-fees"
+        onClick={() => setFeesOpen((open) => !open)}
+      >
+        Fees
+      </button>
+      {feesOpen ? (
+        <FeesPanel
+          fees={game.fees}
+          depositTier={game.depositTier}
+          onFee={(key, value) => game.setFee(key, value)}
+          onTier={(tier) => game.setDepositTier(tier)}
+          onClose={() => setFeesOpen(false)}
+        />
+      ) : null}
       <header className="top" data-testid="stats-bar">
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
@@ -265,25 +355,54 @@ export function Hud({ game }: { game: Game }) {
             {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
           </span>
         </div>
-        <button
-          type="button"
-          className="stat cash top-cash"
-          title="Open Economy"
-          onClick={() => openPanel('economy')}
-        >
-          {money(game.cash)}
-        </button>
-        <button
-          type="button"
-          className="stat"
-          title="Recent hourly earnings"
-          onClick={() => {
-            setEcoTab('income')
-            openPanel('economy')
-          }}
-        >
-          {money(game.incomeRate())}/hr
-        </button>
+        <div className="cash-hero-wrap">
+          <button
+            type="button"
+            className="stat cash top-cash cash-hero"
+            title="Cash and forecast — click for income and charges"
+            data-testid="cash-hero"
+            onClick={() => setCashOpen((open) => !open)}
+          >
+            <span className="cash-amount">{money(game.cash)}</span>
+            <span className={`cash-flow${forecast.dailyNet >= 0 ? ' up' : ' down'}`} data-testid="cash-forecast">
+              {flowLabel}
+            </span>
+          </button>
+          {cashOpen ? (
+            <div className="cash-menu" data-testid="cash-menu">
+              <p>
+                Live income <strong>{money(forecast.hourlyIncome)}/hr</strong>
+                <span className="muted"> · {money(forecast.dailyIncome)}/day</span>
+              </p>
+              <p>
+                Daily charges <strong>{money(forecast.dailyCharges)}</strong>
+              </p>
+              <ul>
+                <li>Payroll {money(forecast.charges.payroll)}</li>
+                <li>Upkeep {money(forecast.charges.upkeep)}</li>
+                <li>Holding {money(forecast.charges.holding)}</li>
+                <li>Levy {money(forecast.charges.levy)}</li>
+              </ul>
+              <p>
+                Weekly charges <strong>{money(forecast.weeklyCharges)}</strong>
+              </p>
+              <p>
+                Forecast <strong className={forecast.dailyNet >= 0 ? 'up' : 'down'}>{flowLabel}</strong>
+                <span className="muted"> · in 7 days {money(forecast.cashInSevenDays)}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCashOpen(false)
+                  setEcoTab('overview')
+                  openPanel('economy')
+                }}
+              >
+                Open books
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className="stat" title="One day is a 180-second cycle">
           {formatSimDate(game.clock)}
         </div>
@@ -303,9 +422,10 @@ export function Hud({ game }: { game: Game }) {
         <div
           className="stat"
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
+          data-testid="field-level"
         >
-          Field Lv {xp.level}
-          {xp.level < 5 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
+          Field {xp.label}
+          {xp.pct < 1 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
         </div>
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
@@ -316,7 +436,9 @@ export function Hud({ game }: { game: Game }) {
         >
           {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
-        <div className="stat">{game.weatherLabel()}</div>
+        <div className="stat" title={environmentCaption(game.clock, game.weather, game.holidayPeakHook)}>
+          {seasonAtClock(game.clock).name} · {game.weatherLabel()}
+        </div>
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
         </div>
@@ -402,12 +524,64 @@ export function Hud({ game }: { game: Game }) {
           })()}
         </aside>
       ) : null}
+      {!panel && game.pendingYearReport() ? (
+        <YearReportCard
+          report={game.pendingYearReport()!}
+          formatMoney={money}
+          onDismiss={() => game.dismissYearReport()}
+        />
+      ) : null}
+      {game.disruptionFeed().length ? (
+        <div
+          className={`disruption-stack${game.showCoach() ? ' below-coach' : ''}`}
+          data-testid="disruption-feed"
+        >
+          {game.disruptionFeed().map((item) =>
+            item.status === 'live' ? (
+              <aside key={item.id} className="disruption" data-testid="disruption-card">
+                <div className="disruption-head">
+                  <strong>{item.title}</strong>
+                  <button type="button" className="ghost" onClick={() => game.minimiseDisruption(item.id)}>
+                    Minimise
+                  </button>
+                </div>
+                <p>{item.explanation}</p>
+                <p className="muted">Fix: {item.suggestedFix}</p>
+                <div className="disruption-actions">
+                  <button type="button" onClick={() => game.panToDisruption(item.id)}>
+                    Pan to problem
+                  </button>
+                  <button type="button" onClick={() => game.recoverDisruption(item.id)}>
+                    Apply fix
+                  </button>
+                  <button type="button" className="ghost" onClick={() => game.ignoreDisruption(item.id)}>
+                    Ignore
+                  </button>
+                  <button type="button" className="ghost" onClick={() => game.dismissDisruption(item.id)}>
+                    Dismiss
+                  </button>
+                </div>
+              </aside>
+            ) : (
+              <button
+                key={item.id}
+                type="button"
+                className="disruption mini"
+                onClick={() => game.expandDisruption(item.id)}
+              >
+                {item.title} · {item.status === 'ignored' ? 'ignored' : 'minimised'}
+              </button>
+            ),
+          )}
+        </div>
+      ) : null}
 
       <div
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
+        <DiplomacyLetters game={game} />
         {(() => {
           type Letter = {
             id: string
@@ -872,7 +1046,7 @@ export function Hud({ game }: { game: Game }) {
                         {game.fieldOpsMult() > 1.05
                           ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                           : ''}{' '}
-                        · landside {money(game.landsideUpkeep())}/30s
+                        · landside {money(game.landsideUpkeep())}/day
                       </p>
                       <p className="muted">
                         {game.loanBalance > 0
@@ -931,7 +1105,7 @@ export function Hud({ game }: { game: Game }) {
                       {game.sandbox ? ' · sandbox' : ''}
                       {game.loanBalance ? ` · loan owed ${money(game.loanBalance)}` : ''}
                       {' · '}pax fees {money(game.landsideIncome())} / expense{' '}
-                      {money(game.landsideUpkeep())}/30s · fill{' '}
+                      {money(game.landsideUpkeep())}/day · fill{' '}
                       {Math.round(game.landsideUsageRate() * 100)}%
                     </p>
                     <button
@@ -949,9 +1123,12 @@ export function Hud({ game }: { game: Game }) {
                           ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
                           : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). Empty plot only.'}
                     </p>
+                    <p className="muted" data-testid="cash-forecast-detail">
+                      Live {money(forecast.hourlyIncome)}/hr · daily charges {money(forecast.dailyCharges)} · weekly{' '}
+                      {money(forecast.weeklyCharges)} · forecast {flowLabel}
+                    </p>
                     <p className="muted">
-                      Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}{' '}
-                      · recent {money(game.incomeRate())}/hr
+                      Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}
                     </p>
                     </>
                     ) : null}
@@ -1095,6 +1272,28 @@ export function Hud({ game }: { game: Game }) {
                 </>
               ) : null}
 
+              {panel === 'settings' ? (
+                <section data-testid="settings-panel">
+                  <h3>Hints</h3>
+                  <label className="sandbox-toggle">
+                    <input
+                      type="checkbox"
+                      data-testid="settings-all-hints"
+                      checked={game.hintPrefs.allEnabled}
+                      onChange={(e) => game.setAllHints(e.target.checked)}
+                    />
+                    <span>All hints enabled</span>
+                  </label>
+                  <p className="muted">
+                    {game.hintPrefs.allEnabled
+                      ? 'Every advisor hint shows in the panel, bottom right.'
+                      : game.hintPrefs.muted.includes('*')
+                        ? 'Hints are off. Tick the box to turn every type back on.'
+                        : `${game.hintPrefs.muted.length} hint type${game.hintPrefs.muted.length === 1 ? '' : 's'} hidden. Tick the box to turn every type back on.`}
+                  </p>
+                </section>
+              ) : null}
+
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
@@ -1104,7 +1303,7 @@ export function Hud({ game }: { game: Game }) {
                       ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                       : ''}{' '}
                     · crash risk {Math.round(game.crashChance() * 1000) / 10}% · RW{' '}
-                    {Math.round(game.runwayCondition)}% · {game.weatherLabel()}
+                    {Math.round(game.runwayCondition)}% · {seasonAtClock(game.clock).name} · {game.weatherLabel()}
                   </p>
                   <div className="row">
                     <button type="button" className="on" onClick={() => game.hireMechanic()}>
@@ -1226,8 +1425,20 @@ export function Hud({ game }: { game: Game }) {
                 </section>
               ) : null}
 
+              {panel === 'rival' ? (
+                rival ? (
+                  <RivalPanel model={rival} onCourt={(id) => game.courtRivalCarrier(id)} />
+                ) : (
+                  <section data-testid="rival-panel">
+                    <h3>Bellwater Intl</h3>
+                    <p className="muted">Buy a plot and Bellwater starts sharing the catchment.</p>
+                  </section>
+                )
+              ) : null}
+
               {panel === 'airlines' ? (
                 <>
+                <AirlinesDesk game={game} />
                 <section className="inbound-contracts" data-testid="contracts-panel">
                   <h3>Contracts</h3>
                   <p className="muted eco-line">
@@ -1278,9 +1489,9 @@ export function Hud({ game }: { game: Game }) {
                     const prog = game.fieldXpToNext()
                     return (
                       <p className="muted eco-line">
-                        Field Level {prog.level}
-                        {prog.level < 5
-                          ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to Lv${prog.level + 1})`
+                        Field {prog.label}
+                        {prog.pct < 1
+                          ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to ${prog.nextLabel})`
                           : ` · ${prog.xp} XP · max`}
                         {' · '}
                         Signed:{' '}
@@ -1299,6 +1510,36 @@ export function Hud({ game }: { game: Game }) {
                     {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
                     Cross-cut: Charter / LCC / Full-service / Cargo.
                   </p>
+                  <div className="spec-paths" data-testid="spec-paths">
+                    <p className="muted">
+                      Specialization {game.specPointsLeft()} left · earned {game.specPointsEarned()} at
+                      FL6 / FL8 / FL10. Paths mix. Each path after the first: capstone +50% and site
+                      upkeep +10%.
+                    </p>
+                    <div className="row">
+                      {SPEC_PATHS.map((path) => {
+                        const owned = game.specPaths.includes(path.id)
+                        const open = !owned && game.specPointsLeft() > 0
+                        return (
+                          <button
+                            key={path.id}
+                            type="button"
+                            className={owned ? 'on' : ''}
+                            disabled={!owned && !open}
+                            title={
+                              owned
+                                ? `${path.label} is on the field. ${path.blurb}`
+                                : `${path.blurb} Capstone price rises if this is not your first path.`
+                            }
+                            onClick={() => game.chooseSpec(path.id as SpecPath)}
+                          >
+                            {path.label}
+                            {owned ? ' · on' : ''}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                   {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
                     const meta = AIRLINE_TIER_META[tier]
                     const unlocked = game.tierUnlocked(tier)
@@ -1704,6 +1945,24 @@ export function Hud({ game }: { game: Game }) {
                 </>
               ) : null}
 
+              {panel === 'premium' ? <PremiumPanel game={game} /> : null}
+              {panel === 'tycoon' ? (
+                <TycoonPanel
+                  view={game.tycoonView()}
+                  cash={game.cash}
+                  tab={tycoonTab === 'year' && !game.pendingYearReport() ? 'shops' : tycoonTab}
+                  formatMoney={money}
+                  onTab={setTycoonTab}
+                  onAccept={(unitId, bidId) => game.acceptTenantBid(unitId, bidId)}
+                  onReroll={(unitId) => game.rerollTenantBids(unitId)}
+                  onCampaign={(kind) => game.startAdCampaign(kind)}
+                  onDismissReport={() => {
+                    game.dismissYearReport()
+                    setTycoonTab('shops')
+                  }}
+                />
+              ) : null}
+
               {panel === 'services' ? (
                 <>
                   <section>
@@ -1755,6 +2014,22 @@ export function Hud({ game }: { game: Game }) {
                         Tank {TANK_TIERS[Math.min(2, game.tankTier)] ? `→ ${tankDef(game.tankTier === 3 ? 3 : ((game.tankTier + 1) as 2 | 3)).capacityLitres.toLocaleString('en-US')} L` : ''}
                       </button>
                     </div>
+                    <p className="muted">
+                      {powerPlantOffer(game.powerPlantTier).name} · capacity{' '}
+                      {Math.round(power.capacity).toLocaleString('en-US')} · demand{' '}
+                      {Math.round(power.demand).toLocaleString('en-US')}
+                      {power.brownout ? ' · brown-out' : ''}
+                    </p>
+                    <button
+                      type="button"
+                      data-testid="upgrade-power"
+                      disabled={!powerGate.ok}
+                      onClick={() => game.upgradePowerPlant()}
+                    >
+                      {powerGate.next
+                        ? `Build ${powerPlantOffer(powerGate.next).name} ${money(powerGate.cost)}`
+                        : 'Power plant III'}
+                    </button>
                     <p className="muted">
                       Bags: {BAG_SYSTEMS[game.bagSystem].name}. Check-in desks {game.paxDesks}, kiosks {game.paxKiosks}, bag drop {game.paxBagDrops}, scanners {game.scannerLanes}, e-gates {game.eGates}.
                     </p>
@@ -1928,26 +2203,66 @@ export function Hud({ game }: { game: Game }) {
                     const def = BUILDINGS.find((b) => b.tool === t)
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
-                    const locked = Boolean(def?.minFieldLevel && game.fieldLevel() < def.minFieldLevel)
+                    const need = unlockLevel(t)
+                    const locked = t !== 'clear' && game.fieldLevel() < need
+                    const upkeep = def?.upkeepPerDay ?? 0
                     const tip =
                       t === 'clear'
                         ? 'Bulldoze — refunds 40% of the stamp.'
                         : locked
-                          ? `${name} needs Field level ${def?.minFieldLevel}.`
+                          ? lockTip(name, need, def?.blurb)
                           : (def?.blurb ?? TOOL_LABEL[t])
+                    const priceTip = locked
+                      ? tip
+                      : cost != null
+                        ? `${tip} ${money(cost)}${upkeep > 0 ? ` · $${upkeep}/day` : ''}`
+                        : tip
                     return (
                       <button
                         key={t}
                         type="button"
-                        className={`tray-item${game.tool === t ? ' on' : ''}`}
+                        className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' locked' : ''}`}
                         onClick={() => game.setTool(t)}
-                        title={locked ? tip : cost != null ? `${tip} ${money(cost)}` : tip}
+                        title={priceTip}
+                        data-testid={`tray-${t}`}
                       >
                         <TrayMark tool={t} />
                         <span className="tray-name">{name}</span>
                         <span className="tray-price">
-                          {locked ? `Field ${def?.minFieldLevel}` : cost != null ? money(cost) : 'Refund'}
+                          {locked ? `FL${need}` : cost != null ? money(cost) : 'Refund'}
                         </span>
+                        {upkeep > 0 ? <span className="tray-upkeep">${upkeep}/day</span> : null}
+                      </button>
+                    )
+                  })}
+                  {PROGRESSION_BUILDABLES.filter((row) => row.menu === buildMenu).map((row) => {
+                    const need = unlockLevel(row.id)
+                    const locked = game.fieldLevel() < need
+                    const cost = capstoneCost(row.cost, game.specPaths, row.id)
+                    const tip = locked
+                      ? lockTip(row.name, need, row.blurb)
+                      : `${row.blurb}${row.cost > 0 ? ` ${money(cost)}` : ''}${
+                          row.upkeepPerDay > 0 ? ` · $${row.upkeepPerDay}/day` : ''
+                        }`
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        className={`tray-item${locked ? ' locked' : ''}${
+                          game.progressionBuilt.includes(row.id) ? ' on' : ''
+                        }`}
+                        title={tip}
+                        data-testid={`tray-${row.id}`}
+                        onClick={() => game.commission(row.id)}
+                      >
+                        <TrayMark tool={row.id} />
+                        <span className="tray-name">{row.name}</span>
+                        <span className="tray-price">
+                          {locked ? `FL${need}` : row.cost > 0 ? money(cost) : 'Select'}
+                        </span>
+                        {row.upkeepPerDay > 0 ? (
+                          <span className="tray-upkeep">${row.upkeepPerDay}/day</span>
+                        ) : null}
                       </button>
                     )
                   })}
@@ -1969,7 +2284,9 @@ export function Hud({ game }: { game: Game }) {
                         : game.tool === 'pan'
                           ? 'Select: click a tile or hall. WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit.'
                           : tip
-                            ? `${tip.blurb} ${money(tip.cost)}`
+                            ? `${tip.blurb} ${money(tip.cost)}${
+                                tip.upkeepPerDay ? ` · $${tip.upkeepPerDay}/day` : ''
+                              }`
                             : 'Clear refunds 40%.'}
               {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
               {game.hallGuests.length
@@ -2084,6 +2401,7 @@ export function Hud({ game }: { game: Game }) {
                   }}
                 >
                   {m.label}
+                  {m.id === 'tycoon' && game.pendingYearReport() ? ' •' : ''}
                 </button>
               ))}
             </div>

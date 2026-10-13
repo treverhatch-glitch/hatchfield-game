@@ -199,6 +199,13 @@ export class Crowd {
     this.free.push(i)
   }
 
+  /** Drop a queue slot and walk `route`. */
+  release(i: number, route: Waypoint[]) {
+    if (!this.alive[i]) return
+    this.leaveQueue(i)
+    this.setRoute(i, route)
+  }
+
   setRoute(i: number, route: Waypoint[]) {
     this.routes[i] = route
     this.leg[i] = 0

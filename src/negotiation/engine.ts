@@ -333,9 +333,25 @@ export class NegotiationDesk {
     return 1 - cut
   }
 
-  /** Mean fee multiplier for a signed carrier. 1 when there is no deal. */
+  /** Latest signed deal for this carrier. */
+  dealFor(id: string): SignedDeal | undefined {
+    for (let i = this.signed.length - 1; i >= 0; i -= 1) {
+      if (this.signed[i]?.airlineId === id) return this.signed[i]
+    }
+    return undefined
+  }
+
+  /** Retail-spend band the offer sheet uses for its margin range. */
+  spendBand(id: string): { low: number; mid: number; high: number } {
+    return this.spendPoint(this.require(id))
+  }
+
+  /**
+   * Mean fee multiplier for a signed carrier. 1 when there is no deal.
+   * Live billing uses each line on its own; this average is the desk summary.
+   */
   feeFactor(id: string): number {
-    const deal = this.signed.find((d) => d.airlineId === id)
+    const deal = this.dealFor(id)
     if (!deal) return 1
     let sum = 0
     for (const service of SERVICE_IDS) sum += 1 + (deal.terms.feePct[service] ?? 0) / 100

@@ -23,6 +23,15 @@ import {
 } from './actions.ts';
 import type { EndeavorPreview, FirstMeetChoice, FirstMeetScene } from './actions.ts';
 import { buildCard } from './cards.ts';
+import { quoteCounter } from './counter.ts';
+import {
+  noteAirlineFee as feedAirlineFee,
+  noteMissedConnections as feedMissedConnections,
+  noteNegotiation as feedNegotiation,
+  notePremiumScreening as feedPremiumScreening,
+  noteRivalAirport as feedRivalAirport
+} from './feeds.ts';
+import { contractLadder as ladderFor, maybeFlightContracts } from './ladder.ts';
 import { allRelations, emit, signedRelations } from './core.ts';
 import type { EngineCore } from './core.ts';
 import {
@@ -45,6 +54,7 @@ import {
 } from './departure.ts';
 import {
   defendAgainstPoach,
+  listOpenSpats,
   operationalEffects,
   poachRisk,
   respondToSpat,
@@ -60,10 +70,11 @@ import {
   expireProposals,
   maybeBaseProposals,
   maybeSendLetters,
+  previewReaction,
   previewSign,
   respondToProposal
 } from './proposals.ts';
-import type { SignPreview } from './proposals.ts';
+import type { ReactionKind, SignPreview } from './proposals.ts';
 import { evaluate, refreshPerks, updateShares } from './relations.ts';
 import { pick } from './rng.ts';
 import { pruneModifiers, recordGrade, stepPerformance } from './standing.ts';
@@ -76,10 +87,14 @@ import type {
   DiplomacyEvent,
   DiplomacyHost,
   DiplomacyState,
+  CounterLineKey,
+  CounterQuote,
   Grade,
+  LadderStep,
   OperationalEffects,
   ProposalResponse
 } from './types.ts';
+import type { MissedConnectionFeed, NegotiationFeed, PremiumScreeningFeed, RivalAirportFeed } from './feeds.ts';
 
 export interface CreateStateOptions {
   seed?: number;
@@ -114,7 +129,8 @@ export function createDiplomacyState(options: CreateStateOptions = {}): Diplomac
     lastDemandIssuedDay: -Infinity,
     tierFloorSpawnDay: {},
     reputationDelta: 0,
-    log: []
+    log: [],
+    premiumScreenPct: 1
   };
   state.rivalAirport.name = pick(state, RIVAL_AIRPORT_NAMES);
   for (const seed of ROSTER) {
@@ -253,6 +269,7 @@ export class DiplomacyEngine {
     maybeIssueDemand(core);
     expireProposals(core);
     maybeSendLetters(core);
+    maybeFlightContracts(core);
     maybeBaseProposals(core);
     processSlotPools(core);
     ensureTierFloor(core);
@@ -331,6 +348,8 @@ export class DiplomacyEngine {
         generation: kf.generation + 1,
         keepTraits: [kept]
       });
+      next.keptTrait = kept;
+      next.freshTrait = next.traits.find((t) => t !== kept) ?? next.traits[1];
       for (const m of rel.modifiers) m.value *= 0.5;
       rel.keyFigure = next;
       rel.traits = [...next.traits];
@@ -390,12 +409,65 @@ export class DiplomacyEngine {
 
   // ---- player actions ---------------------------------------------------------------------
 
-  respondToProposal(proposalId: string, response: ProposalResponse, payWith: 'money' | 'favour' = 'money'): ActionResult {
-    return respondToProposal(this.core, proposalId, response, payWith);
+  respondToProposal(
+    proposalId: string,
+    response: ProposalResponse,
+    payWith: 'money' | 'favour' = 'money',
+    ticks?: CounterLineKey[]
+  ): ActionResult {
+    return respondToProposal(this.core, proposalId, response, payWith, ticks);
+  }
+
+  /** Success % and line items for a counter, before the player spends. */
+  counterQuote(proposalId: string, ticks?: CounterLineKey[]): CounterQuote | null {
+    const proposal = this.core.state.proposals.find((p) => p.id === proposalId);
+    if (!proposal) return null;
+    const rel = this.core.state.relations[proposal.airlineId];
+    if (!rel) return null;
+    return quoteCounter(rel, proposal, ticks);
+  }
+
+  contractLadder(airlineId: string): LadderStep[] {
+    const rel = this.core.state.relations[airlineId];
+    return rel ? ladderFor(this.core, rel) : [];
+  }
+
+  noteMissedConnections(feed: MissedConnectionFeed): void {
+    feedMissedConnections(this.core, feed);
+  }
+
+  noteRivalAirport(feed: RivalAirportFeed): void {
+    feedRivalAirport(this.core, feed);
+  }
+
+  notePremiumScreening(feed: PremiumScreeningFeed): void {
+    feedPremiumScreening(this.core, feed);
+  }
+
+  noteNegotiation(feed: NegotiationFeed): void {
+    feedNegotiation(this.core, feed);
+  }
+
+  /** Negotiation-desk fee factor for one signed airline. 1 is the posted schedule. */
+  noteAirlineFee(airlineId: string, factor: number): void {
+    feedAirlineFee(this.core, airlineId, factor);
+  }
+
+  /** Published fee index for every airline. 1 is the baseline schedule. */
+  notePublishedFees(index: number): { pct: number } {
+    return this.notifyFeeChange(index);
   }
 
   previewSign(airlineId: string): SignPreview | null {
     return previewSign(this.core, airlineId);
+  }
+
+  previewReaction(airlineId: string, kind: ReactionKind = 'sign'): SignPreview | null {
+    return previewReaction(this.core, airlineId, kind);
+  }
+
+  openSpats() {
+    return listOpenSpats(this.core);
   }
 
   respondToDemand(demandId: string, response: 'accept' | 'decline', useLeverage = false): ActionResult {

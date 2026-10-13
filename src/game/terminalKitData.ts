@@ -1,13 +1,15 @@
 /**
  * Terminal build kit — food outlets, seating, and decorations.
  *
- * Pure data. Tunable numbers live here, not in the sim. `terminal.ts` merges
- * KIT_ITEMS into ITEMS, so this file only imports types.
+ * Tunable numbers live in the connectivity catalog. `terminal.ts` merges
+ * KIT_ITEMS into ITEMS.
  */
 import type { ItemDef } from './terminal.ts'
 import type { PaxTag } from './guests.ts'
 
-export type KitCategory = 'food' | 'seating' | 'decor' | 'service'
+import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
+
+export type KitCategory = 'food' | 'seating' | 'decor' | 'links' | 'service'
 
 /** One hall cell holds this many slots. Desks and lanes fill the whole cell. */
 export const CELL_SLOTS = 4
@@ -191,6 +193,23 @@ export const KIT_ITEMS: ItemDef[] = [
     size: 2,
     comfort: 5,
     comfortRadius: 2,
+  },
+  {
+    id: 'walkway',
+    name: CONNECTIVITY_CATALOG.moving_walkway.name,
+    blurb: `${CONNECTIVITY_CATALOG.moving_walkway.blurb} ${CONNECTIVITY_CATALOG.moving_walkway.catch}`,
+    zones: ['gates', 'arrivals'],
+    servers: 0,
+    queueCap: 0,
+    serviceSec: 0,
+    cost: CONNECTIVITY_CATALOG.moving_walkway.cost,
+    upkeep: CONNECTIVITY_CATALOG.moving_walkway.upkeepPerDay,
+    staff: 0,
+    minFieldLevel: CONNECTIVITY_CATALOG.moving_walkway.fieldLevel,
+    wearPerUse: 0.05,
+    category: 'links',
+    size: 4,
+    perk: 'Faster walk along the belt',
   },
   {
     id: 'trash_can',

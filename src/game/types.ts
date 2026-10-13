@@ -1,4 +1,7 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { Tier3Save } from '../tier3/types.ts'
+import type { PremiumState } from '../premium/types.ts'
+import type { TycoonState } from '../tycoon/types.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -33,20 +36,26 @@ export type Tile =
   | 'rail'
   /** Apron terminal-bus depot — ferries remote-stand pax. */
   | 'termbus'
+  /** Guideway between terminals. Pods run while the link is open. */
+  | 'mover'
+  /** Airside buses for connecting passengers. */
+  | 'xferbus'
+  /** Covered bridge between terminal halls. */
+  | 'skywalk'
+  /** Moving walkway on the apron. Passengers on it move faster. */
+  | 'travelator'
   /** Catering production for the ground fleet. */
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
   | 'depot'
+  /** Late-game heavy-check hangar. Aircraft occupy a bay and tie up a stand. */
+  | 'mro'
+  /** Late-game freighter night wave. */
+  | 'nighthub'
   /** Fuel-supply rail. Delivery starts only when this reaches the map edge. */
   | 'fuel_rail'
   /** Unloads a fuel train into the tank farm. */
   | 'oil'
-  /** Moving walkway. Passengers on it move faster. */
-  | 'travelator'
-  /** Elevated link between a terminal and a pier. */
-  | 'skywalk'
-  /** Automated people-mover guideway. */
-  | 'mover'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -105,9 +114,14 @@ export type Tool =
   | 'deice'
   | 'bus'
   | 'term_bus'
+  | 'people_mover'
+  | 'xfer_bus'
+  | 'hub_skywalk'
   | 'rail'
   | 'kitchen'
   | 'depot'
+  | 'mro'
+  | 'nighthub'
   | 'stand_w'
   | 'hangar_w'
   | 'hangar_j'
@@ -286,6 +300,10 @@ export type ResearchId =
   | 'travelator'
   | 'skywalk'
   | 'people_mover'
+  | 'transfer_centre'
+  | 'rfid_bag_line'
+  | 'mro_hangar'
+  | 'cargo_night_hub'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -361,9 +379,11 @@ export interface BuildDef {
   cost: number
   blurb: string
   /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
-  minFieldLevel?: 1 | 2 | 3 | 4 | 5
+  minFieldLevel?: number
   /** Project that must be bought before the stamp is offered. */
   research?: ResearchId
+  /** Operating cost per game day. Legacy tick rates are multiplied by six. */
+  upkeepPerDay?: number
 }
 
 export interface RoomDef {
@@ -855,6 +875,10 @@ export interface GameSnapshot {
   loanOpened?: number
   /** Airport XP toward field level (airline tier unlocks). */
   fieldXp?: number
+  /** Specialization paths chosen at FL6 / FL8 / FL10. Order is purchase order. */
+  specPaths?: string[]
+  /** Progression stamps that are not apron tiles (halls, hydrant, landmarks). */
+  progressionBuilt?: string[]
   parcels: number
   /** Expansion plots bought after the starter site. Missing on older saves. */
   ownedPlots?: { id: string; assessed: number }[]
@@ -881,6 +905,16 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
+  /** Wear on the people mover and the airside transfer bus. */
+  linkWear?: { mover: number; bus: number }
+  /** True when that link is stopped after a breakdown. */
+  linkDown?: { mover: boolean; bus: boolean }
+  /** Gates named by the last people-mover breakdown. */
+  strandedGates?: string[]
+  /** Plain-language reason the link is stopped. */
+  linkExplanation?: string
+  /** Hub-priced link stamps, keyed by cell. Pier links are not in this map. */
+  hubLinksBuilt?: Record<string, 'people_mover' | 'xferbus' | 'skywalk'>
   /** Size-pillar purchases: fuel contract, tank, fleet, bags, and passenger kit. */
   pillar?: {
     contractId: string | null
@@ -896,6 +930,8 @@ export interface GameSnapshot {
     scannerLanes: number
     eGates: number
   }
+  /** Connecting passengers who missed the onward flight. */
+  missedConnections?: number
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
@@ -918,6 +954,8 @@ export interface GameSnapshot {
   deskStaff?: number
   /** First-hour coach dismissed (or auto-cleared after first takeoff). */
   coachDismissed?: boolean
+  /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
+  hintPrefs?: { allEnabled: boolean; muted: string[] }
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
@@ -927,13 +965,44 @@ export interface GameSnapshot {
   sandbox?: boolean
   /** In-progress construction. Grass stays until the timer finishes. */
   sites?: BuildSite[]
+  /** Tier III hangar and night-hub save. Missing on older saves. */
+  tier3?: Tier3Save
+  /** Bought power capacity. Missing saves stay on the Tier I city feed. */
+  powerPlantTier?: 1 | 2 | 3
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
+  /** Published fee index. Missing saves stay on the baseline schedule. */
+  publishedFeeIndex?: number
   /** Negotiation desk (offers, rival, ULCC research). */
   negotiation?: string
+  /** Bellwater price war (PLAYTEST B5). */
+  priceWar?: string
   /** Inbound offers, visits, and Guard contracts. */
   inbound?: InboundState
+  /** Player fee card. Missing on older saves — the live defaults apply. */
+  fees?: Record<string, number>
+  depositTier?: 'big' | 'standard' | 'small' | 'none'
+  deposits?: Record<
+    string,
+    {
+      contractId: string
+      tier: 'big' | 'standard' | 'small' | 'none'
+      held: number
+      status: 'held' | 'refunded' | 'forfeited' | 'none'
+      termEndDay: number
+    }
+  >
+  commercialLead?: Record<string, { signDay: number; leadDays: number; opened: boolean }>
+  feeStandingApplied?: number
+  /** Premium check-in, fast-track lanes, and the VIP room. */
+  premium?: PremiumState
+  /** Shop leases, ad campaigns, and awards. Missing on older saves. */
+  tycoon?: TycoonState
+  /** Bellwater Intl rival sim. */
+  rival?: string
+  /** Late-game disruption engine. Missing on older saves. The alert stack shows the card. */
+  disruptions?: string
 }
 
 /** A placed building that is still a construction site. */

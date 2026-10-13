@@ -126,11 +126,14 @@ export function addPeopleMover(g: THREE.Group) {
   const car = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.46, 0.7, 0.42), metal('#d7dee6', 0.35))
   car.position.set(-CELL * 0.08, 2.85, 0)
   car.castShadow = true
+  car.name = 'pod'
+  car.userData.home = car.position.x
   const window = new THREE.Mesh(
     new THREE.BoxGeometry(CELL * 0.28, 0.28, 0.44),
     new THREE.MeshStandardMaterial({ color: '#7eb6e0', roughness: 0.2, metalness: 0.15 }),
   )
   window.position.set(-CELL * 0.08, 3.0, 0)
+  window.name = 'pod-glass'
   const nose = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.45, 0.36), metal('#c9a227'))
   nose.position.set(CELL * 0.16, 2.8, 0)
   g.add(guide, car, window, nose)

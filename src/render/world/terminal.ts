@@ -215,6 +215,19 @@ export class TerminalBuilding {
     this.buildLife()
   }
 
+  /** Swap in the SVG pack once it has decoded. Procedural maps stay until then. */
+  applyPackMaps(floor: THREE.Texture | null, glass: THREE.Texture | null) {
+    if (floor) {
+      this.floorMat.map = floor
+      this.floorMat.needsUpdate = true
+    }
+    if (glass) {
+      this.glassMat.map = glass
+      this.glassMat.color.setHex(0xffffff)
+      this.glassMat.needsUpdate = true
+    }
+  }
+
   get rooms(): RoomPlan {
     return this.plan.rooms
   }

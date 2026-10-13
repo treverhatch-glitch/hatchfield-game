@@ -1,3 +1,5 @@
+import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
+import { HUB_UPGRADES } from '../hub/index.ts'
 import type { LandPlotConfig } from '../land/types.ts'
 import {
   HANGAR_OFFERS,
@@ -5,6 +7,7 @@ import {
   RESEARCH_COSTS,
   STAND_OFFERS,
 } from '../scale/data'
+import { unlockLevel } from '../progression/unlocks.ts'
 import type {
   Airline,
   AirlinePersona,
@@ -24,6 +27,7 @@ import type {
   Tile,
   Tool,
 } from './types'
+import { MRO_COST, MRO_UPKEEP_PER_DAY, NIGHT_HUB_COST, NIGHT_HUB_UPKEEP_PER_DAY } from '../tier3/config.ts'
 
 /** Cash in hand before you buy the plot. */
 export const START_CASH = { easy: 220_000, standard: 150_000 } as const
@@ -181,15 +185,100 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
   },
 ]
 
-/** XP thresholds → field level 1–5 (airline tier unlock spine). */
-export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700] as const
+/** Field level 1–10. Index matches the level; index 0 is unused. */
+export const MAX_FIELD_LEVEL = 10
+export type FieldLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 
-export function fieldLevelFromXp(xp: number): AirlineTier {
-  if (xp >= FIELD_LEVEL_XP[5]) return 5
-  if (xp >= FIELD_LEVEL_XP[4]) return 4
-  if (xp >= FIELD_LEVEL_XP[3]) return 3
-  if (xp >= FIELD_LEVEL_XP[2]) return 2
-  return 1
+/**
+ * XP to reach each field level.
+ * FL1–5 stay 0 / 90 / 220 / 420 / 700. FL6–10 follow.
+ * Levels 6 and 7 also open hub links (transfer bus, people mover).
+ */
+export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700, 1100, 1600, 2300, 3200, 4500] as const
+
+/** XP between prestige stars after FL10. P1 is FL10 + one step. */
+export const PRESTIGE_STAR_XP = 2_000
+export const PRESTIGE_STARS = 5
+
+export function fieldLevelOf(xp: number): FieldLevel {
+  let level: FieldLevel = 1
+  const safe = Math.max(0, xp)
+  for (let i = 2; i <= MAX_FIELD_LEVEL; i++) {
+    if (safe >= FIELD_LEVEL_XP[i]!) level = i as FieldLevel
+  }
+  return level
+}
+
+/** @deprecated name — use fieldLevelOf. */
+export function fieldLevelFromXp(xp: number): FieldLevel {
+  return fieldLevelOf(xp)
+}
+
+export function prestigeStarsOf(xp: number): number {
+  const floor = FIELD_LEVEL_XP[MAX_FIELD_LEVEL]
+  if (xp < floor) return 0
+  return Math.min(PRESTIGE_STARS, Math.floor((xp - floor) / PRESTIGE_STAR_XP))
+}
+
+export function prestigeThreshold(star: number): number {
+  return FIELD_LEVEL_XP[MAX_FIELD_LEVEL] + star * PRESTIGE_STAR_XP
+}
+
+export interface FieldProgress {
+  level: FieldLevel
+  stars: number
+  xp: number
+  /** XP required for the next level or the next star. */
+  need: number
+  pct: number
+  /** "Lv 7" or "Lv 10 · P2". */
+  label: string
+  /** "Lv 8" or "P3" or "max". */
+  nextLabel: string
+}
+
+export function fieldProgress(xp: number): FieldProgress {
+  const level = fieldLevelOf(xp)
+  const stars = prestigeStarsOf(xp)
+  const safeXp = Math.max(0, xp)
+  if (level < MAX_FIELD_LEVEL) {
+    const floor = FIELD_LEVEL_XP[level]
+    const need = FIELD_LEVEL_XP[level + 1]!
+    const pct = need <= floor ? 1 : Math.min(1, (safeXp - floor) / (need - floor))
+    return {
+      level,
+      stars: 0,
+      xp: safeXp,
+      need,
+      pct,
+      label: `Lv ${level}`,
+      nextLabel: `Lv ${level + 1}`,
+    }
+  }
+  if (stars >= PRESTIGE_STARS) {
+    const need = prestigeThreshold(PRESTIGE_STARS)
+    return {
+      level,
+      stars,
+      xp: safeXp,
+      need,
+      pct: 1,
+      label: `Lv ${MAX_FIELD_LEVEL} · P${stars}`,
+      nextLabel: 'max',
+    }
+  }
+  const floor = prestigeThreshold(stars)
+  const need = prestigeThreshold(stars + 1)
+  const pct = need <= floor ? 1 : Math.min(1, (safeXp - floor) / (need - floor))
+  return {
+    level,
+    stars,
+    xp: safeXp,
+    need,
+    pct,
+    label: stars > 0 ? `Lv ${MAX_FIELD_LEVEL} · P${stars}` : `Lv ${MAX_FIELD_LEVEL}`,
+    nextLabel: `P${stars + 1}`,
+  }
 }
 
 export const AIRLINE_TIER_META: Record<
@@ -285,6 +374,9 @@ export const TILE_UTILITY: Partial<Record<Tile, { power?: number; water?: number
   deice: { power: 1, water: 1 },
   police: { power: 1 },
   guard: { power: 1 },
+  mover: { power: 3 },
+  xferbus: { power: 1 },
+  skywalk: { power: 1 },
 }
 
 export const RAIL_CITY_COST = 22_000
@@ -315,49 +407,133 @@ export const PARK_L_COST = 14_000
 export const PARK_G_COST = 22_000
 export const PARK_U_COST = 18_000
 /**
- * Fixed operating expense / ~30s payroll tick — billed whether used or not.
+ * One game day is 180s. The old payroll tick was ~30s, so a daily bill is
+ * six ticks. These tick rates are the legacy numbers; the live constants
+ * below are already $/day.
+ */
+export const PAYROLL_TICKS_PER_DAY = 6
+
+export function dailyUpkeep(perTick: number): number {
+  return Math.round(perTick * PAYROLL_TICKS_PER_DAY)
+}
+
+/** Legacy per-tick operating rates. Daily upkeep is dailyUpkeep(tick). */
+export const UPKEEP_PER_TICK = {
+  park: {
+    park_s: { short: 160, long: 210 },
+    park_l: { short: 280, long: 360 },
+    park_g: { short: 420, long: 560 },
+    park_u: { short: 340, long: 450 },
+  },
+  hotel: { inn: 280, business: 480, resort: 780 },
+  hotelMeta: [0, 360, 620],
+  carparkShort: 180,
+  carparkLong: 240,
+  bus: 160,
+  rail: 260,
+  hall: {
+    dayhotel: 240,
+    spa: 200,
+    pool: 280,
+    golf: 170,
+    waterfall: 150,
+    gaming: 130,
+    lounge: 100,
+    souvenir: 60,
+    food: 80,
+  },
+} as const
+
+/**
+ * Fixed operating expense per game day — billed whether used or not.
  * Empty landside bleeds; passenger fees must cover this to stay green.
  */
 export const PARK_EXPENSE: Record<
   'park_s' | 'park_l' | 'park_g' | 'park_u',
   { short: number; long: number }
 > = {
-  park_s: { short: 160, long: 210 },
-  park_l: { short: 280, long: 360 },
-  park_g: { short: 420, long: 560 },
-  park_u: { short: 340, long: 450 },
+  park_s: {
+    short: dailyUpkeep(UPKEEP_PER_TICK.park.park_s.short),
+    long: dailyUpkeep(UPKEEP_PER_TICK.park.park_s.long),
+  },
+  park_l: {
+    short: dailyUpkeep(UPKEEP_PER_TICK.park.park_l.short),
+    long: dailyUpkeep(UPKEEP_PER_TICK.park.park_l.long),
+  },
+  park_g: {
+    short: dailyUpkeep(UPKEEP_PER_TICK.park.park_g.short),
+    long: dailyUpkeep(UPKEEP_PER_TICK.park.park_g.long),
+  },
+  park_u: {
+    short: dailyUpkeep(UPKEEP_PER_TICK.park.park_u.short),
+    long: dailyUpkeep(UPKEEP_PER_TICK.park.park_u.long),
+  },
 }
 /** @deprecated — parks no longer print sticker income; use PARK_EXPENSE + guest fees. */
 export const PARK_INCOME = PARK_EXPENSE
 export const HOTEL_CLASS_EXPENSE: Record<'inn' | 'business' | 'resort', number> = {
-  inn: 280,
-  business: 480,
-  resort: 780,
+  inn: dailyUpkeep(UPKEEP_PER_TICK.hotel.inn),
+  business: dailyUpkeep(UPKEEP_PER_TICK.hotel.business),
+  resort: dailyUpkeep(UPKEEP_PER_TICK.hotel.resort),
 }
 /** @deprecated — hotels no longer print sticker income; use HOTEL_CLASS_EXPENSE. */
 export const HOTEL_CLASS_INCOME = HOTEL_CLASS_EXPENSE
-export const HOTEL_META_EXPENSE = [0, 360, 620] as const
-export const CARPARK_META_EXPENSE_SHORT = 180
-export const CARPARK_META_EXPENSE_LONG = 240
-export const BUS_EXPENSE = 160
-export const RAIL_EXPENSE = 260
+export const HOTEL_META_EXPENSE = [
+  dailyUpkeep(UPKEEP_PER_TICK.hotelMeta[0]),
+  dailyUpkeep(UPKEEP_PER_TICK.hotelMeta[1]),
+  dailyUpkeep(UPKEEP_PER_TICK.hotelMeta[2]),
+] as const
+export const CARPARK_META_EXPENSE_SHORT = dailyUpkeep(UPKEEP_PER_TICK.carparkShort)
+export const CARPARK_META_EXPENSE_LONG = dailyUpkeep(UPKEEP_PER_TICK.carparkLong)
+export const BUS_EXPENSE = dailyUpkeep(UPKEEP_PER_TICK.bus)
+export const RAIL_EXPENSE = dailyUpkeep(UPKEEP_PER_TICK.rail)
 export const HOTEL_TILE_INCOME = 0
-/** Hall amenity upkeep / 30s when furnished — idle spas and pools still cost. */
+/** Hall amenity upkeep per game day when furnished — idle spas and pools still cost. */
 export const HALL_AMENITY_EXPENSE: Partial<
   Record<
     'dayhotel' | 'spa' | 'pool' | 'golf' | 'waterfall' | 'gaming' | 'lounge' | 'souvenir' | 'food',
     number
   >
 > = {
-  dayhotel: 240,
-  spa: 200,
-  pool: 280,
-  golf: 170,
-  waterfall: 150,
-  gaming: 130,
-  lounge: 100,
-  souvenir: 60,
-  food: 80,
+  dayhotel: dailyUpkeep(UPKEEP_PER_TICK.hall.dayhotel),
+  spa: dailyUpkeep(UPKEEP_PER_TICK.hall.spa),
+  pool: dailyUpkeep(UPKEEP_PER_TICK.hall.pool),
+  golf: dailyUpkeep(UPKEEP_PER_TICK.hall.golf),
+  waterfall: dailyUpkeep(UPKEEP_PER_TICK.hall.waterfall),
+  gaming: dailyUpkeep(UPKEEP_PER_TICK.hall.gaming),
+  lounge: dailyUpkeep(UPKEEP_PER_TICK.hall.lounge),
+  souvenir: dailyUpkeep(UPKEEP_PER_TICK.hall.souvenir),
+  food: dailyUpkeep(UPKEEP_PER_TICK.hall.food),
+}
+
+/** $/day shown on the apron tray. Short-term rate for parks. */
+export function buildingUpkeepPerDay(tool: string): number {
+  switch (tool) {
+    case 'hotel_inn':
+      return HOTEL_CLASS_EXPENSE.inn
+    case 'hotel_biz':
+      return HOTEL_CLASS_EXPENSE.business
+    case 'hotel_resort':
+      return HOTEL_CLASS_EXPENSE.resort
+    case 'park_s':
+      return PARK_EXPENSE.park_s.short
+    case 'park_l':
+      return PARK_EXPENSE.park_l.short
+    case 'park_g':
+      return PARK_EXPENSE.park_g.short
+    case 'park_u':
+      return PARK_EXPENSE.park_u.short
+    case 'bus':
+      return BUS_EXPENSE
+    case 'rail':
+      return RAIL_EXPENSE
+    case 'mro':
+      return MRO_UPKEEP_PER_DAY
+    case 'nighthub':
+      return NIGHT_HUB_UPKEEP_PER_DAY
+    default:
+      return 0
+  }
 }
 /** Landside curb — city buses drop departing pax. */
 export const BUS_CURB_COST = 8_500
@@ -927,6 +1103,30 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Apron buses ferry remote-stand pax. Without this, remote stands walk the pavement (slow + traffic).',
   },
   {
+    tool: 'people_mover',
+    tile: 'mover',
+    name: CONNECTIVITY_CATALOG.people_mover.name,
+    cost: CONNECTIVITY_CATALOG.people_mover.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.people_mover.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.people_mover.blurb} ${CONNECTIVITY_CATALOG.people_mover.catch} $${CONNECTIVITY_CATALOG.people_mover.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'xfer_bus',
+    tile: 'xferbus',
+    name: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.name,
+    cost: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.blurb} ${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.catch} $${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'hub_skywalk',
+    tile: 'skywalk',
+    name: CONNECTIVITY_CATALOG.skywalk.name,
+    cost: CONNECTIVITY_CATALOG.skywalk.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.skywalk.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.skywalk.blurb} ${CONNECTIVITY_CATALOG.skywalk.catch} $${CONNECTIVITY_CATALOG.skywalk.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
     tool: 'deice',
     tile: 'deice',
     name: 'De-ice pad',
@@ -1075,7 +1275,7 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'skywalk',
     tile: 'skywalk',
-    name: LINK_OFFERS.skywalk.name,
+    name: 'Pier skywalk',
     cost: LINK_OFFERS.skywalk.cost,
     minFieldLevel: 4,
     research: 'skywalk',
@@ -1084,11 +1284,27 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'mover',
     tile: 'mover',
-    name: LINK_OFFERS.mover.name,
+    name: 'Pier mover',
     cost: LINK_OFFERS.mover.cost,
     minFieldLevel: 5,
     research: 'people_mover',
     blurb: 'Automated people-mover. Jumbo piers are too far to walk.',
+  },
+  {
+    tool: 'mro',
+    tile: 'mro',
+    name: 'MRO hangar',
+    cost: MRO_COST,
+    minFieldLevel: 4,
+    blurb: `Field level 4. Heavy checks for narrow, wide, and jumbo bays. Airlines pay, but the aircraft ties up its stand. Needs mechanics and power. $${MRO_UPKEEP_PER_DAY.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'nighthub',
+    tile: 'nighthub',
+    name: 'Cargo night hub',
+    cost: NIGHT_HUB_COST,
+    minFieldLevel: 4,
+    blurb: `Field level 4. A night bank of freighters. High revenue, ground crew, and warehouse space. The city bills the noise. $${NIGHT_HUB_UPKEEP_PER_DAY.toLocaleString('en-US')}/day.`,
   },
   {
     tool: 'helipad',
@@ -1161,6 +1377,11 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Passenger rail hall on the city link. Needs City rail first. Business pax love it.',
   },
 ]
+
+for (const building of BUILDINGS) {
+  building.minFieldLevel = unlockLevel(building.tool)
+  building.upkeepPerDay = buildingUpkeepPerDay(building.tool)
+}
 
 export const ROOMS: RoomDef[] = [
   { id: 'checkin', name: 'Check-in', cost: 2400, blurb: 'Departures start here.' },
@@ -1235,8 +1456,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   fuel_rail: 'Fuel rail',
   oil: 'Oil station',
   travelator: 'Travelator',
-  skywalk: 'Skywalk',
-  mover: 'People mover',
+  skywalk: 'Pier skywalk',
+  mover: 'Pier mover',
   terminal: 'Shell',
   premade: 'Premade hall',
   snack: 'Snack',
@@ -1252,6 +1473,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   road: 'Road',
   tower: 'Tower',
   hangar: 'Hangar',
+  mro: 'MRO',
+  nighthub: 'Night hub',
   hotel_inn: 'Inn',
   hotel_biz: 'Biz hotel',
   hotel_resort: 'Resort',
@@ -1262,6 +1485,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   deice: 'De-ice',
   bus: 'Bus',
   term_bus: 'Term bus',
+  people_mover: 'People mover',
+  xfer_bus: 'Transfer bus',
+  hub_skywalk: 'Skywalk',
   rail: 'Rail',
   clear: 'Clear',
 }
@@ -1497,6 +1723,27 @@ export const RESEARCH_NODES: ResearchNode[] = [
     requires: 'skywalk',
     minFieldLevel: 5,
   },
+  {
+    id: 'mro_hangar',
+    name: 'Hangar MRO',
+    cost: 72,
+    blurb: 'Third-party heavy checks. A wide hangar with bigger bays for widebody and jumbo aircraft.',
+    requires: 'heavy_pack',
+  },
+  {
+    id: 'cargo_night_hub',
+    name: 'Cargo night hub',
+    cost: 68,
+    blurb: 'A late freighter wave after dark. High revenue, and the city charges for the noise.',
+    requires: 'heavy_pack',
+  },
+  ...HUB_UPGRADES.map((node) => ({
+    id: node.id,
+    name: node.name,
+    cost: node.rp,
+    blurb: node.blurb,
+    requires: node.requires,
+  })),
 ]
 
 /** Research points per completed takeoff. */
