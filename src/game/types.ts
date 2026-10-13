@@ -1,3 +1,5 @@
+import type { InboundState } from '../inbound/types.ts'
+
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
 
@@ -554,6 +556,10 @@ export interface Flight {
   bagsOffloaded?: number
   /** Inbound units that did not fit the claim hall. */
   claimLeft?: number
+  /** Inbound visit that owns this arrival. The stand stays occupied until release. */
+  inboundVisitId?: string
+  /** Sim clock when this inbound visit frees the stand. */
+  inboundReleaseAt?: number
 }
 
 /** Timed bag journey — aggregate units, not per-suitcase agents. */
@@ -854,6 +860,8 @@ export interface GameSnapshot {
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
+  /** Inbound offers, visits, and Guard contracts. */
+  inbound?: InboundState
 }
 
 /** A placed building that is still a construction site. */

@@ -375,6 +375,18 @@ describe('inbound requests', () => {
     assertPads(state, field)
   })
 
+  it('opens one decision card at a time, and a bot still clears the day', () => {
+    const quiet = createInboundState(4)
+    tick(quiet, world({ fieldLevel: 8 }), SIM_DAY_SEC)
+    expect(quiet.requests.filter((request) => request.status === 'pending').length).toBeLessThanOrEqual(1)
+    expect(quiet.requests.some((request) => request.status === 'expired' || request.status === 'pending')).toBe(true)
+    expect(quiet.requests.filter((request) => request.status === 'expired').length).toBeLessThanOrEqual(3)
+
+    const bot = createInboundState(4)
+    tick(bot, world({ fieldLevel: 8 }), SIM_DAY_SEC, botChoice)
+    expect(bot.requests.filter((request) => request.status === 'queued' || request.status === 'pending')).toHaveLength(0)
+  })
+
   it('rolls offers only — an ignored day parks nothing and does not touch the field', () => {
     const field = world({ fieldLevel: 6 })
     const before = structuredClone(field)

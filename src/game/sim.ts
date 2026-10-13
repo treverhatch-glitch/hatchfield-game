@@ -171,6 +171,16 @@ import {
   GAME_MINUTES_PER_SIM_SECOND,
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
+import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
+import type { InboundContractRow, InboundOfferView } from './inboundBridge.ts'
+import {
+  REP_FAIL,
+  SIM_DAY_SEC,
+  UPLIFT_LITRES,
+  type InboundEvent,
+  type InboundWorld,
+  type RequestKind,
+} from '../inbound/index.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -720,6 +730,8 @@ export class Game {
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
   private diplomacy: DiplomacyBridge | null = null
   diplomacySeed = 1
+  /** Inbound offers and Guard contracts. Null until the clock or a card needs it. */
+  private inbound: InboundBridge | null = null
   /** Passenger-flow overlay. Hidden until the player opts in. */
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
@@ -943,6 +955,7 @@ export class Game {
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
+    this.inbound = null
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
@@ -3116,6 +3129,7 @@ export class Game {
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      inbound: this.inbound?.state,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3250,6 +3264,13 @@ export class Game {
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
       if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
+      if (s.inbound) {
+        this.inbound = InboundBridge.restore(s.inbound, this.diplomacySeed)
+      } else {
+        this.inbound = new InboundBridge(this.diplomacySeed)
+        this.inbound.state.clock = this.clock
+        this.inbound.state.rolledDay = Math.floor(this.clock / SIM_DAY_SEC)
+      }
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -11759,6 +11780,307 @@ export class Game {
     this.emit()
   }
 
+  private ensureInbound(): InboundBridge {
+    if (!this.inbound) this.inbound = new InboundBridge(this.diplomacySeed)
+    return this.inbound
+  }
+
+  /**
+   * Gross capacity plus module holds, so a stand the sim already occupied
+   * is not subtracted twice. Fuel, hotel rooms and hangar bays are gross
+   * stocks; the module subtracts what it has reserved.
+   */
+  private inboundWorld(): InboundWorld {
+    const bridge = this.ensureInbound()
+    const held = bridge.state.held
+    const free = this.freeStands()
+    const guard = this.milCapableStands().filter((stand) =>
+      free.some((other) => other.c === stand.c && other.r === stand.r),
+    )
+    const guardKey = new Set(guard.map((stand) => `${stand.c},${stand.r}`))
+    let remote = 0
+    let contact = 0
+    for (const stand of free) {
+      const key = `${stand.c},${stand.r}`
+      if (guardKey.has(key)) continue
+      if (this.standAccess[key] === 'remote') remote += 1
+      else contact += 1
+    }
+    const snap = this.groundSnapshot()
+    const simFuel =
+      snap != null
+        ? snap.fuelLitres
+        : this.fuelBrand && this.fuelLoads > 0
+          ? this.fuelLoads * UPLIFT_LITRES
+          : 0
+    const hotelTiles = tilesOf(this.tiles, 'hotel').length
+    const hotelRooms =
+      hotelTiles * 8 + (this.hotelLevel >= 2 ? 24 : this.hotelLevel === 1 ? 12 : 0)
+    return {
+      fieldLevel: this.fieldLevel(),
+      feeMultiplier: this.diplomacy?.adapter.engine.state.feeIndex ?? 1,
+      weather: this.weather,
+      capabilities: {
+        stands: contact + held.stands,
+        remoteStands: remote + held.remoteStands,
+        grassPads: held.grassPads,
+        heliPads: this.freePads().length + held.heliPads,
+        guardPads: guard.length + held.guardPads,
+        arff: tilesOf(this.tiles, 'fire').length > 0,
+        ambulance: this.budgets.ambulance >= 40,
+        fuelLitres: simFuel,
+        hotelRooms,
+        securityCorridor:
+          tilesOf(this.tiles, 'guard').length > 0 || tilesOf(this.tiles, 'police').length > 0,
+        hangarBays: tilesOf(this.tiles, 'hangar').length,
+        gpu: free.length > 0,
+        catering: Boolean(this.caterBrand),
+        cleaning: this.fits.length > 0 || this.janitors > 0,
+        customs:
+          tilesOf(this.tiles, 'guard').length > 0 ||
+          this.fits.some((fit) => (fit.rooms.security ?? 0) > 0),
+        runwayMetres: this.longestRunway() * 150,
+      },
+    }
+  }
+
+  /** The open accept / refuse card, if the player still has time. */
+  inboundOffer(): InboundOfferView | null {
+    if (!this.site) return null
+    return this.ensureInbound().offer(this.clock)
+  }
+
+  inboundContracts(): InboundContractRow[] {
+    return this.inbound?.contracts() ?? []
+  }
+
+  inboundHasClearance(): boolean {
+    return this.inbound?.clearance() ?? false
+  }
+
+  /** Force one card open. The live clock uses tick; tests use this to pick a kind. */
+  injectInbound(kind: RequestKind): InboundOfferView | null {
+    if (!this.site) return null
+    this.ensureInbound().inject(kind)
+    this.emit()
+    return this.inboundOffer()
+  }
+
+  acceptInbound(requestId: string): boolean {
+    return this.answerInbound(requestId, 'accept')
+  }
+
+  refuseInbound(requestId: string): boolean {
+    return this.answerInbound(requestId, 'refuse')
+  }
+
+  private answerInbound(requestId: string, choice: 'accept' | 'refuse'): boolean {
+    if (!this.site) return false
+    const events = this.ensureInbound().respond(this.inboundWorld(), requestId, choice)
+    this.applyInboundEvents(events)
+    this.emit()
+    return events.some((event) => event.type === 'accepted' || event.type === 'refused' || event.type === 'failed_host' || event.type === 'declined')
+  }
+
+  signInboundContract(contractId: string): boolean {
+    const result = this.ensureInbound().sign(contractId)
+    if (result.ok) this.pushNews('Guard contract signed.', 'good')
+    else this.pushNews(result.reason, 'bad')
+    this.postInboundLedger()
+    this.emit()
+    return result.ok
+  }
+
+  cancelInboundContract(contractId: string): boolean {
+    const result = this.ensureInbound().cancel(contractId)
+    if (result.ok) this.pushNews('Guard contract cancelled.', 'ok')
+    else this.pushNews(result.reason, 'bad')
+    this.postInboundLedger()
+    this.emit()
+    return result.ok
+  }
+
+  buyInboundClearance(): boolean {
+    const result = this.ensureInbound().buyClearance()
+    if (!result.ok) {
+      this.pushNews(result.reason, 'bad')
+      this.emit()
+      return false
+    }
+    this.postInboundLedger()
+    this.pushNews('Security clearance licence on the books.', 'good')
+    this.emit()
+    return true
+  }
+
+  private tickInbound(step: number) {
+    if (!this.site || !(step > 0)) return
+    const bridge = this.ensureInbound()
+    const dt = this.clock - bridge.state.clock
+    const events = bridge.advance(this.inboundWorld(), Math.max(0, dt), this.milAgreement)
+    this.applyInboundEvents(events)
+    this.releaseDueInbound()
+  }
+
+  private applyInboundEvents(events: InboundEvent[]) {
+    const bridge = this.ensureInbound()
+    for (const event of events) {
+      if (event.type === 'accepted') {
+        const request = bridge.state.requests.find((item) => item.id === event.requestId)
+        const visit = bridge.state.visits.find((item) => item.id === event.visitId)
+        if (request && visit) {
+          const spawned = this.spawnInboundArrival(request.kind, visit.id, visit.departDay, request.title)
+          if (!spawned) {
+            this.pushNews(
+              `${request.title} accepted — no free pavement. The reservation holds until they leave the books.`,
+              'bad',
+            )
+          }
+          this.reputation = Math.max(0, Math.min(100, this.reputation + request.reputationOnAccept))
+        }
+        this.fieldXp += event.xp
+      } else if (event.type === 'refused' || event.type === 'expired') {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + event.reputation))
+        if (event.fine > 0) {
+          this.pushNews(
+            event.type === 'expired'
+              ? `Unanswered inbound request. Fine ${moneyLeft(event.fine)}.`
+              : `Refused an inbound request. Fine ${moneyLeft(event.fine)}.`,
+            'bad',
+          )
+        }
+      } else if (event.type === 'declined') {
+        this.pushNews('Walk-in waved off — the field cannot host that ask.', 'ok')
+      } else if (event.type === 'failed_host') {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + REP_FAIL))
+        this.pushNews(`Could not host the inbound. Fine ${moneyLeft(event.fine)}.`, 'bad')
+      } else if (event.type === 'departed') {
+        this.releaseInboundVisit(event.visitId)
+      } else if (event.type === 'military_offered') {
+        this.pushNews('Guard sent a contract — Airlines, Contracts.', 'ok')
+      } else if (event.type === 'week_audit' && event.breach) {
+        this.pushNews('Night sorties breached the city noise line.', 'bad')
+      }
+    }
+    this.postInboundLedger()
+  }
+
+  private postInboundLedger() {
+    for (const row of this.ensureInbound().freshLedger()) {
+      if (row.amount > 0) this.earn(row.amount, row.reason)
+      else if (row.amount < 0) this.charge(-row.amount)
+    }
+  }
+
+  private spawnInboundArrival(kind: RequestKind, visitId: string, departDay: number, title: string): boolean {
+    const ids = INBOUND_AIRFRAMES[kind]
+    const helo = kind === 'medevac'
+    let stand: Vec | null = null
+    let route: Vec[] | null = null
+    let airframeId = ids[0] ?? 'e175'
+    if (helo) {
+      stand = this.freePads()[0] ?? null
+      if (stand) route = [stand]
+      airframeId = 'aw139'
+    } else {
+      for (const id of ids) {
+        const frame = AIRFRAMES[id]
+        if (!frame || frame.minRunway > this.longestRunway()) continue
+        const gate =
+          kind === 'military'
+            ? (this.assignMilStand() ?? this.assignStand(null, undefined, undefined, id))
+            : this.assignStand(null, undefined, undefined, id)
+        const path = gate ? this.landingRoute(gate) : null
+        if (gate && path) {
+          stand = gate
+          route = path
+          airframeId = id
+          break
+        }
+      }
+    }
+    const frame = AIRFRAMES[airframeId]
+    if (!frame || !stand || !route) return false
+    this.flightSeq += 1
+    const call = inboundCallsign(kind, this.flightSeq)
+    const approach = helo
+      ? { x: stand.c + 5.5, y: stand.r - 4.5, z: 11, path: route }
+      : this.armApproach(route)
+    const posted = emptyPosted()
+    posted.landing = true
+    const pax = frame.paxMax > 0 ? this.flightLoad(frame, 'business', frame.kind === 'freighter').pax : 0
+    const f: Flight = {
+      id: uid('in'),
+      airline: this.signed[0] ?? 'harbor',
+      flightNo: call,
+      airframeId: frame.id,
+      airframeName: frame.name,
+      pax,
+      cargo: frame.kind === 'freighter',
+      craft: helo ? 'helo' : 'jet',
+      kind: frame.kind,
+      phase: 'approach',
+      stand,
+      x: approach.x,
+      y: approach.y,
+      z: approach.z,
+      heading: helo ? Math.atan2(stand.r - approach.y, stand.c - approach.x) : 0,
+      path: approach.path,
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted,
+      waitingOn: emptyWaiting(),
+      phaseTime: 0,
+      ledger: [],
+      inboundVisitId: visitId,
+      inboundReleaseAt: departDay * SIM_DAY_SEC,
+      emergencyHost: true,
+    }
+    this.flights.push(f)
+    this.noteCraft(frame.kind)
+    this.selectedFlight = this.selectedFlight ?? f.id
+    this.pushNews(`${call} · ${title} inbound → ${this.gateLabel(stand)}.`, 'ok')
+    return true
+  }
+
+  private releaseInboundVisit(visitId: string) {
+    const flight = this.flights.find((item) => item.inboundVisitId === visitId && item.phase !== 'gone')
+    if (!flight) return
+    flight.inboundReleaseAt = this.clock
+    if (flight.phase === 'parked') this.releaseInboundFlight(flight)
+  }
+
+  private releaseDueInbound() {
+    for (const flight of this.flights) {
+      if (!flight.inboundVisitId || flight.phase !== 'parked') continue
+      if (this.clock >= (flight.inboundReleaseAt ?? Number.POSITIVE_INFINITY)) {
+        this.releaseInboundFlight(flight)
+      }
+    }
+  }
+
+  /** Taxi a parked inbound arrival off the stand. Retries while the pavement is busy. */
+  private releaseInboundFlight(flight: Flight): boolean {
+    if (flight.phase === 'gone' || flight.phase === 'takeoff' || flight.phase === 'taxi_out') return true
+    if (flight.phase !== 'parked') return false
+    if (flight.craft === 'helo') {
+      flight.phase = 'gone'
+      flight.phaseTime = 0
+      return true
+    }
+    if (this.groundBusy()) return false
+    const out = this.departurePath(flight)
+    if (!out) return false
+    flight.path = out
+    flight.seg = 0
+    flight.t = 0
+    flight.phase = 'taxi_out'
+    flight.phaseTime = 0
+    this.pushNews(`${flight.flightNo} released from the inbound stand.`, 'ok')
+    return true
+  }
+
   tick(dt: number) {
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
@@ -11881,6 +12203,7 @@ export class Game {
     this.tickPatrols(step)
     this.tickThreats(step)
     this.tickEmergencies(step)
+    this.tickInbound(step)
     this.tickMarket(step)
     this.tickHall(step)
     this.tickLuggage(step)
@@ -11968,6 +12291,17 @@ export class Game {
           f.waitingOn.catering = false
           if (f.mxPending && !f.posted.mx && this.startHangarMx(f)) {
             // Handled — plane rolling to hangar bay.
+          } else if (f.inboundVisitId) {
+            f.phase = 'parked'
+            f.phaseTime = 0
+            if (this.clock < (f.inboundReleaseAt ?? 0)) {
+              this.pushNews(
+                `${f.flightNo} on stand until the inbound stay ends.`,
+                'ok',
+              )
+            } else {
+              this.releaseInboundFlight(f)
+            }
           } else if (f.ga) {
             f.phase = 'parked'
             f.phaseTime = 0
