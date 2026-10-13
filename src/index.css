@@ -1093,6 +1093,32 @@ button {
   color: #1a1406;
 }
 
+.tray-item.locked {
+  opacity: 0.55;
+}
+
+.tray-item.locked .tray-price {
+  color: #e0a090;
+}
+
+.tray-upkeep {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: #9bb0a0;
+}
+
+.tray-item.on .tray-upkeep {
+  color: #1a1406;
+}
+
+.spec-paths {
+  margin: 8px 0 12px;
+}
+
+.spec-paths .row {
+  flex-wrap: wrap;
+}
+
 .eco-tabs {
   display: flex;
   flex-wrap: wrap;

@@ -157,6 +157,7 @@ describe('security choke', () => {
     expect(fit.zones?.length).toBe(5)
     const before = game.landsideUpkeep()
     game.cash = 80_000
+    game.fieldXp = 220
     game.upgradeHall()
     expect(game.fits[0].tier).toBe(2)
     expect(game.fits[0].capGuests).toBe(48)
