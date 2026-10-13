@@ -35,7 +35,8 @@ import { tilesOf } from '../../game/path'
 import { formatSimDate, type Game } from '../../game/sim'
 import type { AirlineTier, BudgetKey } from '../../game/types'
 import { LineChart } from '../LineChart'
-import { moneyAbbrev, perDayFromHour, perDayFromTick, ratePerDay } from '../moneyFormat'
+import { moneyAbbrev, perDayFromTick, ratePerDay } from '../moneyFormat'
+import { selectCashFlow } from '../selectors'
 import {
   closePanel,
   getUiState,
@@ -127,9 +128,10 @@ function GameMenu() {
 
 function Finances({ game }: { game: Game }) {
   const tab = getUiState().financeTab
+  const flow = selectCashFlow(game)
   const payroll = ratePerDay(perDayFromTick(game.payrollPreview()))
   const upkeep = ratePerDay(perDayFromTick(game.landsideUpkeep()))
-  const income = ratePerDay(perDayFromHour(game.incomePerHour))
+  const income = ratePerDay(flow.incomePerDay)
   return (
     <>
       <div className="eco-tabs" role="tablist">
@@ -162,6 +164,34 @@ function Finances({ game }: { game: Game }) {
             {game.loanBalance ? ` · loan owed ${moneyAbbrev(game.loanBalance)}` : ''}
             {' · '}income {income} · landside upkeep {upkeep}
           </p>
+          <div data-testid="week-summary">
+            <h3>This week</h3>
+            <p className="muted" data-money-unit="day">
+              {flow.estimateText}
+              {flow.runwayText ? ` · ${flow.runwayText}` : ''}. Week net {moneyAbbrev(flow.week.net)} ·
+              income {moneyAbbrev(flow.week.income)} · costs {moneyAbbrev(flow.week.cost)}. Daily charges,
+              shown here as a seven-day pace. Next charge in {Math.max(0, Math.ceil(flow.nextChargeSec))}s.
+            </p>
+            <ul className="hf-week">
+              {flow.week.incomeLines.map((line) => (
+                <li key={`in-${line.label}`}>
+                  <span>{line.label}</span>
+                  <span>{moneyAbbrev(line.perDay)}/week</span>
+                </li>
+              ))}
+              {flow.week.costLines.map((line) => (
+                <li key={`out-${line.label}`}>
+                  <span>{line.label}</span>
+                  <span>{moneyAbbrev(line.perDay)}/week</span>
+                </li>
+              ))}
+            </ul>
+            <p className="muted">
+              {flow.week.bookedHours > 0
+                ? `Booked over the last ${flow.week.bookedHours} hours: in ${moneyAbbrev(flow.week.bookedIncome)} · out ${moneyAbbrev(flow.week.bookedCost)}.`
+                : 'The book starts after the first hour. Until then the week is the daily pace times seven.'}
+            </p>
+          </div>
           <button
             type="button"
             className="wide on"
