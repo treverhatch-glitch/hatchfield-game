@@ -18,6 +18,7 @@ import type {
   Tile,
   Tool,
 } from './types'
+import { MRO_COST, MRO_UPKEEP_PER_DAY, NIGHT_HUB_COST, NIGHT_HUB_UPKEEP_PER_DAY } from '../tier3/config.ts'
 
 /** Cash in hand before you buy the plot. */
 export const START_CASH = { easy: 220_000, standard: 150_000 } as const
@@ -1011,6 +1012,22 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Overnight checks. Raises reputation when stands are busy.',
   },
   {
+    tool: 'mro',
+    tile: 'mro',
+    name: 'MRO hangar',
+    cost: MRO_COST,
+    minFieldLevel: 4,
+    blurb: `Field level 4. Heavy checks for narrow, wide, and jumbo bays. Airlines pay, but the aircraft ties up its stand. Needs mechanics and power. $${MRO_UPKEEP_PER_DAY.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'nighthub',
+    tile: 'nighthub',
+    name: 'Cargo night hub',
+    cost: NIGHT_HUB_COST,
+    minFieldLevel: 4,
+    blurb: `Field level 4. A night bank of freighters. High revenue, ground crew, and warehouse space. The city bills the noise. $${NIGHT_HUB_UPKEEP_PER_DAY.toLocaleString('en-US')}/day.`,
+  },
+  {
     tool: 'helipad',
     tile: 'helipad',
     name: 'Helipad',
@@ -1164,6 +1181,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   road: 'Road',
   tower: 'Tower',
   hangar: 'Hangar',
+  mro: 'MRO',
+  nighthub: 'Night hub',
   hotel_inn: 'Inn',
   hotel_biz: 'Biz hotel',
   hotel_resort: 'Resort',
@@ -1301,6 +1320,20 @@ export const RESEARCH_NODES: ResearchNode[] = [
     name: 'Military ramp',
     cost: 42,
     blurb: 'C-5M Super Galaxy + dedicated Guard apron (hangar-side hardstands, not pax gates).',
+    requires: 'heavy_pack',
+  },
+  {
+    id: 'mro_hangar',
+    name: 'Hangar MRO',
+    cost: 72,
+    blurb: 'Third-party heavy checks. A wide hangar with bigger bays for widebody and jumbo aircraft.',
+    requires: 'heavy_pack',
+  },
+  {
+    id: 'cargo_night_hub',
+    name: 'Cargo night hub',
+    cost: 68,
+    blurb: 'A late freighter wave after dark. High revenue, and the city charges for the noise.',
     requires: 'heavy_pack',
   },
 ]
