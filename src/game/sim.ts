@@ -77,8 +77,10 @@ import {
   LOAN_FEE,
   LOAN_PRINCIPAL,
   LOAN_PRODUCTS,
-  FIELD_LEVEL_XP,
-  fieldLevelFromXp,
+  fieldLevelOf,
+  fieldProgress,
+  prestigeStarsOf,
+  type FieldLevel,
   normalizeAirline,
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
@@ -230,6 +232,15 @@ import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
 import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
+import { progressionBuildable, unlockLevel } from '../progression/unlocks.ts'
+import {
+  capstoneCost,
+  isSpecPath,
+  siteUpkeepMultiplier,
+  specPath,
+  specPointsForLevel,
+  type SpecPath,
+} from '../progression/specializations.ts'
 import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
 import {
   createEconomyAdapter,
@@ -572,8 +583,12 @@ export class Game {
   loanProductId: string | null = null
   loanPrincipal = 0
   loanOpened = 0
-  /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
+  /** Airport XP — field levels 1–10, then prestige stars. */
   fieldXp = 0
+  /** Paths chosen at FL6, FL8, and FL10. Order is the order they were picked. */
+  specPaths: SpecPath[] = []
+  /** Commissioned progression stamps (check-in hall, hydrant, landmark, …). */
+  progressionBuilt: string[] = []
   parcels = 1
   railLinked = false
   hotelLevel = 0
@@ -852,6 +867,8 @@ export class Game {
     this.loanPrincipal = 0
     this.loanOpened = 0
     this.fieldXp = 0
+    this.specPaths = []
+    this.progressionBuilt = []
     this.parcels = 1
     this.railLinked = false
     this.hotelLevel = 0
@@ -1359,8 +1376,107 @@ export class Game {
     return normalizeAirline(raw)
   }
 
-  fieldLevel(): AirlineTier {
-    return fieldLevelFromXp(this.fieldXp)
+  fieldLevel(): FieldLevel {
+    return fieldLevelOf(this.fieldXp)
+  }
+
+  prestigeStars(): number {
+    return prestigeStarsOf(this.fieldXp)
+  }
+
+  specPointsEarned(): number {
+    return specPointsForLevel(this.fieldLevel())
+  }
+
+  specPointsLeft(): number {
+    return Math.max(0, this.specPointsEarned() - this.specPaths.length)
+  }
+
+  /** Mix is allowed. Each path after the first raises capstone cost and site upkeep. */
+  chooseSpec(path: SpecPath): boolean {
+    if (this.specPaths.includes(path)) {
+      this.pushNews(`${specPath(path)?.label ?? path} is already chosen. Pick a different path — they mix.`, 'ok')
+      this.emit()
+      return false
+    }
+    if (this.specPointsLeft() <= 0) {
+      this.pushNews('No specialization point. Points arrive at Field Levels 6, 8, and 10.', 'bad')
+      this.emit()
+      return false
+    }
+    this.specPaths.push(path)
+    const extra = this.specPaths.length > 1
+    this.pushNews(
+      `${specPath(path)?.label ?? path} path chosen.${
+        extra ? ' Capstone costs +50% and site upkeep +10% for each path after the first.' : ''
+      }`,
+      'good',
+    )
+    this.emit()
+    return true
+  }
+
+  /**
+   * Buy a progression stamp that is not an apron tile.
+   * Refuses when the field level is short of the unlock table.
+   */
+  commission(id: string): boolean {
+    const row = progressionBuildable(id)
+    const need = unlockLevel(id)
+    const name = row?.name ?? id
+    if (this.fieldLevel() < need) {
+      this.pushNews(`${name} needs Field level ${need}.`, 'bad')
+      this.emit()
+      return false
+    }
+    if (id === 'prefab_ii') {
+      if ((this.fits[0]?.tier ?? 1) !== 1) {
+        this.pushNews('Prefab II is already in place.', 'ok')
+        this.emit()
+        return false
+      }
+      this.upgradeHall()
+      return (this.fits[0]?.tier ?? 1) >= 2
+    }
+    if (id === 'satellite') {
+      const tier = this.fits[0]?.tier ?? 1
+      if (tier < 2) {
+        this.pushNews('Satellite needs Prefab II first.', 'bad')
+        this.emit()
+        return false
+      }
+      if (tier >= 3) {
+        this.pushNews('Satellite is already in place.', 'ok')
+        this.emit()
+        return false
+      }
+      this.upgradeHall()
+      return (this.fits[0]?.tier ?? 1) >= 3
+    }
+    if (id === 'jet_bridge') {
+      this.standAccessMode = 'jetway'
+      this.tool = 'stand'
+      this.pushNews('Jet bridge armed — stamp a stand to attach one gate.', 'ok')
+      this.emit()
+      return true
+    }
+    if (!row) {
+      this.pushNews(`${name} is not a buildable.`, 'bad')
+      this.emit()
+      return false
+    }
+    if (this.progressionBuilt.includes(id)) {
+      this.pushNews(`${row.name} is already on the field.`, 'ok')
+      this.emit()
+      return false
+    }
+    const cost = capstoneCost(row.cost, this.specPaths, id)
+    if (!this.spend(cost, row.name)) return false
+    this.progressionBuilt.push(id)
+    const upkeep = row.upkeepPerDay > 0 ? ` Upkeep $${row.upkeepPerDay.toLocaleString('en-US')}/day.` : ''
+    this.pushNews(`${row.name} open.${upkeep}`, 'good')
+    this.emit()
+    return true
   }
 
   /** Diplomacy day, 0 until the clock has run. */
@@ -1570,29 +1686,29 @@ export class Game {
     return sum / this.signed.length
   }
 
-  fieldXpToNext(): { level: AirlineTier; xp: number; need: number; pct: number } {
-    const level = this.fieldLevel()
-    if (level >= 5) {
-      return { level: 5, xp: this.fieldXp, need: FIELD_LEVEL_XP[5], pct: 1 }
-    }
-    const next = (level + 1) as AirlineTier
-    const floor = FIELD_LEVEL_XP[level]
-    const need = FIELD_LEVEL_XP[next]
-    const pct = need <= floor ? 1 : Math.min(1, (this.fieldXp - floor) / (need - floor))
-    return { level, xp: this.fieldXp, need, pct }
+  fieldXpToNext() {
+    return fieldProgress(this.fieldXp)
   }
 
   grantFieldXp(amount: number, why?: string) {
     if (amount <= 0) return
     const before = this.fieldLevel()
+    const starsBefore = prestigeStarsOf(this.fieldXp)
     this.fieldXp += amount
     const after = this.fieldLevel()
+    const starsAfter = prestigeStarsOf(this.fieldXp)
     if (after > before) {
+      const meta = after <= 5 ? AIRLINE_TIER_META[after as AirlineTier] : undefined
       this.pushNews(
-        `Field Level ${after} — ${AIRLINE_TIER_META[after].label} carriers will start calling.`,
+        meta
+          ? `Field Level ${after} — ${meta.label} carriers will start calling.`
+          : `Field Level ${after}.`,
         'good',
       )
-    } else if (why && amount >= 12) {
+    }
+    if (starsAfter > starsBefore) {
+      this.pushNews(`Prestige star P${starsAfter}.`, 'good')
+    } else if (why && amount >= 12 && after === before) {
       /* quiet drip — big chunks can mention */
       void why
     }
@@ -2622,8 +2738,9 @@ export class Game {
   }
 
   /**
-   * Fixed landside + hall-amenity operating expense / payroll tick.
-   * Billed in full whether used or idle — empty stamps bleed cash.
+   * Fixed landside + hall-amenity operating expense per game day.
+   * Catalog rates are already the old per-tick figure × 6. Billed once
+   * whether the rooms are full or idle.
    */
   landsideUpkeep(): number {
     let n = HOTEL_META_EXPENSE[clamp(this.hotelLevel, 0, 2)] ?? 0
@@ -2655,9 +2772,12 @@ export class Game {
         tier: fit.tier,
         items: (fit.items ?? []) as PlacedItem[],
         roomsSecurity: fit.rooms.security,
-      }).upkeepDay / 6
+      }).upkeepDay
     }
-    return Math.round(n)
+    for (const id of this.progressionBuilt) {
+      n += progressionBuildable(id)?.upkeepPerDay ?? 0
+    }
+    return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
 
   /** @deprecated alias — expense is the only "potential" now. */
@@ -3097,6 +3217,8 @@ export class Game {
       loanPrincipal: this.loanPrincipal,
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
+      specPaths: this.specPaths,
+      progressionBuilt: this.progressionBuilt,
       parcels: this.parcels,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
@@ -3208,6 +3330,8 @@ export class Game {
         s.loanOpened ??
         (this.loanBalance > 0 ? LOAN_PRINCIPAL + LOAN_FEE : 0)
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
+      this.specPaths = (s.specPaths ?? []).filter((id): id is SpecPath => isSpecPath(id))
+      this.progressionBuilt = (s.progressionBuilt ?? []).filter((id) => Boolean(progressionBuildable(id)))
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
       this.railLinked = s.railLinked ?? false
@@ -6089,7 +6213,17 @@ export class Game {
       return
     }
     const next = (tier + 1) as 2 | 3
-    const cost = next === 2 ? 22000 : 48000
+    const need = unlockLevel(next === 2 ? 'prefab_ii' : 'satellite')
+    if (this.fieldLevel() < need) {
+      this.pushNews(
+        `${next === 2 ? 'Prefab II' : 'Satellite'} needs Field level ${need}.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const base = next === 2 ? 22000 : 48000
+    const cost = next === 2 ? base : capstoneCost(base, this.specPaths, 'satellite')
     if (!this.spend(cost, `prefab tier ${next}`)) return
     fit.tier = next
     fit.zones = schemeZones(next)
@@ -6159,8 +6293,9 @@ export class Game {
     }
     const def = itemDef(id)
     if (!def) return
-    if (this.fieldLevel() < def.minFieldLevel) {
-      this.pushNews(`${def.name} needs Field level ${def.minFieldLevel}.`, 'bad')
+    const itemLevel = Math.max(def.minFieldLevel, unlockLevel(def.id))
+    if (this.fieldLevel() < itemLevel) {
+      this.pushNews(`${def.name} needs Field level ${itemLevel}.`, 'bad')
       this.emit()
       return
     }
@@ -8607,7 +8742,7 @@ export class Game {
 
   /**
    * One game day: staffing floor or the income share, then the 0.5% city levy.
-   * Landside upkeep is the old six payroll-tick slices, billed once.
+   * Landside upkeep is already a daily total (legacy tick × 6).
    */
   private closeOperatingDay(completedDay: number) {
     const ledger = this.bank.ledgerForGameDay(completedDay)
@@ -8620,7 +8755,7 @@ export class Game {
     const minimum = this.payrollPreview()
     const bill = payrollForGameDay(income, phase, minimum)
     const fees = this.landsideIncome()
-    const upkeep = this.landsideUpkeep() * 6
+    const upkeep = this.landsideUpkeep()
     if (upkeep > 0) this.charge(upkeep)
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
@@ -9526,6 +9661,14 @@ export class Game {
   }
 
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
+    if (klass === 'heavy') {
+      const need = unlockLevel('runway_heavy')
+      if (this.fieldLevel() < need) {
+        this.pushNews(`Heavy strip needs Field level ${need}.`, 'bad')
+        this.emit()
+        return
+      }
+    }
     const cells = this.prefabRunway(v, klass)
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
@@ -9624,10 +9767,19 @@ export class Game {
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
-    if (building.minFieldLevel && this.fieldLevel() < building.minFieldLevel) {
-      this.pushNews(`${building.name} needs Field level ${building.minFieldLevel}.`, 'bad')
+    const needLevel = Math.max(building.minFieldLevel ?? 1, unlockLevel(building.tool))
+    if (this.fieldLevel() < needLevel) {
+      this.pushNews(`${building.name} needs Field level ${needLevel}.`, 'bad')
       this.emit()
       return
+    }
+    if (building.tile === 'stand' && this.standAccessMode === 'jetway') {
+      const bridge = unlockLevel('jet_bridge')
+      if (this.fieldLevel() < bridge) {
+        this.pushNews(`Jet bridge needs Field level ${bridge}.`, 'bad')
+        this.emit()
+        return
+      }
     }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
