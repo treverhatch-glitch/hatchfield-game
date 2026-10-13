@@ -98,6 +98,51 @@ describe('departure show-up', () => {
     expect(game.bagsLost).toBe(0)
   })
 
+  it('clears hall walkers already bound to a cancelled departure', () => {
+    const game = starter()
+    const hallId = game.hallKey(game.fits[0])
+    game.clock = 40
+    game.schedule.push({
+      id: 'cx',
+      airline: 'northline',
+      flightNo: 'NL9',
+      eta: 80,
+      status: 'scheduled',
+      delaySec: 0,
+      delayReason: null,
+      manual: true,
+      flightId: 'flt-cx',
+    })
+    game.showUps.push({
+      slotId: 'cx',
+      std: 100,
+      hallId,
+      airlineId: 'northline',
+      intl: false,
+      tags: ['budget', 'budget'],
+      releases: [999, 999],
+      spawned: 2,
+      flightId: 'flt-cx',
+      closed: false,
+    })
+    const bound = spawnHallGuest('flt-cx', 'depart', 'budget', { hallId, airlineId: 'northline' })
+    const pending = spawnHallGuest('slot:cx', 'depart', 'budget', { hallId, airlineId: 'northline' })
+    const other = spawnHallGuest('flt-other', 'depart', 'budget', { hallId, airlineId: 'northline' })
+    const arrival = spawnHallGuest('flt-cx', 'arrive', 'budget', { hallId, airlineId: 'northline' })
+    game.hallGuests.push(bound, pending, other, arrival)
+    game.cancelSlot('cx')
+    expect(game.showUps.find((p) => p.slotId === 'cx')?.closed).toBe(true)
+    expect(bound.dead).toBe(true)
+    expect(pending.dead).toBe(true)
+    expect(bound.thought).toBe('Flight cancelled')
+    expect(other.dead).toBe(false)
+    expect(arrival.dead).toBe(false)
+    game.tick(1)
+    expect(game.hallGuests.some((g) => g.id === bound.id && !g.dead)).toBe(false)
+    expect(game.hallGuests.some((g) => g.id === other.id && !g.dead)).toBe(true)
+    expect(game.lostPaxCount()).toBe(0)
+  })
+
   it('keeps missed departures under one percent on a prefab for six days', () => {
     withSeed(11, () => {
       const game = starter()
