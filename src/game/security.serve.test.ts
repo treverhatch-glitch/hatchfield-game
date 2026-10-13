@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { spawnHallGuest } from './guests.ts'
+import { isAirside, spawnHallGuest } from './guests.ts'
 import { Game } from './sim.ts'
 
 function withSeed(seed: number, run: () => void) {
@@ -46,11 +46,13 @@ describe('security lane releases the people it screens', () => {
       }
       let sawServing = 0
       const clearedIds = new Set<string>()
+      const reachedAirside = new Set<string>()
       for (let t = 0; t < 45; t += 0.25) {
         game.tick(0.25)
         for (const g of game.hallGuests) {
           if (!g.flightId.startsWith('lane-')) continue
           if (g.clearedSec) clearedIds.add(g.id)
+          if (g.clearedSec && isAirside(g.node)) reachedAirside.add(g.id)
           if (!g.clearedSec && (g.serviceLeft ?? 0) > 0) sawServing += 1
         }
       }
@@ -67,6 +69,12 @@ describe('security lane releases the people it screens', () => {
       for (let t = 0; t < 3; t += 0.25) game.tick(0.25)
       const remain = game.hallGuests.filter((g) => stuckIds.has(g.id) && g.node === 'security')
       expect(remain.length).toBe(0)
+      expect(reachedAirside.size).toBeGreaterThan(0)
+      for (const g of game.hallGuests) {
+        if (!g.flightId.startsWith('lane-') || !g.clearedSec) continue
+        expect(g.node).not.toBe('security')
+        expect(isAirside(g.node)).toBe(true)
+      }
     })
   })
 
@@ -107,9 +115,11 @@ describe('security lane releases the people it screens', () => {
       game.acceptOffer()
       let peakHeld = 0
       let cleared = 0
+      let maxWaitingWhileDeskEmpty = 0
       const seen = new Set<string>()
       const dayHeld: number[] = []
       const dayWaiting: number[] = []
+      const dayCheckin: number[] = []
       for (let t = 0; t < 180 * 4; t += 0.5) {
         const before = new Set(game.hallGuests.filter((g) => g.clearedSec).map((g) => g.id))
         game.tick(0.5)
@@ -119,17 +129,29 @@ describe('security lane releases the people it screens', () => {
             cleared += 1
           }
         }
+        const checkin = game.hallGuests.filter(
+          (g) => !g.dead && g.job === 'depart' && g.node === 'checkin',
+        ).length
+        const waiting = game.securityQueueCount()
+        if (checkin === 0) maxWaitingWhileDeskEmpty = Math.max(maxWaitingWhileDeskEmpty, waiting)
         peakHeld = Math.max(
           peakHeld,
           game.hallGuests.filter((g) => g.node === 'security' && g.clearedSec).length,
         )
         if (game.clock > 0 && Math.abs(game.clock % 180) < 0.51) {
           dayHeld.push(game.hallGuests.filter((g) => g.node === 'security' && g.clearedSec).length)
-          dayWaiting.push(game.securityQueueCount())
+          dayWaiting.push(waiting)
+          dayCheckin.push(checkin)
         }
       }
       expect(cleared).toBeGreaterThan(10)
+      expect(dayCheckin.length).toBeGreaterThan(0)
+      expect(Math.max(...dayCheckin)).toBeLessThan(12)
+      expect(maxWaitingWhileDeskEmpty).toBeLessThan(16)
       expect(dayWaiting.every((n) => n < 16)).toBe(true)
+      for (let i = 1; i < dayWaiting.length; i++) {
+        expect(dayWaiting[i]).toBeLessThanOrEqual(Math.max(...dayWaiting.slice(0, i)) + 8)
+      }
       expect(Math.max(...dayHeld)).toBeLessThan(16)
       expect(dayHeld[dayHeld.length - 1]).toBeLessThanOrEqual(8)
       expect(peakHeld).toBeLessThan(24)
