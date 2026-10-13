@@ -171,6 +171,10 @@ import {
   GAME_MINUTES_PER_SIM_SECOND,
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
+import { NegotiationBridge } from './negotiationBridge.ts'
+import { ULCC_IDS } from '../negotiation/index.ts'
+import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
+import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -709,6 +713,8 @@ export class Game {
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
   private diplomacy: DiplomacyBridge | null = null
   diplomacySeed = 1
+  /** Contract counter-offers. Null until the first letter. */
+  private negotiationBridge: NegotiationBridge | null = null
   /** Passenger-flow overlay. Hidden until the player opts in. */
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
@@ -932,6 +938,7 @@ export class Game {
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
+    this.negotiationBridge = null
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
@@ -1315,6 +1322,27 @@ export class Game {
         blurb: 'Independent transient parking — not a signed carrier.',
         likesLayovers: false,
         heatSensitivity: 1,
+      })
+    }
+    const negotiated = NEGOTIATION_AIRLINES.find((a) => a.id === id)
+    if (negotiated && !AIRLINES[id]) {
+      const template = AIRLINES.northline
+      return normalizeAirline({
+        ...template,
+        id: negotiated.id,
+        name: negotiated.name,
+        persona: 'budget',
+        bizModel: 'lcc',
+        tier: 2,
+        landing: negotiated.posted.landing,
+        bags: Math.round(negotiated.posted.bags),
+        catering: negotiated.posted.catering,
+        paxMin: Math.round(negotiated.seats * 0.75),
+        paxMax: negotiated.seats,
+        blurb: negotiated.pitch ?? template.blurb,
+        procedural: false,
+        likesLayovers: false,
+        heatSensitivity: 0.8,
       })
     }
     const raw =
@@ -1846,9 +1874,9 @@ export class Game {
 
   landingFeeMult(airlineId: AirlineId): number {
     const r = this.rewardOf(airlineId)
-    if (r === 'biz_priority') return 1.14
-    if (r === 'cargo_night') return 1.2
-    return 1
+    const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
+    const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
+    return negotiated === 1 ? base : base * negotiated
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -2491,6 +2519,8 @@ export class Game {
       spendKind = 'landside'
     }
     // Drop-off / missing infra — no fee. Prefs + wallet gate the rest (RCT).
+    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
+    if (fee > 0 && traffic !== 1) fee = Math.round(fee * traffic)
     if (fee > 0 && spendKind) {
       const buy = this.tryGuestPay(g, fee, spendKind, false)
       if (!buy.ok) {
@@ -2583,7 +2613,8 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    return m
+    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
+    return traffic === 1 ? m : m * traffic
   }
 
   /**
@@ -3105,6 +3136,7 @@ export class Game {
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      negotiation: this.negotiationBridge?.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3239,6 +3271,8 @@ export class Game {
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
       if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
+      this.negotiationBridge = null
+      if (s.negotiation) this.negotiationDesk().load(s.negotiation)
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -3408,6 +3442,8 @@ export class Game {
       this.dayPax = 0
       this.dayCargo = 0
       this.dayMark = this.clock
+      const retail = this.negotiationBridge?.rollDay() ?? 0
+      if (retail > 0) this.earn(retail, 'ULCC retail')
     }
     if (this.econHour < hour) return
     this.incomePerHour = Math.round(this.hourIncome)
@@ -4840,6 +4876,7 @@ export class Game {
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) {
       this.advice = [...this.groundNotes, ...this.cargoNotes]
+      this.appendNegotiationAdvice()
       return
     }
     const hall = adviseHall(
@@ -4878,6 +4915,22 @@ export class Game {
       )
       if (!still) this.apronFocus = []
     }
+    this.appendNegotiationAdvice()
+  }
+
+  private appendNegotiationAdvice() {
+    const line = this.negotiationBridge?.advisorLine()
+    if (!line) return
+    this.advice = [
+      ...this.advice,
+      {
+        id: 'ulcc-breakeven',
+        title: 'ULCC break-even',
+        detail: line,
+        fix: 'Open the offer sheet and compare it with the spend band.',
+        cells: [],
+      },
+    ]
   }
 
   focusAdvice(id: string | null) {
@@ -6316,6 +6369,8 @@ export class Game {
     }
     const procSigned = this.signed.filter((id) => this.airline(id).procedural).length
     const candidates = this.allAirlines().filter((a) => {
+      if (ULCC_IDS.includes(a.id)) return false
+      if (this.negotiationBridge?.barred(a.id)) return false
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
       if (a.procedural && procSigned >= 3) return false
@@ -6355,12 +6410,156 @@ export class Game {
         : this.signed.length >= 1 && procs.length && Math.random() < 0.4
           ? pick(procs)
           : candidates[0]
-    this.offer = { airline: pickA.id, age: 0, deadline: 36 }
-    const tag = pickA.procedural ? ' (regional)' : ''
+    const negotiated = this.negotiationDesk().present(pickA)
+    this.offer = { airline: negotiated, age: 0, deadline: 36 }
+    const shown = this.airline(negotiated)
+    const tag = shown.procedural && !ULCC_IDS.includes(shown.id) ? ' (regional)' : ''
     this.pushNews(
-      `${pickA.name}${tag} sent a contract letter — open it on the left before it expires.`,
+      `${shown.name}${tag} sent a contract letter — open it on the left before it expires.`,
       'good',
     )
+  }
+
+  negotiationPanel() {
+    return this.negotiationBridge?.panel() ?? null
+  }
+
+  rivalCard() {
+    return this.negotiationBridge?.rivalCard() ?? null
+  }
+
+  /** Standing rows the diplomacy adapter is holding for this carrier. */
+  negotiationStanding(id: string): { source: string; value: number; durationDays: number }[] {
+    const rel = this.ensureDiplomacy().relation(id)
+    if (!rel) return []
+    return rel.modifiers
+      .filter((m) => m.source === 'over_ask' || m.source === 'hard_bargain' || m.source === 'walk' || m.source === 'freebie')
+      .map((m) => ({ source: m.source, value: m.value, durationDays: m.durationDays }))
+  }
+
+  openNegotiationPanel() {
+    if (this.offer && this.negotiationBridge?.desk.session?.airlineId !== this.offer.airline) {
+      this.negotiationDesk().openNamed(this.offer.airline)
+    } else if (!this.negotiationBridge?.desk.session && this.offer) {
+      this.negotiationDesk().openNamed(this.offer.airline)
+    }
+    this.negotiationDesk().openPanel()
+    this.emit()
+  }
+
+  closeNegotiationPanel() {
+    this.negotiationBridge?.closePanel()
+    this.emit()
+  }
+
+  presentNegotiation(id: string) {
+    this.negotiationDesk().openNamed(id)
+    this.offer = { airline: id, age: 0, deadline: 120 }
+    this.emit()
+  }
+
+  setNegotiationFee(service: ServiceId, pct: number) {
+    this.negotiationDesk().setFee(service, pct)
+    this.emit()
+  }
+
+  toggleNegotiationFreebie(id: string) {
+    this.negotiationDesk().toggleFreebie(id)
+    this.emit()
+  }
+
+  setNegotiationDeposit(tier: DepositTier) {
+    this.negotiationDesk().setDeposit(tier)
+    this.emit()
+  }
+
+  setNegotiationTerm(months: number) {
+    this.negotiationDesk().setTerm(months)
+    this.emit()
+  }
+
+  buyNegotiationResearch(cost: number) {
+    this.negotiationDesk().buyResearch(cost)
+    this.refreshAdvice()
+    this.emit()
+  }
+
+  acceptNegotiation() {
+    const session = this.negotiationBridge?.desk.session
+    if (!session || session.status !== 'open') {
+      this.acceptOffer()
+      return
+    }
+    const result = this.negotiationDesk().accept()
+    if (result.outcome === 'signed') this.acceptOffer()
+    else if (result.outcome === 'walked') this.clearWalkedOffer()
+    else this.emit()
+  }
+
+  counterNegotiation() {
+    const session = this.negotiationBridge?.desk.session
+    if (!session || session.status !== 'open') return
+    const result = this.negotiationDesk().counter()
+    if (result.outcome === 'signed') this.acceptOffer()
+    else if (result.outcome === 'walked') this.clearWalkedOffer()
+    else this.emit()
+  }
+
+  walkNegotiation() {
+    if (this.negotiationBridge?.desk.session?.status === 'open') this.negotiationDesk().walk()
+    if (this.offer) this.declineOffer()
+    else this.emit()
+  }
+
+  private clearWalkedOffer() {
+    this.offer = null
+    this.offerCool = 48
+    this.emit()
+  }
+
+  private negotiationDesk(): NegotiationBridge {
+    if (!this.negotiationBridge) {
+      this.negotiationBridge = new NegotiationBridge(
+        {
+          day: () => Math.floor(this.clock / 180),
+          standing: (id) => this.standingOf(id),
+          rating: () => this.fieldRating(),
+          capacity: () => (this.hallOverloaded || this.congPeak >= 3 ? 'red' : this.congPeak >= 1.4 ? 'amber' : 'green'),
+          applyStanding: (deltas) => this.applyNegotiationStanding(deltas),
+          addMoney: (amount, reason) => {
+            if (amount > 0) this.earn(amount, reason)
+            else if (amount < 0) this.charge(-amount)
+          },
+          notify: (message, tone) => this.pushNews(message, tone),
+          ensureCarrier: (profile) => this.ensureNegotiationCarrier(profile),
+        },
+        this.diplomacySeed,
+      )
+    }
+    return this.negotiationBridge
+  }
+
+  private applyNegotiationStanding(deltas: { id: string; airlineId: string; modifier: string; label: string; value: number; durationDays: number }[]) {
+    const diplomacy = this.ensureDiplomacy()
+    const day = diplomacy.day()
+    for (const delta of deltas) {
+      const rel = diplomacy.relation(delta.airlineId)
+      if (!rel) continue
+      rel.modifiers.push({
+        id: delta.id,
+        kind: 'other',
+        label: delta.label,
+        source: delta.modifier,
+        value: delta.value,
+        startDay: day,
+        durationDays: delta.durationDays,
+      })
+    }
+  }
+
+  private ensureNegotiationCarrier(profile: { id: string }): void {
+    // Resolved by airline() so ULCC ids stay out of the offer candidate list.
+    if (!profile.id) return
   }
 
   acceptOffer() {
@@ -6899,6 +7098,7 @@ export class Game {
   snoozeOffer() {
     if (!this.offer) return
     const a = this.airline(this.offer.airline)
+    this.negotiationBridge?.closePanel()
     this.offer = null
     this.offerCool = 18
     this.pushNews(`${a.name} letter set aside. They'll write again shortly.`, 'ok')
@@ -6920,6 +7120,7 @@ export class Game {
   expireOffer() {
     if (!this.offer) return
     const a = this.airline(this.offer.airline)
+    this.negotiationBridge?.closePanel()
     this.offer = null
     this.offerCool = 55
     this.pushNews(`${a.name} contract letter expired unread.`, 'ok')
