@@ -395,6 +395,16 @@ import {
   type EconomyAdapter,
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
+import {
+  arrivalSpacingScale,
+  bankTarget,
+  dayIndex,
+  defaultHolidayPeak,
+  groundOpsPace,
+  rollSeasonWeather,
+  seasonAtDay,
+  type HolidayPeakHook,
+} from '../environment/index.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
 import {
   commitPlot,
@@ -840,6 +850,12 @@ export class Game {
   runwayCondition = 100
   weather: Weather = 'clear'
   weatherCool = 45
+  /**
+   * Extra holiday demand on top of the season calendar.
+   * The calendar already peaks Summer Getaway and Winter Holidays; this hook
+   * multiplies those (or any active holiday id) again.
+   */
+  holidayPeakHook: HolidayPeakHook = defaultHolidayPeak
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
@@ -1143,6 +1159,7 @@ export class Game {
     this.runwayCondition = 100
     this.weather = 'clear'
     this.weatherCool = 45
+    this.holidayPeakHook = defaultHolidayPeak
     this.payrollCool = 30
     this.payrollDay = 0
     this.levyMark = 0
@@ -1871,7 +1888,8 @@ export class Game {
 
   private rampPace(airframeId: string, cargo: boolean, airlineId: string): number {
     const slow = this.diplomacy?.slowFactor(airlineId) ?? 1
-    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow
+    const climate = seasonAtDay(dayIndex(this.clock)).climate
+    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow * groundOpsPace(this.weather, climate)
   }
 
   private gradeDiplomacyTurn(f: Flight) {
@@ -8572,13 +8590,14 @@ export class Game {
         ? 12 + Math.random() * 8
         : 18 + Math.random() * 10
     const n = hub ? scaled + 1 : scaled
+    let eta = t
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
         id: uid('slot'),
         airline: airlineId,
         flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
-        eta: t + i * spacing,
+        eta,
         status: 'scheduled',
         delaySec: 0,
         delayReason: null,
@@ -8592,6 +8611,10 @@ export class Game {
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
       this.noteSlotBanked(slot)
+      eta += spacing * arrivalSpacingScale(eta, {
+        nightBank: this.hasResearch('night_bank'),
+        holidayPeak: this.holidayPeakHook,
+      })
     }
   }
 
@@ -9011,7 +9034,13 @@ export class Game {
     if (this.scheduleAuto && this.schedulePlanCool <= 0 && this.signed.length) {
       this.schedulePlanCool = 18
       const open = this.openSchedule()
-      const want = Math.min(this.scheduleCap() - 2, 4 + this.runwayStripCount() * 2)
+      const want = bankTarget(
+        4 + this.runwayStripCount() * 2,
+        this.scheduleCap() - 2,
+        this.clock,
+        this.hasResearch('night_bank'),
+        this.holidayPeakHook,
+      )
       if (open.length < want) {
         const pool = this.signed.filter((id) => !this.isBanned(id))
         if (pool.length) {
@@ -10364,9 +10393,7 @@ export class Game {
     this.weatherCool -= dt
     if (this.weatherCool > 0) return
     this.weatherCool = 35 + Math.random() * 40
-    const roll = Math.random()
-    const next: Weather =
-      roll < 0.55 ? 'clear' : roll < 0.75 ? 'rain' : roll < 0.9 ? 'fog' : 'storm'
+    const next = rollSeasonWeather(dayIndex(this.clock), Math.random())
     if (next !== this.weather) {
       this.weather = next
       if (next === 'storm') {

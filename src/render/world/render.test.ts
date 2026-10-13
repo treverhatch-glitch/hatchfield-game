@@ -141,6 +141,30 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
+  it('tints the sky by season while night lights still follow the clock', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+    const game = starterGame()
+    const cam = camAt(0, 0, 80)
+    game.clock = 0
+    wr.update(game, cam, 1 / 60)
+    const spring = (scene.background as THREE.Color).getHex()
+    game.clock = 100 * 180
+    wr.update(game, cam, 1 / 60)
+    const summer = (scene.background as THREE.Color).getHex()
+    expect(summer).not.toBe(spring)
+    expect(sun.intensity).toBeGreaterThan(0)
+    wr.setTimeOfDay(2)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.stats().lights).toBe(1)
+    wr.setQuality('low')
+    wr.setTimeOfDay(12)
+    game.clock = 0
+    wr.update(game, cam, 1 / 60)
+    expect(wr.stats().grassTufts).toBe(0)
+    wr.dispose()
+  })
+
   it('night turns field lights on; quality swaps shadows', () => {
     const { scene, sun } = legacyScene()
     const renderer = stubRenderer()
