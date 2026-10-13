@@ -221,8 +221,8 @@ These are intentional direction from the owner + design docs. **Do not treat as 
 | Slice | Status | Player should feel |
 | --- | --- | --- |
 | **2** Guard post + city cargo trucks → shed | **SHIPPED** | Cargo has a landside journey |
-| **3** Cargo start focus + kit + volume letter + richer warehouse HUD | **NEXT** | Cargo is a real start fantasy |
-| **4** Fuel bowser capacity + farm stock refill | Planned | Manor Lords fuel picture |
+| **3** Cargo start focus + kit + volume letter + richer warehouse HUD | **SHIPPED** | Cargo is a real start fantasy |
+| **4** Fuel bowser capacity + farm stock refill | **NEXT** | Manor Lords fuel picture |
 | **5** Budget panel clarity + kit/loan coach | Parallel | Money readable |
 | **6** Screen building + loader GSE + cargo ladder UI | After 3 | Cargo midgame |
 | **7** Intl zone · franchises · scenarios · mega-hub look | Late | Scale fantasy |
@@ -342,6 +342,6 @@ When judging a feature idea, ask:
 
 ## 11. Current status one-liner
 
-**Shipped through bag journey + city cargo landside (BUILD 1 + 1b + 2).**  
-**Next code:** cargo start focus + volume letters (BUILD slice 3) to finish E3 cargo equality.  
+**Shipped through E3 cargo equality basics (BUILD 1 + 1b + 2 + 3).**  
+**Next code:** fuel bowser capacity / farm refill (BUILD slice 4).  
 **North star unchanged:** living logistics airfield — layout skill, letter drama, money = picture; pax and cargo as peers; emergencies/mil as side seasons.

@@ -49,12 +49,19 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 4. ~~Missing guard → deny / unscreened incident + On-time dips~~  
 5. ~~`scripts/soak-city-cargo.mts`~~
 
-## Slice 3 — cargo start fantasy (**coding next**)
+## Slice 3 — shipped
 
-1. New Game focus + cargo starter (shed, guard, cargo stand, no pax hall required).  
-2. Volume letters (“clear N ULDs before night bank”).  
-3. Richer warehouse meter / On-time readout in HUD.  
-4. Screen building stub (optional if volume letters land first).
+1. ~~New Game focus: Passengers / Cargo / Hybrid (Land screen)~~  
+2. ~~Cargo starter kit — strip, freighter stand, guard → shed, no pax hall~~  
+3. ~~Volume letters — stage N units through shed for fee + On-time + XP~~  
+4. ~~Warehouse % + volume progress on HUD; offer bias by focus~~  
+5. ~~`scripts/soak-cargo-start.mts`~~
+
+## Slice 4 — fuel picture (**coding next**)
+
+1. Bowser tank capacity + farm stock.  
+2. Refill contract / bulk buy.  
+3. Visible empty bowser → farm reload (already partially live).
 
 ## Rules while building
 
