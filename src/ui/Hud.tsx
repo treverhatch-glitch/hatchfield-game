@@ -43,8 +43,9 @@ import {
   TOOL_LABEL,
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
-import { formatClock, type Game } from '../game/sim'
+import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
+import { LineChart } from './LineChart'
 
 const BUDGET_KEYS: BudgetKey[] = [
   'maintenance',
@@ -108,6 +109,55 @@ type PanelId =
   | 'services'
   | null
 
+type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
+
+const ECO_TABS: { id: EcoTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'income', label: 'Income' },
+  { id: 'expenses', label: 'Expenses' },
+  { id: 'loans', label: 'Loans' },
+  { id: 'charts', label: 'Charts' },
+]
+
+function toolCost(tool: Tool): number | null {
+  if (tool === 'runway_short') return SHORT_RUNWAY_COST
+  if (tool === 'runway') return RUNWAY_PREFAB_COST
+  if (tool === 'runway_heavy') return HEAVY_RUNWAY_COST
+  if (tool === 'premade') return PREMADE_TERMINAL_COST
+  if (tool === 'clear') return null
+  return BUILDINGS.find((b) => b.tool === tool)?.cost ?? null
+}
+
+function TrayMark({ tool }: { tool: string }) {
+  const kind = tool.includes('runway')
+    ? 'strip'
+    : tool === 'taxi' || tool === 'road' || tool === 'belt'
+      ? 'path'
+      : tool.startsWith('stand')
+        ? 'stand'
+        : tool === 'clear'
+          ? 'clear'
+          : tool.includes('hotel') || tool.startsWith('park') || tool === 'bus' || tool === 'rail'
+            ? 'land'
+            : 'ops'
+  return (
+    <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
+      {kind === 'strip' ? <rect x="3" y="13" width="26" height="6" rx="1" fill="currentColor" /> : null}
+      {kind === 'path' ? (
+        <path d="M6 24 L16 8 L26 24" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      ) : null}
+      {kind === 'stand' ? (
+        <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      ) : null}
+      {kind === 'clear' ? (
+        <path d="M8 8 L24 24 M24 8 L8 24" stroke="currentColor" strokeWidth="2.4" />
+      ) : null}
+      {kind === 'land' ? <rect x="7" y="9" width="18" height="14" rx="2" fill="currentColor" /> : null}
+      {kind === 'ops' ? <path d="M16 5 L28 26 H4 Z" fill="currentColor" /> : null}
+    </svg>
+  )
+}
+
 const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
@@ -124,6 +174,8 @@ export function Hud({ game }: { game: Game }) {
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
+  const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const [inboxOpen, setInboxOpen] = useState(false)
   const menuTools = BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? BUILD_MENUS[0].tools
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
@@ -163,10 +215,19 @@ export function Hud({ game }: { game: Game }) {
   }
 
   const ticker = game.news.slice(0, 5)
+  const xp = game.fieldXpToNext()
+  const standing = game.avgStanding()
+  const alerts: string[] = []
+  if (game.pendingThreat) alerts.push(game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security')
+  if (game.pendingEmergency) alerts.push('Emergency')
+  if (game.warnedAirlines().length) alerts.push('Standing low')
+  if (holding) alerts.push(`${holding} holding`)
+  if (game.apronJamLine()) alerts.push('Apron jam')
+  if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
 
   return (
     <div className="hud">
-      <header className="top">
+      <header className="top" data-testid="stats-bar">
         <div className="brand">
           <strong>Hatchfield</strong>
           <span>
@@ -181,19 +242,48 @@ export function Hud({ game }: { game: Game }) {
         >
           {money(game.cash)}
         </button>
-        <div className="stat">{formatClock(game.clock)}</div>
+        <button
+          type="button"
+          className="stat"
+          title="Cash earned in the last in-game hour"
+          onClick={() => {
+            setEcoTab('income')
+            openPanel('economy')
+          }}
+        >
+          {money(game.incomePerHour)}/hr
+        </button>
+        <div className="stat" title="One day is a 180-second cycle">
+          {formatSimDate(game.clock)}
+        </div>
+        <div className="speeds stat-speeds" aria-label="Speed">
+          {([0, 1, 3, 5] as Speed[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={game.speed === s ? 'on' : ''}
+              title={s === 0 ? 'Pause' : `${s}x speed`}
+              onClick={() => game.setSpeed(s)}
+            >
+              {s === 0 ? 'Pause' : `${s}x`}
+            </button>
+          ))}
+        </div>
         <div
           className="stat"
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
         >
-          Field {game.fieldRating()} · {game.fieldRatingLabel()}
+          Field Lv {xp.level}
+          {xp.level < 5 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
         </div>
-        <div className="stat">Rep {Math.round(game.reputation)}</div>
+        <div className="stat" title="Average Standing of signed airlines">
+          Standing {standing == null ? '—' : Math.round(standing)}
+        </div>
         <div
-          className="stat"
-          title={`Field XP ${game.fieldXp} — unlocks airline tiers`}
+          className={`stat${alerts.length ? ' alert' : ''}`}
+          title={alerts.join(' · ') || 'No alerts'}
         >
-          Lv {game.fieldLevel()}
+          {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
         <div className="stat">{game.weatherLabel()}</div>
         <div className="stat" title="Free stands / jets holding">
@@ -240,7 +330,11 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
-      <div className="letter-stack" aria-label="Incoming letters">
+      <div
+        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}`}
+        aria-label="Incoming letters"
+        data-testid="letter-stack"
+      >
         {(() => {
           type Letter = {
             id: string
@@ -402,26 +496,30 @@ export function Hud({ game }: { game: Game }) {
             openLetter && letters.some((l) => l.id === openLetter)
               ? openLetter
               : null
-          return letters.map((letter) => {
+          const openOne = letters.find((l) => l.id === active) ?? null
+          const rest = letters.filter((l) => l.id !== active)
+          const cards = openOne ? [openOne, ...rest.slice(0, 1)] : letters.slice(0, 2)
+          const inbox = openOne ? rest.slice(1) : letters.slice(2)
+          const renderLetter = (letter: (typeof letters)[number]) => {
             const open = active === letter.id
             return (
               <article
                 key={letter.id}
                 className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
-                data-testid={letter.id === 'field' ? 'field-task' : undefined}
-                onMouseEnter={() => setOpenLetter(letter.id)}
-                onMouseLeave={() =>
-                  setOpenLetter((cur) => (cur === letter.id ? null : cur))
+                data-testid={
+                  letter.id === 'field'
+                    ? 'field-task'
+                    : letter.id === 'contract'
+                      ? 'contract-letter'
+                      : undefined
                 }
               >
                 <button
                   type="button"
                   className="letter-tab"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    /* Open on click — do not toggle closed (mouseenter + click was a no-op). */
-                    setOpenLetter(letter.id)
-                  }}
+                  onClick={() =>
+                    setOpenLetter((cur) => (cur === letter.id ? null : letter.id))
+                  }
                 >
                   <span className="letter-kind">{letter.kind}</span>
                   <span className="letter-from">{letter.from}</span>
@@ -434,14 +532,34 @@ export function Hud({ game }: { game: Game }) {
                 <div className="letter-body">
                   <strong>{letter.title}</strong>
                   <p>{letter.blurb}</p>
+                  {letter.id === 'contract' && offerAirline ? (
+                    <>
+                      <p className="muted">
+                        Terms · landing {money(offerAirline.landing)} · bags {money(offerAirline.bags)}
+                        {offerAirline.catering
+                          ? ` · catering ${money(offerAirline.catering)}`
+                          : ''}
+                      </p>
+                      <ul className="req-list">
+                        {game.reqReport(offerAirline.id).map((row) => (
+                          <li key={row.label} data-met={row.met ? '1' : '0'}>
+                            {row.met ? 'Met' : 'Missing'} · {row.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
                   <div className="row letter-actions">
                     {letter.id === 'contract' ? (
                       <>
                         <button type="button" className="on" onClick={() => game.acceptOffer()}>
-                          Sign
+                          Accept
                         </button>
                         <button type="button" onClick={() => game.declineOffer()}>
                           Decline
+                        </button>
+                        <button type="button" onClick={() => game.snoozeOffer()}>
+                          Later
                         </button>
                       </>
                     ) : null}
@@ -538,7 +656,40 @@ export function Hud({ game }: { game: Game }) {
                 </div>
               </article>
             )
-          })
+          }
+          return (
+            <>
+              {cards.map(renderLetter)}
+              {inbox.length ? (
+                <div className="letter-inbox">
+                  <button
+                    type="button"
+                    className="letter-tab"
+                    onClick={() => setInboxOpen((v) => !v)}
+                  >
+                    <span className="letter-kind">Inbox</span>
+                    <span className="letter-from">{inbox.length} more</span>
+                  </button>
+                  {inboxOpen
+                    ? inbox.map((letter) => (
+                        <button
+                          key={letter.id}
+                          type="button"
+                          className="inbox-row"
+                          onClick={() => {
+                            setOpenLetter(letter.id)
+                            setInboxOpen(false)
+                          }}
+                        >
+                          {letter.kind} · {letter.from}
+                          {letter.left != null ? ` · ${letter.left}s` : ''}
+                        </button>
+                      ))
+                    : null}
+                </div>
+              ) : null}
+            </>
+          )
         })()}
       </div>
 
@@ -567,7 +718,108 @@ export function Hud({ game }: { game: Game }) {
             <div className="panel-body">
               {panel === 'economy' ? (
                 <>
+                  <div className="eco-tabs" role="tablist">
+                    {ECO_TABS.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={ecoTab === tab.id}
+                        className={ecoTab === tab.id ? 'on' : ''}
+                        onClick={() => setEcoTab(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  {ecoTab === 'income' ? (
+                    <section data-testid="eco-income">
+                      <h3>Income</h3>
+                      <p className="muted eco-line">
+                        Last hour {money(game.incomePerHour)} · pax/day {game.paxPerDay || game.dayPax}{' '}
+                        · cargo/day {game.cargoPerDay || game.dayCargo}
+                      </p>
+                      <p className="muted">
+                        Landside fees {money(game.landsideIncome())} this window · fill{' '}
+                        {Math.round(game.landsideUsageRate() * 100)}%
+                      </p>
+                      <ul className="airlines">
+                        {game.econHist.length ? (
+                          game.econHist
+                            .slice(-8)
+                            .reverse()
+                            .map((p) => (
+                              <li key={p.t}>
+                                {formatSimDate(p.t)} · {money(p.income)}
+                              </li>
+                            ))
+                        ) : (
+                          <li className="muted">Income lines appear after the first hour.</li>
+                        )}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {ecoTab === 'expenses' ? (
+                    <section data-testid="eco-expenses">
+                      <h3>Expenses</h3>
+                      <p className="muted eco-line" data-testid="budget-payroll">
+                        Payroll ~{money(game.payrollPreview())} / 30s
+                        {game.fieldOpsMult() > 1.05
+                          ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
+                          : ''}{' '}
+                        · landside {money(game.landsideUpkeep())}/30s
+                      </p>
+                      <p className="muted">
+                        {game.loanBalance > 0
+                          ? `Open loan ${money(game.loanBalance)} — interest posts on the loan clock.`
+                          : 'No loan interest running.'}
+                      </p>
+                      <ul className="airlines">
+                        {game.econHist.length ? (
+                          game.econHist
+                            .slice(-8)
+                            .reverse()
+                            .map((p) => (
+                              <li key={p.t}>
+                                {formatSimDate(p.t)} · {money(p.expense)}
+                              </li>
+                            ))
+                        ) : (
+                          <li className="muted">Expense lines appear after the first hour.</li>
+                        )}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {ecoTab === 'charts' ? (
+                    <section data-testid="eco-charts">
+                      <h3>Charts</h3>
+                      <p className="muted">One point per in-game hour. A day is 180 seconds.</p>
+                      <LineChart
+                        title="Cash"
+                        series={[{ name: 'Cash', color: '#e7c56a', values: game.econHist.map((p) => p.cash) }]}
+                        empty="Cash line starts after the first hour."
+                      />
+                      <LineChart
+                        title="Income vs expenses"
+                        series={[
+                          { name: 'Income', color: '#8ee0a8', values: game.econHist.map((p) => p.income) },
+                          { name: 'Expenses', color: '#ff9b8f', values: game.econHist.map((p) => p.expense) },
+                        ]}
+                      />
+                      <LineChart
+                        title="Passengers / day"
+                        series={[{ name: 'Pax', color: '#6a9ec8', values: game.econHist.map((p) => p.pax) }]}
+                      />
+                      <LineChart
+                        title="Cargo / day"
+                        series={[{ name: 'Cargo', color: '#c9a227', values: game.econHist.map((p) => p.cargo) }]}
+                      />
+                    </section>
+                  ) : null}
+                  {ecoTab === 'overview' || ecoTab === 'loans' ? (
                   <section>
+                    {ecoTab === 'overview' ? (
+                    <>
                     <h3>Cash & capital</h3>
                     <p className="muted eco-line" data-testid="economy-cash">
                       Bank {money(game.cash)}
@@ -592,6 +844,14 @@ export function Hud({ game }: { game: Game }) {
                           ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
                           : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). Empty plot only.'}
                     </p>
+                    <p className="muted">
+                      Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}{' '}
+                      · last hour {money(game.incomePerHour)}
+                    </p>
+                    </>
+                    ) : null}
+                    {ecoTab === 'loans' ? (
+                    <>
                     <div className="loan-products">
                       <h4 className="loan-h">Bank desk</h4>
                       <p className="muted eco-line">
@@ -654,6 +914,9 @@ export function Hud({ game }: { game: Game }) {
                         Long park {game.carParkLong ? '✓' : money(CARPARK_LONG_COST)}
                       </button>
                     </div>
+                    </>
+                    ) : null}
+                    {ecoTab === 'overview' ? (
                     <p className="muted">
                       parcels {game.parcels}
                       {game.railLinked ? ' · rail' : ''}
@@ -673,7 +936,10 @@ export function Hud({ game }: { game: Game }) {
                         .filter(Boolean)
                         .join('/') || 'no arrival modes'}
                     </p>
+                    ) : null}
                   </section>
+                  ) : null}
+                  {ecoTab === 'overview' || ecoTab === 'income' ? (
                   <section>
                     <h3>Exchange · HATCH</h3>
                     {game.public ? (
@@ -718,6 +984,7 @@ export function Hud({ game }: { game: Game }) {
                       </>
                     )}
                   </section>
+                  ) : null}
                 </>
               ) : null}
 
@@ -875,7 +1142,7 @@ export function Hud({ game }: { game: Game }) {
                     )
                   })()}
                   <p className="muted">
-                    Letters on the right are live offers. Standing{' '}
+                    Letters slide in from the left. Standing{' '}
                     {HEAT_REWARD_THRESHOLD}+ unlocks persona perks · warn ≤
                     {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
                     Cross-cut: Charter / LCC / Full-service / Cargo.
@@ -1440,21 +1707,29 @@ export function Hud({ game }: { game: Game }) {
                     </>
                   ) : null}
                 </div>
-                <div className="tools build-tray">
-                  {menuTools.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      className={game.tool === t ? 'on' : ''}
-                      onClick={() => game.setTool(t)}
-                      title={BUILDINGS.find((b) => b.tool === t)?.blurb ?? TOOL_LABEL[t]}
-                    >
-                      {TOOL_LABEL[t]}
-                      {BUILDINGS.find((b) => b.tool === t)
-                        ? ` · ${money(BUILDINGS.find((b) => b.tool === t)!.cost)}`
-                        : ''}
-                    </button>
-                  ))}
+                <div className="tools build-tray" data-testid="build-tray">
+                  {menuTools.map((t) => {
+                    const def = BUILDINGS.find((b) => b.tool === t)
+                    const cost = toolCost(t)
+                    const name = def?.name ?? TOOL_LABEL[t]
+                    const tip =
+                      t === 'clear'
+                        ? 'Bulldoze — refunds 40% of the stamp.'
+                        : (def?.blurb ?? TOOL_LABEL[t])
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`tray-item${game.tool === t ? ' on' : ''}`}
+                        onClick={() => game.setTool(t)}
+                        title={cost != null ? `${tip} ${money(cost)}` : tip}
+                      >
+                        <TrayMark tool={t} />
+                        <span className="tray-name">{name}</span>
+                        <span className="tray-price">{cost != null ? money(cost) : 'Refund'}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </>
             )}

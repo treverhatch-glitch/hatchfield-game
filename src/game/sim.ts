@@ -534,6 +534,26 @@ export class Game {
   cascadeNewsCool = 0
   /** While storming, pulse a bank slip so weather stays legible. */
   stormPulseCool = 0
+  /** One point per in-game hour (7.5s). Charts read this; not saved. */
+  econHist: {
+    t: number
+    cash: number
+    income: number
+    expense: number
+    pax: number
+    cargo: number
+  }[] = []
+  econHour = 0
+  hourIncome = 0
+  hourExpense = 0
+  dayPax = 0
+  dayCargo = 0
+  dayMark = 0
+  /** Cash earned in the latest finished hour. */
+  incomePerHour = 0
+  /** Pax / cargo cleared on the last finished day (180s). */
+  paxPerDay = 0
+  cargoPerDay = 0
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -672,6 +692,16 @@ export class Game {
     this.nightCurfewCool = 0
     this.cascadeNewsCool = 0
     this.stormPulseCool = 0
+    this.econHist = []
+    this.econHour = 0
+    this.hourIncome = 0
+    this.hourExpense = 0
+    this.dayPax = 0
+    this.dayCargo = 0
+    this.dayMark = 0
+    this.incomePerHour = 0
+    this.paxPerDay = 0
+    this.cargoPerDay = 0
     // Drop the previous field so a refresh on the route screen cannot resume it.
     try {
       localStorage.removeItem(SAVE_KEY)
@@ -1042,6 +1072,14 @@ export class Game {
 
   fieldLevel(): AirlineTier {
     return fieldLevelFromXp(this.fieldXp)
+  }
+
+  /** Mean Standing across signed carriers. Null when nobody has signed. */
+  avgStanding(): number | null {
+    if (!this.signed.length) return null
+    let sum = 0
+    for (const id of this.signed) sum += this.standingOf(id)
+    return sum / this.signed.length
   }
 
   fieldXpToNext(): { level: AirlineTier; xp: number; need: number; pct: number } {
@@ -2771,13 +2809,63 @@ export class Game {
   /** Fines / interest — may go into debt, but floors so the tape can't spiral forever. */
   charge(amount: number) {
     if (this.sandbox) return
+    this.noteExpense(amount)
     this.cash -= amount
     if (this.cash < -25_000) this.cash = -25_000
+  }
+
+  noteIncome(amount: number) {
+    if (amount > 0) this.hourIncome += amount
+  }
+
+  noteExpense(amount: number) {
+    if (amount > 0) this.hourExpense += amount
+  }
+
+  /** Pax and freight cleared when a turnaround finishes — feeds the day charts. */
+  noteTurn(f: Flight) {
+    if (!(f.cargo || f.kind === 'freighter')) this.dayPax += Math.max(0, f.pax)
+    if (f.cargo || f.kind === 'freighter') {
+      this.dayCargo += Math.max(8, f.pax || 16)
+    }
+  }
+
+  /** Hourly book for the economy charts. One in-game hour is 7.5 sim-seconds. */
+  sampleEconomy(step: number) {
+    const hour = 7.5
+    const day = 180
+    this.econHour += step
+    let paxSnap = this.dayPax
+    let cargoSnap = this.dayCargo
+    if (this.clock - this.dayMark >= day) {
+      this.paxPerDay = this.dayPax
+      this.cargoPerDay = this.dayCargo
+      paxSnap = this.paxPerDay
+      cargoSnap = this.cargoPerDay
+      this.dayPax = 0
+      this.dayCargo = 0
+      this.dayMark = this.clock
+    }
+    if (this.econHour < hour) return
+    this.incomePerHour = Math.round(this.hourIncome)
+    this.econHist.push({
+      t: this.clock,
+      cash: Math.round(this.cash),
+      income: Math.round(this.hourIncome),
+      expense: Math.round(this.hourExpense),
+      pax: paxSnap,
+      cargo: cargoSnap,
+    })
+    if (this.econHist.length > 96) this.econHist.shift()
+    this.hourIncome = 0
+    this.hourExpense = 0
+    this.econHour = 0
   }
 
   earn(amount: number, label: string, flight?: Flight) {
     this.cash += amount
     this.revenue += amount
+    this.noteIncome(amount)
     if (flight) flight.ledger.push({ label, amount })
     this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
   }
@@ -4017,6 +4105,39 @@ export class Game {
     return miss
   }
 
+  /** Contract checklist — met and missing, player-facing labels. */
+  reqReport(id: AirlineId): { label: string; met: boolean }[] {
+    const a = this.airline(id)
+    const r = this.readiness()
+    const rows: { label: string; met: boolean }[] = [
+      { label: `Reputation ${a.minRep}+`, met: this.reputation >= a.minRep },
+      { label: 'Runway', met: r.runway },
+    ]
+    if (a.req.heavyRunway) rows.push({ label: 'Heavy runway', met: r.heavyRunway })
+    rows.push({
+      label: a.req.stands === 1 ? '1 stand' : `${a.req.stands} stands`,
+      met: r.stands >= a.req.stands,
+    })
+    if (a.req.fuelContract) rows.push({ label: 'Fuel contract', met: r.fuelContract })
+    if (a.req.fuelFarm) rows.push({ label: 'Fuel farm', met: r.fuelFarm })
+    if (a.req.fire) rows.push({ label: 'Fire station', met: r.fire })
+    if (a.req.police) rows.push({ label: 'Police post', met: r.police })
+    if (a.req.terminal) rows.push({ label: 'Terminal', met: r.terminal })
+    if (a.req.security > 0) {
+      rows.push({
+        label: a.req.security === 1 ? 'Security lane' : `Security ×${a.req.security}`,
+        met: r.security >= a.req.security,
+      })
+    }
+    if (a.req.bags) rows.push({ label: 'Bag sort', met: r.bags })
+    if (a.req.snack) rows.push({ label: 'Snack bar', met: r.snack })
+    if (a.req.catering) rows.push({ label: 'Catering contract', met: r.catering })
+    if (a.req.cargo) rows.push({ label: 'Cargo shed', met: r.cargo })
+    if (a.req.road) rows.push({ label: 'Access road', met: r.road })
+    if (a.req.tower) rows.push({ label: 'Control tower', met: r.tower })
+    return rows
+  }
+
   considerOffers() {
     if (this.offer || this.offerCool > 0) return
     const site = this.site ? LAND[this.site] : null
@@ -4074,7 +4195,7 @@ export class Game {
     this.offer = { airline: pickA.id, age: 0, deadline: 36 }
     const tag = pickA.procedural ? ' (regional)' : ''
     this.pushNews(
-      `${pickA.name}${tag} sent a contract letter — open it on the right before it expires.`,
+      `${pickA.name}${tag} sent a contract letter — open it on the left before it expires.`,
       'good',
     )
   }
@@ -4607,6 +4728,16 @@ export class Game {
         s.eta <= this.clock + 1.5,
     )
     return due[0] ?? null
+  }
+
+  /** Set the contract aside — no Standing hit, they write again soon. */
+  snoozeOffer() {
+    if (!this.offer) return
+    const a = this.airline(this.offer.airline)
+    this.offer = null
+    this.offerCool = 18
+    this.pushNews(`${a.name} letter set aside. They'll write again shortly.`, 'ok')
+    this.emit()
   }
 
   declineOffer() {
@@ -5816,11 +5947,13 @@ export class Game {
       return
     }
     if (this.cash >= bill) {
+      this.noteExpense(bill)
       this.cash -= bill
       // Soft prosperity levy — clips late-game snowballs without a hard tax cliff.
       let levy = 0
       if (this.cash > 140_000) {
         levy = Math.round((this.cash - 140_000) * 0.03)
+        this.noteExpense(levy)
         this.cash -= levy
       }
       this.pushNews(
@@ -5835,6 +5968,7 @@ export class Game {
     }
     // Partial pay — never drive cash below zero from payroll alone.
     const paid = Math.max(0, this.cash)
+    this.noteExpense(paid)
     this.cash = 0
     this.reputation = Math.max(0, this.reputation - 4)
     // Starved lines bite harder next cycle.
@@ -7248,6 +7382,7 @@ export class Game {
         f.phase = 'gone'
         this.flightsDone += 1
         this.paxServed += f.pax
+        this.noteTurn(f)
         this.grantResearchForFlight(f)
         if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
           this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
@@ -8778,6 +8913,7 @@ export class Game {
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
     this.clock += step
+    this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)
     this.offerCool = Math.max(0, this.offerCool - step)
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
@@ -8820,6 +8956,7 @@ export class Game {
         const tick = loanInterestDue(this.loanBalance, prod.rate, prod.interestFloor)
         if (this.cash >= tick) {
           // Paid in full — balance does NOT capitalize (was snowballing every tick).
+          this.noteExpense(tick)
           this.cash -= tick
           if (this.loanNewsCool <= 0) {
             this.pushNews(
@@ -8830,6 +8967,7 @@ export class Game {
           }
         } else {
           const paid = Math.max(0, this.cash)
+          this.noteExpense(paid)
           this.cash = 0
           const short = tick - paid
           // Only unpaid shortfall capitalizes — hard-capped.
@@ -9174,6 +9312,7 @@ export class Game {
           f.phase = 'gone'
           this.flightsDone += 1
           this.paxServed += f.pax
+          this.noteTurn(f)
           this.grantResearchForFlight(f)
           if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
@@ -9482,4 +9621,14 @@ export function formatClock(seconds: number): string {
   const h = Math.floor(m / 60)
   const mm = m % 60
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+/** Day length is the 180s cycle. Clock reads as a 24h face inside that day. */
+export function formatSimDate(seconds: number): string {
+  const day = Math.floor(seconds / 180) + 1
+  const tod = ((seconds % 180) + 180) % 180
+  const mins = Math.floor((tod / 180) * 24 * 60)
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `Day ${day} · ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
