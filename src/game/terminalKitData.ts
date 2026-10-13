@@ -77,7 +77,7 @@ export const KIT_ITEMS: ItemDef[] = [
     servers: 2,
     queueCap: 10,
     serviceSec: 3,
-    cost: 8000,
+    cost: 6_000,
     upkeep: 60,
     staff: 2,
     minFieldLevel: 1,
