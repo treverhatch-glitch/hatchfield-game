@@ -157,6 +157,11 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
+import {
+  createDiplomacyBridge,
+  GAME_MINUTES_PER_SIM_SECOND,
+  type DiplomacyBridge,
+} from './diplomacyBridge.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -632,6 +637,9 @@ export class Game {
   private groundAnnounced = false
   private groundNotes: Advice[] = []
   private groundNoteKey = ''
+  /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
+  private diplomacy: DiplomacyBridge | null = null
+  diplomacySeed = 1
   /** Passenger-flow overlay. Hidden until the player opts in. */
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
@@ -835,6 +843,8 @@ export class Game {
     this.groundAnnounced = false
     this.groundNotes = []
     this.groundNoteKey = ''
+    this.diplomacy = null
+    this.diplomacySeed = 1
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
@@ -1230,6 +1240,205 @@ export class Game {
     return fieldLevelFromXp(this.fieldXp)
   }
 
+  /** Diplomacy day, 0 until the clock has run. */
+  diplomacyDay(): number {
+    return this.diplomacy?.day() ?? 0
+  }
+
+  private ensureDiplomacy(): DiplomacyBridge {
+    if (!this.diplomacy) {
+      this.diplomacy = createDiplomacyBridge(
+        {
+          addMoney: (amount, category) => this.postDiplomacyMoney(amount, category),
+          getCash: () => this.cash,
+          getContext: () => this.diplomacyContext(),
+          notify: (message, severity) => {
+            const tone = severity === 'bad' || severity === 'warn' ? 'bad' : severity === 'good' ? 'good' : 'ok'
+            this.pushNews(message, tone)
+          },
+          applyReputation: (delta) => {
+            this.reputation = Math.max(0, Math.min(100, this.reputation + delta))
+          },
+          onHostileAction: (action) => {
+            this.pushNews(action.text, 'bad')
+          },
+        },
+        this.diplomacySeed,
+      )
+    }
+    return this.diplomacy
+  }
+
+  private postDiplomacyMoney(amount: number, _category: string) {
+    if (amount > 0) {
+      this.cash += amount
+      this.revenue += amount
+      this.noteIncome(amount)
+      return
+    }
+    if (amount < 0) {
+      this.noteExpense(-amount)
+      if (!this.sandbox) this.cash += amount
+    }
+  }
+
+  private diplomacyContext() {
+    const stands = tilesOf(this.tiles, 'stand')
+    const classes = stands.map((s) => this.standClassAt(s))
+    const occupied = this.flights.filter((f) => f.phase !== 'gone' && f.stand).length
+    let food = 0
+    let lounge = 0
+    let family = 0
+    let prestige = 0
+    for (const fit of this.fits) {
+      food += fit.rooms.food ?? 0
+      lounge += fit.rooms.lounge ?? 0
+      family += (fit.rooms.bathroom ?? 0) + (fit.rooms.dayhotel ?? 0) + (fit.rooms.gaming ?? 0)
+      prestige += (fit.rooms.lounge ?? 0) + (fit.rooms.spa ?? 0) + (fit.rooms.golf ?? 0)
+    }
+    const onTime = this.diplomacy?.onTimePct() ?? 88
+    const feeIndex = this.diplomacy?.adapter.engine.state.feeIndex ?? 1
+    return {
+      fieldLevel: this.fieldLevel(),
+      metrics: {
+        onTimePct: onTime,
+        feeIndex,
+        cafes: food,
+        loungeSeats: lounge * 24,
+        standCount: stands.length,
+        standUtilization: stands.length ? occupied / stands.length : 0,
+        heavyStands: classes.filter((c) => c === 'L').length,
+        electricTugs: 0,
+        solarCoveragePct: 0,
+        familyAmenities: family,
+        prestigeItems: prestige,
+        exclusivePier: 0,
+        nightSlots: this.hasResearch('night_bank') ? 1 : 0,
+        coldChainRooms: 0,
+        cargoFacilities: tilesOf(this.tiles, 'cargo').length,
+        incentiveDealActive: 0,
+        hubDepartures: this.hubAirlines.length,
+        maintenanceLevel: tilesOf(this.tiles, 'hangar').length + (this.mechanics > 0 ? 1 : 0),
+      },
+      airport: {
+        runwayLengthMeters: this.longestRunway() * 150,
+        hasSmallStands: classes.some((c) => c === 'S' || c === 'M'),
+        hasMediumStands: classes.some((c) => c === 'M' || c === 'L'),
+        hasHeavyStands: classes.some((c) => c === 'L'),
+        terminalRating: this.fieldLevel(),
+        hasFuelService: tilesOf(this.tiles, 'fuel').length > 0,
+        hasCateringService: Boolean(this.caterBrand) || tilesOf(this.tiles, 'kitchen').length > 0,
+        hasMaintenanceService: tilesOf(this.tiles, 'hangar').length > 0,
+        hasHeavyVehicles: tilesOf(this.tiles, 'depot').length > 0,
+        onTimePercentage: onTime,
+        totalFlightsHandled: this.flightsDone,
+      },
+    }
+  }
+
+  private tickDiplomacy(step: number) {
+    const d = this.ensureDiplomacy()
+    for (const id of this.signed) d.mirrorSigned(id)
+    d.tick(step * GAME_MINUTES_PER_SIM_SECOND)
+  }
+
+  private diplomacyFeeFactor(airlineId: string): number {
+    return this.diplomacy?.feeFactor(airlineId) ?? 1
+  }
+
+  private diplomacyCapacity(airlineId: string): number {
+    return this.diplomacy?.capacityFactor(airlineId) ?? 1
+  }
+
+  private rampPace(airframeId: string, cargo: boolean, airlineId: string): number {
+    const slow = this.diplomacy?.slowFactor(airlineId) ?? 1
+    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow
+  }
+
+  private gradeDiplomacyTurn(f: Flight) {
+    if (f.kind === 'military' || f.kind === 'air_ambulance') return
+    const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
+    const guests = this.hallGuests.filter((g) => g.flightId === f.id && !g.dead)
+    const mood = guests.length
+      ? guests.reduce((sum, g) => sum + g.happiness, 0) / guests.length / 100
+      : 0.75
+    const bagFault = this.bagTags.some((t) => t.flightId === f.id && t.fault)
+    const result = this.ensureDiplomacy().gradeFlight({
+      flightId: f.id,
+      airlineId: f.airline,
+      delayMinutes: (slot?.delaySec ?? 0) * GAME_MINUTES_PER_SIM_SECOND,
+      bagFault,
+      paxMood: mood,
+      standFit: Boolean(f.stand),
+    })
+    if (result.ended) {
+      this.pushNews(`${this.airline(f.airline).name} walked on the contract — satisfaction hit the floor.`, 'bad')
+    }
+  }
+
+  private noteDiplomacyCancel(airlineId: string, excused: boolean) {
+    this.diplomacy?.cancelFlight(airlineId, excused)
+  }
+
+  diplomacyRoster(): { id: string; name: string; band: string; standing: number }[] {
+    if (!this.diplomacy) return []
+    const cards = this.diplomacy.cards()
+    const signed = cards.filter((c) => c.status === 'signed')
+    const rest = cards.filter((c) => c.status !== 'signed')
+    return [...signed, ...rest].slice(0, 4).map((c) => ({
+      id: c.id,
+      name: c.name,
+      band: c.band.word,
+      standing: c.standing,
+    }))
+  }
+
+  diplomacyLetters(): { id: string; airline: string; text: string }[] {
+    if (!this.diplomacy) return []
+    return this.diplomacy.proposals().slice(0, 3).map((p) => {
+      const rel = this.diplomacy?.relation(p.airlineId)
+      return { id: p.id, airline: rel?.name ?? p.airlineId, text: p.text }
+    })
+  }
+
+  answerDiplomacy(proposalId: string, response: 'accept' | 'decline') {
+    const d = this.ensureDiplomacy()
+    const before = new Set(d.signedIds())
+    const result = d.respond(proposalId, response)
+    if (result.ok && response === 'accept') {
+      for (const id of d.signedIds()) {
+        if (!before.has(id)) this.adoptDiplomacyCarrier(id)
+      }
+    }
+    if (!result.ok) this.pushNews(result.message, 'bad')
+    this.emit()
+  }
+
+  private adoptDiplomacyCarrier(id: string) {
+    const rel = this.ensureDiplomacy().relation(id)
+    if (!rel) return
+    if (!AIRLINES[id] && !this.extraAirlines.some((a) => a.id === id)) {
+      const template = rel.kind === 'cargo' ? AIRLINES.upps : rel.tier <= 2 ? AIRLINES.northline : AIRLINES.harbor
+      this.extraAirlines.push(
+        normalizeAirline({
+          ...template,
+          id: rel.id,
+          name: rel.name,
+          color: rel.livery[0],
+          stripe: rel.livery[1],
+          tier: rel.tier,
+          kind: rel.kind === 'cargo' ? 'cargo' : 'pax',
+          procedural: true,
+        }),
+      )
+    }
+    if (this.signed.includes(id)) return
+    this.signed.push(id)
+    if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
+    this.seedScheduleForAirline(id, 3)
+    this.pushNews(`${rel.name} signed. Flights hit the timetable.`, 'good')
+  }
+
   /** Mean Standing across signed carriers. Null when nobody has signed. */
   avgStanding(): number | null {
     if (!this.signed.length) return null
@@ -1487,6 +1696,7 @@ export class Game {
     const a = this.airline(id)
     const lost = this.airlineReward[id] ?? null
     this.signed = this.signed.filter((x) => x !== id)
+    this.diplomacy?.noteLeft(id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
     delete this.airlineReward[id]
@@ -2806,6 +3016,8 @@ export class Game {
       startFocus: this.startFocus,
       sandbox: this.sandbox,
       sites: this.sites,
+      diplomacy: this.diplomacy?.save(),
+      diplomacySeed: this.diplomacySeed,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -2929,6 +3141,9 @@ export class Game {
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
       this.sandbox = s.sandbox ?? true
       this.sites = s.sites ?? []
+      this.diplomacy = null
+      this.diplomacySeed = s.diplomacySeed ?? 1
+      if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -4431,6 +4646,7 @@ export class Game {
       `${f.flightNo} cancelled — no fuel before the departure slot. Standing ${Math.round(this.standingOf(f.airline))}.`,
       'bad',
     )
+    this.noteDiplomacyCancel(f.airline, false)
   }
 
   /** Legacy bowser, once the farm has a load again. The depot module fuels its own turns. */
@@ -4624,6 +4840,7 @@ export class Game {
         flight.posted.catering = true
         flight.caterLevel = 1
         flight.waitingOn.catering = false
+        this.ensureDiplomacy().noteRamp(flight.id, result.delayMinutes, result.causes.includes('late_bags'))
       }
       if (result.delayMinutes <= 1) continue
       const mins = Math.round(result.delayMinutes)
@@ -5643,12 +5860,13 @@ export class Game {
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
     const hub = this.isHub(airlineId)
+    const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
     const spacing = a.kind === 'cargo'
       ? 22 + Math.random() * 12
       : hub
         ? 12 + Math.random() * 8
         : 18 + Math.random() * 10
-    const n = hub ? count + 1 : count
+    const n = hub ? scaled + 1 : scaled
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
@@ -5730,6 +5948,7 @@ export class Game {
       'bad',
     )
     this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
+    this.noteDiplomacyCancel(s.airline, /weather|storm|fog/i.test(s.delayReason ?? ''))
     this.emit()
   }
 
@@ -8504,9 +8723,13 @@ export class Game {
    * Multi-terminal lite — second hall pulls its own bank of gates.
    * Optional `need` filters by stand S/M/L class.
    */
-  assignStand(pref?: Vec | null, need?: StandClass): Vec | null {
+  assignStand(pref?: Vec | null, need?: StandClass, airlineId?: AirlineId): Vec | null {
     let free = this.freeStands()
     if (need) free = free.filter((s) => this.standFitsClass(s, need))
+    if (airlineId) {
+      const refuse = this.diplomacy?.refusedGates(airlineId) ?? 0
+      if (refuse > 0) free = free.slice(refuse)
+    }
     if (!free.length) return null
     if (pref) {
       const hit = free.find((s) => s.c === pref.c && s.r === pref.r)
@@ -8776,7 +8999,7 @@ export class Game {
       return
     }
     const needCls = standClassFor(af.kind)
-    const stand = this.assignStand(slot.standPref ?? null, needCls)
+    const stand = this.assignStand(slot.standPref ?? null, needCls, airlineId)
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     if (!stand || !route) {
       const anyFree = this.freeStands().length > 0
@@ -8987,6 +9210,7 @@ export class Game {
         if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
           this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
         }
+        this.gradeDiplomacyTurn(f)
         this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
       }
     }
@@ -9015,7 +9239,7 @@ export class Game {
     const slot = f.scheduleId
       ? this.schedule.find((s) => s.id === f.scheduleId)
       : null
-    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null)
+    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null, undefined, f.airline)
     if (!stand) return
     const route =
       this.landingRoute(stand, slot?.runwayPref ?? null) ??
@@ -9065,6 +9289,7 @@ export class Game {
       }
       this.adjustHeat(f.airline, -4)
       this.reputation = Math.max(0, this.reputation - 1)
+      this.noteDiplomacyCancel(f.airline, false)
       this.pushNews(
         `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
         'bad',
@@ -9181,7 +9406,8 @@ export class Game {
       } else {
         const mult =
           (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
-          this.landingFeeMult(f.airline)
+          this.landingFeeMult(f.airline) *
+          this.diplomacyFeeFactor(f.airline)
         this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing (${f.airframeName})`, f)
       }
       if (
@@ -10527,6 +10753,7 @@ export class Game {
     this.tickCityCargo(step)
     this.tickConstruction(step)
     this.tickGround(step)
+    this.tickDiplomacy(step)
     this.tickShelves(step)
     // Peak decays so the HUD jam line clears when traffic thins.
     this.congPeak = Math.max(0, this.congPeak - step * 0.35)
@@ -10685,7 +10912,7 @@ export class Game {
         }
       } else if (f.phase === 'deboard') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
-        const pace = turnaroundScale(AIRFRAMES[f.airframeId], Boolean(f.cargo || f.kind === 'freighter'))
+        const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
         const deboardReady =
           f.cargo ||
           (mode === 'jetway' && f.phaseTime > 3.2 * pace) ||
@@ -10711,7 +10938,7 @@ export class Game {
           (f.waitingOn.bags && !f.posted.bags) ||
           (f.waitingOn.fuel && !f.posted.fuel) ||
           (f.waitingOn.catering && !f.posted.catering)
-        const pace = turnaroundScale(AIRFRAMES[f.airframeId], Boolean(f.cargo || f.kind === 'freighter'))
+        const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
         if ((!waiting && f.phaseTime > 4 * pace) || f.phaseTime > Math.min(36, 22 * pace)) {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
@@ -10846,7 +11073,7 @@ export class Game {
         // Occupies stand until releaseGa / auto leave in tickParking.
       } else if (f.phase === 'board') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
-        const pace = turnaroundScale(AIRFRAMES[f.airframeId], Boolean(f.cargo || f.kind === 'freighter'))
+        const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
         const boardLimit =
           (mode === 'jetway'
             ? f.boardingSlow
@@ -10858,7 +11085,7 @@ export class Game {
                 : 13
               : f.boardingSlow
                 ? 24
-                : 17) * pace
+                : 17) * pace + (this.diplomacy?.extraDelaySec(f.airline) ?? 0)
         const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
         const minBoard =
           (mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5) * pace
@@ -10994,6 +11221,7 @@ export class Game {
             const slot = this.schedule.find((s) => s.id === f.scheduleId)
             if (slot) slot.status = 'done'
           }
+          this.gradeDiplomacyTurn(f)
           this.pushNews(`${f.flightNo} airborne.`, 'ok')
           this.spawnCool = Math.min(this.spawnCool, 8)
         }

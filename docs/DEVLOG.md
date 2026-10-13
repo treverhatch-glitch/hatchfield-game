@@ -398,6 +398,22 @@ The shared clock and bank from the economy branch have not landed. That branch i
 
 **Tests.** 156 passing.
 
+## Diplomacy, airlines, and the asset list — 13 Oct
+
+Airline relations from Diplomacy V2 now sit on the same clock as the field. One sim day (180 seconds) is one diplomacy day. The adapter is built once, saved with the field, and ticked every step. A finished turnaround grades the carrier. A fuel cancellation, a scrubbed slot, or a hold that diverts counts as a missed flight. Weather on the slot is excused. A signed carrier's landing fee uses their fee discount, a capacity cut shortens the next bank of slots, and a hostile airline can slow the turnaround, refuse gates, or add delay. Letters and a short standing list sit in the corner chrome. Accepting a letter puts that carrier on the timetable. Northline, once signed in the usual way, is the same Northline inside diplomacy, so grades stick.
+
+The airlines module is in the tree with the flight-event type imported from its logic file, which is what the airlines tests already expected. Turnaround grades are also written into that module's satisfaction, so a string of bad turns can end the parallel contract.
+
+The asset pack v2 manifest and folder note are in the tree. The Drive zip is about 39 MB and private. The Drive connector stops at 10 MB, and a plain download hits a Google sign-in page, so the WebP and PNG files are not in this commit. The manifest test skips until `public/assets/v2/textures/` exists. If the pack is large when it lands, commit the WebP files and leave the PNG twins out.
+
+**Bugs.** Still ten.
+
+**Tests.** 301 passing, 1 skipped (the asset binaries).
+
+**Media**
+
+- `docs/devlog/media/OCT13-diplomacy.png` — airline standing list after one sim day: Northline, Puddle Air, Coastal Hop
+
 
 **Media**
 
