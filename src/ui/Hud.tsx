@@ -21,8 +21,8 @@ import {
   bizModelBlurb,
   MECHANIC_HIRE,
   MIL_AGREE_COST,
+  LAND_PLOT,
   money,
-  PARCEL_COST,
   parkTermLabel,
   personaBlurb,
   STAND_JETWAY_MULT,
@@ -47,6 +47,12 @@ import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
 import { FeesPanel } from './FeesPanel'
+
+function parcelButtonLabel(game: Game): string {
+  const offer = game.nextParcelOffer()
+  if (!offer) return game.site ? 'Parcels full' : 'Buy land first'
+  return `${offer.name} ${money(offer.price)}${offer.locked ? ` · need Lv${offer.needLevel}` : ''}`
+}
 
 const BUDGET_KEYS: BudgetKey[] = [
   'maintenance',
@@ -907,10 +913,11 @@ export function Hud({ game }: { game: Game }) {
                           Pay loan
                         </button>
                         <button type="button" onClick={() => game.buyParcel()}>
-                          Parcel {money(PARCEL_COST * game.parcels)}
-                          {game.fieldLevel() < Math.min(5, game.parcels)
-                            ? ` · need Lv${Math.min(5, game.parcels)}`
-                            : ''}
+                          {parcelButtonLabel(game)}
+                        </button>
+                        <button type="button" onClick={() => game.toggleMaintenanceContract()}>
+                          MX contract{' '}
+                          {game.maintenanceContract ? 'on' : money(LAND_PLOT.maintenanceContract)}
                         </button>
                         <button type="button" onClick={() => game.investRail()}>
                           City rail {money(RAIL_CITY_COST)}
@@ -936,6 +943,7 @@ export function Hud({ game }: { game: Game }) {
                     {ecoTab === 'overview' ? (
                     <p className="muted">
                       parcels {game.parcels}
+                      {game.site ? ` · holding ${money(game.dailyHoldingQuote())}/day` : ''}
                       {game.railLinked ? ' · rail' : ''}
                       {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
                       {game.janitors ? ` · janitors ${game.janitors}` : ''}
