@@ -173,6 +173,37 @@ import {
 } from './diplomacyBridge.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
+import type { VehicleType } from '../logistics/types.ts'
+import {
+  BAG_SYSTEMS,
+  FUEL_CONTRACTS,
+  HANGAR_OFFERS,
+  PAX_UNITS,
+  STAND_OFFERS,
+  VEHICLE_OFFERS,
+} from '../scale/data.ts'
+import {
+  canBuyPax,
+  canBuyVehicle,
+  canSignContract,
+  canUpgradeBags,
+  canUpgradeTank,
+  gameMinutes,
+  hangarScaleForTool,
+  loadsFromLitres,
+  personSpeedMult,
+  pillarReport,
+  pillarUpkeep,
+  placementBlock,
+  scaleAdvice,
+  seedLitresFromLoads,
+  sizeTierOf,
+  standClassForTool,
+  standScaleForTool,
+  tankDef,
+  tickFuel,
+} from '../scale/logic.ts'
+import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
   advanceBagTags,
@@ -237,6 +268,7 @@ import {
 } from './economy'
 import {
   AIRFRAMES,
+  type Airframe,
   craftRoleLabel,
   jetAirframesBlocked,
   jetAirframesFitting,
@@ -643,6 +675,22 @@ export class Game {
   airlineLowAcc: Record<string, number> = {}
   researchPoints = 0
   researchUnlocked: ResearchId[] = []
+  /** Signed volume contract. Apex on the old desk counts when this is empty. */
+  contractId: string | null = null
+  tankTier: 1 | 2 | 3 = 1
+  tankLitres = 0
+  fuelSupply: FuelSupply = 'road'
+  roadMinutes = 0
+  scaleFleet: Partial<Record<VehicleType, number>> = {}
+  bagSystem: BagSystemId = 'carts'
+  paxDesks = 2
+  paxKiosks = 0
+  paxBagDrops = 0
+  scannerLanes = 1
+  eGates = 0
+  standScale: Record<string, SizeTier> = {}
+  hangarScale: Record<string, SizeTier> = {}
+  private lastRailFlowing = false
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
   layover: LayoverContract | null = null
@@ -887,6 +935,7 @@ export class Game {
     this.airlineLowAcc = {}
     this.researchPoints = 0
     this.researchUnlocked = []
+    this.resetPillar()
     this.layoverOffer = null
     this.layoverOfferCool = 50
     this.layover = null
@@ -1879,6 +1928,9 @@ export class Game {
       const need = RESEARCH_NODES.find((n) => n.id === node.requires)
       return { ok: false, why: `Need ${need?.name ?? node.requires} first.` }
     }
+    if (node.minFieldLevel && this.fieldLevel() < node.minFieldLevel) {
+      return { ok: false, why: `Needs Field level ${node.minFieldLevel}.` }
+    }
     if (this.researchPoints < node.cost) {
       return {
         ok: false,
@@ -2061,6 +2113,7 @@ export class Game {
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
+    this.resetPillar()
     this.janitors = 0
     this.researchers = 0
     this.researcherCool = 0
@@ -2169,6 +2222,8 @@ export class Game {
     ]
     this.fuelBrand = 'apex'
     this.fuelLoads = 4
+    this.contractId = 'apex_local'
+    this.tankLitres = seedLitresFromLoads(4)
     this.foodShelf = this.shelfCap('food')
     this.shopShelf = this.shelfCap('shop')
     this.caterBrand = 'skybite'
@@ -2214,6 +2269,8 @@ export class Game {
     this.fits = []
     this.fuelBrand = 'apex'
     this.fuelLoads = 5
+    this.contractId = 'apex_local'
+    this.tankLitres = seedLitresFromLoads(5)
     this.caterBrand = null
     this.mechanics = 1
     this.spawnMechanicPawn()
@@ -3082,6 +3139,22 @@ export class Game {
       hotelClass: this.hotelClass,
       standClass: this.standClass,
       standAccess: this.standAccess,
+      standScale: this.standScale,
+      hangarScale: this.hangarScale,
+      pillar: {
+        contractId: this.contractId,
+        tankTier: this.tankTier,
+        litres: this.tankLitres,
+        supply: this.fuelSupply,
+        roadMinutes: this.roadMinutes,
+        fleet: this.scaleFleet,
+        bagSystem: this.bagSystem,
+        desks: this.paxDesks,
+        kiosks: this.paxKiosks,
+        bagDrops: this.paxBagDrops,
+        scannerLanes: this.scannerLanes,
+        eGates: this.eGates,
+      },
       janitors: this.janitors,
       researchers: this.researchers,
       deskStaff: this.deskStaff,
@@ -3199,6 +3272,20 @@ export class Game {
       }
       this.standClass = s.standClass ?? {}
       this.standAccess = s.standAccess ?? {}
+      this.standScale = s.standScale ?? {}
+      this.hangarScale = s.hangarScale ?? {}
+      this.contractId = s.pillar?.contractId ?? null
+      this.tankTier = s.pillar?.tankTier ?? 1
+      this.tankLitres = s.pillar?.litres ?? seedLitresFromLoads(s.fuelLoads)
+      this.fuelSupply = s.pillar?.supply ?? 'road'
+      this.roadMinutes = s.pillar?.roadMinutes ?? 0
+      this.scaleFleet = (s.pillar?.fleet ?? {}) as Partial<Record<VehicleType, number>>
+      this.bagSystem = s.pillar?.bagSystem ?? 'carts'
+      this.paxDesks = s.pillar?.desks ?? 2
+      this.paxKiosks = s.pillar?.kiosks ?? 0
+      this.paxBagDrops = s.pillar?.bagDrops ?? 0
+      this.scannerLanes = s.pillar?.scannerLanes ?? 1
+      this.eGates = s.pillar?.eGates ?? 0
       this.standAccessMode = 'remote'
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
@@ -5164,7 +5251,7 @@ export class Game {
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) {
-      this.advice = [...this.groundNotes, ...this.cargoNotes]
+      this.advice = [...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
       return
     }
     const hall = adviseHall(
@@ -5190,7 +5277,7 @@ export class Game {
       this.schedule,
       this.hallOverloaded,
     )
-    this.advice = [...hall, ...this.groundNotes, ...this.cargoNotes]
+    this.advice = [...hall, ...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
@@ -5475,10 +5562,21 @@ export class Game {
     if (!this.ground && this.groundRev === rev) return null
     if (this.ground && this.ground.sim.openTurnarounds > 0 && this.groundRev !== rev) return this.ground
     const prev = this.ground?.snapshot()
+    const cap = tankDef(this.tankTier).capacityLitres
+    if (this.tankLitres <= 0 && this.fuelLoads > 0) {
+      this.tankLitres = Math.min(cap, seedLitresFromLoads(this.fuelLoads))
+    }
     const config = buildLogisticsConfig(
       this.tiles,
       this.standAccess,
       tilesOf(this.tiles, 'termbus').length > 0,
+      {
+        fleet: this.scaleFleet,
+        capacityLitres: cap,
+        initialLitres: Math.min(cap, Math.max(0, this.tankLitres)),
+        hydrant: this.hasResearch('hydrant_fuel'),
+        strict: true,
+      },
     )
     if (!config) {
       this.ground = null
@@ -6476,12 +6574,246 @@ export class Game {
     }
   }
 
+  private resetPillar() {
+    this.contractId = null
+    this.tankTier = 1
+    this.tankLitres = 0
+    this.fuelSupply = 'road'
+    this.roadMinutes = 0
+    this.scaleFleet = {}
+    this.bagSystem = 'carts'
+    this.paxDesks = 2
+    this.paxKiosks = 0
+    this.paxBagDrops = 0
+    this.scannerLanes = 1
+    this.eGates = 0
+    this.standScale = {}
+    this.hangarScale = {}
+    this.lastRailFlowing = false
+  }
+
+  private pillarState(): PillarState {
+    return {
+      contractId: this.contractId,
+      tankTier: this.tankTier,
+      litres: this.tankLitres,
+      supply: this.fuelSupply,
+      roadMinutes: this.roadMinutes,
+      fleet: { ...this.scaleFleet },
+      bagSystem: this.bagSystem,
+      desks: this.paxDesks,
+      kiosks: this.paxKiosks,
+      bagDrops: this.paxBagDrops,
+      scannerLanes: this.scannerLanes,
+      eGates: this.eGates,
+    }
+  }
+
+  private pillarField() {
+    return {
+      size: SIZE,
+      fieldLevel: this.fieldLevel(),
+      research: this.researchUnlocked,
+      tiles: this.tiles,
+      standScale: this.standScale,
+      standClass: this.standClass,
+      standAccess: this.standAccess,
+      hangarScale: this.hangarScale,
+      legacyFuel: this.fuelBrand != null,
+    }
+  }
+
+  /** Passenger processing is skipped for freighters and other non-pax metal. */
+  scaleReport(id: string): PillarReport {
+    const report = pillarReport(this.pillarField(), this.pillarState(), id)
+    const af = AIRFRAMES[id]
+    if (!af || af.paxMax > 0) return report
+    const skip = new Set(['early-bags', 'travelator', 'skywalk', 'mover'])
+    const hints = report.hints.filter(
+      (h) => !skip.has(h.id) && !/^(stand-|bags-|checkin-|security-)/.test(h.id),
+    )
+    return { ...report, hints, ok: hints.length === 0 }
+  }
+
+  private pickOperable(preferred: AircraftKind, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
+    const level = this.fieldLevel()
+    const research = this.researchUnlocked
+    const accepts = (id: string) => this.scaleReport(id).ok
+    const af = pickAirframeWithFallback(
+      preferred,
+      this.longestRunway(),
+      cargo,
+      research,
+      level,
+      accepts,
+    )
+    if (af) return { af, blocked: null }
+    const raw = pickAirframeWithFallback(preferred, this.longestRunway(), cargo, research, level)
+    if (!raw) return { af: null, blocked: null }
+    return { af: null, blocked: this.scaleReport(raw.id) }
+  }
+
+  private scaleAdviceItems(): Advice[] {
+    return scaleAdvice(this.pillarField(), this.pillarState()).map((h) => ({
+      id: h.id,
+      title: h.title,
+      detail: h.detail,
+      fix: h.fix,
+      cells: [],
+      scope: 'apron' as const,
+    }))
+  }
+
+  private pillarUpkeepBill(): number {
+    if (!this.site) return 0
+    const hangars: Record<SizeTier, number> = { small: 0, wide: 0, jumbo: 0 }
+    for (const h of tilesOf(this.tiles, 'hangar')) {
+      hangars[this.hangarScale[`${h.c},${h.r}`] ?? 'small'] += 1
+    }
+    let wideStands = 0
+    let jumboStands = 0
+    for (const s of tilesOf(this.tiles, 'stand')) {
+      const scale = this.standScale[`${s.c},${s.r}`]
+      if (scale === 'wide') wideStands += 1
+      else if (scale === 'jumbo' || (!scale && this.standClass[`${s.c},${s.r}`] === 'L')) jumboStands += 1
+    }
+    return pillarUpkeep(this.pillarState(), {
+      fuelFarms: tilesOf(this.tiles, 'fuel').length,
+      hangars,
+      fuelRail: tilesOf(this.tiles, 'fuel_rail').length,
+      oil: tilesOf(this.tiles, 'oil').length,
+      travelator: tilesOf(this.tiles, 'travelator').length,
+      skywalk: tilesOf(this.tiles, 'skywalk').length,
+      mover: tilesOf(this.tiles, 'mover').length,
+      wideStands,
+      jumboStands,
+      hydrant: this.hasResearch('hydrant_fuel'),
+    })
+  }
+
+  private tickScaleFuel(step: number) {
+    const minutes = gameMinutes(step)
+    if (minutes <= 0 || !this.site) return
+    const state = this.pillarState()
+    const result = tickFuel(this.pillarField(), state, minutes, this.cash)
+    this.roadMinutes = state.roadMinutes
+    this.tankLitres = state.litres
+    if (result.paid > 0) this.charge(result.paid)
+    if (result.delivered > 0) {
+      this.fuelLoads += loadsFromLitres(result.delivered)
+      const sim = this.ground?.sim
+      if (sim) {
+        const cap = tankDef(this.tankTier).capacityLitres
+        sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
+      }
+    }
+    if (result.railFlowing && !this.lastRailFlowing) {
+      this.pushNews('Fuel rail is flowing into the tank farm.', 'good')
+    }
+    if (result.waitingOnCash && Math.random() < 0.02) {
+      this.pushNews('Fuel delivery is waiting on cash.', 'bad')
+    }
+    this.lastRailFlowing = result.railFlowing
+  }
+
   signFuel(brand: FuelBrand) {
     if (this.fuelBrand === brand) return
     const c = FUEL[brand]
     if (!this.spend(c.sign, `${c.name} contract`)) return
     this.fuelBrand = brand
+    if (!this.contractId || this.contractId === 'apex_local' || this.contractId === 'kiln_regional') {
+      this.contractId = brand === 'kiln' ? 'kiln_regional' : 'apex_local'
+    }
     this.pushNews(`Signed ${c.name}. Buy loads for the trucks.`, 'ok')
+    this.emit()
+  }
+
+  signScaleContract(id: string) {
+    if (this.contractId === id) return
+    const gate = canSignContract(id, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const def = FUEL_CONTRACTS.find((c) => c.id === id)
+    if (!def || !this.spend(gate.cost, `${def.name} contract`)) return
+    this.contractId = id
+    if (id === 'apex_local') this.fuelBrand = 'apex'
+    if (id === 'kiln_regional') this.fuelBrand = 'kiln'
+    this.pushNews(`Signed ${def.name}. ${def.tankerLitres.toLocaleString('en-US')} L road tankers.`, 'ok')
+    this.emit()
+  }
+
+  upgradeTank() {
+    const gate = canUpgradeTank(this.tankTier, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok || gate.next == null) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(gate.cost, 'tank farm')) return
+    this.tankTier = gate.next
+    this.bumpMap()
+    this.pushNews(`Tank farm holds ${tankDef(this.tankTier).capacityLitres.toLocaleString('en-US')} L.`, 'good')
+    this.emit()
+  }
+
+  setFuelSupply(supply: FuelSupply) {
+    if (supply === 'rail' && !this.hasResearch('rail_fuel')) {
+      this.pushNews('Research Fuel rail first. The trains still need a line and a station.', 'bad')
+      this.emit()
+      return
+    }
+    this.fuelSupply = supply
+    this.roadMinutes = 0
+    this.pushNews(supply === 'rail' ? 'Fuel supply set to rail.' : 'Fuel supply set to road tankers.', 'ok')
+    this.emit()
+  }
+
+  buyScaleVehicle(type: VehicleType) {
+    const gate = canBuyVehicle(type, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const label = VEHICLE_OFFERS.find((o) => o.type === type)?.role ?? type
+    if (!this.spend(gate.cost, label)) return
+    this.scaleFleet[type] = (this.scaleFleet[type] ?? 0) + 1
+    this.bumpMap()
+    this.pushNews(`${label} added to the ramp fleet.`, 'ok')
+    this.emit()
+  }
+
+  upgradeBagSystem() {
+    const gate = canUpgradeBags(this.bagSystem, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok || !gate.next) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const def = BAG_SYSTEMS[gate.next]
+    if (!this.spend(gate.cost, def.name)) return
+    this.bagSystem = gate.next
+    this.pushNews(`${def.name} online. ${def.bagsPerMin} bags a minute.`, 'good')
+    this.emit()
+  }
+
+  buyPaxUnit(unit: PaxUnit) {
+    const gate = canBuyPax(unit, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(gate.cost, PAX_UNITS[unit].name)) return
+    if (unit === 'desk') this.paxDesks += 1
+    else if (unit === 'kiosk') this.paxKiosks += 1
+    else if (unit === 'bagdrop') this.paxBagDrops += 1
+    else if (unit === 'scanner') this.scannerLanes += 1
+    else this.eGates += 1
+    this.pushNews(`${PAX_UNITS[unit].name} added.`, 'ok')
     this.emit()
   }
 
@@ -8452,7 +8784,7 @@ export class Game {
     const minimum = this.payrollPreview()
     const bill = payrollForGameDay(income, phase, minimum)
     const fees = this.landsideIncome()
-    const upkeep = this.landsideUpkeep() * 6
+    const upkeep = this.landsideUpkeep() * 6 + this.pillarUpkeepBill()
     if (upkeep > 0) this.charge(upkeep)
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
@@ -8858,9 +9190,12 @@ export class Game {
     return null
   }
 
-  freeHangarBay(): Vec | null {
+  freeHangarBay(need: SizeTier = 'small'): Vec | null {
     const hangars = tilesOf(this.tiles, 'hangar')
     for (const h of hangars) {
+      const rating = this.hangarScale[`${h.c},${h.r}`] ?? 'small'
+      if (rating === 'small' && need !== 'small') continue
+      if (rating === 'wide' && need === 'jumbo') continue
       if (!this.hangarOccupant(h)) return h
     }
     return null
@@ -8988,7 +9323,7 @@ export class Game {
 
   startHangarMx(f: Flight): boolean {
     if (!f.stand || f.posted.mx || f.phase === 'mx_taxi' || f.phase === 'mx_bay') return false
-    const bay = this.freeHangarBay()
+    const bay = this.freeHangarBay(sizeTierOf(f.airframeId))
     if (!bay) return false
     const path = nearestPath(this.tiles, f.stand, [bay], 'jet')
     if (!path || path.length < 2) {
@@ -9034,6 +9369,15 @@ export class Game {
       return Math.round(unit * BULLDOZE_REFUND)
     }
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
+    if (tile === 'hangar' && at) {
+      const scale = this.hangarScale[`${at.c},${at.r}`] ?? 'small'
+      return Math.round(HANGAR_OFFERS[scale].cost * BULLDOZE_REFUND)
+    }
+    if (tile === 'stand' && at) {
+      const scale = this.standScale[`${at.c},${at.r}`]
+      if (scale === 'wide') return Math.round(STAND_OFFERS.wide.cost * BULLDOZE_REFUND)
+      if (scale === 'jumbo') return Math.round(STAND_OFFERS.jumbo.cost * BULLDOZE_REFUND)
+    }
     if (tile === 'hotel' && at) {
       const cls = this.hotelClass[`${at.c},${at.r}`] ?? 'business'
       const tool =
@@ -9236,6 +9580,8 @@ export class Game {
       if (site.hotelClass) this.hotelClass[key] = site.hotelClass
       if (site.standClass) this.standClass[key] = site.standClass
       if (site.standAccess) this.standAccess[key] = site.standAccess
+      if (site.standScale) this.standScale[key] = site.standScale
+      if (site.hangarScale) this.hangarScale[key] = site.hangarScale
       this.pushNews(site.news ?? `${site.name} open.`, 'good')
     } else if (site.kind === 'runway') {
       for (const p of site.cells) this.tiles[p.r][p.c] = 'runway'
@@ -9318,6 +9664,8 @@ export class Game {
       delete this.hotelClass[`${v.c},${v.r}`]
       delete this.standClass[`${v.c},${v.r}`]
       delete this.standAccess[`${v.c},${v.r}`]
+      delete this.standScale[`${v.c},${v.r}`]
+      delete this.hangarScale[`${v.c},${v.r}`]
     }
     this.bumpMap()
     this.ensureGround()
@@ -9458,6 +9806,17 @@ export class Game {
       this.emit()
       return
     }
+    const locked = placementBlock(this.tool, this.fieldLevel(), this.researchUnlocked)
+    if (locked) {
+      this.pushNews(locked, 'bad')
+      this.emit()
+      return
+    }
+    if (building.research && !this.hasResearch(building.research)) {
+      this.pushNews(`${building.name} is still locked in research.`, 'bad')
+      this.emit()
+      return
+    }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
       this.emit()
@@ -9491,10 +9850,21 @@ export class Game {
       this.emit()
       return
     }
-    if (this.tool === 'stand_l' && !this.hasResearch('stand_class')) {
-      this.pushNews('Stand L locked — research Stand classes first.', 'bad')
-      this.emit()
-      return
+    if (this.tool === 'oil') {
+      const beside = [
+        { c: v.c + 1, r: v.r },
+        { c: v.c - 1, r: v.r },
+        { c: v.c, r: v.r + 1 },
+        { c: v.c, r: v.r - 1 },
+      ].some((p) => {
+        const t = this.tile(p)
+        return t === 'fuel' || t === 'fuel_rail'
+      })
+      if (!beside) {
+        this.pushNews('Oil station needs the fuel farm or the fuel rail beside it.', 'bad')
+        this.emit()
+        return
+      }
     }
     if (building.tile === 'deice' && !this.hasResearch('deice')) {
       this.pushNews('De-ice pad locked — research De-ice ops first.', 'bad')
@@ -9536,8 +9906,12 @@ export class Game {
       this.emit()
       return
     }
-    const standCls: StandClass =
-      this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
+    const standCls: StandClass = standClassForTool(this.tool) ?? 'M'
+    const standScale = standScaleForTool(
+      this.tool,
+      this.hasResearch('heavy_pack') && this.fieldLevel() >= 5,
+    )
+    const hangarScale = hangarScaleForTool(this.tool)
     const hotelCls: HotelClass =
       this.tool === 'hotel_inn' ? 'inn' : this.tool === 'hotel_resort' ? 'resort' : 'business'
     let news = `${building.name} open.`
@@ -9583,6 +9957,8 @@ export class Game {
       tool: this.tool,
       standClass: building.tile === 'stand' ? standCls : undefined,
       standAccess: building.tile === 'stand' ? this.standAccessMode : undefined,
+      standScale: building.tile === 'stand' ? (standScale ?? undefined) : undefined,
+      hangarScale: building.tile === 'hangar' ? (hangarScale ?? undefined) : undefined,
       hotelClass: building.tile === 'hotel' ? hotelCls : undefined,
       parkTerm:
         building.tile === 'park_s' ||
@@ -9593,6 +9969,16 @@ export class Game {
           : undefined,
       origin: v,
     })
+  }
+
+  /** Wide stands are code E. Legacy L stands with no scale stay code F. */
+  standIcao(stand: Vec): ReturnType<typeof standLetter> {
+    const scale = this.standScale[`${stand.c},${stand.r}`]
+    if (scale === 'wide') return 'E'
+    if (scale === 'jumbo') return 'F'
+    const cls = this.standClassAt(stand)
+    if (cls === 'L') return 'F'
+    return standLetter(cls)
   }
 
   standClassAt(stand: Vec | null): StandClass {
@@ -9611,7 +9997,7 @@ export class Game {
   standFitsAirframe(stand: Vec, airframeId: string): boolean {
     const spec = getAircraftSpec(airframeId)
     if (spec.icao === 'H') return false
-    if (!standAccepts(standLetter(this.standClassAt(stand)), spec.icao)) return false
+    if (!standAccepts(this.standIcao(stand), spec.icao)) return false
     const others = this.flights
       .filter(
         (f) =>
@@ -9956,16 +10342,15 @@ export class Game {
     const airlineId = slot.airline
     const def = this.airline(airlineId)
     const preferred = this.pickAircraftKind(airlineId)
-    const af = pickAirframeWithFallback(
-      preferred,
-      this.longestRunway(),
-      def.kind === 'cargo',
-      this.researchUnlocked,
-    )
+    const picked = this.pickOperable(preferred, def.kind === 'cargo')
+    const af = picked.af
     if (!af) {
-      this.delaySlot(slot, 20, 'Strip too short')
+      const hint = picked.blocked?.hints[0]
+      this.delaySlot(slot, 20, hint ? 'Pillar short' : 'Strip too short')
       this.pushNews(
-        `${slot.flightNo} delayed — strip ${this.longestRunway()}c can't take their metal.`,
+        hint
+          ? `${slot.flightNo} delayed — ${hint.fix}`
+          : `${slot.flightNo} delayed — strip ${this.longestRunway()}c can't take their metal.`,
         'bad',
       )
       this.spawnCool = 8
@@ -10562,7 +10947,14 @@ export class Game {
       this.milCool = 15
       return
     }
-    let af = pickAirframe('military', this.longestRunway(), this.researchUnlocked)
+    const level = this.fieldLevel()
+    let af = pickAirframe(
+      'military',
+      this.longestRunway(),
+      this.researchUnlocked,
+      level,
+      (id) => sizeTierOf(id) === 'small' || this.scaleReport(id).ok,
+    )
     if (!af) {
       this.milCool = 25
       return
@@ -10573,6 +10965,8 @@ export class Game {
         'military',
         this.longestRunway(),
         this.researchUnlocked.filter((id) => id !== 'mil_ramp'),
+        level,
+        (id) => sizeTierOf(id) === 'small' || this.scaleReport(id).ok,
       )
       if (!lighter) {
         this.milCool = 30
@@ -11317,12 +11711,7 @@ export class Game {
     if (this.isBanned(airline)) return false
     if (this.groundBusy() && !this.assignStand()) return false
     const preferred = this.pickAircraftKind(airline)
-    const af = pickAirframeWithFallback(
-      preferred,
-      this.longestRunway(),
-      this.airline(airline).kind === 'cargo',
-      this.researchUnlocked,
-    )
+    const af = this.pickOperable(preferred, this.airline(airline).kind === 'cargo').af
     if (!af) return false
     const stand = this.assignStand(null, undefined, airline, af.id)
     const route = stand ? this.landingRoute(stand) : null
@@ -11869,6 +12258,7 @@ export class Game {
     this.tickLuggage(step)
     this.tickWeather(step)
     this.tickPayroll(step)
+    this.tickScaleFuel(step)
     this.tickMaintenance(step)
     this.tickFireRisk(step)
     this.crashCool = Math.max(0, this.crashCool - step)
@@ -12442,9 +12832,10 @@ export class Game {
         p.t += step
         continue
       }
+      const here = this.tile({ c: Math.round(p.x), r: Math.round(p.y) })
       const done = this.followPath(
         p,
-        p.job === 'patrol' || p.job === 'mechanic' ? 1.0 : 1.15,
+        (p.job === 'patrol' || p.job === 'mechanic' ? 1.0 : 1.15) * personSpeedMult(here),
         step,
       )
       if (!done) continue
