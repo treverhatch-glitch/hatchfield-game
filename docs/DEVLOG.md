@@ -335,3 +335,33 @@ Four rulings for the live sim. Bug count stays at ten.
 
 - `docs/devlog/media/OCT13-info.png` — Security opened, "0 waiting at security", flow lines still off
 - `docs/devlog/media/OCT13-wish.png` — empty food counter, thought "wish they had burgers"
+
+## Passenger luggage — 13 Oct
+
+Checked bags are a book per flight, not one agent per suitcase. The hall and the apron draw a short parade on top of that book: a belt, a hold-bag scanner, a baggage hall, a claim carousel, and a cart.
+
+What you see:
+
+- Departures roll in with a yellow checked bag and a blue carry-on. The checked bag stays with them until the desk, then it leaves them and the belt takes it.
+- The belt runs from check-in through the scanner into the baggage hall. The scanner holds the drop for a little over a second, then the bags sort.
+- A loaded cart sits on the apron. Bag trucks show the crate and the suitcases. Logistics tugs and belt loaders pull a small cart of bags. Suitcases also slide along the painted belt.
+- Arrivals wait at the carousel until their flight's bags are on the belt. They pick the bag up ("Got my bag") and the yellow case is back on them. The carry-on never left.
+- The Bags submenu includes how many bags were lost.
+
+Prefab halls I, II, and III never lose a checked bag. Screening always passes. If a cart stage is skipped, the book still fills the later counters from what was dropped, and an inbound claim fills from the flight's units. A custom hall with no bag building and no belt can lose the unscreened drop. That is the same teaching rule as passengers: the prefab is flawless, a hall you redesign can have a hole.
+
+Arrivals stay at the carousel until the bag is in their hand. They no longer walk off in the same moment the belt delivers.
+
+The graphics agent's terminal-life render (`src/render/world` from that PR) was not on origin yet, so it is not wired. People, assets, airlines, and cargo stayed on their own branches.
+
+**Bugs.** Still ten. Nothing new failed.
+
+**Tests.** 115 passing. Eight new ones: the book (carry-on on every passenger, a checked bag on departures, prefab screening, a bare custom hall losing a drop, a skipped cart that still conserves units) and a stress pass on each prefab tier from the desk through the aircraft to the carousel with zero bags lost. The three overload waves still finish with zero lost passengers.
+
+**Media**
+
+- `docs/devlog/media/LUGGAGE-hall.png` — check-in, baggage hall, carousel, carry-ons and checked bags, chrome hidden
+- `docs/devlog/media/LUGGAGE-checkin.png` — closer on the desk, bags still on the passengers
+- `docs/devlog/media/LUGGAGE-claim.png` — carousel with bags and people waiting
+- `docs/devlog/media/LUGGAGE-apron.png` — suitcases on the belt and the bag cart, chrome hidden
+- `docs/devlog/media/LUGGAGE-hall.webm` — the belt and carousel moving, about 3.5 s

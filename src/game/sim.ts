@@ -161,6 +161,13 @@ import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
+  advanceScreen,
+  freshBook,
+  keepPrefabBags,
+  type BagBook,
+  type LuggageMotion,
+} from './luggage'
+import {
   blankZones,
   ceilingsFor,
   itemDef,
@@ -449,6 +456,13 @@ export class Game {
   shopShelf = 0
   /** Unpaid counter sales, kept for the audit. */
   lostSpend = 0
+  /** Checked bags that disappeared. Prefab halls keep this at zero. */
+  bagsLost = 0
+  /** 0–1 parade clock for belts and carousels. */
+  bagPhase = 0
+  /** Screenshot latch so the hall can show the whole chain at once. */
+  private bagShow: LuggageMotion | null = null
+  private bagBooks = new Map<string, BagBook>()
   shelfCool = 0
   /** Open info-view submenu. Hotspots stay drawn either way. */
   infoOpen: string | null = null
@@ -680,6 +694,10 @@ export class Game {
     this.foodShelf = 0
     this.shopShelf = 0
     this.lostSpend = 0
+    this.bagsLost = 0
+    this.bagPhase = 0
+    this.bagShow = null
+    this.bagBooks.clear()
     this.shelfCool = 0
     this.infoOpen = null
     this.fuelHoldNoted.clear()
@@ -2721,6 +2739,7 @@ export class Game {
       foodShelf: this.foodShelf,
       shopShelf: this.shopShelf,
       lostSpend: this.lostSpend,
+      bagsLost: this.bagsLost,
       caterBrand: this.caterBrand,
       mealSold: this.mealSold,
       signed: this.signed,
@@ -2815,6 +2834,9 @@ export class Game {
       this.foodShelf = s.foodShelf ?? this.shelfCap('food')
       this.shopShelf = s.shopShelf ?? this.shelfCap('shop')
       this.lostSpend = s.lostSpend ?? 0
+      this.bagsLost = s.bagsLost ?? 0
+      this.bagBooks.clear()
+      this.bagShow = null
       this.caterBrand = s.caterBrand ?? null
       this.mealSold = s.mealSold
       this.signed = s.signed ?? []
@@ -3216,6 +3238,99 @@ export class Game {
     f.bagStage = stage
   }
 
+  bagBook(id: string): BagBook | undefined {
+    return this.bagBooks.get(id)
+  }
+
+  private ensureBagBook(f: Flight): BagBook {
+    let book = this.bagBooks.get(f.id)
+    if (!book) {
+      book = freshBook(f.id, f.bagUnits ?? 0)
+      this.bagBooks.set(f.id, book)
+    }
+    if ((f.bagUnits ?? 0) > book.units) book.units = f.bagUnits ?? 0
+    return book
+  }
+
+  private noteBagDrop(f: Flight, units: number) {
+    const book = this.ensureBagBook(f)
+    book.dropped += units
+    book.units = Math.max(book.units, f.bagUnits ?? 0, book.dropped)
+    f.bagsDeposited = book.dropped
+    if ((f.bagUnits ?? 0) < book.units) f.bagUnits = book.units
+  }
+
+  /** Teaching halls never lose a bag. A redesigned hall can. */
+  prefabFlight(f: Flight): boolean {
+    const fit = (f.stand && this.roomsAt(f.stand)) || this.activeHall() || this.fits[0]
+    return Boolean(fit?.premade && !fit.redesigned)
+  }
+
+  /** A bag building or any belt tile can screen hold bags. */
+  bagHallReady(): boolean {
+    return tilesOf(this.tiles, 'bags').length > 0 || hasBeltNetwork(this.tiles)
+  }
+
+  luggageMotion(): LuggageMotion {
+    if (this.bagShow) return { ...this.bagShow, phase: this.bagPhase }
+    let belt = false
+    let screen = false
+    let carousel = false
+    let sort = false
+    for (const f of this.flights) {
+      if (f.cargo || f.phase === 'gone') continue
+      const stage = f.bagStage
+      if (
+        stage === 'pax_deposit' ||
+        stage === 'hold_screen' ||
+        stage === 'outbound_sort' ||
+        stage === 'inbound_sort' ||
+        stage === 'deliver_claim'
+      ) {
+        belt = true
+      }
+      if (stage === 'pax_deposit' || stage === 'hold_screen') screen = true
+      if (
+        stage === 'outbound_sort' ||
+        stage === 'inbound_sort' ||
+        stage === 'load_aircraft' ||
+        stage === 'unload_aircraft'
+      ) {
+        sort = true
+      }
+      if (stage === 'deliver_claim' || stage === 'on_claim' || stage === 'complete') {
+        carousel = true
+      }
+    }
+    return { belt, screen, carousel, sort, phase: this.bagPhase }
+  }
+
+  private tickLuggage(dt: number) {
+    this.bagPhase = (this.bagPhase + dt * 0.35) % 1
+    for (const f of this.flights) {
+      if (f.cargo || f.phase === 'gone' || f.craft === 'helo') continue
+      if (!f.bagStage && !(f.bagUnits && f.bagUnits > 0) && !(f.bagsDeposited && f.bagsDeposited > 0)) {
+        continue
+      }
+      const book = this.ensureBagBook(f)
+      if ((f.bagsDeposited ?? 0) > book.dropped) {
+        book.dropped = f.bagsDeposited ?? 0
+        book.units = Math.max(book.units, book.dropped)
+      }
+      const prefab = this.prefabFlight(f)
+      if (f.bagStage === 'hold_screen') {
+        const before = book.lost
+        const result = advanceScreen(book, dt, { prefab, hallReady: this.bagHallReady() })
+        if (result === 'pass') this.setBagStage(f, 'outbound_sort')
+        else if (result === 'lose') {
+          if (!prefab) this.bagsLost += book.lost - before
+          this.setBagStage(f, 'outbound_sort')
+        }
+      }
+      if (prefab) keepPrefabBags(book, f.bagStage)
+    }
+  }
+
   /** Seconds of visible load/unload/process work from bag units. */
   /** Pax, bags, and arrival fuel from the airframe's published-ish figures. */
   flightLoad(
@@ -3561,19 +3676,20 @@ export class Game {
               : 'Long walk from the stand — need bags'
         if (open.has('claim')) this.routeGuest(g, 'claim', open)
         else if (open.has('exit')) this.routeGuest(g, 'exit', open)
+        g.hasChecked = false
+        g.carryOn = true
       } else {
         g.node = 'entrance'
         g.clearedSec = false
+        g.hasChecked = true
+        g.carryOn = true
         this.applyGuestLandside(g, 'depart')
-        if (!g.thought || g.thought === 'Where is check-in?') {
-          g.thought =
-            mode === 'jetway'
-              ? 'Jetway gate — browse before boarding'
-              : 'Inbound — find check-in'
-        }
         if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
         else if (open.has('security')) this.routeGuest(g, 'security', open)
         else g.thought = 'No security lane — stuck before security'
+        if (g.thought !== 'No security lane — stuck before security') {
+          g.thought = 'Rolling a bag to check-in'
+        }
       }
       this.hallGuests.push(g)
     }
@@ -3625,18 +3741,23 @@ export class Game {
         if (g.bagDepositLeft <= 0) {
           g.bagsDropped = true
           g.bagDepositLeft = 0
+          g.hasChecked = false
           const fl = this.flights.find((x) => x.id === g.flightId)
           if (fl && !fl.cargo) {
-            const add = bagUnitsForTag(g.tag)
-            fl.bagsDeposited = (fl.bagsDeposited ?? 0) + add
+            this.noteBagDrop(fl, bagUnitsForTag(g.tag))
             const need = fl.bagUnits ?? 1
-            if ((fl.bagsDeposited ?? 0) >= need * 0.55) {
-              fl.bagStage = 'outbound_sort'
+            const early =
+              !fl.bagStage ||
+              fl.bagStage === 'idle' ||
+              fl.bagStage === 'pax_deposit' ||
+              fl.bagStage === 'hold_screen'
+            if ((fl.bagsDeposited ?? 0) >= need * 0.55 && early) {
+              fl.bagStage = 'hold_screen'
             }
           }
-          g.thought = 'Bags accepted — walking to security'
           const openDesk = this.openForGuest(g)
           if (openDesk.has('security')) this.routeGuest(g, 'security', openDesk)
+          g.thought = 'Bags accepted — walking to security'
         } else {
           continue
         }
@@ -3656,7 +3777,20 @@ export class Game {
         const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
         const rate = this.claimClearRate(fit)
         g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
-        if (fl && g.needs.bags <= 0) fl.bagStage = 'complete'
+        if (g.needs.bags > 0) {
+          g.thought = 'Waiting at the carousel'
+          continue
+        }
+        if (!g.hasChecked) {
+          g.hasChecked = true
+          g.thought = 'Got my bag'
+          if (fl && !fl.cargo) {
+            const book = this.ensureBagBook(fl)
+            const cap = Math.max(book.units, book.dropped, bagUnitsForTag(g.tag))
+            book.claimed = Math.min(cap, book.claimed + bagUnitsForTag(g.tag))
+          }
+        }
+        if (fl) fl.bagStage = 'complete'
       }
 
       if (g.job === 'depart' && g.node === 'security' && !g.clearedSec && g.path.length === 0) {
@@ -4157,7 +4291,11 @@ export class Game {
           (f.waitingOn.bags || f.waitingOn.bagsLoad || f.boardingSlow),
       ).length
       const reasons = this.schedule.filter((s) => /bag|belt|claim/i.test(s.delayReason ?? '')).length
-      return [`${moving} turns still waiting on bags`, `${reasons} bag delays on the board`]
+      return [
+        `${moving} turns still waiting on bags`,
+        `${reasons} bag delays on the board`,
+        `${this.bagsLost} bags lost`,
+      ]
     }
     if (id === 'fuel') {
       const snap = this.groundSnapshot()
@@ -4446,6 +4584,101 @@ export class Game {
     }
     this.emit()
     return this.hallGuests.length
+  }
+
+  /**
+   * Line the hall up for a still: check-in with bags, the scanner and belt,
+   * a sort pile, and a claim carousel with people waiting and one pickup.
+   * Pairs with a loaded bag cart on the apron.
+   */
+  demoBagParade() {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    const hallId = this.hallKey(fit)
+    this.hallGuests = this.hallGuests.filter((g) => !g.id.startsWith('parade-'))
+    const tags: Array<'premium' | 'family' | 'business' | 'budget'> = [
+      'premium',
+      'family',
+      'business',
+      'budget',
+    ]
+    for (let i = 0; i < 7; i++) {
+      const g = spawnHallGuest(`parade-d-${i}`, 'depart', tags[i % 4], {
+        hallId,
+        airlineId: 'northline',
+      })
+      g.node = 'checkin'
+      g.path = []
+      g.seg = 0
+      g.t = 0
+      g.clearedSec = false
+      g.hasChecked = true
+      g.carryOn = true
+      g.bagsDropped = false
+      g.bagDepositLeft = 8
+      g.needs.hunger = 4
+      g.needs.boarding = 80
+      g.thought = i % 2 === 0 ? 'Dropping bags at check-in…' : 'Rolling a bag to check-in'
+      this.hallGuests.push(g)
+    }
+    for (let i = 0; i < 3; i++) {
+      const g = spawnHallGuest(`parade-s-${i}`, 'depart', 'budget', {
+        hallId,
+        airlineId: 'northline',
+      })
+      g.node = 'security'
+      g.path = []
+      g.clearedSec = false
+      g.hasChecked = false
+      g.carryOn = true
+      g.bagsDropped = true
+      g.thought = 'Bags accepted — walking to security'
+      this.hallGuests.push(g)
+    }
+    for (let i = 0; i < 6; i++) {
+      const g = spawnHallGuest(`parade-a-${i}`, 'arrive', i % 2 ? 'family' : 'premium', {
+        hallId,
+        airlineId: 'northline',
+      })
+      g.node = 'claim'
+      g.path = []
+      g.clearedSec = true
+      g.hasChecked = i === 0
+      g.carryOn = true
+      g.needs.bags = i === 0 ? 0 : 60
+      g.needs.hunger = 4
+      g.thought = i === 0 ? 'Got my bag' : 'Waiting for bags off the aircraft…'
+      this.hallGuests.push(g)
+    }
+    this.bagShow = { belt: true, screen: true, carousel: true, sort: true, phase: 0.35 }
+    this.bagPhase = 0.35
+    const bags = tilesOf(this.tiles, 'bags')[0]
+    this.trucks = this.trucks.filter((t) => t.id !== 'parade-cart')
+    if (bags) {
+      const cart: Truck = {
+        id: 'parade-cart',
+        kind: 'bags',
+        flightId: null,
+        x: bags.c + 0.35,
+        y: bags.r + 0.15,
+        path: [
+          { c: bags.c, r: bags.r },
+          { c: bags.c + 1, r: bags.r },
+        ],
+        seg: 0,
+        t: 0.15,
+        returning: false,
+        dwell: 30,
+        preDwell: 30,
+        patrol: false,
+        mission: 'load',
+        home: bags,
+        cargoUnits: 22,
+      }
+      this.trucks.push(cart)
+    }
+    this.emit()
+    return this.hallGuests.filter((g) => g.id.startsWith('parade-')).length
   }
 
   upgradeHall() {
@@ -4914,8 +5147,15 @@ export class Game {
       }
     }
     if (n === 'claim' && g.job === 'arrive') {
-      g.needs.bags = Math.max(0, g.needs.bags - 55)
-      g.thought = 'Got bags — heading landside'
+      if (g.needs.bags > 0) {
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.thought = 'Waiting at the carousel'
+        return
+      }
+      g.hasChecked = true
+      g.thought = 'Got my bag'
       if (g.needs.hunger > 50 && open.has('food')) this.routeGuest(g, 'food', open)
       else if (g.needs.shop > 45 && open.has('shop')) this.routeGuest(g, 'shop', open)
       else if (open.has('exit')) this.routeGuest(g, 'exit', open)
@@ -10206,6 +10446,7 @@ export class Game {
     this.tickEmergencies(step)
     this.tickMarket(step)
     this.tickHall(step)
+    this.tickLuggage(step)
     this.tickWeather(step)
     this.tickPayroll(step)
     this.tickMaintenance(step)

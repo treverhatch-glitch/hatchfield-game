@@ -115,6 +115,9 @@ export class World {
   trucks = new Map<string, THREE.Object3D>()
   service = new Map<string, THREE.Object3D>()
   people = new Map<string, THREE.Mesh>()
+  private beltCubes: THREE.Mesh[] = []
+  private beltPath: THREE.Vector3[] = []
+  private beltRev = -1
   ray = new THREE.Raycaster()
   ndc = new THREE.Vector2()
   ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -1392,6 +1395,20 @@ export class World {
           crate.name = 'crate'
           crate.visible = false
           g.add(crate)
+          if (t.kind === 'bags') {
+            for (let i = 0; i < 3; i++) {
+              const bag = new THREE.Mesh(
+                new THREE.BoxGeometry(0.28, 0.34, 0.22),
+                new THREE.MeshBasicMaterial({
+                  color: i === 1 ? '#3ec6ff' : '#ffb703',
+                  fog: false,
+                }),
+              )
+              bag.position.set((i - 1) * 0.3, 0.85, 0.02)
+              bag.name = 'suitcase'
+              g.add(bag)
+            }
+          }
         }
         mesh = g
         this.trucks.set(t.id, mesh)
@@ -1402,12 +1419,16 @@ export class World {
         (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.r ?? t.y) - t.y,
         (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.c ?? t.x) - t.x,
       )
+      const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
       const crate = mesh.getObjectByName('crate')
       if (crate) {
-        crate.visible = Boolean(t.cargoUnits && t.cargoUnits > 0)
+        crate.visible = loaded
         const s = clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35)
         crate.scale.set(s, s, s)
       }
+      mesh.traverse((obj) => {
+        if (obj.name === 'suitcase') obj.visible = loaded
+      })
     }
     for (const [id, m] of this.trucks) {
       if (!seenT.has(id)) {
@@ -1443,6 +1464,25 @@ export class World {
         )
         body.castShadow = true
         g.add(body)
+        if (pose.type === 'baggage_tug' || pose.type === 'belt_loader') {
+          const bed = new THREE.Mesh(
+            new THREE.BoxGeometry(0.95, 0.1, 0.62),
+            new THREE.MeshStandardMaterial({ color: '#3d4650', roughness: 0.6 }),
+          )
+          bed.position.set(0, -0.05, -1.05)
+          g.add(bed)
+          for (let i = 0; i < 3; i++) {
+            const bag = new THREE.Mesh(
+              new THREE.BoxGeometry(0.22, 0.26, 0.32),
+              new THREE.MeshStandardMaterial({
+                color: i === 1 ? '#2f4a6a' : '#6a4328',
+                roughness: 0.55,
+              }),
+            )
+            bag.position.set((i - 1) * 0.26, 0.16, -1.05)
+            g.add(bag)
+          }
+        }
         mesh = g
         this.service.set(pose.id, mesh)
         this.entGroup.add(mesh)
@@ -1469,6 +1509,14 @@ export class World {
           new THREE.MeshLambertMaterial({ color: p.color }),
         )
         mesh.castShadow = true
+        if (p.job === 'arrive' || p.job === 'board') {
+          const carry = new THREE.Mesh(
+            new THREE.BoxGeometry(0.16, 0.2, 0.1),
+            new THREE.MeshLambertMaterial({ color: '#1f3a5a' }),
+          )
+          carry.position.set(0.22, -0.05, 0.05)
+          mesh.add(carry)
+        }
         this.people.set(p.id, mesh)
         this.entGroup.add(mesh)
       }
@@ -1486,6 +1534,49 @@ export class World {
         disposeObject(m)
         this.people.delete(id)
       }
+    }
+    this.syncBeltBags(game)
+  }
+
+  /** A few suitcases sliding the apron belt. The ledger stays aggregate. */
+  private syncBeltBags(game: Game) {
+    if (game.mapRev !== this.beltRev) {
+      this.beltRev = game.mapRev
+      this.beltPath = []
+      for (let r = 0; r < SIZE; r++) {
+        const row = game.tiles[r]
+        if (!row) continue
+        for (let c = 0; c < row.length; c++) {
+          if (row[c] === 'belt') this.beltPath.push(toWorld(c, r, 0.42))
+        }
+      }
+    }
+    while (this.beltCubes.length < 8) {
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.32, 0.62),
+        new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false }),
+      )
+      cube.castShadow = true
+      cube.visible = false
+      this.entGroup.add(cube)
+      this.beltCubes.push(cube)
+    }
+    const motion = game.luggageMotion()
+    const path = this.beltPath
+    const show = motion.belt && path.length > 0
+    const spin = (motion.phase + performance.now() * 0.00015) % 1
+    for (let i = 0; i < this.beltCubes.length; i++) {
+      const cube = this.beltCubes[i]
+      cube.visible = show
+      if (!show) continue
+      const n = path.length
+      const t = (spin + i / this.beltCubes.length) % 1
+      const scaled = t * n
+      const idx = Math.floor(scaled) % n
+      const next = path[(idx + 1) % n]
+      const a = path[idx]
+      const f = scaled - Math.floor(scaled)
+      cube.position.set(a.x + (next.x - a.x) * f, 0.48, a.z + (next.z - a.z) * f)
     }
   }
 

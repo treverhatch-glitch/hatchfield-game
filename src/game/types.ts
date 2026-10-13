@@ -550,6 +550,7 @@ export interface Flight {
 export type BagFlowStage =
   | 'idle'
   | 'pax_deposit'
+  | 'hold_screen'
   | 'outbound_sort'
   | 'load_aircraft'
   | 'inflight'
@@ -768,6 +769,8 @@ export interface GameSnapshot {
   shopShelf?: number
   /** Ticket value of sales missed because a shelf was empty. */
   lostSpend?: number
+  /** Checked bags that left the system. Prefab halls stay at zero. */
+  bagsLost?: number
   caterBrand: CaterBrand | null
   mealSold: boolean
   signed: AirlineId[]

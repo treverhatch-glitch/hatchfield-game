@@ -58,7 +58,12 @@ export class HallWorld {
   overlay = new THREE.Group()
   /** Queue, lost, bag, and shop markers. Always drawn. Numbers open on click. */
   hotspotGroup = new THREE.Group()
+  bagGroup = new THREE.Group()
   guests = new Map<string, THREE.Mesh>()
+  private beltCubes: THREE.Mesh[] = []
+  private claimCubes: THREE.Mesh[] = []
+  private sortCubes: THREE.Mesh[] = []
+  private luggageBuilt = false
   roomHash = ''
   private floor: THREE.Mesh
   private game: Game | null = null
@@ -110,6 +115,7 @@ export class HallWorld {
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
+    this.scene.add(this.bagGroup)
 
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointermove', this.onMove)
@@ -381,9 +387,11 @@ export class HallWorld {
         this.guestGroup.remove(mesh)
         mesh.geometry.dispose()
         ;(mesh.material as THREE.Material).dispose()
-        const pin = mesh.userData.pin as THREE.Mesh | undefined
-        pin?.geometry.dispose()
-        ;(pin?.material as THREE.Material | undefined)?.dispose()
+        for (const key of ['pin', 'carry', 'checked'] as const) {
+          const child = mesh.userData[key] as THREE.Mesh | undefined
+          child?.geometry.dispose()
+          ;(child?.material as THREE.Material | undefined)?.dispose()
+        }
         const bubble = mesh.userData.bubble as THREE.Sprite | undefined
         const bubbleMat = bubble?.material as THREE.SpriteMaterial | undefined
         bubbleMat?.map?.dispose()
@@ -407,6 +415,20 @@ export class HallWorld {
         pin.position.y = 1.15
         mesh.add(pin)
         mesh.userData.pin = pin
+        const carry = new THREE.Mesh(
+          new THREE.BoxGeometry(0.28, 0.36, 0.16),
+          new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false }),
+        )
+        carry.position.set(0.46, 0.2, 0)
+        mesh.add(carry)
+        mesh.userData.carry = carry
+        const checked = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, 0.62, 0.28),
+          new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false }),
+        )
+        checked.position.set(-0.62, -0.12, 0.18)
+        mesh.add(checked)
+        mesh.userData.checked = checked
         this.guests.set(g.id, mesh)
         this.guestGroup.add(mesh)
       }
@@ -423,6 +445,10 @@ export class HallWorld {
       mesh.position.set(a.x + (b.x - a.x) * t + ox, 0.55, a.z + (b.z - a.z) * t + oz)
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
+      const carry = mesh.userData.carry as THREE.Mesh
+      const checked = mesh.userData.checked as THREE.Mesh
+      carry.visible = g.carryOn !== false
+      checked.visible = Boolean(g.hasChecked)
       this.syncBubble(mesh, g.thought)
     }
   }
@@ -624,9 +650,116 @@ export class HallWorld {
     this.resize()
     this.rebuildRooms(game)
     this.syncGuests(game)
+    this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** Belt, hold-bag scanner, sort pile, and claim carousel. Cubes are a capped parade. */
+  private syncLuggage(game: Game) {
+    if (!game.fits.length) {
+      this.bagGroup.visible = false
+      return
+    }
+    this.bagGroup.visible = true
+    if (!this.luggageBuilt) this.buildLuggage()
+    const motion = game.luggageMotion()
+    const spin = (motion.phase + performance.now() * 0.00012) % 1
+    const checkin = nodeWorld('checkin')
+    const bay = new THREE.Vector3(checkin.x - 6.2, 0, checkin.z + 4.4)
+    const screen = new THREE.Vector3(
+      checkin.x + (bay.x - checkin.x) * 0.45,
+      0,
+      checkin.z + (bay.z - checkin.z) * 0.45,
+    )
+    const claim = nodeWorld('claim')
+    this.beltCubes.forEach((cube, i) => {
+      cube.visible = motion.belt
+      const t = (spin + i / this.beltCubes.length) % 1
+      const p = t < 0.55 ? checkin.clone().lerp(screen, t / 0.55) : screen.clone().lerp(bay, (t - 0.55) / 0.45)
+      cube.position.set(p.x, 0.42, p.z)
+    })
+    this.sortCubes.forEach((cube, i) => {
+      cube.visible = motion.sort
+      cube.position.y = 0.28 + (i % 3) * 0.22 + Math.sin(spin * Math.PI * 2 + i) * 0.04
+    })
+    this.claimCubes.forEach((cube, i) => {
+      cube.visible = motion.carousel
+      const a = (spin + i / this.claimCubes.length) * Math.PI * 2
+      cube.position.set(claim.x + Math.cos(a) * 2.15, 0.48, claim.z + Math.sin(a) * 1.15)
+    })
+  }
+
+  private buildLuggage() {
+    this.luggageBuilt = true
+    const checkin = nodeWorld('checkin')
+    const bay = new THREE.Vector3(checkin.x - 6.2, 0, checkin.z + 4.4)
+    const screen = new THREE.Vector3(
+      checkin.x + (bay.x - checkin.x) * 0.45,
+      0,
+      checkin.z + (bay.z - checkin.z) * 0.45,
+    )
+    const claim = nodeWorld('claim')
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.12, 7.2),
+      new THREE.MeshLambertMaterial({ color: '#2a3238' }),
+    )
+    deck.position.set((checkin.x + bay.x) / 2, 0.16, (checkin.z + bay.z) / 2)
+    deck.rotation.y = Math.atan2(bay.x - checkin.x, bay.z - checkin.z)
+    this.bagGroup.add(deck)
+
+    const frameMat = new THREE.MeshLambertMaterial({ color: '#14181c' })
+    const glow = new THREE.MeshLambertMaterial({ color: '#e0c14a', emissive: '#e0c14a', emissiveIntensity: 0.35 })
+    for (const side of [-0.55, 0.55]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.15, 0.12), frameMat)
+      post.position.set(screen.x + side, 0.7, screen.z)
+      this.bagGroup.add(post)
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 0.16), frameMat)
+    lintel.position.set(screen.x, 1.25, screen.z)
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.55, 0.06), glow)
+    mouth.position.set(screen.x, 0.72, screen.z)
+    this.bagGroup.add(lintel, mouth)
+
+    const hall = new THREE.Mesh(
+      new THREE.BoxGeometry(3.2, 1.3, 2.2),
+      new THREE.MeshLambertMaterial({ color: '#5c6570' }),
+    )
+    hall.position.set(bay.x, 0.7, bay.z)
+    this.bagGroup.add(hall)
+    const label = this.makeLabel('BAGGAGE HALL', '#d7e2ea')
+    label.position.set(bay.x, 0.08, bay.z + 1.6)
+    label.rotation.x = -Math.PI / 2
+    this.bagGroup.add(label)
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.15, 0.16, 8, 28),
+      new THREE.MeshLambertMaterial({ color: '#3a4550' }),
+    )
+    ring.rotation.x = Math.PI / 2
+    ring.scale.set(1, 0.55, 1)
+    ring.position.set(claim.x, 0.28, claim.z)
+    this.bagGroup.add(ring)
+
+    const bagMat = new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false })
+    const blue = new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false })
+    for (let i = 0; i < 6; i++) {
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.62), i % 2 ? blue : bagMat)
+      this.bagGroup.add(cube)
+      this.beltCubes.push(cube)
+    }
+    for (let i = 0; i < 6; i++) {
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.58), i % 2 ? blue : bagMat)
+      cube.position.set(bay.x - 0.7 + (i % 3) * 0.42, 0.3, bay.z - 0.3 + Math.floor(i / 3) * 0.4)
+      this.bagGroup.add(cube)
+      this.sortCubes.push(cube)
+    }
+    for (let i = 0; i < 5; i++) {
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.64), i % 2 ? blue : bagMat)
+      this.bagGroup.add(cube)
+      this.claimCubes.push(cube)
+    }
   }
 
   dispose() {
