@@ -3,7 +3,7 @@ import { hashSeed, jit, mulberry32 } from './rng';
 
 /** Mirrors the ids in src/game/airframes.ts (AIRFRAMES). */
 export const AIRCRAFT_TYPE_IDS = [
-  'crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f',
+  'crj700', 'e175', 'a223', 'e195e2', 'a320neo', 'b738', 'a321', 'b38m', 'a21xlr', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f',
   'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5',
 ] as const;
 export type AircraftTypeId = (typeof AIRCRAFT_TYPE_IDS)[number];
@@ -67,9 +67,13 @@ const P = (typeId: AircraftTypeId, engineClass: EngineClass, engines: number, si
 export const AIRCRAFT_PROFILES: Record<AircraftTypeId, AircraftProfile> = {
   crj700: P('crj700', 'regionalJet', 2, 0.78, 1.12, 1.15, 0.2, 'rear-mounted CF34, shrill whine'),
   e175: P('e175', 'regionalJet', 2, 0.84, 1.04, 1.05, 0.2, 'underwing CF34, smoother'),
+  a223: P('a223', 'regionalJet', 2, 0.98, 1.02, 0.95, 0.18, 'GTF1500G geared turbofan, quiet hum'),
+  e195e2: P('e195e2', 'regionalJet', 2, 0.92, 1.04, 0.98, 0.18, 'GTF1900G geared turbofan, smooth'),
   a320neo: P('a320neo', 'narrowbodyTwin', 2, 1.08, 1.05, 0.9, 0.15, 'LEAP/GTF, quiet with geared hum'),
   b738: P('b738', 'narrowbodyTwin', 2, 1.12, 0.98, 1.1, 0.35, 'CFM56 buzzsaw'),
   a321: P('a321', 'narrowbodyTwin', 2, 1.22, 0.95, 1.0, 0.25, 'heavier narrowbody, longer roll'),
+  b38m: P('b38m', 'narrowbodyTwin', 2, 1.12, 0.96, 1.02, 0.25, 'LEAP-1B, quieter buzzsaw'),
+  a21xlr: P('a21xlr', 'narrowbodyTwin', 2, 1.22, 0.93, 0.95, 0.22, 'long-range A321, heavy roll'),
   b789: P('b789', 'widebodyTwin', 2, 1.55, 0.9, 0.85, 0.15, 'GEnx/Trent 1000, smooth deep'),
   b77w: P('b77w', 'widebodyTwin', 2, 1.7, 0.86, 0.9, 0.22, 'GE90, deep twin'),
   a359: P('a359', 'widebodyTwin', 2, 1.62, 0.88, 0.8, 0.12, 'Trent XWB, very smooth'),

@@ -89,6 +89,13 @@ describe('quality presets', () => {
     expect(QUALITY.low.grassTufts).toBeLessThan(QUALITY.med.grassTufts)
     expect(QUALITY.med.grassTufts).toBeLessThan(QUALITY.high.grassTufts)
     expect(QUALITY.low.lodScale).toBeLessThan(QUALITY.high.lodScale)
+    // Auto low (SwiftShader) keeps the new art off so the heavy run does not pay for it.
+    expect(QUALITY.low.extraTextures).toBe(false)
+    expect(QUALITY.low.animatedPeople).toBe(false)
+    expect(QUALITY.low.thoughtBubbles).toBe(false)
+    expect(QUALITY.low.crowdDetail).toBe(false)
+    expect(QUALITY.med.animatedPeople).toBe(true)
+    expect(QUALITY.high.crowdDetail).toBe(true)
     // r186 dropped PCFSoftShadowMap; high softens PCF with a radius instead.
     expect(QUALITY.high.shadowType).toBe(THREE.PCFShadowMap)
     expect(QUALITY.high.shadowRadius).toBeGreaterThan(QUALITY.med.shadowRadius)
@@ -97,6 +104,10 @@ describe('quality presets', () => {
   it('suggests low on software GL', () => {
     expect(suggestQuality({ renderer: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))' })).toBe('low')
     expect(suggestQuality({ renderer: 'llvmpipe' })).toBe('low')
+    expect(QUALITY.low.msaa).toBe(false)
+    expect(QUALITY.low.trees).toBe(0)
+    expect(QUALITY.low.precipitation).toBe(0)
+    expect(QUALITY.low.pixelRatioCap).toBeLessThanOrEqual(0.6)
     expect(suggestQuality({ renderer: 'Apple M2', deviceMemory: 8, hardwareConcurrency: 8 })).toBe('high')
     expect(suggestQuality({ renderer: 'Intel Iris', deviceMemory: 4, hardwareConcurrency: 4 })).toBe('med')
   })

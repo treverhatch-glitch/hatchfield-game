@@ -196,16 +196,19 @@ export class World {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = pickQuality()
+    const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: QUALITY[quality].msaa,
+      antialias: preset.msaa,
       powerPreference: 'high-performance',
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25))
+    // Low (what SwiftShader auto-picks) stays under 1× with the shadow map off.
+    const pixelCap = quality === 'low' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
-    this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.BasicShadowMap
+    this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
+    this.renderer.shadowMap.type = preset.shadowType
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -221,8 +224,11 @@ export class World {
     this.scene.add(hemi)
     this.sun = new THREE.DirectionalLight('#fff3d4', 1.2)
     this.sun.position.set(40, 70, 18)
-    this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(1024, 1024)
+    this.sun.castShadow = preset.shadowMapSize > 0
+    this.sun.shadow.mapSize.set(
+      preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024,
+      preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024,
+    )
     this.sun.shadow.camera.near = 10
     this.sun.shadow.camera.far = 400
     this.sun.shadow.camera.left = -140
@@ -904,6 +910,27 @@ export class World {
       truck.position.set(0, 0.35, CELL * 0.22)
       truck.castShadow = true
       g.add(shed, bay, truck)
+    } else if (tile === 'xferbus') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({ color: '#243038' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.04
+      const shed = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 1.6, CELL * 0.5),
+        new THREE.MeshStandardMaterial({ color: '#c47a3a', roughness: 0.5 }),
+      )
+      shed.position.y = 0.85
+      shed.castShadow = true
+      const bus = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.62, 0.72, CELL * 0.26),
+        new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.4 }),
+      )
+      bus.position.set(0, 0.46, CELL * 0.28)
+      bus.name = 'xfer-bus'
+      bus.castShadow = true
+      g.add(pad, shed, bus)
     }
     return g
   }
@@ -1839,6 +1866,19 @@ export class World {
     }
   }
 
+  /** Pods shuttle while the people mover is open. A breakdown parks them. */
+  private animateLinks(game: Game) {
+    const moving = !game.linkStopped('people_mover')
+    const t = performance.now() / 1000
+    this.tilesGroup.traverse((obj) => {
+      if (obj.name !== 'pod') return
+      const home = typeof obj.userData.home === 'number' ? obj.userData.home : 0
+      obj.position.x = moving ? home + Math.sin(t * 1.3) * CELL * 0.22 : home
+      const glass = obj.parent?.getObjectByName('pod-glass')
+      if (glass) glass.position.x = obj.position.x
+    })
+  }
+
   render(game: Game) {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
@@ -1850,6 +1890,7 @@ export class World {
     this.easeToGoal(game, dt)
     this.applyPerfMode(game)
     this.rebuildTiles(game)
+    this.animateLinks(game)
     this.syncGhost(game)
     perfEnd('world.tiles', t)
     t = perfStart()

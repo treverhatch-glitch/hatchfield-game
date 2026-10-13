@@ -1,3 +1,4 @@
+import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
 import { HUB_UPGRADES } from '../hub/index.ts'
 import type { LandPlotConfig } from '../land/types.ts'
 import {
@@ -190,6 +191,7 @@ export type FieldLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 /**
  * XP to reach each field level.
  * FL1–5 stay 0 / 90 / 220 / 420 / 700. FL6–10 follow.
+ * Levels 6 and 7 also open hub links (transfer bus, people mover).
  */
 export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700, 1100, 1600, 2300, 3200, 4500] as const
 
@@ -371,6 +373,9 @@ export const TILE_UTILITY: Partial<Record<Tile, { power?: number; water?: number
   deice: { power: 1, water: 1 },
   police: { power: 1 },
   guard: { power: 1 },
+  mover: { power: 3 },
+  xferbus: { power: 1 },
+  skywalk: { power: 1 },
 }
 
 export const RAIL_CITY_COST = 22_000
@@ -1093,6 +1098,30 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Apron buses ferry remote-stand pax. Without this, remote stands walk the pavement (slow + traffic).',
   },
   {
+    tool: 'people_mover',
+    tile: 'mover',
+    name: CONNECTIVITY_CATALOG.people_mover.name,
+    cost: CONNECTIVITY_CATALOG.people_mover.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.people_mover.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.people_mover.blurb} ${CONNECTIVITY_CATALOG.people_mover.catch} $${CONNECTIVITY_CATALOG.people_mover.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'xfer_bus',
+    tile: 'xferbus',
+    name: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.name,
+    cost: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.blurb} ${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.catch} $${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'hub_skywalk',
+    tile: 'skywalk',
+    name: CONNECTIVITY_CATALOG.skywalk.name,
+    cost: CONNECTIVITY_CATALOG.skywalk.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.skywalk.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.skywalk.blurb} ${CONNECTIVITY_CATALOG.skywalk.catch} $${CONNECTIVITY_CATALOG.skywalk.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
     tool: 'deice',
     tile: 'deice',
     name: 'De-ice pad',
@@ -1241,7 +1270,7 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'skywalk',
     tile: 'skywalk',
-    name: LINK_OFFERS.skywalk.name,
+    name: 'Pier skywalk',
     cost: LINK_OFFERS.skywalk.cost,
     minFieldLevel: 4,
     research: 'skywalk',
@@ -1250,7 +1279,7 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'mover',
     tile: 'mover',
-    name: LINK_OFFERS.mover.name,
+    name: 'Pier mover',
     cost: LINK_OFFERS.mover.cost,
     minFieldLevel: 5,
     research: 'people_mover',
@@ -1406,8 +1435,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   fuel_rail: 'Fuel rail',
   oil: 'Oil station',
   travelator: 'Travelator',
-  skywalk: 'Skywalk',
-  mover: 'People mover',
+  skywalk: 'Pier skywalk',
+  mover: 'Pier mover',
   terminal: 'Shell',
   premade: 'Premade hall',
   snack: 'Snack',
@@ -1433,6 +1462,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   deice: 'De-ice',
   bus: 'Bus',
   term_bus: 'Term bus',
+  people_mover: 'People mover',
+  xfer_bus: 'Transfer bus',
+  hub_skywalk: 'Skywalk',
   rail: 'Rail',
   clear: 'Clear',
 }

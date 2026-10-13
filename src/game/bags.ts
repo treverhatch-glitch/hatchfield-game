@@ -26,7 +26,7 @@ export function bagUnitsForTag(tag: PaxTag): number {
  * Used when we don't simulate every suitcase.
  */
 export function estimateFlightBagUnits(persona: BagPersona, pax: number): number {
-  if (pax <= 0) return 0
+  if (!Number.isFinite(pax) || pax <= 0) return 0
   // Sample a mix matching rollPaxTag weights without rolling dozens of guests.
   const weights =
     persona === 'luxury'
@@ -48,9 +48,10 @@ export type BagWorkKind = 'ramp' | 'sort' | 'deposit'
 
 /** Seconds of visible load/unload/process work from bag units. */
 export function bagWorkDuration(units: number, kind: BagWorkKind): number {
-  if (kind === 'deposit') return clamp(0.7 + units * 0.012, 0.7, 3.2)
-  if (kind === 'sort') return clamp(1.1 + units * 0.018, 1.1, 4.5)
-  return clamp(1.8 + units * 0.022, 1.8, 5.5)
+  const safeUnits = Number.isFinite(units) ? Math.max(0, units) : 0
+  if (kind === 'deposit') return clamp(0.7 + safeUnits * 0.012, 0.7, 3.2)
+  if (kind === 'sort') return clamp(1.1 + safeUnits * 0.018, 1.1, 4.5)
+  return clamp(1.8 + safeUnits * 0.022, 1.8, 5.5)
 }
 
 /** HUD line for the current bag stage. Same wording the sim used inline. */
@@ -60,10 +61,16 @@ export function describeBagStage(
   bagsDeposited: number | undefined,
   bagUnits: number | undefined,
 ): string {
-  const lane = claimLane ? ` · claim ${claimLane}` : ''
+  const validLane = claimLane != null && Number.isFinite(claimLane) && claimLane > 0
+  const lane = validLane ? ` · claim ${claimLane}` : ''
+  const laneLabel = validLane ? String(claimLane) : '?'
+
+  const depStr = bagsDeposited != null && Number.isFinite(bagsDeposited) && bagsDeposited >= 0 ? bagsDeposited : 0
+  const unitsStr = bagUnits != null && Number.isFinite(bagUnits) && bagUnits >= 0 ? bagUnits : '?'
+
   switch (stage) {
     case 'pax_deposit':
-      return `Bags: check-in deposit (${bagsDeposited ?? 0}/${bagUnits ?? '?'})`
+      return `Bags: check-in deposit (${depStr}/${unitsStr})`
     case 'hold_screen':
       return 'Bags: screening hold bags'
     case 'outbound_sort':
@@ -75,11 +82,11 @@ export function describeBagStage(
     case 'unload_aircraft':
       return `Bags: unloading${lane}`
     case 'inbound_sort':
-      return `Bags: processing → claim ${claimLane ?? '?'}`
+      return `Bags: processing → claim ${laneLabel}`
     case 'deliver_claim':
-      return `Bags: delivering to claim ${claimLane ?? '?'}`
+      return `Bags: delivering to claim ${laneLabel}`
     case 'on_claim':
-      return `Bags: on claim ${claimLane ?? '?'}`
+      return `Bags: on claim ${laneLabel}`
     case 'complete':
       return 'Bags: complete'
     default:

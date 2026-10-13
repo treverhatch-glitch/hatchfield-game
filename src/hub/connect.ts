@@ -1,4 +1,10 @@
 import {
+  BUS_RIDE_MINUTES,
+  CONNECTIVITY_CATALOG,
+  PEOPLE_MOVER_RIDE_MINUTES,
+} from '../connectivity/catalog.ts'
+import type { PassengerLink } from '../connectivity/types.ts'
+import {
   BAG_BASE_MINUTES,
   BAG_BELT_METRES_PER_MIN,
   BAG_RFID_METRES_PER_MIN,
@@ -30,8 +36,42 @@ export function walkMinutes(metres: number): number {
   return Math.max(0, metres) / WALK_METRES_PER_MIN
 }
 
+/** A moving walkway speeds only the metres it covers. The rest stays at a walk. */
+export function assistedWalkMinutes(metres: number, walkwayMetres: number): number {
+  const span = Math.max(0, Number.isFinite(metres) ? metres : 0)
+  const covered = Math.min(span, Math.max(0, Number.isFinite(walkwayMetres) ? walkwayMetres : 0))
+  const pace = WALK_METRES_PER_MIN
+  const fast = pace * CONNECTIVITY_CATALOG.moving_walkway.speedMult
+  if (!(pace > 0) || !(fast > 0)) return 0
+  const total = (span - covered) / pace + covered / fast
+  return Number.isFinite(total) ? total : 0
+}
+
 export function rideMinutes(metres: number): number {
   return Math.max(0, metres) / RIDE_METRES_PER_MIN
+}
+
+export function skywalkMinutes(metres: number): number {
+  const pace = CONNECTIVITY_CATALOG.skywalk.metresPerMin
+  if (!(pace > 0)) return walkMinutes(metres)
+  const total = Math.max(0, metres) / pace
+  return Number.isFinite(total) ? total : walkMinutes(metres)
+}
+
+/** Minutes in motion for one link. Deplane time is added by the verdict. */
+export function linkTravelMinutes(link: PassengerLink, metres: number, walkwayMetres: number): number {
+  if (link === 'people_mover') return PEOPLE_MOVER_RIDE_MINUTES
+  if (link === 'airside_transfer_bus') return BUS_RIDE_MINUTES
+  if (link === 'terminal_bus') return rideMinutes(metres)
+  if (link === 'skywalk') return skywalkMinutes(metres)
+  return assistedWalkMinutes(metres, link === 'walkway' ? walkwayMetres : 0)
+}
+
+export function resolveLink(ride: boolean, link: PassengerLink | undefined, walkwayMetres: number): PassengerLink {
+  if (link) return link
+  if (ride) return 'terminal_bus'
+  if (walkwayMetres > 0) return 'walkway'
+  return 'walk'
 }
 
 function bagBase(facilities: HubFacilities): number {
@@ -60,6 +100,10 @@ export interface ConnectionInput {
   to: GatePoint
   ride: boolean
   facilities: HubFacilities
+  /** Preferred over `ride` when the sim has chosen a built link. */
+  link?: PassengerLink
+  /** Metres of moving walkway between the gates. */
+  walkwayMetres?: number
 }
 
 /**
@@ -68,11 +112,16 @@ export interface ConnectionInput {
  */
 export function evaluateConnection(input: ConnectionInput): ConnectionVerdict {
   const metres = gateMetres(input.from, input.to)
-  const walk = walkMinutes(metres)
-  const ride = input.ride ? rideMinutes(metres) : null
-  const mode = input.ride ? 'ride' : 'walk'
-  const paxMinutes = DEPLANE_MINUTES + (input.ride ? rideMinutes(metres) : walk)
-  const bagMinutes = bagTransferMinutes(metres, input.facilities, input.ride)
+  const walkwayMetres = Math.max(0, input.walkwayMetres ?? 0)
+  const link = resolveLink(input.ride, input.link, walkwayMetres)
+  const walk = link === 'walkway' ? assistedWalkMinutes(metres, walkwayMetres) : walkMinutes(metres)
+  const travel = linkTravelMinutes(link, metres, walkwayMetres)
+  const riding = link !== 'walk' && link !== 'walkway'
+  const ride = riding ? travel : null
+  const mode = riding ? 'ride' : 'walk'
+  const bagsRide = link === 'people_mover' || link === 'airside_transfer_bus' || link === 'terminal_bus'
+  const paxMinutes = DEPLANE_MINUTES + travel
+  const bagMinutes = bagTransferMinutes(metres, input.facilities, bagsRide)
   const mct = minimumConnectionTime(input.facilities)
   const available = input.departureAt - input.arrivalAt
   const finiteAvailable = Number.isFinite(available) ? available : 0
@@ -95,6 +144,7 @@ export function evaluateConnection(input: ConnectionInput): ConnectionVerdict {
     walkMinutes: walk,
     rideMinutes: ride,
     mode,
+    link,
     reason,
   }
 }

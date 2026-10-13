@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { projectCash } from './cashForecast'
 import { PremiumPanel } from './PremiumPanel.tsx'
+import { GameTimetable } from './timetable/GameTimetable'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
@@ -88,7 +90,18 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt', 'travelator', 'skywalk', 'mover'],
+    tools: [
+      'premade',
+      'terminal',
+      'term_bus',
+      'people_mover',
+      'xfer_bus',
+      'hub_skywalk',
+      'belt',
+      'travelator',
+      'skywalk',
+      'mover',
+    ],
   },
   {
     id: 'ops',
@@ -222,6 +235,7 @@ export function Hud({ game }: { game: Game }) {
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [cashOpen, setCashOpen] = useState(false)
   const [feesOpen, setFeesOpen] = useState(false)
   const pendingYear = game.pendingYearReport()?.year ?? null
   const [yearShown, setYearShown] = useState<number | null>(null)
@@ -232,6 +246,8 @@ export function Hud({ game }: { game: Game }) {
   useEffect(() => {
     game.pokeTycoon()
   }, [game, panel])
+  const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
+  const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
   const menuTools = buildMenu
     ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
     : []
@@ -286,6 +302,7 @@ export function Hud({ game }: { game: Game }) {
 
   return (
     <div className="hud">
+      {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
       <button
         type="button"
         className={`fees-toggle${feesOpen ? ' on' : ''}`}
@@ -311,25 +328,54 @@ export function Hud({ game }: { game: Game }) {
             {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
           </span>
         </div>
-        <button
-          type="button"
-          className="stat cash top-cash"
-          title="Open Economy"
-          onClick={() => openPanel('economy')}
-        >
-          {money(game.cash)}
-        </button>
-        <button
-          type="button"
-          className="stat"
-          title="Recent hourly earnings"
-          onClick={() => {
-            setEcoTab('income')
-            openPanel('economy')
-          }}
-        >
-          {money(game.incomeRate())}/hr
-        </button>
+        <div className="cash-hero-wrap">
+          <button
+            type="button"
+            className="stat cash top-cash cash-hero"
+            title="Cash and forecast — click for income and charges"
+            data-testid="cash-hero"
+            onClick={() => setCashOpen((open) => !open)}
+          >
+            <span className="cash-amount">{money(game.cash)}</span>
+            <span className={`cash-flow${forecast.dailyNet >= 0 ? ' up' : ' down'}`} data-testid="cash-forecast">
+              {flowLabel}
+            </span>
+          </button>
+          {cashOpen ? (
+            <div className="cash-menu" data-testid="cash-menu">
+              <p>
+                Live income <strong>{money(forecast.hourlyIncome)}/hr</strong>
+                <span className="muted"> · {money(forecast.dailyIncome)}/day</span>
+              </p>
+              <p>
+                Daily charges <strong>{money(forecast.dailyCharges)}</strong>
+              </p>
+              <ul>
+                <li>Payroll {money(forecast.charges.payroll)}</li>
+                <li>Upkeep {money(forecast.charges.upkeep)}</li>
+                <li>Holding {money(forecast.charges.holding)}</li>
+                <li>Levy {money(forecast.charges.levy)}</li>
+              </ul>
+              <p>
+                Weekly charges <strong>{money(forecast.weeklyCharges)}</strong>
+              </p>
+              <p>
+                Forecast <strong className={forecast.dailyNet >= 0 ? 'up' : 'down'}>{flowLabel}</strong>
+                <span className="muted"> · in 7 days {money(forecast.cashInSevenDays)}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCashOpen(false)
+                  setEcoTab('overview')
+                  openPanel('economy')
+                }}
+              >
+                Open books
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className="stat" title="One day is a 180-second cycle">
           {formatSimDate(game.clock)}
         </div>
@@ -1049,9 +1095,12 @@ export function Hud({ game }: { game: Game }) {
                           ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
                           : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). Empty plot only.'}
                     </p>
+                    <p className="muted" data-testid="cash-forecast-detail">
+                      Live {money(forecast.hourlyIncome)}/hr · daily charges {money(forecast.dailyCharges)} · weekly{' '}
+                      {money(forecast.weeklyCharges)} · forecast {flowLabel}
+                    </p>
                     <p className="muted">
-                      Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}{' '}
-                      · recent {money(game.incomeRate())}/hr
+                      Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}
                     </p>
                     </>
                     ) : null}

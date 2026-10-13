@@ -1,3 +1,5 @@
+import type { PassengerLink } from '../connectivity/types.ts'
+
 export type CarrierBiz = 'charter' | 'lcc' | 'full_service' | 'cargo'
 
 export interface CarrierProfile {
@@ -34,6 +36,7 @@ export interface ConnectionVerdict {
   walkMinutes: number
   rideMinutes: number | null
   mode: 'walk' | 'ride'
+  link: PassengerLink
   reason: ConnectionFail
 }
 
