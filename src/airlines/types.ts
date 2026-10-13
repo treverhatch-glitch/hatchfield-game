@@ -9,6 +9,7 @@ export interface AirportCapabilities {
   hasFuelService: boolean;
   hasCateringService: boolean;
   hasMaintenanceService: boolean;
+  hasHeavyVehicles: boolean; // From logistics (e.g., heavy pushback, large loaders)
   onTimePercentage: number; // 0 to 100
   totalFlightsHandled: number; // for progression unlocks
 }
@@ -22,6 +23,7 @@ export interface AirlineRequirements {
   requiresFuel: boolean;
   requiresCatering: boolean;
   requiresMaintenance: boolean;
+  requiresHeavyVehicles: boolean;
   minOnTimePercentage: number;
   minTotalFlightsHandled: number;
 }
@@ -30,6 +32,7 @@ export interface Airline {
   id: string;
   name: string;
   tier: AirlineTier;
+  fleet: string[]; // Airframe IDs from src/game/airframes.ts
   requirements: AirlineRequirements;
   baseSatisfaction: number;
 }
@@ -46,15 +49,17 @@ export interface ContractOffer {
   id: string;
   airlineId: string;
   terms: ContractTerms;
-  expiresAtDay: number; // day in game time when the offer expires
+  expiresAtHour: number; // hour in game time when the offer expires
+  penaltyTier: number; // 0 = normal, 1 = worse, 2 = even worse
 }
 
 export interface ActiveContract {
   id: string;
   airlineId: string;
   terms: ContractTerms;
-  signedAtDay: number;
+  signedAtHour: number;
   satisfaction: number; // 0 to 100
+  penaltyTier: number;
 }
 
 export interface AirlineState {
@@ -62,5 +67,7 @@ export interface AirlineState {
   unlockedAirlines: string[]; // airline IDs that have been unlocked
   contractOffers: ContractOffer[];
   activeContracts: ActiveContract[];
-  currentDay: number;
+  cooldowns: Record<string, number>; // airlineId -> hour when cooldown ends
+  penaltyTiers: Record<string, number>; // airlineId -> current penalty tier (re-entry worse terms)
+  elapsedHours: number;
 }
