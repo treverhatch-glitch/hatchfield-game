@@ -1,3 +1,4 @@
+import { HUB_UPGRADES } from '../hub/index.ts'
 import type { LandPlotConfig } from '../land/types.ts'
 import {
   HANGAR_OFFERS,
@@ -1667,6 +1668,13 @@ export const RESEARCH_NODES: ResearchNode[] = [
     requires: 'skywalk',
     minFieldLevel: 5,
   },
+  ...HUB_UPGRADES.map((node) => ({
+    id: node.id,
+    name: node.name,
+    cost: node.rp,
+    blurb: node.blurb,
+    requires: node.requires,
+  })),
 ]
 
 /** Research points per completed takeoff. */

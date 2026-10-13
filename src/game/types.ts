@@ -288,6 +288,8 @@ export type ResearchId =
   | 'travelator'
   | 'skywalk'
   | 'people_mover'
+  | 'transfer_centre'
+  | 'rfid_bag_line'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -904,6 +906,8 @@ export interface GameSnapshot {
     scannerLanes: number
     eGates: number
   }
+  /** Connecting passengers who missed the onward flight. */
+  missedConnections?: number
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
