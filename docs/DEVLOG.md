@@ -414,6 +414,24 @@ The asset pack v2 manifest and folder note are in the tree. The Drive zip is abo
 
 - `docs/devlog/media/OCT13-diplomacy.png` — airline standing list after one sim day: Northline, Puddle Air, Coastal Hop
 
+## Catering trucks and the cargo terminal — 13 Oct
+
+A parked passenger flight now books a galley. The truck loads at the kitchen, drives to the stand, the crew steps out, the scissor lift goes up, used carts come off, fresh carts go in, the lift comes down, and the crew drives back. The ramp does not also send its own catering truck. When the galley is done or short, boarding is allowed to start, and the $6 meal fee posts once into the same books as fuel.
+
+An empty counter still takes no cash. The shop module supplies the wish and the mood hit: happiness drops by 3, the thought is "wish they had burgers" or "wish they had souvenirs", and the unpaid price ($12 or $18) is logged as lost spend.
+
+The fuel check reads the farm's litres and reserves them in departure order. A flight that does not fit stays grounded and skips the fuel service. The empty-farm cancel after the departure slot is unchanged.
+
+Cargo is on the same game-minute clock as the ramp. A freighter asks for a main-deck loader, and that truck is held so another stand cannot take it. The load is planned before the turnaround starts, so the hold is not counted twice. Inbound tug trips share one import shipment. Only the airport's share of cargo revenue, scaled to a tenth so a freighter does not swamp a landing fee, hits cash. The handler's share stays off the books. A missing loader is an advisor card. Cargo and ramp events play through the audio bindings. Passenger bag pairing is unchanged.
+
+**Bugs.** Still ten.
+
+**Tests.** 395 passing, 2 skipped (the asset binaries).
+
+**Media**
+
+- `docs/devlog/media/OCT13-catering.png` — scissor lift up at the stand, driver on the lift and helper at the galley, chrome hidden
+
 
 **Media**
 

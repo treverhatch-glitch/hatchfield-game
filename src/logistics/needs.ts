@@ -53,7 +53,13 @@ export function needsForAirframe(af: Airframe): TurnaroundNeeds {
   const factor = af.kind === 'freighter' ? FREIGHTER_CARGO_FACTOR : PAX_CARGO_FACTOR
   const cargoKg = isHelo(af.kind) ? 0 : Math.round(af.cargoHold * 1000 * factor)
   const holdWork = cargoKg > 0 || bagsPerPax > 0
-  const loader = !holdWork ? null : sizeClass === 'L' ? 'uld_loader' : 'belt_loader'
+  const loader = !holdWork
+    ? null
+    : af.kind === 'freighter'
+      ? 'main_deck_loader'
+      : sizeClass === 'L'
+        ? 'uld_loader'
+        : 'belt_loader'
   const base = BASE_MINUTES[sizeClass]
   const services: ServiceKind[] = []
   if (carriesPax) services.push('deplane')

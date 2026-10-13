@@ -203,7 +203,7 @@ export interface TurnaroundNeeds {
   bagsPerPax: number
   /** Cargo kg per sector at the default hold factor. */
   cargoKg: number
-  loader: 'belt_loader' | 'uld_loader' | null
+  loader: 'belt_loader' | 'uld_loader' | 'main_deck_loader' | null
   fuelLitres: number
   meals: number
   cateringMinutes: number
@@ -235,6 +235,10 @@ export interface TurnaroundOptions {
   gateFeed?: boolean
   /** Terminal sim will call bagsReadyAtMakeup; disables the fallback bag model. */
   bagFeed?: boolean
+  /** Catering module owns the galley truck. Logistics waits, then marks the service done. */
+  deferCatering?: boolean
+  /** Flight that owns a reserved loader, so the dispatcher can still use that truck here. */
+  flightId?: string
 }
 
 export type DelayCause =

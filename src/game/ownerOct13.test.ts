@@ -164,7 +164,7 @@ describe('owner decisions 13 Oct', () => {
     const mood = hungry.happiness
     game.serveNode(hungry, open)
     expect(game.cash).toBe(cash)
-    expect(hungry.happiness).toBe(mood - 1)
+    expect(hungry.happiness).toBe(mood - 3)
     expect(hungry.thought).toBe('wish they had burgers')
     expect(hungry.needs.hunger).toBeLessThanOrEqual(18)
     expect(hungry.path.length).toBeGreaterThan(1)
@@ -176,10 +176,12 @@ describe('owner decisions 13 Oct', () => {
     shopper.wallet = 80
     shopper.prefs.shop = 1
     shopper.clearedSec = true
+    const shopMood = shopper.happiness
     game.serveNode(shopper, open)
-    expect(shopper.thought).toBe('wish they had a souvenir')
+    expect(shopper.thought).toBe('wish they had souvenirs')
+    expect(shopper.happiness).toBe(shopMood - 3)
     expect(shopper.path[shopper.path.length - 1]).not.toBe('shop')
-    expect(game.lostSpend).toBe(12 + 14)
+    expect(game.lostSpend).toBe(12 + 18)
     expect(game.cash).toBe(cash)
 
     game.foodShelf = 2
