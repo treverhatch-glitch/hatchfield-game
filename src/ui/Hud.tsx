@@ -113,6 +113,7 @@ type PanelId =
   | 'airlines'
   | 'planner'
   | 'services'
+  | 'settings'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -171,12 +172,15 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+  { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
 ]
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
-  const [panel, setPanel] = useState<PanelId>(null)
+  const [panelPick, setPanel] = useState<PanelId>(null)
+  // One panel at a time: an open hint list folds the HUD rollout away.
+  const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
@@ -206,20 +210,17 @@ export function Hud({ game }: { game: Game }) {
   const freeGates = game.freeStands().length
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
-    setPanel((cur) => {
-      if (cur === id) {
-        setChromePinned(false)
-        return null
-      }
-      setChromePinned(true)
-      return id
-    })
+    const closing = panel === id
+    setPanel(closing ? null : id)
+    setChromePinned(!closing)
+    game.setSidePanel(closing ? null : 'hud')
   }
 
   /** Open a tab without accidental close when already selected. */
   const openPanel = (id: Exclude<PanelId, null>) => {
     setPanel(id)
     setChromePinned(true)
+    game.setSidePanel('hud')
   }
 
   const ticker = game.news.slice(0, 5)
@@ -999,6 +1000,28 @@ export function Hud({ game }: { game: Game }) {
                   </section>
                   ) : null}
                 </>
+              ) : null}
+
+              {panel === 'settings' ? (
+                <section data-testid="settings-panel">
+                  <h3>Hints</h3>
+                  <label className="sandbox-toggle">
+                    <input
+                      type="checkbox"
+                      data-testid="settings-all-hints"
+                      checked={game.hintPrefs.allEnabled}
+                      onChange={(e) => game.setAllHints(e.target.checked)}
+                    />
+                    <span>All hints enabled</span>
+                  </label>
+                  <p className="muted">
+                    {game.hintPrefs.allEnabled
+                      ? 'Every advisor hint shows in the panel, bottom right.'
+                      : game.hintPrefs.muted.includes('*')
+                        ? 'Hints are off. Tick the box to turn every type back on.'
+                        : `${game.hintPrefs.muted.length} hint type${game.hintPrefs.muted.length === 1 ? '' : 's'} hidden. Tick the box to turn every type back on.`}
+                  </p>
+                </section>
               ) : null}
 
               {panel === 'budget' ? (

@@ -860,6 +860,8 @@ export interface GameSnapshot {
   deskStaff?: number
   /** First-hour coach dismissed (or auto-cleared after first takeoff). */
   coachDismissed?: boolean
+  /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
+  hintPrefs?: { allEnabled: boolean; muted: string[] }
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
