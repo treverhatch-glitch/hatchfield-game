@@ -54,6 +54,8 @@ Freight is a full progression spine, not a shed stamp. Infra vision in [IDEAS §
 
 Cargo **On-time** (same Standing meter, freight words) = on-time uplift. Night bank research already biases freighter slots. Cargo turnarounds should grant Field XP equal to pax (tune in [ECONOMY](./ECONOMY.md)).
 
+**Fun hook:** volume letters + warehouse staging + night bank identity — see [IDEAS cargo play loop](./IDEAS.md#cargo-play-loop-equal-fun). Cargo-focus starts must earn without a pax hall.
+
 ## Side tracks (not the main ladder)
 
 | Track | Progression feel | Doc |

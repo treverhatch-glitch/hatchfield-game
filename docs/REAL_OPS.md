@@ -41,24 +41,69 @@ If a real airport needs a journey, a capacity, or a prep window for something to
 
 ---
 
-## 3. Baggage pipeline
+## 3. Baggage pipeline (arrival + departure + layover)
 
-**Real:** bag drop → sortation → makeup → loader / belt → hold. Broken sort or late makeup delays departure.
+### Real
 
-**Game:**
-- Belt lite (hall ↔ sort ↔ stand) already teaches this.
-- Later: claim loop art, multi-makeup, allowance caps on premades.
+| Flow | What happens |
+| --- | --- |
+| **Outbound** | Check-in / bag drop → sort → makeup → load to aircraft |
+| **Inbound terminating** | Unload → claim belt → passenger picks up → landside exit |
+| **Connecting / layover (through-checked)** | Unload → **transfer** (sort or hot cart plane→plane) — passenger usually does **not** claim; bags “layover” on the airside system |
+| **Self-transfer / some intl** | Passenger must claim + recheck (customs); rarer — use as intl-zone spice later |
+
+**Who gets the bag fee money (real world):**  
+Checked-bag fees and overweight fees are almost entirely **airline revenue**, not airport revenue. Airports earn from **handling / BHS use / terminal rents** and from pax spending once bags are done. Airlines punish airports that lose or delay bags (misconnects, refunds, brand damage).
+
+### Game — lean (no per-suitcase sim)
+
+Do **not** simulate 200 individual bags. Use **bag units per flight** rolled from the pax mix:
+
+| PaxTag | Bag units (relative) | Wallet / hall spend | Fantasy |
+| --- | --- | --- | --- |
+| **budget** | Low | Thin wallet, skips lounge | LCC / Bushline |
+| **family** | Medium–high | Medium, food/play | Mix |
+| **business** | Medium | Strong, time-sensitive | Harbor / Summit |
+| **premium** | High (+ overweight pressure) | Fat wallet, lounge | Crown / luxury |
+
+**Arrival (terminating):** unload truck → claim → guests with `needs.bags` clear at claim → exit. Late claim = Happiness ↓ → Standing ↓. Airport earns **bag handling** fee when unload/claim chain completes (already live pattern).
+
+**Departure:** bag drop / makeup → load (belt lite). Broken belt = late bags + Standing (live).
+
+**Layover / transfer guests:**  
+- Default: bags are **through-transfer** — go to transfer sorter / hot path, **not** claim. Passenger stays airside, spends if happy.  
+- If transfer path capacity fails → **misconnect risk** → big Standing nick to that carrier (airline pain, not a fat airport bag-fee windfall).  
+- Optional rare: intl/customs forces claim+recheck (intl zone later).
+
+**Fees / Standing split (design law):**
+
+| Money / meter | Who it feeds | Trigger |
+| --- | --- | --- |
+| Bag handling / drop pay | **Airport cash** | Picture finishes unload/load/drop |
+| Overweight / extra-bag “pressure” | **Not** a big airport cash cow | Increases bag units + handling time; airline Standing rises if you clear them fast, falls if claim/makeup clogs |
+| Hall spend after bags | **Airport cash** | Premiums linger; budgets leave |
+
+So the luggage pipeline mostly feeds **Standing + hall dwell economics**, with modest handling fees — realistic, and it doesn’t invent fake airport bag-ticket revenue.
+
+**Perf rule:** one bags truck mission + aggregate bag units + claim/transfer sink. No agent-per-bag pathfinding.
 
 ---
 
-## 4. Cargo pipeline
+## 4. Cargo pipeline (make it a real game)
 
-**Real:** truck/rail dock → acceptance → security screening → warehouse buildup → ramp / ULD → freighter. Freight is scheduled; uplift is late if landside is late.
+**Real:** truck/rail dock → acceptance → security screening → warehouse buildup → ramp / ULD → freighter. Freight is scheduled; uplift is late if landside is late. Night banks and express contracts are the drama.
 
-**Game:**
-- City cargo trucks → guard → screen → warehouse → loader → freighter.
-- **On-time** Standing flavor for cargo carriers.
-- Schedule **prep window** stages trucks before freighter ETA (A-CDM landside idea, lite).
+**Game — equal citizen loop (target fun):**
+
+1. **Demand letters** — UPPS/Umazon/EXFED ask for volume windows (“12 ULDs by 02:00”), not just “sign and freighter appears.”
+2. **City trucks** — spawn off-map → guard → intake; visible queue if gate thin.
+3. **Screen choke** — thorough vs fast (Standing/On-time vs incident risk).
+4. **Warehouse meter** — fill before freighter; overfill = jam; empty at push = late uplift.
+5. **Loader GSE** — picture verb at cargo stand; capacity by aircraft size.
+6. **Pay** — intake fee + uplift fee when load completes; On-time Standing; Field XP = pax.
+7. **Fantasy fork** — night freight fortress vs daytime pax hub; hybrid shares taxi jam.
+
+Cargo should feel like **Manor Lords crates + AT3 contracts**, not a shed stamp. Details: [IDEAS](./IDEAS.md#cargo-play-loop-equal-fun).
 
 ---
 

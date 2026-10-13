@@ -9,10 +9,11 @@ Money = picture. If cash moves and nothing on screen did, the loop is wrong.
 | Source | When it posts | Notes |
 | --- | --- | --- |
 | Landing / handling | Turnaround services complete | Fuel, bags, catering, cleaning, MX · **pax + cargo** |
-| Hall spend | Guest buys food/shop/play/lounge/etc. | Wallet + prefs gate purchases (pax path) |
-| Cargo uplift fees | Freighter load complete | Target: screen/rail chain quality mods fee |
+| Bag handling / drop | Unload→claim or makeup→load finishes | Airport fee for **work done** — not airline ticket bag fees |
+| Hall spend | Guest buys food/shop/play/lounge/etc. | Wallet + PaxTag gate purchases (pax path) |
+| Cargo uplift fees | Freighter load complete | Screen/rail/warehouse quality mods fee |
 | Landside fees | Guest uses hotel / park / bus / rail | Usage only — idle stamps don’t earn |
-| Cargo truck / rail intake | Parcels enter gate or spur | Target landside — usage fees + upkeep |
+| Cargo truck / rail intake | Parcels clear guard → facility | Landside usage; queues if guard thin |
 | Pad / parking / emergency host | Helo, GA, divert/tanker accepted | Letter-driven; steals capacity |
 | Military host fees | Guard mission / overnight | Side track — [VISION](./VISION.md) |
 | Layover / Hub fees | Accept letter | Up-front + transfer dwell spend |
@@ -46,8 +47,30 @@ These are the bridges that stop “strip + plane = win”:
 3. **Taxi geometry** — congestion slows GSE and jets → late boards → Standing dips → fewer slots.
 4. **Landside match** — persona wants rail/hotel/bus; missing mode angers + skips fees.
 5. **Wear / cleaning budget** — budget crowds scuff WC/security; scrub costs cash or reputation dies.
-6. **Cargo chain** *(target)* — truck/rail → screen → makeup → loader; break any link → late uplift → **On-time** dip + fee cut ([IDEAS](./IDEAS.md#cargo-landside-infrastructure)).
+6. **Cargo chain** *(target)* — truck/rail → screen → makeup → loader; break any link → late uplift → **On-time** dip + fee cut ([IDEAS](./IDEAS.md#cargo-play-loop-equal-fun)).
 7. **Emergency / mil capacity tax** — hosting pays fees but steals stands/strip/fuel; refusing saves capacity but costs fines/rep.
+8. **Pax mix ↔ airport shape** — budget carriers → thin wallets, light bags, need fast cheap flow; premium → fat wallets, heavy bags, need claim/lounge capacity. Design the field for the mix you want.
+9. **Bag fees realism** — airline keeps ticket bag/overweight revenue off-screen; airport earns handling + dwell spend; bad bags hurt **Standing** hard (airline relationship), not a fake overweight cash printer.
+
+### PaxTag → economy (design targets)
+
+| Tag | Bags | Wallet | Player builds toward |
+| --- | --- | --- | --- |
+| budget | Light | Low hall spend | Fast security, cheap curb, LCC stands |
+| family | Medium+ | Food / play | Amenities + claim capacity |
+| business | Medium | Time > money | Jetways, reliable bags, rail |
+| premium | Heavy | Lounge / retail | Wide claim, belts, luxury landside |
+
+---
+
+## Bag & layover money (who gets paid)
+
+**Real:** airlines collect checked-bag and overweight fees; airports collect handling, rents, PFC-like charges, and commercial spend.
+
+**Hatchfield:**
+- `bag handling` / `bag drop` → **your cash** (service picture).
+- Extra/overweight pressure → more **bag units** and longer handling — clears well = Standing up; clogs claim/transfer = Standing down.
+- Do **not** add a big “overweight fee” line that prints money with no airline. That fights realism and overpowers pax mix strategy.
 
 ## Capital loop (mid/late)
 

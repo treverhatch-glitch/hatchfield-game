@@ -22,17 +22,35 @@ Committed direction — see [VISION](./VISION.md#living-logistics-picture-manor-
 - **Contractor vans** — optional build delay: watch them drive in and work (never soft-lock first hour).
 - **Avoid ACEO trap** — full construction-materials sim is opt-in/late; ops logistics is the main “life” upgrade.
 
-## Cargo landside infrastructure
+## Bags: claim, transfer, mix (lean)
 
-Parallel to pax hall/belts — see [VISION Path B](./VISION.md#path-b--cargo-equal-citizen-not-dlc) and [PROGRESSION cargo ladder](./PROGRESSION.md#cargo-ladder-parallel-to-pax).
+See [REAL_OPS § Baggage](./REAL_OPS.md#3-baggage-pipeline-arrival--departure--layover) and [ECONOMY](./ECONOMY.md#bag--layover-money-who-gets-paid).
 
-- **Cargo truck gate / guard** — inbound road choke; queues if undersized.
-- **Cargo rail spur** — heavy rail (distinct from pax city rail); high volume, high upkeep.
-- **Screening / sort building** — X-ray / customs machines; cargo’s “security choke.”
-- **Warehouse / makeup** — stage ULDs before freighter arrival.
-- **Cargo stands + loader GSE** — away from pax jetways; congestion still shared on taxi.
-- **Broken chain** — missing screen or rail → late uplift → On-time dip + fee cut (mirror belt lite).
-- **Start choice** — New Game: **Passenger focus / Cargo focus / Hybrid** (city/factory plots bias letters; starter kit variants).
+- Arrival unload → **claim** for terminating pax (needs.bags).
+- Layover default → **through-transfer** (no claim); fail path → misconnect Standing hit.
+- Bag units from PaxTag mix (budget light / premium heavy) — no per-bag agents.
+- Airport cash = handling; Standing = airline care about lost/late bags.
+
+## Cargo play loop (equal fun)
+
+Parallel to pax — [VISION Path B](./VISION.md#path-b--cargo-equal-citizen-not-dlc) · [PROGRESSION](./PROGRESSION.md#cargo-ladder-parallel-to-pax) · [REAL_OPS](./REAL_OPS.md#4-cargo-pipeline-make-it-a-real-game).
+
+**Why cargo feels empty today:** shed stamp + freighter letter, no landside journey, no volume goals, no night drama.
+
+**Make it fun (ship in this order):**
+
+1. **Start focus + cargo kit** — factory/cargo start without needing a pax hall.
+2. **City trucks → guard → intake** — visible pipeline; queue = undersized guard/gate.
+3. **Volume letters** — “clear 8 ULDs before the night bank” with fee + On-time + XP.
+4. **Warehouse meter** — stage freight before the freighter; empty/overfill both hurt.
+5. **Screen building** — choke with risk/speed tradeoff.
+6. **Loader GSE picture** — ULD onto freighter; capacity by Code.
+7. **Night bank fantasy** — research + quieter daytime taxi; Umazon/EXFED identity.
+8. **Cargo rail spur** — high volume, high upkeep (mid/late).
+9. **Shared jam** — cargo trucks still clog pax taxi if zoned badly (hybrid skill).
+
+- **Broken chain** — missing screen/rail/warehouse → late uplift → On-time dip + fee cut.
+- **Start choice** — Passenger / Cargo / Hybrid.
 
 ## Emergency seasons (random letters)
 
