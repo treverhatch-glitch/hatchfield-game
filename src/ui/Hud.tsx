@@ -556,11 +556,14 @@ export function Hud({ game }: { game: Game }) {
                   <div className="row letter-actions">
                     {letter.id === 'contract' ? (
                       <>
-                        <button type="button" className="on" onClick={() => game.acceptOffer()}>
+                        <button type="button" className="on" onClick={() => game.openNegotiationPanel()}>
+                          Negotiate
+                        </button>
+                        <button type="button" onClick={() => game.acceptNegotiation()}>
                           Accept
                         </button>
-                        <button type="button" onClick={() => game.declineOffer()}>
-                          Decline
+                        <button type="button" onClick={() => game.walkNegotiation()}>
+                          Walk
                         </button>
                         <button type="button" onClick={() => game.snoozeOffer()}>
                           Later
