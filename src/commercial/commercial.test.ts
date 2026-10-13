@@ -33,6 +33,17 @@ import {
   resolveLead,
   scheduleElasticity,
   DEFAULT_FEE_SCHEDULE,
+  SIM_SECONDS_PER_GAME_DAY,
+  demandInterval,
+  depositCashPost,
+  firstFlightClock,
+  forfeitHeld,
+  openLead,
+  scaleListed,
+  settleHeld,
+  signDeposit,
+  walkInDemandOf,
+  walkInOfferChance,
   type CapacityPlant,
   type TurnUsage,
 } from './index.ts'
@@ -345,5 +356,39 @@ describe('fees', () => {
     expect(scheduleElasticity(raised).demand).toBeLessThan(1)
     expect(scheduleElasticity(raised).standingDelta).toBeLessThan(0)
     expect(scheduleElasticity(cut).demand).toBeGreaterThan(1)
+  })
+})
+
+describe('live wiring helpers', () => {
+  it('keeps default prices and the walk-in offer rate, and prices a day-0 deposit', () => {
+    expect(scaleListed(5200, DEFAULT_FEE_SCHEDULE.landingPerTonne, DEFAULT_FEE_SCHEDULE.landingPerTonne)).toBe(5200)
+    expect(scaleListed(5200, 16, 8)).toBe(10400)
+    expect(walkInOfferChance(DEFAULT_FEE_SCHEDULE)).toBeCloseTo(0.45)
+    expect(walkInDemandOf(DEFAULT_FEE_SCHEDULE)).toBe(1)
+    expect(demandInterval(75, DEFAULT_FEE_SCHEDULE)).toBe(75)
+
+    const starter = openLead({ clock: 12, starter: true, tier: 4, hub: true })
+    expect(starter.leadDays).toBe(0)
+    expect(firstFlightClock(starter)).toBe(0)
+
+    const later = openLead({ clock: 12, starter: false, tier: 2, hub: false })
+    expect(later.leadDays).toBe(4)
+    expect(firstFlightClock(later)).toBe(4 * SIM_SECONDS_PER_GAME_DAY)
+
+    const taken = signDeposit({ airlineId: 'northline', tier: 'standard', landingFee: 5200, day: 0 })
+    expect(taken.account.held).toBe(21_840)
+    expect(taken.account.termEndDay).toBe(83)
+    expect(depositCashPost(taken.entry)?.category).toBe('deposits')
+    expect(depositCashPost(taken.entry)?.amount).toBe(21_840)
+
+    const back = settleHeld(taken.account, 83)
+    expect(back).not.toBeNull()
+    if (!back) return
+    expect(back.entry.amount).toBe(-21_840)
+    expect(depositCashPost(back.entry)?.category).toBe('deposit_refunds')
+    const kept = forfeitHeld(taken.account, 10)
+    expect(kept.account.status).toBe('forfeited')
+    expect(depositCashPost(kept.entry)).toBeNull()
+    expect(kept.entry.retained).toBe(21_840)
   })
 })

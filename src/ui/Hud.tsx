@@ -248,7 +248,15 @@ export function Hud({ game }: { game: Game }) {
       >
         Fees
       </button>
-      {feesOpen ? <FeesPanel onClose={() => setFeesOpen(false)} /> : null}
+      {feesOpen ? (
+        <FeesPanel
+          fees={game.fees}
+          depositTier={game.depositTier}
+          onFee={(key, value) => game.setFee(key, value)}
+          onTier={(tier) => game.setDepositTier(tier)}
+          onClose={() => setFeesOpen(false)}
+        />
+      ) : null}
       <header className="top" data-testid="stats-bar">
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
