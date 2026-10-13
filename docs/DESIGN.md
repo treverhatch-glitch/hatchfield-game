@@ -30,6 +30,11 @@ Thresholds players learn: Standing **82+** perk · **≤36** warn · **≤20** a
 5. **Browser = design lab** — Godot/Steam only after Waves A–B feel unfair-fun. Grid stays until **P2.5 freeflow**.
 6. **Dual path equality** — pax and cargo both feed Field XP / Field Level ([PROGRESSION](./PROGRESSION.md)).
 
+## Real airport ops (inspiration)
+
+Steal journeys, capacities, prep windows, and chokes from real fields — not bureaucracy.  
+Source map: **[REAL_OPS.md](./REAL_OPS.md)** (pax / bags / cargo / turnaround / A-CDM lite / guard posts).
+
 ## Dual stage (+ cargo landside later)
 
 | View | What you manage | Traffic |
@@ -60,7 +65,7 @@ Apron + Hall sim at once today. Cargo landside becomes the freight twin of hall 
 
 - Room graph with **security as only landside→airside choke**.
 - Guests: needs, wallet, prefs, boarding clocks; tag = budget / family / business / premium.
-- Short BFS (depth ~5–7); premium gets a slightly longer look. Missing rooms → lost / angry / heat.
+- Short BFS (depth ~5–7); premium gets a slightly longer look. Missing rooms → lost / angry / Standing dips.
 
 ### 4. Cargo landside (target)
 
@@ -69,7 +74,7 @@ Apron + Hall sim at once today. Cargo landside becomes the freight twin of hall 
 
 ## Win condition (session fantasy)
 
-Not “place a strip and a plane lands.” A good session: pick pax or cargo focus → first contract → survive payroll → choose jetway vs remote *or* screen vs rail → keep heat through a layover *or* night bank → optionally host a divert / Guard surge → IPO. Layout choices keep paying off after the first landing. Full fantasies: [VISION](./VISION.md#what-done-looks-like-session-fantasies).
+Not “place a strip and a plane lands.” A good session: pick pax or cargo focus → first contract → survive payroll → choose jetway vs remote *or* screen vs rail → keep Standing through a layover *or* night bank → optionally host a divert / Guard surge → IPO. Layout choices keep paying off after the first landing. Full fantasies: [VISION](./VISION.md#what-done-looks-like-session-fantasies).
 
 ## Non-goals (for now)
 
@@ -84,6 +89,7 @@ Not “place a strip and a plane lands.” A good session: pick pax or cargo foc
 | Doc | Role |
 | --- | --- |
 | [VISION.md](./VISION.md) | North-star: pax + cargo + emergency + mil |
+| [REAL_OPS.md](./REAL_OPS.md) | Real airport pipelines → game verbs |
 | [IDEAS.md](./IDEAS.md) | Backlog and spice |
 | [PROBLEMS.md](./PROBLEMS.md) | Gaps, bugs, honesty |
 | [ECONOMY.md](./ECONOMY.md) | Cash loops and balance |

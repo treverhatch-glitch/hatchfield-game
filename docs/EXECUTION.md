@@ -5,7 +5,8 @@ Working plan for expanding the game. Derived from [VISION](./VISION.md) + [NEXT]
 ## Principle
 
 Deepen layout skill with **one reusable verb**: *broken chain → late job → Standing/money hurt → fix → recover*.  
-Pax belts teach it first; cargo landside copies it; emergencies steal capacity on the same apron.
+Pax belts teach it first; cargo landside copies it; emergencies steal capacity on the same apron.  
+Ground every chain in [real airport ops](./REAL_OPS.md) (journeys, capacities, prep windows, chokes).
 
 ## Player vocabulary
 
