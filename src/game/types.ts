@@ -97,6 +97,9 @@ export type Difficulty = 'easy' | 'standard'
 export type SiteKind = 'city' | 'factory'
 /** New Game campaign bias — does not hard-lock the other path. */
 export type StartFocus = 'pax' | 'cargo' | 'hybrid'
+
+/** Dev / trial: spend never fails and cash stays topped up. */
+export const SANDBOX_CASH = 9_999_999
 export type FuelBrand = 'apex' | 'kiln'
 export type CaterBrand = 'skybite' | 'galleyprime'
 /** Premade ids or `proc-xxxx` regional fillers. */
@@ -777,4 +780,5 @@ export interface GameSnapshot {
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
   startFocus?: StartFocus
+  sandbox?: boolean
 }

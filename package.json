@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview --host --port 45217",
-    "playthrough": "tsx scripts/playthrough-wake.mts"
+    "playthrough": "tsx scripts/playthrough-wake.mts",
+    "autoplay": "tsx scripts/autoplay-stabilize.mts"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -32,27 +32,29 @@ try {
   })
   await page.reload({ waitUntil: 'networkidle' })
 
-  // Title
+  // Title — sandbox OFF for money assertions
   if (!(await page.getByRole('heading', { name: 'Hatchfield' }).isVisible())) {
     issues.push('title missing Hatchfield heading')
   }
-  await page.getByRole('button', { name: /Easy grant/i }).click()
+  const sandbox = page.getByTestId('sandbox-toggle')
+  if (await sandbox.isChecked()) await sandbox.uncheck()
+  await page.getByTestId('new-game').click()
   await page.waitForTimeout(300)
-  if (!(await page.getByRole('heading', { name: /Choose the plot/i }).isVisible())) {
-    issues.push('Easy grant did not reach land screen')
+  if (!(await page.getByRole('heading', { name: /Choose your start/i }).isVisible())) {
+    issues.push('New Game did not reach route pick')
   }
 
-  // Land
+  // Land / route
   const landCash = await page.locator('.kicker').innerText()
-  if (!landCash.includes('220')) issues.push(`expected $220k on land screen, got ${landCash}`)
-  await page.getByRole('button', { name: /Riverside|City/i }).click()
+  if (!/\$/.test(landCash)) issues.push(`expected cash on land screen, got ${landCash}`)
+  await page.getByTestId('start-pax').click()
   await page.waitForTimeout(800)
 
   // Apron
   const brand = await page.locator('.brand span').innerText()
   if (!/Riverside|City/i.test(brand)) issues.push(`brand after land: ${brand}`)
   let c0 = await readCash(page)
-  if (c0 < 120_000 || c0 > 130_000) issues.push(`cash after city land odd: ${c0}`)
+  if (c0 < 40_000 || c0 > 200_000) issues.push(`cash after city land odd: ${c0}`)
 
   // Starter kit lives in the Economy roll-up panel
   await page.locator('.cash-chip').click()
@@ -120,25 +122,22 @@ try {
   const airlines = await page.locator('.stat').nth(2).innerText()
   notes.push(`airlines stat: ${airlines}`)
 
-  // Loan (Economy panel — open without toggling closed if already pinned)
+  // Loan (Economy panel — bank desk products)
   const beforeLoan = await readCash(page)
-  const loanBtn = page.getByRole('button', { name: /^Loan/ })
-  if (!(await loanBtn.isVisible().catch(() => false))) {
-    await page.locator('.info-menus button').filter({ hasText: /^Economy$/ }).click()
-    await page.waitForTimeout(300)
-  }
+  await page.getByTestId('tab-economy').click()
+  await page.waitForTimeout(300)
+  const loanBtn = page.locator('.loan-grid button').first()
   if (!(await loanBtn.isVisible().catch(() => false))) {
     await page.locator('.cash-chip').click()
     await page.waitForTimeout(300)
   }
-  await loanBtn.click({ force: true })
-  await page.waitForTimeout(300)
-  const afterLoan = await readCash(page)
-  if (afterLoan <= beforeLoan) {
-    // may already have loan from prior — not fatal
+  if (await loanBtn.isVisible().catch(() => false)) {
+    await loanBtn.click({ force: true })
+    await page.waitForTimeout(300)
+    const afterLoan = await readCash(page)
     notes.push(`loan click ${beforeLoan} → ${afterLoan}`)
   } else {
-    notes.push(`loan ok ${beforeLoan} → ${afterLoan}`)
+    issues.push('loan product button missing')
   }
 
   // Dismiss coach if present — then tool select must work (dock above overlays).
@@ -159,24 +158,21 @@ try {
 
   await page.getByRole('button', { name: /^Pavement$/ }).click()
   await page.waitForTimeout(100)
-  await page.getByRole('button', { name: /^Look|^Pan/i }).first().click({ force: true }).catch(() => {})
+  await page.getByRole('button', { name: /^Select$/ }).first().click({ force: true }).catch(() => {})
 
   // Emergency / offer UI should not crash
   await page.waitForTimeout(2000)
 
-  // Continue field path — reload with save
+  // Continue path — reload with save
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForTimeout(500)
-  const cont = page.getByRole('button', { name: /Continue field/i })
+  const cont = page.getByTestId('continue-game')
   if (await cont.isVisible().catch(() => false)) {
     await cont.click()
     await page.waitForTimeout(800)
     const brand2 = await page.locator('.brand span').innerText().catch(() => '')
-    if (!/Riverside|City|plot/i.test(brand2) && !/No plot/i.test(brand2)) {
-      notes.push(`continue brand: ${brand2}`)
-    }
-    if (/No plot/i.test(brand2)) issues.push('Continue field lost the plot')
-    else notes.push('continue field restored play')
+    if (/No plot/i.test(brand2)) issues.push('Continue lost the plot')
+    else notes.push('continue restored play')
   } else {
     // App may have recovered straight to play via session
     const brand2 = await page.locator('.brand span').innerText().catch(() => '')

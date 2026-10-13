@@ -1,7 +1,6 @@
 import { Game } from '../src/game/sim.ts'
 import {
   HOTEL_COST,
-  LOAN_FEE,
   LOAN_PRINCIPAL,
   STARTER_KIT_COST,
   START_CASH,
@@ -13,6 +12,7 @@ function runwayStripsExist(g: Game): boolean {
 
 const issues: string[] = []
 const g = new Game()
+g.sandbox = false
 g.beginNew('standard')
 const startCash = g.cash
 if (startCash !== START_CASH.standard) {
@@ -55,9 +55,22 @@ if (g.flightsDone < 1) issues.push('zero turnarounds on standard')
 const runaway = g.cash > withLoan + 500_000 && g.loanBalance === 0
 if (runaway) issues.push(`cash runaway ${Math.round(g.cash)}`)
 if (g.cash < -80_000) issues.push(`death spiral cash ${Math.round(g.cash)}`)
-// Carrying fee should grow an unpaid loan above the opening balance.
-if (g.loanBalance > 0 && g.loanBalance <= LOAN_PRINCIPAL + LOAN_FEE) {
-  issues.push('loan balance should grow while open')
+// Paid interest no longer capitalizes — only unpaid shortfall grows debt.
+// Starve cash so interest shortfall capitalizes.
+{
+  const starved = new Game()
+  starved.sandbox = false
+  starved.beginNew('easy')
+  starved.buyLand('city')
+  starved.buildStarterKit()
+  starved.takeLoan()
+  const opened = starved.loanBalance
+  starved.cash = 50
+  starved.speed = 5
+  for (let i = 0; i < 400; i++) starved.tick(0.25)
+  if (starved.loanBalance <= opened) {
+    issues.push('starved loan should capitalize unpaid interest')
+  }
 }
 // Field ops mult should engage once airlines sign.
 if (g.signed.length >= 2 && g.fieldOpsMult() <= 1.05) {
@@ -69,6 +82,7 @@ if (minCash >= withLoan) {
 }
 
 const e = new Game()
+e.sandbox = false
 e.beginNew('easy')
 e.buyLand('city')
 e.buildStarterKit()

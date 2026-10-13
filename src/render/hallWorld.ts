@@ -129,7 +129,9 @@ export class HallWorld {
 
   private onDown = (e: PointerEvent) => {
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
-    this.dragging = e.button === 2 || e.shiftKey ? 'pan' : 'orbit'
+    // Middle/right = orbit; left-drag = pan (WASD also pans).
+    if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
+    else this.dragging = e.shiftKey ? 'orbit' : 'pan'
     this.lastX = e.clientX
     this.lastY = e.clientY
   }
@@ -144,11 +146,21 @@ export class HallWorld {
       this.yaw -= dx * 0.008
       this.pitch = Math.min(1.35, Math.max(0.35, this.pitch + dy * 0.006))
     } else {
-      const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
-      const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))
-      this.pivot.addScaledVector(right, -dx * 0.04)
-      this.pivot.addScaledVector(fwd, -dy * 0.04)
+      this.nudgePan(-dx * 0.04, -dy * 0.04)
     }
+    this.placeCam()
+  }
+
+  nudgePan(rightAmt: number, forwardAmt: number) {
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
+    const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))
+    this.pivot.addScaledVector(right, rightAmt)
+    this.pivot.addScaledVector(fwd, forwardAmt)
+    this.placeCam()
+  }
+
+  nudgeYaw(delta: number) {
+    this.yaw += delta
     this.placeCam()
   }
 

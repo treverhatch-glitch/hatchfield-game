@@ -4,19 +4,20 @@ import { World } from '../render/world'
 
 export function Field({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
+  const worldRef = useRef<World | null>(null)
   const [inspect, setInspect] = useState<ApronInspect | null>(null)
 
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
     const world = new World(canvas)
+    worldRef.current = world
     world.onHover = (v) => {
       if (game.view !== 'apron') {
         setInspect(null)
         return
       }
       game.setHover(v)
-      // 5x fast-forward: never show plane/hangar detail cards on hover.
       setInspect(game.inspectEnabled() ? game.hoverInspect : null)
     }
     world.onClick = (v) => {
@@ -24,7 +25,11 @@ export function Field({ game }: { game: Game }) {
       game.clickTile(v)
     }
     world.getTool = () => game.tool
-    const onKey = (e: KeyboardEvent) => {
+
+    const keys = new Set<string>()
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       if (e.key === 'Escape') {
         game.exitHall()
         return
@@ -34,15 +39,42 @@ export function Field({ game }: { game: Game }) {
         return
       }
       if (game.view !== 'apron') return
-      if (e.key === 'r' || e.key === 'R') game.rotatePiece()
+      if (e.key === 'r' || e.key === 'R') {
+        game.rotatePiece()
+        return
+      }
+      keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key)
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault()
+      }
     }
-    window.addEventListener('keydown', onKey)
+    const onKeyUp = (e: KeyboardEvent) => {
+      keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+
     let raf = 0
-    const loop = () => {
-      // Skip GL work while Hall is front — both layers stay mounted for crossfade.
+    let last = performance.now()
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
       if (game.view === 'apron') {
-        world.render(game)
-        // Refresh bars / MX timers while hovering — skipped entirely at 5x.
+        const w = worldRef.current
+        if (w) {
+          const speed = 28 * dt
+          let fx = 0
+          let fy = 0
+          if (keys.has('w') || keys.has('ArrowUp')) fy -= speed
+          if (keys.has('s') || keys.has('ArrowDown')) fy += speed
+          if (keys.has('a') || keys.has('ArrowLeft')) fx -= speed
+          if (keys.has('d') || keys.has('ArrowRight')) fx += speed
+          if (fx || fy) w.nudgePan(fx, fy)
+          if (keys.has('q')) w.nudgeYaw(1.4 * dt)
+          if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+          w.render(game)
+        }
         if (game.hover && game.inspectEnabled()) {
           const next = game.inspectAt(game.hover)
           setInspect((prev) => {
@@ -80,8 +112,10 @@ export function Field({ game }: { game: Game }) {
     }
     raf = requestAnimationFrame(loop)
     return () => {
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
+      worldRef.current = null
       world.dispose()
     }
   }, [game])

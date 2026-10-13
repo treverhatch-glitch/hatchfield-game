@@ -183,7 +183,7 @@ import {
   standBeltLinked,
   tilesOf,
 } from './path'
-import { SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
+import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import type {
   AircraftKind,
   Airline,
@@ -438,10 +438,14 @@ export class Game {
   cityCargoCool = 8
   /** New Game focus — biases starter kit + early letters. */
   startFocus: StartFocus = 'pax'
+  /** Dev sandbox — unlimited money (default ON for trial builds). */
+  sandbox = true
   /** Active cargo volume window letter. */
   cargoVolume: CargoVolumeJob | null = null
   cargoVolumeCool = 40
   interestCool = 60
+  /** Throttle loan interest news so the ticker doesn't flood. */
+  loanNewsCool = 0
   public = false
   sharePrice = 0
   sharesOwned = 0
@@ -537,7 +541,7 @@ export class Game {
 
   beginNew(difficulty: Difficulty) {
     this.difficulty = difficulty
-    this.cash = START_CASH[difficulty]
+    this.cash = this.sandbox ? SANDBOX_CASH : START_CASH[difficulty]
     this.site = null
     this.tiles = emptyTiles()
     this.fits = []
@@ -567,6 +571,7 @@ export class Game {
     this.startFocus = 'pax'
     this.cargoVolume = null
     this.cargoVolumeCool = 40
+    this.loanNewsCool = 0
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
@@ -1065,6 +1070,7 @@ export class Game {
   }
 
   availableLoans() {
+    if (this.sandbox) return LOAN_PRODUCTS.slice()
     const lv = this.fieldLevel()
     return LOAN_PRODUCTS.filter(
       (p) => lv >= p.minFieldLevel && this.reputation >= p.minRep,
@@ -1083,7 +1089,7 @@ export class Game {
       this.emit()
       return
     }
-    if (this.fieldLevel() < p.minFieldLevel || this.reputation < p.minRep) {
+    if (!this.sandbox && (this.fieldLevel() < p.minFieldLevel || this.reputation < p.minRep)) {
       this.pushNews(
         `${p.label} locked — need Field Lv${p.minFieldLevel}+ and rep ${p.minRep}+.`,
         'bad',
@@ -1097,6 +1103,7 @@ export class Game {
     this.loanBalance = this.loanOpened
     this.cash += p.principal
     this.interestCool = p.every
+    this.loanNewsCool = 0
     this.pushNews(
       `${p.label}: bank wired ${moneyLeft(p.principal)} (fee ${moneyLeft(p.fee)}). Owe ${moneyLeft(this.loanBalance)}.`,
       'ok',
@@ -2576,6 +2583,7 @@ export class Game {
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
       startFocus: this.startFocus,
+      sandbox: this.sandbox,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -2690,8 +2698,10 @@ export class Game {
       this.cargoWarehouse = s.cargoWarehouse ?? 0
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
+      this.sandbox = s.sandbox ?? true
       this.cargoVolume = null
       this.cargoVolumeCool = 25
+      this.loanNewsCool = 0
       this.mission = null
       this.mxOffer = null
       this.pendingThreat = null
@@ -2729,8 +2739,13 @@ export class Game {
   }
 
   spend(amount: number, label: string): boolean {
+    if (this.sandbox) {
+      if (this.cash < SANDBOX_CASH * 0.5) this.cash = SANDBOX_CASH
+      return true
+    }
     if (this.cash < amount) {
       this.pushNews(`Need ${label} — short ${Math.round(amount - this.cash)}.`, 'bad')
+      this.emit()
       return false
     }
     this.cash -= amount
@@ -2739,6 +2754,7 @@ export class Game {
 
   /** Fines / interest — may go into debt, but floors so the tape can't spiral forever. */
   charge(amount: number) {
+    if (this.sandbox) return
     this.cash -= amount
     if (this.cash < -25_000) this.cash = -25_000
   }
@@ -6023,6 +6039,10 @@ export class Game {
     return t
   }
 
+  /** Guard against StrictMode / double pointer listeners placing twice. */
+  private lastPlaceAt = 0
+  private lastPlaceKey = ''
+
   clickTile(v: Vec) {
     if (!inBounds(v.c, v.r)) return
     this.selectedTile = v
@@ -6038,6 +6058,13 @@ export class Game {
       this.emit()
       return
     }
+    // One click → one stamp (dedupe duplicate pointer listeners / StrictMode).
+    const placeKey = `${this.tool}:${v.c},${v.r}`
+    const now = performance.now()
+    if (placeKey === this.lastPlaceKey && now - this.lastPlaceAt < 120) return
+    this.lastPlaceKey = placeKey
+    this.lastPlaceAt = now
+
     if (this.tool === 'clear') {
       this.clearTile(v)
       return
@@ -8805,47 +8832,49 @@ export class Game {
       if (this.offer.deadline <= 0) this.expireOffer()
     }
 
-    if (this.loanBalance > 0) {
+    this.loanNewsCool = Math.max(0, this.loanNewsCool - step)
+    if (this.loanBalance > 0 && !this.sandbox) {
       this.interestCool -= step
       if (this.interestCool <= 0) {
         const prod =
           this.loanProduct(this.loanProductId) ??
           LOAN_PRODUCTS.find((p) => p.id === 'bridge')!
-        this.interestCool = prod.every
+        this.interestCool = Math.max(12, prod.every)
         const opened =
           this.loanOpened > 0 ? this.loanOpened : prod.principal + prod.fee
-        // Cash feels full interest; balance creeps slower and caps — pressure, not a death spiral.
         const tick = Math.max(
           prod.interestFloor,
           Math.round(this.loanBalance * prod.rate),
         )
         if (this.cash >= tick) {
+          // Paid in full — balance does NOT capitalize (was snowballing every tick).
           this.cash -= tick
+          if (this.loanNewsCool <= 0) {
+            this.pushNews(
+              `${prod.label} interest ${moneyLeft(tick)}. Owed ${moneyLeft(this.loanBalance)}.`,
+              'ok',
+            )
+            this.loanNewsCool = Math.max(40, prod.every * 0.85)
+          }
         } else {
           const paid = Math.max(0, this.cash)
           this.cash = 0
           const short = tick - paid
+          // Only unpaid shortfall capitalizes — hard-capped.
           this.loanBalance = Math.min(opened * 2.1, this.loanBalance + short)
           this.reputation = Math.max(0, this.reputation - 1.5)
-        }
-        // Carrying fee — part of the tick capitalizes, hard-capped.
-        this.loanBalance = Math.min(
-          opened * 2.1,
-          this.loanBalance + Math.round(tick * 0.35),
-        )
-        if (this.loanBalance > opened * 1.25) {
-          this.reputation = Math.max(0, this.reputation - 0.45)
-          this.pushNews(
-            `${prod.label} interest ${moneyLeft(tick)} — debt heavy (owed ${moneyLeft(this.loanBalance)}).`,
-            'bad',
-          )
-        } else {
-          this.pushNews(
-            `${prod.label} interest ${moneyLeft(tick)}. Owed ${moneyLeft(this.loanBalance)}.`,
-            'bad',
-          )
+          if (this.loanNewsCool <= 0) {
+            this.pushNews(
+              `${prod.label} interest short ${moneyLeft(short)} — debt ${moneyLeft(this.loanBalance)}.`,
+              'bad',
+            )
+            this.loanNewsCool = 25
+          }
         }
       }
+    } else if (this.sandbox && this.loanBalance > 0) {
+      // Sandbox: loan is bookkeeping only — no interest freak-out.
+      this.interestCool = 9999
     }
     // City rail soft-boosts pax demand via reputation drip.
     if (this.railLinked && Math.random() < step * 0.02) {
