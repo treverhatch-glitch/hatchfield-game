@@ -62,6 +62,7 @@ Not “place a strip and a plane lands.” A good session: sign Northline → su
 | [IDEAS.md](./IDEAS.md) | Backlog and spice |
 | [PROBLEMS.md](./PROBLEMS.md) | Gaps, bugs, honesty |
 | [ECONOMY.md](./ECONOMY.md) | Cash loops and balance |
+| [PROGRESSION.md](./PROGRESSION.md) | Airline tiers T1–T5, Field XP, loans |
 | [NEXT.md](./NEXT.md) | Ordered build plan |
 | `../ADDITIONS.md` | Research log / what shipped overnight |
 | `../README.md` | How to run |

@@ -99,6 +99,12 @@ export type AirlinePersona =
   | 'luxury'
   | 'cargo_night'
   | 'military_gov'
+
+/** Carrier size ladder — 1 commuter → 5 mega-global (CS-style unlock ladder). */
+export type AirlineTier = 1 | 2 | 3 | 4 | 5
+
+/** How the carrier makes money — cross-cuts size tiers. */
+export type AirlineBizModel = 'charter' | 'lcc' | 'full_service' | 'cargo'
 /** Ops budget lines — 0–100% of full allocation. */
 export type BudgetKey = 'maintenance' | 'security' | 'cleaning' | 'fire' | 'ambulance'
 export type Weather = 'clear' | 'rain' | 'fog' | 'storm'
@@ -175,6 +181,12 @@ export interface Airline {
   stripe: string
   kind: 'pax' | 'cargo'
   persona: AirlinePersona
+  /** Size tier 1–5 (commuter → mega). Gates offers via field level. */
+  tier: AirlineTier
+  /** Business model axis (LCC / full-service / cargo / charter). */
+  bizModel: AirlineBizModel
+  /** Typical metal for the Airlines panel. */
+  fleetBlurb: string
   landing: number
   catering: number
   bags: number
@@ -189,6 +201,25 @@ export interface Airline {
   /** How fast heat drops on bad hall outcomes (higher = thinner skin). */
   heatSensitivity: number
   procedural?: boolean
+}
+
+/** Bank product — bigger principal = higher fee, slower tick, lower rate. */
+export interface LoanProduct {
+  id: string
+  label: string
+  blurb: string
+  principal: number
+  fee: number
+  /** Fraction of balance charged each interest tick (floor also applies). */
+  rate: number
+  /** Floor cash interest per tick. */
+  interestFloor: number
+  /** Sim-seconds between interest ticks. */
+  every: number
+  /** Field level required to see / take this product. */
+  minFieldLevel: number
+  /** Soft reputation gate. */
+  minRep: number
 }
 
 /** High-heat perk unlocked per carrier — persona picks the flavor. */
@@ -624,6 +655,14 @@ export interface GameSnapshot {
   securityIncidents: number
   reputation: number
   loanBalance: number
+  /** Active loan product id (multi-loan catalog). */
+  loanProductId?: string | null
+  /** Principal wired at open — for interest floor math. */
+  loanPrincipal?: number
+  /** Principal + fee at open — hard cap base for capitalization. */
+  loanOpened?: number
+  /** Airport XP toward field level (airline tier unlocks). */
+  fieldXp?: number
   parcels: number
   railLinked: boolean
   public: boolean

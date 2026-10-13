@@ -68,6 +68,7 @@ Browser save key: `apron-save-v24`. New game overwrites it.
 | [docs/IDEAS.md](./docs/IDEAS.md) | Backlog |
 | [docs/PROBLEMS.md](./docs/PROBLEMS.md) | Gaps & pathfinding honesty |
 | [docs/ECONOMY.md](./docs/ECONOMY.md) | Money loops |
+| [docs/PROGRESSION.md](./docs/PROGRESSION.md) | Airline tiers · Field XP · loans |
 | [docs/NEXT.md](./docs/NEXT.md) | What to build next |
 | [ADDITIONS.md](./ADDITIONS.md) | Research log / shipped changelog |
 

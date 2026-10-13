@@ -22,7 +22,7 @@ Money = picture. If cash moves and nothing on screen did, the loop is wrong.
 | Contracts (fuel, catering brands) | Sign fee | Unlocks carriers |
 | Payroll (ops budgets) | ~30s | Field-load multiplier from carriers / stands / turns |
 | Landside + amenity upkeep | ~30s | Idle buildings bleed |
-| Loan interest | Ticking | Scales with balance; capitalizes when unpaid (capped) |
+| Loan interest | Ticking | **Multi-product bank** — Micro → Sovereign; fee rises with principal; one loan at a time; see [PROGRESSION.md](./PROGRESSION.md) |
 | Scramble / fines / bans / abandon | Events | Security + heat failures |
 | Research / hire (mechanics, janitors, researchers, desk) | Instant | Bodies must work for RP / scrub / MX |
 
