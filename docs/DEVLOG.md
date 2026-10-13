@@ -732,4 +732,10 @@ Cancelling a slot after the aircraft is bound now clears the walkers whose fligh
 
 The production bundle is `index-DTVGkqMq.js`, 1,605.57 kB, with `index-jic0D8bj.css`.
 
+## Contract negotiation — 13 Oct
+
+PR #44 is on this branch. A contract letter opens a side sheet: the player can counter fees, freebies, term, and deposit, and the airline accepts, grudges, or walks. Standing changes go out through the existing diplomacy adapter (`over_ask`, `hard_bargain`, `walk`, `freebie`). `src/diplomacy` is unchanged. A walk puts the carrier on the Bellwater rival card. The sheet does not take clicks meant for the field.
+
+**Tests.** `tsc -b` clean. Vitest 770 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
 
