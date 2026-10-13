@@ -719,4 +719,15 @@ A fresh passenger game showed the Northline letter (Standing 32, about 0.1 game 
 
 **Tests.** `tsc -b` clean. Vitest 757 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
 
+## Cancelled departures — 13 Oct
+
+Cancelling a slot after the aircraft is bound now clears the walkers whose flight id was already rewritten off `slot:`. Arrivals on that flight, and departures on any other flight, stay. They are marked dead, not lost.
+
+**Tests.** `tsc -b` clean. Vitest 758 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0. Missed 1 with the hall overloaded. SwiftShader minimum 9. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0. Missed 2 with the hall overloaded. SwiftShader minimum 9. |
+
 
