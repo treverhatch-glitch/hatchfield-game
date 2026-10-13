@@ -83,7 +83,8 @@ import {
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
   MIN_RUNWAY,
-  PARCEL_COST,
+  LAND_PLOT,
+  TILE_UTILITY,
   JETWAY_RANGE,
   MIL_RAMP_RANGE,
   PREMADE_TERMINAL_COST,
@@ -257,6 +258,15 @@ import {
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
+import {
+  commitPlot,
+  dailySinks,
+  nextPlotOffer,
+  restoreOwned,
+  starterHolding,
+  type OwnedPlot,
+  type PlotOffer,
+} from '../land/index.ts'
 import {
   budgetLineCost,
   cityLevy,
@@ -600,6 +610,10 @@ export class Game {
   /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
   fieldXp = 0
   parcels = 1
+  /** Owned expansion plots. Empty until the city or factory site is bought. */
+  ownedPlots: OwnedPlot[] = []
+  /** Optional outsourced pavement crew. Daily fee, faster repair. */
+  maintenanceContract = false
   railLinked = false
   hotelLevel = 0
   carParkShort = false
@@ -884,6 +898,8 @@ export class Game {
     this.loanOpened = 0
     this.fieldXp = 0
     this.parcels = 1
+    this.ownedPlots = []
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -2109,7 +2125,9 @@ export class Game {
     this.tiles = emptyTiles()
     this.seedAccessStub()
     this.speed = 1
+    this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -2308,35 +2326,130 @@ export class Game {
     this.emit()
   }
 
-  buyParcel() {
-    if (!this.site) return
-    if (this.parcels >= 4) {
-      this.pushNews('No more parcels on this map sketch.', 'bad')
-      return
+  /** Next expansion the parcel button would buy. Null when the grid is full or land is unsold. */
+  nextParcelOffer(): PlotOffer | null {
+    if (!this.site || !this.ownedPlots.length) return null
+    return nextPlotOffer(this.ownedPlots, this.fieldLevel(), LAND_PLOT)
+  }
+
+  /**
+   * Buys the cheapest adjacent plot that field level allows.
+   * Returns false when the buy does not happen.
+   */
+  buyParcel(): boolean {
+    const offer = this.nextParcelOffer()
+    if (!offer) {
+      this.pushNews(this.site ? 'No more parcels on this map.' : 'Buy land first.', 'bad')
+      this.emit()
+      return false
     }
-    // CS-style: more land needs field level (parcel 2 → Lv2, etc.).
-    const needLv = Math.min(5, this.parcels) as AirlineTier
-    if (this.fieldLevel() < needLv) {
-      this.pushNews(
-        `Parcel ${this.parcels + 1} locked — reach Field Level ${needLv} first.`,
-        'bad',
-      )
+    if (offer.locked) {
+      this.pushNews(offer.reason, 'bad')
+      this.emit()
+      return false
+    }
+    return this.buyPlot(offer.id)
+  }
+
+  buyPlot(id: string): boolean {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
+      this.emit()
+      return false
+    }
+    const quote = commitPlot(this.ownedPlots, id, this.fieldLevel(), LAND_PLOT)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(quote.price, quote.name)) return false
+    this.ownedPlots = quote.owned
+    this.parcels = this.ownedPlots.length
+    this.grantFieldXp(10, 'parcel')
+    this.reputation = Math.min(100, this.reputation + 2)
+    this.pushNews(`${quote.name} bought. Room to grow the apron.`, 'good')
+    this.emit()
+    return true
+  }
+
+  toggleMaintenanceContract() {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
       this.emit()
       return
     }
-    if (!this.spend(PARCEL_COST * this.parcels, 'land parcel')) return
-    this.parcels += 1
-    this.grantFieldXp(10, 'parcel')
-    // Paint a strip of buildable grass marker as road fringe on the east
-    const edge = 6 + this.parcels * 4
-    for (let r = 4; r < SIZE - 4; r++) {
-      if (edge < SIZE && this.tiles[r][edge] === 'grass') {
-        /* parcel unlock is soft — more cash runway later; for now reputation + news */
+    this.maintenanceContract = !this.maintenanceContract
+    this.pushNews(
+      this.maintenanceContract
+        ? `Maintenance contract signed — ${moneyLeft(LAND_PLOT.maintenanceContract)} a day, pavement repairs faster.`
+        : 'Maintenance contract cancelled.',
+      this.maintenanceContract ? 'ok' : 'bad',
+    )
+    this.emit()
+  }
+
+  /** Land tax, insurance, utilities, and licences due at the next day close. Sandbox is zero. */
+  dailyHoldingQuote(): number {
+    return this.landSinkReport().chargedTotal
+  }
+
+  private landSinkReport() {
+    const loads = this.utilityLoads()
+    const product =
+      this.loanProduct(this.loanProductId) ??
+      (this.loanBalance > 0 ? LOAN_PRODUCTS.find((row) => row.id === 'bridge') : undefined)
+    return dailySinks(
+      {
+        plots: this.site ? this.ownedPlots : [],
+        assetValue: this.builtAssetValue(),
+        incidents: this.securityIncidents,
+        fieldLevel: this.fieldLevel(),
+        operational: this.fieldIsOperating(),
+        powerLoad: loads.power,
+        waterLoad: loads.water,
+        fireStations: tilesOf(this.tiles, 'fire').length,
+        intl: this.hasHeavyRunway() || this.fieldLevel() >= 4,
+        maintenanceContract: this.maintenanceContract,
+        loanBalance: this.loanBalance,
+        loanRate: product?.rate ?? 0,
+        loanFloor: product?.interestFloor ?? 0,
+        loanEverySeconds: product?.every ?? 0,
+        sandbox: this.sandbox,
+      },
+      LAND_PLOT,
+    )
+  }
+
+  private fieldIsOperating(): boolean {
+    return Boolean(this.site) && (this.runwayStripCount() > 0 || this.signed.length > 0 || this.fits.length > 0)
+  }
+
+  private utilityLoads(): { power: number; water: number } {
+    let power = 0
+    let water = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        const load = TILE_UTILITY[tile]
+        if (!load) continue
+        power += load.power ?? 0
+        water += load.water ?? 0
       }
     }
-    this.reputation = Math.min(100, this.reputation + 2)
-    this.pushNews(`Parcel ${this.parcels} bought. Room to grow the apron.`, 'good')
-    this.emit()
+    return { power, water }
+  }
+
+  /** Replacement cost of stamped tiles, used as the insurance asset base. */
+  private builtAssetValue(): number {
+    let total = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile === 'grass') continue
+        const building = BUILDINGS.find((item) => item.tile === tile)
+        if (building) total += building.cost
+      }
+    }
+    return total
   }
 
   investRail() {
@@ -3133,6 +3246,8 @@ export class Game {
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
       parcels: this.parcels,
+      ownedPlots: this.ownedPlots,
+      maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
       carParkShort: this.carParkShort,
@@ -3245,6 +3360,9 @@ export class Game {
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
+      this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
+      if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
+      this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
       this.carParkShort = s.carParkShort ?? false
@@ -3656,13 +3774,23 @@ export class Game {
    * Pick the least-loaded claim carousel, counting live arrivals + banked slots.
    * Only inbound pax need claim planning — cargo / GA skip.
    */
-  pickClaimLane(excludeFlightId?: string | null, excludeSlotId?: string | null): number {
-    const fit = this.activeHall() ?? this.fits[0] ?? null
+  pickClaimLane(
+    excludeFlightId?: string | null,
+    excludeSlotId?: string | null,
+    fitParam?: TerminalFit | null,
+  ): number {
+    const fl = excludeFlightId ? this.flights.find((x) => x.id === excludeFlightId) : null
+    const fit =
+      fitParam ?? (fl?.stand ? this.roomsAt(fl.stand) : null) ?? this.activeHall() ?? this.fits[0] ?? null
     const n = this.claimLaneCount(fit)
     const loads = Array.from({ length: n }, () => 0)
+    const sameHall = (other: TerminalFit | null) =>
+      !fit || !other || this.hallKey(other) === this.hallKey(fit)
     for (const other of this.flights) {
       if (other.id === excludeFlightId || other.cargo || other.ga || !other.claimLane) continue
       if (other.phase === 'gone' || other.phase === 'takeoff') continue
+      const otherFit = other.stand ? this.roomsAt(other.stand) : null
+      if (!sameHall(otherFit)) continue
       const i = other.claimLane - 1
       if (i >= 0 && i < n) loads[i] += other.bagUnits ?? other.pax
     }
@@ -3670,6 +3798,8 @@ export class Game {
       if (s.id === excludeSlotId || !s.claimLane) continue
       if (s.status !== 'scheduled' && s.status !== 'delayed' && s.status !== 'inbound') continue
       if (this.airline(s.airline).kind === 'cargo') continue
+      const sFit = s.standPref ? this.roomsAt(s.standPref) : null
+      if (!sameHall(sFit)) continue
       const i = s.claimLane - 1
       if (i >= 0 && i < n) loads[i] += 40
     }
@@ -3688,7 +3818,8 @@ export class Game {
       return
     }
     if (slot.claimLane != null && slot.claimLane > 0) return
-    slot.claimLane = this.pickClaimLane(slot.flightId, slot.id)
+    const hall = slot.standPref ? this.roomsAt(slot.standPref) : null
+    slot.claimLane = this.pickClaimLane(slot.flightId, slot.id, hall)
   }
 
   /**
@@ -5296,7 +5427,7 @@ export class Game {
         g.serviceLeft = 0
         g.clearedSec = true
         if (fit) {
-          this.bumpWear('sec', lane.wearPerUse)
+          this.bumpWear('sec', lane.wearPerUse, fit)
           const laneItem = fit.items?.find((i) => String(i.def).startsWith('security'))
           if (laneItem) laneItem.wear = Math.min(100, laneItem.wear + lane.wearPerUse)
         }
@@ -6522,9 +6653,11 @@ export class Game {
       }
     }
     if (n === 'bathroom') {
+      const gFit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
       const wear = this.bumpWear(
         'bath',
         g.tag === 'budget' ? 2.8 : g.tag === 'family' ? 1.8 : 0.7,
+        gFit,
       )
       const relief = wear >= 60 ? 30 : wear >= 35 ? 42 : 55
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
@@ -8032,8 +8165,8 @@ export class Game {
     }
     this.hallGuests.push(g)
     // Transfers scuff the hall faster.
-    if (Math.random() < 0.35) this.bumpWear('bath', 0.4)
-    if (Math.random() < 0.2) this.bumpWear('sec', 0.25)
+    if (Math.random() < 0.35) this.bumpWear('bath', 0.4, fit)
+    if (Math.random() < 0.2) this.bumpWear('sec', 0.25, fit)
   }
 
   /** Soft heat drift, rewards, warnings, abandon, ban expiry. */
@@ -8106,25 +8239,26 @@ export class Game {
     this.emit()
   }
 
-  /** Budget traffic scuffs WC / security. Returns average wear after bump. */
-  bumpWear(kind: 'bath' | 'sec', amount: number): number {
+  /** Budget traffic scuffs WC / security on that hall. Returns that hall's wear. */
+  bumpWear(kind: 'bath' | 'sec', amount: number, fitParam?: TerminalFit | null): number {
     if (!this.fits.length) return 0
-    let sum = 0
-    for (const f of this.fits) {
-      if (kind === 'bath') f.wearBath = Math.min(100, (f.wearBath ?? 0) + amount)
-      else f.wearSec = Math.min(100, (f.wearSec ?? 0) + amount)
-      sum += kind === 'bath' ? f.wearBath : f.wearSec
-    }
-    return sum / this.fits.length
+    const fit = fitParam ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    if (kind === 'bath') fit.wearBath = Math.min(100, (fit.wearBath ?? 0) + amount)
+    else fit.wearSec = Math.min(100, (fit.wearSec ?? 0) + amount)
+    return kind === 'bath' ? fit.wearBath : fit.wearSec
   }
 
-  scrubHall() {
+  scrubHall(fitParam?: TerminalFit | null) {
     if (!this.fits.length) {
       this.pushNews('No hall to scrub.', 'bad')
       return
     }
-    if (this.maxWear() < 5) {
-      this.pushNews('Hall is already clean enough.', 'ok')
+    const fit = fitParam ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return
+    const wear = Math.max(fit.wearBath ?? 0, fit.wearSec ?? 0)
+    if (wear < 5) {
+      this.pushNews(`${this.hallLabel(fit)} is already clean enough.`, 'ok')
       this.emit()
       return
     }
@@ -8133,16 +8267,14 @@ export class Game {
     const cost = Math.round(HALL_SCRUB_COST * (1.35 - cleanPct * 0.35))
     if (!this.spend(cost, 'hall scrub')) return
     const cut = 30 + cleanPct * 25
-    for (const f of this.fits) {
-      f.wearBath = Math.max(0, (f.wearBath ?? 0) - cut)
-      f.wearSec = Math.max(0, (f.wearSec ?? 0) - cut * 0.9)
-      for (const it of f.items ?? []) it.wear = Math.max(0, it.wear - cut * 0.9)
-    }
+    fit.wearBath = Math.max(0, (fit.wearBath ?? 0) - cut)
+    fit.wearSec = Math.max(0, (fit.wearSec ?? 0) - cut * 0.9)
+    for (const it of fit.items ?? []) it.wear = Math.max(0, it.wear - cut * 0.9)
     this.reputation = Math.min(100, this.reputation + 2)
     this.pushNews(
       cleanPct < 0.4
-        ? 'Thin cleaning crew scrubbed — still sticky in places.'
-        : 'Crew scrubbed WC and security lanes.',
+        ? `${this.hallLabel(fit)}: thin cleaning crew scrubbed — still sticky in places.`
+        : `${this.hallLabel(fit)}: crew scrubbed WC and security lanes.`,
       cleanPct < 0.4 ? 'ok' : 'good',
     )
     this.emit()
@@ -8769,16 +8901,23 @@ export class Game {
     const fees = this.landsideIncome()
     const upkeep = this.landsideUpkeep() * 6
     if (upkeep > 0) this.charge(upkeep)
+    const holding = this.site ? this.dailyHoldingQuote() : 0
+    if (holding > 0) {
+      this.charge(holding)
+      this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
     this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
     this.landsideFeeWindow = 0
     const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (bill <= 0) {
-      if (upkeep > 0 || fees > 0) {
+      if (upkeep > 0 || fees > 0 || holding > 0) {
         this.pushNews(
-          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%).`,
-          netLand >= 0 ? 'ok' : 'bad',
+          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%)${
+            holding ? ` · land holding ${moneyLeft(holding)}` : ''
+          }.`,
+          netLand >= 0 && holding === 0 ? 'ok' : 'bad',
         )
       }
       return
@@ -8799,7 +8938,9 @@ export class Game {
           fees || upkeep
             ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (fees − expense)`
             : ''
-        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (day's income × staff floor).`,
+        }${holding ? ` · land holding ${moneyLeft(holding)}` : ''}${
+          levy ? ` · city levy ${moneyLeft(levy)}` : ''
+        } (day's income × staff floor).`,
         netLand < 0 && upkeep > 0 ? 'bad' : 'ok',
       )
       return
@@ -8874,8 +9015,15 @@ export class Game {
 
     // Funded mechanics repair.
     if (staff > 0 && mx > 0.05) {
-      const repair = dt * (0.55 + staff * 0.45) * mx * (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1)
+      const repair =
+        dt *
+        (0.55 + staff * 0.45) *
+        mx *
+        (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1) *
+        (this.maintenanceContract ? LAND_PLOT.contractRepair : 1)
       this.runwayCondition = clamp(this.runwayCondition + repair, 0, 100)
+    } else if (this.maintenanceContract && this.site) {
+      this.runwayCondition = clamp(this.runwayCondition + dt * LAND_PLOT.contractRepairRate, 0, 100)
     } else if (mx < 0.2 && Math.random() < dt * 0.04) {
       this.pushNews('Pavement soft — rubber and cracks. Hire mechanics or fund maintenance.', 'bad')
     }
@@ -10056,8 +10204,8 @@ export class Game {
     })
     scored.sort((a, b) => {
       if (a.jet !== b.jet) return a.jet ? -1 : 1
-      if (a.belt !== b.belt) return a.belt ? -1 : 1
       if (a.load !== b.load) return a.load - b.load
+      if (a.belt !== b.belt) return a.belt ? -1 : 1
       return a.d - b.d
     })
     return scored[0].s
@@ -10685,6 +10833,8 @@ export class Game {
   roomsAt(stand: Vec | null): TerminalFit | null {
     if (!this.fits.length) return null
     if (!stand) return this.fits[0]
+    const jet = this.jetwayHall(stand)
+    if (jet) return jet
     let best = this.fits[0]
     let bestD = 99
     for (const f of this.fits) {
