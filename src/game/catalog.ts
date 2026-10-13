@@ -1776,7 +1776,7 @@ export const FIELD_TASK_DEFS: FieldTaskDef[] = [
     kind: 'police',
     title: 'Police post',
     blurb: 'Stamp police on the field — security alerts get softer.',
-    bonus: 5200,
+    bonus: 12_500,
     personas: ['business', 'luxury'],
   },
   {

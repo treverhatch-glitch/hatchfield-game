@@ -7,6 +7,7 @@ import { loanProductLabel, payrollPreviewLabel, sandboxChoiceLabel } from './eco
 import {
   CONTRACT_FLEET,
   LAND,
+  FIELD_TASK_DEFS,
   LOAN_PRODUCTS,
   money,
   POLICE_COST,
@@ -270,8 +271,13 @@ describe('negotiation term and a hall shop', () => {
     const standard = fresh()
     standard.buildStarterKit()
     const cafe = itemDef('cafe')!
-    expect(standard.cash).toBeGreaterThanOrEqual(cafe.cost)
-    expect(standard.placeHallItemAt('cafe', 3, 4, 0)).toBe(true)
+    expect(cafe.cost).toBeLessThan(food.cost)
+    expect(food.cost).toBeLessThanOrEqual(6_000)
+    expect(standard.cash).toBeGreaterThanOrEqual(food.cost)
+    expect(standard.placeHallItemAt('fast_food', 3, 4, 0)).toBe(true)
+    const other = fresh()
+    other.buildStarterKit()
+    expect(other.placeHallItemAt('cafe', 3, 4, 0)).toBe(true)
   })
 })
 
@@ -303,6 +309,12 @@ describe('field ask build', () => {
     game.buildFieldTask()
     expect(game.cash).toBe(cash)
     expect(game.sites.filter((s) => s.tool === 'police')).toHaveLength(1)
+  })
+
+  it('pays a police bonus that covers the post', () => {
+    const def = FIELD_TASK_DEFS.find((d) => d.kind === 'police')!
+    expect(def.bonus).toBe(12_500)
+    expect(def.bonus).toBeGreaterThan(POLICE_COST)
   })
 })
 
