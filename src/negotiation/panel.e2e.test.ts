@@ -3,12 +3,11 @@ import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 
-const CHROME = process.env.PLAYWRIGHT_CHROME ||
-  (existsSync('/usr/local/bin/google-chrome')
-    ? '/usr/local/bin/google-chrome'
-    : existsSync('/usr/bin/google-chrome')
-      ? '/usr/bin/google-chrome'
-      : undefined)
+const CHROME_PATHS = [
+  process.env.PLAYWRIGHT_CHROME,
+  '/usr/local/bin/google-chrome',
+  '/usr/bin/google-chrome',
+].filter((path): path is string => Boolean(path))
 
 describe('negotiation panel', () => {
   it('opens and closes without blocking the field', async () => {
@@ -19,11 +18,15 @@ describe('negotiation panel', () => {
     })
     try {
       await waitForVite(vite)
-      const browser = await chromium.launch({
+      const launchOptions: Parameters<typeof chromium.launch>[0] = {
         headless: true,
-        executablePath: CHROME,
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
-      })
+      }
+      const chromePath = CHROME_PATHS.find((p) => existsSync(p))
+      if (chromePath) {
+        launchOptions.executablePath = chromePath
+      }
+      const browser = await chromium.launch(launchOptions)
       try {
         const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' })
