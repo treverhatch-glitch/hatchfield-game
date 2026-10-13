@@ -5,11 +5,11 @@ import { formatHour } from './space.ts'
 
 const clusterStyle = {
   position: 'absolute' as const,
-  right: 16,
-  bottom: 120,
+  left: 16,
+  top: 96,
   display: 'flex',
   flexDirection: 'column' as const,
-  alignItems: 'flex-end',
+  alignItems: 'flex-start',
   gap: 8,
   pointerEvents: 'none' as const,
 }
