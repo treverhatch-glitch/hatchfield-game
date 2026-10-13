@@ -1,0 +1,21 @@
+id,name,stage,unlock_level,cost,upkeep,repair_per_day,prefab_net_per_day,isolated_net_per_day,payback_days,roi_30d,ban_value,verdict
+checkin_bag,"Check-in desk w/ bag belt",checkin,1,6000,70,22.5,-94.6,1868.5,3.2,8.34,-24030,dominant
+kiosk,"Self check-in kiosk",checkin,2,4000,15,30.0,-54.7,5847.0,0.7,42.85,17470,dominant
+bag_drop,"Automatic bag drop",checkin,2,7000,25,52.5,-94.5,4603.5,1.5,18.73,0,dominant
+sec_small,"Small security lane",security,1,8000,80,37.5,-120.9,-117.5,inf,-1.00,3039672,ok
+sec_medium,"Medium security lane",security,3,18000,200,84.4,-312.5,23605.6,0.8,38.34,0,dominant
+sec_large,"Large security lane",security,4,30000,260,140.6,-447.5,48007.4,0.6,47.01,0,dominant
+bag_scanner,"Hold-bag scanner",bags,2,12000,50,67.5,2274.4,10141.3,1.2,24.35,7425540,dominant
+bag_hall,"Bag hall",bags,3,15000,80,56.3,369.2,22703.5,0.7,44.41,0,dominant
+boarding,"Boarding desk",gates,1,3000,40,8.4,-49.2,-48.4,inf,-1.00,4258478,ok
+seats,"Seat row (4)",comfort,1,600,2,5.6,-8.1,-8.1,inf,-1.00,163230,dominant
+toilet,"Toilet block",comfort,1,5000,30,56.3,-91.4,-91.4,inf,-1.00,1083115,dominant
+fids,"Flight info screen",comfort,2,800,5,2.3,-8.0,-8.0,inf,-1.00,-175129,useless
+info_desk,"Information desk",comfort,2,3000,40,8.4,-51.2,-51.2,inf,-1.00,0,useless
+lounge,"Airline lounge",comfort,4,40000,200,150.0,-400.0,-400.0,inf,-1.00,0,useless
+cafe,"Café kiosk",retail,1,4000,30,22.5,-54.6,-54.6,inf,-1.00,167693,ok
+fast_food,"Fast food",retail,2,8000,60,45.0,191.1,191.1,41.9,-0.28,35321,ok
+newsagent,"Newsagent",retail,2,6000,40,28.1,78.1,78.1,76.8,-0.61,0,ok
+restaurant,"Restaurant",retail,3,15000,90,70.3,935.0,935.0,16.0,0.87,331530,ok
+duty_free,"Duty-free",retail,4,20000,100,75.0,2671.0,2671.0,7.5,3.01,2577985,ok
+vending,"Vending machine",retail,1,800,3,7.5,-11.2,-11.2,inf,-1.00,0,useless
