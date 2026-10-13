@@ -2,13 +2,20 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 
-const CHROME = '/usr/local/bin/google-chrome'
+import { existsSync } from 'node:fs'
+
+const CHROME = existsSync('/usr/local/bin/google-chrome')
+  ? '/usr/local/bin/google-chrome'
+  : existsSync('/usr/bin/google-chrome')
+    ? '/usr/bin/google-chrome'
+    : undefined
 
 describe('negotiation panel', () => {
   it('opens and closes without blocking the field', async () => {
     const port = 46117
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-      cwd: '/workspace',
+      cwd: process.cwd(),
+      shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
