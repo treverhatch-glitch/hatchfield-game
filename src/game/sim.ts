@@ -1,4 +1,9 @@
 import {
+  GameDiplomacyAdapter,
+  StandingAdvisor,
+  type StandingCauseCategory,
+} from './standingAdvisor.ts'
+import {
   AIRLINES,
   airlineList,
   BAG_DROP_PAY,
@@ -523,6 +528,13 @@ const FINANCING_CATEGORIES = new Set([
 ])
 
 export class Game {
+  standingAdvisor: StandingAdvisor = new StandingAdvisor(
+    new GameDiplomacyAdapter(
+      (id) => this.standingOf(id),
+      () => this.signed,
+      (id) => this.banThreshold(id),
+    ),
+  )
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
   cash: number = START_CASH.easy
@@ -1685,7 +1697,10 @@ export class Game {
     return Math.max(0, (this.airlineBanUntil[id] ?? 0) - this.clock)
   }
 
-  adjustHeat(id: AirlineId, delta: number) {
+  adjustHeat(id: AirlineId, delta: number, cause?: StandingCauseCategory) {
+    if (delta < 0) {
+      this.standingAdvisor.recordCauseImpact(id, cause ?? 'hall_amenities', delta)
+    }
     const a = this.airline(id)
     let h = this.heatOf(id)
     if (delta < 0) h += delta * a.heatSensitivity
@@ -4661,9 +4676,10 @@ export class Game {
     if (!plan || plan.closed) return
     plan.closed = true
     const pending = `slot:${slotId}`
+    const bound = plan.flightId
     for (const g of this.hallGuests) {
       if (g.dead || g.job !== 'depart') continue
-      if (g.flightId === pending) {
+      if (g.flightId === pending || (bound != null && g.flightId === bound)) {
         g.dead = true
         g.thought = 'Flight cancelled'
       }
@@ -7120,7 +7136,7 @@ export class Game {
     s.status = 'cancelled'
     this.abandonShowUp(s.id)
     // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
-    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2)
+    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2, 'schedule')
     this.pushNews(
       `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} Standing ${Math.round(this.standingOf(s.airline))}. Bank clears, relations don't.`,
       'bad',
@@ -8010,6 +8026,7 @@ export class Game {
 
   /** Soft heat drift, rewards, warnings, abandon, ban expiry. */
   tickAirlineRelations(dt: number) {
+    this.standingAdvisor.tick(this.clock, dt, (id) => this.airline(id).kind === 'cargo')
     for (const id of [...this.signed]) {
       if (this.isBanned(id)) continue
       // Slow recovery toward 70 when not in crisis.
