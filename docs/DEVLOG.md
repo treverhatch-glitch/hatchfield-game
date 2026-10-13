@@ -198,3 +198,62 @@ Same branch. Three commits: a test safety net, the Cities-style UI, and aircraft
 - `docs/devlog/media/SLICE-A-departure.png` — same jet rotating for departure
 - `docs/devlog/media/SLICE-A-ui.webm` — short UI pass (about 6 s)
 - `docs/devlog/media/SLICE-A-departure.webm` — approach through departure (about 26 s)
+
+## HUD redesign — 13 Oct 2026
+
+The old dock kept a build tray and a tall sheet over the apron. The new HUD is a 32px status strip, one centered category bar, and a single side panel. Picking a stamp closes the menu. `H`, backtick, or `?clean=1` hides everything.
+
+**Checks.** Playwright at 1920×1080 and 1366×768 (`scripts/ui-redesign-check.mts`). 30/30 on the screen-budget checklist. Vitest 22 passing, including the uiStore rules (one menu or panel, select closes the menu, Esc order, scale clamp).
+
+**Bugs.** Three new ones. BUG-007 and BUG-008 are fixed. BUG-009 is still open because undo would mean a history stack in the sim.
+
+### BUG-007 — Esc after a stamp opened Selection
+
+**Severity:** Medium.
+
+**What you see:** You pick a stand, click the grass, press Esc, and a Selection panel is sitting on the right. Esc was supposed to leave the field clear.
+
+**Repro:** Stands → Stand M → click a grass cell → Esc.
+
+**Fix:** A placement click is not treated as a later Select click. Returning the tool to Select does not open a panel.
+
+**After:** `UI-REDESIGN-after-placing.png`. The acceptance check A6 now sees no menu and no panel.
+
+### BUG-008 — Asset menu over the 12% budget at 1366×768
+
+**Severity:** Low.
+
+**What you see:** On a 1366×768 window the Stands menu, strip, and bar together covered 12.71% of the screen. The cap is 12%.
+
+**Repro:** Open Stands at 1366×768 and sample the HUD boxes.
+
+**Fix:** The menu is capped at 54% of the width and 10.6% of the height. Remeasured coverage is 11.29%. At 1920×1080 it is 8.88%.
+
+### BUG-009 — Ctrl+Z has no history
+
+**Severity:** Low.
+
+**What you see:** Ctrl+Z posts “Undo has no history yet.” The stamp stays.
+
+**Repro:** Place anything, press Ctrl+Z.
+
+**Fix:** None in this pass. The sim has no command history, and this slice does not edit `sim.ts`. The shortcut is wired so it does not do nothing silently.
+
+## Media
+
+- `docs/devlog/media/UI-REDESIGN-before-idle.png`
+- `docs/devlog/media/UI-REDESIGN-before-menu.png`
+- `docs/devlog/media/UI-REDESIGN-before-hover.png`
+- `docs/devlog/media/UI-REDESIGN-before-panel.png`
+- `docs/devlog/media/UI-REDESIGN-after-idle.png`
+- `docs/devlog/media/UI-REDESIGN-after-menu.png`
+- `docs/devlog/media/UI-REDESIGN-after-hover.png`
+- `docs/devlog/media/UI-REDESIGN-after-placing.png`
+- `docs/devlog/media/UI-REDESIGN-after-panel.png`
+- `docs/devlog/media/UI-REDESIGN-after-info.png`
+- `docs/devlog/media/UI-REDESIGN-after-hidden.png`
+- `docs/devlog/media/UI-REDESIGN-after-1366-idle.png`
+- `docs/devlog/media/UI-REDESIGN-after-1366-menu.png`
+- `docs/devlog/media/UI-REDESIGN-after-1366-panel.png`
+- `docs/devlog/media/UI-REDESIGN-airfield.webm` — UI hidden, camera pans across the apron (about 4 s)
+

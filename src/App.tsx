@@ -118,6 +118,7 @@ export default function App() {
         game.speed,
         game.tool,
         game.facing,
+        game.selectedTile ? `${game.selectedTile.c},${game.selectedTile.r}` : '',
         game.site,
         game.view,
         game.offer?.airline,

@@ -72,7 +72,7 @@ export function TerminalView({ game }: { game: Game }) {
       <canvas ref={ref} className="hall-canvas" />
       <div className="hall-chrome">
         <p className="muted">
-          3D hall · WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit · Esc/H apron
+          3D hall · WASD/arrows pan · Q/E rotate · scroll zoom · Esc leaves · V apron · H hides UI
           {game.hasSecurityChoke()
             ? ' · security choke live'
             : ' · NO SECURITY — checkpoint missing'}
