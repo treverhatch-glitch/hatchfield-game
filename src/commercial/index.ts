@@ -43,6 +43,7 @@ export type {
 export {
   BAGS_PER_BAG,
   CATERING_MEALS_PER_CART,
+  cateringTurnFee,
   KITCHEN_FEE_PER_MEAL,
   DEFAULT_FEE_SCHEDULE,
   ELASTICITY_KEYS,

@@ -960,6 +960,12 @@ export interface GameSnapshot {
   /** First-session "open the build tray" step. Missing on older saves. */
   buildTrayOpened?: boolean
   fieldTask?: FieldTask | null
+  /** Letter keys the player dismissed. Missing on older saves. */
+  ackedLetters?: string[]
+  /** Opening kit budget released so the player can build the field by hand. */
+  starterFreehand?: boolean
+  /** Set once the starter kit is paid for, so the button stays hidden after a reload. */
+  starterKitStamped?: boolean
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
   /** Live volume letter — must survive a refresh or the contract vanishes. */

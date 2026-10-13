@@ -123,10 +123,12 @@ import {
   JANITOR_HIRE,
   RESEARCHER_HIRE,
   DESK_STAFF_HIRE,
+  CONTRACT_FLEET,
   RP_RATE_BARE,
   RP_RATE_BOARD,
   RP_RATE_DESK,
   RP_RATE_MACHINE,
+  RP_RATE_OPS,
   ROOMS,
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
@@ -248,7 +250,7 @@ import {
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
 import { NegotiationBridge } from './negotiationBridge.ts'
-import { SERVICE_IDS, ULCC_IDS } from '../negotiation/index.ts'
+import { NEGOTIATION, SERVICE_IDS, ULCC_IDS, negotiatedBagTurnFee } from '../negotiation/index.ts'
 import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
 import { PriceWar, composeRivalWalkIn } from '../rival/index.ts'
 import type { WarChoice } from '../rival/index.ts'
@@ -293,6 +295,7 @@ import {
   scaleAdvice,
   seedLitresFromLoads,
   sizeTierOf,
+  tierOpen,
   standClassForTool,
   standScaleForTool,
   tankDef,
@@ -420,6 +423,7 @@ import {
   restoreLeads,
   restoreTier,
   scaleListed,
+  cateringTurnFee,
   serviceCharge,
   settleHeld,
   signDeposit,
@@ -531,6 +535,7 @@ import {
   jetAirframesBlocked,
   jetAirframesFitting,
   bagUnitsForAirframe,
+  contractedAirframes,
   fuelDwellSeconds,
   paxForAirframe,
   pickAirframe,
@@ -942,8 +947,8 @@ export class Game {
   cityCargoCool = 8
   /** New Game focus — biases starter kit + early letters. */
   startFocus: StartFocus = 'pax'
-  /** Dev sandbox — unlimited money (default ON for trial builds). */
-  sandbox = true
+  /** Dev sandbox — unlimited money. Off on the title; that choice is standard cash. */
+  sandbox = false
   /** Active cargo volume window letter. */
   cargoVolume: CargoVolumeJob | null = null
   cargoVolumeCool = 40
@@ -1170,6 +1175,15 @@ export class Game {
   /** Active airline field ask (CEO-style task clock). */
   fieldTask: FieldTask | null = null
   fieldTaskCool = 28
+  /**
+   * Letters the player put away. Keyed so a new ask (new id) can appear,
+   * while "Got it" on the same field letter does not bring it straight back.
+   */
+  ackedLetters: string[] = []
+  /** Player chose to build the first field by hand, releasing the kit budget. */
+  starterFreehand = false
+  /** The starter kit has been paid for. The button stays hidden after that. */
+  starterKitStamped = false
   /** Night curfew news / slip rate-limit. */
   nightCurfewCool = 0
   /** Rate-limit cascade headlines so the ticker stays readable. */
@@ -1452,6 +1466,9 @@ export class Game {
     this.firstTakeoffNoted = false
     this.fieldTask = null
     this.fieldTaskCool = 28
+    this.ackedLetters = []
+    this.starterFreehand = false
+    this.starterKitStamped = false
     this.nightCurfewCool = 0
     this.cascadeNewsCool = 0
     this.stormPulseCool = 0
@@ -1680,6 +1697,205 @@ export class Game {
     return Math.max(0, this.fieldTask.deadline - this.clock)
   }
 
+  /** Cost of the building or hire a field ask is pointing at. Numbers stay in the catalogs. */
+  private quoteFieldTask(kind: FieldTaskKind): {
+    cost: number
+    label: string
+    tool?: Tool
+    hire?: 'desk' | 'janitor'
+    hallItem?: ItemId
+  } {
+    const building = (tool: Tool) => {
+      const row = BUILDINGS.find((b) => b.tool === tool)
+      return { cost: row?.cost ?? 0, label: row?.name ?? tool, tool }
+    }
+    switch (kind) {
+      case 'police':
+        return building('police')
+      case 'fire':
+        return building('fire')
+      case 'hangar':
+        return building('hangar')
+      case 'cargo':
+        return building('cargo')
+      case 'helipad':
+        return building('helipad')
+      case 'hotel':
+        return building('hotel_inn')
+      case 'park':
+        return building('park_s')
+      case 'food': {
+        const cafe = itemDef('cafe')
+        return { cost: cafe?.cost ?? 0, label: cafe?.name ?? 'Café', hallItem: 'cafe' }
+      }
+      case 'bathroom': {
+        const toilet = itemDef('toilet')
+        return { cost: toilet?.cost ?? 0, label: toilet?.name ?? 'Toilet', hallItem: 'toilet' }
+      }
+      case 'desk':
+      case 'desk_extra':
+        return { cost: DESK_STAFF_HIRE, label: 'Desk agent', hire: 'desk' }
+      case 'janitor':
+        return { cost: JANITOR_HIRE, label: 'Janitor', hire: 'janitor' }
+      default:
+        return { cost: 0, label: kind }
+    }
+  }
+
+  /** Build line for the open field letter: cost against the bonus, off when the cash is short. */
+  fieldAskOffer(): { cost: number; bonus: number; text: string; enabled: boolean } | null {
+    const task = this.fieldTask
+    if (!task) return null
+    const offer = this.quoteFieldTask(task.kind)
+    const busy = offer.tool ? this.sites.some((s) => s.tool === offer.tool) : false
+    const enabled = (this.sandbox || this.cash >= offer.cost) && !busy
+    return {
+      cost: offer.cost,
+      bonus: task.bonus,
+      text: `Build · ${moneyLeft(offer.cost)} cost / ${moneyLeft(task.bonus)} bonus`,
+      enabled,
+    }
+  }
+
+  /** Stamp or hire the open field ask. A second stamp waits while that contractor is driving in. */
+  buildFieldTask() {
+    const task = this.fieldTask
+    if (!task) return
+    const offer = this.quoteFieldTask(task.kind)
+    if (!this.sandbox && this.cash < offer.cost) {
+      this.pushNews(
+        `Need ${moneyLeft(offer.cost)} for ${offer.label}. The bonus is ${moneyLeft(task.bonus)}.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    if (offer.hire === 'desk') {
+      this.hireDeskStaff()
+      return
+    }
+    if (offer.hire === 'janitor') {
+      this.hireJanitor()
+      return
+    }
+    if (offer.hallItem) {
+      this.placeHallItem(offer.hallItem)
+      return
+    }
+    if (!offer.tool) return
+    if (this.sites.some((s) => s.tool === offer.tool)) {
+      this.pushNews(
+        `${offer.label} is already a construction site — a contractor is driving in.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const cell = this.cellForStamp(offer.tool)
+    if (!cell) {
+      this.pushNews(`No open grass for ${offer.label}.`, 'bad')
+      this.emit()
+      return
+    }
+    const prev = this.tool
+    this.tool = offer.tool
+    this.placeSingle(cell)
+    this.tool = prev
+  }
+
+  /** First legal grass cell for a tool, including a road edge when the stamp needs one. */
+  private cellForStamp(tool: Tool): Vec | null {
+    const building = BUILDINGS.find((b) => b.tool === tool)
+    if (!building) return null
+    const landside =
+      building.tile === 'hotel' ||
+      building.tile === 'park_s' ||
+      building.tile === 'park_l' ||
+      building.tile === 'park_g' ||
+      building.tile === 'park_u' ||
+      building.tile === 'bus' ||
+      building.tile === 'rail' ||
+      building.tile === 'guard'
+    const besidePavement =
+      building.tile === 'fuel' ||
+      building.tile === 'kitchen' ||
+      building.tile === 'depot' ||
+      building.tile === 'deice'
+    for (let r = 1; r < this.tiles.length - 1; r++) {
+      for (let c = 1; c < this.tiles[r].length - 1; c++) {
+        const v = { c, r }
+        if (this.tile(v) !== 'grass' || this.siteAt(v)) continue
+        if (landside) {
+          const nearRoad = [
+            { c: c + 1, r },
+            { c: c - 1, r },
+            { c, r: r + 1 },
+            { c, r: r - 1 },
+          ].some((p) => this.tile(p) === 'road')
+          if (!nearRoad) continue
+        }
+        if (besidePavement && !farmBesidePavement(this.tiles, v)) continue
+        return v
+      }
+    }
+    return null
+  }
+
+  /** Hide one letter. The underlying ask keeps running until it is done or late. */
+  ackLetter(key: string) {
+    if (!key || this.ackedLetters.includes(key)) return
+    this.ackedLetters.push(key)
+    if (this.ackedLetters.length > 40) this.ackedLetters.splice(0, this.ackedLetters.length - 40)
+    this.emit()
+  }
+
+  letterAcked(key: string): boolean {
+    return this.ackedLetters.includes(key)
+  }
+
+  /** Strip plus a stand — the starter kit, or a freehand field, is on the plot. */
+  starterFieldUp(): boolean {
+    return runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+  }
+
+  /** The opening kit button. Hidden once the kit is stamped or the field is already up. */
+  showStarterKit(): boolean {
+    return !this.starterKitStamped && !this.starterFieldUp()
+  }
+
+  /**
+   * Opening cash held for the starter kit. Lifts once the field is up, a hall
+   * is already on the plot, or the player chooses Build freehand.
+   */
+  starterKitProtected(): boolean {
+    if (this.sandbox || this.starterFreehand || !this.site) return false
+    if (this.starterFieldUp()) return false
+    if (this.fits.length > 0) return false
+    return true
+  }
+
+  /** Release the kit budget so a hand-built strip is a choice, not a trap. */
+  chooseFreehand() {
+    if (this.starterFreehand) return
+    this.starterFreehand = true
+    this.pushNews(
+      'Building freehand. The starter kit budget is released — the kit still stamps an empty field.',
+      'ok',
+    )
+    this.emit()
+  }
+
+  /** Runway, stand, or hall stamps on a fresh plot are what make the kit refuse. */
+  private openingStampBlocked(what: string): boolean {
+    if (!this.starterKitProtected()) return false
+    this.pushNews(
+      `${what} would block the starter kit. Stamp the kit ($${STARTER_KIT_COST.toLocaleString('en-US')}) or choose Build freehand.`,
+      'bad',
+    )
+    this.emit()
+    return true
+  }
+
   cargoVolumeLeft(): number {
     if (!this.cargoVolume) return 0
     return Math.max(0, this.cargoVolume.deadline - this.clock)
@@ -1842,7 +2058,11 @@ export class Game {
         bizModel: 'lcc',
         tier: 2,
         landing: negotiated.posted.landing,
-        bags: Math.round(negotiated.posted.bags),
+        bags: negotiatedBagTurnFee(
+          negotiated.posted.bags,
+          negotiated.seats,
+          NEGOTIATION.economics.loadFactor,
+        ),
         catering: negotiated.posted.catering,
         paxMin: Math.round(negotiated.seats * 0.75),
         paxMax: negotiated.seats,
@@ -2880,6 +3100,20 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
+    const contracted = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    if (contracted.length) {
+      const counts = new Map<AircraftKind, number>()
+      for (const af of contracted) counts.set(af.kind, (counts.get(af.kind) ?? 0) + 1)
+      let best = contracted[0].kind
+      let n = 0
+      for (const [kind, count] of counts) {
+        if (count > n) {
+          best = kind
+          n = count
+        }
+      }
+      return best
+    }
     // Opening: the first small carrier flies regional metal, which the prefab can turn.
     // A second signature, or the clock leaving the opening, brings the normal mix back.
     if (this.clock < OPENING_SEC && this.signed.length <= 1 && a.kind === 'pax' && a.tier <= 2) {
@@ -3070,11 +3304,18 @@ export class Game {
       this.pushNews('Buy land first.', 'bad')
       return
     }
-    if (runwayStrips(this.tiles, MIN_RUNWAY).length) {
-      this.pushNews('Field already has a runway — kit is for empty plots.', 'bad')
+    if (this.fits.length > 0 || tilesOf(this.tiles, 'terminal').length > 0) {
+      this.pushNews('The plot already has a hall — the starter kit is for an empty field.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.starterFieldUp()) {
+      this.pushNews('Field already has a strip and a stand — the starter kit is for an empty plot.', 'bad')
+      this.emit()
       return
     }
     if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
+    this.starterKitStamped = true
 
     if (this.startFocus === 'cargo') {
       this.buildCargoStarterKit()
@@ -4235,6 +4476,9 @@ export class Game {
       hintPrefs: this.hintPrefs,
       buildTrayOpened: this.buildTrayOpened,
       fieldTask: this.fieldTask,
+      ackedLetters: this.ackedLetters,
+      starterFreehand: this.starterFreehand,
+      starterKitStamped: this.starterKitStamped,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
@@ -4421,6 +4665,9 @@ export class Game {
       this.firstTakeoffNoted = this.flightsDone >= 1
       this.fieldTask = s.fieldTask ?? null
       this.fieldTaskCool = this.fieldTask ? 0 : 18
+      this.ackedLetters = s.ackedLetters ?? []
+      this.starterFreehand = s.starterFreehand ?? false
+      this.starterKitStamped = s.starterKitStamped ?? false
       this.nightCurfewCool = 0
       this.hubOffer = null
       this.hubOfferCool = 40
@@ -4438,7 +4685,7 @@ export class Game {
       this.cargoWarehouse = s.cargoWarehouse ?? 0
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
-      this.sandbox = s.sandbox ?? true
+      this.sandbox = s.sandbox ?? false
       this.sites = s.sites ?? []
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
@@ -4504,6 +4751,18 @@ export class Game {
     if (this.sandbox) {
       if (this.cash < SANDBOX_CASH * 0.5) this.cash = SANDBOX_CASH
       return true
+    }
+    if (
+      label !== 'starter kit' &&
+      this.starterKitProtected() &&
+      this.cash - amount < STARTER_KIT_COST
+    ) {
+      this.pushNews(
+        `Hold $${STARTER_KIT_COST.toLocaleString('en-US')} for the starter kit. ${label} would spend it — stamp the kit or choose Build freehand.`,
+        'bad',
+      )
+      this.emit()
+      return false
     }
     if (this.cash < amount) {
       this.pushNews(`Need ${label} — short ${Math.round(amount - this.cash)}.`, 'bad')
@@ -7182,7 +7441,7 @@ export class Game {
   }
 
   private sessionSnapshot() {
-    const fieldUp = runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+    const fieldUp = this.starterFieldUp()
     return {
       fieldUp,
       signed: this.signed.length,
@@ -9826,6 +10085,30 @@ export class Game {
     return { af: smaller, blocked: null }
   }
 
+  /**
+   * Spawn the airplane the contract sold. A 9–19 seat carrier stays on that
+   * metal; a short pillar holds the slot instead of substituting a 737.
+   */
+  private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
+    const a = this.airline(airlineId)
+    if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
+    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    if (!pool.length) return this.pickOperable(this.pickAircraftKind(airlineId), false)
+    const level = this.fieldLevel()
+    const research = this.researchUnlocked
+    const runway = this.longestRunway()
+    const fit = pool.filter(
+      (af) =>
+        (af.minRunway === 0 || runway >= af.minRunway) &&
+        (!af.research || research.includes(af.research)) &&
+        tierOpen(af.id, level, research) &&
+        this.scaleReport(af.id).ok,
+    )
+    if (fit.length) return { af: fit[Math.floor(Math.random() * fit.length)]!, blocked: null }
+    const raw = pool.find((af) => af.minRunway === 0 || runway >= af.minRunway) ?? pool[0]
+    return { af: null, blocked: raw ? this.scaleReport(raw.id) : null }
+  }
+
   private scaleAdviceItems(): Advice[] {
     return scaleAdvice(this.pillarField(), this.pillarState()).map((h) => ({
       id: h.id,
@@ -10404,15 +10687,36 @@ export class Game {
   }
 
   acceptNegotiation() {
-    const session = this.negotiationBridge?.desk.session
-    if (!session || session.status !== 'open') {
+    if (!this.offer) {
+      this.pushNews('No contract letter is open.', 'bad')
+      this.emit()
+      return
+    }
+    const id = this.offer.airline
+    const name = this.airline(id).name
+    const miss = this.missingReq(id)
+    if (miss.length) {
+      this.pushNews(`${name} will not sign yet — still need ${miss.join(', ')}.`, 'bad')
+      this.emit()
+      return
+    }
+    const bridge = this.negotiationDesk()
+    const session = bridge.desk.session
+    if (!session || session.status !== 'open' || session.airlineId !== id) {
+      bridge.openNamed(id)
+    }
+    const open = bridge.desk.session
+    if (!open || open.status !== 'open' || open.airlineId !== id) {
       this.acceptOffer()
       return
     }
-    const result = this.negotiationDesk().accept()
+    const result = bridge.accept()
     if (result.outcome === 'signed') this.acceptOffer()
     else if (result.outcome === 'walked') this.clearWalkedOffer()
-    else this.emit()
+    else if (!result.note) {
+      this.pushNews(`${name} did not sign.`, 'bad')
+      this.emit()
+    } else this.emit()
   }
 
   counterNegotiation() {
@@ -10561,13 +10865,15 @@ export class Game {
     let n = hub ? scaled + 1 : scaled
     const limit = inOpeningBank ? openingLimit : null
     if (limit != null) {
+      const openish = (s: { status: string }) =>
+        s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound'
       const openPax = this.schedule.filter(
-        (s) =>
-          (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
-          this.airline(s.airline).kind !== 'cargo' &&
-          s.eta < OPENING_SEC,
+        (s) => openish(s) && this.airline(s.airline).kind !== 'cargo' && s.eta < OPENING_SEC,
       ).length
-      n = Math.max(0, Math.min(n, limit - openPax))
+      const mine = this.schedule.filter((s) => s.airline === airlineId && openish(s)).length
+      // A brand-new signature still writes one slot. The cap holds every slot after that.
+      const room = Math.max(limit - openPax, mine === 0 ? 1 : 0)
+      n = Math.max(0, Math.min(n, room))
     }
     if (n <= 0) return
     let eta = t
@@ -11786,8 +12092,14 @@ export class Game {
     return { desks, boards, machines }
   }
 
-  /** RP/sec when every researcher is working the current lab. */
-  researchRate(): number {
+  /** RP/sec from turning the field, before a researcher is hired. */
+  opsResearchRate(): number {
+    if (!this.starterFieldUp()) return 0
+    return RP_RATE_OPS
+  }
+
+  /** RP/sec from hired researchers and lab furniture. */
+  labResearchRate(): number {
     if (this.researchers < 1) return 0
     const { desks, boards, machines } = this.labGear()
     const stations = Math.max(1, desks + boards + machines)
@@ -11802,6 +12114,11 @@ export class Game {
     // Extra warm bodies beyond gear still drip a little.
     const overflow = Math.max(0, this.researchers - workingCap) * RP_RATE_BARE
     return gear + overflow
+  }
+
+  /** RP/sec the research desk should show: operations trickle plus the lab. */
+  researchRate(): number {
+    return this.opsResearchRate() + this.labResearchRate()
   }
 
   hireResearcher() {
@@ -11983,7 +12300,7 @@ export class Game {
       p.y = lerp(p.y, ty, 1 - Math.pow(0.1, dt))
     }
 
-    const rate = this.researchRate()
+    const rate = this.labResearchRate()
     const staff = this.people.filter((p) => p.job === 'researcher')
     const workFrac = staff.length ? working / staff.length : 0
     // Night lab is quieter — half drip; off-shift bodies don't bank RP.
@@ -13490,6 +13807,7 @@ export class Game {
   }
 
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
+    if (this.openingStampBlocked('A runway')) return
     if (klass === 'heavy') {
       const need = unlockLevel('runway_heavy')
       if (this.fieldLevel() < need) {
@@ -13521,6 +13839,11 @@ export class Game {
           : RUNWAY_PREFAB_COST
     const label =
       klass === 'heavy' ? 'heavy runway' : klass === 'short' ? 'short runway' : 'runway'
+    if (this.sites.some((s) => s.kind === 'runway')) {
+      this.pushNews('A runway is already a construction site — a contractor is driving in.', 'bad')
+      this.emit()
+      return
+    }
     if (!this.spend(cost, label)) {
       this.emit()
       return
@@ -13538,12 +13861,14 @@ export class Game {
       cost,
       name: label,
       news,
+      tool: klass === 'heavy' ? 'runway_heavy' : klass === 'short' ? 'runway_short' : 'runway',
       runwayClass: klass,
       origin: v,
     })
   }
 
   placeTerminal(v: Vec) {
+    if (this.openingStampBlocked('A terminal shell')) return
     const cells = [
       v,
       { c: v.c + 1, r: v.r },
@@ -13552,6 +13877,11 @@ export class Game {
     ]
     if (cells.some((p) => this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 2×2 for the shell.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.sites.some((s) => s.tool === 'terminal')) {
+      this.pushNews('A terminal shell is already a construction site — a contractor is driving in.', 'bad')
       this.emit()
       return
     }
@@ -13565,17 +13895,24 @@ export class Game {
       tile: 'terminal',
       cost: TERMINAL_COST,
       name: 'terminal shell',
+      tool: 'terminal',
       origin: v,
     })
   }
 
   placePremade(v: Vec) {
+    if (this.openingStampBlocked('A premade hall')) return
     const cells: Vec[] = []
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
     }
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.sites.some((s) => s.tool === 'premade')) {
+      this.pushNews('A premade hall is already a construction site — a contractor is driving in.', 'bad')
       this.emit()
       return
     }
@@ -13589,6 +13926,7 @@ export class Game {
       tile: 'terminal',
       cost: PREMADE_TERMINAL_COST,
       name: 'premade terminal',
+      tool: 'premade',
       origin: v,
     })
   }
@@ -13596,6 +13934,7 @@ export class Game {
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
+    if (building.tile === 'stand' && this.openingStampBlocked('A stand')) return
     const needLevel = Math.max(building.minFieldLevel ?? 1, unlockLevel(building.tool))
     if (this.fieldLevel() < needLevel) {
       this.pushNews(`${building.name} needs Field level ${needLevel}.`, 'bad')
@@ -13714,6 +14053,14 @@ export class Game {
     const stampCost = jetwayStand
       ? Math.round(building.cost * STAND_JETWAY_MULT)
       : building.cost
+    if (this.sites.some((s) => s.tool === building.tool)) {
+      this.pushNews(
+        `${building.name} is already a construction site — a contractor is driving in.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
     if (!this.spend(stampCost, jetwayStand ? `${building.name} + jetway` : building.name)) {
       this.emit()
       return
@@ -14185,8 +14532,7 @@ export class Game {
 
     const airlineId = slot.airline
     const def = this.airline(airlineId)
-    const preferred = this.pickAircraftKind(airlineId)
-    const picked = this.pickOperable(preferred, def.kind === 'cargo')
+    const picked = this.pickForAirline(airlineId, def.kind === 'cargo')
     const af = picked.af
     if (!af) {
       const hint = picked.blocked?.hints[0]
@@ -15195,7 +15541,12 @@ export class Game {
       f.posted.catering = true
       f.caterLevel = 1
       f.waitingOn.catering = false
-      const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
+      const pay = cateringTurnFee(
+        airline.catering,
+        CATER[this.caterBrand].payoutMult,
+        f.pax,
+        DEFAULT_FEE_SCHEDULE.cateringPerCart,
+      )
       this.earn(
         this.contractBill(f, this.listed(pay, 'cateringPerCart'), 'service', 'catering'),
         `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
@@ -15623,8 +15974,7 @@ export class Game {
   private spawnEmergencyDivert(airline: AirlineId): boolean {
     if (this.isBanned(airline)) return false
     if (this.groundBusy() && !this.assignStand()) return false
-    const preferred = this.pickAircraftKind(airline)
-    const af = this.pickOperable(preferred, this.airline(airline).kind === 'cargo').af
+    const af = this.pickForAirline(airline, this.airline(airline).kind === 'cargo').af
     if (!af) return false
     const stand = this.assignStand(null, undefined, airline, af.id)
     const route = stand ? this.landingRoute(stand) : null
@@ -16514,6 +16864,8 @@ export class Game {
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)
+    const opsRp = this.opsResearchRate()
+    if (opsRp > 0) this.researchPoints += opsRp * step
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
