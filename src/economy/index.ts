@@ -1,7 +1,15 @@
 export { createEconomyAdapter } from './adapter'
 export type { EconomyAdapter, EconomyAdapterOptions, EconomyHost } from './adapter'
-export { runHeadlessBalance } from './balance'
-export type { BalanceReport } from './balance'
+export {
+  cashGrowthMultiple,
+  closeDayCash,
+  dayExpenses,
+  dayMargin,
+  projectCashFlow,
+  runHeadlessBalance,
+  sampleOperatingMargins,
+} from './balance'
+export type { BalanceReport, CashFlowPicture, DayCashFlow, OperatingMarginSample } from './balance'
 export { analyzeChains, createFailure } from './bottlenecks'
 export { createInitialEconomyState, DEFAULT_ECONOMY_CONFIG, EconomyEngine } from './engine'
 export type { EconomyListener } from './engine'
