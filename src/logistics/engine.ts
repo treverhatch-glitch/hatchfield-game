@@ -1,3 +1,4 @@
+import { Maintenance, type MaintenanceMetrics, type WearState } from './maintenance'
 import { needsFor } from './needs'
 import { RoadGraph } from './roads'
 import type {
@@ -38,6 +39,10 @@ export type VehiclePhase =
   | 'servicing'
   | 'to_dropoff'
   | 'unloading'
+  | 'broken'
+  | 'towed'
+  | 'to_maintenance'
+  | 'in_bay'
 
 export interface VehicleState {
   id: string
@@ -53,6 +58,8 @@ export interface VehicleState {
   serving: number
   /** Amount this vehicle was dispatched for but hasn't picked up yet. */
   reserved: number
+  /** Condition, wear and breakdown state (maintenance). */
+  wear: WearState
 }
 
 interface ServiceRequest {
@@ -162,7 +169,18 @@ export class LogisticsSim {
   fuelLitres: number
   meals: number
   readonly vehicles: VehicleState[] = []
-  readonly ledger: Ledger = { fuelSales: 0, cateringFees: 0, fuelPurchase: 0, mealProduction: 0, vehicleUpkeep: 0 }
+  readonly ledger: Ledger = {
+    fuelSales: 0,
+    cateringFees: 0,
+    fuelPurchase: 0,
+    mealProduction: 0,
+    vehicleUpkeep: 0,
+    maintenancePreventive: 0,
+    maintenanceRepair: 0,
+    maintenanceUpkeep: 0,
+  }
+  /** Present when config.maintenance is set. */
+  readonly maintenance: Maintenance | null = null
   private readonly stands = new Map<string, StandConfig>()
   private readonly turnarounds = new Map<string, TurnaroundState>()
   private readonly byStand = new Map<string, string>()
@@ -201,12 +219,67 @@ export class LogisticsSim {
           requestId: null,
           serving: 0,
           reserved: 0,
+          wear: Maintenance.freshWear(0),
         })
       }
+    }
+    if (config.maintenance) {
+      this.maintenance = new Maintenance(
+        {
+          now: () => this.now,
+          roads: this.roads,
+          vehicles: this.vehicles,
+          baseSpeed: (type) => config.vehicleSpecs[type].speedKmh,
+          emit: (e) => this.emit(e),
+          money: (amount, category) => this.money(amount, category),
+          releaseJob: (v) => this.releaseJob(v as VehicleState),
+          hasOpenWork: (type) =>
+            this.requests.some(
+              (r) =>
+                r.vehicle === type &&
+                (r.mode === 'carry' || r.mode === 'onsite'
+                  ? !this.vehicles.some((v) => v.requestId === r.id)
+                  : this.openAmount(r) > EPS),
+            ),
+          setIdle: (v) => this.idle(v as VehicleState),
+          redispatch: () => this.dispatch(),
+        },
+        config.maintenance,
+      )
     }
   }
 
   // ---------------------------------------------------------------- public API
+
+  /** Maintenance metrics and advisor hints (null when maintenance is off). */
+  maintenanceMetrics(): MaintenanceMetrics | null {
+    return this.maintenance?.metrics() ?? null
+  }
+
+  /** Stand usable (not failed from neglect). */
+  standAvailable(standId: string): boolean {
+    return this.maintenance?.standAvailable(standId) ?? true
+  }
+
+  /**
+   * Knock out working vehicles of a type right away (external events such as a
+   * random fuel-truck failure). With durationMin they come back by themselves.
+   */
+  forceBreakdown(type: VehicleType, count = 1, durationMin?: number): string[] {
+    const m = this.maintenance
+    if (!m) return []
+    const pool = this.vehicles
+      .filter((v) => v.type === type && v.phase !== 'broken' && v.phase !== 'towed' && v.phase !== 'in_bay')
+      .sort((a, b) => a.wear.condition - b.wear.condition || (a.id < b.id ? -1 : 1))
+      .slice(0, count)
+    for (const v of pool) m.breakDown(v, 'event', durationMin)
+    return pool.map((v) => v.id)
+  }
+
+  /** Working vehicles of a type (for external event odds). */
+  workingVehicles(type: VehicleType): number {
+    return this.vehicles.filter((v) => v.type === type && v.phase !== 'broken' && v.phase !== 'towed' && v.phase !== 'in_bay').length
+  }
 
   on(listener: LogisticsListener): () => void {
     this.listeners.push(listener)
@@ -223,7 +296,16 @@ export class LogisticsSim {
 
   get profit(): number {
     const l = this.ledger
-    return l.fuelSales + l.cateringFees - l.fuelPurchase - l.mealProduction - l.vehicleUpkeep
+    return (
+      l.fuelSales +
+      l.cateringFees -
+      l.fuelPurchase -
+      l.mealProduction -
+      l.vehicleUpkeep -
+      l.maintenancePreventive -
+      l.maintenanceRepair -
+      l.maintenanceUpkeep
+    )
   }
 
   get inboundLitres(): number {
@@ -238,6 +320,7 @@ export class LogisticsSim {
     const stand = this.stands.get(standId)
     if (!stand) throw new Error(`Unknown stand: ${standId}`)
     if (this.byStand.has(standId)) throw new Error(`Stand ${standId} already has a turnaround`)
+    if (!this.standAvailable(standId)) throw new Error(`Stand ${standId} is out of service`)
     const needs = needsFor(airframeId)
     const cfg = this.config
     const kind: FlightKind = opts.kind ?? 'turn'
@@ -452,6 +535,9 @@ export class LogisticsSim {
       fuel_purchase: 'fuelPurchase',
       meal_production: 'mealProduction',
       vehicle_upkeep: 'vehicleUpkeep',
+      maintenance_preventive: 'maintenancePreventive',
+      maintenance_repair: 'maintenanceRepair',
+      maintenance_upkeep: 'maintenanceUpkeep',
     }
     this.ledger[key[category]] += Math.abs(amount)
     this.emit({ type: 'money', time: this.now, amount, category })
@@ -507,7 +593,7 @@ export class LogisticsSim {
         this.addRequest(t, s, n.loader!, 'onsite', 1)
         return
       case 'fuel':
-        if (this.stand(t).hydrant) this.tryHydrant(t)
+        if (this.hasHydrant(t)) this.tryHydrant(t)
         else this.addRequest(t, s, 'fuel_truck', 'carry', n.fuelLitres)
         return
       case 'catering':
@@ -623,6 +709,7 @@ export class LogisticsSim {
     if (!t.loaderVehicle) return
     if (!HOLD_SERVICES.every((s) => this.isDone(t, s))) return
     const v = this.vehicles.find((x) => x.id === t.loaderVehicle)!
+    this.maintenance?.onUse(v)
     const req = this.request(v)
     if (req) this.requests.splice(this.requests.indexOf(req), 1)
     this.idle(v)
@@ -813,7 +900,11 @@ export class LogisticsSim {
       if (x > this.now + EPS && x < next) next = x
       else if (x <= this.now + EPS && x < next) next = this.now
     }
-    for (const v of this.vehicles) consider(v.phaseEnd)
+    for (const v of this.vehicles) {
+      consider(v.phaseEnd)
+      if (v.wear.breakAt !== null) consider(v.wear.breakAt)
+    }
+    if (this.maintenance) consider(this.maintenance.nextEventTime())
     for (const h of this.timers) consider(h.end)
     for (const d of this.deliveries) consider(d.eta)
     for (const t of this.turnarounds.values()) {
@@ -848,6 +939,7 @@ export class LogisticsSim {
     let upkeep = 0
     for (const v of this.vehicles) upkeep += (this.config.vehicleSpecs[v.type].upkeepPerDay * dt) / 1440
     this.money(-upkeep, 'vehicle_upkeep')
+    this.maintenance?.advanceContinuous(dt)
     for (const t of this.turnarounds.values()) {
       if (t.completedAt !== null || t.services.boarding !== 'active') continue
       const p = t.pax
@@ -928,11 +1020,17 @@ export class LogisticsSim {
       changed = true
     }
     for (const v of this.vehicles) {
+      if (v.wear.breakAt !== null && due(v.wear.breakAt)) {
+        this.maintenance!.breakDown(v)
+        changed = true
+        continue
+      }
       if (due(v.phaseEnd)) {
         this.advanceVehicle(v)
         changed = true
       }
     }
+    if (this.maintenance?.processDue()) changed = true
     return changed
   }
 
@@ -947,7 +1045,7 @@ export class LogisticsSim {
   }
 
   private speed(v: VehicleState): number {
-    return this.config.vehicleSpecs[v.type].speedKmh
+    return this.config.vehicleSpecs[v.type].speedKmh * (this.maintenance?.speedFactor(v) ?? 1)
   }
 
   private advanceVehicle(v: VehicleState): void {
@@ -991,13 +1089,44 @@ export class LogisticsSim {
         return
       }
       default:
+        this.maintenance?.advance(v)
         return
     }
   }
 
   private travel(v: VehicleState, phase: VehiclePhase, dest: string): void {
     v.phase = phase
-    v.phaseEnd = this.now + this.roads.travelMinutes(v.node, dest, this.speed(v))
+    const mins = this.roads.travelMinutes(v.node, dest, this.speed(v))
+    v.phaseEnd = this.now + mins
+    this.maintenance?.onTravel(v, v.node, dest, mins)
+  }
+
+  /** A vehicle broke down mid-job: hand the work back to the queue. */
+  private releaseJob(v: VehicleState): void {
+    const r = this.request(v)
+    v.requestId = null
+    const reserved = v.reserved
+    v.reserved = 0
+    v.serving = 0
+    if (!r) return
+    const t = this.turnarounds.get(r.turnaroundId)!
+    t.causes.add('vehicle_breakdown')
+    if (r.mode === 'in' || r.mode === 'out') r.reserved = Math.max(0, r.reserved - reserved)
+    if (r.mode === 'in' && v.load > 0) {
+      // Pax / bags / cargo go back to the gate, make-up or shed for the next vehicle.
+      r.inTransit -= v.load
+      v.load = 0
+    }
+    if (r.mode === 'out' && v.load > 0) {
+      // Already off the aircraft: transferred to another vehicle on the spot.
+      const n = Math.round(v.load)
+      if (r.service === 'deplane') this.emit({ type: 'pax_deplaned', time: this.now, standId: r.standId, count: n })
+      else if (r.service === 'bag_unload') this.emit({ type: 'bags_to_claim', time: this.now, standId: r.standId, count: n })
+      else if (r.service === 'cargo_unload') this.emit({ type: 'cargo_to_area', time: this.now, standId: r.standId, kg: n })
+      v.load = 0
+      this.checkOutDone(r)
+    }
+    if ((r.mode === 'carry' || r.mode === 'onsite') && t.services[r.service] === 'active') t.services[r.service] = 'pending'
   }
 
   private idle(v: VehicleState): void {
@@ -1116,6 +1245,7 @@ export class LogisticsSim {
 
   private finishAtStand(v: VehicleState, r: ServiceRequest): void {
     const t = this.turnarounds.get(r.turnaroundId)!
+    this.maintenance?.onUse(v)
     if (r.mode === 'onsite') {
       this.dropRequest(r)
       this.idle(v)
@@ -1195,8 +1325,12 @@ export class LogisticsSim {
       else this.idle(v)
     }
     for (const t of this.turnarounds.values()) {
-      if (t.completedAt === null && t.services.fuel === 'pending' && this.stand(t).hydrant) this.tryHydrant(t)
+      if (t.completedAt === null && t.services.fuel === 'pending' && this.hasHydrant(t)) this.tryHydrant(t)
     }
+  }
+
+  private hasHydrant(t: TurnaroundState): boolean {
+    return this.stand(t).hydrant && (this.maintenance?.hydrantWorking(t.standId) ?? true) && !this.requests.some((r) => r.turnaroundId === t.id && r.service === 'fuel')
   }
 
   private tryHydrant(t: TurnaroundState): void {
@@ -1232,6 +1366,7 @@ export class LogisticsSim {
     if (t.completedAt !== null) return
     t.completedAt = this.now
     this.byStand.delete(t.standId)
+    this.maintenance?.onTurnaroundComplete(t.standId)
     for (const r of this.requests.slice()) {
       if (r.turnaroundId === t.id && !this.vehicles.some((v) => v.requestId === r.id)) this.dropRequest(r)
     }
@@ -1289,6 +1424,7 @@ export class LogisticsSim {
         else this.travel(best, 'to_stand', dest)
       }
     }
+    this.maintenance?.afterDispatch()
   }
 
   private visitsSource(v: VehicleState, r: ServiceRequest): boolean {

@@ -4,6 +4,8 @@ import type { RoadEdge, RoadNode } from './types'
 export class RoadGraph {
   private readonly adj = new Map<string, { to: string; len: number }[]>()
   private readonly cache = new Map<string, Map<string, number>>()
+  /** Extra metres for passing through a node (e.g. a broken-down truck in the lane). */
+  private readonly penalties = new Map<string, number>()
 
   constructor(nodes: RoadNode[], edges: RoadEdge[]) {
     const pos = new Map<string, RoadNode>()
@@ -23,6 +25,17 @@ export class RoadGraph {
 
   has(id: string): boolean {
     return this.adj.has(id)
+  }
+
+  /** Add (or clear with 0) a pass-through penalty at a node. Invalidates cached paths. */
+  setPenalty(node: string, metres: number): void {
+    if (metres > 0) this.penalties.set(node, metres)
+    else if (!this.penalties.delete(node)) return
+    this.cache.clear()
+  }
+
+  penaltyAt(node: string): number {
+    return this.penalties.get(node) ?? 0
   }
 
   /** Shortest distance in metres, Infinity when unreachable. */
@@ -58,7 +71,7 @@ export class RoadGraph {
       if (best === null) return dist
       done.add(best)
       for (const { to, len } of this.adj.get(best)!) {
-        const nd = bestD + len
+        const nd = bestD + len + (this.penalties.get(to) ?? 0)
         if (nd < (dist.get(to) ?? Infinity)) dist.set(to, nd)
       }
     }

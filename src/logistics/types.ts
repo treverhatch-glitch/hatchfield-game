@@ -1,3 +1,5 @@
+import type { FacilityKind, FacilityStatus, MaintenanceConfig, CrewType } from './maintenance'
+
 /** Shared types for the ground-logistics module. All times are in sim minutes. */
 
 export type VehicleType =
@@ -171,6 +173,8 @@ export interface LogisticsConfig {
   hydrantPumpLpm: number
   pax: PaxConfig
   hold: HoldConfig
+  /** Wear, breakdowns, servicing and facility upkeep. Omit to switch maintenance off. */
+  maintenance?: MaintenanceConfig
 }
 
 export interface TurnaroundNeeds {
@@ -217,6 +221,7 @@ export type DelayCause =
   | 'late_pax'
   | 'late_bags'
   | 'bag_offload'
+  | 'vehicle_breakdown'
 
 export type LogisticsEvent =
   | { type: 'truck_arrive'; time: number; vehicleId: string; vehicle: VehicleType; standId: string }
@@ -235,8 +240,28 @@ export type LogisticsEvent =
   | { type: 'delivery_arrived'; time: number; litres: number; vehicleId: string }
   | { type: 'turnaround_complete'; time: number; standId: string; turnaroundId: string; delayMinutes: number; causes: DelayCause[] }
   | { type: 'money'; time: number; amount: number; category: MoneyCategory }
+  | { type: 'vehicle_breakdown'; time: number; vehicleId: string; vehicle: VehicleType; node: string; condition: number; reason: 'wear' | 'event' }
+  | { type: 'vehicle_repaired'; time: number; vehicleId: string; vehicle: VehicleType; inPlace: boolean }
+  | { type: 'vehicle_serviced'; time: number; vehicleId: string; vehicle: VehicleType; repair: boolean }
+  | { type: 'crew_dispatched'; time: number; crewId: string; crew: CrewType; job: 'repair' | 'tow' | 'facility' | 'inspect'; target: string }
+  | { type: 'tow_start'; time: number; crewId: string; vehicleId: string }
+  | { type: 'facility_status'; time: number; facilityId: string; kind: FacilityKind; status: FacilityStatus; condition: number }
+  | { type: 'facility_repaired'; time: number; facilityId: string; cost: number }
+  | { type: 'runway_fod'; time: number; runwayId: string }
+  | { type: 'runway_closed'; time: number; runwayId: string; reason: 'fod' | 'inspection' }
+  | { type: 'runway_reopened'; time: number; runwayId: string }
+  | { type: 'safety_incident'; time: number; what: string; ratingHit: number }
+  | { type: 'pax_mood_hit'; time: number; facilityId: string; amount: number }
 
-export type MoneyCategory = 'fuel_sales' | 'catering_fees' | 'fuel_purchase' | 'meal_production' | 'vehicle_upkeep'
+export type MoneyCategory =
+  | 'fuel_sales'
+  | 'catering_fees'
+  | 'fuel_purchase'
+  | 'meal_production'
+  | 'vehicle_upkeep'
+  | 'maintenance_preventive'
+  | 'maintenance_repair'
+  | 'maintenance_upkeep'
 
 export interface Ledger {
   fuelSales: number
@@ -244,4 +269,7 @@ export interface Ledger {
   fuelPurchase: number
   mealProduction: number
   vehicleUpkeep: number
+  maintenancePreventive: number
+  maintenanceRepair: number
+  maintenanceUpkeep: number
 }
