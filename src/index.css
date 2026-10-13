@@ -47,7 +47,7 @@ button {
 .view-layer.dim {
   opacity: 0;
   pointer-events: none;
-  filter: blur(3px);
+  /* No blur — filter:blur on a full WebGL layer was a major hitch source. */
 }
 
 .field,
@@ -607,6 +607,62 @@ button {
   /* Above coach / offers so tool clicks always land. */
   z-index: 30;
   pointer-events: auto;
+}
+
+.build-menus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.build-menus button {
+  background: rgba(18, 36, 28, 0.95);
+  color: #c9d4c8;
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.build-menus button.on {
+  background: #c9a227;
+  color: #1a1406;
+  border-color: #e6c85a;
+}
+
+.build-tray button {
+  min-width: 72px;
+}
+
+.hall-wrap {
+  position: absolute;
+  inset: 0;
+}
+
+.hall-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.hall-chrome {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  right: 340px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hall-chrome .muted {
+  background: rgba(10, 20, 16, 0.72);
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
 
 .hint {

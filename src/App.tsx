@@ -112,7 +112,7 @@ export default function App() {
         game.sharePrice,
         game.sharesOwned,
         game.mission?.id,
-        Math.floor(game.clock),
+        Math.floor(game.clock / 2),
         game.flights[0]?.phase,
         game.flights[0]?.airframeId,
         game.hallGuests.length,

@@ -107,7 +107,10 @@ export interface HallGuest {
   preferMode?: ArriveMode
 }
 
-/** Past the secure line — uncleared departures may not enter. */
+/**
+ * Past the secure line — uncleared departures may not enter.
+ * Claim is airside (arrivals corridor); landside is only doors / info / check-in / WC / labs / exit.
+ */
 export const AIRSIDE_NODES: ReadonlySet<HallNode> = new Set([
   'food',
   'shop',
@@ -119,11 +122,25 @@ export const AIRSIDE_NODES: ReadonlySet<HallNode> = new Set([
   'spa',
   'pool',
   'gate',
+  'claim',
 ])
 
 export function isAirside(node: HallNode): boolean {
   return AIRSIDE_NODES.has(node)
 }
+
+/** Strict landside set — only these sit before the security choke. */
+export const LANDSIDE_NODES: ReadonlySet<HallNode> = new Set([
+  'entrance',
+  'info',
+  'checkin',
+  'bathroom',
+  'exit',
+  'lab_desk',
+  'lab_board',
+  'lab_bench',
+  'security', // choke itself
+])
 
 /** Desk posts that can be staffed with bodies. */
 export type StaffPost = 'checkin' | 'security' | 'gate'
@@ -147,21 +164,33 @@ export function openForGuest(open: Set<HallNode>, cleared: boolean): Set<HallNod
   return s
 }
 
-/** Undirected hall graph — edges are decision points. */
+/**
+ * Undirected hall graph — security is the only landside→airside choke.
+ * Premade fills security; player shells without it leave airside unreachable
+ * (or invite breach / smuggling events when they force gaps).
+ */
 export const HALL_EDGES: [HallNode, HallNode][] = [
+  // LANDSIDE — doors, info, check-in, WC only
+  ['entrance', 'info'],
   ['entrance', 'checkin'],
-  ['entrance', 'claim'],
   ['entrance', 'bathroom'],
-  ['checkin', 'security'],
+  ['info', 'checkin'],
+  ['info', 'bathroom'],
   ['checkin', 'bathroom'],
+  // CHOKE — only bridges into the sterile side
+  ['checkin', 'security'],
+  ['info', 'security'],
+  // AIRSIDE — after security (info reappears as airside hub via security)
   ['security', 'food'],
   ['security', 'shop'],
   ['security', 'lounge'],
   ['security', 'gate'],
   ['security', 'gaming'],
+  ['security', 'spa'],
+  ['security', 'dayhotel'],
   ['food', 'shop'],
-  ['food', 'bathroom'],
   ['food', 'waterfall'],
+  ['food', 'lounge'],
   ['shop', 'lounge'],
   ['shop', 'gaming'],
   ['lounge', 'gate'],
@@ -180,15 +209,13 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['spa', 'pool'],
   ['pool', 'gate'],
   ['pool', 'waterfall'],
+  // Arrivals corridor (clearedSec already true)
+  ['gate', 'claim'],
   ['claim', 'exit'],
   ['claim', 'food'],
   ['claim', 'shop'],
-  ['claim', 'bathroom'],
-  ['entrance', 'info'],
-  ['checkin', 'info'],
-  ['security', 'info'],
   ['exit', 'entrance'],
-  // Landside R&D corner — short spur off doors/info (not guest need targets).
+  // Landside R&D spur
   ['entrance', 'lab_desk'],
   ['info', 'lab_desk'],
   ['lab_desk', 'lab_board'],
@@ -196,27 +223,28 @@ export const HALL_EDGES: [HallNode, HallNode][] = [
   ['lab_desk', 'lab_bench'],
 ]
 
+/** Normalized floor plan (x/z in hall 3D + legacy 2D). */
 export const NODE_POS: Record<HallNode, { x: number; y: number; label: string }> = {
-  entrance: { x: 0.12, y: 0.55, label: 'Doors' },
+  entrance: { x: 0.1, y: 0.5, label: 'Doors' },
+  info: { x: 0.22, y: 0.42, label: 'Info' },
   checkin: { x: 0.28, y: 0.28, label: 'Check-in' },
-  security: { x: 0.48, y: 0.28, label: 'Security' },
-  bathroom: { x: 0.32, y: 0.72, label: 'WC' },
-  food: { x: 0.58, y: 0.55, label: 'Food' },
-  shop: { x: 0.72, y: 0.38, label: 'Shop' },
-  lounge: { x: 0.72, y: 0.68, label: 'Lounge' },
-  golf: { x: 0.82, y: 0.82, label: 'Golf' },
-  waterfall: { x: 0.62, y: 0.88, label: 'Falls' },
-  gaming: { x: 0.84, y: 0.48, label: 'Games' },
-  dayhotel: { x: 0.78, y: 0.58, label: 'Day rooms' },
-  spa: { x: 0.68, y: 0.48, label: 'Spa' },
-  pool: { x: 0.86, y: 0.68, label: 'Pool' },
+  bathroom: { x: 0.26, y: 0.68, label: 'WC' },
+  security: { x: 0.42, y: 0.4, label: 'Security' },
+  food: { x: 0.58, y: 0.52, label: 'Food' },
+  shop: { x: 0.68, y: 0.36, label: 'Shop' },
+  lounge: { x: 0.7, y: 0.64, label: 'Lounge' },
+  golf: { x: 0.82, y: 0.78, label: 'Golf' },
+  waterfall: { x: 0.62, y: 0.82, label: 'Falls' },
+  gaming: { x: 0.8, y: 0.46, label: 'Games' },
+  dayhotel: { x: 0.76, y: 0.56, label: 'Day rooms' },
+  spa: { x: 0.66, y: 0.48, label: 'Spa' },
+  pool: { x: 0.86, y: 0.64, label: 'Pool' },
   gate: { x: 0.9, y: 0.28, label: 'Gate' },
-  claim: { x: 0.48, y: 0.78, label: 'Bag claim' },
-  info: { x: 0.22, y: 0.48, label: 'Info' },
-  exit: { x: 0.12, y: 0.82, label: 'Landside' },
+  claim: { x: 0.72, y: 0.78, label: 'Bag claim' },
+  exit: { x: 0.12, y: 0.78, label: 'Exit' },
   lab_desk: { x: 0.08, y: 0.22, label: 'R&D desk' },
-  lab_board: { x: 0.18, y: 0.14, label: 'Chalkboard' },
-  lab_bench: { x: 0.28, y: 0.16, label: 'Lab bench' },
+  lab_board: { x: 0.16, y: 0.14, label: 'Chalkboard' },
+  lab_bench: { x: 0.24, y: 0.16, label: 'Lab bench' },
 }
 
 const NAMES = [

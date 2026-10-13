@@ -132,35 +132,36 @@ export class World {
       antialias: true,
       powerPreference: 'high-performance',
     })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFShadowMap
+    this.renderer.shadowMap.type = THREE.BasicShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#87b7d9')
-    this.scene.fog = new THREE.Fog('#9fc5dd', 80, 240)
+    this.scene.fog = new THREE.Fog('#9fc5dd', 90, 220)
 
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 500)
     this.placeCam()
 
     const hemi = new THREE.HemisphereLight('#e8f3ff', '#6b8a4a', 0.85)
     this.scene.add(hemi)
-    this.sun = new THREE.DirectionalLight('#fff3d4', 1.35)
+    this.sun = new THREE.DirectionalLight('#fff3d4', 1.2)
     this.sun.position.set(40, 70, 18)
     this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(2048, 2048)
+    this.sun.shadow.mapSize.set(1024, 1024)
     this.sun.shadow.camera.near = 10
-    this.sun.shadow.camera.far = 180
-    this.sun.shadow.camera.left = -70
-    this.sun.shadow.camera.right = 70
-    this.sun.shadow.camera.top = 70
-    this.sun.shadow.camera.bottom = -70
+    this.sun.shadow.camera.far = 160
+    this.sun.shadow.camera.left = -60
+    this.sun.shadow.camera.right = 60
+    this.sun.shadow.camera.top = 60
+    this.sun.shadow.camera.bottom = -60
     this.scene.add(this.sun)
-    this.scene.add(new THREE.AmbientLight('#b9c9a8', 0.22))
+    this.scene.add(new THREE.AmbientLight('#b9c9a8', 0.28))
 
     const earth = new THREE.Mesh(
       new THREE.CircleGeometry(220, 48),
