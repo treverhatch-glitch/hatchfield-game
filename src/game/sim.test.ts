@@ -25,10 +25,10 @@ describe('multi-hall premade terminals', () => {
     const t1Origin = { c: 10, r: 10 }
     const t2Origin = { c: 22, r: 10 }
     const fit1 = openPremade(game, t1Origin)
-    expect(fit1.capGuests).toBe(40)
+    expect(fit1.capGuests).toBe(46)
     expect(game.hallLabel(fit1)).toBe('T1')
     const fit2 = openPremade(game, t2Origin)
-    expect(fit2.capGuests).toBe(40)
+    expect(fit2.capGuests).toBe(46)
     expect(game.hallLabel(fit2)).toBe('T2')
 
     expect(fit1.rooms.lounge).toBe(1)

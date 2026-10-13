@@ -830,13 +830,13 @@ function addHelo(frame: Frame) {
       const angle = (i / blades) * Math.PI * 2
       matrices.push(
         compose(
-          Math.cos(angle) * spec.rotor * 0.48,
+          Math.cos(angle) * spec.rotor * 0.5,
           0.02,
-          Math.sin(angle) * spec.rotor * 0.48,
+          Math.sin(angle) * spec.rotor * 0.5,
           0,
           -angle,
           0,
-          spec.rotor * 0.92,
+          spec.rotor,
           0.06,
           0.18,
         ),
@@ -881,13 +881,13 @@ function addHelo(frame: Frame) {
         const angle = Math.PI / (extra + 1) + (i * Math.PI) / extra
         matrices.push(
           compose(
-            Math.cos(angle) * spec.rotor * 0.48,
+            Math.cos(angle) * spec.rotor * 0.5,
             0.05,
-            Math.sin(angle) * spec.rotor * 0.48,
+            Math.sin(angle) * spec.rotor * 0.5,
             0,
             -angle,
             0,
-            spec.rotor * 0.9,
+            spec.rotor,
             0.05,
             0.16,
           ),

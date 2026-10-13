@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { CameraChrome } from './camera/chrome.tsx'
+import { cameraSession } from './camera/session.ts'
 import { perfEnd, perfStart } from './core/perf'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
@@ -8,6 +10,7 @@ import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { OfferPanel } from './negotiation/OfferPanel'
 import { PriceWarCard } from './rival/PriceWarCard'
+import { PlaytestYearPanel } from './reports/PlaytestYearPanel'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -172,6 +175,7 @@ function hudSnapshot(): string {
         game.hintPrefs.allEnabled ? 1 : 0,
         game.enableHintsAtStart ? 1 : 0,
         game.sidePanel,
+        game.playtestYear.rev,
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
@@ -179,6 +183,12 @@ function hudSnapshot(): string {
         Math.round(game.tycoonDemand() * 100),
         Math.round(game.tycoonAirlineInterest() * 100),
       ].join('|')
+}
+
+function PlaytestYearMount({ game }: { game: Game }) {
+  const report = game.playtestYearCard()
+  if (!report) return null
+  return <PlaytestYearPanel report={report} onDismiss={() => game.dismissPlaytestYear()} />
 }
 
 function CanvasLayers() {
@@ -209,6 +219,8 @@ function PlayChrome() {
       <Hud game={game} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
+      <PlaytestYearMount game={game} />
+      <CameraChrome view={game.view} clockOf={() => game.clock} />
     </>
   )
 }
@@ -241,10 +253,12 @@ export default function App() {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       const t0 = perfStart()
-      try {
-        game.tick(dt)
-      } catch (err) {
-        console.error('tick failed', err)
+      if (!cameraSession.frozen) {
+        try {
+          game.tick(dt)
+        } catch (err) {
+          console.error('tick failed', err)
+        }
       }
       perfEnd('sim.tick', t0)
       raf = requestAnimationFrame(loop)
