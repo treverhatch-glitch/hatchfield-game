@@ -738,4 +738,10 @@ PR #44 is on this branch. A contract letter opens a side sheet: the player can c
 
 **Tests.** `tsc -b` clean. Vitest 770 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-CmmzvVsS.js`, 1,636.12 kB, with `index-eP-pqaTd.css`.
 
+## Payroll shortfall — 13 Oct
+
+PR #45 is on this branch and closes #26. A covered payroll bill, including a remainder that prints as $0, does not post a shortfall line. A partial payment names due minus cash paid. An empty bank still says the payroll was missed entirely and does not write `paid $0`. Reputation and the maintenance and security sliders move only when that unpaid amount is a real dollar.
+
+**Tests.** `tsc -b` clean. Vitest 771 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
 
