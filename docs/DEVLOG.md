@@ -308,3 +308,9 @@ The Design Advisor shows a low farm, a kitchen that is empty or missing, and a l
 - `docs/devlog/media/SLICE-D-advisor.png` — "Catering kitchen running low" with the place-a-kitchen fix
 - `docs/devlog/media/SLICE-D-ramp.png` — service trucks on the apron, chrome hidden
 - `docs/devlog/media/SLICE-D-ramp.webm` — those trucks driving the service road, chrome hidden, about 6 s
+
+### BUG-010 — Sandbox paid the city levy
+
+**What you see:** Sandbox cash starts at $9,999,999. Every payroll tick (about every 30 seconds) the city levy takes 3% of everything above $140,000. After buying the city plot the pile is $9,904,999, and the levy is $292,950. The trial bank drains by about $293,000 a tick.
+
+**Fix:** Sandbox is exempt. A normal game still pays. Easy cash after land and the starter kit is $77,000, and standard after land is $55,000, so both sit under the $140,000 floor and pay nothing. A grown field at $150,000 pays $300, at $220,000 pays $2,400, and at $500,000 pays $10,800. That is 3% of the surplus only, once per payroll tick.
