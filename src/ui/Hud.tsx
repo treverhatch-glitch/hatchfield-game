@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PremiumPanel } from './PremiumPanel.tsx'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
@@ -136,6 +137,7 @@ type PanelId =
   | 'planner'
   | 'services'
   | 'settings'
+  | 'premium'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -195,6 +197,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
   { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
+  { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
 ]
 
 export function Hud({ game }: { game: Game }) {
@@ -1746,6 +1749,8 @@ export function Hud({ game }: { game: Game }) {
                   </section>
                 </>
               ) : null}
+
+              {panel === 'premium' ? <PremiumPanel game={game} /> : null}
 
               {panel === 'services' ? (
                 <>
