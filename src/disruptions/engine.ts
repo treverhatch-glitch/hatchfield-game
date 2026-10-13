@@ -177,7 +177,7 @@ export class DisruptionEngine {
     return this.feed
   }
 
-  /** Cards the UI should show. Dismissed and recovered stay in history only. */
+  /** Engine history. The player-facing card is the alert stack. */
   visible(): FeedItem[] {
     return this.feed.filter((item) => item.status === 'live' || item.status === 'minimised' || item.status === 'ignored')
   }

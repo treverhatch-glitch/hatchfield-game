@@ -23,7 +23,7 @@ import {
 } from './core.ts';
 import type { EngineCore } from './core.ts';
 import { createPromise } from './demands.ts';
-import { TRAITS } from './data.ts';
+import { AGENDAS, TRAITS } from './data.ts';
 import { hashString, nextFloat } from './rng.ts';
 import { alliesOf, evaluate, rivalsOf } from './relations.ts';
 import { modifierCurrent } from './standing.ts';
@@ -54,11 +54,20 @@ export function firstMeetScene(core: EngineCore, airlineId: string): FirstMeetSc
   if (!rel || !rel.keyFigure || rel.firstMeetDone) return null;
   const kf = rel.keyFigure;
   const onTime = core.ctx.metrics.onTimePct;
-  const traitText = kf.traits.map((t) => TRAITS[t].label.toLowerCase()).join(' and ');
+  const fact = onTime !== undefined ? `your on-time rate is ${Math.round(onTime)}%` : 'you are new to the circuit';
+  const rep = core.ctx.reputation;
+  const heard =
+    rep !== undefined
+      ? `What they've heard: reputation ${Math.round(rep)}, and ${fact}.`
+      : `What they've heard: ${fact}.`;
   return {
     airlineId,
-    greeting: [`${kf.name}, ${kf.title} of ${rel.name}: "${TRAITS[kf.traits[0]].flavour}"`, `Known to be ${traitText}.`],
-    heard: onTime !== undefined ? `What they've heard: your on-time rate is ${Math.round(onTime)}%.` : "What they've heard: you are new to the circuit.",
+    greeting: [
+      `${kf.name}, ${kf.title} of ${rel.name}.`,
+      `"${TRAITS[kf.traits[0]].flavour}"`,
+      `${AGENDAS[kf.agenda].label}.`
+    ],
+    heard,
     choices: ['formal', 'warm', 'bold', 'tour']
   };
 }

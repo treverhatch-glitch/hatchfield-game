@@ -12,6 +12,7 @@ import type {
   Grade,
   HostileAction,
   OperationalEffects,
+  CounterLineKey,
   ProposalResponse
 } from './types.ts';
 
@@ -50,7 +51,12 @@ export interface DiplomacyAdapter {
   onFeeChange(newFeeIndex: number): void;
   /** Serious incident on one airline's flight (-20 standing for 24 months). */
   onIncident(airlineId: string, label: string, showMe?: string): void;
-  respondToProposal(proposalId: string, response: ProposalResponse, payWith?: 'money' | 'favour'): ActionResult;
+  respondToProposal(
+    proposalId: string,
+    response: ProposalResponse,
+    payWith?: 'money' | 'favour',
+    ticks?: CounterLineKey[]
+  ): ActionResult;
   cards(): AirlineCard[];
   save(): string;
   load(json: string): void;
@@ -117,8 +123,8 @@ export function createDiplomacyAdapter(
     onIncident(airlineId, label, showMe) {
       engine.recordIncident(airlineId, label, showMe);
     },
-    respondToProposal(proposalId, response, payWith) {
-      return engine.respondToProposal(proposalId, response, payWith);
+    respondToProposal(proposalId, response, payWith, ticks) {
+      return engine.respondToProposal(proposalId, response, payWith, ticks);
     },
     cards: () => engine.cards(),
     save: () => engine.serialize(),
