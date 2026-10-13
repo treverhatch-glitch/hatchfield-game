@@ -46,6 +46,20 @@ export function payrollAmount(lineCosts: readonly number[], opsMult: number): nu
   return Math.round(total * opsMult)
 }
 
+/** City levy starts on cash above this. Opening banks (easy and standard, after land) sit under it. */
+export const CITY_LEVY_FLOOR = 140_000
+/** Share of the surplus taken once per payroll tick (~30 sim-seconds). */
+export const CITY_LEVY_RATE = 0.03
+
+/**
+ * Soft prosperity levy. Three percent of cash above the floor, after payroll.
+ * Sandbox is exempt: a $9,999,999 trial pile would otherwise lose about $293k a tick.
+ */
+export function cityLevy(cash: number, sandbox = false): number {
+  if (sandbox || cash <= CITY_LEVY_FLOOR) return 0
+  return Math.round((cash - CITY_LEVY_FLOOR) * CITY_LEVY_RATE)
+}
+
 /** Counts the sim already has — pure so payroll math can be tested without a field. */
 export type BudgetLineInput = {
   key: BudgetKey

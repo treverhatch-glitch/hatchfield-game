@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { LOAN_PRODUCTS } from './catalog.ts'
+import { LAND, LOAN_PRODUCTS, START_CASH, STARTER_KIT_COST } from './catalog.ts'
 import {
+  CITY_LEVY_FLOOR,
   budgetLineCost,
+  cityLevy,
   fieldOpsMultiplier,
   loanInterestDue,
   loansAvailable,
   nextLoanBalance,
   payrollAmount,
 } from './economy.ts'
+import { Game } from './sim.ts'
+import { SANDBOX_CASH } from './types.ts'
 
 const emptyLine = {
   mechanics: 0,
@@ -57,5 +61,49 @@ describe('economy', () => {
       budgetLineCost({ ...emptyLine, key, budgetPct: 100, signed: 1 }),
     )
     expect(payrollAmount(lines, 1)).toBe(Math.round(lines.reduce((n, c) => n + c, 0)))
+  })
+
+  it('clips surplus cash with a small levy and leaves a sandbox pile alone', () => {
+    const easyAfterKit = START_CASH.easy - LAND.city.cost - STARTER_KIT_COST
+    const standardAfterLand = START_CASH.standard - LAND.city.cost
+    expect(easyAfterKit).toBe(77_000)
+    expect(standardAfterLand).toBe(55_000)
+    expect(easyAfterKit).toBeLessThanOrEqual(CITY_LEVY_FLOOR)
+    expect(cityLevy(easyAfterKit)).toBe(0)
+    expect(cityLevy(standardAfterLand)).toBe(0)
+    expect(cityLevy(CITY_LEVY_FLOOR)).toBe(0)
+    // A grown field, not a trial pile: 3% of the surplus only.
+    expect(cityLevy(150_000)).toBe(300)
+    expect(cityLevy(220_000)).toBe(2_400)
+    expect(cityLevy(500_000)).toBe(10_800)
+    // The figure that was draining sandbox: cash after buying the city plot, about $293k a tick.
+    const sandboxAfterLand = SANDBOX_CASH - LAND.city.cost
+    expect(sandboxAfterLand).toBe(9_904_999)
+    expect(cityLevy(sandboxAfterLand)).toBe(292_950)
+    expect(cityLevy(sandboxAfterLand, true)).toBe(0)
+    expect(cityLevy(SANDBOX_CASH, true)).toBe(0)
+
+    const sandbox = new Game()
+    sandbox.sandbox = true
+    sandbox.cash = SANDBOX_CASH
+    sandbox.payrollCool = 0
+    const bill = sandbox.payrollPreview()
+    expect(bill).toBeGreaterThan(0)
+    sandbox.tickPayroll(0)
+    expect(sandbox.cash).toBe(SANDBOX_CASH - bill)
+    expect(sandbox.news.some((n) => n.text.includes('city levy'))).toBe(false)
+
+    const live = new Game()
+    live.sandbox = false
+    live.cash = 180_000
+    live.payrollCool = 0
+    const liveBill = live.payrollPreview()
+    live.tickPayroll(0)
+    const afterPay = 180_000 - liveBill
+    const levy = cityLevy(afterPay)
+    expect(levy).toBeGreaterThan(0)
+    expect(levy).toBeLessThan(5_000)
+    expect(live.cash).toBe(afterPay - levy)
+    expect(live.news.some((n) => n.text.includes('city levy'))).toBe(true)
   })
 })

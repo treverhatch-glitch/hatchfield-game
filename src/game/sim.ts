@@ -179,6 +179,7 @@ import {
 } from './terminal.ts'
 import {
   budgetLineCost,
+  cityLevy,
   fieldOpsMultiplier,
   loanInterestDue,
   loansAvailable,
@@ -6706,9 +6707,9 @@ export class Game {
       this.noteExpense(bill)
       this.cash -= bill
       // Soft prosperity levy — clips late-game snowballs without a hard tax cliff.
-      let levy = 0
-      if (this.cash > 140_000) {
-        levy = Math.round((this.cash - 140_000) * 0.03)
+      // Sandbox cash is a trial pile, not a city that owes the levy.
+      const levy = cityLevy(this.cash, this.sandbox)
+      if (levy > 0) {
         this.noteExpense(levy)
         this.cash -= levy
       }
