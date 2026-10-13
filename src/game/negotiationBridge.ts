@@ -1,10 +1,12 @@
 import { createNegotiation, NegotiationDesk } from '../negotiation/engine.ts'
 import type { PanelModel } from '../negotiation/engine.ts'
+import { liveDailyMargin, negotiatedLineFactor, quoteUnit, type LiveTurnQuote } from '../negotiation/liveFees.ts'
 import type {
   AirlineProfile,
   CapacityLight,
   DepositTier,
   NegotiationResult,
+  OfferTerms,
   RivalCard,
   ServiceId,
   StandingDelta,
@@ -22,6 +24,8 @@ export interface NegotiationHost {
   addMoney(amount: number, reason: string): void
   notify(message: string, tone: 'ok' | 'good' | 'bad'): void
   ensureCarrier(profile: AirlineProfile): void
+  /** Live fee card for one turn, before the negotiated percent. */
+  liveQuote(id: string): LiveTurnQuote
 }
 
 /**
@@ -65,7 +69,37 @@ export class NegotiationBridge {
   }
 
   panel(): PanelModel | null {
-    return this.desk.panel()
+    const model = this.desk.panel()
+    const session = this.desk.session
+    if (!model || !session) return model
+    const quote = this.host.liveQuote(session.airlineId)
+    const spend = this.desk.spendBand(session.airlineId)
+    const traffic = this.desk.trafficFactor()
+    return {
+      ...model,
+      rows: model.rows.map((row) => {
+        const current = quoteUnit(quote, row.service)
+        return {
+          ...row,
+          current,
+          ask: current * (1 + session.ask.feePct[row.service] / 100),
+          theirs: current * (1 + session.theirs.feePct[row.service] / 100),
+        }
+      }),
+      margin: liveDailyMargin(quote, session.ask, spend.mid, traffic),
+      marginLow: liveDailyMargin(quote, session.ask, spend.low, traffic),
+      marginHigh: liveDailyMargin(quote, session.ask, spend.high, traffic),
+    }
+  }
+
+  signedTerms(id: string): OfferTerms | null {
+    return this.desk.dealFor(id)?.terms ?? null
+  }
+
+  /** 1 when this carrier has no signed deal. */
+  lineFactor(id: string, service: ServiceId): number {
+    const terms = this.signedTerms(id)
+    return terms ? negotiatedLineFactor(terms, service) : 1
   }
 
   rivalCard(): RivalCard | null {
@@ -145,7 +179,16 @@ export class NegotiationBridge {
 
   private apply(result: NegotiationResult): NegotiationResult {
     if (result.deltas.length) this.host.applyStanding(result.deltas)
-    if (result.cashDelta) this.host.addMoney(result.cashDelta, result.note || 'negotiation')
+    // The deposit itself is collected by the live commercial ledger. Marketing
+    // and research are the only cash this bridge posts. Standing stays on the
+    // diplomacy adapter via applyStanding.
+    if (result.outcome === 'signed') {
+      const id = this.desk.session?.airlineId
+      const marketing = id ? (this.desk.dealFor(id)?.terms.freebies.marketingFund ?? 0) : 0
+      if (marketing > 0) this.host.addMoney(-marketing, 'Marketing fund')
+    } else if (result.cashDelta) {
+      this.host.addMoney(result.cashDelta, result.note || 'negotiation')
+    }
     if (result.note) {
       const tone = result.outcome === 'walked' ? 'bad' : result.outcome === 'signed' ? 'good' : 'ok'
       this.host.notify(result.note, tone)
