@@ -14,6 +14,9 @@ export { QUALITY, parseQuality, suggestQuality, type QualityLevel, type QualityP
 export { REPLACED_TILES, WorldRenderer, type RendererLike, type WorldRenderOptions, type WorldRenderStats } from './render'
 export { simClockToHour, skyState, type SkyState } from './daylight'
 export type { WorldView } from './view'
+export { terminals, type TerminalInfo } from './layout'
+export { planTerminal, walkerAt, type TerminalPlan } from './plan'
+export { FLOOR_Y } from './terminal'
 export {
   HALL_NODE_ROOM,
   NAV_SQ,
