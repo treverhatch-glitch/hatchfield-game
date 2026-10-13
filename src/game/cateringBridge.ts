@@ -55,7 +55,10 @@ export class CateringBridge {
 
   orderFor(flightId: string, standId: string, seats: number, bookedPax: number, longHaul: boolean, dueBy: number) {
     if (this.engine.galley(flightId)) return this.engine.galley(flightId)!
-    return this.engine.orderCatering({ flightId, standId, seats, bookedPax, longHaul, dueBy })
+    const safeSeats = Number.isFinite(seats) ? Math.max(0, seats) : 0
+    const safePax = Number.isFinite(bookedPax) ? Math.max(0, bookedPax) : 0
+    const safeDueBy = Number.isFinite(dueBy) ? Math.max(0, dueBy) : 0
+    return this.engine.orderCatering({ flightId, standId, seats: safeSeats, bookedPax: safePax, longHaul, dueBy: safeDueBy })
   }
 
   /**
@@ -71,14 +74,18 @@ export class CateringBridge {
   }
 
   poses(kitchen: { c: number; r: number } | null): CateringPose[] {
+    const safeKitchen =
+      kitchen && Number.isFinite(kitchen.c) && Number.isFinite(kitchen.r)
+        ? kitchen
+        : null
     const out: CateringPose[] = []
     for (const truck of this.engine.trucks) {
       if (truck.phase === 'idle' || !truck.job) continue
       const phase = truck.phase
       const galley = this.engine.galley(truck.job)
       const stand = parseCell(galley?.standId)
-      const from = kitchen ?? stand
-      const to = stand ?? kitchen
+      const from = safeKitchen ?? stand
+      const to = stand ?? safeKitchen
       if (!from || !to) continue
       const dur = this.engine.config.durations[phase]
       const u = dur > 0 ? clamp01(1 - (truck.phaseEndsAt - this.engine.now) / dur) : 1
@@ -100,10 +107,10 @@ export class CateringBridge {
       const heading = Math.atan2(to.r - from.r, to.c - from.c)
       out.push({
         id: truck.id,
-        x,
-        y,
-        heading,
-        liftHeight: truck.liftHeight,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+        heading: Number.isFinite(heading) ? heading : 0,
+        liftHeight: Number.isFinite(truck.liftHeight) ? truck.liftHeight : 0,
         phase,
         standId: galley?.standId ?? '',
         crew: truck.crew.map((c) => ({ id: c.id, role: c.role, at: c.at })),
@@ -121,5 +128,6 @@ function parseCell(id: string | undefined): { c: number; r: number } | null {
 }
 
 function clamp01(n: number): number {
+  if (Number.isNaN(n)) return 0
   return Math.min(1, Math.max(0, n))
 }
