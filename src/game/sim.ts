@@ -422,6 +422,25 @@ import {
 } from '../environment/index.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
 import {
+  DEFAULT_CONNECTION_WINDOW,
+  TECH_RFID_BAG_LINE,
+  TECH_TRANSFER_CENTRE,
+  bankDemand,
+  buildBanks,
+  connectingIndexes,
+  connectionMap,
+  evaluateConnection,
+  hubUpgrade,
+  hubUpkeep,
+  missPenalty,
+  scaledShare,
+  transferShare,
+  type CarrierProfile,
+  type GatePoint,
+  type Movement,
+} from '../hub/index.ts'
+import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import {
   commitPlot,
   dailySinks,
   nextPlotOffer,
@@ -752,6 +771,9 @@ export class Game {
   bagsLost = 0
   /** Late bags and missed connections. Prefab halls stay at zero under normal load. */
   bagsMishandled = 0
+  /** Connecting passengers who missed MCT. Not counted as lost. */
+  missedConnections = 0
+  private hubLinks: { guestId: string; airlineId: string; resolveAt: number; made: boolean }[] = []
   /** 0–1 parade clock for belts and carousels. */
   bagPhase = 0
   /** Screenshot latch so the hall can show the whole chain at once. */
@@ -1099,6 +1121,8 @@ export class Game {
     this.lostSpend = 0
     this.bagsLost = 0
     this.bagsMishandled = 0
+    this.missedConnections = 0
+    this.hubLinks = []
     this.bagPhase = 0
     this.bagShow = null
     this.bagBooks.clear()
@@ -2506,6 +2530,13 @@ export class Game {
     if (node.minFieldLevel && this.fieldLevel() < node.minFieldLevel) {
       return { ok: false, why: `Needs Field level ${node.minFieldLevel}.` }
     }
+    const upgrade = hubUpgrade(id)
+    if (upgrade && this.fieldLevel() < upgrade.minFieldLevel) {
+      return { ok: false, why: `Need Field Level ${upgrade.minFieldLevel}.` }
+    }
+    if (upgrade && !this.sandbox && this.cash < upgrade.buildCost) {
+      return { ok: false, why: `Need ${moneyLeft(upgrade.buildCost)} cash.` }
+    }
     if (this.researchPoints < node.cost) {
       return {
         ok: false,
@@ -2523,6 +2554,11 @@ export class Game {
       this.pushNews(gate.why, 'bad')
       this.emit()
       return
+    }
+    const upgrade = hubUpgrade(id)
+    if (upgrade && upgrade.buildCost > 0) {
+      if (!this.spend(upgrade.buildCost, upgrade.name)) return
+      this.postJournal('construction', upgrade.buildCost, this.simMinutes())
     }
     this.researchPoints -= node.cost
     this.researchUnlocked.push(id)
@@ -3867,6 +3903,7 @@ export class Game {
       airlineWarned: this.airlineWarned,
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
+      missedConnections: this.missedConnections,
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
@@ -4021,6 +4058,8 @@ export class Game {
       this.airlineLowAcc = {}
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
+      this.missedConnections = s.missedConnections ?? 0
+      this.hubLinks = []
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
@@ -5234,6 +5273,7 @@ export class Game {
     )
     const a = this.airline(f.airline)
     const departWave: HallGuest[] = []
+    const arrivals: HallGuest[] = []
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
@@ -5269,6 +5309,7 @@ export class Game {
         else if (open.has('exit')) this.routeGuest(g, 'exit', open)
         g.hasChecked = false
         g.carryOn = true
+        arrivals.push(g)
       } else {
         g.node = 'entrance'
         g.clearedSec = false
@@ -5279,6 +5320,7 @@ export class Game {
       }
       this.hallGuests.push(g)
     }
+    if (arrivals.length) this.noteHubArrivals(f, arrivals)
     if (departWave.length) this.releaseDepartureWave(departWave, f, open)
   }
 
@@ -6888,6 +6930,219 @@ export class Game {
     this.spawnTruck('fuel', f, path, 'fuel', farms[0])
   }
 
+  /** Carrier shape the hub share formula reads. Cargo stays at zero. */
+  private hubProfile(id: string): CarrierProfile {
+    const a = this.airline(id)
+    return {
+      kind: a.kind,
+      bizModel: a.bizModel,
+      tier: a.tier,
+      hub: this.isHub(id),
+      likesLayovers: a.likesLayovers,
+    }
+  }
+
+  /** Transfer share for one carrier, including the current bank. Zero before mid-game. */
+  connectingShare(airlineId: string): number {
+    const base = transferShare(this.fieldLevel(), this.hubProfile(airlineId))
+    return scaledShare(base, this.hubDemand())
+  }
+
+  private hubFacilities(): { transferCentre: boolean; rfid: boolean } {
+    let transferCentre = this.hasResearch('transfer_centre')
+    let rfid = this.hasResearch('rfid_bag_line')
+    const engine = this.economy?.engine
+    if (engine) {
+      if (engine.getModifier(TECH_TRANSFER_CENTRE, 0) > 0) transferCentre = true
+      if (engine.getModifier(TECH_RFID_BAG_LINE, 0) > 0) rfid = true
+    }
+    return { transferCentre, rfid }
+  }
+
+  private hubRide(): boolean {
+    return tilesOf(this.tiles, 'termbus').length > 0
+  }
+
+  private hubGates(): GatePoint[] {
+    return tilesOf(this.tiles, 'stand').map((stand) => ({
+      id: `${stand.c},${stand.r}`,
+      x: stand.c * METERS_PER_CELL,
+      y: stand.r * METERS_PER_CELL,
+    }))
+  }
+
+  private hubMovements(): Movement[] {
+    const moves: Movement[] = []
+    for (const slot of this.schedule) {
+      if (slot.status === 'cancelled' || slot.status === 'done') continue
+      const airline = this.airline(slot.airline)
+      if (airline.kind === 'cargo') continue
+      const gateId = slot.standPref ? `${slot.standPref.c},${slot.standPref.r}` : 'stand'
+      const arrival = slot.eta * SIM_MINUTES_PER_REAL_SECOND
+      moves.push({
+        id: `${slot.id}:arr`,
+        airlineId: slot.airline,
+        gateId,
+        direction: 'arr',
+        at: arrival,
+      })
+      moves.push({
+        id: `${slot.id}:dep`,
+        airlineId: slot.airline,
+        gateId,
+        direction: 'dep',
+        at: (slot.eta + PLANNED_TURN_SEC) * SIM_MINUTES_PER_REAL_SECOND,
+      })
+    }
+    return moves
+  }
+
+  private hubDemand(): number {
+    return bankDemand(buildBanks(this.hubMovements()))
+  }
+
+  private hubOnwardMinute(arrivalAt: number): number {
+    let best: number | null = null
+    for (const move of this.hubMovements()) {
+      if (move.direction !== 'dep' || move.at <= arrivalAt) continue
+      if (best == null || move.at < best) best = move.at
+    }
+    return best ?? arrivalAt + DEFAULT_CONNECTION_WINDOW
+  }
+
+  /**
+   * Mark a share of this arrival as connecting. They stay airside and skip
+   * check-in and security. Share is zero before mid-game, so this is a no-op then.
+   */
+  private noteHubArrivals(f: Flight, born: HallGuest[]) {
+    const share = this.connectingShare(f.airline)
+    if (!(share > 0)) return
+    const indexes = connectingIndexes(born.length, share, f.id)
+    if (!indexes.length) return
+    const gates = this.hubGates()
+    const fromId = f.stand ? `${f.stand.c},${f.stand.r}` : gates[0]?.id
+    const from = gates.find((gate) => gate.id === fromId) ?? gates[0]
+    const to = gates.find((gate) => gate.id !== from?.id) ?? from
+    if (!from || !to) return
+    const facilities = this.hubFacilities()
+    const ride = this.hubRide()
+    const arrivalAt = this.simMinutes()
+    const departureAt = this.hubOnwardMinute(arrivalAt)
+    for (const index of indexes) {
+      const g = born[index]
+      if (!g) continue
+      const verdict = evaluateConnection({
+        arrivalAt,
+        departureAt,
+        from,
+        to,
+        ride,
+        facilities,
+      })
+      g.transfer = true
+      g.clearedSec = true
+      g.needs.bags = 0
+      g.needs.hunger = 0
+      g.needs.bladder = 0
+      g.needs.energy = 0
+      g.needs.shop = 0
+      g.needs.play = 0
+      g.needs.boarding = Math.max(6, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
+      g.node = 'gate'
+      g.path = []
+      g.seg = 0
+      g.t = 0
+      g.route = undefined
+      g.connectFlightId = `connect:${f.id}:${to.id}`
+      g.thought = ride ? `Connecting — bus to gate ${to.id}` : `Connecting — walk to gate ${to.id}`
+      this.issueBagTags(g.id, g.flightId, g.tag, g.connectFlightId, 'transfer')
+      const windowSec = Math.max(0.5, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
+      this.hubLinks.push({
+        guestId: g.id,
+        airlineId: f.airline,
+        resolveAt: this.clock + windowSec,
+        made: verdict.made,
+      })
+    }
+  }
+
+  /**
+   * One missed connection: hotel night or rebooking fee on the ledger, and a Standing hit.
+   * Returns the cash amount posted (0 when the bill is not finite).
+   */
+  applyMissedConnection(airlineId: string): number {
+    const bill = missPenalty({ hasHotel: this.hasHotelBeds(), passengers: 1 })
+    if (!(bill.amount > 0) || !Number.isFinite(bill.amount) || !Number.isFinite(this.cash)) return 0
+    if (!this.sandbox) {
+      this.charge(bill.amount)
+      this.postJournal('penalties', bill.amount, this.simMinutes())
+    }
+    if (bill.standing < 0 && Number.isFinite(bill.standing)) {
+      this.adjustHeat(airlineId, bill.standing, 'transfers')
+    }
+    this.missedConnections += 1
+    return bill.amount
+  }
+
+  /** Close connection windows. A miss bills the hotel or a rebooking fee and cuts Standing. */
+  private tickHubConnections() {
+    if (!this.hubLinks.length) return
+    const due = this.hubLinks.filter((link) => this.clock >= link.resolveAt)
+    if (!due.length) return
+    this.hubLinks = this.hubLinks.filter((link) => this.clock < link.resolveAt)
+    let missed = 0
+    for (const link of due) {
+      const guest = this.hallGuests.find((g) => g.id === link.guestId)
+      if (link.made) {
+        if (guest && !guest.dead) {
+          guest.dead = true
+          guest.thought = 'Made the connection'
+          guest.needs.bags = 0
+        }
+        for (const tag of this.bagTags) {
+          if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer') continue
+          tag.loaded = true
+          tag.picked = true
+        }
+        continue
+      }
+      const billed = this.applyMissedConnection(link.airlineId)
+      if (billed > 0) missed += 1
+      let bags = 0
+      for (const tag of this.bagTags) {
+        if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer' || tag.fault) continue
+        tag.fault = 'missed_connection'
+        bags += 1
+      }
+      if (bags > 0) this.bagsMishandled += bags
+      if (guest && !guest.dead) {
+        guest.dead = true
+        guest.bagFault = 'missed_connection'
+        guest.needs.bags = 0
+        guest.thought = this.hasHotelBeds()
+          ? 'Missed connection — hotel night'
+          : 'Missed connection — rebooked'
+      }
+    }
+    if (missed > 0) {
+      this.pushNews(
+        `${missed} missed connection${missed === 1 ? '' : 's'} — hotel or rebook fee, Standing dips.`,
+        'bad',
+      )
+    }
+  }
+
+  /** Click-open connection map: walk/ride minutes and the missed-connection count. */
+  connectionMapLines(): string[] {
+    return connectionMap({
+      gates: this.hubGates(),
+      ride: this.hubRide(),
+      missed: this.missedConnections,
+      facilities: this.hubFacilities(),
+      banks: buildBanks(this.hubMovements()),
+    }).lines
+  }
+
   /** Hotspot markers. Counts stay in infoLines until the player opens one. */
   infoHotspots(): { id: string; label: string }[] {
     const spots: { id: string; label: string }[] = []
@@ -6896,6 +7151,7 @@ export class Game {
       spots.push({ id: 'lost', label: 'Lost passengers' })
       spots.push({ id: 'bags', label: 'Bags' })
       spots.push({ id: 'retail', label: 'Shops' })
+      if (this.fieldLevel() >= 3) spots.push({ id: 'connections', label: 'Connections' })
     }
     if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
     else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
@@ -6940,6 +7196,7 @@ export class Game {
         `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
       ]
     }
+    if (id === 'connections') return this.connectionMapLines()
     return []
   }
 
@@ -10642,6 +10899,11 @@ export class Game {
     if (holding > 0) {
       this.charge(holding)
       this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    const hubBill = hubUpkeep(new Set(this.researchUnlocked))
+    if (hubBill > 0) {
+      this.charge(hubBill)
+      this.postJournal('building_upkeep', hubBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
     }
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
@@ -14493,6 +14755,7 @@ export class Game {
     this.tickCargoVolume(step)
     this.tickLayover(step)
     this.tickHub(step)
+    this.tickHubConnections()
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)
