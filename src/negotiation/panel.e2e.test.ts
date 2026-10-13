@@ -1,5 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 
@@ -14,6 +14,7 @@ describe('negotiation panel', () => {
     const port = 46117
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
+      shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
