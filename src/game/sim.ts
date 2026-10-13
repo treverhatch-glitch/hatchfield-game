@@ -192,6 +192,8 @@ import {
   ceilingsFor,
   itemDef,
   laneStats,
+  GRID_C,
+  HALL_W,
   lookaheadDepth,
   needsMaintenance,
   overCapMultiplier,
@@ -225,6 +227,20 @@ import {
   type PlacementCheck,
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
+import {
+  dropLitter,
+  foodCells,
+  litterAdvice,
+  litterComfortHit,
+  litterInZone,
+  litterJoyDrain,
+  restroomDirtFor,
+  restroomJoyHit,
+  stepJanitor,
+  type HallJanitor,
+  type LitterHall,
+} from './litter.ts'
+import { LITTER_TUNING } from './litterData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -351,12 +367,17 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
+/** The hall's items are the same objects; the stored type is just looser. */
+const asLitterHall = (fit: TerminalFit): LitterHall => fit as unknown as LitterHall
+
 /** Per-tick seat pool and comfort cache for one hall. */
 interface HallKitState {
   items: PlacedItem[]
   zones: (string | null)[][]
   seatsLeft: Map<ZoneId, number>
   comfort: Map<HallNode, number>
+  /** Floor litter in the zone around each node. */
+  litter: Map<HallNode, number>
 }
 
 const emptyRooms = (): Record<RoomId, number> => ({
@@ -593,6 +614,12 @@ export class Game {
   standAccessMode: StandAccess = 'remote'
   janitors = 0
   janitorCool = 0
+  /** Janitors walking the halls — sweep litter, empty cans, service WCs. One per hire. */
+  hallJanitors: HallJanitor[] = []
+  /** Unique suffix for litter pieces. */
+  litterSeq = 0
+  /** Seconds until the litter / restroom advisor notes refresh. */
+  litterAdviceCool = 0
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -865,6 +892,9 @@ export class Game {
     this.standAccessMode = 'remote'
     this.janitors = 0
     this.janitorCool = 0
+    this.hallJanitors = []
+    this.litterSeq = 0
+    this.litterAdviceCool = 0
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -2086,6 +2116,7 @@ export class Game {
     this.standAccess = {}
     this.standAccessMode = 'remote'
     this.janitors = 0
+    this.hallJanitors = []
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -4627,7 +4658,13 @@ export class Game {
     if (!state) {
       const items = (fit.items ?? []) as PlacedItem[]
       const zones = fit.zones ?? []
-      state = { items, zones, seatsLeft: seatsByZone(zones, items), comfort: new Map() }
+      state = {
+        items,
+        zones,
+        seatsLeft: seatsByZone(zones, items),
+        comfort: new Map(),
+        litter: new Map(),
+      }
       cache.set(key, state)
     }
     const walking = g.path.length > 0 && g.seg < g.path.length - 1
@@ -4643,12 +4680,88 @@ export class Game {
       }
     }
     let comfort = state.comfort.get(g.node)
-    if (comfort == null) {
-      comfort = nodeComfort(state.zones, state.items, g.node)
+    let litter = state.litter.get(g.node)
+    if (comfort == null || litter == null) {
+      litter = zone ? litterInZone(asLitterHall(fit), zone) : 0
+      // Rubbish on the floor eats into what the decorations give.
+      comfort = nodeComfort(state.zones, state.items, g.node) - litterComfortHit(litter)
       state.comfort.set(g.node, comfort)
+      state.litter.set(g.node, litter)
     }
     if (comfort > 0 && g.happiness < 100) {
       g.happiness = Math.min(100, g.happiness + dt * comfort * KIT_TUNING.comfortJoyPerSec)
+    }
+    if (litter > 0) {
+      g.happiness = Math.max(0, g.happiness - dt * litterJoyDrain(litter))
+    }
+  }
+
+  /**
+   * A meal or a coffee leaves a wrapper or cup. It goes in a can in range,
+   * else on the floor by the counter it came from.
+   */
+  litterFromMeal(fit: TerminalFit, outlet: PlacedItem | null): 'bin' | 'floor' | null {
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const cells = outlet ? [{ c: outlet.c, r: outlet.r }] : foodCells(hall)
+    if (!cells.length) return null
+    this.litterSeq += 1
+    // Spread by sequence, not Math.random, so litter never shifts a seeded run.
+    const n = this.litterSeq
+    const at = cells[n % cells.length]
+    let k = 0
+    const jitter = () => ((n * 7919 + ++k * 104729) % 1000) / 1000
+    return dropLitter(hall, at.c, at.r, `lit-${n}`, jitter)
+  }
+
+  /** Keep one hall janitor per hire, shared round-robin across halls. */
+  private syncHallJanitors() {
+    const keys = this.fits.map((f) => this.hallKey(f))
+    if (!keys.length) {
+      this.hallJanitors = []
+      return
+    }
+    this.hallJanitors = this.hallJanitors.filter((j) => keys.includes(j.hallId))
+    while (this.hallJanitors.length > this.janitors) this.hallJanitors.pop()
+    while (this.hallJanitors.length < this.janitors) {
+      const hallId = keys[this.hallJanitors.length % keys.length]
+      const fit = this.fitByKey(hallId)
+      const zones = fit?.zones?.length ? fit.zones : prefabZones()
+      this.hallJanitors.push({
+        id: uid('hjan'),
+        hallId,
+        x: (zones[0]?.length ?? GRID_C) / 2,
+        z: zones.length / 2,
+        task: null,
+        work: 0,
+      })
+    }
+  }
+
+  /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
+  tickHallJanitors(dt: number) {
+    this.syncHallJanitors()
+    const clean = this.budgets.cleaning / 100
+    if (clean >= LITTER_TUNING.minCleaningBudget) {
+      const claimed = new Map<string, Set<string>>()
+      for (const j of this.hallJanitors) {
+        const fit = this.fitByKey(j.hallId)
+        if (!fit) continue
+        const hall = asLitterHall(fit)
+        const cols = hall.zones?.[0]?.length || GRID_C
+        let taken = claimed.get(j.hallId)
+        if (!taken) {
+          taken = new Set()
+          claimed.set(j.hallId, taken)
+        }
+        // A thin cleaning budget means a slower, part-time crew.
+        stepJanitor(j, hall, dt * clean, HALL_W / cols, taken)
+      }
+    }
+    this.litterAdviceCool -= dt
+    if (this.litterAdviceCool <= 0) {
+      this.litterAdviceCool = 5
+      this.refreshAdvice()
     }
   }
 
@@ -5267,6 +5380,7 @@ export class Game {
         scope: 'apron',
       })
     }
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
     this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
@@ -6380,6 +6494,16 @@ export class Game {
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
       g.happiness += wear >= 60 ? -2 : 4
       g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
+      const wcFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      if (wcFit) {
+        const dirt = Math.min(100, (wcFit.restroomDirt ?? 0) + restroomDirtFor(g.tag))
+        wcFit.restroomDirt = dirt
+        const hit = restroomJoyHit(dirt)
+        if (hit > 0) {
+          g.happiness -= hit
+          g.thought = 'Restroom was filthy'
+        }
+      }
     }
     if (n === 'food') {
       let pay = tagPrice(g.tag, 12, 18, 24, 32)
@@ -6418,6 +6542,7 @@ export class Game {
         }
         this.foodShelf -= 1
         this.mealSold = true
+        if (homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
@@ -8019,7 +8144,7 @@ export class Game {
     this.janitors += 1
     this.spawnJanitorPawn()
     this.pushNews(
-      `Hired janitor #${this.janitors}. They scrub WC/security when cleaning budget is funded.`,
+      `Hired janitor #${this.janitors}. They sweep litter, empty trash cans, and service restrooms when cleaning budget is funded.`,
       'good',
     )
     this.emit()
@@ -12004,6 +12129,7 @@ export class Game {
     this.tickHub(step)
     this.tickParking(step)
     this.tickJanitors(step)
+    this.tickHallJanitors(step)
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)

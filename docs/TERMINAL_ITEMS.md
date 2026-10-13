@@ -184,3 +184,12 @@ Minimum valid terminal = check-in, security, boarding desk, secure exit (matches
 - Seats: idle guests at gate / claim / food / lounge take a free seat in the same painted zone, rest, and get a small mood gain.
 - Decor: comfort points fade over `comfortRadius` cells, capped; guests in that zone gain a little happiness per second. Every piece has upkeep.
 - Prefab bundle pieces (bundled café / seat row) keep their tuned prefab behaviour and cannot be bulldozed.
+
+## Litter, trash cans and janitors (issue #41)
+- Data: `src/game/litterData.ts` (`LITTER_TUNING`). Logic: `src/game/litter.ts`. Render: `src/render/hallLitter.ts`.
+- Every meal or coffee sold makes one piece of litter at the counter's cell. A trash can within `binRadius` cells (~12 m) that is not full takes it; otherwise it lands on the floor as a decal.
+- Trash can (kit bar → Service): $150, $1/day. Holds `binCap` pieces, then shows a red band and overflowing lid and refuses more.
+- Restrooms gain dirt (0–100) on every visit (budget/family dirtiest). Above `restroomDirtyAt`, visitors lose happiness.
+- Janitors: the existing hire (Ops panel), wage on the cleaning payroll line. Each hire walks the hall at 1.3 m/s: full cans first, then a dirty WC, then the nearest litter. A cleaning budget below 20% idles them; a lower budget slows them.
+- Floor litter in a zone cuts comfort and drains happiness (capped) for guests there.
+- Advisor: "No trash cans near food court", "Litter piling up", "Trash cans full", "Restrooms dirty: hire janitors".
