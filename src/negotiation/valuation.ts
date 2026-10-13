@@ -181,8 +181,18 @@ export function marginAt(profile: AirlineProfile, terms: OfferTerms, spendPerPax
   return feeRevenue + retail + walkIn - profile.handlingPerDay - marketingDaily - overhead
 }
 
+/** How the contract length scales the airport's daily take. Unknown terms stay at ×1. */
+export function termDailyRate(months: number): number {
+  return NEGOTIATION.termDailyRate[months] ?? 1
+}
+
 export function feeRevenue(profile: AirlineProfile, terms: OfferTerms): number {
-  return postedCostPerSeat(profile) * costRatio(profile, terms) * dailyPax(profile)
+  return (
+    postedCostPerSeat(profile) *
+    costRatio(profile, terms) *
+    dailyPax(profile) *
+    termDailyRate(terms.termMonths)
+  )
 }
 
 /**

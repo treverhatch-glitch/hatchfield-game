@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { PremiumPanel } from './PremiumPanel.tsx'
-import { payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
+import { loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
@@ -401,7 +401,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               </li>
             ))}
           </ol>
-          {!game.starterFieldUp() ? (
+          {game.showStarterKit() ? (
             <div className="row">
               <button
                 type="button"
@@ -852,16 +852,29 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       </>
                     ) : null}
                     {letter.id === 'field' && game.fieldTask ? (
-                      <button
-                        type="button"
-                        data-testid="field-got-it"
-                        onClick={() => {
-                          game.ackLetter(`field:${game.fieldTask?.id ?? ''}`)
-                          setOpenLetter(null)
-                        }}
-                      >
-                        Got it
-                      </button>
+                      <>
+                        {game.fieldAskOffer() ? (
+                          <button
+                            type="button"
+                            className="on"
+                            data-testid="field-build"
+                            disabled={!game.fieldAskOffer()?.enabled}
+                            onClick={() => game.buildFieldTask()}
+                          >
+                            {game.fieldAskOffer()?.text}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          data-testid="field-got-it"
+                          onClick={() => {
+                            game.ackLetter(`field:${game.fieldTask?.id ?? ''}`)
+                            setOpenLetter(null)
+                          }}
+                        >
+                          Got it
+                        </button>
+                      </>
                     ) : null}
                     {letter.id === 'cargo-vol' && game.cargoVolume ? (
                       <button
@@ -1078,7 +1091,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       {money(game.landsideUpkeep())}/day · fill{' '}
                       {Math.round(game.landsideUsageRate() * 100)}%
                     </p>
-                    {game.starterFieldUp() ? (
+                    {!game.showStarterKit() ? (
                       <p className="muted">Starter kit is down. Build from the bar.</p>
                     ) : (
                       <>
@@ -1134,7 +1147,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                               }
                               onClick={() => game.takeLoanProduct(p.id)}
                             >
-                              {p.label} · {money(p.principal)}
+                              {loanProductLabel(p)}
                               {!open ? ' · locked' : ''}
                             </button>
                           )
@@ -2105,7 +2118,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             ) : (
               <>
                 <div className="build-menus">
-                  {!game.starterFieldUp() ? (
+                  {game.showStarterKit() ? (
                     <>
                       <button
                         type="button"
