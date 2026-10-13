@@ -156,7 +156,7 @@ import {
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
 import { buildSeconds } from './construction.ts'
-import { buildLogisticsConfig, delayFix, groundCauseLine } from './logisticsBridge.ts'
+import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -4369,11 +4369,14 @@ export class Game {
     if (this.departureNeedsFuel(f) && !f.posted.fuel) {
       if (!this.fuelOnHand()) {
         f.fuelHeld = true
+        if (f.fuelHeldSince == null) f.fuelHeldSince = this.clock
         this.noteFuelGround(f)
+        if (this.clock - f.fuelHeldSince >= FUEL_OUTAGE_SLOT_SEC) this.cancelForFuel(f)
         return 'hold'
       }
       if (f.fuelHeld) {
         f.fuelHeld = false
+        f.fuelHeldSince = undefined
         f.phaseTime = 0
         this.fuelHoldNoted.delete(f.id)
         this.ensureLegacyFuel(f)
@@ -4386,6 +4389,7 @@ export class Game {
     }
     if (f.fuelHeld) {
       f.fuelHeld = false
+      f.fuelHeldSince = undefined
       this.fuelHoldNoted.delete(f.id)
     }
     if (this.groundClear(f)) return 'ready'
@@ -4405,6 +4409,26 @@ export class Game {
     }
     this.pushNews(
       `${f.flightNo} grounded — no fuel on the farm. It stays until a load arrives.`,
+      'bad',
+    )
+  }
+
+  /** The empty-farm hold outlasted the departure slot. The flight does not leave. */
+  private cancelForFuel(f: Flight) {
+    if (f.phase === 'gone') return
+    f.phase = 'gone'
+    f.fuelHeld = false
+    this.fuelHoldNoted.delete(f.id)
+    const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
+    if (slot && slot.status !== 'done' && slot.status !== 'cancelled' && slot.status !== 'inbound') {
+      slot.status = 'cancelled'
+      this.adjustHeat(slot.airline, slot.manual ? -2.2 : -4.2)
+      this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
+    } else {
+      this.adjustHeat(f.airline, -4.2)
+    }
+    this.pushNews(
+      `${f.flightNo} cancelled — no fuel before the departure slot. Standing ${Math.round(this.standingOf(f.airline))}.`,
       'bad',
     )
   }

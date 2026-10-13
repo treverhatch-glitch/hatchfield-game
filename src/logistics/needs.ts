@@ -6,8 +6,8 @@ import type { ServiceKind, SizeClass, TurnaroundNeeds } from './types'
 export const FUEL_DENSITY = 0.8
 /** Share of usable fuel uplifted at a typical turnaround. */
 export const UPLIFT_FRACTION = 0.6
-/** Default share of the cargo hold used on a passenger type. */
-export const PAX_CARGO_FACTOR = 0.5
+/** Belly cargo on a passenger flight, as a share of the hold. Freighters use their own factor. */
+export const PAX_CARGO_FACTOR = 0.3
 export const FREIGHTER_CARGO_FACTOR = 0.8
 
 const MEALS_PER_SEAT: Record<AircraftKind, number> = {
@@ -69,7 +69,12 @@ export function needsForAirframe(af: Airframe): TurnaroundNeeds {
   if (cargoKg > 0) services.push('cargo_load')
   services.push('door_close')
   if (!isHelo(af.kind)) services.push('pushback')
+  const superHeavy = ['a380', 'b748f', 'an124', 'c5'].includes(af.id)
   return {
+    superHeavy,
+    upperDeck: af.id === 'a380',
+    fuelPoints: sizeClass === 'L' ? 2 : 1,
+    maxBridgeDoors: af.id === 'a380' ? 3 : sizeClass === 'L' ? 2 : 1,
     airframeId: af.id,
     sizeClass,
     seats: af.seats,

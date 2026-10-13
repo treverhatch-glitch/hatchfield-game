@@ -3,7 +3,7 @@
 A self-contained, deterministic TypeScript simulation of airport ground logistics. It doesn't import React, Three.js or `sim.ts`. Its only game dependency is `src/game/airframes.ts`, which it uses for per-type needs.
 
 ## What it simulates
-- **Fuel farm:** storage capacity, stock, tanker-truck deliveries (`orderFuel`, with a lead time and optional auto-reorder), a purchase price per litre, a sell markup and a low-stock alert.
+- **Fuel farm:** storage capacity, stock, tanker-truck deliveries (`orderFuel`, with a lead time and optional auto-reorder), a purchase price per litre, a throughput fee of $0.012 per litre, and a low-stock alert.
 - **Refuelling per stand:** hydrant stands pump straight from the farm at `hydrantPumpLpm` with no truck. Other stands get a fuel truck that loads at the farm, drives over and pumps at `truckPumpLpm`. Large uplifts such as an A380 take several truck trips.
 - **Catering:** the kitchen produces meals per hour up to its capacity, at a cost per meal. Catering trucks load at the kitchen and deliver, and each meal earns a fee.
 - **Service vehicles:** fuel truck, catering truck, baggage tug, pushback tug and GPU. A FIFO dispatch queue sends the nearest idle vehicle of the right type, with travel time based on Dijkstra over a service-road graph. Upkeep is charged per day.
@@ -60,3 +60,46 @@ To work with it directly, use `new LogisticsSim(config)`, `.on(listener)`, `.sta
 
 ## Tests
 Run `npx vitest run src/logistics`. There are 55 tests: `logistics.test.ts` covers needs, roads, fuel, catering, stock, money and the adapter, and `turnaround.test.ts` covers phase order, the fuel safety flag, doors, bridge vs stairs vs bus, boarding groups, gate feed, no-shows and bag pulls, late pax and bags, loaders, tug trips, inbound/outbound/freighter flights, terminal hooks, and determinism across tick sizes.
+
+## Maintenance (optional: `config.maintenance`)
+
+Off unless `maintenance` is set (`defaultMaintenanceConfig()` gives a ready one). Seeded (`SeededRng`, mulberry32), so a given seed always produces the same run.
+
+- **Vehicle wear:** wear builds with distance driven and jobs done. When a vehicle passes its seeded `breakAt` threshold it breaks down where it is. It then blocks that lane (`roads.setPenalty`), and its job goes back to dispatch for another vehicle.
+- **Maintenance building, tiers I–III:** more bays, faster servicing and more crews at each tier. Vehicles get routine servicing in a FIFO bay queue. Preventive servicing costs less than a breakdown repair.
+- **Crews:**
+  - repair van: fixes vehicles in place;
+  - tow truck: takes vehicles to the bays;
+  - sweeper: clears runway FOD;
+  - building crew: repairs facilities.
+- **Facility condition** covers stands, taxiway, runway, buildings and hydrant:
+  - runway FOD closes the runway;
+  - worn stands go out of service;
+  - a worn taxiway slows vehicles;
+  - hydrant failure falls back to fuel trucks;
+  - worn buildings hit passenger mood and can cause safety incidents (rating hit).
+- **Outputs:** `maintenanceMetrics()` gives availability, MTBF, backlog and advisor hints. Ledger categories are `maintenance_preventive`, `maintenance_repair` and `maintenance_upkeep`. The adapter adds sound cues and the hooks `onRatingHit`, `onPassengerMoodHit` and `onRunwayStatus`.
+- **Feature events:** `events-bridge.ts` maps feature events (e.g. `fuel-truck-breakdown`) onto the sim structurally, without importing `src/features`.
+
+## Vehicle tiers / progression
+
+`VEHICLE_CATALOG` sets the Field Level, tech tier and purchase cost for each vehicle type. Daily upkeep is in `DEFAULT_VEHICLE_SPECS`. Helpers: `isUnlocked`, `unlockedVehicles` and `fleetCost`.
+
+| Need | Basic | Upgrade |
+|---|---|---|
+| Fuel | `fuel_truck` 20,000 L | `heavy_fuel_truck` 70,000 L; `hydrant_dispenser` on hydrant stands. L types have 2 fuel points served in parallel. |
+| Catering | `catering_truck` | `highlift_catering` (A380 upper deck; both decks are served in parallel) |
+| Containers | `uld_loader` | `main_deck_loader` (×1.6 rate) |
+| Bags/cargo | `baggage_tug` | `heavy_baggage_tug` (longer cart train) |
+| Pushback | `pushback_tug` | `heavy_tug` (towbarless; A380, 747-8F, An-124, C-5) |
+| Bridges | 2 per stand | `bridges: 3` stand (`heavy-1`); `A380_STAND_UNLOCK` |
+
+**Size-class compatibility:** if no suitable vehicle exists, the job is still done, but slowly, and the delay cause is `undersized_vehicle`:
+
+- a standard tug pushing a super-heavy runs at ⅓ speed;
+- standard catering on the upper deck runs at 0.4×;
+- a standard ULD loader on a super-heavy runs at 0.7×.
+
+Dispatch picks the best-fit vehicle first, then the nearest one.
+
+`a380ScenarioConfig(upgraded)` sets up an A380 on `heavy-1` with a 120-minute schedule: about 11.5 min late with the basic fleet, on time with `A380_READY_FLEET`. This is tested in `tiers.test.ts`.

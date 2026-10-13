@@ -530,6 +530,8 @@ export interface Flight {
   groundTurn?: string | null
   /** Set while an empty farm is holding this departure on the stand. */
   fuelHeld?: boolean
+  /** Sim-clock when the empty-farm hold started. Past the slot, the flight is cancelled. */
+  fuelHeldSince?: number
   /** One-shot emergency host (divert / tanker) occupying a banked gate. */
   emergencyHost?: boolean
   hostKind?: EmergencyKind

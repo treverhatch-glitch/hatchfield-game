@@ -1,5 +1,7 @@
 import { defaultConfig } from './defaults'
 import { LogisticsSim } from './engine'
+import type { MaintenanceMetrics } from './maintenance'
+import { applyFeatureEventEffect, type FeatureEventEffectLike } from './events-bridge'
 import type { DelayCause, LogisticsConfig, LogisticsEvent, TurnaroundOptions } from './types'
 
 /** What the game sim calls. Kept tiny so sim.ts only needs a handful of lines. */
@@ -17,6 +19,13 @@ export interface LogisticsAdapter {
   /** Minutes the aircraft on this stand is running late (0 if on time). */
   delayAt(standId: string): number
   orderFuel(litres?: number): void
+  /** Wear the runway per landing / take-off. */
+  recordRunwayMovement(runwayId?: string): void
+  runwayClosed(): boolean
+  standAvailable(standId: string): boolean
+  maintenanceMetrics(): MaintenanceMetrics | null
+  /** Apply a resolved src/features/events effect (fuel-truck breakdown) to real trucks. */
+  applyEventEffect(effect: FeatureEventEffectLike): string[]
   snapshot(): LogisticsSnapshot
 }
 
@@ -36,9 +45,26 @@ export interface LogisticsHost {
   /** True when the terminal sim feeds gate arrivals / bags (disables fallback models). */
   gateFeed?: boolean
   bagFeed?: boolean
+  /** Safety incidents (positive = rating lost). */
+  onRatingHit?(amount: number, what: string): void
+  /** Broken public facilities, per hour (positive = mood lost). */
+  onPassengerMoodHit?(amount: number): void
+  /** Runway closed / reopened (FOD, inspection). */
+  onRunwayStatus?(runwayId: string, open: boolean): void
 }
 
-export type SoundCue = 'refuel_start' | 'refuel_stop' | 'truck_arrive' | 'tanker_arrive'
+export type SoundCue =
+  | 'refuel_start'
+  | 'refuel_stop'
+  | 'truck_arrive'
+  | 'tanker_arrive'
+  | 'vehicle_breakdown'
+  | 'vehicle_repaired'
+  | 'tow_start'
+  | 'crew_siren'
+  | 'sweeper'
+  | 'runway_closed'
+  | 'safety_alarm'
 
 export interface LogisticsSnapshot {
   time: number
@@ -95,6 +121,38 @@ export function createLogisticsAdapter(
       case 'low_stock':
         host.notify?.(e.stock === 'fuel' ? 'Fuel farm running low' : 'Catering kitchen running low', 'warn')
         break
+      case 'vehicle_breakdown':
+        host.playSound?.('vehicle_breakdown')
+        host.notify?.(`${e.vehicle.replace('_', ' ')} ${e.vehicleId} broke down`, 'warn')
+        break
+      case 'vehicle_repaired':
+        host.playSound?.('vehicle_repaired')
+        break
+      case 'tow_start':
+        host.playSound?.('tow_start')
+        break
+      case 'crew_dispatched':
+        host.playSound?.(e.crew === 'sweeper' ? 'sweeper' : 'crew_siren')
+        break
+      case 'runway_closed':
+        host.playSound?.('runway_closed')
+        host.onRunwayStatus?.(e.runwayId, false)
+        host.notify?.(`Runway ${e.runwayId} closed (${e.reason === 'fod' ? 'debris on the runway' : 'inspection'})`, 'warn')
+        break
+      case 'runway_reopened':
+        host.onRunwayStatus?.(e.runwayId, true)
+        break
+      case 'safety_incident':
+        host.playSound?.('safety_alarm')
+        host.onRatingHit?.(e.ratingHit, e.what)
+        host.notify?.(`Safety incident: ${e.what}`, 'warn')
+        break
+      case 'pax_mood_hit':
+        host.onPassengerMoodHit?.(e.amount)
+        break
+      case 'facility_status':
+        if (e.status === 'failed') host.notify?.(`${e.facilityId} has failed`, 'warn')
+        break
       case 'turnaround_complete':
         done.add(e.standId)
         completed.push({ standId: e.standId, delayMinutes: e.delayMinutes, causes: e.causes })
@@ -126,6 +184,11 @@ export function createLogisticsAdapter(
       return t ? sim.currentDelay(t.id) : 0
     },
     orderFuel: (litres) => sim.orderFuel(litres),
+    recordRunwayMovement: (id) => sim.maintenance?.recordMovement(id),
+    runwayClosed: () => sim.maintenance?.runwayClosed() ?? false,
+    standAvailable: (id) => sim.standAvailable(id),
+    maintenanceMetrics: () => sim.maintenanceMetrics(),
+    applyEventEffect: (effect) => applyFeatureEventEffect(sim, effect),
     snapshot: () => ({
       time: sim.now,
       fuelLitres: sim.fuelLitres,
