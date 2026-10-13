@@ -5,7 +5,9 @@ import { AGENDAS, TRAITS } from './data.ts';
 import { openCommitmentOf } from './demands.ts';
 import { poachRisk } from './drama.ts';
 import type { EngineCore } from './core.ts';
+import { traitShiftLine } from './generator.ts';
 import { bandChip, buildPortraitCard } from './portrait.ts';
+import { contractLadder } from './ladder.ts';
 import { alliesOf, breakdownFor, rivalsOf } from './relations.ts';
 import type { AirlineCard, AirlineRelation, NeedLine } from './types.ts';
 
@@ -54,7 +56,10 @@ export function buildCard(core: EngineCore, rel: AirlineRelation): AirlineCard {
           traits: kf.traits.map((t) => TRAITS[t].label),
           agenda: AGENDAS[kf.agenda].label,
           voice: kf.voice,
-          memory: [...kf.memory]
+          memory: [...kf.memory],
+          generation: kf.generation,
+          shift: traitShiftLine(kf),
+          retireDay: kf.retireAtDay
         }
       : null,
     livery: rel.livery,
@@ -79,6 +84,7 @@ export function buildCard(core: EngineCore, rel: AirlineRelation): AirlineCard {
     topCauses: negatives,
     history: [...rel.history],
     contractTermEndDay: rel.contract?.termEndDay ?? null,
-    poachRisk: poachRisk(core, rel)
+    poachRisk: poachRisk(core, rel),
+    ladder: contractLadder(core, rel)
   };
 }

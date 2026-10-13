@@ -36,7 +36,7 @@ export function walkableFor(
 ): boolean {
   // Hangar bay is apron-accessible so line-MX jets can taxi in and park.
   if (kind === 'jet') {
-    return tile === 'runway' || tile === 'taxi' || tile === 'stand' || tile === 'hangar'
+    return tile === 'runway' || tile === 'taxi' || tile === 'stand' || tile === 'hangar' || tile === 'mro'
   }
   if (kind === 'truck') {
     return (
@@ -58,7 +58,9 @@ export function walkableFor(
       tile === 'mover' ||
       tile === 'xferbus' ||
       tile === 'kitchen' ||
-      tile === 'depot'
+      tile === 'depot' ||
+      tile === 'mro' ||
+      tile === 'nighthub'
     )
   }
   if (kind === 'mechanic') {
@@ -69,7 +71,8 @@ export function walkableFor(
       tile === 'hangar' ||
       tile === 'road' ||
       tile === 'fuel' ||
-      tile === 'deice'
+      tile === 'deice' ||
+      tile === 'mro'
     )
   }
   // Apron / landside foot traffic — hotel, parks, bus curb, rail hall included.
@@ -97,6 +100,8 @@ export function walkableFor(
     tile === 'termbus' ||
     tile === 'mover' ||
     tile === 'xferbus' ||
+    tile === 'mro' ||
+    tile === 'nighthub' ||
     tile === 'skywalk' ||
     tile === 'travelator' ||
     tile === 'rail'

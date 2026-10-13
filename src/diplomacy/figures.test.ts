@@ -35,6 +35,12 @@ describe('key figures', () => {
     expect(next.generation).toBe(1);
     expect(next.name).not.toBe(old.name);
     expect(next.traits.some((t) => old.traits.includes(t))).toBe(true);
+    expect(old.traits).toContain(next.keptTrait);
+    expect(next.traits).toContain(next.freshTrait);
+    expect(next.freshTrait).not.toBe(next.keptTrait);
+    const card = h.engine.getCard('meridian')!;
+    expect(card.figure?.shift).toContain('Kept');
+    expect(card.figure?.shift).toContain('New trait');
     expect(rel.traits).toEqual(next.traits);
     expect(next.retireAtDay - next.tenureStartDay).toBeGreaterThanOrEqual(4 * 360);
     expect(next.retireAtDay - next.tenureStartDay).toBeLessThanOrEqual(8 * 360);
@@ -77,7 +83,17 @@ describe('first meeting', () => {
     expect(scene.choices).toEqual(['formal', 'warm', 'bold', 'tour']);
     expect(scene.heard).toContain('94%');
     expect(scene.greeting.length).toBeGreaterThanOrEqual(2);
+    expect(scene.greeting.join(' ')).toContain('Never second');
     expect(h.engine.firstMeetScene('northline')).toBeNull();
+  });
+
+  it('quotes reputation and on-time when the airport has a reputation', () => {
+    const h = createHarness({ fieldLevel: 5 });
+    h.ctx.reputation = 62;
+    h.run(1);
+    const scene = h.engine.firstMeetScene('meridian')!;
+    expect(scene.heard).toContain('62');
+    expect(scene.heard).toContain('94%');
   });
 
   it('formal suits a Punctual, formal key figure: summary toast names the liked trait', () => {

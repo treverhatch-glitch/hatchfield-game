@@ -78,8 +78,16 @@ export function createKeyFigure(rng: RngHolder, opts: KeyFigureOptions): KeyFigu
     memory: [],
     tenureStartDay: opts.day,
     retireAtDay: opts.day + randInt(rng, 4, 8) * opts.yearDays,
-    generation: opts.generation
+    generation: opts.generation,
+    keptTrait: null,
+    freshTrait: null
   };
+}
+
+/** Spoken when a successor takes the chair: one trait stays, one is new. */
+export function traitShiftLine(kf: KeyFigure): string | null {
+  if (kf.generation < 1 || !kf.keptTrait || !kf.freshTrait) return null;
+  return `Kept ${TRAITS[kf.keptTrait].label}. New trait: ${TRAITS[kf.freshTrait].label}.`;
 }
 
 export function createRelation(state: DiplomacyState, seed: AirlineSeed): AirlineRelation {

@@ -107,6 +107,19 @@ describe('sign preview and rival fallout', () => {
     expect(m2?.value).toBe(-16);
   });
 
+  it('previews a hub as -15 and skips an allied rival', () => {
+    const h = createHarness({ fieldLevel: 9 });
+    h.run(1);
+    const hub = h.engine.previewReaction('meridian', 'hub')!;
+    expect(hub.rivals.length).toBeGreaterThan(0);
+    expect(hub.rivals.every((row) => row.delta === -15)).toBe(true);
+    expect(hub.rivals.every((row) => row.why === 'rival hub')).toBe(true);
+    const perk = h.engine.previewReaction('meridian', 'perk')!;
+    expect(perk.rivals.every((row) => row.delta === -6)).toBe(true);
+    const slots = h.engine.previewReaction('skypenny', 'slots')!;
+    expect(slots.rivals.find((row) => row.airlineId === 'zoomjet')?.delta).toBe(-12);
+  });
+
   it('warns when stands are nearly full (no doom loops)', () => {
     const h = createHarness({ fieldLevel: 1, metrics: { standUtilization: 0.97 } });
     h.run(1);

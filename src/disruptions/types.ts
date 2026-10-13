@@ -14,7 +14,7 @@ export type DisruptionId =
 
 export type FeedStatus = 'live' | 'minimised' | 'dismissed' | 'ignored' | 'recovered'
 
-/** Where "Pan to problem" should look. The feed owns this; the apron camera stays elsewhere. */
+/** Where "Pan to problem" should look. The alert stack owns the card; this is only the locus. */
 export type FocusTarget = 'apron' | 'runway' | 'checkin' | 'security' | 'staff' | 'fees'
 
 export interface FlightBank {

@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import { projectCash } from './cashForecast'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
+import { AirlinesDesk } from './AirlinesDesk'
+import { DiplomacyLetters } from './DiplomacyLetters'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
+import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
 import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
 import {
@@ -121,6 +124,8 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
       'hangar',
       'hangar_w',
       'hangar_j',
+      'mro',
+      'nighthub',
       'fuel_rail',
       'oil',
     ],
@@ -214,7 +219,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
-  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
+  { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
   { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
@@ -272,6 +277,25 @@ export function Hud({ game }: { game: Game }) {
   const freeGates = game.freeStands().length
   const rival = game.rivalPanel()
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key !== 'l' && e.key !== 'L') return
+      e.preventDefault()
+      setPanel((cur) => {
+        if (cur === 'airlines') {
+          setChromePinned(false)
+          return null
+        }
+        setChromePinned(true)
+        return 'airlines'
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const togglePanel = (id: Exclude<PanelId, null>) => {
     const closing = panel === id
     setPanel(closing ? null : id)
@@ -297,6 +321,9 @@ export function Hud({ game }: { game: Game }) {
   if (game.apronJamLine()) alerts.push('Apron jam')
   if (game.securityQueueCount() >= 3) alerts.push('Security queue')
   if (game.lostPaxCount() > 0) alerts.push('Lost pax')
+  const power = game.powerReport()
+  if (power.brownout) alerts.push('Power')
+  const powerGate = canUpgradePower(game.powerPlantTier, game.fieldLevel())
   if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
   for (const item of game.disruptionFeed()) alerts.push(item.title)
 
@@ -554,6 +581,7 @@ export function Hud({ game }: { game: Game }) {
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
+        <DiplomacyLetters game={game} />
         {(() => {
           type Letter = {
             id: string
@@ -1410,6 +1438,7 @@ export function Hud({ game }: { game: Game }) {
 
               {panel === 'airlines' ? (
                 <>
+                <AirlinesDesk game={game} />
                 <section className="inbound-contracts" data-testid="contracts-panel">
                   <h3>Contracts</h3>
                   <p className="muted eco-line">
@@ -1985,6 +2014,22 @@ export function Hud({ game }: { game: Game }) {
                         Tank {TANK_TIERS[Math.min(2, game.tankTier)] ? `→ ${tankDef(game.tankTier === 3 ? 3 : ((game.tankTier + 1) as 2 | 3)).capacityLitres.toLocaleString('en-US')} L` : ''}
                       </button>
                     </div>
+                    <p className="muted">
+                      {powerPlantOffer(game.powerPlantTier).name} · capacity{' '}
+                      {Math.round(power.capacity).toLocaleString('en-US')} · demand{' '}
+                      {Math.round(power.demand).toLocaleString('en-US')}
+                      {power.brownout ? ' · brown-out' : ''}
+                    </p>
+                    <button
+                      type="button"
+                      data-testid="upgrade-power"
+                      disabled={!powerGate.ok}
+                      onClick={() => game.upgradePowerPlant()}
+                    >
+                      {powerGate.next
+                        ? `Build ${powerPlantOffer(powerGate.next).name} ${money(powerGate.cost)}`
+                        : 'Power plant III'}
+                    </button>
                     <p className="muted">
                       Bags: {BAG_SYSTEMS[game.bagSystem].name}. Check-in desks {game.paxDesks}, kiosks {game.paxKiosks}, bag drop {game.paxBagDrops}, scanners {game.scannerLanes}, e-gates {game.eGates}.
                     </p>
