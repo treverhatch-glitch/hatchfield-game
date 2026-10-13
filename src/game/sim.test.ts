@@ -19,6 +19,7 @@ function openPremade(game: Game, origin: { c: number; r: number }) {
 describe('multi-hall premade terminals', () => {
   it('keeps capacity, rooms, wear, and stand routing on the hall that owns the stand', () => {
     const game = new Game()
+    game.sandbox = true
     game.beginNew('easy')
     game.buyLand('city')
 

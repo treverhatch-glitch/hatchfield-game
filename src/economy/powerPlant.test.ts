@@ -49,6 +49,7 @@ function lateField(): Game {
   game.tiles[23][13] = 'taxi'
   game.tool = 'mro'
   game.placeSingle({ c: 10, r: 23 })
+  game.tickConstruction(30)
   game.placeSingle({ c: 14, r: 23 })
   game.tool = 'nighthub'
   game.placeSingle({ c: 8, r: 16 })
