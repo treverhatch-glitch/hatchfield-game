@@ -9,6 +9,7 @@ Ordered plan. Ship top-down. Update checkboxes when merged.
 - [x] CS2 chrome (bottom menus, letter inbox)
 - [x] 5x speed + inspect off + apron perf (mapRev, ghost cache, lite shadows)
 - [x] Organized docs (`docs/*`)
+- [x] Airline tiers T1–T5 panel + Field XP + multi-loan bank desk
 - [ ] **Belt lite (Wave B.1)** — paint bag path; broken = late bags + heat *(highest leverage for “layout skill”)*
 - [ ] Make congestion **readable** — heat-map tint or news when a neck costs >N seconds
 - [ ] Coach / Economy discoverability — Starter kit harder to miss

@@ -68,9 +68,12 @@ import {
   IPO_MIN_REP,
   IPO_SHARES,
   LOAN_FEE,
-  LOAN_INTEREST,
-  LOAN_INTEREST_EVERY,
   LOAN_PRINCIPAL,
+  LOAN_PRODUCTS,
+  FIELD_LEVEL_XP,
+  fieldLevelFromXp,
+  normalizeAirline,
+  AIRLINE_TIER_META,
   MECHANIC_HIRE,
   MECHANIC_WAGE,
   MIN_RUNWAY,
@@ -169,7 +172,7 @@ import {
   runwayStrips,
   tilesOf,
 } from './path'
-import { SAVE_KEY, SIZE, type AirlineId } from './types'
+import { SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import type {
   AircraftKind,
   Airline,
@@ -370,6 +373,11 @@ export class Game {
   securityIncidents = 0
   reputation = 40
   loanBalance = 0
+  loanProductId: string | null = null
+  loanPrincipal = 0
+  loanOpened = 0
+  /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
+  fieldXp = 0
   parcels = 1
   railLinked = false
   hotelLevel = 0
@@ -521,6 +529,10 @@ export class Game {
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
+    this.loanProductId = null
+    this.loanPrincipal = 0
+    this.loanOpened = 0
+    this.fieldXp = 0
     this.parcels = 1
     this.railLinked = false
     this.hotelLevel = 0
@@ -804,13 +816,16 @@ export class Game {
 
   airline(id: AirlineId): Airline {
     if (id === 'ga') {
-      return {
+      return normalizeAirline({
         id: 'ga',
         name: 'General Aviation',
         color: '#9aa7b0',
         stripe: '#c5d0d8',
         kind: 'pax',
         persona: 'business',
+        tier: 1,
+        bizModel: 'charter',
+        fleetBlurb: 'Light singles / twins',
         landing: 2200,
         catering: 0,
         bags: 0,
@@ -836,13 +851,101 @@ export class Game {
         blurb: 'Independent transient parking — not a signed carrier.',
         likesLayovers: false,
         heatSensitivity: 1,
-      }
+      })
     }
-    return (
+    const raw =
       AIRLINES[id] ??
       this.extraAirlines.find((a) => a.id === id) ??
       AIRLINES.northline
+    return normalizeAirline(raw)
+  }
+
+  fieldLevel(): AirlineTier {
+    return fieldLevelFromXp(this.fieldXp)
+  }
+
+  fieldXpToNext(): { level: AirlineTier; xp: number; need: number; pct: number } {
+    const level = this.fieldLevel()
+    if (level >= 5) {
+      return { level: 5, xp: this.fieldXp, need: FIELD_LEVEL_XP[5], pct: 1 }
+    }
+    const next = (level + 1) as AirlineTier
+    const floor = FIELD_LEVEL_XP[level]
+    const need = FIELD_LEVEL_XP[next]
+    const pct = need <= floor ? 1 : Math.min(1, (this.fieldXp - floor) / (need - floor))
+    return { level, xp: this.fieldXp, need, pct }
+  }
+
+  grantFieldXp(amount: number, why?: string) {
+    if (amount <= 0) return
+    const before = this.fieldLevel()
+    this.fieldXp += amount
+    const after = this.fieldLevel()
+    if (after > before) {
+      this.pushNews(
+        `Field Level ${after} — ${AIRLINE_TIER_META[after].label} carriers will start calling.`,
+        'good',
+      )
+    } else if (why && amount >= 12) {
+      /* quiet drip — big chunks can mention */
+      void why
+    }
+  }
+
+  /**
+   * Can this field host an offer from this carrier's tier?
+   * Lv1 opens T1+T2 (commuter + regional starter lane). Higher levels open +1 each.
+   */
+  tierUnlocked(tier: AirlineTier): boolean {
+    const lv = this.fieldLevel()
+    const openThrough = Math.min(5, (lv + 1) as AirlineTier) as AirlineTier
+    if (tier <= openThrough) return true
+    // Peek one more tier when reputation is strong.
+    return tier === openThrough + 1 && this.reputation >= 55 + tier * 4
+  }
+
+  loanProduct(id: string | null | undefined) {
+    return LOAN_PRODUCTS.find((p) => p.id === id) ?? null
+  }
+
+  availableLoans() {
+    const lv = this.fieldLevel()
+    return LOAN_PRODUCTS.filter(
+      (p) => lv >= p.minFieldLevel && this.reputation >= p.minRep,
     )
+  }
+
+  takeLoanProduct(productId: string) {
+    if (this.loanBalance > 0) {
+      this.pushNews('Pay off the open loan first.', 'bad')
+      this.emit()
+      return
+    }
+    const p = this.loanProduct(productId)
+    if (!p) {
+      this.pushNews('Unknown loan product.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.fieldLevel() < p.minFieldLevel || this.reputation < p.minRep) {
+      this.pushNews(
+        `${p.label} locked — need Field Lv${p.minFieldLevel}+ and rep ${p.minRep}+.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    this.loanProductId = p.id
+    this.loanPrincipal = p.principal
+    this.loanOpened = p.principal + p.fee
+    this.loanBalance = this.loanOpened
+    this.cash += p.principal
+    this.interestCool = p.every
+    this.pushNews(
+      `${p.label}: bank wired ${moneyLeft(p.principal)} (fee ${moneyLeft(p.fee)}). Owe ${moneyLeft(this.loanBalance)}.`,
+      'ok',
+    )
+    this.emit()
   }
 
   heatOf(id: AirlineId): number {
@@ -1373,26 +1476,20 @@ export class Game {
     this.emit()
   }
 
+  /** Legacy single-button loan → bridge product. */
   takeLoan() {
-    if (this.loanBalance > 0) {
-      this.pushNews('Pay off the open loan first.', 'bad')
-      return
-    }
-    this.loanBalance = LOAN_PRINCIPAL + LOAN_FEE
-    this.cash += LOAN_PRINCIPAL
-    this.interestCool = LOAN_INTEREST_EVERY
-    this.pushNews(
-      `Bank wired ${moneyLeft(LOAN_PRINCIPAL)}. You owe ${moneyLeft(this.loanBalance)}. Interest scales with the balance — pay it down.`,
-      'ok',
-    )
-    this.emit()
+    this.takeLoanProduct('bridge')
   }
 
   repayLoan() {
     if (this.loanBalance <= 0) return
     if (!this.spend(this.loanBalance, 'loan payoff')) return
     this.loanBalance = 0
+    this.loanProductId = null
+    this.loanPrincipal = 0
+    this.loanOpened = 0
     this.reputation = Math.min(100, this.reputation + 3)
+    this.grantFieldXp(8, 'loan clear')
     this.pushNews('Loan cleared.', 'good')
     this.emit()
   }
@@ -1403,8 +1500,19 @@ export class Game {
       this.pushNews('No more parcels on this map sketch.', 'bad')
       return
     }
+    // CS-style: more land needs field level (parcel 2 → Lv2, etc.).
+    const needLv = Math.min(5, this.parcels) as AirlineTier
+    if (this.fieldLevel() < needLv) {
+      this.pushNews(
+        `Parcel ${this.parcels + 1} locked — reach Field Level ${needLv} first.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
     if (!this.spend(PARCEL_COST * this.parcels, 'land parcel')) return
     this.parcels += 1
+    this.grantFieldXp(10, 'parcel')
     // Paint a strip of buildable grass marker as road fringe on the east
     const edge = 6 + this.parcels * 4
     for (let r = 4; r < SIZE - 4; r++) {
@@ -2192,6 +2300,10 @@ export class Game {
       securityIncidents: this.securityIncidents,
       reputation: this.reputation,
       loanBalance: this.loanBalance,
+      loanProductId: this.loanProductId,
+      loanPrincipal: this.loanPrincipal,
+      loanOpened: this.loanOpened,
+      fieldXp: this.fieldXp,
       parcels: this.parcels,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
@@ -2268,6 +2380,13 @@ export class Game {
       this.securityIncidents = s.securityIncidents ?? 0
       this.reputation = s.reputation ?? 40
       this.loanBalance = s.loanBalance ?? 0
+      this.loanProductId = s.loanProductId ?? (this.loanBalance > 0 ? 'bridge' : null)
+      this.loanPrincipal = s.loanPrincipal ?? (this.loanBalance > 0 ? LOAN_PRINCIPAL : 0)
+      this.loanOpened =
+        s.loanOpened ??
+        (this.loanBalance > 0 ? LOAN_PRINCIPAL + LOAN_FEE : 0)
+      this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
+      this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
@@ -2298,7 +2417,6 @@ export class Game {
       this.runwayCondition = s.runwayCondition ?? 100
       this.weather = s.weather ?? 'clear'
       this.milAgreement = s.milAgreement ?? false
-      this.extraAirlines = s.extraAirlines ?? []
       this.airlineHeat = s.airlineHeat ?? {}
       this.airlineBanUntil = s.airlineBanUntil ?? {}
       this.airlineReward = s.airlineReward ?? {}
@@ -3271,14 +3389,16 @@ export class Game {
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
       if (a.procedural && procSigned >= 3) return false
+      if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
       if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) return false
       if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) return false
       return true
     })
     if (!candidates.length) return
-    // Prefer cheaper first airline; sprinkle procedurals after one major is signed.
+    // Prefer lower tier first, then cheaper landing; sprinkle procs after one major.
     candidates.sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier
       if (Boolean(a.procedural) !== Boolean(b.procedural)) return a.procedural ? 1 : -1
       return a.landing - b.landing
     })
@@ -3306,9 +3426,10 @@ export class Game {
     this.offerCool = this.signed.length <= 1 ? 55 + Math.random() * 25 : 85 + Math.random() * 40
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
+    this.grantFieldXp(12 + a.tier * 4, 'contract')
     this.seedScheduleForAirline(id, 3)
     this.pushNews(
-      `${a.name} signed${a.procedural ? ' (filler regional)' : ''}. Flights hit the timetable.`,
+      `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.`,
       'good',
     )
     this.emit()
@@ -6338,6 +6459,9 @@ export class Game {
         this.flightsDone += 1
         this.paxServed += f.pax
         this.grantResearchForFlight(f)
+        if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
+          this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
+        }
         this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
       }
     }
@@ -7787,12 +7911,16 @@ export class Game {
     if (this.loanBalance > 0) {
       this.interestCool -= step
       if (this.interestCool <= 0) {
-        this.interestCool = LOAN_INTEREST_EVERY
-        const opened = LOAN_PRINCIPAL + LOAN_FEE
+        const prod =
+          this.loanProduct(this.loanProductId) ??
+          LOAN_PRODUCTS.find((p) => p.id === 'bridge')!
+        this.interestCool = prod.every
+        const opened =
+          this.loanOpened > 0 ? this.loanOpened : prod.principal + prod.fee
         // Cash feels full interest; balance creeps slower and caps — pressure, not a death spiral.
         const tick = Math.max(
-          LOAN_INTEREST,
-          Math.round(this.loanBalance * 0.012),
+          prod.interestFloor,
+          Math.round(this.loanBalance * prod.rate),
         )
         if (this.cash >= tick) {
           this.cash -= tick
@@ -7811,12 +7939,12 @@ export class Game {
         if (this.loanBalance > opened * 1.25) {
           this.reputation = Math.max(0, this.reputation - 0.45)
           this.pushNews(
-            `Loan interest ${moneyLeft(tick)} — debt heavy (owed ${moneyLeft(this.loanBalance)}). Pay it down.`,
+            `${prod.label} interest ${moneyLeft(tick)} — debt heavy (owed ${moneyLeft(this.loanBalance)}).`,
             'bad',
           )
         } else {
           this.pushNews(
-            `Loan interest ${moneyLeft(tick)}. Owed ${moneyLeft(this.loanBalance)}.`,
+            `${prod.label} interest ${moneyLeft(tick)}. Owed ${moneyLeft(this.loanBalance)}.`,
             'bad',
           )
         }
@@ -8148,6 +8276,9 @@ export class Game {
           this.flightsDone += 1
           this.paxServed += f.pax
           this.grantResearchForFlight(f)
+          if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
+            this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
+          }
           if (!this.firstTakeoffNoted && f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.firstTakeoffNoted = true
             this.coachDismissed = true

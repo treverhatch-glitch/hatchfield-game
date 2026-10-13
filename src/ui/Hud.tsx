@@ -16,7 +16,9 @@ import {
   RESEARCHER_HIRE,
   DESK_STAFF_HIRE,
   LAND,
-  LOAN_PRINCIPAL,
+  LOAN_PRODUCTS,
+  AIRLINE_TIER_META,
+  bizModelBlurb,
   MECHANIC_HIRE,
   MIL_AGREE_COST,
   money,
@@ -42,7 +44,7 @@ import {
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
 import { formatClock, type Game } from '../game/sim'
-import type { BudgetKey, Speed, Tool } from '../game/types'
+import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 
 const BUDGET_KEYS: BudgetKey[] = [
   'maintenance',
@@ -109,7 +111,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
-  { id: 'airlines', label: 'Airlines', tip: 'Contracts, heat, hubs' },
+  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, heat, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
 ]
@@ -180,6 +182,12 @@ export function Hud({ game }: { game: Game }) {
           Field {game.fieldRating()} · {game.fieldRatingLabel()}
         </div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
+        <div
+          className="stat"
+          title={`Field XP ${game.fieldXp} — unlocks airline tiers`}
+        >
+          Lv {game.fieldLevel()}
+        </div>
         <div className="stat">{game.weatherLabel()}</div>
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
@@ -558,19 +566,53 @@ export function Hud({ game }: { game: Game }) {
                     <p className="muted">
                       Drops a Northline-ready regional field + Apex + SkyBite. Empty plot only.
                     </p>
-                    <div className="row">
-                      <button type="button" onClick={() => game.takeLoan()}>
-                        Loan {money(LOAN_PRINCIPAL)}
-                      </button>
-                      <button type="button" onClick={() => game.repayLoan()}>
-                        Pay loan
-                      </button>
-                      <button type="button" onClick={() => game.buyParcel()}>
-                        Parcel {money(PARCEL_COST * game.parcels)}
-                      </button>
-                      <button type="button" onClick={() => game.investRail()}>
-                        City rail {money(RAIL_CITY_COST)}
-                      </button>
+                    <div className="loan-products">
+                      <h4 className="loan-h">Bank desk</h4>
+                      <p className="muted eco-line">
+                        {game.loanBalance > 0
+                          ? `Open: ${
+                              LOAN_PRODUCTS.find((p) => p.id === game.loanProductId)?.label ??
+                              'Loan'
+                            } · owe ${money(game.loanBalance)}`
+                          : 'No open loan — pick a product (bigger = higher fee, needs Field Level).'}
+                      </p>
+                      <div className="loan-grid">
+                        {LOAN_PRODUCTS.map((p) => {
+                          const open = game.availableLoans().some((x) => x.id === p.id)
+                          const active = game.loanProductId === p.id && game.loanBalance > 0
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className={active ? 'on' : ''}
+                              disabled={!open || game.loanBalance > 0}
+                              title={
+                                open
+                                  ? `${p.blurb} Fee ${money(p.fee)} · rate ${(p.rate * 100).toFixed(1)}%/tick`
+                                  : `Locked — Field Lv${p.minFieldLevel}+ · rep ${p.minRep}+`
+                              }
+                              onClick={() => game.takeLoanProduct(p.id)}
+                            >
+                              {p.label} · {money(p.principal)}
+                              {!open ? ' · locked' : ''}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <div className="row">
+                        <button type="button" onClick={() => game.repayLoan()}>
+                          Pay loan
+                        </button>
+                        <button type="button" onClick={() => game.buyParcel()}>
+                          Parcel {money(PARCEL_COST * game.parcels)}
+                          {game.fieldLevel() < Math.min(5, game.parcels)
+                            ? ` · need Lv${Math.min(5, game.parcels)}`
+                            : ''}
+                        </button>
+                        <button type="button" onClick={() => game.investRail()}>
+                          City rail {money(RAIL_CITY_COST)}
+                        </button>
+                      </div>
                     </div>
                     <div className="row">
                       <button type="button" onClick={() => game.buyHotel()}>
@@ -785,70 +827,112 @@ export function Hud({ game }: { game: Game }) {
               ) : null}
 
               {panel === 'airlines' ? (
-                <section>
-                  <h3>Airline desk</h3>
+                <section className="airline-tiers">
+                  <h3>Airline tiers</h3>
+                  {(() => {
+                    const prog = game.fieldXpToNext()
+                    return (
+                      <p className="muted eco-line">
+                        Field Level {prog.level}
+                        {prog.level < 5
+                          ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to Lv${prog.level + 1})`
+                          : ` · ${prog.xp} XP · max`}
+                        {' · '}
+                        Signed:{' '}
+                        {game.signed.length
+                          ? game.signed.map((id) => game.airline(id).name).join(', ')
+                          : 'none'}
+                        {ready.tower
+                          ? ` · tower ${game.maxInbound()} inbound`
+                          : ' · no tower'}
+                      </p>
+                    )
+                  })()}
                   <p className="muted">
-                    Signed:{' '}
-                    {game.signed.length
-                      ? game.signed.map((id) => game.airline(id).name).join(', ')
-                      : 'none'}
-                    {ready.tower
-                      ? ` · tower queues ${game.maxInbound()} inbound`
-                      : ' · no tower (single approach)'}
-                    {' · '}
-                    perk at heat {HEAT_REWARD_THRESHOLD}+ · warn ≤{HEAT_WARN_THRESHOLD} ·
-                    abandon ≤{HEAT_ABANDON_THRESHOLD}
+                    Letters on the right are live offers. Heat {HEAT_REWARD_THRESHOLD}+ unlocks
+                    persona perks · warn ≤{HEAT_WARN_THRESHOLD} · abandon ≤
+                    {HEAT_ABANDON_THRESHOLD}. Cross-cut: Charter / LCC / Full-service / Cargo.
                   </p>
-                  <p className="muted">
-                    Apron walkers:{' '}
-                    {game.people.filter((p) => p.job === 'arrive' || p.job === 'board').length}
-                    {' · '}Hall: {game.hallGuests.length}
-                  </p>
-                  <ul className="airlines">
-                    {game.allAirlines().map((a) => {
-                      const signed = game.signed.includes(a.id)
-                      const ok = game.meetsReq(a.id)
-                      const miss = game.missingReq(a.id)
-                      const banned = game.isBanned(a.id)
-                      const heat = Math.round(game.heatOf(a.id))
-                      const reward = game.rewardOf(a.id)
-                      const warned = Boolean(game.airlineWarned[a.id])
-                      const hub = game.isHub(a.id)
-                      const targetPerk = rewardForPersona(a.persona)
-                      return (
-                        <li key={a.id}>
-                          <b style={{ color: a.color }}>
-                            {a.name}{' '}
-                            <span className="muted">
-                              {personaBlurb(a.persona)}
-                              {a.procedural ? ' · proc' : ''}
-                              {hub ? ' · HUB' : ''}
-                            </span>{' '}
-                            {banned
-                              ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
-                              : signed
-                                ? `· heat ${heat}${warned ? ' · WARN' : ''}${
-                                    reward ? ` · ${rewardBlurb(reward)}` : ''
-                                  }`
-                                : ok
-                                  ? '· ready'
-                                  : ''}
-                          </b>
+                  {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
+                    const meta = AIRLINE_TIER_META[tier]
+                    const unlocked = game.tierUnlocked(tier)
+                    const carriers = game
+                      .allAirlines()
+                      .filter((a) => a.tier === tier)
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                    if (!carriers.length) return null
+                    return (
+                      <div
+                        key={tier}
+                        className={`tier-block${unlocked ? '' : ' locked'}`}
+                      >
+                        <header className="tier-head">
+                          <strong>
+                            {meta.short} · {meta.label}
+                          </strong>
                           <span className="muted">
-                            {banned
-                              ? 'Suspended after a bad layover / hall'
-                              : signed
-                                ? reward
-                                  ? rewardDetail(reward)
-                                  : warned
-                                    ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}. Unlock ${rewardBlurb(targetPerk)} at ${HEAT_REWARD_THRESHOLD}+.`
-                                    : `Chase ${rewardBlurb(targetPerk)} at heat ${HEAT_REWARD_THRESHOLD}+. ${rewardDetail(targetPerk)}`
-                                : miss.slice(0, 4).join(', ') || 'Waiting to call'}
+                            {unlocked
+                              ? 'Unlocked'
+                              : `Needs Field Lv${Math.max(1, tier - 1)}`}
                           </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                        </header>
+                        <p className="muted tier-blurb">
+                          {meta.blurb} · {meta.fleet}
+                        </p>
+                        <ul className="airlines">
+                          {carriers.map((a) => {
+                            const signed = game.signed.includes(a.id)
+                            const ok = game.meetsReq(a.id)
+                            const miss = game.missingReq(a.id)
+                            const banned = game.isBanned(a.id)
+                            const heat = Math.round(game.heatOf(a.id))
+                            const reward = game.rewardOf(a.id)
+                            const warned = Boolean(game.airlineWarned[a.id])
+                            const hub = game.isHub(a.id)
+                            const targetPerk = rewardForPersona(a.persona)
+                            return (
+                              <li key={a.id}>
+                                <b style={{ color: a.color }}>
+                                  {a.name}{' '}
+                                  <span className="muted">
+                                    {bizModelBlurb(a.bizModel)} · {personaBlurb(a.persona)}
+                                    {a.procedural ? ' · proc' : ''}
+                                    {hub ? ' · HUB' : ''}
+                                  </span>{' '}
+                                  {banned
+                                    ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
+                                    : signed
+                                      ? `· heat ${heat}${warned ? ' · WARN' : ''}${
+                                          reward ? ` · ${rewardBlurb(reward)}` : ''
+                                        }`
+                                      : !unlocked
+                                        ? '· locked tier'
+                                        : ok
+                                          ? '· ready to call'
+                                          : '· missing infra'}
+                                </b>
+                                <span className="muted">
+                                  {a.fleetBlurb}
+                                  {' · '}
+                                  {banned
+                                    ? 'Suspended after a bad layover / hall'
+                                    : signed
+                                      ? reward
+                                        ? rewardDetail(reward)
+                                        : warned
+                                          ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}.`
+                                          : `Chase ${rewardBlurb(targetPerk)} at heat ${HEAT_REWARD_THRESHOLD}+.`
+                                      : !unlocked
+                                        ? meta.scope
+                                        : miss.slice(0, 4).join(', ') || a.blurb}
+                                </span>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </div>
+                    )
+                  })}
                 </section>
               ) : null}
 

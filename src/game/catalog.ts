@@ -2,11 +2,13 @@ import type {
   Airline,
   AirlinePersona,
   AirlineRewardId,
+  AirlineTier,
   BudgetKey,
   BuildDef,
   CaterContract,
   FuelContract,
   LandSite,
+  LoanProduct,
   ParkTerm,
   ResearchId,
   RoomDef,
@@ -79,6 +81,7 @@ export const CLEANING_FEE = 900
 /** Deep-clean hall WC / security after budget wear. */
 export const HALL_SCRUB_COST = 2800
 export const BULLDOZE_REFUND = 0.4
+/** @deprecated Prefer LOAN_PRODUCTS bridge — kept for older UI strings. */
 export const LOAN_PRINCIPAL = 45_000
 export const LOAN_FEE = 2_800
 /**
@@ -88,6 +91,123 @@ export const LOAN_FEE = 2_800
 export const LOAN_INTEREST = 1_250
 /** Seconds between loan interest ticks (was 60 — tighter leash). */
 export const LOAN_INTEREST_EVERY = 55
+
+/** Multiple bank products — bigger loans cost more fees and need field level. */
+export const LOAN_PRODUCTS: LoanProduct[] = [
+  {
+    id: 'micro',
+    label: 'Micro strip',
+    blurb: 'Starter cash for pavement. High rate, short leash.',
+    principal: 25_000,
+    fee: 1_400,
+    rate: 0.018,
+    interestFloor: 900,
+    every: 42,
+    minFieldLevel: 1,
+    minRep: 0,
+  },
+  {
+    id: 'bridge',
+    label: 'Bridge loan',
+    blurb: 'Classic growth wire. Balanced fee and rate.',
+    principal: 45_000,
+    fee: 2_800,
+    rate: 0.012,
+    interestFloor: 1_250,
+    every: 55,
+    minFieldLevel: 1,
+    minRep: 0,
+  },
+  {
+    id: 'expansion',
+    label: 'Expansion',
+    blurb: 'Second hall / jetway money. Needs Field Lv2.',
+    principal: 90_000,
+    fee: 7_500,
+    rate: 0.009,
+    interestFloor: 1_800,
+    every: 70,
+    minFieldLevel: 2,
+    minRep: 35,
+  },
+  {
+    id: 'hub',
+    label: 'Hub facility',
+    blurb: 'Major capex. Needs Field Lv3 + reputation.',
+    principal: 180_000,
+    fee: 18_000,
+    rate: 0.007,
+    interestFloor: 2_800,
+    every: 85,
+    minFieldLevel: 3,
+    minRep: 55,
+  },
+  {
+    id: 'sovereign',
+    label: 'Sovereign bond',
+    blurb: 'Endgame mega wire. Needs Field Lv4. Huge fee.',
+    principal: 320_000,
+    fee: 42_000,
+    rate: 0.0055,
+    interestFloor: 4_200,
+    every: 100,
+    minFieldLevel: 4,
+    minRep: 70,
+  },
+]
+
+/** XP thresholds → field level 1–5 (airline tier unlock spine). */
+export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700] as const
+
+export function fieldLevelFromXp(xp: number): AirlineTier {
+  if (xp >= FIELD_LEVEL_XP[5]) return 5
+  if (xp >= FIELD_LEVEL_XP[4]) return 4
+  if (xp >= FIELD_LEVEL_XP[3]) return 3
+  if (xp >= FIELD_LEVEL_XP[2]) return 2
+  return 1
+}
+
+export const AIRLINE_TIER_META: Record<
+  AirlineTier,
+  { label: string; short: string; blurb: string; fleet: string; scope: string }
+> = {
+  1: {
+    label: 'Commuter / Local',
+    short: 'T1',
+    blurb: 'Bush taxis & island hoppers. Low overhead, intimate ops.',
+    fleet: 'Code A/B — Cessna / Twin Otter / Islander (5–19 seats)',
+    scope: 'Hops under ~100 mi · unpaved / local fields',
+  },
+  2: {
+    label: 'Regional',
+    short: 'T2',
+    blurb: 'Feeder schedules into larger cities. Early timetable skill.',
+    fleet: 'Code B/C — ATR 72 / CRJ / ERJ (30–100 seats)',
+    scope: 'Short-haul 100–500 mi · codeshare feeders',
+  },
+  3: {
+    label: 'National / Mid-size',
+    short: 'T3',
+    blurb: 'Narrowbody domestic / near-intl. Brand identity matters.',
+    fleet: 'Code C — A320 / 737 family (130–200 seats)',
+    scope: 'Coast-to-coast or continental city pairs',
+  },
+  4: {
+    label: 'Major / Flag',
+    short: 'T4',
+    blurb: 'Hub-and-spoke, alliances, premium cabins.',
+    fleet: 'Code D/E — 767 / 777 / A330 / A350 (200–400+)',
+    scope: 'Transcontinental + international hubs',
+  },
+  5: {
+    label: 'Mega-global',
+    short: 'T5',
+    blurb: 'Ultra-widebody / heavy cargo titans. Endgame mastery.',
+    fleet: 'Code F — A380 / 747-8 / 777X / heavy freighters',
+    scope: 'Intercontinental mega-hubs · global logistics',
+  },
+}
+
 export const PARCEL_COST = 28_000
 export const RAIL_CITY_COST = 22_000
 /**
@@ -292,6 +412,42 @@ const baseReq = {
 }
 
 export const AIRLINES: Record<string, Airline> = {
+  bushline: {
+    id: 'bushline',
+    name: 'Bushline Local',
+    color: '#6b8f3a',
+    stripe: '#f4f1e0',
+    kind: 'pax',
+    persona: 'budget',
+    tier: 1,
+    bizModel: 'charter',
+    fleetBlurb: 'Twin Otter / Islander · 9–19 seats',
+    landing: 2800,
+    catering: 0,
+    bags: 400,
+    paxMin: 8,
+    paxMax: 18,
+    minRep: 0,
+    req: {
+      stands: 1,
+      fuelContract: false,
+      fuelFarm: true,
+      fire: true,
+      police: false,
+      terminal: false,
+      security: 0,
+      bags: false,
+      snack: false,
+      catering: false,
+      cargo: false,
+      road: true,
+      tower: false,
+      heavyRunway: false,
+    },
+    blurb: 'T1 commuter. Short strip + fuel farm + fire + road. No hall required.',
+    likesLayovers: false,
+    heatSensitivity: 0.75,
+  },
   northline: {
     id: 'northline',
     name: 'Northline',
@@ -299,6 +455,9 @@ export const AIRLINES: Record<string, Airline> = {
     stripe: '#e8eef5',
     kind: 'pax',
     persona: 'budget',
+    tier: 2,
+    bizModel: 'lcc',
+    fleetBlurb: 'ATR 72 / CRJ / E175 · 48–72 seats',
     landing: 5200,
     catering: 1600,
     bags: 1100,
@@ -306,7 +465,7 @@ export const AIRLINES: Record<string, Airline> = {
     paxMax: 72,
     minRep: 0,
     req: { ...baseReq, police: false, snack: false, security: 1 },
-    blurb: 'Budget regionals. Runway, stand, fuel, fire, hall security, bags, road.',
+    blurb: 'T2 regional LCC. Runway, stand, fuel, fire, hall security, bags, road.',
     likesLayovers: true,
     heatSensitivity: 0.9,
   },
@@ -317,6 +476,9 @@ export const AIRLINES: Record<string, Airline> = {
     stripe: '#f3d27a',
     kind: 'pax',
     persona: 'business',
+    tier: 3,
+    bizModel: 'full_service',
+    fleetBlurb: 'A320 / 737 family · 130–180 seats',
     landing: 7400,
     catering: 2100,
     bags: 1800,
@@ -332,7 +494,7 @@ export const AIRLINES: Record<string, Airline> = {
       security: 2,
       tower: true,
     },
-    blurb: 'Business schedules. Two stands, police, tower, catering + snack, security ×2.',
+    blurb: 'T3 national. Two stands, police, tower, catering + snack, security ×2.',
     likesLayovers: true,
     heatSensitivity: 1.1,
   },
@@ -343,6 +505,9 @@ export const AIRLINES: Record<string, Airline> = {
     stripe: '#f0e6ff',
     kind: 'pax',
     persona: 'luxury',
+    tier: 4,
+    bizModel: 'full_service',
+    fleetBlurb: '787 / A350 · premium cabins',
     landing: 11000,
     catering: 3200,
     bags: 2400,
@@ -359,9 +524,39 @@ export const AIRLINES: Record<string, Airline> = {
       tower: true,
       heavyRunway: true,
     },
-    blurb: 'Luxury widebodies. Heavy strip, three stands, tower, serious security.',
+    blurb: 'T4 flag carrier. Heavy strip, three stands, tower, serious security.',
     likesLayovers: false,
     heatSensitivity: 1.45,
+  },
+  crown: {
+    id: 'crown',
+    name: 'Crown Pacific',
+    color: '#0a3d5c',
+    stripe: '#e7c56a',
+    kind: 'pax',
+    persona: 'luxury',
+    tier: 5,
+    bizModel: 'full_service',
+    fleetBlurb: 'A380 / 777X · mega-hub flagships',
+    landing: 16000,
+    catering: 4800,
+    bags: 3200,
+    paxMin: 220,
+    paxMax: 380,
+    minRep: 85,
+    req: {
+      ...baseReq,
+      stands: 4,
+      police: true,
+      snack: true,
+      catering: true,
+      security: 3,
+      tower: true,
+      heavyRunway: true,
+    },
+    blurb: 'T5 mega-global. Field Lv5, heavy strip, four stands, fortress security.',
+    likesLayovers: false,
+    heatSensitivity: 1.55,
   },
   umazon: {
     id: 'umazon',
@@ -370,6 +565,9 @@ export const AIRLINES: Record<string, Airline> = {
     stripe: '#222',
     kind: 'cargo',
     persona: 'cargo_night',
+    tier: 3,
+    bizModel: 'cargo',
+    fleetBlurb: '757F / 767F night bank',
     landing: 9000,
     catering: 0,
     bags: 0,
@@ -392,7 +590,7 @@ export const AIRLINES: Record<string, Airline> = {
       tower: false,
       heavyRunway: false,
     },
-    blurb: 'Night freighters. Cargo shed, fuel, fire, police, road — no hall.',
+    blurb: 'T3 cargo. Night freighters — shed, fuel, fire, police, road.',
     likesLayovers: false,
     heatSensitivity: 0.7,
   },
@@ -403,6 +601,9 @@ export const AIRLINES: Record<string, Airline> = {
     stripe: '#c9a227',
     kind: 'cargo',
     persona: 'cargo_night',
+    tier: 2,
+    bizModel: 'cargo',
+    fleetBlurb: '757F brown-box feeder',
     landing: 7800,
     catering: 0,
     bags: 0,
@@ -425,7 +626,7 @@ export const AIRLINES: Record<string, Airline> = {
       tower: false,
       heavyRunway: false,
     },
-    blurb: 'Brown-box freighter. First cargo contract most fields can earn.',
+    blurb: 'T2 cargo feeder. First freight contract most fields can earn.',
     likesLayovers: false,
     heatSensitivity: 0.65,
   },
@@ -436,6 +637,9 @@ export const AIRLINES: Record<string, Airline> = {
     stripe: '#f0c040',
     kind: 'cargo',
     persona: 'cargo_night',
+    tier: 5,
+    bizModel: 'cargo',
+    fleetBlurb: '747-8F / heavy express',
     landing: 10500,
     catering: 0,
     bags: 0,
@@ -458,10 +662,23 @@ export const AIRLINES: Record<string, Airline> = {
       tower: true,
       heavyRunway: true,
     },
-    blurb: 'Priority freighters. Heavy strip, two stands, police, tower, cargo apron.',
+    blurb: 'T5 cargo titan. Heavy strip, two stands, police, tower.',
     likesLayovers: false,
     heatSensitivity: 0.85,
   },
+}
+
+export function bizModelBlurb(m: Airline['bizModel']): string {
+  switch (m) {
+    case 'charter':
+      return 'Charter'
+    case 'lcc':
+      return 'LCC'
+    case 'full_service':
+      return 'Full-service'
+    case 'cargo':
+      return 'Cargo'
+  }
 }
 
 const PROC_NAMES = [
@@ -493,6 +710,9 @@ export function createProcAirline(usedNames: string[] = []): Airline {
     stripe: '#e8eef4',
     kind: 'pax',
     persona: budget ? 'budget' : 'business',
+    tier: budget ? 1 : 2,
+    bizModel: budget ? 'lcc' : 'full_service',
+    fleetBlurb: budget ? 'Twin turboprop · 40–68 seats' : 'Small RJ · 55–90 seats',
     landing: budget ? 4800 : 6200,
     catering: budget ? 1200 : 1800,
     bags: budget ? 900 : 1400,
@@ -509,11 +729,26 @@ export function createProcAirline(usedNames: string[] = []): Airline {
       tower: !budget,
     },
     blurb: budget
-      ? 'Procedural budget hopper. Easy to please — until the hall fails a layover.'
-      : 'Procedural business regional. Wants a tidy hall and a second stand.',
+      ? 'T1/T2 procedural hopper. Easy to please — until the hall fails a layover.'
+      : 'T2 procedural business regional. Wants a tidy hall and a second stand.',
     likesLayovers: true,
     heatSensitivity: budget ? 1 : 1.2,
     procedural: true,
+  }
+}
+
+/** Backfill tier/biz fields on older saves / procs. */
+export function normalizeAirline(a: Airline): Airline {
+  if (a.tier && a.bizModel && a.fleetBlurb) return a
+  const kindTier: AirlineTier =
+    a.kind === 'cargo' ? 3 : a.persona === 'luxury' ? 4 : a.persona === 'business' ? 3 : 2
+  return {
+    ...a,
+    tier: a.tier ?? (a.procedural ? 1 : kindTier),
+    bizModel:
+      a.bizModel ??
+      (a.kind === 'cargo' ? 'cargo' : a.persona === 'budget' ? 'lcc' : 'full_service'),
+    fleetBlurb: a.fleetBlurb ?? (a.kind === 'cargo' ? 'Freighter' : 'Regional metal'),
   }
 }
 
