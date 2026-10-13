@@ -748,6 +748,6 @@ PR #45 is on this branch and closes #26. A covered payroll bill, including a rem
 
 PR #58 (issue #41) is on this branch, including the follow-up that drops rubbish where the food is finished. A meal or coffee stays in the passenger's hand and lands in a trash can within range of that spot, or on the floor there if the can is full or missing. Boarding or leaving early drops it at the last hall spot. The kit bar has a Service tab with a $150 trash can. Hired janitors sweep litter, empty cans, and service restrooms when the cleaning budget is funded. The hall-route check that an uncleared departure stays landside of security now measures movement in the plane, so a north-south step no longer fails the assertion.
 
-**Tests.** `tsc -b` clean. Vitest 784 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+**Tests.** `tsc -b` clean. Vitest 784 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-0Py0oJVZ.js`, 1,646.13 kB, with `index-eP-pqaTd.css`.
 
 
