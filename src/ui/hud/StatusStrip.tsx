@@ -1,7 +1,10 @@
+import { useEffect, useRef, useState } from 'react'
 import type { Game } from '../../game/sim'
 import { formatSimDate } from '../../game/sim'
 import type { Speed } from '../../game/types'
-import { moneyAbbrev, perDayFromHour, signedRatePerDay } from '../moneyFormat'
+import type { CashFlowView, FlowFloat } from '../cashFlow'
+import { moneyFull, moneyTick, ratePerDay } from '../moneyFormat'
+import { selectCashFlow } from '../selectors'
 import { togglePanel } from '../uiStore'
 import { Icon } from './icons'
 
@@ -22,12 +25,40 @@ export function StatusStrip({
   ticker: string
 }) {
   const xp = game.fieldXpToNext()
-  const last = game.econHist[game.econHist.length - 1]
-  const netHour = last ? last.income - last.expense : game.incomePerHour
-  const perDay = perDayFromHour(netHour)
   const site = game.site ? game.site : null
+  const flow = selectCashFlow(game)
+  const cashRef = useRef<HTMLButtonElement>(null)
+  const [tip, setTip] = useState(false)
+  const [anchor, setAnchor] = useState({ left: 8, bottom: 32 })
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    if (!flow.floats.length) return
+    const id = window.setTimeout(() => setTick((n) => n + 1), 400)
+    return () => window.clearTimeout(id)
+  }, [flow.floats, tick])
+
+  useEffect(() => {
+    const el = cashRef.current
+    if (!el) return
+    const place = () => {
+      const r = el.getBoundingClientRect()
+      setAnchor({ left: r.left, bottom: r.bottom })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [flow.estimateText, flow.cash, tip])
+
+  const runwayShort =
+    flow.runwayDays == null
+      ? ''
+      : flow.runwayDays < 1
+        ? ' · <1d'
+        : ` · ~${flow.runwayDays >= 10 ? Math.min(999, Math.round(flow.runwayDays)) : Math.round(flow.runwayDays * 10) / 10}d`
 
   return (
+    <>
     <header className="hf-strip" data-hud-part="strip" data-testid="stats-bar">
       <button
         type="button"
@@ -69,15 +100,23 @@ export function StatusStrip({
         ))}
       </div>
       <button
+        ref={cashRef}
         type="button"
-        className="hf-money"
+        className="hf-cash"
         data-testid="tab-economy"
-        title="Finances (F) · figures are per in-game day"
+        aria-label={`${moneyFull(flow.cash)}. ${flow.estimateText}${flow.runwayText ? `. ${flow.runwayText}` : ''}`}
+        onMouseEnter={() => setTip(true)}
+        onMouseLeave={() => setTip(false)}
+        onFocus={() => setTip(true)}
+        onBlur={() => setTip(false)}
         onClick={() => togglePanel('finances', 'overview')}
       >
-        {moneyAbbrev(game.cash)}{' '}
-        <span className={perDay >= 0 ? 'up' : 'down'} data-money-unit="day">
-          {signedRatePerDay(perDay)}
+        <span className="hf-cash-amt" data-testid="cash-amount">
+          {moneyFull(flow.cash)}
+        </span>
+        <span className={`hf-cash-est ${flow.arrow}`} data-money-unit="day" data-testid="cash-estimate">
+          {flow.arrow === 'up' ? '▲' : flow.arrow === 'down' ? '▼' : '·'} {flow.estimateText}
+          {flow.runwayText ? runwayShort : ''}
         </span>
       </button>
       <span className="hf-muted" title="Weather">
@@ -114,5 +153,82 @@ export function StatusStrip({
         </button>
       </div>
     </header>
+    {tip ? <FlowTip flow={flow} anchor={anchor} /> : null}
+    <FlowFloats floats={flow.floats} anchor={anchor} />
+    </>
+  )
+}
+
+function FlowTip({ flow, anchor }: { flow: CashFlowView; anchor: { left: number; bottom: number } }) {
+  const left = Math.max(8, Math.min(anchor.left, window.innerWidth - 336))
+  return (
+    <div
+      className="hf-flow-tip"
+      data-hud-transient
+      role="tooltip"
+      data-testid="cash-tip"
+      style={{ left, top: anchor.bottom + 6 }}
+    >
+      <p className="hf-flow-head">
+        {flow.runwayText ?? 'Daily pace'}
+        <span data-money-unit="day">{flow.estimateText}</span>
+      </p>
+      <div>
+        <b>Income</b>
+        {flow.incomeLines.length ? (
+          <ul>
+            {flow.incomeLines.map((line) => (
+              <li key={line.label}>
+                <span>{line.label}</span>
+                <span data-money-unit="day">{ratePerDay(line.perDay)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No flight income yet.</p>
+        )}
+      </div>
+      <div>
+        <b>Costs</b>
+        {flow.costLines.length ? (
+          <ul>
+            {flow.costLines.map((line) => (
+              <li key={line.label}>
+                <span>{line.label}</span>
+                <span data-money-unit="day">{ratePerDay(line.perDay)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No running costs.</p>
+        )}
+      </div>
+      <p className="hf-flow-next">Next charge in {Math.max(0, Math.ceil(flow.nextChargeSec))}s</p>
+    </div>
+  )
+}
+
+function FlowFloats({
+  floats,
+  anchor,
+}: {
+  floats: FlowFloat[]
+  anchor: { left: number; bottom: number }
+}) {
+  if (!floats.length) return null
+  return (
+    <div className="hf-floats" data-hud-transient>
+      {floats.map((f, i) => (
+        <span
+          key={f.id}
+          className={`hf-float ${f.dir}`}
+          style={{ left: anchor.left + (i % 3) * 18, top: anchor.bottom - 4 }}
+        >
+          {f.dir === 'up' ? '+' : '−'}
+          {moneyTick(f.amount)}
+          <small>{f.label}</small>
+        </span>
+      ))}
+    </div>
   )
 }

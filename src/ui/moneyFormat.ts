@@ -11,6 +11,20 @@ export function perDayFromTick(perTick: number): number {
   return perTick * TICKS_PER_DAY
 }
 
+/** Full cash for the status readout: $9,999,999. */
+export function moneyFull(n: number): string {
+  const sign = n < 0 ? '-' : ''
+  return `${sign}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
+}
+
+/** Float ticks: +$1,240 under $100k, then the compact form. */
+export function moneyTick(n: number): string {
+  const sign = n < 0 ? '-' : ''
+  const v = Math.abs(Math.round(n))
+  if (v >= 100_000) return moneyAbbrev(n)
+  return `${sign}$${v.toLocaleString('en-US')}`
+}
+
 /** Compact cash: $1.24M, $3.2k, $480. */
 export function moneyAbbrev(n: number): string {
   const sign = n < 0 ? '-' : ''

@@ -406,6 +406,26 @@ The old dock kept a build tray and a tall sheet over the apron. The new HUD is a
 
 **Fix:** None in this pass. The sim has no command history, and this slice does not edit `sim.ts`. The shortcut is wired so it does not do nothing silently.
 
+## Cash readout — 13 Oct 2026
+
+Same HUD branch. The status strip keeps its 32px height. The bank balance is now the full figure in gold at up to 26px, with a daily pace beside it.
+
+**Cash flow.** The HUD reads the sim through selectors (`src/ui/selectors.ts`) and derives the tape in `src/ui/cashFlow.ts`. `sim.ts` is untouched. Flight pay shows as a green float (`+$1,240`). Payroll posts a red float for staff, upkeep (when the field is not a sandbox), and fees. The strip shows `Est. +$X/day` when the pace is positive, and a down arrow plus `Cash lasts ~N days` when it is not. Hovering the balance opens a breakdown of income by source, costs by category, and the next charge. Finances → Overview adds the same pace as a seven-day summary.
+
+**Checks.** Playwright 32/32 at 1920×1080 and 1366×768, including the cash tooltip and a live charge float. Idle coverage is 4.22% at 1920×1080 and 5.65% at 1366×768. Vitest 35 passing (13 new cash-flow cases).
+
+**Bugs.** One new one, left open. The count is now ten (BUG-001 through BUG-010).
+
+### BUG-010 — Sandbox still pays the city levy
+
+**Severity:** Medium.
+
+**What you see:** A fresh sandbox starts at $9,999,999 and the strip says `Est. -$1.77M/day` and `Cash lasts ~5.6 days`. About every 30 sim seconds the balance drops by staff payroll plus roughly 3% of cash above $140,000. A measured tick was exactly $2,361 staff + $292,879 fees.
+
+**Repro:** New Game with sandbox on, start a passenger field, set speed to 5x, watch the balance.
+
+**Fix:** None here. The levy is charged inside `tickPayroll` in `sim.ts`, and that file belongs to the terminal work. The HUD only reports the books. Upkeep is already waived in sandbox; the levy is not.
+
 ## Media
 
 - `docs/devlog/media/UI-REDESIGN-before-idle.png`
@@ -423,4 +443,7 @@ The old dock kept a build tray and a tall sheet over the apron. The new HUD is a
 - `docs/devlog/media/UI-REDESIGN-after-1366-menu.png`
 - `docs/devlog/media/UI-REDESIGN-after-1366-panel.png`
 - `docs/devlog/media/UI-REDESIGN-airfield.webm` — UI hidden, camera pans across the apron (about 4 s)
+- `docs/devlog/media/UI-REDESIGN-cash-flow.png` — gold balance, daily estimate, hover breakdown
+- `docs/devlog/media/UI-REDESIGN-cash-float.png` — red fee float as a charge posts
+- `docs/devlog/media/UI-REDESIGN-cash-week.png` — seven-day pace in Finances
 
