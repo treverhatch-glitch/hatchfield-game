@@ -13,22 +13,31 @@ import type { BudgetKey, LoanProduct } from './types.ts'
  * scale ops payroll so mid/late game stays a money puzzle (capped).
  */
 export function fieldOpsMultiplier(signed: number, stands: number, flightsDone: number): number {
+  const s = Number.isFinite(signed) ? signed : 0
+  const st = Number.isFinite(stands) ? stands : 0
+  const f = Number.isFinite(flightsDone) ? flightsDone : 0
   const load =
     1 +
-    Math.max(0, signed - 1) * 0.055 +
-    Math.max(0, stands - 2) * 0.04 +
-    Math.min(0.35, flightsDone * 0.0035)
-  return Math.min(1.65, load)
+    Math.max(0, s - 1) * 0.055 +
+    Math.max(0, st - 2) * 0.04 +
+    Math.min(0.35, Math.max(0, f) * 0.0035)
+  return Math.min(1.65, Math.max(1, load))
 }
 
 /** Interest due this loan tick: at least the product floor, else ~rate × balance. */
 export function loanInterestDue(balance: number, rate: number, floor: number): number {
-  return Math.max(floor, Math.round(balance * rate))
+  const safeBalance = Number.isFinite(balance) && balance > 0 ? balance : 0
+  const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 0
+  const safeFloor = Number.isFinite(floor) && floor > 0 ? floor : 0
+  return Math.max(safeFloor, Math.round(safeBalance * safeRate))
 }
 
 /** Unpaid interest shortfall capitalizes, hard-capped at 2.1× the amount opened. */
 export function nextLoanBalance(balance: number, short: number, opened: number): number {
-  return Math.min(opened * 2.1, balance + short)
+  const safeOpened = Number.isFinite(opened) && opened > 0 ? opened : 0
+  const safeBalance = Number.isFinite(balance) && balance > 0 ? balance : 0
+  const safeShort = Number.isFinite(short) && short > 0 ? short : 0
+  return Math.max(0, Math.min(safeOpened * 2.1, safeBalance + safeShort))
 }
 
 export function loansAvailable<T extends Pick<LoanProduct, 'minFieldLevel' | 'minRep'>>(
@@ -37,15 +46,22 @@ export function loansAvailable<T extends Pick<LoanProduct, 'minFieldLevel' | 'mi
   rep: number,
   sandbox: boolean,
 ): T[] {
+  if (!Array.isArray(products)) return []
   if (sandbox) return products.slice()
-  return products.filter((p) => fieldLevel >= p.minFieldLevel && rep >= p.minRep)
+  const safeLevel = Number.isFinite(fieldLevel) ? fieldLevel : 0
+  const safeRep = Number.isFinite(rep) ? rep : 0
+  return products.filter((p) => p && safeLevel >= p.minFieldLevel && safeRep >= p.minRep)
 }
 
 export function payrollAmount(lineCosts: readonly number[], opsMult: number): number {
+  if (!Array.isArray(lineCosts)) return 0
+  const safeMult = Number.isFinite(opsMult) && opsMult > 0 ? opsMult : 0
   let total = 0
-  for (const cost of lineCosts) total += cost
-  const scaled = total * opsMult
-  return Number.isFinite(scaled) ? Math.round(scaled) : 0
+  for (const cost of lineCosts) {
+    if (Number.isFinite(cost) && cost > 0) total += cost
+  }
+  const scaled = total * safeMult
+  return Number.isFinite(scaled) && scaled > 0 ? Math.round(scaled) : 0
 }
 
 export interface PayrollSettlement {
@@ -82,7 +98,7 @@ export const CITY_LEVY_RATE = 0.005
  * Sandbox is exempt: a trial pile is not a city that owes the levy.
  */
 export function cityLevy(cash: number, sandbox = false): number {
-  if (sandbox) return 0
+  if (sandbox || !Number.isFinite(cash) || cash <= CITY_LEVY_FLOOR) return 0
   return cityLevyForGameDay(cash, CITY_LEVY_FLOOR)
 }
 
@@ -109,31 +125,45 @@ export type BudgetLineInput = {
 }
 
 export function budgetLineCost(input: BudgetLineInput): number {
-  const pct = input.budgetPct / 100
-  let base = BUDGET_BASE[input.key] * pct
+  const pct = Math.max(0, Number.isFinite(input.budgetPct) ? input.budgetPct : 0) / 100
+  const mechanics = Math.max(0, Number.isFinite(input.mechanics) ? input.mechanics : 0)
+  const hangars = Math.max(0, Number.isFinite(input.hangars) ? input.hangars : 0)
+  const researchers = Math.max(0, Number.isFinite(input.researchers) ? input.researchers : 0)
+  const desks = Math.max(0, Number.isFinite(input.desks) ? input.desks : 0)
+  const boards = Math.max(0, Number.isFinite(input.boards) ? input.boards : 0)
+  const machines = Math.max(0, Number.isFinite(input.machines) ? input.machines : 0)
+  const securityPosts = Math.max(0, Number.isFinite(input.securityPosts) ? input.securityPosts : 0)
+  const deskStaff = Math.max(0, Number.isFinite(input.deskStaff) ? input.deskStaff : 0)
+  const cleanRooms = Math.max(0, Number.isFinite(input.cleanRooms) ? input.cleanRooms : 0)
+  const janitors = Math.max(0, Number.isFinite(input.janitors) ? input.janitors : 0)
+  const fireStations = Math.max(0, Number.isFinite(input.fireStations) ? input.fireStations : 0)
+  const signed = Math.max(0, Number.isFinite(input.signed) ? input.signed : 0)
+  const helipads = Math.max(0, Number.isFinite(input.helipads) ? input.helipads : 0)
+
+  let base = (BUDGET_BASE[input.key] ?? 0) * pct
   if (input.key === 'maintenance') {
-    base += input.mechanics * MECHANIC_WAGE * pct
+    base += mechanics * MECHANIC_WAGE * pct
     // Hangar on field adds a shop overhead even at low slider (tools still cost).
-    if (input.hangars) base += 90 * Math.max(0.25, pct)
+    if (hangars) base += 90 * Math.max(0.25, pct)
     // Lab staff wages ride the MX slider — empty labs still cost if hired.
-    base += input.researchers * RESEARCHER_WAGE * Math.max(0.35, pct)
-    base += (input.desks * 40 + input.boards * 25 + input.machines * 70) * Math.max(0.2, pct)
+    base += researchers * RESEARCHER_WAGE * Math.max(0.35, pct)
+    base += (desks * 40 + boards * 25 + machines * 70) * Math.max(0.2, pct)
   }
   if (input.key === 'security') {
-    base *= 1 + input.securityPosts * 0.12
-    base += input.deskStaff * DESK_STAFF_WAGE * Math.max(0.4, pct)
+    base *= 1 + securityPosts * 0.12
+    base += deskStaff * DESK_STAFF_WAGE * Math.max(0.4, pct)
   }
   if (input.key === 'cleaning') {
-    base *= 1 + input.cleanRooms * 0.08
-    base += input.janitors * JANITOR_WAGE * pct
+    base *= 1 + cleanRooms * 0.08
+    base += janitors * JANITOR_WAGE * pct
   }
   if (input.key === 'fire') {
-    const stations = Math.max(1, input.fireStations)
+    const stations = Math.max(1, fireStations)
     base *= stations
-    if (!input.fireStations) base *= 0.35 // skeleton ARFF desk
+    if (!fireStations) base *= 0.35 // skeleton ARFF desk
   }
   if (input.key === 'ambulance') {
-    if (!input.signed && !input.helipads) base *= 0.4
+    if (!signed && !helipads) base *= 0.4
   }
-  return base
+  return Number.isFinite(base) && base > 0 ? base : 0
 }
