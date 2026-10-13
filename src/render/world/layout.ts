@@ -4,6 +4,8 @@
  * Everything here is plain data so it can be unit tested without WebGL.
  */
 import type { StandClass, Tile, Vec } from '../../game/types'
+import { aircraftWorldPerMeter, getAircraftSpec } from '../aircraft/specs'
+import { bridgeDockMeters, envelopeLetter, envelopeWorld, standPreviewId } from '../aircraft/stands'
 import { CELL, cellX, cellZ, tileAt, type WorldView } from './view'
 
 export type Dir = 'n' | 's' | 'e' | 'w'
@@ -185,6 +187,8 @@ export interface StandInfo {
   c: number
   r: number
   cls: StandClass
+  /** Missing scale on an L stand is treated as jumbo. */
+  scale?: 'small' | 'wide' | 'jumbo'
   jetway: boolean
   /** Side the aircraft taxis in from (lead-in line starts there). */
   entry: Dir
@@ -217,6 +221,7 @@ export function stands(view: WorldView): StandInfo[] {
         c,
         r,
         cls: view.standClass?.[`${c},${r}`] ?? 'M',
+        scale: view.standScale?.[`${c},${r}`],
         jetway: view.standAccessAt?.({ c, r }) === 'jetway',
         entry,
       })
@@ -232,8 +237,12 @@ export interface JetBridge {
   side: Dir
   /** Rotunda point on the facade (world). */
   root: P2
-  /** Cab end, short of the stand centre where a nose door would be. */
+  /** Cab end, at the design aircraft's forward-door tunnel foot. */
   cab: P2
+  /** Tunnel center height, world units. */
+  cabY: number
+  cabH: number
+  cabW: number
 }
 
 /** Nearest terminal facade for each jetway stand within `range` cells. */
@@ -266,16 +275,37 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
     }
     const sx = cellX(s.c)
     const sz = cellZ(s.r)
-    const dx = sx - root.x
-    const dz = sz - root.z
-    const len = Math.hypot(dx, dz) || 1
-    const reach = Math.max(1.2, len - CELL * 0.28)
+    const spec = getAircraftSpec(standPreviewId(s.cls, s.scale))
+    const dock = bridgeDockMeters(spec)
+    const nose = DIR_VEC[OPPOSITE[s.entry]]
+    const perpA = { dc: -nose.dr, dr: nose.dc }
+    const perpB = { dc: nose.dr, dr: -nose.dc }
+    const towardC = best.cell.c - s.c
+    const towardR = best.cell.r - s.r
+    const port = perpA.dc * towardC + perpA.dr * towardR >= 0 ? perpA : perpB
+    const wu = aircraftWorldPerMeter()
+    const dockX = dock ? sx + (nose.dc * dock.x + port.dc * dock.z) * wu : sx
+    const dockZ = dock ? sz + (nose.dr * dock.x + port.dr * dock.z) * wu : sz
+    const toStandX = sx - root.x
+    const toStandZ = sz - root.z
+    const dx = dockX - root.x
+    const dz = dockZ - root.z
+    const facesStand = toStandX * dx + toStandZ * dz > 0
+    let cab = { x: dockX, z: dockZ }
+    if (!facesStand) {
+      const len = Math.hypot(toStandX, toStandZ) || 1
+      const reach = Math.max(1.2, len - CELL * 0.28)
+      cab = { x: root.x + (toStandX / len) * reach, z: root.z + (toStandZ / len) * reach }
+    }
     out.push({
       stand: { c: s.c, r: s.r },
       terminal: best.cell,
       side: best.side,
       root,
-      cab: { x: root.x + (dx / len) * reach, z: root.z + (dz / len) * reach },
+      cab,
+      cabY: (dock?.y ?? 3.2) * wu,
+      cabH: Math.max(0.65, (dock?.h ?? 1.7) * wu),
+      cabW: Math.max(0.55, (dock?.w ?? 1.55) * wu),
     })
   }
   return out
@@ -565,44 +595,121 @@ export function taxiPaint(view: WorldView): Paint[] {
   return out
 }
 
+export interface StandBox {
+  /** Centre (world). */
+  x: number
+  z: number
+  /** Full extent. Depth follows the lead-in; width is across the wings. */
+  width: number
+  depth: number
+  depthAlongX: boolean
+}
+
+/** Class limit box in world units, oriented to the lead-in. */
+export function standBox(s: StandInfo): StandBox {
+  const env = envelopeWorld(envelopeLetter(s.cls, s.scale))
+  const depthAlongX = DIR_VEC[s.entry].dc !== 0
+  return {
+    x: cellX(s.c),
+    z: cellZ(s.r),
+    width: env.width,
+    depth: env.depth,
+    depthAlongX,
+  }
+}
+
+function halfExtents(box: StandBox): { halfX: number; halfZ: number } {
+  return {
+    halfX: (box.depthAlongX ? box.depth : box.width) / 2,
+    halfZ: (box.depthAlongX ? box.width : box.depth) / 2,
+  }
+}
+
+/** Concrete apron under the limit box, pulled back off terminals and the runway. */
+export function standPads(view: WorldView, list: StandInfo[]): { x: number; z: number; w: number; d: number }[] {
+  const blocked: { x0: number; x1: number; z0: number; z1: number }[] = []
+  for (let r = 0; r < view.tiles.length; r++) {
+    const row = view.tiles[r]
+    if (!row) continue
+    for (let c = 0; c < row.length; c++) {
+      const t = row[c]
+      if (t !== 'terminal' && t !== 'runway') continue
+      blocked.push({
+        x0: cellX(c) - CELL / 2,
+        x1: cellX(c) + CELL / 2,
+        z0: cellZ(r) - CELL / 2,
+        z1: cellZ(r) + CELL / 2,
+      })
+    }
+  }
+  const out: { x: number; z: number; w: number; d: number }[] = []
+  for (const s of list) {
+    const box = standBox(s)
+    const { halfX, halfZ } = halfExtents(box)
+    let x0 = box.x - halfX
+    let x1 = box.x + halfX
+    let z0 = box.z - halfZ
+    let z1 = box.z + halfZ
+    for (const b of blocked) {
+      if (x1 <= b.x0 || x0 >= b.x1 || z1 <= b.z0 || z0 >= b.z1) continue
+      if (box.x <= b.x0) x1 = Math.min(x1, b.x0)
+      else if (box.x >= b.x1) x0 = Math.max(x0, b.x1)
+      if (box.z <= b.z0) z1 = Math.min(z1, b.z0)
+      else if (box.z >= b.z1) z0 = Math.max(z0, b.z1)
+    }
+    const w = x1 - x0
+    const d = z1 - z0
+    if (w < 0.4 || d < 0.4) continue
+    out.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w, d })
+  }
+  return out
+}
+
 export function standPaint(list: StandInfo[]): Paint[] {
   const out: Paint[] = []
+  const wu = aircraftWorldPerMeter()
+  const t = Math.max(0.12, 0.28 * wu)
+  const line = Math.max(0.14, 0.3 * wu)
   for (const s of list) {
-    const x = cellX(s.c)
-    const z = cellZ(s.r)
+    const box = standBox(s)
+    const { halfX, halfZ } = halfExtents(box)
+    const x = box.x
+    const z = box.z
     const into = DIR_VEC[OPPOSITE[s.entry]]
-    const half = CELL * 0.5
-    // Lead-in from the entry edge to the stop bar.
-    const stop = CELL * 0.22
-    const from = -half
+    const halfAlong = box.depthAlongX ? halfX : halfZ
+    const halfAcross = box.depthAlongX ? halfZ : halfX
+    // Lead-in from the tail edge to the stop bar, forward of centre.
+    const stop = halfAlong * 0.62
+    const from = -halfAlong
     const len = stop - from
     const mid = (from + stop) / 2
     out.push({
       x: x + into.dc * mid,
       z: z + into.dr * mid,
-      w: into.dc ? len : 0.2,
-      d: into.dr ? len : 0.2,
+      w: into.dc ? len : line,
+      d: into.dr ? len : line,
       color: 'yellow',
     })
+    const bar = Math.min(halfAcross * 1.15, 8 * wu)
     out.push({
       x: x + into.dc * stop,
       z: z + into.dr * stop,
-      w: into.dc ? 0.3 : 1.6,
-      d: into.dr ? 0.3 : 1.6,
+      w: into.dc ? t * 2.2 : bar,
+      d: into.dr ? t * 2.2 : bar,
       color: 'yellow',
     })
-    // Red safety envelope.
-    const inset = CELL * 0.44
-    const t = 0.12
-    out.push({ x, z: z - inset, w: inset * 2, d: t, color: 'red' })
-    out.push({ x, z: z + inset, w: inset * 2, d: t, color: 'red' })
-    out.push({ x: x - inset, z, w: t, d: inset * 2, color: 'red' })
-    out.push({ x: x + inset, z, w: t, d: inset * 2, color: 'red' })
-    // Stand plate at the head, tinted by class.
-    const hx = x + into.dc * CELL * 0.36
-    const hz = z + into.dr * CELL * 0.36
-    out.push({ x: hx + (into.dr ? 1.3 : 0), z: hz + (into.dc ? 1.3 : 0), w: 0.9, d: 0.9, color: 'black' })
-    out.push({ x: hx + (into.dr ? 1.3 : 0), z: hz + (into.dc ? 1.3 : 0), w: 0.6, d: 0.6, color: s.cls })
+    // Red safety envelope — the class limit, not the one-cell tile.
+    out.push({ x, z: z - halfZ, w: halfX * 2, d: t, color: 'red' })
+    out.push({ x, z: z + halfZ, w: halfX * 2, d: t, color: 'red' })
+    out.push({ x: x - halfX, z, w: t, d: halfZ * 2, color: 'red' })
+    out.push({ x: x + halfX, z, w: t, d: halfZ * 2, color: 'red' })
+    // Stand plate at the head, tinted by class, off the lead-in.
+    const side = into.dc === 0 ? { dc: 1, dr: 0 } : { dc: 0, dr: 1 }
+    const plate = Math.max(0.7, 1.15 * wu)
+    const hx = x + into.dc * halfAlong * 0.72 + side.dc * halfAcross * 0.62
+    const hz = z + into.dr * halfAlong * 0.72 + side.dr * halfAcross * 0.62
+    out.push({ x: hx, z: hz, w: plate * 1.35, d: plate * 1.35, color: 'black' })
+    out.push({ x: hx, z: hz, w: plate, d: plate, color: s.cls })
   }
   return out
 }

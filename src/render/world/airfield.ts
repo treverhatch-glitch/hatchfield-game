@@ -206,26 +206,31 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
     const ux = dx / (len || 1)
     const uz = dz / (len || 1)
     const at = (t: number) => ({ x: b.root.x + ux * t, z: b.root.z + uz * t })
-    const y = 1.0
+    const cabH = b.cabH
+    const cabW = b.cabW
+    const baseY = Math.max(0.35, b.cabY - cabH / 2)
+    const span = Math.max(1.4, len - 1.2)
     rotunda.push(trs(b.root.x + ux * 0.35, 0, b.root.z + uz * 0.35, 0, 1, 1, 1))
-    const inner = at(0.7 + (len - 1.6) * 0.3)
-    const outer = at(0.7 + (len - 1.6) * 0.72)
-    body.push(trs(inner.x, y, inner.z, yaw, 0.74, 0.78, (len - 1.6) * 0.6))
-    body.push(trs(outer.x, y - 0.04, outer.z, yaw, 0.84, 0.86, (len - 1.6) * 0.5))
+    // Riser when the door sits above the rotunda.
+    if (baseY > 1.5) dark.push(trs(b.root.x + ux * 0.35, 0, b.root.z + uz * 0.35, 0, 0.4, baseY, 0.4))
+    const inner = at(0.7 + span * 0.3)
+    const outer = at(0.7 + span * 0.72)
+    body.push(trs(inner.x, baseY, inner.z, yaw, cabW * 0.92, cabH * 0.86, span * 0.6))
+    body.push(trs(outer.x, baseY - 0.04, outer.z, yaw, cabW, cabH * 0.92, span * 0.5))
     // Window strips both sides.
     for (const s of [-1, 1]) {
-      const wx = -uz * s * 0.43
-      const wz = ux * s * 0.43
-      glass.push(trs(inner.x + wx, y + 0.42, inner.z + wz, yaw, 0.02, 0.18, (len - 1.6) * 0.55))
+      const wx = -uz * s * cabW * 0.52
+      const wz = ux * s * cabW * 0.52
+      glass.push(trs(inner.x + wx, baseY + cabH * 0.5, inner.z + wz, yaw, 0.02, cabH * 0.22, span * 0.55))
     }
     const cab = at(len - 0.45)
-    body.push(trs(cab.x, y - 0.08, cab.z, yaw, 1.1, 0.95, 0.9))
-    dark.push(trs(cab.x + ux * 0.5, y - 0.04, cab.z + uz * 0.5, yaw, 0.95, 0.85, 0.18))
+    body.push(trs(cab.x, baseY - 0.04, cab.z, yaw, cabW * 1.15, cabH, Math.min(1.1, span * 0.35)))
+    dark.push(trs(cab.x + ux * 0.45, baseY, cab.z + uz * 0.45, yaw, cabW, cabH * 0.9, 0.18))
     // Drive column + bogie under the outer section.
-    const col = at(len * 0.72)
-    dark.push(trs(col.x - uz * 0.25, 0, col.z + ux * 0.25, yaw, 0.12, y, 0.12))
-    dark.push(trs(col.x + uz * 0.25, 0, col.z - ux * 0.25, yaw, 0.12, y, 0.12))
-    dark.push(trs(col.x, 0, col.z, yaw + Math.PI / 2, 0.85, 0.22, 0.3))
+    const col = at(Math.max(1.2, len * 0.72))
+    dark.push(trs(col.x - uz * 0.25, 0, col.z + ux * 0.25, yaw, 0.12, baseY, 0.12))
+    dark.push(trs(col.x + uz * 0.25, 0, col.z - ux * 0.25, yaw, 0.12, baseY, 0.12))
+    dark.push(trs(col.x, 0, col.z, yaw + Math.PI / 2, Math.max(0.7, cabW), 0.22, 0.3))
   }
   const bodyM = new THREE.MeshLambertMaterial({ color: 0xc9cfd6 })
   const darkM = new THREE.MeshLambertMaterial({ color: 0x2c3138 })
