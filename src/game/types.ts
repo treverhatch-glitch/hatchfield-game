@@ -779,6 +779,8 @@ export interface GameSnapshot {
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
+  /** Live volume letter — must survive a refresh or the contract vanishes. */
+  cargoVolume?: CargoVolumeJob | null
   startFocus?: StartFocus
   sandbox?: boolean
 }
