@@ -528,6 +528,8 @@ export interface Flight {
    * Pushback waits until that turnaround is finished.
    */
   groundTurn?: string | null
+  /** Set while an empty farm is holding this departure on the stand. */
+  fuelHeld?: boolean
   /** One-shot emergency host (divert / tanker) occupying a banked gate. */
   emergencyHost?: boolean
   hostKind?: EmergencyKind
@@ -760,6 +762,12 @@ export interface GameSnapshot {
   speed: Speed
   fuelBrand: FuelBrand | null
   fuelLoads: number
+  /** Burger servings left on the hall shelf. */
+  foodShelf?: number
+  /** Souvenirs left on the hall shelf. */
+  shopShelf?: number
+  /** Ticket value of sales missed because a shelf was empty. */
+  lostSpend?: number
   caterBrand: CaterBrand | null
   mealSold: boolean
   signed: AirlineId[]

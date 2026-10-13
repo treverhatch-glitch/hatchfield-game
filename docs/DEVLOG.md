@@ -316,3 +316,22 @@ The Design Advisor shows a low farm, a kitchen that is empty or missing, and a l
 **Fix:** Sandbox is exempt. A normal game still pays. Easy cash after land and the starter kit is $77,000, and standard after land is $55,000, so both sit under the $140,000 floor and pay nothing. A grown field at $150,000 pays $300, at $220,000 pays $2,400, and at $500,000 pays $10,800. That is 3% of the surplus only, once per payroll tick.
 
 Bug count is ten.
+
+## Owner decisions — 13 Oct
+
+Four rulings for the live sim. Bug count stays at ten.
+
+**Fuel.** A departure that still needs fuel stays on the stand when the farm, the contract, or the bowser loads are empty. The headline says it is grounded, Standing drops once, and the slot slips. When a load comes back, pushback waits on the bowser. Catering, bags, a missing loader, and the other ramp gaps still delay the turn and hit Standing, and those aircraft can leave once the safety timer runs out. A type with no fuel uplift is free to go.
+
+**Bottlenecks.** The starter kit no longer parks threats and emergency asks behind a long first-hour clock. A missing security lane, a thin security budget, an empty farm, or a thin fire crew is checked again in a few seconds. A staffed lane with fuel and a fire station keeps a calmer cadence. Queues, missed flights, and the prefab rule (nobody lost, even when the hall is over capacity) are unchanged.
+
+**Empty shops.** Food and souvenir shelves are finite and restock slowly. An empty counter does not take the money. The passenger loses a little happiness (less than being broke), thinks "wish they had burgers" or "wish they had a souvenir", walks off toward the gate, and the unpaid price is added to lost spend. That total is in the Shops submenu.
+
+**Info views.** Security, lost passengers, bags, shops, and the fuel farm are hotspot buttons, and the hall and apron draw the rings whether or not passenger flows are on. The counts open only after a click. Flow lines stay off until the player asks for them.
+
+**Tests.** 107 passing. Five new ones cover the fuel hold, a non-fuel ramp release, the shorter gap cadence, the empty counter, and the click-to-open counts.
+
+**Media**
+
+- `docs/devlog/media/OCT13-info.png` — Security opened, "0 waiting at security", flow lines still off
+- `docs/devlog/media/OCT13-wish.png` — empty food counter, thought "wish they had burgers"

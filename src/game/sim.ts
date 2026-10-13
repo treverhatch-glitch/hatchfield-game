@@ -443,6 +443,16 @@ export class Game {
   mapRev = 0
   fuelBrand: FuelBrand | null = null
   fuelLoads = 0
+  /** Burger servings on the counter. Sales stop at zero. */
+  foodShelf = 0
+  /** Souvenirs on the counter. Sales stop at zero. */
+  shopShelf = 0
+  /** Unpaid counter sales, kept for the audit. */
+  lostSpend = 0
+  shelfCool = 0
+  /** Open info-view submenu. Hotspots stay drawn either way. */
+  infoOpen: string | null = null
+  private fuelHoldNoted = new Set<string>()
   caterBrand: CaterBrand | null = null
   mealSold = false
   signed: AirlineId[] = []
@@ -667,6 +677,12 @@ export class Game {
     this.facing = 'h'
     this.fuelBrand = null
     this.fuelLoads = 0
+    this.foodShelf = 0
+    this.shopShelf = 0
+    this.lostSpend = 0
+    this.shelfCool = 0
+    this.infoOpen = null
+    this.fuelHoldNoted.clear()
     this.caterBrand = null
     this.mealSold = false
     this.signed = []
@@ -1813,6 +1829,8 @@ export class Game {
     ]
     this.fuelBrand = 'apex'
     this.fuelLoads = 4
+    this.foodShelf = this.shelfCap('food')
+    this.shopShelf = this.shelfCap('shop')
     this.caterBrand = 'skybite'
     this.mechanics = 1
     this.spawnMechanicPawn()
@@ -1820,10 +1838,9 @@ export class Game {
     this.deskStaff = 1
     this.assignHallStaff()
     // Airport is live — first airline call comes quick; later ones stay slow.
+    // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = 3
     this.spawnCool = 6
-    this.emergencyCool = 120
-    this.threatCool = 90
     this.pushNews(
       this.startFocus === 'hybrid'
         ? 'Hybrid kit down — hall + guard/cargo road. Day pax, night freight.'
@@ -1869,8 +1886,6 @@ export class Game {
     this.hallStaff = []
     this.offerCool = 2
     this.spawnCool = 5
-    this.emergencyCool = 140
-    this.threatCool = 100
     this.cargoVolumeCool = 18
     this.pushNews(
       'Cargo kit down — strip, freighter stand, guard → shed pipeline. No pax hall. UPPS should call.',
@@ -2703,6 +2718,9 @@ export class Game {
       speed: this.speed,
       fuelBrand: this.fuelBrand,
       fuelLoads: this.fuelLoads,
+      foodShelf: this.foodShelf,
+      shopShelf: this.shopShelf,
+      lostSpend: this.lostSpend,
       caterBrand: this.caterBrand,
       mealSold: this.mealSold,
       signed: this.signed,
@@ -2794,6 +2812,9 @@ export class Game {
       this.speed = 0
       this.fuelBrand = s.fuelBrand
       this.fuelLoads = s.fuelLoads
+      this.foodShelf = s.foodShelf ?? this.shelfCap('food')
+      this.shopShelf = s.shopShelf ?? this.shelfCap('shop')
+      this.lostSpend = s.lostSpend ?? 0
       this.caterBrand = s.caterBrand ?? null
       this.mealSold = s.mealSold
       this.signed = s.signed ?? []
@@ -4013,6 +4034,185 @@ export class Game {
     return this.ground?.isReadyToDepart(f.groundTurn) ?? true
   }
 
+  /** Servings a full shelf holds. Empty rooms hold nothing. */
+  shelfCap(kind: 'food' | 'shop'): number {
+    let rooms = 0
+    for (const fit of this.fits) {
+      rooms += kind === 'food' ? (fit.rooms.food ?? 0) : (fit.rooms.souvenir ?? 0)
+    }
+    return rooms * (kind === 'food' ? 8 : 6)
+  }
+
+  /** This airframe uplifts fuel. A zero-fuel type is free to leave. */
+  departureNeedsFuel(f: Flight): boolean {
+    try {
+      return needsFor(f.airframeId).fuelLitres > 0
+    } catch {
+      const load = AIRFRAMES[f.airframeId]?.fuelLoad
+      return load == null ? true : load > 0
+    }
+  }
+
+  /** Farm, contract, or bowser loads can still put fuel on a wing. */
+  fuelOnHand(): boolean {
+    const snap = this.groundSnapshot()
+    if (snap) return snap.fuelLitres >= 1
+    return (
+      tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads >= 1
+    )
+  }
+
+  /** Empty farm or no contract. Low stock is a delay, not a ground. */
+  fuelOutage(f: Flight): boolean {
+    return this.departureNeedsFuel(f) && !f.posted.fuel && !this.fuelOnHand()
+  }
+
+  /**
+   * Pushback gate. An empty farm holds the aircraft.
+   * Any other ramp gap may release once the safety timer runs out, with a Standing hit.
+   */
+  rampCall(f: Flight, timedOut: boolean): 'hold' | 'ready' | 'short' {
+    if (this.departureNeedsFuel(f) && !f.posted.fuel) {
+      if (!this.fuelOnHand()) {
+        f.fuelHeld = true
+        this.noteFuelGround(f)
+        return 'hold'
+      }
+      if (f.fuelHeld) {
+        f.fuelHeld = false
+        f.phaseTime = 0
+        this.fuelHoldNoted.delete(f.id)
+        this.ensureLegacyFuel(f)
+        this.pushNews(`${f.flightNo} has fuel again. Pushback waits on the bowser.`, 'ok')
+        return 'hold'
+      }
+      this.ensureLegacyFuel(f)
+      if (!timedOut) return 'hold'
+      return 'short'
+    }
+    if (f.fuelHeld) {
+      f.fuelHeld = false
+      this.fuelHoldNoted.delete(f.id)
+    }
+    if (this.groundClear(f)) return 'ready'
+    if (!timedOut) return 'hold'
+    return 'short'
+  }
+
+  private noteFuelGround(f: Flight) {
+    if (this.fuelHoldNoted.has(f.id)) return
+    this.fuelHoldNoted.add(f.id)
+    this.adjustHeat(f.airline, -1.6)
+    if (f.scheduleId) {
+      const slot = this.schedule.find((s) => s.id === f.scheduleId)
+      if (slot && slot.status !== 'done' && slot.status !== 'cancelled') {
+        this.delaySlot(slot, 12, 'Fuel farm empty')
+      }
+    }
+    this.pushNews(
+      `${f.flightNo} grounded — no fuel on the farm. It stays until a load arrives.`,
+      'bad',
+    )
+  }
+
+  /** Legacy bowser, once the farm has a load again. The depot module fuels its own turns. */
+  private ensureLegacyFuel(f: Flight) {
+    if (f.groundTurn || f.posted.fuel || !f.stand || !this.fuelOnHand()) return
+    if (this.trucks.some((t) => t.flightId === f.id && t.kind === 'fuel')) return
+    const farms = tilesOf(this.tiles, 'fuel').filter((p) => farmBesidePavement(this.tiles, p))
+    if (!farms.length) return
+    const path = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
+    if (!path) return
+    f.waitingOn.fuel = true
+    this.spawnTruck('fuel', f, path, 'fuel', farms[0])
+  }
+
+  /** Hotspot markers. Counts stay in infoLines until the player opens one. */
+  infoHotspots(): { id: string; label: string }[] {
+    const spots: { id: string; label: string }[] = []
+    if (this.fits.length) {
+      spots.push({ id: 'queue', label: 'Security' })
+      spots.push({ id: 'lost', label: 'Lost passengers' })
+      spots.push({ id: 'bags', label: 'Bags' })
+      spots.push({ id: 'retail', label: 'Shops' })
+    }
+    if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
+    else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
+      spots.push({ id: 'bags', label: 'Bags' })
+    }
+    return spots
+  }
+
+  infoLines(id: string): string[] {
+    if (id === 'queue') {
+      const q = this.securityQueueCount()
+      return [`${q} waiting at security`]
+    }
+    if (id === 'lost') return [`${this.lostPaxCount()} lost in the hall`]
+    if (id === 'bags') {
+      const moving = this.flights.filter(
+        (f) =>
+          !f.cargo &&
+          f.phase !== 'gone' &&
+          (f.waitingOn.bags || f.waitingOn.bagsLoad || f.boardingSlow),
+      ).length
+      const reasons = this.schedule.filter((s) => /bag|belt|claim/i.test(s.delayReason ?? '')).length
+      return [`${moving} turns still waiting on bags`, `${reasons} bag delays on the board`]
+    }
+    if (id === 'fuel') {
+      const snap = this.groundSnapshot()
+      const grounded = this.flights.filter((f) => f.phase !== 'gone' && this.fuelOutage(f)).length
+      const stock = snap
+        ? `${Math.round(snap.fuelLitres).toLocaleString('en-US')} L in the farm`
+        : `${this.fuelLoads} bowser loads on the farm`
+      return [stock, `${grounded} departures grounded for fuel`]
+    }
+    if (id === 'retail') {
+      return [
+        `${this.foodShelf} burger servings on the shelf`,
+        `${this.shopShelf} souvenirs on the shelf`,
+        `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
+      ]
+    }
+    return []
+  }
+
+  toggleInfo(id: string) {
+    this.infoOpen = this.infoOpen === id ? null : id
+    this.emit()
+  }
+
+  /** One serving back on each shelf that still has a room. A crowd can outrun this. */
+  private tickShelves(dt: number) {
+    const foodCap = this.shelfCap('food')
+    const shopCap = this.shelfCap('shop')
+    if (this.foodShelf > foodCap) this.foodShelf = foodCap
+    if (this.shopShelf > shopCap) this.shopShelf = shopCap
+    this.shelfCool -= dt
+    if (this.shelfCool > 0) return
+    this.shelfCool = 14
+    if (this.foodShelf < foodCap) this.foodShelf += 1
+    if (this.shopShelf < shopCap) this.shopShelf += 1
+  }
+
+  /** Empty counter: mild mood hit, no cash, a wish, then they leave the queue. */
+  private walkOffEmptyShelf(g: HallGuest, pay: number, thought: string, open: Set<HallNode>) {
+    if (g.node === 'food') g.needs.hunger = Math.min(g.needs.hunger, 18)
+    else g.needs.shop = Math.min(g.needs.shop, 18)
+    g.happiness -= 1
+    this.lostSpend += pay
+    const dest: HallNode =
+      g.job === 'depart' && open.has('gate')
+        ? 'gate'
+        : g.job === 'arrive' && open.has('exit')
+          ? 'exit'
+          : open.has('info')
+            ? 'info'
+            : g.node
+    if (dest !== g.node) this.routeGuest(g, dest, open)
+    g.thought = thought
+  }
+
   private ensureGround() {
     const rev = this.mapRev
     if (this.ground && this.groundRev === rev) return this.ground
@@ -4286,6 +4486,8 @@ export class Game {
       fit.rooms.souvenir = Math.max(fit.rooms.souvenir, 2)
     }
     applyCeilings(fit)
+    this.foodShelf = Math.max(this.foodShelf, Math.min(this.shelfCap('food'), this.foodShelf + 8))
+    this.shopShelf = Math.max(this.shopShelf, Math.min(this.shelfCap('shop'), this.shopShelf + 6))
     this.hallOverloaded = false
     this.hallRev++
     this.refreshAdvice()
@@ -4367,6 +4569,7 @@ export class Game {
       wear: 0,
     })
     if (def.room) fit.rooms[def.room] += 1
+    if (def.room === 'food') this.foodShelf += 8
     if (def.signs) fit.signs = (fit.signs ?? 0) + def.signs
     applyCeilings(fit)
     this.hallRev++
@@ -4526,6 +4729,9 @@ export class Game {
         happy += 2
         brand = true
       }
+      if (this.foodShelf < 1) {
+        this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
+      } else {
       const buy = this.tryGuestPay(g, pay, 'food', g.needs.hunger >= 70)
       if (!buy.ok) {
         g.needs.hunger = Math.max(0, g.needs.hunger - 12)
@@ -4538,15 +4744,20 @@ export class Game {
               : 'Skipped the counter — not hungry for that'
       } else {
         g.needs.hunger = Math.max(0, g.needs.hunger - 50)
+        this.foodShelf -= 1
         this.mealSold = true
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
           : `Ate (−$${pay})`
       }
+      }
     }
     if (n === 'shop') {
       const pay = tagPrice(g.tag, 14, 24, 36, 48)
+      if (this.shopShelf < 1) {
+        this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
+      } else {
       const buy = this.tryGuestPay(g, pay, 'shop', g.needs.shop >= 75)
       if (!buy.ok) {
         g.needs.shop = Math.max(0, g.needs.shop - 20)
@@ -4559,8 +4770,10 @@ export class Game {
               : 'Browsed, did not buy'
       } else {
         g.needs.shop = Math.max(0, g.needs.shop - 60)
+        this.shopShelf -= 1
         g.happiness += 5
         g.thought = `Bought a souvenir (−$${pay})`
+      }
       }
     }
     if (n === 'lounge' && tagSpendsUp(g.tag)) {
@@ -6915,7 +7128,10 @@ export class Game {
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
-      if (this.tile(v) === 'terminal') {
+      const tile = this.tile(v)
+      if (tile === 'fuel') this.toggleInfo('fuel')
+      else if (tile === 'bags') this.toggleInfo('bags')
+      if (tile === 'terminal') {
         this.enterHallAt(v)
         return
       }
@@ -8313,6 +8529,17 @@ export class Game {
     }
     if (f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board') {
       f.phase = 'servicing'
+      if (this.fuelOutage(f)) {
+        f.fuelHeld = true
+        this.noteFuelGround(f)
+        return
+      }
+      if (f.fuelHeld) {
+        f.fuelHeld = false
+        f.phaseTime = 0
+        this.fuelHoldNoted.delete(f.id)
+        return
+      }
       if (f.phaseTime > 7) {
         f.phase = 'takeoff'
         f.phaseTime = 0
@@ -9329,9 +9556,10 @@ export class Game {
     }
     this.threatCool -= dt
     if (this.threatCool > 0) return
-    // Slower cadence — weak / missing security still invites trouble.
-    this.threatCool = 95 + Math.random() * 70
-    if (!this.signed.length || !this.flights.some((f) => !f.cargo && f.phase !== 'gone')) return
+    if (!this.signed.length || !this.flights.some((f) => !f.cargo && f.phase !== 'gone')) {
+      this.threatCool = 16
+      return
+    }
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
@@ -9341,6 +9569,9 @@ export class Game {
       const r = f.rooms
       return (r.food ?? 0) + (r.gate ?? 0) + (r.lounge ?? 0) + (r.souvenir ?? 0) > 0
     })
+    const exposed = !hasSecRoom || this.budgets.security < 35
+    // A gap the player left is checked again soon. A staffed lane is not held for the first hour.
+    this.threatCool = exposed ? 10 + Math.random() * 8 : 32 + Math.random() * 12
     // Player shell with airside rooms but no security choke = smuggling / weapons risk.
     const openAirGap = airsideOpen && !hasSecRoom ? 0.38 : 0
     const risk = clamp(
@@ -9383,8 +9614,8 @@ export class Game {
     if (n.fire && !tilesOf(this.tiles, 'fire').length) return 'no ARFF / fire station'
     if (n.fuel) {
       if (!tilesOf(this.tiles, 'fuel').length) return 'no fuel farm'
-      if (!this.fuelBrand) return 'no fuel contract'
-      if (this.fuelLoads < 1) return 'fuel farm empty'
+      if (!this.fuelBrand && !this.groundSnapshot()) return 'no fuel contract'
+      if (!this.fuelOnHand()) return 'fuel farm empty'
     }
     if (n.hangar && !tilesOf(this.tiles, 'hangar').length) return 'no hangar'
     if (n.hangar && this.mechanics < 1) return 'no mechanics for line MX'
@@ -9578,16 +9809,16 @@ export class Game {
     const storm = this.weather === 'storm'
     const dry = this.weather === 'clear' // wildfire-season feel — airtankers thirsty
     const fireThin = this.budgets.fire < 45
-    const hasFuel =
-      tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads > 0
+    const hasFuel = this.fuelOnHand()
     const hasHangar = tilesOf(this.tiles, 'hangar').length > 0
+    const exposed = !hasFuel || fireThin || tilesOf(this.tiles, 'fire').length === 0
     // Storms stack divert asks; dry clear days stack firefighting planes.
-    // Spaced out vs earlier builds — first hours should not be a constant scramble.
-    this.emergencyCool = stormy
-      ? 70 + Math.random() * 45
-      : dry
-        ? 95 + Math.random() * 55
-        : 120 + Math.random() * 70
+    // A missing farm or a thin fire crew is not hidden behind a first-hour timer.
+    this.emergencyCool = exposed
+      ? 12 + Math.random() * 8
+      : stormy
+        ? 22 + Math.random() * 10
+        : 34 + Math.random() * 12
 
     const roll = Math.random()
     const pDivert =
@@ -9869,6 +10100,7 @@ export class Game {
     this.tickCityCargo(step)
     this.tickConstruction(step)
     this.tickGround(step)
+    this.tickShelves(step)
     // Peak decays so the HUD jam line clears when traffic thins.
     this.congPeak = Math.max(0, this.congPeak - step * 0.35)
     if (this.congWasteAcc >= 8 && this.congNewsCool <= 0) {
@@ -10069,9 +10301,9 @@ export class Game {
             const deiceOk =
               (f.phaseTime > 3 ? this.ensureDeice(f) : !this.needsDeiceService(f)) ||
               f.phaseTime > 28
-            const rampReady = this.groundClear(f) || f.phaseTime > 80
-            if (deiceOk && rampReady && (!this.groundBusy() || f.phaseTime > 24)) {
-              if (!this.groundClear(f)) {
+            const ramp = this.rampCall(f, f.phaseTime > 80)
+            if (deiceOk && ramp !== 'hold' && (!this.groundBusy() || f.phaseTime > 24)) {
+              if (ramp === 'short') {
                 this.adjustHeat(f.airline, -1.2)
                 this.pushNews(
                   `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
@@ -10157,10 +10389,11 @@ export class Game {
           }
           f.hangarBay = null
           if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
-            if (!this.groundClear(f) && f.phaseTime < 90) {
-              /* Service trucks still on the stand. */
+            const ramp = this.rampCall(f, f.phaseTime >= 90)
+            if (ramp === 'hold') {
+              /* Fuel outage, or the ramp is still inside its window. */
             } else {
-              if (!this.groundClear(f)) {
+              if (ramp === 'short') {
                 this.adjustHeat(f.airline, -1.2)
                 this.pushNews(
                   `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
@@ -10224,9 +10457,9 @@ export class Game {
           const deiceOk =
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
-          const rampReady = this.groundClear(f) || f.phaseTime > boardLimit + 80
-          if (deiceOk && rampReady && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
-            if (!this.groundClear(f)) {
+          const ramp = this.rampCall(f, f.phaseTime > boardLimit + 80)
+          if (deiceOk && ramp !== 'hold' && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+            if (ramp === 'short') {
               this.adjustHeat(f.airline, -1.2)
               this.pushNews(
                 `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,

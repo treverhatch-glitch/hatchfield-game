@@ -56,6 +56,8 @@ export class HallWorld {
   guestGroup = new THREE.Group()
   /** Routes, heat, and advisor marks. Hidden unless the player asks or a note is focused. */
   overlay = new THREE.Group()
+  /** Queue, lost, bag, and shop markers. Always drawn. Numbers open on click. */
+  hotspotGroup = new THREE.Group()
   guests = new Map<string, THREE.Mesh>()
   roomHash = ''
   private floor: THREE.Mesh
@@ -107,6 +109,7 @@ export class HallWorld {
     this.scene.add(this.guestGroup)
     this.overlay.visible = false
     this.scene.add(this.overlay)
+    this.scene.add(this.hotspotGroup)
 
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointermove', this.onMove)
@@ -183,7 +186,20 @@ export class HallWorld {
       -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
     )
     this.ray.setFromCamera(ndc, this.camera)
+    const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
     const hits = this.ray.intersectObjects(this.guestGroup.children, true)
+    const spot = spotHits[0]
+    const person = hits[0]
+    if (spot && (!person || spot.distance <= person.distance)) {
+      let obj: THREE.Object3D | null = spot.object
+      while (obj) {
+        if (typeof obj.userData.infoId === 'string') {
+          this.game.toggleInfo(obj.userData.infoId)
+          return
+        }
+        obj = obj.parent
+      }
+    }
     let id: string | null = null
     for (const hit of hits) {
       let obj: THREE.Object3D | null = hit.object
@@ -368,6 +384,10 @@ export class HallWorld {
         const pin = mesh.userData.pin as THREE.Mesh | undefined
         pin?.geometry.dispose()
         ;(pin?.material as THREE.Material | undefined)?.dispose()
+        const bubble = mesh.userData.bubble as THREE.Sprite | undefined
+        const bubbleMat = bubble?.material as THREE.SpriteMaterial | undefined
+        bubbleMat?.map?.dispose()
+        bubbleMat?.dispose()
         this.guests.delete(id)
       }
     }
@@ -403,6 +423,88 @@ export class HallWorld {
       mesh.position.set(a.x + (b.x - a.x) * t + ox, 0.55, a.z + (b.z - a.z) * t + oz)
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
+      this.syncBubble(mesh, g.thought)
+    }
+  }
+
+  /** Wish line while they leave an empty counter. */
+  private syncBubble(mesh: THREE.Mesh, thought: string) {
+    const show = thought.startsWith('wish they')
+    let sprite = mesh.userData.bubble as THREE.Sprite | undefined
+    if (!show) {
+      if (sprite) sprite.visible = false
+      return
+    }
+    if (!sprite) {
+      const mat = new THREE.SpriteMaterial({ transparent: true, depthWrite: false })
+      sprite = new THREE.Sprite(mat)
+      sprite.position.set(0, 1.45, 0)
+      sprite.scale.set(2.8, 0.75, 1)
+      mesh.add(sprite)
+      mesh.userData.bubble = sprite
+    }
+    if (mesh.userData.bubbleText !== thought) {
+      const c = document.createElement('canvas')
+      c.width = 512
+      c.height = 128
+      const ctx = c.getContext('2d')!
+      ctx.fillStyle = 'rgba(255,255,255,0.94)'
+      ctx.fillRect(8, 16, 496, 96)
+      ctx.strokeStyle = '#1a2a32'
+      ctx.lineWidth = 6
+      ctx.strokeRect(8, 16, 496, 96)
+      ctx.fillStyle = '#1a2a32'
+      ctx.font = '700 40px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(thought, 256, 78)
+      const tex = new THREE.CanvasTexture(c)
+      tex.colorSpace = THREE.SRGBColorSpace
+      const mat = sprite.material as THREE.SpriteMaterial
+      mat.map?.dispose()
+      mat.map = tex
+      mat.needsUpdate = true
+      mesh.userData.bubbleText = thought
+    }
+    sprite.visible = true
+  }
+
+  private clearHotspots() {
+    this.hotspotGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      mesh.geometry?.dispose()
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+      else mat?.dispose()
+    })
+    this.hotspotGroup.clear()
+  }
+
+  /** Markers stay up. The counts live in the click submenu. */
+  syncHotspots(game: Game) {
+    this.clearHotspots()
+    if (!game.fits.length) return
+    const spots: { id: string; node: HallNode; color: string }[] = [
+      { id: 'queue', node: 'security', color: '#e0a020' },
+      { id: 'lost', node: 'entrance', color: '#e23b2f' },
+      { id: 'bags', node: 'claim', color: '#3a8ec2' },
+      { id: 'retail', node: 'food', color: '#8a6a4a' },
+    ]
+    for (const spot of spots) {
+      if (!game.infoHotspots().some((h) => h.id === spot.id)) continue
+      const p = nodeWorld(spot.node)
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.55, 0.82, 20),
+        new THREE.MeshBasicMaterial({
+          color: spot.color,
+          transparent: true,
+          opacity: 0.95,
+          side: THREE.DoubleSide,
+        }),
+      )
+      ring.rotation.x = -Math.PI / 2
+      ring.position.set(p.x, 0.18, p.z)
+      ring.userData.infoId = spot.id
+      this.hotspotGroup.add(ring)
     }
   }
 
@@ -523,6 +625,7 @@ export class HallWorld {
     this.rebuildRooms(game)
     this.syncGuests(game)
     this.syncOverlay(game)
+    this.syncHotspots(game)
     this.renderer.render(this.scene, this.camera)
   }
 

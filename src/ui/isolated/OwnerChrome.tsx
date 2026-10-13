@@ -32,7 +32,11 @@ export function OwnerChrome({ game }: { game: Game }) {
   const ground = game.groundSnapshot()
 
   return (
-    <div className="owner-chrome" data-testid="owner-chrome" style={{ position: 'absolute', zIndex: 40, pointerEvents: 'none' }}>
+    <div
+      className="owner-chrome"
+      data-testid="owner-chrome"
+      style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }}
+    >
       <label
         data-testid="flow-toggle"
         style={{
@@ -58,6 +62,59 @@ export function OwnerChrome({ game }: { game: Game }) {
         Show passenger flows
         <span style={{ opacity: 0.7 }}>F</span>
       </label>
+      <div
+        data-testid="info-hotspots"
+        style={{
+          pointerEvents: 'auto',
+          position: 'absolute',
+          top: 40,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          gap: 6,
+        }}
+      >
+        {game.infoHotspots().map((spot) => (
+          <button
+            key={spot.id}
+            type="button"
+            data-testid={`info-hotspot-${spot.id}`}
+            onClick={() => game.toggleInfo(spot.id)}
+            style={{
+              background: game.infoOpen === spot.id ? '#f0c14a' : 'rgba(12, 22, 28, 0.88)',
+              color: game.infoOpen === spot.id ? '#1a2a32' : '#e7eee9',
+              border: '1px solid #c9a27a',
+              borderRadius: 999,
+              padding: '4px 10px',
+              font: '700 12px sans-serif',
+            }}
+          >
+            {spot.label}
+          </button>
+        ))}
+      </div>
+      {game.infoOpen ? (
+        <div
+          data-testid="info-panel"
+          style={{
+            position: 'absolute',
+            top: 76,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(12, 22, 28, 0.94)',
+            color: '#e7eee9',
+            border: '1px solid #c9a27a',
+            borderRadius: 8,
+            padding: '8px 12px',
+            font: '13px sans-serif',
+            minWidth: 220,
+          }}
+        >
+          {game.infoLines(game.infoOpen).map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ) : null}
       {ground && (
         <div
           data-testid="ground-stock"
