@@ -344,6 +344,10 @@ describe('game wiring', () => {
     expect(game.tile({ c: 2, r: 2 })).toBe('mro')
     parked(game, { c: 12, r: 21 })
     game.mechanics = 8
+    // Stand lead-in runs south. The curb and nose spur are road, so the
+    // hangar joins the strip along the south taxi row and column 2.
+    for (let c = 2; c <= 12; c++) game.tiles[25][c] = 'taxi'
+    for (let r = 3; r <= 25; r++) game.tiles[r][2] = 'taxi'
     game.tickTier3(4)
     expect(game.freeStands().some((stand) => stand.c === 12 && stand.r === 21)).toBe(false)
     expect(game.tier3Snapshot().mro.occupied).toBe(1)

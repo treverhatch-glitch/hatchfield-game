@@ -67,6 +67,11 @@ export const REAL_AIRFRAMES: Record<string, RealAirframe> = {
     icao: 'E',
     doors: [d(0.12, 1, 'pax'), d(0.32, 1, 'pax'), d(0.14, -1, 'service'), d(0.34, -1, 'service'), d(0.7, -1, 'service'), d(0.42, -1, 'cargo'), d(0.8, -1, 'cargo')],
   },
+  b77w: {
+    lengthM: 73.86, spanM: 64.8, heightM: 18.5, wheelbaseM: 31.22,
+    icao: 'E',
+    doors: [d(0.1, 1, 'pax'), d(0.28, 1, 'pax'), d(0.62, 1, 'pax'), d(0.12, -1, 'service'), d(0.3, -1, 'service'), d(0.64, -1, 'service'), d(0.4, -1, 'cargo'), d(0.78, -1, 'cargo')],
+  },
   a359: {
     lengthM: 66.8, spanM: 64.75, heightM: 17.05, wheelbaseM: 28.67,
     icao: 'E',

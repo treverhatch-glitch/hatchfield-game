@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { payrollForGameDay } from '../core/bank.ts'
 import { LAND_PLOT } from './catalog.ts'
 import { cityLevy } from './economy.ts'
+import { BAG_SYSTEMS, PAX_UNITS } from '../scale/data.ts'
 import { Game } from './sim.ts'
 import { SAVE_KEY, SANDBOX_CASH } from './types.ts'
 
@@ -38,10 +39,14 @@ describe('land plots in the sim', () => {
     const holding = live.dailyHoldingQuote()
     expect(holding).toBeGreaterThan(0)
     const upkeep = live.landsideUpkeep() * 6
+    const pillar =
+      BAG_SYSTEMS.carts.upkeepPerDay +
+      2 * PAX_UNITS.desk.upkeepPerDay +
+      PAX_UNITS.scanner.upkeepPerDay
     const payroll = payrollForGameDay(0, 'early', live.payrollPreview())
     live.clock = 180
     live.tickPayroll(0)
-    const afterBills = 80_000 - upkeep - holding - payroll
+    const afterBills = 80_000 - upkeep - pillar - holding - payroll
     expect(live.cash).toBe(afterBills - cityLevy(afterBills))
     expect(live.news.some((item) => item.text.includes('land holding'))).toBe(true)
     const settled = live.cash

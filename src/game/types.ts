@@ -1,3 +1,4 @@
+import type { InboundState } from '../inbound/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
 
 export const SIZE = 32
@@ -41,6 +42,16 @@ export type Tile =
   | 'mro'
   /** Late-game freighter night wave. */
   | 'nighthub'
+  /** Fuel-supply rail. Delivery starts only when this reaches the map edge. */
+  | 'fuel_rail'
+  /** Unloads a fuel train into the tank farm. */
+  | 'oil'
+  /** Moving walkway. Passengers on it move faster. */
+  | 'travelator'
+  /** Elevated link between a terminal and a pier. */
+  | 'skywalk'
+  /** Automated people-mover guideway. */
+  | 'mover'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -104,6 +115,14 @@ export type Tool =
   | 'depot'
   | 'mro'
   | 'nighthub'
+  | 'stand_w'
+  | 'hangar_w'
+  | 'hangar_j'
+  | 'fuel_rail'
+  | 'oil'
+  | 'travelator'
+  | 'skywalk'
+  | 'mover'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -259,8 +278,21 @@ export type ResearchId =
   | 'night_bank'
   | 'deice'
   | 'stand_class'
+  | 'widebody_ops'
   | 'heavy_pack'
   | 'mil_ramp'
+  | 'hydrant_fuel'
+  | 'rail_fuel'
+  | 'tank_farm_ii'
+  | 'tank_farm_iii'
+  | 'bag_sorter'
+  | 'bag_bhs'
+  | 'self_service'
+  | 'ct_lanes'
+  | 'egates'
+  | 'travelator'
+  | 'skywalk'
+  | 'people_mover'
   | 'mro_hangar'
   | 'cargo_night_hub'
 
@@ -339,6 +371,8 @@ export interface BuildDef {
   blurb: string
   /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
   minFieldLevel?: 1 | 2 | 3 | 4 | 5
+  /** Project that must be bought before the stamp is offered. */
+  research?: ResearchId
 }
 
 export interface RoomDef {
@@ -564,6 +598,10 @@ export interface Flight {
   bagsOffloaded?: number
   /** Inbound units that did not fit the claim hall. */
   claimLeft?: number
+  /** Inbound visit that owns this arrival. The stand stays occupied until release. */
+  inboundVisitId?: string
+  /** Sim clock when this inbound visit frees the stand. */
+  inboundReleaseAt?: number
 }
 
 /** Timed bag journey — aggregate units, not per-suitcase agents. */
@@ -772,7 +810,12 @@ export interface TerminalFit {
     bundle?: boolean
     rot?: number
     revenue?: number
+    fill?: number
   }[]
+  /** Rubbish on the floor, one decal per piece. */
+  litter?: { id: string; c: number; r: number; ox: number; oz: number }[]
+  /** 0–100. Rises with restroom visits; janitors service it down. */
+  restroomDirt?: number
   /** Wayfinding signs. Each one extends the pathfinding junction cap. */
   signs?: number
   bagAllowance?: number
@@ -847,6 +890,21 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
+  /** Size-pillar purchases: fuel contract, tank, fleet, bags, and passenger kit. */
+  pillar?: {
+    contractId: string | null
+    tankTier: 1 | 2 | 3
+    litres: number
+    supply: 'road' | 'rail'
+    roadMinutes: number
+    fleet: Record<string, number>
+    bagSystem: 'carts' | 'sorter' | 'bhs'
+    desks: number
+    kiosks: number
+    bagDrops: number
+    scannerLanes: number
+    eGates: number
+  }
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
@@ -860,6 +918,10 @@ export interface GameSnapshot {
   standClass?: Record<string, StandClass>
   /** Stand tile key "c,r" → remote hardstand vs jetway gate. */
   standAccess?: Record<string, StandAccess>
+  /** Stand key → small / wide / jumbo. Missing L stands stay jumbo for older saves. */
+  standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
+  /** Hangar key → bay size. Missing hangars stay small. */
+  hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   janitors?: number
   researchers?: number
   deskStaff?: number
@@ -876,9 +938,15 @@ export interface GameSnapshot {
   sites?: BuildSite[]
   /** Tier III hangar and night-hub save. Missing on older saves. */
   tier3?: Tier3Save
+  /** Bought power capacity. Missing saves stay on the Tier I city feed. */
+  powerPlantTier?: 1 | 2 | 3
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
+  /** Negotiation desk (offers, rival, ULCC research). */
+  negotiation?: string
+  /** Inbound offers, visits, and Guard contracts. */
+  inbound?: InboundState
 }
 
 /** A placed building that is still a construction site. */
@@ -899,6 +967,8 @@ export interface BuildSite {
   tool?: string
   standClass?: StandClass
   standAccess?: StandAccess
+  standScale?: 'small' | 'wide' | 'jumbo'
+  hangarScale?: 'small' | 'wide' | 'jumbo'
   hotelClass?: HotelClass
   parkTerm?: ParkTerm
   runwayClass?: RunwayClass

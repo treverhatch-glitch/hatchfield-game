@@ -96,6 +96,11 @@ export class Tier3Session {
     return this.jobs.some((job) => job.buildingId === buildingId)
   }
 
+  /** Live checks. The apron taxi pose is derived from these, so the bay the player sees is the bay that is occupied. */
+  activeJobs(): readonly MroJob[] {
+    return this.jobs
+  }
+
   tick(dtMinutes: number, ctx: Tier3TickContext): Tier3TickResult {
     const dt = Math.max(0, finiteNumber(dtMinutes))
     const postings: Tier3Posting[] = []

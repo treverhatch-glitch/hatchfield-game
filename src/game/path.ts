@@ -1,3 +1,4 @@
+import { personStepCost } from '../scale/logic'
 import { SIZE, type Tile, type Vec } from './types'
 
 export function inBounds(c: number, r: number): boolean {
@@ -97,7 +98,10 @@ export function walkableFor(
     tile === 'termbus' ||
     tile === 'rail' ||
     tile === 'mro' ||
-    tile === 'nighthub'
+    tile === 'nighthub' ||
+    tile === 'travelator' ||
+    tile === 'skywalk' ||
+    tile === 'mover'
   )
 }
 
@@ -145,7 +149,8 @@ export function astar(
     for (const n of neighbors(p.c, p.r)) {
       if (!walkableFor(kind, tiles[n.r][n.c])) continue
       const nk = key(n.c, n.r)
-      const ng = (g.get(cur) ?? 1e9) + 1
+      const step = kind === 'person' ? personStepCost(tiles[n.r][n.c]) : 1
+      const ng = (g.get(cur) ?? 1e9) + step
       if (ng < (g.get(nk) ?? Infinity)) {
         came.set(nk, cur)
         g.set(nk, ng)

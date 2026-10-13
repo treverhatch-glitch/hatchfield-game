@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
+import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
+import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
+import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
 import {
   BUDGET_BLURB,
   BUDGET_LABEL,
@@ -44,6 +47,7 @@ import {
   TOOL_LABEL,
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
+import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
@@ -72,17 +76,36 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'stands',
     label: 'Stands',
-    tools: ['stand_s', 'stand', 'stand_l'],
+    tools: ['stand_s', 'stand', 'stand_w', 'stand_l'],
   },
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt'],
+    tools: ['premade', 'terminal', 'term_bus', 'belt', 'travelator', 'skywalk', 'mover'],
   },
   {
     id: 'ops',
     label: 'Ops',
-    tools: ['fuel', 'kitchen', 'depot', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'guard', 'tower', 'hangar', 'mro', 'nighthub'],
+    tools: [
+      'fuel',
+      'kitchen',
+      'depot',
+      'bags',
+      'belt',
+      'snack',
+      'fire',
+      'police',
+      'cargo',
+      'guard',
+      'tower',
+      'hangar',
+      'hangar_w',
+      'hangar_j',
+      'mro',
+      'nighthub',
+      'fuel_rail',
+      'oil',
+    ],
   },
   {
     id: 'landside',
@@ -234,6 +257,9 @@ export function Hud({ game }: { game: Game }) {
   if (game.apronJamLine()) alerts.push('Apron jam')
   if (game.securityQueueCount() >= 3) alerts.push('Security queue')
   if (game.lostPaxCount() > 0) alerts.push('Lost pax')
+  const power = game.powerReport()
+  if (power.brownout) alerts.push('Power')
+  const powerGate = canUpgradePower(game.powerPlantTier, game.fieldLevel())
   if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
 
   return (
@@ -341,8 +367,50 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.inboundOffer() ? (
+        <aside className="inbound-panel" data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
+          {(() => {
+            const card = game.inboundOffer()
+            if (!card) return null
+            return (
+              <div className="inbound-card">
+                <header>
+                  <span className="kind">{card.priority ? 'Priority' : 'Traffic'}</span>
+                  <span className="timer">{Math.ceil(card.secondsLeft)}s</span>
+                </header>
+                <h3>{card.title}</h3>
+                <p>{card.blurb}</p>
+                <p className="needs">{card.needs}</p>
+                <p className="pay">
+                  {card.reward > 0 ? `Fee ${money(card.reward)}` : `Day-rate ${money(card.dailyFee)}`}
+                  {card.fine > 0 ? ` · refuse ${money(card.fine)}` : ''}
+                  {` · ${card.stayDays}d`}
+                </p>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="on"
+                    data-testid="inbound-accept"
+                    onClick={() => game.acceptInbound(card.id)}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="inbound-refuse"
+                    onClick={() => game.refuseInbound(card.id)}
+                  >
+                    Refuse
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+        </aside>
+      ) : null}
+
       <div
-        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}`}
+        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
@@ -580,11 +648,14 @@ export function Hud({ game }: { game: Game }) {
                   <div className="row letter-actions">
                     {letter.id === 'contract' ? (
                       <>
-                        <button type="button" className="on" onClick={() => game.acceptOffer()}>
+                        <button type="button" className="on" onClick={() => game.openNegotiationPanel()}>
+                          Negotiate
+                        </button>
+                        <button type="button" onClick={() => game.acceptNegotiation()}>
                           Accept
                         </button>
-                        <button type="button" onClick={() => game.declineOffer()}>
-                          Decline
+                        <button type="button" onClick={() => game.walkNegotiation()}>
+                          Walk
                         </button>
                         <button type="button" onClick={() => game.snoozeOffer()}>
                           Later
@@ -1162,6 +1233,51 @@ export function Hud({ game }: { game: Game }) {
               ) : null}
 
               {panel === 'airlines' ? (
+                <>
+                <section className="inbound-contracts" data-testid="contracts-panel">
+                  <h3>Contracts</h3>
+                  <p className="muted eco-line">
+                    Guard {game.milAgreement ? 'agreement signed' : 'agreement is on the Budget panel'}
+                    {' · '}
+                    clearance {game.inboundHasClearance() ? 'held' : money(CLEARANCE_LICENCE_COST)}
+                  </p>
+                  {game.inboundHasClearance() ? null : (
+                    <button type="button" onClick={() => game.buyInboundClearance()}>
+                      Buy security clearance · {money(CLEARANCE_LICENCE_COST)}
+                    </button>
+                  )}
+                  {game.inboundContracts().length === 0 ? (
+                    <p className="muted">No Guard contracts yet. A signed agreement brings the first offer.</p>
+                  ) : (
+                    <ul className="airlines">
+                      {game.inboundContracts().map((deal) => (
+                        <li key={deal.id}>
+                          <b>
+                            {deal.name}{' '}
+                            <span className="muted">
+                              {deal.status} · {deal.daySorties} day / {deal.nightSorties} night
+                            </span>
+                          </b>
+                          <span className="muted">
+                            Night circuit {deal.noisePerNight} noise · {deal.approvalPerNight} approval
+                          </span>
+                          <div className="row">
+                            {deal.status === 'offered' ? (
+                              <button type="button" className="on" onClick={() => game.signInboundContract(deal.id)}>
+                                Sign
+                              </button>
+                            ) : null}
+                            {deal.status === 'active' || deal.status === 'expiring' ? (
+                              <button type="button" onClick={() => game.cancelInboundContract(deal.id)}>
+                                Cancel early
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
                 <section className="airline-tiers">
                   <h3>Airline tiers</h3>
                   {(() => {
@@ -1270,6 +1386,7 @@ export function Hud({ game }: { game: Game }) {
                     )
                   })}
                 </section>
+                </>
               ) : null}
 
               {panel === 'planner' ? (
@@ -1614,6 +1731,84 @@ export function Hud({ game }: { game: Game }) {
                       Buy 4 loads
                       {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
                     </button>
+                    <p className="muted">
+                      Tank {game.tankTier} · {Math.round(game.tankLitres).toLocaleString('en-US')} /{' '}
+                      {tankDef(game.tankTier).capacityLitres.toLocaleString('en-US')} L · {game.fuelSupply}
+                      {game.contractId ? ` · ${FUEL_CONTRACTS.find((c) => c.id === game.contractId)?.name}` : ''}
+                    </p>
+                    <div className="row">
+                      {FUEL_CONTRACTS.map((c) => {
+                        const gate = canSignContract(c.id, game.fieldLevel(), game.researchUnlocked)
+                        return (
+                          <button key={c.id} type="button" disabled={!gate.ok} onClick={() => game.signScaleContract(c.id)}>
+                            {c.name} {money(c.sign)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="row">
+                      <button type="button" onClick={() => game.setFuelSupply('road')}>
+                        Road tankers
+                      </button>
+                      <button type="button" onClick={() => game.setFuelSupply('rail')}>
+                        Rail
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => game.upgradeTank()}
+                        disabled={!canUpgradeTank(game.tankTier, game.fieldLevel(), game.researchUnlocked).ok}
+                      >
+                        Tank {TANK_TIERS[Math.min(2, game.tankTier)] ? `→ ${tankDef(game.tankTier === 3 ? 3 : ((game.tankTier + 1) as 2 | 3)).capacityLitres.toLocaleString('en-US')} L` : ''}
+                      </button>
+                    </div>
+                    <p className="muted">
+                      {powerPlantOffer(game.powerPlantTier).name} · capacity{' '}
+                      {Math.round(power.capacity).toLocaleString('en-US')} · demand{' '}
+                      {Math.round(power.demand).toLocaleString('en-US')}
+                      {power.brownout ? ' · brown-out' : ''}
+                    </p>
+                    <button
+                      type="button"
+                      data-testid="upgrade-power"
+                      disabled={!powerGate.ok}
+                      onClick={() => game.upgradePowerPlant()}
+                    >
+                      {powerGate.next
+                        ? `Build ${powerPlantOffer(powerGate.next).name} ${money(powerGate.cost)}`
+                        : 'Power plant III'}
+                    </button>
+                    <p className="muted">
+                      Bags: {BAG_SYSTEMS[game.bagSystem].name}. Check-in desks {game.paxDesks}, kiosks {game.paxKiosks}, bag drop {game.paxBagDrops}, scanners {game.scannerLanes}, e-gates {game.eGates}.
+                    </p>
+                    <div className="row">
+                      <button
+                        type="button"
+                        disabled={!canUpgradeBags(game.bagSystem, game.fieldLevel(), game.researchUnlocked).ok}
+                        onClick={() => game.upgradeBagSystem()}
+                      >
+                        Upgrade bags
+                      </button>
+                      {(Object.keys(PAX_UNITS) as (keyof typeof PAX_UNITS)[]).map((id) => {
+                        const gate = canBuyPax(id, game.fieldLevel(), game.researchUnlocked)
+                        return (
+                          <button key={id} type="button" disabled={!gate.ok} onClick={() => game.buyPaxUnit(id)}>
+                            {PAX_UNITS[id].name} {money(PAX_UNITS[id].cost)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="row">
+                      {VEHICLE_OFFERS.map((offer) => {
+                        const gate = canBuyVehicle(offer.type, game.fieldLevel(), game.researchUnlocked)
+                        const owned = game.scaleFleet[offer.type] ?? 0
+                        return (
+                          <button key={offer.type} type="button" disabled={!gate.ok} onClick={() => game.buyScaleVehicle(offer.type)}>
+                            {offer.role} {owned > 0 ? `×${owned} ` : ''}
+                            {money(gate.cost)}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </section>
                   <section>
                     <h3>Catering desk</h3>
