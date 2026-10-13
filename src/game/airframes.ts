@@ -1,3 +1,4 @@
+import { simRandom } from '../core/rng.ts'
 import type { AircraftKind, ResearchId, StandClass } from './types'
 
 /** Real-world-flavored metal. minRunway is apron cells of continuous strip needed. */
@@ -469,7 +470,7 @@ export function craftRoleLabel(kind: AircraftKind): string {
 }
 
 /** Load factor inside the sim's pax band, using the type's seat count. */
-export function paxForAirframe(af: Airframe, rng: () => number = Math.random): number {
+export function paxForAirframe(af: Airframe, rng: () => number = simRandom): number {
   if (af.seats <= 0 || af.paxMax <= 0) return 0
   const factor = 0.62 + rng() * 0.33
   const raw = Math.round(af.seats * factor)
@@ -483,7 +484,7 @@ export function bagUnitsForAirframe(af: Airframe, estimate: number): number {
 }
 
 /** Freight on board, as a fraction of the published hold. */
-export function cargoUnitsForAirframe(af: Airframe, rng: () => number = Math.random): number {
+export function cargoUnitsForAirframe(af: Airframe, rng: () => number = simRandom): number {
   if (af.cargoHold <= 0) return 0
   return Math.max(1, Math.round(af.cargoHold * (0.55 + rng() * 0.4)))
 }
@@ -518,7 +519,7 @@ export function pickAirframe(
       researchOk(a, unlocked),
   )
   if (!pool.length) return null
-  return pool[Math.floor(Math.random() * pool.length)]
+  return pool[Math.floor(simRandom() * pool.length)]
 }
 
 /** Prefer `kind`, then step down to anything that fits the strip (no helos/mil). */

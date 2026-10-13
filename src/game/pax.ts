@@ -1,12 +1,13 @@
+import { simRandom } from '../core/rng.ts'
 import { astar, nearestPath, tilesOf } from './path'
 import type { PaxStop, Person, TerminalFit, Tile, Vec } from './types'
 
 function uid(): string {
-  return `pax-${Math.random().toString(36).slice(2, 8)}`
+  return `pax-${simRandom().toString(36).slice(2, 8)}`
 }
 
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+  return arr[Math.floor(simRandom() * arr.length)]
 }
 
 function stopGoal(
@@ -62,8 +63,8 @@ export function spawnArrivalPax(
     const hasHall = tilesOf(tiles, 'terminal').length > 0
     if (hasBags) itinerary.push('bags')
     else if (hasHall && fit && fit.rooms.bagclaim > 0) itinerary.push('claim')
-    if (Math.random() < 0.55 && (tilesOf(tiles, 'snack').length || hasHall)) itinerary.push('food')
-    if (Math.random() < 0.35 && hasHall && fit && fit.rooms.souvenir > 0) itinerary.push('shop')
+    if (simRandom() < 0.55 && (tilesOf(tiles, 'snack').length || hasHall)) itinerary.push('food')
+    if (simRandom() < 0.35 && hasHall && fit && fit.rooms.souvenir > 0) itinerary.push('shop')
     itinerary.push('exit')
 
     const first = itinerary[0]
@@ -72,11 +73,11 @@ export function spawnArrivalPax(
     out.push({
       id: uid(),
       flightId,
-      x: stand.c + (Math.random() - 0.5) * 0.35,
-      y: stand.r + (Math.random() - 0.5) * 0.35,
+      x: stand.c + (simRandom() - 0.5) * 0.35,
+      y: stand.r + (simRandom() - 0.5) * 0.35,
       path,
       seg: 0,
-      t: -Math.random() * 1.2,
+      t: -simRandom() * 1.2,
       color: pick(['#d9c7a3', '#c4a574', '#8b6b4a', '#f0d9b5', '#6a4a32']),
       job: 'arrive',
       itinerary: [...itinerary],
@@ -114,7 +115,7 @@ export function spawnDeparturePax(
     if (hall.length) {
       itinerary.push('checkin')
       if (fit && fit.rooms.security > 0) itinerary.push('security')
-      if (Math.random() < 0.4 && fit && fit.rooms.food > 0) itinerary.push('food')
+      if (simRandom() < 0.4 && fit && fit.rooms.food > 0) itinerary.push('food')
       itinerary.push('gate')
     }
     itinerary.push('plane')
@@ -125,11 +126,11 @@ export function spawnDeparturePax(
     out.push({
       id: uid(),
       flightId,
-      x: start.c + (Math.random() - 0.5) * 0.4,
-      y: start.r + (Math.random() - 0.5) * 0.4,
+      x: start.c + (simRandom() - 0.5) * 0.4,
+      y: start.r + (simRandom() - 0.5) * 0.4,
       path,
       seg: 0,
-      t: -Math.random() * 2.5,
+      t: -simRandom() * 2.5,
       color: pick(['#3a5a7a', '#5c4033', '#2d4739', '#7a4e2d', '#1e3a5f']),
       job: 'board',
       itinerary: [...itinerary],

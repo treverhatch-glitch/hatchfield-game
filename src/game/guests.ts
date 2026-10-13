@@ -7,6 +7,8 @@
  * so thousands of decisions stay cheap — same spirit, airport rooms instead of rides.
  */
 
+import { simRandom } from '../core/rng.ts'
+
 import type { ArriveMode } from './types'
 
 export type { ArriveMode }
@@ -383,22 +385,22 @@ export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   if (need === 'hunger') return 'food'
   if (need === 'energy') {
     if (job === 'depart') {
-      const r = Math.random()
+      const r = simRandom()
       if (r < 0.28) return 'spa'
       if (r < 0.55) return 'dayhotel'
       return 'lounge'
     }
-    return Math.random() < 0.35 ? 'spa' : 'food'
+    return simRandom() < 0.35 ? 'spa' : 'food'
   }
   if (need === 'play') {
     if (job === 'depart') {
-      const r = Math.random()
+      const r = simRandom()
       if (r < 0.28) return 'pool'
       if (r < 0.52) return 'golf'
       if (r < 0.76) return 'gaming'
       return 'waterfall'
     }
-    return Math.random() < 0.4 ? 'pool' : Math.random() < 0.5 ? 'gaming' : 'waterfall'
+    return simRandom() < 0.4 ? 'pool' : simRandom() < 0.5 ? 'gaming' : 'waterfall'
   }
   return 'shop'
 }
@@ -412,7 +414,7 @@ export function rollPaxTag(
     | 'cargo_night'
     | 'military_gov',
 ): PaxTag {
-  const r = Math.random()
+  const r = simRandom()
   if (persona === 'luxury') {
     if (r < 0.5) return 'premium'
     if (r < 0.78) return 'business'
@@ -478,17 +480,17 @@ export function rollWallet(tag: PaxTag, transfer = false): number {
           ? { lo: 30, hi: 120, broke: 0.06, brokeMax: 18, whale: 0.07, whaleMax: 200 }
           : { lo: 6, hi: 52, broke: 0.1, brokeMax: 8, whale: 0.05, whaleMax: 95 }
   let n: number
-  const r = Math.random()
-  if (r < band.broke) n = 1 + Math.random() * band.brokeMax
-  else if (r > 1 - band.whale) n = band.hi + Math.random() * (band.whaleMax - band.hi)
-  else n = band.lo + Math.random() * (band.hi - band.lo)
-  if (transfer) n += 20 + Math.random() * 35
+  const r = simRandom()
+  if (r < band.broke) n = 1 + simRandom() * band.brokeMax
+  else if (r > 1 - band.whale) n = band.hi + simRandom() * (band.whaleMax - band.hi)
+  else n = band.lo + simRandom() * (band.hi - band.lo)
+  if (transfer) n += 20 + simRandom() * 35
   return Math.max(0, Math.round(n))
 }
 
 /** RCT taste roll — type biases the means; each guest still differs. */
 export function rollPrefs(tag: PaxTag, transfer = false): GuestPrefs {
-  const jitter = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
+  const jitter = (lo: number, hi: number) => lo + simRandom() * (hi - lo)
   if (tag === 'premium') {
     return {
       food: jitter(0.3, 0.85),
@@ -546,9 +548,9 @@ export function spawnHallGuest(
   const up = tagSpendsUp(tag)
   const transfer = Boolean(opts?.transfer)
   return {
-    id: `g-${Math.random().toString(36).slice(2, 8)}`,
+    id: `g-${simRandom().toString(36).slice(2, 8)}`,
     flightId,
-    name: NAMES[Math.floor(Math.random() * NAMES.length)],
+    name: NAMES[Math.floor(simRandom() * NAMES.length)],
     tag,
     job,
     node: job === 'depart' ? 'entrance' : transfer ? 'gate' : 'gate',
@@ -556,15 +558,15 @@ export function spawnHallGuest(
     seg: 0,
     t: 0,
     needs: {
-      hunger: (transfer ? 35 : 20) + Math.random() * (up ? 40 : 55),
-      bladder: 15 + Math.random() * 50,
-      energy: up ? 40 + Math.random() * 40 : 10 + Math.random() * 30,
-      boarding: job === 'depart' ? 18 + Math.random() * 22 : transfer ? 40 + Math.random() * 30 : 99,
-      bags: job === 'arrive' && !transfer ? 70 + Math.random() * 25 : 0,
-      shop: (transfer ? 40 : up ? 25 : 10) + Math.random() * (up ? 40 : 25),
+      hunger: (transfer ? 35 : 20) + simRandom() * (up ? 40 : 55),
+      bladder: 15 + simRandom() * 50,
+      energy: up ? 40 + simRandom() * 40 : 10 + simRandom() * 30,
+      boarding: job === 'depart' ? 18 + simRandom() * 22 : transfer ? 40 + simRandom() * 30 : 99,
+      bags: job === 'arrive' && !transfer ? 70 + simRandom() * 25 : 0,
+      shop: (transfer ? 40 : up ? 25 : 10) + simRandom() * (up ? 40 : 25),
       play:
         (transfer ? 30 : tag === 'family' ? 40 : up ? 35 : 15) +
-        Math.random() * (tag === 'family' ? 50 : up ? 45 : 35),
+        simRandom() * (tag === 'family' ? 50 : up ? 45 : 35),
     },
     wallet: rollWallet(tag, transfer),
     prefs: rollPrefs(tag, transfer),
@@ -596,7 +598,7 @@ export function spawnHallGuest(
 }
 
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+  return arr[Math.floor(simRandom() * arr.length)]
 }
 
 export function openNodesFromRooms(rooms: {

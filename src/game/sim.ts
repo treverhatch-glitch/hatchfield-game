@@ -213,6 +213,8 @@ import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
 import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
 import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
+import { bindSimRng, createRng, simRandom, type Rng } from '../core/rng.ts'
+import { CORE_SNAPSHOT_VERSION, type CoreSnapshot } from '../core/snapshot.ts'
 import {
   createEconomyAdapter,
   type EconomyAdapter,
@@ -318,7 +320,7 @@ function emptyTiles(): Tile[][] {
 }
 
 function uid(prefix: string): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 8)}`
+  return `${prefix}-${simRandom().toString(36).slice(2, 8)}`
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -330,7 +332,7 @@ function clamp(n: number, a: number, b: number): number {
 }
 
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
+  return arr[Math.floor(simRandom() * arr.length)]
 }
 
 const emptyRooms = (): Record<RoomId, number> => ({
@@ -486,7 +488,193 @@ const FINANCING_CATEGORIES = new Set([
   'refunds',
 ])
 
+/** Public data copied into a portable snapshot. No class instances or listeners. */
+const WORLD_KEYS = [
+  'tiles',
+  'fits',
+  'cash',
+  'difficulty',
+  'site',
+  'clock',
+  'speed',
+  'tool',
+  'facing',
+  'runwayStart',
+  'hover',
+  'hoverInspect',
+  'mapRev',
+  'fuelBrand',
+  'fuelLoads',
+  'foodShelf',
+  'shopShelf',
+  'lostSpend',
+  'bagsLost',
+  'bagsMishandled',
+  'bagPhase',
+  'shelfCool',
+  'infoOpen',
+  'caterBrand',
+  'mealSold',
+  'signed',
+  'offer',
+  'offerCool',
+  'mxOffer',
+  'mxOfferCool',
+  'mxSigned',
+  'threatCool',
+  'pendingThreat',
+  'pendingEmergency',
+  'emergencyCool',
+  'securityIncidents',
+  'reputation',
+  'loanBalance',
+  'loanProductId',
+  'loanPrincipal',
+  'loanOpened',
+  'fieldXp',
+  'parcels',
+  'railLinked',
+  'hotelLevel',
+  'carParkShort',
+  'carParkLong',
+  'parkTerms',
+  'hotelClass',
+  'standClass',
+  'standAccess',
+  'standAccessMode',
+  'janitors',
+  'janitorCool',
+  'researchers',
+  'researcherCool',
+  'deskStaff',
+  'deskStaffCool',
+  'hallStaff',
+  'landsideUses',
+  'landsideFeeWindow',
+  'plannerRwFilter',
+  'congWasteAcc',
+  'congNewsCool',
+  'congPeak',
+  'cargoWarehouse',
+  'cityCargoCool',
+  'startFocus',
+  'sandbox',
+  'cargoVolume',
+  'cargoVolumeCool',
+  'interestCool',
+  'loanNewsCool',
+  'public',
+  'sharePrice',
+  'sharesOwned',
+  'sharesFloat',
+  'ipoPrice',
+  'marketCool',
+  'analystCool',
+  'mission',
+  'revenueWindow',
+  'budgets',
+  'mechanics',
+  'runwayCondition',
+  'weather',
+  'weatherCool',
+  'payrollCool',
+  'payrollDay',
+  'levyMark',
+  'branding',
+  'crashCool',
+  'fireIncidentCool',
+  'milAgreement',
+  'milCool',
+  'ambuCool',
+  'extraAirlines',
+  'airlineHeat',
+  'airlineBanUntil',
+  'airlineReward',
+  'airlineWarned',
+  'airlineLowAcc',
+  'researchPoints',
+  'researchUnlocked',
+  'layoverOffer',
+  'layoverOfferCool',
+  'layover',
+  'layoverSpawnAcc',
+  'layoverWins',
+  'hubOffer',
+  'hubOfferCool',
+  'hubAirlines',
+  'parkingOffer',
+  'parkingCool',
+  'parkRateCool',
+  'schedule',
+  'scheduleAuto',
+  'schedulePlanCool',
+  'hallMissCool',
+  'flights',
+  'trucks',
+  'people',
+  'hallGuests',
+  'news',
+  'selectedFlight',
+  'selectedTile',
+  'selectedGuest',
+  'hallRev',
+  'view',
+  'spawnCool',
+  'heloCool',
+  'flightSeq',
+  'flightsDone',
+  'paxServed',
+  'revenue',
+  'settledPayments',
+  'advice',
+  'advisorCells',
+  'apronFocus',
+  'groundBooks',
+  'diplomacySeed',
+  'showFlows',
+  'hallOverloaded',
+  'missedFlights',
+  'sites',
+  'craftSeen',
+  'saveTimer',
+  'uiAcc',
+  'patrolCool',
+  'mechanicCool',
+  'coachDismissed',
+  'fieldTask',
+  'fieldTaskCool',
+  'nightCurfewCool',
+  'cascadeNewsCool',
+  'stormPulseCool',
+  'econHist',
+  'econHour',
+  'hourIncome',
+  'hourExpense',
+  'dayPax',
+  'dayCargo',
+  'dayMark',
+  'incomePerHour',
+  'paxPerDay',
+  'cargoPerDay',
+] as const satisfies readonly (keyof Game)[]
+
 export class Game {
+  /**
+   * Active sim stream. Unseeded games call `Math.random`. `useSeed` switches
+   * this object to mulberry32 without changing call sites.
+   */
+  rng: Rng = createRng()
+
+  constructor() {
+    bindSimRng(this.rng)
+  }
+
+  /** Reset the sim stream. The same seed replays the same rolls. */
+  useSeed(seed: number) {
+    this.rng.load({ kind: 'mulberry32', state: seed >>> 0 })
+    bindSimRng(this.rng)
+  }
+
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
   cash: number = START_CASH.easy
@@ -1103,7 +1291,7 @@ export class Game {
     const open = FIELD_TASK_DEFS.filter((d) => !this.fieldTaskMet(d.kind))
     if (!open.length) return
     const preferred = open.filter((d) => d.personas?.includes(a.persona))
-    const pickDef = preferred.length && Math.random() < 0.7 ? pick(preferred) : pick(open)
+    const pickDef = preferred.length && simRandom() < 0.7 ? pick(preferred) : pick(open)
     this.fieldTask = {
       id: uid('task'),
       airline: airlineId,
@@ -1198,18 +1386,18 @@ export class Game {
     )
     if (!pool.length) return
     // Cargo / hybrid starts get volume asks earlier.
-    if (this.startFocus === 'pax' && this.flightsDone < 2 && Math.random() > 0.35) return
+    if (this.startFocus === 'pax' && this.flightsDone < 2 && simRandom() > 0.35) return
     const airline = pick(pool)
     const a = this.airline(airline)
     const target =
       this.startFocus === 'cargo'
-        ? 48 + Math.floor(Math.random() * 36)
-        : 36 + Math.floor(Math.random() * 28)
+        ? 48 + Math.floor(simRandom() * 36)
+        : 36 + Math.floor(simRandom() * 28)
     const fee = Math.round(
       CARGO_VOLUME_FEE_MIN +
-        Math.random() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN),
+        simRandom() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN),
     )
-    const window = 55 + Math.random() * 35
+    const window = 55 + simRandom() * 35
     this.cargoVolume = {
       id: uid('vol'),
       airline,
@@ -1909,10 +2097,10 @@ export class Game {
     // Summit / EXFED-class — heavy strip + heavy_pack opens widebody (A380 in the pool).
     if (a.req.heavyRunway && this.hasHeavyRunway()) return 'widebody'
     if (a.persona === 'budget' || a.id === 'northline' || a.procedural) {
-      return Math.random() < 0.6 ? 'regional' : 'narrowbody'
+      return simRandom() < 0.6 ? 'regional' : 'narrowbody'
     }
     if (a.persona === 'business' || a.id === 'harbor') {
-      return Math.random() < 0.45 ? 'regional' : 'narrowbody'
+      return simRandom() < 0.45 ? 'regional' : 'narrowbody'
     }
     return 'narrowbody'
   }
@@ -2434,7 +2622,7 @@ export class Game {
             : tag === 'family'
               ? ['car_long', 'bus', 'dropoff', 'car_short', 'rail']
               : ['bus', 'car_long', 'dropoff', 'rail', 'car_short']
-    const prefer = pool[Math.floor(Math.random() * Math.min(3, pool.length))]
+    const prefer = pool[Math.floor(simRandom() * Math.min(3, pool.length))]
     if (this.modeAvailable(prefer)) return { prefer, actual: prefer }
     for (const m of pool) {
       if (this.modeAvailable(m)) return { prefer, actual: m }
@@ -2918,13 +3106,13 @@ export class Game {
     this.marketCool -= dt
     // Gentle drift toward fair value
     if (this.marketCool <= 0) {
-      this.marketCool = 6 + Math.random() * 4
+      this.marketCool = 6 + simRandom() * 4
       const fair = this.fairSharePrice()
       this.sharePrice = Math.round((this.sharePrice * 0.85 + fair * 0.15) * 100) / 100
       // Random retail flow
-      if (Math.random() < 0.35 && this.sharesFloat > 5) {
-        const n = 3 + Math.floor(Math.random() * 8)
-        const buy = Math.random() < 0.55
+      if (simRandom() < 0.35 && this.sharesFloat > 5) {
+        const n = 3 + Math.floor(simRandom() * 8)
+        const buy = simRandom() < 0.55
         if (buy) {
           const qty = Math.min(n, this.sharesFloat)
           this.sharesFloat -= qty
@@ -2974,11 +3162,11 @@ export class Game {
     if (!this.public) return
     this.analystCool -= dt
     if (this.analystCool > 0) return
-    this.analystCool = 45 + Math.random() * 50
+    this.analystCool = 45 + simRandom() * 50
     if (this.mission) return
 
     const wear = this.maxWear()
-    const roll = Math.random()
+    const roll = simRandom()
 
     if (wear >= 55 && roll < 0.35) {
       this.shockStock(
@@ -3004,7 +3192,7 @@ export class Game {
       return
     }
     if (this.fuelLoads <= 1 && this.fuelBrand && roll < 0.25) {
-      const spike = 3500 + Math.floor(Math.random() * 2500)
+      const spike = 3500 + Math.floor(simRandom() * 2500)
       this.charge(spike)
       this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.94) * 100) / 100)
       this.pushNews(
@@ -3641,7 +3829,7 @@ export class Game {
       if (slot) slot.claimLane = f.claimLane
     }
     if (f.bagStage === 'idle' || !f.bagStage) f.bagStage = 'inflight'
-    if (Math.random() < 0.55) {
+    if (simRandom() < 0.55) {
       this.pushNews(
         `${f.flightNo} → baggage claim ${f.claimLane} (${f.bagUnits ?? 0} bag units).`,
         'ok',
@@ -3951,7 +4139,7 @@ export class Game {
     const bagUnits = freighter
       ? 0
       : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
-    return { pax, bagUnits, fuelLevel: 0.28 + Math.random() * 0.18 }
+    return { pax, bagUnits, fuelLevel: 0.28 + simRandom() * 0.18 }
   }
 
   /** Off-map start so the jet flies the approach instead of popping onto the strip. */
@@ -4020,8 +4208,8 @@ export class Game {
 
     // No guard — rare sneak-through with incident, else deny at the edge.
     if (!guards.length) {
-      this.cityCargoCool = 14 + Math.random() * 10
-      if (Math.random() < 0.45) {
+      this.cityCargoCool = 14 + simRandom() * 10
+      if (simRandom() < 0.45) {
         this.securityIncidents += 1
         for (const id of this.signed) {
           if (this.airline(id).kind === 'cargo') this.adjustHeat(id, -2.2)
@@ -4030,7 +4218,7 @@ export class Game {
           'City cargo truck denied — no guard post on the road. On-time dips; stamp a Guard.',
           'bad',
         )
-      } else if (Math.random() < 0.35) {
+      } else if (simRandom() < 0.35) {
         // Sneak in without screen — short path straight to shed, incident risk.
         const edge = pick(edges)
         const path = nearestPath(this.tiles, edge, sheds, 'truck')
@@ -4050,7 +4238,7 @@ export class Game {
             patrol: false,
             mission: 'city_shed',
             home: sheds[0],
-            cargoUnits: 10 + Math.floor(Math.random() * 14),
+            cargoUnits: 10 + Math.floor(simRandom() * 14),
           })
           this.securityIncidents += 1
           this.pushNews(
@@ -4073,7 +4261,7 @@ export class Game {
     const queue = this.trucks.filter(
       (t) => t.kind === 'citycargo' && t.mission === 'city_guard',
     ).length
-    const units = 12 + Math.floor(Math.random() * 16)
+    const units = 12 + Math.floor(simRandom() * 16)
     this.trucks.push({
       id: uid('city'),
       kind: 'citycargo',
@@ -4091,8 +4279,8 @@ export class Game {
       home: sheds[0],
       cargoUnits: units,
     })
-    this.cityCargoCool = 9 + Math.random() * 8 + queue * 3
-    if (Math.random() < 0.4) {
+    this.cityCargoCool = 9 + simRandom() * 8 + queue * 3
+    if (simRandom() < 0.4) {
       this.pushNews(
         `City cargo truck inbound — ${units} units via guard → shed.`,
         'ok',
@@ -4142,7 +4330,7 @@ export class Game {
         for (const id of this.signed) {
           if (this.airline(id).kind === 'cargo') this.adjustHeat(id, -1.2)
         }
-      } else if (Math.random() < 0.5) {
+      } else if (simRandom() < 0.5) {
         this.pushNews(
           `Warehouse ${Math.round(this.cargoWarehouseFill() * 100)}% — ${accepted}u staged for freighters.`,
           'ok',
@@ -4306,7 +4494,7 @@ export class Game {
         this.applyGuestLandside(g, 'depart')
         const prefabRelease = Boolean(fit.premade && !fit.redesigned)
         if (prefabRelease) {
-          g.releaseAt = this.clock + Math.random() * DEPARTURE_SPREAD_SEC
+          g.releaseAt = this.clock + simRandom() * DEPARTURE_SPREAD_SEC
           g.thought = 'On the way to the doors'
         } else this.openDepartingGuest(g, open)
       }
@@ -6308,7 +6496,7 @@ export class Game {
     if (
       this.signed.length >= 1 &&
       this.extraAirlines.filter((a) => a.procedural).length < 5 &&
-      Math.random() < 0.4
+      simRandom() < 0.4
     ) {
       const used = this.allAirlines().map((a) => a.name)
       const proc = createProcAirline(used)
@@ -6326,12 +6514,12 @@ export class Game {
         return false
       }
       if (this.startFocus === 'pax' && a.kind === 'cargo' && this.signed.length < 1) {
-        return Math.random() < 0.12
+        return simRandom() < 0.12
       }
-      if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) {
+      if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && simRandom() > 0.35) {
         if (this.startFocus !== 'cargo' && this.startFocus !== 'hybrid') return false
       }
-      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) {
+      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && simRandom() > 0.35) {
         if (this.startFocus === 'cargo') return false
       }
       return true
@@ -6352,7 +6540,7 @@ export class Game {
     const pickA =
       this.startFocus === 'cargo' && cargoFirst.length && this.signed.length < 2
         ? cargoFirst[0]
-        : this.signed.length >= 1 && procs.length && Math.random() < 0.4
+        : this.signed.length >= 1 && procs.length && simRandom() < 0.4
           ? pick(procs)
           : candidates[0]
     this.offer = { airline: pickA.id, age: 0, deadline: 36 }
@@ -6371,7 +6559,7 @@ export class Game {
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.offer = null
     // First carrier lands fast; later contracts space out so the field can breathe.
-    this.offerCool = this.signed.length <= 1 ? 55 + Math.random() * 25 : 85 + Math.random() * 40
+    this.offerCool = this.signed.length <= 1 ? 55 + simRandom() * 25 : 85 + simRandom() * 40
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.grantFieldXp(12 + a.tier * 4, 'contract')
@@ -6408,7 +6596,7 @@ export class Game {
   seedScheduleForAirline(airlineId: AirlineId, count: number) {
     if (this.isBanned(airlineId)) return
     const a = this.airline(airlineId)
-    let t = this.clock + 12 + Math.random() * 10
+    let t = this.clock + 12 + simRandom() * 10
     const last = this.schedule
       .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
       .sort((x, y) => y.eta - x.eta)[0]
@@ -6416,10 +6604,10 @@ export class Game {
     const hub = this.isHub(airlineId)
     const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
     const spacing = a.kind === 'cargo'
-      ? 22 + Math.random() * 12
+      ? 22 + simRandom() * 12
       : hub
-        ? 12 + Math.random() * 8
-        : 18 + Math.random() * 10
+        ? 12 + simRandom() * 8
+        : 18 + simRandom() * 10
     const n = hub ? scaled + 1 : scaled
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
@@ -6806,7 +6994,7 @@ export class Game {
           s.eta - this.clock < 45,
       )
       if (soon) {
-        const slip = this.hasResearch('deice') ? 7 + Math.random() * 6 : 12 + Math.random() * 14
+        const slip = this.hasResearch('deice') ? 7 + simRandom() * 6 : 12 + simRandom() * 14
         this.delaySlot(soon, slip, 'Storm / dest weather')
         this.stormPulseCool = this.hasResearch('deice') ? 38 : 24
         this.pushNews(
@@ -6824,7 +7012,7 @@ export class Game {
       this.isNight() &&
       !this.hasResearch('night_bank') &&
       this.nightCurfewCool <= 0 &&
-      Math.random() < dt * 0.055
+      simRandom() < dt * 0.055
     ) {
       const soon = this.openSchedule().find((s) => {
         if (s.eta - this.clock > 40) return false
@@ -6832,7 +7020,7 @@ export class Game {
         return this.airline(s.airline).kind === 'pax'
       })
       if (soon) {
-        this.delaySlot(soon, 14 + Math.random() * 12, 'Night curfew')
+        this.delaySlot(soon, 14 + simRandom() * 12, 'Night curfew')
         this.nightCurfewCool = 28
         this.adjustHeat(soon.airline, -0.35)
         this.pushNews(
@@ -6843,10 +7031,10 @@ export class Game {
     }
     // Fog slips (storms use the pulse above so the ticker stays readable).
     const fogOdds = dt * 0.02
-    if (this.weather === 'fog' && Math.random() < fogOdds) {
+    if (this.weather === 'fog' && simRandom() < fogOdds) {
       const soon = this.openSchedule().find((s) => s.eta - this.clock < 40)
       if (soon && soon.status === 'scheduled') {
-        this.delaySlot(soon, 8 + Math.random() * 10, 'Fog / dest weather')
+        this.delaySlot(soon, 8 + simRandom() * 10, 'Fog / dest weather')
         this.pushNews(
           `${soon.flightNo} slipped in fog — bank may need a bump.`,
           'bad',
@@ -6868,9 +7056,9 @@ export class Game {
           const nightCargo =
             this.hasResearch('night_bank') && this.isNight() && cargo.length
           const pickId =
-            nightCargo && Math.random() < 0.7
+            nightCargo && simRandom() < 0.7
               ? pick(cargo)
-              : cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
+              : cargo.length && freightSeen * 3 < paxSeen && simRandom() < 0.55
                 ? pick(cargo)
                 : pick(pool)
           const batch = this.runwayStripCount() >= 3 ? 3 : 2
@@ -6953,10 +7141,10 @@ export class Game {
     const id = pick(pool)
     const a = this.airline(id)
     const fee = Math.round(
-      LAYOVER_FEE_MIN + Math.random() * (LAYOVER_FEE_MAX - LAYOVER_FEE_MIN),
+      LAYOVER_FEE_MIN + simRandom() * (LAYOVER_FEE_MAX - LAYOVER_FEE_MIN),
     )
-    const duration = 55 + Math.floor(Math.random() * 40)
-    const transferPax = 18 + Math.floor(Math.random() * 22) + (a.persona === 'business' ? 8 : 0)
+    const duration = 55 + Math.floor(simRandom() * 40)
+    const transferPax = 18 + Math.floor(simRandom() * 22) + (a.persona === 'business' ? 8 : 0)
     this.layoverOffer = { airline: id, age: 0, fee, duration, transferPax, deadline: 40 }
     this.pushNews(
       `${a.name} sent a layover letter — $${fee.toLocaleString()} up front, ${transferPax} transfers for ~${duration}s.`,
@@ -7073,7 +7261,7 @@ export class Game {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo' || a.persona === 'military_gov') return
     const fee =
-      HUB_FEE_MIN + Math.floor(Math.random() * (HUB_FEE_MAX - HUB_FEE_MIN))
+      HUB_FEE_MIN + Math.floor(simRandom() * (HUB_FEE_MAX - HUB_FEE_MIN))
     this.hubOffer = { airline: airlineId, age: 0, fee, deadline: 45 }
     this.pushNews(
       `${a.name} sent a Hub plaque letter — denser slots + brand lounge for ${moneyLeft(fee)}.`,
@@ -7171,7 +7359,7 @@ export class Game {
         if (this.releaseGa(f.id, true)) continue
       }
       // Manual players get a nudge near the deadline.
-      if (!this.scheduleAuto && left <= 18 && left > 0 && Math.random() < dt * 0.08) {
+      if (!this.scheduleAuto && left <= 18 && left > 0 && simRandom() < dt * 0.08) {
         this.pushNews(
           `${f.flightNo} leave window closing (${Math.ceil(left)}s) — Release parking or enable auto schedule.`,
           'bad',
@@ -7210,9 +7398,9 @@ export class Game {
     }
     this.parkingCool -= dt
     if (this.parkingCool > 0 || !this.site) return
-    this.parkingCool = 50 + Math.random() * 40
+    this.parkingCool = 50 + simRandom() * 40
     if (!this.freeStands().length) return
-    if (Math.random() > 0.45) return
+    if (simRandom() > 0.45) return
 
     const frames = ['citation', 'pc12', 'crj700', 'atr72'].filter((id) => AIRFRAMES[id])
     const afId = pick(frames)
@@ -7221,10 +7409,10 @@ export class Game {
     this.flightSeq += 1
     const fee =
       GA_PARK_FEE_MIN +
-      Math.floor(Math.random() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN))
+      Math.floor(simRandom() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN))
     const stay =
       GA_PARK_STAY_MIN +
-      Math.floor(Math.random() * (GA_PARK_STAY_MAX - GA_PARK_STAY_MIN))
+      Math.floor(simRandom() * (GA_PARK_STAY_MAX - GA_PARK_STAY_MIN))
     this.parkingOffer = {
       id: uid('park'),
       callsign: `N${100 + (this.flightSeq % 800)}${String.fromCharCode(65 + (this.flightSeq % 26))}`,
@@ -7360,7 +7548,7 @@ export class Game {
     g.connectFlightId = this.pickConnectFlight(airlineId)
     this.issueBagTags(g.id, g.flightId, tag, g.connectFlightId, 'transfer')
     g.thought = `${a.name} transfer — bags through-checked, kill time in the hall`
-    g.needs.boarding = 35 + Math.random() * 40
+    g.needs.boarding = 35 + simRandom() * 40
     if (open.has('food')) this.routeGuest(g, 'food', open)
     else if (open.has('shop')) this.routeGuest(g, 'shop', open)
     else if (open.has('dayhotel')) this.routeGuest(g, 'dayhotel', open)
@@ -7371,7 +7559,7 @@ export class Game {
       g.thought = `${a.name} transfer — recheck bags (no through path)`
       g.needs.bags = Math.min(99, 55 + bagUnitsForTag(tag) * 18)
       this.adjustHeat(airlineId, -1.4)
-      if (Math.random() < 0.4) {
+      if (simRandom() < 0.4) {
         this.pushNews(
           `${a.name} transfer bags forced to claim — Standing dips. Build transfer capacity.`,
           'bad',
@@ -7380,8 +7568,8 @@ export class Game {
     }
     this.hallGuests.push(g)
     // Transfers scuff the hall faster.
-    if (Math.random() < 0.35) this.bumpWear('bath', 0.4)
-    if (Math.random() < 0.2) this.bumpWear('sec', 0.25)
+    if (simRandom() < 0.35) this.bumpWear('bath', 0.4)
+    if (simRandom() < 0.2) this.bumpWear('sec', 0.25)
   }
 
   /** Soft heat drift, rewards, warnings, abandon, ban expiry. */
@@ -7576,8 +7764,8 @@ export class Game {
       if (p.job !== 'janitor') continue
       const fit = this.fits[0]
       if (!fit) continue
-      const tx = fit.origin.c + Math.random() * 2
-      const ty = fit.origin.r + Math.random() * 2
+      const tx = fit.origin.c + simRandom() * 2
+      const ty = fit.origin.r + simRandom() * 2
       p.x = lerp(p.x, tx, 1 - Math.pow(0.15, dt))
       p.y = lerp(p.y, ty, 1 - Math.pow(0.15, dt))
     }
@@ -7661,7 +7849,7 @@ export class Game {
       stage: 0,
       paidFood: false,
       paidGift: false,
-      dutySec: 10 + Math.random() * 8,
+      dutySec: 10 + simRandom() * 8,
     })
   }
 
@@ -7691,33 +7879,33 @@ export class Game {
       if (!opts.length) {
         p.stage = 0
         p.label = 'Researcher · idle'
-        p.dutySec = 12 + Math.random() * 6
+        p.dutySec = 12 + simRandom() * 6
         return
       }
-      p.stage = opts[Math.floor(Math.random() * opts.length)]
+      p.stage = opts[Math.floor(simRandom() * opts.length)]
       p.label =
         p.stage === 0
           ? 'Researcher · desk'
           : p.stage === 1
             ? 'Researcher · board'
             : 'Researcher · lab'
-      p.dutySec = 14 + Math.random() * 10
+      p.dutySec = 14 + simRandom() * 10
       return
     }
     // Chance to leave the lab — higher at night; home lasts longer than break.
-    const leaveRoll = Math.random()
+    const leaveRoll = simRandom()
     const homeOdds = night ? 0.22 : 0.1
     const breakOdds = night ? 0.16 : 0.2
     if (leaveRoll < homeOdds) {
       p.stage = 4
       p.label = 'Researcher · home'
-      p.dutySec = (night ? 36 : 26) + Math.random() * 14
+      p.dutySec = (night ? 36 : 26) + simRandom() * 14
       return
     }
     if (leaveRoll < homeOdds + breakOdds) {
       p.stage = 3
       p.label = 'Researcher · break'
-      p.dutySec = 8 + Math.random() * 8
+      p.dutySec = 8 + simRandom() * 8
       return
     }
     const opts: number[] = []
@@ -7727,17 +7915,17 @@ export class Game {
     if (!opts.length) {
       p.stage = 0
       p.label = 'Researcher · idle'
-      p.dutySec = 10 + Math.random() * 6
+      p.dutySec = 10 + simRandom() * 6
       return
     }
-    p.stage = opts[Math.floor(Math.random() * opts.length)]
+    p.stage = opts[Math.floor(simRandom() * opts.length)]
     p.label =
       p.stage === 0
         ? 'Researcher · desk'
         : p.stage === 1
           ? 'Researcher · board'
           : 'Researcher · lab'
-    p.dutySec = 12 + Math.random() * 10
+    p.dutySec = 12 + simRandom() * 10
   }
 
   tickResearchers(dt: number) {
@@ -7803,7 +7991,7 @@ export class Game {
     if (
       staff.length >= 2 &&
       workFrac < 0.35 &&
-      Math.random() < dt * 0.04
+      simRandom() < dt * 0.04
     ) {
       this.pushNews('Lab quiet — researchers on break or off-shift.', 'ok')
     }
@@ -7896,7 +8084,7 @@ export class Game {
         s.stage = 0
         continue
       }
-      if (Math.random() < 0.16) {
+      if (simRandom() < 0.16) {
         s.stage = 1
         s.label = `${s.label.split(' ·')[0]} · break`
       }
@@ -7910,8 +8098,8 @@ export class Game {
     if (posts.length < 2) return
     for (const s of this.hallStaff) {
       if (s.stage !== 0) continue
-      if (Math.random() < 0.35) {
-        const next = posts[Math.floor(Math.random() * posts.length)]
+      if (simRandom() < 0.35) {
+        const next = posts[Math.floor(simRandom() * posts.length)]
         s.node = next
         s.label =
           next === 'checkin' ? 'Clerk' : next === 'security' ? 'Screener' : 'Gate agent'
@@ -8070,8 +8258,8 @@ export class Game {
   tickWeather(dt: number) {
     this.weatherCool -= dt
     if (this.weatherCool > 0) return
-    this.weatherCool = 35 + Math.random() * 40
-    const roll = Math.random()
+    this.weatherCool = 35 + simRandom() * 40
+    const roll = simRandom()
     const next: Weather =
       roll < 0.55 ? 'clear' : roll < 0.75 ? 'rain' : roll < 0.9 ? 'fog' : 'storm'
     if (next !== this.weather) {
@@ -8221,7 +8409,7 @@ export class Game {
     if (staff > 0 && mx > 0.05) {
       const repair = dt * (0.55 + staff * 0.45) * mx * (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1)
       this.runwayCondition = clamp(this.runwayCondition + repair, 0, 100)
-    } else if (mx < 0.2 && Math.random() < dt * 0.04) {
+    } else if (mx < 0.2 && simRandom() < dt * 0.04) {
       this.pushNews('Pavement soft — rubber and cracks. Hire mechanics or fund maintenance.', 'bad')
     }
 
@@ -8270,12 +8458,12 @@ export class Game {
   tickFireRisk(dt: number) {
     this.fireIncidentCool -= dt
     if (this.fireIncidentCool > 0) return
-    this.fireIncidentCool = 50 + Math.random() * 40
+    this.fireIncidentCool = 50 + simRandom() * 40
     if (!tilesOf(this.tiles, 'fuel').length && !this.flights.length) return
     const firePct = this.budgets.fire / 100
     const stations = tilesOf(this.tiles, 'fire').length
     const risk = clamp(0.22 - stations * 0.08 - firePct * 0.15, 0.02, 0.28)
-    if (Math.random() > risk) return
+    if (simRandom() > risk) return
     if (firePct >= 0.65 && stations > 0) {
       this.pushNews('ARFF drilled a hot brake — crews ready, no damage.', 'ok')
       return
@@ -8298,7 +8486,7 @@ export class Game {
     if ((f.craft ?? 'jet') !== 'jet') return false
     if (this.crashCool > 0) return false
     const chance = this.crashChance() * (moment === 'landing' ? 1 : 0.85)
-    if (Math.random() > chance) return false
+    if (simRandom() > chance) return false
     this.crashCool = 25
     this.crashFlight(f, moment)
     return true
@@ -9578,7 +9766,7 @@ export class Game {
     // Spawn cool must not leave due slots rotting past ETA (bank soft-lock).
     if (this.spawnCool > 0) {
       if (slot && slot.eta < this.clock - 6) {
-        this.delaySlot(slot, 6 + Math.random() * 5, 'Tower sequencing')
+        this.delaySlot(slot, 6 + simRandom() * 5, 'Tower sequencing')
       }
       return
     }
@@ -9600,13 +9788,13 @@ export class Game {
     if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
       const hosts = this.stolenHosts()
       const reason = hosts.length ? 'Gate stolen (emergency)' : 'Runway backlog'
-      this.delaySlot(slot, 10 + Math.random() * 8, reason)
+      this.delaySlot(slot, 10 + simRandom() * 8, reason)
       if (hosts.length) {
         this.pushNews(
           `${slot.flightNo} slipped — ${hosts[0].flightNo} still holds ${this.gateLabel(hosts[0].stand)} (emergency host).`,
           'bad',
         )
-      } else if (Math.random() < 0.45) {
+      } else if (simRandom() < 0.45) {
         this.pushNews(
           `${slot.flightNo} slipped — runway backlog. Cascade may hit later slots.`,
           'bad',
@@ -9638,7 +9826,7 @@ export class Game {
     // If pavement is busy, slip the slot instead of parking a hold that
     // reserves a stand forever (that deadlocked releaseHold).
     if (this.groundBusy()) {
-      this.delaySlot(slot, 8 + Math.random() * 6, 'Pavement busy')
+      this.delaySlot(slot, 8 + simRandom() * 6, 'Pavement busy')
       this.spawnCool = 4
       return
     }
@@ -9654,7 +9842,7 @@ export class Game {
           : anyFree
             ? 'Stand class short'
             : 'No gate / path'
-      this.delaySlot(slot, 10 + Math.random() * 8, reason)
+      this.delaySlot(slot, 10 + simRandom() * 8, reason)
       if (!anyFree && hosts.length) {
         this.pushNews(
           `${slot.flightNo} holding — emergency ${hosts[0].flightNo} stole ${this.gateLabel(hosts[0].stand)}.`,
@@ -9691,16 +9879,16 @@ export class Game {
       path: approach.path,
       seg: 0,
       t: 0,
-      holdAngle: Math.random() * Math.PI * 2,
+      holdAngle: simRandom() * Math.PI * 2,
       posted: emptyPosted(),
       waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
       scheduleId: slot.id,
-      boardingSlow: Math.random() < 0.18,
+      boardingSlow: simRandom() < 0.18,
       destination: pick(ROUTE_CITIES),
       fuelLevel: load.fuelLevel,
-      caterLevel: def.kind === 'cargo' ? 1 : 0.18 + Math.random() * 0.2,
+      caterLevel: def.kind === 'cargo' ? 1 : 0.18 + simRandom() * 0.2,
       hangarBay: null,
       mxEndsAt: null,
       mxPending: false,
@@ -9734,7 +9922,7 @@ export class Game {
     if (this.flights.some((f) => f.craft === 'helo' && f.phase !== 'gone')) return
     // Starved ambulance budget — medevac and exec both cool their heels.
     if (this.budgets.ambulance < 20) {
-      if (Math.random() < 0.08) {
+      if (simRandom() < 0.08) {
         this.pushNews('Choppers overflew — no medics on the pad budget.', 'bad')
       }
       this.heloCool = 20
@@ -9742,7 +9930,7 @@ export class Game {
     }
 
     const pad = pads[0]
-    const medevac = Math.random() < 0.45
+    const medevac = simRandom() < 0.45
     if (medevac && this.budgets.ambulance < 45) {
       // Executives still come; medevac wants real ambulance cover.
       this.heloCool = 12
@@ -9758,7 +9946,7 @@ export class Game {
       flightNo: call,
       airframeId: af.id,
       airframeName: af.name,
-      pax: af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1)),
+      pax: af.paxMin + Math.floor(simRandom() * (af.paxMax - af.paxMin + 1)),
       cargo: false,
       craft: 'helo',
       kind: af.kind,
@@ -9779,7 +9967,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
-    this.heloCool = 75 + Math.random() * 40
+    this.heloCool = 75 + simRandom() * 40
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
       medevac
@@ -9840,7 +10028,7 @@ export class Game {
       if (f.phaseTime > 7) {
         f.phase = 'takeoff'
         f.phaseTime = 0
-        f.heading = Math.random() * Math.PI * 2
+        f.heading = simRandom() * Math.PI * 2
       }
       return
     }
@@ -9910,7 +10098,7 @@ export class Game {
     f.z = inbound.z
     f.x = inbound.x
     f.y = inbound.y
-    if (Math.random() < 0.4) {
+    if (simRandom() < 0.4) {
       this.pushNews(
         `${f.flightNo} cleared to ${this.gateLabel(stand)}${hasTower ? ' (tower)' : ''}.`,
         'ok',
@@ -10211,7 +10399,7 @@ export class Game {
     const stand = this.assignMilStand()
     if (!stand) {
       this.milCool = 18
-      if (Math.random() < 0.35) {
+      if (simRandom() < 0.35) {
         this.pushNews(
           'Guard holding — mil ramp busy or missing hangar-side hardstand.',
           'ok',
@@ -10303,7 +10491,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft('military')
-    this.milCool = fighter ? 70 + Math.random() * 35 : 100 + Math.random() * 50
+    this.milCool = fighter ? 70 + simRandom() * 35 : 100 + simRandom() * 50
     this.selectedFlight = this.selectedFlight ?? f.id
     const gate = this.gateLabel(stand)
     this.pushNews(
@@ -10364,7 +10552,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft('air_ambulance')
-    this.ambuCool = 130 + Math.random() * 70
+    this.ambuCool = 130 + simRandom() * 70
     this.pushNews(
       `${call} · Emergency ${af.name} air ambulance → ${this.gateLabel(stand)}.`,
       'ok',
@@ -10474,7 +10662,7 @@ export class Game {
     }
     f.waitingOn.deice = true
     this.spawnTruck('deice', f, path, 'deice', pads[0])
-    if (Math.random() < 0.55) {
+    if (simRandom() < 0.55) {
       this.pushNews(`${f.flightNo} holding for de-ice.`, 'ok')
     }
     return false
@@ -10744,7 +10932,7 @@ export class Game {
     if (standBeltLinked(this.tiles, f.stand)) return
     f.boardingSlow = true
     this.adjustHeat(f.airline, -2.2)
-    if (Math.random() < 0.55) {
+    if (simRandom() < 0.55) {
       this.pushNews(
         `${f.flightNo} bags late — belt broken between hall, sort, and stand.`,
         'bad',
@@ -10883,7 +11071,7 @@ export class Game {
     })
     const exposed = !hasSecRoom || this.budgets.security < 35
     // A gap the player left is checked again soon. A staffed lane is not held for the first hour.
-    this.threatCool = exposed ? 10 + Math.random() * 8 : 32 + Math.random() * 12
+    this.threatCool = exposed ? 10 + simRandom() * 8 : 32 + simRandom() * 12
     // Player shell with airside rooms but no security choke = smuggling / weapons risk.
     const openAirGap = airsideOpen && !hasSecRoom ? 0.38 : 0
     const risk = clamp(
@@ -10896,7 +11084,7 @@ export class Game {
       0.04,
       0.78,
     )
-    if (Math.random() > risk) return
+    if (simRandom() > risk) return
     const hard = !hasSecRoom || sec < 2 || this.budgets.security < 35
     this.pendingThreat = {
       id: uid('thr'),
@@ -11127,12 +11315,12 @@ export class Game {
     // Storms stack divert asks; dry clear days stack firefighting planes.
     // A missing farm or a thin fire crew is not hidden behind a first-hour timer.
     this.emergencyCool = exposed
-      ? 12 + Math.random() * 8
+      ? 12 + simRandom() * 8
       : stormy
-        ? 22 + Math.random() * 10
-        : 34 + Math.random() * 12
+        ? 22 + simRandom() * 10
+        : 34 + simRandom() * 12
 
-    const roll = Math.random()
+    const roll = simRandom()
     const pDivert =
       (storm ? 0.42 : this.weather === 'fog' ? 0.38 : 0.06) +
       (this.signed.length ? 0 : -1)
@@ -11158,14 +11346,14 @@ export class Game {
       hits.push({ k: 'tanker_mx', w: Math.max(0.01, pTankerMx) })
     }
     // Pure random spark — even calm days get occasional firefighting traffic.
-    if (!hits.length && Math.random() < (stormy || dry ? 0.35 : 0.08)) {
+    if (!hits.length && simRandom() < (stormy || dry ? 0.35 : 0.08)) {
       const pool: EmergencyKind[] = ['tanker']
       if (this.signed.some((id) => !this.isBanned(id))) pool.push('divert')
       if (hasHangar) pool.push('tanker_mx')
       kind = pick(pool)
     } else if (hits.length) {
       const sum = hits.reduce((s, h) => s + h.w, 0)
-      let r = Math.random() * sum
+      let r = simRandom() * sum
       kind = hits[hits.length - 1].k
       for (const h of hits) {
         r -= h.w
@@ -11183,7 +11371,7 @@ export class Game {
       const airline = pool.length ? pick(pool) : null
       if (!airline) return
       const fee =
-        DIVERT_FEE_MIN + Math.floor(Math.random() * (DIVERT_FEE_MAX - DIVERT_FEE_MIN))
+        DIVERT_FEE_MIN + Math.floor(simRandom() * (DIVERT_FEE_MAX - DIVERT_FEE_MIN))
       const name = this.airline(airline).name
       const minRw = Math.max(MIN_RUNWAY, Math.min(14, this.longestRunway() || MIN_RUNWAY))
       const needs = {
@@ -11263,7 +11451,7 @@ export class Game {
     const e = this.pendingEmergency
     if (!e) return
     this.pendingEmergency = null
-    this.emergencyCool = 55 + Math.random() * 45
+    this.emergencyCool = 55 + simRandom() * 45
 
     if (choice === 'accept') {
       const gap = this.emergencyHostGap(e)
@@ -11347,7 +11535,7 @@ export class Game {
     const t = this.pendingThreat
     if (!t) return
     this.pendingThreat = null
-    this.threatCool = 55 + Math.random() * 30
+    this.threatCool = 55 + simRandom() * 30
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const staff = this.budgets.security / 100
@@ -11358,7 +11546,7 @@ export class Game {
         choice = 'ignore'
       } else {
         const success =
-          Math.random() < clamp(0.35 + sec * 0.12 + police * 0.15 + staff * 0.25, 0.2, 0.92)
+          simRandom() < clamp(0.35 + sec * 0.12 + police * 0.15 + staff * 0.25, 0.2, 0.92)
         if (success) {
           this.reputation = Math.min(100, this.reputation + 3)
           if (this.public) {
@@ -11402,6 +11590,7 @@ export class Game {
   }
 
   tick(dt: number) {
+    bindSimRng(this.rng)
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
     this.clock += step
@@ -11488,7 +11677,7 @@ export class Game {
       this.interestCool = 9999
     }
     // City rail soft-boosts pax demand via reputation drip.
-    if (this.railLinked && Math.random() < step * 0.02) {
+    if (this.railLinked && simRandom() < step * 0.02) {
       this.reputation = Math.min(100, this.reputation + 0.05)
     }
 
@@ -11760,7 +11949,7 @@ export class Game {
             (s) => s.id !== f.scheduleId && (s.status === 'scheduled' || s.status === 'delayed'),
           )
           if (next) {
-            this.delaySlot(next, 12 + Math.random() * 10, 'Slow boarding upstream')
+            this.delaySlot(next, 12 + simRandom() * 10, 'Slow boarding upstream')
             this.pushNews(
               `${f.flightNo} slow boarding — ${next.flightNo} and the bank slide.`,
               'bad',
@@ -11806,12 +11995,12 @@ export class Game {
               f.seg = 0
               f.t = 0
             }
-            if (Math.random() < 0.35) {
+            if (simRandom() < 0.35) {
               this.pushNews(`${f.flightNo} pushback — clear the alley.`, 'ok')
             }
           } else if (f.phaseTime > boardLimit + 6 && deiceOk) {
             const next = this.openSchedule()[0]
-            if (next && Math.random() < step * 0.35) {
+            if (next && simRandom() < step * 0.35) {
               this.delaySlot(next, 8, 'Departure blocked')
             }
           }
@@ -11964,7 +12153,7 @@ export class Game {
           }
           // Fuel: mark reload needed, deadhead to farm (or continue if stock left).
           if (t.kind === 'fuel') {
-            if (this.fuelLoads >= 1 && Math.random() < 0.45 && this.retargetFuelTruck(t)) {
+            if (this.fuelLoads >= 1 && simRandom() < 0.45 && this.retargetFuelTruck(t)) {
               continue
             }
             t.mission = 'fuel_reload'
@@ -12180,6 +12369,84 @@ export class Game {
   /** True when any hall has a security room (choke present). */
   hasSecurityChoke(): boolean {
     return this.fits.some((f) => (f.rooms.security ?? 0) > 0)
+  }
+
+  /**
+   * Portable JSON state. The returned object has already been through
+   * `JSON.parse(JSON.stringify(...))`, so it round-trips.
+   */
+  coreSnapshot(): CoreSnapshot {
+    const raw: CoreSnapshot = {
+      v: CORE_SNAPSHOT_VERSION,
+      rng: this.rng.snapshot(),
+      clock: this.simClock.snapshot(),
+      bank: this.bank.snapshot(),
+      economy: this.economyState,
+      diplomacy: this.diplomacy?.save() ?? null,
+      diplomacySeed: this.diplomacySeed,
+      bags: {
+        phase: this.bagPhase,
+        tags: this.bagTags,
+        books: [...this.bagBooks.entries()],
+      },
+      sets: {
+        fuelHoldNoted: [...this.fuelHoldNoted],
+        queueDelayFlight: [...this.queueDelayFlight],
+      },
+      flags: {
+        firstTakeoffNoted: this.firstTakeoffNoted,
+        secSeq: this.secSeq,
+        groundRev: this.groundRev,
+        groundAnnounced: this.groundAnnounced,
+        groundNoteKey: this.groundNoteKey,
+      },
+      notes: {
+        ground: this.groundNotes,
+        cargo: this.cargoNotes,
+      },
+      world: {},
+    }
+    for (const key of WORLD_KEYS) raw.world[key] = this[key]
+    return JSON.parse(JSON.stringify(raw)) as CoreSnapshot
+  }
+
+  /** Restore a snapshot produced by `coreSnapshot`. */
+  coreLoad(snapshot: CoreSnapshot) {
+    if (snapshot.v !== CORE_SNAPSHOT_VERSION) {
+      throw new Error(`Unsupported sim snapshot v${snapshot.v}`)
+    }
+    const data = JSON.parse(JSON.stringify(snapshot)) as CoreSnapshot
+    for (const key of WORLD_KEYS) {
+      ;(this as unknown as Record<string, unknown>)[key] = data.world[key]
+    }
+    this.rng.load(data.rng)
+    bindSimRng(this.rng)
+    this.simClock = new SimClock(data.clock)
+    this.bank = new Bank(0, data.bank)
+    this.economyState = (data.economy ?? null) as EconomyState | null
+    this.economy = null
+    this.economyView = null
+    this.ground = null
+    this.catering = null
+    this.cargo = null
+    this.ambience = null
+    this.terminalPlans = null
+    this.bagPhase = data.bags.phase
+    this.bagTags = data.bags.tags as BagTag[]
+    this.bagBooks = new Map(data.bags.books as [string, BagBook][])
+    this.bagShow = null
+    this.fuelHoldNoted = new Set(data.sets.fuelHoldNoted)
+    this.queueDelayFlight = new Set(data.sets.queueDelayFlight)
+    this.firstTakeoffNoted = data.flags.firstTakeoffNoted
+    this.secSeq = data.flags.secSeq
+    this.groundRev = data.flags.groundRev
+    this.groundAnnounced = data.flags.groundAnnounced
+    this.groundNoteKey = data.flags.groundNoteKey
+    this.groundNotes = data.notes.ground as Advice[]
+    this.cargoNotes = data.notes.cargo as Advice[]
+    this.diplomacy = null
+    this.diplomacySeed = data.diplomacySeed
+    if (data.diplomacy) this.ensureDiplomacy().load(data.diplomacy)
   }
 }
 
