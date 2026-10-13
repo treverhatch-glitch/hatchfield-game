@@ -483,3 +483,20 @@ The apron now draws through the Slice E layer (`src/render/world/`, `docs/GRAPHI
 - `docs/devlog/media/OCT13-world-mid.png` — starter hall, runway paint, taxi edges, and the tree line, low preset
 - `docs/devlog/media/OCT13-world-close.png` — jet bridge, glazed terminal, and stand markings
 - `docs/devlog/media/OCT13-world-wide.png` — the same field from the far camera
+
+## Aircraft scale and jet bridges — 13 Oct
+
+Aircraft draw at 0.45 world units per meter. A 1.75 m person is about 0.79 world units, the same height as the apron capsules. Service trucks stay the short boxes they already are. The people meshes on the other branch are modeled in meters; when those are wired they need the same 0.45 scale. Taxiways were left as they are: a jet is meant to cover about three tiles.
+
+Stands are still S, M, and L. Assignment treats those as ICAO B, C, and F, and a helicopter still needs a helipad. A stand is also refused when its wingspan disc meets another parked jet or a terminal tile, with 0.4 world units of gap. On the starter kit both stands take a 737 and refuse an A380. A stand one cell from a parked 737 is refused. In the browser a parked 737 measured about 16 by 18 world units, clear of the hall, and the second starter stand's 737 did not overlap it.
+
+An empty jetway shows a preview bridge: a regional jet on S, a 737 on M, an A380 set on L. The bridge's port side points at the nearest terminal. While a flight is parked the preview hides and the real bridges are parented on the aircraft root, so they are not scaled a second time. Those bridges sit outside the tile group, so a rebuild does not throw away the shared geometry. The world layer's rotunda bridge is unchanged. The camera opens closer (distance 54, pitch 0.68, field of view 34). The closest zoom stays 12 so the hall cutaway can open.
+
+**Bugs.** Sixteen. No new defect.
+
+**Tests.** 471 passing, 2 skipped. The QA bot (mixed, 2 in-game days) reported no unrecorded short bag loads, no stuck flights, no lost passengers, and no console errors. Four missed flights with the hall overloaded. Bank on that run: $12,830,714, then $12,435,720, then $12,085,386. Minimum frame rate 10 on SwiftShader. The bot still rewrites an airframe id after the stand is chosen, so a forced A380 can use a stand that was legal for the original type. The game's own assignment does not do that.
+
+**Media**
+
+- `docs/devlog/media/OCT13-aircraft-top.png` — 737 docked on the west stand, empty-gate bridge on the east stand, both aimed at the hall
+- `docs/devlog/media/OCT13-aircraft-gate.png` — the same pair from the orbit camera
