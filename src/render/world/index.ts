@@ -14,6 +14,24 @@ export { QUALITY, parseQuality, suggestQuality, type QualityLevel, type QualityP
 export { REPLACED_TILES, WorldRenderer, type RendererLike, type WorldRenderOptions, type WorldRenderStats } from './render'
 export { simClockToHour, skyState, type SkyState } from './daylight'
 export type { WorldView } from './view'
+export {
+  HALL_NODE_ROOM,
+  NAV_SQ,
+  PUBLIC_ROOMS,
+  ROOM_LABEL,
+  STERILE_ROOMS,
+  canStep,
+  navPath,
+  pointInRoom,
+  roomAt,
+  roomEdges,
+  squareAt,
+  type Door,
+  type Room,
+  type RoomKind,
+  type RoomPlan,
+  type Wall,
+} from './rooms'
 
 export type WorldRender = WorldRenderer
 

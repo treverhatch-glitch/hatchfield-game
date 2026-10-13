@@ -82,6 +82,27 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
+  it('interior walls stand when zoomed out and cut away on the camera side up close', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
+    const game = starterGame()
+    const hall = { x: cellX(16), z: cellZ(20) }
+    const mid = camAt(hall.x, hall.z, 70)
+    for (let i = 0; i < 20; i++) wr.update(game, mid, 1 / 30)
+    const t0 = wr.stats().terminals[0]
+    expect(t0.rooms).toBe(9)
+    expect(t0.walls).toBeGreaterThan(8)
+    expect(t0.wallsLowered).toBe(0)
+    expect(scene.getObjectByName('room-walls')).toBeTruthy()
+    expect(scene.getObjectByName('room-glass')).toBeTruthy()
+    const near = camAt(hall.x, hall.z, 20)
+    for (let i = 0; i < 40; i++) wr.update(game, near, 1 / 30)
+    const t1 = wr.stats().terminals[0]
+    expect(t1.wallsLowered).toBeGreaterThan(0)
+    expect(t1.wallsLowered).toBeLessThan(t1.walls)
+    wr.dispose()
+  })
+
   it('walkers move between frames', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })

@@ -40,7 +40,8 @@ const PROP_COLORS: Record<string, number> = {
 }
 const UNLIT = new Set(['screen', 'lamp'])
 import { pickLod, stepFade } from './lod'
-import { planTerminal, walkerAt, type TerminalPlan, type Zone } from './plan'
+import { planTerminal, walkerAt, type TerminalPlan } from './plan'
+import { type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
 import { textTexture, type WorldTextures } from './textures'
 import { CELL, cellX, cellZ } from './view'
@@ -103,12 +104,27 @@ export function disposeTerminalShared(s: TerminalShared) {
   for (const t of s.signCache.values()) t?.dispose()
 }
 
-const ZONE_SIGN: Record<Zone, string> = {
-  checkin: 'CHECK-IN',
-  security: 'SECURITY',
-  shops: 'SHOPS · CAFÉ',
-  gate: 'GATES',
+/** Floor tint per room (multiplies the terrazzo) so room boundaries read from above. */
+export const ROOM_FLOOR: Record<RoomKind, number> = {
+  checkin: 0xf4f1ea,
+  security: 0xf2dca6,
+  airside: 0xe2e6ea,
+  shops: 0xf1d3bc,
+  gate: 0xc9dcf0,
+  lab: 0xcfe8cf,
+  office: 0xdcd3ea,
 }
+const THRESHOLD = 0x6f7a84
+const SIGN_FG: Partial<Record<RoomKind, string>> = { security: '#f2c14a', lab: '#9be29b', office: '#d7c6ff' }
+
+export const WALL_H = 2.7
+export const GLASS_WALL_H = 1.25
+export const DOOR_H = 2.1
+/** Cutaway stub height for walls between the camera and what it looks at. */
+export const WALL_LOW = 0.32
+/** Far-side walls in the close-up: tall enough to read as rooms, low enough to see over. */
+export const WALL_MID = 1.5
+const WALL_T = 0.14
 
 /** LOD thresholds (camera → building distance) before the quality scale. */
 export const TERMINAL_LOD = [52, 120] as const
@@ -141,6 +157,10 @@ export class TerminalBuilding {
   private skyMat: THREE.MeshLambertMaterial
   private shared: TerminalShared
   private time = 0
+  private wallSets: { mesh: THREE.InstancedMesh; walls: WallInst[] }[] = []
+  private glassWallMat: THREE.MeshLambertMaterial | null = null
+  private wallMats: THREE.Material[] = []
+  private nearCut = false
 
   constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number }) {
     this.info = info
@@ -158,7 +178,12 @@ export class TerminalBuilding {
       return m
     }
     this.floorMat = own(
-      new THREE.MeshLambertMaterial({ map: shared.textures.terrazzo, emissive: 0xffe2b0, emissiveIntensity: 0 }),
+      new THREE.MeshLambertMaterial({
+        map: shared.textures.terrazzo,
+        vertexColors: true,
+        emissive: 0xffe2b0,
+        emissiveIntensity: 0,
+      }),
     )
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
@@ -174,7 +199,12 @@ export class TerminalBuilding {
     this.skyMat.opacity = 0.18
     this.buildShell(opts.index)
     this.buildProps()
+    this.buildRooms(opts.index)
     this.buildLife()
+  }
+
+  get rooms(): RoomPlan {
+    return this.plan.rooms
   }
 
   private bakedMesh(pieces: BakePiece[], mat: THREE.Material, into: THREE.Group, name: string, shadow = false, receive = shadow) {
@@ -285,13 +315,6 @@ export class TerminalBuilding {
     glass.renderOrder = 2
     this.shell.add(glass)
 
-    const floorGeo = quadsGeometry(cluster.cells, { y: FLOOR_Y, uvSize: 3.1 })
-    floorGeo.deleteAttribute('color')
-    this.owned.geos.push(floorGeo)
-    const floor = new THREE.Mesh(floorGeo, this.floorMat)
-    floor.receiveShadow = true
-    this.shell.add(floor)
-
     const skyGeo = quadsGeometry(cluster.cells, { y: ROOF_Y + 0.08, inset: rim })
     skyGeo.deleteAttribute('color')
     this.owned.geos.push(skyGeo)
@@ -366,14 +389,113 @@ export class TerminalBuilding {
         this.shell,
       )
     })
-    // Hanging zone signs inside (props layer so they fade with the interior).
-    for (const z of this.plan.zones) {
-      const yaw = yawOut(land)
-      const v = DIR_VEC[land]
-      const mat = this.sign(ZONE_SIGN[z.zone], 1.8, 0.34, '#0e2233', z.zone === 'security' ? '#f2c14a' : '#ffffff')
-      this.propMats.push(mat)
-      this.plane(1.8, 0.34, mat, cellX(z.c) + v.dc * 1.6, 2.75, cellZ(z.r) + v.dr * 1.6, yaw, this.props)
+  }
+
+  /** Room floors, interior walls / partitions / lintels, and a hanging sign per room. */
+  private buildRooms(index: number) {
+    const rp = this.plan.rooms
+    const floor = new THREE.Mesh(roomFloorGeometry(rp, FLOOR_Y), this.floorMat)
+    this.owned.geos.push(floor.geometry)
+    floor.receiveShadow = true
+    floor.name = 'terminal-floor'
+    this.shell.add(floor)
+
+    const solidM = new THREE.MeshLambertMaterial({ color: 0xffffff })
+    this.owned.mats.push(solidM)
+    this.wallMats.push(solidM)
+    const glassM = this.glassMat.clone()
+    glassM.opacity = 0.4
+    glassM.color.setHex(0xb8d8ea)
+    this.owned.mats.push(glassM)
+    this.glassWallMat = glassM
+    const solid: WallInst[] = []
+    const glass: WallInst[] = []
+    for (const w of rp.walls) {
+      const inst: WallInst = {
+        x: (w.x0 + w.x1) / 2,
+        z: (w.z0 + w.z1) / 2,
+        len: Math.hypot(w.x1 - w.x0, w.z1 - w.z0),
+        alongX: w.z0 === w.z1,
+        full: w.kind === 'glass' ? GLASS_WALL_H : WALL_H,
+        header: !!w.header,
+        h: -1,
+      }
+      ;(w.kind === 'glass' ? glass : solid).push(inst)
     }
+    const add = (list: WallInst[], mat: THREE.Material, name: string, colors?: number[]) => {
+      if (!list.length) return
+      const mesh = instanced(this.shared.beam, mat, list.map(() => trs(0, -10, 0)), colors)
+      mesh.name = name
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      mesh.frustumCulled = false
+      this.props.add(mesh)
+      this.wallSets.push({ mesh, walls: list })
+    }
+    add(solid, solidM, 'room-walls', solid.map((w) => (w.header ? 0x46525e : 0xece6dc)))
+    add(glass, glassM, 'room-glass')
+    for (const set of this.wallSets) this.layoutWalls(set, 1)
+
+    const land = landsideSide(this.info.airside)
+    const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
+    for (const room of rp.rooms) {
+      const text = room.kind === 'gate' ? room.label.replace('GATE ', `GATE ${String.fromCharCode(65 + index)}`) : room.label
+      const w = Math.min(2.4, 0.5 + text.length * 0.13)
+      const mat = this.sign(text, w, 0.34, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
+      this.propMats.push(mat)
+      // Back-to-back so the label reads from either side of the hall.
+      for (const [o, a] of [[0.01, yaw], [-0.01, yaw + Math.PI]]) {
+        const m = this.plane(w, 0.34, mat, room.x + Math.sin(yaw) * o, WALL_H + 0.3, room.z + Math.cos(yaw) * o, a, this.props)
+        m.name = 'room-sign'
+      }
+    }
+  }
+
+  /** Lower walls on the camera side (and everything when very close) so rooms never block the view. */
+  private stepWalls(camPos: THREE.Vector3, focus: { x: number; z: number }, dt: number) {
+    if (!this.wallSets.length) return
+    const tx = camPos.x - focus.x
+    const tz = camPos.z - focus.z
+    const flat = Math.hypot(tx, tz) || 1
+    const ux = tx / flat
+    const uz = tz / flat
+    const steep = camPos.y / flat
+    const close = Math.hypot(flat, camPos.y) < 18
+    const k = Math.min(1, dt * 5)
+    for (const set of this.wallSets) {
+      let dirty = false
+      for (const w of set.walls) {
+        let target = w.full
+        if (this.nearCut) {
+          const t = (w.x - focus.x) * ux + (w.z - focus.z) * uz
+          const near = Math.hypot(camPos.x - w.x, camPos.z - w.z) < 6
+          if (close || near || (t > -1.2 && steep < 2.6)) target = Math.min(w.full, WALL_LOW)
+          else target = Math.min(w.full, WALL_MID)
+        }
+        const h = w.h < 0 ? target : w.h + (target - w.h) * k
+        if (Math.abs(h - w.h) > 1e-3) {
+          w.h = h
+          dirty = true
+        }
+      }
+      if (dirty) this.layoutWalls(set, 0)
+    }
+  }
+
+  private layoutWalls(set: { mesh: THREE.InstancedMesh; walls: WallInst[] }, init: number) {
+    const m = new THREE.Matrix4()
+    set.walls.forEach((w, i) => {
+      if (init) w.h = w.full
+      const sx = w.alongX ? w.len : WALL_T
+      const sz = w.alongX ? WALL_T : w.len
+      if (w.header) {
+        const hh = w.h - DOOR_H
+        if (hh > 0.02) m.compose(new THREE.Vector3(w.x, FLOOR_Y + DOOR_H, w.z), Q0, new THREE.Vector3(sx, hh, sz))
+        else m.makeTranslation(0, -10, 0)
+      } else m.compose(new THREE.Vector3(w.x, FLOOR_Y, w.z), Q0, new THREE.Vector3(sx, Math.max(0.02, w.h), sz))
+      set.mesh.setMatrixAt(i, m)
+    })
+    set.mesh.instanceMatrix.needsUpdate = true
   }
 
   private buildProps() {
@@ -440,7 +562,7 @@ export class TerminalBuilding {
     const w = this.plan.walkers
     if (w.length) {
       const zero = w.map(() => trs(0, -10, 0))
-      const wb = mk(g.body, 'body', zero, w.map((x) => PAX_COLORS[x.tint % PAX_COLORS.length]))
+      const wb = mk(g.body, 'body', zero, w.map((x) => (x.staff ? STAFF_COLOR : PAX_COLORS[x.tint % PAX_COLORS.length])))
       const wh = mk(g.head, 'head', zero, w.map((_, i) => SKIN_COLORS[(i * 3) % SKIN_COLORS.length]))
       const bags = w.filter((x) => x.bag)
       const wl = mk(g.bag, 'bag', bags.map(() => trs(0, -10, 0)), bags.map((_, i) => BAG_COLORS[i % BAG_COLORS.length]))
@@ -472,11 +594,13 @@ export class TerminalBuilding {
   }
 
   /** Per frame: LOD pick from camera distance, fades, walkers, night glow. */
-  update(camPos: THREE.Vector3, dt: number, lodScale: number, night: number) {
+  update(camPos: THREE.Vector3, dt: number, lodScale: number, night: number, focus?: { x: number; z: number }) {
     const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
     // Cutaway: close and looking down from above the roof → lift the roof off.
     const cut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale && camPos.y > ROOF_Y + 1.5
+    // Walls cut away whenever the interior is the subject: roof off, or eye level inside the glass.
+    this.nearCut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
     this.roofFade = stepFade(this.roofFade, cut ? 0 : 1, dt, 1.1)
     applyFade(this.roof, this.roofMats, this.roofFade)
     // Lift as it fades so the cutaway reads as the roof coming off, not blinking out.
@@ -486,6 +610,9 @@ export class TerminalBuilding {
     this.propFade = stepFade(this.propFade, this.lod <= 1 ? 1 : 0, dt, 3)
     this.lifeFade = stepFade(this.lifeFade, this.lod === 0 ? 1 : 0, dt, 3)
     applyFade(this.props, this.propMats, this.propFade)
+    applyFade(this.props, this.wallMats, this.propFade)
+    if (this.glassWallMat) this.glassWallMat.opacity = 0.4 * this.propFade
+    if (this.propFade > 0) this.stepWalls(camPos, focus ?? { x: this.center.x, z: this.center.z }, dt)
     applyFade(this.life, this.lifeMats, this.lifeFade)
     this.time += dt
     if (this.lifeFade > 0) this.stepWalkers(this.time)
@@ -509,6 +636,10 @@ export class TerminalBuilding {
       staff: this.plan.people.filter((p) => p.role === 'staff').length,
       seated: this.plan.people.filter((p) => p.role === 'seated').length,
       bags: this.plan.walkers.filter((w) => w.bag).length,
+      rooms: this.plan.rooms.rooms.length,
+      doors: this.plan.rooms.doors.length,
+      walls: this.plan.rooms.walls.length,
+      wallsLowered: this.wallSets.reduce((n, s) => n + s.walls.filter((w) => w.h < WALL_LOW + 0.2).length, 0),
     }
   }
 
@@ -537,4 +668,66 @@ function applyFade(group: THREE.Group, mats: THREE.Material[], f: number) {
     }
     m.opacity = f
   }
+}
+
+const Q0 = new THREE.Quaternion()
+
+interface WallInst {
+  x: number
+  z: number
+  len: number
+  alongX: boolean
+  full: number
+  header: boolean
+  /** Current animated height. */
+  h: number
+}
+
+/** Terrazzo floor tinted per room, runs merged per row, darker thresholds at doorways. */
+export function roomFloorGeometry(rp: RoomPlan, y: number): THREE.BufferGeometry {
+  const near = new Uint8Array(rp.w * rp.h)
+  for (const e of rp.doorEdges) {
+    const s = e >> 1
+    near[s] = 1
+    near[s + ((e & 1) === 0 ? 1 : rp.w)] = 1
+  }
+  const colorOf = (s: number) => (near[s] ? THRESHOLD : ROOM_FLOOR[rp.rooms[rp.grid[s]].kind])
+  const pos: number[] = []
+  const uv: number[] = []
+  const col: number[] = []
+  const idx: number[] = []
+  const c = new THREE.Color()
+  const uvSize = 3.1
+  for (let j = 0; j < rp.h; j++) {
+    let i = 0
+    while (i < rp.w) {
+      const s = j * rp.w + i
+      if (rp.grid[s] < 0) {
+        i++
+        continue
+      }
+      const hex = colorOf(s)
+      let i1 = i + 1
+      while (i1 < rp.w && rp.grid[j * rp.w + i1] >= 0 && colorOf(j * rp.w + i1) === hex) i1++
+      const xa = rp.x0 + i * rp.size
+      const xb = rp.x0 + i1 * rp.size
+      const za = rp.z0 + j * rp.size
+      const zb = za + rp.size
+      const b = pos.length / 3
+      pos.push(xa, y, za, xb, y, za, xa, y, zb, xb, y, zb)
+      uv.push(xa / uvSize, -za / uvSize, xb / uvSize, -za / uvSize, xa / uvSize, -zb / uvSize, xb / uvSize, -zb / uvSize)
+      c.setHex(hex)
+      for (let k = 0; k < 4; k++) col.push(c.r, c.g, c.b)
+      idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3)
+      i = i1
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 3).fill(0).map((_, k) => (k % 3 === 1 ? 1 : 0)), 3))
+  g.setIndex(idx)
+  g.computeBoundingSphere()
+  return g
 }

@@ -19,6 +19,7 @@ import {
 import { fitShadow, groundFocus } from './lod'
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
 import { paintGeometry, quadsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
+import type { RoomPlan } from './rooms'
 import { disposeTerminalShared, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
@@ -43,7 +44,7 @@ export interface WorldRenderStats {
   hour: number
   weather: Weather
   lights: number
-  terminals: { lod: number; roof: number; props: number; people: number; staff: number; seated: number; walkers: number; bags: number }[]
+  terminals: ({ lod: number } & ReturnType<TerminalBuilding['counts']>)[]
   airfieldLights: number
   jetBridges: number
   grassTufts: number
@@ -342,7 +343,7 @@ export class WorldRenderer {
       if (k !== 'grass') m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
 
-    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, s.lights)
+    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, s.lights, focus)
     this.lights.update(step, s.lights, weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25, camDist)
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
@@ -361,6 +362,19 @@ export class WorldRenderer {
       sm.needsUpdate = true
       this.lastShadowKey = key
     }
+  }
+
+  /**
+   * Room plans (rooms, walls, doorways, nav grid) for each terminal, in world space.
+   * Rebuilt when `mapRev` changes. Use with `navPath` / `roomAt` so sim pathing respects
+   * the walls drawn here.
+   */
+  roomPlans(): { index: number; origin: { c: number; r: number }; plan: RoomPlan }[] {
+    return this.buildings.map((b, index) => ({
+      index,
+      origin: { c: b.info.cluster.minC, r: b.info.cluster.minR },
+      plan: b.rooms,
+    }))
   }
 
   stats(): WorldRenderStats {

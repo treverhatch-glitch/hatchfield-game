@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { starterGame } from './fixtures'
 import { terminals } from './layout'
-import { planTerminal, walkerAt, zoneFor } from './plan'
+import { makeWalker, planTerminal, walkerAt, zoneFor } from './plan'
 import { CELL, cellX, cellZ } from './view'
 
 describe('terminal interior plan', () => {
@@ -18,7 +18,7 @@ describe('terminal interior plan', () => {
     const [t] = terminals(starterGame())
     const plan = planTerminal(t, { density: 1, walkersPerCell: 1 })
     const zones = new Set(plan.zones.map((z) => z.zone))
-    expect(zones).toEqual(new Set(['checkin', 'security', 'shops', 'gate']))
+    expect(zones).toEqual(new Set(['checkin', 'security', 'shops', 'gate', 'backoffice']))
     // Every zone has at least one staffed desk / lane / till.
     for (const z of plan.zones) {
       const cx = cellX(z.c)
@@ -45,10 +45,7 @@ describe('terminal interior plan', () => {
     const inside = (x: number, z: number) => x >= x0 && x <= x1 && z >= z0 && z <= z1
     for (const p of plan.props) expect(inside(p.x, p.z)).toBe(true)
     for (const p of plan.people) expect(inside(p.x, p.z)).toBe(true)
-    for (const w of plan.walkers) {
-      expect(inside(w.ax, w.az)).toBe(true)
-      expect(inside(w.bx, w.bz)).toBe(true)
-    }
+    for (const w of plan.walkers) for (const p of w.pts) expect(inside(p.x, p.z)).toBe(true)
   })
 
   it('is deterministic and lighter at low density', () => {
@@ -58,13 +55,18 @@ describe('terminal interior plan', () => {
     expect(planTerminal(t, { walkersPerCell: 0 }).walkers).toHaveLength(0)
   })
 
-  it('walkers ping-pong along their aisle', () => {
-    const w = { ax: 0, az: 0, bx: 10, bz: 0, speed: 1, phase: 0, tint: 0, bag: true }
+  it('walkers ping-pong along their route', () => {
+    const w = makeWalker([{ x: 0, z: 0 }, { x: 10, z: 0 }], 1, 0, 0, true)
     expect(walkerAt(w, 0).x).toBeCloseTo(0)
     expect(walkerAt(w, 5).x).toBeCloseTo(5)
     expect(walkerAt(w, 15).x).toBeCloseTo(5)
     expect(walkerAt(w, 20).x).toBeCloseTo(0)
     expect(Math.sign(Math.sin(walkerAt(w, 5).yaw))).toBe(1)
     expect(Math.sign(Math.sin(walkerAt(w, 15).yaw))).toBe(-1)
+    const bend = makeWalker([{ x: 0, z: 0 }, { x: 4, z: 0 }, { x: 4, z: 3 }], 1, 0, 0, false)
+    expect(walkerAt(bend, 2)).toMatchObject({ x: 2, z: 0 })
+    expect(walkerAt(bend, 5).x).toBeCloseTo(4)
+    expect(walkerAt(bend, 5).z).toBeCloseTo(1)
+    expect(walkerAt(bend, 7).z).toBeCloseTo(3)
   })
 })
