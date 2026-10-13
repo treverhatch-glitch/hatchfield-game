@@ -111,7 +111,7 @@ export class World {
   tileHash = ''
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
-  trucks = new Map<string, THREE.Mesh>()
+  trucks = new Map<string, THREE.Object3D>()
   people = new Map<string, THREE.Mesh>()
   ray = new THREE.Raycaster()
   ndc = new THREE.Vector2()
@@ -1260,11 +1260,31 @@ export class World {
                 : t.kind === 'termbus'
                   ? '#e8c56a'
                   : '#c45c26'
-        mesh = new THREE.Mesh(
+        const g = new THREE.Group()
+        const body = new THREE.Mesh(
           truckGeo,
           new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
         )
-        mesh.castShadow = true
+        body.castShadow = true
+        body.name = 'body'
+        g.add(body)
+        // Manor Lords-style visible load — crates on bag carts when carrying.
+        if (t.kind === 'bags') {
+          const crate = new THREE.Mesh(
+            new THREE.BoxGeometry(0.55, 0.4, 0.45),
+            new THREE.MeshStandardMaterial({
+              color: '#8a7348',
+              roughness: 0.55,
+              emissive: '#3a2e14',
+              emissiveIntensity: 0.15,
+            }),
+          )
+          crate.position.set(0, 0.55, 0)
+          crate.name = 'crate'
+          crate.visible = false
+          g.add(crate)
+        }
+        mesh = g
         this.trucks.set(t.id, mesh)
         this.entGroup.add(mesh)
       }
@@ -1273,6 +1293,12 @@ export class World {
         (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.r ?? t.y) - t.y,
         (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.c ?? t.x) - t.x,
       )
+      const crate = mesh.getObjectByName('crate')
+      if (crate) {
+        crate.visible = Boolean(t.cargoUnits && t.cargoUnits > 0)
+        const s = clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35)
+        crate.scale.set(s, s, s)
+      }
     }
     for (const [id, m] of this.trucks) {
       if (!seenT.has(id)) {

@@ -182,6 +182,7 @@ import type {
   AircraftKind,
   Airline,
   AirlineRewardId,
+  BagFlowStage,
   BudgetKey,
   Budgets,
   CaterBrand,
@@ -2658,6 +2659,117 @@ export class Game {
     return 12 * base * crowd
   }
 
+  /** How many claim carousels a hall offers (inbound scheduling pool). */
+  claimLaneCount(fit: TerminalFit | null): number {
+    if (!fit) return 1
+    return Math.max(1, fit.rooms.bagclaim || (fit.premade ? 1 : 0))
+  }
+
+  /**
+   * Pick the least-loaded claim carousel, counting live arrivals + banked slots.
+   * Only inbound pax need claim planning — cargo / GA skip.
+   */
+  pickClaimLane(excludeFlightId?: string | null, excludeSlotId?: string | null): number {
+    const fit = this.activeHall() ?? this.fits[0] ?? null
+    const n = this.claimLaneCount(fit)
+    const loads = Array.from({ length: n }, () => 0)
+    for (const other of this.flights) {
+      if (other.id === excludeFlightId || other.cargo || other.ga || !other.claimLane) continue
+      if (other.phase === 'gone' || other.phase === 'takeoff') continue
+      const i = other.claimLane - 1
+      if (i >= 0 && i < n) loads[i] += other.bagUnits ?? other.pax
+    }
+    for (const s of this.schedule) {
+      if (s.id === excludeSlotId || !s.claimLane) continue
+      if (s.status !== 'scheduled' && s.status !== 'delayed' && s.status !== 'inbound') continue
+      if (this.airline(s.airline).kind === 'cargo') continue
+      const i = s.claimLane - 1
+      if (i >= 0 && i < n) loads[i] += 40
+    }
+    let best = 0
+    for (let i = 1; i < n; i++) if (loads[i] < loads[best]) best = i
+    return best + 1
+  }
+
+  /**
+   * Assign a banked timetable slot its claim lane when the plane is scheduled.
+   * Inbound-only — cargo slots stay null.
+   */
+  assignSlotClaimLane(slot: ScheduleSlot) {
+    if (this.airline(slot.airline).kind === 'cargo') {
+      slot.claimLane = null
+      return
+    }
+    if (slot.claimLane != null && slot.claimLane > 0) return
+    slot.claimLane = this.pickClaimLane(slot.flightId, slot.id)
+  }
+
+  /**
+   * Assign an inbound flight to a baggage claim (uses slot plan if already banked).
+   * Only arrivals need claim planning — load-balance across carousels.
+   */
+  assignClaimLane(f: Flight) {
+    if (f.cargo || f.ga || (f.craft ?? 'jet') !== 'jet') return
+    if (f.claimLane != null && f.claimLane > 0) {
+      if (f.bagStage === 'idle' || !f.bagStage) f.bagStage = 'inflight'
+      return
+    }
+    const slot = f.scheduleId
+      ? this.schedule.find((s) => s.id === f.scheduleId)
+      : null
+    if (slot?.claimLane != null && slot.claimLane > 0) {
+      f.claimLane = slot.claimLane
+    } else {
+      f.claimLane = this.pickClaimLane(f.id, slot?.id ?? null)
+      if (slot) slot.claimLane = f.claimLane
+    }
+    if (f.bagStage === 'idle' || !f.bagStage) f.bagStage = 'inflight'
+    if (Math.random() < 0.55) {
+      this.pushNews(
+        `${f.flightNo} → baggage claim ${f.claimLane} (${f.bagUnits ?? 0} bag units).`,
+        'ok',
+      )
+    }
+  }
+
+  setBagStage(f: Flight, stage: BagFlowStage) {
+    f.bagStage = stage
+  }
+
+  /** Seconds of visible load/unload/process work from bag units. */
+  bagWorkSeconds(f: Flight, kind: 'ramp' | 'sort' | 'deposit'): number {
+    const u = f.bagUnits ?? estimateFlightBagUnits(this.airline(f.airline).persona, f.pax)
+    if (kind === 'deposit') return clamp(0.7 + u * 0.012, 0.7, 3.2)
+    if (kind === 'sort') return clamp(1.1 + u * 0.018, 1.1, 4.5)
+    return clamp(1.8 + u * 0.022, 1.8, 5.5)
+  }
+
+  bagStageLabel(f: Flight): string {
+    const lane = f.claimLane ? ` · claim ${f.claimLane}` : ''
+    switch (f.bagStage) {
+      case 'pax_deposit':
+        return `Bags: check-in deposit (${f.bagsDeposited ?? 0}/${f.bagUnits ?? '?'})`
+      case 'outbound_sort':
+        return 'Bags: sorting outbound'
+      case 'load_aircraft':
+        return 'Bags: loading aircraft'
+      case 'inflight':
+        return `Bags: on board${lane}`
+      case 'unload_aircraft':
+        return `Bags: unloading${lane}`
+      case 'inbound_sort':
+        return `Bags: processing → claim ${f.claimLane ?? '?'}`
+      case 'deliver_claim':
+        return `Bags: delivering to claim ${f.claimLane ?? '?'}`
+      case 'on_claim':
+        return `Bags: on claim ${f.claimLane ?? '?'}`
+      case 'complete':
+        return 'Bags: complete'
+      default:
+        return lane ? `Bags${lane}` : ''
+    }
+  }
+
   hallOpen(): Set<HallNode> {
     return this.hallOpenFor(this.activeHall())
   }
@@ -2822,10 +2934,50 @@ export class Game {
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
       if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+      // Finish check-in bag deposit dwell (outbound picture).
+      if (
+        g.job === 'depart' &&
+        g.node === 'checkin' &&
+        !g.bagsDropped &&
+        g.bagDepositLeft != null &&
+        g.bagDepositLeft > 0
+      ) {
+        g.bagDepositLeft -= dt
+        if (g.bagDepositLeft <= 0) {
+          g.bagsDropped = true
+          g.bagDepositLeft = 0
+          const fl = this.flights.find((x) => x.id === g.flightId)
+          if (fl && !fl.cargo) {
+            const add = bagUnitsForTag(g.tag)
+            fl.bagsDeposited = (fl.bagsDeposited ?? 0) + add
+            const need = fl.bagUnits ?? 1
+            if ((fl.bagsDeposited ?? 0) >= need * 0.55) {
+              fl.bagStage = 'outbound_sort'
+            }
+          }
+          g.thought = 'Bags accepted — walking to security'
+          const openDesk = this.openForGuest(g)
+          if (openDesk.has('security')) this.routeGuest(g, 'security', openDesk)
+        } else {
+          continue
+        }
+      }
       if (g.job === 'arrive' && g.node === 'claim' && !g.transfer) {
+        const fl = this.flights.find((x) => x.id === g.flightId)
+        // Bags only clear once the inbound cart has hit the assigned claim.
+        if (fl && fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
+          g.thought =
+            fl.bagStage === 'unload_aircraft' || fl.bagStage === 'inbound_sort'
+              ? `Waiting — bags processing for claim ${fl.claimLane ?? '?'}`
+              : fl.bagStage === 'deliver_claim'
+                ? `Waiting — bags rolling to claim ${fl.claimLane ?? '?'}`
+                : 'Waiting for bags off the aircraft…'
+          continue
+        }
         const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
         const rate = this.claimClearRate(fit)
         g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
+        if (fl && g.needs.bags <= 0) fl.bagStage = 'complete'
       }
 
       if (g.path.length && g.seg < g.path.length - 1) {
@@ -3035,10 +3187,27 @@ export class Game {
         g.thought = 'Empty check-in — waiting on a clerk'
         g.happiness -= 1.5
         g.needs.boarding = Math.max(0, g.needs.boarding - 1.5)
-      } else {
-        g.thought = 'Checked in — next security'
-        g.happiness += 1
+        return
       }
+      // Manor Lords deposit: hold at desk while bags go on the belt.
+      if (!g.bagsDropped) {
+        if (g.bagDepositLeft == null) {
+          const units = bagUnitsForTag(g.tag)
+          g.bagDepositLeft = clamp(0.55 + units * 0.55, 0.55, 2.8)
+          const fl = this.flights.find((x) => x.id === g.flightId)
+          if (fl) {
+            fl.bagStage = 'pax_deposit'
+            fl.bagsDeposited = fl.bagsDeposited ?? 0
+          }
+        }
+        g.thought =
+          bagUnitsForTag(g.tag) >= 2
+            ? 'Depositing heavy bags — wait for the belt…'
+            : 'Dropping bags at check-in…'
+        return
+      }
+      g.thought = 'Checked in — bags on the belt · next security'
+      g.happiness += 1
       if (open.has('security')) this.routeGuest(g, 'security', open)
       else {
         g.thought = 'No security lane — cannot reach the gate'
@@ -3530,7 +3699,7 @@ export class Game {
     const n = hub ? count + 1 : count
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
-      this.schedule.push({
+      const slot: ScheduleSlot = {
         id: uid('slot'),
         airline: airlineId,
         flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
@@ -3543,7 +3712,10 @@ export class Game {
         standPref: null,
         // Spread auto bank across every stamped strip.
         runwayPref: this.pickBalancedRunway(),
-      })
+        claimLane: null,
+      }
+      this.assignSlotClaimLane(slot)
+      this.schedule.push(slot)
     }
   }
 
@@ -3570,7 +3742,7 @@ export class Game {
     this.flightSeq += 1
     const eta = this.clock + Math.max(8, inSeconds)
     const rw = this.pickBalancedRunway()
-    this.schedule.push({
+    const slot: ScheduleSlot = {
       id: uid('slot'),
       airline: airlineId,
       flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
@@ -3582,11 +3754,14 @@ export class Game {
       flightId: null,
       standPref: null,
       runwayPref: rw,
-    })
+      claimLane: null,
+    }
+    this.assignSlotClaimLane(slot)
+    this.schedule.push(slot)
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s${
         rw != null ? ` · ${this.runwayLabel(rw)}` : ''
-      }.`,
+      }${slot.claimLane ? ` · claim ${slot.claimLane}` : ''}.`,
       'good',
     )
     this.emit()
@@ -5586,22 +5761,29 @@ export class Game {
       case 'hold':
         return 'Holding for a gate'
       case 'approach':
-        return `On approach → ${gate}`
+        return `On approach → ${gate}${f.claimLane ? ` · claim ${f.claimLane}` : ''}`
       case 'landing':
         return `Landing → taxi to ${gate}`
       case 'taxi_in':
         return `Taxiing in to ${gate}`
       case 'deboard': {
         if (f.cargo) return 'Unloading freight'
+        const bag = this.bagStageLabel(f)
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
-        return mode === 'jetway'
-          ? 'Deplaning via jetway (no apron walk)'
-          : mode === 'bus'
-            ? 'Deplaning — terminal bus ferry'
-            : 'Deplaning — walking the apron'
+        const base =
+          mode === 'jetway'
+            ? 'Deplaning via jetway (no apron walk)'
+            : mode === 'bus'
+              ? 'Deplaning — terminal bus ferry'
+              : 'Deplaning — walking the apron'
+        return bag ? `${base} · ${bag}` : base
       }
-      case 'servicing':
-        return 'Turnaround on stand (fuel / bags / catering)'
+      case 'servicing': {
+        const bag = this.bagStageLabel(f)
+        return bag
+          ? `Turnaround · ${bag}`
+          : 'Turnaround on stand (fuel / bags / catering)'
+      }
       case 'mx_taxi':
         return `Taxiing to ${hangar} for maintenance`
       case 'mx_bay':
@@ -5610,12 +5792,15 @@ export class Game {
         return `Leaving hangar → back to ${gate}`
       case 'board': {
         if (f.cargo) return 'Loading freight'
+        const bag = this.bagStageLabel(f)
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
-        return mode === 'jetway'
-          ? 'Boarding via jetway'
-          : mode === 'bus'
-            ? 'Boarding — waiting on terminal bus'
-            : 'Boarding — pax walking from hall'
+        const base =
+          mode === 'jetway'
+            ? 'Boarding via jetway'
+            : mode === 'bus'
+              ? 'Boarding — waiting on terminal bus'
+              : 'Boarding — pax walking from hall'
+        return bag ? `${base} · ${bag}` : base
       }
       case 'pushback':
         return 'Pushback from stand'
@@ -6474,8 +6659,12 @@ export class Game {
       mxEndsAt: null,
       mxPending: false,
       bagUnits: def.kind === 'cargo' ? 0 : estimateFlightBagUnits(def.persona, pax),
+      bagStage: def.kind === 'cargo' ? 'idle' : 'inflight',
+      bagsDeposited: 0,
+      claimLane: slot.claimLane ?? null,
     }
     this.flights.push(f)
+    if (!f.cargo) this.assignClaimLane(f)
     this.noteCraft(af.kind)
     slot.status = 'inbound'
     slot.flightId = f.id
@@ -7101,7 +7290,8 @@ export class Game {
               ? 'deice'
               : 'patrol')
     // Real ops: makeup load at shed / bottom-load at farm / glycol fill at pad before rolling.
-    const pre =
+    // Bag makeup/unload prep scales with bag units (visible work time).
+    let pre =
       resolved === 'load'
         ? 1.7
         : resolved === 'fuel'
@@ -7111,6 +7301,17 @@ export class Game {
             : resolved === 'deice'
               ? 1.1
               : 0
+    let cargoUnits = 0
+    if (kind === 'bags' && f && !f.cargo) {
+      if (resolved === 'load' || resolved === 'pickup') {
+        pre = this.bagWorkSeconds(f, 'sort')
+        cargoUnits = f.bagsDeposited ?? f.bagUnits ?? 0
+        this.setBagStage(f, resolved === 'load' ? 'load_aircraft' : 'outbound_sort')
+      } else if (resolved === 'unload') {
+        this.assignClaimLane(f)
+        this.setBagStage(f, 'unload_aircraft')
+      }
+    }
     this.trucks.push({
       id: uid('trk'),
       kind,
@@ -7126,6 +7327,7 @@ export class Game {
       patrol: !f,
       mission: resolved === 'fuel_reload' ? 'fuel' : resolved,
       home: home ?? (path.length ? path[0] : null),
+      cargoUnits,
     })
   }
 
@@ -7187,6 +7389,8 @@ export class Game {
         if (!f.posted.bagsLoad) {
           f.posted.bagsLoad = true
           f.waitingOn.bagsLoad = false
+          this.setBagStage(f, 'inflight')
+          t.cargoUnits = 0
           if (!f.cargo) {
             this.earn(
               Math.round(airline.bags * 0.55),
@@ -7196,14 +7400,16 @@ export class Game {
           }
         }
       } else if (t.mission === 'unload' && !f.posted.bags) {
-        // Aircraft unload complete — pay; claim delivery is the next leg.
+        // Aircraft unload complete — pay; then sort → assigned claim.
         f.posted.bags = true
         f.waitingOn.bags = false
+        this.setBagStage(f, 'inbound_sort')
+        this.assignClaimLane(f)
+        t.cargoUnits = f.bagUnits ?? 0
         if (!f.cargo) {
           const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
           this.earn(Math.round(airline.bags * mult), `${f.flightNo} bag handling`, f)
-          // Heavy bag load on a thin premade claim → Standing pressure.
           const fit = this.roomsAt(f.stand)
           const claimCap = (fit?.rooms.bagclaim ?? 0) * (fit?.premade ? 55 : 80)
           if (fit && units > claimCap && Math.random() < 0.55) {
@@ -7213,8 +7419,7 @@ export class Game {
               'bad',
             )
           }
-        }
-        else {
+        } else {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
           if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
           this.earn(
@@ -7234,11 +7439,22 @@ export class Game {
           f.posted.bagDrop = true
           this.earn(BAG_DROP_PAY, `${f.flightNo} bag drop`, f)
         }
+      } else if (t.mission === 'sort_inbound' && !f.cargo) {
+        this.setBagStage(f, 'deliver_claim')
+        this.pushNews(
+          `${f.flightNo} bags sorted → claim ${f.claimLane ?? 1}.`,
+          'ok',
+        )
       } else if (t.mission === 'to_claim' && !f.cargo) {
-        // Bags injected into terminal claim / sort — hall arrivals can clear.
-        if (Math.random() < 0.35) {
-          this.pushNews(`${f.flightNo} bags on the claim belt.`, 'ok')
-        }
+        this.setBagStage(f, 'on_claim')
+        t.cargoUnits = 0
+        this.pushNews(
+          `${f.flightNo} bags on claim ${f.claimLane ?? 1}.`,
+          'ok',
+        )
+      } else if (t.mission === 'pickup' && !f.cargo) {
+        this.setBagStage(f, 'outbound_sort')
+        t.cargoUnits = f.bagsDeposited ?? f.bagUnits ?? 0
       }
     }
     if (t.kind === 'fuel' && t.mission === 'fuel' && !f.posted.fuel && this.fuelBrand && this.fuelLoads > 0) {
@@ -7700,14 +7916,20 @@ export class Game {
       phaseTime: 0,
       ledger: [],
       bagUnits: a.kind === 'cargo' ? 0 : estimateFlightBagUnits(a.persona, pax),
+      bagStage: a.kind === 'cargo' ? 'idle' : 'inflight',
+      bagsDeposited: 0,
+      claimLane: null,
     }
     f.emergencyHost = true
     f.hostKind = 'divert'
     this.flights.push(f)
+    if (!f.cargo) this.assignClaimLane(f)
     this.noteCraft(af.kind)
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
-      `DIVERT ${call} · ${af.name} inbound now → ${this.gateLabel(stand)} (stolen bank slot).`,
+      `DIVERT ${call} · ${af.name} inbound now → ${this.gateLabel(stand)}${
+        f.claimLane ? ` · claim ${f.claimLane}` : ''
+      } (stolen bank slot).`,
       'ok',
     )
     return true
@@ -8526,6 +8748,13 @@ export class Game {
       }
       if (t.dwell > 0) {
         t.dwell -= step
+        if (t.dwell <= 0 && t.kind === 'bags' && t.mission === 'to_claim' && t.returning) {
+          // Finished inbound sort dwell — inject onto assigned claim.
+          this.finishTruck(t)
+          if (this.retargetBagsTruck(t)) continue
+          t.dwell = -99
+          continue
+        }
         if (t.dwell <= 0 && !t.returning) {
           this.finishTruck(t)
           const from = { c: Math.round(t.x), r: Math.round(t.y) }
@@ -8541,14 +8770,16 @@ export class Game {
             t.t = 0
             continue
           }
-          // Arrival bags: plane → shed/claim before any continue.
+          // Arrival bags: plane → shed sort (process dwell) → claim inject.
           if (t.kind === 'bags' && t.mission === 'unload' && t.home) {
+            const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
             const claimPath = nearestPath(this.tiles, from, [t.home], 'truck')
-            t.mission = 'to_claim'
+            t.mission = 'sort_inbound'
             t.returning = true
             t.path = claimPath && claimPath.length > 1 ? claimPath : [...t.path].reverse()
             t.seg = 0
             t.t = 0
+            if (fl) this.setBagStage(fl, 'inbound_sort')
             continue
           }
           // Fuel: mark reload needed, deadhead to farm (or continue if stock left).
@@ -8594,27 +8825,43 @@ export class Game {
             if (t.mission === 'ferry_dep') fl.waitingOn.paxIn = 0
           }
           t.dwell = 1.8
+        } else if (t.kind === 'bags') {
+          const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
+          if (t.mission === 'unload') {
+            if (fl) this.setBagStage(fl, 'unload_aircraft')
+            t.dwell = fl ? this.bagWorkSeconds(fl, 'ramp') : 2.4
+            t.cargoUnits = fl?.bagUnits ?? 8
+          } else if (t.mission === 'load') {
+            if (fl) this.setBagStage(fl, 'load_aircraft')
+            t.dwell = fl ? this.bagWorkSeconds(fl, 'ramp') : 2.6
+            t.cargoUnits = fl?.bagsDeposited ?? fl?.bagUnits ?? 8
+          } else {
+            t.dwell = 2.2
+          }
         } else {
           t.dwell =
-            t.kind === 'fuel'
-              ? 3.6
-              : t.kind === 'deice'
-                ? 3.2
-                : t.mission === 'load'
-                  ? 2.6
-                  : t.mission === 'unload'
-                    ? 2.4
-                    : 2.2
+            t.kind === 'fuel' ? 3.6 : t.kind === 'deice' ? 3.2 : 2.2
         }
       } else if (done && t.returning) {
         // Arrived home / claim / farm.
+        if (t.kind === 'bags' && t.mission === 'sort_inbound') {
+          // Visible process time at makeup before claim belt inject.
+          const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
+          this.finishTruck(t) // stage → deliver_claim news
+          t.dwell = fl ? this.bagWorkSeconds(fl, 'sort') : 1.6
+          t.mission = 'to_claim'
+          t.returning = true
+          continue
+        }
         if (t.kind === 'bags' && t.mission === 'to_claim') {
-          this.finishTruck(t) // inject onto claim / sort belt
+          this.finishTruck(t) // inject onto assigned claim
           if (this.retargetBagsTruck(t)) continue
           t.dwell = -99
           continue
         }
         if (t.kind === 'bags' && t.mission === 'pickup') {
+          const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
+          if (fl) this.setBagStage(fl, 'load_aircraft')
           // Makeup carts staged — roll to the outbound stand.
           if (this.retargetBagsTruck(t)) continue
           t.dwell = -99

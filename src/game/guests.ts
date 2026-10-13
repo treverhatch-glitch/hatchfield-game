@@ -105,6 +105,10 @@ export interface HallGuest {
   arriveMode?: ArriveMode
   /** Preferred mode before fallback (for missing-infra anger). */
   preferMode?: ArriveMode
+  /** Seconds left depositing checked bags at check-in (outbound). */
+  bagDepositLeft?: number
+  /** Finished check-in bag drop for this journey. */
+  bagsDropped?: boolean
 }
 
 /**

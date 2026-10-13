@@ -14,7 +14,8 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 | --- | --- | --- | --- |
 | **0** | Docs sync + this plan | — | **NOW** |
 | **1** | **Bag units + premade ceilings + layover through-bags** | Mix matters; starter hall hits limits; transfers don’t claim | **SHIPPED** |
-| **2** | Guard post tile + city cargo trucks → shed | Cargo has a journey | Next |
+| **1b** | **Full bag journey + claim scheduling** | Check-in deposit → process → plane; inbound unload → process → assigned claim | **SHIPPED** |
+| **2** | Guard post tile + city cargo trucks → shed | Cargo has a journey | **NEXT** |
 | **3** | Cargo start focus + kit + volume letter + warehouse meter | Cargo is a real start fantasy | Next |
 | **4** | Fuel bowser capacity + farm stock refill contract | Manor Lords fuel picture | After 2–3 |
 | **5** | Budget panel clarity + coach for kit/loan | Money readable | Parallel anytime |
@@ -30,7 +31,17 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 4. ~~Layover through-transfer; claim fallback → Standing~~  
 5. ~~`scripts/soak-bag-units.mts`~~
 
-## Slice 2 — **next code session** (start here next)
+## Slice 1b — shipped
+
+1. ~~Bag flow stages on flight (deposit → sort → load → inflight → unload → sort → claim)~~  
+2. ~~Inbound **claim lane** assigned when the slot is banked (and on divert spawn); only arrivals use claims~~  
+3. ~~Check-in **deposit dwell** by PaxTag bag weight~~  
+4. ~~Truck load/unload/process dwells scale with `bagUnits`; crate mesh on carts~~  
+5. ~~Arrivals only clear `needs.bags` when flight is **on claim**~~  
+6. ~~Activity / Planner show claim + stage~~  
+7. ~~`scripts/soak-bag-journey.mts`~~
+
+## Slice 2 — cargo city edge (**coding next**)
 
 1. `guard` tile on city road edge.  
 2. Spawn city cargo trucks off-map → guard → cargo shed.  

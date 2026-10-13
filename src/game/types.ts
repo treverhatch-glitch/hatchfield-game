@@ -346,6 +346,11 @@ export interface ScheduleSlot {
   standPref?: Vec | null
   /** Preferred runway strip index (0-based); null = tower picks. */
   runwayPref?: number | null
+  /**
+   * Assigned baggage claim (1-based) planned when the inbound slot is banked.
+   * Only arrivals use claims — cargo slots leave this null.
+   */
+  claimLane?: number | null
 }
 
 export interface ContractOffer {
@@ -494,7 +499,29 @@ export interface Flight {
   hostKind?: EmergencyKind
   /** Aggregate checked-bag units for this turn (PaxTag mix) — not per-suitcase agents. */
   bagUnits?: number
+  /**
+   * Living bag pipeline stage (Manor Lords-style timed handoffs).
+   * Inbound only uses claimLane; outbound uses check-in deposit → load.
+   */
+  bagStage?: BagFlowStage
+  /** Assigned baggage claim carousel (1-based). Inbound only. */
+  claimLane?: number | null
+  /** Outbound units deposited at check-in so far. */
+  bagsDeposited?: number
 }
+
+/** Timed bag journey — aggregate units, not per-suitcase agents. */
+export type BagFlowStage =
+  | 'idle'
+  | 'pax_deposit'
+  | 'outbound_sort'
+  | 'load_aircraft'
+  | 'inflight'
+  | 'unload_aircraft'
+  | 'inbound_sort'
+  | 'deliver_claim'
+  | 'on_claim'
+  | 'complete'
 
 /** Live security event the player must answer. */
 export interface PendingThreat {
@@ -549,6 +576,8 @@ export type TruckMission =
   | 'patrol'
   | 'ferry_arr'
   | 'ferry_dep'
+  /** Inbound bags processing at sort before claim inject. */
+  | 'sort_inbound'
 
 export interface Truck {
   id: string
@@ -568,6 +597,8 @@ export interface Truck {
   mission: TruckMission
   /** Home shed / farm tile to return to. */
   home: Vec | null
+  /** Visible load — bag units on this cart (Manor Lords crate feel). */
+  cargoUnits?: number
 }
 
 export type PaxStop =
