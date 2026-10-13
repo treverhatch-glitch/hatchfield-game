@@ -124,6 +124,8 @@ function hudSnapshot(): string {
         game.loanProductId,
         game.fieldXp,
         game.fieldLevel(),
+        game.specPaths.join(','),
+        game.specNodes.join(','),
         game.parcels,
         game.railLinked,
         game.public,
