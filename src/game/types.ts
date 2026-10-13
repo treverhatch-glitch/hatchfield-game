@@ -253,6 +253,8 @@ export type ResearchId =
   | 'stand_class'
   | 'heavy_pack'
   | 'mil_ramp'
+  | 'transfer_centre'
+  | 'rfid_bag_line'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -837,6 +839,8 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
+  /** Connecting passengers who missed the onward flight. */
+  missedConnections?: number
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
