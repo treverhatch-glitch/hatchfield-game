@@ -4,6 +4,8 @@ import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
 import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
+import { OwnerChrome } from './ui/isolated/OwnerChrome'
+import { OfferPanel } from './negotiation/OfferPanel'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -17,6 +19,11 @@ function getGame(): Game {
 
 const game = getGame()
 const SCREEN_KEY = 'hatchfield-screen'
+
+// Dev-only probe for playtests (stripped from production builds).
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __hatch?: Game }).__hatch = game
+}
 
 type Screen = 'title' | 'land' | 'play'
 
@@ -38,12 +45,33 @@ function writeScreen(s: Screen) {
   }
 }
 
+/** Route-pick refresh should keep the New Game cash / sandbox choice. */
+function applyPendingNewGame() {
+  try {
+    const raw = sessionStorage.getItem('hatchfield-pending')
+    if (!raw) return
+    const pending = JSON.parse(raw) as { sandbox?: boolean; difficulty?: 'easy' | 'standard' }
+    game.sandbox = Boolean(pending.sandbox)
+    game.beginNew(pending.difficulty === 'standard' ? 'standard' : 'easy')
+  } catch {
+    /* ignore */
+  }
+}
+
 function bootScreen(): Screen {
   // In-memory plot wins (HMR remount).
   if (game.site) return 'play'
-  // Reload mid-session — restore save before showing title.
-  if (Game.hasSave() && game.load()) return 'play'
-  return readScreen()
+  const remembered = readScreen()
+  // Same-tab refresh on the route cards.
+  if (remembered === 'land') {
+    applyPendingNewGame()
+    return 'land'
+  }
+  // Same-tab refresh mid-play resumes. A new visit (no session) stays on the title
+  // so Continue and New Game both remain reachable.
+  if (remembered === 'play' && Game.hasSave() && game.load()) return 'play'
+  if (remembered === 'play') return 'title'
+  return remembered
 }
 
 export default function App() {
@@ -151,6 +179,19 @@ export default function App() {
         game.plannerRwFilter,
         game.standAccessMode,
         game.sandbox ? 1 : 0,
+        game.hallRev,
+        game.fits[0]?.tier ?? 0,
+        game.fits[0]?.redesigned ? 1 : 0,
+        game.securityQueueCount(),
+        game.lostPaxCount(),
+        game.hallGuests.find((g) => g.id === game.selectedGuest)?.thought ?? '',
+        game.showFlows ? 1 : 0,
+        game.advice.length,
+        game.advisorCells.length,
+        game.standingAdvisor.activeCards.map((c) => `${c.id}:${c.daysToLeave}`).join(','),
+        game.hallOverloaded ? 1 : 0,
+        game.sites.map((s) => Math.round(s.elapsed)).join(','),
+        game.hover ? `${game.hover.c},${game.hover.r}` : '',
       ].join('|'),
     () => 'ssr',
   )
@@ -187,6 +228,8 @@ export default function App() {
         <TerminalView game={game} />
       </div>
       <Hud game={game} />
+      <OfferPanel game={game} />
+      <OwnerChrome game={game} />
     </div>
   )
 }

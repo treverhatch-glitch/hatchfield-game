@@ -109,6 +109,43 @@ export interface HallGuest {
   bagDepositLeft?: number
   /** Finished check-in bag drop for this journey. */
   bagsDropped?: boolean
+  /** Shoulder bag that stays with the passenger through security. */
+  carryOn?: boolean
+  /** Checked suitcase still on the passenger (before drop, or after claim). */
+  hasChecked?: boolean
+  /** Onward flight for a through-checked bag. */
+  connectFlightId?: string | null
+  /** Standing at the lost-bag desk. */
+  atBagDesk?: boolean
+  /** Seconds at the desk after a late or missed bag. */
+  deskTime?: number
+  /** Seconds at the carousel waiting for this passenger's own bags. */
+  claimWait?: number
+  /** Set once when a bag is mishandled, so the happiness hit lands one time. */
+  bagFault?: 'late' | 'missed_connection' | null
+  /** Custom hall with no path. A full queue does not set this. */
+  lost?: boolean
+  /** Seconds left at the scanner. 0 means waiting, not being served. */
+  serviceLeft?: number
+  /** Arrival order at the security lane. */
+  queueSeq?: number
+  /** Doorway polyline in world space for the current graph edge. Empty means the strict path failed. */
+  route?: { x: number; z: number }[]
+  /** Distance walked along `route`, in world units. */
+  routeDist?: number
+  /** World position inside the terminal, on `route`. */
+  wx?: number
+  wz?: number
+  /** Facing along the polyline, atan2(dx, dz). */
+  wyaw?: number
+  /** Sim clock when a departing passenger reaches the doors. Until then they are not in the hall. */
+  releaseAt?: number
+  /** On a bench or seat row this tick. */
+  seated?: boolean
+  /** Food or drink in hand. The rubbish drops where it runs out, not at the counter. */
+  snack?: { kind: 'drink' | 'meal'; left: number }
+  /** Last spot in the hall, normalized like NODE_POS. A snack still in hand is dropped here on leaving. */
+  spot?: { x: number; y: number }
 }
 
 /**
@@ -315,6 +352,36 @@ export function strongestNeed(g: HallGuest): NeedId | null {
   return entries[0][0]
 }
 
+const NEED_FALLBACKS: Record<NeedId, HallNode[]> = {
+  boarding: ['gate'],
+  bags: ['claim', 'exit'],
+  bladder: ['bathroom'],
+  hunger: ['food', 'lounge', 'shop'],
+  energy: ['lounge', 'food', 'shop'],
+  shop: ['shop', 'food'],
+  play: ['shop', 'food', 'lounge'],
+}
+
+/**
+ * A need the guest can actually walk to. Closed rooms (spa, pool, golf…)
+ * fall back to an open substitute so a crowd never stalls on a missing door.
+ */
+export function reachableNeed(
+  need: NeedId,
+  job: HallGuest['job'],
+  open: Set<HallNode>,
+): HallNode | null {
+  const preferred = needToNode(need, job)
+  if (open.has(preferred)) return preferred
+  for (const n of NEED_FALLBACKS[need]) {
+    if (open.has(n)) return n
+  }
+  if (job === 'depart' && open.has('gate')) return 'gate'
+  if (job === 'arrive' && open.has('exit')) return 'exit'
+  if (open.has('entrance')) return 'entrance'
+  return null
+}
+
 export function needToNode(need: NeedId, job: HallGuest['job']): HallNode {
   if (need === 'boarding') return 'gate'
   if (need === 'bags') return 'claim'
@@ -401,44 +468,7 @@ export function tagSpendsUp(tag: PaxTag): boolean {
   return tag === 'premium' || tag === 'business'
 }
 
-/**
- * Relative checked-bag load per guest type (aggregate units, not agents).
- * Budget light · premium heavy — drives handling time + claim pressure.
- */
-export function bagUnitsForTag(tag: PaxTag): number {
-  return tag === 'premium' ? 2.4 : tag === 'family' ? 1.7 : tag === 'business' ? 1.35 : 0.65
-}
-
-/**
- * Estimate flight bag units from carrier persona + pax count.
- * Used when we don't simulate every suitcase.
- */
-export function estimateFlightBagUnits(
-  persona:
-    | 'budget'
-    | 'business'
-    | 'luxury'
-    | 'cargo_night'
-    | 'military_gov',
-  pax: number,
-): number {
-  if (pax <= 0) return 0
-  // Sample a mix matching rollPaxTag weights without rolling dozens of guests.
-  const weights =
-    persona === 'luxury'
-      ? { premium: 0.5, business: 0.28, family: 0.14, budget: 0.08 }
-      : persona === 'business'
-        ? { premium: 0.2, business: 0.38, family: 0.24, budget: 0.18 }
-        : persona === 'cargo_night' || persona === 'military_gov'
-          ? { premium: 0.05, business: 0.15, family: 0.3, budget: 0.5 }
-          : { premium: 0.07, business: 0.15, family: 0.28, budget: 0.5 }
-  const perPax =
-    weights.premium * bagUnitsForTag('premium') +
-    weights.business * bagUnitsForTag('business') +
-    weights.family * bagUnitsForTag('family') +
-    weights.budget * bagUnitsForTag('budget')
-  return Math.max(1, Math.round(pax * perPax * 0.55))
-}
+export { bagUnitsForTag, estimateFlightBagUnits } from './bags.ts'
 
 /**
  * RCT wallet roll — wide random band per type, rare broke / whale outliers.
@@ -561,6 +591,8 @@ export function spawnHallGuest(
             ? pick(['#6a8a4a', '#5a7a3a', '#4a6a50'])
             : pick(['#8b6b4a', '#6a4a32', '#3a5a7a', '#5c4033']),
     dead: false,
+    carryOn: true,
+    hasChecked: job === 'depart' && !transfer,
     // Arrivals / transfers start airside; departures must clear security.
     clearedSec: job === 'arrive' || transfer,
     transfer,
