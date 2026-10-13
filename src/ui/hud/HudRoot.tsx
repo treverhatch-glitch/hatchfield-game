@@ -26,6 +26,7 @@ import { coachLine, letterCount, Notifications } from './Notifications'
 import { SidePanel } from './panels'
 import { StatusStrip } from './StatusStrip'
 import { ToolOptions } from './ToolOptions'
+import { GameTimetable } from '../timetable/GameTimetable'
 import '../hud.css'
 
 function useUi() {
@@ -241,6 +242,7 @@ export function HudRoot({ game }: { game: Game }) {
       <SidePanel game={game} notices={<Notifications game={game} />} />
       <AssetMenu game={game} onPick={pick} />
       <ToolOptions game={game} onCancel={cancel} />
+      <GameTimetable game={game} menuOpen={!!ui.openMenu} />
       <CategoryBar
         onTool={(tool: Tool) => {
           game.setTool(tool)
