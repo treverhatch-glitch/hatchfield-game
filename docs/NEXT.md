@@ -14,9 +14,9 @@ Ordered plan. Ship top-down. Update checkboxes when merged.
 - [x] Airline tiers T1–T5 panel + Field XP + multi-loan bank desk
 - [x] Vision pass — emergency / mil / cargo dual-path documented + cross-linked
 - [x] **Belt lite (Wave B.1 / E1)** — paint bag path; broken = late bags + heat *(see [EXECUTION](./EXECUTION.md))*
-- [ ] Make congestion **readable** — heat-map tint or news when a neck costs >N seconds *(E2)*
+- [x] Make congestion **readable** — news + HUD jam line when a neck costs ~8s *(E2)*
 - [ ] Coach / Economy discoverability — Starter kit harder to miss
-- [ ] Emergency letters → Planner “stolen slot” highlight when divert occupies capacity *(E2)*
+- [x] Emergency letters → Planner “stolen slot” highlight when divert occupies capacity *(E2)*
 
 ## Wave B — Layout skill (CEO spine)
 

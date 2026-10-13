@@ -489,6 +489,9 @@ export interface Flight {
   mxPay?: number
   /** Airline MX contract wants a hangar visit this turn. */
   mxPending?: boolean
+  /** One-shot emergency host (divert / tanker) occupying a banked gate. */
+  emergencyHost?: boolean
+  hostKind?: EmergencyKind
 }
 
 /** Live security event the player must answer. */
