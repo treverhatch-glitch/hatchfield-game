@@ -451,6 +451,10 @@ import {
   type TycoonPulse,
   type TycoonView,
 } from '../tycoon/index.ts'
+import { PLAYTEST_YEAR_DAYS } from '../reports/config.ts'
+import { YearPlaytestBook } from '../reports/book.ts'
+import type { YearAwardInput } from '../reports/sources.ts'
+import { mergePlaytestAndTycoon, type PlaytestYearReport, type TycoonYearLike } from '../reports/yearEnd.ts'
 import {
   createEconomyAdapter,
   type EconomyAdapter,
@@ -978,6 +982,8 @@ export class Game {
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
+  /** Year-end card: finance plus disruption, hub, and award counters. */
+  playtestYear = new YearPlaytestBook()
   /** Sim-clock of the last city levy. Kept so older saves do not bill a backlog. */
   levyMark = 0
   /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
@@ -1326,6 +1332,7 @@ export class Game {
     this.holidayPeakHook = defaultHolidayPeak
     this.payrollCool = 30
     this.payrollDay = 0
+    this.playtestYear.reset(0)
     this.levyMark = 0
     this.bank = new Bank(0)
     this.fees = { ...DEFAULT_FEE_SCHEDULE }
@@ -4250,6 +4257,7 @@ export class Game {
       tycoon: this.tycoon.snapshot(),
       rival: this.rival?.serialize(),
       disruptions: this.disruptions.save(),
+      playtestYear: this.playtestYear.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -4314,6 +4322,7 @@ export class Game {
       this.signed = s.signed ?? []
       this.flightsDone = s.flightsDone
       this.paxServed = s.paxServed
+      this.playtestYear.restore(s.playtestYear, this.paxServed)
       this.revenue = s.revenue
       this.securityIncidents = s.securityIncidents ?? 0
       this.reputation = s.reputation ?? 40
@@ -12407,12 +12416,82 @@ export class Game {
     }
   }
 
+  /**
+   * Hotel nights billed for missed connections this year.
+   * PR #70 can call this from its miss path. The year report reads the counter.
+   * A missing caller leaves the count at zero.
+   */
+  noteMissedConnectionNights(nights: number): void {
+    this.playtestYear.noteNights(nights)
+  }
+
+  /** Connecting passengers who completed or missed, for the open year. */
+  noteHubConnections(completed: number, missed: number): void {
+    this.playtestYear.noteConnections(completed, missed)
+  }
+
+  /** One disruption. `revenueImpact` is estimated dollars lost, never a credit. */
+  noteDisruption(kind: string, revenueImpact: number, day = Math.floor(Math.max(0, this.clock) / 180)): void {
+    this.playtestYear.noteDisruption(kind, revenueImpact, day)
+  }
+
+  /** An award earned this year. PR #63 ids pick up a one-line reason on the card. */
+  noteYearAward(award: YearAwardInput): void {
+    this.playtestYear.noteAward(award)
+  }
+
+  dismissPlaytestYear(): void {
+    this.playtestYear.dismiss()
+    const dismissTycoon = (this as { dismissYearReport?: () => void }).dismissYearReport
+    if (typeof dismissTycoon === 'function') dismissTycoon.call(this)
+    this.emit()
+  }
+
+  /**
+   * Open year card. When PR #63's `pendingYearReport` is present for the same
+   * year, its finance and awards replace the bank estimate and the disruption
+   * and hub sections stay.
+   */
+  playtestYearCard(): PlaytestYearReport | null {
+    const readTycoon = (this as { pendingYearReport?: () => TycoonYearLike | null }).pendingYearReport
+    const tycoon = typeof readTycoon === 'function' ? readTycoon.call(this) : null
+    return mergePlaytestAndTycoon(this.playtestYear.pending, tycoon)
+  }
+
   tickPayroll(_dt: number) {
     const day = Math.floor(Math.max(0, this.clock) / 180)
     if (day <= this.payrollDay) return
     const from = this.payrollDay
     this.payrollDay = day
-    for (let completed = from; completed < day; completed++) this.closeOperatingDay(completed)
+    for (let completed = from; completed < day; completed++) {
+      this.closeOperatingDay(completed)
+      this.rollPlaytestYear(completed)
+    }
+  }
+
+  private rollPlaytestYear(completedDay: number) {
+    const wear = this.avgWear()
+    const cleanliness = Math.max(0, Math.min(100, 100 - Math.max(wear.bath, wear.sec)))
+    const closing = (completedDay + 1) % PLAYTEST_YEAR_DAYS === 0
+    const fromDay = closing ? completedDay + 1 - PLAYTEST_YEAR_DAYS : 0
+    const entries = closing
+      ? this.bank
+          .entriesBetween(fromDay * SIM_MINUTES_PER_GAME_DAY, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY)
+          .map((entry) => ({ category: entry.category, amount: entry.amount }))
+      : []
+    const report = this.playtestYear.observeDay(
+      {
+        completedDay,
+        passengers: this.paxServed,
+        satisfaction: this.reputation,
+        cleanliness,
+        entries,
+      },
+      this,
+    )
+    if (!report) return
+    this.pushNews(`Year ${report.year} report is ready.`, 'ok')
+    this.emit()
   }
 
   /**
