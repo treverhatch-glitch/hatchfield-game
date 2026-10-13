@@ -668,3 +668,9 @@ A 30-game-day headless run (easy, sandbox off, starter kit, offers accepted as t
 **Bugs.** Seventeen. No new defect.
 
 `grok/pax-showup`, `grok/commercial`, `grok/negotiation`, `grok/inbound`, and `grok/progression` are still absent on the remote. Diplomacy is not extended. Timetable (#20), advisor (#21), people (#13), and assets (#12) are still red. The HUD tip (#4) is green on its own branch and stays unmerged: it has no common history with this branch. Crowd steering stays unwired. The production bundle on `preview-dist` is unchanged, because contracts and crowd are not in the client graph (`index-fO-4b36H.js`, 1,577.34 kB).
+
+## Multi-hall — 13 Oct
+
+PR #34 shares history with this branch only back at `main`, so a merge would replay that whole gap onto the show-up work. The hall-scoped behavior is on this branch instead. A jetway stand resolves to its own terminal. Wear and a scrub stay on that hall, including the lane items. Claim load is counted inside the hall that owns the stand. When two jetway stands are free, the quieter hall is chosen before the belt link. Prefab I is still two lanes at 3.5 seconds with a cap of 40. Screened passengers still keep their path. A premade still counts as a hall once its construction site finishes.
+
+**Tests.** `tsc -b` clean. Vitest 727 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-DNEZgQfm.js`, 1,578.20 kB.
