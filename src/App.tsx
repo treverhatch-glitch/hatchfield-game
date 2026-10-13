@@ -215,6 +215,9 @@ export default function App() {
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
+        game.pendingYearReport()?.year ?? 0,
+        Math.round(game.tycoonDemand() * 100),
+        Math.round(game.tycoonAirlineInterest() * 100),
       ].join('|'),
     () => 'ssr',
   )
