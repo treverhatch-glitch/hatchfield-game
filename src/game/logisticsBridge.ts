@@ -27,6 +27,7 @@ const FLEET: Partial<Record<VehicleType, number>> = {
   pax_bus: 2,
   belt_loader: 2,
   uld_loader: 1,
+  main_deck_loader: 1,
 }
 
 export const CAUSE_LINE: Record<DelayCause, string> = {

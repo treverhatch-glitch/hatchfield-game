@@ -157,6 +157,9 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
+import { CateringBridge, cateringCue } from './cateringBridge.ts'
+import { CargoBridge } from './cargoBridge.ts'
+import { getAudio, soundForEvent } from '../audio/index.ts'
 import {
   createDiplomacyBridge,
   GAME_MINUTES_PER_SIM_SECOND,
@@ -631,12 +634,21 @@ export class Game {
     fuelPurchase: 0,
     mealProduction: 0,
     vehicleUpkeep: 0,
+    shopSales: 0,
+    shopLost: 0,
+    cargoRevenue: 0,
+    cargoPenalties: 0,
   }
   private ground: (LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] }) | null = null
   private groundRev = -1
   private groundAnnounced = false
   private groundNotes: Advice[] = []
   private groundNoteKey = ''
+  private cargoNotes: Advice[] = []
+  /** Recent sound names, for the apron audio cues. */
+  soundCues: string[] = []
+  private catering: CateringBridge | null = null
+  private cargo: CargoBridge | null = null
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
   private diplomacy: DiplomacyBridge | null = null
   diplomacySeed = 1
@@ -837,12 +849,20 @@ export class Game {
       fuelPurchase: 0,
       mealProduction: 0,
       vehicleUpkeep: 0,
+      shopSales: 0,
+      shopLost: 0,
+      cargoRevenue: 0,
+      cargoPenalties: 0,
     }
     this.ground = null
     this.groundRev = -1
     this.groundAnnounced = false
     this.groundNotes = []
     this.groundNoteKey = ''
+    this.cargoNotes = []
+    this.soundCues = []
+    this.catering = null
+    this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
     this.hallOverloaded = false
@@ -4455,7 +4475,7 @@ export class Game {
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) {
-      this.advice = [...this.groundNotes]
+      this.advice = [...this.groundNotes, ...this.cargoNotes]
       return
     }
     const hall = adviseHall(
@@ -4481,7 +4501,7 @@ export class Game {
       this.schedule,
       this.hallOverloaded,
     )
-    this.advice = [...hall, ...this.groundNotes]
+    this.advice = [...hall, ...this.groundNotes, ...this.cargoNotes]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
@@ -4489,7 +4509,7 @@ export class Game {
       if (!still) this.advisorCells = []
     }
     if (this.apronFocus.length) {
-      const still = this.groundNotes.find((a) =>
+      const still = [...this.groundNotes, ...this.cargoNotes].find((a) =>
         a.cells.some((c) => this.apronFocus.some((h) => h.c === c.c && h.r === c.r)),
       )
       if (!still) this.apronFocus = []
@@ -4573,7 +4593,9 @@ export class Game {
 
   /** Empty farm or no contract. Low stock is a delay, not a ground. */
   fuelOutage(f: Flight): boolean {
-    return this.departureNeedsFuel(f) && !f.posted.fuel && !this.fuelOnHand()
+    if (!this.departureNeedsFuel(f) || f.posted.fuel) return false
+    if (!this.fuelOnHand()) return true
+    return this.catering?.fuel.isGrounded(f.id) ?? false
   }
 
   /**
@@ -4647,6 +4669,7 @@ export class Game {
       'bad',
     )
     this.noteDiplomacyCancel(f.airline, false)
+    this.noteCargoCancel(f)
   }
 
   /** Legacy bowser, once the farm has a load again. The depot module fuels its own turns. */
@@ -4738,8 +4761,13 @@ export class Game {
   private walkOffEmptyShelf(g: HallGuest, pay: number, thought: string, open: Set<HallNode>) {
     if (g.node === 'food') g.needs.hunger = Math.min(g.needs.hunger, 18)
     else g.needs.shop = Math.min(g.needs.shop, 18)
-    g.happiness -= 1
-    this.lostSpend += pay
+    const bought = this.ensureCatering().stockout(g.id, g.node === 'food' ? 'food' : 'shop')
+    const delta = bought.ok ? -1 : bought.happinessDelta
+    const wish = bought.ok ? thought : bought.thought
+    const lost = bought.ok ? pay : bought.lostSale
+    g.happiness += delta
+    this.lostSpend += lost
+    thought = wish
     const dest: HallNode =
       g.job === 'depart' && open.has('gate')
         ? 'gate'
@@ -4781,11 +4809,15 @@ export class Game {
     this.ground = createLogisticsAdapter(
       {
         addMoney: (amount, category) => this.postGroundMoney(amount, category),
-        playSound: () => {
-          // Sound cues stay with the audio slice. This hook is the hand-off.
+        playSound: (cue) => {
+          this.noteSound(soundForEvent({ type: cue }, 'logistics'))
         },
         notify: (message, severity) => {
           this.pushNews(message, severity === 'warn' ? 'bad' : 'ok')
+        },
+        onCargoToArea: (standId, kg) => {
+          const inbound = this.ground?.sim.turnaroundAt(standId)?.cargoIn ?? kg
+          this.ensureCargo().inbound(standId, kg, inbound)
         },
       },
       config,
@@ -4805,6 +4837,9 @@ export class Game {
     else if (category === 'fuel_purchase') book.fuelPurchase += amount
     else if (category === 'meal_production') book.mealProduction += amount
     else if (category === 'vehicle_upkeep') book.vehicleUpkeep += amount
+    else if (category === 'shop_sales') book.shopSales += amount
+    else if (category === 'cargo_airport_revenue') book.cargoRevenue += amount
+    else if (category === 'cargo_penalty') book.cargoPenalties += amount
     if (amount > 0) {
       this.cash += amount
       this.revenue += amount
@@ -4815,6 +4850,150 @@ export class Game {
       this.noteExpense(-amount)
       if (!this.sandbox) this.cash += amount
     }
+  }
+
+  private ensureCatering(): CateringBridge {
+    return (this.catering ??= new CateringBridge())
+  }
+
+  private ensureCargo(): CargoBridge {
+    return (this.cargo ??= new CargoBridge({
+      postMoney: (amount, category) => this.postGroundMoney(amount, category),
+      loaders: () => {
+        const sim = this.ground?.sim
+        if (!sim) return null
+        return {
+          reserve: (request) => sim.reserveLoader(request.flightId, request.preferred, request.allowUldFallback),
+          release: (id) => sim.releaseLoader(id),
+        }
+      },
+      cue: (name) => this.noteSound(name),
+      notify: (message, severity) => this.pushNews(message, severity === 'warn' ? 'bad' : 'ok'),
+      onNotes: () => {
+        this.cargoNotes = this.cargo?.notes ?? []
+        this.refreshAdvice()
+      },
+      standCell: (standId) => {
+        const [c, r] = standId.split(',').map(Number)
+        return Number.isFinite(c) && Number.isFinite(r) ? { c, r } : null
+      },
+    }))
+  }
+
+  /** Galley for a parked departure. Null until the truck is booked. */
+  galleyFor(flightId: string) {
+    return this.catering?.engine.galley(flightId) ?? null
+  }
+
+  /** Cargo books. Null until the first parked flight asks for a load. */
+  cargoSnapshot() {
+    return this.cargo?.adapter.snapshot() ?? null
+  }
+
+  /** Loader type held for this flight, if the cargo module reserved one. */
+  loaderHold(flightId: string): string | null {
+    return this.ground?.sim.vehicles.find((v) => v.heldFor === flightId)?.type ?? null
+  }
+
+  /** True once the ramp has a cargo-load service on this stand. */
+  cargoLoadArmed(standId: string): boolean {
+    const services = this.ground?.sim.turnaroundAt(standId)?.services
+    return services?.cargo_load !== undefined
+  }
+
+  /** Crew and scissor-lift poses for the catering trucks. */
+  cateringPoses() {
+    const kitchen = tilesOf(this.tiles, 'kitchen')[0] ?? tilesOf(this.tiles, 'depot')[0] ?? null
+    return this.catering?.poses(kitchen) ?? []
+  }
+
+  private noteSound(name: string | null) {
+    if (!name) return
+    this.soundCues.push(name)
+    if (this.soundCues.length > 24) this.soundCues.shift()
+    if (typeof window === 'undefined') return
+    try {
+      getAudio().playEvent(name)
+    } catch {
+      // Headless tests have no audio device.
+    }
+  }
+
+  private noteCargoDepart(f: Flight) {
+    this.cargo?.departed(f.id)
+  }
+
+  private noteCargoCancel(f: Flight) {
+    this.cargo?.cancel(f.id)
+  }
+
+  /** Book galleys, feed the fuel check, and post shop money into the one ledger. */
+  private tickCatering(step: number) {
+    if (!(step > 0)) return
+    const cat = this.ensureCatering()
+    const now = this.clock * GAME_MINUTES_PER_SIM_SECOND
+    const litres = this.groundSnapshot()?.fuelLitres ?? (this.fuelOnHand() ? 1_000_000 : 0)
+    const demands = this.flights
+      .filter((f) => f.phase !== 'gone' && this.departureNeedsFuel(f) && !f.posted.fuel)
+      .map((f) => ({
+        flightId: f.id,
+        litres: this.fuelNeedLitres(f),
+        departAt: f.fuelHeldSince ?? this.clock,
+      }))
+    cat.fuel.evaluate(now, litres, demands)
+    cat.fuel.events.splice(0)
+    const ground = this.ground
+    if (ground) {
+      for (const f of this.flights) {
+        if (!f.groundTurn || f.phase === 'gone') continue
+        ground.sim.setFuelHold(f.groundTurn, cat.fuel.isGrounded(f.id))
+      }
+    }
+    cat.engine.tick(now)
+    for (const event of cat.engine.drainEvents()) {
+      this.noteSound(cateringCue(event))
+      if (event.type === 'catering_done') {
+        const flight = this.flights.find((f) => f.id === event.flightId)
+        if (flight?.groundTurn) {
+          flight.caterLevel = 1
+          flight.waitingOn.catering = false
+          this.ground?.sim.releaseExternalCatering(flight.groundTurn)
+        }
+      }
+    }
+    for (const f of this.flights) {
+      if (!f.groundTurn || f.phase === 'gone' || f.posted.catering) continue
+      if (!cat.engine.isCateringDone(f.id)) continue
+      f.caterLevel = 1
+      f.waitingOn.catering = false
+      this.ground?.sim.releaseExternalCatering(f.groundTurn)
+    }
+    const gained = cat.engine.revenue - cat.postedRevenue
+    if (gained > 0) {
+      cat.postedRevenue = cat.engine.revenue
+      this.postGroundMoney(gained, 'shop_sales')
+    }
+    const lost = cat.engine.lostRevenue - cat.postedLost
+    if (lost > 0) {
+      cat.postedLost = cat.engine.lostRevenue
+      this.groundBooks.shopLost += lost
+    }
+  }
+
+  private fuelNeedLitres(f: Flight): number {
+    try {
+      return needsFor(f.airframeId).fuelLitres
+    } catch {
+      return 8_000
+    }
+  }
+
+  /** Cargo terminal clock matches the ramp: one sim-second is eight game minutes. */
+  private tickCargo(step: number) {
+    if (!(step > 0)) return
+    const cargo = this.ensureCargo()
+    cargo.adapter.tick(step * GAME_MINUTES_PER_SIM_SECOND)
+    this.cargoNotes = cargo.notes
   }
 
   /** One game hour is 7.5 sim-seconds, so a sim-second is eight game minutes. */
@@ -4927,21 +5106,39 @@ export class Game {
     if (!g) return false
     const standId = `${f.stand.c},${f.stand.r}`
     if (!g.sim.config.stands.some((s) => s.id === standId)) return false
-    let scheduled = 45
+    let needs: ReturnType<typeof needsFor>
     try {
-      const needs = needsFor(f.airframeId)
-      scheduled = needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40
+      needs = needsFor(f.airframeId)
     } catch {
       return false
     }
+    const scheduled = needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40
     const pax = f.cargo || f.kind === 'freighter' || f.kind === 'military' ? 0 : f.pax
+    if (pax > 0) {
+      const longHaul = needs.sizeClass === 'L' || f.kind === 'widebody'
+      this.ensureCatering().orderFor(
+        f.id,
+        standId,
+        needs.seats,
+        pax,
+        longHaul,
+        this.clock * GAME_MINUTES_PER_SIM_SECOND + Math.max(scheduled, 40),
+      )
+    }
+    const bagUnits = this.bagTags.filter((t) => t.flightId === f.id).length || Math.round(pax * needs.bagsPerPax)
+    const hold = AIRFRAMES[f.airframeId]?.cargoHold ?? 0
+    const plan = this.ensureCargo().prepare(f.id, f.airframeId, standId, hold, bagUnits)
     try {
       g.onAircraftParked(standId, f.airframeId, scheduled, {
         kind: 'turn',
         departingPax: pax,
         arrivingPax: pax,
+        deferCatering: pax > 0,
+        flightId: f.id,
+        outboundCargoKg: Math.round(plan.tonnes * 1000),
       })
     } catch {
+      this.noteCargoCancel(f)
       return false
     }
     f.groundTurn = standId
@@ -7712,6 +7909,7 @@ export class Game {
     this.securityIncidents += 1
     if (this.mission?.goal === 'noIncident') this.mission.progress = 0
     f.phase = 'gone'
+    this.noteCargoCancel(f)
     f.waitingOn.paxOut = 0
     f.waitingOn.paxIn = 0
     this.people = this.people.filter((p) => p.flightId !== f.id)
@@ -9148,6 +9346,7 @@ export class Game {
   tickHelo(f: Flight, step: number) {
     if (!f.stand) {
       f.phase = 'gone'
+      this.noteCargoCancel(f)
       return
     }
     const pad = f.stand
@@ -9211,6 +9410,7 @@ export class Game {
           this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
         }
         this.gradeDiplomacyTurn(f)
+        this.noteCargoDepart(f)
         this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
       }
     }
@@ -9280,6 +9480,7 @@ export class Game {
       f.path = []
       f.phase = 'gone'
       f.phaseTime = 0
+      this.noteCargoCancel(f)
       if (f.scheduleId) {
         const slot = this.schedule.find((s) => s.id === f.scheduleId)
         if (slot) {
@@ -10752,7 +10953,9 @@ export class Game {
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
     this.tickConstruction(step)
+    this.tickCatering(step)
     this.tickGround(step)
+    this.tickCargo(step)
     this.tickDiplomacy(step)
     this.tickShelves(step)
     // Peak decays so the HUD jam line clears when traffic thins.
@@ -11222,6 +11425,7 @@ export class Game {
             if (slot) slot.status = 'done'
           }
           this.gradeDiplomacyTurn(f)
+          this.noteCargoDepart(f)
           this.pushNews(`${f.flightNo} airborne.`, 'ok')
           this.spawnCool = Math.min(this.spawnCool, 8)
         }

@@ -225,7 +225,7 @@ describe('baggage and cargo', () => {
     wb.sim.startTurnaround('stand-2', 'b789', 120)
     wb.sim.tick(10)
     expect(wb.ev.some((e) => e.type === 'truck_arrive' && e.vehicle === 'uld_loader')).toBe(true)
-    expect(needsFor('b748f').loader).toBe('uld_loader')
+    expect(needsFor('b748f').loader).toBe('main_deck_loader')
     expect(needsFor('crj700').loader).toBe('belt_loader')
     expect(needsFor('aw139').loader).toBeNull()
   })

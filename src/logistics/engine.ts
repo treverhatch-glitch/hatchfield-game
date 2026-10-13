@@ -93,6 +93,8 @@ export interface VehicleState {
   serving: number
   /** Amount this vehicle was dispatched for but hasn't picked up yet. */
   reserved: number
+  /** Cargo module hold. Dispatcher skips this truck for every other flight. */
+  heldFor: string | null
   /** Condition, wear and breakdown state (maintenance). */
   wear: WearState
   /** Service-road nodes for the drive in progress. */
@@ -196,6 +198,14 @@ export interface TurnaroundState {
   loaderVehicle: string | null
   loaderBusyUntil: number
   doorBusyUntil: number
+  /** Galley truck is the catering module. Do not dispatch an abstract catering truck. */
+  deferCatering: boolean
+  /** Set once the external galley fee has been posted. */
+  cateringFeePosted: boolean
+  /** Flight id from the terminal, used to match a reserved loader. */
+  externalFlightId: string
+  /** Fuel monitor grounded this departure, so the fuel service stays blocked. */
+  fuelExternalHold: boolean
 }
 
 export type LogisticsListener = (e: LogisticsEvent) => void
@@ -235,6 +245,8 @@ export class LogisticsSim {
   private nextDelivery = 1
   private fuelLowFlag = false
   private mealsLowFlag = false
+  private readonly loaderHolds = new Map<string, string>()
+  private nextHold = 1
 
   constructor(config: LogisticsConfig) {
     this.config = config
@@ -261,6 +273,7 @@ export class LogisticsSim {
           requestId: null,
           serving: 0,
           reserved: 0,
+          heldFor: null,
           wear: Maintenance.freshWear(0),
           route: null,
           phaseStart: 0,
@@ -439,6 +452,10 @@ export class LogisticsSim {
       loaderVehicle: null,
       loaderBusyUntil: this.now,
       doorBusyUntil: this.now,
+      deferCatering: opts.deferCatering === true,
+      cateringFeePosted: false,
+      externalFlightId: opts.flightId ?? '',
+      fuelExternalHold: false,
     }
     this.turnarounds.set(id, t)
     this.byStand.set(standId, id)
@@ -471,6 +488,66 @@ export class LogisticsSim {
   turnaroundAt(standId: string): TurnaroundState | undefined {
     const id = this.byStand.get(standId)
     return id ? this.turnarounds.get(id) : undefined
+  }
+
+  /**
+   * Hold one idle loader for a flight. The dispatcher may still assign it to that
+   * flight, and skips it for every other stand.
+   */
+  reserveLoader(
+    flightId: string,
+    preferred: 'uld_loader' | 'main_deck_loader',
+    allowUldFallback: boolean,
+  ): { id: string; flightId: string; loaderId: string; type: 'uld_loader' | 'main_deck_loader' } | null {
+    const types: ('main_deck_loader' | 'uld_loader')[] =
+      preferred === 'main_deck_loader'
+        ? allowUldFallback
+          ? ['main_deck_loader', 'uld_loader']
+          : ['main_deck_loader']
+        : ['uld_loader']
+    for (const type of types) {
+      const v = this.vehicles.find((x) => x.type === type && x.phase === 'idle' && !x.heldFor && x.requestId == null)
+      if (!v) continue
+      v.heldFor = flightId
+      const id = `res-${v.id}-${this.nextHold++}`
+      this.loaderHolds.set(id, v.id)
+      return { id, flightId, loaderId: v.id, type }
+    }
+    return null
+  }
+
+  /** Drop a cargo-module hold. The truck keeps any job it already started. */
+  releaseLoader(id: string): void {
+    const vid = this.loaderHolds.get(id)
+    if (!vid) return
+    this.loaderHolds.delete(id)
+    const v = this.vehicles.find((x) => x.id === vid)
+    if (v) v.heldFor = null
+  }
+
+  /** Fuel outage monitor: a grounded departure does not start the fuel service. */
+  setFuelHold(standId: string, hold: boolean): void {
+    const t = this.turnaroundAt(standId)
+    if (!t || t.fuelExternalHold === hold) return
+    t.fuelExternalHold = hold
+    if (!hold && t.services.fuel === 'blocked') this.advancePhases(t)
+  }
+
+  /**
+   * The catering module finished the galley. Post the meal fee once and
+   * unblock boarding. No second catering truck is dispatched.
+   */
+  releaseExternalCatering(standId: string): boolean {
+    const t = this.turnaroundAt(standId)
+    if (!t || !t.deferCatering) return false
+    if (t.services.catering === 'done' || t.services.catering === undefined) return false
+    if (!t.cateringFeePosted) {
+      t.cateringFeePosted = true
+      const fee = t.needs.meals * this.config.kitchen.feePerMeal
+      if (fee > 0) this.money(fee, 'catering_fees')
+    }
+    this.finishService(t, 'catering')
+    return true
   }
 
   /** Projected delay right now (minutes past readyBy, or 0). */
@@ -643,7 +720,7 @@ export class LogisticsSim {
   }
 
   private holdRates(t: TurnaroundState): { bagsPerMin: number; kgPerMin: number } {
-    return t.needs.loader === 'uld_loader' ? this.config.hold.uld : this.config.hold.bulk
+    return t.needs.loader === 'belt_loader' || !t.needs.loader ? this.config.hold.bulk : this.config.hold.uld
   }
 
   // ---- phase engine
@@ -672,6 +749,10 @@ export class LogisticsSim {
         else this.addFuelPoints(t)
         return
       case 'catering':
+        if (t.deferCatering) {
+          t.services.catering = 'pending'
+          return
+        }
         if (n.upperDeck) {
           // Both decks at once: the upper-deck door needs a high-lift truck.
           const upper = Math.round(n.meals / 2)
@@ -718,6 +799,7 @@ export class LogisticsSim {
     const ready = (s: ServiceKind): boolean => {
       switch (s) {
         case 'fuel':
+          if (t.fuelExternalHold) return false
           return flag || this.isDone(t, 'deplane')
         case 'catering':
         case 'cleaning':
@@ -814,7 +896,9 @@ export class LogisticsSim {
   // ---- requests / timers
 
   private loaderTypes(t: TurnaroundState): VehicleType[] {
-    return t.needs.loader === 'uld_loader' ? ['main_deck_loader', 'uld_loader'] : ['belt_loader']
+    if (t.needs.loader === 'belt_loader') return ['belt_loader']
+    if (t.needs.loader === 'main_deck_loader') return ['main_deck_loader', 'uld_loader']
+    return ['main_deck_loader', 'uld_loader']
   }
 
   /** Fuel through every fuel point at once (two wings on L-size types). */
@@ -1567,6 +1651,7 @@ export class LogisticsSim {
         let bestFit = -1
         for (const v of this.vehicles) {
           if (!r.vehicles.includes(v.type) || v.phase !== 'idle') continue
+          if (v.heldFor && v.heldFor !== t.externalFlightId) continue
           const fit = this.compatMult(r, v.type) * 10 - r.vehicles.indexOf(v.type)
           const tt = this.tripMinutes(v, r, dest)
           if (fit > bestFit + EPS || (Math.abs(fit - bestFit) <= EPS && tt < bestT - EPS)) {

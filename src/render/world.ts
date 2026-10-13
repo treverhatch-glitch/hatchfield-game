@@ -92,6 +92,48 @@ function standTex() {
   })
 }
 
+function crewSpot(at: 'cab' | 'ground' | 'lift' | 'galley', lift: number, helper: boolean): { x: number; y: number; z: number } {
+  const side = helper ? -1 : 1
+  if (at === 'cab') return { x: 0.16 * side, y: 0.55, z: 0.2 }
+  if (at === 'ground') return { x: 0.72 * side, y: 0.28, z: 0.05 }
+  if (at === 'lift') return { x: 0.12 * side, y: 0.42 + lift * 1.35, z: -0.72 }
+  return { x: 0.18 * side, y: 0.85 + lift * 0.35, z: -1.25 }
+}
+
+function makeCateringRig(): THREE.Group {
+  const g = new THREE.Group()
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(1.15, 0.48, 0.7),
+    new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.45 }),
+  )
+  body.castShadow = true
+  g.add(body)
+  const mast = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.35, 0.08),
+    new THREE.MeshStandardMaterial({ color: '#4a4038', roughness: 0.5 }),
+  )
+  mast.name = 'mast'
+  mast.position.set(0, 0.2, -0.55)
+  g.add(mast)
+  const platform = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 0.06, 0.45),
+    new THREE.MeshStandardMaterial({ color: '#d8dee6', roughness: 0.4 }),
+  )
+  platform.name = 'platform'
+  platform.position.set(0, 0.15, -0.7)
+  g.add(platform)
+  for (const role of ['driver', 'helper'] as const) {
+    const cap = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.12, 0.28, 3, 6),
+      new THREE.MeshLambertMaterial({ color: role === 'driver' ? '#1f3a5a' : '#6a4328' }),
+    )
+    cap.name = role
+    cap.castShadow = true
+    g.add(cap)
+  }
+  return g
+}
+
 export class World {
   renderer: THREE.WebGLRenderer
   scene: THREE.Scene
@@ -114,6 +156,7 @@ export class World {
   jets = new Map<string, THREE.Group>()
   trucks = new Map<string, THREE.Object3D>()
   service = new Map<string, THREE.Object3D>()
+  cateringCrew = new Map<string, THREE.Group>()
   people = new Map<string, THREE.Mesh>()
   private beltCubes: THREE.Mesh[] = []
   private beltPath: THREE.Vector3[] = []
@@ -1495,6 +1538,40 @@ export class World {
         this.entGroup.remove(m)
         disposeObject(m)
         this.service.delete(id)
+      }
+    }
+
+    const seenC = new Set<string>()
+    for (const pose of game.cateringPoses()) {
+      seenC.add(pose.id)
+      let rig = this.cateringCrew.get(pose.id)
+      if (!rig) {
+        rig = makeCateringRig()
+        this.cateringCrew.set(pose.id, rig)
+        this.entGroup.add(rig)
+      }
+      rig.position.copy(toWorld(pose.x, pose.y, 0.38))
+      rig.rotation.y = -pose.heading
+      const mast = rig.getObjectByName('mast')
+      const platform = rig.getObjectByName('platform')
+      const h = 0.35 + pose.liftHeight * 1.55
+      if (mast) {
+        mast.scale.y = h / 0.35
+        mast.position.y = h / 2
+      }
+      if (platform) platform.position.y = 0.15 + pose.liftHeight * 1.45
+      for (const member of pose.crew) {
+        const cap = rig.getObjectByName(member.role)
+        if (!cap) continue
+        const spot = crewSpot(member.at, pose.liftHeight, member.role === 'helper')
+        cap.position.set(spot.x, spot.y, spot.z)
+      }
+    }
+    for (const [id, m] of this.cateringCrew) {
+      if (!seenC.has(id)) {
+        this.entGroup.remove(m)
+        disposeObject(m)
+        this.cateringCrew.delete(id)
       }
     }
 
