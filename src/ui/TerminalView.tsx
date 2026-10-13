@@ -9,7 +9,6 @@ import {
   ceilingsFor,
   itemsForZone,
   moodWord,
-  needsMaintenance,
   PREFAB_TIERS,
   zoneDef,
   type ZoneId,
@@ -83,9 +82,6 @@ export function TerminalView({ game }: { game: Game }) {
   const tier = (fit?.tier ?? 1) as 1 | 2 | 3
   const prefab = Boolean(fit?.premade && !fit?.redesigned)
   const nextTier = tier < 3 ? ((tier + 1) as 2 | 3) : null
-  const queue = game.securityQueueCount()
-  const lost = game.lostPaxCount()
-  const wear = fit?.wearSec ?? 0
   const zoneItems = zone ? itemsForZone(zone) : []
   const zones = fit?.zones
   const ceil = fit
@@ -109,14 +105,6 @@ export function TerminalView({ game }: { game: Game }) {
           {game.hallGuests.length} pax
         </p>
       </div>
-      {queue >= 3 || lost > 0 ? (
-        <div className="hall-alert" data-testid="bottleneck">
-          {queue >= 3 ? `Security bottleneck — ${queue} waiting` : null}
-          {queue >= 3 && lost > 0 ? ' · ' : null}
-          {lost > 0 ? `${lost} lost` : null}
-          {needsMaintenance(wear) ? ' · lane needs a scrub' : null}
-        </div>
-      ) : null}
       <aside className="hall-build" data-testid="hall-build">
         <div data-testid="prefab-ceilings">
           <strong>{prefab ? PREFAB_TIERS[tier].label : 'Custom hall'}</strong>
