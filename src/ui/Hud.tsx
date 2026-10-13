@@ -69,12 +69,12 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus'],
+    tools: ['premade', 'terminal', 'term_bus', 'belt'],
   },
   {
     id: 'ops',
     label: 'Ops',
-    tools: ['fuel', 'bags', 'snack', 'fire', 'police', 'cargo', 'tower', 'hangar'],
+    tools: ['fuel', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'tower', 'hangar'],
   },
   {
     id: 'landside',

@@ -2,6 +2,7 @@ import {
   AIRLINES,
   airlineList,
   BAG_DROP_PAY,
+  BELT_COST,
   BUDGET_BASE,
   BULLDOZE_REFUND,
   BUILDINGS,
@@ -167,9 +168,11 @@ import {
 import {
   astar,
   farmBesidePavement,
+  hasBeltNetwork,
   inBounds,
   nearestPath,
   runwayStrips,
+  standBeltLinked,
   tilesOf,
 } from './path'
 import { SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
@@ -1415,7 +1418,7 @@ export class Game {
     for (let c = 8; c <= 22; c++) this.tiles[22][c] = 'taxi'
     this.tiles[21][8] = 'fuel'
     this.tiles[21][10] = 'bags'
-    this.tiles[21][14] = 'snack'
+    this.tiles[20][14] = 'snack'
     this.tiles[20][8] = 'fire'
     this.tiles[19][12] = 'tower'
     // Road from north city edge down to the hall
@@ -1441,6 +1444,12 @@ export class Game {
     this.tiles[22][16] = 'taxi'
     this.tiles[22][17] = 'taxi'
     this.tiles[22][20] = 'taxi'
+    // Bag belt: makeup (bags@10) ↔ stands @12/@20 ↔ hall terminals @15–17
+    this.tiles[21][11] = 'belt'
+    this.tiles[21][13] = 'belt'
+    this.tiles[21][14] = 'belt'
+    this.tiles[21][18] = 'belt'
+    this.tiles[21][19] = 'belt'
     this.fits = [
       emptyFit(origin, true, {
         checkin: 2,
@@ -5940,6 +5949,11 @@ export class Game {
       } else {
         this.pushNews('Hangar up — mil ramp pads linked.', 'good')
       }
+    } else if (building.tile === 'belt') {
+      this.pushNews(
+        `Bag belt stamped ($${BELT_COST.toLocaleString()}). Link hall ↔ sort ↔ stand — break the chain and bags run late.`,
+        'ok',
+      )
     }
     this.bumpMap()
     this.emit()
@@ -6033,16 +6047,19 @@ export class Game {
       })
       return free[0]
     }
+    const beltOn = hasBeltNetwork(this.tiles)
     const scored = free.map((s) => {
       const hall = this.jetwayHall(s)
       const load = hall ? this.occupiedAtHall(hall) : 99
       const d = hall
         ? Math.abs(hall.origin.c - s.c) + Math.abs(hall.origin.r - s.r)
         : 99
-      return { s, jet: hall != null, load, d }
+      const belt = !beltOn || standBeltLinked(this.tiles, s)
+      return { s, jet: hall != null, belt, load, d }
     })
     scored.sort((a, b) => {
       if (a.jet !== b.jet) return a.jet ? -1 : 1
+      if (a.belt !== b.belt) return a.belt ? -1 : 1
       if (a.load !== b.load) return a.load - b.load
       return a.d - b.d
     })
@@ -6719,6 +6736,7 @@ export class Game {
     if (!f.cargo) {
       // Arrival unload: shed → plane → claim/sort at shed → continue or park.
       if (bagBuild.length > 0 && f.stand) {
+        this.noteBagBeltIssue(f)
         const bagPath = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
         if (bagPath) {
           f.waitingOn.bags = true
@@ -7245,11 +7263,30 @@ export class Game {
     // Outbound bags: shed makeup pickup → plane deposit.
     const bagBuild = tilesOf(this.tiles, 'bags')
     if (bagBuild.length && !f.posted.bagsLoad) {
+      this.noteBagBeltIssue(f)
       const path = nearestPath(this.tiles, bagBuild[0], [f.stand], 'truck')
       if (path) {
         f.waitingOn.bagsLoad = true
         this.spawnTruck('bags', f, path, 'load', bagBuild[0])
       }
+    }
+  }
+
+  /**
+   * Belt lite — once any belt exists, stands need makeup↔stand↔hall connectivity.
+   * Broken chain: slower board + heat nick + news (trucks still roll for picture).
+   */
+  noteBagBeltIssue(f: Flight) {
+    if (!f.stand || f.cargo) return
+    if (!hasBeltNetwork(this.tiles)) return
+    if (standBeltLinked(this.tiles, f.stand)) return
+    f.boardingSlow = true
+    this.adjustHeat(f.airline, -2.2)
+    if (Math.random() < 0.55) {
+      this.pushNews(
+        `${f.flightNo} bags late — belt broken between hall, sort, and stand.`,
+        'bad',
+      )
     }
   }
 

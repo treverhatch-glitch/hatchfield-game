@@ -4,7 +4,7 @@ Parking lot for features that deepen the loops. Nothing here is committed until 
 
 ## Layout skill (steal from Airport CEO verbs)
 
-- **Baggage belt lite** — paint check-in → makeup → bay; broken path = late bags + heat. → [NEXT Wave B](./NEXT.md)
+- **Baggage belt lite** — ~~paint check-in → makeup → bay; broken path = late bags + heat.~~ Shipped (E1). → [EXECUTION](./EXECUTION.md)
 - **International zone** — passport room; intl flights need it; domestic uses secure only.
 - **Franchise brands** — CounterBite / SkyGlass: sign fee → hall spend mult + rare brand crisis.
 - **Custom terminal painter** — walls rewrite the hall graph (skill ceiling; after belts).
