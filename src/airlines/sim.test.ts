@@ -11,8 +11,8 @@ import type { AirlineState, AirportCapabilities, FlightEvent } from './types.ts'
 
 describe('Airline 1-Year Balance Sim', () => {
   it('should run a 1-year headless simulation and print stats', () => {
-    // 1 year = 365 days = 8760 hours
-    const TOTAL_HOURS = 8760;
+    // 1 year = 365 days = 8760 hours = 525600 minutes
+    const TOTAL_MINUTES = 525600;
     
     let state: AirlineState = {
       availableAirlines: DEFAULT_AIRLINES,
@@ -21,7 +21,8 @@ describe('Airline 1-Year Balance Sim', () => {
       activeContracts: [],
       cooldowns: {},
       penaltyTiers: {},
-      elapsedHours: 0
+      elapsedMinutes: 0,
+      events: []
     };
 
     // Simulate a fully upgraded airport to allow all airlines
@@ -48,8 +49,8 @@ describe('Airline 1-Year Balance Sim', () => {
     const contractsSigned: Record<string, number> = {};
     let totalTerminations = 0;
 
-    for (let hour = 1; hour <= TOTAL_HOURS; hour++) {
-      state.elapsedHours = hour;
+    for (let minute = 60; minute <= TOTAL_MINUTES; minute += 60) {
+      state.elapsedMinutes = minute;
 
       // 1. Expire offers
       state = expireOffers(state);
@@ -57,9 +58,9 @@ describe('Airline 1-Year Balance Sim', () => {
       // 2. Check unlocks
       state = checkUnlocks(state, airport);
 
-      // 3. Generate offers (tick-agnostic, passing 1 hour)
+      // 3. Generate offers (tick-agnostic, passing 60 minutes)
       const beforeOffers = state.contractOffers.length;
-      state = generateContractOffers(state, airport, 1);
+      state = generateContractOffers(state, airport, 60);
       
       // Track new offers
       if (state.contractOffers.length > beforeOffers) {
@@ -90,9 +91,11 @@ describe('Airline 1-Year Balance Sim', () => {
             const pax = contract.terms.feePerPassenger > 0 ? 100 : 0;
             totalRevenue += contract.terms.feePerLanding + (pax * contract.terms.feePerPassenger);
           } else if (outcome < 0.98) {
-            events.push({ contractId: contract.id, type: 'delay' });
+            // Assume average delay of 45 minutes
+            const delayMinutes = 45;
+            events.push({ contractId: contract.id, type: 'delay', delayMinutes });
             const pax = contract.terms.feePerPassenger > 0 ? 100 : 0;
-            totalRevenue += contract.terms.feePerLanding + (pax * contract.terms.feePerPassenger) - contract.terms.penaltyPerDelay;
+            totalRevenue += contract.terms.feePerLanding + (pax * contract.terms.feePerPassenger) - (contract.terms.penaltyPerDelayMinute * delayMinutes);
           } else {
             events.push({ contractId: contract.id, type: 'cancellation' });
             totalCancellations++;
@@ -109,10 +112,13 @@ describe('Airline 1-Year Balance Sim', () => {
       if (state.activeContracts.length < beforeContracts) {
         totalTerminations += (beforeContracts - state.activeContracts.length);
       }
+      
+      // Clear events queue
+      state = { ...state, events: [] };
     }
 
     console.log('\n--- 1-Year Airline Balance Sim Results ---');
-    console.log(`Total Hours: ${TOTAL_HOURS}`);
+    console.log(`Total Minutes: ${TOTAL_MINUTES}`);
     console.log(`Total Flights: ${totalFlights}`);
     console.log(`Total Cancellations: ${totalCancellations}`);
     console.log(`Total Terminations: ${totalTerminations}`);

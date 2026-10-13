@@ -64,7 +64,7 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
         feePerPassenger: 5,
         feePerLanding: 150,
         penaltyPerCancellation: 500,
-        penaltyPerDelay: 100
+        penaltyPerDelayMinute: 5 // $5 per minute late
       };
       break;
     case 'low-cost':
@@ -73,7 +73,7 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
         feePerPassenger: 9, // LCCs negotiate lower pax fees
         feePerLanding: 400,
         penaltyPerCancellation: 1500,
-        penaltyPerDelay: 300
+        penaltyPerDelayMinute: 15
       };
       break;
     case 'full-service':
@@ -82,7 +82,7 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
         feePerPassenger: 14,
         feePerLanding: 1000,
         penaltyPerCancellation: 3000,
-        penaltyPerDelay: 800
+        penaltyPerDelayMinute: 30
       };
       break;
     case 'flag-carrier':
@@ -91,7 +91,7 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
         feePerPassenger: 18,
         feePerLanding: 2000,
         penaltyPerCancellation: 5000,
-        penaltyPerDelay: 1500
+        penaltyPerDelayMinute: 50
       };
       break;
     case 'cargo':
@@ -100,7 +100,7 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
         feePerPassenger: 0, // Cargo has no passengers
         feePerLanding: 3500, // Higher landing fees for heavy freighters
         penaltyPerCancellation: 4000,
-        penaltyPerDelay: 1000
+        penaltyPerDelayMinute: 40
       };
       break;
     default:
@@ -109,7 +109,7 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
         feePerPassenger: 10,
         feePerLanding: 200,
         penaltyPerCancellation: 1000,
-        penaltyPerDelay: 200
+        penaltyPerDelayMinute: 10
       };
   }
 
@@ -123,26 +123,27 @@ function generateTermsForTier(tier: string, penaltyTier: number): ContractTerms 
     feePerPassenger: Math.round(base.feePerPassenger * feeMultiplier),
     feePerLanding: Math.round(base.feePerLanding * feeMultiplier),
     penaltyPerCancellation: Math.round(base.penaltyPerCancellation * penaltyMultiplier),
-    penaltyPerDelay: Math.round(base.penaltyPerDelay * penaltyMultiplier)
+    penaltyPerDelayMinute: Math.round(base.penaltyPerDelayMinute * penaltyMultiplier)
   };
 }
 
 /**
  * Randomly generates contract offers for unlocked airlines that meet requirements.
  * Ensures we don't spam offers if one already exists for the airline.
- * Tick-agnostic: probability based on elapsed hours.
+ * Tick-agnostic: probability based on elapsed sim minutes.
  */
-export function generateContractOffers(state: AirlineState, airport: AirportCapabilities, hoursPassed: number): AirlineState {
-  if (hoursPassed <= 0) return state;
+export function generateContractOffers(state: AirlineState, airport: AirportCapabilities, dtMinutes: number): AirlineState {
+  if (dtMinutes <= 0) return state;
 
   const newOffers: ContractOffer[] = [...state.contractOffers];
+  const newEvents = [...state.events];
   const existingOfferAirlineIds = new Set(newOffers.map(o => o.airlineId));
   const activeContractAirlineIds = new Set(state.activeContracts.map(c => c.airlineId));
 
-  // 20% chance per day (24 hours) -> calculate probability for hoursPassed
-  // P(at least one event in t hours) = 1 - (1 - P_daily)^(t/24)
+  // 20% chance per day (1440 minutes) -> calculate probability for dtMinutes
+  // P(at least one event in t minutes) = 1 - (1 - P_daily)^(t/1440)
   const dailyProb = 0.20;
-  const prob = 1 - Math.pow(1 - dailyProb, hoursPassed / 24);
+  const prob = 1 - Math.pow(1 - dailyProb, dtMinutes / 1440);
 
   for (const airlineId of state.unlockedAirlines) {
     // Skip if we already have an offer or active contract
@@ -151,7 +152,7 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
     }
 
     // Skip if on cooldown
-    if (state.cooldowns[airlineId] && state.elapsedHours < state.cooldowns[airlineId]) {
+    if (state.cooldowns[airlineId] && state.elapsedMinutes < state.cooldowns[airlineId]) {
       continue;
     }
 
@@ -161,12 +162,21 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
     if (meetsRequirements(airline, airport)) {
       if (Math.random() < prob) {
         const penaltyTier = state.penaltyTiers[airlineId] || 0;
+        const offerId = `offer_${Date.now()}_${airline.id}`;
+        
         newOffers.push({
-          id: `offer_${Date.now()}_${airline.id}`,
+          id: offerId,
           airlineId: airline.id,
           terms: generateTermsForTier(airline.tier, penaltyTier),
-          expiresAtHour: state.elapsedHours + (7 * 24), // Expires in 7 days
+          expiresAtMinute: state.elapsedMinutes + (7 * 1440), // Expires in 7 days
           penaltyTier
+        });
+        
+        newEvents.push({
+          type: 'contract_offer',
+          time: state.elapsedMinutes,
+          airlineId: airline.id,
+          contractId: offerId
         });
       }
     }
@@ -174,7 +184,8 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
 
   return {
     ...state,
-    contractOffers: newOffers
+    contractOffers: newOffers,
+    events: newEvents
   };
 }
 
@@ -188,11 +199,12 @@ export function acceptContractOffer(state: AirlineState, offerId: string): Airli
   const offer = state.contractOffers[offerIndex];
   const airline = state.availableAirlines.find(a => a.id === offer.airlineId);
 
+  const contractId = `contract_${offer.id}`;
   const newContract: ActiveContract = {
-    id: `contract_${offer.id}`,
+    id: contractId,
     airlineId: offer.airlineId,
     terms: offer.terms,
-    signedAtHour: state.elapsedHours,
+    signedAtMinute: state.elapsedMinutes,
     satisfaction: airline ? airline.baseSatisfaction : 50,
     penaltyTier: offer.penaltyTier
   };
@@ -203,7 +215,16 @@ export function acceptContractOffer(state: AirlineState, offerId: string): Airli
   return {
     ...state,
     contractOffers: newOffers,
-    activeContracts: [...state.activeContracts, newContract]
+    activeContracts: [...state.activeContracts, newContract],
+    events: [
+      ...state.events,
+      {
+        type: 'contract_signed',
+        time: state.elapsedMinutes,
+        airlineId: offer.airlineId,
+        contractId: contractId
+      }
+    ]
   };
 }
 
@@ -220,7 +241,7 @@ export function rejectContractOffer(state: AirlineState, offerId: string): Airli
     contractOffers: state.contractOffers.filter(o => o.id !== offerId),
     cooldowns: {
       ...state.cooldowns,
-      [offer.airlineId]: state.elapsedHours + (30 * 24) // 30 days cooldown
+      [offer.airlineId]: state.elapsedMinutes + (30 * 1440) // 30 days cooldown
     },
     penaltyTiers: {
       ...state.penaltyTiers,
@@ -234,20 +255,20 @@ export function rejectContractOffer(state: AirlineState, offerId: string): Airli
  * Triggers a 30-day cooldown and increases penalty tier.
  */
 export function expireOffers(state: AirlineState): AirlineState {
-  const expiredOffers = state.contractOffers.filter(o => o.expiresAtHour <= state.elapsedHours);
+  const expiredOffers = state.contractOffers.filter(o => o.expiresAtMinute <= state.elapsedMinutes);
   if (expiredOffers.length === 0) return state;
 
   const newCooldowns = { ...state.cooldowns };
   const newPenaltyTiers = { ...state.penaltyTiers };
 
   for (const offer of expiredOffers) {
-    newCooldowns[offer.airlineId] = state.elapsedHours + (30 * 24);
+    newCooldowns[offer.airlineId] = state.elapsedMinutes + (30 * 1440);
     newPenaltyTiers[offer.airlineId] = (state.penaltyTiers[offer.airlineId] || 0) + 1;
   }
 
   return {
     ...state,
-    contractOffers: state.contractOffers.filter(o => o.expiresAtHour > state.elapsedHours),
+    contractOffers: state.contractOffers.filter(o => o.expiresAtMinute > state.elapsedMinutes),
     cooldowns: newCooldowns,
     penaltyTiers: newPenaltyTiers
   };
@@ -256,6 +277,7 @@ export function expireOffers(state: AirlineState): AirlineState {
 export interface FlightEvent {
   contractId: string;
   type: 'success' | 'delay' | 'cancellation';
+  delayMinutes?: number; // Added for per-minute delay penalties
 }
 
 /**
@@ -265,9 +287,11 @@ export interface FlightEvent {
 export function processFlightEvents(state: AirlineState, events: FlightEvent[]): AirlineState {
   const newCooldowns = { ...state.cooldowns };
   const newPenaltyTiers = { ...state.penaltyTiers };
+  const newEvents = [...state.events];
   
   const newContracts = state.activeContracts.map(contract => {
     let newSatisfaction = contract.satisfaction;
+    let oldSatisfaction = contract.satisfaction;
     
     const contractEvents = events.filter(e => e.contractId === contract.id);
     for (const event of contractEvents) {
@@ -283,6 +307,26 @@ export function processFlightEvents(state: AirlineState, events: FlightEvent[]):
     // Clamp between 0 and 100
     newSatisfaction = Math.max(0, Math.min(100, newSatisfaction));
     
+    // Emit rating events if crossing thresholds (e.g., every 10 points)
+    const oldDecile = Math.floor(oldSatisfaction / 10);
+    const newDecile = Math.floor(newSatisfaction / 10);
+    
+    if (newDecile > oldDecile) {
+      newEvents.push({
+        type: 'rating_up',
+        time: state.elapsedMinutes,
+        airlineId: contract.airlineId,
+        contractId: contract.id
+      });
+    } else if (newDecile < oldDecile) {
+      newEvents.push({
+        type: 'rating_down',
+        time: state.elapsedMinutes,
+        airlineId: contract.airlineId,
+        contractId: contract.id
+      });
+    }
+    
     return {
       ...contract,
       satisfaction: newSatisfaction
@@ -292,8 +336,15 @@ export function processFlightEvents(state: AirlineState, events: FlightEvent[]):
   // Remove contracts that dropped to 0 satisfaction
   const survivingContracts = newContracts.filter(c => {
     if (c.satisfaction <= 0) {
-      newCooldowns[c.airlineId] = state.elapsedHours + (30 * 24);
+      newCooldowns[c.airlineId] = state.elapsedMinutes + (30 * 1440);
       newPenaltyTiers[c.airlineId] = (state.penaltyTiers[c.airlineId] || 0) + 1;
+      
+      newEvents.push({
+        type: 'contract_terminated',
+        time: state.elapsedMinutes,
+        airlineId: c.airlineId,
+        contractId: c.id
+      });
       return false;
     }
     return true;
@@ -303,7 +354,18 @@ export function processFlightEvents(state: AirlineState, events: FlightEvent[]):
     ...state,
     activeContracts: survivingContracts,
     cooldowns: newCooldowns,
-    penaltyTiers: newPenaltyTiers
+    penaltyTiers: newPenaltyTiers,
+    events: newEvents
+  };
+}
+
+/**
+ * Clears the event queue. Should be called by the adapter after processing events.
+ */
+export function clearAirlineEvents(state: AirlineState): AirlineState {
+  return {
+    ...state,
+    events: []
   };
 }
 

@@ -42,14 +42,14 @@ export interface ContractTerms {
   feePerPassenger: number;
   feePerLanding: number;
   penaltyPerCancellation: number;
-  penaltyPerDelay: number;
+  penaltyPerDelayMinute: number; // Changed from per delay to per minute late
 }
 
 export interface ContractOffer {
   id: string;
   airlineId: string;
   terms: ContractTerms;
-  expiresAtHour: number; // hour in game time when the offer expires
+  expiresAtMinute: number; // sim minute when the offer expires
   penaltyTier: number; // 0 = normal, 1 = worse, 2 = even worse
 }
 
@@ -57,9 +57,17 @@ export interface ActiveContract {
   id: string;
   airlineId: string;
   terms: ContractTerms;
-  signedAtHour: number;
+  signedAtMinute: number;
   satisfaction: number; // 0 to 100
   penaltyTier: number;
+}
+
+export interface AirlineEvent {
+  type: 'contract_offer' | 'contract_signed' | 'contract_terminated' | 'rating_up' | 'rating_down';
+  time: number; // sim minutes
+  airlineId: string;
+  contractId?: string;
+  details?: string;
 }
 
 export interface AirlineState {
@@ -67,7 +75,8 @@ export interface AirlineState {
   unlockedAirlines: string[]; // airline IDs that have been unlocked
   contractOffers: ContractOffer[];
   activeContracts: ActiveContract[];
-  cooldowns: Record<string, number>; // airlineId -> hour when cooldown ends
+  cooldowns: Record<string, number>; // airlineId -> sim minutes when cooldown ends
   penaltyTiers: Record<string, number>; // airlineId -> current penalty tier (re-entry worse terms)
-  elapsedHours: number;
+  elapsedMinutes: number; // Changed from elapsedHours to sim minutes
+  events: AirlineEvent[]; // Event emitter queue
 }

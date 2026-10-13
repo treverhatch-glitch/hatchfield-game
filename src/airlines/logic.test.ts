@@ -34,7 +34,8 @@ describe('Airline Logic', () => {
     activeContracts: [],
     cooldowns: {},
     penaltyTiers: {},
-    elapsedHours: 0
+    elapsedMinutes: 0,
+    events: []
   };
 
   describe('checkUnlocks', () => {
@@ -84,7 +85,7 @@ describe('Airline Logic', () => {
       const state = {
         ...initialState,
         unlockedAirlines: ['air_regional_1'],
-        elapsedHours: 24
+        elapsedMinutes: 1440
       };
       const airport = { ...baseAirport, runwayLengthMeters: 1500, hasSmallStands: true };
       
@@ -92,28 +93,30 @@ describe('Airline Logic', () => {
       const originalRandom = Math.random;
       Math.random = () => 0.0;
 
-      const newState = generateContractOffers(state, airport, 24); // 24 hours passed
+      const newState = generateContractOffers(state, airport, 1440); // 24 hours passed
       
       Math.random = originalRandom;
 
       expect(newState.contractOffers.length).toBe(1);
       expect(newState.contractOffers[0].airlineId).toBe('air_regional_1');
-      expect(newState.contractOffers[0].expiresAtHour).toBe(24 + 7 * 24); // elapsedHours + 7 days
+      expect(newState.contractOffers[0].expiresAtMinute).toBe(1440 + 7 * 1440); // elapsedMinutes + 7 days
+      expect(newState.events.length).toBe(1);
+      expect(newState.events[0].type).toBe('contract_offer');
     });
 
     it('should not generate offer if on cooldown', () => {
       const state = {
         ...initialState,
         unlockedAirlines: ['air_regional_1'],
-        elapsedHours: 24,
-        cooldowns: { 'air_regional_1': 48 } // On cooldown until hour 48
+        elapsedMinutes: 1440,
+        cooldowns: { 'air_regional_1': 2880 } // On cooldown until minute 2880
       };
       const airport = { ...baseAirport, runwayLengthMeters: 1500, hasSmallStands: true };
       
       const originalRandom = Math.random;
       Math.random = () => 0.0;
 
-      const newState = generateContractOffers(state, airport, 24);
+      const newState = generateContractOffers(state, airport, 1440);
       
       Math.random = originalRandom;
 
@@ -125,8 +128,8 @@ describe('Airline Logic', () => {
     const offer = {
       id: 'offer_1',
       airlineId: 'air_regional_1',
-      terms: { slotsPerWeek: 14, feePerPassenger: 5, feePerLanding: 150, penaltyPerCancellation: 500, penaltyPerDelay: 100 },
-      expiresAtHour: 5 * 24,
+      terms: { slotsPerWeek: 14, feePerPassenger: 5, feePerLanding: 150, penaltyPerCancellation: 500, penaltyPerDelayMinute: 5 },
+      expiresAtMinute: 5 * 1440,
       penaltyTier: 0
     };
 
@@ -138,24 +141,26 @@ describe('Airline Logic', () => {
       expect(newState.activeContracts.length).toBe(1);
       expect(newState.activeContracts[0].airlineId).toBe('air_regional_1');
       expect(newState.activeContracts[0].satisfaction).toBe(70); // baseSatisfaction
+      expect(newState.events.length).toBe(1);
+      expect(newState.events[0].type).toBe('contract_signed');
     });
 
     it('should reject an offer and trigger cooldown/penalty', () => {
-      const state = { ...initialState, contractOffers: [offer], elapsedHours: 24 };
+      const state = { ...initialState, contractOffers: [offer], elapsedMinutes: 1440 };
       const newState = rejectContractOffer(state, 'offer_1');
       
       expect(newState.contractOffers.length).toBe(0);
       expect(newState.activeContracts.length).toBe(0);
-      expect(newState.cooldowns['air_regional_1']).toBe(24 + 30 * 24); // 30 days
+      expect(newState.cooldowns['air_regional_1']).toBe(1440 + 30 * 1440); // 30 days
       expect(newState.penaltyTiers['air_regional_1']).toBe(1);
     });
 
     it('should expire offers and trigger cooldown/penalty', () => {
-      const state = { ...initialState, contractOffers: [offer], elapsedHours: 6 * 24 };
+      const state = { ...initialState, contractOffers: [offer], elapsedMinutes: 6 * 1440 };
       const newState = expireOffers(state);
       
       expect(newState.contractOffers.length).toBe(0);
-      expect(newState.cooldowns['air_regional_1']).toBe(6 * 24 + 30 * 24);
+      expect(newState.cooldowns['air_regional_1']).toBe(6 * 1440 + 30 * 1440);
       expect(newState.penaltyTiers['air_regional_1']).toBe(1);
     });
   });
@@ -164,8 +169,8 @@ describe('Airline Logic', () => {
     const contract = {
       id: 'contract_1',
       airlineId: 'air_regional_1',
-      terms: { slotsPerWeek: 14, feePerPassenger: 5, feePerLanding: 150, penaltyPerCancellation: 500, penaltyPerDelay: 100 },
-      signedAtHour: 24,
+      terms: { slotsPerWeek: 14, feePerPassenger: 5, feePerLanding: 150, penaltyPerCancellation: 500, penaltyPerDelayMinute: 5 },
+      signedAtMinute: 1440,
       satisfaction: 50,
       penaltyTier: 0
     };
@@ -178,12 +183,14 @@ describe('Airline Logic', () => {
     });
 
     it('should terminate contract if satisfaction drops to 0 and trigger penalty', () => {
-      const state = { ...initialState, activeContracts: [{ ...contract, satisfaction: 5 }], elapsedHours: 48 };
+      const state = { ...initialState, activeContracts: [{ ...contract, satisfaction: 5 }], elapsedMinutes: 2880 };
       const newState = processFlightEvents(state, [{ contractId: 'contract_1', type: 'cancellation' }]);
       
       expect(newState.activeContracts.length).toBe(0);
-      expect(newState.cooldowns['air_regional_1']).toBe(48 + 30 * 24);
+      expect(newState.cooldowns['air_regional_1']).toBe(2880 + 30 * 1440);
       expect(newState.penaltyTiers['air_regional_1']).toBe(1);
+      expect(newState.events.length).toBe(1);
+      expect(newState.events[0].type).toBe('contract_terminated');
     });
   });
 
@@ -192,8 +199,8 @@ describe('Airline Logic', () => {
       const state = {
         ...initialState,
         activeContracts: [
-          { id: 'c1', airlineId: 'a1', terms: {} as any, signedAtHour: 0, satisfaction: 80, penaltyTier: 0 },
-          { id: 'c2', airlineId: 'a2', terms: {} as any, signedAtHour: 0, satisfaction: 60, penaltyTier: 0 }
+          { id: 'c1', airlineId: 'a1', terms: {} as any, signedAtMinute: 0, satisfaction: 80, penaltyTier: 0 },
+          { id: 'c2', airlineId: 'a2', terms: {} as any, signedAtMinute: 0, satisfaction: 60, penaltyTier: 0 }
         ]
       };
       

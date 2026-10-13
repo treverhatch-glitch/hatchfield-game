@@ -12,7 +12,8 @@ It is located in `src/airlines/`.
 - **Contracts**: Airlines offer contracts (slots/week, fees, penalties). Contracts can be accepted or rejected.
 - **Tick-Agnostic Timing**: The logic uses elapsed game-hours. Rates are expressed per day internally but probabilities scale correctly for any tick duration.
 - **Cooldowns & Penalties**: Rejecting or terminating a contract triggers a 30-day cooldown and increases the "penalty tier", resulting in worse terms (lower fees, higher penalties) for future offers from that airline.
-- **Satisfaction & Rating**: Active contracts have a satisfaction rating that changes based on flight events. The average satisfaction feeds an airline rating hook compatible with PR #7.
+- **Satisfaction & Rating**: Active contracts have a satisfaction rating that changes based on flight events. The average satisfaction is the per-airline truth that feeds the airline rating hook compatible with PR #7.
+- **Event Emitter**: The state maintains an `events` array that emits `contract_offer`, `contract_signed`, `contract_terminated`, `rating_up`, and `rating_down` events with sim-minute timestamps.
 
 ## Real-World References & Balance
 
@@ -112,4 +113,28 @@ To get the overall airline rating (0-100) compatible with PR #7:
 import { getAirlineRating } from '../airlines';
 
 const currentRating = getAirlineRating(state);
+```
+
+### 6. Bank Integration (PR #11)
+
+To post money from airline operations, the adapter should listen to flight events and post to the bank:
+
+```typescript
+import { bank } from '../core/bank'; // Adjust path as needed
+
+// On successful flight
+bank.post({
+  type: 'money',
+  time: state.elapsedMinutes,
+  amount: contract.terms.feePerLanding + (paxCount * contract.terms.feePerPassenger),
+  category: 'airline_fees'
+});
+
+// On delay/cancellation
+bank.post({
+  type: 'money',
+  time: state.elapsedMinutes,
+  amount: -penaltyAmount,
+  category: 'airline_penalties'
+});
 ```
