@@ -179,6 +179,8 @@ import {
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
 import { NegotiationBridge } from './negotiationBridge.ts'
+import { StaffHousingBridge, type StaffField } from './staffHousingBridge.ts'
+import type { HousingTierId, StaffSeat } from '../staffhousing/types.ts'
 import { ULCC_IDS } from '../negotiation/index.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
@@ -662,6 +664,8 @@ export class Game {
   parcels = 1
   /** Owned expansion plots. Empty until the city or factory site is bought. */
   ownedPlots: OwnedPlot[] = []
+  /** On-site dorms, apartments, and the staff village. */
+  staffHousing = new StaffHousingBridge()
   /** Optional outsourced pavement crew. Daily fee, faster repair. */
   maintenanceContract = false
   railLinked = false
@@ -967,6 +971,7 @@ export class Game {
     this.fieldXp = 0
     this.parcels = 1
     this.ownedPlots = []
+    this.staffHousing.reset()
     this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
@@ -2224,6 +2229,7 @@ export class Game {
     this.speed = 1
     this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
+    this.staffHousing.reset()
     this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
@@ -3352,6 +3358,7 @@ export class Game {
       fieldXp: this.fieldXp,
       parcels: this.parcels,
       ownedPlots: this.ownedPlots,
+      staffHousing: this.staffHousing.save(),
       maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
@@ -3484,6 +3491,7 @@ export class Game {
       this.parcels = s.parcels ?? 1
       this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
       if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
+      this.staffHousing.load(s.staffHousing)
       this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
@@ -8868,13 +8876,112 @@ export class Game {
     return payrollAmount(lines, this.fieldOpsMult())
   }
 
+  staffPanel() {
+    return this.staffHousing.panel(this.staffField())
+  }
+
+  staffSites() {
+    return this.staffHousing.sites()
+  }
+
+  staffWalkers() {
+    return this.staffHousing.walkers(this.staffField())
+  }
+
+  staffHireCost(base: number): number {
+    return this.staffHousing.hirePrice(base, this.staffField())
+  }
+
+  buildStaffHousing(tier: HousingTierId): boolean {
+    const quote = this.staffHousing.quote(tier, this.staffField())
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.sandbox) {
+      if (!this.spend(quote.cost, quote.name)) return false
+      this.postJournal('construction', quote.cost, this.simMinutes())
+    }
+    this.staffHousing.commit(quote)
+    const plots = quote.plotIds.length === 1 ? '1 plot' : `${quote.plotIds.length} plots`
+    this.pushNews(`${quote.name} is open on ${plots}. Crew can live on the field.`, 'good')
+    this.emit()
+    return true
+  }
+
+  private staffField(): StaffField {
+    const origin = this.fits[0]?.origin
+    return {
+      tiles: this.tiles,
+      railLinked: this.railLinked,
+      fieldLevel: this.fieldLevel(),
+      ownedPlots: this.ownedPlots,
+      counts: {
+        desk: this.deskStaff,
+        janitor: this.janitors,
+        mechanic: this.mechanics,
+        researcher: this.researchers,
+      },
+      clock: Math.max(0, this.clock),
+      work: origin ? { c: origin.c + 1, r: origin.r + 1 } : { c: 16, r: 16 },
+    }
+  }
+
+  private payHire(base: number, label: string): boolean {
+    const cost = this.staffHireCost(base)
+    if (!this.spend(cost, label)) return false
+    if (!this.sandbox && cost > 0) this.postJournal('staff_hiring', cost, this.simMinutes())
+    return true
+  }
+
+  private settleStaffHousing(completedDay: number) {
+    const roll = this.staffHousing.closeDay(this.staffField(), completedDay)
+    if (roll.upkeep > 0 && !this.sandbox) {
+      this.charge(roll.upkeep)
+      this.postJournal(
+        'building_upkeep',
+        roll.upkeep,
+        (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1,
+      )
+    }
+    if (roll.reputationHit > 0) this.reputation = Math.max(0, this.reputation - roll.reputationHit)
+    if (roll.quit) this.releaseStaff(roll.quit)
+    if (roll.news) this.pushNews(roll.news, roll.late || roll.quit ? 'bad' : 'ok')
+  }
+
+  private releaseStaff(role: StaffSeat) {
+    if (role === 'desk' && this.deskStaff > 0) {
+      this.deskStaff -= 1
+      this.assignHallStaff()
+      return
+    }
+    if (role === 'janitor' && this.janitors > 0) {
+      this.janitors -= 1
+      const pawn = this.people.findIndex((person) => person.job === 'janitor')
+      if (pawn >= 0) this.people.splice(pawn, 1)
+      return
+    }
+    if (role === 'mechanic' && this.mechanics > 0) {
+      this.mechanics -= 1
+      const pawn = this.people.findIndex((person) => person.job === 'mechanic')
+      if (pawn >= 0) this.people.splice(pawn, 1)
+      return
+    }
+    if (role === 'researcher' && this.researchers > 0) {
+      this.researchers -= 1
+      const pawn = this.people.findIndex((person) => person.job === 'researcher')
+      if (pawn >= 0) this.people.splice(pawn, 1)
+    }
+  }
+
   hireJanitor() {
     if (this.janitors >= 6) {
       this.pushNews('Janitor crew maxed (6).', 'bad')
       this.emit()
       return
     }
-    if (!this.spend(JANITOR_HIRE, 'hire janitor')) return
+    if (!this.payHire(JANITOR_HIRE, 'hire janitor')) return
     this.janitors += 1
     this.spawnJanitorPawn()
     this.pushNews(
@@ -8953,7 +9060,7 @@ export class Game {
     const stations = Math.max(1, desks + boards + machines)
     const workingCap = Math.min(this.researchers, Math.max(1, desks || (stations > 0 ? 1 : 0)))
     if (desks + boards + machines < 1) {
-      return this.researchers * RP_RATE_BARE
+      return this.researchers * RP_RATE_BARE * this.staffHousing.outputPace()
     }
     const gear =
       Math.min(desks, workingCap) * RP_RATE_DESK +
@@ -8961,7 +9068,7 @@ export class Game {
       Math.min(machines, workingCap) * RP_RATE_MACHINE
     // Extra warm bodies beyond gear still drip a little.
     const overflow = Math.max(0, this.researchers - workingCap) * RP_RATE_BARE
-    return gear + overflow
+    return (gear + overflow) * this.staffHousing.outputPace()
   }
 
   hireResearcher() {
@@ -8975,7 +9082,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(RESEARCHER_HIRE, 'hire researcher')) return
+    if (!this.payHire(RESEARCHER_HIRE, 'hire researcher')) return
     this.researchers += 1
     this.spawnResearcherPawn()
     const { desks } = this.labGear()
@@ -9170,7 +9277,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(DESK_STAFF_HIRE, 'hire desk staff')) return
+    if (!this.payHire(DESK_STAFF_HIRE, 'hire desk staff')) return
     this.deskStaff += 1
     this.assignHallStaff()
     this.pushNews(
@@ -9298,7 +9405,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(MECHANIC_HIRE, 'hire mechanic')) return
+    if (!this.payHire(MECHANIC_HIRE, 'hire mechanic')) return
     this.mechanics += 1
     this.spawnMechanicPawn()
     this.pushNews(
@@ -9455,6 +9562,7 @@ export class Game {
    * Landside upkeep is the old six payroll-tick slices, billed once.
    */
   private closeOperatingDay(completedDay: number) {
+    this.settleStaffHousing(completedDay)
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -9553,7 +9661,7 @@ export class Game {
           getPowerLoads: () => [],
           getChains: () => [],
           getTransitTier: () => (this.hasRailStation() ? 'rail' : this.hasBusCurb() ? 'bus' : 'road'),
-          getHousingTier: () => 0,
+          getHousingTier: () => this.staffHousing.economyTier(),
           getPowerPlantTier: () => 1,
           saveEconomyState: (state) => {
             this.economyState = state

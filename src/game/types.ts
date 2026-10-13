@@ -1,3 +1,5 @@
+import type { StaffHousingSave } from '../staffhousing/types.ts'
+
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
 
@@ -852,6 +854,8 @@ export interface GameSnapshot {
   parcels: number
   /** Expansion plots bought after the starter site. Missing on older saves. */
   ownedPlots?: { id: string; assessed: number }[]
+  /** Staff housing on expansion plots. Missing on older saves. */
+  staffHousing?: StaffHousingSave
   /** Outsourced pavement crew. Missing on older saves. */
   maintenanceContract?: boolean
   railLinked: boolean
