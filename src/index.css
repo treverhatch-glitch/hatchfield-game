@@ -2516,3 +2516,17 @@ h1 {
   gap: 6px;
   align-items: center;
 }
+
+/* Photo mode keeps the shot clear. The camera bar is the only overlay. */
+.shell.photo-mode .hud,
+.shell.photo-mode .owner-chrome,
+.shell.photo-mode .inspect-card,
+.shell.photo-mode .hall-chrome,
+.shell.photo-mode .hall-build,
+.shell.photo-mode .kit-bar,
+.shell.photo-mode .kit-tip,
+.shell.photo-mode .hall-alert,
+.shell.photo-mode [data-testid='price-war-card'],
+.shell.photo-mode [data-testid='playtest-year-report'] {
+  display: none;
+}
