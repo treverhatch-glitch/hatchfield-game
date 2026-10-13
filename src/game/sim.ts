@@ -298,6 +298,30 @@ import {
   type EconomyAdapter,
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
+import {
+  accrueChallenges,
+  challengeCards,
+  climateAlert,
+  climateCaption,
+  climateWear,
+  demandCalendar,
+  engineDerate,
+  environmentBinding,
+  feedWinterOps,
+  fieldDraw,
+  holidaysOn,
+  mapById,
+  parseMapId,
+  passengerFactor,
+  rollMapWeather,
+  seasonOn,
+  weatherTitle,
+  winterForecast,
+  type ChallengeCard,
+  type MapDraw,
+  type MapId,
+  type WinterOpsReading,
+} from '../maps/index.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
 import {
   commitPlot,
@@ -732,6 +756,12 @@ export class Game {
   runwayCondition = 100
   weather: Weather = 'clear'
   weatherCool = 45
+  /** New-game climate. Temperate keeps today's calendar, weather roll, and ramp. */
+  mapId: MapId = 'temperate'
+  mapChallenges: Record<string, number> = {}
+  /** Snow sample pushed into winter ops, when that module is installed. */
+  winterOps: WinterOpsReading | null = null
+  private mapClimateKey = ''
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
@@ -1005,6 +1035,10 @@ export class Game {
     this.runwayCondition = 100
     this.weather = 'clear'
     this.weatherCool = 45
+    this.mapId = 'temperate'
+    this.mapChallenges = {}
+    this.winterOps = null
+    this.mapClimateKey = ''
     this.payrollCool = 30
     this.payrollDay = 0
     this.levyMark = 0
@@ -1119,11 +1153,100 @@ export class Game {
     try {
       sessionStorage.setItem(
         'hatchfield-pending',
-        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty }),
+        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty, mapId: this.mapId }),
       )
     } catch {
       /* node / private mode */
     }
+  }
+
+  /** Climate for a new field. Safe before the plot is bought. */
+  setMap(id: MapId) {
+    const next = parseMapId(id)
+    if (next !== this.mapId) {
+      this.mapId = next
+      if (!this.site) this.mapChallenges = {}
+      this.mapClimateKey = ''
+      this.economy?.engine.setCalendar(demandCalendar(this.mapId))
+      this.refreshWinter()
+    }
+    this.rememberPending()
+    this.emit()
+  }
+
+  private rememberPending() {
+    if (this.site) return
+    try {
+      sessionStorage.setItem(
+        'hatchfield-pending',
+        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty, mapId: this.mapId }),
+      )
+    } catch {
+      /* node / private mode */
+    }
+  }
+
+  gameDay(): number {
+    return Math.floor(Math.max(0, this.clock) / 180)
+  }
+
+  /** Sky and farmland tint. Null on the temperate map. */
+  get mapDraw(): MapDraw | null {
+    return fieldDraw(this.mapId, this.gameDay())
+  }
+
+  mapEngineDerate(): number {
+    return engineDerate(this.mapId, this.gameDay())
+  }
+
+  mapGoalCards(): ChallengeCard[] {
+    return challengeCards(this.mapId, this.mapChallenges)
+  }
+
+  mapSummary(): { name: string; region: string; season: string; blurb: string } {
+    const map = mapById(this.mapId)
+    const season = seasonOn(map, this.gameDay())
+    return { name: map.name, region: map.region, season: season?.name ?? map.name, blurb: map.blurb }
+  }
+
+  climateCaption(): string {
+    const line = climateCaption(this.mapId, this.gameDay(), this.weather)
+    if (this.winterOps?.needsDeicing) return `${line} · De-ice`
+    return line
+  }
+
+  private refreshWinter() {
+    this.winterOps = feedWinterOps(winterForecast(this.mapId, this.gameDay(), this.weather))
+  }
+
+  private noteMapClimate() {
+    this.refreshWinter()
+    if (this.mapId === 'temperate' || !this.site) return
+    const binding = environmentBinding(this.mapId, this.gameDay())
+    const key = `${binding.season.id}|${binding.activeHolidays.map((holiday) => holiday.id).join(',')}`
+    if (key === this.mapClimateKey) return
+    const first = this.mapClimateKey === ''
+    this.mapClimateKey = key
+    if (first) return
+    const holiday = binding.activeHolidays.map((item) => item.name).join(' and ')
+    this.pushNews(
+      holiday
+        ? `${binding.season.name} · ${holiday} peak on the board.`
+        : `${binding.season.name} has started.`,
+      'ok',
+    )
+  }
+
+  private noteMapGoals(pax: number) {
+    const map = mapById(this.mapId)
+    const season = seasonOn(map, this.gameDay())
+    const next = accrueChallenges(this.mapId, this.mapChallenges, {
+      pax,
+      seasonId: season?.id ?? null,
+      holidayIds: holidaysOn(map, this.gameDay()).map((holiday) => holiday.id),
+      heat: engineDerate(this.mapId, this.gameDay()) > 1,
+    })
+    this.mapChallenges = next
   }
 
   /** Morning checklist — hides once dismissed or after the first takeoff. */
@@ -1616,7 +1739,8 @@ export class Game {
 
   private rampPace(airframeId: string, cargo: boolean, airlineId: string): number {
     const slow = this.diplomacy?.slowFactor(airlineId) ?? 1
-    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow
+    const derate = this.mapId === 'temperate' ? 1 : this.mapEngineDerate()
+    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow * derate
   }
 
   private gradeDiplomacyTurn(f: Flight) {
@@ -3407,6 +3531,8 @@ export class Game {
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
+      mapId: this.mapId,
+      mapChallenges: this.mapChallenges,
       sandbox: this.sandbox,
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
@@ -3558,6 +3684,10 @@ export class Game {
       this.cargoWarehouse = s.cargoWarehouse ?? 0
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
+      this.mapId = parseMapId(s.mapId)
+      this.mapChallenges = s.mapChallenges ?? {}
+      this.winterOps = null
+      this.mapClimateKey = ''
       this.sandbox = s.sandbox ?? true
       this.sites = s.sites ?? []
       this.diplomacy = null
@@ -3717,6 +3847,8 @@ export class Game {
       const hold = AIRFRAMES[f.airframeId]?.cargoHold
       this.dayCargo += hold && hold > 0 ? hold : Math.max(8, f.pax || 16)
     }
+    const pax = f.cargo || f.kind === 'freighter' ? 0 : Math.max(0, f.pax)
+    this.noteMapGoals(pax)
   }
 
   /** Hourly book for the economy charts. One in-game hour is 7.5 sim-seconds. */
@@ -4288,7 +4420,9 @@ export class Game {
     cargo: boolean,
   ): { pax: number; bagUnits: number; fuelLevel: number } {
     const freighter = cargo || af.kind === 'freighter'
-    const pax = freighter ? 0 : paxForAirframe(af)
+    const booked = freighter ? 0 : paxForAirframe(af)
+    const factor = passengerFactor(this.mapId, this.gameDay())
+    const pax = freighter || factor === 1 ? booked : Math.max(1, Math.round(booked * factor))
     const bagUnits = freighter
       ? 0
       : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
@@ -9390,14 +9524,7 @@ export class Game {
   }
 
   weatherLabel(): string {
-    return (
-      {
-        clear: 'Clear',
-        rain: 'Rain',
-        fog: 'Fog',
-        storm: 'Storm',
-      } as const
-    )[this.weather]
+    return weatherTitle(this.mapId, this.gameDay(), this.weather)
   }
 
   weatherCrashMult(): number {
@@ -9422,24 +9549,30 @@ export class Game {
     if (this.weatherCool > 0) return
     this.weatherCool = 35 + Math.random() * 40
     const roll = Math.random()
-    const next: Weather =
-      roll < 0.55 ? 'clear' : roll < 0.75 ? 'rain' : roll < 0.9 ? 'fog' : 'storm'
+    const next = rollMapWeather(this.mapId, this.gameDay(), roll)
     if (next !== this.weather) {
       this.weather = next
-      if (next === 'storm') {
-        this.stormPulseCool = 0
-        this.pushNews(
-          this.hasResearch('deice')
-            ? 'Storm cell over the field — de-ice pads online; expect soft slips, not a washout.'
-            : 'Storm cell over the field — wet strip, high crash risk if pavement is soft. Research De-ice ops.',
-          'bad',
-        )
-      } else if (next === 'clear' && this.runwayCondition < 50) {
-        this.pushNews('Skies clear, but the runway still needs work.', 'ok')
-      } else if (next !== 'clear') {
-        this.pushNews(`Weather: ${this.weatherLabel()}.`, 'ok')
+      if (this.mapId === 'temperate') {
+        if (next === 'storm') {
+          this.stormPulseCool = 0
+          this.pushNews(
+            this.hasResearch('deice')
+              ? 'Storm cell over the field — de-ice pads online; expect soft slips, not a washout.'
+              : 'Storm cell over the field — wet strip, high crash risk if pavement is soft. Research De-ice ops.',
+            'bad',
+          )
+        } else if (next === 'clear' && this.runwayCondition < 50) {
+          this.pushNews('Skies clear, but the runway still needs work.', 'ok')
+        } else if (next !== 'clear') {
+          this.pushNews(`Weather: ${this.weatherLabel()}.`, 'ok')
+        }
+      } else {
+        if (next === 'storm') this.stormPulseCool = 0
+        const alert = climateAlert(this.mapId, this.gameDay(), next)
+        if (alert) this.pushNews(alert.text, alert.tone)
       }
     }
+    this.refreshWinter()
   }
 
   tickPayroll(_dt: number) {
@@ -9564,6 +9697,7 @@ export class Game {
         },
         { initialState: this.economyState ?? undefined },
       )
+      this.economy.engine.setCalendar(demandCalendar(this.mapId))
     }
     return this.economy
   }
@@ -9577,10 +9711,9 @@ export class Game {
     const liveJets = this.flights.filter(
       (f) => (f.craft ?? 'jet') === 'jet' && f.phase !== 'gone' && f.phase !== 'hold',
     ).length
-    const decay =
-      dt *
-      (0.35 + liveJets * 0.25 + (this.weather === 'storm' ? 0.55 : this.weather === 'rain' ? 0.25 : 0)) *
-      (1.4 - mx * 0.6)
+    const wet = this.weather === 'storm' ? 0.55 : this.weather === 'rain' ? 0.25 : 0
+    const wear = this.mapId === 'temperate' ? wet : wet * climateWear(this.mapId, this.gameDay())
+    const decay = dt * (0.35 + liveJets * 0.25 + wear) * (1.4 - mx * 0.6)
     this.runwayCondition = clamp(this.runwayCondition - decay, 0, 100)
 
     // Funded mechanics repair.
@@ -12965,6 +13098,7 @@ export class Game {
     this.tickHall(step)
     this.tickLuggage(step)
     this.tickWeather(step)
+    this.noteMapClimate()
     this.tickPayroll(step)
     this.tickScaleFuel(step)
     this.tickMaintenance(step)

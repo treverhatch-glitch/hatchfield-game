@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
-import { simClockToHour, skyState, type SkyState } from './daylight'
-import { buildLandscape, GrassRing, Rain, SkyDome } from './environment'
+import { lerpHex, simClockToHour, skyState, type SkyState } from './daylight'
+import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './environment'
 import {
   apronMasts,
   jetBridges,
@@ -98,6 +98,7 @@ export class WorldRenderer {
   private frame = 0
   private lastShadowKey = ''
   private hallCrowd: HallCrowd | null = null
+  private terrainKey = ''
 
   constructor(scene: THREE.Scene, quality: QualityLevel, opts: WorldRenderOptions = {}) {
     this.scene = scene
@@ -164,6 +165,7 @@ export class WorldRenderer {
     this.root.add(this.lights.root)
     this.landscape = buildLandscape(this.tex.grass, q.trees)
     this.root.add(this.landscape.group)
+    this.terrainKey = ''
     this.grass = new GrassRing(q.grassTufts)
     this.root.add(this.grass.mesh)
     this.rain = new Rain(q.precipitation)
@@ -310,6 +312,22 @@ export class WorldRenderer {
     const hour = this.hourOverride ?? simClockToHour(view.clock ?? 0)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const s = skyState(hour, weather)
+    const draw = view.mapDraw
+    if (draw && draw.skyAmount > 0) {
+      const k = draw.skyAmount
+      s.skyTop = lerpHex(s.skyTop, draw.skyTop, k)
+      s.skyHorizon = lerpHex(s.skyHorizon, draw.skyHorizon, k)
+      s.fogColor = s.skyHorizon
+      s.sunColor = lerpHex(s.sunColor, draw.sun, k)
+      s.hemiSky = lerpHex(s.hemiSky, draw.hemi, k * 0.7)
+      s.hemiGround = lerpHex(s.hemiGround, draw.ground, k)
+      s.sunIntensity *= draw.sunScale
+      if (draw.fogScale > 0) {
+        s.fogFar = Math.max(70, s.fogFar * draw.fogScale)
+        s.fogNear = Math.max(12, Math.min(s.fogNear, s.fogFar * 0.45))
+      }
+    }
+    this.syncTerrain(draw?.terrain ?? null)
     this.state = s
     if (s.lightning && Math.random() < step * 0.25) this.flash = 1
     this.flash = Math.max(0, this.flash - step * 5)
@@ -346,6 +364,7 @@ export class WorldRenderer {
     for (const [k, m] of this.surfaceMats) {
       if (k !== 'grass') m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
+    this.paintPlot(draw ?? null)
 
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, s.lights, focus)
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
@@ -355,6 +374,47 @@ export class WorldRenderer {
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)
     this.rain.update(step, s.precip, focus.x, focus.z)
+  }
+
+  /**
+   * Plot grass uses a green albedo, so a multiply alone stays green.
+   * A terrain colour on `color` plus a little emissive shifts the field
+   * toward sand or jungle. Temperate passes null and the albedo is unchanged.
+   */
+  private paintPlot(draw: { terrain: { ground: number } | null } | null) {
+    const grass = this.surfaceMats.get('grass')
+    if (!grass) return
+    const ground = draw?.terrain?.ground
+    if (ground == null) {
+      grass.color.setHex(0xffffff)
+      grass.emissive.setHex(0x000000)
+    } else {
+      grass.color.setHex(ground)
+      grass.emissive.setHex(ground)
+      grass.emissiveIntensity = 0.28
+    }
+    const tuft = this.grass?.mesh.material
+    if (tuft instanceof THREE.MeshLambertMaterial) {
+      if (ground == null) {
+        tuft.color.setHex(0xffffff)
+        tuft.emissive.setHex(0x000000)
+      } else {
+        tuft.color.setHex(ground)
+        tuft.emissive.setHex(ground)
+        tuft.emissiveIntensity = 0.2
+      }
+    }
+  }
+
+  /** Swap the outer farmland when a map brings its own ground colours. */
+  private syncTerrain(tint: LandscapeTint | null) {
+    const key = tint ? `${tint.ground}|${tint.fields.join(',')}|${tint.trees.join(',')}` : ''
+    if (key === this.terrainKey || !this.tex) return
+    this.terrainKey = key
+    this.landscape?.dispose()
+    this.landscape?.group.removeFromParent()
+    this.landscape = buildLandscape(this.tex.grass, this.q.trees, tint)
+    this.root.add(this.landscape.group)
   }
 
   /** Shadow pass every `shadowEvery` frames, or at once when the shadow box moves. */
