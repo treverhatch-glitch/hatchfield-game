@@ -125,7 +125,9 @@ describe('initWorldRender', () => {
     expect(g.route && g.route.length).toBeGreaterThan(1)
     const near = camAt(cellX(16), cellZ(20), 14)
     for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
-    const body = scene.getObjectByName('hall-guest-body') as THREE.InstancedMesh
+    const body = (['people-lod0', 'people-lod1', 'people-lod2', 'hall-guest-body']
+      .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
+      .find((mesh) => mesh && mesh.count > 0) ?? scene.getObjectByName('hall-guest-body')) as THREE.InstancedMesh
     expect(body).toBeTruthy()
     expect(body.count).toBeGreaterThan(0)
     const a = new THREE.Matrix4()

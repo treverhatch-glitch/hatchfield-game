@@ -10482,6 +10482,20 @@ export class Game {
     return payrollAmount(lines, this.fieldOpsMult())
   }
 
+  /**
+   * What the next operating day will bill: staff floor, landside (already a
+   * daily total) plus pillar and premium upkeep, plot holding, and the city
+   * levy on today's cash. The HUD forecast uses this; it does not post.
+   */
+  dailyOperatingCharges(): { payroll: number; upkeep: number; holding: number; levy: number } {
+    return {
+      payroll: this.payrollPreview(),
+      upkeep: this.landsideUpkeep() + this.pillarUpkeepBill() + dailyUpkeep(this.premium),
+      holding: this.site ? this.dailyHoldingQuote() : 0,
+      levy: cityLevy(this.cash, this.sandbox),
+    }
+  }
+
   hireJanitor() {
     if (this.janitors >= 6) {
       this.pushNews('Janitor crew maxed (6).', 'bad')
