@@ -148,6 +148,7 @@ import type { RoomPlan } from '../render/world/rooms.ts'
 import {
   hallPath,
   isAirside,
+  NODE_POS,
   openForGuest,
   reachableNeed,
   openNodesFromRooms,
@@ -202,6 +203,9 @@ import {
   ceilingsFor,
   itemDef,
   laneStats,
+  GRID_C,
+  GRID_R,
+  HALL_W,
   lookaheadDepth,
   needsMaintenance,
   overCapMultiplier,
@@ -235,6 +239,22 @@ import {
   type PlacementCheck,
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
+import {
+  cellAt,
+  dropLitterAt,
+  snackKind,
+  snackMinutes,
+  litterAdvice,
+  litterComfortHit,
+  litterInZone,
+  litterJoyDrain,
+  restroomDirtFor,
+  restroomJoyHit,
+  stepJanitor,
+  type HallJanitor,
+  type LitterHall,
+} from './litter.ts'
+import { LITTER_TUNING } from './litterData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -371,12 +391,17 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
+/** The hall's items are the same objects; the stored type is just looser. */
+const asLitterHall = (fit: TerminalFit): LitterHall => fit as unknown as LitterHall
+
 /** Per-tick seat pool and comfort cache for one hall. */
 interface HallKitState {
   items: PlacedItem[]
   zones: (string | null)[][]
   seatsLeft: Map<ZoneId, number>
   comfort: Map<HallNode, number>
+  /** Floor litter in the zone around each node. */
+  litter: Map<HallNode, number>
 }
 
 const emptyRooms = (): Record<RoomId, number> => ({
@@ -624,6 +649,12 @@ export class Game {
   standAccessMode: StandAccess = 'remote'
   janitors = 0
   janitorCool = 0
+  /** Janitors walking the halls — sweep litter, empty cans, service WCs. One per hire. */
+  hallJanitors: HallJanitor[] = []
+  /** Unique suffix for litter pieces. */
+  litterSeq = 0
+  /** Seconds until the litter / restroom advisor notes refresh. */
+  litterAdviceCool = 0
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -900,6 +931,9 @@ export class Game {
     this.standAccessMode = 'remote'
     this.janitors = 0
     this.janitorCool = 0
+    this.hallJanitors = []
+    this.litterSeq = 0
+    this.litterAdviceCool = 0
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -2148,6 +2182,7 @@ export class Game {
     this.standAccess = {}
     this.standAccessMode = 'remote'
     this.janitors = 0
+    this.hallJanitors = []
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -4811,7 +4846,13 @@ export class Game {
     if (!state) {
       const items = (fit.items ?? []) as PlacedItem[]
       const zones = fit.zones ?? []
-      state = { items, zones, seatsLeft: seatsByZone(zones, items), comfort: new Map() }
+      state = {
+        items,
+        zones,
+        seatsLeft: seatsByZone(zones, items),
+        comfort: new Map(),
+        litter: new Map(),
+      }
       cache.set(key, state)
     }
     const walking = g.path.length > 0 && g.seg < g.path.length - 1
@@ -4827,12 +4868,117 @@ export class Game {
       }
     }
     let comfort = state.comfort.get(g.node)
-    if (comfort == null) {
-      comfort = nodeComfort(state.zones, state.items, g.node)
+    let litter = state.litter.get(g.node)
+    if (comfort == null || litter == null) {
+      litter = zone ? litterInZone(asLitterHall(fit), zone) : 0
+      // Rubbish on the floor eats into what the decorations give.
+      comfort = nodeComfort(state.zones, state.items, g.node) - litterComfortHit(litter)
       state.comfort.set(g.node, comfort)
+      state.litter.set(g.node, litter)
     }
     if (comfort > 0 && g.happiness < 100) {
       g.happiness = Math.min(100, g.happiness + dt * comfort * KIT_TUNING.comfortJoyPerSec)
+    }
+    if (litter > 0) {
+      g.happiness = Math.max(0, g.happiness - dt * litterJoyDrain(litter))
+    }
+  }
+
+  /** Where the guest stands in the hall, normalized like NODE_POS. Matches the hall renderer. */
+  guestSpot(g: HallGuest): { x: number; y: number } {
+    const node = g.path.length ? g.path[Math.min(g.seg, g.path.length - 1)] : g.node
+    const next = g.path.length && g.seg < g.path.length - 1 ? g.path[g.seg + 1] : null
+    const a = NODE_POS[node]
+    const b = next ? NODE_POS[next] : a
+    const t = next ? Math.min(1, Math.max(0, g.t)) : 0
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+  }
+
+  /** A meal or coffee goes into the guest's hand. They finish it over a few game minutes. */
+  giveSnack(g: HallGuest, outlet: PlacedItem | null) {
+    if (g.snack) this.finishSnack(g)
+    const kind = snackKind(outlet?.def)
+    this.litterSeq += 1
+    // Spread by sequence, not Math.random, so litter never shifts a seeded run.
+    const u = ((this.litterSeq * 7919) % 1000) / 1000
+    g.snack = { kind, left: snackMinutes(kind, u) / GAME_MINUTES_PER_SIM_SECOND }
+  }
+
+  /** Track the guest's spot and count down the snack in hand. */
+  tickSnack(g: HallGuest, dt: number) {
+    g.spot = this.guestSpot(g)
+    if (!g.snack) return
+    g.snack.left -= dt
+    if (g.snack.left <= 0) this.finishSnack(g)
+  }
+
+  /**
+   * The cup or wrapper is empty. A can with room near where the guest is now
+   * takes it; otherwise it lands right there. Guests who board or leave first
+   * drop it at their last spot in the hall.
+   */
+  finishSnack(g: HallGuest): 'bin' | 'floor' | null {
+    if (!g.snack) return null
+    g.snack = undefined
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit) return null
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const spot = g.spot ?? this.guestSpot(g)
+    const rows = hall.zones.length || GRID_R
+    const cols = hall.zones[0]?.length || GRID_C
+    this.litterSeq += 1
+    return dropLitterAt(hall, cellAt(spot.x, spot.y, cols, rows), `lit-${this.litterSeq}`)
+  }
+
+  /** Keep one hall janitor per hire, shared round-robin across halls. */
+  private syncHallJanitors() {
+    const keys = this.fits.map((f) => this.hallKey(f))
+    if (!keys.length) {
+      this.hallJanitors = []
+      return
+    }
+    this.hallJanitors = this.hallJanitors.filter((j) => keys.includes(j.hallId))
+    while (this.hallJanitors.length > this.janitors) this.hallJanitors.pop()
+    while (this.hallJanitors.length < this.janitors) {
+      const hallId = keys[this.hallJanitors.length % keys.length]
+      const fit = this.fitByKey(hallId)
+      const zones = fit?.zones?.length ? fit.zones : prefabZones()
+      this.hallJanitors.push({
+        id: uid('hjan'),
+        hallId,
+        x: (zones[0]?.length ?? GRID_C) / 2,
+        z: zones.length / 2,
+        task: null,
+        work: 0,
+      })
+    }
+  }
+
+  /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
+  tickHallJanitors(dt: number) {
+    this.syncHallJanitors()
+    const clean = this.budgets.cleaning / 100
+    if (clean >= LITTER_TUNING.minCleaningBudget) {
+      const claimed = new Map<string, Set<string>>()
+      for (const j of this.hallJanitors) {
+        const fit = this.fitByKey(j.hallId)
+        if (!fit) continue
+        const hall = asLitterHall(fit)
+        const cols = hall.zones?.[0]?.length || GRID_C
+        let taken = claimed.get(j.hallId)
+        if (!taken) {
+          taken = new Set()
+          claimed.set(j.hallId, taken)
+        }
+        // A thin cleaning budget means a slower, part-time crew.
+        stepJanitor(j, hall, dt * clean, HALL_W / cols, taken)
+      }
+    }
+    this.litterAdviceCool -= dt
+    if (this.litterAdviceCool <= 0) {
+      this.litterAdviceCool = 5
+      this.refreshAdvice()
     }
   }
 
@@ -4914,6 +5060,7 @@ export class Game {
         g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
       }
       this.applyHallKit(g, dt, kit)
+      this.tickSnack(g, dt)
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5145,6 +5292,8 @@ export class Game {
         this.layover.samples += 1
       }
     }
+    // Boarded or left with a snack still in hand: the rubbish stays at their last spot.
+    for (const g of this.hallGuests) if (g.dead && g.snack) this.finishSnack(g)
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
     if (this.departedFlights.size > 24) {
       const live = new Set(this.hallGuests.map((g) => g.flightId))
@@ -5452,6 +5601,7 @@ export class Game {
         scope: 'apron',
       })
     }
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
     this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
@@ -6583,6 +6733,16 @@ export class Game {
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
       g.happiness += wear >= 60 ? -2 : 4
       g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
+      const wcFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      if (wcFit) {
+        const dirt = Math.min(100, (wcFit.restroomDirt ?? 0) + restroomDirtFor(g.tag))
+        wcFit.restroomDirt = dirt
+        const hit = restroomJoyHit(dirt)
+        if (hit > 0) {
+          g.happiness -= hit
+          g.thought = 'Restroom was filthy'
+        }
+      }
     }
     if (n === 'food') {
       let pay = tagPrice(g.tag, 12, 18, 24, 32)
@@ -6621,6 +6781,7 @@ export class Game {
         }
         this.foodShelf -= 1
         this.mealSold = true
+        this.giveSnack(g, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
@@ -8372,7 +8533,7 @@ export class Game {
     this.janitors += 1
     this.spawnJanitorPawn()
     this.pushNews(
-      `Hired janitor #${this.janitors}. They scrub WC/security when cleaning budget is funded.`,
+      `Hired janitor #${this.janitors}. They sweep litter, empty trash cans, and service restrooms when cleaning budget is funded.`,
       'good',
     )
     this.emit()
@@ -12379,6 +12540,7 @@ export class Game {
     this.tickHub(step)
     this.tickParking(step)
     this.tickJanitors(step)
+    this.tickHallJanitors(step)
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)

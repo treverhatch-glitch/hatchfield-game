@@ -24,9 +24,11 @@ import {
   buildKitInstances,
   disposeKitInstances,
   hasKitMesh,
+  kitMeshKey,
   layoutItems,
   slotCenter,
 } from './hallKitMeshes'
+import { HallLitterLayer } from './hallLitter'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
@@ -102,6 +104,8 @@ export class HallWorld {
   private ray = new THREE.Raycaster()
   /** Instanced food, seat, and decor meshes. Rebuilt with the room hash. */
   kitGroup = new THREE.Group()
+  /** Floor litter decals and janitor pawns. */
+  litter = new HallLitterLayer()
   build: HallBuildMode = null
   /** Called after a successful place, so the bar can close. */
   onPlaced: (() => void) | null = null
@@ -158,6 +162,7 @@ export class HallWorld {
 
     this.scene.add(this.roomGroup)
     this.scene.add(this.kitGroup)
+    this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
     this.overlay.visible = false
     this.scene.add(this.overlay)
@@ -459,7 +464,7 @@ export class HallWorld {
     const open = [...game.hallOpen()].sort().join(',')
     const choke = game.hasSecurityChoke() ? '1' : '0'
     const paint = zones.map((row) => row.join(',')).join('|')
-    const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}`).join(';')
+    const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
     const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}`
     if (hash === this.roomHash) return
     this.roomHash = hash
@@ -533,7 +538,7 @@ export class HallWorld {
         this.guestGroup.remove(mesh)
         mesh.geometry.dispose()
         ;(mesh.material as THREE.Material).dispose()
-        for (const key of ['pin', 'carry', 'checked'] as const) {
+        for (const key of ['pin', 'carry', 'checked', 'snack'] as const) {
           const child = mesh.userData[key] as THREE.Mesh | undefined
           child?.geometry.dispose()
           ;(child?.material as THREE.Material | undefined)?.dispose()
@@ -576,6 +581,14 @@ export class HallWorld {
         checked.position.set(-0.62, -0.12, 0.18)
         mesh.add(checked)
         mesh.userData.checked = checked
+        // Coffee cup or meal box in hand until it is finished.
+        const snack = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 0.16, 0.12),
+          new THREE.MeshLambertMaterial({ color: '#f4efe4' }),
+        )
+        snack.position.set(0.3, 0.05, 0.22)
+        mesh.add(snack)
+        mesh.userData.snack = snack
         this.guests.set(g.id, mesh)
         this.guestGroup.add(mesh)
       }
@@ -601,6 +614,9 @@ export class HallWorld {
       const checked = mesh.userData.checked as THREE.Mesh
       carry.visible = g.carryOn !== false
       checked.visible = Boolean(g.hasChecked)
+      const snack = mesh.userData.snack as THREE.Mesh
+      snack.visible = Boolean(g.snack)
+      if (g.snack) snack.scale.set(g.snack.kind === 'meal' ? 1.8 : 1, g.snack.kind === 'meal' ? 0.6 : 1, 1)
       this.syncBubble(mesh, g.thought)
     }
   }
@@ -821,6 +837,8 @@ export class HallWorld {
     this.syncOverlay(game)
     this.syncHotspots(game)
     this.syncGhost(game)
+    const { cols, rows } = this.zoneGrid()
+    this.litter.sync(game, cols, rows)
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -963,6 +981,7 @@ export class HallWorld {
     canvas.removeEventListener('wheel', this.onWheel)
     this.clearKit()
     this.ghostMat.dispose()
+    this.litter.dispose()
     this.renderer.dispose()
   }
 }
