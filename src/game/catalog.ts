@@ -79,6 +79,11 @@ export const GUARD_COST = 9_500
 export const CARGO_INTAKE_FEE = 420
 /** Soft warehouse capacity at one cargo shed (units). */
 export const CARGO_WAREHOUSE_CAP = 140
+/** Cargo volume letter — fee band + cool between asks. */
+export const CARGO_VOLUME_FEE_MIN = 4_200
+export const CARGO_VOLUME_FEE_MAX = 9_500
+export const CARGO_VOLUME_COOL = 70
+export const CARGO_VOLUME_FAIL_FINE = 1_800
 export const ROAD_COST = 450
 export const TOWER_COST = 18000
 export const HANGAR_COST = 14000

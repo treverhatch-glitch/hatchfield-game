@@ -269,6 +269,20 @@ export function Hud({ game }: { game: Game }) {
               left: Math.ceil(game.fieldTaskLeft()),
             })
           }
+          if (game.cargoVolume) {
+            const v = game.cargoVolume
+            const a = game.airline(v.airline)
+            letters.push({
+              id: 'cargo-vol',
+              kind: 'Volume',
+              from: a.name,
+              title: `${a.name} volume window`,
+              blurb: `Stage ${v.delivered}/${v.targetUnits}u through the shed · ${money(v.fee)} · On-time on the line`,
+              tone: v.delivered >= v.targetUnits * 0.55 ? 'good' : 'ok',
+              left: Math.ceil(game.cargoVolumeLeft()),
+              live: true,
+            })
+          }
           if (game.layoverOffer && layoverAirline) {
             letters.push({
               id: 'layover',
@@ -565,7 +579,11 @@ export function Hud({ game }: { game: Game }) {
                       Starter kit · {money(STARTER_KIT_COST)}
                     </button>
                     <p className="muted">
-                      Drops a Northline-ready regional field + Apex + SkyBite. Empty plot only.
+                      {game.startFocus === 'cargo'
+                        ? 'Cargo kit: strip, freighter stand, guard → shed, Apex — no pax hall. Empty plot only.'
+                        : game.startFocus === 'hybrid'
+                          ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
+                          : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). Empty plot only.'}
                     </p>
                     <div className="loan-products">
                       <h4 className="loan-h">Bank desk</h4>
@@ -1454,6 +1472,9 @@ export function Hud({ game }: { game: Game }) {
               {game.apronJamLine() ? ` · ${game.apronJamLine()}` : ''}
               {tilesOf(game.tiles, 'cargo').length
                 ? ` · warehouse ${Math.round(game.cargoWarehouseFill() * 100)}% (${game.cargoWarehouse}u)`
+                : ''}
+              {game.cargoVolume
+                ? ` · volume ${game.cargoVolume.delivered}/${game.cargoVolume.targetUnits}u`
                 : ''}
             </p>
           </div>

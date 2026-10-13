@@ -2,7 +2,7 @@
 
 **Purpose:** One file for an external reviewer / Grok bot.  
 **Use this to understand goals, what is already coded, what was briefed but not built yet, and how the game is meant to play.**  
-**Date snapshot:** after slice **2** (guard post + city cargo trucks → shed).  
+**Date snapshot:** after slice **3** (cargo start focus + volume letters).  
 **Code order of truth:** [BUILD.md](./BUILD.md) · North star: [VISION.md](./VISION.md)
 
 ---

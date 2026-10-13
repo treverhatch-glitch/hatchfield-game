@@ -16,8 +16,8 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 | **1** | **Bag units + premade ceilings + layover through-bags** | Mix matters; starter hall hits limits; transfers don’t claim | **SHIPPED** |
 | **1b** | **Full bag journey + claim scheduling** | Check-in deposit → process → plane; inbound unload → process → assigned claim | **SHIPPED** |
 | **2** | Guard post tile + city cargo trucks → shed | Cargo has a journey | **SHIPPED** |
-| **3** | Cargo start focus + kit + volume letter + warehouse meter | Cargo is a real start fantasy | **NEXT** |
-| **4** | Fuel bowser capacity + farm stock refill contract | Manor Lords fuel picture | After 2–3 |
+| **3** | Cargo start focus + kit + volume letter + warehouse meter | Cargo is a real start fantasy | **SHIPPED** |
+| **4** | Fuel bowser capacity + farm stock refill contract | Manor Lords fuel picture | **NEXT** |
 | **5** | Budget panel clarity + coach for kit/loan | Money readable | Parallel anytime |
 | **6** | Screen building + loader GSE + C-ladder UI | Cargo midgame | After 3 |
 | **7** | Intl zone · franchises · scenarios · mega-hub look | Scale | Late |
