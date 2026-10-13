@@ -31,6 +31,12 @@ export type Tile =
   | 'rail'
   /** Apron terminal-bus depot — ferries remote-stand pax. */
   | 'termbus'
+  /** Guideway between terminals. Pods run while the link is open. */
+  | 'mover'
+  /** Airside buses for connecting passengers. */
+  | 'xferbus'
+  /** Covered bridge between terminal halls. */
+  | 'skywalk'
   /** Catering production for the ground fleet. */
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
@@ -93,6 +99,9 @@ export type Tool =
   | 'deice'
   | 'bus'
   | 'term_bus'
+  | 'people_mover'
+  | 'xfer_bus'
+  | 'skywalk'
   | 'rail'
   | 'kitchen'
   | 'depot'
@@ -330,7 +339,7 @@ export interface BuildDef {
   cost: number
   blurb: string
   /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
-  minFieldLevel?: 1 | 2 | 3 | 4 | 5
+  minFieldLevel?: number
 }
 
 export interface RoomDef {
@@ -841,6 +850,14 @@ export interface GameSnapshot {
   researchUnlocked?: ResearchId[]
   /** Connecting passengers who missed the onward flight. */
   missedConnections?: number
+  /** Wear on the people mover and the airside transfer bus. */
+  linkWear?: { mover: number; bus: number }
+  /** True when that link is stopped after a breakdown. */
+  linkDown?: { mover: boolean; bus: boolean }
+  /** Gates named by the last people-mover breakdown. */
+  strandedGates?: string[]
+  /** Plain-language reason the link is stopped. */
+  linkExplanation?: string
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number

@@ -36,6 +36,7 @@ export type ItemId =
   | 'info_screen'
   | 'info_kiosk'
   | 'fountain'
+  | 'walkway'
 
 export const GRID_C = 8
 export const GRID_R = 5

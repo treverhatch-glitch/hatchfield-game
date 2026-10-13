@@ -24,6 +24,7 @@ const KIT_TABS: { id: KitCategory; label: string }[] = [
   { id: 'food', label: 'Food' },
   { id: 'seating', label: 'Seating' },
   { id: 'decor', label: 'Decor' },
+  { id: 'links', label: 'Links' },
 ]
 
 /** Slim build bar for the terminal kit. Cards close once the item is placed. */
@@ -171,6 +172,9 @@ export function TerminalView({ game }: { game: Game }) {
     if (!canvas) return
     const world = new HallWorld(canvas)
     worldRef.current = world
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __hall?: HallWorld }).__hall = world
+    }
     world.onPlaced = () => setBuild(null)
     world.onHover = setHover
     world.setBuild(buildRef.current)
@@ -218,6 +222,10 @@ export function TerminalView({ game }: { game: Game }) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
+      if (import.meta.env.DEV) {
+        const probe = window as unknown as { __hall?: HallWorld }
+        if (probe.__hall === world) delete probe.__hall
+      }
       worldRef.current = null
       world.dispose()
     }

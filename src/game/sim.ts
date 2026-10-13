@@ -82,6 +82,7 @@ import {
   LOAN_FEE,
   LOAN_PRINCIPAL,
   LOAN_PRODUCTS,
+  FIELD_LEVEL_CAP,
   FIELD_LEVEL_XP,
   fieldLevelFromXp,
   normalizeAirline,
@@ -265,6 +266,21 @@ import {
   type GatePoint,
   type Movement,
 } from '../hub/index.ts'
+import {
+  CONNECTIVITY_CATALOG,
+  LINK_MAINT_SAFE,
+  LINK_WEAR_BREAK,
+  LINK_WEAR_PER_DAY,
+  dailyUpkeep,
+} from '../connectivity/catalog.ts'
+import {
+  breakdown,
+  choosePassengerLink,
+  linkTerminals,
+  type ConnectivityBuildingId,
+  type LinkMode,
+  type PassengerLink,
+} from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import {
   commitPlot,
@@ -592,6 +608,14 @@ export class Game {
   bagsMishandled = 0
   /** Connecting passengers who missed MCT. Not counted as lost. */
   missedConnections = 0
+  /** Wear toward a breakdown. Maintenance at or above the safe line holds it. */
+  linkWear = { mover: 0, bus: 0 }
+  /** A breakdown closes the link until it is repaired. */
+  linkDown = { mover: false, bus: false }
+  /** Gates the last people-mover breakdown named. */
+  strandedGates: string[] = []
+  /** Why the link is stopped, for the info submenu. */
+  linkExplanation = ''
   private hubLinks: { guestId: string; airlineId: string; resolveAt: number; made: boolean }[] = []
   /** 0–1 parade clock for belts and carousels. */
   bagPhase = 0
@@ -873,6 +897,10 @@ export class Game {
     this.bagsLost = 0
     this.bagsMishandled = 0
     this.missedConnections = 0
+    this.linkWear = { mover: 0, bus: 0 }
+    this.linkDown = { mover: false, bus: false }
+    this.strandedGates = []
+    this.linkExplanation = ''
     this.hubLinks = []
     this.bagPhase = 0
     this.bagShow = null
@@ -1440,8 +1468,16 @@ export class Game {
     return normalizeAirline(raw)
   }
 
-  fieldLevel(): AirlineTier {
+  fieldLevel(): number {
     return fieldLevelFromXp(this.fieldXp)
+  }
+
+  /**
+   * Airline ladder, diplomacy, and the operating licence stay on levels 1–5.
+   * Levels 6 and 7 only open hub links.
+   */
+  private hostedFieldLevel(): number {
+    return Math.min(5, this.fieldLevel())
   }
 
   /** Diplomacy day, 0 until the clock has run. */
@@ -1503,7 +1539,7 @@ export class Game {
     const onTime = this.diplomacy?.onTimePct() ?? 88
     const feeIndex = this.diplomacy?.adapter.engine.state.feeIndex ?? 1
     return {
-      fieldLevel: this.fieldLevel(),
+      fieldLevel: this.hostedFieldLevel(),
       metrics: {
         onTimePct: onTime,
         feeIndex,
@@ -1529,7 +1565,7 @@ export class Game {
         hasSmallStands: classes.some((c) => c === 'S' || c === 'M'),
         hasMediumStands: classes.some((c) => c === 'M' || c === 'L'),
         hasHeavyStands: classes.some((c) => c === 'L'),
-        terminalRating: this.fieldLevel(),
+        terminalRating: this.hostedFieldLevel(),
         hasFuelService: tilesOf(this.tiles, 'fuel').length > 0,
         hasCateringService: Boolean(this.caterBrand) || tilesOf(this.tiles, 'kitchen').length > 0,
         hasMaintenanceService: tilesOf(this.tiles, 'hangar').length > 0,
@@ -1651,14 +1687,14 @@ export class Game {
     return sum / this.signed.length
   }
 
-  fieldXpToNext(): { level: AirlineTier; xp: number; need: number; pct: number } {
+  fieldXpToNext(): { level: number; xp: number; need: number; pct: number } {
     const level = this.fieldLevel()
-    if (level >= 5) {
-      return { level: 5, xp: this.fieldXp, need: FIELD_LEVEL_XP[5], pct: 1 }
+    if (level >= FIELD_LEVEL_CAP) {
+      return { level: FIELD_LEVEL_CAP, xp: this.fieldXp, need: FIELD_LEVEL_XP[FIELD_LEVEL_CAP], pct: 1 }
     }
-    const next = (level + 1) as AirlineTier
-    const floor = FIELD_LEVEL_XP[level]
-    const need = FIELD_LEVEL_XP[next]
+    const next = level + 1
+    const floor = FIELD_LEVEL_XP[level] ?? 0
+    const need = FIELD_LEVEL_XP[next] ?? floor
     const pct = need <= floor ? 1 : Math.min(1, (this.fieldXp - floor) / (need - floor))
     return { level, xp: this.fieldXp, need, pct }
   }
@@ -1669,10 +1705,11 @@ export class Game {
     this.fieldXp += amount
     const after = this.fieldLevel()
     if (after > before) {
-      this.pushNews(
-        `Field Level ${after} — ${AIRLINE_TIER_META[after].label} carriers will start calling.`,
-        'good',
-      )
+      const opened =
+        after <= 5
+          ? `${AIRLINE_TIER_META[after as AirlineTier].label} carriers will start calling.`
+          : 'hub links open.'
+      this.pushNews(`Field Level ${after} — ${opened}`, 'good')
     } else if (why && amount >= 12) {
       /* quiet drip — big chunks can mention */
       void why
@@ -2449,7 +2486,7 @@ export class Game {
         plots: this.site ? this.ownedPlots : [],
         assetValue: this.builtAssetValue(),
         incidents: this.securityIncidents,
-        fieldLevel: this.fieldLevel(),
+        fieldLevel: this.hostedFieldLevel(),
         operational: this.fieldIsOperating(),
         powerLoad: loads.power,
         waterLoad: loads.water,
@@ -3328,6 +3365,10 @@ export class Game {
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
       missedConnections: this.missedConnections,
+      linkWear: this.linkWear,
+      linkDown: this.linkDown,
+      strandedGates: this.strandedGates,
+      linkExplanation: this.linkExplanation,
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
@@ -3450,6 +3491,16 @@ export class Game {
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
       this.missedConnections = s.missedConnections ?? 0
+      this.linkWear = {
+        mover: Number.isFinite(s.linkWear?.mover) ? s.linkWear!.mover : 0,
+        bus: Number.isFinite(s.linkWear?.bus) ? s.linkWear!.bus : 0,
+      }
+      this.linkDown = {
+        mover: s.linkDown?.mover === true,
+        bus: s.linkDown?.bus === true,
+      }
+      this.strandedGates = (s.strandedGates ?? []).filter((id) => typeof id === 'string' && id.length > 0)
+      this.linkExplanation = typeof s.linkExplanation === 'string' ? s.linkExplanation : ''
       this.hubLinks = []
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
@@ -5070,7 +5121,7 @@ export class Game {
 
       if (g.path.length && g.seg < g.path.length - 1) {
         if (g.route == null) this.armGuestRoute(g)
-        g.t += dt * 1.35
+        g.t += dt * 1.35 * this.walkBoost(g)
         let held = false
         while (g.t >= 1 && g.seg < g.path.length - 1) {
           const finished = g.route
@@ -5311,6 +5362,21 @@ export class Game {
       g.wx = route[0].x
       g.wz = route[0].z
     }
+  }
+
+  /** A moving walkway speeds only the metres of this leg that the belt covers. */
+  private walkBoost(g: HallGuest): number {
+    const route = g.route
+    if (!route || route.length < 2) return 1
+    const span = polylineLength(route)
+    if (!(span > 0)) return 1
+    const covered = Math.min(span, this.walkwayCoverMetres(g.hallId))
+    const mult = CONNECTIVITY_CATALOG.moving_walkway.speedMult
+    if (!(covered > 0) || !(mult > 1)) return 1
+    const time = covered / mult + (span - covered)
+    if (!(time > 0)) return 1
+    const boost = span / time
+    return Number.isFinite(boost) && boost > 0 ? boost : 1
   }
 
   /** `g.t` stays 0..1 for queues. World position is that fraction along the doorway polyline. */
@@ -5725,7 +5791,231 @@ export class Game {
   }
 
   private hubRide(): boolean {
-    return tilesOf(this.tiles, 'termbus').length > 0
+    const link = this.connectionLink()
+    return link !== 'walk' && link !== 'walkway'
+  }
+
+  linkStopped(mode: LinkMode): boolean {
+    return mode === 'people_mover' ? this.linkDown.mover : this.linkDown.bus
+  }
+
+  /** Metres of moving walkway in one hall, or across the field when no hall is named. */
+  walkwayCoverMetres(hallId?: string | null): number {
+    const length = CONNECTIVITY_CATALOG.moving_walkway.lengthMetres
+    let count = 0
+    for (const fit of this.fits) {
+      if (hallId && this.hallKey(fit) !== hallId) continue
+      for (const item of fit.items ?? []) {
+        if (item.def === 'walkway') count += 1
+      }
+    }
+    return count * length
+  }
+
+  private hallFootprint(fit: TerminalFit): Vec[] {
+    const span = fit.premade ? 3 : 2
+    const cells: Vec[] = []
+    for (let r = 0; r < span; r++) {
+      for (let c = 0; c < span; c++) cells.push({ c: fit.origin.c + c, r: fit.origin.r + r })
+    }
+    return cells
+  }
+
+  private skywalkTouches(fit: TerminalFit, cell: Vec): boolean {
+    return this.hallFootprint(fit).some(
+      (hall) => Math.abs(hall.c - cell.c) + Math.abs(hall.r - cell.r) <= 1,
+    )
+  }
+
+  /** True when one connected run of skywalk tiles touches both halls. */
+  skywalkBetween(fromKey: string, toKey: string): boolean {
+    if (fromKey === toKey) return false
+    const walks = tilesOf(this.tiles, 'skywalk')
+    if (!walks.length) return false
+    const from = this.fitByKey(fromKey)
+    const to = this.fitByKey(toKey)
+    if (!from || !to) return false
+    const open = new Set(walks.map((cell) => `${cell.c},${cell.r}`))
+    const seen = new Set<string>()
+    for (const start of walks) {
+      const startKey = `${start.c},${start.r}`
+      if (seen.has(startKey)) continue
+      const queue = [start]
+      seen.add(startKey)
+      let hitsFrom = false
+      let hitsTo = false
+      while (queue.length) {
+        const cell = queue.pop()!
+        if (this.skywalkTouches(from, cell)) hitsFrom = true
+        if (this.skywalkTouches(to, cell)) hitsTo = true
+        for (const next of [
+          { c: cell.c + 1, r: cell.r },
+          { c: cell.c - 1, r: cell.r },
+          { c: cell.c, r: cell.r + 1 },
+          { c: cell.c, r: cell.r - 1 },
+        ]) {
+          const key = `${next.c},${next.r}`
+          if (!open.has(key) || seen.has(key)) continue
+          seen.add(key)
+          queue.push(next)
+        }
+      }
+      if (hitsFrom && hitsTo) return true
+    }
+    return false
+  }
+
+  private hallKeyForGate(gateId: string): string | null {
+    const [c, r] = gateId.split(',').map((part) => Number(part))
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return this.fits[0] ? this.hallKey(this.fits[0]) : null
+    const fit = this.roomsAt({ c, r })
+    return fit ? this.hallKey(fit) : null
+  }
+
+  /** People mover, then the airside bus, then the terminal bus, then a skywalk, then a belt. */
+  connectionLink(fromId?: string, toId?: string): PassengerLink {
+    const fromHall = fromId ? this.hallKeyForGate(fromId) : null
+    const toHall = toId ? this.hallKeyForGate(toId) : null
+    const skywalk =
+      fromHall != null && toHall != null && fromHall !== toHall && this.skywalkBetween(fromHall, toHall)
+    return choosePassengerLink({
+      peopleMoverOpen: tilesOf(this.tiles, 'mover').length > 0 && !this.linkDown.mover,
+      transferBusOpen: tilesOf(this.tiles, 'xferbus').length > 0 && !this.linkDown.bus,
+      terminalBusOpen: tilesOf(this.tiles, 'termbus').length > 0,
+      skywalkOpen: skywalk,
+      walkwayMetres: this.walkwayCoverMetres(),
+    })
+  }
+
+  private connectivityTerminals() {
+    return this.fits.map((fit) => ({
+      id: this.hallKey(fit),
+      gateIds: tilesOf(this.tiles, 'stand')
+        .filter((stand) => {
+          const hall = this.roomsAt(stand)
+          return hall != null && this.hallKey(hall) === this.hallKey(fit)
+        })
+        .map((stand) => `${stand.c},${stand.r}`),
+    }))
+  }
+
+  /**
+   * Close one ride. The people mover names the gates it strands.
+   * The transfer bus stops that link and drops its apron traffic.
+   */
+  breakLink(mode: LinkMode) {
+    const terminals = this.connectivityTerminals()
+    const ends = terminals.map((terminal) => terminal.id)
+    const fromId = ends[0] ?? 'hall'
+    const toId = ends[1] ?? 'apron'
+    const attempt = linkTerminals(fromId, toId, mode, mode)
+    if (!attempt.ok) return
+    const stopped = breakdown(attempt.link, terminals)
+    if (mode === 'people_mover') this.linkDown.mover = true
+    else this.linkDown.bus = true
+    if (stopped.event.strandsGates) this.strandedGates = [...stopped.event.strandedGateIds]
+    else if (!this.linkDown.mover) this.strandedGates = []
+    this.linkExplanation = stopped.event.explanation
+    this.pushNews(stopped.event.explanation, 'bad')
+    this.emit()
+  }
+
+  linkRepairOffer(): { mode: LinkMode; label: string; cost: number } | null {
+    if (this.linkDown.mover && tilesOf(this.tiles, 'mover').length > 0) {
+      const spec = CONNECTIVITY_CATALOG.people_mover
+      return {
+        mode: 'people_mover',
+        label: `Repair the people mover · $${spec.repairCost.toLocaleString('en-US')}`,
+        cost: spec.repairCost,
+      }
+    }
+    if (this.linkDown.bus && tilesOf(this.tiles, 'xferbus').length > 0) {
+      const spec = CONNECTIVITY_CATALOG.airside_transfer_bus_depot
+      return {
+        mode: 'airside_transfer_bus',
+        label: `Repair the transfer bus · $${spec.repairCost.toLocaleString('en-US')}`,
+        cost: spec.repairCost,
+      }
+    }
+    return null
+  }
+
+  repairLink(mode: LinkMode) {
+    const down = this.linkStopped(mode)
+    if (!down) return
+    const spec = CONNECTIVITY_CATALOG[mode === 'people_mover' ? 'people_mover' : 'airside_transfer_bus_depot']
+    if (!this.spend(spec.repairCost, spec.name)) return
+    if (!this.sandbox) this.postJournal('construction', spec.repairCost, this.simMinutes())
+    if (mode === 'people_mover') {
+      this.linkDown.mover = false
+      this.linkWear.mover = 0
+    } else {
+      this.linkDown.bus = false
+      this.linkWear.bus = 0
+    }
+    this.strandedGates = []
+    this.linkExplanation = ''
+    this.pushNews(`${spec.name} running again.`, 'good')
+    this.emit()
+  }
+
+  private connectivityUpkeep(): number {
+    const ids: ConnectivityBuildingId[] = []
+    for (const _tile of tilesOf(this.tiles, 'mover')) ids.push('people_mover')
+    for (const _tile of tilesOf(this.tiles, 'xferbus')) ids.push('airside_transfer_bus_depot')
+    for (const _tile of tilesOf(this.tiles, 'skywalk')) ids.push('skywalk')
+    return dailyUpkeep(ids)
+  }
+
+  private ageLinks() {
+    if (this.budgets.maintenance >= LINK_MAINT_SAFE) return
+    const wear = (built: boolean, current: number, mode: LinkMode) => {
+      if (!built || this.linkStopped(mode)) return current
+      const next = current + LINK_WEAR_PER_DAY
+      if (next >= LINK_WEAR_BREAK) this.breakLink(mode)
+      return next
+    }
+    this.linkWear.mover = wear(tilesOf(this.tiles, 'mover').length > 0, this.linkWear.mover, 'people_mover')
+    this.linkWear.bus = wear(tilesOf(this.tiles, 'xferbus').length > 0, this.linkWear.bus, 'airside_transfer_bus')
+  }
+
+  private linkWord(link: PassengerLink): string {
+    if (link === 'people_mover') return 'people mover'
+    if (link === 'airside_transfer_bus') return 'transfer bus'
+    if (link === 'terminal_bus') return 'terminal bus'
+    if (link === 'skywalk') return 'skywalk'
+    if (link === 'walkway') return 'moving walkway'
+    return 'walk'
+  }
+
+  linkLines(): string[] {
+    const mover = tilesOf(this.tiles, 'mover').length
+    const bus = tilesOf(this.tiles, 'xferbus').length
+    const sky = tilesOf(this.tiles, 'skywalk').length
+    const belts = this.walkwayCoverMetres()
+    const moverSpec = CONNECTIVITY_CATALOG.people_mover
+    const busSpec = CONNECTIVITY_CATALOG.airside_transfer_bus_depot
+    const lines = [
+      mover
+        ? this.linkDown.mover
+          ? `People mover stopped — ${this.strandedGates.length} gates stranded`
+          : `People mover open · ${moverSpec.rideMinutes} min · ${moverSpec.paxPerHour.toLocaleString('en-US')}/h · $${moverSpec.upkeepPerDay.toLocaleString('en-US')}/day`
+        : `People mover not built · Field ${moverSpec.fieldLevel}`,
+      bus
+        ? this.linkDown.bus
+          ? 'Airside transfer bus stopped — that link is closed'
+          : `Transfer bus open · ${busSpec.rideMinutes} min · apron +${busSpec.apronTrafficPerHour}/h · $${busSpec.upkeepPerDay.toLocaleString('en-US')}/day`
+        : `Transfer bus not built · Field ${busSpec.fieldLevel}`,
+      tilesOf(this.tiles, 'termbus').length
+        ? 'Terminal bus fallback open'
+        : 'No terminal bus — remote stands still walk',
+      sky ? `${sky} skywalk${sky === 1 ? '' : 's'} · $${(sky * CONNECTIVITY_CATALOG.skywalk.upkeepPerDay).toLocaleString('en-US')}/day` : 'No skywalk',
+      belts > 0
+        ? `Moving walkways cover ${belts} m at ×${CONNECTIVITY_CATALOG.moving_walkway.speedMult}`
+        : 'No moving walkway',
+    ]
+    if (this.linkExplanation) lines.push(this.linkExplanation)
+    return lines
   }
 
   private hubGates(): GatePoint[] {
@@ -5790,7 +6080,7 @@ export class Game {
     const to = gates.find((gate) => gate.id !== from?.id) ?? from
     if (!from || !to) return
     const facilities = this.hubFacilities()
-    const ride = this.hubRide()
+    const link = this.connectionLink(from.id, to.id)
     const arrivalAt = this.simMinutes()
     const departureAt = this.hubOnwardMinute(arrivalAt)
     for (const index of indexes) {
@@ -5801,7 +6091,9 @@ export class Game {
         departureAt,
         from,
         to,
-        ride,
+        ride: false,
+        link,
+        walkwayMetres: this.walkwayCoverMetres(),
         facilities,
       })
       g.transfer = true
@@ -5819,7 +6111,7 @@ export class Game {
       g.t = 0
       g.route = undefined
       g.connectFlightId = `connect:${f.id}:${to.id}`
-      g.thought = ride ? `Connecting — bus to gate ${to.id}` : `Connecting — walk to gate ${to.id}`
+      g.thought = `Connecting — ${this.linkWord(link)} to gate ${to.id}`
       this.issueBagTags(g.id, g.flightId, g.tag, g.connectFlightId, 'transfer')
       const windowSec = Math.max(0.5, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
       this.hubLinks.push({
@@ -5905,6 +6197,8 @@ export class Game {
       missed: this.missedConnections,
       facilities: this.hubFacilities(),
       banks: buildBanks(this.hubMovements()),
+      linkFor: (from, to) => this.connectionLink(from, to),
+      walkwayMetres: this.walkwayCoverMetres(),
     }).lines
   }
 
@@ -5916,7 +6210,10 @@ export class Game {
       spots.push({ id: 'lost', label: 'Lost passengers' })
       spots.push({ id: 'bags', label: 'Bags' })
       spots.push({ id: 'retail', label: 'Shops' })
-      if (this.fieldLevel() >= 3) spots.push({ id: 'connections', label: 'Connections' })
+      if (this.fieldLevel() >= 3) {
+        spots.push({ id: 'connections', label: 'Connections' })
+        spots.push({ id: 'links', label: 'Links' })
+      }
     }
     if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
     else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
@@ -5962,6 +6259,7 @@ export class Game {
       ]
     }
     if (id === 'connections') return this.connectionMapLines()
+    if (id === 'links') return this.linkLines()
     return []
   }
 
@@ -6660,6 +6958,7 @@ export class Game {
     if (!fit || !def) return false
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
     if (!this.spend(def.cost, def.name)) return false
+    if (!this.sandbox && id === 'walkway') this.postJournal('construction', def.cost, this.simMinutes())
     fit.items = fit.items ?? []
     this.hallItemSeq += 1
     fit.items.push({
@@ -9229,6 +9528,19 @@ export class Game {
       this.charge(hubBill)
       this.postJournal('building_upkeep', hubBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
     }
+    const linkBill = this.connectivityUpkeep()
+    if (linkBill > 0) {
+      this.charge(linkBill)
+      this.postJournal('building_upkeep', linkBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    const beltBill = this.walkwayCoverMetres() > 0
+      ? (this.walkwayCoverMetres() / CONNECTIVITY_CATALOG.moving_walkway.lengthMetres) *
+        CONNECTIVITY_CATALOG.moving_walkway.upkeepPerDay
+      : 0
+    if (beltBill > 0) {
+      this.postJournal('building_upkeep', beltBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    this.ageLinks()
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
     this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
@@ -9293,7 +9605,7 @@ export class Game {
     if (!this.economy) {
       this.economy = createEconomyAdapter(
         {
-          getFieldLevel: () => this.fieldLevel(),
+          getFieldLevel: () => this.hostedFieldLevel(),
           isAirportOperational: () => this.flightsDone > 0 || this.signed.length > 0,
           getAbsoluteDay: () => Math.floor(this.clock / 180),
           getStaffPools: () => ({
@@ -10328,6 +10640,12 @@ export class Game {
       this.emit()
       return
     }
+    if (
+      !this.sandbox &&
+      (building.tile === 'mover' || building.tile === 'xferbus' || building.tile === 'skywalk')
+    ) {
+      this.postJournal('construction', stampCost, this.simMinutes())
+    }
     const standCls: StandClass =
       this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
     const hotelCls: HotelClass =
@@ -10350,6 +10668,12 @@ export class Game {
       news = 'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.'
     } else if (building.tile === 'termbus') {
       news = `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`
+    } else if (building.tile === 'mover') {
+      news = `People mover online ($${CONNECTIVITY_CATALOG.people_mover.cost.toLocaleString('en-US')}). Connecting passengers ride it. A breakdown strands the link.`
+    } else if (building.tile === 'xferbus') {
+      news = `Airside transfer bus online ($${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.cost.toLocaleString('en-US')}). Slow, and it adds apron traffic.`
+    } else if (building.tile === 'skywalk') {
+      news = `Skywalk open ($${CONNECTIVITY_CATALOG.skywalk.cost.toLocaleString('en-US')}). It links the terminals it touches.`
     } else if (building.tile === 'deice') {
       news = `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`
     } else if (building.tile === 'bus') {
