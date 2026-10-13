@@ -40,7 +40,7 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 ## What’s in
 
-- Personas, heat, rewards / abandon, layovers → Hub plaques
+- Personas, **Standing** (carrier relations), rewards / abandon, layovers → Hub plaques
 - Flight planner (day strip + night column, ETA drag, stand pin), N-strip inbound banks
 - Stand S / M / L stamps · de-ice pad + glycol trucks in storm/fog
 - Multi-terminal jetways (`T1·G2·M`), landside hotels / car parks
@@ -64,13 +64,16 @@ Browser save key: `apron-save-v24`. New game overwrites it.
 
 | Doc | Purpose |
 | --- | --- |
-| [docs/VISION.md](./docs/VISION.md) | North-star: pax + cargo + emergency + mil |
-| [docs/DESIGN.md](./docs/DESIGN.md) | Pillars + apron / pax / hall / cargo traffic |
-| [docs/IDEAS.md](./docs/IDEAS.md) | Backlog (emergencies, mil host, cargo chain…) |
-| [docs/PROBLEMS.md](./docs/PROBLEMS.md) | Gaps & pathfinding honesty |
-| [docs/ECONOMY.md](./docs/ECONOMY.md) | Money loops |
+| [docs/BUILD.md](./docs/BUILD.md) | **Implementation order — start here to ship code** |
+| [docs/VISION.md](./docs/VISION.md) | North-star + living logistics picture |
+| [docs/REAL_OPS.md](./docs/REAL_OPS.md) | Real airport pipelines → game verbs |
+| [docs/DESIGN.md](./docs/DESIGN.md) | Pillars + vocabulary + traffic |
+| [docs/EXECUTION.md](./docs/EXECUTION.md) | Active wave board |
+| [docs/ECONOMY.md](./docs/ECONOMY.md) | Money · bags · Standing |
 | [docs/PROGRESSION.md](./docs/PROGRESSION.md) | Tiers · Field XP · loans · cargo ladder |
-| [docs/NEXT.md](./docs/NEXT.md) | What to build next |
+| [docs/IDEAS.md](./docs/IDEAS.md) | Backlog |
+| [docs/PROBLEMS.md](./docs/PROBLEMS.md) | Gaps |
+| [docs/NEXT.md](./docs/NEXT.md) | Checklist |
 | [ADDITIONS.md](./ADDITIONS.md) | Research log / shipped changelog |
 
 ## Verify

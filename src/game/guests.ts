@@ -398,6 +398,45 @@ export function tagSpendsUp(tag: PaxTag): boolean {
 }
 
 /**
+ * Relative checked-bag load per guest type (aggregate units, not agents).
+ * Budget light · premium heavy — drives handling time + claim pressure.
+ */
+export function bagUnitsForTag(tag: PaxTag): number {
+  return tag === 'premium' ? 2.4 : tag === 'family' ? 1.7 : tag === 'business' ? 1.35 : 0.65
+}
+
+/**
+ * Estimate flight bag units from carrier persona + pax count.
+ * Used when we don't simulate every suitcase.
+ */
+export function estimateFlightBagUnits(
+  persona:
+    | 'budget'
+    | 'business'
+    | 'luxury'
+    | 'cargo_night'
+    | 'military_gov',
+  pax: number,
+): number {
+  if (pax <= 0) return 0
+  // Sample a mix matching rollPaxTag weights without rolling dozens of guests.
+  const weights =
+    persona === 'luxury'
+      ? { premium: 0.5, business: 0.28, family: 0.14, budget: 0.08 }
+      : persona === 'business'
+        ? { premium: 0.2, business: 0.38, family: 0.24, budget: 0.18 }
+        : persona === 'cargo_night' || persona === 'military_gov'
+          ? { premium: 0.05, business: 0.15, family: 0.3, budget: 0.5 }
+          : { premium: 0.07, business: 0.15, family: 0.28, budget: 0.5 }
+  const perPax =
+    weights.premium * bagUnitsForTag('premium') +
+    weights.business * bagUnitsForTag('business') +
+    weights.family * bagUnitsForTag('family') +
+    weights.budget * bagUnitsForTag('budget')
+  return Math.max(1, Math.round(pax * perPax * 0.55))
+}
+
+/**
  * RCT wallet roll — wide random band per type, rare broke / whale outliers.
  * Transfer layovers get a small bump (captive spenders).
  */

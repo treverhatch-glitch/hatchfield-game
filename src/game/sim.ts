@@ -137,6 +137,8 @@ import {
   needToNode,
   openForGuest,
   openNodesFromRooms,
+  bagUnitsForTag,
+  estimateFlightBagUnits,
   rollPaxTag,
   spawnHallGuest,
   strongestNeed,
@@ -267,12 +269,17 @@ const emptyRooms = (): Record<RoomId, number> => ({
 })
 
 function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, number>>): TerminalFit {
+  const r = { ...emptyRooms(), ...(rooms ?? {}) }
+  const claimRooms = Math.max(1, r.bagclaim || (premade ? 1 : 0))
   return {
     origin,
     premade,
-    rooms: { ...emptyRooms(), ...(rooms ?? {}) },
+    rooms: r,
     wearBath: 0,
     wearSec: 0,
+    // Premade shells work day one but hit ceilings — custom halls can raise caps.
+    capGuests: premade ? 28 : 48,
+    claimRate: premade ? 0.72 + claimRooms * 0.08 : 0.9 + claimRooms * 0.12,
   }
 }
 
@@ -2380,12 +2387,19 @@ export class Game {
     try {
       const s = JSON.parse(raw) as GameSnapshot
       this.tiles = s.tiles
-      this.fits = (s.terminalFits ?? []).map((f) => ({
-        ...f,
-        rooms: { ...emptyRooms(), ...(f.rooms ?? {}) },
-        wearBath: f.wearBath ?? 0,
-        wearSec: f.wearSec ?? 0,
-      }))
+      this.fits = (s.terminalFits ?? []).map((f) => {
+        const rooms = { ...emptyRooms(), ...(f.rooms ?? {}) }
+        const claimRooms = Math.max(1, rooms.bagclaim || (f.premade ? 1 : 0))
+        return {
+          ...f,
+          rooms,
+          wearBath: f.wearBath ?? 0,
+          wearSec: f.wearSec ?? 0,
+          capGuests: f.capGuests ?? (f.premade ? 28 : 48),
+          claimRate:
+            f.claimRate ?? (f.premade ? 0.72 + claimRooms * 0.08 : 0.9 + claimRooms * 0.12),
+        }
+      })
       this.cash = s.cash
       this.difficulty = s.difficulty
       this.site = s.site
@@ -2632,6 +2646,18 @@ export class Game {
     return openNodesFromRooms(fit.rooms)
   }
 
+  /** Claim belt clear speed — premade ceilings + overcrowding slow bags. */
+  claimClearRate(fit: TerminalFit | null): number {
+    const base = fit?.claimRate ?? 1
+    const cap = fit?.capGuests ?? 40
+    const key = fit ? this.hallKey(fit) : null
+    const pop = key
+      ? this.hallGuests.filter((g) => !g.dead && g.hallId === key).length
+      : this.hallGuests.length
+    const crowd = pop > cap ? 1 / (1 + (pop - cap) * 0.08) : 1
+    return 12 * base * crowd
+  }
+
   hallOpen(): Set<HallNode> {
     return this.hallOpenFor(this.activeHall())
   }
@@ -2718,6 +2744,10 @@ export class Game {
       const modes = this.pickGuestMode(tag, a.persona, job)
       g.preferMode = modes.prefer
       g.arriveMode = modes.actual
+      // Heavy bags = more claim work (premium/family); budgets travel light.
+      if (job === 'arrive') {
+        g.needs.bags = Math.min(99, 40 + bagUnitsForTag(tag) * 22)
+      }
       if (mode === 'jetway') {
         g.needs.boarding = Math.min(99, g.needs.boarding + 18)
         g.needs.shop = Math.min(99, g.needs.shop + 14)
@@ -2792,7 +2822,11 @@ export class Game {
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
       if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
-      if (g.job === 'arrive') g.needs.bags = Math.max(0, g.needs.bags - (g.node === 'claim' ? dt * 12 : 0))
+      if (g.job === 'arrive' && g.node === 'claim' && !g.transfer) {
+        const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
+        const rate = this.claimClearRate(fit)
+        g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
+      }
 
       if (g.path.length && g.seg < g.path.length - 1) {
         g.t += dt * 1.35
@@ -4343,6 +4377,7 @@ export class Game {
       parkStaySec: o.staySec,
       parkLeaveRequestedAt: null,
       parkLeaveBy: null,
+      bagUnits: estimateFlightBagUnits('budget', Math.max(1, af.paxMin)),
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
@@ -4408,13 +4443,27 @@ export class Game {
       hallId: this.hallKey(fit),
     })
     g.node = 'gate'
-    g.thought = `${a.name} transfer — kill time in the hall`
+    // Through-checked bags — pax stay airside; bags transfer off claim.
+    g.needs.bags = 0
+    g.thought = `${a.name} transfer — bags through-checked, kill time in the hall`
     g.needs.boarding = 35 + Math.random() * 40
     if (open.has('food')) this.routeGuest(g, 'food', open)
     else if (open.has('shop')) this.routeGuest(g, 'shop', open)
     else if (open.has('dayhotel')) this.routeGuest(g, 'dayhotel', open)
     else if (open.has('lounge')) this.routeGuest(g, 'lounge', open)
-    else if (open.has('claim')) this.routeGuest(g, 'claim', open)
+    else if (open.has('claim')) {
+      // Fallback only — claim as transfer path means thin transfer infra.
+      this.routeGuest(g, 'claim', open)
+      g.thought = `${a.name} transfer — recheck bags (no through path)`
+      g.needs.bags = Math.min(99, 55 + bagUnitsForTag(tag) * 18)
+      this.adjustHeat(airlineId, -1.4)
+      if (Math.random() < 0.4) {
+        this.pushNews(
+          `${a.name} transfer bags forced to claim — Standing dips. Build transfer capacity.`,
+          'bad',
+        )
+      }
+    }
     this.hallGuests.push(g)
     // Transfers scuff the hall faster.
     if (Math.random() < 0.35) this.bumpWear('bath', 0.4)
@@ -6424,6 +6473,7 @@ export class Game {
       hangarBay: null,
       mxEndsAt: null,
       mxPending: false,
+      bagUnits: def.kind === 'cargo' ? 0 : estimateFlightBagUnits(def.persona, pax),
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
@@ -7149,7 +7199,21 @@ export class Game {
         // Aircraft unload complete — pay; claim delivery is the next leg.
         f.posted.bags = true
         f.waitingOn.bags = false
-        if (!f.cargo) this.earn(airline.bags, `${f.flightNo} bag handling`, f)
+        if (!f.cargo) {
+          const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
+          const mult = clamp(0.75 + units / 180, 0.75, 1.55)
+          this.earn(Math.round(airline.bags * mult), `${f.flightNo} bag handling`, f)
+          // Heavy bag load on a thin premade claim → Standing pressure.
+          const fit = this.roomsAt(f.stand)
+          const claimCap = (fit?.rooms.bagclaim ?? 0) * (fit?.premade ? 55 : 80)
+          if (fit && units > claimCap && Math.random() < 0.55) {
+            this.adjustHeat(f.airline, -1.8)
+            this.pushNews(
+              `${f.flightNo} claim jammed — ${units} bag units vs thin hall. Standing dips.`,
+              'bad',
+            )
+          }
+        }
         else {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
           if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
@@ -7635,6 +7699,7 @@ export class Game {
       waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
+      bagUnits: a.kind === 'cargo' ? 0 : estimateFlightBagUnits(a.persona, pax),
     }
     f.emergencyHost = true
     f.hostKind = 'divert'
