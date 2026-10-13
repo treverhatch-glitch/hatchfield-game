@@ -191,9 +191,12 @@ import {
   blankZones,
   ceilingsFor,
   itemDef,
+  DEPARTURE_SPREAD_SEC,
   laneStats,
   lookaheadDepth,
   needsMaintenance,
+  overCapMultiplier,
+  UNSTAFFED_LANE,
   prefabZones,
   schemeItems,
   schemeLabel,
@@ -4226,6 +4229,18 @@ export class Game {
     return `${this.fits.length} hall${this.fits.length > 1 ? 's' : ''} (${halls}) · ${jw} jetway${jw === 1 ? '' : 's'}${remote > 0 ? ` · ${remote} remote` : ''}`
   }
 
+  /** A departing passenger has reached the doors and can walk to check-in. */
+  private openDepartingGuest(g: HallGuest, open: Set<HallNode>) {
+    g.node = 'entrance'
+    g.clearedSec = false
+    if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
+    else if (open.has('security')) this.routeGuest(g, 'security', open)
+    else g.thought = 'No security lane — stuck before security'
+    if (g.thought !== 'No security lane — stuck before security') {
+      g.thought = 'Rolling a bag to check-in'
+    }
+  }
+
   /** Focus a campus hall (from HUD chips or pan-click). */
   selectHall(fit: TerminalFit) {
     this.selectedTile = { ...fit.origin }
@@ -4286,12 +4301,11 @@ export class Game {
         g.hasChecked = true
         g.carryOn = true
         this.applyGuestLandside(g, 'depart')
-        if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
-        else if (open.has('security')) this.routeGuest(g, 'security', open)
-        else g.thought = 'No security lane — stuck before security'
-        if (g.thought !== 'No security lane — stuck before security') {
-          g.thought = 'Rolling a bag to check-in'
-        }
+        const prefabRelease = Boolean(fit.premade && !fit.redesigned)
+        if (prefabRelease) {
+          g.releaseAt = this.clock + Math.random() * DEPARTURE_SPREAD_SEC
+          g.thought = 'On the way to the doors'
+        } else this.openDepartingGuest(g, open)
       }
       this.hallGuests.push(g)
     }
@@ -4316,8 +4330,13 @@ export class Game {
     }
     for (const g of this.hallGuests) {
       if (g.dead) continue
+      if (g.releaseAt != null && this.clock < g.releaseAt) continue
       const open = this.openForGuest(g)
       if (!open.size) continue
+      if (g.releaseAt != null) {
+        g.releaseAt = undefined
+        this.openDepartingGuest(g, open)
+      }
       // Needs drift — budget/family fill hunger faster; wear makes WC less satisfying.
       const drain =
         g.tag === 'budget' ? 1.25 : g.tag === 'family' ? 1.1 : g.tag === 'business' ? 0.9 : 0.85
@@ -4557,7 +4576,8 @@ export class Game {
     }
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
     const fit = this.activeHall() ?? this.fits[0]
-    if (fit && this.hallGuests.length > (fit.capGuests ?? 28)) this.markHallOverloaded()
+    const present = this.hallGuests.filter((g) => g.releaseAt == null || g.releaseAt <= this.clock).length
+    if (fit && present > (fit.capGuests ?? 40)) this.markHallOverloaded()
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
@@ -4709,9 +4729,9 @@ export class Game {
         .map((i) => i.wear),
     )
     let svc = slowedService(lane.serviceSec, wear)
-    if (!this.staffedPost('security')) svc *= 1.35
-    const cap = fit?.capGuests ?? 28
-    if (peers.length > cap) svc *= 1 + (peers.length - cap) * 0.08
+    if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
+    const cap = fit?.capGuests ?? 40
+    if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
 
     if ((g.serviceLeft ?? 0) > 0) {
       g.serviceLeft = (g.serviceLeft ?? 0) - dt

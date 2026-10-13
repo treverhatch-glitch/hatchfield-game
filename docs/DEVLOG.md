@@ -560,3 +560,21 @@ The airfield view draws those guests on the floor (`FLOOR_Y`) from `wx` / `wz`. 
 **Media**
 
 - `docs/devlog/media/OCT13-doorways.png` — roof off, red departure with a case in the check-in hall, security and a holdroom beyond
+
+## Prefab security — 13 Oct
+
+The starter hall was screening on one lane at three seconds, about 20 people a minute, with a comfort cap of 28. A worn lane doubled that time, and a crowd past the cap added 8% per body with no ceiling. A whole departure hit the doors in one tick. That jammed Prefab I on day two, before the player had added an airline.
+
+Prefab I is now two lanes at 3.5 seconds, about 34 a minute, comfort cap 40. Each body past the cap adds 2%, and the slowdown stops at ×1.4. Wear is 0.7 per passenger. A fully worn lane is at most ×1.5. Departing passengers reach the doors across 45 seconds. An unstaffed lane stays ×1.35.
+
+Prefab II is three lanes at 3.0 seconds, still 60 a minute, comfort cap 48. Prefab III is four lanes at 2.5 seconds, 96 a minute, comfort cap 80. Catalogue security items keep their own servers, times, and wear. Custom halls use the same overflow formula, so a line cannot run away. Crowd avoidance is not wired. Guests still walk the doorway graph.
+
+The hall card on a fresh starter kit reads 40 passengers, security 34/min, bags 70. The upgrade line offers Prefab II at 48 passengers and 60/min.
+
+**Bugs.** Sixteen. No new defect.
+
+**Tests.** `tsc -b` clean. Vitest 636 passing, 2 skipped. In the browser the hall card showed those Prefab I numbers and the Prefab II upgrade.
+
+**Media**
+
+- `docs/devlog/media/OCT13-prefab-security.png` — hall card, Prefab I at 40 passengers and 34/min, upgrade to Prefab II at 48 and 60/min
