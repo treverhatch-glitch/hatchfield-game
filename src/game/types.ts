@@ -815,6 +815,8 @@ export interface GameSnapshot {
   fieldXp?: number
   /** Specialization paths chosen at FL6 / FL8 / FL10. Order is purchase order. */
   specPaths?: string[]
+  /** Bought specialization-tree node ids. Missing on older saves. */
+  specNodes?: string[]
   /** Progression stamps that are not apron tiles (halls, hydrant, landmarks). */
   progressionBuilt?: string[]
   parcels: number
