@@ -1,4 +1,6 @@
 import { buildSound, LOOPING, SOUND_CATEGORY, type Category, type SoundId, type Voice } from './synth';
+import { aircraftParams, buildAircraftSound, LOOPING_PHASES, PHASES, VARIANTS_PER_PHASE, type AircraftPhase } from './aircraft';
+import { buildWeatherBed, buildWeatherEvent, eventParams, weatherParams, WEATHER_VARIANTS, type WeatherEvent, type WeatherKind } from './weather';
 import { DEFAULT_ROLLOFF, distance, distanceGain, panFor, type Rolloff, type Vec3 } from './spatial';
 
 export type { Category, SoundId } from './synth';
@@ -14,8 +16,17 @@ export interface PlayOptions {
   rolloff?: Rolloff;
 }
 
+export interface AircraftPlayOptions extends PlayOptions {
+  /** 0-4; random when omitted. */
+  variant?: number;
+  /** Jitter seed; same (type, phase, variant, seed) = identical params. */
+  seed?: number;
+}
+
 export interface SoundHandle {
-  readonly id: SoundId;
+  /** SoundId, or `${aircraftTypeId}:${phase}` for aircraft voices. */
+  readonly id: string;
+  readonly variant?: number;
   readonly looping: boolean;
   setPosition(p: Vec3): void;
   setIntensity(v: number): void;
@@ -42,6 +53,9 @@ export interface AudioEngineOptions {
 /** 'ambient' = terminal/indoor beds & PA; 'ambience' = outdoor weather/nature/day-night. */
 export const CATEGORIES: Category[] = ['aircraft', 'vehicles', 'ambient', 'ambience', 'ui', 'sfx'];
 
+/** Categories muffled by weather (UI and the weather bed itself stay clear). */
+export const WEATHER_FILTERED: Category[] = ['aircraft', 'vehicles', 'ambient', 'sfx'];
+
 const clamp01 = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
 interface Live {
@@ -64,12 +78,16 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private catGains = new Map<Category, GainNode>();
+  private weatherFilter: BiquadFilterNode | null = null;
+  private weatherFilterHz = 20000;
+  private weatherBed: SoundHandle | null = null;
+  private weatherKind: WeatherKind | null = null;
   private master = 1;
   private cat: Record<Category, number> = { aircraft: 0.8, vehicles: 0.7, ambient: 0.5, ambience: 0.5, ui: 0.6, sfx: 0.8 };
   private muted = false;
   private hiddenPaused = false;
   private live = new Set<Live>();
-  private lastFired = new Map<SoundId, number>();
+  private lastFired = new Map<string, number>();
   private listener: Vec3 = { x: 0, y: 0, z: 0 };
   private listenerRight: Vec3 = { x: 1, y: 0, z: 0 };
   private readonly opts: Required<Omit<AudioEngineOptions, 'visibility'>> & { visibility: VisibilitySource | null };
@@ -94,9 +112,13 @@ export class AudioEngine {
       this.ctx = ctx;
       this.masterGain = ctx.createGain();
       this.masterGain.connect(ctx.destination);
+      this.weatherFilter = ctx.createBiquadFilter();
+      this.weatherFilter.type = 'lowpass';
+      this.weatherFilter.frequency.value = this.weatherFilterHz;
+      this.weatherFilter.connect(this.masterGain);
       for (const c of CATEGORIES) {
         const g = ctx.createGain();
-        g.connect(this.masterGain);
+        g.connect(WEATHER_FILTERED.includes(c) ? this.weatherFilter : this.masterGain);
         this.catGains.set(c, g);
       }
       this.applyGains();
@@ -129,9 +151,46 @@ export class AudioEngine {
   }
 
   // ---- playback ----
-  play(id: SoundId, options: PlayOptions = {}): SoundHandle | null {
+  /** Play a named sound, or an aircraft voice: play('b738', 'takeoff', { variant, position }). */
+  play(id: SoundId, options?: PlayOptions): SoundHandle | null;
+  play(aircraftTypeId: string, phase: AircraftPhase, options?: AircraftPlayOptions): SoundHandle | null;
+  play(id: string, a?: PlayOptions | AircraftPhase, b?: AircraftPlayOptions): SoundHandle | null {
+    if (typeof a === 'string') return this.playAircraft(id, a, b ?? {});
+    const sid = id as SoundId;
+    return this.spawn(sid, SOUND_CATEGORY[sid], LOOPING[sid], (ctx, out) => buildSound(ctx, sid, out), a ?? {});
+  }
+
+  playAircraft(typeId: string, phase: AircraftPhase, options: AircraftPlayOptions = {}): SoundHandle | null {
+    if (!PHASES.includes(phase)) throw new Error(`unknown aircraft phase ${phase}`);
+    const variant = options.variant ?? Math.floor(Math.random() * VARIANTS_PER_PHASE);
+    const p = aircraftParams(typeId, phase, variant, options.seed ?? 0);
+    return this.spawn(`${typeId}:${phase}`, 'aircraft', LOOPING_PHASES[phase], (ctx, out) => buildAircraftSound(ctx, p, out), options, p.variant);
+  }
+
+  // ---- weather ----
+  /** Switch weather bed (crossfades) and apply its world lowpass. */
+  setWeather(kind: WeatherKind, opts: { variant?: number; intensity?: number; seed?: number } = {}): number {
     const ctx = this.unlock();
-    const looping = LOOPING[id];
+    const variant = opts.variant ?? Math.floor(Math.random() * WEATHER_VARIANTS);
+    const p = weatherParams(kind, variant, opts.seed ?? 0);
+    this.weatherBed?.stop(2);
+    this.weatherKind = kind;
+    this.weatherBed = this.spawn(`weather:${kind}`, 'ambience', true, (c, out) => buildWeatherBed(c, p, out), { intensity: opts.intensity });
+    this.weatherFilterHz = p.worldLowpass;
+    this.weatherFilter?.frequency.setTargetAtTime(p.worldLowpass, ctx.currentTime, 1);
+    return p.variant;
+  }
+  getWeather(): WeatherKind | null { return this.weatherKind; }
+  /** Current weather lowpass on world categories (Hz; 20000 = clear). */
+  getWeatherFilterHz(): number { return this.weatherFilterHz; }
+  /** Fire a thunder clap / distant foghorn. Call on the sim clock (see weatherParams().eventEverySec). */
+  weatherEvent(event: WeatherEvent, opts: { variant?: number; seed?: number; position?: Vec3 } = {}): SoundHandle | null {
+    const p = eventParams(event, opts.variant ?? Math.floor(Math.random() * WEATHER_VARIANTS), opts.seed ?? 0);
+    return this.spawn(`weather:${event}`, 'ambience', false, (c, out) => buildWeatherEvent(c, p, out), { position: opts.position }, p.variant);
+  }
+
+  private spawn(id: string, category: Category, looping: boolean, build: (ctx: AudioContext, out: AudioNode) => Voice, options: PlayOptions, variant?: number): SoundHandle | null {
+    const ctx = this.unlock();
     const now = ctx.currentTime;
     this.reap(now);
     if (!looping) {
@@ -142,7 +201,6 @@ export class AudioEngine {
       if (count >= this.opts.maxOneShotsPerId) return null;
       this.lastFired.set(id, now);
     }
-    const category = SOUND_CATEGORY[id];
     const gain = ctx.createGain();
     let pan: StereoPannerNode | null = null;
     if (options.position && typeof ctx.createStereoPanner === 'function') {
@@ -151,7 +209,7 @@ export class AudioEngine {
     } else {
       gain.connect(this.catGains.get(category)!);
     }
-    const voice = buildSound(ctx, id, gain);
+    const voice = build(ctx, gain);
     if (options.intensity !== undefined) voice.setIntensity(options.intensity);
     let stopped = false;
     const engine = this;
@@ -162,7 +220,7 @@ export class AudioEngine {
       rolloff: options.rolloff ?? DEFAULT_ROLLOFF,
       endsAt: now + voice.duration,
       handle: {
-        id, looping,
+        id, looping, variant,
         get stopped() { return stopped; },
         setPosition(p) { live.position = { ...p }; engine.updateOne(live); },
         setIntensity(v) { voice.setIntensity(v); },
@@ -187,7 +245,7 @@ export class AudioEngine {
     this.stopAll();
     this.opts.visibility?.removeEventListener('visibilitychange', this.onVis);
     void this.ctx?.close();
-    this.ctx = null; this.masterGain = null; this.catGains.clear();
+    this.ctx = null; this.masterGain = null; this.weatherFilter = null; this.catGains.clear(); this.weatherBed = null;
   }
 
   /** Gain a source at `p` would receive from distance alone (exposed for tests/debug). */
