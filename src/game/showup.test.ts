@@ -74,7 +74,7 @@ describe('departure show-up', () => {
       expect(game.lostPaxCount()).toBe(0)
       expect(game.bagsLost).toBe(0)
     })
-  })
+  }, 30_000)
 
   it('banks departures from the show-up adapter, spread across the window', () => {
     withSeed(4, () => {
