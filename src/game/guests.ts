@@ -8,6 +8,7 @@
  */
 
 import type { ArriveMode } from './types'
+import type { SeatedMeal } from './dining.ts'
 
 export type { ArriveMode }
 
@@ -146,6 +147,16 @@ export interface HallGuest {
   snack?: { kind: 'drink' | 'meal'; left: number }
   /** Last spot in the hall, normalized like NODE_POS. A snack still in hand is dropped here on leaving. */
   spot?: { x: number; y: number }
+  /** Sit-down meal at a claimed seat near the food court. */
+  meal?: SeatedMeal
+  /** Higher-service cabin. Economy tags leave this unset. */
+  serviceCabin?: 'economy' | 'business' | 'first' | 'premium' | 'vip'
+  /** Where this departure was screened. Set once. */
+  premiumScreen?: 'vip_room' | 'fast_track' | 'general'
+  /** VIP walked an escorted fast-track lane because the private room was shut. */
+  premiumEscort?: boolean
+  /** Used the premium check-in desk on the way in. */
+  usedPremiumCheckin?: boolean
 }
 
 /**

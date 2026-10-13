@@ -116,50 +116,73 @@ export function astar(
   if (!walkableFor(kind, tiles[start.r][start.c])) return null
   if (!walkableFor(kind, tiles[goal.r][goal.c])) return null
 
-  const startK = key(start.c, start.r)
-  const goalK = key(goal.c, goal.r)
-  const open: string[] = [startK]
-  const came = new Map<string, string>()
-  const g = new Map<string, number>([[startK, 0]])
-  const h = (c: number, r: number) => Math.abs(c - goal.c) + Math.abs(r - goal.r)
+  // Cells are indexed r * SIZE + c in reused scratch arrays. A cell's g/came/open entries
+  // count only when its stamp matches this call, so nothing is cleared or allocated per search.
+  // Open-list order and tie-breaks match the old string-keyed version, so paths are identical.
+  if (++searchGen === 0xffffffff) {
+    searchStamp.fill(0)
+    searchGen = 1
+  }
+  const gen = searchGen
+  const startI = start.r * SIZE + start.c
+  const goalI = goal.r * SIZE + goal.c
+  const open: number[] = [startI]
+  searchStamp[startI] = gen
+  searchG[startI] = 0
+  searchCame[startI] = -1
+  searchOpen[startI] = 1
 
   while (open.length) {
     let bestI = 0
     let bestF = Infinity
     for (let i = 0; i < open.length; i++) {
-      const p = parseKey(open[i])
-      const f = (g.get(open[i]) ?? 1e9) + h(p.c, p.r)
+      const n = open[i]
+      const c = n % SIZE
+      const f = searchG[n] + Math.abs(c - goal.c) + Math.abs((n - c) / SIZE - goal.r)
       if (f < bestF) {
         bestF = f
         bestI = i
       }
     }
     const cur = open.splice(bestI, 1)[0]
-    if (cur === goalK) {
-      const path = [parseKey(cur)]
-      let k = cur
-      while (came.has(k)) {
-        k = came.get(k)!
-        path.push(parseKey(k))
-      }
+    searchOpen[cur] = 0
+    if (cur === goalI) {
+      const path: Vec[] = []
+      for (let k = cur; k >= 0; k = searchCame[k]) path.push({ c: k % SIZE, r: Math.floor(k / SIZE) })
       path.reverse()
       return path
     }
-    const p = parseKey(cur)
-    for (const n of neighbors(p.c, p.r)) {
-      if (!walkableFor(kind, tiles[n.r][n.c])) continue
-      const nk = key(n.c, n.r)
-      const step = kind === 'person' ? personStepCost(tiles[n.r][n.c]) : 1
-      const ng = (g.get(cur) ?? 1e9) + step
-      if (ng < (g.get(nk) ?? Infinity)) {
-        came.set(nk, cur)
-        g.set(nk, ng)
-        if (!open.includes(nk)) open.push(nk)
+    const pc = cur % SIZE
+    const pr = (cur - pc) / SIZE
+    for (const d of DIRS) {
+      const nc = pc + d.c
+      const nr = pr + d.r
+      if (!inBounds(nc, nr) || !walkableFor(kind, tiles[nr][nc])) continue
+      const n = nr * SIZE + nc
+      const step = kind === 'person' ? personStepCost(tiles[nr][nc]) : 1
+      const ng = searchG[cur] + step
+      const seen = searchStamp[n] === gen
+      if (seen && ng >= searchG[n]) continue
+      if (!seen) {
+        searchStamp[n] = gen
+        searchOpen[n] = 0
+      }
+      searchCame[n] = cur
+      searchG[n] = ng
+      if (!searchOpen[n]) {
+        searchOpen[n] = 1
+        open.push(n)
       }
     }
   }
   return null
 }
+
+const searchStamp = new Uint32Array(SIZE * SIZE)
+const searchG = new Float64Array(SIZE * SIZE)
+const searchCame = new Int32Array(SIZE * SIZE)
+const searchOpen = new Uint8Array(SIZE * SIZE)
+let searchGen = 0
 
 export function nearestPath(
   tiles: Tile[][],
@@ -219,11 +242,23 @@ export function hasBeltNetwork(tiles: Tile[][]): boolean {
 }
 
 export function tilesOf(tiles: Tile[][], type: Tile | Tile[]): Vec[] {
-  const set = new Set(Array.isArray(type) ? type : [type])
   const out: Vec[] = []
+  // Hot in the sim tick (hundreds of calls a frame): a single type skips the Set.
+  if (!Array.isArray(type) || type.length === 1) {
+    const want = Array.isArray(type) ? type[0] : type
+    for (let r = 0; r < SIZE; r++) {
+      const row = tiles[r]
+      for (let c = 0; c < SIZE; c++) {
+        if (row[c] === want) out.push({ c, r })
+      }
+    }
+    return out
+  }
+  const set = new Set(type)
   for (let r = 0; r < SIZE; r++) {
+    const row = tiles[r]
     for (let c = 0; c < SIZE; c++) {
-      if (set.has(tiles[r][c])) out.push({ c, r })
+      if (set.has(row[c])) out.push({ c, r })
     }
   }
   return out
