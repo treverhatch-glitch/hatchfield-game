@@ -21,7 +21,13 @@ describe('system sound catalogue', () => {
     expect(SFX_GROUPS.construction.length).toBe(5);
     expect(SFX_GROUPS.terminal.length).toBe(4);
     expect(SFX_GROUPS.ui.length).toBe(11);
-    expect(SFX_IDS.length).toBe(38);
+    expect(SFX_GROUPS.catering.length).toBe(6);
+    expect(SFX_GROUPS.contracts.length).toBe(7);
+    expect(SFX_GROUPS.crowd.length).toBe(3);
+    expect(SFX_GROUPS.diplomacy.length).toBe(8);
+    expect(SFX_GROUPS.terminalAmbience.length).toBe(3);
+    expect(SFX_GROUPS.apronAmbience.length).toBe(4);
+    expect(SFX_IDS.length).toBe(69);
     for (const id of SFX_IDS) expect(CATEGORIES).toContain(sfxCategory(id));
     for (const id of SFX_GROUPS.ui) { expect(sfxCategory(id)).toBe('ui'); expect(sfxLooping(id)).toBe(false); }
     expect(isSfxId('gpuHum')).toBe(true); expect(isSfxId('toString')).toBe(false);

@@ -763,6 +763,8 @@ export interface GameSnapshot {
   tiles: Tile[][]
   terminalFits: TerminalFit[]
   cash: number
+  /** Serialized airport name and logo. Missing on older saves. */
+  branding?: string
   difficulty: Difficulty
   site: SiteKind | null
   clock: number

@@ -16,11 +16,21 @@ const KNOWN: Record<BindingSource, string[]> = {
   airlines: ['contract_offer', 'contract_signed', 'contract_expired', 'contract_terminated', 'satisfaction_changed', 'rating_up', 'rating_down'],
   features: ['notification', 'report', 'report_ready', 'disruption', 'event', 'weather_change', 'threat', 'slotRequest',
     'undo', 'redo', 'save', 'research_complete', 'low_cash'],
+  catering: ['catering_phase', 'catering_done', 'catering_late', 'supply_phase', 'shop_restocked', 'shop_sale',
+    'shop_out_of_stock', 'pax_walk_away', 'low_stock'],
+  contracts: ['season_scheduled', 'slot_moved', 'slot_flagged', 'slot_cancelled', 'stand_pinned', 'stands_swapped',
+    'ledger', 'week_audit', 'lawsuit'],
+  crowd: ['queue_forming', 'queue_cleared', 'door_jam', 'door_clear', 'gridlock', 'gridlock_cleared', 'day_stats'],
+  diplomacy: ['letter', 'standing_band', 'cold_warning', 'capacity_cut', 'capacity_restored', 'exit_notice', 'exit',
+    'exit_rescued', 'demand_issued', 'demand_met', 'demand_timeout', 'promise_kept', 'promise_broken', 'spat',
+    'spat_resolved', 'rival_offer', 'poached', 'hostile_action', 'lawsuit_verdict', 'succession', 'tier_unlocked',
+    'era_reset', 'newcomer', 'slot_pool', 'slot_series_reverted', 'contract_signed', 'contract_renewed',
+    'contract_cancelled', 'hub_granted', 'hub_revoked', 'base_granted', 'alliance', 'perks_changed', 'info'],
 };
 
 // Representative non-silent payload per event.
 const SAMPLE: Record<string, Record<string, unknown>> = {
-  facility_status: { status: 'failed' }, bottlenecks: { bottlenecks: [{}] }, weather_change: { weather: 'thunderstorm' },
+  facility_status: { status: 'failed' }, bottlenecks: { bottlenecks: [{}] }, weather_change: { weather: 'thunderstorm' }, slot_flagged: { flag: 'over_capacity' }, day_stats: { missed: 2 },
 };
 
 const SERVICES = ['deplane', 'bag_unload', 'cargo_unload', 'loader', 'fuel', 'catering', 'cleaning', 'gpu', 'boarding',

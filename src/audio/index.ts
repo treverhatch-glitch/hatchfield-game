@@ -8,3 +8,4 @@ export * from './services';
 export * from './events';
 export * from './bindings';
 export { hashSeed, mulberry32 } from './rng';
+export * from './ambience';

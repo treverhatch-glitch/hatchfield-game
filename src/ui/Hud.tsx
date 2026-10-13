@@ -233,7 +233,7 @@ export function Hud({ game }: { game: Game }) {
     <div className="hud">
       <header className="top" data-testid="stats-bar">
         <div className="brand">
-          <strong>Hatchfield</strong>
+          <strong>{game.branding.airportName}</strong>
           <span>
             {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
           </span>
