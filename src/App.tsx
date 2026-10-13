@@ -39,6 +39,7 @@ function hudSnapshot(game: Game): string {
     Math.ceil(game.fieldTaskLeft()),
     game.ackedLetters.join(','),
     game.starterFreehand ? 1 : 0,
+    game.starterKitStamped ? 1 : 0,
     game.cargoVolume?.id,
     game.cargoVolume?.delivered,
     Math.ceil(game.cargoVolumeLeft()),

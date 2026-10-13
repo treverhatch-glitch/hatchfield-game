@@ -73,7 +73,7 @@ export function HintPanel({ game }: { game: Game }) {
                 <strong style={{ display: 'block', margin: '2px 0' }}>{note.title}</strong>
                 {note.detail ? <span style={{ display: 'block', opacity: 0.85 }}>{note.detail}</span> : null}
                 {note.fix ? <span style={{ display: 'block', marginTop: 3, color: '#f0c14a' }}>{note.fix}</span> : null}
-                {note.id === 'session-contract' && !game.starterFieldUp() ? (
+                {note.id === 'session-contract' && game.showStarterKit() ? (
                   <span style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     <button
                       type="button"

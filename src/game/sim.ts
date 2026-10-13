@@ -886,8 +886,8 @@ export class Game {
   cityCargoCool = 8
   /** New Game focus — biases starter kit + early letters. */
   startFocus: StartFocus = 'pax'
-  /** Dev sandbox — unlimited money (default ON for trial builds). */
-  sandbox = true
+  /** Dev sandbox — unlimited money. Off on the title; that choice is standard cash. */
+  sandbox = false
   /** Active cargo volume window letter. */
   cargoVolume: CargoVolumeJob | null = null
   cargoVolumeCool = 40
@@ -1097,6 +1097,8 @@ export class Game {
   ackedLetters: string[] = []
   /** Player chose to build the first field by hand, releasing the kit budget. */
   starterFreehand = false
+  /** The starter kit has been paid for. The button stays hidden after that. */
+  starterKitStamped = false
   /** Night curfew news / slip rate-limit. */
   nightCurfewCool = 0
   /** Rate-limit cascade headlines so the ticker stays readable. */
@@ -1347,6 +1349,7 @@ export class Game {
     this.fieldTaskCool = 28
     this.ackedLetters = []
     this.starterFreehand = false
+    this.starterKitStamped = false
     this.nightCurfewCool = 0
     this.cascadeNewsCool = 0
     this.stormPulseCool = 0
@@ -1575,6 +1578,150 @@ export class Game {
     return Math.max(0, this.fieldTask.deadline - this.clock)
   }
 
+  /** Cost of the building or hire a field ask is pointing at. Numbers stay in the catalogs. */
+  private quoteFieldTask(kind: FieldTaskKind): {
+    cost: number
+    label: string
+    tool?: Tool
+    hire?: 'desk' | 'janitor'
+    hallItem?: ItemId
+  } {
+    const building = (tool: Tool) => {
+      const row = BUILDINGS.find((b) => b.tool === tool)
+      return { cost: row?.cost ?? 0, label: row?.name ?? tool, tool }
+    }
+    switch (kind) {
+      case 'police':
+        return building('police')
+      case 'fire':
+        return building('fire')
+      case 'hangar':
+        return building('hangar')
+      case 'cargo':
+        return building('cargo')
+      case 'helipad':
+        return building('helipad')
+      case 'hotel':
+        return building('hotel_inn')
+      case 'park':
+        return building('park_s')
+      case 'food': {
+        const cafe = itemDef('cafe')
+        return { cost: cafe?.cost ?? 0, label: cafe?.name ?? 'Café', hallItem: 'cafe' }
+      }
+      case 'bathroom': {
+        const toilet = itemDef('toilet')
+        return { cost: toilet?.cost ?? 0, label: toilet?.name ?? 'Toilet', hallItem: 'toilet' }
+      }
+      case 'desk':
+      case 'desk_extra':
+        return { cost: DESK_STAFF_HIRE, label: 'Desk agent', hire: 'desk' }
+      case 'janitor':
+        return { cost: JANITOR_HIRE, label: 'Janitor', hire: 'janitor' }
+      default:
+        return { cost: 0, label: kind }
+    }
+  }
+
+  /** Build line for the open field letter: cost against the bonus, off when the cash is short. */
+  fieldAskOffer(): { cost: number; bonus: number; text: string; enabled: boolean } | null {
+    const task = this.fieldTask
+    if (!task) return null
+    const offer = this.quoteFieldTask(task.kind)
+    const busy = offer.tool ? this.sites.some((s) => s.tool === offer.tool) : false
+    const enabled = (this.sandbox || this.cash >= offer.cost) && !busy
+    return {
+      cost: offer.cost,
+      bonus: task.bonus,
+      text: `Build · ${moneyLeft(offer.cost)} cost / ${moneyLeft(task.bonus)} bonus`,
+      enabled,
+    }
+  }
+
+  /** Stamp or hire the open field ask. A second stamp waits while that contractor is driving in. */
+  buildFieldTask() {
+    const task = this.fieldTask
+    if (!task) return
+    const offer = this.quoteFieldTask(task.kind)
+    if (!this.sandbox && this.cash < offer.cost) {
+      this.pushNews(
+        `Need ${moneyLeft(offer.cost)} for ${offer.label}. The bonus is ${moneyLeft(task.bonus)}.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    if (offer.hire === 'desk') {
+      this.hireDeskStaff()
+      return
+    }
+    if (offer.hire === 'janitor') {
+      this.hireJanitor()
+      return
+    }
+    if (offer.hallItem) {
+      this.placeHallItem(offer.hallItem)
+      return
+    }
+    if (!offer.tool) return
+    if (this.sites.some((s) => s.tool === offer.tool)) {
+      this.pushNews(
+        `${offer.label} is already a construction site — a contractor is driving in.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const cell = this.cellForStamp(offer.tool)
+    if (!cell) {
+      this.pushNews(`No open grass for ${offer.label}.`, 'bad')
+      this.emit()
+      return
+    }
+    const prev = this.tool
+    this.tool = offer.tool
+    this.placeSingle(cell)
+    this.tool = prev
+  }
+
+  /** First legal grass cell for a tool, including a road edge when the stamp needs one. */
+  private cellForStamp(tool: Tool): Vec | null {
+    const building = BUILDINGS.find((b) => b.tool === tool)
+    if (!building) return null
+    const landside =
+      building.tile === 'hotel' ||
+      building.tile === 'park_s' ||
+      building.tile === 'park_l' ||
+      building.tile === 'park_g' ||
+      building.tile === 'park_u' ||
+      building.tile === 'bus' ||
+      building.tile === 'rail' ||
+      building.tile === 'guard'
+    const besidePavement =
+      building.tile === 'fuel' ||
+      building.tile === 'kitchen' ||
+      building.tile === 'depot' ||
+      building.tile === 'deice'
+    for (let r = 1; r < this.tiles.length - 1; r++) {
+      for (let c = 1; c < this.tiles[r].length - 1; c++) {
+        const v = { c, r }
+        if (this.tile(v) !== 'grass' || this.siteAt(v)) continue
+        if (landside) {
+          const nearRoad = [
+            { c: c + 1, r },
+            { c: c - 1, r },
+            { c, r: r + 1 },
+            { c, r: r - 1 },
+          ].some((p) => this.tile(p) === 'road')
+          if (!nearRoad) continue
+        }
+        if (besidePavement && !farmBesidePavement(this.tiles, v)) continue
+        return v
+      }
+    }
+    return null
+  }
+
   /** Hide one letter. The underlying ask keeps running until it is done or late. */
   ackLetter(key: string) {
     if (!key || this.ackedLetters.includes(key)) return
@@ -1590,6 +1737,11 @@ export class Game {
   /** Strip plus a stand — the starter kit, or a freehand field, is on the plot. */
   starterFieldUp(): boolean {
     return runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+  }
+
+  /** The opening kit button. Hidden once the kit is stamped or the field is already up. */
+  showStarterKit(): boolean {
+    return !this.starterKitStamped && !this.starterFieldUp()
   }
 
   /**
@@ -2885,6 +3037,7 @@ export class Game {
       return
     }
     if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
+    this.starterKitStamped = true
 
     if (this.startFocus === 'cargo') {
       this.buildCargoStarterKit()
@@ -4043,6 +4196,7 @@ export class Game {
       fieldTask: this.fieldTask,
       ackedLetters: this.ackedLetters,
       starterFreehand: this.starterFreehand,
+      starterKitStamped: this.starterKitStamped,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
@@ -4209,6 +4363,7 @@ export class Game {
       this.fieldTaskCool = this.fieldTask ? 0 : 18
       this.ackedLetters = s.ackedLetters ?? []
       this.starterFreehand = s.starterFreehand ?? false
+      this.starterKitStamped = s.starterKitStamped ?? false
       this.nightCurfewCool = 0
       this.hubOffer = null
       this.hubOfferCool = 40
@@ -4226,7 +4381,7 @@ export class Game {
       this.cargoWarehouse = s.cargoWarehouse ?? 0
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
-      this.sandbox = s.sandbox ?? true
+      this.sandbox = s.sandbox ?? false
       this.sites = s.sites ?? []
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
@@ -12138,6 +12293,11 @@ export class Game {
           : RUNWAY_PREFAB_COST
     const label =
       klass === 'heavy' ? 'heavy runway' : klass === 'short' ? 'short runway' : 'runway'
+    if (this.sites.some((s) => s.kind === 'runway')) {
+      this.pushNews('A runway is already a construction site — a contractor is driving in.', 'bad')
+      this.emit()
+      return
+    }
     if (!this.spend(cost, label)) {
       this.emit()
       return
@@ -12155,6 +12315,7 @@ export class Game {
       cost,
       name: label,
       news,
+      tool: klass === 'heavy' ? 'runway_heavy' : klass === 'short' ? 'runway_short' : 'runway',
       runwayClass: klass,
       origin: v,
     })
@@ -12173,6 +12334,11 @@ export class Game {
       this.emit()
       return
     }
+    if (this.sites.some((s) => s.tool === 'terminal')) {
+      this.pushNews('A terminal shell is already a construction site — a contractor is driving in.', 'bad')
+      this.emit()
+      return
+    }
     if (!this.spend(TERMINAL_COST, 'terminal shell')) {
       this.emit()
       return
@@ -12183,6 +12349,7 @@ export class Game {
       tile: 'terminal',
       cost: TERMINAL_COST,
       name: 'terminal shell',
+      tool: 'terminal',
       origin: v,
     })
   }
@@ -12198,6 +12365,11 @@ export class Game {
       this.emit()
       return
     }
+    if (this.sites.some((s) => s.tool === 'premade')) {
+      this.pushNews('A premade hall is already a construction site — a contractor is driving in.', 'bad')
+      this.emit()
+      return
+    }
     if (!this.spend(PREMADE_TERMINAL_COST, 'premade terminal')) {
       this.emit()
       return
@@ -12208,6 +12380,7 @@ export class Game {
       tile: 'terminal',
       cost: PREMADE_TERMINAL_COST,
       name: 'premade terminal',
+      tool: 'premade',
       origin: v,
     })
   }
@@ -12326,6 +12499,14 @@ export class Game {
     const stampCost = jetwayStand
       ? Math.round(building.cost * STAND_JETWAY_MULT)
       : building.cost
+    if (this.sites.some((s) => s.tool === building.tool)) {
+      this.pushNews(
+        `${building.name} is already a construction site — a contractor is driving in.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
     if (!this.spend(stampCost, jetwayStand ? `${building.name} + jetway` : building.name)) {
       this.emit()
       return

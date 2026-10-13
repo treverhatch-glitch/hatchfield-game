@@ -4,8 +4,11 @@ import {
   DESK_STAFF_WAGE,
   JANITOR_WAGE,
   MECHANIC_WAGE,
+  money,
   RESEARCHER_WAGE,
+  START_CASH,
 } from './catalog.ts'
+import { SANDBOX_CASH } from './types.ts'
 import type { BudgetKey, LoanProduct } from './types.ts'
 
 /**
@@ -19,6 +22,18 @@ export function fieldOpsMultiplier(signed: number, stands: number, flightsDone: 
     Math.max(0, stands - 2) * 0.04 +
     Math.min(0.35, flightsDone * 0.0035)
   return Math.min(1.65, load)
+}
+
+/** Title checkbox. Off names the standard bank instead of a silent "off". */
+export function sandboxChoiceLabel(on: boolean): string {
+  return on
+    ? `Sandbox (unlimited money) · ${money(SANDBOX_CASH)}`
+    : `Sandbox (unlimited money) · standard ${money(START_CASH.standard)}`
+}
+
+/** Face of a loan button: cash received, the fee, and the balance the desk will show. */
+export function loanProductLabel(p: Pick<LoanProduct, 'label' | 'principal' | 'fee'>): string {
+  return `${p.label} · ${money(p.principal)} · fee ${money(p.fee)} · owe ${money(p.principal + p.fee)}`
 }
 
 /** Interest due this loan tick: at least the product floor, else ~rate × balance. */
