@@ -208,12 +208,13 @@ import {
   type ZoneId,
 } from './terminal.ts'
 import {
+  NODE_ZONE,
   nodeComfort,
   outletExtraStock,
   pickOutlet,
   placementCheck,
   refundFor,
-  seatCount,
+  seatsByZone,
   type PlacementCheck,
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
@@ -347,7 +348,7 @@ function pick<T>(arr: T[]): T {
 interface HallKitState {
   items: PlacedItem[]
   zones: (string | null)[][]
-  seatsLeft: number
+  seatsLeft: Map<ZoneId, number>
   comfort: Map<HallNode, number>
 }
 
@@ -4348,13 +4349,16 @@ export class Game {
     let state = cache.get(key)
     if (!state) {
       const items = (fit.items ?? []) as PlacedItem[]
-      state = { items, zones: fit.zones ?? [], seatsLeft: seatCount(items), comfort: new Map() }
+      const zones = fit.zones ?? []
+      state = { items, zones, seatsLeft: seatsByZone(zones, items), comfort: new Map() }
       cache.set(key, state)
     }
     const walking = g.path.length > 0 && g.seg < g.path.length - 1
+    const zone = NODE_ZONE[g.node]
+    const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
     g.seated = false
-    if (!walking && state.seatsLeft > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
-      state.seatsLeft -= 1
+    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+      state.seatsLeft.set(zone, free - 1)
       g.seated = true
       g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
       if (g.happiness < 100) {

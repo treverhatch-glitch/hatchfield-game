@@ -1421,13 +1421,22 @@ button {
 }
 
 /* Terminal kit — slim CS2-style bar. Cards close after a place; never a modal. */
+/* Sits above the HUD dock, left of the hall panel. Cards open upward. */
 .kit-bar {
-  pointer-events: auto;
-  margin-top: 6px;
-  display: inline-flex;
-  flex-direction: column;
+  position: absolute;
+  left: 16px;
+  bottom: 172px;
+  right: 340px;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
   gap: 6px;
-  max-width: 100%;
+}
+
+.kit-bar > * {
+  pointer-events: auto;
 }
 
 .kit-tabs {

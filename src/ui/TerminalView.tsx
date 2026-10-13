@@ -261,8 +261,8 @@ export function TerminalView({ game }: { game: Game }) {
           {' · '}
           {game.hallGuests.length} pax
         </p>
-        <KitBar game={game} build={build} setBuild={setBuild} />
       </div>
+      <KitBar game={game} build={build} setBuild={setBuild} />
       <KitTooltip build={build} hover={hover} />
       <aside className="hall-build" data-testid="hall-build">
         <div data-testid="prefab-ceilings">

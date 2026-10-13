@@ -87,6 +87,18 @@ export function seatCount(items: readonly PlacedItem[]): number {
   return n
 }
 
+/** Placed seats per painted zone. A bench only serves people in its own zone. */
+export function seatsByZone(zones: HallZones, items: readonly PlacedItem[]): Map<ZoneId, number> {
+  const out = new Map<ZoneId, number>()
+  for (const it of items) {
+    const zone = zones[it.r]?.[it.c] as ZoneId | null | undefined
+    if (!zone || it.bundle) continue
+    const seats = itemDef(it.def)?.seats ?? 0
+    if (seats) out.set(zone, (out.get(zone) ?? 0) + seats)
+  }
+  return out
+}
+
 /** Comfort at one cell from every decoration in range. Fades linearly, capped. */
 export function comfortAtCell(items: readonly PlacedItem[], c: number, r: number): number {
   let sum = 0
