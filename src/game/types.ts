@@ -546,6 +546,10 @@ export interface Flight {
   claimLane?: number | null
   /** Outbound units deposited at check-in so far. */
   bagsDeposited?: number
+  /** Outbound units left behind when the flight was released short. */
+  bagsOffloaded?: number
+  /** Inbound units that did not fit the claim hall. */
+  claimLeft?: number
 }
 
 /** Timed bag journey — aggregate units, not per-suitcase agents. */

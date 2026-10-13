@@ -100,10 +100,35 @@ describe('economy', () => {
     const liveBill = live.payrollPreview()
     live.tickPayroll(0)
     const afterPay = 180_000 - liveBill
-    const levy = cityLevy(afterPay)
+    // Payroll every 30s. The 3% levy waits for the sim day so it is not charged six times.
+    expect(live.cash).toBe(afterPay)
+    expect(live.news.some((n) => n.text.includes('city levy'))).toBe(false)
+    live.clock = 180
+    live.payrollCool = 0
+    const bill2 = live.payrollPreview()
+    live.tickPayroll(0)
+    const afterSecond = afterPay - bill2
+    const levy = cityLevy(afterSecond)
     expect(levy).toBeGreaterThan(0)
     expect(levy).toBeLessThan(5_000)
-    expect(live.cash).toBe(afterPay - levy)
+    expect(live.cash).toBe(afterSecond - levy)
     expect(live.news.some((n) => n.text.includes('city levy'))).toBe(true)
+    live.payrollCool = 0
+    live.tickPayroll(0)
+    expect(live.cash).toBe(afterSecond - levy - live.payrollPreview())
+  })
+
+  it('keeps a recent earning on the hourly readout through a quiet hour', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.earn(5_000, 'NL1 landing')
+    game.sampleEconomy(7.5)
+    expect(game.incomePerHour).toBe(5_000)
+    game.sampleEconomy(7.5)
+    expect(game.incomePerHour).toBe(0)
+    expect(game.incomeRate()).toBe(5_000)
+    game.hourIncome = 800
+    game.econHour = 1
+    expect(game.incomeRate()).toBeGreaterThan(0)
   })
 })
