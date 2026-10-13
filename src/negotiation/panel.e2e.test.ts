@@ -8,7 +8,8 @@ describe('negotiation panel', () => {
   it('opens and closes without blocking the field', async () => {
     const port = 46117
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-      cwd: '/workspace',
+      cwd: process.cwd(),
+      shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
