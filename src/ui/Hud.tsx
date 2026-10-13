@@ -43,6 +43,7 @@ import {
   TOOL_LABEL,
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
+import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
@@ -334,8 +335,50 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
+      {game.inboundOffer() ? (
+        <aside className="inbound-panel" data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
+          {(() => {
+            const card = game.inboundOffer()
+            if (!card) return null
+            return (
+              <div className="inbound-card">
+                <header>
+                  <span className="kind">{card.priority ? 'Priority' : 'Traffic'}</span>
+                  <span className="timer">{Math.ceil(card.secondsLeft)}s</span>
+                </header>
+                <h3>{card.title}</h3>
+                <p>{card.blurb}</p>
+                <p className="needs">{card.needs}</p>
+                <p className="pay">
+                  {card.reward > 0 ? `Fee ${money(card.reward)}` : `Day-rate ${money(card.dailyFee)}`}
+                  {card.fine > 0 ? ` · refuse ${money(card.fine)}` : ''}
+                  {` · ${card.stayDays}d`}
+                </p>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="on"
+                    data-testid="inbound-accept"
+                    onClick={() => game.acceptInbound(card.id)}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="inbound-refuse"
+                    onClick={() => game.refuseInbound(card.id)}
+                  >
+                    Refuse
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+        </aside>
+      ) : null}
+
       <div
-        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}`}
+        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
@@ -1125,6 +1168,51 @@ export function Hud({ game }: { game: Game }) {
               ) : null}
 
               {panel === 'airlines' ? (
+                <>
+                <section className="inbound-contracts" data-testid="contracts-panel">
+                  <h3>Contracts</h3>
+                  <p className="muted eco-line">
+                    Guard {game.milAgreement ? 'agreement signed' : 'agreement is on the Budget panel'}
+                    {' · '}
+                    clearance {game.inboundHasClearance() ? 'held' : money(CLEARANCE_LICENCE_COST)}
+                  </p>
+                  {game.inboundHasClearance() ? null : (
+                    <button type="button" onClick={() => game.buyInboundClearance()}>
+                      Buy security clearance · {money(CLEARANCE_LICENCE_COST)}
+                    </button>
+                  )}
+                  {game.inboundContracts().length === 0 ? (
+                    <p className="muted">No Guard contracts yet. A signed agreement brings the first offer.</p>
+                  ) : (
+                    <ul className="airlines">
+                      {game.inboundContracts().map((deal) => (
+                        <li key={deal.id}>
+                          <b>
+                            {deal.name}{' '}
+                            <span className="muted">
+                              {deal.status} · {deal.daySorties} day / {deal.nightSorties} night
+                            </span>
+                          </b>
+                          <span className="muted">
+                            Night circuit {deal.noisePerNight} noise · {deal.approvalPerNight} approval
+                          </span>
+                          <div className="row">
+                            {deal.status === 'offered' ? (
+                              <button type="button" className="on" onClick={() => game.signInboundContract(deal.id)}>
+                                Sign
+                              </button>
+                            ) : null}
+                            {deal.status === 'active' || deal.status === 'expiring' ? (
+                              <button type="button" onClick={() => game.cancelInboundContract(deal.id)}>
+                                Cancel early
+                              </button>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
                 <section className="airline-tiers">
                   <h3>Airline tiers</h3>
                   {(() => {
@@ -1233,6 +1321,7 @@ export function Hud({ game }: { game: Game }) {
                     )
                   })}
                 </section>
+                </>
               ) : null}
 
               {panel === 'planner' ? (

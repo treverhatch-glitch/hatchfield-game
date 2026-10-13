@@ -1,4 +1,11 @@
-import { APPROVAL_RECOVERY_PER_DAY, NOISE_DECAY_PER_DAY, REP_FAIL, CITY_APPROVAL_START, REPUTATION_START } from './data.ts'
+import {
+  APPROVAL_RECOVERY_PER_DAY,
+  DECISION_SEC,
+  NOISE_DECAY_PER_DAY,
+  REP_FAIL,
+  CITY_APPROVAL_START,
+  REPUTATION_START,
+} from './data.ts'
 import { HOTEL_NIGHT_FEE, SIM_DAY_SEC } from './fees.ts'
 import { auditMilitaryWeek, advanceMilitarySeasons, offerMilitaryContract } from './military.ts'
 import { gameDay, queueDay } from './offers.ts'
@@ -157,6 +164,38 @@ export function respond(
   return events
 }
 
+function openNext(
+  state: InboundState,
+  world: InboundWorld,
+  cursor: number,
+  to: number,
+  policy: OfferPolicy | undefined,
+  events: InboundEvent[],
+): { acted: boolean; cursor: number } {
+  const next = state.requests
+    .filter((request) => request.status === 'queued' && request.opensAt <= to)
+    .sort((a, b) => a.opensAt - b.opensAt || a.id.localeCompare(b.id))[0]
+  if (!next) return { acted: false, cursor }
+  const openAt = Math.max(next.opensAt, cursor)
+  if (openAt > to) return { acted: false, cursor }
+  next.status = 'pending'
+  next.opensAt = openAt
+  next.deadline = openAt + DECISION_SEC
+  events.push({ type: 'offered', request: snapshot(next) })
+  if (policy) {
+    const choice = policy(next, state, world)
+    if (choice === 'accept' || choice === 'refuse') {
+      events.push(...respond(state, world, next.id, choice))
+    }
+  }
+  return { acted: true, cursor: openAt }
+}
+
+/**
+ * One decision card at a time. A policy that answers immediately still clears
+ * the day's queue inside the slice. With no answer, each card gets a full
+ * decision window and the rest stay queued.
+ */
 function playSlice(
   state: InboundState,
   world: InboundWorld,
@@ -165,35 +204,19 @@ function playSlice(
   policy: OfferPolicy | undefined,
 ): InboundEvent[] {
   const events: InboundEvent[] = []
-  const marks: { t: number; order: number; id: string; kind: 'open' | 'expire' }[] = []
-  for (const request of state.requests) {
-    if (request.status === 'queued' && request.opensAt > from && request.opensAt <= to) {
-      marks.push({ t: request.opensAt, order: 0, id: request.id, kind: 'open' })
+  let cursor = from
+  const guard = state.requests.length * 4 + 4
+  for (let step = 0; step < guard; step++) {
+    const pending = state.requests.find((request) => request.status === 'pending')
+    if (pending) {
+      if (pending.deadline > to) break
+      if (pending.deadline > cursor) cursor = pending.deadline
+      events.push(closeRequest(state, pending, 'expired'))
+      continue
     }
-    if (
-      (request.status === 'queued' || request.status === 'pending') &&
-      request.deadline > from &&
-      request.deadline <= to
-    ) {
-      marks.push({ t: request.deadline, order: 1, id: request.id, kind: 'expire' })
-    }
-  }
-  marks.sort((a, b) => a.t - b.t || a.order - b.order)
-  for (const mark of marks) {
-    const request = state.requests.find((item) => item.id === mark.id)
-    if (!request) continue
-    if (mark.kind === 'open' && request.status === 'queued') {
-      request.status = 'pending'
-      events.push({ type: 'offered', request: snapshot(request) })
-      if (policy) {
-        const choice = policy(request, state, world)
-        if (choice === 'accept' || choice === 'refuse') {
-          events.push(...respond(state, world, request.id, choice))
-        }
-      }
-    } else if (mark.kind === 'expire' && request.status === 'pending') {
-      events.push(closeRequest(state, request, 'expired'))
-    }
+    const opened = openNext(state, world, cursor, to, policy, events)
+    cursor = opened.cursor
+    if (!opened.acted) break
   }
   return events
 }

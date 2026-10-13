@@ -1265,6 +1265,72 @@ button {
   top: 300px;
 }
 
+.letter-stack.below-inbound {
+  top: 268px;
+}
+
+.letter-stack.below-coach.below-inbound {
+  top: 470px;
+}
+
+/* One inbound card. It sits over the apron corner and leaves the field clickable. */
+.inbound-panel {
+  position: absolute;
+  top: 78px;
+  left: 16px;
+  width: min(280px, 92vw);
+  z-index: 34;
+  pointer-events: none;
+}
+
+.inbound-card {
+  pointer-events: auto;
+  background: rgba(12, 22, 18, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  border-radius: 10px;
+  padding: 8px 10px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+.inbound-card header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.inbound-card h3 {
+  margin: 2px 0 4px;
+  font-size: 14px;
+}
+
+.inbound-card p {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.inbound-card .needs,
+.inbound-card .pay {
+  color: #c5d0c8;
+}
+
+.inbound-card .row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.inbound-contracts {
+  margin-bottom: 14px;
+}
+
+.inbound-contracts .row {
+  margin-top: 4px;
+}
+
 .letter {
   pointer-events: auto;
   background: rgba(12, 22, 18, 0.94);
@@ -1604,9 +1670,19 @@ h1 {
   .chrome,
   .dock,
   .letter-stack,
+  .inbound-panel,
   .offer,
   .guest-card {
     pointer-events: auto;
+  }
+  .inbound-panel {
+    top: auto;
+    bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+  }
+  .letter-stack.below-inbound,
+  .letter-stack.below-coach.below-inbound {
+    top: auto;
+    bottom: calc(280px + env(safe-area-inset-bottom, 0px));
   }
   .letter-stack {
     top: auto;
