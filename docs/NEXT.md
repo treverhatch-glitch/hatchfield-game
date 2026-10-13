@@ -10,8 +10,9 @@ Ordered plan. Ship top-down. **Active build board:** [BUILD.md](./BUILD.md) · [
 - [x] Belt lite (E1) · Jam / stolen-slot (E2) · Standing vocabulary (E2b)  
 - [x] Living logistics + real-ops + bags/cargo economy design locked  
 - [x] **Slice 1 (BUILD):** bag units + premade ceilings + layover through-bags  
-- [ ] **Slice 2:** guard post + city cargo trucks — **NEXT TO CODE**  
-- [ ] **Slice 3:** cargo start focus + volume letters + warehouse  
+- [x] **Slice 1b:** full bag journey + claim scheduling  
+- [x] **Slice 2:** guard post + city cargo trucks → shed + warehouse stock  
+- [ ] **Slice 3:** cargo start focus + volume letters — **NEXT TO CODE**  
 - [ ] Coach / Economy discoverability — Starter kit harder to miss  
 
 ## Wave map (summary)

@@ -73,6 +73,12 @@ export const FUEL_COST = 5600
 export const FIRE_COST = 12000
 export const POLICE_COST = 11000
 export const CARGO_COST = 16000
+/** City-edge vehicle screen — cargo trucks / contractors. */
+export const GUARD_COST = 9_500
+/** Fee when a city cargo truck clears the shed (intake picture). */
+export const CARGO_INTAKE_FEE = 420
+/** Soft warehouse capacity at one cargo shed (units). */
+export const CARGO_WAREHOUSE_CAP = 140
 export const ROAD_COST = 450
 export const TOWER_COST = 18000
 export const HANGAR_COST = 14000
@@ -900,7 +906,14 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'cargo',
     name: 'Cargo shed',
     cost: CARGO_COST,
-    blurb: 'For Umazon, UPPS, and EXFED freighters.',
+    blurb: 'For Umazon, UPPS, and EXFED freighters. City trucks deliver here after the guard post.',
+  },
+  {
+    tool: 'guard',
+    tile: 'guard',
+    name: 'Guard post',
+    cost: GUARD_COST,
+    blurb: 'Screens city cargo trucks on the access road. Missing post = queues, denied entry, On-time dips.',
   },
   {
     tool: 'tower',
@@ -1064,6 +1077,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   fire: 'Fire',
   police: 'Police',
   cargo: 'Cargo',
+  guard: 'Guard',
   road: 'Road',
   tower: 'Tower',
   hangar: 'Hangar',

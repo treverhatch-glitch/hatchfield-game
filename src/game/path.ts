@@ -49,6 +49,7 @@ export function walkableFor(
       tile === 'fire' ||
       tile === 'police' ||
       tile === 'cargo' ||
+      tile === 'guard' ||
       tile === 'road' ||
       tile === 'hangar' ||
       tile === 'deice' ||
@@ -77,6 +78,7 @@ export function walkableFor(
     tile === 'road' ||
     tile === 'police' ||
     tile === 'cargo' ||
+    tile === 'guard' ||
     tile === 'hangar' ||
     tile === 'fuel' ||
     tile === 'fire' ||

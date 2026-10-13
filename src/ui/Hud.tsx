@@ -74,7 +74,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'ops',
     label: 'Ops',
-    tools: ['fuel', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'tower', 'hangar'],
+    tools: ['fuel', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'guard', 'tower', 'hangar'],
   },
   {
     id: 'landside',
@@ -89,6 +89,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
       'park_u',
       'bus',
       'rail',
+      'guard',
     ],
   },
   {
@@ -1451,6 +1452,9 @@ export function Hud({ game }: { game: Game }) {
               {game.maxWear() >= 25 ? ` · wear ${Math.round(game.maxWear())}` : ''}
               {holding ? ` · ${holding} holding` : ''}
               {game.apronJamLine() ? ` · ${game.apronJamLine()}` : ''}
+              {tilesOf(game.tiles, 'cargo').length
+                ? ` · warehouse ${Math.round(game.cargoWarehouseFill() * 100)}% (${game.cargoWarehouse}u)`
+                : ''}
             </p>
           </div>
 

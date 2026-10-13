@@ -2,7 +2,7 @@
 
 **Purpose:** One file for an external reviewer / Grok bot.  
 **Use this to understand goals, what is already coded, what was briefed but not built yet, and how the game is meant to play.**  
-**Date snapshot:** after slice **1b** (full bag journey + claim scheduling).  
+**Date snapshot:** after slice **2** (guard post + city cargo trucks → shed).  
 **Code order of truth:** [BUILD.md](./BUILD.md) · North star: [VISION.md](./VISION.md)
 
 ---
@@ -92,8 +92,8 @@ Multi-product loans, parcels, city rail, IPO / **HATCH** ticker, analyst crises 
 ### Loop E — Living logistics picture (Manor Lords energy) — PARTIAL
 
 **Vision:** schedules drive prep; assets move through pipelines you can see (city → guard → facility → apron → plane).  
-**Shipped so far:** bag journey with timed dwells + claim scheduling + belt lite.  
-**Next:** guard post + city cargo trucks; fuel bowser capacity; cargo warehouse meter.
+**Shipped so far:** bag journey + claim scheduling + belt lite; **guard post + city cargo trucks → shed + warehouse stock**.  
+**Next:** cargo start focus + volume letters; fuel bowser capacity; cargo screen building.
 
 ---
 
@@ -166,7 +166,7 @@ Treat this as the current product surface. Details live in `src/game/sim.ts`, `c
 - Amenity dens: indoor golf, waterfall, gaming.
 - Info desk extends lookahead (RCT park-map spirit).
 
-### Bags (recent — slices 1 + 1b) — LIVE
+### Bags (slices 1 + 1b) — LIVE
 
 - Aggregate **bag units** per flight from PaxTag mix (no per-bag agents).
 - **Belt lite (E1):** paint check-in ↔ makeup ↔ stand; break → late bags + Standing.
@@ -177,6 +177,15 @@ Treat this as the current product surface. Details live in `src/game/sim.ts`, `c
 - Arrivals only clear `needs.bags` when flight stage is **on claim**.
 - Handling / drop pay = airport cash; airline ticket bag fees stay off-screen (realism).
 - Visible crate load on bag carts (Manor Lords picture).
+
+### Cargo landside (slice 2) — LIVE basic
+
+- **Guard post** stamp (road edge); starter kit places one on the city approach.
+- **City cargo trucks** spawn at map-edge roads → guard screen dwell → cargo shed deliver → depart.
+- **Warehouse stock** fills from intake; HUD shows fill %; intake fee posts.
+- Freighter shed→plane uplift **consumes** warehouse; thin stock → late uplift + On-time nick.
+- Missing guard → denied entry or unscreened incident + security/On-time hurt.
+- Queue pressure when multiple trucks hit one post.
 
 ### Emergencies / mil / side — PARTIAL LIVE
 
@@ -211,8 +220,8 @@ These are intentional direction from the owner + design docs. **Do not treat as 
 
 | Slice | Status | Player should feel |
 | --- | --- | --- |
-| **2** Guard post + city cargo trucks → shed | **NEXT TO CODE** | Cargo has a landside journey |
-| **3** Cargo start focus + kit + volume letter + warehouse meter | Planned | Cargo is a real start fantasy |
+| **2** Guard post + city cargo trucks → shed | **SHIPPED** | Cargo has a landside journey |
+| **3** Cargo start focus + kit + volume letter + richer warehouse HUD | **NEXT** | Cargo is a real start fantasy |
 | **4** Fuel bowser capacity + farm stock refill | Planned | Manor Lords fuel picture |
 | **5** Budget panel clarity + kit/loan coach | Parallel | Money readable |
 | **6** Screen building + loader GSE + cargo ladder UI | After 3 | Cargo midgame |
@@ -333,6 +342,6 @@ When judging a feature idea, ask:
 
 ## 11. Current status one-liner
 
-**Shipped through bag journey + claim scheduling (BUILD 1 + 1b).**  
-**Next code:** guard post + city cargo trucks (BUILD slice 2) toward cargo equality (E3).  
+**Shipped through bag journey + city cargo landside (BUILD 1 + 1b + 2).**  
+**Next code:** cargo start focus + volume letters (BUILD slice 3) to finish E3 cargo equality.  
 **North star unchanged:** living logistics airfield — layout skill, letter drama, money = picture; pax and cargo as peers; emergencies/mil as side seasons.

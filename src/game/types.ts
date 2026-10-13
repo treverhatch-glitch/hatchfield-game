@@ -1,5 +1,5 @@
 export const SIZE = 32
-export const SAVE_KEY = 'apron-save-v24'
+export const SAVE_KEY = 'apron-save-v25'
 
 export type Tile =
   | 'grass'
@@ -15,6 +15,8 @@ export type Tile =
   | 'fire'
   | 'police'
   | 'cargo'
+  /** City-edge vehicle screen — cargo trucks / contractors pass here. */
+  | 'guard'
   | 'road'
   | 'tower'
   | 'hangar'
@@ -73,6 +75,7 @@ export type Tool =
   | 'fire'
   | 'police'
   | 'cargo'
+  | 'guard'
   | 'road'
   | 'tower'
   | 'hangar'
@@ -578,10 +581,16 @@ export type TruckMission =
   | 'ferry_dep'
   /** Inbound bags processing at sort before claim inject. */
   | 'sort_inbound'
+  /** City cargo: edge → guard screen. */
+  | 'city_guard'
+  /** City cargo: guard → shed deliver. */
+  | 'city_shed'
+  /** City cargo: leave field after delivery. */
+  | 'city_depart'
 
 export interface Truck {
   id: string
-  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice' | 'termbus'
+  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice' | 'termbus' | 'citycargo'
   flightId: string | null
   x: number
   y: number
@@ -750,4 +759,6 @@ export interface GameSnapshot {
   /** First-hour coach dismissed (or auto-cleared after first takeoff). */
   coachDismissed?: boolean
   fieldTask?: FieldTask | null
+  /** Freight staged at the cargo shed (city truck intake). */
+  cargoWarehouse?: number
 }
