@@ -223,6 +223,8 @@ export function Hud({ game }: { game: Game }) {
   if (game.warnedAirlines().length) alerts.push('Standing low')
   if (holding) alerts.push(`${holding} holding`)
   if (game.apronJamLine()) alerts.push('Apron jam')
+  if (game.securityQueueCount() >= 3) alerts.push('Security queue')
+  if (game.lostPaxCount() > 0) alerts.push('Lost pax')
   if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
 
   return (

@@ -198,3 +198,29 @@ Same branch. Three commits: a test safety net, the Cities-style UI, and aircraft
 - `docs/devlog/media/SLICE-A-departure.png` — same jet rotating for departure
 - `docs/devlog/media/SLICE-A-ui.webm` — short UI pass (about 6 s)
 - `docs/devlog/media/SLICE-A-departure.webm` — approach through departure (about 26 s)
+
+## Slice B — terminal interior, 13 Oct 2026
+
+Same branch. The morning kit is still one click. It drops a prefab hall that already works, with ceilings you can read: 28 passengers, security 20 per minute, bags 70, upkeep $90 a day. A bigger bank queues at the one scanner. Upgrade the prefab (tier II and III, more throughput, more upkeep) or paint the floor and place items, which drops the bundle discount.
+
+**Zones.** Check-in, Security, Gates, Arrivals, Shops / Food, Toilets. Pick a zone and the menu only lists what fits there. The hall is a walled shell with the roof cut away, coloured floors, and door gaps in the security wall.
+
+**Items.** The twelve starters (doors, queue rail, check-in desk, kiosk, small security lane, secure exit, seats, boarding desk, bag claim, bag hall, toilets, café) plus a wayfinding sign. Bigger lanes, a twin desk, family toilets, and a restaurant unlock with Field Level. They are faster or richer and cost more to run. Nothing is free. Wear slows the lane until you scrub.
+
+**Passengers.** They walk curb → check-in → security → whatever they need → gate → board. Arrivals come off the jet to claim and the doors. Pathfinding looks five junctions ahead; each sign adds two. A missed path, or a full security queue, pins them as lost and raises an alert. They cannot reach a gate without clearing security. Click a person for mood, thought, and needs.
+
+**Bugs.** No new ones. The count stays at six (BUG-001 through BUG-006).
+
+**Tests.** 24 passing. Ten new ones cover lane throughput (20 per minute, one-at-a-time service, overflow turned away), wear slowing service, the security choke, the five-junction cap and signs, prefab upgrade cost and upkeep, the Field Level lock, and a live departure wave that queues and stays off the gate.
+
+**New media**
+
+- `docs/devlog/media/SLICE-B-prefab.png` — prefab shell, 28 passengers, security 20/min, bags 70
+- `docs/devlog/media/SLICE-B-zones.png` — painted shop floor, custom hall, prefab discount off
+- `docs/devlog/media/SLICE-B-item-menu.png` — security zone menu, bigger lanes locked to Field Level
+- `docs/devlog/media/SLICE-B-bottleneck.png` — twelve waiting, two lost, alert pins
+- `docs/devlog/media/SLICE-B-upgrade.png` — Prefab II, 48 passengers, security 60/min, higher upkeep
+- `docs/devlog/media/SLICE-B-bottleneck-fixed.png` — same wave after the upgrade, queue gone
+- `docs/devlog/media/SLICE-B-journey.png` — passengers mid-hall on the way to the gate
+- `docs/devlog/media/SLICE-B-journey.webm` — full walk, about 21 s
+- `docs/devlog/media/SLICE-B-bottleneck.webm` — queue forms, then the upgrade clears it, about 18 s

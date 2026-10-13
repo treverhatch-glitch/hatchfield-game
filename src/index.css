@@ -301,6 +301,106 @@ button {
   margin: 3px 0;
 }
 
+.guest-card .mood {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.guest-card li i {
+  display: inline-block;
+  height: 6px;
+  width: 0;
+  max-width: 88px;
+  margin-left: 6px;
+  background: #c9a227;
+  border-radius: 99px;
+  vertical-align: middle;
+}
+
+.hall-alert {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  background: #6a2a22;
+  color: #fff8f2;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.hall-build {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  width: min(300px, 34vw);
+  max-height: calc(100% - 160px);
+  overflow: auto;
+  z-index: 4;
+  background: rgba(10, 20, 16, 0.9);
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  border-radius: 10px;
+  padding: 10px;
+  pointer-events: auto;
+  font-size: 12px;
+}
+
+.hall-build p {
+  margin: 2px 0 6px;
+}
+
+.hall-build button {
+  width: 100%;
+  text-align: left;
+  margin: 3px 0;
+}
+
+.hall-build button span {
+  display: block;
+  color: #b7c4b8;
+  font-size: 11px;
+}
+
+.zone-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.zone-bar button {
+  width: auto;
+  flex: 1 1 30%;
+  padding: 4px 6px;
+  background: transparent;
+}
+
+.zone-bar button.on {
+  background: rgba(201, 162, 39, 0.25);
+}
+
+.item-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.zone-plan {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 3px;
+}
+
+.zone-plan button {
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
 .hud {
   pointer-events: none;
   position: absolute;

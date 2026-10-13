@@ -707,6 +707,18 @@ export interface TerminalFit {
   capGuests?: number
   /** Claim clear rate multiplier baseline (premade ~0.75, custom can go higher). */
   claimRate?: number
+  /** Prefab tier. 1 is the morning kit. Custom halls ignore this once redesigned. */
+  tier?: 1 | 2 | 3
+  /** Painted floor. Null cells are bare shell. */
+  zones?: (string | null)[][]
+  items?: { id: string; def: string; c: number; r: number; wear: number; bundle?: boolean }[]
+  /** Wayfinding signs. Each one extends the pathfinding junction cap. */
+  signs?: number
+  bagAllowance?: number
+  /** Security passengers per sim-minute. */
+  secPerMin?: number
+  /** Zone paint or a custom stamp. Ceilings come from placed items. */
+  redesigned?: boolean
 }
 
 export interface GameSnapshot {

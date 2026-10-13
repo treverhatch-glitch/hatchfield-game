@@ -109,6 +109,12 @@ export interface HallGuest {
   bagDepositLeft?: number
   /** Finished check-in bag drop for this journey. */
   bagsDropped?: boolean
+  /** No path, or the security queue turned them away. */
+  lost?: boolean
+  /** Seconds left at the scanner. 0 means waiting, not being served. */
+  serviceLeft?: number
+  /** Arrival order at the security lane. */
+  queueSeq?: number
 }
 
 /**
