@@ -94,9 +94,31 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   },
 ]
 
+type PanelId =
+  | 'economy'
+  | 'budget'
+  | 'research'
+  | 'airlines'
+  | 'planner'
+  | 'services'
+  | null
+
+const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
+  { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
+  { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
+  { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
+  { id: 'airlines', label: 'Airlines', tip: 'Contracts, heat, hubs' },
+  { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
+  { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+]
+
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState(BUILD_MENUS[0].id)
+  const [panel, setPanel] = useState<PanelId>(null)
+  const [openLetter, setOpenLetter] = useState<string | null>(null)
+  const [dismissedWarn, setDismissedWarn] = useState(false)
+  const [chromePinned, setChromePinned] = useState(false)
   const menuTools = BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? BUILD_MENUS[0].tools
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
@@ -118,116 +140,65 @@ export function Hud({ game }: { game: Game }) {
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
 
+  const togglePanel = (id: Exclude<PanelId, null>) => {
+    setPanel((cur) => {
+      if (cur === id) {
+        setChromePinned(false)
+        return null
+      }
+      setChromePinned(true)
+      return id
+    })
+  }
+
+  const ticker = game.news.slice(0, 5)
+
   return (
     <div className="hud">
       <header className="top">
         <div className="brand">
           <strong>Hatchfield</strong>
           <span>
-            {site ? site.name : 'No plot'} · AT3 build loop
+            {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
           </span>
         </div>
-        <div className="stat cash">{money(game.cash)}</div>
+        <button
+          type="button"
+          className="stat cash top-cash"
+          title="Open Economy"
+          onClick={() => togglePanel('economy')}
+        >
+          {money(game.cash)}
+        </button>
         <div className="stat">{formatClock(game.clock)}</div>
-        <div className="stat">{game.signed.length} airlines</div>
-        <div className="stat" title="Free stands / jets holding">
-          Gate {freeGates} · Hold {holding}
-        </div>
-        {game.fits.length || game.runwayStripCount() > 0 ? (
-          <div className="stat" title={`${game.campusLine()} · ${game.campusPathLine()}`}>
-            {game.fits.length > 1
-              ? `${game.fits.length}T · ${game.runwayStripCount()}RW · ${game.jetwayCount()}JW`
-              : game.fits.length
-                ? `${game.jetwayCount()}JW · ${game.runwayStripCount()}RW`
-                : `${game.runwayStripCount()}RW`}
-          </div>
-        ) : null}
-        <div className="stat">Sec {ready.security}</div>
         <div
           className="stat"
-          title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}. Blend of rep, airline heat, hall wear, security.`}
+          title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
         >
           Field {game.fieldRating()} · {game.fieldRatingLabel()}
         </div>
-        <div
-          className="stat"
-          title={`Research points. Unlocked: ${
-            game.researchUnlocked.length
-              ? game.researchUnlocked.join(', ')
-              : 'none'
-          }. ${game.isNight() ? 'Night bank window.' : 'Day ops.'}`}
-        >
-          RP {Math.floor(game.researchPoints)}
-          {game.isNight() ? ' · Night' : ''}
-        </div>
         <div className="stat">Rep {Math.round(game.reputation)}</div>
-        <div
-          className="stat"
-          title={game.stripCapabilityLine()}
-        >
-          {game.stripTierLabel()} {game.longestRunway()}c · RW{' '}
-          {Math.round(game.runwayCondition)}%
-        </div>
         <div className="stat">{game.weatherLabel()}</div>
+        <div className="stat" title="Free stands / jets holding">
+          Gate {freeGates} · Hold {holding}
+        </div>
         {game.public ? (
-          <div className="stat cash">HATCH ${game.sharePrice.toFixed(2)}</div>
+          <button
+            type="button"
+            className="stat cash top-cash"
+            title="Open Economy · HATCH"
+            onClick={() => togglePanel('economy')}
+          >
+            HATCH ${game.sharePrice.toFixed(2)}
+          </button>
         ) : null}
-        <div className="speeds">
-          <button
-            type="button"
-            className={game.view === 'apron' ? 'on' : ''}
-            onClick={() => game.setView('apron')}
-          >
-            Apron
-          </button>
-          <button
-            type="button"
-            className={game.view === 'hall' ? 'on' : ''}
-            onClick={() => game.setView('hall')}
-          >
-            Hall
-          </button>
-          {game.fits.length > 1
-            ? game.fits.map((f) => {
-                const active =
-                  game.activeHall()?.origin.c === f.origin.c &&
-                  game.activeHall()?.origin.r === f.origin.r
-                return (
-                  <button
-                    key={`${f.origin.c},${f.origin.r}`}
-                    type="button"
-                    className={active && game.view === 'hall' ? 'on' : ''}
-                    title={`${game.hallLabel(f)} · ${game.standsForHall(f).length} jetway stands`}
-                    onClick={() => game.selectHall(f)}
-                  >
-                    {game.hallLabel(f)}
-                  </button>
-                )
-              })
-            : null}
-          {([0, 1, 3] as Speed[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={game.speed === s ? 'on' : ''}
-              onClick={() => game.setSpeed(s)}
-            >
-              {s === 0 ? 'Pause' : `${s}x`}
-            </button>
-          ))}
+        <div className="stat vitals-quiet" title={game.stripCapabilityLine()}>
+          {game.stripTierLabel()} · RW {Math.round(game.runwayCondition)}% · Sec{' '}
+          {ready.security}
+          {game.fits.length > 1 ? ` · ${game.fits.length}T` : ''}
+          {game.runwayStripCount() > 0 ? ` · ${game.runwayStripCount()}RW` : ''}
         </div>
       </header>
-
-      <button
-        type="button"
-        className="view-chip"
-        onClick={() => game.setView(game.view === 'apron' ? 'hall' : 'apron')}
-        title="Toggle Apron / Hall (H). Click a terminal tile to enter."
-      >
-        {game.view === 'apron'
-          ? 'Apron · build outside · click hall to enter'
-          : 'Hall · landside ↔ airside · Esc back out'}
-      </button>
 
       {game.showCoach() ? (
         <div className="coach" data-testid="coach">
@@ -252,12 +223,135 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
-      {game.warnedAirlines().length ? (
-        <div className="offer warn">
-          <div>
-            <strong>Relations cooling</strong>
-            <p>
-              {game
+      <div className="letter-stack" aria-label="Incoming letters">
+        {(() => {
+          type Letter = {
+            id: string
+            kind: string
+            from: string
+            title: string
+            blurb: string
+            tone: 'ok' | 'good' | 'bad' | 'warn'
+            left: number | null
+            live?: boolean
+          }
+          const letters: Letter[] = []
+          if (game.offer && offerAirline) {
+            letters.push({
+              id: 'contract',
+              kind: 'Contract',
+              from: offerAirline.name,
+              title: `${offerAirline.name} wants a contract${offerAirline.procedural ? ' · regional' : ''}`,
+              blurb: `${personaBlurb(offerAirline.persona)} · ${offerAirline.blurb}`,
+              tone: 'good',
+              left: Math.ceil(game.offer.deadline),
+            })
+          }
+          if (game.fieldTask) {
+            letters.push({
+              id: 'field',
+              kind: 'Field ask',
+              from: game.airline(game.fieldTask.airline).name,
+              title: `${game.airline(game.fieldTask.airline).name} · ${game.fieldTask.title}`,
+              blurb: `${game.fieldTask.blurb} · ${money(game.fieldTask.bonus)} if done`,
+              tone: 'ok',
+              left: Math.ceil(game.fieldTaskLeft()),
+            })
+          }
+          if (game.layoverOffer && layoverAirline) {
+            letters.push({
+              id: 'layover',
+              kind: 'Layover',
+              from: layoverAirline.name,
+              title: `${layoverAirline.name} layover bank`,
+              blurb: `${money(game.layoverOffer.fee)} up front · ${game.layoverOffer.transferPax} transfers · ~${game.layoverOffer.duration}s. Keep heat above the ban line.`,
+              tone: 'good',
+              left: Math.ceil(game.layoverOffer.deadline),
+            })
+          } else if (game.layover && layoverAirline) {
+            letters.push({
+              id: 'layover-live',
+              kind: 'Layover live',
+              from: layoverAirline.name,
+              title: `${layoverAirline.name} layover live`,
+              blurb: `${game.layover.spawned}/${game.layover.transferPax} transfers · ${Math.ceil(game.layover.remaining)}s left · heat ${Math.round(game.heatOf(game.layover.airline))}${game.layover.samples ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}` : ''}`,
+              tone: 'ok',
+              left: Math.ceil(game.layover.remaining),
+              live: true,
+            })
+          }
+          if (game.hubOffer && hubAirline) {
+            letters.push({
+              id: 'hub',
+              kind: 'Hub',
+              from: hubAirline.name,
+              title: `${hubAirline.name} Hub plaque`,
+              blurb: `${money(game.hubOffer.fee)} · denser slots, brand lounge, persona reward. Fail a layover and the ban is harsher.`,
+              tone: 'good',
+              left: Math.ceil(game.hubOffer.deadline),
+            })
+          }
+          if (game.mxOffer && mxAirline) {
+            letters.push({
+              id: 'mx',
+              kind: 'Line MX',
+              from: mxAirline.name,
+              title: `${mxAirline.name} wants line MX`,
+              blurb: `Hangar turnaround fee ${money(game.mxOffer.payout)} per visit. Needs funded mechanics.`,
+              tone: 'good',
+              left: Math.ceil(game.mxOffer.deadline),
+            })
+          }
+          if (game.pendingThreat) {
+            letters.push({
+              id: 'threat',
+              kind: 'Security',
+              from: 'Tower',
+              title:
+                game.pendingThreat.severity === 'hard' ? 'HARD THREAT' : 'Security alert',
+              blurb: game.pendingThreat.blurb,
+              tone: 'bad',
+              left: Math.ceil(game.pendingThreat.deadline),
+            })
+          }
+          if (game.pendingEmergency) {
+            const e = game.pendingEmergency
+            letters.push({
+              id: 'emergency',
+              kind: 'Emergency',
+              from: 'Ops',
+              title:
+                e.kind === 'tanker_mx'
+                  ? 'Firefighting plane · refuel + MX'
+                  : e.kind === 'tanker'
+                    ? 'Firefighting plane · refuel only'
+                    : 'Weather divert',
+              blurb: `${e.blurb} · ${money(e.fee)} · Needs ${game.emergencyNeedsLine(e)}${(() => {
+                const gap = game.emergencyHostGap(e)
+                return gap ? ` · RISK: ${gap}` : ' · ready to host'
+              })()}`,
+              tone: 'warn',
+              left: Math.ceil(e.deadline),
+            })
+          }
+          if (game.parkingOffer) {
+            letters.push({
+              id: 'parking',
+              kind: 'GA parking',
+              from: game.parkingOffer.callsign,
+              title: `Independent parking · ${game.parkingOffer.callsign}`,
+              blurb: `${AIRFRAMES[game.parkingOffer.airframeId]?.name ?? 'Aircraft'} · fee ${money(game.parkingOffer.fee)} · ~${game.parkingOffer.staySec}s then leave request`,
+              tone: 'ok',
+              left: Math.ceil(game.parkingOffer.deadline),
+            })
+          }
+          if (!dismissedWarn && game.warnedAirlines().length) {
+            letters.push({
+              id: 'warn',
+              kind: 'Relations',
+              from: 'Desk',
+              title: 'Relations cooling',
+              blurb: `${game
                 .warnedAirlines()
                 .map((id) => {
                   const a = game.airline(id)
@@ -267,1002 +361,1052 @@ export function Hud({ game }: { game: Game }) {
                     ? `${a.name} heat ${heat} — ${rewardBlurb(perk)} at risk`
                     : `${a.name} heat ${heat} — walk at ${HEAT_ABANDON_THRESHOLD}`
                 })
-                .join(' · ')}
-              . Heat ≤{HEAT_WARN_THRESHOLD} warns; ≤{HEAT_ABANDON_THRESHOLD} for ~
-              26s and they abandon (fine + lost perk).
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      {game.offer && offerAirline ? (
-        <div className="offer">
-          <div>
-            <strong>
-              {offerAirline.name} wants a contract
-              {offerAirline.procedural ? ' · regional' : ''}
-            </strong>
-            <p>
-              {personaBlurb(offerAirline.persona)} · {offerAirline.blurb}
-            </p>
-          </div>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.acceptOffer()}>
-              Sign
-            </button>
-            <button type="button" onClick={() => game.declineOffer()}>
-              Decline
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.fieldTask ? (
-        <div className="offer field-task" data-testid="field-task">
-          <div>
-            <strong>
-              {game.airline(game.fieldTask.airline).name} ask · {game.fieldTask.title}
-            </strong>
-            <p>
-              {game.fieldTask.blurb} · {money(game.fieldTask.bonus)} if done ·{' '}
-              {Math.ceil(game.fieldTaskLeft())}s left
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      {game.layoverOffer && layoverAirline ? (
-        <div className="offer layover">
-          <div>
-            <strong>{layoverAirline.name} layover bank</strong>
-            <p>
-              {money(game.layoverOffer.fee)} up front · {game.layoverOffer.transferPax}{' '}
-              transfers · ~{game.layoverOffer.duration}s. Keep heat above the ban line or
-              they fine you.
-            </p>
-          </div>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.acceptLayover()}>
-              Host layover
-            </button>
-            <button type="button" onClick={() => game.declineLayover()}>
-              Decline
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.layover && !game.layoverOffer ? (
-        <div className="offer layover live">
-          <div>
-            <strong>
-              {game.airline(game.layover.airline).name} layover live
-            </strong>
-            <p>
-              {game.layover.spawned}/{game.layover.transferPax} transfers ·{' '}
-              {Math.ceil(game.layover.remaining)}s left · heat{' '}
-              {Math.round(game.heatOf(game.layover.airline))}
-              {game.layover.samples
-                ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}`
-                : ''}
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      {game.hubOffer && hubAirline ? (
-        <div className="offer hub">
-          <div>
-            <strong>{hubAirline.name} Hub plaque</strong>
-            <p>
-              {money(game.hubOffer.fee)} · denser slots, brand lounge, persona reward.
-              Fail a layover and the ban is harsher.
-            </p>
-          </div>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.acceptHub()}>
-              Take Hub
-            </button>
-            <button type="button" onClick={() => game.declineHub()}>
-              Decline
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.mxOffer && mxAirline ? (
-        <div className="offer mx">
-          <div>
-            <strong>{mxAirline.name} wants line MX</strong>
-            <p>
-              Hangar turnaround fee {money(game.mxOffer.payout)} per visit. Needs funded
-              mechanics.
-            </p>
-          </div>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.acceptMxOffer()}>
-              Sign MX
-            </button>
-            <button type="button" onClick={() => game.declineMxOffer()}>
-              Decline
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.pendingThreat ? (
-        <div className="offer threat">
-          <div>
-            <strong>
-              {game.pendingThreat.severity === 'hard' ? 'HARD THREAT' : 'Security alert'}
-            </strong>
-            <p>
-              {game.pendingThreat.blurb} ({Math.ceil(game.pendingThreat.deadline)}s)
-            </p>
-          </div>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.resolveThreat('scramble')}>
-              Scramble
-            </button>
-            <button type="button" onClick={() => game.resolveThreat('ignore')}>
-              Ignore
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.pendingEmergency ? (
-        <div className="offer emergency">
-          <div>
-            <strong>
-              {game.pendingEmergency.kind === 'tanker_mx'
-                ? 'Firefighting plane · refuel + MX'
-                : game.pendingEmergency.kind === 'tanker'
-                  ? 'Firefighting plane · refuel only'
-                  : 'Weather divert'}
-            </strong>
-            <p>
-              {game.pendingEmergency.blurb} (
-              {Math.ceil(game.pendingEmergency.deadline)}s ·{' '}
-              {money(game.pendingEmergency.fee)})
-            </p>
-            <p className="muted">
-              Needs {game.emergencyNeedsLine(game.pendingEmergency)}
-              {(() => {
-                const gap = game.emergencyHostGap(game.pendingEmergency)
-                return gap ? ` · RISK: ${gap}` : ' · ready to host'
-              })()}
-            </p>
-          </div>
-          <div className="row">
-            <button
-              type="button"
-              className="on"
-              onClick={() => game.resolveEmergency('accept')}
-            >
-              Host landing
-            </button>
-            <button type="button" onClick={() => game.resolveEmergency('refuse')}>
-              Refuse
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {game.parkingOffer ? (
-        <div className="offer parking">
-          <div>
-            <strong>Independent parking · {game.parkingOffer.callsign}</strong>
-            <p>
-              {AIRFRAMES[game.parkingOffer.airframeId]?.name ?? 'Aircraft'} · fee{' '}
-              {money(game.parkingOffer.fee)} · ~{game.parkingOffer.staySec}s then leave request ·
-              not a signed airline ({Math.ceil(game.parkingOffer.deadline)}s to answer)
-            </p>
-          </div>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.acceptParking()}>
-              Host parking
-            </button>
-            <button type="button" onClick={() => game.declineParking()}>
-              Wave off
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <aside className="side">
-        <section>
-          <h2>Build & bank</h2>
-          <button
-            type="button"
-            className="wide on"
-            data-testid="starter-kit"
-            onClick={() => game.buildStarterKit()}
-          >
-            Starter kit · {money(STARTER_KIT_COST)}
-          </button>
-          <p className="muted">
-            Drops a Northline-ready regional field + Apex + SkyBite. Empty plot only.
-          </p>
-          <div className="row">
-            <button type="button" onClick={() => game.takeLoan()}>
-              Loan {money(LOAN_PRINCIPAL)}
-            </button>
-            <button type="button" onClick={() => game.repayLoan()}>
-              Pay loan
-            </button>
-          </div>
-          <div className="row">
-            <button type="button" onClick={() => game.buyParcel()}>
-              Parcel {money(PARCEL_COST * game.parcels)}
-            </button>
-            <button type="button" onClick={() => game.investRail()}>
-              City rail {money(RAIL_CITY_COST)}
-            </button>
-          </div>
-          <div className="row">
-            <button type="button" onClick={() => game.buyHotel()}>
-              Hotel{' '}
-              {game.hotelLevel >= 2
-                ? 'max'
-                : money(game.hotelLevel === 0 ? HOTEL_COST : HOTEL_COST_L2)}
-            </button>
-            <button type="button" onClick={() => game.buyCarPark('short')}>
-              Short park {game.carParkShort ? '✓' : money(CARPARK_SHORT_COST)}
-            </button>
-            <button type="button" onClick={() => game.buyCarPark('long')}>
-              Long park {game.carParkLong ? '✓' : money(CARPARK_LONG_COST)}
-            </button>
-          </div>
-          <p className="muted">
-            Loan owed {money(game.loanBalance)} · parcels {game.parcels}
-            {game.railLinked ? ' · rail' : ''}
-            {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
-            {game.janitors ? ` · janitors ${game.janitors}` : ''}
-            {' · '}
-            strips {game.runwayStripCount()} · inbound {game.maxInbound()}
-            {' · '}
-            pax fees {money(game.landsideIncome())} / expense{' '}
-            {money(game.landsideUpkeep())}/30s · fill{' '}
-            {Math.round(game.landsideUsageRate() * 100)}% · pax ×
-            {game.landsidePaxMult().toFixed(2)}
-            {' · '}
-            {[
-              game.hasHotelBeds() ? 'hotel' : null,
-              game.hasShortParking() ? 'lot-S' : null,
-              game.hasLongParking() ? 'lot-L' : null,
-              game.hasBusCurb() ? 'bus' : null,
-              game.hasRailStation() ? 'rail' : null,
-            ]
-              .filter(Boolean)
-              .join('/') || 'no arrival modes'}
-          </p>
-        </section>
-
-        <section>
-          <h2>Ops budgets</h2>
-          <p className="muted">
-            Payroll ~{money(game.payrollPreview())} / 30s
-            {game.fieldOpsMult() > 1.05
-              ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
-              : ''}{' '}
-            · crash risk{' '}
-            {Math.round(game.crashChance() * 1000) / 10}% · RW {Math.round(game.runwayCondition)}%
-            · {game.weatherLabel()}
-          </p>
-          <div className="row">
-            <button type="button" className="on" onClick={() => game.hireMechanic()}>
-              Hire mechanic · {money(MECHANIC_HIRE)}
-            </button>
-            <button type="button" onClick={() => game.hireJanitor()}>
-              Hire janitor · {money(JANITOR_HIRE)}
-            </button>
-            <button type="button" onClick={() => game.hireResearcher()}>
-              Hire researcher · {money(RESEARCHER_HIRE)}
-            </button>
-            <button type="button" onClick={() => game.hireDeskStaff()}>
-              Hire desk agent · {money(DESK_STAFF_HIRE)}
-            </button>
-            <button type="button" onClick={() => game.fireMechanic()}>
-              Lay off
-            </button>
-          </div>
-          <p className="muted">
-            {game.mechanics} mechanics · {game.researchers} researchers ·{' '}
-            {game.deskStaff} desk
-            {game.staffedPost('checkin') ? ' · check-in' : ''}
-            {game.staffedPost('security') ? ' · security' : ''}
-            {game.staffedPost('gate') ? ' · gate' : ''}
-            {game.mxSigned.length
-              ? ` · MX: ${game.mxSigned.map((id) => game.airline(id).name).join(', ')}`
-              : ' · no airline MX yet (need hangar + mechanic)'}
-          </p>
-          {game.milAgreement ? (
-            <p className="muted">
-              Guard host active — {game.milRampLine()}
-              {game.hasResearch('mil_ramp') ? ' · C-5M eligible' : ''}
-            </p>
-          ) : (
-            <>
-              <button type="button" className="wide" onClick={() => game.signMilitaryAgreement()}>
-                Host military / Guard · {money(MIL_AGREE_COST)}
-              </button>
-              <p className="muted">{game.canHostMilitary().why}</p>
-              <p className="muted">{game.milRampLine()}</p>
-            </>
-          )}
-          <ul className="budgets">
-            {BUDGET_KEYS.map((key) => (
-              <li key={key}>
-                <label>
-                  <span>
-                    {BUDGET_LABEL[key]} · {game.budgets[key]}%
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={game.budgets[key]}
-                    onChange={(e) => game.setBudget(key, Number(e.target.value))}
-                  />
-                </label>
-                <small>{BUDGET_BLURB[key]}</small>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section>
-          <h2>Exchange · HATCH</h2>
-          {game.public ? (
-            <>
-              <p className="fn" style={{ color: '#c9a227' }}>
-                ${game.sharePrice.toFixed(2)}{' '}
-                <span className="muted">
-                  IPO ${game.ipoPrice.toFixed(2)} · you own {game.sharesOwned} / float{' '}
-                  {game.sharesFloat}
-                </span>
-              </p>
-              <p className="muted">
-                Stake mark {money(Math.round(game.sharePrice * game.sharesOwned))} · fair ~
-                ${game.fairSharePrice().toFixed(2)}
-              </p>
-              <div className="row">
-                <button type="button" onClick={() => game.buyShares(10)}>
-                  Buy 10
+                .join(' · ')}. Heat ≤${HEAT_WARN_THRESHOLD} warns; ≤${HEAT_ABANDON_THRESHOLD} and they abandon.`,
+              tone: 'warn',
+              left: null,
+            })
+          }
+          if (!letters.length) return null
+          const active =
+            openLetter && letters.some((l) => l.id === openLetter)
+              ? openLetter
+              : null
+          return letters.map((letter, i) => {
+            const open = active === letter.id
+            return (
+              <article
+                key={letter.id}
+                className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
+                style={{ marginTop: i === 0 ? 0 : 6 }}
+                data-testid={letter.id === 'field' ? 'field-task' : undefined}
+                onMouseEnter={() => setOpenLetter(letter.id)}
+                onMouseLeave={() => setOpenLetter((cur) => (cur === letter.id ? null : cur))}
+              >
+                <button
+                  type="button"
+                  className="letter-tab"
+                  onClick={() => setOpenLetter(open ? null : letter.id)}
+                >
+                  <span className="letter-kind">{letter.kind}</span>
+                  <span className="letter-from">{letter.from}</span>
+                  {letter.left != null ? (
+                    <span className="letter-timer">{letter.left}s</span>
+                  ) : (
+                    <span className="letter-timer">info</span>
+                  )}
                 </button>
-                <button type="button" onClick={() => game.sellShares(10)}>
-                  Sell 10
-                </button>
-              </div>
-              {game.mission ? (
-                <p className="muted">
-                  Mission: {game.mission.title} — {Math.round(game.mission.progress)}/
-                  {game.mission.target} · {Math.ceil(game.mission.deadline)}s
-                </p>
-              ) : (
-                <p className="muted">No active street mission. Keep the hall clean.</p>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="muted">{game.canIpo().why}</p>
-              <button type="button" className="wide on" onClick={() => game.goPublic()}>
-                IPO the airport
-              </button>
-              <p className="muted">
-                Listing invites capital — and crises. A bomb past security will tank HATCH.
-              </p>
-            </>
-          )}
-        </section>
+                <div className="letter-body">
+                  <strong>{letter.title}</strong>
+                  <p>{letter.blurb}</p>
+                  <div className="row letter-actions">
+                    {letter.id === 'contract' ? (
+                      <>
+                        <button type="button" className="on" onClick={() => game.acceptOffer()}>
+                          Sign
+                        </button>
+                        <button type="button" onClick={() => game.declineOffer()}>
+                          Decline
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'layover' ? (
+                      <>
+                        <button type="button" className="on" onClick={() => game.acceptLayover()}>
+                          Host layover
+                        </button>
+                        <button type="button" onClick={() => game.declineLayover()}>
+                          Decline
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'layover-live' ? (
+                      <button type="button" onClick={() => setOpenLetter(null)}>
+                        Fold
+                      </button>
+                    ) : null}
+                    {letter.id === 'hub' ? (
+                      <>
+                        <button type="button" className="on" onClick={() => game.acceptHub()}>
+                          Take Hub
+                        </button>
+                        <button type="button" onClick={() => game.declineHub()}>
+                          Decline
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'mx' ? (
+                      <>
+                        <button type="button" className="on" onClick={() => game.acceptMxOffer()}>
+                          Sign MX
+                        </button>
+                        <button type="button" onClick={() => game.declineMxOffer()}>
+                          Decline
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'threat' ? (
+                      <>
+                        <button
+                          type="button"
+                          className="on"
+                          onClick={() => game.resolveThreat('scramble')}
+                        >
+                          Scramble
+                        </button>
+                        <button type="button" onClick={() => game.resolveThreat('ignore')}>
+                          Ignore
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'emergency' ? (
+                      <>
+                        <button
+                          type="button"
+                          className="on"
+                          onClick={() => game.resolveEmergency('accept')}
+                        >
+                          Host landing
+                        </button>
+                        <button type="button" onClick={() => game.resolveEmergency('refuse')}>
+                          Refuse
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'parking' ? (
+                      <>
+                        <button type="button" className="on" onClick={() => game.acceptParking()}>
+                          Host parking
+                        </button>
+                        <button type="button" onClick={() => game.declineParking()}>
+                          Wave off
+                        </button>
+                      </>
+                    ) : null}
+                    {letter.id === 'field' ? (
+                      <button type="button" onClick={() => setOpenLetter(null)}>
+                        Got it
+                      </button>
+                    ) : null}
+                    {letter.id === 'warn' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDismissedWarn(true)
+                          setOpenLetter(null)
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </article>
+            )
+          })
+        })()}
+      </div>
 
-        <section>
-          <h2>Passenger flow</h2>
-          <p className="muted">
-            Apron walkers: {game.people.filter((p) => p.job === 'arrive' || p.job === 'board').length}
-            {' · '}Hall: {game.hallGuests.length}
-          </p>
-          <ul className="airlines">
-            {game.people
-              .filter((p) => p.job === 'arrive' || p.job === 'board')
-              .slice(0, 6)
-              .map((p) => (
-                <li key={p.id}>
-                  <b>{p.job === 'arrive' ? 'Arrival' : 'Departure'}</b>
-                  <span className="muted">{p.label}</span>
-                </li>
-              ))}
-          </ul>
-        </section>
-
-        <section>
-          <h2>Flight</h2>
-          <p className="muted">Fleet today: {game.fleetMixLine()}</p>
-          {flight && airline ? (
-            <div className="flight">
-              <p
-                className="fn"
-                style={{
-                  color:
-                    flight.kind === 'military'
-                      ? '#8a9a6a'
-                      : flight.kind === 'air_ambulance' || flight.kind === 'helo_med'
-                        ? '#b33a2a'
-                        : flight.kind === 'freighter'
-                          ? '#c97816'
-                          : airline.color,
+      <div
+        className={`chrome${panel ? ' has-panel' : ''}${chromePinned ? ' pinned' : ''}`}
+        onMouseLeave={() => {
+          if (!chromePinned) return
+          /* Keep pinned while interacting; unpin only via Close / toggle. */
+        }}
+      >
+        {panel ? (
+          <div className="panel-rollout" data-panel={panel}>
+            <div className="panel-head">
+              <h2>{INFO_MENUS.find((m) => m.id === panel)?.label ?? panel}</h2>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setPanel(null)
+                  setChromePinned(false)
                 }}
               >
-                {game.roleLabel(flight.kind)}
-                {flight.kind === 'military' ||
-                flight.kind === 'helo_med' ||
-                flight.kind === 'air_ambulance' ||
-                flight.kind === 'helo_exec'
-                  ? ''
-                  : ` · ${airline.name}`}{' '}
-                {flight.flightNo}
-              </p>
-              <p className="phase">
-                {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
-                {labelPhase(flight.phase, flight.craft)}
-                {flight.pax > 0 ? ` · ${flight.pax} pax` : flight.cargo ? ' · freight' : ''}
-                {(flight.craft ?? 'jet') === 'jet'
-                  ? ` · ${game.gateLabel(flight.stand)}`
-                  : ' · helipad'}
-                {flight.ga && flight.phase === 'parked'
-                  ? flight.parkLeaveRequestedAt && flight.parkLeaveBy
-                    ? ` · LEAVE WINDOW ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
-                    : ` · parked ${Math.round(flight.phaseTime)}s / ask ~${flight.parkStaySec ?? '?'}s`
-                  : ''}
-              </p>
-              {flight.ga && flight.phase === 'parked' ? (
-                <button
-                  type="button"
-                  className="wide"
-                  onClick={() => game.releaseGa(flight.id)}
-                >
-                  {flight.parkLeaveRequestedAt
-                    ? 'Release (manual departure)'
-                    : 'Release early'}
-                </button>
-              ) : null}
-              <p className="muted">
-                Needs{' '}
-                {flight.craft === 'helo'
-                  ? 'helipad'
-                  : `${AIRFRAMES[flight.airframeId]?.minRunway ?? '?'}c strip`}
-                {' · '}
-                size ×{(AIRFRAMES[flight.airframeId]?.scale ?? 1).toFixed(2)} · field{' '}
-                {game.stripCapabilityLine()}
-                {flight.waitingOn.deice
-                  ? ' · waiting de-ice'
-                  : flight.posted.deiced
-                    ? ' · de-iced'
-                    : ''}
-              </p>
-              <ul className="ledger">
-                {flight.ledger.length === 0 ? (
-                  <li>Nothing posted yet — wait until the picture earns it.</li>
-                ) : (
-                  flight.ledger.map((row, i) => (
-                    <li key={i}>
-                      {row.label}
-                      <b>{money(row.amount)}</b>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          ) : (
-            <p className="muted">
-              No flights until an airline signs. Meet their checklist, then answer the phone.
-            </p>
-          )}
-        </section>
-
-        <section>
-          <h2>Flight planner</h2>
-          <p className="muted">
-            {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
-            {game.openSchedule().length}/{game.scheduleCap()} open ·{' '}
-            {game.runwayStripCount()} strip
-            {game.runwayStripCount() === 1 ? '' : 's'} · inbound{' '}
-            {game.maxInbound()}
-            {game.weather === 'storm'
-              ? ' · storm delays'
-              : game.weather === 'fog'
-                ? ' · fog slips'
-                : ''}
-            {' · '}
-            stamp more strips for more banks — cycle RW on each slot
-          </p>
-          {game.runwayStripCount() >= 1 ? (
-            <div className="row">
-              <button
-                type="button"
-                className={game.plannerRwFilter == null ? 'on' : ''}
-                onClick={() => game.setPlannerRwFilter(null)}
-              >
-                All banks
-              </button>
-              {Array.from({ length: game.runwayStripCount() }, (_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  className={game.plannerRwFilter === i ? 'on' : ''}
-                  onClick={() => game.setPlannerRwFilter(i)}
-                >
-                  RW{i + 1} ({game.scheduleForRunway(i).length})
-                </button>
-              ))}
-              <button
-                type="button"
-                className={game.plannerRwFilter === -1 ? 'on' : ''}
-                onClick={() => game.setPlannerRwFilter(-1)}
-              >
-                Auto
+                Close
               </button>
             </div>
-          ) : null}
-          {(() => {
-            const strip = game.plannerStrip(120)
-            const night = game.plannerNightBand(120)
-            const nightUnlocked = game.hasResearch('night_bank')
-            return (
-              <div
-                className="day-strip"
-                title="Next 120s — click a bar to select that slot for drag / stand pin"
-              >
-                <div className="day-strip-rail">
-                  <span className="day-strip-now">now</span>
-                  <span className="day-strip-end">+2m</span>
-                  {night ? (
-                    <span
-                      className={`day-strip-night${nightUnlocked ? '' : ' locked'}`}
-                      style={{
-                        left: `${(night.from / strip.horizon) * 100}%`,
-                        width: `${Math.max(2, ((night.to - night.from) / strip.horizon) * 100)}%`,
-                      }}
-                      title={
-                        nightUnlocked
-                          ? 'Night bank open'
-                          : 'Night column — research Night bank to clear curfew'
-                      }
-                    />
-                  ) : null}
-                  {strip.slots.map((s) => {
-                    const left = Math.min(96, (s.t / strip.horizon) * 100)
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}${selSlot === s.id ? ' selected' : ''}`}
-                        style={{
-                          left: `${left}%`,
-                          background: game.airline(s.airline).color,
-                        }}
-                        title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`}
-                        onClick={() => setSelSlot(s.id)}
-                      >
-                        {s.flightNo.slice(-3)}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
-          {selSlot ? (
-            <div className="planner-drag">
-              <p className="muted">
-                Selected{' '}
-                {game.schedule.find((s) => s.id === selSlot)?.flightNo ?? 'slot'} — drag
-                ETA / pin stand
-              </p>
-              <div className="row">
-                <button type="button" onClick={() => game.nudgeSlotEta(selSlot, -10)}>
-                  ETA −10
-                </button>
-                <button type="button" onClick={() => game.nudgeSlotEta(selSlot, 10)}>
-                  ETA +10
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    game.setSlotStandPref(selSlot, null)
-                  }}
-                >
-                  Auto stand
-                </button>
-              </div>
-              <div className="row">
-                {tilesOf(game.tiles, 'stand').map((st) => (
-                  <button
-                    key={`${st.c},${st.r}`}
-                    type="button"
-                    title={`Pin ${game.gateLabel(st)}`}
-                    onClick={() => game.setSlotStandPref(selSlot, st)}
-                  >
-                    {game.gateLabel(st)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="row">
-            <button type="button" className={game.scheduleAuto ? 'on' : ''} onClick={() => game.setScheduleAuto(true)}>
-              Auto
-            </button>
-            <button type="button" className={!game.scheduleAuto ? 'on' : ''} onClick={() => game.setScheduleAuto(false)}>
-              Manual
-            </button>
-          </div>
-          <div className="row">
-            {game.signed.slice(0, 3).map((id) => (
-              <button key={id} type="button" onClick={() => game.addManualSlot(id, 18)}>
-                +{game.airline(id).name.slice(0, 6)}
-              </button>
-            ))}
-          </div>
-          <ul className="airlines">
-            {game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).length === 0 ? (
-              <li>
-                <span className="muted">No slots — sign an airline or add manual.</span>
-              </li>
-            ) : (
-              game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).map((s) => {
-                const eta = Math.max(0, Math.round(s.eta - game.clock))
-                const stand = s.standPref ? game.gateLabel(s.standPref) : 'auto'
-                const rw = game.runwayLabel(s.runwayPref)
-                return (
-                  <li key={s.id}>
-                    <b style={{ color: game.airline(s.airline).color }}>
-                      {s.flightNo}{' '}
-                      <span className="muted">
-                        {s.status}
-                        {s.delaySec > 0 ? ` +${Math.round(s.delaySec)}s` : ''}
-                        {s.manual ? ' · manual' : ''}
-                        {' · '}
-                        {rw}/{stand}
-                      </span>
-                    </b>
-                    <span className="muted">
-                      {game.airline(s.airline).name} · ETA {eta}s
-                      {s.delayReason ? ` · ${s.delayReason}` : ''}
-                    </span>
-                    {s.status !== 'inbound' ? (
-                      <span className="row" style={{ marginTop: 4 }}>
-                        <button
-                          type="button"
-                          title="Pull earlier — may jump ahead of others (heat)"
-                          onClick={() => game.pullSlot(s.id)}
-                        >
-                          Pull
-                        </button>
-                        <button
-                          type="button"
-                          title="Bump later — cascades the bank (heat)"
-                          onClick={() => game.bumpSlot(s.id)}
-                        >
-                          Bump
-                        </button>
-                        <button type="button" onClick={() => game.cycleSlotStand(s.id)}>
-                          Stand
-                        </button>
-                        {game.runwayStripCount() >= 1 ? (
-                          <button
-                            type="button"
-                            title="Cycle preferred runway strip (any count)"
-                            onClick={() => game.cycleSlotRunway(s.id)}
-                          >
-                            RW
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          title="Cancel — clears bank, hurts airline heat"
-                          onClick={() => game.cancelSlot(s.id)}
-                        >
-                          Cancel
-                        </button>
-                      </span>
-                    ) : null}
-                  </li>
-                )
-              })
-            )}
-          </ul>
-        </section>
-
-        <section>
-          <h2>Airline desk</h2>
-          <p className="muted">
-            Signed:{' '}
-            {game.signed.length
-              ? game.signed.map((id) => game.airline(id).name).join(', ')
-              : 'none'}
-            {ready.tower
-              ? ` · tower queues ${game.maxInbound()} inbound`
-              : ' · no tower (single approach)'}
-            {' · '}
-            perk at heat {HEAT_REWARD_THRESHOLD}+ · warn ≤{HEAT_WARN_THRESHOLD} ·
-            abandon ≤{HEAT_ABANDON_THRESHOLD}
-          </p>
-          <ul className="airlines">
-            {game.allAirlines().map((a) => {
-              const signed = game.signed.includes(a.id)
-              const ok = game.meetsReq(a.id)
-              const miss = game.missingReq(a.id)
-              const banned = game.isBanned(a.id)
-              const heat = Math.round(game.heatOf(a.id))
-              const reward = game.rewardOf(a.id)
-              const warned = Boolean(game.airlineWarned[a.id])
-              const hub = game.isHub(a.id)
-              const targetPerk = rewardForPersona(a.persona)
-              return (
-                <li key={a.id}>
-                  <b style={{ color: a.color }}>
-                    {a.name}{' '}
-                    <span className="muted">
-                      {personaBlurb(a.persona)}
-                      {a.procedural ? ' · proc' : ''}
-                      {hub ? ' · HUB' : ''}
-                    </span>{' '}
-                    {banned
-                      ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
-                      : signed
-                        ? `· heat ${heat}${warned ? ' · WARN' : ''}${
-                            reward ? ` · ${rewardBlurb(reward)}` : ''
-                          }`
-                        : ok
-                          ? '· ready'
-                          : ''}
-                  </b>
-                  <span className="muted">
-                    {banned
-                      ? 'Suspended after a bad layover / hall'
-                      : signed
-                        ? reward
-                          ? rewardDetail(reward)
-                          : warned
-                            ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}. Unlock ${rewardBlurb(targetPerk)} at ${HEAT_REWARD_THRESHOLD}+.`
-                            : `Chase ${rewardBlurb(targetPerk)} at heat ${HEAT_REWARD_THRESHOLD}+. ${rewardDetail(targetPerk)}`
-                        : miss.slice(0, 4).join(', ') || 'Waiting to call'}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <section>
-          <h2>Research desk</h2>
-          <p className="muted">
-            {Math.floor(game.researchPoints)} RP · turnarounds + lab drip ~
-            {game.researchRate().toFixed(2)}/s
-            {(() => {
-              const g = game.labGear()
-              return ` · gear D${g.desks}/B${g.boards}/M${g.machines}`
-            })()}
-            {game.researchers
-              ? (() => {
-                  const c = game.labCrewStatus()
-                  return ` · ${c.working} working / ${c.break} break / ${c.home} home`
-                })()
-              : ' · hire researchers in Ops, furnish desk/board/bench in Hall'}
-            {game.researchUnlocked.length
-              ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
-              : ' · no unlocks yet'}
-            {game.isNight() ? ' · night lab slow + more off-shift' : ''}
-          </p>
-          <ul className="airlines">
-            {RESEARCH_NODES.map((n) => {
-              const owned = game.hasResearch(n.id)
-              const gate = game.canBuyResearch(n.id)
-              return (
-                <li key={n.id}>
-                  <b>
-                    {n.name}{' '}
-                    <span className="muted">
-                      {owned ? '· live' : `· ${n.cost} RP`}
-                    </span>
-                  </b>
-                  <span className="muted">{n.blurb}</span>
-                  {!owned ? (
+            <div className="panel-body">
+              {panel === 'economy' ? (
+                <>
+                  <section>
+                    <h3>Cash & capital</h3>
+                    <p className="muted eco-line">
+                      Bank {money(game.cash)}
+                      {game.loanBalance ? ` · loan owed ${money(game.loanBalance)}` : ''}
+                      {' · '}pax fees {money(game.landsideIncome())} / expense{' '}
+                      {money(game.landsideUpkeep())}/30s · fill{' '}
+                      {Math.round(game.landsideUsageRate() * 100)}%
+                    </p>
                     <button
                       type="button"
-                      className="wide"
-                      disabled={!gate.ok}
-                      title={gate.ok ? `Buy ${n.name}` : gate.why}
-                      onClick={() => game.buyResearch(n.id)}
+                      className="wide on"
+                      data-testid="starter-kit"
+                      onClick={() => game.buildStarterKit()}
                     >
-                      {gate.ok ? `Unlock · ${n.cost} RP` : gate.why}
+                      Starter kit · {money(STARTER_KIT_COST)}
                     </button>
+                    <p className="muted">
+                      Drops a Northline-ready regional field + Apex + SkyBite. Empty plot only.
+                    </p>
+                    <div className="row">
+                      <button type="button" onClick={() => game.takeLoan()}>
+                        Loan {money(LOAN_PRINCIPAL)}
+                      </button>
+                      <button type="button" onClick={() => game.repayLoan()}>
+                        Pay loan
+                      </button>
+                      <button type="button" onClick={() => game.buyParcel()}>
+                        Parcel {money(PARCEL_COST * game.parcels)}
+                      </button>
+                      <button type="button" onClick={() => game.investRail()}>
+                        City rail {money(RAIL_CITY_COST)}
+                      </button>
+                    </div>
+                    <div className="row">
+                      <button type="button" onClick={() => game.buyHotel()}>
+                        Hotel{' '}
+                        {game.hotelLevel >= 2
+                          ? 'max'
+                          : money(game.hotelLevel === 0 ? HOTEL_COST : HOTEL_COST_L2)}
+                      </button>
+                      <button type="button" onClick={() => game.buyCarPark('short')}>
+                        Short park {game.carParkShort ? '✓' : money(CARPARK_SHORT_COST)}
+                      </button>
+                      <button type="button" onClick={() => game.buyCarPark('long')}>
+                        Long park {game.carParkLong ? '✓' : money(CARPARK_LONG_COST)}
+                      </button>
+                    </div>
+                    <p className="muted">
+                      parcels {game.parcels}
+                      {game.railLinked ? ' · rail' : ''}
+                      {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
+                      {game.janitors ? ` · janitors ${game.janitors}` : ''}
+                      {' · '}
+                      strips {game.runwayStripCount()} · inbound {game.maxInbound()}
+                      {' · '}pax ×{game.landsidePaxMult().toFixed(2)}
+                      {' · '}
+                      {[
+                        game.hasHotelBeds() ? 'hotel' : null,
+                        game.hasShortParking() ? 'lot-S' : null,
+                        game.hasLongParking() ? 'lot-L' : null,
+                        game.hasBusCurb() ? 'bus' : null,
+                        game.hasRailStation() ? 'rail' : null,
+                      ]
+                        .filter(Boolean)
+                        .join('/') || 'no arrival modes'}
+                    </p>
+                  </section>
+                  <section>
+                    <h3>Exchange · HATCH</h3>
+                    {game.public ? (
+                      <>
+                        <p className="fn" style={{ color: '#c9a227' }}>
+                          ${game.sharePrice.toFixed(2)}{' '}
+                          <span className="muted">
+                            IPO ${game.ipoPrice.toFixed(2)} · you own {game.sharesOwned} / float{' '}
+                            {game.sharesFloat}
+                          </span>
+                        </p>
+                        <p className="muted">
+                          Stake mark {money(Math.round(game.sharePrice * game.sharesOwned))} · fair ~
+                          ${game.fairSharePrice().toFixed(2)}
+                        </p>
+                        <div className="row">
+                          <button type="button" onClick={() => game.buyShares(10)}>
+                            Buy 10
+                          </button>
+                          <button type="button" onClick={() => game.sellShares(10)}>
+                            Sell 10
+                          </button>
+                        </div>
+                        {game.mission ? (
+                          <p className="muted">
+                            Mission: {game.mission.title} — {Math.round(game.mission.progress)}/
+                            {game.mission.target} · {Math.ceil(game.mission.deadline)}s
+                          </p>
+                        ) : (
+                          <p className="muted">No active street mission. Keep the hall clean.</p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <p className="muted">{game.canIpo().why}</p>
+                        <button type="button" className="wide on" onClick={() => game.goPublic()}>
+                          IPO the airport
+                        </button>
+                        <p className="muted">
+                          Listing invites capital — and crises. A bomb past security will tank HATCH.
+                        </p>
+                      </>
+                    )}
+                  </section>
+                </>
+              ) : null}
+
+              {panel === 'budget' ? (
+                <section>
+                  <h3>Ops budgets</h3>
+                  <p className="muted">
+                    Payroll ~{money(game.payrollPreview())} / 30s
+                    {game.fieldOpsMult() > 1.05
+                      ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
+                      : ''}{' '}
+                    · crash risk {Math.round(game.crashChance() * 1000) / 10}% · RW{' '}
+                    {Math.round(game.runwayCondition)}% · {game.weatherLabel()}
+                  </p>
+                  <div className="row">
+                    <button type="button" className="on" onClick={() => game.hireMechanic()}>
+                      Hire mechanic · {money(MECHANIC_HIRE)}
+                    </button>
+                    <button type="button" onClick={() => game.hireJanitor()}>
+                      Hire janitor · {money(JANITOR_HIRE)}
+                    </button>
+                    <button type="button" onClick={() => game.hireResearcher()}>
+                      Hire researcher · {money(RESEARCHER_HIRE)}
+                    </button>
+                    <button type="button" onClick={() => game.hireDeskStaff()}>
+                      Hire desk agent · {money(DESK_STAFF_HIRE)}
+                    </button>
+                    <button type="button" onClick={() => game.fireMechanic()}>
+                      Lay off
+                    </button>
+                  </div>
+                  <p className="muted">
+                    {game.mechanics} mechanics · {game.researchers} researchers ·{' '}
+                    {game.deskStaff} desk
+                    {game.staffedPost('checkin') ? ' · check-in' : ''}
+                    {game.staffedPost('security') ? ' · security' : ''}
+                    {game.staffedPost('gate') ? ' · gate' : ''}
+                    {game.mxSigned.length
+                      ? ` · MX: ${game.mxSigned.map((id) => game.airline(id).name).join(', ')}`
+                      : ' · no airline MX yet (need hangar + mechanic)'}
+                  </p>
+                  {game.milAgreement ? (
+                    <p className="muted">
+                      Guard host active — {game.milRampLine()}
+                      {game.hasResearch('mil_ramp') ? ' · C-5M eligible' : ''}
+                    </p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="wide"
+                        onClick={() => game.signMilitaryAgreement()}
+                      >
+                        Host military / Guard · {money(MIL_AGREE_COST)}
+                      </button>
+                      <p className="muted">{game.canHostMilitary().why}</p>
+                      <p className="muted">{game.milRampLine()}</p>
+                    </>
+                  )}
+                  <ul className="budgets">
+                    {BUDGET_KEYS.map((key) => (
+                      <li key={key}>
+                        <label>
+                          <span>
+                            {BUDGET_LABEL[key]} · {game.budgets[key]}%
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={game.budgets[key]}
+                            onChange={(e) => game.setBudget(key, Number(e.target.value))}
+                          />
+                        </label>
+                        <small>{BUDGET_BLURB[key]}</small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {panel === 'research' ? (
+                <section>
+                  <h3>Research desk</h3>
+                  <p className="muted">
+                    {Math.floor(game.researchPoints)} RP · turnarounds + lab drip ~
+                    {game.researchRate().toFixed(2)}/s
+                    {(() => {
+                      const g = game.labGear()
+                      return ` · gear D${g.desks}/B${g.boards}/M${g.machines}`
+                    })()}
+                    {game.researchers
+                      ? (() => {
+                          const c = game.labCrewStatus()
+                          return ` · ${c.working} working / ${c.break} break / ${c.home} home`
+                        })()
+                      : ' · hire researchers in Budget, furnish desk/board/bench in Hall'}
+                    {game.researchUnlocked.length
+                      ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
+                      : ' · no unlocks yet'}
+                    {game.isNight() ? ' · night lab slow + more off-shift' : ''}
+                  </p>
+                  <ul className="airlines">
+                    {RESEARCH_NODES.map((n) => {
+                      const owned = game.hasResearch(n.id)
+                      const gate = game.canBuyResearch(n.id)
+                      return (
+                        <li key={n.id}>
+                          <b>
+                            {n.name}{' '}
+                            <span className="muted">
+                              {owned ? '· live' : `· ${n.cost} RP`}
+                            </span>
+                          </b>
+                          <span className="muted">{n.blurb}</span>
+                          {!owned ? (
+                            <button
+                              type="button"
+                              className="wide"
+                              disabled={!gate.ok}
+                              title={gate.ok ? `Buy ${n.name}` : gate.why}
+                              onClick={() => game.buyResearch(n.id)}
+                            >
+                              {gate.ok ? `Unlock · ${n.cost} RP` : gate.why}
+                            </button>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              ) : null}
+
+              {panel === 'airlines' ? (
+                <section>
+                  <h3>Airline desk</h3>
+                  <p className="muted">
+                    Signed:{' '}
+                    {game.signed.length
+                      ? game.signed.map((id) => game.airline(id).name).join(', ')
+                      : 'none'}
+                    {ready.tower
+                      ? ` · tower queues ${game.maxInbound()} inbound`
+                      : ' · no tower (single approach)'}
+                    {' · '}
+                    perk at heat {HEAT_REWARD_THRESHOLD}+ · warn ≤{HEAT_WARN_THRESHOLD} ·
+                    abandon ≤{HEAT_ABANDON_THRESHOLD}
+                  </p>
+                  <p className="muted">
+                    Apron walkers:{' '}
+                    {game.people.filter((p) => p.job === 'arrive' || p.job === 'board').length}
+                    {' · '}Hall: {game.hallGuests.length}
+                  </p>
+                  <ul className="airlines">
+                    {game.allAirlines().map((a) => {
+                      const signed = game.signed.includes(a.id)
+                      const ok = game.meetsReq(a.id)
+                      const miss = game.missingReq(a.id)
+                      const banned = game.isBanned(a.id)
+                      const heat = Math.round(game.heatOf(a.id))
+                      const reward = game.rewardOf(a.id)
+                      const warned = Boolean(game.airlineWarned[a.id])
+                      const hub = game.isHub(a.id)
+                      const targetPerk = rewardForPersona(a.persona)
+                      return (
+                        <li key={a.id}>
+                          <b style={{ color: a.color }}>
+                            {a.name}{' '}
+                            <span className="muted">
+                              {personaBlurb(a.persona)}
+                              {a.procedural ? ' · proc' : ''}
+                              {hub ? ' · HUB' : ''}
+                            </span>{' '}
+                            {banned
+                              ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
+                              : signed
+                                ? `· heat ${heat}${warned ? ' · WARN' : ''}${
+                                    reward ? ` · ${rewardBlurb(reward)}` : ''
+                                  }`
+                                : ok
+                                  ? '· ready'
+                                  : ''}
+                          </b>
+                          <span className="muted">
+                            {banned
+                              ? 'Suspended after a bad layover / hall'
+                              : signed
+                                ? reward
+                                  ? rewardDetail(reward)
+                                  : warned
+                                    ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}. Unlock ${rewardBlurb(targetPerk)} at ${HEAT_REWARD_THRESHOLD}+.`
+                                    : `Chase ${rewardBlurb(targetPerk)} at heat ${HEAT_REWARD_THRESHOLD}+. ${rewardDetail(targetPerk)}`
+                                : miss.slice(0, 4).join(', ') || 'Waiting to call'}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              ) : null}
+
+              {panel === 'planner' ? (
+                <>
+                  <section>
+                    <h3>Selected flight</h3>
+                    <p className="muted">Fleet today: {game.fleetMixLine()}</p>
+                    {flight && airline ? (
+                      <div className="flight">
+                        <p
+                          className="fn"
+                          style={{
+                            color:
+                              flight.kind === 'military'
+                                ? '#8a9a6a'
+                                : flight.kind === 'air_ambulance' || flight.kind === 'helo_med'
+                                  ? '#b33a2a'
+                                  : flight.kind === 'freighter'
+                                    ? '#c97816'
+                                    : airline.color,
+                          }}
+                        >
+                          {game.roleLabel(flight.kind)}
+                          {flight.kind === 'military' ||
+                          flight.kind === 'helo_med' ||
+                          flight.kind === 'air_ambulance' ||
+                          flight.kind === 'helo_exec'
+                            ? ''
+                            : ` · ${airline.name}`}{' '}
+                          {flight.flightNo}
+                        </p>
+                        <p className="phase">
+                          {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
+                          {labelPhase(flight.phase, flight.craft)}
+                          {flight.pax > 0
+                            ? ` · ${flight.pax} pax`
+                            : flight.cargo
+                              ? ' · freight'
+                              : ''}
+                          {(flight.craft ?? 'jet') === 'jet'
+                            ? ` · ${game.gateLabel(flight.stand)}`
+                            : ' · helipad'}
+                          {flight.ga && flight.phase === 'parked'
+                            ? flight.parkLeaveRequestedAt && flight.parkLeaveBy
+                              ? ` · LEAVE WINDOW ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
+                              : ` · parked ${Math.round(flight.phaseTime)}s / ask ~${flight.parkStaySec ?? '?'}s`
+                            : ''}
+                        </p>
+                        {flight.ga && flight.phase === 'parked' ? (
+                          <button
+                            type="button"
+                            className="wide"
+                            onClick={() => game.releaseGa(flight.id)}
+                          >
+                            {flight.parkLeaveRequestedAt
+                              ? 'Release (manual departure)'
+                              : 'Release early'}
+                          </button>
+                        ) : null}
+                        <p className="muted">
+                          Needs{' '}
+                          {flight.craft === 'helo'
+                            ? 'helipad'
+                            : `${AIRFRAMES[flight.airframeId]?.minRunway ?? '?'}c strip`}
+                          {' · '}
+                          size ×{(AIRFRAMES[flight.airframeId]?.scale ?? 1).toFixed(2)} · field{' '}
+                          {game.stripCapabilityLine()}
+                          {flight.waitingOn.deice
+                            ? ' · waiting de-ice'
+                            : flight.posted.deiced
+                              ? ' · de-iced'
+                              : ''}
+                        </p>
+                        <ul className="ledger">
+                          {flight.ledger.length === 0 ? (
+                            <li>Nothing posted yet — wait until the picture earns it.</li>
+                          ) : (
+                            flight.ledger.map((row, i) => (
+                              <li key={i}>
+                                {row.label}
+                                <b>{money(row.amount)}</b>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="muted">
+                        No flights until an airline signs. Meet their checklist, then answer the
+                        phone.
+                      </p>
+                    )}
+                  </section>
+                  <section>
+                    <h3>Flight planner</h3>
+                    <p className="muted">
+                      {game.scheduleAuto ? 'Auto bank on' : 'Manual bank'} ·{' '}
+                      {game.openSchedule().length}/{game.scheduleCap()} open ·{' '}
+                      {game.runwayStripCount()} strip
+                      {game.runwayStripCount() === 1 ? '' : 's'} · inbound {game.maxInbound()}
+                      {game.weather === 'storm'
+                        ? ' · storm delays'
+                        : game.weather === 'fog'
+                          ? ' · fog slips'
+                          : ''}
+                      {' · '}
+                      stamp more strips for more banks — cycle RW on each slot
+                    </p>
+                    {game.runwayStripCount() >= 1 ? (
+                      <div className="row">
+                        <button
+                          type="button"
+                          className={game.plannerRwFilter == null ? 'on' : ''}
+                          onClick={() => game.setPlannerRwFilter(null)}
+                        >
+                          All banks
+                        </button>
+                        {Array.from({ length: game.runwayStripCount() }, (_, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            className={game.plannerRwFilter === i ? 'on' : ''}
+                            onClick={() => game.setPlannerRwFilter(i)}
+                          >
+                            RW{i + 1} ({game.scheduleForRunway(i).length})
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className={game.plannerRwFilter === -1 ? 'on' : ''}
+                          onClick={() => game.setPlannerRwFilter(-1)}
+                        >
+                          Auto
+                        </button>
+                      </div>
+                    ) : null}
+                    {(() => {
+                      const strip = game.plannerStrip(120)
+                      const night = game.plannerNightBand(120)
+                      const nightUnlocked = game.hasResearch('night_bank')
+                      return (
+                        <div
+                          className="day-strip"
+                          title="Next 120s — click a bar to select that slot for drag / stand pin"
+                        >
+                          <div className="day-strip-rail">
+                            <span className="day-strip-now">now</span>
+                            <span className="day-strip-end">+2m</span>
+                            {night ? (
+                              <span
+                                className={`day-strip-night${nightUnlocked ? '' : ' locked'}`}
+                                style={{
+                                  left: `${(night.from / strip.horizon) * 100}%`,
+                                  width: `${Math.max(2, ((night.to - night.from) / strip.horizon) * 100)}%`,
+                                }}
+                                title={
+                                  nightUnlocked
+                                    ? 'Night bank open'
+                                    : 'Night column — research Night bank to clear curfew'
+                                }
+                              />
+                            ) : null}
+                            {strip.slots.map((s) => {
+                              const left = Math.min(96, (s.t / strip.horizon) * 100)
+                              return (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}${selSlot === s.id ? ' selected' : ''}`}
+                                  style={{
+                                    left: `${left}%`,
+                                    background: game.airline(s.airline).color,
+                                  }}
+                                  title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`}
+                                  onClick={() => setSelSlot(s.id)}
+                                >
+                                  {s.flightNo.slice(-3)}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                    {selSlot ? (
+                      <div className="planner-drag">
+                        <p className="muted">
+                          Selected{' '}
+                          {game.schedule.find((s) => s.id === selSlot)?.flightNo ?? 'slot'} — drag
+                          ETA / pin stand
+                        </p>
+                        <div className="row">
+                          <button type="button" onClick={() => game.nudgeSlotEta(selSlot, -10)}>
+                            ETA −10
+                          </button>
+                          <button type="button" onClick={() => game.nudgeSlotEta(selSlot, 10)}>
+                            ETA +10
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              game.setSlotStandPref(selSlot, null)
+                            }}
+                          >
+                            Auto stand
+                          </button>
+                        </div>
+                        <div className="row">
+                          {tilesOf(game.tiles, 'stand').map((st) => (
+                            <button
+                              key={`${st.c},${st.r}`}
+                              type="button"
+                              title={`Pin ${game.gateLabel(st)}`}
+                              onClick={() => game.setSlotStandPref(selSlot, st)}
+                            >
+                              {game.gateLabel(st)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="row">
+                      <button
+                        type="button"
+                        className={game.scheduleAuto ? 'on' : ''}
+                        onClick={() => game.setScheduleAuto(true)}
+                      >
+                        Auto
+                      </button>
+                      <button
+                        type="button"
+                        className={!game.scheduleAuto ? 'on' : ''}
+                        onClick={() => game.setScheduleAuto(false)}
+                      >
+                        Manual
+                      </button>
+                    </div>
+                    <div className="row">
+                      {game.signed.slice(0, 3).map((id) => (
+                        <button key={id} type="button" onClick={() => game.addManualSlot(id, 18)}>
+                          +{game.airline(id).name.slice(0, 6)}
+                        </button>
+                      ))}
+                    </div>
+                    <ul className="airlines">
+                      {game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).length === 0 ? (
+                        <li>
+                          <span className="muted">No slots — sign an airline or add manual.</span>
+                        </li>
+                      ) : (
+                        game.scheduleForRunway(game.plannerRwFilter).slice(0, 8).map((s) => {
+                          const eta = Math.max(0, Math.round(s.eta - game.clock))
+                          const stand = s.standPref ? game.gateLabel(s.standPref) : 'auto'
+                          const rw = game.runwayLabel(s.runwayPref)
+                          return (
+                            <li key={s.id}>
+                              <b style={{ color: game.airline(s.airline).color }}>
+                                {s.flightNo}{' '}
+                                <span className="muted">
+                                  {s.status}
+                                  {s.delaySec > 0 ? ` +${Math.round(s.delaySec)}s` : ''}
+                                  {s.manual ? ' · manual' : ''}
+                                  {' · '}
+                                  {rw}/{stand}
+                                </span>
+                              </b>
+                              <span className="muted">
+                                {game.airline(s.airline).name} · ETA {eta}s
+                                {s.delayReason ? ` · ${s.delayReason}` : ''}
+                              </span>
+                              {s.status !== 'inbound' ? (
+                                <span className="row" style={{ marginTop: 4 }}>
+                                  <button type="button" onClick={() => game.pullSlot(s.id)}>
+                                    Pull
+                                  </button>
+                                  <button type="button" onClick={() => game.bumpSlot(s.id)}>
+                                    Bump
+                                  </button>
+                                  <button type="button" onClick={() => game.cycleSlotStand(s.id)}>
+                                    Stand
+                                  </button>
+                                  {game.runwayStripCount() >= 1 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => game.cycleSlotRunway(s.id)}
+                                    >
+                                      RW
+                                    </button>
+                                  ) : null}
+                                  <button type="button" onClick={() => game.cancelSlot(s.id)}>
+                                    Cancel
+                                  </button>
+                                </span>
+                              ) : null}
+                            </li>
+                          )
+                        })
+                      )}
+                    </ul>
+                  </section>
+                </>
+              ) : null}
+
+              {panel === 'services' ? (
+                <>
+                  <section>
+                    <h3>Fuel desk</h3>
+                    <p className="muted">
+                      {game.fuelBrand
+                        ? `${FUEL[game.fuelBrand].name} · ${game.fuelLoads} loads`
+                        : 'No carrier. Airlines that need fuel will not sign.'}
+                    </p>
+                    <div className="row">
+                      <button type="button" onClick={() => game.signFuel('apex')}>
+                        Apex {money(FUEL.apex.sign)}
+                      </button>
+                      <button type="button" onClick={() => game.signFuel('kiln')}>
+                        Kiln {money(FUEL.kiln.sign)}
+                      </button>
+                    </div>
+                    <button type="button" className="wide" onClick={() => game.buyLoads()}>
+                      Buy 4 loads
+                      {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
+                    </button>
+                  </section>
+                  <section>
+                    <h3>Catering desk</h3>
+                    <p className="muted">
+                      {game.caterBrand
+                        ? `${CATER[game.caterBrand].name} · ×${CATER[game.caterBrand].payoutMult} payout`
+                        : 'No catering vendor. Harbor / Summit will not sign without one + a snack bar.'}
+                    </p>
+                    <div className="row">
+                      <button type="button" onClick={() => game.signCater('skybite')}>
+                        SkyBite {money(CATER.skybite.sign)}
+                      </button>
+                      <button type="button" onClick={() => game.signCater('galleyprime')}>
+                        GalleyPrime {money(CATER.galleyprime.sign)}
+                      </button>
+                    </div>
+                  </section>
+                  <section>
+                    <h3>Hall furnish</h3>
+                    {origin ? (
+                      <>
+                        <p className="muted">
+                          Wear WC {Math.round(fit?.wearBath ?? 0)} · Sec{' '}
+                          {Math.round(fit?.wearSec ?? 0)}
+                          {ready.heavyRunway ? ' · heavy strip ready' : ''}
+                          {ready.helipad ? ' · helipad' : ''}
+                        </p>
+                        <button type="button" className="wide" onClick={() => game.scrubHall()}>
+                          Scrub hall · {money(HALL_SCRUB_COST)}
+                        </button>
+                        <ul className="rooms">
+                          {ROOMS.map((r) => (
+                            <li key={r.id}>
+                              <button type="button" onClick={() => game.buyRoom(r.id)}>
+                                {r.name}
+                                <span>
+                                  {fit?.rooms[r.id] ?? 0} · {money(r.cost)}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : (
+                      <p className="muted">
+                        Stamp a Premade hall or an empty Shell, then select it to furnish. Weak
+                        security = threats. Budget crowds wear WC and lanes — scrub or the street
+                        writes exposés.
+                      </p>
+                    )}
+                  </section>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="dock">
+          <div className="dock-extend">
+            {game.view === 'hall' ? (
+              <div className="tools">
+                <button type="button" className="on" onClick={() => game.exitHall()}>
+                  ← Apron outside
+                </button>
+                <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+                  Furnish rooms in Services · doors → check-in → security → airside
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="build-menus">
+                  {BUILD_MENUS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={buildMenu === m.id ? 'on' : ''}
+                      onClick={() => {
+                        setBuildMenu(m.id)
+                        setPanel(null)
+                        setChromePinned(false)
+                      }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => game.rotatePiece()}>
+                    Rotate {game.facing === 'h' ? 'H' : 'V'}
+                  </button>
+                  {buildMenu === 'landside' ? (
+                    <>
+                      <button
+                        type="button"
+                        className={game.parkTerm === 'short' ? 'on' : ''}
+                        onClick={() => game.setParkTerm('short')}
+                      >
+                        {parkTermLabel('short')}
+                      </button>
+                      <button
+                        type="button"
+                        className={game.parkTerm === 'long' ? 'on' : ''}
+                        onClick={() => game.setParkTerm('long')}
+                      >
+                        {parkTermLabel('long')}
+                      </button>
+                    </>
                   ) : null}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <section>
-          <h2>Fuel desk</h2>
-          <p className="muted">
-            {game.fuelBrand
-              ? `${FUEL[game.fuelBrand].name} · ${game.fuelLoads} loads`
-              : 'No carrier. Airlines that need fuel will not sign.'}
-          </p>
-          <div className="row">
-            <button type="button" onClick={() => game.signFuel('apex')}>
-              Apex {money(FUEL.apex.sign)}
-            </button>
-            <button type="button" onClick={() => game.signFuel('kiln')}>
-              Kiln {money(FUEL.kiln.sign)}
-            </button>
-          </div>
-          <button type="button" className="wide" onClick={() => game.buyLoads()}>
-            Buy 4 loads
-            {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
-          </button>
-        </section>
-
-        <section>
-          <h2>Catering desk</h2>
-          <p className="muted">
-            {game.caterBrand
-              ? `${CATER[game.caterBrand].name} · ×${CATER[game.caterBrand].payoutMult} payout`
-              : 'No catering vendor. Harbor / Summit will not sign without one + a snack bar.'}
-          </p>
-          <div className="row">
-            <button type="button" onClick={() => game.signCater('skybite')}>
-              SkyBite {money(CATER.skybite.sign)}
-            </button>
-            <button type="button" onClick={() => game.signCater('galleyprime')}>
-              GalleyPrime {money(CATER.galleyprime.sign)}
-            </button>
-          </div>
-        </section>
-
-        <section>
-          <h2>Hall furnish</h2>
-          {origin ? (
-            <>
-              <p className="muted">
-                Wear WC {Math.round(fit?.wearBath ?? 0)} · Sec {Math.round(fit?.wearSec ?? 0)}
-                {ready.heavyRunway ? ' · heavy strip ready' : ''}
-                {ready.helipad ? ' · helipad' : ''}
-              </p>
-              <button type="button" className="wide" onClick={() => game.scrubHall()}>
-                Scrub hall · {money(HALL_SCRUB_COST)}
-              </button>
-              <ul className="rooms">
-                {ROOMS.map((r) => (
-                  <li key={r.id}>
-                    <button type="button" onClick={() => game.buyRoom(r.id)}>
-                      {r.name}
-                      <span>
-                        {fit?.rooms[r.id] ?? 0} · {money(r.cost)}
-                      </span>
+                </div>
+                <div className="tools build-tray">
+                  {menuTools.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={game.tool === t ? 'on' : ''}
+                      onClick={() => game.setTool(t)}
+                      title={BUILDINGS.find((b) => b.tool === t)?.blurb ?? TOOL_LABEL[t]}
+                    >
+                      {TOOL_LABEL[t]}
+                      {BUILDINGS.find((b) => b.tool === t)
+                        ? ` · ${money(BUILDINGS.find((b) => b.tool === t)!.cost)}`
+                        : ''}
                     </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : (
-            <p className="muted">
-              Stamp a Premade hall or an empty Shell, then select it to furnish. Weak security = threats.
-              Budget crowds wear WC and lanes — scrub or the street writes exposés.
+                  ))}
+                </div>
+              </>
+            )}
+            <p className="hint">
+              {game.view === 'hall'
+                ? '3D hall: landside → security choke → airside. Esc / H returns — apron keeps simming.'
+                : game.tool === 'runway_short'
+                  ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15.`
+                  : game.tool === 'runway'
+                    ? `Regional strip 14×2 (${money(RUNWAY_PREFAB_COST)}) — A320 / 737 / A321 / 757F.`
+                    : game.tool === 'runway_heavy'
+                      ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — 787 / A350 / 747-8F / C-17.`
+                      : game.tool === 'premade'
+                        ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — pan-click it to walk inside.`
+                        : game.tool === 'pan'
+                          ? 'Stamp pavement. Pan-click a terminal or press H to go inside.'
+                          : tip
+                            ? `${tip.blurb} ${money(tip.cost)}`
+                            : 'Clear refunds 40%.'}
+              {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
+              {game.hallGuests.length
+                ? ` · ${game.hallGuests.length} in hall${
+                    game.hallGuests.some((g) => g.transfer)
+                      ? ` (${game.hallGuests.filter((g) => g.transfer).length} transfer)`
+                      : ''
+                  }`
+                : ''}
+              {game.maxWear() >= 25 ? ` · wear ${Math.round(game.maxWear())}` : ''}
+              {holding ? ` · ${holding} holding` : ''}
             </p>
-          )}
-        </section>
-
-        <section className="news">
-          <h2>Ops</h2>
-          <ul>
-            {game.news.map((n) => (
-              <li key={n.id} data-tone={n.tone}>
-                {n.text}
-              </li>
-            ))}
-          </ul>
-        </section>
-      </aside>
-
-      <div className="dock">
-        {game.view === 'hall' ? (
-          <div className="tools">
-            <button type="button" className="on" onClick={() => game.exitHall()}>
-              ← Apron outside
-            </button>
-            <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
-              3D hall — furnish rooms in the Hall panel (doors → check-in → security → airside)
-            </span>
           </div>
-        ) : (
-          <>
-            <div className="build-menus">
-              {BUILD_MENUS.map((m) => (
+
+          <div className="bottom-bar">
+            <div className="bar-cluster view-cluster">
+              <button
+                type="button"
+                className={game.view === 'apron' ? 'on' : ''}
+                onClick={() => game.setView('apron')}
+              >
+                Apron
+              </button>
+              <button
+                type="button"
+                className={game.view === 'hall' ? 'on' : ''}
+                onClick={() => game.setView('hall')}
+              >
+                Hall
+              </button>
+              {game.fits.length > 1
+                ? game.fits.map((f) => {
+                    const active =
+                      game.activeHall()?.origin.c === f.origin.c &&
+                      game.activeHall()?.origin.r === f.origin.r
+                    return (
+                      <button
+                        key={`${f.origin.c},${f.origin.r}`}
+                        type="button"
+                        className={active && game.view === 'hall' ? 'on' : ''}
+                        title={`${game.hallLabel(f)} · ${game.standsForHall(f).length} jetway stands`}
+                        onClick={() => game.selectHall(f)}
+                      >
+                        {game.hallLabel(f)}
+                      </button>
+                    )
+                  })
+                : null}
+            </div>
+
+            <div className="bar-cluster speed-cluster">
+              {([0, 1, 3] as Speed[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={game.speed === s ? 'on' : ''}
+                  onClick={() => game.setSpeed(s)}
+                >
+                  {s === 0 ? 'Pause' : `${s}x`}
+                </button>
+              ))}
+            </div>
+
+            <div className="ticker" title="Recent announcements">
+              {ticker.length === 0 ? (
+                <span className="muted">No announcements yet — keep the field moving.</span>
+              ) : (
+                <ul>
+                  {ticker.map((n) => (
+                    <li key={n.id} data-tone={n.tone}>
+                      {n.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="bar-cluster info-menus">
+              <button
+                type="button"
+                className={`cash-chip${panel === 'economy' ? ' on' : ''}`}
+                title="Economy"
+                onClick={() => togglePanel('economy')}
+              >
+                {money(game.cash)}
+              </button>
+              {INFO_MENUS.map((m) => (
                 <button
                   key={m.id}
                   type="button"
-                  className={buildMenu === m.id ? 'on' : ''}
-                  onClick={() => setBuildMenu(m.id)}
+                  className={panel === m.id ? 'on' : ''}
+                  title={m.tip}
+                  onClick={() => togglePanel(m.id)}
                 >
                   {m.label}
                 </button>
               ))}
-              <button type="button" onClick={() => game.rotatePiece()}>
-                Rotate {game.facing === 'h' ? 'H' : 'V'}
-              </button>
-              {buildMenu === 'landside' ? (
-                <>
-                  <button
-                    type="button"
-                    className={game.parkTerm === 'short' ? 'on' : ''}
-                    onClick={() => game.setParkTerm('short')}
-                  >
-                    {parkTermLabel('short')}
-                  </button>
-                  <button
-                    type="button"
-                    className={game.parkTerm === 'long' ? 'on' : ''}
-                    onClick={() => game.setParkTerm('long')}
-                  >
-                    {parkTermLabel('long')}
-                  </button>
-                </>
-              ) : null}
-              <button type="button" onClick={() => game.setView('hall')}>
-                Enter hall
-              </button>
             </div>
-            <div className="tools build-tray">
-              {menuTools.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className={game.tool === t ? 'on' : ''}
-                  onClick={() => game.setTool(t)}
-                  title={BUILDINGS.find((b) => b.tool === t)?.blurb ?? TOOL_LABEL[t]}
-                >
-                  {TOOL_LABEL[t]}
-                  {BUILDINGS.find((b) => b.tool === t)
-                    ? ` · ${money(BUILDINGS.find((b) => b.tool === t)!.cost)}`
-                    : ''}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        <p className="hint">
-          {game.view === 'hall'
-            ? '3D hall: landside (doors/info/check-in) → security choke → airside. Missing security invites smuggling threats. Esc / H returns — apron keeps simming.'
-            : game.tool === 'runway_short'
-            ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15. A320+ and heavies refuse.`
-            : game.tool === 'runway'
-              ? `Regional strip 14×2 (${money(RUNWAY_PREFAB_COST)}) — A320 / 737 / A321 / 757F. Widebodies still refuse.`
-              : game.tool === 'runway_heavy'
-                ? `Heavy strip 20×3 (${money(HEAVY_RUNWAY_COST)}) — takes everything: 787 / A350 / 747-8F / C-17.`
-                : game.tool === 'premade'
-                ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — then pan-click it to walk inside.`
-                : game.tool === 'pan'
-                  ? 'Apron (outside): stamp pavement. Pan-click a terminal tile or press H to go inside and furnish.'
-                  : tip
-                    ? `${tip.blurb} ${money(tip.cost)}`
-                    : 'Clear refunds 40%.'}
-          {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
-          {game.hallGuests.length
-            ? ` · ${game.hallGuests.length} in hall${
-                game.hallGuests.some((g) => g.transfer)
-                  ? ` (${game.hallGuests.filter((g) => g.transfer).length} transfer)`
-                  : ''
-              }`
-            : ''}
-          {game.maxWear() >= 25 ? ` · wear ${Math.round(game.maxWear())}` : ''}
-          {holding ? ` · ${holding} holding` : ''}
-        </p>
+          </div>
+        </div>
       </div>
     </div>
   )

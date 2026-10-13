@@ -3152,9 +3152,12 @@ export class Game {
       this.signed.length >= 1 && procs.length && Math.random() < 0.4
         ? pick(procs)
         : candidates[0]
-    this.offer = { airline: pickA.id, age: 0 }
+    this.offer = { airline: pickA.id, age: 0, deadline: 36 }
     const tag = pickA.procedural ? ' (regional)' : ''
-    this.pushNews(`${pickA.name}${tag} is on the phone — they want a contract.`, 'good')
+    this.pushNews(
+      `${pickA.name}${tag} sent a contract letter — open it on the right before it expires.`,
+      'good',
+    )
   }
 
   acceptOffer() {
@@ -3645,6 +3648,16 @@ export class Game {
     this.emit()
   }
 
+  /** Letter timed out without a decision — soft cool, no heat hit. */
+  expireOffer() {
+    if (!this.offer) return
+    const a = this.airline(this.offer.airline)
+    this.offer = null
+    this.offerCool = 55
+    this.pushNews(`${a.name} contract letter expired unread.`, 'ok')
+    this.emit()
+  }
+
   hallReadyForLayover(): boolean {
     const fit = this.activeHall()
     if (!fit) return false
@@ -3676,9 +3689,9 @@ export class Game {
     )
     const duration = 55 + Math.floor(Math.random() * 40)
     const transferPax = 18 + Math.floor(Math.random() * 22) + (a.persona === 'business' ? 8 : 0)
-    this.layoverOffer = { airline: id, age: 0, fee, duration, transferPax }
+    this.layoverOffer = { airline: id, age: 0, fee, duration, transferPax, deadline: 40 }
     this.pushNews(
-      `${a.name} wants a layover bank — $${fee.toLocaleString()} up front, ${transferPax} transfers for ~${duration}s. Keep them happy or get banned.`,
+      `${a.name} sent a layover letter — $${fee.toLocaleString()} up front, ${transferPax} transfers for ~${duration}s.`,
       'good',
     )
   }
@@ -3719,9 +3732,25 @@ export class Game {
     this.emit()
   }
 
+  expireLayover() {
+    if (!this.layoverOffer) return
+    const a = this.airline(this.layoverOffer.airline)
+    this.layoverOffer = null
+    this.layoverOfferCool = 45
+    this.pushNews(`${a.name} layover letter expired.`, 'ok')
+    this.emit()
+  }
+
   tickLayover(dt: number) {
     this.layoverOfferCool = Math.max(0, this.layoverOfferCool - dt)
-    if (this.layoverOffer) this.layoverOffer.age += dt
+    if (this.layoverOffer) {
+      this.layoverOffer.age += dt
+      this.layoverOffer.deadline -= dt
+      if (this.layoverOffer.deadline <= 0) {
+        this.expireLayover()
+        return
+      }
+    }
     this.considerLayoverOffers()
     if (!this.layover) return
     const L = this.layover
@@ -3777,9 +3806,9 @@ export class Game {
     if (a.kind === 'cargo' || a.persona === 'military_gov') return
     const fee =
       HUB_FEE_MIN + Math.floor(Math.random() * (HUB_FEE_MAX - HUB_FEE_MIN))
-    this.hubOffer = { airline: airlineId, age: 0, fee }
+    this.hubOffer = { airline: airlineId, age: 0, fee, deadline: 45 }
     this.pushNews(
-      `${a.name} offers Hub status — denser slots + brand lounge for ${moneyLeft(fee)}. Fail a layover and the ban is brutal.`,
+      `${a.name} sent a Hub plaque letter — denser slots + brand lounge for ${moneyLeft(fee)}.`,
       'good',
     )
   }
@@ -3821,11 +3850,21 @@ export class Game {
     this.emit()
   }
 
+  expireHub() {
+    if (!this.hubOffer) return
+    const a = this.airline(this.hubOffer.airline)
+    this.hubOffer = null
+    this.hubOfferCool = 55
+    this.pushNews(`${a.name} Hub letter expired.`, 'ok')
+    this.emit()
+  }
+
   tickHub(dt: number) {
     this.hubOfferCool = Math.max(0, this.hubOfferCool - dt)
     if (this.hubOffer) {
       this.hubOffer.age += dt
-      if (this.hubOffer.age > 45) this.declineHub()
+      this.hubOffer.deadline -= dt
+      if (this.hubOffer.deadline <= 0) this.expireHub()
     }
   }
 
@@ -4693,9 +4732,9 @@ export class Game {
     const id = pick(candidates)
     const a = this.airline(id)
     const payout = Math.round(a.landing * (a.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120)
-    this.mxOffer = { airline: id, age: 0, payout }
+    this.mxOffer = { airline: id, age: 0, payout, deadline: 32 }
     this.pushNews(
-      `${a.name} wants a line-maintenance contract — $${payout.toLocaleString()} per turnaround in your hangar.`,
+      `${a.name} sent an MX letter — $${payout.toLocaleString()} per hangar turnaround.`,
       'good',
     )
   }
@@ -4716,6 +4755,15 @@ export class Game {
     this.mxOffer = null
     this.mxOfferCool = 55
     this.pushNews(`${this.airline(id).name} MX talk died. They may call again.`, 'ok')
+    this.emit()
+  }
+
+  expireMxOffer() {
+    if (!this.mxOffer) return
+    const a = this.airline(this.mxOffer.airline)
+    this.mxOffer = null
+    this.mxOfferCool = 45
+    this.pushNews(`${a.name} MX letter expired.`, 'ok')
     this.emit()
   }
 
@@ -7229,7 +7277,11 @@ export class Game {
       this.persist()
     }
     for (const n of this.news) n.age += step
-    if (this.offer) this.offer.age += step
+    if (this.offer) {
+      this.offer.age += step
+      this.offer.deadline -= step
+      if (this.offer.deadline <= 0) this.expireOffer()
+    }
 
     if (this.loanBalance > 0) {
       this.interestCool -= step
@@ -7276,7 +7328,11 @@ export class Game {
 
     this.considerOffers()
     this.mxOfferCool = Math.max(0, this.mxOfferCool - step)
-    if (this.mxOffer) this.mxOffer.age += step
+    if (this.mxOffer) {
+      this.mxOffer.age += step
+      this.mxOffer.deadline -= step
+      if (this.mxOffer.deadline <= 0) this.expireMxOffer()
+    }
     this.considerMxOffers()
     this.tickFieldTask(step)
     this.tickLayover(step)

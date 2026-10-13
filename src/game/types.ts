@@ -202,6 +202,8 @@ export interface LayoverOffer {
   duration: number
   /** How many transfer guests to drip into the hall. */
   transferPax: number
+  /** Sim-seconds left before the letter expires. */
+  deadline: number
 }
 
 export interface LayoverContract {
@@ -220,6 +222,8 @@ export interface HubOffer {
   airline: AirlineId
   age: number
   fee: number
+  /** Sim-seconds left before the letter expires. */
+  deadline: number
 }
 
 export interface HubContract {
@@ -300,6 +304,8 @@ export interface ScheduleSlot {
 export interface ContractOffer {
   airline: AirlineId
   age: number
+  /** Sim-seconds left before the letter expires unread. */
+  deadline: number
 }
 
 /** CEO-style airline ask after the first turn — concrete field goals with a clock. */
@@ -335,6 +341,8 @@ export interface MxOffer {
   age: number
   /** Per-turnaround payout when you service their craft. */
   payout: number
+  /** Sim-seconds left before the letter expires. */
+  deadline: number
 }
 
 export type Budgets = Record<BudgetKey, number>
