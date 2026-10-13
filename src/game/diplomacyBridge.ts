@@ -4,13 +4,20 @@ import { DEFAULT_AIRLINES } from '../airlines/data.ts'
 import { createDiplomacyAdapter, toAirlinesFlightEvent } from '../diplomacy/adapter.ts'
 import type { DiplomacyAdapter, DiplomacyAdapterHost } from '../diplomacy/adapter.ts'
 import { CARGO_TERMS, TIER_CONTRACT_TERMS } from '../diplomacy/constants.ts'
-import type { AirlineCard, AirlineRelation, Grade, Proposal } from '../diplomacy/types.ts'
+import type { AirlineCard, AirlineRelation, CounterLineKey, Grade, Proposal, ProposalResponse } from '../diplomacy/types.ts'
 
 /**
  * One sim-second is eight game minutes. Diplomacy advances in game minutes,
  * and one of its days is 1440 of those minutes — one sim day (180s).
  */
 export const GAME_MINUTES_PER_SIM_SECOND = 8
+
+/** Game field levels are 1–5. Diplomacy tiers unlock at field levels 1, 3, 5, 7 and 9. */
+export function diplomacyFieldLevel(gameLevel: number): number {
+  const table = [0, 1, 3, 5, 7, 9]
+  const level = Math.max(1, Math.min(5, Math.round(gameLevel)))
+  return table[level] ?? 1
+}
 
 export interface DepartureGradeInput {
   flightId: string
@@ -205,8 +212,8 @@ export class DiplomacyBridge {
     return this.adapter.engine.state.proposals
   }
 
-  respond(proposalId: string, response: 'accept' | 'decline' | 'counter' | 'support') {
-    const result = this.adapter.respondToProposal(proposalId, response)
+  respond(proposalId: string, response: ProposalResponse, ticks?: CounterLineKey[]) {
+    const result = this.adapter.respondToProposal(proposalId, response, 'money', ticks)
     if (result.ok && (response === 'accept' || response === 'support')) {
       for (const id of this.signedIds()) {
         const signed = this.relation(id)

@@ -170,60 +170,6 @@ export function OwnerChrome({ game }: { game: Game }) {
           ))}
         </div>
       )}
-      {(game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
-        <div
-          data-testid="diplomacy-panel"
-          style={{
-            pointerEvents: 'auto',
-            position: 'absolute',
-            left: 8,
-            bottom: 8,
-            width: 280,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            color: '#e7eee9',
-            font: '13px sans-serif',
-          }}
-        >
-          {game.diplomacyRoster().map((row) => (
-            <div
-              key={row.id}
-              data-testid="diplomacy-card"
-              style={{
-                background: 'rgba(12, 22, 28, 0.88)',
-                borderRadius: 6,
-                padding: '6px 8px',
-              }}
-            >
-              {row.name} · {row.band} · {Math.round(row.standing)}
-            </div>
-          ))}
-          {game.diplomacyLetters().map((letter) => (
-            <div
-              key={letter.id}
-              data-testid="diplomacy-letter"
-              style={{
-                background: 'rgba(12, 22, 28, 0.92)',
-                border: '1px solid #c9a27a',
-                borderRadius: 6,
-                padding: '8px 10px',
-              }}
-            >
-              <strong style={{ display: 'block', marginBottom: 4 }}>{letter.airline}</strong>
-              <span style={{ display: 'block', opacity: 0.9 }}>{letter.text}</span>
-              <span style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                <button type="button" onClick={() => game.answerDiplomacy(letter.id, 'accept')}>
-                  Accept
-                </button>
-                <button type="button" onClick={() => game.answerDiplomacy(letter.id, 'decline')}>
-                  Decline
-                </button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
       {site && (
         <div
           data-testid="build-tooltip"

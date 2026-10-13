@@ -1299,6 +1299,11 @@ button {
   z-index: 2;
 }
 
+.letter.dip.open,
+.letter.dip:focus-within {
+  max-height: 640px;
+}
+
 .letter.tone-bad {
   border-color: rgba(255, 107, 107, 0.55);
 }
@@ -1911,4 +1916,101 @@ h1 {
   font-weight: 500;
   font-size: 12px;
   color: #9eb0a0;
+}
+
+.dip-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.dip-tabs button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.dip-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dip-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: rgba(18, 36, 28, 0.95);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.dip-livery {
+  width: 8px;
+  align-self: stretch;
+  border-radius: 2px;
+  border-left: 3px solid;
+  flex: 0 0 auto;
+}
+
+.dip-name {
+  flex: 1 1 auto;
+  font-weight: 650;
+}
+
+.dip-band,
+.dip-trend {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.dip-detail {
+  margin-top: 6px;
+  padding: 6px 8px 8px;
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  border-radius: 6px;
+}
+
+.dip-sub {
+  margin-top: 6px;
+}
+
+.dip-lines {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+
+.dip-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.dip-ladder {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.dip-ladder li {
+  margin: 4px 0;
+}
+
+.dip-ladder li[data-state='locked'] {
+  opacity: 0.65;
+}
+
+.letter.dip .dip-lines label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }

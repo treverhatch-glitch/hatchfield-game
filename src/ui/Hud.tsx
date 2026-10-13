@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { AirlinesDesk } from './AirlinesDesk'
+import { DiplomacyLetters } from './DiplomacyLetters'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
@@ -20,8 +22,6 @@ import {
   DESK_STAFF_HIRE,
   LAND,
   LOAN_PRODUCTS,
-  AIRLINE_TIER_META,
-  bizModelBlurb,
   MECHANIC_HIRE,
   MIL_AGREE_COST,
   LAND_PLOT,
@@ -33,12 +33,9 @@ import {
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   HEAT_ABANDON_THRESHOLD,
-  HEAT_REWARD_THRESHOLD,
   HEAT_WARN_THRESHOLD,
   RESEARCH_NODES,
   rewardBlurb,
-  rewardDetail,
-  rewardForPersona,
   ROOMS,
   RUNWAY_PREFAB_COST,
   SHORT_RUNWAY_COST,
@@ -47,7 +44,7 @@ import {
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
 import { formatSimDate, type Game } from '../game/sim'
-import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
+import type { BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
 
 function parcelButtonLabel(game: Game): string {
@@ -188,7 +185,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
-  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
+  { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
 ]
@@ -224,6 +221,25 @@ export function Hud({ game }: { game: Game }) {
   const hubAirline = game.hubOffer ? game.airline(game.hubOffer.airline) : null
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key !== 'l' && e.key !== 'L') return
+      e.preventDefault()
+      setPanel((cur) => {
+        if (cur === 'airlines') {
+          setChromePinned(false)
+          return null
+        }
+        setChromePinned(true)
+        return 'airlines'
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
     setPanel((cur) => {
@@ -365,6 +381,7 @@ export function Hud({ game }: { game: Game }) {
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
+        <DiplomacyLetters game={game} />
         {(() => {
           type Letter = {
             id: string
@@ -1184,114 +1201,7 @@ export function Hud({ game }: { game: Game }) {
               ) : null}
 
               {panel === 'airlines' ? (
-                <section className="airline-tiers">
-                  <h3>Airline tiers</h3>
-                  {(() => {
-                    const prog = game.fieldXpToNext()
-                    return (
-                      <p className="muted eco-line">
-                        Field Level {prog.level}
-                        {prog.level < 5
-                          ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to Lv${prog.level + 1})`
-                          : ` · ${prog.xp} XP · max`}
-                        {' · '}
-                        Signed:{' '}
-                        {game.signed.length
-                          ? game.signed.map((id) => game.airline(id).name).join(', ')
-                          : 'none'}
-                        {ready.tower
-                          ? ` · tower ${game.maxInbound()} inbound`
-                          : ' · no tower'}
-                      </p>
-                    )
-                  })()}
-                  <p className="muted">
-                    Letters slide in from the left. Standing{' '}
-                    {HEAT_REWARD_THRESHOLD}+ unlocks persona perks · warn ≤
-                    {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
-                    Cross-cut: Charter / LCC / Full-service / Cargo.
-                  </p>
-                  {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
-                    const meta = AIRLINE_TIER_META[tier]
-                    const unlocked = game.tierUnlocked(tier)
-                    const carriers = game
-                      .allAirlines()
-                      .filter((a) => a.tier === tier)
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                    if (!carriers.length) return null
-                    return (
-                      <div
-                        key={tier}
-                        className={`tier-block${unlocked ? '' : ' locked'}`}
-                      >
-                        <header className="tier-head">
-                          <strong>
-                            {meta.short} · {meta.label}
-                          </strong>
-                          <span className="muted">
-                            {unlocked
-                              ? 'Unlocked'
-                              : `Needs Field Lv${Math.max(1, tier - 1)}`}
-                          </span>
-                        </header>
-                        <p className="muted tier-blurb">
-                          {meta.blurb} · {meta.fleet}
-                        </p>
-                        <ul className="airlines">
-                          {carriers.map((a) => {
-                            const signed = game.signed.includes(a.id)
-                            const ok = game.meetsReq(a.id)
-                            const miss = game.missingReq(a.id)
-                            const banned = game.isBanned(a.id)
-                            const standing = Math.round(game.standingOf(a.id))
-                            const reward = game.rewardOf(a.id)
-                            const warned = Boolean(game.airlineWarned[a.id])
-                            const hub = game.isHub(a.id)
-                            const targetPerk = rewardForPersona(a.persona)
-                            return (
-                              <li key={a.id}>
-                                <b style={{ color: a.color }}>
-                                  {a.name}{' '}
-                                  <span className="muted">
-                                    {bizModelBlurb(a.bizModel)} · {personaBlurb(a.persona)}
-                                    {a.procedural ? ' · proc' : ''}
-                                    {hub ? ' · HUB' : ''}
-                                  </span>{' '}
-                                  {banned
-                                    ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
-                                    : signed
-                                      ? `· Standing ${standing}${warned ? ' · WARN' : ''}${
-                                          reward ? ` · ${rewardBlurb(reward)}` : ''
-                                        }`
-                                      : !unlocked
-                                        ? '· locked tier'
-                                        : ok
-                                          ? '· ready to call'
-                                          : '· missing infra'}
-                                </b>
-                                <span className="muted">
-                                  {a.fleetBlurb}
-                                  {' · '}
-                                  {banned
-                                    ? 'Suspended after a bad layover / hall'
-                                    : signed
-                                      ? reward
-                                        ? rewardDetail(reward)
-                                        : warned
-                                          ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}.`
-                                          : `Chase ${rewardBlurb(targetPerk)} at Standing ${HEAT_REWARD_THRESHOLD}+.`
-                                      : !unlocked
-                                        ? meta.scope
-                                        : miss.slice(0, 4).join(', ') || a.blurb}
-                                </span>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      </div>
-                    )
-                  })}
-                </section>
+                <AirlinesDesk game={game} />
               ) : null}
 
               {panel === 'planner' ? (
