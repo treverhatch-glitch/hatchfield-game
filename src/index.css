@@ -904,7 +904,7 @@ button {
   pointer-events: auto;
 }
 
-.panel-rollout {
+.panel-rollout:not(.hf-panel) {
   order: 1;
   max-height: 0;
   overflow: hidden;
@@ -921,9 +921,9 @@ button {
 }
 
 /* Clicked / pinned menus stay open (not hover-only — clicks were invisible). */
-.chrome.has-panel .panel-rollout,
-.chrome.pinned .panel-rollout,
-.panel-rollout:focus-within {
+.chrome.has-panel .panel-rollout:not(.hf-panel),
+.chrome.pinned .panel-rollout:not(.hf-panel),
+.panel-rollout:not(.hf-panel):focus-within {
   max-height: min(52vh, 520px);
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
   opacity: 1;

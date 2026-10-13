@@ -119,6 +119,13 @@ export function StatusStrip({
           {flow.runwayText ? runwayShort : ''}
         </span>
       </button>
+      <button type="button" data-testid="tab-budget" title="Budget" onClick={() => togglePanel('finances', 'budget')}>
+        Budget
+      </button>
+      <label className="hf-flows" data-testid="flow-toggle" title="Show passenger flows (F)">
+        <input type="checkbox" checked={game.showFlows} onChange={() => game.toggleFlows()} />
+        Flows
+      </label>
       <span className="hf-muted" title="Weather">
         {game.weatherLabel()}
       </span>

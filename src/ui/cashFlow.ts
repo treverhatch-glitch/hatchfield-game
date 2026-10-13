@@ -1,3 +1,4 @@
+import { categoryLabel, type MoneyCategory } from './bankAdapter'
 import { ratePerDay } from './moneyFormat'
 
 /** One in-game hour is 7.5 sim seconds. A day is 24 of those hours (180s). */
@@ -6,15 +7,30 @@ export const DAY_SEC = 180
 export const PAYROLL_SEC = 30
 export const TICKS_PER_DAY = DAY_SEC / PAYROLL_SEC
 export const HOURS_PER_DAY = 24
-/**
- * City levy the payroll tick already charges once cash is above this.
- * Derived here so the runway matches the books without editing the sim.
- */
-export const LEVY_CASH = 140_000
-export const LEVY_RATE = 0.03
 export const FLOAT_LIFE_MS = 1700
 
-export type CashNews = { id: string; text: string }
+export type GroundBooks = {
+  fuelSales: number
+  cateringFees: number
+  fuelPurchase: number
+  mealProduction: number
+  vehicleUpkeep: number
+}
+
+export const EMPTY_GROUND: GroundBooks = {
+  fuelSales: 0,
+  cateringFees: 0,
+  fuelPurchase: 0,
+  mealProduction: 0,
+  vehicleUpkeep: 0,
+}
+
+/** One posted earn() or settled payment, already tagged with a bank category. */
+export type CashPost = {
+  key: string
+  category: MoneyCategory
+  amount: number
+}
 
 export type CashSnapshot = {
   cash: number
@@ -30,7 +46,8 @@ export type CashSnapshot = {
   payrollPerTick: number
   upkeepPerTick: number
   staffLines: { label: string; perTick: number }[]
-  news: CashNews[]
+  payments: CashPost[]
+  ground: GroundBooks
 }
 
 export type CashLine = { label: string; perDay: number }
@@ -75,7 +92,8 @@ export type FlowTracker = {
   histLen: number
   payrollCool: number
   clock: number
-  newsIds: string[]
+  paymentKeys: string[]
+  ground: GroundBooks
   sessionIncome: Record<string, number>
   floats: FlowFloat[]
 }
@@ -87,7 +105,7 @@ export type FlowCache = {
 }
 
 export function cashSignature(snap: CashSnapshot): string {
-  const head = snap.news[0]?.id ?? ''
+  const g = snap.ground
   return [
     snap.cash,
     snap.revenue,
@@ -100,39 +118,13 @@ export function cashSignature(snap: CashSnapshot): string {
     snap.payrollPerTick,
     snap.upkeepPerTick,
     snap.sandbox ? 1 : 0,
-    head,
-    snap.news.length,
+    snap.payments.map((p) => p.key).join(','),
+    g.fuelSales,
+    g.cateringFees,
+    g.fuelPurchase,
+    g.mealProduction,
+    g.vehicleUpkeep,
   ].join('|')
-}
-
-export function incomeSource(text: string): string {
-  const t = text.toLowerCase()
-  if (/bag/.test(t)) return 'Bags'
-  if (/fuel/.test(t)) return 'Fuel'
-  if (/cater/.test(t)) return 'Catering'
-  if (/de-?ice/.test(t)) return 'De-ice'
-  if (/park/.test(t)) return 'Parking'
-  if (/\bmx\b|hangar/.test(t)) return 'Maintenance'
-  if (/cargo/.test(t)) return 'Cargo'
-  if (/layover|volume|contract/.test(t)) return 'Contracts'
-  if (/clean/.test(t)) return 'Cleaning'
-  if (/landing|pad fee/.test(t)) return 'Landings'
-  if (/bonus|ask done|mission/.test(t)) return 'Bonuses'
-  return 'Other'
-}
-
-export function moneyInText(text: string): number | null {
-  const m = text.match(/\+\s*\$([\d,]+(?:\.\d+)?)/)
-  if (!m) return null
-  const n = Number(m[1].replace(/,/g, ''))
-  return Number.isFinite(n) ? n : null
-}
-
-/** Levy due on the next payroll tick, after staff and upkeep leave the till. */
-export function projectedLevy(cash: number, staff: number, upkeep: number): number {
-  const after = cash - staff - upkeep
-  if (after <= LEVY_CASH) return 0
-  return Math.round((after - LEVY_CASH) * LEVY_RATE)
 }
 
 export function runwayTextFor(days: number): string {
@@ -152,18 +144,26 @@ function bookedUpkeep(snap: CashSnapshot): number {
   return snap.sandbox ? 0 : snap.upkeepPerTick
 }
 
+/**
+ * Forward pace is daily payroll plus building upkeep.
+ * The city levy is not projected. It only shows when a tick actually charges it.
+ */
 export function scheduledCostLines(snap: CashSnapshot): CashLine[] {
   const lines: CashLine[] = []
-  const upkeep = bookedUpkeep(snap)
-  if (upkeep >= 1) lines.push({ label: 'Upkeep', perDay: upkeep * TICKS_PER_DAY })
+  const upkeep = bookedUpkeep(snap) * TICKS_PER_DAY
+  if (upkeep >= 1) lines.push({ label: categoryLabel('building_upkeep'), perDay: upkeep })
   const raw = snap.staffLines.reduce((sum, line) => sum + line.perTick, 0)
   const scale = raw > 0 ? snap.payrollPerTick / raw : 0
+  let staffDay = 0
   for (const line of snap.staffLines) {
     const perDay = line.perTick * scale * TICKS_PER_DAY
+    staffDay += perDay
     if (perDay >= 1) lines.push({ label: line.label, perDay })
   }
-  const levy = projectedLevy(snap.cash, snap.payrollPerTick, upkeep)
-  if (levy >= 1) lines.push({ label: 'Fees', perDay: levy * TICKS_PER_DAY })
+  const payrollDay = snap.payrollPerTick * TICKS_PER_DAY
+  if (staffDay < 1 && payrollDay >= 1) {
+    lines.push({ label: categoryLabel('payroll'), perDay: payrollDay })
+  }
   return lines
 }
 
@@ -209,7 +209,8 @@ function seed(snap: CashSnapshot): FlowTracker {
     histLen: snap.econHist.length,
     payrollCool: snap.payrollCool,
     clock: snap.clock,
-    newsIds: snap.news.map((n) => n.id),
+    paymentKeys: snap.payments.map((p) => p.key),
+    ground: { ...snap.ground },
     sessionIncome: {},
     floats: [],
   }
@@ -254,6 +255,11 @@ function buildView(snap: CashSnapshot, tracker: FlowTracker, now: number): CashF
   }
 }
 
+function pushDown(floats: FlowFloat[], label: string, amount: number, id: string, now: number) {
+  if (amount < 1) return
+  floats.push({ id, dir: 'down', amount, label, at: now })
+}
+
 export function stepCashFlow(
   prev: FlowTracker | null,
   snap: CashSnapshot,
@@ -266,58 +272,57 @@ export function stepCashFlow(
 
   const floats = prev.floats.filter((f) => now - f.at < FLOAT_LIFE_MS)
   const sessionIncome = { ...prev.sessionIncome }
-  const addIncome = (label: string, amount: number, id: string) => {
+  const addIncome = (category: MoneyCategory, amount: number, id: string) => {
     if (amount < 1) return
+    const label = categoryLabel(category)
     sessionIncome[label] = (sessionIncome[label] ?? 0) + amount
     floats.push({ id, dir: 'up', amount, label, at: now })
   }
 
-  let remain = Math.max(0, snap.revenue - prev.revenue)
-  const seen = new Set(prev.newsIds)
-  const fresh = snap.news.filter((n) => !seen.has(n.id)).reverse()
-  for (const item of fresh) {
-    const parsed = moneyInText(item.text)
-    if (parsed == null || parsed <= 0) continue
-    const take = Math.min(parsed, remain)
-    if (take < 1) continue
-    addIncome(incomeSource(item.text), take, `in-${item.id}`)
-    remain -= take
+  const seen = new Set(prev.paymentKeys)
+  let posted = 0
+  for (const item of snap.payments) {
+    if (seen.has(item.key)) continue
+    addIncome(item.category, item.amount, `in-${item.key}`)
+    posted += item.amount
   }
-  if (remain >= 1) addIncome('Passenger spend', remain, `pax-${snap.clock.toFixed(2)}-${Math.round(remain)}`)
+
+  const fuelDelta = Math.max(0, snap.ground.fuelSales - prev.ground.fuelSales)
+  const caterDelta = Math.max(0, snap.ground.cateringFees - prev.ground.cateringFees)
+  addIncome('fuel_sales', fuelDelta, `in-fuel-${snap.ground.fuelSales}`)
+  addIncome('catering_fees', caterDelta, `in-cater-${snap.ground.cateringFees}`)
+
+  const remain = Math.max(0, snap.revenue - prev.revenue - posted - fuelDelta - caterDelta)
+  if (remain >= 1) addIncome('retail_sales', remain, `retail-${snap.clock.toFixed(2)}-${Math.round(remain)}`)
 
   const pulse = expensePulse(prev, snap)
+  let left = pulse
+  const fuelBuy = Math.max(0, -(snap.ground.fuelPurchase - prev.ground.fuelPurchase))
+  const meals = Math.max(0, -(snap.ground.mealProduction - prev.ground.mealProduction))
+  const vehicles = Math.max(0, -(snap.ground.vehicleUpkeep - prev.ground.vehicleUpkeep))
+  const take = (amount: number) => {
+    const hit = Math.min(amount, left)
+    left -= hit
+    return hit
+  }
+  const groundHits: [string, number][] = [
+    [categoryLabel('fuel_purchase'), take(fuelBuy)],
+    [categoryLabel('meal_production'), take(meals)],
+    [categoryLabel('vehicle_upkeep'), take(vehicles)],
+  ]
+  for (const [label, amount] of groundHits) {
+    pushDown(floats, label, amount, `out-${label}-${snap.clock.toFixed(2)}`, now)
+  }
+
   const payrollFired = snap.payrollCool > prev.payrollCool + 1
-  if (pulse >= 1) {
-    if (payrollFired) {
-      let left = pulse
-      const upkeepHit = Math.min(bookedUpkeep(snap), left)
-      left -= upkeepHit
-      const staffHit = Math.min(snap.payrollPerTick, left)
-      left -= staffHit
-      const bits: [string, number][] = [
-        ['Upkeep', upkeepHit],
-        ['Staff', staffHit],
-        ['Fees', left],
-      ]
-      for (const [label, amount] of bits) {
-        if (amount < 1) continue
-        floats.push({
-          id: `out-${label}-${snap.clock.toFixed(2)}`,
-          dir: 'down',
-          amount,
-          label,
-          at: now,
-        })
-      }
-    } else {
-      floats.push({
-        id: `out-Fees-${snap.clock.toFixed(2)}`,
-        dir: 'down',
-        amount: pulse,
-        label: 'Fees',
-        at: now,
-      })
-    }
+  if (left >= 1 && payrollFired) {
+    const upkeepHit = take(bookedUpkeep(snap))
+    const staffHit = take(snap.payrollPerTick)
+    pushDown(floats, categoryLabel('building_upkeep'), upkeepHit, `out-upkeep-${snap.clock.toFixed(2)}`, now)
+    pushDown(floats, categoryLabel('payroll'), staffHit, `out-payroll-${snap.clock.toFixed(2)}`, now)
+    pushDown(floats, categoryLabel('city_levy'), left, `out-levy-${snap.clock.toFixed(2)}`, now)
+  } else if (left >= 1) {
+    pushDown(floats, categoryLabel('penalties'), left, `out-penalties-${snap.clock.toFixed(2)}`, now)
   }
 
   const tracker: FlowTracker = {
@@ -327,7 +332,8 @@ export function stepCashFlow(
     histLen: snap.econHist.length,
     payrollCool: snap.payrollCool,
     clock: snap.clock,
-    newsIds: snap.news.map((n) => n.id),
+    paymentKeys: snap.payments.map((p) => p.key),
+    ground: { ...snap.ground },
     sessionIncome,
     floats,
   }

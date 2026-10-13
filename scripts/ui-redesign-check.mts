@@ -113,9 +113,104 @@ async function box(page: Page, sel: string) {
   })
 }
 
+async function southBlocked(page: Page) {
+  return page.evaluate(() => {
+    const w = window.innerWidth
+    const h = window.innerHeight
+    const bad: string[] = []
+    for (let y = h * 0.67; y < h - 64; y += 28) {
+      for (let x = w * 0.2; x < w * 0.8; x += 48) {
+        for (const el of document.elementsFromPoint(x, y)) {
+          if (el.closest('[data-hud-transient]')) break
+          if (el.closest('canvas, .field, .field-wrap, .view-layer, .shell, .hall-wrap')) continue
+          if (el === document.body || el === document.documentElement || el.id === 'root') continue
+          const cs = getComputedStyle(el)
+          if (cs.pointerEvents === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue
+          bad.push(`${Math.round(x)},${Math.round(y)} ${el.tagName}.${String(el.className).slice(0, 40)}`)
+          break
+        }
+      }
+    }
+    return bad.slice(0, 4)
+  })
+}
+
+async function starterKit(width: number, height: number) {
+  const page = await browser.newPage({ viewport: { width, height } })
+  page.on('pageerror', (err) => console.log('PAGE', err.message))
+  await boot(page)
+  const tray = await page.getByTestId('build-tray').count()
+  const south = await southBlocked(page)
+  const budget = await page.getByTestId('tab-budget').isVisible()
+  const flows = await page.getByTestId('flow-toggle').locator('input').isChecked()
+  await page.getByTestId('tab-economy').click()
+  const kit = page.getByTestId('starter-kit')
+  const visible = await kit.isVisible()
+  await kit.click({ force: true })
+  await page.waitForTimeout(300)
+  const placed = await page.evaluate(() => {
+    const g = (window as unknown as {
+      __hatch: { fits: unknown[]; tiles: string[][]; news: { text: string }[] }
+    }).__hatch
+    const kinds = new Set<string>()
+    for (const row of g.tiles) for (const tile of row) if (tile && tile !== 'grass') kinds.add(tile)
+    return {
+      fits: g.fits.length,
+      runway: kinds.has('runway'),
+      terminal: kinds.has('terminal'),
+      stand: kinds.has('stand'),
+      news: g.news[0]?.text ?? '',
+    }
+  })
+  const est = await page.getByTestId('cash-estimate').innerText()
+  const close = page.locator('.panel-head button').filter({ hasText: /Close/i })
+  const closeVisible = await close.isVisible()
+  if (closeVisible) await close.click()
+  const panelGone = (await page.locator('.hf-panel').count()) === 0
+  note(
+    `kit-${width}x${height}`,
+    tray === 0 &&
+      south.length === 0 &&
+      budget &&
+      flows === false &&
+      visible &&
+      placed.fits > 0 &&
+      placed.runway &&
+      placed.terminal &&
+      placed.stand &&
+      !/M\/day/.test(est) &&
+      closeVisible &&
+      panelGone,
+    `tray ${tray} south ${south.join('; ') || 'clear'} budget ${budget} flows ${flows} kit ${visible} fits ${placed.fits} ${[...Object.entries(placed).filter(([k]) => k !== 'news')]} est ${est.replace(/\s+/g, ' ')} close ${closeVisible}/${panelGone} news ${placed.news.slice(0, 80)}`,
+  )
+  await page.close()
+}
+
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } })
 page.on('pageerror', (e) => console.log('PAGE', e.message))
 await boot(page)
+
+note(
+  'tray-closed',
+  (await page.getByTestId('build-tray').count()) === 0 && (await southBlocked(page)).length === 0,
+  `tray ${(await page.getByTestId('build-tray').count())} south ${(await southBlocked(page)).join('; ') || 'clear'}`,
+)
+const flowsOff = await page.getByTestId('flow-toggle').locator('input').isChecked()
+await page.keyboard.press('f')
+const flowsOn = await page.evaluate(() => {
+  const g = (window as unknown as { __hatch: { showFlows: boolean } }).__hatch
+  const ui = (window as unknown as { __ui: { getUiState: () => { openPanel: string | null; openMenu: string | null } } }).__ui.getUiState()
+  return { flows: g.showFlows, panel: ui.openPanel, menu: ui.openMenu }
+})
+await page.keyboard.press('f')
+const flowsBack = await page.evaluate(
+  () => (window as unknown as { __hatch: { showFlows: boolean } }).__hatch.showFlows,
+)
+note(
+  'F-flows',
+  flowsOff === false && flowsOn.flows === true && flowsOn.panel == null && flowsOn.menu == null && flowsBack === false,
+  `off ${flowsOff} on ${JSON.stringify(flowsOn)} back ${flowsBack}`,
+)
 
 const idleCov = await coverage(page)
 const strip = await box(page, '[data-hud-part="strip"]')
@@ -253,7 +348,7 @@ const stepTool = await page.evaluate(() => (window as unknown as { __ui: { getUi
 await page.keyboard.press('r')
 await page.keyboard.press('Escape')
 const stepMenu = await page.evaluate(() => (window as unknown as { __ui: { getUiState: () => { openMenu: string | null; openPanel: string | null } } }).__ui.getUiState())
-await page.keyboard.press('f')
+await page.keyboard.press('u')
 await page.keyboard.press('Escape')
 const stepPanel = await page.evaluate(() => (window as unknown as { __ui: { getUiState: () => { openPanel: string | null } } }).__ui.getUiState())
 await page.keyboard.press('Escape')
@@ -402,10 +497,15 @@ await exec('ffmpeg', [
 ])
 console.log('video', `${OUT}/UI-REDESIGN-airfield.webm`)
 
+await starterKit(1920, 1080)
+await starterKit(1366, 768)
+await starterKit(1280, 800)
+
 const failed = results.filter((r) => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} passed`)
 if (failed.length) {
   console.log(failed.map((f) => f.id).join(', '))
   process.exitCode = 1
 }
+
 await browser.close()

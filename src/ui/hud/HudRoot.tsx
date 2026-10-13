@@ -157,11 +157,6 @@ export function HudRoot({ game }: { game: Game }) {
         game.setTool('clear')
         return
       }
-      if (key === 'f') {
-        e.preventDefault()
-        togglePanel('finances', 'overview')
-        return
-      }
       if (key === 'u') {
         e.preventDefault()
         togglePanel('research')

@@ -37,37 +37,12 @@ export function OwnerChrome({ game }: { game: Game }) {
       data-testid="owner-chrome"
       style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }}
     >
-      <label
-        data-testid="flow-toggle"
-        style={{
-          pointerEvents: 'auto',
-          position: 'absolute',
-          top: 8,
-          right: 8,
-          display: 'flex',
-          gap: 8,
-          alignItems: 'center',
-          background: 'rgba(12, 22, 28, 0.82)',
-          color: '#e7eee9',
-          font: '600 12px sans-serif',
-          padding: '6px 8px',
-          borderRadius: 6,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={game.showFlows}
-          onChange={() => game.toggleFlows()}
-        />
-        Show passenger flows
-        <span style={{ opacity: 0.7 }}>F</span>
-      </label>
       <div
         data-testid="info-hotspots"
         style={{
           pointerEvents: 'auto',
           position: 'absolute',
-          top: 40,
+          top: 36,
           left: '50%',
           transform: 'translateX(-50%)',
           display: 'flex',
@@ -120,8 +95,9 @@ export function OwnerChrome({ game }: { game: Game }) {
           data-testid="ground-stock"
           style={{
             position: 'absolute',
-            top: 8,
+            top: 36,
             left: 8,
+            maxWidth: 220,
             background: 'rgba(12, 22, 28, 0.82)',
             color: '#e7eee9',
             font: '600 12px sans-serif',
@@ -140,8 +116,10 @@ export function OwnerChrome({ game }: { game: Game }) {
             pointerEvents: 'auto',
             position: 'absolute',
             left: 8,
-            bottom: 8,
-            width: 280,
+            top: 68,
+            width: 220,
+            maxHeight: '26vh',
+            overflow: 'auto',
             display: 'flex',
             flexDirection: 'column',
             gap: 6,

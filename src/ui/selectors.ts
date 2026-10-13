@@ -1,10 +1,12 @@
 import { BUDGET_LABEL } from '../game/catalog'
 import type { Game } from '../game/sim'
 import type { BudgetKey } from '../game/types'
+import { categoryForEarnLabel } from './bankAdapter'
 import {
   cashSignature,
   readFlow,
   type CashFlowView,
+  type CashPost,
   type CashSnapshot,
   type FlowCache,
 } from './cashFlow'
@@ -33,8 +35,37 @@ export function readCashSnapshot(game: Game): CashSnapshot {
       label: BUDGET_LABEL[key],
       perTick: game.lineCost(key) * mult,
     })),
-    news: game.news.map((item) => ({ id: item.id, text: item.text })),
+    payments: paymentPosts(game),
+    ground: {
+      fuelSales: game.groundBooks.fuelSales,
+      cateringFees: game.groundBooks.cateringFees,
+      fuelPurchase: game.groundBooks.fuelPurchase,
+      mealProduction: game.groundBooks.mealProduction,
+      vehicleUpkeep: game.groundBooks.vehicleUpkeep,
+    },
   }
+}
+
+/** Ledger lines and settled payments, keyed so a departure does not count twice. */
+function paymentPosts(game: Game): CashPost[] {
+  const lines: { label: string; amount: number }[] = []
+  for (const flight of game.flights) {
+    for (const line of flight.ledger) {
+      if (line.amount > 0) lines.push(line)
+    }
+  }
+  for (const line of game.settledPayments) {
+    if (line.amount > 0) lines.push({ label: line.label, amount: line.amount })
+  }
+  lines.sort((a, b) => a.label.localeCompare(b.label) || a.amount - b.amount)
+  const counts = new Map<string, number>()
+  return lines.map((line) => {
+    const category = categoryForEarnLabel(line.label)
+    const base = `${category}|${line.label}|${line.amount}`
+    const n = (counts.get(base) ?? 0) + 1
+    counts.set(base, n)
+    return { key: `${base}#${n}`, category, amount: line.amount }
+  })
 }
 
 export function selectCashFlow(game: Game, now = Date.now()): CashFlowView {

@@ -372,9 +372,9 @@ The old dock kept a build tray and a tall sheet over the apron. The new HUD is a
 
 **Checks.** Playwright at 1920×1080 and 1366×768 (`scripts/ui-redesign-check.mts`). 30/30 on the screen-budget checklist. Vitest 22 passing, including the uiStore rules (one menu or panel, select closes the menu, Esc order, scale clamp).
 
-**Bugs.** Three new ones. BUG-007 and BUG-008 are fixed. BUG-009 is still open because undo would mean a history stack in the sim.
+**Bugs.** Three HUD ones, numbered after the trunk list. BUG-011 and BUG-012 are fixed. BUG-013 is still open because undo would mean a history stack in the sim.
 
-### BUG-007 — Esc after a stamp opened Selection
+### BUG-011 — Esc after a stamp opened Selection
 
 **Severity:** Medium.
 
@@ -386,7 +386,7 @@ The old dock kept a build tray and a tall sheet over the apron. The new HUD is a
 
 **After:** `UI-REDESIGN-after-placing.png`. The acceptance check A6 now sees no menu and no panel.
 
-### BUG-008 — Asset menu over the 12% budget at 1366×768
+### BUG-012 — Asset menu over the 12% budget at 1366×768
 
 **Severity:** Low.
 
@@ -396,7 +396,7 @@ The old dock kept a build tray and a tall sheet over the apron. The new HUD is a
 
 **Fix:** The menu is capped at 54% of the width and 10.6% of the height. Remeasured coverage is 11.29%. At 1920×1080 it is 8.88%.
 
-### BUG-009 — Ctrl+Z has no history
+### BUG-013 — Ctrl+Z has no history
 
 **Severity:** Low.
 
@@ -414,17 +414,39 @@ Same HUD branch. The status strip keeps its 32px height. The bank balance is now
 
 **Checks.** Playwright 32/32 at 1920×1080 and 1366×768, including the cash tooltip and a live charge float. Idle coverage is 4.22% at 1920×1080 and 5.65% at 1366×768. Vitest 35 passing (13 new cash-flow cases).
 
-**Bugs.** One new one, left open. The count is now ten (BUG-001 through BUG-010).
+**Bugs.** The sandbox levy itself is trunk BUG-010, already fixed in the sim. The HUD was still projecting it. That projection is BUG-014, fixed in the rebase pass below.
 
-### BUG-010 — Sandbox still pays the city levy
+### BUG-014 — Sandbox forecast still booked the city levy
 
 **Severity:** Medium.
 
-**What you see:** A fresh sandbox starts at $9,999,999 and the strip says `Est. -$1.77M/day` and `Cash lasts ~5.6 days`. About every 30 sim seconds the balance drops by staff payroll plus roughly 3% of cash above $140,000. A measured tick was exactly $2,361 staff + $292,879 fees.
+**What you see:** A fresh sandbox starts at $9,999,999 and the strip says `Est. -$1.77M/day` and `Cash lasts ~5.6 days`. The forecast added a 3% city levy on every payroll tick even though sandbox no longer pays it.
 
-**Repro:** New Game with sandbox on, start a passenger field, set speed to 5x, watch the balance.
+**Repro:** New Game with sandbox on, start a passenger field, read the estimate.
 
-**Fix:** None here. The levy is charged inside `tickPayroll` in `sim.ts`, and that file belongs to the terminal work. The HUD only reports the books. Upkeep is already waived in sandbox; the levy is not.
+**Fix:** The daily pace is payroll plus building upkeep. The levy is not projected. A real levy still floats when a non-sandbox tick charges one.
+
+## Rebase onto trunk — 13 Oct 2026
+
+The HUD branch is rebased onto `cursor/audit-playtest-562d`. The new strip, category bar, and side panel stay. Trunk features that landed after the fork stay with them: the Design Advisor, the Ops kitchen and vehicle depot (Field level 2), passenger-flow lines on **F**, and the info hotspots. Flow lines stay off until Flows or F. The advisor sits in the left gutter under the strip, not on the southern stands.
+
+**Starter kit.** At 1280×800 the Economy panel used the old dock’s `panel-rollout` rule. Focusing the Starter kit button shrank the panel to 52vh and clipped the click, so `fits` stayed 0. The button is now at the top of Overview, and the side panel no longer uses that class. A force-click at 1920×1080, 1366×768, and 1280×800 places the hall, runway, and stands.
+
+**Test ids.** `tab-budget` is on the status strip and opens Finances → Budget. `new-game` stays on the title and is also in the game menu. Panel Close is the `.panel-head` button (`data-testid="panel-close"`).
+
+**Build tray.** Pavement stays closed until the category is opened. The southern apron, where the A380 parks, is clear on a fresh field.
+
+**Cash categories.** Income floats come from flight ledgers, settled payments, and the ground books (`fuel_sales`, `catering_fees`, and the matching expenses), mapped through `src/ui/bankAdapter.ts`. That file is the stand-in for `src/core/bank.ts` until PR #11 merges. News text is not parsed.
+
+### BUG-015 — Starter kit click missed the button
+
+**Severity:** High.
+
+**What you see:** Economy → Starter kit looks clickable, and a forced click reports success, but no hall, runway, or stand appears. `fits` stays 0. The strip reads `Est. -$1.77M/day` or `Est. -$2.31M/day`.
+
+**Repro:** Clear storage. New game → Passenger start → Economy → Starter kit. Seen at 1280×800. At 1920×1080 the same button sits fully inside the panel and the click works.
+
+**Fix:** Drop `panel-rollout` from the side panel so the dock’s focus rule cannot clip it. Keep the kit button above the week summary. The forecast uses daily payroll, so a fresh sandbox no longer shows a multi-million daily loss.
 
 ## Media
 

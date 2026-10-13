@@ -6,6 +6,7 @@ import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { TitleScreen } from './ui/TitleScreen'
+import { resetUiStore } from './ui/uiStore'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
 function getGame(): Game {
@@ -92,6 +93,16 @@ export default function App() {
       setScreen('title')
     }
   }, [screen])
+
+  useEffect(() => {
+    const onNew = () => {
+      resetUiStore()
+      game.beginNew(game.sandbox ? 'easy' : 'standard')
+      setScreen('land')
+    }
+    window.addEventListener('hf-new-game', onNew)
+    return () => window.removeEventListener('hf-new-game', onNew)
+  }, [])
 
   useEffect(() => {
     if (screen !== 'play') return

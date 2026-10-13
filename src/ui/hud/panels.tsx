@@ -72,19 +72,19 @@ export function SidePanel({
   if (!panel || panel === 'info') return null
   return (
     <section
-      className="hf-panel panel-rollout"
+      className="hf-panel"
       data-hud-part="panel"
       data-panel={panel}
       aria-label={TITLES[panel]}
     >
       <div className="panel-head">
         <h2>{TITLES[panel]}</h2>
-        <button type="button" className="ghost" onClick={() => closePanel()}>
+        <button type="button" className="ghost" data-testid="panel-close" onClick={() => closePanel()}>
           Close
         </button>
       </div>
       <div className="panel-body">
-        {panel === 'menu' ? <GameMenu /> : null}
+        {panel === 'menu' ? <GameMenu game={game} /> : null}
         {panel === 'finances' ? <Finances game={game} /> : null}
         {panel === 'research' ? <Research game={game} /> : null}
         {panel === 'airlines' ? <Airlines game={game} /> : null}
@@ -97,7 +97,7 @@ export function SidePanel({
   )
 }
 
-function GameMenu() {
+function GameMenu({ game }: { game: Game }) {
   const scale = getUiState().uiScale
   return (
     <section>
@@ -117,8 +117,16 @@ function GameMenu() {
       <p className="hf-muted">
         Scale stays inside the screen budget, from 70% to 150%. H or ` hides the HUD.
       </p>
+      <h3>Passenger flows</h3>
       <p className="hf-muted">
-        R pavement · S stands · T terminal · O ops · L landside · B bulldoze · I info · F finances ·
+        Path lines are {game.showFlows ? 'on' : 'off'}. They stay off until you tick Flows in the status
+        strip or press F. The setting does not cover the apron.
+      </p>
+      <button type="button" data-testid="new-game" onClick={() => window.dispatchEvent(new Event('hf-new-game'))}>
+        New game
+      </button>
+      <p className="hf-muted">
+        R pavement · S stands · T terminal · O ops · L landside · B bulldoze · I info · F flows ·
         U research · A airlines · P planner · G services · V apron/hall · Space pause · 1 2 3 speed ·
         Tab last menu · / search · Esc back.
       </p>
@@ -146,7 +154,7 @@ function Finances({ game }: { game: Game }) {
             key={id}
             type="button"
             role="tab"
-            data-testid={id === 'budget' ? 'tab-budget' : undefined}
+            data-testid={id === 'budget' ? 'finance-tab-budget' : undefined}
             aria-selected={tab === id}
             className={tab === id ? 'on' : ''}
             onClick={() => setFinanceTab(id)}
@@ -163,6 +171,21 @@ function Finances({ game }: { game: Game }) {
             {game.sandbox ? ' · sandbox' : ''}
             {game.loanBalance ? ` · loan owed ${moneyAbbrev(game.loanBalance)}` : ''}
             {' · '}income {income} · landside upkeep {upkeep}
+          </p>
+          <button
+            type="button"
+            className="wide on"
+            data-testid="starter-kit"
+            onClick={() => game.buildStarterKit()}
+          >
+            Starter kit · {moneyAbbrev(STARTER_KIT_COST)}
+          </button>
+          <p className="muted">
+            {game.startFocus === 'cargo'
+              ? 'Cargo kit: strip, freighter stand, guard, shed. Empty plot only.'
+              : game.startFocus === 'hybrid'
+                ? 'Hybrid kit: hall, jetways, and a cargo road. Empty plot only.'
+                : 'Passenger kit: hall, Apex, and SkyBite. Empty plot only.'}
           </p>
           <div data-testid="week-summary">
             <h3>This week</h3>
@@ -192,21 +215,6 @@ function Finances({ game }: { game: Game }) {
                 : 'The book starts after the first hour. Until then the week is the daily pace times seven.'}
             </p>
           </div>
-          <button
-            type="button"
-            className="wide on"
-            data-testid="starter-kit"
-            onClick={() => game.buildStarterKit()}
-          >
-            Starter kit · {moneyAbbrev(STARTER_KIT_COST)}
-          </button>
-          <p className="muted">
-            {game.startFocus === 'cargo'
-              ? 'Cargo kit: strip, freighter stand, guard, shed. Empty plot only.'
-              : game.startFocus === 'hybrid'
-                ? 'Hybrid kit: hall, jetways, and a cargo road. Empty plot only.'
-                : 'Passenger kit: hall, Apex, and SkyBite. Empty plot only.'}
-          </p>
           <div className="loan-products">
             <h4 className="loan-h">Bank desk</h4>
             <div className="loan-grid">

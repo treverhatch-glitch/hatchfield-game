@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest'
+import { categoryForEarnLabel, categoryLabel } from './bankAdapter'
 import {
   cashSignature,
+  EMPTY_GROUND,
   estimateTextFor,
-  incomeSource,
-  moneyInText,
-  projectedLevy,
   readFlow,
   runwayTextFor,
   stepCashFlow,
+  type CashPost,
   type CashSnapshot,
   type FlowTracker,
 } from './cashFlow'
 import { moneyFull, moneyTick } from './moneyFormat'
+
+function post(label: string, amount: number, n = 1): CashPost {
+  const category = categoryForEarnLabel(label)
+  return { key: `${category}|${label}|${amount}#${n}`, category, amount }
+}
 
 function snap(over: Partial<CashSnapshot> = {}): CashSnapshot {
   return {
@@ -31,7 +36,8 @@ function snap(over: Partial<CashSnapshot> = {}): CashSnapshot {
       { label: 'Maintenance', perTick: 400 },
       { label: 'Security staff', perTick: 600 },
     ],
-    news: [],
+    payments: [],
+    ground: { ...EMPTY_GROUND },
     ...over,
   }
 }
@@ -44,12 +50,13 @@ describe('cash flow selectors', () => {
     expect(moneyTick(295_703)).toBe('$296k')
   })
 
-  it('classifies flight pay from the news line', () => {
-    expect(incomeSource('UA100 landing (A320)  +$1,240')).toBe('Landings')
-    expect(incomeSource('UA100 bag handling  +$400')).toBe('Bags')
-    expect(incomeSource('City cargo intake (12u)  +$860')).toBe('Cargo')
-    expect(moneyInText('UA100 landing (A320)  +$1,240')).toBe(1240)
-    expect(moneyInText('bank wired $45,000')).toBeNull()
+  it('classifies earn labels onto bank categories', () => {
+    expect(categoryForEarnLabel('UA100 landing (A320)')).toBe('landing_fees')
+    expect(categoryLabel('landing_fees')).toBe('Landings')
+    expect(categoryForEarnLabel('UA100 bag handling')).toBe('baggage_fees')
+    expect(categoryForEarnLabel('City cargo intake (12u)')).toBe('cargo_fees')
+    expect(categoryForEarnLabel('Airtanker refuel fee')).toBe('host_fees')
+    expect(categoryForEarnLabel('UA100 fuel')).toBe('fuel_sales')
   })
 
   it('estimates a daily loss and a cash runway before any flights pay', () => {
@@ -65,10 +72,11 @@ describe('cash flow selectors', () => {
     expect(view.week.net).toBe(-7200 * 7)
     expect(view.floats).toEqual([])
     expect(view.costLines.map((line) => line.label)).toEqual(['Upkeep', 'Maintenance', 'Security staff'])
+    expect(view.costLines.some((line) => line.label === 'City levy')).toBe(false)
   })
 
   it('floats a green landing tick and files it under that source', () => {
-    const first = stepCashFlow(null, snap({ revenue: 0, news: [] }), 0)
+    const first = stepCashFlow(null, snap({ revenue: 0 }), 0)
     const next = stepCashFlow(
       first.tracker,
       snap({
@@ -76,12 +84,12 @@ describe('cash flow selectors', () => {
         revenue: 1240,
         hourIncome: 1240,
         cash: 51_240,
-        news: [{ id: 'n1', text: 'UA100 landing (A320)  +$1,240' }],
+        payments: [post('UA100 landing (A320)', 1240)],
       }),
       1000,
     )
     expect(next.view.floats).toEqual([
-      { id: 'in-n1', dir: 'up', amount: 1240, label: 'Landings', at: 1000 },
+      { id: `in-${post('UA100 landing (A320)', 1240).key}`, dir: 'up', amount: 1240, label: 'Landings', at: 1000 },
     ])
     expect(next.tracker.sessionIncome.Landings).toBe(1240)
   })
@@ -89,7 +97,7 @@ describe('cash flow selectors', () => {
   it('treats unlabeled revenue as passenger spend', () => {
     const first = stepCashFlow(null, snap(), 0)
     const next = stepCashFlow(first.tracker, snap({ clock: 2, revenue: 40, cash: 50_040 }), 500)
-    expect(next.view.floats.map((f) => f.label)).toEqual(['Passenger spend'])
+    expect(next.view.floats.map((f) => f.label)).toEqual(['Retail'])
     expect(next.view.floats[0].amount).toBe(40)
     expect(next.view.floats[0].dir).toBe('up')
   })
@@ -101,40 +109,38 @@ describe('cash flow selectors', () => {
       snap({
         clock: 8,
         cash: 55_000,
-        news: [{ id: 'm1', text: 'Mission cleared: Secure the line. +$5,000, stock pops.' }],
+        payments: [],
       }),
       800,
     )
     expect(next.view.floats.filter((f) => f.dir === 'up')).toEqual([])
   })
 
-  it('splits a payroll tick into upkeep, staff, and fees', () => {
-    const seeded = stepCashFlow(null, snap({ cash: 240_000, sandbox: true, upkeepPerTick: 500 }), 0)
+  it('forecasts daily payroll and does not project the city levy', () => {
+    const seeded = stepCashFlow(null, snap({ cash: 9_904_999, sandbox: true, upkeepPerTick: 500 }), 0)
+    expect(seeded.view.costPerDay).toBe(6000)
+    expect(seeded.view.estimateText.startsWith('Est. -$')).toBe(true)
+    expect(seeded.view.estimateText.includes('M/day')).toBe(false)
     const waiting = stepCashFlow(
       seeded.tracker,
-      snap({ cash: 240_000, sandbox: true, upkeepPerTick: 500, clock: 29, payrollCool: 1 }),
+      snap({ cash: 9_904_999, sandbox: true, upkeepPerTick: 500, clock: 29, payrollCool: 1 }),
       500,
     )
-    const levy = projectedLevy(240_000, 1000, 0)
-    expect(levy).toBe(2970)
     const tick = stepCashFlow(
       waiting.tracker,
       snap({
-        cash: 240_000 - 1000 - levy,
+        cash: 9_904_999 - 1000,
         sandbox: true,
         upkeepPerTick: 500,
         clock: 30,
         payrollCool: 30,
-        hourExpense: 1000 + levy,
+        hourExpense: 1000,
       }),
       1000,
     )
     const down = tick.view.floats.filter((f) => f.dir === 'down')
-    expect(down.map((f) => [f.label, f.amount])).toEqual([
-      ['Staff', 1000],
-      ['Fees', levy],
-    ])
-    expect(down.some((f) => f.label === 'Upkeep')).toBe(false)
+    expect(down.map((f) => [f.label, f.amount])).toEqual([['Payroll', 1000]])
+    expect(down.some((f) => f.label === 'Upkeep' || f.label === 'City levy')).toBe(false)
   })
 
   it('books upkeep on the payroll tick when the field is not a sandbox', () => {
@@ -147,14 +153,14 @@ describe('cash flow selectors', () => {
     )
     expect(tick.view.floats.filter((f) => f.dir === 'down').map((f) => [f.label, f.amount])).toEqual([
       ['Upkeep', 200],
-      ['Staff', 1000],
+      ['Payroll', 1000],
     ])
   })
 
   it('does not float the same hour of income twice when the book rolls', () => {
     let tracker: FlowTracker = stepCashFlow(
       null,
-      snap({ revenue: 100, hourIncome: 100, news: [{ id: 'a', text: 'UA1 landing  +$100' }] }),
+      snap({ revenue: 100, hourIncome: 100, payments: [post('UA1 landing', 100)] }),
       0,
     ).tracker
     const rolled = stepCashFlow(
@@ -166,7 +172,7 @@ describe('cash flow selectors', () => {
         hourExpense: 0,
         revenue: 100,
         econHist: [{ income: 100, expense: 0 }],
-        news: [{ id: 'a', text: 'UA1 landing  +$100' }],
+        payments: [post('UA1 landing', 100)],
       }),
       2000,
     )
@@ -183,10 +189,7 @@ describe('cash flow selectors', () => {
         upkeepPerTick: 0,
         staffLines: [],
         econHist: [{ income: 100, expense: 0 }],
-        news: [
-          { id: 'b', text: 'UA2 bag handling  +$40' },
-          { id: 'a', text: 'UA1 landing  +$100' },
-        ],
+        payments: [post('UA1 landing', 100), post('UA2 bag handling', 40)],
       }),
       3000,
     )
@@ -202,14 +205,14 @@ describe('cash flow selectors', () => {
       1000,
     )
     expect(fine.view.floats).toEqual([
-      expect.objectContaining({ dir: 'down', label: 'Fees', amount: 1800 }),
+      expect.objectContaining({ dir: 'down', label: 'Penalties', amount: 1800 }),
     ])
   })
 
   it('resets the tape when a new game starts', () => {
     const played = stepCashFlow(
       null,
-      snap({ revenue: 5000, clock: 80, news: [{ id: 'old', text: 'UA1 landing  +$5,000' }] }),
+      snap({ revenue: 5000, clock: 80, payments: [post('UA1 landing', 5000)] }),
       0,
     )
     const again = stepCashFlow(played.tracker, snap({ revenue: 0, clock: 0, cash: 220_000 }), 50)
@@ -224,7 +227,7 @@ describe('cash flow selectors', () => {
       clock: 3,
       revenue: 1240,
       cash: 51_240,
-      news: [{ id: 'n1', text: 'UA9 landing  +$1,240' }],
+      payments: [post('UA9 landing', 1240)],
     })
     const second = readFlow(first, paid, cashSignature(paid), 1000)
     const third = readFlow(second, paid, cashSignature(paid), 1000)

@@ -37,6 +37,19 @@
   white-space: nowrap;
 }
 
+.hf-flows {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.hf-flows input {
+  margin: 0;
+}
+
 .hf-strip button,
 .hf-icon-btn {
   background: transparent;
@@ -633,7 +646,7 @@
   background: transparent;
 }
 
-.hf-panel.panel-rollout {
+.hf-root .hf-panel {
   position: absolute;
   top: min(32px, 3vh);
   right: 0;
