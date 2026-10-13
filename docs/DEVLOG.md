@@ -643,3 +643,28 @@ The plan is registered when the slot is written, so the first bodies are in the 
 Audio (#2), branding (#3), features (#7), flow (#8), and the economy tech tree (#11) are already on this branch and add no files of their own. Those pull requests are closed. Contracts (#19) merged as pure logic in `src/contracts`. Its own note says the sim and the HUD are wired later, so the live timetable is unchanged. Crowd (#18) is in `src/crowd` with its tests. The prefab lane numbers on that branch are the old one-lane figures, so `terminal.ts` was not taken from it, and the steering is not hooked into the hall walk. Timetable (#20), advisor (#21), people (#13), and assets (#12) are still red on CI. The HUD tip (#4) has no common history with this branch, so it stays open. Vitest after this pass: 723 passing, 2 skipped.
 
 A payroll day that cannot pay even a dollar now says the payroll was missed, and it does not write a $0 shortfall line. The QA bot finishes the second premade hall's construction site before it counts halls, so that placement is a second hall. The advisor posts a Standing card while a signed airline is still on the field and at or under the warning line, before they walk. `src/pax`, `src/commercial`, `src/inbound`, and `src/progression` are not on the remote yet. Diplomacy is not extended.
+
+## Run 22 gate — 13 Oct
+
+Lane counts, service times, wear, and the unstaffed multiplier stayed where the prefab tuning left them. The show-up hook is what the miss-rate check uses now.
+
+The QA bot's security check used to treat one poll of cleared passengers on the security node as a stall. After show-up, screened passengers walk back through that node to reach a landside bathroom, and a headless replay kept any one of them there for at most 2.5 seconds. The bot now flags the stall only when that crowd is still on the node at the next poll and nobody is being screened.
+
+`src/economy/balance.ts` is unchanged. Early margin is 10.0% on $20,000 income. Mid-game margin is 24.4% on $203,000 income.
+
+A 30-game-day headless run (easy, sandbox off, starter kit, offers accepted as they arrived) kept cash finite, lost passengers 0, and bags lost 0. Passengers were in the hall while an inbound was still on approach. The longest a truck sat still was about a second. Missed departures were 55 with the hall overloaded, and 90 bags were late. A freight slot the starter stands cannot take sits at the head of the bank and slides the flights behind it, so only a handful of turns finished. That is the existing stand-class delay, and the lane numbers were not retuned to clear it.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Vitest | Pass | 726 passed, 2 skipped |
+| Typecheck | Pass | `tsc -b` clean |
+| Prefab-normal mixed, 6 days | Pass | two airlines, starter hall, missed departures at or under 1%, lost passengers 0, bags lost 0, guests in the hall before landing |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, bag short 0, stuck flights 0, stuck trucks 0, console errors 0. Second prefab counts as a hall (`fits` 2). Missed flights 2 with the hall overloaded. 43 departures left the field. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0, console errors 0. `fits` 2. 26 departures. |
+| FPS floor 12 | Environment | SwiftShader minimum 10 (mixed) and 11 (heavy). |
+| 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, cash finite, truck dwell under 240s. Missed 55 and 90 late bags while overloaded. |
+| Margins | Pass | 10.0% early, 24.4% mid-game |
+
+**Bugs.** Seventeen. No new defect.
+
+`grok/pax-showup`, `grok/commercial`, `grok/negotiation`, `grok/inbound`, and `grok/progression` are still absent on the remote. Diplomacy is not extended. Timetable (#20), advisor (#21), people (#13), and assets (#12) are still red. The HUD tip (#4) is green on its own branch and stays unmerged: it has no common history with this branch. Crowd steering stays unwired. The production bundle on `preview-dist` is unchanged, because contracts and crowd are not in the client graph (`index-fO-4b36H.js`, 1,577.34 kB).
