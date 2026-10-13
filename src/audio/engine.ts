@@ -1,6 +1,8 @@
 import { buildSound, LOOPING, SOUND_CATEGORY, type Category, type SoundId, type Voice } from './synth';
 import { aircraftParams, buildAircraftSound, LOOPING_PHASES, PHASES, VARIANTS_PER_PHASE, type AircraftPhase } from './aircraft';
 import { buildWeatherBed, buildWeatherEvent, eventParams, weatherParams, WEATHER_VARIANTS, type WeatherEvent, type WeatherKind } from './weather';
+import { buildSfx, sfxParams, SFX_VARIANTS, type SfxId } from './services';
+import { eventAction } from './events';
 import { DEFAULT_ROLLOFF, distance, distanceGain, panFor, type Rolloff, type Vec3 } from './spatial';
 
 export type { Category, SoundId } from './synth';
@@ -21,6 +23,18 @@ export interface AircraftPlayOptions extends PlayOptions {
   variant?: number;
   /** Jitter seed; same (type, phase, variant, seed) = identical params. */
   seed?: number;
+}
+
+export interface SfxPlayOptions extends PlayOptions {
+  /** 0-4; random when omitted. */
+  variant?: number;
+  /** Jitter seed; same (id, variant, seed) = identical params. */
+  seed?: number;
+}
+
+export interface EventPlayOptions extends SfxPlayOptions {
+  /** Loop identity, e.g. a stand or vehicle id, so start/stop events pair up. */
+  key?: string;
 }
 
 export interface SoundHandle {
@@ -88,6 +102,7 @@ export class AudioEngine {
   private hiddenPaused = false;
   private live = new Set<Live>();
   private lastFired = new Map<string, number>();
+  private eventLoops = new Map<string, SoundHandle>();
   private listener: Vec3 = { x: 0, y: 0, z: 0 };
   private listenerRight: Vec3 = { x: 1, y: 0, z: 0 };
   private readonly opts: Required<Omit<AudioEngineOptions, 'visibility'>> & { visibility: VisibilitySource | null };
@@ -165,6 +180,49 @@ export class AudioEngine {
     const variant = options.variant ?? Math.floor(Math.random() * VARIANTS_PER_PHASE);
     const p = aircraftParams(typeId, phase, variant, options.seed ?? 0);
     return this.spawn(`${typeId}:${phase}`, 'aircraft', LOOPING_PHASES[phase], (ctx, out) => buildAircraftSound(ctx, p, out), options, p.variant);
+  }
+
+  // ---- service / maintenance / construction / terminal / UI sounds ----
+  /** Play a seeded 5-variation system sound (see SFX_IDS). Handle id is `sfx:<id>`. */
+  playSfx(id: SfxId, options: SfxPlayOptions = {}): SoundHandle | null {
+    const variant = options.variant ?? Math.floor(Math.random() * SFX_VARIANTS);
+    const p = sfxParams(id, variant, options.seed ?? 0);
+    return this.spawn(`sfx:${id}`, p.category, p.looping, (ctx, out) => buildSfx(ctx, p, out), options, p.variant);
+  }
+
+  /**
+   * Route a game/logistics event (see EVENT_SOUNDS) to its sound. Loop starts are
+   * keyed by `options.key` so a later stop event for the same key ends them;
+   * restarting an already-running key just repositions it. Unknown events → null.
+   */
+  playEvent(name: string, options: EventPlayOptions = {}): SoundHandle | null {
+    const action = eventAction(name);
+    if (!action) return null;
+    const key = options.key ?? '';
+    if (action.kind === 'stop') {
+      for (const s of action.stops) {
+        const k = `${s}|${key}`;
+        this.eventLoops.get(k)?.stop();
+        this.eventLoops.delete(k);
+      }
+      return null;
+    }
+    if (action.kind === 'once') return this.playSfx(action.sound, options);
+    const k = `${action.sound}|${key}`;
+    const existing = this.eventLoops.get(k);
+    if (existing && !existing.stopped) {
+      if (options.position) existing.setPosition(options.position);
+      return existing;
+    }
+    const h = this.playSfx(action.sound, options);
+    if (h) this.eventLoops.set(k, h);
+    return h;
+  }
+
+  /** Number of event-driven loops currently running. */
+  eventLoopCount(): number {
+    for (const [k, h] of this.eventLoops) if (h.stopped) this.eventLoops.delete(k);
+    return this.eventLoops.size;
   }
 
   // ---- weather ----
@@ -245,6 +303,7 @@ export class AudioEngine {
     this.stopAll();
     this.opts.visibility?.removeEventListener('visibilitychange', this.onVis);
     void this.ctx?.close();
+    this.eventLoops.clear();
     this.ctx = null; this.masterGain = null; this.weatherFilter = null; this.catGains.clear(); this.weatherBed = null;
   }
 
