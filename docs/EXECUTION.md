@@ -99,16 +99,24 @@ If we add more permanent HUD games (full mil sim, full franchise CRM), cut somet
 - [x] Player strings: Standing / On-time / Jam  
 - [x] Code keeps `heat*` internals  
 
-## E3 — Cargo equality (next)
+## E3 — Cargo equality + bag depth (next)
 
-Fits the [living logistics picture](./VISION.md#living-logistics-picture-manor-lords-energy-on-an-airport):
+Fits [living logistics](./VISION.md#living-logistics-picture-manor-lords-energy-on-an-airport) + [REAL_OPS](./REAL_OPS.md):
 
-1. New Game **focus**: Passenger / Cargo / Hybrid.  
-2. City → **guard post** → cargo intake stub + shed + cargo stand (trucks drive in, don’t teleport).  
-3. Broken gate/screen chain → late uplift + **On-time** dip (reuse belt BFS).  
-4. Schedule prep window: freighter slots stage inbound trucks early.  
-5. Premade hall **ceilings** (pax / security / bags) so starter shells are not endgame.  
-6. Airlines panel cargo ladder wording (C1–C5 labels).
+### E3a — Cargo fun (priority)
+
+1. New Game **focus**: Passenger / Cargo / Hybrid + cargo starter kit.  
+2. City → **guard post** → intake → shed (trucks visible).  
+3. **Volume letter** + warehouse meter + On-time dip if late.  
+4. Schedule prep: freighter slots stage trucks early.  
+5. C1–C5 ladder wording in Airlines panel.
+
+### E3b — Bags lean (same wave or just after)
+
+1. Arrival: unload → claim clears terminating `needs.bags`.  
+2. Layover: through-transfer path (not claim); break → misconnect Standing.  
+3. PaxTag → bag units (premium heavy / budget light); handling pay scales modestly.  
+4. No per-bag agents. Premade claim/bag caps bite.
 
 ## Session cadence
 
