@@ -9,6 +9,7 @@ import {
   BAG_BELT_METRES_PER_MIN,
   BAG_RFID_METRES_PER_MIN,
   BAG_RIDE_METRES_PER_MIN,
+  DEFAULT_CONNECTION_WINDOW,
   DEPLANE_MINUTES,
   MCT_BASE,
   MCT_RFID,
@@ -17,7 +18,33 @@ import {
   RIDE_METRES_PER_MIN,
   WALK_METRES_PER_MIN,
 } from './config.ts'
-import type { ConnectionVerdict, GatePoint, HubFacilities } from './types.ts'
+import type { ConnectionVerdict, GatePoint, HubFacilities, Movement } from './types.ts'
+
+export interface OnwardBooking {
+  /** Game-minute departure the connection was sold on. */
+  at: number
+  /** Gate of that departure. Null when no timetable departure fits. */
+  gateId: string | null
+}
+
+/**
+ * The onward flight a connecting passenger was sold. Itineraries are sold
+ * from the planned arrival, so the first departure at or after planned + MCT.
+ * A late inbound then eats into that slack instead of rebooking for free.
+ */
+export function bookOnward(moves: readonly Movement[], plannedArrival: number, mct: number): OnwardBooking {
+  const planned = Number.isFinite(plannedArrival) ? plannedArrival : 0
+  const gap = Number.isFinite(mct) ? Math.max(0, mct) : 0
+  const earliest = planned + gap
+  let best: Movement | null = null
+  for (const move of moves) {
+    if (move.direction !== 'dep' || !Number.isFinite(move.at)) continue
+    if (move.at + 1e-9 < earliest) continue
+    if (!best || move.at < best.at) best = move
+  }
+  if (best) return { at: best.at, gateId: best.gateId }
+  return { at: planned + Math.max(DEFAULT_CONNECTION_WINDOW, gap), gateId: null }
+}
 
 export function minimumConnectionTime(facilities: HubFacilities): number {
   if (facilities.rfid) return MCT_RFID

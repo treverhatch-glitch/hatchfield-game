@@ -155,6 +155,7 @@ import {
   isAirside,
   NODE_POS,
   openForGuest,
+  openForTransfer,
   reachableNeed,
   openNodesFromRooms,
   bagUnitsForTag,
@@ -457,16 +458,17 @@ import {
 } from '../environment/index.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
 import {
-  DEFAULT_CONNECTION_WINDOW,
   TECH_RFID_BAG_LINE,
   TECH_TRANSFER_CENTRE,
   bankDemand,
+  bookOnward,
   buildBanks,
   connectingIndexes,
   connectionMap,
   evaluateConnection,
   hubUpgrade,
   hubUpkeep,
+  minimumConnectionTime,
   missPenalty,
   scaledShare,
   transferShare,
@@ -5551,7 +5553,8 @@ export class Game {
   /** Open graph for a guest's home hall (falls back to active / first). */
   openForGuest(g: HallGuest): Set<HallNode> {
     const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
-    return this.hallOpenFor(fit)
+    const open = this.hallOpenFor(fit)
+    return g.transfer ? openForTransfer(open) : open
   }
 
   /**
@@ -5623,6 +5626,15 @@ export class Game {
     this.setView('hall')
   }
 
+  /** Hall bodies one flight seeds. Jetway turns are quick — more bodies linger and spend. Walkers are rushed. */
+  private hallBodyCount(f: Flight): number {
+    const mode = this.standPaxMode(f.stand)
+    return Math.max(
+      6,
+      Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
+    )
+  }
+
   seedHallForFlight(f: Flight, job: 'depart' | 'arrive') {
     if (f.cargo || !this.fits.length) return
     const fit = this.roomsAt(f.stand) ?? this.activeHall() ?? this.fits[0]
@@ -5631,11 +5643,7 @@ export class Game {
     if (!open.size) return
     const hallId = this.hallKey(fit)
     const mode = this.standPaxMode(f.stand)
-    // Jetway turns are quick — more bodies linger and spend. Walkers are rushed.
-    const count = Math.max(
-      6,
-      Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
-    )
+    const count = this.hallBodyCount(f)
     const a = this.airline(f.airline)
     const departWave: HallGuest[] = []
     const arrivals: HallGuest[] = []
@@ -8042,20 +8050,23 @@ export class Game {
     return bankDemand(buildBanks(this.hubMovements()))
   }
 
-  private hubOnwardMinute(arrivalAt: number): number {
-    let best: number | null = null
-    for (const move of this.hubMovements()) {
-      if (move.direction !== 'dep' || move.at <= arrivalAt) continue
-      if (best == null || move.at < best) best = move.at
-    }
-    return best ?? arrivalAt + DEFAULT_CONNECTION_WINDOW
+  /** Game-minutes this inbound runs behind its timetable slot. Zero for unscheduled arrivals. */
+  private hubInboundDelayMinutes(f: Flight): number {
+    if (!f.scheduleId) return 0
+    const slot = this.schedule.find((s) => s.id === f.scheduleId)
+    const sec = slot?.delaySec ?? 0
+    if (!Number.isFinite(sec) || sec <= 0) return 0
+    return sec * SIM_MINUTES_PER_REAL_SECOND
   }
 
   /**
    * Mark a share of this arrival as connecting. They stay airside and skip
-   * check-in and security. Share is zero before mid-game, so this is a no-op then.
+   * check-in. Share is zero before mid-game, so this is a no-op then.
+   * The onward flight is the one sold from the planned arrival, so a late inbound eats the slack.
    */
   private noteHubArrivals(f: Flight, born: HallGuest[]) {
+    // Hosted diverts are not passengers ticketed through this hub.
+    if (f.hostKind) return
     const share = this.connectingShare(f.airline)
     if (!(share > 0)) return
     const indexes = connectingIndexes(born.length, share, f.id)
@@ -8063,25 +8074,31 @@ export class Game {
     const gates = this.hubGates()
     const fromId = f.stand ? `${f.stand.c},${f.stand.r}` : gates[0]?.id
     const from = gates.find((gate) => gate.id === fromId) ?? gates[0]
-    const to = gates.find((gate) => gate.id !== from?.id) ?? from
-    if (!from || !to) return
     const facilities = this.hubFacilities()
-    const link = this.connectionLink(from.id, to.id)
     const arrivalAt = this.simMinutes()
-    const departureAt = this.hubOnwardMinute(arrivalAt)
+    const onward = bookOnward(
+      this.hubMovements(),
+      arrivalAt - this.hubInboundDelayMinutes(f),
+      minimumConnectionTime(facilities),
+    )
+    const booked = onward.gateId ? gates.find((gate) => gate.id === onward.gateId) : undefined
+    const to = booked ?? gates.find((gate) => gate.id !== from?.id) ?? from
+    if (!from || !to) return
+    const link = this.connectionLink(from.id, to.id)
+    const departureAt = onward.at
+    const verdict = evaluateConnection({
+      arrivalAt,
+      departureAt,
+      from,
+      to,
+      ride: false,
+      link,
+      walkwayMetres: this.walkwayCoverMetres(),
+      facilities,
+    })
     for (const index of indexes) {
       const g = born[index]
       if (!g) continue
-      const verdict = evaluateConnection({
-        arrivalAt,
-        departureAt,
-        from,
-        to,
-        ride: false,
-        link,
-        walkwayMetres: this.walkwayCoverMetres(),
-        facilities,
-      })
       g.transfer = true
       g.clearedSec = true
       g.needs.bags = 0
@@ -8114,7 +8131,16 @@ export class Game {
    * Returns the cash amount posted (0 when the bill is not finite).
    */
   applyMissedConnection(airlineId: string): number {
-    const bill = missPenalty({ hasHotel: this.hasHotelBeds(), passengers: 1 })
+    return this.applyMissedConnections(airlineId, 1)
+  }
+
+  /**
+   * Missed connections for one carrier, billed as one ledger line and one Standing hit.
+   * Returns the cash amount posted (0 when the bill is not finite).
+   */
+  applyMissedConnections(airlineId: string, passengers: number): number {
+    const hotel = this.hasHotelBeds()
+    const bill = missPenalty({ hasHotel: hotel, passengers })
     if (!(bill.amount > 0) || !Number.isFinite(bill.amount) || !Number.isFinite(this.cash)) return 0
     if (!this.sandbox) {
       this.charge(bill.amount)
@@ -8123,8 +8149,40 @@ export class Game {
     if (bill.standing < 0 && Number.isFinite(bill.standing)) {
       this.adjustHeat(airlineId, bill.standing, 'transfers')
     }
-    this.missedConnections += 1
+    this.missedConnections += bill.passengers
+    if (hotel) this.feedYearHub(0, 0, bill.passengers)
     return bill.amount
+  }
+
+  /**
+   * Year-end hub seams. The year report adds `noteHubConnections` and
+   * `noteMissedConnectionNights` on Game; until it lands this is a no-op.
+   */
+  private feedYearHub(completed: number, missed: number, nights: number) {
+    const year = this as {
+      noteHubConnections?: (completed: number, missed: number) => void
+      noteMissedConnectionNights?: (nights: number) => void
+    }
+    if (completed + missed > 0 && typeof year.noteHubConnections === 'function') {
+      year.noteHubConnections(completed, missed)
+    }
+    if (nights > 0 && typeof year.noteMissedConnectionNights === 'function') {
+      year.noteMissedConnectionNights(nights)
+    }
+  }
+
+  /**
+   * An inbound that diverts away never lands its connecting passengers.
+   * They miss their onward flights here, billed once for the whole load.
+   */
+  private missDivertedConnections(f: Flight) {
+    if (f.cargo || f.hostKind) return
+    const share = this.connectingShare(f.airline)
+    // Same bodies a landing would have seeded, so a divert never bills more than a landed miss.
+    const count = connectingIndexes(this.hallBodyCount(f), share, f.id).length
+    if (count <= 0) return
+    this.applyMissedConnections(f.airline, count)
+    this.feedYearHub(0, count, 0)
   }
 
   /** Close connection windows. A miss bills the hotel or a rebooking fee and cuts Standing. */
@@ -8133,28 +8191,33 @@ export class Game {
     const due = this.hubLinks.filter((link) => this.clock >= link.resolveAt)
     if (!due.length) return
     this.hubLinks = this.hubLinks.filter((link) => this.clock < link.resolveAt)
+    let made = 0
     let missed = 0
     for (const link of due) {
       const guest = this.hallGuests.find((g) => g.id === link.guestId)
       if (link.made) {
+        made += 1
         if (guest && !guest.dead) {
           guest.dead = true
           guest.thought = 'Made the connection'
           guest.needs.bags = 0
         }
         for (const tag of this.bagTags) {
-          if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer') continue
+          if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer' || tag.fault) continue
           tag.loaded = true
           tag.picked = true
         }
         continue
       }
-      const billed = this.applyMissedConnection(link.airlineId)
-      if (billed > 0) missed += 1
+      this.applyMissedConnection(link.airlineId)
+      missed += 1
+      // Left behind once and rebooked with the passenger. Never counted as loaded on the outbound.
       let bags = 0
       for (const tag of this.bagTags) {
         if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer' || tag.fault) continue
         tag.fault = 'missed_connection'
+        tag.loaded = false
+        tag.connectFlightId = `rebook:${link.airlineId}`
         bags += 1
       }
       if (bags > 0) this.bagsMishandled += bags
@@ -8167,6 +8230,7 @@ export class Game {
           : 'Missed connection — rebooked'
       }
     }
+    this.feedYearHub(made, missed, 0)
     if (missed > 0) {
       this.pushNews(
         `${missed} missed connection${missed === 1 ? '' : 's'} — hotel or rebook fee, Standing dips.`,
@@ -14317,6 +14381,7 @@ export class Game {
       if (f.phase !== 'hold' || (f.craft ?? 'jet') !== 'jet') continue
       if (f.phaseTime < 95) continue
       // Divert — free the stand, scrub the slot, ding heat.
+      this.missDivertedConnections(f)
       if (f.stand) f.stand = null
       f.path = []
       f.phase = 'gone'
