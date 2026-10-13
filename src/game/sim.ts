@@ -218,7 +218,8 @@ import {
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
 import { NegotiationBridge } from './negotiationBridge.ts'
-import { ULCC_IDS } from '../negotiation/index.ts'
+import { SERVICE_IDS, ULCC_IDS } from '../negotiation/index.ts'
+import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
@@ -2386,9 +2387,9 @@ export class Game {
 
   landingFeeMult(airlineId: AirlineId): number {
     const r = this.rewardOf(airlineId)
+    // Negotiated percents land on each line in contractBill, not as a blanket.
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
-    const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
-    let mult = (negotiated === 1 ? base : base * negotiated) * this.disruptions.feeMultiplier()
+    let mult = base * this.disruptions.feeMultiplier()
     if (!Number.isFinite(mult) || mult <= 0) return 1
     return Math.min(2, Math.max(0.5, mult))
   }
@@ -4392,6 +4393,52 @@ export class Game {
     return this.deposits[airlineId]?.tier ?? 'standard'
   }
 
+  /**
+   * List amount after the deposit tier, then the signed line (percent and freebies).
+   * Walk-ins stay on the list price.
+   */
+  private contractBill(
+    flight: Flight,
+    amount: number,
+    group: 'landing' | 'service',
+    service: ServiceId,
+  ): number {
+    const walkIn = this.walkInFlight(flight)
+    const tier = this.feeTier(flight.airline)
+    const priced =
+      group === 'landing' ? landingCharge(amount, tier, walkIn) : serviceCharge(amount, tier, walkIn)
+    if (walkIn || !(priced > 0)) return priced
+    const factor = this.negotiationBridge?.lineFactor(flight.airline, service) ?? 1
+    if (!Number.isFinite(factor) || factor === 1) return priced
+    return Math.round(priced * Math.max(0, factor))
+  }
+
+  /** Live fee card for the offer sheet. Sliders move these numbers; the ask percent does not. */
+  liveQuote(id: string) {
+    const catalog = AIRLINES[id] ?? this.extraAirlines.find((airline) => airline.id === id)
+    const profile = this.negotiationBridge?.desk.profile(id)
+    const landingBase = catalog?.landing ?? profile?.posted.landing ?? 0
+    const bagsBase = catalog?.bags ?? profile?.posted.bags ?? 0
+    const cateringBase = catalog?.catering ?? profile?.posted.catering ?? 0
+    const pax = catalog
+      ? Math.max(1, Math.round(((catalog.paxMin ?? 0) + (catalog.paxMax ?? 0)) / 2) || 1)
+      : Math.max(1, profile?.seats ?? 1)
+    const turns = (catalog?.tier ?? 0) >= 4 ? 3 : (profile?.flightsPerDay ?? 4)
+    const fuelBase = this.fuelBrand ? FUEL[this.fuelBrand].pump : (profile?.posted.fuel ?? 0)
+    const cateringPay = this.caterBrand ? CATER[this.caterBrand].payoutMult : 1
+    return {
+      landing: this.listed(landingBase, 'landingPerTonne'),
+      paxFee: this.fees.paxFee,
+      bags: this.listed(bagsBase, 'bagsPerBag'),
+      fuel: this.listed(fuelBase, 'fuelMarkupPerLitre'),
+      catering: this.listed(Math.round(cateringBase * cateringPay), 'cateringPerCart'),
+      parking: this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'),
+      pax,
+      turnsPerDay: turns,
+      handlingPerDay: catalog ? Math.round(landingBase * 0.35) : (profile?.handlingPerDay ?? Math.round(landingBase * 0.35)),
+    }
+  }
+
   private walkInFlight(f: Flight): boolean {
     return Boolean(f.ga) || f.airline === 'ga'
   }
@@ -4432,20 +4479,25 @@ export class Game {
   }
 
   private noteCommercialSign(id: AirlineId, airline: Airline) {
+    const terms = this.negotiationBridge?.signedTerms(id) ?? null
     const starter = this.signed.length === 1
-    this.commercialLead[id] = openLead({
+    const lead = openLead({
       clock: this.clock,
       starter,
       tier: airline.tier,
       hub: this.isHub(id),
     })
+    if (terms?.freebies.waivedLeadTime) lead.leadDays = 0
+    this.commercialLead[id] = lead
     if (this.feeStandingApplied !== 0) this.adjustHeat(id, this.feeStandingApplied)
+    const day = Math.floor(Math.max(0, this.clock) / 180)
     const taken = signDeposit({
       airlineId: id,
-      tier: this.depositTier,
+      tier: terms ? commercialDepositTier(terms.deposit) : this.depositTier,
       landingFee: airline.landing,
-      day: Math.floor(Math.max(0, this.clock) / 180),
+      day,
     })
+    if (terms) taken.account.termEndDay = day + terms.termMonths * TERM_DAYS
     this.deposits[id] = taken.account
     this.postDepositEntry(taken.entry)
   }
@@ -9195,6 +9247,17 @@ export class Game {
     this.emit()
   }
 
+  /** Put the open ask on this carrier's target price and a standard deposit. */
+  matchNegotiationTarget() {
+    const desk = this.negotiationBridge?.desk
+    const session = desk?.session
+    if (!desk || !session || session.status !== 'open') return
+    const pct = (desk.personality(session.airlineId).targetCost - 1) * 100
+    for (const service of SERVICE_IDS) desk.setFee(service, pct)
+    desk.setDeposit('standard')
+    this.emit()
+  }
+
   toggleNegotiationFreebie(id: string) {
     this.negotiationDesk().toggleFreebie(id)
     this.emit()
@@ -9264,6 +9327,7 @@ export class Game {
           },
           notify: (message, tone) => this.pushNews(message, tone),
           ensureCarrier: (profile) => this.ensureNegotiationCarrier(profile),
+          liveQuote: (id) => this.liveQuote(id),
         },
         this.diplomacySeed,
       )
@@ -13290,20 +13354,28 @@ export class Game {
           this.landingFeeMult(f.airline) *
           this.diplomacyFeeFactor(f.airline)
         const base = Math.round(airline.landing * mult)
-        const walkIn = this.walkInFlight(f)
         this.earn(
-          landingCharge(this.listed(base, 'landingPerTonne'), this.feeTier(f.airline), walkIn),
+          this.contractBill(f, this.listed(base, 'landingPerTonne'), 'landing', 'landing'),
           `${f.flightNo} landing (${f.airframeName})`,
           f,
           'landing_fees',
         )
         this.earn(
-          landingCharge(f.pax * this.fees.paxFee, this.feeTier(f.airline), walkIn),
+          this.contractBill(f, f.pax * this.fees.paxFee, 'landing', 'pax'),
           `${f.flightNo} passenger fees`,
           f,
           'passenger_fees',
           false,
         )
+        if (this.negotiationBridge?.signedTerms(f.airline)) {
+          this.earn(
+            this.contractBill(f, this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'), 'service', 'parking'),
+            `${f.flightNo} aircraft parking`,
+            f,
+            'parking_fees',
+            false,
+          )
+        }
       }
       if (
         (f.craft ?? 'jet') === 'jet' &&
@@ -13757,7 +13829,7 @@ export class Game {
           const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
           this.earn(
-            serviceCharge(this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), this.feeTier(f.airline), this.walkInFlight(f)),
+            this.contractBill(f, this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), 'service', 'bags'),
             `${f.flightNo} bag handling`,
             f,
             'baggage_fees',
@@ -13828,7 +13900,7 @@ export class Game {
       this.fuelLoads -= 1
       this.drawTankLitres(LITRES_PER_LEGACY_LOAD)
       this.earn(
-        serviceCharge(this.listed(FUEL[this.fuelBrand].pump, 'fuelMarkupPerLitre'), this.feeTier(f.airline), this.walkInFlight(f)),
+        this.contractBill(f, this.listed(FUEL[this.fuelBrand].pump, 'fuelMarkupPerLitre'), 'service', 'fuel'),
         `${f.flightNo} fuel`,
         f,
         'fuel_sales',
@@ -13840,7 +13912,7 @@ export class Game {
       f.waitingOn.catering = false
       const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
       this.earn(
-        serviceCharge(this.listed(pay, 'cateringPerCart'), this.feeTier(f.airline), this.walkInFlight(f)),
+        this.contractBill(f, this.listed(pay, 'cateringPerCart'), 'service', 'catering'),
         `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
         f,
         'catering_fees',
