@@ -396,6 +396,7 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 - **CS2 build menus** — category tabs (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) + bottom tray of stamps (**still tile-grid** until P2.5 freeflow).
 - **CS2 info chrome** — bottom bar for view/time/ticker/cash; Economy · Budget · Research · Airlines · Planner · Services roll out above the dock. Peek when idle; slide up on hover/click.
 - **Letter inbox** — contracts, layovers, Hub, MX, parking, threats, emergencies stack on the right as letters. Hover/click expands; accept/decline inside; unread letters expire on a deadline.
+- **Apron inspect** — hover jets for model / airline / destination / activity / next step + fuel & catering bars. Signed line-MX traffic taxis into a hangar bay; hangar hover shows occupant + MX countdown.
 - **Hall entertainment spend** — food, souvenirs, lounge, golf, gaming, waterfall, day rooms, massage spa, airside pool.
 
 ## Still later (on your list, not finished)

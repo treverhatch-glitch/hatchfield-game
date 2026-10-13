@@ -293,6 +293,46 @@ function emptyWaiting(partial?: Partial<Flight['waitingOn']>): Flight['waitingOn
   }
 }
 
+const ROUTE_CITIES = [
+  'Boise',
+  'Seattle',
+  'Denver',
+  'Phoenix',
+  'Salt Lake',
+  'Portland',
+  'Las Vegas',
+  'Chicago',
+  'Dallas',
+  'Oakland',
+  'Spokane',
+  'Reno',
+]
+
+export type ApronInspect =
+  | {
+      kind: 'flight'
+      flightId: string
+      callsign: string
+      airline: string
+      model: string
+      destination: string
+      activity: string
+      next: string
+      fuel: number
+      catering: number
+      gate: string
+      mx?: string
+    }
+  | {
+      kind: 'hangar'
+      title: string
+      occupant: string
+      model: string
+      remaining: number
+      total: number
+      blurb: string
+    }
+
 export class Game {
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
@@ -305,6 +345,8 @@ export class Game {
   facing: 'h' | 'v' = 'h'
   runwayStart: Vec | null = null
   hover: Vec | null = null
+  /** Apron hover target for inspect card (flight id or hangar key). */
+  hoverInspect: ApronInspect | null = null
   fuelBrand: FuelBrand | null = null
   fuelLoads = 0
   caterBrand: CaterBrand | null = null
@@ -5086,9 +5128,228 @@ export class Game {
     this.placeSingle(v)
   }
 
-  nearestFlight(v: Vec): Flight | undefined {
+  setHover(v: Vec | null) {
+    this.hover = v
+    this.hoverInspect = v ? this.inspectAt(v) : null
+  }
+
+  inspectAt(v: Vec): ApronInspect | null {
+    const flight = this.nearestFlight(v, 2.2)
+    if (flight) return this.inspectFlight(flight)
+    if (this.tile(v) === 'hangar') return this.inspectHangar(v)
+    // Nearby hangar tile (footprint feel).
+    for (const d of [
+      { c: 0, r: 0 },
+      { c: 1, r: 0 },
+      { c: 0, r: 1 },
+      { c: -1, r: 0 },
+      { c: 0, r: -1 },
+    ]) {
+      const p = { c: v.c + d.c, r: v.r + d.r }
+      if (inBounds(p.c, p.r) && this.tile(p) === 'hangar') return this.inspectHangar(p)
+    }
+    return null
+  }
+
+  inspectFlight(f: Flight): ApronInspect {
+    const a = this.airline(f.airline)
+    const { fuel, catering } = this.serviceBars(f)
+    return {
+      kind: 'flight',
+      flightId: f.id,
+      callsign: f.flightNo,
+      airline: f.ga ? 'Independent GA' : a.name,
+      model: f.airframeName || this.aircraftLabel(f.kind),
+      destination: f.destination || '—',
+      activity: this.flightActivity(f),
+      next: this.flightNext(f),
+      fuel,
+      catering,
+      gate: f.stand ? this.gateLabel(f.stand) : '—',
+      mx: f.mxPending
+        ? 'Hangar MX booked'
+        : f.phase === 'mx_bay' || f.phase === 'mx_taxi' || f.phase === 'mx_return'
+          ? 'In hangar MX loop'
+          : f.posted.mx
+            ? 'Line MX done'
+            : undefined,
+    }
+  }
+
+  inspectHangar(h: Vec): ApronInspect {
+    const occ = this.hangarOccupant(h)
+    if (!occ) {
+      return {
+        kind: 'hangar',
+        title: 'Hangar bay',
+        occupant: 'Empty',
+        model: '—',
+        remaining: 0,
+        total: 0,
+        blurb: this.mechanics
+          ? `${this.mechanics} mechanic${this.mechanics === 1 ? '' : 's'} on staff · waiting for MX traffic`
+          : 'No mechanics hired — MX contracts will skip.',
+      }
+    }
+    const left = Math.max(0, (occ.mxEndsAt ?? this.clock) - this.clock)
+    const total = Math.max(1, occ.mxDuration ?? this.hangarMxDuration())
+    return {
+      kind: 'hangar',
+      title: 'Hangar bay',
+      occupant: occ.flightNo,
+      model: occ.airframeName || this.aircraftLabel(occ.kind),
+      remaining: left,
+      total,
+      blurb:
+        occ.phase === 'mx_bay'
+          ? `Line MX in progress · ${Math.ceil(left)}s left`
+          : occ.phase === 'mx_taxi'
+            ? 'Taxiing in for maintenance'
+            : occ.phase === 'mx_return'
+              ? 'Wrapping up — returning to stand'
+              : this.flightActivity(occ),
+    }
+  }
+
+  hangarOccupant(h: Vec): Flight | null {
+    for (const f of this.flights) {
+      if (!f.hangarBay) continue
+      if (f.hangarBay.c !== h.c || f.hangarBay.r !== h.r) continue
+      if (f.phase === 'mx_taxi' || f.phase === 'mx_bay' || f.phase === 'mx_return') return f
+    }
+    return null
+  }
+
+  freeHangarBay(): Vec | null {
+    const hangars = tilesOf(this.tiles, 'hangar')
+    for (const h of hangars) {
+      if (!this.hangarOccupant(h)) return h
+    }
+    return null
+  }
+
+  serviceBars(f: Flight): { fuel: number; catering: number } {
+    let fuel = f.fuelLevel ?? 0.4
+    if (f.posted.fuel) fuel = 1
+    else if (f.waitingOn.fuel) fuel = Math.max(fuel, Math.min(0.92, 0.35 + f.phaseTime * 0.04))
+
+    let catering = f.caterLevel ?? 0.25
+    if (f.cargo || f.kind === 'military' || f.craft === 'helo') catering = 1
+    else if (f.posted.catering) catering = 1
+    else if (f.waitingOn.catering) catering = Math.max(catering, Math.min(0.92, 0.2 + f.phaseTime * 0.05))
+
+    return {
+      fuel: Math.round(clamp(fuel, 0, 1) * 100),
+      catering: Math.round(clamp(catering, 0, 1) * 100),
+    }
+  }
+
+  flightActivity(f: Flight): string {
+    const gate = f.stand ? this.gateLabel(f.stand) : 'gate'
+    const hangar = f.hangarBay ? `hangar ${f.hangarBay.c},${f.hangarBay.r}` : 'hangar'
+    switch (f.phase) {
+      case 'hold':
+        return 'Holding for a gate'
+      case 'approach':
+        return `On approach → ${gate}`
+      case 'landing':
+        return `Landing → taxi to ${gate}`
+      case 'taxi_in':
+        return `Taxiing in to ${gate}`
+      case 'deboard':
+        return f.cargo ? 'Unloading freight' : 'Deplaning passengers'
+      case 'servicing':
+        return 'Turnaround on stand (fuel / bags / catering)'
+      case 'mx_taxi':
+        return `Taxiing to ${hangar} for maintenance`
+      case 'mx_bay':
+        return `In hangar — MX · ${Math.ceil(Math.max(0, (f.mxEndsAt ?? this.clock) - this.clock))}s left`
+      case 'mx_return':
+        return `Leaving hangar → back to ${gate}`
+      case 'board':
+        return f.cargo ? 'Loading freight' : 'Boarding passengers'
+      case 'pushback':
+        return 'Pushback from stand'
+      case 'parked':
+        return f.parkLeaveRequestedAt ? 'Parked — leave window open' : 'Parked at stand'
+      case 'taxi_out':
+        return 'Taxiing out to the strip'
+      case 'takeoff':
+        return f.destination ? `Departing to ${f.destination}` : 'Departing'
+      default:
+        return f.phase
+    }
+  }
+
+  flightNext(f: Flight): string {
+    switch (f.phase) {
+      case 'hold':
+        return 'Next: approach when a stand opens'
+      case 'approach':
+        return 'Next: landing · taxi to stand'
+      case 'landing':
+      case 'taxi_in':
+        return 'Next: deplane · turnaround'
+      case 'deboard':
+        return 'Next: fuel / bags / catering on stand'
+      case 'servicing':
+        if (f.mxPending && !f.posted.mx) return 'Next: taxi to hangar for line MX'
+        if (f.ga) return 'Next: park / leave window'
+        if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance')
+          return 'Next: pushback · departure'
+        return 'Next: board · pushback'
+      case 'mx_taxi':
+        return 'Next: hangar bay maintenance'
+      case 'mx_bay':
+        return `Next: return to ${f.stand ? this.gateLabel(f.stand) : 'stand'} · board`
+      case 'mx_return':
+        return 'Next: board passengers'
+      case 'board':
+        return f.destination ? `Next: pushback · depart to ${f.destination}` : 'Next: pushback · depart'
+      case 'pushback':
+        return 'Next: taxi to runway'
+      case 'parked':
+        return 'Next: release / taxi out'
+      case 'taxi_out':
+        return f.destination ? `Next: takeoff to ${f.destination}` : 'Next: takeoff'
+      case 'takeoff':
+        return f.destination ? `En route to ${f.destination}` : 'Airborne'
+      default:
+        return '—'
+    }
+  }
+
+  /** Duration of hangar bay MX — more mechanics = faster. */
+  hangarMxDuration(): number {
+    return Math.max(8, 20 - this.mechanics * 2.2)
+  }
+
+  startHangarMx(f: Flight): boolean {
+    if (!f.stand || f.posted.mx || f.phase === 'mx_taxi' || f.phase === 'mx_bay') return false
+    const bay = this.freeHangarBay()
+    if (!bay) return false
+    const path = nearestPath(this.tiles, f.stand, [bay], 'jet')
+    if (!path || path.length < 2) {
+      // Pavement gap — fall back to mechanic walk to the stand.
+      if (f.mxPay) this.dispatchLineMx(f, f.mxPay)
+      f.mxPending = false
+      return false
+    }
+    f.hangarBay = bay
+    f.path = path
+    f.seg = 0
+    f.t = 0
+    f.phase = 'mx_taxi'
+    f.phaseTime = 0
+    f.waitingOn.mx = true
+    f.mxPending = false
+    this.pushNews(`${f.flightNo} taxiing to hangar for line MX.`, 'ok')
+    return true
+  }
+
+  nearestFlight(v: Vec, maxDist = 1.8): Flight | undefined {
     let best: Flight | undefined
-    let dist = 1.8
+    let dist = maxDist
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
       const d = Math.hypot(f.x - v.c, f.y - v.r)
@@ -5798,6 +6059,12 @@ export class Game {
       ledger: [],
       scheduleId: slot.id,
       boardingSlow: Math.random() < 0.18,
+      destination: pick(ROUTE_CITIES),
+      fuelLevel: 0.28 + Math.random() * 0.22,
+      caterLevel: def.kind === 'cargo' ? 1 : 0.18 + Math.random() * 0.2,
+      hangarBay: null,
+      mxEndsAt: null,
+      mxPending: false,
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
@@ -6090,8 +6357,9 @@ export class Game {
         const pay = Math.round(
           airline.landing * (airline.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120,
         )
-        // Hangar → stand walk; pay when the mechanic finishes the visit.
-        this.dispatchLineMx(f, pay)
+        // Plane will taxi to hangar after stand services — not a sidewalk mechanic.
+        f.mxPending = true
+        f.mxPay = pay
       } else if (
         this.mxSigned.includes(f.airline) &&
         (this.mechanics < 1 || this.budgets.maintenance < 40)
@@ -6489,12 +6757,14 @@ export class Game {
     }
     if (t.kind === 'fuel' && t.mission === 'fuel' && !f.posted.fuel && this.fuelBrand && this.fuelLoads > 0) {
       f.posted.fuel = true
+      f.fuelLevel = 1
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
       this.earn(FUEL[this.fuelBrand].pump, `${f.flightNo} fuel`, f)
     }
     if (t.kind === 'catering' && !f.posted.catering && this.caterBrand) {
       f.posted.catering = true
+      f.caterLevel = 1
       f.waitingOn.catering = false
       const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
       this.earn(pay, `${f.flightNo} catering (${CATER[this.caterBrand].name})`, f)
@@ -7423,7 +7693,9 @@ export class Game {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
           f.waitingOn.catering = false
-          if (f.ga) {
+          if (f.mxPending && !f.posted.mx && this.startHangarMx(f)) {
+            // Handled — plane rolling to hangar bay.
+          } else if (f.ga) {
             f.phase = 'parked'
             f.phaseTime = 0
             this.pushNews(
@@ -7456,6 +7728,70 @@ export class Game {
                 f.seg = 0
                 f.t = 0
               }
+            }
+          } else {
+            f.phase = 'board'
+            f.phaseTime = 0
+            this.beginBoarding(f)
+          }
+        }
+      } else if (f.phase === 'mx_taxi') {
+        f.z = 0.12
+        if (this.followPath(f, 1.05, step) || f.phaseTime > 40) {
+          const bay = f.hangarBay
+          if (bay) {
+            f.x = bay.c
+            f.y = bay.r
+          }
+          f.phase = 'mx_bay'
+          f.phaseTime = 0
+          f.mxDuration = this.hangarMxDuration()
+          f.mxEndsAt = this.clock + f.mxDuration
+          this.pushNews(
+            `${f.flightNo} in hangar bay — MX ~${Math.ceil(f.mxDuration)}s.`,
+            'ok',
+          )
+        }
+      } else if (f.phase === 'mx_bay') {
+        f.z = 0.1
+        if (this.clock >= (f.mxEndsAt ?? this.clock) || f.phaseTime > 36) {
+          const pay = f.mxPay ?? 0
+          if (pay > 0) this.earn(pay, `${f.flightNo} hangar line MX`, f)
+          f.posted.mx = true
+          f.waitingOn.mx = false
+          f.mxPay = 0
+          f.mxEndsAt = null
+          if (f.stand) {
+            const back =
+              nearestPath(this.tiles, f.hangarBay ?? { c: f.x, r: f.y }, [f.stand], 'jet') ?? [
+                f.stand,
+              ]
+            f.path = back
+            f.seg = 0
+            f.t = 0
+            f.phase = 'mx_return'
+            f.phaseTime = 0
+          } else {
+            f.phase = 'board'
+            f.phaseTime = 0
+            this.beginBoarding(f)
+          }
+        }
+      } else if (f.phase === 'mx_return') {
+        f.z = 0.12
+        if (this.followPath(f, 1.05, step) || f.phaseTime > 40) {
+          if (f.stand) {
+            f.x = f.stand.c
+            f.y = f.stand.r
+          }
+          f.hangarBay = null
+          if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
+            f.phase = 'pushback'
+            f.phaseTime = 0
+            if (f.stand) {
+              f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
+              f.seg = 0
+              f.t = 0
             }
           } else {
             f.phase = 'board'
