@@ -26,6 +26,10 @@ const RUN_DAYS = LONG ? Math.max(DAYS, 12) : DAYS
 const OUT = arg('out', `/workspace/qa/${LABEL}-${SCENARIO}`)
 const FPS_FLOOR = Number(arg('fps-floor', process.env.FPS_FLOOR ?? 12))
 const VIDEO = arg('video', '1') !== '0'
+// --profile: per-subsystem ms/frame (src/core/perf.ts) at every FPS probe, written to result.json.
+const PROFILE = process.argv.includes('--profile')
+// Sim methods timed as their own spans in --profile runs (wrapped from outside; sim.ts is untouched).
+const PROFILE_SIM = ['tickGround', 'tickHall', 'tickLuggage', 'tickSchedule', 'persist', 'tickCargo', 'tickCatering', 'tickPatrols', 'tickJanitors', 'considerOffers', 'servicePoses', 'cateringPoses', 'emit']
 mkdirSync(OUT, { recursive: true })
 
 // Movement-weighted mix. Kind weights drive the game's own airframe picker;
@@ -243,6 +247,75 @@ try {
   await page.waitForTimeout(500)
   await shot('setup')
 
+  if (PROFILE) {
+    await page.evaluate((names) => {
+      const g = window.__hatch
+      const p = window.__perf
+      if (!p) return
+      for (const name of names) {
+        const fn = g[name]
+        if (typeof fn !== 'function') continue
+        g[name] = function (...a) {
+          if (!p.enabled) return fn.apply(this, a)
+          const t0 = performance.now()
+          try {
+            return fn.apply(this, a)
+          } finally {
+            const d = performance.now() - t0
+            const b = p.buckets.get(`sim.${name}`) ?? { ms: 0, n: 0, max: 0 }
+            b.ms += d
+            b.n++
+            b.max = Math.max(b.max, d)
+            p.buckets.set(`sim.${name}`, b)
+          }
+        }
+      }
+    }, PROFILE_SIM)
+  }
+  const profiles = []
+  // JS spans with the GPU free-running, then a second window that blocks on gl.finish()
+  // so `world.gl` shows what the GPU process (SwiftShader) spends per frame.
+  const profileWindow = async (ms) => {
+    const one = async (sync) => {
+      await page.evaluate((s) => {
+        window.__perf.syncGpu = s
+        window.__perf.enabled = true
+        window.__perf.reset()
+      }, sync)
+      await page.waitForTimeout(ms)
+      return page.evaluate(() => {
+        const r = window.__perf.report()
+        window.__perf.enabled = false
+        window.__perf.syncGpu = false
+        return r
+      })
+    }
+    // Chrome CPU profile over the same span: self time by function catches work outside
+    // the rAF spans (React commits, GC, layout).
+    const cdp = await context.newCDPSession(page)
+    await cdp.send('Profiler.enable')
+    await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
+    await cdp.send('Profiler.start')
+    const js = await one(false)
+    const { profile } = await cdp.send('Profiler.stop')
+    await cdp.detach().catch(() => {})
+    const self = new Map()
+    const byId = new Map(profile.nodes.map((n) => [n.id, n]))
+    let total = 0
+    profile.samples.forEach((id, i) => {
+      const dt = (profile.timeDeltas[i] ?? 0) / 1000
+      total += dt
+      const cf = byId.get(id).callFrame
+      const key = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop().split('?')[0]}:${cf.lineNumber + 1}`
+      self.set(key, (self.get(key) ?? 0) + dt)
+    })
+    const cpu = [...self]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([k, ms]) => ({ fn: k, msPerFrame: Math.round((ms / Math.max(1, js.frames)) * 100) / 100, pct: Math.round((ms / total) * 1000) / 10 }))
+    return { js, gpu: await one(true), cpu }
+  }
+
   const CHUNK = 30
     const total = RUN_DAYS * 180
   let lastDayShot = 0
@@ -379,6 +452,11 @@ try {
       const f = await fps(1000)
       fpsMin = Math.min(fpsMin, f)
       s.state.fps = f
+      if (PROFILE) {
+        const prof = await profileWindow(3000)
+        profiles.push({ day: s.state.day, flights: s.state.flights, guests: s.state.guests, trucks: s.state.trucks, fps: f, ...prof })
+        step(`profile day ${s.state.day}: fps=${f} frame=${Math.round(prof.js.wallMs / prof.js.frames)}ms ` + prof.gpu.rows.slice(0, 6).map((r) => `${r.label}=${r.msPerFrame}`).join(' ') + '\n  cpu: ' + prof.cpu.slice(0, 12).map((r) => `${r.fn}=${r.msPerFrame}ms(${r.pct}%)`).join('\n       '))
+      }
     }
     if (!a380Shot && s.state.a380.some((p) => ['taxi_in', 'deboard', 'servicing', 'board'].includes(p))) {
       a380Shot = true
@@ -403,6 +481,7 @@ try {
   await page.waitForTimeout(500)
   await shot('apron-end')
   setup.fpsMin = fpsMin
+  if (PROFILE) setup.profiles = profiles
 } catch (err) {
   find('critical', 'Bot run crashed', err?.stack ?? String(err), steps.slice())
   await page.screenshot({ path: join(OUT, '99-crash.png') }).catch(() => {})
