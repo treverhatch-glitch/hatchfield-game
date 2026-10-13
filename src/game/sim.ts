@@ -239,6 +239,8 @@ import {
 import { NegotiationBridge } from './negotiationBridge.ts'
 import { SERVICE_IDS, ULCC_IDS } from '../negotiation/index.ts'
 import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
+import { PriceWar, composeRivalWalkIn } from '../rival/index.ts'
+import type { WarChoice } from '../rival/index.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
@@ -1122,6 +1124,8 @@ export class Game {
   private missedByAirline: Record<string, number> = {}
   /** Contract counter-offers. Null until the first letter. */
   private negotiationBridge: NegotiationBridge | null = null
+  /** Bellwater price war. Null until the first day on an owned field. */
+  private priceWar: PriceWar | null = null
   /** Inbound offers and Guard contracts. Null until the clock or a card needs it. */
   private inbound: InboundBridge | null = null
   /** Bellwater Intl. Headless; null until the field exists. */
@@ -1399,6 +1403,7 @@ export class Game {
     this.publishedFeeIndex = 1
     this.missedByAirline = {}
     this.negotiationBridge = null
+    this.priceWar = null
     this.inbound = null
     this.rival = null
     this.rivalWalkaways = []
@@ -3546,7 +3551,7 @@ export class Game {
       spendKind = 'landside'
     }
     // Drop-off / missing infra — no fee. Prefs + wallet gate the rest (RCT).
-    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
+    const traffic = this.rivalWalkInFactor()
     if (fee > 0 && traffic !== 1) fee = Math.round(fee * traffic)
     if (fee > 0 && spendKind) {
       const buy = this.tryGuestPay(g, fee, spendKind, false)
@@ -3641,8 +3646,7 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
-    return m * traffic * this.tycoonDemand()
+    return m * this.rivalWalkInFactor() * this.tycoonDemand()
   }
 
   /**
@@ -4199,6 +4203,7 @@ export class Game {
       diplomacySeed: this.diplomacySeed,
       publishedFeeIndex: this.publishedFeeIndex,
       negotiation: this.negotiationBridge?.save(),
+      priceWar: this.priceWar?.serialize(),
       inbound: this.inbound?.state,
       fees: { ...this.fees },
       depositTier: this.depositTier,
@@ -4397,6 +4402,7 @@ export class Game {
       if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
       this.negotiationBridge = null
       if (s.negotiation) this.negotiationDesk().load(s.negotiation)
+      this.priceWar = PriceWar.restore(s.priceWar)
       if (s.inbound) {
         this.inbound = InboundBridge.restore(s.inbound, this.diplomacySeed)
       } else {
@@ -4581,6 +4587,7 @@ export class Game {
       const retail = this.negotiationBridge?.rollDay() ?? 0
       if (retail > 0) this.earn(retail, 'ULCC retail')
       this.advanceRivalDay()
+      this.advancePriceWarDay()
     }
     if (this.econHour < hour) return
     this.incomePerHour = Math.round(this.hourIncome)
@@ -4646,7 +4653,7 @@ export class Game {
 
   /** List price times the player's slider. Default schedule leaves the amount alone. */
   private listed(amount: number, key: keyof FeeSchedule): number {
-    return scaleListed(amount, this.fees[key], DEFAULT_FEE_SCHEDULE[key])
+    return this.afterRivalMargin(scaleListed(amount, this.fees[key], DEFAULT_FEE_SCHEDULE[key]))
   }
 
   private feeTier(airlineId: string): CommercialDepositTier {
@@ -10143,6 +10150,108 @@ export class Game {
     return this.negotiationBridge?.rivalCard() ?? null
   }
 
+  /** Game-days the Bellwater price war has run. 0 before the first day close. */
+  priceWarDay(): number {
+    return this.priceWar?.day ?? 0
+  }
+
+  priceWarCard() {
+    return this.priceWar?.card() ?? null
+  }
+
+  /**
+   * Walk-in kept after Bellwater and walked-airline cuts.
+   * Losses add, then stop at the cap in the price-war table.
+   */
+  rivalWalkInFactor(): number {
+    const negotiation = this.negotiationBridge?.trafficFactor() ?? 1
+    return composeRivalWalkIn(negotiation, this.warWalkInFactor())
+  }
+
+  /** One game day of the price war. The economy day-close calls this. */
+  advancePriceWarDay() {
+    if (!this.site) return
+    const war = this.ensurePriceWar()
+    const event = war.advanceDay({
+      walkedAirlineIds: this.negotiationBridge?.rivalCard()?.airlines ?? [],
+      postedFeeIndex: this.postedFeeIndex(),
+      softOffer: this.softContractOffer(),
+    })
+    if (event.started) {
+      this.raiseAlert({
+        key: `event:price-war:${event.warId}`,
+        severity: 'warning',
+        title: 'Bellwater price war',
+        detail: event.note,
+        event: true,
+      })
+    }
+    if (event.note) this.pushNews(event.note, event.tone)
+    if (event.resolved && event.warId) this.alerts.clear(`event:price-war:${event.warId}`)
+    if (event.poachedOfferId && this.offer?.airline === event.poachedOfferId) {
+      this.offer = null
+      if (this.negotiationBridge?.desk.session?.airlineId === event.poachedOfferId) {
+        this.negotiationBridge.closePanel()
+      }
+    }
+  }
+
+  respondToPriceWar(choice: WarChoice) {
+    const war = this.ensurePriceWar()
+    const quote = war.quote(choice)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return
+    }
+    if (quote.cost > 0 && !this.spend(quote.cost, 'Bellwater counter-promotion')) return
+    if (quote.cost > 0 && !this.sandbox) this.noteExpense(quote.cost)
+    const warId = war.pendingId()
+    const result = war.commit(choice)
+    if (!result.ok) {
+      this.pushNews(result.note, 'bad')
+      this.emit()
+      return
+    }
+    if (warId) this.alerts.clear(`event:price-war:${warId}`)
+    this.pushNews(result.note, choice === 'hold' ? 'bad' : 'good')
+    this.emit()
+  }
+
+  private warWalkInFactor(): number {
+    return this.priceWar?.walkInFactor() ?? 1
+  }
+
+  private ensurePriceWar(): PriceWar {
+    if (!this.priceWar) this.priceWar = PriceWar.create(this.diplomacySeed || 1)
+    return this.priceWar
+  }
+
+  /** Blend of the posted landing, passenger, and cargo tariffs. 1 is list price. */
+  private postedFeeIndex(): number {
+    const keys = ['landingPerTonne', 'paxFee', 'cargoPerUnit'] as const
+    let sum = 0
+    for (const key of keys) {
+      const base = DEFAULT_FEE_SCHEDULE[key]
+      sum += base > 0 ? this.fees[key] / base : 1
+    }
+    return sum / keys.length
+  }
+
+  private softContractOffer(): { id: string; name: string } | null {
+    const offer = this.offer
+    if (!offer || this.signed.includes(offer.airline)) return null
+    const known = this.allAirlines().find((airline) => airline.id === offer.airline)
+    return { id: offer.airline, name: known?.name ?? offer.airline }
+  }
+
+  /** Match-rates trims what the airport collects. Quiet days leave the amount alone. */
+  private afterRivalMargin(amount: number): number {
+    const margin = this.priceWar?.marginFactor() ?? 1
+    if (margin === 1 || !(amount > 0)) return amount
+    return Math.max(0, Math.round(amount * margin))
+  }
+
   /** Standing rows the diplomacy adapter is holding for this carrier. */
   negotiationStanding(id: string): { source: string; value: number; durationDays: number }[] {
     const rel = this.ensureDiplomacy().relation(id)
@@ -11171,9 +11280,10 @@ export class Game {
     }
     this.parkingCool -= dt
     if (this.parkingCool > 0 || !this.site) return
-    this.parkingCool = demandInterval(50 + Math.random() * 40, this.fees)
+    const walkIn = Math.max(0.5, this.warWalkInFactor())
+    this.parkingCool = demandInterval(50 + Math.random() * 40, this.fees) / walkIn
     if (!this.freeStands().length) return
-    if (Math.random() > walkInOfferChance(this.fees)) return
+    if (Math.random() > walkInOfferChance(this.fees) * this.warWalkInFactor()) return
 
     const frames = ['citation', 'pc12', 'crj700', 'atr72'].filter((id) => AIRFRAMES[id])
     const afId = pick(frames)
@@ -14357,7 +14467,7 @@ export class Game {
           'landing_fees',
         )
         this.earn(
-          this.contractBill(f, f.pax * this.fees.paxFee, 'landing', 'pax'),
+          this.contractBill(f, this.afterRivalMargin(f.pax * this.fees.paxFee), 'landing', 'pax'),
           `${f.flightNo} passenger fees`,
           f,
           'passenger_fees',
