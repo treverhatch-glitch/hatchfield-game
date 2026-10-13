@@ -4676,9 +4676,10 @@ export class Game {
     if (!plan || plan.closed) return
     plan.closed = true
     const pending = `slot:${slotId}`
+    const bound = plan.flightId
     for (const g of this.hallGuests) {
       if (g.dead || g.job !== 'depart') continue
-      if (g.flightId === pending) {
+      if (g.flightId === pending || (bound != null && g.flightId === bound)) {
         g.dead = true
         g.thought = 'Flight cancelled'
       }
