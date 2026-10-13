@@ -224,3 +224,59 @@ Same branch. The morning kit is still one click. It drops a prefab hall that alr
 - `docs/devlog/media/SLICE-B-journey.png` — passengers mid-hall on the way to the gate
 - `docs/devlog/media/SLICE-B-journey.webm` — full walk, about 21 s
 - `docs/devlog/media/SLICE-B-bottleneck.webm` — queue forms, then the upgrade clears it, about 18 s
+
+## Slice C — schemes, overload, construction, 13 Oct 2026
+
+Same branch. Prefabs are the teaching loop and the first hour, not the finished airport.
+
+### Reference schemes
+
+Flow on every tier, in order: curb, check-in hall, one central security checkpoint, an airside concourse with gates and shops / food / toilets, and a separate arrivals path with bag claim and a way back out to the curb. Departures do not skip security. Arrivals do not walk the departure pier to leave.
+
+**Prefab I · Linear.** A small regional terminal with one pier. Reference: London City. One curb, a check-in hall, a single security row, then one concourse. Arrivals sit beside the checkpoint and exit on the curb side. Signs: 2. Ceilings stay 28 passengers, security 20 per minute, bags 70.
+
+**Prefab II · Pier.** A mid-size finger. Reference: the classic finger pier (FAA AC 150/5360-13), the kind of concourse Baltimore runs. The processor holds check-in, one security line, and arrivals. A finger sticks out with gates along it and shops and toilets on the pier. Signs: 3. Ceilings: 48 passengers, security 60 per minute, bags 140.
+
+**Prefab III · Satellites.** A large processor feeding two satellites. Reference: Tampa, the landside building that sends people out to airside satellites (the same family as Atlanta’s central terminal and concourses). Curb and check-in are in the processor, one checkpoint, a bridge, then a north satellite and a south satellite. Claim and the exit stay in the processor. Signs: 4. Ceilings: 80 passengers, security about 129 per minute, bags 260.
+
+### Overload
+
+Paths do not drop passengers, at any load. When the bank is bigger than the prefab, the line gets longer, screening slows, happiness falls, flights slip, some people miss the gate, and Standing drops. Nobody is marked lost and nobody is thrown away for being the 81st person in the hall. The Design Advisor then says to upgrade the tier, expand the checkpoint, or design your own terminal. A custom hall can still be flawed. The advisor checks an unreachable gate or zone, a path that skips security, a dead end, a walk past the five-junction cap, a checkpoint or check-in that cannot clear the bank, bag claim too far, and toilets out of range.
+
+Passenger routes, flow lines, junction and sign reach, and congestion heat are a separate overlay. It is off until you tick **Show passenger flows** or press **F**. Advisor highlights reuse that layer and do not turn the whole overlay on.
+
+### Construction
+
+Placing a building spends the money and leaves grass plus scaffolding until a short timer finishes. The timer scales with size and caps at 12 seconds. A contractor van drives in from off the map through the guard post, and a delivery truck follows: travel, unload, travel. If the van is late the build warns and slips a moment; it does not freeze. Cancelling refunds 40 percent. The starter kit is still instant. Progress shows on the site and in a small tooltip.
+
+### Bugs
+
+Nine. BUG-001 through BUG-006 stand. Three more:
+
+### BUG-007 — A finished flight’s payment vanished before the test could see it
+
+The integration test “starter kit → signed airline → flight completes and cash posts” failed sometimes on the ledger check. Revenue had risen, but the aircraft was already removed from the field in the same tick it departed, so no remaining flight showed a payment line. The run also depended on `Math.random`.
+
+**Fix:** positive payment lines are kept when the turn leaves. The test uses a fixed seed and reads those lines in the tick the flight completes.
+
+No still. Nothing on screen was wrong; the book just closed the page too soon.
+
+### BUG-008 — A full security queue marked people lost and never screened them
+
+Past the comfort cap, the lane set them lost and returned without serving. They could sit there forever. The hall also deleted anyone past 80 people.
+
+**Fix:** the cap is comfort, not a locked door. Everyone waits in order and gets screened. Over the cap the line is slower, people are unhappy, the flight slips, and some miss the gate. The advisor asks for an upgrade. The silent delete is gone.
+
+### BUG-009 — A need could point at a closed room
+
+Hunger, energy, or play could send someone to the spa, pool, golf, or gaming when that room was not open. They stood there, got angry, and eventually left.
+
+**Fix:** a need only routes to a room that is open. If the favourite is closed, they use food, a shop, the lounge, the gate, or the exit.
+
+**Tests.** 42 passing. New ones cover each advisor check, a clean report for all three schemes, an overload wave per tier (zero lost, a queue past the comfort cap, a missed flight, and the upgrade prompt), construction time, the instant starter kit, progress without the van, the 40 percent cancel refund, and the van’s path through the guard.
+
+**New media**
+
+- `docs/devlog/media/SLICE-C-linear.png` — Prefab I, linear pier, 28 passengers
+- `docs/devlog/media/SLICE-C-advisor.png` — over-capacity note: upgrade, expand, or design your own
+- `docs/devlog/media/SLICE-C-build.webm` — a stand from placement to open, chrome hidden, about 7 s

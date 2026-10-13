@@ -108,6 +108,7 @@ export class World {
   tilesGroup = new THREE.Group()
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
+  siteGroup = new THREE.Group()
   tileHash = ''
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
@@ -191,6 +192,7 @@ export class World {
     this.scene.add(this.tilesGroup)
     this.scene.add(this.entGroup)
     this.scene.add(this.ghostGroup)
+    this.scene.add(this.siteGroup)
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
@@ -1322,7 +1324,11 @@ export class World {
                   ? '#4aa8c8'
                   : t.kind === 'termbus'
                     ? '#e8c56a'
-                    : '#c45c26'
+                    : t.kind === 'contractor'
+                      ? '#d8dee6'
+                      : t.kind === 'delivery'
+                        ? '#c47a3a'
+                        : '#c45c26'
         const g = new THREE.Group()
         const body = new THREE.Mesh(
           t.kind === 'citycargo'
@@ -1425,12 +1431,60 @@ export class World {
     this.ghostGroup.clear()
   }
 
+  syncSites(game: Game) {
+    this.siteGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      mesh.geometry?.dispose()
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+      else mat?.dispose()
+    })
+    this.siteGroup.clear()
+    for (const site of game.sites) {
+      const progress = Math.max(0.04, Math.min(1, site.elapsed / site.duration))
+      for (const cell of site.cells) {
+        const p = toWorld(cell.c, cell.r, 0)
+        const pole = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 2.4, 0.18),
+          new THREE.MeshLambertMaterial({ color: '#c4a574' }),
+        )
+        pole.position.set(p.x, 1.2, p.z)
+        this.siteGroup.add(pole)
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(CELL * 0.7 * progress, 0.22, 0.28),
+          new THREE.MeshLambertMaterial({ color: '#7dcea0' }),
+        )
+        bar.position.set(p.x - (CELL * 0.7 * (1 - progress)) / 2, 2.5, p.z)
+        this.siteGroup.add(bar)
+      }
+    }
+    if (game.advisorCells.length) {
+      const fit = game.activeHall() ?? game.fits[0]
+      if (fit) {
+        const mark = new THREE.Mesh(
+          new THREE.RingGeometry(CELL * 1.2, CELL * 1.45, 20),
+          new THREE.MeshBasicMaterial({
+            color: '#f0c14a',
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide,
+          }),
+        )
+        const p = toWorld(fit.origin.c, fit.origin.r, 0.4)
+        mark.rotation.x = -Math.PI / 2
+        mark.position.copy(p)
+        this.siteGroup.add(mark)
+      }
+    }
+  }
+
   render(game: Game) {
     this.resize()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.syncGhost(game)
     this.syncEntities(game)
+    this.syncSites(game)
     this.renderer.render(this.scene, this.camera)
   }
 

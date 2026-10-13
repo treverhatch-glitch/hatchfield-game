@@ -491,7 +491,7 @@ export interface PrefabTier {
 export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
   1: {
     tier: 1,
-    label: 'Prefab',
+    label: 'Prefab I · Linear',
     paxCap: 28,
     servers: 1,
     serviceSec: 3,
@@ -502,7 +502,7 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
   },
   2: {
     tier: 2,
-    label: 'Prefab II',
+    label: 'Prefab II · Pier',
     paxCap: 48,
     servers: 2,
     serviceSec: 2,
@@ -513,7 +513,7 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
   },
   3: {
     tier: 3,
-    label: 'Prefab III',
+    label: 'Prefab III · Satellites',
     paxCap: 80,
     servers: 3,
     serviceSec: 1.4,
@@ -631,43 +631,129 @@ export function blankZones(): (ZoneId | null)[][] {
   return Array.from({ length: GRID_R }, () => Array.from({ length: GRID_C }, () => null))
 }
 
-/** Column 3 is the security band. Guests walk west → east through the gap. */
+/**
+ * Real terminal schemes, painted as C check-in, S security, G gates,
+ * A arrivals, R retail, T toilets.
+ * I — linear single pier (London City).
+ * II — finger pier (mid-size concourse, FAA pier family).
+ * III — central processor feeding two satellites (Tampa).
+ */
+const SCHEME_I = [
+  'CCCCCCAA',
+  'CCCCTTAA',
+  'SSSSSSAA',
+  'GGRTGGGG',
+  'GGGRGGGG',
+]
+const SCHEME_II = [
+  'CCCCGGGGGGGG',
+  'CCCCTGTGTGTG',
+  'SSSSGGGGGGGG',
+  'AAAAGRGRGRGR',
+  'AAAAGGGTGGGG',
+  'AAAAGGTGGGGT',
+  'AAAAGGGGGGGG',
+]
+const SCHEME_III = [
+  'CCCCCGGGGGGGGG',
+  'CCCCCGRTGGTGRG',
+  'SSSSSGGGGGGGGG',
+  'CCCCCGGGGRGGGG',
+  'AAAAAGGGGGGGGG',
+  'AAAAAGGGGGGGGG',
+  'AAAAAGRTGGTGRG',
+  'AAAAAGGGGGGGGG',
+  'AAAATGGGRGGGGG',
+]
+
+const SCHEME_LETTER: Record<string, ZoneId> = {
+  C: 'checkin',
+  S: 'security',
+  G: 'gates',
+  A: 'arrivals',
+  R: 'retail',
+  T: 'toilets',
+}
+
+export function schemeRows(tier: 1 | 2 | 3): string[] {
+  if (tier === 2) return SCHEME_II
+  if (tier === 3) return SCHEME_III
+  return SCHEME_I
+}
+
+export function schemeZones(tier: 1 | 2 | 3): ZoneId[][] {
+  return schemeRows(tier).map((row) => [...row].map((ch) => SCHEME_LETTER[ch]))
+}
+
+export function schemeSigns(tier: 1 | 2 | 3): number {
+  if (tier === 2) return 3
+  if (tier === 3) return 4
+  return 2
+}
+
+export function schemeLabel(tier: 1 | 2 | 3): string {
+  return PREFAB_TIERS[tier].label
+}
+
+/** Tier I linear plan. Kept for callers that do not pass a tier. */
 export function prefabZones(): ZoneId[][] {
-  const rows: ZoneId[][] = [
-    ['checkin', 'checkin', 'toilets', 'security', 'retail', 'gates', 'gates', 'gates'],
-    ['checkin', 'checkin', 'toilets', 'security', 'retail', 'gates', 'gates', 'gates'],
-    ['checkin', 'checkin', 'toilets', 'security', 'retail', 'arrivals', 'gates', 'gates'],
-    ['arrivals', 'arrivals', 'toilets', 'security', 'retail', 'arrivals', 'arrivals', 'gates'],
-    ['arrivals', 'arrivals', 'toilets', 'security', 'retail', 'arrivals', 'arrivals', 'gates'],
-  ]
-  return rows.map((r) => [...r])
+  return schemeZones(1)
+}
+
+function cellsOf(zones: ZoneId[][], zone: ZoneId): { c: number; r: number }[] {
+  const out: { c: number; r: number }[] = []
+  for (let r = 0; r < zones.length; r++) {
+    for (let c = 0; c < zones[r].length; c++) {
+      if (zones[r][c] === zone) out.push({ c, r })
+    }
+  }
+  return out
+}
+
+export function schemeItems(tier: 1 | 2 | 3): PlacedItem[] {
+  const zones = schemeZones(tier)
+  const spot = (def: ItemId, cell: { c: number; r: number } | undefined): PlacedItem | null => {
+    if (!cell) return null
+    return {
+      id: `bundle-${def}-${cell.c}-${cell.r}`,
+      def,
+      c: cell.c,
+      r: cell.r,
+      wear: 0,
+      bundle: true,
+    }
+  }
+  const at = (zone: ZoneId, i: number) => {
+    const cells = cellsOf(zones, zone)
+    return cells[Math.min(i, cells.length - 1)]
+  }
+  const list = [
+    spot('entrance', at('checkin', 0)),
+    spot('kiosk', at('checkin', 1)),
+    spot('checkin_belt', at('checkin', 2)),
+    spot('queue_rail', at('checkin', 3)),
+    spot('wayfinding', at('checkin', 4)),
+    spot(prefabSecurityItem(tier), at('security', 0)),
+    spot('secure_exit', at('security', cellsOf(zones, 'security').length - 1)),
+    spot('boarding_desk', at('gates', 0)),
+    spot('seat_row', at('gates', 1)),
+    spot('claim_carousel', at('arrivals', 0)),
+    spot('bag_system', at('arrivals', 1)),
+    spot('toilet', at('toilets', 0)),
+    spot('cafe', at('retail', 0)),
+    spot('wayfinding', at('gates', 3)),
+  ].filter((x): x is PlacedItem => Boolean(x))
+  const seen = new Set<string>()
+  return list.filter((it) => {
+    const key = `${it.c},${it.r}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 export function prefabBundle(): PlacedItem[] {
-  const spot = (def: ItemId, c: number, r: number): PlacedItem => ({
-    id: `bundle-${def}-${c}-${r}`,
-    def,
-    c,
-    r,
-    wear: 0,
-    bundle: true,
-  })
-  return [
-    spot('entrance', 0, 2),
-    spot('queue_rail', 1, 2),
-    spot('queue_rail', 2, 1),
-    spot('checkin_belt', 1, 1),
-    spot('kiosk', 0, 1),
-    spot('security_small', 3, 2),
-    spot('secure_exit', 3, 4),
-    spot('seat_row', 6, 1),
-    spot('boarding_desk', 7, 1),
-    spot('claim_carousel', 5, 3),
-    spot('bag_system', 4, 4),
-    spot('toilet', 2, 3),
-    spot('cafe', 4, 1),
-    spot('wayfinding', 1, 0),
-  ]
+  return schemeItems(1)
 }
 
 export function prefabSecurityItem(tier: 1 | 2 | 3): ItemId {
@@ -676,9 +762,14 @@ export function prefabSecurityItem(tier: 1 | 2 | 3): ItemId {
   return 'security_small'
 }
 
-export function cellCenter(c: number, r: number): { x: number; z: number } {
-  const cw = HALL_W / GRID_C
-  const rh = HALL_D / GRID_R
+export function cellCenter(
+  c: number,
+  r: number,
+  cols = GRID_C,
+  rows = GRID_R,
+): { x: number; z: number } {
+  const cw = HALL_W / Math.max(1, cols)
+  const rh = HALL_D / Math.max(1, rows)
   return {
     x: -HALL_W / 2 + (c + 0.5) * cw,
     z: -HALL_D / 2 + (r + 0.5) * rh,

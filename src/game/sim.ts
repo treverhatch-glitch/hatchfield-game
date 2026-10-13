@@ -136,8 +136,8 @@ import {
 import {
   hallPath,
   isAirside,
-  needToNode,
   openForGuest,
+  reachableNeed,
   openNodesFromRooms,
   bagUnitsForTag,
   estimateFlightBagUnits,
@@ -154,6 +154,8 @@ import {
   type SpendKind,
   type StaffPost,
 } from './guests'
+import { adviseHall, type Advice } from './advisor.ts'
+import { buildSeconds } from './construction.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
   blankZones,
@@ -162,9 +164,11 @@ import {
   laneStats,
   lookaheadDepth,
   needsMaintenance,
-  prefabBundle,
-  prefabSecurityItem,
   prefabZones,
+  schemeItems,
+  schemeLabel,
+  schemeSigns,
+  schemeZones,
   slowedService,
   type ItemId,
   type PlacedItem,
@@ -207,6 +211,7 @@ import {
   runwayStrips,
   standBeltLinked,
   tilesOf,
+  walkableFor,
 } from './path'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import type {
@@ -222,6 +227,7 @@ import type {
   Difficulty,
   EmergencyKind,
   FieldTask,
+  BuildSite,
   FieldTaskKind,
   Flight,
   FuelBrand,
@@ -319,9 +325,10 @@ function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, 
 function decorateFit(fit: TerminalFit): TerminalFit {
   if (fit.premade) {
     if (fit.tier == null) fit.tier = 1
-    if (fit.signs == null) fit.signs = 1
-    if (!fit.zones?.length) fit.zones = prefabZones()
-    if (!fit.items?.length) fit.items = prefabBundle()
+    const tier = (fit.tier ?? 1) as 1 | 2 | 3
+    if (fit.signs == null) fit.signs = schemeSigns(tier)
+    if (!fit.zones?.length) fit.zones = schemeZones(tier)
+    if (!fit.items?.length) fit.items = schemeItems(tier)
     if (fit.redesigned == null) fit.redesigned = false
   } else {
     if (fit.tier == null) fit.tier = 1
@@ -568,6 +575,18 @@ export class Game {
   flightsDone = 0
   paxServed = 0
   revenue = 0
+  /** Positive payment lines kept after a turn leaves the field. */
+  settledPayments: { flightNo: string; label: string; amount: number }[] = []
+  /** Layout notes. Empty on a healthy prefab until the hall is over capacity. */
+  advice: Advice[] = []
+  advisorCells: { c: number; r: number }[] = []
+  /** Passenger-flow overlay. Hidden until the player opts in. */
+  showFlows = false
+  /** True once a wave exceeds this hall's queue or passenger cap. */
+  hallOverloaded = false
+  missedFlights = 0
+  private queueDelayFlight = new Set<string>()
+  sites: BuildSite[] = []
   /** Session tally of craft roles that landed — for the fleet strip. */
   craftSeen: Partial<Record<AircraftKind, number>> = {}
   listeners = new Set<() => void>()
@@ -736,6 +755,13 @@ export class Game {
     this.flightsDone = 0
     this.paxServed = 0
     this.revenue = 0
+    this.settledPayments = []
+    this.advice = []
+    this.advisorCells = []
+    this.hallOverloaded = false
+    this.missedFlights = 0
+    this.queueDelayFlight = new Set()
+    this.sites = []
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
@@ -2698,6 +2724,7 @@ export class Game {
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
       sandbox: this.sandbox,
+      sites: this.sites,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -2812,6 +2839,7 @@ export class Game {
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
       this.sandbox = s.sandbox ?? true
+      this.sites = s.sites ?? []
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -3648,21 +3676,12 @@ export class Game {
         }
         continue
       }
-      const dest = needToNode(need, g.job)
-      if (!open.has(dest)) {
-        g.happiness -= dt * 4
-        g.thought = `Can't find ${dest}`
-        g.patience -= dt * 3
-        if (g.patience <= 0) {
-          g.dead = true
-          this.reputation = Math.max(0, this.reputation - 0.5)
-          const aid = this.guestAirlineId(g)
-          if (aid) this.adjustHeat(aid, g.transfer ? -2 : -1.2)
-          this.hallMissNews(
-            `miss-${dest}`,
-            `${g.name} left angry — missing ${dest}. Others peeling off too.`,
-          )
-        }
+      const dest = reachableNeed(need, g.job, open)
+      if (!dest) {
+        g.happiness -= dt * 0.4
+        g.thought = 'Waiting for a way through'
+        if (g.job === 'depart' && open.has('gate')) this.routeGuest(g, 'gate', open)
+        else if (g.job === 'arrive' && open.has('exit')) this.routeGuest(g, 'exit', open)
         continue
       }
       if (g.node === dest) this.serveNode(g, open)
@@ -3678,6 +3697,7 @@ export class Game {
           `gate-${g.flightId}`,
           `Missed gate on ${g.flightId.slice(0, 10)} — pax boiling, Standing dips.`,
         )
+        this.missedFlights += 1
       }
     }
     // Sample layover happiness into the active contract.
@@ -3693,18 +3713,25 @@ export class Game {
       }
     }
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
-    // Cap population for sim health (Sawyer lesson).
-    if (this.hallGuests.length > 80) this.hallGuests.length = 80
+    const fit = this.activeHall() ?? this.fits[0]
+    if (fit && this.hallGuests.length > (fit.capGuests ?? 28)) this.markHallOverloaded()
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
     // Uncleared departures only see the curb side plus the security lane.
     const view = openForGuest(open, g.clearedSec)
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    const prefab = Boolean(fit?.premade && !fit?.redesigned)
     let target = dest
     if (!g.clearedSec && isAirside(dest)) {
       if (view.has('security')) {
         target = 'security'
         g.thought = 'Need to clear security first'
+      } else if (prefab) {
+        g.lost = false
+        g.thought = 'No security lane — waiting'
+        g.happiness -= 0.4
+        return
       } else {
         g.lost = true
         g.thought = 'Lost — no security lane, gate is locked'
@@ -3713,10 +3740,18 @@ export class Game {
         return
       }
     }
-    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
     const signs = (fit?.signs ?? 0) + (g.node === 'info' ? 1 : 0)
-    const path = hallPath(g.node, target, view, lookaheadDepth(signs))
+    let path = hallPath(g.node, target, view, lookaheadDepth(signs))
+    if ((!path || path.length < 2) && prefab) {
+      path = hallPath(g.node, target, view, 12)
+    }
     if (!path || path.length < 2) {
+      if (prefab) {
+        g.lost = false
+        g.thought = 'Waiting for a clear path'
+        g.happiness -= 0.15
+        return
+      }
       g.lost = true
       if (!g.clearedSec && isAirside(dest)) {
         g.thought = 'Blocked at the secure line'
@@ -3737,8 +3772,9 @@ export class Game {
   }
 
   /**
-   * One prefab lane serves `servers` people at a time. The rest wait.
-   * A full queue, or no lane at all, flags them lost.
+   * One prefab lane serves `servers` people at a time. Everyone else waits.
+   * Past the comfort cap the line gets slower and angrier, flights slip,
+   * and the advisor asks for an upgrade. Nobody is marked lost.
    */
   tickSecurityLane(g: HallGuest, dt: number, open: Set<HallNode>) {
     const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
@@ -3791,6 +3827,13 @@ export class Game {
     }
 
     if (lane.servers <= 0) {
+      const prefab = Boolean(fit?.premade && !fit?.redesigned)
+      if (prefab) {
+        g.lost = false
+        g.thought = 'Lane closed — waiting'
+        g.happiness -= dt * 1.2
+        return
+      }
       g.lost = true
       g.thought = 'Lost — no security lane'
       g.happiness -= dt * 2
@@ -3809,15 +3852,99 @@ export class Game {
       g.thought = 'Stepping into the lane'
       return
     }
+    const overComfort = idx >= lane.queueCap + slots || peers.length > cap
+    if (overComfort) this.markHallOverloaded()
     if (idx >= lane.queueCap + slots) {
-      g.lost = true
-      g.thought = 'Lost — security queue is full'
-      g.happiness -= dt * 1.6
+      g.lost = false
+      g.thought = 'Long security line — the hall is over capacity'
+      g.happiness -= dt * 2.4
+      g.patience -= dt * 1.1
+      this.delayGuestFlight(g)
       return
     }
     g.lost = false
     g.thought = `Security queue — ${Math.max(1, idx - slots + 1)} ahead`
-    g.happiness -= dt * 0.7
+    g.happiness -= dt * (peers.length > cap ? 1.4 : 0.7)
+  }
+
+  /** Once per flight: slip the slot and nick Standing when the line is too long. */
+  delayGuestFlight(g: HallGuest) {
+    if (!g.flightId || this.queueDelayFlight.has(g.flightId)) return
+    this.queueDelayFlight.add(g.flightId)
+    const slot = this.schedule.find(
+      (s) => s.flightId === g.flightId && s.status !== 'done' && s.status !== 'cancelled',
+    )
+    if (slot) this.delaySlot(slot, 10, 'Security queue')
+    else if (g.airlineId) this.adjustHeat(g.airlineId as AirlineId, -0.45)
+  }
+
+  markHallOverloaded() {
+    if (this.hallOverloaded) return
+    this.hallOverloaded = true
+    this.reputation = Math.max(0, this.reputation - 1)
+    for (const id of this.signed) this.adjustHeat(id, -1.2)
+    this.pushNews(
+      'Hall over capacity — long queues, delays, and missed flights. Upgrade the prefab, expand the lanes, or design your own terminal.',
+      'bad',
+    )
+    this.refreshAdvice()
+  }
+
+  refreshAdvice() {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) {
+      this.advice = []
+      return
+    }
+    this.advice = adviseHall(
+      {
+        premade: fit.premade,
+        redesigned: fit.redesigned,
+        tier: fit.tier,
+        signs: fit.signs,
+        capGuests: fit.capGuests,
+        secPerMin: fit.secPerMin,
+        zones: fit.zones as ZoneId[][],
+        rooms: {
+          checkin: fit.rooms.checkin,
+          security: fit.rooms.security,
+          gate: fit.rooms.gate,
+          bagclaim: fit.rooms.bagclaim,
+          food: fit.rooms.food,
+          souvenir: fit.rooms.souvenir,
+          bathroom: fit.rooms.bathroom,
+        },
+      },
+      this.hallOpenFor(fit),
+      this.schedule,
+      this.hallOverloaded,
+    )
+    if (this.advisorCells.length) {
+      const still = this.advice.find((a) =>
+        a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
+      )
+      if (!still) this.advisorCells = []
+    }
+  }
+
+  focusAdvice(id: string | null) {
+    if (!id) {
+      this.advisorCells = []
+      this.emit()
+      return
+    }
+    const hit = this.advice.find((a) => a.id === id)
+    const same =
+      hit &&
+      hit.cells.length === this.advisorCells.length &&
+      hit.cells.every((c, i) => c.c === this.advisorCells[i]?.c && c.r === this.advisorCells[i]?.r)
+    this.advisorCells = hit && !same ? hit.cells : []
+    this.emit()
+  }
+
+  toggleFlows() {
+    this.showFlows = !this.showFlows
+    this.emit()
   }
 
   securityQueueCount(): number {
@@ -3882,13 +4009,27 @@ export class Game {
     const cost = next === 2 ? 22000 : 48000
     if (!this.spend(cost, `prefab tier ${next}`)) return
     fit.tier = next
-    const laneId = prefabSecurityItem(next)
-    const lane = fit.items?.find((i) => String(i.def).startsWith('security'))
-    if (lane) lane.def = laneId
+    fit.zones = schemeZones(next)
+    fit.items = schemeItems(next)
+    fit.signs = schemeSigns(next)
+    if (next === 2) {
+      fit.rooms.security = Math.max(fit.rooms.security, 3)
+      fit.rooms.gate = Math.max(fit.rooms.gate, 3)
+      fit.rooms.bathroom = Math.max(fit.rooms.bathroom, 3)
+      fit.rooms.food = Math.max(fit.rooms.food, 2)
+    } else {
+      fit.rooms.security = Math.max(fit.rooms.security, 4)
+      fit.rooms.gate = Math.max(fit.rooms.gate, 4)
+      fit.rooms.bathroom = Math.max(fit.rooms.bathroom, 4)
+      fit.rooms.food = Math.max(fit.rooms.food, 2)
+      fit.rooms.souvenir = Math.max(fit.rooms.souvenir, 2)
+    }
     applyCeilings(fit)
+    this.hallOverloaded = false
     this.hallRev++
+    this.refreshAdvice()
     this.pushNews(
-      `Prefab ${next} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher.`,
+      `${schemeLabel(next)} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher.`,
       'good',
     )
     this.emit()
@@ -3920,6 +4061,7 @@ export class Game {
       )
     }
     this.hallRev++
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -3971,6 +4113,7 @@ export class Game {
       `${def.name} placed — $${def.upkeep}/day upkeep${def.perk ? `. ${def.perk}.` : '.'}`,
       'ok',
     )
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -4037,8 +4180,8 @@ export class Game {
       // Info desk extends lookahead once — like an RCT park map.
       const need = strongestNeed(g)
       if (need) {
-        const dest = needToNode(need, g.job)
-        this.routeGuest(g, dest, open)
+        const dest = reachableNeed(need, g.job, open)
+        if (dest) this.routeGuest(g, dest, open)
       }
     }
     if (n === 'checkin' && g.job === 'depart') {
@@ -5632,6 +5775,7 @@ export class Game {
     }
     fit.rooms[id] += 1
     this.pushNews(`Furnished ${def.name}.`, 'ok')
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -6848,7 +6992,233 @@ export class Game {
     )
   }
 
+  siteAt(v: Vec): BuildSite | undefined {
+    return this.sites.find((s) => s.cells.some((c) => c.c === v.c && c.r === v.r))
+  }
+
+  cellsBlocked(cells: Vec[]): boolean {
+    return cells.some((p) => this.siteAt(p))
+  }
+
+  enqueueBuild(site: Omit<BuildSite, 'id' | 'elapsed' | 'duration' | 'warned' | 'vanArrived' | 'delivered' | 'crewSpawned'> & Partial<BuildSite>) {
+    const full: BuildSite = {
+      id: uid('site'),
+      elapsed: 0,
+      duration: buildSeconds(site.cells.length),
+      warned: false,
+      vanArrived: false,
+      delivered: false,
+      crewSpawned: false,
+      ...site,
+      cells: site.cells.map((c) => ({ ...c })),
+    }
+    this.sites.push(full)
+    this.pushNews(
+      `${full.name} is a construction site — a contractor is driving in. About ${Math.round(full.duration)}s.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  cancelSite(id: string) {
+    const site = this.sites.find((s) => s.id === id)
+    if (!site) return
+    const refund = Math.round(site.cost * BULLDOZE_REFUND)
+    this.cash += refund
+    this.sites = this.sites.filter((s) => s.id !== id)
+    this.trucks = this.trucks.filter((t) => t.flightId !== id)
+    this.pushNews(`Construction cancelled — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
+    this.emit()
+  }
+
+  buildApproach(site: BuildSite): Vec | null {
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+    for (const cell of site.cells) {
+      for (const [dc, dr] of dirs) {
+        const p = { c: cell.c + dc, r: cell.r + dr }
+        if (!inBounds(p.c, p.r)) continue
+        if (site.cells.some((c) => c.c === p.c && c.r === p.r)) continue
+        const tile = this.tile(p)
+        if (tile && walkableFor('truck', tile)) return p
+      }
+    }
+    return null
+  }
+
+  ensureBuildCrew(site: BuildSite) {
+    if (site.crewSpawned) return
+    site.crewSpawned = true
+    const edges = this.cityEdgeRoads()
+    const approach = this.buildApproach(site)
+    if (!edges.length || !approach) return
+    const edge = edges[0]
+    const guard = tilesOf(this.tiles, 'guard')[0]
+    const off = {
+      c: edge.c === 0 ? -2 : edge.c === SIZE - 1 ? SIZE + 1 : edge.c,
+      r: edge.r === 0 ? -2 : edge.r === SIZE - 1 ? SIZE + 1 : edge.r,
+    }
+    let path: Vec[] | null = null
+    if (guard) {
+      const toGuard = nearestPath(this.tiles, edge, [guard], 'truck')
+      const toSite = nearestPath(this.tiles, guard, [approach], 'truck')
+      if (toGuard && toSite && toGuard.length > 1 && toSite.length > 1) {
+        path = [off, ...toGuard, ...toSite.slice(1)]
+      }
+    }
+    if (!path) {
+      const direct = nearestPath(this.tiles, edge, [approach], 'truck')
+      if (direct && direct.length > 1) path = [off, ...direct]
+    }
+    if (!path) return
+    const roll = (kind: 'contractor' | 'delivery', wait: number) => {
+      this.trucks.push({
+        id: uid(kind),
+        kind,
+        flightId: site.id,
+        x: off.c,
+        y: off.r,
+        path: path!.map((p) => ({ ...p })),
+        seg: 0,
+        t: 0,
+        returning: false,
+        dwell: 0,
+        preDwell: wait,
+        patrol: false,
+        mission: guard ? 'build_guard' : 'build_site',
+        home: approach,
+        cargoUnits: kind === 'delivery' ? 8 : 0,
+      })
+    }
+    roll('contractor', 0)
+    roll('delivery', 1.4)
+  }
+
+  tickBuildTruck(t: Truck, step: number) {
+    if (t.preDwell > 0) {
+      t.preDwell -= step
+      return
+    }
+    if (t.dwell > 0) {
+      t.dwell -= step
+      if (t.dwell > 0) return
+      const site = this.sites.find((s) => s.id === t.flightId)
+      if (t.mission === 'build_guard') {
+        t.mission = 'build_site'
+        if (t.home) {
+          const from = { c: Math.round(t.x), r: Math.round(t.y) }
+          const next = nearestPath(this.tiles, from, [t.home], 'truck')
+          if (next && next.length > 1) {
+            t.path = next
+            t.seg = 0
+            t.t = 0
+            return
+          }
+        }
+      }
+      if (t.mission === 'build_site') {
+        if (site) {
+          if (t.kind === 'contractor') site.vanArrived = true
+          if (t.kind === 'delivery') site.delivered = true
+        }
+        t.mission = 'build_out'
+        t.returning = true
+        t.path = [...t.path].reverse()
+        t.seg = 0
+        t.t = 0
+        return
+      }
+      t.dwell = -99
+      return
+    }
+    const arrived = this.followPath(t, t.kind === 'contractor' ? 2.4 : 2, step)
+    if (!arrived) return
+    if (t.mission === 'build_out') {
+      t.dwell = -99
+      return
+    }
+    t.dwell = t.mission === 'build_guard' ? 0.7 : t.kind === 'delivery' ? 1.5 : 1.1
+  }
+
+  tickConstruction(step: number) {
+    for (const site of this.sites) {
+      site.elapsed += step
+      this.ensureBuildCrew(site)
+      if (site.elapsed > site.duration * 0.25 && !site.vanArrived && !site.warned) {
+        site.warned = true
+        site.duration += 1.5
+        this.pushNews(
+          `${site.name} — contractor still on the road. The build slips a moment and keeps going.`,
+          'ok',
+        )
+      }
+      if (site.elapsed >= site.duration) this.finishSite(site)
+    }
+    this.sites = this.sites.filter((s) => s.elapsed < s.duration)
+  }
+
+  finishSite(site: BuildSite) {
+    if (site.kind === 'single') {
+      const v = site.cells[0]
+      if (!v) return
+      this.tiles[v.r][v.c] = site.tile
+      const key = `${v.c},${v.r}`
+      if (site.parkTerm) this.parkTerms[key] = site.parkTerm
+      if (site.hotelClass) this.hotelClass[key] = site.hotelClass
+      if (site.standClass) this.standClass[key] = site.standClass
+      if (site.standAccess) this.standAccess[key] = site.standAccess
+      this.pushNews(site.news ?? `${site.name} open.`, 'good')
+    } else if (site.kind === 'runway') {
+      for (const p of site.cells) this.tiles[p.r][p.c] = 'runway'
+      this.pushNews(site.news ?? `${site.name} open.`, 'good')
+    } else if (site.kind === 'terminal' || site.kind === 'premade') {
+      const origin = site.origin ?? site.cells[0]
+      for (const p of site.cells) this.tiles[p.r][p.c] = 'terminal'
+      if (site.kind === 'premade') {
+        this.fits.push(
+          emptyFit(origin, true, {
+            checkin: 2,
+            security: 2,
+            gate: 2,
+            bagclaim: 1,
+            food: 1,
+            souvenir: 1,
+            bagdrop: 1,
+            lounge: 1,
+            bathroom: 2,
+          }),
+        )
+      } else {
+        this.fits.push(emptyFit(origin, false))
+      }
+      this.selectedTile = origin
+      const n = this.fits.length
+      const label = this.hallLabel(this.fits[n - 1])
+      this.pushNews(
+        site.kind === 'premade'
+          ? n >= 2
+            ? `${label} premade online — multi-terminal campus.`
+            : 'Premade terminal online — check-in, security, gates, claim, food.'
+          : n >= 2
+            ? `${label} shell up — campus now ${n} halls.`
+            : 'Empty shell up. Furnish security or airlines will stay away.',
+        'good',
+      )
+    }
+    this.bumpMap()
+    this.emit()
+  }
+
   clearTile(v: Vec) {
+    const building = this.siteAt(v)
+    if (building) {
+      this.cancelSite(building.id)
+      return
+    }
     const cur = this.tile(v)
     if (!cur || cur === 'grass') return
     if (this.occupiedByOps(v)) {
@@ -6919,7 +7289,10 @@ export class Game {
 
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
     const cells = this.prefabRunway(v, klass)
-    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
+    if (
+      cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
+      this.cellsBlocked(cells)
+    ) {
       const tip =
         klass === 'heavy'
           ? 'Need a clear plot for the heavy strip (20×3). Rotate if it hangs off.'
@@ -6942,17 +7315,22 @@ export class Game {
       this.emit()
       return
     }
-    for (const p of cells) this.tiles[p.r][p.c] = 'runway'
-    this.bumpMap()
-    this.pushNews(
+    const news =
       klass === 'heavy'
-        ? 'Heavy strip stamped — widebodies and 747Fs can land.'
+        ? 'Heavy strip open — widebodies and 747Fs can land.'
         : klass === 'short'
-          ? 'Short strip stamped — CRJ / E-Jets / Citations only. Long metal will refuse.'
-          : 'Regional runway stamped — A320 / 737 class OK.',
-      'good',
-    )
-    this.emit()
+          ? 'Short strip open — CRJ / E-Jets / Citations only. Long metal will refuse.'
+          : 'Regional runway open — A320 / 737 class OK.'
+    this.enqueueBuild({
+      kind: 'runway',
+      cells,
+      tile: 'runway',
+      cost,
+      name: label,
+      news,
+      runwayClass: klass,
+      origin: v,
+    })
   }
 
   placeTerminal(v: Vec) {
@@ -6962,7 +7340,7 @@ export class Game {
       { c: v.c, r: v.r + 1 },
       { c: v.c + 1, r: v.r + 1 },
     ]
-    if (cells.some((p) => this.tile(p) !== 'grass')) {
+    if (cells.some((p) => this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 2×2 for the shell.', 'bad')
       this.emit()
       return
@@ -6971,18 +7349,14 @@ export class Game {
       this.emit()
       return
     }
-    for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
-    this.fits.push(emptyFit(v, false))
-    this.selectedTile = v
-    this.bumpMap()
-    const n = this.fits.length
-    this.pushNews(
-      n >= 2
-        ? `${this.hallLabel(this.fits[n - 1])} shell up — campus now ${n} halls. Stands nearby get jetways.`
-        : 'Empty shell up. Furnish security or airlines will stay away.',
-      n >= 2 ? 'good' : 'ok',
-    )
-    this.emit()
+    this.enqueueBuild({
+      kind: 'terminal',
+      cells,
+      tile: 'terminal',
+      cost: TERMINAL_COST,
+      name: 'terminal shell',
+      origin: v,
+    })
   }
 
   placePremade(v: Vec) {
@@ -6990,7 +7364,7 @@ export class Game {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
     }
-    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
+    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
       this.emit()
       return
@@ -6999,38 +7373,21 @@ export class Game {
       this.emit()
       return
     }
-    for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
-    this.fits.push(
-      emptyFit(v, true, {
-        checkin: 2,
-        security: 2,
-        gate: 2,
-        bagclaim: 1,
-        food: 1,
-        souvenir: 1,
-        bagdrop: 1,
-        lounge: 1,
-        bathroom: 2,
-      }),
-    )
-    this.selectedTile = v
-    this.bumpMap()
-    const n = this.fits.length
-    const label = this.hallLabel(this.fits[n - 1])
-    this.pushNews(
-      n >= 2
-        ? `${label} premade online — multi-terminal campus. Jetway stands auto-link within ${JETWAY_RANGE}c.`
-        : 'Premade terminal online — check-in, security, gates, claim, food.',
-      'good',
-    )
-    this.emit()
+    this.enqueueBuild({
+      kind: 'premade',
+      cells,
+      tile: 'terminal',
+      cost: PREMADE_TERMINAL_COST,
+      name: 'premade terminal',
+      origin: v,
+    })
   }
 
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
-    if (this.tile(v) !== 'grass') {
-      this.pushNews('Needs grass.', 'bad')
+    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
+      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -7102,96 +7459,59 @@ export class Game {
       this.emit()
       return
     }
-    this.tiles[v.r][v.c] = building.tile
+    const standCls: StandClass =
+      this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
+    const hotelCls: HotelClass =
+      this.tool === 'hotel_inn' ? 'inn' : this.tool === 'hotel_resort' ? 'resort' : 'business'
+    let news = `${building.name} open.`
     if (
       building.tile === 'park_s' ||
       building.tile === 'park_l' ||
       building.tile === 'park_g' ||
       building.tile === 'park_u'
     ) {
-      this.parkTerms[`${v.c},${v.r}`] = this.parkTerm
-      this.pushNews(
-        `${building.name} (${this.parkTerm}-term) stamped.`,
-        'ok',
-      )
-    } else if (building.tile === 'hotel') {
-      const cls: HotelClass =
-        this.tool === 'hotel_inn'
-          ? 'inn'
-          : this.tool === 'hotel_resort'
-            ? 'resort'
-            : 'business'
-      this.hotelClass[`${v.c},${v.r}`] = cls
-      this.pushNews(`${building.name} stamped on the landside.`, 'good')
+      news = `${building.name} (${this.parkTerm}-term) open.`
+    } else if (building.tile === 'stand' && this.standAccessMode === 'jetway') {
+      news = `${building.name} + jetway open.`
     } else if (building.tile === 'stand') {
-      const cls: StandClass =
-        this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
-      this.standClass[`${v.c},${v.r}`] = cls
-      this.standAccess[`${v.c},${v.r}`] = this.standAccessMode
-      const linked = this.jetwayHall(v)
-      if (this.standAccessMode === 'jetway') {
-        this.pushNews(
-          linked
-            ? `${building.name} + jetway linked to ${this.hallLabel(linked)} (${moneyLeft(stampCost)}). Fast board — no apron walk.`
-            : `${building.name} + jetway stamped (${moneyLeft(stampCost)}) — build a hall within ${JETWAY_RANGE}c to attach the gate.`,
-          linked ? 'good' : 'ok',
-        )
-      } else {
-        this.pushNews(
-          `${building.name} remote bay stamped. Add a Terminal bus depot or pax walk the pavement.`,
-          'ok',
-        )
-      }
-      if (tilesOf(this.tiles, 'hangar').length && this.milCapableStands().length) {
-        this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
-      }
+      news = `${building.name} remote bay open.`
     } else if (building.tile === 'guard') {
-      this.pushNews(
-        'Guard post online — city cargo trucks will screen here before the shed.',
-        'good',
-      )
+      news = 'Guard post online — city cargo trucks will screen here before the shed.'
     } else if (building.tile === 'cargo') {
-      this.pushNews(
-        'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.',
-        'ok',
-      )
+      news = 'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.'
     } else if (building.tile === 'termbus') {
-      this.pushNews(
-        `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`,
-        'good',
-      )
+      news = `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`
     } else if (building.tile === 'deice') {
-      this.pushNews(
-        `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`,
-        'good',
-      )
+      news = `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`
     } else if (building.tile === 'bus') {
-      this.pushNews(
-        `Bus curb online ($${BUS_CURB_COST.toLocaleString()}). Budget pax can ride in.`,
-        'good',
-      )
+      news = `Bus curb online ($${BUS_CURB_COST.toLocaleString()}). Budget pax can ride in.`
     } else if (building.tile === 'rail') {
-      this.pushNews(
-        `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`,
-        'good',
-      )
+      news = `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`
     } else if (building.tile === 'hangar') {
-      if (!this.milCapableStands().length) {
-        this.pushNews(
-          'Hangar up — stamp a hardstand beside it (away from pax gates) + taxi to the strip for Guard host.',
-          'ok',
-        )
-      } else {
-        this.pushNews('Hangar up — mil ramp pads linked.', 'good')
-      }
+      news = 'Hangar up.'
     } else if (building.tile === 'belt') {
-      this.pushNews(
-        `Bag belt stamped ($${BELT_COST.toLocaleString()}). Link hall ↔ sort ↔ stand — break the chain and bags run late.`,
-        'ok',
-      )
+      news = `Bag belt open ($${BELT_COST.toLocaleString()}). Link hall, sort, and stand.`
     }
-    this.bumpMap()
-    this.emit()
+    this.enqueueBuild({
+      kind: 'single',
+      cells: [v],
+      tile: building.tile,
+      cost: stampCost,
+      name: building.name,
+      news,
+      tool: this.tool,
+      standClass: building.tile === 'stand' ? standCls : undefined,
+      standAccess: building.tile === 'stand' ? this.standAccessMode : undefined,
+      hotelClass: building.tile === 'hotel' ? hotelCls : undefined,
+      parkTerm:
+        building.tile === 'park_s' ||
+        building.tile === 'park_l' ||
+        building.tile === 'park_g' ||
+        building.tile === 'park_u'
+          ? this.parkTerm
+          : undefined,
+      origin: v,
+    })
   }
 
   standClassAt(stand: Vec | null): StandClass {
@@ -9267,6 +9587,7 @@ export class Game {
     this.offerCool = Math.max(0, this.offerCool - step)
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
+    this.tickConstruction(step)
     // Peak decays so the HUD jam line clears when traffic thins.
     this.congPeak = Math.max(0, this.congPeak - step * 0.35)
     if (this.congWasteAcc >= 8 && this.congNewsCool <= 0) {
@@ -9709,9 +10030,28 @@ export class Game {
         }
       }
     }
-    this.flights = this.flights.filter((f) => f.phase !== 'gone')
+    this.flights = this.flights.filter((f) => {
+      if (f.phase !== 'gone') return true
+      for (const line of f.ledger) {
+        if (line.amount > 0) {
+          this.settledPayments.push({
+            flightNo: f.flightNo,
+            label: line.label,
+            amount: line.amount,
+          })
+        }
+      }
+      if (this.settledPayments.length > 64) {
+        this.settledPayments.splice(0, this.settledPayments.length - 64)
+      }
+      return false
+    })
 
     for (const t of this.trucks) {
+      if (t.kind === 'contractor' || t.kind === 'delivery') {
+        this.tickBuildTruck(t, step)
+        continue
+      }
       // Makeup / farm bottom-load before rolling.
       if (t.preDwell > 0) {
         t.preDwell -= step

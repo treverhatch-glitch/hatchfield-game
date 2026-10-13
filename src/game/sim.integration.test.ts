@@ -2,30 +2,53 @@ import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
 import { SAVE_KEY } from './types.ts'
 
+/** Mulberry32 so this flight's fees do not depend on Math.random. */
+function withSeed(seed: number, run: () => void) {
+  const orig = Math.random
+  let s = seed >>> 0
+  Math.random = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+    return s / 4294967296
+  }
+  try {
+    run()
+  } finally {
+    Math.random = orig
+  }
+}
+
 describe('sim integration', () => {
   it('starter kit → signed airline → flight completes and cash posts', () => {
-    const game = new Game()
-    game.sandbox = false
-    game.beginNew('easy')
-    game.startFocus = 'pax'
-    expect(game.buyLand('city')).toBe(true)
-    game.buildStarterKit()
-    expect(game.fits.length).toBeGreaterThan(0)
-    game.offer = { airline: 'northline', age: 0, deadline: 36 }
-    game.acceptOffer()
-    expect(game.signed).toContain('northline')
+    withSeed(7, () => {
+      const game = new Game()
+      game.sandbox = false
+      game.beginNew('easy')
+      game.startFocus = 'pax'
+      expect(game.buyLand('city')).toBe(true)
+      game.buildStarterKit()
+      expect(game.fits.length).toBeGreaterThan(0)
+      game.offer = { airline: 'northline', age: 0, deadline: 36 }
+      game.acceptOffer()
+      expect(game.signed).toContain('northline')
 
-    const revenueBefore = game.revenue
-    game.speed = 5
-    let ticks = 0
-    while (game.flightsDone < 1 && ticks < 8000) {
-      game.tick(0.05)
-      ticks += 1
-    }
-    expect(game.flightsDone).toBeGreaterThanOrEqual(1)
-    expect(game.revenue).toBeGreaterThan(revenueBefore)
-    const paid = game.flights.some((f) => f.ledger.some((line) => line.amount > 0))
-    expect(paid).toBe(true)
+      const revenueBefore = game.revenue
+      game.speed = 5
+      let ticks = 0
+      let paidOnComplete = false
+      while (game.flightsDone < 1 && ticks < 8000) {
+        const before = game.flightsDone
+        const logged = game.settledPayments.length
+        game.tick(0.05)
+        ticks += 1
+        if (game.flightsDone > before) {
+          const fresh = game.settledPayments.slice(logged)
+          if (fresh.some((line) => line.amount > 0)) paidOnComplete = true
+        }
+      }
+      expect(game.flightsDone).toBeGreaterThanOrEqual(1)
+      expect(game.revenue).toBeGreaterThan(revenueBefore)
+      expect(paidOnComplete).toBe(true)
+    })
   })
 
   it('bridge loan wires cash and does not snowball past 1.5×', () => {
