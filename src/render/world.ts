@@ -879,6 +879,91 @@ export class World {
       truck.position.set(0, 0.35, CELL * 0.22)
       truck.castShadow = true
       g.add(shed, bay, truck)
+    } else if (tile === 'mover') {
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.92, 0.16, CELL * 0.28),
+        new THREE.MeshStandardMaterial({ color: '#2a3238', roughness: 0.6 }),
+      )
+      deck.position.y = 1.35
+      const railMat = new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.4, roughness: 0.35 })
+      const railA = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.88, 0.06, 0.06), railMat)
+      railA.position.set(0, 1.5, -CELL * 0.1)
+      const railB = railA.clone()
+      railB.position.z = CELL * 0.1
+      for (const x of [-CELL * 0.28, CELL * 0.28]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.12, 1.5, 0.12),
+          new THREE.MeshStandardMaterial({ color: '#8a9aaa' }),
+        )
+        post.position.set(x, 0.75, 0)
+        g.add(post)
+      }
+      const pod = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.28, 0.55, CELL * 0.22),
+        new THREE.MeshStandardMaterial({ color: '#e8eef4', metalness: 0.2, roughness: 0.35 }),
+      )
+      pod.position.set(0, 1.85, 0)
+      pod.name = 'pod'
+      pod.userData.home = 0
+      const windowBand = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.22, 0.18, CELL * 0.23),
+        new THREE.MeshStandardMaterial({
+          color: '#7ec8e8',
+          emissive: '#1a4a66',
+          emissiveIntensity: 0.35,
+        }),
+      )
+      windowBand.position.set(0, 1.95, 0)
+      windowBand.name = 'pod-glass'
+      g.add(deck, railA, railB, pod, windowBand)
+    } else if (tile === 'xferbus') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({ color: '#243038' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.04
+      const shed = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 1.6, CELL * 0.5),
+        new THREE.MeshStandardMaterial({ color: '#c47a3a', roughness: 0.5 }),
+      )
+      shed.position.y = 0.85
+      shed.castShadow = true
+      const bus = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.62, 0.72, CELL * 0.26),
+        new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.4 }),
+      )
+      bus.position.set(0, 0.46, CELL * 0.28)
+      bus.name = 'xfer-bus'
+      bus.castShadow = true
+      g.add(pad, shed, bus)
+    } else if (tile === 'skywalk') {
+      const deck = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.92, 0.18, CELL * 0.55),
+        new THREE.MeshStandardMaterial({ color: '#d5dde4', roughness: 0.35, metalness: 0.1 }),
+      )
+      deck.position.y = 3.2
+      const glass = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.86, 0.7, 0.06),
+        new THREE.MeshStandardMaterial({
+          color: '#9fd4ee',
+          transparent: true,
+          opacity: 0.55,
+          roughness: 0.15,
+        }),
+      )
+      glass.position.set(0, 3.65, CELL * 0.2)
+      const glassB = glass.clone()
+      glassB.position.z = -CELL * 0.2
+      for (const x of [-CELL * 0.3, CELL * 0.3]) {
+        const leg = new THREE.Mesh(
+          new THREE.BoxGeometry(0.16, 3.2, 0.16),
+          new THREE.MeshStandardMaterial({ color: '#5c6b78' }),
+        )
+        leg.position.set(x, 1.6, 0)
+        g.add(leg)
+      }
+      g.add(deck, glass, glassB)
     }
     return g
   }
@@ -1776,6 +1861,19 @@ export class World {
     }
   }
 
+  /** Pods shuttle while the people mover is open. A breakdown parks them. */
+  private animateLinks(game: Game) {
+    const moving = !game.linkStopped('people_mover')
+    const t = performance.now() / 1000
+    this.tilesGroup.traverse((obj) => {
+      if (obj.name !== 'pod') return
+      const home = typeof obj.userData.home === 'number' ? obj.userData.home : 0
+      obj.position.x = moving ? home + Math.sin(t * 1.3) * CELL * 0.22 : home
+      const glass = obj.parent?.getObjectByName('pod-glass')
+      if (glass) glass.position.x = obj.position.x
+    })
+  }
+
   render(game: Game) {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
@@ -1784,6 +1882,7 @@ export class World {
     this.resize()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
+    this.animateLinks(game)
     this.syncGhost(game)
     this.syncEntities(game)
     this.syncSites(game)

@@ -1,3 +1,4 @@
+import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
 import { HUB_UPGRADES } from '../hub/index.ts'
 import type { LandPlotConfig } from '../land/types.ts'
 import type {
@@ -176,15 +177,20 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
   },
 ]
 
-/** XP thresholds → field level 1–5 (airline tier unlock spine). */
-export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700] as const
+/**
+ * XP thresholds → field level 1–7.
+ * Levels 1–5 stay the airline ladder. 6 and 7 open the transfer bus and the people mover.
+ */
+export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700, 1_100, 1_600] as const
+export const FIELD_LEVEL_CAP = FIELD_LEVEL_XP.length - 1
 
-export function fieldLevelFromXp(xp: number): AirlineTier {
-  if (xp >= FIELD_LEVEL_XP[5]) return 5
-  if (xp >= FIELD_LEVEL_XP[4]) return 4
-  if (xp >= FIELD_LEVEL_XP[3]) return 3
-  if (xp >= FIELD_LEVEL_XP[2]) return 2
-  return 1
+export function fieldLevelFromXp(xp: number): number {
+  const safe = Number.isFinite(xp) ? xp : 0
+  let level = 1
+  for (let i = 1; i < FIELD_LEVEL_XP.length; i++) {
+    if (safe >= FIELD_LEVEL_XP[i]) level = i
+  }
+  return level
 }
 
 export const AIRLINE_TIER_META: Record<
@@ -280,6 +286,9 @@ export const TILE_UTILITY: Partial<Record<Tile, { power?: number; water?: number
   deice: { power: 1, water: 1 },
   police: { power: 1 },
   guard: { power: 1 },
+  mover: { power: 3 },
+  xferbus: { power: 1 },
+  skywalk: { power: 1 },
 }
 
 export const RAIL_CITY_COST = 22_000
@@ -911,6 +920,30 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Apron buses ferry remote-stand pax. Without this, remote stands walk the pavement (slow + traffic).',
   },
   {
+    tool: 'people_mover',
+    tile: 'mover',
+    name: CONNECTIVITY_CATALOG.people_mover.name,
+    cost: CONNECTIVITY_CATALOG.people_mover.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.people_mover.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.people_mover.blurb} ${CONNECTIVITY_CATALOG.people_mover.catch} $${CONNECTIVITY_CATALOG.people_mover.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'xfer_bus',
+    tile: 'xferbus',
+    name: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.name,
+    cost: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.airside_transfer_bus_depot.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.blurb} ${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.catch} $${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
+    tool: 'skywalk',
+    tile: 'skywalk',
+    name: CONNECTIVITY_CATALOG.skywalk.name,
+    cost: CONNECTIVITY_CATALOG.skywalk.cost,
+    minFieldLevel: CONNECTIVITY_CATALOG.skywalk.fieldLevel,
+    blurb: `${CONNECTIVITY_CATALOG.skywalk.blurb} ${CONNECTIVITY_CATALOG.skywalk.catch} $${CONNECTIVITY_CATALOG.skywalk.upkeepPerDay.toLocaleString('en-US')}/day.`,
+  },
+  {
     tool: 'deice',
     tile: 'deice',
     name: 'De-ice pad',
@@ -1175,6 +1208,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   deice: 'De-ice',
   bus: 'Bus',
   term_bus: 'Term bus',
+  people_mover: 'People mover',
+  xfer_bus: 'Transfer bus',
+  skywalk: 'Skywalk',
   rail: 'Rail',
   clear: 'Clear',
 }

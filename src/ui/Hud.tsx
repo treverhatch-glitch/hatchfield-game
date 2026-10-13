@@ -16,6 +16,7 @@ import {
   JANITOR_HIRE,
   RESEARCHER_HIRE,
   DESK_STAFF_HIRE,
+  FIELD_LEVEL_CAP,
   LAND,
   LOAN_PRODUCTS,
   AIRLINE_TIER_META,
@@ -77,7 +78,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt'],
+    tools: ['premade', 'terminal', 'term_bus', 'people_mover', 'xfer_bus', 'skywalk', 'belt'],
   },
   {
     id: 'ops',
@@ -285,7 +286,7 @@ export function Hud({ game }: { game: Game }) {
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
         >
           Field Lv {xp.level}
-          {xp.level < 5 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
+          {xp.level < FIELD_LEVEL_CAP ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
         </div>
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
@@ -1172,7 +1173,7 @@ export function Hud({ game }: { game: Game }) {
                     return (
                       <p className="muted eco-line">
                         Field Level {prog.level}
-                        {prog.level < 5
+                        {prog.level < FIELD_LEVEL_CAP
                           ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to Lv${prog.level + 1})`
                           : ` · ${prog.xp} XP · max`}
                         {' · '}

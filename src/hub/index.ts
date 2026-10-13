@@ -22,7 +22,14 @@ export type {
   Movement,
 } from './types.ts'
 export { bankCrowd, bankDemand, buildBanks } from './banks.ts'
-export { bagTransferMinutes, evaluateConnection, gateMetres, minimumConnectionTime } from './connect.ts'
+export {
+  assistedWalkMinutes,
+  bagTransferMinutes,
+  evaluateConnection,
+  gateMetres,
+  linkTravelMinutes,
+  minimumConnectionTime,
+} from './connect.ts'
 export { connectionMap, gatePairs } from './map.ts'
 export { missPenalty } from './miss.ts'
 export { connectingIndexes, scaledShare, transferShare } from './share.ts'
