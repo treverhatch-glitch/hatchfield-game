@@ -4,22 +4,34 @@ Parking lot for features that deepen the loops. Nothing here is committed until 
 
 ## Layout skill (steal from Airport CEO verbs)
 
-- **Baggage belt lite** — ~~paint check-in → makeup → bay; broken path = late bags + heat.~~ Shipped (E1). → [EXECUTION](./EXECUTION.md)
+- **Baggage belt lite** — ~~paint check-in → makeup → bay; broken path = late bags + Standing.~~ Shipped (E1). → [EXECUTION](./EXECUTION.md)
+- **Premade terminal ceilings** — starter halls have pax / security / bag caps; upgrade or replace with custom. → [VISION living logistics](./VISION.md#living-logistics-picture-manor-lords-energy-on-an-airport)
 - **International zone** — passport room; intl flights need it; domestic uses secure only.
 - **Franchise brands** — CounterBite / SkyGlass: sign fee → hall spend mult + rare brand crisis.
-- **Custom terminal painter** — walls rewrite the hall graph (skill ceiling; after belts).
+- **Custom terminal painter** — walls rewrite the hall graph (skill ceiling; after belts + premade caps).
 - **Stairs / belt loader GSE** — visible boarding hardware on widebody/heavy.
+
+## City edge, guard posts, living ops (Manor Lords on apron)
+
+Committed direction — see [VISION](./VISION.md#living-logistics-picture-manor-lords-energy-on-an-airport).
+
+- **Guard post** — screens city trucks, contractors, fuel tankers; missing/thin = queue or incident.
+- **City cargo trucks** — spawn off-map → road → guard → cargo facility → plane pipeline (not teleport freight).
+- **Schedule prep** — long + short horizon; cargo vs pax decides which assets stage early.
+- **Fuel / GSE capacity** — bowsers have tank volume; farms have stock; refill via contract or bulk buy.
+- **Contractor vans** — optional build delay: watch them drive in and work (never soft-lock first hour).
+- **Avoid ACEO trap** — full construction-materials sim is opt-in/late; ops logistics is the main “life” upgrade.
 
 ## Cargo landside infrastructure
 
 Parallel to pax hall/belts — see [VISION Path B](./VISION.md#path-b--cargo-equal-citizen-not-dlc) and [PROGRESSION cargo ladder](./PROGRESSION.md#cargo-ladder-parallel-to-pax).
 
-- **Cargo truck gate** — inbound road choke; queues if undersized.
+- **Cargo truck gate / guard** — inbound road choke; queues if undersized.
 - **Cargo rail spur** — heavy rail (distinct from pax city rail); high volume, high upkeep.
 - **Screening / sort building** — X-ray / customs machines; cargo’s “security choke.”
 - **Warehouse / makeup** — stage ULDs before freighter arrival.
 - **Cargo stands + loader GSE** — away from pax jetways; congestion still shared on taxi.
-- **Broken chain** — missing screen or rail → late uplift → cargo heat dip + fee cut (mirror belt lite).
+- **Broken chain** — missing screen or rail → late uplift → On-time dip + fee cut (mirror belt lite).
 - **Start choice** — New Game: **Passenger focus / Cargo focus / Hybrid** (city/factory plots bias letters; starter kit variants).
 
 ## Emergency seasons (random letters)
