@@ -2,6 +2,7 @@ import type { InboundState } from '../inbound/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
+import type { PlaytestYearSave } from '../reports/book.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -1005,6 +1006,8 @@ export interface GameSnapshot {
   rival?: string
   /** Late-game disruption engine. Missing on older saves. The alert stack shows the card. */
   disruptions?: string
+  /** Year-end disruption, hub, and award counters. Missing on older saves. */
+  playtestYear?: PlaytestYearSave
 }
 
 /** A placed building that is still a construction site. */
