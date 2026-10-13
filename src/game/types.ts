@@ -751,7 +751,16 @@ export interface TerminalFit {
   tier?: 1 | 2 | 3
   /** Painted floor. Null cells are bare shell. */
   zones?: (string | null)[][]
-  items?: { id: string; def: string; c: number; r: number; wear: number; bundle?: boolean }[]
+  items?: {
+    id: string
+    def: string
+    c: number
+    r: number
+    wear: number
+    bundle?: boolean
+    rot?: number
+    revenue?: number
+  }[]
   /** Wayfinding signs. Each one extends the pathfinding junction cap. */
   signs?: number
   bagAllowance?: number
