@@ -15,6 +15,14 @@ Flags: `--out <dir>` (default `/workspace/qa/<label>-<scenario>`), `--fps-floor 
 `--video 0` to skip recording, `--ramp <n>` to sign only that many passenger carriers (no extra cargo),
 `--long` to run at least 12 in-game days. Output: `result.json`, numbered screenshots, `run.webm`.
 
+`--profile` adds a 3 s profile after every FPS probe, stored in `result.json` as `setup.profiles` and printed to the log:
+`js` is ms/frame per span from `src/core/perf.ts` (sim.tick, world.tiles/entities/sites/wr/gl, hall.sync/gl, plus
+`sim.<method>` for the big sub-ticks). `gpu` is the same span set with `gl.finish()` after each draw. `cpu` is Chrome
+CPU-profile self time by function. In the console, `window.__perf.enabled = true` and later `__perf.report()` do the same by hand.
+
+Reading a profile under SwiftShader: if the main thread is mostly `(idle)` while frames are slow, the cost is raster in
+Chrome's GPU process (MSAA, overdraw, HUD repaints), not game JS.
+
 ## What the bot does
 
 1. Title → **New game** → **Passenger start** → Economy → **Starter kit** (prefab terminal I) through the real UI.
