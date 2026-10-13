@@ -8,6 +8,7 @@ import {
   createAircraft,
   createBridges,
   disposeAircraftLibrary,
+  bridgeMirror,
   bridgeYawToward,
   loadAircraftQuality,
   ParkedFleet,
@@ -72,6 +73,25 @@ export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
 
 function wu(meters: number): number {
   return meters * WORLD_PER_METER
+}
+
+/** Nearest terminal cell, or null when the stand is too far for a bridge. */
+function nearestTerminal(game: Game, stand: Vec): Vec | null {
+  let best: Vec | null = null
+  let bestD = Infinity
+  for (let r = 0; r < SIZE; r++) {
+    const row = game.tiles[r]
+    if (!row) continue
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] !== 'terminal') continue
+      const d = Math.abs(c - stand.c) + Math.abs(r - stand.r)
+      if (d < bestD) {
+        bestD = d
+        best = { c, r }
+      }
+    }
+  }
+  return best && bestD <= 8 ? best : null
 }
 
 /** Length, height, width in meters. Aircraft are the only meshes with a visual exaggeration. */
@@ -1385,7 +1405,12 @@ export class World {
       const jetway = f.craft !== 'helo' && f.phase === 'parked' && game.standAccessAt(cell) === 'jetway'
       const bridges = mesh.getObjectByName('bridges')
       if (jetway) {
-        if (!bridges) mesh.add(createBridges(f.airframeId || 'b738'))
+        const term = nearestTerminal(game, cell)
+        const side = term ? bridgeMirror(f.heading, cell, term) : 1
+        if (!bridges || bridges.userData.side !== side) {
+          if (bridges) mesh.remove(bridges)
+          mesh.add(createBridges(f.airframeId || 'b738', side))
+        }
       } else if (bridges) {
         mesh.remove(bridges)
       }

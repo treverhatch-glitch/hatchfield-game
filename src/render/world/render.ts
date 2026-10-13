@@ -10,6 +10,7 @@ import {
   runwayLightSpots,
   runwayPaint,
   runways,
+  standPads,
   standPaint,
   stands,
   taxiLightSpots,
@@ -19,7 +20,7 @@ import {
 import { posesFrom, HallCrowd } from './hallCrowd'
 import { fitShadow, groundFocus } from './lod'
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
-import { paintGeometry, quadsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
+import { paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
 import { disposeTerminalShared, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
 import { makeTextures, type WorldTextures } from './textures'
@@ -263,6 +264,15 @@ export class WorldRenderer {
     }
     const rws = runways(view)
     const st = stands(view)
+    const pads = standPads(view, st)
+    if (pads.length) {
+      const geo = rectsGeometry(pads, 0.02)
+      this.staticGeos.push(geo)
+      const mesh = new THREE.Mesh(geo, this.surfaceMats.get('apron')!)
+      mesh.receiveShadow = true
+      mesh.name = 'surface-stand-pad'
+      this.staticGroup.add(mesh)
+    }
     const paints = [...rws.flatMap(runwayPaint), ...taxiPaint(view), ...standPaint(st), ...roadPaint(view)]
     if (paints.length) {
       const geo = paintGeometry(paints)

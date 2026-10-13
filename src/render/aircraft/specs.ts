@@ -3,7 +3,7 @@
  * Length, span, height, wheelbase, and doors come from the verified pack in
  * realworld.ts. One world scale: meters × WORLD_PER_METER for buildings,
  * people, vehicles, and pavement. Aircraft multiply by AIRCRAFT_VISUAL_SCALE
- * on top of that so they read larger, and stand clearance uses the same factor.
+ * on top of that so they read larger, and the stand limit box uses the same factor.
  */
 
 import type { IcaoCode, RealDoor } from './realworld'
@@ -13,8 +13,9 @@ import { REAL_AIRFRAMES } from './realworld'
 export const WORLD_PER_METER = 0.45
 
 /**
- * Aircraft only. 1.2 keeps a 737 recognisable beside a 1.75 m person
- * without swallowing the stand. Stands and wing gaps use this same factor.
+ * Aircraft only. 1.2 keeps a 737 recognisable beside a 1.75 m person.
+ * Stand limit lines use the same factor so the painted box stays around the
+ * drawn wings. Wing-disc clearance stays in real meters.
  */
 export const AIRCRAFT_VISUAL_SCALE = 1.2
 
@@ -33,6 +34,30 @@ export const CELL = METERS_PER_CELL * WORLD_PER_METER
 
 /** Code-C wingtip-to-obstacle clearance, meters. Applied on top of the visual span. */
 export const WING_GAP_M = 4.5
+
+/**
+ * Painted stand limit, real meters, before AIRCRAFT_VISUAL_SCALE.
+ * Width is across the wings. Depth is nose to tail.
+ * Width already holds the ICAO wingtip clearance (code A/B 3 m, C 4.5 m, D–F 7.5 m)
+ * outside the code's span limit, and depth fits the longest type in that class
+ * with nose and tail room.
+ *
+ * Code C is the 36 m span class: 36 + 4.5 + 4.5 = 45 m wide, 52 m deep (A321 is 44.5 m).
+ * Code E is the 65 m class: 65 + 7.5 + 7.5 = 80 m wide, 82 m deep (777-300ER is 73.9 m).
+ * Code F is the 80 m class: 80 + 7.5 + 7.5 = 95 m wide, 88 m deep (A380 is 72.7 × 79.8).
+ */
+export const STAND_ENVELOPE: Record<
+  IcaoCode,
+  { widthM: number; depthM: number; clearanceM: number }
+> = {
+  A: { widthM: 21, depthM: 28, clearanceM: 3 },
+  B: { widthM: 30, depthM: 42, clearanceM: 3 },
+  C: { widthM: 45, depthM: 52, clearanceM: 4.5 },
+  D: { widthM: 67, depthM: 70, clearanceM: 7.5 },
+  E: { widthM: 80, depthM: 82, clearanceM: 7.5 },
+  F: { widthM: 95, depthM: 88, clearanceM: 7.5 },
+  H: { widthM: 20, depthM: 20, clearanceM: 3 },
+}
 
 export type FuselageFamily = 'tube' | 'rearjet' | 'point' | 'prop' | 'helo'
 export type WingletKind = 'none' | 'fence' | 'blended' | 'raked'
