@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ApronInspect, Game } from '../game/sim'
 import { World } from '../render/world'
+import { getUiState, subscribeUi } from './uiStore'
 
 export function Field({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const worldRef = useRef<World | null>(null)
   const [inspect, setInspect] = useState<ApronInspect | null>(null)
+  const hudHidden = useSyncExternalStore(subscribeUi, () => getUiState().hidden, () => false)
 
   useEffect(() => {
     const canvas = ref.current
@@ -30,19 +32,8 @@ export function Field({ game }: { game: Game }) {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (e.key === 'Escape') {
-        game.exitHall()
-        return
-      }
-      if (e.key === 'h' || e.key === 'H') {
-        game.setView(game.view === 'hall' ? 'apron' : 'hall')
-        return
-      }
+      if (e.defaultPrevented) return
       if (game.view !== 'apron') return
-      if (e.key === 'r' || e.key === 'R') {
-        game.rotatePiece()
-        return
-      }
       keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key)
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault()
@@ -123,8 +114,8 @@ export function Field({ game }: { game: Game }) {
   return (
     <div className="field-wrap">
       <canvas ref={ref} className="field" />
-      {inspect && game.view === 'apron' ? (
-        <aside className="inspect-card" data-kind={inspect.kind}>
+      {inspect && game.view === 'apron' && !hudHidden ? (
+        <aside className="inspect-card" data-kind={inspect.kind} data-hud-transient="1" data-hud-role="tooltip">
           {inspect.kind === 'flight' ? (
             <>
               <header>

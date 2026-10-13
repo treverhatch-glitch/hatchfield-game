@@ -69,10 +69,12 @@ button {
 
 .inspect-card {
   position: absolute;
-  /* Sit beside the First hour checklist (also top-left) so the jet card stays readable. */
-  left: 312px;
-  top: 72px;
-  width: min(280px, 86vw);
+  /* Left gutter, under the status strip — a hover tooltip, not a panel. */
+  left: 12px;
+  top: calc(min(32px, 3vh) + 8px);
+  width: min(220px, calc(20vw - 20px));
+  max-height: min(240px, 28vh);
+  overflow: auto;
   z-index: 18;
   pointer-events: none;
   background: rgba(10, 20, 16, 0.92);
@@ -273,9 +275,11 @@ button {
 
 .guest-card {
   position: absolute;
-  left: 16px;
-  bottom: 110px;
-  width: min(260px, 90vw);
+  left: 12px;
+  bottom: 64px;
+  width: min(220px, calc(20vw - 20px));
+  max-height: 28vh;
+  overflow: auto;
   background: rgba(10, 20, 16, 0.9);
   border: 1px solid rgba(201, 162, 39, 0.4);
   border-radius: 10px;
@@ -1306,9 +1310,10 @@ button {
 
 .hall-chrome {
   position: absolute;
-  top: 8px;
-  left: 16px;
-  right: 340px;
+  top: calc(min(32px, 3vh) + 6px);
+  left: 12px;
+  right: auto;
+  max-width: calc(20vw - 20px);
   pointer-events: none;
   z-index: 2;
 }
