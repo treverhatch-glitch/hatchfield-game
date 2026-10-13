@@ -182,11 +182,22 @@ import {
   readHintSettings,
   sanitizeHintPrefs,
   setAllHintsEnabled,
+  severityOf,
   visibleHints,
   writeHintSettings,
   type HintPrefs,
 } from './hints.ts'
 import { HINT_REFRESH_SEC } from './hintsData.ts'
+import {
+  claimHoldUnits,
+  CURB_REACH,
+  OPENING_FIRST_SLOTS,
+  OPENING_SEC,
+  openingSlotCap,
+  openingSpacingBonus,
+  STARTER_CAPACITY,
+} from './openingData.ts'
+import { nextSessionHint } from './sessionHints.ts'
 import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
 import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
@@ -440,6 +451,10 @@ import {
   type TycoonPulse,
   type TycoonView,
 } from '../tycoon/index.ts'
+import { PLAYTEST_YEAR_DAYS } from '../reports/config.ts'
+import { YearPlaytestBook } from '../reports/book.ts'
+import type { YearAwardInput } from '../reports/sources.ts'
+import { mergePlaytestAndTycoon, type PlaytestYearReport, type TycoonYearLike } from '../reports/yearEnd.ts'
 import {
   createEconomyAdapter,
   type EconomyAdapter,
@@ -967,6 +982,8 @@ export class Game {
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
+  /** Year-end card: finance plus disruption, hub, and award counters. */
+  playtestYear = new YearPlaytestBook()
   /** Sim-clock of the last city levy. Kept so older saves do not bill a backlog. */
   levyMark = 0
   /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
@@ -1147,6 +1164,8 @@ export class Game {
   mechanicCool = 0
   /** First-session coach card dismissed (or auto-cleared after first takeoff). */
   coachDismissed = false
+  /** The player opened the build tray (picked a tool other than pan). */
+  buildTrayOpened = false
   private firstTakeoffNoted = false
   /** Active airline field ask (CEO-style task clock). */
   fieldTask: FieldTask | null = null
@@ -1313,6 +1332,7 @@ export class Game {
     this.holidayPeakHook = defaultHolidayPeak
     this.payrollCool = 30
     this.payrollDay = 0
+    this.playtestYear.reset(0)
     this.levyMark = 0
     this.bank = new Bank(0)
     this.fees = { ...DEFAULT_FEE_SCHEDULE }
@@ -1420,6 +1440,7 @@ export class Game {
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
+    this.buildTrayOpened = false
     // New games start with All hints enabled unless the pregame box was unchecked.
     this.hintPrefs = newGameHintPrefs(this.enableHintsAtStart)
     writeHintSettings(this.hintPrefs)
@@ -2859,6 +2880,11 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
+    // Opening: the first small carrier flies regional metal, which the prefab can turn.
+    // A second signature, or the clock leaving the opening, brings the normal mix back.
+    if (this.clock < OPENING_SEC && this.signed.length <= 1 && a.kind === 'pax' && a.tier <= 2) {
+      return 'regional'
+    }
     // Summit / EXFED-class — heavy strip + heavy_pack opens widebody (A380 in the pool).
     if (a.req.heavyRunway && this.hasHeavyRunway()) return 'widebody'
     if (a.persona === 'budget' || a.id === 'northline' || a.procedural) {
@@ -3692,6 +3718,20 @@ export class Game {
     return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
 
+  /**
+   * One curb beside a hall is a handful of drop-off stalls.
+   * Bus, rail, and lots still carry the mid-game; a single road does not.
+   */
+  curbDropoffStalls(): number {
+    if (!this.fits.length) return 0
+    const near = tilesOf(this.tiles, 'road').some((road) =>
+      this.fits.some(
+        (fit) => Math.abs(fit.origin.c - road.c) + Math.abs(fit.origin.r - road.r) <= CURB_REACH,
+      ),
+    )
+    return near ? STARTER_CAPACITY.curbStalls : 0
+  }
+
   /** @deprecated alias — expense is the only "potential" now. */
   landsidePotential(): number {
     return this.landsideUpkeep()
@@ -3704,9 +3744,11 @@ export class Game {
       const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
       beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
     }
+    const curb = this.curbDropoffStalls()
     return Math.max(
       1,
       beds +
+        curb +
         tilesOf(this.tiles, 'park_s').length * 3 +
         tilesOf(this.tiles, 'park_l').length * 5 +
         tilesOf(this.tiles, 'park_g').length * 7 +
@@ -4191,6 +4233,7 @@ export class Game {
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
+      buildTrayOpened: this.buildTrayOpened,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
@@ -4214,6 +4257,7 @@ export class Game {
       tycoon: this.tycoon.snapshot(),
       rival: this.rival?.serialize(),
       disruptions: this.disruptions.save(),
+      playtestYear: this.playtestYear.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -4278,6 +4322,7 @@ export class Game {
       this.signed = s.signed ?? []
       this.flightsDone = s.flightsDone
       this.paxServed = s.paxServed
+      this.playtestYear.restore(s.playtestYear, this.paxServed)
       this.revenue = s.revenue
       this.securityIncidents = s.securityIncidents ?? 0
       this.reputation = s.reputation ?? 40
@@ -4370,6 +4415,7 @@ export class Game {
       // The save wins; older saves fall back to the settings mirror, then to defaults.
       this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
       writeHintSettings(this.hintPrefs)
+      this.buildTrayOpened = s.buildTrayOpened ?? false
       this.alerts.reset()
       this.planAdvice = { key: '', list: [] }
       this.firstTakeoffNoted = this.flightsDone >= 1
@@ -4812,6 +4858,8 @@ export class Game {
     }
     this.tool = tool
     this.runwayStart = null
+    if (tool !== 'pan') this.buildTrayOpened = true
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -7133,11 +7181,34 @@ export class Game {
     this.refreshAdvice()
   }
 
+  private sessionSnapshot() {
+    const fieldUp = runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+    return {
+      fieldUp,
+      signed: this.signed.length,
+      offerWaiting: this.offer != null,
+      buildTrayOpened: this.buildTrayOpened,
+      deskStaff: this.deskStaff,
+      needsDesk: this.startFocus !== 'cargo' && this.fits.length > 0,
+      flightsDone: this.flightsDone,
+    }
+  }
+
+  private withSessionHint(list: Advice[]): Advice[] {
+    const session = nextSessionHint(this.sessionSnapshot())
+    return session ? mergeHints(list, [session]) : list
+  }
+
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
     const powerNotes = this.powerAdviceItems()
     if (!fit) {
-      this.advice = [...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems(), ...powerNotes]
+      this.advice = this.withSessionHint([
+        ...this.groundNotes,
+        ...this.cargoNotes,
+        ...this.scaleAdviceItems(),
+        ...powerNotes,
+      ])
       this.keepApronFocus(powerNotes)
       this.appendNegotiationAdvice()
       return
@@ -7185,6 +7256,7 @@ export class Game {
       .filter((it) => !it.bundle && outletSpec(it.def))
       .map((it) => ({ c: it.c, r: it.r }))
     hall.push(...seatingAdvice(this.diningStoodRecently(fit), outletCells))
+    const session = nextSessionHint(this.sessionSnapshot())
     this.advice = mergeHints(
       hall,
       standingNotes,
@@ -7192,6 +7264,7 @@ export class Game {
       this.cargoNotes,
       this.scaleAdviceItems(),
       powerNotes,
+      session ? [session] : [],
     )
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
@@ -7238,9 +7311,17 @@ export class Game {
     return this.planAdvice.list
   }
 
-  /** Hints the panel and its badge show, after the player's mutes. Worst first. */
+  /**
+   * Hints the panel and its badge show, after the player's mutes. Worst first.
+   * While a first-session hint is active, it is the only note — plus any hard
+   * fail, which is never hidden behind the next-step tip.
+   */
   visibleHints(): Advice[] {
-    return visibleHints(this.advice, this.hintPrefs)
+    const shown = visibleHints(this.advice, this.hintPrefs)
+    const session = shown.find((a) => hintKind(a.id) === 'session')
+    if (!session) return shown
+    const hard = shown.filter((a) => a !== session && severityOf(a) === 'blocker')
+    return [...hard, session]
   }
 
   /** "Don't show hints of this type." Turns All hints enabled off. */
@@ -10417,7 +10498,8 @@ export class Game {
     this.grantFieldXp(12 + a.tier * 4, 'contract')
     this.noteCommercialSign(id, a)
     this.pullCarrierFromRival(id, a.name)
-    this.seedScheduleForAirline(id, 3)
+    const opening = this.signed.length <= 1 && this.clock < OPENING_SEC
+    this.seedScheduleForAirline(id, opening ? OPENING_FIRST_SLOTS : 3)
     const leadDays = this.commercialLead[id]?.leadDays ?? 0
     const held = this.deposits[id]?.held ?? 0
     const depositBit =
@@ -10427,6 +10509,7 @@ export class Game {
       `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.${leadBit}${depositBit}`,
       'good',
     )
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -10456,20 +10539,37 @@ export class Game {
     if (this.isBanned(airlineId)) return
     const a = this.airline(airlineId)
     let t = this.clock + 12 + Math.random() * 10
+    // Lead-gated flights sit past the opening. They must not shove the
+    // opening bank forward, and the opening cap must not erase them.
+    const openingLimit = a.kind === 'cargo' ? null : openingSlotCap(this.clock)
     const last = this.schedule
       .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
+      .filter((s) => openingLimit == null || s.eta < OPENING_SEC)
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
     const gate = this.leadGateClock(airlineId)
     if (gate > t) t = gate
+    const inOpeningBank = t < OPENING_SEC
     const hub = this.isHub(airlineId)
     const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
-    const spacing = a.kind === 'cargo'
-      ? 22 + Math.random() * 12
-      : hub
-        ? 12 + Math.random() * 8
-        : 18 + Math.random() * 10
-    const n = hub ? scaled + 1 : scaled
+    const spacing =
+      (a.kind === 'cargo'
+        ? 22 + Math.random() * 12
+        : hub
+          ? 12 + Math.random() * 8
+          : 18 + Math.random() * 10) + (inOpeningBank ? openingSpacingBonus(this.clock) : 0)
+    let n = hub ? scaled + 1 : scaled
+    const limit = inOpeningBank ? openingLimit : null
+    if (limit != null) {
+      const openPax = this.schedule.filter(
+        (s) =>
+          (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
+          this.airline(s.airline).kind !== 'cargo' &&
+          s.eta < OPENING_SEC,
+      ).length
+      n = Math.max(0, Math.min(n, limit - openPax))
+    }
+    if (n <= 0) return
     let eta = t
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
@@ -10914,14 +11014,18 @@ export class Game {
     if (this.scheduleAuto && this.schedulePlanCool <= 0 && this.signed.length) {
       this.schedulePlanCool = 18
       const open = this.openSchedule()
-      const want = bankTarget(
-        4 + this.runwayStripCount() * 2,
-        this.scheduleCap() - 2,
-        this.clock,
-        this.hasResearch('night_bank'),
-        this.holidayPeakHook,
-      )
-      if (open.length < want) {
+      const opening = openingSlotCap(this.clock)
+      const want =
+        opening ??
+        bankTarget(
+          4 + this.runwayStripCount() * 2,
+          this.scheduleCap() - 2,
+          this.clock,
+          this.hasResearch('night_bank'),
+          this.holidayPeakHook,
+        )
+      const banked = opening == null ? open.length : open.filter((s) => s.eta < OPENING_SEC).length
+      if (banked < want) {
         const pool = this.signed.filter((id) => !this.isBanned(id))
         if (pool.length) {
           // Bias toward cargo if freighters are starving vs pax bank.
@@ -12048,6 +12152,7 @@ export class Game {
       `Hired desk agent #${this.deskStaff}. Bodies cover check-in, security, and gate.`,
       'good',
     )
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -12311,12 +12416,82 @@ export class Game {
     }
   }
 
+  /**
+   * Hotel nights billed for missed connections this year.
+   * PR #70 can call this from its miss path. The year report reads the counter.
+   * A missing caller leaves the count at zero.
+   */
+  noteMissedConnectionNights(nights: number): void {
+    this.playtestYear.noteNights(nights)
+  }
+
+  /** Connecting passengers who completed or missed, for the open year. */
+  noteHubConnections(completed: number, missed: number): void {
+    this.playtestYear.noteConnections(completed, missed)
+  }
+
+  /** One disruption. `revenueImpact` is estimated dollars lost, never a credit. */
+  noteDisruption(kind: string, revenueImpact: number, day = Math.floor(Math.max(0, this.clock) / 180)): void {
+    this.playtestYear.noteDisruption(kind, revenueImpact, day)
+  }
+
+  /** An award earned this year. PR #63 ids pick up a one-line reason on the card. */
+  noteYearAward(award: YearAwardInput): void {
+    this.playtestYear.noteAward(award)
+  }
+
+  dismissPlaytestYear(): void {
+    this.playtestYear.dismiss()
+    const dismissTycoon = (this as { dismissYearReport?: () => void }).dismissYearReport
+    if (typeof dismissTycoon === 'function') dismissTycoon.call(this)
+    this.emit()
+  }
+
+  /**
+   * Open year card. When PR #63's `pendingYearReport` is present for the same
+   * year, its finance and awards replace the bank estimate and the disruption
+   * and hub sections stay.
+   */
+  playtestYearCard(): PlaytestYearReport | null {
+    const readTycoon = (this as { pendingYearReport?: () => TycoonYearLike | null }).pendingYearReport
+    const tycoon = typeof readTycoon === 'function' ? readTycoon.call(this) : null
+    return mergePlaytestAndTycoon(this.playtestYear.pending, tycoon)
+  }
+
   tickPayroll(_dt: number) {
     const day = Math.floor(Math.max(0, this.clock) / 180)
     if (day <= this.payrollDay) return
     const from = this.payrollDay
     this.payrollDay = day
-    for (let completed = from; completed < day; completed++) this.closeOperatingDay(completed)
+    for (let completed = from; completed < day; completed++) {
+      this.closeOperatingDay(completed)
+      this.rollPlaytestYear(completed)
+    }
+  }
+
+  private rollPlaytestYear(completedDay: number) {
+    const wear = this.avgWear()
+    const cleanliness = Math.max(0, Math.min(100, 100 - Math.max(wear.bath, wear.sec)))
+    const closing = (completedDay + 1) % PLAYTEST_YEAR_DAYS === 0
+    const fromDay = closing ? completedDay + 1 - PLAYTEST_YEAR_DAYS : 0
+    const entries = closing
+      ? this.bank
+          .entriesBetween(fromDay * SIM_MINUTES_PER_GAME_DAY, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY)
+          .map((entry) => ({ category: entry.category, amount: entry.amount }))
+      : []
+    const report = this.playtestYear.observeDay(
+      {
+        completedDay,
+        passengers: this.paxServed,
+        satisfaction: this.reputation,
+        cleanliness,
+        entries,
+      },
+      this,
+    )
+    if (!report) return
+    this.pushNews(`Year ${report.year} report is ready.`, 'ok')
+    this.emit()
   }
 
   /**
@@ -14943,7 +15118,11 @@ export class Game {
           const fit = this.roomsAt(f.stand)
           if (fit) {
             const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
-            const claimCap = rooms * (fit.premade ? 55 : 80)
+            const claimCap = claimHoldUnits(
+              Boolean(fit.premade),
+              fit.bagAllowance ?? rooms * (fit.premade ? 55 : 80),
+              rooms,
+            )
             const overflow = Math.max(0, units - claimCap)
             if (overflow > 0.5) {
               const book = this.ensureBagBook(f)
@@ -16714,6 +16893,7 @@ export class Game {
           if (!this.firstTakeoffNoted && f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.firstTakeoffNoted = true
             this.coachDismissed = true
+            this.refreshAdvice()
             this.reputation = Math.min(100, this.reputation + 2)
             this.pushNews(
               `First turn in the book — ${f.flightNo} airborne. Field Rating ${this.fieldRating()}. Airlines will start asking for upgrades; hangar-side pads unlock Guard.`,

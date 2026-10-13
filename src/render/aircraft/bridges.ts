@@ -12,10 +12,12 @@ function mat(color: string): THREE.Material {
  * Cab floor sits on the doorway sill from the pack door station.
  * The terminal agent should add this group only while the aircraft is parked at a jetway.
  */
-export function createBridges(airframeId: string): THREE.Group {
+/** `side` is +1 on the port doors and -1 when the terminal sits to starboard. */
+export function createBridges(airframeId: string, side: 1 | -1 = 1): THREE.Group {
   const spec = getAircraftSpec(airframeId)
   const root = new THREE.Group()
   root.name = 'bridges'
+  root.userData.side = side
   root.scale.setScalar(aircraftWorldPerMeter())
   const glass = mat('#7ec3e8')
   const shell = mat('#d5dde4')
@@ -25,14 +27,14 @@ export function createBridges(airframeId: string): THREE.Group {
     const cab = new THREE.Mesh(unitBox(), glass)
     cab.name = stop.upper ? 'bridge-upper' : 'bridge'
     cab.scale.set(stop.cabW, stop.cabH, 1.6)
-    cab.position.set(stop.x, stop.cabY, skin + 0.8)
+    cab.position.set(stop.x, stop.cabY, side * (skin + 0.8))
     root.add(cab)
     const tunnel = new THREE.Mesh(unitBox(), shell)
     tunnel.name = 'bridge-tunnel'
     tunnel.scale.set(stop.cabW * 0.86, stop.cabH * 0.78, stop.tunnelM)
-    tunnel.position.set(stop.x, stop.cabY, skin + 1.6 + stop.tunnelM / 2)
+    tunnel.position.set(stop.x, stop.cabY, side * (skin + 1.6 + stop.tunnelM / 2))
     root.add(tunnel)
-    const footZ = skin + 1.6 + stop.tunnelM
+    const footZ = side * (skin + 1.6 + stop.tunnelM)
     const column = new THREE.Mesh(unitCylinder(6), steel)
     column.name = 'bridge-column'
     column.scale.set(0.28, Math.max(0.4, stop.sillM), 0.28)

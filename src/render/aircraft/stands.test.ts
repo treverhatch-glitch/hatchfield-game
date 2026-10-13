@@ -5,11 +5,25 @@ import {
   CELL,
   METERS_PER_CELL,
   MODEL_SPECS,
+  STAND_ENVELOPE,
   WORLD_PER_METER,
   aircraftWorldPerMeter,
   getAircraftSpec,
 } from './specs'
-import { bridgeStops, bridgeYawToward, doorBoxes, gatePreviewId, standAccepts, standLetter, wingDiscsClash, type IcaoCode } from './stands'
+import {
+  bridgeDockMeters,
+  bridgeMirror,
+  bridgeStops,
+  bridgeYawToward,
+  doorBoxes,
+  envelopeLetter,
+  envelopeWorld,
+  gatePreviewId,
+  standAccepts,
+  standLetter,
+  wingDiscsClash,
+  type IcaoCode,
+} from './stands'
 
 const LETTERS: IcaoCode[] = ['A', 'B', 'C', 'D', 'E', 'F']
 
@@ -134,6 +148,48 @@ describe('stand class compatibility', () => {
     expect(wingDiscsClash({ c: 13, r: 21 }, narrow, [{ ...west, spanM: narrow }], [])).toBe(true)
     expect(wingDiscsClash({ c: 12, r: 22 }, narrow, [{ ...west, spanM: narrow }], [])).toBe(true)
     expect(wingDiscsClash({ c: 12, r: 26 }, heavy, [{ ...west, spanM: heavy }], [])).toBe(false)
+  })
+
+  it('sizes each stand to the code limit plus wingtip clearance', () => {
+    expect(STAND_ENVELOPE.C).toMatchObject({ widthM: 45, depthM: 52, clearanceM: 4.5 })
+    expect(STAND_ENVELOPE.E.widthM).toBe(80)
+    expect(STAND_ENVELOPE.E.depthM).toBe(82)
+    expect(STAND_ENVELOPE.F.widthM).toBe(95)
+    expect(STAND_ENVELOPE.F.depthM).toBe(88)
+    expect(envelopeLetter('M')).toBe('C')
+    expect(envelopeLetter('S')).toBe('B')
+    expect(envelopeLetter('L', 'wide')).toBe('E')
+    expect(envelopeLetter('L', 'jumbo')).toBe('F')
+    expect(envelopeLetter('L')).toBe('F')
+    const visual = WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE
+    expect(envelopeWorld('C').width).toBeCloseTo(45 * visual)
+    const fits = (id: string, letter: IcaoCode) => {
+      const spec = getAircraftSpec(id)
+      const box = STAND_ENVELOPE[letter]
+      expect(spec.spanM + box.clearanceM * 2, id).toBeLessThanOrEqual(box.widthM + 0.3)
+      expect(spec.lengthM, id).toBeLessThan(box.depthM)
+    }
+    fits('a320neo', 'C')
+    fits('b738', 'C')
+    fits('a321', 'C')
+    fits('crj700', 'B')
+    fits('a359', 'E')
+    fits('b77w', 'E')
+    fits('b789', 'E')
+    fits('a380', 'F')
+    fits('b748f', 'F')
+  })
+
+  it('meets the forward door and flips a bridge that would face away from the terminal', () => {
+    const dock = bridgeDockMeters(getAircraftSpec('b738'))
+    expect(dock).toBeTruthy()
+    expect(dock!.x).toBeGreaterThan(5)
+    expect(dock!.z).toBeGreaterThan(getAircraftSpec('b738').rx + 8)
+    expect(dock!.y).toBeGreaterThan(2)
+    const heavy = bridgeDockMeters(getAircraftSpec('a380'))
+    expect(heavy!.z).toBeGreaterThan(dock!.z)
+    expect(bridgeMirror(-Math.PI / 2, { c: 12, r: 21 }, { c: 15, r: 21 })).toBe(1)
+    expect(bridgeMirror(-Math.PI / 2, { c: 20, r: 21 }, { c: 17, r: 21 })).toBe(-1)
   })
 
   it('aims an empty-gate bridge at the nearest terminal, east or west', () => {
