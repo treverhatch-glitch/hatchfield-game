@@ -28,6 +28,7 @@ describe('bags', () => {
 
   it('labels claim stages for the HUD', () => {
     expect(describeBagStage('on_claim', 2, 0, 30)).toBe('Bags: on claim 2')
+    expect(describeBagStage('hold_screen', null, 4, 12)).toBe('Bags: screening hold bags')
     expect(describeBagStage('pax_deposit', null, 4, 12)).toBe('Bags: check-in deposit (4/12)')
     expect(describeBagStage('complete', 1, 0, 1)).toBe('Bags: complete')
     expect(describeBagStage(undefined, 0, 0, 0)).toBe('')

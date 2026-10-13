@@ -64,6 +64,8 @@ export function describeBagStage(
   switch (stage) {
     case 'pax_deposit':
       return `Bags: check-in deposit (${bagsDeposited ?? 0}/${bagUnits ?? '?'})`
+    case 'hold_screen':
+      return 'Bags: screening hold bags'
     case 'outbound_sort':
       return 'Bags: sorting outbound'
     case 'load_aircraft':

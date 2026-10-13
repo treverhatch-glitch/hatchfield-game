@@ -109,6 +109,10 @@ export interface HallGuest {
   bagDepositLeft?: number
   /** Finished check-in bag drop for this journey. */
   bagsDropped?: boolean
+  /** Shoulder bag that stays with the passenger through security. */
+  carryOn?: boolean
+  /** Checked suitcase still on the passenger (before drop, or after claim). */
+  hasChecked?: boolean
   /** Custom hall with no path. A full queue does not set this. */
   lost?: boolean
   /** Seconds left at the scanner. 0 means waiting, not being served. */
@@ -560,6 +564,8 @@ export function spawnHallGuest(
             ? pick(['#6a8a4a', '#5a7a3a', '#4a6a50'])
             : pick(['#8b6b4a', '#6a4a32', '#3a5a7a', '#5c4033']),
     dead: false,
+    carryOn: true,
+    hasChecked: job === 'depart' && !transfer,
     // Arrivals / transfers start airside; departures must clear security.
     clearedSec: job === 'arrive' || transfer,
     transfer,
