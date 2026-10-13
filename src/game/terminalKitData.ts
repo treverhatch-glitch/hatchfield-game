@@ -7,7 +7,7 @@
 import type { ItemDef } from './terminal.ts'
 import type { PaxTag } from './guests.ts'
 
-export type KitCategory = 'food' | 'seating' | 'decor'
+export type KitCategory = 'food' | 'seating' | 'decor' | 'service'
 
 /** One hall cell holds this many slots. Desks and lanes fill the whole cell. */
 export const CELL_SLOTS = 4
@@ -191,6 +191,22 @@ export const KIT_ITEMS: ItemDef[] = [
     size: 2,
     comfort: 5,
     comfortRadius: 2,
+  },
+  {
+    id: 'trash_can',
+    name: 'Trash can',
+    blurb: 'Catches wrappers and cups within ~12 m. Fills up — janitors empty it.',
+    zones: ANY_PUBLIC,
+    servers: 0,
+    queueCap: 0,
+    serviceSec: 0,
+    cost: 150,
+    upkeep: 1,
+    staff: 0,
+    minFieldLevel: 1,
+    wearPerUse: 0,
+    category: 'service',
+    size: 1,
   },
 ]
 
