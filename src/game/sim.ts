@@ -191,7 +191,6 @@ import {
   blankZones,
   ceilingsFor,
   itemDef,
-  DEPARTURE_SPREAD_SEC,
   laneStats,
   lookaheadDepth,
   needsMaintenance,
@@ -207,6 +206,14 @@ import {
   type PlacedItem,
   type ZoneId,
 } from './terminal.ts'
+import {
+  PLANNED_TURN_SEC,
+  checkInCloseAt,
+  isIntlKind,
+  planShowUp,
+  type ShowTag,
+  type ShowUpPlan,
+} from '../pax/showup.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -650,6 +657,10 @@ export class Game {
   /** Day-rate cool for independent parked GA. */
   parkRateCool = 0
   schedule: ScheduleSlot[] = []
+  /** Per-slot departure show-up. Passengers release before the aircraft exists. */
+  showUps: ShowUpPlan[] = []
+  /** Flights that have left the field. The boarding call stays up until those passengers are aboard or miss. */
+  private departedFlights = new Set<string>()
   scheduleAuto = true
   schedulePlanCool = 8
   /** Rate-limit hall miss headlines: key → clock ready. */
@@ -4264,6 +4275,7 @@ export class Game {
       Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
     )
     const a = this.airline(f.airline)
+    const departWave: HallGuest[] = []
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
@@ -4304,18 +4316,287 @@ export class Game {
         g.hasChecked = true
         g.carryOn = true
         this.applyGuestLandside(g, 'depart')
-        const prefabRelease = Boolean(fit.premade && !fit.redesigned)
-        if (prefabRelease) {
-          g.releaseAt = this.clock + Math.random() * DEPARTURE_SPREAD_SEC
-          g.thought = 'On the way to the doors'
-        } else this.openDepartingGuest(g, open)
+        departWave.push(g)
       }
       this.hallGuests.push(g)
+    }
+    if (departWave.length) this.releaseDepartureWave(departWave, f, open)
+  }
+
+  /** Fallback wave (boarding with no banked plan, or a direct seed). Drips — never a single dump. */
+  private releaseDepartureWave(wave: HallGuest[], f: Flight, open: Set<HallNode>) {
+    const std = f.std ?? this.clock + PLANNED_TURN_SEC
+    const times = planShowUp({
+      std,
+      now: this.clock,
+      tags: wave.map((g) => g.tag),
+      intl: isIntlKind(f.kind),
+    })
+    wave.forEach((g, i) => {
+      const at = times[i] ?? this.clock
+      if (at <= this.clock + 0.001) this.openDepartingGuest(g, open)
+      else {
+        g.releaseAt = at
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.thought = 'On the way to the doors'
+      }
+    })
+  }
+
+  private visualDepartureCount(f: Flight): number {
+    const mode = this.standPaxMode(f.stand)
+    return Math.max(
+      6,
+      Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
+    )
+  }
+
+  private entranceReleaseTimes(hallId: string, exceptSlot?: string): number[] {
+    const out: number[] = []
+    for (const plan of this.showUps) {
+      if (plan.closed || plan.hallId !== hallId || plan.slotId === exceptSlot) continue
+      for (let i = plan.spawned; i < plan.releases.length; i++) out.push(plan.releases[i])
+    }
+    return out
+  }
+
+  /** Bank a show-up when the slot is written, so the hall fills before approach. */
+  private noteSlotBanked(slot: ScheduleSlot) {
+    const a = this.airline(slot.airline)
+    if (a.kind === 'cargo') return
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) return
+    const tags: ShowTag[] = []
+    for (let i = 0; i < 12; i++) tags.push(rollPaxTag(a.persona))
+    const std = slot.eta + PLANNED_TURN_SEC
+    const hallId = this.hallKey(fit)
+    const releases = planShowUp({
+      std,
+      now: this.clock,
+      tags,
+      intl: false,
+      taken: this.entranceReleaseTimes(hallId),
+    })
+    this.showUps.push({
+      slotId: slot.id,
+      std,
+      hallId,
+      airlineId: slot.airline,
+      intl: false,
+      tags,
+      releases,
+      spawned: 0,
+      flightId: null,
+      closed: false,
+    })
+  }
+
+  private planForGuest(g: HallGuest): ShowUpPlan | undefined {
+    if (g.flightId.startsWith('slot:')) {
+      const id = g.flightId.slice('slot:'.length)
+      return this.showUps.find((p) => p.slotId === id)
+    }
+    return this.showUps.find((p) => p.flightId != null && p.flightId === g.flightId)
+  }
+
+  private linkedFlight(g: HallGuest): Flight | undefined {
+    if (g.flightId.startsWith('slot:')) {
+      const id = g.flightId.slice('slot:'.length)
+      const slot = this.schedule.find((s) => s.id === id)
+      if (slot?.flightId) return this.flights.find((f) => f.id === slot.flightId)
+      return undefined
+    }
+    return this.flights.find((f) => f.id === g.flightId)
+  }
+
+  private phaseIsBoarding(phase: Phase): boolean {
+    return (
+      phase === 'board' ||
+      phase === 'pushback' ||
+      phase === 'taxi_out' ||
+      phase === 'takeoff' ||
+      phase === 'gone'
+    )
+  }
+
+  /** Patience runs once the aircraft is boarding. A slot that has not spawned yet does not burn it. */
+  private departureClockRunning(g: HallGuest): boolean {
+    if (g.flightId.startsWith('slot:')) {
+      const f = this.linkedFlight(g)
+      return Boolean(f && this.phaseIsBoarding(f.phase))
+    }
+    const f = this.linkedFlight(g)
+    if (!f) return true
+    return this.phaseIsBoarding(f.phase)
+  }
+
+  private flightBoardingCall(g: HallGuest): boolean {
+    const f = this.linkedFlight(g)
+    if (f) return this.phaseIsBoarding(f.phase)
+    return this.departedFlights.has(g.flightId)
+  }
+
+  private checkInOpen(g: HallGuest): boolean {
+    const plan = this.planForGuest(g)
+    if (!plan) return true
+    return this.clock < checkInCloseAt(plan.std, plan.intl)
+  }
+
+  private tuneDepartureGuest(g: HallGuest, f: Flight) {
+    const mode = this.standPaxMode(f.stand)
+    if (mode === 'jetway') {
+      g.needs.boarding = Math.min(99, g.needs.boarding + 18)
+      g.needs.shop = Math.min(99, g.needs.shop + 14)
+      g.needs.play = Math.min(99, g.needs.play + 10)
+      g.needs.hunger = Math.min(99, g.needs.hunger + 8)
+    } else if (mode === 'walk') {
+      g.needs.boarding = Math.max(6, g.needs.boarding - 14)
+    } else if (mode === 'bus') {
+      g.needs.boarding = Math.min(99, g.needs.boarding + 6)
+      g.needs.shop = Math.min(99, g.needs.shop + 6)
+    }
+  }
+
+  private spawnShowUpGuest(plan: ShowUpPlan, open: Set<HallNode>) {
+    const tag = plan.tags[plan.spawned] ?? 'budget'
+    const flightId = plan.flightId ?? `slot:${plan.slotId}`
+    const g = spawnHallGuest(flightId, 'depart', tag, {
+      airlineId: plan.airlineId,
+      hallId: plan.hallId,
+    })
+    const persona = this.airline(plan.airlineId as AirlineId).persona
+    const modes = this.pickGuestMode(tag, persona, 'depart')
+    g.preferMode = modes.prefer
+    g.arriveMode = modes.actual
+    g.node = 'entrance'
+    g.clearedSec = false
+    g.hasChecked = true
+    g.carryOn = true
+    if (plan.flightId) {
+      const flight = this.flights.find((f) => f.id === plan.flightId)
+      if (flight) this.tuneDepartureGuest(g, flight)
+    }
+    this.applyGuestLandside(g, 'depart')
+    if (open.size) this.openDepartingGuest(g, open)
+    else g.thought = 'On the way to the doors'
+    this.hallGuests.push(g)
+  }
+
+  private retargetShowUp(plan: ShowUpPlan, std: number) {
+    if (Math.abs(std - plan.std) < 0.05) return
+    plan.std = std
+    const flight = plan.flightId ? this.flights.find((f) => f.id === plan.flightId) : undefined
+    if (flight) flight.std = std
+    if (plan.spawned >= plan.tags.length) return
+    const remain = plan.tags.slice(plan.spawned)
+    const fresh = planShowUp({
+      std,
+      now: this.clock,
+      tags: remain,
+      intl: plan.intl,
+      taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+    })
+    plan.releases = [...plan.releases.slice(0, plan.spawned), ...fresh]
+  }
+
+  private abandonShowUp(slotId: string) {
+    const plan = this.showUps.find((p) => p.slotId === slotId)
+    if (!plan || plan.closed) return
+    plan.closed = true
+    const pending = `slot:${slotId}`
+    for (const g of this.hallGuests) {
+      if (g.dead || g.job !== 'depart') continue
+      if (g.flightId === pending) {
+        g.dead = true
+        g.thought = 'Flight cancelled'
+      }
+    }
+  }
+
+  /** Attach the aircraft once it exists, and match the visual headcount to the airframe. */
+  private bindShowUp(slot: ScheduleSlot, f: Flight) {
+    const plan = this.showUps.find((p) => p.slotId === slot.id)
+    if (!plan || f.cargo) return
+    const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.fitByKey(plan.hallId) ?? this.fits[0]
+    plan.flightId = f.id
+    plan.intl = isIntlKind(f.kind)
+    if (fit) plan.hallId = this.hallKey(fit)
+    f.std = plan.std
+    for (const g of this.hallGuests) {
+      if (g.flightId !== `slot:${slot.id}`) continue
+      g.flightId = f.id
+      g.hallId = plan.hallId
+      this.tuneDepartureGuest(g, f)
+    }
+    const want = this.visualDepartureCount(f)
+    if (want > plan.tags.length) {
+      const extra: ShowTag[] = []
+      const persona = this.airline(f.airline).persona
+      for (let i = plan.tags.length; i < want; i++) extra.push(rollPaxTag(persona))
+      const more = planShowUp({
+        std: plan.std,
+        now: this.clock,
+        tags: extra,
+        intl: plan.intl,
+        taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+      })
+      plan.tags.push(...extra)
+      plan.releases.push(...more)
+    } else if (want < plan.tags.length) {
+      const cut = Math.min(plan.tags.length - want, plan.tags.length - plan.spawned)
+      if (cut > 0) {
+        plan.tags.splice(plan.tags.length - cut, cut)
+        plan.releases.splice(plan.releases.length - cut, cut)
+      }
+    }
+    if (plan.intl && plan.spawned < plan.tags.length) {
+      const remain = plan.tags.slice(plan.spawned)
+      const fresh = planShowUp({
+        std: plan.std,
+        now: this.clock,
+        tags: remain,
+        intl: true,
+        taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+      })
+      plan.releases = [...plan.releases.slice(0, plan.spawned), ...fresh]
+    }
+  }
+
+  private tickShowUp() {
+    for (const plan of this.showUps) {
+      if (plan.closed) continue
+      const slot = this.schedule.find((s) => s.id === plan.slotId)
+      if (!slot || slot.status === 'cancelled') {
+        this.abandonShowUp(plan.slotId)
+        continue
+      }
+      if (slot.status === 'done') {
+        plan.closed = true
+        continue
+      }
+      this.retargetShowUp(plan, slot.eta + PLANNED_TURN_SEC)
+      if (plan.spawned >= plan.releases.length) continue
+      const fit = this.fitByKey(plan.hallId) ?? this.activeHall() ?? this.fits[0]
+      if (!fit) continue
+      const open = this.hallOpenFor(fit)
+      while (plan.spawned < plan.releases.length && plan.releases[plan.spawned] <= this.clock) {
+        this.spawnShowUpGuest(plan, open)
+        plan.spawned += 1
+      }
+    }
+    if (this.showUps.length > 64) {
+      this.showUps = this.showUps.filter((p) => !p.closed)
     }
   }
 
   guestAirlineId(g: HallGuest): AirlineId | null {
     if (g.airlineId) return g.airlineId
+    if (g.flightId.startsWith('slot:')) {
+      const plan = this.planForGuest(g)
+      if (plan) return plan.airlineId as AirlineId
+    }
     if (g.flightId.startsWith('layover:')) return g.flightId.slice('layover:'.length)
     const f = this.flights.find((x) => x.id === g.flightId)
     return f?.airline ?? null
@@ -4340,6 +4621,37 @@ export class Game {
         g.releaseAt = undefined
         this.openDepartingGuest(g, open)
       }
+      if (g.job === 'depart' && g.node === 'gate' && this.flightBoardingCall(g)) {
+        g.needs.boarding = 0
+        g.dead = true
+        g.thought = 'Boarded'
+        this.paxServed += 1
+        this.reputation = Math.min(100, this.reputation + 0.4)
+        continue
+      }
+      if (
+        g.job === 'depart' &&
+        g.clearedSec &&
+        g.node !== 'security' &&
+        g.node !== 'gate' &&
+        this.flightBoardingCall(g) &&
+        open.has('gate') &&
+        g.path[g.path.length - 1] !== 'gate'
+      ) {
+        this.routeGuest(g, 'gate', open)
+      }
+      if (
+        g.job === 'depart' &&
+        g.node === 'checkin' &&
+        !g.bagsDropped &&
+        (g.bagDepositLeft == null || g.bagDepositLeft <= 0) &&
+        !this.checkInOpen(g)
+      ) {
+        g.bagsDropped = true
+        g.bagDepositLeft = 0
+        g.thought = 'Check-in closed — carry-on to security'
+        if (open.has('security')) this.routeGuest(g, 'security', open)
+      }
       // Needs drift — budget/family fill hunger faster; wear makes WC less satisfying.
       const drain =
         g.tag === 'budget' ? 1.25 : g.tag === 'family' ? 1.1 : g.tag === 'business' ? 0.9 : 0.85
@@ -4352,7 +4664,9 @@ export class Game {
         100,
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
-      if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+      if (g.job === 'depart' && this.departureClockRunning(g)) {
+        g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+      }
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -4585,6 +4899,10 @@ export class Game {
       }
     }
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
+    if (this.departedFlights.size > 24) {
+      const live = new Set(this.hallGuests.map((g) => g.flightId))
+      for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
+    }
     const fit = this.activeHall() ?? this.fits[0]
     const present = this.hallGuests.filter((g) => g.releaseAt == null || g.releaseAt <= this.clock).length
     if (fit && present > (fit.capGuests ?? 40)) this.markHallOverloaded()
@@ -4740,16 +5058,23 @@ export class Game {
         o.node === 'security' &&
         !o.clearedSec,
     )
+    const fast = g.tag === 'premium'
+    const pool = peers.filter((o) => (o.tag === 'premium') === fast)
+    const premiumHere = peers.some((o) => o.tag === 'premium')
     const wear = Math.max(
       fit?.wearSec ?? 0,
       ...(fit?.items ?? [])
         .filter((i) => String(i.def).startsWith('security'))
         .map((i) => i.wear),
     )
+    let servers = lane.servers
+    if (fast) servers = Math.min(lane.servers, 1)
+    else if (premiumHere && lane.servers > 1) servers = lane.servers - 1
     let svc = slowedService(lane.serviceSec, wear)
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
     const cap = fit?.capGuests ?? 40
     if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
+    if (fast) svc *= 0.5
 
     if ((g.serviceLeft ?? 0) > 0) {
       g.serviceLeft = (g.serviceLeft ?? 0) - dt
@@ -4786,16 +5111,16 @@ export class Game {
       return
     }
 
-    const serving = peers.filter((o) => (o.serviceLeft ?? 0) > 0).length
-    const idle = peers
+    const serving = pool.filter((o) => (o.serviceLeft ?? 0) > 0).length
+    const idle = pool
       .filter((o) => (o.serviceLeft ?? 0) <= 0)
       .sort((a, b) => (a.queueSeq ?? 0) - (b.queueSeq ?? 0))
     const idx = idle.findIndex((o) => o.id === g.id)
-    const slots = Math.max(0, lane.servers - serving)
+    const slots = Math.max(0, servers - serving)
     if (idx >= 0 && idx < slots) {
       g.serviceLeft = svc
       g.lost = false
-      g.thought = 'Stepping into the lane'
+      g.thought = fast ? 'Fast-track lane' : 'Stepping into the lane'
       return
     }
     const overComfort = idx >= lane.queueCap + slots || peers.length > cap
@@ -5863,6 +6188,12 @@ export class Game {
       }
       // Manor Lords deposit: hold at desk while bags go on the belt.
       if (!g.bagsDropped) {
+        if (g.bagDepositLeft == null && !this.checkInOpen(g)) {
+          g.bagsDropped = true
+          g.thought = 'Check-in closed — carry-on to security'
+          if (open.has('security')) this.routeGuest(g, 'security', open)
+          return
+        }
         if (g.bagDepositLeft == null) {
           const units = bagUnitsForTag(g.tag)
           g.bagDepositLeft = clamp(0.55 + units * 0.55, 0.55, 2.8)
@@ -6095,11 +6426,14 @@ export class Game {
     }
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
-      g.needs.boarding = Math.max(g.needs.boarding, 8)
-      if (g.needs.hunger < 40 && g.needs.bladder < 40) {
+      const called = this.flightBoardingCall(g)
+      if (called || (g.needs.hunger < 40 && g.needs.bladder < 40)) {
+        g.needs.boarding = 0
         g.dead = true
         this.paxServed += 1
         this.reputation = Math.min(100, this.reputation + 0.4)
+      } else {
+        g.needs.boarding = Math.max(g.needs.boarding, 8)
       }
     }
     if (n === 'claim' && g.job === 'arrive') {
@@ -6440,6 +6774,7 @@ export class Game {
       }
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
+      this.noteSlotBanked(slot)
     }
   }
 
@@ -6482,6 +6817,7 @@ export class Game {
     }
     this.assignSlotClaimLane(slot)
     this.schedule.push(slot)
+    this.noteSlotBanked(slot)
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s${
         rw != null ? ` · ${this.runwayLabel(rw)}` : ''
@@ -6495,6 +6831,7 @@ export class Game {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || s.status === 'inbound' || s.status === 'done') return
     s.status = 'cancelled'
+    this.abandonShowUp(s.id)
     // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
     this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2)
     this.pushNews(
@@ -9711,6 +10048,7 @@ export class Game {
     }
     this.flights.push(f)
     if (!f.cargo) this.assignClaimLane(f)
+    this.bindShowUp(slot, f)
     this.noteCraft(af.kind)
     slot.status = 'inbound'
     slot.flightId = f.id
@@ -10711,7 +11049,10 @@ export class Game {
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
     const fit = this.roomsAt(f.stand)
-    this.seedHallForFlight(f, 'depart')
+    const planned = Boolean(
+      f.scheduleId && this.showUps.some((p) => p.slotId === f.scheduleId && p.releases.length > 0),
+    )
+    if (!planned) this.seedHallForFlight(f, 'depart')
     const mode = this.standPaxMode(f.stand)
     if (mode === 'jetway') {
       f.waitingOn.paxIn = 0
@@ -11510,6 +11851,7 @@ export class Game {
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
+    this.tickShowUp()
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
     this.milCool = Math.max(0, this.milCool - step)
@@ -11897,6 +12239,7 @@ export class Game {
     }
     this.flights = this.flights.filter((f) => {
       if (f.phase !== 'gone') return true
+      this.departedFlights.add(f.id)
       for (const line of f.ledger) {
         if (line.amount > 0) {
           this.settledPayments.push({
