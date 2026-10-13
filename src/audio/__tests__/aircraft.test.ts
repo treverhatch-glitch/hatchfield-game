@@ -14,7 +14,7 @@ const NUMERIC = (p: object) => Object.entries(p).filter(([, v]) => typeof v === 
 
 describe('aircraft profiles', () => {
   it('every game aircraft type maps to a profile with a known engine class', () => {
-    expect(AIRCRAFT_TYPE_IDS.length).toBe(24);
+    expect(AIRCRAFT_TYPE_IDS.length).toBe(25);
     for (const id of AIRCRAFT_TYPE_IDS) {
       const p = AIRCRAFT_PROFILES[id];
       expect(p, id).toBeDefined();

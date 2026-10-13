@@ -143,6 +143,7 @@ describe('cargo on the field', () => {
   it('arms a freighter turnaround with a reserved main-deck loader', () => {
     const game = field()
     game.tiles[10][15] = 'depot'
+    game.scaleFleet = { main_deck_loader: 1, hydrant_dispenser: 1, heavy_tug: 1, highlift_catering: 1 }
     game.bumpMap()
     for (let i = 0; i < 10; i++) game.tick(5)
     const f = parked(game, { c: 12, r: 21 })
