@@ -51,14 +51,24 @@ async function boot(page: Page) {
               wr = w.initWorldRender(this.scene, arg.quality, { renderer: this.renderer, sun: this.sun })
               window.__wr = wr
             }
-            this.resize()
-            this.applyPerfMode(game)
+            // Legacy World.resize compares device pixels to CSS pixels and re-sizes every
+            // frame when pixelRatio != 1; see docs/GRAPHICS.md "Known bugs".
+            const c = this.renderer.domElement
+            const pr = this.renderer.getPixelRatio()
+            if (c.width !== Math.floor(c.clientWidth * pr) || c.height !== Math.floor(c.clientHeight * pr)) {
+              this.renderer.setSize(c.clientWidth, c.clientHeight, false)
+              this.camera.aspect = c.clientWidth / Math.max(1, c.clientHeight)
+              this.camera.updateProjectionMatrix()
+            }
+            wr.setLiteMode(game.speed >= 5)
             this.rebuildTiles(game)
             wr.hideLegacyTiles(this.tilesGroup, game)
             this.syncGhost(game)
             this.syncEntities(game)
             this.syncSites(game)
-            wr.update(game, this.camera, 1 / 60)
+            const now = performance.now()
+            wr.update(game, this.camera, (now - (window.__last ?? now)) / 1000)
+            window.__last = now
             this.renderer.render(this.scene, this.camera)
           }
         } else {
@@ -81,7 +91,11 @@ async function boot(page: Page) {
   await page.waitForTimeout(800)
 }
 
-async function cam(page: Page, view: { x: number; z: number; dist: number; pitch: number; yaw: number; hour?: number }) {
+async function cam(
+  page: Page,
+  view: { x: number; z: number; dist: number; pitch: number; yaw: number; hour?: number },
+  wait = 900,
+) {
   await page.evaluate(
     call<typeof view>(`
       const w = window.__world
@@ -95,7 +109,7 @@ async function cam(page: Page, view: { x: number; z: number; dist: number; pitch
     `),
     view,
   )
-  await page.waitForTimeout(900)
+  await page.waitForTimeout(wait)
 }
 
 async function fps(page: Page, ms = 3000): Promise<number> {
@@ -126,6 +140,7 @@ const shots = [
   { name: 'mid', x: 3, z: 26, dist: 60, pitch: 0.8, yaw: 0.55 },
   { name: 'close', x: 3, z: 28, dist: 28, pitch: 0.7, yaw: 0.45 },
   { name: 'closest', x: 4, z: 29, dist: 14, pitch: 0.62, yaw: 0.4 },
+  { name: 'facade', x: 3, z: 27, dist: 15, pitch: 0.3, yaw: 0.25 },
 ]
 if (process.env.SLICE_E_HUD !== '1') {
   // Hide UI chrome so the field reads; the canvas and its ancestors stay visible.
@@ -146,8 +161,35 @@ if (mode === 'after') {
   await page.screenshot({ path: `${OUT}/SLICE-E-${tag}-night-close.png` })
   report.nightClose = await fps(page)
   console.log(tag, 'night fps', report.night, report.nightClose)
+  await page.evaluate(call<null>(`window.__wr.setWeather('storm')`))
+  await cam(page, { ...shots[1], hour: 15 })
+  await page.screenshot({ path: `${OUT}/SLICE-E-${tag}-storm.png` })
+  report.storm = await fps(page)
+  await page.evaluate(call<null>(`window.__wr.setWeather(null)`))
   const stats = await page.evaluate(call<null>(`return window.__wr.stats()`))
   console.log('stats', JSON.stringify(stats))
 }
 writeFileSync(`/tmp/slice-e-${tag}.json`, JSON.stringify(report, null, 2))
+await page.close()
+if (mode === 'after' && process.env.SLICE_E_VIDEO === '1') {
+  // Short close-up clip of the crowd: slow orbit over the hall.
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    recordVideo: { dir: '/tmp/slice-e-video', size: { width: 1280, height: 720 } },
+  })
+  const vp = await ctx.newPage()
+  await boot(vp)
+  await vp.addStyleTag({ content: '.hud, .owner-chrome, .coach, .bottom-bar, .inspect-card, .news { display: none !important; }' })
+  for (let i = 0; i <= 40; i++) {
+    await cam(vp, { x: 3.5, z: 28.5, dist: 22 - i * 0.2, pitch: 0.62 - i * 0.004, yaw: 0.2 + i * 0.012 }, 200)
+  }
+  // Hold still so the walking crowd reads against a fixed frame.
+  await vp.waitForTimeout(4000)
+  const video = vp.video()
+  await ctx.close()
+  if (video) {
+    const { copyFileSync } = await import('node:fs')
+    copyFileSync(await video.path(), `${OUT}/SLICE-E-${tag}-crowd.webm`)
+  }
+}
 await browser.close()
