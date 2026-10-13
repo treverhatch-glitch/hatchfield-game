@@ -496,6 +496,8 @@ export interface Flight {
   ledger: { label: string; amount: number }[]
   /** Linked timetable slot when spawned from the schedule. */
   scheduleId?: string | null
+  /** Sim-clock scheduled departure. Show-up is keyed to this, not to boarding. */
+  std?: number
   boardingSlow?: boolean
   /** GA: clock when leave was requested; must depart by parkLeaveBy. */
   parkLeaveRequestedAt?: number | null

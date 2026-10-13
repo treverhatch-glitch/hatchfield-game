@@ -623,3 +623,17 @@ A 30-game-day headless run (easy, sandbox off, starter kit, offers accepted as t
 - `docs/devlog/media/OCT13-qa-heavy-apron.png` — heavy-jet bot, A380 on the ground during day 1
 
 **QA.** One carrier, mixed, 6 days: security waiting stayed in the teens with both scanners busy, then the node was empty. Lost passengers 0. Missed flights 93 with the hall overloaded. That is the batch spawn, not a stuck scanner. The 12-day mixed run and the 4-day heavy run were the same shape: lost passengers 0, no short bag ledger, scanners still serving when a line was up. SwiftShader frame rate was 9–11 fps.
+
+## Show-up — 13 Oct
+
+Departing passengers no longer appear as one bank when boarding starts. A slot banks a plan in `src/pax/showup.ts`. Scheduled departure is the approach time plus a 20-second planned turn. Budget and family open 180 game-minutes before that (22.5 sim-seconds). Business and premium open 120 game-minutes before it. Nothing is earlier than 240 game-minutes, and no entrance releases more than three people in one sim-second. Check-in and bag drop close 45 game-minutes before departure on a wide-body and 30 on every other passenger flight. A deposit already at the desk finishes. A new one after the close walks on with a carry-on.
+
+The plan is registered when the slot is written, so the first bodies are in the hall before the aircraft is on approach. When the jet appears, those passengers are bound to its flight id. Boarding does not seed a second wave. Patience does not drain until the aircraft is boarding, and the boarding call still stands after the jet has left the field so someone in the lounge can walk to the gate. Premium passengers take a fast-track place on the existing lanes at half the service time. Lane counts, service times, and caps are unchanged.
+
+**Bugs.** Seventeen. No new defect.
+
+**Tests.** `tsc -b` clean. Vitest 647 passing, 2 skipped. A seeded prefab run has departing passengers in the hall while the inbound is still on approach or landing. A six-day two-airline prefab run stays at or under 1% missed departures, with lost passengers 0 and bags lost 0. Check-in after the close does not start a bag drop.
+
+**Media**
+
+- `docs/devlog/media/OCT13-showup.mov` — HUD hidden, passengers in the starter hall before the inbound is on the ground

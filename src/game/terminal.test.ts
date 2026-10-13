@@ -201,7 +201,7 @@ describe('security choke', () => {
     expect(game.hallGuests.some((g) => !g.clearedSec && g.node === 'gate')).toBe(false)
   })
 
-  it('spreads a prefab departure across 45 seconds instead of dropping the bank at once', () => {
+  it('drips a prefab departure instead of dropping the bank at once', () => {
     const game = new Game()
     game.sandbox = false
     game.beginNew('easy')
@@ -215,22 +215,26 @@ describe('security choke', () => {
     )
     const wave = game.hallGuests.filter((g) => g.flightId === 'spread-1')
     expect(wave.length).toBeGreaterThanOrEqual(6)
-    for (const g of wave) {
-      expect(g.releaseAt ?? -1).toBeGreaterThanOrEqual(20)
-      expect(g.releaseAt ?? 999).toBeLessThanOrEqual(20 + DEPARTURE_SPREAD_SEC)
-      expect(g.path).toEqual([])
-    }
-    const times = wave.map((g) => g.releaseAt ?? 0)
+    const times = wave.map((g) => g.releaseAt ?? game.clock)
+    for (const t of times) expect(t).toBeGreaterThanOrEqual(20)
     const span = Math.max(...times) - Math.min(...times)
     expect(span).toBeGreaterThan(1)
-    expect(span).toBeLessThanOrEqual(DEPARTURE_SPREAD_SEC)
-
-    game.tick(0.2)
+    const buckets = new Map<number, number>()
+    for (const t of times) {
+      const s = Math.floor(t + 1e-6)
+      buckets.set(s, (buckets.get(s) ?? 0) + 1)
+    }
+    for (const n of buckets.values()) expect(n).toBeLessThanOrEqual(3)
     const held = wave.filter((g) => (g.releaseAt ?? 0) > game.clock)
     expect(held.length).toBeGreaterThan(0)
     expect(held.every((g) => g.path.length === 0)).toBe(true)
 
-    game.clock = 20 + DEPARTURE_SPREAD_SEC
+    game.tick(0.2)
+    const still = wave.filter((g) => (g.releaseAt ?? 0) > game.clock)
+    expect(still.length).toBeGreaterThan(0)
+    expect(still.every((g) => g.path.length === 0)).toBe(true)
+
+    game.clock = Math.max(...times)
     game.tick(0.05)
     expect(wave.every((g) => g.releaseAt == null)).toBe(true)
     expect(wave.some((g) => g.path.length > 1)).toBe(true)
