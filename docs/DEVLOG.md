@@ -591,6 +591,35 @@ Each departure now carries `bagsLoaded` and `bagsOffloaded`. The hall panel Clos
 
 **Bugs.** Seventeen. BUG-017 is this stall.
 
-**Tests.** A line at security is screened and then leaves. A screened passenger walks to food without re-entering the checkpoint. One airline over four days keeps the end-of-day security node under 16, and the waiting line under 16. `tsc -b` clean. Vitest 639 passing, 2 skipped.
+**Tests.** A line at security is screened, leaves the node, and is on an airside room afterwards. A screened passenger walks to food without re-entering the checkpoint. One airline over four days keeps the waiting line under 16 while check-in is empty, and the end-of-day security node under 16. `tsc -b` clean. Vitest 639 passing, 2 skipped.
+
+## QA gate — 13 Oct
+
+Lane counts, service times, and caps stayed where the prefab tuning left them. The show-up curve is still a separate workstream.
+
+The living hall is already in this build. A starter kit at noon, roof off, showed 25 staff figures, 33 seated passengers, and 78 people in the plan. After Northline's first turn, 23 passengers were walking the doorway graph and 23 of them had a case on the floor. Twenty-five checked-bag tags belonged to 21 owners, none unpaired. `bagsLost` 0, `bagsMishandled` 0, lost passengers 0 on that pass. The one hired desk body stands at check-in. Security desks are drawn with screeners and the lane still serves. People rendering and the asset pack (PRs #13 and #12) were left unmerged. Crowd avoidance and the mid-game PRs stay for the overnight pass.
+
+`src/economy/balance.ts` is the live balance model. There is no `balance/model.py` in the tree. Against the payroll and levy constants now in the game, early margin is 10.0% on $20,000 income ($15,000 payroll, $3,000 other). Mid-game margin is 24.4% on $203,000 income after payroll, $35,000 other costs, and the $1,800 levy. Both sit in the requested bands.
+
+A 30-game-day headless run (easy, sandbox off, starter kit, offers accepted as they arrived) finished with finite cash, lost passengers 0, bags lost 0, no unpaired tags, and no truck stuck longer than 240 seconds. Cash ended at $0 after a payroll short. Missed flights were 355 with the hall overloaded. Late bags (`bagsMishandled`) were 155 under that overload. The security waiting line peaked at 21 and did not ratchet the way the stall did.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Vitest | Pass | 639 passed, 2 skipped |
+| Typecheck | Pass | `tsc -b` clean |
+| Playwright bot, mixed 6 days | Pass on correctness | lost passengers 0, bag ledger short 0, stuck flights 0, stuck trucks 0, console errors 0, cash finite. Waiting 24 on day 2 with both scanners busy, then the node emptied. Missed flights 107, hall overloaded. 39 of 40 spawned flights left the field. |
+| Playwright bot, mixed 12 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0, console errors 0. Waiting climbed to 56 while a scanner was busy, then fell to 0 by day 8. Missed flights 270. 77 of 78 spawned flights left. |
+| Playwright bot, heavy 4 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0, console errors 0. End of day 5: 1 cleared passenger on security, waiting 0, check-in 0. Missed flights 96. 29 of 30 spawned flights left. |
+| FPS floor 12 | Environment | SwiftShader minimum 11 (mixed, long) and 10 (heavy). Same software renderer as the last gate. |
+| 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, unpaired tags 0, stuck trucks 0, cash finite ($0 after payroll short). Missed 355. Late bags 155 while overloaded. |
+| Early margin | Pass | 10.0% early, 24.4% mid-game |
+
+**Bugs.** Seventeen. No new defect.
+
+**Media**
+
+- `docs/devlog/media/OCT13-living-interior.png` — roof off, starter hall, passengers on the floor
+- `docs/devlog/media/OCT13-living-apron.png` — apron framed on a forced A380 at the stand
+- `docs/devlog/media/OCT13-qa-heavy-apron.png` — heavy-jet bot, A380 on the ground during day 1
 
 **QA.** One carrier, mixed, 6 days: security waiting stayed in the teens with both scanners busy, then the node was empty. Lost passengers 0. Missed flights 93 with the hall overloaded. That is the batch spawn, not a stuck scanner. The 12-day mixed run and the 4-day heavy run were the same shape: lost passengers 0, no short bag ledger, scanners still serving when a line was up. SwiftShader frame rate was 9–11 fps.
