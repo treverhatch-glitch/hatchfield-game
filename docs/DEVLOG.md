@@ -697,7 +697,7 @@ PR #40 is merged. Buying the city site grants the core plot. The next plot has t
 
 The published margins stay 10.0% early and 24.4% mid-game. With the new holding included, the early cash-flow margin is 8.8% and the mid-game margin is 23.5%. A 30-day bank grows 1.30× from day 20 to day 30.
 
-**Tests.** `tsc -b` clean. Vitest 748 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+**Tests.** `tsc -b` clean. Vitest 748 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-6q-0uGsg.js`, 1,601.17 kB.
 
 | Gate | Result | Numbers |
 | --- | --- | --- |
