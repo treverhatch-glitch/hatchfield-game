@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { spawnHallGuest } from './guests.ts'
-import { legRoute, routeRoomKinds } from './hallRoute.ts'
+import { legRoute, routeRoomKinds, seededRand } from './hallRoute.ts'
 import { Game } from './sim.ts'
 import { squareAt, STERILE_ROOMS, type RoomKind } from '../render/world/rooms.ts'
 
@@ -92,5 +92,82 @@ describe('hall doorway routes', () => {
       'gate',
     )
     expect(route).toBeNull()
+  })
+
+  it('handles edge case: no halls', () => {
+    const game = starter()
+    game.fits = []
+    game.tiles = []
+    const stand = { c: 10, r: 10 }
+    expect(game.roomPlanForHall('no-hall')).toBeNull()
+    expect(game.jetwayHall(stand)).toBeNull()
+
+    const guest = { id: 'g-nohall', node: 'entrance', job: 'depart' as const, clearedSec: false }
+    expect(legRoute(null as any, guest, 'gate')).toBeNull()
+
+    const emptyPlan = { ...starter().roomPlanForHall(null)!, rooms: [] }
+    expect(legRoute(emptyPlan, guest, 'gate')).toBeNull()
+  })
+
+  it('handles edge case: a stand that no hall serves', () => {
+    const game = starter()
+    const maxR = game.tiles.length - 1
+    const maxC = game.tiles[0].length - 1
+    const remoteStand = { c: maxC, r: maxR }
+    game.tiles[remoteStand.r][remoteStand.c] = 'stand'
+    expect(game.jetwayHall(remoteStand)).toBeNull()
+
+    const hallStands = game.standsForHall(game.fits[0])
+    expect(hallStands.some((s) => s.c === remoteStand.c && s.r === remoteStand.r)).toBe(false)
+  })
+
+  it('handles edge case: two halls with ties', () => {
+    const game = starter()
+    const hall1 = { ...game.fits[0], origin: { c: 10, r: 10 } }
+    const hall2 = { ...game.fits[0], origin: { c: 10, r: 18 } }
+    game.fits = [hall1, hall2]
+
+    // Stand equidistant from both halls within JETWAY_RANGE (Manhattan distance = 4)
+    const tiedStand = { c: 10, r: 14 }
+    if (!game.tiles[tiedStand.r]) game.tiles[tiedStand.r] = []
+    game.tiles[tiedStand.r][tiedStand.c] = 'stand'
+
+    const choice1 = game.jetwayHall(tiedStand)
+    expect(choice1).toBe(hall1)
+
+    // Swap array order to confirm deterministic array-order tie breaking
+    game.fits = [hall2, hall1]
+    const choice2 = game.jetwayHall(tiedStand)
+    expect(choice2).toBe(hall2)
+  })
+
+  it('handles edge case: an unreachable gate', () => {
+    const game = starter()
+    const plan = game.roomPlanForHall(game.hallKey(game.fits[0]))!
+    // Block all intermediate tiles in the plan to isolate rooms
+    const blockedGrid = new Uint8Array(plan.blocked.length).fill(1)
+    const blockedPlan = { ...plan, blocked: blockedGrid }
+    const guest = { id: 'g-unreachable', node: 'security', job: 'depart' as const, clearedSec: true }
+    const route = legRoute(blockedPlan, guest, 'gate')
+    expect(route).toBeNull()
+  })
+
+  it('handles edge case: a deterministic result for the same input', () => {
+    const game = starter()
+    const plan = game.roomPlanForHall(game.hallKey(game.fits[0]))!
+    const guest = { id: 'g-deterministic', node: 'security', job: 'depart' as const, clearedSec: true }
+
+    const route1 = legRoute(plan, guest, 'gate')
+    const route2 = legRoute(plan, guest, 'gate')
+    expect(route1).not.toBeNull()
+    expect(route2).not.toBeNull()
+    expect(route1).toEqual(route2)
+
+    // Verify seededRand repeatability
+    const randA = seededRand('test-seed-123')
+    const randB = seededRand('test-seed-123')
+    const seqA = [randA(), randA(), randA()]
+    const seqB = [randB(), randB(), randB()]
+    expect(seqA).toEqual(seqB)
   })
 })
