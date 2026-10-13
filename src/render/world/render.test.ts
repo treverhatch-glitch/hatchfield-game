@@ -4,6 +4,7 @@ import { spawnHallGuest } from '../../game/guests'
 import { blankView, rect, starterGame } from './fixtures'
 import { initWorldRender, REPLACED_TILES, type RendererLike } from './index'
 import { frameGeometry } from './environment'
+import { fieldDraw } from '../../maps/index'
 import { bake } from './kit'
 import { paintGeometry, quadsGeometry } from './surfaces'
 import { cellX, cellZ } from './view'
@@ -232,6 +233,32 @@ describe('initWorldRender', () => {
     expect(badge.visible).toBe(false)
     expect(hotel.visible).toBe(true)
     expect(REPLACED_TILES.has('terminal')).toBe(true)
+    wr.dispose()
+  })
+})
+
+describe('map climate tint', () => {
+  it('paints a desert sky and dunes, then restores the temperate field', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
+    const cam = camAt(0, 0, 80)
+    const view = blankView([], { clock: 20, weather: 'clear' })
+    wr.update(view, cam, 1 / 60)
+    const plain = sun.color.getHex()
+    const desert = fieldDraw('desert', 180)
+    expect(desert?.skyAmount).toBeGreaterThan(0)
+    wr.update({ ...view, mapDraw: desert }, cam, 1 / 60)
+    expect(sun.color.getHex()).not.toBe(plain)
+    const dunes = scene.getObjectByName('world-landscape')
+    const ground = dunes?.children.find((child) => child instanceof THREE.Mesh)
+    expect(ground).toBeInstanceOf(THREE.Mesh)
+    expect(((ground as THREE.Mesh).material as THREE.MeshLambertMaterial).color.getHex()).toBe(0xc4a36a)
+    wr.update({ ...view, mapDraw: null }, cam, 1 / 60)
+    expect(sun.color.getHex()).toBe(plain)
+    const restored = scene.getObjectByName('world-landscape')
+    const farmland = restored?.children.find((child) => child instanceof THREE.Mesh)
+    expect(farmland).toBeInstanceOf(THREE.Mesh)
+    expect(((farmland as THREE.Mesh).material as THREE.MeshLambertMaterial).color.getHex()).toBe(0xb8c8a8)
     wr.dispose()
   })
 })

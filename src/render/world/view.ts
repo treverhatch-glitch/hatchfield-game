@@ -1,3 +1,4 @@
+import type { MapDraw } from '../../maps/types'
 import type { StandAccess, StandClass, Tile, Vec, Weather } from '../../game/types'
 import { SIZE } from '../../game/types'
 import { CELL } from '../aircraft/specs'
@@ -29,6 +30,8 @@ export interface WorldView {
   mapRev: number
   clock?: number
   weather?: Weather
+  /** Set by a non-default map. Missing or null keeps today's sky and farmland. */
+  mapDraw?: MapDraw | null
   speed?: number
   standClass?: Record<string, StandClass>
   /** Wide is code E, jumbo is code F. Missing on an L stand means jumbo. */

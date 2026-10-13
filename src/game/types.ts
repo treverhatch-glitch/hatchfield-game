@@ -973,6 +973,10 @@ export interface GameSnapshot {
   /** Live volume letter — must survive a refresh or the contract vanishes. */
   cargoVolume?: CargoVolumeJob | null
   startFocus?: StartFocus
+  /** Climate picked on the new-game cards. Missing saves stay on the temperate belt. */
+  mapId?: 'temperate' | 'tropical' | 'desert'
+  /** Progress toward the three goals for `mapId`. */
+  mapChallenges?: Record<string, number>
   sandbox?: boolean
   /** In-progress construction. Grass stays until the timer finishes. */
   sites?: BuildSite[]
