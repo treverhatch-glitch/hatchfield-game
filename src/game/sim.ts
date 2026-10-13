@@ -220,6 +220,7 @@ import {
   NODE_ZONE,
   nodeComfort,
   outletExtraStock,
+  outletSpec,
   pickOutlet,
   placementCheck,
   refundFor,
@@ -241,6 +242,18 @@ import {
   type LitterHall,
 } from './litter.ts'
 import { LITTER_TUNING } from './litterData.ts'
+import {
+  claimSeat,
+  consumeSec,
+  hasTimeToSit,
+  releaseSeat,
+  seatingAdvice,
+  seatsNear,
+  sweepSeats,
+  walkSecTo,
+  type SeatBook,
+} from './dining.ts'
+import { DINING_TUNING } from './diningData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -620,6 +633,10 @@ export class Game {
   litterSeq = 0
   /** Seconds until the litter / restroom advisor notes refresh. */
   litterAdviceCool = 0
+  /** Seat bookings per hall: seat id → guest id. Not saved; diners re-take them after a load. */
+  seatBooks = new Map<string, SeatBook>()
+  /** Clock times diners ate standing, per hall, for the seating hint. */
+  diningStood = new Map<string, number[]>()
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -895,6 +912,8 @@ export class Game {
     this.hallJanitors = []
     this.litterSeq = 0
     this.litterAdviceCool = 0
+    this.seatBooks.clear()
+    this.diningStood.clear()
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -2117,6 +2136,8 @@ export class Game {
     this.standAccessMode = 'remote'
     this.janitors = 0
     this.hallJanitors = []
+    this.seatBooks.clear()
+    this.diningStood.clear()
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -4684,7 +4705,10 @@ export class Game {
     const zone = NODE_ZONE[g.node]
     const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
     g.seated = false
-    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+    if (g.meal) {
+      // A diner holds their own booked seat; tickMeal rests them. Take it out of the waiting pool.
+      if (zone && free > 0 && g.meal.walk <= 0) state.seatsLeft.set(zone, free - 1)
+    } else if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
       state.seatsLeft.set(zone, free - 1)
       g.seated = true
       g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
@@ -4713,10 +4737,18 @@ export class Game {
    * A meal or a coffee leaves a wrapper or cup. It goes in a can in range,
    * else on the floor by the counter it came from.
    */
-  litterFromMeal(fit: TerminalFit, outlet: PlacedItem | null): 'bin' | 'floor' | null {
+  litterFromMeal(
+    fit: TerminalFit,
+    outlet: PlacedItem | null,
+    seat?: { c: number; r: number },
+  ): 'bin' | 'floor' | null {
     const hall = asLitterHall(fit)
     if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
-    const cells = outlet ? [{ c: outlet.c, r: outlet.r }] : foodCells(hall)
+    const cells = seat
+      ? [{ c: seat.c, r: seat.r }]
+      : outlet
+        ? [{ c: outlet.c, r: outlet.r }]
+        : foodCells(hall)
     if (!cells.length) return null
     this.litterSeq += 1
     // Spread by sequence, not Math.random, so litter never shifts a seeded run.
@@ -4725,6 +4757,127 @@ export class Game {
     let k = 0
     const jitter = () => ((n * 7919 + ++k * 104729) % 1000) / 1000
     return dropLitter(hall, at.c, at.r, `lit-${n}`, jitter)
+  }
+
+  /** Seat bookings for one hall. */
+  seatBook(fit: TerminalFit): SeatBook {
+    const key = this.hallKey(fit)
+    let book = this.seatBooks.get(key)
+    if (!book) {
+      book = new Map()
+      this.seatBooks.set(key, book)
+    }
+    return book
+  }
+
+  /** Diners who ate standing in this hall inside the advisor window. */
+  diningStoodRecently(fit: TerminalFit): number {
+    const key = this.hallKey(fit)
+    const since = this.clock - DINING_TUNING.standWindowSec
+    const list = (this.diningStood.get(key) ?? []).filter((t) => t >= since)
+    this.diningStood.set(key, list)
+    return list.length
+  }
+
+  /**
+   * After a meal at a placed outlet, a diner with time claims a free seat near
+   * the counter and walks to it. No seat means eating on their feet, a little
+   * less happy. Coffee, a passer-by, or a diner short on time eats on the walk.
+   * After 'sat' the litter waits for the end of the meal.
+   */
+  seatDiner(g: HallGuest, fit: TerminalFit, outlet: PlacedItem): 'sat' | 'stood' | 'walk' {
+    if (DINING_TUNING.walkAway.includes(outlet.def)) return 'walk'
+    // Passing through the court on the way somewhere else — eat on the move.
+    if (g.path.length && g.seg < g.path.length - 1) return 'walk'
+    const mealSec = consumeSec(outlet.def)
+    const depart = g.job === 'depart'
+    const time = hasTimeToSit({
+      job: g.job,
+      boardingCall: depart && this.flightBoardingCall(g),
+      clockRunning: depart && this.departureClockRunning(g),
+      boarding: g.needs.boarding,
+      mealSec,
+    })
+    if (!time) return 'walk'
+    const seats = seatsNear((fit.items ?? []) as PlacedItem[], outlet.c, outlet.r)
+    const seat = claimSeat(this.seatBook(fit), seats, g.id)
+    if (!seat) {
+      g.happiness -= DINING_TUNING.standJoyHit
+      const key = this.hallKey(fit)
+      const list = this.diningStood.get(key) ?? []
+      list.push(this.clock)
+      this.diningStood.set(key, list)
+      return 'stood'
+    }
+    const cols = fit.zones?.[0]?.length || GRID_C
+    const walkSec = walkSecTo(outlet.c, outlet.r, seat, HALL_W / cols)
+    g.meal = {
+      seatId: seat.id,
+      itemId: seat.itemId,
+      c: seat.c,
+      r: seat.r,
+      slot: seat.slot,
+      table: seat.table,
+      walk: walkSec,
+      walkSec,
+      left: mealSec,
+    }
+    return 'sat'
+  }
+
+  /**
+   * A diner walks to their seat, sits, and eats. True while the meal holds
+   * them. A boarding call or a clock running short ends it early, so a seat
+   * never holds anyone past their flight.
+   */
+  tickMeal(g: HallGuest, dt: number): boolean {
+    const meal = g.meal
+    if (!meal) return false
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit || !(fit.items ?? []).some((it) => it.id === meal.itemId)) return this.endMeal(g, fit)
+    const book = this.seatBook(fit)
+    if (book.get(meal.seatId) !== g.id) {
+      // Claims are not saved. After a load, take the seat back if it is free.
+      if (book.has(meal.seatId)) return this.endMeal(g, fit)
+      book.set(meal.seatId, g.id)
+    }
+    const moving = g.path.length > 0 && g.seg < g.path.length - 1
+    const depart = g.job === 'depart'
+    const late = !hasTimeToSit({
+      job: g.job,
+      boardingCall: depart && this.flightBoardingCall(g),
+      clockRunning: depart && this.departureClockRunning(g),
+      boarding: g.needs.boarding,
+      mealSec: 0,
+    })
+    if (moving || late || g.node !== 'food') return this.endMeal(g, fit)
+    if (meal.walk > 0) {
+      meal.walk = Math.max(0, meal.walk - dt)
+      g.thought = 'Taking my tray to a seat'
+      return true
+    }
+    g.seated = true
+    g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
+    g.happiness = Math.min(100, g.happiness + dt * DINING_TUNING.seatedJoyPerSec)
+    g.needs.shop = Math.min(100, g.needs.shop + dt * DINING_TUNING.seatedShopPerSec)
+    meal.left -= dt
+    g.thought = meal.table ? 'Eating at a table' : 'Eating on a bench'
+    if (meal.left > 0) return true
+    this.endMeal(g, fit)
+    g.thought = 'Good meal — off again'
+    return false
+  }
+
+  /** Stand up: free the seat and leave the wrapper at it. */
+  private endMeal(g: HallGuest, fit: TerminalFit | null): false {
+    const meal = g.meal
+    g.meal = undefined
+    g.seated = false
+    if (meal && fit) {
+      releaseSeat(this.seatBook(fit), g.id)
+      this.litterFromMeal(fit, null, meal)
+    }
+    return false
   }
 
   /** Keep one hall janitor per hire, shared round-robin across halls. */
@@ -4792,11 +4945,13 @@ export class Game {
   tickHall(dt: number) {
     if (!this.fits.length) {
       this.hallGuests = []
+      this.seatBooks.clear()
       return
     }
     const anyOpen = this.fits.some((f) => this.hallOpenFor(f).size > 0)
     if (!anyOpen) {
       this.hallGuests = []
+      this.seatBooks.clear()
       return
     }
     const kit = new Map<string, HallKitState>()
@@ -4853,9 +5008,11 @@ export class Game {
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
       if (g.job === 'depart' && this.departureClockRunning(g)) {
-        g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+        g.needs.boarding = Math.max(0, g.needs.boarding - dt * DINING_TUNING.boardingDrainPerSec)
       }
       this.applyHallKit(g, dt, kit)
+      // A diner at a booked seat stays put until the meal ends or the flight calls.
+      if (this.tickMeal(g, dt)) continue
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5088,6 +5245,10 @@ export class Game {
       }
     }
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
+    if (this.seatBooks.size) {
+      const live = new Set(this.hallGuests.map((g) => g.id))
+      for (const book of this.seatBooks.values()) sweepSeats(book, (id) => live.has(id))
+    }
     if (this.departedFlights.size > 24) {
       const live = new Set(this.hallGuests.map((g) => g.flightId))
       for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
@@ -5394,6 +5555,10 @@ export class Game {
       })
     }
     hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
+    const outletCells = ((fit.items ?? []) as PlacedItem[])
+      .filter((it) => !it.bundle && outletSpec(it.def))
+      .map((it) => ({ c: it.c, r: it.r }))
+    hall.push(...seatingAdvice(this.diningStoodRecently(fit), outletCells))
     this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
@@ -6557,14 +6722,14 @@ export class Game {
         }
         this.foodShelf -= 1
         this.mealSold = true
-        if (homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
+        const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
+        if (homeFit && dine !== 'sat') this.litterFromMeal(homeFit, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
           : outlet
             ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
-            : `Ate (−$${pay})`
-      }
+            : `Ate (−$${pay})`      }
       }
     }
     if (n === 'shop') {

@@ -551,6 +551,9 @@ export class HallWorld {
       }
     }
     const pile = new Map<string, number>()
+    const zones = game.activeHall()?.zones ?? []
+    const cols = zones[0]?.length || GRID_C
+    const rows = zones.length || GRID_R
     for (const g of game.hallGuests) {
       if (g.releaseAt != null && g.releaseAt > game.clock) continue
       let mesh = this.guests.get(g.id)
@@ -600,6 +603,20 @@ export class HallWorld {
         0.55,
         desk ? desk.z + 2.4 : a.z + (b.z - a.z) * t + oz,
       )
+      mesh.scale.y = 1
+      if (g.meal) {
+        // Walk the tray from the counter to the booked seat, then sit: lower and squat.
+        const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
+        const sx = seat.x + (g.meal.slot % 2) * 0.9 - 0.45
+        const sz = seat.z + Math.floor(g.meal.slot / 2) * 0.9 - 0.45
+        const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
+        mesh.position.x += (sx - mesh.position.x) * k
+        mesh.position.z += (sz - mesh.position.z) * k
+        if (g.seated) {
+          mesh.scale.y = 0.7
+          mesh.position.y = 0.42
+        }
+      }
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
       const carry = mesh.userData.carry as THREE.Mesh

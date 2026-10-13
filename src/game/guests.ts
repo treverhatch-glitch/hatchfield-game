@@ -8,6 +8,7 @@
  */
 
 import type { ArriveMode } from './types'
+import type { SeatedMeal } from './dining.ts'
 
 export type { ArriveMode }
 
@@ -142,6 +143,8 @@ export interface HallGuest {
   releaseAt?: number
   /** On a bench or seat row this tick. */
   seated?: boolean
+  /** Sit-down meal at a claimed seat near the food court. */
+  meal?: SeatedMeal
 }
 
 /**
