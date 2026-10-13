@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { sharedMat, unitBox, unitCylinder } from './pool'
-import { getAircraftSpec, WORLD_PER_METER } from './specs'
+import { aircraftWorldPerMeter, getAircraftSpec } from './specs'
 import { bridgeStops } from './stands'
 
 function mat(color: string): THREE.Material {
@@ -16,7 +16,7 @@ export function createBridges(airframeId: string): THREE.Group {
   const spec = getAircraftSpec(airframeId)
   const root = new THREE.Group()
   root.name = 'bridges'
-  root.scale.setScalar(WORLD_PER_METER)
+  root.scale.setScalar(aircraftWorldPerMeter())
   const glass = mat('#7ec3e8')
   const shell = mat('#d5dde4')
   const steel = mat('#5c6b78')

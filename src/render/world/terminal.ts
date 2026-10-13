@@ -44,13 +44,21 @@ import { planTerminal, walkerAt, type TerminalPlan } from './plan'
 import { type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
 import { textTexture, type WorldTextures } from './textures'
+import { WORLD_PER_METER } from '../aircraft/specs'
 import { CELL, cellX, cellZ } from './view'
 
-export const FLOOR_Y = 0.24
+/** Authored shell sizes are meters. */
+const m = (meters: number) => meters * WORLD_PER_METER
+/** Spread the old 6.2-unit bay across the real cell so furniture still fills the hall. */
+const BAY = CELL / 6.2
+/** peopleGeo is a 0.9 m figure. Scale it up to 1.75 m, then into world units. */
+const PERSON_SCALE = WORLD_PER_METER * (1.75 / 0.9)
+
+export const FLOOR_Y = m(0.24)
 export const SEATED_SCALE = 0.62
-export const SEATED_LIFT = 0.27
-export const ROOF_Y = 3.9
-const GLASS_TOP = 3.3
+export const SEATED_LIFT = m(0.285)
+export const ROOF_Y = m(3.9)
+const GLASS_TOP = m(3.3)
 
 export interface TerminalShared {
   beam: THREE.BufferGeometry
@@ -117,19 +125,19 @@ export const ROOM_FLOOR: Record<RoomKind, number> = {
 const THRESHOLD = 0x6f7a84
 const SIGN_FG: Partial<Record<RoomKind, string>> = { security: '#f2c14a', lab: '#9be29b', office: '#d7c6ff' }
 
-export const WALL_H = 2.7
-export const GLASS_WALL_H = 1.25
-export const DOOR_H = 2.1
+export const WALL_H = m(2.7)
+export const GLASS_WALL_H = m(1.25)
+export const DOOR_H = m(2.1)
 /** Cutaway stub height for walls between the camera and what it looks at. */
-export const WALL_LOW = 0.32
+export const WALL_LOW = m(0.32)
 /** Far-side walls in the close-up: tall enough to read as rooms, low enough to see over. */
-export const WALL_MID = 1.5
-const WALL_T = 0.14
+export const WALL_MID = m(1.5)
+const WALL_T = m(0.14)
 
 /** LOD thresholds (camera → building distance) before the quality scale. */
-export const TERMINAL_LOD = [52, 120] as const
+export const TERMINAL_LOD = [52 * BAY, 120 * BAY] as const
 /** Camera distance under which the roof lifts off so the hall reads from above. */
-export const ROOF_CUTAWAY = 34
+export const ROOF_CUTAWAY = 34 * BAY
 
 export class TerminalBuilding {
   readonly root = new THREE.Group()
@@ -231,22 +239,23 @@ export class TerminalBuilding {
     const mullions: THREE.Matrix4[] = []
     const fascia: THREE.Matrix4[] = []
     const hvac: THREE.Matrix4[] = []
-    const rim = 0.6
+    const rim = m(0.6)
+    const slabH = Math.max(m(0.08), FLOOR_Y - m(0.01))
     for (const p of cluster.cells) {
       const x = cellX(p.c)
       const z = cellZ(p.r)
-      slab.push(trs(x, 0, z, 0, CELL, FLOOR_Y - 0.01, CELL))
+      slab.push(trs(x, 0, z, 0, CELL, slabH, CELL))
       // Roof frame around a central skylight.
-      roofFrame.push(trs(x, ROOF_Y, z - CELL / 2 + rim / 2, 0, CELL, 0.16, rim))
-      roofFrame.push(trs(x, ROOF_Y, z + CELL / 2 - rim / 2, 0, CELL, 0.16, rim))
-      roofFrame.push(trs(x - CELL / 2 + rim / 2, ROOF_Y, z, 0, rim, 0.16, CELL - rim * 2))
-      roofFrame.push(trs(x + CELL / 2 - rim / 2, ROOF_Y, z, 0, rim, 0.16, CELL - rim * 2))
+      roofFrame.push(trs(x, ROOF_Y, z - CELL / 2 + rim / 2, 0, CELL, m(0.16), rim))
+      roofFrame.push(trs(x, ROOF_Y, z + CELL / 2 - rim / 2, 0, CELL, m(0.16), rim))
+      roofFrame.push(trs(x - CELL / 2 + rim / 2, ROOF_Y, z, 0, rim, m(0.16), CELL - rim * 2))
+      roofFrame.push(trs(x + CELL / 2 - rim / 2, ROOF_Y, z, 0, rim, m(0.16), CELL - rim * 2))
       // Skylight glazing bars.
-      for (const k of [-1, 0, 1]) roofFrame.push(trs(x + k * 1.1, ROOF_Y + 0.02, z, 0, 0.06, 0.06, CELL - rim * 2))
+      for (const k of [-1, 0, 1]) roofFrame.push(trs(x + k * m(1.1), ROOF_Y + m(0.02), z, 0, m(0.06), m(0.06), CELL - rim * 2))
       for (const k of [-0.5, 0.5]) {
-        for (const j of [-0.5, 0.5]) columns.push(trs(x + k * CELL * 0.5, FLOOR_Y, z + j * CELL * 0.5, 0, 0.1, ROOF_Y - FLOOR_Y, 0.1))
+        for (const j of [-0.5, 0.5]) columns.push(trs(x + k * CELL * 0.5, FLOOR_Y, z + j * CELL * 0.5, 0, m(0.3), ROOF_Y - FLOOR_Y, m(0.3)))
       }
-      if ((p.c * 7 + p.r * 3) % 4 === 0) hvac.push(trs(x - CELL / 2 + rim / 2, ROOF_Y + 0.16, z, 0, 0.7, 0.45, 1.1))
+      if ((p.c * 7 + p.r * 3) % 4 === 0) hvac.push(trs(x - CELL / 2 + rim / 2, ROOF_Y + m(0.16), z, 0, m(1.6), m(0.9), m(2.2)))
     }
 
     // Curtain walls on every exterior side.
@@ -269,19 +278,19 @@ export class TerminalBuilding {
       quad(cx - flip * tx * h, cz - flip * tz * h, cx + flip * tx * h, cz + flip * tz * h, FLOOR_Y, GLASS_TOP)
       for (let k = 0; k <= 4; k++) {
         const o = -h + (k * CELL) / 4
-        mullions.push(trs(cx + tx * o, FLOOR_Y, cz + tz * o, 0, 0.07, GLASS_TOP - FLOOR_Y, 0.07))
+        mullions.push(trs(cx + tx * o, FLOOR_Y, cz + tz * o, 0, m(0.12), GLASS_TOP - FLOOR_Y, m(0.12)))
       }
       const yaw = tx ? 0 : Math.PI / 2
-      mullions.push(trs(cx, 2.35, cz, yaw, CELL, 0.06, 0.08))
-      mullions.push(trs(cx, FLOOR_Y, cz, yaw, CELL, 0.12, 0.1))
-      fascia.push(trs(cx + v.dc * 0.12, GLASS_TOP, cz + v.dr * 0.12, yaw, CELL + 0.26, ROOF_Y + 0.22 - GLASS_TOP, 0.3))
+      mullions.push(trs(cx, m(2.35), cz, yaw, CELL, m(0.08), m(0.12)))
+      mullions.push(trs(cx, FLOOR_Y, cz, yaw, CELL, m(0.16), m(0.18)))
+      fascia.push(trs(cx + v.dc * m(0.2), GLASS_TOP, cz + v.dr * m(0.2), yaw, CELL + m(0.3), ROOF_Y + m(0.22) - GLASS_TOP, m(0.45)))
       // Landside drop-off canopy.
       if (e.side === landsideSide(airside)) {
-        const ox = cx + v.dc * 1.0
-        const oz = cz + v.dr * 1.0
-        fascia.push(trs(ox, 2.55, oz, yaw, CELL, 0.12, 2.0))
-        mullions.push(trs(ox + v.dc * 0.85 + tx * h * 0.6, 0, oz + v.dr * 0.85 + tz * h * 0.6, 0, 0.12, 2.55, 0.12))
-        mullions.push(trs(ox + v.dc * 0.85 - tx * h * 0.6, 0, oz + v.dr * 0.85 - tz * h * 0.6, 0, 0.12, 2.55, 0.12))
+        const ox = cx + v.dc * m(2.4)
+        const oz = cz + v.dr * m(2.4)
+        fascia.push(trs(ox, m(2.55), oz, yaw, CELL, m(0.14), m(3.6)))
+        mullions.push(trs(ox + v.dc * m(1.5) + tx * h * 0.6, 0, oz + v.dr * m(1.5) + tz * h * 0.6, 0, m(0.18), m(2.55), m(0.18)))
+        mullions.push(trs(ox + v.dc * m(1.5) - tx * h * 0.6, 0, oz + v.dr * m(1.5) - tz * h * 0.6, 0, m(0.18), m(2.55), m(0.18)))
       }
     }
     const beam = this.shared.beam
@@ -315,7 +324,7 @@ export class TerminalBuilding {
     glass.renderOrder = 2
     this.shell.add(glass)
 
-    const skyGeo = quadsGeometry(cluster.cells, { y: ROOF_Y + 0.08, inset: rim })
+    const skyGeo = quadsGeometry(cluster.cells, { y: ROOF_Y + m(0.08), inset: rim })
     skyGeo.deleteAttribute('color')
     this.owned.geos.push(skyGeo)
     const sky = new THREE.Mesh(skyGeo, this.skyMat)
@@ -353,25 +362,26 @@ export class TerminalBuilding {
     if (landEdges.length) {
       const mid = landEdges[Math.floor(landEdges.length / 2)]
       const v = DIR_VEC[land]
-      const w = Math.min(CELL * 1.6, landEdges.length * CELL * 0.8)
+      const w = Math.min(m(14), landEdges.length * m(8))
+      const h = m(1.4)
       this.plane(
         w,
-        0.5,
-        this.sign(`TERMINAL ${index + 1}`, w, 0.5, '#13293d', '#f2c14a'),
-        cellX(mid.c) + v.dc * (CELL * 0.5 + 0.28),
-        3.6,
-        cellZ(mid.r) + v.dr * (CELL * 0.5 + 0.28),
+        h,
+        this.sign(`TERMINAL ${index + 1}`, w, h, '#13293d', '#f2c14a'),
+        cellX(mid.c) + v.dc * (CELL * 0.5 + m(0.4)),
+        m(3.6),
+        cellZ(mid.r) + v.dr * (CELL * 0.5 + m(0.4)),
         yawOut(land),
         this.shell,
       )
       const dep = landEdges[0]
       this.plane(
-        2.4,
-        0.32,
-        this.sign('DEPARTURES', 2.4, 0.32, '#c9a227', '#13293d'),
-        cellX(dep.c) + v.dc * (CELL * 0.5 + 2.02),
-        2.45,
-        cellZ(dep.r) + v.dr * (CELL * 0.5 + 2.02),
+        m(4.8),
+        m(0.7),
+        this.sign('DEPARTURES', m(4.8), m(0.7), '#c9a227', '#13293d'),
+        cellX(dep.c) + v.dc * (CELL * 0.5 + m(2.4)),
+        m(2.45),
+        cellZ(dep.r) + v.dr * (CELL * 0.5 + m(2.4)),
         yawOut(land),
         this.shell,
       )
@@ -379,12 +389,12 @@ export class TerminalBuilding {
     airEdges.forEach((e, i) => {
       const v = DIR_VEC[airside]
       this.plane(
-        1.6,
-        0.42,
-        this.sign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, 1.6, 0.42, '#1b4f72', '#ffffff'),
-        cellX(e.c) + v.dc * (CELL * 0.5 + 0.28),
-        3.6,
-        cellZ(e.r) + v.dr * (CELL * 0.5 + 0.28),
+        m(2.8),
+        m(0.7),
+        this.sign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, m(2.8), m(0.7), '#1b4f72', '#ffffff'),
+        cellX(e.c) + v.dc * (CELL * 0.5 + m(0.4)),
+        m(3.6),
+        cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4)),
         yawOut(airside),
         this.shell,
       )
@@ -440,13 +450,14 @@ export class TerminalBuilding {
     const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
     for (const room of rp.rooms) {
       const text = room.kind === 'gate' ? room.label.replace('GATE ', `GATE ${String.fromCharCode(65 + index)}`) : room.label
-      const w = Math.min(2.4, 0.5 + text.length * 0.13)
-      const mat = this.sign(text, w, 0.34, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
+      const w = Math.min(m(4.2), m(0.7) + text.length * m(0.18))
+      const h = m(0.55)
+      const mat = this.sign(text, w, h, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
       this.propMats.push(mat)
       // Back-to-back so the label reads from either side of the hall.
-      for (const [o, a] of [[0.01, yaw], [-0.01, yaw + Math.PI]]) {
-        const m = this.plane(w, 0.34, mat, room.x + Math.sin(yaw) * o, WALL_H + 0.3, room.z + Math.cos(yaw) * o, a, this.props)
-        m.name = 'room-sign'
+      for (const [o, a] of [[m(0.02), yaw], [-m(0.02), yaw + Math.PI]] as [number, number][]) {
+        const sign = this.plane(w, h, mat, room.x + Math.sin(yaw) * o, WALL_H + m(0.35), room.z + Math.cos(yaw) * o, a, this.props)
+        sign.name = 'room-sign'
       }
     }
   }
@@ -469,7 +480,7 @@ export class TerminalBuilding {
         if (this.nearCut) {
           const t = (w.x - focus.x) * ux + (w.z - focus.z) * uz
           const near = Math.hypot(camPos.x - w.x, camPos.z - w.z) < 6
-          if (close || near || (t > -1.2 && steep < 2.6)) target = Math.min(w.full, WALL_LOW)
+          if (close || near || (t > -1.2 * BAY && steep < 2.6)) target = Math.min(w.full, WALL_LOW)
           else target = Math.min(w.full, WALL_MID)
         }
         const h = w.h < 0 ? target : w.h + (target - w.h) * k
@@ -504,7 +515,7 @@ export class TerminalBuilding {
     const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
     for (const p of this.plan.props) {
-      const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw)
+      const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
       for (const part of this.shared.parts[p.kind] ?? []) {
         if (part.mat === 'board') {
           boards.push(matrix)
@@ -541,8 +552,8 @@ export class TerminalBuilding {
     this.plan.people.forEach((p, i) => {
       const seated = p.role === 'seated'
       // Seated figures are shortened and lifted so they rest on the seat top (0.285).
-      const sy = seated ? SEATED_SCALE : 1
-      const matrix = trs(p.x, FLOOR_Y + (seated ? SEATED_LIFT : 0), p.z, p.yaw, 1, sy, 1)
+      const sy = (seated ? SEATED_SCALE : 1) * PERSON_SCALE
+      const matrix = trs(p.x, FLOOR_Y + (seated ? SEATED_LIFT : 0), p.z, p.yaw, PERSON_SCALE, sy, PERSON_SCALE)
       pieces.push({ geo: g.body, matrix, color: p.role === 'staff' ? STAFF_COLOR : PAX_COLORS[p.tint % PAX_COLORS.length] })
       pieces.push({ geo: g.head, matrix, color: SKIN_COLORS[(i * 7) % SKIN_COLORS.length] })
     })
@@ -578,16 +589,16 @@ export class TerminalBuilding {
     let bi = 0
     this.plan.walkers.forEach((w, i) => {
       const p = walkerAt(w, t)
-      const bob = Math.abs(Math.sin(t * 7 * w.speed + i)) * 0.04
-      setTrs(wb, i, p.x, FLOOR_Y + bob, p.z, p.yaw)
-      setTrs(wh, i, p.x, FLOOR_Y + bob, p.z, p.yaw)
+      const bob = Math.abs(Math.sin(t * 7 * w.speed + i)) * m(0.04)
+      setTrs(wb, i, p.x, FLOOR_Y + bob, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      setTrs(wh, i, p.x, FLOOR_Y + bob, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
       if (w.bag) {
         // Case trails behind and to the right of the walker.
-        const back = 0.32
-        const side = 0.16
+        const back = 0.32 * PERSON_SCALE
+        const side = 0.16 * PERSON_SCALE
         const sx = Math.sin(p.yaw)
         const sz = Math.cos(p.yaw)
-        setTrs(wl, bi++, p.x - sx * back + sz * side, FLOOR_Y, p.z - sz * back - sx * side, p.yaw)
+        setTrs(wl, bi++, p.x - sx * back + sz * side, FLOOR_Y, p.z - sz * back - sx * side, p.yaw, PERSON_SCALE, PERSON_SCALE)
       }
     })
     for (const m of this.walkers) m.instanceMatrix.needsUpdate = true
@@ -598,14 +609,14 @@ export class TerminalBuilding {
     const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
     // Cutaway: close and looking down from above the roof → lift the roof off.
-    const cut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale && camPos.y > ROOF_Y + 1.5
+    const cut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale && camPos.y > ROOF_Y + m(1.5)
     // Walls cut away whenever the interior is the subject: roof off, or eye level inside the glass.
     this.nearCut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
     this.roofFade = stepFade(this.roofFade, cut ? 0 : 1, dt, 1.1)
     applyFade(this.roof, this.roofMats, this.roofFade)
     // Lift as it fades so the cutaway reads as the roof coming off, not blinking out.
     const lift = 1 - this.roofFade
-    this.roof.position.y = lift * lift * 4
+    this.roof.position.y = lift * lift * m(4)
     this.skyMat.opacity = 0.18 * this.roofFade
     this.propFade = stepFade(this.propFade, this.lod <= 1 ? 1 : 0, dt, 3)
     this.lifeFade = stepFade(this.lifeFade, this.lod === 0 ? 1 : 0, dt, 3)

@@ -1,5 +1,5 @@
 import type { RealDoor } from './realworld'
-import { WORLD_PER_METER, type ModelSpec } from './specs'
+import { AIRCRAFT_VISUAL_SCALE, CELL, WING_GAP_M, WORLD_PER_METER, type ModelSpec } from './specs'
 
 export type { IcaoCode } from './realworld'
 import type { IcaoCode } from './realworld'
@@ -46,12 +46,16 @@ export function bridgeYawToward(
   return Math.atan2(to.c - from.c, to.r - from.r)
 }
 
-const STAND_CELL = 6.2
-const WING_GAP = 0.4
+const WING_GAP = WING_GAP_M * WORLD_PER_METER
+
+/** Visual half-span. The exaggeration is part of the footprint so wingtips still clear. */
+function wingRadius(spanM: number): number {
+  return (spanM * WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE) / 2
+}
 
 /**
  * True when this wingspan disc meets another parked wingspan or a terminal tile.
- * Distances are in the same cell grid as the apron (6.2 world units).
+ * Distances use the shared apron cell (METERS_PER_CELL × WORLD_PER_METER).
  */
 export function wingDiscsClash(
   stand: { c: number; r: number },
@@ -59,15 +63,14 @@ export function wingDiscsClash(
   others: { c: number; r: number; spanM: number }[],
   blocks: { c: number; r: number }[],
 ): boolean {
-  const aR = (spanM * WORLD_PER_METER) / 2
+  const aR = wingRadius(spanM)
   for (const o of others) {
-    const d = Math.hypot((o.c - stand.c) * STAND_CELL, (o.r - stand.r) * STAND_CELL)
-    const oR = (o.spanM * WORLD_PER_METER) / 2
-    if (d < aR + oR + WING_GAP) return true
+    const d = Math.hypot((o.c - stand.c) * CELL, (o.r - stand.r) * CELL)
+    if (d < aR + wingRadius(o.spanM) + WING_GAP) return true
   }
-  const blockR = STAND_CELL * 0.5
+  const blockR = CELL * 0.5
   for (const b of blocks) {
-    const d = Math.hypot((b.c - stand.c) * STAND_CELL, (b.r - stand.r) * STAND_CELL)
+    const d = Math.hypot((b.c - stand.c) * CELL, (b.r - stand.r) * CELL)
     if (d < aR + blockR + WING_GAP) return true
   }
   return false

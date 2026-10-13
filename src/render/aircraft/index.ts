@@ -18,7 +18,12 @@ export {
   setAircraftQuality,
   triangleCount,
   updateAircraft,
+  AIRCRAFT_VISUAL_SCALE,
+  CELL,
+  METERS_PER_CELL,
+  WING_GAP_M,
   WORLD_PER_METER,
+  aircraftWorldPerMeter,
 } from './factory'
 export type { AircraftQuality, AircraftSize, Livery, ModelSpec } from './factory'
 export { createBridges } from './bridges'

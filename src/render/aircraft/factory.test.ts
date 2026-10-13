@@ -21,6 +21,7 @@ import {
   setAircraftQuality,
   triangleCount,
   updateAircraft,
+  AIRCRAFT_VISUAL_SCALE,
   WORLD_PER_METER,
 } from './factory'
 
@@ -88,9 +89,10 @@ describe('aircraft model factory', () => {
     for (const spec of Object.values(MODEL_SPECS)) {
       const aircraft = createAircraft(spec.id, LIVERY)
       const size = measureAircraft(aircraft)
-      const length = spec.lengthM * WORLD_PER_METER
-      const span = spec.spanM * WORLD_PER_METER
-      const height = spec.heightM * WORLD_PER_METER
+      const visual = WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE
+      const length = spec.lengthM * visual
+      const span = spec.spanM * visual
+      const height = spec.heightM * visual
       const check = (label: string, value: number, target: number, lo: number, hi: number) => {
         const ratio = value / target
         if (ratio < lo || ratio > hi) {
