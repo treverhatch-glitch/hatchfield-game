@@ -13,6 +13,8 @@ import {
   ParkedFleet,
   releaseAircraft,
   setAircraftNight,
+  aircraftWorldPerMeter,
+  CELL,
   updateAircraft,
   WORLD_PER_METER,
   type Livery,
@@ -27,11 +29,11 @@ import {
   type WorldRender,
 } from './world/index'
 
-export const CELL = 6.2
+export { CELL }
 
-/** Closest hall view. The interior cutaway engages below about 34. */
+/** Closest hall view. The interior cutaway engages below about 54. */
 const MIN_DIST = 12
-const MAX_DIST = 160
+const MAX_DIST = 280
 
 /**
  * True when the drawing buffer does not match CSS size × pixel ratio.
@@ -57,39 +59,64 @@ export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
   )
 }
 
+function wu(meters: number): number {
+  return meters * WORLD_PER_METER
+}
+
+/** Length, height, width in meters. Aircraft are the only meshes with a visual exaggeration. */
+function vehicleMeters(kind: string): [number, number, number] {
+  if (kind === 'citycargo' || kind === 'catering_truck') return [8.5, 3.2, 2.5]
+  if (kind === 'delivery' || kind === 'contractor') return [7.2, 2.8, 2.4]
+  if (kind === 'fuel' || kind === 'fuel_truck') return [8, 3, 2.5]
+  if (kind === 'pax_bus') return [12, 3, 2.5]
+  if (kind === 'uld_loader') return [8, 2.4, 2.6]
+  if (kind === 'gpu') return [3.2, 1.6, 1.4]
+  if (kind === 'baggage_tug' || kind === 'belt_loader' || kind === 'bags') return [6.5, 1.8, 1.6]
+  return [4.5, 1.9, 1.8]
+}
+
 function crewSpot(at: 'cab' | 'ground' | 'lift' | 'galley', lift: number, helper: boolean): { x: number; y: number; z: number } {
   const side = helper ? -1 : 1
-  if (at === 'cab') return { x: 0.16 * side, y: 0.55, z: 0.2 }
-  if (at === 'ground') return { x: 0.72 * side, y: 0.28, z: 0.05 }
-  if (at === 'lift') return { x: 0.12 * side, y: 0.42 + lift * 1.35, z: -0.72 }
-  return { x: 0.18 * side, y: 0.85 + lift * 0.35, z: -1.25 }
+  if (at === 'cab') return { x: wu(2.4) * side, y: wu(1.7), z: wu(0.35) }
+  if (at === 'ground') return { x: wu(0.4) * side, y: wu(0.9), z: wu(1.7) }
+  if (at === 'lift') return { x: wu(-1.2) * side, y: wu(1.4 + lift * 2.6), z: wu(-1.6) }
+  return { x: wu(-2.0), y: wu(2.6 + lift * 0.6), z: wu(-1.9) }
 }
+
+const CATER_MAST_M = 2.2
 
 function makeCateringRig(): THREE.Group {
   const g = new THREE.Group()
+  const bodyL = wu(8.5)
+  const bodyH = wu(3.2)
+  const bodyW = wu(2.5)
   const body = new THREE.Mesh(
-    new THREE.BoxGeometry(1.15, 0.48, 0.7),
+    new THREE.BoxGeometry(bodyL, bodyH, bodyW),
     new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.45 }),
   )
+  body.position.y = bodyH / 2
   body.castShadow = true
   g.add(body)
+  const mastH = wu(CATER_MAST_M)
   const mast = new THREE.Mesh(
-    new THREE.BoxGeometry(0.08, 0.35, 0.08),
+    new THREE.BoxGeometry(wu(0.18), mastH, wu(0.18)),
     new THREE.MeshStandardMaterial({ color: '#4a4038', roughness: 0.5 }),
   )
   mast.name = 'mast'
-  mast.position.set(0, 0.2, -0.55)
+  mast.position.set(-bodyL * 0.28, mastH / 2, -bodyW * 0.42)
   g.add(mast)
   const platform = new THREE.Mesh(
-    new THREE.BoxGeometry(0.7, 0.06, 0.45),
+    new THREE.BoxGeometry(wu(1.6), wu(0.12), wu(1.1)),
     new THREE.MeshStandardMaterial({ color: '#d8dee6', roughness: 0.4 }),
   )
   platform.name = 'platform'
-  platform.position.set(0, 0.15, -0.7)
+  platform.position.set(-bodyL * 0.28, wu(1.2), -bodyW * 0.55)
   g.add(platform)
+  const personR = wu(0.22)
+  const personL = wu(1.75 - 0.44)
   for (const role of ['driver', 'helper'] as const) {
     const cap = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.12, 0.28, 3, 6),
+      new THREE.CapsuleGeometry(personR, personL, 3, 6),
       new THREE.MeshLambertMaterial({ color: role === 'driver' ? '#1f3a5a' : '#6a4328' }),
     )
     cap.name = role
@@ -106,7 +133,7 @@ export class World {
   pivot = new THREE.Vector3(0, 0, 0)
   yaw = 0.72
   pitch = 0.68
-  dist = 54
+  dist = 88
   dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
@@ -170,9 +197,9 @@ export class World {
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#87b7d9')
-    this.scene.fog = new THREE.Fog('#9fc5dd', 90, 220)
+    this.scene.fog = new THREE.Fog('#9fc5dd', 220, 640)
 
-    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 500)
+    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 1200)
     this.placeCam()
 
     const hemi = new THREE.HemisphereLight('#e8f3ff', '#6b8a4a', 0.85)
@@ -182,16 +209,16 @@ export class World {
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(1024, 1024)
     this.sun.shadow.camera.near = 10
-    this.sun.shadow.camera.far = 160
-    this.sun.shadow.camera.left = -60
-    this.sun.shadow.camera.right = 60
-    this.sun.shadow.camera.top = 60
-    this.sun.shadow.camera.bottom = -60
+    this.sun.shadow.camera.far = 400
+    this.sun.shadow.camera.left = -140
+    this.sun.shadow.camera.right = 140
+    this.sun.shadow.camera.top = 140
+    this.sun.shadow.camera.bottom = -140
     this.scene.add(this.sun)
     this.scene.add(new THREE.AmbientLight('#b9c9a8', 0.28))
 
     const earth = new THREE.Mesh(
-      new THREE.CircleGeometry(220, 48),
+      new THREE.CircleGeometry(420, 48),
       new THREE.MeshLambertMaterial({ color: '#2d5a34' }),
     )
     earth.rotation.x = -Math.PI / 2
@@ -1287,8 +1314,9 @@ export class World {
   }
 
   /**
-   * Scaled airframes (0.45 world units per meter). Jetway bridges parent on the
-   * aircraft root while parked. Remote duplicates share a parked batch.
+   * Aircraft use meters × WORLD_PER_METER × AIRCRAFT_VISUAL_SCALE.
+   * Jetway bridges parent on the aircraft root while parked.
+   * Remote duplicates share a parked batch.
    */
   private syncAircraft(game: Game) {
     const groups = new Map<string, Game['flights']>()
@@ -1311,7 +1339,8 @@ export class World {
         const alt = Math.max(0, f.z - 0.1)
         _euler.set(0, -f.heading, 0)
         _quat.setFromEuler(_euler)
-        _scale.set(WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
+        const visual = aircraftWorldPerMeter()
+        _scale.set(visual, visual, visual)
         planes.push({
           id: f.id,
           airframeId: f.airframeId || 'b738',
@@ -1392,24 +1421,24 @@ export class World {
                       : t.kind === 'delivery'
                         ? '#c47a3a'
                         : '#c45c26'
+        const [lenM, htM, widM] = vehicleMeters(t.kind)
+        const len = wu(lenM)
+        const ht = wu(htM)
+        const wid = wu(widM)
         const g = new THREE.Group()
         const body = new THREE.Mesh(
-          t.kind === 'citycargo'
-            ? new THREE.BoxGeometry(1.35, 0.7, 0.85)
-            : new THREE.BoxGeometry(1.1, 0.55, 0.7),
+          new THREE.BoxGeometry(len, ht, wid),
           new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
         )
+        body.position.y = ht / 2
         body.castShadow = true
         body.name = 'body'
         g.add(body)
         // Manor Lords-style visible load — crates on bag carts / city trucks.
         if (t.kind === 'bags' || t.kind === 'citycargo') {
+          const crateH = wu(t.kind === 'citycargo' ? 1.2 : 0.7)
           const crate = new THREE.Mesh(
-            new THREE.BoxGeometry(
-              t.kind === 'citycargo' ? 0.7 : 0.55,
-              0.4,
-              t.kind === 'citycargo' ? 0.55 : 0.45,
-            ),
+            new THREE.BoxGeometry(wu(t.kind === 'citycargo' ? 2.2 : 1.1), crateH, wu(t.kind === 'citycargo' ? 2.0 : 1.0)),
             new THREE.MeshStandardMaterial({
               color: t.kind === 'citycargo' ? '#9a7a40' : '#8a7348',
               roughness: 0.55,
@@ -1417,20 +1446,20 @@ export class World {
               emissiveIntensity: 0.15,
             }),
           )
-          crate.position.set(0, t.kind === 'citycargo' ? 0.65 : 0.55, 0)
+          crate.position.set(0, ht + crateH / 2, 0)
           crate.name = 'crate'
           crate.visible = false
           g.add(crate)
           if (t.kind === 'bags') {
             for (let i = 0; i < 3; i++) {
               const bag = new THREE.Mesh(
-                new THREE.BoxGeometry(0.28, 0.34, 0.22),
+                new THREE.BoxGeometry(wu(0.7), wu(0.5), wu(0.35)),
                 new THREE.MeshBasicMaterial({
                   color: i === 1 ? '#3ec6ff' : '#ffb703',
                   fog: false,
                 }),
               )
-              bag.position.set((i - 1) * 0.3, 0.85, 0.02)
+              bag.position.set((i - 1) * wu(0.8), ht + wu(0.35), 0)
               bag.name = 'suitcase'
               g.add(bag)
             }
@@ -1440,7 +1469,7 @@ export class World {
         this.trucks.set(t.id, mesh)
         this.entGroup.add(mesh)
       }
-      mesh.position.copy(toWorld(t.x, t.y, 0.4))
+      mesh.position.copy(toWorld(t.x, t.y, 0))
       mesh.rotation.y = -Math.atan2(
         (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.r ?? t.y) - t.y,
         (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.c ?? t.x) - t.x,
@@ -1483,29 +1512,34 @@ export class World {
                     : pose.type === 'uld_loader'
                       ? '#4a5568'
                       : '#8a93a0'
+        const [lenM, htM, widM] = vehicleMeters(pose.type)
+        const len = wu(lenM)
+        const ht = wu(htM)
+        const wid = wu(widM)
         const g = new THREE.Group()
         const body = new THREE.Mesh(
-          new THREE.BoxGeometry(pose.type === 'pax_bus' ? 1.35 : 1.05, 0.5, 0.62),
+          new THREE.BoxGeometry(len, ht, wid),
           new THREE.MeshStandardMaterial({ color, roughness: 0.45 }),
         )
+        body.position.y = ht / 2
         body.castShadow = true
         g.add(body)
         if (pose.type === 'baggage_tug' || pose.type === 'belt_loader') {
           const bed = new THREE.Mesh(
-            new THREE.BoxGeometry(0.95, 0.1, 0.62),
+            new THREE.BoxGeometry(wu(2.4), wu(0.25), wid),
             new THREE.MeshStandardMaterial({ color: '#3d4650', roughness: 0.6 }),
           )
-          bed.position.set(0, -0.05, -1.05)
+          bed.position.set(-len * 0.28, ht * 0.55, 0)
           g.add(bed)
           for (let i = 0; i < 3; i++) {
             const bag = new THREE.Mesh(
-              new THREE.BoxGeometry(0.22, 0.26, 0.32),
+              new THREE.BoxGeometry(wu(0.7), wu(0.5), wu(0.35)),
               new THREE.MeshStandardMaterial({
                 color: i === 1 ? '#2f4a6a' : '#6a4328',
                 roughness: 0.55,
               }),
             )
-            bag.position.set((i - 1) * 0.26, 0.16, -1.05)
+            bag.position.set(-len * 0.28 + (i - 1) * wu(0.8), ht * 0.55 + wu(0.4), 0)
             g.add(bag)
           }
         }
@@ -1513,7 +1547,7 @@ export class World {
         this.service.set(pose.id, mesh)
         this.entGroup.add(mesh)
       }
-      mesh.position.copy(toWorld(pose.x, pose.y, 0.38))
+      mesh.position.copy(toWorld(pose.x, pose.y, 0))
       mesh.rotation.y = -pose.heading
     }
     for (const [id, m] of this.service) {
@@ -1533,16 +1567,16 @@ export class World {
         this.cateringCrew.set(pose.id, rig)
         this.entGroup.add(rig)
       }
-      rig.position.copy(toWorld(pose.x, pose.y, 0.38))
+      rig.position.copy(toWorld(pose.x, pose.y, 0))
       rig.rotation.y = -pose.heading
       const mast = rig.getObjectByName('mast')
       const platform = rig.getObjectByName('platform')
-      const h = 0.35 + pose.liftHeight * 1.55
+      const h = wu(CATER_MAST_M) + pose.liftHeight * wu(2.4)
       if (mast) {
-        mast.scale.y = h / 0.35
+        mast.scale.y = h / wu(CATER_MAST_M)
         mast.position.y = h / 2
       }
-      if (platform) platform.position.y = 0.15 + pose.liftHeight * 1.45
+      if (platform) platform.position.y = wu(1.2) + pose.liftHeight * wu(2.2)
       for (const member of pose.crew) {
         const cap = rig.getObjectByName(member.role)
         if (!cap) continue
@@ -1563,24 +1597,26 @@ export class World {
       seenP.add(p.id)
       let mesh = this.people.get(p.id)
       if (!mesh) {
-        const tall = p.job === 'mechanic' ? 0.48 : p.job === 'board' ? 0.42 : 0.38
+        const heightM = p.job === 'mechanic' ? 1.85 : 1.75
+        const radius = wu(0.22)
+        const length = wu(heightM - 0.44)
         mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(p.job === 'mechanic' ? 0.22 : 0.18, tall, 3, 6),
+          new THREE.CapsuleGeometry(radius, length, 3, 6),
           new THREE.MeshLambertMaterial({ color: p.color }),
         )
         mesh.castShadow = true
         if (p.job === 'arrive' || p.job === 'board') {
           const carry = new THREE.Mesh(
-            new THREE.BoxGeometry(0.16, 0.2, 0.1),
+            new THREE.BoxGeometry(wu(0.55), wu(0.4), wu(0.25)),
             new THREE.MeshLambertMaterial({ color: '#1f3a5a' }),
           )
-          carry.position.set(0.22, -0.05, 0.05)
+          carry.position.set(radius + wu(0.12), wu(0.2), wu(0.05))
           mesh.add(carry)
         }
         this.people.set(p.id, mesh)
         this.entGroup.add(mesh)
       }
-      mesh.position.copy(toWorld(p.x, p.y, 0.55))
+      mesh.position.copy(toWorld(p.x, p.y, wu(p.job === 'mechanic' ? 0.925 : 0.875)))
       // Face travel direction so flow reads clearly
       if (p.path.length > 1) {
         const a = p.path[Math.min(p.seg, p.path.length - 1)]
@@ -1607,13 +1643,13 @@ export class World {
         const row = game.tiles[r]
         if (!row) continue
         for (let c = 0; c < row.length; c++) {
-          if (row[c] === 'belt') this.beltPath.push(toWorld(c, r, 0.42))
+          if (row[c] === 'belt') this.beltPath.push(toWorld(c, r, wu(0.55)))
         }
       }
     }
     while (this.beltCubes.length < 8) {
       const cube = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.32, 0.62),
+        new THREE.BoxGeometry(wu(0.7), wu(0.5), wu(0.35)),
         new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false }),
       )
       cube.castShadow = true

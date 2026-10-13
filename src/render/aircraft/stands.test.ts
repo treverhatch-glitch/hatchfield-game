@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { AIRFRAMES } from '../../game/airframes'
-import { getAircraftSpec, MODEL_SPECS, WORLD_PER_METER } from './specs'
+import {
+  AIRCRAFT_VISUAL_SCALE,
+  CELL,
+  METERS_PER_CELL,
+  MODEL_SPECS,
+  WORLD_PER_METER,
+  aircraftWorldPerMeter,
+  getAircraftSpec,
+} from './specs'
 import { bridgeStops, bridgeYawToward, doorBoxes, gatePreviewId, standAccepts, standLetter, wingDiscsClash, type IcaoCode } from './stands'
 
 const LETTERS: IcaoCode[] = ['A', 'B', 'C', 'D', 'E', 'F']
@@ -78,14 +86,15 @@ describe('stand class compatibility', () => {
     }
   })
 
-  it('scales the airframe to a 1.75 m person and dwarfs a tug', () => {
-    const personWu = 0.42 + 0.18 * 2
-    expect(WORLD_PER_METER * 1.75).toBeCloseTo(personWu, 1)
-    const tugLengthM = 1.05 / WORLD_PER_METER
-    expect(tugLengthM).toBeGreaterThan(1.5)
-    expect(tugLengthM).toBeLessThan(4)
-    const jet = getAircraftSpec('b738').lengthM * WORLD_PER_METER
-    expect(jet).toBeGreaterThan(1.05 * 10)
+  it('uses one meter scale and exaggerates only the aircraft', () => {
+    expect(AIRCRAFT_VISUAL_SCALE).toBeGreaterThanOrEqual(1.15)
+    expect(AIRCRAFT_VISUAL_SCALE).toBeLessThanOrEqual(1.25)
+    expect(METERS_PER_CELL).toBe(22)
+    expect(CELL).toBeCloseTo(METERS_PER_CELL * WORLD_PER_METER)
+    expect(WORLD_PER_METER * 1.75).toBeCloseTo(0.7875, 3)
+    const tugWu = 4.5 * WORLD_PER_METER
+    const jet = getAircraftSpec('b738').lengthM * aircraftWorldPerMeter()
+    expect(jet).toBeGreaterThan(tugWu * 8)
   })
 
   it('maps S/M/L onto B/C/F and previews a bridge that class can dock', () => {
@@ -101,7 +110,7 @@ describe('stand class compatibility', () => {
     expect(standAccepts(standLetter('L'), getAircraftSpec('a380').icao)).toBe(true)
   })
 
-  it('keeps starter-kit stands clear for a 737 and refuses an A380 against the hall', () => {
+  it('keeps starter stands, the hall, and the runway clear at the visual scale', () => {
     const hall = [
       [15, 19],
       [16, 19],
@@ -119,8 +128,12 @@ describe('stand class compatibility', () => {
     const heavy = getAircraftSpec('a380').spanM
     expect(wingDiscsClash(west, narrow, [], hall)).toBe(false)
     expect(wingDiscsClash(east, narrow, [{ ...west, spanM: narrow }], hall)).toBe(false)
-    expect(wingDiscsClash(west, heavy, [], hall)).toBe(true)
+    expect(wingDiscsClash(west, heavy, [], hall)).toBe(false)
+    expect(wingDiscsClash(east, heavy, [{ ...west, spanM: heavy }], hall)).toBe(false)
+    // The next cell is inside a 737 wing. Five cells south is the runway row, clear of an A380.
     expect(wingDiscsClash({ c: 13, r: 21 }, narrow, [{ ...west, spanM: narrow }], [])).toBe(true)
+    expect(wingDiscsClash({ c: 12, r: 22 }, narrow, [{ ...west, spanM: narrow }], [])).toBe(true)
+    expect(wingDiscsClash({ c: 12, r: 26 }, heavy, [{ ...west, spanM: heavy }], [])).toBe(false)
   })
 
   it('aims an empty-gate bridge at the nearest terminal, east or west', () => {

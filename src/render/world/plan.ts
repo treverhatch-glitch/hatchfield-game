@@ -5,7 +5,7 @@
 import { DIR_VEC, type Dir, type TerminalInfo } from './layout'
 import { rng } from './raster'
 import { navPath, planRooms, pointInRoom, type RoomKind, type RoomPlan } from './rooms'
-import { cellX, cellZ } from './view'
+import { CELL, cellX, cellZ } from './view'
 
 /** `backoffice` cells split into staff offices (landside half) and the R&D lab. */
 export type Zone = 'checkin' | 'security' | 'shops' | 'gate' | 'backoffice'
@@ -128,7 +128,9 @@ export function planTerminal(
   for (const { c, r, zone } of zones) {
     const cx = cellX(c)
     const cz = cellZ(r)
-    const at = (u: number, v: number) => ({ x: cx + u * bx + v * ax, z: cz + u * bz + v * az })
+    // Offsets were composed for a 6.2-unit bay. Stretch them across the real cell.
+    const bay = CELL / 6.2
+    const at = (u: number, v: number) => ({ x: cx + u * bay * bx + v * bay * ax, z: cz + u * bay * bz + v * bay * az })
     const prop = (kind: PropKind, u: number, v: number, yaw = yawAir, tint?: number) =>
       props.push({ kind, ...at(u, v), yaw, tint })
     const person = (role: PersonRole, u: number, v: number, yaw = yawAir) =>

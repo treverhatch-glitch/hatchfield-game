@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { buildAircraft, createWindowMesh } from './build'
 import { CrossfadeLOD, type LodBuckets } from './lod'
 import type { PaintedMesh } from './pool'
-import { getAircraftSpec, WORLD_PER_METER, type Livery, type ModelSpec } from './specs'
+import { aircraftWorldPerMeter, getAircraftSpec, type Livery, type ModelSpec } from './specs'
 
 export {
   LOD_DIST,
@@ -18,7 +18,16 @@ export {
 } from './lod'
 export type { AircraftQuality } from './lod'
 export { disposeAircraftLibrary, libraryStats, releaseAircraft } from './pool'
-export { getAircraftSpec, MODEL_SPECS, WORLD_PER_METER } from './specs'
+export {
+  AIRCRAFT_VISUAL_SCALE,
+  CELL,
+  METERS_PER_CELL,
+  MODEL_SPECS,
+  WING_GAP_M,
+  WORLD_PER_METER,
+  aircraftWorldPerMeter,
+  getAircraftSpec,
+} from './specs'
 export type { Livery, ModelSpec } from './specs'
 
 const SKIP_MEASURE = new Set(['light', 'strobe', 'beacon'])
@@ -102,7 +111,7 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
 
   const lod = new CrossfadeLOD()
   lod.name = 'lod'
-  lod.scale.setScalar(WORLD_PER_METER)
+  lod.scale.setScalar(aircraftWorldPerMeter())
 
   const low = buildAircraft(spec, 'low', livery)
   const mid = buildAircraft(spec, 'mid', livery)

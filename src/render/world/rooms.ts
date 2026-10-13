@@ -6,14 +6,17 @@
  * Pure data. The renderer draws walls / floors from it and routes the crowd with
  * `navPath`; the sim can use the same plan so guests respect the same walls.
  */
+import { METERS_PER_CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { DIR_VEC, type TerminalInfo } from './layout'
 import type { CellZone, Prop, PropKind } from './plan'
 import { CELL, cellX, cellZ } from './view'
 
+const m = (meters: number) => meters * WORLD_PER_METER
+
 export type RoomKind = 'checkin' | 'security' | 'airside' | 'shops' | 'gate' | 'lab' | 'office'
 
-/** Nav squares per cell edge (CELL / 12 ≈ 0.52 m). */
-export const NAV_RES = 12
+/** One nav square per meter, so a door of n squares is n meters wide. */
+export const NAV_RES = METERS_PER_CELL
 export const NAV_SQ = CELL / NAV_RES
 
 export const ROOM_LABEL: Record<RoomKind, string> = {
@@ -141,23 +144,23 @@ export function wallKind(a: RoomKind, b: RoomKind): WallKind {
 /** Rooms that stay one-per-cell instead of merging with same-kind neighbours. */
 const PER_CELL: ReadonlySet<RoomKind> = new Set(['gate', 'lab', 'office'])
 
-/** Footprint half-extents (local x, local z) of props walkers must go around. */
+/** Footprint half-extents (meters, then world units) of props walkers must go around. */
 const SOLID: Partial<Record<PropKind, [number, number]>> = {
-  counter: [0.6, 0.25],
-  belt: [2.6, 0.19],
-  bench: [0.65, 0.21],
-  podium: [0.45, 0.23],
-  xray: [0.31, 1.15],
-  kiosk: [0.63, 0.88],
-  table: [0.3, 0.3],
-  stool: [0.13, 0.13],
-  planter: [0.25, 0.25],
+  counter: [m(0.6), m(0.25)],
+  belt: [m(2.6), m(0.19)],
+  bench: [m(0.65), m(0.21)],
+  podium: [m(0.45), m(0.23)],
+  xray: [m(0.31), m(1.15)],
+  kiosk: [m(0.63), m(0.88)],
+  table: [m(0.3), m(0.3)],
+  stool: [m(0.13), m(0.13)],
+  planter: [m(0.25), m(0.25)],
 }
 /** Body radius kept clear of walls and furniture. */
-export const NAV_CLEAR = 0.2
+export const NAV_CLEAR = m(0.22)
 
 export function roomKindAt(zone: CellZone['zone'], v: number, oneDeep: boolean): RoomKind {
-  if (zone === 'gate') return !oneDeep && v < -CELL / 2 + 4 * NAV_SQ ? 'airside' : 'gate'
+  if (zone === 'gate') return !oneDeep && v < -CELL / 2 + CELL / 3 ? 'airside' : 'gate'
   if (zone === 'backoffice') return v < 0 ? 'office' : 'lab'
   return zone
 }
@@ -393,13 +396,14 @@ function blockProps(plan: RoomPlan, props: readonly Prop[]) {
     const ux = Math.cos(p.yaw)
     const uz = -Math.sin(p.yaw)
     if (posts) {
-      for (const o of [-0.42, 0.42]) mark(p.x + ux * o, p.z + uz * o)
+      for (const o of [-m(0.42), m(0.42)]) mark(p.x + ux * o, p.z + uz * o)
       continue
     }
-    const hx = ext![0] + 0.08
-    const hz = ext![1] + 0.08
-    const nx = Math.max(1, Math.ceil((hx * 2) / 0.2))
-    const nz = Math.max(1, Math.ceil((hz * 2) / 0.2))
+    const hx = ext![0] + m(0.08)
+    const hz = ext![1] + m(0.08)
+    const step = m(0.2)
+    const nx = Math.max(1, Math.ceil((hx * 2) / step))
+    const nz = Math.max(1, Math.ceil((hz * 2) / step))
     for (let a = 0; a <= nx; a++) {
       for (let b = 0; b <= nz; b++) {
         const lx = -hx + (2 * hx * a) / nx

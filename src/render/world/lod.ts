@@ -41,7 +41,7 @@ export interface ShadowFit {
  * cameras get a big one. Snapping keeps the texel grid fixed in world space.
  */
 export function fitShadow(camDist: number, focusX: number, focusZ: number, mapSize: number): ShadowFit {
-  const half = Math.max(16, Math.min(120, camDist * 0.95))
+  const half = Math.max(16, Math.min(200, camDist * 0.95))
   const texel = (half * 2) / Math.max(1, mapSize)
   return {
     half,

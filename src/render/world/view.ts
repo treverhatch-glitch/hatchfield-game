@@ -1,8 +1,9 @@
 import type { StandAccess, StandClass, Tile, Vec, Weather } from '../../game/types'
 import { SIZE } from '../../game/types'
+import { CELL } from '../aircraft/specs'
 
-/** Mirrors CELL / toWorld in src/render/world.ts (kept local to avoid an import cycle). */
-export const CELL = 6.2
+/** Same cell as the apron. Imported from specs so the terminal grid cannot drift. */
+export { CELL }
 
 export function cellX(c: number): number {
   return (c - (SIZE - 1) / 2) * CELL

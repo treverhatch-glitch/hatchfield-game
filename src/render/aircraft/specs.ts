@@ -1,15 +1,38 @@
 /**
  * Real-world overall dimensions (meters) and the shape cues the builder needs.
  * Length, span, height, wheelbase, and doors come from the verified pack in
- * realworld.ts. Visual size is meters × WORLD_PER_METER.
- * 0.45 matches the apron people: a boarding capsule is 0.78 world units, and
- * 1.75 m × 0.45 = 0.79. A 737 then spans about three stand tiles instead of one.
+ * realworld.ts. One world scale: meters × WORLD_PER_METER for buildings,
+ * people, vehicles, and pavement. Aircraft multiply by AIRCRAFT_VISUAL_SCALE
+ * on top of that so they read larger, and stand clearance uses the same factor.
  */
 
 import type { IcaoCode, RealDoor } from './realworld'
 import { REAL_AIRFRAMES } from './realworld'
 
+/** World units per real meter. Shared by the apron, the terminal, and the aircraft. */
 export const WORLD_PER_METER = 0.45
+
+/**
+ * Aircraft only. 1.2 keeps a 737 recognisable beside a 1.75 m person
+ * without swallowing the stand. Stands and wing gaps use this same factor.
+ */
+export const AIRCRAFT_VISUAL_SCALE = 1.2
+
+export function aircraftWorldPerMeter(): number {
+  return WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE
+}
+
+/**
+ * One cell is an ICAO code-E taxiway (23 m). Two cells is a code-4 runway
+ * width (45 m). Three cells is about a code-F strip (60 m). Length stays in
+ * cells, so the strip is a compressed picture of a real runway.
+ */
+export const METERS_PER_CELL = 22
+
+export const CELL = METERS_PER_CELL * WORLD_PER_METER
+
+/** Code-C wingtip-to-obstacle clearance, meters. Applied on top of the visual span. */
+export const WING_GAP_M = 4.5
 
 export type FuselageFamily = 'tube' | 'rearjet' | 'point' | 'prop' | 'helo'
 export type WingletKind = 'none' | 'fence' | 'blended' | 'raked'

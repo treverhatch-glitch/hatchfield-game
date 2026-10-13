@@ -500,3 +500,24 @@ An empty jetway shows a preview bridge: a regional jet on S, a 737 on M, an A380
 
 - `docs/devlog/media/OCT13-aircraft-top.png` — 737 docked on the west stand, empty-gate bridge on the east stand, both aimed at the hall
 - `docs/devlog/media/OCT13-aircraft-gate.png` — the same pair from the orbit camera
+
+## One world scale — 13 Oct
+
+Everything on the apron now shares one meter. `WORLD_PER_METER` stays 0.45. Aircraft are the only exception: `AIRCRAFT_VISUAL_SCALE` is 1.2, so a 737 is drawn at 0.54 world units per meter. The same 1.2 is in the wing disc, with a 4.5 m gap, so the bigger picture still clears the hall, the other stand, and the runway.
+
+One cell is 22 m (9.9 world units). That is a code-E taxiway. Two cells is a code-4 runway width, three cells is about a code-F strip. Runway length stays in cells, so the strip is a short picture of a real runway rather than a 1,500 m pavement that cannot fit the map.
+
+The starter stands stay at (12, 21) and (20, 21), eight cells apart. The through-taxi that used to run on the next two rows is gone, because a 737 wing covers that row. Each stand has its own lead-in. The runway starts on row 26, five cells south, which clears an A380 at the visual scale. A stand one cell away from a parked 737 is still refused. Trucks cross the stand row, and a curb road three cells north lets a mechanic leave a stand without driving through a wing.
+
+People, trucks, the hall, the doors, and the furniture use the same 0.45. A mechanic is 1.85 m. A fuel truck is 8 m long. The hall roof is 3.9 m. Interior props were drawn as meters, so they shrink by 0.45 and the old furniture layout is stretched across the 22 m bay. Nav squares are one meter, so an eight-square opening is an eight-meter door.
+
+In the browser the aircraft root stays at scale 1, the model and the bridges are at 0.54, and the bridges are parented on the aircraft. The two starter stands are 79.2 world units apart. The roof sits at 1.755. A fuel truck measures 3.6 × 1.35 × 1.125 world units, which is 8 × 3 × 2.5 m. No console errors.
+
+**Bugs.** Sixteen. No new defect.
+
+**Tests.** 471 passing, 2 skipped. The QA bot (mixed, 2 in-game days) reported no unrecorded short bag loads, no stuck flights, no lost passengers, and no console errors. Eleven missed flights with the hall overloaded. Bank on that run: $12,836,174, then $12,476,257, then $12,117,940. The SwiftShader frame rate is still under the bot's floor. The bot can still rewrite an airframe id after the stand is chosen; the game's own assignment does not.
+
+**Media**
+
+- `docs/devlog/media/OCT13-scale-top.png` — two 737s on the starter stands, lead-in taxi only, runway five cells south
+- `docs/devlog/media/OCT13-scale-gate.png` — the same pair from the orbit camera, bridges on the hall side, truck and person at real size

@@ -2032,29 +2032,33 @@ export class Game {
     }
 
     this.facing = 'h'
-    for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
-    // Continuous taxi spine so pax can path plane → bags → hall → road
-    for (let c = 8; c <= 22; c++) this.tiles[23][c] = 'taxi'
-    for (let c = 8; c <= 22; c++) this.tiles[22][c] = 'taxi'
+    // Five cells south of the stands: a code-F wing at the visual scale clears the strip.
+    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
     this.tiles[21][8] = 'fuel'
+    this.tiles[21][9] = 'road'
     this.tiles[21][10] = 'bags'
-    this.tiles[20][14] = 'snack'
+    this.tiles[17][14] = 'snack'
     this.tiles[20][8] = 'fire'
-    this.tiles[19][12] = 'tower'
+    this.tiles[17][11] = 'tower'
     // Road from north city edge down to the hall
     const roadC = 16
     for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
-    this.tiles[18][15] = 'road'
-    this.tiles[18][17] = 'road'
+    // Curb three cells north of the stands, clear of a code-F nose.
+    for (let c = 8; c <= 22; c++) this.tiles[18][c] = 'road'
+    // Nose spurs so a mechanic can leave a stand. The wing rows stay grass.
+    for (let r = 19; r <= 20; r++) this.tiles[r][9] = 'road'
+    this.tiles[20][12] = 'road'
+    this.tiles[19][13] = 'road'
+    this.tiles[20][13] = 'road'
+    for (let r = 19; r <= 20; r++) this.tiles[r][20] = 'road'
     // Guard post on the city approach — screens inbound cargo trucks.
     this.tiles[3][roadC] = 'guard'
     // Cargo shed on a road stub (city trucks → guard → shed).
     this.tiles[10][roadC + 1] = 'road'
     this.tiles[10][roadC + 2] = 'cargo'
-    // Taxi link so freighter GSE can reach the shed from the apron.
-    this.tiles[21][roadC + 2] = 'taxi'
-    for (let r = 11; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
-    // Premade hall touching taxi + road (c15–17, r19–21)
+    // Taxi link so freighter GSE can reach the shed. It stops at the curb.
+    for (let r = 11; r <= 17; r++) this.tiles[r][roadC + 2] = 'taxi'
+    // Premade hall touching the curb + road (c15–17, r19–21)
     const origin = { c: 15, r: 19 }
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) this.tiles[origin.r + r][origin.c + c] = 'terminal'
@@ -2066,12 +2070,10 @@ export class Game {
     this.standClass['20,21'] = 'M'
     this.standAccess['12,21'] = 'jetway'
     this.standAccess['20,21'] = 'jetway'
-    // Link hall to taxi + stands
-    this.tiles[22][12] = 'taxi'
-    this.tiles[22][15] = 'taxi'
-    this.tiles[22][16] = 'taxi'
-    this.tiles[22][17] = 'taxi'
-    this.tiles[22][20] = 'taxi'
+    // Each stand has its own lead-in. A through-taxi on the next row sits inside a parked wing.
+    for (const c of [12, 20]) {
+      for (let r = 22; r <= 25; r++) this.tiles[r][c] = 'taxi'
+    }
     // Bag belt: makeup (bags@10) ↔ stands @12/@20 ↔ hall terminals @15–17
     this.tiles[21][11] = 'belt'
     this.tiles[21][13] = 'belt'
@@ -2119,27 +2121,22 @@ export class Game {
   /** Cargo-first kit — freighter ready, no pax hall required. */
   private buildCargoStarterKit() {
     this.facing = 'h'
-    for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
-    for (let c = 8; c <= 20; c++) this.tiles[23][c] = 'taxi'
-    for (let c = 8; c <= 20; c++) this.tiles[22][c] = 'taxi'
+    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
     this.tiles[21][8] = 'fuel'
     this.tiles[20][8] = 'fire'
     this.tiles[20][10] = 'police'
-    this.tiles[19][12] = 'tower'
+    this.tiles[17][12] = 'tower'
     const roadC = 14
     for (let r = 0; r <= 21; r++) this.tiles[r][roadC] = 'road'
     this.tiles[3][roadC] = 'guard'
     this.tiles[12][roadC + 1] = 'road'
     this.tiles[12][roadC + 2] = 'cargo'
-    for (let r = 13; r <= 21; r++) this.tiles[r][roadC + 2] = 'taxi'
-    this.tiles[21][roadC + 2] = 'stand'
+    for (let r = 13; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
+    for (let c = 9; c <= 15; c++) this.tiles[21][c] = 'road'
     this.tiles[21][16] = 'stand'
-    this.standClass[`${roadC + 2},21`] = 'L'
     this.standClass['16,21'] = 'M'
-    this.standAccess[`${roadC + 2},21`] = 'remote'
     this.standAccess['16,21'] = 'remote'
-    this.tiles[22][roadC + 2] = 'taxi'
-    this.tiles[22][16] = 'taxi'
+    for (let r = 22; r <= 25; r++) this.tiles[r][16] = 'taxi'
     this.fits = []
     this.fuelBrand = 'apex'
     this.fuelLoads = 5
