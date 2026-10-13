@@ -316,21 +316,21 @@ export class LogisticsSim {
     this.turnarounds.set(id, t)
     this.byStand.set(standId, id)
 
-    const use = (s: ServiceKind, on: boolean): void => {
+    const enable = (s: ServiceKind, on: boolean): void => {
       if (on && needs.services.includes(s)) t.services[s] = 'blocked'
     }
-    use('deplane', arriving > 0)
-    use('bag_unload', t.bags.inbound > 0)
-    use('cargo_unload', t.cargoIn > 0)
-    use('fuel', outbound)
-    use('catering', outbound && booked > 0)
-    use('cleaning', inbound && arriving > 0)
-    use('gpu', true)
-    use('boarding', booked > 0)
-    use('bag_load', expectedBags > 0)
-    use('cargo_load', t.cargoOut > 0)
-    use('door_close', outbound)
-    use('pushback', outbound)
+    enable('deplane', arriving > 0)
+    enable('bag_unload', t.bags.inbound > 0)
+    enable('cargo_unload', t.cargoIn > 0)
+    enable('fuel', outbound)
+    enable('catering', outbound && booked > 0)
+    enable('cleaning', inbound && arriving > 0)
+    enable('gpu', true)
+    enable('boarding', booked > 0)
+    enable('bag_load', expectedBags > 0)
+    enable('cargo_load', t.cargoOut > 0)
+    enable('door_close', outbound)
+    enable('pushback', outbound)
     if (needs.loader && HOLD_SERVICES.some((s) => t.services[s])) t.services.loader = 'blocked'
     this.advancePhases(t)
     this.dispatch()
