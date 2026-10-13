@@ -920,6 +920,8 @@ export interface GameSnapshot {
   coachDismissed?: boolean
   /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
   hintPrefs?: { allEnabled: boolean; muted: string[] }
+  /** First-session "open the build tray" step. Missing on older saves. */
+  buildTrayOpened?: boolean
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
