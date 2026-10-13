@@ -184,6 +184,7 @@ import {
   BAG_SYSTEMS,
   FUEL_CONTRACTS,
   HANGAR_OFFERS,
+  LITRES_PER_LEGACY_LOAD,
   PAX_UNITS,
   STAND_OFFERS,
   VEHICLE_OFFERS,
@@ -6941,19 +6942,15 @@ export class Game {
   private pickOperable(preferred: AircraftKind, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const level = this.fieldLevel()
     const research = this.researchUnlocked
+    const runway = this.longestRunway()
     const accepts = (id: string) => this.scaleReport(id).ok
-    const af = pickAirframeWithFallback(
-      preferred,
-      this.longestRunway(),
-      cargo,
-      research,
-      level,
-      accepts,
-    )
+    const af = pickAirframe(preferred, runway, research, level, accepts)
     if (af) return { af, blocked: null }
-    const raw = pickAirframeWithFallback(preferred, this.longestRunway(), cargo, research, level)
-    if (!raw) return { af: null, blocked: null }
-    return { af: null, blocked: this.scaleReport(raw.id) }
+    // The strip can take this kind, but the pillar cannot. Hold the slot instead of sending a smaller jet.
+    const raw = pickAirframe(preferred, runway, research, level)
+    if (raw) return { af: null, blocked: this.scaleReport(raw.id) }
+    const smaller = pickAirframeWithFallback(preferred, runway, cargo, research, level, accepts)
+    return { af: smaller, blocked: null }
   }
 
   private scaleAdviceItems(): Advice[] {
@@ -6994,9 +6991,28 @@ export class Game {
     })
   }
 
+  /** Bowser loads and the tank are the same fuel. A pump has to open room for the next delivery. */
+  private drawTankLitres(litres: number) {
+    if (litres <= 0) return
+    this.tankLitres = Math.max(0, this.tankLitres - litres)
+    const sim = this.ground?.sim
+    if (sim) sim.fuelLitres = Math.max(0, sim.fuelLitres - litres)
+  }
+
+  private addTankLitres(litres: number) {
+    if (litres <= 0) return
+    const cap = tankDef(this.tankTier).capacityLitres
+    this.tankLitres = Math.min(cap, this.tankLitres + litres)
+    const sim = this.ground?.sim
+    if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + litres)
+  }
+
   private tickScaleFuel(step: number) {
     const minutes = gameMinutes(step)
     if (minutes <= 0 || !this.site) return
+    const cap = tankDef(this.tankTier).capacityLitres
+    const sim = this.ground?.sim
+    if (sim) this.tankLitres = Math.min(cap, this.tankLitres, Math.max(0, sim.fuelLitres))
     const state = this.pillarState()
     const result = tickFuel(this.pillarField(), state, minutes, this.cash)
     this.roadMinutes = state.roadMinutes
@@ -7004,11 +7020,7 @@ export class Game {
     if (result.paid > 0) this.charge(result.paid)
     if (result.delivered > 0) {
       this.fuelLoads += loadsFromLitres(result.delivered)
-      const sim = this.ground?.sim
-      if (sim) {
-        const cap = tankDef(this.tankTier).capacityLitres
-        sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
-      }
+      if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
     }
     if (result.railFlowing && !this.lastRailFlowing) {
       this.pushNews('Fuel rail is flowing into the tank farm.', 'good')
@@ -7129,6 +7141,7 @@ export class Game {
     const cost = c.wholesale * LOADS_PER_BUY
     if (!this.spend(cost, 'fuel loads')) return
     this.fuelLoads += LOADS_PER_BUY
+    this.addTankLitres(LITRES_PER_LEGACY_LOAD * LOADS_PER_BUY)
     this.pushNews(`Four loads on the farm. ${this.fuelLoads} ready.`, 'ok')
     this.emit()
   }
@@ -11617,6 +11630,7 @@ export class Game {
       f.fuelLevel = 1
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
+      this.drawTankLitres(LITRES_PER_LEGACY_LOAD)
       this.earn(FUEL[this.fuelBrand].pump, `${f.flightNo} fuel`, f)
     }
     if (t.kind === 'catering' && !f.posted.catering && this.caterBrand) {

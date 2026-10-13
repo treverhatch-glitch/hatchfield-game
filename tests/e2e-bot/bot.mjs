@@ -55,7 +55,7 @@ const MIXES = {
   },
 }
 const MIX = MIXES[SCENARIO]
-const NAMES = { a380: 'Airbus A380-800', an124: 'Antonov An-124', b748f: 'Boeing 747-8F', b763f: 'Boeing 767-300F', b752f: 'Boeing 757-200F', b789: 'Boeing 787-9', a359: 'Airbus A350-900', a320neo: 'Airbus A320neo', b738: 'Boeing 737-800', a321: 'Airbus A321', e175: 'Embraer E175', crj700: 'Bombardier CRJ700', atr72: 'ATR 72-600' }
+const NAMES = { a380: 'Airbus A380-800', an124: 'Antonov An-124', b748f: 'Boeing 747-8F', b763f: 'Boeing 767-300F', b752f: 'Boeing 757-200F', b789: 'Boeing 787-9', b77w: 'Boeing 777-300ER', a359: 'Airbus A350-900', a320neo: 'Airbus A320neo', b738: 'Boeing 737-800', a321: 'Airbus A321', e175: 'Embraer E175', crj700: 'Bombardier CRJ700', atr72: 'ATR 72-600' }
 
 const consoleErrors = []
 const findings = []
@@ -148,7 +148,14 @@ try {
     g.sandbox = false
     g.cash += 3_000_000
     g.reputation = 70
+    g.fieldXp = 700
+    g.researchPoints = 4000
     for (let c = 4; c < 24; c++) g.tiles[6][c] = 'runway'
+    // Connected starter strip has to be long enough for a 787 and an A380.
+    for (let c = 8; c < 28; c++) {
+      g.tiles[26][c] = 'runway'
+      g.tiles[27][c] = 'runway'
+    }
     for (let c = 4; c < 18; c++) g.tiles[7][c] = 'taxi'
     for (let r = 7; r <= 22; r++) g.tiles[r][8] = 'taxi'
     const t2 = { c: 22, r: 14 }
@@ -178,14 +185,67 @@ try {
     g.tiles[19][9] = 'police'
     g.tiles[18][12] = 'helipad'
     g.tiles[18][14] = 'fire' // fire station gates helicopters + air ambulance
-    g.researchPoints = 1000
-    for (const id of ['night_bank', 'deice', 'stand_class', 'heavy_pack', 'mil_ramp']) {
+    g.researchPoints = 4000
+    const research = [
+      'night_bank', 'deice', 'stand_class', 'widebody_ops', 'heavy_pack', 'mil_ramp',
+      'hydrant_fuel', 'rail_fuel', 'tank_farm_ii', 'tank_farm_iii',
+      'bag_sorter', 'bag_bhs', 'self_service', 'ct_lanes', 'egates',
+      'travelator', 'skywalk', 'people_mover',
+    ]
+    for (const id of research) {
       try {
         if (!g.hasResearch(id)) g.buyResearch(id)
       } catch (e) {
         out.notes.push(`research ${id}: ${e.message}`)
       }
     }
+    // Jumbo pillar on grass, clear of the belt, the curb, and the taxi lead-ins.
+    g.standClass['20,21'] = 'L'
+    g.standScale['20,21'] = 'jumbo'
+    g.standAccess['20,21'] = 'jetway'
+    // Grass pocket between the two lead-ins, touching the starter hall.
+    g.tiles[24][19] = 'stand'
+    g.standClass['19,24'] = 'L'
+    g.standScale['19,24'] = 'jumbo'
+    g.standAccess['19,24'] = 'jetway'
+    const paint = (tile, cells) => {
+      for (const [c, r] of cells) g.tiles[r][c] = tile
+    }
+    paint('travelator', [[17, 22], [18, 22], [18, 23], [19, 23]])
+    paint('skywalk', [[16, 22], [16, 23], [16, 24], [17, 24], [18, 24]])
+    paint('mover', [[15, 22], [15, 23], [15, 24], [15, 25], [16, 25], [17, 25], [18, 25], [19, 25]])
+    g.hangarScale['10,20'] = 'jumbo'
+    g.tiles[21][8] = 'fuel'
+    g.tiles[21][7] = 'oil'
+    for (let r = 22; r < 32; r++) g.tiles[r][7] = 'fuel_rail'
+    g.bagSystem = 'bhs'
+    g.paxDesks = 4
+    g.paxKiosks = 4
+    g.paxBagDrops = 2
+    g.scannerLanes = 2
+    g.eGates = 2
+    g.tankTier = 3
+    g.contractId = 'mega_jumbo'
+    g.fuelSupply = 'rail'
+    g.scaleFleet = {
+      heavy_fuel_truck: 1,
+      uld_loader: 1,
+      heavy_baggage_tug: 3,
+      hydrant_dispenser: 1,
+      heavy_tug: 1,
+      highlift_catering: 1,
+      main_deck_loader: 1,
+    }
+    g.bumpMap()
+    const report = (id) => {
+      const r = g.scaleReport(id)
+      return { ok: r.ok, hints: r.hints.map((h) => h.id) }
+    }
+    out.b789 = report('b789')
+    out.a380 = report('a380')
+    out.tankTier = g.tankTier
+    out.fuelTiles = g.tiles.flat().filter((t) => t === 'fuel').length
+    out.railTiles = g.tiles.flat().filter((t) => t === 'fuel_rail').length
     try {
       g.signMilitaryAgreement()
     } catch (e) {
@@ -234,6 +294,8 @@ try {
   if (!setup.heavy) find('high', 'Heavy runway not recognised', JSON.stringify(setup), steps.slice())
   if (!setup.research.includes('heavy_pack'))
     find('medium', 'heavy_pack research could not be bought in setup', JSON.stringify(setup), steps.slice())
+  if (setup && setup.a380 && setup.a380.ok === false)
+    find('high', 'Jumbo pillar was not ready', JSON.stringify(setup.a380), steps.slice())
   // Pull the camera back so the apron, stands and both terminals are in frame.
   await page.mouse.move(640, 330)
   for (let i = 0; i < 7; i++) {
@@ -354,7 +416,7 @@ try {
         const checkin = g.hallGuests.filter((x) => !x.dead && x.job === 'depart' && x.node === 'checkin').length
         res.state = {
           clock: g.clock, day: Math.floor(g.clock / 180) + 1, cash: g.cash, cashFinite: Number.isFinite(g.cash),
-          lostPax: g.lostPaxCount(), missed: g.missedFlights, flights: g.flights.length, phases,
+          lostPax: g.lostPaxCount(), bagsLost: g.bagsLost ?? 0, missed: g.missedFlights, flights: g.flights.length, phases,
           trucks: g.trucks.length, guests: g.hallGuests.length, signed: g.signed.length,
           done: g.flightsDone, overloaded: Boolean(g.hallOverloaded),
           security: sec.length,
@@ -432,6 +494,8 @@ const nanAt = samples.find((s) => !s.state.cashFinite || s.state.nanFields.lengt
 if (nanAt) find('critical', 'Non-finite money/stat', `${JSON.stringify(nanAt.state.nanFields)} cash=${nanAt.state.cash} at clock ${Math.round(nanAt.state.clock)}`, repro(`Run to day ${nanAt.state.day}`))
 const maxLost = Math.max(0, ...samples.map((s) => s.state.lostPax))
 if (maxLost > 0) find('high', 'Lost passengers in prefab terminals', `peak lostPaxCount=${maxLost}; missedFlights=${last?.missed}`, repro('Check lostPaxCount() each poll'))
+const maxBagsLost = Math.max(0, ...samples.map((s) => s.state.bagsLost ?? 0))
+if (maxBagsLost > 0) find('high', 'Lost bags', `peak bagsLost=${maxBagsLost}`, repro('Check bagsLost each poll'))
 if ((last?.missed ?? 0) > 0) find(last.missed > 10 ? 'medium' : 'low', 'Missed flights (passengers)', `missedFlights=${last.missed} (hallOverloaded=${last.overloaded})`, repro('Only expected when a prefab is overloaded'))
 const gone = samples.flatMap((s) => s.gone)
 const byClass = {}
@@ -495,7 +559,7 @@ for (const t of samples.flatMap((s) => s.stuckTrucks)) (groupedT[`${t.kind}/${t.
 for (const [k, list] of Object.entries(groupedT)) find('high', `Stuck service vehicle: ${k}`, `${list.length}× motionless >240 game-s; e.g. ${JSON.stringify(list[0])}`, repro('Track truck x/y per poll'))
 if (setup && Number.isFinite(setup.fpsMin) && setup.fpsMin < FPS_FLOOR) find('medium', `FPS below floor (${FPS_FLOOR})`, `min ${setup.fpsMin} fps (headless SwiftShader CPU renderer, 1280×800)`, repro('Measure rAF rate at 5x'))
 const seen = new Set(samples.flatMap((s) => s.newFlights.map((f) => f.af)))
-const ALL = ['crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'a359', 'atr72', 'b752f', 'b763f', 'b748f', 'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5']
+const ALL = ['crj700', 'e175', 'a320neo', 'b738', 'a321', 'b789', 'b77w', 'a359', 'atr72', 'b752f', 'b763f', 'b748f', 'c130', 'c17', 'kc135', 'f15', 'citation', 'pc12', 'cl415', 'at802', 'aw139', 's76', 'a380', 'an124', 'c5']
 const never = ALL.filter((a) => !seen.has(a))
 if (!seen.has('a380')) find('medium', 'A380 never arrived', 'Mix asked for A380s but none spawned', repro('Heavy runway + heavy_pack + widebody slots'), 'heavy')
 const sevRank = { critical: 0, high: 1, medium: 2, low: 3 }
