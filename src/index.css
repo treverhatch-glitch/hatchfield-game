@@ -549,6 +549,15 @@ button {
   font-size: 12px;
 }
 
+/* Live HUD numbers (src/ui/liveHud.tsx): each is its own small layer, so a tick
+   re-rasters a few glyphs instead of the whole HUD. No layout/size containment:
+   that would drop the text baseline and shift the bar. */
+.hud-live {
+  display: inline-block;
+  contain: paint style;
+  will-change: transform;
+}
+
 .top-cash {
   cursor: pointer;
   border: 1px solid rgba(201, 162, 39, 0.45);

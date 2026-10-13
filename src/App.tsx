@@ -3,6 +3,7 @@ import { perfEnd, perfStart } from './core/perf'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
+import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
@@ -80,23 +81,39 @@ function bootScreen(): Screen {
   return remembered
 }
 
+/**
+ * Values that move every tick (cash, clock, countdowns, build progress). They are not in
+ * the HUD key: `LiveText` spans show them at ~4 Hz, and the tree catches up on them only
+ * at the slow `HUD_CADENCE.tree*` pace.
+ */
+function hudFastKey(): string {
+  return [
+    game.cash,
+    Math.floor(game.clock / 2),
+    Math.ceil(game.offer?.deadline ?? 0),
+    Math.ceil(game.mxOffer?.deadline ?? 0),
+    Math.ceil(game.fieldTaskLeft()),
+    Math.ceil(game.cargoVolumeLeft()),
+    Math.ceil(game.inboundOffer()?.secondsLeft ?? 0),
+    game.sites.map((s) => Math.round(s.elapsed)).join(','),
+  ].join('|')
+}
+
+bindLiveHud(() => game.speed, hudFastKey)
+
+/** Discrete HUD state: a change here re-renders the chrome straight away. */
 function hudSnapshot(): string {
   return [
-        game.cash,
         game.speed,
         game.tool,
         game.facing,
         game.site,
         game.view,
         game.offer?.airline,
-        Math.ceil(game.offer?.deadline ?? 0),
         game.mxOffer?.airline,
-        Math.ceil(game.mxOffer?.deadline ?? 0),
         game.fieldTask?.id,
-        Math.ceil(game.fieldTaskLeft()),
         game.cargoVolume?.id,
         game.cargoVolume?.delivered,
-        Math.ceil(game.cargoVolumeLeft()),
         game.cargoWarehouse,
         game.startFocus,
         game.layoverOffer?.airline,
@@ -123,7 +140,6 @@ function hudSnapshot(): string {
         game.sharePrice,
         game.sharesOwned,
         game.mission?.id,
-        Math.floor(game.clock / 2),
         game.flights[0]?.phase,
         game.flights[0]?.airframeId,
         game.hallGuests.length,
@@ -162,7 +178,6 @@ function hudSnapshot(): string {
         game.advisorCells.length,
         game.standingAdvisor.activeCards.map((c) => `${c.id}:${c.daysToLeave}`).join(','),
         game.inboundOffer()?.id ?? '',
-        Math.ceil(game.inboundOffer()?.secondsLeft ?? 0),
         game.inboundContracts().map((d) => `${d.id}:${d.status}`).join(','),
         game.inboundHasClearance() ? 1 : 0,
         game.apronFocus.length,
@@ -172,7 +187,7 @@ function hudSnapshot(): string {
         game.enableHintsAtStart ? 1 : 0,
         game.sidePanel,
         game.hallOverloaded ? 1 : 0,
-        game.sites.map((s) => Math.round(s.elapsed)).join(','),
+        game.sites.length,
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
         game.pendingYearReport()?.year ?? 0,
         Math.round(game.tycoonDemand() * 100),
@@ -180,12 +195,26 @@ function hudSnapshot(): string {
       ].join('|')
 }
 
+/** Sim emits plus the throttled cash/clock catch-up. Module-level so the store never resubscribes. */
+function subscribeChrome(fn: () => void) {
+  const offGame = game.subscribe(fn)
+  const offTree = subscribeHudTree(fn)
+  return () => {
+    offGame()
+    offTree()
+  }
+}
+
+function chromeSnapshot(): string {
+  return `${hudSnapshot()}#${hudTreeVersion()}`
+}
+
 function CanvasLayers() {
   // Apron play keeps this snapshot stable so the WebGL trees do not reconcile
   // on each HUD tick. The hall chrome subscribes only while that view is open.
   useSyncExternalStore(
-    game.subscribe,
-    () => (game.view === 'hall' ? hudSnapshot() : game.view),
+    subscribeChrome,
+    () => (game.view === 'hall' ? chromeSnapshot() : game.view),
     () => 'apron',
   )
   const view = game.view
@@ -202,7 +231,7 @@ function CanvasLayers() {
 }
 
 function PlayChrome() {
-  useSyncExternalStore(game.subscribe, hudSnapshot, () => 'ssr')
+  useSyncExternalStore(subscribeChrome, chromeSnapshot, () => 'ssr')
   return (
     <>
       <Hud game={game} />
