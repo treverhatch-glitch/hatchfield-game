@@ -45,6 +45,17 @@ export function cloneTerms(terms: OfferTerms): OfferTerms {
   }
 }
 
+/**
+ * Negotiation posts bags per passenger. The letter and the turn bill a handling
+ * total, so a $1.10 ULCC rate does not print as a $1 fee.
+ */
+export function negotiatedBagTurnFee(postedPerPax: number, seats: number, loadFactor: number): number {
+  if (!(postedPerPax > 0)) return 0
+  const load = loadFactor > 0 && loadFactor <= 1 ? loadFactor : 1
+  const pax = Math.max(1, Math.round(Math.max(1, seats) * load))
+  return Math.max(Math.ceil(postedPerPax), Math.round(postedPerPax * pax))
+}
+
 /** Posted tariff turned into one cost-per-seat number at the configured load factor. */
 export function postedCostPerSeat(profile: AirlineProfile): number {
   const load = NEGOTIATION.economics.loadFactor

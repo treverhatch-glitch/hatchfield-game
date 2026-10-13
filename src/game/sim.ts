@@ -123,10 +123,12 @@ import {
   JANITOR_HIRE,
   RESEARCHER_HIRE,
   DESK_STAFF_HIRE,
+  CONTRACT_FLEET,
   RP_RATE_BARE,
   RP_RATE_BOARD,
   RP_RATE_DESK,
   RP_RATE_MACHINE,
+  RP_RATE_OPS,
   ROOMS,
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
@@ -229,7 +231,7 @@ import {
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
 import { NegotiationBridge } from './negotiationBridge.ts'
-import { ULCC_IDS } from '../negotiation/index.ts'
+import { NEGOTIATION, ULCC_IDS, negotiatedBagTurnFee } from '../negotiation/index.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
@@ -271,6 +273,7 @@ import {
   scaleAdvice,
   seedLitresFromLoads,
   sizeTierOf,
+  tierOpen,
   standClassForTool,
   standScaleForTool,
   tankDef,
@@ -388,6 +391,7 @@ import {
   restoreLeads,
   restoreTier,
   scaleListed,
+  cateringTurnFee,
   serviceCharge,
   settleHeld,
   signDeposit,
@@ -480,6 +484,7 @@ import {
   jetAirframesBlocked,
   jetAirframesFitting,
   bagUnitsForAirframe,
+  contractedAirframes,
   fuelDwellSeconds,
   paxForAirframe,
   pickAirframe,
@@ -1782,7 +1787,11 @@ export class Game {
         bizModel: 'lcc',
         tier: 2,
         landing: negotiated.posted.landing,
-        bags: Math.round(negotiated.posted.bags),
+        bags: negotiatedBagTurnFee(
+          negotiated.posted.bags,
+          negotiated.seats,
+          NEGOTIATION.economics.loadFactor,
+        ),
         catering: negotiated.posted.catering,
         paxMin: Math.round(negotiated.seats * 0.75),
         paxMax: negotiated.seats,
@@ -2661,6 +2670,20 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
+    const contracted = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    if (contracted.length) {
+      const counts = new Map<AircraftKind, number>()
+      for (const af of contracted) counts.set(af.kind, (counts.get(af.kind) ?? 0) + 1)
+      let best = contracted[0].kind
+      let n = 0
+      for (const [kind, count] of counts) {
+        if (count > n) {
+          best = kind
+          n = count
+        }
+      }
+      return best
+    }
     // Opening: the first small carrier flies regional metal, which the prefab can turn.
     // A second signature, or the clock leaving the opening, brings the normal mix back.
     if (this.clock < OPENING_SEC && this.signed.length <= 1 && a.kind === 'pax' && a.tier <= 2) {
@@ -8601,6 +8624,30 @@ export class Game {
     return { af: smaller, blocked: null }
   }
 
+  /**
+   * Spawn the airplane the contract sold. A 9–19 seat carrier stays on that
+   * metal; a short pillar holds the slot instead of substituting a 737.
+   */
+  private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
+    const a = this.airline(airlineId)
+    if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
+    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    if (!pool.length) return this.pickOperable(this.pickAircraftKind(airlineId), false)
+    const level = this.fieldLevel()
+    const research = this.researchUnlocked
+    const runway = this.longestRunway()
+    const fit = pool.filter(
+      (af) =>
+        (af.minRunway === 0 || runway >= af.minRunway) &&
+        (!af.research || research.includes(af.research)) &&
+        tierOpen(af.id, level, research) &&
+        this.scaleReport(af.id).ok,
+    )
+    if (fit.length) return { af: fit[Math.floor(Math.random() * fit.length)]!, blocked: null }
+    const raw = pool.find((af) => af.minRunway === 0 || runway >= af.minRunway) ?? pool[0]
+    return { af: null, blocked: raw ? this.scaleReport(raw.id) : null }
+  }
+
   private scaleAdviceItems(): Advice[] {
     return scaleAdvice(this.pillarField(), this.pillarState()).map((h) => ({
       id: h.id,
@@ -10446,8 +10493,14 @@ export class Game {
     return { desks, boards, machines }
   }
 
-  /** RP/sec when every researcher is working the current lab. */
-  researchRate(): number {
+  /** RP/sec from turning the field, before a researcher is hired. */
+  opsResearchRate(): number {
+    if (!this.starterFieldUp()) return 0
+    return RP_RATE_OPS
+  }
+
+  /** RP/sec from hired researchers and lab furniture. */
+  labResearchRate(): number {
     if (this.researchers < 1) return 0
     const { desks, boards, machines } = this.labGear()
     const stations = Math.max(1, desks + boards + machines)
@@ -10462,6 +10515,11 @@ export class Game {
     // Extra warm bodies beyond gear still drip a little.
     const overflow = Math.max(0, this.researchers - workingCap) * RP_RATE_BARE
     return gear + overflow
+  }
+
+  /** RP/sec the research desk should show: operations trickle plus the lab. */
+  researchRate(): number {
+    return this.opsResearchRate() + this.labResearchRate()
   }
 
   hireResearcher() {
@@ -10643,7 +10701,7 @@ export class Game {
       p.y = lerp(p.y, ty, 1 - Math.pow(0.1, dt))
     }
 
-    const rate = this.researchRate()
+    const rate = this.labResearchRate()
     const staff = this.people.filter((p) => p.job === 'researcher')
     const workFrac = staff.length ? working / staff.length : 0
     // Night lab is quieter — half drip; off-shift bodies don't bank RP.
@@ -12713,8 +12771,7 @@ export class Game {
 
     const airlineId = slot.airline
     const def = this.airline(airlineId)
-    const preferred = this.pickAircraftKind(airlineId)
-    const picked = this.pickOperable(preferred, def.kind === 'cargo')
+    const picked = this.pickForAirline(airlineId, def.kind === 'cargo')
     const af = picked.af
     if (!af) {
       const hint = picked.blocked?.hints[0]
@@ -13715,7 +13772,12 @@ export class Game {
       f.posted.catering = true
       f.caterLevel = 1
       f.waitingOn.catering = false
-      const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
+      const pay = cateringTurnFee(
+        airline.catering,
+        CATER[this.caterBrand].payoutMult,
+        f.pax,
+        DEFAULT_FEE_SCHEDULE.cateringPerCart,
+      )
       this.earn(
         serviceCharge(this.listed(pay, 'cateringPerCart'), this.feeTier(f.airline), this.walkInFlight(f)),
         `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
@@ -14143,8 +14205,7 @@ export class Game {
   private spawnEmergencyDivert(airline: AirlineId): boolean {
     if (this.isBanned(airline)) return false
     if (this.groundBusy() && !this.assignStand()) return false
-    const preferred = this.pickAircraftKind(airline)
-    const af = this.pickOperable(preferred, this.airline(airline).kind === 'cargo').af
+    const af = this.pickForAirline(airline, this.airline(airline).kind === 'cargo').af
     if (!af) return false
     const stand = this.assignStand(null, undefined, airline, af.id)
     const route = stand ? this.landingRoute(stand) : null
@@ -15138,6 +15199,8 @@ export class Game {
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)
+    const opsRp = this.opsResearchRate()
+    if (opsRp > 0) this.researchPoints += opsRp * step
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)

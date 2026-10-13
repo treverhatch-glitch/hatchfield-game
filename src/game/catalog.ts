@@ -563,6 +563,22 @@ export const RP_RATE_BOARD = 0.05
 export const RP_RATE_MACHINE = 0.12
 /** Bare researcher with no lab furniture — almost nothing. */
 export const RP_RATE_BARE = 0.015
+/**
+ * Operations trickle once a strip and a stand are up, before anyone is hired.
+ * 0.05 RP/s banks Night bank (28) inside one opening window (600s).
+ */
+export const RP_RATE_OPS = 0.05
+/**
+ * Airframes the carrier card actually sells. Spawn draws from this list so the
+ * planner and the airline card name the same metal.
+ */
+export const CONTRACT_FLEET: Partial<Record<string, readonly string[]>> = {
+  bushline: ['bn2', 'dhc6'],
+  northline: ['atr72', 'crj700', 'e175'],
+  harbor: ['a320neo', 'b738'],
+  summit: ['b789', 'a359'],
+  crown: ['a380', 'b77w'],
+}
 /** Cash + reputation needed before Wall Street will list you. */
 export const IPO_MIN_CASH = 40_000
 export const IPO_MIN_REP = 55
@@ -676,8 +692,8 @@ export const AIRLINES: Record<string, Airline> = {
     landing: 2800,
     catering: 0,
     bags: 400,
-    paxMin: 8,
-    paxMax: 18,
+    paxMin: 9,
+    paxMax: 19,
     minRep: 0,
     req: {
       stands: 1,

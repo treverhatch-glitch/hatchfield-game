@@ -32,6 +32,16 @@ function d(t: number, side: -1 | 0 | 1, kind: DoorKind): RealDoor {
 }
 
 export const REAL_AIRFRAMES: Record<string, RealAirframe> = {
+  bn2: {
+    lengthM: 10.86, spanM: 14.94, heightM: 4.18, wheelbaseM: 3.99,
+    icao: 'A',
+    doors: [d(0.28, 1, 'pax'), d(0.55, -1, 'cargo')],
+  },
+  dhc6: {
+    lengthM: 15.77, spanM: 19.81, heightM: 5.94, wheelbaseM: 4.52,
+    icao: 'B',
+    doors: [d(0.22, 1, 'pax'), d(0.22, -1, 'pax'), d(0.62, 1, 'cargo')],
+  },
   crj700: {
     lengthM: 32.3, spanM: 23.2, heightM: 7.6, wheelbaseM: 15.01,
     icao: 'B',
