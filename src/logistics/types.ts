@@ -193,6 +193,11 @@ export interface LogisticsConfig {
   hold: HoldConfig
   /** Wear, breakdowns, servicing and facility upkeep. Omit to switch maintenance off. */
   maintenance?: MaintenanceConfig
+  /**
+   * When set, a vehicle below the aircraft's size tier is not dispatched.
+   * The turnaround waits for a matching truck instead of crawling along on a small one.
+   */
+  strictSizeTiers?: boolean
 }
 
 export interface TurnaroundNeeds {

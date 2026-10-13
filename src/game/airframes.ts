@@ -1,3 +1,4 @@
+import { tierOpen } from '../scale/logic'
 import type { AircraftKind, ResearchId, StandClass } from './types'
 
 /** Real-world-flavored metal. minRunway is apron cells of continuous strip needed. */
@@ -120,6 +121,23 @@ export const AIRFRAMES: Record<string, Airframe> = {
     scale: 1.55,
     landingMult: 1.4,
     blurb: 'Widebody — heavy strip required.',
+    research: 'widebody_ops',
+  },
+  b77w: {
+    id: 'b77w',
+    name: 'Boeing 777-300ER',
+    kind: 'widebody',
+    minRunway: 18,
+    paxMin: 300,
+    paxMax: 396,
+    seats: 396,
+    bagVolume: 320,
+    cargoHold: 20,
+    fuelLoad: 145,
+    scale: 1.7,
+    landingMult: 1.55,
+    blurb: '777-class widebody — widebody ops and a heavy strip.',
+    research: 'widebody_ops',
   },
   a359: {
     id: 'a359',
@@ -135,6 +153,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     scale: 1.62,
     landingMult: 1.5,
     blurb: 'Long-haul widebody — heavy strip.',
+    research: 'widebody_ops',
   },
   atr72: {
     id: 'atr72',
@@ -180,6 +199,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     scale: 1.35,
     landingMult: 1.15,
     blurb: 'Mid freighter — wants long pavement.',
+    research: 'widebody_ops',
   },
   b748f: {
     id: 'b748f',
@@ -195,6 +215,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     scale: 1.78,
     landingMult: 1.55,
     blurb: 'Queen of freighters — heavy strip only.',
+    research: 'heavy_pack',
   },
   c130: {
     id: 'c130',
@@ -225,6 +246,7 @@ export const AIRFRAMES: Record<string, Airframe> = {
     scale: 1.58,
     landingMult: 1.6,
     blurb: 'Strategic airlifter — fat landing fee.',
+    research: 'widebody_ops',
   },
   kc135: {
     id: 'kc135',
@@ -511,11 +533,15 @@ export function pickAirframe(
   kind: AircraftKind,
   longestRunway: number,
   unlocked: ResearchId[] = [],
+  fieldLevel?: number,
+  accepts?: (id: string) => boolean,
 ): Airframe | null {
   const pool = airframesForKind(kind).filter(
     (a) =>
       (a.minRunway === 0 || longestRunway >= a.minRunway) &&
-      researchOk(a, unlocked),
+      researchOk(a, unlocked) &&
+      (fieldLevel == null || tierOpen(a.id, fieldLevel, unlocked)) &&
+      (!accepts || accepts(a.id)),
   )
   if (!pool.length) return null
   return pool[Math.floor(Math.random() * pool.length)]
@@ -527,6 +553,8 @@ export function pickAirframeWithFallback(
   longestRunway: number,
   cargo: boolean,
   unlocked: ResearchId[] = [],
+  fieldLevel?: number,
+  accepts?: (id: string) => boolean,
 ): Airframe | null {
   const order: AircraftKind[] = cargo
     ? [preferred, 'freighter']
@@ -535,7 +563,7 @@ export function pickAirframeWithFallback(
   for (const k of order) {
     if (seen.has(k)) continue
     seen.add(k)
-    const af = pickAirframe(k, longestRunway, unlocked)
+    const af = pickAirframe(k, longestRunway, unlocked, fieldLevel, accepts)
     if (af) return af
   }
   return null
