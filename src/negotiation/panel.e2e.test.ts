@@ -1,8 +1,14 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 
-const CHROME = '/usr/local/bin/google-chrome'
+const CHROME = process.env.PLAYWRIGHT_CHROME ||
+  (existsSync('/usr/local/bin/google-chrome')
+    ? '/usr/local/bin/google-chrome'
+    : existsSync('/usr/bin/google-chrome')
+      ? '/usr/bin/google-chrome'
+      : undefined)
 
 describe('negotiation panel', () => {
   it('opens and closes without blocking the field', async () => {
