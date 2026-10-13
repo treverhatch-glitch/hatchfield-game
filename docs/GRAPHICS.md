@@ -221,6 +221,10 @@ about 40% at close range, with ~57 draw meshes and ~1.4k instances
 4. **One mesh per grass / tarmac tile** (about 1,024 draw calls) is most of the legacy frame cost. With `REPLACED_TILES` skipped, that goes away.
 5. **`applyPerfMode` force-enables shadows** when leaving 5x, which would override a user's low setting. Route it through `wr.setLiteMode` as above.
 
+## Playtest art (assets, people, crowd)
+
+The auto **low** preset (SwiftShader, llvmpipe, software GL) keeps the expensive extras off: no SVG texture swap, no vertex-animated people, no thought bubbles, and no crowd-steering pass. Med and high turn those on, and 5× fast-forward drops them again with the existing lite mode. Sim guests still draw on low, as the cheap instanced hall crowd. Steering only moves the picture — doorway paths in the sim are unchanged.
+
 ## Tests
 
 `npx vitest run src/render/world` runs about 36 tests:

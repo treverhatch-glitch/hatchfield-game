@@ -49,6 +49,28 @@ export function leadSecForTag(tag: ShowTag): number {
   return gameMinToSim(min)
 }
 
+/**
+ * One stamped body on a banked departure. Parallel to `tags` / `releases`.
+ * `leadSimSec` is the show-up lead so a moved STD can be restamped.
+ */
+export interface ShowUpSeat {
+  segment: 'road_warrior' | 'lounge_lover' | 'normal'
+  preferFastTrack: boolean
+  amenity: 'lounge' | 'cafe' | 'none'
+  leadSimSec: number
+  spendLounge: number
+  spendAmenity: number
+  willLounge: number
+  willAmenity: number
+  moodArrive: number
+  moodFast: number
+  moodStandard: number
+  moodLounge: number
+  moodMiss: number
+  /** International extra already folded into `leadSimSec`. */
+  intlApplied?: boolean
+}
+
 /** One banked departure. The sim owns the list and fills `spawned` / `flightId`. */
 export interface ShowUpPlan {
   slotId: string
@@ -61,6 +83,8 @@ export interface ShowUpPlan {
   spawned: number
   flightId: string | null
   closed: boolean
+  /** Present when the wave was drawn from `createPaxShowUpAdapter`. */
+  seats?: ShowUpSeat[]
 }
 
 export interface ShowUpInput {
@@ -70,6 +94,11 @@ export interface ShowUpInput {
   intl: boolean
   /** Release times already promised at this entrance. */
   taken?: readonly number[]
+  /**
+   * Absolute release times from `stampDeparture`, one per tag, same order.
+   * The entrance cap still snaps them. Omitted plans keep the tag windows.
+   */
+  desired?: readonly (number | null)[]
 }
 
 /**
@@ -92,6 +121,11 @@ export function planShowUp(input: ShowUpInput): number[] {
   }
 
   const last = Math.max(now, close - CHECKIN_WALK_SEC)
+  const desired = input.desired
+  if (desired && desired.length === tags.length) {
+    const raw = spreadLeads(desired, now, outer, last)
+    return rateLimit(raw, input.taken, now, last)
+  }
   const byOpen = new Map<number, number>()
   for (const tag of tags) {
     const open = Math.max(now, outer, std - leadSecForTag(tag))
@@ -112,6 +146,37 @@ export function planShowUp(input: ShowUpInput): number[] {
   }
   raw.sort((a, b) => a - b)
   return rateLimit(raw, input.taken, now, last)
+}
+
+/**
+ * Keep stamp order (early leads stay early) but stretch a clump out to
+ * check-in close. A tight normal draw would otherwise hit the lane together.
+ * Nobody is placed before their own lead.
+ */
+function spreadLeads(
+  desired: readonly (number | null)[],
+  now: number,
+  outer: number,
+  last: number,
+): number[] {
+  const clamped = desired.map((want) => {
+    const t = want == null || !Number.isFinite(want) ? now : want
+    return Math.min(last, Math.max(now, outer, t))
+  })
+  const order = clamped.map((_, i) => i).sort((a, b) => clamped[a] - clamped[b] || a - b)
+  const n = order.length
+  const start = clamped[order[0] ?? 0] ?? now
+  const end = Math.max(start, last)
+  const out = new Array<number>(n)
+  let prev = now
+  for (let k = 0; k < n; k++) {
+    const i = order[k]
+    const even = n === 1 ? start : start + ((end - start) * k) / (n - 1)
+    const t = Math.min(last, Math.max(clamped[i], even, prev))
+    out[i] = t
+    prev = t
+  }
+  return out
 }
 
 function secondOf(t: number): number {

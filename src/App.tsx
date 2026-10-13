@@ -80,50 +80,8 @@ function bootScreen(): Screen {
   return remembered
 }
 
-export default function App() {
-  const [screen, setScreenState] = useState<Screen>(() => bootScreen())
-
-  const setScreen = (s: Screen) => {
-    writeScreen(s)
-    setScreenState(s)
-  }
-
-  // Keep screen aligned with game ownership; never dump a saved field to title.
-  useEffect(() => {
-    if (game.site) {
-      if (screen !== 'play') setScreen('play')
-      return
-    }
-    if (screen === 'play') {
-      if (Game.hasSave() && game.load()) return
-      setScreen('title')
-    }
-  }, [screen])
-
-  useEffect(() => {
-    if (screen !== 'play') return
-    let raf = 0
-    let last = performance.now()
-    const loop = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)
-      last = now
-      const t0 = perfStart()
-      try {
-        game.tick(dt)
-      } catch (err) {
-        console.error('tick failed', err)
-      }
-      perfEnd('sim.tick', t0)
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [screen])
-
-  useSyncExternalStore(
-    game.subscribe,
-    () =>
-      [
+function hudSnapshot(): string {
+  return [
         game.cash,
         game.speed,
         game.tool,
@@ -219,9 +177,80 @@ export default function App() {
         game.pendingYearReport()?.year ?? 0,
         Math.round(game.tycoonDemand() * 100),
         Math.round(game.tycoonAirlineInterest() * 100),
-      ].join('|'),
-    () => 'ssr',
+      ].join('|')
+}
+
+function CanvasLayers() {
+  // Apron play keeps this snapshot stable so the WebGL trees do not reconcile
+  // on each HUD tick. The hall chrome subscribes only while that view is open.
+  useSyncExternalStore(
+    game.subscribe,
+    () => (game.view === 'hall' ? hudSnapshot() : game.view),
+    () => 'apron',
   )
+  const view = game.view
+  return (
+    <>
+      <div className={`view-layer ${view === 'apron' ? 'live' : 'dim'}`}>
+        <Field game={game} />
+      </div>
+      <div className={`view-layer ${view === 'hall' ? 'live' : 'dim'}`}>
+        <TerminalView game={game} />
+      </div>
+    </>
+  )
+}
+
+function PlayChrome() {
+  useSyncExternalStore(game.subscribe, hudSnapshot, () => 'ssr')
+  return (
+    <>
+      <Hud game={game} />
+      <OfferPanel game={game} />
+      <OwnerChrome game={game} />
+    </>
+  )
+}
+
+export default function App() {
+  const [screen, setScreenState] = useState<Screen>(() => bootScreen())
+
+  const setScreen = (s: Screen) => {
+    writeScreen(s)
+    setScreenState(s)
+  }
+
+  // Keep screen aligned with game ownership; never dump a saved field to title.
+  useEffect(() => {
+    if (game.site) {
+      if (screen !== 'play') setScreen('play')
+      return
+    }
+    if (screen === 'play') {
+      if (Game.hasSave() && game.load()) return
+      setScreen('title')
+    }
+  }, [screen])
+
+  useEffect(() => {
+    if (screen !== 'play') return
+    let raf = 0
+    let last = performance.now()
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      const t0 = perfStart()
+      try {
+        game.tick(dt)
+      } catch (err) {
+        console.error('tick failed', err)
+      }
+      perfEnd('sim.tick', t0)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [screen])
 
   if (screen === 'title') {
     return (
@@ -253,15 +282,8 @@ export default function App() {
 
   return (
     <div className="shell">
-      <div className={`view-layer ${game.view === 'apron' ? 'live' : 'dim'}`}>
-        <Field game={game} />
-      </div>
-      <div className={`view-layer ${game.view === 'hall' ? 'live' : 'dim'}`}>
-        <TerminalView game={game} />
-      </div>
-      <Hud game={game} />
-      <OfferPanel game={game} />
-      <OwnerChrome game={game} />
+      <CanvasLayers />
+      <PlayChrome />
     </div>
   )
 }

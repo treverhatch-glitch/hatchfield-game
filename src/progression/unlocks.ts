@@ -98,6 +98,7 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   stand_w: 4,
   hangar_w: 4,
   skywalk: 4,
+  walkway: 4,
 
   // FL5
   runway_heavy: 5,
@@ -107,16 +108,19 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   fuel_rail: 5,
   oil: 5,
   mover: 5,
+  hub_skywalk: 5,
 
   // FL6
   pier_ii: 6,
   tilt_tray: 6,
   hotel_biz: 6,
+  xfer_bus: 6,
 
   // FL7
   fuel_farm_iii: 7,
   atc_approach: 7,
   park_g: 7,
+  people_mover: 7,
 
   // FL8
   code_f: 8,

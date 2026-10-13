@@ -42,6 +42,16 @@ export const REAL_AIRFRAMES: Record<string, RealAirframe> = {
     icao: 'C',
     doors: [d(0.15, 1, 'pax'), d(0.18, -1, 'service'), d(0.34, 1, 'cargo'), d(0.76, 1, 'cargo')],
   },
+  a223: {
+    lengthM: 38.7, spanM: 35.1, heightM: 11.5, wheelbaseM: 14.8,
+    icao: 'C',
+    doors: [d(0.14, 1, 'pax'), d(0.6, 1, 'pax'), d(0.16, -1, 'service'), d(0.58, -1, 'service'), d(0.35, -1, 'cargo'), d(0.76, -1, 'cargo')],
+  },
+  e195e2: {
+    lengthM: 41.5, spanM: 35.12, heightM: 10.9, wheelbaseM: 18.2,
+    icao: 'C',
+    doors: [d(0.14, 1, 'pax'), d(0.68, 1, 'pax'), d(0.16, -1, 'service'), d(0.66, -1, 'service'), d(0.34, 1, 'cargo'), d(0.76, 1, 'cargo')],
+  },
   a320neo: {
     lengthM: 37.57, spanM: 35.8, heightM: 11.76, wheelbaseM: 12.64,
     icao: 'C',
@@ -53,6 +63,16 @@ export const REAL_AIRFRAMES: Record<string, RealAirframe> = {
     doors: [d(0.13, 1, 'pax'), d(0.58, 1, 'pax'), d(0.16, -1, 'service'), d(0.55, -1, 'service'), d(0.34, -1, 'cargo'), d(0.76, -1, 'cargo')],
   },
   a321: {
+    lengthM: 44.51, spanM: 35.8, heightM: 11.76, wheelbaseM: 16.9,
+    icao: 'C',
+    doors: [d(0.12, 1, 'pax'), d(0.38, 1, 'pax'), d(0.78, 1, 'pax'), d(0.14, -1, 'service'), d(0.72, -1, 'service'), d(0.3, -1, 'cargo'), d(0.82, -1, 'cargo')],
+  },
+  b38m: {
+    lengthM: 39.52, spanM: 35.9, heightM: 12.3, wheelbaseM: 15.6,
+    icao: 'C',
+    doors: [d(0.13, 1, 'pax'), d(0.58, 1, 'pax'), d(0.16, -1, 'service'), d(0.55, -1, 'service'), d(0.34, -1, 'cargo'), d(0.76, -1, 'cargo')],
+  },
+  a21xlr: {
     lengthM: 44.51, spanM: 35.8, heightM: 11.76, wheelbaseM: 16.9,
     icao: 'C',
     doors: [d(0.12, 1, 'pax'), d(0.38, 1, 'pax'), d(0.78, 1, 'pax'), d(0.14, -1, 'service'), d(0.72, -1, 'service'), d(0.3, -1, 'cargo'), d(0.82, -1, 'cargo')],
