@@ -1825,6 +1825,35 @@ h1 {
   color: #8fce7a;
 }
 
+.fees-tier-label {
+  margin: 0 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a968c;
+}
+
+.fees-tier {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.fees-tier button {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 238, 244, 0.2);
+  background: transparent;
+  color: #e8eef4;
+  font-size: 11px;
+}
+
+.fees-tier button.on {
+  border-color: rgba(201, 162, 39, 0.8);
+  color: #c9a227;
+}
+
 .fees-sliders {
   margin-top: 0;
 }

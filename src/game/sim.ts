@@ -231,6 +231,31 @@ import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
 import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
+import {
+  type AirlineLead,
+  type DepositTier,
+  type FeeSchedule,
+  type HeldDeposit,
+  DEFAULT_FEE_SCHEDULE,
+  demandInterval,
+  depositCashPost,
+  editFee,
+  firstFlightClock,
+  forfeitHeld,
+  landingCharge,
+  openLead,
+  restoreDeposits,
+  restoreFees,
+  restoreLeads,
+  restoreTier,
+  scaleListed,
+  serviceCharge,
+  settleHeld,
+  signDeposit,
+  standingForFees,
+  walkInDemandOf,
+  walkInOfferChance,
+} from '../commercial/index.ts'
 import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
 import {
   createEconomyAdapter,
@@ -520,6 +545,7 @@ const FINANCING_CATEGORIES = new Set([
   'share_sales',
   'share_purchases',
   'refunds',
+  'deposits',
 ])
 
 export class Game {
@@ -658,6 +684,14 @@ export class Game {
   levyMark = 0
   /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
   bank = new Bank(0)
+  /** Player fee card. Defaults match the live catalog, so an untouched field bills the same. */
+  fees: FeeSchedule = { ...DEFAULT_FEE_SCHEDULE }
+  /** Deposit tier applied to the next signature. */
+  depositTier: DepositTier = 'standard'
+  deposits: Record<string, HeldDeposit> = {}
+  commercialLead: Record<string, AirlineLead> = {}
+  /** Standing points already applied for the current fee level. */
+  feeStandingApplied = 0
   simClock = new SimClock()
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
@@ -907,6 +941,11 @@ export class Game {
     this.payrollDay = 0
     this.levyMark = 0
     this.bank = new Bank(0)
+    this.fees = { ...DEFAULT_FEE_SCHEDULE }
+    this.depositTier = 'standard'
+    this.deposits = {}
+    this.commercialLead = {}
+    this.feeStandingApplied = 0
     this.simClock = new SimClock()
     this.economy = null
     this.economyState = null
@@ -1842,6 +1881,7 @@ export class Game {
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
     this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_ABANDON_THRESHOLD)
+    this.forfeitAirlineDeposit(id)
     this.charge(ABANDON_FINE)
     // Reverse persona unlocks — empty lounge / franchise leaves a scar.
     if (lost === 'brand_lounge') {
@@ -2686,10 +2726,11 @@ export class Game {
         best = Math.max(best, PARK_USE_FEE[kind][term])
       }
     }
-    if (best > 0) return best
-    if (term === 'short' && this.carParkShort) return PARK_SHORT_FEE
-    if (term === 'long' && this.carParkLong) return PARK_LONG_FEE
-    return term === 'short' ? PARK_SHORT_FEE : PARK_LONG_FEE
+    let raw = term === 'short' ? PARK_SHORT_FEE : PARK_LONG_FEE
+    if (best > 0) raw = best
+    else if (term === 'short' && this.carParkShort) raw = PARK_SHORT_FEE
+    else if (term === 'long' && this.carParkLong) raw = PARK_LONG_FEE
+    return this.listed(raw, term === 'short' ? 'carParkShort' : 'carParkLong')
   }
 
   /** Hotel night fee — premium/business prefer resort beds when present. */
@@ -2697,15 +2738,15 @@ export class Game {
     const classes = tilesOf(this.tiles, 'hotel').map(
       (p) => this.hotelClass[`${p.c},${p.r}`] ?? 'business',
     )
+    let raw = HOTEL_CLASS_FEE.business
     if (classes.length) {
-      if (tagSpendsUp(tag) && classes.includes('resort')) return HOTEL_CLASS_FEE.resort
-      if (tag === 'family' && classes.includes('inn')) return HOTEL_CLASS_FEE.inn
-      if (classes.includes('business')) return HOTEL_CLASS_FEE.business
-      if (classes.includes('inn')) return HOTEL_CLASS_FEE.inn
-      if (classes.includes('resort')) return HOTEL_CLASS_FEE.resort
-    }
-    if (this.hotelLevel > 0) return HOTEL_NIGHT_FEE
-    return HOTEL_CLASS_FEE.business
+      if (tagSpendsUp(tag) && classes.includes('resort')) raw = HOTEL_CLASS_FEE.resort
+      else if (tag === 'family' && classes.includes('inn')) raw = HOTEL_CLASS_FEE.inn
+      else if (classes.includes('business')) raw = HOTEL_CLASS_FEE.business
+      else if (classes.includes('inn')) raw = HOTEL_CLASS_FEE.inn
+      else if (classes.includes('resort')) raw = HOTEL_CLASS_FEE.resort
+    } else if (this.hotelLevel > 0) raw = HOTEL_NIGHT_FEE
+    return this.listed(raw, 'hotelNight')
   }
 
   /** Site pax mult with hotel / rail / car park / bus landside boosts. */
@@ -3255,6 +3296,11 @@ export class Game {
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      fees: { ...this.fees },
+      depositTier: this.depositTier,
+      deposits: this.deposits,
+      commercialLead: this.commercialLead,
+      feeStandingApplied: this.feeStandingApplied,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3293,6 +3339,11 @@ export class Game {
       this.payrollDay = Math.floor(Math.max(0, s.clock) / 180)
       this.levyMark = s.clock
       this.bank = new Bank(0)
+      this.fees = restoreFees(s.fees)
+      this.depositTier = restoreTier(s.depositTier)
+      this.deposits = restoreDeposits(s.deposits)
+      this.commercialLead = restoreLeads(s.commercialLead)
+      this.feeStandingApplied = s.feeStandingApplied ?? 0
       this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
       this.economy = null
       this.economyState = null
@@ -3593,12 +3644,133 @@ export class Game {
     return Math.round(pool.reduce((sum, n) => sum + n, 0) / pool.length)
   }
 
-  earn(amount: number, label: string, flight?: Flight) {
+  earn(
+    amount: number,
+    label: string,
+    flight?: Flight,
+    category: MoneyCategory = 'landing_fees',
+    announce = true,
+  ) {
+    if (!(amount > 0) || !Number.isFinite(amount)) return
     this.cash += amount
     this.revenue += amount
-    this.noteIncome(amount)
+    this.noteIncome(amount, category)
     if (flight) flight.ledger.push({ label, amount })
-    this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+    if (announce) this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+  }
+
+  /** Walk-in traffic multiplier from the fee card. 1 at the published prices. */
+  walkInDemand(): number {
+    return walkInDemandOf(this.fees)
+  }
+
+  setFee(key: keyof FeeSchedule, value: number) {
+    this.fees = editFee(this.fees, key, value)
+    this.syncFeeStanding()
+    this.emit()
+  }
+
+  setDepositTier(tier: DepositTier) {
+    this.depositTier = tier
+    this.emit()
+  }
+
+  /** List price times the player's slider. Default schedule leaves the amount alone. */
+  private listed(amount: number, key: keyof FeeSchedule): number {
+    return scaleListed(amount, this.fees[key], DEFAULT_FEE_SCHEDULE[key])
+  }
+
+  private feeTier(airlineId: string): DepositTier {
+    return this.deposits[airlineId]?.tier ?? 'standard'
+  }
+
+  private walkInFlight(f: Flight): boolean {
+    return Boolean(f.ga) || f.airline === 'ga'
+  }
+
+  /** Sim-clock before which this airline's first flight stays on the ground. 0 once it has flown. */
+  leadGateClock(airlineId: string): number {
+    const lead = this.commercialLead[airlineId]
+    if (!lead || lead.opened) return 0
+    return firstFlightClock(lead)
+  }
+
+  /** Push an early slot out to the lead gate. Returns true when it is not yet allowed to launch. */
+  private holdLead(slot: ScheduleSlot): boolean {
+    const gate = this.leadGateClock(slot.airline)
+    if (!(gate > 0) || slot.eta >= gate - 0.05) return false
+    slot.eta = gate
+    slot.delayReason = 'Lead time'
+    return true
+  }
+
+  private syncFeeStanding() {
+    const next = standingForFees(this.fees)
+    const diff = next - this.feeStandingApplied
+    this.feeStandingApplied = next
+    if (diff === 0) return
+    for (const id of this.signed) this.adjustHeat(id, diff)
+  }
+
+  private postDepositEntry(entry: Parameters<typeof depositCashPost>[0]) {
+    const post = depositCashPost(entry)
+    if (!post) return
+    this.cash += post.amount
+    if (post.amount > 0) this.noteIncome(post.amount, post.category)
+    else {
+      this.noteExpense(-post.amount)
+      this.postJournal(post.category, -post.amount, this.simMinutes())
+    }
+  }
+
+  private noteCommercialSign(id: AirlineId, airline: Airline) {
+    const starter = this.signed.length === 1
+    this.commercialLead[id] = openLead({
+      clock: this.clock,
+      starter,
+      tier: airline.tier,
+      hub: this.isHub(id),
+    })
+    if (this.feeStandingApplied !== 0) this.adjustHeat(id, this.feeStandingApplied)
+    const taken = signDeposit({
+      airlineId: id,
+      tier: this.depositTier,
+      landingFee: airline.landing,
+      day: Math.floor(Math.max(0, this.clock) / 180),
+    })
+    this.deposits[id] = taken.account
+    this.postDepositEntry(taken.entry)
+  }
+
+  /** Term-end refunds. Called when a game day closes. */
+  settleDeposits(completedDay: number) {
+    for (const id of Object.keys(this.deposits)) {
+      const account = this.deposits[id]
+      const settled = settleHeld(account, completedDay)
+      if (!settled) continue
+      this.deposits[id] = settled.account
+      this.postDepositEntry(settled.entry)
+      if (settled.entry.amount < 0) {
+        const name = this.airline(id as AirlineId).name
+        this.pushNews(
+          `${name} deposit refunded $${(-settled.entry.amount).toLocaleString('en-US')}.`,
+          'ok',
+        )
+      }
+    }
+  }
+
+  private forfeitAirlineDeposit(id: AirlineId) {
+    const account = this.deposits[id]
+    if (!account) return
+    const kept = forfeitHeld(account, Math.floor(Math.max(0, this.clock) / 180))
+    this.deposits[id] = kept.account
+    if (kept.entry.retained > 0) {
+      this.pushNews(
+        `${this.airline(id).name} cancelled early — deposit $${kept.entry.retained.toLocaleString('en-US')} forfeited.`,
+        'ok',
+      )
+    }
   }
 
   setTool(tool: Tool) {
@@ -6996,9 +7168,15 @@ export class Game {
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.grantFieldXp(12 + a.tier * 4, 'contract')
+    this.noteCommercialSign(id, a)
     this.seedScheduleForAirline(id, 3)
+    const leadDays = this.commercialLead[id]?.leadDays ?? 0
+    const held = this.deposits[id]?.held ?? 0
+    const depositBit =
+      held > 0 ? ` ${this.deposits[id].tier} deposit $${held.toLocaleString('en-US')} held.` : ''
+    const leadBit = leadDays > 0 ? ` First flight in ${leadDays} days.` : ''
     this.pushNews(
-      `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.`,
+      `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.${leadBit}${depositBit}`,
       'good',
     )
     this.emit()
@@ -7034,6 +7212,8 @@ export class Game {
       .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
+    const gate = this.leadGateClock(airlineId)
+    if (gate > t) t = gate
     const hub = this.isHub(airlineId)
     const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
     const spacing = a.kind === 'cargo'
@@ -7086,7 +7266,7 @@ export class Game {
     }
     const a = this.airline(airlineId)
     this.flightSeq += 1
-    const eta = this.clock + Math.max(8, inSeconds)
+    const eta = Math.max(this.clock + Math.max(8, inSeconds), this.leadGateClock(airlineId))
     const rw = this.pickBalancedRunway()
     const slot: ScheduleSlot = {
       id: uid('slot'),
@@ -7149,7 +7329,7 @@ export class Game {
   pullSlot(slotId: string, bySec = 12) {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
-    const floor = this.clock + 6
+    const floor = Math.max(this.clock + 6, this.leadGateClock(s.airline))
     const next = Math.max(floor, s.eta - bySec)
     if (next >= s.eta - 0.5) {
       this.pushNews(`${s.flightNo} already as early as the tower allows.`, 'ok')
@@ -7769,7 +7949,12 @@ export class Game {
 
       // Soft day-rate while occupying a stand.
       if (!dayCharged && this.parkRateCool <= 0) {
-        this.earn(GA_PARK_DAY_RATE, `${f.flightNo} parking day-rate`, f)
+        this.earn(
+          this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'),
+          `${f.flightNo} parking day-rate`,
+          f,
+          'parking_fees',
+        )
         this.parkRateCool = GA_PARK_RATE_COOL
         dayCharged = true
       }
@@ -7834,18 +8019,19 @@ export class Game {
     }
     this.parkingCool -= dt
     if (this.parkingCool > 0 || !this.site) return
-    this.parkingCool = 50 + Math.random() * 40
+    this.parkingCool = demandInterval(50 + Math.random() * 40, this.fees)
     if (!this.freeStands().length) return
-    if (Math.random() > 0.45) return
+    if (Math.random() > walkInOfferChance(this.fees)) return
 
     const frames = ['citation', 'pc12', 'crj700', 'atr72'].filter((id) => AIRFRAMES[id])
     const afId = pick(frames)
     const af = AIRFRAMES[afId]
     if (this.longestRunway() < af.minRunway) return
     this.flightSeq += 1
-    const fee =
-      GA_PARK_FEE_MIN +
-      Math.floor(Math.random() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN))
+    const fee = this.listed(
+      GA_PARK_FEE_MIN + Math.floor(Math.random() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN)),
+      'aircraftParkingPerDay',
+    )
     const stay =
       GA_PARK_STAY_MIN +
       Math.floor(Math.random() * (GA_PARK_STAY_MAX - GA_PARK_STAY_MIN))
@@ -7877,7 +8063,7 @@ export class Game {
       this.emit()
       return
     }
-    this.earn(o.fee, `${o.callsign} parking fee`)
+    this.earn(o.fee, `${o.callsign} parking fee`, undefined, 'parking_fees')
     const inbound = this.armApproach(route)
     const load = this.flightLoad(af, 'business', false)
     const f: Flight = {
@@ -8728,6 +8914,7 @@ export class Game {
    * Landside upkeep is the old six payroll-tick slices, billed once.
    */
   private closeOperatingDay(completedDay: number) {
+    this.settleDeposits(completedDay)
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -10237,6 +10424,7 @@ export class Game {
       this.pushNews(`${slot.flightNo} scrubbed — airline banned.`, 'bad')
       return
     }
+    if (this.holdLead(slot)) return
 
     // At inbound capacity or pavement jammed — slip the due slot instead of soft-locking the bank.
     if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
@@ -10352,6 +10540,7 @@ export class Game {
       claimLane: slot.claimLane ?? null,
     }
     this.flights.push(f)
+    if (this.commercialLead[airlineId]) this.commercialLead[airlineId].opened = true
     if (!f.cargo) this.assignClaimLane(f)
     this.bindShowUp(slot, f)
     this.noteCraft(af.kind)
@@ -10422,7 +10611,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
-    this.heloCool = 75 + Math.random() * 40
+    this.heloCool = demandInterval(75 + Math.random() * 40, this.fees)
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
       medevac
@@ -10457,7 +10646,7 @@ export class Game {
         f.z = 0.28
         if (!f.posted.landing) {
           f.posted.landing = true
-          this.earn(HELO_LANDING, `${f.flightNo} pad fee`, f)
+          this.earn(this.listed(HELO_LANDING, 'helicopterLanding'), `${f.flightNo} pad fee`, f, 'landside_fees')
           this.reputation = Math.min(100, this.reputation + 1)
         }
       } else if (f.phase === 'approach' && f.phaseTime > 1.2) {
@@ -10702,7 +10891,21 @@ export class Game {
           (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
           this.landingFeeMult(f.airline) *
           this.diplomacyFeeFactor(f.airline)
-        this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing (${f.airframeName})`, f)
+        const base = Math.round(airline.landing * mult)
+        const walkIn = this.walkInFlight(f)
+        this.earn(
+          landingCharge(this.listed(base, 'landingPerTonne'), this.feeTier(f.airline), walkIn),
+          `${f.flightNo} landing (${f.airframeName})`,
+          f,
+          'landing_fees',
+        )
+        this.earn(
+          landingCharge(f.pax * this.fees.paxFee, this.feeTier(f.airline), walkIn),
+          `${f.flightNo} passenger fees`,
+          f,
+          'passenger_fees',
+          false,
+        )
       }
       if (
         (f.craft ?? 'jet') === 'jet' &&
@@ -11146,7 +11349,12 @@ export class Game {
         if (!f.cargo) {
           const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
-          this.earn(Math.round(airline.bags * mult), `${f.flightNo} bag handling`, f)
+          this.earn(
+            serviceCharge(this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), this.feeTier(f.airline), this.walkInFlight(f)),
+            `${f.flightNo} bag handling`,
+            f,
+            'baggage_fees',
+          )
           const fit = this.roomsAt(f.stand)
           if (fit) {
             const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
@@ -11167,9 +11375,14 @@ export class Game {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
           if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
           this.earn(
-            Math.round(airline.landing * 0.35 * cargoMult),
+            serviceCharge(
+              this.listed(Math.round(airline.landing * 0.35 * cargoMult), 'cargoPerUnit'),
+              this.feeTier(f.airline),
+              this.walkInFlight(f),
+            ),
             `${f.flightNo} cargo handling`,
             f,
+            'cargo_fees',
           )
         }
         const fit = this.roomsAt(f.stand)
@@ -11206,21 +11419,36 @@ export class Game {
       f.fuelLevel = 1
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
-      this.earn(FUEL[this.fuelBrand].pump, `${f.flightNo} fuel`, f)
+      this.earn(
+        serviceCharge(this.listed(FUEL[this.fuelBrand].pump, 'fuelMarkupPerLitre'), this.feeTier(f.airline), this.walkInFlight(f)),
+        `${f.flightNo} fuel`,
+        f,
+        'fuel_sales',
+      )
     }
     if (t.kind === 'catering' && !f.posted.catering && this.caterBrand) {
       f.posted.catering = true
       f.caterLevel = 1
       f.waitingOn.catering = false
       const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
-      this.earn(pay, `${f.flightNo} catering (${CATER[this.caterBrand].name})`, f)
+      this.earn(
+        serviceCharge(this.listed(pay, 'cateringPerCart'), this.feeTier(f.airline), this.walkInFlight(f)),
+        `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
+        f,
+        'catering_fees',
+      )
       this.mealSold = true
       this.reputation = Math.min(100, this.reputation + 1)
     }
     if (t.kind === 'deice' && t.mission === 'deice' && !f.posted.deiced) {
       f.posted.deiced = true
       f.waitingOn.deice = false
-      this.earn(DEICE_FEE, `${f.flightNo} de-ice`, f)
+      this.earn(
+        serviceCharge(this.listed(DEICE_FEE, 'deice'), this.feeTier(f.airline), this.walkInFlight(f)),
+        `${f.flightNo} de-ice`,
+        f,
+        'contract_fees',
+      )
       this.pushNews(`${f.flightNo} de-iced — clear to push.`, 'good')
     }
   }
@@ -12245,7 +12473,12 @@ export class Game {
           f.phaseTime > 2.5 &&
           !f.ledger.some((r) => r.label.includes('cleaning'))
         ) {
-          this.earn(CLEANING_FEE, `${f.flightNo} cabin cleaning`, f)
+          this.earn(
+            serviceCharge(this.listed(CLEANING_FEE, 'cleaning'), this.feeTier(f.airline), this.walkInFlight(f)),
+            `${f.flightNo} cabin cleaning`,
+            f,
+            'contract_fees',
+          )
         }
         const waiting =
           (f.waitingOn.bags && !f.posted.bags) ||
