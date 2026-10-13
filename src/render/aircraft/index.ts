@@ -14,6 +14,7 @@ export {
   measureAircraft,
   MODEL_SPECS,
   releaseAircraft,
+  setAircraftNight,
   setAircraftQuality,
   triangleCount,
   updateAircraft,

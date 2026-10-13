@@ -1,8 +1,11 @@
 /**
- * Real-world overall dimensions (meters, public figures, rounded) and the
- * shape cues the builder needs. Visual size is meters × WORLD_PER_METER so a
- * 737 stays about one apron cell, and types keep their real ratios.
+ * Real-world overall dimensions (meters) and the shape cues the builder needs.
+ * Length, span, height, wheelbase, and doors come from the verified pack in
+ * realworld.ts. Visual size is meters × WORLD_PER_METER.
  */
+
+import type { RealDoor } from './realworld'
+import { REAL_AIRFRAMES } from './realworld'
 
 export const WORLD_PER_METER = 0.12
 
@@ -66,13 +69,21 @@ export interface ModelSpec {
   rotor: number
   blades: number
   fenestron: boolean
+  /** Nose-gear to main-gear distance, meters. Tailwheel types measure main to tail. */
+  wheelbaseM: number
+  /** Door stations from the verified pack. Drawn on the close LOD. */
+  doors: RealDoor[]
 }
 
 export interface Livery {
   /** Airline fuselage color. */
   body: string
-  /** Tail, cheatline, and winglet color. */
+  /** Cheatline color. Also the tail color when `tail` is omitted. */
   stripe: string
+  /** Tail and winglet color. */
+  tail?: string
+  /** Two-letter tail mark. Resolved from the airline when omitted. */
+  mark?: string
 }
 
 type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>
@@ -80,7 +91,7 @@ type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>
 function spec(partial: Core & Partial<Omit<ModelSpec, keyof Core>>): ModelSpec {
   const lengthM = partial.lengthM
   const spanM = partial.spanM
-  return {
+  const built: ModelSpec = {
     family: 'tube',
     rx: 1.9,
     ry: 1.95,
@@ -112,7 +123,19 @@ function spec(partial: Core & Partial<Omit<ModelSpec, keyof Core>>): ModelSpec {
     rotor: 0,
     blades: 0,
     fenestron: false,
+    wheelbaseM: lengthM * 0.38,
+    doors: [],
     ...partial,
+  }
+  const real = REAL_AIRFRAMES[partial.id]
+  if (!real) return built
+  return {
+    ...built,
+    lengthM: real.lengthM,
+    spanM: real.spanM,
+    heightM: real.heightM,
+    wheelbaseM: real.wheelbaseM,
+    doors: real.doors,
   }
 }
 
@@ -405,18 +428,18 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     spanM: 22.04,
     heightM: 6.38,
     family: 'rearjet',
-    rx: 1.02,
-    ry: 1.05,
+    rx: 0.86,
+    ry: 0.9,
     gear: 1.25,
     wingAt: 0.48,
-    rootChord: 2.8,
-    tipChord: 1.05,
-    sweep: 16,
+    rootChord: 2.6,
+    tipChord: 0.95,
+    sweep: 12,
     dihedral: 3,
-    thickness: 0.24,
+    thickness: 0.22,
     winglet: 'fence',
     tail: 't',
-    tailSpan: 7.2,
+    tailSpan: 6.4,
     engines: { count: 2, kind: 'turbofan', mount: 'rear', radius: 0.42, length: 1.7 },
   }),
   pc12: spec({

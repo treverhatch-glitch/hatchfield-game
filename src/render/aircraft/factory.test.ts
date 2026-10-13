@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { AIRFRAMES } from '../../game/airframes'
+import { resolveBrand } from './branding'
 import { loftGeometry, wingGeometry } from './geom'
-import { CrossfadeLOD } from './lod'
+import { aircraftIsNight, CrossfadeLOD, setAircraftNight } from './lod'
+import { REAL_AIRFRAMES } from './realworld'
 import { ParkedFleet } from './batch'
 import {
   createAircraft,
@@ -232,7 +234,8 @@ describe('aircraft model factory', () => {
     expect(windows.count).toBeGreaterThan(10)
     const lowShell = a.getObjectByName('lod-low')!.getObjectByName('airframe') as THREE.Mesh
     expect(lowShell.material).toBeInstanceOf(THREE.MeshBasicMaterial)
-    expect(drawCount(mid(a).getObjectByName('airframe')!.parent!)).toBeLessThan(16)
+    expect(shell(a).material).toBeInstanceOf(THREE.MeshStandardMaterial)
+    expect(drawCount(mid(a).getObjectByName('airframe')!.parent!)).toBeLessThan(22)
     releaseAircraft(a)
     releaseAircraft(b)
     releaseAircraft(bus)
@@ -415,7 +418,87 @@ describe('aircraft model factory', () => {
     )
     const mid = fleet.root.children.find((child) => (child as THREE.InstancedMesh).isInstancedMesh && child.visible) as THREE.InstancedMesh
     expect(mid.count).toBe(3)
-    expect(mid.material).toBeInstanceOf(THREE.MeshLambertMaterial)
+    expect(mid.material).toBeInstanceOf(THREE.MeshStandardMaterial)
     fleet.dispose()
+  })
+
+  it('uses the verified pack for size, wheelbase, and doors', () => {
+    for (const [id, real] of Object.entries(REAL_AIRFRAMES)) {
+      const spec = MODEL_SPECS[id]
+      expect(spec, id).toBeDefined()
+      expect(spec.lengthM).toBeCloseTo(real.lengthM, 2)
+      expect(spec.spanM).toBeCloseTo(real.spanM, 2)
+      expect(spec.heightM).toBeCloseTo(real.heightM, 2)
+      expect(spec.wheelbaseM).toBeCloseTo(real.wheelbaseM, 2)
+      expect(spec.doors).toEqual(real.doors)
+      expect(spec.wheelbaseM).toBeLessThan(spec.lengthM)
+    }
+    expect(getAircraftSpec('f15').doors).toHaveLength(0)
+    expect(getAircraftSpec('citation').lengthM).toBeCloseTo(16.08, 2)
+    expect(getAircraftSpec('e175').spanM).toBeCloseTo(26, 2)
+  })
+
+  it('spaces the gear by the pack wheelbase', () => {
+    const misses: string[] = []
+    for (const spec of Object.values(MODEL_SPECS)) {
+      const aircraft = createAircraft(spec.id, LIVERY)
+      const gear = mid(aircraft).getObjectByName('gear')
+      if (spec.skids) {
+        if (gear?.userData.wheelbase != null) misses.push(`${spec.id} skid stored a wheelbase`)
+      } else {
+        const axle = gear?.userData.wheelbase as number | undefined
+        if (axle == null || Math.abs(axle - spec.wheelbaseM) > 0.05) {
+          misses.push(`${spec.id} axle ${axle} vs ${spec.wheelbaseM}`)
+        }
+      }
+      releaseAircraft(aircraft)
+    }
+    expect(misses).toEqual([])
+  })
+
+  it('puts a pack door on the close mesh and a tail mark on the mid mesh', () => {
+    const narrow = createAircraft('b738', LIVERY)
+    const doorMesh = high(narrow).getObjectByName('doors') as THREE.InstancedMesh
+    expect(doorMesh.isInstancedMesh).toBe(true)
+    expect(doorMesh.count).toBe(getAircraftSpec('b738').doors.length)
+    expect(names(mid(narrow)).has('logo')).toBe(true)
+    expect(names(mid(narrow)).has('aileron')).toBe(true)
+    expect(names(mid(narrow)).has('elevator')).toBe(true)
+    expect(names(mid(narrow)).has('rudder')).toBe(true)
+    expect(resolveBrand(LIVERY).mark).toBe('NL')
+    expect(resolveBrand({ body: '#112233', stripe: '#ffffff', mark: 'ZZ' }).mark).toBe('ZZ')
+    const freighter = createAircraft('b748f', LIVERY)
+    const freightDoors = high(freighter).getObjectByName('doors') as THREE.InstancedMesh
+    const placed = new THREE.Matrix4()
+    let noseDoor = false
+    for (let i = 0; i < freightDoors.count; i++) {
+      freightDoors.getMatrixAt(i, placed)
+      if (placed.elements[12] > getAircraftSpec('b748f').lengthM * 0.3) noseDoor = true
+    }
+    expect(noseDoor).toBe(true)
+    releaseAircraft(narrow)
+    releaseAircraft(freighter)
+  })
+
+  it('brightens nav lamps at night', () => {
+    const aircraft = createAircraft('b738', LIVERY)
+    const lod = aircraft.getObjectByName('lod') as CrossfadeLOD
+    const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 200)
+    camera.position.set(0, 8, 30)
+    camera.lookAt(0, 0, 0)
+    camera.updateMatrixWorld()
+    aircraft.updateMatrixWorld(true)
+    setAircraftNight(false)
+    lod.update(camera)
+    const lamp = mid(aircraft).getObjectByName('nav-port') as THREE.Mesh
+    const day = lamp.scale.x
+    setAircraftNight(true)
+    lod.update(camera)
+    expect(aircraftIsNight()).toBe(true)
+    expect(lamp.scale.x).toBeGreaterThan(day * 1.5)
+    const aileron = mid(aircraft).getObjectByName('aileron') as THREE.Mesh
+    expect(Math.abs(aileron.rotation.z)).toBeGreaterThan(0)
+    setAircraftNight(false)
+    releaseAircraft(aircraft)
   })
 })

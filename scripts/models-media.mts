@@ -208,7 +208,7 @@ if (mode === 'before') {
   await page.waitForTimeout(600)
   console.log('after close fps', await fps(page, 3000))
   await page.screenshot({ path: `${OUT}/MODELS-after.png` })
-  await page.evaluate(findWorld, { dist: 34, c: 10 + 1 * 3.6, r: 13 })
+  await page.evaluate(findWorld, { dist: 32, c: 10 + 3 * 3.6, r: 13 })
   await page.waitForTimeout(400)
   await page.screenshot({ path: `${OUT}/MODELS-after-close.png` })
   await page.evaluate(findWorld, { dist: 140, c: 10 + 2.5 * 3.6, r: 15 })
@@ -304,7 +304,7 @@ if (mode === 'before') {
   }
   const sample = async (dist: number) => {
     await frameFlight(page, dist)
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(300)
     const rate = await fps(page, 3000)
     const info = await page.evaluate((cameraDist) => {
       const canvas = document.querySelector('canvas.field')
@@ -329,6 +329,7 @@ if (mode === 'before') {
               dpr: world.renderer.getPixelRatio(),
               speed: (window as any).__hatch?.speed,
               flights: (window as any).__hatch?.flights?.filter((f: { phase: string }) => f.phase !== 'gone').length,
+              airframe: (window as any).__hatch?.flights?.[0]?.airframeId,
             }
           }
           hook = (hook as { next?: unknown }).next

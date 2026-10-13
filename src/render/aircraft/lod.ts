@@ -53,6 +53,17 @@ export function loadAircraftQuality() {
   }
 }
 
+let night = false
+
+/** Day/night lamp scale. The sim sets this once per frame. */
+export function setAircraftNight(on: boolean) {
+  night = on
+}
+
+export function aircraftIsNight(): boolean {
+  return night
+}
+
 export interface LodWeights {
   high: number
   mid: number
@@ -204,15 +215,34 @@ export class CrossfadeLOD extends THREE.LOD {
       }
     }
 
+    const nightScale = night ? 1.55 : 0.85
+    for (const lamp of buckets.lamps) {
+      const kind = lamp.userData.kind as string
+      if (kind === 'strobe' || kind === 'beacon') continue
+      const base = (lamp.userData.baseScale as number) || 1
+      lamp.scale.setScalar(base * nightScale)
+    }
     const strobe = Math.pow(Math.max(0, Math.sin(now * 9)), 18)
     const beacon = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now * 5))
     for (const lamp of buckets.strobes) {
       const base = (lamp.userData.baseScale as number) || 1
-      lamp.scale.setScalar(base * (0.7 + strobe * 1.15))
+      lamp.scale.setScalar(base * nightScale * (0.7 + strobe * 1.15))
     }
     for (const lamp of buckets.beacons) {
       const base = (lamp.userData.baseScale as number) || 1
-      lamp.scale.setScalar(base * (0.75 + beacon * 0.45))
+      lamp.scale.setScalar(base * nightScale * (0.75 + beacon * 0.45))
+    }
+
+    const ail = Math.sin(now * 0.7) * 0.18
+    const elev = Math.sin(now * 0.5) * 0.12
+    const rud = Math.sin(now * 0.4) * 0.15
+    for (const mesh of buckets.mid) {
+      const surface = mesh.userData.surface as string | undefined
+      if (!surface) continue
+      const sign = (mesh.userData.sign as number) || 1
+      if (surface === 'aileron') mesh.rotation.z = ail * sign
+      else if (surface === 'elevator') mesh.rotation.z = elev
+      else if (surface === 'rudder') mesh.rotation.y = rud * sign
     }
   }
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { logoMaterials, resolveBrand } from './branding'
 import { cylinderSides, fuselageSides, loftGeometry, wingGeometry } from './geom'
 import { mergeStaticShell } from './merge'
 import {
@@ -6,6 +7,7 @@ import {
   unitBox,
   unitCylinder,
   unitDisc,
+  unitPlane,
   unitSphere,
   type PaintedMesh,
   type PaintSlot,
@@ -242,7 +244,7 @@ function addWing(frame: Frame) {
         frame,
         [0.22, height, 0.55],
         [tipX, wingY + lift + height * 0.45, sign * (semi - 0.15)],
-        'stripe',
+        'tail',
         'mesh',
         [0, 0, lean * sign],
       )
@@ -264,7 +266,7 @@ function addTail(frame: Frame) {
         frame,
         [chord * 0.85, finH, thick],
         [finX, top + finH / 2, sign * spread],
-        'stripe',
+        'tail',
         'mesh',
         [0, 0, sign * 0.12],
         frame.tier === 'mid',
@@ -275,7 +277,7 @@ function addTail(frame: Frame) {
       frame,
       [chord, finH, thick],
       [finX, top + finH / 2, 0],
-      'stripe',
+      'tail',
       'mesh',
       [0, 0, sweep],
       frame.tier === 'mid',
@@ -288,7 +290,7 @@ function addTail(frame: Frame) {
     frame,
     [stabChord, Math.max(0.08, spec.thickness * 0.22), spec.tailSpan],
     [finX - chord * 0.15, stabY, 0],
-    'stripe',
+    'tail',
     'mesh',
   )
 }
@@ -323,7 +325,23 @@ function addEngines(frame: Frame) {
       intakeR,
     ),
   )
-  addInstances(frame, unitCylinder(sides), intakes, 'dark', 'mesh', 'intakes')
+  addInstances(frame, unitCylinder(sides), intakes, 'metal', 'mesh', 'intakes')
+  if (eng.kind === 'turbofan' || eng.kind === 'turbojet') {
+    const discs = pts.map((p) =>
+      compose(
+        p.x + eng.length * 0.4,
+        p.y,
+        p.z,
+        0,
+        0,
+        Math.PI / 2,
+        eng.radius * 0.72,
+        0.05,
+        eng.radius * 0.72,
+      ),
+    )
+    addInstances(frame, unitCylinder(sides), discs, 'dark', 'mesh', 'fan-disc')
+  }
   if (eng.kind === 'turboprop') addPropBlades(frame, pts, eng, 'prop')
 }
 
@@ -389,7 +407,7 @@ function addFans(frame: Frame) {
 }
 
 function addGear(frame: Frame) {
-  const { spec, tier, nose, tailX, wingX } = frame
+  const { spec, tier, nose, tailX } = frame
   const gear = new THREE.Group()
   gear.name = 'gear'
   gear.position.set(0, spec.gear, 0)
@@ -445,16 +463,42 @@ function addGear(frame: Frame) {
     return
   }
 
-  if (!spec.tailWheel) mount(nose - spec.lengthM * 0.16, 0, false)
-  const mainZ = Math.max(spec.rx * 0.95, spec.spanM * 0.07)
-  mount(wingX, mainZ, spec.bogie)
-  mount(wingX, -mainZ, spec.bogie)
-  if (spec.bodyGear) {
-    mount(wingX - spec.rootChord * 0.45, spec.rx * 0.28, spec.bogie)
-    mount(wingX - spec.rootChord * 0.45, -spec.rx * 0.28, spec.bogie)
-  }
+  // Wheelbase is nose-to-main for tricycle gear, main-to-tail for taildraggers.
+  const inset = Math.min(2.4, spec.lengthM * 0.11)
+  let forwardX: number
+  let aftX: number
   if (spec.tailWheel) {
-    mount(tailX + 0.7, 0, false)
+    aftX = tailX + Math.min(0.7, spec.lengthM * 0.04)
+    forwardX = aftX + spec.wheelbaseM
+  } else {
+    forwardX = nose - inset
+    aftX = forwardX - spec.wheelbaseM
+  }
+  const axle = Math.abs(forwardX - aftX)
+  gear.userData.wheelbase = axle
+  frame.group.userData.wheelbase = axle
+  const mainZ = spec.family === 'helo'
+    ? Math.max(spec.rx * 0.7, 0.55)
+    : Math.max(spec.rx * 0.95, spec.spanM * 0.07)
+
+  if (spec.family === 'helo') {
+    mount(forwardX, mainZ, false)
+    mount(forwardX, -mainZ, false)
+    mount(aftX, mainZ, false)
+    mount(aftX, -mainZ, false)
+  } else if (spec.tailWheel) {
+    mount(forwardX, mainZ, false)
+    mount(forwardX, -mainZ, false)
+    mount(aftX, 0, false)
+  } else {
+    mount(forwardX, 0, false)
+    mount(aftX, mainZ, spec.bogie)
+    mount(aftX, -mainZ, spec.bogie)
+    if (spec.bodyGear) {
+      const bodyX = aftX - Math.min(spec.rootChord * 0.35, spec.lengthM * 0.08)
+      mount(bodyX, spec.rx * 0.28, spec.bogie)
+      mount(bodyX, -spec.rx * 0.28, spec.bogie)
+    }
   }
 
   const park = (geo: THREE.BufferGeometry, matrices: THREE.Matrix4[], slot: PaintSlot) => {
@@ -496,17 +540,148 @@ function addWindows(frame: Frame) {
     }
     return
   }
-  if (frame.tier !== 'high' || !spec.windows) return
-  // Window instances are attached later, and only inside the high band.
-  const doorH = Math.min(2.3, spec.ry * 1.15)
-  for (const x of [spec.lengthM * 0.3, -spec.lengthM * 0.2]) {
-    addBox(
+}
+
+/** Pack door stations, one instanced mesh. Close LOD only. */
+function addRealDoors(frame: Frame) {
+  if (frame.tier !== 'high' || frame.spec.doors.length === 0) return
+  const { spec, centerY, nose } = frame
+  const matrices: THREE.Matrix4[] = []
+  for (const door of spec.doors) {
+    const x = nose - door.t * spec.lengthM
+    const upper = door.kind === 'upper'
+    const bulky = door.kind === 'cargo' || door.kind === 'ramp'
+    const h = upper
+      ? Math.min(1.9, spec.ry * 0.7)
+      : bulky
+        ? Math.min(2.8, spec.ry * 1.25)
+        : Math.min(2.05, Math.max(0.9, spec.ry * 1.02))
+    const w = bulky
+      ? Math.min(2.6, Math.max(1.15, spec.rx * 0.95))
+      : Math.min(1.05, Math.max(0.62, spec.rx * 0.55))
+    const y = upper
+      ? centerY + spec.ry * 0.55
+      : bulky
+        ? centerY - spec.ry * 0.22
+        : centerY - spec.ry * 0.08
+    if (door.side === 0) {
+      const along = door.kind === 'ramp' ? Math.min(2.2, spec.lengthM * 0.08) : 0.1
+      const yPos = door.kind === 'ramp' ? Math.max(spec.gear * 0.55, y - spec.ry * 0.35) : y
+      const xPos = door.kind === 'ramp' ? x - along * 0.35 : x
+      matrices.push(compose(xPos, yPos, 0, 0, 0, 0, along, h, spec.rx * 1.5))
+    } else {
+      matrices.push(compose(x, y, door.side * (spec.rx + 0.03), 0, 0, 0, w, h, 0.07))
+    }
+  }
+  addInstances(frame, unitBox(), matrices, 'dark', 'mesh', 'doors')
+}
+
+function finPose(frame: Frame) {
+  const chord = Math.max(1.1, frame.spec.lengthM * 0.11)
+  const thick = Math.max(0.08, frame.spec.rx * 0.08)
+  return {
+    finX: frame.tailX + chord * 0.55,
+    chord,
+    thick,
+    stabY: frame.spec.tail === 't' ? frame.spec.heightM - 0.12 : frame.centerY + frame.spec.ry * 0.2,
+  }
+}
+
+function addControls(frame: Frame) {
+  if (frame.tier !== 'mid' || frame.spec.family === 'helo') return
+  const { spec, wingX, wingY } = frame
+  const semi = spec.spanM / 2
+  const sweep = Math.tan((spec.sweep * Math.PI) / 180) * semi * 0.72
+  const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi * 0.72
+  const aileronSpan = Math.max(0.7, spec.spanM * 0.1)
+  const aileronChord = Math.max(0.28, spec.tipChord * 0.7)
+  for (const sign of [1, -1] as const) {
+    const mesh = addBox(
       frame,
-      [0.85, doorH, 0.06],
-      [x, centerY - spec.ry * 0.05, spec.rx + 0.04],
-      'stripe',
-      'mesh',
-    ).name = 'doors'
+      [aileronChord, Math.max(0.05, spec.thickness * 0.18), aileronSpan],
+      [wingX - spec.rootChord * 0.28 - sweep, wingY + lift, sign * semi * 0.72],
+      'body',
+      'control',
+    )
+    mesh.name = 'aileron'
+    mesh.userData.surface = 'aileron'
+    mesh.userData.sign = sign
+  }
+  const { finX, chord, stabY, thick } = finPose(frame)
+  const elevator = addBox(
+    frame,
+    [Math.max(0.28, chord * 0.28), Math.max(0.05, spec.thickness * 0.16), spec.tailSpan * 0.72],
+    [finX - chord * 0.42, stabY, 0],
+    'tail',
+    'control',
+  )
+  elevator.name = 'elevator'
+  elevator.userData.surface = 'elevator'
+  elevator.userData.sign = 1
+  if (spec.tail === 'twin') {
+    const spread = Math.max(0.7, spec.rx * 0.85)
+    for (const sign of [1, -1] as const) {
+      const rudder = addBox(
+        frame,
+        [Math.max(0.22, chord * 0.22), frame.finH * 0.55, thick * 0.8],
+        [finX - chord * 0.2, frame.top + frame.finH * 0.62, sign * spread],
+        'tail',
+        'control',
+      )
+      rudder.name = 'rudder'
+      rudder.userData.surface = 'rudder'
+      rudder.userData.sign = sign
+    }
+  } else {
+    const rudder = addBox(
+      frame,
+      [Math.max(0.22, chord * 0.22), frame.finH * 0.55, thick * 0.9],
+      [finX - chord * 0.15, frame.top + frame.finH * 0.62, 0],
+      'tail',
+      'control',
+    )
+    rudder.name = 'rudder'
+    rudder.userData.surface = 'rudder'
+    rudder.userData.sign = 1
+  }
+}
+
+function addLogo(frame: Frame) {
+  if (frame.tier !== 'mid') return
+  const brand = resolveBrand(frame.livery)
+  const { opaque, fade } = logoMaterials(brand)
+  const place = (x: number, y: number, z: number, size: number) => {
+    const mesh = new THREE.Mesh(unitPlane())
+    mesh.scale.set(size, size, 1)
+    mesh.position.set(x, y, z)
+    mesh.name = 'logo'
+    mesh.userData.paint = brand.tail
+    mesh.material = opaque
+    mesh.userData.opaqueMat = opaque
+    mesh.userData.fadeMat = fade
+    mesh.userData.lodOpacity = 1
+    mesh.userData.kind = 'decal'
+    mesh.userData.tier = frame.tier
+    const fadeMat = fade as THREE.Material & { opacity: number }
+    mesh.onBeforeRender = () => {
+      if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
+    }
+    frame.group.add(mesh)
+    frame.meshes.push(mesh as PaintedMesh)
+  }
+  if (frame.spec.family === 'helo') {
+    place(frame.tailX + frame.spec.lengthM * 0.08, frame.centerY + frame.spec.ry * 0.15, frame.spec.rx + 0.04, 0.7)
+    return
+  }
+  const { finX, thick } = finPose(frame)
+  const size = Math.max(0.55, Math.min(frame.finH * 0.38, frame.spec.rx * 0.85))
+  const y = frame.top + frame.finH * 0.55
+  if (frame.spec.tail === 'twin') {
+    const spread = Math.max(0.7, frame.spec.rx * 0.85)
+    place(finX, y, spread + thick * 0.6, size * 0.7)
+    place(finX, y, -(spread + thick * 0.6), size * 0.7)
+  } else {
+    place(finX, y, 0, size)
   }
 }
 
@@ -751,13 +926,6 @@ function addHelo(frame: Frame) {
       frame.group.add(hub)
       frame.spinners.push(hub)
     }
-    addBox(
-      frame,
-      [spec.lengthM * 0.16, spec.ry * 0.35, 0.05],
-      [nose - spec.lengthM * 0.38, centerY + spec.ry * 0.05, spec.rx + 0.03],
-      'stripe',
-      'mesh',
-    ).name = 'doors'
   }
 }
 
@@ -841,6 +1009,8 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, livery: Livery): Buil
     addHelo(frame)
     addGear(frame)
     addHeloLights(frame)
+    addRealDoors(frame)
+    addLogo(frame)
   } else {
     addFuselage(frame)
     addWing(frame)
@@ -851,6 +1021,9 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, livery: Livery): Buil
     addWindows(frame)
     addCargoDoor(frame)
     addFeatures(frame)
+    addControls(frame)
+    addLogo(frame)
+    addRealDoors(frame)
     addLights(frame)
   }
   mergeStaticShell({

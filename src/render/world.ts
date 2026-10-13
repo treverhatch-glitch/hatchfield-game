@@ -6,6 +6,7 @@ import {
   disposeAircraftLibrary,
   loadAircraftQuality,
   releaseAircraft,
+  setAircraftNight,
   updateAircraft,
   WORLD_PER_METER,
 } from './aircraft/factory'
@@ -1654,6 +1655,7 @@ export class World {
 
   render(game: Game) {
     this.resize()
+    setAircraftNight(game.isNight())
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.syncGhost(game)

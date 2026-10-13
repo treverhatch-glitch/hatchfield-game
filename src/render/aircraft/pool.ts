@@ -36,6 +36,10 @@ export function unitSphere(): THREE.BufferGeometry {
   return sharedGeo('sphere', () => new THREE.SphereGeometry(1, 6, 5))
 }
 
+export function unitPlane(): THREE.BufferGeometry {
+  return sharedGeo('plane', () => new THREE.PlaneGeometry(1, 1))
+}
+
 /** Prop disc lies in YZ so it can spin on local X. Rotor disc lies in XZ. */
 export function unitDisc(kind: 'prop' | 'rotor'): THREE.BufferGeometry {
   return sharedGeo(`disc:${kind}`, () => {
@@ -49,6 +53,7 @@ export function unitDisc(kind: 'prop' | 'rotor'): THREE.BufferGeometry {
 export type PaintSlot =
   | 'body'
   | 'stripe'
+  | 'tail'
   | 'belly'
   | 'metal'
   | 'dark'
@@ -71,6 +76,8 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
       return livery.body
     case 'stripe':
       return livery.stripe
+    case 'tail':
+      return livery.tail || livery.stripe
     case 'belly':
       return shade(livery.body, 0.58)
     case 'metal':
@@ -108,15 +115,28 @@ export interface PaintedMesh extends THREE.Mesh {
   }
 }
 
-/** Far shells and lamps skip lighting. Mid and close parts stay Lambert. */
-export function vertexMaterials(tier: 'low' | 'mid'): { opaque: THREE.Material; fade: THREE.Material } {
+/**
+ * Far shells stay unlit. The mid shell is one standard material (paint or bare metal).
+ * Gear, lamps, and control surfaces stay Lambert so the close view does not compile a shader per part.
+ * A bump map for panel lines cost about 3 FPS on SwiftShader, so the shell stays smooth.
+ */
+export function vertexMaterials(
+  tier: 'low' | 'mid',
+  finish: 'paint' | 'metal' = 'paint',
+): { opaque: THREE.Material; fade: THREE.Material } {
   const unlit = tier === 'low'
-  const key = unlit ? 'vc:basic' : 'vc:lambert'
-  const mat = sharedMat(key, () =>
-    unlit
-      ? new THREE.MeshBasicMaterial({ vertexColors: true })
-      : new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
-  )
+  const metal = !unlit && finish === 'metal'
+  const key = unlit ? 'vc:basic' : metal ? 'vc:metal' : 'vc:standard'
+  const mat = sharedMat(key, () => {
+    if (unlit) return new THREE.MeshBasicMaterial({ vertexColors: true })
+    // Nacelles stay Lambert so the close view compiles one physical shader, on the painted shell.
+    if (metal) return new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
+    return new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      metalness: 0.18,
+      roughness: 0.46,
+    })
+  })
   const fade = sharedMat(`fade:${key}`, () => {
     const copy = mat.clone()
     copy.transparent = true
@@ -143,6 +163,7 @@ export function paintMesh(
       : new THREE.MeshLambertMaterial({ color, flatShading: true }),
   )
   mesh.userData.paint = color
+  mesh.userData.slot = slot
   if (isLamp(slot)) mesh.frustumCulled = true
   const fade = sharedMat(`fade:${key}`, () => {
     const copy = mat.clone()
@@ -164,8 +185,13 @@ export function paintMesh(
 }
 
 /** One shared material for a baked shell. Colors live on the geometry. */
-export function paintVertexMesh(mesh: THREE.Mesh, tier: 'low' | 'mid', kind: string): PaintedMesh {
-  const { opaque, fade } = vertexMaterials(tier)
+export function paintVertexMesh(
+  mesh: THREE.Mesh,
+  tier: 'low' | 'mid',
+  kind: string,
+  finish: 'paint' | 'metal' = 'paint',
+): PaintedMesh {
+  const { opaque, fade } = vertexMaterials(tier, finish)
   const fadeMat = fade as THREE.Material & { opacity: number }
   mesh.material = opaque
   mesh.userData.opaqueMat = opaque

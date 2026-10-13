@@ -427,3 +427,21 @@ Static fuselage, wing, tail, nacelles, and stripes now bake into one geometry pe
 | Twelve different types parked, shadows on, orbit 52 and 140 | 10 and 9 | 10 and 8 |
 
 The close orbit matches the capsule again. The default orbit is the apron filling the view, so it stays near the old shadow-on baseline of about 8 FPS rather than the close-up 26. Baking all 24 shells took 85 ms the first time. The pool is 88 geometries and 36 materials.
+
+## Aircraft realism — 13 Oct 2026, ~12:40 UTC
+
+Same branch. Proportions now come from the verified pack (length, span, height, nose-to-main wheelbase, door stations). The Citation is the XLS Gen2 (16.08 × 17.17 × 5.23) and the E175 span is 26.0 m. Fuselages use a longer nose and tail cone. Gear axles sit on the pack wheelbase (tailwheel types measure main-to-tail; skids ignore it). Door outlines are one instanced mesh on the close band, including nose cargo and rear ramps. Ailerons, elevator, and rudder move on the mid mesh. Fans and props still spin. Gear still retracts. Nav lamps scale up at night via `setAircraftNight`, called from `World.render` with `game.isNight()`.
+
+The painted shell is one `MeshStandardMaterial` (metalness 0.18, roughness 0.46). Nacelles stay Lambert so the close view compiles a single physical shader. The far shell stays unlit. A bump map for panel lines cost about 3 FPS on SwiftShader and was dropped. Tail marks resolve from the airline color (Northline → NL) onto a decal. A 737-800 is 3 / 16 / 3 draws at low / mid / high, plus the window instance once you zoom in.
+
+**Perf** (SwiftShader, 1280×720, 5×, shadows off). The number moves with which jet is airborne and how much apron is in frame. An isolated close pass on a 737-800 was 21 FPS (27 draws). The pre-realism build, remeasured in the same harness a few minutes later, was 17 FPS on an E175. Default orbit 88 stayed 9–13 FPS. Far orbit 140 stayed 8–12 FPS. Both are the apron, same as the perf pass.
+
+**Bugs.** None new. Playtest bugs stay BUG-001 through BUG-010.
+
+**Media** (UI hidden):
+
+- `docs/devlog/media/MODELS-real-before.png` — lineup before this pass
+- `docs/devlog/media/MODELS-after.png` — twelve types after
+- `docs/devlog/media/MODELS-after-close.png` — 737-800 close, windows, doors, fans
+- `docs/devlog/media/MODELS-after-far.png` — far orbit
+- `docs/devlog/media/MODELS-real-close.png` — copy of the close shot

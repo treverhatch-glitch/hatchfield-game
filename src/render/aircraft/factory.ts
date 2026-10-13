@@ -13,6 +13,8 @@ export {
   getAircraftQuality,
   setAircraftQuality,
   loadAircraftQuality,
+  setAircraftNight,
+  aircraftIsNight,
 } from './lod'
 export type { AircraftQuality } from './lod'
 export { disposeAircraftLibrary, libraryStats, releaseAircraft } from './pool'
