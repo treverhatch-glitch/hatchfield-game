@@ -184,6 +184,11 @@ import {
 import { HINT_REFRESH_SEC } from './hintsData.ts'
 import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
+import { finiteAmount } from '../disruptions/engine.ts'
+import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
+import { disruptionLocus, type DisruptionLocusField } from '../disruptions/locus.ts'
+import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
+import { DisruptionBridge } from './disruptionBridge.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
@@ -880,8 +885,10 @@ export class Game {
   hintPrefs: HintPrefs = newGameHintPrefs()
   /** Pregame "Enable hints" box. Read once by beginNew. */
   enableHintsAtStart = true
-  /** Live operational problems (stuck aircraft, fuel out, full hall, ...). */
+  /** Live operational problems (stuck aircraft, fuel out, full hall, disruptions, ...). */
   alerts = new AlertStack()
+  /** Late-game disruptions. Quiet until Field Level 3. Cards go on `alerts`. */
+  disruptions = new DisruptionBridge(1)
   private alertScanCool = 0
   /** One side panel at a time: the HUD rollout or the hint list. */
   sidePanel: 'hud' | 'hints' | null = null
@@ -1152,6 +1159,7 @@ export class Game {
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
+    this.disruptions = new DisruptionBridge(this.diplomacySeed)
     this.negotiationBridge = null
     this.inbound = null
     this.hallOverloaded = false
@@ -1959,7 +1967,7 @@ export class Game {
       : 55
     const wear = this.avgWear()
     const wearScore = 100 - (wear.bath * 0.55 + wear.sec * 0.45)
-    const secScore = this.budgets.security
+    const secScore = this.budgetOf('security')
     const incidents = Math.min(20, this.securityIncidents)
     const raw =
       rep * 0.34 +
@@ -2106,7 +2114,16 @@ export class Game {
     const r = this.rewardOf(airlineId)
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
     const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
-    return negotiated === 1 ? base : base * negotiated
+    const priced = negotiated === 1 ? base : base * negotiated
+    return priced * this.disruptions.feeMultiplier()
+  }
+
+  /** Budget slider, thinned while a strike has that pool out. Never raises a pool. */
+  budgetOf(key: BudgetKey): number {
+    const raw = this.budgets[key]
+    const scale = this.disruptions.staffScale(key)
+    if (!Number.isFinite(raw) || !Number.isFinite(scale) || scale >= 0.999) return raw
+    return raw * Math.min(1, Math.max(0.4, scale))
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -3495,6 +3512,7 @@ export class Game {
       diplomacySeed: this.diplomacySeed,
       negotiation: this.negotiationBridge?.save(),
       inbound: this.inbound?.state,
+      disruptions: this.disruptions.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3660,6 +3678,9 @@ export class Game {
         this.inbound.state.clock = this.clock
         this.inbound.state.rolledDay = Math.floor(this.clock / SIM_DAY_SEC)
       }
+      this.disruptions = s.disruptions
+        ? DisruptionBridge.restore(this.diplomacySeed, s.disruptions)
+        : new DisruptionBridge(this.diplomacySeed)
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -3677,6 +3698,7 @@ export class Game {
       this.view = 'apron'
       this.bumpMap()
       this.pushNews('Field restored. Clock paused.', 'ok')
+      this.syncDisruptionAlert()
       this.emit()
       return Boolean(this.site)
     } catch {
@@ -5295,7 +5317,7 @@ export class Game {
   /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
   tickHallJanitors(dt: number) {
     this.syncHallJanitors()
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     if (clean >= LITTER_TUNING.minCleaningBudget) {
       const claimed = new Map<string, Set<string>>()
       for (const j of this.hallJanitors) {
@@ -5813,6 +5835,10 @@ export class Game {
     else if (premiumHere && lane.servers > 1) servers = lane.servers - 1
     let svc = slowedService(lane.serviceSec, wear)
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
+    svc *= this.disruptions.screeningMultiplier()
+    if (this.disruptions.secureZone()) svc += 0.8
+    if (!Number.isFinite(svc) || svc <= 0) svc = slowedService(lane.serviceSec, wear)
+    svc = Math.min(12, svc)
     const cap = fit?.capGuests ?? 40
     if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
     if (fast) svc *= 0.5
@@ -5947,7 +5973,7 @@ export class Game {
       })
     }
     hall.push(...this.planHints(fit))
-    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgetOf('cleaning') / 100))
     const outletCells = ((fit.items ?? []) as PlacedItem[])
       .filter((it) => !it.bundle && outletSpec(it.def))
       .map((it) => ({ c: it.c, r: it.r }))
@@ -6088,6 +6114,150 @@ export class Game {
     const before = this.alerts.rev
     this.alerts.raise(input, this.clock)
     if (this.alerts.rev !== before) this.emit()
+  }
+
+  /** Tests and recovery use this. Refuses anything before mid-game. */
+  triggerDisruption(kind: DisruptionId) {
+    const started = this.disruptions.trigger(kind, this.disruptionWorld(), this.disruptionHost())
+    this.syncDisruptionAlert()
+    return started
+  }
+
+  recoverDisruption(id: string) {
+    const result = this.disruptions.recover(id, this.disruptionHost())
+    this.syncDisruptionAlert()
+    return result
+  }
+
+  /** Beds stamped on the field. Ash diversions need these, eight per aircraft. */
+  hotelRoomCount(): number {
+    let beds = this.hotelLevel > 0 ? 6 : 0
+    for (const p of tilesOf(this.tiles, 'hotel')) {
+      const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
+      beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
+    }
+    return beds
+  }
+
+  /** One timetable wave: same strip, same 40-second bucket. */
+  private flightBanks(): FlightBank[] {
+    const groups = new Map<string, FlightBank>()
+    for (const slot of this.openSchedule()) {
+      if (slot.status === 'inbound') continue
+      const bucket = Math.floor(slot.eta / 40)
+      const rw = slot.runwayPref ?? -1
+      const id = `rw${rw}-b${bucket}`
+      const label = rw < 0 ? `bank ${bucket + 1}` : `runway ${rw + 1} bank ${bucket + 1}`
+      const group = groups.get(id) ?? { id, label, flightIds: [] }
+      group.flightIds.push(slot.id)
+      groups.set(id, group)
+    }
+    return [...groups.values()]
+  }
+
+  private disruptionWorld(): DisruptionWorld {
+    const level = this.fieldLevel()
+    const mastery = level >= 5
+    return {
+      fieldLevel: level,
+      goalsComplete: mastery,
+      endless: mastery,
+      standsFree: this.freeStands().length,
+      hotelRooms: this.hotelRoomCount(),
+      banks: this.flightBanks(),
+      staffPools: ['maintenance', 'security', 'cleaning', 'fire', 'ambulance', 'desk'],
+      clock: this.clock,
+    }
+  }
+
+  /** Publish the live crisis onto the alert stack. One key, so the card cannot duplicate. */
+  private syncDisruptionAlert() {
+    const event = this.disruptions.active()
+    const before = this.alerts.rev
+    const live = new Set<string>()
+    if (event) {
+      const input = disruptionToAlert(event, disruptionLocus(event, this.disruptionField(event)))
+      live.add(input.key)
+      this.alerts.raise(input, this.clock)
+    }
+    this.alerts.sync(DISRUPTION_ALERT_PREFIX, live)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  private disruptionField(event: { kind: DisruptionId }): DisruptionLocusField {
+    const fit = this.activeHall() ?? this.fits[0]
+    const hosted = this.flights
+      .filter((f) => f.hostKind === 'divert' && f.stand && f.phase !== 'gone')
+      .map((f) => ({ c: f.stand!.c, r: f.stand!.r }))
+    const stands = tilesOf(this.tiles, 'stand')
+    return {
+      stands: event.kind === 'volcanic-ash' && hosted.length ? hosted : stands,
+      runways: tilesOf(this.tiles, 'runway'),
+      fuel: tilesOf(this.tiles, 'fuel'),
+      terminal: tilesOf(this.tiles, 'terminal'),
+      fire: tilesOf(this.tiles, 'fire'),
+      hangar: tilesOf(this.tiles, 'hangar'),
+      tower: tilesOf(this.tiles, 'tower'),
+      police: tilesOf(this.tiles, 'police'),
+      guard: tilesOf(this.tiles, 'guard'),
+      checkin: fit ? this.zoneCellsOf(fit, 'checkin') : [],
+      security: fit ? this.zoneCellsOf(fit, 'security') : [],
+      hallKey: fit ? this.hallKey(fit) : undefined,
+    }
+  }
+
+  private tickDisruptions() {
+    this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
+    this.syncDisruptionAlert()
+  }
+
+  private disruptionHost(): DisruptionHost {
+    return {
+      acceptWeatherDivert: (ask) => this.acceptWeatherDivert(ask),
+      postCash: (amount, reason) => this.postDisruptionCash(amount, reason),
+      delayBank: (ids, sec, reason) => this.delayDisruptionBank(ids, sec, reason),
+      rebookBank: (ids) => this.rebookDisruptionBank(ids),
+      news: (text, tone) => this.pushNews(text, tone),
+    }
+  }
+
+  /**
+   * Land one ash divert on the existing divert path.
+   * The ask matches a weather divert; the aircraft still comes from spawnEmergencyDivert.
+   */
+  private acceptWeatherDivert(ask: { hotelRooms: number }): { hosted: boolean } {
+    if (!(ask.hotelRooms > 0)) return { hosted: false }
+    const airline = this.signed.find((id) => !this.isBanned(id))
+    if (!airline || this.freeStands().length < 1) return { hosted: false }
+    if (!this.spawnEmergencyDivert(airline)) return { hosted: false }
+    this.postDisruptionCash(DIVERT_FEE_MIN, 'Ash divert landing')
+    return { hosted: true }
+  }
+
+  private postDisruptionCash(amount: number, reason: string) {
+    const n = finiteAmount(amount)
+    if (n === 0) return
+    if (!Number.isFinite(this.cash)) this.cash = 0
+    if (n > 0) this.earn(n, reason)
+    else this.charge(-n)
+    if (!Number.isFinite(this.cash)) this.cash = 0
+  }
+
+  private delayDisruptionBank(ids: string[], sec: number, reason: string) {
+    for (const id of ids) {
+      const slot = this.schedule.find((s) => s.id === id)
+      if (!slot || (slot.status !== 'scheduled' && slot.status !== 'delayed')) continue
+      this.delaySlot(slot, sec, reason)
+    }
+  }
+
+  private rebookDisruptionBank(ids: string[]) {
+    for (const id of ids) {
+      const slot = this.schedule.find((s) => s.id === id)
+      if (!slot || slot.status !== 'delayed') continue
+      slot.status = 'scheduled'
+      slot.delayReason = 'Rebanked after the storm'
+    }
   }
 
   /** Live condition scan. Throttled; cheap reads only. */
@@ -7245,7 +7415,8 @@ export class Game {
         }
         if (g.bagDepositLeft == null) {
           const units = bagUnitsForTag(g.tag)
-          g.bagDepositLeft = clamp(0.55 + units * 0.55, 0.55, 2.8)
+          const manual = this.disruptions.checkInMultiplier()
+          g.bagDepositLeft = clamp((0.55 + units * 0.55) * manual, 0.55, 8)
           const fl = this.flights.find((x) => x.id === g.flightId)
           if (fl) {
             fl.bagStage = 'pax_deposit'
@@ -7847,7 +8018,7 @@ export class Game {
     if (this.staffedPost('security')) n += 0.75
     else if (this.deskStaff < 1 && n > 0) n -= 0.5
     // Underfunded security staff can't staff the lanes they built.
-    const staff = this.budgets.security / 100
+    const staff = this.budgetOf('security') / 100
     if (staff < 0.35) n -= 1
     else if (staff < 0.6) n -= 0.5
     return Math.max(0, Math.floor(n))
@@ -9288,7 +9459,7 @@ export class Game {
       return
     }
     // Cleaning budget softens the sticker — full crew does more per dollar.
-    const cleanPct = this.budgets.cleaning / 100
+    const cleanPct = this.budgetOf('cleaning') / 100
     const cost = Math.round(HALL_SCRUB_COST * (1.35 - cleanPct * 0.35))
     if (!this.spend(cost, 'hall scrub')) return
     const cut = 30 + cleanPct * 25
@@ -9369,7 +9540,7 @@ export class Game {
 
   tickJanitors(dt: number) {
     this.janitorCool -= dt
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     if (this.janitors < 1 || clean < 0.2 || !this.fits.length) return
     if (this.janitorCool > 0) return
     this.janitorCool = 8
@@ -9807,7 +9978,7 @@ export class Game {
   considerMxOffers() {
     if (this.mxOffer || this.mxOfferCool > 0) return
     if (!tilesOf(this.tiles, 'hangar').length || this.mechanics < 1) return
-    if (this.budgets.maintenance < 35) return
+    if (this.budgetOf('maintenance') < 35) return
     const candidates = this.signed.filter((id) => !this.mxSigned.includes(id))
     if (!candidates.length) return
     const id = pick(candidates)
@@ -9870,7 +10041,7 @@ export class Game {
   /** Chance (0–1) a jet has a serious pavement incident this check. */
   crashChance(): number {
     const cond = this.runwayCondition / 100
-    const mx = this.budgets.maintenance / 100
+    const mx = this.budgetOf('maintenance') / 100
     const staff = clamp(this.mechanics / 3, 0, 1)
     const neglect = (1 - cond) * (1.15 - mx * 0.55) * (1.1 - staff * 0.35)
     return clamp(neglect * 0.045 * this.weatherCrashMult(), 0, 0.35)
@@ -10030,7 +10201,7 @@ export class Game {
   tickMaintenance(dt: number) {
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
     if (!strips.length) return
-    const mx = this.budgets.maintenance / 100
+    const mx = this.budgetOf('maintenance') / 100
     const staff = this.mechanics
     // Traffic wears pavement; storms chew it faster.
     const liveJets = this.flights.filter(
@@ -10058,7 +10229,7 @@ export class Game {
     }
 
     // Cleaning budget slowly fights hall wear; starved cleaning grows it.
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     for (const f of this.fits) {
       if (clean >= 0.7) {
         f.wearBath = Math.max(0, (f.wearBath ?? 0) - dt * 0.8)
@@ -10104,7 +10275,7 @@ export class Game {
     if (this.fireIncidentCool > 0) return
     this.fireIncidentCool = 50 + Math.random() * 40
     if (!tilesOf(this.tiles, 'fuel').length && !this.flights.length) return
-    const firePct = this.budgets.fire / 100
+    const firePct = this.budgetOf('fire') / 100
     const stations = tilesOf(this.tiles, 'fire').length
     const risk = clamp(0.22 - stations * 0.08 - firePct * 0.15, 0.02, 0.28)
     if (Math.random() > risk) return
@@ -10137,8 +10308,8 @@ export class Game {
   }
 
   crashFlight(f: Flight, moment: 'landing' | 'takeoff') {
-    const amb = this.budgets.ambulance / 100
-    const fire = this.budgets.fire / 100
+    const amb = this.budgetOf('ambulance') / 100
+    const fire = this.budgetOf('fire') / 100
     const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.round(baseFine * (1.4 - mitigate * 0.5))
@@ -11481,6 +11652,11 @@ export class Game {
       this.pushNews(`${slot.flightNo} scrubbed — airline banned.`, 'bad')
       return
     }
+    if (this.disruptions.runwayClosed(this.clock)) {
+      this.delaySlot(slot, 8, 'Runway closed')
+      this.spawnCool = 4
+      return
+    }
 
     // At inbound capacity or pavement jammed — slip the due slot instead of soft-locking the bank.
     if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
@@ -11619,7 +11795,7 @@ export class Game {
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.flights.some((f) => f.craft === 'helo' && f.phase !== 'gone')) return
     // Starved ambulance budget — medevac and exec both cool their heels.
-    if (this.budgets.ambulance < 20) {
+    if (this.budgetOf('ambulance') < 20) {
       if (Math.random() < 0.08) {
         this.pushNews('Choppers overflew — no medics on the pad budget.', 'bad')
       }
@@ -11629,7 +11805,7 @@ export class Game {
 
     const pad = pads[0]
     const medevac = Math.random() < 0.45
-    if (medevac && this.budgets.ambulance < 45) {
+    if (medevac && this.budgetOf('ambulance') < 45) {
       // Executives still come; medevac wants real ambulance cover.
       this.heloCool = 12
       return
@@ -11961,7 +12137,7 @@ export class Game {
         this.mxSigned.includes(f.airline) &&
         tilesOf(this.tiles, 'hangar').length &&
         this.mechanics > 0 &&
-        this.budgets.maintenance >= 40
+        this.budgetOf('maintenance') >= 40
       ) {
         const pay = Math.round(
           airline.landing * (airline.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120,
@@ -11971,7 +12147,7 @@ export class Game {
         f.mxPay = pay
       } else if (
         this.mxSigned.includes(f.airline) &&
-        (this.mechanics < 1 || this.budgets.maintenance < 40)
+        (this.mechanics < 1 || this.budgetOf('maintenance') < 40)
       ) {
         this.pushNews(
           `${airline.name} MX skipped — need funded mechanics in the hangar.`,
@@ -12221,7 +12397,7 @@ export class Game {
   trySpawnAirAmbulance() {
     this.ambuCool = Math.max(0, this.ambuCool)
     if (this.ambuCool > 0) return
-    if (this.budgets.ambulance < 50) return
+    if (this.budgetOf('ambulance') < 50) return
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.groundBusy()) return
     const af = pickAirframe(
@@ -12783,13 +12959,13 @@ export class Game {
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
-    const staffGap = 1 - this.budgets.security / 100
+    const staffGap = 1 - this.budgetOf('security') / 100
     const hasSecRoom = this.fits.some((f) => (f.rooms.security ?? 0) > 0)
     const airsideOpen = this.fits.some((f) => {
       const r = f.rooms
       return (r.food ?? 0) + (r.gate ?? 0) + (r.lounge ?? 0) + (r.souvenir ?? 0) > 0
     })
-    const exposed = !hasSecRoom || this.budgets.security < 35
+    const exposed = !hasSecRoom || this.budgetOf('security') < 35
     // A gap the player left is checked again soon. A staffed lane is not held for the first hour.
     this.threatCool = exposed ? 10 + Math.random() * 8 : 32 + Math.random() * 12
     // Player shell with airside rooms but no security choke = smuggling / weapons risk.
@@ -12805,7 +12981,7 @@ export class Game {
       0.78,
     )
     if (Math.random() > risk) return
-    const hard = !hasSecRoom || sec < 2 || this.budgets.security < 35
+    const hard = !hasSecRoom || sec < 2 || this.budgetOf('security') < 35
     this.pendingThreat = {
       id: uid('thr'),
       severity: hard ? 'hard' : 'soft',
@@ -13030,7 +13206,7 @@ export class Game {
     const stormy = this.weather === 'storm' || this.weather === 'fog'
     const storm = this.weather === 'storm'
     const dry = this.weather === 'clear' // wildfire-season feel — airtankers thirsty
-    const fireThin = this.budgets.fire < 45
+    const fireThin = this.budgetOf('fire') < 45
     const hasFuel = this.fuelOnHand()
     const hasHangar = tilesOf(this.tiles, 'hangar').length > 0
     const exposed = !hasFuel || fireThin || tilesOf(this.tiles, 'fire').length === 0
@@ -13260,7 +13436,7 @@ export class Game {
     this.threatCool = 55 + Math.random() * 30
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
-    const staff = this.budgets.security / 100
+    const staff = this.budgetOf('security') / 100
 
     if (choice === 'scramble') {
       if (!this.spend(THREAT_SCRAMBLE_COST, 'threat scramble')) {
@@ -13358,7 +13534,7 @@ export class Game {
         heliPads: this.freePads().length + held.heliPads,
         guardPads: guard.length + held.guardPads,
         arff: tilesOf(this.tiles, 'fire').length > 0,
-        ambulance: this.budgets.ambulance >= 40,
+        ambulance: this.budgetOf('ambulance') >= 40,
         fuelLitres: simFuel,
         hotelRooms,
         securityCorridor:
@@ -13743,6 +13919,7 @@ export class Game {
     this.tickThreats(step)
     this.tickEmergencies(step)
     this.tickInbound(step)
+    this.tickDisruptions()
     this.tickMarket(step)
     this.tickHall(step)
     this.tickLuggage(step)
