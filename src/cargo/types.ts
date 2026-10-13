@@ -10,17 +10,38 @@ export type CargoStage =
   | 'customs'
   | 'screening'
   | 'warehouse'
+  | 'cold_storage'
   | 'build_up'
   | 'ready'
+  | 'import_airside'
+  | 'import_breakdown'
+  | 'import_screening'
+  | 'import_customs'
+  | 'import_warehouse'
+  | 'import_cold_storage'
+  | 'import_truck_dock'
 
-export const CARGO_STAGES: readonly CargoStage[] = [
+export const EXPORT_STAGES: readonly CargoStage[] = [
   'truck_dock',
   'customs',
   'screening',
   'warehouse',
+  'cold_storage',
   'build_up',
   'ready',
 ]
+
+export const IMPORT_STAGES: readonly CargoStage[] = [
+  'import_airside',
+  'import_breakdown',
+  'import_screening',
+  'import_customs',
+  'import_warehouse',
+  'import_cold_storage',
+  'import_truck_dock',
+]
+
+export const CARGO_STAGES: readonly CargoStage[] = [...EXPORT_STAGES, ...IMPORT_STAGES]
 
 export interface HandlingUnitSpec {
   kind: HandlingUnitKind
@@ -53,6 +74,10 @@ export interface LandsideTruckConfig {
 export interface CargoTerminalConfig {
   facilities: CargoFacilityConfig[]
   trucks: LandsideTruckConfig
+  revenueShare: {
+    airport: number
+    handler: number
+  }
   /** How often bottleneck samples are emitted to the host. */
   advisorSampleMinutes: number
 }
@@ -81,20 +106,46 @@ export interface CargoContract {
   /** Freight returned to the shipper after a missed deadline. */
   returnedTonnes: number
   deadline: number
+  deadlineSettled: boolean
   revenuePerTonne: number
   penaltyPerTonne: number
   unitKind: HandlingUnitKind
   allowedModes: readonly FlightCargoMode[]
   status: CargoContractStatus
   penaltyPaid: number
+  airportRevenueEarned: number
+  handlerRevenueEarned: number
   revenueEarned: number
 }
 
-export type LandsideTruckStatus = 'inbound' | 'queued' | 'unloading' | 'departed'
+export type ImportShipmentStatus = 'processing' | 'awaiting_truck' | 'collected'
+
+export interface ImportShipmentInput {
+  id: string
+  kind: CargoKind
+  tonnes: number
+  unitKind?: HandlingUnitKind
+  standId?: string
+}
+
+export interface ImportShipment {
+  id: string
+  kind: CargoKind
+  tonnes: number
+  collectedTonnes: number
+  unitKind: HandlingUnitKind
+  standId: string | null
+  status: ImportShipmentStatus
+}
+
+export type LandsideTruckStatus = 'inbound' | 'queued' | 'unloading' | 'loading' | 'departed'
 
 export interface LandsideTruck {
   id: string
-  contractId: string
+  direction: CargoDirection
+  contractId: string | null
+  shipmentId: string | null
+  fleetSlot: number
   tonnes: number
   remainingTonnes: number
   arrivesAt: number
@@ -106,6 +157,9 @@ export interface CargoFlight {
   airframeId: string
   mode: FlightCargoMode
   capacityTonnes: number
+  /** Total physical lower-hold capacity. Belly flights subtract baggage from it. */
+  holdCapacityTonnes?: number
+  baggageTonnes?: number
   supportedUnits: readonly HandlingUnitKind[]
   /**
    * Optional planning hint only. Logistics remains authoritative and can use
@@ -118,8 +172,11 @@ export interface CargoFlightLoad {
   flightId: string
   tonnes: number
   units: number
+  effectiveCapacityTonnes: number
+  capacityLostToBaggageTonnes: number
   /** Logistics equipment request; its dispatcher decides availability/fallback. */
   requiredLoader: 'uld_loader' | 'main_deck_loader' | null
+  loaderReservationId: string | null
   assignments: {
     contractId: string
     kind: CargoKind
@@ -166,17 +223,29 @@ export interface CargoSnapshot {
   time: number
   facilities: CargoFacilitySnapshot[]
   contracts: CargoContract[]
+  imports: ImportShipment[]
   trucks: LandsideTruck[]
+  pendingExportTruckTonnes: number
+  pendingImportPickupTonnes: number
+  airsideBacklogTonnes: number
   reservedTonnes: number
   revenue: number
+  airportRevenue: number
+  handlerRevenue: number
   penalties: number
   bottlenecks: CargoBottleneck[]
 }
 
 export type CargoEvent =
-  | { type: 'money'; amount: number; category: 'cargo_revenue' | 'cargo_penalty'; contractId: string }
+  | {
+      type: 'money'
+      amount: number
+      category: 'cargo_airport_revenue' | 'cargo_handler_revenue' | 'cargo_penalty'
+      contractId: string
+    }
   | { type: 'truck_status'; truckId: string; status: LandsideTruckStatus }
   | { type: 'contract_status'; contractId: string; status: CargoContractStatus }
+  | { type: 'import_status'; shipmentId: string; status: ImportShipmentStatus }
   | { type: 'flow'; stage: CargoStage; direction: 'in' | 'out'; tonnes: number }
   | { type: 'bottlenecks'; bottlenecks: CargoBottleneck[] }
 

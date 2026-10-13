@@ -128,6 +128,15 @@ export function starterCargoTerminal(): CargoTerminalConfig {
         staffAssigned: 5,
       },
       {
+        id: 'cold_storage',
+        label: 'Export cold store',
+        inputCapacityTonnes: 30,
+        outputCapacityTonnes: 20,
+        rateTonnesPerMin: 0.8,
+        staffRequired: 2,
+        staffAssigned: 2,
+      },
+      {
         id: 'build_up',
         label: 'ULD build-up',
         inputCapacityTonnes: 45,
@@ -145,6 +154,69 @@ export function starterCargoTerminal(): CargoTerminalConfig {
         staffRequired: 0,
         staffAssigned: 0,
       },
+      {
+        id: 'import_airside',
+        label: 'Import airside dock',
+        inputCapacityTonnes: 80,
+        outputCapacityTonnes: 60,
+        rateTonnesPerMin: 2,
+        staffRequired: 4,
+        staffAssigned: 4,
+      },
+      {
+        id: 'import_breakdown',
+        label: 'Import ULD break-down',
+        inputCapacityTonnes: 60,
+        outputCapacityTonnes: 50,
+        rateTonnesPerMin: 1.2,
+        staffRequired: 4,
+        staffAssigned: 4,
+      },
+      {
+        id: 'import_screening',
+        label: 'Import transfer screening',
+        inputCapacityTonnes: 50,
+        outputCapacityTonnes: 45,
+        rateTonnesPerMin: 1.25,
+        staffRequired: 3,
+        staffAssigned: 3,
+      },
+      {
+        id: 'import_customs',
+        label: 'Import customs release',
+        inputCapacityTonnes: 45,
+        outputCapacityTonnes: 80,
+        rateTonnesPerMin: 1.5,
+        staffRequired: 3,
+        staffAssigned: 3,
+      },
+      {
+        id: 'import_warehouse',
+        label: 'Import warehouse',
+        inputCapacityTonnes: 120,
+        outputCapacityTonnes: 45,
+        rateTonnesPerMin: 2.5,
+        staffRequired: 5,
+        staffAssigned: 5,
+      },
+      {
+        id: 'import_cold_storage',
+        label: 'Import cold store',
+        inputCapacityTonnes: 30,
+        outputCapacityTonnes: 20,
+        rateTonnesPerMin: 0.8,
+        staffRequired: 2,
+        staffAssigned: 2,
+      },
+      {
+        id: 'import_truck_dock',
+        label: 'Import collection dock',
+        inputCapacityTonnes: 60,
+        outputCapacityTonnes: 60,
+        rateTonnesPerMin: 1,
+        staffRequired: 2,
+        staffAssigned: 2,
+      },
     ],
     trucks: {
       count: 4,
@@ -152,6 +224,10 @@ export function starterCargoTerminal(): CargoTerminalConfig {
       inboundTravelMinutes: 25,
       roundTripMinutes: 90,
       unloadTonnesPerMin: 1,
+    },
+    revenueShare: {
+      airport: 0.35,
+      handler: 0.65,
     },
     advisorSampleMinutes: 5,
   }
@@ -162,6 +238,32 @@ export interface AirframeCargoProfile {
   capacityTonnes: number
   supportedUnits: readonly HandlingUnitKind[]
   needsMainDeckLoader: boolean
+}
+
+/** IATA-style planning helper; caller may override the 18 kg game average. */
+export function estimateBaggageTonnes(bagUnits: number, kgPerBag = 18): number {
+  if (!Number.isFinite(bagUnits) || !Number.isFinite(kgPerBag) || bagUnits < 0 || kgPerBag < 0) {
+    throw new Error('Bag count and mass must be finite and non-negative')
+  }
+  return (bagUnits * kgPerBag) / 1000
+}
+
+export function availableBellyCargoTonnes(
+  holdCapacityTonnes: number,
+  baggageTonnes: number,
+  commercialCargoCapTonnes = holdCapacityTonnes,
+): number {
+  if (
+    !Number.isFinite(holdCapacityTonnes) ||
+    !Number.isFinite(baggageTonnes) ||
+    !Number.isFinite(commercialCargoCapTonnes) ||
+    holdCapacityTonnes < 0 ||
+    baggageTonnes < 0 ||
+    commercialCargoCapTonnes < 0
+  ) {
+    throw new Error('Belly capacity inputs must be finite and non-negative')
+  }
+  return Math.min(commercialCargoCapTonnes, Math.max(0, holdCapacityTonnes - baggageTonnes))
 }
 
 /** Cargo profiles used when the terminal owner does not supply a route-specific payload. */

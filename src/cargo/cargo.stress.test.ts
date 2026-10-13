@@ -35,9 +35,17 @@ describe('cargo headless stress simulation', () => {
     const accepted = contractCount * tonnesPerContract
     const shipped = snapshot.contracts.reduce((sum, contract) => sum + contract.shippedTonnes, 0)
     const queued = snapshot.facilities.reduce((sum, facility) => sum + facility.queuedTonnes, 0)
-    const onTrucks = snapshot.trucks.reduce((sum, truck) => sum + truck.remainingTonnes, 0)
+    const onTrucks = snapshot.trucks
+      .filter((truck) => truck.direction === 'export')
+      .reduce((sum, truck) => sum + truck.remainingTonnes, 0)
 
-    expect(shipped + queued + onTrucks + snapshot.reservedTonnes).toBeCloseTo(accepted, 5)
+    expect(
+      shipped +
+        queued +
+        onTrucks +
+        snapshot.pendingExportTruckTonnes +
+        snapshot.reservedTonnes,
+    ).toBeCloseTo(accepted, 5)
     expect(shipped).toBeCloseTo(accepted, 5)
     expect(snapshot.contracts.every((contract) => contract.status === 'fulfilled')).toBe(true)
     expect(snapshot.revenue).toBeGreaterThan(0)

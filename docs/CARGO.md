@@ -4,9 +4,10 @@ Status: self-contained implementation in `src/cargo/`. It does not import `sim.t
 
 ## Player model
 
-The chain is intentionally Manor Lords-like:
+The two chains are intentionally Manor Lords-like:
 
-`landside truck → truck dock → customs acceptance → cargo screening → warehouse → ULD build-up → ready rack → aircraft`
+- export: `landside truck → acceptance → customs → screening → warehouse → [cold store] → ULD build-up → ready rack → aircraft`;
+- import: `aircraft → airside dock → ULD break-down → screening → customs release → warehouse → [cold store] → collection dock → landside truck`.
 
 Every processing facility has:
 
@@ -18,7 +19,7 @@ Every processing facility has:
 
 A full downstream buffer blocks the upstream facility. Missing staff reduces throughput to zero rather than silently deleting freight. The final ready rack is passive storage; build-up staff place completed units there. `snapshot()` exposes queue, staffing, utilization, processed tonnes, and blocked minutes per facility.
 
-The starter has one shared fleet of four 20 t landside trucks, staggered across all contracts, a 120 t warehouse, and an 80 t airside ready rack. Truck status is visible as `inbound`, `queued`, `unloading`, or `departed`.
+The starter has one shared fleet of four 20 t landside trucks, staggered across export contracts and import collections, 120 t warehouses, 30 t cold stores, and an 80 t airside ready rack. Truck status is visible as `inbound`, `queued`, `unloading`, `loading`, or `departed`. Perishables alone route through staffed cold storage; ambient cargo bypasses it.
 
 ## Units and aircraft
 
@@ -41,7 +42,7 @@ Default profiles:
 - 747-8F: 133.9 t;
 - AN-124-100: 120 t and oversize capability.
 
-Route payload and belly allocation vary in reality, so `prepareFlight` accepts overrides. The terminal owner should use the route/airframe payload already selected by the main simulation rather than treating these defaults as dispatch limits.
+Route payload and belly allocation vary in reality, so `prepareFlight` accepts overrides. On belly flights, effective cargo capacity is `min(commercial cargo allocation, physical hold − baggage tonnes)`. Pass `holdCapacityTonnes` and `baggageTonnes`; `estimateBaggageTonnes(bagUnits)` provides an 18 kg/bag planning default. Freighter capacity is unaffected.
 
 ## Contracts and economics
 
@@ -56,9 +57,9 @@ Contracts keep their identity through all buffers. Earliest deadlines load first
 
 The $2,470/t general baseline is the 2025 worldwide air-cargo average of $2.47/kg. Express uses roughly a 35% premium, inside the cited 20–40% range. Perishable, oversize, deadline, and penalty values are gameplay balancing assumptions, not tariffs.
 
-`confirmFlightDeparted` posts revenue. Missing a deadline posts the penalty on every unshipped tonne exactly once, cancels its unarrived trucks, and returns remaining freight to the shipper so stale cargo cannot deadlock the warehouse. `planFlight` only reserves cargo; `cancelFlight` returns it to the ready rack. This prevents a cancelled turnaround from creating revenue or deleting inventory.
+`confirmFlightDeparted` posts revenue. Cargo and its loader committed to a turnaround before cutoff remain reserved through departure, so a late ground turn cannot desynchronize the cargo and logistics manifests. Otherwise, missing a deadline posts the penalty on every unshipped tonne exactly once, cancels unarrived trucks, and returns freight to the shipper. `cancelFlight` returns a reservation to the ready rack; if it is already late, the next tick expires it normally.
 
-The rates above are gross shipper rates. If Hatchfield's finance model represents airport handling income rather than airline freight revenue, apply a configurable handling share in `CargoHost.addMoney`.
+The rates above are gross shipper rates. `CargoTerminalConfig.revenueShare` defaults to 35% airport / 65% handler and must total 1. Departure emits separate `cargo_airport_revenue` and `cargo_handler_revenue` ledger entries while retaining gross revenue on the contract and snapshot.
 
 ## Terminal integration
 
@@ -67,7 +68,10 @@ import { createCargoAdapter } from '../cargo'
 
 const cargo = createCargoAdapter({
   addMoney: (amount, category, contractId) => {
-    // cash += amount; ledger.push(...)
+    // Player/airport cash receives only airport revenue (and penalties).
+  },
+  addHandlerMoney: (amount, contractId) => {
+    // Separate handler ledger; do not add this to airport cash.
   },
   onBottlenecks: (items) => {
     // Translate items into src/game/advisor Advice cards.
@@ -75,8 +79,12 @@ const cargo = createCargoAdapter({
   onFlow: (stage, direction, tonnes) => {
     // Feed an external-boundary telemetry bridge when src/flow provides one.
   },
-  onImportedCargo: (standId, tonnes) => {
-    // v1 import handoff; see open questions.
+  loaderReservations: {
+    reserve: ({ flightId, preferred, allowUldFallback }) => {
+      // Reserve this exact logistics vehicle until cancel/departure.
+      return logisticsLoaderBridge.reserve(flightId, preferred, allowUldFallback)
+    },
+    release: (reservationId) => logisticsLoaderBridge.release(reservationId),
   },
 })
 
@@ -91,7 +99,8 @@ When a flight parks:
 
 ```ts
 const plan = cargo.prepareFlight(flight.id, flight.airframeId, {
-  mainDeckLoaderAvailable: hasMainDeckLoader,
+  holdCapacityTonnes: flight.cargoHoldTonnes,
+  baggageTonnes: estimateBaggageTonnes(flight.bagUnits ?? 0),
 })
 
 logistics.onAircraftParked(standId, flight.airframeId, scheduledMinutes, {
@@ -103,8 +112,9 @@ logistics.onAircraftParked(standId, flight.airframeId, scheduledMinutes, {
 
 - Call `cargo.flightDeparted(flight.id)` only after logistics says the turnaround is ready and the aircraft actually departs.
 - Call `cargo.cancelFlight(flight.id)` for cancellation, stand failure, or despawn.
-- Wire `LogisticsHost.onCargoToArea(standId, kg)` to `cargo.cargoUnloadedFromAircraft(standId, kg)`.
-- `plan.requiredLoader` is a dispatch request (`main_deck_loader` preferred, otherwise `uld_loader`). Do not reject a contract merely because the heavy loader is busy: logistics deliberately supports a slower standard-loader fallback and remains authoritative for travel, allocation, and turnaround delay.
+- Wire every `LogisticsHost.onCargoToArea(standId, kg)` tug delivery to `cargo.cargoUnloadedFromAircraft(standId, kg, manifest)`. Reuse one `manifest.shipmentId` for every delivery from the same aircraft and set `complete: true` on the last. Chunks aggregate into one import shipment, wait outside a full airside dock, then run to a collecting landside truck.
+- Pass `plan.loaderReservationId` through the terminal's logistics bridge. `CargoLoaderReservationPort` must reserve the same real `main_deck_loader`/`uld_loader` vehicle logistics dispatch will use. Cargo holds that reservation through turnaround and releases it on cancellation or departure. If no compatible loader can be reserved, `prepareFlight` returns zero tonnes plus a rejection reason.
+- Logistics' slower standard-ULD-loader fallback is preserved: a reservation provider may return `uld_loader` when `allowUldFallback` is true.
 
 ### Flow handoff
 
@@ -118,9 +128,11 @@ registerCargoFlow(flowGraph, cargoConfig)
 
 The current `grok/flow` branch has autonomous `inject`/`withdraw` processing but no external-boundary telemetry method. Do **not** replay `onFlow` into that autonomous graph while ticking it; that would create a second cargo simulation. The terminal integration should add a small flow adapter that records these boundary events as metrics without moving inventory, then pass those events to it. Until that method exists, use `CargoSim.detectBottlenecks()` for cargo advisor/info data and use `registerCargoFlow` only for topology. Departure emits `ready/out`, so the eventual bridge will measure aircraft throughput.
 
-Flow IDs are stable:
+Flow IDs are stable and include both directions:
 
-- nodes: `cargo:landside`, `cargo:truck_dock`, `cargo:customs`, `cargo:screening`, `cargo:warehouse`, `cargo:build_up`, `cargo:ready`, `cargo:flight`;
+- export nodes run from `cargo:landside` through `cargo:ready` to `cargo:flight`;
+- import nodes run from `cargo:flight_arrival` through `cargo:import_*` to `cargo:landside_import`;
+- cold-store branches are `cargo:cold_storage` and `cargo:import_cold_storage`;
 - links: `cargo:<from>><to>`.
 
 The cargo info view can therefore use the flow branch's standard `infoView('cargo')`, `audit()`, and route tracing without special cargo UI types.
@@ -153,13 +165,11 @@ Real terminals quote annual tonnes and shipment/ULD operations, while gameplay n
 
 ## Tests
 
-- `cargo.test.ts`: units, complete terminal chain, revenue, deadline penalties, belly/freighter restrictions, loader requirement, staffing bottleneck, host adapter, and flow registration.
+- `cargo.test.ts`: units, export and reverse-import chains, perishable cold stores, split revenue, deadline penalties, baggage competition, belly/freighter restrictions, shared loader reservation lifecycle, staffing bottlenecks, host adapter, and flow registration.
 - `cargo.stress.test.ts`: 300 simultaneous contracts / 600 t, thousands of headless game-minutes, repeated 747-8F turns, mass conservation, fulfillment, and finite revenue.
 
-## Open questions
+## Remaining integration questions
 
-1. Imports currently hand off through `CargoHost.onImportedCargo`; should the full import chain run in reverse (aircraft → break-down → customs → truck), or can v1 treat imports as warehouse income?
-2. What fraction of gross freight revenue belongs to the airport economy?
-3. Should perishables require a separate cold-store buffer and spoil progressively, instead of only paying a deadline penalty?
-4. Does a main-deck loader need to be merely owned, or reserved at the assigned stand before `prepareFlight` can load PMC/oversize cargo?
-5. Should belly allocation consume passenger baggage capacity dynamically?
+1. The revenue split defaults to 35/65; economy balancing may choose another split.
+2. Cold storage protects routing and capacity, but progressive temperature excursions/spoilage remain a possible later simulation layer.
+3. The current `grok/logistics` adapter exposes no reserve/release API or turnaround reservation field. The terminal owner must add a bridge implementing `CargoLoaderReservationPort` over its vehicle dispatcher; the cargo adapter rejects loader-served freight when that bridge is absent or cannot reserve a compatible vehicle.
