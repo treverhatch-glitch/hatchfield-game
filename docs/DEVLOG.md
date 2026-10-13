@@ -754,6 +754,6 @@ PR #58 (issue #41) is on this branch, including the follow-up that drops rubbish
 
 PR #48 is on this branch. Aircraft, trucks, fuel, stands, hangars, bags, and passenger processing share small, widebody, and jumbo tiers. A widebody slot waits when the field cannot turn it. Rail fuel moves only when the line reaches the map edge and an oil transfer station sits on that line. Scale advice sits on the same list as the litter notes and the Standing cards. `src/diplomacy` is unchanged.
 
-**Tests.** `tsc -b` clean. Vitest 801 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+**Tests.** `tsc -b` clean. Vitest 801 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-BzLWkglV.js`, 1,686.21 kB, with `index-eP-pqaTd.css`.
 
 
