@@ -15,7 +15,7 @@ Cities: Skylines 2 style bottom dock for flight scheduling. Code lives in `src/u
 | Tab | What it shows |
 | --- | --- |
 | **Stands** | Gantt of stand occupancy, one row per stand, grouped by ICAO aerodrome code (F → C), with an "Unassigned · tower picks" group packed into lanes. Overlaps and too-small stands are outlined red. An orange line marks now. 6h / 12h / 24h zoom. |
-| **Runway** | Movements per in-game hour (arrivals blue, departures violet) against the dashed hourly capacity line. Over-capacity hours tint red. Below it is a strip of arrival and departure ticks. |
+| **Runway** | One lane per runway (RW1…RWn), each showing movements per in-game hour (arrivals blue, departures violet) against that runway's own dashed capacity line, with arrival and departure ticks. An **Auto** lane appears for movements not yet on a strip, and a **Total** row sums every runway against combined capacity. Over-capacity hours tint red per lane. Click an hour for its card. |
 | **Flight board** | Arrivals and departures in clock time (`HH:MM` on the 180 s day face, the same as `formatSimDate`). A late flight shows its planned time struck through and the estimate in red. |
 
 ## Interactions
@@ -24,6 +24,7 @@ Cities: Skylines 2 style bottom dock for flight scheduling. Code lives in `src/u
 - **Pin**: in the card, pick *Auto* or any stand that fits the aircraft's ICAO code.
 - **Swap stand…**: click it, then click another flight to swap stand pins.
 - **Pull / Bump / Cancel** are in the card.
+- **Runway**: the card shows the assigned runway (and the departure runway when it differs) and has Auto / RW1…RWn buttons. With 2+ runways, gantt bars carry an RW tag.
 - Inbound and on-ground flights are locked.
 
 ## Adapter
@@ -48,11 +49,12 @@ This adapter wraps the existing `game.schedule` API, the same calls the Planner 
 - The game has no slot windows yet, so the adapter derives a **tower window**: banked ETA −30 s to +45 s, floored at now + 6 s (the same floor `pullSlot` uses). It is anchored to the first ETA seen, so dragging never walks the window.
 - `moveTo` turns into one `pullSlot` or `bumpSlot` by the delta. Because of that, the game's own bump cascade and airline heat still apply.
 - Stand classes map to ICAO codes: S → C, M → E, L → F. Airframes map by kind; the A380 and 747 map to F.
+- Multi-runway: runway membership comes from `game.scheduleForRunway(i)` for each strip `i < runwayStripCount()`, and ids are `rw0…rwN`. The game only exposes `cycleSlotRunway` (auto → RW1 → … → RWn → auto), so `setRunway` steps that cycle until the slot lands on the target. Each step posts a news line. The game uses one `runwayPref` for both arrival and departure.
 - Hourly runway capacity is an estimate (`hourSecs / 2.5` per strip plus parallel approaches). Replace it with a real figure when the sim exposes one.
 
 ### `contractsAdapter(source)` (future `src/contracts`)
 
-Its input is a structural `ContractsSource` (`movements()`, `reschedule()`, `assignStand()`, and optional `swapStands`, `pull`, `bump`, `cancel`). Each movement carries a contract slot window (`windowStart`, `windowEnd`), `turnTarget`, `services` and `rotationId`, which pairs an arrival with its departure on one stand bar. The window band then reads "contract slot", and caps follow whatever the source implements.
+Its input is a structural `ContractsSource` (`movements()`, `reschedule()`, `assignStand()`, and optional `swapStands`, `pull`, `bump`, `cancel`). Runways are string ids (`RunwayDef.id`), with arrival `runwayId` and departure `depRunwayId` kept separate, and per-runway `movesPerHour` passed through `runways()`. `assignRunway` is optional; PR #19 has no runway-change call yet, so `caps.runway` stays false until one exists. Each movement carries a contract slot window (`windowStart`, `windowEnd`), `turnTarget`, `services` and `rotationId`, which pairs an arrival with its departure on one stand bar. The window band then reads "contract slot", and caps follow whatever the source implements.
 
 To switch over, build the adapter in `GameTimetable.tsx` from `game.contracts` once branch `grok/contracts` lands. Nothing else changes.
 
