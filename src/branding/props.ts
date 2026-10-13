@@ -23,7 +23,12 @@ export const browserTextureFactory: TextureFactory = (svg, w, h) => {
 
 export class BrandTextureCache {
   private map = new Map<string, { tex: THREE.Texture; refs: number }>();
-  constructor(private factory: TextureFactory = browserTextureFactory, private scale = 1) {}
+  private factory: TextureFactory;
+  private scale: number;
+  constructor(factory: TextureFactory = browserTextureFactory, scale = 1) {
+    this.factory = factory;
+    this.scale = scale;
+  }
   acquire(svg: string, w: number, h: number): THREE.Texture {
     const key = `${w}x${h}:${svg}`;
     let e = this.map.get(key);
