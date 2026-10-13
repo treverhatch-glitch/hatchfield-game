@@ -544,3 +544,19 @@ A helicopter that cannot get fuel uses the same slot limit as a jet, then the fl
 
 - `docs/devlog/media/OCT13-gate-a380.png` — heavy bot, A380 on the ground during day 1
 - `docs/devlog/media/OCT13-gate-apron.png` — apron at the end of the heavy run
+
+## Terminal doorways — 13 Oct
+
+Hall guests now walk the same room plan the 3D terminal draws. Each graph edge becomes a `navPath` with `strict: true`. A blocked path is empty, and the guest is not marked lost. They wait where they stand instead of cutting through a counter.
+
+Uncleared departures only get targets outside the sterile rooms (`airside`, `shops`, `gate`). The door graph already makes security the only bridge, so the polyline cannot step around it. A cleared walk from security to a gate crosses that bridge and comes out in a holdroom.
+
+The airfield view draws those guests on the floor (`FLOOR_Y`) from `wx` / `wz`. Decorative walkers are off (`walkersPerCell` 0) so the two crowds do not stack. Seated figures at the gates stay. The abstract hall card still lerps the node graph; it is the thought and queue view, not the wall collision.
+
+**Bugs.** Sixteen. No new defect.
+
+**Tests.** `tsc -b` clean. Vitest 634 passing, 2 skipped. In the browser a departure routed toward the gate was given entrance → info → security, walked the polyline (still before security, not lost), and showed up as the red figure inside the cutaway hall.
+
+**Media**
+
+- `docs/devlog/media/OCT13-doorways.png` — roof off, red departure with a case in the check-in hall, security and a holdroom beyond

@@ -40,7 +40,7 @@ const PROP_COLORS: Record<string, number> = {
 }
 const UNLIT = new Set(['screen', 'lamp'])
 import { pickLod, stepFade } from './lod'
-import { planTerminal, walkerAt, type TerminalPlan } from './plan'
+import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
 import { type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
 import { textTexture, type WorldTextures } from './textures'
@@ -52,7 +52,7 @@ const m = (meters: number) => meters * WORLD_PER_METER
 /** Spread the old 6.2-unit bay across the real cell so furniture still fills the hall. */
 const BAY = CELL / 6.2
 /** peopleGeo is a 0.9 m figure. Scale it up to 1.75 m, then into world units. */
-const PERSON_SCALE = WORLD_PER_METER * (1.75 / 0.9)
+export const PERSON_SCALE = WORLD_PER_METER * (1.75 / 0.9)
 
 export const FLOOR_Y = m(0.24)
 export const SEATED_SCALE = 0.62
@@ -173,7 +173,11 @@ export class TerminalBuilding {
   constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number }) {
     this.info = info
     this.shared = shared
-    this.plan = planTerminal(info, { density: opts.density, walkersPerCell: opts.walkersPerCell, seed: 11 + opts.index })
+    this.plan = planTerminal(info, {
+      density: opts.density,
+      walkersPerCell: opts.walkersPerCell,
+      seed: terminalPlanSeed(opts.index),
+    })
     const c = clusterCenter(info.cluster)
     this.center = new THREE.Vector3(c.x, 2, c.z)
     this.radius = clusterRadius(info.cluster)

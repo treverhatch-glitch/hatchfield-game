@@ -16,6 +16,7 @@ import {
   taxiPaint,
   terminals,
 } from './layout'
+import { posesFrom, HallCrowd } from './hallCrowd'
 import { fitShadow, groundFocus } from './lod'
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
 import { paintGeometry, quadsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
@@ -96,6 +97,7 @@ export class WorldRenderer {
   private time = 0
   private frame = 0
   private lastShadowKey = ''
+  private hallCrowd: HallCrowd | null = null
 
   constructor(scene: THREE.Scene, quality: QualityLevel, opts: WorldRenderOptions = {}) {
     this.scene = scene
@@ -171,6 +173,8 @@ export class WorldRenderer {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixelRatioCap))
     }
     this.builtRev = -1
+    this.hallCrowd?.dispose()
+    this.hallCrowd = new HallCrowd(this.root, this.shared.people)
   }
 
   private applyShadows() {
@@ -344,6 +348,8 @@ export class WorldRenderer {
     }
 
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, s.lights, focus)
+    const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
+    this.hallCrowd?.sync(showGuests ? posesFrom(view) : [], this.time)
     this.lights.update(step, s.lights, weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25, camDist)
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
@@ -402,6 +408,8 @@ export class WorldRenderer {
   }
 
   private disposeContent() {
+    this.hallCrowd?.dispose()
+    this.hallCrowd = null
     for (const b of this.buildings) b.dispose()
     this.buildings = []
     for (const g of this.staticGeos) g.dispose()

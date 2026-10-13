@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
+import { spawnHallGuest } from '../../game/guests'
 import { blankView, rect, starterGame } from './fixtures'
 import { initWorldRender, REPLACED_TILES, type RendererLike } from './index'
 import { frameGeometry } from './environment'
@@ -76,8 +77,8 @@ describe('initWorldRender', () => {
     // Roof lifts off for the close-up cutaway.
     expect(s.terminals[0].roof).toBe(0)
     expect(s.meshes).toBeGreaterThan(farMeshes)
-    const walkers = scene.getObjectByName('people-bag') as THREE.InstancedMesh
-    expect(walkers.visible || walkers.parent?.visible).toBe(true)
+    const seated = scene.getObjectByName('people-static')
+    expect(seated?.visible || seated?.parent?.visible).toBe(true)
     expect(s.grassTufts).toBeGreaterThan(0)
     wr.dispose()
   })
@@ -103,19 +104,40 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
-  it('walkers move between frames', () => {
+  it('hall guests walk their doorway route between frames', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
     const game = starterGame()
+    game.spawnCool = 999
+    const fit = game.fits[0]
+    const g = spawnHallGuest('walk', 'depart', 'budget', { hallId: game.hallKey(fit) })
+    g.needs.boarding = 80
+    g.needs.hunger = 0
+    g.needs.bladder = 0
+    g.needs.shop = 0
+    g.needs.play = 0
+    g.needs.energy = 0
+    g.needs.bags = 0
+    g.node = 'entrance'
+    g.clearedSec = false
+    game.hallGuests = [g]
+    game.routeGuest(g, 'security', game.hallOpenFor(fit))
+    expect(g.route && g.route.length).toBeGreaterThan(1)
     const near = camAt(cellX(16), cellZ(20), 14)
-    wr.update(game, near, 1 / 30)
-    const body = scene.getObjectByName('people-body') as THREE.InstancedMesh
+    for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
+    const body = scene.getObjectByName('hall-guest-body') as THREE.InstancedMesh
+    expect(body).toBeTruthy()
+    expect(body.count).toBeGreaterThan(0)
     const a = new THREE.Matrix4()
     const b = new THREE.Matrix4()
     body.getMatrixAt(0, a)
-    for (let i = 0; i < 10; i++) wr.update(game, near, 1 / 30)
+    for (let i = 0; i < 6; i++) {
+      game.tick(0.3)
+      wr.update(game, near, 1 / 30)
+    }
     body.getMatrixAt(0, b)
     expect(a.equals(b)).toBe(false)
+    expect(g.lost).toBeFalsy()
     wr.dispose()
   })
 
