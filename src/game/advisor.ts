@@ -30,6 +30,8 @@ export interface Advice {
   cells: AdviceCell[]
   /** Hall highlights use the terminal grid. Apron notes mark fuel, kitchen, or depot tiles. */
   scope?: 'hall' | 'apron'
+  /** Worst first in the hint panel. Unset notes take their kind's default (hints.ts). */
+  severity?: 'blocker' | 'warning' | 'tip'
 }
 
 export interface AdviceFit {
