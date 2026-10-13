@@ -171,6 +171,16 @@ import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
 import { CargoBridge } from './cargoBridge.ts'
+import {
+  GROUND_CREW_PER_DEPOT,
+  mroInfoLines,
+  mroUnlock,
+  nightHubInfoLines,
+  nightHubUnlock,
+  Tier3Session,
+  type Tier3Building,
+  type Tier3TickContext,
+} from '../tier3/index.ts'
 import { getAudio, soundForEvent } from '../audio/index.ts'
 import {
   createDiplomacyBridge,
@@ -660,6 +670,8 @@ export class Game {
   revenueWindow = 0
   budgets: Budgets = { ...DEFAULT_BUDGETS }
   mechanics = 0
+  /** Heavy-check hangar and cargo night hub. Tiles are the source of what is built. */
+  tier3: Tier3Session = new Tier3Session()
   runwayCondition = 100
   weather: Weather = 'clear'
   weatherCool = 45
@@ -999,6 +1011,7 @@ export class Game {
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
     this.sites = []
+    this.tier3 = new Tier3Session()
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
@@ -3268,6 +3281,7 @@ export class Game {
       startFocus: this.startFocus,
       sandbox: this.sandbox,
       sites: this.sites,
+      tier3: this.tier3.save(),
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
     }
@@ -3379,6 +3393,7 @@ export class Game {
       this.airlineLowAcc = {}
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
+      this.tier3 = Tier3Session.restore(s.tier3)
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
@@ -5609,6 +5624,8 @@ export class Game {
       spots.push({ id: 'retail', label: 'Shops' })
     }
     if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
+    if (tilesOf(this.tiles, 'mro').length) spots.push({ id: 'mro', label: 'MRO' })
+    if (tilesOf(this.tiles, 'nighthub').length) spots.push({ id: 'nighthub', label: 'Night hub' })
     else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
       spots.push({ id: 'bags', label: 'Bags' })
     }
@@ -5644,6 +5661,8 @@ export class Game {
         : `${this.fuelLoads} bowser loads on the farm`
       return [stock, `${grounded} departures grounded for fuel`]
     }
+    if (id === 'mro') return mroInfoLines(this.tier3.snapshot())
+    if (id === 'nighthub') return nightHubInfoLines(this.tier3.snapshot())
     if (id === 'retail') {
       return [
         `${this.foodShelf} burger servings on the shelf`,
@@ -5913,6 +5932,79 @@ export class Game {
   }
 
   /** Cargo terminal clock matches the ramp: one sim-second is eight game minutes. */
+  tier3Snapshot() {
+    return this.tier3.snapshot()
+  }
+
+  private tier3Unlock() {
+    return {
+      fieldLevel: this.fieldLevel(),
+      unlockedTech: new Set(this.economyState?.unlockedTech ?? []),
+      research: this.researchUnlocked,
+    }
+  }
+
+  private tier3Buildings(): Tier3Building[] {
+    return [
+      ...tilesOf(this.tiles, 'mro').map((cell) => ({ id: `${cell.c},${cell.r}`, kind: 'mro' as const })),
+      ...tilesOf(this.tiles, 'nighthub').map((cell) => ({ id: `${cell.c},${cell.r}`, kind: 'night_hub' as const })),
+    ]
+  }
+
+  /**
+   * Heavy checks and the freighter night wave. `step` is sim seconds.
+   * Cash postings are finite; a non-finite total is dropped rather than poisoning the books.
+   */
+  tickTier3(step: number) {
+    if (!(step > 0)) return
+    this.tier3.sync(this.tier3Buildings())
+    const mods = this.economyView?.modifiers ?? {}
+    const context: Tier3TickContext = {
+      ...this.tier3Unlock(),
+      staffPools: {
+        maintenance_tech: { hired: this.mechanics, wagePerDay: 0 },
+        ground_crew: {
+          hired: tilesOf(this.tiles, 'depot').length * GROUND_CREW_PER_DEPOT,
+          wagePerDay: 0,
+        },
+      },
+      powerTier: this.economyState?.powerPlantTier ?? 1,
+      powerCapacityMultiplier: mods['power.capacity'] ?? 1,
+      powerDemandMultiplier: mods['power.demand'] ?? 1,
+      batteryCapacity: mods['power.batteryCapacity'] ?? 0,
+      otherPowerDemand: this.researchers > 0 ? 35 : 0,
+      isNight: this.isNight(),
+      nightIndex: Math.floor(this.clock / 180),
+      curfewRelaxed: this.hasResearch('night_bank'),
+      candidates: this.flights
+        .filter(
+          (flight) =>
+            flight.stand &&
+            (flight.craft ?? 'jet') === 'jet' &&
+            flight.phase !== 'gone' &&
+            flight.phase !== 'hold' &&
+            flight.phase !== 'takeoff',
+        )
+        .map((flight) => ({
+          id: flight.id,
+          airframeId: flight.airframeId || 'b738',
+          standKey: `${flight.stand!.c},${flight.stand!.r}`,
+        })),
+    }
+    const result = this.tier3.tick(step * GAME_MINUTES_PER_SIM_SECOND, context)
+    for (const posting of result.postings) {
+      if (!Number.isFinite(posting.amount) || posting.amount === 0) continue
+      if (posting.amount > 0) this.earn(posting.amount, posting.label)
+      else this.charge(-posting.amount)
+    }
+    if (result.paxHeat !== 0 && Number.isFinite(result.paxHeat)) {
+      for (const id of this.signed) {
+        if (this.airline(id).kind === 'pax') this.adjustHeat(id, result.paxHeat)
+      }
+    }
+    if (!Number.isFinite(this.cash)) this.cash = 0
+  }
+
   private tickCargo(step: number) {
     if (!(step > 0)) return
     const cargo = this.ensureCargo()
@@ -9614,6 +9706,11 @@ export class Game {
       this.emit()
       return
     }
+    if (cur === 'mro' && this.tier3.isBusy(`${v.c},${v.r}`)) {
+      this.pushNews('A heavy check is in that hangar — wait until the bay clears.', 'bad')
+      this.emit()
+      return
+    }
     if (cur === 'terminal') {
       const origin = this.selectedTerminalOrigin()
       if (origin) {
@@ -9813,6 +9910,14 @@ export class Game {
       this.emit()
       return
     }
+    if (building.tile === 'mro' || building.tile === 'nighthub') {
+      const gate = building.tile === 'mro' ? mroUnlock(this.tier3Unlock()) : nightHubUnlock(this.tier3Unlock())
+      if (!gate.ok) {
+        this.pushNews(gate.why, 'bad')
+        this.emit()
+        return
+      }
+    }
     if (this.tool === 'stand_l' && !this.hasResearch('stand_class')) {
       this.pushNews('Stand L locked — research Stand classes first.', 'bad')
       this.emit()
@@ -9888,6 +9993,10 @@ export class Game {
       news = `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`
     } else if (building.tile === 'hangar') {
       news = 'Hangar up.'
+    } else if (building.tile === 'mro') {
+      news = 'MRO hangar open — airlines can buy heavy checks. A bay ties up that stand.'
+    } else if (building.tile === 'nighthub') {
+      news = 'Cargo night hub open — freighters bank after dark. The city will bill the noise.'
     } else if (building.tile === 'belt') {
       news = `Bag belt open ($${BELT_COST.toLocaleString()}). Link hall, sort, and stand.`
     } else if (building.tile === 'kitchen') {
@@ -9987,6 +10096,7 @@ export class Game {
   }
 
   groundBusy(): boolean {
+    if (this.tier3.taxiwayTieCount() > 0) return true
     return this.flights.some(
       (f) =>
         (f.craft ?? 'jet') === 'jet' &&
@@ -9998,6 +10108,7 @@ export class Game {
 
   freeStands(): Vec[] {
     const stands = tilesOf(this.tiles, 'stand')
+    const reserved = this.tier3.tiedStandKeys()
     const used = new Set(
       this.flights
         .filter(
@@ -10010,7 +10121,8 @@ export class Game {
         .map((f) => `${f.stand!.c},${f.stand!.r}`),
     )
     return stands.filter((s) => {
-      if (used.has(`${s.c},${s.r}`)) return false
+      const key = `${s.c},${s.r}`
+      if (used.has(key) || reserved.has(key)) return false
       return Boolean(this.pathStandToRunway(s))
     })
   }
@@ -12082,6 +12194,7 @@ export class Game {
     this.tickCatering(step)
     this.tickGround(step)
     this.tickCargo(step)
+    this.tickTier3(step)
     this.tickDiplomacy(step)
     this.tickShelves(step)
     // Peak decays so the HUD jam line clears when traffic thins.

@@ -20,6 +20,7 @@ import {
   type Livery,
   type ParkedPlane,
 } from './aircraft/index'
+import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import {
   initWorldRender,
   parseQuality,
@@ -719,6 +720,10 @@ export class World {
       body.position.y = 1.6
       body.castShadow = true
       g.add(body)
+    } else if (tile === 'mro') {
+      addMroMesh(g, CELL)
+    } else if (tile === 'nighthub') {
+      addNightHubMesh(g, CELL)
     } else if (tile === 'hotel') {
       this.addHotelBuilding(g, opts.hotelClass ?? 'business')
     } else if (

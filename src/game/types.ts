@@ -1,3 +1,5 @@
+import type { Tier3Save } from '../tier3/types.ts'
+
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
 
@@ -35,6 +37,10 @@ export type Tile =
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
   | 'depot'
+  /** Late-game heavy-check hangar. Aircraft occupy a bay and tie up a stand. */
+  | 'mro'
+  /** Late-game freighter night wave. */
+  | 'nighthub'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -96,6 +102,8 @@ export type Tool =
   | 'rail'
   | 'kitchen'
   | 'depot'
+  | 'mro'
+  | 'nighthub'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -253,6 +261,8 @@ export type ResearchId =
   | 'stand_class'
   | 'heavy_pack'
   | 'mil_ramp'
+  | 'mro_hangar'
+  | 'cargo_night_hub'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -864,6 +874,8 @@ export interface GameSnapshot {
   sandbox?: boolean
   /** In-progress construction. Grass stays until the timer finishes. */
   sites?: BuildSite[]
+  /** Tier III hangar and night-hub save. Missing on older saves. */
+  tier3?: Tier3Save
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
