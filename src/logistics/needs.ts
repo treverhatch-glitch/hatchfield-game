@@ -69,7 +69,12 @@ export function needsForAirframe(af: Airframe): TurnaroundNeeds {
   if (cargoKg > 0) services.push('cargo_load')
   services.push('door_close')
   if (!isHelo(af.kind)) services.push('pushback')
+  const superHeavy = ['a380', 'b748f', 'an124', 'c5'].includes(af.id)
   return {
+    superHeavy,
+    upperDeck: af.id === 'a380',
+    fuelPoints: sizeClass === 'L' ? 2 : 1,
+    maxBridgeDoors: af.id === 'a380' ? 3 : sizeClass === 'L' ? 2 : 1,
     airframeId: af.id,
     sizeClass,
     seats: af.seats,

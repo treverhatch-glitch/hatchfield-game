@@ -28,6 +28,8 @@ const EPS = 1e-6
  */
 type JobMode = 'carry' | 'in' | 'out' | 'onsite'
 
+const TUGS: VehicleType[] = ['heavy_baggage_tug', 'baggage_tug']
+
 const HOLD_SERVICES: ServiceKind[] = ['bag_unload', 'cargo_unload', 'bag_load', 'cargo_load', 'bag_offload']
 
 export type VehiclePhase =
@@ -67,7 +69,10 @@ interface ServiceRequest {
   turnaroundId: string
   standId: string
   service: ServiceKind
-  vehicle: VehicleType
+  /** Vehicle types that can do the job, best first. */
+  vehicles: VehicleType[]
+  /** 'upper' = A380 upper-deck catering door. */
+  part?: 'upper'
   mode: JobMode
   /** carry/out: amount to deliver/pick up. in: dynamic, see targetOf(). */
   target: number
@@ -236,7 +241,7 @@ export class LogisticsSim {
           hasOpenWork: (type) =>
             this.requests.some(
               (r) =>
-                r.vehicle === type &&
+                r.vehicles.includes(type) &&
                 (r.mode === 'carry' || r.mode === 'onsite'
                   ? !this.vehicles.some((v) => v.requestId === r.id)
                   : this.openAmount(r) > EPS),
@@ -554,7 +559,9 @@ export class LogisticsSim {
 
   private paxDoors(t: TurnaroundState): number {
     const p = this.config.pax
-    return t.access === 'bridge' ? p.doors.bridge[t.needs.sizeClass] : p.doors.stairs[t.needs.sizeClass]
+    if (t.access !== 'bridge') return p.doors.stairs[t.needs.sizeClass]
+    const bridges = this.stand(t).bridges ?? p.doors.bridge[t.needs.sizeClass]
+    return Math.max(1, Math.min(bridges, t.needs.maxBridgeDoors))
   }
 
   private deplaneRate(t: TurnaroundState): number {
@@ -584,20 +591,27 @@ export class LogisticsSim {
         else this.addTimer(t, s, t.pax.arriving / this.deplaneRate(t), t.pax.arriving)
         return
       case 'bag_unload':
-        this.addRequest(t, s, 'baggage_tug', 'out', t.bags.inbound)
+        this.addRequest(t, s, TUGS, 'out', t.bags.inbound)
         return
       case 'cargo_unload':
-        this.addRequest(t, s, 'baggage_tug', 'out', t.cargoIn)
+        this.addRequest(t, s, TUGS, 'out', t.cargoIn)
         return
       case 'loader':
-        this.addRequest(t, s, n.loader!, 'onsite', 1)
+        this.addRequest(t, s, this.loaderTypes(t), 'onsite', 1)
         return
       case 'fuel':
-        if (this.hasHydrant(t)) this.tryHydrant(t)
-        else this.addRequest(t, s, 'fuel_truck', 'carry', n.fuelLitres)
+        if (this.hasHydrant(t) && !this.fleetHas('hydrant_dispenser')) this.tryHydrant(t)
+        else this.addFuelPoints(t)
         return
       case 'catering':
-        this.addRequest(t, s, 'catering_truck', 'carry', n.meals)
+        if (n.upperDeck) {
+          // Both decks at once: the upper-deck door needs a high-lift truck.
+          const upper = Math.round(n.meals / 2)
+          this.addRequest(t, s, ['catering_truck', 'highlift_catering'], 'carry', n.meals - upper)
+          this.addRequest(t, s, ['highlift_catering', 'catering_truck'], 'carry', upper, 'upper')
+        } else {
+          this.addRequest(t, s, ['catering_truck', 'highlift_catering'], 'carry', n.meals)
+        }
         return
       case 'cleaning':
         this.addTimer(t, s, n.cleaningMinutes, 0)
@@ -606,7 +620,7 @@ export class LogisticsSim {
         this.addRequest(t, s, 'gpu', 'onsite', 1)
         return
       case 'pushback':
-        this.addRequest(t, s, 'pushback_tug', 'onsite', 1)
+        this.addRequest(t, s, n.superHeavy ? ['heavy_tug', 'pushback_tug'] : ['pushback_tug', 'heavy_tug'], 'onsite', 1)
         return
       case 'boarding':
         t.services.boarding = 'active'
@@ -615,10 +629,10 @@ export class LogisticsSim {
         this.checkBoardingDone(t)
         return
       case 'bag_load':
-        this.addRequest(t, s, 'baggage_tug', 'in', 0)
+        this.addRequest(t, s, TUGS, 'in', 0)
         return
       case 'cargo_load':
-        this.addRequest(t, s, 'baggage_tug', 'in', 0)
+        this.addRequest(t, s, TUGS, 'in', 0)
         return
       case 'bag_offload':
         this.startOffload(t)
@@ -700,7 +714,9 @@ export class LogisticsSim {
       if (!r || r.turnaroundId !== t.id || r.service !== 'pushback') continue
       if (v.phase === 'servicing' && v.phaseEnd === Infinity && this.pushbackClear(t)) {
         t.services.pushback = 'active'
-        v.phaseEnd = this.now + t.needs.pushbackMinutes
+        const mult = this.compatMult(r, v.type)
+        if (mult < 1) t.causes.add('undersized_vehicle')
+        v.phaseEnd = this.now + t.needs.pushbackMinutes / mult
       }
     }
   }
@@ -724,18 +740,59 @@ export class LogisticsSim {
     if (t.loaderVehicle || !t.needs.loader) return
     if (this.requests.some((r) => r.turnaroundId === t.id && r.service === 'loader')) return
     t.services.loader = 'pending'
-    this.addRequest(t, 'loader', t.needs.loader, 'onsite', 1)
+    this.addRequest(t, 'loader', this.loaderTypes(t), 'onsite', 1)
   }
 
   // ---- requests / timers
 
-  private addRequest(t: TurnaroundState, service: ServiceKind, vehicle: VehicleType, mode: JobMode, target: number): void {
+  private loaderTypes(t: TurnaroundState): VehicleType[] {
+    return t.needs.loader === 'uld_loader' ? ['main_deck_loader', 'uld_loader'] : ['belt_loader']
+  }
+
+  /** Fuel through every fuel point at once (two wings on L-size types). */
+  private addFuelPoints(t: TurnaroundState): void {
+    const n = t.needs
+    const points = Math.max(1, n.fuelPoints)
+    const dispenser = this.stand(t).hydrant && (this.maintenance?.hydrantWorking(t.standId) ?? true) && this.fleetHas('hydrant_dispenser')
+    let left = n.fuelLitres
+    for (let i = 0; i < points; i++) {
+      const share = i === points - 1 ? left : Math.round(n.fuelLitres / points)
+      left -= share
+      this.addRequest(t, 'fuel', dispenser ? ['hydrant_dispenser'] : ['heavy_fuel_truck', 'fuel_truck'], 'carry', share)
+    }
+  }
+
+  private fleetHas(type: VehicleType): boolean {
+    return this.vehicles.some((v) => v.type === type)
+  }
+
+  /**
+   * Work-rate multiplier for a vehicle on this job (size-class compatibility).
+   * Below 1 means the vehicle is undersized and slow.
+   */
+  private compatMult(r: ServiceRequest, type: VehicleType): number {
+    const t = this.turnarounds.get(r.turnaroundId)!
+    if (r.service === 'catering' && r.part === 'upper') return type === 'highlift_catering' ? 1 : 0.4
+    if (r.service === 'pushback' && t.needs.superHeavy) return type === 'heavy_tug' ? 1 : 1 / 3
+    if (r.service === 'loader' && t.needs.superHeavy && type === 'uld_loader') return 0.7
+    return 1
+  }
+
+  private addRequest(
+    t: TurnaroundState,
+    service: ServiceKind,
+    vehicle: VehicleType | VehicleType[],
+    mode: JobMode,
+    target: number,
+    part?: 'upper',
+  ): void {
     this.requests.push({
       id: this.nextReq++,
       turnaroundId: t.id,
       standId: t.standId,
       service,
-      vehicle,
+      vehicles: Array.isArray(vehicle) ? vehicle : [vehicle],
+      part,
       mode,
       target,
       done: 0,
@@ -886,7 +943,7 @@ export class LogisticsSim {
     if (n <= 0) return this.finishService(t, 'bag_offload')
     const h = this.config.hold
     const begin = Math.max(this.now, t.loaderBusyUntil)
-    const end = begin + h.offloadBaseMinutes + h.offloadPerBagMinutes * n
+    const end = begin + h.offloadBaseMinutes + (h.offloadPerBagMinutes * n) / this.loaderMult(t)
     t.loaderBusyUntil = end
     t.services.bag_offload = 'active'
     this.timers.push({ turnaroundId: t.id, standId: t.standId, service: 'bag_offload', end, amount: n })
@@ -1138,6 +1195,7 @@ export class LogisticsSim {
   }
 
   private beginLoading(v: VehicleState, r: ServiceRequest): void {
+    if (v.type === 'hydrant_dispenser') return this.arriveAtStand(v, r)
     const spec = this.config.vehicleSpecs[v.type]
     const t = this.turnarounds.get(r.turnaroundId)!
     if (r.mode === 'carry') {
@@ -1207,12 +1265,33 @@ export class LogisticsSim {
     }
     if (r.mode === 'carry') {
       t.services[r.service] = 'active'
+      if (v.type === 'hydrant_dispenser') {
+        // Cart couples to the hydrant pit: fuel comes straight from the farm.
+        const take = Math.min(r.target - r.done, Math.floor(this.fuelLitres))
+        if (take <= 0) {
+          t.causes.add('no_fuel')
+          t.services.fuel = 'pending'
+          v.phase = 'waiting_stock'
+          v.phaseEnd = Infinity
+          return
+        }
+        this.fuelLitres -= take
+        this.checkLowStock()
+        v.load = take
+        v.serving = take
+        v.phaseEnd = this.now + take / this.config.hydrantPumpLpm
+        this.emit({ type: 'refuel_start', time: this.now, standId: r.standId, litres: take, method: 'hydrant', vehicleId: v.id })
+        return
+      }
       v.serving = Math.min(v.load, r.target - r.done)
       if (r.service === 'fuel') {
-        v.phaseEnd = this.now + v.serving / this.config.truckPumpLpm
+        const lpm = this.config.vehicleSpecs[v.type].pumpLpm ?? this.config.truckPumpLpm
+        v.phaseEnd = this.now + v.serving / lpm
         this.emit({ type: 'refuel_start', time: this.now, standId: r.standId, litres: v.serving, method: 'truck', vehicleId: v.id })
       } else {
-        v.phaseEnd = this.now + t.needs.cateringMinutes * (v.serving / Math.max(1, t.needs.meals))
+        const mult = this.compatMult(r, v.type)
+        if (mult < 1) t.causes.add('undersized_vehicle')
+        v.phaseEnd = this.now + (t.needs.cateringMinutes * (v.serving / Math.max(1, t.needs.meals))) / mult
       }
       return
     }
@@ -1230,9 +1309,7 @@ export class LogisticsSim {
     // Hold work is serialised on the loader, bus work on the stairs.
     const hold = r.service !== 'deplane' && r.service !== 'boarding'
     const rate = hold
-      ? r.service.startsWith('cargo')
-        ? this.holdRates(t).kgPerMin
-        : this.holdRates(t).bagsPerMin
+      ? (r.service.startsWith('cargo') ? this.holdRates(t).kgPerMin : this.holdRates(t).bagsPerMin) * this.loaderMult(t)
       : r.service === 'deplane'
         ? this.deplaneRate(t)
         : this.boardRate(t)
@@ -1241,6 +1318,16 @@ export class LogisticsSim {
     if (hold) t.loaderBusyUntil = end
     else t.doorBusyUntil = end
     v.phaseEnd = end
+  }
+
+  /** Loader on station: its own rate and how well it fits the aircraft. */
+  private loaderMult(t: TurnaroundState): number {
+    const v = this.vehicles.find((x) => x.id === t.loaderVehicle)
+    if (!v) return 1
+    const lr = this.requests.find((x) => x.turnaroundId === t.id && x.service === 'loader')
+    const mult = (this.config.vehicleSpecs[v.type].rateMult ?? 1) * (lr ? this.compatMult(lr, v.type) : 1)
+    if (lr && this.compatMult(lr, v.type) < 1) t.causes.add('undersized_vehicle')
+    return mult
   }
 
   private finishAtStand(v: VehicleState, r: ServiceRequest): void {
@@ -1264,7 +1351,7 @@ export class LogisticsSim {
       this.idle(v)
       if (r.done >= r.target - EPS) {
         this.dropRequest(r)
-        this.finishService(t, r.service)
+        if (!this.requests.some((x) => x.turnaroundId === t.id && x.service === r.service)) this.finishService(t, r.service)
       } else {
         t.services[r.service] = 'pending'
       }
@@ -1325,7 +1412,9 @@ export class LogisticsSim {
       else this.idle(v)
     }
     for (const t of this.turnarounds.values()) {
-      if (t.completedAt === null && t.services.fuel === 'pending' && this.hasHydrant(t)) this.tryHydrant(t)
+      if (t.completedAt === null && t.services.fuel === 'pending' && this.hasHydrant(t) && !this.fleetHas('hydrant_dispenser')) {
+        this.tryHydrant(t)
+      }
     }
   }
 
@@ -1401,14 +1490,18 @@ export class LogisticsSim {
           if (this.vehicles.some((v) => v.requestId === r.id)) break
         } else if (this.openAmount(r) <= EPS) break
         const dest = this.standNode(r)
+        // Best-fitting type first (an undersized truck only if nothing better is free), then nearest.
         let best: VehicleState | null = null
         let bestT = Infinity
+        let bestFit = -1
         for (const v of this.vehicles) {
-          if (v.type !== r.vehicle || v.phase !== 'idle') continue
+          if (!r.vehicles.includes(v.type) || v.phase !== 'idle') continue
+          const fit = this.compatMult(r, v.type) * 10 - r.vehicles.indexOf(v.type)
           const tt = this.tripMinutes(v, r, dest)
-          if (tt < bestT - EPS) {
+          if (fit > bestFit + EPS || (Math.abs(fit - bestFit) <= EPS && tt < bestT - EPS)) {
             best = v
             bestT = tt
+            bestFit = fit
           }
         }
         if (!best) {
@@ -1429,7 +1522,7 @@ export class LogisticsSim {
 
   private visitsSource(v: VehicleState, r: ServiceRequest): boolean {
     if (r.mode === 'in') return true
-    if (r.mode !== 'carry') return false
+    if (r.mode !== 'carry' || v.type === 'hydrant_dispenser') return false
     return v.load + EPS < Math.min(this.config.vehicleSpecs[v.type].capacity, r.target - r.done)
   }
 

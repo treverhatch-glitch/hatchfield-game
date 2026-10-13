@@ -11,6 +11,12 @@ export type VehicleType =
   | 'pax_bus'
   | 'belt_loader'
   | 'uld_loader'
+  | 'heavy_fuel_truck'
+  | 'hydrant_dispenser'
+  | 'highlift_catering'
+  | 'main_deck_loader'
+  | 'heavy_baggage_tug'
+  | 'heavy_tug'
 
 export const VEHICLE_TYPES: readonly VehicleType[] = [
   'fuel_truck',
@@ -21,6 +27,12 @@ export const VEHICLE_TYPES: readonly VehicleType[] = [
   'pax_bus',
   'belt_loader',
   'uld_loader',
+  'heavy_fuel_truck',
+  'hydrant_dispenser',
+  'highlift_catering',
+  'main_deck_loader',
+  'heavy_baggage_tug',
+  'heavy_tug',
 ]
 
 /** Turnaround phases / services. */
@@ -69,6 +81,8 @@ export interface StandConfig {
   hydrant: boolean
   /** Jet bridge, airstairs at a contact stand, or a remote stand served by bus. Default 'stairs'. */
   access?: StandAccess
+  /** Jet bridges on a bridge stand (3 = A380-capable incl. upper deck). Default: pax.doors.bridge for the size. */
+  bridges?: number
 }
 
 export interface FuelFarmConfig {
@@ -112,6 +126,10 @@ export interface VehicleSpec {
   loadMinutes: number
   /** Minutes to unload at a drop-off (bag claim, cargo area, terminal). */
   dropMinutes?: number
+  /** Litres per minute through this vehicle's hose (fuel trucks). Default truckPumpLpm. */
+  pumpLpm?: number
+  /** Work-rate multiplier at the aircraft (loaders). Default 1. */
+  rateMult?: number
 }
 
 export interface PaxConfig {
@@ -192,6 +210,14 @@ export interface TurnaroundNeeds {
   cleaningMinutes: number
   gpuMinutes: number
   pushbackMinutes: number
+  /** A380 / 747-8F / An-124 / C-5: heavy towbarless tug, big loaders. */
+  superHeavy: boolean
+  /** Upper-deck catering door (A380): needs a high-lift truck. */
+  upperDeck: boolean
+  /** Simultaneous fuel points (two wings on L-size types). */
+  fuelPoints: number
+  /** Most bridges the type can use. */
+  maxBridgeDoors: number
   /** Services for a full 'turn'. */
   services: ServiceKind[]
 }
@@ -222,6 +248,7 @@ export type DelayCause =
   | 'late_bags'
   | 'bag_offload'
   | 'vehicle_breakdown'
+  | 'undersized_vehicle'
 
 export type LogisticsEvent =
   | { type: 'truck_arrive'; time: number; vehicleId: string; vehicle: VehicleType; standId: string }
