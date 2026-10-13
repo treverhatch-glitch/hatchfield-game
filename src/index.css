@@ -804,7 +804,7 @@ button {
   max-height: 0;
   overflow: hidden;
   margin: 0 4px;
-  background: rgba(10, 20, 16, 0.94);
+  background: rgba(10, 20, 16, 0.96);
   border: 1px solid rgba(201, 162, 39, 0.35);
   border-bottom: none;
   border-radius: 12px 12px 0 0;
@@ -812,17 +812,18 @@ button {
   box-shadow: none;
   opacity: 0;
   pointer-events: none;
+  z-index: 40;
 }
 
 /* Clicked / pinned menus stay open (not hover-only — clicks were invisible). */
 .chrome.has-panel .panel-rollout,
 .chrome.pinned .panel-rollout,
-.chrome:hover .panel-rollout,
 .panel-rollout:focus-within {
-  max-height: min(42vh, 440px);
+  max-height: min(52vh, 520px);
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
   opacity: 1;
   pointer-events: auto;
+  overflow: auto;
 }
 
 .panel-head {
@@ -844,7 +845,7 @@ button {
 
 .panel-body {
   padding: 0 14px 14px;
-  max-height: min(36vh, 380px);
+  max-height: min(44vh, 460px);
   overflow: auto;
 }
 
@@ -1235,6 +1236,110 @@ h1 {
 
 .starts .ghost {
   background: transparent;
+}
+
+.sandbox-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: rgba(8, 18, 14, 0.55);
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  border-radius: 8px;
+  cursor: pointer;
+  color: #d5e0d6;
+  font-size: 14px;
+}
+
+.sandbox-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #c9a227;
+}
+
+.land-pick {
+  max-width: 720px;
+}
+
+.route-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.route-card {
+  text-align: left;
+  padding: 16px 16px 14px;
+  background: rgba(18, 36, 28, 0.92);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 220px;
+}
+
+.route-card.primary {
+  background: #c9a227;
+  color: #1a1406;
+  border-color: #e6c85a;
+}
+
+.route-card strong {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.route-card em {
+  font-style: normal;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.route-card p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.route-card ul {
+  margin: 8px 0 0;
+  padding: 0 0 0 16px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.route-card.primary ul,
+.route-card.primary p,
+.route-card.primary em {
+  color: #2a2208;
+}
+
+.hybrid-link {
+  margin-top: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  background: transparent;
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.hybrid-link span {
+  display: block;
+  color: #b7c4b8;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .route-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 800px) {

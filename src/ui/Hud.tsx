@@ -59,7 +59,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'pavement',
     label: 'Pavement',
-    tools: ['pan', 'runway_short', 'runway', 'runway_heavy', 'taxi', 'road', 'helipad', 'deice'],
+    tools: ['runway_short', 'runway', 'runway_heavy', 'taxi', 'road', 'helipad', 'deice'],
   },
   {
     id: 'stands',
@@ -156,6 +156,12 @@ export function Hud({ game }: { game: Game }) {
     })
   }
 
+  /** Open a tab without accidental close when already selected. */
+  const openPanel = (id: Exclude<PanelId, null>) => {
+    setPanel(id)
+    setChromePinned(true)
+  }
+
   const ticker = game.news.slice(0, 5)
 
   return (
@@ -171,7 +177,7 @@ export function Hud({ game }: { game: Game }) {
           type="button"
           className="stat cash top-cash"
           title="Open Economy"
-          onClick={() => togglePanel('economy')}
+          onClick={() => openPanel('economy')}
         >
           {money(game.cash)}
         </button>
@@ -198,7 +204,7 @@ export function Hud({ game }: { game: Game }) {
             type="button"
             className="stat cash top-cash"
             title="Open Economy · HATCH"
-            onClick={() => togglePanel('economy')}
+            onClick={() => openPanel('economy')}
           >
             HATCH ${game.sharePrice.toFixed(2)}
           </button>
@@ -563,8 +569,9 @@ export function Hud({ game }: { game: Game }) {
                 <>
                   <section>
                     <h3>Cash & capital</h3>
-                    <p className="muted eco-line">
+                    <p className="muted eco-line" data-testid="economy-cash">
                       Bank {money(game.cash)}
+                      {game.sandbox ? ' · sandbox' : ''}
                       {game.loanBalance ? ` · loan owed ${money(game.loanBalance)}` : ''}
                       {' · '}pax fees {money(game.landsideIncome())} / expense{' '}
                       {money(game.landsideUpkeep())}/30s · fill{' '}
@@ -715,9 +722,9 @@ export function Hud({ game }: { game: Game }) {
               ) : null}
 
               {panel === 'budget' ? (
-                <section>
+                <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
-                  <p className="muted">
+                  <p className="muted" data-testid="budget-payroll">
                     Payroll ~{money(game.payrollPreview())} / 30s
                     {game.fieldOpsMult() > 1.05
                       ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
@@ -1369,6 +1376,14 @@ export function Hud({ game }: { game: Game }) {
             ) : (
               <>
                 <div className="build-menus">
+                  <button
+                    type="button"
+                    className={game.tool === 'pan' ? 'on' : ''}
+                    title="Select / inspect — WASD pans, Q/E rotate, scroll zooms"
+                    onClick={() => game.setTool('pan')}
+                  >
+                    Select
+                  </button>
                   {BUILD_MENUS.map((m) => (
                     <button
                       key={m.id}
@@ -1455,7 +1470,7 @@ export function Hud({ game }: { game: Game }) {
                       : game.tool === 'premade'
                         ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — pan-click it to walk inside.`
                         : game.tool === 'pan'
-                          ? 'Stamp pavement. Pan-click a terminal or press H to go inside.'
+                          ? 'Select: click a tile or hall. WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit.'
                           : tip
                             ? `${tip.blurb} ${money(tip.cost)}`
                             : 'Clear refunds 40%.'}
@@ -1554,7 +1569,7 @@ export function Hud({ game }: { game: Game }) {
                 type="button"
                 className={`cash-chip${panel === 'economy' ? ' on' : ''}`}
                 title="Economy"
-                onClick={() => togglePanel('economy')}
+                onClick={() => openPanel('economy')}
               >
                 {money(game.cash)}
               </button>
@@ -1564,7 +1579,12 @@ export function Hud({ game }: { game: Game }) {
                   type="button"
                   className={panel === m.id ? 'on' : ''}
                   title={m.tip}
-                  onClick={() => togglePanel(m.id)}
+                  data-testid={`tab-${m.id}`}
+                  onClick={() => {
+                    /* Second click on the same tab closes; switching tabs always opens. */
+                    if (panel === m.id) togglePanel(m.id)
+                    else openPanel(m.id)
+                  }}
                 >
                   {m.label}
                 </button>

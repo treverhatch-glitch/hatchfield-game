@@ -150,6 +150,7 @@ export default function App() {
         game.parkTerm,
         game.plannerRwFilter,
         game.standAccessMode,
+        game.sandbox ? 1 : 0,
       ].join('|'),
     () => 'ssr',
   )
@@ -157,12 +158,13 @@ export default function App() {
   if (screen === 'title') {
     return (
       <TitleScreen
-        onEasy={() => {
-          game.beginNew('easy')
-          setScreen('land')
+        sandbox={game.sandbox}
+        onSandboxChange={(on) => {
+          game.sandbox = on
+          game.emit()
         }}
-        onStandard={() => {
-          game.beginNew('standard')
+        onNewGame={() => {
+          game.beginNew(game.sandbox ? 'easy' : 'standard')
           setScreen('land')
         }}
         onContinue={() => {

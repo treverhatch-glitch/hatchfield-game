@@ -17,15 +17,14 @@ Open **[http://127.0.0.1:45217](http://127.0.0.1:45217)** (or the URL Vite print
 
 ### Morning path (about 2 minutes)
 
-1. **Easy grant** → **Riverside City plot**
-2. Follow the **First hour** checklist (bottom-left) — or just hit yellow **Starter kit**
-3. **Sign** Northline when they call
-4. Hit **3x** and watch the first jet land → gate → trucks → takeoff
+1. **New Game** → pick **Passenger** or **Cargo** (each card lists what that route needs)
+2. Follow the **First hour** checklist — or open **Economy** and hit **Starter kit**
+3. **Sign** an airline when they call
+4. Hit **3x** / **5x** and watch the first turn
 5. Optional: **Hall** to walk the terminal; stamp a **Hangar** + hardstand later for Guard / military
-6. After the first takeoff, watch for **airline field asks** (police, hangar, hotel…) — bonus if you beat the clock
-7. **Independent parking** asks (not airlines) — host for a fee; they request leave later; auto tower or manual Release before the ~20h window burns
+6. After the first takeoff, watch for **airline field asks** — bonus if you beat the clock
 
-**Standard field** is the leaner empty-plot challenge. **Continue field** resumes the browser save.
+**Sandbox (unlimited money)** is ON by default for trial builds (toggle on the title screen). **Continue** resumes the browser save.
 
 Night pax hold until you research **Night bank**. Storms hurt less after **De-ice ops**. Bags trucks run shed→plane→claim; fuel bowsers load at the farm; line MX walks from the hangar.
 
@@ -35,12 +34,16 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 | Input | Action |
 | --- | --- |
-| Left drag | Pan |
-| Right drag | Orbit |
+| WASD / arrow keys | Pan camera |
+| Q / E | Rotate |
 | Scroll | Zoom |
+| Middle / right drag | Orbit |
+| Left drag (Select) | Pan / click tile |
 | `R` | Rotate runway / piece |
 | `H` / Esc | Hall ↔ Apron |
 | Click terminal tile | Enter that hall |
+
+Same controls in **Apron** and **Hall**. Use **Select** (not Move) to inspect; build tools stamp one item per click.
 
 ## What’s in
 

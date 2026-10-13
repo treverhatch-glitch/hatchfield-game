@@ -123,12 +123,21 @@ export class World {
   getTool: () => string = () => 'pan'
   lastPaint: Vec | null = null
   private liteMode = false
+  private canvas: HTMLCanvasElement
   private grassM: THREE.MeshLambertMaterial
   private rwM: THREE.MeshLambertMaterial
   private taxiM: THREE.MeshLambertMaterial
   private standM: THREE.MeshLambertMaterial
+  private onPointerDown!: (e: PointerEvent) => void
+  private onPointerMove!: (e: PointerEvent) => void
+  private onPointerUp!: (e: PointerEvent) => void
+  private onWheel!: (e: WheelEvent) => void
+  private onContextMenu!: (e: Event) => void
+  /** True after pointerdown already stamped — blocks duplicate up/down fires. */
+  private paintedThisGesture = false
 
   constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -215,10 +224,12 @@ export class World {
   }
 
   bind(canvas: HTMLCanvasElement) {
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault())
-    canvas.addEventListener('pointerdown', (e) => {
+    this.onContextMenu = (e) => e.preventDefault()
+    this.onPointerDown = (e: PointerEvent) => {
       const tool = this.getTool()
-      if (e.button === 2) this.dragging = 'orbit'
+      this.paintedThisGesture = false
+      // Middle (1) or right (2) = orbit. Left + build tool = one stamp. Left + select = click/pan.
+      if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
       else if (e.button === 0 && tool !== 'pan') this.dragging = 'paint'
       else if (e.button === 0) this.dragging = 'pending'
       else this.dragging = 'orbit'
@@ -231,20 +242,22 @@ export class World {
         const v = this.pick(e)
         if (v) {
           this.lastPaint = v
+          this.paintedThisGesture = true
           this.onClick(v, false)
         }
       }
       canvas.setPointerCapture(e.pointerId)
-    })
-    canvas.addEventListener('pointermove', (e) => {
+    }
+    this.onPointerMove = (e: PointerEvent) => {
       const v = this.pick(e)
       this.onHover(v)
       if (!this.dragging) return
+      // Single-click stamps only — no drag-paint (prevents multi-place feel).
       if (this.dragging === 'paint') return
       if (this.dragging === 'pending') {
         const dist = Math.hypot(e.clientX - this.downX, e.clientY - this.downY)
         if (dist < 8) return
-        this.dragging = e.shiftKey ? 'orbit' : 'pan'
+        this.dragging = 'pan'
       }
       const dx = e.clientX - this.lastX
       const dy = e.clientY - this.lastY
@@ -255,31 +268,52 @@ export class World {
         this.pitch = clamp(this.pitch - dy * 0.005, 0.28, 1.35)
         this.placeCam()
       } else if (this.dragging === 'pan') {
-        const right = new THREE.Vector3()
-        this.camera.getWorldDirection(right)
-        const forward = right.clone()
-        right.cross(this.camera.up).normalize()
-        forward.y = 0
-        forward.normalize()
-        this.pivot.addScaledVector(right, -dx * 0.08)
-        this.pivot.addScaledVector(forward, dy * 0.08)
-        this.placeCam()
+        this.nudgePan(-dx * 0.08, dy * 0.08)
       }
-    })
-    canvas.addEventListener('pointerup', (e) => {
+    }
+    this.onPointerUp = (e: PointerEvent) => {
       const was = this.dragging
       this.dragging = null
-      if (was === 'pending' && e.button === 0) {
+      if (was === 'pending' && e.button === 0 && !this.paintedThisGesture) {
         const v = this.pick(e)
         if (v) this.onClick(v, e.shiftKey)
       }
       this.lastPaint = null
-    })
-    canvas.addEventListener('wheel', (e) => {
+      this.paintedThisGesture = false
+    }
+    this.onWheel = (e: WheelEvent) => {
       e.preventDefault()
       this.dist = clamp(this.dist + e.deltaY * 0.06, 28, 160)
       this.placeCam()
-    }, { passive: false })
+    }
+    canvas.addEventListener('contextmenu', this.onContextMenu)
+    canvas.addEventListener('pointerdown', this.onPointerDown)
+    canvas.addEventListener('pointermove', this.onPointerMove)
+    canvas.addEventListener('pointerup', this.onPointerUp)
+    canvas.addEventListener('wheel', this.onWheel, { passive: false })
+  }
+
+  /** Keyboard / UI pan in camera-local ground plane. */
+  nudgePan(rightAmt: number, forwardAmt: number) {
+    const right = new THREE.Vector3()
+    this.camera.getWorldDirection(right)
+    const forward = right.clone()
+    right.cross(this.camera.up).normalize()
+    forward.y = 0
+    forward.normalize()
+    this.pivot.addScaledVector(right, rightAmt)
+    this.pivot.addScaledVector(forward, forwardAmt)
+    this.placeCam()
+  }
+
+  nudgeYaw(delta: number) {
+    this.yaw += delta
+    this.placeCam()
+  }
+
+  nudgeZoom(delta: number) {
+    this.dist = clamp(this.dist + delta, 28, 160)
+    this.placeCam()
   }
 
   pick(e: PointerEvent | MouseEvent): Vec | null {
@@ -1382,6 +1416,12 @@ export class World {
   }
 
   dispose() {
+    const canvas = this.canvas
+    canvas.removeEventListener('contextmenu', this.onContextMenu)
+    canvas.removeEventListener('pointerdown', this.onPointerDown)
+    canvas.removeEventListener('pointermove', this.onPointerMove)
+    canvas.removeEventListener('pointerup', this.onPointerUp)
+    canvas.removeEventListener('wheel', this.onWheel)
     this.renderer.dispose()
   }
 }

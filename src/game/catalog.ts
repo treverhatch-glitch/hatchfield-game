@@ -1064,7 +1064,7 @@ export const ROOMS: RoomDef[] = [
 ]
 
 export const TOOL_LABEL: Record<Tool, string> = {
-  pan: 'Look',
+  pan: 'Select',
   runway_short: 'Short strip',
   runway: 'Runway',
   runway_heavy: 'Heavy strip',

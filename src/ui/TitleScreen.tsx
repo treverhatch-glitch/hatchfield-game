@@ -1,13 +1,16 @@
-import { money, START_CASH } from '../game/catalog'
+import { SANDBOX_CASH } from '../game/types'
+import { money } from '../game/catalog'
 import { Game } from '../game/sim'
 
 export function TitleScreen({
-  onEasy,
-  onStandard,
+  sandbox,
+  onSandboxChange,
+  onNewGame,
   onContinue,
 }: {
-  onEasy: () => void
-  onStandard: () => void
+  sandbox: boolean
+  onSandboxChange: (on: boolean) => void
+  onNewGame: () => void
   onContinue: () => void
 }) {
   const hasSave = Game.hasSave()
@@ -21,23 +24,39 @@ export function TitleScreen({
           Airlines only call when your airport meets their requirements — then the
           jet on the screen and the money in the book stay the same flight.
         </p>
-        <ul className="beats">
-          <li>Purchase a city plot (passengers) or industrial plot (cargo).</li>
-          <li>Stamp runway, stands, fuel, fire, hall — then wait for a contract offer.</li>
-          <li>Premade terminal or empty shell you furnish. Weak security invites threats.</li>
-        </ul>
+        <label className="sandbox-toggle" title="Dev / trial: spend never fails">
+          <input
+            type="checkbox"
+            checked={sandbox}
+            onChange={(e) => onSandboxChange(e.target.checked)}
+            data-testid="sandbox-toggle"
+          />
+          <span>
+            Sandbox (unlimited money)
+            {sandbox ? ` · ${money(SANDBOX_CASH)}` : ' · off'}
+          </span>
+        </label>
         <div className="starts">
-          <button type="button" className="primary" onClick={onEasy}>
-            Easy grant
-            <span>{money(START_CASH.easy)} before land — room to learn AT3’s loop</span>
-          </button>
-          <button type="button" onClick={onStandard}>
-            Standard field
-            <span>{money(START_CASH.standard)} before land — every stamp matters</span>
+          <button
+            type="button"
+            className="primary"
+            data-testid="new-game"
+            onClick={onNewGame}
+          >
+            New Game
+            <span>
+              Pick Passenger or Cargo — then stamp the field
+              {sandbox ? ' · sandbox cash' : ''}
+            </span>
           </button>
           {hasSave ? (
-            <button type="button" className="ghost" onClick={onContinue}>
-              Continue field
+            <button
+              type="button"
+              className="ghost"
+              data-testid="continue-game"
+              onClick={onContinue}
+            >
+              Continue
               <span>Paused clock from the last session</span>
             </button>
           ) : null}
