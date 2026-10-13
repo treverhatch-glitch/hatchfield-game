@@ -1,6 +1,6 @@
 # Hatchfield — Execution plan (active)
 
-Working plan for expanding the game. Derived from [VISION](./VISION.md) + [NEXT](./NEXT.md) + AT3 / Cities: Skylines design equilibrium. Update checkboxes as we ship.
+Working plan for expanding the game. **Code order:** [BUILD.md](./BUILD.md). Derived from [VISION](./VISION.md) + [NEXT](./NEXT.md) + AT3 / CS equilibrium.
 
 ## Principle
 
@@ -19,8 +19,8 @@ See [DESIGN § Player vocabulary](./DESIGN.md#player-vocabulary-not-code-names).
 | **E1** | Pax layout skill | **Baggage belt lite** — stamp belt, bags↔stand↔terminal link, break = delay + Standing | **SHIPPED** |
 | **E2** | Readability | Congestion / stolen-slot feedback (news + Planner tint) | **SHIPPED** |
 | **E2b** | Vocabulary | Player-facing Standing / On-time / Jam (logic unchanged) | **SHIPPED** |
-| **E3** | Cargo equality | Start focus + truck gate / screen (same broken-chain verb) | **NEXT** |
-| **E4** | Demand & budget leash | Clear income/expense readout + payroll that bites idle stamps | After E3 slice |
+| **E3** | Cargo + bags depth | [BUILD](./BUILD.md) slices 1–3 | **SLICE 1 IN PROGRESS** |
+| **E4** | Demand & budget leash | Clear income/expense readout + payroll that bites idle stamps | After E3 |
 | **E5** | Side seasons | Richer emergency pack + mil mission letters | Parallel once E3 live |
 | **E6** | Scale fantasy | Franchises, intl zone, short scenarios | After layout verbs feel unfair-fun |
 
@@ -103,20 +103,20 @@ If we add more permanent HUD games (full mil sim, full franchise CRM), cut somet
 
 Fits [living logistics](./VISION.md#living-logistics-picture-manor-lords-energy-on-an-airport) + [REAL_OPS](./REAL_OPS.md):
 
-### E3a — Cargo fun (priority)
+### Slice 1 — Bags lean + premade ceilings (**SHIPPING**)
+
+- [x] PaxTag → `bagUnits` on flights; handling pay scales  
+- [x] Premade claim / hall soft ceilings (`capGuests`, `claimRate`)  
+- [x] Layover through-transfer (`needs.bags = 0`); claim fallback hurts Standing  
+- [x] Soak `soak-bag-units.mts` + commit  
+
+### Slice 2–3 — Cargo fun (next code)
 
 1. New Game **focus**: Passenger / Cargo / Hybrid + cargo starter kit.  
 2. City → **guard post** → intake → shed (trucks visible).  
 3. **Volume letter** + warehouse meter + On-time dip if late.  
 4. Schedule prep: freighter slots stage trucks early.  
 5. C1–C5 ladder wording in Airlines panel.
-
-### E3b — Bags lean (same wave or just after)
-
-1. Arrival: unload → claim clears terminating `needs.bags`.  
-2. Layover: through-transfer path (not claim); break → misconnect Standing.  
-3. PaxTag → bag units (premium heavy / budget light); handling pay scales modestly.  
-4. No per-bag agents. Premade claim/bag caps bite.
 
 ## Session cadence
 

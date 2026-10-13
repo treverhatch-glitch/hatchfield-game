@@ -492,6 +492,8 @@ export interface Flight {
   /** One-shot emergency host (divert / tanker) occupying a banked gate. */
   emergencyHost?: boolean
   hostKind?: EmergencyKind
+  /** Aggregate checked-bag units for this turn (PaxTag mix) — not per-suitcase agents. */
+  bagUnits?: number
 }
 
 /** Live security event the player must answer. */
@@ -640,6 +642,13 @@ export interface TerminalFit {
   /** 0–100 wear from budget traffic. High wear softens security and WC. */
   wearBath: number
   wearSec: number
+  /**
+   * Soft hall population ceiling (premade shells are lower).
+   * Over → slower claim / security feel + Standing pressure.
+   */
+  capGuests?: number
+  /** Claim clear rate multiplier baseline (premade ~0.75, custom can go higher). */
+  claimRate?: number
 }
 
 export interface GameSnapshot {
