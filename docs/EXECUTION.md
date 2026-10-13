@@ -100,10 +100,14 @@ If we add more permanent HUD games (full mil sim, full franchise CRM), cut somet
 
 ## E3 — Cargo equality (next)
 
+Fits the [living logistics picture](./VISION.md#living-logistics-picture-manor-lords-energy-on-an-airport):
+
 1. New Game **focus**: Passenger / Cargo / Hybrid.  
-2. Cargo starter stub: shed + truck gate tile + cargo stand.  
+2. City → **guard post** → cargo intake stub + shed + cargo stand (trucks drive in, don’t teleport).  
 3. Broken gate/screen chain → late uplift + **On-time** dip (reuse belt BFS).  
-4. Airlines panel cargo ladder wording (C1–C5 labels).
+4. Schedule prep window: freighter slots stage inbound trucks early.  
+5. Premade hall **ceilings** (pax / security / bags) so starter shells are not endgame.  
+6. Airlines panel cargo ladder wording (C1–C5 labels).
 
 ## Session cadence
 

@@ -15,13 +15,54 @@ You run a living airfield where **layout is skill**, **letters are drama**, and 
 │  PAX PATH        │  CARGO PATH      │  SIDE TRACKS        │
 │  Hall + jetways  │  Shed → screen →  │  Emergencies        │
 │  T1–T5 carriers  │  rail → freighter│  Military host      │
-│  heat / Hub      │  T1–T5 freight   │  GA parking         │
+│  Standing / Hub  │  On-time         │  GA parking         │
 └──────────────────┴──────────────────┴───────────────────┘
                          ▲
               APRON TRAFFIC (shared congestion)
+                         ▲
+         CITY EDGE — roads + guard posts + inbound trucks
 ```
 
 Players pick **pax-first, cargo-first, or hybrid** at the plot (city vs factory already hints this — deepen into an explicit start choice). Both paths feed Field XP and Field Level so neither is a dead end.
+
+## Living logistics picture (Manor Lords energy on an airport)
+
+The field is not teleport economy. **Schedules drive prep; assets move through pipelines; the player can read the picture.**
+
+```
+CITY (off-map)
+  │  roads / rail
+  ▼
+GUARD POST (screen trucks, contractors, service)
+  ├── pax curb / terminal landside
+  ├── cargo intake → screen → warehouse → freighter
+  └── contractors → build sites (visible vans, not instant stamp forever)
+  ▼
+TERMINAL (premade with caps OR custom) ←→ APRON ←→ STRIP
+```
+
+### Terminals — premade vs craft
+
+- **Premade halls** stay for AT3 first hour, but they are **starter shells with hard limits**: pax throughput, soft security queues, baggage allowance / belt capacity.
+- Hitting the ceiling = delays, Standing / Happiness dips, letter pressure — push to **upgrade the premade** or **build your own** hall (layout skill).
+- Custom terminals are the midgame craft fantasy; premades are never “best forever.”
+
+### Guard posts + city edge
+
+- City roads connect into **terminal landside** and (where appropriate) **service / cargo** approaches — not a free-for-all onto the tarmac.
+- A **guard post** screens inbound vehicles: cargo trucks, contractors, fuel tankers, buses. Undersized / missing post = queues, denied entry, or security incidents.
+- Contractors for non-instant builds **drive in from the city**, pass the post, then work the site — watch the picture, don’t just tick a progress bar.
+
+### Schedule-driven pipelines (backend truth)
+
+The sim knows the bank **ahead of time** (long horizon for prep + short horizon for scramble):
+
+1. Slot is cargo or pax (and size class).
+2. **Prep window** — spawn / stage the right assets early enough: cargo trucks from city → guard → warehouse; bags makeup; fuel bowsers with real tank levels; loaders.
+3. Plane arrives → assets already in motion or staged; late prep = late turn = Standing / On-time hurt.
+4. Nothing important should “appear at the stand” with no journey — fuel, freight, and contractors all have a path you can see.
+
+This is the same verb as belts: **broken or thin chain → late job → hurt → fix.** City intake and guard posts are the landside half of that verb.
 
 ## Path A — Passengers (main campaign default)
 
