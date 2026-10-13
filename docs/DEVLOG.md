@@ -173,3 +173,28 @@ Playtest stills:
 - `docs/playtest/build-landside.png`
 - `docs/playtest/build-bulldoze.png`
 - `docs/playtest/report.json`
+
+## Slice A — 13 Oct 2026, after the audit
+
+Same branch. Three commits: a test safety net, the Cities-style UI, and aircraft that use real-ish loads and fly on and off the map.
+
+**Safety net.** Vitest (14 tests). Bag math and payroll/loan math live in their own modules; the sim calls them and plays the same. GitHub Actions runs typecheck, lint, tests, and build.
+
+**UI.** Bottom categories keep an item tray open (icon, name, price, tooltip). Top bar shows cash, income per hour, day and time, speed, Field Level and XP, average Standing, and alerts. Contract letters slide in from the left; open one for terms, what is met and missing, and Accept / Decline / Later. Extra letters sit in an inbox. Economy has Overview, Income, Expenses, Loans, and Charts (cash, income vs expenses, passengers per day, cargo per day).
+
+**Aircraft.** Each type has seats, a bag cap, a cargo hold, and a fuel load, taken from rounded public figures. Passenger, bag, and cargo counts and the turnaround follow the type. Jets spawn off the map, fly a descent onto the runway, and after takeoff climb out past the map edge before they disappear.
+
+**Bugs.** No new ones. The count stays at six (BUG-001 through BUG-006).
+
+**Tests.** 14 passing.
+
+**New media**
+
+- `docs/devlog/media/SLICE-A-toolbar.png` — category bar and item tray
+- `docs/devlog/media/SLICE-A-letter.png` — contract card from the left, requirements, Accept / Decline / Later
+- `docs/devlog/media/SLICE-A-charts.png` — economy charts on the field
+- `docs/devlog/media/SLICE-A-charts-panel.png` — the four line charts
+- `docs/devlog/media/SLICE-A-approach.png` — jet on the approach, still outside the map
+- `docs/devlog/media/SLICE-A-departure.png` — same jet rotating for departure
+- `docs/devlog/media/SLICE-A-ui.webm` — short UI pass (about 6 s)
+- `docs/devlog/media/SLICE-A-departure.webm` — approach through departure (about 26 s)
