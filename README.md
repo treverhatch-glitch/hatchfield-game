@@ -4,7 +4,7 @@ Browser sketch of a **3D airport tycoon** (Airport Tycoon 3 field + Airport CEO 
 
 **External review / Grok handoff:** one consolidated brief — [`docs/GROK_HANDOFF.md`](./docs/GROK_HANDOFF.md) (shipped features, briefed backlog, loops, play flow, vision). Prefer that Markdown over a PDF for LLM review.
 
-**IMPORTANT design law:** [`docs/HAND_OFFS.md`](./docs/HAND_OFFS.md) — every passenger, bag, cater, fuel, and cargo transfer needs a Manor Lords–style load/unload picture.
+**IMPORTANT design law:** [`docs/HAND_OFFS.md`](./docs/HAND_OFFS.md) — apron *and terminal*: every passenger, bag, security, claim, amenity, cater, fuel, and cargo transfer needs a Manor Lords–style load/unload picture.
 
 ## Run
 
