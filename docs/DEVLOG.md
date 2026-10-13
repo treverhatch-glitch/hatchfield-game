@@ -732,4 +732,16 @@ Cancelling a slot after the aircraft is bound now clears the walkers whose fligh
 
 The production bundle is `index-DTVGkqMq.js`, 1,605.57 kB, with `index-jic0D8bj.css`.
 
+## Contract negotiation — 13 Oct
+
+PR #44 is on this branch. A contract letter opens a side sheet: the player can counter fees, freebies, term, and deposit, and the airline accepts, grudges, or walks. Standing changes go out through the existing diplomacy adapter (`over_ask`, `hard_bargain`, `walk`, `freebie`). `src/diplomacy` is unchanged. A walk puts the carrier on the Bellwater rival card. The sheet does not take clicks meant for the field.
+
+**Tests.** `tsc -b` clean. Vitest 770 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-CmmzvVsS.js`, 1,636.12 kB, with `index-eP-pqaTd.css`.
+
+## Payroll shortfall — 13 Oct
+
+PR #45 is on this branch and closes #26. A covered payroll bill, including a remainder that prints as $0, does not post a shortfall line. A partial payment names due minus cash paid. An empty bank still says the payroll was missed entirely and does not write `paid $0`. Reputation and the maintenance and security sliders move only when that unpaid amount is a real dollar.
+
+**Tests.** `tsc -b` clean. Vitest 771 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-CYIt_ytm.js`, 1,636.42 kB, with `index-eP-pqaTd.css`.
+
 
