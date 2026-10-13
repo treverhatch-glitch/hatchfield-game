@@ -1,3 +1,4 @@
+import { tierOpen } from '../scale/logic'
 import type { AircraftKind, ResearchId, StandClass } from './types'
 
 /** Real-world-flavored metal. minRunway is apron cells of continuous strip needed. */
@@ -8,6 +9,20 @@ export interface Airframe {
   minRunway: number
   paxMin: number
   paxMax: number
+  /**
+   * Typical seats. Published two-class / standard layouts, rounded.
+   * 0 for freighters and types that don't carry passengers here.
+   */
+  seats: number
+  /**
+   * Belly bag-unit cap (~1 unit per 0.12 m³). 0 when the type has no pax hold.
+   * Figures are rounded public ballparks for balance, not a certified sheet.
+   */
+  bagVolume: number
+  /** Cargo hold in tonnes, rounded. Freighters use payload; pax types a small belly figure. */
+  cargoHold: number
+  /** Usable fuel in tonnes, rounded. */
+  fuelLoad: number
   /** Visual scale in the 3D apron. */
   scale: number
   landingMult: number
@@ -24,6 +39,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 60,
     paxMax: 78,
+    seats: 70,
+    bagVolume: 50,
+    cargoHold: 2,
+    fuelLoad: 8.8,
     scale: 0.78,
     landingMult: 0.8,
     blurb: 'Regional jet — short strip friendly.',
@@ -35,6 +54,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 10,
     paxMin: 76,
     paxMax: 88,
+    seats: 78,
+    bagVolume: 58,
+    cargoHold: 2,
+    fuelLoad: 9.3,
     scale: 0.84,
     landingMult: 0.85,
     blurb: 'Workhorse regional.',
@@ -46,6 +69,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 12,
     paxMin: 150,
     paxMax: 180,
+    seats: 180,
+    bagVolume: 130,
+    cargoHold: 3,
+    fuelLoad: 19,
     scale: 1.08,
     landingMult: 1,
     blurb: 'Single-aisle mainline — needs regional strip+.',
@@ -57,6 +84,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 12,
     paxMin: 160,
     paxMax: 189,
+    seats: 189,
+    bagVolume: 145,
+    cargoHold: 4,
+    fuelLoad: 20.8,
     scale: 1.12,
     landingMult: 1.05,
     blurb: 'Everywhere jet — needs regional strip+.',
@@ -68,6 +99,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 14,
     paxMin: 180,
     paxMax: 220,
+    seats: 220,
+    bagVolume: 165,
+    cargoHold: 5,
+    fuelLoad: 24,
     scale: 1.22,
     landingMult: 1.12,
     blurb: 'Stretched narrowbody — full regional strip.',
@@ -79,9 +114,30 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 18,
     paxMin: 250,
     paxMax: 290,
+    seats: 296,
+    bagVolume: 240,
+    cargoHold: 16,
+    fuelLoad: 101,
     scale: 1.55,
     landingMult: 1.4,
     blurb: 'Widebody — heavy strip required.',
+    research: 'widebody_ops',
+  },
+  b77w: {
+    id: 'b77w',
+    name: 'Boeing 777-300ER',
+    kind: 'widebody',
+    minRunway: 18,
+    paxMin: 300,
+    paxMax: 396,
+    seats: 396,
+    bagVolume: 320,
+    cargoHold: 20,
+    fuelLoad: 145,
+    scale: 1.7,
+    landingMult: 1.55,
+    blurb: '777-class widebody — widebody ops and a heavy strip.',
+    research: 'widebody_ops',
   },
   a359: {
     id: 'a359',
@@ -90,9 +146,14 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 18,
     paxMin: 300,
     paxMax: 350,
+    seats: 325,
+    bagVolume: 270,
+    cargoHold: 18,
+    fuelLoad: 108,
     scale: 1.62,
     landingMult: 1.5,
     blurb: 'Long-haul widebody — heavy strip.',
+    research: 'widebody_ops',
   },
   atr72: {
     id: 'atr72',
@@ -101,6 +162,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 68,
     paxMax: 78,
+    seats: 72,
+    bagVolume: 46,
+    cargoHold: 1,
+    fuelLoad: 5,
     scale: 0.7,
     landingMult: 0.78,
     blurb: 'Turboprop regional — loves short strips.',
@@ -112,6 +177,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 14,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 30,
+    fuelLoad: 43,
     scale: 1.18,
     landingMult: 1.08,
     blurb: 'Hot-and-high freighter — regional strip OK.',
@@ -123,9 +192,14 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 16,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 52,
+    fuelLoad: 73,
     scale: 1.35,
     landingMult: 1.15,
     blurb: 'Mid freighter — wants long pavement.',
+    research: 'widebody_ops',
   },
   b748f: {
     id: 'b748f',
@@ -134,9 +208,14 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 20,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 137,
+    fuelLoad: 183,
     scale: 1.78,
     landingMult: 1.55,
     blurb: 'Queen of freighters — heavy strip only.',
+    research: 'heavy_pack',
   },
   c130: {
     id: 'c130',
@@ -145,6 +224,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 12,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 20,
+    fuelLoad: 19,
     scale: 1.18,
     landingMult: 1.2,
     blurb: 'Guard transport — Boise-style hangar transient.',
@@ -156,9 +239,14 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 16,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 77,
+    fuelLoad: 108,
     scale: 1.58,
     landingMult: 1.6,
     blurb: 'Strategic airlifter — fat landing fee.',
+    research: 'widebody_ops',
   },
   kc135: {
     id: 'kc135',
@@ -167,6 +255,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 18,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 0,
+    fuelLoad: 90,
     scale: 1.42,
     landingMult: 1.45,
     blurb: 'Tanker — wants heavy pavement.',
@@ -178,6 +270,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 10,
     paxMin: 0,
     paxMax: 0,
+    seats: 1,
+    bagVolume: 0,
+    cargoHold: 0,
+    fuelLoad: 6,
     scale: 0.55,
     landingMult: 0.95,
     blurb: 'Fighter drag / diversion — quick turn, olive paint.',
@@ -189,6 +285,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 2,
     paxMax: 4,
+    seats: 9,
+    bagVolume: 6,
+    cargoHold: 0,
+    fuelLoad: 3,
     scale: 0.58,
     landingMult: 0.7,
     blurb: 'Fixed-wing medevac — short strip OK.',
@@ -200,6 +300,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 2,
     paxMax: 6,
+    seats: 9,
+    bagVolume: 5,
+    cargoHold: 0,
+    fuelLoad: 1.2,
     scale: 0.62,
     landingMult: 0.72,
     blurb: 'STOL air ambulance — short strip hero.',
@@ -212,6 +316,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 10,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 6,
+    fuelLoad: 5,
     scale: 1.05,
     landingMult: 1.15,
     blurb: 'Super Scooper — firefighting tanker, thirsty for Jet-A.',
@@ -223,6 +331,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 8,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 3,
+    fuelLoad: 1.4,
     scale: 0.72,
     landingMult: 0.85,
     blurb: 'Single-engine air tanker — short strip SEAT.',
@@ -234,6 +346,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 0,
     paxMin: 2,
     paxMax: 4,
+    seats: 15,
+    bagVolume: 0,
+    cargoHold: 0,
+    fuelLoad: 1.2,
     scale: 0.88,
     landingMult: 1,
     blurb: 'Medevac rotary — helipad only.',
@@ -245,6 +361,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 0,
     paxMin: 4,
     paxMax: 8,
+    seats: 12,
+    bagVolume: 0,
+    cargoHold: 0,
+    fuelLoad: 1,
     scale: 0.82,
     landingMult: 1,
     blurb: 'Executive rotary — helipad only.',
@@ -256,6 +376,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 20,
     paxMin: 400,
     paxMax: 525,
+    seats: 525,
+    bagVolume: 400,
+    cargoHold: 12,
+    fuelLoad: 254,
     scale: 2.05,
     landingMult: 1.95,
     blurb: 'Superjumbo — Heavy metal pack + heavy strip.',
@@ -268,6 +392,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 20,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 150,
+    fuelLoad: 230,
     scale: 1.95,
     landingMult: 1.85,
     blurb: 'Outsize freighter — Heavy metal pack + heavy strip.',
@@ -280,6 +408,10 @@ export const AIRFRAMES: Record<string, Airframe> = {
     minRunway: 20,
     paxMin: 0,
     paxMax: 0,
+    seats: 0,
+    bagVolume: 0,
+    cargoHold: 127,
+    fuelLoad: 150,
     scale: 1.88,
     landingMult: 1.75,
     blurb: 'Strategic airlifter — Guard host + Military ramp research.',
@@ -358,6 +490,41 @@ export function craftRoleLabel(kind: AircraftKind): string {
   }
 }
 
+/** Load factor inside the sim's pax band, using the type's seat count. */
+export function paxForAirframe(af: Airframe, rng: () => number = Math.random): number {
+  if (af.seats <= 0 || af.paxMax <= 0) return 0
+  const factor = 0.62 + rng() * 0.33
+  const raw = Math.round(af.seats * factor)
+  return Math.max(af.paxMin, Math.min(af.paxMax, raw))
+}
+
+/** Cap an estimated bag load at the type's hold. */
+export function bagUnitsForAirframe(af: Airframe, estimate: number): number {
+  if (af.bagVolume <= 0 || estimate <= 0) return 0
+  return Math.max(1, Math.min(af.bagVolume, estimate))
+}
+
+/** Freight on board, as a fraction of the published hold. */
+export function cargoUnitsForAirframe(af: Airframe, rng: () => number = Math.random): number {
+  if (af.cargoHold <= 0) return 0
+  return Math.max(1, Math.round(af.cargoHold * (0.55 + rng() * 0.4)))
+}
+
+/** Pump time. A 737-class load stays near the old 3.6s dwell; heavies take longer. */
+export function fuelDwellSeconds(af: Airframe | undefined): number {
+  const tonnes = af?.fuelLoad ?? 20
+  return Math.max(1.6, Math.min(9, 1.6 + (tonnes / 20) * 2.2))
+}
+
+/** Deboard / board / service stretch. Regionals stay close to 1; widebodies run longer. */
+export function turnaroundScale(af: Airframe | undefined, cargo: boolean): number {
+  if (!af) return 1
+  if (cargo || af.kind === 'freighter') {
+    return Math.max(0.85, Math.min(2.4, 0.8 + af.cargoHold / 80))
+  }
+  return Math.max(0.75, Math.min(2.1, 0.75 + af.seats / 160))
+}
+
 export function airframesForKind(kind: AircraftKind): Airframe[] {
   return Object.values(AIRFRAMES).filter((a) => a.kind === kind)
 }
@@ -366,11 +533,15 @@ export function pickAirframe(
   kind: AircraftKind,
   longestRunway: number,
   unlocked: ResearchId[] = [],
+  fieldLevel?: number,
+  accepts?: (id: string) => boolean,
 ): Airframe | null {
   const pool = airframesForKind(kind).filter(
     (a) =>
       (a.minRunway === 0 || longestRunway >= a.minRunway) &&
-      researchOk(a, unlocked),
+      researchOk(a, unlocked) &&
+      (fieldLevel == null || tierOpen(a.id, fieldLevel, unlocked)) &&
+      (!accepts || accepts(a.id)),
   )
   if (!pool.length) return null
   return pool[Math.floor(Math.random() * pool.length)]
@@ -382,6 +553,8 @@ export function pickAirframeWithFallback(
   longestRunway: number,
   cargo: boolean,
   unlocked: ResearchId[] = [],
+  fieldLevel?: number,
+  accepts?: (id: string) => boolean,
 ): Airframe | null {
   const order: AircraftKind[] = cargo
     ? [preferred, 'freighter']
@@ -390,7 +563,7 @@ export function pickAirframeWithFallback(
   for (const k of order) {
     if (seen.has(k)) continue
     seen.add(k)
-    const af = pickAirframe(k, longestRunway, unlocked)
+    const af = pickAirframe(k, longestRunway, unlocked, fieldLevel, accepts)
     if (af) return af
   }
   return null

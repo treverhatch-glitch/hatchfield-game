@@ -1,3 +1,10 @@
+import type { LandPlotConfig } from '../land/types.ts'
+import {
+  HANGAR_OFFERS,
+  LINK_OFFERS,
+  RESEARCH_COSTS,
+  STAND_OFFERS,
+} from '../scale/data'
 import type {
   Airline,
   AirlinePersona,
@@ -14,6 +21,7 @@ import type {
   RoomDef,
   StandAccess,
   StandClass,
+  Tile,
   Tool,
 } from './types'
 
@@ -70,6 +78,10 @@ export const BAGS_COST = 4800
 /** Cheap paint for check-in → makeup → bay bag belts. */
 export const BELT_COST = 900
 export const FUEL_COST = 5600
+/** Galley production for the ground fleet. Field level 2. */
+export const KITCHEN_COST = 7200
+/** Stages fuel, galley, bag, and bus trucks. Field level 2. A second depot adds another fleet. */
+export const DEPOT_COST = 9800
 export const FIRE_COST = 12000
 export const POLICE_COST = 11000
 export const CARGO_COST = 16000
@@ -222,6 +234,59 @@ export const AIRLINE_TIER_META: Record<
 }
 
 export const PARCEL_COST = 28_000
+
+/**
+ * Expansion plots (Cities: Skylines tile buy) and the daily sinks that sit on them.
+ * The starter plot is granted by the city/factory purchase. Further plots must
+ * touch land you own, and field level caps how many you may hold.
+ */
+export const LAND_PLOT = {
+  cols: 4,
+  rows: 4,
+  starterCol: 1,
+  starterRow: 1,
+  ownedCapByLevel: [0, 1, 3, 6, 10, 16],
+  basePrice: PARCEL_COST,
+  distancePremium: 0.35,
+  ownedPremium: 0.12,
+  zoneMult: {
+    core: 1.25,
+    apron: 1,
+    approach: 0.9,
+    industrial: 0.72,
+    fringe: 0.8,
+  },
+  dailyUpkeep: 180,
+  propertyTaxRate: 0.0012,
+  insuranceRate: 0.0004,
+  insurancePerIncident: 0.08,
+  insuranceIncidentCap: 6,
+  utilityPerPower: 14,
+  utilityPerWater: 9,
+  operatingLicence: [0, 0, 240, 520, 980, 1_600],
+  arffLicence: 110,
+  intlLicence: 740,
+  maintenanceContract: 1_250,
+  contractRepair: 1.2,
+  contractRepairRate: 0.15,
+} satisfies LandPlotConfig
+
+/** Power and water load per stamped tile. Utilities scale with the total. */
+export const TILE_UTILITY: Partial<Record<Tile, { power?: number; water?: number }>> = {
+  terminal: { power: 4, water: 1 },
+  fuel: { power: 2 },
+  tower: { power: 3 },
+  hangar: { power: 2 },
+  cargo: { power: 2 },
+  snack: { power: 1, water: 1 },
+  bags: { power: 2 },
+  hotel: { power: 2, water: 3 },
+  fire: { power: 1, water: 2 },
+  deice: { power: 1, water: 1 },
+  police: { power: 1 },
+  guard: { power: 1 },
+}
+
 export const RAIL_CITY_COST = 22_000
 /**
  * Starter kit must be buyable after city land on standard (150k − 95k = 55k).
@@ -837,11 +902,22 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Medium remote bay. Jetway toggle attaches a hall gate for fast board/deboard.',
   },
   {
+    tool: 'stand_w',
+    tile: 'stand',
+    name: STAND_OFFERS.wide.name,
+    cost: STAND_OFFERS.wide.cost,
+    minFieldLevel: 4,
+    research: 'widebody_ops',
+    blurb: 'Widebody bay, two jet-bridge doors. Needs Field level 4 and Widebody ops.',
+  },
+  {
     tool: 'stand_l',
     tile: 'stand',
-    name: 'Stand L',
-    cost: STAND_L_COST,
-    blurb: 'Large remote bay — widebody / freighter / mil. Jetway toggle for attached gates.',
+    name: 'Stand J',
+    cost: STAND_OFFERS.jumbo.cost,
+    minFieldLevel: 5,
+    research: 'heavy_pack',
+    blurb: 'Jumbo bay for the A380 class, three bridges. Needs Field level 5 and Heavy metal pack.',
   },
   {
     tool: 'term_bus',
@@ -890,7 +966,24 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'fuel',
     name: 'Fuel farm',
     cost: FUEL_COST,
-    blurb: 'Beside pavement. Sign a carrier and buy loads.',
+    minFieldLevel: 1,
+    blurb: 'Field level 1. Beside pavement. Sign a carrier and buy loads.',
+  },
+  {
+    tool: 'kitchen',
+    tile: 'kitchen',
+    name: 'Catering kitchen',
+    cost: KITCHEN_COST,
+    minFieldLevel: 2,
+    blurb: 'Field level 2. Cooks meals for the galley trucks. Place it beside a road.',
+  },
+  {
+    tool: 'depot',
+    tile: 'depot',
+    name: 'Vehicle depot',
+    cost: DEPOT_COST,
+    minFieldLevel: 2,
+    blurb: 'Field level 2. Fuel, galley, bag, and bus trucks stage here. A second depot adds another fleet.',
   },
   {
     tool: 'fire',
@@ -930,9 +1023,72 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'hangar',
     tile: 'hangar',
-    name: 'Maintenance hangar',
+    name: 'Line hangar',
     cost: HANGAR_COST,
-    blurb: 'Overnight checks. Raises reputation when stands are busy.',
+    blurb: 'Narrowbody overnight checks. Raises reputation when stands are busy.',
+  },
+  {
+    tool: 'hangar_w',
+    tile: 'hangar',
+    name: HANGAR_OFFERS.wide.name,
+    cost: HANGAR_OFFERS.wide.cost,
+    minFieldLevel: 4,
+    research: 'widebody_ops',
+    blurb: 'Widebody bay. A 787-class jet will not take line maintenance in the small hangar.',
+  },
+  {
+    tool: 'hangar_j',
+    tile: 'hangar',
+    name: HANGAR_OFFERS.jumbo.name,
+    cost: HANGAR_OFFERS.jumbo.cost,
+    minFieldLevel: 5,
+    research: 'heavy_pack',
+    blurb: 'Jumbo bay. Required before an A380-class aircraft can take hangar maintenance.',
+  },
+  {
+    tool: 'fuel_rail',
+    tile: 'fuel_rail',
+    name: LINK_OFFERS.fuel_rail.name,
+    cost: LINK_OFFERS.fuel_rail.cost,
+    minFieldLevel: 5,
+    research: 'rail_fuel',
+    blurb: 'Paint a line from the map edge to the oil station. Research alone does not deliver fuel.',
+  },
+  {
+    tool: 'oil',
+    tile: 'oil',
+    name: LINK_OFFERS.oil.name,
+    cost: LINK_OFFERS.oil.cost,
+    minFieldLevel: 5,
+    research: 'rail_fuel',
+    blurb: 'Unloads the fuel train into the tank farm. Place it against the farm and the rail.',
+  },
+  {
+    tool: 'travelator',
+    tile: 'travelator',
+    name: LINK_OFFERS.travelator.name,
+    cost: LINK_OFFERS.travelator.cost,
+    minFieldLevel: 3,
+    research: 'travelator',
+    blurb: 'Moving walkway. Passengers on it move faster. Link the terminal to a widebody stand.',
+  },
+  {
+    tool: 'skywalk',
+    tile: 'skywalk',
+    name: LINK_OFFERS.skywalk.name,
+    cost: LINK_OFFERS.skywalk.cost,
+    minFieldLevel: 4,
+    research: 'skywalk',
+    blurb: 'Bridge between the terminal and a pier. Widebody gates need this link.',
+  },
+  {
+    tool: 'mover',
+    tile: 'mover',
+    name: LINK_OFFERS.mover.name,
+    cost: LINK_OFFERS.mover.cost,
+    minFieldLevel: 5,
+    research: 'people_mover',
+    blurb: 'Automated people-mover. Jumbo piers are too far to walk.',
   },
   {
     tool: 'helipad',
@@ -1072,13 +1228,23 @@ export const TOOL_LABEL: Record<Tool, string> = {
   taxi: 'Taxiway',
   stand_s: 'Stand S',
   stand: 'Stand M',
-  stand_l: 'Stand L',
+  stand_w: 'Stand W',
+  stand_l: 'Stand J',
+  hangar_w: 'Wide hangar',
+  hangar_j: 'Jumbo hangar',
+  fuel_rail: 'Fuel rail',
+  oil: 'Oil station',
+  travelator: 'Travelator',
+  skywalk: 'Skywalk',
+  mover: 'People mover',
   terminal: 'Shell',
   premade: 'Premade hall',
   snack: 'Snack',
   bags: 'Bags',
   belt: 'Belt',
   fuel: 'Fuel',
+  kitchen: 'Kitchen',
+  depot: 'Depot',
   fire: 'Fire',
   police: 'Police',
   cargo: 'Cargo',
@@ -1187,6 +1353,8 @@ export interface ResearchNode {
   blurb: string
   /** Prior unlock required, if any. */
   requires?: ResearchId
+  /** Hidden until the field reaches this level. */
+  minFieldLevel?: 1 | 2 | 3 | 4 | 5
 }
 
 /** CEO-style R&D desk — points from turnarounds + pax. */
@@ -1208,15 +1376,24 @@ export const RESEARCH_NODES: ResearchNode[] = [
     id: 'stand_class',
     name: 'Stand classes',
     cost: 40,
-    blurb: 'Unlock Stand L stamps + smarter inbound capacity. S/M always available.',
+    blurb: 'Opens the widebody stand research. S/M bays stay available.',
     requires: 'deice',
+  },
+  {
+    id: 'widebody_ops',
+    name: 'Widebody ops',
+    cost: RESEARCH_COSTS.widebody_ops,
+    blurb: '787, 777, and A350 turns. Needs the matching stand, trucks, and tank.',
+    requires: 'stand_class',
+    minFieldLevel: 4,
   },
   {
     id: 'heavy_pack',
     name: 'Heavy metal pack',
     cost: 55,
-    blurb: 'Unlock A380 and An-124 Ruslan when the heavy strip is stamped.',
-    requires: 'stand_class',
+    blurb: 'Unlock the A380 class, jumbo stands, and the jumbo hangar once the widebody pillar is in.',
+    requires: 'widebody_ops',
+    minFieldLevel: 5,
   },
   {
     id: 'mil_ramp',
@@ -1224,6 +1401,101 @@ export const RESEARCH_NODES: ResearchNode[] = [
     cost: 42,
     blurb: 'C-5M Super Galaxy + dedicated Guard apron (hangar-side hardstands, not pax gates).',
     requires: 'heavy_pack',
+  },
+  {
+    id: 'hydrant_fuel',
+    name: 'Hydrant fuel system',
+    cost: RESEARCH_COSTS.hydrant_fuel,
+    blurb: 'Pits at the stand. Fuel comes from the farm, not a bowser. Required before a jumbo can be fuelled.',
+    requires: 'widebody_ops',
+    minFieldLevel: 4,
+  },
+  {
+    id: 'rail_fuel',
+    name: 'Fuel rail',
+    cost: RESEARCH_COSTS.rail_fuel,
+    blurb: 'Unlocks the fuel rail and the oil transfer station. Trains do not run until both are connected.',
+    requires: 'hydrant_fuel',
+    minFieldLevel: 5,
+  },
+  {
+    id: 'tank_farm_ii',
+    name: 'Tank farm II',
+    cost: RESEARCH_COSTS.tank_farm_ii,
+    blurb: 'Larger on-site jet fuel storage for widebody banks.',
+    requires: 'widebody_ops',
+    minFieldLevel: 4,
+  },
+  {
+    id: 'tank_farm_iii',
+    name: 'Tank farm III',
+    cost: RESEARCH_COSTS.tank_farm_iii,
+    blurb: 'Jumbo tank farm. Holds an A380-class uplift.',
+    requires: 'tank_farm_ii',
+    minFieldLevel: 5,
+  },
+  {
+    id: 'bag_sorter',
+    name: 'Belts and sorter',
+    cost: RESEARCH_COSTS.bag_sorter,
+    blurb: 'Replaces manual bag carts with belts and a sorter.',
+    requires: 'stand_class',
+    minFieldLevel: 3,
+  },
+  {
+    id: 'bag_bhs',
+    name: 'Automated baggage',
+    cost: RESEARCH_COSTS.bag_bhs,
+    blurb: 'Full baggage system with early-bag storage for jumbo banks.',
+    requires: 'bag_sorter',
+    minFieldLevel: 5,
+  },
+  {
+    id: 'self_service',
+    name: 'Kiosks and bag drop',
+    cost: RESEARCH_COSTS.self_service,
+    blurb: 'Self check-in and bag drop beside the desks.',
+    minFieldLevel: 2,
+  },
+  {
+    id: 'ct_lanes',
+    name: 'Scanner lanes',
+    cost: RESEARCH_COSTS.ct_lanes,
+    blurb: 'Extra security lanes for a widebody bank.',
+    requires: 'self_service',
+    minFieldLevel: 3,
+  },
+  {
+    id: 'egates',
+    name: 'E-gates',
+    cost: RESEARCH_COSTS.egates,
+    blurb: 'Automated passport gates for a jumbo departure bank.',
+    requires: 'ct_lanes',
+    minFieldLevel: 5,
+  },
+  {
+    id: 'travelator',
+    name: 'Travelators',
+    cost: RESEARCH_COSTS.travelator,
+    blurb: 'Moving walkways. Passengers on them move faster.',
+    requires: 'self_service',
+    minFieldLevel: 3,
+  },
+  {
+    id: 'skywalk',
+    name: 'Skywalks',
+    cost: RESEARCH_COSTS.skywalk,
+    blurb: 'Bridges between the terminal and a pier.',
+    requires: 'travelator',
+    minFieldLevel: 4,
+  },
+  {
+    id: 'people_mover',
+    name: 'People mover',
+    cost: RESEARCH_COSTS.people_mover,
+    blurb: 'Automated trains between the terminal and a jumbo pier.',
+    requires: 'skywalk',
+    minFieldLevel: 5,
   },
 ]
 

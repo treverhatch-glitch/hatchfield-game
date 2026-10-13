@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
+import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
+import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
+import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
 import {
   BUDGET_BLURB,
   BUDGET_LABEL,
@@ -21,8 +24,8 @@ import {
   bizModelBlurb,
   MECHANIC_HIRE,
   MIL_AGREE_COST,
+  LAND_PLOT,
   money,
-  PARCEL_COST,
   parkTermLabel,
   personaBlurb,
   STAND_JETWAY_MULT,
@@ -43,8 +46,15 @@ import {
   TOOL_LABEL,
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
-import { formatClock, type Game } from '../game/sim'
+import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
+import { LineChart } from './LineChart'
+
+function parcelButtonLabel(game: Game): string {
+  const offer = game.nextParcelOffer()
+  if (!offer) return game.site ? 'Parcels full' : 'Buy land first'
+  return `${offer.name} ${money(offer.price)}${offer.locked ? ` · need Lv${offer.needLevel}` : ''}`
+}
 
 const BUDGET_KEYS: BudgetKey[] = [
   'maintenance',
@@ -64,17 +74,34 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'stands',
     label: 'Stands',
-    tools: ['stand_s', 'stand', 'stand_l'],
+    tools: ['stand_s', 'stand', 'stand_w', 'stand_l'],
   },
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt'],
+    tools: ['premade', 'terminal', 'term_bus', 'belt', 'travelator', 'skywalk', 'mover'],
   },
   {
     id: 'ops',
     label: 'Ops',
-    tools: ['fuel', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'guard', 'tower', 'hangar'],
+    tools: [
+      'fuel',
+      'kitchen',
+      'depot',
+      'bags',
+      'belt',
+      'snack',
+      'fire',
+      'police',
+      'cargo',
+      'guard',
+      'tower',
+      'hangar',
+      'hangar_w',
+      'hangar_j',
+      'fuel_rail',
+      'oil',
+    ],
   },
   {
     id: 'landside',
@@ -108,6 +135,55 @@ type PanelId =
   | 'services'
   | null
 
+type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
+
+const ECO_TABS: { id: EcoTab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'income', label: 'Income' },
+  { id: 'expenses', label: 'Expenses' },
+  { id: 'loans', label: 'Loans' },
+  { id: 'charts', label: 'Charts' },
+]
+
+function toolCost(tool: Tool): number | null {
+  if (tool === 'runway_short') return SHORT_RUNWAY_COST
+  if (tool === 'runway') return RUNWAY_PREFAB_COST
+  if (tool === 'runway_heavy') return HEAVY_RUNWAY_COST
+  if (tool === 'premade') return PREMADE_TERMINAL_COST
+  if (tool === 'clear') return null
+  return BUILDINGS.find((b) => b.tool === tool)?.cost ?? null
+}
+
+function TrayMark({ tool }: { tool: string }) {
+  const kind = tool.includes('runway')
+    ? 'strip'
+    : tool === 'taxi' || tool === 'road' || tool === 'belt'
+      ? 'path'
+      : tool.startsWith('stand')
+        ? 'stand'
+        : tool === 'clear'
+          ? 'clear'
+          : tool.includes('hotel') || tool.startsWith('park') || tool === 'bus' || tool === 'rail'
+            ? 'land'
+            : 'ops'
+  return (
+    <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
+      {kind === 'strip' ? <rect x="3" y="13" width="26" height="6" rx="1" fill="currentColor" /> : null}
+      {kind === 'path' ? (
+        <path d="M6 24 L16 8 L26 24" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      ) : null}
+      {kind === 'stand' ? (
+        <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      ) : null}
+      {kind === 'clear' ? (
+        <path d="M8 8 L24 24 M24 8 L8 24" stroke="currentColor" strokeWidth="2.4" />
+      ) : null}
+      {kind === 'land' ? <rect x="7" y="9" width="18" height="14" rx="2" fill="currentColor" /> : null}
+      {kind === 'ops' ? <path d="M16 5 L28 26 H4 Z" fill="currentColor" /> : null}
+    </svg>
+  )
+}
+
 const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
@@ -119,12 +195,16 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
-  const [buildMenu, setBuildMenu] = useState(BUILD_MENUS[0].id)
+  const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panel, setPanel] = useState<PanelId>(null)
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
-  const menuTools = BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? BUILD_MENUS[0].tools
+  const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const [inboxOpen, setInboxOpen] = useState(false)
+  const menuTools = buildMenu
+    ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
+    : []
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
@@ -163,12 +243,23 @@ export function Hud({ game }: { game: Game }) {
   }
 
   const ticker = game.news.slice(0, 5)
+  const xp = game.fieldXpToNext()
+  const standing = game.avgStanding()
+  const alerts: string[] = []
+  if (game.pendingThreat) alerts.push(game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security')
+  if (game.pendingEmergency) alerts.push('Emergency')
+  if (game.warnedAirlines().length) alerts.push('Standing low')
+  if (holding) alerts.push(`${holding} holding`)
+  if (game.apronJamLine()) alerts.push('Apron jam')
+  if (game.securityQueueCount() >= 3) alerts.push('Security queue')
+  if (game.lostPaxCount() > 0) alerts.push('Lost pax')
+  if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
 
   return (
     <div className="hud">
-      <header className="top">
+      <header className="top" data-testid="stats-bar">
         <div className="brand">
-          <strong>Hatchfield</strong>
+          <strong>{game.branding.airportName}</strong>
           <span>
             {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
           </span>
@@ -181,19 +272,48 @@ export function Hud({ game }: { game: Game }) {
         >
           {money(game.cash)}
         </button>
-        <div className="stat">{formatClock(game.clock)}</div>
+        <button
+          type="button"
+          className="stat"
+          title="Recent hourly earnings"
+          onClick={() => {
+            setEcoTab('income')
+            openPanel('economy')
+          }}
+        >
+          {money(game.incomeRate())}/hr
+        </button>
+        <div className="stat" title="One day is a 180-second cycle">
+          {formatSimDate(game.clock)}
+        </div>
+        <div className="speeds stat-speeds" aria-label="Speed">
+          {([0, 1, 3, 5] as Speed[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={game.speed === s ? 'on' : ''}
+              title={s === 0 ? 'Pause' : `${s}x speed`}
+              onClick={() => game.setSpeed(s)}
+            >
+              {s === 0 ? 'Pause' : `${s}x`}
+            </button>
+          ))}
+        </div>
         <div
           className="stat"
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
         >
-          Field {game.fieldRating()} · {game.fieldRatingLabel()}
+          Field Lv {xp.level}
+          {xp.level < 5 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
         </div>
-        <div className="stat">Rep {Math.round(game.reputation)}</div>
+        <div className="stat" title="Average Standing of signed airlines">
+          Standing {standing == null ? '—' : Math.round(standing)}
+        </div>
         <div
-          className="stat"
-          title={`Field XP ${game.fieldXp} — unlocks airline tiers`}
+          className={`stat${alerts.length ? ' alert' : ''}`}
+          title={alerts.join(' · ') || 'No alerts'}
         >
-          Lv {game.fieldLevel()}
+          {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
         <div className="stat">{game.weatherLabel()}</div>
         <div className="stat" title="Free stands / jets holding">
@@ -240,7 +360,11 @@ export function Hud({ game }: { game: Game }) {
         </div>
       ) : null}
 
-      <div className="letter-stack" aria-label="Incoming letters">
+      <div
+        className={`letter-stack${game.showCoach() ? ' below-coach' : ''}`}
+        aria-label="Incoming letters"
+        data-testid="letter-stack"
+      >
         {(() => {
           type Letter = {
             id: string
@@ -251,6 +375,7 @@ export function Hud({ game }: { game: Game }) {
             tone: 'ok' | 'good' | 'bad' | 'warn'
             left: number | null
             live?: boolean
+            cardData?: StandingAdvisorCard
           }
           const letters: Letter[] = []
           if (game.offer && offerAirline) {
@@ -397,31 +522,51 @@ export function Hud({ game }: { game: Game }) {
               left: null,
             })
           }
+          for (const card of game.standingAdvisor.activeCards) {
+            const a = game.airline(card.airlineId)
+            const causesSummary = card.topCauses
+              .map((c, i) => `${i + 1}. ${c.label} (Fix: ${c.fix})`)
+              .join(' · ')
+            letters.push({
+              id: card.id,
+              kind: 'Advisor Warning',
+              from: a.name,
+              title: `Standing Collapse Risk · ${a.name}`,
+              blurb: `Standing ${card.standing} · predicted departure in ~${card.daysToLeave} game days. Causes & fixes: ${causesSummary}`,
+              tone: 'warn',
+              left: null,
+              cardData: card,
+            })
+          }
           if (!letters.length) return null
           const active =
             openLetter && letters.some((l) => l.id === openLetter)
               ? openLetter
               : null
-          return letters.map((letter) => {
+          const openOne = letters.find((l) => l.id === active) ?? null
+          const rest = letters.filter((l) => l.id !== active)
+          const cards = openOne ? [openOne, ...rest.slice(0, 1)] : letters.slice(0, 2)
+          const inbox = openOne ? rest.slice(1) : letters.slice(2)
+          const renderLetter = (letter: (typeof letters)[number]) => {
             const open = active === letter.id
             return (
               <article
                 key={letter.id}
                 className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
-                data-testid={letter.id === 'field' ? 'field-task' : undefined}
-                onMouseEnter={() => setOpenLetter(letter.id)}
-                onMouseLeave={() =>
-                  setOpenLetter((cur) => (cur === letter.id ? null : cur))
+                data-testid={
+                  letter.id === 'field'
+                    ? 'field-task'
+                    : letter.id === 'contract'
+                      ? 'contract-letter'
+                      : undefined
                 }
               >
                 <button
                   type="button"
                   className="letter-tab"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    /* Open on click — do not toggle closed (mouseenter + click was a no-op). */
-                    setOpenLetter(letter.id)
-                  }}
+                  onClick={() =>
+                    setOpenLetter((cur) => (cur === letter.id ? null : letter.id))
+                  }
                 >
                   <span className="letter-kind">{letter.kind}</span>
                   <span className="letter-from">{letter.from}</span>
@@ -434,14 +579,37 @@ export function Hud({ game }: { game: Game }) {
                 <div className="letter-body">
                   <strong>{letter.title}</strong>
                   <p>{letter.blurb}</p>
+                  {letter.id === 'contract' && offerAirline ? (
+                    <>
+                      <p className="muted">
+                        Terms · landing {money(offerAirline.landing)} · bags {money(offerAirline.bags)}
+                        {offerAirline.catering
+                          ? ` · catering ${money(offerAirline.catering)}`
+                          : ''}
+                      </p>
+                      <ul className="req-list">
+                        {game.reqReport(offerAirline.id).map((row) => (
+                          <li key={row.label} data-met={row.met ? '1' : '0'}>
+                            {row.met ? 'Met' : 'Missing'} · {row.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : null}
                   <div className="row letter-actions">
                     {letter.id === 'contract' ? (
                       <>
-                        <button type="button" className="on" onClick={() => game.acceptOffer()}>
-                          Sign
+                        <button type="button" className="on" onClick={() => game.openNegotiationPanel()}>
+                          Negotiate
                         </button>
-                        <button type="button" onClick={() => game.declineOffer()}>
-                          Decline
+                        <button type="button" onClick={() => game.acceptNegotiation()}>
+                          Accept
+                        </button>
+                        <button type="button" onClick={() => game.walkNegotiation()}>
+                          Walk
+                        </button>
+                        <button type="button" onClick={() => game.snoozeOffer()}>
+                          Later
                         </button>
                       </>
                     ) : null}
@@ -534,11 +702,55 @@ export function Hud({ game }: { game: Game }) {
                         Dismiss
                       </button>
                     ) : null}
+                    {letter.cardData ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (letter.cardData) game.standingAdvisor.dismissCard(letter.cardData.id)
+                          game.emit()
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </article>
             )
-          })
+          }
+          return (
+            <>
+              {cards.map(renderLetter)}
+              {inbox.length ? (
+                <div className="letter-inbox">
+                  <button
+                    type="button"
+                    className="letter-tab"
+                    onClick={() => setInboxOpen((v) => !v)}
+                  >
+                    <span className="letter-kind">Inbox</span>
+                    <span className="letter-from">{inbox.length} more</span>
+                  </button>
+                  {inboxOpen
+                    ? inbox.map((letter) => (
+                        <button
+                          key={letter.id}
+                          type="button"
+                          className="inbox-row"
+                          onClick={() => {
+                            setOpenLetter(letter.id)
+                            setInboxOpen(false)
+                          }}
+                        >
+                          {letter.kind} · {letter.from}
+                          {letter.left != null ? ` · ${letter.left}s` : ''}
+                        </button>
+                      ))
+                    : null}
+                </div>
+              ) : null}
+            </>
+          )
         })()}
       </div>
 
@@ -556,6 +768,7 @@ export function Hud({ game }: { game: Game }) {
               <button
                 type="button"
                 className="ghost"
+                data-testid="panel-close"
                 onClick={() => {
                   setPanel(null)
                   setChromePinned(false)
@@ -567,7 +780,108 @@ export function Hud({ game }: { game: Game }) {
             <div className="panel-body">
               {panel === 'economy' ? (
                 <>
+                  <div className="eco-tabs" role="tablist">
+                    {ECO_TABS.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={ecoTab === tab.id}
+                        className={ecoTab === tab.id ? 'on' : ''}
+                        onClick={() => setEcoTab(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  {ecoTab === 'income' ? (
+                    <section data-testid="eco-income">
+                      <h3>Income</h3>
+                      <p className="muted eco-line">
+                        Recent {money(game.incomeRate())}/hr · pax/day {game.paxPerDay || game.dayPax}{' '}
+                        · cargo/day {game.cargoPerDay || game.dayCargo}
+                      </p>
+                      <p className="muted">
+                        Landside fees {money(game.landsideIncome())} this window · fill{' '}
+                        {Math.round(game.landsideUsageRate() * 100)}%
+                      </p>
+                      <ul className="airlines">
+                        {game.econHist.length ? (
+                          game.econHist
+                            .slice(-8)
+                            .reverse()
+                            .map((p) => (
+                              <li key={p.t}>
+                                {formatSimDate(p.t)} · {money(p.income)}
+                              </li>
+                            ))
+                        ) : (
+                          <li className="muted">Income lines appear after the first hour.</li>
+                        )}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {ecoTab === 'expenses' ? (
+                    <section data-testid="eco-expenses">
+                      <h3>Expenses</h3>
+                      <p className="muted eco-line" data-testid="budget-payroll">
+                        Payroll ~{money(game.payrollPreview())} / 30s
+                        {game.fieldOpsMult() > 1.05
+                          ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
+                          : ''}{' '}
+                        · landside {money(game.landsideUpkeep())}/30s
+                      </p>
+                      <p className="muted">
+                        {game.loanBalance > 0
+                          ? `Open loan ${money(game.loanBalance)} — interest posts on the loan clock.`
+                          : 'No loan interest running.'}
+                      </p>
+                      <ul className="airlines">
+                        {game.econHist.length ? (
+                          game.econHist
+                            .slice(-8)
+                            .reverse()
+                            .map((p) => (
+                              <li key={p.t}>
+                                {formatSimDate(p.t)} · {money(p.expense)}
+                              </li>
+                            ))
+                        ) : (
+                          <li className="muted">Expense lines appear after the first hour.</li>
+                        )}
+                      </ul>
+                    </section>
+                  ) : null}
+                  {ecoTab === 'charts' ? (
+                    <section data-testid="eco-charts">
+                      <h3>Charts</h3>
+                      <p className="muted">One point per in-game hour. A day is 180 seconds.</p>
+                      <LineChart
+                        title="Cash"
+                        series={[{ name: 'Cash', color: '#e7c56a', values: game.econHist.map((p) => p.cash) }]}
+                        empty="Cash line starts after the first hour."
+                      />
+                      <LineChart
+                        title="Income vs expenses"
+                        series={[
+                          { name: 'Income', color: '#8ee0a8', values: game.econHist.map((p) => p.income) },
+                          { name: 'Expenses', color: '#ff9b8f', values: game.econHist.map((p) => p.expense) },
+                        ]}
+                      />
+                      <LineChart
+                        title="Passengers / day"
+                        series={[{ name: 'Pax', color: '#6a9ec8', values: game.econHist.map((p) => p.pax) }]}
+                      />
+                      <LineChart
+                        title="Cargo / day"
+                        series={[{ name: 'Cargo', color: '#c9a227', values: game.econHist.map((p) => p.cargo) }]}
+                      />
+                    </section>
+                  ) : null}
+                  {ecoTab === 'overview' || ecoTab === 'loans' ? (
                   <section>
+                    {ecoTab === 'overview' ? (
+                    <>
                     <h3>Cash & capital</h3>
                     <p className="muted eco-line" data-testid="economy-cash">
                       Bank {money(game.cash)}
@@ -592,6 +906,14 @@ export function Hud({ game }: { game: Game }) {
                           ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
                           : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). Empty plot only.'}
                     </p>
+                    <p className="muted">
+                      Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}{' '}
+                      · recent {money(game.incomeRate())}/hr
+                    </p>
+                    </>
+                    ) : null}
+                    {ecoTab === 'loans' ? (
+                    <>
                     <div className="loan-products">
                       <h4 className="loan-h">Bank desk</h4>
                       <p className="muted eco-line">
@@ -630,10 +952,11 @@ export function Hud({ game }: { game: Game }) {
                           Pay loan
                         </button>
                         <button type="button" onClick={() => game.buyParcel()}>
-                          Parcel {money(PARCEL_COST * game.parcels)}
-                          {game.fieldLevel() < Math.min(5, game.parcels)
-                            ? ` · need Lv${Math.min(5, game.parcels)}`
-                            : ''}
+                          {parcelButtonLabel(game)}
+                        </button>
+                        <button type="button" onClick={() => game.toggleMaintenanceContract()}>
+                          MX contract{' '}
+                          {game.maintenanceContract ? 'on' : money(LAND_PLOT.maintenanceContract)}
                         </button>
                         <button type="button" onClick={() => game.investRail()}>
                           City rail {money(RAIL_CITY_COST)}
@@ -654,8 +977,12 @@ export function Hud({ game }: { game: Game }) {
                         Long park {game.carParkLong ? '✓' : money(CARPARK_LONG_COST)}
                       </button>
                     </div>
+                    </>
+                    ) : null}
+                    {ecoTab === 'overview' ? (
                     <p className="muted">
                       parcels {game.parcels}
+                      {game.site ? ` · holding ${money(game.dailyHoldingQuote())}/day` : ''}
                       {game.railLinked ? ' · rail' : ''}
                       {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
                       {game.janitors ? ` · janitors ${game.janitors}` : ''}
@@ -673,7 +1000,10 @@ export function Hud({ game }: { game: Game }) {
                         .filter(Boolean)
                         .join('/') || 'no arrival modes'}
                     </p>
+                    ) : null}
                   </section>
+                  ) : null}
+                  {ecoTab === 'overview' || ecoTab === 'income' ? (
                   <section>
                     <h3>Exchange · HATCH</h3>
                     {game.public ? (
@@ -718,6 +1048,7 @@ export function Hud({ game }: { game: Game }) {
                       </>
                     )}
                   </section>
+                  ) : null}
                 </>
               ) : null}
 
@@ -875,7 +1206,7 @@ export function Hud({ game }: { game: Game }) {
                     )
                   })()}
                   <p className="muted">
-                    Letters on the right are live offers. Standing{' '}
+                    Letters slide in from the left. Standing{' '}
                     {HEAT_REWARD_THRESHOLD}+ unlocks persona perks · warn ≤
                     {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
                     Cross-cut: Charter / LCC / Full-service / Cargo.
@@ -1305,6 +1636,68 @@ export function Hud({ game }: { game: Game }) {
                       Buy 4 loads
                       {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
                     </button>
+                    <p className="muted">
+                      Tank {game.tankTier} · {Math.round(game.tankLitres).toLocaleString('en-US')} /{' '}
+                      {tankDef(game.tankTier).capacityLitres.toLocaleString('en-US')} L · {game.fuelSupply}
+                      {game.contractId ? ` · ${FUEL_CONTRACTS.find((c) => c.id === game.contractId)?.name}` : ''}
+                    </p>
+                    <div className="row">
+                      {FUEL_CONTRACTS.map((c) => {
+                        const gate = canSignContract(c.id, game.fieldLevel(), game.researchUnlocked)
+                        return (
+                          <button key={c.id} type="button" disabled={!gate.ok} onClick={() => game.signScaleContract(c.id)}>
+                            {c.name} {money(c.sign)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="row">
+                      <button type="button" onClick={() => game.setFuelSupply('road')}>
+                        Road tankers
+                      </button>
+                      <button type="button" onClick={() => game.setFuelSupply('rail')}>
+                        Rail
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => game.upgradeTank()}
+                        disabled={!canUpgradeTank(game.tankTier, game.fieldLevel(), game.researchUnlocked).ok}
+                      >
+                        Tank {TANK_TIERS[Math.min(2, game.tankTier)] ? `→ ${tankDef(game.tankTier === 3 ? 3 : ((game.tankTier + 1) as 2 | 3)).capacityLitres.toLocaleString('en-US')} L` : ''}
+                      </button>
+                    </div>
+                    <p className="muted">
+                      Bags: {BAG_SYSTEMS[game.bagSystem].name}. Check-in desks {game.paxDesks}, kiosks {game.paxKiosks}, bag drop {game.paxBagDrops}, scanners {game.scannerLanes}, e-gates {game.eGates}.
+                    </p>
+                    <div className="row">
+                      <button
+                        type="button"
+                        disabled={!canUpgradeBags(game.bagSystem, game.fieldLevel(), game.researchUnlocked).ok}
+                        onClick={() => game.upgradeBagSystem()}
+                      >
+                        Upgrade bags
+                      </button>
+                      {(Object.keys(PAX_UNITS) as (keyof typeof PAX_UNITS)[]).map((id) => {
+                        const gate = canBuyPax(id, game.fieldLevel(), game.researchUnlocked)
+                        return (
+                          <button key={id} type="button" disabled={!gate.ok} onClick={() => game.buyPaxUnit(id)}>
+                            {PAX_UNITS[id].name} {money(PAX_UNITS[id].cost)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="row">
+                      {VEHICLE_OFFERS.map((offer) => {
+                        const gate = canBuyVehicle(offer.type, game.fieldLevel(), game.researchUnlocked)
+                        const owned = game.scaleFleet[offer.type] ?? 0
+                        return (
+                          <button key={offer.type} type="button" disabled={!gate.ok} onClick={() => game.buyScaleVehicle(offer.type)}>
+                            {offer.role} {owned > 0 ? `×${owned} ` : ''}
+                            {money(gate.cost)}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </section>
                   <section>
                     <h3>Catering desk</h3>
@@ -1370,7 +1763,7 @@ export function Hud({ game }: { game: Game }) {
                   ← Apron outside
                 </button>
                 <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
-                  Furnish rooms in Services · doors → check-in → security → airside
+                  Furnish rooms in Services · doors → check-in → security → gates
                 </span>
               </div>
             ) : (
@@ -1390,7 +1783,7 @@ export function Hud({ game }: { game: Game }) {
                       type="button"
                       className={buildMenu === m.id ? 'on' : ''}
                       onClick={() => {
-                        setBuildMenu(m.id)
+                        setBuildMenu((cur) => (cur === m.id ? null : m.id))
                         setPanel(null)
                         setChromePinned(false)
                       }}
@@ -1440,27 +1833,42 @@ export function Hud({ game }: { game: Game }) {
                     </>
                   ) : null}
                 </div>
-                <div className="tools build-tray">
-                  {menuTools.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      className={game.tool === t ? 'on' : ''}
-                      onClick={() => game.setTool(t)}
-                      title={BUILDINGS.find((b) => b.tool === t)?.blurb ?? TOOL_LABEL[t]}
-                    >
-                      {TOOL_LABEL[t]}
-                      {BUILDINGS.find((b) => b.tool === t)
-                        ? ` · ${money(BUILDINGS.find((b) => b.tool === t)!.cost)}`
-                        : ''}
-                    </button>
-                  ))}
+                {buildMenu ? (
+                <div className="tools build-tray" data-testid="build-tray">
+                  {menuTools.map((t) => {
+                    const def = BUILDINGS.find((b) => b.tool === t)
+                    const cost = toolCost(t)
+                    const name = def?.name ?? TOOL_LABEL[t]
+                    const locked = Boolean(def?.minFieldLevel && game.fieldLevel() < def.minFieldLevel)
+                    const tip =
+                      t === 'clear'
+                        ? 'Bulldoze — refunds 40% of the stamp.'
+                        : locked
+                          ? `${name} needs Field level ${def?.minFieldLevel}.`
+                          : (def?.blurb ?? TOOL_LABEL[t])
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`tray-item${game.tool === t ? ' on' : ''}`}
+                        onClick={() => game.setTool(t)}
+                        title={locked ? tip : cost != null ? `${tip} ${money(cost)}` : tip}
+                      >
+                        <TrayMark tool={t} />
+                        <span className="tray-name">{name}</span>
+                        <span className="tray-price">
+                          {locked ? `Field ${def?.minFieldLevel}` : cost != null ? money(cost) : 'Refund'}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
+                ) : null}
               </>
             )}
             <p className="hint">
               {game.view === 'hall'
-                ? '3D hall: landside → security choke → airside. Esc / H returns — apron keeps simming.'
+                ? '3D hall: doors → security → gates. Esc / H returns — the apron keeps running.'
                 : game.tool === 'runway_short'
                   ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15.`
                   : game.tool === 'runway'

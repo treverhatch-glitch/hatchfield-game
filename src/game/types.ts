@@ -31,6 +31,20 @@ export type Tile =
   | 'rail'
   /** Apron terminal-bus depot — ferries remote-stand pax. */
   | 'termbus'
+  /** Catering production for the ground fleet. */
+  | 'kitchen'
+  /** Where fuel, galley, bag, and bus trucks stage. */
+  | 'depot'
+  /** Fuel-supply rail. Delivery starts only when this reaches the map edge. */
+  | 'fuel_rail'
+  /** Unloads a fuel train into the tank farm. */
+  | 'oil'
+  /** Moving walkway. Passengers on it move faster. */
+  | 'travelator'
+  /** Elevated link between a terminal and a pier. */
+  | 'skywalk'
+  /** Automated people-mover guideway. */
+  | 'mover'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -90,6 +104,16 @@ export type Tool =
   | 'bus'
   | 'term_bus'
   | 'rail'
+  | 'kitchen'
+  | 'depot'
+  | 'stand_w'
+  | 'hangar_w'
+  | 'hangar_j'
+  | 'fuel_rail'
+  | 'oil'
+  | 'travelator'
+  | 'skywalk'
+  | 'mover'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -245,8 +269,21 @@ export type ResearchId =
   | 'night_bank'
   | 'deice'
   | 'stand_class'
+  | 'widebody_ops'
   | 'heavy_pack'
   | 'mil_ramp'
+  | 'hydrant_fuel'
+  | 'rail_fuel'
+  | 'tank_farm_ii'
+  | 'tank_farm_iii'
+  | 'bag_sorter'
+  | 'bag_bhs'
+  | 'self_service'
+  | 'ct_lanes'
+  | 'egates'
+  | 'travelator'
+  | 'skywalk'
+  | 'people_mover'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -321,6 +358,10 @@ export interface BuildDef {
   name: string
   cost: number
   blurb: string
+  /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
+  minFieldLevel?: 1 | 2 | 3 | 4 | 5
+  /** Project that must be bought before the stamp is offered. */
+  research?: ResearchId
 }
 
 export interface RoomDef {
@@ -488,6 +529,8 @@ export interface Flight {
   ledger: { label: string; amount: number }[]
   /** Linked timetable slot when spawned from the schedule. */
   scheduleId?: string | null
+  /** Sim-clock scheduled departure. Show-up is keyed to this, not to boarding. */
+  std?: number
   boardingSlow?: boolean
   /** GA: clock when leave was requested; must depart by parkLeaveBy. */
   parkLeaveRequestedAt?: number | null
@@ -515,6 +558,15 @@ export interface Flight {
   mxPay?: number
   /** Airline MX contract wants a hangar visit this turn. */
   mxPending?: boolean
+  /**
+   * Stand id when the ground-logistics module owns this turnaround.
+   * Pushback waits until that turnaround is finished.
+   */
+  groundTurn?: string | null
+  /** Set while an empty farm is holding this departure on the stand. */
+  fuelHeld?: boolean
+  /** Sim-clock when the empty-farm hold started. Past the slot, the flight is cancelled. */
+  fuelHeldSince?: number
   /** One-shot emergency host (divert / tanker) occupying a banked gate. */
   emergencyHost?: boolean
   hostKind?: EmergencyKind
@@ -529,12 +581,19 @@ export interface Flight {
   claimLane?: number | null
   /** Outbound units deposited at check-in so far. */
   bagsDeposited?: number
+  /** Outbound units that made it onto the aircraft. */
+  bagsLoaded?: number
+  /** Outbound units left behind when the flight was released short. */
+  bagsOffloaded?: number
+  /** Inbound units that did not fit the claim hall. */
+  claimLeft?: number
 }
 
 /** Timed bag journey — aggregate units, not per-suitcase agents. */
 export type BagFlowStage =
   | 'idle'
   | 'pax_deposit'
+  | 'hold_screen'
   | 'outbound_sort'
   | 'load_aircraft'
   | 'inflight'
@@ -605,10 +664,26 @@ export type TruckMission =
   | 'city_shed'
   /** City cargo: leave field after delivery. */
   | 'city_depart'
+  /** Contractor van: off-map → guard. */
+  | 'build_guard'
+  /** Contractor / delivery: guard → site, then unload. */
+  | 'build_site'
+  /** Leave the field after the drop. */
+  | 'build_out'
 
 export interface Truck {
   id: string
-  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice' | 'termbus' | 'citycargo'
+  kind:
+    | 'fuel'
+    | 'bags'
+    | 'catering'
+    | 'fire'
+    | 'police'
+    | 'deice'
+    | 'termbus'
+    | 'citycargo'
+    | 'contractor'
+    | 'delivery'
   flightId: string | null
   x: number
   y: number
@@ -707,18 +782,56 @@ export interface TerminalFit {
   capGuests?: number
   /** Claim clear rate multiplier baseline (premade ~0.75, custom can go higher). */
   claimRate?: number
+  /** Prefab tier. 1 is the morning kit. Custom halls ignore this once redesigned. */
+  tier?: 1 | 2 | 3
+  /** Painted floor. Null cells are bare shell. */
+  zones?: (string | null)[][]
+  items?: {
+    id: string
+    def: string
+    c: number
+    r: number
+    wear: number
+    bundle?: boolean
+    rot?: number
+    revenue?: number
+    fill?: number
+  }[]
+  /** Rubbish on the floor, one decal per piece. */
+  litter?: { id: string; c: number; r: number; ox: number; oz: number }[]
+  /** 0–100. Rises with restroom visits; janitors service it down. */
+  restroomDirt?: number
+  /** Wayfinding signs. Each one extends the pathfinding junction cap. */
+  signs?: number
+  bagAllowance?: number
+  /** Security passengers per sim-minute. */
+  secPerMin?: number
+  /** Zone paint or a custom stamp. Ceilings come from placed items. */
+  redesigned?: boolean
 }
 
 export interface GameSnapshot {
   tiles: Tile[][]
   terminalFits: TerminalFit[]
   cash: number
+  /** Serialized airport name and logo. Missing on older saves. */
+  branding?: string
   difficulty: Difficulty
   site: SiteKind | null
   clock: number
   speed: Speed
   fuelBrand: FuelBrand | null
   fuelLoads: number
+  /** Burger servings left on the hall shelf. */
+  foodShelf?: number
+  /** Souvenirs left on the hall shelf. */
+  shopShelf?: number
+  /** Ticket value of sales missed because a shelf was empty. */
+  lostSpend?: number
+  /** Checked bags that left the system. Prefab halls stay at zero. */
+  bagsLost?: number
+  /** Late bags and missed connections. */
+  bagsMishandled?: number
   caterBrand: CaterBrand | null
   mealSold: boolean
   signed: AirlineId[]
@@ -737,6 +850,10 @@ export interface GameSnapshot {
   /** Airport XP toward field level (airline tier unlocks). */
   fieldXp?: number
   parcels: number
+  /** Expansion plots bought after the starter site. Missing on older saves. */
+  ownedPlots?: { id: string; assessed: number }[]
+  /** Outsourced pavement crew. Missing on older saves. */
+  maintenanceContract?: boolean
   railLinked: boolean
   public: boolean
   sharePrice: number
@@ -758,6 +875,21 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
+  /** Size-pillar purchases: fuel contract, tank, fleet, bags, and passenger kit. */
+  pillar?: {
+    contractId: string | null
+    tankTier: 1 | 2 | 3
+    litres: number
+    supply: 'road' | 'rail'
+    roadMinutes: number
+    fleet: Record<string, number>
+    bagSystem: 'carts' | 'sorter' | 'bhs'
+    desks: number
+    kiosks: number
+    bagDrops: number
+    scannerLanes: number
+    eGates: number
+  }
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
@@ -771,6 +903,10 @@ export interface GameSnapshot {
   standClass?: Record<string, StandClass>
   /** Stand tile key "c,r" → remote hardstand vs jetway gate. */
   standAccess?: Record<string, StandAccess>
+  /** Stand key → small / wide / jumbo. Missing L stands stay jumbo for older saves. */
+  standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
+  /** Hangar key → bay size. Missing hangars stay small. */
+  hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   janitors?: number
   researchers?: number
   deskStaff?: number
@@ -779,6 +915,41 @@ export interface GameSnapshot {
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
+  /** Live volume letter — must survive a refresh or the contract vanishes. */
+  cargoVolume?: CargoVolumeJob | null
   startFocus?: StartFocus
   sandbox?: boolean
+  /** In-progress construction. Grass stays until the timer finishes. */
+  sites?: BuildSite[]
+  /** Diplomacy V2 save (adapter state plus airline satisfaction). */
+  diplomacy?: string
+  diplomacySeed?: number
+  /** Negotiation desk (offers, rival, ULCC research). */
+  negotiation?: string
+}
+
+/** A placed building that is still a construction site. */
+export interface BuildSite {
+  id: string
+  kind: 'single' | 'runway' | 'terminal' | 'premade'
+  cells: Vec[]
+  tile: Tile
+  cost: number
+  name: string
+  elapsed: number
+  duration: number
+  warned: boolean
+  vanArrived: boolean
+  delivered: boolean
+  crewSpawned: boolean
+  news?: string
+  tool?: string
+  standClass?: StandClass
+  standAccess?: StandAccess
+  standScale?: 'small' | 'wide' | 'jumbo'
+  hangarScale?: 'small' | 'wide' | 'jumbo'
+  hotelClass?: HotelClass
+  parkTerm?: ParkTerm
+  runwayClass?: RunwayClass
+  origin?: Vec
 }

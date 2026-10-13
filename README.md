@@ -65,7 +65,7 @@ Same controls in **Apron** and **Hall**. Use **Select** (not Move) to inspect; b
 
 **Stands & pax access:** stamp **Remote** bays (cheap) or **Jetway gate** stands (×1.85) that attach to a nearby hall — fast board/deboard, no apron walkers, more hall spend time. Remote stands use a **Terminal bus depot** ferry, or pax **walk** the pavement (slow). Jets, trucks, buses, and walking pax **congest** each other on shared taxi — bad layouts jam.
 
-Browser save key: `apron-save-v24`. New game overwrites it.
+Browser save key: `apron-save-v25`. New game clears it. A new visit shows the title (Continue / New Game). A refresh in the same tab resumes the field.
 
 ## Design docs
 

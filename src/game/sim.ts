@@ -1,4 +1,9 @@
 import {
+  GameDiplomacyAdapter,
+  StandingAdvisor,
+  type StandingCauseCategory,
+} from './standingAdvisor.ts'
+import {
   AIRLINES,
   airlineList,
   BAG_DROP_PAY,
@@ -82,9 +87,9 @@ import {
   normalizeAirline,
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
-  MECHANIC_WAGE,
   MIN_RUNWAY,
-  PARCEL_COST,
+  LAND_PLOT,
+  TILE_UTILITY,
   JETWAY_RANGE,
   MIL_RAMP_RANGE,
   PREMADE_TERMINAL_COST,
@@ -111,11 +116,8 @@ import {
   RAIL_FARE,
   RAIL_STATION_COST,
   JANITOR_HIRE,
-  JANITOR_WAGE,
   RESEARCHER_HIRE,
-  RESEARCHER_WAGE,
   DESK_STAFF_HIRE,
-  DESK_STAFF_WAGE,
   RP_RATE_BARE,
   RP_RATE_BOARD,
   RP_RATE_DESK,
@@ -137,11 +139,18 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
+import { getAircraftSpec } from '../render/aircraft/specs'
+import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
+import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
+import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
+import { terminals } from '../render/world/layout.ts'
+import type { RoomPlan } from '../render/world/rooms.ts'
 import {
   hallPath,
   isAirside,
-  needToNode,
+  NODE_POS,
   openForGuest,
+  reachableNeed,
   openNodesFromRooms,
   bagUnitsForTag,
   estimateFlightBagUnits,
@@ -158,16 +167,173 @@ import {
   type SpendKind,
   type StaffPost,
 } from './guests'
+import { adviseHall, type Advice } from './advisor.ts'
+import { buildSeconds } from './construction.ts'
+import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
+import { CateringBridge, cateringCue } from './cateringBridge.ts'
+import { CargoBridge } from './cargoBridge.ts'
+import { getAudio, soundForEvent } from '../audio/index.ts'
+import {
+  createDiplomacyBridge,
+  GAME_MINUTES_PER_SIM_SECOND,
+  type DiplomacyBridge,
+} from './diplomacyBridge.ts'
+import { NegotiationBridge } from './negotiationBridge.ts'
+import { ULCC_IDS } from '../negotiation/index.ts'
+import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
+import type { DepositTier, ServiceId } from '../negotiation/types.ts'
+import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
+import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
+import type { VehicleType } from '../logistics/types.ts'
+import {
+  BAG_SYSTEMS,
+  FUEL_CONTRACTS,
+  HANGAR_OFFERS,
+  LITRES_PER_LEGACY_LOAD,
+  PAX_UNITS,
+  STAND_OFFERS,
+  VEHICLE_OFFERS,
+} from '../scale/data.ts'
+import {
+  canBuyPax,
+  canBuyVehicle,
+  canSignContract,
+  canUpgradeBags,
+  canUpgradeTank,
+  gameMinutes,
+  hangarScaleForTool,
+  loadsFromLitres,
+  personSpeedMult,
+  pillarReport,
+  pillarUpkeep,
+  placementBlock,
+  scaleAdvice,
+  seedLitresFromLoads,
+  sizeTierOf,
+  standClassForTool,
+  standScaleForTool,
+  tankDef,
+  tickFuel,
+} from '../scale/logic.ts'
+import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
+import { bagWorkDuration, describeBagStage } from './bags'
+import {
+  advanceBagTags,
+  advanceScreen,
+  checkedPieceCount,
+  freshBook,
+  keepPrefabBags,
+  makeBagTag,
+  markClaimLate,
+  ownerClaimReady,
+  type BagBook,
+  type BagTag,
+  type LuggageMotion,
+} from './luggage'
+import {
+  blankZones,
+  ceilingsFor,
+  itemDef,
+  laneStats,
+  GRID_C,
+  GRID_R,
+  HALL_W,
+  lookaheadDepth,
+  needsMaintenance,
+  overCapMultiplier,
+  UNSTAFFED_LANE,
+  prefabZones,
+  schemeItems,
+  schemeLabel,
+  schemeSigns,
+  schemeZones,
+  slowedService,
+  type ItemId,
+  type PlacedItem,
+  type ZoneId,
+} from './terminal.ts'
+import {
+  PLANNED_TURN_SEC,
+  checkInCloseAt,
+  isIntlKind,
+  planShowUp,
+  type ShowTag,
+  type ShowUpPlan,
+} from '../pax/showup.ts'
+import {
+  NODE_ZONE,
+  nodeComfort,
+  outletExtraStock,
+  pickOutlet,
+  placementCheck,
+  refundFor,
+  seatsByZone,
+  type PlacementCheck,
+} from './terminalKit.ts'
+import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
+import {
+  cellAt,
+  dropLitterAt,
+  snackKind,
+  snackMinutes,
+  litterAdvice,
+  litterComfortHit,
+  litterInZone,
+  litterJoyDrain,
+  restroomDirtFor,
+  restroomJoyHit,
+  stepJanitor,
+  type HallJanitor,
+  type LitterHall,
+} from './litter.ts'
+import { LITTER_TUNING } from './litterData.ts'
+import { AmbienceMixer } from '../audio/ambience.ts'
+import { PRESETS } from '../branding/presets.ts'
+import type { BrandingSave } from '../branding/types.ts'
+import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
+import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
+import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
+import {
+  createEconomyAdapter,
+  type EconomyAdapter,
+} from '../economy/adapter.ts'
+import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
+import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
+import {
+  commitPlot,
+  dailySinks,
+  nextPlotOffer,
+  restoreOwned,
+  starterHolding,
+  type OwnedPlot,
+  type PlotOffer,
+} from '../land/index.ts'
+import {
+  budgetLineCost,
+  cityLevy,
+  fieldOpsMultiplier,
+  loanInterestDue,
+  loansAvailable,
+  nextLoanBalance,
+  payrollAmount,
+  settlePayroll,
+} from './economy'
 import {
   AIRFRAMES,
+  type Airframe,
   craftRoleLabel,
   jetAirframesBlocked,
   jetAirframesFitting,
+  bagUnitsForAirframe,
+  fuelDwellSeconds,
+  paxForAirframe,
   pickAirframe,
   pickAirframeWithFallback,
   standClassFor,
   stripTier,
+  turnaroundScale,
 } from './airframes'
+import { hasLeftMap, inboundApproach } from './flightpath'
 import {
   advancePaxItinerary,
   spawnArrivalPax,
@@ -182,6 +348,7 @@ import {
   runwayStrips,
   standBeltLinked,
   tilesOf,
+  walkableFor,
 } from './path'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import type {
@@ -197,6 +364,7 @@ import type {
   Difficulty,
   EmergencyKind,
   FieldTask,
+  BuildSite,
   FieldTaskKind,
   Flight,
   FuelBrand,
@@ -256,6 +424,19 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 
+/** The hall's items are the same objects; the stored type is just looser. */
+const asLitterHall = (fit: TerminalFit): LitterHall => fit as unknown as LitterHall
+
+/** Per-tick seat pool and comfort cache for one hall. */
+interface HallKitState {
+  items: PlacedItem[]
+  zones: (string | null)[][]
+  seatsLeft: Map<ZoneId, number>
+  comfort: Map<HallNode, number>
+  /** Floor litter in the zone around each node. */
+  litter: Map<HallNode, number>
+}
+
 const emptyRooms = (): Record<RoomId, number> => ({
   checkin: 0,
   security: 0,
@@ -280,16 +461,47 @@ const emptyRooms = (): Record<RoomId, number> => ({
 function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, number>>): TerminalFit {
   const r = { ...emptyRooms(), ...(rooms ?? {}) }
   const claimRooms = Math.max(1, r.bagclaim || (premade ? 1 : 0))
-  return {
+  return decorateFit({
     origin,
     premade,
     rooms: r,
     wearBath: 0,
     wearSec: 0,
-    // Premade shells work day one but hit ceilings — custom halls can raise caps.
-    capGuests: premade ? 28 : 48,
     claimRate: premade ? 0.72 + claimRooms * 0.08 : 0.9 + claimRooms * 0.12,
+  })
+}
+
+/** Prefab bundle, painted floors, and the ceilings those imply. */
+function decorateFit(fit: TerminalFit): TerminalFit {
+  if (fit.premade) {
+    if (fit.tier == null) fit.tier = 1
+    const tier = (fit.tier ?? 1) as 1 | 2 | 3
+    if (fit.signs == null) fit.signs = schemeSigns(tier)
+    if (!fit.zones?.length) fit.zones = schemeZones(tier)
+    if (!fit.items?.length) fit.items = schemeItems(tier)
+    if (fit.redesigned == null) fit.redesigned = false
+  } else {
+    if (fit.tier == null) fit.tier = 1
+    if (fit.signs == null) fit.signs = 0
+    if (!fit.zones?.length) fit.zones = blankZones()
+    if (!fit.items) fit.items = []
+    if (fit.redesigned == null) fit.redesigned = false
   }
+  return applyCeilings(fit)
+}
+
+function applyCeilings(fit: TerminalFit): TerminalFit {
+  const c = ceilingsFor({
+    premade: fit.premade,
+    redesigned: fit.redesigned,
+    tier: fit.tier,
+    items: (fit.items ?? []) as PlacedItem[],
+    roomsSecurity: fit.rooms.security,
+  })
+  fit.capGuests = c.paxCap
+  fit.bagAllowance = c.bagAllowance
+  fit.secPerMin = c.secPerMin
+  return fit
 }
 
 function emptyPosted(): Flight['posted'] {
@@ -359,7 +571,33 @@ export type ApronInspect =
       blurb: string
     }
 
+function defaultBranding(): BrandingSave {
+  const preset = PRESETS[0]
+  const code = suggestCode('Hatchfield')
+  return {
+    airportName: 'Hatchfield',
+    code,
+    logo: { ...preset.spec, airportName: 'Hatchfield', code },
+    presetId: preset.id,
+  }
+}
+
+const FINANCING_CATEGORIES = new Set([
+  'loan_proceeds',
+  'ipo_proceeds',
+  'share_sales',
+  'share_purchases',
+  'refunds',
+])
+
 export class Game {
+  standingAdvisor: StandingAdvisor = new StandingAdvisor(
+    new GameDiplomacyAdapter(
+      (id) => this.standingOf(id),
+      () => this.signed,
+      (id) => this.banThreshold(id),
+    ),
+  )
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
   cash: number = START_CASH.easy
@@ -377,6 +615,30 @@ export class Game {
   mapRev = 0
   fuelBrand: FuelBrand | null = null
   fuelLoads = 0
+  /** Burger servings on the counter. Sales stop at zero. */
+  foodShelf = 0
+  /** Souvenirs on the counter. Sales stop at zero. */
+  shopShelf = 0
+  /** Food sales through placed outlets (café, fast food, sit-down). */
+  foodCourtRevenue = 0
+  /** Unique suffix for placed hall item ids. */
+  hallItemSeq = 0
+  /** Unpaid counter sales, kept for the audit. */
+  lostSpend = 0
+  /** Checked bags that disappeared. Prefab halls keep this at zero. */
+  bagsLost = 0
+  /** Late bags and missed connections. Prefab halls stay at zero under normal load. */
+  bagsMishandled = 0
+  /** 0–1 parade clock for belts and carousels. */
+  bagPhase = 0
+  /** Screenshot latch so the hall can show the whole chain at once. */
+  private bagShow: LuggageMotion | null = null
+  private bagBooks = new Map<string, BagBook>()
+  private bagTags: BagTag[] = []
+  shelfCool = 0
+  /** Open info-view submenu. Hotspots stay drawn either way. */
+  infoOpen: string | null = null
+  private fuelHoldNoted = new Set<string>()
   caterBrand: CaterBrand | null = null
   mealSold = false
   signed: AirlineId[] = []
@@ -398,6 +660,10 @@ export class Game {
   /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
   fieldXp = 0
   parcels = 1
+  /** Owned expansion plots. Empty until the city or factory site is bought. */
+  ownedPlots: OwnedPlot[] = []
+  /** Optional outsourced pavement crew. Daily fee, faster repair. */
+  maintenanceContract = false
   railLinked = false
   hotelLevel = 0
   carParkShort = false
@@ -416,6 +682,12 @@ export class Game {
   standAccessMode: StandAccess = 'remote'
   janitors = 0
   janitorCool = 0
+  /** Janitors walking the halls — sweep litter, empty cans, service WCs. One per hire. */
+  hallJanitors: HallJanitor[] = []
+  /** Unique suffix for litter pieces. */
+  litterSeq = 0
+  /** Seconds until the litter / restroom advisor notes refresh. */
+  litterAdviceCool = 0
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -461,6 +733,18 @@ export class Game {
   weather: Weather = 'clear'
   weatherCool = 45
   payrollCool = 30
+  /** Completed game days already billed. Payroll and the city levy close once per day. */
+  payrollDay = 0
+  /** Sim-clock of the last city levy. Kept so older saves do not bill a backlog. */
+  levyMark = 0
+  /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
+  bank = new Bank(0)
+  simClock = new SimClock()
+  private economy: EconomyAdapter | null = null
+  private economyState: EconomyState | null = null
+  private economyView: EconomySnapshot | null = null
+  branding: BrandingSave = defaultBranding()
+  private ambience: AmbienceMixer | null = null
   crashCool = 8
   fireIncidentCool = 60
   milAgreement = false
@@ -477,6 +761,22 @@ export class Game {
   airlineLowAcc: Record<string, number> = {}
   researchPoints = 0
   researchUnlocked: ResearchId[] = []
+  /** Signed volume contract. Apex on the old desk counts when this is empty. */
+  contractId: string | null = null
+  tankTier: 1 | 2 | 3 = 1
+  tankLitres = 0
+  fuelSupply: FuelSupply = 'road'
+  roadMinutes = 0
+  scaleFleet: Partial<Record<VehicleType, number>> = {}
+  bagSystem: BagSystemId = 'carts'
+  paxDesks = 2
+  paxKiosks = 0
+  paxBagDrops = 0
+  scannerLanes = 1
+  eGates = 0
+  standScale: Record<string, SizeTier> = {}
+  hangarScale: Record<string, SizeTier> = {}
+  private lastRailFlowing = false
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
   layover: LayoverContract | null = null
@@ -491,6 +791,10 @@ export class Game {
   /** Day-rate cool for independent parked GA. */
   parkRateCool = 0
   schedule: ScheduleSlot[] = []
+  /** Per-slot departure show-up. Passengers release before the aircraft exists. */
+  showUps: ShowUpPlan[] = []
+  /** Flights that have left the field. The boarding call stays up until those passengers are aboard or miss. */
+  private departedFlights = new Set<string>()
   scheduleAuto = true
   schedulePlanCool = 8
   /** Rate-limit hall miss headlines: key → clock ready. */
@@ -499,10 +803,18 @@ export class Game {
   trucks: Truck[] = []
   people: Person[] = []
   hallGuests: HallGuest[] = []
+  /** Room plans for the current map, shared with the terminal renderer (same seed). */
+  private terminalPlans: {
+    rev: number
+    entries: { key: string; cells: { c: number; r: number }[]; plan: RoomPlan }[]
+  } | null = null
   news: News[] = []
   selectedFlight: string | null = null
   selectedTile: Vec | null = null
   selectedGuest: string | null = null
+  /** Bumps when the hall layout changes so the HUD repaints. */
+  hallRev = 0
+  private secSeq = 1
   view: 'apron' | 'hall' = 'apron'
   spawnCool = 8
   heloCool = 22
@@ -510,6 +822,47 @@ export class Game {
   flightsDone = 0
   paxServed = 0
   revenue = 0
+  /** Positive payment lines kept after a turn leaves the field. */
+  settledPayments: { flightNo: string; label: string; amount: number }[] = []
+  /** Layout notes. Empty on a healthy prefab until the hall is over capacity. */
+  advice: Advice[] = []
+  advisorCells: { c: number; r: number }[] = []
+  /** Apron tiles highlighted by a ground-services note (fuel farm, kitchen, depot). */
+  apronFocus: { c: number; r: number }[] = []
+  /** Ground-logistics ledger. Posted into cash as it happens. */
+  groundBooks = {
+    fuelSales: 0,
+    cateringFees: 0,
+    fuelPurchase: 0,
+    mealProduction: 0,
+    vehicleUpkeep: 0,
+    shopSales: 0,
+    shopLost: 0,
+    cargoRevenue: 0,
+    cargoPenalties: 0,
+  }
+  private ground: (LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] }) | null = null
+  private groundRev = -1
+  private groundAnnounced = false
+  private groundNotes: Advice[] = []
+  private groundNoteKey = ''
+  private cargoNotes: Advice[] = []
+  /** Recent sound names, for the apron audio cues. */
+  soundCues: string[] = []
+  private catering: CateringBridge | null = null
+  private cargo: CargoBridge | null = null
+  /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
+  private diplomacy: DiplomacyBridge | null = null
+  diplomacySeed = 1
+  /** Contract counter-offers. Null until the first letter. */
+  private negotiationBridge: NegotiationBridge | null = null
+  /** Passenger-flow overlay. Hidden until the player opts in. */
+  showFlows = false
+  /** True once a wave exceeds this hall's queue or passenger cap. */
+  hallOverloaded = false
+  missedFlights = 0
+  private queueDelayFlight = new Set<string>()
+  sites: BuildSite[] = []
   /** Session tally of craft roles that landed — for the fleet strip. */
   craftSeen: Partial<Record<AircraftKind, number>> = {}
   listeners = new Set<() => void>()
@@ -529,6 +882,26 @@ export class Game {
   cascadeNewsCool = 0
   /** While storming, pulse a bank slip so weather stays legible. */
   stormPulseCool = 0
+  /** One point per in-game hour (7.5s). Charts read this; not saved. */
+  econHist: {
+    t: number
+    cash: number
+    income: number
+    expense: number
+    pax: number
+    cargo: number
+  }[] = []
+  econHour = 0
+  hourIncome = 0
+  hourExpense = 0
+  dayPax = 0
+  dayCargo = 0
+  dayMark = 0
+  /** Cash earned in the latest finished hour. */
+  incomePerHour = 0
+  /** Pax / cargo cleared on the last finished day (180s). */
+  paxPerDay = 0
+  cargoPerDay = 0
 
   subscribe = (fn: () => void) => {
     this.listeners.add(fn)
@@ -551,6 +924,19 @@ export class Game {
     this.facing = 'h'
     this.fuelBrand = null
     this.fuelLoads = 0
+    this.foodShelf = 0
+    this.shopShelf = 0
+    this.foodCourtRevenue = 0
+    this.lostSpend = 0
+    this.bagsLost = 0
+    this.bagsMishandled = 0
+    this.bagPhase = 0
+    this.bagShow = null
+    this.bagBooks.clear()
+    this.bagTags = []
+    this.shelfCool = 0
+    this.infoOpen = null
+    this.fuelHoldNoted.clear()
     this.caterBrand = null
     this.mealSold = false
     this.signed = []
@@ -580,6 +966,8 @@ export class Game {
     this.loanOpened = 0
     this.fieldXp = 0
     this.parcels = 1
+    this.ownedPlots = []
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -592,6 +980,9 @@ export class Game {
     this.standAccessMode = 'remote'
     this.janitors = 0
     this.janitorCool = 0
+    this.hallJanitors = []
+    this.litterSeq = 0
+    this.litterAdviceCool = 0
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -615,6 +1006,16 @@ export class Game {
     this.weather = 'clear'
     this.weatherCool = 45
     this.payrollCool = 30
+    this.payrollDay = 0
+    this.levyMark = 0
+    this.bank = new Bank(0)
+    this.simClock = new SimClock()
+    this.economy = null
+    this.economyState = null
+    this.economyView = null
+    this.branding = defaultBranding()
+    this.ambience?.stopAll(0)
+    this.ambience = null
     this.crashCool = 8
     this.fireIncidentCool = 60
     this.milAgreement = false
@@ -628,6 +1029,7 @@ export class Game {
     this.airlineLowAcc = {}
     this.researchPoints = 0
     this.researchUnlocked = []
+    this.resetPillar()
     this.layoverOffer = null
     this.layoverOfferCool = 50
     this.layover = null
@@ -658,6 +1060,37 @@ export class Game {
     this.flightsDone = 0
     this.paxServed = 0
     this.revenue = 0
+    this.settledPayments = []
+    this.advice = []
+    this.advisorCells = []
+    this.apronFocus = []
+    this.groundBooks = {
+      fuelSales: 0,
+      cateringFees: 0,
+      fuelPurchase: 0,
+      mealProduction: 0,
+      vehicleUpkeep: 0,
+      shopSales: 0,
+      shopLost: 0,
+      cargoRevenue: 0,
+      cargoPenalties: 0,
+    }
+    this.ground = null
+    this.groundRev = -1
+    this.groundAnnounced = false
+    this.groundNotes = []
+    this.groundNoteKey = ''
+    this.cargoNotes = []
+    this.soundCues = []
+    this.catering = null
+    this.cargo = null
+    this.diplomacy = null
+    this.diplomacySeed = 1
+    this.negotiationBridge = null
+    this.hallOverloaded = false
+    this.missedFlights = 0
+    this.queueDelayFlight = new Set()
+    this.sites = []
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
@@ -667,6 +1100,30 @@ export class Game {
     this.nightCurfewCool = 0
     this.cascadeNewsCool = 0
     this.stormPulseCool = 0
+    this.econHist = []
+    this.econHour = 0
+    this.hourIncome = 0
+    this.hourExpense = 0
+    this.dayPax = 0
+    this.dayCargo = 0
+    this.dayMark = 0
+    this.incomePerHour = 0
+    this.paxPerDay = 0
+    this.cargoPerDay = 0
+    // Drop the previous field so a refresh on the route screen cannot resume it.
+    try {
+      localStorage.removeItem(SAVE_KEY)
+    } catch {
+      /* node / private mode */
+    }
+    try {
+      sessionStorage.setItem(
+        'hatchfield-pending',
+        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty }),
+      )
+    } catch {
+      /* node / private mode */
+    }
   }
 
   /** Morning checklist — hides once dismissed or after the first takeoff. */
@@ -831,6 +1288,7 @@ export class Game {
       const a = this.airline(t.airline)
       this.cash += t.bonus
       this.revenue += t.bonus
+      this.noteIncome(t.bonus, 'task_rewards')
       this.adjustHeat(t.airline, FIELD_TASK_HEAT_OK)
       this.reputation = Math.min(100, this.reputation + 2)
       this.pushNews(
@@ -1014,6 +1472,27 @@ export class Game {
         heatSensitivity: 1,
       })
     }
+    const negotiated = NEGOTIATION_AIRLINES.find((a) => a.id === id)
+    if (negotiated && !AIRLINES[id]) {
+      const template = AIRLINES.northline
+      return normalizeAirline({
+        ...template,
+        id: negotiated.id,
+        name: negotiated.name,
+        persona: 'budget',
+        bizModel: 'lcc',
+        tier: 2,
+        landing: negotiated.posted.landing,
+        bags: Math.round(negotiated.posted.bags),
+        catering: negotiated.posted.catering,
+        paxMin: Math.round(negotiated.seats * 0.75),
+        paxMax: negotiated.seats,
+        blurb: negotiated.pitch ?? template.blurb,
+        procedural: false,
+        likesLayovers: false,
+        heatSensitivity: 0.8,
+      })
+    }
     const raw =
       AIRLINES[id] ??
       this.extraAirlines.find((a) => a.id === id) ??
@@ -1023,6 +1502,213 @@ export class Game {
 
   fieldLevel(): AirlineTier {
     return fieldLevelFromXp(this.fieldXp)
+  }
+
+  /** Diplomacy day, 0 until the clock has run. */
+  diplomacyDay(): number {
+    return this.diplomacy?.day() ?? 0
+  }
+
+  private ensureDiplomacy(): DiplomacyBridge {
+    if (!this.diplomacy) {
+      this.diplomacy = createDiplomacyBridge(
+        {
+          addMoney: (amount, category) => this.postDiplomacyMoney(amount, category),
+          getCash: () => this.cash,
+          getContext: () => this.diplomacyContext(),
+          notify: (message, severity) => {
+            const tone = severity === 'bad' || severity === 'warn' ? 'bad' : severity === 'good' ? 'good' : 'ok'
+            this.pushNews(message, tone)
+          },
+          applyReputation: (delta) => {
+            this.reputation = Math.max(0, Math.min(100, this.reputation + delta))
+          },
+          onHostileAction: (action) => {
+            this.pushNews(action.text, 'bad')
+          },
+        },
+        this.diplomacySeed,
+      )
+    }
+    return this.diplomacy
+  }
+
+  private postDiplomacyMoney(amount: number, _category: string) {
+    if (amount > 0) {
+      this.cash += amount
+      this.revenue += amount
+      this.noteIncome(amount, 'host_fees')
+      return
+    }
+    if (amount < 0) {
+      this.noteExpense(-amount)
+      if (!this.sandbox) this.cash += amount
+    }
+  }
+
+  private diplomacyContext() {
+    const stands = tilesOf(this.tiles, 'stand')
+    const classes = stands.map((s) => this.standClassAt(s))
+    const occupied = this.flights.filter((f) => f.phase !== 'gone' && f.stand).length
+    let food = 0
+    let lounge = 0
+    let family = 0
+    let prestige = 0
+    for (const fit of this.fits) {
+      food += fit.rooms.food ?? 0
+      lounge += fit.rooms.lounge ?? 0
+      family += (fit.rooms.bathroom ?? 0) + (fit.rooms.dayhotel ?? 0) + (fit.rooms.gaming ?? 0)
+      prestige += (fit.rooms.lounge ?? 0) + (fit.rooms.spa ?? 0) + (fit.rooms.golf ?? 0)
+    }
+    const onTime = this.diplomacy?.onTimePct() ?? 88
+    const feeIndex = this.diplomacy?.adapter.engine.state.feeIndex ?? 1
+    return {
+      fieldLevel: this.fieldLevel(),
+      metrics: {
+        onTimePct: onTime,
+        feeIndex,
+        cafes: food,
+        loungeSeats: lounge * 24,
+        standCount: stands.length,
+        standUtilization: stands.length ? occupied / stands.length : 0,
+        heavyStands: classes.filter((c) => c === 'L').length,
+        electricTugs: 0,
+        solarCoveragePct: 0,
+        familyAmenities: family,
+        prestigeItems: prestige,
+        exclusivePier: 0,
+        nightSlots: this.hasResearch('night_bank') ? 1 : 0,
+        coldChainRooms: 0,
+        cargoFacilities: tilesOf(this.tiles, 'cargo').length,
+        incentiveDealActive: 0,
+        hubDepartures: this.hubAirlines.length,
+        maintenanceLevel: tilesOf(this.tiles, 'hangar').length + (this.mechanics > 0 ? 1 : 0),
+      },
+      airport: {
+        runwayLengthMeters: this.longestRunway() * 150,
+        hasSmallStands: classes.some((c) => c === 'S' || c === 'M'),
+        hasMediumStands: classes.some((c) => c === 'M' || c === 'L'),
+        hasHeavyStands: classes.some((c) => c === 'L'),
+        terminalRating: this.fieldLevel(),
+        hasFuelService: tilesOf(this.tiles, 'fuel').length > 0,
+        hasCateringService: Boolean(this.caterBrand) || tilesOf(this.tiles, 'kitchen').length > 0,
+        hasMaintenanceService: tilesOf(this.tiles, 'hangar').length > 0,
+        hasHeavyVehicles: tilesOf(this.tiles, 'depot').length > 0,
+        onTimePercentage: onTime,
+        totalFlightsHandled: this.flightsDone,
+      },
+    }
+  }
+
+  private tickDiplomacy(step: number) {
+    const d = this.ensureDiplomacy()
+    for (const id of this.signed) d.mirrorSigned(id)
+    d.tick(step * GAME_MINUTES_PER_SIM_SECOND)
+  }
+
+  private diplomacyFeeFactor(airlineId: string): number {
+    return this.diplomacy?.feeFactor(airlineId) ?? 1
+  }
+
+  private diplomacyCapacity(airlineId: string): number {
+    return this.diplomacy?.capacityFactor(airlineId) ?? 1
+  }
+
+  private rampPace(airframeId: string, cargo: boolean, airlineId: string): number {
+    const slow = this.diplomacy?.slowFactor(airlineId) ?? 1
+    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow
+  }
+
+  private gradeDiplomacyTurn(f: Flight) {
+    if (f.kind === 'military' || f.kind === 'air_ambulance') return
+    const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
+    const guests = this.hallGuests.filter((g) => g.flightId === f.id && !g.dead)
+    const mood = guests.length
+      ? guests.reduce((sum, g) => sum + g.happiness, 0) / guests.length / 100
+      : 0.75
+    const bagFault = this.bagTags.some((t) => t.flightId === f.id && t.fault)
+    const result = this.ensureDiplomacy().gradeFlight({
+      flightId: f.id,
+      airlineId: f.airline,
+      delayMinutes: (slot?.delaySec ?? 0) * GAME_MINUTES_PER_SIM_SECOND,
+      bagFault,
+      paxMood: mood,
+      standFit: Boolean(f.stand),
+    })
+    if (result.ended) {
+      this.pushNews(`${this.airline(f.airline).name} walked on the contract — satisfaction hit the floor.`, 'bad')
+    }
+  }
+
+  private noteDiplomacyCancel(airlineId: string, excused: boolean) {
+    this.diplomacy?.cancelFlight(airlineId, excused)
+  }
+
+  diplomacyRoster(): { id: string; name: string; band: string; standing: number }[] {
+    if (!this.diplomacy) return []
+    const cards = this.diplomacy.cards()
+    const signed = cards.filter((c) => c.status === 'signed')
+    const rest = cards.filter((c) => c.status !== 'signed')
+    return [...signed, ...rest].slice(0, 4).map((c) => ({
+      id: c.id,
+      name: c.name,
+      band: c.band.word,
+      standing: c.standing,
+    }))
+  }
+
+  diplomacyLetters(): { id: string; airline: string; text: string }[] {
+    if (!this.diplomacy) return []
+    return this.diplomacy.proposals().slice(0, 3).map((p) => {
+      const rel = this.diplomacy?.relation(p.airlineId)
+      return { id: p.id, airline: rel?.name ?? p.airlineId, text: p.text }
+    })
+  }
+
+  answerDiplomacy(proposalId: string, response: 'accept' | 'decline') {
+    const d = this.ensureDiplomacy()
+    const before = new Set(d.signedIds())
+    const result = d.respond(proposalId, response)
+    if (result.ok && response === 'accept') {
+      for (const id of d.signedIds()) {
+        if (!before.has(id)) this.adoptDiplomacyCarrier(id)
+      }
+    }
+    if (!result.ok) this.pushNews(result.message, 'bad')
+    this.emit()
+  }
+
+  private adoptDiplomacyCarrier(id: string) {
+    const rel = this.ensureDiplomacy().relation(id)
+    if (!rel) return
+    if (!AIRLINES[id] && !this.extraAirlines.some((a) => a.id === id)) {
+      const template = rel.kind === 'cargo' ? AIRLINES.upps : rel.tier <= 2 ? AIRLINES.northline : AIRLINES.harbor
+      this.extraAirlines.push(
+        normalizeAirline({
+          ...template,
+          id: rel.id,
+          name: rel.name,
+          color: rel.livery[0],
+          stripe: rel.livery[1],
+          tier: rel.tier,
+          kind: rel.kind === 'cargo' ? 'cargo' : 'pax',
+          procedural: true,
+        }),
+      )
+    }
+    if (this.signed.includes(id)) return
+    this.signed.push(id)
+    if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
+    this.seedScheduleForAirline(id, 3)
+    this.pushNews(`${rel.name} signed. Flights hit the timetable.`, 'good')
+  }
+
+  /** Mean Standing across signed carriers. Null when nobody has signed. */
+  avgStanding(): number | null {
+    if (!this.signed.length) return null
+    let sum = 0
+    for (const id of this.signed) sum += this.standingOf(id)
+    return sum / this.signed.length
   }
 
   fieldXpToNext(): { level: AirlineTier; xp: number; need: number; pct: number } {
@@ -1070,11 +1756,7 @@ export class Game {
   }
 
   availableLoans() {
-    if (this.sandbox) return LOAN_PRODUCTS.slice()
-    const lv = this.fieldLevel()
-    return LOAN_PRODUCTS.filter(
-      (p) => lv >= p.minFieldLevel && this.reputation >= p.minRep,
-    )
+    return loansAvailable(LOAN_PRODUCTS, this.fieldLevel(), this.reputation, this.sandbox)
   }
 
   takeLoanProduct(productId: string) {
@@ -1128,7 +1810,10 @@ export class Game {
     return Math.max(0, (this.airlineBanUntil[id] ?? 0) - this.clock)
   }
 
-  adjustHeat(id: AirlineId, delta: number) {
+  adjustHeat(id: AirlineId, delta: number, cause?: StandingCauseCategory) {
+    if (delta < 0) {
+      this.standingAdvisor.recordCauseImpact(id, cause ?? 'hall_amenities', delta)
+    }
     const a = this.airline(id)
     let h = this.heatOf(id)
     if (delta < 0) h += delta * a.heatSensitivity
@@ -1278,6 +1963,7 @@ export class Game {
     const a = this.airline(id)
     const lost = this.airlineReward[id] ?? null
     this.signed = this.signed.filter((x) => x !== id)
+    this.diplomacy?.noteLeft(id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
     delete this.airlineReward[id]
@@ -1339,9 +2025,9 @@ export class Game {
 
   landingFeeMult(airlineId: AirlineId): number {
     const r = this.rewardOf(airlineId)
-    if (r === 'biz_priority') return 1.14
-    if (r === 'cargo_night') return 1.2
-    return 1
+    const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
+    const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
+    return negotiated === 1 ? base : base * negotiated
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -1360,6 +2046,9 @@ export class Game {
     if (node.requires && !this.hasResearch(node.requires)) {
       const need = RESEARCH_NODES.find((n) => n.id === node.requires)
       return { ok: false, why: `Need ${need?.name ?? node.requires} first.` }
+    }
+    if (node.minFieldLevel && this.fieldLevel() < node.minFieldLevel) {
+      return { ok: false, why: `Needs Field level ${node.minFieldLevel}.` }
     }
     if (this.researchPoints < node.cost) {
       return {
@@ -1533,7 +2222,9 @@ export class Game {
     this.tiles = emptyTiles()
     this.seedAccessStub()
     this.speed = 1
+    this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -1543,7 +2234,9 @@ export class Game {
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
+    this.resetPillar()
     this.janitors = 0
+    this.hallJanitors = []
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -1588,29 +2281,33 @@ export class Game {
     }
 
     this.facing = 'h'
-    for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
-    // Continuous taxi spine so pax can path plane → bags → hall → road
-    for (let c = 8; c <= 22; c++) this.tiles[23][c] = 'taxi'
-    for (let c = 8; c <= 22; c++) this.tiles[22][c] = 'taxi'
+    // Five cells south of the stands: a code-F wing at the visual scale clears the strip.
+    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
     this.tiles[21][8] = 'fuel'
+    this.tiles[21][9] = 'road'
     this.tiles[21][10] = 'bags'
-    this.tiles[20][14] = 'snack'
+    this.tiles[17][14] = 'snack'
     this.tiles[20][8] = 'fire'
-    this.tiles[19][12] = 'tower'
+    this.tiles[17][11] = 'tower'
     // Road from north city edge down to the hall
     const roadC = 16
     for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
-    this.tiles[18][15] = 'road'
-    this.tiles[18][17] = 'road'
+    // Curb three cells north of the stands, clear of a code-F nose.
+    for (let c = 8; c <= 22; c++) this.tiles[18][c] = 'road'
+    // Nose spurs so a mechanic can leave a stand. The wing rows stay grass.
+    for (let r = 19; r <= 20; r++) this.tiles[r][9] = 'road'
+    this.tiles[20][12] = 'road'
+    this.tiles[19][13] = 'road'
+    this.tiles[20][13] = 'road'
+    for (let r = 19; r <= 20; r++) this.tiles[r][20] = 'road'
     // Guard post on the city approach — screens inbound cargo trucks.
     this.tiles[3][roadC] = 'guard'
     // Cargo shed on a road stub (city trucks → guard → shed).
     this.tiles[10][roadC + 1] = 'road'
     this.tiles[10][roadC + 2] = 'cargo'
-    // Taxi link so freighter GSE can reach the shed from the apron.
-    this.tiles[21][roadC + 2] = 'taxi'
-    for (let r = 11; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
-    // Premade hall touching taxi + road (c15–17, r19–21)
+    // Taxi link so freighter GSE can reach the shed. It stops at the curb.
+    for (let r = 11; r <= 17; r++) this.tiles[r][roadC + 2] = 'taxi'
+    // Premade hall touching the curb + road (c15–17, r19–21)
     const origin = { c: 15, r: 19 }
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) this.tiles[origin.r + r][origin.c + c] = 'terminal'
@@ -1622,12 +2319,10 @@ export class Game {
     this.standClass['20,21'] = 'M'
     this.standAccess['12,21'] = 'jetway'
     this.standAccess['20,21'] = 'jetway'
-    // Link hall to taxi + stands
-    this.tiles[22][12] = 'taxi'
-    this.tiles[22][15] = 'taxi'
-    this.tiles[22][16] = 'taxi'
-    this.tiles[22][17] = 'taxi'
-    this.tiles[22][20] = 'taxi'
+    // Each stand has its own lead-in. A through-taxi on the next row sits inside a parked wing.
+    for (const c of [12, 20]) {
+      for (let r = 22; r <= 25; r++) this.tiles[r][c] = 'taxi'
+    }
     // Bag belt: makeup (bags@10) ↔ stands @12/@20 ↔ hall terminals @15–17
     this.tiles[21][11] = 'belt'
     this.tiles[21][13] = 'belt'
@@ -1649,6 +2344,10 @@ export class Game {
     ]
     this.fuelBrand = 'apex'
     this.fuelLoads = 4
+    this.contractId = 'apex_local'
+    this.tankLitres = seedLitresFromLoads(4)
+    this.foodShelf = this.shelfCap('food')
+    this.shopShelf = this.shelfCap('shop')
     this.caterBrand = 'skybite'
     this.mechanics = 1
     this.spawnMechanicPawn()
@@ -1656,10 +2355,9 @@ export class Game {
     this.deskStaff = 1
     this.assignHallStaff()
     // Airport is live — first airline call comes quick; later ones stay slow.
+    // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = 3
     this.spawnCool = 6
-    this.emergencyCool = 120
-    this.threatCool = 90
     this.pushNews(
       this.startFocus === 'hybrid'
         ? 'Hybrid kit down — hall + guard/cargo road. Day pax, night freight.'
@@ -1674,30 +2372,27 @@ export class Game {
   /** Cargo-first kit — freighter ready, no pax hall required. */
   private buildCargoStarterKit() {
     this.facing = 'h'
-    for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
-    for (let c = 8; c <= 20; c++) this.tiles[23][c] = 'taxi'
-    for (let c = 8; c <= 20; c++) this.tiles[22][c] = 'taxi'
+    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
     this.tiles[21][8] = 'fuel'
     this.tiles[20][8] = 'fire'
     this.tiles[20][10] = 'police'
-    this.tiles[19][12] = 'tower'
+    this.tiles[17][12] = 'tower'
     const roadC = 14
     for (let r = 0; r <= 21; r++) this.tiles[r][roadC] = 'road'
     this.tiles[3][roadC] = 'guard'
     this.tiles[12][roadC + 1] = 'road'
     this.tiles[12][roadC + 2] = 'cargo'
-    for (let r = 13; r <= 21; r++) this.tiles[r][roadC + 2] = 'taxi'
-    this.tiles[21][roadC + 2] = 'stand'
+    for (let r = 13; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
+    for (let c = 9; c <= 15; c++) this.tiles[21][c] = 'road'
     this.tiles[21][16] = 'stand'
-    this.standClass[`${roadC + 2},21`] = 'L'
     this.standClass['16,21'] = 'M'
-    this.standAccess[`${roadC + 2},21`] = 'remote'
     this.standAccess['16,21'] = 'remote'
-    this.tiles[22][roadC + 2] = 'taxi'
-    this.tiles[22][16] = 'taxi'
+    for (let r = 22; r <= 25; r++) this.tiles[r][16] = 'taxi'
     this.fits = []
     this.fuelBrand = 'apex'
     this.fuelLoads = 5
+    this.contractId = 'apex_local'
+    this.tankLitres = seedLitresFromLoads(5)
     this.caterBrand = null
     this.mechanics = 1
     this.spawnMechanicPawn()
@@ -1705,8 +2400,6 @@ export class Game {
     this.hallStaff = []
     this.offerCool = 2
     this.spawnCool = 5
-    this.emergencyCool = 140
-    this.threatCool = 100
     this.cargoVolumeCool = 18
     this.pushNews(
       'Cargo kit down — strip, freighter stand, guard → shed pipeline. No pax hall. UPPS should call.',
@@ -1735,35 +2428,130 @@ export class Game {
     this.emit()
   }
 
-  buyParcel() {
-    if (!this.site) return
-    if (this.parcels >= 4) {
-      this.pushNews('No more parcels on this map sketch.', 'bad')
-      return
+  /** Next expansion the parcel button would buy. Null when the grid is full or land is unsold. */
+  nextParcelOffer(): PlotOffer | null {
+    if (!this.site || !this.ownedPlots.length) return null
+    return nextPlotOffer(this.ownedPlots, this.fieldLevel(), LAND_PLOT)
+  }
+
+  /**
+   * Buys the cheapest adjacent plot that field level allows.
+   * Returns false when the buy does not happen.
+   */
+  buyParcel(): boolean {
+    const offer = this.nextParcelOffer()
+    if (!offer) {
+      this.pushNews(this.site ? 'No more parcels on this map.' : 'Buy land first.', 'bad')
+      this.emit()
+      return false
     }
-    // CS-style: more land needs field level (parcel 2 → Lv2, etc.).
-    const needLv = Math.min(5, this.parcels) as AirlineTier
-    if (this.fieldLevel() < needLv) {
-      this.pushNews(
-        `Parcel ${this.parcels + 1} locked — reach Field Level ${needLv} first.`,
-        'bad',
-      )
+    if (offer.locked) {
+      this.pushNews(offer.reason, 'bad')
+      this.emit()
+      return false
+    }
+    return this.buyPlot(offer.id)
+  }
+
+  buyPlot(id: string): boolean {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
+      this.emit()
+      return false
+    }
+    const quote = commitPlot(this.ownedPlots, id, this.fieldLevel(), LAND_PLOT)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(quote.price, quote.name)) return false
+    this.ownedPlots = quote.owned
+    this.parcels = this.ownedPlots.length
+    this.grantFieldXp(10, 'parcel')
+    this.reputation = Math.min(100, this.reputation + 2)
+    this.pushNews(`${quote.name} bought. Room to grow the apron.`, 'good')
+    this.emit()
+    return true
+  }
+
+  toggleMaintenanceContract() {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
       this.emit()
       return
     }
-    if (!this.spend(PARCEL_COST * this.parcels, 'land parcel')) return
-    this.parcels += 1
-    this.grantFieldXp(10, 'parcel')
-    // Paint a strip of buildable grass marker as road fringe on the east
-    const edge = 6 + this.parcels * 4
-    for (let r = 4; r < SIZE - 4; r++) {
-      if (edge < SIZE && this.tiles[r][edge] === 'grass') {
-        /* parcel unlock is soft — more cash runway later; for now reputation + news */
+    this.maintenanceContract = !this.maintenanceContract
+    this.pushNews(
+      this.maintenanceContract
+        ? `Maintenance contract signed — ${moneyLeft(LAND_PLOT.maintenanceContract)} a day, pavement repairs faster.`
+        : 'Maintenance contract cancelled.',
+      this.maintenanceContract ? 'ok' : 'bad',
+    )
+    this.emit()
+  }
+
+  /** Land tax, insurance, utilities, and licences due at the next day close. Sandbox is zero. */
+  dailyHoldingQuote(): number {
+    return this.landSinkReport().chargedTotal
+  }
+
+  private landSinkReport() {
+    const loads = this.utilityLoads()
+    const product =
+      this.loanProduct(this.loanProductId) ??
+      (this.loanBalance > 0 ? LOAN_PRODUCTS.find((row) => row.id === 'bridge') : undefined)
+    return dailySinks(
+      {
+        plots: this.site ? this.ownedPlots : [],
+        assetValue: this.builtAssetValue(),
+        incidents: this.securityIncidents,
+        fieldLevel: this.fieldLevel(),
+        operational: this.fieldIsOperating(),
+        powerLoad: loads.power,
+        waterLoad: loads.water,
+        fireStations: tilesOf(this.tiles, 'fire').length,
+        intl: this.hasHeavyRunway() || this.fieldLevel() >= 4,
+        maintenanceContract: this.maintenanceContract,
+        loanBalance: this.loanBalance,
+        loanRate: product?.rate ?? 0,
+        loanFloor: product?.interestFloor ?? 0,
+        loanEverySeconds: product?.every ?? 0,
+        sandbox: this.sandbox,
+      },
+      LAND_PLOT,
+    )
+  }
+
+  private fieldIsOperating(): boolean {
+    return Boolean(this.site) && (this.runwayStripCount() > 0 || this.signed.length > 0 || this.fits.length > 0)
+  }
+
+  private utilityLoads(): { power: number; water: number } {
+    let power = 0
+    let water = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        const load = TILE_UTILITY[tile]
+        if (!load) continue
+        power += load.power ?? 0
+        water += load.water ?? 0
       }
     }
-    this.reputation = Math.min(100, this.reputation + 2)
-    this.pushNews(`Parcel ${this.parcels} bought. Room to grow the apron.`, 'good')
-    this.emit()
+    return { power, water }
+  }
+
+  /** Replacement cost of stamped tiles, used as the insurance asset base. */
+  private builtAssetValue(): number {
+    let total = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile === 'grass') continue
+        const building = BUILDINGS.find((item) => item.tile === tile)
+        if (building) total += building.cost
+      }
+    }
+    return total
   }
 
   investRail() {
@@ -1988,6 +2776,8 @@ export class Game {
       spendKind = 'landside'
     }
     // Drop-off / missing infra — no fee. Prefs + wallet gate the rest (RCT).
+    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
+    if (fee > 0 && traffic !== 1) fee = Math.round(fee * traffic)
     if (fee > 0 && spendKind) {
       const buy = this.tryGuestPay(g, fee, spendKind, false)
       if (!buy.ok) {
@@ -2080,7 +2870,8 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    return m
+    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
+    return traffic === 1 ? m : m * traffic
   }
 
   /**
@@ -2111,6 +2902,13 @@ export class Game {
         const count = fit.rooms[room] ?? 0
         if (count > 0) n += rate * Math.min(3, count)
       }
+      n += ceilingsFor({
+        premade: fit.premade,
+        redesigned: fit.redesigned,
+        tier: fit.tier,
+        items: (fit.items ?? []) as PlacedItem[],
+        roomsSecurity: fit.rooms.security,
+      }).upkeepDay / 6
     }
     return Math.round(n)
   }
@@ -2441,6 +3239,7 @@ export class Game {
 
     if (m.progress >= m.target) {
       this.cash += m.rewardCash
+      this.noteIncome(m.rewardCash, 'task_rewards')
       this.reputation = Math.min(100, this.reputation + m.rewardRep)
       this.sharePrice = Math.round((this.sharePrice * 1.08) * 100) / 100
       this.pushNews(
@@ -2526,12 +3325,18 @@ export class Game {
       tiles: this.tiles,
       terminalFits: this.fits,
       cash: this.cash,
+      branding: serializeBranding(this.branding),
       difficulty: this.difficulty,
       site: this.site,
       clock: this.clock,
       speed: this.speed,
       fuelBrand: this.fuelBrand,
       fuelLoads: this.fuelLoads,
+      foodShelf: this.foodShelf,
+      shopShelf: this.shopShelf,
+      lostSpend: this.lostSpend,
+      bagsLost: this.bagsLost,
+      bagsMishandled: this.bagsMishandled,
       caterBrand: this.caterBrand,
       mealSold: this.mealSold,
       signed: this.signed,
@@ -2546,6 +3351,8 @@ export class Game {
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
       parcels: this.parcels,
+      ownedPlots: this.ownedPlots,
+      maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
       carParkShort: this.carParkShort,
@@ -2554,6 +3361,22 @@ export class Game {
       hotelClass: this.hotelClass,
       standClass: this.standClass,
       standAccess: this.standAccess,
+      standScale: this.standScale,
+      hangarScale: this.hangarScale,
+      pillar: {
+        contractId: this.contractId,
+        tankTier: this.tankTier,
+        litres: this.tankLitres,
+        supply: this.fuelSupply,
+        roadMinutes: this.roadMinutes,
+        fleet: this.scaleFleet,
+        bagSystem: this.bagSystem,
+        desks: this.paxDesks,
+        kiosks: this.paxKiosks,
+        bagDrops: this.paxBagDrops,
+        scannerLanes: this.scannerLanes,
+        eGates: this.eGates,
+      },
       janitors: this.janitors,
       researchers: this.researchers,
       deskStaff: this.deskStaff,
@@ -2582,8 +3405,13 @@ export class Game {
       coachDismissed: this.coachDismissed,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
+      cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
       sandbox: this.sandbox,
+      sites: this.sites,
+      diplomacy: this.diplomacy?.save(),
+      diplomacySeed: this.diplomacySeed,
+      negotiation: this.negotiationBridge?.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -2605,23 +3433,38 @@ export class Game {
       this.fits = (s.terminalFits ?? []).map((f) => {
         const rooms = { ...emptyRooms(), ...(f.rooms ?? {}) }
         const claimRooms = Math.max(1, rooms.bagclaim || (f.premade ? 1 : 0))
-        return {
+        return decorateFit({
           ...f,
           rooms,
           wearBath: f.wearBath ?? 0,
           wearSec: f.wearSec ?? 0,
-          capGuests: f.capGuests ?? (f.premade ? 28 : 48),
           claimRate:
             f.claimRate ?? (f.premade ? 0.72 + claimRooms * 0.08 : 0.9 + claimRooms * 0.12),
-        }
+        })
       })
       this.cash = s.cash
+      this.branding = (typeof s.branding === 'string' && deserializeBranding(s.branding)) || defaultBranding()
       this.difficulty = s.difficulty
       this.site = s.site
       this.clock = s.clock
+      this.payrollDay = Math.floor(Math.max(0, s.clock) / 180)
+      this.levyMark = s.clock
+      this.bank = new Bank(0)
+      this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
+      this.economy = null
+      this.economyState = null
+      this.economyView = null
       this.speed = 0
       this.fuelBrand = s.fuelBrand
       this.fuelLoads = s.fuelLoads
+      this.foodShelf = s.foodShelf ?? this.shelfCap('food')
+      this.shopShelf = s.shopShelf ?? this.shelfCap('shop')
+      this.lostSpend = s.lostSpend ?? 0
+      this.bagsLost = s.bagsLost ?? 0
+      this.bagsMishandled = s.bagsMishandled ?? 0
+      this.bagBooks.clear()
+      this.bagTags = []
+      this.bagShow = null
       this.caterBrand = s.caterBrand ?? null
       this.mealSold = s.mealSold
       this.signed = s.signed ?? []
@@ -2639,6 +3482,9 @@ export class Game {
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
+      this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
+      if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
+      this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
       this.carParkShort = s.carParkShort ?? false
@@ -2652,6 +3498,20 @@ export class Game {
       }
       this.standClass = s.standClass ?? {}
       this.standAccess = s.standAccess ?? {}
+      this.standScale = s.standScale ?? {}
+      this.hangarScale = s.hangarScale ?? {}
+      this.contractId = s.pillar?.contractId ?? null
+      this.tankTier = s.pillar?.tankTier ?? 1
+      this.tankLitres = s.pillar?.litres ?? seedLitresFromLoads(s.fuelLoads)
+      this.fuelSupply = s.pillar?.supply ?? 'road'
+      this.roadMinutes = s.pillar?.roadMinutes ?? 0
+      this.scaleFleet = (s.pillar?.fleet ?? {}) as Partial<Record<VehicleType, number>>
+      this.bagSystem = s.pillar?.bagSystem ?? 'carts'
+      this.paxDesks = s.pillar?.desks ?? 2
+      this.paxKiosks = s.pillar?.kiosks ?? 0
+      this.paxBagDrops = s.pillar?.bagDrops ?? 0
+      this.scannerLanes = s.pillar?.scannerLanes ?? 1
+      this.eGates = s.pillar?.eGates ?? 0
       this.standAccessMode = 'remote'
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
@@ -2699,8 +3559,14 @@ export class Game {
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
       this.sandbox = s.sandbox ?? true
-      this.cargoVolume = null
-      this.cargoVolumeCool = 25
+      this.sites = s.sites ?? []
+      this.diplomacy = null
+      this.diplomacySeed = s.diplomacySeed ?? 1
+      if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
+      this.negotiationBridge = null
+      if (s.negotiation) this.negotiationDesk().load(s.negotiation)
+      this.cargoVolume = s.cargoVolume ?? null
+      this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
       this.mission = null
       this.mxOffer = null
@@ -2755,13 +3621,157 @@ export class Game {
   /** Fines / interest — may go into debt, but floors so the tape can't spiral forever. */
   charge(amount: number) {
     if (this.sandbox) return
+    this.noteExpense(amount)
     this.cash -= amount
     if (this.cash < -25_000) this.cash = -25_000
+  }
+
+  noteIncome(amount: number, category: MoneyCategory = 'landing_fees') {
+    if (!(amount > 0)) return
+    this.hourIncome += amount
+    this.postJournal(category, amount, this.simMinutes())
+  }
+
+  /** Sim minutes on the shared clock. One field second is eight game minutes. */
+  simMinutes(): number {
+    return Math.max(0, this.clock) * SIM_MINUTES_PER_REAL_SECOND
+  }
+
+  /**
+   * Measures the open hall as a flow graph. Passengers stay on the hall graph;
+   * this audit does not mark anyone lost or any bag mishandled.
+   */
+  flowAudit() {
+    const graph = new FlowGraph()
+    const rooms = this.fits[0]?.rooms
+    const zones: TerminalZone[] = [
+      { id: 'curb', kind: 'curb', servers: 2, ratePerServer: 30, queueCapacity: 40 },
+      { id: 'checkin', kind: 'checkin', servers: Math.max(1, rooms?.checkin ?? 1), ratePerServer: 1.5, queueCapacity: 30 },
+      { id: 'security', kind: 'security', servers: Math.max(1, rooms?.security ?? 1), ratePerServer: 20, queueCapacity: 40 },
+      { id: 'gate', kind: 'gate', servers: Math.max(1, rooms?.gate ?? 1), ratePerServer: 12, queueCapacity: 80 },
+      { id: 'claim', kind: 'claim', servers: Math.max(1, rooms?.bagclaim ?? 1), ratePerServer: 10, queueCapacity: 40 },
+      { id: 'exit', kind: 'exit', servers: 2, ratePerServer: 30, queueCapacity: 20 },
+    ]
+    registerTerminal(graph, zones)
+    graph.tick(1)
+    return audit(graph)
+  }
+
+  private tickAmbience(dt: number) {
+    if (typeof window === 'undefined' || !(dt > 0)) return
+    const parked = this.flights.filter((f) => f.phase === 'parked' || f.phase === 'board' || f.phase === 'deboard').length
+    this.ensureAmbience().update(
+      {
+        checkinOccupancy: Math.min(1, this.hallGuests.length / 40),
+        walkingWithBagsOccupancy: Math.min(1, this.people.length / 40),
+        securityLanesOpen: Math.max(1, this.fits[0]?.rooms.security ?? 0),
+        securityThroughputPerMin: this.securityQueueCount(),
+        apusRunning: parked,
+        gpusConnected: this.flights.filter((f) => f.phase === 'parked').length,
+        beltLoadersRunning: this.trucks.filter((t) => t.kind === 'bags').length,
+        fuelPumpsRunning: this.trucks.filter((t) => t.kind === 'fuel').length,
+        outdoorMix: this.view === 'hall' ? 0.1 : 0.85,
+      },
+      dt,
+    )
+  }
+
+  private ensureAmbience(): AmbienceMixer {
+    if (!this.ambience) {
+      const audio = getAudio()
+      this.ambience = new AmbienceMixer({
+        playSfx: (id, options) => audio.playSfx(id, options),
+      })
+    }
+    return this.ambience
+  }
+
+  /** Latest economy snapshot for the HUD. Null until the first tick. */
+  economySnapshot(): EconomySnapshot | null {
+    return this.economyView
+  }
+
+  private groundIncomeCategory(category: string): MoneyCategory {
+    if (category === 'fuel_sales') return 'fuel_sales'
+    if (category === 'catering_fees') return 'catering_fees'
+    if (category === 'shop_sales') return 'retail_sales'
+    if (category === 'cargo_airport_revenue') return 'cargo_fees'
+    if (category === 'baggage_fees') return 'baggage_fees'
+    return 'landing_fees'
+  }
+
+  private postJournal(category: MoneyCategory, magnitude: number, simMinutes: number) {
+    if (!(magnitude > 0) || !Number.isFinite(magnitude)) return
+    const signed = moneyDirection(category) === 'income' ? magnitude : -magnitude
+    this.bank.post(category, signed, { simMinutes: Math.max(0, simMinutes), source: 'sim' })
+  }
+
+  noteExpense(amount: number) {
+    if (amount > 0) this.hourExpense += amount
+  }
+
+  /** Pax and freight cleared when a turnaround finishes — feeds the day charts. */
+  noteTurn(f: Flight) {
+    if (!(f.cargo || f.kind === 'freighter')) this.dayPax += Math.max(0, f.pax)
+    if (f.cargo || f.kind === 'freighter') {
+      const hold = AIRFRAMES[f.airframeId]?.cargoHold
+      this.dayCargo += hold && hold > 0 ? hold : Math.max(8, f.pax || 16)
+    }
+  }
+
+  /** Hourly book for the economy charts. One in-game hour is 7.5 sim-seconds. */
+  sampleEconomy(step: number) {
+    const hour = 7.5
+    const day = 180
+    this.econHour += step
+    let paxSnap = this.dayPax
+    let cargoSnap = this.dayCargo
+    if (this.clock - this.dayMark >= day) {
+      this.paxPerDay = this.dayPax
+      this.cargoPerDay = this.dayCargo
+      paxSnap = this.paxPerDay
+      cargoSnap = this.cargoPerDay
+      this.dayPax = 0
+      this.dayCargo = 0
+      this.dayMark = this.clock
+      const retail = this.negotiationBridge?.rollDay() ?? 0
+      if (retail > 0) this.earn(retail, 'ULCC retail')
+    }
+    if (this.econHour < hour) return
+    this.incomePerHour = Math.round(this.hourIncome)
+    this.econHist.push({
+      t: this.clock,
+      cash: Math.round(this.cash),
+      income: Math.round(this.hourIncome),
+      expense: Math.round(this.hourExpense),
+      pax: paxSnap,
+      cargo: cargoSnap,
+    })
+    if (this.econHist.length > 96) this.econHist.shift()
+    this.hourIncome = 0
+    this.hourExpense = 0
+    // Keep the leftover so one long tick does not invent an empty hour that reads $0/hr.
+    this.econHour -= hour
+    if (this.econHour >= hour) this.econHour = hour - 0.001
+  }
+
+  /**
+   * Hourly figure for the HUD. A single quiet hour must not hide earnings
+   * already in the book, and an open hour shows as soon as cash is earned.
+   */
+  incomeRate(): number {
+    const recent = this.econHist.slice(-6).map((row) => row.income)
+    if (this.econHour > 0 || this.hourIncome > 0) recent.push(Math.round(this.hourIncome))
+    if (!recent.length) return this.incomePerHour
+    const earned = recent.filter((n) => n > 0)
+    const pool = earned.length ? earned : recent
+    return Math.round(pool.reduce((sum, n) => sum + n, 0) / pool.length)
   }
 
   earn(amount: number, label: string, flight?: Flight) {
     this.cash += amount
     this.revenue += amount
+    this.noteIncome(amount)
     if (flight) flight.ledger.push({ label, amount })
     this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
   }
@@ -2812,7 +3822,7 @@ export class Game {
       this.tool = 'pan'
       if (prev !== 'hall') {
         this.pushNews(
-          'Inside the terminal — landside doors → security → airside gates. Furnish in the side panel. Esc / Apron to leave.',
+          'Inside the terminal — prefab ceilings are on the card. Paint a zone or upgrade the shell. Esc / Apron to leave.',
           'ok',
         )
       }
@@ -2883,7 +3893,15 @@ export class Game {
       ? this.hallGuests.filter((g) => !g.dead && g.hallId === key).length
       : this.hallGuests.length
     const crowd = pop > cap ? 1 / (1 + (pop - cap) * 0.08) : 1
-    return 12 * base * crowd
+    const allow = fit?.bagAllowance ?? 9999
+    let bagMul = 1
+    if (allow > 0) {
+      for (const f of this.flights) {
+        if (f.cargo || !f.bagUnits || f.bagUnits <= allow) continue
+        bagMul = Math.min(bagMul, allow / f.bagUnits)
+      }
+    }
+    return 12 * base * crowd * bagMul
   }
 
   /** How many claim carousels a hall offers (inbound scheduling pool). */
@@ -2896,13 +3914,23 @@ export class Game {
    * Pick the least-loaded claim carousel, counting live arrivals + banked slots.
    * Only inbound pax need claim planning — cargo / GA skip.
    */
-  pickClaimLane(excludeFlightId?: string | null, excludeSlotId?: string | null): number {
-    const fit = this.activeHall() ?? this.fits[0] ?? null
+  pickClaimLane(
+    excludeFlightId?: string | null,
+    excludeSlotId?: string | null,
+    fitParam?: TerminalFit | null,
+  ): number {
+    const fl = excludeFlightId ? this.flights.find((x) => x.id === excludeFlightId) : null
+    const fit =
+      fitParam ?? (fl?.stand ? this.roomsAt(fl.stand) : null) ?? this.activeHall() ?? this.fits[0] ?? null
     const n = this.claimLaneCount(fit)
     const loads = Array.from({ length: n }, () => 0)
+    const sameHall = (other: TerminalFit | null) =>
+      !fit || !other || this.hallKey(other) === this.hallKey(fit)
     for (const other of this.flights) {
       if (other.id === excludeFlightId || other.cargo || other.ga || !other.claimLane) continue
       if (other.phase === 'gone' || other.phase === 'takeoff') continue
+      const otherFit = other.stand ? this.roomsAt(other.stand) : null
+      if (!sameHall(otherFit)) continue
       const i = other.claimLane - 1
       if (i >= 0 && i < n) loads[i] += other.bagUnits ?? other.pax
     }
@@ -2910,6 +3938,8 @@ export class Game {
       if (s.id === excludeSlotId || !s.claimLane) continue
       if (s.status !== 'scheduled' && s.status !== 'delayed' && s.status !== 'inbound') continue
       if (this.airline(s.airline).kind === 'cargo') continue
+      const sFit = s.standPref ? this.roomsAt(s.standPref) : null
+      if (!sameHall(sFit)) continue
       const i = s.claimLane - 1
       if (i >= 0 && i < n) loads[i] += 40
     }
@@ -2928,7 +3958,8 @@ export class Game {
       return
     }
     if (slot.claimLane != null && slot.claimLane > 0) return
-    slot.claimLane = this.pickClaimLane(slot.flightId, slot.id)
+    const hall = slot.standPref ? this.roomsAt(slot.standPref) : null
+    slot.claimLane = this.pickClaimLane(slot.flightId, slot.id, hall)
   }
 
   /**
@@ -2963,38 +3994,321 @@ export class Game {
     f.bagStage = stage
   }
 
+  /** Deposited bags cover the flight's checked-bag count. */
+  private outboundBagsFull(f: Flight): boolean {
+    if (f.cargo) return true
+    const need = f.bagUnits ?? 0
+    if (need <= 0) return true
+    return (f.bagsDeposited ?? 0) + 0.51 >= need
+  }
+
+  /**
+   * A full cart is loaded. A short cart holds the departure until the board
+   * window ends, then the missing bags are offloaded instead of counted as loaded.
+   */
+  private settleOutboundBags(f: Flight, releasing: boolean): boolean {
+    if (f.cargo) return true
+    const need = f.bagUnits ?? 0
+    if (need <= 0) return true
+    const have = f.bagsDeposited ?? 0
+    const book = this.ensureBagBook(f)
+    if (this.outboundBagsFull(f)) {
+      f.bagsLoaded = have
+      f.bagsOffloaded = 0
+      book.offloaded = 0
+      book.loaded = Math.max(book.loaded, have)
+      f.posted.bagsLoad = true
+      f.waitingOn.bagsLoad = false
+      this.setBagStage(f, 'inflight')
+      this.noteOutboundBagFee(f)
+      this.markOutboundTags(f)
+      return true
+    }
+    if (!releasing) {
+      f.waitingOn.bagsLoad = true
+      f.posted.bagsLoad = false
+      f.bagsLoaded = have
+      book.loaded = have
+      if (f.bagStage === 'inflight' || f.bagStage === 'complete') this.setBagStage(f, 'load_aircraft')
+      return false
+    }
+    const short = Math.max(0, need - have)
+    const already = f.bagsOffloaded ?? 0
+    f.bagsLoaded = have
+    f.bagsOffloaded = short
+    book.offloaded = short
+    book.loaded = have
+    f.posted.bagsLoad = false
+    f.waitingOn.bagsLoad = false
+    if (
+      !f.bagStage ||
+      f.bagStage === 'idle' ||
+      f.bagStage === 'pax_deposit' ||
+      f.bagStage === 'hold_screen' ||
+      f.bagStage === 'inflight' ||
+      f.bagStage === 'complete'
+    ) {
+      this.setBagStage(f, 'load_aircraft')
+    }
+    this.noteOutboundBagFee(f)
+    this.markOutboundTags(f)
+    if (already + 0.51 < short) {
+      this.adjustHeat(f.airline, -1.6)
+      this.pushNews(
+        `${f.flightNo} left ${Math.round(short)} bags behind — offloaded, not loaded.`,
+        'bad',
+      )
+    }
+    return true
+  }
+
+  private noteOutboundBagFee(f: Flight) {
+    if (f.cargo) return
+    if (f.ledger.some((line) => line.label.includes('outbound bags'))) return
+    const airline = this.airline(f.airline)
+    const need = f.bagUnits ?? 0
+    const have = f.bagsDeposited ?? 0
+    const frac = need > 0 ? Math.min(1, have / need) : 1
+    const amount = Math.round(airline.bags * 0.55 * frac)
+    if (amount > 0) this.earn(amount, `${f.flightNo} outbound bags`, f)
+  }
+
+  /** Tags exist only for bags a passenger actually dropped. */
+  private markOutboundTags(f: Flight) {
+    for (const tag of this.bagTags) {
+      if (tag.kind === 'out' && tag.flightId === f.id && !tag.fault) tag.loaded = true
+    }
+  }
+
+  bagBook(id: string): BagBook | undefined {
+    return this.bagBooks.get(id)
+  }
+
+  private ensureBagBook(f: Flight): BagBook {
+    let book = this.bagBooks.get(f.id)
+    if (!book) {
+      book = freshBook(f.id, f.bagUnits ?? 0)
+      this.bagBooks.set(f.id, book)
+    }
+    if ((f.bagUnits ?? 0) > book.units) book.units = f.bagUnits ?? 0
+    return book
+  }
+
+  private noteBagDrop(f: Flight, units: number, ownerId?: string, paxTag?: PaxTag) {
+    const book = this.ensureBagBook(f)
+    book.dropped += units
+    book.units = Math.max(book.units, f.bagUnits ?? 0, book.dropped)
+    f.bagsDeposited = book.dropped
+    if ((f.bagUnits ?? 0) < book.units) f.bagUnits = book.units
+    if (ownerId && paxTag) this.issueBagTags(ownerId, f.id, paxTag, null, 'out')
+  }
+
+  /** Checked-bag records for one passenger. */
+  bagTagsFor(ownerId: string): BagTag[] {
+    return this.bagTags.filter((t) => t.ownerPassengerId === ownerId)
+  }
+
+  /** Bags sitting on the lost-bag desk. Capped so the picture stays a handful of meshes. */
+  bagDeskPile(): number {
+    return Math.min(
+      4,
+      this.bagTags.filter((t) => t.fault && !t.picked).length,
+    )
+  }
+
+  private issueBagTags(
+    ownerId: string,
+    flightId: string,
+    paxTag: PaxTag,
+    connectFlightId: string | null,
+    kind: BagTag['kind'],
+  ) {
+    if (this.bagTags.some((t) => t.ownerPassengerId === ownerId && t.kind === kind)) return
+    const pieces = checkedPieceCount(paxTag)
+    for (let i = 0; i < pieces; i++) {
+      this.bagTags.push(makeBagTag(ownerId, flightId, i, connectFlightId, kind))
+    }
+  }
+
+  /** Onward flight still on the ground, or an open connection id. */
+  private pickConnectFlight(airlineId: AirlineId): string {
+    const onward = this.flights.find(
+      (f) =>
+        f.airline === airlineId &&
+        !f.cargo &&
+        f.phase !== 'gone' &&
+        f.phase !== 'takeoff' &&
+        f.phase !== 'taxi_out' &&
+        f.phase !== 'pushback',
+    )
+    return onward?.id ?? `connect:${airlineId}`
+  }
+
+  private flightDeparted(id: string): boolean {
+    if (id.startsWith('connect:')) return false
+    const f = this.flights.find((x) => x.id === id)
+    if (!f) return true
+    return (
+      f.phase === 'pushback' ||
+      f.phase === 'taxi_out' ||
+      f.phase === 'takeoff' ||
+      f.phase === 'gone'
+    )
+  }
+
+  private bagClock() {
+    const prefab = this.fits.some((f) => f.premade && !f.redesigned)
+    return {
+      prefab,
+      normal: !this.hallOverloaded,
+      departed: (id: string) => this.flightDeparted(id),
+      stage: (id: string) => this.flights.find((f) => f.id === id)?.bagStage,
+    }
+  }
+
+  private pickUpOwnBags(g: HallGuest, fl: Flight) {
+    let pieces = 0
+    for (const tag of this.bagTags) {
+      if (tag.ownerPassengerId !== g.id || tag.kind !== 'in') continue
+      tag.onClaim = true
+      tag.picked = true
+      pieces += 1
+    }
+    const book = this.ensureBagBook(fl)
+    const cap = Math.max(book.units, book.dropped, pieces, 1)
+    book.claimed = Math.min(cap, book.claimed + Math.max(1, pieces))
+  }
+
+  private mishandleGuest(ownerId: string, fault: 'late' | 'missed_connection') {
+    const g = this.hallGuests.find((x) => x.id === ownerId && !x.dead)
+    if (!g || g.bagFault) return
+    g.bagFault = fault
+    g.atBagDesk = true
+    g.deskTime = 0
+    g.happiness = Math.max(0, g.happiness - 8)
+    g.node = 'claim'
+    g.path = []
+    g.seg = 0
+    g.t = 0
+    g.thought =
+      fault === 'missed_connection'
+        ? 'Lost-bag desk — my bag missed the connection'
+        : 'Lost-bag desk — my bag is late'
+  }
+
+  /** Teaching halls never lose a bag. A redesigned hall can. */
+  prefabFlight(f: Flight): boolean {
+    const fit = (f.stand && this.roomsAt(f.stand)) || this.activeHall() || this.fits[0]
+    return Boolean(fit?.premade && !fit.redesigned)
+  }
+
+  /** A bag building or any belt tile can screen hold bags. */
+  bagHallReady(): boolean {
+    return tilesOf(this.tiles, 'bags').length > 0 || hasBeltNetwork(this.tiles)
+  }
+
+  luggageMotion(): LuggageMotion {
+    if (this.bagShow) return { ...this.bagShow, phase: this.bagPhase }
+    let belt = false
+    let screen = false
+    let carousel = false
+    let sort = false
+    for (const f of this.flights) {
+      if (f.cargo || f.phase === 'gone') continue
+      const stage = f.bagStage
+      if (
+        stage === 'pax_deposit' ||
+        stage === 'hold_screen' ||
+        stage === 'outbound_sort' ||
+        stage === 'inbound_sort' ||
+        stage === 'deliver_claim'
+      ) {
+        belt = true
+      }
+      if (stage === 'pax_deposit' || stage === 'hold_screen') screen = true
+      if (
+        stage === 'outbound_sort' ||
+        stage === 'inbound_sort' ||
+        stage === 'load_aircraft' ||
+        stage === 'unload_aircraft'
+      ) {
+        sort = true
+      }
+      if (stage === 'deliver_claim' || stage === 'on_claim' || stage === 'complete') {
+        carousel = true
+      }
+    }
+    return { belt, screen, carousel, sort, phase: this.bagPhase }
+  }
+
+  private tickLuggage(dt: number) {
+    this.bagPhase = (this.bagPhase + dt * 0.35) % 1
+    for (const f of this.flights) {
+      if (f.cargo || f.phase === 'gone' || f.craft === 'helo') continue
+      if (!f.bagStage && !(f.bagUnits && f.bagUnits > 0) && !(f.bagsDeposited && f.bagsDeposited > 0)) {
+        continue
+      }
+      const book = this.ensureBagBook(f)
+      if ((f.bagsDeposited ?? 0) > book.dropped) {
+        book.dropped = f.bagsDeposited ?? 0
+        book.units = Math.max(book.units, book.dropped)
+      }
+      const prefab = this.prefabFlight(f)
+      if (f.bagStage === 'hold_screen') {
+        const before = book.lost
+        const result = advanceScreen(book, dt, { prefab, hallReady: this.bagHallReady() })
+        if (result === 'pass') this.setBagStage(f, 'outbound_sort')
+        else if (result === 'lose') {
+          if (!prefab) this.bagsLost += book.lost - before
+          this.setBagStage(f, 'outbound_sort')
+        }
+      }
+      if (prefab) keepPrefabBags(book, f.bagStage)
+    }
+    const clock = this.bagClock()
+    const fresh = advanceBagTags(this.bagTags, dt, clock)
+    if (fresh > 0) {
+      this.bagsMishandled += fresh
+      for (const tag of this.bagTags) {
+        if (tag.fault) this.mishandleGuest(tag.ownerPassengerId, tag.fault)
+      }
+    }
+    this.bagTags = this.bagTags.filter((tag) => {
+      if (!tag.picked && !tag.fault) return true
+      const owner = this.hallGuests.find((g) => g.id === tag.ownerPassengerId)
+      return !owner?.dead
+    })
+  }
+
   /** Seconds of visible load/unload/process work from bag units. */
+  /** Pax, bags, and arrival fuel from the airframe's published-ish figures. */
+  flightLoad(
+    af: (typeof AIRFRAMES)[string],
+    persona: 'budget' | 'business' | 'luxury' | 'cargo_night' | 'military_gov',
+    cargo: boolean,
+  ): { pax: number; bagUnits: number; fuelLevel: number } {
+    const freighter = cargo || af.kind === 'freighter'
+    const pax = freighter ? 0 : paxForAirframe(af)
+    const bagUnits = freighter
+      ? 0
+      : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
+    return { pax, bagUnits, fuelLevel: 0.28 + Math.random() * 0.18 }
+  }
+
+  /** Off-map start so the jet flies the approach instead of popping onto the strip. */
+  armApproach(route: Vec[]): { x: number; y: number; z: number; path: Vec[] } {
+    const path = inboundApproach(route)
+    const start = path[0] ?? route[0]
+    return { x: start.c, y: start.r, z: 16, path }
+  }
+
   bagWorkSeconds(f: Flight, kind: 'ramp' | 'sort' | 'deposit'): number {
     const u = f.bagUnits ?? estimateFlightBagUnits(this.airline(f.airline).persona, f.pax)
-    if (kind === 'deposit') return clamp(0.7 + u * 0.012, 0.7, 3.2)
-    if (kind === 'sort') return clamp(1.1 + u * 0.018, 1.1, 4.5)
-    return clamp(1.8 + u * 0.022, 1.8, 5.5)
+    return bagWorkDuration(u, kind)
   }
 
   bagStageLabel(f: Flight): string {
-    const lane = f.claimLane ? ` · claim ${f.claimLane}` : ''
-    switch (f.bagStage) {
-      case 'pax_deposit':
-        return `Bags: check-in deposit (${f.bagsDeposited ?? 0}/${f.bagUnits ?? '?'})`
-      case 'outbound_sort':
-        return 'Bags: sorting outbound'
-      case 'load_aircraft':
-        return 'Bags: loading aircraft'
-      case 'inflight':
-        return `Bags: on board${lane}`
-      case 'unload_aircraft':
-        return `Bags: unloading${lane}`
-      case 'inbound_sort':
-        return `Bags: processing → claim ${f.claimLane ?? '?'}`
-      case 'deliver_claim':
-        return `Bags: delivering to claim ${f.claimLane ?? '?'}`
-      case 'on_claim':
-        return `Bags: on claim ${f.claimLane ?? '?'}`
-      case 'complete':
-        return 'Bags: complete'
-      default:
-        return lane ? `Bags${lane}` : ''
-    }
+    return describeBagStage(f.bagStage, f.claimLane, f.bagsDeposited, f.bagUnits)
   }
 
   /** Warehouse fill 0–1 for HUD. */
@@ -3259,6 +4573,18 @@ export class Game {
     return `${this.fits.length} hall${this.fits.length > 1 ? 's' : ''} (${halls}) · ${jw} jetway${jw === 1 ? '' : 's'}${remote > 0 ? ` · ${remote} remote` : ''}`
   }
 
+  /** A departing passenger has reached the doors and can walk to check-in. */
+  private openDepartingGuest(g: HallGuest, open: Set<HallNode>) {
+    g.node = 'entrance'
+    g.clearedSec = false
+    if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
+    else if (open.has('security')) this.routeGuest(g, 'security', open)
+    else g.thought = 'No security lane — stuck before security'
+    if (g.thought !== 'No security lane — stuck before security') {
+      g.thought = 'Rolling a bag to check-in'
+    }
+  }
+
   /** Focus a campus hall (from HUD chips or pan-click). */
   selectHall(fit: TerminalFit) {
     this.selectedTile = { ...fit.origin }
@@ -3279,6 +4605,7 @@ export class Game {
       Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
     )
     const a = this.airline(f.airline)
+    const departWave: HallGuest[] = []
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
@@ -3311,26 +4638,444 @@ export class Game {
               : 'Long walk from the stand — need bags'
         if (open.has('claim')) this.routeGuest(g, 'claim', open)
         else if (open.has('exit')) this.routeGuest(g, 'exit', open)
+        g.hasChecked = false
+        g.carryOn = true
       } else {
         g.node = 'entrance'
         g.clearedSec = false
+        g.hasChecked = true
+        g.carryOn = true
         this.applyGuestLandside(g, 'depart')
-        if (!g.thought || g.thought === 'Where is check-in?') {
-          g.thought =
-            mode === 'jetway'
-              ? 'Jetway gate — browse before boarding'
-              : 'Inbound — find check-in'
-        }
-        if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
-        else if (open.has('security')) this.routeGuest(g, 'security', open)
-        else g.thought = 'No security lane — stuck landside'
+        departWave.push(g)
       }
       this.hallGuests.push(g)
+    }
+    if (departWave.length) this.releaseDepartureWave(departWave, f, open)
+  }
+
+  /** Fallback wave (boarding with no banked plan, or a direct seed). Drips — never a single dump. */
+  private releaseDepartureWave(wave: HallGuest[], f: Flight, open: Set<HallNode>) {
+    const std = f.std ?? this.clock + PLANNED_TURN_SEC
+    const times = planShowUp({
+      std,
+      now: this.clock,
+      tags: wave.map((g) => g.tag),
+      intl: isIntlKind(f.kind),
+    })
+    wave.forEach((g, i) => {
+      const at = times[i] ?? this.clock
+      if (at <= this.clock + 0.001) this.openDepartingGuest(g, open)
+      else {
+        g.releaseAt = at
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.thought = 'On the way to the doors'
+      }
+    })
+  }
+
+  private visualDepartureCount(f: Flight): number {
+    const mode = this.standPaxMode(f.stand)
+    return Math.max(
+      6,
+      Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
+    )
+  }
+
+  private entranceReleaseTimes(hallId: string, exceptSlot?: string): number[] {
+    const out: number[] = []
+    for (const plan of this.showUps) {
+      if (plan.closed || plan.hallId !== hallId || plan.slotId === exceptSlot) continue
+      for (let i = plan.spawned; i < plan.releases.length; i++) out.push(plan.releases[i])
+    }
+    return out
+  }
+
+  /** Bank a show-up when the slot is written, so the hall fills before approach. */
+  private noteSlotBanked(slot: ScheduleSlot) {
+    const a = this.airline(slot.airline)
+    if (a.kind === 'cargo') return
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) return
+    const tags: ShowTag[] = []
+    for (let i = 0; i < 12; i++) tags.push(rollPaxTag(a.persona))
+    const std = slot.eta + PLANNED_TURN_SEC
+    const hallId = this.hallKey(fit)
+    const releases = planShowUp({
+      std,
+      now: this.clock,
+      tags,
+      intl: false,
+      taken: this.entranceReleaseTimes(hallId),
+    })
+    this.showUps.push({
+      slotId: slot.id,
+      std,
+      hallId,
+      airlineId: slot.airline,
+      intl: false,
+      tags,
+      releases,
+      spawned: 0,
+      flightId: null,
+      closed: false,
+    })
+  }
+
+  private planForGuest(g: HallGuest): ShowUpPlan | undefined {
+    if (g.flightId.startsWith('slot:')) {
+      const id = g.flightId.slice('slot:'.length)
+      return this.showUps.find((p) => p.slotId === id)
+    }
+    return this.showUps.find((p) => p.flightId != null && p.flightId === g.flightId)
+  }
+
+  private linkedFlight(g: HallGuest): Flight | undefined {
+    if (g.flightId.startsWith('slot:')) {
+      const id = g.flightId.slice('slot:'.length)
+      const slot = this.schedule.find((s) => s.id === id)
+      if (slot?.flightId) return this.flights.find((f) => f.id === slot.flightId)
+      return undefined
+    }
+    return this.flights.find((f) => f.id === g.flightId)
+  }
+
+  private phaseIsBoarding(phase: Phase): boolean {
+    return (
+      phase === 'board' ||
+      phase === 'pushback' ||
+      phase === 'taxi_out' ||
+      phase === 'takeoff' ||
+      phase === 'gone'
+    )
+  }
+
+  /** Patience runs once the aircraft is boarding. A slot that has not spawned yet does not burn it. */
+  private departureClockRunning(g: HallGuest): boolean {
+    if (g.flightId.startsWith('slot:')) {
+      const f = this.linkedFlight(g)
+      return Boolean(f && this.phaseIsBoarding(f.phase))
+    }
+    const f = this.linkedFlight(g)
+    if (!f) return true
+    return this.phaseIsBoarding(f.phase)
+  }
+
+  private flightBoardingCall(g: HallGuest): boolean {
+    const f = this.linkedFlight(g)
+    if (f) return this.phaseIsBoarding(f.phase)
+    return this.departedFlights.has(g.flightId)
+  }
+
+  private checkInOpen(g: HallGuest): boolean {
+    const plan = this.planForGuest(g)
+    if (!plan) return true
+    return this.clock < checkInCloseAt(plan.std, plan.intl)
+  }
+
+  private tuneDepartureGuest(g: HallGuest, f: Flight) {
+    const mode = this.standPaxMode(f.stand)
+    if (mode === 'jetway') {
+      g.needs.boarding = Math.min(99, g.needs.boarding + 18)
+      g.needs.shop = Math.min(99, g.needs.shop + 14)
+      g.needs.play = Math.min(99, g.needs.play + 10)
+      g.needs.hunger = Math.min(99, g.needs.hunger + 8)
+    } else if (mode === 'walk') {
+      g.needs.boarding = Math.max(6, g.needs.boarding - 14)
+    } else if (mode === 'bus') {
+      g.needs.boarding = Math.min(99, g.needs.boarding + 6)
+      g.needs.shop = Math.min(99, g.needs.shop + 6)
+    }
+  }
+
+  private spawnShowUpGuest(plan: ShowUpPlan, open: Set<HallNode>) {
+    const tag = plan.tags[plan.spawned] ?? 'budget'
+    const flightId = plan.flightId ?? `slot:${plan.slotId}`
+    const g = spawnHallGuest(flightId, 'depart', tag, {
+      airlineId: plan.airlineId,
+      hallId: plan.hallId,
+    })
+    const persona = this.airline(plan.airlineId as AirlineId).persona
+    const modes = this.pickGuestMode(tag, persona, 'depart')
+    g.preferMode = modes.prefer
+    g.arriveMode = modes.actual
+    g.node = 'entrance'
+    g.clearedSec = false
+    g.hasChecked = true
+    g.carryOn = true
+    if (plan.flightId) {
+      const flight = this.flights.find((f) => f.id === plan.flightId)
+      if (flight) this.tuneDepartureGuest(g, flight)
+    }
+    this.applyGuestLandside(g, 'depart')
+    if (open.size) this.openDepartingGuest(g, open)
+    else g.thought = 'On the way to the doors'
+    this.hallGuests.push(g)
+  }
+
+  private retargetShowUp(plan: ShowUpPlan, std: number) {
+    if (Math.abs(std - plan.std) < 0.05) return
+    plan.std = std
+    const flight = plan.flightId ? this.flights.find((f) => f.id === plan.flightId) : undefined
+    if (flight) flight.std = std
+    if (plan.spawned >= plan.tags.length) return
+    const remain = plan.tags.slice(plan.spawned)
+    const fresh = planShowUp({
+      std,
+      now: this.clock,
+      tags: remain,
+      intl: plan.intl,
+      taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+    })
+    plan.releases = [...plan.releases.slice(0, plan.spawned), ...fresh]
+  }
+
+  private abandonShowUp(slotId: string) {
+    const plan = this.showUps.find((p) => p.slotId === slotId)
+    if (!plan || plan.closed) return
+    plan.closed = true
+    const pending = `slot:${slotId}`
+    const bound = plan.flightId
+    for (const g of this.hallGuests) {
+      if (g.dead || g.job !== 'depart') continue
+      if (g.flightId === pending || (bound != null && g.flightId === bound)) {
+        g.dead = true
+        g.thought = 'Flight cancelled'
+      }
+    }
+  }
+
+  /** Attach the aircraft once it exists, and match the visual headcount to the airframe. */
+  private bindShowUp(slot: ScheduleSlot, f: Flight) {
+    const plan = this.showUps.find((p) => p.slotId === slot.id)
+    if (!plan || f.cargo) return
+    const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.fitByKey(plan.hallId) ?? this.fits[0]
+    plan.flightId = f.id
+    plan.intl = isIntlKind(f.kind)
+    if (fit) plan.hallId = this.hallKey(fit)
+    f.std = plan.std
+    for (const g of this.hallGuests) {
+      if (g.flightId !== `slot:${slot.id}`) continue
+      g.flightId = f.id
+      g.hallId = plan.hallId
+      this.tuneDepartureGuest(g, f)
+    }
+    const want = this.visualDepartureCount(f)
+    if (want > plan.tags.length) {
+      const extra: ShowTag[] = []
+      const persona = this.airline(f.airline).persona
+      for (let i = plan.tags.length; i < want; i++) extra.push(rollPaxTag(persona))
+      const more = planShowUp({
+        std: plan.std,
+        now: this.clock,
+        tags: extra,
+        intl: plan.intl,
+        taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+      })
+      plan.tags.push(...extra)
+      plan.releases.push(...more)
+    } else if (want < plan.tags.length) {
+      const cut = Math.min(plan.tags.length - want, plan.tags.length - plan.spawned)
+      if (cut > 0) {
+        plan.tags.splice(plan.tags.length - cut, cut)
+        plan.releases.splice(plan.releases.length - cut, cut)
+      }
+    }
+    if (plan.intl && plan.spawned < plan.tags.length) {
+      const remain = plan.tags.slice(plan.spawned)
+      const fresh = planShowUp({
+        std: plan.std,
+        now: this.clock,
+        tags: remain,
+        intl: true,
+        taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+      })
+      plan.releases = [...plan.releases.slice(0, plan.spawned), ...fresh]
+    }
+  }
+
+  private tickShowUp() {
+    for (const plan of this.showUps) {
+      if (plan.closed) continue
+      const slot = this.schedule.find((s) => s.id === plan.slotId)
+      if (!slot || slot.status === 'cancelled') {
+        this.abandonShowUp(plan.slotId)
+        continue
+      }
+      if (slot.status === 'done') {
+        plan.closed = true
+        continue
+      }
+      this.retargetShowUp(plan, slot.eta + PLANNED_TURN_SEC)
+      if (plan.spawned >= plan.releases.length) continue
+      const fit = this.fitByKey(plan.hallId) ?? this.activeHall() ?? this.fits[0]
+      if (!fit) continue
+      const open = this.hallOpenFor(fit)
+      while (plan.spawned < plan.releases.length && plan.releases[plan.spawned] <= this.clock) {
+        this.spawnShowUpGuest(plan, open)
+        plan.spawned += 1
+      }
+    }
+    if (this.showUps.length > 64) {
+      this.showUps = this.showUps.filter((p) => !p.closed)
+    }
+  }
+
+  /**
+   * Benches and decorations. A waiting guest takes a free seat and rests;
+   * decorations near the guest's zone lift the mood a little each second.
+   */
+  applyHallKit(g: HallGuest, dt: number, cache: Map<string, HallKitState>) {
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit) return
+    const key = this.hallKey(fit)
+    let state = cache.get(key)
+    if (!state) {
+      const items = (fit.items ?? []) as PlacedItem[]
+      const zones = fit.zones ?? []
+      state = {
+        items,
+        zones,
+        seatsLeft: seatsByZone(zones, items),
+        comfort: new Map(),
+        litter: new Map(),
+      }
+      cache.set(key, state)
+    }
+    const walking = g.path.length > 0 && g.seg < g.path.length - 1
+    const zone = NODE_ZONE[g.node]
+    const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
+    g.seated = false
+    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+      state.seatsLeft.set(zone, free - 1)
+      g.seated = true
+      g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
+      if (g.happiness < 100) {
+        g.happiness = Math.min(100, g.happiness + dt * KIT_TUNING.seatJoyPerSec)
+      }
+    }
+    let comfort = state.comfort.get(g.node)
+    let litter = state.litter.get(g.node)
+    if (comfort == null || litter == null) {
+      litter = zone ? litterInZone(asLitterHall(fit), zone) : 0
+      // Rubbish on the floor eats into what the decorations give.
+      comfort = nodeComfort(state.zones, state.items, g.node) - litterComfortHit(litter)
+      state.comfort.set(g.node, comfort)
+      state.litter.set(g.node, litter)
+    }
+    if (comfort > 0 && g.happiness < 100) {
+      g.happiness = Math.min(100, g.happiness + dt * comfort * KIT_TUNING.comfortJoyPerSec)
+    }
+    if (litter > 0) {
+      g.happiness = Math.max(0, g.happiness - dt * litterJoyDrain(litter))
+    }
+  }
+
+  /** Where the guest stands in the hall, normalized like NODE_POS. Matches the hall renderer. */
+  guestSpot(g: HallGuest): { x: number; y: number } {
+    const node = g.path.length ? g.path[Math.min(g.seg, g.path.length - 1)] : g.node
+    const next = g.path.length && g.seg < g.path.length - 1 ? g.path[g.seg + 1] : null
+    const a = NODE_POS[node]
+    const b = next ? NODE_POS[next] : a
+    const t = next ? Math.min(1, Math.max(0, g.t)) : 0
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+  }
+
+  /** A meal or coffee goes into the guest's hand. They finish it over a few game minutes. */
+  giveSnack(g: HallGuest, outlet: PlacedItem | null) {
+    if (g.snack) this.finishSnack(g)
+    const kind = snackKind(outlet?.def)
+    this.litterSeq += 1
+    // Spread by sequence, not Math.random, so litter never shifts a seeded run.
+    const u = ((this.litterSeq * 7919) % 1000) / 1000
+    g.snack = { kind, left: snackMinutes(kind, u) / GAME_MINUTES_PER_SIM_SECOND }
+  }
+
+  /** Track the guest's spot and count down the snack in hand. */
+  tickSnack(g: HallGuest, dt: number) {
+    g.spot = this.guestSpot(g)
+    if (!g.snack) return
+    g.snack.left -= dt
+    if (g.snack.left <= 0) this.finishSnack(g)
+  }
+
+  /**
+   * The cup or wrapper is empty. A can with room near where the guest is now
+   * takes it; otherwise it lands right there. Guests who board or leave first
+   * drop it at their last spot in the hall.
+   */
+  finishSnack(g: HallGuest): 'bin' | 'floor' | null {
+    if (!g.snack) return null
+    g.snack = undefined
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit) return null
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const spot = g.spot ?? this.guestSpot(g)
+    const rows = hall.zones.length || GRID_R
+    const cols = hall.zones[0]?.length || GRID_C
+    this.litterSeq += 1
+    return dropLitterAt(hall, cellAt(spot.x, spot.y, cols, rows), `lit-${this.litterSeq}`)
+  }
+
+  /** Keep one hall janitor per hire, shared round-robin across halls. */
+  private syncHallJanitors() {
+    const keys = this.fits.map((f) => this.hallKey(f))
+    if (!keys.length) {
+      this.hallJanitors = []
+      return
+    }
+    this.hallJanitors = this.hallJanitors.filter((j) => keys.includes(j.hallId))
+    while (this.hallJanitors.length > this.janitors) this.hallJanitors.pop()
+    while (this.hallJanitors.length < this.janitors) {
+      const hallId = keys[this.hallJanitors.length % keys.length]
+      const fit = this.fitByKey(hallId)
+      const zones = fit?.zones?.length ? fit.zones : prefabZones()
+      this.hallJanitors.push({
+        id: uid('hjan'),
+        hallId,
+        x: (zones[0]?.length ?? GRID_C) / 2,
+        z: zones.length / 2,
+        task: null,
+        work: 0,
+      })
+    }
+  }
+
+  /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
+  tickHallJanitors(dt: number) {
+    this.syncHallJanitors()
+    const clean = this.budgets.cleaning / 100
+    if (clean >= LITTER_TUNING.minCleaningBudget) {
+      const claimed = new Map<string, Set<string>>()
+      for (const j of this.hallJanitors) {
+        const fit = this.fitByKey(j.hallId)
+        if (!fit) continue
+        const hall = asLitterHall(fit)
+        const cols = hall.zones?.[0]?.length || GRID_C
+        let taken = claimed.get(j.hallId)
+        if (!taken) {
+          taken = new Set()
+          claimed.set(j.hallId, taken)
+        }
+        // A thin cleaning budget means a slower, part-time crew.
+        stepJanitor(j, hall, dt * clean, HALL_W / cols, taken)
+      }
+    }
+    this.litterAdviceCool -= dt
+    if (this.litterAdviceCool <= 0) {
+      this.litterAdviceCool = 5
+      this.refreshAdvice()
     }
   }
 
   guestAirlineId(g: HallGuest): AirlineId | null {
     if (g.airlineId) return g.airlineId
+    if (g.flightId.startsWith('slot:')) {
+      const plan = this.planForGuest(g)
+      if (plan) return plan.airlineId as AirlineId
+    }
     if (g.flightId.startsWith('layover:')) return g.flightId.slice('layover:'.length)
     const f = this.flights.find((x) => x.id === g.flightId)
     return f?.airline ?? null
@@ -3346,10 +5091,47 @@ export class Game {
       this.hallGuests = []
       return
     }
+    const kit = new Map<string, HallKitState>()
     for (const g of this.hallGuests) {
       if (g.dead) continue
+      if (g.releaseAt != null && this.clock < g.releaseAt) continue
       const open = this.openForGuest(g)
       if (!open.size) continue
+      if (g.releaseAt != null) {
+        g.releaseAt = undefined
+        this.openDepartingGuest(g, open)
+      }
+      if (g.job === 'depart' && g.node === 'gate' && this.flightBoardingCall(g)) {
+        g.needs.boarding = 0
+        g.dead = true
+        g.thought = 'Boarded'
+        this.paxServed += 1
+        this.reputation = Math.min(100, this.reputation + 0.4)
+        continue
+      }
+      if (
+        g.job === 'depart' &&
+        g.clearedSec &&
+        g.node !== 'security' &&
+        g.node !== 'gate' &&
+        this.flightBoardingCall(g) &&
+        open.has('gate') &&
+        g.path[g.path.length - 1] !== 'gate'
+      ) {
+        this.routeGuest(g, 'gate', open)
+      }
+      if (
+        g.job === 'depart' &&
+        g.node === 'checkin' &&
+        !g.bagsDropped &&
+        (g.bagDepositLeft == null || g.bagDepositLeft <= 0) &&
+        !this.checkInOpen(g)
+      ) {
+        g.bagsDropped = true
+        g.bagDepositLeft = 0
+        g.thought = 'Check-in closed — carry-on to security'
+        if (open.has('security')) this.routeGuest(g, 'security', open)
+      }
       // Needs drift — budget/family fill hunger faster; wear makes WC less satisfying.
       const drain =
         g.tag === 'budget' ? 1.25 : g.tag === 'family' ? 1.1 : g.tag === 'business' ? 0.9 : 0.85
@@ -3362,7 +5144,11 @@ export class Game {
         100,
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
-      if (g.job === 'depart') g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+      if (g.job === 'depart' && this.departureClockRunning(g)) {
+        g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+      }
+      this.applyHallKit(g, dt, kit)
+      this.tickSnack(g, dt)
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -3375,50 +5161,146 @@ export class Game {
         if (g.bagDepositLeft <= 0) {
           g.bagsDropped = true
           g.bagDepositLeft = 0
+          g.hasChecked = false
           const fl = this.flights.find((x) => x.id === g.flightId)
           if (fl && !fl.cargo) {
-            const add = bagUnitsForTag(g.tag)
-            fl.bagsDeposited = (fl.bagsDeposited ?? 0) + add
+            this.noteBagDrop(fl, bagUnitsForTag(g.tag), g.id, g.tag)
             const need = fl.bagUnits ?? 1
-            if ((fl.bagsDeposited ?? 0) >= need * 0.55) {
-              fl.bagStage = 'outbound_sort'
+            const early =
+              !fl.bagStage ||
+              fl.bagStage === 'idle' ||
+              fl.bagStage === 'pax_deposit' ||
+              fl.bagStage === 'hold_screen'
+            if ((fl.bagsDeposited ?? 0) >= need * 0.55 && early) {
+              fl.bagStage = 'hold_screen'
             }
           }
-          g.thought = 'Bags accepted — walking to security'
           const openDesk = this.openForGuest(g)
           if (openDesk.has('security')) this.routeGuest(g, 'security', openDesk)
+          g.thought = 'Bags accepted — walking to security'
         } else {
           continue
         }
       }
       if (g.job === 'arrive' && g.node === 'claim' && !g.transfer) {
         const fl = this.flights.find((x) => x.id === g.flightId)
-        // Bags only clear once the inbound cart has hit the assigned claim.
-        if (fl && fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
+        if (!fl) {
+          const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
+          const rate = this.claimClearRate(fit)
+          g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
+          if (g.needs.bags > 0) {
+            g.thought = 'Waiting at the carousel'
+            continue
+          }
+          if (!g.hasChecked) {
+            g.hasChecked = true
+            g.thought = 'Got my bag'
+          }
+        } else if (g.atBagDesk) {
+          g.deskTime = (g.deskTime ?? 0) + dt
+          g.thought =
+            g.bagFault === 'missed_connection'
+              ? 'Lost-bag desk — my bag missed the connection'
+              : 'Lost-bag desk — my bag is late'
+          if ((g.deskTime ?? 0) < 4) continue
+          this.pickUpOwnBags(g, fl)
+          g.atBagDesk = false
+          g.hasChecked = true
+          g.needs.bags = 0
+          g.thought = 'Got my bag'
+          fl.bagStage = 'complete'
+        } else if (fl.bagStage !== 'on_claim' && fl.bagStage !== 'complete') {
+          this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
+          g.claimWait = (g.claimWait ?? 0) + dt
           g.thought =
             fl.bagStage === 'unload_aircraft' || fl.bagStage === 'inbound_sort'
               ? `Waiting — bags processing for claim ${fl.claimLane ?? '?'}`
               : fl.bagStage === 'deliver_claim'
                 ? `Waiting — bags rolling to claim ${fl.claimLane ?? '?'}`
-                : 'Waiting for bags off the aircraft…'
+                : 'Waiting for my bag off the aircraft…'
+          const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
+            prefab: this.prefabFlight(fl),
+            normal: !this.hallOverloaded,
+          })
+          if (late.length) {
+            this.bagsMishandled += late.length
+            this.mishandleGuest(g.id, 'late')
+          }
           continue
+        } else {
+          this.issueBagTags(g.id, fl.id, g.tag, null, 'in')
+          if (!ownerClaimReady(this.bagTags, g.id)) {
+            g.claimWait = (g.claimWait ?? 0) + dt
+            g.thought = 'Waiting for my bag'
+            const late = markClaimLate(this.bagTags, g.id, g.claimWait, {
+              prefab: this.prefabFlight(fl),
+              normal: !this.hallOverloaded,
+            })
+            if (late.length) {
+              this.bagsMishandled += late.length
+              this.mishandleGuest(g.id, 'late')
+            }
+            continue
+          }
+          if (!g.hasChecked) {
+            this.pickUpOwnBags(g, fl)
+            g.hasChecked = true
+            g.needs.bags = 0
+            g.thought = 'Got my bag'
+          }
+          fl.bagStage = 'complete'
         }
-        const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0] ?? null
-        const rate = this.claimClearRate(fit)
-        g.needs.bags = Math.max(0, g.needs.bags - dt * rate)
-        if (fl && g.needs.bags <= 0) fl.bagStage = 'complete'
+      }
+
+      if (g.job === 'depart' && g.node === 'security' && !g.clearedSec) {
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.route = undefined
+        this.tickSecurityLane(g, dt, open)
+        continue
       }
 
       if (g.path.length && g.seg < g.path.length - 1) {
+        if (g.route == null) this.armGuestRoute(g)
         g.t += dt * 1.35
+        let held = false
         while (g.t >= 1 && g.seg < g.path.length - 1) {
+          const finished = g.route
           g.t -= 1
           g.seg += 1
           g.node = g.path[g.seg]
+          if (finished && finished.length) {
+            const end = finished[finished.length - 1]
+            g.wx = end.x
+            g.wz = end.z
+          }
+          if (g.node === 'security' && g.job === 'depart' && !g.clearedSec) {
+            g.path = []
+            g.seg = 0
+            g.t = 0
+            g.route = undefined
+            g.routeDist = 0
+            held = true
+            break
+          }
+          const screened = g.clearedSec
           if (g.node === 'security') g.clearedSec = true
           this.secureBreach(g)
-          this.serveNode(g, open)
+          // A cleared departure walking back across the checkpoint keeps their path.
+          // serveNode used to start a new route here, so the line never left the node.
+          if (!(g.node === 'security' && screened && g.job === 'depart')) this.serveNode(g, open)
+          if (g.seg < g.path.length - 1) this.armGuestRoute(g)
+          else {
+            g.route = undefined
+            g.routeDist = 0
+          }
         }
+        if (held) {
+          this.tickSecurityLane(g, 0, open)
+          continue
+        }
+        this.sampleGuestRoute(g)
         continue
       }
 
@@ -3462,21 +5344,12 @@ export class Game {
         }
         continue
       }
-      const dest = needToNode(need, g.job)
-      if (!open.has(dest)) {
-        g.happiness -= dt * 4
-        g.thought = `Can't find ${dest}`
-        g.patience -= dt * 3
-        if (g.patience <= 0) {
-          g.dead = true
-          this.reputation = Math.max(0, this.reputation - 0.5)
-          const aid = this.guestAirlineId(g)
-          if (aid) this.adjustHeat(aid, g.transfer ? -2 : -1.2)
-          this.hallMissNews(
-            `miss-${dest}`,
-            `${g.name} left angry — missing ${dest}. Others peeling off too.`,
-          )
-        }
+      const dest = reachableNeed(need, g.job, open)
+      if (!dest) {
+        g.happiness -= dt * 0.4
+        g.thought = 'Waiting for a way through'
+        if (g.job === 'depart' && open.has('gate')) this.routeGuest(g, 'gate', open)
+        else if (g.job === 'arrive' && open.has('exit')) this.routeGuest(g, 'exit', open)
         continue
       }
       if (g.node === dest) this.serveNode(g, open)
@@ -3492,6 +5365,7 @@ export class Game {
           `gate-${g.flightId}`,
           `Missed gate on ${g.flightId.slice(0, 10)} — pax boiling, Standing dips.`,
         )
+        this.missedFlights += 1
       }
     }
     // Sample layover happiness into the active contract.
@@ -3506,28 +5380,62 @@ export class Game {
         this.layover.samples += 1
       }
     }
+    // Boarded or left with a snack still in hand: the rubbish stays at their last spot.
+    for (const g of this.hallGuests) if (g.dead && g.snack) this.finishSnack(g)
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
-    // Cap population for sim health (Sawyer lesson).
-    if (this.hallGuests.length > 80) this.hallGuests.length = 80
+    if (this.departedFlights.size > 24) {
+      const live = new Set(this.hallGuests.map((g) => g.flightId))
+      for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
+    }
+    const fit = this.activeHall() ?? this.fits[0]
+    const present = this.hallGuests.filter((g) => g.releaseAt == null || g.releaseAt <= this.clock).length
+    if (fit && present > (fit.capGuests ?? 40)) this.markHallOverloaded()
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
-    // Uncleared departures only see landside + security lane.
+    // Uncleared departures only see the curb side plus the security lane.
     const view = openForGuest(open, g.clearedSec)
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    const prefab = Boolean(fit?.premade && !fit?.redesigned)
     let target = dest
     if (!g.clearedSec && isAirside(dest)) {
       if (view.has('security')) {
         target = 'security'
         g.thought = 'Need to clear security first'
+      } else if (prefab) {
+        g.lost = false
+        g.thought = 'No security lane — waiting'
+        g.happiness -= 0.4
+        return
       } else {
-        g.thought = 'Airside locked — no security lane'
+        g.lost = true
+        g.thought = 'Lost — no security lane, gate is locked'
         g.happiness -= 1.2
         g.patience -= 2
         return
       }
     }
-    const path = hallPath(g.node, target, view, tagSpendsUp(g.tag) ? 7 : 5)
+    const signs = (fit?.signs ?? 0) + (g.node === 'info' ? 1 : 0)
+    const depth = lookaheadDepth(signs)
+    // Once screened, stay airside. The checkpoint is not a shortcut between the gate and the food.
+    const avoidLane =
+      g.clearedSec &&
+      g.node !== 'security' &&
+      target !== 'security' &&
+      isAirside(g.node) &&
+      isAirside(target)
+    const walkView = avoidLane ? new Set([...view].filter((n) => n !== 'security')) : view
+    let path = hallPath(g.node, target, walkView, depth)
+    if ((!path || path.length < 2) && avoidLane) path = hallPath(g.node, target, view, depth)
+    if ((!path || path.length < 2) && prefab) path = hallPath(g.node, target, view, 12)
     if (!path || path.length < 2) {
+      if (prefab) {
+        g.lost = false
+        g.thought = 'Waiting for a clear path'
+        g.happiness -= 0.15
+        return
+      }
+      g.lost = true
       if (!g.clearedSec && isAirside(dest)) {
         g.thought = 'Blocked at the secure line'
         g.happiness -= 0.8
@@ -3537,12 +5445,1261 @@ export class Game {
       }
       return
     }
+    g.lost = false
     g.path = path
     g.seg = 0
     g.t = 0
+    g.route = undefined
+    this.armGuestRoute(g)
     if (!g.thought.startsWith('Need to clear')) {
       g.thought = `Heading to ${target}`
     }
+  }
+
+  /**
+   * Room plan for a hall, matching `world.wr.roomPlans()` (same layout seed, no decorative crowd).
+   * Rebuilt when the map changes. Headless tests use this; the client draws the same plan.
+   */
+  roomPlanForHall(hallId?: string | null): RoomPlan | null {
+    if (this.terminalPlans?.rev !== this.mapRev) {
+      const entries = terminals(this).map((t, index) => ({
+        key: `${t.cluster.minC},${t.cluster.minR}`,
+        cells: t.cluster.cells,
+        plan: planTerminal(t, { density: 1, walkersPerCell: 0, seed: terminalPlanSeed(index) }).rooms,
+      }))
+      this.terminalPlans = { rev: this.mapRev, entries }
+    }
+    const entries = this.terminalPlans?.entries ?? []
+    const fit = this.fitByKey(hallId)
+    if (fit) {
+      const key = this.hallKey(fit)
+      const hit = entries.find(
+        (e) => e.key === key || e.cells.some((p) => p.c === fit.origin.c && p.r === fit.origin.r),
+      )
+      if (hit) return hit.plan
+    }
+    if (hallId) {
+      const hit = entries.find((e) => e.key === hallId)
+      if (hit) return hit.plan
+    }
+    return entries[0]?.plan ?? null
+  }
+
+  /** Strict doorway path for the edge the guest is about to walk. A null path does not mark them lost. */
+  armGuestRoute(g: HallGuest) {
+    const next = g.path[g.seg + 1]
+    if (!next) {
+      g.route = undefined
+      g.routeDist = 0
+      return
+    }
+    const plan = this.roomPlanForHall(g.hallId)
+    if (!plan) {
+      g.route = []
+      g.routeDist = 0
+      return
+    }
+    const route = legRoute(plan, g, next)
+    g.route = route ?? []
+    g.routeDist = 0
+    if (route && route.length && (g.wx == null || g.wz == null)) {
+      g.wx = route[0].x
+      g.wz = route[0].z
+    }
+  }
+
+  /** `g.t` stays 0..1 for queues. World position is that fraction along the doorway polyline. */
+  private sampleGuestRoute(g: HallGuest) {
+    const route = g.route
+    if (!route || route.length < 2) return
+    const at = pointAlong(route, g.t)
+    g.wx = at.x
+    g.wz = at.z
+    g.wyaw = at.yaw
+    g.routeDist = Math.min(1, Math.max(0, g.t)) * polylineLength(route)
+  }
+
+  /**
+   * One prefab lane serves `servers` people at a time. Everyone else waits.
+   * Past the comfort cap the line gets slower and angrier, flights slip,
+   * and the advisor asks for an upgrade. Nobody is marked lost.
+   */
+  tickSecurityLane(g: HallGuest, dt: number, open: Set<HallNode>) {
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
+    const lane = laneStats({
+      premade: fit?.premade ?? false,
+      redesigned: fit?.redesigned,
+      tier: fit?.tier,
+      items: (fit?.items ?? []) as PlacedItem[],
+      roomsSecurity: fit?.rooms.security ?? 0,
+    })
+    if (g.queueSeq == null) g.queueSeq = this.secSeq++
+    const peers = this.hallGuests.filter(
+      (o) =>
+        !o.dead &&
+        o.hallId === g.hallId &&
+        o.job === 'depart' &&
+        o.node === 'security' &&
+        !o.clearedSec,
+    )
+    const fast = g.tag === 'premium'
+    const pool = peers.filter((o) => (o.tag === 'premium') === fast)
+    const premiumHere = peers.some((o) => o.tag === 'premium')
+    const wear = Math.max(
+      fit?.wearSec ?? 0,
+      ...(fit?.items ?? [])
+        .filter((i) => String(i.def).startsWith('security'))
+        .map((i) => i.wear),
+    )
+    let servers = lane.servers
+    if (fast) servers = Math.min(lane.servers, 1)
+    else if (premiumHere && lane.servers > 1) servers = lane.servers - 1
+    let svc = slowedService(lane.serviceSec, wear)
+    if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
+    const cap = fit?.capGuests ?? 40
+    if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
+    if (fast) svc *= 0.5
+
+    if ((g.serviceLeft ?? 0) > 0) {
+      g.serviceLeft = (g.serviceLeft ?? 0) - dt
+      g.lost = false
+      g.thought = needsMaintenance(wear) ? 'Worn lane — needs a scrub' : 'At the scanner'
+      if ((g.serviceLeft ?? 0) <= 0) {
+        g.serviceLeft = 0
+        g.clearedSec = true
+        if (fit) {
+          this.bumpWear('sec', lane.wearPerUse, fit)
+          const laneItem = fit.items?.find((i) => String(i.def).startsWith('security'))
+          if (laneItem) laneItem.wear = Math.min(100, laneItem.wear + lane.wearPerUse)
+        }
+        g.thought = 'Cleared security — the gates are open'
+        if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
+        else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
+        else if (g.needs.shop > 70 && open.has('shop')) this.routeGuest(g, 'shop', open)
+        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
+      return
+    }
+
+    if (lane.servers <= 0) {
+      const prefab = Boolean(fit?.premade && !fit?.redesigned)
+      if (prefab) {
+        g.lost = false
+        g.thought = 'Lane closed — waiting'
+        g.happiness -= dt * 1.2
+        return
+      }
+      g.lost = true
+      g.thought = 'Lost — no security lane'
+      g.happiness -= dt * 2
+      return
+    }
+
+    const serving = pool.filter((o) => (o.serviceLeft ?? 0) > 0).length
+    const idle = pool
+      .filter((o) => (o.serviceLeft ?? 0) <= 0)
+      .sort((a, b) => (a.queueSeq ?? 0) - (b.queueSeq ?? 0))
+    const idx = idle.findIndex((o) => o.id === g.id)
+    const slots = Math.max(0, servers - serving)
+    if (idx >= 0 && idx < slots) {
+      g.serviceLeft = svc
+      g.lost = false
+      g.thought = fast ? 'Fast-track lane' : 'Stepping into the lane'
+      return
+    }
+    const overComfort = idx >= lane.queueCap + slots || peers.length > cap
+    if (overComfort) this.markHallOverloaded()
+    if (idx >= lane.queueCap + slots) {
+      g.lost = false
+      g.thought = 'Long security line — the hall is over capacity'
+      g.happiness -= dt * 2.4
+      g.patience -= dt * 1.1
+      this.delayGuestFlight(g)
+      return
+    }
+    g.lost = false
+    g.thought = `Security queue — ${Math.max(1, idx - slots + 1)} ahead`
+    g.happiness -= dt * (peers.length > cap ? 1.4 : 0.7)
+  }
+
+  /** Once per flight: slip the slot and nick Standing when the line is too long. */
+  delayGuestFlight(g: HallGuest) {
+    if (!g.flightId || this.queueDelayFlight.has(g.flightId)) return
+    this.queueDelayFlight.add(g.flightId)
+    const slot = this.schedule.find(
+      (s) => s.flightId === g.flightId && s.status !== 'done' && s.status !== 'cancelled',
+    )
+    if (slot) this.delaySlot(slot, 10, 'Security queue')
+    else if (g.airlineId) this.adjustHeat(g.airlineId as AirlineId, -0.45)
+  }
+
+  markHallOverloaded() {
+    if (this.hallOverloaded) return
+    this.hallOverloaded = true
+    this.reputation = Math.max(0, this.reputation - 1)
+    for (const id of this.signed) this.adjustHeat(id, -1.2)
+    this.pushNews(
+      'Hall over capacity — long queues, delays, and missed flights. Upgrade the prefab, expand the lanes, or design your own terminal.',
+      'bad',
+    )
+    this.refreshAdvice()
+  }
+
+  refreshAdvice() {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) {
+      this.advice = [...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
+      this.appendNegotiationAdvice()
+      return
+    }
+    const hall = adviseHall(
+      {
+        premade: fit.premade,
+        redesigned: fit.redesigned,
+        tier: fit.tier,
+        signs: fit.signs,
+        capGuests: fit.capGuests,
+        secPerMin: fit.secPerMin,
+        zones: fit.zones as ZoneId[][],
+        rooms: {
+          checkin: fit.rooms.checkin,
+          security: fit.rooms.security,
+          gate: fit.rooms.gate,
+          bagclaim: fit.rooms.bagclaim,
+          food: fit.rooms.food,
+          souvenir: fit.rooms.souvenir,
+          bathroom: fit.rooms.bathroom,
+        },
+      },
+      this.hallOpenFor(fit),
+      this.schedule,
+      this.hallOverloaded,
+    )
+    const standingNotes: Advice[] = []
+    for (const id of this.signed) {
+      const standing = this.standingOf(id)
+      if (standing > HEAT_WARN_THRESHOLD) continue
+      const name = this.airline(id).name
+      standingNotes.push({
+        id: `standing-${id}`,
+        title: `${name} Standing is slipping`,
+        detail: `Standing ${Math.round(standing)}. They leave the airport if it reaches ${HEAT_ABANDON_THRESHOLD}.`,
+        fix: 'Clear the queues and keep the ramp on time before they walk.',
+        cells: [],
+        scope: 'apron',
+      })
+    }
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
+    this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
+    if (this.advisorCells.length) {
+      const still = hall.find((a) =>
+        a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
+      )
+      if (!still) this.advisorCells = []
+    }
+    if (this.apronFocus.length) {
+      const still = [...this.groundNotes, ...this.cargoNotes].find((a) =>
+        a.cells.some((c) => this.apronFocus.some((h) => h.c === c.c && h.r === c.r)),
+      )
+      if (!still) this.apronFocus = []
+    }
+    this.appendNegotiationAdvice()
+  }
+
+  private appendNegotiationAdvice() {
+    const line = this.negotiationBridge?.advisorLine()
+    if (!line) return
+    this.advice = [
+      ...this.advice,
+      {
+        id: 'ulcc-breakeven',
+        title: 'ULCC break-even',
+        detail: line,
+        fix: 'Open the offer sheet and compare it with the spend band.',
+        cells: [],
+      },
+    ]
+  }
+
+  focusAdvice(id: string | null) {
+    if (!id) {
+      this.advisorCells = []
+      this.apronFocus = []
+      this.emit()
+      return
+    }
+    const hit = this.advice.find((a) => a.id === id)
+    if (hit?.scope === 'apron') {
+      const same =
+        hit.cells.length === this.apronFocus.length &&
+        hit.cells.every((c, i) => c.c === this.apronFocus[i]?.c && c.r === this.apronFocus[i]?.r)
+      this.apronFocus = same ? [] : hit.cells
+      this.advisorCells = []
+      this.emit()
+      return
+    }
+    this.apronFocus = []
+    const same =
+      hit &&
+      hit.cells.length === this.advisorCells.length &&
+      hit.cells.every((c, i) => c.c === this.advisorCells[i]?.c && c.r === this.advisorCells[i]?.r)
+    this.advisorCells = hit && !same ? hit.cells : []
+    this.emit()
+  }
+
+  toggleFlows() {
+    this.showFlows = !this.showFlows
+    this.emit()
+  }
+
+  /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
+  servicePoses() {
+    return this.ensureGround()?.sim.poses() ?? []
+  }
+
+  /** Fuel, meals, and how many trucks are out. Null before the depot is built. */
+  groundSnapshot() {
+    return this.ensureGround()?.snapshot() ?? null
+  }
+
+  /** True once the module has released this stand. Flights without a ground turn are clear. */
+  groundClear(f: Flight): boolean {
+    if (!f.groundTurn) return true
+    return this.ground?.isReadyToDepart(f.groundTurn) ?? true
+  }
+
+  /** Servings a full shelf holds. Empty rooms hold nothing. */
+  shelfCap(kind: 'food' | 'shop'): number {
+    let rooms = 0
+    let extra = 0
+    for (const fit of this.fits) {
+      rooms += kind === 'food' ? (fit.rooms.food ?? 0) : (fit.rooms.souvenir ?? 0)
+      if (kind === 'food') extra += outletExtraStock((fit.items ?? []) as PlacedItem[])
+    }
+    return rooms * (kind === 'food' ? 8 : 6) + extra
+  }
+
+  /** This airframe uplifts fuel. A zero-fuel type is free to leave. */
+  departureNeedsFuel(f: Flight): boolean {
+    try {
+      return needsFor(f.airframeId).fuelLitres > 0
+    } catch {
+      const load = AIRFRAMES[f.airframeId]?.fuelLoad
+      return load == null ? true : load > 0
+    }
+  }
+
+  /** Farm, contract, or bowser loads can still put fuel on a wing. */
+  fuelOnHand(): boolean {
+    const snap = this.groundSnapshot()
+    if (snap) return snap.fuelLitres >= 1
+    return (
+      tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads >= 1
+    )
+  }
+
+  /** Empty farm or no contract. Low stock is a delay, not a ground. */
+  fuelOutage(f: Flight): boolean {
+    if (!this.departureNeedsFuel(f) || f.posted.fuel) return false
+    if (!this.fuelOnHand()) return true
+    return this.catering?.fuel.isGrounded(f.id) ?? false
+  }
+
+  /**
+   * Pushback gate. An empty farm holds the aircraft.
+   * Any other ramp gap may release once the safety timer runs out, with a Standing hit.
+   */
+  rampCall(f: Flight, timedOut: boolean): 'hold' | 'ready' | 'short' {
+    if (this.departureNeedsFuel(f) && !f.posted.fuel) {
+      if (!this.fuelOnHand()) {
+        f.fuelHeld = true
+        if (f.fuelHeldSince == null) f.fuelHeldSince = this.clock
+        this.noteFuelGround(f)
+        if (this.clock - f.fuelHeldSince >= FUEL_OUTAGE_SLOT_SEC) this.cancelForFuel(f)
+        return 'hold'
+      }
+      if (f.fuelHeld) {
+        f.fuelHeld = false
+        f.fuelHeldSince = undefined
+        f.phaseTime = 0
+        this.fuelHoldNoted.delete(f.id)
+        this.ensureLegacyFuel(f)
+        this.pushNews(`${f.flightNo} has fuel again. Pushback waits on the bowser.`, 'ok')
+        return 'hold'
+      }
+      this.ensureLegacyFuel(f)
+      if (!timedOut) return 'hold'
+      return 'short'
+    }
+    if (f.fuelHeld) {
+      f.fuelHeld = false
+      f.fuelHeldSince = undefined
+      this.fuelHoldNoted.delete(f.id)
+    }
+    if (this.groundClear(f)) return 'ready'
+    if (!timedOut) return 'hold'
+    return 'short'
+  }
+
+  private noteFuelGround(f: Flight) {
+    if (this.fuelHoldNoted.has(f.id)) return
+    this.fuelHoldNoted.add(f.id)
+    this.adjustHeat(f.airline, -1.6)
+    if (f.scheduleId) {
+      const slot = this.schedule.find((s) => s.id === f.scheduleId)
+      if (slot && slot.status !== 'done' && slot.status !== 'cancelled') {
+        this.delaySlot(slot, 12, 'Fuel farm empty')
+      }
+    }
+    this.pushNews(
+      `${f.flightNo} grounded — no fuel on the farm. It stays until a load arrives.`,
+      'bad',
+    )
+  }
+
+  /** The empty-farm hold outlasted the departure slot. The flight does not leave. */
+  private cancelForFuel(f: Flight) {
+    if (f.phase === 'gone') return
+    f.phase = 'gone'
+    f.fuelHeld = false
+    this.fuelHoldNoted.delete(f.id)
+    const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
+    if (slot && slot.status !== 'done' && slot.status !== 'cancelled' && slot.status !== 'inbound') {
+      slot.status = 'cancelled'
+      this.adjustHeat(slot.airline, slot.manual ? -2.2 : -4.2)
+      this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
+    } else {
+      this.adjustHeat(f.airline, -4.2)
+    }
+    this.pushNews(
+      `${f.flightNo} cancelled — no fuel before the departure slot. Standing ${Math.round(this.standingOf(f.airline))}.`,
+      'bad',
+    )
+    this.noteDiplomacyCancel(f.airline, false)
+    this.noteCargoCancel(f)
+  }
+
+  /** Legacy bowser, once the farm has a load again. The depot module fuels its own turns. */
+  private ensureLegacyFuel(f: Flight) {
+    if (f.groundTurn || f.posted.fuel || !f.stand || !this.fuelOnHand()) return
+    if (this.trucks.some((t) => t.flightId === f.id && t.kind === 'fuel')) return
+    const farms = tilesOf(this.tiles, 'fuel').filter((p) => farmBesidePavement(this.tiles, p))
+    if (!farms.length) return
+    const path = nearestPath(this.tiles, farms[0], [f.stand], 'truck')
+    if (!path) return
+    f.waitingOn.fuel = true
+    this.spawnTruck('fuel', f, path, 'fuel', farms[0])
+  }
+
+  /** Hotspot markers. Counts stay in infoLines until the player opens one. */
+  infoHotspots(): { id: string; label: string }[] {
+    const spots: { id: string; label: string }[] = []
+    if (this.fits.length) {
+      spots.push({ id: 'queue', label: 'Security' })
+      spots.push({ id: 'lost', label: 'Lost passengers' })
+      spots.push({ id: 'bags', label: 'Bags' })
+      spots.push({ id: 'retail', label: 'Shops' })
+    }
+    if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
+    else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
+      spots.push({ id: 'bags', label: 'Bags' })
+    }
+    return spots
+  }
+
+  infoLines(id: string): string[] {
+    if (id === 'queue') {
+      const q = this.securityQueueCount()
+      return [`${q} waiting at security`]
+    }
+    if (id === 'lost') return [`${this.lostPaxCount()} lost in the hall`]
+    if (id === 'bags') {
+      const moving = this.flights.filter(
+        (f) =>
+          !f.cargo &&
+          f.phase !== 'gone' &&
+          (f.waitingOn.bags || f.waitingOn.bagsLoad || f.boardingSlow),
+      ).length
+      const reasons = this.schedule.filter((s) => /bag|belt|claim/i.test(s.delayReason ?? '')).length
+      return [
+        `${moving} turns still waiting on bags`,
+        `${reasons} bag delays on the board`,
+        `${this.bagsLost} bags lost`,
+        `${this.bagsMishandled} mishandled`,
+      ]
+    }
+    if (id === 'fuel') {
+      const snap = this.groundSnapshot()
+      const grounded = this.flights.filter((f) => f.phase !== 'gone' && this.fuelOutage(f)).length
+      const stock = snap
+        ? `${Math.round(snap.fuelLitres).toLocaleString('en-US')} L in the farm`
+        : `${this.fuelLoads} bowser loads on the farm`
+      return [stock, `${grounded} departures grounded for fuel`]
+    }
+    if (id === 'retail') {
+      return [
+        `${this.foodShelf} burger servings on the shelf`,
+        `${this.shopShelf} souvenirs on the shelf`,
+        `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
+      ]
+    }
+    return []
+  }
+
+  toggleInfo(id: string) {
+    this.infoOpen = this.infoOpen === id ? null : id
+    this.emit()
+  }
+
+  /** One serving back on each shelf that still has a room. A crowd can outrun this. */
+  private tickShelves(dt: number) {
+    const foodCap = this.shelfCap('food')
+    const shopCap = this.shelfCap('shop')
+    if (this.foodShelf > foodCap) this.foodShelf = foodCap
+    if (this.shopShelf > shopCap) this.shopShelf = shopCap
+    this.shelfCool -= dt
+    if (this.shelfCool > 0) return
+    this.shelfCool = 14
+    if (this.foodShelf < foodCap) this.foodShelf += 1
+    if (this.shopShelf < shopCap) this.shopShelf += 1
+  }
+
+  /** Empty counter: mild mood hit, no cash, a wish, then they leave the queue. */
+  private walkOffEmptyShelf(g: HallGuest, pay: number, thought: string, open: Set<HallNode>) {
+    if (g.node === 'food') g.needs.hunger = Math.min(g.needs.hunger, 18)
+    else g.needs.shop = Math.min(g.needs.shop, 18)
+    const bought = this.ensureCatering().stockout(g.id, g.node === 'food' ? 'food' : 'shop')
+    const delta = bought.ok ? -1 : bought.happinessDelta
+    const wish = bought.ok ? thought : bought.thought
+    const lost = bought.ok ? pay : bought.lostSale
+    g.happiness += delta
+    this.lostSpend += lost
+    thought = wish
+    const dest: HallNode =
+      g.job === 'depart' && open.has('gate')
+        ? 'gate'
+        : g.job === 'arrive' && open.has('exit')
+          ? 'exit'
+          : open.has('info')
+            ? 'info'
+            : g.node
+    if (dest !== g.node) this.routeGuest(g, dest, open)
+    g.thought = thought
+  }
+
+  private ensureGround() {
+    const rev = this.mapRev
+    if (this.ground && this.groundRev === rev) return this.ground
+    if (!this.ground && this.groundRev === rev) return null
+    if (this.ground && this.ground.sim.openTurnarounds > 0 && this.groundRev !== rev) return this.ground
+    const prev = this.ground?.snapshot()
+    const cap = tankDef(this.tankTier).capacityLitres
+    if (this.tankLitres <= 0 && this.fuelLoads > 0) {
+      this.tankLitres = Math.min(cap, seedLitresFromLoads(this.fuelLoads))
+    }
+    const config = buildLogisticsConfig(
+      this.tiles,
+      this.standAccess,
+      tilesOf(this.tiles, 'termbus').length > 0,
+      {
+        fleet: this.scaleFleet,
+        capacityLitres: cap,
+        initialLitres: Math.min(cap, Math.max(0, this.tankLitres)),
+        hydrant: this.hasResearch('hydrant_fuel'),
+        strict: true,
+      },
+    )
+    if (!config) {
+      this.ground = null
+      this.groundRev = rev
+      if (this.groundNotes.length) {
+        this.groundNotes = []
+        this.groundNoteKey = ''
+        this.refreshAdvice()
+      }
+      return null
+    }
+    if (prev) {
+      config.fuelFarm.initialLitres = Math.min(config.fuelFarm.capacityLitres, Math.max(0, prev.fuelLitres))
+      config.kitchen.initialMeals = Math.min(config.kitchen.capacityMeals, Math.max(0, prev.meals))
+    }
+    const first = !this.groundAnnounced
+    this.ground = createLogisticsAdapter(
+      {
+        addMoney: (amount, category) => this.postGroundMoney(amount, category),
+        playSound: (cue) => {
+          this.noteSound(soundForEvent({ type: cue }, 'logistics'))
+        },
+        notify: (message, severity) => {
+          this.pushNews(message, severity === 'warn' ? 'bad' : 'ok')
+        },
+        onCargoToArea: (standId, kg) => {
+          const inbound = this.ground?.sim.turnaroundAt(standId)?.cargoIn ?? kg
+          this.ensureCargo().inbound(standId, kg, inbound)
+        },
+      },
+      config,
+    )
+    this.groundRev = rev
+    if (first) {
+      this.groundAnnounced = true
+      this.pushNews('Vehicle depot online. Service trucks run the turnarounds from here.', 'good')
+    }
+    return this.ground
+  }
+
+  private postGroundMoney(amount: number, category: string) {
+    const book = this.groundBooks
+    if (category === 'fuel_sales') book.fuelSales += amount
+    else if (category === 'catering_fees') book.cateringFees += amount
+    else if (category === 'fuel_purchase') book.fuelPurchase += amount
+    else if (category === 'meal_production') book.mealProduction += amount
+    else if (category === 'vehicle_upkeep') book.vehicleUpkeep += amount
+    else if (category === 'shop_sales') book.shopSales += amount
+    else if (category === 'cargo_airport_revenue') book.cargoRevenue += amount
+    else if (category === 'cargo_penalty') book.cargoPenalties += amount
+    if (amount > 0) {
+      this.cash += amount
+      this.revenue += amount
+      this.noteIncome(amount, this.groundIncomeCategory(category))
+      return
+    }
+    if (amount < 0) {
+      this.noteExpense(-amount)
+      this.postJournal(this.groundExpenseCategory(category), -amount, this.simMinutes())
+      if (!this.sandbox) this.cash += amount
+    }
+  }
+
+  private groundExpenseCategory(category: string): MoneyCategory {
+    if (category === 'fuel_purchase') return 'fuel_purchase'
+    if (category === 'meal_production') return 'meal_production'
+    if (category === 'vehicle_upkeep') return 'vehicle_upkeep'
+    if (category === 'cargo_penalty') return 'penalties'
+    return 'building_upkeep'
+  }
+
+  private ensureCatering(): CateringBridge {
+    return (this.catering ??= new CateringBridge())
+  }
+
+  private ensureCargo(): CargoBridge {
+    return (this.cargo ??= new CargoBridge({
+      postMoney: (amount, category) => this.postGroundMoney(amount, category),
+      loaders: () => {
+        const sim = this.ground?.sim
+        if (!sim) return null
+        return {
+          reserve: (request) => sim.reserveLoader(request.flightId, request.preferred, request.allowUldFallback),
+          release: (id) => sim.releaseLoader(id),
+        }
+      },
+      cue: (name) => this.noteSound(name),
+      notify: (message, severity) => this.pushNews(message, severity === 'warn' ? 'bad' : 'ok'),
+      onNotes: () => {
+        this.cargoNotes = this.cargo?.notes ?? []
+        this.refreshAdvice()
+      },
+      standCell: (standId) => {
+        const [c, r] = standId.split(',').map(Number)
+        return Number.isFinite(c) && Number.isFinite(r) ? { c, r } : null
+      },
+    }))
+  }
+
+  /** Galley for a parked departure. Null until the truck is booked. */
+  galleyFor(flightId: string) {
+    return this.catering?.engine.galley(flightId) ?? null
+  }
+
+  /** Cargo books. Null until the first parked flight asks for a load. */
+  cargoSnapshot() {
+    return this.cargo?.adapter.snapshot() ?? null
+  }
+
+  /** Loader type held for this flight, if the cargo module reserved one. */
+  loaderHold(flightId: string): string | null {
+    return this.ground?.sim.vehicles.find((v) => v.heldFor === flightId)?.type ?? null
+  }
+
+  /** True once the ramp has a cargo-load service on this stand. */
+  cargoLoadArmed(standId: string): boolean {
+    const services = this.ground?.sim.turnaroundAt(standId)?.services
+    return services?.cargo_load !== undefined
+  }
+
+  /** Crew and scissor-lift poses for the catering trucks. */
+  cateringPoses() {
+    const kitchen = tilesOf(this.tiles, 'kitchen')[0] ?? tilesOf(this.tiles, 'depot')[0] ?? null
+    return this.catering?.poses(kitchen) ?? []
+  }
+
+  private noteSound(name: string | null) {
+    if (!name) return
+    this.soundCues.push(name)
+    if (this.soundCues.length > 24) this.soundCues.shift()
+    if (typeof window === 'undefined') return
+    try {
+      getAudio().playEvent(name)
+    } catch {
+      // Headless tests have no audio device.
+    }
+  }
+
+  private noteCargoDepart(f: Flight) {
+    this.cargo?.departed(f.id)
+  }
+
+  private noteCargoCancel(f: Flight) {
+    this.cargo?.cancel(f.id)
+  }
+
+  /** Book galleys, feed the fuel check, and post shop money into the one ledger. */
+  private tickCatering(step: number) {
+    if (!(step > 0)) return
+    const cat = this.ensureCatering()
+    const now = this.clock * GAME_MINUTES_PER_SIM_SECOND
+    const litres = this.groundSnapshot()?.fuelLitres ?? (this.fuelOnHand() ? 1_000_000 : 0)
+    const demands = this.flights
+      .filter((f) => f.phase !== 'gone' && this.departureNeedsFuel(f) && !f.posted.fuel)
+      .map((f) => ({
+        flightId: f.id,
+        litres: this.fuelNeedLitres(f),
+        departAt: f.fuelHeldSince ?? this.clock,
+      }))
+    cat.fuel.evaluate(now, litres, demands)
+    cat.fuel.events.splice(0)
+    const ground = this.ground
+    if (ground) {
+      for (const f of this.flights) {
+        if (!f.groundTurn || f.phase === 'gone') continue
+        ground.sim.setFuelHold(f.groundTurn, cat.fuel.isGrounded(f.id))
+      }
+    }
+    cat.engine.tick(now)
+    for (const event of cat.engine.drainEvents()) {
+      this.noteSound(cateringCue(event))
+      if (event.type === 'catering_done') {
+        const flight = this.flights.find((f) => f.id === event.flightId)
+        if (flight?.groundTurn) {
+          flight.caterLevel = 1
+          flight.waitingOn.catering = false
+          this.ground?.sim.releaseExternalCatering(flight.groundTurn)
+        }
+      }
+    }
+    for (const f of this.flights) {
+      if (!f.groundTurn || f.phase === 'gone' || f.posted.catering) continue
+      if (!cat.engine.isCateringDone(f.id)) continue
+      f.caterLevel = 1
+      f.waitingOn.catering = false
+      this.ground?.sim.releaseExternalCatering(f.groundTurn)
+    }
+    const gained = cat.engine.revenue - cat.postedRevenue
+    if (gained > 0) {
+      cat.postedRevenue = cat.engine.revenue
+      this.postGroundMoney(gained, 'shop_sales')
+    }
+    const lost = cat.engine.lostRevenue - cat.postedLost
+    if (lost > 0) {
+      cat.postedLost = cat.engine.lostRevenue
+      this.groundBooks.shopLost += lost
+    }
+  }
+
+  private fuelNeedLitres(f: Flight): number {
+    try {
+      return needsFor(f.airframeId).fuelLitres
+    } catch {
+      return 8_000
+    }
+  }
+
+  /** Cargo terminal clock matches the ramp: one sim-second is eight game minutes. */
+  private tickCargo(step: number) {
+    if (!(step > 0)) return
+    const cargo = this.ensureCargo()
+    cargo.adapter.tick(step * GAME_MINUTES_PER_SIM_SECOND)
+    this.cargoNotes = cargo.notes
+  }
+
+  /** One game hour is 7.5 sim-seconds, so a sim-second is eight game minutes. */
+  private tickGround(step: number) {
+    const g = this.ensureGround()
+    if (!g) return
+    const before = g.completed.length
+    g.tick(step * (60 / 7.5))
+    if (g.completed.length > before) this.consumeGround(g, before)
+    this.syncGroundNotes()
+  }
+
+  private consumeGround(
+    g: LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] },
+    before: number,
+  ) {
+    for (const result of g.completed.slice(before)) {
+      const flight = this.flights.find((f) => f.groundTurn === result.standId && f.phase !== 'gone')
+      if (flight) {
+        flight.posted.fuel = true
+        flight.fuelLevel = 1
+        flight.waitingOn.fuel = false
+        flight.posted.catering = true
+        flight.caterLevel = 1
+        flight.waitingOn.catering = false
+        this.ensureDiplomacy().noteRamp(flight.id, result.delayMinutes, result.causes.includes('late_bags'))
+      }
+      if (result.delayMinutes <= 1) continue
+      const mins = Math.round(result.delayMinutes)
+      const why = result.causes[0] ? groundCauseLine(result.causes[0]) : 'The ramp ran past the planned pushback.'
+      const id = `delay-${result.standId.replace(',', '-')}`
+      const [c, r] = result.standId.split(',').map(Number)
+      const delays = this.groundNotes.filter((n) => n.id.startsWith('delay-') && n.id !== id).slice(-3)
+      this.groundNotes = [...this.groundNotes.filter((n) => !n.id.startsWith('delay-')), ...delays]
+      this.groundNotes.push({
+        id,
+        title: `Turnaround late, ${mins} min`,
+        detail: result.causes.map((cause) => groundCauseLine(cause)).join('. ') || why,
+        fix: delayFix(result.causes),
+        cells: Number.isFinite(c) && Number.isFinite(r) ? [{ c, r }] : [],
+        scope: 'apron',
+      })
+      if (flight) {
+        this.adjustHeat(flight.airline, -1.2)
+        if (flight.scheduleId) {
+          const slot = this.schedule.find((s) => s.id === flight.scheduleId)
+          if (slot && slot.status !== 'done' && slot.status !== 'cancelled') {
+            this.delaySlot(slot, Math.min(18, Math.max(6, result.delayMinutes / 8)), why)
+          }
+        }
+      }
+    }
+  }
+
+  private syncGroundNotes() {
+    const g = this.ground
+    if (!g) return
+    const snap = g.snapshot()
+    const cfg = g.sim.config
+    const farm = tilesOf(this.tiles, 'fuel')[0]
+    const kitchen = tilesOf(this.tiles, 'kitchen')[0]
+    const depot = tilesOf(this.tiles, 'depot')[0]
+    const stock: Advice[] = []
+    if (snap.fuelLitres < cfg.fuelFarm.lowStockLitres && farm) {
+      stock.push({
+        id: 'low-fuel',
+        title: 'Fuel farm running low',
+        detail: `${Math.round(snap.fuelLitres).toLocaleString('en-US')} L left in the farm.`,
+        fix: 'A tanker rolls when the farm drops under the line. The purchase posts to the books.',
+        cells: [farm],
+        scope: 'apron',
+      })
+    }
+    if (snap.meals < cfg.kitchen.lowStockMeals) {
+      stock.push({
+        id: 'low-meals',
+        title: 'Catering kitchen running low',
+        detail: kitchen
+          ? `${snap.meals} meals left in the kitchen.`
+          : 'No catering kitchen is on the field, so the galley trucks have nothing to load.',
+        fix: kitchen
+          ? 'The kitchen keeps cooking. Give it time before the next full bank.'
+          : 'Place a catering kitchen beside the service road.',
+        cells: kitchen ? [kitchen] : depot ? [depot] : [],
+        scope: 'apron',
+      })
+    }
+    const delays = this.groundNotes.filter((n) => n.id.startsWith('delay-')).slice(-4)
+    const next = [...stock, ...delays]
+    const key = next.map((n) => n.id).join('|')
+    this.groundNotes = next
+    if (key !== this.groundNoteKey) {
+      this.groundNoteKey = key
+      this.refreshAdvice()
+      return
+    }
+    for (const note of next) {
+      const i = this.advice.findIndex((a) => a.id === note.id)
+      if (i >= 0) this.advice[i] = note
+    }
+  }
+
+  /**
+   * Hand a blocked-in aircraft to the ground module.
+   * Hall passengers stay on the terminal graph, so a prefab still loses nobody.
+   */
+  private armGroundTurn(f: Flight): boolean {
+    if (!f.stand || f.groundTurn) return Boolean(f.groundTurn)
+    const g = this.ensureGround()
+    if (!g) return false
+    const standId = `${f.stand.c},${f.stand.r}`
+    if (!g.sim.config.stands.some((s) => s.id === standId)) return false
+    let needs: ReturnType<typeof needsFor>
+    try {
+      needs = needsFor(f.airframeId)
+    } catch {
+      return false
+    }
+    const scheduled = needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40
+    const pax = f.cargo || f.kind === 'freighter' || f.kind === 'military' ? 0 : f.pax
+    if (pax > 0) {
+      const longHaul = needs.sizeClass === 'L' || f.kind === 'widebody'
+      this.ensureCatering().orderFor(
+        f.id,
+        standId,
+        needs.seats,
+        pax,
+        longHaul,
+        this.clock * GAME_MINUTES_PER_SIM_SECOND + Math.max(scheduled, 40),
+      )
+    }
+    const bagUnits = this.bagTags.filter((t) => t.flightId === f.id).length || Math.round(pax * needs.bagsPerPax)
+    const hold = AIRFRAMES[f.airframeId]?.cargoHold ?? 0
+    const plan = this.ensureCargo().prepare(f.id, f.airframeId, standId, hold, bagUnits)
+    try {
+      g.onAircraftParked(standId, f.airframeId, scheduled, {
+        kind: 'turn',
+        departingPax: pax,
+        arrivingPax: pax,
+        deferCatering: pax > 0,
+        flightId: f.id,
+        outboundCargoKg: Math.round(plan.tonnes * 1000),
+      })
+    } catch {
+      this.noteCargoCancel(f)
+      return false
+    }
+    f.groundTurn = standId
+    return true
+  }
+
+  securityQueueCount(): number {
+    return this.hallGuests.filter(
+      (g) =>
+        !g.dead &&
+        g.job === 'depart' &&
+        g.node === 'security' &&
+        !g.clearedSec &&
+        (g.serviceLeft ?? 0) <= 0,
+    ).length
+  }
+
+  lostPaxCount(): number {
+    return this.hallGuests.filter((g) => !g.dead && g.lost).length
+  }
+
+  /** Drop a departure wave at the doors so the lane can be watched. */
+  demoHallCrowd(n = 8) {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    const open = this.hallOpenFor(fit)
+    const hallId = this.hallKey(fit)
+    for (let i = 0; i < n; i++) {
+      const g = spawnHallGuest(`demo-${this.secSeq}-${i}`, 'depart', i % 2 ? 'family' : 'budget', {
+        hallId,
+      })
+      g.node = 'entrance'
+      g.clearedSec = false
+      g.needs.hunger = 12
+      g.needs.bladder = 10
+      g.needs.shop = 8
+      g.needs.play = 8
+      g.needs.energy = 15
+      g.needs.boarding = 70
+      this.routeGuest(g, 'checkin', open)
+      this.hallGuests.push(g)
+    }
+    this.emit()
+    return this.hallGuests.length
+  }
+
+  /**
+   * Line the hall up for a still: check-in with bags, the scanner and belt,
+   * a sort pile, and a claim carousel with people waiting and one pickup.
+   * Pairs with a loaded bag cart on the apron.
+   */
+  demoBagParade() {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    const hallId = this.hallKey(fit)
+    this.hallGuests = this.hallGuests.filter((g) => !g.id.startsWith('parade-'))
+    const tags: Array<'premium' | 'family' | 'business' | 'budget'> = [
+      'premium',
+      'family',
+      'business',
+      'budget',
+    ]
+    for (let i = 0; i < 7; i++) {
+      const g = spawnHallGuest(`parade-d-${i}`, 'depart', tags[i % 4], {
+        hallId,
+        airlineId: 'northline',
+      })
+      g.node = 'checkin'
+      g.path = []
+      g.seg = 0
+      g.t = 0
+      g.clearedSec = false
+      g.hasChecked = true
+      g.carryOn = true
+      g.bagsDropped = false
+      g.bagDepositLeft = 8
+      g.needs.hunger = 4
+      g.needs.boarding = 80
+      g.thought = i % 2 === 0 ? 'Dropping bags at check-in…' : 'Rolling a bag to check-in'
+      this.hallGuests.push(g)
+    }
+    for (let i = 0; i < 3; i++) {
+      const g = spawnHallGuest(`parade-s-${i}`, 'depart', 'budget', {
+        hallId,
+        airlineId: 'northline',
+      })
+      g.node = 'security'
+      g.path = []
+      g.clearedSec = false
+      g.hasChecked = false
+      g.carryOn = true
+      g.bagsDropped = true
+      g.thought = 'Bags accepted — walking to security'
+      this.hallGuests.push(g)
+    }
+    for (let i = 0; i < 6; i++) {
+      const g = spawnHallGuest(`parade-a-${i}`, 'arrive', i % 2 ? 'family' : 'premium', {
+        hallId,
+        airlineId: 'northline',
+      })
+      g.node = 'claim'
+      g.path = []
+      g.clearedSec = true
+      g.hasChecked = i === 0
+      g.carryOn = true
+      g.needs.bags = i === 0 ? 0 : 60
+      g.needs.hunger = 4
+      g.thought = i === 0 ? 'Got my bag' : 'Waiting for bags off the aircraft…'
+      this.hallGuests.push(g)
+    }
+    this.bagShow = { belt: true, screen: true, carousel: true, sort: true, phase: 0.35 }
+    this.bagPhase = 0.35
+    const bags = tilesOf(this.tiles, 'bags')[0]
+    this.trucks = this.trucks.filter((t) => t.id !== 'parade-cart')
+    if (bags) {
+      const cart: Truck = {
+        id: 'parade-cart',
+        kind: 'bags',
+        flightId: null,
+        x: bags.c + 0.35,
+        y: bags.r + 0.15,
+        path: [
+          { c: bags.c, r: bags.r },
+          { c: bags.c + 1, r: bags.r },
+        ],
+        seg: 0,
+        t: 0.15,
+        returning: false,
+        dwell: 30,
+        preDwell: 30,
+        patrol: false,
+        mission: 'load',
+        home: bags,
+        cargoUnits: 22,
+      }
+      this.trucks.push(cart)
+    }
+    this.emit()
+    return this.hallGuests.filter((g) => g.id.startsWith('parade-')).length
+  }
+
+  upgradeHall() {
+    const fit = this.activeHall()
+    if (!fit) {
+      this.pushNews('Stamp a terminal first.', 'bad')
+      this.emit()
+      return
+    }
+    if (!fit.premade || fit.redesigned) {
+      this.pushNews('Custom hall — raise the ceilings by placing bigger items.', 'bad')
+      this.emit()
+      return
+    }
+    const tier = (fit.tier ?? 1) as 1 | 2 | 3
+    if (tier >= 3) {
+      this.pushNews('Prefab is already the top tier.', 'ok')
+      this.emit()
+      return
+    }
+    const next = (tier + 1) as 2 | 3
+    const cost = next === 2 ? 22000 : 48000
+    if (!this.spend(cost, `prefab tier ${next}`)) return
+    fit.tier = next
+    fit.zones = schemeZones(next)
+    fit.items = schemeItems(next)
+    fit.signs = schemeSigns(next)
+    if (next === 2) {
+      fit.rooms.security = Math.max(fit.rooms.security, 3)
+      fit.rooms.gate = Math.max(fit.rooms.gate, 3)
+      fit.rooms.bathroom = Math.max(fit.rooms.bathroom, 3)
+      fit.rooms.food = Math.max(fit.rooms.food, 2)
+    } else {
+      fit.rooms.security = Math.max(fit.rooms.security, 4)
+      fit.rooms.gate = Math.max(fit.rooms.gate, 4)
+      fit.rooms.bathroom = Math.max(fit.rooms.bathroom, 4)
+      fit.rooms.food = Math.max(fit.rooms.food, 2)
+      fit.rooms.souvenir = Math.max(fit.rooms.souvenir, 2)
+    }
+    applyCeilings(fit)
+    this.foodShelf = Math.max(this.foodShelf, Math.min(this.shelfCap('food'), this.foodShelf + 8))
+    this.shopShelf = Math.max(this.shopShelf, Math.min(this.shelfCap('shop'), this.shopShelf + 6))
+    this.hallOverloaded = false
+    this.hallRev++
+    this.refreshAdvice()
+    this.pushNews(
+      `${schemeLabel(next)} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  paintHallCell(c: number, r: number, zone: ZoneId) {
+    const fit = this.activeHall()
+    if (!fit) return
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    const row = fit.zones[r]
+    if (!row || c < 0 || c >= row.length) return
+    if (row[c] === zone) return
+    const wasPrefab = fit.premade && !fit.redesigned
+    row[c] = zone
+    if (wasPrefab) {
+      fit.redesigned = true
+      applyCeilings(fit)
+      this.pushNews(
+        `Custom layout — the prefab discount is gone. Upkeep is now $${Math.round(
+          ceilingsFor({
+            premade: fit.premade,
+            redesigned: true,
+            tier: fit.tier,
+            items: (fit.items ?? []) as PlacedItem[],
+            roomsSecurity: fit.rooms.security,
+          }).upkeepDay,
+        )}/day.`,
+        'ok',
+      )
+    }
+    this.hallRev++
+    this.refreshAdvice()
+    this.emit()
+  }
+
+  placeHallItem(id: ItemId) {
+    const fit = this.activeHall()
+    if (!fit) {
+      this.pushNews('Open a hall first.', 'bad')
+      this.emit()
+      return
+    }
+    const def = itemDef(id)
+    if (!def) return
+    if (this.fieldLevel() < def.minFieldLevel) {
+      this.pushNews(`${def.name} needs Field level ${def.minFieldLevel}.`, 'bad')
+      this.emit()
+      return
+    }
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    const items = (fit.items ?? []) as PlacedItem[]
+    // Ignore cash here so a broke player still hears "not enough cash" from spend().
+    const room = { fieldLevel: this.fieldLevel(), cash: Infinity }
+    let cell: { c: number; r: number } | null = null
+    for (let r = 0; r < fit.zones.length && !cell; r++) {
+      for (let c = 0; c < fit.zones[r].length; c++) {
+        if (placementCheck(fit.zones, items, def, c, r, room).ok) {
+          cell = { c, r }
+          break
+        }
+      }
+    }
+    if (!cell) {
+      this.pushNews(`Paint a ${def.zones.join(' / ')} cell before placing ${def.name}.`, 'bad')
+      this.emit()
+      return
+    }
+    this.commitHallItem(id, cell.c, cell.r, 0)
+  }
+
+  /** Ghost check for the hall build bar. Same rules as the click. */
+  hallPlacement(id: ItemId, c: number, r: number): PlacementCheck {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return { ok: false, reason: 'Open a hall first', cost: def?.cost ?? 0 }
+    const zones = fit.zones?.length ? fit.zones : fit.premade ? prefabZones() : blankZones()
+    return placementCheck(zones, (fit.items ?? []) as PlacedItem[], def, c, r, {
+      fieldLevel: this.fieldLevel(),
+      cash: this.cash,
+      sandbox: this.sandbox,
+    })
+  }
+
+  /** Place one item on a chosen cell, snapped, with a quarter-turn rotation. */
+  placeHallItemAt(id: ItemId, c: number, r: number, rot = 0): boolean {
+    const check = this.hallPlacement(id, c, r)
+    if (!check.ok) {
+      this.pushNews(`${itemDef(id)?.name ?? 'Item'}: ${check.reason}.`, 'bad')
+      this.emit()
+      return false
+    }
+    return this.commitHallItem(id, c, r, rot)
+  }
+
+  private commitHallItem(id: ItemId, c: number, r: number, rot: number): boolean {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return false
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    if (!this.spend(def.cost, def.name)) return false
+    fit.items = fit.items ?? []
+    this.hallItemSeq += 1
+    fit.items.push({
+      id: `it-${id}-${c}-${r}-${this.hallItemSeq}`,
+      def: id,
+      c,
+      r,
+      wear: 0,
+      rot: ((Math.round(rot) % 4) + 4) % 4,
+    })
+    if (def.room) fit.rooms[def.room] += 1
+    if (def.room === 'food') this.foodShelf += 8
+    if (def.signs) fit.signs = (fit.signs ?? 0) + def.signs
+    applyCeilings(fit)
+    this.hallRev++
+    this.pushNews(
+      `${def.name} placed — $${def.upkeep}/day upkeep${def.perk ? `. ${def.perk}.` : '.'}`,
+      'ok',
+    )
+    this.refreshAdvice()
+    this.emit()
+    return true
+  }
+
+  /** Bulldoze a placed hall item for a partial refund. Prefab bundle pieces stay. */
+  removeHallItem(itemId: string): boolean {
+    const fit = this.activeHall()
+    const list = fit?.items ?? []
+    const i = list.findIndex((it) => it.id === itemId)
+    if (!fit || i < 0) return false
+    const it = list[i]
+    const def = itemDef(it.def)
+    if (it.bundle || !def) {
+      this.pushNews('Part of the prefab bundle — it stays with the hall.', 'bad')
+      this.emit()
+      return false
+    }
+    list.splice(i, 1)
+    if (def.room) fit.rooms[def.room] = Math.max(0, fit.rooms[def.room] - 1)
+    if (def.signs) fit.signs = Math.max(0, (fit.signs ?? 0) - def.signs)
+    const refund = refundFor(def)
+    this.cash += refund
+    applyCeilings(fit)
+    this.hallRev++
+    this.pushNews(`${def.name} removed — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
   }
 
   /**
@@ -3572,6 +6729,7 @@ export class Game {
     g.spent += pay
     this.cash += pay
     this.revenue += pay
+    this.noteIncome(pay, 'retail_sales')
     // Passenger spend covers amenity / landside expense in the payroll window.
     this.landsideFeeWindow += pay
     return { ok: true }
@@ -3603,12 +6761,13 @@ export class Game {
     if (n === 'info') {
       g.patience = Math.min(100, g.patience + 8)
       g.happiness += 2
+      g.lost = false
       g.thought = 'Got directions'
       // Info desk extends lookahead once — like an RCT park map.
       const need = strongestNeed(g)
       if (need) {
-        const dest = needToNode(need, g.job)
-        this.routeGuest(g, dest, open)
+        const dest = reachableNeed(need, g.job, open)
+        if (dest) this.routeGuest(g, dest, open)
       }
     }
     if (n === 'checkin' && g.job === 'depart') {
@@ -3620,6 +6779,12 @@ export class Game {
       }
       // Manor Lords deposit: hold at desk while bags go on the belt.
       if (!g.bagsDropped) {
+        if (g.bagDepositLeft == null && !this.checkInOpen(g)) {
+          g.bagsDropped = true
+          g.thought = 'Check-in closed — carry-on to security'
+          if (open.has('security')) this.routeGuest(g, 'security', open)
+          return
+        }
         if (g.bagDepositLeft == null) {
           const units = bagUnitsForTag(g.tag)
           g.bagDepositLeft = clamp(0.55 + units * 0.55, 0.55, 2.8)
@@ -3643,25 +6808,8 @@ export class Game {
         g.happiness -= 2
       }
     }
-    if (n === 'security') {
+    if (n === 'security' && g.job !== 'depart') {
       g.clearedSec = true
-      if (g.job === 'depart') {
-        const wear = this.bumpWear(
-          'sec',
-          g.tag === 'budget' ? 2.2 : g.tag === 'family' ? 1.5 : 0.6,
-        )
-        const unstaffed = !this.staffedPost('security')
-        const slow = wear >= 50 || unstaffed
-        g.thought = unstaffed
-          ? 'No officer at the lane — slow clear'
-          : slow
-            ? 'Security lane sticky — slow clear'
-            : 'Cleared security — walk to gate'
-        g.happiness += unstaffed ? -2 : slow ? -1 : 2
-        if (unstaffed) g.needs.boarding = Math.max(0, g.needs.boarding - 2)
-        if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
-        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
-      }
     }
     if (n === 'gate' && g.job === 'depart') {
       if (!this.staffedPost('gate')) {
@@ -3674,24 +6822,45 @@ export class Game {
       }
     }
     if (n === 'bathroom') {
+      const gFit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
       const wear = this.bumpWear(
         'bath',
         g.tag === 'budget' ? 2.8 : g.tag === 'family' ? 1.8 : 0.7,
+        gFit,
       )
       const relief = wear >= 60 ? 30 : wear >= 35 ? 42 : 55
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
       g.happiness += wear >= 60 ? -2 : 4
       g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
+      const wcFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      if (wcFit) {
+        const dirt = Math.min(100, (wcFit.restroomDirt ?? 0) + restroomDirtFor(g.tag))
+        wcFit.restroomDirt = dirt
+        const hit = restroomJoyHit(dirt)
+        if (hit > 0) {
+          g.happiness -= hit
+          g.thought = 'Restroom was filthy'
+        }
+      }
     }
     if (n === 'food') {
       let pay = tagPrice(g.tag, 12, 18, 24, 32)
       let happy = 6
       let brand = false
+      const homeFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      const outlet = pickOutlet((homeFit?.items ?? []) as PlacedItem[], g.tag)
+      if (outlet) {
+        pay = Math.round(pay * outlet.spec.priceMult)
+        happy = outlet.spec.joy
+      }
       if (g.airlineId && this.hasReward(g.airlineId, 'budget_perk')) {
         pay = Math.round(pay * 1.55)
         happy += 2
         brand = true
       }
+      if (this.foodShelf < 1) {
+        this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
+      } else {
       const buy = this.tryGuestPay(g, pay, 'food', g.needs.hunger >= 70)
       if (!buy.ok) {
         g.needs.hunger = Math.max(0, g.needs.hunger - 12)
@@ -3703,16 +6872,29 @@ export class Game {
               ? 'Meal too pricey for my wallet'
               : 'Skipped the counter — not hungry for that'
       } else {
-        g.needs.hunger = Math.max(0, g.needs.hunger - 50)
+        g.needs.hunger = Math.max(0, g.needs.hunger - (outlet?.spec.hunger ?? 50))
+        if (outlet) {
+          g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
+          outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
+          this.foodCourtRevenue += pay
+        }
+        this.foodShelf -= 1
         this.mealSold = true
+        this.giveSnack(g, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
-          : `Ate (−$${pay})`
+          : outlet
+            ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
+            : `Ate (−$${pay})`
+      }
       }
     }
     if (n === 'shop') {
       const pay = tagPrice(g.tag, 14, 24, 36, 48)
+      if (this.shopShelf < 1) {
+        this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
+      } else {
       const buy = this.tryGuestPay(g, pay, 'shop', g.needs.shop >= 75)
       if (!buy.ok) {
         g.needs.shop = Math.max(0, g.needs.shop - 20)
@@ -3725,8 +6907,10 @@ export class Game {
               : 'Browsed, did not buy'
       } else {
         g.needs.shop = Math.max(0, g.needs.shop - 60)
+        this.shopShelf -= 1
         g.happiness += 5
         g.thought = `Bought a souvenir (−$${pay})`
+      }
       }
     }
     if (n === 'lounge' && tagSpendsUp(g.tag)) {
@@ -3859,16 +7043,26 @@ export class Game {
     }
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
-      g.needs.boarding = Math.max(g.needs.boarding, 8)
-      if (g.needs.hunger < 40 && g.needs.bladder < 40) {
+      const called = this.flightBoardingCall(g)
+      if (called || (g.needs.hunger < 40 && g.needs.bladder < 40)) {
+        g.needs.boarding = 0
         g.dead = true
         this.paxServed += 1
         this.reputation = Math.min(100, this.reputation + 0.4)
+      } else {
+        g.needs.boarding = Math.max(g.needs.boarding, 8)
       }
     }
     if (n === 'claim' && g.job === 'arrive') {
-      g.needs.bags = Math.max(0, g.needs.bags - 55)
-      g.thought = 'Got bags — heading landside'
+      if (g.needs.bags > 0) {
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.thought = 'Waiting at the carousel'
+        return
+      }
+      g.hasChecked = true
+      g.thought = 'Got my bag'
       if (g.needs.hunger > 50 && open.has('food')) this.routeGuest(g, 'food', open)
       else if (g.needs.shop > 45 && open.has('shop')) this.routeGuest(g, 'shop', open)
       else if (open.has('exit')) this.routeGuest(g, 'exit', open)
@@ -3899,12 +7093,257 @@ export class Game {
     }
   }
 
+  private resetPillar() {
+    this.contractId = null
+    this.tankTier = 1
+    this.tankLitres = 0
+    this.fuelSupply = 'road'
+    this.roadMinutes = 0
+    this.scaleFleet = {}
+    this.bagSystem = 'carts'
+    this.paxDesks = 2
+    this.paxKiosks = 0
+    this.paxBagDrops = 0
+    this.scannerLanes = 1
+    this.eGates = 0
+    this.standScale = {}
+    this.hangarScale = {}
+    this.lastRailFlowing = false
+  }
+
+  private pillarState(): PillarState {
+    return {
+      contractId: this.contractId,
+      tankTier: this.tankTier,
+      litres: this.tankLitres,
+      supply: this.fuelSupply,
+      roadMinutes: this.roadMinutes,
+      fleet: { ...this.scaleFleet },
+      bagSystem: this.bagSystem,
+      desks: this.paxDesks,
+      kiosks: this.paxKiosks,
+      bagDrops: this.paxBagDrops,
+      scannerLanes: this.scannerLanes,
+      eGates: this.eGates,
+    }
+  }
+
+  private pillarField() {
+    return {
+      size: SIZE,
+      fieldLevel: this.fieldLevel(),
+      research: this.researchUnlocked,
+      tiles: this.tiles,
+      standScale: this.standScale,
+      standClass: this.standClass,
+      standAccess: this.standAccess,
+      hangarScale: this.hangarScale,
+      legacyFuel: this.fuelBrand != null,
+    }
+  }
+
+  /** Passenger processing is skipped for freighters and other non-pax metal. */
+  scaleReport(id: string): PillarReport {
+    const report = pillarReport(this.pillarField(), this.pillarState(), id)
+    const af = AIRFRAMES[id]
+    if (!af || af.paxMax > 0) return report
+    const skip = new Set(['early-bags', 'travelator', 'skywalk', 'mover'])
+    const hints = report.hints.filter(
+      (h) => !skip.has(h.id) && !/^(stand-|bags-|checkin-|security-)/.test(h.id),
+    )
+    return { ...report, hints, ok: hints.length === 0 }
+  }
+
+  private pickOperable(preferred: AircraftKind, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
+    const level = this.fieldLevel()
+    const research = this.researchUnlocked
+    const runway = this.longestRunway()
+    const accepts = (id: string) => this.scaleReport(id).ok
+    const af = pickAirframe(preferred, runway, research, level, accepts)
+    if (af) return { af, blocked: null }
+    // The strip can take this kind, but the pillar cannot. Hold the slot instead of sending a smaller jet.
+    const raw = pickAirframe(preferred, runway, research, level)
+    if (raw) return { af: null, blocked: this.scaleReport(raw.id) }
+    const smaller = pickAirframeWithFallback(preferred, runway, cargo, research, level, accepts)
+    return { af: smaller, blocked: null }
+  }
+
+  private scaleAdviceItems(): Advice[] {
+    return scaleAdvice(this.pillarField(), this.pillarState()).map((h) => ({
+      id: h.id,
+      title: h.title,
+      detail: h.detail,
+      fix: h.fix,
+      cells: [],
+      scope: 'apron' as const,
+    }))
+  }
+
+  private pillarUpkeepBill(): number {
+    if (!this.site) return 0
+    const hangars: Record<SizeTier, number> = { small: 0, wide: 0, jumbo: 0 }
+    for (const h of tilesOf(this.tiles, 'hangar')) {
+      hangars[this.hangarScale[`${h.c},${h.r}`] ?? 'small'] += 1
+    }
+    let wideStands = 0
+    let jumboStands = 0
+    for (const s of tilesOf(this.tiles, 'stand')) {
+      const scale = this.standScale[`${s.c},${s.r}`]
+      if (scale === 'wide') wideStands += 1
+      else if (scale === 'jumbo' || (!scale && this.standClass[`${s.c},${s.r}`] === 'L')) jumboStands += 1
+    }
+    return pillarUpkeep(this.pillarState(), {
+      fuelFarms: tilesOf(this.tiles, 'fuel').length,
+      hangars,
+      fuelRail: tilesOf(this.tiles, 'fuel_rail').length,
+      oil: tilesOf(this.tiles, 'oil').length,
+      travelator: tilesOf(this.tiles, 'travelator').length,
+      skywalk: tilesOf(this.tiles, 'skywalk').length,
+      mover: tilesOf(this.tiles, 'mover').length,
+      wideStands,
+      jumboStands,
+      hydrant: this.hasResearch('hydrant_fuel'),
+    })
+  }
+
+  /** Bowser loads and the tank are the same fuel. A pump has to open room for the next delivery. */
+  private drawTankLitres(litres: number) {
+    if (litres <= 0) return
+    this.tankLitres = Math.max(0, this.tankLitres - litres)
+    const sim = this.ground?.sim
+    if (sim) sim.fuelLitres = Math.max(0, sim.fuelLitres - litres)
+  }
+
+  private addTankLitres(litres: number) {
+    if (litres <= 0) return
+    const cap = tankDef(this.tankTier).capacityLitres
+    this.tankLitres = Math.min(cap, this.tankLitres + litres)
+    const sim = this.ground?.sim
+    if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + litres)
+  }
+
+  private tickScaleFuel(step: number) {
+    const minutes = gameMinutes(step)
+    if (minutes <= 0 || !this.site) return
+    const cap = tankDef(this.tankTier).capacityLitres
+    const sim = this.ground?.sim
+    if (sim) this.tankLitres = Math.min(cap, this.tankLitres, Math.max(0, sim.fuelLitres))
+    const state = this.pillarState()
+    const result = tickFuel(this.pillarField(), state, minutes, this.cash)
+    this.roadMinutes = state.roadMinutes
+    this.tankLitres = state.litres
+    if (result.paid > 0) this.charge(result.paid)
+    if (result.delivered > 0) {
+      this.fuelLoads += loadsFromLitres(result.delivered)
+      if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
+    }
+    if (result.railFlowing && !this.lastRailFlowing) {
+      this.pushNews('Fuel rail is flowing into the tank farm.', 'good')
+    }
+    if (result.waitingOnCash && Math.random() < 0.02) {
+      this.pushNews('Fuel delivery is waiting on cash.', 'bad')
+    }
+    this.lastRailFlowing = result.railFlowing
+  }
+
   signFuel(brand: FuelBrand) {
     if (this.fuelBrand === brand) return
     const c = FUEL[brand]
     if (!this.spend(c.sign, `${c.name} contract`)) return
     this.fuelBrand = brand
+    if (!this.contractId || this.contractId === 'apex_local' || this.contractId === 'kiln_regional') {
+      this.contractId = brand === 'kiln' ? 'kiln_regional' : 'apex_local'
+    }
     this.pushNews(`Signed ${c.name}. Buy loads for the trucks.`, 'ok')
+    this.emit()
+  }
+
+  signScaleContract(id: string) {
+    if (this.contractId === id) return
+    const gate = canSignContract(id, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const def = FUEL_CONTRACTS.find((c) => c.id === id)
+    if (!def || !this.spend(gate.cost, `${def.name} contract`)) return
+    this.contractId = id
+    if (id === 'apex_local') this.fuelBrand = 'apex'
+    if (id === 'kiln_regional') this.fuelBrand = 'kiln'
+    this.pushNews(`Signed ${def.name}. ${def.tankerLitres.toLocaleString('en-US')} L road tankers.`, 'ok')
+    this.emit()
+  }
+
+  upgradeTank() {
+    const gate = canUpgradeTank(this.tankTier, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok || gate.next == null) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(gate.cost, 'tank farm')) return
+    this.tankTier = gate.next
+    this.bumpMap()
+    this.pushNews(`Tank farm holds ${tankDef(this.tankTier).capacityLitres.toLocaleString('en-US')} L.`, 'good')
+    this.emit()
+  }
+
+  setFuelSupply(supply: FuelSupply) {
+    if (supply === 'rail' && !this.hasResearch('rail_fuel')) {
+      this.pushNews('Research Fuel rail first. The trains still need a line and a station.', 'bad')
+      this.emit()
+      return
+    }
+    this.fuelSupply = supply
+    this.roadMinutes = 0
+    this.pushNews(supply === 'rail' ? 'Fuel supply set to rail.' : 'Fuel supply set to road tankers.', 'ok')
+    this.emit()
+  }
+
+  buyScaleVehicle(type: VehicleType) {
+    const gate = canBuyVehicle(type, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const label = VEHICLE_OFFERS.find((o) => o.type === type)?.role ?? type
+    if (!this.spend(gate.cost, label)) return
+    this.scaleFleet[type] = (this.scaleFleet[type] ?? 0) + 1
+    this.bumpMap()
+    this.pushNews(`${label} added to the ramp fleet.`, 'ok')
+    this.emit()
+  }
+
+  upgradeBagSystem() {
+    const gate = canUpgradeBags(this.bagSystem, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok || !gate.next) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const def = BAG_SYSTEMS[gate.next]
+    if (!this.spend(gate.cost, def.name)) return
+    this.bagSystem = gate.next
+    this.pushNews(`${def.name} online. ${def.bagsPerMin} bags a minute.`, 'good')
+    this.emit()
+  }
+
+  buyPaxUnit(unit: PaxUnit) {
+    const gate = canBuyPax(unit, this.fieldLevel(), this.researchUnlocked)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(gate.cost, PAX_UNITS[unit].name)) return
+    if (unit === 'desk') this.paxDesks += 1
+    else if (unit === 'kiosk') this.paxKiosks += 1
+    else if (unit === 'bagdrop') this.paxBagDrops += 1
+    else if (unit === 'scanner') this.scannerLanes += 1
+    else this.eGates += 1
+    this.pushNews(`${PAX_UNITS[unit].name} added.`, 'ok')
     this.emit()
   }
 
@@ -3917,6 +7356,7 @@ export class Game {
     const cost = c.wholesale * LOADS_PER_BUY
     if (!this.spend(cost, 'fuel loads')) return
     this.fuelLoads += LOADS_PER_BUY
+    this.addTankLitres(LITRES_PER_LEGACY_LOAD * LOADS_PER_BUY)
     this.pushNews(`Four loads on the farm. ${this.fuelLoads} ready.`, 'ok')
     this.emit()
   }
@@ -4025,6 +7465,39 @@ export class Game {
     return miss
   }
 
+  /** Contract checklist — met and missing, player-facing labels. */
+  reqReport(id: AirlineId): { label: string; met: boolean }[] {
+    const a = this.airline(id)
+    const r = this.readiness()
+    const rows: { label: string; met: boolean }[] = [
+      { label: `Reputation ${a.minRep}+`, met: this.reputation >= a.minRep },
+      { label: 'Runway', met: r.runway },
+    ]
+    if (a.req.heavyRunway) rows.push({ label: 'Heavy runway', met: r.heavyRunway })
+    rows.push({
+      label: a.req.stands === 1 ? '1 stand' : `${a.req.stands} stands`,
+      met: r.stands >= a.req.stands,
+    })
+    if (a.req.fuelContract) rows.push({ label: 'Fuel contract', met: r.fuelContract })
+    if (a.req.fuelFarm) rows.push({ label: 'Fuel farm', met: r.fuelFarm })
+    if (a.req.fire) rows.push({ label: 'Fire station', met: r.fire })
+    if (a.req.police) rows.push({ label: 'Police post', met: r.police })
+    if (a.req.terminal) rows.push({ label: 'Terminal', met: r.terminal })
+    if (a.req.security > 0) {
+      rows.push({
+        label: a.req.security === 1 ? 'Security lane' : `Security ×${a.req.security}`,
+        met: r.security >= a.req.security,
+      })
+    }
+    if (a.req.bags) rows.push({ label: 'Bag sort', met: r.bags })
+    if (a.req.snack) rows.push({ label: 'Snack bar', met: r.snack })
+    if (a.req.catering) rows.push({ label: 'Catering contract', met: r.catering })
+    if (a.req.cargo) rows.push({ label: 'Cargo shed', met: r.cargo })
+    if (a.req.road) rows.push({ label: 'Access road', met: r.road })
+    if (a.req.tower) rows.push({ label: 'Control tower', met: r.tower })
+    return rows
+  }
+
   considerOffers() {
     if (this.offer || this.offerCool > 0) return
     const site = this.site ? LAND[this.site] : null
@@ -4040,6 +7513,8 @@ export class Game {
     }
     const procSigned = this.signed.filter((id) => this.airline(id).procedural).length
     const candidates = this.allAirlines().filter((a) => {
+      if (ULCC_IDS.includes(a.id)) return false
+      if (this.negotiationBridge?.barred(a.id)) return false
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
       if (a.procedural && procSigned >= 3) return false
@@ -4079,12 +7554,158 @@ export class Game {
         : this.signed.length >= 1 && procs.length && Math.random() < 0.4
           ? pick(procs)
           : candidates[0]
-    this.offer = { airline: pickA.id, age: 0, deadline: 36 }
-    const tag = pickA.procedural ? ' (regional)' : ''
+    const negotiated = this.negotiationDesk().present(pickA)
+    this.offer = { airline: negotiated, age: 0, deadline: 36 }
+    const shown = this.airline(negotiated)
+    const tag = shown.procedural && !ULCC_IDS.includes(shown.id) ? ' (regional)' : ''
     this.pushNews(
-      `${pickA.name}${tag} sent a contract letter — open it on the right before it expires.`,
+      `${shown.name}${tag} sent a contract letter — open it on the left before it expires.`,
       'good',
     )
+  }
+
+  negotiationPanel() {
+    return this.negotiationBridge?.panel() ?? null
+  }
+
+  rivalCard() {
+    return this.negotiationBridge?.rivalCard() ?? null
+  }
+
+  /** Standing rows the diplomacy adapter is holding for this carrier. */
+  negotiationStanding(id: string): { source: string; value: number; durationDays: number }[] {
+    const rel = this.ensureDiplomacy().relation(id)
+    if (!rel) return []
+    return rel.modifiers
+      .filter((m) => m.source === 'over_ask' || m.source === 'hard_bargain' || m.source === 'walk' || m.source === 'freebie')
+      .map((m) => ({ source: m.source, value: m.value, durationDays: m.durationDays }))
+  }
+
+  openNegotiationPanel() {
+    if (this.offer && this.negotiationBridge?.desk.session?.airlineId !== this.offer.airline) {
+      this.negotiationDesk().openNamed(this.offer.airline)
+    } else if (!this.negotiationBridge?.desk.session && this.offer) {
+      this.negotiationDesk().openNamed(this.offer.airline)
+    }
+    this.negotiationDesk().openPanel()
+    this.emit()
+  }
+
+  closeNegotiationPanel() {
+    this.negotiationBridge?.closePanel()
+    this.emit()
+  }
+
+  presentNegotiation(id: string) {
+    this.negotiationDesk().openNamed(id)
+    this.offer = { airline: id, age: 0, deadline: 120 }
+    this.emit()
+  }
+
+  setNegotiationFee(service: ServiceId, pct: number) {
+    this.negotiationDesk().setFee(service, pct)
+    this.emit()
+  }
+
+  toggleNegotiationFreebie(id: string) {
+    this.negotiationDesk().toggleFreebie(id)
+    this.emit()
+  }
+
+  setNegotiationDeposit(tier: DepositTier) {
+    this.negotiationDesk().setDeposit(tier)
+    this.emit()
+  }
+
+  setNegotiationTerm(months: number) {
+    this.negotiationDesk().setTerm(months)
+    this.emit()
+  }
+
+  buyNegotiationResearch(cost: number) {
+    this.negotiationDesk().buyResearch(cost)
+    this.refreshAdvice()
+    this.emit()
+  }
+
+  acceptNegotiation() {
+    const session = this.negotiationBridge?.desk.session
+    if (!session || session.status !== 'open') {
+      this.acceptOffer()
+      return
+    }
+    const result = this.negotiationDesk().accept()
+    if (result.outcome === 'signed') this.acceptOffer()
+    else if (result.outcome === 'walked') this.clearWalkedOffer()
+    else this.emit()
+  }
+
+  counterNegotiation() {
+    const session = this.negotiationBridge?.desk.session
+    if (!session || session.status !== 'open') return
+    const result = this.negotiationDesk().counter()
+    if (result.outcome === 'signed') this.acceptOffer()
+    else if (result.outcome === 'walked') this.clearWalkedOffer()
+    else this.emit()
+  }
+
+  walkNegotiation() {
+    if (this.negotiationBridge?.desk.session?.status === 'open') this.negotiationDesk().walk()
+    if (this.offer) this.declineOffer()
+    else this.emit()
+  }
+
+  private clearWalkedOffer() {
+    this.offer = null
+    this.offerCool = 48
+    this.emit()
+  }
+
+  private negotiationDesk(): NegotiationBridge {
+    if (!this.negotiationBridge) {
+      this.negotiationBridge = new NegotiationBridge(
+        {
+          day: () => Math.floor(this.clock / 180),
+          standing: (id) => this.standingOf(id),
+          rating: () => this.fieldRating(),
+          capacity: () => (this.hallOverloaded || this.congPeak >= 3 ? 'red' : this.congPeak >= 1.4 ? 'amber' : 'green'),
+          applyStanding: (deltas) => this.applyNegotiationStanding(deltas),
+          addMoney: (amount, reason) => {
+            if (amount > 0) this.earn(amount, reason)
+            else if (amount < 0) this.charge(-amount)
+          },
+          notify: (message, tone) => this.pushNews(message, tone),
+          ensureCarrier: (profile) => this.ensureNegotiationCarrier(profile),
+        },
+        this.diplomacySeed,
+      )
+    }
+    return this.negotiationBridge
+  }
+
+  private applyNegotiationStanding(
+    deltas: { id: string; airlineId: string; modifier: string; label: string; value: number; durationDays: number }[],
+  ) {
+    const diplomacy = this.ensureDiplomacy()
+    const day = diplomacy.day()
+    for (const delta of deltas) {
+      const rel = diplomacy.relation(delta.airlineId)
+      if (!rel) continue
+      rel.modifiers.push({
+        id: delta.id,
+        kind: 'other',
+        label: delta.label,
+        source: delta.modifier,
+        value: delta.value,
+        startDay: day,
+        durationDays: delta.durationDays,
+      })
+    }
+  }
+
+  private ensureNegotiationCarrier(profile: { id: string }): void {
+    // Resolved by airline() so ULCC ids stay out of the offer candidate list.
+    if (!profile.id) return
   }
 
   acceptOffer() {
@@ -4138,12 +7759,13 @@ export class Game {
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
     const hub = this.isHub(airlineId)
+    const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
     const spacing = a.kind === 'cargo'
       ? 22 + Math.random() * 12
       : hub
         ? 12 + Math.random() * 8
         : 18 + Math.random() * 10
-    const n = hub ? count + 1 : count
+    const n = hub ? scaled + 1 : scaled
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
@@ -4163,6 +7785,7 @@ export class Game {
       }
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
+      this.noteSlotBanked(slot)
     }
   }
 
@@ -4205,6 +7828,7 @@ export class Game {
     }
     this.assignSlotClaimLane(slot)
     this.schedule.push(slot)
+    this.noteSlotBanked(slot)
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s${
         rw != null ? ` · ${this.runwayLabel(rw)}` : ''
@@ -4218,13 +7842,15 @@ export class Game {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || s.status === 'inbound' || s.status === 'done') return
     s.status = 'cancelled'
+    this.abandonShowUp(s.id)
     // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
-    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2)
+    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2, 'schedule')
     this.pushNews(
       `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} Standing ${Math.round(this.standingOf(s.airline))}. Bank clears, relations don't.`,
       'bad',
     )
     this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
+    this.noteDiplomacyCancel(s.airline, /weather|storm|fog/i.test(s.delayReason ?? ''))
     this.emit()
   }
 
@@ -4617,6 +8243,17 @@ export class Game {
     return due[0] ?? null
   }
 
+  /** Set the contract aside — no Standing hit, they write again soon. */
+  snoozeOffer() {
+    if (!this.offer) return
+    const a = this.airline(this.offer.airline)
+    this.negotiationBridge?.closePanel()
+    this.offer = null
+    this.offerCool = 18
+    this.pushNews(`${a.name} letter set aside. They'll write again shortly.`, 'ok')
+    this.emit()
+  }
+
   declineOffer() {
     if (!this.offer) return
     const id = this.offer.airline
@@ -4632,6 +8269,7 @@ export class Game {
   expireOffer() {
     if (!this.offer) return
     const a = this.airline(this.offer.airline)
+    this.negotiationBridge?.closePanel()
     this.offer = null
     this.offerCool = 55
     this.pushNews(`${a.name} contract letter expired unread.`, 'ok')
@@ -4958,7 +8596,7 @@ export class Game {
     if (!o) return
     const af = AIRFRAMES[o.airframeId]
     if (!af) return
-    const stand = this.assignStand()
+    const stand = this.assignStand(null, undefined, undefined, af.id)
     const route = stand ? this.landingRoute(stand) : null
     if (!stand || !route) {
       this.pushNews('No free stand for GA parking.', 'bad')
@@ -4966,24 +8604,25 @@ export class Game {
       return
     }
     this.earn(o.fee, `${o.callsign} parking fee`)
-    const start = route[0]
+    const inbound = this.armApproach(route)
+    const load = this.flightLoad(af, 'business', false)
     const f: Flight = {
       id: uid('ga'),
       airline: 'ga',
       flightNo: o.callsign,
       airframeId: af.id,
       airframeName: af.name,
-      pax: af.paxMin + Math.floor(Math.random() * Math.max(1, af.paxMax - af.paxMin + 1)),
+      pax: load.pax,
       cargo: false,
       craft: 'jet',
       kind: af.kind,
       phase: 'approach',
       stand,
-      x: start.c - 3,
-      y: start.r - 2,
-      z: 7,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -5042,6 +8681,7 @@ export class Game {
     f.path = out
     f.seg = 0
     f.t = 0
+    if (!f.cargo) this.settleOutboundBags(f, true)
     f.phase = 'taxi_out'
     f.phaseTime = 0
     f.parkLeaveBy = null
@@ -5067,6 +8707,8 @@ export class Game {
     g.node = 'gate'
     // Through-checked bags — pax stay airside; bags transfer off claim.
     g.needs.bags = 0
+    g.connectFlightId = this.pickConnectFlight(airlineId)
+    this.issueBagTags(g.id, g.flightId, tag, g.connectFlightId, 'transfer')
     g.thought = `${a.name} transfer — bags through-checked, kill time in the hall`
     g.needs.boarding = 35 + Math.random() * 40
     if (open.has('food')) this.routeGuest(g, 'food', open)
@@ -5088,12 +8730,13 @@ export class Game {
     }
     this.hallGuests.push(g)
     // Transfers scuff the hall faster.
-    if (Math.random() < 0.35) this.bumpWear('bath', 0.4)
-    if (Math.random() < 0.2) this.bumpWear('sec', 0.25)
+    if (Math.random() < 0.35) this.bumpWear('bath', 0.4, fit)
+    if (Math.random() < 0.2) this.bumpWear('sec', 0.25, fit)
   }
 
   /** Soft heat drift, rewards, warnings, abandon, ban expiry. */
   tickAirlineRelations(dt: number) {
+    this.standingAdvisor.tick(this.clock, dt, (id) => this.airline(id).kind === 'cargo')
     for (const id of [...this.signed]) {
       if (this.isBanned(id)) continue
       // Slow recovery toward 70 when not in crisis.
@@ -5158,28 +8801,30 @@ export class Game {
     }
     fit.rooms[id] += 1
     this.pushNews(`Furnished ${def.name}.`, 'ok')
+    this.refreshAdvice()
     this.emit()
   }
 
-  /** Budget traffic scuffs WC / security. Returns average wear after bump. */
-  bumpWear(kind: 'bath' | 'sec', amount: number): number {
+  /** Budget traffic scuffs WC / security on that hall. Returns that hall's wear. */
+  bumpWear(kind: 'bath' | 'sec', amount: number, fitParam?: TerminalFit | null): number {
     if (!this.fits.length) return 0
-    let sum = 0
-    for (const f of this.fits) {
-      if (kind === 'bath') f.wearBath = Math.min(100, (f.wearBath ?? 0) + amount)
-      else f.wearSec = Math.min(100, (f.wearSec ?? 0) + amount)
-      sum += kind === 'bath' ? f.wearBath : f.wearSec
-    }
-    return sum / this.fits.length
+    const fit = fitParam ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    if (kind === 'bath') fit.wearBath = Math.min(100, (fit.wearBath ?? 0) + amount)
+    else fit.wearSec = Math.min(100, (fit.wearSec ?? 0) + amount)
+    return kind === 'bath' ? fit.wearBath : fit.wearSec
   }
 
-  scrubHall() {
+  scrubHall(fitParam?: TerminalFit | null) {
     if (!this.fits.length) {
       this.pushNews('No hall to scrub.', 'bad')
       return
     }
-    if (this.maxWear() < 5) {
-      this.pushNews('Hall is already clean enough.', 'ok')
+    const fit = fitParam ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return
+    const wear = Math.max(fit.wearBath ?? 0, fit.wearSec ?? 0)
+    if (wear < 5) {
+      this.pushNews(`${this.hallLabel(fit)} is already clean enough.`, 'ok')
       this.emit()
       return
     }
@@ -5188,15 +8833,14 @@ export class Game {
     const cost = Math.round(HALL_SCRUB_COST * (1.35 - cleanPct * 0.35))
     if (!this.spend(cost, 'hall scrub')) return
     const cut = 30 + cleanPct * 25
-    for (const f of this.fits) {
-      f.wearBath = Math.max(0, (f.wearBath ?? 0) - cut)
-      f.wearSec = Math.max(0, (f.wearSec ?? 0) - cut * 0.9)
-    }
+    fit.wearBath = Math.max(0, (fit.wearBath ?? 0) - cut)
+    fit.wearSec = Math.max(0, (fit.wearSec ?? 0) - cut * 0.9)
+    for (const it of fit.items ?? []) it.wear = Math.max(0, it.wear - cut * 0.9)
     this.reputation = Math.min(100, this.reputation + 2)
     this.pushNews(
       cleanPct < 0.4
-        ? 'Thin cleaning crew scrubbed — still sticky in places.'
-        : 'Crew scrubbed WC and security lanes.',
+        ? `${this.hallLabel(fit)}: thin cleaning crew scrubbed — still sticky in places.`
+        : `${this.hallLabel(fit)}: crew scrubbed WC and security lanes.`,
       cleanPct < 0.4 ? 'ok' : 'good',
     )
     this.emit()
@@ -5212,22 +8856,16 @@ export class Game {
    * scale ops payroll so mid/late game stays a money puzzle (capped).
    */
   fieldOpsMult(): number {
-    const stands = tilesOf(this.tiles, 'stand').length
-    const signed = this.signed.length
-    const load =
-      1 +
-      Math.max(0, signed - 1) * 0.055 +
-      Math.max(0, stands - 2) * 0.04 +
-      Math.min(0.35, this.flightsDone * 0.0035)
-    return Math.min(1.65, load)
+    return fieldOpsMultiplier(
+      this.signed.length,
+      tilesOf(this.tiles, 'stand').length,
+      this.flightsDone,
+    )
   }
 
   payrollPreview(): number {
-    let total = 0
-    for (const key of Object.keys(BUDGET_BASE) as BudgetKey[]) {
-      total += this.lineCost(key)
-    }
-    return Math.round(total * this.fieldOpsMult())
+    const lines = (Object.keys(BUDGET_BASE) as BudgetKey[]).map((key) => this.lineCost(key))
+    return payrollAmount(lines, this.fieldOpsMult())
   }
 
   hireJanitor() {
@@ -5240,7 +8878,7 @@ export class Game {
     this.janitors += 1
     this.spawnJanitorPawn()
     this.pushNews(
-      `Hired janitor #${this.janitors}. They scrub WC/security when cleaning budget is funded.`,
+      `Hired janitor #${this.janitors}. They sweep litter, empty trash cans, and service restrooms when cleaning budget is funded.`,
       'good',
     )
     this.emit()
@@ -5633,36 +9271,25 @@ export class Game {
   }
 
   lineCost(key: BudgetKey): number {
-    const pct = this.budgets[key] / 100
-    let base = BUDGET_BASE[key] * pct
-    if (key === 'maintenance') {
-      base += this.mechanics * MECHANIC_WAGE * pct
-      // Hangar on field adds a shop overhead even at low slider (tools still cost).
-      if (tilesOf(this.tiles, 'hangar').length) base += 90 * Math.max(0.25, pct)
-      // Lab staff wages ride the MX slider — empty labs still cost if hired.
-      base += this.researchers * RESEARCHER_WAGE * Math.max(0.35, pct)
-      const { desks, boards, machines } = this.labGear()
-      base += (desks * 40 + boards * 25 + machines * 70) * Math.max(0.2, pct)
-    }
-    if (key === 'security') {
-      const posts = tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0)
-      base *= 1 + posts * 0.12
-      base += this.deskStaff * DESK_STAFF_WAGE * Math.max(0.4, pct)
-    }
-    if (key === 'cleaning') {
-      const rooms = this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0)
-      base *= 1 + rooms * 0.08
-      base += this.janitors * JANITOR_WAGE * pct
-    }
-    if (key === 'fire') {
-      const stations = Math.max(1, tilesOf(this.tiles, 'fire').length)
-      base *= stations
-      if (!tilesOf(this.tiles, 'fire').length) base *= 0.35 // skeleton ARFF desk
-    }
-    if (key === 'ambulance') {
-      if (!this.signed.length && !tilesOf(this.tiles, 'helipad').length) base *= 0.4
-    }
-    return base
+    const gear = key === 'maintenance' ? this.labGear() : { desks: 0, boards: 0, machines: 0 }
+    return budgetLineCost({
+      key,
+      budgetPct: this.budgets[key],
+      mechanics: this.mechanics,
+      hangars: tilesOf(this.tiles, 'hangar').length,
+      researchers: this.researchers,
+      desks: gear.desks,
+      boards: gear.boards,
+      machines: gear.machines,
+      securityPosts:
+        tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0),
+      deskStaff: this.deskStaff,
+      cleanRooms: this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0),
+      janitors: this.janitors,
+      fireStations: tilesOf(this.tiles, 'fire').length,
+      signed: this.signed.length,
+      helipads: tilesOf(this.tiles, 'helipad').length,
+    })
   }
 
   hireMechanic() {
@@ -5815,62 +9442,130 @@ export class Game {
     }
   }
 
-  tickPayroll(dt: number) {
-    this.payrollCool -= dt
-    if (this.payrollCool > 0) return
-    this.payrollCool = 30
-    // Fees already hit cash per guest — do NOT re-earn sticker income.
+  tickPayroll(_dt: number) {
+    const day = Math.floor(Math.max(0, this.clock) / 180)
+    if (day <= this.payrollDay) return
+    const from = this.payrollDay
+    this.payrollDay = day
+    for (let completed = from; completed < day; completed++) this.closeOperatingDay(completed)
+  }
+
+  /**
+   * One game day: staffing floor or the income share, then the 0.5% city levy.
+   * Landside upkeep is the old six payroll-tick slices, billed once.
+   */
+  private closeOperatingDay(completedDay: number) {
+    const ledger = this.bank.ledgerForGameDay(completedDay)
+    let income = 0
+    for (const [category, amount] of Object.entries(ledger.byCategory)) {
+      if (FINANCING_CATEGORIES.has(category) || !(amount && amount > 0)) continue
+      income += amount
+    }
+    const phase = this.clock <= 600 ? 'early' : 'midgame'
+    const minimum = this.payrollPreview()
+    const rawBill = payrollForGameDay(income, phase, minimum)
+    const bill = Number.isFinite(rawBill) && rawBill > 0 ? rawBill : 0
     const fees = this.landsideIncome()
-    const upkeep = this.landsideUpkeep()
-    if (upkeep > 0) {
-      this.charge(upkeep)
+    const upkeep = this.landsideUpkeep() * 6 + this.pillarUpkeepBill()
+    if (upkeep > 0) this.charge(upkeep)
+    const holding = this.site ? this.dailyHoldingQuote() : 0
+    if (holding > 0) {
+      this.charge(holding)
+      this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
     }
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
-    // Decay usage / fee windows — idle stamps keep paying expense next tick.
-    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45))
+    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
     this.landsideFeeWindow = 0
-    const bill = this.payrollPreview()
+    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (bill <= 0) {
-      if (upkeep > 0 || fees > 0) {
+      if (upkeep > 0 || fees > 0 || holding > 0) {
         this.pushNews(
-          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%).`,
-          netLand >= 0 ? 'ok' : 'bad',
+          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%)${
+            holding ? ` · land holding ${moneyLeft(holding)}` : ''
+          }.`,
+          netLand >= 0 && holding === 0 ? 'ok' : 'bad',
         )
       }
       return
     }
-    if (this.cash >= bill) {
-      this.cash -= bill
-      // Soft prosperity levy — clips late-game snowballs without a hard tax cliff.
-      let levy = 0
-      if (this.cash > 140_000) {
-        levy = Math.round((this.cash - 140_000) * 0.03)
+    const settlement = settlePayroll(bill, this.cash)
+    this.levyMark = this.clock
+    if (!(settlement.shortfall > 0)) {
+      if (settlement.paid > 0) {
+        this.noteExpense(settlement.paid)
+        this.cash -= settlement.paid
+        this.postJournal('payroll', settlement.paid, stamp)
+      }
+      const levy = cityLevy(this.cash, this.sandbox)
+      if (levy > 0) {
+        this.noteExpense(levy)
         this.cash -= levy
+        this.postJournal('city_levy', levy, stamp)
       }
       this.pushNews(
         `Ops payroll ${moneyLeft(bill)}${
           fees || upkeep
             ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (fees − expense)`
             : ''
-        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (sliders × staff × shops).`,
+        }${holding ? ` · land holding ${moneyLeft(holding)}` : ''}${
+          levy ? ` · city levy ${moneyLeft(levy)}` : ''
+        } (day's income × staff floor).`,
         netLand < 0 && upkeep > 0 ? 'bad' : 'ok',
       )
       return
     }
-    // Partial pay — never drive cash below zero from payroll alone.
-    const paid = Math.max(0, this.cash)
+    const paid = settlement.paid
+    const shown = Math.round(paid)
     this.cash = 0
+    if (shown > 0) {
+      this.noteExpense(paid)
+      this.postJournal('payroll', paid, stamp)
+    }
     this.reputation = Math.max(0, this.reputation - 4)
-    // Starved lines bite harder next cycle.
     if (this.budgets.maintenance > 20) this.budgets.maintenance = Math.max(20, this.budgets.maintenance - 10)
     if (this.budgets.security > 20) this.budgets.security = Math.max(20, this.budgets.security - 10)
     this.pushNews(
-      paid > 0
-        ? `Payroll short — paid ${moneyLeft(paid)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
-        : `Payroll missed entirely (${moneyLeft(bill)} due). Crews walking. Reputation dips.`,
+      shown > 0
+        ? `Payroll short ${moneyLeft(settlement.shortfall)} — paid ${moneyLeft(shown)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
+        : `Payroll missed entirely (${moneyLeft(settlement.shortfall)} due). Crews walking. Reputation dips.`,
       'bad',
     )
+  }
+
+  private ensureEconomy(): EconomyAdapter {
+    if (!this.economy) {
+      this.economy = createEconomyAdapter(
+        {
+          getFieldLevel: () => this.fieldLevel(),
+          isAirportOperational: () => this.flightsDone > 0 || this.signed.length > 0,
+          getAbsoluteDay: () => Math.floor(this.clock / 180),
+          getStaffPools: () => ({
+            maintenance_tech: { hired: this.mechanics, wagePerDay: 0 },
+            researcher: { hired: this.researchers, wagePerDay: 0 },
+            terminal_staff: { hired: this.deskStaff, wagePerDay: 0 },
+          }),
+          getStaffBuildings: () => [],
+          getResearchRooms: () =>
+            this.researchers > 0
+              ? [{ id: 'field-lab', desks: this.researchers, powerDemand: 35, active: true }]
+              : [],
+          getPowerLoads: () => [],
+          getChains: () => [],
+          getTransitTier: () => (this.hasRailStation() ? 'rail' : this.hasBusCurb() ? 'bus' : 'road'),
+          getHousingTier: () => 0,
+          getPowerPlantTier: () => 1,
+          saveEconomyState: (state) => {
+            this.economyState = state
+          },
+          onEconomySnapshot: (snapshot) => {
+            this.economyView = snapshot
+          },
+        },
+        { initialState: this.economyState ?? undefined },
+      )
+    }
+    return this.economy
   }
 
   tickMaintenance(dt: number) {
@@ -5890,8 +9585,15 @@ export class Game {
 
     // Funded mechanics repair.
     if (staff > 0 && mx > 0.05) {
-      const repair = dt * (0.55 + staff * 0.45) * mx * (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1)
+      const repair =
+        dt *
+        (0.55 + staff * 0.45) *
+        mx *
+        (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1) *
+        (this.maintenanceContract ? LAND_PLOT.contractRepair : 1)
       this.runwayCondition = clamp(this.runwayCondition + repair, 0, 100)
+    } else if (this.maintenanceContract && this.site) {
+      this.runwayCondition = clamp(this.runwayCondition + dt * LAND_PLOT.contractRepairRate, 0, 100)
     } else if (mx < 0.2 && Math.random() < dt * 0.04) {
       this.pushNews('Pavement soft — rubber and cracks. Hire mechanics or fund maintenance.', 'bad')
     }
@@ -5987,6 +9689,7 @@ export class Game {
     this.securityIncidents += 1
     if (this.mission?.goal === 'noIncident') this.mission.progress = 0
     f.phase = 'gone'
+    this.noteCargoCancel(f)
     f.waitingOn.paxOut = 0
     f.waitingOn.paxIn = 0
     this.people = this.people.filter((p) => p.flightId !== f.id)
@@ -6049,7 +9752,10 @@ export class Game {
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
-      if (this.tile(v) === 'terminal') {
+      const tile = this.tile(v)
+      if (tile === 'fuel') this.toggleInfo('fuel')
+      else if (tile === 'bags') this.toggleInfo('bags')
+      if (tile === 'terminal') {
         this.enterHallAt(v)
         return
       }
@@ -6188,9 +9894,12 @@ export class Game {
     return null
   }
 
-  freeHangarBay(): Vec | null {
+  freeHangarBay(need: SizeTier = 'small'): Vec | null {
     const hangars = tilesOf(this.tiles, 'hangar')
     for (const h of hangars) {
+      const rating = this.hangarScale[`${h.c},${h.r}`] ?? 'small'
+      if (rating === 'small' && need !== 'small') continue
+      if (rating === 'wide' && need === 'jumbo') continue
       if (!this.hangarOccupant(h)) return h
     }
     return null
@@ -6318,7 +10027,7 @@ export class Game {
 
   startHangarMx(f: Flight): boolean {
     if (!f.stand || f.posted.mx || f.phase === 'mx_taxi' || f.phase === 'mx_bay') return false
-    const bay = this.freeHangarBay()
+    const bay = this.freeHangarBay(sizeTierOf(f.airframeId))
     if (!bay) return false
     const path = nearestPath(this.tiles, f.stand, [bay], 'jet')
     if (!path || path.length < 2) {
@@ -6364,6 +10073,15 @@ export class Game {
       return Math.round(unit * BULLDOZE_REFUND)
     }
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
+    if (tile === 'hangar' && at) {
+      const scale = this.hangarScale[`${at.c},${at.r}`] ?? 'small'
+      return Math.round(HANGAR_OFFERS[scale].cost * BULLDOZE_REFUND)
+    }
+    if (tile === 'stand' && at) {
+      const scale = this.standScale[`${at.c},${at.r}`]
+      if (scale === 'wide') return Math.round(STAND_OFFERS.wide.cost * BULLDOZE_REFUND)
+      if (scale === 'jumbo') return Math.round(STAND_OFFERS.jumbo.cost * BULLDOZE_REFUND)
+    }
     if (tile === 'hotel' && at) {
       const cls = this.hotelClass[`${at.c},${at.r}`] ?? 'business'
       const tool =
@@ -6387,7 +10105,236 @@ export class Game {
     )
   }
 
+  siteAt(v: Vec): BuildSite | undefined {
+    return this.sites.find((s) => s.cells.some((c) => c.c === v.c && c.r === v.r))
+  }
+
+  cellsBlocked(cells: Vec[]): boolean {
+    return cells.some((p) => this.siteAt(p))
+  }
+
+  enqueueBuild(site: Omit<BuildSite, 'id' | 'elapsed' | 'duration' | 'warned' | 'vanArrived' | 'delivered' | 'crewSpawned'> & Partial<BuildSite>) {
+    const full: BuildSite = {
+      id: uid('site'),
+      elapsed: 0,
+      duration: buildSeconds(site.cells.length),
+      warned: false,
+      vanArrived: false,
+      delivered: false,
+      crewSpawned: false,
+      ...site,
+      cells: site.cells.map((c) => ({ ...c })),
+    }
+    this.sites.push(full)
+    this.pushNews(
+      `${full.name} is a construction site — a contractor is driving in. About ${Math.round(full.duration)}s.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  cancelSite(id: string) {
+    const site = this.sites.find((s) => s.id === id)
+    if (!site) return
+    const refund = Math.round(site.cost * BULLDOZE_REFUND)
+    this.cash += refund
+    this.sites = this.sites.filter((s) => s.id !== id)
+    this.trucks = this.trucks.filter((t) => t.flightId !== id)
+    this.pushNews(`Construction cancelled — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
+    this.emit()
+  }
+
+  buildApproach(site: BuildSite): Vec | null {
+    const dirs = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]
+    for (const cell of site.cells) {
+      for (const [dc, dr] of dirs) {
+        const p = { c: cell.c + dc, r: cell.r + dr }
+        if (!inBounds(p.c, p.r)) continue
+        if (site.cells.some((c) => c.c === p.c && c.r === p.r)) continue
+        const tile = this.tile(p)
+        if (tile && walkableFor('truck', tile)) return p
+      }
+    }
+    return null
+  }
+
+  ensureBuildCrew(site: BuildSite) {
+    if (site.crewSpawned) return
+    site.crewSpawned = true
+    const edges = this.cityEdgeRoads()
+    const approach = this.buildApproach(site)
+    if (!edges.length || !approach) return
+    const edge = edges[0]
+    const guard = tilesOf(this.tiles, 'guard')[0]
+    const off = {
+      c: edge.c === 0 ? -2 : edge.c === SIZE - 1 ? SIZE + 1 : edge.c,
+      r: edge.r === 0 ? -2 : edge.r === SIZE - 1 ? SIZE + 1 : edge.r,
+    }
+    let path: Vec[] | null = null
+    if (guard) {
+      const toGuard = nearestPath(this.tiles, edge, [guard], 'truck')
+      const toSite = nearestPath(this.tiles, guard, [approach], 'truck')
+      if (toGuard && toSite && toGuard.length > 1 && toSite.length > 1) {
+        path = [off, ...toGuard, ...toSite.slice(1)]
+      }
+    }
+    if (!path) {
+      const direct = nearestPath(this.tiles, edge, [approach], 'truck')
+      if (direct && direct.length > 1) path = [off, ...direct]
+    }
+    if (!path) return
+    const roll = (kind: 'contractor' | 'delivery', wait: number) => {
+      this.trucks.push({
+        id: uid(kind),
+        kind,
+        flightId: site.id,
+        x: off.c,
+        y: off.r,
+        path: path!.map((p) => ({ ...p })),
+        seg: 0,
+        t: 0,
+        returning: false,
+        dwell: 0,
+        preDwell: wait,
+        patrol: false,
+        mission: guard ? 'build_guard' : 'build_site',
+        home: approach,
+        cargoUnits: kind === 'delivery' ? 8 : 0,
+      })
+    }
+    roll('contractor', 0)
+    roll('delivery', 1.4)
+  }
+
+  tickBuildTruck(t: Truck, step: number) {
+    if (t.preDwell > 0) {
+      t.preDwell -= step
+      return
+    }
+    if (t.dwell > 0) {
+      t.dwell -= step
+      if (t.dwell > 0) return
+      const site = this.sites.find((s) => s.id === t.flightId)
+      if (t.mission === 'build_guard') {
+        t.mission = 'build_site'
+        if (t.home) {
+          const from = { c: Math.round(t.x), r: Math.round(t.y) }
+          const next = nearestPath(this.tiles, from, [t.home], 'truck')
+          if (next && next.length > 1) {
+            t.path = next
+            t.seg = 0
+            t.t = 0
+            return
+          }
+        }
+      }
+      if (t.mission === 'build_site') {
+        if (site) {
+          if (t.kind === 'contractor') site.vanArrived = true
+          if (t.kind === 'delivery') site.delivered = true
+        }
+        t.mission = 'build_out'
+        t.returning = true
+        t.path = [...t.path].reverse()
+        t.seg = 0
+        t.t = 0
+        return
+      }
+      t.dwell = -99
+      return
+    }
+    const arrived = this.followPath(t, t.kind === 'contractor' ? 2.4 : 2, step)
+    if (!arrived) return
+    if (t.mission === 'build_out') {
+      t.dwell = -99
+      return
+    }
+    t.dwell = t.mission === 'build_guard' ? 0.7 : t.kind === 'delivery' ? 1.5 : 1.1
+  }
+
+  tickConstruction(step: number) {
+    for (const site of this.sites) {
+      site.elapsed += step
+      this.ensureBuildCrew(site)
+      if (site.elapsed > site.duration * 0.25 && !site.vanArrived && !site.warned) {
+        site.warned = true
+        site.duration += 1.5
+        this.pushNews(
+          `${site.name} — contractor still on the road. The build slips a moment and keeps going.`,
+          'ok',
+        )
+      }
+      if (site.elapsed >= site.duration) this.finishSite(site)
+    }
+    this.sites = this.sites.filter((s) => s.elapsed < s.duration)
+  }
+
+  finishSite(site: BuildSite) {
+    if (site.kind === 'single') {
+      const v = site.cells[0]
+      if (!v) return
+      this.tiles[v.r][v.c] = site.tile
+      const key = `${v.c},${v.r}`
+      if (site.parkTerm) this.parkTerms[key] = site.parkTerm
+      if (site.hotelClass) this.hotelClass[key] = site.hotelClass
+      if (site.standClass) this.standClass[key] = site.standClass
+      if (site.standAccess) this.standAccess[key] = site.standAccess
+      if (site.standScale) this.standScale[key] = site.standScale
+      if (site.hangarScale) this.hangarScale[key] = site.hangarScale
+      this.pushNews(site.news ?? `${site.name} open.`, 'good')
+    } else if (site.kind === 'runway') {
+      for (const p of site.cells) this.tiles[p.r][p.c] = 'runway'
+      this.pushNews(site.news ?? `${site.name} open.`, 'good')
+    } else if (site.kind === 'terminal' || site.kind === 'premade') {
+      const origin = site.origin ?? site.cells[0]
+      for (const p of site.cells) this.tiles[p.r][p.c] = 'terminal'
+      if (site.kind === 'premade') {
+        this.fits.push(
+          emptyFit(origin, true, {
+            checkin: 2,
+            security: 2,
+            gate: 2,
+            bagclaim: 1,
+            food: 1,
+            souvenir: 1,
+            bagdrop: 1,
+            lounge: 1,
+            bathroom: 2,
+          }),
+        )
+      } else {
+        this.fits.push(emptyFit(origin, false))
+      }
+      this.selectedTile = origin
+      const n = this.fits.length
+      const label = this.hallLabel(this.fits[n - 1])
+      this.pushNews(
+        site.kind === 'premade'
+          ? n >= 2
+            ? `${label} premade online — multi-terminal campus.`
+            : 'Premade terminal online — check-in, security, gates, claim, food.'
+          : n >= 2
+            ? `${label} shell up — campus now ${n} halls.`
+            : 'Empty shell up. Furnish security or airlines will stay away.',
+        'good',
+      )
+    }
+    this.bumpMap()
+    this.ensureGround()
+    this.emit()
+  }
+
   clearTile(v: Vec) {
+    const building = this.siteAt(v)
+    if (building) {
+      this.cancelSite(building.id)
+      return
+    }
     const cur = this.tile(v)
     if (!cur || cur === 'grass') return
     if (this.occupiedByOps(v)) {
@@ -6421,8 +10368,11 @@ export class Game {
       delete this.hotelClass[`${v.c},${v.r}`]
       delete this.standClass[`${v.c},${v.r}`]
       delete this.standAccess[`${v.c},${v.r}`]
+      delete this.standScale[`${v.c},${v.r}`]
+      delete this.hangarScale[`${v.c},${v.r}`]
     }
     this.bumpMap()
+    this.ensureGround()
     this.emit()
   }
 
@@ -6458,7 +10408,10 @@ export class Game {
 
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
     const cells = this.prefabRunway(v, klass)
-    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
+    if (
+      cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
+      this.cellsBlocked(cells)
+    ) {
       const tip =
         klass === 'heavy'
           ? 'Need a clear plot for the heavy strip (20×3). Rotate if it hangs off.'
@@ -6481,17 +10434,22 @@ export class Game {
       this.emit()
       return
     }
-    for (const p of cells) this.tiles[p.r][p.c] = 'runway'
-    this.bumpMap()
-    this.pushNews(
+    const news =
       klass === 'heavy'
-        ? 'Heavy strip stamped — widebodies and 747Fs can land.'
+        ? 'Heavy strip open — widebodies and 747Fs can land.'
         : klass === 'short'
-          ? 'Short strip stamped — CRJ / E-Jets / Citations only. Long metal will refuse.'
-          : 'Regional runway stamped — A320 / 737 class OK.',
-      'good',
-    )
-    this.emit()
+          ? 'Short strip open — CRJ / E-Jets / Citations only. Long metal will refuse.'
+          : 'Regional runway open — A320 / 737 class OK.'
+    this.enqueueBuild({
+      kind: 'runway',
+      cells,
+      tile: 'runway',
+      cost,
+      name: label,
+      news,
+      runwayClass: klass,
+      origin: v,
+    })
   }
 
   placeTerminal(v: Vec) {
@@ -6501,7 +10459,7 @@ export class Game {
       { c: v.c, r: v.r + 1 },
       { c: v.c + 1, r: v.r + 1 },
     ]
-    if (cells.some((p) => this.tile(p) !== 'grass')) {
+    if (cells.some((p) => this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 2×2 for the shell.', 'bad')
       this.emit()
       return
@@ -6510,18 +10468,14 @@ export class Game {
       this.emit()
       return
     }
-    for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
-    this.fits.push(emptyFit(v, false))
-    this.selectedTile = v
-    this.bumpMap()
-    const n = this.fits.length
-    this.pushNews(
-      n >= 2
-        ? `${this.hallLabel(this.fits[n - 1])} shell up — campus now ${n} halls. Stands nearby get jetways.`
-        : 'Empty shell up. Furnish security or airlines will stay away.',
-      n >= 2 ? 'good' : 'ok',
-    )
-    this.emit()
+    this.enqueueBuild({
+      kind: 'terminal',
+      cells,
+      tile: 'terminal',
+      cost: TERMINAL_COST,
+      name: 'terminal shell',
+      origin: v,
+    })
   }
 
   placePremade(v: Vec) {
@@ -6529,7 +10483,7 @@ export class Game {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
     }
-    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass')) {
+    if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
       this.emit()
       return
@@ -6538,43 +10492,47 @@ export class Game {
       this.emit()
       return
     }
-    for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
-    this.fits.push(
-      emptyFit(v, true, {
-        checkin: 2,
-        security: 2,
-        gate: 2,
-        bagclaim: 1,
-        food: 1,
-        souvenir: 1,
-        bagdrop: 1,
-        lounge: 1,
-        bathroom: 2,
-      }),
-    )
-    this.selectedTile = v
-    this.bumpMap()
-    const n = this.fits.length
-    const label = this.hallLabel(this.fits[n - 1])
-    this.pushNews(
-      n >= 2
-        ? `${label} premade online — multi-terminal campus. Jetway stands auto-link within ${JETWAY_RANGE}c.`
-        : 'Premade terminal online — check-in, security, gates, claim, food.',
-      'good',
-    )
-    this.emit()
+    this.enqueueBuild({
+      kind: 'premade',
+      cells,
+      tile: 'terminal',
+      cost: PREMADE_TERMINAL_COST,
+      name: 'premade terminal',
+      origin: v,
+    })
   }
 
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
-    if (this.tile(v) !== 'grass') {
-      this.pushNews('Needs grass.', 'bad')
+    if (building.minFieldLevel && this.fieldLevel() < building.minFieldLevel) {
+      this.pushNews(`${building.name} needs Field level ${building.minFieldLevel}.`, 'bad')
+      this.emit()
+      return
+    }
+    const locked = placementBlock(this.tool, this.fieldLevel(), this.researchUnlocked)
+    if (locked) {
+      this.pushNews(locked, 'bad')
+      this.emit()
+      return
+    }
+    if (building.research && !this.hasResearch(building.research)) {
+      this.pushNews(`${building.name} is still locked in research.`, 'bad')
+      this.emit()
+      return
+    }
+    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
+      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
       this.emit()
       return
     }
     if (building.tile === 'fuel' && !farmBesidePavement(this.tiles, v)) {
       this.pushNews('Park the farm beside taxi, stand, runway, or road.', 'bad')
+      this.emit()
+      return
+    }
+    if ((building.tile === 'kitchen' || building.tile === 'depot') && !farmBesidePavement(this.tiles, v)) {
+      this.pushNews(`${building.name} needs a road, taxiway, or stand beside it.`, 'bad')
       this.emit()
       return
     }
@@ -6596,10 +10554,21 @@ export class Game {
       this.emit()
       return
     }
-    if (this.tool === 'stand_l' && !this.hasResearch('stand_class')) {
-      this.pushNews('Stand L locked — research Stand classes first.', 'bad')
-      this.emit()
-      return
+    if (this.tool === 'oil') {
+      const beside = [
+        { c: v.c + 1, r: v.r },
+        { c: v.c - 1, r: v.r },
+        { c: v.c, r: v.r + 1 },
+        { c: v.c, r: v.r - 1 },
+      ].some((p) => {
+        const t = this.tile(p)
+        return t === 'fuel' || t === 'fuel_rail'
+      })
+      if (!beside) {
+        this.pushNews('Oil station needs the fuel farm or the fuel rail beside it.', 'bad')
+        this.emit()
+        return
+      }
     }
     if (building.tile === 'deice' && !this.hasResearch('deice')) {
       this.pushNews('De-ice pad locked — research De-ice ops first.', 'bad')
@@ -6641,96 +10610,79 @@ export class Game {
       this.emit()
       return
     }
-    this.tiles[v.r][v.c] = building.tile
+    const standCls: StandClass = standClassForTool(this.tool) ?? 'M'
+    const standScale = standScaleForTool(
+      this.tool,
+      this.hasResearch('heavy_pack') && this.fieldLevel() >= 5,
+    )
+    const hangarScale = hangarScaleForTool(this.tool)
+    const hotelCls: HotelClass =
+      this.tool === 'hotel_inn' ? 'inn' : this.tool === 'hotel_resort' ? 'resort' : 'business'
+    let news = `${building.name} open.`
     if (
       building.tile === 'park_s' ||
       building.tile === 'park_l' ||
       building.tile === 'park_g' ||
       building.tile === 'park_u'
     ) {
-      this.parkTerms[`${v.c},${v.r}`] = this.parkTerm
-      this.pushNews(
-        `${building.name} (${this.parkTerm}-term) stamped.`,
-        'ok',
-      )
-    } else if (building.tile === 'hotel') {
-      const cls: HotelClass =
-        this.tool === 'hotel_inn'
-          ? 'inn'
-          : this.tool === 'hotel_resort'
-            ? 'resort'
-            : 'business'
-      this.hotelClass[`${v.c},${v.r}`] = cls
-      this.pushNews(`${building.name} stamped on the landside.`, 'good')
+      news = `${building.name} (${this.parkTerm}-term) open.`
+    } else if (building.tile === 'stand' && this.standAccessMode === 'jetway') {
+      news = `${building.name} + jetway open.`
     } else if (building.tile === 'stand') {
-      const cls: StandClass =
-        this.tool === 'stand_s' ? 'S' : this.tool === 'stand_l' ? 'L' : 'M'
-      this.standClass[`${v.c},${v.r}`] = cls
-      this.standAccess[`${v.c},${v.r}`] = this.standAccessMode
-      const linked = this.jetwayHall(v)
-      if (this.standAccessMode === 'jetway') {
-        this.pushNews(
-          linked
-            ? `${building.name} + jetway linked to ${this.hallLabel(linked)} (${moneyLeft(stampCost)}). Fast board — no apron walk.`
-            : `${building.name} + jetway stamped (${moneyLeft(stampCost)}) — build a hall within ${JETWAY_RANGE}c to attach the gate.`,
-          linked ? 'good' : 'ok',
-        )
-      } else {
-        this.pushNews(
-          `${building.name} remote bay stamped. Add a Terminal bus depot or pax walk the pavement.`,
-          'ok',
-        )
-      }
-      if (tilesOf(this.tiles, 'hangar').length && this.milCapableStands().length) {
-        this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
-      }
+      news = `${building.name} remote bay open.`
     } else if (building.tile === 'guard') {
-      this.pushNews(
-        'Guard post online — city cargo trucks will screen here before the shed.',
-        'good',
-      )
+      news = 'Guard post online — city cargo trucks will screen here before the shed.'
     } else if (building.tile === 'cargo') {
-      this.pushNews(
-        'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.',
-        'ok',
-      )
+      news = 'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.'
     } else if (building.tile === 'termbus') {
-      this.pushNews(
-        `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`,
-        'good',
-      )
+      news = `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`
     } else if (building.tile === 'deice') {
-      this.pushNews(
-        `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`,
-        'good',
-      )
+      news = `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`
     } else if (building.tile === 'bus') {
-      this.pushNews(
-        `Bus curb online ($${BUS_CURB_COST.toLocaleString()}). Budget pax can ride in.`,
-        'good',
-      )
+      news = `Bus curb online ($${BUS_CURB_COST.toLocaleString()}). Budget pax can ride in.`
     } else if (building.tile === 'rail') {
-      this.pushNews(
-        `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`,
-        'good',
-      )
+      news = `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`
     } else if (building.tile === 'hangar') {
-      if (!this.milCapableStands().length) {
-        this.pushNews(
-          'Hangar up — stamp a hardstand beside it (away from pax gates) + taxi to the strip for Guard host.',
-          'ok',
-        )
-      } else {
-        this.pushNews('Hangar up — mil ramp pads linked.', 'good')
-      }
+      news = 'Hangar up.'
     } else if (building.tile === 'belt') {
-      this.pushNews(
-        `Bag belt stamped ($${BELT_COST.toLocaleString()}). Link hall ↔ sort ↔ stand — break the chain and bags run late.`,
-        'ok',
-      )
+      news = `Bag belt open ($${BELT_COST.toLocaleString()}). Link hall, sort, and stand.`
+    } else if (building.tile === 'kitchen') {
+      news = 'Catering kitchen open. Meals cook here for the galley trucks.'
+    } else if (building.tile === 'depot') {
+      news = 'Vehicle depot open. Fuel, galley, bag, and bus trucks stage here.'
     }
-    this.bumpMap()
-    this.emit()
+    this.enqueueBuild({
+      kind: 'single',
+      cells: [v],
+      tile: building.tile,
+      cost: stampCost,
+      name: building.name,
+      news,
+      tool: this.tool,
+      standClass: building.tile === 'stand' ? standCls : undefined,
+      standAccess: building.tile === 'stand' ? this.standAccessMode : undefined,
+      standScale: building.tile === 'stand' ? (standScale ?? undefined) : undefined,
+      hangarScale: building.tile === 'hangar' ? (hangarScale ?? undefined) : undefined,
+      hotelClass: building.tile === 'hotel' ? hotelCls : undefined,
+      parkTerm:
+        building.tile === 'park_s' ||
+        building.tile === 'park_l' ||
+        building.tile === 'park_g' ||
+        building.tile === 'park_u'
+          ? this.parkTerm
+          : undefined,
+      origin: v,
+    })
+  }
+
+  /** Wide stands are code E. Legacy L stands with no scale stay code F. */
+  standIcao(stand: Vec): ReturnType<typeof standLetter> {
+    const scale = this.standScale[`${stand.c},${stand.r}`]
+    if (scale === 'wide') return 'E'
+    if (scale === 'jumbo') return 'F'
+    const cls = this.standClassAt(stand)
+    if (cls === 'L') return 'F'
+    return standLetter(cls)
   }
 
   standClassAt(stand: Vec | null): StandClass {
@@ -6740,6 +10692,39 @@ export class Game {
 
   standFitsClass(stand: Vec, need: StandClass): boolean {
     return standClassRank(this.standClassAt(stand)) >= standClassRank(need)
+  }
+
+  /**
+   * ICAO fit: S/M/L map to B/C/F. Helicopters are not sent through that map.
+   * The wingspan disc must also miss other parked aircraft and the terminal.
+   */
+  standFitsAirframe(stand: Vec, airframeId: string): boolean {
+    const spec = getAircraftSpec(airframeId)
+    if (spec.icao === 'H') return false
+    if (!standAccepts(this.standIcao(stand), spec.icao)) return false
+    const others = this.flights
+      .filter(
+        (f) =>
+          f.stand &&
+          (f.craft ?? 'jet') === 'jet' &&
+          f.phase !== 'gone' &&
+          f.phase !== 'takeoff' &&
+          !(f.stand.c === stand.c && f.stand.r === stand.r),
+      )
+      .map((f) => ({
+        c: f.stand!.c,
+        r: f.stand!.r,
+        spanM: getAircraftSpec(f.airframeId || 'b738').spanM,
+      }))
+    const blocks: { c: number; r: number }[] = []
+    for (let r = 0; r < this.tiles.length; r++) {
+      const row = this.tiles[r]
+      if (!row) continue
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] === 'terminal') blocks.push({ c, r })
+      }
+    }
+    return !wingDiscsClash(stand, spec.spanM, others, blocks)
   }
 
   ghostCells(hover: Vec | null): Vec[] {
@@ -6803,13 +10788,23 @@ export class Game {
    * Multi-terminal lite — second hall pulls its own bank of gates.
    * Optional `need` filters by stand S/M/L class.
    */
-  assignStand(pref?: Vec | null, need?: StandClass): Vec | null {
+  assignStand(
+    pref?: Vec | null,
+    need?: StandClass,
+    airlineId?: AirlineId,
+    airframeId?: string,
+  ): Vec | null {
     let free = this.freeStands()
-    if (need) free = free.filter((s) => this.standFitsClass(s, need))
+    if (airframeId) free = free.filter((s) => this.standFitsAirframe(s, airframeId))
+    else if (need) free = free.filter((s) => this.standFitsClass(s, need))
+    if (airlineId) {
+      const refuse = this.diplomacy?.refusedGates(airlineId) ?? 0
+      if (refuse > 0) free = free.slice(refuse)
+    }
     if (!free.length) return null
     if (pref) {
       const hit = free.find((s) => s.c === pref.c && s.r === pref.r)
-      if (hit && (!need || this.standFitsClass(hit, need))) return hit
+      if (hit) return hit
     }
     if (!this.fits.length) {
       const terms = tilesOf(this.tiles, 'terminal')
@@ -6833,8 +10828,8 @@ export class Game {
     })
     scored.sort((a, b) => {
       if (a.jet !== b.jet) return a.jet ? -1 : 1
-      if (a.belt !== b.belt) return a.belt ? -1 : 1
       if (a.load !== b.load) return a.load - b.load
+      if (a.belt !== b.belt) return a.belt ? -1 : 1
       return a.d - b.d
     })
     return scored[0].s
@@ -7051,16 +11046,15 @@ export class Game {
     const airlineId = slot.airline
     const def = this.airline(airlineId)
     const preferred = this.pickAircraftKind(airlineId)
-    const af = pickAirframeWithFallback(
-      preferred,
-      this.longestRunway(),
-      def.kind === 'cargo',
-      this.researchUnlocked,
-    )
+    const picked = this.pickOperable(preferred, def.kind === 'cargo')
+    const af = picked.af
     if (!af) {
-      this.delaySlot(slot, 20, 'Strip too short')
+      const hint = picked.blocked?.hints[0]
+      this.delaySlot(slot, 20, hint ? 'Pillar short' : 'Strip too short')
       this.pushNews(
-        `${slot.flightNo} delayed — strip ${this.longestRunway()}c can't take their metal.`,
+        hint
+          ? `${slot.flightNo} delayed — ${hint.fix}`
+          : `${slot.flightNo} delayed — strip ${this.longestRunway()}c can't take their metal.`,
         'bad',
       )
       this.spawnCool = 8
@@ -7075,7 +11069,7 @@ export class Game {
       return
     }
     const needCls = standClassFor(af.kind)
-    const stand = this.assignStand(slot.standPref ?? null, needCls)
+    const stand = this.assignStand(slot.standPref ?? null, needCls, airlineId, af.id)
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     if (!stand || !route) {
       const anyFree = this.freeStands().length > 0
@@ -7101,11 +11095,8 @@ export class Game {
       this.spawnCool = 5
       return
     }
-    const start = route[0]
-    const pax =
-      af.paxMax <= 0
-        ? 0
-        : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
+    const approach = this.armApproach(route)
+    const load = this.flightLoad(af, def.persona, def.kind === 'cargo')
     const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
@@ -7113,17 +11104,17 @@ export class Game {
       flightNo: slot.flightNo,
       airframeId: af.id,
       airframeName: af.name,
-      pax,
+      pax: load.pax,
       cargo: def.kind === 'cargo',
       craft: 'jet',
       kind: af.kind,
       phase: 'approach',
       stand,
-      x: start.c - 4,
-      y: start.r - 2,
-      z: 8,
+      x: approach.x,
+      y: approach.y,
+      z: approach.z,
       heading: 0,
-      path: route,
+      path: approach.path,
       seg: 0,
       t: 0,
       holdAngle: Math.random() * Math.PI * 2,
@@ -7134,18 +11125,19 @@ export class Game {
       scheduleId: slot.id,
       boardingSlow: Math.random() < 0.18,
       destination: pick(ROUTE_CITIES),
-      fuelLevel: 0.28 + Math.random() * 0.22,
+      fuelLevel: load.fuelLevel,
       caterLevel: def.kind === 'cargo' ? 1 : 0.18 + Math.random() * 0.2,
       hangarBay: null,
       mxEndsAt: null,
       mxPending: false,
-      bagUnits: def.kind === 'cargo' ? 0 : estimateFlightBagUnits(def.persona, pax),
+      bagUnits: load.bagUnits,
       bagStage: def.kind === 'cargo' ? 'idle' : 'inflight',
       bagsDeposited: 0,
       claimLane: slot.claimLane ?? null,
     }
     this.flights.push(f)
     if (!f.cargo) this.assignClaimLane(f)
+    this.bindShowUp(slot, f)
     this.noteCraft(af.kind)
     slot.status = 'inbound'
     slot.flightId = f.id
@@ -7227,6 +11219,7 @@ export class Game {
   tickHelo(f: Flight, step: number) {
     if (!f.stand) {
       f.phase = 'gone'
+      this.noteCargoCancel(f)
       return
     }
     const pad = f.stand
@@ -7258,6 +11251,19 @@ export class Game {
     }
     if (f.phase === 'servicing' || f.phase === 'deboard' || f.phase === 'board') {
       f.phase = 'servicing'
+      if (this.fuelOutage(f)) {
+        f.fuelHeld = true
+        if (f.fuelHeldSince == null) f.fuelHeldSince = this.clock
+        this.noteFuelGround(f)
+        if (this.clock - f.fuelHeldSince >= FUEL_OUTAGE_SLOT_SEC) this.cancelForFuel(f)
+        return
+      }
+      if (f.fuelHeld) {
+        f.fuelHeld = false
+        f.phaseTime = 0
+        this.fuelHoldNoted.delete(f.id)
+        return
+      }
       if (f.phaseTime > 7) {
         f.phase = 'takeoff'
         f.phaseTime = 0
@@ -7273,10 +11279,13 @@ export class Game {
         f.phase = 'gone'
         this.flightsDone += 1
         this.paxServed += f.pax
+        this.noteTurn(f)
         this.grantResearchForFlight(f)
         if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
           this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
         }
+        this.gradeDiplomacyTurn(f)
+        this.noteCargoDepart(f)
         this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
       }
     }
@@ -7305,7 +11314,7 @@ export class Game {
     const slot = f.scheduleId
       ? this.schedule.find((s) => s.id === f.scheduleId)
       : null
-    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null)
+    const stand = f.stand ?? this.assignStand(slot?.standPref ?? null, undefined, f.airline, f.airframeId)
     if (!stand) return
     const route =
       this.landingRoute(stand, slot?.runwayPref ?? null) ??
@@ -7318,15 +11327,16 @@ export class Game {
       }
       return
     }
+    const inbound = this.armApproach(route)
     f.stand = stand
-    f.path = route
+    f.path = inbound.path
     f.seg = 0
     f.t = 0
     f.phase = 'approach'
     f.phaseTime = 0
-    f.z = 8
-    f.x = route[0].c - 3
-    f.y = route[0].r - 2
+    f.z = inbound.z
+    f.x = inbound.x
+    f.y = inbound.y
     if (Math.random() < 0.4) {
       this.pushNews(
         `${f.flightNo} cleared to ${this.gateLabel(stand)}${hasTower ? ' (tower)' : ''}.`,
@@ -7345,6 +11355,7 @@ export class Game {
       f.path = []
       f.phase = 'gone'
       f.phaseTime = 0
+      this.noteCargoCancel(f)
       if (f.scheduleId) {
         const slot = this.schedule.find((s) => s.id === f.scheduleId)
         if (slot) {
@@ -7354,6 +11365,7 @@ export class Game {
       }
       this.adjustHeat(f.airline, -4)
       this.reputation = Math.max(0, this.reputation - 1)
+      this.noteDiplomacyCancel(f.airline, false)
       this.pushNews(
         `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
         'bad',
@@ -7444,6 +11456,8 @@ export class Game {
   roomsAt(stand: Vec | null): TerminalFit | null {
     if (!this.fits.length) return null
     if (!stand) return this.fits[0]
+    const jet = this.jetwayHall(stand)
+    if (jet) return jet
     let best = this.fits[0]
     let bestD = 99
     for (const f of this.fits) {
@@ -7458,6 +11472,7 @@ export class Game {
 
   beginServicing(f: Flight) {
     if (!f.stand) return
+    this.armGroundTurn(f)
     const airline = this.airline(f.airline)
     if (!f.posted.landing) {
       f.posted.landing = true
@@ -7469,7 +11484,8 @@ export class Game {
       } else {
         const mult =
           (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
-          this.landingFeeMult(f.airline)
+          this.landingFeeMult(f.airline) *
+          this.diplomacyFeeFactor(f.airline)
         this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing (${f.airframeName})`, f)
       }
       if (
@@ -7504,6 +11520,7 @@ export class Game {
         farmBesidePavement(this.tiles, p),
       )
       if (
+        !f.groundTurn &&
         this.fuelBrand &&
         this.fuelLoads > 0 &&
         farmsQuick.length &&
@@ -7567,7 +11584,7 @@ export class Game {
         this.caterBrand && snackBuild.length > 0 && f.stand
           ? nearestPath(this.tiles, snackBuild[0], [f.stand], 'truck')
           : null
-      if (snackPath) {
+      if (!f.groundTurn && snackPath) {
         f.waitingOn.catering = true
         this.spawnTruck('catering', f, snackPath, 'cater', snackBuild[0])
       }
@@ -7578,6 +11595,7 @@ export class Game {
     }
 
     if (
+      !f.groundTurn &&
       this.fuelBrand &&
       this.fuelLoads > 0 &&
       farms.length &&
@@ -7635,7 +11653,14 @@ export class Game {
       this.milCool = 15
       return
     }
-    const af = pickAirframe('military', this.longestRunway(), this.researchUnlocked)
+    const level = this.fieldLevel()
+    let af = pickAirframe(
+      'military',
+      this.longestRunway(),
+      this.researchUnlocked,
+      level,
+      (id) => sizeTierOf(id) === 'small' || this.scaleReport(id).ok,
+    )
     if (!af) {
       this.milCool = 25
       return
@@ -7646,14 +11671,28 @@ export class Game {
         'military',
         this.longestRunway(),
         this.researchUnlocked.filter((id) => id !== 'mil_ramp'),
+        level,
+        (id) => sizeTierOf(id) === 'small' || this.scaleReport(id).ok,
       )
       if (!lighter) {
         this.milCool = 30
         return
       }
-      return this.spawnMilitaryFlight(lighter, stand, route)
+      af = lighter
     }
-    this.spawnMilitaryFlight(af, stand, route)
+    let gate = stand
+    let path = route
+    if (!this.standFitsAirframe(gate, af.id)) {
+      const alt = this.assignStand(null, undefined, undefined, af.id)
+      const altRoute = alt ? this.landingRoute(alt) : null
+      if (!alt || !altRoute) {
+        this.milCool = 20
+        return
+      }
+      gate = alt
+      path = altRoute
+    }
+    this.spawnMilitaryFlight(af, gate, path)
   }
 
   private spawnMilitaryFlight(
@@ -7674,6 +11713,7 @@ export class Game {
               : 'RDR'
     const call = `${prefix}${this.flightSeq}`
     const fighter = af.id === 'f15'
+    const inbound = this.armApproach(route)
     const f: Flight = {
       id: uid('mil'),
       airline: this.signed[0] ?? 'harbor',
@@ -7686,11 +11726,11 @@ export class Game {
       kind: 'military',
       phase: 'approach',
       stand,
-      x: route[0].c - 4,
-      y: route[0].r - 2,
-      z: fighter ? 10 : 9,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -7728,29 +11768,30 @@ export class Game {
       return
     }
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
-    const stand = this.assignStand()
+    const stand = this.assignStand(null, undefined, undefined, af.id)
     if (!stand) return
     const route = this.landingRoute(stand)
     if (!route) return
     this.flightSeq += 1
     const call = `LIF${this.flightSeq}`
+    const inbound = this.armApproach(route)
     const f: Flight = {
       id: uid('amb'),
       airline: this.signed[0] ?? 'harbor',
       flightNo: call,
       airframeId: af.id,
       airframeName: af.name,
-      pax: af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1)),
+      pax: this.flightLoad(af, 'business', false).pax,
       cargo: false,
       craft: 'jet',
       kind: 'air_ambulance',
       phase: 'approach',
       stand,
-      x: route[0].c - 3,
-      y: route[0].r - 2,
-      z: 8,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -7885,17 +11926,8 @@ export class Game {
     if (t.kind === 'bags') {
       if (t.mission === 'load') {
         if (!f.posted.bagsLoad) {
-          f.posted.bagsLoad = true
-          f.waitingOn.bagsLoad = false
-          this.setBagStage(f, 'inflight')
           t.cargoUnits = 0
-          if (!f.cargo) {
-            this.earn(
-              Math.round(airline.bags * 0.55),
-              `${f.flightNo} outbound bags`,
-              f,
-            )
-          }
+          this.settleOutboundBags(f, false)
         }
       } else if (t.mission === 'unload' && !f.posted.bags) {
         // Aircraft unload complete — pay; then sort → assigned claim.
@@ -7909,13 +11941,20 @@ export class Game {
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
           this.earn(Math.round(airline.bags * mult), `${f.flightNo} bag handling`, f)
           const fit = this.roomsAt(f.stand)
-          const claimCap = (fit?.rooms.bagclaim ?? 0) * (fit?.premade ? 55 : 80)
-          if (fit && units > claimCap && Math.random() < 0.55) {
-            this.adjustHeat(f.airline, -1.8)
-            this.pushNews(
-              `${f.flightNo} claim jammed — ${units} bag units vs thin hall. Standing dips.`,
-              'bad',
-            )
+          if (fit) {
+            const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
+            const claimCap = rooms * (fit.premade ? 55 : 80)
+            const overflow = Math.max(0, units - claimCap)
+            if (overflow > 0.5) {
+              const book = this.ensureBagBook(f)
+              book.claimLeft = overflow
+              f.claimLeft = overflow
+              this.adjustHeat(f.airline, -1.8)
+              this.pushNews(
+                `${f.flightNo} claim jammed — ${Math.round(overflow)} of ${Math.round(units)} bag units offloaded. The hall holds ${Math.round(claimCap)}.`,
+                'bad',
+              )
+            }
           }
         } else {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
@@ -7960,6 +11999,7 @@ export class Game {
       f.fuelLevel = 1
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
+      this.drawTankLitres(LITRES_PER_LEGACY_LOAD)
       this.earn(FUEL[this.fuelBrand].pump, `${f.flightNo} fuel`, f)
     }
     if (t.kind === 'catering' && !f.posted.catering && this.caterBrand) {
@@ -8110,7 +12150,10 @@ export class Game {
   beginBoarding(f: Flight) {
     if (!f.stand || f.cargo) return
     const fit = this.roomsAt(f.stand)
-    this.seedHallForFlight(f, 'depart')
+    const planned = Boolean(
+      f.scheduleId && this.showUps.some((p) => p.slotId === f.scheduleId && p.releases.length > 0),
+    )
+    if (!planned) this.seedHallForFlight(f, 'depart')
     const mode = this.standPaxMode(f.stand)
     if (mode === 'jetway') {
       f.waitingOn.paxIn = 0
@@ -8267,9 +12310,10 @@ export class Game {
     }
     this.threatCool -= dt
     if (this.threatCool > 0) return
-    // Slower cadence — weak / missing security still invites trouble.
-    this.threatCool = 95 + Math.random() * 70
-    if (!this.signed.length || !this.flights.some((f) => !f.cargo && f.phase !== 'gone')) return
+    if (!this.signed.length || !this.flights.some((f) => !f.cargo && f.phase !== 'gone')) {
+      this.threatCool = 16
+      return
+    }
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
@@ -8279,6 +12323,9 @@ export class Game {
       const r = f.rooms
       return (r.food ?? 0) + (r.gate ?? 0) + (r.lounge ?? 0) + (r.souvenir ?? 0) > 0
     })
+    const exposed = !hasSecRoom || this.budgets.security < 35
+    // A gap the player left is checked again soon. A staffed lane is not held for the first hour.
+    this.threatCool = exposed ? 10 + Math.random() * 8 : 32 + Math.random() * 12
     // Player shell with airside rooms but no security choke = smuggling / weapons risk.
     const openAirGap = airsideOpen && !hasSecRoom ? 0.38 : 0
     const risk = clamp(
@@ -8321,8 +12368,8 @@ export class Game {
     if (n.fire && !tilesOf(this.tiles, 'fire').length) return 'no ARFF / fire station'
     if (n.fuel) {
       if (!tilesOf(this.tiles, 'fuel').length) return 'no fuel farm'
-      if (!this.fuelBrand) return 'no fuel contract'
-      if (this.fuelLoads < 1) return 'fuel farm empty'
+      if (!this.fuelBrand && !this.groundSnapshot()) return 'no fuel contract'
+      if (!this.fuelOnHand()) return 'fuel farm empty'
     }
     if (n.hangar && !tilesOf(this.tiles, 'hangar').length) return 'no hangar'
     if (n.hangar && this.mechanics < 1) return 'no mechanics for line MX'
@@ -8370,42 +12417,34 @@ export class Game {
   private spawnEmergencyDivert(airline: AirlineId): boolean {
     if (this.isBanned(airline)) return false
     if (this.groundBusy() && !this.assignStand()) return false
-    const stand = this.assignStand()
+    const preferred = this.pickAircraftKind(airline)
+    const af = this.pickOperable(preferred, this.airline(airline).kind === 'cargo').af
+    if (!af) return false
+    const stand = this.assignStand(null, undefined, airline, af.id)
     const route = stand ? this.landingRoute(stand) : null
     if (!stand || !route) return false
-    const preferred = this.pickAircraftKind(airline)
-    const af = pickAirframeWithFallback(
-      preferred,
-      this.longestRunway(),
-      this.airline(airline).kind === 'cargo',
-      this.researchUnlocked,
-    )
-    if (!af) return false
     this.flightSeq += 1
     const a = this.airline(airline)
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
-    const pax =
-      af.paxMax <= 0
-        ? 0
-        : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
-    const start = route[0]
+    const inbound = this.armApproach(route)
+    const load = this.flightLoad(af, a.persona, a.kind === 'cargo' || af.kind === 'freighter')
     const f: Flight = {
       id: uid('div'),
       airline,
       flightNo: call,
       airframeId: af.id,
       airframeName: af.name,
-      pax,
+      pax: load.pax,
       cargo: a.kind === 'cargo' || af.kind === 'freighter',
       craft: 'jet',
       kind: af.kind,
       phase: 'approach',
       stand,
-      x: start.c - 4,
-      y: start.r - 2,
-      z: 9,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -8413,7 +12452,7 @@ export class Game {
       waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
-      bagUnits: a.kind === 'cargo' ? 0 : estimateFlightBagUnits(a.persona, pax),
+      bagUnits: load.bagUnits,
       bagStage: a.kind === 'cargo' ? 'idle' : 'inflight',
       bagsDeposited: 0,
       claimLane: null,
@@ -8450,14 +12489,14 @@ export class Game {
   /** Firefighting plane — refuel-only or refuel + hangar MX. */
   private spawnEmergencyTanker(mx: boolean): boolean {
     if (this.groundBusy() && !this.assignStand()) return false
-    const stand = this.assignStand()
-    const route = stand ? this.landingRoute(stand) : null
-    if (!stand || !route) return false
     const af = this.pickAirtankerFrame()
     if (!af) return false
+    const stand = this.assignStand(null, undefined, undefined, af.id)
+    const route = stand ? this.landingRoute(stand) : null
+    if (!stand || !route) return false
     this.flightSeq += 1
     const call = mx ? `ATMX${this.flightSeq}` : `TANK${this.flightSeq}`
-    const start = route[0]
+    const inbound = this.armApproach(route)
     const f: Flight = {
       id: uid('tnk'),
       airline: this.signed[0] ?? 'harbor',
@@ -8470,11 +12509,11 @@ export class Game {
       kind: 'air_ambulance',
       phase: 'approach',
       stand,
-      x: start.c - 3,
-      y: start.r - 2,
-      z: 8,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -8519,16 +12558,16 @@ export class Game {
     const storm = this.weather === 'storm'
     const dry = this.weather === 'clear' // wildfire-season feel — airtankers thirsty
     const fireThin = this.budgets.fire < 45
-    const hasFuel =
-      tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads > 0
+    const hasFuel = this.fuelOnHand()
     const hasHangar = tilesOf(this.tiles, 'hangar').length > 0
+    const exposed = !hasFuel || fireThin || tilesOf(this.tiles, 'fire').length === 0
     // Storms stack divert asks; dry clear days stack firefighting planes.
-    // Spaced out vs earlier builds — first hours should not be a constant scramble.
-    this.emergencyCool = stormy
-      ? 70 + Math.random() * 45
-      : dry
-        ? 95 + Math.random() * 55
-        : 120 + Math.random() * 70
+    // A missing farm or a thin fire crew is not hidden behind a first-hour timer.
+    this.emergencyCool = exposed
+      ? 12 + Math.random() * 8
+      : stormy
+        ? 22 + Math.random() * 10
+        : 34 + Math.random() * 12
 
     const roll = Math.random()
     const pDivert =
@@ -8803,10 +12842,20 @@ export class Game {
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
     this.clock += step
+    this.simClock.advanceRealSeconds(dt, this.speed)
+    this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
+    this.tickAmbience(dt)
+    this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)
     this.offerCool = Math.max(0, this.offerCool - step)
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
+    this.tickConstruction(step)
+    this.tickCatering(step)
+    this.tickGround(step)
+    this.tickCargo(step)
+    this.tickDiplomacy(step)
+    this.tickShelves(step)
     // Peak decays so the HUD jam line clears when traffic thins.
     this.congPeak = Math.max(0, this.congPeak - step * 0.35)
     if (this.congWasteAcc >= 8 && this.congNewsCool <= 0) {
@@ -8842,12 +12891,10 @@ export class Game {
         this.interestCool = Math.max(12, prod.every)
         const opened =
           this.loanOpened > 0 ? this.loanOpened : prod.principal + prod.fee
-        const tick = Math.max(
-          prod.interestFloor,
-          Math.round(this.loanBalance * prod.rate),
-        )
+        const tick = loanInterestDue(this.loanBalance, prod.rate, prod.interestFloor)
         if (this.cash >= tick) {
           // Paid in full — balance does NOT capitalize (was snowballing every tick).
+          this.noteExpense(tick)
           this.cash -= tick
           if (this.loanNewsCool <= 0) {
             this.pushNews(
@@ -8858,10 +12905,11 @@ export class Game {
           }
         } else {
           const paid = Math.max(0, this.cash)
+          this.noteExpense(paid)
           this.cash = 0
           const short = tick - paid
           // Only unpaid shortfall capitalizes — hard-capped.
-          this.loanBalance = Math.min(opened * 2.1, this.loanBalance + short)
+          this.loanBalance = nextLoanBalance(this.loanBalance, short, opened)
           this.reputation = Math.max(0, this.reputation - 1.5)
           if (this.loanNewsCool <= 0) {
             this.pushNews(
@@ -8895,10 +12943,12 @@ export class Game {
     this.tickHub(step)
     this.tickParking(step)
     this.tickJanitors(step)
+    this.tickHallJanitors(step)
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)
+    this.tickShowUp()
     this.trySpawn()
     this.heloCool = Math.max(0, this.heloCool - step)
     this.milCool = Math.max(0, this.milCool - step)
@@ -8913,8 +12963,10 @@ export class Game {
     this.tickEmergencies(step)
     this.tickMarket(step)
     this.tickHall(step)
+    this.tickLuggage(step)
     this.tickWeather(step)
     this.tickPayroll(step)
+    this.tickScaleFuel(step)
     this.tickMaintenance(step)
     this.tickFireRisk(step)
     this.crashCool = Math.max(0, this.crashCool - step)
@@ -8933,12 +12985,18 @@ export class Game {
         f.z = 9
         f.heading = f.holdAngle + Math.PI / 2
       } else if (f.phase === 'approach') {
-        f.z = lerp(f.z, 1.2, 1 - Math.pow(0.12, step))
-        const arrived = this.followPath(f, 1.6, step)
-        if (arrived || f.phaseTime > 8) {
+        const threshold =
+          f.path.find((p) => inBounds(Math.round(p.c), Math.round(p.r))) ??
+          f.path[f.path.length - 1]
+        const dist = threshold ? Math.hypot(f.x - threshold.c, f.y - threshold.r) : 0
+        const glide = clamp(0.35 + dist * 0.7, 0.35, 22)
+        f.z = lerp(f.z, glide, 1 - Math.pow(0.18, step))
+        const arrived = this.followPath(f, 1.85, step)
+        const onField = inBounds(Math.round(f.x), Math.round(f.y))
+        if (arrived || (onField && f.phaseTime > 10) || f.phaseTime > 36) {
           f.phase = 'landing'
           f.phaseTime = 0
-          f.z = 0.9
+          f.z = Math.min(f.z, 1.4)
         }
       } else if (f.phase === 'landing') {
         f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
@@ -8958,13 +13016,14 @@ export class Game {
         }
       } else if (f.phase === 'deboard') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
         const deboardReady =
           f.cargo ||
-          (mode === 'jetway' && f.phaseTime > 3.2) ||
+          (mode === 'jetway' && f.phaseTime > 3.2 * pace) ||
           (mode === 'bus' &&
-            ((f.waitingOn.paxOut <= 0 && f.phaseTime > 4.5) || f.phaseTime > 18)) ||
+            ((f.waitingOn.paxOut <= 0 && f.phaseTime > 4.5 * pace) || f.phaseTime > 18 * pace)) ||
           (mode === 'walk' &&
-            ((f.phaseTime > 6 && f.waitingOn.paxOut <= 2) || f.phaseTime > 16))
+            ((f.phaseTime > 6 * pace && f.waitingOn.paxOut <= 2) || f.phaseTime > 16 * pace))
         if (deboardReady) {
           f.phase = 'servicing'
           f.phaseTime = 0
@@ -8983,7 +13042,8 @@ export class Game {
           (f.waitingOn.bags && !f.posted.bags) ||
           (f.waitingOn.fuel && !f.posted.fuel) ||
           (f.waitingOn.catering && !f.posted.catering)
-        if ((!waiting && f.phaseTime > 4) || f.phaseTime > 22) {
+        const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
+        if ((!waiting && f.phaseTime > 4 * pace) || f.phaseTime > Math.min(36, 22 * pace)) {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
           f.waitingOn.catering = false
@@ -9000,7 +13060,15 @@ export class Game {
             const deiceOk =
               (f.phaseTime > 3 ? this.ensureDeice(f) : !this.needsDeiceService(f)) ||
               f.phaseTime > 28
-            if (deiceOk && (!this.groundBusy() || f.phaseTime > 24)) {
+            const ramp = this.rampCall(f, f.phaseTime > 80)
+            if (deiceOk && ramp !== 'hold' && (!this.groundBusy() || f.phaseTime > 24)) {
+              if (ramp === 'short') {
+                this.adjustHeat(f.airline, -1.2)
+                this.pushNews(
+                  `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
+                  'bad',
+                )
+              }
               if (!f.posted.deiced && this.needsDeiceService(f)) {
                 f.waitingOn.deice = false
                 this.adjustHeat(f.airline, -1.2)
@@ -9080,12 +13148,24 @@ export class Game {
           }
           f.hangarBay = null
           if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
-            f.phase = 'pushback'
-            f.phaseTime = 0
-            if (f.stand) {
-              f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
-              f.seg = 0
-              f.t = 0
+            const ramp = this.rampCall(f, f.phaseTime >= 90)
+            if (ramp === 'hold') {
+              /* Fuel outage, or the ramp is still inside its window. */
+            } else {
+              if (ramp === 'short') {
+                this.adjustHeat(f.airline, -1.2)
+                this.pushNews(
+                  `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
+                  'bad',
+                )
+              }
+              f.phase = 'pushback'
+              f.phaseTime = 0
+              if (f.stand) {
+                f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
+                f.seg = 0
+                f.t = 0
+              }
             }
           } else {
             f.phase = 'board'
@@ -9097,8 +13177,9 @@ export class Game {
         // Occupies stand until releaseGa / auto leave in tickParking.
       } else if (f.phase === 'board') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
         const boardLimit =
-          mode === 'jetway'
+          (mode === 'jetway'
             ? f.boardingSlow
               ? 11
               : 7.5
@@ -9108,10 +13189,10 @@ export class Game {
                 : 13
               : f.boardingSlow
                 ? 24
-                : 17
+                : 17) * pace + (this.diplomacy?.extraDelaySec(f.airline) ?? 0)
         const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
         const minBoard =
-          mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5
+          (mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5) * pace
         const boardReady =
           f.waitingOn.paxIn <= 0 && bagsReady && f.phaseTime > minBoard
         if (f.boardingSlow && f.phaseTime > 8 && f.phaseTime < 8.4) {
@@ -9135,7 +13216,15 @@ export class Game {
           const deiceOk =
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
-          if (deiceOk && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+          const ramp = this.rampCall(f, f.phaseTime > boardLimit + 80)
+          if (deiceOk && ramp !== 'hold' && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+            if (ramp === 'short') {
+              this.adjustHeat(f.airline, -1.2)
+              this.pushNews(
+                `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
+                'bad',
+              )
+            }
             if (!f.posted.deiced && this.needsDeiceService(f)) {
               f.waitingOn.deice = false
               this.adjustHeat(f.airline, -1.5)
@@ -9144,6 +13233,7 @@ export class Game {
                 'bad',
               )
             }
+            this.settleOutboundBags(f, true)
             f.phase = 'pushback'
             f.phaseTime = 0
             if (f.stand) {
@@ -9175,6 +13265,7 @@ export class Game {
             f.path = out
             f.seg = 0
             f.t = 0
+            if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
           } else if (f.phaseTime > 8) {
@@ -9184,6 +13275,7 @@ export class Game {
               f.seg = 0
               f.t = 0
             }
+            if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
           }
@@ -9195,13 +13287,14 @@ export class Game {
         }
       } else if (f.phase === 'takeoff') {
         if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
-        f.z += step * 3.2
-        f.x += Math.cos(f.heading) * step * 2.4
-        f.y += Math.sin(f.heading) * step * 2.4
-        if (f.phaseTime > 6 || f.z > 14) {
+        f.z += step * 0.9
+        f.x += Math.cos(f.heading) * step * 2.6
+        f.y += Math.sin(f.heading) * step * 2.6
+        if ((hasLeftMap(f.x, f.y, SIZE) && f.z > 6) || f.phaseTime > 26) {
           f.phase = 'gone'
           this.flightsDone += 1
           this.paxServed += f.pax
+          this.noteTurn(f)
           this.grantResearchForFlight(f)
           if (f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
@@ -9235,14 +13328,36 @@ export class Game {
             const slot = this.schedule.find((s) => s.id === f.scheduleId)
             if (slot) slot.status = 'done'
           }
+          this.gradeDiplomacyTurn(f)
+          this.noteCargoDepart(f)
           this.pushNews(`${f.flightNo} airborne.`, 'ok')
           this.spawnCool = Math.min(this.spawnCool, 8)
         }
       }
     }
-    this.flights = this.flights.filter((f) => f.phase !== 'gone')
+    this.flights = this.flights.filter((f) => {
+      if (f.phase !== 'gone') return true
+      this.departedFlights.add(f.id)
+      for (const line of f.ledger) {
+        if (line.amount > 0) {
+          this.settledPayments.push({
+            flightNo: f.flightNo,
+            label: line.label,
+            amount: line.amount,
+          })
+        }
+      }
+      if (this.settledPayments.length > 64) {
+        this.settledPayments.splice(0, this.settledPayments.length - 64)
+      }
+      return false
+    })
 
     for (const t of this.trucks) {
+      if (t.kind === 'contractor' || t.kind === 'delivery') {
+        this.tickBuildTruck(t, step)
+        continue
+      }
       // Makeup / farm bottom-load before rolling.
       if (t.preDwell > 0) {
         t.preDwell -= step
@@ -9363,7 +13478,15 @@ export class Game {
           }
         } else {
           t.dwell =
-            t.kind === 'fuel' ? 3.6 : t.kind === 'deice' ? 3.2 : 2.2
+            t.kind === 'fuel'
+              ? fuelDwellSeconds(
+                  AIRFRAMES[
+                    this.flights.find((x) => x.id === t.flightId)?.airframeId ?? ''
+                  ],
+                )
+              : t.kind === 'deice'
+                ? 3.2
+                : 2.2
         }
       } else if (done && t.returning) {
         if (t.kind === 'citycargo') {
@@ -9417,9 +13540,10 @@ export class Game {
         p.t += step
         continue
       }
+      const here = this.tile({ c: Math.round(p.x), r: Math.round(p.y) })
       const done = this.followPath(
         p,
-        p.job === 'patrol' || p.job === 'mechanic' ? 1.0 : 1.15,
+        (p.job === 'patrol' || p.job === 'mechanic' ? 1.0 : 1.15) * personSpeedMult(here),
         step,
       )
       if (!done) continue
@@ -9472,6 +13596,7 @@ export class Game {
       const result = advancePaxItinerary(p, this.tiles, f?.stand ?? null, fit, (amount, kind) => {
         this.cash += amount
         this.revenue += amount
+        this.noteIncome(amount, 'retail_sales')
         if (kind === 'food') this.mealSold = true
       })
       if (result === 'done') {
@@ -9510,4 +13635,14 @@ export function formatClock(seconds: number): string {
   const h = Math.floor(m / 60)
   const mm = m % 60
   return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+/** Day length is the 180s cycle. Clock reads as a 24h face inside that day. */
+export function formatSimDate(seconds: number): string {
+  const day = Math.floor(seconds / 180) + 1
+  const tod = ((seconds % 180) + 180) % 180
+  const mins = Math.floor((tod / 180) * 24 * 60)
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `Day ${day} · ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
