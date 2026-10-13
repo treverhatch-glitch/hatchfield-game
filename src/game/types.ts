@@ -969,6 +969,8 @@ export interface GameSnapshot {
   tycoon?: TycoonState
   /** Bellwater Intl rival sim. */
   rival?: string
+  /** Late-game disruption engine. Missing on older saves. */
+  disruptions?: string
 }
 
 /** A placed building that is still a construction site. */
