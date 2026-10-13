@@ -125,9 +125,9 @@ function shade(c: RGB, k: number): RGB {
 
 export function paintGrass(size: number, seed = 1): Raster {
   const r = new Raster(size, size)
-  const dark = hexRgb(0x3e6534)
-  const mid = hexRgb(0x5b8446)
-  const dry = hexRgb(0x8f9a5a)
+  const dark = hexRgb(0x4f7240)
+  const mid = hexRgb(0x6e9452)
+  const dry = hexRgb(0xa6a86c)
   r.fill((u, v) => {
     const n = fbm(u, v, 4, 4, seed)
     const d = fbm(u, v, 2, 2, seed + 9)

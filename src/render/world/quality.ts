@@ -7,6 +7,8 @@ export interface QualityPreset {
   /** 0 disables shadows entirely. */
   shadowMapSize: number
   shadowType: THREE.ShadowMapType
+  /** PCF filter radius (soft edges on high). */
+  shadowRadius: number
   /** Max render pixel ratio. Below 1 renders under native resolution (software GL). */
   pixelRatioCap: number
   /** Re-render the shadow map every N frames (1 = every frame). */
@@ -35,6 +37,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     level: 'low',
     shadowMapSize: 0,
     shadowType: THREE.BasicShadowMap,
+    shadowRadius: 1,
     pixelRatioCap: 0.8,
     shadowEvery: 1,
     textureSize: 128,
@@ -43,14 +46,15 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     grassTufts: 0,
     trees: 140,
     precipitation: 300,
-    propDensity: 0.5,
+    propDensity: 1,
     lightPools: false,
-    walkersPerCell: 0,
+    walkersPerCell: 0.6,
   },
   med: {
     level: 'med',
     shadowMapSize: 1024,
     shadowType: THREE.PCFShadowMap,
+    shadowRadius: 1,
     pixelRatioCap: 1.25,
     shadowEvery: 2,
     textureSize: 256,
@@ -66,7 +70,9 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
   high: {
     level: 'high',
     shadowMapSize: 2048,
-    shadowType: THREE.PCFSoftShadowMap,
+    // PCFSoftShadowMap was removed in three r18x; PCF + a blur radius is the soft option.
+    shadowType: THREE.PCFShadowMap,
+    shadowRadius: 2.5,
     pixelRatioCap: 2,
     shadowEvery: 1,
     textureSize: 512,

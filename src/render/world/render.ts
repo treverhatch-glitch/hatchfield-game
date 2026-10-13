@@ -43,7 +43,7 @@ export interface WorldRenderStats {
   hour: number
   weather: Weather
   lights: number
-  terminals: { lod: number; props: number; people: number; staff: number; seated: number; walkers: number; bags: number }[]
+  terminals: { lod: number; roof: number; props: number; people: number; staff: number; seated: number; walkers: number; bags: number }[]
   airfieldLights: number
   jetBridges: number
   grassTufts: number
@@ -180,6 +180,7 @@ export class WorldRenderer {
       this.renderer.shadowMap.needsUpdate = true
     }
     this.sun.castShadow = on
+    this.sun.shadow.radius = this.q.shadowRadius
     if (on && this.sun.shadow.mapSize.x !== this.q.shadowMapSize) {
       this.sun.shadow.mapSize.set(this.q.shadowMapSize, this.q.shadowMapSize)
       this.sun.shadow.map?.dispose()
@@ -287,7 +288,8 @@ export class WorldRenderer {
   }
 
   update(view: WorldView, camera: THREE.Camera, dt: number) {
-    const step = Math.min(0.1, Math.max(0, dt))
+    // Generous clamp: software GL runs ~5–15 FPS and the crowd should still walk at pace.
+    const step = Math.min(0.25, Math.max(0, dt))
     this.time += step
     if (view.mapRev !== this.builtRev) this.rebuild(view)
     const lite = this.lite || (view.speed ?? 1) >= 5

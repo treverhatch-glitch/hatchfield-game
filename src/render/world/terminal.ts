@@ -46,6 +46,8 @@ import { textTexture, type WorldTextures } from './textures'
 import { CELL, cellX, cellZ } from './view'
 
 export const FLOOR_Y = 0.24
+export const SEATED_SCALE = 0.62
+export const SEATED_LIFT = 0.27
 export const ROOF_Y = 3.9
 const GLASS_TOP = 3.3
 
@@ -110,6 +112,8 @@ const ZONE_SIGN: Record<Zone, string> = {
 
 /** LOD thresholds (camera → building distance) before the quality scale. */
 export const TERMINAL_LOD = [52, 120] as const
+/** Camera distance under which the roof lifts off so the hall reads from above. */
+export const ROOF_CUTAWAY = 34
 
 export class TerminalBuilding {
   readonly root = new THREE.Group()
@@ -122,6 +126,10 @@ export class TerminalBuilding {
   propFade = 0
   lifeFade = 0
   private shell = new THREE.Group()
+  private roof = new THREE.Group()
+  private roofMats: THREE.Material[] = []
+  /** 1 = roof on; fades to 0 for the close-up cutaway. */
+  roofFade = 1
   private props = new THREE.Group()
   private life = new THREE.Group()
   private walkers: THREE.InstancedMesh[] = []
@@ -142,7 +150,8 @@ export class TerminalBuilding {
     this.center = new THREE.Vector3(c.x, 2, c.z)
     this.radius = clusterRadius(info.cluster)
     this.root.name = `terminal-${opts.index}`
-    this.root.add(this.shell, this.props, this.life)
+    this.roof.name = 'terminal-roof-group'
+    this.root.add(this.shell, this.roof, this.props, this.life)
 
     const own = <T extends THREE.Material>(m: T) => {
       this.owned.mats.push(m)
@@ -205,7 +214,7 @@ export class TerminalBuilding {
       // Skylight glazing bars.
       for (const k of [-1, 0, 1]) roofFrame.push(trs(x + k * 1.1, ROOF_Y + 0.02, z, 0, 0.06, 0.06, CELL - rim * 2))
       for (const k of [-0.5, 0.5]) {
-        for (const j of [-0.5, 0.5]) columns.push(trs(x + k * CELL * 0.5, FLOOR_Y, z + j * CELL * 0.5, 0, 0.16, ROOF_Y - FLOOR_Y, 0.16))
+        for (const j of [-0.5, 0.5]) columns.push(trs(x + k * CELL * 0.5, FLOOR_Y, z + j * CELL * 0.5, 0, 0.1, ROOF_Y - FLOOR_Y, 0.1))
       }
       if ((p.c * 7 + p.r * 3) % 4 === 0) hvac.push(trs(x - CELL / 2 + rim / 2, ROOF_Y + 0.16, z, 0, 0.7, 0.45, 1.1))
     }
@@ -248,7 +257,7 @@ export class TerminalBuilding {
     const beam = this.shared.beam
     const piece = (list: THREE.Matrix4[], color: number) => list.map((matrix) => ({ geo: beam, matrix, color }))
     this.bakedMesh(
-      [...piece(slab, 0x9aa0a6), ...piece(columns, 0xe6eaee), ...piece(hvac, 0x5b6672), ...piece(mullions, 0x5b6672), ...piece(fascia, 0xe6eaee)],
+      [...piece(slab, 0x9aa0a6), ...piece(columns, 0xe6eaee), ...piece(mullions, 0x5b6672), ...piece(fascia, 0xe6eaee)],
       shellM,
       this.shell,
       'terminal-shell',
@@ -258,7 +267,14 @@ export class TerminalBuilding {
     roof.castShadow = true
     roof.receiveShadow = true
     roof.name = 'terminal-roof'
-    this.shell.add(roof)
+    this.roof.add(roof)
+    const hvacM = own(new THREE.MeshLambertMaterial({ color: 0x5b6672 }))
+    if (hvac.length) {
+      const units = instanced(beam, hvacM, hvac)
+      units.castShadow = true
+      this.roof.add(units)
+    }
+    this.roofMats.push(roofM, hvacM)
 
     const glassGeo = new THREE.BufferGeometry()
     glassGeo.setAttribute('position', new THREE.Float32BufferAttribute(glassPos, 3))
@@ -281,7 +297,7 @@ export class TerminalBuilding {
     this.owned.geos.push(skyGeo)
     const sky = new THREE.Mesh(skyGeo, this.skyMat)
     sky.renderOrder = 3
-    this.shell.add(sky)
+    this.roof.add(sky)
 
     this.buildSigns(index)
   }
@@ -363,6 +379,7 @@ export class TerminalBuilding {
   private buildProps() {
     const lit: BakePiece[] = []
     const unlit: BakePiece[] = []
+    const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
     for (const p of this.plan.props) {
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw)
@@ -373,7 +390,7 @@ export class TerminalBuilding {
         }
         const color =
           part.mat === 'kiosk' ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length] : (PROP_COLORS[part.mat] ?? 0xffffff)
-        ;(UNLIT.has(part.mat) ? unlit : lit).push({ geo: part.geo, matrix, color })
+        ;(p.kind === 'light' ? lamps : UNLIT.has(part.mat) ? unlit : lit).push({ geo: part.geo, matrix, color })
       }
     }
     const own = <T extends THREE.Material>(m: T) => {
@@ -383,6 +400,11 @@ export class TerminalBuilding {
     }
     this.bakedMesh(lit, own(new THREE.MeshLambertMaterial({ vertexColors: true })), this.props, 'props-lit')
     this.bakedMesh(unlit, own(new THREE.MeshBasicMaterial({ vertexColors: true })), this.props, 'props-unlit')
+    // Ceiling lamps hang from the roof, so they leave with it in the cutaway.
+    const lampM = new THREE.MeshBasicMaterial({ vertexColors: true })
+    this.owned.mats.push(lampM)
+    this.roofMats.push(lampM)
+    this.bakedMesh(lamps, lampM, this.roof, 'roof-lamps')
     const board = this.shared.parts.board?.find((x) => x.mat === 'board')
     if (board && boards.length) {
       const m = instanced(board.geo, own(this.shared.palette.board.clone()), boards)
@@ -396,8 +418,9 @@ export class TerminalBuilding {
     const pieces: BakePiece[] = []
     this.plan.people.forEach((p, i) => {
       const seated = p.role === 'seated'
-      const sy = seated ? 0.72 : 1
-      const matrix = trs(p.x, FLOOR_Y + (seated ? 0.06 : 0), p.z, p.yaw, 1, sy, 1)
+      // Seated figures are shortened and lifted so they rest on the seat top (0.285).
+      const sy = seated ? SEATED_SCALE : 1
+      const matrix = trs(p.x, FLOOR_Y + (seated ? SEATED_LIFT : 0), p.z, p.yaw, 1, sy, 1)
       pieces.push({ geo: g.body, matrix, color: p.role === 'staff' ? STAFF_COLOR : PAX_COLORS[p.tint % PAX_COLORS.length] })
       pieces.push({ geo: g.head, matrix, color: SKIN_COLORS[(i * 7) % SKIN_COLORS.length] })
     })
@@ -452,6 +475,14 @@ export class TerminalBuilding {
   update(camPos: THREE.Vector3, dt: number, lodScale: number, night: number) {
     const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
+    // Cutaway: close and looking down from above the roof → lift the roof off.
+    const cut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale && camPos.y > ROOF_Y + 1.5
+    this.roofFade = stepFade(this.roofFade, cut ? 0 : 1, dt, 1.1)
+    applyFade(this.roof, this.roofMats, this.roofFade)
+    // Lift as it fades so the cutaway reads as the roof coming off, not blinking out.
+    const lift = 1 - this.roofFade
+    this.roof.position.y = lift * lift * 4
+    this.skyMat.opacity = 0.18 * this.roofFade
     this.propFade = stepFade(this.propFade, this.lod <= 1 ? 1 : 0, dt, 3)
     this.lifeFade = stepFade(this.lifeFade, this.lod === 0 ? 1 : 0, dt, 3)
     applyFade(this.props, this.propMats, this.propFade)
@@ -471,6 +502,7 @@ export class TerminalBuilding {
 
   counts() {
     return {
+      roof: Math.round(this.roofFade * 100) / 100,
       props: this.plan.props.length,
       people: this.plan.people.length,
       walkers: this.plan.walkers.length,

@@ -89,7 +89,9 @@ describe('quality presets', () => {
     expect(QUALITY.low.grassTufts).toBeLessThan(QUALITY.med.grassTufts)
     expect(QUALITY.med.grassTufts).toBeLessThan(QUALITY.high.grassTufts)
     expect(QUALITY.low.lodScale).toBeLessThan(QUALITY.high.lodScale)
-    expect(QUALITY.high.shadowType).toBe(THREE.PCFSoftShadowMap)
+    // r186 dropped PCFSoftShadowMap; high softens PCF with a radius instead.
+    expect(QUALITY.high.shadowType).toBe(THREE.PCFShadowMap)
+    expect(QUALITY.high.shadowRadius).toBeGreaterThan(QUALITY.med.shadowRadius)
   })
 
   it('suggests low on software GL', () => {

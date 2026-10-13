@@ -21,6 +21,7 @@ export type PropKind =
   | 'kiosk'
   | 'awning'
   | 'table'
+  | 'stool'
   | 'planter'
   | 'light'
 
@@ -159,8 +160,10 @@ export function planTerminal(
       const tables = density >= 1 ? [-1.4, 0, 1.4] : [0]
       for (const v of tables) {
         prop('table', 1.5, v, yawAir)
-        if (rand() < 0.6) person('seated', 1.1, v, yawAir + Math.PI / 2)
-        if (rand() < 0.4) person('seated', 1.9, v, yawAir - Math.PI / 2)
+        prop('stool', 1.05, v, yawAir)
+        prop('stool', 1.95, v, yawAir)
+        if (rand() < 0.6) person('seated', 1.05, v, yawAir + Math.PI / 2)
+        if (rand() < 0.4) person('seated', 1.95, v, yawAir - Math.PI / 2)
       }
       prop('planter', 2.5, -2.4)
       prop('planter', -2.5, -2.4)
@@ -168,9 +171,10 @@ export function planTerminal(
       const rows = density >= 1 ? [-1.5, -0.6, 0.3] : [-1, 0.2]
       for (const v of rows) {
         for (const u of [-1.6, 0, 1.6]) {
-          prop('bench', u, v, yawAir + Math.PI)
+          // Backrest on the landside so seated passengers look out at the gate.
+          prop('bench', u, v, yawAir)
           for (const k of [-0.45, 0, 0.45]) {
-            if (rand() < 0.38) person('seated', u + k, v - 0.05, yawAir)
+            if (rand() < 0.38) person('seated', u + k, v + 0.03, yawAir)
           }
         }
       }

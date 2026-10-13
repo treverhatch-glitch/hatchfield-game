@@ -67,11 +67,14 @@ describe('initWorldRender', () => {
     const far = camAt(hall.x, hall.z, 220)
     for (let i = 0; i < 30; i++) wr.update(game, far, 1 / 30)
     expect(wr.stats().terminals[0].lod).toBe(2)
+    expect(wr.stats().terminals[0].roof).toBe(1)
     const farMeshes = wr.stats().meshes
     const near = camAt(hall.x, hall.z, 16)
     for (let i = 0; i < 30; i++) wr.update(game, near, 1 / 30)
     const s = wr.stats()
     expect(s.terminals[0].lod).toBe(0)
+    // Roof lifts off for the close-up cutaway.
+    expect(s.terminals[0].roof).toBe(0)
     expect(s.meshes).toBeGreaterThan(farMeshes)
     const walkers = scene.getObjectByName('people-bag') as THREE.InstancedMesh
     expect(walkers.visible || walkers.parent?.visible).toBe(true)

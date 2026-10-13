@@ -125,7 +125,9 @@ export function peopleGeo(): PeopleGeo {
   body.translate(0, 0.33, 0)
   const head = new THREE.SphereGeometry(0.105, 8, 6)
   head.translate(0, 0.77, 0)
-  const bag = merge([box(0.2, 0.3, 0.12, 0, 0.17, 0), box(0.02, 0.22, 0.02, 0, 0.42, 0.0)])
+  // Roller case tipped onto its wheels, handle leaning toward the walker (+z).
+  const bag = merge([box(0.2, 0.3, 0.12, 0, 0.15, 0), box(0.02, 0.24, 0.02, 0, 0.42, 0), box(0.18, 0.03, 0.03, 0, 0.01, -0.05)])
+  bag.rotateX(0.38)
   return { body, head, bag }
 }
 
@@ -182,6 +184,7 @@ export function propParts(): Record<string, PropPart[]> {
       { geo: box(0.08, 1.4, 1.7, -0.6, 0.7, 0), mat: 'shelf' },
     ],
     awning: [{ geo: box(0.4, 0.08, 1.8, 0, 1.55, 0), mat: 'kiosk' }],
+    stool: [{ geo: cyl(0.13, 0.11, 0.26, 8, 0, 0.13, 0), mat: 'seat' }],
     table: [
       { geo: cyl(0.3, 0.3, 0.04, 12, 0, 0.42, 0), mat: 'deskTop' },
       { geo: cyl(0.03, 0.12, 0.4, 6, 0, 0.2, 0), mat: 'chrome' },
