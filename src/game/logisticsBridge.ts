@@ -47,24 +47,25 @@ export const CAUSE_LINE: Record<DelayCause, string> = {
 }
 
 export function groundCauseLine(cause: DelayCause): string {
-  return CAUSE_LINE[cause]
+  return CAUSE_LINE[cause] ?? ''
 }
 
 export function delayFix(causes: DelayCause[]): string {
-  if (causes.includes('no_fuel')) return 'Wait for the tanker, or keep more fuel in the farm before the next bank.'
-  if (causes.includes('no_meals')) return 'Place a catering kitchen beside the service road.'
-  if (causes.includes('no_loader') || causes.includes('no_vehicle')) {
+  const safeCauses = causes ?? []
+  if (safeCauses.includes('no_fuel')) return 'Wait for the tanker, or keep more fuel in the farm before the next bank.'
+  if (safeCauses.includes('no_meals')) return 'Place a catering kitchen beside the service road.'
+  if (safeCauses.includes('no_loader') || safeCauses.includes('no_vehicle')) {
     return 'Add another vehicle depot. Each depot brings another fleet.'
   }
-  if (causes.includes('no_bridge')) return 'A jetway stand boards faster than stairs or a bus.'
-  if (causes.includes('late_pax') || causes.includes('boarding_slow')) {
+  if (safeCauses.includes('no_bridge')) return 'A jetway stand boards faster than stairs or a bus.'
+  if (safeCauses.includes('late_pax') || safeCauses.includes('boarding_slow')) {
     return 'The gate closed on the tail of the queue. A bigger hall keeps the next bank on time.'
   }
-  if (causes.includes('late_bags') || causes.includes('bag_offload')) {
+  if (safeCauses.includes('late_bags') || safeCauses.includes('bag_offload')) {
     return 'Keep the bag belt linked so make-up is ready before the door closes.'
   }
-  if (causes.includes('vehicle_breakdown')) return 'The truck is in the shop. The next free vehicle will pick up the job.'
-  if (causes.includes('undersized_vehicle')) return 'That aircraft needs the heavy kit. The basic trucks will finish, slowly.'
+  if (safeCauses.includes('vehicle_breakdown')) return 'The truck is in the shop. The next free vehicle will pick up the job.'
+  if (safeCauses.includes('undersized_vehicle')) return 'That aircraft needs the heavy kit. The basic trucks will finish, slowly.'
   return 'Give the ramp another minute, or add a vehicle depot if the stands are stacked.'
 }
 
@@ -79,6 +80,7 @@ export function buildLogisticsConfig(
   hasTermBus: boolean,
   options: LogisticsBuildOptions = {},
 ): LogisticsConfig | null {
+  if (!tiles || !Array.isArray(tiles) || tiles.length === 0 || !tiles[0] || tiles.length < 32) return null
   const depots = tilesOf(tiles, 'depot')
   const farms = tilesOf(tiles, 'fuel')
   if (!depots.length || !farms.length) return null
@@ -148,10 +150,12 @@ export function buildLogisticsConfig(
     vehicles[type] = (FLEET[type] ?? 0) * depots.length
   }
   for (const [type, count] of Object.entries(options.fleet ?? {}) as [VehicleType, number][]) {
-    if (count > 0) vehicles[type] = (vehicles[type] ?? 0) + count
+    const validCount = Number.isFinite(count) ? Math.max(0, count) : 0
+    if (validCount > 0) vehicles[type] = (vehicles[type] ?? 0) + validCount
   }
-  const capacityLitres = options.capacityLitres ?? 400_000
-  const initialLitres = Math.min(capacityLitres, options.initialLitres ?? 240_000)
+  const capacityLitres = Number.isFinite(options.capacityLitres) ? Math.max(0, options.capacityLitres!) : 400_000
+  const rawInitial = options.initialLitres ?? 240_000
+  const initialLitres = Math.min(capacityLitres, Number.isFinite(rawInitial) ? Math.max(0, rawInitial) : 240_000)
 
   return {
     nodes,

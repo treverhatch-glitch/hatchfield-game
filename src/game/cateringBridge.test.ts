@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CateringBridge, cateringCue } from './cateringBridge.ts'
 import { Game } from './sim.ts'
 import type { Flight, Vec } from './types.ts'
 
@@ -103,5 +104,81 @@ describe('catering wiring', () => {
       if (pose && pose.liftHeight > 0 && pose.crew.some((c) => c.at === 'lift' || c.at === 'galley')) sawLift = true
     }
     expect(sawLift).toBe(true)
+  })
+})
+
+describe('CateringBridge edge cases and cues', () => {
+  it('returns expected cues for all catering event types', () => {
+    expect(cateringCue({ type: 'catering_phase', phase: 'lift_raise' } as any)).toBe('catering_lift_start')
+    expect(cateringCue({ type: 'catering_phase', phase: 'carts_out' } as any)).toBe('catering_lift_start')
+    expect(cateringCue({ type: 'catering_phase', phase: 'carts_in' } as any)).toBe('catering_lift_start')
+    expect(cateringCue({ type: 'catering_phase', phase: 'lift_lower' } as any)).toBe('catering_lift_stop')
+    expect(cateringCue({ type: 'catering_phase', phase: 'crew_board' } as any)).toBe('catering_lift_stop')
+    expect(cateringCue({ type: 'catering_phase', phase: 'parking' } as any)).toBe('truck_arrive')
+    expect(cateringCue({ type: 'catering_phase', phase: 'driving_to_stand' } as any)).toBe('truck_arrive')
+    expect(cateringCue({ type: 'catering_phase', phase: 'idle' } as any)).toBeNull()
+    expect(cateringCue({ type: 'catering_done' } as any)).toBe('cash_in')
+    expect(cateringCue({ type: 'shop_out_of_stock' } as any)).toBe('rating_down')
+    expect(cateringCue({ type: 'catering_late' } as any)).toBe('disruption')
+    expect(cateringCue({ type: 'unknown' } as any)).toBeNull()
+  })
+
+  it('handles orderFor with zero, negative, NaN, and large inputs deterministically', () => {
+    const bridge = new CateringBridge()
+
+    const gZero = bridge.orderFor('flt-0', '10,10', 0, 0, false, 0)
+    expect(gZero).toBeTruthy()
+    expect(gZero.status).toBe('waiting')
+
+    const gNeg = bridge.orderFor('flt-neg', '10,10', -50, -20, false, -10)
+    expect(gNeg).toBeTruthy()
+
+    const gNan = bridge.orderFor('flt-nan', '10,10', NaN, NaN, false, NaN)
+    expect(gNan).toBeTruthy()
+
+    const gLarge = bridge.orderFor('flt-large', '10,10', 1e9, 1e9, true, 1e9)
+    expect(gLarge).toBeTruthy()
+
+    // Deterministic re-call returns exact same order reference
+    const reCall = bridge.orderFor('flt-0', '10,10', 100, 100, true, 500)
+    expect(reCall).toBe(gZero)
+  })
+
+  it('handles stockout for food and shop without throwing', () => {
+    const bridge = new CateringBridge()
+
+    const resFood = bridge.stockout('pax-1', 'food')
+    expect(resFood).toBeTruthy()
+
+    const resShop = bridge.stockout('pax-2', 'shop')
+    expect(resShop).toBeTruthy()
+  })
+
+  it('handles poses with null, negative, NaN, and large kitchen coordinates', () => {
+    const bridge = new CateringBridge()
+
+    // Null kitchen
+    const nullPoses = bridge.poses(null)
+    expect(Array.isArray(nullPoses)).toBe(true)
+
+    // Invalid/NaN kitchen
+    const nanPoses = bridge.poses({ c: NaN, r: NaN })
+    expect(Array.isArray(nanPoses)).toBe(true)
+
+    // Negative kitchen
+    const negPoses = bridge.poses({ c: -10, r: -20 })
+    expect(Array.isArray(negPoses)).toBe(true)
+
+    // Large kitchen
+    const largePoses = bridge.poses({ c: 1e6, r: 1e6 })
+    expect(Array.isArray(largePoses)).toBe(true)
+
+    // Ensure all poses output fields are finite numbers and not NaN
+    for (const pose of largePoses) {
+      expect(Number.isNaN(pose.x)).toBe(false)
+      expect(Number.isNaN(pose.y)).toBe(false)
+      expect(Number.isNaN(pose.heading)).toBe(false)
+      expect(Number.isNaN(pose.liftHeight)).toBe(false)
+    }
   })
 })

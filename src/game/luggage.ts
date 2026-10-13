@@ -32,9 +32,10 @@ export interface LuggageMotion {
 }
 
 export function freshBook(flightId: string, units: number): BagBook {
+  const safeUnits = Number.isFinite(units) ? Math.max(0, units) : 0
   return {
     flightId,
-    units: Math.max(0, units),
+    units: safeUnits,
     dropped: 0,
     screened: 0,
     sorted: 0,
@@ -62,7 +63,8 @@ export function advanceScreen(
 ): 'wait' | 'pass' | 'lose' {
   if (book.dropped <= 0) return 'wait'
   if (book.screened >= book.dropped && book.lost === 0) return 'pass'
-  book.screenT += dt
+  const safeDt = Number.isFinite(dt) && dt > 0 ? dt : 0
+  book.screenT += safeDt
   if (book.screenT < SCREEN_WAIT) return 'wait'
   if (opts.prefab || opts.hallReady) {
     book.screened = book.dropped
@@ -128,8 +130,9 @@ export function checkedPieceCount(tag: 'budget' | 'business' | 'family' | 'premi
 /** Stable 0–2.4s so the same passenger always waits the same length. */
 export function releaseDelay(ownerPassengerId: string): number {
   let h = 0
-  for (let i = 0; i < ownerPassengerId.length; i++) {
-    h = (h * 33 + ownerPassengerId.charCodeAt(i)) >>> 0
+  const safeId = ownerPassengerId ?? ''
+  for (let i = 0; i < safeId.length; i++) {
+    h = (h * 33 + safeId.charCodeAt(i)) >>> 0
   }
   return (h % 5) * 0.6
 }
@@ -141,8 +144,9 @@ export function makeBagTag(
   connectFlightId: string | null,
   kind: BagKind,
 ): BagTag {
+  const safeIndex = Number.isFinite(index) ? index : 0
   return {
-    id: `${ownerPassengerId}:${flightId}:${index}:${kind}`,
+    id: `${ownerPassengerId}:${flightId}:${safeIndex}:${kind}`,
     ownerPassengerId,
     flightId,
     connectFlightId,
@@ -186,6 +190,7 @@ export interface TagClock {
  */
 export function advanceBagTags(tags: BagTag[], dt: number, clock: TagClock): number {
   let fresh = 0
+  const safeDt = Number.isFinite(dt) && dt > 0 ? dt : 0
   for (const tag of tags) {
     if (tag.picked || tag.fault) continue
     if (tag.kind === 'transfer' && tag.connectFlightId && tag.flightId !== tag.connectFlightId) {
@@ -208,7 +213,7 @@ export function advanceBagTags(tags: BagTag[], dt: number, clock: TagClock): num
       continue
     }
     if (stage === 'on_claim' || stage === 'complete') {
-      tag.wait += dt
+      tag.wait += safeDt
       if (tag.wait >= tag.releaseAt) tag.onClaim = true
     }
   }
@@ -229,7 +234,7 @@ export function markClaimLate(
   opts: { prefab: boolean; normal: boolean },
 ): BagTag[] {
   if (opts.prefab && opts.normal) return []
-  if (waited < CLAIM_LATE_SEC) return []
+  if (!Number.isFinite(waited) || waited < CLAIM_LATE_SEC) return []
   const mine = tags.filter(
     (t) =>
       t.ownerPassengerId === ownerId &&
@@ -244,28 +249,32 @@ export function markClaimLate(
 
 export function keepPrefabBags(book: BagBook, stage: BagFlowStage | undefined): void {
   book.lost = 0
+  book.units = Number.isFinite(book.units) ? Math.max(0, book.units) : 0
+  book.dropped = Number.isFinite(book.dropped) ? Math.max(0, book.dropped) : 0
   book.units = Math.max(book.units, book.dropped)
   if (!stage || stage === 'hold_screen' || !PAST_SCREEN.has(stage)) return
-  book.screened = Math.max(book.screened, book.dropped)
-  book.sorted = Math.max(book.sorted, book.screened)
+  book.screened = Math.max(Number.isFinite(book.screened) ? book.screened : 0, book.dropped)
+  book.sorted = Math.max(Number.isFinite(book.sorted) ? book.sorted : 0, book.screened)
+  book.offloaded = Number.isFinite(book.offloaded) ? Math.max(0, book.offloaded) : 0
   const aboard = Math.max(0, book.sorted - book.offloaded)
   if (
     stage === 'load_aircraft' ||
     stage === 'inflight' ||
     INBOUND.has(stage)
   ) {
-    book.loaded = Math.max(book.loaded, aboard)
+    book.loaded = Math.max(Number.isFinite(book.loaded) ? book.loaded : 0, aboard)
   }
   if (INBOUND.has(stage)) {
+    book.claimLeft = Number.isFinite(book.claimLeft) ? Math.max(0, book.claimLeft) : 0
     const presented = Math.max(0, book.units - book.claimLeft)
-    book.unloaded = Math.max(book.unloaded, presented)
+    book.unloaded = Math.max(Number.isFinite(book.unloaded) ? book.unloaded : 0, presented)
     book.loaded = Math.max(book.loaded, book.unloaded)
   }
   if (stage === 'on_claim' || stage === 'complete') {
-    book.onClaim = Math.max(book.onClaim, book.unloaded)
+    book.onClaim = Math.max(Number.isFinite(book.onClaim) ? book.onClaim : 0, book.unloaded)
   }
   if (stage === 'complete') {
-    book.claimed = Math.max(book.claimed, book.onClaim)
+    book.claimed = Math.max(Number.isFinite(book.claimed) ? book.claimed : 0, book.onClaim)
     book.lost = 0
   }
 }
