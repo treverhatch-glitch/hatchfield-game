@@ -21,6 +21,7 @@ export const MONEY_CATEGORIES = [
   'refunds',
   'construction',
   'contract_signing',
+  'advertising',
   'payroll',
   'building_upkeep',
   'vehicle_upkeep',

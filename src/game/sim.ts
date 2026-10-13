@@ -229,8 +229,22 @@ import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
-import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
-import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
+import { Bank, moneyDirection, payrollForGameDay, type BankPostMeta, type MoneyCategory } from '../core/bank.ts'
+import {
+  REAL_SECONDS_PER_GAME_DAY,
+  SIM_MINUTES_PER_GAME_DAY,
+  SIM_MINUTES_PER_REAL_SECOND,
+  SimClock,
+} from '../core/clock.ts'
+import {
+  TycoonEngine,
+  type CampaignKind,
+  type TenantUnit,
+  type TycoonBooks,
+  type TycoonNote,
+  type TycoonPulse,
+  type TycoonView,
+} from '../tycoon/index.ts'
 import {
   createEconomyAdapter,
   type EconomyAdapter,
@@ -644,6 +658,8 @@ export class Game {
   levyMark = 0
   /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
   bank = new Bank(0)
+  /** Tenant leases, ad campaigns, year report, and awards. */
+  tycoon = new TycoonEngine()
   simClock = new SimClock()
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
@@ -891,6 +907,7 @@ export class Game {
     this.payrollDay = 0
     this.levyMark = 0
     this.bank = new Bank(0)
+    this.tycoon.reset(1)
     this.simClock = new SimClock()
     this.economy = null
     this.economyState = null
@@ -2618,7 +2635,7 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    return m
+    return m * this.tycoonDemand()
   }
 
   /**
@@ -3140,6 +3157,7 @@ export class Game {
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      tycoon: this.tycoon.snapshot(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3179,6 +3197,7 @@ export class Game {
       this.levyMark = s.clock
       this.bank = new Bank(0)
       this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
+      this.tycoon.restore(s.tycoon, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
       this.economy = null
       this.economyState = null
       this.economyView = null
@@ -3995,7 +4014,10 @@ export class Game {
     cargo: boolean,
   ): { pax: number; bagUnits: number; fuelLevel: number } {
     const freighter = cargo || af.kind === 'freighter'
-    const pax = freighter ? 0 : paxForAirframe(af)
+    const basePax = freighter ? 0 : paxForAirframe(af)
+    const pax = freighter
+      ? 0
+      : Math.max(af.paxMin, Math.min(af.paxMax, Math.round(basePax * this.tycoonDemand())))
     const bagUnits = freighter
       ? 0
       : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
@@ -6834,7 +6856,8 @@ export class Game {
       if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) {
         if (this.startFocus !== 'cargo' && this.startFocus !== 'hybrid') return false
       }
-      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) {
+      const airlinePull = this.tycoonAirlineInterest()
+      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35 + airlinePull) {
         if (this.startFocus === 'cargo') return false
       }
       return true
@@ -11924,7 +11947,7 @@ export class Game {
     this.tickAmbience(dt)
     this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)
-    this.offerCool = Math.max(0, this.offerCool - step)
+    this.offerCool = Math.max(0, this.offerCool - step * (1 + this.tycoonAirlineInterest()))
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
     this.tickConstruction(step)
@@ -12042,6 +12065,7 @@ export class Game {
     this.tickLuggage(step)
     this.tickWeather(step)
     this.tickPayroll(step)
+    this.pokeTycoon()
     this.tickMaintenance(step)
     this.tickFireRisk(step)
     this.crashCool = Math.max(0, this.crashCool - step)
@@ -12696,6 +12720,133 @@ export class Game {
   /** True when any hall has a security room (choke present). */
   hasSecurityChoke(): boolean {
     return this.fits.some((f) => (f.rooms.security ?? 0) > 0)
+  }
+
+  /** Food rooms, souvenir rooms, and snack bars that can take a brand. */
+  private retailUnits(): TenantUnit[] {
+    const units: TenantUnit[] = []
+    for (const fit of this.fits) {
+      const hall = this.hallLabel(fit)
+      const food = fit.rooms.food ?? 0
+      const shops = fit.rooms.souvenir ?? 0
+      for (let i = 0; i < food; i++) {
+        units.push({ id: `${hall}:food:${i}`, kind: 'food', label: `${hall} food ${i + 1}` })
+      }
+      for (let i = 0; i < shops; i++) {
+        units.push({ id: `${hall}:shop:${i}`, kind: 'retail', label: `${hall} shop ${i + 1}` })
+      }
+    }
+    const snacks = tilesOf(this.tiles, 'snack').length
+    for (let i = 0; i < snacks; i++) {
+      units.push({ id: `snack:${i}`, kind: 'food', label: `Snack bar ${i + 1}` })
+    }
+    return units
+  }
+
+  private gameDayIndex(): number {
+    return Math.floor(Math.max(0, this.clock) / REAL_SECONDS_PER_GAME_DAY)
+  }
+
+  private tycoonBooks(): TycoonBooks {
+    return {
+      balance: () => this.cash,
+      post: (category, amount, meta) => this.postTycoon(category, amount, meta),
+      entriesBetween: (start, end) => this.bank.entriesBetween(start, end),
+    }
+  }
+
+  /** Tenant rent and ad spend share the bank with the rest of the airport. */
+  private postTycoon(category: MoneyCategory, amount: number, meta: BankPostMeta): boolean {
+    const rounded = Math.round(amount)
+    if (!Number.isFinite(rounded) || rounded === 0) return false
+    if (rounded > 0) {
+      this.cash += rounded
+      this.hourIncome += rounded
+      this.revenue += rounded
+      this.bank.post(category, rounded, { ...meta, source: 'tycoon' })
+      return true
+    }
+    const cost = -rounded
+    if (this.cash < cost) return false
+    this.cash -= cost
+    this.noteExpense(cost)
+    this.bank.post(category, rounded, { ...meta, source: 'tycoon' })
+    return true
+  }
+
+  private tycoonPulse(day: number): TycoonPulse {
+    const latest = this.gameDayIndex() - 1
+    const passengers = day === latest ? Math.max(0, Math.round(this.paxPerDay || this.dayPax)) : 0
+    const guests = this.hallGuests
+    const satisfaction = guests.length
+      ? guests.reduce((sum, guest) => sum + guest.happiness, 0) / guests.length
+      : this.fieldRating()
+    const wear = this.avgWear()
+    const cleanliness = 100 - (wear.bath * 0.6 + wear.sec * 0.4)
+    return { passengers, satisfaction, cleanliness }
+  }
+
+  private drainTycoon(): TycoonNote[] {
+    if (!this.site) return []
+    return [
+      ...this.tycoon.syncUnits(this.retailUnits()),
+      ...this.tycoon.catchUp(this.tycoonBooks(), this.gameDayIndex(), (day) => this.tycoonPulse(day)),
+    ]
+  }
+
+  private applyTycoon(notes: TycoonNote[], forceEmit: boolean) {
+    for (const note of notes) {
+      this.pushNews(note.text, note.tone)
+      if (note.reputation) {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + note.reputation))
+      }
+    }
+    if (notes.length || forceEmit) this.emit()
+  }
+
+  /** Open bids and close finished days. Safe while the clock is paused. */
+  pokeTycoon() {
+    this.applyTycoon(this.drainTycoon(), false)
+  }
+
+  tycoonView(): TycoonView {
+    return this.tycoon.view(this.gameDayIndex())
+  }
+
+  pendingYearReport() {
+    return this.tycoon.pendingReport()
+  }
+
+  /** Passenger load-factor multiplier from live ad campaigns. */
+  tycoonDemand(): number {
+    return this.tycoon.demandMultiplier(this.gameDayIndex())
+  }
+
+  /** Extra airline-letter interest from a live campaign. */
+  tycoonAirlineInterest(): number {
+    return this.tycoon.airlineInterest(this.gameDayIndex())
+  }
+
+  acceptTenantBid(unitId: string, bidId: string) {
+    this.pokeTycoon()
+    this.applyTycoon(this.tycoon.acceptBid(unitId, bidId, this.gameDayIndex()), true)
+  }
+
+  rerollTenantBids(unitId: string) {
+    this.pokeTycoon()
+    this.applyTycoon(this.tycoon.rerollBids(unitId, this.gameDayIndex()), true)
+  }
+
+  startAdCampaign(kind: CampaignKind) {
+    this.applyTycoon(
+      this.tycoon.startCampaign(this.tycoonBooks(), kind, this.gameDayIndex(), this.simMinutes()),
+      true,
+    )
+  }
+
+  dismissYearReport() {
+    this.tycoon.dismissReport()
+    this.emit()
   }
 }
 

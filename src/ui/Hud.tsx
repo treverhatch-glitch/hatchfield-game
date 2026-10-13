@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
 import {
   BUDGET_BLURB,
@@ -46,6 +46,8 @@ import { tilesOf } from '../game/path'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
+import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
+import type { TycoonTab } from '../tycoon/types.ts'
 
 const BUDGET_KEYS: BudgetKey[] = [
   'maintenance',
@@ -107,6 +109,7 @@ type PanelId =
   | 'airlines'
   | 'planner'
   | 'services'
+  | 'tycoon'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -165,6 +168,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+  { id: 'tycoon', label: 'Tycoon', tip: 'Shop bids, ad campaigns, awards, year report' },
 ]
 
 export function Hud({ game }: { game: Game }) {
@@ -175,7 +179,17 @@ export function Hud({ game }: { game: Game }) {
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
   const [inboxOpen, setInboxOpen] = useState(false)
+  const pendingYear = game.pendingYearReport()?.year ?? null
+  const [yearShown, setYearShown] = useState<number | null>(null)
+  if (panel === 'tycoon' && pendingYear !== yearShown) {
+    setYearShown(pendingYear)
+    if (pendingYear != null) setTycoonTab('year')
+  }
+  useEffect(() => {
+    game.pokeTycoon()
+  }, [game, panel])
   const menuTools = buildMenu
     ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
     : []
@@ -332,6 +346,14 @@ export function Hud({ game }: { game: Game }) {
             all count.
           </p>
         </div>
+      ) : null}
+
+      {!panel && game.pendingYearReport() ? (
+        <YearReportCard
+          report={game.pendingYearReport()!}
+          formatMoney={money}
+          onDismiss={() => game.dismissYearReport()}
+        />
       ) : null}
 
       <div
@@ -1556,6 +1578,23 @@ export function Hud({ game }: { game: Game }) {
                 </>
               ) : null}
 
+              {panel === 'tycoon' ? (
+                <TycoonPanel
+                  view={game.tycoonView()}
+                  cash={game.cash}
+                  tab={tycoonTab === 'year' && !game.pendingYearReport() ? 'shops' : tycoonTab}
+                  formatMoney={money}
+                  onTab={setTycoonTab}
+                  onAccept={(unitId, bidId) => game.acceptTenantBid(unitId, bidId)}
+                  onReroll={(unitId) => game.rerollTenantBids(unitId)}
+                  onCampaign={(kind) => game.startAdCampaign(kind)}
+                  onDismissReport={() => {
+                    game.dismissYearReport()
+                    setTycoonTab('shops')
+                  }}
+                />
+              ) : null}
+
               {panel === 'services' ? (
                 <>
                   <section>
@@ -1874,6 +1913,7 @@ export function Hud({ game }: { game: Game }) {
                   }}
                 >
                   {m.label}
+                  {m.id === 'tycoon' && game.pendingYearReport() ? ' •' : ''}
                 </button>
               ))}
             </div>
