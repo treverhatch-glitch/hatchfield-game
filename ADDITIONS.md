@@ -396,7 +396,8 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 - **CS2 build menus** — category tabs (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) + bottom tray of stamps (**still tile-grid** until P2.5 freeflow).
 - **CS2 info chrome** — bottom bar for view/time/ticker/cash; Economy · Budget · Research · Airlines · Planner · Services roll out above the dock. Peek when idle; slide up on hover/click.
 - **Letter inbox** — contracts, layovers, Hub, MX, parking, threats, emergencies stack on the right as letters. Hover/click expands; accept/decline inside; unread letters expire on a deadline.
-- **Apron inspect** — hover jets for model / airline / destination / activity / next step + fuel & catering bars. Signed line-MX traffic taxis into a hangar bay; hangar hover shows occupant + MX countdown.
+- **Apron inspect** — hover jets for model / airline / destination / activity / next step + fuel & catering bars. Signed line-MX traffic taxis into a hangar bay; hangar hover shows occupant + MX countdown. **5x** speed skips inspect cards entirely (fast-forward scrub).
+- **5x speed** — Pause / 1x / 3x / 5x on the bottom bar; UI emit rate backs off at 5x so the HUD stays smooth.
 - **Jetway vs remote stands** — Stand stamp toggle Remote / Jetway (×1.85). Jetway links to a hall within range: fast board/deboard, no apron pax mesh, hall guests get more spend time. Remote stands ferry via **Terminal bus depot** or walk the apron (slow). Shared congestion slows jets/trucks/walkers when layouts clash.
 - **Hall entertainment spend** — food, souvenirs, lounge, golf, gaming, waterfall, day rooms, massage spa, airside pool.
 

@@ -16,7 +16,8 @@ export function Field({ game }: { game: Game }) {
         return
       }
       game.setHover(v)
-      setInspect(game.hoverInspect)
+      // 5x fast-forward: never show plane/hangar detail cards on hover.
+      setInspect(game.inspectEnabled() ? game.hoverInspect : null)
     }
     world.onClick = (v) => {
       if (game.view !== 'apron') return
@@ -41,8 +42,8 @@ export function Field({ game }: { game: Game }) {
       // Skip GL work while Hall is front — both layers stay mounted for crossfade.
       if (game.view === 'apron') {
         world.render(game)
-        // Refresh bars / MX timers while hovering the same target.
-        if (game.hover) {
+        // Refresh bars / MX timers while hovering — skipped entirely at 5x.
+        if (game.hover && game.inspectEnabled()) {
           const next = game.inspectAt(game.hover)
           setInspect((prev) => {
             if (!next) return null
@@ -71,6 +72,8 @@ export function Field({ game }: { game: Game }) {
             }
             return next
           })
+        } else if (!game.inspectEnabled()) {
+          setInspect(null)
         }
       }
       raf = requestAnimationFrame(loop)

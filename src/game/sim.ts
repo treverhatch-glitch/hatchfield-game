@@ -351,6 +351,8 @@ export class Game {
   hover: Vec | null = null
   /** Apron hover target for inspect card (flight id or hangar key). */
   hoverInspect: ApronInspect | null = null
+  /** Bumps when apron tiles / stamp metadata change — World skips mesh rebuilds otherwise. */
+  mapRev = 0
   fuelBrand: FuelBrand | null = null
   fuelLoads = 0
   caterBrand: CaterBrand | null = null
@@ -1280,6 +1282,7 @@ export class Game {
       `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit ($${STARTER_KIT_COST.toLocaleString()}) for a Northline-ready field.`,
       'ok',
     )
+    this.bumpMap()
     this.persist()
     this.emit()
     return true
@@ -1365,6 +1368,7 @@ export class Game {
       'Starter kit down — connected pavement, lounge, one mechanic + desk agent. Northline should call.',
       'good',
     )
+    this.bumpMap()
     this.persist()
     this.emit()
   }
@@ -1424,6 +1428,7 @@ export class Game {
     // City builds to the west edge; player sees a stub.
     for (let c = 0; c < 4; c++) this.tiles[Math.floor(SIZE / 2)][c] = 'road'
     this.reputation = Math.min(100, this.reputation + 5)
+    this.bumpMap()
     this.pushNews(
       'City laid rail to the west fence. Connect roads from there — passengers arrive easier.',
       'good',
@@ -2333,6 +2338,7 @@ export class Game {
       this.hallGuests = []
       this.offer = null
       this.view = 'apron'
+      this.bumpMap()
       this.pushNews('Field restored. Clock paused.', 'ok')
       this.emit()
       return Boolean(this.site)
@@ -2349,6 +2355,11 @@ export class Game {
   tile(v: Vec): Tile | null {
     if (!inBounds(v.c, v.r)) return null
     return this.tiles[v.r][v.c]
+  }
+
+  /** Call after any apron tile or stand/park/hotel class stamp changes. */
+  bumpMap() {
+    this.mapRev += 1
   }
 
   spend(amount: number, label: string): boolean {
@@ -2395,7 +2406,16 @@ export class Game {
 
   setSpeed(speed: Speed) {
     this.speed = speed
+    // Fast-forward: drop hover inspect so the detail card never pops up at 5x.
+    if (speed >= 5) {
+      this.hoverInspect = null
+    }
     this.emit()
+  }
+
+  /** Detail cards / hover inspect stay off during 5x fast-forward. */
+  inspectEnabled(): boolean {
+    return this.speed < 5
   }
 
   setView(view: 'apron' | 'hall') {
@@ -5203,7 +5223,11 @@ export class Game {
 
   setHover(v: Vec | null) {
     this.hover = v
-    this.hoverInspect = v ? this.inspectAt(v) : null
+    if (!v || !this.inspectEnabled()) {
+      this.hoverInspect = null
+      return
+    }
+    this.hoverInspect = this.inspectAt(v)
   }
 
   inspectAt(v: Vec): ApronInspect | null {
@@ -5517,6 +5541,7 @@ export class Game {
       delete this.standClass[`${v.c},${v.r}`]
       delete this.standAccess[`${v.c},${v.r}`]
     }
+    this.bumpMap()
     this.emit()
   }
 
@@ -5576,6 +5601,7 @@ export class Game {
       return
     }
     for (const p of cells) this.tiles[p.r][p.c] = 'runway'
+    this.bumpMap()
     this.pushNews(
       klass === 'heavy'
         ? 'Heavy strip stamped — widebodies and 747Fs can land.'
@@ -5606,6 +5632,7 @@ export class Game {
     for (const p of cells) this.tiles[p.r][p.c] = 'terminal'
     this.fits.push(emptyFit(v, false))
     this.selectedTile = v
+    this.bumpMap()
     const n = this.fits.length
     this.pushNews(
       n >= 2
@@ -5645,6 +5672,7 @@ export class Game {
       }),
     )
     this.selectedTile = v
+    this.bumpMap()
     const n = this.fits.length
     const label = this.hallLabel(this.fits[n - 1])
     this.pushNews(
@@ -5792,6 +5820,7 @@ export class Game {
         this.pushNews('Hangar up — mil ramp pads linked.', 'good')
       }
     }
+    this.bumpMap()
     this.emit()
   }
 
@@ -8348,8 +8377,10 @@ export class Game {
     this.people = this.people.filter((p) => p.stage < 99)
 
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
+    // At 5x, require more sim-time between emits so HUD stays ~2–3 Hz real-time.
     this.uiAcc += step
-    if (this.uiAcc > 0.4) {
+    const uiEvery = this.speed >= 5 ? 1.6 : this.speed >= 3 ? 0.7 : 0.4
+    if (this.uiAcc > uiEvery) {
       this.uiAcc = 0
       this.emit()
     }
