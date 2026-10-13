@@ -84,6 +84,45 @@ export const EVENT_SOUNDS = {
   cost_charged: once('costTick'),
   low_cash: once('lowCashWarning'),
   research_complete: once('researchComplete'),
+  // catering & shops (PR #15)
+  catering_cart_roll_start: start('cateringCartRoll'),
+  catering_cart_roll_stop: stop('cateringCartRoll'),
+  catering_cart_latch: once('cartLatch'),
+  crew_door: once('crewDoorSlam'),
+  shop_sale: once('shopTill'),
+  shop_restock: once('shelfStocking'),
+  shop_out_of_stock: once('outOfStock'),
+  // contracts & scheduling (PR #19)
+  slot_moved: once('scheduleSnap'),
+  slot_rejected: once('scheduleRejected'),
+  slot_conflict: once('slotConflict'),
+  season_published: once('seasonPublished'),
+  sla_bonus: once('slaBonus'),
+  sla_penalty: once('slaPenalty'),
+  lawsuit: once('lawsuitGavel'),
+  // crowd (PR #18)
+  queue_grumble_start: start('queueGrumble'),
+  queue_grumble_stop: stop('queueGrumble'),
+  door_jam_start: start('doorShuffle'),
+  door_jam_stop: stop('doorShuffle'),
+  gridlock: once('gridlockAlert'),
+  // diplomacy (PR #14)
+  letter: once('letterArrive'),
+  standing_up: once('standingUp'),
+  standing_down: once('standingDown'),
+  demand_issued: once('demandIssued'),
+  exit_notice: once('exitNotice'),
+  hub_granted: once('hubFanfare'),
+  alliance: once('allianceSeal'),
+  spat: once('spatHeadline'),
+  // ambience beds (usually driven by AmbienceMixer, also reachable as events)
+  pa_announcement: once('paAnnouncement'),
+  checkin_chatter_start: start('checkinChatter'),
+  checkin_chatter_stop: stop('checkinChatter'),
+  security_lane_start: start('securityBeeps'),
+  security_lane_stop: stop('securityBeeps'),
+  apu_start: start('apuHum'),
+  apu_stop: stop('apuHum'),
 } satisfies Record<string, EventAction>;
 
 export type SoundEventName = keyof typeof EVENT_SOUNDS;

@@ -90,16 +90,60 @@ const RECIPES = {
   costTick: shot('ui', [tn('triangle', 440, 0, 0.12, 0.15, 330)]),
   lowCashWarning: shot('ui', seq(2, 0.45, (_, at) => [tn('sawtooth', 330, at, 0.3, 0.12, 290), tn('sine', 165, at, 0.3, 0.15)])),
   researchComplete: shot('ui', arp('square', [523.3, 659.3, 784, 1046.5, 1318.5], 0.06, 0.2, 0.08).concat([tn('sine', 2093, 0.35, 1.0, 0.18), tn('sine', 1568, 0.35, 1.0, 0.12)])),
+  // ---- catering & shops (PR #15) ----
+  cateringCartRoll: loop('vehicles', [nz('bandpass', 1300, 2.2, 0.14, 14, 0.8), nz('bandpass', 420, 1.5, 0.05, 3, 0.6)], 'level'),
+  cartLatch: shot('sfx', [bs('bandpass', 3200, 0, 0.05, 0.35, 5), tn('triangle', 880, 0.01, 0.12, 0.12, 620), bs('lowpass', 700, 0.06, 0.12, 0.25)]),
+  crewDoorSlam: shot('vehicles', [tn('sine', 110, 0, 0.25, 0.55, 60, 0.002), bs('lowpass', 900, 0, 0.18, 0.45), bs('bandpass', 2400, 0.02, 0.08, 0.15, 3)]),
+  shopTill: shot('sfx', [bs('bandpass', 4000, 0, 0.04, 0.2, 4), tn('sine', 2637, 0.03, 0.25, 0.14), tn('sine', 3520, 0.06, 0.35, 0.1)]),
+  shelfStocking: shot('sfx', seq(3, 0.22, (_, at) => [bs('bandpass', 1500, at, 0.07, 0.3, 2), tn('triangle', 520, at, 0.06, 0.06, 400)])),
+  outOfStock: shot('ui', [tn('triangle', 392, 0, 0.18, 0.16, 370), tn('triangle', 311, 0.2, 0.35, 0.16, 280)]),
+  // ---- contracts & scheduling (PR #19) ----
+  scheduleSnap: shot('ui', [tn('sine', 1320, 0, 0.06, 0.14, 990), bs('highpass', 3500, 0, 0.025, 0.08)]),
+  scheduleRejected: shot('ui', [tn('square', 220, 0, 0.14, 0.1, 200), tn('square', 196, 0.12, 0.16, 0.1, 180)]),
+  slotConflict: shot('ui', seq(2, 0.16, (_, at) => [tn('triangle', 660, at, 0.1, 0.14, 600)])),
+  seasonPublished: shot('ui', arp('sine', [587.3, 740, 880, 1174.7], 0.07, 0.35, 0.16).concat([bs('bandpass', 2000, 0, 0.15, 0.12, 0.8)])),
+  slaBonus: shot('ui', arp('triangle', [784, 1046.5, 1568], 0.06, 0.3, 0.18).concat([tn('sine', 3136, 0.2, 0.4, 0.08)])),
+  slaPenalty: shot('ui', [tn('sawtooth', 247, 0, 0.35, 0.12, 196), tn('sine', 123, 0, 0.4, 0.15)]),
+  lawsuitGavel: shot('sfx', seq(3, 0.3, (_, at) => [tn('sine', 160, at, 0.18, 0.55, 90, 0.002), bs('bandpass', 1100, at, 0.09, 0.4, 2)])),
+  // ---- crowd (PR #18) ----
+  queueGrumble: loop('ambient', [nz('bandpass', 260, 5, 0.25, 0.4, 0.5), nz('bandpass', 620, 5, 0.14, 0.9, 0.5)], 'level'),
+  doorShuffle: loop('ambient', [nz('bandpass', 1100, 1.6, 0.12, 6, 0.8), nz('lowpass', 300, 0.7, 0.08, 1.3, 0.5)], 'level'),
+  gridlockAlert: shot('ui', seq(2, 0.32, (_, at) => [tn('square', 466, at, 0.16, 0.1), tn('square', 349, at + 0.15, 0.16, 0.1)])),
+  // ---- diplomacy (PR #14) ----
+  letterArrive: shot('ui', [bs('highpass', 2500, 0, 0.18, 0.22, 0.7), bs('bandpass', 1200, 0.15, 0.1, 0.15, 2), tn('sine', 1046.5, 0.25, 0.4, 0.1)]),
+  standingUp: shot('ui', arp('sine', [523.3, 659.3, 880], 0.08, 0.35, 0.18)),
+  standingDown: shot('ui', arp('sine', [880, 698.5, 523.3], 0.1, 0.4, 0.18)),
+  demandIssued: shot('ui', [tn('triangle', 587.3, 0, 0.25, 0.18), tn('triangle', 784, 0.18, 0.4, 0.16)]),
+  exitNotice: shot('ui', [tn('sawtooth', 196, 0, 0.9, 0.1, 174.6), tn('sine', 98, 0, 1.0, 0.18, 87.3), tn('triangle', 466.2, 0.3, 0.6, 0.08)]),
+  hubFanfare: shot('ui', arp('square', [392, 523.3, 659.3, 784, 1046.5], 0.09, 0.3, 0.07).concat([tn('sine', 1568, 0.45, 1.2, 0.18), tn('sine', 784, 0.45, 1.2, 0.14)])),
+  allianceSeal: shot('ui', [tn('sine', 659.3, 0, 0.8, 0.16), tn('sine', 830.6, 0, 0.8, 0.12), tn('sine', 987.8, 0.12, 0.9, 0.12)]),
+  spatHeadline: shot('ui', [bs('bandpass', 1800, 0, 0.12, 0.25, 1.5), tn('square', 554.4, 0.05, 0.2, 0.1), tn('square', 415.3, 0.25, 0.3, 0.1)]),
+  // ---- terminal ambience layers ----
+  checkinChatter: loop('ambient', [nz('bandpass', 420, 6, 0.22, 2.3, 0.6), nz('bandpass', 1050, 6, 0.16, 3.1, 0.6), nz('bandpass', 2600, 5, 0.06, 4.3, 0.5)], 'level'),
+  paAnnouncement: shot('ambient', arp('sine', [659.3, 523.3, 392], 0.35, 0.8, 0.22).concat(seq(10, 0.22, (i, at) => [bs('bandpass', [500, 750, 620, 900, 560][i % 5], 1.3 + at, 0.18, 0.18, 6)]))),
+  securityBeeps: loop('ambient', [beep(2400, 0.45, 0.05), hum(60, 2, 0.02, 'sawtooth'), nz('bandpass', 700, 2, 0.04, 0.9, 0.5)], 'level'),
+  // ---- apron ambience layers ----
+  apuHum: loop('ambience', [nz('bandpass', 5200, 3, 0.1, 0.3, 0.2), hum(420, 3, 0.03, 'sawtooth'), nz('lowpass', 400, 0.7, 0.12)]),
+  apronGpu: loop('ambience', [hum(400, 5, 0.04), eng(26, 150, 0.1)]),
+  apronBeltLoader: loop('ambience', [nz('bandpass', 760, 2, 0.15, 10, 0.6), hum(46, 2, 0.03, 'sawtooth')]),
+  apronFuelPump: loop('ambience', [nz('bandpass', 280, 1.4, 0.2, 16, 0.4), eng(38, 240, 0.1)]),
 } satisfies Record<string, Recipe>;
 
 export type SfxId = keyof typeof RECIPES;
 export const SFX_IDS = Object.keys(RECIPES) as SfxId[];
-export const SFX_GROUPS: Record<'serviceVehicles' | 'maintenance' | 'construction' | 'terminal' | 'ui', SfxId[]> = {
+export type SfxGroup = 'serviceVehicles' | 'maintenance' | 'construction' | 'terminal' | 'ui' | 'catering' | 'contracts' | 'crowd' | 'diplomacy' | 'terminalAmbience' | 'apronAmbience';
+export const SFX_GROUPS: Record<SfxGroup, SfxId[]> = {
   serviceVehicles: ['heavyFuelTruck', 'hydrantDispenser', 'hydrantPump', 'cateringScissorLift', 'beltLoader', 'uldLoader', 'baggageTugCart', 'towbarlessTug', 'gpuHum', 'passengerBus', 'busDoorHiss', 'reversingBeeper'],
   maintenance: ['repairVan', 'towTruck', 'runwaySweeper', 'impactWrench', 'breakdownClunk', 'hazardTicks'],
   construction: ['contractorVan', 'deliveryTruck', 'scaffolding', 'hammering', 'concreteMixer'],
   terminal: ['crowdMurmur', 'rollingSuitcases', 'boardingChime', 'jetBridgeDock'],
   ui: ['reportReady', 'disruptionAlert', 'airlineRatingUp', 'airlineRatingDown', 'contractOffer', 'undo', 'redo', 'cashInTick', 'costTick', 'lowCashWarning', 'researchComplete'],
+  catering: ['cateringCartRoll', 'cartLatch', 'crewDoorSlam', 'shopTill', 'shelfStocking', 'outOfStock'],
+  contracts: ['scheduleSnap', 'scheduleRejected', 'slotConflict', 'seasonPublished', 'slaBonus', 'slaPenalty', 'lawsuitGavel'],
+  crowd: ['queueGrumble', 'doorShuffle', 'gridlockAlert'],
+  diplomacy: ['letterArrive', 'standingUp', 'standingDown', 'demandIssued', 'exitNotice', 'hubFanfare', 'allianceSeal', 'spatHeadline'],
+  terminalAmbience: ['checkinChatter', 'paAnnouncement', 'securityBeeps'],
+  apronAmbience: ['apuHum', 'apronGpu', 'apronBeltLoader', 'apronFuelPump'],
 };
 export const isSfxId = (id: string): id is SfxId => Object.prototype.hasOwnProperty.call(RECIPES, id);
 export const sfxCategory = (id: SfxId): Category => RECIPES[id].category;
