@@ -6,6 +6,21 @@
 
 Browser airport tycoon: **Airport Tycoon 3** stamp-and-contract loop first, then HatchTag depth (RCT hall guests, ops risk, HATCH IPO). **Passengers are the default campaign; cargo is a full parallel path.** Emergencies and military hosting are side seasons. Money must equal picture — fees post when trucks, jets, or passengers finish a job.
 
+## Player vocabulary (not code names)
+
+Internal code may still say `heat` / `airlineHeat`. **Players never see “heat.”**
+
+| System | Player term | What it means | Code |
+| --- | --- | --- | --- |
+| Airline relations | **Standing** | How happy that carrier is with your field (0–100) | `airlineHeat` / `standingOf` |
+| Cargo carriers | **On-time** | Same meter, freight wording (“late uplift hurts On-time”) | same |
+| Hall guests | **Happiness** | Per-guest mood → feeds Standing | `g.happiness` |
+| Whole field | **Field Rating** | Blend of reputation, avg Standing, hall wear, security | `fieldRating()` |
+| Apron traffic | **Jam / congestion** | Movers slow each other — never called heat | `congestionAt` |
+| City brand | **Reputation** | Soft public score (IPO, letters) | `reputation` |
+
+Thresholds players learn: Standing **82+** perk · **≤36** warn · **≤20** abandon.
+
 ## Pillars (protect these)
 
 1. **AT3 first hour** — land → stamp → (hall *or* cargo chain) → letter → named metal earns money in ~2 minutes.

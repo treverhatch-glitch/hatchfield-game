@@ -377,14 +377,21 @@ export const LAYOVER_FEE_MIN = 6000
 export const LAYOVER_FEE_MAX = 14000
 export const LAYOVER_BAN_SECONDS = 90
 export const LAYOVER_BAN_FINE = 8000
-/** Heat 0–100; at/below this while on layover → ban. */
+/**
+ * Internal airline relation score 0–100 (code: heat*).
+ * Player-facing name: **Standing** — how happy the carrier is with your field.
+ */
 export const HEAT_BAN_THRESHOLD = 28
-/** Heat at/above this unlocks a one-time persona reward. */
+/** Standing at/above this unlocks a one-time persona reward. */
 export const HEAT_REWARD_THRESHOLD = 82
-/** Heat at/below this fires a one-shot warning while signed. */
+/** Standing at/below this fires a one-shot warning while signed. */
 export const HEAT_WARN_THRESHOLD = 36
-/** Sustained heat at/below this → abandon (outside layover bans). */
+/** Sustained Standing at/below this → abandon (outside layover bans). */
 export const HEAT_ABANDON_THRESHOLD = 20
+/** Player-facing label for airlineHeat / heatOf. */
+export const STANDING_LABEL = 'Standing'
+/** Cargo path relation flavor (same meter, different words). */
+export const CARGO_STANDING_LABEL = 'On-time'
 /** Sim-seconds under abandon threshold before they walk. */
 export const ABANDON_ACC_SECONDS = 26
 export const ABANDON_FINE = 12_000
@@ -865,7 +872,7 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'belt',
     name: 'Bag belt',
     cost: BELT_COST,
-    blurb: 'Link hall ↔ bag sort ↔ stand. Break the chain → late bags + heat.',
+    blurb: 'Link hall ↔ bag sort ↔ stand. Break the chain → late bags + Standing dips.',
   },
   {
     tool: 'fuel',
@@ -1259,7 +1266,7 @@ export const FIELD_TASK_DEFS: FieldTaskDef[] = [
   {
     kind: 'bathroom',
     title: 'Add restrooms',
-    blurb: 'Furnish a WC in the hall — angry bladders cool heat.',
+    blurb: 'Furnish a WC in the hall — angry bladders cool Standing.',
     bonus: 4200,
   },
   {

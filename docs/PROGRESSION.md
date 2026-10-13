@@ -21,9 +21,9 @@ Focus biases offer weights; it does **not** lock the other path. Field XP from b
 | Touchpoint | What it does |
 | --- | --- |
 | **Letter inbox (right)** | Live contract / layover / Hub / MX / parking offers. Sign / Decline with deadline. |
-| **Airlines panel (bottom)** | **T1–T5 ladder** — every carrier under its size tier, biz model (Charter / LCC / Full-service / Cargo), fleet blurb, ready/missing infra, heat, Hub, locks. |
+| **Airlines panel (bottom)** | **T1–T5 ladder** — every carrier under its size tier, biz model (Charter / LCC / Full-service / Cargo), fleet blurb, ready/missing infra, **Standing**, Hub, locks. |
 | **Top bar `Lv N`** | Field Level from XP — gates which tiers can call and which loans / parcels unlock. |
-| **Planner / heat / Hub** | Timetable slots, heat perks, Hub plaques after layovers. |
+| **Planner / Standing / Hub** | Timetable slots, Standing perks, Hub plaques after layovers. |
 | **News ticker** | “Northline sent a letter”, bans, Field Level ups. |
 
 There is no separate “airline management game” — the airport hosts them; they call when infra + Field Level match.
@@ -52,7 +52,7 @@ Freight is a full progression spine, not a shed stamp. Infra vision in [IDEAS §
 | **C4** | Heavy domestic / near-intl | (future) | + cargo rail spur |
 | **C5** | Mega express / Code F freight | **EXFED** | + Code F stand / loader GSE |
 
-Cargo heat = on-time uplift. Night bank research already biases freighter slots. Cargo turnarounds should grant Field XP equal to pax (tune in [ECONOMY](./ECONOMY.md)).
+Cargo **On-time** (same Standing meter, freight words) = on-time uplift. Night bank research already biases freighter slots. Cargo turnarounds should grant Field XP equal to pax (tune in [ECONOMY](./ECONOMY.md)).
 
 ## Side tracks (not the main ladder)
 
@@ -82,7 +82,7 @@ Earn XP from: **pax turnarounds**, **cargo uplifts**, signing contracts, clearin
 
 1. **Hard gates** — `req` tiles (strip class, stands, security, cargo shed). Visible as “missing …” in Airlines panel.
 2. **Soft gates** — Field Level + reputation peek (one tier early if rep is high).
-3. **Relationship gates** — heat perks, Hub, abandon, layover bans.
+3. **Relationship gates** — Standing perks, Hub, abandon, layover bans.
 4. **Capital gates** — loan products scale fee with size; can’t stack loans.
 5. **Land gates** — parcels need Field Level (CS tile unlock feel) and pay ongoing upkeep pressure via landside expenses.
 

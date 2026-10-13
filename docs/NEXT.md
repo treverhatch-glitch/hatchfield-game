@@ -13,10 +13,12 @@ Ordered plan. Ship top-down. Update checkboxes when merged.
 - [x] Organized docs (`docs/*`)
 - [x] Airline tiers T1–T5 panel + Field XP + multi-loan bank desk
 - [x] Vision pass — emergency / mil / cargo dual-path documented + cross-linked
-- [x] **Belt lite (Wave B.1 / E1)** — paint bag path; broken = late bags + heat *(see [EXECUTION](./EXECUTION.md))*
+- [x] **Belt lite (Wave B.1 / E1)** — paint bag path; broken = late bags + Standing *(see [EXECUTION](./EXECUTION.md))*
 - [x] Make congestion **readable** — news + HUD jam line when a neck costs ~8s *(E2)*
+- [x] Player vocabulary — Standing / On-time / Jam (not “heat”) *(E2b)*
 - [ ] Coach / Economy discoverability — Starter kit harder to miss
 - [x] Emergency letters → Planner “stolen slot” highlight when divert occupies capacity *(E2)*
+- [ ] **Cargo equality (E3)** — start focus + truck gate / screen chain
 
 ## Wave B — Layout skill (CEO spine)
 

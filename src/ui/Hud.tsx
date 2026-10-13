@@ -111,7 +111,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
-  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, heat, hubs, field XP' },
+  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
 ]
@@ -227,7 +227,7 @@ export function Hud({ game }: { game: Game }) {
             ))}
           </ol>
           <p className="muted">
-            Field {game.fieldRating()} · {game.fieldRatingLabel()} — heat, hall, and security
+            Field {game.fieldRating()} · {game.fieldRatingLabel()} — Standing, hall, and security
             all count.
           </p>
         </div>
@@ -274,7 +274,7 @@ export function Hud({ game }: { game: Game }) {
               kind: 'Layover',
               from: layoverAirline.name,
               title: `${layoverAirline.name} layover bank`,
-              blurb: `${money(game.layoverOffer.fee)} up front · ${game.layoverOffer.transferPax} transfers · ~${game.layoverOffer.duration}s. Keep heat above the ban line.`,
+              blurb: `${money(game.layoverOffer.fee)} up front · ${game.layoverOffer.transferPax} transfers · ~${game.layoverOffer.duration}s. Keep Standing above the ban line.`,
               tone: 'good',
               left: Math.ceil(game.layoverOffer.deadline),
             })
@@ -284,7 +284,7 @@ export function Hud({ game }: { game: Game }) {
               kind: 'Layover live',
               from: layoverAirline.name,
               title: `${layoverAirline.name} layover live`,
-              blurb: `${game.layover.spawned}/${game.layover.transferPax} transfers · ${Math.ceil(game.layover.remaining)}s left · heat ${Math.round(game.heatOf(game.layover.airline))}${game.layover.samples ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}` : ''}`,
+              blurb: `${game.layover.spawned}/${game.layover.transferPax} transfers · ${Math.ceil(game.layover.remaining)}s left · Standing ${Math.round(game.standingOf(game.layover.airline))}${game.layover.samples ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}` : ''}`,
               tone: 'ok',
               left: Math.ceil(game.layover.remaining),
               live: true,
@@ -366,12 +366,12 @@ export function Hud({ game }: { game: Game }) {
                 .map((id) => {
                   const a = game.airline(id)
                   const perk = game.rewardOf(id)
-                  const heat = Math.round(game.heatOf(id))
+                  const standing = Math.round(game.standingOf(id))
                   return perk
-                    ? `${a.name} heat ${heat} — ${rewardBlurb(perk)} at risk`
-                    : `${a.name} heat ${heat} — walk at ${HEAT_ABANDON_THRESHOLD}`
+                    ? `${a.name} Standing ${standing} — ${rewardBlurb(perk)} at risk`
+                    : `${a.name} Standing ${standing} — walk at ${HEAT_ABANDON_THRESHOLD}`
                 })
-                .join(' · ')}. Heat ≤${HEAT_WARN_THRESHOLD} warns; ≤${HEAT_ABANDON_THRESHOLD} and they abandon.`,
+                .join(' · ')}. Standing ≤${HEAT_WARN_THRESHOLD} warns; ≤${HEAT_ABANDON_THRESHOLD} and they abandon.`,
               tone: 'warn',
               left: null,
             })
@@ -849,9 +849,10 @@ export function Hud({ game }: { game: Game }) {
                     )
                   })()}
                   <p className="muted">
-                    Letters on the right are live offers. Heat {HEAT_REWARD_THRESHOLD}+ unlocks
-                    persona perks · warn ≤{HEAT_WARN_THRESHOLD} · abandon ≤
-                    {HEAT_ABANDON_THRESHOLD}. Cross-cut: Charter / LCC / Full-service / Cargo.
+                    Letters on the right are live offers. Standing{' '}
+                    {HEAT_REWARD_THRESHOLD}+ unlocks persona perks · warn ≤
+                    {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
+                    Cross-cut: Charter / LCC / Full-service / Cargo.
                   </p>
                   {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
                     const meta = AIRLINE_TIER_META[tier]
@@ -885,7 +886,7 @@ export function Hud({ game }: { game: Game }) {
                             const ok = game.meetsReq(a.id)
                             const miss = game.missingReq(a.id)
                             const banned = game.isBanned(a.id)
-                            const heat = Math.round(game.heatOf(a.id))
+                            const standing = Math.round(game.standingOf(a.id))
                             const reward = game.rewardOf(a.id)
                             const warned = Boolean(game.airlineWarned[a.id])
                             const hub = game.isHub(a.id)
@@ -902,7 +903,7 @@ export function Hud({ game }: { game: Game }) {
                                   {banned
                                     ? `· BAN ${Math.ceil(game.banRemaining(a.id))}s`
                                     : signed
-                                      ? `· heat ${heat}${warned ? ' · WARN' : ''}${
+                                      ? `· Standing ${standing}${warned ? ' · WARN' : ''}${
                                           reward ? ` · ${rewardBlurb(reward)}` : ''
                                         }`
                                       : !unlocked
@@ -921,7 +922,7 @@ export function Hud({ game }: { game: Game }) {
                                         ? rewardDetail(reward)
                                         : warned
                                           ? `Cooling — walk at ${HEAT_ABANDON_THRESHOLD}.`
-                                          : `Chase ${rewardBlurb(targetPerk)} at heat ${HEAT_REWARD_THRESHOLD}+.`
+                                          : `Chase ${rewardBlurb(targetPerk)} at Standing ${HEAT_REWARD_THRESHOLD}+.`
                                       : !unlocked
                                         ? meta.scope
                                         : miss.slice(0, 4).join(', ') || a.blurb}
