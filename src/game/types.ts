@@ -1,4 +1,5 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { PremiumState } from '../premium/types.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -918,6 +919,8 @@ export interface GameSnapshot {
   deskStaff?: number
   /** First-hour coach dismissed (or auto-cleared after first takeoff). */
   coachDismissed?: boolean
+  /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
+  hintPrefs?: { allEnabled: boolean; muted: string[] }
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
@@ -934,6 +937,23 @@ export interface GameSnapshot {
   negotiation?: string
   /** Inbound offers, visits, and Guard contracts. */
   inbound?: InboundState
+  /** Player fee card. Missing on older saves — the live defaults apply. */
+  fees?: Record<string, number>
+  depositTier?: 'big' | 'standard' | 'small' | 'none'
+  deposits?: Record<
+    string,
+    {
+      contractId: string
+      tier: 'big' | 'standard' | 'small' | 'none'
+      held: number
+      status: 'held' | 'refunded' | 'forfeited' | 'none'
+      termEndDay: number
+    }
+  >
+  commercialLead?: Record<string, { signDay: number; leadDays: number; opened: boolean }>
+  feeStandingApplied?: number
+  /** Premium check-in, fast-track lanes, and the VIP room. */
+  premium?: PremiumState
 }
 
 /** A placed building that is still a construction site. */

@@ -51,8 +51,13 @@ function applyPendingNewGame() {
   try {
     const raw = sessionStorage.getItem('hatchfield-pending')
     if (!raw) return
-    const pending = JSON.parse(raw) as { sandbox?: boolean; difficulty?: 'easy' | 'standard' }
+    const pending = JSON.parse(raw) as {
+      sandbox?: boolean
+      difficulty?: 'easy' | 'standard'
+      enableHints?: boolean
+    }
     game.sandbox = Boolean(pending.sandbox)
+    game.enableHintsAtStart = pending.enableHints !== false
     game.beginNew(pending.difficulty === 'standard' ? 'standard' : 'easy')
   } catch {
     /* ignore */
@@ -182,6 +187,11 @@ export default function App() {
         game.plannerRwFilter,
         game.standAccessMode,
         game.sandbox ? 1 : 0,
+        game.depositTier,
+        Object.values(game.fees).join(','),
+        game.premium.built.length,
+        game.premium.securityOfficers,
+        game.premium.feeEnabled ? 1 : 0,
         game.hallRev,
         game.fits[0]?.tier ?? 0,
         game.fits[0]?.redesigned ? 1 : 0,
@@ -189,13 +199,19 @@ export default function App() {
         game.lostPaxCount(),
         game.hallGuests.find((g) => g.id === game.selectedGuest)?.thought ?? '',
         game.showFlows ? 1 : 0,
-        game.advice.length,
+        game.advice.map((a) => a.id).join(','),
         game.advisorCells.length,
         game.standingAdvisor.activeCards.map((c) => `${c.id}:${c.daysToLeave}`).join(','),
         game.inboundOffer()?.id ?? '',
         Math.ceil(game.inboundOffer()?.secondsLeft ?? 0),
         game.inboundContracts().map((d) => `${d.id}:${d.status}`).join(','),
         game.inboundHasClearance() ? 1 : 0,
+        game.apronFocus.length,
+        game.alerts.rev,
+        game.hintPrefs.muted.join(','),
+        game.hintPrefs.allEnabled ? 1 : 0,
+        game.enableHintsAtStart ? 1 : 0,
+        game.sidePanel,
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
@@ -209,6 +225,11 @@ export default function App() {
         sandbox={game.sandbox}
         onSandboxChange={(on) => {
           game.sandbox = on
+          game.emit()
+        }}
+        enableHints={game.enableHintsAtStart}
+        onEnableHintsChange={(on) => {
+          game.enableHintsAtStart = on
           game.emit()
         }}
         onNewGame={() => {
