@@ -50,6 +50,7 @@ import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
+import { FeesPanel } from './FeesPanel'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -203,6 +204,7 @@ export function Hud({ game }: { game: Game }) {
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [feesOpen, setFeesOpen] = useState(false)
   const menuTools = buildMenu
     ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
     : []
@@ -258,6 +260,24 @@ export function Hud({ game }: { game: Game }) {
 
   return (
     <div className="hud">
+      <button
+        type="button"
+        className={`fees-toggle${feesOpen ? ' on' : ''}`}
+        title="Landing, passenger, and service prices"
+        data-testid="tab-fees"
+        onClick={() => setFeesOpen((open) => !open)}
+      >
+        Fees
+      </button>
+      {feesOpen ? (
+        <FeesPanel
+          fees={game.fees}
+          depositTier={game.depositTier}
+          onFee={(key, value) => game.setFee(key, value)}
+          onTier={(tier) => game.setDepositTier(tier)}
+          onClose={() => setFeesOpen(false)}
+        />
+      ) : null}
       <header className="top" data-testid="stats-bar">
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
