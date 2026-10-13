@@ -949,6 +949,65 @@ button {
   margin-top: 2px;
 }
 
+.rival-sheet h3 {
+  margin-bottom: 4px;
+}
+
+.rival-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0 0 6px;
+}
+
+.rival-roster {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.rival-courts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.rival-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 10px;
+}
+
+.rival-row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.9fr;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.rival-row.head {
+  color: #9eb0a0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+
+.rival-row .win {
+  color: #e7c56a;
+}
+
+.rival-moves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rival-moves li {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
 /* CS2-style bottom chrome: peek by default, slide up on hover / pinned panel */
 .chrome {
   position: absolute;
