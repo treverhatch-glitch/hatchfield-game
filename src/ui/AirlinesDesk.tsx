@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Band, DiplomacyTier } from '../diplomacy/types.ts'
 import type { Game } from '../game/sim.ts'
+import { PortraitFace } from './PortraitFace.tsx'
+import { ReactionCard } from './ReactionCard.tsx'
 
 const TIERS: DiplomacyTier[] = [1, 2, 3, 4, 5]
 
@@ -19,9 +21,16 @@ const BAND_ICON: Record<Band, string> = {
 export function AirlinesDesk({ game }: { game: Game }) {
   const [tier, setTier] = useState<DiplomacyTier>(1)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [menu, setMenu] = useState<'standing' | 'contract' | 'demand' | 'fees' | null>(null)
+  const [menu, setMenu] = useState<'standing' | 'contract' | 'demand' | 'fees' | 'figure' | 'rivals' | null>(null)
   const [more, setMore] = useState(false)
-  const cards = game.diplomacyCards().filter((card) => card.tier === tier)
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [tenureOpen, setTenureOpen] = useState(false)
+  const [spatFigures, setSpatFigures] = useState(false)
+  const [courting, setCourting] = useState(false)
+  const roster = game.diplomacyCards()
+  const cards = roster.filter((card) => card.tier === tier)
+  const nameOf = (id: string) => roster.find((card) => card.id === id)?.name ?? id
+  const spats = game.diplomacySpats()
   const unlocked = game.fieldLevel()
   const prog = game.fieldXpToNext()
 
@@ -64,6 +73,7 @@ export function AirlinesDesk({ game }: { game: Game }) {
                 ? card.breakdown.lines
                 : card.breakdown.visibleLines
               : []
+            const spat = spats.find((row) => row.airlineId === card.id)
             return (
               <li key={card.id} data-testid="diplomacy-card">
                 <button
@@ -73,6 +83,10 @@ export function AirlinesDesk({ game }: { game: Game }) {
                     setOpenId((cur) => (cur === card.id ? null : card.id))
                     setMenu(null)
                     setMore(false)
+                    setMemoryOpen(false)
+                    setTenureOpen(false)
+                    setSpatFigures(false)
+                    setCourting(false)
                   }}
                 >
                   <span className="dip-livery" style={{ background: card.livery[0], borderColor: card.livery[1] }} />
@@ -107,6 +121,19 @@ export function AirlinesDesk({ game }: { game: Game }) {
                       </button>
                       <button type="button" className={menu === 'fees' ? 'on' : ''} onClick={() => setMenu(menu === 'fees' ? null : 'fees')}>
                         Fees
+                      </button>
+                      {card.figure ? (
+                        <button
+                          type="button"
+                          className={menu === 'figure' ? 'on' : ''}
+                          data-testid="diplomacy-figure-open"
+                          onClick={() => setMenu(menu === 'figure' ? null : 'figure')}
+                        >
+                          Figure
+                        </button>
+                      ) : null}
+                      <button type="button" className={menu === 'rivals' ? 'on' : ''} onClick={() => setMenu(menu === 'rivals' ? null : 'rivals')}>
+                        Rivals
                       </button>
                     </div>
                     {menu === 'standing' && card.breakdown ? (
@@ -145,9 +172,123 @@ export function AirlinesDesk({ game }: { game: Game }) {
                               {step.state === 'done' ? '✓' : step.state === 'offered' ? '●' : '·'} {step.label}
                             </b>
                             <span className="muted">{step.detail}</span>
+                            {step.id === 'hub' && step.state === 'open' ? (
+                              <div>
+                                <ReactionCard game={game} airlineId={card.id} kind="hub" />
+                                <button type="button" className="on" onClick={() => game.requestDiplomacyHub(card.id)}>
+                                  Sign hub
+                                </button>
+                              </div>
+                            ) : null}
                           </li>
                         ))}
                       </ol>
+                    ) : null}
+                    {menu === 'figure' && card.figure ? (
+                      <div className="dip-sub" data-testid="diplomacy-figure">
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <PortraitFace card={card.portrait} name={card.figure.name} />
+                          <div>
+                            <strong>{card.figure.name}</strong>
+                            <p className="muted">{card.figure.title}</p>
+                            <p>{card.figure.traits.join(' · ')}</p>
+                          </div>
+                        </div>
+                        <p>{card.figure.agenda}</p>
+                        <p className="muted">Voice · {card.figure.voice}</p>
+                        <p>{card.figure.shift ?? 'Founding chair. A successor keeps one trait and rolls one new.'}</p>
+                        <div className="row letter-actions">
+                          <button type="button" onClick={() => setMemoryOpen((v) => !v)}>
+                            Memory
+                          </button>
+                          <button type="button" onClick={() => setTenureOpen((v) => !v)}>
+                            Tenure
+                          </button>
+                        </div>
+                        {memoryOpen ? (
+                          card.figure.memory.length ? (
+                            <ul className="dip-lines">
+                              {card.figure.memory.map((line) => (
+                                <li key={line}>
+                                  <span>{line}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="muted">Nothing quoted back yet.</p>
+                          )
+                        ) : null}
+                        {tenureOpen ? (
+                          <p className="muted">
+                            Generation {card.figure.generation + 1} · retires day {Math.round(card.figure.retireDay)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {menu === 'rivals' ? (
+                      <div className="dip-sub" data-testid="diplomacy-rivals">
+                        <p>
+                          {card.rivals.length
+                            ? `Rivals · ${card.rivals.map((id) => nameOf(id)).join(', ')}`
+                            : 'No direct rival yet.'}
+                        </p>
+                        {card.allies.length ? <p className="muted">Allies · {card.allies.map((id) => nameOf(id)).join(', ')}</p> : null}
+                        {spat ? (
+                          <>
+                            <p>{spat.headline}</p>
+                            <div className="row letter-actions">
+                              <button type="button" onClick={() => game.answerDiplomacySpat(spat.id, 'concede')}>
+                                Concede
+                              </button>
+                              <button type="button" onClick={() => game.answerDiplomacySpat(spat.id, 'hold')}>
+                                Hold firm
+                              </button>
+                              <button type="button" onClick={() => setCourting((v) => !v)}>
+                                Court
+                              </button>
+                              <button type="button" onClick={() => setSpatFigures((v) => !v)}>
+                                Figures
+                              </button>
+                            </div>
+                            {courting ? (
+                              <div className="row letter-actions">
+                                {spat.offers.length ? (
+                                  spat.offers.map((offer) => (
+                                    <button
+                                      key={offer.id}
+                                      type="button"
+                                      onClick={() => game.answerDiplomacySpat(spat.id, 'court', offer.id)}
+                                    >
+                                      {offer.name}
+                                    </button>
+                                  ))
+                                ) : (
+                                  <p className="muted">No rival has offered to take the slots.</p>
+                                )}
+                              </div>
+                            ) : null}
+                            {spatFigures ? (
+                              <ul className="dip-lines">
+                                <li>
+                                  <span>Reputation each month</span>
+                                  <span>{spat.reputationPerMonth}</span>
+                                </li>
+                                {spat.offers.map((offer) => (
+                                  <li key={offer.id}>
+                                    <span>Court {offer.name}</span>
+                                    <span>{offer.cost}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </>
+                        ) : (
+                          <p className="muted">No public spat.</p>
+                        )}
+                        {card.poachRisk > 0 ? (
+                          <p className="muted">A rival airport is circling. Open Standing for the causes.</p>
+                        ) : null}
+                      </div>
                     ) : null}
                     {menu === 'demand' ? (
                       card.openCommitment ? (

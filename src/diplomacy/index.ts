@@ -26,4 +26,4 @@ export type {
   RivalAirportFeed
 } from './feeds.ts';
 export type { FirstMeetChoice, FirstMeetScene, EndeavorPreview } from './actions.ts';
-export type { SignPreview, SignPreviewLine } from './proposals.ts';
+export type { ReactionKind, SignPreview, SignPreviewLine } from './proposals.ts';
