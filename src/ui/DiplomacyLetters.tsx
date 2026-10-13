@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { CounterLineKey } from '../diplomacy/types.ts'
 import type { Game } from '../game/sim.ts'
+import { DiplomacyMeet } from './DiplomacyMeet.tsx'
+import { ReactionCard } from './ReactionCard.tsx'
 
 const LINE_KEYS: CounterLineKey[] = ['landing', 'passenger', 'slots', 'discount', 'penalties']
 
@@ -13,25 +15,29 @@ export function DiplomacyLetters({ game }: { game: Game }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [counterFor, setCounterFor] = useState<string | null>(null)
   const [ticks, setTicks] = useState<CounterLineKey[]>(['landing'])
+  const [pickedMeet, setPickedMeet] = useState<string | null>(null)
+  const pendingMeets = letters.filter((letter) => game.diplomacyMeet(letter.airlineId)).map((letter) => letter.airlineId)
+  const activeMeet = pickedMeet && pendingMeets.includes(pickedMeet) ? pickedMeet : (pendingMeets[0] ?? null)
 
   useEffect(() => {
-    if (!openId) return
+    if (!openId || activeMeet) return
     const timer = window.setTimeout(() => {
       setOpenId(null)
       setCounterFor(null)
     }, 8000)
     return () => window.clearTimeout(timer)
-  }, [openId, counterFor, ticks])
+  }, [openId, counterFor, ticks, activeMeet])
 
   if (!letters.length) return null
 
   return (
     <>
       {letters.map((letter) => {
-        const open = openId === letter.id
-        const quoting = open && counterFor === letter.id
+        const meet = letter.airlineId === activeMeet ? game.diplomacyMeet(letter.airlineId) : null
+        const open = openId === letter.id || Boolean(meet)
+        const quoting = open && !meet && counterFor === letter.id
         const quote = quoting ? game.diplomacyQuote(letter.id, ticks) : null
-        const preview = open ? game.diplomacyPreview(letter.airlineId) : null
+        const reactionKind = letter.kind === 'base' ? 'perk' : letter.kind === 'flights' ? 'slots' : 'sign'
         return (
           <article
             key={letter.id}
@@ -42,27 +48,23 @@ export function DiplomacyLetters({ game }: { game: Game }) {
               type="button"
               className="letter-tab"
               onClick={() => {
+                if (game.diplomacyMeet(letter.airlineId)) setPickedMeet(letter.airlineId)
                 setOpenId((cur) => (cur === letter.id ? null : letter.id))
                 setCounterFor(null)
               }}
             >
-              <span className="letter-kind">{letter.kind === 'flights' ? 'Flights' : letter.kind === 'base' ? 'Base' : 'Prospect'}</span>
+              <span className="letter-kind">{meet ? 'Introduction' : letter.kind === 'flights' ? 'Flights' : letter.kind === 'base' ? 'Base' : 'Prospect'}</span>
               <span className="letter-from">{letter.airline}</span>
-              <span className="letter-timer">letter</span>
+              <span className="letter-timer">{meet ? 'first meet' : 'letter'}</span>
             </button>
             <div className="letter-body">
+              {meet ? (
+                <DiplomacyMeet game={game} airlineId={letter.airlineId} />
+              ) : (
+                <>
               <strong>{letter.airline}</strong>
               <p>{letter.text}</p>
-              {preview && preview.rivals.length ? (
-                <p className="muted">
-                  {preview.rivals.map((row) => `${row.name} ${row.why}`).join(' · ')}
-                </p>
-              ) : null}
-              {preview?.warnings.map((warning) => (
-                <p key={warning} className="muted">
-                  {warning}
-                </p>
-              ))}
+              <ReactionCard game={game} airlineId={letter.airlineId} kind={reactionKind} />
               {quoting && quote ? (
                 <div className="dip-sub" data-testid="diplomacy-counter">
                   <p className="muted">Tick the lines you want changed.</p>
@@ -116,6 +118,8 @@ export function DiplomacyLetters({ game }: { game: Game }) {
                   Decline
                 </button>
               </div>
+                </>
+              )}
             </div>
           </article>
         )

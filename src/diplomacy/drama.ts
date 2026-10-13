@@ -85,6 +85,36 @@ function closeSpat(core: EngineCore, spat: Spat, resolution: NonNullable<Spat['r
   emit(core, 'spat_resolved', spat.airlineId, `Spat with ${core.state.relations[spat.airlineId]?.name ?? spat.airlineId} ends (${resolution}).`, 'info');
 }
 
+export interface OpenSpatView {
+  id: string;
+  airlineId: string;
+  airline: string;
+  headline: string;
+  reputationPerMonth: number;
+  offers: { id: string; name: string; cost: number }[];
+}
+
+/** Open public spats, with the court price kept off the headline. */
+export function listOpenSpats(core: EngineCore): OpenSpatView[] {
+  return core.state.spats
+    .filter((s) => !s.resolved)
+    .map((s) => {
+      const rel = core.state.relations[s.airlineId];
+      const perMonth = s.holdFailed ? s.reputationPerMonth * 1.5 : s.reputationPerMonth;
+      return {
+        id: s.id,
+        airlineId: s.airlineId,
+        airline: rel?.name ?? s.airlineId,
+        headline: s.headline,
+        reputationPerMonth: perMonth,
+        offers: s.rivalOffers.map((id) => {
+          const rival = core.state.relations[id];
+          return { id, name: rival?.name ?? id, cost: rival ? Math.round(tierCost(rival.tier) * 0.5) : 0 };
+        })
+      };
+    });
+}
+
 export function respondToSpat(
   core: EngineCore,
   spatId: string,
@@ -328,10 +358,6 @@ export function operationalEffects(core: EngineCore): OperationalEffects {
     active,
     perAirline
   };
-}
-
-export function listOpenSpats(core: EngineCore): Spat[] {
-  return core.state.spats.filter((s) => !s.resolved);
 }
 
 export function relationsInBand(core: EngineCore, band: AirlineRelation['band']): AirlineRelation[] {
