@@ -168,6 +168,22 @@ import {
   type StaffPost,
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
+import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
+import {
+  hintKind,
+  mergeHints,
+  muteHintKind,
+  newGameHintPrefs,
+  readHintSettings,
+  sanitizeHintPrefs,
+  setAllHintsEnabled,
+  visibleHints,
+  writeHintSettings,
+  type HintPrefs,
+} from './hints.ts'
+import { HINT_REFRESH_SEC } from './hintsData.ts'
+import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
+import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
@@ -275,6 +291,7 @@ import {
   NODE_ZONE,
   nodeComfort,
   outletExtraStock,
+  outletSpec,
   pickOutlet,
   placementCheck,
   refundFor,
@@ -283,8 +300,12 @@ import {
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
 import {
+  binFull,
   cellAt,
+  dropLitter,
   dropLitterAt,
+  foodCells,
+  isBin,
   snackKind,
   snackMinutes,
   litterAdvice,
@@ -298,6 +319,18 @@ import {
   type LitterHall,
 } from './litter.ts'
 import { LITTER_TUNING } from './litterData.ts'
+import {
+  claimSeat,
+  consumeSec,
+  hasTimeToSit,
+  releaseSeat,
+  seatingAdvice,
+  seatsNear,
+  sweepSeats,
+  walkSecTo,
+  type SeatBook,
+} from './dining.ts'
+import { DINING_TUNING } from './diningData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -725,6 +758,10 @@ export class Game {
   litterSeq = 0
   /** Seconds until the litter / restroom advisor notes refresh. */
   litterAdviceCool = 0
+  /** Seat bookings per hall: seat id → guest id. Not saved; diners re-take them after a load. */
+  seatBooks = new Map<string, SeatBook>()
+  /** Clock times diners ate standing, per hall, for the seating hint. */
+  diningStood = new Map<string, number[]>()
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -874,6 +911,21 @@ export class Game {
   advisorCells: { c: number; r: number }[] = []
   /** Apron tiles highlighted by a ground-services note (fuel farm, kitchen, depot). */
   apronFocus: { c: number; r: number }[] = []
+  /** Hint switches for this game. Saved, and mirrored to settings. */
+  hintPrefs: HintPrefs = newGameHintPrefs()
+  /** Pregame "Enable hints" box. Read once by beginNew. */
+  enableHintsAtStart = true
+  /** Live operational problems (stuck aircraft, fuel out, full hall, ...). */
+  alerts = new AlertStack()
+  private alertScanCool = 0
+  /** One side panel at a time: the HUD rollout or the hint list. */
+  sidePanel: 'hud' | 'hints' | null = null
+  /** Where "Show me" / "Pan to problem" last asked the camera to go. Renderers ease toward it. */
+  camGoal: { view: 'apron' | 'hall'; c: number; r: number; seq: number } | null = null
+  /** Terminal-plan hints, recomputed only when the hall layout changes. */
+  private planAdvice: { key: string; list: Advice[] } = { key: '', list: [] }
+  /** An apron build or bulldoze happened; refresh the advisor on the next frame. */
+  private adviceDirty = false
   /** Ground-logistics ledger. Posted into cash as it happens. */
   groundBooks = {
     fuelSales: 0,
@@ -1030,6 +1082,8 @@ export class Game {
     this.hallJanitors = []
     this.litterSeq = 0
     this.litterAdviceCool = 0
+    this.seatBooks.clear()
+    this.diningStood.clear()
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -1147,6 +1201,14 @@ export class Game {
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
+    // New games start with All hints enabled unless the pregame box was unchecked.
+    this.hintPrefs = newGameHintPrefs(this.enableHintsAtStart)
+    writeHintSettings(this.hintPrefs)
+    this.alerts.reset()
+    this.alertScanCool = 0
+    this.sidePanel = null
+    this.camGoal = null
+    this.planAdvice = { key: '', list: [] }
     this.firstTakeoffNoted = false
     this.fieldTask = null
     this.fieldTaskCool = 28
@@ -1172,7 +1234,11 @@ export class Game {
     try {
       sessionStorage.setItem(
         'hatchfield-pending',
-        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty }),
+        JSON.stringify({
+          sandbox: this.sandbox,
+          difficulty: this.difficulty,
+          enableHints: this.enableHintsAtStart,
+        }),
       )
     } catch {
       /* node / private mode */
@@ -2290,6 +2356,8 @@ export class Game {
     this.resetPillar()
     this.janitors = 0
     this.hallJanitors = []
+    this.seatBooks.clear()
+    this.diningStood.clear()
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -3457,6 +3525,7 @@ export class Game {
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
+      hintPrefs: this.hintPrefs,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
@@ -3603,6 +3672,11 @@ export class Game {
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
+      // The save wins; older saves fall back to the settings mirror, then to defaults.
+      this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
+      writeHintSettings(this.hintPrefs)
+      this.alerts.reset()
+      this.planAdvice = { key: '', list: [] }
       this.firstTakeoffNoted = this.flightsDone >= 1
       this.fieldTask = s.fieldTask ?? null
       this.fieldTaskCool = this.fieldTask ? 0 : 18
@@ -3674,6 +3748,7 @@ export class Game {
   /** Call after any apron tile or stand/park/hotel class stamp changes. */
   bumpMap() {
     this.mapRev += 1
+    this.adviceDirty = true
   }
 
   spend(amount: number, label: string): boolean {
@@ -5191,7 +5266,10 @@ export class Game {
     const zone = NODE_ZONE[g.node]
     const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
     g.seated = false
-    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+    if (g.meal) {
+      // A diner holds their own booked seat; tickMeal rests them. Take it out of the waiting pool.
+      if (zone && free > 0 && g.meal.walk <= 0) state.seatsLeft.set(zone, free - 1)
+    } else if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
       state.seatsLeft.set(zone, free - 1)
       g.seated = true
       g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
@@ -5236,6 +5314,32 @@ export class Game {
     g.snack = { kind, left: snackMinutes(kind, u) / GAME_MINUTES_PER_SIM_SECOND }
   }
 
+  /**
+   * A sit-down meal leaves its wrapper at the seat. A meal with no seat still
+   * uses the counter cell only when the caller passes one; walk-away food uses
+   * the snack in hand instead, so the rubbish is not dropped at the counter.
+   */
+  litterFromMeal(
+    fit: TerminalFit,
+    outlet: PlacedItem | null,
+    seat?: { c: number; r: number },
+  ): 'bin' | 'floor' | null {
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const cells = seat
+      ? [{ c: seat.c, r: seat.r }]
+      : outlet
+        ? [{ c: outlet.c, r: outlet.r }]
+        : foodCells(hall)
+    if (!cells.length) return null
+    this.litterSeq += 1
+    const n = this.litterSeq
+    const at = cells[n % cells.length]
+    let k = 0
+    const jitter = () => ((n * 7919 + ++k * 104729) % 1000) / 1000
+    return dropLitter(hall, at.c, at.r, `lit-${n}`, jitter)
+  }
+
   /** Track the guest's spot and count down the snack in hand. */
   tickSnack(g: HallGuest, dt: number) {
     g.spot = this.guestSpot(g)
@@ -5261,6 +5365,130 @@ export class Game {
     const cols = hall.zones[0]?.length || GRID_C
     this.litterSeq += 1
     return dropLitterAt(hall, cellAt(spot.x, spot.y, cols, rows), `lit-${this.litterSeq}`)
+  }
+
+  /** Seat bookings for one hall. */
+  seatBook(fit: TerminalFit): SeatBook {
+    const key = this.hallKey(fit)
+    let book = this.seatBooks.get(key)
+    if (!book) {
+      book = new Map()
+      this.seatBooks.set(key, book)
+    }
+    return book
+  }
+
+  /** Diners who ate standing in this hall inside the advisor window. */
+  diningStoodRecently(fit: TerminalFit): number {
+    const key = this.hallKey(fit)
+    const since = this.clock - DINING_TUNING.standWindowSec
+    const list = (this.diningStood.get(key) ?? []).filter((t) => t >= since)
+    this.diningStood.set(key, list)
+    return list.length
+  }
+
+  /**
+   * After a meal at a placed outlet, a diner with time claims a free seat near
+   * the counter and walks to it. No seat means eating on their feet, a little
+   * less happy. Coffee, a passer-by, or a diner short on time eats on the walk.
+   * After 'sat' the litter waits for the end of the meal.
+   */
+  seatDiner(g: HallGuest, fit: TerminalFit, outlet: PlacedItem): 'sat' | 'stood' | 'walk' {
+    if (DINING_TUNING.walkAway.includes(outlet.def)) return 'walk'
+    // Passing through the court on the way somewhere else — eat on the move.
+    if (g.path.length && g.seg < g.path.length - 1) return 'walk'
+    const mealSec = consumeSec(outlet.def)
+    const depart = g.job === 'depart'
+    const time = hasTimeToSit({
+      job: g.job,
+      boardingCall: depart && this.flightBoardingCall(g),
+      clockRunning: depart && this.departureClockRunning(g),
+      boarding: g.needs.boarding,
+      mealSec,
+    })
+    if (!time) return 'walk'
+    const seats = seatsNear((fit.items ?? []) as PlacedItem[], outlet.c, outlet.r)
+    // No seat furniture nearby: they leave with the food. A full bench is the
+    // standing case, and that wrapper drops at the counter.
+    if (!seats.length) return 'walk'
+    const seat = claimSeat(this.seatBook(fit), seats, g.id)
+    if (!seat) {
+      g.happiness -= DINING_TUNING.standJoyHit
+      const key = this.hallKey(fit)
+      const list = this.diningStood.get(key) ?? []
+      list.push(this.clock)
+      this.diningStood.set(key, list)
+      return 'stood'
+    }
+    const cols = fit.zones?.[0]?.length || GRID_C
+    const walkSec = walkSecTo(outlet.c, outlet.r, seat, HALL_W / cols)
+    g.meal = {
+      seatId: seat.id,
+      itemId: seat.itemId,
+      c: seat.c,
+      r: seat.r,
+      slot: seat.slot,
+      table: seat.table,
+      walk: walkSec,
+      walkSec,
+      left: mealSec,
+    }
+    return 'sat'
+  }
+
+  /**
+   * A diner walks to their seat, sits, and eats. True while the meal holds
+   * them. A boarding call or a clock running short ends it early, so a seat
+   * never holds anyone past their flight.
+   */
+  tickMeal(g: HallGuest, dt: number): boolean {
+    const meal = g.meal
+    if (!meal) return false
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit || !(fit.items ?? []).some((it) => it.id === meal.itemId)) return this.endMeal(g, fit)
+    const book = this.seatBook(fit)
+    if (book.get(meal.seatId) !== g.id) {
+      // Claims are not saved. After a load, take the seat back if it is free.
+      if (book.has(meal.seatId)) return this.endMeal(g, fit)
+      book.set(meal.seatId, g.id)
+    }
+    const moving = g.path.length > 0 && g.seg < g.path.length - 1
+    const depart = g.job === 'depart'
+    const late = !hasTimeToSit({
+      job: g.job,
+      boardingCall: depart && this.flightBoardingCall(g),
+      clockRunning: depart && this.departureClockRunning(g),
+      boarding: g.needs.boarding,
+      mealSec: 0,
+    })
+    if (moving || late || g.node !== 'food') return this.endMeal(g, fit)
+    if (meal.walk > 0) {
+      meal.walk = Math.max(0, meal.walk - dt)
+      g.thought = 'Taking my tray to a seat'
+      return true
+    }
+    g.seated = true
+    g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
+    g.happiness = Math.min(100, g.happiness + dt * DINING_TUNING.seatedJoyPerSec)
+    g.needs.shop = Math.min(100, g.needs.shop + dt * DINING_TUNING.seatedShopPerSec)
+    meal.left -= dt
+    g.thought = meal.table ? 'Eating at a table' : 'Eating on a bench'
+    if (meal.left > 0) return true
+    this.endMeal(g, fit)
+    g.thought = 'Good meal — off again'
+    return false
+  }
+
+  /** Stand up: free the seat and leave the wrapper at it. */
+  private endMeal(g: HallGuest, fit: TerminalFit | null): false {
+    const meal = g.meal
+    g.meal = undefined
+    g.seated = false
+    if (meal && fit) {
+      releaseSeat(this.seatBook(fit), g.id)
+      this.litterFromMeal(fit, null, meal)
+    }
+    return false
   }
 
   /** Keep one hall janitor per hire, shared round-robin across halls. */
@@ -5309,7 +5537,7 @@ export class Game {
     }
     this.litterAdviceCool -= dt
     if (this.litterAdviceCool <= 0) {
-      this.litterAdviceCool = 5
+      this.litterAdviceCool = HINT_REFRESH_SEC
       this.refreshAdvice()
     }
   }
@@ -5328,11 +5556,13 @@ export class Game {
   tickHall(dt: number) {
     if (!this.fits.length) {
       this.hallGuests = []
+      this.seatBooks.clear()
       return
     }
     const anyOpen = this.fits.some((f) => this.hallOpenFor(f).size > 0)
     if (!anyOpen) {
       this.hallGuests = []
+      this.seatBooks.clear()
       return
     }
     const kit = new Map<string, HallKitState>()
@@ -5389,10 +5619,12 @@ export class Game {
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
       if (g.job === 'depart' && this.departureClockRunning(g)) {
-        g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+        g.needs.boarding = Math.max(0, g.needs.boarding - dt * DINING_TUNING.boardingDrainPerSec)
       }
       this.applyHallKit(g, dt, kit)
       this.tickSnack(g, dt)
+      // A diner at a booked seat stays put until the meal ends or the flight calls.
+      if (this.tickMeal(g, dt)) continue
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5627,6 +5859,10 @@ export class Game {
     // Boarded or left with a snack still in hand: the rubbish stays at their last spot.
     for (const g of this.hallGuests) if (g.dead && g.snack) this.finishSnack(g)
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
+    if (this.seatBooks.size) {
+      const live = new Set(this.hallGuests.map((g) => g.id))
+      for (const book of this.seatBooks.values()) sweepSeats(book, (id) => live.has(id))
+    }
     if (this.departedFlights.size > 24) {
       const live = new Set(this.hallGuests.map((g) => g.flightId))
       for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
@@ -5933,8 +6169,19 @@ export class Game {
         scope: 'apron',
       })
     }
+    hall.push(...this.planHints(fit))
     hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
-    this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
+    const outletCells = ((fit.items ?? []) as PlacedItem[])
+      .filter((it) => !it.bundle && outletSpec(it.def))
+      .map((it) => ({ c: it.c, r: it.r }))
+    hall.push(...seatingAdvice(this.diningStoodRecently(fit), outletCells))
+    this.advice = mergeHints(
+      hall,
+      standingNotes,
+      this.groundNotes,
+      this.cargoNotes,
+      this.scaleAdviceItems(),
+    )
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
@@ -5963,6 +6210,196 @@ export class Game {
         cells: [],
       },
     ]
+  }
+
+  /** Terminal-plan hints for a hall. Cached by layout so the periodic refresh stays cheap. */
+  private planHints(fit: TerminalFit): Advice[] {
+    const key = `${this.hallKey(fit)}:${this.hallRev}:${fit.items?.length ?? 0}:${fit.zones?.length ?? 0}`
+    if (this.planAdvice.key !== key) {
+      this.planAdvice = {
+        key,
+        list: liveHallAdvice({ zones: fit.zones, items: fit.items }),
+      }
+    }
+    return this.planAdvice.list
+  }
+
+  /** Hints the panel and its badge show, after the player's mutes. Worst first. */
+  visibleHints(): Advice[] {
+    return visibleHints(this.advice, this.hintPrefs)
+  }
+
+  /** "Don't show hints of this type." Turns All hints enabled off. */
+  muteHint(id: string) {
+    this.hintPrefs = muteHintKind(this.hintPrefs, hintKind(id))
+    writeHintSettings(this.hintPrefs)
+    if (!this.visibleHints().length) this.setSidePanel(null)
+    this.focusAdvice(null)
+  }
+
+  /** Settings → All hints enabled. The only way muted kinds come back. */
+  setAllHints(on: boolean) {
+    this.hintPrefs = setAllHintsEnabled(on)
+    writeHintSettings(this.hintPrefs)
+    if (!on && this.sidePanel === 'hints') this.sidePanel = null
+    this.emit()
+  }
+
+  setSidePanel(panel: 'hud' | 'hints' | null) {
+    if (this.sidePanel === panel) return
+    this.sidePanel = panel
+    this.emit()
+  }
+
+  /** Move the camera to a spot and mark it. Hall cells use the hall grid, apron cells the field grid. */
+  focusAt(at: AlertFocus) {
+    const cell = at.cells[0]
+    if (at.view === 'hall') {
+      if (!this.fits.length) return
+      if (at.hall) {
+        const fit = this.fitByKey(at.hall)
+        if (fit) this.selectedTile = { ...fit.origin }
+      }
+      this.advisorCells = at.cells
+      this.apronFocus = []
+    } else {
+      this.apronFocus = at.cells
+      this.advisorCells = []
+    }
+    if (this.view !== at.view) this.setView(at.view)
+    if (cell) this.camGoal = { view: at.view, c: cell.c, r: cell.r, seq: (this.camGoal?.seq ?? 0) + 1 }
+    this.emit()
+  }
+
+  /** Hint panel "Show me": pan to the note and highlight it. */
+  showHint(id: string) {
+    const hit = this.advice.find((a) => a.id === id)
+    if (!hit) return
+    const view = hit.scope === 'apron' ? 'apron' : 'hall'
+    const fit = this.activeHall() ?? this.fits[0]
+    if (view === 'hall' && !hit.cells.length && fit) {
+      // No cell to point at: still walk inside so the player sees the hall in question.
+      this.focusAt({ view, cells: [], hall: this.hallKey(fit) })
+      return
+    }
+    this.focusAt({ view, cells: hit.cells, hall: fit ? this.hallKey(fit) : undefined })
+  }
+
+  /** Alert "Pan to problem". */
+  panToAlert(id: string) {
+    const a = this.alerts.active.find((x) => x.id === id)
+    if (a?.at) this.focusAt(a.at)
+  }
+
+  dismissAlert(id: string) {
+    this.alerts.dismiss(id, this.clock)
+    this.emit()
+  }
+
+  ignoreAlert(id: string) {
+    this.alerts.ignore(id)
+    this.emit()
+  }
+
+  minimiseAlerts(on: boolean) {
+    this.alerts.setMinimised(on)
+    this.emit()
+  }
+
+  /** Raise an operational alert. Debounced by key inside the stack. */
+  raiseAlert(input: AlertInput) {
+    const before = this.alerts.rev
+    this.alerts.raise(input, this.clock)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  /** Live condition scan. Throttled; cheap reads only. */
+  private scanAlerts(dt: number) {
+    this.alerts.tick(this.clock)
+    this.alertScanCool -= dt
+    if (this.alertScanCool > 0) return
+    this.alertScanCool = ALERT_TUNING.scanSec
+    const T = ALERT_TUNING
+    const live = new Set<string>()
+    const raise = (input: AlertInput) => {
+      live.add(input.key)
+      this.raiseAlert(input)
+    }
+
+    for (const f of this.flights) {
+      if ((f.craft ?? 'jet') !== 'jet') continue
+      const onGround = (STUCK_PHASES as readonly string[]).includes(f.phase)
+      const stuck = (onGround && f.phaseTime > T.stuckSec) || (f.phase === 'hold' && f.phaseTime > T.holdStuckSec)
+      if (!stuck) continue
+      const spot = f.path[f.seg] ?? f.path[f.path.length - 1] ?? f.stand
+      raise({
+        key: `cond:stuck:${f.id}`,
+        severity: 'warning',
+        title: f.phase === 'hold' ? `${f.flightNo} stuck in the hold` : `${f.flightNo} stuck on the ground`,
+        detail:
+          f.phase === 'hold'
+            ? 'No free stand or runway slot to land into.'
+            : `No progress for ${Math.round(f.phaseTime)}s. Check the taxi route and stand.`,
+        at: spot ? { view: 'apron', cells: [{ c: spot.c, r: spot.r }] } : undefined,
+      })
+    }
+
+    const ground = this.ground?.snapshot()
+    const farm = tilesOf(this.tiles, 'fuel')[0]
+    if (ground && farm && ground.fuelLitres <= 0) {
+      raise({
+        key: 'cond:fuel-out',
+        severity: 'critical',
+        title: 'Fuel farm is empty',
+        detail: 'Departures needing fuel will wait until the next tanker arrives.',
+        at: { view: 'apron', cells: [farm] },
+      })
+    }
+
+    const fit = this.activeHall()
+    if (fit && this.hallOverloaded) {
+      const key = this.hallKey(fit)
+      raise({
+        key: `cond:hall-full:${key}`,
+        severity: 'warning',
+        title: `${this.hallLabel(fit)} over capacity`,
+        detail: 'Queues are longer than this hall can clear.',
+        at: { view: 'hall', hall: key, cells: this.zoneCellsOf(fit, 'security').slice(0, 1) },
+      })
+    }
+    for (const f of this.fits) {
+      const full = ((f.items ?? []) as PlacedItem[]).filter((it) => isBin(it) && binFull(it))
+      const pieces = f.litter?.length ?? 0
+      if (!full.length || pieces < LITTER_TUNING.adviseLitterAt) continue
+      const key = this.hallKey(f)
+      raise({
+        key: `cond:bins:${key}`,
+        severity: 'warning',
+        title: `${this.hallLabel(f)}: bins full, litter piling up`,
+        detail: `${full.length} full can${full.length === 1 ? '' : 's'}, ${pieces} pieces on the floor.`,
+        at: { view: 'hall', hall: key, cells: full.map((b) => ({ c: b.c, r: b.r })) },
+      })
+    }
+
+    if (!this.sandbox && this.cash < T.lowCash) {
+      raise({
+        key: 'cond:cash',
+        severity: this.cash < 0 ? 'critical' : 'warning',
+        title: this.cash < 0 ? 'Cash is negative' : 'Cash is low',
+        detail: `${moneyLeft(this.cash)} in the bank. Upkeep and payroll keep drawing.`,
+      })
+    }
+    this.alerts.sync('cond:', live)
+  }
+
+  private zoneCellsOf(fit: TerminalFit, zone: ZoneId): { c: number; r: number }[] {
+    const out: { c: number; r: number }[] = []
+    fit.zones?.forEach((row, r) =>
+      row.forEach((z, c) => {
+        if (z === zone) out.push({ c, r })
+      }),
+    )
+    return out
   }
 
   focusAdvice(id: string | null) {
@@ -7124,14 +7561,15 @@ export class Game {
         }
         this.foodShelf -= 1
         this.mealSold = true
-        this.giveSnack(g, outlet?.item ?? null)
+        const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
+        if (dine === 'stood' && homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
+        else if (dine !== 'sat') this.giveSnack(g, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
           : outlet
             ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
-            : `Ate (−$${pay})`
-      }
+            : `Ate (−$${pay})`      }
       }
     }
     if (n === 'shop') {
@@ -11643,6 +12081,13 @@ export class Game {
         `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
         'bad',
       )
+      this.raiseAlert({
+        key: 'event:inbound-failed',
+        severity: 'critical',
+        title: 'Inbound flight diverted',
+        detail: `${f.flightNo} held too long and went elsewhere. Free a stand or a runway slot.`,
+        event: true,
+      })
     }
     void dt
   }
@@ -12719,6 +13164,13 @@ export class Game {
     this.fireIncidentCool = Math.min(this.fireIncidentCool, 12)
     for (const id of this.signed) this.adjustHeat(id, -2.8)
     if (e.kind === 'divert' && e.airline) this.adjustHeat(e.airline, -7)
+    this.raiseAlert({
+      key: 'event:inbound-failed',
+      severity: 'critical',
+      title: 'Emergency inbound failed',
+      detail: `Could not host it: ${why}.`,
+      event: true,
+    })
     if (this.public) {
       this.shockStock(
         `Failed emergency host — ${why}.`,
@@ -13460,9 +13912,16 @@ export class Game {
   }
 
   tick(dt: number) {
+    // Apron builds and bulldozes coalesce into one advisor pass per frame, paused or not.
+    if (this.adviceDirty && this.site) {
+      this.adviceDirty = false
+      this.refreshAdvice()
+      this.emit()
+    }
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
     this.clock += step
+    this.scanAlerts(step)
     this.simClock.advanceRealSeconds(dt, this.speed)
     this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
     this.tickAmbience(dt)

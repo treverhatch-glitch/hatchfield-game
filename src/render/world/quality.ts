@@ -11,6 +11,11 @@ export interface QualityPreset {
   shadowRadius: number
   /** Max render pixel ratio. Below 1 renders under native resolution (software GL). */
   pixelRatioCap: number
+  /**
+   * 4× MSAA on the apron canvas. Fixed when the WebGL context is created, so it follows the
+   * preset picked at boot. Off on low: SwiftShader rasterises every sample on the CPU.
+   */
+  msaa: boolean
   /** Re-render the shadow map every N frames (1 = every frame). */
   shadowEvery: number
   /** Texture side for tiling ground textures. */
@@ -42,6 +47,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowType: THREE.BasicShadowMap,
     shadowRadius: 1,
     pixelRatioCap: 0.8,
+    msaa: false,
     shadowEvery: 1,
     textureSize: 128,
     anisotropy: 2,
@@ -59,6 +65,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowType: THREE.PCFShadowMap,
     shadowRadius: 1,
     pixelRatioCap: 1.25,
+    msaa: true,
     shadowEvery: 2,
     textureSize: 256,
     anisotropy: 4,
@@ -77,6 +84,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowType: THREE.PCFShadowMap,
     shadowRadius: 2.5,
     pixelRatioCap: 2,
+    msaa: true,
     shadowEvery: 1,
     textureSize: 512,
     anisotropy: 8,
