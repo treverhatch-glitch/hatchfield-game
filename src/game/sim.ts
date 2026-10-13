@@ -156,6 +156,21 @@ import {
 } from './guests'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
+  blankZones,
+  ceilingsFor,
+  itemDef,
+  laneStats,
+  lookaheadDepth,
+  needsMaintenance,
+  prefabBundle,
+  prefabSecurityItem,
+  prefabZones,
+  slowedService,
+  type ItemId,
+  type PlacedItem,
+  type ZoneId,
+} from './terminal.ts'
+import {
   budgetLineCost,
   fieldOpsMultiplier,
   loanInterestDue,
@@ -290,16 +305,46 @@ const emptyRooms = (): Record<RoomId, number> => ({
 function emptyFit(origin: Vec, premade: boolean, rooms?: Partial<Record<RoomId, number>>): TerminalFit {
   const r = { ...emptyRooms(), ...(rooms ?? {}) }
   const claimRooms = Math.max(1, r.bagclaim || (premade ? 1 : 0))
-  return {
+  return decorateFit({
     origin,
     premade,
     rooms: r,
     wearBath: 0,
     wearSec: 0,
-    // Premade shells work day one but hit ceilings — custom halls can raise caps.
-    capGuests: premade ? 28 : 48,
     claimRate: premade ? 0.72 + claimRooms * 0.08 : 0.9 + claimRooms * 0.12,
+  })
+}
+
+/** Prefab bundle, painted floors, and the ceilings those imply. */
+function decorateFit(fit: TerminalFit): TerminalFit {
+  if (fit.premade) {
+    if (fit.tier == null) fit.tier = 1
+    if (fit.signs == null) fit.signs = 1
+    if (!fit.zones?.length) fit.zones = prefabZones()
+    if (!fit.items?.length) fit.items = prefabBundle()
+    if (fit.redesigned == null) fit.redesigned = false
+  } else {
+    if (fit.tier == null) fit.tier = 1
+    if (fit.signs == null) fit.signs = 0
+    if (!fit.zones?.length) fit.zones = blankZones()
+    if (!fit.items) fit.items = []
+    if (fit.redesigned == null) fit.redesigned = false
   }
+  return applyCeilings(fit)
+}
+
+function applyCeilings(fit: TerminalFit): TerminalFit {
+  const c = ceilingsFor({
+    premade: fit.premade,
+    redesigned: fit.redesigned,
+    tier: fit.tier,
+    items: (fit.items ?? []) as PlacedItem[],
+    roomsSecurity: fit.rooms.security,
+  })
+  fit.capGuests = c.paxCap
+  fit.bagAllowance = c.bagAllowance
+  fit.secPerMin = c.secPerMin
+  return fit
 }
 
 function emptyPosted(): Flight['posted'] {
@@ -513,6 +558,9 @@ export class Game {
   selectedFlight: string | null = null
   selectedTile: Vec | null = null
   selectedGuest: string | null = null
+  /** Bumps when the hall layout changes so the HUD repaints. */
+  hallRev = 0
+  private secSeq = 1
   view: 'apron' | 'hall' = 'apron'
   spawnCool = 8
   heloCool = 22
@@ -2169,6 +2217,13 @@ export class Game {
         const count = fit.rooms[room] ?? 0
         if (count > 0) n += rate * Math.min(3, count)
       }
+      n += ceilingsFor({
+        premade: fit.premade,
+        redesigned: fit.redesigned,
+        tier: fit.tier,
+        items: (fit.items ?? []) as PlacedItem[],
+        roomsSecurity: fit.rooms.security,
+      }).upkeepDay / 6
     }
     return Math.round(n)
   }
@@ -2664,15 +2719,14 @@ export class Game {
       this.fits = (s.terminalFits ?? []).map((f) => {
         const rooms = { ...emptyRooms(), ...(f.rooms ?? {}) }
         const claimRooms = Math.max(1, rooms.bagclaim || (f.premade ? 1 : 0))
-        return {
+        return decorateFit({
           ...f,
           rooms,
           wearBath: f.wearBath ?? 0,
           wearSec: f.wearSec ?? 0,
-          capGuests: f.capGuests ?? (f.premade ? 28 : 48),
           claimRate:
             f.claimRate ?? (f.premade ? 0.72 + claimRooms * 0.08 : 0.9 + claimRooms * 0.12),
-        }
+        })
       })
       this.cash = s.cash
       this.difficulty = s.difficulty
@@ -2922,7 +2976,7 @@ export class Game {
       this.tool = 'pan'
       if (prev !== 'hall') {
         this.pushNews(
-          'Inside the terminal — doors, then security, then the gates. Furnish in Services. Esc / Apron to leave.',
+          'Inside the terminal — prefab ceilings are on the card. Paint a zone or upgrade the shell. Esc / Apron to leave.',
           'ok',
         )
       }
@@ -2993,7 +3047,15 @@ export class Game {
       ? this.hallGuests.filter((g) => !g.dead && g.hallId === key).length
       : this.hallGuests.length
     const crowd = pop > cap ? 1 / (1 + (pop - cap) * 0.08) : 1
-    return 12 * base * crowd
+    const allow = fit?.bagAllowance ?? 9999
+    let bagMul = 1
+    if (allow > 0) {
+      for (const f of this.flights) {
+        if (f.cargo || !f.bagUnits || f.bagUnits <= allow) continue
+        bagMul = Math.min(bagMul, allow / f.bagUnits)
+      }
+    }
+    return 12 * base * crowd * bagMul
   }
 
   /** How many claim carousels a hall offers (inbound scheduling pool). */
@@ -3430,7 +3492,7 @@ export class Game {
         }
         if (open.has('checkin')) this.routeGuest(g, 'checkin', open)
         else if (open.has('security')) this.routeGuest(g, 'security', open)
-        else g.thought = 'No security lane — stuck landside'
+        else g.thought = 'No security lane — stuck before security'
       }
       this.hallGuests.push(g)
     }
@@ -3516,15 +3578,32 @@ export class Game {
         if (fl && g.needs.bags <= 0) fl.bagStage = 'complete'
       }
 
+      if (g.job === 'depart' && g.node === 'security' && !g.clearedSec && g.path.length === 0) {
+        this.tickSecurityLane(g, dt, open)
+        continue
+      }
+
       if (g.path.length && g.seg < g.path.length - 1) {
         g.t += dt * 1.35
+        let held = false
         while (g.t >= 1 && g.seg < g.path.length - 1) {
           g.t -= 1
           g.seg += 1
           g.node = g.path[g.seg]
+          if (g.node === 'security' && g.job === 'depart' && !g.clearedSec) {
+            g.path = []
+            g.seg = 0
+            g.t = 0
+            held = true
+            break
+          }
           if (g.node === 'security') g.clearedSec = true
           this.secureBreach(g)
           this.serveNode(g, open)
+        }
+        if (held) {
+          this.tickSecurityLane(g, 0, open)
+          continue
         }
         continue
       }
@@ -3619,7 +3698,7 @@ export class Game {
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
-    // Uncleared departures only see landside + security lane.
+    // Uncleared departures only see the curb side plus the security lane.
     const view = openForGuest(open, g.clearedSec)
     let target = dest
     if (!g.clearedSec && isAirside(dest)) {
@@ -3627,14 +3706,18 @@ export class Game {
         target = 'security'
         g.thought = 'Need to clear security first'
       } else {
-        g.thought = 'Airside locked — no security lane'
+        g.lost = true
+        g.thought = 'Lost — no security lane, gate is locked'
         g.happiness -= 1.2
         g.patience -= 2
         return
       }
     }
-    const path = hallPath(g.node, target, view, tagSpendsUp(g.tag) ? 7 : 5)
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    const signs = (fit?.signs ?? 0) + (g.node === 'info' ? 1 : 0)
+    const path = hallPath(g.node, target, view, lookaheadDepth(signs))
     if (!path || path.length < 2) {
+      g.lost = true
       if (!g.clearedSec && isAirside(dest)) {
         g.thought = 'Blocked at the secure line'
         g.happiness -= 0.8
@@ -3644,12 +3727,251 @@ export class Game {
       }
       return
     }
+    g.lost = false
     g.path = path
     g.seg = 0
     g.t = 0
     if (!g.thought.startsWith('Need to clear')) {
       g.thought = `Heading to ${target}`
     }
+  }
+
+  /**
+   * One prefab lane serves `servers` people at a time. The rest wait.
+   * A full queue, or no lane at all, flags them lost.
+   */
+  tickSecurityLane(g: HallGuest, dt: number, open: Set<HallNode>) {
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
+    const lane = laneStats({
+      premade: fit?.premade ?? false,
+      redesigned: fit?.redesigned,
+      tier: fit?.tier,
+      items: (fit?.items ?? []) as PlacedItem[],
+      roomsSecurity: fit?.rooms.security ?? 0,
+    })
+    if (g.queueSeq == null) g.queueSeq = this.secSeq++
+    const peers = this.hallGuests.filter(
+      (o) =>
+        !o.dead &&
+        o.hallId === g.hallId &&
+        o.job === 'depart' &&
+        o.node === 'security' &&
+        !o.clearedSec,
+    )
+    const wear = Math.max(
+      fit?.wearSec ?? 0,
+      ...(fit?.items ?? [])
+        .filter((i) => String(i.def).startsWith('security'))
+        .map((i) => i.wear),
+    )
+    let svc = slowedService(lane.serviceSec, wear)
+    if (!this.staffedPost('security')) svc *= 1.35
+    const cap = fit?.capGuests ?? 28
+    if (peers.length > cap) svc *= 1 + (peers.length - cap) * 0.08
+
+    if ((g.serviceLeft ?? 0) > 0) {
+      g.serviceLeft = (g.serviceLeft ?? 0) - dt
+      g.lost = false
+      g.thought = needsMaintenance(wear) ? 'Worn lane — needs a scrub' : 'At the scanner'
+      if ((g.serviceLeft ?? 0) <= 0) {
+        g.serviceLeft = 0
+        g.clearedSec = true
+        if (fit) {
+          this.bumpWear('sec', lane.wearPerUse)
+          const laneItem = fit.items?.find((i) => String(i.def).startsWith('security'))
+          if (laneItem) laneItem.wear = Math.min(100, laneItem.wear + lane.wearPerUse)
+        }
+        g.thought = 'Cleared security — the gates are open'
+        if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
+        else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
+        else if (g.needs.shop > 70 && open.has('shop')) this.routeGuest(g, 'shop', open)
+        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
+      return
+    }
+
+    if (lane.servers <= 0) {
+      g.lost = true
+      g.thought = 'Lost — no security lane'
+      g.happiness -= dt * 2
+      return
+    }
+
+    const serving = peers.filter((o) => (o.serviceLeft ?? 0) > 0).length
+    const idle = peers
+      .filter((o) => (o.serviceLeft ?? 0) <= 0)
+      .sort((a, b) => (a.queueSeq ?? 0) - (b.queueSeq ?? 0))
+    const idx = idle.findIndex((o) => o.id === g.id)
+    const slots = Math.max(0, lane.servers - serving)
+    if (idx >= 0 && idx < slots) {
+      g.serviceLeft = svc
+      g.lost = false
+      g.thought = 'Stepping into the lane'
+      return
+    }
+    if (idx >= lane.queueCap + slots) {
+      g.lost = true
+      g.thought = 'Lost — security queue is full'
+      g.happiness -= dt * 1.6
+      return
+    }
+    g.lost = false
+    g.thought = `Security queue — ${Math.max(1, idx - slots + 1)} ahead`
+    g.happiness -= dt * 0.7
+  }
+
+  securityQueueCount(): number {
+    return this.hallGuests.filter(
+      (g) =>
+        !g.dead &&
+        g.job === 'depart' &&
+        g.node === 'security' &&
+        !g.clearedSec &&
+        (g.serviceLeft ?? 0) <= 0,
+    ).length
+  }
+
+  lostPaxCount(): number {
+    return this.hallGuests.filter((g) => !g.dead && g.lost).length
+  }
+
+  /** Drop a departure wave at the doors so the lane can be watched. */
+  demoHallCrowd(n = 8) {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    const open = this.hallOpenFor(fit)
+    const hallId = this.hallKey(fit)
+    for (let i = 0; i < n; i++) {
+      const g = spawnHallGuest(`demo-${this.secSeq}-${i}`, 'depart', i % 2 ? 'family' : 'budget', {
+        hallId,
+      })
+      g.node = 'entrance'
+      g.clearedSec = false
+      g.needs.hunger = 12
+      g.needs.bladder = 10
+      g.needs.shop = 8
+      g.needs.play = 8
+      g.needs.energy = 15
+      g.needs.boarding = 70
+      this.routeGuest(g, 'checkin', open)
+      this.hallGuests.push(g)
+    }
+    this.emit()
+    return this.hallGuests.length
+  }
+
+  upgradeHall() {
+    const fit = this.activeHall()
+    if (!fit) {
+      this.pushNews('Stamp a terminal first.', 'bad')
+      this.emit()
+      return
+    }
+    if (!fit.premade || fit.redesigned) {
+      this.pushNews('Custom hall — raise the ceilings by placing bigger items.', 'bad')
+      this.emit()
+      return
+    }
+    const tier = (fit.tier ?? 1) as 1 | 2 | 3
+    if (tier >= 3) {
+      this.pushNews('Prefab is already the top tier.', 'ok')
+      this.emit()
+      return
+    }
+    const next = (tier + 1) as 2 | 3
+    const cost = next === 2 ? 22000 : 48000
+    if (!this.spend(cost, `prefab tier ${next}`)) return
+    fit.tier = next
+    const laneId = prefabSecurityItem(next)
+    const lane = fit.items?.find((i) => String(i.def).startsWith('security'))
+    if (lane) lane.def = laneId
+    applyCeilings(fit)
+    this.hallRev++
+    this.pushNews(
+      `Prefab ${next} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher.`,
+      'good',
+    )
+    this.emit()
+  }
+
+  paintHallCell(c: number, r: number, zone: ZoneId) {
+    const fit = this.activeHall()
+    if (!fit) return
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    const row = fit.zones[r]
+    if (!row || c < 0 || c >= row.length) return
+    if (row[c] === zone) return
+    const wasPrefab = fit.premade && !fit.redesigned
+    row[c] = zone
+    if (wasPrefab) {
+      fit.redesigned = true
+      applyCeilings(fit)
+      this.pushNews(
+        `Custom layout — the prefab discount is gone. Upkeep is now $${Math.round(
+          ceilingsFor({
+            premade: fit.premade,
+            redesigned: true,
+            tier: fit.tier,
+            items: (fit.items ?? []) as PlacedItem[],
+            roomsSecurity: fit.rooms.security,
+          }).upkeepDay,
+        )}/day.`,
+        'ok',
+      )
+    }
+    this.hallRev++
+    this.emit()
+  }
+
+  placeHallItem(id: ItemId) {
+    const fit = this.activeHall()
+    if (!fit) {
+      this.pushNews('Open a hall first.', 'bad')
+      this.emit()
+      return
+    }
+    const def = itemDef(id)
+    if (!def) return
+    if (this.fieldLevel() < def.minFieldLevel) {
+      this.pushNews(`${def.name} needs Field level ${def.minFieldLevel}.`, 'bad')
+      this.emit()
+      return
+    }
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    const taken = new Set((fit.items ?? []).map((i) => `${i.c},${i.r}`))
+    let cell: { c: number; r: number } | null = null
+    for (let r = 0; r < fit.zones.length && !cell; r++) {
+      for (let c = 0; c < fit.zones[r].length; c++) {
+        const z = fit.zones[r][c]
+        if (z && def.zones.includes(z as ZoneId) && !taken.has(`${c},${r}`)) {
+          cell = { c, r }
+          break
+        }
+      }
+    }
+    if (!cell) {
+      this.pushNews(`Paint a ${def.zones.join(' / ')} cell before placing ${def.name}.`, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(def.cost, def.name)) return
+    fit.items = fit.items ?? []
+    fit.items.push({
+      id: `it-${id}-${cell.c}-${cell.r}-${fit.items.length}`,
+      def: id,
+      c: cell.c,
+      r: cell.r,
+      wear: 0,
+    })
+    if (def.room) fit.rooms[def.room] += 1
+    if (def.signs) fit.signs = (fit.signs ?? 0) + def.signs
+    applyCeilings(fit)
+    this.hallRev++
+    this.pushNews(
+      `${def.name} placed — $${def.upkeep}/day upkeep${def.perk ? `. ${def.perk}.` : '.'}`,
+      'ok',
+    )
+    this.emit()
   }
 
   /**
@@ -3710,6 +4032,7 @@ export class Game {
     if (n === 'info') {
       g.patience = Math.min(100, g.patience + 8)
       g.happiness += 2
+      g.lost = false
       g.thought = 'Got directions'
       // Info desk extends lookahead once — like an RCT park map.
       const need = strongestNeed(g)
@@ -5342,6 +5665,7 @@ export class Game {
     for (const f of this.fits) {
       f.wearBath = Math.max(0, (f.wearBath ?? 0) - cut)
       f.wearSec = Math.max(0, (f.wearSec ?? 0) - cut * 0.9)
+      for (const it of f.items ?? []) it.wear = Math.max(0, it.wear - cut * 0.9)
     }
     this.reputation = Math.min(100, this.reputation + 2)
     this.pushNews(

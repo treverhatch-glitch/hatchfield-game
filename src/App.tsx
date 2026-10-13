@@ -177,6 +177,12 @@ export default function App() {
         game.plannerRwFilter,
         game.standAccessMode,
         game.sandbox ? 1 : 0,
+        game.hallRev,
+        game.fits[0]?.tier ?? 0,
+        game.fits[0]?.redesigned ? 1 : 0,
+        game.securityQueueCount(),
+        game.lostPaxCount(),
+        game.hallGuests.find((g) => g.id === game.selectedGuest)?.thought ?? '',
       ].join('|'),
     () => 'ssr',
   )
