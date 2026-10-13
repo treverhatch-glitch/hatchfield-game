@@ -1,21 +1,28 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { chromium } from 'playwright'
 
-const CHROME = '/usr/local/bin/google-chrome'
+const CANDIDATES = [
+  '/usr/local/bin/google-chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+]
+const executablePath = CANDIDATES.find((p) => existsSync(p))
 
 describe('negotiation panel', () => {
   it('opens and closes without blocking the field', async () => {
     const port = 46117
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-      cwd: '/workspace',
+      cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
       await waitForVite(vite)
       const browser = await chromium.launch({
         headless: true,
-        executablePath: CHROME,
+        executablePath,
         args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'],
       })
       try {
