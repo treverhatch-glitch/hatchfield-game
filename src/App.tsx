@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { perfEnd, perfStart } from './core/perf'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
@@ -101,11 +102,13 @@ export default function App() {
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
+      const t0 = perfStart()
       try {
         game.tick(dt)
       } catch (err) {
         console.error('tick failed', err)
       }
+      perfEnd('sim.tick', t0)
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)

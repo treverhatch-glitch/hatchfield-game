@@ -3,6 +3,7 @@
  * Layout follows NODE_POS; rooms appear when furnished. Security is the visual choke.
  */
 import * as THREE from 'three'
+import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
 import type { Game } from '../game/sim'
 import {
@@ -830,6 +831,8 @@ export class HallWorld {
 
   render(game: Game) {
     this.game = game
+    perfFrame()
+    let t = perfStart()
     this.resize()
     this.rebuildRooms(game)
     this.syncGuests(game)
@@ -839,7 +842,11 @@ export class HallWorld {
     this.syncGhost(game)
     const { cols, rows } = this.zoneGrid()
     this.litter.sync(game, cols, rows)
+    perfEnd('hall.sync', t)
+    t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    if (perf.syncGpu) this.renderer.getContext().finish()
+    perfEnd('hall.gl', t)
   }
 
   /** Belt, hold-bag scanner, sort pile, and claim carousel. Cubes are a capped parade. */
