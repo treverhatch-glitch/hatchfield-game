@@ -86,6 +86,8 @@ export function defaultMaintenanceConfig(over: Partial<MaintenanceConfig> = {}):
       { id: 'stand-4', kind: 'stand', node: 's4', standId: 'stand-4' },
       { id: 'remote-1', kind: 'stand', node: 's5', standId: 'remote-1' },
       { id: 'hydrant-1', kind: 'hydrant', node: 's1', standId: 'stand-1' },
+      { id: 'heavy-1', kind: 'stand', node: 's6', standId: 'heavy-1' },
+      { id: 'hydrant-2', kind: 'hydrant', node: 's6', standId: 'heavy-1' },
       { id: 'rwy-09', kind: 'runway', node: 'j4' },
       { id: 'twy-a', kind: 'taxiway', node: 'j2' },
       { id: 'terminal', kind: 'building', node: 'terminal', public: true },

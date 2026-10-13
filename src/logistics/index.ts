@@ -3,7 +3,20 @@ export { needsFor, needsForAirframe, allNeeds, FUEL_DENSITY, UPLIFT_FRACTION, PA
 export { RoadGraph } from './roads'
 export { LogisticsSim } from './engine'
 export type { VehicleState, VehiclePhase, TurnaroundState, ServiceStatus, LogisticsListener, PaxState, BagState } from './engine'
-export { defaultConfig, DEFAULT_VEHICLE_SPECS, DEFAULT_PAX, DEFAULT_HOLD } from './defaults'
+export {
+  defaultConfig,
+  DEFAULT_VEHICLE_SPECS,
+  DEFAULT_PAX,
+  DEFAULT_HOLD,
+  VEHICLE_CATALOG,
+  A380_READY_FLEET,
+  A380_STAND_UNLOCK,
+  isUnlocked,
+  unlockedVehicles,
+  fleetCost,
+  a380ScenarioConfig,
+  type VehicleUnlock,
+} from './defaults'
 export { createLogisticsAdapter } from './adapter'
 export { Maintenance, MAINTENANCE_TIERS, defaultMaintenanceConfig } from './maintenance'
 export type {
