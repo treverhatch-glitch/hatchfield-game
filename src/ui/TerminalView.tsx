@@ -2,17 +2,134 @@ import { useEffect, useState, useRef } from 'react'
 import { money } from '../game/catalog'
 import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
-import { HallWorld } from '../render/hallWorld'
+import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
 import {
   GRID_C,
   GRID_R,
   ceilingsFor,
+  itemDef,
+  ITEMS,
   itemsForZone,
+  lookaheadDepth,
   moodWord,
   PREFAB_TIERS,
+  unclearedReachesGate,
   zoneDef,
   type ZoneId,
 } from '../game/terminal'
+import { refundFor } from '../game/terminalKit'
+import type { KitCategory } from '../game/terminalKitData'
+
+const KIT_TABS: { id: KitCategory; label: string }[] = [
+  { id: 'food', label: 'Food' },
+  { id: 'seating', label: 'Seating' },
+  { id: 'decor', label: 'Decor' },
+]
+
+/** Slim build bar for the terminal kit. Cards close once the item is placed. */
+function KitBar({
+  game,
+  build,
+  setBuild,
+}: {
+  game: Game
+  build: HallBuildMode
+  setBuild: (mode: HallBuildMode) => void
+}) {
+  const [tab, setTab] = useState<KitCategory | null>(null)
+  const cards = tab ? ITEMS.filter((i) => i.category === tab) : []
+  const placing = build?.kind === 'place' ? itemDef(build.def) : null
+  return (
+    <div className="kit-bar" data-testid="kit-bar">
+      <div className="kit-tabs">
+        {KIT_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            data-testid={`kit-tab-${t.id}`}
+            className={tab === t.id ? 'on' : ''}
+            onClick={() => setTab(tab === t.id ? null : t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          data-testid="kit-bulldoze"
+          className={build?.kind === 'bulldoze' ? 'on' : ''}
+          onClick={() => {
+            setTab(null)
+            setBuild(build?.kind === 'bulldoze' ? null : { kind: 'bulldoze' })
+          }}
+        >
+          Bulldoze
+        </button>
+        {build ? (
+          <span className="kit-status" data-testid="kit-status">
+            {placing ? `Placing ${placing.name} · R rotate` : 'Bulldoze · click an item for a refund'} · Esc
+            cancel
+          </span>
+        ) : null}
+      </div>
+      {tab ? (
+        <div className="kit-cards" data-testid="kit-cards">
+          {cards.map((item) => {
+            const locked = game.fieldLevel() < item.minFieldLevel
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-testid={`kit-${item.id}`}
+                className="kit-card"
+                disabled={locked}
+                title={item.blurb}
+                onClick={() => {
+                  setTab(null)
+                  setBuild({ kind: 'place', def: item.id, rot: 0 })
+                }}
+              >
+                <strong>{item.name}</strong>
+                <span>{locked ? `Field ${item.minFieldLevel}` : money(item.cost)}</span>
+                <span>${item.upkeep}/day</span>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function KitTooltip({ build, hover }: { build: HallBuildMode; hover: HallHover | null }) {
+  if (!build || !hover) return null
+  const style = { left: hover.sx + 16, top: hover.sy + 16 }
+  if (build.kind === 'bulldoze') {
+    const def = hover.target ? itemDef(hover.target.def) : null
+    return (
+      <div className="kit-tip" style={style} data-testid="kit-tip">
+        {def ? (
+          <>
+            <strong>{def.name}</strong>
+            <span className="good">Refund {money(refundFor(def))}</span>
+          </>
+        ) : (
+          <span className="muted">Nothing placed here</span>
+        )}
+      </div>
+    )
+  }
+  const def = itemDef(build.def)
+  if (!def) return null
+  return (
+    <div className="kit-tip" style={style} data-testid="kit-tip">
+      <strong>{def.name}</strong>
+      <span>
+        {money(def.cost)} · ${def.upkeep}/day
+      </span>
+      <span className={hover.check?.ok ? 'good' : 'bad'}>{hover.check?.reason ?? ''}</span>
+    </div>
+  )
+}
 
 /**
  * 3D hall — WASD/arrows pan, Q/E rotate, scroll zoom, middle/right orbit.
@@ -22,12 +139,41 @@ export function TerminalView({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const worldRef = useRef<HallWorld | null>(null)
   const [zone, setZone] = useState<ZoneId | null>(null)
+  const [build, setBuild] = useState<HallBuildMode>(null)
+  const [hover, setHover] = useState<HallHover | null>(null)
+  const buildRef = useRef<HallBuildMode>(null)
+
+  useEffect(() => {
+    buildRef.current = build
+    worldRef.current?.setBuild(build)
+  }, [build])
+
+  useEffect(() => {
+    // Capture phase, so Esc cancels a build before it leaves the hall.
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (game.view !== 'hall' || !buildRef.current) return
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation()
+        setBuild(null)
+      } else if ((e.key === 'r' || e.key === 'R') && buildRef.current.kind === 'place') {
+        const cur = buildRef.current
+        setBuild({ ...cur, rot: (cur.rot + 1) % 4 })
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [game])
 
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
     const world = new HallWorld(canvas)
     worldRef.current = world
+    world.onPlaced = () => setBuild(null)
+    world.onHover = setHover
+    world.setBuild(buildRef.current)
     const keys = new Set<string>()
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -93,6 +239,17 @@ export function TerminalView({ game }: { game: Game }) {
         roomsSecurity: fit.rooms.security,
       })
     : null
+  const pathOk = fit ? unclearedReachesGate(game.hallOpen(), lookaheadDepth(fit.signs ?? 0)) : false
+  const open = game.hallOpen()
+  const missing = (
+    [
+      ['checkin', 'check-in'],
+      ['security', 'security'],
+      ['gate', 'boarding desk'],
+    ] as const
+  )
+    .filter(([node]) => !open.has(node))
+    .map(([, label]) => label)
 
   return (
     <div className="hall-wrap">
@@ -105,6 +262,8 @@ export function TerminalView({ game }: { game: Game }) {
           {game.hallGuests.length} pax
         </p>
       </div>
+      <KitBar game={game} build={build} setBuild={setBuild} />
+      <KitTooltip build={build} hover={hover} />
       <aside className="hall-build" data-testid="hall-build">
         <div data-testid="prefab-ceilings">
           <strong>{prefab ? PREFAB_TIERS[tier].label : 'Custom hall'}</strong>
@@ -115,6 +274,16 @@ export function TerminalView({ game }: { game: Game }) {
           <p className="muted">
             Upkeep ${ceil?.upkeepDay ?? 0}/day
             {prefab ? ' · prefab bundle' : ' · per item, prefab discount off'}
+          </p>
+          <p data-testid="hall-path" className={pathOk ? 'good' : 'bad'}>
+            {pathOk
+              ? 'Curb → gate path works'
+              : missing.length
+                ? `No curb → gate path · needs ${missing.join(', ')}`
+                : 'No curb → gate path · check the layout'}
+          </p>
+          <p className="muted" data-testid="food-court">
+            Food court {money(game.foodCourtRevenue)} · {game.foodShelf} servings
           </p>
         </div>
         {prefab && nextTier ? (
