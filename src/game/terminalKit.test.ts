@@ -9,6 +9,7 @@ import {
   pickOutlet,
   placementCheck,
   seatCount,
+  seatsByZone,
 } from './terminalKit.ts'
 import { KIT_TUNING } from './terminalKitData.ts'
 
@@ -73,6 +74,10 @@ describe('terminal kit placement', () => {
   it('counts seats and matches outlets to tags, skipping the prefab counter', () => {
     expect(seatCount([placed('bench', 0, 2), placed('seat_row', 0, 2), placed('plant', 0, 2)])).toBe(7)
     expect(seatCount([placed('seat_row', 0, 2, { bundle: true })])).toBe(0)
+    const byZone = seatsByZone(ROWS, [placed('bench', 0, 2), placed('bench', 2, 2), placed('bench', 0, 0)])
+    expect(byZone.get('gates')).toBe(3)
+    expect(byZone.get('retail')).toBe(3)
+    expect(byZone.get('checkin')).toBe(3)
     const court = [placed('cafe', 2, 2, { bundle: true }), placed('restaurant', 3, 2), placed('fast_food', 2, 2)]
     expect(pickOutlet(court, 'budget')?.item.def).toBe('fast_food')
     expect(pickOutlet(court, 'premium')?.item.def).toBe('restaurant')
@@ -236,6 +241,59 @@ describe('passengers use the kit', () => {
     walker.path = ['gate', 'food']
     game.applyHallKit(walker, 1, new Map())
     expect(walker.seated).toBe(false)
+  })
+
+  it('in the live hall tick, hungry passengers walk to the food court and pay', () => {
+    const { game } = scratchHall()
+    for (const [id, c, r] of [
+      ['entrance', 0, 0],
+      ['checkin_belt', 1, 0],
+      ['security_small', 0, 1],
+      ['boarding_desk', 0, 2],
+      ['bench', 1, 2],
+      ['bench', 1, 2],
+      ['fast_food', 0, 3],
+      ['cafe', 0, 3],
+    ] as [ItemId, number, number][]) {
+      expect(game.placeHallItemAt(id, c, r)).toBe(true)
+    }
+    game.foodShelf = game.shelfCap('food')
+    const open = game.hallOpen()
+    for (let i = 0; i < 6; i++) {
+      const g = guestAt(game, `live${i}`, 'gate', i % 2 ? 'business' : 'budget')
+      g.needs.hunger = 95
+      g.needs.boarding = 90
+      g.wallet = 200
+      g.prefs.food = 1
+      game.hallGuests.push(g)
+      game.routeGuest(g, 'food', open)
+    }
+    for (let t = 0; t < 400 && game.foodCourtRevenue === 0; t++) game.tickHall(0.1)
+    expect(game.foodCourtRevenue).toBeGreaterThan(0)
+    expect(game.hallGuests.some((g) => g.spent > 0)).toBe(true)
+  })
+
+  it('in the live hall tick, arrivals waiting on bags sit on the claim benches', () => {
+    const { game } = scratchHall()
+    game.placeHallItemAt('claim_carousel', 0, 4)
+    game.placeHallItemAt('bench', 1, 4)
+    // A gate bench does not seat people at the carousel.
+    game.placeHallItemAt('bench', 1, 2)
+    const waiting = [0, 1, 2, 3, 4].map((i) => {
+      const g = spawnHallGuest(`claim${i}`, 'arrive', 'family')
+      g.flightId = 'gone-flight'
+      g.node = 'claim'
+      g.path = []
+      g.clearedSec = true
+      g.needs.bags = 100
+      g.needs.energy = 60
+      g.hallId = game.hallKey(game.activeHall()!)
+      game.hallGuests.push(g)
+      return g
+    })
+    game.tickHall(0.5)
+    expect(waiting.filter((g) => g.seated)).toHaveLength(3)
+    expect(waiting.find((g) => g.seated)!.thought).toBe('Waiting at the carousel')
   })
 
   it('decorations nearby lift the mood a little', () => {
