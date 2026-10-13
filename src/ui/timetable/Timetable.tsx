@@ -98,7 +98,7 @@ export function Timetable({
     setSel(f.id)
   }
 
-  const gantt = useMemo(() => buildGantt(flights, stands, span), [flights, stands, span.from, span.to])
+  const gantt = useMemo(() => buildGantt(flights, stands, span), [flights, stands, span])
   const ticks = hourTicks(span, day)
   const nowX = frac(now, span)
 

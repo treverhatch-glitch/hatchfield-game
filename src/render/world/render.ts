@@ -428,7 +428,7 @@ export class WorldRenderer {
     if (!rich) {
       this.people?.update([], step)
       this.hallCrowd?.sync(showGuests ? posesFrom(view) : [], this.time)
-      if (!this.q.thoughtBubbles || lite) this.clearThoughts()
+      this.clearThoughts()
       return
     }
     const actors = actorsFrom(view).slice(0, 480)

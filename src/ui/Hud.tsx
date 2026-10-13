@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { projectCash } from './cashForecast'
+import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
@@ -52,6 +53,7 @@ import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
+import { FeesPanel } from './FeesPanel'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -136,6 +138,8 @@ type PanelId =
   | 'airlines'
   | 'planner'
   | 'services'
+  | 'settings'
+  | 'premium'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -194,18 +198,23 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+  { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
+  { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
 ]
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
-  const [panel, setPanel] = useState<PanelId>(null)
+  const [panelPick, setPanel] = useState<PanelId>(null)
+  // One panel at a time: an open hint list folds the HUD rollout away.
+  const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [inboxOpen, setInboxOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
+  const [feesOpen, setFeesOpen] = useState(false)
   const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
   const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
   const menuTools = buildMenu
@@ -232,20 +241,17 @@ export function Hud({ game }: { game: Game }) {
   const freeGates = game.freeStands().length
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
-    setPanel((cur) => {
-      if (cur === id) {
-        setChromePinned(false)
-        return null
-      }
-      setChromePinned(true)
-      return id
-    })
+    const closing = panel === id
+    setPanel(closing ? null : id)
+    setChromePinned(!closing)
+    game.setSidePanel(closing ? null : 'hud')
   }
 
   /** Open a tab without accidental close when already selected. */
   const openPanel = (id: Exclude<PanelId, null>) => {
     setPanel(id)
     setChromePinned(true)
+    game.setSidePanel('hud')
   }
 
   const ticker = game.news.slice(0, 5)
@@ -264,6 +270,24 @@ export function Hud({ game }: { game: Game }) {
   return (
     <div className="hud">
       {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
+      <button
+        type="button"
+        className={`fees-toggle${feesOpen ? ' on' : ''}`}
+        title="Landing, passenger, and service prices"
+        data-testid="tab-fees"
+        onClick={() => setFeesOpen((open) => !open)}
+      >
+        Fees
+      </button>
+      {feesOpen ? (
+        <FeesPanel
+          fees={game.fees}
+          depositTier={game.depositTier}
+          onFee={(key, value) => game.setFee(key, value)}
+          onTier={(tier) => game.setDepositTier(tier)}
+          onClose={() => setFeesOpen(false)}
+        />
+      ) : null}
       <header className="top" data-testid="stats-bar">
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
@@ -1133,6 +1157,28 @@ export function Hud({ game }: { game: Game }) {
                 </>
               ) : null}
 
+              {panel === 'settings' ? (
+                <section data-testid="settings-panel">
+                  <h3>Hints</h3>
+                  <label className="sandbox-toggle">
+                    <input
+                      type="checkbox"
+                      data-testid="settings-all-hints"
+                      checked={game.hintPrefs.allEnabled}
+                      onChange={(e) => game.setAllHints(e.target.checked)}
+                    />
+                    <span>All hints enabled</span>
+                  </label>
+                  <p className="muted">
+                    {game.hintPrefs.allEnabled
+                      ? 'Every advisor hint shows in the panel, bottom right.'
+                      : game.hintPrefs.muted.includes('*')
+                        ? 'Hints are off. Tick the box to turn every type back on.'
+                        : `${game.hintPrefs.muted.length} hint type${game.hintPrefs.muted.length === 1 ? '' : 's'} hidden. Tick the box to turn every type back on.`}
+                  </p>
+                </section>
+              ) : null}
+
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
@@ -1741,6 +1787,8 @@ export function Hud({ game }: { game: Game }) {
                   </section>
                 </>
               ) : null}
+
+              {panel === 'premium' ? <PremiumPanel game={game} /> : null}
 
               {panel === 'services' ? (
                 <>
