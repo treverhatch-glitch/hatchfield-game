@@ -234,6 +234,7 @@ import {
   loansAvailable,
   nextLoanBalance,
   payrollAmount,
+  settlePayroll,
 } from './economy'
 import {
   AIRFRAMES,
@@ -8464,7 +8465,8 @@ export class Game {
     }
     const phase = this.clock <= 600 ? 'early' : 'midgame'
     const minimum = this.payrollPreview()
-    const bill = payrollForGameDay(income, phase, minimum)
+    const rawBill = payrollForGameDay(income, phase, minimum)
+    const bill = Number.isFinite(rawBill) && rawBill > 0 ? rawBill : 0
     const fees = this.landsideIncome()
     const upkeep = this.landsideUpkeep() * 6
     if (upkeep > 0) this.charge(upkeep)
@@ -8482,11 +8484,14 @@ export class Game {
       }
       return
     }
+    const settlement = settlePayroll(bill, this.cash)
     this.levyMark = this.clock
-    if (this.cash >= bill) {
-      this.noteExpense(bill)
-      this.cash -= bill
-      this.postJournal('payroll', bill, stamp)
+    if (!(settlement.shortfall > 0)) {
+      if (settlement.paid > 0) {
+        this.noteExpense(settlement.paid)
+        this.cash -= settlement.paid
+        this.postJournal('payroll', settlement.paid, stamp)
+      }
       const levy = cityLevy(this.cash, this.sandbox)
       if (levy > 0) {
         this.noteExpense(levy)
@@ -8503,7 +8508,7 @@ export class Game {
       )
       return
     }
-    const paid = Math.max(0, this.cash)
+    const paid = settlement.paid
     const shown = Math.round(paid)
     this.cash = 0
     if (shown > 0) {
@@ -8515,8 +8520,8 @@ export class Game {
     if (this.budgets.security > 20) this.budgets.security = Math.max(20, this.budgets.security - 10)
     this.pushNews(
       shown > 0
-        ? `Payroll short — paid ${moneyLeft(shown)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
-        : `Payroll missed entirely (${moneyLeft(bill)} due). Crews walking. Reputation dips.`,
+        ? `Payroll short ${moneyLeft(settlement.shortfall)} — paid ${moneyLeft(shown)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
+        : `Payroll missed entirely (${moneyLeft(settlement.shortfall)} due). Crews walking. Reputation dips.`,
       'bad',
     )
   }

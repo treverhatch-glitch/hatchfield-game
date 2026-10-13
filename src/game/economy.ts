@@ -44,7 +44,32 @@ export function loansAvailable<T extends Pick<LoanProduct, 'minFieldLevel' | 'mi
 export function payrollAmount(lineCosts: readonly number[], opsMult: number): number {
   let total = 0
   for (const cost of lineCosts) total += cost
-  return Math.round(total * opsMult)
+  const scaled = total * opsMult
+  return Number.isFinite(scaled) ? Math.round(scaled) : 0
+}
+
+export interface PayrollSettlement {
+  due: number
+  paid: number
+  /**
+   * Payroll due minus cash paid. Zero when the bill is covered, including a
+   * remainder that would print as $0. Never NaN and never negative.
+   */
+  shortfall: number
+}
+
+/**
+ * How much of today's payroll cash can cover.
+ * A shortfall entry exists only when the unpaid amount is greater than 0
+ * after whole-dollar rounding — a 40¢ gap is not a shortfall row.
+ */
+export function settlePayroll(due: number, cash: number): PayrollSettlement {
+  const bill = Number.isFinite(due) && due > 0 ? due : 0
+  const available = Number.isFinite(cash) && cash > 0 ? cash : 0
+  const paid = Math.min(bill, available)
+  const unpaid = bill - paid
+  const shortfall = Number.isFinite(unpaid) && unpaid > 0 && Math.round(unpaid) > 0 ? unpaid : 0
+  return { due: bill, paid, shortfall }
 }
 
 /** City levy starts on cash above this. Opening banks (easy and standard, after land) sit under it. */
