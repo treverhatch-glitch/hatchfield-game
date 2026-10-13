@@ -315,7 +315,9 @@ export function Hud({ game }: { game: Game }) {
         >
           {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
-        <div className="stat">{game.weatherLabel()}</div>
+        <div className="stat" title={game.climateCaption()} data-testid="weather-stat">
+          {game.weatherLabel()}
+        </div>
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
         </div>
@@ -336,6 +338,28 @@ export function Hud({ game }: { game: Game }) {
           {game.runwayStripCount() > 0 ? ` · ${game.runwayStripCount()}RW` : ''}
         </div>
       </header>
+
+      {game.site ? (
+        <aside className="map-goals" data-testid="map-goals" aria-label="Map goals">
+          <div className="map-goals-head">
+            <strong>{game.mapSummary().name}</strong>
+            <span>{game.mapSummary().season}</span>
+          </div>
+          <ul>
+            {game.mapGoalCards().map((goal) => (
+              <li key={goal.id} data-testid={`goal-${goal.id}`} data-done={goal.done ? '1' : '0'}>
+                <span className="mark">{goal.done ? '✓' : '·'}</span>
+                <span>
+                  {goal.title}{' '}
+                  <em>
+                    {goal.value}/{goal.target}
+                  </em>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
 
       {game.showCoach() ? (
         <div className="coach" data-testid="coach">

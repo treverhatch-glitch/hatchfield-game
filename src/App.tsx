@@ -50,9 +50,14 @@ function applyPendingNewGame() {
   try {
     const raw = sessionStorage.getItem('hatchfield-pending')
     if (!raw) return
-    const pending = JSON.parse(raw) as { sandbox?: boolean; difficulty?: 'easy' | 'standard' }
+    const pending = JSON.parse(raw) as {
+      sandbox?: boolean
+      difficulty?: 'easy' | 'standard'
+      mapId?: 'temperate' | 'tropical' | 'desert'
+    }
     game.sandbox = Boolean(pending.sandbox)
     game.beginNew(pending.difficulty === 'standard' ? 'standard' : 'easy')
+    if (pending.mapId) game.setMap(pending.mapId)
   } catch {
     /* ignore */
   }
@@ -179,6 +184,8 @@ export default function App() {
         game.plannerRwFilter,
         game.standAccessMode,
         game.sandbox ? 1 : 0,
+        game.mapId,
+        game.mapGoalCards().map((goal) => `${goal.id}:${goal.value}`).join(','),
         game.hallRev,
         game.fits[0]?.tier ?? 0,
         game.fits[0]?.redesigned ? 1 : 0,
