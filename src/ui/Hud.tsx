@@ -43,6 +43,8 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
+import { lateIdForTool, lateStampLabel } from '../game/lateBuildings.ts'
+import { buildingById } from '../tier3plus/index.ts'
 import { tilesOf } from '../game/path'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
@@ -101,6 +103,11 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
     ],
   },
   {
+    id: 'late',
+    label: 'Late',
+    tools: ['airport_hotel', 'rail_link', 'saf_blending'],
+  },
+  {
     id: 'bulldoze',
     label: 'Bulldoze',
     tools: ['clear'],
@@ -144,8 +151,12 @@ function TrayMark({ tool }: { tool: string }) {
         ? 'stand'
         : tool === 'clear'
           ? 'clear'
-          : tool.includes('hotel') || tool.startsWith('park') || tool === 'bus' || tool === 'rail'
-            ? 'land'
+      : tool.includes('hotel') ||
+          tool.startsWith('park') ||
+          tool === 'bus' ||
+          tool === 'rail' ||
+          tool === 'rail_link'
+        ? 'land'
             : 'ops'
   return (
     <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
@@ -224,7 +235,7 @@ export function Hud({ game }: { game: Game }) {
   }
 
   const ticker = game.news.slice(0, 5)
-  const xp = game.fieldXpToNext()
+  const xp = game.lateXpToNext()
   const standing = game.avgStanding()
   const alerts: string[] = []
   if (game.pendingThreat) alerts.push(game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security')
@@ -285,7 +296,7 @@ export function Hud({ game }: { game: Game }) {
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
         >
           Field Lv {xp.level}
-          {xp.level < 5 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
+          {xp.level < 9 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
         </div>
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
@@ -1755,6 +1766,26 @@ export function Hud({ game }: { game: Game }) {
                 {buildMenu ? (
                 <div className="tools build-tray" data-testid="build-tray">
                   {menuTools.map((t) => {
+                    const lateId = lateIdForTool(t)
+                    if (lateId) {
+                      const spec = buildingById(lateId)
+                      const locked = Boolean(spec && game.lateFieldLevel() < spec.fieldLevel)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' is-locked' : ''}`}
+                          data-testid={`late-stamp-${lateId}`}
+                          onClick={() => {
+                            game.toggleInfo(`late:${lateId}`)
+                            if (!locked) game.setTool(t)
+                          }}
+                        >
+                          <TrayMark tool={t} />
+                          <span className="tray-name">{lateStampLabel(lateId)}</span>
+                        </button>
+                      )
+                    }
                     const def = BUILDINGS.find((b) => b.tool === t)
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
@@ -1798,7 +1829,9 @@ export function Hud({ game }: { game: Game }) {
                         ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — pan-click it to walk inside.`
                         : game.tool === 'pan'
                           ? 'Select: click a tile or hall. WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit.'
-                          : tip
+                          : lateIdForTool(game.tool)
+                            ? 'Click the stamp to read cost, upkeep, and the field-level gate.'
+                            : tip
                             ? `${tip.blurb} ${money(tip.cost)}`
                             : 'Clear refunds 40%.'}
               {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}

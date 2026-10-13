@@ -35,6 +35,12 @@ export type Tile =
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
   | 'depot'
+  /** Late-game airport hotel (transfer and crew nights). */
+  | 'late_hotel'
+  /** Late-game rail link station. Demand bonus once the build finishes. */
+  | 'late_rail'
+  /** Sustainable aviation fuel blending plant. */
+  | 'saf'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -96,6 +102,9 @@ export type Tool =
   | 'rail'
   | 'kitchen'
   | 'depot'
+  | 'airport_hotel'
+  | 'rail_link'
+  | 'saf_blending'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -874,6 +883,12 @@ export interface GameSnapshot {
   diplomacySeed?: number
   /** Negotiation desk (offers, rival, ULCC research). */
   negotiation?: string
+  /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
+  tier3Sites?: { id: 'airport_hotel' | 'rail_link' | 'saf_blending'; c: number; r: number; elapsedDays: number }[]
+  /** Missed-connection guests waiting on the airport hotel. */
+  missedHotelNights?: number
+  /** Crew waiting on the airport hotel. */
+  crewHotelNights?: number
 }
 
 /** A placed building that is still a construction site. */

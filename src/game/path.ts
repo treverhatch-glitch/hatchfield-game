@@ -55,7 +55,8 @@ export function walkableFor(
       tile === 'deice' ||
       tile === 'termbus' ||
       tile === 'kitchen' ||
-      tile === 'depot'
+      tile === 'depot' ||
+      tile === 'saf'
     )
   }
   if (kind === 'mechanic') {
@@ -92,7 +93,9 @@ export function walkableFor(
     tile === 'park_u' ||
     tile === 'bus' ||
     tile === 'termbus' ||
-    tile === 'rail'
+    tile === 'rail' ||
+    tile === 'late_hotel' ||
+    tile === 'late_rail'
   )
 }
 

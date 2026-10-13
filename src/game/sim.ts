@@ -83,7 +83,9 @@ import {
   LOAN_PRINCIPAL,
   LOAN_PRODUCTS,
   FIELD_LEVEL_XP,
+  LATE_FIELD_XP,
   fieldLevelFromXp,
+  lateFieldLevelFromXp,
   normalizeAirline,
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
@@ -311,12 +313,27 @@ import {
   farmBesidePavement,
   hasBeltNetwork,
   inBounds,
+  neighbors,
   nearestPath,
   runwayStrips,
   standBeltLinked,
   tilesOf,
   walkableFor,
 } from './path'
+import {
+  advanceLateDay,
+  lateCatalogLines,
+  lateIdForTool,
+  lateSiteLines,
+  railDemandScale,
+  restoreLateSites,
+  safFuelCost,
+  tileForLate,
+  wholeNights,
+  type LatePlacement,
+} from './lateBuildings.ts'
+import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
+import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import type {
   AircraftKind,
@@ -641,6 +658,15 @@ export class Game {
   parkTerm: ParkTerm = 'short'
   /** Stamped hotel tiles: "c,r" → inn / business / resort. */
   hotelClass: Record<string, HotelClass> = {}
+  /** Placed hotel, rail link, and SAF blending sites. */
+  lateSites: LatePlacement[] = []
+  /**
+   * Missed-connection guests waiting on a hotel bed.
+   * The connecting hub is not on trunk; it should call noteMissedConnectionNights.
+   */
+  missedHotelNights = 0
+  /** Crew members waiting on a hotel bed. Nothing in the live sim fills this yet. */
+  crewHotelNights = 0
   /** Stand tile "c,r" → S/M/L. Missing defaults to M. */
   standClass: Record<string, StandClass> = {}
   /** Stand key → remote bay vs jetway-attached gate. */
@@ -926,6 +952,9 @@ export class Game {
     this.parkTerms = {}
     this.parkTerm = 'short'
     this.hotelClass = {}
+    this.lateSites = []
+    this.missedHotelNights = 0
+    this.crewHotelNights = 0
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
@@ -1454,6 +1483,22 @@ export class Game {
     return fieldLevelFromXp(this.fieldXp)
   }
 
+  /** Late-building rung. Matches field level through 5, then keeps climbing. */
+  lateFieldLevel(): number {
+    return lateFieldLevelFromXp(this.fieldXp)
+  }
+
+  lateXpToNext(): { level: number; xp: number; need: number; pct: number } {
+    const level = this.lateFieldLevel()
+    const xp = Number.isFinite(this.fieldXp) && this.fieldXp > 0 ? this.fieldXp : 0
+    const cap = LATE_FIELD_XP.length - 1
+    if (level >= cap) return { level, xp, need: LATE_FIELD_XP[level] ?? xp, pct: 1 }
+    const floor = LATE_FIELD_XP[level] ?? 0
+    const need = LATE_FIELD_XP[level + 1] ?? floor
+    const pct = need <= floor ? 1 : Math.min(1, Math.max(0, (xp - floor) / (need - floor)))
+    return { level, xp, need, pct }
+  }
+
   /** Diplomacy day, 0 until the clock has run. */
   diplomacyDay(): number {
     return this.diplomacy?.day() ?? 0
@@ -1676,13 +1721,17 @@ export class Game {
   grantFieldXp(amount: number, why?: string) {
     if (amount <= 0) return
     const before = this.fieldLevel()
+    const beforeLate = this.lateFieldLevel()
     this.fieldXp += amount
     const after = this.fieldLevel()
+    const afterLate = this.lateFieldLevel()
     if (after > before) {
       this.pushNews(
         `Field Level ${after} — ${AIRLINE_TIER_META[after].label} carriers will start calling.`,
         'good',
       )
+    } else if (afterLate > beforeLate && afterLate > 5) {
+      this.pushNews(`Field Level ${afterLate}.`, 'good')
     } else if (why && amount >= 12) {
       /* quiet drip — big chunks can mention */
       void why
@@ -2178,6 +2227,9 @@ export class Game {
     this.carParkLong = false
     this.parkTerms = {}
     this.hotelClass = {}
+    this.lateSites = []
+    this.missedHotelNights = 0
+    this.crewHotelNights = 0
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
@@ -2813,7 +2865,38 @@ export class Game {
       m *= 0.92
     }
     const traffic = this.negotiationBridge?.trafficFactor() ?? 1
-    return traffic === 1 ? m : m * traffic
+    const scaled = traffic === 1 ? m : m * traffic
+    const rail = railDemandScale(this.lateSites)
+    return rail === 1 ? scaled : scaled * rail
+  }
+
+  /** Nights the airport hotel can still book. The hub hook fills `transfers`. */
+  hotelNightDemand(): HotelNight {
+    return { transfers: this.missedHotelNights, crew: this.crewHotelNights }
+  }
+
+  /**
+   * Connecting-hub seam. PR #70 is not on trunk. When a missed connection
+   * needs a bed, call this with the passenger count. The open airport hotel
+   * books the rooms at day close.
+   */
+  noteMissedConnectionNights(passengers: number): void {
+    this.missedHotelNights += wholeNights(passengers)
+  }
+
+  /** Crew beds for the airport hotel. No live system fills this yet. */
+  noteCrewHotelNights(crew: number): void {
+    this.crewHotelNights += wholeNights(crew)
+  }
+
+  lateOpenAt(c: number, r: number): boolean {
+    const site = this.lateSites.find((row) => row.c === c && row.r === r)
+    if (!site) return true
+    return isOpen(site)
+  }
+
+  lateMeshSig(): string {
+    return this.lateSites.map((site) => `${site.c},${site.r},${site.elapsedDays}`).join('|')
   }
 
   /**
@@ -3338,6 +3421,9 @@ export class Game {
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
       negotiation: this.negotiationBridge?.save(),
+      tier3Sites: this.lateSites.map((site) => ({ ...site })),
+      missedHotelNights: this.missedHotelNights,
+      crewHotelNights: this.crewHotelNights,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3417,6 +3503,9 @@ export class Game {
       this.carParkLong = s.carParkLong ?? false
       this.parkTerms = s.parkTerms ?? {}
       this.hotelClass = s.hotelClass ?? {}
+      this.lateSites = restoreLateSites(s.tier3Sites, this.tiles)
+      this.missedHotelNights = wholeNights(s.missedHotelNights ?? 0)
+      this.crewHotelNights = wholeNights(s.crewHotelNights ?? 0)
       // Migrate bare hotel tiles from older saves → business grade.
       for (const p of tilesOf(this.tiles, 'hotel')) {
         const k = `${p.c},${p.r}`
@@ -5855,6 +5944,20 @@ export class Game {
         `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
       ]
     }
+    if (id.startsWith('late-site:')) {
+      const [c, r] = id.slice('late-site:'.length).split(',').map(Number)
+      const index = this.lateSites.findIndex((site) => site.c === c && site.r === r)
+      return lateSiteLines(this.lateSites, index, this.hotelNightDemand())
+    }
+    if (id.startsWith('late:')) {
+      const lateId = lateIdForTool(id.slice('late:'.length))
+      if (!lateId) return []
+      return lateCatalogLines(
+        lateId,
+        this.lateFieldLevel(),
+        this.lateSites.filter((site) => site.id === lateId).length,
+      )
+    }
     return []
   }
 
@@ -7009,8 +7112,18 @@ export class Game {
       return
     }
     const c = FUEL[this.fuelBrand]
-    const cost = c.wholesale * LOADS_PER_BUY
+    const cost = safFuelCost(c.wholesale, LOADS_PER_BUY, this.lateSites)
+    const before = this.cash
     if (!this.spend(cost, 'fuel loads')) return
+    const paid = before - this.cash
+    if (paid > 0 && fuelMultiplier(this.lateSites) !== 1) {
+      this.noteExpense(paid)
+      this.bank.post('fuel_purchase', -paid, {
+        simMinutes: this.simMinutes(),
+        source: 'tier3plus',
+        label: 'Fuel loads',
+      })
+    }
     this.fuelLoads += LOADS_PER_BUY
     this.pushNews(`Four loads on the farm. ${this.fuelLoads} ready.`, 'ok')
     this.emit()
@@ -9110,6 +9223,7 @@ export class Game {
    * Landside upkeep is the old six payroll-tick slices, billed once.
    */
   private closeOperatingDay(completedDay: number) {
+    this.settleLateBuildings(completedDay)
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -9407,6 +9521,11 @@ export class Game {
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
+      const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
+      if (late) {
+        this.toggleInfo(`late-site:${v.c},${v.r}`)
+        return
+      }
       const tile = this.tile(v)
       if (tile === 'fuel') this.toggleInfo('fuel')
       else if (tile === 'bags') this.toggleInfo('bags')
@@ -9448,6 +9567,10 @@ export class Game {
     }
     if (this.tool === 'premade') {
       this.placePremade(v)
+      return
+    }
+    if (lateIdForTool(this.tool)) {
+      this.placeLate(v)
       return
     }
     this.placeSingle(v)
@@ -9970,10 +10093,34 @@ export class Game {
     this.emit()
   }
 
+  private removeLate(site: LatePlacement) {
+    const spec = buildingById(site.id)
+    const refund = spec ? Math.round(spec.cost * BULLDOZE_REFUND) : 0
+    this.lateSites = this.lateSites.filter((row) => row !== site)
+    if (this.tile(site) === tileForLate(site.id)) this.tiles[site.r]![site.c] = 'grass'
+    if (refund > 0) {
+      this.cash += refund
+      this.bank.post('refunds', refund, {
+        simMinutes: this.simMinutes(),
+        source: 'tier3plus',
+        sourceId: site.id,
+        label: spec?.name ?? site.id,
+      })
+    }
+    this.bumpMap()
+    this.ensureGround()
+    this.emit()
+  }
+
   clearTile(v: Vec) {
     const building = this.siteAt(v)
     if (building) {
       this.cancelSite(building.id)
+      return
+    }
+    const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
+    if (late) {
+      this.removeLate(late)
       return
     }
     const cur = this.tile(v)
@@ -10139,6 +10286,99 @@ export class Game {
       name: 'premade terminal',
       origin: v,
     })
+  }
+
+  /**
+   * Book the day's late-building income and upkeep, then advance construction.
+   * Posted before the payroll read so hotel nights count in that day's income.
+   */
+  private settleLateBuildings(completedDay: number) {
+    if (!this.lateSites.length && this.missedHotelNights <= 0 && this.crewHotelNights <= 0) return
+    const night = this.hotelNightDemand()
+    const settled = advanceLateDay(this.lateSites, night, 1)
+    this.lateSites = settled.sites
+    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
+    let bookedTransfers = 0
+    let bookedCrew = 0
+    for (const line of settled.pnl.lines) {
+      bookedTransfers += line.transferRooms
+      bookedCrew += line.crewRooms
+      if (line.income > 0) {
+        this.cash += line.income
+        this.revenue += line.income
+        this.hourIncome += line.income
+        this.bank.post('landside_fees', line.income, {
+          simMinutes: stamp,
+          source: 'tier3plus',
+          sourceId: line.id,
+          label: line.name,
+        })
+      }
+      if (line.upkeep > 0) {
+        const before = this.cash
+        this.charge(line.upkeep)
+        const paid = before - this.cash
+        if (paid > 0) {
+          this.bank.post('building_upkeep', -paid, {
+            simMinutes: stamp,
+            source: 'tier3plus',
+            sourceId: line.id,
+            label: line.name,
+          })
+        }
+      }
+    }
+    this.missedHotelNights = Math.max(0, this.missedHotelNights - bookedTransfers)
+    this.crewHotelNights = Math.max(0, this.crewHotelNights - bookedCrew)
+  }
+
+  placeLate(v: Vec) {
+    const id = lateIdForTool(this.tool)
+    if (!id) return
+    const spec = buildingById(id)
+    if (!spec) return
+    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
+      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+      this.emit()
+      return
+    }
+    const gated = placeBuilding(id, this.lateFieldLevel())
+    if (!gated.ok) {
+      this.pushNews(gated.reason, 'bad')
+      this.emit()
+      return
+    }
+    if (id === 'saf_blending') {
+      if (!farmBesidePavement(this.tiles, v)) {
+        this.pushNews('SAF blending needs taxi, stand, runway, or road beside it.', 'bad')
+        this.emit()
+        return
+      }
+    } else if (!neighbors(v.c, v.r).some((p) => this.tile(p) === 'road')) {
+      this.pushNews(`${spec.name} needs a road edge.`, 'bad')
+      this.emit()
+      return
+    }
+    const before = this.cash
+    if (!this.spend(gated.cost, spec.name)) return
+    const paid = before - this.cash
+    if (paid > 0) {
+      this.bank.post('construction', -paid, {
+        simMinutes: this.simMinutes(),
+        source: 'tier3plus',
+        sourceId: id,
+        label: spec.name,
+      })
+    }
+    this.tiles[v.r]![v.c] = tileForLate(id)
+    this.lateSites.push({ id, c: v.c, r: v.r, elapsedDays: 0 })
+    const opened = isOpen({ id, elapsedDays: 0 })
+    this.pushNews(
+      opened ? `${spec.name} open.` : `${spec.name} under construction — ${spec.buildDays} days.`,
+      'good',
+    )
+    this.bumpMap()
+    this.emit()
   }
 
   placeSingle(v: Vec) {
