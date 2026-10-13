@@ -21,8 +21,8 @@ const SEEDS: Readonly<Record<TechBranchId, readonly [NodeSeed, NodeSeed, NodeSee
   ground_logistics: [
     ['Vehicle Bays & Faster Belts', 'Adds GSE capacity and speeds the first baggage link.', { 'ground.vehicleCapacity': 1.2, 'baggage.beltSpeed': 1.2 }],
     ['Hydrant & Tilt-Tray Systems', 'Unlocks hydrant fuel and higher-capacity bag sorting.', { 'fuel.hydrant': 1, 'baggage.sorterSpeed': 1.35 }],
-    ['Remote Hubs & Early Bag Storage', 'Shortens catering trips and buffers early bags.', { 'catering.tripTime': 0.75, 'baggage.storageCapacity': 1.5 }],
-    ['Autonomous GSE & RFID', 'Speeds tugs and carts while nearly eliminating mishandling.', { 'ground.vehicleSpeed': 1.35, 'baggage.mishandling': 0.15 }],
+    ['Remote Hubs & Early Bag Storage', 'Shortens catering trips, buffers early bags, and opens a Transfer Centre (connection time 45 min).', { 'catering.tripTime': 0.75, 'baggage.storageCapacity': 1.5, 'hub.transferCentre': 45 }],
+    ['Autonomous GSE & RFID', 'Speeds tugs and carts, cuts mishandling, and adds the RFID bag line (connection time 25 min).', { 'ground.vehicleSpeed': 1.35, 'baggage.mishandling': 0.15, 'hub.rfidBagLine': 25 }],
   ],
   commercial: [
     ['Duty-Free', 'Unlocks duty-free retail.', { 'retail.spend': 1.1 }],

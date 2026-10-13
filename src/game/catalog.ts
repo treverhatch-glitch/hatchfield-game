@@ -1,3 +1,4 @@
+import { HUB_UPGRADES } from '../hub/index.ts'
 import type { LandPlotConfig } from '../land/types.ts'
 import type {
   Airline,
@@ -1303,6 +1304,13 @@ export const RESEARCH_NODES: ResearchNode[] = [
     blurb: 'C-5M Super Galaxy + dedicated Guard apron (hangar-side hardstands, not pax gates).',
     requires: 'heavy_pack',
   },
+  ...HUB_UPGRADES.map((node) => ({
+    id: node.id,
+    name: node.name,
+    cost: node.rp,
+    blurb: node.blurb,
+    requires: node.requires,
+  })),
 ]
 
 /** Research points per completed takeoff. */
