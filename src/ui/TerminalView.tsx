@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
+import { pngName, savePng } from '../camera/capture.ts'
+import { cameraSession } from '../camera/session.ts'
 import { money } from '../game/catalog'
 import { lockTip, unlockLevel } from '../progression/unlocks'
 import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
@@ -176,6 +178,7 @@ export function TerminalView({ game }: { game: Game }) {
     worldRef.current = world
     world.onPlaced = () => setBuild(null)
     world.onHover = setHover
+    world.onCaptured = (url) => savePng(url, pngName(new Date()))
     world.setBuild(buildRef.current)
     const keys = new Set<string>()
     const onKeyDown = (e: KeyboardEvent) => {
@@ -211,6 +214,7 @@ export function TerminalView({ game }: { game: Game }) {
           if (fx || fy) w.nudgePan(fx, fy)
           if (keys.has('q')) w.nudgeYaw(1.4 * dt)
           if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+          if (cameraSession.consumeCapture()) w.requestCapture()
           w.render(game)
         }
       }

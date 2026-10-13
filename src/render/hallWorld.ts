@@ -3,6 +3,7 @@
  * Layout follows NODE_POS; rooms appear when furnished. Security is the visual choke.
  */
 import * as THREE from 'three'
+import { canvasToPng } from '../camera/capture.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
 import type { Game } from '../game/sim'
@@ -110,6 +111,9 @@ export class HallWorld {
   build: HallBuildMode = null
   /** Called after a successful place, so the bar can close. */
   onPlaced: (() => void) | null = null
+  /** PNG data URL from the frame that was just drawn. */
+  onCaptured: ((url: string) => void) | null = null
+  private captureWanted = false
   onHover: ((hover: HallHover | null) => void) | null = null
   private hover: HallHover | null = null
   private ghost: THREE.Group | null = null
@@ -127,6 +131,7 @@ export class HallWorld {
       canvas,
       antialias: false,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: true,
     })
     this.renderer.setPixelRatio(1)
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
@@ -892,8 +897,18 @@ export class HallWorld {
     perfEnd('hall.sync', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    if (this.captureWanted) {
+      this.captureWanted = false
+      const url = canvasToPng(this.renderer.domElement)
+      if (url) this.onCaptured?.(url)
+    }
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('hall.gl', t)
+  }
+
+  /** Grab a PNG on the next `render`. */
+  requestCapture() {
+    this.captureWanted = true
   }
 
   /** Belt, hold-bag scanner, sort pile, and claim carousel. Cubes are a capped parade. */
