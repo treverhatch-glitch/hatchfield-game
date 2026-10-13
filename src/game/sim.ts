@@ -411,6 +411,11 @@ export class Game {
   landsideFeeWindow = 0
   /** Planner filter: null = all banks; 0..n-1 = that strip; -1 = tower-auto only. */
   plannerRwFilter: number | null = null
+  /** Accumulated sim-seconds lost to apron congestion (news when > threshold). */
+  congWasteAcc = 0
+  congNewsCool = 0
+  /** Peak live congestion count near moving traffic (HUD jam line). */
+  congPeak = 0
   interestCool = 60
   public = false
   sharePrice = 0
@@ -529,6 +534,9 @@ export class Game {
     this.pendingThreat = null
     this.pendingEmergency = null
     this.emergencyCool = 70
+    this.congWasteAcc = 0
+    this.congNewsCool = 0
+    this.congPeak = 0
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
@@ -3702,9 +3710,31 @@ export class Game {
       status: ScheduleStatus
       stand: string
       runway: string
+      stolen: boolean
+    }[]
+    /** Live emergency hosts painted as stolen capacity on the strip. */
+    hosts: {
+      id: string
+      flightNo: string
+      kind: EmergencyKind
+      stand: string
     }[]
   } {
     const open = this.openSchedule()
+    const hosts = this.flights
+      .filter(
+        (f) =>
+          f.emergencyHost &&
+          f.phase !== 'gone' &&
+          f.phase !== 'takeoff' &&
+          f.stand,
+      )
+      .map((f) => ({
+        id: f.id,
+        flightNo: f.flightNo,
+        kind: (f.hostKind ?? 'divert') as EmergencyKind,
+        stand: this.gateLabel(f.stand),
+      }))
     return {
       horizon,
       slots: open
@@ -3717,8 +3747,32 @@ export class Game {
           status: s.status,
           stand: s.standPref ? this.gateLabel(s.standPref) : 'auto',
           runway: this.runwayLabel(s.runwayPref),
+          stolen:
+            /gate|stand|backlog|pavement/i.test(s.delayReason ?? '') &&
+            hosts.length > 0 &&
+            s.delaySec > 0,
         })),
+      hosts,
     }
+  }
+
+  /** Active emergency hosts occupying stands (Planner + letters). */
+  stolenHosts(): Flight[] {
+    return this.flights.filter(
+      (f) =>
+        f.emergencyHost &&
+        f.phase !== 'gone' &&
+        f.phase !== 'takeoff' &&
+        Boolean(f.stand),
+    )
+  }
+
+  /** HUD one-liner when apron jam is biting. */
+  apronJamLine(): string | null {
+    if (this.congPeak < 2 && this.congWasteAcc < 3) return null
+    if (this.congPeak >= 3) return `Apron jam ×${this.congPeak} — walks and taxi crawling`
+    if (this.congWasteAcc >= 3) return `Traffic neck costing ~${Math.round(this.congWasteAcc)}s`
+    return null
   }
 
   /**
@@ -6256,8 +6310,15 @@ export class Game {
 
     // At inbound capacity or pavement jammed — slip the due slot instead of soft-locking the bank.
     if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
-      this.delaySlot(slot, 10 + Math.random() * 8, 'Runway backlog')
-      if (Math.random() < 0.45) {
+      const hosts = this.stolenHosts()
+      const reason = hosts.length ? 'Gate stolen (emergency)' : 'Runway backlog'
+      this.delaySlot(slot, 10 + Math.random() * 8, reason)
+      if (hosts.length) {
+        this.pushNews(
+          `${slot.flightNo} slipped — ${hosts[0].flightNo} still holds ${this.gateLabel(hosts[0].stand)} (emergency host).`,
+          'bad',
+        )
+      } else if (Math.random() < 0.45) {
         this.pushNews(
           `${slot.flightNo} slipped — runway backlog. Cascade may hit later slots.`,
           'bad',
@@ -6298,8 +6359,20 @@ export class Game {
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     if (!stand || !route) {
       const anyFree = this.freeStands().length > 0
-      this.delaySlot(slot, 10 + Math.random() * 8, anyFree ? 'Stand class short' : 'No gate / path')
-      if (anyFree) {
+      const hosts = this.stolenHosts()
+      const reason =
+        !anyFree && hosts.length
+          ? 'Gate stolen (emergency)'
+          : anyFree
+            ? 'Stand class short'
+            : 'No gate / path'
+      this.delaySlot(slot, 10 + Math.random() * 8, reason)
+      if (!anyFree && hosts.length) {
+        this.pushNews(
+          `${slot.flightNo} holding — emergency ${hosts[0].flightNo} stole ${this.gateLabel(hosts[0].stand)}.`,
+          'bad',
+        )
+      } else if (anyFree) {
         this.pushNews(
           `${slot.flightNo} needs Stand ${needCls}+ — class or path missing.`,
           'bad',
@@ -6615,7 +6688,12 @@ export class Game {
       return true
     }
     const cong = this.congestionAt(ent.x, ent.y, ent.id)
+    if (cong > this.congPeak) this.congPeak = cong
     const factor = 1 / (1 + Math.max(0, cong) * 0.65)
+    // Waste ≈ extra time vs clear pavement — feeds readable jam news (E2).
+    if (cong >= 2) {
+      this.congWasteAcc += dt * (1 / factor - 1)
+    }
     const a = ent.path[ent.seg]
     const b = ent.path[ent.seg + 1]
     const dist = Math.abs(b.c - a.c) + Math.abs(b.r - a.r) || 1
@@ -7553,11 +7631,13 @@ export class Game {
       phaseTime: 0,
       ledger: [],
     }
+    f.emergencyHost = true
+    f.hostKind = 'divert'
     this.flights.push(f)
     this.noteCraft(af.kind)
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
-      `DIVERT ${call} · ${af.name} inbound now → ${this.gateLabel(stand)}.`,
+      `DIVERT ${call} · ${af.name} inbound now → ${this.gateLabel(stand)} (stolen bank slot).`,
       'ok',
     )
     return true
@@ -7612,6 +7692,8 @@ export class Game {
       waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
+      emergencyHost: true,
+      hostKind: mx ? 'tanker_mx' : 'tanker',
     }
     this.flights.push(f)
     this.noteCraft('air_ambulance')
@@ -7625,8 +7707,8 @@ export class Game {
     }
     this.pushNews(
       mx
-        ? `${call} · ${af.name} inbound for refuel + MX → ${this.gateLabel(stand)}.`
-        : `${call} · ${af.name} firefighting plane inbound for refuel only → ${this.gateLabel(stand)}.`,
+        ? `${call} · ${af.name} inbound for refuel + MX → ${this.gateLabel(stand)} (stolen bank slot).`
+        : `${call} · ${af.name} firefighting plane inbound for refuel only → ${this.gateLabel(stand)} (stolen bank slot).`,
       'ok',
     )
     return true
@@ -7933,6 +8015,20 @@ export class Game {
     this.clock += step
     this.spawnCool = Math.max(0, this.spawnCool - step)
     this.offerCool = Math.max(0, this.offerCool - step)
+    this.congNewsCool = Math.max(0, this.congNewsCool - step)
+    // Peak decays so the HUD jam line clears when traffic thins.
+    this.congPeak = Math.max(0, this.congPeak - step * 0.35)
+    if (this.congWasteAcc >= 8 && this.congNewsCool <= 0) {
+      const lost = Math.round(this.congWasteAcc)
+      this.pushNews(
+        `Apron jam — traffic neck cost ~${lost}s. Widen taxi or move remote stands onto jetway/bus.`,
+        'bad',
+      )
+      this.congWasteAcc = 0
+      this.congNewsCool = 40
+    } else if (this.congWasteAcc > 0 && this.congPeak < 1.2) {
+      this.congWasteAcc = Math.max(0, this.congWasteAcc - step * 0.5)
+    }
     this.saveTimer += step
     if (this.saveTimer > 8) {
       this.saveTimer = 0

@@ -1039,6 +1039,9 @@ export function Hud({ game }: { game: Game }) {
                         : game.weather === 'fog'
                           ? ' · fog slips'
                           : ''}
+                      {game.stolenHosts().length
+                        ? ` · ${game.stolenHosts().length} emergency host stealing gate`
+                        : ''}
                       {' · '}
                       stamp more strips for more banks — cycle RW on each slot
                     </p>
@@ -1096,18 +1099,34 @@ export function Hud({ game }: { game: Game }) {
                                 }
                               />
                             ) : null}
+                            {strip.hosts.map((h, i) => (
+                              <span
+                                key={h.id}
+                                className="day-strip-slot stolen host"
+                                style={{ left: `${4 + i * 8}%` }}
+                                title={`${h.flightNo} · ${h.kind} host on ${h.stand} — steals bank capacity`}
+                              >
+                                {h.kind === 'divert' ? 'DIV' : 'TNK'}
+                              </span>
+                            ))}
                             {strip.slots.map((s) => {
                               const left = Math.min(96, (s.t / strip.horizon) * 100)
                               return (
                                 <button
                                   key={s.id}
                                   type="button"
-                                  className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}${selSlot === s.id ? ' selected' : ''}`}
+                                  className={`day-strip-slot${s.status === 'delayed' ? ' delayed' : ''}${s.stolen ? ' stolen' : ''}${selSlot === s.id ? ' selected' : ''}`}
                                   style={{
                                     left: `${left}%`,
-                                    background: game.airline(s.airline).color,
+                                    background: s.stolen
+                                      ? '#c45a2a'
+                                      : game.airline(s.airline).color,
                                   }}
-                                  title={`${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`}
+                                  title={
+                                    s.stolen
+                                      ? `${s.flightNo} · slipped — emergency stole a gate · ${s.stand}`
+                                      : `${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`
+                                  }
                                   onClick={() => setSelSlot(s.id)}
                                 >
                                   {s.flightNo.slice(-3)}
@@ -1429,6 +1448,7 @@ export function Hud({ game }: { game: Game }) {
                 : ''}
               {game.maxWear() >= 25 ? ` · wear ${Math.round(game.maxWear())}` : ''}
               {holding ? ` · ${holding} holding` : ''}
+              {game.apronJamLine() ? ` · ${game.apronJamLine()}` : ''}
             </p>
           </div>
 

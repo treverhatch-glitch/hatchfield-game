@@ -686,6 +686,18 @@ button {
   outline: 1px solid rgba(230, 120, 80, 0.85);
 }
 
+.day-strip-slot.stolen {
+  outline: 1px solid rgba(240, 160, 60, 0.95);
+  color: #1a1008;
+  font-weight: 600;
+}
+
+.day-strip-slot.stolen.host {
+  background: #c45a2a;
+  pointer-events: none;
+  opacity: 0.92;
+}
+
 .day-strip-slot.selected {
   outline: 2px solid #e8eef4;
   z-index: 2;
