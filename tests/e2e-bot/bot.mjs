@@ -457,23 +457,30 @@ for (const f of gone) {
   }
 }
 if (bagShort) find('medium', 'Outbound bag ledger short at takeoff (bags left behind were not recorded)', `${bagShort}/${gone.length} departures left with bagsLoaded + bagsOffloaded short of bagUnits; e.g. ${bagEx.join('; ')}`, repro('Compare f.bagsLoaded, f.bagsOffloaded, and f.bagUnits at takeoff'))
-const dayHeld = new Map()
+// A cleared passenger walking back to a landside room crosses this node for a
+// second or two. That is not the stall. Flag it only when the crowd is still
+// on the node at the next poll and nobody is being screened.
+let prevSec = null
 for (const s of samples) {
-  const d = s.state.day
-  const prev = dayHeld.get(d) ?? { security: 0, serving: 0, waiting: 0, held: 0 }
-  dayHeld.set(d, {
-    security: Math.max(prev.security, s.state.security ?? 0),
-    serving: Math.max(prev.serving, s.state.securityServing ?? 0),
-    waiting: Math.max(prev.waiting, s.state.securityWaiting ?? 0),
-    held: Math.max(prev.held, s.state.securityHeld ?? 0),
-  })
-}
-for (const [day, row] of dayHeld) {
-  if (day < 2) continue
-  if (row.held >= 24 && row.serving === 0) {
-    find('high', 'Screened passengers are not leaving security', `day ${day}: ${row.held} cleared passengers still on the security node, and nobody was at a scanner`, repro('Count hall guests with node security and clearedSec'))
+  const held = s.state.securityHeld ?? 0
+  const serving = s.state.securityServing ?? 0
+  if (
+    s.state.day >= 2 &&
+    prevSec &&
+    prevSec.held >= 24 &&
+    prevSec.serving === 0 &&
+    held >= 24 &&
+    serving === 0
+  ) {
+    find(
+      'high',
+      'Screened passengers are not leaving security',
+      `day ${s.state.day}: ${held} cleared passengers still on the security node across two polls, and nobody was at a scanner`,
+      repro('Count hall guests with node security and clearedSec'),
+    )
     break
   }
+  prevSec = { held, serving }
 }
 const stuckF = samples.flatMap((s) => s.stuckFlights)
 for (const f of stuckF) (byClass[klass(f.af, f.kind)] ??= blank()).stuck++
