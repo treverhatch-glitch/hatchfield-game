@@ -196,6 +196,8 @@ export class HallWorld {
 
   private onDown = (e: PointerEvent) => {
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    // The player grabbed the camera: stop easing toward a "Show me" target.
+    this.goalTo = null
     // Middle/right = orbit; left-drag = pan (WASD also pans).
     if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
     else this.dragging = e.shiftKey ? 'orbit' : 'pan'
@@ -368,6 +370,33 @@ export class HallWorld {
   private onWheel = (e: WheelEvent) => {
     e.preventDefault()
     this.dist = Math.min(70, Math.max(18, this.dist + e.deltaY * 0.04))
+    this.placeCam()
+  }
+
+  private goalSeq = 0
+  private goalTo: { x: number; z: number } | null = null
+  private goalFrame = 0
+
+  /** Ease the pivot toward the last "Show me" / "Pan to problem" hall cell. */
+  private easeToGoal(game: Game) {
+    const now = performance.now()
+    const dt = this.goalFrame ? Math.min(0.1, (now - this.goalFrame) / 1000) : 0
+    this.goalFrame = now
+    const g = game.camGoal
+    if (g && g.view === 'hall' && g.seq !== this.goalSeq) {
+      this.goalSeq = g.seq
+      const { cols, rows } = this.zoneGrid()
+      this.goalTo = cellCenter(g.c, g.r, cols, rows)
+    }
+    if (!this.goalTo) return
+    const k = 1 - Math.exp(-dt * 6)
+    this.pivot.x += (this.goalTo.x - this.pivot.x) * k
+    this.pivot.z += (this.goalTo.z - this.pivot.z) * k
+    if (Math.hypot(this.goalTo.x - this.pivot.x, this.goalTo.z - this.pivot.z) < 0.05) {
+      this.pivot.x = this.goalTo.x
+      this.pivot.z = this.goalTo.z
+      this.goalTo = null
+    }
     this.placeCam()
   }
 
@@ -852,6 +881,7 @@ export class HallWorld {
     let t = perfStart()
     this.resize()
     this.rebuildRooms(game)
+    this.easeToGoal(game)
     this.syncGuests(game)
     this.syncLuggage(game)
     this.syncOverlay(game)
