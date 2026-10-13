@@ -104,6 +104,49 @@ export function quadsGeometry(
   return g
 }
 
+/** Axis-aligned concrete pads (stand limit boxes) sharing the apron material. */
+export function rectsGeometry(
+  rects: readonly { x: number; z: number; w: number; d: number }[],
+  y = 0.02,
+  uvSize = 6.2,
+): THREE.BufferGeometry {
+  const pos = new Float32Array(rects.length * 4 * 3)
+  const uvs = new Float32Array(rects.length * 4 * 2)
+  const col = new Float32Array(rects.length * 4 * 3)
+  const idx: number[] = []
+  rects.forEach((rect, n) => {
+    const x0 = rect.x - rect.w / 2
+    const z0 = rect.z - rect.d / 2
+    const corners: [number, number][] = [
+      [x0, z0],
+      [x0 + rect.w, z0],
+      [x0 + rect.w, z0 + rect.d],
+      [x0, z0 + rect.d],
+    ]
+    const base = n * 4
+    corners.forEach(([x, z], i) => {
+      const v = base + i
+      pos[v * 3] = x
+      pos[v * 3 + 1] = y
+      pos[v * 3 + 2] = z
+      uvs[v * 2] = x / uvSize
+      uvs[v * 2 + 1] = z / uvSize
+      col[v * 3] = 1
+      col[v * 3 + 1] = 1
+      col[v * 3 + 2] = 1
+    })
+    idx.push(base, base + 3, base + 1, base + 1, base + 3, base + 2)
+  })
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  g.computeBoundingSphere()
+  return g
+}
+
 export const PAINT_RGB: Record<PaintColor, number> = {
   white: 0xf2f4f6,
   yellow: 0xf2c230,
