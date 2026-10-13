@@ -90,6 +90,12 @@ function hudSnapshot(game: Game): string {
     game.plannerRwFilter,
     game.standAccessMode,
     game.sandbox ? 1 : 0,
+    game.depositTier,
+    Object.values(game.fees).join(','),
+    game.premium.built.length,
+    game.premium.securityOfficers,
+    game.premium.feeEnabled ? 1 : 0,
+    game.disruptionStamp(),
     game.hallRev,
     game.fits[0]?.tier ?? 0,
     game.fits[0]?.redesigned ? 1 : 0,
@@ -113,6 +119,9 @@ function hudSnapshot(game: Game): string {
     game.hallOverloaded ? 1 : 0,
     game.sites.map((s) => Math.round(s.elapsed)).join(','),
     game.hover ? `${game.hover.c},${game.hover.r}` : '',
+    game.pendingYearReport()?.year ?? 0,
+    Math.round(game.tycoonDemand() * 100),
+    Math.round(game.tycoonAirlineInterest() * 100),
   ].join('|')
 }
 

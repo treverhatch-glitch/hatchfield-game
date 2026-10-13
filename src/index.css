@@ -190,6 +190,69 @@ button {
   color: #c9a227;
 }
 
+.disruption-stack {
+  position: absolute;
+  left: 16px;
+  top: 72px;
+  width: min(300px, 92vw);
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.disruption-stack.below-coach {
+  top: 300px;
+}
+
+.disruption {
+  pointer-events: auto;
+  background: rgba(16, 12, 10, 0.92);
+  border: 1px solid rgba(214, 122, 60, 0.7);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #f3efe6;
+}
+
+.disruption p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.disruption-head,
+.disruption-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.disruption-head {
+  justify-content: space-between;
+}
+
+.disruption-actions {
+  margin-top: 10px;
+}
+
+.disruption-actions button,
+.disruption.mini {
+  pointer-events: auto;
+  border: 1px solid rgba(214, 122, 60, 0.55);
+  background: rgba(214, 122, 60, 0.16);
+  color: #f3efe6;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.disruption.mini {
+  text-align: left;
+}
+
 .coach {
   /* Top-left under the HUD — never cover the bottom tool dock (was z>dock). */
   position: absolute;
@@ -415,8 +478,75 @@ button {
 .letter-stack,
 .offer,
 .view-chip,
-.guest-card {
+.guest-card,
+.year-report {
   pointer-events: auto;
+}
+
+/* Year report sits in the corner so the field stays visible. Not a blocking modal. */
+.year-report {
+  position: absolute;
+  top: 74px;
+  right: 16px;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(46vh, 420px);
+  overflow: auto;
+  z-index: 33;
+  background: rgba(12, 22, 18, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  border-radius: 10px;
+  padding: 12px 14px 14px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.year-report h2 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.year-report dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.year-report dt {
+  color: #9eb0a0;
+}
+
+.year-report dd {
+  margin: 0;
+  text-align: right;
+}
+
+.tycoon-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.bid-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.bid-card p {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.tycoon-note {
+  margin: 0 0 6px;
+  color: #e7c56a;
+  font-size: 12px;
 }
 
 .top-cash {
@@ -882,6 +1012,65 @@ button {
   margin-top: 2px;
 }
 
+.rival-sheet h3 {
+  margin-bottom: 4px;
+}
+
+.rival-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0 0 6px;
+}
+
+.rival-roster {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.rival-courts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.rival-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 10px;
+}
+
+.rival-row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.9fr;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.rival-row.head {
+  color: #9eb0a0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+
+.rival-row .win {
+  color: #e7c56a;
+}
+
+.rival-moves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rival-moves li {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
 /* CS2-style bottom chrome: peek by default, slide up on hover / pinned panel */
 .chrome {
   position: absolute;
@@ -1091,6 +1280,32 @@ button {
 
 .tray-item.on .tray-price {
   color: #1a1406;
+}
+
+.tray-item.locked {
+  opacity: 0.55;
+}
+
+.tray-item.locked .tray-price {
+  color: #e0a090;
+}
+
+.tray-upkeep {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: #9bb0a0;
+}
+
+.tray-item.on .tray-upkeep {
+  color: #1a1406;
+}
+
+.spec-paths {
+  margin: 8px 0 12px;
+}
+
+.spec-paths .row {
+  flex-wrap: wrap;
 }
 
 .eco-tabs {
@@ -1787,7 +2002,8 @@ h1 {
   .letter-stack,
   .inbound-panel,
   .offer,
-  .guest-card {
+  .guest-card,
+  .fees-dock {
     pointer-events: auto;
   }
   .inbound-panel {
@@ -1987,4 +2203,135 @@ h1 {
   font-weight: 500;
   font-size: 12px;
   color: #9eb0a0;
+}
+
+/* Fees sit on the right edge. The rest of the apron stays clickable. */
+.fees-toggle {
+  position: absolute;
+  top: 62px;
+  right: 12px;
+  z-index: 38;
+  pointer-events: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  background: rgba(10, 20, 16, 0.94);
+  color: #e8eef4;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fees-toggle.on {
+  color: #1a1404;
+  background: #c9a227;
+}
+
+.fees-dock {
+  position: absolute;
+  top: 102px;
+  right: 12px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 150px);
+  overflow: auto;
+  z-index: 36;
+  pointer-events: auto;
+  background: rgba(10, 20, 16, 0.96);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  padding: 10px 14px 14px;
+}
+
+.fees-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.fees-head h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.fees-dock .muted {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.fees-readout {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(8, 16, 12, 0.65);
+  font-size: 13px;
+  color: #e8eef4;
+}
+
+.fees-readout span {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #8a968c;
+}
+
+.fees-readout[data-tone='hot'] {
+  color: #e07a6a;
+}
+
+.fees-readout[data-tone='cheap'] {
+  color: #8fce7a;
+}
+
+.fees-tier-label {
+  margin: 0 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a968c;
+}
+
+.fees-tier {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.fees-tier button {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 238, 244, 0.2);
+  background: transparent;
+  color: #e8eef4;
+  font-size: 11px;
+}
+
+.fees-tier button.on {
+  border-color: rgba(201, 162, 39, 0.8);
+  color: #c9a227;
+}
+
+.fees-sliders {
+  margin-top: 0;
+}
+
+.fees-sliders strong {
+  font-weight: 500;
+  color: #c9a227;
+}
+
+@media (max-width: 800px) {
+  .fees-dock {
+    top: auto;
+    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+    width: min(300px, calc(100vw - 24px));
+    max-height: min(46vh, 400px);
+  }
 }

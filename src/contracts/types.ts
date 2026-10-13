@@ -23,9 +23,12 @@ export type ServiceKind =
   | 'pushback'
   | 'lav_water'
   | 'gpu_pca'
+  | 'fast_track'
+  | 'premium_checkin'
 
 export const ALL_SERVICES: readonly ServiceKind[] = [
   'fuel', 'catering', 'cleaning', 'baggage', 'cargo', 'prm', 'deice', 'pushback', 'lav_water', 'gpu_pca',
+  'fast_track', 'premium_checkin',
 ]
 
 export type SizeClass = 'regional' | 'narrow' | 'wide' | 'super'
