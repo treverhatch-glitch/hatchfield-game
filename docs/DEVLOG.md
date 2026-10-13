@@ -461,3 +461,25 @@ The HUD redesign's Starter kit button was visible, but the press scrolled the pa
 - `docs/devlog/media/LUGGAGE-claim.png` — carousel with bags and people waiting
 - `docs/devlog/media/LUGGAGE-apron.png` — suitcases on the belt and the bag cart, chrome hidden
 - `docs/devlog/media/LUGGAGE-hall.webm` — the belt and carousel moving, about 3.5 s
+
+## World render — 13 Oct
+
+The apron now draws through the Slice E layer (`src/render/world/`, `docs/GRAPHICS.md`). `World` calls `initWorldRender` once, skips the grass, runway, taxi, stand, road, and terminal meshes that layer redraws, and calls `update` every frame. At 5× the layer switches to its light mode: shadows and the near grass ring drop, and a rebuild is not forced. Software GL picks the low preset on its own. The closest camera distance is 12, so the hall cutaway can open.
+
+**BUG-013.** `resize` compared the canvas drawing buffer (device pixels) with the CSS size. Whenever the pixel ratio was not 1, `setSize` ran every frame and reallocated the buffer. The check is now CSS size times the pixel ratio. A half-second sample after the first frame called `setSize` zero times.
+
+**BUG-014.** The horizon disc sat at the same height as the tiles (`y = 0.02`), so it z-fought the field and washed it blue. It now sits under the earth disc. The world layer hides both discs and draws the sky itself.
+
+**BUG-015.** Rebuilding the apron called `tilesGroup.clear()` and dropped the per-tile geometries and materials. Every bulldoze or new building leaked that GPU memory. The group is disposed before it is cleared.
+
+**BUG-016.** Leaving 5× wrote `shadowMap.enabled = true`, so a low quality preset could not keep shadows off. 5× now goes through `setLiteMode`. In the browser, medium turns shadows on, 5× turns them off, 1× on medium turns them back on, and low at 1× stays off.
+
+**Bugs.** Sixteen.
+
+**Tests.** 444 passing, 2 skipped (the asset binaries). The QA bot (`tests/e2e-bot`, mixed, 2 in-game days) after this wiring reported no unrecorded short bag loads, no stuck flights, and no console errors. Missed flights under the overloaded prefab and the SwiftShader frame rate are unchanged. Bank on that run: $12,830,714, then $12,455,341, then $12,087,724.
+
+**Media**
+
+- `docs/devlog/media/OCT13-world-mid.png` — starter hall, runway paint, taxi edges, and the tree line, low preset
+- `docs/devlog/media/OCT13-world-close.png` — jet bridge, glazed terminal, and stand markings
+- `docs/devlog/media/OCT13-world-wide.png` — the same field from the far camera
