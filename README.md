@@ -60,6 +60,17 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 Browser save key: `apron-save-v24`. New game overwrites it.
 
+## Design docs
+
+| Doc | Purpose |
+| --- | --- |
+| [docs/DESIGN.md](./docs/DESIGN.md) | Pillars + apron / pax / hall traffic |
+| [docs/IDEAS.md](./docs/IDEAS.md) | Backlog |
+| [docs/PROBLEMS.md](./docs/PROBLEMS.md) | Gaps & pathfinding honesty |
+| [docs/ECONOMY.md](./docs/ECONOMY.md) | Money loops |
+| [docs/NEXT.md](./docs/NEXT.md) | What to build next |
+| [ADDITIONS.md](./ADDITIONS.md) | Research log / shipped changelog |
+
 ## Verify
 
 ```bash

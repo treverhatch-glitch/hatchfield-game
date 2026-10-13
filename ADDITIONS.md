@@ -2,6 +2,8 @@
 
 Things added while looping overnight (research + judgment). Your prompts still win if anything conflicts.
 
+**Canonical design / ideas / problems / economy / next steps:** see [`docs/`](./docs/). This file stays the research + shipped changelog.
+
 ## From Airport CEO / AT research
 
 - **Reputation** meter — rises with smooth turnarounds and happy hall guests; falls on missed gates / security breaches.
