@@ -26,7 +26,8 @@ export class MockAudioContext {
   createGain() { const g = new MockGain(); this.gains.push(g); return g; }
   createOscillator() { const s = new MockSource(); this.sources.push(s); return s; }
   createBufferSource() { const s = new MockSource(); this.sources.push(s); return s; }
-  createBiquadFilter() { return new MockFilter(); }
+  filters: MockFilter[] = [];
+  createBiquadFilter() { const f = new MockFilter(); this.filters.push(f); return f; }
   createStereoPanner() { const p = new MockPanner(); this.panners.push(p); return p; }
   createBuffer(_c: number, len: number) { const d = new Float32Array(len); return { getChannelData: () => d }; }
   async suspend() { this.state = 'suspended'; }
