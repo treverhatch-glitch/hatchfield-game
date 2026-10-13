@@ -147,6 +147,7 @@ export default function App() {
         game.parkingOffer?.callsign,
         game.pendingThreat?.id,
         game.pendingEmergency?.id,
+        game.disruptionStamp(),
         game.signed.join(','),
         game.selectedFlight,
         game.selectedGuest,
