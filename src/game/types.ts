@@ -31,6 +31,10 @@ export type Tile =
   | 'rail'
   /** Apron terminal-bus depot — ferries remote-stand pax. */
   | 'termbus'
+  /** Catering production for the ground fleet. */
+  | 'kitchen'
+  /** Where fuel, galley, bag, and bus trucks stage. */
+  | 'depot'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -90,6 +94,8 @@ export type Tool =
   | 'bus'
   | 'term_bus'
   | 'rail'
+  | 'kitchen'
+  | 'depot'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -321,6 +327,8 @@ export interface BuildDef {
   name: string
   cost: number
   blurb: string
+  /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
+  minFieldLevel?: 1 | 2 | 3 | 4 | 5
 }
 
 export interface RoomDef {
@@ -515,6 +523,11 @@ export interface Flight {
   mxPay?: number
   /** Airline MX contract wants a hangar visit this turn. */
   mxPending?: boolean
+  /**
+   * Stand id when the ground-logistics module owns this turnaround.
+   * Pushback waits until that turnaround is finished.
+   */
+  groundTurn?: string | null
   /** One-shot emergency host (divert / tanker) occupying a banked gate. */
   emergencyHost?: boolean
   hostKind?: EmergencyKind

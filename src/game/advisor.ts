@@ -28,6 +28,8 @@ export interface Advice {
   detail: string
   fix: string
   cells: AdviceCell[]
+  /** Hall highlights use the terminal grid. Apron notes mark fuel, kitchen, or depot tiles. */
+  scope?: 'hall' | 'apron'
 }
 
 export interface AdviceFit {

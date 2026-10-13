@@ -29,6 +29,7 @@ export function OwnerChrome({ game }: { game: Game }) {
 
   const site = game.hover ? game.siteAt(game.hover) : undefined
   const advice = game.advice
+  const ground = game.groundSnapshot()
 
   return (
     <div className="owner-chrome" data-testid="owner-chrome" style={{ position: 'absolute', zIndex: 40, pointerEvents: 'none' }}>
@@ -57,6 +58,24 @@ export function OwnerChrome({ game }: { game: Game }) {
         Show passenger flows
         <span style={{ opacity: 0.7 }}>F</span>
       </label>
+      {ground && (
+        <div
+          data-testid="ground-stock"
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            background: 'rgba(12, 22, 28, 0.82)',
+            color: '#e7eee9',
+            font: '600 12px sans-serif',
+            padding: '6px 8px',
+            borderRadius: 6,
+          }}
+        >
+          Fuel farm {Math.round(ground.fuelLitres).toLocaleString('en-US')} L · Kitchen {ground.meals} meals ·{' '}
+          {ground.busyVehicles}/{ground.totalVehicles} trucks out
+        </div>
+      )}
       {advice.length > 0 && (
         <div
           data-testid="advisor"

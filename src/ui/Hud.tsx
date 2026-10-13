@@ -75,7 +75,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'ops',
     label: 'Ops',
-    tools: ['fuel', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'guard', 'tower', 'hangar'],
+    tools: ['fuel', 'kitchen', 'depot', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'guard', 'tower', 'hangar'],
   },
   {
     id: 'landside',
@@ -1714,21 +1714,26 @@ export function Hud({ game }: { game: Game }) {
                     const def = BUILDINGS.find((b) => b.tool === t)
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
+                    const locked = Boolean(def?.minFieldLevel && game.fieldLevel() < def.minFieldLevel)
                     const tip =
                       t === 'clear'
                         ? 'Bulldoze — refunds 40% of the stamp.'
-                        : (def?.blurb ?? TOOL_LABEL[t])
+                        : locked
+                          ? `${name} needs Field level ${def?.minFieldLevel}.`
+                          : (def?.blurb ?? TOOL_LABEL[t])
                     return (
                       <button
                         key={t}
                         type="button"
                         className={`tray-item${game.tool === t ? ' on' : ''}`}
                         onClick={() => game.setTool(t)}
-                        title={cost != null ? `${tip} ${money(cost)}` : tip}
+                        title={locked ? tip : cost != null ? `${tip} ${money(cost)}` : tip}
                       >
                         <TrayMark tool={t} />
                         <span className="tray-name">{name}</span>
-                        <span className="tray-price">{cost != null ? money(cost) : 'Refund'}</span>
+                        <span className="tray-price">
+                          {locked ? `Field ${def?.minFieldLevel}` : cost != null ? money(cost) : 'Refund'}
+                        </span>
                       </button>
                     )
                   })}

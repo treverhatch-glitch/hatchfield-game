@@ -70,6 +70,10 @@ export const BAGS_COST = 4800
 /** Cheap paint for check-in → makeup → bay bag belts. */
 export const BELT_COST = 900
 export const FUEL_COST = 5600
+/** Galley production for the ground fleet. Field level 2. */
+export const KITCHEN_COST = 7200
+/** Stages fuel, galley, bag, and bus trucks. Field level 2. A second depot adds another fleet. */
+export const DEPOT_COST = 9800
 export const FIRE_COST = 12000
 export const POLICE_COST = 11000
 export const CARGO_COST = 16000
@@ -890,7 +894,24 @@ export const BUILDINGS: BuildDef[] = [
     tile: 'fuel',
     name: 'Fuel farm',
     cost: FUEL_COST,
-    blurb: 'Beside pavement. Sign a carrier and buy loads.',
+    minFieldLevel: 1,
+    blurb: 'Field level 1. Beside pavement. Sign a carrier and buy loads.',
+  },
+  {
+    tool: 'kitchen',
+    tile: 'kitchen',
+    name: 'Catering kitchen',
+    cost: KITCHEN_COST,
+    minFieldLevel: 2,
+    blurb: 'Field level 2. Cooks meals for the galley trucks. Place it beside a road.',
+  },
+  {
+    tool: 'depot',
+    tile: 'depot',
+    name: 'Vehicle depot',
+    cost: DEPOT_COST,
+    minFieldLevel: 2,
+    blurb: 'Field level 2. Fuel, galley, bag, and bus trucks stage here. A second depot adds another fleet.',
   },
   {
     tool: 'fire',
@@ -1079,6 +1100,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   bags: 'Bags',
   belt: 'Belt',
   fuel: 'Fuel',
+  kitchen: 'Kitchen',
+  depot: 'Depot',
   fire: 'Fire',
   police: 'Police',
   cargo: 'Cargo',
