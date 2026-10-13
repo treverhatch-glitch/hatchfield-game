@@ -11,6 +11,10 @@ export {
   RECOVERY_COST,
 } from './data.ts'
 export { FIX, FOCUS, TITLE } from './catalog.ts'
+export { DISRUPTION_ALERT_PREFIX, disruptionAlertKey, disruptionToAlert } from './alertFeed.ts'
+export type { DisruptionAlert } from './alertFeed.ts'
+export { disruptionLocus } from './locus.ts'
+export type { DisruptionAlertCell, DisruptionAlertFocus, DisruptionLocusField } from './locus.ts'
 export { weatherDivertAsk } from './diversion.ts'
 export { DisruptionEngine, finiteAmount, identityModifiers } from './engine.ts'
 export type { DisruptionSave } from './engine.ts'

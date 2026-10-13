@@ -189,6 +189,8 @@ import {
 import { HINT_REFRESH_SEC } from './hintsData.ts'
 import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
+import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
+import { disruptionLocus, type DisruptionLocusField } from '../disruptions/locus.ts'
 import {
   CT_TECH_ID,
   PREMIUM_RULES,
@@ -835,7 +837,7 @@ export class Game {
   pendingThreat: PendingThreat | null = null
   pendingEmergency: PendingEmergency | null = null
   emergencyCool = 70
-  /** Late-game disruptions. Quiet until Field Level 3. */
+  /** Late-game disruptions. Quiet until Field Level 3. Cards go on `alerts`. */
   disruptions = new DisruptionBridge(1)
   securityIncidents = 0
   reputation = 40
@@ -1047,7 +1049,7 @@ export class Game {
   hintPrefs: HintPrefs = newGameHintPrefs()
   /** Pregame "Enable hints" box. Read once by beginNew. */
   enableHintsAtStart = true
-  /** Live operational problems (stuck aircraft, fuel out, full hall, ...). */
+  /** Live operational problems (stuck aircraft, fuel out, full hall, disruptions, ...). */
   alerts = new AlertStack()
   private alertScanCool = 0
   /** One side panel at a time: the HUD rollout or the hint list. */
@@ -1359,6 +1361,7 @@ export class Game {
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
+    this.disruptions = new DisruptionBridge(this.diplomacySeed)
     this.negotiationBridge = null
     this.inbound = null
     this.rival = null
@@ -4222,6 +4225,7 @@ export class Game {
       this.view = 'apron'
       this.bumpMap()
       this.pushNews('Field restored. Clock paused.', 'ok')
+      this.syncDisruptionAlert()
       this.emit()
       return Boolean(this.site)
     } catch {
@@ -6190,7 +6194,7 @@ export class Game {
   /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
   tickHallJanitors(dt: number) {
     this.syncHallJanitors()
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     if (clean >= LITTER_TUNING.minCleaningBudget) {
       const claimed = new Map<string, Set<string>>()
       for (const j of this.hallJanitors) {
@@ -6964,7 +6968,7 @@ export class Game {
       })
     }
     hall.push(...this.planHints(fit))
-    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgetOf('cleaning') / 100))
     const outletCells = ((fit.items ?? []) as PlacedItem[])
       .filter((it) => !it.bundle && outletSpec(it.def))
       .map((it) => ({ c: it.c, r: it.r }))
@@ -7105,6 +7109,152 @@ export class Game {
     const before = this.alerts.rev
     this.alerts.raise(input, this.clock)
     if (this.alerts.rev !== before) this.emit()
+  }
+
+  /** Tests and recovery use this. Refuses anything before mid-game. */
+  triggerDisruption(kind: DisruptionId) {
+    const started = this.disruptions.trigger(kind, this.disruptionWorld(), this.disruptionHost())
+    this.syncDisruptionAlert()
+    if (started) this.emit()
+    return started
+  }
+
+  recoverDisruption(id: string) {
+    const result = this.disruptions.recover(id, this.disruptionHost())
+    this.syncDisruptionAlert()
+    this.emit()
+    return result
+  }
+
+  /** Beds stamped on the field. Ash diversions need these, eight per aircraft. */
+  hotelRoomCount(): number {
+    let beds = this.hotelLevel > 0 ? 6 : 0
+    for (const p of tilesOf(this.tiles, 'hotel')) {
+      const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
+      beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
+    }
+    return beds
+  }
+
+  /** One timetable wave: same strip, same 40-second bucket. */
+  private flightBanks(): FlightBank[] {
+    const groups = new Map<string, FlightBank>()
+    for (const slot of this.openSchedule()) {
+      if (slot.status === 'inbound') continue
+      const bucket = Math.floor(slot.eta / 40)
+      const rw = slot.runwayPref ?? -1
+      const id = `rw${rw}-b${bucket}`
+      const label = rw < 0 ? `bank ${bucket + 1}` : `runway ${rw + 1} bank ${bucket + 1}`
+      const group = groups.get(id) ?? { id, label, flightIds: [] }
+      group.flightIds.push(slot.id)
+      groups.set(id, group)
+    }
+    return [...groups.values()]
+  }
+
+  private disruptionWorld(): DisruptionWorld {
+    const level = this.fieldLevel()
+    const mastery = level >= 5
+    return {
+      fieldLevel: level,
+      goalsComplete: mastery,
+      endless: mastery,
+      standsFree: this.freeStands().length,
+      hotelRooms: this.hotelRoomCount(),
+      banks: this.flightBanks(),
+      staffPools: ['maintenance', 'security', 'cleaning', 'fire', 'ambulance', 'desk'],
+      clock: this.clock,
+    }
+  }
+
+  /** Publish the live crisis onto the alert stack. One key, so the card cannot duplicate. */
+  private syncDisruptionAlert() {
+    const event = this.disruptions.active()
+    const before = this.alerts.rev
+    const live = new Set<string>()
+    if (event) {
+      const input = disruptionToAlert(event, disruptionLocus(event, this.disruptionField(event)))
+      live.add(input.key)
+      this.alerts.raise(input, this.clock)
+    }
+    this.alerts.sync(DISRUPTION_ALERT_PREFIX, live)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  private disruptionField(event: { kind: DisruptionId }): DisruptionLocusField {
+    const fit = this.activeHall() ?? this.fits[0]
+    const hosted = this.flights
+      .filter((f) => f.hostKind === 'divert' && f.stand && f.phase !== 'gone')
+      .map((f) => ({ c: f.stand!.c, r: f.stand!.r }))
+    const stands = tilesOf(this.tiles, 'stand')
+    return {
+      stands: event.kind === 'volcanic-ash' && hosted.length ? hosted : stands,
+      runways: tilesOf(this.tiles, 'runway'),
+      fuel: tilesOf(this.tiles, 'fuel'),
+      terminal: tilesOf(this.tiles, 'terminal'),
+      fire: tilesOf(this.tiles, 'fire'),
+      hangar: tilesOf(this.tiles, 'hangar'),
+      tower: tilesOf(this.tiles, 'tower'),
+      police: tilesOf(this.tiles, 'police'),
+      guard: tilesOf(this.tiles, 'guard'),
+      checkin: fit ? this.zoneCellsOf(fit, 'checkin') : [],
+      security: fit ? this.zoneCellsOf(fit, 'security') : [],
+      hallKey: fit ? this.hallKey(fit) : undefined,
+    }
+  }
+
+  private tickDisruptions() {
+    this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
+    this.syncDisruptionAlert()
+  }
+
+  private disruptionHost(): DisruptionHost {
+    return {
+      acceptWeatherDivert: (ask) => this.acceptWeatherDivert(ask),
+      postCash: (amount, reason) => this.postDisruptionCash(amount, reason),
+      delayBank: (ids, sec, reason) => this.delayDisruptionBank(ids, sec, reason),
+      rebookBank: (ids) => this.rebookDisruptionBank(ids),
+      news: (text, tone) => this.pushNews(text, tone),
+    }
+  }
+
+  /**
+   * Land one ash divert on the existing divert path.
+   * The ask matches a weather divert; the aircraft still comes from spawnEmergencyDivert.
+   */
+  private acceptWeatherDivert(ask: { hotelRooms: number }): { hosted: boolean } {
+    if (!(ask.hotelRooms > 0)) return { hosted: false }
+    const airline = this.signed.find((id) => !this.isBanned(id))
+    if (!airline || this.freeStands().length < 1) return { hosted: false }
+    if (!this.spawnEmergencyDivert(airline)) return { hosted: false }
+    this.postDisruptionCash(DIVERT_FEE_MIN, 'Ash divert landing')
+    return { hosted: true }
+  }
+
+  private postDisruptionCash(amount: number, reason: string) {
+    const n = finiteAmount(amount)
+    if (n === 0) return
+    if (!Number.isFinite(this.cash)) this.cash = 0
+    if (n > 0) this.earn(n, reason)
+    else this.charge(-n)
+    if (!Number.isFinite(this.cash)) this.cash = 0
+  }
+
+  private delayDisruptionBank(ids: string[], sec: number, reason: string) {
+    for (const id of ids) {
+      const slot = this.schedule.find((s) => s.id === id)
+      if (!slot || (slot.status !== 'scheduled' && slot.status !== 'delayed')) continue
+      this.delaySlot(slot, sec, reason)
+    }
+  }
+
+  private rebookDisruptionBank(ids: string[]) {
+    for (const id of ids) {
+      const slot = this.schedule.find((s) => s.id === id)
+      if (!slot || slot.status !== 'delayed') continue
+      slot.status = 'scheduled'
+      slot.delayReason = 'Rebanked after the storm'
+    }
   }
 
   /** Live condition scan. Throttled; cheap reads only. */
@@ -15162,7 +15312,7 @@ export class Game {
         heliPads: this.freePads().length + held.heliPads,
         guardPads: guard.length + held.guardPads,
         arff: tilesOf(this.tiles, 'fire').length > 0,
-        ambulance: this.budgets.ambulance >= 40,
+        ambulance: this.budgetOf('ambulance') >= 40,
         fuelLitres: simFuel,
         hotelRooms,
         securityCorridor:
@@ -15424,66 +15574,12 @@ export class Game {
     return raw * Math.min(1, Math.max(0.4, scale))
   }
 
-  /** Beds stamped on the field. Ash diversions need these, eight per aircraft. */
-  hotelRoomCount(): number {
-    let beds = this.hotelLevel > 0 ? 6 : 0
-    for (const p of tilesOf(this.tiles, 'hotel')) {
-      const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
-      beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
-    }
-    return beds
-  }
-
-  /** One timetable wave: same strip, same 40-second bucket. */
-  flightBanks(): FlightBank[] {
-    const groups = new Map<string, FlightBank>()
-    for (const slot of this.openSchedule()) {
-      if (slot.status === 'inbound') continue
-      const bucket = Math.floor(slot.eta / 40)
-      const rw = slot.runwayPref ?? -1
-      const id = `rw${rw}-b${bucket}`
-      const label = rw < 0 ? `bank ${bucket + 1}` : `runway ${rw + 1} bank ${bucket + 1}`
-      const group = groups.get(id) ?? { id, label, flightIds: [] }
-      group.flightIds.push(slot.id)
-      groups.set(id, group)
-    }
-    return [...groups.values()]
-  }
-
-  disruptionWorld(): DisruptionWorld {
-    const level = this.fieldLevel()
-    const goals = level >= 5
-    return {
-      fieldLevel: level,
-      goalsComplete: goals,
-      endless: goals,
-      standsFree: this.freeStands().length,
-      hotelRooms: this.hotelRoomCount(),
-      banks: this.flightBanks(),
-      staffPools: ['maintenance', 'security', 'cleaning', 'fire', 'ambulance', 'desk'],
-      clock: this.clock,
-    }
-  }
-
   disruptionFeed() {
     return this.disruptions.visible()
   }
 
   disruptionStamp(): string {
     return this.disruptions.stamp()
-  }
-
-  /** Tests and the feed's "Apply fix" use this. Refuses anything before mid-game. */
-  triggerDisruption(kind: DisruptionId) {
-    const started = this.disruptions.trigger(kind, this.disruptionWorld(), this.disruptionHost())
-    if (started) this.emit()
-    return started
-  }
-
-  recoverDisruption(id: string) {
-    const result = this.disruptions.recover(id, this.disruptionHost())
-    this.emit()
-    return result
   }
 
   ignoreDisruption(id: string) {
@@ -15518,60 +15614,6 @@ export class Game {
     this.setView(hall ? 'hall' : 'apron')
     this.pushNews(`Pan — ${item.title}. ${item.suggestedFix}`, 'ok')
     this.emit()
-  }
-
-  private tickDisruptions() {
-    this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
-  }
-
-  private disruptionHost(): DisruptionHost {
-    return {
-      acceptWeatherDivert: (ask) => this.acceptWeatherDivert(ask),
-      postCash: (amount, reason) => this.postDisruptionCash(amount, reason),
-      delayBank: (ids, sec, reason) => this.delayDisruptionBank(ids, sec, reason),
-      rebookBank: (ids) => this.rebookDisruptionBank(ids),
-      news: (text, tone) => this.pushNews(text, tone),
-    }
-  }
-
-  /**
-   * Land one ash divert on the trunk divert path.
-   * PR #42's `spawnOffer(state, 'weather_divert')` is the same ask; that module
-   * is not on this branch, so the aircraft still comes from spawnEmergencyDivert.
-   */
-  private acceptWeatherDivert(ask: { hotelRooms: number }): { hosted: boolean } {
-    if (!(ask.hotelRooms > 0)) return { hosted: false }
-    const airline = this.signed.find((id) => !this.isBanned(id))
-    if (!airline || this.freeStands().length < 1) return { hosted: false }
-    if (!this.spawnEmergencyDivert(airline)) return { hosted: false }
-    this.postDisruptionCash(DIVERT_FEE_MIN, 'Ash divert landing')
-    return { hosted: true }
-  }
-
-  private postDisruptionCash(amount: number, reason: string) {
-    const n = finiteAmount(amount)
-    if (n === 0) return
-    if (!Number.isFinite(this.cash)) this.cash = 0
-    if (n > 0) this.earn(n, reason)
-    else this.charge(-n)
-    if (!Number.isFinite(this.cash)) this.cash = 0
-  }
-
-  private delayDisruptionBank(ids: string[], sec: number, reason: string) {
-    for (const id of ids) {
-      const slot = this.schedule.find((s) => s.id === id)
-      if (!slot || (slot.status !== 'scheduled' && slot.status !== 'delayed')) continue
-      this.delaySlot(slot, sec, reason)
-    }
-  }
-
-  private rebookDisruptionBank(ids: string[]) {
-    for (const id of ids) {
-      const slot = this.schedule.find((s) => s.id === id)
-      if (!slot || slot.status !== 'delayed') continue
-      slot.status = 'scheduled'
-      slot.delayReason = 'Rebanked after the storm'
-    }
   }
 
   tick(dt: number) {

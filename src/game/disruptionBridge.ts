@@ -10,6 +10,7 @@ import type {
 /**
  * Holds the disruption engine next to the sim.
  * The sim builds the world, posts cash, and lands diversions.
+ * Player cards are the alert stack.
  */
 export class DisruptionBridge {
   readonly engine: DisruptionEngine
@@ -26,6 +27,10 @@ export class DisruptionBridge {
 
   save(): string {
     return this.engine.save()
+  }
+
+  active() {
+    return this.engine.activeDisruption()
   }
 
   advance(world: DisruptionWorld, host: DisruptionHost) {

@@ -984,7 +984,7 @@ export interface GameSnapshot {
   tycoon?: TycoonState
   /** Bellwater Intl rival sim. */
   rival?: string
-  /** Late-game disruption engine. Missing on older saves. */
+  /** Late-game disruption engine. Missing on older saves. The alert stack shows the card. */
   disruptions?: string
 }
 
