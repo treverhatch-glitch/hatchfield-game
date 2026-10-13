@@ -42,7 +42,8 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
-import { capstoneCost, SPEC_PATHS, type SpecPath } from '../progression/specializations'
+import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
+import { SpecTree } from './SpecTree'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
 import { tilesOf } from '../game/path'
 import { formatSimDate, type Game } from '../game/sim'
@@ -106,6 +107,7 @@ type PanelId =
   | 'economy'
   | 'budget'
   | 'research'
+  | 'specialize'
   | 'airlines'
   | 'planner'
   | 'services'
@@ -164,6 +166,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
+  { id: 'specialize', label: 'Specs', tip: 'Hub, low-cost, cargo, and luxury trees' },
   { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
@@ -1127,6 +1130,8 @@ export function Hud({ game }: { game: Game }) {
                 </section>
               ) : null}
 
+              {panel === 'specialize' ? <SpecTree game={game} /> : null}
+
               {panel === 'airlines' ? (
                 <section className="airline-tiers">
                   <h3>Airline tiers</h3>
@@ -1155,36 +1160,18 @@ export function Hud({ game }: { game: Game }) {
                     {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
                     Cross-cut: Charter / LCC / Full-service / Cargo.
                   </p>
-                  <div className="spec-paths" data-testid="spec-paths">
-                    <p className="muted">
-                      Specialization {game.specPointsLeft()} left · earned {game.specPointsEarned()} at
-                      FL6 / FL8 / FL10. Paths mix. Each path after the first: capstone +50% and site
-                      upkeep +10%.
-                    </p>
-                    <div className="row">
-                      {SPEC_PATHS.map((path) => {
-                        const owned = game.specPaths.includes(path.id)
-                        const open = !owned && game.specPointsLeft() > 0
-                        return (
-                          <button
-                            key={path.id}
-                            type="button"
-                            className={owned ? 'on' : ''}
-                            disabled={!owned && !open}
-                            title={
-                              owned
-                                ? `${path.label} is on the field. ${path.blurb}`
-                                : `${path.blurb} Capstone price rises if this is not your first path.`
-                            }
-                            onClick={() => game.chooseSpec(path.id as SpecPath)}
-                          >
-                            {path.label}
-                            {owned ? ' · on' : ''}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                  <p className="muted" data-testid="spec-paths">
+                    Specs {game.specPointsLeft()} path point{game.specPointsLeft() === 1 ? '' : 's'}{' '}
+                    left · {game.treePointsLeft()} tree point{game.treePointsLeft() === 1 ? '' : 's'}{' '}
+                    left
+                    {game.specPaths.length
+                      ? ` · ${game.specPaths
+                          .map((id) => SPEC_PATHS.find((p) => p.id === id)?.label ?? id)
+                          .join(', ')}`
+                      : ''}
+                    . Open Specs for the trees. Paths mix: capstone +50% and site upkeep +10% after
+                    the first.
+                  </p>
                   {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
                     const meta = AIRLINE_TIER_META[tier]
                     const unlocked = game.tierUnlocked(tier)

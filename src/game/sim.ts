@@ -234,11 +234,23 @@ import { deserializeBranding, serializeBranding, suggestCode } from '../branding
 import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
 import { progressionBuildable, unlockLevel } from '../progression/unlocks.ts'
 import {
+  bankSlotCount,
+  bankSpacing,
   capstoneCost,
+  foldSpecMods,
+  isSpecNode,
   isSpecPath,
+  retailPrice,
+  screenMultiplier,
   siteUpkeepMultiplier,
+  specCashCost,
+  specNode,
   specPath,
   specPointsForLevel,
+  treePointsForProgress,
+  turnMinutes,
+  warehouseCapacity,
+  type SpecMods,
   type SpecPath,
 } from '../progression/specializations.ts'
 import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
@@ -587,6 +599,8 @@ export class Game {
   fieldXp = 0
   /** Paths chosen at FL6, FL8, and FL10. Order is the order they were picked. */
   specPaths: SpecPath[] = []
+  /** Bought specialization-tree nodes. Order is purchase order. */
+  specNodes: string[] = []
   /** Commissioned progression stamps (check-in hall, hydrant, landmark, …). */
   progressionBuilt: string[] = []
   parcels = 1
@@ -868,6 +882,7 @@ export class Game {
     this.loanOpened = 0
     this.fieldXp = 0
     this.specPaths = []
+    this.specNodes = []
     this.progressionBuilt = []
     this.parcels = 1
     this.railLinked = false
@@ -1253,13 +1268,16 @@ export class Game {
     if (this.startFocus === 'pax' && this.flightsDone < 2 && Math.random() > 0.35) return
     const airline = pick(pool)
     const a = this.airline(airline)
-    const target =
-      this.startFocus === 'cargo'
+    const mods = this.specMods()
+    const target = Math.round(
+      (this.startFocus === 'cargo'
         ? 48 + Math.floor(Math.random() * 36)
-        : 36 + Math.floor(Math.random() * 28)
+        : 36 + Math.floor(Math.random() * 28)) * mods.cargoTonnage,
+    )
     const fee = Math.round(
-      CARGO_VOLUME_FEE_MIN +
-        Math.random() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN),
+      (CARGO_VOLUME_FEE_MIN +
+        Math.random() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN)) *
+        mods.cargoVolumeFee,
     )
     const window = 55 + Math.random() * 35
     this.cargoVolume = {
@@ -1416,6 +1434,105 @@ export class Game {
     return true
   }
 
+  specMods(): SpecMods {
+    return foldSpecMods(this.specNodes)
+  }
+
+  treePointsEarned(): number {
+    return treePointsForProgress(this.fieldLevel(), this.prestigeStars())
+  }
+
+  treePointsSpent(): number {
+    return this.specNodes.reduce((sum, id) => sum + (specNode(id)?.cost ?? 0), 0)
+  }
+
+  treePointsLeft(): number {
+    return Math.max(0, this.treePointsEarned() - this.treePointsSpent())
+  }
+
+  /** Satellite hall is tier 3, or the satellite stamp is already commissioned. */
+  satelliteLive(): boolean {
+    return (
+      this.progressionBuilt.includes('satellite') || this.fits.some((f) => (f.tier ?? 1) >= 3)
+    )
+  }
+
+  /** Extra simultaneous approaches from the hub tree. The satellite feed waits for the building. */
+  specInboundBonus(): number {
+    const mods = this.specMods()
+    let n = mods.inboundBonus
+    if (mods.satelliteFeed && this.satelliteLive()) n += mods.satelliteInbound
+    return n
+  }
+
+  hubHeatNeed(): number {
+    return Math.max(40, HUB_HEAT_NEED + this.specMods().hubHeatNeedDelta)
+  }
+
+  scaledTurnMinutes(base: number): number {
+    return turnMinutes(base, this.specMods(), this.isNight())
+  }
+
+  screenPace(premium: boolean): number {
+    return screenMultiplier(this.specMods(), premium)
+  }
+
+  cargoWarehouseCap(): number {
+    return warehouseCapacity(CARGO_WAREHOUSE_CAP, this.specMods(), this.railLinked)
+  }
+
+  canBuySpecNode(id: string): { ok: boolean; why: string } {
+    const node = specNode(id)
+    if (!node) return { ok: false, why: 'Unknown specialization.' }
+    if (this.specNodes.includes(id)) return { ok: false, why: 'Already unlocked.' }
+    if (!this.specPaths.includes(node.path)) {
+      return { ok: false, why: `Commit the ${specPath(node.path)?.label ?? node.path} path first.` }
+    }
+    for (const req of node.requires) {
+      if (!this.specNodes.includes(req)) {
+        return { ok: false, why: `Need ${specNode(req)?.name ?? req} first.` }
+      }
+    }
+    if (this.treePointsLeft() < node.cost) {
+      return {
+        ok: false,
+        why: `Need ${node.cost} tree point${node.cost === 1 ? '' : 's'} (have ${this.treePointsLeft()}).`,
+      }
+    }
+    const price = node.capstone ? specCashCost(node.cash, this.specPaths, node.path) : node.cash
+    if (price > 0 && this.cash < price && !this.sandbox) {
+      return { ok: false, why: `Need $${price.toLocaleString('en-US')}.` }
+    }
+    return { ok: true, why: '' }
+  }
+
+  /** Buy one tree node. The path must already be committed. Nothing on the tree is free. */
+  buySpecNode(id: string): boolean {
+    const gate = this.canBuySpecNode(id)
+    const node = specNode(id)
+    if (!node) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return false
+    }
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return false
+    }
+    const price = node.capstone ? specCashCost(node.cash, this.specPaths, node.path) : node.cash
+    if (price > 0 && !this.spend(price, node.name)) return false
+    this.specNodes.push(id)
+    const bill = node.upkeepPerDay > 0 ? ` Upkeep $${node.upkeepPerDay.toLocaleString('en-US')}/day.` : ''
+    this.pushNews(`${node.name} — ${node.perk} ${node.tradeoff}${bill}`, 'good')
+    this.emit()
+    return true
+  }
+
+  private dressRetail(tag: string, pay: number, kind: 'tenant' | 'lounge'): number {
+    return retailPrice(pay, this.specMods(), kind, tag === 'budget')
+  }
+
   /**
    * Buy a progression stamp that is not an apron tile.
    * Refuses when the field level is short of the unlock table.
@@ -1552,7 +1669,7 @@ export class Game {
         familyAmenities: family,
         prestigeItems: prestige,
         exclusivePier: 0,
-        nightSlots: this.hasResearch('night_bank') ? 1 : 0,
+        nightSlots: (this.hasResearch('night_bank') ? 1 : 0) + this.specMods().nightSlots,
         coldChainRooms: 0,
         cargoFacilities: tilesOf(this.tiles, 'cargo').length,
         incentiveDealActive: 0,
@@ -1814,7 +1931,8 @@ export class Game {
   }
 
   banThreshold(id: AirlineId): number {
-    return this.isHub(id) ? HUB_BAN_THRESHOLD : HEAT_BAN_THRESHOLD
+    if (!this.isHub(id)) return HEAT_BAN_THRESHOLD
+    return HUB_BAN_THRESHOLD + this.specMods().hubBanDelta
   }
 
   banAirline(id: AirlineId, reason: string) {
@@ -1996,10 +2114,18 @@ export class Game {
   }
 
   landingFeeMult(airlineId: AirlineId): number {
+    const mods = this.specMods()
+    let m = 1
     const r = this.rewardOf(airlineId)
-    if (r === 'biz_priority') return 1.14
-    if (r === 'cargo_night') return 1.2
-    return 1
+    if (r === 'biz_priority') m *= 1.14
+    if (r === 'cargo_night') m *= 1.2
+    const a = this.airline(airlineId)
+    if (a.bizModel === 'lcc' || a.persona === 'budget') m *= mods.lowCostFee
+    if (a.bizModel === 'full_service' || a.persona === 'luxury' || a.persona === 'business') {
+      m *= mods.premiumFee
+    }
+    if (a.kind === 'pax') m *= mods.paxLanding
+    return m
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -2777,6 +2903,7 @@ export class Game {
     for (const id of this.progressionBuilt) {
       n += progressionBuildable(id)?.upkeepPerDay ?? 0
     }
+    n += this.specMods().upkeepPerDay
     return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
 
@@ -3218,6 +3345,7 @@ export class Game {
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
       specPaths: this.specPaths,
+      specNodes: this.specNodes,
       progressionBuilt: this.progressionBuilt,
       parcels: this.parcels,
       railLinked: this.railLinked,
@@ -3331,6 +3459,7 @@ export class Game {
         (this.loanBalance > 0 ? LOAN_PRINCIPAL + LOAN_FEE : 0)
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.specPaths = (s.specPaths ?? []).filter((id): id is SpecPath => isSpecPath(id))
+      this.specNodes = (s.specNodes ?? []).filter((id) => isSpecNode(id))
       this.progressionBuilt = (s.progressionBuilt ?? []).filter((id) => Boolean(progressionBuildable(id)))
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
@@ -3963,28 +4092,35 @@ export class Game {
 
   /** Onward flight still on the ground, or an open connection id. */
   private pickConnectFlight(airlineId: AirlineId): string {
+    const airlines = new Set<string>([airlineId])
+    if (this.specMods().interline) {
+      for (const id of this.signed) {
+        if (this.airline(id).kind === 'pax') airlines.add(id)
+      }
+    }
     const onward = this.flights.find(
-      (f) =>
-        f.airline === airlineId &&
-        !f.cargo &&
-        f.phase !== 'gone' &&
-        f.phase !== 'takeoff' &&
-        f.phase !== 'taxi_out' &&
-        f.phase !== 'pushback',
+      (f) => airlines.has(f.airline) && !f.cargo && !this.connectionClosed(f),
     )
     return onward?.id ?? `connect:${airlineId}`
+  }
+
+  /**
+   * A departure has left the connection window.
+   * Slack from the hub tree keeps pushback, then taxi, inside the window.
+   */
+  private connectionClosed(f: Flight): boolean {
+    if (f.phase === 'gone' || f.phase === 'takeoff') return true
+    const slack = this.specMods().connectSlackSec
+    if (f.phase === 'taxi_out') return slack < 16
+    if (f.phase === 'pushback') return slack < 8
+    return false
   }
 
   private flightDeparted(id: string): boolean {
     if (id.startsWith('connect:')) return false
     const f = this.flights.find((x) => x.id === id)
     if (!f) return true
-    return (
-      f.phase === 'pushback' ||
-      f.phase === 'taxi_out' ||
-      f.phase === 'takeoff' ||
-      f.phase === 'gone'
-    )
+    return this.connectionClosed(f)
   }
 
   private bagClock() {
@@ -4017,6 +4153,10 @@ export class Game {
     g.atBagDesk = true
     g.deskTime = 0
     g.happiness = Math.max(0, g.happiness - 8)
+    if (fault === 'missed_connection' && g.airlineId) {
+      const extra = this.specMods().missHeat - 1
+      if (extra > 0) this.adjustHeat(g.airlineId, -2.2 * extra)
+    }
     g.node = 'claim'
     g.path = []
     g.seg = 0
@@ -4144,7 +4284,7 @@ export class Game {
 
   /** Warehouse fill 0–1 for HUD. */
   cargoWarehouseFill(): number {
-    return clamp(this.cargoWarehouse / CARGO_WAREHOUSE_CAP, 0, 1.2)
+    return clamp(this.cargoWarehouse / this.cargoWarehouseCap(), 0, 1.2)
   }
 
   /** Road cells on the map edge — city truck spawn points. */
@@ -4186,7 +4326,7 @@ export class Game {
         f.phase !== 'takeoff' &&
         f.phase !== 'hold',
     )
-    const wantStock = this.cargoWarehouse < CARGO_WAREHOUSE_CAP * 0.85
+    const wantStock = this.cargoWarehouse < this.cargoWarehouseCap() * 0.85
     if (!cargoSigned && !freighterBusy && !wantStock) return
     if (!wantStock && !freighterBusy) return
 
@@ -4296,7 +4436,7 @@ export class Game {
     }
     if (t.mission === 'city_shed') {
       const units = t.cargoUnits ?? 12
-      const room = Math.max(0, CARGO_WAREHOUSE_CAP - this.cargoWarehouse)
+      const room = Math.max(0, this.cargoWarehouseCap() - this.cargoWarehouse)
       const accepted = Math.min(units, room)
       this.cargoWarehouse += accepted
       if (accepted > 0) {
@@ -5274,7 +5414,8 @@ export class Game {
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
     const cap = fit?.capGuests ?? 40
     if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
-    if (fast) svc *= 0.5
+    if (fast) svc *= 0.5 * this.screenPace(true)
+    else svc *= this.screenPace(false)
 
     if ((g.serviceLeft ?? 0) > 0) {
       g.serviceLeft = (g.serviceLeft ?? 0) - dt
@@ -6026,7 +6167,7 @@ export class Game {
     } catch {
       return false
     }
-    const scheduled = needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40
+    const scheduled = this.scaledTurnMinutes(needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40)
     const pax = f.cargo || f.kind === 'freighter' || f.kind === 'military' ? 0 : f.pax
     if (pax > 0) {
       const longHaul = needs.sizeClass === 'L' || f.kind === 'widebody'
@@ -6412,7 +6553,8 @@ export class Game {
   ): { ok: boolean; why?: string } {
     if (pay <= 0) return { ok: true }
     const pref = g.prefs[kind] ?? 0
-    if (!desperate && pref < 0.28) {
+    const floor = 0.28 + this.specMods().tenantPref
+    if (!desperate && pref < floor) {
       return { ok: false, why: 'not interested' }
     }
     if (g.wallet < pay) {
@@ -6546,6 +6688,7 @@ export class Game {
         happy += 2
         brand = true
       }
+      pay = this.dressRetail(g.tag, pay, 'tenant')
       if (this.foodShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
       } else {
@@ -6578,7 +6721,7 @@ export class Game {
       }
     }
     if (n === 'shop') {
-      const pay = tagPrice(g.tag, 14, 24, 36, 48)
+      const pay = this.dressRetail(g.tag, tagPrice(g.tag, 14, 24, 36, 48), 'tenant')
       if (this.shopShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
       } else {
@@ -6605,7 +6748,7 @@ export class Game {
       let happy = 8
       let pay = 0
       if (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge')) {
-        pay = tagPrice(g.tag, 40, 45, 55, 65)
+        pay = this.dressRetail(g.tag, tagPrice(g.tag, 40, 45, 55, 65), 'lounge')
         const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 60)
         if (buy.ok) {
           happy += 10
@@ -6693,9 +6836,11 @@ export class Game {
       }
     }
     if (n === 'spa') {
-      const pay = g.transfer
-        ? tagPrice(g.tag, 48, 58, 72, 85)
-        : tagPrice(g.tag, 28, 40, 52, 62)
+      const pay = this.dressRetail(
+        g.tag,
+        g.transfer ? tagPrice(g.tag, 48, 58, 72, 85) : tagPrice(g.tag, 28, 40, 52, 62),
+        'lounge',
+      )
       const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 65 || g.transfer)
       if (!buy.ok) {
         g.needs.energy = Math.max(0, g.needs.energy - 12)
@@ -7052,13 +7197,15 @@ export class Game {
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
     const hub = this.isHub(airlineId)
-    const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
-    const spacing = a.kind === 'cargo'
-      ? 22 + Math.random() * 12
-      : hub
-        ? 12 + Math.random() * 8
-        : 18 + Math.random() * 10
-    const n = hub ? scaled + 1 : scaled
+    const mods = this.specMods()
+    const lcc = a.bizModel === 'lcc' || a.persona === 'budget'
+    const spacing = bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random())
+    const n = bankSlotCount(count, {
+      hub,
+      lcc,
+      capacity: this.diplomacyCapacity(airlineId),
+      mods,
+    })
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
@@ -7506,10 +7653,15 @@ export class Game {
           const cargo = pool.filter((id) => this.airline(id).kind === 'cargo')
           const paxSeen = (this.craftSeen.regional ?? 0) + (this.craftSeen.narrowbody ?? 0)
           const freightSeen = this.craftSeen.freighter ?? 0
+          const mods = this.specMods()
           const nightCargo =
-            this.hasResearch('night_bank') && this.isNight() && cargo.length
+            this.isNight() && cargo.length && (this.hasResearch('night_bank') || mods.nightHub)
+          const nightChance = Math.min(
+            0.92,
+            (this.hasResearch('night_bank') ? 0.7 : mods.nightHub ? 0.35 : 0) + mods.nightHubBias,
+          )
           const pickId =
-            nightCargo && Math.random() < 0.7
+            nightCargo && Math.random() < nightChance
               ? pick(cargo)
               : cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
                 ? pick(cargo)
@@ -7709,7 +7861,7 @@ export class Game {
     if (this.hubOffer || this.isHub(airlineId) || this.isBanned(airlineId)) return
     if (this.hubOfferCool > 0) return
     if ((this.layoverWins[airlineId] ?? 0) < HUB_LAYOVER_WINS) return
-    if (this.heatOf(airlineId) < HUB_HEAT_NEED) return
+    if (this.heatOf(airlineId) < this.hubHeatNeed()) return
     if (!this.signed.includes(airlineId)) return
     const a = this.airline(airlineId)
     if (a.kind === 'cargo' || a.persona === 'military_gov') return
@@ -10094,7 +10246,7 @@ export class Game {
   /** Open timetable slots scale with stamped strips (not a hard 2-RW world). */
   scheduleCap(): number {
     const strips = Math.max(1, this.runwayStripCount())
-    return Math.min(28, 10 + strips * 4)
+    return Math.min(28, Math.max(6, 10 + strips * 4 + this.specMods().scheduleCap))
   }
 
   maxInbound(): number {
@@ -10105,6 +10257,7 @@ export class Game {
     const strips = this.runwayStripCount()
     let n = 1 + Math.min(6, Math.max(1, strips))
     if (this.hasResearch('stand_class')) n += 1
+    n += this.specInboundBonus()
     // Extra terminal campuses — one more simultaneous approach each (cap 2).
     if (this.fits.length >= 2) n += Math.min(2, this.fits.length - 1)
     return Math.min(10, n)
@@ -11184,6 +11337,7 @@ export class Game {
         } else {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
           if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
+          cargoMult *= this.isNight() ? this.specMods().nightCargoFee : this.specMods().dayCargoFee
           this.earn(
             Math.round(airline.landing * 0.35 * cargoMult),
             `${f.flightNo} cargo handling`,
@@ -11409,7 +11563,8 @@ export class Game {
     if (!hasBeltNetwork(this.tiles)) return
     if (standBeltLinked(this.tiles, f.stand)) return
     f.boardingSlow = true
-    this.adjustHeat(f.airline, -2.2)
+    const belt = this.isHub(f.airline) ? this.specMods().hubBeltHeat : this.specMods().otherBeltHeat
+    this.adjustHeat(f.airline, -2.2 * belt)
     if (Math.random() < 0.55) {
       this.pushNews(
         `${f.flightNo} bags late — belt broken between hall, sort, and stand.`,
