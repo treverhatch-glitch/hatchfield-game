@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PremiumPanel } from './PremiumPanel.tsx'
 import { AIRFRAMES } from '../game/airframes'
 import {
   BUDGET_BLURB,
@@ -107,6 +108,7 @@ type PanelId =
   | 'airlines'
   | 'planner'
   | 'services'
+  | 'premium'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -165,6 +167,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+  { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
 ]
 
 export function Hud({ game }: { game: Game }) {
@@ -1555,6 +1558,8 @@ export function Hud({ game }: { game: Game }) {
                   </section>
                 </>
               ) : null}
+
+              {panel === 'premium' ? <PremiumPanel game={game} /> : null}
 
               {panel === 'services' ? (
                 <>

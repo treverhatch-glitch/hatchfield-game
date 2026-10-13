@@ -161,6 +161,24 @@ import {
   type StaffPost,
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
+import {
+  CT_TECH_ID,
+  PREMIUM_RULES,
+  buyFacility,
+  cabinFromGuest,
+  cabinFromTag,
+  createPremiumState,
+  dailyUpkeep,
+  expectsHigherService,
+  hireOfficer,
+  premiumStaffBuildings,
+  restorePremium,
+  screenPassengers,
+  setFeeEnabled,
+  staffedFacilities,
+  type PremiumItemId,
+  type PremiumState,
+} from '../premium/index.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
@@ -597,6 +615,8 @@ export class Game {
   researcherCool = 0
   deskStaff = 0
   deskStaffCool = 0
+  /** Premium desks, fast-track lanes, VIP room, and the shared officer roster. */
+  premium: PremiumState = createPremiumState()
   hallStaff: HallStaff[] = []
   /** Recent landside touchpoints (exits / day rooms / park cues) for usage meters. */
   landsideUses = 0
@@ -870,6 +890,7 @@ export class Game {
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.premium = createPremiumState()
     this.landsideUses = 0
     this.landsideFeeWindow = 0
     this.interestCool = 60
@@ -2091,6 +2112,7 @@ export class Game {
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.premium = createPremiumState()
     const focusBit =
       this.startFocus === 'cargo'
         ? 'Cargo focus — Starter kit builds shed + guard, no hall.'
@@ -3140,6 +3162,7 @@ export class Game {
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      premium: this.premium,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3227,6 +3250,7 @@ export class Game {
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
+      this.premium = restorePremium(s.premium)
       this.hallStaff = []
       this.public = s.public ?? false
       this.sharePrice = s.sharePrice ?? 0
@@ -4288,8 +4312,9 @@ export class Game {
     else if (open.has('security')) this.routeGuest(g, 'security', open)
     else g.thought = 'No security lane — stuck before security'
     if (g.thought !== 'No security lane — stuck before security') {
-      g.thought = 'Rolling a bag to check-in'
+      g.thought = g.usedPremiumCheckin ? 'Premium check-in' : 'Rolling a bag to check-in'
     }
+    this.notePremiumDesk(g)
   }
 
   /** Focus a campus hall (from HUD chips or pan-click). */
@@ -4316,6 +4341,7 @@ export class Game {
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
+      g.serviceCabin = cabinFromGuest(tag, a.persona, g.id)
       const modes = this.pickGuestMode(tag, a.persona, job)
       g.preferMode = modes.prefer
       g.arriveMode = modes.actual
@@ -4504,6 +4530,7 @@ export class Game {
       hallId: plan.hallId,
     })
     const persona = this.airline(plan.airlineId as AirlineId).persona
+    g.serviceCabin = cabinFromGuest(tag, persona, g.id)
     const modes = this.pickGuestMode(tag, persona, 'depart')
     g.preferMode = modes.prefer
     g.arriveMode = modes.actual
@@ -5117,6 +5144,11 @@ export class Game {
    * and the advisor asks for an upgrade. Nobody is marked lost.
    */
   tickSecurityLane(g: HallGuest, dt: number, open: Set<HallNode>) {
+    if (g.job === 'depart' && !g.clearedSec) this.rulePremiumScreen(g)
+    if (g.premiumScreen === 'fast_track' || g.premiumScreen === 'vip_room') {
+      this.tickDedicatedLane(g, dt, open)
+      return
+    }
     const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
     const lane = laneStats({
       premade: fit?.premade ?? false,
@@ -8314,6 +8346,137 @@ export class Game {
     }
   }
 
+  hasCtScanners(): boolean {
+    const unlocked = this.economyState?.unlockedTech ?? this.economyView?.state.unlockedTech ?? []
+    return unlocked.includes(CT_TECH_ID)
+  }
+
+  premiumGate() {
+    return {
+      fieldLevel: this.fieldLevel(),
+      hasCt: this.hasCtScanners(),
+      day: Math.floor(Math.max(0, this.clock) / 180),
+      hourIndex: Math.floor(this.simMinutes() / 60),
+      hours: 1,
+    }
+  }
+
+  buyPremium(itemId: PremiumItemId): boolean {
+    const attempt = buyFacility(this.premium, itemId, this.premiumGate())
+    if (!attempt.ok) {
+      this.pushNews(attempt.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(attempt.cost, attempt.name)) return false
+    this.premium = attempt.state
+    this.pushNews(
+      `${attempt.name} open. Upkeep ${moneyLeft(attempt.upkeep)}/day, staffed or idle.`,
+      'ok',
+    )
+    this.emit()
+    return true
+  }
+
+  hirePremiumOfficer(): boolean {
+    const attempt = hireOfficer(this.premium)
+    if (!attempt.ok) {
+      this.pushNews(attempt.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(attempt.cost, 'security officer')) return false
+    this.premium = attempt.state
+    this.pushNews(
+      `Security officer #${this.premium.securityOfficers} joined the shared roster.`,
+      'ok',
+    )
+    this.emit()
+    return true
+  }
+
+  setPremiumFee(on: boolean) {
+    this.premium = setFeeEnabled(this.premium, on)
+    this.pushNews(
+      on ? `Fast-track fee on (${moneyLeft(PREMIUM_RULES.fastTrackFee)} per passenger).` : 'Fast-track fee off.',
+      'ok',
+    )
+    this.emit()
+  }
+
+  /** Daily building upkeep. Idle lanes pay the same as busy ones. */
+  billPremiumUpkeep(): number {
+    const bill = dailyUpkeep(this.premium)
+    if (!(bill > 0)) return 0
+    const before = this.cash
+    this.charge(bill)
+    if (this.cash !== before) this.postJournal('building_upkeep', bill, this.simMinutes())
+    return bill
+  }
+
+  private notePremiumDesk(g: HallGuest) {
+    if (g.usedPremiumCheckin || g.job !== 'depart') return
+    const cabin = g.serviceCabin ?? cabinFromTag(g.tag)
+    if (!expectsHigherService(cabin)) return
+    const open = staffedFacilities(
+      this.premium,
+      { security_officer: this.premium.securityOfficers, terminal_staff: this.deskStaff },
+      this.hasCtScanners(),
+    )
+    if (!open.some((row) => row.kind === 'checkin')) return
+    g.usedPremiumCheckin = true
+    g.thought = 'Premium check-in'
+  }
+
+  private rulePremiumScreen(g: HallGuest) {
+    if (g.premiumScreen || g.job !== 'depart') return
+    const cabin = g.serviceCabin ?? cabinFromTag(g.tag)
+    const screened = screenPassengers(
+      this.premium,
+      [{ id: g.id, cabin, airlineId: g.airlineId ?? 'field' }],
+      { security_officer: this.premium.securityOfficers, terminal_staff: this.deskStaff },
+      this.premiumGate(),
+    )
+    this.premium = screened.state
+    const row = screened.rows[0]
+    if (!row) return
+    g.premiumScreen = row.path
+    g.premiumEscort = row.escorted
+    if (row.checkinId) g.usedPremiumCheckin = true
+    if (row.happinessDelta) g.happiness = Math.max(0, Math.min(100, g.happiness + row.happinessDelta))
+    if (row.standingDelta && g.airlineId) {
+      const sens = this.airline(g.airlineId).heatSensitivity || 1
+      this.adjustHeat(g.airlineId as AirlineId, row.standingDelta / sens)
+    }
+    if (row.fee > 0) {
+      this.cash += row.fee
+      this.revenue += row.fee
+      this.noteIncome(row.fee, 'passenger_fees')
+    }
+  }
+
+  private tickDedicatedLane(g: HallGuest, dt: number, open: Set<HallNode>) {
+    const label =
+      g.premiumScreen === 'vip_room' ? 'Private screening' : g.premiumEscort ? 'Escorted fast-track' : 'Fast-track lane'
+    if ((g.serviceLeft ?? 0) > 0) {
+      g.serviceLeft = (g.serviceLeft ?? 0) - dt
+      g.lost = false
+      g.thought = label
+      if ((g.serviceLeft ?? 0) <= 0) {
+        g.serviceLeft = 0
+        g.clearedSec = true
+        g.thought = g.premiumScreen === 'vip_room' ? 'Cleared the private room' : 'Cleared fast-track'
+        if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
+        else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
+        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
+      return
+    }
+    g.serviceLeft = PREMIUM_RULES.dedicatedServiceSec
+    g.lost = false
+    g.thought = label
+  }
+
   hireDeskStaff() {
     if (this.deskStaff >= 8) {
       this.pushNews('Desk crew maxed (8).', 'bad')
@@ -8610,6 +8773,10 @@ export class Game {
    * Landside upkeep is the old six payroll-tick slices, billed once.
    */
   private closeOperatingDay(completedDay: number) {
+    const premiumBill = this.billPremiumUpkeep()
+    if (premiumBill > 0 && !this.sandbox) {
+      this.pushNews(`Premium upkeep ${moneyLeft(premiumBill)} — idle lanes still bill.`, 'ok')
+    }
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -8686,8 +8853,9 @@ export class Game {
             maintenance_tech: { hired: this.mechanics, wagePerDay: 0 },
             researcher: { hired: this.researchers, wagePerDay: 0 },
             terminal_staff: { hired: this.deskStaff, wagePerDay: 0 },
+            security_officer: { hired: this.premium.securityOfficers, wagePerDay: 0 },
           }),
-          getStaffBuildings: () => [],
+          getStaffBuildings: () => premiumStaffBuildings(this.premium),
           getResearchRooms: () =>
             this.researchers > 0
               ? [{ id: 'field-lab', desks: this.researchers, powerDemand: 35, active: true }]
