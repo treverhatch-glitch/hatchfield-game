@@ -379,6 +379,25 @@ Prefab halls I, II, and III show zero mishandled bags under a normal load. A slo
 
 - `docs/devlog/media/LUGGAGE-desk.png` — lost-bag desk, yellow bags on the counter, thought "Lost-bag desk — my bag missed the connection", chrome hidden
 
+## Logistics from PR #5 — 13 Oct
+
+The trunk already had an older copy of the ground-logistics module. The newer copy from the logistics branch is the one in the game now. The apron still calls it the same way: the depot and the fuel farm build the service-road graph, trucks drive that graph, and the books still post fuel, meals, and upkeep.
+
+Balance, so a mid-size airport is not a fuel mint:
+
+- Fuel pays the airport a throughput fee of $0.012 per litre on top of the $0.70 purchase price. The old 15% markup is gone.
+- A meal costs $4.50 to make and earns a $6 fee.
+- Belly cargo on a passenger flight is 30% of the hold.
+- Vehicle stickers are about one tenth of the real price. The fleet that comes with a depot is free.
+
+An empty farm still holds a departure. If that hold lasts past the departure slot (12 sim-seconds, a bit over an hour and a half of game time), the flight is cancelled and Standing drops. A short outage still only grounds the aircraft.
+
+The shared clock and bank from the economy branch have not landed. That branch is still open, and taking it now would remove the luggage pairing, so it stays separate.
+
+**Bugs.** Still ten.
+
+**Tests.** 156 passing.
+
 
 **Media**
 

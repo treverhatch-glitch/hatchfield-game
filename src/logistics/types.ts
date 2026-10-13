@@ -1,3 +1,5 @@
+import type { FacilityKind, FacilityStatus, MaintenanceConfig, CrewType } from './maintenance'
+
 /** Shared types for the ground-logistics module. All times are in sim minutes. */
 
 export type VehicleType =
@@ -9,6 +11,12 @@ export type VehicleType =
   | 'pax_bus'
   | 'belt_loader'
   | 'uld_loader'
+  | 'heavy_fuel_truck'
+  | 'hydrant_dispenser'
+  | 'highlift_catering'
+  | 'main_deck_loader'
+  | 'heavy_baggage_tug'
+  | 'heavy_tug'
 
 export const VEHICLE_TYPES: readonly VehicleType[] = [
   'fuel_truck',
@@ -19,6 +27,12 @@ export const VEHICLE_TYPES: readonly VehicleType[] = [
   'pax_bus',
   'belt_loader',
   'uld_loader',
+  'heavy_fuel_truck',
+  'hydrant_dispenser',
+  'highlift_catering',
+  'main_deck_loader',
+  'heavy_baggage_tug',
+  'heavy_tug',
 ]
 
 /** Turnaround phases / services. */
@@ -67,6 +81,8 @@ export interface StandConfig {
   hydrant: boolean
   /** Jet bridge, airstairs at a contact stand, or a remote stand served by bus. Default 'stairs'. */
   access?: StandAccess
+  /** Jet bridges on a bridge stand (3 = A380-capable incl. upper deck). Default: pax.doors.bridge for the size. */
+  bridges?: number
 }
 
 export interface FuelFarmConfig {
@@ -77,8 +93,8 @@ export interface FuelFarmConfig {
   lowStockLitres: number
   /** What the airport pays the supplier per litre. */
   purchasePricePerLitre: number
-  /** Fraction added on top of purchase price when selling to airlines (0.15 = 15%). */
-  markup: number
+  /** Airport throughput fee per litre. The airline pays the fuel plus this fee. */
+  throughputFeePerLitre: number
   /** Litres one tanker-truck delivery brings. */
   tankerLitres: number
   /** Minutes from order to delivery. */
@@ -110,6 +126,10 @@ export interface VehicleSpec {
   loadMinutes: number
   /** Minutes to unload at a drop-off (bag claim, cargo area, terminal). */
   dropMinutes?: number
+  /** Litres per minute through this vehicle's hose (fuel trucks). Default truckPumpLpm. */
+  pumpLpm?: number
+  /** Work-rate multiplier at the aircraft (loaders). Default 1. */
+  rateMult?: number
 }
 
 export interface PaxConfig {
@@ -171,6 +191,8 @@ export interface LogisticsConfig {
   hydrantPumpLpm: number
   pax: PaxConfig
   hold: HoldConfig
+  /** Wear, breakdowns, servicing and facility upkeep. Omit to switch maintenance off. */
+  maintenance?: MaintenanceConfig
 }
 
 export interface TurnaroundNeeds {
@@ -188,6 +210,14 @@ export interface TurnaroundNeeds {
   cleaningMinutes: number
   gpuMinutes: number
   pushbackMinutes: number
+  /** A380 / 747-8F / An-124 / C-5: heavy towbarless tug, big loaders. */
+  superHeavy: boolean
+  /** Upper-deck catering door (A380): needs a high-lift truck. */
+  upperDeck: boolean
+  /** Simultaneous fuel points (two wings on L-size types). */
+  fuelPoints: number
+  /** Most bridges the type can use. */
+  maxBridgeDoors: number
   /** Services for a full 'turn'. */
   services: ServiceKind[]
 }
@@ -217,6 +247,8 @@ export type DelayCause =
   | 'late_pax'
   | 'late_bags'
   | 'bag_offload'
+  | 'vehicle_breakdown'
+  | 'undersized_vehicle'
 
 export type LogisticsEvent =
   | { type: 'truck_arrive'; time: number; vehicleId: string; vehicle: VehicleType; standId: string }
@@ -235,8 +267,28 @@ export type LogisticsEvent =
   | { type: 'delivery_arrived'; time: number; litres: number; vehicleId: string }
   | { type: 'turnaround_complete'; time: number; standId: string; turnaroundId: string; delayMinutes: number; causes: DelayCause[] }
   | { type: 'money'; time: number; amount: number; category: MoneyCategory }
+  | { type: 'vehicle_breakdown'; time: number; vehicleId: string; vehicle: VehicleType; node: string; condition: number; reason: 'wear' | 'event' }
+  | { type: 'vehicle_repaired'; time: number; vehicleId: string; vehicle: VehicleType; inPlace: boolean }
+  | { type: 'vehicle_serviced'; time: number; vehicleId: string; vehicle: VehicleType; repair: boolean }
+  | { type: 'crew_dispatched'; time: number; crewId: string; crew: CrewType; job: 'repair' | 'tow' | 'facility' | 'inspect'; target: string }
+  | { type: 'tow_start'; time: number; crewId: string; vehicleId: string }
+  | { type: 'facility_status'; time: number; facilityId: string; kind: FacilityKind; status: FacilityStatus; condition: number }
+  | { type: 'facility_repaired'; time: number; facilityId: string; cost: number }
+  | { type: 'runway_fod'; time: number; runwayId: string }
+  | { type: 'runway_closed'; time: number; runwayId: string; reason: 'fod' | 'inspection' }
+  | { type: 'runway_reopened'; time: number; runwayId: string }
+  | { type: 'safety_incident'; time: number; what: string; ratingHit: number }
+  | { type: 'pax_mood_hit'; time: number; facilityId: string; amount: number }
 
-export type MoneyCategory = 'fuel_sales' | 'catering_fees' | 'fuel_purchase' | 'meal_production' | 'vehicle_upkeep'
+export type MoneyCategory =
+  | 'fuel_sales'
+  | 'catering_fees'
+  | 'fuel_purchase'
+  | 'meal_production'
+  | 'vehicle_upkeep'
+  | 'maintenance_preventive'
+  | 'maintenance_repair'
+  | 'maintenance_upkeep'
 
 export interface Ledger {
   fuelSales: number
@@ -244,4 +296,7 @@ export interface Ledger {
   fuelPurchase: number
   mealProduction: number
   vehicleUpkeep: number
+  maintenancePreventive: number
+  maintenanceRepair: number
+  maintenanceUpkeep: number
 }

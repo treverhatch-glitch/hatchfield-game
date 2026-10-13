@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { RoadGraph } from '../logistics/roads.ts'
-import { buildLogisticsConfig } from './logisticsBridge.ts'
+import { buildLogisticsConfig, FUEL_OUTAGE_SLOT_SEC } from './logisticsBridge.ts'
 import { Game } from './sim.ts'
 import { SIZE, type Flight, type Vec } from './types.ts'
 import { walkableFor } from './path.ts'
@@ -184,5 +184,21 @@ describe('ground logistics wiring', () => {
     expect(note?.fix).toMatch(/catering kitchen/i)
     expect(note?.scope).toBe('apron')
     expect(game.hallGuests.filter((g) => g.lost).length).toBe(0)
+  })
+
+  it('cancels a departure that stays grounded for fuel past the slot', () => {
+    const game = field()
+    game.fuelLoads = 0
+    const f = parked(game, { c: 12, r: 21 })
+    f.phase = 'board'
+    f.phaseTime = 400
+    game.tick(0.3)
+    expect(f.phase).toBe('board')
+    expect(f.fuelHeld).toBe(true)
+    f.fuelHeldSince = game.clock - FUEL_OUTAGE_SLOT_SEC - 0.1
+    game.tick(0.3)
+    expect(f.phase).toBe('gone')
+    expect(game.news.some((n) => n.text.includes('cancelled') && n.text.includes('no fuel'))).toBe(true)
+    expect(game.flights.some((x) => x.id === f.id)).toBe(false)
   })
 })

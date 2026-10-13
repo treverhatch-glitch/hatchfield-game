@@ -261,13 +261,13 @@ describe('stock and money', () => {
     expect(sim.ledger.fuelPurchase).toBeCloseTo(10000 * 0.7)
   })
 
-  it('fuel sold at markup, catering fees, upkeep accrues', () => {
+  it('fuel sold at a throughput fee, catering fees, upkeep accrues', () => {
     const sim = new LogisticsSim(defaultConfig({ kitchen: { ...defaultConfig().kitchen, mealsPerHour: 0 } }))
     const id = sim.startTurnaround('stand-2', 'a320neo', 90)
     runUntilDone(sim, id)
     const n = needsFor('a320neo')
-    expect(sim.ledger.fuelSales).toBeCloseTo(n.fuelLitres * 0.7 * 1.15)
-    expect(sim.ledger.cateringFees).toBeCloseTo(n.meals * 9)
+    expect(sim.ledger.fuelSales).toBeCloseTo(n.fuelLitres * (0.7 + 0.012))
+    expect(sim.ledger.cateringFees).toBeCloseTo(n.meals * 6)
     const cfg = defaultConfig()
     const perDay = Object.entries(cfg.vehicles).reduce(
       (s, [k, n]) => s + (n ?? 0) * cfg.vehicleSpecs[k as keyof typeof cfg.vehicleSpecs].upkeepPerDay,
@@ -282,7 +282,7 @@ describe('stock and money', () => {
     const sim = new LogisticsSim({ ...base, kitchen: { ...base.kitchen, initialMeals: 2900 } })
     sim.tick(60)
     expect(sim.meals).toBe(3000)
-    expect(sim.ledger.mealProduction).toBeCloseTo(100 * 4)
+    expect(sim.ledger.mealProduction).toBeCloseTo(100 * 4.5)
   })
 })
 

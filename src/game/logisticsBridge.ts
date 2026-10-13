@@ -4,6 +4,13 @@ import { neighbors, tilesOf, walkableFor } from './path.ts'
 import type { StandAccess, Tile } from './types.ts'
 
 /**
+ * Sim-seconds an empty farm may hold a departure.
+ * One game hour is 7.5 seconds, so this is a bit over an hour and a half.
+ * Past it, the departure slot is missed and the flight is cancelled.
+ */
+export const FUEL_OUTAGE_SLOT_SEC = 12
+
+/**
  * Metres along one apron cell.
  * One game hour is 7.5 sim-seconds, so a cell is long enough that a truck's
  * drive along the service road is visible, while a turnaround still finishes
@@ -11,7 +18,7 @@ import type { StandAccess, Tile } from './types.ts'
  */
 export const METRES_PER_CELL = 900
 
-const FLEET: Record<VehicleType, number> = {
+const FLEET: Partial<Record<VehicleType, number>> = {
   fuel_truck: 2,
   catering_truck: 2,
   baggage_tug: 3,
@@ -32,6 +39,8 @@ export const CAUSE_LINE: Record<DelayCause, string> = {
   late_pax: 'Passengers reached the gate late',
   late_bags: 'Bags reached the make-up area late',
   bag_offload: 'A late passenger bag had to come off the aircraft',
+  vehicle_breakdown: 'A service vehicle broke down on the job',
+  undersized_vehicle: 'The truck was too small for that aircraft',
 }
 
 export function groundCauseLine(cause: DelayCause): string {
@@ -51,6 +60,8 @@ export function delayFix(causes: DelayCause[]): string {
   if (causes.includes('late_bags') || causes.includes('bag_offload')) {
     return 'Keep the bag belt linked so make-up is ready before the door closes.'
   }
+  if (causes.includes('vehicle_breakdown')) return 'The truck is in the shop. The next free vehicle will pick up the job.'
+  if (causes.includes('undersized_vehicle')) return 'That aircraft needs the heavy kit. The basic trucks will finish, slowly.'
   return 'Give the ramp another minute, or add a vehicle depot if the stands are stacked.'
 }
 
@@ -130,7 +141,7 @@ export function buildLogisticsConfig(
 
   const vehicles: Partial<Record<VehicleType, number>> = {}
   for (const type of Object.keys(FLEET) as VehicleType[]) {
-    vehicles[type] = FLEET[type] * depots.length
+    vehicles[type] = (FLEET[type] ?? 0) * depots.length
   }
 
   return {
@@ -147,7 +158,7 @@ export function buildLogisticsConfig(
       initialLitres: 240_000,
       lowStockLitres: 60_000,
       purchasePricePerLitre: 0.7,
-      markup: 0.15,
+      throughputFeePerLitre: 0.012,
       tankerLitres: 36_000,
       deliveryLeadMinutes: 90,
       autoReorder: true,
@@ -159,8 +170,8 @@ export function buildLogisticsConfig(
           initialMeals: 800,
           mealsPerHour: 240,
           lowStockMeals: 160,
-          costPerMeal: 4,
-          feePerMeal: 9,
+          costPerMeal: 4.5,
+          feePerMeal: 6,
         }
       : {
           node: kitchenNode,
@@ -168,8 +179,8 @@ export function buildLogisticsConfig(
           initialMeals: 0,
           mealsPerHour: 0,
           lowStockMeals: 20,
-          costPerMeal: 4,
-          feePerMeal: 9,
+          costPerMeal: 4.5,
+          feePerMeal: 6,
         },
     vehicles,
     vehicleSpecs: DEFAULT_VEHICLE_SPECS,

@@ -1,3 +1,4 @@
+import { Maintenance, type MaintenanceMetrics, type WearState } from './maintenance'
 import { needsFor } from './needs'
 import { RoadGraph } from './roads'
 import type {
@@ -43,6 +44,14 @@ function pointAlong(pts: { x: number; y: number }[], u: number): { x: number; y:
   return { x: last.x, y: last.y, heading: 0 }
 }
 
+export interface VehiclePose {
+  id: string
+  type: VehicleType
+  x: number
+  y: number
+  heading: number
+}
+
 /**
  * How a vehicle-served job moves things.
  * - carry: vehicle keeps a load between jobs (fuel, meals) drawn from a global store.
@@ -51,6 +60,8 @@ function pointAlong(pts: { x: number; y: number }[], u: number): { x: number; y:
  * - onsite: just be at the stand (fixed minutes, or until released for loaders).
  */
 type JobMode = 'carry' | 'in' | 'out' | 'onsite'
+
+const TUGS: VehicleType[] = ['heavy_baggage_tug', 'baggage_tug']
 
 const HOLD_SERVICES: ServiceKind[] = ['bag_unload', 'cargo_unload', 'bag_load', 'cargo_load', 'bag_offload']
 
@@ -63,6 +74,10 @@ export type VehiclePhase =
   | 'servicing'
   | 'to_dropoff'
   | 'unloading'
+  | 'broken'
+  | 'towed'
+  | 'to_maintenance'
+  | 'in_bay'
 
 export interface VehicleState {
   id: string
@@ -78,21 +93,12 @@ export interface VehicleState {
   serving: number
   /** Amount this vehicle was dispatched for but hasn't picked up yet. */
   reserved: number
-  /** Node the current move started at. */
-  fromNode: string
-  /** Road-node sequence for the current move, when driving. */
-  route: string[] | null
-  /** Sim minute the current phase started. */
-  phaseStart: number
-}
-
-export interface VehiclePose {
-  id: string
-  type: VehicleType
-  /** Apron cell coordinates (the road graph's x/y). */
-  x: number
-  y: number
-  heading: number
+  /** Condition, wear and breakdown state (maintenance). */
+  wear: WearState
+  /** Service-road nodes for the drive in progress. */
+  route?: string[] | null
+  /** Sim-minute when the current drive started. */
+  phaseStart?: number
 }
 
 interface ServiceRequest {
@@ -100,7 +106,10 @@ interface ServiceRequest {
   turnaroundId: string
   standId: string
   service: ServiceKind
-  vehicle: VehicleType
+  /** Vehicle types that can do the job, best first. */
+  vehicles: VehicleType[]
+  /** 'upper' = A380 upper-deck catering door. */
+  part?: 'upper'
   mode: JobMode
   /** carry/out: amount to deliver/pick up. in: dynamic, see targetOf(). */
   target: number
@@ -202,7 +211,18 @@ export class LogisticsSim {
   fuelLitres: number
   meals: number
   readonly vehicles: VehicleState[] = []
-  readonly ledger: Ledger = { fuelSales: 0, cateringFees: 0, fuelPurchase: 0, mealProduction: 0, vehicleUpkeep: 0 }
+  readonly ledger: Ledger = {
+    fuelSales: 0,
+    cateringFees: 0,
+    fuelPurchase: 0,
+    mealProduction: 0,
+    vehicleUpkeep: 0,
+    maintenancePreventive: 0,
+    maintenanceRepair: 0,
+    maintenanceUpkeep: 0,
+  }
+  /** Present when config.maintenance is set. */
+  readonly maintenance: Maintenance | null = null
   private readonly stands = new Map<string, StandConfig>()
   private readonly turnarounds = new Map<string, TurnaroundState>()
   private readonly byStand = new Map<string, string>()
@@ -241,15 +261,69 @@ export class LogisticsSim {
           requestId: null,
           serving: 0,
           reserved: 0,
-          fromNode: config.depotNode,
+          wear: Maintenance.freshWear(0),
           route: null,
           phaseStart: 0,
         })
       }
     }
+    if (config.maintenance) {
+      this.maintenance = new Maintenance(
+        {
+          now: () => this.now,
+          roads: this.roads,
+          vehicles: this.vehicles,
+          baseSpeed: (type) => config.vehicleSpecs[type].speedKmh,
+          emit: (e) => this.emit(e),
+          money: (amount, category) => this.money(amount, category),
+          releaseJob: (v) => this.releaseJob(v as VehicleState),
+          hasOpenWork: (type) =>
+            this.requests.some(
+              (r) =>
+                r.vehicles.includes(type) &&
+                (r.mode === 'carry' || r.mode === 'onsite'
+                  ? !this.vehicles.some((v) => v.requestId === r.id)
+                  : this.openAmount(r) > EPS),
+            ),
+          setIdle: (v) => this.idle(v as VehicleState),
+          redispatch: () => this.dispatch(),
+        },
+        config.maintenance,
+      )
+    }
   }
 
   // ---------------------------------------------------------------- public API
+
+  /** Maintenance metrics and advisor hints (null when maintenance is off). */
+  maintenanceMetrics(): MaintenanceMetrics | null {
+    return this.maintenance?.metrics() ?? null
+  }
+
+  /** Stand usable (not failed from neglect). */
+  standAvailable(standId: string): boolean {
+    return this.maintenance?.standAvailable(standId) ?? true
+  }
+
+  /**
+   * Knock out working vehicles of a type right away (external events such as a
+   * random fuel-truck failure). With durationMin they come back by themselves.
+   */
+  forceBreakdown(type: VehicleType, count = 1, durationMin?: number): string[] {
+    const m = this.maintenance
+    if (!m) return []
+    const pool = this.vehicles
+      .filter((v) => v.type === type && v.phase !== 'broken' && v.phase !== 'towed' && v.phase !== 'in_bay')
+      .sort((a, b) => a.wear.condition - b.wear.condition || (a.id < b.id ? -1 : 1))
+      .slice(0, count)
+    for (const v of pool) m.breakDown(v, 'event', durationMin)
+    return pool.map((v) => v.id)
+  }
+
+  /** Working vehicles of a type (for external event odds). */
+  workingVehicles(type: VehicleType): number {
+    return this.vehicles.filter((v) => v.type === type && v.phase !== 'broken' && v.phase !== 'towed' && v.phase !== 'in_bay').length
+  }
 
   on(listener: LogisticsListener): () => void {
     this.listeners.push(listener)
@@ -261,12 +335,21 @@ export class LogisticsSim {
 
   get fuelSellPrice(): number {
     const f = this.config.fuelFarm
-    return f.purchasePricePerLitre * (1 + f.markup)
+    return f.purchasePricePerLitre + f.throughputFeePerLitre
   }
 
   get profit(): number {
     const l = this.ledger
-    return l.fuelSales + l.cateringFees - l.fuelPurchase - l.mealProduction - l.vehicleUpkeep
+    return (
+      l.fuelSales +
+      l.cateringFees -
+      l.fuelPurchase -
+      l.mealProduction -
+      l.vehicleUpkeep -
+      l.maintenancePreventive -
+      l.maintenanceRepair -
+      l.maintenanceUpkeep
+    )
   }
 
   get inboundLitres(): number {
@@ -281,6 +364,7 @@ export class LogisticsSim {
     const stand = this.stands.get(standId)
     if (!stand) throw new Error(`Unknown stand: ${standId}`)
     if (this.byStand.has(standId)) throw new Error(`Stand ${standId} already has a turnaround`)
+    if (!this.standAvailable(standId)) throw new Error(`Stand ${standId} is out of service`)
     const needs = needsFor(airframeId)
     const cfg = this.config
     const kind: FlightKind = opts.kind ?? 'turn'
@@ -409,7 +493,7 @@ export class LogisticsSim {
    * Idle and on-stand vehicles sit on their current node.
    */
   poses(): VehiclePose[] {
-    const driving = new Set<VehiclePhase>(['to_source', 'to_stand', 'to_dropoff'])
+    const driving = new Set<VehiclePhase>(['to_source', 'to_stand', 'to_dropoff', 'to_maintenance', 'towed'])
     return this.vehicles.map((v) => {
       const here = this.roads.at(v.node)
       const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: 0 }
@@ -418,8 +502,9 @@ export class LogisticsSim {
       }
       const pts = v.route.map((id) => this.roads.at(id)).filter((n): n is NonNullable<typeof n> => Boolean(n))
       if (pts.length < 2) return { id: v.id, type: v.type, ...parked }
-      const span = v.phaseEnd - v.phaseStart
-      const u = Number.isFinite(span) && span > 1e-6 ? Math.min(1, Math.max(0, (this.now - v.phaseStart) / span)) : 1
+      const start = v.phaseStart ?? this.now
+      const span = v.phaseEnd - start
+      const u = Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
       const at = pointAlong(pts, u)
       return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading }
     })
@@ -523,6 +608,9 @@ export class LogisticsSim {
       fuel_purchase: 'fuelPurchase',
       meal_production: 'mealProduction',
       vehicle_upkeep: 'vehicleUpkeep',
+      maintenance_preventive: 'maintenancePreventive',
+      maintenance_repair: 'maintenanceRepair',
+      maintenance_upkeep: 'maintenanceUpkeep',
     }
     this.ledger[key[category]] += Math.abs(amount)
     this.emit({ type: 'money', time: this.now, amount, category })
@@ -539,7 +627,9 @@ export class LogisticsSim {
 
   private paxDoors(t: TurnaroundState): number {
     const p = this.config.pax
-    return t.access === 'bridge' ? p.doors.bridge[t.needs.sizeClass] : p.doors.stairs[t.needs.sizeClass]
+    if (t.access !== 'bridge') return p.doors.stairs[t.needs.sizeClass]
+    const bridges = this.stand(t).bridges ?? p.doors.bridge[t.needs.sizeClass]
+    return Math.max(1, Math.min(bridges, t.needs.maxBridgeDoors))
   }
 
   private deplaneRate(t: TurnaroundState): number {
@@ -569,20 +659,27 @@ export class LogisticsSim {
         else this.addTimer(t, s, t.pax.arriving / this.deplaneRate(t), t.pax.arriving)
         return
       case 'bag_unload':
-        this.addRequest(t, s, 'baggage_tug', 'out', t.bags.inbound)
+        this.addRequest(t, s, TUGS, 'out', t.bags.inbound)
         return
       case 'cargo_unload':
-        this.addRequest(t, s, 'baggage_tug', 'out', t.cargoIn)
+        this.addRequest(t, s, TUGS, 'out', t.cargoIn)
         return
       case 'loader':
-        this.addRequest(t, s, n.loader!, 'onsite', 1)
+        this.addRequest(t, s, this.loaderTypes(t), 'onsite', 1)
         return
       case 'fuel':
-        if (this.stand(t).hydrant) this.tryHydrant(t)
-        else this.addRequest(t, s, 'fuel_truck', 'carry', n.fuelLitres)
+        if (this.hasHydrant(t) && !this.fleetHas('hydrant_dispenser')) this.tryHydrant(t)
+        else this.addFuelPoints(t)
         return
       case 'catering':
-        this.addRequest(t, s, 'catering_truck', 'carry', n.meals)
+        if (n.upperDeck) {
+          // Both decks at once: the upper-deck door needs a high-lift truck.
+          const upper = Math.round(n.meals / 2)
+          this.addRequest(t, s, ['catering_truck', 'highlift_catering'], 'carry', n.meals - upper)
+          this.addRequest(t, s, ['highlift_catering', 'catering_truck'], 'carry', upper, 'upper')
+        } else {
+          this.addRequest(t, s, ['catering_truck', 'highlift_catering'], 'carry', n.meals)
+        }
         return
       case 'cleaning':
         this.addTimer(t, s, n.cleaningMinutes, 0)
@@ -591,7 +688,7 @@ export class LogisticsSim {
         this.addRequest(t, s, 'gpu', 'onsite', 1)
         return
       case 'pushback':
-        this.addRequest(t, s, 'pushback_tug', 'onsite', 1)
+        this.addRequest(t, s, n.superHeavy ? ['heavy_tug', 'pushback_tug'] : ['pushback_tug', 'heavy_tug'], 'onsite', 1)
         return
       case 'boarding':
         t.services.boarding = 'active'
@@ -600,10 +697,10 @@ export class LogisticsSim {
         this.checkBoardingDone(t)
         return
       case 'bag_load':
-        this.addRequest(t, s, 'baggage_tug', 'in', 0)
+        this.addRequest(t, s, TUGS, 'in', 0)
         return
       case 'cargo_load':
-        this.addRequest(t, s, 'baggage_tug', 'in', 0)
+        this.addRequest(t, s, TUGS, 'in', 0)
         return
       case 'bag_offload':
         this.startOffload(t)
@@ -685,7 +782,9 @@ export class LogisticsSim {
       if (!r || r.turnaroundId !== t.id || r.service !== 'pushback') continue
       if (v.phase === 'servicing' && v.phaseEnd === Infinity && this.pushbackClear(t)) {
         t.services.pushback = 'active'
-        v.phaseEnd = this.now + t.needs.pushbackMinutes
+        const mult = this.compatMult(r, v.type)
+        if (mult < 1) t.causes.add('undersized_vehicle')
+        v.phaseEnd = this.now + t.needs.pushbackMinutes / mult
       }
     }
   }
@@ -694,6 +793,7 @@ export class LogisticsSim {
     if (!t.loaderVehicle) return
     if (!HOLD_SERVICES.every((s) => this.isDone(t, s))) return
     const v = this.vehicles.find((x) => x.id === t.loaderVehicle)!
+    this.maintenance?.onUse(v)
     const req = this.request(v)
     if (req) this.requests.splice(this.requests.indexOf(req), 1)
     this.idle(v)
@@ -708,18 +808,59 @@ export class LogisticsSim {
     if (t.loaderVehicle || !t.needs.loader) return
     if (this.requests.some((r) => r.turnaroundId === t.id && r.service === 'loader')) return
     t.services.loader = 'pending'
-    this.addRequest(t, 'loader', t.needs.loader, 'onsite', 1)
+    this.addRequest(t, 'loader', this.loaderTypes(t), 'onsite', 1)
   }
 
   // ---- requests / timers
 
-  private addRequest(t: TurnaroundState, service: ServiceKind, vehicle: VehicleType, mode: JobMode, target: number): void {
+  private loaderTypes(t: TurnaroundState): VehicleType[] {
+    return t.needs.loader === 'uld_loader' ? ['main_deck_loader', 'uld_loader'] : ['belt_loader']
+  }
+
+  /** Fuel through every fuel point at once (two wings on L-size types). */
+  private addFuelPoints(t: TurnaroundState): void {
+    const n = t.needs
+    const points = Math.max(1, n.fuelPoints)
+    const dispenser = this.stand(t).hydrant && (this.maintenance?.hydrantWorking(t.standId) ?? true) && this.fleetHas('hydrant_dispenser')
+    let left = n.fuelLitres
+    for (let i = 0; i < points; i++) {
+      const share = i === points - 1 ? left : Math.round(n.fuelLitres / points)
+      left -= share
+      this.addRequest(t, 'fuel', dispenser ? ['hydrant_dispenser'] : ['heavy_fuel_truck', 'fuel_truck'], 'carry', share)
+    }
+  }
+
+  private fleetHas(type: VehicleType): boolean {
+    return this.vehicles.some((v) => v.type === type)
+  }
+
+  /**
+   * Work-rate multiplier for a vehicle on this job (size-class compatibility).
+   * Below 1 means the vehicle is undersized and slow.
+   */
+  private compatMult(r: ServiceRequest, type: VehicleType): number {
+    const t = this.turnarounds.get(r.turnaroundId)!
+    if (r.service === 'catering' && r.part === 'upper') return type === 'highlift_catering' ? 1 : 0.4
+    if (r.service === 'pushback' && t.needs.superHeavy) return type === 'heavy_tug' ? 1 : 1 / 3
+    if (r.service === 'loader' && t.needs.superHeavy && type === 'uld_loader') return 0.7
+    return 1
+  }
+
+  private addRequest(
+    t: TurnaroundState,
+    service: ServiceKind,
+    vehicle: VehicleType | VehicleType[],
+    mode: JobMode,
+    target: number,
+    part?: 'upper',
+  ): void {
     this.requests.push({
       id: this.nextReq++,
       turnaroundId: t.id,
       standId: t.standId,
       service,
-      vehicle,
+      vehicles: Array.isArray(vehicle) ? vehicle : [vehicle],
+      part,
       mode,
       target,
       done: 0,
@@ -870,7 +1011,7 @@ export class LogisticsSim {
     if (n <= 0) return this.finishService(t, 'bag_offload')
     const h = this.config.hold
     const begin = Math.max(this.now, t.loaderBusyUntil)
-    const end = begin + h.offloadBaseMinutes + h.offloadPerBagMinutes * n
+    const end = begin + h.offloadBaseMinutes + (h.offloadPerBagMinutes * n) / this.loaderMult(t)
     t.loaderBusyUntil = end
     t.services.bag_offload = 'active'
     this.timers.push({ turnaroundId: t.id, standId: t.standId, service: 'bag_offload', end, amount: n })
@@ -884,7 +1025,11 @@ export class LogisticsSim {
       if (x > this.now + EPS && x < next) next = x
       else if (x <= this.now + EPS && x < next) next = this.now
     }
-    for (const v of this.vehicles) consider(v.phaseEnd)
+    for (const v of this.vehicles) {
+      consider(v.phaseEnd)
+      if (v.wear.breakAt !== null) consider(v.wear.breakAt)
+    }
+    if (this.maintenance) consider(this.maintenance.nextEventTime())
     for (const h of this.timers) consider(h.end)
     for (const d of this.deliveries) consider(d.eta)
     for (const t of this.turnarounds.values()) {
@@ -919,6 +1064,7 @@ export class LogisticsSim {
     let upkeep = 0
     for (const v of this.vehicles) upkeep += (this.config.vehicleSpecs[v.type].upkeepPerDay * dt) / 1440
     this.money(-upkeep, 'vehicle_upkeep')
+    this.maintenance?.advanceContinuous(dt)
     for (const t of this.turnarounds.values()) {
       if (t.completedAt !== null || t.services.boarding !== 'active') continue
       const p = t.pax
@@ -999,11 +1145,17 @@ export class LogisticsSim {
       changed = true
     }
     for (const v of this.vehicles) {
+      if (v.wear.breakAt !== null && due(v.wear.breakAt)) {
+        this.maintenance!.breakDown(v)
+        changed = true
+        continue
+      }
       if (due(v.phaseEnd)) {
         this.advanceVehicle(v)
         changed = true
       }
     }
+    if (this.maintenance?.processDue()) changed = true
     return changed
   }
 
@@ -1018,7 +1170,7 @@ export class LogisticsSim {
   }
 
   private speed(v: VehicleState): number {
-    return this.config.vehicleSpecs[v.type].speedKmh
+    return this.config.vehicleSpecs[v.type].speedKmh * (this.maintenance?.speedFactor(v) ?? 1)
   }
 
   private advanceVehicle(v: VehicleState): void {
@@ -1062,16 +1214,46 @@ export class LogisticsSim {
         return
       }
       default:
+        this.maintenance?.advance(v)
         return
     }
   }
 
   private travel(v: VehicleState, phase: VehiclePhase, dest: string): void {
-    v.fromNode = v.node
     v.route = this.roads.route(v.node, dest)
     v.phaseStart = this.now
     v.phase = phase
-    v.phaseEnd = this.now + this.roads.travelMinutes(v.node, dest, this.speed(v))
+    const mins = this.roads.travelMinutes(v.node, dest, this.speed(v))
+    v.phaseEnd = this.now + mins
+    this.maintenance?.onTravel(v, v.node, dest, mins)
+  }
+
+  /** A vehicle broke down mid-job: hand the work back to the queue. */
+  private releaseJob(v: VehicleState): void {
+    const r = this.request(v)
+    v.requestId = null
+    const reserved = v.reserved
+    v.reserved = 0
+    v.serving = 0
+    if (!r) return
+    const t = this.turnarounds.get(r.turnaroundId)!
+    t.causes.add('vehicle_breakdown')
+    if (r.mode === 'in' || r.mode === 'out') r.reserved = Math.max(0, r.reserved - reserved)
+    if (r.mode === 'in' && v.load > 0) {
+      // Pax / bags / cargo go back to the gate, make-up or shed for the next vehicle.
+      r.inTransit -= v.load
+      v.load = 0
+    }
+    if (r.mode === 'out' && v.load > 0) {
+      // Already off the aircraft: transferred to another vehicle on the spot.
+      const n = Math.round(v.load)
+      if (r.service === 'deplane') this.emit({ type: 'pax_deplaned', time: this.now, standId: r.standId, count: n })
+      else if (r.service === 'bag_unload') this.emit({ type: 'bags_to_claim', time: this.now, standId: r.standId, count: n })
+      else if (r.service === 'cargo_unload') this.emit({ type: 'cargo_to_area', time: this.now, standId: r.standId, kg: n })
+      v.load = 0
+      this.checkOutDone(r)
+    }
+    if ((r.mode === 'carry' || r.mode === 'onsite') && t.services[r.service] === 'active') t.services[r.service] = 'pending'
   }
 
   private idle(v: VehicleState): void {
@@ -1081,11 +1263,10 @@ export class LogisticsSim {
     v.serving = 0
     v.reserved = 0
     v.route = null
-    v.fromNode = v.node
-    v.phaseStart = this.now
   }
 
   private beginLoading(v: VehicleState, r: ServiceRequest): void {
+    if (v.type === 'hydrant_dispenser') return this.arriveAtStand(v, r)
     const spec = this.config.vehicleSpecs[v.type]
     const t = this.turnarounds.get(r.turnaroundId)!
     if (r.mode === 'carry') {
@@ -1155,12 +1336,33 @@ export class LogisticsSim {
     }
     if (r.mode === 'carry') {
       t.services[r.service] = 'active'
+      if (v.type === 'hydrant_dispenser') {
+        // Cart couples to the hydrant pit: fuel comes straight from the farm.
+        const take = Math.min(r.target - r.done, Math.floor(this.fuelLitres))
+        if (take <= 0) {
+          t.causes.add('no_fuel')
+          t.services.fuel = 'pending'
+          v.phase = 'waiting_stock'
+          v.phaseEnd = Infinity
+          return
+        }
+        this.fuelLitres -= take
+        this.checkLowStock()
+        v.load = take
+        v.serving = take
+        v.phaseEnd = this.now + take / this.config.hydrantPumpLpm
+        this.emit({ type: 'refuel_start', time: this.now, standId: r.standId, litres: take, method: 'hydrant', vehicleId: v.id })
+        return
+      }
       v.serving = Math.min(v.load, r.target - r.done)
       if (r.service === 'fuel') {
-        v.phaseEnd = this.now + v.serving / this.config.truckPumpLpm
+        const lpm = this.config.vehicleSpecs[v.type].pumpLpm ?? this.config.truckPumpLpm
+        v.phaseEnd = this.now + v.serving / lpm
         this.emit({ type: 'refuel_start', time: this.now, standId: r.standId, litres: v.serving, method: 'truck', vehicleId: v.id })
       } else {
-        v.phaseEnd = this.now + t.needs.cateringMinutes * (v.serving / Math.max(1, t.needs.meals))
+        const mult = this.compatMult(r, v.type)
+        if (mult < 1) t.causes.add('undersized_vehicle')
+        v.phaseEnd = this.now + (t.needs.cateringMinutes * (v.serving / Math.max(1, t.needs.meals))) / mult
       }
       return
     }
@@ -1178,9 +1380,7 @@ export class LogisticsSim {
     // Hold work is serialised on the loader, bus work on the stairs.
     const hold = r.service !== 'deplane' && r.service !== 'boarding'
     const rate = hold
-      ? r.service.startsWith('cargo')
-        ? this.holdRates(t).kgPerMin
-        : this.holdRates(t).bagsPerMin
+      ? (r.service.startsWith('cargo') ? this.holdRates(t).kgPerMin : this.holdRates(t).bagsPerMin) * this.loaderMult(t)
       : r.service === 'deplane'
         ? this.deplaneRate(t)
         : this.boardRate(t)
@@ -1191,8 +1391,19 @@ export class LogisticsSim {
     v.phaseEnd = end
   }
 
+  /** Loader on station: its own rate and how well it fits the aircraft. */
+  private loaderMult(t: TurnaroundState): number {
+    const v = this.vehicles.find((x) => x.id === t.loaderVehicle)
+    if (!v) return 1
+    const lr = this.requests.find((x) => x.turnaroundId === t.id && x.service === 'loader')
+    const mult = (this.config.vehicleSpecs[v.type].rateMult ?? 1) * (lr ? this.compatMult(lr, v.type) : 1)
+    if (lr && this.compatMult(lr, v.type) < 1) t.causes.add('undersized_vehicle')
+    return mult
+  }
+
   private finishAtStand(v: VehicleState, r: ServiceRequest): void {
     const t = this.turnarounds.get(r.turnaroundId)!
+    this.maintenance?.onUse(v)
     if (r.mode === 'onsite') {
       this.dropRequest(r)
       this.idle(v)
@@ -1211,7 +1422,7 @@ export class LogisticsSim {
       this.idle(v)
       if (r.done >= r.target - EPS) {
         this.dropRequest(r)
-        this.finishService(t, r.service)
+        if (!this.requests.some((x) => x.turnaroundId === t.id && x.service === r.service)) this.finishService(t, r.service)
       } else {
         t.services[r.service] = 'pending'
       }
@@ -1272,8 +1483,14 @@ export class LogisticsSim {
       else this.idle(v)
     }
     for (const t of this.turnarounds.values()) {
-      if (t.completedAt === null && t.services.fuel === 'pending' && this.stand(t).hydrant) this.tryHydrant(t)
+      if (t.completedAt === null && t.services.fuel === 'pending' && this.hasHydrant(t) && !this.fleetHas('hydrant_dispenser')) {
+        this.tryHydrant(t)
+      }
     }
+  }
+
+  private hasHydrant(t: TurnaroundState): boolean {
+    return this.stand(t).hydrant && (this.maintenance?.hydrantWorking(t.standId) ?? true) && !this.requests.some((r) => r.turnaroundId === t.id && r.service === 'fuel')
   }
 
   private tryHydrant(t: TurnaroundState): void {
@@ -1309,6 +1526,7 @@ export class LogisticsSim {
     if (t.completedAt !== null) return
     t.completedAt = this.now
     this.byStand.delete(t.standId)
+    this.maintenance?.onTurnaroundComplete(t.standId)
     for (const r of this.requests.slice()) {
       if (r.turnaroundId === t.id && !this.vehicles.some((v) => v.requestId === r.id)) this.dropRequest(r)
     }
@@ -1343,14 +1561,18 @@ export class LogisticsSim {
           if (this.vehicles.some((v) => v.requestId === r.id)) break
         } else if (this.openAmount(r) <= EPS) break
         const dest = this.standNode(r)
+        // Best-fitting type first (an undersized truck only if nothing better is free), then nearest.
         let best: VehicleState | null = null
         let bestT = Infinity
+        let bestFit = -1
         for (const v of this.vehicles) {
-          if (v.type !== r.vehicle || v.phase !== 'idle') continue
+          if (!r.vehicles.includes(v.type) || v.phase !== 'idle') continue
+          const fit = this.compatMult(r, v.type) * 10 - r.vehicles.indexOf(v.type)
           const tt = this.tripMinutes(v, r, dest)
-          if (tt < bestT - EPS) {
+          if (fit > bestFit + EPS || (Math.abs(fit - bestFit) <= EPS && tt < bestT - EPS)) {
             best = v
             bestT = tt
+            bestFit = fit
           }
         }
         if (!best) {
@@ -1366,11 +1588,12 @@ export class LogisticsSim {
         else this.travel(best, 'to_stand', dest)
       }
     }
+    this.maintenance?.afterDispatch()
   }
 
   private visitsSource(v: VehicleState, r: ServiceRequest): boolean {
     if (r.mode === 'in') return true
-    if (r.mode !== 'carry') return false
+    if (r.mode !== 'carry' || v.type === 'hydrant_dispenser') return false
     return v.load + EPS < Math.min(this.config.vehicleSpecs[v.type].capacity, r.target - r.done)
   }
 
