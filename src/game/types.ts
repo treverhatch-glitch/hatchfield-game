@@ -936,6 +936,8 @@ export interface GameSnapshot {
   negotiation?: string
   /** Inbound offers, visits, and Guard contracts. */
   inbound?: InboundState
+  /** Late-game disruption engine (active event, modifiers, seed draws). */
+  disruptions?: string
 }
 
 /** A placed building that is still a construction site. */
