@@ -4,8 +4,11 @@ import {
   DESK_STAFF_WAGE,
   JANITOR_WAGE,
   MECHANIC_WAGE,
+  money,
   RESEARCHER_WAGE,
+  START_CASH,
 } from './catalog.ts'
+import { SANDBOX_CASH } from './types.ts'
 import type { BudgetKey, LoanProduct } from './types.ts'
 
 /**
@@ -22,6 +25,18 @@ export function fieldOpsMultiplier(signed: number, stands: number, flightsDone: 
     Math.max(0, st - 2) * 0.04 +
     Math.min(0.35, Math.max(0, f) * 0.0035)
   return Math.min(1.65, Math.max(1, load))
+}
+
+/** Title checkbox. Off names the standard bank instead of a silent "off". */
+export function sandboxChoiceLabel(on: boolean): string {
+  return on
+    ? `Sandbox (unlimited money) · ${money(SANDBOX_CASH)}`
+    : `Sandbox (unlimited money) · standard ${money(START_CASH.standard)}`
+}
+
+/** Face of a loan button: cash received, the fee, and the balance the desk will show. */
+export function loanProductLabel(p: Pick<LoanProduct, 'label' | 'principal' | 'fee'>): string {
+  return `${p.label} · ${money(p.principal)} · fee ${money(p.fee)} · owe ${money(p.principal + p.fee)}`
 }
 
 /** Interest due this loan tick: at least the product floor, else ~rate × balance. */
@@ -51,6 +66,17 @@ export function loansAvailable<T extends Pick<LoanProduct, 'minFieldLevel' | 'mi
   const safeLevel = Number.isFinite(fieldLevel) ? fieldLevel : 0
   const safeRep = Number.isFinite(rep) ? rep : 0
   return products.filter((p) => p && safeLevel >= p.minFieldLevel && safeRep >= p.minRep)
+}
+
+/** Staffing floor is billed once per game day (180s), not on the old 30s tick. */
+export const PAYROLL_PERIOD = 'day'
+
+export function payrollPreviewLabel(amount: number, formatMoney: (n: number) => string): string {
+  return `Payroll ~${formatMoney(amount)} / ${PAYROLL_PERIOD}`
+}
+
+export function payrollPreviewTitle(daySeconds: number): string {
+  return `Staffing floor, charged once per game day (${daySeconds}s). Cash can still rise between days.`
 }
 
 export function payrollAmount(lineCosts: readonly number[], opsMult: number): number {

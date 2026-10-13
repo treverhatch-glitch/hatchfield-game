@@ -184,19 +184,16 @@ describe('opening minutes on a default new game', () => {
     sessionStorage.clear()
   })
 
-  it('the first carrier stays regional, and a second signature can bring a narrowbody', () => {
+  it('keeps a carrier on the metal its card sells', () => {
     const game = started()
     game.clock = 20
     game.signed = ['northline']
-    const orig = Math.random
-    Math.random = () => 0.95
     expect(game.pickAircraftKind('northline')).toBe('regional')
+    expect(game.pickAircraftKind('bushline')).toBe('regional')
     game.signed = ['bushline', 'northline']
-    expect(game.pickAircraftKind('northline')).toBe('narrowbody')
-    game.signed = ['northline']
     game.clock = OPENING_SEC
-    expect(game.pickAircraftKind('northline')).toBe('narrowbody')
-    Math.random = orig
+    expect(game.pickAircraftKind('northline')).toBe('regional')
+    expect(game.pickAircraftKind('bushline')).toBe('regional')
   })
 
   it('holds the opening bank, then lets it grow', () => {

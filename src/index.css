@@ -395,13 +395,14 @@ button {
 }
 
 .hall-build {
-  position: absolute;
-  top: 64px;
+  position: fixed;
+  top: 104px;
   right: 12px;
   width: min(300px, 34vw);
-  max-height: calc(100% - 160px);
+  max-height: calc(100% - 220px);
   overflow: auto;
-  z-index: 4;
+  /* Above the HUD and the offer sheet, which share this corner and were eating the click. */
+  z-index: 42;
   background: rgba(10, 20, 16, 0.9);
   border: 1px solid rgba(201, 162, 39, 0.4);
   border-radius: 10px;
