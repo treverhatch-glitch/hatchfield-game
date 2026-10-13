@@ -4,9 +4,10 @@ import type { RoadEdge, RoadNode } from './types'
 export class RoadGraph {
   private readonly adj = new Map<string, { to: string; len: number }[]>()
   private readonly cache = new Map<string, Map<string, number>>()
+  private readonly pos = new Map<string, RoadNode>()
 
   constructor(nodes: RoadNode[], edges: RoadEdge[]) {
-    const pos = new Map<string, RoadNode>()
+    const pos = this.pos
     for (const n of nodes) {
       pos.set(n.id, n)
       this.adj.set(n.id, [])
@@ -23,6 +24,53 @@ export class RoadGraph {
 
   has(id: string): boolean {
     return this.adj.has(id)
+  }
+
+  /** Node coordinates, when the id is on this graph. */
+  at(id: string): RoadNode | undefined {
+    return this.pos.get(id)
+  }
+
+  /**
+   * Shortest node sequence, including both ends.
+   * Empty when the nodes are missing or disconnected.
+   */
+  route(from: string, to: string): string[] {
+    if (!this.adj.has(from) || !this.adj.has(to)) return []
+    if (from === to) return [from]
+    const dist = new Map<string, number>([[from, 0]])
+    const prev = new Map<string, string>()
+    const done = new Set<string>()
+    for (;;) {
+      let best: string | null = null
+      let bestD = Infinity
+      for (const [id, d] of dist) {
+        if (!done.has(id) && d < bestD) {
+          best = id
+          bestD = d
+        }
+      }
+      if (best === null || best === to) break
+      done.add(best)
+      for (const { to: nxt, len } of this.adj.get(best)!) {
+        const nd = bestD + len
+        if (nd < (dist.get(nxt) ?? Infinity)) {
+          dist.set(nxt, nd)
+          prev.set(nxt, best)
+        }
+      }
+    }
+    if (!prev.has(to) && from !== to) return []
+    const out = [to]
+    let cur = to
+    while (cur !== from) {
+      const p = prev.get(cur)
+      if (!p) return []
+      out.push(p)
+      cur = p
+    }
+    out.reverse()
+    return out
   }
 
   /** Shortest distance in metres, Infinity when unreachable. */

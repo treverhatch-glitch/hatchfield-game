@@ -113,6 +113,7 @@ export class World {
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
   trucks = new Map<string, THREE.Object3D>()
+  service = new Map<string, THREE.Object3D>()
   people = new Map<string, THREE.Mesh>()
   ray = new THREE.Raycaster()
   ndc = new THREE.Vector2()
@@ -734,6 +735,39 @@ export class World {
       )
       canopy.position.y = 2.5
       g.add(pad, hall, canopy)
+    } else if (tile === 'kitchen') {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.8, 2.2, CELL * 0.7),
+        new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.5 }),
+      )
+      body.position.y = 1.1
+      body.castShadow = true
+      const vent = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.35, 0.45, CELL * 0.28),
+        new THREE.MeshStandardMaterial({ color: '#f2d4b8', roughness: 0.4 }),
+      )
+      vent.position.set(0, 2.35, 0)
+      vent.castShadow = true
+      g.add(body, vent)
+    } else if (tile === 'depot') {
+      const shed = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.9, 1.8, CELL * 0.75),
+        new THREE.MeshStandardMaterial({ color: '#3d6a8a', roughness: 0.45 }),
+      )
+      shed.position.y = 0.9
+      shed.castShadow = true
+      const bay = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 0.9, 0.12),
+        new THREE.MeshStandardMaterial({ color: '#f2d24a' }),
+      )
+      bay.position.set(0, 0.7, CELL * 0.38)
+      const truck = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.4, 0.45, CELL * 0.22),
+        new THREE.MeshStandardMaterial({ color: '#c9a227', roughness: 0.4 }),
+      )
+      truck.position.set(0, 0.35, CELL * 0.22)
+      truck.castShadow = true
+      g.add(shed, bay, truck)
     }
     return g
   }
@@ -1383,6 +1417,47 @@ export class World {
       }
     }
 
+    const seenS = new Set<string>()
+    for (const pose of game.servicePoses()) {
+      seenS.add(pose.id)
+      let mesh = this.service.get(pose.id)
+      if (!mesh) {
+        const color =
+          pose.type === 'fuel_truck'
+            ? '#c9a227'
+            : pose.type === 'catering_truck'
+              ? '#e07a3d'
+              : pose.type === 'pax_bus'
+                ? '#3d6a8a'
+                : pose.type === 'pushback_tug'
+                  ? '#f2d24a'
+                  : pose.type === 'gpu'
+                    ? '#5b8c5a'
+                    : pose.type === 'uld_loader'
+                      ? '#4a5568'
+                      : '#8a93a0'
+        const g = new THREE.Group()
+        const body = new THREE.Mesh(
+          new THREE.BoxGeometry(pose.type === 'pax_bus' ? 1.35 : 1.05, 0.5, 0.62),
+          new THREE.MeshStandardMaterial({ color, roughness: 0.45 }),
+        )
+        body.castShadow = true
+        g.add(body)
+        mesh = g
+        this.service.set(pose.id, mesh)
+        this.entGroup.add(mesh)
+      }
+      mesh.position.copy(toWorld(pose.x, pose.y, 0.38))
+      mesh.rotation.y = -pose.heading
+    }
+    for (const [id, m] of this.service) {
+      if (!seenS.has(id)) {
+        this.entGroup.remove(m)
+        disposeObject(m)
+        this.service.delete(id)
+      }
+    }
+
     const seenP = new Set<string>()
     for (const p of game.people) {
       seenP.add(p.id)
@@ -1475,6 +1550,21 @@ export class World {
         mark.position.copy(p)
         this.siteGroup.add(mark)
       }
+    }
+    for (const cell of game.apronFocus) {
+      const mark = new THREE.Mesh(
+        new THREE.RingGeometry(CELL * 0.7, CELL * 0.9, 20),
+        new THREE.MeshBasicMaterial({
+          color: '#e07a3d',
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide,
+        }),
+      )
+      const p = toWorld(cell.c, cell.r, 0.45)
+      mark.rotation.x = -Math.PI / 2
+      mark.position.copy(p)
+      this.siteGroup.add(mark)
     }
   }
 

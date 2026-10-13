@@ -156,6 +156,9 @@ import {
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
 import { buildSeconds } from './construction.ts'
+import { buildLogisticsConfig, delayFix, groundCauseLine } from './logisticsBridge.ts'
+import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
+import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
   blankZones,
@@ -580,6 +583,21 @@ export class Game {
   /** Layout notes. Empty on a healthy prefab until the hall is over capacity. */
   advice: Advice[] = []
   advisorCells: { c: number; r: number }[] = []
+  /** Apron tiles highlighted by a ground-services note (fuel farm, kitchen, depot). */
+  apronFocus: { c: number; r: number }[] = []
+  /** Ground-logistics ledger. Posted into cash as it happens. */
+  groundBooks = {
+    fuelSales: 0,
+    cateringFees: 0,
+    fuelPurchase: 0,
+    mealProduction: 0,
+    vehicleUpkeep: 0,
+  }
+  private ground: (LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] }) | null = null
+  private groundRev = -1
+  private groundAnnounced = false
+  private groundNotes: Advice[] = []
+  private groundNoteKey = ''
   /** Passenger-flow overlay. Hidden until the player opts in. */
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
@@ -758,6 +776,19 @@ export class Game {
     this.settledPayments = []
     this.advice = []
     this.advisorCells = []
+    this.apronFocus = []
+    this.groundBooks = {
+      fuelSales: 0,
+      cateringFees: 0,
+      fuelPurchase: 0,
+      mealProduction: 0,
+      vehicleUpkeep: 0,
+    }
+    this.ground = null
+    this.groundRev = -1
+    this.groundAnnounced = false
+    this.groundNotes = []
+    this.groundNoteKey = ''
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
@@ -3893,10 +3924,10 @@ export class Game {
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) {
-      this.advice = []
+      this.advice = [...this.groundNotes]
       return
     }
-    this.advice = adviseHall(
+    const hall = adviseHall(
       {
         premade: fit.premade,
         redesigned: fit.redesigned,
@@ -3919,21 +3950,39 @@ export class Game {
       this.schedule,
       this.hallOverloaded,
     )
+    this.advice = [...hall, ...this.groundNotes]
     if (this.advisorCells.length) {
-      const still = this.advice.find((a) =>
+      const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
       )
       if (!still) this.advisorCells = []
+    }
+    if (this.apronFocus.length) {
+      const still = this.groundNotes.find((a) =>
+        a.cells.some((c) => this.apronFocus.some((h) => h.c === c.c && h.r === c.r)),
+      )
+      if (!still) this.apronFocus = []
     }
   }
 
   focusAdvice(id: string | null) {
     if (!id) {
       this.advisorCells = []
+      this.apronFocus = []
       this.emit()
       return
     }
     const hit = this.advice.find((a) => a.id === id)
+    if (hit?.scope === 'apron') {
+      const same =
+        hit.cells.length === this.apronFocus.length &&
+        hit.cells.every((c, i) => c.c === this.apronFocus[i]?.c && c.r === this.apronFocus[i]?.r)
+      this.apronFocus = same ? [] : hit.cells
+      this.advisorCells = []
+      this.emit()
+      return
+    }
+    this.apronFocus = []
     const same =
       hit &&
       hit.cells.length === this.advisorCells.length &&
@@ -3945,6 +3994,217 @@ export class Game {
   toggleFlows() {
     this.showFlows = !this.showFlows
     this.emit()
+  }
+
+  /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
+  servicePoses() {
+    return this.ensureGround()?.sim.poses() ?? []
+  }
+
+  /** Fuel, meals, and how many trucks are out. Null before the depot is built. */
+  groundSnapshot() {
+    return this.ensureGround()?.snapshot() ?? null
+  }
+
+  /** True once the module has released this stand. Flights without a ground turn are clear. */
+  groundClear(f: Flight): boolean {
+    if (!f.groundTurn) return true
+    return this.ground?.isReadyToDepart(f.groundTurn) ?? true
+  }
+
+  private ensureGround() {
+    const rev = this.mapRev
+    if (this.ground && this.groundRev === rev) return this.ground
+    if (!this.ground && this.groundRev === rev) return null
+    if (this.ground && this.ground.sim.openTurnarounds > 0 && this.groundRev !== rev) return this.ground
+    const prev = this.ground?.snapshot()
+    const config = buildLogisticsConfig(
+      this.tiles,
+      this.standAccess,
+      tilesOf(this.tiles, 'termbus').length > 0,
+    )
+    if (!config) {
+      this.ground = null
+      this.groundRev = rev
+      if (this.groundNotes.length) {
+        this.groundNotes = []
+        this.groundNoteKey = ''
+        this.refreshAdvice()
+      }
+      return null
+    }
+    if (prev) {
+      config.fuelFarm.initialLitres = Math.min(config.fuelFarm.capacityLitres, Math.max(0, prev.fuelLitres))
+      config.kitchen.initialMeals = Math.min(config.kitchen.capacityMeals, Math.max(0, prev.meals))
+    }
+    const first = !this.groundAnnounced
+    this.ground = createLogisticsAdapter(
+      {
+        addMoney: (amount, category) => this.postGroundMoney(amount, category),
+        playSound: () => {
+          // Sound cues stay with the audio slice. This hook is the hand-off.
+        },
+        notify: (message, severity) => {
+          this.pushNews(message, severity === 'warn' ? 'bad' : 'ok')
+        },
+      },
+      config,
+    )
+    this.groundRev = rev
+    if (first) {
+      this.groundAnnounced = true
+      this.pushNews('Vehicle depot online. Service trucks run the turnarounds from here.', 'good')
+    }
+    return this.ground
+  }
+
+  private postGroundMoney(amount: number, category: string) {
+    const book = this.groundBooks
+    if (category === 'fuel_sales') book.fuelSales += amount
+    else if (category === 'catering_fees') book.cateringFees += amount
+    else if (category === 'fuel_purchase') book.fuelPurchase += amount
+    else if (category === 'meal_production') book.mealProduction += amount
+    else if (category === 'vehicle_upkeep') book.vehicleUpkeep += amount
+    if (amount > 0) {
+      this.cash += amount
+      this.revenue += amount
+      this.noteIncome(amount)
+      return
+    }
+    if (amount < 0) {
+      this.noteExpense(-amount)
+      if (!this.sandbox) this.cash += amount
+    }
+  }
+
+  /** One game hour is 7.5 sim-seconds, so a sim-second is eight game minutes. */
+  private tickGround(step: number) {
+    const g = this.ensureGround()
+    if (!g) return
+    const before = g.completed.length
+    g.tick(step * (60 / 7.5))
+    if (g.completed.length > before) this.consumeGround(g, before)
+    this.syncGroundNotes()
+  }
+
+  private consumeGround(
+    g: LogisticsAdapter & { sim: LogisticsSim; completed: TurnaroundResult[] },
+    before: number,
+  ) {
+    for (const result of g.completed.slice(before)) {
+      const flight = this.flights.find((f) => f.groundTurn === result.standId && f.phase !== 'gone')
+      if (flight) {
+        flight.posted.fuel = true
+        flight.fuelLevel = 1
+        flight.waitingOn.fuel = false
+        flight.posted.catering = true
+        flight.caterLevel = 1
+        flight.waitingOn.catering = false
+      }
+      if (result.delayMinutes <= 1) continue
+      const mins = Math.round(result.delayMinutes)
+      const why = result.causes[0] ? groundCauseLine(result.causes[0]) : 'The ramp ran past the planned pushback.'
+      const id = `delay-${result.standId.replace(',', '-')}`
+      const [c, r] = result.standId.split(',').map(Number)
+      const delays = this.groundNotes.filter((n) => n.id.startsWith('delay-') && n.id !== id).slice(-3)
+      this.groundNotes = [...this.groundNotes.filter((n) => !n.id.startsWith('delay-')), ...delays]
+      this.groundNotes.push({
+        id,
+        title: `Turnaround late, ${mins} min`,
+        detail: result.causes.map((cause) => groundCauseLine(cause)).join('. ') || why,
+        fix: delayFix(result.causes),
+        cells: Number.isFinite(c) && Number.isFinite(r) ? [{ c, r }] : [],
+        scope: 'apron',
+      })
+      if (flight) {
+        this.adjustHeat(flight.airline, -1.2)
+        if (flight.scheduleId) {
+          const slot = this.schedule.find((s) => s.id === flight.scheduleId)
+          if (slot && slot.status !== 'done' && slot.status !== 'cancelled') {
+            this.delaySlot(slot, Math.min(18, Math.max(6, result.delayMinutes / 8)), why)
+          }
+        }
+      }
+    }
+  }
+
+  private syncGroundNotes() {
+    const g = this.ground
+    if (!g) return
+    const snap = g.snapshot()
+    const cfg = g.sim.config
+    const farm = tilesOf(this.tiles, 'fuel')[0]
+    const kitchen = tilesOf(this.tiles, 'kitchen')[0]
+    const depot = tilesOf(this.tiles, 'depot')[0]
+    const stock: Advice[] = []
+    if (snap.fuelLitres < cfg.fuelFarm.lowStockLitres && farm) {
+      stock.push({
+        id: 'low-fuel',
+        title: 'Fuel farm running low',
+        detail: `${Math.round(snap.fuelLitres).toLocaleString('en-US')} L left in the farm.`,
+        fix: 'A tanker rolls when the farm drops under the line. The purchase posts to the books.',
+        cells: [farm],
+        scope: 'apron',
+      })
+    }
+    if (snap.meals < cfg.kitchen.lowStockMeals) {
+      stock.push({
+        id: 'low-meals',
+        title: 'Catering kitchen running low',
+        detail: kitchen
+          ? `${snap.meals} meals left in the kitchen.`
+          : 'No catering kitchen is on the field, so the galley trucks have nothing to load.',
+        fix: kitchen
+          ? 'The kitchen keeps cooking. Give it time before the next full bank.'
+          : 'Place a catering kitchen beside the service road.',
+        cells: kitchen ? [kitchen] : depot ? [depot] : [],
+        scope: 'apron',
+      })
+    }
+    const delays = this.groundNotes.filter((n) => n.id.startsWith('delay-')).slice(-4)
+    const next = [...stock, ...delays]
+    const key = next.map((n) => n.id).join('|')
+    this.groundNotes = next
+    if (key !== this.groundNoteKey) {
+      this.groundNoteKey = key
+      this.refreshAdvice()
+      return
+    }
+    for (const note of next) {
+      const i = this.advice.findIndex((a) => a.id === note.id)
+      if (i >= 0) this.advice[i] = note
+    }
+  }
+
+  /**
+   * Hand a blocked-in aircraft to the ground module.
+   * Hall passengers stay on the terminal graph, so a prefab still loses nobody.
+   */
+  private armGroundTurn(f: Flight): boolean {
+    if (!f.stand || f.groundTurn) return Boolean(f.groundTurn)
+    const g = this.ensureGround()
+    if (!g) return false
+    const standId = `${f.stand.c},${f.stand.r}`
+    if (!g.sim.config.stands.some((s) => s.id === standId)) return false
+    let scheduled = 45
+    try {
+      const needs = needsFor(f.airframeId)
+      scheduled = needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40
+    } catch {
+      return false
+    }
+    const pax = f.cargo || f.kind === 'freighter' || f.kind === 'military' ? 0 : f.pax
+    try {
+      g.onAircraftParked(standId, f.airframeId, scheduled, {
+        kind: 'turn',
+        departingPax: pax,
+        arrivingPax: pax,
+      })
+    } catch {
+      return false
+    }
+    f.groundTurn = standId
+    return true
   }
 
   securityQueueCount(): number {
@@ -7210,6 +7470,7 @@ export class Game {
       )
     }
     this.bumpMap()
+    this.ensureGround()
     this.emit()
   }
 
@@ -7254,6 +7515,7 @@ export class Game {
       delete this.standAccess[`${v.c},${v.r}`]
     }
     this.bumpMap()
+    this.ensureGround()
     this.emit()
   }
 
@@ -7386,6 +7648,11 @@ export class Game {
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
+    if (building.minFieldLevel && this.fieldLevel() < building.minFieldLevel) {
+      this.pushNews(`${building.name} needs Field level ${building.minFieldLevel}.`, 'bad')
+      this.emit()
+      return
+    }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
       this.emit()
@@ -7393,6 +7660,11 @@ export class Game {
     }
     if (building.tile === 'fuel' && !farmBesidePavement(this.tiles, v)) {
       this.pushNews('Park the farm beside taxi, stand, runway, or road.', 'bad')
+      this.emit()
+      return
+    }
+    if ((building.tile === 'kitchen' || building.tile === 'depot') && !farmBesidePavement(this.tiles, v)) {
+      this.pushNews(`${building.name} needs a road, taxiway, or stand beside it.`, 'bad')
       this.emit()
       return
     }
@@ -7491,6 +7763,10 @@ export class Game {
       news = 'Hangar up.'
     } else if (building.tile === 'belt') {
       news = `Bag belt open ($${BELT_COST.toLocaleString()}). Link hall, sort, and stand.`
+    } else if (building.tile === 'kitchen') {
+      news = 'Catering kitchen open. Meals cook here for the galley trucks.'
+    } else if (building.tile === 'depot') {
+      news = 'Vehicle depot open. Fuel, galley, bag, and bus trucks stage here.'
     }
     this.enqueueBuild({
       kind: 'single',
@@ -8238,6 +8514,7 @@ export class Game {
 
   beginServicing(f: Flight) {
     if (!f.stand) return
+    this.armGroundTurn(f)
     const airline = this.airline(f.airline)
     if (!f.posted.landing) {
       f.posted.landing = true
@@ -8284,6 +8561,7 @@ export class Game {
         farmBesidePavement(this.tiles, p),
       )
       if (
+        !f.groundTurn &&
         this.fuelBrand &&
         this.fuelLoads > 0 &&
         farmsQuick.length &&
@@ -8347,7 +8625,7 @@ export class Game {
         this.caterBrand && snackBuild.length > 0 && f.stand
           ? nearestPath(this.tiles, snackBuild[0], [f.stand], 'truck')
           : null
-      if (snackPath) {
+      if (!f.groundTurn && snackPath) {
         f.waitingOn.catering = true
         this.spawnTruck('catering', f, snackPath, 'cater', snackBuild[0])
       }
@@ -8358,6 +8636,7 @@ export class Game {
     }
 
     if (
+      !f.groundTurn &&
       this.fuelBrand &&
       this.fuelLoads > 0 &&
       farms.length &&
@@ -9588,6 +9867,7 @@ export class Game {
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
     this.tickConstruction(step)
+    this.tickGround(step)
     // Peak decays so the HUD jam line clears when traffic thins.
     this.congPeak = Math.max(0, this.congPeak - step * 0.35)
     if (this.congWasteAcc >= 8 && this.congNewsCool <= 0) {
@@ -9788,7 +10068,15 @@ export class Game {
             const deiceOk =
               (f.phaseTime > 3 ? this.ensureDeice(f) : !this.needsDeiceService(f)) ||
               f.phaseTime > 28
-            if (deiceOk && (!this.groundBusy() || f.phaseTime > 24)) {
+            const rampReady = this.groundClear(f) || f.phaseTime > 80
+            if (deiceOk && rampReady && (!this.groundBusy() || f.phaseTime > 24)) {
+              if (!this.groundClear(f)) {
+                this.adjustHeat(f.airline, -1.2)
+                this.pushNews(
+                  `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
+                  'bad',
+                )
+              }
               if (!f.posted.deiced && this.needsDeiceService(f)) {
                 f.waitingOn.deice = false
                 this.adjustHeat(f.airline, -1.2)
@@ -9868,12 +10156,23 @@ export class Game {
           }
           f.hangarBay = null
           if (f.cargo || f.kind === 'military' || f.kind === 'air_ambulance') {
-            f.phase = 'pushback'
-            f.phaseTime = 0
-            if (f.stand) {
-              f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
-              f.seg = 0
-              f.t = 0
+            if (!this.groundClear(f) && f.phaseTime < 90) {
+              /* Service trucks still on the stand. */
+            } else {
+              if (!this.groundClear(f)) {
+                this.adjustHeat(f.airline, -1.2)
+                this.pushNews(
+                  `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
+                  'bad',
+                )
+              }
+              f.phase = 'pushback'
+              f.phaseTime = 0
+              if (f.stand) {
+                f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
+                f.seg = 0
+                f.t = 0
+              }
             }
           } else {
             f.phase = 'board'
@@ -9924,7 +10223,15 @@ export class Game {
           const deiceOk =
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
-          if (deiceOk && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+          const rampReady = this.groundClear(f) || f.phaseTime > boardLimit + 80
+          if (deiceOk && rampReady && (!this.groundBusy() || f.phaseTime > boardLimit + 4)) {
+            if (!this.groundClear(f)) {
+              this.adjustHeat(f.airline, -1.2)
+              this.pushNews(
+                `${f.flightNo} pushed with the ramp unfinished. Standing dips.`,
+                'bad',
+              )
+            }
             if (!f.posted.deiced && this.needsDeiceService(f)) {
               f.waitingOn.deice = false
               this.adjustHeat(f.airline, -1.5)

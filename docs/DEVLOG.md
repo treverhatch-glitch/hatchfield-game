@@ -280,3 +280,31 @@ Hunger, energy, or play could send someone to the spa, pool, golf, or gaming whe
 - `docs/devlog/media/SLICE-C-linear.png` — Prefab I, linear pier, 28 passengers
 - `docs/devlog/media/SLICE-C-advisor.png` — over-capacity note: upgrade, expand, or design your own
 - `docs/devlog/media/SLICE-C-build.webm` — a stand from placement to open, chrome hidden, about 7 s
+
+## Slice D — fuel, catering, and the ramp, 13 Oct 2026
+
+Merged `grok/logistics` (the ground module: fuel farm, catering, service vehicles, and the full turnaround, including boarding and bags) and wired it into the apron.
+
+The fuel farm was already a stamp. It is Field level 1. Two new stamps sit in Ops:
+
+- **Catering kitchen**, Field level 2. Cooks the meals the galley trucks load.
+- **Vehicle depot**, Field level 2. Stages the fleet. A second depot adds another set of trucks.
+
+Both need a road, taxiway, or stand beside them. The starter kit still drops the farm, the snack bar, and the stands in one click, and it does not include a depot. Until you place a depot, the old fuel and catering trucks keep the first hour. Prefab halls are unchanged: a heavy bank still loses nobody.
+
+Once the depot and the farm are both on the field, a blocked-in aircraft is a turnaround. Fuel trucks, galley trucks, bag tugs, loaders, a GPU, buses, and the pushback tug drive the service roads to the stand. They follow the pavement. Pushback waits until that turnaround is finished. If the ramp never clears, the aircraft eventually pushes and Standing dips, so one missing truck cannot freeze the airport.
+
+Money from the module posts straight into cash and the hour book: fuel sales, catering fees, fuel purchases, meal production, and vehicle upkeep. The old fuel and catering payouts do not also fire on those turns.
+
+The Design Advisor shows a low farm, a kitchen that is empty or missing, and a late turnaround with the reason in plain language: no truck, no loader, no fuel, no meals, no bridge, slow boarding, late passengers, late bags, or a bag pulled off. Clicking the note rings that apron tile.
+
+**Bugs.** Still nine. Nothing new failed in the wiring. BUG-001 through BUG-009 stand.
+
+**Tests.** 101 passing. The new ones cover the Field level gate, the starter kit staying on the old fuel truck, a connected service-road graph, a turnaround that pays fuel and catering and then releases the aircraft, trucks that stay on truck pavement, and the missing-kitchen alert. The three prefab overload waves still finish with zero lost passengers.
+
+**New media**
+
+- `docs/devlog/media/SLICE-D-tray.png` — Ops tray: fuel farm is open, kitchen and depot read Field 2
+- `docs/devlog/media/SLICE-D-advisor.png` — "Catering kitchen running low" with the place-a-kitchen fix
+- `docs/devlog/media/SLICE-D-ramp.png` — service trucks on the apron, chrome hidden
+- `docs/devlog/media/SLICE-D-ramp.webm` — those trucks driving the service road, chrome hidden, about 6 s

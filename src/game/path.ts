@@ -53,7 +53,9 @@ export function walkableFor(
       tile === 'road' ||
       tile === 'hangar' ||
       tile === 'deice' ||
-      tile === 'termbus'
+      tile === 'termbus' ||
+      tile === 'kitchen' ||
+      tile === 'depot'
     )
   }
   if (kind === 'mechanic') {

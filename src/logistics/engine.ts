@@ -18,6 +18,31 @@ import { VEHICLE_TYPES } from './types'
 
 const EPS = 1e-6
 
+function pointAlong(pts: { x: number; y: number }[], u: number): { x: number; y: number; heading: number } {
+  const lens: number[] = []
+  let total = 0
+  for (let i = 1; i < pts.length; i++) {
+    const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    lens.push(len)
+    total += len
+  }
+  if (total <= EPS) return { x: pts[0].x, y: pts[0].y, heading: 0 }
+  let remain = Math.min(1, Math.max(0, u)) * total
+  for (let i = 0; i < lens.length; i++) {
+    const len = lens[i]
+    const a = pts[i]
+    const b = pts[i + 1]
+    const heading = Math.atan2(b.y - a.y, b.x - a.x)
+    if (remain <= len || i === lens.length - 1) {
+      const t = len <= EPS ? 1 : Math.min(1, remain / len)
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, heading }
+    }
+    remain -= len
+  }
+  const last = pts[pts.length - 1]
+  return { x: last.x, y: last.y, heading: 0 }
+}
+
 /**
  * How a vehicle-served job moves things.
  * - carry: vehicle keeps a load between jobs (fuel, meals) drawn from a global store.
@@ -53,6 +78,21 @@ export interface VehicleState {
   serving: number
   /** Amount this vehicle was dispatched for but hasn't picked up yet. */
   reserved: number
+  /** Node the current move started at. */
+  fromNode: string
+  /** Road-node sequence for the current move, when driving. */
+  route: string[] | null
+  /** Sim minute the current phase started. */
+  phaseStart: number
+}
+
+export interface VehiclePose {
+  id: string
+  type: VehicleType
+  /** Apron cell coordinates (the road graph's x/y). */
+  x: number
+  y: number
+  heading: number
 }
 
 interface ServiceRequest {
@@ -201,6 +241,9 @@ export class LogisticsSim {
           requestId: null,
           serving: 0,
           reserved: 0,
+          fromNode: config.depotNode,
+          route: null,
+          phaseStart: 0,
         })
       }
     }
@@ -352,6 +395,34 @@ export class LogisticsSim {
     if (!t) return 0
     const end = t.completedAt ?? this.now
     return Math.max(0, end - t.readyBy)
+  }
+
+  /** Turnarounds that have not finished. A layout rebuild should wait for these. */
+  get openTurnarounds(): number {
+    let n = 0
+    for (const t of this.turnarounds.values()) if (t.completedAt === null) n++
+    return n
+  }
+
+  /**
+   * Where each vehicle is right now, interpolated along the service-road route.
+   * Idle and on-stand vehicles sit on their current node.
+   */
+  poses(): VehiclePose[] {
+    const driving = new Set<VehiclePhase>(['to_source', 'to_stand', 'to_dropoff'])
+    return this.vehicles.map((v) => {
+      const here = this.roads.at(v.node)
+      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: 0 }
+      if (!driving.has(v.phase) || !v.route || v.route.length < 2) {
+        return { id: v.id, type: v.type, ...parked }
+      }
+      const pts = v.route.map((id) => this.roads.at(id)).filter((n): n is NonNullable<typeof n> => Boolean(n))
+      if (pts.length < 2) return { id: v.id, type: v.type, ...parked }
+      const span = v.phaseEnd - v.phaseStart
+      const u = Number.isFinite(span) && span > 1e-6 ? Math.min(1, Math.max(0, (this.now - v.phaseStart) / span)) : 1
+      const at = pointAlong(pts, u)
+      return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading }
+    })
   }
 
   /** Requests still waiting for a vehicle. */
@@ -996,6 +1067,9 @@ export class LogisticsSim {
   }
 
   private travel(v: VehicleState, phase: VehiclePhase, dest: string): void {
+    v.fromNode = v.node
+    v.route = this.roads.route(v.node, dest)
+    v.phaseStart = this.now
     v.phase = phase
     v.phaseEnd = this.now + this.roads.travelMinutes(v.node, dest, this.speed(v))
   }
@@ -1006,6 +1080,9 @@ export class LogisticsSim {
     v.requestId = null
     v.serving = 0
     v.reserved = 0
+    v.route = null
+    v.fromNode = v.node
+    v.phaseStart = this.now
   }
 
   private beginLoading(v: VehicleState, r: ServiceRequest): void {
