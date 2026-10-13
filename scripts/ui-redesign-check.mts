@@ -293,6 +293,50 @@ note('A2-info', (await centerHits(page)).length === 0, 'center with info')
 note('A2b-info', (await overlaps(page)).length === 0, (await overlaps(page)).join(' | ') || 'no overlap')
 await page.keyboard.press('Escape')
 
+await page.getByTestId('tab-economy').hover()
+await page.getByTestId('cash-tip').waitFor()
+const cashTip = await page.getByTestId('cash-tip').innerText()
+const cashAmt = await page.getByTestId('cash-amount').innerText()
+const cashEst = await page.getByTestId('cash-estimate').innerText()
+note(
+  'A18',
+  /\$[\d,]/.test(cashAmt) &&
+    /\/day/.test(cashEst) &&
+    /income/i.test(cashTip) &&
+    /costs/i.test(cashTip) &&
+    /Next charge/.test(cashTip) &&
+    /\/day/.test(cashTip),
+  `amt ${cashAmt} est ${cashEst} tip ${cashTip.replace(/\s+/g, ' ').slice(0, 220)}`,
+)
+await page.screenshot({ path: `${OUT}/UI-REDESIGN-cash-flow.png` })
+await page.mouse.move(480, 420)
+
+await page.keyboard.press('3')
+const cashBefore = await page.evaluate(
+  () => (window as unknown as { __hatch: { cash: number } }).__hatch.cash,
+)
+const floatSeen = await page
+  .waitForFunction(
+    (start) => {
+      const g = (window as unknown as { __hatch: { cash: number } }).__hatch
+      return !!document.querySelector('.hf-float') && g.cash < start
+    },
+    cashBefore,
+    { timeout: 45000 },
+  )
+  .then(() => true)
+  .catch(() => false)
+if (floatSeen) {
+  await page.screenshot({ path: `${OUT}/UI-REDESIGN-cash-float.png` })
+}
+note('A18-float', floatSeen, floatSeen ? 'charge or income float visible' : 'no float before timeout')
+await page.waitForSelector('.hf-float', { state: 'detached', timeout: 4000 }).catch(() => {})
+await page.mouse.move(480, 420)
+await page.getByTestId('tab-economy').click()
+await page.getByTestId('week-summary').waitFor()
+await page.screenshot({ path: `${OUT}/UI-REDESIGN-cash-week.png` })
+await page.keyboard.press('Escape')
+
 await page.setViewportSize({ width: 1366, height: 768 })
 await page.waitForTimeout(200)
 const idleSmall = await coverage(page)

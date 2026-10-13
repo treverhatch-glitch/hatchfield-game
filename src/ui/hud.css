@@ -17,11 +17,12 @@
 }
 
 .hf-strip {
+  --strip-h: min(32px, 3vh, calc(32px * var(--ui-scale)));
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: min(32px, 3vh, calc(32px * var(--ui-scale)));
+  height: var(--strip-h);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -65,17 +66,177 @@
   font-weight: 400;
 }
 
-.hf-money {
+.hf-cash {
+  gap: 8px;
+  flex: 0 0 auto;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  color: #e2e8f0;
+  min-width: 0;
 }
 
-.hf-money.up {
+.hf-cash-amt {
+  font-size: clamp(18px, calc(var(--strip-h) - 6px), 26px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #ffe08a;
+  line-height: 1;
+  text-shadow: 0 0 12px rgb(255 208 74 / 0.35);
+}
+
+.hf-cash-est {
+  font-size: 12px;
+  font-weight: 650;
+  color: #cbd5e1;
+  line-height: 1;
+}
+
+.hf-cash-est.up {
   color: #34d399;
 }
-.hf-money.down {
+.hf-cash-est.down {
   color: #fb7185;
+}
+
+.hf-flow-tip {
+  position: fixed;
+  z-index: 45;
+  width: min(320px, 34vw);
+  max-height: min(150px, calc(20vh - 36px));
+  overflow: auto;
+  padding: 4px 8px;
+  line-height: 1.2;
+  border-radius: 12px;
+  background: rgb(15 23 42 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.35);
+  color: #f1f5f9;
+  font-size: 11px;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 10px;
+}
+
+.hf-flow-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-weight: 650;
+}
+
+.hf-flow-tip b {
+  display: block;
+  margin-bottom: 2px;
+  color: #94a3b8;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hf-flow-tip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hf-flow-tip li {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.hf-flow-tip p {
+  margin: 0;
+  color: #cbd5e1;
+}
+
+.hf-flow-next {
+  grid-column: 1 / -1;
+  color: #94a3b8;
+}
+
+.hf-floats {
+  position: fixed;
+  inset: 0;
+  z-index: 46;
+  pointer-events: none;
+}
+
+.hf-float {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.05;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.65);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.hf-float small {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.hf-float.up {
+  color: #34d399;
+  animation: hf-float-up 1.5s ease-out forwards;
+}
+
+.hf-float.down {
+  color: #fb7185;
+  animation: hf-float-down 1.5s ease-out forwards;
+}
+
+@keyframes hf-float-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  18% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-26px);
+  }
+}
+
+@keyframes hf-float-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  18% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+.hf-week {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 10px;
+  font-size: 11px;
+}
+
+.hf-week li {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .hf-speeds {
@@ -600,6 +761,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hf-float.up,
+  .hf-float.down {
+    animation: none;
+    opacity: 1;
+  }
   .hf-card,
   .hf-card:hover,
   .hf-card:focus-visible,
