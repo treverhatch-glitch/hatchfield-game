@@ -193,3 +193,12 @@ Minimum valid terminal = check-in, security, boarding desk, secure exit (matches
 - Janitors: the existing hire (Ops panel), wage on the cleaning payroll line. Each hire walks the hall at 1.3 m/s: full cans first, then a dirty WC, then the nearest litter. A cleaning budget below 20% idles them; a lower budget slows them.
 - Floor litter in a zone cuts comfort and drains happiness (capped) for guests there.
 - Advisor: "No trash cans near food court", "Litter piling up", "Trash cans full", "Restrooms dirty: hire janitors".
+
+## Diners sit to eat (issue #49)
+- Data: `src/game/diningData.ts` (`DINING_TUNING`, `TABLE_SEATS`). Logic: `src/game/dining.ts`, plus `seatDiner` / `tickMeal` in the sim.
+- After a meal at a placed outlet, a diner with time claims the nearest free seat within `seatRadius` cells (~12 m) of the counter. Seats are placed benches and seat rows, plus 4 table places per restaurant. They walk there and sit for the outlet's `consumeSec`.
+- Seats are booked per hall (seat → guest), so two people never share one. A seat is freed when the meal ends, the guest is called to board, the clock runs short, or the guest leaves.
+- Departures skip the seat once boarding is called, or when the boarding clock would not cover the meal plus `boardingMarginSec`. Café buyers drink on the walk. Passers-by eat on the move.
+- No free seat: the diner eats standing (−`standJoyHit` happiness). After `adviseStandingAt` of these inside `standWindowSec`, the advisor says "Not enough seating near food court".
+- Seated diners rest, gain a little happiness, and build shop need (a browse after the meal). Their litter lands at the seat: the nearest can with room, else the floor there.
+- Prefab bundle food and seats keep the old counter behaviour, so prefab flow and security throughput are unchanged.
