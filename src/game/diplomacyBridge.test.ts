@@ -90,4 +90,25 @@ describe('diplomacy bridge', () => {
     expect(game.diplomacyDay()).toBeGreaterThanOrEqual(1)
     expect(game.diplomacyRoster().some((row) => row.id === 'northline')).toBe(true)
   })
+
+  it('keeps a published fee rise across save and load', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.buildStarterKit()
+    game.signed = ['northline']
+    game.tick(180)
+    game.setPublishedFeeIndex(1.05)
+    expect(game.publishedFeeIndex).toBe(1.05)
+    expect(game.landingFeeMult('northline')).toBeCloseTo(1.05)
+    const card = game.diplomacyCards().find((row) => row.id === 'northline')
+    expect(card?.breakdown?.lines.some((line) => line.kind === 'fee_rise')).toBe(true)
+    game.persist()
+    const again = new Game()
+    expect(again.load()).toBe(true)
+    expect(again.publishedFeeIndex).toBe(1.05)
+    const restored = again.diplomacyCards().find((row) => row.id === 'northline')
+    expect(restored?.breakdown?.lines.some((line) => line.kind === 'fee_rise')).toBe(true)
+  })
 })

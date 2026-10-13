@@ -92,6 +92,10 @@ export type ModifierKind =
   | 'rescue'
   | 'lawsuit_settled'
   | 'poach_defence'
+  | 'missed_connection'
+  | 'negotiation'
+  | 'rival_poach'
+  | 'premium_screen'
   | 'other';
 
 export interface StandingModifier {
@@ -168,6 +172,8 @@ export interface ContractRecord {
   seasonFlights: number;
   seasonExcused: number;
   baseGranted: boolean;
+  /** Opening bank is 1. Later flight-contract letters add banks on the same master. */
+  flightBanks?: number;
 }
 
 export type RelationStatus = 'locked' | 'prospect' | 'signed' | 'former';
@@ -248,7 +254,7 @@ export interface AirlineRelation {
   exits: number;
 }
 
-export type ProposalKind = 'contract' | 'base' | 'endeavor' | 'newcomer_incentive';
+export type ProposalKind = 'contract' | 'flights' | 'base' | 'endeavor' | 'newcomer_incentive';
 export type ProposalResponse = 'accept' | 'support' | 'counter' | 'decline';
 
 export interface Proposal {
@@ -263,6 +269,33 @@ export interface Proposal {
   expiresDay: number;
   counterUsed: boolean;
   supportCost: number;
+}
+
+export type LadderStepId = 'master' | 'flights' | 'base' | 'hub';
+export type LadderState = 'done' | 'offered' | 'open' | 'locked';
+
+export interface LadderStep {
+  id: LadderStepId;
+  label: string;
+  state: LadderState;
+  detail: string;
+}
+
+export type CounterLineKey = 'landing' | 'passenger' | 'slots' | 'discount' | 'penalties';
+
+export interface CounterLine {
+  key: CounterLineKey;
+  label: string;
+  offered: string;
+  countered: string;
+}
+
+export interface CounterQuote {
+  lines: CounterLine[];
+  ticked: CounterLineKey[];
+  /** 0..1 chance the airline accepts this exact set of ticks. Shown before the roll. */
+  chance: number;
+  cost: number;
 }
 
 export type RivalStance = 'back' | 'oppose' | 'ignore';
@@ -459,6 +492,8 @@ export interface DiplomacyState {
   tierFloorSpawnDay: Record<string, number>;
   reputationDelta: number;
   log: DiplomacyEvent[];
+  /** 0..1 premium passengers clearing screening inside the comfort window. */
+  premiumScreenPct?: number;
 }
 
 export interface DiplomacyHost {
@@ -536,4 +571,6 @@ export interface AirlineCard {
   history: string[];
   contractTermEndDay: number | null;
   poachRisk: number;
+  /** Master → flight contracts → Base → Hub. */
+  ladder: LadderStep[];
 }

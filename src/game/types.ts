@@ -972,6 +972,8 @@ export interface GameSnapshot {
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
+  /** Published fee index. Missing saves stay on the baseline schedule. */
+  publishedFeeIndex?: number
   /** Negotiation desk (offers, rival, ULCC research). */
   negotiation?: string
   /** Inbound offers, visits, and Guard contracts. */

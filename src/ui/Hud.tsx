@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { projectCash } from './cashForecast'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
+import { AirlinesDesk } from './AirlinesDesk'
+import { DiplomacyLetters } from './DiplomacyLetters'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
@@ -217,7 +219,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
-  { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
+  { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
   { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
@@ -274,6 +276,25 @@ export function Hud({ game }: { game: Game }) {
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
   const rival = game.rivalPanel()
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key !== 'l' && e.key !== 'L') return
+      e.preventDefault()
+      setPanel((cur) => {
+        if (cur === 'airlines') {
+          setChromePinned(false)
+          return null
+        }
+        setChromePinned(true)
+        return 'airlines'
+      })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
     const closing = panel === id
@@ -560,6 +581,7 @@ export function Hud({ game }: { game: Game }) {
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
+        <DiplomacyLetters game={game} />
         {(() => {
           type Letter = {
             id: string
@@ -1416,6 +1438,7 @@ export function Hud({ game }: { game: Game }) {
 
               {panel === 'airlines' ? (
                 <>
+                <AirlinesDesk game={game} />
                 <section className="inbound-contracts" data-testid="contracts-panel">
                   <h3>Contracts</h3>
                   <p className="muted eco-line">
