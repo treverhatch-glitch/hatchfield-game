@@ -1,4 +1,4 @@
-/** Public contracts for the economy module. Time passed to the core is real minutes. */
+/** Public contracts for the economy module. All dt values are sim minutes. */
 
 export type StaffRole =
   | 'ground_crew'
@@ -218,7 +218,7 @@ export interface DemandSnapshot {
 }
 
 export interface EconomyState {
-  elapsedRealMinutes: number
+  elapsedSimMinutes: number
   fieldLevel: number
   researchPoints: number
   researchProgress: number

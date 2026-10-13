@@ -70,10 +70,8 @@ const economy = createEconomyAdapter({
 }, { initialState: savedEconomy })
 ```
 
-At normal speed, call `tick(dtSimSeconds)`. The adapter uses the current
-compression of 480 terminal sim-seconds per real minute. A frame loop with a
-reliable wall clock should call `tick(dtSimSeconds, dtRealSeconds)` instead;
-this is safer across pause and speed changes.
+Call `tick(step.dt)`, where `step` comes from the shared `SimClock`. `dt` is
+always sim minutes; the economy converts it internally for real-time RP pacing.
 
 Use `reportFailure(...)` for subsystem failures. On `fuel_outage`, the adapter
 calls `setFuelGroundStop(sourceId, true)` and does not invent a delay. Call
@@ -116,6 +114,63 @@ host's daily cost tick.
   temperate calendar ships here.
 - Building cash prices remain a host/catalog balance concern.
 
+## Shared clock and bank integration
+
+`src/core/clock.ts` is the sole time conversion:
+
+- every module receives `ClockStep.dt` in sim minutes;
+- one game day is 1,440 sim minutes / 180 real seconds at normal speed;
+- `gameDay` and `crossedGameDays` come from the same clock;
+- saves persist `{ simMinutes }`, not independent module clocks.
+
+The terminal frame owner should call
+`clock.advanceRealSeconds(realFrameSeconds, speed)` once, then pass the returned
+`dt` unchanged to economy, logistics, cargo, airlines, reports, and flow.
+Paused speed produces `dt = 0`.
+
+`src/core/bank.ts` owns the canonical `MONEY_CATEGORIES` list. All cash changes
+must use:
+
+```ts
+bank.post('landing_fees', 12_000, {
+  simMinutes: clock.simMinutes,
+  source: 'airlines',
+  sourceId: flight.id,
+})
+bank.post('fuel_purchase', -4_500, {
+  simMinutes: clock.simMinutes,
+  source: 'logistics',
+})
+```
+
+Amounts are signed, and posting an income category as negative (or an expense
+as positive) throws. The HUD reads `bank.ledger()`. Daily reports read
+`bank.ledgerForGameDay(day)`. Save `bank.snapshot()` and restore it through the
+`Bank` constructor. Modules should remove their private aggregate ledgers after
+their posts are wired.
+
+### Required `sim.ts` change for the terminal agent
+
+Do not retain `payrollCool = 30`. At each shared-clock day crossing:
+
+1. Read the completed day's operating income from bank categories. Exclude
+   financing (`loan_proceeds`, `ipo_proceeds`, share trades) and refunds.
+2. Calculate the old budget/staff line sum once as the minimum staffing cost,
+   not six times per day.
+3. Use `payrollForGameDay(income, phase, minimumStaffingCost)`, where `phase` is
+   `early` for the first 10 real minutes and `midgame` afterwards.
+4. Post `bank.post('payroll', -bill, meta)` once.
+5. Remove the current 3%-per-payroll-tick city levy. After payroll, call
+   `cityLevyForGameDay(bank.balance)` and post a negative `city_levy` once.
+
+The mid-game payroll share is 57.5% of operating income. The early share is 75%;
+with the modeled 15% non-payroll costs this yields a 10% early margin. The
+review's mid-size case ($203k/day income, $35k other costs) yields a 25.3%
+operating margin before levy, or 24.4% after levy at $500k cash. These land
+inside the requested 15–30% mid-game and 0–10% early bands.
+The replacement levy is 0.5% per day on cash above the existing protected
+$140k, rather than approximately 17% per day from repeated charges.
+
 # Hatchfield — Economy
 
 Money = picture. If cash moves and nothing on screen did, the loop is wrong.
@@ -144,8 +199,8 @@ Money = picture. If cash moves and nothing on screen did, the loop is wrong.
 | --- | --- | --- |
 | Stamps (runway, stands, halls, ops, landside) | On place | Jetway stands ×1.85 |
 | Contracts (fuel, catering brands) | Sign fee | Unlocks carriers |
-| Payroll (ops budgets) | ~30s | Field-load multiplier from carriers / stands / turns |
-| Landside + amenity upkeep | ~30s | Idle buildings bleed |
+| Payroll (ops budgets) | Per game day | 75% early / 57.5% mid-game income target, with staffing floor |
+| Landside + amenity upkeep | Per game day | Idle buildings bleed |
 | Loan interest | Ticking | **Multi-product bank** — Micro → Sovereign; fee rises with principal; one loan at a time; see [PROGRESSION.md](./PROGRESSION.md) |
 | Scramble / fines / bans / abandon | Events | Security + Standing failures |
 | Research / hire (mechanics, janitors, researchers, desk) | Instant | Bodies must work for RP / scrub / MX |

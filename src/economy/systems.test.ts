@@ -4,6 +4,7 @@ import { EconomyEngine } from './engine.ts'
 import { calculatePower } from './power.ts'
 import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from './seasons.ts'
 import { calculateStaff } from './staff.ts'
+import { realMinutesToSimMinutes } from '../core/clock.ts'
 
 describe('staff economy', () => {
   it('caps commuter pools, allocates by priority, and exposes visible researchers', () => {
@@ -19,7 +20,7 @@ describe('staff economy', () => {
       transitTier: 'road',
       housingTier: 0,
       visibleWorkerSample: 20,
-      elapsedRealMinutes: 5,
+      elapsedSimMinutes: realMinutesToSimMinutes(5),
     })
     expect(snapshot.employed).toBeLessThanOrEqual(snapshot.totalCap)
     expect(snapshot.allocations.find((allocation) => allocation.buildingId === 'rd')?.assigned).toBeGreaterThan(0)
@@ -35,7 +36,7 @@ describe('staff economy', () => {
       transitTier: 'road',
       housingTier: 0,
       visibleWorkerSample: 0,
-      elapsedRealMinutes: 0,
+      elapsedSimMinutes: 0,
     })
     const housed = calculateStaff({
       pools: { ground_crew: { hired: 100, wagePerDay: 100 } },
@@ -43,7 +44,7 @@ describe('staff economy', () => {
       transitTier: 'road',
       housingTier: 2,
       visibleWorkerSample: 0,
-      elapsedRealMinutes: 0,
+      elapsedSimMinutes: 0,
     })
     expect(base.totalCap).toBe(45)
     expect(housed.totalCap).toBe(105)

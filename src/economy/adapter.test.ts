@@ -20,12 +20,10 @@ function host(overrides: Partial<EconomyHost> = {}): EconomyHost {
 }
 
 describe('terminal economy adapter', () => {
-  it('converts the compressed terminal clock or accepts real elapsed time', () => {
+  it('takes the shared sim-minute delta', () => {
     const adapter = createEconomyAdapter(host())
     adapter.tick(480)
-    expect(adapter.snapshot().state.elapsedRealMinutes).toBe(1)
-    adapter.tick(0, 60)
-    expect(adapter.snapshot().state.elapsedRealMinutes).toBe(2)
+    expect(adapter.snapshot().state.elapsedSimMinutes).toBe(480)
   })
 
   it('routes fuel ground stops separately from soft failure hooks', () => {
@@ -52,5 +50,9 @@ describe('headless economy balance', () => {
     expect(report.early.canAffordOneBranchThroughTier3).toBe(true)
     expect(report.late.affordableTreeShare).toBeGreaterThanOrEqual(0.75)
     expect(report.late.affordableTreeShare).toBeLessThan(1)
+    expect(report.finances.early.margin).toBeGreaterThanOrEqual(0)
+    expect(report.finances.early.margin).toBeLessThanOrEqual(0.1)
+    expect(report.finances.midgame.margin).toBeGreaterThanOrEqual(0.15)
+    expect(report.finances.midgame.margin).toBeLessThanOrEqual(0.3)
   })
 })

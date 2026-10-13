@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EconomyEngine } from './engine.ts'
 import { TECH_TREE, availableTech } from './techTree.ts'
+import { realMinutesToSimMinutes } from '../core/clock.ts'
 
 describe('economy tech tree', () => {
   it('contains nine independent four-tier branches with doubling costs', () => {
@@ -32,7 +33,7 @@ describe('economy tech tree', () => {
     engine.setOperational(true)
     engine.setStaffPools({ researcher: { hired: 8, wagePerDay: 100 } })
     engine.setResearchRooms([{ id: 'lab', desks: 8, powerDemand: 20 }])
-    engine.tick(20)
+    engine.tick(realMinutesToSimMinutes(20))
     expect(engine.snapshot().state.researchPoints).toBeGreaterThanOrEqual(2)
     expect(engine.unlockTech('terminal_ops.t1')).toBe(true)
     expect(engine.getModifier('terminal.checkinSpeed')).toBe(1.3)

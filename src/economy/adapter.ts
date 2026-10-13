@@ -1,4 +1,5 @@
 import { EconomyEngine } from './engine'
+import type { SimMinutes } from '../core/clock'
 import type {
   ChainHealthInput,
   EconomyEvent,
@@ -45,17 +46,12 @@ export interface EconomyHost {
 
 export interface EconomyAdapterOptions {
   initialState?: EconomyState
-  /**
-   * Terminal clock units advanced per real minute at normal speed. The current
-   * terminal compression is 480 sim-seconds per real minute.
-   */
-  normalSimSecondsPerRealMinute?: number
 }
 
 export interface EconomyAdapter {
   engine: EconomyEngine
   /** Synchronize host facts, advance RP, publish a render/UI snapshot. */
-  tick(dtSimSeconds: number, dtRealSeconds?: number): EconomySnapshot
+  tick(dt: SimMinutes): EconomySnapshot
   unlockTech(id: string): boolean
   claimMilestone(id: string): boolean
   /**
@@ -75,7 +71,6 @@ export interface EconomyAdapter {
 
 export function createEconomyAdapter(host: EconomyHost, options: EconomyAdapterOptions = {}): EconomyAdapter {
   const engine = new EconomyEngine(options.initialState)
-  const clockRate = Math.max(1, options.normalSimSecondsPerRealMinute ?? 480)
   engine.on((event) => host.onEconomyEvent?.(event))
 
   const sync = (): void => {
@@ -101,13 +96,9 @@ export function createEconomyAdapter(host: EconomyHost, options: EconomyAdapterO
 
   return {
     engine,
-    tick(dtSimSeconds, dtRealSeconds) {
+    tick(dt) {
       sync()
-      const realMinutes =
-        dtRealSeconds === undefined
-          ? Math.max(0, dtSimSeconds) / clockRate
-          : Math.max(0, dtRealSeconds) / 60
-      engine.tick(realMinutes)
+      engine.tick(dt)
       return publish()
     },
     unlockTech(id) {

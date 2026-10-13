@@ -11,6 +11,7 @@ import type {
   WorkerActivity,
 } from './types'
 import { STAFF_ROLES } from './types'
+import { simMinutesToRealMinutes, type SimMinutes } from '../core/clock'
 
 export const COMMUTER_CAP: Readonly<Record<TransitTier, number>> = {
   road: 45,
@@ -31,7 +32,7 @@ export interface StaffModelInput {
   transitTier: TransitTier
   housingTier: HousingTier
   visibleWorkerSample: number
-  elapsedRealMinutes: number
+  elapsedSimMinutes: SimMinutes
   morale?: number
   commuteDistance?: number
 }
@@ -57,8 +58,9 @@ function stableNumber(text: string): number {
   return hash >>> 0
 }
 
-function workerActivity(id: string, elapsedRealMinutes: number, staffed: boolean): WorkerActivity {
+function workerActivity(id: string, elapsedSimMinutes: SimMinutes, staffed: boolean): WorkerActivity {
   if (!staffed) return 'off_shift'
+  const elapsedRealMinutes = simMinutesToRealMinutes(elapsedSimMinutes)
   const phase = (stableNumber(id) + Math.floor(elapsedRealMinutes * 2)) % 20
   if (phase < 14) return 'working'
   if (phase < 17) return 'walking'
@@ -110,7 +112,7 @@ export function calculateStaff(input: StaffModelInput): StaffSnapshot {
     pools,
     allocations,
     Math.max(0, Math.floor(input.visibleWorkerSample)),
-    input.elapsedRealMinutes,
+    input.elapsedSimMinutes,
   )
   const researchers = researcherState(allocations, visibleWorkers)
   const employed = STAFF_ROLES.reduce((sum, role) => sum + pools[role], 0)
@@ -131,7 +133,7 @@ function visibleSample(
   pools: Readonly<Record<StaffRole, number>>,
   allocations: readonly StaffAllocation[],
   sampleLimit: number,
-  elapsedRealMinutes: number,
+  elapsedSimMinutes: SimMinutes,
 ): VisibleWorker[] {
   const result: VisibleWorker[] = []
   const assignedByRole = new Map<StaffRole, { buildingId: string; remaining: number }[]>()
@@ -155,7 +157,7 @@ function visibleSample(
       id,
       role,
       buildingId: assignment?.buildingId ?? null,
-      activity: workerActivity(id, elapsedRealMinutes, Boolean(assignment)),
+      activity: workerActivity(id, elapsedSimMinutes, Boolean(assignment)),
     })
   }
   return result

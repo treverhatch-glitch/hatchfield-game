@@ -1,4 +1,5 @@
 import { analyzeChains, createFailure } from './bottlenecks'
+import { simMinutesToRealMinutes, type SimMinutes } from '../core/clock'
 import { calculatePower } from './power'
 import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from './seasons'
 import { calculateStaff } from './staff'
@@ -34,7 +35,7 @@ export const DEFAULT_ECONOMY_CONFIG: EconomyConfig = {
 
 export function createInitialEconomyState(): EconomyState {
   return {
-    elapsedRealMinutes: 0,
+    elapsedSimMinutes: 0,
     fieldLevel: 1,
     researchPoints: 0,
     researchProgress: 0,
@@ -165,9 +166,10 @@ export class EconomyEngine {
     this.bottlenecks = next
   }
 
-  tick(elapsedRealMinutes: number): void {
-    if (!(elapsedRealMinutes > 0)) return
-    this.state.elapsedRealMinutes += elapsedRealMinutes
+  tick(dt: SimMinutes): void {
+    if (!(dt > 0)) return
+    const elapsedRealMinutes = simMinutesToRealMinutes(dt)
+    this.state.elapsedSimMinutes += dt
     const snapshot = this.snapshot()
     const operationRate = this.operational ? this.config.operationRpPerRealMinute : 0
     const roomRate =
@@ -224,7 +226,7 @@ export class EconomyEngine {
       transitTier: this.state.transitTier,
       housingTier: this.state.housingTier,
       visibleWorkerSample: this.config.visibleWorkerSample,
-      elapsedRealMinutes: this.state.elapsedRealMinutes,
+      elapsedSimMinutes: this.state.elapsedSimMinutes,
       morale: modifiers['staff.moraleThroughput'] ?? 1,
     })
     const roomLoads: PowerLoad[] = this.researchRooms
