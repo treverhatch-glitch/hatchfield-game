@@ -4,7 +4,7 @@
 **Use this to understand goals, what is already coded, what was briefed but not built yet, and how the game is meant to play.**  
 **Date snapshot:** after slice **3** (cargo start focus + volume letters).  
 **Code order of truth:** [BUILD.md](./BUILD.md) · North star: [VISION.md](./VISION.md)  
-**IMPORTANT law:** [HAND_OFFS.md](./HAND_OFFS.md) — Manor Lords load/unload on every traffic & service hand-off.
+**IMPORTANT law:** [HAND_OFFS.md](./HAND_OFFS.md) — Manor Lords load/unload on every traffic & service hand-off (**apron + terminal**).
 
 ---
 
@@ -17,7 +17,7 @@ You run a living airfield where:
 1. **Layout is skill** — bad taxi, thin security, broken bags/cargo chains hurt visibly.
 2. **Letters are drama** — airlines, layovers, emergencies, mil host call with deadlines.
 3. **Money equals picture** — cash posts when trucks, jets, or passengers finish a real job (not teleport ticks).  
-4. **Hand-offs equal picture (IMPORTANT)** — pax board/deboard, bags, cater, fuel, cargo, buses: timed load/unload dwells and visible journeys ([HAND_OFFS](./HAND_OFFS.md)).
+4. **Hand-offs equal picture (IMPORTANT)** — apron *and hall*: pax board/deboard, check-in, security, claim, amenities, bags, cater, fuel, cargo, buses — timed load/unload dwells and visible journeys ([HAND_OFFS](./HAND_OFFS.md)).
 
 **Passengers** are the default campaign. **Cargo** is a full parallel path (not DLC). **Emergencies** and **military hosting** are side seasons — chaos and prestige, never a combat game.
 

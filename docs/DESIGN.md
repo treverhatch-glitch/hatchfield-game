@@ -2,7 +2,7 @@
 
 **Source of truth for what the game is.** User prompts beat agent guesses. Changelog: `ADDITIONS.md`. North-star narrative: [VISION.md](./VISION.md).
 
-> **IMPORTANT:** Every traffic flow and transported item needs a **Manor Lords–style load/unload hand-off** (visible travel + dwell + clear). Full law: **[HAND_OFFS.md](./HAND_OFFS.md)**.
+> **IMPORTANT:** Every traffic flow and transported item — **apron and inside the terminal** — needs a **Manor Lords–style load/unload hand-off** (visible travel + dwell + clear). Full law: **[HAND_OFFS.md](./HAND_OFFS.md)**.
 
 ## Pitch
 
@@ -31,7 +31,7 @@ Thresholds players learn: Standing **82+** perk · **≤36** warn · **≤20** a
 4. **Sawyer cap** — hall pathfinding stays shallow (capped BFS). Perfect routing that stalls the sim is worse than guests who get lost.
 5. **Browser = design lab** — Godot/Steam only after Waves A–B feel unfair-fun. Grid stays until **P2.5 freeflow**.
 6. **Dual path equality** — pax and cargo both feed Field XP / Field Level ([PROGRESSION](./PROGRESSION.md)).
-7. **Hand-off picture (IMPORTANT)** — no silent completion; every load/unload/service has travel + dwell scaled by load ([HAND_OFFS](./HAND_OFFS.md)).
+7. **Hand-off picture (IMPORTANT)** — no silent completion on apron *or* in the hall; every load/unload/service has travel + dwell scaled by load ([HAND_OFFS](./HAND_OFFS.md)).
 
 ## Real airport ops (inspiration)
 

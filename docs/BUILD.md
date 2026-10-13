@@ -3,7 +3,7 @@
 **Stop planning-only. Ship code in this order.**  
 North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wave board: [EXECUTION](./EXECUTION.md)
 
-> **IMPORTANT:** [HAND_OFFS.md](./HAND_OFFS.md) — Manor Lords load/unload on every service. New movers must ship travel + dwell + visible load + pay-on-clear. Cross-cuts all slices.
+> **IMPORTANT:** [HAND_OFFS.md](./HAND_OFFS.md) — Manor Lords load/unload on every service, **including terminal** (check-in, security, claim, amenities). New movers/serves must ship travel + dwell + visible load/queue + pay-on-clear. Cross-cuts all slices.
 
 ## Already shipped (do not re-litigate)
 
