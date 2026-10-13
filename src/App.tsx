@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { CameraChrome } from './camera/chrome.tsx'
+import { cameraSession } from './camera/session.ts'
 import { perfEnd, perfStart } from './core/perf'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
@@ -108,10 +110,12 @@ export default function App() {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       const t0 = perfStart()
-      try {
-        game.tick(dt)
-      } catch (err) {
-        console.error('tick failed', err)
+      if (!cameraSession.frozen) {
+        try {
+          game.tick(dt)
+        } catch (err) {
+          console.error('tick failed', err)
+        }
       }
       perfEnd('sim.tick', t0)
       raf = requestAnimationFrame(loop)
@@ -262,6 +266,7 @@ export default function App() {
       <Hud game={game} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
+      <CameraChrome view={game.view} clockOf={() => game.clock} />
     </div>
   )
 }

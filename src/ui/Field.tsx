@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { snapshotFrom, tracksFrom } from '../camera/actors.ts'
+import { pngName, savePng } from '../camera/capture.ts'
+import { pickTrackable } from '../camera/pick.ts'
+import { cameraSession } from '../camera/session.ts'
+import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { World } from '../render/world'
 
@@ -25,9 +30,25 @@ export function Field({ game }: { game: Game }) {
     }
     world.onClick = (v) => {
       if (game.view !== 'apron') return
+      if (game.tool === 'pan') {
+        const hit = pickTrackable({ c: v.c, r: v.r }, tracksFrom(snapshotFrom(game)))
+        if (hit) cameraSession.select(hit)
+      }
       game.clickTile(v)
     }
+    world.onUserDrag = () => {
+      cameraSession.noteDrag()
+    }
+    world.onFollowZoom = (deltaY) => cameraSession.noteWheel(deltaY)
+    world.onCaptured = (url) => savePng(url, pngName(new Date()))
     world.getTool = () => game.tool
+    const unbindPose = cameraSession.bindPose(() => world.cameraPose())
+    const offCamera = cameraSession.subscribe(() => {
+      const live = worldRef.current
+      if (!live) return
+      if (!cameraSession.following && live.followHeld) live.releaseFollow()
+      if (!cameraSession.frozen) live.setTimeOfDay(null)
+    })
 
     const keys = new Set<string>()
     const onKeyDown = (e: KeyboardEvent) => {
@@ -66,16 +87,25 @@ export function Field({ game }: { game: Game }) {
       if (game.view === 'apron') {
         const w = worldRef.current
         if (w) {
-          const speed = 28 * dt
-          let fx = 0
-          let fy = 0
-          if (keys.has('w') || keys.has('ArrowUp')) fy -= speed
-          if (keys.has('s') || keys.has('ArrowDown')) fy += speed
-          if (keys.has('a') || keys.has('ArrowLeft')) fx -= speed
-          if (keys.has('d') || keys.has('ArrowRight')) fx += speed
-          if (fx || fy) w.nudgePan(fx, fy)
-          if (keys.has('q')) w.nudgeYaw(1.4 * dt)
-          if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+          if (!cameraSession.following) {
+            const speed = 28 * dt
+            let fx = 0
+            let fy = 0
+            if (keys.has('w') || keys.has('ArrowUp')) fy -= speed
+            if (keys.has('s') || keys.has('ArrowDown')) fy += speed
+            if (keys.has('a') || keys.has('ArrowLeft')) fx -= speed
+            if (keys.has('d') || keys.has('ArrowRight')) fx += speed
+            if (fx || fy) w.nudgePan(fx, fy)
+            if (keys.has('q')) w.nudgeYaw(1.4 * dt)
+            if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+            if (w.followHeld) w.releaseFollow()
+          } else {
+            const pose = cameraSession.step(dt, tracksFrom(snapshotFrom(game)), FIELD_LAYOUT)
+            if (pose) w.applyFollow(pose.position, pose.aim)
+            else if (w.followHeld) w.releaseFollow()
+          }
+          w.setTimeOfDay(cameraSession.frozen ? cameraSession.timeOfDay : null)
+          if (cameraSession.consumeCapture()) w.requestCapture()
           w.render(game)
         }
         if (game.hover && game.inspectEnabled()) {
@@ -118,6 +148,8 @@ export function Field({ game }: { game: Game }) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
+      unbindPose()
+      offCamera()
       worldRef.current = null
       const probe = window as unknown as { __world?: World }
       if (probe.__world === world) probe.__world = undefined
