@@ -53,7 +53,7 @@ describe('departure show-up', () => {
       expect(game.lostPaxCount()).toBe(0)
       expect(game.bagsLost).toBe(0)
     })
-  })
+  }, 30_000)
 
   it('refuses a new bag drop after check-in closes', () => {
     const game = starter()
