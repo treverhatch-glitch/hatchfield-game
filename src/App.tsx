@@ -187,6 +187,7 @@ export default function App() {
         game.showFlows ? 1 : 0,
         game.advice.length,
         game.advisorCells.length,
+        game.openPanel ?? '',
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',

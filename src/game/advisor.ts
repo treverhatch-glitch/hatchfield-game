@@ -30,6 +30,10 @@ export interface Advice {
   cells: AdviceCell[]
   /** Hall highlights use the terminal grid. Apron notes mark fuel, kitchen, or depot tiles. */
   scope?: 'hall' | 'apron'
+  /** Set by the hint merge. Notes without one fall back to `advisorData.ts`. */
+  severity?: 'blocker' | 'warning' | 'tip'
+  /** 'layout' notes come from the Terminal Advisor; the rest are kit, litter, and ops. */
+  source?: 'layout'
 }
 
 export interface AdviceFit {

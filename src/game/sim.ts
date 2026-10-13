@@ -163,6 +163,8 @@ import {
   type StaffPost,
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
+import { layoutHints, layoutKey, mergeHints } from './advisorBridge.ts'
+import { ADVISOR_TUNING } from './advisorData.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
@@ -636,8 +638,8 @@ export class Game {
   hallJanitors: HallJanitor[] = []
   /** Unique suffix for litter pieces. */
   litterSeq = 0
-  /** Seconds until the litter / restroom advisor notes refresh. */
-  litterAdviceCool = 0
+  /** Sim-seconds until the hint list refreshes in the background. */
+  adviceCool = 0
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -758,11 +760,21 @@ export class Game {
   revenue = 0
   /** Positive payment lines kept after a turn leaves the field. */
   settledPayments: { flightNo: string; label: string; amount: number }[] = []
-  /** Layout notes. Empty on a healthy prefab until the hall is over capacity. */
+  /**
+   * Every hint in one list, worst first: Terminal Advisor layout checks, kit
+   * and litter notes, Standing, and ground notes. Empty on a healthy prefab
+   * until the hall is over capacity.
+   */
   advice: Advice[] = []
   advisorCells: { c: number; r: number }[] = []
   /** Apron tiles highlighted by a ground-services note (fuel farm, kitchen, depot). */
   apronFocus: { c: number; r: number }[] = []
+  /** Last layout run, keyed by hall and layout, so refresh ticks skip the pathing. */
+  layoutHintCache: { key: string; hints: Advice[] } | null = null
+  /** "Show me" pan request. Cell coords: hall grid for 'hall', apron tiles for 'apron'. */
+  cameraFocus: { view: 'apron' | 'hall'; c: number; r: number; seq: number } | null = null
+  /** The one floating panel that may be open: hints, the HUD rollout, or an info card. */
+  openPanel: 'hints' | 'hud' | 'info' | null = null
   /** Ground-logistics ledger. Posted into cash as it happens. */
   groundBooks = {
     fuelSales: 0,
@@ -914,7 +926,7 @@ export class Game {
     this.janitorCool = 0
     this.hallJanitors = []
     this.litterSeq = 0
-    this.litterAdviceCool = 0
+    this.adviceCool = 0
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -995,6 +1007,9 @@ export class Game {
     this.advice = []
     this.advisorCells = []
     this.apronFocus = []
+    this.layoutHintCache = null
+    this.cameraFocus = null
+    this.openPanel = null
     this.groundBooks = {
       fuelSales: 0,
       cateringFees: 0,
@@ -4922,9 +4937,16 @@ export class Game {
         stepJanitor(j, hall, dt * clean, HALL_W / cols, taken)
       }
     }
-    this.litterAdviceCool -= dt
-    if (this.litterAdviceCool <= 0) {
-      this.litterAdviceCool = 5
+  }
+
+  /**
+   * Background hint refresh for the things that drift without a click:
+   * litter, queues, Standing. Builds and bulldozes refresh on their own.
+   */
+  tickAdvisor(dt: number) {
+    this.adviceCool -= dt
+    if (this.adviceCool <= 0) {
+      this.adviceCool = ADVISOR_TUNING.refreshSec
       this.refreshAdvice()
     }
   }
@@ -5507,7 +5529,7 @@ export class Game {
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) {
-      this.advice = [...this.groundNotes, ...this.cargoNotes]
+      this.advice = mergeHints([this.groundNotes, this.cargoNotes])
       return
     }
     const hall = adviseHall(
@@ -5547,11 +5569,26 @@ export class Game {
         scope: 'apron',
       })
     }
-    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
-    this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
+    // Layout hints only re-run when the paint or the kit changes, so the
+    // background tick stays cheap.
+    const key = `${this.hallKey(fit)}#${layoutKey(fit)}`
+    if (this.layoutHintCache?.key !== key) {
+      this.layoutHintCache = { key, hints: layoutHints(fit) }
+    }
+    const litter = litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100)
+    this.advice = mergeHints([
+      this.layoutHintCache.hints,
+      hall,
+      litter,
+      standingNotes,
+      this.groundNotes,
+      this.cargoNotes,
+    ])
     if (this.advisorCells.length) {
-      const still = hall.find((a) =>
-        a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
+      const still = this.advice.find(
+        (a) =>
+          a.scope !== 'apron' &&
+          a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
       )
       if (!still) this.advisorCells = []
     }
@@ -5586,6 +5623,50 @@ export class Game {
       hit.cells.length === this.advisorCells.length &&
       hit.cells.every((c, i) => c.c === this.advisorCells[i]?.c && c.r === this.advisorCells[i]?.r)
     this.advisorCells = hit && !same ? hit.cells : []
+    this.emit()
+  }
+
+  /**
+   * Only one floating panel at a time. Opening one closes the rest; the HUD
+   * watches `openPanel` and folds its rollout when it loses the claim.
+   */
+  claimPanel(id: 'hints' | 'hud' | 'info' | null) {
+    if (this.openPanel === id) return
+    this.openPanel = id
+    if (id !== 'info') this.infoOpen = null
+    this.emit()
+  }
+
+  toggleHints() {
+    this.claimPanel(this.openPanel === 'hints' ? null : 'hints')
+  }
+
+  /** "Show me": highlight the hint's cells and pan that view's camera to them. */
+  showHint(id: string) {
+    const hit = this.advice.find((a) => a.id === id)
+    if (!hit || !hit.cells.length) return
+    const apron = hit.scope === 'apron'
+    if (apron) {
+      this.apronFocus = hit.cells
+      this.advisorCells = []
+    } else {
+      this.advisorCells = hit.cells
+      this.apronFocus = []
+    }
+    const view = apron ? 'apron' : 'hall'
+    if (this.view !== view) this.setView(view)
+    let c = 0
+    let r = 0
+    for (const cell of hit.cells) {
+      c += cell.c
+      r += cell.r
+    }
+    this.cameraFocus = {
+      view,
+      c: c / hit.cells.length,
+      r: r / hit.cells.length,
+      seq: (this.cameraFocus?.seq ?? 0) + 1,
+    }
     this.emit()
   }
 
@@ -5790,6 +5871,8 @@ export class Game {
 
   toggleInfo(id: string) {
     this.infoOpen = this.infoOpen === id ? null : id
+    if (this.infoOpen) this.claimPanel('info')
+    else if (this.openPanel === 'info') this.openPanel = null
     this.emit()
   }
 
@@ -6148,10 +6231,11 @@ export class Game {
       this.refreshAdvice()
       return
     }
-    for (const note of next) {
-      const i = this.advice.findIndex((a) => a.id === note.id)
-      if (i >= 0) this.advice[i] = note
-    }
+    // New array so the hint panel sees the updated text.
+    this.advice = this.advice.map((a) => {
+      const note = next.find((n) => n.id === a.id)
+      return note ? { ...note, severity: a.severity } : a
+    })
   }
 
   /**
@@ -12316,6 +12400,7 @@ export class Game {
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)
+    this.tickAdvisor(step)
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)

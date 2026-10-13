@@ -29,6 +29,7 @@ import {
   slotCenter,
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
+import { ADVISOR_TUNING } from '../game/advisorData'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
@@ -120,6 +121,11 @@ export class HallWorld {
     depthWrite: false,
   })
   private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+  /** Last overlay built while flows are off; skips the per-frame rebuild. */
+  private overlayKey = ''
+  /** Last "Show me" request handled, and where the camera is easing to. */
+  private focusSeq = 0
+  private panTo: THREE.Vector3 | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -198,6 +204,7 @@ export class HallWorld {
     // Middle/right = orbit; left-drag = pan (WASD also pans).
     if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
     else this.dragging = e.shiftKey ? 'orbit' : 'pan'
+    this.panTo = null
     this.lastX = e.clientX
     this.lastY = e.clientY
     this.downX = e.clientX
@@ -735,13 +742,17 @@ export class HallWorld {
   syncOverlay(game: Game) {
     const show = game.showFlows
     const marks = game.advisorCells
-    this.clearOverlay()
-    this.overlay.visible = show || marks.length > 0
-    if (!this.overlay.visible) return
     const fit = game.activeHall()
     const zones = fit?.zones ?? []
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
+    // A hint highlight on its own is static: only rebuild it when the cells change.
+    const key = show ? '' : `${cols}x${rows}|${marks.map((m) => `${m.c},${m.r}`).join(';')}`
+    if (key && key === this.overlayKey) return
+    this.overlayKey = key
+    this.clearOverlay()
+    this.overlay.visible = show || marks.length > 0
+    if (!this.overlay.visible) return
     if (marks.length) {
       for (const cell of marks) {
         const pos = cellCenter(cell.c, cell.r, cols, rows)
@@ -828,9 +839,28 @@ export class HallWorld {
     }
   }
 
+  /** Ease the pivot toward the latest "Show me" cell. A drag cancels it. */
+  private syncFocus(game: Game) {
+    const f = game.cameraFocus
+    if (f && f.view === 'hall' && f.seq !== this.focusSeq) {
+      this.focusSeq = f.seq
+      const { cols, rows } = this.zoneGrid()
+      const p = cellCenter(f.c, f.r, cols, rows)
+      this.panTo = new THREE.Vector3(p.x, 0, p.z)
+    }
+    if (!this.panTo) return
+    this.pivot.lerp(this.panTo, ADVISOR_TUNING.panEase)
+    if (this.pivot.distanceTo(this.panTo) < ADVISOR_TUNING.panSnapM) {
+      this.pivot.copy(this.panTo)
+      this.panTo = null
+    }
+    this.placeCam()
+  }
+
   render(game: Game) {
     this.game = game
     this.resize()
+    this.syncFocus(game)
     this.rebuildRooms(game)
     this.syncGuests(game)
     this.syncLuggage(game)

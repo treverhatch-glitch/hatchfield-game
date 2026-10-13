@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
+import { ADVISOR_TUNING } from '../game/advisorData'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
 import {
@@ -131,6 +132,9 @@ export class World {
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   pivot = new THREE.Vector3(0, 0, 0)
+  /** Last "Show me" request handled, and where the camera is easing to. */
+  private focusSeq = 0
+  private panTo: THREE.Vector3 | null = null
   yaw = 0.72
   pitch = 0.68
   dist = 88
@@ -301,6 +305,7 @@ export class World {
     this.onPointerDown = (e: PointerEvent) => {
       const tool = this.getTool()
       this.paintedThisGesture = false
+      this.panTo = null
       // Middle (1) or right (2) = orbit. Left + build tool = one stamp. Left + select = click/pan.
       if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
       else if (e.button === 0 && tool !== 'pan') this.dragging = 'paint'
@@ -1776,12 +1781,29 @@ export class World {
     }
   }
 
+  /** Ease the pivot toward the latest apron "Show me" tile. A click or drag cancels it. */
+  private syncFocus(game: Game) {
+    const f = game.cameraFocus
+    if (f && f.view === 'apron' && f.seq !== this.focusSeq) {
+      this.focusSeq = f.seq
+      this.panTo = toWorld(f.c, f.r, 0)
+    }
+    if (!this.panTo) return
+    this.pivot.lerp(this.panTo, ADVISOR_TUNING.panEase)
+    if (this.pivot.distanceTo(this.panTo) < ADVISOR_TUNING.panSnapM) {
+      this.pivot.copy(this.panTo)
+      this.panTo = null
+    }
+    this.placeCam()
+  }
+
   render(game: Game) {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
     this.lastFrame = now
     setAircraftNight(game.isNight())
     this.resize()
+    this.syncFocus(game)
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.syncGhost(game)

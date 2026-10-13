@@ -176,7 +176,16 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
-  const [panel, setPanel] = useState<PanelId>(null)
+  const [panelState, setPanelState] = useState<PanelId>(null)
+  // One floating panel at a time: opening a HUD tab claims the slot, and the
+  // tab folds as soon as the hint panel or an info card takes it.
+  const panel = game.openPanel === 'hud' ? panelState : null
+  const setPanel = (next: PanelId | ((cur: PanelId) => PanelId)) => {
+    const value = typeof next === 'function' ? next(panel) : next
+    setPanelState(value)
+    if (value) game.claimPanel('hud')
+    else if (game.openPanel === 'hud') game.claimPanel(null)
+  }
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
@@ -704,7 +713,7 @@ export function Hud({ game }: { game: Game }) {
       </div>
 
       <div
-        className={`chrome${panel ? ' has-panel' : ''}${chromePinned ? ' pinned' : ''}`}
+        className={`chrome${panel ? ' has-panel' : ''}${chromePinned && panel ? ' pinned' : ''}`}
         onMouseLeave={() => {
           if (!chromePinned) return
           /* Keep pinned while interacting; unpin only via Close / toggle. */
