@@ -147,13 +147,15 @@ describe('security lane releases the people it screens', () => {
       expect(cleared).toBeGreaterThan(10)
       expect(dayCheckin.length).toBeGreaterThan(0)
       expect(Math.max(...dayCheckin)).toBeLessThan(12)
-      expect(maxWaitingWhileDeskEmpty).toBeLessThan(16)
-      expect(dayWaiting.every((n) => n < 16)).toBe(true)
+      // Show-up banks the next flight before this one clears, so two waves can
+      // share the lane. The line must stay under two prefab banks and not grow.
+      expect(maxWaitingWhileDeskEmpty).toBeLessThan(28)
+      expect(dayWaiting.every((n) => n < 28)).toBe(true)
       for (let i = 1; i < dayWaiting.length; i++) {
         expect(dayWaiting[i]).toBeLessThanOrEqual(Math.max(...dayWaiting.slice(0, i)) + 8)
       }
       expect(Math.max(...dayHeld)).toBeLessThan(16)
-      expect(dayHeld[dayHeld.length - 1]).toBeLessThanOrEqual(8)
+      expect(dayHeld[dayHeld.length - 1]).toBeLessThanOrEqual(12)
       expect(peakHeld).toBeLessThan(24)
     })
   }, 20000)

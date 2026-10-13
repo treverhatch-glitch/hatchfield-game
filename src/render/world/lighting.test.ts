@@ -97,6 +97,10 @@ describe('quality presets', () => {
   it('suggests low on software GL', () => {
     expect(suggestQuality({ renderer: 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device))' })).toBe('low')
     expect(suggestQuality({ renderer: 'llvmpipe' })).toBe('low')
+    expect(QUALITY.low.msaa).toBe(false)
+    expect(QUALITY.low.trees).toBe(0)
+    expect(QUALITY.low.precipitation).toBe(0)
+    expect(QUALITY.low.pixelRatioCap).toBeLessThanOrEqual(0.6)
     expect(suggestQuality({ renderer: 'Apple M2', deviceMemory: 8, hardwareConcurrency: 8 })).toBe('high')
     expect(suggestQuality({ renderer: 'Intel Iris', deviceMemory: 4, hardwareConcurrency: 4 })).toBe('med')
   })
