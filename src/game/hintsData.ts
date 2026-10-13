@@ -11,6 +11,19 @@ export const HINT_KIND_PREFIX: [prefix: string, kind: string][] = [
   ['dead-', 'dead-end'],
   ['plan-dead_', 'plan-dead-end'],
   ['zone-', 'zone-unreachable'],
+  // Built-from-scratch halls (src/terminalbuild): per-room / per-kit / per-door suffixes.
+  ['build-room_empty:', 'build-room-empty'],
+  ['build-room_zone:', 'build-room-zone'],
+  ['build-room_floor:', 'build-room-floor'],
+  ['build-gate_unreachable:', 'build-gate-unreachable'],
+  ['build-gate_no_apron:', 'build-gate-no-apron'],
+  ['build-lane_dead_end:', 'build-lane-dead-end'],
+  ['build-bags_no_route:', 'build-bags-no-route'],
+  ['build-makeup_no_apron:', 'build-makeup-no-apron'],
+  ['build-equip_room:', 'build-equip-room'],
+  ['build-equip_blocked:', 'build-equip-blocked'],
+  ['build-equip_unreachable:', 'build-equip-unreachable'],
+  ['build-door_', 'build-door'],
 ]
 
 /** Severity for notes that do not set their own. Everything else is a warning. */

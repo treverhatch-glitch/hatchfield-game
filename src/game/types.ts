@@ -1,6 +1,7 @@
 import type { InboundState } from '../inbound/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
+import type { BuildLayout } from '../terminalbuild/types.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -825,6 +826,8 @@ export interface TerminalFit {
   secPerMin?: number
   /** Zone paint or a custom stamp. Ceilings come from placed items. */
   redesigned?: boolean
+  /** Built from scratch with walls, floors, and zones (src/terminalbuild). Prefab halls leave this unset. */
+  build?: BuildLayout
 }
 
 export interface GameSnapshot {
