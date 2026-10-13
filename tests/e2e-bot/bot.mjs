@@ -19,7 +19,15 @@ const arg = (k, d) => {
 const URL = arg('url', 'http://127.0.0.1:5173/')
 const LABEL = arg('label', 'local')
 const SCENARIO = arg('scenario', 'mixed')
-const DAYS = Number(arg('days', SCENARIO === 'heavy' ? 4 : 6))
+const LONG = process.argv.includes('--long') || arg('mode', '') === 'long'
+/* --long (or --mode long): 30 game days, ramped traffic. */
+const DAYS = Number(arg('days', LONG ? 30 : SCENARIO === 'heavy' ? 4 : 6))
+// Ramp: start with starter traffic (1 pax carrier), add a carrier every RAMP_EVERY days.
+const RAMP = LONG || arg('ramp', '0') === '1'
+const RAMP_EVERY = Number(arg('ramp-every', 3))
+const EARLY_DAYS = Number(arg('early-days', 4))
+const QUEUE_EARLY_MAX = Number(arg('queue-early-max', 12))
+const CASH_DAY_FLOOR = Number(arg('cash-day-floor', -400000))
 const OUT = arg('out', `/workspace/qa/${LABEL}-${SCENARIO}`)
 const FPS_FLOOR = Number(arg('fps-floor', process.env.FPS_FLOOR ?? 12))
 const VIDEO = arg('video', '1') !== '0'
@@ -116,6 +124,7 @@ try {
   await shot('title')
 
   step('New game → passenger start')
+  globalThis.__seen = { 'new-game': (await page.getByTestId('new-game').count()) > 0 }
   await page.getByTestId('new-game').click()
   await page.waitForTimeout(400)
   await page.getByTestId('start-pax').click()
@@ -126,6 +135,7 @@ try {
   await page.getByTestId('tab-economy').click({ force: true }).catch(() => {})
   await page.waitForTimeout(300)
   const kit = page.getByTestId('starter-kit')
+  globalThis.__seen['starter-kit'] = (await kit.count()) > 0
   if (await kit.isVisible().catch(() => false)) await kit.click({ force: true })
   else await page.evaluate(() => window.__hatch.buildStarterKit())
   await page.waitForTimeout(600)
@@ -134,8 +144,25 @@ try {
     find('high', 'Starter kit did not place prefab terminal I from the UI', `Economy tab → starter-kit left fits=0 (button visible: ${await kit.isVisible().catch(() => false)}). Bot fell back to game.buildStarterKit().`, steps.slice())
     await page.evaluate(() => window.__hatch.buildStarterKit())
   }
-  const close = page.locator('.panel-head button').filter({ hasText: /Close/i })
-  if (await close.isVisible().catch(() => false)) await close.click({ force: true })
+  step('Budget tab, flow toggle, panel close, build tray state (PR #4 test ids)')
+  const ui = {}
+  const tid = (id) => page.getByTestId(id).first()
+  ui.buildTrayStartsOpen = await tid('build-tray').evaluate((el) => {
+    const r = el.getBoundingClientRect(); const cs = getComputedStyle(el)
+    return el.getAttribute('data-open') === 'true' || el.getAttribute('aria-expanded') === 'true' || (r.height > 160 && cs.visibility !== 'hidden' && cs.display !== 'none')
+  }).catch(() => null)
+  if (ui.buildTrayStartsOpen) find('medium', 'Build tray starts open and covers the apron', 'data-testid=build-tray is expanded right after New game', steps.slice())
+  if (await tid('tab-budget').isVisible().catch(() => false)) { ui.budget = await tid('tab-budget').evaluate((el) => el.click()).then(() => true).catch(() => 'click failed'); await page.waitForTimeout(300); await shot('budget-tab') }
+  else ui.budget = false
+  const closeBtn = (await tid('panel-close').isVisible().catch(() => false)) ? tid('panel-close') : page.locator('.panel-head button').filter({ hasText: /Close/i }).first()
+  if (await closeBtn.isVisible().catch(() => false)) ui.closed = await closeBtn.evaluate((el) => el.click()).then(() => true).catch(() => 'click failed')
+  if (await tid('flow-toggle').isVisible().catch(() => false)) {
+    const tog = () => tid('flow-toggle').evaluate((el) => (el.querySelector('input') ?? el).click())
+    ui.flow = await tog().then(async () => { await page.waitForTimeout(400); await shot('flow-on'); await tog(); return true }).catch((e) => `error: ${e.message.split('\n')[0]}`)
+  } else ui.flow = false
+  for (const k of ['new-game', 'tab-economy', 'tab-budget', 'starter-kit', 'panel-close', 'flow-toggle', 'build-tray']) ui[`seen:${k}`] = globalThis.__seen[k] ?? ((await page.getByTestId(k).count()) > 0)
+  step(`ui ${JSON.stringify(ui)}`)
+  globalThis.__ui = ui
 
   step('Expand: heavy runway, 2nd prefab terminal, hangar/cargo/helipad, research, mil agreement')
   setup = await page.evaluate((mix) => {
@@ -188,7 +215,8 @@ try {
     const pax = all.filter((a) => a.kind !== 'cargo').sort((a, b) => Number(g.meetsReq(b.id)) - Number(g.meetsReq(a.id)))
     const cargo = all.filter((a) => a.kind === 'cargo')
     out.signedForced = []
-    for (const a of [...pax.slice(0, 4), ...cargo.slice(0, 2)]) {
+    window.__qaRampPool = [...pax.slice(1), ...cargo]
+    for (const a of mix.ramp ? pax.slice(0, 1) : [...pax.slice(0, 4), ...cargo.slice(0, 2)]) {
       if (g.signed.includes(a.id)) continue
       if (!g.meetsReq(a.id)) out.signedForced.push(a.id)
       g.offer = { airline: a.id }
@@ -217,7 +245,7 @@ try {
     out.news = g.news.slice(0, 5).map((n) => n.text)
     g.setSpeed(5)
     return out
-  }, MIX)
+  }, { ...MIX, ramp: RAMP })
   step(`setup ${JSON.stringify(setup)}`)
   if (!setup.heavy) find('high', 'Heavy runway not recognised', JSON.stringify(setup), steps.slice())
   if (!setup.research.includes('heavy_pack'))
@@ -240,10 +268,21 @@ try {
   let pollN = 0
   for (let clock = 0; clock < total; ) {
     const s = await page.evaluate(
-      ({ chunk, specials, slotsPerPoll, names }) => {
+      ({ chunk, specials, slotsPerPoll, names, ramp, rampEvery, earlyDays }) => {
         const g = window.__hatch
         const qa = window.__qa
-        const res = { newFlights: [], gone: [], stuckFlights: [], stuckTrucks: [], errors: [] }
+        const res = { newFlights: [], gone: [], stuckFlights: [], stuckTrucks: [], errors: [], standMisfit: [], pathViol: [] }
+        qa.ramp = ramp; qa.rampEvery = rampEvery; qa.earlyDays = earlyDays
+        const RANK = { S: 0, M: 1, L: 2 }
+        const needClass = (f) => {
+          try { if (g.standClassFor) return g.standClassFor(f.kind) } catch {}
+          if (['a380', 'an124', 'b748f', 'c5'].includes(f.airframeId) || ['widebody', 'freighter'].includes(f.kind)) return 'L'
+          if (f.kind === 'narrowbody') return 'M'
+          return 'S'
+        }
+        const AIRSIDE = new Set(['gate', 'lounge', 'golf', 'waterfall', 'gaming', 'dayhotel', 'spa', 'pool'])
+        qa.qmax ??= { checkin: 0, security: 0 }
+        qa.pathSeen ??= {}
         qa.flights ??= {}
         qa.trucks ??= {}
         const rewrite = (f) => {
@@ -262,15 +301,23 @@ try {
         try {
           // Explicit A380 trigger: every in-game day, request at least one A380 arrival.
           const day = Math.floor(g.clock / 180)
-          if (qa.a380Day !== day) {
+          // Ramp mode: no forced heavies during the early starter-traffic window.
+          if (qa.a380Day !== day && !(qa.ramp && day < qa.earlyDays)) {
             qa.a380Day = day
             qa.forceA380 = (qa.forceA380 ?? 0) + 1
             const pax = g.signed.filter((id) => g.airline(id).kind !== 'cargo')
             if (pax.length) g.addManualSlot(pax[0], 12)
           }
-          if (g.offer) g.acceptOffer()
+          if (qa.ramp) {
+            const want = 1 + Math.floor(day / qa.rampEvery)
+            while (g.signed.length < want && window.__qaRampPool.length) {
+              const a = window.__qaRampPool.shift()
+              if (g.signed.includes(a.id)) continue
+              g.offer = { airline: a.id }; g.acceptOffer(); qa.rampLog = [...(qa.rampLog ?? []), `day${day + 1}:${a.id}`]
+            }
+          } else if (g.offer) g.acceptOffer()
           if (g.parkingOffer && Math.random() < specials.park) g.acceptParking()
-          for (let i = 0; i < slotsPerPoll; i++) {
+          for (let i = 0; i < (qa.ramp ? (Math.random() < 0.35 ? 1 : 0) : slotsPerPoll); i++) {
             const pax = g.signed.filter((id) => !g.isBanned?.(id))
             if (pax.length && g.openSchedule().length < g.scheduleCap())
               g.addManualSlot(pax[Math.floor(Math.random() * pax.length)], 10 + Math.random() * 20)
@@ -300,13 +347,32 @@ try {
             }
             const r = qa.flights[f.id]
             r.af = f.airframeId
-            r.last = { phase: f.phase, bagUnits: f.bagUnits ?? 0, bagsDeposited: f.bagsDeposited ?? 0, bagStage: f.bagStage, pax: f.pax, cargo: f.cargo, kind: f.kind }
+            r.last = { phase: f.phase, bagUnits: f.bagUnits ?? 0, bagsDeposited: f.bagsDeposited ?? 0, bagStage: f.bagStage, pax: f.pax, cargo: f.cargo, kind: f.kind,
+              bagsLoaded: f.bagsLoaded ?? f.bagsOnboard ?? f.bagsCarried, bagsOffloaded: f.bagsOffloaded ?? f.bagsUnloaded, bagsInbound: f.inboundBags ?? f.bagsIn ?? f.arrBagUnits }
+            if (f.stand && !['military', 'helicopter', 'air_ambulance'].includes(f.kind) && f.craft !== 'helo' && ['taxi_in', 'deboard', 'servicing', 'board'].includes(f.phase) && !r.fitChecked) {
+              r.fitChecked = true
+              const key = `${f.stand.c ?? f.stand.x},${f.stand.r ?? f.stand.y}`
+              const have = g.standClass?.[key] ?? 'M'
+              const need = needClass(f)
+              if (RANK[need] > RANK[have]) res.standMisfit.push({ id: f.id, no: f.flightNo, af: f.airframeId, kind: f.kind, stand: key, have, need })
+            }
             if (f.phase !== r.phase) {
               r.maxPhase[r.phase] = Math.max(r.maxPhase[r.phase] ?? 0, g.clock - r.since)
               r.phase = f.phase
               r.since = g.clock
               r.flagged = false
             }
+          }
+        }
+        let qc = 0, qs = 0
+        for (const h of g.hallGuests) {
+          if (h.dead) continue
+          // Waiting at the desk/lane (reached the node, not yet cleared), not walking toward it.
+          if (h.job === 'depart' && h.node === 'checkin' && !h.clearedSec) qc++
+          if (h.job === 'depart' && h.node === 'security' && !h.clearedSec) qs++
+          if (h.job === 'depart' && !h.clearedSec && AIRSIDE.has(h.node) && !qa.pathSeen[h.id]) {
+            qa.pathSeen[h.id] = 1
+            res.pathViol.push({ id: h.id, node: h.node, path: (h.path ?? []).join('>') })
           }
         }
         const live = new Set(g.flights.map((f) => f.id))
@@ -341,7 +407,11 @@ try {
         res.state = {
           clock: g.clock, day: Math.floor(g.clock / 180) + 1, cash: g.cash, cashFinite: Number.isFinite(g.cash),
           lostPax: g.lostPaxCount(), missed: g.missedFlights, flights: g.flights.length, phases,
-          trucks: g.trucks.length, guests: g.hallGuests.length, signed: g.signed.length,
+          trucks: g.trucks.length, guests: g.hallGuests.length, qCheckin: qc, qSecurity: qs,
+          caterTrucks: g.trucks.filter((t) => /cater/i.test(`${t.kind} ${t.mission}`)).length,
+          stockNews: g.news.filter((x) => /stock ?out|out of stock|sold out|restock|ran out|shortage/i.test(x.text)).map((x) => x.text).slice(0, 5),
+          stockState: (() => { const s = g.shopStock ?? g.stock ?? g.groundStock; if (!s || typeof s !== 'object') return null; const o = {}; for (const [k, v] of Object.entries(s)) if (typeof v === 'number') o[k] = v; return o })(),
+          rampLog: qa.rampLog ?? [], signed: g.signed.length,
           done: g.flightsDone, overloaded: Boolean(g.hallOverloaded),
           a380: g.flights.filter((f) => f.airframeId === 'a380').map((f) => f.phase),
           news: g.news.slice(0, 3).map((x) => x.text),
@@ -349,7 +419,7 @@ try {
         }
         return res
       },
-      { chunk: CHUNK, specials: MIX.specials, slotsPerPoll: MIX.slotsPerPoll, names: NAMES },
+      { chunk: CHUNK, specials: MIX.specials, slotsPerPoll: MIX.slotsPerPoll, names: NAMES, ramp: RAMP, rampEvery: RAMP_EVERY, earlyDays: EARLY_DAYS },
     )
     clock = s.state.clock
     pollN++
@@ -436,6 +506,55 @@ for (const f of gone) {
   }
 }
 if (bagShort) find('medium', 'Outbound bag ledger short at takeoff (bagsDeposited < bagUnits)', `${bagShort}/${gone.length} departures had bagsDeposited < bagUnits; e.g. ${bagEx.join('; ')}`, repro('Compare f.bagsDeposited to f.bagUnits at takeoff'))
+// ---- Bag checks: offloaded vs carried per departure ----
+const bagRows = []
+let bagFail = 0
+for (const f of gone) {
+  const L = f.last
+  if (!L || L.cargo || !(L.pax > 0) || !['takeoff', 'taxi_out'].includes(L.phase)) continue
+  const carried = L.bagsLoaded ?? L.bagsDeposited
+  const row = { id: f.id, af: f.af, expected: L.bagUnits, carried, offloaded: L.bagsOffloaded ?? null, inbound: L.bagsInbound ?? null }
+  row.pass = !(L.bagUnits > 0) || carried >= L.bagUnits
+  if (row.offloaded != null && row.inbound != null && row.offloaded < row.inbound) row.pass = false
+  if (!row.pass) bagFail++
+  bagRows.push(row)
+}
+const checks = {}
+const ran = samples.length > 0
+const chk = (name, pass, detail) => (checks[name] = { pass: ran || name === 'uiSelectors' ? pass : null, detail: ran ? detail : `not evaluated (run crashed before play): ${detail}` })
+chk('bags', bagRows.length ? bagFail === 0 : null, bagRows.length ? `${bagRows.length - bagFail}/${bagRows.length} pax departures carried all expected bags (offload field ${gone.some((f) => f.last?.bagsOffloaded != null) ? 'present' : 'absent: offload not checkable'}); worst: ${JSON.stringify(bagRows.filter((r) => !r.pass).slice(0, 3))}` : 'no pax departures')
+if (bagFail) find('high', 'Departures left with bags missing (carried < expected)', checks.bags.detail, repro('Compare carried/offloaded bag counts at takeoff'))
+// ---- Early-game prefab queues ----
+const byDay = {}
+for (const s of samples) { const d = (byDay[s.state.day] ??= { qc: 0, qs: 0, cash0: s.state.cash, cash1: s.state.cash, signed: s.state.signed }); d.qc = Math.max(d.qc, s.state.qCheckin ?? 0); d.qs = Math.max(d.qs, s.state.qSecurity ?? 0); d.cash1 = s.state.cash; d.signed = s.state.signed }
+const early = Object.entries(byDay).filter(([d]) => Number(d) <= EARLY_DAYS)
+const earlyMax = Math.max(0, ...early.map(([, v]) => Math.max(v.qc, v.qs)))
+chk('earlyQueues', RAMP ? earlyMax <= QUEUE_EARLY_MAX : null, `${RAMP ? '' : '(informational: non-ramp runs sign 6 carriers at t=0) '}peak check-in/security queue days 1–${EARLY_DAYS} = ${earlyMax} (limit ${QUEUE_EARLY_MAX}); per day ${JSON.stringify(Object.fromEntries(Object.entries(byDay).map(([d, v]) => [d, [v.qc, v.qs, v.signed]])))}`)
+if (checks.earlyQueues.pass === false) find('high', 'Prefab terminal bottlenecks too early at starter traffic', checks.earlyQueues.detail, repro('--ramp 1, watch queue counts days 1–4'))
+// ---- Stand-class fit ----
+const misfit = samples.flatMap((s) => s.standMisfit)
+chk('standFit', misfit.length === 0, misfit.length ? `${misfit.length} oversize parks, e.g. ${JSON.stringify(misfit.slice(0, 3))}` : 'no aircraft parked on a stand smaller than its class')
+if (misfit.length) find('high', 'Oversize aircraft on small stand', checks.standFit.detail, repro('Check standClass[stand] vs aircraft class'))
+// ---- Catering / stockouts ----
+const caterSeen = Math.max(0, ...samples.map((s) => s.state.caterTrucks ?? 0))
+const stockEv = [...new Set(samples.flatMap((s) => s.state.stockNews ?? []))]
+const stockStates = samples.map((s) => s.state.stockState).filter(Boolean)
+const negStock = stockStates.some((o) => Object.values(o).some((v) => v < 0))
+chk('catering', gone.length ? caterSeen > 0 && !negStock : null, `catering trucks peak=${caterSeen}; stockout/restock events=${stockEv.length} ${JSON.stringify(stockEv.slice(0, 4))}; stock fields ${stockStates.length ? 'present' : 'absent'}${negStock ? '; NEGATIVE stock seen' : ''}`)
+if (checks.catering.pass === false) find('medium', 'Catering/stock check failed', checks.catering.detail, repro('Watch catering trucks and shop stock'))
+// ---- Room pathing ----
+const viol = samples.flatMap((s) => s.pathViol)
+chk('roomPathing', viol.length === 0, viol.length ? `${viol.length} departing guests reached airside without clearing security, e.g. ${JSON.stringify(viol.slice(0, 3))}` : 'every departing guest airside had cleared security')
+if (viol.length) find('high', 'Guests reached airside without security', checks.roomPathing.detail, repro('Track clearedSec vs node per guest'))
+// ---- Cash pace ----
+const deltas = Object.entries(byDay).map(([d, v]) => [Number(d), Math.round(v.cash1 - v.cash0)])
+const fullDays = deltas.slice(0, -1).length ? deltas.slice(0, -1) : deltas
+const avg = fullDays.length ? fullDays.reduce((a, [, v]) => a + v, 0) / fullDays.length : 0
+chk('cashPace', !nanAt && avg >= CASH_DAY_FLOOR, `avg daily cash delta ${Math.round(avg)} (floor ${CASH_DAY_FLOOR}); per day ${JSON.stringify(deltas)}`)
+if (checks.cashPace.pass === false) find('high', 'Cash pace out of range', checks.cashPace.detail, repro('Track cash per in-game day'))
+const ui = globalThis.__ui ?? {}
+chk('uiSelectors', ['new-game', 'tab-economy', 'starter-kit'].every((k) => ui[`seen:${k}`] !== false), JSON.stringify(ui))
+chk('starterKit', setup ? !findings.some((f) => /Starter kit/.test(f.title)) : false, 'starter-kit button places terminal')
 const stuckF = samples.flatMap((s) => s.stuckFlights)
 for (const f of stuckF) (byClass[klass(f.af, f.kind)] ??= blank()).stuck++
 const groupedF = {}
@@ -458,7 +577,8 @@ const result = {
   label: LABEL, scenario: SCENARIO, days: DAYS, url: URL, setup, final: last,
   fpsSamples: samples.map((s) => s.state.fps).filter(Boolean),
   byClass, airframesSeen: [...seen].sort(), airframesNever: never,
-  departures: gone.length, findings, shots, steps,
+  departures: gone.length, checks, bagRows, mode: LONG ? 'long' : 'standard', ramp: RAMP, findings, shots, steps,
 }
 writeFileSync(join(OUT, 'result.json'), JSON.stringify(result, null, 2))
+console.log(Object.entries(checks).map(([k, v]) => `CHECK ${k}: ${v.pass === null ? 'SKIP' : v.pass ? 'PASS' : 'FAIL'} — ${v.detail}`).join('\n'))
 console.log(JSON.stringify({ label: LABEL, scenario: SCENARIO, findings: findings.map((f) => `${f.severity}: ${f.title}`), byClass, never }, null, 1))
