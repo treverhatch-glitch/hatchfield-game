@@ -64,7 +64,7 @@ describe('AudioEngine', () => {
     engine.unlock();
     const busCount = ctx.gains.length; // master + one per category
     expect(busCount).toBe(1 + CATEGORIES.length);
-    const h = engine.play('jetSpool', { position: { x: 0, y: 0, z: 0 } })!;
+    const h = engine.play('gpuHum', { position: { x: 0, y: 0, z: 0 } })!;
     const voiceGain = ctx.gains[busCount];
     const vg = voiceGain;
     expect(vg.gain.value).toBeCloseTo(1);
@@ -78,7 +78,7 @@ describe('AudioEngine', () => {
   });
   it('stereo pan updates with listener', () => {
     const { engine, ctx } = make();
-    engine.play('turboprop', { position: { x: 100, y: 0, z: 0 } });
+    engine.play('gpuHum', { position: { x: 100, y: 0, z: 0 } });
     expect(ctx.panners[0].pan.value).toBeCloseTo(1);
   });
   it('tracks loops until stopped; one-shots expire', () => {
@@ -116,7 +116,7 @@ describe('AudioEngine', () => {
   });
   it('stopAll and dispose clean up', () => {
     const { engine, ctx } = make();
-    engine.play('taxi'); engine.play('jetSpool');
+    engine.play('truckIdle'); engine.play('crowd');
     engine.stopAll(); expect(engine.activeCount()).toBe(0);
     engine.dispose(); expect(ctx.state).toBe('closed'); expect(engine.context).toBeNull();
   });
@@ -132,7 +132,7 @@ describe('AudioEngine', () => {
       expect(CATEGORIES).toContain(SOUND_CATEGORY[id]);
       expect(typeof LOOPING[id]).toBe('boolean');
     }
-    expect(Object.keys(SOUND_CATEGORY).length).toBe(40);
+    expect(Object.keys(SOUND_CATEGORY).length).toBe(35);
   });
   it('extended loops stay alive until stopped and accept intensity', () => {
     const { engine, ctx } = make();
