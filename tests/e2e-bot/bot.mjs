@@ -156,6 +156,11 @@ try {
     g.tool = 'premade'
     const fitsBefore = g.fits.length
     g.placePremade(t2)
+    const premade = g.sites.at(-1)
+    if (premade && g.fits.length === fitsBefore) {
+      g.finishSite(premade)
+      g.sites = g.sites.filter((s) => s !== premade)
+    }
     g.tool = 'pan'
     g.tiles[17][24] = 'stand'
     for (let r = 18; r <= 22; r++) g.tiles[r][24] = 'taxi'
