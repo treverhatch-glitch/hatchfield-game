@@ -4,8 +4,36 @@ import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
+import {
+  initWorldRender,
+  parseQuality,
+  REPLACED_TILES,
+  suggestQuality,
+  type QualityLevel,
+  type WorldRender,
+} from './world/index'
 
 export const CELL = 6.2
+
+/** Closest hall view. The interior cutaway engages below about 34. */
+const MIN_DIST = 12
+const MAX_DIST = 160
+
+/**
+ * True when the drawing buffer does not match CSS size × pixel ratio.
+ * Comparing `canvas.width` to `clientWidth` resizes every frame whenever the ratio is not 1.
+ */
+export function needsResize(
+  canvasWidth: number,
+  canvasHeight: number,
+  clientWidth: number,
+  clientHeight: number,
+  pixelRatio: number,
+): boolean {
+  const bw = Math.floor(clientWidth * pixelRatio)
+  const bh = Math.floor(clientHeight * pixelRatio)
+  return canvasWidth !== bw || canvasHeight !== bh
+}
 
 export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
   return new THREE.Vector3(
@@ -13,83 +41,6 @@ export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
     y,
     (r - (SIZE - 1) / 2) * CELL,
   )
-}
-
-function makeTex(
-  w: number,
-  h: number,
-  paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
-): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d')!
-  paint(ctx, w, h)
-  const tex = new THREE.CanvasTexture(canvas)
-  tex.colorSpace = THREE.SRGBColorSpace
-  tex.anisotropy = 8
-  // Three r18x: keep flipY off — avoids FLIP_Y / PREMULTIPLY_ALPHA upload warnings.
-  tex.flipY = false
-  tex.needsUpdate = true
-  return tex
-}
-
-function grassTex() {
-  return makeTex(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#3f8a4a'
-    ctx.fillRect(0, 0, w, h)
-    for (let i = 0; i < 900; i++) {
-      ctx.fillStyle = i % 3 === 0 ? '#4b9854' : i % 3 === 1 ? '#357844' : '#468b4f'
-      ctx.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 3, 1 + Math.random() * 2)
-    }
-  })
-}
-
-function runwayTex() {
-  return makeTex(256, 64, (ctx, w, h) => {
-    ctx.fillStyle = '#3a3d45'
-    ctx.fillRect(0, 0, w, h)
-    ctx.fillStyle = '#32353c'
-    ctx.fillRect(0, 0, w, 6)
-    ctx.fillRect(0, h - 6, w, 6)
-    ctx.strokeStyle = '#f4f6f8'
-    ctx.lineWidth = 5
-    ctx.setLineDash([18, 16])
-    ctx.beginPath()
-    ctx.moveTo(0, h / 2)
-    ctx.lineTo(w, h / 2)
-    ctx.stroke()
-    ctx.setLineDash([])
-    ctx.fillStyle = '#f4f6f8'
-    for (let i = 0; i < 8; i++) {
-      ctx.fillRect(8 + i * 6, 10, 3, 14)
-      ctx.fillRect(8 + i * 6, h - 24, 3, 14)
-    }
-  })
-}
-
-function taxiTex() {
-  return makeTex(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#c9cdd4'
-    ctx.fillRect(0, 0, w, h)
-    ctx.strokeStyle = '#d8dde4'
-    ctx.strokeRect(1, 1, w - 2, h - 2)
-    ctx.strokeStyle = '#e4c44a'
-    ctx.lineWidth = 6
-    ctx.strokeRect(8, 8, w - 16, h - 16)
-  })
-}
-
-function standTex() {
-  return makeTex(128, 128, (ctx, w, h) => {
-    ctx.fillStyle = '#b7bcc6'
-    ctx.fillRect(0, 0, w, h)
-    ctx.strokeStyle = '#e8edf4'
-    ctx.lineWidth = 4
-    ctx.strokeRect(14, 14, w - 28, h - 28)
-    ctx.fillStyle = '#f3c14a'
-    ctx.fillRect(w / 2 - 4, 18, 8, h - 36)
-  })
 }
 
 function crewSpot(at: 'cab' | 'ground' | 'lift' | 'galley', lift: number, helper: boolean): { x: number; y: number; z: number } {
@@ -171,11 +122,10 @@ export class World {
   getTool: () => string = () => 'pan'
   lastPaint: Vec | null = null
   private liteMode = false
+  private lastFrame = performance.now()
+  /** Textured airfield, sky, and living terminals. See docs/GRAPHICS.md. */
+  wr: WorldRender
   private canvas: HTMLCanvasElement
-  private grassM: THREE.MeshLambertMaterial
-  private rwM: THREE.MeshLambertMaterial
-  private taxiM: THREE.MeshLambertMaterial
-  private standM: THREE.MeshLambertMaterial
   private onPointerDown!: (e: PointerEvent) => void
   private onPointerMove!: (e: PointerEvent) => void
   private onPointerUp!: (e: PointerEvent) => void
@@ -231,11 +181,6 @@ export class World {
     earth.receiveShadow = true
     this.scene.add(earth)
 
-    this.grassM = new THREE.MeshLambertMaterial({ map: grassTex() })
-    this.rwM = new THREE.MeshLambertMaterial({ map: runwayTex() })
-    this.taxiM = new THREE.MeshLambertMaterial({ map: taxiTex() })
-    this.standM = new THREE.MeshLambertMaterial({ map: standTex() })
-
     this.scene.add(this.tilesGroup)
     this.scene.add(this.entGroup)
     this.scene.add(this.ghostGroup)
@@ -243,6 +188,35 @@ export class World {
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
+    this.wr = initWorldRender(this.scene, this.pickQuality(), {
+      renderer: this.renderer,
+      sun: this.sun,
+    })
+  }
+
+  /** Saved `hatchfield-gfx`, otherwise a guess (software GL starts on low). */
+  private pickQuality(): QualityLevel {
+    let saved: string | null = null
+    try {
+      saved = globalThis.localStorage?.getItem('hatchfield-gfx') ?? null
+    } catch {
+      saved = null
+    }
+    if (saved) return parseQuality(saved)
+    let gpu = ''
+    try {
+      const gl = this.renderer.getContext()
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+      if (dbg) gpu = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))
+    } catch {
+      gpu = ''
+    }
+    const nav = navigator as Navigator & { deviceMemory?: number }
+    return suggestQuality({
+      renderer: gpu,
+      deviceMemory: nav.deviceMemory,
+      hardwareConcurrency: nav.hardwareConcurrency,
+    })
   }
 
   addPlotFence() {
@@ -268,7 +242,8 @@ export class World {
     })
     const disc = new THREE.Mesh(g, m)
     disc.rotation.x = -Math.PI / 2
-    disc.position.y = 0.02
+    // Under the earth disc. At y = 0.02 this sat on the tiles, z-fought them, and washed the field blue.
+    disc.position.y = -0.2
     this.scene.add(disc)
   }
 
@@ -332,7 +307,7 @@ export class World {
     }
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      this.dist = clamp(this.dist + e.deltaY * 0.06, 28, 160)
+      this.dist = clamp(this.dist + e.deltaY * 0.06, MIN_DIST, MAX_DIST)
       this.placeCam()
     }
     canvas.addEventListener('contextmenu', this.onContextMenu)
@@ -361,7 +336,7 @@ export class World {
   }
 
   nudgeZoom(delta: number) {
-    this.dist = clamp(this.dist + delta, 28, 160)
+    this.dist = clamp(this.dist + delta, MIN_DIST, MAX_DIST)
     this.placeCam()
   }
 
@@ -393,11 +368,27 @@ export class World {
     const canvas = this.renderer.domElement
     const w = canvas.clientWidth
     const h = canvas.clientHeight
-    if (canvas.width !== w || canvas.height !== h) {
+    if (needsResize(canvas.width, canvas.height, w, h, this.renderer.getPixelRatio())) {
       this.renderer.setSize(w, h, false)
       this.camera.aspect = w / Math.max(1, h)
       this.camera.updateProjectionMatrix()
     }
+  }
+
+  /** Drop per-tile geometries and materials before the group forgets them. */
+  private releaseTiles() {
+    const geos = new Set<THREE.BufferGeometry>()
+    const mats = new Set<THREE.Material>()
+    this.tilesGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (mesh.geometry) geos.add(mesh.geometry)
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) for (const m of mat) mats.add(m)
+      else if (mat) mats.add(mat)
+    })
+    for (const g of geos) g.dispose()
+    for (const m of mats) m.dispose()
+    this.tilesGroup.clear()
   }
 
   rebuildTiles(game: Game) {
@@ -405,62 +396,13 @@ export class World {
     const hash = String(game.mapRev)
     if (hash === this.tileHash) return
     this.tileHash = hash
-    this.tilesGroup.clear()
-    const geo = new THREE.PlaneGeometry(CELL * 0.98, CELL * 0.98)
-    geo.rotateX(-Math.PI / 2)
+    this.releaseTiles()
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
         const tile = game.tiles[r][c]
+        // The world layer redraws these. A second mesh per cell was most of the frame cost.
+        if (REPLACED_TILES.has(tile)) continue
         const pos = toWorld(c, r, 0.02)
-        if (tile === 'grass') {
-          const mesh = new THREE.Mesh(geo, this.grassM)
-          mesh.position.copy(pos)
-          mesh.receiveShadow = true
-          this.tilesGroup.add(mesh)
-          continue
-        }
-        if (tile === 'runway' || tile === 'taxi' || tile === 'stand') {
-          const mat = tile === 'runway' ? this.rwM : tile === 'taxi' ? this.taxiM : this.standM
-          const mesh = new THREE.Mesh(geo, mat)
-          mesh.position.copy(pos)
-          mesh.receiveShadow = true
-          this.tilesGroup.add(mesh)
-          if (tile === 'stand') {
-            const cls = game.standClass[`${c},${r}`] ?? 'M'
-            const tint =
-              cls === 'S' ? '#6aae7a' : cls === 'L' ? '#c97816' : '#c9a227'
-            const badge = new THREE.Mesh(
-              new THREE.BoxGeometry(CELL * 0.22, 0.12, CELL * 0.22),
-              new THREE.MeshStandardMaterial({
-                color: tint,
-                emissive: tint,
-                emissiveIntensity: 0.15,
-                roughness: 0.45,
-              }),
-            )
-            badge.position.copy(pos)
-            badge.position.y = 0.12
-            badge.position.x += CELL * 0.28
-            badge.position.z -= CELL * 0.28
-            this.tilesGroup.add(badge)
-            if (game.standAccessAt({ c, r }) === 'jetway') {
-              const jw = new THREE.Mesh(
-                new THREE.BoxGeometry(CELL * 0.55, 0.35, CELL * 0.12),
-                new THREE.MeshStandardMaterial({
-                  color: '#7ec3e8',
-                  emissive: '#2a5570',
-                  emissiveIntensity: 0.2,
-                  roughness: 0.35,
-                }),
-              )
-              jw.position.copy(pos)
-              jw.position.y = 0.28
-              jw.position.z += CELL * 0.35
-              this.tilesGroup.add(jw)
-            }
-          }
-          continue
-        }
         const key = `${c},${r}`
         this.tilesGroup.add(
           this.building(tile, pos, {
@@ -1286,16 +1228,16 @@ export class World {
     return g
   }
 
-  /** Drop shadows / DPR while 5x fast-forward so the apron stays responsive. */
+  /**
+   * 5× fast-forward asks the world layer for its light mode (shadows and the grass ring off).
+   * Leaving 5× must not force shadows back on — a low quality preset keeps them off.
+   * Runs before `wr.update`, which only latches light mode on.
+   */
   applyPerfMode(game: Game) {
     const lite = game.speed >= 5
     if (lite === this.liteMode) return
     this.liteMode = lite
-    this.renderer.shadowMap.enabled = !lite
-    this.sun.castShadow = !lite
-    this.renderer.setPixelRatio(
-      lite ? 1 : Math.min(window.devicePixelRatio || 1, 1.25),
-    )
+    this.wr.setLiteMode(lite)
   }
 
   syncGhost(game: Game) {
@@ -1758,16 +1700,22 @@ export class World {
   }
 
   render(game: Game) {
+    const now = performance.now()
+    const dt = (now - this.lastFrame) / 1000
+    this.lastFrame = now
     this.resize()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.syncGhost(game)
     this.syncEntities(game)
     this.syncSites(game)
+    this.wr.update(game, this.camera, dt)
     this.renderer.render(this.scene, this.camera)
   }
 
   dispose() {
+    this.wr.dispose()
+    this.releaseTiles()
     const canvas = this.canvas
     canvas.removeEventListener('contextmenu', this.onContextMenu)
     canvas.removeEventListener('pointerdown', this.onPointerDown)
