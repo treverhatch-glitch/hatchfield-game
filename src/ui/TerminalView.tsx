@@ -327,7 +327,10 @@ export function TerminalView({ game }: { game: Game }) {
                   data-testid={`item-${item.id}`}
                   disabled={locked}
                   title={item.blurb}
-                  onClick={() => game.placeHallItem(item.id)}
+                  onClick={() => {
+                    setZone(null)
+                    setBuild({ kind: 'place', def: item.id, rot: 0 })
+                  }}
                 >
                   <span>{item.name}</span>
                   <span>
@@ -338,7 +341,7 @@ export function TerminalView({ game }: { game: Game }) {
             })}
           </div>
         ) : (
-          <p className="muted">Pick a zone. The menu only lists what fits there.</p>
+          <p className="muted">Pick a zone. Placing uses the same hall cursor as the build bar.</p>
         )}
         <div
           className="zone-plan"

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
@@ -203,7 +203,6 @@ export function Hud({ game }: { game: Game }) {
   // One panel at a time: an open hint list folds the HUD rollout away.
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
-  const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [inboxOpen, setInboxOpen] = useState(false)
@@ -288,19 +287,7 @@ export function Hud({ game }: { game: Game }) {
         <div className="stat" title="One day is a 180-second cycle">
           {formatSimDate(game.clock)}
         </div>
-        <div className="speeds stat-speeds" aria-label="Speed">
-          {([0, 1, 3, 5] as Speed[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={game.speed === s ? 'on' : ''}
-              title={s === 0 ? 'Pause' : `${s}x speed`}
-              onClick={() => game.setSpeed(s)}
-            >
-              {s === 0 ? 'Pause' : `${s}x`}
-            </button>
-          ))}
-        </div>
+        <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
         <div
           className="stat"
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
@@ -355,6 +342,23 @@ export function Hud({ game }: { game: Game }) {
               </li>
             ))}
           </ol>
+          {!game.starterFieldUp() ? (
+            <div className="row">
+              <button
+                type="button"
+                className="on"
+                data-testid="starter-kit-coach"
+                onClick={() => game.buildStarterKit()}
+              >
+                Stamp starter kit · {money(STARTER_KIT_COST)}
+              </button>
+              {game.starterFreehand ? null : (
+                <button type="button" data-testid="build-freehand" onClick={() => game.chooseFreehand()}>
+                  Build freehand
+                </button>
+              )}
+            </div>
+          ) : null}
           <p className="muted">
             Field {game.fieldRating()} · {game.fieldRatingLabel()} — Standing, hall, and security
             all count.
@@ -433,7 +437,7 @@ export function Hud({ game }: { game: Game }) {
               left: Math.ceil(game.offer.deadline),
             })
           }
-          if (game.fieldTask) {
+          if (game.fieldTask && !game.letterAcked(`field:${game.fieldTask.id}`)) {
             letters.push({
               id: 'field',
               kind: 'Field ask',
@@ -444,7 +448,7 @@ export function Hud({ game }: { game: Game }) {
               left: Math.ceil(game.fieldTaskLeft()),
             })
           }
-          if (game.cargoVolume) {
+          if (game.cargoVolume && !game.letterAcked(`cargo:${game.cargoVolume.id}`)) {
             const v = game.cargoVolume
             const a = game.airline(v.airline)
             letters.push({
@@ -468,7 +472,7 @@ export function Hud({ game }: { game: Game }) {
               tone: 'good',
               left: Math.ceil(game.layoverOffer.deadline),
             })
-          } else if (game.layover && layoverAirline) {
+          } else if (game.layover && layoverAirline && !game.letterAcked(`layover-live:${game.layover.airline}`)) {
             letters.push({
               id: 'layover-live',
               kind: 'Layover live',
@@ -545,7 +549,8 @@ export function Hud({ game }: { game: Game }) {
               left: Math.ceil(game.parkingOffer.deadline),
             })
           }
-          if (!dismissedWarn && game.warnedAirlines().length) {
+          const warnKey = `warn:${game.warnedAirlines().slice().sort().join(',')}`
+          if (!game.letterAcked(warnKey) && game.warnedAirlines().length) {
             letters.push({
               id: 'warn',
               kind: 'Relations',
@@ -667,9 +672,15 @@ export function Hud({ game }: { game: Game }) {
                         </button>
                       </>
                     ) : null}
-                    {letter.id === 'layover-live' ? (
-                      <button type="button" onClick={() => setOpenLetter(null)}>
-                        Fold
+                    {letter.id === 'layover-live' && game.layover ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          game.ackLetter(`layover-live:${game.layover?.airline ?? ''}`)
+                          setOpenLetter(null)
+                        }}
+                      >
+                        Dismiss
                       </button>
                     ) : null}
                     {letter.id === 'hub' ? (
@@ -730,16 +741,34 @@ export function Hud({ game }: { game: Game }) {
                         </button>
                       </>
                     ) : null}
-                    {letter.id === 'field' ? (
-                      <button type="button" onClick={() => setOpenLetter(null)}>
+                    {letter.id === 'field' && game.fieldTask ? (
+                      <button
+                        type="button"
+                        data-testid="field-got-it"
+                        onClick={() => {
+                          game.ackLetter(`field:${game.fieldTask?.id ?? ''}`)
+                          setOpenLetter(null)
+                        }}
+                      >
                         Got it
+                      </button>
+                    ) : null}
+                    {letter.id === 'cargo-vol' && game.cargoVolume ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          game.ackLetter(`cargo:${game.cargoVolume?.id ?? ''}`)
+                          setOpenLetter(null)
+                        }}
+                      >
+                        Dismiss
                       </button>
                     ) : null}
                     {letter.id === 'warn' ? (
                       <button
                         type="button"
                         onClick={() => {
-                          setDismissedWarn(true)
+                          game.ackLetter(warnKey)
                           setOpenLetter(null)
                         }}
                       >
@@ -2050,25 +2079,7 @@ export function Hud({ game }: { game: Game }) {
                 : null}
             </div>
 
-            <div className="bar-cluster speed-cluster">
-              {([0, 1, 3, 5] as Speed[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className={game.speed === s ? 'on' : ''}
-                  title={
-                    s === 5
-                      ? '5x fast-forward — hover inspect off'
-                      : s === 0
-                        ? 'Pause'
-                        : `${s}x speed`
-                  }
-                  onClick={() => game.setSpeed(s)}
-                >
-                  {s === 0 ? 'Pause' : `${s}x`}
-                </button>
-              ))}
-            </div>
+            <SpeedButtons game={game} speed={game.speed} className="bar-cluster speed-cluster" />
 
             <div className="ticker" title="Recent announcements">
               {ticker.length === 0 ? (
@@ -2116,6 +2127,35 @@ export function Hud({ game }: { game: Game }) {
     </div>
   )
 }
+
+/** Speed cluster stays mounted when the rest of the HUD refreshes. */
+const SpeedButtons = memo(function SpeedButtons({
+  game,
+  speed,
+  className,
+}: {
+  game: Game
+  speed: Speed
+  className: string
+}) {
+  return (
+    <div className={className} aria-label="Speed">
+      {([0, 1, 3, 5] as Speed[]).map((s) => (
+        <button
+          key={s}
+          type="button"
+          className={speed === s ? 'on' : ''}
+          title={
+            s === 5 ? '5x fast-forward — hover inspect off' : s === 0 ? 'Pause' : `${s}x speed`
+          }
+          onClick={() => game.setSpeed(s)}
+        >
+          {s === 0 ? 'Pause' : `${s}x`}
+        </button>
+      ))}
+    </div>
+  )
+})
 
 function labelPhase(phase: string, craft?: string): string {
   if (craft === 'helo') {

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { money, STARTER_KIT_COST } from '../../game/catalog.ts'
 import type { Game } from '../../game/sim.ts'
 import { severityOf, worstSeverity, type HintSeverity } from '../../game/hints.ts'
 
@@ -72,6 +73,23 @@ export function HintPanel({ game }: { game: Game }) {
                 <strong style={{ display: 'block', margin: '2px 0' }}>{note.title}</strong>
                 {note.detail ? <span style={{ display: 'block', opacity: 0.85 }}>{note.detail}</span> : null}
                 {note.fix ? <span style={{ display: 'block', marginTop: 3, color: '#f0c14a' }}>{note.fix}</span> : null}
+                {note.id === 'session-contract' && !game.starterFieldUp() ? (
+                  <span style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <button
+                      type="button"
+                      data-testid="starter-kit-hint"
+                      onClick={() => game.buildStarterKit()}
+                      style={btn}
+                    >
+                      Stamp starter kit · {money(STARTER_KIT_COST)}
+                    </button>
+                    {game.starterFreehand ? null : (
+                      <button type="button" onClick={() => game.chooseFreehand()} style={{ ...btn, opacity: 0.75 }}>
+                        Build freehand
+                      </button>
+                    )}
+                  </span>
+                ) : null}
                 <span style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                   <button
                     type="button"

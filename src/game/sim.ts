@@ -953,6 +953,13 @@ export class Game {
   /** Active airline field ask (CEO-style task clock). */
   fieldTask: FieldTask | null = null
   fieldTaskCool = 28
+  /**
+   * Letters the player put away. Keyed so a new ask (new id) can appear,
+   * while "Got it" on the same field letter does not bring it straight back.
+   */
+  ackedLetters: string[] = []
+  /** Player chose to build the first field by hand, releasing the kit budget. */
+  starterFreehand = false
   /** Night curfew news / slip rate-limit. */
   nightCurfewCool = 0
   /** Rate-limit cascade headlines so the ticker stays readable. */
@@ -1186,6 +1193,8 @@ export class Game {
     this.firstTakeoffNoted = false
     this.fieldTask = null
     this.fieldTaskCool = 28
+    this.ackedLetters = []
+    this.starterFreehand = false
     this.nightCurfewCool = 0
     this.cascadeNewsCool = 0
     this.stormPulseCool = 0
@@ -1412,6 +1421,56 @@ export class Game {
   fieldTaskLeft(): number {
     if (!this.fieldTask) return 0
     return Math.max(0, this.fieldTask.deadline - this.clock)
+  }
+
+  /** Hide one letter. The underlying ask keeps running until it is done or late. */
+  ackLetter(key: string) {
+    if (!key || this.ackedLetters.includes(key)) return
+    this.ackedLetters.push(key)
+    if (this.ackedLetters.length > 40) this.ackedLetters.splice(0, this.ackedLetters.length - 40)
+    this.emit()
+  }
+
+  letterAcked(key: string): boolean {
+    return this.ackedLetters.includes(key)
+  }
+
+  /** Strip plus a stand — the starter kit, or a freehand field, is on the plot. */
+  starterFieldUp(): boolean {
+    return runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+  }
+
+  /**
+   * Opening cash held for the starter kit. Lifts once the field is up, a hall
+   * is already on the plot, or the player chooses Build freehand.
+   */
+  starterKitProtected(): boolean {
+    if (this.sandbox || this.starterFreehand || !this.site) return false
+    if (this.starterFieldUp()) return false
+    if (this.fits.length > 0) return false
+    return true
+  }
+
+  /** Release the kit budget so a hand-built strip is a choice, not a trap. */
+  chooseFreehand() {
+    if (this.starterFreehand) return
+    this.starterFreehand = true
+    this.pushNews(
+      'Building freehand. The starter kit budget is released — the kit still stamps an empty field.',
+      'ok',
+    )
+    this.emit()
+  }
+
+  /** Runway, stand, or hall stamps on a fresh plot are what make the kit refuse. */
+  private openingStampBlocked(what: string): boolean {
+    if (!this.starterKitProtected()) return false
+    this.pushNews(
+      `${what} would block the starter kit. Stamp the kit ($${STARTER_KIT_COST.toLocaleString('en-US')}) or choose Build freehand.`,
+      'bad',
+    )
+    this.emit()
+    return true
   }
 
   cargoVolumeLeft(): number {
@@ -2369,8 +2428,14 @@ export class Game {
       this.pushNews('Buy land first.', 'bad')
       return
     }
-    if (runwayStrips(this.tiles, MIN_RUNWAY).length) {
-      this.pushNews('Field already has a runway — kit is for empty plots.', 'bad')
+    if (this.fits.length > 0 || tilesOf(this.tiles, 'terminal').length > 0) {
+      this.pushNews('The plot already has a hall — the starter kit is for an empty field.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.starterFieldUp()) {
+      this.pushNews('Field already has a strip and a stand — the starter kit is for an empty plot.', 'bad')
+      this.emit()
       return
     }
     if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
@@ -3522,6 +3587,8 @@ export class Game {
       hintPrefs: this.hintPrefs,
       buildTrayOpened: this.buildTrayOpened,
       fieldTask: this.fieldTask,
+      ackedLetters: this.ackedLetters,
+      starterFreehand: this.starterFreehand,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
@@ -3666,6 +3733,8 @@ export class Game {
       this.firstTakeoffNoted = this.flightsDone >= 1
       this.fieldTask = s.fieldTask ?? null
       this.fieldTaskCool = this.fieldTask ? 0 : 18
+      this.ackedLetters = s.ackedLetters ?? []
+      this.starterFreehand = s.starterFreehand ?? false
       this.nightCurfewCool = 0
       this.hubOffer = null
       this.hubOfferCool = 40
@@ -3741,6 +3810,18 @@ export class Game {
     if (this.sandbox) {
       if (this.cash < SANDBOX_CASH * 0.5) this.cash = SANDBOX_CASH
       return true
+    }
+    if (
+      label !== 'starter kit' &&
+      this.starterKitProtected() &&
+      this.cash - amount < STARTER_KIT_COST
+    ) {
+      this.pushNews(
+        `Hold $${STARTER_KIT_COST.toLocaleString('en-US')} for the starter kit. ${label} would spend it — stamp the kit or choose Build freehand.`,
+        'bad',
+      )
+      this.emit()
+      return false
     }
     if (this.cash < amount) {
       this.pushNews(`Need ${label} — short ${Math.round(amount - this.cash)}.`, 'bad')
@@ -5942,7 +6023,7 @@ export class Game {
   }
 
   private sessionSnapshot() {
-    const fieldUp = runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+    const fieldUp = this.starterFieldUp()
     return {
       fieldUp,
       signed: this.signed.length,
@@ -8159,15 +8240,36 @@ export class Game {
   }
 
   acceptNegotiation() {
-    const session = this.negotiationBridge?.desk.session
-    if (!session || session.status !== 'open') {
+    if (!this.offer) {
+      this.pushNews('No contract letter is open.', 'bad')
+      this.emit()
+      return
+    }
+    const id = this.offer.airline
+    const name = this.airline(id).name
+    const miss = this.missingReq(id)
+    if (miss.length) {
+      this.pushNews(`${name} will not sign yet — still need ${miss.join(', ')}.`, 'bad')
+      this.emit()
+      return
+    }
+    const bridge = this.negotiationDesk()
+    const session = bridge.desk.session
+    if (!session || session.status !== 'open' || session.airlineId !== id) {
+      bridge.openNamed(id)
+    }
+    const open = bridge.desk.session
+    if (!open || open.status !== 'open' || open.airlineId !== id) {
       this.acceptOffer()
       return
     }
-    const result = this.negotiationDesk().accept()
+    const result = bridge.accept()
     if (result.outcome === 'signed') this.acceptOffer()
     else if (result.outcome === 'walked') this.clearWalkedOffer()
-    else this.emit()
+    else if (!result.note) {
+      this.pushNews(`${name} did not sign.`, 'bad')
+      this.emit()
+    } else this.emit()
   }
 
   counterNegotiation() {
@@ -10952,6 +11054,7 @@ export class Game {
   }
 
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
+    if (this.openingStampBlocked('A runway')) return
     const cells = this.prefabRunway(v, klass)
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
@@ -10998,6 +11101,7 @@ export class Game {
   }
 
   placeTerminal(v: Vec) {
+    if (this.openingStampBlocked('A terminal shell')) return
     const cells = [
       v,
       { c: v.c + 1, r: v.r },
@@ -11024,6 +11128,7 @@ export class Game {
   }
 
   placePremade(v: Vec) {
+    if (this.openingStampBlocked('A premade hall')) return
     const cells: Vec[] = []
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
@@ -11050,6 +11155,7 @@ export class Game {
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
+    if (building.tile === 'stand' && this.openingStampBlocked('A stand')) return
     if (building.minFieldLevel && this.fieldLevel() < building.minFieldLevel) {
       this.pushNews(`${building.name} needs Field level ${building.minFieldLevel}.`, 'bad')
       this.emit()
