@@ -1221,7 +1221,7 @@ export class World {
     const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}`
     if (next === this.ghostHash) return
     this.ghostHash = next
-    this.ghostGroup.clear()
+    this.clearGhost()
     const cells = game.ghostCells(game.hover)
     const geo = new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95)
     geo.rotateX(-Math.PI / 2)
@@ -1301,12 +1301,12 @@ export class World {
     for (const [id, m] of this.jets) {
       if (!seenJ.has(id)) {
         this.entGroup.remove(m)
+        disposeObject(m)
         this.jets.delete(id)
       }
     }
 
     const seenT = new Set<string>()
-    const truckGeo = new THREE.BoxGeometry(1.1, 0.55, 0.7)
     for (const t of game.trucks) {
       seenT.add(t.id)
       let mesh = this.trucks.get(t.id)
@@ -1327,7 +1327,7 @@ export class World {
         const body = new THREE.Mesh(
           t.kind === 'citycargo'
             ? new THREE.BoxGeometry(1.35, 0.7, 0.85)
-            : truckGeo,
+            : new THREE.BoxGeometry(1.1, 0.55, 0.7),
           new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
         )
         body.castShadow = true
@@ -1372,6 +1372,7 @@ export class World {
     for (const [id, m] of this.trucks) {
       if (!seenT.has(id)) {
         this.entGroup.remove(m)
+        disposeObject(m)
         this.trucks.delete(id)
       }
     }
@@ -1401,9 +1402,27 @@ export class World {
     for (const [id, m] of this.people) {
       if (!seenP.has(id)) {
         this.entGroup.remove(m)
+        disposeObject(m)
         this.people.delete(id)
       }
     }
+  }
+
+  /** Ghost tiles share one geometry per rebuild — dispose it once, not every hover forever. */
+  private clearGhost() {
+    let geo: THREE.BufferGeometry | null = null
+    const mats: THREE.Material[] = []
+    for (const child of this.ghostGroup.children) {
+      if (child instanceof THREE.Mesh) {
+        geo = child.geometry
+        const mat = child.material
+        if (Array.isArray(mat)) mats.push(...mat)
+        else mats.push(mat)
+      }
+    }
+    geo?.dispose()
+    for (const m of new Set(mats)) m.dispose()
+    this.ghostGroup.clear()
   }
 
   render(game: Game) {
@@ -1428,4 +1447,14 @@ export class World {
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
+}
+
+function disposeObject(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh
+    mesh.geometry?.dispose()
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+    if (Array.isArray(mat)) for (const m of mat) m.dispose()
+    else mat?.dispose()
+  })
 }

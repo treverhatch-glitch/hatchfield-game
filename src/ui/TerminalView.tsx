@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { paxTagColor, paxTagLabel } from '../game/guests'
+import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
 import { HallWorld } from '../render/hallWorld'
 
@@ -75,7 +75,7 @@ export function TerminalView({ game }: { game: Game }) {
           3D hall · WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit · Esc/H apron
           {game.hasSecurityChoke()
             ? ' · security choke live'
-            : ' · NO SECURITY — airside risk'}
+            : ' · NO SECURITY — checkpoint missing'}
           {' · '}
           {game.hallGuests.length} pax (apron still simming)
         </p>
@@ -88,7 +88,7 @@ export function TerminalView({ game }: { game: Game }) {
           </h2>
           <p className="muted">{guest.thought}</p>
           <ul>
-            <li>At {guest.node}</li>
+            <li>At {NODE_POS[guest.node].label}</li>
             <li>Hunger {Math.round(guest.needs.hunger)}</li>
             <li>Bathroom {Math.round(guest.needs.bladder)}</li>
             <li>Energy {Math.round(guest.needs.energy)}</li>
@@ -102,11 +102,7 @@ export function TerminalView({ game }: { game: Game }) {
             <li>
               Wallet ${guest.wallet} · spent ${guest.spent}
             </li>
-            <li className="muted" style={{ fontSize: 12 }}>
-              Prefs food {guest.prefs.food.toFixed(2)} · shop {guest.prefs.shop.toFixed(2)} ·
-              landside {guest.prefs.landside.toFixed(2)}
-            </li>
-            <li>{guest.clearedSec ? 'Cleared security' : 'Landside — must clear security'}</li>
+            <li>{guest.clearedSec ? 'Cleared security' : 'Before security'}</li>
           </ul>
         </aside>
       ) : null}

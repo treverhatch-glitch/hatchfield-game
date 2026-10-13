@@ -33,7 +33,7 @@ Military, cargo, emergencies stay **letter-sized** until a verb needs a stage. S
 
 - Dual WebGL tax; 5x drops shadows.  
 - Letter Sign click races — force-click in tests.  
-- Save key `apron-save-v24` — ad hoc migrations.  
+- Save key `apron-save-v25` — ad hoc migrations. Live flights are not in the snapshot (traffic rebuilds). Cargo volume letters are.  
 - Freeflow parked (P2.5).
 
 ## Balance smells

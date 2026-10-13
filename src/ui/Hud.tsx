@@ -1370,7 +1370,7 @@ export function Hud({ game }: { game: Game }) {
                   ← Apron outside
                 </button>
                 <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
-                  Furnish rooms in Services · doors → check-in → security → airside
+                  Furnish rooms in Services · doors → check-in → security → gates
                 </span>
               </div>
             ) : (
@@ -1460,7 +1460,7 @@ export function Hud({ game }: { game: Game }) {
             )}
             <p className="hint">
               {game.view === 'hall'
-                ? '3D hall: landside → security choke → airside. Esc / H returns — apron keeps simming.'
+                ? '3D hall: doors → security → gates. Esc / H returns — the apron keeps running.'
                 : game.tool === 'runway_short'
                   ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15.`
                   : game.tool === 'runway'

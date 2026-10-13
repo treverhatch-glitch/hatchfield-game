@@ -667,6 +667,20 @@ export class Game {
     this.nightCurfewCool = 0
     this.cascadeNewsCool = 0
     this.stormPulseCool = 0
+    // Drop the previous field so a refresh on the route screen cannot resume it.
+    try {
+      localStorage.removeItem(SAVE_KEY)
+    } catch {
+      /* node / private mode */
+    }
+    try {
+      sessionStorage.setItem(
+        'hatchfield-pending',
+        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty }),
+      )
+    } catch {
+      /* node / private mode */
+    }
   }
 
   /** Morning checklist — hides once dismissed or after the first takeoff. */
@@ -2582,6 +2596,7 @@ export class Game {
       coachDismissed: this.coachDismissed,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
+      cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
       sandbox: this.sandbox,
     }
@@ -2699,8 +2714,8 @@ export class Game {
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
       this.sandbox = s.sandbox ?? true
-      this.cargoVolume = null
-      this.cargoVolumeCool = 25
+      this.cargoVolume = s.cargoVolume ?? null
+      this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
       this.mission = null
       this.mxOffer = null
@@ -2812,7 +2827,7 @@ export class Game {
       this.tool = 'pan'
       if (prev !== 'hall') {
         this.pushNews(
-          'Inside the terminal — landside doors → security → airside gates. Furnish in the side panel. Esc / Apron to leave.',
+          'Inside the terminal — doors, then security, then the gates. Furnish in Services. Esc / Apron to leave.',
           'ok',
         )
       }

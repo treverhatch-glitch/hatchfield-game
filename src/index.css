@@ -69,7 +69,8 @@ button {
 
 .inspect-card {
   position: absolute;
-  left: 16px;
+  /* Sit beside the First hour checklist (also top-left) so the jet card stays readable. */
+  left: 312px;
   top: 72px;
   width: min(280px, 86vw);
   z-index: 18;
