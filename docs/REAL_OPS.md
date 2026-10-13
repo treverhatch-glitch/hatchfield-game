@@ -55,6 +55,23 @@ If a real airport needs a journey, a capacity, or a prep window for something to
 **Who gets the bag fee money (real world):**  
 Checked-bag fees and overweight fees are almost entirely **airline revenue**, not airport revenue. Airports earn from **handling / BHS use / terminal rents** and from pax spending once bags are done. Airlines punish airports that lose or delay bags (misconnects, refunds, brand damage).
 
+### Full player-facing bag journey (Manor Lords timing)
+
+**Outbound**
+1. Depart pax spawn → **check-in deposit** (dwell scales with bag units — you watch them drop bags).  
+2. Bags **process** at sort/makeup.  
+3. Cart/truck **loads aircraft** (dwell) → wheels-up with bags on board.
+
+**Inbound** (claim planning only for arrivals)
+1. Bags **arrive with the aircraft**.  
+2. Ramp **unload** (dwell) → terminal.  
+3. **Process** at sort.  
+4. Deliver to **assigned baggage claim** — claim lanes are **scheduled when the inbound flight is scheduled/spawned** (one carousel per `bagclaim` room, load-balanced).  
+5. Terminating pax clear bags only once that flight is **on claim**.
+
+Layover through-transfer skips claim (bags stay airside).  
+Still **no per-suitcase agents** — bag units + stage timers + moving trucks are the picture.
+
 ### Game — lean (no per-suitcase sim)
 
 Do **not** simulate 200 individual bags. Use **bag units per flight** rolled from the pax mix:

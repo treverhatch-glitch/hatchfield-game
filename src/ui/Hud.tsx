@@ -1222,6 +1222,7 @@ export function Hud({ game }: { game: Game }) {
                               </b>
                               <span className="muted">
                                 {game.airline(s.airline).name} · ETA {eta}s
+                                {s.claimLane ? ` · claim ${s.claimLane}` : ''}
                                 {s.delayReason ? ` · ${s.delayReason}` : ''}
                               </span>
                               {s.status !== 'inbound' ? (
