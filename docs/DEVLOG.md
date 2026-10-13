@@ -521,3 +521,26 @@ In the browser the aircraft root stays at scale 1, the model and the bridges are
 
 - `docs/devlog/media/OCT13-scale-top.png` — two 737s on the starter stands, lead-in taxi only, runway five cells south
 - `docs/devlog/media/OCT13-scale-gate.png` — the same pair from the orbit camera, bridges on the hall side, truck and person at real size
+
+## Playtest gate — 13 Oct
+
+Outbound bags: a departure is not called loaded while the cart is short. The hold stays until the board window ends, then each missing bag is recorded as offloaded. A second check runs as the aircraft enters the taxi. Prefab halls under a normal load still show zero mishandled bags. The heavy bot and the mixed bot both finished with no unrecorded short carts.
+
+Payroll and the city levy now close once per game day. The levy is half a percent of cash above $140,000. Sandbox still pays no levy. Early payroll is 75% of that day's operating income, or the old staff lines once, whichever is higher. After the first ten minutes it is 57.5%. On a first Northline day that landed about a 6% margin. The published mid-game case ($203k income, $35k other costs) lands inside 15–30%. A $12.5M bot field now loses about $60k a day, which is the daily levy, not the old $1.3–1.8M.
+
+A helicopter that cannot get fuel uses the same slot limit as a jet, then the flight is cancelled instead of sitting in servicing.
+
+**Logistics PR #5.** The vendored `src/logistics` is the source of truth. PR #5's tip is the older engine: it has no heavy vehicle tiers, no `DelayCause` labels, no `poses`, and no `openTurnarounds`. Overlaying it deletes those and brings back the 15% fuel markup. It can be closed as superseded.
+
+**Modules.** Aircraft, world render, airlines, cargo, diplomacy, and catering were already on this branch. Audio picked up the newer ambience beds. Branding saves with the field and the top bar shows the airport name (still Hatchfield until a player rebrands). The flow audit measures the open hall and does not mark passengers or bags lost. The economy clock, bank, and tech-tree module are in the tree and the day close reads the bank. The features package (notifications, undo, reports, events, ratings, save, settings, camera) is in the tree. Those systems are not bolted onto the live news, weather, or save, because the sim already has each of those and a second copy would fight the first.
+
+**HUD PR #4.** Not merged. The tip has no common history with this branch, no bag ledger, and no world scale. A merge would delete tens of thousands of lines, including the QA bot. It needs a rebase onto this branch before it can land.
+
+**Gate.** `tsc -b` clean. `npm run build` clean (one large JS chunk). Vitest 631 passing, 2 skipped. Playwright is the QA bot. Mixed, 6 game days: no console errors, no NaN cash, no stuck flights or trucks, no lost passengers, no unrecorded short bags. Cash $12,842,859 down to $12,485,417. 21 missed flights with the hall overloaded. Heavy, 4 game days: same clean ledger, cash $12,842,859 down to $12,595,507, 31 missed flights with the hall overloaded, bag short 0, stuck 0. Frame rate on this VM was 10 fps mixed and 11 fps heavy, under the bot's floor of 12. That is SwiftShader, the same software renderer as the earlier runs. A 30-game-day headless playtest with one signed carrier and the starter kit stayed finite: zero lost passengers, zero bags lost, and the bank reached $0 after the timetable stalled and the staffing floor kept billing a quiet field. The bot's second prefab still reports one hall.
+
+**Bugs.** Sixteen. No new defect.
+
+**Media**
+
+- `docs/devlog/media/OCT13-gate-a380.png` — heavy bot, A380 on the ground during day 1
+- `docs/devlog/media/OCT13-gate-apron.png` — apron at the end of the heavy run

@@ -200,6 +200,18 @@ import {
   type PlacedItem,
   type ZoneId,
 } from './terminal.ts'
+import { AmbienceMixer } from '../audio/ambience.ts'
+import { PRESETS } from '../branding/presets.ts'
+import type { BrandingSave } from '../branding/types.ts'
+import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
+import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
+import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
+import {
+  createEconomyAdapter,
+  type EconomyAdapter,
+} from '../economy/adapter.ts'
+import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
+import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
 import {
   budgetLineCost,
   cityLevy,
@@ -448,6 +460,25 @@ export type ApronInspect =
       blurb: string
     }
 
+function defaultBranding(): BrandingSave {
+  const preset = PRESETS[0]
+  const code = suggestCode('Hatchfield')
+  return {
+    airportName: 'Hatchfield',
+    code,
+    logo: { ...preset.spec, airportName: 'Hatchfield', code },
+    presetId: preset.id,
+  }
+}
+
+const FINANCING_CATEGORIES = new Set([
+  'loan_proceeds',
+  'ipo_proceeds',
+  'share_sales',
+  'share_purchases',
+  'refunds',
+])
+
 export class Game {
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
@@ -570,8 +601,18 @@ export class Game {
   weather: Weather = 'clear'
   weatherCool = 45
   payrollCool = 30
-  /** Sim-clock of the last city levy. The 3% cut is once per day, not every payroll tick. */
+  /** Completed game days already billed. Payroll and the city levy close once per day. */
+  payrollDay = 0
+  /** Sim-clock of the last city levy. Kept so older saves do not bill a backlog. */
   levyMark = 0
+  /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
+  bank = new Bank(0)
+  simClock = new SimClock()
+  private economy: EconomyAdapter | null = null
+  private economyState: EconomyState | null = null
+  private economyView: EconomySnapshot | null = null
+  branding: BrandingSave = defaultBranding()
+  private ambience: AmbienceMixer | null = null
   crashCool = 8
   fireIncidentCool = 60
   milAgreement = false
@@ -800,7 +841,16 @@ export class Game {
     this.weather = 'clear'
     this.weatherCool = 45
     this.payrollCool = 30
+    this.payrollDay = 0
     this.levyMark = 0
+    this.bank = new Bank(0)
+    this.simClock = new SimClock()
+    this.economy = null
+    this.economyState = null
+    this.economyView = null
+    this.branding = defaultBranding()
+    this.ambience?.stopAll(0)
+    this.ambience = null
     this.crashCool = 8
     this.fireIncidentCool = 60
     this.milAgreement = false
@@ -1071,6 +1121,7 @@ export class Game {
       const a = this.airline(t.airline)
       this.cash += t.bonus
       this.revenue += t.bonus
+      this.noteIncome(t.bonus, 'task_rewards')
       this.adjustHeat(t.airline, FIELD_TASK_HEAT_OK)
       this.reputation = Math.min(100, this.reputation + 2)
       this.pushNews(
@@ -1298,7 +1349,7 @@ export class Game {
     if (amount > 0) {
       this.cash += amount
       this.revenue += amount
-      this.noteIncome(amount)
+      this.noteIncome(amount, 'host_fees')
       return
     }
     if (amount < 0) {
@@ -2888,6 +2939,7 @@ export class Game {
 
     if (m.progress >= m.target) {
       this.cash += m.rewardCash
+      this.noteIncome(m.rewardCash, 'task_rewards')
       this.reputation = Math.min(100, this.reputation + m.rewardRep)
       this.sharePrice = Math.round((this.sharePrice * 1.08) * 100) / 100
       this.pushNews(
@@ -2973,6 +3025,7 @@ export class Game {
       tiles: this.tiles,
       terminalFits: this.fits,
       cash: this.cash,
+      branding: serializeBranding(this.branding),
       difficulty: this.difficulty,
       site: this.site,
       clock: this.clock,
@@ -3071,10 +3124,17 @@ export class Game {
         })
       })
       this.cash = s.cash
+      this.branding = (typeof s.branding === 'string' && deserializeBranding(s.branding)) || defaultBranding()
       this.difficulty = s.difficulty
       this.site = s.site
       this.clock = s.clock
+      this.payrollDay = Math.floor(Math.max(0, s.clock) / 180)
       this.levyMark = s.clock
+      this.bank = new Bank(0)
+      this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
+      this.economy = null
+      this.economyState = null
+      this.economyView = null
       this.speed = 0
       this.fuelBrand = s.fuelBrand
       this.fuelLoads = s.fuelLoads
@@ -3228,8 +3288,84 @@ export class Game {
     if (this.cash < -25_000) this.cash = -25_000
   }
 
-  noteIncome(amount: number) {
-    if (amount > 0) this.hourIncome += amount
+  noteIncome(amount: number, category: MoneyCategory = 'landing_fees') {
+    if (!(amount > 0)) return
+    this.hourIncome += amount
+    this.postJournal(category, amount, this.simMinutes())
+  }
+
+  /** Sim minutes on the shared clock. One field second is eight game minutes. */
+  simMinutes(): number {
+    return Math.max(0, this.clock) * SIM_MINUTES_PER_REAL_SECOND
+  }
+
+  /**
+   * Measures the open hall as a flow graph. Passengers stay on the hall graph;
+   * this audit does not mark anyone lost or any bag mishandled.
+   */
+  flowAudit() {
+    const graph = new FlowGraph()
+    const rooms = this.fits[0]?.rooms
+    const zones: TerminalZone[] = [
+      { id: 'curb', kind: 'curb', servers: 2, ratePerServer: 30, queueCapacity: 40 },
+      { id: 'checkin', kind: 'checkin', servers: Math.max(1, rooms?.checkin ?? 1), ratePerServer: 1.5, queueCapacity: 30 },
+      { id: 'security', kind: 'security', servers: Math.max(1, rooms?.security ?? 1), ratePerServer: 20, queueCapacity: 40 },
+      { id: 'gate', kind: 'gate', servers: Math.max(1, rooms?.gate ?? 1), ratePerServer: 12, queueCapacity: 80 },
+      { id: 'claim', kind: 'claim', servers: Math.max(1, rooms?.bagclaim ?? 1), ratePerServer: 10, queueCapacity: 40 },
+      { id: 'exit', kind: 'exit', servers: 2, ratePerServer: 30, queueCapacity: 20 },
+    ]
+    registerTerminal(graph, zones)
+    graph.tick(1)
+    return audit(graph)
+  }
+
+  private tickAmbience(dt: number) {
+    if (typeof window === 'undefined' || !(dt > 0)) return
+    const parked = this.flights.filter((f) => f.phase === 'parked' || f.phase === 'board' || f.phase === 'deboard').length
+    this.ensureAmbience().update(
+      {
+        checkinOccupancy: Math.min(1, this.hallGuests.length / 40),
+        walkingWithBagsOccupancy: Math.min(1, this.people.length / 40),
+        securityLanesOpen: Math.max(1, this.fits[0]?.rooms.security ?? 0),
+        securityThroughputPerMin: this.securityQueueCount(),
+        apusRunning: parked,
+        gpusConnected: this.flights.filter((f) => f.phase === 'parked').length,
+        beltLoadersRunning: this.trucks.filter((t) => t.kind === 'bags').length,
+        fuelPumpsRunning: this.trucks.filter((t) => t.kind === 'fuel').length,
+        outdoorMix: this.view === 'hall' ? 0.1 : 0.85,
+      },
+      dt,
+    )
+  }
+
+  private ensureAmbience(): AmbienceMixer {
+    if (!this.ambience) {
+      const audio = getAudio()
+      this.ambience = new AmbienceMixer({
+        playSfx: (id, options) => audio.playSfx(id, options),
+      })
+    }
+    return this.ambience
+  }
+
+  /** Latest economy snapshot for the HUD. Null until the first tick. */
+  economySnapshot(): EconomySnapshot | null {
+    return this.economyView
+  }
+
+  private groundIncomeCategory(category: string): MoneyCategory {
+    if (category === 'fuel_sales') return 'fuel_sales'
+    if (category === 'catering_fees') return 'catering_fees'
+    if (category === 'shop_sales') return 'retail_sales'
+    if (category === 'cargo_airport_revenue') return 'cargo_fees'
+    if (category === 'baggage_fees') return 'baggage_fees'
+    return 'landing_fees'
+  }
+
+  private postJournal(category: MoneyCategory, magnitude: number, simMinutes: number) {
+    if (!(magnitude > 0) || !Number.isFinite(magnitude)) return
+    const signed = moneyDirection(category) === 'income' ? magnitude : -magnitude
+    this.bank.post(category, signed, { simMinutes: Math.max(0, simMinutes), source: 'sim' })
   }
 
   noteExpense(amount: number) {
@@ -3542,6 +3678,7 @@ export class Game {
       return false
     }
     const short = Math.max(0, need - have)
+    const already = f.bagsOffloaded ?? 0
     f.bagsOffloaded = short
     book.offloaded = short
     book.loaded = have
@@ -3559,11 +3696,13 @@ export class Game {
     }
     this.noteOutboundBagFee(f)
     this.markOutboundTags(f)
-    this.adjustHeat(f.airline, -1.6)
-    this.pushNews(
-      `${f.flightNo} left ${Math.round(short)} bags behind — offloaded, not loaded.`,
-      'bad',
-    )
+    if (already + 0.51 < short) {
+      this.adjustHeat(f.airline, -1.6)
+      this.pushNews(
+        `${f.flightNo} left ${Math.round(short)} bags behind — offloaded, not loaded.`,
+        'bad',
+      )
+    }
     return true
   }
 
@@ -4941,13 +5080,22 @@ export class Game {
     if (amount > 0) {
       this.cash += amount
       this.revenue += amount
-      this.noteIncome(amount)
+      this.noteIncome(amount, this.groundIncomeCategory(category))
       return
     }
     if (amount < 0) {
       this.noteExpense(-amount)
+      this.postJournal(this.groundExpenseCategory(category), -amount, this.simMinutes())
       if (!this.sandbox) this.cash += amount
     }
+  }
+
+  private groundExpenseCategory(category: string): MoneyCategory {
+    if (category === 'fuel_purchase') return 'fuel_purchase'
+    if (category === 'meal_production') return 'meal_production'
+    if (category === 'vehicle_upkeep') return 'vehicle_upkeep'
+    if (category === 'cargo_penalty') return 'penalties'
+    return 'building_upkeep'
   }
 
   private ensureCatering(): CateringBridge {
@@ -5538,6 +5686,7 @@ export class Game {
     g.spent += pay
     this.cash += pay
     this.revenue += pay
+    this.noteIncome(pay, 'retail_sales')
     // Passenger spend covers amenity / landside expense in the payroll window.
     this.landsideFeeWindow += pay
     return { ok: true }
@@ -7072,6 +7221,7 @@ export class Game {
     f.path = out
     f.seg = 0
     f.t = 0
+    if (!f.cargo) this.settleOutboundBags(f, true)
     f.phase = 'taxi_out'
     f.phaseTime = 0
     f.parkLeaveBy = null
@@ -7832,22 +7982,36 @@ export class Game {
     }
   }
 
-  tickPayroll(dt: number) {
-    this.payrollCool -= dt
-    if (this.payrollCool > 0) return
-    this.payrollCool = 30
-    // Fees already hit cash per guest — do NOT re-earn sticker income.
-    const fees = this.landsideIncome()
-    const upkeep = this.landsideUpkeep()
-    if (upkeep > 0) {
-      this.charge(upkeep)
+  tickPayroll(_dt: number) {
+    const day = Math.floor(Math.max(0, this.clock) / 180)
+    if (day <= this.payrollDay) return
+    const from = this.payrollDay
+    this.payrollDay = day
+    for (let completed = from; completed < day; completed++) this.closeOperatingDay(completed)
+  }
+
+  /**
+   * One game day: staffing floor or the income share, then the 0.5% city levy.
+   * Landside upkeep is the old six payroll-tick slices, billed once.
+   */
+  private closeOperatingDay(completedDay: number) {
+    const ledger = this.bank.ledgerForGameDay(completedDay)
+    let income = 0
+    for (const [category, amount] of Object.entries(ledger.byCategory)) {
+      if (FINANCING_CATEGORIES.has(category) || !(amount && amount > 0)) continue
+      income += amount
     }
+    const phase = this.clock <= 600 ? 'early' : 'midgame'
+    const minimum = this.payrollPreview()
+    const bill = payrollForGameDay(income, phase, minimum)
+    const fees = this.landsideIncome()
+    const upkeep = this.landsideUpkeep() * 6
+    if (upkeep > 0) this.charge(upkeep)
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
-    // Decay usage / fee windows — idle stamps keep paying expense next tick.
-    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45))
+    this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
     this.landsideFeeWindow = 0
-    const bill = this.payrollPreview()
+    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (bill <= 0) {
       if (upkeep > 0 || fees > 0) {
         this.pushNews(
@@ -7857,37 +8021,32 @@ export class Game {
       }
       return
     }
+    this.levyMark = this.clock
     if (this.cash >= bill) {
       this.noteExpense(bill)
       this.cash -= bill
-      // Soft prosperity levy — 3% of the surplus, once per sim day.
-      // Payroll still ticks every 30s. Charging the levy on every tick was 18% a day.
-      // Sandbox cash is a trial pile, not a city that owes the levy.
-      let levy = 0
-      if (this.clock - this.levyMark >= 180) {
-        levy = cityLevy(this.cash, this.sandbox)
-        this.levyMark = this.clock
-        if (levy > 0) {
-          this.noteExpense(levy)
-          this.cash -= levy
-        }
+      this.postJournal('payroll', bill, stamp)
+      const levy = cityLevy(this.cash, this.sandbox)
+      if (levy > 0) {
+        this.noteExpense(levy)
+        this.cash -= levy
+        this.postJournal('city_levy', levy, stamp)
       }
       this.pushNews(
         `Ops payroll ${moneyLeft(bill)}${
           fees || upkeep
             ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (fees − expense)`
             : ''
-        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (sliders × staff × shops).`,
+        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (day's income × staff floor).`,
         netLand < 0 && upkeep > 0 ? 'bad' : 'ok',
       )
       return
     }
-    // Partial pay — never drive cash below zero from payroll alone.
     const paid = Math.max(0, this.cash)
     this.noteExpense(paid)
     this.cash = 0
+    if (paid > 0) this.postJournal('payroll', paid, stamp)
     this.reputation = Math.max(0, this.reputation - 4)
-    // Starved lines bite harder next cycle.
     if (this.budgets.maintenance > 20) this.budgets.maintenance = Math.max(20, this.budgets.maintenance - 10)
     if (this.budgets.security > 20) this.budgets.security = Math.max(20, this.budgets.security - 10)
     this.pushNews(
@@ -7896,6 +8055,41 @@ export class Game {
         : `Payroll missed entirely (${moneyLeft(bill)} due). Crews walking. Reputation dips.`,
       'bad',
     )
+  }
+
+  private ensureEconomy(): EconomyAdapter {
+    if (!this.economy) {
+      this.economy = createEconomyAdapter(
+        {
+          getFieldLevel: () => this.fieldLevel(),
+          isAirportOperational: () => this.flightsDone > 0 || this.signed.length > 0,
+          getAbsoluteDay: () => Math.floor(this.clock / 180),
+          getStaffPools: () => ({
+            maintenance_tech: { hired: this.mechanics, wagePerDay: 0 },
+            researcher: { hired: this.researchers, wagePerDay: 0 },
+            terminal_staff: { hired: this.deskStaff, wagePerDay: 0 },
+          }),
+          getStaffBuildings: () => [],
+          getResearchRooms: () =>
+            this.researchers > 0
+              ? [{ id: 'field-lab', desks: this.researchers, powerDemand: 35, active: true }]
+              : [],
+          getPowerLoads: () => [],
+          getChains: () => [],
+          getTransitTier: () => (this.hasRailStation() ? 'rail' : this.hasBusCurb() ? 'bus' : 'road'),
+          getHousingTier: () => 0,
+          getPowerPlantTier: () => 1,
+          saveEconomyState: (state) => {
+            this.economyState = state
+          },
+          onEconomySnapshot: (snapshot) => {
+            this.economyView = snapshot
+          },
+        },
+        { initialState: this.economyState ?? undefined },
+      )
+    }
+    return this.economy
   }
 
   tickMaintenance(dt: number) {
@@ -9522,7 +9716,9 @@ export class Game {
       f.phase = 'servicing'
       if (this.fuelOutage(f)) {
         f.fuelHeld = true
+        if (f.fuelHeldSince == null) f.fuelHeldSince = this.clock
         this.noteFuelGround(f)
+        if (this.clock - f.fuelHeldSince >= FUEL_OUTAGE_SLOT_SEC) this.cancelForFuel(f)
         return
       }
       if (f.fuelHeld) {
@@ -11099,6 +11295,9 @@ export class Game {
     if (!this.site || this.speed === 0) return
     const step = dt * this.speed
     this.clock += step
+    this.simClock.advanceRealSeconds(dt, this.speed)
+    this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
+    this.tickAmbience(dt)
     this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)
     this.offerCool = Math.max(0, this.offerCool - step)
@@ -11516,6 +11715,7 @@ export class Game {
             f.path = out
             f.seg = 0
             f.t = 0
+            if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
           } else if (f.phaseTime > 8) {
@@ -11525,6 +11725,7 @@ export class Game {
               f.seg = 0
               f.t = 0
             }
+            if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
           }
@@ -11843,6 +12044,7 @@ export class Game {
       const result = advancePaxItinerary(p, this.tiles, f?.stand ?? null, fit, (amount, kind) => {
         this.cash += amount
         this.revenue += amount
+        this.noteIncome(amount, 'retail_sales')
         if (kind === 'food') this.mealSold = true
       })
       if (result === 'done') {

@@ -329,6 +329,7 @@ describe('prefab bags', () => {
     game.tick(0.5)
     expect(['pushback', 'taxi_out', 'takeoff']).toContain(flight.phase)
     expect(flight.bagsOffloaded).toBe(193)
+    expect((flight.bagsDeposited ?? 0) + (flight.bagsOffloaded ?? 0)).toBeGreaterThanOrEqual(flight.bagUnits ?? 0)
     expect(flight.posted.bagsLoad).toBe(false)
     expect(flight.bagStage).not.toBe('inflight')
     expect(game.bagBook(flight.id)?.offloaded).toBe(193)
@@ -336,6 +337,51 @@ describe('prefab bags', () => {
     expect(game.bagsLost).toBe(0)
     expect(game.lostPaxCount()).toBe(0)
     expect(game.news.some((n) => n.text.includes('offloaded, not loaded'))).toBe(true)
+  })
+
+  it('records a completed arrival cart that never made the outbound belt', () => {
+    const game = quiet(1)
+    const flight = parked(game, 'complete-out')
+    flight.phase = 'board'
+    flight.pax = 76
+    flight.bagUnits = 44
+    flight.bagsDeposited = 0
+    flight.bagStage = 'complete'
+    flight.posted.bagsLoad = false
+    flight.posted.fuel = true
+    flight.waitingOn.bagsLoad = false
+    flight.phaseTime = 40
+    game.tick(0.5)
+    expect(['pushback', 'taxi_out', 'takeoff']).toContain(flight.phase)
+    expect((flight.bagsDeposited ?? 0) + (flight.bagsOffloaded ?? 0)).toBeGreaterThanOrEqual(flight.bagUnits ?? 0)
+    expect(flight.posted.bagsLoad).toBe(false)
+    expect(game.bagsMishandled).toBe(0)
+    expect(game.bagsLost).toBe(0)
+  })
+
+  it('calls a cart loaded only when the bags aboard cover the flight', () => {
+    const game = quiet(1)
+    const flight = parked(game, 'full-out')
+    flight.phase = 'board'
+    flight.pax = 97
+    flight.bagUnits = 97
+    flight.bagsDeposited = 97
+    flight.bagStage = 'pax_deposit'
+    flight.posted.bagsLoad = false
+    flight.posted.fuel = true
+    flight.waitingOn.bagsLoad = true
+    game.finishTruck(bagTruck(flight.id, 'load'))
+    expect(flight.posted.bagsLoad).toBe(true)
+    expect(flight.bagsOffloaded ?? 0).toBe(0)
+    expect(flight.bagStage).toBe('inflight')
+
+    flight.phaseTime = 40
+    game.tick(0.5)
+    expect(['pushback', 'taxi_out', 'takeoff']).toContain(flight.phase)
+    expect((flight.bagsDeposited ?? 0) + (flight.bagsOffloaded ?? 0)).toBeGreaterThanOrEqual(flight.bagUnits ?? 0)
+    expect(flight.posted.bagsLoad).toBe(true)
+    expect(game.bagsMishandled).toBe(0)
+    expect(game.bagsLost).toBe(0)
   })
 
   it('records widebody bags that do not fit the claim instead of a coin-flip jam', () => {

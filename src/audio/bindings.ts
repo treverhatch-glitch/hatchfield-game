@@ -128,9 +128,88 @@ export const FEATURE_BINDINGS = {
   low_cash: 'low_cash',
 } satisfies Record<string, Binding>;
 
-export type BindingSource = 'logistics' | 'cargo' | 'airlines' | 'features';
+/** #15 catering. Keys are exactly `CateringEvent['type']` (src/catering/types.ts). Loops keyed by truckId / runnerId. */
+const CATERING_PHASE: Record<string, SoundEventName> = {
+  loading_at_kitchen: 'catering_cart_latch', driving_to_stand: 'delivery_start', parking: 'delivery_arrived',
+  crew_exit: 'crew_door', lift_raise: 'catering_lift_start', carts_out: 'catering_cart_latch', carts_in: 'catering_cart_latch',
+  lift_lower: 'catering_lift_stop', crew_board: 'crew_door', driving_to_kitchen: 'delivery_start', unloading_at_kitchen: 'delivery_arrived',
+};
+const SUPPLY_PHASE: Record<string, SoundEventName> = {
+  loading_at_depot: 'catering_cart_latch', driving_to_dock: 'delivery_start', security_screening: 'delivery_arrived',
+  trolley_to_shop: 'catering_cart_roll_start', shelving: 'catering_cart_roll_stop', returning: 'catering_cart_latch',
+};
+export const CATERING_BINDINGS = {
+  catering_phase: (e) => CATERING_PHASE[str(e.phase)] ?? 'catering_cart_latch',
+  catering_done: (e) => (e.short === true ? 'shop_out_of_stock' : 'catering_cart_latch'),
+  catering_late: 'disruption',
+  supply_phase: (e) => SUPPLY_PHASE[str(e.phase)] ?? 'catering_cart_latch',
+  shop_restocked: 'shop_restock',
+  shop_sale: 'shop_sale',
+  shop_out_of_stock: 'shop_out_of_stock',
+  pax_walk_away: 'rating_down',
+  low_stock: 'low_cash',
+} satisfies Record<string, Binding>;
+
+/**
+ * #19 contracts & scheduling. src/contracts is pure (returns new state, no emitter), so these are the
+ * events the host emits around it: autoSchedule/rerun → season_scheduled, dragSlot/pull/bump → slot_moved
+ * {ok, zone}, evaluateFlags changes → slot_flagged {flag}, setCancelled → slot_cancelled, pinStand →
+ * stand_pinned, swapStands → stands_swapped, each LedgerEntry → ledger {kind}, auditWeek → week_audit
+ * {breached} and lawsuit when `lawsuit` is true.
+ */
+export const CONTRACTS_BINDINGS = {
+  season_scheduled: 'season_published',
+  slot_moved: (e) => (e.ok === false ? 'slot_rejected' : e.zone === 'hard_band' || e.zone === 'outside' ? 'slot_conflict' : 'slot_moved'),
+  slot_flagged: (e) => (e.flag === 'ok' ? null : 'slot_conflict'),
+  slot_cancelled: 'cost_charged',
+  stand_pinned: 'slot_moved',
+  stands_swapped: 'slot_moved',
+  ledger: (e) => {
+    switch (e.kind) {
+      case 'sla_penalty': return 'sla_penalty';
+      case 'sla_bonus': return 'sla_bonus';
+      case 'early_cancel_fee': return 'cost_charged';
+      default: return 'cash_in'; // contract_revenue
+    }
+  },
+  week_audit: (e) => (e.breached === true ? 'sla_penalty' : 'report_ready'),
+  lawsuit: 'lawsuit',
+} satisfies Record<string, Binding>;
+
+/**
+ * #18 crowd. The crowd sim exposes state (AgentState, DayStats), not events; the host emits these on
+ * transitions. Loops keyed by queue / door id.
+ */
+export const CROWD_BINDINGS = {
+  queue_forming: 'queue_grumble_start',
+  queue_cleared: 'queue_grumble_stop',
+  door_jam: 'door_jam_start',
+  door_clear: 'door_jam_stop',
+  gridlock: 'gridlock',
+  gridlock_cleared: 'rating_up',
+  day_stats: (e) => (typeof e.missed === 'number' && e.missed > 0 ? 'rating_down' : null),
+} satisfies Record<string, Binding>;
+
+const bySeverity = (e: BindableEvent): SoundEventName =>
+  e.severity === 'good' ? 'standing_up' : e.severity === 'bad' ? 'standing_down' : e.severity === 'warn' ? 'demand_issued' : 'letter';
+
+/** #14 diplomacy. Keys are exactly `DiplomacyEventType` (src/diplomacy/types.ts). */
+export const DIPLOMACY_BINDINGS = {
+  letter: 'letter', standing_band: bySeverity, cold_warning: 'standing_down', capacity_cut: 'disruption',
+  capacity_restored: 'standing_up', exit_notice: 'exit_notice', exit: 'exit_notice', exit_rescued: 'standing_up',
+  demand_issued: 'demand_issued', demand_met: 'rating_up', demand_timeout: 'rating_down',
+  promise_kept: 'standing_up', promise_broken: 'standing_down', spat: 'spat', spat_resolved: 'standing_up',
+  rival_offer: 'demand_issued', poached: 'exit_notice', hostile_action: 'disruption', lawsuit_verdict: 'lawsuit',
+  succession: 'letter', tier_unlocked: 'research_complete', era_reset: 'letter', newcomer: 'contract_offer',
+  slot_pool: 'letter', slot_series_reverted: 'rating_down', contract_signed: 'cash_in', contract_renewed: 'cash_in',
+  contract_cancelled: 'rating_down', hub_granted: 'hub_granted', hub_revoked: 'standing_down', base_granted: 'hub_granted',
+  alliance: 'alliance', perks_changed: bySeverity, info: 'letter',
+} satisfies Record<string, Binding>;
+
+export type BindingSource = 'logistics' | 'cargo' | 'airlines' | 'features' | 'catering' | 'contracts' | 'crowd' | 'diplomacy';
 export const BINDINGS: Record<BindingSource, Record<string, Binding>> = {
   logistics: LOGISTICS_BINDINGS, cargo: CARGO_BINDINGS, airlines: AIRLINE_BINDINGS, features: FEATURE_BINDINGS,
+  catering: CATERING_BINDINGS, contracts: CONTRACTS_BINDINGS, crowd: CROWD_BINDINGS, diplomacy: DIPLOMACY_BINDINGS,
 };
 
 /**
@@ -151,6 +230,19 @@ export const EVENT_ALIASES: Record<string, { type: string; fields?: Record<strin
   contract_canceled: { type: 'contract_terminated' },
   airline_rating_up: { type: 'rating_up' },
   airline_rating_down: { type: 'rating_down' },
+  // catering / contracts / crowd / diplomacy drift
+  restock: { type: 'shop_restocked' },
+  stockout: { type: 'shop_out_of_stock' },
+  out_of_stock: { type: 'shop_out_of_stock' },
+  sla_breach: { type: 'week_audit', fields: { breached: true } },
+  airline_sued: { type: 'lawsuit' },
+  schedule_published: { type: 'season_scheduled' },
+  flight_dragged: { type: 'slot_moved' },
+  queue_jam: { type: 'door_jam' },
+  crowd_gridlock: { type: 'gridlock' },
+  band_changed: { type: 'standing_band' },
+  diplomacy_letter: { type: 'letter' },
+  exit_warning: { type: 'exit_notice' },
 };
 
 const lookup = (source: BindingSource | undefined, type: string): Binding | undefined => {

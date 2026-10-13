@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LAND, LOAN_PRODUCTS, START_CASH, STARTER_KIT_COST } from './catalog.ts'
+import { operatingMargin, payrollForGameDay } from '../core/bank.ts'
 import {
   CITY_LEVY_FLOOR,
   budgetLineCost,
@@ -72,50 +73,74 @@ describe('economy', () => {
     expect(cityLevy(easyAfterKit)).toBe(0)
     expect(cityLevy(standardAfterLand)).toBe(0)
     expect(cityLevy(CITY_LEVY_FLOOR)).toBe(0)
-    // A grown field, not a trial pile: 3% of the surplus only.
-    expect(cityLevy(150_000)).toBe(300)
-    expect(cityLevy(220_000)).toBe(2_400)
-    expect(cityLevy(500_000)).toBe(10_800)
-    // The figure that was draining sandbox: cash after buying the city plot, about $293k a tick.
+    // Half a percent of the surplus, once per game day.
+    expect(cityLevy(150_000)).toBe(50)
+    expect(cityLevy(220_000)).toBe(400)
+    expect(cityLevy(500_000)).toBe(1_800)
     const sandboxAfterLand = SANDBOX_CASH - LAND.city.cost
     expect(sandboxAfterLand).toBe(9_904_999)
-    expect(cityLevy(sandboxAfterLand)).toBe(292_950)
+    expect(cityLevy(sandboxAfterLand)).toBe(48_825)
     expect(cityLevy(sandboxAfterLand, true)).toBe(0)
     expect(cityLevy(SANDBOX_CASH, true)).toBe(0)
 
     const sandbox = new Game()
     sandbox.sandbox = true
     sandbox.cash = SANDBOX_CASH
-    sandbox.payrollCool = 0
+    sandbox.clock = 180
     const bill = sandbox.payrollPreview()
     expect(bill).toBeGreaterThan(0)
     sandbox.tickPayroll(0)
     expect(sandbox.cash).toBe(SANDBOX_CASH - bill)
     expect(sandbox.news.some((n) => n.text.includes('city levy'))).toBe(false)
+    sandbox.tickPayroll(0)
+    expect(sandbox.cash).toBe(SANDBOX_CASH - bill)
 
     const live = new Game()
     live.sandbox = false
-    live.cash = 180_000
-    live.payrollCool = 0
-    const liveBill = live.payrollPreview()
-    live.tickPayroll(0)
-    const afterPay = 180_000 - liveBill
-    // Payroll every 30s. The 3% levy waits for the sim day so it is not charged six times.
-    expect(live.cash).toBe(afterPay)
-    expect(live.news.some((n) => n.text.includes('city levy'))).toBe(false)
+    live.cash = 500_000
+    live.clock = 90
+    live.earn(203_000, 'turns')
     live.clock = 180
-    live.payrollCool = 0
-    const bill2 = live.payrollPreview()
+    const earlyBill = payrollForGameDay(203_000, 'early', live.payrollPreview())
     live.tickPayroll(0)
-    const afterSecond = afterPay - bill2
-    const levy = cityLevy(afterSecond)
-    expect(levy).toBeGreaterThan(0)
-    expect(levy).toBeLessThan(5_000)
-    expect(live.cash).toBe(afterSecond - levy)
+    const afterEarly = 500_000 + 203_000 - earlyBill
+    const earlyLevy = cityLevy(afterEarly)
+    expect(earlyLevy).toBeGreaterThan(0)
+    expect(earlyLevy).toBeLessThan(5_000)
+    expect(live.cash).toBe(afterEarly - earlyLevy)
     expect(live.news.some((n) => n.text.includes('city levy'))).toBe(true)
-    live.payrollCool = 0
     live.tickPayroll(0)
-    expect(live.cash).toBe(afterSecond - levy - live.payrollPreview())
+    expect(live.cash).toBe(afterEarly - earlyLevy)
+
+    const mid = new Game()
+    mid.sandbox = false
+    mid.cash = 500_000
+    mid.payrollDay = 3
+    mid.clock = 600
+    mid.earn(203_000, 'mid-day turns')
+    mid.clock = 720
+    const midBill = payrollForGameDay(203_000, 'midgame', mid.payrollPreview())
+    const other = 35_000
+    const margin = operatingMargin(203_000, midBill + other)
+    expect(margin).toBeGreaterThanOrEqual(0.15)
+    expect(margin).toBeLessThanOrEqual(0.3)
+    expect(operatingMargin(20_000, payrollForGameDay(20_000, 'early') + 3_000)).toBeCloseTo(0.1)
+    mid.tickPayroll(0)
+    const afterMid = 500_000 + 203_000 - midBill
+    expect(mid.cash).toBe(afterMid - cityLevy(afterMid))
+  })
+
+  it('measures a prefab hall without marking passengers or bags lost', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.buildStarterKit()
+    expect(game.branding.airportName).toBe('Hatchfield')
+    const report = game.flowAudit()
+    expect(report.totals.lost).toBe(0)
+    expect(game.lostPaxCount()).toBe(0)
+    expect(game.bagsMishandled).toBe(0)
   })
 
   it('keeps a recent earning on the hourly readout through a quiet hour', () => {
