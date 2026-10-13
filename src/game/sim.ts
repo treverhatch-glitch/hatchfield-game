@@ -1,4 +1,9 @@
 import {
+  GameDiplomacyAdapter,
+  StandingAdvisor,
+  type StandingCauseCategory,
+} from './standingAdvisor.ts'
+import {
   AIRLINES,
   airlineList,
   BAG_DROP_PAY,
@@ -83,7 +88,8 @@ import {
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
   MIN_RUNWAY,
-  PARCEL_COST,
+  LAND_PLOT,
+  TILE_UTILITY,
   JETWAY_RANGE,
   MIL_RAMP_RANGE,
   PREMADE_TERMINAL_COST,
@@ -245,6 +251,17 @@ import {
   type ShowTag,
   type ShowUpPlan,
 } from '../pax/showup.ts'
+import {
+  NODE_ZONE,
+  nodeComfort,
+  outletExtraStock,
+  pickOutlet,
+  placementCheck,
+  refundFor,
+  seatsByZone,
+  type PlacementCheck,
+} from './terminalKit.ts'
+import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -257,6 +274,15 @@ import {
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
+import {
+  commitPlot,
+  dailySinks,
+  nextPlotOffer,
+  restoreOwned,
+  starterHolding,
+  type OwnedPlot,
+  type PlotOffer,
+} from '../land/index.ts'
 import {
   budgetLineCost,
   cityLevy,
@@ -370,6 +396,14 @@ function clamp(n: number, a: number, b: number): number {
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
+}
+
+/** Per-tick seat pool and comfort cache for one hall. */
+interface HallKitState {
+  items: PlacedItem[]
+  zones: (string | null)[][]
+  seatsLeft: Map<ZoneId, number>
+  comfort: Map<HallNode, number>
 }
 
 const emptyRooms = (): Record<RoomId, number> => ({
@@ -526,6 +560,13 @@ const FINANCING_CATEGORIES = new Set([
 ])
 
 export class Game {
+  standingAdvisor: StandingAdvisor = new StandingAdvisor(
+    new GameDiplomacyAdapter(
+      (id) => this.standingOf(id),
+      () => this.signed,
+      (id) => this.banThreshold(id),
+    ),
+  )
   tiles: Tile[][] = emptyTiles()
   fits: TerminalFit[] = []
   cash: number = START_CASH.easy
@@ -547,6 +588,10 @@ export class Game {
   foodShelf = 0
   /** Souvenirs on the counter. Sales stop at zero. */
   shopShelf = 0
+  /** Food sales through placed outlets (café, fast food, sit-down). */
+  foodCourtRevenue = 0
+  /** Unique suffix for placed hall item ids. */
+  hallItemSeq = 0
   /** Unpaid counter sales, kept for the audit. */
   lostSpend = 0
   /** Checked bags that disappeared. Prefab halls keep this at zero. */
@@ -584,6 +629,10 @@ export class Game {
   /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
   fieldXp = 0
   parcels = 1
+  /** Owned expansion plots. Empty until the city or factory site is bought. */
+  ownedPlots: OwnedPlot[] = []
+  /** Optional outsourced pavement crew. Daily fee, faster repair. */
+  maintenanceContract = false
   railLinked = false
   hotelLevel = 0
   carParkShort = false
@@ -838,6 +887,7 @@ export class Game {
     this.fuelLoads = 0
     this.foodShelf = 0
     this.shopShelf = 0
+    this.foodCourtRevenue = 0
     this.lostSpend = 0
     this.bagsLost = 0
     this.bagsMishandled = 0
@@ -877,6 +927,8 @@ export class Game {
     this.loanOpened = 0
     this.fieldXp = 0
     this.parcels = 1
+    this.ownedPlots = []
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -1694,7 +1746,10 @@ export class Game {
     return Math.max(0, (this.airlineBanUntil[id] ?? 0) - this.clock)
   }
 
-  adjustHeat(id: AirlineId, delta: number) {
+  adjustHeat(id: AirlineId, delta: number, cause?: StandingCauseCategory) {
+    if (delta < 0) {
+      this.standingAdvisor.recordCauseImpact(id, cause ?? 'hall_amenities', delta)
+    }
     const a = this.airline(id)
     let h = this.heatOf(id)
     if (delta < 0) h += delta * a.heatSensitivity
@@ -2103,7 +2158,9 @@ export class Game {
     this.tiles = emptyTiles()
     this.seedAccessStub()
     this.speed = 1
+    this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
+    this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
     this.carParkShort = false
@@ -2306,35 +2363,130 @@ export class Game {
     this.emit()
   }
 
-  buyParcel() {
-    if (!this.site) return
-    if (this.parcels >= 4) {
-      this.pushNews('No more parcels on this map sketch.', 'bad')
-      return
+  /** Next expansion the parcel button would buy. Null when the grid is full or land is unsold. */
+  nextParcelOffer(): PlotOffer | null {
+    if (!this.site || !this.ownedPlots.length) return null
+    return nextPlotOffer(this.ownedPlots, this.fieldLevel(), LAND_PLOT)
+  }
+
+  /**
+   * Buys the cheapest adjacent plot that field level allows.
+   * Returns false when the buy does not happen.
+   */
+  buyParcel(): boolean {
+    const offer = this.nextParcelOffer()
+    if (!offer) {
+      this.pushNews(this.site ? 'No more parcels on this map.' : 'Buy land first.', 'bad')
+      this.emit()
+      return false
     }
-    // CS-style: more land needs field level (parcel 2 → Lv2, etc.).
-    const needLv = Math.min(5, this.parcels) as AirlineTier
-    if (this.fieldLevel() < needLv) {
-      this.pushNews(
-        `Parcel ${this.parcels + 1} locked — reach Field Level ${needLv} first.`,
-        'bad',
-      )
+    if (offer.locked) {
+      this.pushNews(offer.reason, 'bad')
+      this.emit()
+      return false
+    }
+    return this.buyPlot(offer.id)
+  }
+
+  buyPlot(id: string): boolean {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
+      this.emit()
+      return false
+    }
+    const quote = commitPlot(this.ownedPlots, id, this.fieldLevel(), LAND_PLOT)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(quote.price, quote.name)) return false
+    this.ownedPlots = quote.owned
+    this.parcels = this.ownedPlots.length
+    this.grantFieldXp(10, 'parcel')
+    this.reputation = Math.min(100, this.reputation + 2)
+    this.pushNews(`${quote.name} bought. Room to grow the apron.`, 'good')
+    this.emit()
+    return true
+  }
+
+  toggleMaintenanceContract() {
+    if (!this.site) {
+      this.pushNews('Buy land first.', 'bad')
       this.emit()
       return
     }
-    if (!this.spend(PARCEL_COST * this.parcels, 'land parcel')) return
-    this.parcels += 1
-    this.grantFieldXp(10, 'parcel')
-    // Paint a strip of buildable grass marker as road fringe on the east
-    const edge = 6 + this.parcels * 4
-    for (let r = 4; r < SIZE - 4; r++) {
-      if (edge < SIZE && this.tiles[r][edge] === 'grass') {
-        /* parcel unlock is soft — more cash runway later; for now reputation + news */
+    this.maintenanceContract = !this.maintenanceContract
+    this.pushNews(
+      this.maintenanceContract
+        ? `Maintenance contract signed — ${moneyLeft(LAND_PLOT.maintenanceContract)} a day, pavement repairs faster.`
+        : 'Maintenance contract cancelled.',
+      this.maintenanceContract ? 'ok' : 'bad',
+    )
+    this.emit()
+  }
+
+  /** Land tax, insurance, utilities, and licences due at the next day close. Sandbox is zero. */
+  dailyHoldingQuote(): number {
+    return this.landSinkReport().chargedTotal
+  }
+
+  private landSinkReport() {
+    const loads = this.utilityLoads()
+    const product =
+      this.loanProduct(this.loanProductId) ??
+      (this.loanBalance > 0 ? LOAN_PRODUCTS.find((row) => row.id === 'bridge') : undefined)
+    return dailySinks(
+      {
+        plots: this.site ? this.ownedPlots : [],
+        assetValue: this.builtAssetValue(),
+        incidents: this.securityIncidents,
+        fieldLevel: this.fieldLevel(),
+        operational: this.fieldIsOperating(),
+        powerLoad: loads.power,
+        waterLoad: loads.water,
+        fireStations: tilesOf(this.tiles, 'fire').length,
+        intl: this.hasHeavyRunway() || this.fieldLevel() >= 4,
+        maintenanceContract: this.maintenanceContract,
+        loanBalance: this.loanBalance,
+        loanRate: product?.rate ?? 0,
+        loanFloor: product?.interestFloor ?? 0,
+        loanEverySeconds: product?.every ?? 0,
+        sandbox: this.sandbox,
+      },
+      LAND_PLOT,
+    )
+  }
+
+  private fieldIsOperating(): boolean {
+    return Boolean(this.site) && (this.runwayStripCount() > 0 || this.signed.length > 0 || this.fits.length > 0)
+  }
+
+  private utilityLoads(): { power: number; water: number } {
+    let power = 0
+    let water = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        const load = TILE_UTILITY[tile]
+        if (!load) continue
+        power += load.power ?? 0
+        water += load.water ?? 0
       }
     }
-    this.reputation = Math.min(100, this.reputation + 2)
-    this.pushNews(`Parcel ${this.parcels} bought. Room to grow the apron.`, 'good')
-    this.emit()
+    return { power, water }
+  }
+
+  /** Replacement cost of stamped tiles, used as the insurance asset base. */
+  private builtAssetValue(): number {
+    let total = 0
+    for (const row of this.tiles) {
+      for (const tile of row) {
+        if (tile === 'grass') continue
+        const building = BUILDINGS.find((item) => item.tile === tile)
+        if (building) total += building.cost
+      }
+    }
+    return total
   }
 
   investRail() {
@@ -3131,6 +3283,8 @@ export class Game {
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
       parcels: this.parcels,
+      ownedPlots: this.ownedPlots,
+      maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
       carParkShort: this.carParkShort,
@@ -3259,6 +3413,9 @@ export class Game {
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
+      this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
+      if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
+      this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
       this.carParkShort = s.carParkShort ?? false
@@ -4606,9 +4763,10 @@ export class Game {
     if (!plan || plan.closed) return
     plan.closed = true
     const pending = `slot:${slotId}`
+    const bound = plan.flightId
     for (const g of this.hallGuests) {
       if (g.dead || g.job !== 'depart') continue
-      if (g.flightId === pending) {
+      if (g.flightId === pending || (bound != null && g.flightId === bound)) {
         g.dead = true
         g.thought = 'Flight cancelled'
       }
@@ -4691,6 +4849,43 @@ export class Game {
     }
   }
 
+  /**
+   * Benches and decorations. A waiting guest takes a free seat and rests;
+   * decorations near the guest's zone lift the mood a little each second.
+   */
+  applyHallKit(g: HallGuest, dt: number, cache: Map<string, HallKitState>) {
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit) return
+    const key = this.hallKey(fit)
+    let state = cache.get(key)
+    if (!state) {
+      const items = (fit.items ?? []) as PlacedItem[]
+      const zones = fit.zones ?? []
+      state = { items, zones, seatsLeft: seatsByZone(zones, items), comfort: new Map() }
+      cache.set(key, state)
+    }
+    const walking = g.path.length > 0 && g.seg < g.path.length - 1
+    const zone = NODE_ZONE[g.node]
+    const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
+    g.seated = false
+    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+      state.seatsLeft.set(zone, free - 1)
+      g.seated = true
+      g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
+      if (g.happiness < 100) {
+        g.happiness = Math.min(100, g.happiness + dt * KIT_TUNING.seatJoyPerSec)
+      }
+    }
+    let comfort = state.comfort.get(g.node)
+    if (comfort == null) {
+      comfort = nodeComfort(state.zones, state.items, g.node)
+      state.comfort.set(g.node, comfort)
+    }
+    if (comfort > 0 && g.happiness < 100) {
+      g.happiness = Math.min(100, g.happiness + dt * comfort * KIT_TUNING.comfortJoyPerSec)
+    }
+  }
+
   guestAirlineId(g: HallGuest): AirlineId | null {
     if (g.airlineId) return g.airlineId
     if (g.flightId.startsWith('slot:')) {
@@ -4712,6 +4907,7 @@ export class Game {
       this.hallGuests = []
       return
     }
+    const kit = new Map<string, HallKitState>()
     for (const g of this.hallGuests) {
       if (g.dead) continue
       if (g.releaseAt != null && this.clock < g.releaseAt) continue
@@ -4767,6 +4963,7 @@ export class Game {
       if (g.job === 'depart' && this.departureClockRunning(g)) {
         g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
       }
+      this.applyHallKit(g, dt, kit)
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5369,10 +5566,12 @@ export class Game {
   /** Servings a full shelf holds. Empty rooms hold nothing. */
   shelfCap(kind: 'food' | 'shop'): number {
     let rooms = 0
+    let extra = 0
     for (const fit of this.fits) {
       rooms += kind === 'food' ? (fit.rooms.food ?? 0) : (fit.rooms.souvenir ?? 0)
+      if (kind === 'food') extra += outletExtraStock((fit.items ?? []) as PlacedItem[])
     }
-    return rooms * (kind === 'food' ? 8 : 6)
+    return rooms * (kind === 'food' ? 8 : 6) + extra
   }
 
   /** This airframe uplifts fuel. A zero-fuel type is free to leave. */
@@ -6198,12 +6397,13 @@ export class Game {
       return
     }
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
-    const taken = new Set((fit.items ?? []).map((i) => `${i.c},${i.r}`))
+    const items = (fit.items ?? []) as PlacedItem[]
+    // Ignore cash here so a broke player still hears "not enough cash" from spend().
+    const room = { fieldLevel: this.fieldLevel(), cash: Infinity }
     let cell: { c: number; r: number } | null = null
     for (let r = 0; r < fit.zones.length && !cell; r++) {
       for (let c = 0; c < fit.zones[r].length; c++) {
-        const z = fit.zones[r][c]
-        if (z && def.zones.includes(z as ZoneId) && !taken.has(`${c},${r}`)) {
+        if (placementCheck(fit.zones, items, def, c, r, room).ok) {
           cell = { c, r }
           break
         }
@@ -6214,14 +6414,48 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(def.cost, def.name)) return
+    this.commitHallItem(id, cell.c, cell.r, 0)
+  }
+
+  /** Ghost check for the hall build bar. Same rules as the click. */
+  hallPlacement(id: ItemId, c: number, r: number): PlacementCheck {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return { ok: false, reason: 'Open a hall first', cost: def?.cost ?? 0 }
+    const zones = fit.zones?.length ? fit.zones : fit.premade ? prefabZones() : blankZones()
+    return placementCheck(zones, (fit.items ?? []) as PlacedItem[], def, c, r, {
+      fieldLevel: this.fieldLevel(),
+      cash: this.cash,
+      sandbox: this.sandbox,
+    })
+  }
+
+  /** Place one item on a chosen cell, snapped, with a quarter-turn rotation. */
+  placeHallItemAt(id: ItemId, c: number, r: number, rot = 0): boolean {
+    const check = this.hallPlacement(id, c, r)
+    if (!check.ok) {
+      this.pushNews(`${itemDef(id)?.name ?? 'Item'}: ${check.reason}.`, 'bad')
+      this.emit()
+      return false
+    }
+    return this.commitHallItem(id, c, r, rot)
+  }
+
+  private commitHallItem(id: ItemId, c: number, r: number, rot: number): boolean {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return false
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    if (!this.spend(def.cost, def.name)) return false
     fit.items = fit.items ?? []
+    this.hallItemSeq += 1
     fit.items.push({
-      id: `it-${id}-${cell.c}-${cell.r}-${fit.items.length}`,
+      id: `it-${id}-${c}-${r}-${this.hallItemSeq}`,
       def: id,
-      c: cell.c,
-      r: cell.r,
+      c,
+      r,
       wear: 0,
+      rot: ((Math.round(rot) % 4) + 4) % 4,
     })
     if (def.room) fit.rooms[def.room] += 1
     if (def.room === 'food') this.foodShelf += 8
@@ -6234,6 +6468,33 @@ export class Game {
     )
     this.refreshAdvice()
     this.emit()
+    return true
+  }
+
+  /** Bulldoze a placed hall item for a partial refund. Prefab bundle pieces stay. */
+  removeHallItem(itemId: string): boolean {
+    const fit = this.activeHall()
+    const list = fit?.items ?? []
+    const i = list.findIndex((it) => it.id === itemId)
+    if (!fit || i < 0) return false
+    const it = list[i]
+    const def = itemDef(it.def)
+    if (it.bundle || !def) {
+      this.pushNews('Part of the prefab bundle — it stays with the hall.', 'bad')
+      this.emit()
+      return false
+    }
+    list.splice(i, 1)
+    if (def.room) fit.rooms[def.room] = Math.max(0, fit.rooms[def.room] - 1)
+    if (def.signs) fit.signs = Math.max(0, (fit.signs ?? 0) - def.signs)
+    const refund = refundFor(def)
+    this.cash += refund
+    applyCeilings(fit)
+    this.hallRev++
+    this.pushNews(`${def.name} removed — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
   }
 
   /**
@@ -6371,6 +6632,12 @@ export class Game {
       let pay = tagPrice(g.tag, 12, 18, 24, 32)
       let happy = 6
       let brand = false
+      const homeFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      const outlet = pickOutlet((homeFit?.items ?? []) as PlacedItem[], g.tag)
+      if (outlet) {
+        pay = Math.round(pay * outlet.spec.priceMult)
+        happy = outlet.spec.joy
+      }
       if (g.airlineId && this.hasReward(g.airlineId, 'budget_perk')) {
         pay = Math.round(pay * 1.55)
         happy += 2
@@ -6390,13 +6657,20 @@ export class Game {
               ? 'Meal too pricey for my wallet'
               : 'Skipped the counter — not hungry for that'
       } else {
-        g.needs.hunger = Math.max(0, g.needs.hunger - 50)
+        g.needs.hunger = Math.max(0, g.needs.hunger - (outlet?.spec.hunger ?? 50))
+        if (outlet) {
+          g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
+          outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
+          this.foodCourtRevenue += pay
+        }
         this.foodShelf -= 1
         this.mealSold = true
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
-          : `Ate (−$${pay})`
+          : outlet
+            ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
+            : `Ate (−$${pay})`
       }
       }
     }
@@ -7194,7 +7468,7 @@ export class Game {
     s.status = 'cancelled'
     this.abandonShowUp(s.id)
     // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
-    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2)
+    this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2, 'schedule')
     this.pushNews(
       `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} Standing ${Math.round(this.standingOf(s.airline))}. Bank clears, relations don't.`,
       'bad',
@@ -8084,6 +8358,7 @@ export class Game {
 
   /** Soft heat drift, rewards, warnings, abandon, ban expiry. */
   tickAirlineRelations(dt: number) {
+    this.standingAdvisor.tick(this.clock, dt, (id) => this.airline(id).kind === 'cargo')
     for (const id of [...this.signed]) {
       if (this.isBanned(id)) continue
       // Slow recovery toward 70 when not in crisis.
@@ -8814,16 +9089,23 @@ export class Game {
     const fees = this.landsideIncome()
     const upkeep = this.landsideUpkeep() * 6 + this.pillarUpkeepBill()
     if (upkeep > 0) this.charge(upkeep)
+    const holding = this.site ? this.dailyHoldingQuote() : 0
+    if (holding > 0) {
+      this.charge(holding)
+      this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
     this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
     this.landsideFeeWindow = 0
     const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (bill <= 0) {
-      if (upkeep > 0 || fees > 0) {
+      if (upkeep > 0 || fees > 0 || holding > 0) {
         this.pushNews(
-          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%).`,
-          netLand >= 0 ? 'ok' : 'bad',
+          `Landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (pax fees ${moneyLeft(fees)} − expense ${moneyLeft(upkeep)} · fill ${Math.round(useRate * 100)}%)${
+            holding ? ` · land holding ${moneyLeft(holding)}` : ''
+          }.`,
+          netLand >= 0 && holding === 0 ? 'ok' : 'bad',
         )
       }
       return
@@ -8844,7 +9126,9 @@ export class Game {
           fees || upkeep
             ? ` · landside ${netLand >= 0 ? '+' : ''}${moneyLeft(netLand)} (fees − expense)`
             : ''
-        }${levy ? ` · city levy ${moneyLeft(levy)}` : ''} (day's income × staff floor).`,
+        }${holding ? ` · land holding ${moneyLeft(holding)}` : ''}${
+          levy ? ` · city levy ${moneyLeft(levy)}` : ''
+        } (day's income × staff floor).`,
         netLand < 0 && upkeep > 0 ? 'bad' : 'ok',
       )
       return
@@ -8919,8 +9203,15 @@ export class Game {
 
     // Funded mechanics repair.
     if (staff > 0 && mx > 0.05) {
-      const repair = dt * (0.55 + staff * 0.45) * mx * (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1)
+      const repair =
+        dt *
+        (0.55 + staff * 0.45) *
+        mx *
+        (tilesOf(this.tiles, 'hangar').length ? 1.25 : 1) *
+        (this.maintenanceContract ? LAND_PLOT.contractRepair : 1)
       this.runwayCondition = clamp(this.runwayCondition + repair, 0, 100)
+    } else if (this.maintenanceContract && this.site) {
+      this.runwayCondition = clamp(this.runwayCondition + dt * LAND_PLOT.contractRepairRate, 0, 100)
     } else if (mx < 0.2 && Math.random() < dt * 0.04) {
       this.pushNews('Pavement soft — rubber and cracks. Hire mechanics or fund maintenance.', 'bad')
     }

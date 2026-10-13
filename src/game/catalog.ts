@@ -1,3 +1,4 @@
+import type { LandPlotConfig } from '../land/types.ts'
 import {
   HANGAR_OFFERS,
   LINK_OFFERS,
@@ -20,6 +21,7 @@ import type {
   RoomDef,
   StandAccess,
   StandClass,
+  Tile,
   Tool,
 } from './types'
 
@@ -232,6 +234,59 @@ export const AIRLINE_TIER_META: Record<
 }
 
 export const PARCEL_COST = 28_000
+
+/**
+ * Expansion plots (Cities: Skylines tile buy) and the daily sinks that sit on them.
+ * The starter plot is granted by the city/factory purchase. Further plots must
+ * touch land you own, and field level caps how many you may hold.
+ */
+export const LAND_PLOT = {
+  cols: 4,
+  rows: 4,
+  starterCol: 1,
+  starterRow: 1,
+  ownedCapByLevel: [0, 1, 3, 6, 10, 16],
+  basePrice: PARCEL_COST,
+  distancePremium: 0.35,
+  ownedPremium: 0.12,
+  zoneMult: {
+    core: 1.25,
+    apron: 1,
+    approach: 0.9,
+    industrial: 0.72,
+    fringe: 0.8,
+  },
+  dailyUpkeep: 180,
+  propertyTaxRate: 0.0012,
+  insuranceRate: 0.0004,
+  insurancePerIncident: 0.08,
+  insuranceIncidentCap: 6,
+  utilityPerPower: 14,
+  utilityPerWater: 9,
+  operatingLicence: [0, 0, 240, 520, 980, 1_600],
+  arffLicence: 110,
+  intlLicence: 740,
+  maintenanceContract: 1_250,
+  contractRepair: 1.2,
+  contractRepairRate: 0.15,
+} satisfies LandPlotConfig
+
+/** Power and water load per stamped tile. Utilities scale with the total. */
+export const TILE_UTILITY: Partial<Record<Tile, { power?: number; water?: number }>> = {
+  terminal: { power: 4, water: 1 },
+  fuel: { power: 2 },
+  tower: { power: 3 },
+  hangar: { power: 2 },
+  cargo: { power: 2 },
+  snack: { power: 1, water: 1 },
+  bags: { power: 2 },
+  hotel: { power: 2, water: 3 },
+  fire: { power: 1, water: 2 },
+  deice: { power: 1, water: 1 },
+  police: { power: 1 },
+  guard: { power: 1 },
+}
+
 export const RAIL_CITY_COST = 22_000
 /**
  * Starter kit must be buyable after city land on standard (150k − 95k = 55k).

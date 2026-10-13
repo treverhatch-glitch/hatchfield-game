@@ -140,6 +140,8 @@ export interface HallGuest {
   wyaw?: number
   /** Sim clock when a departing passenger reaches the doors. Until then they are not in the hall. */
   releaseAt?: number
+  /** On a bench or seat row this tick. */
+  seated?: boolean
 }
 
 /**

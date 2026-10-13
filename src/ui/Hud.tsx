@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
+import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
 import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
 import {
@@ -23,8 +24,8 @@ import {
   bizModelBlurb,
   MECHANIC_HIRE,
   MIL_AGREE_COST,
+  LAND_PLOT,
   money,
-  PARCEL_COST,
   parkTermLabel,
   personaBlurb,
   STAND_JETWAY_MULT,
@@ -48,6 +49,12 @@ import { tilesOf } from '../game/path'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
+
+function parcelButtonLabel(game: Game): string {
+  const offer = game.nextParcelOffer()
+  if (!offer) return game.site ? 'Parcels full' : 'Buy land first'
+  return `${offer.name} ${money(offer.price)}${offer.locked ? ` · need Lv${offer.needLevel}` : ''}`
+}
 
 const BUDGET_KEYS: BudgetKey[] = [
   'maintenance',
@@ -368,6 +375,7 @@ export function Hud({ game }: { game: Game }) {
             tone: 'ok' | 'good' | 'bad' | 'warn'
             left: number | null
             live?: boolean
+            cardData?: StandingAdvisorCard
           }
           const letters: Letter[] = []
           if (game.offer && offerAirline) {
@@ -512,6 +520,22 @@ export function Hud({ game }: { game: Game }) {
                 .join(' · ')}. Standing ≤${HEAT_WARN_THRESHOLD} warns; ≤${HEAT_ABANDON_THRESHOLD} and they abandon.`,
               tone: 'warn',
               left: null,
+            })
+          }
+          for (const card of game.standingAdvisor.activeCards) {
+            const a = game.airline(card.airlineId)
+            const causesSummary = card.topCauses
+              .map((c, i) => `${i + 1}. ${c.label} (Fix: ${c.fix})`)
+              .join(' · ')
+            letters.push({
+              id: card.id,
+              kind: 'Advisor Warning',
+              from: a.name,
+              title: `Standing Collapse Risk · ${a.name}`,
+              blurb: `Standing ${card.standing} · predicted departure in ~${card.daysToLeave} game days. Causes & fixes: ${causesSummary}`,
+              tone: 'warn',
+              left: null,
+              cardData: card,
             })
           }
           if (!letters.length) return null
@@ -670,6 +694,17 @@ export function Hud({ game }: { game: Game }) {
                         onClick={() => {
                           setDismissedWarn(true)
                           setOpenLetter(null)
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
+                    {letter.cardData ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (letter.cardData) game.standingAdvisor.dismissCard(letter.cardData.id)
+                          game.emit()
                         }}
                       >
                         Dismiss
@@ -914,10 +949,11 @@ export function Hud({ game }: { game: Game }) {
                           Pay loan
                         </button>
                         <button type="button" onClick={() => game.buyParcel()}>
-                          Parcel {money(PARCEL_COST * game.parcels)}
-                          {game.fieldLevel() < Math.min(5, game.parcels)
-                            ? ` · need Lv${Math.min(5, game.parcels)}`
-                            : ''}
+                          {parcelButtonLabel(game)}
+                        </button>
+                        <button type="button" onClick={() => game.toggleMaintenanceContract()}>
+                          MX contract{' '}
+                          {game.maintenanceContract ? 'on' : money(LAND_PLOT.maintenanceContract)}
                         </button>
                         <button type="button" onClick={() => game.investRail()}>
                           City rail {money(RAIL_CITY_COST)}
@@ -943,6 +979,7 @@ export function Hud({ game }: { game: Game }) {
                     {ecoTab === 'overview' ? (
                     <p className="muted">
                       parcels {game.parcels}
+                      {game.site ? ` · holding ${money(game.dailyHoldingQuote())}/day` : ''}
                       {game.railLinked ? ' · rail' : ''}
                       {game.hotelLevel ? ` · hotel L${game.hotelLevel}` : ''}
                       {game.janitors ? ` · janitors ${game.janitors}` : ''}
