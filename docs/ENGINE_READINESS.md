@@ -130,9 +130,9 @@ Tests in `src/game/*.test.ts`, `src/airlines/*.test.ts`, and `src/diplomacy/stan
 
 ## Hard-coded tunables
 
-Named knobs below are the balance surface. `src/game/catalog.ts` is the bulk of them. Large tables (`AIRLINES`, `BUILDINGS`, `ROOMS`, `RESEARCH_NODES`, `FIELD_TASK_DEFS`, `LOAN_PRODUCTS`, `AIRLINE_TIER_META`) are data, not magic numbers buried in `tick`. They should move to `src/data/*.json` with the loader keeping today's export names.
+Named knobs below are the balance surface. They live in `src/data/costs.json`, `src/data/airlines.json`, `src/data/buildings.json`, and `src/data/terminal.json`. `loadCatalog` in `src/game/catalogData.ts` checks the shape (start cash, land, six XP steps, `northline`, and the non-empty building / room / research / loan / task lists). `src/game/catalog.ts` re-exports the same names and keeps the helpers (`fieldLevelFromXp`, `createProcAirline`, labels, `money`). Callers still import `./catalog`.
 
-### Cash, land, construction (`catalog.ts`)
+### Cash, land, construction (`src/data/costs.json`)
 
 | Name | Value |
 |---|---|
@@ -161,7 +161,7 @@ Named knobs below are the balance surface. `src/game/catalog.ts` is the bulk of 
 | `PARCEL_COST` / `RAIL_CITY_COST` | 28,000 / 22,000 |
 | `MIN_RUNWAY` | 6 |
 
-### Landside, staffing, research points (`catalog.ts`)
+### Landside, staffing, research points (`src/data/costs.json`)
 
 | Name | Value |
 |---|---|
@@ -183,7 +183,7 @@ Named knobs below are the balance surface. `src/game/catalog.ts` is the bulk of 
 
 Daily upkeep tables in the same file: `PARK_EXPENSE`, `HOTEL_CLASS_EXPENSE`, `HOTEL_META_EXPENSE` (0, 360, 620), `CARPARK_META_EXPENSE_SHORT` 180, `CARPARK_META_EXPENSE_LONG` 240, `BUS_EXPENSE` 160, `RAIL_EXPENSE` 260, `HALL_AMENITY_EXPENSE`, `PARK_USE_FEE`, `HOTEL_CLASS_FEE`.
 
-### Loans, market, carriers (`catalog.ts`)
+### Loans, market, carriers (`src/data/costs.json`, `src/data/airlines.json`, `src/data/terminal.json`)
 
 | Name | Value |
 |---|---|
@@ -265,6 +265,6 @@ Importing `SimCore` still loads `Game`, and `Game` still imports render modules 
 
 1. Done in this pass: coupling map, sim RNG, `SimCore` skeleton, headless soak.
 2. Done next: audio one-shots and ambience subscribe to `Game.events`. `OwnerChrome` paints `readChrome()`. The textured world update takes `worldViewFrom(game)` (shallow, no tile copy). Entity meshes in `src/render/world.ts` still walk `game.flights` and `game.trucks`.
-3. Move `catalog.ts` tables into `src/data/*.json`. Re-export the same names so callers do not change.
+3. Done: catalog tables live in `src/data/{costs,airlines,buildings,terminal}.json`. `loadCatalog` checks the shape. `src/game/catalog.ts` re-exports the same names and keeps the helpers.
 4. Stop `sim.ts` importing `src/render/**` and `src/audio/**`. Specs move to data. Sounds become events only.
 5. Extend snapshot v2 with logistics, catering, and cargo adapter state so a load continues a turnaround, not just the field.

@@ -1,0 +1,217 @@
+{
+  "BUILDINGS": [
+    {
+      "tool": "road",
+      "tile": "road",
+      "name": "Access road",
+      "cost": 450,
+      "blurb": "Link the field to the city edge. Airlines want a way in."
+    },
+    {
+      "tool": "taxi",
+      "tile": "taxi",
+      "name": "Taxiway",
+      "cost": 700,
+      "blurb": "Pavement jets and trucks follow."
+    },
+    {
+      "tool": "stand_s",
+      "tile": "stand",
+      "name": "Stand S",
+      "cost": 4800,
+      "blurb": "Small remote bay — walk or terminal-bus. Toggle Jetway for a pre-attached gate (pricier)."
+    },
+    {
+      "tool": "stand",
+      "tile": "stand",
+      "name": "Stand M",
+      "cost": 6200,
+      "blurb": "Medium remote bay. Jetway toggle attaches a hall gate for fast board/deboard."
+    },
+    {
+      "tool": "stand_l",
+      "tile": "stand",
+      "name": "Stand L",
+      "cost": 9800,
+      "blurb": "Large remote bay — widebody / freighter / mil. Jetway toggle for attached gates."
+    },
+    {
+      "tool": "term_bus",
+      "tile": "termbus",
+      "name": "Terminal bus depot",
+      "cost": 12500,
+      "blurb": "Apron buses ferry remote-stand pax. Without this, remote stands walk the pavement (slow + traffic)."
+    },
+    {
+      "tool": "deice",
+      "tile": "deice",
+      "name": "De-ice pad",
+      "cost": 11500,
+      "blurb": "Glycol pad beside taxi/strip. Storm holds clear when De-ice ops is researched."
+    },
+    {
+      "tool": "terminal",
+      "tile": "terminal",
+      "name": "Terminal shell",
+      "cost": 14800,
+      "blurb": "Empty 2×2 hall. Furnish rooms yourself."
+    },
+    {
+      "tool": "snack",
+      "tile": "snack",
+      "name": "Snack bar",
+      "cost": 3600,
+      "blurb": "Meals and catering."
+    },
+    {
+      "tool": "bags",
+      "tile": "bags",
+      "name": "Bag sort",
+      "cost": 4800,
+      "blurb": "Makeup hub — paint Belt tiles to the hall and stands."
+    },
+    {
+      "tool": "belt",
+      "tile": "belt",
+      "name": "Bag belt",
+      "cost": 900,
+      "blurb": "Link hall ↔ bag sort ↔ stand. Break the chain → late bags + Standing dips."
+    },
+    {
+      "tool": "fuel",
+      "tile": "fuel",
+      "name": "Fuel farm",
+      "cost": 5600,
+      "minFieldLevel": 1,
+      "blurb": "Field level 1. Beside pavement. Sign a carrier and buy loads."
+    },
+    {
+      "tool": "kitchen",
+      "tile": "kitchen",
+      "name": "Catering kitchen",
+      "cost": 7200,
+      "minFieldLevel": 2,
+      "blurb": "Field level 2. Cooks meals for the galley trucks. Place it beside a road."
+    },
+    {
+      "tool": "depot",
+      "tile": "depot",
+      "name": "Vehicle depot",
+      "cost": 9800,
+      "minFieldLevel": 2,
+      "blurb": "Field level 2. Fuel, galley, bag, and bus trucks stage here. A second depot adds another fleet."
+    },
+    {
+      "tool": "fire",
+      "tile": "fire",
+      "name": "Fire station",
+      "cost": 12000,
+      "blurb": "ARFF cover. Airlines will not sign without it."
+    },
+    {
+      "tool": "police",
+      "tile": "police",
+      "name": "Police post",
+      "cost": 11000,
+      "blurb": "Patrols and security. Cuts threat risk."
+    },
+    {
+      "tool": "cargo",
+      "tile": "cargo",
+      "name": "Cargo shed",
+      "cost": 16000,
+      "blurb": "For Umazon, UPPS, and EXFED freighters. City trucks deliver here after the guard post."
+    },
+    {
+      "tool": "guard",
+      "tile": "guard",
+      "name": "Guard post",
+      "cost": 9500,
+      "blurb": "Screens city cargo trucks on the access road. Missing post = queues, denied entry, On-time dips."
+    },
+    {
+      "tool": "tower",
+      "tile": "tower",
+      "name": "Control tower",
+      "cost": 18000,
+      "blurb": "Clears traffic faster and unlocks busier airlines. Does not print money."
+    },
+    {
+      "tool": "hangar",
+      "tile": "hangar",
+      "name": "Maintenance hangar",
+      "cost": 14000,
+      "blurb": "Overnight checks. Raises reputation when stands are busy."
+    },
+    {
+      "tool": "helipad",
+      "tile": "helipad",
+      "name": "Helipad",
+      "cost": 9000,
+      "blurb": "Medevac and executive choppers land here. Needs fire coverage nearby in spirit."
+    },
+    {
+      "tool": "hotel_inn",
+      "tile": "hotel",
+      "name": "Airport inn",
+      "cost": 18000,
+      "blurb": "Budget landside inn — pax night fees only. Idle beds still cost upkeep."
+    },
+    {
+      "tool": "hotel_biz",
+      "tile": "hotel",
+      "name": "Business hotel",
+      "cost": 28000,
+      "blurb": "Mid-rise landside hotel — overnight fees from pax. Empty = expense bleed."
+    },
+    {
+      "tool": "hotel_resort",
+      "tile": "hotel",
+      "name": "Airport resort",
+      "cost": 42000,
+      "blurb": "Premium resort tower — high night fees when full, heavy upkeep when empty."
+    },
+    {
+      "tool": "park_s",
+      "tile": "park_s",
+      "name": "Small lot",
+      "cost": 8500,
+      "blurb": "Surface lot + booth. Fees when pax park; Toggle Short/Long. Idle costs."
+    },
+    {
+      "tool": "park_l",
+      "tile": "park_l",
+      "name": "Large lot",
+      "cost": 14000,
+      "blurb": "Big lot + canopy. Passenger fees only — empty lots bleed upkeep."
+    },
+    {
+      "tool": "park_g",
+      "tile": "park_g",
+      "name": "Parking garage",
+      "cost": 22000,
+      "blurb": "Multi-level garage. Highest park fees + highest idle expense."
+    },
+    {
+      "tool": "park_u",
+      "tile": "park_u",
+      "name": "Underground park",
+      "cost": 18000,
+      "blurb": "Underground portal. Good fees when used; lights/pumps cost when idle."
+    },
+    {
+      "tool": "bus",
+      "tile": "bus",
+      "name": "Bus curb",
+      "cost": 8500,
+      "blurb": "City bus stop on a road edge. Budget pax arrive here — missing curb angers them."
+    },
+    {
+      "tool": "rail",
+      "tile": "rail",
+      "name": "Rail station",
+      "cost": 16000,
+      "blurb": "Passenger rail hall on the city link. Needs City rail first. Business pax love it."
+    }
+  ]
+}

@@ -1,0 +1,386 @@
+{
+  "ROOMS": [
+    {
+      "id": "checkin",
+      "name": "Check-in",
+      "cost": 2400,
+      "blurb": "Departures start here."
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "cost": 2800,
+      "blurb": "Screening. Weak security invites threats."
+    },
+    {
+      "id": "gate",
+      "name": "Gate hold",
+      "cost": 1800,
+      "blurb": "Seats before boarding."
+    },
+    {
+      "id": "bagclaim",
+      "name": "Bag claim",
+      "cost": 3200,
+      "blurb": "Arrivals want this."
+    },
+    {
+      "id": "food",
+      "name": "Hall food",
+      "cost": 2600,
+      "blurb": "Indoor meals."
+    },
+    {
+      "id": "souvenir",
+      "name": "Souvenirs",
+      "cost": 2200,
+      "blurb": "Gift shop."
+    },
+    {
+      "id": "bagdrop",
+      "name": "Bag drop",
+      "cost": 1800,
+      "blurb": "Extra $180 with outside sort."
+    },
+    {
+      "id": "lounge",
+      "name": "Airline lounge",
+      "cost": 4800,
+      "blurb": "Keeps premium pax calm. Softens Summit."
+    },
+    {
+      "id": "bathroom",
+      "name": "Restrooms",
+      "cost": 1600,
+      "blurb": "Basic need. Missing toilets hurts reputation."
+    },
+    {
+      "id": "golf",
+      "name": "Indoor golf",
+      "cost": 9200,
+      "blurb": "Golf simulator bays. Premium desire sink — calm energy."
+    },
+    {
+      "id": "waterfall",
+      "name": "Waterfall court",
+      "cost": 11000,
+      "blurb": "Spectacle amenity. Premium pax linger and tip."
+    },
+    {
+      "id": "gaming",
+      "name": "Gaming den",
+      "cost": 8600,
+      "blurb": "Budget + premium kill time before boarding."
+    },
+    {
+      "id": "dayhotel",
+      "name": "Airside day rooms",
+      "cost": 14000,
+      "blurb": "Inside-terminal hotel — keep layover pax airside for max spend (nap → food → shop → spa)."
+    },
+    {
+      "id": "spa",
+      "name": "Massage spa",
+      "cost": 12500,
+      "blurb": "Massage chairs + calm booths. Premium energy sink — big tips when tense."
+    },
+    {
+      "id": "pool",
+      "name": "Airside pool",
+      "cost": 16000,
+      "blurb": "Indoor swim court. Play + energy for transfers and luxury pax."
+    },
+    {
+      "id": "rdesk",
+      "name": "Research desk",
+      "cost": 3600,
+      "blurb": "Landside R&D desk — hired researchers walk here to bank RP. Bare staff barely drip."
+    },
+    {
+      "id": "rboard",
+      "name": "Chalkboard",
+      "cost": 2200,
+      "blurb": "Whiteboard / chalkboard — researchers cycle here for extra RP between desk work."
+    },
+    {
+      "id": "rmachine",
+      "name": "Lab bench",
+      "cost": 5400,
+      "blurb": "Test gear. Highest RP when a researcher is operating it. They take breaks and go home."
+    }
+  ],
+  "RESEARCH_NODES": [
+    {
+      "id": "night_bank",
+      "name": "Night bank",
+      "cost": 28,
+      "blurb": "Night freighter premium + denser cargo slots. City carriers notice the noise."
+    },
+    {
+      "id": "deice",
+      "name": "De-ice ops",
+      "cost": 34,
+      "blurb": "Stamp glycol pads + dispatch de-ice trucks in storm/fog. Cuts crash risk.",
+      "requires": "night_bank"
+    },
+    {
+      "id": "stand_class",
+      "name": "Stand classes",
+      "cost": 40,
+      "blurb": "Unlock Stand L stamps + smarter inbound capacity. S/M always available.",
+      "requires": "deice"
+    },
+    {
+      "id": "heavy_pack",
+      "name": "Heavy metal pack",
+      "cost": 55,
+      "blurb": "Unlock A380 and An-124 Ruslan when the heavy strip is stamped.",
+      "requires": "stand_class"
+    },
+    {
+      "id": "mil_ramp",
+      "name": "Military ramp",
+      "cost": 42,
+      "blurb": "C-5M Super Galaxy + dedicated Guard apron (hangar-side hardstands, not pax gates).",
+      "requires": "heavy_pack"
+    }
+  ],
+  "FIELD_TASK_DEFS": [
+    {
+      "kind": "bathroom",
+      "title": "Add restrooms",
+      "blurb": "Furnish a WC in the hall — angry bladders cool Standing.",
+      "bonus": 4200
+    },
+    {
+      "kind": "food",
+      "title": "Open food",
+      "blurb": "Snack bar tile or hall food room so pax can eat.",
+      "bonus": 4500
+    },
+    {
+      "kind": "fire",
+      "title": "ARFF cover",
+      "blurb": "Stamp a fire station on the apron.",
+      "bonus": 4800
+    },
+    {
+      "kind": "desk",
+      "title": "Staff a desk",
+      "blurb": "Hire a desk agent so check-in / gate stay manned.",
+      "bonus": 3800
+    },
+    {
+      "kind": "police",
+      "title": "Police post",
+      "blurb": "Stamp police on the field — security alerts get softer.",
+      "bonus": 5200,
+      "personas": [
+        "business",
+        "luxury"
+      ]
+    },
+    {
+      "kind": "hangar",
+      "title": "Hangar bay",
+      "blurb": "Stamp a hangar for overnight checks / line MX.",
+      "bonus": 6000,
+      "personas": [
+        "cargo_night",
+        "military_gov",
+        "business"
+      ]
+    },
+    {
+      "kind": "janitor",
+      "title": "Hire a janitor",
+      "blurb": "Hall wear piles up without a scrub crew.",
+      "bonus": 3600,
+      "personas": [
+        "luxury",
+        "budget"
+      ]
+    },
+    {
+      "kind": "cargo",
+      "title": "Cargo shed",
+      "blurb": "Stamp a cargo shed so freighters can bank properly.",
+      "bonus": 5500,
+      "personas": [
+        "cargo_night"
+      ]
+    },
+    {
+      "kind": "helipad",
+      "title": "Helipad",
+      "blurb": "Stamp a pad — medevac / exec choppers need somewhere to sit.",
+      "bonus": 5000,
+      "personas": [
+        "military_gov",
+        "business"
+      ]
+    },
+    {
+      "kind": "hotel",
+      "title": "Landside hotel",
+      "blurb": "Stamp an inn, business hotel, or resort near the road for overnight pax.",
+      "bonus": 7000,
+      "personas": [
+        "luxury",
+        "business"
+      ]
+    },
+    {
+      "kind": "park",
+      "title": "Car park",
+      "blurb": "Stamp a short or long car park (lot / garage / underground) on the landside grass.",
+      "bonus": 4800,
+      "personas": [
+        "budget",
+        "business"
+      ]
+    },
+    {
+      "kind": "desk_extra",
+      "title": "Second desk body",
+      "blurb": "Hire another desk agent — empty counters miss gates.",
+      "bonus": 4000,
+      "personas": [
+        "business",
+        "luxury"
+      ]
+    }
+  ],
+  "LOAN_PRODUCTS": [
+    {
+      "id": "micro",
+      "label": "Micro strip",
+      "blurb": "Starter cash for pavement. High rate, short leash.",
+      "principal": 25000,
+      "fee": 1400,
+      "rate": 0.018,
+      "interestFloor": 900,
+      "every": 42,
+      "minFieldLevel": 1,
+      "minRep": 0
+    },
+    {
+      "id": "bridge",
+      "label": "Bridge loan",
+      "blurb": "Classic growth wire. Balanced fee and rate.",
+      "principal": 45000,
+      "fee": 2800,
+      "rate": 0.012,
+      "interestFloor": 1250,
+      "every": 55,
+      "minFieldLevel": 1,
+      "minRep": 0
+    },
+    {
+      "id": "expansion",
+      "label": "Expansion",
+      "blurb": "Second hall / jetway money. Needs Field Lv2.",
+      "principal": 90000,
+      "fee": 7500,
+      "rate": 0.009,
+      "interestFloor": 1800,
+      "every": 70,
+      "minFieldLevel": 2,
+      "minRep": 35
+    },
+    {
+      "id": "hub",
+      "label": "Hub facility",
+      "blurb": "Major capex. Needs Field Lv3 + reputation.",
+      "principal": 180000,
+      "fee": 18000,
+      "rate": 0.007,
+      "interestFloor": 2800,
+      "every": 85,
+      "minFieldLevel": 3,
+      "minRep": 55
+    },
+    {
+      "id": "sovereign",
+      "label": "Sovereign bond",
+      "blurb": "Endgame mega wire. Needs Field Lv4. Huge fee.",
+      "principal": 320000,
+      "fee": 42000,
+      "rate": 0.0055,
+      "interestFloor": 4200,
+      "every": 100,
+      "minFieldLevel": 4,
+      "minRep": 70
+    }
+  ],
+  "FUEL": {
+    "apex": {
+      "id": "apex",
+      "name": "Apex Fuel",
+      "sign": 3500,
+      "wholesale": 900,
+      "pump": 2400
+    },
+    "kiln": {
+      "id": "kiln",
+      "name": "Kiln Aviation",
+      "sign": 8000,
+      "wholesale": 1400,
+      "pump": 4200
+    }
+  },
+  "CATER": {
+    "skybite": {
+      "id": "skybite",
+      "name": "SkyBite Catering",
+      "sign": 2800,
+      "payoutMult": 1,
+      "blurb": "Starter galley. Unlocks catering trucks from your snack bar."
+    },
+    "galleyprime": {
+      "id": "galleyprime",
+      "name": "GalleyPrime",
+      "sign": 9000,
+      "payoutMult": 1.45,
+      "blurb": "Premium trays. Harbor and Summit prefer this when they board."
+    }
+  },
+  "TOOL_LABEL": {
+    "pan": "Select",
+    "runway_short": "Short strip",
+    "runway": "Runway",
+    "runway_heavy": "Heavy strip",
+    "helipad": "Helipad",
+    "taxi": "Taxiway",
+    "stand_s": "Stand S",
+    "stand": "Stand M",
+    "stand_l": "Stand L",
+    "terminal": "Shell",
+    "premade": "Premade hall",
+    "snack": "Snack",
+    "bags": "Bags",
+    "belt": "Belt",
+    "fuel": "Fuel",
+    "kitchen": "Kitchen",
+    "depot": "Depot",
+    "fire": "Fire",
+    "police": "Police",
+    "cargo": "Cargo",
+    "guard": "Guard",
+    "road": "Road",
+    "tower": "Tower",
+    "hangar": "Hangar",
+    "hotel_inn": "Inn",
+    "hotel_biz": "Biz hotel",
+    "hotel_resort": "Resort",
+    "park_s": "Lot S",
+    "park_l": "Lot L",
+    "park_g": "Garage",
+    "park_u": "Under",
+    "deice": "De-ice",
+    "bus": "Bus",
+    "term_bus": "Term bus",
+    "rail": "Rail",
+    "clear": "Clear"
+  }
+}

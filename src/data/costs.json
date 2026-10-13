@@ -1,0 +1,291 @@
+{
+  "ABANDON_ACC_SECONDS": 26,
+  "ABANDON_FINE": 12000,
+  "AIR_AMBULANCE_FEE": 3200,
+  "BAGS_COST": 4800,
+  "BAG_DROP_PAY": 180,
+  "BELT_COST": 900,
+  "BUDGET_BASE": {
+    "maintenance": 580,
+    "security": 720,
+    "cleaning": 540,
+    "fire": 780,
+    "ambulance": 620
+  },
+  "BUDGET_BLURB": {
+    "maintenance": "Mechanics + pavement. Low = runway decay, higher crash odds in weather.",
+    "security": "Screeners and patrols. Low = more threats slip through.",
+    "cleaning": "Hall janitors. Low = WC/security wear piles up faster.",
+    "fire": "ARFF readiness. Low = apron fires and crash fines get brutal.",
+    "ambulance": "Medics on call. Low = crash injuries cost more; medevac cools off."
+  },
+  "BUDGET_LABEL": {
+    "maintenance": "Maintenance",
+    "security": "Security staff",
+    "cleaning": "Cleaning staff",
+    "fire": "Fire crews",
+    "ambulance": "Ambulances"
+  },
+  "BULLDOZE_REFUND": 0.4,
+  "BUS_CURB_COST": 8500,
+  "BUS_EXPENSE": 160,
+  "BUS_FARE": 12,
+  "CARGO_COST": 16000,
+  "CARGO_INTAKE_FEE": 420,
+  "CARGO_STANDING_LABEL": "On-time",
+  "CARGO_VOLUME_COOL": 70,
+  "CARGO_VOLUME_FAIL_FINE": 1800,
+  "CARGO_VOLUME_FEE_MAX": 9500,
+  "CARGO_VOLUME_FEE_MIN": 4200,
+  "CARGO_WAREHOUSE_CAP": 140,
+  "CARPARK_LONG_COST": 16500,
+  "CARPARK_LONG_INCOME": 0,
+  "CARPARK_META_EXPENSE_LONG": 240,
+  "CARPARK_META_EXPENSE_SHORT": 180,
+  "CARPARK_SHORT_COST": 11000,
+  "CARPARK_SHORT_INCOME": 0,
+  "CLEANING_FEE": 900,
+  "DEFAULT_BUDGETS": {
+    "maintenance": 100,
+    "security": 100,
+    "cleaning": 100,
+    "fire": 100,
+    "ambulance": 100
+  },
+  "DEICE_FEE": 1400,
+  "DEICE_PAD_COST": 11500,
+  "DEPOT_COST": 9800,
+  "DESK_STAFF_HIRE": 3600,
+  "DESK_STAFF_WAGE": 280,
+  "DIVERT_FEE_MAX": 9000,
+  "DIVERT_FEE_MIN": 4500,
+  "EMERGENCY_FAIL_FINE": 4500,
+  "EMERGENCY_REFUSE_FINE": 2500,
+  "FIELD_LEVEL_XP": [
+    0,
+    0,
+    90,
+    220,
+    420,
+    700
+  ],
+  "FIELD_TASK_COOL": 52,
+  "FIELD_TASK_DEADLINE": 95,
+  "FIELD_TASK_FAIL_FINE": 1600,
+  "FIELD_TASK_HEAT_FAIL": -5.5,
+  "FIELD_TASK_HEAT_OK": 4.5,
+  "FIRE_COST": 12000,
+  "FUEL_COST": 5600,
+  "GA_LEAVE_WINDOW": 150,
+  "GA_OVERSTAY_FINE": 5000,
+  "GA_PARK_DAY_RATE": 380,
+  "GA_PARK_FEE_MAX": 6500,
+  "GA_PARK_FEE_MIN": 2800,
+  "GA_PARK_RATE_COOL": 32,
+  "GA_PARK_STAY_MAX": 75,
+  "GA_PARK_STAY_MIN": 40,
+  "GUARD_COST": 9500,
+  "HALL_AMENITY_EXPENSE": {
+    "dayhotel": 240,
+    "spa": 200,
+    "pool": 280,
+    "golf": 170,
+    "waterfall": 150,
+    "gaming": 130,
+    "lounge": 100,
+    "souvenir": 60,
+    "food": 80
+  },
+  "HALL_SCRUB_COST": 2800,
+  "HANGAR_COST": 14000,
+  "HEAT_ABANDON_THRESHOLD": 20,
+  "HEAT_BAN_THRESHOLD": 28,
+  "HEAT_REWARD_THRESHOLD": 82,
+  "HEAT_WARN_THRESHOLD": 36,
+  "HEAVY_RUNWAY_COST": 72000,
+  "HEAVY_RUNWAY_LEN": 20,
+  "HEAVY_RUNWAY_WID": 3,
+  "HELIPAD_COST": 9000,
+  "HELO_LANDING": 2400,
+  "HOTEL_BIZ_COST": 28000,
+  "HOTEL_CLASS_EXPENSE": {
+    "inn": 280,
+    "business": 480,
+    "resort": 780
+  },
+  "HOTEL_CLASS_FEE": {
+    "inn": 72,
+    "business": 110,
+    "resort": 175
+  },
+  "HOTEL_CLASS_INCOME": {
+    "inn": 280,
+    "business": 480,
+    "resort": 780
+  },
+  "HOTEL_COST": 28000,
+  "HOTEL_COST_L2": 48000,
+  "HOTEL_INCOME": [
+    0,
+    0,
+    0
+  ],
+  "HOTEL_INN_COST": 18000,
+  "HOTEL_META_EXPENSE": [
+    0,
+    360,
+    620
+  ],
+  "HOTEL_NIGHT_FEE": 95,
+  "HOTEL_RESORT_COST": 42000,
+  "HOTEL_TILE_COST": 28000,
+  "HOTEL_TILE_INCOME": 0,
+  "HUB_BAN_THRESHOLD": 34,
+  "HUB_FEE_MAX": 22000,
+  "HUB_FEE_MIN": 14000,
+  "HUB_HEAT_NEED": 75,
+  "HUB_LAYOVER_WINS": 1,
+  "IPO_FOUNDER_SHARES": 550,
+  "IPO_LISTING_FEE": 12000,
+  "IPO_MIN_CASH": 40000,
+  "IPO_MIN_FLIGHTS": 3,
+  "IPO_MIN_REP": 55,
+  "IPO_SHARES": 1000,
+  "JANITOR_HIRE": 3200,
+  "JANITOR_WAGE": 260,
+  "JETWAY_RANGE": 8,
+  "KITCHEN_COST": 7200,
+  "LAND": {
+    "city": {
+      "id": "city",
+      "name": "Riverside City plot",
+      "blurb": "Expensive land against the skyline. Passengers show up easier. Cargo is secondary.",
+      "cost": 95000,
+      "paxMult": 1.35,
+      "cargoMult": 0.7
+    },
+    "factory": {
+      "id": "factory",
+      "name": "Kiln Industrial plot",
+      "blurb": "Cheaper acres by the sheds. Cargo carriers love it. Passengers take more convincing.",
+      "cost": 62000,
+      "paxMult": 0.75,
+      "cargoMult": 1.4
+    }
+  },
+  "LAYOVER_BAN_FINE": 8000,
+  "LAYOVER_BAN_SECONDS": 90,
+  "LAYOVER_FEE_MAX": 14000,
+  "LAYOVER_FEE_MIN": 6000,
+  "LOADS_PER_BUY": 4,
+  "LOAN_FEE": 2800,
+  "LOAN_INTEREST": 1250,
+  "LOAN_INTEREST_EVERY": 55,
+  "LOAN_PRINCIPAL": 45000,
+  "MECHANIC_HIRE": 4500,
+  "MECHANIC_WAGE": 380,
+  "MIL_AGREE_COST": 18000,
+  "MIL_LANDING": 7800,
+  "MIL_RAMP_RANGE": 10,
+  "MIN_RUNWAY": 6,
+  "PARCEL_COST": 28000,
+  "PARK_EXPENSE": {
+    "park_s": {
+      "short": 160,
+      "long": 210
+    },
+    "park_l": {
+      "short": 280,
+      "long": 360
+    },
+    "park_g": {
+      "short": 420,
+      "long": 560
+    },
+    "park_u": {
+      "short": 340,
+      "long": 450
+    }
+  },
+  "PARK_G_COST": 22000,
+  "PARK_INCOME": {
+    "park_s": {
+      "short": 160,
+      "long": 210
+    },
+    "park_l": {
+      "short": 280,
+      "long": 360
+    },
+    "park_g": {
+      "short": 420,
+      "long": 560
+    },
+    "park_u": {
+      "short": 340,
+      "long": 450
+    }
+  },
+  "PARK_LONG_FEE": 58,
+  "PARK_L_COST": 14000,
+  "PARK_SHORT_FEE": 28,
+  "PARK_S_COST": 8500,
+  "PARK_USE_FEE": {
+    "park_s": {
+      "short": 24,
+      "long": 42
+    },
+    "park_l": {
+      "short": 36,
+      "long": 62
+    },
+    "park_g": {
+      "short": 48,
+      "long": 88
+    },
+    "park_u": {
+      "short": 40,
+      "long": 74
+    }
+  },
+  "PARK_U_COST": 18000,
+  "POLICE_COST": 11000,
+  "PREMADE_TERMINAL_COST": 52000,
+  "RAIL_CITY_COST": 22000,
+  "RAIL_EXPENSE": 260,
+  "RAIL_FARE": 22,
+  "RAIL_STATION_COST": 16000,
+  "RESEARCHER_HIRE": 4800,
+  "RESEARCHER_WAGE": 340,
+  "ROAD_COST": 450,
+  "RP_PER_50_PAX": 1,
+  "RP_PER_FLIGHT": 3,
+  "RP_RATE_BARE": 0.015,
+  "RP_RATE_BOARD": 0.05,
+  "RP_RATE_DESK": 0.09,
+  "RP_RATE_MACHINE": 0.12,
+  "RUNWAY_PREFAB_COST": 38000,
+  "RUNWAY_PREFAB_LEN": 14,
+  "RUNWAY_PREFAB_WID": 2,
+  "SHORT_RUNWAY_COST": 22000,
+  "SHORT_RUNWAY_LEN": 10,
+  "SHORT_RUNWAY_WID": 2,
+  "SNACK_COST": 3600,
+  "STANDING_LABEL": "Standing",
+  "STAND_COST": 6200,
+  "STAND_JETWAY_MULT": 1.85,
+  "STAND_L_COST": 9800,
+  "STAND_S_COST": 4800,
+  "STARTER_KIT_COST": 48000,
+  "START_CASH": {
+    "easy": 220000,
+    "standard": 150000
+  },
+  "TANKER_FEE": 6800,
+  "TANKER_MX_FEE": 9200,
+  "TAXI_COST": 700,
+  "TERMBUS_COST": 12500,
+  "TERMINAL_COST": 14800,
+  "THREAT_SCRAMBLE_COST": 2200,
+  "TOWER_COST": 18000
+}
