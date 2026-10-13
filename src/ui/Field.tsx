@@ -100,6 +100,14 @@ export function Field({ game }: { game: Game }) {
                 <span className="muted"> · </span>
                 {inspect.gate}
               </p>
+              <p className="muted inspect-next" style={{ marginTop: 2 }}>
+                Access{' '}
+                {inspect.gate.includes('JW')
+                  ? 'jetway'
+                  : inspect.gate.includes('bus')
+                    ? 'terminal bus'
+                    : 'apron walk'}
+              </p>
               <p className="inspect-activity">{inspect.activity}</p>
               <p className="muted inspect-next">{inspect.next}</p>
               {inspect.mx ? <p className="inspect-mx">{inspect.mx}</p> : null}

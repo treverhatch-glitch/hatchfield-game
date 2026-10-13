@@ -320,6 +320,10 @@ export class World {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}:${v}`)
       .join(';')
+    const accessHash = Object.entries(game.standAccess)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}:${v}`)
+      .join(';')
     const parkHash = Object.entries(game.parkTerms)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}:${v}`)
@@ -328,7 +332,7 @@ export class World {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}:${v}`)
       .join(';')
-    const hash = `${game.tiles.flat().join('')}|${classHash}|${parkHash}|${hotelHash}`
+    const hash = `${game.tiles.flat().join('')}|${classHash}|${accessHash}|${parkHash}|${hotelHash}`
     if (hash === this.tileHash) return
     this.tileHash = hash
     this.tilesGroup.clear()
@@ -369,6 +373,21 @@ export class World {
             badge.position.x += CELL * 0.28
             badge.position.z -= CELL * 0.28
             this.tilesGroup.add(badge)
+            if (game.standAccessAt({ c, r }) === 'jetway') {
+              const jw = new THREE.Mesh(
+                new THREE.BoxGeometry(CELL * 0.55, 0.35, CELL * 0.12),
+                new THREE.MeshStandardMaterial({
+                  color: '#7ec3e8',
+                  emissive: '#2a5570',
+                  emissiveIntensity: 0.2,
+                  roughness: 0.35,
+                }),
+              )
+              jw.position.copy(pos)
+              jw.position.y = 0.28
+              jw.position.z += CELL * 0.35
+              this.tilesGroup.add(jw)
+            }
           }
           continue
         }
@@ -593,6 +612,27 @@ export class World {
       )
       pole.position.set(CELL * 0.28, 1.1, CELL * 0.1)
       g.add(curb, shelter, pole)
+    } else if (tile === 'termbus') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
+        new THREE.MeshLambertMaterial({ color: '#2c3338' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.04
+      pad.receiveShadow = true
+      const shed = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.75, 1.8, CELL * 0.55),
+        new THREE.MeshStandardMaterial({ color: '#3d6a8a', roughness: 0.45 }),
+      )
+      shed.position.y = 0.95
+      shed.castShadow = true
+      const bus = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 0.7, CELL * 0.28),
+        new THREE.MeshStandardMaterial({ color: '#e8c56a', roughness: 0.4 }),
+      )
+      bus.position.set(0, 0.45, CELL * 0.28)
+      bus.castShadow = true
+      g.add(pad, shed, bus)
     } else if (tile === 'rail') {
       const pad = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
@@ -1183,7 +1223,9 @@ export class World {
               ? '#6b7280'
               : t.kind === 'deice'
                 ? '#4aa8c8'
-                : '#c45c26'
+                : t.kind === 'termbus'
+                  ? '#e8c56a'
+                  : '#c45c26'
         mesh = new THREE.Mesh(
           truckGeo,
           new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),

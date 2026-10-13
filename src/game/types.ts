@@ -25,6 +25,8 @@ export type Tile =
   | 'deice'
   | 'bus'
   | 'rail'
+  /** Apron terminal-bus depot — ferries remote-stand pax. */
+  | 'termbus'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -42,6 +44,13 @@ export type ParkTerm = 'short' | 'long'
 export type HotelClass = 'inn' | 'business' | 'resort'
 /** Stand size class — S regional / M narrow / L wide+freight+mil. */
 export type StandClass = 'S' | 'M' | 'L'
+/**
+ * Stand gate link — jetway stands are expensive and attach to a nearby hall.
+ * Remote stands use terminal buses (if built) or walking pax on the apron.
+ */
+export type StandAccess = 'remote' | 'jetway'
+/** How pax move between a stand and the terminal this turn. */
+export type StandPaxMode = 'jetway' | 'bus' | 'walk'
 
 export type Tool =
   | 'pan'
@@ -73,6 +82,7 @@ export type Tool =
   | 'park_u'
   | 'deice'
   | 'bus'
+  | 'term_bus'
   | 'rail'
   | 'clear'
 
@@ -498,10 +508,12 @@ export type TruckMission =
   | 'deice'
   | 'cater'
   | 'patrol'
+  | 'ferry_arr'
+  | 'ferry_dep'
 
 export interface Truck {
   id: string
-  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice'
+  kind: 'fuel' | 'bags' | 'catering' | 'fire' | 'police' | 'deice' | 'termbus'
   flightId: string | null
   x: number
   y: number
@@ -645,6 +657,8 @@ export interface GameSnapshot {
   hotelClass?: Record<string, HotelClass>
   /** Stand tile key "c,r" → S/M/L class. */
   standClass?: Record<string, StandClass>
+  /** Stand tile key "c,r" → remote hardstand vs jetway gate. */
+  standAccess?: Record<string, StandAccess>
   janitors?: number
   researchers?: number
   deskStaff?: number

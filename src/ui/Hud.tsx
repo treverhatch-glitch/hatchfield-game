@@ -23,6 +23,8 @@ import {
   PARCEL_COST,
   parkTermLabel,
   personaBlurb,
+  STAND_JETWAY_MULT,
+  standAccessLabel,
   PREMADE_TERMINAL_COST,
   RAIL_CITY_COST,
   HEAT_ABANDON_THRESHOLD,
@@ -65,7 +67,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal'],
+    tools: ['premade', 'terminal', 'term_bus'],
   },
   {
     id: 'ops',
@@ -1275,6 +1277,26 @@ export function Hud({ game }: { game: Game }) {
                         onClick={() => game.setParkTerm('long')}
                       >
                         {parkTermLabel('long')}
+                      </button>
+                    </>
+                  ) : null}
+                  {buildMenu === 'stands' ? (
+                    <>
+                      <button
+                        type="button"
+                        className={game.standAccessMode === 'remote' ? 'on' : ''}
+                        onClick={() => game.setStandAccessMode('remote')}
+                        title="Cheaper bay — terminal bus or walking pax"
+                      >
+                        {standAccessLabel('remote')}
+                      </button>
+                      <button
+                        type="button"
+                        className={game.standAccessMode === 'jetway' ? 'on' : ''}
+                        onClick={() => game.setStandAccessMode('jetway')}
+                        title={`Pre-attached gate · ×${STAND_JETWAY_MULT} cost · fast board, no apron walk`}
+                      >
+                        {standAccessLabel('jetway')} · ×{STAND_JETWAY_MULT}
                       </button>
                     </>
                   ) : null}
