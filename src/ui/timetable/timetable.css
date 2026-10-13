@@ -1,0 +1,342 @@
+/* Timetable dock — collapsed pill by default, never wider than ~half the screen. */
+.tt-root {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  z-index: 22;
+  pointer-events: none;
+  font-size: 11px;
+  color: #e2e8f0;
+}
+.tt-root > * {
+  pointer-events: auto;
+}
+.tt-root button {
+  font: inherit;
+  color: inherit;
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 6px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.tt-root button.on {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #38bdf8;
+}
+.tt-pill {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  height: 28px;
+  background: rgb(15 23 42 / 0.82) !important;
+  backdrop-filter: blur(8px);
+  border-radius: 14px !important;
+  padding: 0 12px !important;
+  white-space: nowrap;
+}
+.tt-pill span {
+  opacity: 0.75;
+}
+.tt-dock {
+  position: relative;
+  width: min(760px, 52vw);
+  max-height: 34vh;
+  margin-bottom: 52px;
+  display: flex;
+  flex-direction: column;
+  background: rgb(15 23 42 / 0.86);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.tt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+.tt-tabs,
+.tt-zoom {
+  display: flex;
+  gap: 3px;
+}
+.tt-clock {
+  margin-left: auto;
+  opacity: 0.8;
+}
+.tt-clock em {
+  color: #7dd3fc;
+  font-style: normal;
+}
+.tt-hint {
+  margin: 0;
+  padding: 3px 8px;
+  background: rgb(56 189 248 / 0.15);
+}
+.tt-body {
+  overflow: auto;
+  padding: 4px 8px 8px;
+}
+.tt-empty {
+  opacity: 0.6;
+}
+.tt-group h4 {
+  margin: 6px 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+.tt-row {
+  display: flex;
+  align-items: stretch;
+  height: 20px;
+  margin: 2px 0;
+}
+.tt-row-axis {
+  height: 14px;
+}
+.tt-label {
+  width: 64px;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+  line-height: 20px;
+}
+.tt-lane {
+  position: relative;
+  flex: 1;
+  background: rgb(255 255 255 / 0.03);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tt-lane-tall {
+  height: 56px;
+}
+.tt-row-rw {
+  height: 34px;
+}
+.tt-row-rw .tt-label small {
+  opacity: 0.6;
+}
+.tt-row-total {
+  border-top: 1px solid rgb(255 255 255 / 0.12);
+  padding-top: 2px;
+}
+.tt-lane-hist .tt-tick {
+  top: auto;
+  bottom: 1px;
+  height: 7px;
+  z-index: 2;
+}
+.tt-bar .tt-rw {
+  opacity: 0.75;
+  font-size: 9px;
+}
+.tt-axis span,
+.tt-axis-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 9px;
+  opacity: 0.6;
+}
+.tt-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f97316;
+  z-index: 3;
+}
+.tt-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(45deg, rgb(56 189 248 / 0.25) 0 4px, rgb(56 189 248 / 0.1) 4px 8px);
+  border-left: 1px dashed #38bdf8;
+  border-right: 1px dashed #38bdf8;
+}
+.tt-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: color-mix(in srgb, var(--al) 70%, #0f172a);
+  border-left: 3px solid var(--al);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  z-index: 2;
+}
+.tt-bar[data-movable='1'] {
+  cursor: grab;
+}
+.tt-bar[data-sel='1'] {
+  outline: 2px solid #fff;
+}
+.tt-bar[data-conflict='1'] {
+  box-shadow: inset 0 0 0 2px #ef4444;
+}
+.tt-bar em {
+  font-style: normal;
+  color: #fde68a;
+}
+.tt-bucket {
+  position: absolute !important;
+  top: 0;
+  bottom: 0;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border-width: 0 1px 0 0 !important;
+  background: transparent !important;
+}
+.tt-bucket i {
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 0;
+}
+.tt-bucket .arr {
+  background: #38bdf8;
+}
+.tt-bucket .dep {
+  background: #a78bfa;
+}
+.tt-bucket .cap {
+  height: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #fbbf24;
+}
+.tt-bucket[data-over='1'] {
+  background: rgb(239 68 68 / 0.18) !important;
+}
+.tt-tick {
+  position: absolute !important;
+  top: 3px;
+  bottom: 3px;
+  width: 6px;
+  padding: 0 !important;
+  transform: translateX(-50%);
+  background: var(--al) !important;
+}
+.tt-tick[data-dir='dep'] {
+  border-radius: 6px !important;
+}
+.tt-tick[data-sel='1'] {
+  outline: 2px solid #fff;
+}
+.tt-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.tt-board table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.tt-board caption {
+  text-align: left;
+  font-weight: 600;
+  color: #fbbf24;
+  padding-bottom: 2px;
+}
+.tt-board th {
+  text-align: left;
+  font-weight: 500;
+  opacity: 0.6;
+}
+.tt-board td,
+.tt-board th {
+  padding: 1px 4px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+}
+.tt-board tr[data-sel='1'] td {
+  background: rgb(56 189 248 / 0.18);
+}
+.tt-board tbody tr {
+  cursor: pointer;
+}
+.late {
+  color: #fca5a5;
+}
+.tt-root .muted {
+  opacity: 0.6;
+}
+.tt-card {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 0;
+  width: 240px;
+  background: rgb(15 23 42 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 10px;
+  padding: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.tt-card-inline {
+  position: static;
+  width: auto;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tt-card header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.tt-card header button {
+  margin-left: auto;
+}
+.tt-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 6px 0;
+}
+.tt-card dt {
+  opacity: 0.6;
+}
+.tt-card dd {
+  margin: 0;
+}
+.tt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  margin-top: 4px;
+}
+.tt-root button.danger {
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+.tt-card p {
+  margin: 4px 0 0;
+}
+@media (max-width: 900px) {
+  .tt-dock {
+    width: calc(100vw - 16px);
+  }
+  .tt-card {
+    left: auto;
+    right: 0;
+    bottom: calc(100% + 6px);
+  }
+}

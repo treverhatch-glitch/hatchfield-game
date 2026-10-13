@@ -17,11 +17,15 @@ import {
   terminals,
 } from './layout'
 import { posesFrom, HallCrowd } from './hallCrowd'
+import { actorsFrom, bubbleFor } from './guestActors'
+import { GuestMotion } from './guestMotion'
 import { fitShadow, groundFocus } from './lod'
+import { onPackReady, packArtEnabled, packImage, packTexture, setPackArt, shopLogoPaths, signIconPaths } from './packArt'
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
 import { paintGeometry, quadsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
-import { disposeTerminalShared, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
+import { createCrowd, type Crowd } from '../people/crowd'
+import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
 
@@ -98,6 +102,12 @@ export class WorldRenderer {
   private frame = 0
   private lastShadowKey = ''
   private hallCrowd: HallCrowd | null = null
+  private people: Crowd | null = null
+  private motion: GuestMotion | null = null
+  private thoughtSig = new Map<string, string>()
+  private packUnsub: (() => void) | null = null
+  private packSigns = new THREE.Group()
+  private packSignRev = -2
   /** Per-frame scratch, so `update` allocates nothing. */
   private camPos = new THREE.Vector3()
   private camDir = new THREE.Vector3()
@@ -109,7 +119,9 @@ export class WorldRenderer {
     this.quality = quality
     this.q = QUALITY[quality]
     this.root.name = 'world-render'
+    this.packSigns.name = 'pack-signs'
     this.root.add(this.staticGroup)
+    this.root.add(this.packSigns)
 
     const found = { dir: opts.sun ?? null, hemi: null as THREE.HemisphereLight | null, amb: null as THREE.AmbientLight | null }
     for (const o of scene.children) {
@@ -351,7 +363,8 @@ export class WorldRenderer {
 
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, s.lights, focus)
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
-    this.hallCrowd?.sync(showGuests ? posesFrom(view) : [], this.time)
+    this.syncGuests(view, camera, step, showGuests, lite)
+    this.syncPack(view, lite)
     this.lights.update(step, s.lights, weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25, camDist)
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
@@ -409,7 +422,175 @@ export class WorldRenderer {
     }
   }
 
+  /** Animated people when the preset allows it; otherwise the cheap hall instances. */
+  private syncGuests(view: WorldView, camera: THREE.Camera, step: number, showGuests: boolean, lite: boolean) {
+    const rich = showGuests && !lite && this.q.animatedPeople
+    if (!rich) {
+      this.people?.update([], step)
+      this.hallCrowd?.sync(showGuests ? posesFrom(view) : [], this.time)
+      if (!this.q.thoughtBubbles || lite) this.clearThoughts()
+      return
+    }
+    const actors = actorsFrom(view).slice(0, 480)
+    let placed = actors
+    if (this.q.crowdDetail && actors.length > 1) {
+      this.motion ??= new GuestMotion()
+      const doors = this.buildings.flatMap((b) =>
+        b.rooms.doors
+          .filter((d) => d.kind !== 'staff')
+          .map((d) => {
+            const hx = d.axis === 'x' ? d.width / 2 : 0
+            const hz = d.axis === 'z' ? d.width / 2 : 0
+            return { id: `${b.root.id}:${d.a}-${d.b}`, ax: d.x - hx, az: d.z - hz, bx: d.x + hx, bz: d.z + hz }
+          }),
+      )
+      const moved = this.motion.apply(
+        actors.map((a) => ({ id: a.id, x: a.x, z: a.z, yaw: a.yaw, queued: a.queued })),
+        doors,
+        step,
+      )
+      const byId = new Map(moved.map((p) => [p.id, p]))
+      placed = actors.map((a) => {
+        const p = byId.get(a.id)
+        return p ? { ...a, x: p.x, z: p.z } : a
+      })
+    }
+    this.people ??= createCrowd(this.root, { camera, capacity: 480, lod: [40, 110], cull: 220, frustum: false })
+    this.people.setCamera(camera)
+    this.hallCrowd?.sync([], this.time)
+    this.people.update(
+      placed.map((a) => ({
+        id: a.id,
+        role: a.role,
+        pos: { x: a.x, y: FLOOR_Y, z: a.z },
+        heading: a.yaw,
+        state: a.state,
+        bagIds: a.hasChecked && !a.bagsDropped ? [a.id] : [],
+        bagsDropped: a.bagsDropped,
+        speed: 1.25,
+      })),
+      step,
+    )
+    this.syncThoughts(placed, !lite && this.q.thoughtBubbles)
+  }
+
+  private syncThoughts(actors: readonly { id: string; x: number; z: number; thought: string }[], on: boolean) {
+    if (!this.people) return
+    if (!on) {
+      this.clearThoughts()
+      return
+    }
+    const picks = actors
+      .map((a) => ({ a, b: bubbleFor(a.thought) }))
+      .filter((row): row is { a: (typeof actors)[number]; b: NonNullable<ReturnType<typeof bubbleFor>> } => row.b != null)
+      .sort((p, q) => p.b.rank - q.b.rank)
+      .slice(0, 6)
+    const keep = new Set(picks.map((p) => p.a.id))
+    for (const id of this.thoughtSig.keys()) {
+      if (!keep.has(id)) {
+        this.people.hideThought(id)
+        this.thoughtSig.delete(id)
+      }
+    }
+    for (const { a, b } of picks) {
+      const img = b.image ? packImage(b.image) : null
+      const sig = `${b.text}|${img ? 'img' : 'emo'}`
+      if (this.thoughtSig.get(a.id) === sig) continue
+      this.thoughtSig.set(a.id, sig)
+      this.people.showThought(a.id, { icon: b.icon, text: b.text, duration: 8, image: img })
+    }
+  }
+
+  private clearThoughts() {
+    if (!this.people) {
+      this.thoughtSig.clear()
+      return
+    }
+    for (const id of this.thoughtSig.keys()) this.people.hideThought(id)
+    this.thoughtSig.clear()
+  }
+
+  private syncPack(view: WorldView, lite: boolean) {
+    const on = this.q.extraTextures && !lite
+    setPackArt(on)
+    if (!on || !packArtEnabled()) return
+    if (!this.packUnsub) this.packUnsub = onPackReady(() => this.applyPack())
+    if (packTexture('grass') && this.packSignRev !== view.mapRev) this.applyPack()
+  }
+
+  private applyPack() {
+    if (!this.q.extraTextures || !packTexture('grass')) return
+    const set = (kind: SurfaceKind, name: string) => {
+      const tex = packTexture(name)
+      const mat = this.surfaceMats.get(kind)
+      if (!tex || !mat) return
+      mat.map = tex
+      mat.needsUpdate = true
+    }
+    set('grass', 'grass')
+    set('runway', 'runway')
+    set('taxi', 'tarmac')
+    set('apron', 'concrete_apron')
+    set('road', 'tarmac')
+    set('pad', 'concrete_apron')
+    const floor = packTexture('terrazzo')
+    const glass = packTexture('terminal_glass')
+    for (const b of this.buildings) b.applyPackMaps(floor, glass)
+    this.dressSigns()
+    this.packSignRev = this.builtRev
+  }
+
+  private dressSigns() {
+    this.clearPackSigns()
+    const icons = signIconPaths()
+    const logos = shopLogoPaths()
+    const kindIcon: Record<string, string> = {
+      checkin: icons.checkin,
+      security: icons.security,
+      gate: icons.gates,
+      shops: icons.shops,
+      airside: icons.baggage_reclaim,
+    }
+    let shops = 0
+    for (const b of this.buildings) {
+      for (const room of b.rooms.rooms) {
+        const icon = packImage(kindIcon[room.kind] ?? '')
+        if (icon) this.packSigns.add(decalSprite(icon, room.x, FLOOR_Y + 3.2, room.z, 1.15))
+        if (room.kind === 'shops') {
+          const logo = packImage(logos[shops % logos.length] ?? '')
+          shops += 1
+          if (logo) this.packSigns.add(decalSprite(logo, room.x + 1.4, FLOOR_Y + 2.4, room.z, 1.4))
+          const carpet = packTexture('carpet')
+          if (carpet) {
+            const geo = new THREE.PlaneGeometry(5, 3.5)
+            geo.rotateX(-Math.PI / 2)
+            const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: carpet }))
+            mesh.position.set(room.x, FLOOR_Y + 0.03, room.z)
+            mesh.name = 'shop-carpet'
+            this.packSigns.add(mesh)
+          }
+        }
+      }
+    }
+  }
+
+  private clearPackSigns() {
+    this.packSigns.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      mesh.geometry?.dispose()
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) for (const m of mat) m.dispose()
+      else mat?.dispose()
+    })
+    this.packSigns.clear()
+  }
+
   private disposeContent() {
+    this.people?.dispose()
+    this.people = null
+    this.clearThoughts()
+    this.clearPackSigns()
+    this.packSignRev = -2
     this.hallCrowd?.dispose()
     this.hallCrowd = null
     for (const b of this.buildings) b.dispose()
@@ -444,4 +625,14 @@ export class WorldRenderer {
     this.scene.fog = this.prevFog
     this.scene.background = this.prevBackground
   }
+}
+
+function decalSprite(img: HTMLImageElement, x: number, y: number, z: number, size: number): THREE.Sprite {
+  const map = new THREE.Texture(img)
+  map.colorSpace = THREE.SRGBColorSpace
+  map.needsUpdate = true
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false }))
+  sprite.position.set(x, y, z)
+  sprite.scale.set(size, size, 1)
+  return sprite
 }
