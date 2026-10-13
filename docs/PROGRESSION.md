@@ -14,7 +14,8 @@ At New Game (after difficulty), pick a **focus**:
 | **Cargo** | Factory | Shed + cargo stand + truck gate stub | UPPS / night bank |
 | **Hybrid** | Either | Lean pax + lean cargo | Whichever meets req first |
 
-Focus biases offer weights; it does **not** lock the other path. Field XP from both. Live today: city vs factory plots only — explicit focus UI is next ([NEXT](./NEXT.md)).
+Focus biases offer weights; it does **not** lock the other path. Field XP from both.  
+**Live:** Land screen picks Passengers / Cargo / Hybrid (sets plot + `startFocus`); Starter kit matches; volume letters for cargo carriers.
 
 ## How players see & interact with airlines (live)
 

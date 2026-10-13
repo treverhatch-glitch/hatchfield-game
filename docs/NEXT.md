@@ -12,7 +12,8 @@ Ordered plan. Ship top-down. **Active build board:** [BUILD.md](./BUILD.md) · [
 - [x] **Slice 1 (BUILD):** bag units + premade ceilings + layover through-bags  
 - [x] **Slice 1b:** full bag journey + claim scheduling  
 - [x] **Slice 2:** guard post + city cargo trucks → shed + warehouse stock  
-- [ ] **Slice 3:** cargo start focus + volume letters — **NEXT TO CODE**  
+- [x] **Slice 3:** cargo start focus + volume letters + warehouse HUD  
+- [ ] **Slice 4:** fuel bowser capacity / farm refill — **NEXT TO CODE**  
 - [ ] Coach / Economy discoverability — Starter kit harder to miss  
 
 ## Wave map (summary)

@@ -95,6 +95,8 @@ export type Tool =
 export type Speed = 0 | 1 | 3 | 5
 export type Difficulty = 'easy' | 'standard'
 export type SiteKind = 'city' | 'factory'
+/** New Game campaign bias — does not hard-lock the other path. */
+export type StartFocus = 'pax' | 'cargo' | 'hybrid'
 export type FuelBrand = 'apex' | 'kiln'
 export type CaterBrand = 'skybite' | 'galleyprime'
 /** Premade ids or `proc-xxxx` regional fillers. */
@@ -386,6 +388,19 @@ export interface FieldTask {
   blurb: string
   bonus: number
   /** Sim clock when the ask expires. */
+  deadline: number
+  age: number
+}
+
+/** Cargo volume window — stage intake units before the clock dies. */
+export interface CargoVolumeJob {
+  id: string
+  airline: AirlineId
+  /** Units that must clear city intake (warehouse deliveries). */
+  targetUnits: number
+  delivered: number
+  fee: number
+  /** Absolute sim clock deadline. */
   deadline: number
   age: number
 }
@@ -761,4 +776,5 @@ export interface GameSnapshot {
   fieldTask?: FieldTask | null
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
+  startFocus?: StartFocus
 }

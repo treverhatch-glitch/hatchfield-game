@@ -10,6 +10,10 @@ import {
   CLEANING_FEE,
   CARGO_INTAKE_FEE,
   CARGO_WAREHOUSE_CAP,
+  CARGO_VOLUME_COOL,
+  CARGO_VOLUME_FAIL_FINE,
+  CARGO_VOLUME_FEE_MAX,
+  CARGO_VOLUME_FEE_MIN,
   createProcAirline,
   DEFAULT_BUDGETS,
   DEICE_FEE,
@@ -187,6 +191,7 @@ import type {
   BagFlowStage,
   BudgetKey,
   Budgets,
+  CargoVolumeJob,
   CaterBrand,
   ContractOffer,
   Difficulty,
@@ -216,6 +221,7 @@ import type {
   ScheduleStatus,
   SiteKind,
   Speed,
+  StartFocus,
   StandAccess,
   StandClass,
   StandPaxMode,
@@ -430,6 +436,11 @@ export class Game {
   cargoWarehouse = 0
   /** Cooldown between city cargo truck spawns. */
   cityCargoCool = 8
+  /** New Game focus — biases starter kit + early letters. */
+  startFocus: StartFocus = 'pax'
+  /** Active cargo volume window letter. */
+  cargoVolume: CargoVolumeJob | null = null
+  cargoVolumeCool = 40
   interestCool = 60
   public = false
   sharePrice = 0
@@ -553,6 +564,9 @@ export class Game {
     this.congPeak = 0
     this.cargoWarehouse = 0
     this.cityCargoCool = 8
+    this.startFocus = 'pax'
+    this.cargoVolume = null
+    this.cargoVolumeCool = 40
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
@@ -662,27 +676,60 @@ export class Game {
         !['gone', 'takeoff'].includes(f.phase),
     )
     const turned = this.flightsDone >= 1
+    const cargoFocus = this.startFocus === 'cargo'
+    const hasGuard = tilesOf(this.tiles, 'guard').length > 0
+    const hasShed = tilesOf(this.tiles, 'cargo').length > 0
     return [
       {
         id: 'field',
         label: fieldUp
-          ? 'Field stamped (strip + stand)'
-          : 'Stamp Starter kit (or your own strip + stand)',
+          ? cargoFocus
+            ? 'Cargo field stamped (strip + stand)'
+            : 'Field stamped (strip + stand)'
+          : cargoFocus
+            ? 'Stamp Cargo starter kit (shed + guard + stand)'
+            : 'Stamp Starter kit (or your own strip + stand)',
         done: fieldUp,
       },
+      ...(cargoFocus
+        ? [
+            {
+              id: 'pipeline',
+              label:
+                hasGuard && hasShed
+                  ? 'Guard → shed pipeline live'
+                  : 'Need guard post + cargo shed on the road',
+              done: hasGuard && hasShed,
+            },
+          ]
+        : []),
       {
         id: 'sign',
-        label: signed ? `Signed ${this.signed.length} airline(s)` : 'Sign an airline when they call',
+        label: signed
+          ? `Signed ${this.signed.length} airline(s)`
+          : cargoFocus
+            ? 'Sign UPPS / cargo when they call'
+            : 'Sign an airline when they call',
         done: signed,
       },
       {
         id: 'inbound',
-        label: inbound || turned ? 'Jet on the field' : 'Wait for the first inbound (try 3x)',
+        label: inbound || turned
+          ? cargoFocus
+            ? 'Freighter on the field'
+            : 'Jet on the field'
+          : cargoFocus
+            ? 'Wait for the first freighter (try 3x)'
+            : 'Wait for the first inbound (try 3x)',
         done: inbound || turned,
       },
       {
         id: 'turn',
-        label: turned ? 'First takeoff in the book' : 'Turn a flight — trucks + pax, then airborne',
+        label: turned
+          ? 'First takeoff in the book'
+          : cargoFocus
+            ? 'Uplift freight — warehouse → freighter → airborne'
+            : 'Turn a flight — trucks + pax, then airborne',
         done: turned,
       },
     ]
@@ -809,6 +856,88 @@ export class Game {
   fieldTaskLeft(): number {
     if (!this.fieldTask) return 0
     return Math.max(0, this.fieldTask.deadline - this.clock)
+  }
+
+  cargoVolumeLeft(): number {
+    if (!this.cargoVolume) return 0
+    return Math.max(0, this.cargoVolume.deadline - this.clock)
+  }
+
+  creditCargoVolume(units: number) {
+    if (!this.cargoVolume || units <= 0) return
+    this.cargoVolume.delivered += units
+    if (this.cargoVolume.delivered >= this.cargoVolume.targetUnits) {
+      const j = this.cargoVolume
+      const a = this.airline(j.airline)
+      this.earn(j.fee, `${a.name} volume window`)
+      this.adjustHeat(j.airline, 6)
+      this.grantFieldXp(10 + Math.round(j.targetUnits / 12), 'cargo volume')
+      this.pushNews(
+        `${a.name} volume clear — ${j.delivered}/${j.targetUnits}u. +${moneyLeft(j.fee)} · On-time up.`,
+        'good',
+      )
+      this.cargoVolume = null
+      this.cargoVolumeCool = CARGO_VOLUME_COOL
+      this.emit()
+    }
+  }
+
+  considerCargoVolume() {
+    if (this.cargoVolume || this.cargoVolumeCool > 0) return
+    if (!tilesOf(this.tiles, 'cargo').length || !tilesOf(this.tiles, 'guard').length) return
+    const pool = this.signed.filter(
+      (id) => this.airline(id).kind === 'cargo' && !this.isBanned(id),
+    )
+    if (!pool.length) return
+    // Cargo / hybrid starts get volume asks earlier.
+    if (this.startFocus === 'pax' && this.flightsDone < 2 && Math.random() > 0.35) return
+    const airline = pick(pool)
+    const a = this.airline(airline)
+    const target =
+      this.startFocus === 'cargo'
+        ? 48 + Math.floor(Math.random() * 36)
+        : 36 + Math.floor(Math.random() * 28)
+    const fee = Math.round(
+      CARGO_VOLUME_FEE_MIN +
+        Math.random() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN),
+    )
+    const window = 55 + Math.random() * 35
+    this.cargoVolume = {
+      id: uid('vol'),
+      airline,
+      targetUnits: target,
+      delivered: 0,
+      fee,
+      deadline: this.clock + window,
+      age: 0,
+    }
+    this.pushNews(
+      `${a.name} volume window — stage ${target}u through the shed in ~${Math.round(window)}s for ${moneyLeft(fee)}.`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  tickCargoVolume(dt: number) {
+    this.cargoVolumeCool = Math.max(0, this.cargoVolumeCool - dt)
+    if (!this.cargoVolume) {
+      this.considerCargoVolume()
+      return
+    }
+    this.cargoVolume.age += dt
+    if (this.clock >= this.cargoVolume.deadline) {
+      const j = this.cargoVolume
+      const a = this.airline(j.airline)
+      this.charge(CARGO_VOLUME_FAIL_FINE)
+      this.adjustHeat(j.airline, -5)
+      this.pushNews(
+        `${a.name} volume missed — ${j.delivered}/${j.targetUnits}u. Fine ${moneyLeft(CARGO_VOLUME_FAIL_FINE)} · On-time dips.`,
+        'bad',
+      )
+      this.cargoVolume = null
+      this.cargoVolumeCool = CARGO_VOLUME_COOL + 20
+      this.emit()
+    }
   }
 
   noteCraft(kind: AircraftKind) {
@@ -1413,8 +1542,14 @@ export class Game {
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    const focusBit =
+      this.startFocus === 'cargo'
+        ? 'Cargo focus — Starter kit builds shed + guard, no hall.'
+        : this.startFocus === 'hybrid'
+          ? 'Hybrid focus — hall + freight road.'
+          : 'Passenger focus — Northline-ready hall kit.'
     this.pushNews(
-      `${land.name} purchased. ${moneyLeft(this.cash)} left. Stamp pieces, or hit Starter kit ($${STARTER_KIT_COST.toLocaleString()}) for a Northline-ready field.`,
+      `${land.name} purchased. ${focusBit} ${moneyLeft(this.cash)} left. Stamp Starter kit ($${STARTER_KIT_COST.toLocaleString()}) or build freehand.`,
       'ok',
     )
     this.bumpMap()
@@ -1428,7 +1563,7 @@ export class Game {
     for (let r = 0; r < 3; r++) this.tiles[r][Math.floor(SIZE / 2)] = 'road'
   }
 
-  /** One-click AT3 regional field that meets Northline’s checklist. */
+  /** One-click AT3 field — flavor follows startFocus (pax / cargo / hybrid). */
   buildStarterKit() {
     if (!this.site) {
       this.pushNews('Buy land first.', 'bad')
@@ -1439,6 +1574,11 @@ export class Game {
       return
     }
     if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
+
+    if (this.startFocus === 'cargo') {
+      this.buildCargoStarterKit()
+      return
+    }
 
     this.facing = 'h'
     for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
@@ -1514,7 +1654,55 @@ export class Game {
     this.emergencyCool = 120
     this.threatCool = 90
     this.pushNews(
-      'Starter kit down — guard post + cargo shed on the city road, lounge, mechanic + desk. Northline should call.',
+      this.startFocus === 'hybrid'
+        ? 'Hybrid kit down — hall + guard/cargo road. Day pax, night freight.'
+        : 'Starter kit down — guard post + cargo shed on the city road, lounge, mechanic + desk. Northline should call.',
+      'good',
+    )
+    this.bumpMap()
+    this.persist()
+    this.emit()
+  }
+
+  /** Cargo-first kit — freighter ready, no pax hall required. */
+  private buildCargoStarterKit() {
+    this.facing = 'h'
+    for (const p of this.prefabRunway({ c: 8, r: 24 })) this.tiles[p.r][p.c] = 'runway'
+    for (let c = 8; c <= 20; c++) this.tiles[23][c] = 'taxi'
+    for (let c = 8; c <= 20; c++) this.tiles[22][c] = 'taxi'
+    this.tiles[21][8] = 'fuel'
+    this.tiles[20][8] = 'fire'
+    this.tiles[20][10] = 'police'
+    this.tiles[19][12] = 'tower'
+    const roadC = 14
+    for (let r = 0; r <= 21; r++) this.tiles[r][roadC] = 'road'
+    this.tiles[3][roadC] = 'guard'
+    this.tiles[12][roadC + 1] = 'road'
+    this.tiles[12][roadC + 2] = 'cargo'
+    for (let r = 13; r <= 21; r++) this.tiles[r][roadC + 2] = 'taxi'
+    this.tiles[21][roadC + 2] = 'stand'
+    this.tiles[21][16] = 'stand'
+    this.standClass[`${roadC + 2},21`] = 'L'
+    this.standClass['16,21'] = 'M'
+    this.standAccess[`${roadC + 2},21`] = 'remote'
+    this.standAccess['16,21'] = 'remote'
+    this.tiles[22][roadC + 2] = 'taxi'
+    this.tiles[22][16] = 'taxi'
+    this.fits = []
+    this.fuelBrand = 'apex'
+    this.fuelLoads = 5
+    this.caterBrand = null
+    this.mechanics = 1
+    this.spawnMechanicPawn()
+    this.deskStaff = 0
+    this.hallStaff = []
+    this.offerCool = 2
+    this.spawnCool = 5
+    this.emergencyCool = 140
+    this.threatCool = 100
+    this.cargoVolumeCool = 18
+    this.pushNews(
+      'Cargo kit down — strip, freighter stand, guard → shed pipeline. No pax hall. UPPS should call.',
       'good',
     )
     this.bumpMap()
@@ -2387,6 +2575,7 @@ export class Game {
       coachDismissed: this.coachDismissed,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
+      startFocus: this.startFocus,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -2500,6 +2689,9 @@ export class Game {
       this.schedulePlanCool = 6
       this.cargoWarehouse = s.cargoWarehouse ?? 0
       this.cityCargoCool = 6
+      this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
+      this.cargoVolume = null
+      this.cargoVolumeCool = 25
       this.mission = null
       this.mxOffer = null
       this.pendingThreat = null
@@ -2951,6 +3143,7 @@ export class Game {
           Math.round(CARGO_INTAKE_FEE * (0.7 + accepted / 28)),
           `City cargo intake (${accepted}u)`,
         )
+        this.creditCargoVolume(accepted)
       }
       if (accepted < units) {
         this.pushNews(
@@ -3836,22 +4029,40 @@ export class Game {
       if (a.procedural && procSigned >= 3) return false
       if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
-      if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) return false
-      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) return false
+      // Start focus biases early letters (never hard-locks the other path).
+      if (this.startFocus === 'cargo' && a.kind !== 'cargo' && this.signed.length < 1) {
+        return false
+      }
+      if (this.startFocus === 'pax' && a.kind === 'cargo' && this.signed.length < 1) {
+        return Math.random() < 0.12
+      }
+      if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) {
+        if (this.startFocus !== 'cargo' && this.startFocus !== 'hybrid') return false
+      }
+      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) {
+        if (this.startFocus === 'cargo') return false
+      }
       return true
     })
     if (!candidates.length) return
     // Prefer lower tier first, then cheaper landing; sprinkle procs after one major.
     candidates.sort((a, b) => {
+      if (this.startFocus === 'cargo' || this.startFocus === 'hybrid') {
+        if (a.kind === 'cargo' && b.kind !== 'cargo') return -1
+        if (b.kind === 'cargo' && a.kind !== 'cargo') return 1
+      }
       if (a.tier !== b.tier) return a.tier - b.tier
       if (Boolean(a.procedural) !== Boolean(b.procedural)) return a.procedural ? 1 : -1
       return a.landing - b.landing
     })
     const procs = candidates.filter((c) => c.procedural)
+    const cargoFirst = candidates.filter((c) => c.kind === 'cargo')
     const pickA =
-      this.signed.length >= 1 && procs.length && Math.random() < 0.4
-        ? pick(procs)
-        : candidates[0]
+      this.startFocus === 'cargo' && cargoFirst.length && this.signed.length < 2
+        ? cargoFirst[0]
+        : this.signed.length >= 1 && procs.length && Math.random() < 0.4
+          ? pick(procs)
+          : candidates[0]
     this.offer = { airline: pickA.id, age: 0, deadline: 36 }
     const tag = pickA.procedural ? ' (regional)' : ''
     this.pushNews(
@@ -8650,6 +8861,7 @@ export class Game {
     }
     this.considerMxOffers()
     this.tickFieldTask(step)
+    this.tickCargoVolume(step)
     this.tickLayover(step)
     this.tickHub(step)
     this.tickParking(step)
