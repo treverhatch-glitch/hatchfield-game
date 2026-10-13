@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, icaoForAirframe, TOWER_HOLD, TOWER_PULL } from './gameAdapter'
-import { boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets } from './layout'
+import { boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf } from './layout'
 import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
 
 describe('clock face', () => {
@@ -162,5 +162,108 @@ describe('contracts adapter', () => {
     a.moveTo('r1:arr', 10)
     expect(applied).toEqual(['m1', 40])
     expect(a.caps.swap).toBe(false)
+  })
+})
+
+describe('multiple runways', () => {
+  const setup = (strips = 3) => {
+    const f = makeFakeGame({ clock: 100, strips })
+    f.addStand(4, 4, 'M')
+    f.slot('s1', 'sky', 110, { runwayPref: 0 })
+    f.slot('s2', 'pink', 112, { runwayPref: 1 })
+    f.slot('s3', 'sky', 114, { runwayPref: 1 })
+    f.slot('s4', 'pink', 116, { runwayPref: null })
+    return { ...f, a: gameScheduleAdapter(f.game) }
+  }
+
+  it('lists one runway per strip with its own capacity', () => {
+    const { a } = setup(3)
+    const rw = a.runways()
+    expect(rw.map((r) => r.label)).toEqual(['RW1', 'RW2', 'RW3'])
+    expect(rw.map((r) => r.id)).toEqual(['rw0', 'rw1', 'rw2'])
+    expect(rw.every((r) => r.hourlyCap > 0)).toBe(true)
+  })
+
+  it('stamps runway from scheduleForRunway onto arr + dep rows', () => {
+    const { a } = setup()
+    const rows = a.flights()
+    expect(rows.find((r) => r.id === 's2:arr')!.runwayId).toBe('rw1')
+    expect(rows.find((r) => r.id === 's2:dep')!.runwayId).toBe('rw1')
+    expect(rows.find((r) => r.id === 's4:arr')!.runwayId).toBeNull()
+  })
+
+  it('builds per-runway lanes, an Auto lane and a combined total', () => {
+    const { a } = setup(3)
+    const { lanes, total } = runwayLanes(a.flights(), a.runways(), { from: 97.5, to: 240 }, 180)
+    expect(lanes.map((l) => l.label)).toEqual(['RW1', 'RW2', 'RW3', 'Auto'])
+    const count = (id: string) => lanes.find((l) => l.id === id)!.buckets.reduce((s, b) => s + b.arr + b.dep, 0)
+    expect(count('rw0')).toBe(2)
+    expect(count('rw1')).toBe(4)
+    expect(count('rw2')).toBe(0)
+    expect(count('auto')).toBe(2)
+    expect(total.buckets.reduce((s, b) => s + b.arr + b.dep, 0)).toBe(8)
+    expect(total.cap).toBe(a.runways().reduce((s, r) => s + r.hourlyCap, 0))
+    expect(lanes[0].cap).toBe(a.runways()[0].hourlyCap)
+  })
+
+  it('flags a single runway over its own cap even when the total is fine', () => {
+    const { a, slot } = setup(2)
+    const cap = a.runways()[1].hourlyCap
+    for (let i = 0; i < cap; i++) slot(`x${i}`, 'sky', 113 + i * 0.1, { runwayPref: 1 })
+    const span = { from: 112.5, to: 120 }
+    const per = runwayBuckets(a.flights(), a.runways(), span, 180, 'rw1')
+    expect(per[0].over).toBe(true)
+    const tot = runwayBuckets(a.flights(), a.runways(), span, 180)
+    expect(tot[0].cap).toBe(a.runways()[0].hourlyCap + cap)
+  })
+
+  it('setRunway steps cycleSlotRunway to the requested strip and back to auto', () => {
+    const { a, game } = setup(3)
+    a.setRunway('s4:arr', 'rw2')
+    expect(game.schedule[3].runwayPref).toBe(2)
+    a.setRunway('s4:arr', 'rw0')
+    expect(game.schedule[3].runwayPref).toBe(0)
+    a.setRunway('s4:arr', null)
+    expect(game.schedule[3].runwayPref).toBeNull()
+    a.setRunway('s4:arr', 'rw9')
+    expect(game.schedule[3].runwayPref).toBeNull()
+    game.schedule[0].status = 'inbound'
+    a.setRunway('s1:arr', 'rw2')
+    expect(game.schedule[0].runwayPref).toBe(0)
+  })
+
+  it('contracts adapter keeps separate arrival and departure runways', () => {
+    let set: [string, string | null] | null = null
+    const base = {
+      contractId: 'c1', flightNo: 'HF1', airlineName: 'H', color: '#fff', windowStart: 0, windowEnd: 100,
+      standId: null, icao: 'E' as const, aircraft: 'A350', turnTarget: 30, services: [], status: 'scheduled' as const, rotationId: 'r1',
+    }
+    const a = contractsAdapter({
+      dayLength: 180,
+      now: () => 0,
+      movements: () => [
+        { ...base, id: 'm1', direction: 'arr', time: 40, runwayId: 'R09L', depRunwayId: 'R09R' },
+        { ...base, id: 'm2', direction: 'dep', time: 80, runwayId: 'R09L', depRunwayId: 'R09R' },
+      ],
+      stands: () => [],
+      runways: () => [
+        { id: 'R09L', index: 0, label: '09L', hourlyCap: 20 },
+        { id: 'R09R', index: 1, label: '09R', hourlyCap: 18 },
+      ],
+      reschedule: (_id, t) => t,
+      assignStand: () => {},
+      assignRunway: (id, rw) => {
+        set = [id, rw]
+      },
+    })
+    const rows = a.flights()
+    expect(runwayOf(rows[0])).toBe('R09L')
+    expect(runwayOf(rows[1])).toBe('R09R')
+    const { lanes, total } = runwayLanes(rows, a.runways(), { from: 0, to: 120 }, 180)
+    expect(lanes.map((l) => l.flights.length)).toEqual([1, 1])
+    expect(total.cap).toBe(38)
+    expect(a.caps.runway).toBe(true)
+    a.setRunway('r1:dep', 'R09L')
+    expect(set).toEqual(['m2', 'R09L'])
   })
 })

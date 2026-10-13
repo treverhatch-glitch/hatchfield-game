@@ -34,6 +34,18 @@ export function makeFakeGame(opts: { clock?: number; strips?: number } = {}) {
       g.schedule.find((x) => x.id === id)!.status = 'cancelled'
       log.push(`cancel ${id}`)
     },
+    cycleSlotRunway(id: string) {
+      const s = g.schedule.find((x) => x.id === id)!
+      const next = (s.runwayPref ?? -1) + 1
+      s.runwayPref = next >= (opts.strips ?? 1) ? null : next
+      log.push(`cycle ${id} ${s.runwayPref}`)
+    },
+    scheduleForRunway(rw: number | null) {
+      const open = g.schedule.filter((s) => s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound')
+      if (rw == null) return open
+      if (rw === -1) return open.filter((s) => s.runwayPref == null)
+      return open.filter((s) => s.runwayPref === rw)
+    },
     setSlotStandPref(id: string, v: Vec | null) {
       g.schedule.find((x) => x.id === id)!.standPref = v
       log.push(`pin ${id} ${v ? `${v.c},${v.r}` : 'auto'}`)

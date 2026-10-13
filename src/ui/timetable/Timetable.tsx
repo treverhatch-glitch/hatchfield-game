@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
-import { boardRows, buildGantt, frac, hourTicks, pxToSec, runwayBuckets, type ViewSpan } from './layout'
+import { boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, type RunwayLaneModel, type ViewSpan } from './layout'
 import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, ICAO_LABEL, standFits } from './time'
 import type { TimetableAdapter, TtFlight } from './types'
 import './timetable.css'
@@ -51,6 +51,9 @@ export function Timetable({
   const hr = hourSecs(day)
   const span: ViewSpan = { from: now - hr, to: now + hr * (zoom - 1) }
   const shown = open && !menuOpen
+  const runwayList = adapter.runways()
+  const multiRw = runwayList.length > 1
+  const rwLabel = (id: string | null | undefined) => (id ? runwayList.find((r) => r.id === id)?.label ?? id : 'Auto')
 
   const nextArr = flights.filter((f) => f.direction === 'arr' && f.time >= now && f.status !== 'cancelled').sort((a, b) => a.time - b.time)[0]
   const nextDep = flights.filter((f) => f.direction === 'dep' && f.time >= now && f.status !== 'cancelled').sort((a, b) => a.time - b.time)[0]
@@ -207,6 +210,7 @@ export function Timetable({
                                 >
                                   {f.pinned ? '📌' : ''}
                                   {f.flightNo}
+                                  {multiRw ? <small className="tt-rw"> {rwLabel(f.runwayId)}</small> : null}
                                   {drag?.id === f.id && drag.moved ? <em> {clockLabel(f.time + off, day)}</em> : null}
                                 </div>
                               </div>
@@ -263,6 +267,7 @@ export function Timetable({
               adapter={adapter}
               flight={selFlight}
               stands={stands}
+              runways={runwayList}
               onSwap={() => setSwapFrom(selFlight.id)}
               onClose={() => setSel(null)}
             />
@@ -288,60 +293,73 @@ function RunwayLane({
 }) {
   const day = adapter.dayLength
   const runways = adapter.runways()
-  const buckets = runwayBuckets(flights, runways, span, day)
-  const [open, setOpen] = useState<number | null>(null)
-  const peak = Math.max(1, ...buckets.map((b) => Math.max(b.cap, b.arr + b.dep)))
-  const ob = open !== null ? buckets.find((b) => b.start === open) : undefined
+  const { lanes, total } = runwayLanes(flights, runways, span, day)
+  const [open, setOpen] = useState<{ lane: string; start: number } | null>(null)
+  const all = [...lanes, total]
+  const peak = Math.max(1, ...all.flatMap((l) => l.buckets.map((b) => Math.max(b.cap, b.arr + b.dep))))
+  const openLane = open ? all.find((l) => l.id === open.lane) : undefined
+  const ob = openLane?.buckets.find((b) => b.start === open?.start)
+
+  const histogram = (lane: RunwayLaneModel) => (
+    <div className="tt-lane tt-lane-hist">
+      {lane.buckets.map((b) => {
+        const l = Math.max(0, frac(b.start, span))
+        const r = Math.min(1, frac(b.start + hourSecs(day), span))
+        return (
+          <button
+            type="button"
+            key={b.start}
+            className="tt-bucket"
+            data-over={b.over ? '1' : '0'}
+            style={{ left: `${l * 100}%`, width: `${(r - l) * 100}%` }}
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen(open && open.lane === lane.id && open.start === b.start ? null : { lane: lane.id, start: b.start })
+            }}
+            title={`${lane.label} ${b.label}: ${b.arr + b.dep}/${b.cap}`}
+          >
+            <i className="arr" style={{ height: `${(b.arr / peak) * 100}%` }} />
+            <i className="dep" style={{ height: `${(b.dep / peak) * 100}%`, bottom: `${(b.arr / peak) * 100}%` }} />
+            {lane.id !== 'auto' ? <i className="cap" style={{ bottom: `${(b.cap / peak) * 100}%` }} /> : null}
+          </button>
+        )
+      })}
+      {lane.id !== 'total'
+        ? lane.flights.map((f) => (
+            <button
+              type="button"
+              key={f.id}
+              className="tt-tick"
+              data-dir={f.direction}
+              data-sel={sel === f.id ? '1' : '0'}
+              style={{ left: `${frac(f.time, span) * 100}%`, ['--al' as string]: f.color }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSel(f.id)
+              }}
+              title={`${f.direction === 'arr' ? 'Arr' : 'Dep'} ${f.flightNo} ${clockLabel(f.time, day)}`}
+            />
+          ))
+        : null}
+    </div>
+  )
+
   return (
     <div className="tt-runway">
-      <div className="tt-row">
-        <span className="tt-label">Movements</span>
-        <div className="tt-lane tt-lane-tall">
-          {buckets.map((b) => {
-            const l = Math.max(0, frac(b.start, span))
-            const r = Math.min(1, frac(b.start + hourSecs(day), span))
-            return (
-              <button
-                type="button"
-                key={b.start}
-                className="tt-bucket"
-                data-over={b.over ? '1' : '0'}
-                style={{ left: `${l * 100}%`, width: `${(r - l) * 100}%` }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setOpen(open === b.start ? null : b.start)
-                }}
-                title={`${b.label}: ${b.arr + b.dep}/${b.cap}`}
-              >
-                <i className="arr" style={{ height: `${(b.arr / peak) * 100}%` }} />
-                <i className="dep" style={{ height: `${(b.dep / peak) * 100}%`, bottom: `${(b.arr / peak) * 100}%` }} />
-                <i className="cap" style={{ bottom: `${(b.cap / peak) * 100}%` }} />
-              </button>
-            )
-          })}
+      {lanes.map((lane) => (
+        <div key={lane.id} className="tt-row tt-row-rw" data-lane={lane.id}>
+          <span className="tt-label" title={lane.id === 'auto' ? 'Tower assigns a strip when the slot banks' : `${lane.cap} moves/h`}>
+            {lane.label}
+            {lane.id !== 'auto' ? <small> {lane.cap}/h</small> : null}
+          </span>
+          {histogram(lane)}
         </div>
-      </div>
-      <div className="tt-row">
-        <span className="tt-label">Strip</span>
-        <div className="tt-lane">
-          {flights
-            .filter((f) => f.status !== 'cancelled' && f.time >= span.from && f.time <= span.to)
-            .map((f) => (
-              <button
-                type="button"
-                key={f.id}
-                className="tt-tick"
-                data-dir={f.direction}
-                data-sel={sel === f.id ? '1' : '0'}
-                style={{ left: `${frac(f.time, span) * 100}%`, ['--al' as string]: f.color }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSel(f.id)
-                }}
-                title={`${f.direction === 'arr' ? 'Arr' : 'Dep'} ${f.flightNo} ${clockLabel(f.time, day)}`}
-              />
-            ))}
-        </div>
+      ))}
+      <div className="tt-row tt-row-rw tt-row-total" data-lane="total">
+        <span className="tt-label">
+          Total<small> {total.cap}/h</small>
+        </span>
+        {histogram(total)}
       </div>
       <div className="tt-row tt-row-axis">
         <span className="tt-label" />
@@ -353,14 +371,16 @@ function RunwayLane({
           ))}
         </div>
       </div>
-      {ob ? (
+      {ob && openLane ? (
         <div className="tt-card tt-card-inline" onPointerDown={(e) => e.stopPropagation()}>
           <b>
-            {ob.label}–{clockLabel(ob.start + hourSecs(day), day)}
+            {openLane.label} · {ob.label}–{clockLabel(ob.start + hourSecs(day), day)}
           </b>
           <span>
-            {ob.arr} arrivals · {ob.dep} departures · capacity {ob.cap}/h across {runways.length} strip
-            {runways.length === 1 ? '' : 's'}
+            {ob.arr} arrivals · {ob.dep} departures
+            {openLane.id === 'auto'
+              ? ' · not yet on a strip'
+              : ` · capacity ${ob.cap}/h${openLane.id === 'total' ? ` across ${runways.length} runway${runways.length === 1 ? '' : 's'}` : ''}`}
           </span>
           {ob.over ? <span className="late">Over capacity: expect holds and delays.</span> : null}
         </div>
@@ -373,12 +393,14 @@ function FlightCard({
   adapter,
   flight: f,
   stands,
+  runways,
   onSwap,
   onClose,
 }: {
   adapter: TimetableAdapter
   flight: TtFlight
   stands: ReturnType<TimetableAdapter['stands']>
+  runways: ReturnType<TimetableAdapter['runways']>
   onSwap: () => void
   onClose: () => void
 }) {
@@ -419,6 +441,14 @@ function FlightCard({
         <dd>
           {f.standLabel}
           {f.pinned ? ' (pinned)' : ''}
+        </dd>
+        <dt>Runway</dt>
+        <dd>
+          {(() => {
+            const id = runwayOf(f)
+            return id ? runways.find((r) => r.id === id)?.label ?? id : 'Auto (tower picks)'
+          })()}
+          {f.depRunwayId && f.depRunwayId !== f.runwayId ? ` · dep ${runways.find((r) => r.id === f.depRunwayId)?.label ?? f.depRunwayId}` : ''}
         </dd>
         {f.turnTarget ? (
           <>
@@ -473,6 +503,24 @@ function FlightCard({
                   onClick={() => adapter.pinStand(f.id, s.id)}
                 >
                   {s.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {adapter.caps.runway && runways.length > 0 ? (
+            <div className="tt-actions" data-testid="tt-runway-pick">
+              <span className="muted">Runway:</span>
+              <button type="button" className={!f.runwayId ? 'on' : ''} onClick={() => adapter.setRunway(f.id, null)}>
+                Auto
+              </button>
+              {runways.map((r) => (
+                <button
+                  type="button"
+                  key={r.id}
+                  className={f.runwayId === r.id ? 'on' : ''}
+                  onClick={() => adapter.setRunway(f.id, r.id)}
+                >
+                  {r.label}
                 </button>
               ))}
             </div>

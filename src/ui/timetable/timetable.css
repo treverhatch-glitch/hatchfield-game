@@ -120,8 +120,25 @@
 .tt-lane-tall {
   height: 56px;
 }
-.tt-runway .tt-row:first-child {
-  height: 56px;
+.tt-row-rw {
+  height: 34px;
+}
+.tt-row-rw .tt-label small {
+  opacity: 0.6;
+}
+.tt-row-total {
+  border-top: 1px solid rgb(255 255 255 / 0.12);
+  padding-top: 2px;
+}
+.tt-lane-hist .tt-tick {
+  top: auto;
+  bottom: 1px;
+  height: 7px;
+  z-index: 2;
+}
+.tt-bar .tt-rw {
+  opacity: 0.75;
+  font-size: 9px;
 }
 .tt-axis span,
 .tt-axis-tick {
