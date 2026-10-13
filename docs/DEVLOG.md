@@ -756,4 +756,12 @@ PR #48 is on this branch. Aircraft, trucks, fuel, stands, hangars, bags, and pas
 
 **Tests.** `tsc -b` clean. Vitest 801 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-BzLWkglV.js`, 1,686.21 kB, with `index-eP-pqaTd.css`.
 
+## Inbound requests — 13 Oct
+
+PR #42 is on this branch. The clock can open one accept-or-refuse card at a time: weather divert, medical, fuel-low, technical, VIP, medevac, firefighting tanker, tanker plus line maintenance, a one-shot military arrival, and general traffic (GA, bizjet, charter, ferry, storage). Ignoring the card for 60 seconds counts as a refuse. An accepted arrival takes a real stand, the inbound ledger posts the landing fee once, and the aircraft stays until the visit's departure day. A refused priority ask posts the catalog fine. General traffic posts none. Storage and hotel income use the same ledger. Signing the existing Guard agreement does not charge the host fee again; the next tick lists a contract at the top of the Airlines panel, with sign, early cancel, and the security-clearance licence. Diplomacy internals are unchanged. Negotiation, payroll settlement, litter, hall scope, and scale advice stay.
+
+A fresh passenger game with the sandbox off refused a charter and the cash stayed at $7,000. Accepting a firefighting tanker posted $6,800 and put TANK101 on approach. The card is 280px wide and the apron beside it still receives clicks. The Airlines contracts list signed a training detachment, and buying the clearance licence moved cash by $12,000 to "clearance held". A free refuse used to leave the card on screen because cash and the news tape did not change; the HUD snapshot now includes the open request.
+
+**Tests.** `tsc -b` clean. Vitest 825 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-C_kqyg27.js`, 1,718.64 kB, with `index-BkTnL8_N.css`.
+
 
