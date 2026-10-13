@@ -7,6 +7,7 @@ import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { OfferPanel } from './negotiation/OfferPanel'
+import { PriceWarCard } from './rival/PriceWarCard'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -257,6 +258,7 @@ export default function App() {
       </div>
       <Hud game={game} />
       <OfferPanel game={game} />
+      <PriceWarCard game={game} />
       <OwnerChrome game={game} />
     </div>
   )
