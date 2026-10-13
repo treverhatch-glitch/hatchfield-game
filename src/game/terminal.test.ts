@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { hallPath, openNodesFromRooms, type HallNode } from './guests.ts'
 import { Game } from './sim.ts'
+import type { Flight } from './types.ts'
 import {
   ITEMS,
   JUNCTION_CAP,
   itemDef,
   lookaheadDepth,
+  DEPARTURE_SPREAD_SEC,
+  OVER_CAP_MAX,
   paxPerMin,
   pathClearsSecurity,
+  PREFAB_TIERS,
+  PREFAB_WEAR_PER_PAX,
   slowedService,
   stepLane,
+  overCapMultiplier,
   unclearedReachesGate,
+  UNSTAFFED_LANE,
 } from './terminal.ts'
 
 function furnished(): Set<HallNode> {
@@ -64,9 +71,29 @@ describe('queue throughput', () => {
     expect(q.serving).toHaveLength(1)
   })
 
-  it('wear stretches the service time', () => {
+  it('wear stretches the service time, and a worn-out lane tops out at one and a half', () => {
     expect(slowedService(3, 0)).toBe(3)
-    expect(slowedService(3, 100)).toBe(6)
+    expect(slowedService(3.5, 100)).toBeCloseTo(5.25)
+    expect(slowedService(3, 100)).toBeCloseTo(4.5)
+  })
+
+  it('Prefab I is two lanes at 3.5s, and later tiers stay ahead of it', () => {
+    expect(PREFAB_TIERS[1].servers).toBe(2)
+    expect(PREFAB_TIERS[1].serviceSec).toBe(3.5)
+    expect(PREFAB_TIERS[1].paxCap).toBe(40)
+    expect(paxPerMin(PREFAB_TIERS[1].servers, PREFAB_TIERS[1].serviceSec)).toBeCloseTo(34.29, 1)
+    expect(PREFAB_TIERS[2].servers).toBe(3)
+    expect(PREFAB_TIERS[2].serviceSec).toBe(3)
+    expect(paxPerMin(PREFAB_TIERS[2].servers, PREFAB_TIERS[2].serviceSec)).toBeCloseTo(60)
+    expect(PREFAB_TIERS[3].servers).toBe(4)
+    expect(PREFAB_TIERS[3].serviceSec).toBe(2.5)
+    expect(paxPerMin(PREFAB_TIERS[3].servers, PREFAB_TIERS[3].serviceSec)).toBeCloseTo(96)
+    expect(overCapMultiplier(40, 40)).toBe(1)
+    expect(overCapMultiplier(50, 40)).toBeCloseTo(1.2)
+    expect(overCapMultiplier(200, 40)).toBe(OVER_CAP_MAX)
+    expect(PREFAB_WEAR_PER_PAX).toBe(0.7)
+    expect(UNSTAFFED_LANE).toBe(1.35)
+    expect(DEPARTURE_SPREAD_SEC).toBe(45)
   })
 
   it('a bigger lane is faster and costs more to run', () => {
@@ -122,8 +149,8 @@ describe('security choke', () => {
     const fit = game.fits[0]
     expect(fit.premade).toBe(true)
     expect(fit.tier).toBe(1)
-    expect(fit.capGuests).toBe(28)
-    expect(fit.secPerMin).toBeCloseTo(20)
+    expect(fit.capGuests).toBe(40)
+    expect(fit.secPerMin).toBeCloseTo(34.29, 1)
     expect(fit.bagAllowance).toBe(70)
     expect(fit.signs).toBe(2)
     expect(fit.zones?.[0]?.length).toBe(8)
@@ -154,7 +181,7 @@ describe('security choke', () => {
     expect(game.news[0]?.text ?? '').toMatch(/Field level/i)
   })
 
-  it('a departure wave queues at the one prefab lane and stays off the gate', () => {
+  it('a departure wave queues at the prefab lanes and stays off the gate', () => {
     const game = new Game()
     game.sandbox = false
     game.beginNew('easy')
@@ -172,5 +199,41 @@ describe('security choke', () => {
     }
     expect(sawQueue).toBe(true)
     expect(game.hallGuests.some((g) => !g.clearedSec && g.node === 'gate')).toBe(false)
+  })
+
+  it('spreads a prefab departure across 45 seconds instead of dropping the bank at once', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.buildStarterKit()
+    game.clock = 20
+    game.speed = 1
+    game.seedHallForFlight(
+      { id: 'spread-1', cargo: false, pax: 66, airline: 'northline', stand: null } as Flight,
+      'depart',
+    )
+    const wave = game.hallGuests.filter((g) => g.flightId === 'spread-1')
+    expect(wave.length).toBeGreaterThanOrEqual(6)
+    for (const g of wave) {
+      expect(g.releaseAt ?? -1).toBeGreaterThanOrEqual(20)
+      expect(g.releaseAt ?? 999).toBeLessThanOrEqual(20 + DEPARTURE_SPREAD_SEC)
+      expect(g.path).toEqual([])
+    }
+    const times = wave.map((g) => g.releaseAt ?? 0)
+    const span = Math.max(...times) - Math.min(...times)
+    expect(span).toBeGreaterThan(1)
+    expect(span).toBeLessThanOrEqual(DEPARTURE_SPREAD_SEC)
+
+    game.tick(0.2)
+    const held = wave.filter((g) => (g.releaseAt ?? 0) > game.clock)
+    expect(held.length).toBeGreaterThan(0)
+    expect(held.every((g) => g.path.length === 0)).toBe(true)
+
+    game.clock = 20 + DEPARTURE_SPREAD_SEC
+    game.tick(0.05)
+    expect(wave.every((g) => g.releaseAt == null)).toBe(true)
+    expect(wave.some((g) => g.path.length > 1)).toBe(true)
+    expect(wave.some((g) => !g.clearedSec && g.node === 'gate')).toBe(false)
   })
 })

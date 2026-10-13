@@ -54,8 +54,8 @@ describe('prefab overload', () => {
           items: fit.items as PlacedItem[] | undefined,
           roomsSecurity: fit.rooms.security,
       })
-      const departures = (fit.capGuests ?? 28) + 12
-      const arrivals = Math.max(8, Math.round((fit.capGuests ?? 28) * 0.35))
+      const departures = (fit.capGuests ?? 40) + 12
+      const arrivals = Math.max(8, Math.round((fit.capGuests ?? 40) * 0.35))
       for (let i = 0; i < departures; i++) {
         const g = spawnHallGuest(`dep-${tier}-${i}`, 'depart', 'budget', {
           hallId,

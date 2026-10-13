@@ -138,6 +138,8 @@ export interface HallGuest {
   wz?: number
   /** Facing along the polyline, atan2(dx, dz). */
   wyaw?: number
+  /** Sim clock when a departing passenger reaches the doors. Until then they are not in the hall. */
+  releaseAt?: number
 }
 
 /**

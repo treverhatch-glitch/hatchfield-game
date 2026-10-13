@@ -388,9 +388,29 @@ export function itemThroughput(def: ItemDef): number {
   return paxPerMin(def.servers, def.serviceSec)
 }
 
-/** Worn kit serves slower. 0 wear = catalog time, 100 wear = double. */
+/**
+ * Prefab security tuning. Crowd avoidance stays unwired until after playtest.
+ * A worn-out lane runs at most ×1.5 (wear 100), not ×2. A janitor still matters.
+ */
+export const WORN_LANE_DIVISOR = 200
+/** Each body past the comfort cap adds 2%, and the slowdown stops at ×1.4. */
+export const OVER_CAP_PER_BODY = 0.02
+export const OVER_CAP_MAX = 1.4
+/** Departing passengers reach the doors across this window instead of in one burst. */
+export const DEPARTURE_SPREAD_SEC = 45
+/** An unstaffed lane. The player still hires the post. */
+export const UNSTAFFED_LANE = 1.35
+/** Wear added per body on a prefab bundle lane. */
+export const PREFAB_WEAR_PER_PAX = 0.7
+
 export function slowedService(serviceSec: number, wear: number): number {
-  return serviceSec * (1 + Math.max(0, wear) / 100)
+  return serviceSec * (1 + Math.max(0, wear) / WORN_LANE_DIVISOR)
+}
+
+/** Service-time multiplier once the security node is past its comfort cap. */
+export function overCapMultiplier(bodies: number, cap: number): number {
+  if (bodies <= cap) return 1
+  return Math.min(OVER_CAP_MAX, 1 + (bodies - cap) * OVER_CAP_PER_BODY)
 }
 
 export function needsMaintenance(wear: number): boolean {
@@ -492,9 +512,9 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
   1: {
     tier: 1,
     label: 'Prefab I · Linear',
-    paxCap: 28,
-    servers: 1,
-    serviceSec: 3,
+    paxCap: 40,
+    servers: 2,
+    serviceSec: 3.5,
     queueCap: 10,
     bagAllowance: 70,
     upkeepDay: 90,
@@ -504,8 +524,8 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
     tier: 2,
     label: 'Prefab II · Pier',
     paxCap: 48,
-    servers: 2,
-    serviceSec: 2,
+    servers: 3,
+    serviceSec: 3,
     queueCap: 20,
     bagAllowance: 140,
     upkeepDay: 220,
@@ -515,8 +535,8 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
     tier: 3,
     label: 'Prefab III · Satellites',
     paxCap: 80,
-    servers: 3,
-    serviceSec: 1.4,
+    servers: 4,
+    serviceSec: 2.5,
     queueCap: 30,
     bagAllowance: 260,
     upkeepDay: 420,
@@ -578,7 +598,7 @@ export function ceilingsFor(fit: CeilingInput): Ceilings {
       servers: t.servers,
       serviceSec: t.serviceSec,
       queueCap: t.queueCap,
-      wearPerUse: 0.8,
+      wearPerUse: PREFAB_WEAR_PER_PAX,
     }
   }
   if (!fit.premade && !fit.redesigned && items.length === 0) {

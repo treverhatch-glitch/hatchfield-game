@@ -402,6 +402,7 @@ export class HallWorld {
     }
     const pile = new Map<string, number>()
     for (const g of game.hallGuests) {
+      if (g.releaseAt != null && g.releaseAt > game.clock) continue
       let mesh = this.guests.get(g.id)
       if (!mesh) {
         mesh = new THREE.Mesh(
