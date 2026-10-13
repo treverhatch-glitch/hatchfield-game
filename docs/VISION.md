@@ -64,6 +64,8 @@ The sim knows the bank **ahead of time** (long horizon for prep + short horizon 
 
 This is the same verb as belts: **broken or thin chain → late job → hurt → fix.** City intake and guard posts are the landside half of that verb.
 
+**Grounding:** pipelines and choke points mirror real airport ops (landside/airside, turnaround, A-CDM prep, cargo acceptance). Full map: [REAL_OPS.md](./REAL_OPS.md).
+
 ## Path A — Passengers (main campaign default)
 
 See [PROGRESSION.md](./PROGRESSION.md).
