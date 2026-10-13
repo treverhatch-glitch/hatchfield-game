@@ -6,6 +6,7 @@
  * so a lane is felt without freezing the first flight.
  */
 import { hallPath, isAirside, openForGuest, type HallNode } from './guests.ts'
+import { STARTER_CAPACITY } from './openingData.ts'
 import { KIT_ITEMS, KIT_PATCHES, type KitCategory } from './terminalKitData.ts'
 
 export type ZoneId = 'checkin' | 'security' | 'gates' | 'arrivals' | 'retail' | 'toilets'
@@ -536,12 +537,13 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
   1: {
     tier: 1,
     label: 'Prefab I · Linear',
-    paxCap: 40,
-    servers: 2,
-    serviceSec: 3.5,
-    queueCap: 10,
-    bagAllowance: 70,
-    upkeepDay: 90,
+    // Opening ceilings live in openingData so the first bank fits and II stays ahead.
+    paxCap: STARTER_CAPACITY.paxCap,
+    servers: STARTER_CAPACITY.servers,
+    serviceSec: STARTER_CAPACITY.serviceSec,
+    queueCap: STARTER_CAPACITY.queueCap,
+    bagAllowance: STARTER_CAPACITY.bagAllowance,
+    upkeepDay: STARTER_CAPACITY.upkeepDay,
     upgradeCost: 0,
   },
   2: {
