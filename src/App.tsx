@@ -5,6 +5,7 @@ import { Hud } from './ui/Hud'
 import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
+import { attachPresentation } from './ui/presentation'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -95,6 +96,7 @@ export default function App() {
 
   useEffect(() => {
     if (screen !== 'play') return
+    const detach = attachPresentation(game)
     let raf = 0
     let last = performance.now()
     const loop = (now: number) => {
@@ -108,7 +110,10 @@ export default function App() {
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
+    return () => {
+      cancelAnimationFrame(raf)
+      detach()
+    }
   }, [screen])
 
   useSyncExternalStore(

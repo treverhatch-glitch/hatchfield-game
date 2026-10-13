@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Game } from '../../game/sim.ts'
+import { readChrome } from '../chromeView.ts'
 
 /**
  * Isolated chrome for the flow overlay, the Design Advisor, and build tooltips.
@@ -8,10 +9,7 @@ import type { Game } from '../../game/sim.ts'
 export function OwnerChrome({ game }: { game: Game }) {
   const [, setN] = useState(0)
   useEffect(() => {
-    const off = game.subscribe(() => setN((n) => n + 1))
-    return () => {
-      off()
-    }
+    return game.events.on('changed', () => setN((n) => n + 1))
   }, [game])
 
   useEffect(() => {
@@ -27,9 +25,8 @@ export function OwnerChrome({ game }: { game: Game }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [game])
 
-  const site = game.hover ? game.siteAt(game.hover) : undefined
-  const advice = game.advice
-  const ground = game.groundSnapshot()
+  const chrome = readChrome(game)
+  const { site, advice, ground } = chrome
 
   return (
     <div
@@ -56,7 +53,7 @@ export function OwnerChrome({ game }: { game: Game }) {
       >
         <input
           type="checkbox"
-          checked={game.showFlows}
+          checked={chrome.showFlows}
           onChange={() => game.toggleFlows()}
         />
         Show passenger flows
@@ -74,15 +71,15 @@ export function OwnerChrome({ game }: { game: Game }) {
           gap: 6,
         }}
       >
-        {game.infoHotspots().map((spot) => (
+        {chrome.hotspots.map((spot) => (
           <button
             key={spot.id}
             type="button"
             data-testid={`info-hotspot-${spot.id}`}
             onClick={() => game.toggleInfo(spot.id)}
             style={{
-              background: game.infoOpen === spot.id ? '#f0c14a' : 'rgba(12, 22, 28, 0.88)',
-              color: game.infoOpen === spot.id ? '#1a2a32' : '#e7eee9',
+              background: chrome.infoOpen === spot.id ? '#f0c14a' : 'rgba(12, 22, 28, 0.88)',
+              color: chrome.infoOpen === spot.id ? '#1a2a32' : '#e7eee9',
               border: '1px solid #c9a27a',
               borderRadius: 999,
               padding: '4px 10px',
@@ -93,7 +90,7 @@ export function OwnerChrome({ game }: { game: Game }) {
           </button>
         ))}
       </div>
-      {game.infoOpen ? (
+      {chrome.infoOpen ? (
         <div
           data-testid="info-panel"
           style={{
@@ -110,7 +107,7 @@ export function OwnerChrome({ game }: { game: Game }) {
             minWidth: 220,
           }}
         >
-          {game.infoLines(game.infoOpen).map((line) => (
+          {chrome.infoLines.map((line) => (
             <div key={line}>{line}</div>
           ))}
         </div>
@@ -170,7 +167,7 @@ export function OwnerChrome({ game }: { game: Game }) {
           ))}
         </div>
       )}
-      {(game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
+      {(chrome.letters.length > 0 || chrome.roster.length > 0) && (
         <div
           data-testid="diplomacy-panel"
           style={{
@@ -186,7 +183,7 @@ export function OwnerChrome({ game }: { game: Game }) {
             font: '13px sans-serif',
           }}
         >
-          {game.diplomacyRoster().map((row) => (
+          {chrome.roster.map((row) => (
             <div
               key={row.id}
               data-testid="diplomacy-card"
@@ -199,7 +196,7 @@ export function OwnerChrome({ game }: { game: Game }) {
               {row.name} · {row.band} · {Math.round(row.standing)}
             </div>
           ))}
-          {game.diplomacyLetters().map((letter) => (
+          {chrome.letters.map((letter) => (
             <div
               key={letter.id}
               data-testid="diplomacy-letter"

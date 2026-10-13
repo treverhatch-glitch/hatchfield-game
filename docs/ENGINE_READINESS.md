@@ -264,7 +264,7 @@ Importing `SimCore` still loads `Game`, and `Game` still imports render modules 
 ## Suggested port order
 
 1. Done in this pass: coupling map, sim RNG, `SimCore` skeleton, headless soak.
-2. Point the safest presentation readers at a snapshot and the event bus: audio one-shots, ambience, `OwnerChrome`. Leave `src/render/world.ts` entity sync on `Game` until it can read a frame object without allocating per aircraft.
+2. Done next: audio one-shots and ambience subscribe to `Game.events`. `OwnerChrome` paints `readChrome()`. The textured world update takes `worldViewFrom(game)` (shallow, no tile copy). Entity meshes in `src/render/world.ts` still walk `game.flights` and `game.trucks`.
 3. Move `catalog.ts` tables into `src/data/*.json`. Re-export the same names so callers do not change.
 4. Stop `sim.ts` importing `src/render/**` and `src/audio/**`. Specs move to data. Sounds become events only.
 5. Extend snapshot v2 with logistics, catering, and cargo adapter state so a load continues a turnaround, not just the field.

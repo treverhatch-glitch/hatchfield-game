@@ -84,3 +84,11 @@ export function usingSimRng<T>(rng: Rng, fn: () => T): T {
 export function simRandom(): number {
   return active.next()
 }
+
+/**
+ * Visual and audio rolls (lightning, sample variant). Always `Math.random`,
+ * never the sim seed, so a replay does not change the picture or the mix.
+ */
+export function presentationRandom(): number {
+  return Math.random()
+}

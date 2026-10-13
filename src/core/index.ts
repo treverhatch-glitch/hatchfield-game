@@ -32,7 +32,7 @@ export {
 export type { ClockState, ClockStep, SimMinutes } from './clock'
 export { EventBus } from './events'
 export { fnv1a, snapshotHash, stableStringify } from './hash'
-export { bindSimRng, createRng, currentSimRng, simRandom, usingSimRng } from './rng'
+export { bindSimRng, createRng, currentSimRng, presentationRandom, simRandom, usingSimRng } from './rng'
 export type { Rng, RngState } from './rng'
 export { SimCore } from './simCore'
 export type { SimCoreOptions, SimEvents, SimNews, SimTick } from './simCore'

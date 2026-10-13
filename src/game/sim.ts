@@ -207,7 +207,8 @@ import {
   type PlacedItem,
   type ZoneId,
 } from './terminal.ts'
-import { AmbienceMixer } from '../audio/ambience.ts'
+import { AmbienceMixer, type AmbienceState } from '../audio/ambience.ts'
+import { EventBus } from '../core/events.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
@@ -480,6 +481,15 @@ function defaultBranding(): BrandingSave {
   }
 }
 
+export interface GameEvents {
+  /** One-shot cue. The app plays it; the tick does not touch the audio device. */
+  sfx: { name: string }
+  /** Occupancy sample for the ambience mixer. */
+  ambience: { sample: AmbienceState; dt: number }
+  /** HUD flush. Same moments as `subscribe`. */
+  changed: { clock: number }
+}
+
 const FINANCING_CATEGORIES = new Set([
   'loan_proceeds',
   'ipo_proceeds',
@@ -664,6 +674,8 @@ export class Game {
    * this object to mulberry32 without changing call sites.
    */
   rng: Rng = createRng()
+  /** Presentation bus. Sim logic emits; React, the renderer, and audio subscribe. */
+  readonly events = new EventBus<GameEvents>()
 
   constructor() {
     bindSimRng(this.rng)
@@ -951,6 +963,7 @@ export class Game {
 
   emit() {
     for (const fn of this.listeners) fn()
+    this.events.emit('changed', { clock: this.clock })
   }
 
   beginNew(difficulty: Difficulty) {
@@ -3520,10 +3533,11 @@ export class Game {
   }
 
   private tickAmbience(dt: number) {
-    if (typeof window === 'undefined' || !(dt > 0)) return
+    if (!(dt > 0)) return
     const parked = this.flights.filter((f) => f.phase === 'parked' || f.phase === 'board' || f.phase === 'deboard').length
-    this.ensureAmbience().update(
-      {
+    this.events.emit('ambience', {
+      dt,
+      sample: {
         checkinOccupancy: Math.min(1, this.hallGuests.length / 40),
         walkingWithBagsOccupancy: Math.min(1, this.people.length / 40),
         securityLanesOpen: Math.max(1, this.fits[0]?.rooms.security ?? 0),
@@ -3534,8 +3548,26 @@ export class Game {
         fuelPumpsRunning: this.trucks.filter((t) => t.kind === 'fuel').length,
         outdoorMix: this.view === 'hall' ? 0.1 : 0.85,
       },
-      dt,
-    )
+    })
+  }
+
+  /** Called by the presentation subscriber. Headless ticks never reach the mixer. */
+  playAmbience(sample: AmbienceState, dt: number) {
+    if (typeof window === 'undefined' || !(dt > 0)) return
+    try {
+      this.ensureAmbience().update(sample, dt)
+    } catch {
+      // Headless or a missing audio device.
+    }
+  }
+
+  playSfx(name: string) {
+    if (typeof window === 'undefined' || !name) return
+    try {
+      getAudio().playEvent(name)
+    } catch {
+      // Headless tests have no audio device.
+    }
   }
 
   private ensureAmbience(): AmbienceMixer {
@@ -5472,12 +5504,7 @@ export class Game {
     if (!name) return
     this.soundCues.push(name)
     if (this.soundCues.length > 24) this.soundCues.shift()
-    if (typeof window === 'undefined') return
-    try {
-      getAudio().playEvent(name)
-    } catch {
-      // Headless tests have no audio device.
-    }
+    this.events.emit('sfx', { name })
   }
 
   private noteCargoDepart(f: Flight) {

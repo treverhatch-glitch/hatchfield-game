@@ -28,6 +28,7 @@ import {
   type QualityLevel,
   type WorldRender,
 } from './world/index'
+import { worldViewFrom } from './world/view'
 
 export { CELL }
 
@@ -1787,7 +1788,7 @@ export class World {
     this.syncGhost(game)
     this.syncEntities(game)
     this.syncSites(game)
-    this.wr.update(game, this.camera, dt)
+    this.wr.update(worldViewFrom(game), this.camera, dt)
     this.renderer.render(this.scene, this.camera)
   }
 

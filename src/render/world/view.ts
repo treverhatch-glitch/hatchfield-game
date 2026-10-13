@@ -36,6 +36,23 @@ export interface WorldView {
   deskStaff?: number
 }
 
+/** Shallow frame. Arrays stay shared so the apron render does not copy the map. */
+export function worldViewFrom(source: WorldView): WorldView {
+  return {
+    tiles: source.tiles,
+    mapRev: source.mapRev,
+    clock: source.clock,
+    weather: source.weather,
+    speed: source.speed,
+    standClass: source.standClass,
+    standAccessAt: source.standAccessAt
+      ? (v) => source.standAccessAt!(v)
+      : undefined,
+    fits: source.fits,
+    deskStaff: source.deskStaff,
+  }
+}
+
 export function tileAt(view: WorldView, c: number, r: number): Tile | null {
   if (r < 0 || c < 0 || r >= view.tiles.length || c >= (view.tiles[r]?.length ?? 0)) return null
   return view.tiles[r][c]

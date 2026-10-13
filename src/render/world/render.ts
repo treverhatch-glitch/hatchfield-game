@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { presentationRandom } from '../../core/rng.ts'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
 import { simClockToHour, skyState, type SkyState } from './daylight'
@@ -311,7 +312,7 @@ export class WorldRenderer {
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const s = skyState(hour, weather)
     this.state = s
-    if (s.lightning && Math.random() < step * 0.25) this.flash = 1
+    if (s.lightning && presentationRandom() < step * 0.25) this.flash = 1
     this.flash = Math.max(0, this.flash - step * 5)
 
     this.sun.color.setHex(s.sunColor)
