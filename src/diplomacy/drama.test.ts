@@ -120,11 +120,14 @@ describe('public spats', () => {
   it('concede: fees fall 5%, the airline warms, the spat ends', () => {
     const h = spatHarness();
     const spat = h.engine.state.spats[0];
+    expect(h.engine.openSpats()[0]?.airline).toBe('SkyPenny');
+    expect(h.engine.openSpats()[0]?.reputationPerMonth).toBe(-2);
     const res = h.engine.respondToSpat(spat.id, 'concede');
     expect(res.ok).toBe(true);
     expect(res.data?.newFeeIndex).toBeCloseTo(1.045);
     expect(h.engine.state.feeIndex).toBeCloseTo(1.045);
     expect(spat.resolved).toBe(true);
+    expect(h.engine.openSpats()).toHaveLength(0);
     expect(spat.resolution).toBe('concede');
     expect(h.engine.relation('skypenny')!.modifiers.some((m) => m.kind === 'concession' && m.value === 12)).toBe(true);
     h.engine.consumeReputationDelta();

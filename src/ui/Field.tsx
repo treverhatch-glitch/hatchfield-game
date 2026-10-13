@@ -66,6 +66,11 @@ export function Field({ game }: { game: Game }) {
       if (game.view === 'apron') {
         const w = worldRef.current
         if (w) {
+          if (game.diplomacyTourSeconds > 0) {
+            w.nudgeYaw(0.45 * dt)
+            w.nudgePan(Math.sin(now / 900) * 10 * dt, 5 * dt)
+            game.diplomacyTourSeconds = Math.max(0, game.diplomacyTourSeconds - dt)
+          }
           const speed = 28 * dt
           let fx = 0
           let fy = 0

@@ -54,6 +54,7 @@ import {
 } from './departure.ts';
 import {
   defendAgainstPoach,
+  listOpenSpats,
   operationalEffects,
   poachRisk,
   respondToSpat,
@@ -69,10 +70,11 @@ import {
   expireProposals,
   maybeBaseProposals,
   maybeSendLetters,
+  previewReaction,
   previewSign,
   respondToProposal
 } from './proposals.ts';
-import type { SignPreview } from './proposals.ts';
+import type { ReactionKind, SignPreview } from './proposals.ts';
 import { evaluate, refreshPerks, updateShares } from './relations.ts';
 import { pick } from './rng.ts';
 import { pruneModifiers, recordGrade, stepPerformance } from './standing.ts';
@@ -346,6 +348,8 @@ export class DiplomacyEngine {
         generation: kf.generation + 1,
         keepTraits: [kept]
       });
+      next.keptTrait = kept;
+      next.freshTrait = next.traits.find((t) => t !== kept) ?? next.traits[1];
       for (const m of rel.modifiers) m.value *= 0.5;
       rel.keyFigure = next;
       rel.traits = [...next.traits];
@@ -456,6 +460,14 @@ export class DiplomacyEngine {
 
   previewSign(airlineId: string): SignPreview | null {
     return previewSign(this.core, airlineId);
+  }
+
+  previewReaction(airlineId: string, kind: ReactionKind = 'sign'): SignPreview | null {
+    return previewReaction(this.core, airlineId, kind);
+  }
+
+  openSpats() {
+    return listOpenSpats(this.core);
   }
 
   respondToDemand(demandId: string, response: 'accept' | 'decline', useLeverage = false): ActionResult {

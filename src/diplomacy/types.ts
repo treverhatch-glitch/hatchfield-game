@@ -52,6 +52,8 @@ export type Metrics = Partial<Record<MetricKey, number>>;
 export interface DiplomacyContext {
   fieldLevel: number;
   metrics: Metrics;
+  /** Airport reputation 0–100. First-meet quotes it when the host supplies it. */
+  reputation?: number;
   /** Optional airport capabilities from `src/airlines`; used for the "needs" checklist and unlock gating. */
   airport?: AirportCapabilities;
   /** Optional traffic share (0..100) per airline id. If omitted the engine derives it from recorded flights. */
@@ -154,6 +156,10 @@ export interface KeyFigure {
   tenureStartDay: number;
   retireAtDay: number;
   generation: number;
+  /** Trait carried from the previous chair. Empty for the founding exec. */
+  keptTrait?: TraitId | null;
+  /** Trait rolled at succession. Empty for the founding exec. */
+  freshTrait?: TraitId | null;
 }
 
 export interface Favour {
@@ -547,7 +553,18 @@ export interface AirlineCard {
   baseTier: AirlineTier;
   status: RelationStatus;
   portrait: PortraitCard;
-  figure: { name: string; title: string; traits: string[]; agenda: string; voice: VoiceStyle; memory: string[] } | null;
+  figure: {
+    name: string;
+    title: string;
+    traits: string[];
+    agenda: string;
+    voice: VoiceStyle;
+    memory: string[];
+    generation: number;
+    /** Null until a successor takes the chair. */
+    shift: string | null;
+    retireDay: number;
+  } | null;
   livery: [string, string];
   glyph: string;
   band: BandChip;

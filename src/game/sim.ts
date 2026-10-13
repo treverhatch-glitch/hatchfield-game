@@ -857,6 +857,12 @@ export class Game {
   diplomacySeed = 1
   /** Published landing-fee index. 1 is the schedule. Diplomacy reads rises and cuts. */
   publishedFeeIndex = 1
+  /** Seconds left on a first-meet terminal walk. The field pans while this is above zero. */
+  diplomacyTourSeconds = 0
+
+  beginDiplomacyTour(seconds = 6) {
+    this.diplomacyTourSeconds = seconds
+  }
   private missedByAirline: Record<string, number> = {}
   /** Contract counter-offers. Null until the first letter. */
   private negotiationBridge: NegotiationBridge | null = null
@@ -1570,6 +1576,7 @@ export class Game {
     const feeIndex = this.diplomacy?.adapter.engine.state.feeIndex ?? 1
     return {
       fieldLevel: diplomacyFieldLevel(this.fieldLevel()),
+      reputation: this.reputation,
       metrics: {
         onTimePct: onTime,
         feeIndex,
@@ -1768,6 +1775,58 @@ export class Game {
 
   diplomacyEndeavor(airlineId: string) {
     const result = this.ensureDiplomacy().adapter.engine.startEndeavor(airlineId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  /** Intro card for a T3+ exec the player has not met. Null for logo-only airlines. */
+  diplomacyMeet(airlineId: string) {
+    const engine = this.diplomacy?.adapter.engine
+    if (!engine) return null
+    const scene = engine.firstMeetScene(airlineId)
+    if (!scene) return null
+    const card = engine.getCard(airlineId)
+    if (!card?.figure) return null
+    return {
+      airlineId: scene.airlineId,
+      greeting: scene.greeting,
+      heard: scene.heard,
+      choices: scene.choices,
+      airline: card.name,
+      name: card.figure.name,
+      title: card.figure.title,
+      portrait: card.portrait,
+      traits: card.figure.traits,
+      agenda: card.figure.agenda,
+    }
+  }
+
+  resolveDiplomacyMeet(airlineId: string, choice: 'formal' | 'warm' | 'bold' | 'tour') {
+    const result = this.ensureDiplomacy().adapter.engine.resolveFirstMeet(airlineId, choice)
+    const tone = Number(result.data?.tone ?? 0)
+    this.pushNews(result.message, result.ok ? (tone >= 0 ? 'good' : 'bad') : 'bad')
+    this.emit()
+    return result
+  }
+
+  diplomacyReaction(airlineId: string, kind: 'sign' | 'perk' | 'hub' | 'slots' = 'sign') {
+    return this.diplomacy?.adapter.engine.previewReaction(airlineId, kind) ?? null
+  }
+
+  diplomacySpats() {
+    return this.diplomacy?.adapter.engine.openSpats() ?? []
+  }
+
+  answerDiplomacySpat(spatId: string, response: 'concede' | 'hold' | 'court', rivalId?: string) {
+    const result = this.ensureDiplomacy().adapter.engine.respondToSpat(spatId, response, rivalId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  requestDiplomacyHub(airlineId: string) {
+    const result = this.ensureDiplomacy().adapter.engine.requestHub(airlineId)
     this.pushNews(result.message, result.ok ? 'good' : 'bad')
     this.emit()
     return result
