@@ -1300,8 +1300,11 @@ export class Game {
     // One desk body so the first bank doesn't miss gates on an empty counter.
     this.deskStaff = 1
     this.assignHallStaff()
-    this.offerCool = 2
+    // Airport is live — first airline call comes quick; later ones stay slow.
+    this.offerCool = 3
     this.spawnCool = 6
+    this.emergencyCool = 120
+    this.threatCool = 90
     this.pushNews(
       'Starter kit down — connected pavement, lounge, one mechanic + desk agent. Northline should call.',
       'good',
@@ -3161,7 +3164,8 @@ export class Game {
     this.signed.push(id)
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.offer = null
-    this.offerCool = 25
+    // First carrier lands fast; later contracts space out so the field can breathe.
+    this.offerCool = this.signed.length <= 1 ? 55 + Math.random() * 25 : 85 + Math.random() * 40
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.seedScheduleForAirline(id, 3)
@@ -3635,7 +3639,7 @@ export class Game {
     const id = this.offer.airline
     const a = this.airline(id)
     this.offer = null
-    this.offerCool = 40
+    this.offerCool = 70
     this.adjustHeat(id, -2)
     this.pushNews(`${a.name} hung up. They may call again later.`, 'ok')
     this.emit()
@@ -6692,25 +6696,40 @@ export class Game {
     }
     this.threatCool -= dt
     if (this.threatCool > 0) return
-    this.threatCool = 50 + Math.random() * 40
+    // Slower cadence — weak / missing security still invites trouble.
+    this.threatCool = 95 + Math.random() * 70
     if (!this.signed.length || !this.flights.some((f) => !f.cargo && f.phase !== 'gone')) return
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
     const staffGap = 1 - this.budgets.security / 100
+    const hasSecRoom = this.fits.some((f) => (f.rooms.security ?? 0) > 0)
+    const airsideOpen = this.fits.some((f) => {
+      const r = f.rooms
+      return (r.food ?? 0) + (r.gate ?? 0) + (r.lounge ?? 0) + (r.souvenir ?? 0) > 0
+    })
+    // Player shell with airside rooms but no security choke = smuggling / weapons risk.
+    const openAirGap = airsideOpen && !hasSecRoom ? 0.38 : 0
     const risk = clamp(
-      0.55 - sec * 0.12 - police * 0.08 + wearSec * 0.002 + staffGap * 0.22,
-      0.05,
-      0.72,
+      0.42 -
+        sec * 0.12 -
+        police * 0.08 +
+        wearSec * 0.002 +
+        staffGap * 0.22 +
+        openAirGap,
+      0.04,
+      0.78,
     )
     if (Math.random() > risk) return
-    const hard = sec < 2 || this.budgets.security < 35
+    const hard = !hasSecRoom || sec < 2 || this.budgets.security < 35
     this.pendingThreat = {
       id: uid('thr'),
       severity: hard ? 'hard' : 'soft',
-      blurb: hard
-        ? 'Hard alarm — possible threat past a weak lane. Scramble police or eat the headline.'
-        : 'Suspicious bag on an outbound. Scramble screeners or hope the tape stays quiet.',
+      blurb: !hasSecRoom
+        ? 'No security choke — weapons / smuggling path to airside. Scramble or own the headline.'
+        : hard
+          ? 'Hard alarm — possible threat past a weak lane. Scramble police or eat the headline.'
+          : 'Suspicious bag on an outbound. Scramble screeners or hope the tape stays quiet.',
       age: 0,
       deadline: hard ? 18 : 24,
     }
@@ -6922,11 +6941,12 @@ export class Game {
       tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads > 0
     const hasHangar = tilesOf(this.tiles, 'hangar').length > 0
     // Storms stack divert asks; dry clear days stack firefighting planes.
+    // Spaced out vs earlier builds — first hours should not be a constant scramble.
     this.emergencyCool = stormy
-      ? 32 + Math.random() * 28
+      ? 70 + Math.random() * 45
       : dry
-        ? 40 + Math.random() * 35
-        : 55 + Math.random() * 50
+        ? 95 + Math.random() * 55
+        : 120 + Math.random() * 70
 
     const roll = Math.random()
     const pDivert =
@@ -7692,11 +7712,17 @@ export class Game {
     }
     this.people = this.people.filter((p) => p.stage < 99)
 
+    // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     this.uiAcc += step
-    if (this.uiAcc > 0.12) {
+    if (this.uiAcc > 0.4) {
       this.uiAcc = 0
       this.emit()
     }
+  }
+
+  /** True when any hall has a security room (choke present). */
+  hasSecurityChoke(): boolean {
+    return this.fits.some((f) => (f.rooms.security ?? 0) > 0)
   }
 }
 

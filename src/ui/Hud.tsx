@@ -50,43 +50,54 @@ const BUDGET_KEYS: BudgetKey[] = [
   'ambulance',
 ]
 
-/** Outside pavement / buildings — apron only. */
-const APRON_TOOLS: Tool[] = [
-  'pan',
-  'runway_short',
-  'runway',
-  'runway_heavy',
-  'helipad',
-  'road',
-  'taxi',
-  'stand_s',
-  'stand',
-  'stand_l',
-  'deice',
-  'premade',
-  'terminal',
-  'snack',
-  'bags',
-  'fuel',
-  'fire',
-  'police',
-  'cargo',
-  'tower',
-  'hangar',
-  'hotel_inn',
-  'hotel_biz',
-  'hotel_resort',
-  'park_s',
-  'park_l',
-  'park_g',
-  'park_u',
-  'bus',
-  'rail',
-  'clear',
+/** Cities: Skylines-style build categories — pick a menu, then a stamp from the tray. */
+const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
+  {
+    id: 'pavement',
+    label: 'Pavement',
+    tools: ['pan', 'runway_short', 'runway', 'runway_heavy', 'taxi', 'road', 'helipad', 'deice'],
+  },
+  {
+    id: 'stands',
+    label: 'Stands',
+    tools: ['stand_s', 'stand', 'stand_l'],
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    tools: ['premade', 'terminal'],
+  },
+  {
+    id: 'ops',
+    label: 'Ops',
+    tools: ['fuel', 'bags', 'snack', 'fire', 'police', 'cargo', 'tower', 'hangar'],
+  },
+  {
+    id: 'landside',
+    label: 'Landside',
+    tools: [
+      'hotel_inn',
+      'hotel_biz',
+      'hotel_resort',
+      'park_s',
+      'park_l',
+      'park_g',
+      'park_u',
+      'bus',
+      'rail',
+    ],
+  },
+  {
+    id: 'bulldoze',
+    label: 'Bulldoze',
+    tools: ['clear'],
+  },
 ]
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
+  const [buildMenu, setBuildMenu] = useState(BUILD_MENUS[0].id)
+  const menuTools = BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? BUILD_MENUS[0].tools
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
@@ -1160,56 +1171,74 @@ export function Hud({ game }: { game: Game }) {
       </aside>
 
       <div className="dock">
-        <div className="tools">
-          {game.view === 'hall' ? (
-            <>
-              <button type="button" className="on" onClick={() => game.exitHall()}>
-                ← Apron outside
-              </button>
-              <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
-                Inside: furnish rooms in the Hall panel (check-in → security → gate)
-              </span>
-            </>
-          ) : (
-            <>
-              {APRON_TOOLS.map((t) => (
+        {game.view === 'hall' ? (
+          <div className="tools">
+            <button type="button" className="on" onClick={() => game.exitHall()}>
+              ← Apron outside
+            </button>
+            <span className="muted" style={{ alignSelf: 'center', fontSize: 12 }}>
+              3D hall — furnish rooms in the Hall panel (doors → check-in → security → airside)
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="build-menus">
+              {BUILD_MENUS.map((m) => (
                 <button
-                  key={t}
+                  key={m.id}
                   type="button"
-                  className={game.tool === t ? 'on' : ''}
-                  onClick={() => game.setTool(t)}
+                  className={buildMenu === m.id ? 'on' : ''}
+                  onClick={() => setBuildMenu(m.id)}
                 >
-                  {TOOL_LABEL[t]}
+                  {m.label}
                 </button>
               ))}
               <button type="button" onClick={() => game.rotatePiece()}>
                 Rotate {game.facing === 'h' ? 'H' : 'V'}
               </button>
-              <button
-                type="button"
-                className={game.parkTerm === 'short' ? 'on' : ''}
-                onClick={() => game.setParkTerm('short')}
-                title="Short-term parking when stamping lots"
-              >
-                {parkTermLabel('short')}
-              </button>
-              <button
-                type="button"
-                className={game.parkTerm === 'long' ? 'on' : ''}
-                onClick={() => game.setParkTerm('long')}
-                title="Long-term parking when stamping lots"
-              >
-                {parkTermLabel('long')}
-              </button>
+              {buildMenu === 'landside' ? (
+                <>
+                  <button
+                    type="button"
+                    className={game.parkTerm === 'short' ? 'on' : ''}
+                    onClick={() => game.setParkTerm('short')}
+                  >
+                    {parkTermLabel('short')}
+                  </button>
+                  <button
+                    type="button"
+                    className={game.parkTerm === 'long' ? 'on' : ''}
+                    onClick={() => game.setParkTerm('long')}
+                  >
+                    {parkTermLabel('long')}
+                  </button>
+                </>
+              ) : null}
               <button type="button" onClick={() => game.setView('hall')}>
                 Enter hall
               </button>
-            </>
-          )}
-        </div>
+            </div>
+            <div className="tools build-tray">
+              {menuTools.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={game.tool === t ? 'on' : ''}
+                  onClick={() => game.setTool(t)}
+                  title={BUILDINGS.find((b) => b.tool === t)?.blurb ?? TOOL_LABEL[t]}
+                >
+                  {TOOL_LABEL[t]}
+                  {BUILDINGS.find((b) => b.tool === t)
+                    ? ` · ${money(BUILDINGS.find((b) => b.tool === t)!.cost)}`
+                    : ''}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <p className="hint">
           {game.view === 'hall'
-            ? 'Inside the terminal: landside→security→airside. Uncleared departures cannot reach gates/food/lounge. Esc / H returns to the apron.'
+            ? '3D hall: landside (doors/info/check-in) → security choke → airside. Missing security invites smuggling threats. Esc / H returns — apron keeps simming.'
             : game.tool === 'runway_short'
             ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15. A320+ and heavies refuse.`
             : game.tool === 'runway'

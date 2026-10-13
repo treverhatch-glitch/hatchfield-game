@@ -18,6 +18,10 @@ Recreate **Airport Tycoon 3**’s gameplay loop first. HatchTag extras come afte
 6. Players can buy a **premade terminal** with working check-in/security/gates/claim, **or** custom-furnish their own.
 7. Bad security is dangerous (threats / bombs). Police patrol.
 
+### Freeflow build (parked — preferred end-state)
+
+HatchTag wants **Cities: Skylines 2–style freeflow** (continuous roads / free rotate footprints), not a forever chessboard. That rewrite touches pathfinding, save format, apron mesh, and snap rules — **too big mid-loop**. Until then: keep the **tile grid** for placement authenticity with AT3, but ship **CS2 category menus** (Pavement / Stands / Terminal / Ops / Landside / Bulldoze). Tracked as **P2.5 Freeflow build** in `ADDITIONS.md`; do not start until grid gameplay feels solid.
+
 ### HatchTag layer (after AT3 loop)
 
 - RCT guests + pathfinding + flight clocks

@@ -177,6 +177,17 @@ Goal: keep our depth, steal AT3’s *growth silhouette* (second terminal, hub ti
 11. **Custom terminal painter** — walls rewrite hall graph (skill ceiling).
 12. **Godot Steam** — only after P0–P1 feel unfair-fun.
 
+**P2.5 — Freeflow build (player request — park for later)**
+
+> **Do not start until grid gameplay feels solid.** HatchTag wants Cities: Skylines 2–style freeflow placement (continuous drag roads/buildings, not chessboard stamps). That is a **foundation rewrite** (pathfinding, save format, apron mesh, snap rules) — too invasive to bolt on mid-loop. Current ship: **CS2-style category menus** on the existing tile grid (Pavement / Stands / Terminal / Ops / Landside / Bulldoze). When we open this workstream:
+>
+> 1. Continuous road / taxi paint with snap-to-angle (not cell stamps)
+> 2. Footprint placement for buildings (variable size, rotate free)
+> 3. Replace `SIZE²` tile arrays with spatial hash / zones
+> 4. Keep security-choke hall graph as the terminal interior model
+>
+> Track as **Freeflow build** — preferred end-state; grid stays until then.
+
 ### Recommended ship order (legacy tiers, still valid)
 
 **Tier A — make the airport feel built by you**
@@ -372,18 +383,27 @@ Modeled after airport apron practice (Schiphol/BIX baggage flows, fuel farm bott
 - **Line MX** — mechanic walks hangar → stand → hangar; pay posts when the visit finishes (not on landing).
 - **Independent parking** — random GA asks (not signed airlines), parking fee + day-rate, pilot **requests leave** after stay, **~20h ops window** (`GA_LEAVE_WINDOW` = 150s of 180s day) with auto tower release or manual Release; overstay fine if they miss it.
 
+## Shipped — landside economy + UX polish (this loop)
+
+- **Passenger landside modes** — guests arrive/leave via drop-off, short/long park, hotel, bus curb, or rail station (persona-weighted). Missing preferred infra angers them; matching modes charge small fees + landside uses.
+- **Landside buildings (real meshes)** — four car park stamps × short/long term; three outside hotel grades; inside **dayhotel** for layover spend.
+- **Usage economy** — fees only when pax use infra; fixed building + amenity expenses every payroll tick. Idle landside bleeds cash.
+- **RCT guest wallets** — budget / family / business / premium with random cash + spend prefs; purchases gate on preference and wallet.
+- **Perf pass** — lower GL DPR/shadows, drop dim-layer blur, throttle Hud emit (~0.4s sim) so 3x doesn’t hitch-jump.
+- **Offer / emergency spacing** — first airline call soon after starter kit; later contracts + divert/tanker asks much slower.
+- **Security choke** — hall graph is doors/info/check-in → security → airside only. Premade ships sealed; player shells without security invite smuggling/weapons threats + fees/heat.
+- **3D hall** — orbit/pan/zoom terminal view with room meshes + walking pax; apron keeps simulating while inside.
+- **CS2 build menus** — category tabs (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) + bottom tray of stamps (**still tile-grid** until P2.5 freeflow).
+- **Hall entertainment spend** — food, souvenirs, lounge, golf, gaming, waterfall, day rooms, massage spa, airside pool.
+
 ## Still later (on your list, not finished)
 
 See **Upgrade plan — make ours better** above (Waves A→C). Short list:
 
-- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L — **shipped** (pad stamp, glycol truck holds pushback in storm/fog, S/M/L stamps + class gate, planner night column + ETA/stand pin)
+- Wave A: Planner v3 · De-ice pad+truck · Stand S/M/L — **shipped**
 - **Research lab bodies** — hire researchers; furnish landside R&D desk / chalkboard / lab bench; they walk stations in Hall; RP only while working; breaks + soft off-shift “home” (exit leave, not CEO bus commute); night = slower drip + more off-shift.
 - **Economy leash** — standard after kit is ~$7k (loan almost required); loan interest scales with balance and capitalizes when unpaid (capped); payroll gains a field-load multiplier from signed carriers / stands / turn volume so mid/late stays a money puzzle; thrifty+loan forever is a trap, grow+repay is the healthy path.
-- **Passenger landside modes** — guests arrive/leave via drop-off, short/long park, hotel, bus curb, or rail station (persona-weighted). Missing preferred infra angers them; matching modes charge small fees + landside uses. Bus curb + rail station stamps are the “bring pax in” buildings beyond road + city rail stub.
-- **Landside buildings (real meshes)** — four car park stamps (small lot + booth, large lot + canopy, multi-level garage, underground portal) × short/long term paint; three outside hotel grades (inn / business mid-rise / resort tower). Inside-terminal **dayhotel** keeps layover pax airside for spend.
-- **Usage economy** — no sticker income for placed hotels/parks/amenities. Passenger fees (grade/term-scaled) hit cash when guests use infra; fixed building + hall-amenity expenses bill every payroll tick whether used or not. Idle landside is a cash sink; busy landside covers it.
-- **RCT guest wallets** — four passenger types (budget / family / business / premium) with wide random cash bands (broke outliers + whales). Each body rolls spend prefs (food/shop/play/lounge/nap/landside); purchases gate on preference, wallet, and “too expensive” share-of-wallet. Airline persona only biases the mix.
-- **Hall entertainment spend** — furnishable airside money sinks: food, souvenirs, lounge, indoor golf bays, gaming den, waterfall court, day rooms, **massage spa**, **airside pool**. Guests path by need (energy/play) and pay from wallet prefs.  
 - Wave B: Belt lite · Franchise brands · Intl zone  
 - Wave C: Remote stands · Multi-T research gate · Stairs/loader · Godot  
 - Parked: custom wall painter (after belts+planner)
+- **Parked P2.5 — Freeflow build** — CS2 continuous roads / free-rotate footprints (see Upgrade plan). Grid stays until that workstream opens.
