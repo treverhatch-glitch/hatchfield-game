@@ -674,3 +674,20 @@ A 30-game-day headless run (easy, sandbox off, starter kit, offers accepted as t
 PR #34 shares history with this branch only back at `main`, so a merge would replay that whole gap onto the show-up work. The hall-scoped behavior is on this branch instead. A jetway stand resolves to its own terminal. Wear and a scrub stay on that hall, including the lane items. Claim load is counted inside the hall that owns the stand. When two jetway stands are free, the quieter hall is chosen before the belt link. Prefab I is still two lanes at 3.5 seconds with a cap of 40. Screened passengers still keep their path. A premade still counts as a hall once its construction site finishes.
 
 **Tests.** `tsc -b` clean. Vitest 727 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-DNEZgQfm.js`, 1,578.20 kB.
+
+## Terminal kit — 13 Oct
+
+PR #47 brings the build-your-own kit onto this branch. A fresh passenger game, starter hall, then Hall, shows Food, Seating, and Decor above the dock. Fast food, a bench, and a planter go down on a legal cell. Bulldoze takes the planter back for $100. Prefab bundle pieces stay. The show-up boarding clock still waits until a departure is released.
+
+**Tests.** `tsc -b` clean. Vitest 738 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Vitest | Pass | 738 passed, 2 skipped |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 11. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 9. |
+| 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, cash finite. Missed 30 while overloaded. |
+| Margins | Pass | 10.0% early, 24.4% mid-game |
+
+The production bundle is `index-CN6EN7lw.js`, 1,593.14 kB, with `index-jic0D8bj.css`.
+
