@@ -1,0 +1,103 @@
+# Hatchfield — Vision
+
+What we’re building toward, from everything laid out so far. Cross-links: [DESIGN](./DESIGN.md) · [PROGRESSION](./PROGRESSION.md) · [ECONOMY](./ECONOMY.md) · [IDEAS](./IDEAS.md) · [PROBLEMS](./PROBLEMS.md) · [NEXT](./NEXT.md).
+
+## The fantasy in one breath
+
+You run a living airfield where **layout is skill**, **letters are drama**, and **money equals picture**. Planes, trucks, buses, walkers, and hall guests all jam each other if you design badly. Passengers are the default hero path; **cargo is a full parallel path**, not a side stamp. Emergencies and military hosting are **side seasons** — chaos and prestige without turning into a combat game.
+
+## Three stacked games (same airport)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  META — Field XP · parcels · loans · IPO / HATCH          │
+├──────────────────┬──────────────────┬───────────────────┤
+│  PAX PATH        │  CARGO PATH      │  SIDE TRACKS        │
+│  Hall + jetways  │  Shed → screen →  │  Emergencies        │
+│  T1–T5 carriers  │  rail → freighter│  Military host      │
+│  heat / Hub      │  T1–T5 freight   │  GA parking         │
+└──────────────────┴──────────────────┴───────────────────┘
+                         ▲
+              APRON TRAFFIC (shared congestion)
+```
+
+Players pick **pax-first, cargo-first, or hybrid** at the plot (city vs factory already hints this — deepen into an explicit start choice). Both paths feed Field XP and Field Level so neither is a dead end.
+
+## Path A — Passengers (main campaign default)
+
+See [PROGRESSION.md](./PROGRESSION.md).
+
+- Stamp landside + hall + jetway/remote stands.
+- Climb **airline tiers T1→T5** (Bushline → Northline → Harbor → Summit → Crown).
+- Hall RCT needs, security choke, amenities spend.
+- Jetway speed → more dwell → more retail (already live).
+
+## Path B — Cargo (equal citizen, not DLC)
+
+See [PROGRESSION.md § Cargo ladder](./PROGRESSION.md#cargo-ladder-parallel-to-pax) and [IDEAS § Cargo landside](./IDEAS.md#cargo-landside-infrastructure).
+
+Real airports move freight. Hatchfield should too:
+
+1. **Inbound landside** — heavy truck gate and/or **cargo rail spur** (not the same as pax city rail).
+2. **Screening / processing** — X-ray / customs / sort buildings (cargo “security choke”).
+3. **Makeup / warehouse** — parcels stage before uplift.
+4. **Apron load** — ULD/loader GSE onto freighters at cargo stands (away from pax jetways).
+5. **Carrier ladder** — UPPS → Umazon → EXFED (+ future regional freighters), night banks, heat as “on-time uplift.”
+
+Cargo XP and pax XP both raise Field Level; factory plot biases cargo letters, city plot biases pax — player can still hybrid.
+
+## Side track — Emergency events (chaos + reward)
+
+See [IDEAS § Emergency seasons](./IDEAS.md#emergency-seasons-random-letters).
+
+Random letters (already partially live: divert, tanker refuel, tanker+MX, helo medevac):
+
+| Event | If handled | If ignored / failed |
+| --- | --- | --- |
+| Divert / malfunction | Fee + rep + XP; occupies stand / strip | Fine, heat nick, schedule slide |
+| Firefighter tanker refuel (+ optional MX) | Fee; fuel/MX drain; may block bay | Fail fine; region notices |
+| Air ambulance / patient lift | Pad fee; needs helo + medic budget | Refusal hurts reputation |
+| Future: bird strike hold, fuel leak scrub, VIP scramble | Prestige or overtime pay | Cascades into Planner |
+
+Rule: **emergencies steal capacity** (stand, strip, fuel, mechanic). Correct handling pays; wrong handling is scheduling chaos — never a skill minigame unless it’s fun.
+
+## Side track — Military host (no fighting)
+
+See [IDEAS § Military host](./IDEAS.md#military-host-side-missions).
+
+Guard agreement is the seed. Expand into **side missions**, not a war sim:
+
+- Host C-130 / C-17 / tanker / fighter drag on hangar-side hardstands.
+- Letters: “clear pad 2 for ANG,” “overnight KC-135,” “weekend training surge.”
+- Special buildings: **mil ramp**, **Guard hangar**, later **pilot training facility** / ops building (RP or mil XP, not dogfights).
+- Rewards: cash, Field XP, unique unlocks (mil fuel truck paint, night waiver). Failures: fines + temporary mil cool-off.
+
+**Non-goal:** player-controlled combat, weapons employment, PvP.
+
+## Motivation engine (why you keep playing)
+
+Copied from good CS / AT3 instincts, adapted:
+
+1. **Field XP → Field Level** — unlocks carrier tiers, parcels, loans ([PROGRESSION](./PROGRESSION.md)).
+2. **Letters with deadlines** — always something to answer (contract, emergency, mil, cargo night bank).
+3. **Layout punishment you can see** — congestion, late bags/freight, security threats.
+4. **Prestige forks** — Hub plaques, Guard host, IPO street — optional mastery, not required for fun.
+5. **Dual victory flavors** — “pax Hub campus” vs “night freight fortress” vs hybrid mega-field.
+
+## What “done” looks like (session fantasies)
+
+- **Pax player:** T1 hoppers → regional Hub → jetway campus → Summit widebodies → optional Crown mega-hub + IPO.
+- **Cargo player:** shed + truck gate → rail spur → night UPPS → Umazon → EXFED heavies; pax hall optional or minimal.
+- **Hybrid:** daytime Northline, overnight freighters, weekend Guard surge, divert scramble at 3x.
+
+## Pillar check
+
+| Idea | Feeds which pillar? |
+| --- | --- |
+| Emergency letters | Ops risk + schedule drama |
+| Military host missions | Stamp/contracts + ops (no 5th game if kept letter-sized) |
+| Cargo landside chain | Layout skill (CEO spine) — parallel to pax belts |
+| Start as cargo or pax | AT3 first hour, twice |
+| Field XP for both paths | Capital / progression glue |
+
+If military or cargo grows a full second HUD, stop and fold back into letters + one panel tab — see [PROBLEMS.md](./PROBLEMS.md) “fifth loop” smell.

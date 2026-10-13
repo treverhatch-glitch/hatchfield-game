@@ -2,6 +2,8 @@
 
 Ordered plan. Ship top-down. Update checkboxes when merged.
 
+**North star:** [VISION.md](./VISION.md). Ideas backlog: [IDEAS.md](./IDEAS.md). Progression: [PROGRESSION.md](./PROGRESSION.md).
+
 ## Now (solidify strategy)
 
 - [x] Jetway / remote stands + terminal bus + walk congestion
@@ -10,9 +12,11 @@ Ordered plan. Ship top-down. Update checkboxes when merged.
 - [x] 5x speed + inspect off + apron perf (mapRev, ghost cache, lite shadows)
 - [x] Organized docs (`docs/*`)
 - [x] Airline tiers T1–T5 panel + Field XP + multi-loan bank desk
-- [ ] **Belt lite (Wave B.1)** — paint bag path; broken = late bags + heat *(highest leverage for “layout skill”)*
+- [x] Vision pass — emergency / mil / cargo dual-path documented + cross-linked
+- [ ] **Belt lite (Wave B.1)** — paint bag path; broken = late bags + heat *(highest leverage for pax layout skill)*
 - [ ] Make congestion **readable** — heat-map tint or news when a neck costs >N seconds
 - [ ] Coach / Economy discoverability — Starter kit harder to miss
+- [ ] Emergency letters → Planner “stolen slot” highlight when divert occupies capacity
 
 ## Wave B — Layout skill (CEO spine)
 
@@ -22,11 +26,27 @@ Ordered plan. Ship top-down. Update checkboxes when merged.
 
 Success: player breaks a belt, sees bags late, fixes path, recovers heat — without a wiki.
 
+## Wave B′ — Cargo path equality
+
+*(Can parallel Wave B once belt pattern exists — same “broken chain” verb.)*
+
+1. **Start focus UI** — Passenger / Cargo / Hybrid + cargo starter kit ([PROGRESSION](./PROGRESSION.md#start-choice-planned)).
+2. **Cargo truck gate + screen/sort** — landside choke; missing = late uplift.
+3. **Warehouse makeup + loader GSE** — picture verb for freighter load.
+4. **Cargo rail spur** — high volume, high upkeep; distinct from pax city rail.
+5. Airlines panel **Cargo ladder** clarity (C1–C5 labels beside T1–T5).
+
+## Wave B″ — Side seasons
+
+1. Expand emergency pack + cooldowns ([IDEAS](./IDEAS.md#emergency-seasons-random-letters)).
+2. Military mission letters + pilot training facility ([IDEAS](./IDEAS.md#military-host-side-missions)).
+3. Keep both letter-sized — no fifth permanent game ([PROBLEMS](./PROBLEMS.md#fifth-loop-smell)).
+
 ## Wave C — Scale fantasy
 
 1. Multi-terminal research gate (3rd+ halls).
-2. Stairs / belt loader GSE on heavy metal.
-3. Scenarios (3–5 timed goals).
+2. Stairs / belt loader GSE on widebody/heavy (+ cargo Code F loaders).
+3. Scenarios (3–5 timed goals) — include “cargo Kiln” and “Guard neighbor.”
 4. Richer jetway / terminal ladder art.
 
 *(Remote stand bus/walk already shipped — deepen with capacity & fee cuts.)*

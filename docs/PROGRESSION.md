@@ -2,6 +2,20 @@
 
 How players see airlines, climb tiers, and stay hungry past the first landing.
 
+**See also:** [VISION.md](./VISION.md) (pax + cargo + emergency + mil) · [ECONOMY.md](./ECONOMY.md) · [IDEAS.md](./IDEAS.md) · [NEXT.md](./NEXT.md).
+
+## Start choice (planned)
+
+At New Game (after difficulty), pick a **focus**:
+
+| Focus | Plot bias | Starter kit flavor | First letters |
+| --- | --- | --- | --- |
+| **Passengers** | City | Hall + jetway stands | Bushline / Northline |
+| **Cargo** | Factory | Shed + cargo stand + truck gate stub | UPPS / night bank |
+| **Hybrid** | Either | Lean pax + lean cargo | Whichever meets req first |
+
+Focus biases offer weights; it does **not** lock the other path. Field XP from both. Live today: city vs factory plots only — explicit focus UI is next ([NEXT](./NEXT.md)).
+
 ## How players see & interact with airlines (live)
 
 | Touchpoint | What it does |
@@ -26,9 +40,33 @@ There is no separate “airline management game” — the airport hosts them; t
 
 Biz models cross-cut size: **Charter · LCC · Full-service · Cargo**. Same tier, different hall/apron asks.
 
+## Cargo ladder (parallel to pax)
+
+Freight is a full progression spine, not a shed stamp. Infra vision in [IDEAS § Cargo](./IDEAS.md#cargo-landside-infrastructure).
+
+| Tier | Role | Live carriers | Infra (target) |
+| --- | --- | --- | --- |
+| **C1** | Feeder / express van air | Light procs / small freighter | Shed + truck gate |
+| **C2** | Regional freight | **UPPS** | + sort/screen |
+| **C3** | National night bank | **Umazon** | + makeup warehouse |
+| **C4** | Heavy domestic / near-intl | (future) | + cargo rail spur |
+| **C5** | Mega express / Code F freight | **EXFED** | + Code F stand / loader GSE |
+
+Cargo heat = on-time uplift. Night bank research already biases freighter slots. Cargo turnarounds should grant Field XP equal to pax (tune in [ECONOMY](./ECONOMY.md)).
+
+## Side tracks (not the main ladder)
+
+| Track | Progression feel | Doc |
+| --- | --- | --- |
+| **Emergencies** | Random letters; fee + XP if hosted; schedule chaos if not | [VISION](./VISION.md#side-track--emergency-events-chaos--reward) |
+| **Military host** | Guard agreement → mission letters → training facility unlocks | [VISION](./VISION.md#side-track--military-host-no-fighting) |
+| **GA parking** | Independent fees / leave windows | Live |
+
+Side tracks must not outshout T1→T5 / C1→C5. Cooldowns keep the phone readable ([PROBLEMS](./PROBLEMS.md)).
+
 ## Field XP (CS-style spine)
 
-Earn XP from: turnarounds, signing contracts, clearing loans, buying parcels.
+Earn XP from: **pax turnarounds**, **cargo uplifts**, signing contracts, clearing loans, buying parcels, successful emergency/mil host.
 
 | Level | XP (approx) | Opens |
 | --- | --- | --- |
@@ -64,8 +102,11 @@ Bigger wire = lower rate per tick but much higher fee and longer leash. One open
 
 - Per-airline **loyalty unlock objects** (brand lounge furniture, unique GSE paint) at heat milestones.
 - **Scenario medals** that grant XP boosts or free parcels.
-- Cargo-only Field track (night XP) so Kiln factory plot isn’t pax-paced.
-- Tier-unique research nodes (Code F gates, bilateral “landing rights” as research).
+- Explicit **start focus** UI + cargo starter kit ([NEXT](./NEXT.md)).
+- Cargo landside chain verbs (gate → screen → rail → loader).
+- Emergency pack expansion + Planner “stolen slot” highlight.
+- Mil training facility + mission letter chain.
+- Tier-unique research nodes (Code F gates, bilateral “landing rights”).
 - Visible XP bar in Airlines panel (partially: Lv + fraction text).
 
 ## Design rules

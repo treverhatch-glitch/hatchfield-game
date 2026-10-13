@@ -2,14 +2,19 @@
 
 Money = picture. If cash moves and nothing on screen did, the loop is wrong.
 
+**See also:** [VISION.md](./VISION.md) · [PROGRESSION.md](./PROGRESSION.md) · [IDEAS.md](./IDEAS.md).
+
 ## Cash sources (when they post)
 
 | Source | When it posts | Notes |
 | --- | --- | --- |
-| Landing / handling | Turnaround services complete | Fuel, bags, catering, cleaning, MX |
-| Hall spend | Guest buys food/shop/play/lounge/etc. | Wallet + prefs gate purchases |
+| Landing / handling | Turnaround services complete | Fuel, bags, catering, cleaning, MX · **pax + cargo** |
+| Hall spend | Guest buys food/shop/play/lounge/etc. | Wallet + prefs gate purchases (pax path) |
+| Cargo uplift fees | Freighter load complete | Target: screen/rail chain quality mods fee |
 | Landside fees | Guest uses hotel / park / bus / rail | Usage only — idle stamps don’t earn |
-| Pad / parking / emergency host | Helo, GA parking, divert/tanker accepted | Letter-driven |
+| Cargo truck / rail intake | Parcels enter gate or spur | Target landside — usage fees + upkeep |
+| Pad / parking / emergency host | Helo, GA, divert/tanker accepted | Letter-driven; steals capacity |
+| Military host fees | Guard mission / overnight | Side track — [VISION](./VISION.md) |
 | Layover / Hub fees | Accept letter | Up-front + transfer dwell spend |
 | IPO raise / share trades | List + buy/sell HATCH | Public crises tank the ticker |
 | Field-task bonuses | Complete airline ask | Fail = fine |
@@ -41,6 +46,8 @@ These are the bridges that stop “strip + plane = win”:
 3. **Taxi geometry** — congestion slows GSE and jets → late boards → heat dips → fewer slots.
 4. **Landside match** — persona wants rail/hotel/bus; missing mode angers + skips fees.
 5. **Wear / cleaning budget** — budget crowds scuff WC/security; scrub costs cash or reputation dies.
+6. **Cargo chain** *(target)* — truck/rail → screen → makeup → loader; break any link → late uplift → cargo heat + fee cut ([IDEAS](./IDEAS.md#cargo-landside-infrastructure)).
+7. **Emergency / mil capacity tax** — hosting pays fees but steals stands/strip/fuel; refusing saves capacity but costs fines/rep.
 
 ## Capital loop (mid/late)
 
@@ -56,8 +63,10 @@ Loans → parcels → rail → IPO → street missions → public security crise
 
 ## Playtest questions
 
-1. After first Northline turnaround, is the next dollar decision interesting?
-2. Does ignoring Hall still print money at 3x for 10 minutes? (Should hurt.)
+1. After first Northline (or UPPS) turnaround, is the next dollar decision interesting?
+2. Does ignoring Hall still print money at 3x for 10 minutes on a pax focus? (Should hurt.)
 3. Does a clogged taxi visibly delay a departure and cool heat?
 4. Does jetway investment pay back via hall spend within a few turns?
 5. Does Standard force a loan without feeling unfair?
+6. Can a cargo-focus start earn without a hall? (Should yes, once starter kit exists.)
+7. Does hosting a divert feel rewarding *and* disruptive to the timetable?
