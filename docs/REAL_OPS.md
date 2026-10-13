@@ -110,14 +110,14 @@ So the luggage pipeline mostly feeds **Standing + hall dwell economics**, with m
 
 **Real:** truck/rail dock → acceptance → security screening → warehouse buildup → ramp / ULD → freighter. Freight is scheduled; uplift is late if landside is late. Night banks and express contracts are the drama.
 
-**Game — equal citizen loop (target fun):**
+**Game — equal citizen loop:**
 
-1. **Demand letters** — UPPS/Umazon/EXFED ask for volume windows (“12 ULDs by 02:00”), not just “sign and freighter appears.”
-2. **City trucks** — spawn off-map → guard → intake; visible queue if gate thin.
-3. **Screen choke** — thorough vs fast (Standing/On-time vs incident risk).
-4. **Warehouse meter** — fill before freighter; overfill = jam; empty at push = late uplift.
-5. **Loader GSE** — picture verb at cargo stand; capacity by aircraft size.
-6. **Pay** — intake fee + uplift fee when load completes; On-time Standing; Field XP = pax.
+1. **Demand letters** — UPPS/Umazon/EXFED ask for volume windows (“12 ULDs by 02:00”), not just “sign and freighter appears.” *(slice 3)*
+2. **City trucks** — ~~spawn off-map → guard → intake; visible queue if gate thin.~~ **LIVE (slice 2)**
+3. **Screen choke** — thorough vs fast (Standing/On-time vs incident risk). *(later)*
+4. **Warehouse meter** — ~~fill before freighter; overfill = jam; empty at push = late uplift.~~ **LIVE basic (slice 2)**
+5. **Loader GSE** — picture verb at cargo stand; capacity by aircraft size. *(slice 6)*
+6. **Pay** — ~~intake fee + uplift fee when load completes; On-time Standing.~~ **LIVE intake + uplift**
 7. **Fantasy fork** — night freight fortress vs daytime pax hub; hybrid shares taxi jam.
 
 Cargo should feel like **Manor Lords crates + AT3 contracts**, not a shed stamp. Details: [IDEAS](./IDEAS.md#cargo-play-loop-equal-fun).

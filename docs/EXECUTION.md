@@ -19,7 +19,7 @@ See [DESIGN § Player vocabulary](./DESIGN.md#player-vocabulary-not-code-names).
 | **E1** | Pax layout skill | **Baggage belt lite** — stamp belt, bags↔stand↔terminal link, break = delay + Standing | **SHIPPED** |
 | **E2** | Readability | Congestion / stolen-slot feedback (news + Planner tint) | **SHIPPED** |
 | **E2b** | Vocabulary | Player-facing Standing / On-time / Jam (logic unchanged) | **SHIPPED** |
-| **E3** | Cargo + bags depth | [BUILD](./BUILD.md) slices 1–3 | **1 + 1b SHIPPED · slice 2 next** |
+| **E3** | Cargo + bags depth | [BUILD](./BUILD.md) slices 1–3 | **1 + 1b + 2 SHIPPED · slice 3 next** |
 | **E4** | Demand & budget leash | Clear income/expense readout + payroll that bites idle stamps | After E3 |
 | **E5** | Side seasons | Richer emergency pack + mil mission letters | Parallel once E3 live |
 | **E6** | Scale fantasy | Franchises, intl zone, short scenarios | After layout verbs feel unfair-fun |

@@ -8,6 +8,8 @@ import {
   BUILDINGS,
   CATER,
   CLEANING_FEE,
+  CARGO_INTAKE_FEE,
+  CARGO_WAREHOUSE_CAP,
   createProcAirline,
   DEFAULT_BUDGETS,
   DEICE_FEE,
@@ -424,6 +426,10 @@ export class Game {
   congNewsCool = 0
   /** Peak live congestion count near moving traffic (HUD jam line). */
   congPeak = 0
+  /** Freight units staged at the cargo shed (city truck intake). */
+  cargoWarehouse = 0
+  /** Cooldown between city cargo truck spawns. */
+  cityCargoCool = 8
   interestCool = 60
   public = false
   sharePrice = 0
@@ -545,6 +551,8 @@ export class Game {
     this.congWasteAcc = 0
     this.congNewsCool = 0
     this.congPeak = 0
+    this.cargoWarehouse = 0
+    this.cityCargoCool = 8
     this.securityIncidents = 0
     this.reputation = 40
     this.loanBalance = 0
@@ -1447,6 +1455,14 @@ export class Game {
     for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
     this.tiles[18][15] = 'road'
     this.tiles[18][17] = 'road'
+    // Guard post on the city approach — screens inbound cargo trucks.
+    this.tiles[3][roadC] = 'guard'
+    // Cargo shed on a road stub (city trucks → guard → shed).
+    this.tiles[10][roadC + 1] = 'road'
+    this.tiles[10][roadC + 2] = 'cargo'
+    // Taxi link so freighter GSE can reach the shed from the apron.
+    this.tiles[21][roadC + 2] = 'taxi'
+    for (let r = 11; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
     // Premade hall touching taxi + road (c15–17, r19–21)
     const origin = { c: 15, r: 19 }
     for (let r = 0; r < 3; r++) {
@@ -1498,7 +1514,7 @@ export class Game {
     this.emergencyCool = 120
     this.threatCool = 90
     this.pushNews(
-      'Starter kit down — connected pavement, lounge, one mechanic + desk agent. Northline should call.',
+      'Starter kit down — guard post + cargo shed on the city road, lounge, mechanic + desk. Northline should call.',
       'good',
     )
     this.bumpMap()
@@ -2370,6 +2386,7 @@ export class Game {
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       fieldTask: this.fieldTask,
+      cargoWarehouse: this.cargoWarehouse,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -2481,6 +2498,8 @@ export class Game {
       }))
       this.scheduleAuto = s.scheduleAuto ?? true
       this.schedulePlanCool = 6
+      this.cargoWarehouse = s.cargoWarehouse ?? 0
+      this.cityCargoCool = 6
       this.mission = null
       this.mxOffer = null
       this.pendingThreat = null
@@ -2767,6 +2786,207 @@ export class Game {
         return 'Bags: complete'
       default:
         return lane ? `Bags${lane}` : ''
+    }
+  }
+
+  /** Warehouse fill 0–1 for HUD. */
+  cargoWarehouseFill(): number {
+    return clamp(this.cargoWarehouse / CARGO_WAREHOUSE_CAP, 0, 1.2)
+  }
+
+  /** Road cells on the map edge — city truck spawn points. */
+  cityEdgeRoads(): Vec[] {
+    const out: Vec[] = []
+    for (let c = 0; c < SIZE; c++) {
+      if (this.tiles[0][c] === 'road') out.push({ c, r: 0 })
+      if (this.tiles[SIZE - 1][c] === 'road') out.push({ c, r: SIZE - 1 })
+    }
+    for (let r = 1; r < SIZE - 1; r++) {
+      if (this.tiles[r][0] === 'road') out.push({ c: 0, r })
+      if (this.tiles[r][SIZE - 1] === 'road') out.push({ c: SIZE - 1, r })
+    }
+    return out
+  }
+
+  /**
+   * Living logistics: city cargo trucks spawn off-map → guard → shed.
+   * Missing / thin guard = queue, deny, or On-time nick.
+   */
+  tickCityCargo(dt: number) {
+    this.cityCargoCool = Math.max(0, this.cityCargoCool - dt)
+    const sheds = tilesOf(this.tiles, 'cargo')
+    if (!sheds.length) return
+    const edges = this.cityEdgeRoads()
+    if (!edges.length) return
+
+    const live = this.trucks.filter((t) => t.kind === 'citycargo').length
+    const guards = tilesOf(this.tiles, 'guard')
+    const maxLive = Math.max(1, 1 + guards.length)
+    if (live >= maxLive) return
+    if (this.cityCargoCool > 0) return
+    // Demand: cargo signed, warehouse room, or a freighter inbound/on stand.
+    const cargoSigned = this.signed.some((id) => this.airline(id).kind === 'cargo')
+    const freighterBusy = this.flights.some(
+      (f) =>
+        f.cargo &&
+        f.phase !== 'gone' &&
+        f.phase !== 'takeoff' &&
+        f.phase !== 'hold',
+    )
+    const wantStock = this.cargoWarehouse < CARGO_WAREHOUSE_CAP * 0.85
+    if (!cargoSigned && !freighterBusy && !wantStock) return
+    if (!wantStock && !freighterBusy) return
+
+    // No guard — rare sneak-through with incident, else deny at the edge.
+    if (!guards.length) {
+      this.cityCargoCool = 14 + Math.random() * 10
+      if (Math.random() < 0.45) {
+        this.securityIncidents += 1
+        for (const id of this.signed) {
+          if (this.airline(id).kind === 'cargo') this.adjustHeat(id, -2.2)
+        }
+        this.pushNews(
+          'City cargo truck denied — no guard post on the road. On-time dips; stamp a Guard.',
+          'bad',
+        )
+      } else if (Math.random() < 0.35) {
+        // Sneak in without screen — short path straight to shed, incident risk.
+        const edge = pick(edges)
+        const path = nearestPath(this.tiles, edge, sheds, 'truck')
+        if (path && path.length > 1) {
+          this.trucks.push({
+            id: uid('city'),
+            kind: 'citycargo',
+            flightId: null,
+            x: edge.c,
+            y: edge.r,
+            path,
+            seg: 0,
+            t: 0,
+            returning: false,
+            dwell: 0,
+            preDwell: 0,
+            patrol: false,
+            mission: 'city_shed',
+            home: sheds[0],
+            cargoUnits: 10 + Math.floor(Math.random() * 14),
+          })
+          this.securityIncidents += 1
+          this.pushNews(
+            'Unscreened city truck rolled to the shed — security nick. Build a Guard post.',
+            'bad',
+          )
+        }
+      }
+      return
+    }
+
+    const edge = pick(edges)
+    const guard = guards[0]
+    const toGuard = nearestPath(this.tiles, edge, [guard], 'truck')
+    if (!toGuard || toGuard.length < 2) {
+      this.cityCargoCool = 8
+      return
+    }
+    // Queue pressure when many trucks + one post.
+    const queue = this.trucks.filter(
+      (t) => t.kind === 'citycargo' && t.mission === 'city_guard',
+    ).length
+    const units = 12 + Math.floor(Math.random() * 16)
+    this.trucks.push({
+      id: uid('city'),
+      kind: 'citycargo',
+      flightId: null,
+      x: edge.c,
+      y: edge.r,
+      path: toGuard,
+      seg: 0,
+      t: 0,
+      returning: false,
+      dwell: 0,
+      preDwell: queue > 0 ? 0.8 + queue * 0.7 : 0,
+      patrol: false,
+      mission: 'city_guard',
+      home: sheds[0],
+      cargoUnits: units,
+    })
+    this.cityCargoCool = 9 + Math.random() * 8 + queue * 3
+    if (Math.random() < 0.4) {
+      this.pushNews(
+        `City cargo truck inbound — ${units} units via guard → shed.`,
+        'ok',
+      )
+    }
+  }
+
+  finishCityCargo(t: Truck) {
+    if (t.kind !== 'citycargo') return
+    if (t.mission === 'city_guard') {
+      // Screened — roll to shed.
+      const sheds = tilesOf(this.tiles, 'cargo')
+      const from = { c: Math.round(t.x), r: Math.round(t.y) }
+      const path = sheds.length
+        ? nearestPath(this.tiles, from, sheds, 'truck')
+        : null
+      if (path && path.length > 1) {
+        t.mission = 'city_shed'
+        t.path = path
+        t.seg = 0
+        t.t = 0
+        t.returning = false
+        t.dwell = 0
+        t.home = sheds[0]
+      } else {
+        t.dwell = -99
+      }
+      return
+    }
+    if (t.mission === 'city_shed') {
+      const units = t.cargoUnits ?? 12
+      const room = Math.max(0, CARGO_WAREHOUSE_CAP - this.cargoWarehouse)
+      const accepted = Math.min(units, room)
+      this.cargoWarehouse += accepted
+      if (accepted > 0) {
+        this.earn(
+          Math.round(CARGO_INTAKE_FEE * (0.7 + accepted / 28)),
+          `City cargo intake (${accepted}u)`,
+        )
+      }
+      if (accepted < units) {
+        this.pushNews(
+          `Warehouse full — ${units - accepted}u turned away. Expand capacity or uplift sooner.`,
+          'bad',
+        )
+        for (const id of this.signed) {
+          if (this.airline(id).kind === 'cargo') this.adjustHeat(id, -1.2)
+        }
+      } else if (Math.random() < 0.5) {
+        this.pushNews(
+          `Warehouse ${Math.round(this.cargoWarehouseFill() * 100)}% — ${accepted}u staged for freighters.`,
+          'ok',
+        )
+      }
+      t.cargoUnits = 0
+      // Depart back to city edge.
+      const edges = this.cityEdgeRoads()
+      const from = { c: Math.round(t.x), r: Math.round(t.y) }
+      const leave = edges.length
+        ? nearestPath(this.tiles, from, edges, 'truck')
+        : null
+      if (leave && leave.length > 1) {
+        t.mission = 'city_depart'
+        t.path = leave
+        t.seg = 0
+        t.t = 0
+        t.returning = true
+        t.dwell = 0
+      } else {
+        t.dwell = -99
+      }
+      return
+    }
+    if (t.mission === 'city_depart') {
+      t.dwell = -99
     }
   }
 
@@ -6120,6 +6340,19 @@ export class Game {
       this.emit()
       return
     }
+    if (building.tile === 'guard') {
+      const nearRoad = [
+        { c: v.c + 1, r: v.r },
+        { c: v.c - 1, r: v.r },
+        { c: v.c, r: v.r + 1 },
+        { c: v.c, r: v.r - 1 },
+      ].some((p) => inBounds(p.c, p.r) && this.tile(p) === 'road')
+      if (!nearRoad) {
+        this.pushNews('Guard post needs a road edge (city approach).', 'bad')
+        this.emit()
+        return
+      }
+    }
     if (building.tile === 'deice' && !farmBesidePavement(this.tiles, v)) {
       this.pushNews('De-ice pad needs taxi / stand / runway edge.', 'bad')
       this.emit()
@@ -6213,6 +6446,16 @@ export class Game {
       if (tilesOf(this.tiles, 'hangar').length && this.milCapableStands().length) {
         this.pushNews('Hardstand linked for Guard / mil ramp.', 'good')
       }
+    } else if (building.tile === 'guard') {
+      this.pushNews(
+        'Guard post online — city cargo trucks will screen here before the shed.',
+        'good',
+      )
+    } else if (building.tile === 'cargo') {
+      this.pushNews(
+        'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.',
+        'ok',
+      )
     } else if (building.tile === 'termbus') {
       this.pushNews(
         `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`,
@@ -7042,8 +7285,25 @@ export class Game {
       if (shed.length && f.stand) {
         const cargoPath = nearestPath(this.tiles, shed[0], [f.stand], 'truck')
         if (cargoPath) {
+          // Shed → freighter uplift needs staged warehouse stock (city trucks fill it).
+          const need = clamp(18 + Math.floor(f.pax / 8), 18, 48)
+          if (this.cargoWarehouse < need * 0.35) {
+            f.waitingOn.bags = true
+            this.adjustHeat(f.airline, -2.4)
+            this.pushNews(
+              `${f.flightNo} late uplift — warehouse thin (${this.cargoWarehouse}u). City trucks / guard pipeline.`,
+              'bad',
+            )
+          }
           f.waitingOn.bags = true
           this.spawnTruck('bags', f, cargoPath, 'unload', shed[0])
+          const tr = this.trucks[this.trucks.length - 1]
+          if (tr?.kind === 'bags') {
+            const take = Math.min(this.cargoWarehouse, need)
+            this.cargoWarehouse = Math.max(0, this.cargoWarehouse - take)
+            tr.cargoUnits = take > 0 ? take : 6
+            tr.preDwell = take > 0 ? 1.2 + take * 0.04 : 2.8
+          }
         }
       }
     }
@@ -8308,6 +8568,7 @@ export class Game {
     this.spawnCool = Math.max(0, this.spawnCool - step)
     this.offerCool = Math.max(0, this.offerCool - step)
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
+    this.tickCityCargo(step)
     // Peak decays so the HUD jam line clears when traffic thins.
     this.congPeak = Math.max(0, this.congPeak - step * 0.35)
     if (this.congWasteAcc >= 8 && this.congNewsCool <= 0) {
@@ -8755,6 +9016,10 @@ export class Game {
           t.dwell = -99
           continue
         }
+        if (t.dwell <= 0 && t.kind === 'citycargo') {
+          this.finishCityCargo(t)
+          continue
+        }
         if (t.dwell <= 0 && !t.returning) {
           this.finishTruck(t)
           const from = { c: Math.round(t.x), r: Math.round(t.y) }
@@ -8815,10 +9080,23 @@ export class Game {
         }
         continue
       }
-      const done = this.followPath(t, t.kind === 'termbus' ? 1.55 : 1.8, step)
+      const done = this.followPath(
+        t,
+        t.kind === 'termbus' ? 1.55 : t.kind === 'citycargo' ? 1.35 : 1.8,
+        step,
+      )
       if (done && !t.returning) {
         // Service dwell at the aircraft (fuel = bond + pump; deice = spray).
-        if (t.kind === 'termbus') {
+        if (t.kind === 'citycargo') {
+          if (t.mission === 'city_guard') {
+            // Visible screen time at the post (Manor Lords handoff).
+            t.dwell = 1.4 + Math.min(2.2, (t.cargoUnits ?? 12) * 0.04)
+          } else if (t.mission === 'city_shed') {
+            t.dwell = 1.6 + Math.min(2.5, (t.cargoUnits ?? 12) * 0.05)
+          } else {
+            t.dwell = 1.2
+          }
+        } else if (t.kind === 'termbus') {
           const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
           if (fl) {
             if (t.mission === 'ferry_arr') fl.waitingOn.paxOut = 0
@@ -8828,9 +9106,13 @@ export class Game {
         } else if (t.kind === 'bags') {
           const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
           if (t.mission === 'unload') {
-            if (fl) this.setBagStage(fl, 'unload_aircraft')
-            t.dwell = fl ? this.bagWorkSeconds(fl, 'ramp') : 2.4
-            t.cargoUnits = fl?.bagUnits ?? 8
+            if (fl && !fl.cargo) this.setBagStage(fl, 'unload_aircraft')
+            t.dwell = fl
+              ? fl.cargo
+                ? clamp(1.6 + (t.cargoUnits ?? 12) * 0.05, 1.6, 5)
+                : this.bagWorkSeconds(fl, 'ramp')
+              : 2.4
+            if (fl && !fl.cargo) t.cargoUnits = fl.bagUnits ?? 8
           } else if (t.mission === 'load') {
             if (fl) this.setBagStage(fl, 'load_aircraft')
             t.dwell = fl ? this.bagWorkSeconds(fl, 'ramp') : 2.6
@@ -8843,6 +9125,10 @@ export class Game {
             t.kind === 'fuel' ? 3.6 : t.kind === 'deice' ? 3.2 : 2.2
         }
       } else if (done && t.returning) {
+        if (t.kind === 'citycargo') {
+          this.finishCityCargo(t)
+          continue
+        }
         // Arrived home / claim / farm.
         if (t.kind === 'bags' && t.mission === 'sort_inbound') {
           // Visible process time at makeup before claim belt inject.

@@ -15,8 +15,8 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 | **0** | Docs sync + this plan | — | **NOW** |
 | **1** | **Bag units + premade ceilings + layover through-bags** | Mix matters; starter hall hits limits; transfers don’t claim | **SHIPPED** |
 | **1b** | **Full bag journey + claim scheduling** | Check-in deposit → process → plane; inbound unload → process → assigned claim | **SHIPPED** |
-| **2** | Guard post tile + city cargo trucks → shed | Cargo has a journey | **NEXT** |
-| **3** | Cargo start focus + kit + volume letter + warehouse meter | Cargo is a real start fantasy | Next |
+| **2** | Guard post tile + city cargo trucks → shed | Cargo has a journey | **SHIPPED** |
+| **3** | Cargo start focus + kit + volume letter + warehouse meter | Cargo is a real start fantasy | **NEXT** |
 | **4** | Fuel bowser capacity + farm stock refill contract | Manor Lords fuel picture | After 2–3 |
 | **5** | Budget panel clarity + coach for kit/loan | Money readable | Parallel anytime |
 | **6** | Screen building + loader GSE + C-ladder UI | Cargo midgame | After 3 |
@@ -41,12 +41,20 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 6. ~~Activity / Planner show claim + stage~~  
 7. ~~`scripts/soak-bag-journey.mts`~~
 
-## Slice 2 — cargo city edge (**coding next**)
+## Slice 2 — shipped
 
-1. `guard` tile on city road edge.  
-2. Spawn city cargo trucks off-map → guard → cargo shed.  
-3. New Game focus + cargo starter (shed, guard, cargo stand, no pax hall required).  
-4. Volume letter + warehouse fill meter + On-time.
+1. ~~`guard` tile on city road edge (stamp + starter kit)~~  
+2. ~~City cargo trucks: edge → guard screen dwell → shed deliver → depart~~  
+3. ~~Warehouse stock meter; intake fee; freighter uplift consumes stock / late if thin~~  
+4. ~~Missing guard → deny / unscreened incident + On-time dips~~  
+5. ~~`scripts/soak-city-cargo.mts`~~
+
+## Slice 3 — cargo start fantasy (**coding next**)
+
+1. New Game focus + cargo starter (shed, guard, cargo stand, no pax hall required).  
+2. Volume letters (“clear N ULDs before night bank”).  
+3. Richer warehouse meter / On-time readout in HUD.  
+4. Screen building stub (optional if volume letters land first).
 
 ## Rules while building
 

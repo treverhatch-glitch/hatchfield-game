@@ -514,6 +514,33 @@ export class World {
       body.position.y = 1.3
       body.castShadow = true
       g.add(body)
+    } else if (tile === 'guard') {
+      // City-edge booth — screens inbound trucks.
+      const booth = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.55, 1.7, CELL * 0.55),
+        new THREE.MeshStandardMaterial({ color: '#3d4a3a', roughness: 0.55 }),
+      )
+      booth.position.y = 0.85
+      booth.castShadow = true
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.85, 0.1, 0.12),
+        new THREE.MeshStandardMaterial({
+          color: '#c9a227',
+          emissive: '#4a3a10',
+          emissiveIntensity: 0.2,
+        }),
+      )
+      bar.position.set(0, 1.15, CELL * 0.28)
+      const lamp = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.35, 0.18),
+        new THREE.MeshStandardMaterial({
+          color: '#e8d080',
+          emissive: '#8a7020',
+          emissiveIntensity: 0.35,
+        }),
+      )
+      lamp.position.set(0, 1.9, 0)
+      g.add(booth, bar, lamp)
     } else if (tile === 'road') {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.98, CELL * 0.98),
@@ -1255,31 +1282,39 @@ export class World {
             ? '#c9a227'
             : t.kind === 'bags'
               ? '#6b7280'
-              : t.kind === 'deice'
-                ? '#4aa8c8'
-                : t.kind === 'termbus'
-                  ? '#e8c56a'
-                  : '#c45c26'
+              : t.kind === 'citycargo'
+                ? '#5a4a38'
+                : t.kind === 'deice'
+                  ? '#4aa8c8'
+                  : t.kind === 'termbus'
+                    ? '#e8c56a'
+                    : '#c45c26'
         const g = new THREE.Group()
         const body = new THREE.Mesh(
-          truckGeo,
+          t.kind === 'citycargo'
+            ? new THREE.BoxGeometry(1.35, 0.7, 0.85)
+            : truckGeo,
           new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
         )
         body.castShadow = true
         body.name = 'body'
         g.add(body)
-        // Manor Lords-style visible load — crates on bag carts when carrying.
-        if (t.kind === 'bags') {
+        // Manor Lords-style visible load — crates on bag carts / city trucks.
+        if (t.kind === 'bags' || t.kind === 'citycargo') {
           const crate = new THREE.Mesh(
-            new THREE.BoxGeometry(0.55, 0.4, 0.45),
+            new THREE.BoxGeometry(
+              t.kind === 'citycargo' ? 0.7 : 0.55,
+              0.4,
+              t.kind === 'citycargo' ? 0.55 : 0.45,
+            ),
             new THREE.MeshStandardMaterial({
-              color: '#8a7348',
+              color: t.kind === 'citycargo' ? '#9a7a40' : '#8a7348',
               roughness: 0.55,
               emissive: '#3a2e14',
               emissiveIntensity: 0.15,
             }),
           )
-          crate.position.set(0, 0.55, 0)
+          crate.position.set(0, t.kind === 'citycargo' ? 0.65 : 0.55, 0)
           crate.name = 'crate'
           crate.visible = false
           g.add(crate)
