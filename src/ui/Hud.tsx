@@ -53,6 +53,7 @@ import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
+import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
@@ -144,6 +145,7 @@ type PanelId =
   | 'settings'
   | 'premium'
   | 'tycoon'
+  | 'rival'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -205,6 +207,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
   { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
   { id: 'tycoon', label: 'Tycoon', tip: 'Shop bids, ad campaigns, awards, year report' },
+  { id: 'rival', label: 'Rival', tip: 'Bellwater Intl — fees, roster, catchment' },
 ]
 
 export function Hud({ game }: { game: Game }) {
@@ -251,6 +254,7 @@ export function Hud({ game }: { game: Game }) {
   const hubAirline = game.hubOffer ? game.airline(game.hubOffer.airline) : null
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
+  const rival = game.rivalPanel()
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
     const closing = panel === id
@@ -1297,6 +1301,17 @@ export function Hud({ game }: { game: Game }) {
                     })}
                   </ul>
                 </section>
+              ) : null}
+
+              {panel === 'rival' ? (
+                rival ? (
+                  <RivalPanel model={rival} onCourt={(id) => game.courtRivalCarrier(id)} />
+                ) : (
+                  <section data-testid="rival-panel">
+                    <h3>Bellwater Intl</h3>
+                    <p className="muted">Buy a plot and Bellwater starts sharing the catchment.</p>
+                  </section>
+                )
               ) : null}
 
               {panel === 'airlines' ? (

@@ -963,6 +963,8 @@ export interface GameSnapshot {
   premium?: PremiumState
   /** Shop leases, ad campaigns, and awards. Missing on older saves. */
   tycoon?: TycoonState
+  /** Bellwater Intl rival sim. */
+  rival?: string
 }
 
 /** A placed building that is still a construction site. */

@@ -228,6 +228,7 @@ import {
   type InboundWorld,
   type RequestKind,
 } from '../inbound/index.ts'
+import { RIVAL, RivalAirport, type PlayerSnapshot, type Walkaway } from '../rival/index.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import type { VehicleType } from '../logistics/types.ts'
@@ -1021,6 +1022,9 @@ export class Game {
   private negotiationBridge: NegotiationBridge | null = null
   /** Inbound offers and Guard contracts. Null until the clock or a card needs it. */
   private inbound: InboundBridge | null = null
+  /** Bellwater Intl. Headless; null until the field exists. */
+  private rival: RivalAirport | null = null
+  private rivalWalkaways: Walkaway[] = []
   /** Passenger-flow overlay. Hidden until the player opts in. */
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
@@ -1265,6 +1269,8 @@ export class Game {
     this.diplomacySeed = 1
     this.negotiationBridge = null
     this.inbound = null
+    this.rival = null
+    this.rivalWalkaways = []
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
@@ -1989,6 +1995,7 @@ export class Game {
     if (this.signed.includes(id)) return
     this.signed.push(id)
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
+    this.pullCarrierFromRival(id, rel.name)
     this.seedScheduleForAirline(id, 3)
     this.pushNews(`${rel.name} signed. Flights hit the timetable.`, 'good')
   }
@@ -2251,6 +2258,7 @@ export class Game {
   abandonAirline(id: AirlineId, reason: string) {
     if (!this.signed.includes(id)) return
     const a = this.airline(id)
+    this.noteRivalWalkaway(a, reason)
     const lost = this.airlineReward[id] ?? null
     this.signed = this.signed.filter((x) => x !== id)
     this.diplomacy?.noteLeft(id)
@@ -2319,6 +2327,163 @@ export class Game {
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
     const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
     return negotiated === 1 ? base : base * negotiated
+  }
+
+  private ensureRival(): RivalAirport {
+    if (!this.rival) this.rival = RivalAirport.create(this.diplomacySeed || 1)
+    return this.rival
+  }
+
+  private noteRivalWalkaway(a: Airline, reason: string) {
+    this.rivalWalkaways.push({
+      id: a.id,
+      name: a.name,
+      tier: a.tier,
+      kind: a.kind,
+      reason,
+    })
+  }
+
+  private playerRivalSnapshot(): PlayerSnapshot {
+    const stands = tilesOf(this.tiles, 'stand').length
+    const standing = this.signed.length
+      ? this.signed.reduce((sum, id) => sum + this.standingOf(id), 0) / this.signed.length
+      : this.reputation
+    const service = clamp(this.reputation * 0.55 + standing * 0.45, 0, 100)
+    return {
+      name: this.branding.airportName,
+      feeIndex: this.diplomacy?.adapter.engine.state.feeIndex ?? 1,
+      service,
+      capacity: stands,
+      reputation: this.reputation,
+      airlines: this.signed.map((id) => {
+        const carrier = this.airline(id)
+        return {
+          id,
+          name: carrier.name,
+          tier: carrier.tier,
+          kind: carrier.kind,
+          standing: this.standingOf(id),
+        }
+      }),
+    }
+  }
+
+  private advanceRivalDay() {
+    if (!this.site) return
+    const walked = this.rivalWalkaways.splice(0, this.rivalWalkaways.length)
+    const result = this.ensureRival().advanceDay(this.playerRivalSnapshot(), walked)
+    for (const move of result.moves) {
+      if (move.announce) this.pushNews(move.text, move.tone)
+    }
+    for (const carrier of result.poached) this.loseAirlineToRival(carrier.id)
+  }
+
+  /** Catchment load factor. 1 when Bellwater and the player split demand evenly. */
+  rivalDemandFactor(): number {
+    if (!this.site) return 1
+    return this.ensureRival().demand(this.playerRivalSnapshot()).playerFactor
+  }
+
+  rivalPanel() {
+    if (!this.rival) return null
+    return this.rival.panel(this.playerRivalSnapshot())
+  }
+
+  private pullCarrierFromRival(id: string, name: string) {
+    if (!this.site && !this.rival) return
+    const move = this.ensureRival().releaseToPlayer(id, name)
+    if (move?.announce) this.pushNews(move.text, move.tone)
+  }
+
+  /** Spend a real incentive to pull a Bellwater carrier onto this field. */
+  courtRivalCarrier(id: string) {
+    const carrier = this.allAirlines().find((a) => a.id === id)
+    if (!carrier) {
+      this.pushNews('That carrier is not in the book.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.signed.includes(id)) {
+      this.pushNews(`${carrier.name} already flies here.`, 'ok')
+      this.emit()
+      return
+    }
+    if (!this.meetsReq(id)) {
+      const miss = this.missingReq(id).slice(0, 3).join(', ')
+      this.pushNews(
+        miss ? `${carrier.name} wants ${miss} before basing here.` : `${carrier.name} won't base here yet.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const offer = this.playerRivalSnapshot()
+    const quote = this.ensureRival().quoteCourt(id, offer)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(quote.cost, `Court ${carrier.name}`)) return
+    const result = this.ensureRival().commitCourt(id, offer)
+    this.pushNews(result.text, result.won ? 'good' : 'bad')
+    if (result.won && !this.signed.includes(id)) {
+      this.signed.push(id)
+      if (this.airlineHeat[id] == null) this.airlineHeat[id] = 64
+      this.seedScheduleForAirline(id, 2)
+    }
+    this.emit()
+  }
+
+  /** Bellwater took a signed carrier. No abandon fine — the loss is the base. */
+  private loseAirlineToRival(id: AirlineId) {
+    if (!this.signed.includes(id)) return
+    const a = this.airline(id)
+    const lost = this.airlineReward[id] ?? null
+    this.signed = this.signed.filter((x) => x !== id)
+    this.diplomacy?.noteLeft(id)
+    this.mxSigned = this.mxSigned.filter((x) => x !== id)
+    this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+    delete this.airlineReward[id]
+    delete this.airlineWarned[id]
+    delete this.airlineLowAcc[id]
+    if (lost === 'brand_lounge') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit && (fit.rooms.lounge ?? 0) > 0) {
+        fit.rooms.lounge = Math.max(0, (fit.rooms.lounge ?? 0) - 1)
+      }
+      this.pushNews(`${a.name} pulled their lounge on the way to Bellwater.`, 'bad')
+    } else if (lost) {
+      this.pushNews(`${a.name} took ${REWARD_LABEL[lost]} with them to Bellwater.`, 'bad')
+    }
+    if (this.layover?.airline === id) this.layover = null
+    if (this.layoverOffer?.airline === id) this.layoverOffer = null
+    if (this.hubOffer?.airline === id) this.hubOffer = null
+    if (this.offer?.airline === id) this.offer = null
+    if (this.mxOffer?.airline === id) this.mxOffer = null
+    for (const s of this.schedule) {
+      if (s.airline === id && (s.status === 'scheduled' || s.status === 'delayed')) {
+        s.status = 'cancelled'
+        s.delayReason = 'poached'
+      }
+    }
+    for (const other of this.signed) this.adjustHeat(other, -3)
+    this.reputation = Math.max(0, this.reputation - RIVAL.poachReputationHit)
+  }
+
+  private rivalCargoUnits(units: number): number {
+    return Math.max(6, Math.round(units * this.rivalDemandFactor()))
+  }
+
+  private applyRivalLoad<T extends { pax: number; bagUnits: number }>(load: T, cargo: boolean): T {
+    if (cargo || load.pax <= 0) return load
+    const factor = this.rivalDemandFactor()
+    return {
+      ...load,
+      pax: Math.max(1, Math.round(load.pax * factor)),
+      bagUnits: load.bagUnits > 0 ? Math.max(1, Math.round(load.bagUnits * factor)) : 0,
+    }
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -2542,6 +2707,7 @@ export class Game {
         : this.startFocus === 'hybrid'
           ? 'Hybrid focus — hall + freight road.'
           : 'Passenger focus — Northline-ready hall kit.'
+    this.ensureRival()
     this.pushNews(
       `${land.name} purchased. ${focusBit} ${moneyLeft(this.cash)} left. Stamp Starter kit ($${STARTER_KIT_COST.toLocaleString()}) or build freehand.`,
       'ok',
@@ -3722,6 +3888,7 @@ export class Game {
       feeStandingApplied: this.feeStandingApplied,
       premium: this.premium,
       tycoon: this.tycoon.snapshot(),
+      rival: this.rival?.serialize(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3896,6 +4063,9 @@ export class Game {
         this.inbound.state.clock = this.clock
         this.inbound.state.rolledDay = Math.floor(this.clock / SIM_DAY_SEC)
       }
+      this.rival = RivalAirport.restore(s.rival)
+      this.rivalWalkaways = []
+      if (this.site && !this.rival) this.ensureRival()
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -4068,6 +4238,7 @@ export class Game {
       this.dayMark = this.clock
       const retail = this.negotiationBridge?.rollDay() ?? 0
       if (retail > 0) this.earn(retail, 'ULCC retail')
+      this.advanceRivalDay()
     }
     if (this.econHour < hour) return
     this.incomePerHour = Math.round(this.hourIncome)
@@ -4847,7 +5018,7 @@ export class Game {
             patrol: false,
             mission: 'city_shed',
             home: sheds[0],
-            cargoUnits: 10 + Math.floor(Math.random() * 14),
+            cargoUnits: this.rivalCargoUnits(10 + Math.floor(Math.random() * 14)),
           })
           this.securityIncidents += 1
           this.pushNews(
@@ -4870,7 +5041,7 @@ export class Game {
     const queue = this.trucks.filter(
       (t) => t.kind === 'citycargo' && t.mission === 'city_guard',
     ).length
-    const units = 12 + Math.floor(Math.random() * 16)
+    const units = this.rivalCargoUnits(12 + Math.floor(Math.random() * 16))
     this.trucks.push({
       id: uid('city'),
       kind: 'citycargo',
@@ -8560,6 +8731,7 @@ export class Game {
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.grantFieldXp(12 + a.tier * 4, 'contract')
     this.noteCommercialSign(id, a)
+    this.pullCarrierFromRival(id, a.name)
     this.seedScheduleForAirline(id, 3)
     const leadDays = this.commercialLead[id]?.leadDays ?? 0
     const held = this.deposits[id]?.held ?? 0
@@ -12113,7 +12285,7 @@ export class Game {
       return
     }
     const approach = this.armApproach(route)
-    const load = this.flightLoad(af, def.persona, def.kind === 'cargo')
+    const load = this.applyRivalLoad(this.flightLoad(af, def.persona, def.kind === 'cargo'), def.kind === 'cargo')
     const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
@@ -13498,7 +13670,8 @@ export class Game {
     const a = this.airline(airline)
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
     const inbound = this.armApproach(route)
-    const load = this.flightLoad(af, a.persona, a.kind === 'cargo' || af.kind === 'freighter')
+    const cargoLoad = a.kind === 'cargo' || af.kind === 'freighter'
+    const load = this.applyRivalLoad(this.flightLoad(af, a.persona, cargoLoad), cargoLoad)
     const f: Flight = {
       id: uid('div'),
       airline,
