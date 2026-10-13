@@ -135,6 +135,10 @@ import {
 } from './catalog'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
+import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
+import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
+import { terminals } from '../render/world/layout.ts'
+import type { RoomPlan } from '../render/world/rooms.ts'
 import {
   hallPath,
   isAirside,
@@ -651,6 +655,11 @@ export class Game {
   trucks: Truck[] = []
   people: Person[] = []
   hallGuests: HallGuest[] = []
+  /** Room plans for the current map, shared with the terminal renderer (same seed). */
+  private terminalPlans: {
+    rev: number
+    entries: { key: string; cells: { c: number; r: number }[]; plan: RoomPlan }[]
+  } | null = null
   news: News[] = []
   selectedFlight: string | null = null
   selectedTile: Vec | null = null
@@ -4431,27 +4440,42 @@ export class Game {
       }
 
       if (g.path.length && g.seg < g.path.length - 1) {
+        if (g.route == null) this.armGuestRoute(g)
         g.t += dt * 1.35
         let held = false
         while (g.t >= 1 && g.seg < g.path.length - 1) {
+          const finished = g.route
           g.t -= 1
           g.seg += 1
           g.node = g.path[g.seg]
+          if (finished && finished.length) {
+            const end = finished[finished.length - 1]
+            g.wx = end.x
+            g.wz = end.z
+          }
           if (g.node === 'security' && g.job === 'depart' && !g.clearedSec) {
             g.path = []
             g.seg = 0
             g.t = 0
+            g.route = undefined
+            g.routeDist = 0
             held = true
             break
           }
           if (g.node === 'security') g.clearedSec = true
           this.secureBreach(g)
           this.serveNode(g, open)
+          if (g.seg < g.path.length - 1) this.armGuestRoute(g)
+          else {
+            g.route = undefined
+            g.routeDist = 0
+          }
         }
         if (held) {
           this.tickSecurityLane(g, 0, open)
           continue
         }
+        this.sampleGuestRoute(g)
         continue
       }
 
@@ -4585,9 +4609,74 @@ export class Game {
     g.path = path
     g.seg = 0
     g.t = 0
+    g.route = undefined
+    this.armGuestRoute(g)
     if (!g.thought.startsWith('Need to clear')) {
       g.thought = `Heading to ${target}`
     }
+  }
+
+  /**
+   * Room plan for a hall, matching `world.wr.roomPlans()` (same layout seed, no decorative crowd).
+   * Rebuilt when the map changes. Headless tests use this; the client draws the same plan.
+   */
+  roomPlanForHall(hallId?: string | null): RoomPlan | null {
+    if (this.terminalPlans?.rev !== this.mapRev) {
+      const entries = terminals(this).map((t, index) => ({
+        key: `${t.cluster.minC},${t.cluster.minR}`,
+        cells: t.cluster.cells,
+        plan: planTerminal(t, { density: 1, walkersPerCell: 0, seed: terminalPlanSeed(index) }).rooms,
+      }))
+      this.terminalPlans = { rev: this.mapRev, entries }
+    }
+    const entries = this.terminalPlans?.entries ?? []
+    const fit = this.fitByKey(hallId)
+    if (fit) {
+      const key = this.hallKey(fit)
+      const hit = entries.find(
+        (e) => e.key === key || e.cells.some((p) => p.c === fit.origin.c && p.r === fit.origin.r),
+      )
+      if (hit) return hit.plan
+    }
+    if (hallId) {
+      const hit = entries.find((e) => e.key === hallId)
+      if (hit) return hit.plan
+    }
+    return entries[0]?.plan ?? null
+  }
+
+  /** Strict doorway path for the edge the guest is about to walk. A null path does not mark them lost. */
+  armGuestRoute(g: HallGuest) {
+    const next = g.path[g.seg + 1]
+    if (!next) {
+      g.route = undefined
+      g.routeDist = 0
+      return
+    }
+    const plan = this.roomPlanForHall(g.hallId)
+    if (!plan) {
+      g.route = []
+      g.routeDist = 0
+      return
+    }
+    const route = legRoute(plan, g, next)
+    g.route = route ?? []
+    g.routeDist = 0
+    if (route && route.length && (g.wx == null || g.wz == null)) {
+      g.wx = route[0].x
+      g.wz = route[0].z
+    }
+  }
+
+  /** `g.t` stays 0..1 for queues. World position is that fraction along the doorway polyline. */
+  private sampleGuestRoute(g: HallGuest) {
+    const route = g.route
+    if (!route || route.length < 2) return
+    const at = pointAlong(route, g.t)
+    g.wx = at.x
+    g.wz = at.z
+    g.wyaw = at.yaw
+    g.routeDist = Math.min(1, Math.max(0, g.t)) * polylineLength(route)
   }
 
   /**

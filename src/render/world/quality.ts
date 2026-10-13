@@ -28,7 +28,10 @@ export interface QualityPreset {
   propDensity: number
   /** Apron ground light pools at night. */
   lightPools: boolean
-  /** Ambient walkers inside terminals at the nearest LOD. */
+  /**
+   * Decorative walkers inside terminals at the nearest LOD.
+   * Sim guests already walk the doorways, so this stays 0 and the two crowds do not stack.
+   */
   walkersPerCell: number
 }
 
@@ -48,7 +51,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     precipitation: 300,
     propDensity: 1,
     lightPools: false,
-    walkersPerCell: 0.6,
+    walkersPerCell: 0,
   },
   med: {
     level: 'med',
@@ -65,7 +68,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     precipitation: 900,
     propDensity: 1,
     lightPools: true,
-    walkersPerCell: 1,
+    walkersPerCell: 0,
   },
   high: {
     level: 'high',
@@ -83,7 +86,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     precipitation: 2000,
     propDensity: 1,
     lightPools: true,
-    walkersPerCell: 2,
+    walkersPerCell: 0,
   },
 }
 

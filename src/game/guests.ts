@@ -129,6 +129,15 @@ export interface HallGuest {
   serviceLeft?: number
   /** Arrival order at the security lane. */
   queueSeq?: number
+  /** Doorway polyline in world space for the current graph edge. Empty means the strict path failed. */
+  route?: { x: number; z: number }[]
+  /** Distance walked along `route`, in world units. */
+  routeDist?: number
+  /** World position inside the terminal, on `route`. */
+  wx?: number
+  wz?: number
+  /** Facing along the polyline, atan2(dx, dz). */
+  wyaw?: number
 }
 
 /**

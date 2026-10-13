@@ -81,6 +81,11 @@ export function zoneFor(depth: number, depthN: number, along: number, alongN: nu
   return along === mid ? 'security' : 'shops'
 }
 
+/** Same seed the renderer uses, so sim routes block the same props the picture draws. */
+export function terminalPlanSeed(index: number): number {
+  return 11 + index
+}
+
 export function planTerminal(
   t: TerminalInfo,
   opts: { density?: number; walkersPerCell?: number; seed?: number } = {},
