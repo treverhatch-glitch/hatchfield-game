@@ -935,6 +935,8 @@ export interface GameSnapshot {
   diplomacySeed?: number
   /** Negotiation desk (offers, rival, ULCC research). */
   negotiation?: string
+  /** Bellwater price war (PLAYTEST B5). */
+  priceWar?: string
   /** Inbound offers, visits, and Guard contracts. */
   inbound?: InboundState
   /** Player fee card. Missing on older saves — the live defaults apply. */
