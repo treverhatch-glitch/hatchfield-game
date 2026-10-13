@@ -1,10 +1,13 @@
 export { createPaxShowUpAdapter, stampDeparture } from './adapter.ts'
 export type { PaxShowUpAdapter } from './adapter.ts'
 export {
+  LOUNGE_QUALITY_PER_ROOM,
   MAX_WAVE,
   MOOD_SPEND,
   PAX_SEGMENT_CONFIG,
+  PERSONA_BUSINESS_MIX,
   SHOWUP_WINDOWS,
+  businessMixForPersona,
 } from './config.ts'
 export type { SegmentConfig, WindowSpec } from './config.ts'
 export { asSegment, cleanFacts, cleanSegmentConfig, sanitizeCount } from './facts.ts'

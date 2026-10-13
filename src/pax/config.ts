@@ -96,3 +96,25 @@ export const MOOD_SPEND = {
 
 /** Safety cap for one pure call. A flight wave is far smaller than this. */
 export const MAX_WAVE = 2000
+
+/** Each open lounge room adds this much quality. The sim caps the total at 1. */
+export const LOUNGE_QUALITY_PER_ROOM = 0.5
+
+/**
+ * How business-heavy a bank is, by the airline persona the hall already has.
+ * Raises the road-warrior share. Unknown personas use the budget mix.
+ */
+export const PERSONA_BUSINESS_MIX = {
+  luxury: 0.9,
+  business: 0.75,
+  budget: 0.12,
+  cargo_night: 0.2,
+  military_gov: 0.15,
+} as const
+
+export function businessMixForPersona(persona: string): number {
+  if (Object.prototype.hasOwnProperty.call(PERSONA_BUSINESS_MIX, persona)) {
+    return PERSONA_BUSINESS_MIX[persona as keyof typeof PERSONA_BUSINESS_MIX]
+  }
+  return PERSONA_BUSINESS_MIX.budget
+}

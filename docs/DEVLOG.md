@@ -750,4 +750,10 @@ PR #58 (issue #41) is on this branch, including the follow-up that drops rubbish
 
 **Tests.** `tsc -b` clean. Vitest 784 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-0Py0oJVZ.js`, 1,646.13 kB, with `index-eP-pqaTd.css`.
 
+## Show-up in the live hall — 13 Oct
+
+Departing passengers now release from `createPaxShowUpAdapter` / `stampDeparture`. Lounge lovers are in the hall first, road warriors later, and the entrance still holds three a second. A clump is stretched out to check-in close so the lane does not take the whole bank at once, and nobody is released after that close unless the slot was already late. A late body whose jet has pushed is a missed flight, not a lost passenger. Road warriors use the fast-track split on the open security lanes (premium fast-track from PR #54 is not on this trunk). Lounge lovers pay the lounge and then the shop, and they wait at the gate until boarding is called. `src/diplomacy` is unchanged.
+
+**Tests.** `tsc -b` clean. Vitest 803 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. A prefab six-day run stayed under 1% missed departures, with lost passengers 0 and bags lost 0. The mixed Playwright bot (6 game days) finished with lost passengers 0, bag ledger short 0, missed flights 0, and no stuck flights or trucks. SwiftShader frame rate was under the bot's floor of 12, the same environment limit as earlier runs.
+
 
