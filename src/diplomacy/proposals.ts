@@ -46,27 +46,51 @@ export interface SignPreview {
   warnings: string[];
 }
 
-function rivalPenalty(rival: AirlineRelation): number {
-  return -10 - (rival.traits.includes('proud') ? 6 : 0);
-}
+export type ReactionKind = 'sign' | 'perk' | 'hub' | 'slots';
 
-/** Every sign/perk button shows this first: who gets angry, who is pleased, and operational risks. */
-export function previewSign(core: EngineCore, airlineId: string): SignPreview | null {
+const REACTION: Record<ReactionKind, { delta: number; why: string }> = {
+  sign: { delta: -10, why: 'rival' },
+  perk: { delta: -6, why: 'perk for a rival' },
+  hub: { delta: -15, why: 'rival hub' },
+  slots: { delta: -12, why: 'peak slots taken' }
+};
+
+/** Who reacts before a sign, perk, hub, or slot gift. Numbers stay off the button face. */
+export function previewReaction(core: EngineCore, airlineId: string, kind: ReactionKind = 'sign'): SignPreview | null {
   const rel = core.state.relations[airlineId];
   if (!rel) return null;
-  const rivals = rivalsOf(core, rel).map((r) => ({
-    airlineId: r.id,
-    name: r.name,
-    delta: rivalPenalty(r),
-    why: r.traits.includes('proud') ? 'rival, Proud: shared pier' : 'rival'
-  }));
-  const allies = alliesOf(core, rel).map((r) => ({ airlineId: r.id, name: r.name, delta: 5, why: 'alliance partner' }));
+  const spec = REACTION[kind];
+  const allyIds = new Set(alliesOf(core, rel).map((a) => a.id));
+  const rivals = rivalsOf(core, rel)
+    .filter((r) => kind !== 'hub' || !allyIds.has(r.id))
+    .map((r) => {
+      const proud = kind === 'sign' && r.traits.includes('proud');
+      return {
+        airlineId: r.id,
+        name: r.name,
+        delta: spec.delta + (proud ? -6 : 0),
+        why: proud ? 'rival, Proud: shared pier' : spec.why
+      };
+    });
+  const allies =
+    kind === 'sign'
+      ? alliesOf(core, rel).map((r) => ({ airlineId: r.id, name: r.name, delta: 5, why: 'alliance partner' }))
+      : [];
   const warnings: string[] = [];
   const util = core.ctx.metrics.standUtilization;
   if (util !== undefined && util >= 0.95) {
     warnings.push(`Stands at ${Math.round(util * 100)}%: risk of delays.`);
   }
   return { airlineId, rivals, allies, warnings };
+}
+
+/** Every sign/perk button shows this first: who gets angry, who is pleased, and operational risks. */
+export function previewSign(core: EngineCore, airlineId: string): SignPreview | null {
+  return previewReaction(core, airlineId, 'sign');
+}
+
+function rivalPenalty(rival: AirlineRelation): number {
+  return -10 - (rival.traits.includes('proud') ? 6 : 0);
 }
 
 export function signContract(
