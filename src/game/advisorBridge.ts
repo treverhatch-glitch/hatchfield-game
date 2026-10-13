@@ -209,23 +209,33 @@ function fill(text: string, words: Record<string, string>): string {
   return text.replace(/\{(\w+)\}/g, (_, k: string) => words[k] ?? '')
 }
 
-/** Advisor hint → the hall note shape the panel and highlight already use. */
+/**
+ * Advisor hint → the hall note shape the panel and highlight already use.
+ * The advisor's own text talks about doors and rooms; the copy table speaks in
+ * zones and kit items, so it replaces that text wherever it has an entry.
+ */
 function toAdvice(hint: Hint, plan: TerminalPlan): Advice {
   const at = hint.at ? [{ c: hint.at.x, r: hint.at.y }] : []
-  const base = { id: hint.id, detail: hint.text, severity: hint.severity, source: 'layout' as const }
+  const base = { id: hint.id, severity: hint.severity, source: 'layout' as const }
   const exact = LAYOUT_COPY[hint.id]
   if (exact) {
     // No doors: point at check-in. No checkpoint: point at the lane-less Security paint.
     const fallback: RoomId | null =
       hint.id === 'no_curb' ? 'checkin' : hint.id === 'missing_security' ? 'corridor' : null
     const cells = at.length ? at : fallback ? roomCells(plan, fallback) : []
-    return { ...base, title: exact.title, fix: exact.fix, cells }
+    return { ...base, title: exact.title, detail: exact.detail ?? '', fix: exact.fix, cells }
   }
   if (hint.id.startsWith('dead_')) {
     const room = hint.id.slice(5) as RoomId
     const copy = LAYOUT_COPY.dead_
     const words = { zone: ROOM_ZONE_LABEL[room] ?? room }
-    return { ...base, title: fill(copy.title, words), fix: fill(copy.fix, words), cells: at }
+    return {
+      ...base,
+      title: fill(copy.title, words),
+      detail: fill(copy.detail ?? '', words),
+      fix: fill(copy.fix, words),
+      cells: at,
+    }
   }
   const equip = /^equip_(\w+?)_(\w+)$/.exec(hint.id)
   if (equip) {
@@ -240,10 +250,12 @@ function toAdvice(hint: Hint, plan: TerminalPlan): Advice {
     return {
       ...base,
       title: fill(copy.title, words),
+      detail: fill(copy.detail ?? '', words),
       fix: fill(copy.fix, words),
       cells: roomCells(plan, room),
     }
   }
+  // Anything the copy table does not know yet still shows, in the advisor's words.
   return { ...base, title: hint.text, detail: '', fix: '', cells: at }
 }
 

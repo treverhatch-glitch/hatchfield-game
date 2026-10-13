@@ -150,6 +150,19 @@ describe('advisor bridge — blockers', () => {
     hall.items = [at('entrance', 0, 0), at('security_small', 1, 0), at('boarding_desk', 4, 0)]
     expect(ids(hall)).toContain('gates_unreachable')
     expect(ids(hall)).not.toContain('security_bypass')
+    // The sealed-gates dead end is the same problem; the merged list shows it once.
+    const merged = mergeHints([layoutHints(hall)]).map((h) => h.id)
+    expect(merged).toContain('gates_unreachable')
+    expect(merged).not.toContain('dead_gates')
+  })
+
+  it('speaks in zones and kit items, not walls or doors', () => {
+    const hall = kitHall()
+    hall.zones = paint(['CSCGGG', 'CSCGGT', 'AACGGG'])
+    hall.items = [at('security_small', 1, 0)]
+    for (const h of layoutHints(hall)) {
+      expect(`${h.title} ${h.detail} ${h.fix}`).not.toMatch(/\bdoor\b|\bwall/i)
+    }
   })
 
   it('arrivals that only touch the gates have no way out', () => {

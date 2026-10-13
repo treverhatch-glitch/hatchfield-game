@@ -60,6 +60,8 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
       game.tick(1)
     `),
   )
+  // Hints live behind the collapsed advisor badge.
+  await page.getByTestId('hint-badge').click()
   await page.getByTestId('advice-low-meals').waitFor({ timeout: 8000 })
   await page.waitForTimeout(300)
   await page.screenshot({ path: `${OUT}/SLICE-D-advisor.png` })

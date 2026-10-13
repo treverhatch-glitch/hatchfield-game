@@ -123,6 +123,13 @@ export class HallWorld {
   private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   /** Last overlay built while flows are off; skips the per-frame rebuild. */
   private overlayKey = ''
+  /** Shared, pulsing material for hint highlights. Kept across overlay rebuilds. */
+  private markMat = new THREE.MeshBasicMaterial({
+    color: ADVISOR_TUNING.highlightColor,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+  })
   /** Last "Show me" request handled, and where the camera is easing to. */
   private focusSeq = 0
   private panTo: THREE.Vector3 | null = null
@@ -730,7 +737,7 @@ export class HallWorld {
       mesh.geometry?.dispose()
       const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
-      else mat?.dispose()
+      else if (mat !== this.markMat) mat?.dispose()
     })
     this.overlay.clear()
   }
@@ -746,6 +753,9 @@ export class HallWorld {
     const zones = fit?.zones ?? []
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
+    // Pulse in a colour no zone uses, so the marked cells read on any paint.
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / ADVISOR_TUNING.highlightPulseMs)
+    this.markMat.opacity = 0.45 + 0.45 * pulse
     // A hint highlight on its own is static: only rebuild it when the cells change.
     const key = show ? '' : `${cols}x${rows}|${marks.map((m) => `${m.c},${m.r}`).join(';')}`
     if (key && key === this.overlayKey) return
@@ -758,7 +768,7 @@ export class HallWorld {
         const pos = cellCenter(cell.c, cell.r, cols, rows)
         const tile = new THREE.Mesh(
           new THREE.BoxGeometry(HALL_W / cols - 0.05, 0.12, HALL_D / rows - 0.05),
-          new THREE.MeshBasicMaterial({ color: '#f0c14a', transparent: true, opacity: 0.85 }),
+          this.markMat,
         )
         tile.position.set(pos.x, 0.2, pos.z)
         this.overlay.add(tile)
@@ -1004,6 +1014,7 @@ export class HallWorld {
 
   dispose() {
     const canvas = this.renderer.domElement
+    this.markMat.dispose()
     canvas.removeEventListener('pointerdown', this.onDown)
     canvas.removeEventListener('pointermove', this.onMove)
     canvas.removeEventListener('pointerup', this.onUp)

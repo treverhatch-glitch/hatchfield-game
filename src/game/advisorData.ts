@@ -30,6 +30,10 @@ export const ADVISOR_TUNING = {
   panEase: 0.16,
   /** The pan snaps home inside this many meters. */
   panSnapM: 0.05,
+  /** "Show me" cell highlight. Magenta: no zone paint uses it. */
+  highlightColor: '#ff4fd8',
+  /** Highlight pulse period scale (ms per radian). */
+  highlightPulseMs: 220,
 } as const
 
 /**
@@ -55,9 +59,9 @@ export const NOTE_SEVERITY_PREFIX: [string, HintSeverity][] = [
  */
 export const HINT_DUPES: string[][] = [
   ['security_bypass', 'security-bypass'],
-  ['gates_unreachable', 'missing_gates', 'unreachable-gate'],
+  ['gates_unreachable', 'missing_gates', 'dead_gates', 'unreachable-gate'],
   ['missing_restrooms', 'toilets-far'],
-  ['missing_bagclaim', 'claim_unreachable', 'claim-far'],
+  ['missing_bagclaim', 'claim_unreachable', 'dead_bagclaim', 'claim-far'],
 ]
 
 /** Layout advisor checks the live hall does not model yet (bag hall, jet bridges). */
@@ -107,10 +111,15 @@ export const ITEM_EQUIPMENT: Partial<Record<string, EquipmentId>> = {
   wayfinding: 'sign',
 }
 
-/** Title and fix for each layout check. `{zone}` and `{need}` / `{place}` fill in per hint. */
-export const LAYOUT_COPY: Record<string, { title: string; fix: string }> = {
+/**
+ * Title, detail, and fix for each layout check, in the hall's own words (zones
+ * and kit items, not walls or doors). `{zone}`, `{need}`, `{place}` fill in per
+ * hint. A missing detail means the title says it all.
+ */
+export const LAYOUT_COPY: Record<string, { title: string; detail?: string; fix: string }> = {
   no_curb: {
     title: 'No entrance doors',
+    detail: 'Passengers have no way in from the curb.',
     fix: 'Place Entrance doors on a Check-in cell.',
   },
   missing_checkin: {
@@ -119,6 +128,7 @@ export const LAYOUT_COPY: Record<string, { title: string; fix: string }> = {
   },
   missing_security: {
     title: 'No security checkpoint',
+    detail: 'Departures have nowhere to be screened.',
     fix: 'Paint Security between Check-in and Gates, then place a security lane.',
   },
   missing_gates: {
@@ -127,6 +137,7 @@ export const LAYOUT_COPY: Record<string, { title: string; fix: string }> = {
   },
   missing_bagclaim: {
     title: 'No arrivals hall',
+    detail: 'Arriving passengers have nowhere to collect their bags.',
     fix: 'Paint Arrivals next to Check-in or Security and place a Claim carousel.',
   },
   missing_restrooms: {
@@ -135,18 +146,22 @@ export const LAYOUT_COPY: Record<string, { title: string; fix: string }> = {
   },
   security_bypass: {
     title: 'Gates reachable without security',
+    detail: 'Someone can walk from the doors to a gate without being screened.',
     fix: 'Put a security lane in every Security strip. Check-in and Arrivals may only reach Gates through it.',
   },
   gates_unreachable: {
     title: 'Gates cut off from the doors',
+    detail: 'Passengers cannot walk from the doors through security to a gate.',
     fix: 'Join Check-in to Security, and Security to Gates.',
   },
   claim_unreachable: {
     title: 'Arrivals has no way out',
+    detail: 'Arriving passengers cannot walk from bag claim to the curb.',
     fix: 'Let Arrivals touch Check-in or Security so people can reach the curb.',
   },
   dead_: {
     title: '{zone} is sealed off',
+    detail: 'Passengers cannot walk into it from the doors.',
     fix: 'Paint cells to join it to the rest of the hall.',
   },
   equip_: {

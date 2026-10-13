@@ -61,6 +61,8 @@ const browser = await chromium.launch({ executablePath: CHROME, headless: true, 
       game.markHallOverloaded()
     `),
   )
+  // Hints live behind the collapsed advisor badge.
+  await page.getByTestId('hint-badge').click()
   await page.getByTestId('advice-over-capacity').waitFor({ timeout: 8000 })
   await page.waitForTimeout(400)
   await page.screenshot({ path: `${OUT}/SLICE-C-advisor.png` })
