@@ -1,9 +1,20 @@
 import * as THREE from 'three'
-import { buildAircraft } from './build'
+import { buildAircraft, createWindowMesh } from './build'
 import { CrossfadeLOD, type LodBuckets } from './lod'
+import type { PaintedMesh } from './pool'
 import { getAircraftSpec, WORLD_PER_METER, type Livery, type ModelSpec } from './specs'
 
-export { LOD_DIST, LOD_RESPONSE, lodWeights, cameraDistance, CrossfadeLOD } from './lod'
+export {
+  LOD_DIST,
+  LOD_RESPONSE,
+  lodWeights,
+  cameraDistance,
+  CrossfadeLOD,
+  getAircraftQuality,
+  setAircraftQuality,
+  loadAircraftQuality,
+} from './lod'
+export type { AircraftQuality } from './lod'
 export { disposeAircraftLibrary, libraryStats, releaseAircraft } from './pool'
 export { getAircraftSpec, MODEL_SPECS, WORLD_PER_METER } from './specs'
 export type { Livery, ModelSpec } from './specs'
@@ -110,6 +121,13 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
     gears: [...low.gears, ...mid.gears, ...high.gears],
     strobes: [...low.strobes, ...mid.strobes, ...high.strobes],
     beacons: [...low.beacons, ...mid.beacons, ...high.beacons],
+    lamps: [...low.lamps, ...mid.lamps, ...high.lamps],
+  }
+  lod.requestWindows = () => {
+    const mesh = createWindowMesh(spec, livery)
+    if (!mesh) return
+    high.group.add(mesh)
+    buckets.high.push(mesh as unknown as PaintedMesh)
   }
   lod.buckets = buckets
   lod.add(low.group)

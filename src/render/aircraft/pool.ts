@@ -108,6 +108,25 @@ export interface PaintedMesh extends THREE.Mesh {
   }
 }
 
+/** Far shells and lamps skip lighting. Mid and close parts stay Lambert. */
+export function vertexMaterials(tier: 'low' | 'mid'): { opaque: THREE.Material; fade: THREE.Material } {
+  const unlit = tier === 'low'
+  const key = unlit ? 'vc:basic' : 'vc:lambert'
+  const mat = sharedMat(key, () =>
+    unlit
+      ? new THREE.MeshBasicMaterial({ vertexColors: true })
+      : new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
+  )
+  const fade = sharedMat(`fade:${key}`, () => {
+    const copy = mat.clone()
+    copy.transparent = true
+    copy.opacity = 1
+    copy.depthWrite = true
+    return copy
+  })
+  return { opaque: mat, fade }
+}
+
 export function paintMesh(
   mesh: THREE.Mesh,
   slot: PaintSlot,
@@ -116,12 +135,15 @@ export function paintMesh(
   tier: string,
 ): PaintedMesh {
   const color = slotColor(slot, livery)
-  const key = `${slot}:${color}`
+  const unlit = tier === 'low' || isLamp(slot)
+  const key = `${unlit ? 'basic' : 'lambert'}:${slot}:${color}`
   const mat = sharedMat(key, () =>
-    isLamp(slot)
+    unlit
       ? new THREE.MeshBasicMaterial({ color })
       : new THREE.MeshLambertMaterial({ color, flatShading: true }),
   )
+  mesh.userData.paint = color
+  if (isLamp(slot)) mesh.frustumCulled = true
   const fade = sharedMat(`fade:${key}`, () => {
     const copy = mat.clone()
     copy.transparent = true
@@ -137,6 +159,22 @@ export function paintMesh(
   mesh.userData.tier = tier
   mesh.onBeforeRender = () => {
     if (mesh.material === fade) fade.opacity = mesh.userData.lodOpacity as number
+  }
+  return mesh as PaintedMesh
+}
+
+/** One shared material for a baked shell. Colors live on the geometry. */
+export function paintVertexMesh(mesh: THREE.Mesh, tier: 'low' | 'mid', kind: string): PaintedMesh {
+  const { opaque, fade } = vertexMaterials(tier)
+  const fadeMat = fade as THREE.Material & { opacity: number }
+  mesh.material = opaque
+  mesh.userData.opaqueMat = opaque
+  mesh.userData.fadeMat = fadeMat
+  mesh.userData.lodOpacity = 1
+  mesh.userData.kind = kind
+  mesh.userData.tier = tier
+  mesh.onBeforeRender = () => {
+    if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
   }
   return mesh as PaintedMesh
 }

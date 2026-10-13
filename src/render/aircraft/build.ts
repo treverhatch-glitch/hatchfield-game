@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { cylinderSides, fuselageSides, loftGeometry, wingGeometry } from './geom'
+import { mergeStaticShell } from './merge'
 import {
   paintMesh,
   unitBox,
@@ -20,6 +21,7 @@ export interface BuiltLevel {
   gears: THREE.Object3D[]
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
+  lamps: THREE.Object3D[]
 }
 
 interface Frame {
@@ -32,6 +34,7 @@ interface Frame {
   gears: THREE.Object3D[]
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
+  lamps: THREE.Object3D[]
   nose: number
   tailX: number
   centerY: number
@@ -56,6 +59,7 @@ function frameFor(spec: ModelSpec, tier: Tier, livery: Livery): Frame {
     gears: [],
     strobes: [],
     beacons: [],
+    lamps: [],
     nose: spec.lengthM / 2,
     tailX: -spec.lengthM / 2,
     centerY,
@@ -294,6 +298,7 @@ function addEngines(frame: Frame) {
   const eng: EngineSpec = spec.engines
   if (eng.count === 0 || tier === 'high') return
   const pts = enginePoints(frame)
+  frame.group.userData.enginePoints = pts.map((p) => p.clone())
   const sides = cylinderSides(tier)
   const matrices = pts.map((p) =>
     compose(p.x, p.y, p.z, 0, 0, Math.PI / 2, eng.radius, eng.length, eng.radius),
@@ -470,7 +475,7 @@ function addGear(frame: Frame) {
 
 function addWindows(frame: Frame) {
   if (frame.tier === 'low' || frame.spec.family === 'helo') return
-  const { spec, centerY, wingX } = frame
+  const { spec, centerY } = frame
   if (frame.tier === 'mid' && spec.windows) {
     const band = addBox(
       frame,
@@ -492,6 +497,24 @@ function addWindows(frame: Frame) {
     return
   }
   if (frame.tier !== 'high' || !spec.windows) return
+  // Window instances are attached later, and only inside the high band.
+  const doorH = Math.min(2.3, spec.ry * 1.15)
+  for (const x of [spec.lengthM * 0.3, -spec.lengthM * 0.2]) {
+    addBox(
+      frame,
+      [0.85, doorH, 0.06],
+      [x, centerY - spec.ry * 0.05, spec.rx + 0.04],
+      'stripe',
+      'mesh',
+    ).name = 'doors'
+  }
+}
+
+/** Individual windows. Built on demand so mid-range aircraft skip the instance buffer. */
+export function createWindowMesh(spec: ModelSpec, livery: Livery): THREE.InstancedMesh | null {
+  if (!spec.windows || spec.family === 'helo') return null
+  const centerY = spec.gear + spec.ry
+  const wingX = spec.lengthM * (0.5 - spec.wingAt)
   const count = Math.max(8, Math.round(spec.lengthM / 1.7))
   const matrices: THREE.Matrix4[] = []
   const x0 = spec.lengthM * 0.32
@@ -506,18 +529,15 @@ function addWindows(frame: Frame) {
       }
     }
   }
-  const mesh = addInstances(frame, unitBox(), matrices, 'glass', 'mesh', 'windows')
-  if (mesh) mesh.name = 'windows'
-  const doorH = Math.min(2.3, spec.ry * 1.15)
-  for (const x of [spec.lengthM * 0.3, -spec.lengthM * 0.2]) {
-    addBox(
-      frame,
-      [0.85, doorH, 0.06],
-      [x, centerY - spec.ry * 0.05, spec.rx + 0.04],
-      'stripe',
-      'mesh',
-    ).name = 'doors'
-  }
+  if (!matrices.length) return null
+  const mesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), matrices.length)
+  matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
+  mesh.instanceMatrix.needsUpdate = true
+  mesh.name = 'windows'
+  mesh.computeBoundingBox()
+  mesh.computeBoundingSphere()
+  paintMesh(mesh, 'glass', livery, 'mesh', 'high')
+  return mesh
 }
 
 function addCargoDoor(frame: Frame) {
@@ -754,6 +774,7 @@ function addLights(frame: Frame) {
     mesh.name = name
     mesh.userData.baseScale = mesh.scale.x
     const painted = addMesh(frame, mesh, slot, kind === 'light' ? 'light' : kind)
+    frame.lamps.push(painted)
     if (kind === 'strobe') frame.strobes.push(painted)
     if (kind === 'beacon') frame.beacons.push(painted)
   }
@@ -779,33 +800,39 @@ function addHeloLights(frame: Frame) {
     mesh.position.set(0, spec.heightM - radius, 0)
     mesh.name = 'beacon'
     mesh.userData.baseScale = mesh.scale.x
-    frame.beacons.push(addMesh(frame, mesh, 'beacon', 'beacon'))
+    const painted = addMesh(frame, mesh, 'beacon', 'beacon')
+    frame.beacons.push(painted)
+    frame.lamps.push(painted)
     return
   }
   const port = new THREE.Mesh(unitSphere())
   port.scale.setScalar(radius)
   port.position.set(spec.lengthM * 0.05, centerY, spec.rx + 0.1)
   port.name = 'nav-port'
-  addMesh(frame, port, 'navRed', 'light')
+  frame.lamps.push(addMesh(frame, port, 'navRed', 'light'))
   const star = port.clone()
   star.position.z *= -1
   star.name = 'nav-starboard'
-  addMesh(frame, star, 'navGreen', 'light')
+  frame.lamps.push(addMesh(frame, star, 'navGreen', 'light'))
   const tail = port.clone()
   tail.position.set(tailX + 0.2, centerY, 0)
   tail.name = 'nav-tail'
-  addMesh(frame, tail, 'navWhite', 'light')
+  frame.lamps.push(addMesh(frame, tail, 'navWhite', 'light'))
   const beacon = port.clone()
   beacon.scale.setScalar(radius * 0.75)
   beacon.position.set(0, centerY + spec.ry + 0.15, 0)
   beacon.name = 'beacon'
   beacon.userData.baseScale = beacon.scale.x
-  frame.beacons.push(addMesh(frame, beacon, 'beacon', 'beacon'))
+  const paintedBeacon = addMesh(frame, beacon, 'beacon', 'beacon')
+  frame.beacons.push(paintedBeacon)
+  frame.lamps.push(paintedBeacon)
   const strobe = port.clone()
   strobe.position.set(spec.lengthM * 0.12, centerY + spec.ry * 0.4, 0)
   strobe.name = 'strobe'
   strobe.userData.baseScale = strobe.scale.x
-  frame.strobes.push(addMesh(frame, strobe, 'navWhite', 'strobe'))
+  const paintedStrobe = addMesh(frame, strobe, 'navWhite', 'strobe')
+  frame.strobes.push(paintedStrobe)
+  frame.lamps.push(paintedStrobe)
 }
 
 export function buildAircraft(spec: ModelSpec, tier: Tier, livery: Livery): BuiltLevel {
@@ -826,6 +853,15 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, livery: Livery): Buil
     addFeatures(frame)
     addLights(frame)
   }
+  mergeStaticShell({
+    tier: frame.tier,
+    specId: frame.spec.id,
+    livery: frame.livery,
+    group: frame.group,
+    meshes: frame.meshes,
+    gears: frame.gears,
+    spinners: frame.spinners,
+  })
   return {
     group: frame.group,
     meshes: frame.meshes,
@@ -833,5 +869,6 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, livery: Livery): Buil
     gears: frame.gears,
     strobes: frame.strobes,
     beacons: frame.beacons,
+    lamps: frame.lamps,
   }
 }

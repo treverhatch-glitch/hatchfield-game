@@ -3,10 +3,12 @@ import * as THREE from 'three'
 import { AIRFRAMES } from '../../game/airframes'
 import { loftGeometry, wingGeometry } from './geom'
 import { CrossfadeLOD } from './lod'
+import { ParkedFleet } from './batch'
 import {
   createAircraft,
   disposeAircraftLibrary,
   drawCount,
+  getAircraftQuality,
   getAircraftSpec,
   libraryStats,
   LOD_DIST,
@@ -14,6 +16,7 @@ import {
   measureAircraft,
   MODEL_SPECS,
   releaseAircraft,
+  setAircraftQuality,
   triangleCount,
   updateAircraft,
   WORLD_PER_METER,
@@ -34,22 +37,35 @@ function high(root: THREE.Object3D): THREE.Object3D {
   return node
 }
 
-function engineCount(root: THREE.Object3D): number {
-  const engines = mid(root).getObjectByName('engines') as THREE.InstancedMesh | undefined
-  return engines?.count ?? 0
+function enginePoints(root: THREE.Object3D): THREE.Vector3[] {
+  return (mid(root).userData.enginePoints as THREE.Vector3[] | undefined) ?? []
 }
 
 function names(root: THREE.Object3D): Set<string> {
   const found = new Set<string>()
   root.traverse((obj) => {
     if (obj.name) found.add(obj.name)
+    const parts = obj.userData.partNames as string[] | undefined
+    if (parts) for (const name of parts) found.add(name)
   })
   return found
 }
 
-function fuselageGeo(root: THREE.Object3D): THREE.BufferGeometry {
-  const mesh = mid(root).getObjectByName('fuselage') as THREE.Mesh
-  return mesh.geometry
+function shell(root: THREE.Object3D): THREE.Mesh {
+  const mesh = mid(root).getObjectByName('airframe') as THREE.Mesh
+  if (!mesh) throw new Error('missing merged airframe')
+  return mesh
+}
+
+function showClose(root: THREE.Object3D) {
+  const lod = root.getObjectByName('lod') as CrossfadeLOD
+  const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 500)
+  camera.position.set(0, 6, 16)
+  camera.lookAt(0, 0, 0)
+  camera.updateProjectionMatrix()
+  camera.updateMatrixWorld()
+  root.updateMatrixWorld(true)
+  lod.update(camera)
 }
 
 afterAll(() => {
@@ -126,12 +142,12 @@ describe('aircraft model factory', () => {
     const skid = createAircraft('s76', LIVERY)
     const rear = createAircraft('crj700', LIVERY)
 
-    expect(engineCount(narrow)).toBe(2)
-    expect(engineCount(freighter)).toBe(4)
-    expect(engineCount(prop)).toBe(2)
-    expect(engineCount(nose)).toBe(1)
-    expect(engineCount(fighter)).toBe(2)
-    expect(engineCount(helo)).toBe(0)
+    expect(enginePoints(narrow)).toHaveLength(2)
+    expect(enginePoints(freighter)).toHaveLength(4)
+    expect(enginePoints(prop)).toHaveLength(2)
+    expect(enginePoints(nose)).toHaveLength(1)
+    expect(enginePoints(fighter)).toHaveLength(2)
+    expect(enginePoints(helo)).toHaveLength(0)
     expect(getAircraftSpec('b738').engines.mount).toBe('wing')
     expect(getAircraftSpec('crj700').engines.mount).toBe('rear')
     expect(getAircraftSpec('f15').tail).toBe('twin')
@@ -148,22 +164,18 @@ describe('aircraft model factory', () => {
     expect(names(mid(freighter)).has('cargo-door')).toBe(true)
     expect(names(mid(narrow)).has('cargo-door')).toBe(false)
     expect(names(mid(narrow)).has('window-band')).toBe(true)
+    showClose(narrow)
     expect(names(high(narrow)).has('windows')).toBe(true)
     expect(names(high(narrow)).has('doors')).toBe(true)
     expect(names(high(narrow)).has('fan')).toBe(true)
     expect(names(high(freighter)).has('windows')).toBe(false)
     expect(names(mid(fighter)).has('cockpit')).toBe(true)
 
-    const eng = mid(rear).getObjectByName('engines') as THREE.InstancedMesh
-    const matrix = new THREE.Matrix4()
-    eng.getMatrixAt(0, matrix)
-    const pos = new THREE.Vector3().setFromMatrixPosition(matrix)
+    const pos = enginePoints(rear)[0]
     expect(pos.x).toBeLessThan(0)
     expect(Math.abs(pos.z)).toBeGreaterThan(getAircraftSpec('crj700').rx)
 
-    const wingEng = mid(narrow).getObjectByName('engines') as THREE.InstancedMesh
-    wingEng.getMatrixAt(0, matrix)
-    const wingPos = new THREE.Vector3().setFromMatrixPosition(matrix)
+    const wingPos = enginePoints(narrow)[0]
     expect(Math.abs(wingPos.z)).toBeGreaterThan(2)
     expect(wingPos.y).toBeLessThan(getAircraftSpec('b738').gear + getAircraftSpec('b738').ry)
 
@@ -174,14 +186,32 @@ describe('aircraft model factory', () => {
 
   it('paints airline body and stripe slots', () => {
     const aircraft = createAircraft('a321', LIVERY)
-    const body = mid(aircraft).getObjectByName('fuselage') as THREE.Mesh
-    const tail = mid(aircraft).getObjectByName('tail') as THREE.Mesh
-    expect((body.material as THREE.MeshLambertMaterial).color.getHexString()).toBe('2f6f9a')
-    expect((tail.material as THREE.MeshLambertMaterial).color.getHexString()).toBe('e8eef5')
+    const colors = shell(aircraft).geometry.getAttribute('color')
+    const has = (hex: string) => {
+      const color = new THREE.Color(hex)
+      for (let i = 0; i < colors.count; i += 8) {
+        if (
+          Math.abs(colors.getX(i) - color.r) < 0.02 &&
+          Math.abs(colors.getY(i) - color.g) < 0.02 &&
+          Math.abs(colors.getZ(i) - color.b) < 0.02
+        ) {
+          return true
+        }
+      }
+      return false
+    }
+    expect(has(LIVERY.body)).toBe(true)
+    expect(has(LIVERY.stripe)).toBe(true)
     const other = createAircraft('a321', OTHER)
-    const otherBody = mid(other).getObjectByName('fuselage') as THREE.Mesh
-    expect((otherBody.material as THREE.MeshLambertMaterial).color.getHexString()).toBe('6b1d1d')
-    expect(body.material).not.toBe(otherBody.material)
+    expect(shell(aircraft).geometry).not.toBe(shell(other).geometry)
+    expect(shell(aircraft).material).toBe(shell(other).material)
+    const otherColors = shell(other).geometry.getAttribute('color')
+    const otherBody = new THREE.Color(OTHER.body)
+    let found = false
+    for (let i = 0; i < otherColors.count; i += 8) {
+      if (Math.abs(otherColors.getX(i) - otherBody.r) < 0.02) found = true
+    }
+    expect(found).toBe(true)
     releaseAircraft(aircraft)
     releaseAircraft(other)
   })
@@ -191,18 +221,18 @@ describe('aircraft model factory', () => {
     const b = createAircraft('b738', LIVERY)
     const bus = createAircraft('a320neo', LIVERY)
     const fighter = createAircraft('f15', LIVERY)
-    expect(fuselageGeo(a)).toBe(fuselageGeo(b))
-    expect(fuselageGeo(a)).toBe(fuselageGeo(bus))
-    expect(fuselageGeo(a)).not.toBe(fuselageGeo(fighter))
-    const wingA = mid(a).getObjectByName('wing') as THREE.Mesh
-    const wingB = mid(b).getObjectByName('wing') as THREE.Mesh
-    expect(wingA.geometry).toBe(wingB.geometry)
-    const bodyA = mid(a).getObjectByName('fuselage') as THREE.Mesh
-    const bodyB = mid(b).getObjectByName('fuselage') as THREE.Mesh
-    expect(bodyA.material).toBe(bodyB.material)
+    expect(shell(a).geometry).toBe(shell(b).geometry)
+    expect(shell(a).geometry).not.toBe(shell(bus).geometry)
+    expect(shell(a).geometry).not.toBe(shell(fighter).geometry)
+    expect(shell(a).material).toBe(shell(b).material)
+    expect(names(high(a)).has('windows')).toBe(false)
+    showClose(a)
     const windows = high(a).getObjectByName('windows') as THREE.InstancedMesh
     expect(windows.isInstancedMesh).toBe(true)
     expect(windows.count).toBeGreaterThan(10)
+    const lowShell = a.getObjectByName('lod-low')!.getObjectByName('airframe') as THREE.Mesh
+    expect(lowShell.material).toBeInstanceOf(THREE.MeshBasicMaterial)
+    expect(drawCount(mid(a).getObjectByName('airframe')!.parent!)).toBeLessThan(16)
     releaseAircraft(a)
     releaseAircraft(b)
     releaseAircraft(bus)
@@ -211,12 +241,12 @@ describe('aircraft model factory', () => {
 
   it('release keeps the shared geometry usable', () => {
     const first = createAircraft('e175', LIVERY)
-    const geo = fuselageGeo(first)
+    const geo = shell(first).geometry
     const uuid = geo.uuid
     releaseAircraft(first)
     const second = createAircraft('e175', LIVERY)
-    expect(fuselageGeo(second).uuid).toBe(uuid)
-    expect(fuselageGeo(second).getAttribute('position').count).toBeGreaterThan(0)
+    expect(shell(second).geometry.uuid).toBe(uuid)
+    expect(shell(second).geometry.getAttribute('position').count).toBeGreaterThan(0)
     releaseAircraft(second)
   })
 
@@ -298,7 +328,7 @@ describe('aircraft model factory', () => {
     expect(highTris).toBeLessThan(2500)
     expect(drawCount(narrow.getObjectByName('lod-low')!)).toBeLessThan(24)
     expect(libraryStats().geometries).toBeLessThan(160)
-    expect(libraryStats().materials).toBeLessThan(40)
+    expect(libraryStats().materials).toBeLessThan(64)
     for (const aircraft of made) releaseAircraft(aircraft)
   })
 
@@ -329,5 +359,63 @@ describe('aircraft model factory', () => {
       topN++
     }
     expect(top / topN).toBeGreaterThan(0.05)
+  })
+
+  it('clamps LOD bands with the quality setting', () => {
+    setAircraftQuality('low')
+    expect(getAircraftQuality()).toBe('low')
+    const forced = lodWeights(10)
+    expect(forced.low).toBe(1)
+    expect(forced.mid).toBe(0)
+    expect(forced.high).toBe(0)
+    setAircraftQuality('med')
+    const medium = lodWeights(10)
+    expect(medium.high).toBe(0)
+    expect(medium.mid).toBeGreaterThan(0.95)
+    setAircraftQuality('high')
+    expect(lodWeights(10).high).toBeGreaterThan(0.95)
+  })
+
+  it('hides lamps that sit outside the camera frustum', () => {
+    const aircraft = createAircraft('b738', LIVERY)
+    const lod = aircraft.getObjectByName('lod') as CrossfadeLOD
+    const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 80)
+    camera.position.set(0, 4, 24)
+    camera.lookAt(0, 0, 0)
+    camera.updateProjectionMatrix()
+    camera.updateMatrixWorld()
+    aircraft.updateMatrixWorld(true)
+    lod.update(camera)
+    const lamp = mid(aircraft).getObjectByName('nav-port') as THREE.Mesh
+    expect(lamp.frustumCulled).toBe(true)
+    expect(lamp.visible).toBe(true)
+    camera.position.set(0, 4, -30)
+    camera.lookAt(0, 4, -80)
+    camera.updateMatrixWorld()
+    aircraft.updateMatrixWorld(true)
+    lod.update(camera)
+    expect(lamp.visible).toBe(false)
+    releaseAircraft(aircraft)
+  })
+
+  it('instances identical parked types as one batch', () => {
+    const fleet = new ParkedFleet()
+    const camera = new THREE.PerspectiveCamera()
+    camera.position.set(0, 20, 40)
+    camera.updateMatrixWorld()
+    const livery = LIVERY
+    const matrix = (x: number) => new THREE.Matrix4().makeTranslation(x, 0, 0)
+    fleet.sync(
+      [
+        { id: 'a', airframeId: 'b738', livery, matrix: matrix(0) },
+        { id: 'b', airframeId: 'b738', livery, matrix: matrix(12) },
+        { id: 'c', airframeId: 'b738', livery, matrix: matrix(24) },
+      ],
+      camera,
+    )
+    const mid = fleet.root.children.find((child) => (child as THREE.InstancedMesh).isInstancedMesh && child.visible) as THREE.InstancedMesh
+    expect(mid.count).toBe(3)
+    expect(mid.material).toBeInstanceOf(THREE.MeshLambertMaterial)
+    fleet.dispose()
   })
 })

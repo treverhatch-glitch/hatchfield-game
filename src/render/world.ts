@@ -1,14 +1,17 @@
 import * as THREE from 'three'
 import { inBounds } from '../game/path'
+import { ParkedFleet, type ParkedPlane } from './aircraft/batch'
 import {
   createAircraft,
   disposeAircraftLibrary,
+  loadAircraftQuality,
   releaseAircraft,
   updateAircraft,
+  WORLD_PER_METER,
 } from './aircraft/factory'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
-import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
+import type { Flight, HotelClass, ParkTerm, Tile, Vec } from '../game/types'
 
 export const CELL = 6.2
 
@@ -117,6 +120,11 @@ export class World {
   tileHash = ''
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
+  parkedFleet = new ParkedFleet()
+  private parkedMatrix = new THREE.Matrix4()
+  private parkedQuat = new THREE.Quaternion()
+  private parkedEuler = new THREE.Euler()
+  private parkedScale = new THREE.Vector3(1, 1, 1)
   trucks = new Map<string, THREE.Object3D>()
   service = new Map<string, THREE.Object3D>()
   people = new Map<string, THREE.Mesh>()
@@ -200,6 +208,8 @@ export class World {
 
     this.scene.add(this.tilesGroup)
     this.scene.add(this.entGroup)
+    this.entGroup.add(this.parkedFleet.root)
+    loadAircraftQuality()
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
     this.addPlotFence()
@@ -1210,30 +1220,73 @@ export class World {
     }
   }
 
+  private flightLivery(game: Game, f: Flight): { body: string; stripe: string } {
+    const a = game.airline(f.airline)
+    let body = a.color
+    let stripe = a.stripe
+    if (f.kind === 'military') {
+      // Fighters read darker/sleeker; transports stay olive + gold.
+      body = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
+      stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
+    } else if (f.kind === 'air_ambulance' || f.kind === 'helo_med') {
+      body = '#b33a2a'
+      stripe = '#f0c040'
+    } else if (f.kind === 'freighter') {
+      body = '#5a5348'
+      stripe = '#d9a441'
+    } else if (f.kind === 'helo_exec') {
+      body = '#1a3a4a'
+      stripe = '#c9a227'
+    }
+    return { body, stripe }
+  }
+
   syncEntities(game: Game) {
+    const queued = new Map<string, { flight: Flight; livery: { body: string; stripe: string } }[]>()
+    const batchedIds = new Set<string>()
+    for (const f of game.flights) {
+      if (f.phase !== 'parked' || game.selectedFlight === f.id) continue
+      const livery = this.flightLivery(game, f)
+      const key = `${f.airframeId || 'b738'}|${livery.body}|${livery.stripe}`
+      const list = queued.get(key)
+      if (list) list.push({ flight: f, livery })
+      else queued.set(key, [{ flight: f, livery }])
+    }
+    const parked: ParkedPlane[] = []
+    for (const list of queued.values()) {
+      if (list.length < 2) continue
+      for (const item of list) {
+        batchedIds.add(item.flight.id)
+        const alt = Math.max(0, item.flight.z - 0.1)
+        const pos = toWorld(item.flight.x, item.flight.y, 0.04 + alt * 1.15)
+        this.parkedEuler.set(0, -item.flight.heading, 0)
+        this.parkedQuat.setFromEuler(this.parkedEuler)
+        this.parkedScale.setScalar(WORLD_PER_METER)
+        parked.push({
+          id: item.flight.id,
+          airframeId: item.flight.airframeId || 'b738',
+          livery: item.livery,
+          matrix: this.parkedMatrix.clone().compose(pos, this.parkedQuat, this.parkedScale),
+        })
+      }
+    }
+    this.parkedFleet.sync(parked, this.camera)
+    for (const id of batchedIds) {
+      const existing = this.jets.get(id)
+      if (!existing) continue
+      this.entGroup.remove(existing)
+      releaseAircraft(existing)
+      this.jets.delete(id)
+    }
+
     const seenJ = new Set<string>()
     for (const f of game.flights) {
+      if (batchedIds.has(f.id)) continue
       seenJ.add(f.id)
       let mesh = this.jets.get(f.id)
       const helo = f.craft === 'helo'
       if (!mesh) {
-        const a = game.airline(f.airline)
-        let color = a.color
-        let stripe = a.stripe
-        if (f.kind === 'military') {
-          // Fighters read darker/sleeker; transports stay olive + gold.
-          color = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
-          stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
-        } else if (f.kind === 'air_ambulance' || f.kind === 'helo_med') {
-          color = '#b33a2a'
-          stripe = '#f0c040'
-        } else if (f.kind === 'freighter') {
-          color = '#5a5348'
-          stripe = '#d9a441'
-        } else if (f.kind === 'helo_exec') {
-          color = '#1a3a4a'
-          stripe = '#c9a227'
-        }
+        const { body: color, stripe } = this.flightLivery(game, f)
         mesh = createAircraft(f.airframeId || 'b738', { body: color, stripe })
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
@@ -1612,6 +1665,7 @@ export class World {
   dispose() {
     for (const mesh of this.jets.values()) releaseAircraft(mesh)
     this.jets.clear()
+    this.parkedFleet.dispose()
     disposeAircraftLibrary()
     const canvas = this.canvas
     canvas.removeEventListener('contextmenu', this.onContextMenu)

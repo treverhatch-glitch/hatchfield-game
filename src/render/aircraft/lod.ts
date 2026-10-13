@@ -25,6 +25,34 @@ export const LOD_DIST = {
 /** How fast displayed weights chase the distance target, per second. */
 export const LOD_RESPONSE = 10
 
+export type AircraftQuality = 'low' | 'med' | 'high'
+
+const QUALITY_KEY = 'hatchfield-aircraft-quality'
+let quality: AircraftQuality = 'high'
+
+/** Low forces the cheap shell. Med never enters the close band. High uses every band. */
+export function getAircraftQuality(): AircraftQuality {
+  return quality
+}
+
+export function setAircraftQuality(next: AircraftQuality) {
+  quality = next
+  try {
+    localStorage.setItem(QUALITY_KEY, next)
+  } catch {
+    // Storage is unavailable in some private windows.
+  }
+}
+
+export function loadAircraftQuality() {
+  try {
+    const saved = localStorage.getItem(QUALITY_KEY)
+    if (saved === 'low' || saved === 'med' || saved === 'high') quality = saved
+  } catch {
+    // Ignore storage failures and keep the in-memory setting.
+  }
+}
+
 export interface LodWeights {
   high: number
   mid: number
@@ -40,11 +68,17 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t)
 }
 
-/** Continuous weights. High is additive; mid + low blend to 1. */
+/** Continuous weights. High is additive; mid + low blend to 1. Quality clamps the top band. */
 export function lodWeights(distance: number): LodWeights {
-  const high = 1 - smoothstep(LOD_DIST.high, LOD_DIST.highBlend, distance)
+  let high = 1 - smoothstep(LOD_DIST.high, LOD_DIST.highBlend, distance)
   const low = smoothstep(LOD_DIST.mid, LOD_DIST.low, distance)
-  const mid = 1 - low
+  let mid = 1 - low
+  if (quality === 'low') {
+    high = 0
+    mid = 0
+    return { high, mid, low: 1 }
+  }
+  if (quality === 'med') high = 0
   return { high, mid, low }
 }
 
@@ -59,16 +93,30 @@ export interface LodBuckets {
   gears: THREE.Object3D[]
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
+  lamps: THREE.Object3D[]
 }
 
 const _cam = new THREE.Vector3()
 const _lod = new THREE.Vector3()
+const _proj = new THREE.Matrix4()
+const _frustum = new THREE.Frustum()
 
 export function cameraDistance(object: THREE.Object3D, camera: THREE.Camera): number {
   _cam.setFromMatrixPosition(camera.matrixWorld)
   _lod.setFromMatrixPosition(object.matrixWorld)
   const zoom = (camera as THREE.PerspectiveCamera).zoom || 1
   return _cam.distanceTo(_lod) / zoom
+}
+
+function cullLamps(lamps: THREE.Object3D[], camera: THREE.Camera) {
+  _proj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+  _frustum.setFromProjectionMatrix(_proj)
+  for (const lamp of lamps) {
+    if (!lamp.visible) continue
+    const mesh = lamp as THREE.Mesh
+    if (!mesh.isMesh) continue
+    lamp.visible = _frustum.intersectsObject(mesh)
+  }
 }
 
 function applyMeshes(meshes: PaintedMesh[], weight: number, nearHigh: number) {
@@ -97,6 +145,9 @@ export class CrossfadeLOD extends THREE.LOD {
   posed = false
   lastT = -1
   buckets: LodBuckets | null = null
+  /** Builds window instances the first time this aircraft enters the high band. */
+  requestWindows: (() => void) | null = null
+  windowsReady = false
 
   constructor() {
     super()
@@ -112,6 +163,10 @@ export class CrossfadeLOD extends THREE.LOD {
     const dt = this.lastT < 0 ? 0 : Math.min(0.05, now - this.lastT)
     this.lastT = now
     const gearDown = this.parent?.userData.gearDown !== false
+    if (!this.windowsReady && this.requestWindows && getAircraftQuality() === 'high' && target.high > 0.02) {
+      this.windowsReady = true
+      this.requestWindows()
+    }
     if (!this.posed) {
       this.wHigh = target.high
       this.wMid = target.mid
@@ -134,6 +189,7 @@ export class CrossfadeLOD extends THREE.LOD {
     if (buckets.lowGroup.visible) applyMeshes(buckets.low, this.wLow, this.wHigh)
     if (buckets.midGroup.visible) applyMeshes(buckets.mid, this.wMid, this.wHigh)
     if (buckets.highGroup.visible) applyMeshes(buckets.high, this.wHigh, this.wHigh)
+    cullLamps(buckets.lamps, camera)
 
     const gearScale = Math.max(0.0001, this.gearT)
     for (const gear of buckets.gears) gear.scale.y = gearScale

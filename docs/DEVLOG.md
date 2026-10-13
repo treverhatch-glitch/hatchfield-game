@@ -407,3 +407,23 @@ The close drop against the capsule is the shaded airframe filling the view. At t
 - `docs/devlog/media/MODELS-after-close.png` — zoomed in, windows and gear
 - `docs/devlog/media/MODELS-after-far.png` — cheap silhouettes
 - `docs/devlog/media/MODELS-flight.webm` — 28 s, approach, landing, taxi, and departure
+
+## Aircraft perf pass — 13 Oct 2026, ~11:25 UTC
+
+Same branch. The close orbit had fallen from 26 FPS on the capsule to 17. The mid mesh was about 21 draws.
+
+Static fuselage, wing, tail, nacelles, and stripes now bake into one geometry per type and livery. The far shell uses an unlit material. Window instances are created only after the aircraft enters the high band. Lamps turn off when they leave the frustum. Two or more parked planes of the same type and livery share one instanced shell. `setAircraftQuality('low' | 'med' | 'high')` clamps the bands (low is always the cheap shell, med never shows windows, high is the full crossfade). It is stored under `hatchfield-aircraft-quality`. There is no new HUD control.
+
+737-800 draws after the bake: low 3, mid 10, high 4 plus the window instance once you zoom in. Previously mid was 21.
+
+**Perf** (same VM, SwiftShader, 1280×720). 5× is shadows off, DPR 1.
+
+| Setup | Before this pass | After |
+| --- | --- | --- |
+| Old capsule, one jet, 5×, orbit 42 | 26 | 26 |
+| New model, one jet, 5×, orbit 42 (high band) | 17 | 26 |
+| New model, 5×, orbit 88 (mid, default orbit) | 10 | 12 |
+| New model, 5×, orbit 140 (low) | 10 | 12 |
+| Twelve different types parked, shadows on, orbit 52 and 140 | 10 and 9 | 10 and 8 |
+
+The close orbit matches the capsule again. The default orbit is the apron filling the view, so it stays near the old shadow-on baseline of about 8 FPS rather than the close-up 26. Baking all 24 shells took 85 ms the first time. The pool is 88 geometries and 36 materials.
