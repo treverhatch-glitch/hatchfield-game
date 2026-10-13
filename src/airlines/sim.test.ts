@@ -7,7 +7,8 @@ import {
   processFlightEvents
 } from './logic.ts';
 import { DEFAULT_AIRLINES } from './data.ts';
-import type { AirlineState, AirportCapabilities, FlightEvent } from './types.ts';
+import type { AirlineState, AirportCapabilities } from './types.ts';
+import type { FlightEvent } from './logic.ts';
 
 describe('Airline 1-Year Balance Sim', () => {
   it('should run a 1-year headless simulation and print stats', () => {
