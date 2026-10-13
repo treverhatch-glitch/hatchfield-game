@@ -39,10 +39,12 @@ describe('hall doorway routes', () => {
     }
 
     game.hallGuests = [g]
-    const x0 = g.wx
+    const x0 = g.wx ?? 0
+    const z0 = g.wz ?? 0
     game.tick(0.4)
     expect(g.lost).toBeFalsy()
-    expect(g.wx).not.toBe(x0)
+    // The first doorway step is often north-south, so x alone stays put.
+    expect(Math.hypot((g.wx ?? x0) - x0, (g.wz ?? z0) - z0)).toBeGreaterThan(0.02)
     const stood = routeRoomKinds(plan!, [
       { x: g.wx!, z: g.wz! },
       { x: g.wx!, z: g.wz! },

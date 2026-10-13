@@ -24,6 +24,7 @@ const KIT_TABS: { id: KitCategory; label: string }[] = [
   { id: 'food', label: 'Food' },
   { id: 'seating', label: 'Seating' },
   { id: 'decor', label: 'Decor' },
+  { id: 'service', label: 'Service' },
 ]
 
 /** Slim build bar for the terminal kit. Cards close once the item is placed. */
