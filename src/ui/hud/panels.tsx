@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type MouseEvent, type ReactNode } from 'react'
 import { AIRFRAMES } from '../../game/airframes'
 import {
   AIRLINE_TIER_META,
@@ -76,10 +76,15 @@ export function SidePanel({
       data-hud-part="panel"
       data-panel={panel}
       aria-label={TITLES[panel]}
+      onMouseDown={(e: MouseEvent) => {
+        const t = e.target as HTMLElement
+        // Focusing a button scrolls this panel and the cursor misses mouseup.
+        if (t.closest('button')) e.preventDefault()
+      }}
     >
       <div className="panel-head">
         <h2>{TITLES[panel]}</h2>
-        <button type="button" className="ghost" onClick={() => closePanel()}>
+        <button type="button" className="ghost" data-testid="panel-close" onClick={() => closePanel()}>
           Close
         </button>
       </div>
@@ -196,6 +201,7 @@ function Finances({ game }: { game: Game }) {
             type="button"
             className="wide on"
             data-testid="starter-kit"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => game.buildStarterKit()}
           >
             Starter kit · {moneyAbbrev(STARTER_KIT_COST)}
