@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { AIRLINES } from '../../game/catalog'
+import { tailForBody } from '../world/packArt'
 import { sharedMat } from './pool'
 import type { Livery } from './specs'
 
@@ -105,9 +106,10 @@ function logoTexture(mark: string, tail: string): THREE.DataTexture {
 }
 
 export function logoMaterials(brand: Brand): { opaque: THREE.Material; fade: THREE.Material } {
-  const key = `logo:${brand.mark}:${brand.tail}`
+  const pack = tailForBody(brand.body)
+  const key = pack ? `logo:pack:${brand.body}` : `logo:${brand.mark}:${brand.tail}`
   const opaque = sharedMat(key, () => {
-    const map = logoTexture(brand.mark, brand.tail)
+    const map = pack ?? logoTexture(brand.mark, brand.tail)
     return new THREE.MeshBasicMaterial({
       map,
       transparent: true,

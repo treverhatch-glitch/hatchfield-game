@@ -426,6 +426,84 @@ button {
   font: inherit;
 }
 
+.cash-hero-wrap {
+  position: relative;
+  pointer-events: auto;
+}
+
+.cash-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 148px;
+  padding: 8px 14px 7px;
+}
+
+.cash-hero .cash-amount {
+  font-size: 28px;
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.cash-hero .cash-flow {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.cash-hero .cash-flow.up,
+.cash-menu .up {
+  color: #8ee0a8;
+}
+
+.cash-hero .cash-flow.down,
+.cash-menu .down {
+  color: #ff9b8f;
+}
+
+.cash-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 280px;
+  z-index: 40;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(10, 20, 16, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: #e8eef4;
+}
+
+.cash-menu p {
+  margin: 0 0 6px;
+}
+
+.cash-menu ul {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  color: #b7c4b8;
+}
+
+.cash-menu button {
+  background: rgba(18, 36, 28, 0.9);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.hud .tt-root {
+  top: auto;
+  right: auto;
+  bottom: 92px;
+  left: 12px;
+}
+
 .vitals-quiet {
   opacity: 0.85;
   font-size: 12px;
@@ -1235,7 +1313,8 @@ button {
 .cash-chip {
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
   color: #e7c56a !important;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 15px;
   border-color: rgba(201, 162, 39, 0.45) !important;
 }
 
