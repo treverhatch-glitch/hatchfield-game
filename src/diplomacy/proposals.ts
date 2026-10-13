@@ -16,7 +16,7 @@ import {
   tierCost
 } from './core.ts';
 import type { EngineCore } from './core.ts';
-import { counterChance } from './demands.ts';
+import { applyCounterLines, counterCost, counterSuccess, resolveTicks } from './counter.ts';
 import { composeLetter } from './generator.ts';
 import { nextFloat } from './rng.ts';
 import { alliesOf, evaluate, penalizeRivalsForPerk, refreshPerks, rivalsOf } from './relations.ts';
@@ -89,7 +89,8 @@ export function signContract(
     peakSlotsPerWeek: Math.ceil(terms.slotsPerWeek * 0.4),
     seasonFlights: 0,
     seasonExcused: 0,
-    baseGranted: false
+    baseGranted: false,
+    flightBanks: 1
   };
   rel.flightsEma = terms.slotsPerWeek / 7;
   for (const rival of rivalsOf(core, rel)) {
@@ -119,7 +120,8 @@ export function respondToProposal(
   core: EngineCore,
   proposalId: string,
   response: ProposalResponse,
-  payWith: 'money' | 'favour' = 'money'
+  payWith: 'money' | 'favour' = 'money',
+  ticks?: import('./types.ts').CounterLineKey[]
 ): ActionResult {
   const proposal = core.state.proposals.find((p) => p.id === proposalId);
   if (!proposal) return { ok: false, cost: 0, message: 'No such proposal.' };
@@ -137,23 +139,25 @@ export function respondToProposal(
 
   if (response === 'counter') {
     if (proposal.counterUsed) return { ok: false, cost: 0, message: 'Already countered.' };
+    const chosen = resolveTicks(proposal, ticks);
+    if (chosen.length === 0) return { ok: false, cost: 0, message: 'Tick at least one line.' };
     let cost = 0;
     if (payWith === 'favour') {
       if (rel.favours.length === 0) return { ok: false, cost: 0, message: 'No Favour available.' };
     } else {
-      cost = Math.round(tierCost(rel.tier) * 0.5);
+      cost = counterCost(rel);
       if (!spend(core, cost, 'diplomacy', `Counter-offer to ${rel.name}`)) {
         return { ok: false, cost: 0, message: 'Cannot afford the counter-offer.' };
       }
     }
     proposal.counterUsed = true;
-    const chance = payWith === 'favour' ? 1 : counterChance(rel);
+    const chance = counterSuccess(rel, chosen.length, payWith);
     if (payWith === 'favour') rel.favours.shift();
     if (nextFloat(core.state) >= chance) {
       addModifier(core, rel, 'counter_rejected', 'Counter-offer rejected', proposal.id);
       return { ok: false, cost, chance, message: `${rel.name} rejected the counter-offer.` };
     }
-    applyCounterToProposal(proposal);
+    applyCounterLines(proposal, chosen);
     return { ok: true, cost, chance, message: 'Counter accepted: the terms are now better for you.' };
   }
 
@@ -171,7 +175,20 @@ export function respondToProposal(
 
   switch (proposal.kind) {
     case 'contract':
-    case 'newcomer_incentive': {
+    case 'newcomer_incentive':
+    case 'flights': {
+      if (proposal.kind === 'flights') {
+        if (rel.status !== 'signed' || !rel.contract || !proposal.terms) {
+          return { ok: false, cost: 0, message: 'Flight contracts need a signed master.' };
+        }
+        rel.contract.terms = { ...rel.contract.terms, slotsPerWeek: proposal.terms.slotsPerWeek };
+        rel.contract.flightBanks = (rel.contract.flightBanks ?? 1) + 1;
+        drop();
+        emit(core, 'contract_signed', rel.id, `${rel.name} adds a flight bank (${rel.contract.terms.slotsPerWeek}/week).`, 'good', {
+          flights: rel.contract.flightBanks
+        });
+        return { ok: true, cost, message: `${rel.name} added flights.` };
+      }
       if (rel.status === 'signed') return { ok: false, cost: 0, message: 'Already signed.' };
       if (!proposal.terms) return { ok: false, cost: 0, message: 'Proposal has no terms.' };
       signContract(core, rel, proposal.terms, proposal.discountPct, proposal.discountDays);
@@ -206,21 +223,6 @@ export function respondToProposal(
       drop();
       return { ok: true, cost, message: 'Endeavor agreed.' };
     }
-  }
-}
-
-function applyCounterToProposal(p: Proposal): void {
-  if (p.terms) {
-    p.terms = {
-      ...p.terms,
-      feePerLanding: Math.round(p.terms.feePerLanding * 1.1),
-      feePerPassenger: Math.round(p.terms.feePerPassenger * 1.1),
-      penaltyPerDelayMinute: Math.round(p.terms.penaltyPerDelayMinute * 1.2)
-    };
-  }
-  if (p.discountPct > 0) {
-    p.discountPct = Math.max(5, Math.round(p.discountPct * 0.6));
-    p.discountDays = Math.round(p.discountDays * 0.7);
   }
 }
 
@@ -271,7 +273,7 @@ export function maybeSendLetters(core: EngineCore): void {
       id: newId(core, 'prop'),
       airlineId: rel.id,
       kind: 'contract',
-      text: `${rel.name} proposes ${terms.slotsPerWeek} flights a week.`,
+      text: `${rel.name} proposes a master contract: ${terms.slotsPerWeek} flights a week.`,
       terms,
       discountPct: 0,
       discountDays: 0,

@@ -6,6 +6,7 @@ import { openCommitmentOf } from './demands.ts';
 import { poachRisk } from './drama.ts';
 import type { EngineCore } from './core.ts';
 import { bandChip, buildPortraitCard } from './portrait.ts';
+import { contractLadder } from './ladder.ts';
 import { alliesOf, breakdownFor, rivalsOf } from './relations.ts';
 import type { AirlineCard, AirlineRelation, NeedLine } from './types.ts';
 
@@ -79,6 +80,7 @@ export function buildCard(core: EngineCore, rel: AirlineRelation): AirlineCard {
     topCauses: negatives,
     history: [...rel.history],
     contractTermEndDay: rel.contract?.termEndDay ?? null,
-    poachRisk: poachRisk(core, rel)
+    poachRisk: poachRisk(core, rel),
+    ladder: contractLadder(core, rel)
   };
 }

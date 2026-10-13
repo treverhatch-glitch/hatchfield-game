@@ -1,0 +1,199 @@
+import { useState } from 'react'
+import type { Band, DiplomacyTier } from '../diplomacy/types.ts'
+import type { Game } from '../game/sim.ts'
+
+const TIERS: DiplomacyTier[] = [1, 2, 3, 4, 5]
+
+const BAND_ICON: Record<Band, string> = {
+  hostile: '▲',
+  cold: '❄',
+  neutral: '–',
+  warm: '☀',
+  partner: '✎',
+}
+
+/**
+ * Airlines desk inside the slim-bar panel. One card opens at a time.
+ * Standing, share, fees and other figures sit in click-open submenus.
+ */
+export function AirlinesDesk({ game }: { game: Game }) {
+  const [tier, setTier] = useState<DiplomacyTier>(1)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [menu, setMenu] = useState<'standing' | 'contract' | 'demand' | 'fees' | null>(null)
+  const [more, setMore] = useState(false)
+  const cards = game.diplomacyCards().filter((card) => card.tier === tier)
+  const unlocked = game.fieldLevel()
+  const prog = game.fieldXpToNext()
+
+  return (
+    <section className="airline-tiers" data-testid="diplomacy-panel">
+      <h3>Airlines</h3>
+      <p className="muted eco-line">
+        Field Level {prog.level}
+        {prog.level < 5 ? ` · ${Math.round(prog.pct * 100)}% to Lv${prog.level + 1}` : ' · max'}
+        {' · '}
+        hotkey L
+      </p>
+      <div className="dip-tabs" role="tablist">
+        {TIERS.map((level) => (
+          <button
+            key={level}
+            type="button"
+            role="tab"
+            className={tier === level ? 'on' : ''}
+            aria-selected={tier === level}
+            onClick={() => {
+              setTier(level)
+              setOpenId(null)
+              setMenu(null)
+            }}
+          >
+            T{level}
+            {unlocked < level ? ' · locked' : ''}
+          </button>
+        ))}
+      </div>
+      {cards.length === 0 ? (
+        <p className="muted">No carriers in this tier yet. The clock unlocks the next letter.</p>
+      ) : (
+        <ul className="dip-roster">
+          {cards.map((card) => {
+            const open = openId === card.id
+            const lines = card.breakdown
+              ? more
+                ? card.breakdown.lines
+                : card.breakdown.visibleLines
+              : []
+            return (
+              <li key={card.id} data-testid="diplomacy-card">
+                <button
+                  type="button"
+                  className="dip-card"
+                  onClick={() => {
+                    setOpenId((cur) => (cur === card.id ? null : card.id))
+                    setMenu(null)
+                    setMore(false)
+                  }}
+                >
+                  <span className="dip-livery" style={{ background: card.livery[0], borderColor: card.livery[1] }} />
+                  <span className="dip-name">{card.name}</span>
+                  <span
+                    className="dip-band"
+                    style={{ color: card.band.color }}
+                    title={card.band.word}
+                  >
+                    <span aria-hidden>{BAND_ICON[card.band.band]}</span> {card.band.word}
+                  </span>
+                  <span className="dip-trend" aria-label={`trend ${card.trend}`}>
+                    {card.trend === 'up' ? '↑' : card.trend === 'down' ? '↓' : '→'}
+                  </span>
+                </button>
+                {open ? (
+                  <div className="dip-detail" data-testid="diplomacy-detail">
+                    <p className="muted">
+                      {card.shareClass} · {card.interests.join(' · ')}
+                      {card.stage !== 'none' ? ` · ${card.stage.replace(/_/g, ' ')}` : ''}
+                      {card.isHub ? ' · Hub' : card.isBase ? ' · Base' : ''}
+                    </p>
+                    <div className="dip-tabs">
+                      <button type="button" className={menu === 'standing' ? 'on' : ''} onClick={() => setMenu(menu === 'standing' ? null : 'standing')}>
+                        Standing
+                      </button>
+                      <button type="button" className={menu === 'contract' ? 'on' : ''} onClick={() => setMenu(menu === 'contract' ? null : 'contract')}>
+                        Contract
+                      </button>
+                      <button type="button" className={menu === 'demand' ? 'on' : ''} onClick={() => setMenu(menu === 'demand' ? null : 'demand')}>
+                        Demand
+                      </button>
+                      <button type="button" className={menu === 'fees' ? 'on' : ''} onClick={() => setMenu(menu === 'fees' ? null : 'fees')}>
+                        Fees
+                      </button>
+                    </div>
+                    {menu === 'standing' && card.breakdown ? (
+                      <div className="dip-sub" data-testid="diplomacy-formula">
+                        <p>{card.breakdown.formula}</p>
+                        <ul className="dip-lines">
+                          {lines.map((line) => (
+                            <li key={`${line.kind}-${line.label}`}>
+                              <span>{line.label}</span>
+                              <span>{line.value > 0 ? `+${Math.round(line.value)}` : Math.round(line.value)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {card.breakdown.hiddenLineCount > 0 ? (
+                          <button type="button" onClick={() => setMore((v) => !v)}>
+                            {more ? 'Fewer lines' : `${card.breakdown.hiddenLineCount} more`}
+                          </button>
+                        ) : null}
+                        {card.status === 'signed' ? (
+                          <div className="row letter-actions">
+                            <button type="button" onClick={() => game.diplomacyApologize(card.id)}>
+                              Apology
+                            </button>
+                            <button type="button" onClick={() => game.diplomacyEndeavor(card.id)}>
+                              Endeavor
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {menu === 'contract' ? (
+                      <ol className="dip-ladder">
+                        {card.ladder.map((step) => (
+                          <li key={step.id} data-state={step.state}>
+                            <b>
+                              {step.state === 'done' ? '✓' : step.state === 'offered' ? '●' : '·'} {step.label}
+                            </b>
+                            <span className="muted">{step.detail}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                    {menu === 'demand' ? (
+                      card.openCommitment ? (
+                        <div className="dip-sub">
+                          <p>{card.openCommitment.text}</p>
+                          <p className="muted">
+                            Progress {Math.round(card.openCommitment.progress * 100)}% · deadline day{' '}
+                            {Math.round(card.openCommitment.deadlineDay)}
+                          </p>
+                          <div className="row letter-actions">
+                            <button type="button" className="on" onClick={() => game.answerDiplomacyDemand(card.openCommitment!.id, 'accept')}>
+                              Accept
+                            </button>
+                            <button type="button" onClick={() => game.counterDiplomacyDemand(card.openCommitment!.id, 'longer')}>
+                              Longer
+                            </button>
+                            <button type="button" onClick={() => game.answerDiplomacyDemand(card.openCommitment!.id, 'decline')}>
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="muted">No open demand.</p>
+                      )
+                    ) : null}
+                    {menu === 'fees' ? (
+                      <div className="dip-sub" data-testid="diplomacy-fees">
+                        <p>Published fee index {game.publishedFeeIndex.toFixed(2)}</p>
+                        <p className="muted">A rise hits Standing. Landing fees move with it.</p>
+                        <div className="row letter-actions">
+                          <button type="button" onClick={() => game.setPublishedFeeIndex(game.publishedFeeIndex - 0.01)}>
+                            Cut 1%
+                          </button>
+                          <button type="button" onClick={() => game.setPublishedFeeIndex(game.publishedFeeIndex + 0.01)}>
+                            Raise 1%
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}

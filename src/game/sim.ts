@@ -175,6 +175,7 @@ import { CargoBridge } from './cargoBridge.ts'
 import { getAudio, soundForEvent } from '../audio/index.ts'
 import {
   createDiplomacyBridge,
+  diplomacyFieldLevel,
   GAME_MINUTES_PER_SIM_SECOND,
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
@@ -854,6 +855,9 @@ export class Game {
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
   private diplomacy: DiplomacyBridge | null = null
   diplomacySeed = 1
+  /** Published landing-fee index. 1 is the schedule. Diplomacy reads rises and cuts. */
+  publishedFeeIndex = 1
+  private missedByAirline: Record<string, number> = {}
   /** Contract counter-offers. Null until the first letter. */
   private negotiationBridge: NegotiationBridge | null = null
   /** Passenger-flow overlay. Hidden until the player opts in. */
@@ -1086,6 +1090,8 @@ export class Game {
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
+    this.publishedFeeIndex = 1
+    this.missedByAirline = {}
     this.negotiationBridge = null
     this.hallOverloaded = false
     this.missedFlights = 0
@@ -1563,7 +1569,7 @@ export class Game {
     const onTime = this.diplomacy?.onTimePct() ?? 88
     const feeIndex = this.diplomacy?.adapter.engine.state.feeIndex ?? 1
     return {
-      fieldLevel: this.fieldLevel(),
+      fieldLevel: diplomacyFieldLevel(this.fieldLevel()),
       metrics: {
         onTimePct: onTime,
         feeIndex,
@@ -1603,7 +1609,30 @@ export class Game {
   private tickDiplomacy(step: number) {
     const d = this.ensureDiplomacy()
     for (const id of this.signed) d.mirrorSigned(id)
+    const before = d.day()
     d.tick(step * GAME_MINUTES_PER_SIM_SECOND)
+    if (Math.floor(d.day()) > Math.floor(before)) {
+      d.adapter.engine.notePremiumScreening({ clearRate: this.premiumScreenRate() })
+      this.flushMissedConnections()
+    }
+  }
+
+  /** Share of premium departures already through screening. 1 when nobody premium is in the hall. */
+  private premiumScreenRate(): number {
+    const premium = this.hallGuests.filter((g) => !g.dead && g.tag === 'premium' && g.job === 'depart')
+    if (!premium.length) return 1
+    const waiting = premium.filter((g) => g.node === 'security' && !g.clearedSec).length
+    return 1 - waiting / premium.length
+  }
+
+  private flushMissedConnections() {
+    const pending = this.missedByAirline
+    this.missedByAirline = {}
+    const engine = this.diplomacy?.adapter.engine
+    if (!engine) return
+    for (const [airlineId, missed] of Object.entries(pending)) {
+      engine.noteMissedConnections({ airlineId, missed, showMe: 'connectivity' })
+    }
   }
 
   private diplomacyFeeFactor(airlineId: string): number {
@@ -1657,25 +1686,91 @@ export class Game {
     }))
   }
 
-  diplomacyLetters(): { id: string; airline: string; text: string }[] {
+  diplomacyLetters(): {
+    id: string
+    airline: string
+    airlineId: string
+    text: string
+    kind: string
+    chance: number
+    cost: number
+  }[] {
     if (!this.diplomacy) return []
-    return this.diplomacy.proposals().slice(0, 3).map((p) => {
-      const rel = this.diplomacy?.relation(p.airlineId)
-      return { id: p.id, airline: rel?.name ?? p.airlineId, text: p.text }
-    })
+    return this.diplomacy
+      .proposals()
+      .slice(0, 3)
+      .map((p) => {
+        const rel = this.diplomacy?.relation(p.airlineId)
+        const quote = this.diplomacy?.adapter.engine.counterQuote(p.id)
+        return {
+          id: p.id,
+          airline: rel?.name ?? p.airlineId,
+          airlineId: p.airlineId,
+          text: p.text,
+          kind: p.kind,
+          chance: quote?.chance ?? 0,
+          cost: quote?.cost ?? 0,
+        }
+      })
   }
 
-  answerDiplomacy(proposalId: string, response: 'accept' | 'decline') {
+  diplomacyCards() {
+    return this.diplomacy?.cards() ?? []
+  }
+
+  diplomacyQuote(proposalId: string, ticks: import('../diplomacy/types.ts').CounterLineKey[]) {
+    return this.diplomacy?.adapter.engine.counterQuote(proposalId, ticks) ?? null
+  }
+
+  diplomacyPreview(airlineId: string) {
+    return this.diplomacy?.adapter.engine.previewSign(airlineId) ?? null
+  }
+
+  answerDiplomacy(
+    proposalId: string,
+    response: 'accept' | 'decline' | 'counter' | 'support',
+    ticks?: import('../diplomacy/types.ts').CounterLineKey[],
+  ) {
     const d = this.ensureDiplomacy()
     const before = new Set(d.signedIds())
-    const result = d.respond(proposalId, response)
-    if (result.ok && response === 'accept') {
+    const result = d.respond(proposalId, response, ticks)
+    if (result.ok && (response === 'accept' || response === 'support')) {
       for (const id of d.signedIds()) {
         if (!before.has(id)) this.adoptDiplomacyCarrier(id)
       }
     }
-    if (!result.ok) this.pushNews(result.message, 'bad')
+    if (!result.ok && response !== 'counter') this.pushNews(result.message, 'bad')
+    if (response === 'counter') this.pushNews(result.message, result.ok ? 'good' : 'bad')
     this.emit()
+    return result
+  }
+
+  answerDiplomacyDemand(demandId: string, response: 'accept' | 'decline') {
+    const result = this.ensureDiplomacy().adapter.engine.respondToDemand(demandId, response)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  counterDiplomacyDemand(demandId: string, mode: 'lighter' | 'longer') {
+    const result = this.ensureDiplomacy().adapter.engine.counterDemand(demandId, mode)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  diplomacyApologize(airlineId: string) {
+    const result = this.ensureDiplomacy().adapter.engine.apologize(airlineId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  diplomacyEndeavor(airlineId: string) {
+    const result = this.ensureDiplomacy().adapter.engine.startEndeavor(airlineId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
   }
 
   private adoptDiplomacyCarrier(id: string) {
@@ -2027,7 +2122,17 @@ export class Game {
     const r = this.rewardOf(airlineId)
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
     const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
-    return negotiated === 1 ? base : base * negotiated
+    const posted = negotiated === 1 ? base : base * negotiated
+    return posted * this.publishedFeeIndex
+  }
+
+  /** Move the published fee index by a fraction (0.01 = 1%). Feeds Standing and landing fees. */
+  setPublishedFeeIndex(index: number) {
+    const next = Math.round(Math.max(0.8, Math.min(1.4, index)) * 100) / 100
+    if (next === this.publishedFeeIndex) return
+    this.publishedFeeIndex = next
+    this.ensureDiplomacy().adapter.engine.notePublishedFees(next)
+    this.emit()
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -3411,6 +3516,7 @@ export class Game {
       sites: this.sites,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      publishedFeeIndex: this.publishedFeeIndex,
       negotiation: this.negotiationBridge?.save(),
     }
     try {
@@ -3562,6 +3668,8 @@ export class Game {
       this.sites = s.sites ?? []
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
+      this.publishedFeeIndex = s.publishedFeeIndex ?? 1
+      this.missedByAirline = {}
       if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
       this.negotiationBridge = null
       if (s.negotiation) this.negotiationDesk().load(s.negotiation)
@@ -4194,6 +4302,10 @@ export class Game {
       fault === 'missed_connection'
         ? 'Lost-bag desk — my bag missed the connection'
         : 'Lost-bag desk — my bag is late'
+    if (fault === 'missed_connection') {
+      const airlineId = this.flights.find((f) => f.id === g.flightId)?.airline
+      if (airlineId) this.missedByAirline[airlineId] = (this.missedByAirline[airlineId] ?? 0) + 1
+    }
   }
 
   /** Teaching halls never lose a bag. A redesigned hall can. */
@@ -7603,7 +7715,10 @@ export class Game {
   }
 
   setNegotiationFee(service: ServiceId, pct: number) {
-    this.negotiationDesk().setFee(service, pct)
+    const desk = this.negotiationDesk()
+    desk.setFee(service, pct)
+    const id = desk.desk.session?.airlineId
+    if (id) this.ensureDiplomacy().adapter.engine.noteAirlineFee(id, desk.feeFactor(id))
     this.emit()
   }
 
@@ -7686,20 +7801,20 @@ export class Game {
   private applyNegotiationStanding(
     deltas: { id: string; airlineId: string; modifier: string; label: string; value: number; durationDays: number }[],
   ) {
-    const diplomacy = this.ensureDiplomacy()
-    const day = diplomacy.day()
+    const engine = this.ensureDiplomacy().adapter.engine
     for (const delta of deltas) {
-      const rel = diplomacy.relation(delta.airlineId)
-      if (!rel) continue
-      rel.modifiers.push({
-        id: delta.id,
-        kind: 'other',
-        label: delta.label,
-        source: delta.modifier,
+      engine.noteNegotiation({
+        airlineId: delta.airlineId,
         value: delta.value,
-        startDay: day,
+        label: delta.label,
         durationDays: delta.durationDays,
+        source: delta.modifier,
       })
+    }
+    const rivalName = this.negotiationBridge?.rivalCard()?.name ?? 'A rival airport'
+    for (const delta of deltas) {
+      if (delta.modifier !== 'walk') continue
+      engine.noteRivalAirport({ rivalName, airlineId: delta.airlineId, taken: true })
     }
   }
 
