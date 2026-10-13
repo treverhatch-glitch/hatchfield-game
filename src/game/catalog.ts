@@ -178,12 +178,28 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
 /** XP thresholds → field level 1–5 (airline tier unlock spine). */
 export const FIELD_LEVEL_XP = [0, 0, 90, 220, 420, 700] as const
 
+/**
+ * Same rungs as FIELD_LEVEL_XP, then the late-building rungs.
+ * Hotel needs 7, SAF blending 8, rail link 9. Airline tiers still stop at 5.
+ */
+export const LATE_FIELD_XP = [0, 0, 90, 220, 420, 700, 1_100, 1_600, 2_300, 3_200] as const
+
 export function fieldLevelFromXp(xp: number): AirlineTier {
   if (xp >= FIELD_LEVEL_XP[5]) return 5
   if (xp >= FIELD_LEVEL_XP[4]) return 4
   if (xp >= FIELD_LEVEL_XP[3]) return 3
   if (xp >= FIELD_LEVEL_XP[2]) return 2
   return 1
+}
+
+/** Field level used by late buildings. Levels 1–5 match `fieldLevelFromXp`. */
+export function lateFieldLevelFromXp(xp: number): number {
+  const safe = Number.isFinite(xp) && xp > 0 ? xp : 0
+  let level = 1
+  for (let i = 2; i < LATE_FIELD_XP.length; i++) {
+    if (safe >= LATE_FIELD_XP[i]!) level = i
+  }
+  return level
 }
 
 export const AIRLINE_TIER_META: Record<
@@ -1175,6 +1191,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   bus: 'Bus',
   term_bus: 'Term bus',
   rail: 'Rail',
+  airport_hotel: 'Hotel',
+  rail_link: 'Rail link',
+  saf_blending: 'SAF',
   clear: 'Clear',
 }
 

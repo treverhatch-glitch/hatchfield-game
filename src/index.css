@@ -1093,6 +1093,10 @@ button {
   color: #1a1406;
 }
 
+.tray-item.is-locked {
+  opacity: 0.55;
+}
+
 .eco-tabs {
   display: flex;
   flex-wrap: wrap;
