@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ICON_IDS, PALETTES, FONT_IDS } from './parts';
 import { PRESETS } from './presets';
 import { randomizeLogo } from './random';
-import { renderLogoSVG } from './render';
+import { renderLogoSVG, ringFontSize, ringLabel, RING_TEXT_RADIUS, RING_VIEWBOX, RING_PADDING } from './render';
 import { deserializeBranding, serializeBranding, suggestCode, validateAirportName, validateCode, validateLogoSpec } from './validate';
 
 const base = PRESETS[0].spec;
@@ -90,4 +90,22 @@ describe('render', () => {
     expect(randomizeLogo(base, 42)).toEqual(randomizeLogo(base, 42));
     for (let s = 1; s < 50; s++) expect(validateLogoSpec(randomizeLogo(base, s))).toEqual([]);
   });
+});
+
+describe('ring layout fits viewBox', () => {
+  const ringPresets = PRESETS.filter((p) => p.spec.layout === 'ring');
+  it('covers the ring presets', () => expect(ringPresets.length).toBe(6));
+  const names = ['Hatchfield', 'X'.repeat(32), 'Wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww', 'Abcdefghijklmnopqrstuvwxyzabcdef'];
+  for (const p of ringPresets) for (const n of names) {
+    it(`${p.id} / ${n.length} chars`, () => {
+      const spec = { ...p.spec, airportName: n };
+      const fs = ringFontSize(spec, ringLabel(spec));
+      expect(fs).toBeGreaterThan(5);
+      // text radius + full font size (+ ring stroke gap/width) inside half the viewBox minus padding
+      expect(RING_TEXT_RADIUS + fs + 4 + 1.5).toBeLessThanOrEqual(RING_VIEWBOX / 2 - RING_PADDING + 1e-9);
+      const svg = renderLogoSVG(spec);
+      const rr = Number(/<circle cx="120" cy="120" r="([\d.]+)"/.exec(svg)![1]);
+      expect(rr + 1.5).toBeLessThanOrEqual(RING_VIEWBOX / 2);
+    });
+  }
 });

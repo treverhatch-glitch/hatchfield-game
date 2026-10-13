@@ -35,6 +35,21 @@ const fitSize = (spec: LogoSpec, text: string, maxW: number, max: number) => {
   return r(Math.min(max, (maxW - ls * n) / (n * 0.68)));
 };
 
+/** Ring layout geometry (240x240 viewBox). Path starts at the bottom so the label is centred at the top (50%) and can use the whole circle without wrapping off the path start. Text baseline sits on RING_TEXT_RADIUS; glyphs extend outward by up to the font size. */
+export const RING_VIEWBOX = 240;
+export const RING_TEXT_RADIUS = 90;
+export const RING_FONT_MAX = 18;
+export const RING_PADDING = 6;
+export function ringFontSize(spec: LogoSpec, label: string): number {
+  // usable arc ~ 90% of circumference so start/end never collide
+  return fitSize(spec, label, 2 * Math.PI * RING_TEXT_RADIUS * 0.9, RING_FONT_MAX);
+}
+export function ringLabel(spec: LogoSpec): string {
+  const name = spec.airportName.trim().toUpperCase();
+  const code = spec.showCode && spec.code && ICONS[spec.icon] ? spec.code : '';
+  return code ? `${name} • ${code} •` : `${name} •`;
+}
+
 /** Deterministic: identical specs always produce byte-identical SVG. */
 export function renderLogoSVG(spec: LogoSpec, opts: { size?: number } = {}): string {
   const c = spec.colors;
@@ -43,13 +58,12 @@ export function renderLogoSVG(spec: LogoSpec, opts: { size?: number } = {}): str
   let w = 240, h = 240, body = '';
   switch (spec.layout) {
     case 'ring': {
-      body += `<g transform="translate(50 50) scale(1.4)">${emblem(spec)}</g>`;
-      const id = 'ring';
-      body += `<defs><path id="${id}" d="M120 120m-104 0a104 104 0 1 1 208 0a104 104 0 1 1 -208 0"/></defs>`;
-      body += `<circle cx="120" cy="120" r="116" fill="none" stroke="${c.secondary}" stroke-width="3"/>`;
-      const label = codeLine ? `${name} • ${codeLine} •` : `${name} •`;
+      const R = RING_TEXT_RADIUS, label = ringLabel(spec), fs = ringFontSize(spec, label);
+      body += `<g transform="translate(57 57) scale(1.26)">${emblem(spec)}</g>`;
+      body += `<defs><path id="ring" d="M120 ${120 + R}a${R} ${R} 0 1 1 0 -${2 * R}a${R} ${R} 0 1 1 0 ${2 * R}"/></defs>`;
+      body += `<circle cx="120" cy="120" r="${r(R + fs + 4)}" fill="none" stroke="${c.secondary}" stroke-width="3"/>`;
       const f = FONTS[spec.font] ?? FONTS.modern;
-      body += `<text font-family="${esc(f.stack)}" font-size="${fitSize(spec, label, 560, 20)}" font-weight="${f.weight}"${f.italic ? ' font-style="italic"' : ''} letter-spacing="${f.letterSpacing}" fill="${c.text}"><textPath href="#${id}" startOffset="25%" text-anchor="middle">${esc(label)}</textPath></text>`;
+      body += `<text font-family="${esc(f.stack)}" font-size="${fs}" font-weight="${f.weight}"${f.italic ? ' font-style="italic"' : ''} letter-spacing="${f.letterSpacing}" fill="${c.text}"><textPath href="#ring" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`;
       break;
     }
     case 'side': {
