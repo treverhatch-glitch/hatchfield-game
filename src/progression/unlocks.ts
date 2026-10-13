@@ -99,6 +99,8 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   hangar_w: 4,
   skywalk: 4,
   walkway: 4,
+  mro: 4,
+  nighthub: 4,
 
   // FL5
   runway_heavy: 5,

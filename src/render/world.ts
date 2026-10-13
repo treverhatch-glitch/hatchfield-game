@@ -30,6 +30,7 @@ import {
   addTravelator,
 } from '../scale/placeholders'
 import type { SizeTier } from '../scale/types'
+import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import {
   initWorldRender,
   parseQuality,
@@ -473,13 +474,13 @@ export class World {
           if (REPLACED_TILES.has(tile)) continue
           const pos = toWorld(c, r, 0.02)
           const key = `${c},${r}`
-          this.tilesGroup.add(
-            this.building(tile, pos, {
-              hotelClass: game.hotelClass[key],
-              parkTerm: game.parkTerms[key],
-              hangarTier: game.hangarScale[key],
-            }),
-          )
+          const built = this.building(tile, pos, {
+            hotelClass: game.hotelClass[key],
+            parkTerm: game.parkTerms[key],
+            hangarTier: game.hangarScale[key],
+          })
+          built.userData.cellKey = key
+          this.tilesGroup.add(built)
         }
       }
       this.gateHash = ''
@@ -740,6 +741,10 @@ export class World {
       g.add(shaft, cab)
     } else if (tile === 'hangar') {
       addHangar(g, opts.hangarTier ?? 'small')
+    } else if (tile === 'mro') {
+      addMroMesh(g, CELL)
+    } else if (tile === 'nighthub') {
+      addNightHubMesh(g, CELL)
     } else if (tile === 'fuel_rail') {
       addFuelRail(g)
     } else if (tile === 'oil') {
@@ -1900,12 +1905,45 @@ export class World {
     this.syncSites(game)
     perfEnd('world.sites', t)
     t = perfStart()
+    this.followCameraCue(game)
+    this.syncMroDoors(game)
     this.wr.update(game, this.camera, dt)
     perfEnd('world.wr', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('world.gl', t)
+  }
+
+  /** Advisor pan. One cue, then the player has the camera again. */
+  private followCameraCue(game: Game) {
+    const cue = game.consumeCameraCue()
+    if (!cue) return
+    const p = toWorld(cue.c, cue.r, 0)
+    this.pivot.set(p.x, 0, p.z)
+    this.placeCam()
+  }
+
+  /**
+   * Slide the hangar doors only when the camera is close and the sim is not in the 5× lite pass.
+   * Far buildings keep the shut pose they were built with.
+   */
+  private syncMroDoors(game: Game) {
+    if (this.liteMode) return
+    const cam = this.camera.position
+    for (const child of this.tilesGroup.children) {
+      const key = child.userData.cellKey as string | undefined
+      if (!key || !child.getObjectByName('mro-door')) continue
+      child.getWorldPosition(_doorPos)
+      if (cam.distanceTo(_doorPos) > CELL * 14) continue
+      const open = game.mroDoorOpen(key)
+      child.traverse((obj) => {
+        const door = obj as THREE.Mesh
+        if (!door.userData.mroDoor) return
+        const rest = typeof door.userData.restY === 'number' ? door.userData.restY : door.position.y
+        door.position.y = rest + open * CELL * 0.36
+      })
+    }
   }
 
   dispose() {
@@ -1964,6 +2002,7 @@ function probeGpu(): string {
 const _euler = new THREE.Euler()
 const _quat = new THREE.Quaternion()
 const _scale = new THREE.Vector3()
+const _doorPos = new THREE.Vector3()
 
 function flightLivery(game: Game, f: Game['flights'][number]): Livery {
   const a = game.airline(f.airline)

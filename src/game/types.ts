@@ -1,4 +1,5 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { Tier3Save } from '../tier3/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
 
@@ -47,6 +48,10 @@ export type Tile =
   | 'kitchen'
   /** Where fuel, galley, bag, and bus trucks stage. */
   | 'depot'
+  /** Late-game heavy-check hangar. Aircraft occupy a bay and tie up a stand. */
+  | 'mro'
+  /** Late-game freighter night wave. */
+  | 'nighthub'
   /** Fuel-supply rail. Delivery starts only when this reaches the map edge. */
   | 'fuel_rail'
   /** Unloads a fuel train into the tank farm. */
@@ -115,6 +120,8 @@ export type Tool =
   | 'rail'
   | 'kitchen'
   | 'depot'
+  | 'mro'
+  | 'nighthub'
   | 'stand_w'
   | 'hangar_w'
   | 'hangar_j'
@@ -295,6 +302,8 @@ export type ResearchId =
   | 'people_mover'
   | 'transfer_centre'
   | 'rfid_bag_line'
+  | 'mro_hangar'
+  | 'cargo_night_hub'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -956,6 +965,10 @@ export interface GameSnapshot {
   sandbox?: boolean
   /** In-progress construction. Grass stays until the timer finishes. */
   sites?: BuildSite[]
+  /** Tier III hangar and night-hub save. Missing on older saves. */
+  tier3?: Tier3Save
+  /** Bought power capacity. Missing saves stay on the Tier I city feed. */
+  powerPlantTier?: 1 | 2 | 3
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
