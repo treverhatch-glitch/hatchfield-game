@@ -38,6 +38,10 @@ export const LITTER_TUNING = {
   restroomServiceAt: 20,
   /** Cleaning budget share below which janitors stand idle (matches the field crew). */
   minCleaningBudget: 0.2,
+  /** Game minutes to finish a coffee, [min, max]. Carried while walking, queueing or sitting. */
+  drinkMinutes: [2, 4],
+  /** Game minutes to finish a meal, [min, max]. */
+  mealMinutes: [6, 10],
   /** Advisor warns once a hall has this many floor pieces. */
   adviseLitterAt: 6,
 } as const

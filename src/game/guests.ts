@@ -142,6 +142,10 @@ export interface HallGuest {
   releaseAt?: number
   /** On a bench or seat row this tick. */
   seated?: boolean
+  /** Food or drink in hand. The rubbish drops where it runs out, not at the counter. */
+  snack?: { kind: 'drink' | 'meal'; left: number }
+  /** Last spot in the hall, normalized like NODE_POS. A snack still in hand is dropped here on leaving. */
+  spot?: { x: number; y: number }
 }
 
 /**

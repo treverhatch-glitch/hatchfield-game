@@ -142,6 +142,7 @@ import type { RoomPlan } from '../render/world/rooms.ts'
 import {
   hallPath,
   isAirside,
+  NODE_POS,
   openForGuest,
   reachableNeed,
   openNodesFromRooms,
@@ -193,6 +194,7 @@ import {
   itemDef,
   laneStats,
   GRID_C,
+  GRID_R,
   HALL_W,
   lookaheadDepth,
   needsMaintenance,
@@ -228,8 +230,10 @@ import {
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
 import {
-  dropLitter,
-  foodCells,
+  cellAt,
+  dropLitterAt,
+  snackKind,
+  snackMinutes,
   litterAdvice,
   litterComfortHit,
   litterInZone,
@@ -4696,22 +4700,51 @@ export class Game {
     }
   }
 
-  /**
-   * A meal or a coffee leaves a wrapper or cup. It goes in a can in range,
-   * else on the floor by the counter it came from.
-   */
-  litterFromMeal(fit: TerminalFit, outlet: PlacedItem | null): 'bin' | 'floor' | null {
-    const hall = asLitterHall(fit)
-    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
-    const cells = outlet ? [{ c: outlet.c, r: outlet.r }] : foodCells(hall)
-    if (!cells.length) return null
+  /** Where the guest stands in the hall, normalized like NODE_POS. Matches the hall renderer. */
+  guestSpot(g: HallGuest): { x: number; y: number } {
+    const node = g.path.length ? g.path[Math.min(g.seg, g.path.length - 1)] : g.node
+    const next = g.path.length && g.seg < g.path.length - 1 ? g.path[g.seg + 1] : null
+    const a = NODE_POS[node]
+    const b = next ? NODE_POS[next] : a
+    const t = next ? Math.min(1, Math.max(0, g.t)) : 0
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+  }
+
+  /** A meal or coffee goes into the guest's hand. They finish it over a few game minutes. */
+  giveSnack(g: HallGuest, outlet: PlacedItem | null) {
+    if (g.snack) this.finishSnack(g)
+    const kind = snackKind(outlet?.def)
     this.litterSeq += 1
     // Spread by sequence, not Math.random, so litter never shifts a seeded run.
-    const n = this.litterSeq
-    const at = cells[n % cells.length]
-    let k = 0
-    const jitter = () => ((n * 7919 + ++k * 104729) % 1000) / 1000
-    return dropLitter(hall, at.c, at.r, `lit-${n}`, jitter)
+    const u = ((this.litterSeq * 7919) % 1000) / 1000
+    g.snack = { kind, left: snackMinutes(kind, u) / GAME_MINUTES_PER_SIM_SECOND }
+  }
+
+  /** Track the guest's spot and count down the snack in hand. */
+  tickSnack(g: HallGuest, dt: number) {
+    g.spot = this.guestSpot(g)
+    if (!g.snack) return
+    g.snack.left -= dt
+    if (g.snack.left <= 0) this.finishSnack(g)
+  }
+
+  /**
+   * The cup or wrapper is empty. A can with room near where the guest is now
+   * takes it; otherwise it lands right there. Guests who board or leave first
+   * drop it at their last spot in the hall.
+   */
+  finishSnack(g: HallGuest): 'bin' | 'floor' | null {
+    if (!g.snack) return null
+    g.snack = undefined
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit) return null
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const spot = g.spot ?? this.guestSpot(g)
+    const rows = hall.zones.length || GRID_R
+    const cols = hall.zones[0]?.length || GRID_C
+    this.litterSeq += 1
+    return dropLitterAt(hall, cellAt(spot.x, spot.y, cols, rows), `lit-${this.litterSeq}`)
   }
 
   /** Keep one hall janitor per hire, shared round-robin across halls. */
@@ -4843,6 +4876,7 @@ export class Game {
         g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
       }
       this.applyHallKit(g, dt, kit)
+      this.tickSnack(g, dt)
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5074,6 +5108,8 @@ export class Game {
         this.layover.samples += 1
       }
     }
+    // Boarded or left with a snack still in hand: the rubbish stays at their last spot.
+    for (const g of this.hallGuests) if (g.dead && g.snack) this.finishSnack(g)
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
     if (this.departedFlights.size > 24) {
       const live = new Set(this.hallGuests.map((g) => g.flightId))
@@ -6542,7 +6578,7 @@ export class Game {
         }
         this.foodShelf -= 1
         this.mealSold = true
-        if (homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
+        this.giveSnack(g, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`

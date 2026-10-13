@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { spawnHallGuest, type HallGuest } from './guests.ts'
+import { GAME_MINUTES_PER_SIM_SECOND } from './diplomacyBridge.ts'
+import { NODE_POS, spawnHallGuest, type HallGuest } from './guests.ts'
 import {
   binFull,
   binInRange,
+  cellAt,
   dropLitter,
   litterAdvice,
   litterInZone,
@@ -194,19 +196,90 @@ function hungry(game: Game, id: string): HallGuest {
 }
 
 describe('litter in the live sim', () => {
-  it('meals drop litter by the counter; a can nearby catches it instead', () => {
+  it('a meal is carried and eaten; the wrapper lands where it is finished, not at the counter', () => {
     const { game, fit } = scratchHall()
     expect(game.placeHallItemAt('fast_food', 0, 3)).toBe(true)
     game.foodShelf = 10
-    const open = game.hallOpen()
-    game.serveNode(hungry(game, 'e1'), open)
-    expect(fit.litter).toHaveLength(1)
-    expect(fit.litter![0]).toMatchObject({ c: 0, r: 3 })
+    const g = hungry(game, 'e1')
+    game.serveNode(g, game.hallOpen())
+    // Bought, in hand, nothing on the floor yet.
+    expect(g.snack?.kind).toBe('meal')
+    expect(fit.litter ?? []).toHaveLength(0)
+    const [lo, hi] = LITTER_TUNING.mealMinutes
+    expect(g.snack!.left).toBeGreaterThanOrEqual(lo / GAME_MINUTES_PER_SIM_SECOND)
+    expect(g.snack!.left).toBeLessThanOrEqual(hi / GAME_MINUTES_PER_SIM_SECOND)
 
-    expect(game.placeHallItemAt('trash_can', 1, 3)).toBe(true)
-    game.serveNode(hungry(game, 'e2'), open)
+    // They walk on to the gate and finish it there.
+    g.node = 'gate'
+    for (let t = 0; t < 20 && g.snack; t++) game.tickSnack(g, 0.1)
+    expect(g.snack).toBeUndefined()
     expect(fit.litter).toHaveLength(1)
-    expect(fit.items!.find((i) => i.def === 'trash_can')!.fill).toBe(1)
+    const gate = cellAt(NODE_POS.gate.x, NODE_POS.gate.y, 8, 5)
+    expect(fit.litter![0]).toMatchObject({ c: gate.c, r: gate.r })
+    expect(fit.litter![0]).not.toMatchObject({ c: 0, r: 3 })
+  })
+
+  it('a coffee finished mid-walk drops at that spot on the way', () => {
+    const { game, fit } = scratchHall()
+    const g = hungry(game, 'walker')
+    game.giveSnack(g, { id: 'cafe-x', def: 'cafe', c: 0, r: 3, wear: 0 })
+    expect(g.snack?.kind).toBe('drink')
+    const [lo, hi] = LITTER_TUNING.drinkMinutes
+    expect(g.snack!.left * GAME_MINUTES_PER_SIM_SECOND).toBeGreaterThanOrEqual(lo)
+    expect(g.snack!.left * GAME_MINUTES_PER_SIM_SECOND).toBeLessThanOrEqual(hi)
+    // Halfway between food and gate when the cup runs dry.
+    g.path = ['food', 'gate']
+    g.seg = 0
+    g.t = 0.5
+    g.snack!.left = 0.01
+    game.tickSnack(g, 0.1)
+    const mid = cellAt(
+      (NODE_POS.food.x + NODE_POS.gate.x) / 2,
+      (NODE_POS.food.y + NODE_POS.gate.y) / 2,
+      8,
+      5,
+    )
+    expect(fit.litter).toHaveLength(1)
+    expect(fit.litter![0]).toMatchObject({ c: mid.c, r: mid.r })
+  })
+
+  it('a full can near the finishing spot counts as no can; an emptied one takes it', () => {
+    const { game, fit } = scratchHall()
+    const gate = cellAt(NODE_POS.gate.x, NODE_POS.gate.y, 8, 5)
+    const can = placed('trash_can', gate.c, gate.r - 1, { fill: LITTER_TUNING.binCap })
+    fit.items = [...(fit.items ?? []), can]
+    const g = hungry(game, 'full')
+    g.node = 'gate'
+    game.giveSnack(g, null)
+    g.snack!.left = 0
+    game.tickSnack(g, 0.1)
+    expect(fit.litter).toHaveLength(1)
+    expect(fit.litter![0]).toMatchObject({ c: gate.c, r: gate.r })
+    expect(can.fill).toBe(LITTER_TUNING.binCap)
+
+    can.fill = 0
+    game.giveSnack(g, null)
+    g.snack!.left = 0
+    game.tickSnack(g, 0.1)
+    expect(fit.litter).toHaveLength(1)
+    expect(can.fill).toBe(1)
+  })
+
+  it('boarding with food in hand leaves the rubbish at the last hall spot', () => {
+    const { game, fit } = scratchHall()
+    expect(game.placeHallItemAt('fast_food', 0, 3)).toBe(true)
+    const g = hungry(game, 'late')
+    game.giveSnack(g, (fit.items as PlacedItem[]).find((i) => i.def === 'fast_food')!)
+    g.node = 'gate'
+    game.tickSnack(g, 0.1)
+    expect(g.snack).toBeDefined()
+    g.dead = true
+    game.hallGuests = [g]
+    game.tickHall(0.01)
+    expect(game.hallGuests).toHaveLength(0)
+    expect(g.snack).toBeUndefined()
+    const gate = cellAt(NODE_POS.gate.x, NODE_POS.gate.y, 8, 5)
+    expect(fit.litter).toEqual([expect.objectContaining({ c: gate.c, r: gate.r })])
   })
 
   it('litter in the zone drags happiness; restroom visits dirty the WC', () => {
