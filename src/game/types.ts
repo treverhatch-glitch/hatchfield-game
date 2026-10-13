@@ -1,3 +1,5 @@
+import type { PremiumState } from '../premium/types.ts'
+
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
 
@@ -863,6 +865,8 @@ export interface GameSnapshot {
   /** Diplomacy V2 save (adapter state plus airline satisfaction). */
   diplomacy?: string
   diplomacySeed?: number
+  /** Premium check-in, fast-track lanes, and the VIP room. */
+  premium?: PremiumState
 }
 
 /** A placed building that is still a construction site. */
