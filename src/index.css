@@ -208,10 +208,24 @@ button {
 .top,
 .side,
 .dock,
+.chrome,
+.letter-stack,
 .offer,
 .view-chip,
 .guest-card {
   pointer-events: auto;
+}
+
+.top-cash {
+  cursor: pointer;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  color: inherit;
+  font: inherit;
+}
+
+.vitals-quiet {
+  opacity: 0.85;
+  font-size: 12px;
 }
 
 .top {
@@ -595,18 +609,135 @@ button {
   margin-top: 2px;
 }
 
-.dock {
+/* CS2-style bottom chrome: peek by default, slide up on hover / pinned panel */
+.chrome {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  background: rgba(10, 20, 16, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0;
+  pointer-events: none;
+}
+
+.chrome > * {
+  pointer-events: auto;
+}
+
+.panel-rollout {
+  order: 1;
+  max-height: 44px;
+  overflow: hidden;
+  margin: 0 4px;
+  background: rgba(10, 20, 16, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  transition: max-height 0.28s ease, box-shadow 0.28s ease;
+  box-shadow: none;
+}
+
+.chrome:hover .panel-rollout,
+.chrome.pinned:focus-within .panel-rollout,
+.panel-rollout:focus-within {
+  max-height: min(42vh, 440px);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px 8px;
+  min-height: 44px;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.panel-body {
+  padding: 0 14px 14px;
+  max-height: min(36vh, 380px);
+  overflow: auto;
+}
+
+.panel-body section {
+  margin-bottom: 14px;
+}
+
+.panel-body h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9eb0a0;
+}
+
+.panel-body button,
+.letter-actions button,
+.bottom-bar button,
+.build-menus button,
+.dock .tools button {
+  background: rgba(18, 36, 28, 0.95);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+.panel-body button.on,
+.letter-actions button.on,
+.bottom-bar button.on,
+.build-menus button.on,
+.dock .tools button.on {
+  background: #c9a227;
+  color: #1a1406;
+  border-color: #e6c85a;
+}
+
+.panel-body .ghost,
+.panel-head .ghost,
+.coach .ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #b7c4b8;
+}
+
+.dock {
+  order: 2;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  padding: 10px 12px;
-  /* Above coach / offers so tool clicks always land. */
+  padding: 8px 10px 10px;
   z-index: 30;
   pointer-events: auto;
+}
+
+.dock-extend {
+  max-height: 42px;
+  overflow: hidden;
+  transition: max-height 0.28s ease, opacity 0.2s ease;
+  opacity: 0.92;
+}
+
+.chrome:hover .dock-extend,
+.dock:hover .dock-extend,
+.dock:focus-within .dock-extend {
+  max-height: 220px;
+  opacity: 1;
 }
 
 .build-menus {
@@ -617,24 +748,216 @@ button {
 }
 
 .build-menus button {
-  background: rgba(18, 36, 28, 0.95);
-  color: #c9d4c8;
-  border: 1px solid rgba(201, 162, 39, 0.28);
-  border-radius: 6px;
-  padding: 6px 12px;
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: #c9d4c8;
+  border-color: rgba(201, 162, 39, 0.28);
 }
 
-.build-menus button.on {
-  background: #c9a227;
-  color: #1a1406;
-  border-color: #e6c85a;
+.build-tray {
+  margin-bottom: 4px;
 }
 
 .build-tray button {
   min-width: 72px;
+}
+
+.bottom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bar-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.bar-cluster button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.ticker {
+  flex: 1 1 160px;
+  min-width: 140px;
+  max-height: 44px;
+  overflow: hidden;
+  background: rgba(8, 16, 12, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.ticker ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ticker li {
+  font-size: 11px;
+  line-height: 1.3;
+  color: #c5d2c6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticker li[data-tone='good'] {
+  color: #8ee0a8;
+}
+
+.ticker li[data-tone='bad'] {
+  color: #ff9b8f;
+}
+
+.cash-chip {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  color: #e7c56a !important;
+  font-weight: 600;
+  border-color: rgba(201, 162, 39, 0.45) !important;
+}
+
+.info-menus button {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+/* Right-side letter inbox — peek tabs, slide open on hover/click */
+.letter-stack {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  width: min(300px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: calc(100% - 170px);
+  overflow: auto;
+  z-index: 28;
+  pointer-events: none;
+}
+
+.letter {
+  pointer-events: auto;
+  background: rgba(12, 22, 18, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 10px;
+  overflow: hidden;
+  max-height: 44px;
+  transition: max-height 0.28s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+.letter:hover,
+.letter.open,
+.letter:focus-within {
+  max-height: 280px;
+  border-color: #c9a227;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+
+.letter.tone-bad {
+  border-color: rgba(255, 107, 107, 0.55);
+}
+
+.letter.tone-warn {
+  border-color: rgba(230, 180, 80, 0.55);
+}
+
+.letter.tone-good {
+  border-color: rgba(110, 180, 120, 0.45);
+}
+
+.letter.live {
+  border-style: dashed;
+}
+
+.letter-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: #e8eef4;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.letter-kind {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c9a227;
+  flex: 0 0 auto;
+}
+
+.letter-from {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.letter-timer {
+  flex: 0 0 auto;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #e7c56a;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.letter-body {
+  padding: 0 12px 12px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.letter:hover .letter-body,
+.letter.open .letter-body,
+.letter:focus-within .letter-body {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.letter-body strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.letter-body p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #b7c4b8;
+  line-height: 1.35;
+}
+
+.letter-actions {
+  margin-top: 4px;
+}
+
+/* Hide legacy permanent sidebar if any remnant mounts */
+.side {
+  display: none;
 }
 
 .hall-wrap {
@@ -737,26 +1060,27 @@ h1 {
 }
 
 @media (max-width: 800px) {
-  .side {
-    position: static;
-    width: auto;
-    max-height: none;
-    padding: 0 8px 120px;
-    z-index: 25;
-  }
   .hud {
     pointer-events: none;
-    display: flex;
-    flex-direction: column;
     z-index: 20;
   }
   .top,
-  .side,
+  .chrome,
   .dock,
+  .letter-stack,
   .offer,
-  .view-chip,
   .guest-card {
     pointer-events: auto;
+  }
+  .letter-stack {
+    top: auto;
+    bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+    max-height: 36vh;
+  }
+  .chrome:hover .dock-extend,
+  .dock:hover .dock-extend,
+  .dock:focus-within .dock-extend {
+    max-height: 260px;
   }
   .field {
     height: 52vh;

@@ -52,7 +52,7 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 **Hall:** 3D orbit view (drag / zoom). Flow is **doors → info/check-in → security choke → airside**. Premade halls ship with security; player shells without it invite smuggling threats. Apron keeps simulating while you’re inside (and vice versa). Guests are RCT-style wallets + prefs.
 
-**Build UI:** Cities: Skylines-style menus (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) — pick a category, then a stamp from the bottom tray.
+**Build UI:** Cities: Skylines-style chrome — bottom bar (Apron/Hall, Pause/1x/3x, ticker, cash + Economy/Budget/Research/Airlines/Planner/Services). Menus peek collapsed and **slide up on hover or click**. Build categories (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) sit above the bar. Contracts and asks arrive as **stacked letters on the right** — hover/click to read, Sign/Decline inside; unread letters expire.
 
 Browser save key: `apron-save-v24`. New game overwrites it.
 
