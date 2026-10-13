@@ -38,7 +38,7 @@ describe('land plots in the sim', () => {
     live.cash = 80_000
     const holding = live.dailyHoldingQuote()
     expect(holding).toBeGreaterThan(0)
-    const upkeep = live.landsideUpkeep() * 6
+    const upkeep = live.landsideUpkeep()
     const pillar =
       BAG_SYSTEMS.carts.upkeepPerDay +
       2 * PAX_UNITS.desk.upkeepPerDay +

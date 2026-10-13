@@ -3,6 +3,7 @@
  * Layout follows NODE_POS; rooms appear when furnished. Security is the visual choke.
  */
 import * as THREE from 'three'
+import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
 import type { Game } from '../game/sim'
 import {
@@ -195,6 +196,8 @@ export class HallWorld {
 
   private onDown = (e: PointerEvent) => {
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    // The player grabbed the camera: stop easing toward a "Show me" target.
+    this.goalTo = null
     // Middle/right = orbit; left-drag = pan (WASD also pans).
     if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
     else this.dragging = e.shiftKey ? 'orbit' : 'pan'
@@ -367,6 +370,33 @@ export class HallWorld {
   private onWheel = (e: WheelEvent) => {
     e.preventDefault()
     this.dist = Math.min(70, Math.max(18, this.dist + e.deltaY * 0.04))
+    this.placeCam()
+  }
+
+  private goalSeq = 0
+  private goalTo: { x: number; z: number } | null = null
+  private goalFrame = 0
+
+  /** Ease the pivot toward the last "Show me" / "Pan to problem" hall cell. */
+  private easeToGoal(game: Game) {
+    const now = performance.now()
+    const dt = this.goalFrame ? Math.min(0.1, (now - this.goalFrame) / 1000) : 0
+    this.goalFrame = now
+    const g = game.camGoal
+    if (g && g.view === 'hall' && g.seq !== this.goalSeq) {
+      this.goalSeq = g.seq
+      const { cols, rows } = this.zoneGrid()
+      this.goalTo = cellCenter(g.c, g.r, cols, rows)
+    }
+    if (!this.goalTo) return
+    const k = 1 - Math.exp(-dt * 6)
+    this.pivot.x += (this.goalTo.x - this.pivot.x) * k
+    this.pivot.z += (this.goalTo.z - this.pivot.z) * k
+    if (Math.hypot(this.goalTo.x - this.pivot.x, this.goalTo.z - this.pivot.z) < 0.05) {
+      this.pivot.x = this.goalTo.x
+      this.pivot.z = this.goalTo.z
+      this.goalTo = null
+    }
     this.placeCam()
   }
 
@@ -551,6 +581,9 @@ export class HallWorld {
       }
     }
     const pile = new Map<string, number>()
+    const zones = game.activeHall()?.zones ?? []
+    const cols = zones[0]?.length || GRID_C
+    const rows = zones.length || GRID_R
     for (const g of game.hallGuests) {
       if (g.releaseAt != null && g.releaseAt > game.clock) continue
       let mesh = this.guests.get(g.id)
@@ -608,6 +641,20 @@ export class HallWorld {
         0.55,
         desk ? desk.z + 2.4 : a.z + (b.z - a.z) * t + oz,
       )
+      mesh.scale.y = 1
+      if (g.meal) {
+        // Walk the tray from the counter to the booked seat, then sit: lower and squat.
+        const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
+        const sx = seat.x + (g.meal.slot % 2) * 0.9 - 0.45
+        const sz = seat.z + Math.floor(g.meal.slot / 2) * 0.9 - 0.45
+        const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
+        mesh.position.x += (sx - mesh.position.x) * k
+        mesh.position.z += (sz - mesh.position.z) * k
+        if (g.seated) {
+          mesh.scale.y = 0.7
+          mesh.position.y = 0.42
+        }
+      }
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
       const carry = mesh.userData.carry as THREE.Mesh
@@ -830,8 +877,11 @@ export class HallWorld {
 
   render(game: Game) {
     this.game = game
+    perfFrame()
+    let t = perfStart()
     this.resize()
     this.rebuildRooms(game)
+    this.easeToGoal(game)
     this.syncGuests(game)
     this.syncLuggage(game)
     this.syncOverlay(game)
@@ -839,7 +889,11 @@ export class HallWorld {
     this.syncGhost(game)
     const { cols, rows } = this.zoneGrid()
     this.litter.sync(game, cols, rows)
+    perfEnd('hall.sync', t)
+    t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    if (perf.syncGpu) this.renderer.getContext().finish()
+    perfEnd('hall.gl', t)
   }
 
   /** Belt, hold-bag scanner, sort pile, and claim carousel. Cubes are a capped parade. */

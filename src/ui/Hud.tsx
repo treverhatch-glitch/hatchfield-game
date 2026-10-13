@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PremiumPanel } from './PremiumPanel.tsx'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
@@ -46,11 +47,15 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
+import { capstoneCost, SPEC_PATHS, type SpecPath } from '../progression/specializations'
+import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
+import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
+import { FeesPanel } from './FeesPanel'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -137,6 +142,8 @@ type PanelId =
   | 'airlines'
   | 'planner'
   | 'services'
+  | 'settings'
+  | 'premium'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -195,17 +202,22 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Tiers T1–T5, Standing, hubs, field XP' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
+  { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
+  { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
 ]
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
-  const [panel, setPanel] = useState<PanelId>(null)
+  const [panelPick, setPanel] = useState<PanelId>(null)
+  // One panel at a time: an open hint list folds the HUD rollout away.
+  const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [inboxOpen, setInboxOpen] = useState(false)
+  const [feesOpen, setFeesOpen] = useState(false)
   const menuTools = buildMenu
     ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
     : []
@@ -230,20 +242,17 @@ export function Hud({ game }: { game: Game }) {
   const freeGates = game.freeStands().length
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
-    setPanel((cur) => {
-      if (cur === id) {
-        setChromePinned(false)
-        return null
-      }
-      setChromePinned(true)
-      return id
-    })
+    const closing = panel === id
+    setPanel(closing ? null : id)
+    setChromePinned(!closing)
+    game.setSidePanel(closing ? null : 'hud')
   }
 
   /** Open a tab without accidental close when already selected. */
   const openPanel = (id: Exclude<PanelId, null>) => {
     setPanel(id)
     setChromePinned(true)
+    game.setSidePanel('hud')
   }
 
   const ticker = game.news.slice(0, 5)
@@ -264,6 +273,24 @@ export function Hud({ game }: { game: Game }) {
 
   return (
     <div className="hud">
+      <button
+        type="button"
+        className={`fees-toggle${feesOpen ? ' on' : ''}`}
+        title="Landing, passenger, and service prices"
+        data-testid="tab-fees"
+        onClick={() => setFeesOpen((open) => !open)}
+      >
+        Fees
+      </button>
+      {feesOpen ? (
+        <FeesPanel
+          fees={game.fees}
+          depositTier={game.depositTier}
+          onFee={(key, value) => game.setFee(key, value)}
+          onTier={(tier) => game.setDepositTier(tier)}
+          onClose={() => setFeesOpen(false)}
+        />
+      ) : null}
       <header className="top" data-testid="stats-bar">
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
@@ -309,9 +336,10 @@ export function Hud({ game }: { game: Game }) {
         <div
           className="stat"
           title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
+          data-testid="field-level"
         >
-          Field Lv {xp.level}
-          {xp.level < 5 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
+          Field {xp.label}
+          {xp.pct < 1 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
         </div>
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
@@ -322,7 +350,9 @@ export function Hud({ game }: { game: Game }) {
         >
           {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
-        <div className="stat">{game.weatherLabel()}</div>
+        <div className="stat" title={environmentCaption(game.clock, game.weather, game.holidayPeakHook)}>
+          {seasonAtClock(game.clock).name} · {game.weatherLabel()}
+        </div>
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
         </div>
@@ -878,7 +908,7 @@ export function Hud({ game }: { game: Game }) {
                         {game.fieldOpsMult() > 1.05
                           ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                           : ''}{' '}
-                        · landside {money(game.landsideUpkeep())}/30s
+                        · landside {money(game.landsideUpkeep())}/day
                       </p>
                       <p className="muted">
                         {game.loanBalance > 0
@@ -937,7 +967,7 @@ export function Hud({ game }: { game: Game }) {
                       {game.sandbox ? ' · sandbox' : ''}
                       {game.loanBalance ? ` · loan owed ${money(game.loanBalance)}` : ''}
                       {' · '}pax fees {money(game.landsideIncome())} / expense{' '}
-                      {money(game.landsideUpkeep())}/30s · fill{' '}
+                      {money(game.landsideUpkeep())}/day · fill{' '}
                       {Math.round(game.landsideUsageRate() * 100)}%
                     </p>
                     <button
@@ -1101,6 +1131,28 @@ export function Hud({ game }: { game: Game }) {
                 </>
               ) : null}
 
+              {panel === 'settings' ? (
+                <section data-testid="settings-panel">
+                  <h3>Hints</h3>
+                  <label className="sandbox-toggle">
+                    <input
+                      type="checkbox"
+                      data-testid="settings-all-hints"
+                      checked={game.hintPrefs.allEnabled}
+                      onChange={(e) => game.setAllHints(e.target.checked)}
+                    />
+                    <span>All hints enabled</span>
+                  </label>
+                  <p className="muted">
+                    {game.hintPrefs.allEnabled
+                      ? 'Every advisor hint shows in the panel, bottom right.'
+                      : game.hintPrefs.muted.includes('*')
+                        ? 'Hints are off. Tick the box to turn every type back on.'
+                        : `${game.hintPrefs.muted.length} hint type${game.hintPrefs.muted.length === 1 ? '' : 's'} hidden. Tick the box to turn every type back on.`}
+                  </p>
+                </section>
+              ) : null}
+
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
@@ -1110,7 +1162,7 @@ export function Hud({ game }: { game: Game }) {
                       ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                       : ''}{' '}
                     · crash risk {Math.round(game.crashChance() * 1000) / 10}% · RW{' '}
-                    {Math.round(game.runwayCondition)}% · {game.weatherLabel()}
+                    {Math.round(game.runwayCondition)}% · {seasonAtClock(game.clock).name} · {game.weatherLabel()}
                   </p>
                   <div className="row">
                     <button type="button" className="on" onClick={() => game.hireMechanic()}>
@@ -1284,9 +1336,9 @@ export function Hud({ game }: { game: Game }) {
                     const prog = game.fieldXpToNext()
                     return (
                       <p className="muted eco-line">
-                        Field Level {prog.level}
-                        {prog.level < 5
-                          ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to Lv${prog.level + 1})`
+                        Field {prog.label}
+                        {prog.pct < 1
+                          ? ` · ${prog.xp}/${prog.need} XP (${Math.round(prog.pct * 100)}% to ${prog.nextLabel})`
                           : ` · ${prog.xp} XP · max`}
                         {' · '}
                         Signed:{' '}
@@ -1305,6 +1357,36 @@ export function Hud({ game }: { game: Game }) {
                     {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
                     Cross-cut: Charter / LCC / Full-service / Cargo.
                   </p>
+                  <div className="spec-paths" data-testid="spec-paths">
+                    <p className="muted">
+                      Specialization {game.specPointsLeft()} left · earned {game.specPointsEarned()} at
+                      FL6 / FL8 / FL10. Paths mix. Each path after the first: capstone +50% and site
+                      upkeep +10%.
+                    </p>
+                    <div className="row">
+                      {SPEC_PATHS.map((path) => {
+                        const owned = game.specPaths.includes(path.id)
+                        const open = !owned && game.specPointsLeft() > 0
+                        return (
+                          <button
+                            key={path.id}
+                            type="button"
+                            className={owned ? 'on' : ''}
+                            disabled={!owned && !open}
+                            title={
+                              owned
+                                ? `${path.label} is on the field. ${path.blurb}`
+                                : `${path.blurb} Capstone price rises if this is not your first path.`
+                            }
+                            onClick={() => game.chooseSpec(path.id as SpecPath)}
+                          >
+                            {path.label}
+                            {owned ? ' · on' : ''}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                   {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
                     const meta = AIRLINE_TIER_META[tier]
                     const unlocked = game.tierUnlocked(tier)
@@ -1710,6 +1792,8 @@ export function Hud({ game }: { game: Game }) {
                 </>
               ) : null}
 
+              {panel === 'premium' ? <PremiumPanel game={game} /> : null}
+
               {panel === 'services' ? (
                 <>
                   <section>
@@ -1950,26 +2034,66 @@ export function Hud({ game }: { game: Game }) {
                     const def = BUILDINGS.find((b) => b.tool === t)
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
-                    const locked = Boolean(def?.minFieldLevel && game.fieldLevel() < def.minFieldLevel)
+                    const need = unlockLevel(t)
+                    const locked = t !== 'clear' && game.fieldLevel() < need
+                    const upkeep = def?.upkeepPerDay ?? 0
                     const tip =
                       t === 'clear'
                         ? 'Bulldoze — refunds 40% of the stamp.'
                         : locked
-                          ? `${name} needs Field level ${def?.minFieldLevel}.`
+                          ? lockTip(name, need, def?.blurb)
                           : (def?.blurb ?? TOOL_LABEL[t])
+                    const priceTip = locked
+                      ? tip
+                      : cost != null
+                        ? `${tip} ${money(cost)}${upkeep > 0 ? ` · $${upkeep}/day` : ''}`
+                        : tip
                     return (
                       <button
                         key={t}
                         type="button"
-                        className={`tray-item${game.tool === t ? ' on' : ''}`}
+                        className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' locked' : ''}`}
                         onClick={() => game.setTool(t)}
-                        title={locked ? tip : cost != null ? `${tip} ${money(cost)}` : tip}
+                        title={priceTip}
+                        data-testid={`tray-${t}`}
                       >
                         <TrayMark tool={t} />
                         <span className="tray-name">{name}</span>
                         <span className="tray-price">
-                          {locked ? `Field ${def?.minFieldLevel}` : cost != null ? money(cost) : 'Refund'}
+                          {locked ? `FL${need}` : cost != null ? money(cost) : 'Refund'}
                         </span>
+                        {upkeep > 0 ? <span className="tray-upkeep">${upkeep}/day</span> : null}
+                      </button>
+                    )
+                  })}
+                  {PROGRESSION_BUILDABLES.filter((row) => row.menu === buildMenu).map((row) => {
+                    const need = unlockLevel(row.id)
+                    const locked = game.fieldLevel() < need
+                    const cost = capstoneCost(row.cost, game.specPaths, row.id)
+                    const tip = locked
+                      ? lockTip(row.name, need, row.blurb)
+                      : `${row.blurb}${row.cost > 0 ? ` ${money(cost)}` : ''}${
+                          row.upkeepPerDay > 0 ? ` · $${row.upkeepPerDay}/day` : ''
+                        }`
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        className={`tray-item${locked ? ' locked' : ''}${
+                          game.progressionBuilt.includes(row.id) ? ' on' : ''
+                        }`}
+                        title={tip}
+                        data-testid={`tray-${row.id}`}
+                        onClick={() => game.commission(row.id)}
+                      >
+                        <TrayMark tool={row.id} />
+                        <span className="tray-name">{row.name}</span>
+                        <span className="tray-price">
+                          {locked ? `FL${need}` : row.cost > 0 ? money(cost) : 'Select'}
+                        </span>
+                        {row.upkeepPerDay > 0 ? (
+                          <span className="tray-upkeep">${row.upkeepPerDay}/day</span>
+                        ) : null}
                       </button>
                     )
                   })}
@@ -1991,7 +2115,9 @@ export function Hud({ game }: { game: Game }) {
                         : game.tool === 'pan'
                           ? 'Select: click a tile or hall. WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit.'
                           : tip
-                            ? `${tip.blurb} ${money(tip.cost)}`
+                            ? `${tip.blurb} ${money(tip.cost)}${
+                                tip.upkeepPerDay ? ` · $${tip.upkeepPerDay}/day` : ''
+                              }`
                             : 'Clear refunds 40%.'}
               {game.securityIncidents ? ` · ${game.securityIncidents} security incidents` : ''}
               {game.hallGuests.length

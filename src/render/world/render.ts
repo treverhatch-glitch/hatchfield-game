@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { grassColor, nightLighting, paintSky } from '../../environment/index.ts'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
 import { simClockToHour, skyState, type SkyState } from './daylight'
@@ -98,6 +99,10 @@ export class WorldRenderer {
   private frame = 0
   private lastShadowKey = ''
   private hallCrowd: HallCrowd | null = null
+  /** Per-frame scratch, so `update` allocates nothing. */
+  private camPos = new THREE.Vector3()
+  private camDir = new THREE.Vector3()
+  private background = new THREE.Color()
 
   constructor(scene: THREE.Scene, quality: QualityLevel, opts: WorldRenderOptions = {}) {
     this.scene = scene
@@ -300,16 +305,16 @@ export class WorldRenderer {
     const lite = this.lite || (view.speed ?? 1) >= 5
     if (lite !== this.lite) this.setLiteMode(lite)
 
-    const camPos = new THREE.Vector3()
-    camera.getWorldPosition(camPos)
-    const dir = new THREE.Vector3()
-    camera.getWorldDirection(dir)
+    const camPos = camera.getWorldPosition(this.camPos)
+    const dir = camera.getWorldDirection(this.camDir)
     const focus = groundFocus(camPos, dir) ?? { x: camPos.x, z: camPos.z }
     const camDist = Math.hypot(camPos.x - focus.x, camPos.y, camPos.z - focus.z)
 
     const hour = this.hourOverride ?? simClockToHour(view.clock ?? 0)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
-    const s = skyState(hour, weather)
+    const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
+    const s = paintSky(hour, weather, day, this.quality)
+    const night = nightLighting(s.hour, s.lights, this.q.lightPools)
     this.state = s
     if (s.lightning && Math.random() < step * 0.25) this.flash = 1
     this.flash = Math.max(0, this.flash - step * 5)
@@ -325,7 +330,7 @@ export class WorldRenderer {
     this.fog.far = s.fogFar
     this.sky.set(s.skyTop, s.skyHorizon, s.stars)
     this.sky.follow(camPos)
-    this.scene.background = new THREE.Color(s.skyHorizon)
+    this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure
 
     const fit = fitShadow(camDist, focus.x, focus.z, Math.max(1, this.q.shadowMapSize))
@@ -343,14 +348,21 @@ export class WorldRenderer {
     this.scheduleShadow(fit)
 
     const wetK = 1 - s.wet * 0.28
+    const grassHex = grassColor(day, this.quality)
     for (const [k, m] of this.surfaceMats) {
-      if (k !== 'grass') m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
+      if (k === 'grass') {
+        if (grassHex == null) m.color.setScalar(s.wet > 0 ? 1 - s.wet * 0.22 : 1)
+        else {
+          m.color.setHex(grassHex)
+          if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.22)
+        }
+      } else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
 
-    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, s.lights, focus)
+    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus)
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
     this.hallCrowd?.sync(showGuests ? posesFrom(view) : [], this.time)
-    this.lights.update(step, s.lights, weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25, camDist)
+    this.lights.update(step, night.apron, weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25, camDist)
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)

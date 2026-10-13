@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { Game } from '../../game/sim.ts'
+import { AlertStackView } from './AlertStack.tsx'
+import { HintPanel } from './HintPanel.tsx'
 
 /**
- * Isolated chrome for the flow overlay, the Design Advisor, and build tooltips.
+ * Isolated chrome for the flow overlay, the hint panel, alerts, and build tooltips.
  * Inline styles so a HUD redesign can lift this without the old stylesheet.
  */
 export function OwnerChrome({ game }: { game: Game }) {
@@ -28,7 +30,6 @@ export function OwnerChrome({ game }: { game: Game }) {
   }, [game])
 
   const site = game.hover ? game.siteAt(game.hover) : undefined
-  const advice = game.advice
   const ground = game.groundSnapshot()
 
   return (
@@ -133,43 +134,8 @@ export function OwnerChrome({ game }: { game: Game }) {
           {ground.busyVehicles}/{ground.totalVehicles} trucks out
         </div>
       )}
-      {advice.length > 0 && (
-        <div
-          data-testid="advisor"
-          style={{
-            pointerEvents: 'auto',
-            position: 'absolute',
-            left: 8,
-            bottom: 8,
-            width: 280,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}
-        >
-          {advice.map((note) => (
-            <button
-              key={note.id}
-              type="button"
-              data-testid={`advice-${note.id}`}
-              onClick={() => game.focusAdvice(note.id)}
-              style={{
-                textAlign: 'left',
-                background: 'rgba(12, 22, 28, 0.92)',
-                color: '#e7eee9',
-                border: '1px solid #c9a27a',
-                borderRadius: 6,
-                padding: '8px 10px',
-                font: '13px sans-serif',
-              }}
-            >
-              <strong style={{ display: 'block', marginBottom: 2 }}>{note.title}</strong>
-              <span style={{ display: 'block', opacity: 0.9 }}>{note.detail}</span>
-              <span style={{ display: 'block', marginTop: 4, color: '#f0c14a' }}>{note.fix}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <HintPanel game={game} />
+      <AlertStackView game={game} />
       {(game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
         <div
           data-testid="diplomacy-panel"
