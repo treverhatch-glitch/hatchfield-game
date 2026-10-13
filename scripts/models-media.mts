@@ -194,8 +194,8 @@ if (mode === 'before') {
       copy.kind = craft.kind
       copy.craft = craft.craft
       copy.phase = 'parked'
-      copy.x = 10 + (i % 6) * 3.6
-      copy.y = 13 + Math.floor(i / 6) * 4.4
+      copy.x = 8 + (i % 4) * 7
+      copy.y = 12 + Math.floor(i / 4) * 6
       copy.z = 0.12
       copy.heading = Math.PI / 2
       copy.cargo = craft.kind === 'freighter'
@@ -204,17 +204,43 @@ if (mode === 'before') {
     return { ok: true, n: g.flights.length }
   }, SHOW)
   console.log('lineup', parked)
-  await page.evaluate(findWorld, { dist: 52, c: 10 + 2.5 * 3.6, r: 15 })
+  await page.evaluate(findWorld, { dist: 70, c: 8 + 1.5 * 7, r: 15 })
   await page.waitForTimeout(600)
   console.log('after close fps', await fps(page, 3000))
   await page.screenshot({ path: `${OUT}/MODELS-after.png` })
-  await page.evaluate(findWorld, { dist: 32, c: 10 + 3 * 3.6, r: 13 })
+  await page.evaluate(findWorld, { dist: 36, c: 8 + 3 * 7, r: 12 })
   await page.waitForTimeout(400)
   await page.screenshot({ path: `${OUT}/MODELS-after-close.png` })
-  await page.evaluate(findWorld, { dist: 140, c: 10 + 2.5 * 3.6, r: 15 })
+  await page.evaluate(findWorld, { dist: 140, c: 8 + 1.5 * 7, r: 15 })
   await page.waitForTimeout(500)
   console.log('after far fps', await fps(page, 3000))
   await page.screenshot({ path: `${OUT}/MODELS-after-far.png` })
+  const gates = await page.evaluate(() => {
+    const g = (window as unknown as { __hatch?: { flights: any[]; standAccess: Record<string, string> } }).__hatch
+    if (!g) return { ok: false }
+    const want = ['b738', 'b789', 'a380']
+    const picked = want.map((id) => g.flights.find((f) => f.airframeId === id)).filter(Boolean)
+    const spots = [
+      { id: 'b738', x: 12, y: 21 },
+      { id: 'b789', x: 20, y: 21 },
+      { id: 'a380', x: 16, y: 24 },
+    ]
+    for (const spot of spots) g.standAccess[`${spot.x},${spot.y}`] = 'jetway'
+    g.flights = picked.map((flight) => {
+      const spot = spots.find((s) => s.id === flight.airframeId)!
+      flight.phase = 'parked'
+      flight.x = spot.x
+      flight.y = spot.y
+      flight.z = 0.12
+      flight.heading = Math.PI
+      return flight
+    })
+    return { ok: true, n: g.flights.length }
+  })
+  console.log('bridges', gates)
+  await page.evaluate(findWorld, { dist: 78, c: 16, r: 22 })
+  await page.waitForTimeout(700)
+  await page.screenshot({ path: `${OUT}/SCALE-bridges.png` })
 } else if (mode === 'flight') {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },

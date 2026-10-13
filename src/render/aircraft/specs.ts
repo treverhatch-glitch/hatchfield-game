@@ -2,12 +2,14 @@
  * Real-world overall dimensions (meters) and the shape cues the builder needs.
  * Length, span, height, wheelbase, and doors come from the verified pack in
  * realworld.ts. Visual size is meters × WORLD_PER_METER.
+ * 0.45 matches the apron people: a boarding capsule is 0.78 world units, and
+ * 1.75 m × 0.45 = 0.79. A 737 then spans about three stand tiles instead of one.
  */
 
-import type { RealDoor } from './realworld'
+import type { IcaoCode, RealDoor } from './realworld'
 import { REAL_AIRFRAMES } from './realworld'
 
-export const WORLD_PER_METER = 0.12
+export const WORLD_PER_METER = 0.45
 
 export type FuselageFamily = 'tube' | 'rearjet' | 'point' | 'prop' | 'helo'
 export type WingletKind = 'none' | 'fence' | 'blended' | 'raked'
@@ -71,6 +73,8 @@ export interface ModelSpec {
   fenestron: boolean
   /** Nose-gear to main-gear distance, meters. Tailwheel types measure main to tail. */
   wheelbaseM: number
+  /** ICAO code letter. H is a helicopter. */
+  icao: IcaoCode
   /** Door stations from the verified pack. Drawn on the close LOD. */
   doors: RealDoor[]
 }
@@ -124,6 +128,7 @@ function spec(partial: Core & Partial<Omit<ModelSpec, keyof Core>>): ModelSpec {
     blades: 0,
     fenestron: false,
     wheelbaseM: lengthM * 0.38,
+    icao: 'C',
     doors: [],
     ...partial,
   }
@@ -135,6 +140,7 @@ function spec(partial: Core & Partial<Omit<ModelSpec, keyof Core>>): ModelSpec {
     spanM: real.spanM,
     heightM: real.heightM,
     wheelbaseM: real.wheelbaseM,
+    icao: real.icao,
     doors: real.doors,
   }
 }

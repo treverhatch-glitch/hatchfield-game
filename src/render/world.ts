@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { inBounds } from '../game/path'
 import { ParkedFleet, type ParkedPlane } from './aircraft/batch'
+import { createBridges } from './aircraft/bridges'
 import {
   createAircraft,
   disposeAircraftLibrary,
@@ -107,8 +108,10 @@ export class World {
   camera: THREE.PerspectiveCamera
   pivot = new THREE.Vector3(0, 0, 0)
   yaw = 0.72
-  pitch = 0.92
-  dist = 88
+  /** Lower than the old top-down orbit so the fuselage side reads. */
+  pitch = 0.68
+  /** Close enough that a narrowbody fills the apron. Was 88 when jets were a quarter of this size. */
+  dist = 54
   dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
@@ -175,7 +178,7 @@ export class World {
     this.scene.background = new THREE.Color('#87b7d9')
     this.scene.fog = new THREE.Fog('#9fc5dd', 90, 220)
 
-    this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 500)
+    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 500)
     this.placeCam()
 
     const hemi = new THREE.HemisphereLight('#e8f3ff', '#6b8a4a', 0.85)
@@ -305,7 +308,7 @@ export class World {
     }
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      this.dist = clamp(this.dist + e.deltaY * 0.06, 28, 160)
+      this.dist = clamp(this.dist + e.deltaY * 0.06, 22, 150)
       this.placeCam()
     }
     canvas.addEventListener('contextmenu', this.onContextMenu)
@@ -334,7 +337,7 @@ export class World {
   }
 
   nudgeZoom(delta: number) {
-    this.dist = clamp(this.dist + delta, 28, 160)
+    this.dist = clamp(this.dist + delta, 22, 150)
     this.placeCam()
   }
 
@@ -416,21 +419,6 @@ export class World {
             badge.position.x += CELL * 0.28
             badge.position.z -= CELL * 0.28
             this.tilesGroup.add(badge)
-            if (game.standAccessAt({ c, r }) === 'jetway') {
-              const jw = new THREE.Mesh(
-                new THREE.BoxGeometry(CELL * 0.55, 0.35, CELL * 0.12),
-                new THREE.MeshStandardMaterial({
-                  color: '#7ec3e8',
-                  emissive: '#2a5570',
-                  emissiveIntensity: 0.2,
-                  roughness: 0.35,
-                }),
-              )
-              jw.position.copy(pos)
-              jw.position.y = 0.28
-              jw.position.z += CELL * 0.35
-              this.tilesGroup.add(jw)
-            }
           }
           continue
         }
@@ -1307,6 +1295,12 @@ export class World {
           !(f.phase === 'takeoff' && f.z > 1.6) &&
           !(f.phase === 'approach' && f.z > 3.2))
       updateAircraft(mesh, gearDown)
+      const jetway =
+        f.phase === 'parked' &&
+        game.standAccessAt({ c: Math.round(f.x), r: Math.round(f.y) }) === 'jetway'
+      const bridges = mesh.getObjectByName('bridges')
+      if (jetway && !bridges) mesh.add(createBridges(f.airframeId || 'b738'))
+      else if (!jetway && bridges) mesh.remove(bridges)
       const sel = game.selectedFlight === f.id
       mesh.scale.setScalar(sel ? 1.06 : 1)
     }

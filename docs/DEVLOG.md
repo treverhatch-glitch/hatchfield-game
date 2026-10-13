@@ -445,3 +445,21 @@ The painted shell is one `MeshStandardMaterial` (metalness 0.18, roughness 0.46)
 - `docs/devlog/media/MODELS-after-close.png` — 737-800 close, windows, doors, fans
 - `docs/devlog/media/MODELS-after-far.png` — far orbit
 - `docs/devlog/media/MODELS-real-close.png` — copy of the close shot
+
+## Aircraft scale and bridges — 13 Oct 2026, ~12:55 UTC
+
+People on the apron are a capsule about 0.78 world units tall. That is a 1.75 m person at 0.45 world units per meter, so `WORLD_PER_METER` moved from 0.12 to 0.45. A 737-800 is now about 18 world units long (three stand tiles) and its tail clears the concourse roof. The service-tug mesh stays about 2.3 m long. The apron camera default is distance 54, pitch 0.68, FOV 34, so the jet fills the view.
+
+ICAO code letters from the pack live on each spec. `standAccepts` lets a letter stand take that code or smaller. Helicopters fit a helipad only. Bridge count is one for regional and narrowbody, two for widebody, three for the A380 including the upper-deck cab. Cab floor is the doorway sill in meters. Bridges attach in `World.syncEntities` while a flight is parked on a jetway. The old knee-high jetway stub is gone.
+
+**Wiring still in the terminal/sim.** `standClassFor` and `standFitsClass` still speak S/M/L. A stand should store an ICAO letter and call `standAccepts` before accepting a flight. Suggested map until then: S→B, M→C, L→F. Empty gates do not draw a bridge yet; `rebuildTiles` can call `createBridges` for an unoccupied jetway.
+
+**Tests.** 126 passing, including stand-class compatibility and bridge counts. No new bugs. Close lineup shots on SwiftShader at 5× were about 10 FPS after the scale-up; the earlier 21–26 numbers were at 0.12 world units per meter.
+
+**Media** (UI hidden):
+
+- `docs/devlog/media/SCALE-before.png` — lineup at the old scale
+- `docs/devlog/media/SCALE-before-close.png` — 737 before
+- `docs/devlog/media/SCALE-after.png` — lineup at true scale
+- `docs/devlog/media/SCALE-after-close.png` — 737 dominating the apron
+- `docs/devlog/media/SCALE-bridges.png` — one, two, and three bridges

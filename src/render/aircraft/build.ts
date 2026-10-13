@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
+import { doorBoxes } from './stands'
 import { cylinderSides, fuselageSides, loftGeometry, wingGeometry } from './geom'
 import { mergeStaticShell } from './merge'
 import {
@@ -545,34 +546,9 @@ function addWindows(frame: Frame) {
 /** Pack door stations, one instanced mesh. Close LOD only. */
 function addRealDoors(frame: Frame) {
   if (frame.tier !== 'high' || frame.spec.doors.length === 0) return
-  const { spec, centerY, nose } = frame
-  const matrices: THREE.Matrix4[] = []
-  for (const door of spec.doors) {
-    const x = nose - door.t * spec.lengthM
-    const upper = door.kind === 'upper'
-    const bulky = door.kind === 'cargo' || door.kind === 'ramp'
-    const h = upper
-      ? Math.min(1.9, spec.ry * 0.7)
-      : bulky
-        ? Math.min(2.8, spec.ry * 1.25)
-        : Math.min(2.05, Math.max(0.9, spec.ry * 1.02))
-    const w = bulky
-      ? Math.min(2.6, Math.max(1.15, spec.rx * 0.95))
-      : Math.min(1.05, Math.max(0.62, spec.rx * 0.55))
-    const y = upper
-      ? centerY + spec.ry * 0.55
-      : bulky
-        ? centerY - spec.ry * 0.22
-        : centerY - spec.ry * 0.08
-    if (door.side === 0) {
-      const along = door.kind === 'ramp' ? Math.min(2.2, spec.lengthM * 0.08) : 0.1
-      const yPos = door.kind === 'ramp' ? Math.max(spec.gear * 0.55, y - spec.ry * 0.35) : y
-      const xPos = door.kind === 'ramp' ? x - along * 0.35 : x
-      matrices.push(compose(xPos, yPos, 0, 0, 0, 0, along, h, spec.rx * 1.5))
-    } else {
-      matrices.push(compose(x, y, door.side * (spec.rx + 0.03), 0, 0, 0, w, h, 0.07))
-    }
-  }
+  const matrices = doorBoxes(frame.spec).map((box) =>
+    compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth),
+  )
   addInstances(frame, unitBox(), matrices, 'dark', 'mesh', 'doors')
 }
 

@@ -3,8 +3,8 @@ import type { PaintedMesh } from './pool'
 
 /**
  * Camera-to-aircraft distance in world units.
- * The apron camera orbits between 28 and 160 (default 88), so the default
- * view sits in the mid band and zooming in crosses into high detail.
+ * The apron camera orbits between 22 and 150 (default 54), so the default
+ * view sits on the close band and pulling back crosses into the mid mesh.
  *
  * High detail is additive (windows, doors, fans, bogies) on top of the mid
  * mesh, so the close transition cannot pop the silhouette. The cheap mesh
