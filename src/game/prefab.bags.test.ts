@@ -11,6 +11,7 @@ function quiet(tier: 1 | 2 | 3) {
   game.buyLand('city')
   game.buildStarterKit()
   game.cash = 200_000
+  game.fieldXp = 2300
   while ((game.fits[0].tier ?? 1) < tier) game.upgradeHall()
   game.deskStaff = 3
   game.assignHallStaff()

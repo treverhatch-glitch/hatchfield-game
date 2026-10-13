@@ -1,4 +1,6 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { PremiumState } from '../premium/types.ts'
+import type { TycoonState } from '../tycoon/types.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -286,6 +288,8 @@ export type ResearchId =
   | 'travelator'
   | 'skywalk'
   | 'people_mover'
+  | 'transfer_centre'
+  | 'rfid_bag_line'
 
 export interface LayoverOffer {
   airline: AirlineId
@@ -361,9 +365,11 @@ export interface BuildDef {
   cost: number
   blurb: string
   /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
-  minFieldLevel?: 1 | 2 | 3 | 4 | 5
+  minFieldLevel?: number
   /** Project that must be bought before the stamp is offered. */
   research?: ResearchId
+  /** Operating cost per game day. Legacy tick rates are multiplied by six. */
+  upkeepPerDay?: number
 }
 
 export interface RoomDef {
@@ -855,6 +861,10 @@ export interface GameSnapshot {
   loanOpened?: number
   /** Airport XP toward field level (airline tier unlocks). */
   fieldXp?: number
+  /** Specialization paths chosen at FL6 / FL8 / FL10. Order is purchase order. */
+  specPaths?: string[]
+  /** Progression stamps that are not apron tiles (halls, hydrant, landmarks). */
+  progressionBuilt?: string[]
   parcels: number
   /** Expansion plots bought after the starter site. Missing on older saves. */
   ownedPlots?: { id: string; assessed: number }[]
@@ -896,6 +906,8 @@ export interface GameSnapshot {
     scannerLanes: number
     eGates: number
   }
+  /** Connecting passengers who missed the onward flight. */
+  missedConnections?: number
   hubAirlines?: AirlineId[]
   layoverWins?: Record<string, number>
   hotelLevel?: number
@@ -942,6 +954,29 @@ export interface GameSnapshot {
   negotiation?: string
   /** Inbound offers, visits, and Guard contracts. */
   inbound?: InboundState
+  /** Player fee card. Missing on older saves — the live defaults apply. */
+  fees?: Record<string, number>
+  depositTier?: 'big' | 'standard' | 'small' | 'none'
+  deposits?: Record<
+    string,
+    {
+      contractId: string
+      tier: 'big' | 'standard' | 'small' | 'none'
+      held: number
+      status: 'held' | 'refunded' | 'forfeited' | 'none'
+      termEndDay: number
+    }
+  >
+  commercialLead?: Record<string, { signDay: number; leadDays: number; opened: boolean }>
+  feeStandingApplied?: number
+  /** Premium check-in, fast-track lanes, and the VIP room. */
+  premium?: PremiumState
+  /** Shop leases, ad campaigns, and awards. Missing on older saves. */
+  tycoon?: TycoonState
+  /** Bellwater Intl rival sim. */
+  rival?: string
+  /** Late-game disruption engine. Missing on older saves. */
+  disruptions?: string
 }
 
 /** A placed building that is still a construction site. */
