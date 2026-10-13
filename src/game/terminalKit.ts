@@ -3,6 +3,7 @@
  * Pure helpers. The sim owns cash and guests; this file only reads a hall.
  */
 import type { HallNode, PaxTag } from './guests.ts'
+import { unlockLevel } from '../progression/unlocks.ts'
 import { itemDef, type ItemDef, type PlacedItem, type ZoneId } from './terminal.ts'
 import { CELL_SLOTS, KIT_TUNING, OUTLETS, type OutletSpec } from './terminalKitData.ts'
 
@@ -65,8 +66,9 @@ export function placementCheck(
   if (cellLoad(items, c, r) + itemSize(def) > CELL_SLOTS) {
     return { ok: false, reason: 'Cell is full', cost }
   }
-  if (opts.fieldLevel < def.minFieldLevel) {
-    return { ok: false, reason: `Needs Field level ${def.minFieldLevel}`, cost }
+  const needLevel = Math.max(def.minFieldLevel, unlockLevel(def.id))
+  if (opts.fieldLevel < needLevel) {
+    return { ok: false, reason: `Needs Field level ${needLevel}`, cost }
   }
   if (!opts.sandbox && opts.cash < cost) return { ok: false, reason: 'Not enough cash', cost }
   return { ok: true, reason: 'Click to place', cost }

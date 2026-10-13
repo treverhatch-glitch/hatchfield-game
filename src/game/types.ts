@@ -328,7 +328,9 @@ export interface BuildDef {
   cost: number
   blurb: string
   /** Hidden until the field reaches this level. The starter kit stamps tiles directly. */
-  minFieldLevel?: 1 | 2 | 3 | 4 | 5
+  minFieldLevel?: number
+  /** Operating cost per game day. Legacy tick rates are multiplied by six. */
+  upkeepPerDay?: number
 }
 
 export interface RoomDef {
@@ -811,6 +813,10 @@ export interface GameSnapshot {
   loanOpened?: number
   /** Airport XP toward field level (airline tier unlocks). */
   fieldXp?: number
+  /** Specialization paths chosen at FL6 / FL8 / FL10. Order is purchase order. */
+  specPaths?: string[]
+  /** Progression stamps that are not apron tiles (halls, hydrant, landmarks). */
+  progressionBuilt?: string[]
   parcels: number
   railLinked: boolean
   public: boolean
