@@ -963,6 +963,11 @@ export class Game {
     return this.airlineHeat[id] ?? 70
   }
 
+  /** Player-facing alias — airline Standing (same 0–100 meter as heatOf). */
+  standingOf(id: AirlineId): number {
+    return this.heatOf(id)
+  }
+
   isBanned(id: AirlineId): boolean {
     return (this.airlineBanUntil[id] ?? 0) > this.clock
   }
@@ -984,7 +989,7 @@ export class Game {
       this.layover?.airline === id &&
       !this.isBanned(id)
     ) {
-      this.banAirline(id, 'layover heat crashed')
+      this.banAirline(id, 'layover Standing crashed')
     }
   }
 
@@ -1104,7 +1109,7 @@ export class Game {
       )
     }
     this.pushNews(
-      `${a.name} unlocked ${REWARD_LABEL[reward]} (heat ${HEAT_REWARD_THRESHOLD}+). ${REWARD_DETAIL[reward]}`,
+      `${a.name} unlocked ${REWARD_LABEL[reward]} (Standing ${HEAT_REWARD_THRESHOLD}+). ${REWARD_DETAIL[reward]}`,
       'good',
     )
     this.reputation = Math.min(100, this.reputation + 2)
@@ -2870,7 +2875,7 @@ export class Game {
         if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
         this.hallMissNews(
           `gate-${g.flightId}`,
-          `Missed gate on ${g.flightId.slice(0, 10)} — pax boiling, heat dips.`,
+          `Missed gate on ${g.flightId.slice(0, 10)} — pax boiling, Standing dips.`,
         )
       }
     }
@@ -3560,7 +3565,7 @@ export class Game {
     // Scrubbing a slot to clear backlog hurts — more if it was an airline-banked flight.
     this.adjustHeat(s.airline, s.manual ? -2.2 : -4.2)
     this.pushNews(
-      `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} heat ${Math.round(this.heatOf(s.airline))}. Bank clears, relations don't.`,
+      `Cancelled ${s.flightNo} — ${this.airline(s.airline).name} Standing ${Math.round(this.standingOf(s.airline))}. Bank clears, relations don't.`,
       'bad',
     )
     this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
@@ -3576,7 +3581,7 @@ export class Game {
     this.pushNews(
       cascaded > 0
         ? `Bumped ${s.flightNo} — ${cascaded} later slot${cascaded > 1 ? 's' : ''} slid. Airlines notice.`
-        : `Bumped ${s.flightNo} +${bySec}s. Heat dips.`,
+        : `Bumped ${s.flightNo} +${bySec}s. Standing dips.`,
       'bad',
     )
     this.emit()
@@ -3607,7 +3612,7 @@ export class Game {
     }
     this.pushNews(
       jumped.length
-        ? `Pulled ${s.flightNo} ahead of ${jumped.length} — queue heat dips.`
+        ? `Pulled ${s.flightNo} ahead of ${jumped.length} — queue Standing dips.`
         : `Pulled ${s.flightNo} — ETA ${Math.round(s.eta - this.clock)}s.`,
       jumped.length ? 'bad' : 'ok',
     )
@@ -4034,7 +4039,7 @@ export class Game {
     this.layoverOfferCool = 70
     this.layoverSpawnAcc = 0
     this.pushNews(
-      `${a.name} layover live — transfers dumping into the hall. Heat ${Math.round(this.heatOf(o.airline))}.`,
+      `${a.name} layover live — transfers dumping into the hall. Standing ${Math.round(this.standingOf(o.airline))}.`,
       'good',
     )
     this.emit()
@@ -4101,7 +4106,7 @@ export class Game {
       const heat = this.heatOf(L.airline)
       this.layover = null
       if (avg < 48 || heat < this.banThreshold(L.airline) + 5) {
-        this.banAirline(L.airline, avg < 48 ? 'miserable transfers' : 'thin heat')
+        this.banAirline(L.airline, avg < 48 ? 'miserable transfers' : 'thin Standing')
       } else {
         this.adjustHeat(L.airline, 8)
         this.reputation = Math.min(100, this.reputation + 3)
@@ -4441,16 +4446,16 @@ export class Game {
         const perk = this.airlineReward[id]
         const atRisk = perk
           ? ` ${REWARD_LABEL[perk]} at risk.`
-          : ` Keep heat above ${HEAT_REWARD_THRESHOLD} to unlock ${REWARD_LABEL[rewardForPersona(a.persona)]}.`
+          : ` Keep Standing above ${HEAT_REWARD_THRESHOLD} to unlock ${REWARD_LABEL[rewardForPersona(a.persona)]}.`
         this.pushNews(
-          `${a.name} warning — heat ${Math.round(heat)}. Fix the hall before ${HEAT_ABANDON_THRESHOLD}.${atRisk}`,
+          `${a.name} warning — Standing ${Math.round(heat)}. Fix the hall before ${HEAT_ABANDON_THRESHOLD}.${atRisk}`,
           'bad',
         )
       }
       if (heat <= HEAT_ABANDON_THRESHOLD) {
         this.airlineLowAcc[id] = (this.airlineLowAcc[id] ?? 0) + dt
         if ((this.airlineLowAcc[id] ?? 0) >= ABANDON_ACC_SECONDS) {
-          this.abandonAirline(id, 'dead heat')
+          this.abandonAirline(id, 'dead Standing')
         }
       } else if (heat > HEAT_WARN_THRESHOLD + 8) {
         this.airlineLowAcc[id] = Math.max(0, (this.airlineLowAcc[id] ?? 0) - dt * 0.6)
@@ -6630,7 +6635,7 @@ export class Game {
       this.adjustHeat(f.airline, -4)
       this.reputation = Math.max(0, this.reputation - 1)
       this.pushNews(
-        `${f.flightNo} diverted after long hold — gate freed, heat dips.`,
+        `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
         'bad',
       )
     }
@@ -8211,7 +8216,7 @@ export class Game {
                 f.waitingOn.deice = false
                 this.adjustHeat(f.airline, -1.2)
                 this.pushNews(
-                  `${f.flightNo} pushed without glycol — heat dips.`,
+                  `${f.flightNo} pushed without glycol — Standing dips.`,
                   'bad',
                 )
               }
@@ -8332,7 +8337,7 @@ export class Game {
             )
           } else {
             this.adjustHeat(f.airline, -2)
-            this.pushNews(`${f.flightNo} slow boarding — heat dips.`, 'bad')
+            this.pushNews(`${f.flightNo} slow boarding — Standing dips.`, 'bad')
           }
           f.boardingSlow = false
         }
@@ -8346,7 +8351,7 @@ export class Game {
               f.waitingOn.deice = false
               this.adjustHeat(f.airline, -1.5)
               this.pushNews(
-                `${f.flightNo} pushed without glycol — heat dips.`,
+                `${f.flightNo} pushed without glycol — Standing dips.`,
                 'bad',
               )
             }
