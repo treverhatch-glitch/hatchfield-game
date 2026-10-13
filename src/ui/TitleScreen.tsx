@@ -5,11 +5,16 @@ import { Game } from '../game/sim'
 export function TitleScreen({
   sandbox,
   onSandboxChange,
+  enableHints,
+  onEnableHintsChange,
   onNewGame,
   onContinue,
 }: {
   sandbox: boolean
   onSandboxChange: (on: boolean) => void
+  /** Pregame setup: unchecked starts the new game with hints off. */
+  enableHints: boolean
+  onEnableHintsChange: (on: boolean) => void
   onNewGame: () => void
   onContinue: () => void
 }) {
@@ -35,6 +40,15 @@ export function TitleScreen({
             Sandbox (unlimited money)
             {sandbox ? ` · ${money(SANDBOX_CASH)}` : ' · off'}
           </span>
+        </label>
+        <label className="sandbox-toggle" title="Advisor hints in the bottom-right panel. Change later in Settings.">
+          <input
+            type="checkbox"
+            checked={enableHints}
+            onChange={(e) => onEnableHintsChange(e.target.checked)}
+            data-testid="enable-hints-toggle"
+          />
+          <span>Enable hints{enableHints ? '' : ' · off'}</span>
         </label>
         <div className="starts">
           <button

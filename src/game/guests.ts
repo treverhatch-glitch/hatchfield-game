@@ -7,7 +7,9 @@
  * so thousands of decisions stay cheap — same spirit, airport rooms instead of rides.
  */
 
+import type { ShowUpSeat } from '../pax/showup.ts'
 import type { ArriveMode } from './types'
+import type { SeatedMeal } from './dining.ts'
 
 export type { ArriveMode }
 
@@ -142,10 +144,26 @@ export interface HallGuest {
   releaseAt?: number
   /** On a bench or seat row this tick. */
   seated?: boolean
+  /** Stamped show-up. Lane and spend follow this, not the fare tag alone. */
+  showUp?: ShowUpSeat
+  /** Lounge lovers have already been offered the lounge. */
+  loungeDone?: boolean
+  /** Lounge lovers have already been offered the shop. */
+  shopDone?: boolean
   /** Food or drink in hand. The rubbish drops where it runs out, not at the counter. */
   snack?: { kind: 'drink' | 'meal'; left: number }
   /** Last spot in the hall, normalized like NODE_POS. A snack still in hand is dropped here on leaving. */
   spot?: { x: number; y: number }
+  /** Sit-down meal at a claimed seat near the food court. */
+  meal?: SeatedMeal
+  /** Higher-service cabin. Economy tags leave this unset. */
+  serviceCabin?: 'economy' | 'business' | 'first' | 'premium' | 'vip'
+  /** Where this departure was screened. Set once. */
+  premiumScreen?: 'vip_room' | 'fast_track' | 'general'
+  /** VIP walked an escorted fast-track lane because the private room was shut. */
+  premiumEscort?: boolean
+  /** Used the premium check-in desk on the way in. */
+  usedPremiumCheckin?: boolean
 }
 
 /**

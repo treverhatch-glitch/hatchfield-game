@@ -11,6 +11,11 @@ export interface QualityPreset {
   shadowRadius: number
   /** Max render pixel ratio. Below 1 renders under native resolution (software GL). */
   pixelRatioCap: number
+  /**
+   * 4× MSAA on the apron canvas. Fixed when the WebGL context is created, so it follows the
+   * preset picked at boot. Off on low: SwiftShader rasterises every sample on the CPU.
+   */
+  msaa: boolean
   /** Re-render the shadow map every N frames (1 = every frame). */
   shadowEvery: number
   /** Texture side for tiling ground textures. */
@@ -33,6 +38,14 @@ export interface QualityPreset {
    * Sim guests already walk the doorways, so this stays 0 and the two crowds do not stack.
    */
   walkersPerCell: number
+  /** SVG ground, glass, signage and tail art. Off on the auto low preset. */
+  extraTextures: boolean
+  /** Vertex-animated passengers. The cheap instanced hall crowd stays on when this is off. */
+  animatedPeople: boolean
+  /** Thought-bubble sprites over a handful of guests. */
+  thoughtBubbles: boolean
+  /** Local avoidance, queue lines and doorway tokens. Visual only — the sim path is unchanged. */
+  crowdDetail: boolean
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
@@ -41,17 +54,24 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowMapSize: 0,
     shadowType: THREE.BasicShadowMap,
     shadowRadius: 1,
-    pixelRatioCap: 0.8,
+    // Software GL (SwiftShader) auto-picks this preset. Stay under 1× and skip
+    // the tree and weather meshes that still rasterise on the CPU.
+    pixelRatioCap: 0.55,
+    msaa: false,
     shadowEvery: 1,
     textureSize: 128,
     anisotropy: 2,
     lodScale: 0.6,
     grassTufts: 0,
-    trees: 140,
-    precipitation: 300,
-    propDensity: 1,
+    trees: 0,
+    precipitation: 0,
+    propDensity: 0.5,
     lightPools: false,
     walkersPerCell: 0,
+    extraTextures: false,
+    animatedPeople: false,
+    thoughtBubbles: false,
+    crowdDetail: false,
   },
   med: {
     level: 'med',
@@ -59,6 +79,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowType: THREE.PCFShadowMap,
     shadowRadius: 1,
     pixelRatioCap: 1.25,
+    msaa: true,
     shadowEvery: 2,
     textureSize: 256,
     anisotropy: 4,
@@ -69,6 +90,10 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     propDensity: 1,
     lightPools: true,
     walkersPerCell: 0,
+    extraTextures: true,
+    animatedPeople: true,
+    thoughtBubbles: true,
+    crowdDetail: true,
   },
   high: {
     level: 'high',
@@ -77,6 +102,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowType: THREE.PCFShadowMap,
     shadowRadius: 2.5,
     pixelRatioCap: 2,
+    msaa: true,
     shadowEvery: 1,
     textureSize: 512,
     anisotropy: 8,
@@ -87,6 +113,10 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     propDensity: 1,
     lightPools: true,
     walkersPerCell: 0,
+    extraTextures: true,
+    animatedPeople: true,
+    thoughtBubbles: true,
+    crowdDetail: true,
   },
 }
 

@@ -52,6 +52,8 @@ export type Metrics = Partial<Record<MetricKey, number>>;
 export interface DiplomacyContext {
   fieldLevel: number;
   metrics: Metrics;
+  /** Airport reputation 0–100. First-meet quotes it when the host supplies it. */
+  reputation?: number;
   /** Optional airport capabilities from `src/airlines`; used for the "needs" checklist and unlock gating. */
   airport?: AirportCapabilities;
   /** Optional traffic share (0..100) per airline id. If omitted the engine derives it from recorded flights. */
@@ -92,6 +94,10 @@ export type ModifierKind =
   | 'rescue'
   | 'lawsuit_settled'
   | 'poach_defence'
+  | 'missed_connection'
+  | 'negotiation'
+  | 'rival_poach'
+  | 'premium_screen'
   | 'other';
 
 export interface StandingModifier {
@@ -150,6 +156,10 @@ export interface KeyFigure {
   tenureStartDay: number;
   retireAtDay: number;
   generation: number;
+  /** Trait carried from the previous chair. Empty for the founding exec. */
+  keptTrait?: TraitId | null;
+  /** Trait rolled at succession. Empty for the founding exec. */
+  freshTrait?: TraitId | null;
 }
 
 export interface Favour {
@@ -168,6 +178,8 @@ export interface ContractRecord {
   seasonFlights: number;
   seasonExcused: number;
   baseGranted: boolean;
+  /** Opening bank is 1. Later flight-contract letters add banks on the same master. */
+  flightBanks?: number;
 }
 
 export type RelationStatus = 'locked' | 'prospect' | 'signed' | 'former';
@@ -248,7 +260,7 @@ export interface AirlineRelation {
   exits: number;
 }
 
-export type ProposalKind = 'contract' | 'base' | 'endeavor' | 'newcomer_incentive';
+export type ProposalKind = 'contract' | 'flights' | 'base' | 'endeavor' | 'newcomer_incentive';
 export type ProposalResponse = 'accept' | 'support' | 'counter' | 'decline';
 
 export interface Proposal {
@@ -263,6 +275,33 @@ export interface Proposal {
   expiresDay: number;
   counterUsed: boolean;
   supportCost: number;
+}
+
+export type LadderStepId = 'master' | 'flights' | 'base' | 'hub';
+export type LadderState = 'done' | 'offered' | 'open' | 'locked';
+
+export interface LadderStep {
+  id: LadderStepId;
+  label: string;
+  state: LadderState;
+  detail: string;
+}
+
+export type CounterLineKey = 'landing' | 'passenger' | 'slots' | 'discount' | 'penalties';
+
+export interface CounterLine {
+  key: CounterLineKey;
+  label: string;
+  offered: string;
+  countered: string;
+}
+
+export interface CounterQuote {
+  lines: CounterLine[];
+  ticked: CounterLineKey[];
+  /** 0..1 chance the airline accepts this exact set of ticks. Shown before the roll. */
+  chance: number;
+  cost: number;
 }
 
 export type RivalStance = 'back' | 'oppose' | 'ignore';
@@ -459,6 +498,8 @@ export interface DiplomacyState {
   tierFloorSpawnDay: Record<string, number>;
   reputationDelta: number;
   log: DiplomacyEvent[];
+  /** 0..1 premium passengers clearing screening inside the comfort window. */
+  premiumScreenPct?: number;
 }
 
 export interface DiplomacyHost {
@@ -512,7 +553,18 @@ export interface AirlineCard {
   baseTier: AirlineTier;
   status: RelationStatus;
   portrait: PortraitCard;
-  figure: { name: string; title: string; traits: string[]; agenda: string; voice: VoiceStyle; memory: string[] } | null;
+  figure: {
+    name: string;
+    title: string;
+    traits: string[];
+    agenda: string;
+    voice: VoiceStyle;
+    memory: string[];
+    generation: number;
+    /** Null until a successor takes the chair. */
+    shift: string | null;
+    retireDay: number;
+  } | null;
   livery: [string, string];
   glyph: string;
   band: BandChip;
@@ -536,4 +588,6 @@ export interface AirlineCard {
   history: string[];
   contractTermEndDay: number | null;
   poachRisk: number;
+  /** Master → flight contracts → Base → Hub. */
+  ladder: LadderStep[];
 }

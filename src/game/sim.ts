@@ -1,3 +1,6 @@
+import { finiteAmount } from '../disruptions/engine.ts'
+import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
+import { DisruptionBridge } from './disruptionBridge.ts'
 import {
   GameDiplomacyAdapter,
   StandingAdvisor,
@@ -82,8 +85,10 @@ import {
   LOAN_FEE,
   LOAN_PRINCIPAL,
   LOAN_PRODUCTS,
-  FIELD_LEVEL_XP,
-  fieldLevelFromXp,
+  fieldLevelOf,
+  fieldProgress,
+  prestigeStarsOf,
+  type FieldLevel,
   normalizeAirline,
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
@@ -168,18 +173,74 @@ import {
   type StaffPost,
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
+import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
+import {
+  hintKind,
+  mergeHints,
+  muteHintKind,
+  newGameHintPrefs,
+  readHintSettings,
+  sanitizeHintPrefs,
+  setAllHintsEnabled,
+  visibleHints,
+  writeHintSettings,
+  type HintPrefs,
+} from './hints.ts'
+import { HINT_REFRESH_SEC } from './hintsData.ts'
+import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
+import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
+import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
+import { disruptionLocus, type DisruptionLocusField } from '../disruptions/locus.ts'
+import {
+  CT_TECH_ID,
+  PREMIUM_RULES,
+  buyFacility,
+  cabinFromGuest,
+  cabinFromTag,
+  createPremiumState,
+  dailyUpkeep,
+  expectsHigherService,
+  hireOfficer,
+  premiumStaffBuildings,
+  restorePremium,
+  screenPassengers,
+  setFeeEnabled,
+  staffedFacilities,
+  type PremiumItemId,
+  type PremiumState,
+} from '../premium/index.ts'
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
 import { CargoBridge } from './cargoBridge.ts'
+import { POWER_PLANT_CAPACITY, calculatePower } from '../economy/power.ts'
+import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant.ts'
+import { MRO_POWER_DEMAND, NIGHT_HUB_POWER_DEMAND } from '../tier3/config.ts'
+import {
+  GROUND_CREW_PER_DEPOT,
+  mroInfoLines,
+  mroRoute,
+  mroUnlock,
+  nightHubInfoLines,
+  nightHubUnlock,
+  poseForPhase,
+  Tier3Session,
+  type Tier3Building,
+  type Tier3TickContext,
+} from '../tier3/index.ts'
+import type { TaxiPoint } from '../tier3/taxi.ts'
 import { getAudio, soundForEvent } from '../audio/index.ts'
 import {
   createDiplomacyBridge,
+  diplomacyFieldLevel,
   GAME_MINUTES_PER_SIM_SECOND,
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
 import { NegotiationBridge } from './negotiationBridge.ts'
-import { ULCC_IDS } from '../negotiation/index.ts'
+import { SERVICE_IDS, ULCC_IDS } from '../negotiation/index.ts'
+import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
+import { PriceWar, composeRivalWalkIn } from '../rival/index.ts'
+import type { WarChoice } from '../rival/index.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
@@ -192,6 +253,7 @@ import {
   type InboundWorld,
   type RequestKind,
 } from '../inbound/index.ts'
+import { RIVAL, RivalAirport, type PlayerSnapshot, type Walkaway } from '../rival/index.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
 import type { VehicleType } from '../logistics/types.ts'
@@ -262,18 +324,29 @@ import {
   type PlacedItem,
   type ZoneId,
 } from './terminal.ts'
+import { createPaxShowUpAdapter, stampDeparture } from '../pax/adapter.ts'
+import type { PaxShowUpAdapter } from '../pax/adapter.ts'
+import {
+  LOUNGE_QUALITY_PER_ROOM,
+  SHOWUP_WINDOWS,
+  businessMixForPersona,
+} from '../pax/config.ts'
 import {
   PLANNED_TURN_SEC,
+  SHOWUP_LEAD_GAME_MIN,
   checkInCloseAt,
   isIntlKind,
   planShowUp,
   type ShowTag,
   type ShowUpPlan,
+  type ShowUpSeat,
 } from '../pax/showup.ts'
+import type { ShowUpFacts } from '../pax/types.ts'
 import {
   NODE_ZONE,
   nodeComfort,
   outletExtraStock,
+  outletSpec,
   pickOutlet,
   placementCheck,
   refundFor,
@@ -282,8 +355,12 @@ import {
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
 import {
+  binFull,
   cellAt,
+  dropLitter,
   dropLitterAt,
+  foodCells,
+  isBin,
   snackKind,
   snackMinutes,
   litterAdvice,
@@ -297,18 +374,122 @@ import {
   type LitterHall,
 } from './litter.ts'
 import { LITTER_TUNING } from './litterData.ts'
+import {
+  claimSeat,
+  consumeSec,
+  hasTimeToSit,
+  releaseSeat,
+  seatingAdvice,
+  seatsNear,
+  sweepSeats,
+  walkSecTo,
+  type SeatBook,
+} from './dining.ts'
+import { DINING_TUNING } from './diningData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
-import { Bank, moneyDirection, payrollForGameDay, type MoneyCategory } from '../core/bank.ts'
-import { SIM_MINUTES_PER_GAME_DAY, SIM_MINUTES_PER_REAL_SECOND, SimClock } from '../core/clock.ts'
+import { Bank, moneyDirection, payrollForGameDay, type BankPostMeta, type MoneyCategory } from '../core/bank.ts'
+import {
+  type AirlineLead,
+  type DepositTier as CommercialDepositTier,
+  type FeeSchedule,
+  type HeldDeposit,
+  DEFAULT_FEE_SCHEDULE,
+  demandInterval,
+  depositCashPost,
+  editFee,
+  firstFlightClock,
+  forfeitHeld,
+  landingCharge,
+  openLead,
+  restoreDeposits,
+  restoreFees,
+  restoreLeads,
+  restoreTier,
+  scaleListed,
+  serviceCharge,
+  settleHeld,
+  signDeposit,
+  standingForFees,
+  walkInDemandOf,
+  walkInOfferChance,
+} from '../commercial/index.ts'
+import { progressionBuildable, unlockLevel } from '../progression/unlocks.ts'
+import {
+  capstoneCost,
+  isSpecPath,
+  siteUpkeepMultiplier,
+  specPath,
+  specPointsForLevel,
+  type SpecPath,
+} from '../progression/specializations.ts'
+import {
+  REAL_SECONDS_PER_GAME_DAY,
+  SIM_MINUTES_PER_GAME_DAY,
+  SIM_MINUTES_PER_REAL_SECOND,
+  SimClock,
+} from '../core/clock.ts'
+import {
+  TycoonEngine,
+  type CampaignKind,
+  type TenantUnit,
+  type TycoonBooks,
+  type TycoonNote,
+  type TycoonPulse,
+  type TycoonView,
+} from '../tycoon/index.ts'
 import {
   createEconomyAdapter,
   type EconomyAdapter,
 } from '../economy/adapter.ts'
-import type { EconomySnapshot, EconomyState } from '../economy/types.ts'
+import type { EconomySnapshot, EconomyState, PowerLoad, PowerPlantTier } from '../economy/types.ts'
+import {
+  arrivalSpacingScale,
+  bankTarget,
+  dayIndex,
+  defaultHolidayPeak,
+  groundOpsPace,
+  rollSeasonWeather,
+  seasonAtDay,
+  type HolidayPeakHook,
+} from '../environment/index.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
+import {
+  DEFAULT_CONNECTION_WINDOW,
+  TECH_RFID_BAG_LINE,
+  TECH_TRANSFER_CENTRE,
+  bankDemand,
+  buildBanks,
+  connectingIndexes,
+  connectionMap,
+  evaluateConnection,
+  hubUpgrade,
+  hubUpkeep,
+  missPenalty,
+  scaledShare,
+  transferShare,
+  type CarrierProfile,
+  type GatePoint,
+  type Movement,
+} from '../hub/index.ts'
+import {
+  CONNECTIVITY_CATALOG,
+  LINK_MAINT_SAFE,
+  LINK_WEAR_BREAK,
+  LINK_WEAR_PER_DAY,
+  dailyUpkeep as linkDailyUpkeep,
+} from '../connectivity/catalog.ts'
+import {
+  breakdown,
+  choosePassengerLink,
+  linkTerminals,
+  type ConnectivityBuildingId,
+  type LinkMode,
+  type PassengerLink,
+} from '../connectivity/index.ts'
+import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import {
   commitPlot,
   dailySinks,
@@ -598,6 +779,7 @@ const FINANCING_CATEGORIES = new Set([
   'share_sales',
   'share_purchases',
   'refunds',
+  'deposits',
 ])
 
 export class Game {
@@ -639,6 +821,19 @@ export class Game {
   bagsLost = 0
   /** Late bags and missed connections. Prefab halls stay at zero under normal load. */
   bagsMishandled = 0
+  /** Connecting passengers who missed MCT. Not counted as lost. */
+  missedConnections = 0
+  /** Wear toward a breakdown. Maintenance at or above the safe line holds it. */
+  linkWear = { mover: 0, bus: 0 }
+  /** A breakdown closes the link until it is repaired. */
+  linkDown = { mover: false, bus: false }
+  /** Gates the last people-mover breakdown named. */
+  strandedGates: string[] = []
+  /** Why the link is stopped, for the info submenu. */
+  linkExplanation = ''
+  /** Cells stamped as the hub-priced links, so pier movers keep their own upkeep. */
+  hubLinksBuilt: Record<string, 'people_mover' | 'xferbus' | 'skywalk'> = {}
+  private hubLinks: { guestId: string; airlineId: string; resolveAt: number; made: boolean }[] = []
   /** 0–1 parade clock for belts and carousels. */
   bagPhase = 0
   /** Screenshot latch so the hall can show the whole chain at once. */
@@ -661,14 +856,20 @@ export class Game {
   pendingThreat: PendingThreat | null = null
   pendingEmergency: PendingEmergency | null = null
   emergencyCool = 70
+  /** Late-game disruptions. Quiet until Field Level 3. Cards go on `alerts`. */
+  disruptions = new DisruptionBridge(1)
   securityIncidents = 0
   reputation = 40
   loanBalance = 0
   loanProductId: string | null = null
   loanPrincipal = 0
   loanOpened = 0
-  /** Airport XP — unlocks airline tiers (Field Lv 1–5). */
+  /** Airport XP — field levels 1–10, then prestige stars. */
   fieldXp = 0
+  /** Paths chosen at FL6, FL8, and FL10. Order is the order they were picked. */
+  specPaths: SpecPath[] = []
+  /** Commissioned progression stamps (check-in hall, hydrant, landmark, …). */
+  progressionBuilt: string[] = []
   parcels = 1
   /** Owned expansion plots. Empty until the city or factory site is bought. */
   ownedPlots: OwnedPlot[] = []
@@ -698,10 +899,16 @@ export class Game {
   litterSeq = 0
   /** Seconds until the litter / restroom advisor notes refresh. */
   litterAdviceCool = 0
+  /** Seat bookings per hall: seat id → guest id. Not saved; diners re-take them after a load. */
+  seatBooks = new Map<string, SeatBook>()
+  /** Clock times diners ate standing, per hall, for the seating hint. */
+  diningStood = new Map<string, number[]>()
   researchers = 0
   researcherCool = 0
   deskStaff = 0
   deskStaffCool = 0
+  /** Premium desks, fast-track lanes, VIP room, and the shared officer roster. */
+  premium: PremiumState = createPremiumState()
   hallStaff: HallStaff[] = []
   /** Recent landside touchpoints (exits / day rooms / park cues) for usage meters. */
   landsideUses = 0
@@ -739,9 +946,24 @@ export class Game {
   revenueWindow = 0
   budgets: Budgets = { ...DEFAULT_BUDGETS }
   mechanics = 0
+  /** Heavy-check hangar and cargo night hub. Tiles are the source of what is built. */
+  tier3: Tier3Session = new Tier3Session()
+  /** Site power capacity. Tier I is the city feed; II and III are bought upgrades. */
+  powerPlantTier: PowerPlantTier = 1
+  /** One-shot camera target. The world pans here once, then clears it. */
+  cameraCue: { c: number; r: number } | null = null
+  /** Cached stand → bay polylines so a check does not recompute or jump paths. */
+  private mroRoutes = new Map<string, TaxiPoint[]>()
+  private mroBound = new Set<string>()
   runwayCondition = 100
   weather: Weather = 'clear'
   weatherCool = 45
+  /**
+   * Extra holiday demand on top of the season calendar.
+   * The calendar already peaks Summer Getaway and Winter Holidays; this hook
+   * multiplies those (or any active holiday id) again.
+   */
+  holidayPeakHook: HolidayPeakHook = defaultHolidayPeak
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
@@ -749,6 +971,16 @@ export class Game {
   levyMark = 0
   /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
   bank = new Bank(0)
+  /** Player fee card. Defaults match the live catalog, so an untouched field bills the same. */
+  fees: FeeSchedule = { ...DEFAULT_FEE_SCHEDULE }
+  /** Deposit tier applied to the next signature. */
+  depositTier: CommercialDepositTier = 'standard'
+  deposits: Record<string, HeldDeposit> = {}
+  commercialLead: Record<string, AirlineLead> = {}
+  /** Standing points already applied for the current fee level. */
+  feeStandingApplied = 0
+  /** Tenant leases, ad campaigns, year report, and awards. */
+  tycoon = new TycoonEngine()
   simClock = new SimClock()
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
@@ -803,6 +1035,8 @@ export class Game {
   schedule: ScheduleSlot[] = []
   /** Per-slot departure show-up. Passengers release before the aircraft exists. */
   showUps: ShowUpPlan[] = []
+  /** Seeded mix and leads. The hall stamps these onto the entrance cap. */
+  private paxAdapter: PaxShowUpAdapter = createPaxShowUpAdapter(0x5382)
   /** Flights that have left the field. The boarding call stays up until those passengers are aboard or miss. */
   private departedFlights = new Set<string>()
   scheduleAuto = true
@@ -839,6 +1073,21 @@ export class Game {
   advisorCells: { c: number; r: number }[] = []
   /** Apron tiles highlighted by a ground-services note (fuel farm, kitchen, depot). */
   apronFocus: { c: number; r: number }[] = []
+  /** Hint switches for this game. Saved, and mirrored to settings. */
+  hintPrefs: HintPrefs = newGameHintPrefs()
+  /** Pregame "Enable hints" box. Read once by beginNew. */
+  enableHintsAtStart = true
+  /** Live operational problems (stuck aircraft, fuel out, full hall, disruptions, ...). */
+  alerts = new AlertStack()
+  private alertScanCool = 0
+  /** One side panel at a time: the HUD rollout or the hint list. */
+  sidePanel: 'hud' | 'hints' | null = null
+  /** Where "Show me" / "Pan to problem" last asked the camera to go. Renderers ease toward it. */
+  camGoal: { view: 'apron' | 'hall'; c: number; r: number; seq: number } | null = null
+  /** Terminal-plan hints, recomputed only when the hall layout changes. */
+  private planAdvice: { key: string; list: Advice[] } = { key: '', list: [] }
+  /** An apron build or bulldoze happened; refresh the advisor on the next frame. */
+  private adviceDirty = false
   /** Ground-logistics ledger. Posted into cash as it happens. */
   groundBooks = {
     fuelSales: 0,
@@ -864,10 +1113,24 @@ export class Game {
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
   private diplomacy: DiplomacyBridge | null = null
   diplomacySeed = 1
+  /** Published landing-fee index. 1 is the schedule. Diplomacy reads rises and cuts. */
+  publishedFeeIndex = 1
+  /** Seconds left on a first-meet terminal walk. The field pans while this is above zero. */
+  diplomacyTourSeconds = 0
+
+  beginDiplomacyTour(seconds = 6) {
+    this.diplomacyTourSeconds = seconds
+  }
+  private missedByAirline: Record<string, number> = {}
   /** Contract counter-offers. Null until the first letter. */
   private negotiationBridge: NegotiationBridge | null = null
+  /** Bellwater price war. Null until the first day on an owned field. */
+  private priceWar: PriceWar | null = null
   /** Inbound offers and Guard contracts. Null until the clock or a card needs it. */
   private inbound: InboundBridge | null = null
+  /** Bellwater Intl. Headless; null until the field exists. */
+  private rival: RivalAirport | null = null
+  private rivalWalkaways: Walkaway[] = []
   /** Passenger-flow overlay. Hidden until the player opts in. */
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
@@ -920,8 +1183,26 @@ export class Game {
     return () => this.listeners.delete(fn)
   }
 
+  /** Mid-tick emits collapse into one HUD pass so React does not render per guest. */
+  private suppressEmit = 0
+  private emitWaiting = false
+
   emit() {
+    if (this.suppressEmit > 0) {
+      this.emitWaiting = true
+      return
+    }
+    this.flushEmit()
+  }
+
+  private flushEmit() {
+    this.emitWaiting = false
     for (const fn of this.listeners) fn()
+  }
+
+  private endEmitHold() {
+    this.suppressEmit = Math.max(0, this.suppressEmit - 1)
+    if (this.suppressEmit === 0 && this.emitWaiting) this.flushEmit()
   }
 
   beginNew(difficulty: Difficulty) {
@@ -942,6 +1223,13 @@ export class Game {
     this.lostSpend = 0
     this.bagsLost = 0
     this.bagsMishandled = 0
+    this.missedConnections = 0
+    this.linkWear = { mover: 0, bus: 0 }
+    this.linkDown = { mover: false, bus: false }
+    this.strandedGates = []
+    this.linkExplanation = ''
+    this.hubLinksBuilt = {}
+    this.hubLinks = []
     this.bagPhase = 0
     this.bagShow = null
     this.bagBooks.clear()
@@ -977,6 +1265,8 @@ export class Game {
     this.loanPrincipal = 0
     this.loanOpened = 0
     this.fieldXp = 0
+    this.specPaths = []
+    this.progressionBuilt = []
     this.parcels = 1
     this.ownedPlots = []
     this.maintenanceContract = false
@@ -995,11 +1285,14 @@ export class Game {
     this.hallJanitors = []
     this.litterSeq = 0
     this.litterAdviceCool = 0
+    this.seatBooks.clear()
+    this.diningStood.clear()
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.premium = createPremiumState()
     this.landsideUses = 0
     this.landsideFeeWindow = 0
     this.interestCool = 60
@@ -1017,10 +1310,17 @@ export class Game {
     this.runwayCondition = 100
     this.weather = 'clear'
     this.weatherCool = 45
+    this.holidayPeakHook = defaultHolidayPeak
     this.payrollCool = 30
     this.payrollDay = 0
     this.levyMark = 0
     this.bank = new Bank(0)
+    this.fees = { ...DEFAULT_FEE_SCHEDULE }
+    this.depositTier = 'standard'
+    this.deposits = {}
+    this.commercialLead = {}
+    this.feeStandingApplied = 0
+    this.tycoon.reset(1)
     this.simClock = new SimClock()
     this.economy = null
     this.economyState = null
@@ -1054,6 +1354,8 @@ export class Game {
     this.parkingCool = 65
     this.parkRateCool = 0
     this.schedule = []
+    this.showUps = []
+    this.paxAdapter = createPaxShowUpAdapter(0x5382)
     this.scheduleAuto = true
     this.schedulePlanCool = 8
     this.hallMissCool = {}
@@ -1098,15 +1400,34 @@ export class Game {
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
+    this.publishedFeeIndex = 1
+    this.missedByAirline = {}
     this.negotiationBridge = null
+    this.priceWar = null
     this.inbound = null
+    this.rival = null
+    this.rivalWalkaways = []
+    this.disruptions = new DisruptionBridge(this.diplomacySeed)
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
     this.sites = []
+    this.tier3 = new Tier3Session()
+    this.powerPlantTier = 1
+    this.cameraCue = null
+    this.mroRoutes = new Map()
+    this.mroBound = new Set()
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
+    // New games start with All hints enabled unless the pregame box was unchecked.
+    this.hintPrefs = newGameHintPrefs(this.enableHintsAtStart)
+    writeHintSettings(this.hintPrefs)
+    this.alerts.reset()
+    this.alertScanCool = 0
+    this.sidePanel = null
+    this.camGoal = null
+    this.planAdvice = { key: '', list: [] }
     this.firstTakeoffNoted = false
     this.fieldTask = null
     this.fieldTaskCool = 28
@@ -1132,7 +1453,11 @@ export class Game {
     try {
       sessionStorage.setItem(
         'hatchfield-pending',
-        JSON.stringify({ sandbox: this.sandbox, difficulty: this.difficulty }),
+        JSON.stringify({
+          sandbox: this.sandbox,
+          difficulty: this.difficulty,
+          enableHints: this.enableHintsAtStart,
+        }),
       )
     } catch {
       /* node / private mode */
@@ -1513,8 +1838,115 @@ export class Game {
     return normalizeAirline(raw)
   }
 
-  fieldLevel(): AirlineTier {
-    return fieldLevelFromXp(this.fieldXp)
+  fieldLevel(): FieldLevel {
+    return fieldLevelOf(this.fieldXp)
+  }
+
+  prestigeStars(): number {
+    return prestigeStarsOf(this.fieldXp)
+  }
+
+  specPointsEarned(): number {
+    return specPointsForLevel(this.fieldLevel())
+  }
+
+  specPointsLeft(): number {
+    return Math.max(0, this.specPointsEarned() - this.specPaths.length)
+  }
+
+  /** Mix is allowed. Each path after the first raises capstone cost and site upkeep. */
+  chooseSpec(path: SpecPath): boolean {
+    if (this.specPaths.includes(path)) {
+      this.pushNews(`${specPath(path)?.label ?? path} is already chosen. Pick a different path — they mix.`, 'ok')
+      this.emit()
+      return false
+    }
+    if (this.specPointsLeft() <= 0) {
+      this.pushNews('No specialization point. Points arrive at Field Levels 6, 8, and 10.', 'bad')
+      this.emit()
+      return false
+    }
+    this.specPaths.push(path)
+    const extra = this.specPaths.length > 1
+    this.pushNews(
+      `${specPath(path)?.label ?? path} path chosen.${
+        extra ? ' Capstone costs +50% and site upkeep +10% for each path after the first.' : ''
+      }`,
+      'good',
+    )
+    this.emit()
+    return true
+  }
+
+  /**
+   * Buy a progression stamp that is not an apron tile.
+   * Refuses when the field level is short of the unlock table.
+   */
+  commission(id: string): boolean {
+    const row = progressionBuildable(id)
+    const need = unlockLevel(id)
+    const name = row?.name ?? id
+    if (this.fieldLevel() < need) {
+      this.pushNews(`${name} needs Field level ${need}.`, 'bad')
+      this.emit()
+      return false
+    }
+    if (id === 'prefab_ii') {
+      if ((this.fits[0]?.tier ?? 1) !== 1) {
+        this.pushNews('Prefab II is already in place.', 'ok')
+        this.emit()
+        return false
+      }
+      this.upgradeHall()
+      return (this.fits[0]?.tier ?? 1) >= 2
+    }
+    if (id === 'satellite') {
+      const tier = this.fits[0]?.tier ?? 1
+      if (tier < 2) {
+        this.pushNews('Satellite needs Prefab II first.', 'bad')
+        this.emit()
+        return false
+      }
+      if (tier >= 3) {
+        this.pushNews('Satellite is already in place.', 'ok')
+        this.emit()
+        return false
+      }
+      this.upgradeHall()
+      return (this.fits[0]?.tier ?? 1) >= 3
+    }
+    if (id === 'jet_bridge') {
+      this.standAccessMode = 'jetway'
+      this.tool = 'stand'
+      this.pushNews('Jet bridge armed — stamp a stand to attach one gate.', 'ok')
+      this.emit()
+      return true
+    }
+    if (!row) {
+      this.pushNews(`${name} is not a buildable.`, 'bad')
+      this.emit()
+      return false
+    }
+    if (this.progressionBuilt.includes(id)) {
+      this.pushNews(`${row.name} is already on the field.`, 'ok')
+      this.emit()
+      return false
+    }
+    const cost = capstoneCost(row.cost, this.specPaths, id)
+    if (!this.spend(cost, row.name)) return false
+    this.progressionBuilt.push(id)
+    const upkeep = row.upkeepPerDay > 0 ? ` Upkeep $${row.upkeepPerDay.toLocaleString('en-US')}/day.` : ''
+    this.pushNews(`${row.name} open.${upkeep}`, 'good')
+    this.emit()
+    return true
+  }
+
+  /**
+   * Airline ladder, diplomacy, and the operating licence stay on levels 1–5.
+   * Levels 6 and 7 only open hub links.
+   */
+  private hostedFieldLevel(): number {
+    return Math.min(5, this.fieldLevel())
   }
 
   /** Diplomacy day, 0 until the clock has run. */
@@ -1576,7 +2008,8 @@ export class Game {
     const onTime = this.diplomacy?.onTimePct() ?? 88
     const feeIndex = this.diplomacy?.adapter.engine.state.feeIndex ?? 1
     return {
-      fieldLevel: this.fieldLevel(),
+      fieldLevel: diplomacyFieldLevel(this.hostedFieldLevel()),
+      reputation: this.reputation,
       metrics: {
         onTimePct: onTime,
         feeIndex,
@@ -1602,7 +2035,7 @@ export class Game {
         hasSmallStands: classes.some((c) => c === 'S' || c === 'M'),
         hasMediumStands: classes.some((c) => c === 'M' || c === 'L'),
         hasHeavyStands: classes.some((c) => c === 'L'),
-        terminalRating: this.fieldLevel(),
+        terminalRating: this.hostedFieldLevel(),
         hasFuelService: tilesOf(this.tiles, 'fuel').length > 0,
         hasCateringService: Boolean(this.caterBrand) || tilesOf(this.tiles, 'kitchen').length > 0,
         hasMaintenanceService: tilesOf(this.tiles, 'hangar').length > 0,
@@ -1616,7 +2049,30 @@ export class Game {
   private tickDiplomacy(step: number) {
     const d = this.ensureDiplomacy()
     for (const id of this.signed) d.mirrorSigned(id)
+    const before = d.day()
     d.tick(step * GAME_MINUTES_PER_SIM_SECOND)
+    if (Math.floor(d.day()) > Math.floor(before)) {
+      d.adapter.engine.notePremiumScreening({ clearRate: this.premiumScreenRate() })
+      this.flushMissedConnections()
+    }
+  }
+
+  /** Share of premium departures already through screening. 1 when nobody premium is in the hall. */
+  private premiumScreenRate(): number {
+    const premium = this.hallGuests.filter((g) => !g.dead && g.tag === 'premium' && g.job === 'depart')
+    if (!premium.length) return 1
+    const waiting = premium.filter((g) => g.node === 'security' && !g.clearedSec).length
+    return 1 - waiting / premium.length
+  }
+
+  private flushMissedConnections() {
+    const pending = this.missedByAirline
+    this.missedByAirline = {}
+    const engine = this.diplomacy?.adapter.engine
+    if (!engine) return
+    for (const [airlineId, missed] of Object.entries(pending)) {
+      engine.noteMissedConnections({ airlineId, missed, showMe: 'connectivity' })
+    }
   }
 
   private diplomacyFeeFactor(airlineId: string): number {
@@ -1629,7 +2085,8 @@ export class Game {
 
   private rampPace(airframeId: string, cargo: boolean, airlineId: string): number {
     const slow = this.diplomacy?.slowFactor(airlineId) ?? 1
-    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow
+    const climate = seasonAtDay(dayIndex(this.clock)).climate
+    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow * groundOpsPace(this.weather, climate)
   }
 
   private gradeDiplomacyTurn(f: Flight) {
@@ -1670,25 +2127,143 @@ export class Game {
     }))
   }
 
-  diplomacyLetters(): { id: string; airline: string; text: string }[] {
+  diplomacyLetters(): {
+    id: string
+    airline: string
+    airlineId: string
+    text: string
+    kind: string
+    chance: number
+    cost: number
+  }[] {
     if (!this.diplomacy) return []
-    return this.diplomacy.proposals().slice(0, 3).map((p) => {
-      const rel = this.diplomacy?.relation(p.airlineId)
-      return { id: p.id, airline: rel?.name ?? p.airlineId, text: p.text }
-    })
+    return this.diplomacy
+      .proposals()
+      .slice(0, 3)
+      .map((p) => {
+        const rel = this.diplomacy?.relation(p.airlineId)
+        const quote = this.diplomacy?.adapter.engine.counterQuote(p.id)
+        return {
+          id: p.id,
+          airline: rel?.name ?? p.airlineId,
+          airlineId: p.airlineId,
+          text: p.text,
+          kind: p.kind,
+          chance: quote?.chance ?? 0,
+          cost: quote?.cost ?? 0,
+        }
+      })
   }
 
-  answerDiplomacy(proposalId: string, response: 'accept' | 'decline') {
+  diplomacyCards() {
+    return this.diplomacy?.cards() ?? []
+  }
+
+  diplomacyQuote(proposalId: string, ticks: import('../diplomacy/types.ts').CounterLineKey[]) {
+    return this.diplomacy?.adapter.engine.counterQuote(proposalId, ticks) ?? null
+  }
+
+  diplomacyPreview(airlineId: string) {
+    return this.diplomacy?.adapter.engine.previewSign(airlineId) ?? null
+  }
+
+  answerDiplomacy(
+    proposalId: string,
+    response: 'accept' | 'decline' | 'counter' | 'support',
+    ticks?: import('../diplomacy/types.ts').CounterLineKey[],
+  ) {
     const d = this.ensureDiplomacy()
     const before = new Set(d.signedIds())
-    const result = d.respond(proposalId, response)
-    if (result.ok && response === 'accept') {
+    const result = d.respond(proposalId, response, ticks)
+    if (result.ok && (response === 'accept' || response === 'support')) {
       for (const id of d.signedIds()) {
         if (!before.has(id)) this.adoptDiplomacyCarrier(id)
       }
     }
-    if (!result.ok) this.pushNews(result.message, 'bad')
+    if (!result.ok && response !== 'counter') this.pushNews(result.message, 'bad')
+    if (response === 'counter') this.pushNews(result.message, result.ok ? 'good' : 'bad')
     this.emit()
+    return result
+  }
+
+  answerDiplomacyDemand(demandId: string, response: 'accept' | 'decline') {
+    const result = this.ensureDiplomacy().adapter.engine.respondToDemand(demandId, response)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  counterDiplomacyDemand(demandId: string, mode: 'lighter' | 'longer') {
+    const result = this.ensureDiplomacy().adapter.engine.counterDemand(demandId, mode)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  diplomacyApologize(airlineId: string) {
+    const result = this.ensureDiplomacy().adapter.engine.apologize(airlineId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  diplomacyEndeavor(airlineId: string) {
+    const result = this.ensureDiplomacy().adapter.engine.startEndeavor(airlineId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  /** Intro card for a T3+ exec the player has not met. Null for logo-only airlines. */
+  diplomacyMeet(airlineId: string) {
+    const engine = this.diplomacy?.adapter.engine
+    if (!engine) return null
+    const scene = engine.firstMeetScene(airlineId)
+    if (!scene) return null
+    const card = engine.getCard(airlineId)
+    if (!card?.figure) return null
+    return {
+      airlineId: scene.airlineId,
+      greeting: scene.greeting,
+      heard: scene.heard,
+      choices: scene.choices,
+      airline: card.name,
+      name: card.figure.name,
+      title: card.figure.title,
+      portrait: card.portrait,
+      traits: card.figure.traits,
+      agenda: card.figure.agenda,
+    }
+  }
+
+  resolveDiplomacyMeet(airlineId: string, choice: 'formal' | 'warm' | 'bold' | 'tour') {
+    const result = this.ensureDiplomacy().adapter.engine.resolveFirstMeet(airlineId, choice)
+    const tone = Number(result.data?.tone ?? 0)
+    this.pushNews(result.message, result.ok ? (tone >= 0 ? 'good' : 'bad') : 'bad')
+    this.emit()
+    return result
+  }
+
+  diplomacyReaction(airlineId: string, kind: 'sign' | 'perk' | 'hub' | 'slots' = 'sign') {
+    return this.diplomacy?.adapter.engine.previewReaction(airlineId, kind) ?? null
+  }
+
+  diplomacySpats() {
+    return this.diplomacy?.adapter.engine.openSpats() ?? []
+  }
+
+  answerDiplomacySpat(spatId: string, response: 'concede' | 'hold' | 'court', rivalId?: string) {
+    const result = this.ensureDiplomacy().adapter.engine.respondToSpat(spatId, response, rivalId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
+  }
+
+  requestDiplomacyHub(airlineId: string) {
+    const result = this.ensureDiplomacy().adapter.engine.requestHub(airlineId)
+    this.pushNews(result.message, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result
   }
 
   private adoptDiplomacyCarrier(id: string) {
@@ -1712,6 +2287,7 @@ export class Game {
     if (this.signed.includes(id)) return
     this.signed.push(id)
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
+    this.pullCarrierFromRival(id, rel.name)
     this.seedScheduleForAirline(id, 3)
     this.pushNews(`${rel.name} signed. Flights hit the timetable.`, 'good')
   }
@@ -1724,29 +2300,29 @@ export class Game {
     return sum / this.signed.length
   }
 
-  fieldXpToNext(): { level: AirlineTier; xp: number; need: number; pct: number } {
-    const level = this.fieldLevel()
-    if (level >= 5) {
-      return { level: 5, xp: this.fieldXp, need: FIELD_LEVEL_XP[5], pct: 1 }
-    }
-    const next = (level + 1) as AirlineTier
-    const floor = FIELD_LEVEL_XP[level]
-    const need = FIELD_LEVEL_XP[next]
-    const pct = need <= floor ? 1 : Math.min(1, (this.fieldXp - floor) / (need - floor))
-    return { level, xp: this.fieldXp, need, pct }
+  fieldXpToNext() {
+    return fieldProgress(this.fieldXp)
   }
 
   grantFieldXp(amount: number, why?: string) {
     if (amount <= 0) return
     const before = this.fieldLevel()
+    const starsBefore = prestigeStarsOf(this.fieldXp)
     this.fieldXp += amount
     const after = this.fieldLevel()
+    const starsAfter = prestigeStarsOf(this.fieldXp)
     if (after > before) {
+      const meta = after <= 5 ? AIRLINE_TIER_META[after as AirlineTier] : undefined
       this.pushNews(
-        `Field Level ${after} — ${AIRLINE_TIER_META[after].label} carriers will start calling.`,
+        meta
+          ? `Field Level ${after} — ${meta.label} carriers will start calling.`
+          : `Field Level ${after} — hub links open.`,
         'good',
       )
-    } else if (why && amount >= 12) {
+    }
+    if (starsAfter > starsBefore) {
+      this.pushNews(`Prestige star P${starsAfter}.`, 'good')
+    } else if (why && amount >= 12 && after === before) {
       /* quiet drip — big chunks can mention */
       void why
     }
@@ -1893,7 +2469,7 @@ export class Game {
       : 55
     const wear = this.avgWear()
     const wearScore = 100 - (wear.bath * 0.55 + wear.sec * 0.45)
-    const secScore = this.budgets.security
+    const secScore = this.budgetOf('security')
     const incidents = Math.min(20, this.securityIncidents)
     const raw =
       rep * 0.34 +
@@ -1974,6 +2550,7 @@ export class Game {
   abandonAirline(id: AirlineId, reason: string) {
     if (!this.signed.includes(id)) return
     const a = this.airline(id)
+    this.noteRivalWalkaway(a, reason)
     const lost = this.airlineReward[id] ?? null
     this.signed = this.signed.filter((x) => x !== id)
     this.diplomacy?.noteLeft(id)
@@ -1983,6 +2560,7 @@ export class Game {
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
     this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_ABANDON_THRESHOLD)
+    this.forfeitAirlineDeposit(id)
     this.charge(ABANDON_FINE)
     // Reverse persona unlocks — empty lounge / franchise leaves a scar.
     if (lost === 'brand_lounge') {
@@ -2038,9 +2616,177 @@ export class Game {
 
   landingFeeMult(airlineId: AirlineId): number {
     const r = this.rewardOf(airlineId)
+    // Negotiated percents land on each line in contractBill, not as a blanket.
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
-    const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
-    return negotiated === 1 ? base : base * negotiated
+    let mult = base * this.publishedFeeIndex * this.disruptions.feeMultiplier()
+    if (!Number.isFinite(mult) || mult <= 0) return 1
+    return Math.min(2, Math.max(0.5, mult))
+  }
+
+  private ensureRival(): RivalAirport {
+    if (!this.rival) this.rival = RivalAirport.create(this.diplomacySeed || 1)
+    return this.rival
+  }
+
+  private noteRivalWalkaway(a: Airline, reason: string) {
+    this.rivalWalkaways.push({
+      id: a.id,
+      name: a.name,
+      tier: a.tier,
+      kind: a.kind,
+      reason,
+    })
+  }
+
+  private playerRivalSnapshot(): PlayerSnapshot {
+    const stands = tilesOf(this.tiles, 'stand').length
+    const standing = this.signed.length
+      ? this.signed.reduce((sum, id) => sum + this.standingOf(id), 0) / this.signed.length
+      : this.reputation
+    const service = clamp(this.reputation * 0.55 + standing * 0.45, 0, 100)
+    return {
+      name: this.branding.airportName,
+      feeIndex: this.diplomacy?.adapter.engine.state.feeIndex ?? 1,
+      service,
+      capacity: stands,
+      reputation: this.reputation,
+      airlines: this.signed.map((id) => {
+        const carrier = this.airline(id)
+        return {
+          id,
+          name: carrier.name,
+          tier: carrier.tier,
+          kind: carrier.kind,
+          standing: this.standingOf(id),
+        }
+      }),
+    }
+  }
+
+  private advanceRivalDay() {
+    if (!this.site) return
+    const walked = this.rivalWalkaways.splice(0, this.rivalWalkaways.length)
+    const result = this.ensureRival().advanceDay(this.playerRivalSnapshot(), walked)
+    for (const move of result.moves) {
+      if (move.announce) this.pushNews(move.text, move.tone)
+    }
+    for (const carrier of result.poached) this.loseAirlineToRival(carrier.id)
+  }
+
+  /** Catchment load factor. 1 when Bellwater and the player split demand evenly. */
+  rivalDemandFactor(): number {
+    if (!this.site) return 1
+    return this.ensureRival().demand(this.playerRivalSnapshot()).playerFactor
+  }
+
+  rivalPanel() {
+    if (!this.rival) return null
+    return this.rival.panel(this.playerRivalSnapshot())
+  }
+
+  private pullCarrierFromRival(id: string, name: string) {
+    if (!this.site && !this.rival) return
+    const move = this.ensureRival().releaseToPlayer(id, name)
+    if (move?.announce) this.pushNews(move.text, move.tone)
+  }
+
+  /** Spend a real incentive to pull a Bellwater carrier onto this field. */
+  courtRivalCarrier(id: string) {
+    const carrier = this.allAirlines().find((a) => a.id === id)
+    if (!carrier) {
+      this.pushNews('That carrier is not in the book.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.signed.includes(id)) {
+      this.pushNews(`${carrier.name} already flies here.`, 'ok')
+      this.emit()
+      return
+    }
+    if (!this.meetsReq(id)) {
+      const miss = this.missingReq(id).slice(0, 3).join(', ')
+      this.pushNews(
+        miss ? `${carrier.name} wants ${miss} before basing here.` : `${carrier.name} won't base here yet.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const offer = this.playerRivalSnapshot()
+    const quote = this.ensureRival().quoteCourt(id, offer)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(quote.cost, `Court ${carrier.name}`)) return
+    const result = this.ensureRival().commitCourt(id, offer)
+    this.pushNews(result.text, result.won ? 'good' : 'bad')
+    if (result.won && !this.signed.includes(id)) {
+      this.signed.push(id)
+      if (this.airlineHeat[id] == null) this.airlineHeat[id] = 64
+      this.seedScheduleForAirline(id, 2)
+    }
+    this.emit()
+  }
+
+  /** Bellwater took a signed carrier. No abandon fine — the loss is the base. */
+  private loseAirlineToRival(id: AirlineId) {
+    if (!this.signed.includes(id)) return
+    const a = this.airline(id)
+    const lost = this.airlineReward[id] ?? null
+    this.signed = this.signed.filter((x) => x !== id)
+    this.diplomacy?.noteLeft(id)
+    this.mxSigned = this.mxSigned.filter((x) => x !== id)
+    this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+    delete this.airlineReward[id]
+    delete this.airlineWarned[id]
+    delete this.airlineLowAcc[id]
+    if (lost === 'brand_lounge') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit && (fit.rooms.lounge ?? 0) > 0) {
+        fit.rooms.lounge = Math.max(0, (fit.rooms.lounge ?? 0) - 1)
+      }
+      this.pushNews(`${a.name} pulled their lounge on the way to Bellwater.`, 'bad')
+    } else if (lost) {
+      this.pushNews(`${a.name} took ${REWARD_LABEL[lost]} with them to Bellwater.`, 'bad')
+    }
+    if (this.layover?.airline === id) this.layover = null
+    if (this.layoverOffer?.airline === id) this.layoverOffer = null
+    if (this.hubOffer?.airline === id) this.hubOffer = null
+    if (this.offer?.airline === id) this.offer = null
+    if (this.mxOffer?.airline === id) this.mxOffer = null
+    for (const s of this.schedule) {
+      if (s.airline === id && (s.status === 'scheduled' || s.status === 'delayed')) {
+        s.status = 'cancelled'
+        s.delayReason = 'poached'
+      }
+    }
+    for (const other of this.signed) this.adjustHeat(other, -3)
+    this.reputation = Math.max(0, this.reputation - RIVAL.poachReputationHit)
+  }
+
+  private rivalCargoUnits(units: number): number {
+    return Math.max(6, Math.round(units * this.rivalDemandFactor()))
+  }
+
+  private applyRivalLoad<T extends { pax: number; bagUnits: number }>(load: T, cargo: boolean): T {
+    if (cargo || load.pax <= 0) return load
+    const factor = this.rivalDemandFactor()
+    return {
+      ...load,
+      pax: Math.max(1, Math.round(load.pax * factor)),
+      bagUnits: load.bagUnits > 0 ? Math.max(1, Math.round(load.bagUnits * factor)) : 0,
+    }
+  }
+
+  /** Move the published fee index by a fraction (0.01 = 1%). Feeds Standing and landing fees. */
+  setPublishedFeeIndex(index: number) {
+    const next = Math.round(Math.max(0.8, Math.min(1.4, index)) * 100) / 100
+    if (next === this.publishedFeeIndex) return
+    this.publishedFeeIndex = next
+    this.ensureDiplomacy().adapter.engine.notePublishedFees(next)
+    this.emit()
   }
 
   hasResearch(id: ResearchId): boolean {
@@ -2063,6 +2809,13 @@ export class Game {
     if (node.minFieldLevel && this.fieldLevel() < node.minFieldLevel) {
       return { ok: false, why: `Needs Field level ${node.minFieldLevel}.` }
     }
+    const upgrade = hubUpgrade(id)
+    if (upgrade && this.fieldLevel() < upgrade.minFieldLevel) {
+      return { ok: false, why: `Need Field Level ${upgrade.minFieldLevel}.` }
+    }
+    if (upgrade && !this.sandbox && this.cash < upgrade.buildCost) {
+      return { ok: false, why: `Need ${moneyLeft(upgrade.buildCost)} cash.` }
+    }
     if (this.researchPoints < node.cost) {
       return {
         ok: false,
@@ -2080,6 +2833,11 @@ export class Game {
       this.pushNews(gate.why, 'bad')
       this.emit()
       return
+    }
+    const upgrade = hubUpgrade(id)
+    if (upgrade && upgrade.buildCost > 0) {
+      if (!this.spend(upgrade.buildCost, upgrade.name)) return
+      this.postJournal('construction', upgrade.buildCost, this.simMinutes())
     }
     this.researchPoints -= node.cost
     this.researchUnlocked.push(id)
@@ -2250,17 +3008,21 @@ export class Game {
     this.resetPillar()
     this.janitors = 0
     this.hallJanitors = []
+    this.seatBooks.clear()
+    this.diningStood.clear()
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.premium = createPremiumState()
     const focusBit =
       this.startFocus === 'cargo'
         ? 'Cargo focus — Starter kit builds shed + guard, no hall.'
         : this.startFocus === 'hybrid'
           ? 'Hybrid focus — hall + freight road.'
           : 'Passenger focus — Northline-ready hall kit.'
+    this.ensureRival()
     this.pushNews(
       `${land.name} purchased. ${focusBit} ${moneyLeft(this.cash)} left. Stamp Starter kit ($${STARTER_KIT_COST.toLocaleString()}) or build freehand.`,
       'ok',
@@ -2519,7 +3281,7 @@ export class Game {
         plots: this.site ? this.ownedPlots : [],
         assetValue: this.builtAssetValue(),
         incidents: this.securityIncidents,
-        fieldLevel: this.fieldLevel(),
+        fieldLevel: this.hostedFieldLevel(),
         operational: this.fieldIsOperating(),
         powerLoad: loads.power,
         waterLoad: loads.water,
@@ -2789,7 +3551,7 @@ export class Game {
       spendKind = 'landside'
     }
     // Drop-off / missing infra — no fee. Prefs + wallet gate the rest (RCT).
-    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
+    const traffic = this.rivalWalkInFactor()
     if (fee > 0 && traffic !== 1) fee = Math.round(fee * traffic)
     if (fee > 0 && spendKind) {
       const buy = this.tryGuestPay(g, fee, spendKind, false)
@@ -2838,10 +3600,11 @@ export class Game {
         best = Math.max(best, PARK_USE_FEE[kind][term])
       }
     }
-    if (best > 0) return best
-    if (term === 'short' && this.carParkShort) return PARK_SHORT_FEE
-    if (term === 'long' && this.carParkLong) return PARK_LONG_FEE
-    return term === 'short' ? PARK_SHORT_FEE : PARK_LONG_FEE
+    let raw = term === 'short' ? PARK_SHORT_FEE : PARK_LONG_FEE
+    if (best > 0) raw = best
+    else if (term === 'short' && this.carParkShort) raw = PARK_SHORT_FEE
+    else if (term === 'long' && this.carParkLong) raw = PARK_LONG_FEE
+    return this.listed(raw, term === 'short' ? 'carParkShort' : 'carParkLong')
   }
 
   /** Hotel night fee — premium/business prefer resort beds when present. */
@@ -2849,15 +3612,15 @@ export class Game {
     const classes = tilesOf(this.tiles, 'hotel').map(
       (p) => this.hotelClass[`${p.c},${p.r}`] ?? 'business',
     )
+    let raw = HOTEL_CLASS_FEE.business
     if (classes.length) {
-      if (tagSpendsUp(tag) && classes.includes('resort')) return HOTEL_CLASS_FEE.resort
-      if (tag === 'family' && classes.includes('inn')) return HOTEL_CLASS_FEE.inn
-      if (classes.includes('business')) return HOTEL_CLASS_FEE.business
-      if (classes.includes('inn')) return HOTEL_CLASS_FEE.inn
-      if (classes.includes('resort')) return HOTEL_CLASS_FEE.resort
-    }
-    if (this.hotelLevel > 0) return HOTEL_NIGHT_FEE
-    return HOTEL_CLASS_FEE.business
+      if (tagSpendsUp(tag) && classes.includes('resort')) raw = HOTEL_CLASS_FEE.resort
+      else if (tag === 'family' && classes.includes('inn')) raw = HOTEL_CLASS_FEE.inn
+      else if (classes.includes('business')) raw = HOTEL_CLASS_FEE.business
+      else if (classes.includes('inn')) raw = HOTEL_CLASS_FEE.inn
+      else if (classes.includes('resort')) raw = HOTEL_CLASS_FEE.resort
+    } else if (this.hotelLevel > 0) raw = HOTEL_NIGHT_FEE
+    return this.listed(raw, 'hotelNight')
   }
 
   /** Site pax mult with hotel / rail / car park / bus landside boosts. */
@@ -2883,13 +3646,13 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    const traffic = this.negotiationBridge?.trafficFactor() ?? 1
-    return traffic === 1 ? m : m * traffic
+    return m * this.rivalWalkInFactor() * this.tycoonDemand()
   }
 
   /**
-   * Fixed landside + hall-amenity operating expense / payroll tick.
-   * Billed in full whether used or idle — empty stamps bleed cash.
+   * Fixed landside + hall-amenity operating expense per game day.
+   * Catalog rates are already the old per-tick figure × 6. Billed once
+   * whether the rooms are full or idle.
    */
   landsideUpkeep(): number {
     let n = HOTEL_META_EXPENSE[clamp(this.hotelLevel, 0, 2)] ?? 0
@@ -2921,9 +3684,12 @@ export class Game {
         tier: fit.tier,
         items: (fit.items ?? []) as PlacedItem[],
         roomsSecurity: fit.rooms.security,
-      }).upkeepDay / 6
+      }).upkeepDay
     }
-    return Math.round(n)
+    for (const id of this.progressionBuilt) {
+      n += progressionBuildable(id)?.upkeepPerDay ?? 0
+    }
+    return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
 
   /** @deprecated alias — expense is the only "potential" now. */
@@ -3363,6 +4129,8 @@ export class Game {
       loanPrincipal: this.loanPrincipal,
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
+      specPaths: this.specPaths,
+      progressionBuilt: this.progressionBuilt,
       parcels: this.parcels,
       ownedPlots: this.ownedPlots,
       maintenanceContract: this.maintenanceContract,
@@ -3413,19 +4181,39 @@ export class Game {
       airlineWarned: this.airlineWarned,
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
+      missedConnections: this.missedConnections,
+      linkWear: this.linkWear,
+      linkDown: this.linkDown,
+      strandedGates: this.strandedGates,
+      linkExplanation: this.linkExplanation,
+      hubLinksBuilt: this.hubLinksBuilt,
       hubAirlines: this.hubAirlines,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
+      hintPrefs: this.hintPrefs,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
       sandbox: this.sandbox,
       sites: this.sites,
+      tier3: this.tier3.save(),
+      powerPlantTier: this.powerPlantTier,
       diplomacy: this.diplomacy?.save(),
       diplomacySeed: this.diplomacySeed,
+      publishedFeeIndex: this.publishedFeeIndex,
       negotiation: this.negotiationBridge?.save(),
+      priceWar: this.priceWar?.serialize(),
       inbound: this.inbound?.state,
+      fees: { ...this.fees },
+      depositTier: this.depositTier,
+      deposits: this.deposits,
+      commercialLead: this.commercialLead,
+      feeStandingApplied: this.feeStandingApplied,
+      premium: this.premium,
+      tycoon: this.tycoon.snapshot(),
+      rival: this.rival?.serialize(),
+      disruptions: this.disruptions.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -3464,7 +4252,13 @@ export class Game {
       this.payrollDay = Math.floor(Math.max(0, s.clock) / 180)
       this.levyMark = s.clock
       this.bank = new Bank(0)
+      this.fees = restoreFees(s.fees)
+      this.depositTier = restoreTier(s.depositTier)
+      this.deposits = restoreDeposits(s.deposits)
+      this.commercialLead = restoreLeads(s.commercialLead)
+      this.feeStandingApplied = s.feeStandingApplied ?? 0
       this.simClock = new SimClock({ simMinutes: Math.max(0, s.clock) * SIM_MINUTES_PER_REAL_SECOND })
+      this.tycoon.restore(s.tycoon, Math.floor(Math.max(0, s.clock) / REAL_SECONDS_PER_GAME_DAY))
       this.economy = null
       this.economyState = null
       this.economyView = null
@@ -3494,6 +4288,8 @@ export class Game {
         s.loanOpened ??
         (this.loanBalance > 0 ? LOAN_PRINCIPAL + LOAN_FEE : 0)
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
+      this.specPaths = (s.specPaths ?? []).filter((id): id is SpecPath => isSpecPath(id))
+      this.progressionBuilt = (s.progressionBuilt ?? []).filter((id) => Boolean(progressionBuildable(id)))
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
       this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
@@ -3530,6 +4326,7 @@ export class Game {
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
+      this.premium = restorePremium(s.premium)
       this.hallStaff = []
       this.public = s.public ?? false
       this.sharePrice = s.sharePrice ?? 0
@@ -3549,9 +4346,32 @@ export class Game {
       this.airlineLowAcc = {}
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
+      this.missedConnections = s.missedConnections ?? 0
+      this.linkWear = {
+        mover: Number.isFinite(s.linkWear?.mover) ? s.linkWear!.mover : 0,
+        bus: Number.isFinite(s.linkWear?.bus) ? s.linkWear!.bus : 0,
+      }
+      this.linkDown = {
+        mover: s.linkDown?.mover === true,
+        bus: s.linkDown?.bus === true,
+      }
+      this.strandedGates = (s.strandedGates ?? []).filter((id) => typeof id === 'string' && id.length > 0)
+      this.linkExplanation = typeof s.linkExplanation === 'string' ? s.linkExplanation : ''
+      this.hubLinksBuilt = {}
+      for (const [key, kind] of Object.entries(s.hubLinksBuilt ?? {})) {
+        if (kind === 'people_mover' || kind === 'xferbus' || kind === 'skywalk') this.hubLinksBuilt[key] = kind
+      }
+      this.hubLinks = []
+      this.tier3 = Tier3Session.restore(s.tier3)
+      this.powerPlantTier = s.powerPlantTier === 2 || s.powerPlantTier === 3 ? s.powerPlantTier : 1
       this.hubAirlines = s.hubAirlines ?? []
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
+      // The save wins; older saves fall back to the settings mirror, then to defaults.
+      this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
+      writeHintSettings(this.hintPrefs)
+      this.alerts.reset()
+      this.planAdvice = { key: '', list: [] }
       this.firstTakeoffNoted = this.flightsDone >= 1
       this.fieldTask = s.fieldTask ?? null
       this.fieldTaskCool = this.fieldTask ? 0 : 18
@@ -3576,9 +4396,13 @@ export class Game {
       this.sites = s.sites ?? []
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
+      this.disruptions = DisruptionBridge.restore(this.diplomacySeed, s.disruptions)
+      this.publishedFeeIndex = s.publishedFeeIndex ?? 1
+      this.missedByAirline = {}
       if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
       this.negotiationBridge = null
       if (s.negotiation) this.negotiationDesk().load(s.negotiation)
+      this.priceWar = PriceWar.restore(s.priceWar)
       if (s.inbound) {
         this.inbound = InboundBridge.restore(s.inbound, this.diplomacySeed)
       } else {
@@ -3586,6 +4410,9 @@ export class Game {
         this.inbound.state.clock = this.clock
         this.inbound.state.rolledDay = Math.floor(this.clock / SIM_DAY_SEC)
       }
+      this.rival = RivalAirport.restore(s.rival)
+      this.rivalWalkaways = []
+      if (this.site && !this.rival) this.ensureRival()
       this.cargoVolume = s.cargoVolume ?? null
       this.cargoVolumeCool = this.cargoVolume ? 0 : 25
       this.loanNewsCool = 0
@@ -3603,6 +4430,7 @@ export class Game {
       this.view = 'apron'
       this.bumpMap()
       this.pushNews('Field restored. Clock paused.', 'ok')
+      this.syncDisruptionAlert()
       this.emit()
       return Boolean(this.site)
     } catch {
@@ -3623,6 +4451,7 @@ export class Game {
   /** Call after any apron tile or stand/park/hotel class stamp changes. */
   bumpMap() {
     this.mapRev += 1
+    this.adviceDirty = true
   }
 
   spend(amount: number, label: string): boolean {
@@ -3757,6 +4586,8 @@ export class Game {
       this.dayMark = this.clock
       const retail = this.negotiationBridge?.rollDay() ?? 0
       if (retail > 0) this.earn(retail, 'ULCC retail')
+      this.advanceRivalDay()
+      this.advancePriceWarDay()
     }
     if (this.econHour < hour) return
     this.incomePerHour = Math.round(this.hourIncome)
@@ -3789,12 +4620,184 @@ export class Game {
     return Math.round(pool.reduce((sum, n) => sum + n, 0) / pool.length)
   }
 
-  earn(amount: number, label: string, flight?: Flight) {
+  earn(
+    amount: number,
+    label: string,
+    flight?: Flight,
+    category: MoneyCategory = 'landing_fees',
+    announce = true,
+  ) {
+    if (!(amount > 0) || !Number.isFinite(amount)) return
     this.cash += amount
     this.revenue += amount
-    this.noteIncome(amount)
+    this.noteIncome(amount, category)
     if (flight) flight.ledger.push({ label, amount })
-    this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+    if (announce) this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+  }
+
+  /** Walk-in traffic multiplier from the fee card. 1 at the published prices. */
+  walkInDemand(): number {
+    return walkInDemandOf(this.fees)
+  }
+
+  setFee(key: keyof FeeSchedule, value: number) {
+    this.fees = editFee(this.fees, key, value)
+    this.syncFeeStanding()
+    this.emit()
+  }
+
+  setDepositTier(tier: CommercialDepositTier) {
+    this.depositTier = tier
+    this.emit()
+  }
+
+  /** List price times the player's slider. Default schedule leaves the amount alone. */
+  private listed(amount: number, key: keyof FeeSchedule): number {
+    return this.afterRivalMargin(scaleListed(amount, this.fees[key], DEFAULT_FEE_SCHEDULE[key]))
+  }
+
+  private feeTier(airlineId: string): CommercialDepositTier {
+    return this.deposits[airlineId]?.tier ?? 'standard'
+  }
+
+  /**
+   * List amount after the deposit tier, then the signed line (percent and freebies).
+   * Walk-ins stay on the list price.
+   */
+  private contractBill(
+    flight: Flight,
+    amount: number,
+    group: 'landing' | 'service',
+    service: ServiceId,
+  ): number {
+    const walkIn = this.walkInFlight(flight)
+    const tier = this.feeTier(flight.airline)
+    const priced =
+      group === 'landing' ? landingCharge(amount, tier, walkIn) : serviceCharge(amount, tier, walkIn)
+    if (walkIn || !(priced > 0)) return priced
+    const factor = this.negotiationBridge?.lineFactor(flight.airline, service) ?? 1
+    if (!Number.isFinite(factor) || factor === 1) return priced
+    return Math.round(priced * Math.max(0, factor))
+  }
+
+  /** Live fee card for the offer sheet. Sliders move these numbers; the ask percent does not. */
+  liveQuote(id: string) {
+    const catalog = AIRLINES[id] ?? this.extraAirlines.find((airline) => airline.id === id)
+    const profile = this.negotiationBridge?.desk.profile(id)
+    const landingBase = catalog?.landing ?? profile?.posted.landing ?? 0
+    const bagsBase = catalog?.bags ?? profile?.posted.bags ?? 0
+    const cateringBase = catalog?.catering ?? profile?.posted.catering ?? 0
+    const pax = catalog
+      ? Math.max(1, Math.round(((catalog.paxMin ?? 0) + (catalog.paxMax ?? 0)) / 2) || 1)
+      : Math.max(1, profile?.seats ?? 1)
+    const turns = (catalog?.tier ?? 0) >= 4 ? 3 : (profile?.flightsPerDay ?? 4)
+    const fuelBase = this.fuelBrand ? FUEL[this.fuelBrand].pump : (profile?.posted.fuel ?? 0)
+    const cateringPay = this.caterBrand ? CATER[this.caterBrand].payoutMult : 1
+    return {
+      landing: this.listed(landingBase, 'landingPerTonne'),
+      paxFee: this.fees.paxFee,
+      bags: this.listed(bagsBase, 'bagsPerBag'),
+      fuel: this.listed(fuelBase, 'fuelMarkupPerLitre'),
+      catering: this.listed(Math.round(cateringBase * cateringPay), 'cateringPerCart'),
+      parking: this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'),
+      pax,
+      turnsPerDay: turns,
+      handlingPerDay: catalog ? Math.round(landingBase * 0.35) : (profile?.handlingPerDay ?? Math.round(landingBase * 0.35)),
+    }
+  }
+
+  private walkInFlight(f: Flight): boolean {
+    return Boolean(f.ga) || f.airline === 'ga'
+  }
+
+  /** Sim-clock before which this airline's first flight stays on the ground. 0 once it has flown. */
+  leadGateClock(airlineId: string): number {
+    const lead = this.commercialLead[airlineId]
+    if (!lead || lead.opened) return 0
+    return firstFlightClock(lead)
+  }
+
+  /** Push an early slot out to the lead gate. Returns true when it is not yet allowed to launch. */
+  private holdLead(slot: ScheduleSlot): boolean {
+    const gate = this.leadGateClock(slot.airline)
+    if (!(gate > 0) || slot.eta >= gate - 0.05) return false
+    slot.eta = gate
+    slot.delayReason = 'Lead time'
+    return true
+  }
+
+  private syncFeeStanding() {
+    const next = standingForFees(this.fees)
+    const diff = next - this.feeStandingApplied
+    this.feeStandingApplied = next
+    if (diff === 0) return
+    for (const id of this.signed) this.adjustHeat(id, diff)
+  }
+
+  private postDepositEntry(entry: Parameters<typeof depositCashPost>[0]) {
+    const post = depositCashPost(entry)
+    if (!post) return
+    this.cash += post.amount
+    if (post.amount > 0) this.noteIncome(post.amount, post.category)
+    else {
+      this.noteExpense(-post.amount)
+      this.postJournal(post.category, -post.amount, this.simMinutes())
+    }
+  }
+
+  private noteCommercialSign(id: AirlineId, airline: Airline) {
+    const terms = this.negotiationBridge?.signedTerms(id) ?? null
+    const starter = this.signed.length === 1
+    const lead = openLead({
+      clock: this.clock,
+      starter,
+      tier: airline.tier,
+      hub: this.isHub(id),
+    })
+    if (terms?.freebies.waivedLeadTime) lead.leadDays = 0
+    this.commercialLead[id] = lead
+    if (this.feeStandingApplied !== 0) this.adjustHeat(id, this.feeStandingApplied)
+    const day = Math.floor(Math.max(0, this.clock) / 180)
+    const taken = signDeposit({
+      airlineId: id,
+      tier: terms ? commercialDepositTier(terms.deposit) : this.depositTier,
+      landingFee: airline.landing,
+      day,
+    })
+    if (terms) taken.account.termEndDay = day + terms.termMonths * TERM_DAYS
+    this.deposits[id] = taken.account
+    this.postDepositEntry(taken.entry)
+  }
+
+  /** Term-end refunds. Called when a game day closes. */
+  settleDeposits(completedDay: number) {
+    for (const id of Object.keys(this.deposits)) {
+      const account = this.deposits[id]
+      const settled = settleHeld(account, completedDay)
+      if (!settled) continue
+      this.deposits[id] = settled.account
+      this.postDepositEntry(settled.entry)
+      if (settled.entry.amount < 0) {
+        const name = this.airline(id as AirlineId).name
+        this.pushNews(
+          `${name} deposit refunded $${(-settled.entry.amount).toLocaleString('en-US')}.`,
+          'ok',
+        )
+      }
+    }
+  }
+
+  private forfeitAirlineDeposit(id: AirlineId) {
+    const account = this.deposits[id]
+    if (!account) return
+    const kept = forfeitHeld(account, Math.floor(Math.max(0, this.clock) / 180))
+    this.deposits[id] = kept.account
+    if (kept.entry.retained > 0) {
+      this.pushNews(
+        `${this.airline(id).name} cancelled early — deposit $${kept.entry.retained.toLocaleString('en-US')} forfeited.`,
+        'ok',
+      )
+    }
   }
 
   setTool(tool: Tool) {
@@ -4215,6 +5218,10 @@ export class Game {
       fault === 'missed_connection'
         ? 'Lost-bag desk — my bag missed the connection'
         : 'Lost-bag desk — my bag is late'
+    if (fault === 'missed_connection') {
+      const airlineId = this.flights.find((f) => f.id === g.flightId)?.airline
+      if (airlineId) this.missedByAirline[airlineId] = (this.missedByAirline[airlineId] ?? 0) + 1
+    }
   }
 
   /** Teaching halls never lose a bag. A redesigned hall can. */
@@ -4309,7 +5316,10 @@ export class Game {
     cargo: boolean,
   ): { pax: number; bagUnits: number; fuelLevel: number } {
     const freighter = cargo || af.kind === 'freighter'
-    const pax = freighter ? 0 : paxForAirframe(af)
+    const basePax = freighter ? 0 : paxForAirframe(af)
+    const pax = freighter
+      ? 0
+      : Math.max(af.paxMin, Math.min(af.paxMax, Math.round(basePax * this.tycoonDemand())))
     const bagUnits = freighter
       ? 0
       : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
@@ -4412,7 +5422,7 @@ export class Game {
             patrol: false,
             mission: 'city_shed',
             home: sheds[0],
-            cargoUnits: 10 + Math.floor(Math.random() * 14),
+            cargoUnits: this.rivalCargoUnits(10 + Math.floor(Math.random() * 14)),
           })
           this.securityIncidents += 1
           this.pushNews(
@@ -4435,7 +5445,7 @@ export class Game {
     const queue = this.trucks.filter(
       (t) => t.kind === 'citycargo' && t.mission === 'city_guard',
     ).length
-    const units = 12 + Math.floor(Math.random() * 16)
+    const units = this.rivalCargoUnits(12 + Math.floor(Math.random() * 16))
     this.trucks.push({
       id: uid('city'),
       kind: 'citycargo',
@@ -4602,8 +5612,9 @@ export class Game {
     else if (open.has('security')) this.routeGuest(g, 'security', open)
     else g.thought = 'No security lane — stuck before security'
     if (g.thought !== 'No security lane — stuck before security') {
-      g.thought = 'Rolling a bag to check-in'
+      g.thought = g.usedPremiumCheckin ? 'Premium check-in' : 'Rolling a bag to check-in'
     }
+    this.notePremiumDesk(g)
   }
 
   /** Focus a campus hall (from HUD chips or pan-click). */
@@ -4627,9 +5638,11 @@ export class Game {
     )
     const a = this.airline(f.airline)
     const departWave: HallGuest[] = []
+    const arrivals: HallGuest[] = []
     for (let i = 0; i < count; i++) {
       const tag: PaxTag = rollPaxTag(a.persona)
       const g = spawnHallGuest(f.id, job, tag, { airlineId: f.airline, hallId })
+      g.serviceCabin = cabinFromGuest(tag, a.persona, g.id)
       const modes = this.pickGuestMode(tag, a.persona, job)
       g.preferMode = modes.prefer
       g.arriveMode = modes.actual
@@ -4661,6 +5674,7 @@ export class Game {
         else if (open.has('exit')) this.routeGuest(g, 'exit', open)
         g.hasChecked = false
         g.carryOn = true
+        arrivals.push(g)
       } else {
         g.node = 'entrance'
         g.clearedSec = false
@@ -4671,20 +5685,24 @@ export class Game {
       }
       this.hallGuests.push(g)
     }
+    if (arrivals.length) this.noteHubArrivals(f, arrivals)
     if (departWave.length) this.releaseDepartureWave(departWave, f, open)
   }
 
   /** Fallback wave (boarding with no banked plan, or a direct seed). Drips — never a single dump. */
   private releaseDepartureWave(wave: HallGuest[], f: Flight, open: Set<HallNode>) {
     const std = f.std ?? this.clock + PLANNED_TURN_SEC
-    const times = planShowUp({
-      std,
-      now: this.clock,
-      tags: wave.map((g) => g.tag),
-      intl: isIntlKind(f.kind),
-    })
+    const intl = isIntlKind(f.kind)
+    const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.activeHall() ?? this.fits[0] ?? null
+    const persona = this.airline(f.airline).persona
+    const hallId = fit ? this.hallKey(fit) : ''
+    const drawn = this.composeDeparture(wave.length, std, intl, persona, fit, hallId)
     wave.forEach((g, i) => {
-      const at = times[i] ?? this.clock
+      const tag = drawn.tags[i]
+      const seat = drawn.seats[i]
+      if (tag) g.tag = tag
+      if (seat) this.paintShowUp(g, seat)
+      const at = drawn.releases[i] ?? this.clock
       if (at <= this.clock + 0.001) this.openDepartingGuest(g, open)
       else {
         g.releaseAt = at
@@ -4694,6 +5712,163 @@ export class Game {
         g.thought = 'On the way to the doors'
       }
     })
+  }
+
+  /** Lounge quality, an open fast-track, and how business-heavy this carrier is. */
+  private showUpFactsFor(fit: TerminalFit | null, intl: boolean, persona: string): ShowUpFacts {
+    const rooms = Math.max(0, fit?.rooms.lounge ?? 0)
+    return {
+      loungeQuality: Math.min(1, rooms * LOUNGE_QUALITY_PER_ROOM),
+      fastTrackAvailable: this.fastTrackOpen(fit),
+      intl,
+      businessMix: businessMixForPersona(persona),
+    }
+  }
+
+  /**
+   * Premium fast-track when that module is on the sim and a lane is built.
+   * Otherwise any open security lane is the fast-track.
+   */
+  private fastTrackOpen(fit: TerminalFit | null): boolean {
+    const built = this.premium?.built
+    if (Array.isArray(built) && built.some((b) => String(b.itemId ?? '').startsWith('fast_track'))) {
+      return true
+    }
+    if (!fit) return false
+    const lane = laneStats({
+      premade: fit.premade ?? false,
+      redesigned: fit.redesigned,
+      tier: fit.tier,
+      items: (fit.items ?? []) as PlacedItem[],
+      roomsSecurity: fit.rooms.security ?? 0,
+    })
+    return lane.servers > 0
+  }
+
+  /** Draw a wave from the show-up adapter and snap the leads onto the entrance cap. */
+  private composeDeparture(
+    count: number,
+    std: number,
+    intl: boolean,
+    persona: string,
+    fit: TerminalFit | null,
+    hallId: string,
+    exceptSlot?: string,
+  ): { tags: ShowTag[]; releases: number[]; seats: ShowUpSeat[] } {
+    this.paxAdapter.setFacts(this.showUpFactsFor(fit, intl, persona))
+    const profiles = this.paxAdapter.sample(count)
+    const stamps = profiles.map((p) => stampDeparture(p, std))
+    const tags = stamps.map((s) => s.walletTag)
+    const seats: ShowUpSeat[] = stamps.map((s, i) => ({
+      segment: s.segment,
+      preferFastTrack: s.preferFastTrack,
+      amenity: s.amenity,
+      leadSimSec: profiles[i]?.leadSimSec ?? 0,
+      spendLounge: s.spend.lounge,
+      spendAmenity: s.spend.amenity,
+      willLounge: s.willingness.lounge,
+      willAmenity: s.willingness.amenity,
+      moodArrive: s.mood.onArrival,
+      moodFast: s.mood.onFastTrack,
+      moodStandard: s.mood.onStandardQueue,
+      moodLounge: s.mood.onLoungeVisit,
+      moodMiss: s.mood.onLoungeMiss,
+      intlApplied: intl,
+    }))
+    const releases = planShowUp({
+      std,
+      now: this.clock,
+      tags,
+      intl,
+      taken: this.entranceReleaseTimes(hallId, exceptSlot),
+      desired: stamps.map((s) => s.releaseAt),
+    })
+    return this.orderDeparture(tags, releases, seats)
+  }
+
+  /** Keep tag, release, and seat aligned, earliest release first. */
+  private orderDeparture(
+    tags: ShowTag[],
+    releases: number[],
+    seats: ShowUpSeat[],
+  ): { tags: ShowTag[]; releases: number[]; seats: ShowUpSeat[] } {
+    const order = releases.map((_, i) => i).sort((a, b) => releases[a] - releases[b] || a - b)
+    return {
+      tags: order.map((i) => tags[i]),
+      releases: order.map((i) => releases[i]),
+      seats: order.map((i) => seats[i]),
+    }
+  }
+
+  /** Move unreleased bodies when STD shifts, using the lead they were stamped with. */
+  private restampRemaining(plan: ShowUpPlan) {
+    if (!plan.seats || plan.seats.length !== plan.tags.length) return
+    if (plan.spawned >= plan.tags.length) return
+    const seats = plan.seats.slice(plan.spawned)
+    const tags = plan.tags.slice(plan.spawned)
+    const desired = seats.map((s) => plan.std - s.leadSimSec)
+    const fresh = planShowUp({
+      std: plan.std,
+      now: this.clock,
+      tags,
+      intl: plan.intl,
+      taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+      desired,
+    })
+    const ordered = this.orderDeparture(tags, fresh, seats)
+    plan.tags = [...plan.tags.slice(0, plan.spawned), ...ordered.tags]
+    plan.releases = [...plan.releases.slice(0, plan.spawned), ...ordered.releases]
+    plan.seats = [...plan.seats.slice(0, plan.spawned), ...ordered.seats]
+  }
+
+  /** Wide-body banks show a little earlier. Applied once per unreleased seat. */
+  private applyIntlLead(plan: ShowUpPlan) {
+    if (!plan.intl || !plan.seats) return
+    const cap = SHOWUP_LEAD_GAME_MIN / GAME_MINUTES_PER_SIM_SECOND
+    let changed = false
+    for (let i = plan.spawned; i < plan.seats.length; i++) {
+      const seat = plan.seats[i]
+      if (!seat || seat.intlApplied) continue
+      const extraMin = SHOWUP_WINDOWS[seat.segment].intlExtra
+      seat.leadSimSec = Math.min(cap, seat.leadSimSec + extraMin / GAME_MINUTES_PER_SIM_SECOND)
+      seat.intlApplied = true
+      changed = true
+    }
+    if (changed) this.restampRemaining(plan)
+  }
+
+  private paintShowUp(g: HallGuest, seat: ShowUpSeat) {
+    g.showUp = seat
+    g.happiness = Math.max(0, Math.min(100, g.happiness + seat.moodArrive))
+    if (seat.segment === 'lounge_lover') {
+      g.needs.energy = Math.max(g.needs.energy, 72)
+      g.needs.shop = Math.max(g.needs.shop, 74)
+      g.needs.boarding = Math.max(g.needs.boarding, 58)
+      g.prefs.lounge = Math.max(g.prefs.lounge, 0.92)
+      g.prefs.shop = Math.max(g.prefs.shop, 0.88)
+      const bill = Math.max(0, seat.spendLounge) + Math.max(0, seat.spendAmenity)
+      const floor = Math.ceil(bill / 0.75) + 12
+      if (g.wallet < floor) g.wallet = floor
+    } else if (seat.segment === 'road_warrior') {
+      g.needs.hunger = Math.min(g.needs.hunger, 28)
+      g.prefs.lounge = Math.min(g.prefs.lounge, 0.15)
+    }
+  }
+
+  /** The jet has pushed. A body that has not reached the gate is a miss, not a lost passenger. */
+  private planFlightGone(plan: ShowUpPlan): boolean {
+    if (!plan.flightId) return false
+    const f = this.flights.find((x) => x.id === plan.flightId)
+    if (!f) return this.departedFlights.has(plan.flightId)
+    return f.phase === 'pushback' || f.phase === 'taxi_out' || f.phase === 'takeoff' || f.phase === 'gone'
+  }
+
+  private noteCleanMiss(plan: ShowUpPlan) {
+    this.missedFlights += 1
+    this.hallMissNews(
+      `late-${plan.slotId}`,
+      `Late passenger on ${plan.slotId.slice(0, 12)} — the flight had left.`,
+    )
   }
 
   private visualDepartureCount(f: Flight): number {
@@ -4719,25 +5894,18 @@ export class Game {
     if (a.kind === 'cargo') return
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) return
-    const tags: ShowTag[] = []
-    for (let i = 0; i < 12; i++) tags.push(rollPaxTag(a.persona))
     const std = slot.eta + PLANNED_TURN_SEC
     const hallId = this.hallKey(fit)
-    const releases = planShowUp({
-      std,
-      now: this.clock,
-      tags,
-      intl: false,
-      taken: this.entranceReleaseTimes(hallId),
-    })
+    const drawn = this.composeDeparture(12, std, false, a.persona, fit, hallId)
     this.showUps.push({
       slotId: slot.id,
       std,
       hallId,
       airlineId: slot.airline,
       intl: false,
-      tags,
-      releases,
+      tags: drawn.tags,
+      releases: drawn.releases,
+      seats: drawn.seats,
       spawned: 0,
       flightId: null,
       closed: false,
@@ -4811,13 +5979,20 @@ export class Game {
   }
 
   private spawnShowUpGuest(plan: ShowUpPlan, open: Set<HallNode>) {
+    if (this.planFlightGone(plan)) {
+      this.noteCleanMiss(plan)
+      return
+    }
     const tag = plan.tags[plan.spawned] ?? 'budget'
     const flightId = plan.flightId ?? `slot:${plan.slotId}`
     const g = spawnHallGuest(flightId, 'depart', tag, {
       airlineId: plan.airlineId,
       hallId: plan.hallId,
     })
+    const seat = plan.seats?.[plan.spawned]
+    if (seat) this.paintShowUp(g, seat)
     const persona = this.airline(plan.airlineId as AirlineId).persona
+    g.serviceCabin = cabinFromGuest(tag, persona, g.id)
     const modes = this.pickGuestMode(tag, persona, 'depart')
     g.preferMode = modes.prefer
     g.arriveMode = modes.actual
@@ -4841,6 +6016,10 @@ export class Game {
     const flight = plan.flightId ? this.flights.find((f) => f.id === plan.flightId) : undefined
     if (flight) flight.std = std
     if (plan.spawned >= plan.tags.length) return
+    if (plan.seats && plan.seats.length === plan.tags.length) {
+      this.restampRemaining(plan)
+      return
+    }
     const remain = plan.tags.slice(plan.spawned)
     const fresh = planShowUp({
       std,
@@ -4883,27 +6062,32 @@ export class Game {
       this.tuneDepartureGuest(g, f)
     }
     const want = this.visualDepartureCount(f)
+    const persona = this.airline(f.airline).persona
     if (want > plan.tags.length) {
-      const extra: ShowTag[] = []
-      const persona = this.airline(f.airline).persona
-      for (let i = plan.tags.length; i < want; i++) extra.push(rollPaxTag(persona))
-      const more = planShowUp({
-        std: plan.std,
-        now: this.clock,
-        tags: extra,
-        intl: plan.intl,
-        taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
-      })
-      plan.tags.push(...extra)
-      plan.releases.push(...more)
+      const extra = this.composeDeparture(
+        want - plan.tags.length,
+        plan.std,
+        plan.intl,
+        persona,
+        fit ?? null,
+        plan.hallId,
+        plan.slotId,
+      )
+      plan.tags.push(...extra.tags)
+      plan.releases.push(...extra.releases)
+      plan.seats = [...(plan.seats ?? []), ...extra.seats]
     } else if (want < plan.tags.length) {
       const cut = Math.min(plan.tags.length - want, plan.tags.length - plan.spawned)
       if (cut > 0) {
         plan.tags.splice(plan.tags.length - cut, cut)
         plan.releases.splice(plan.releases.length - cut, cut)
+        plan.seats?.splice(plan.seats.length - cut, cut)
       }
     }
-    if (plan.intl && plan.spawned < plan.tags.length) {
+    if (plan.seats && plan.seats.length === plan.tags.length) {
+      this.applyIntlLead(plan)
+      this.restampRemaining(plan)
+    } else if (plan.intl && plan.spawned < plan.tags.length) {
       const remain = plan.tags.slice(plan.spawned)
       const fresh = planShowUp({
         std: plan.std,
@@ -4968,7 +6152,10 @@ export class Game {
     const zone = NODE_ZONE[g.node]
     const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
     g.seated = false
-    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+    if (g.meal) {
+      // A diner holds their own booked seat; tickMeal rests them. Take it out of the waiting pool.
+      if (zone && free > 0 && g.meal.walk <= 0) state.seatsLeft.set(zone, free - 1)
+    } else if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
       state.seatsLeft.set(zone, free - 1)
       g.seated = true
       g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
@@ -5013,6 +6200,32 @@ export class Game {
     g.snack = { kind, left: snackMinutes(kind, u) / GAME_MINUTES_PER_SIM_SECOND }
   }
 
+  /**
+   * A sit-down meal leaves its wrapper at the seat. A meal with no seat still
+   * uses the counter cell only when the caller passes one; walk-away food uses
+   * the snack in hand instead, so the rubbish is not dropped at the counter.
+   */
+  litterFromMeal(
+    fit: TerminalFit,
+    outlet: PlacedItem | null,
+    seat?: { c: number; r: number },
+  ): 'bin' | 'floor' | null {
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const cells = seat
+      ? [{ c: seat.c, r: seat.r }]
+      : outlet
+        ? [{ c: outlet.c, r: outlet.r }]
+        : foodCells(hall)
+    if (!cells.length) return null
+    this.litterSeq += 1
+    const n = this.litterSeq
+    const at = cells[n % cells.length]
+    let k = 0
+    const jitter = () => ((n * 7919 + ++k * 104729) % 1000) / 1000
+    return dropLitter(hall, at.c, at.r, `lit-${n}`, jitter)
+  }
+
   /** Track the guest's spot and count down the snack in hand. */
   tickSnack(g: HallGuest, dt: number) {
     g.spot = this.guestSpot(g)
@@ -5038,6 +6251,130 @@ export class Game {
     const cols = hall.zones[0]?.length || GRID_C
     this.litterSeq += 1
     return dropLitterAt(hall, cellAt(spot.x, spot.y, cols, rows), `lit-${this.litterSeq}`)
+  }
+
+  /** Seat bookings for one hall. */
+  seatBook(fit: TerminalFit): SeatBook {
+    const key = this.hallKey(fit)
+    let book = this.seatBooks.get(key)
+    if (!book) {
+      book = new Map()
+      this.seatBooks.set(key, book)
+    }
+    return book
+  }
+
+  /** Diners who ate standing in this hall inside the advisor window. */
+  diningStoodRecently(fit: TerminalFit): number {
+    const key = this.hallKey(fit)
+    const since = this.clock - DINING_TUNING.standWindowSec
+    const list = (this.diningStood.get(key) ?? []).filter((t) => t >= since)
+    this.diningStood.set(key, list)
+    return list.length
+  }
+
+  /**
+   * After a meal at a placed outlet, a diner with time claims a free seat near
+   * the counter and walks to it. No seat means eating on their feet, a little
+   * less happy. Coffee, a passer-by, or a diner short on time eats on the walk.
+   * After 'sat' the litter waits for the end of the meal.
+   */
+  seatDiner(g: HallGuest, fit: TerminalFit, outlet: PlacedItem): 'sat' | 'stood' | 'walk' {
+    if (DINING_TUNING.walkAway.includes(outlet.def)) return 'walk'
+    // Passing through the court on the way somewhere else — eat on the move.
+    if (g.path.length && g.seg < g.path.length - 1) return 'walk'
+    const mealSec = consumeSec(outlet.def)
+    const depart = g.job === 'depart'
+    const time = hasTimeToSit({
+      job: g.job,
+      boardingCall: depart && this.flightBoardingCall(g),
+      clockRunning: depart && this.departureClockRunning(g),
+      boarding: g.needs.boarding,
+      mealSec,
+    })
+    if (!time) return 'walk'
+    const seats = seatsNear((fit.items ?? []) as PlacedItem[], outlet.c, outlet.r)
+    // No seat furniture nearby: they leave with the food. A full bench is the
+    // standing case, and that wrapper drops at the counter.
+    if (!seats.length) return 'walk'
+    const seat = claimSeat(this.seatBook(fit), seats, g.id)
+    if (!seat) {
+      g.happiness -= DINING_TUNING.standJoyHit
+      const key = this.hallKey(fit)
+      const list = this.diningStood.get(key) ?? []
+      list.push(this.clock)
+      this.diningStood.set(key, list)
+      return 'stood'
+    }
+    const cols = fit.zones?.[0]?.length || GRID_C
+    const walkSec = walkSecTo(outlet.c, outlet.r, seat, HALL_W / cols)
+    g.meal = {
+      seatId: seat.id,
+      itemId: seat.itemId,
+      c: seat.c,
+      r: seat.r,
+      slot: seat.slot,
+      table: seat.table,
+      walk: walkSec,
+      walkSec,
+      left: mealSec,
+    }
+    return 'sat'
+  }
+
+  /**
+   * A diner walks to their seat, sits, and eats. True while the meal holds
+   * them. A boarding call or a clock running short ends it early, so a seat
+   * never holds anyone past their flight.
+   */
+  tickMeal(g: HallGuest, dt: number): boolean {
+    const meal = g.meal
+    if (!meal) return false
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit || !(fit.items ?? []).some((it) => it.id === meal.itemId)) return this.endMeal(g, fit)
+    const book = this.seatBook(fit)
+    if (book.get(meal.seatId) !== g.id) {
+      // Claims are not saved. After a load, take the seat back if it is free.
+      if (book.has(meal.seatId)) return this.endMeal(g, fit)
+      book.set(meal.seatId, g.id)
+    }
+    const moving = g.path.length > 0 && g.seg < g.path.length - 1
+    const depart = g.job === 'depart'
+    const late = !hasTimeToSit({
+      job: g.job,
+      boardingCall: depart && this.flightBoardingCall(g),
+      clockRunning: depart && this.departureClockRunning(g),
+      boarding: g.needs.boarding,
+      mealSec: 0,
+    })
+    if (moving || late || g.node !== 'food') return this.endMeal(g, fit)
+    if (meal.walk > 0) {
+      meal.walk = Math.max(0, meal.walk - dt)
+      g.thought = 'Taking my tray to a seat'
+      return true
+    }
+    g.seated = true
+    g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
+    g.happiness = Math.min(100, g.happiness + dt * DINING_TUNING.seatedJoyPerSec)
+    g.needs.shop = Math.min(100, g.needs.shop + dt * DINING_TUNING.seatedShopPerSec)
+    meal.left -= dt
+    g.thought = meal.table ? 'Eating at a table' : 'Eating on a bench'
+    if (meal.left > 0) return true
+    this.endMeal(g, fit)
+    g.thought = 'Good meal — off again'
+    return false
+  }
+
+  /** Stand up: free the seat and leave the wrapper at it. */
+  private endMeal(g: HallGuest, fit: TerminalFit | null): false {
+    const meal = g.meal
+    g.meal = undefined
+    g.seated = false
+    if (meal && fit) {
+      releaseSeat(this.seatBook(fit), g.id)
+      this.litterFromMeal(fit, null, meal)
+    }
+    return false
   }
 
   /** Keep one hall janitor per hire, shared round-robin across halls. */
@@ -5067,7 +6404,7 @@ export class Game {
   /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
   tickHallJanitors(dt: number) {
     this.syncHallJanitors()
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     if (clean >= LITTER_TUNING.minCleaningBudget) {
       const claimed = new Map<string, Set<string>>()
       for (const j of this.hallJanitors) {
@@ -5086,7 +6423,7 @@ export class Game {
     }
     this.litterAdviceCool -= dt
     if (this.litterAdviceCool <= 0) {
-      this.litterAdviceCool = 5
+      this.litterAdviceCool = HINT_REFRESH_SEC
       this.refreshAdvice()
     }
   }
@@ -5105,11 +6442,13 @@ export class Game {
   tickHall(dt: number) {
     if (!this.fits.length) {
       this.hallGuests = []
+      this.seatBooks.clear()
       return
     }
     const anyOpen = this.fits.some((f) => this.hallOpenFor(f).size > 0)
     if (!anyOpen) {
       this.hallGuests = []
+      this.seatBooks.clear()
       return
     }
     const kit = new Map<string, HallKitState>()
@@ -5166,10 +6505,12 @@ export class Game {
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
       )
       if (g.job === 'depart' && this.departureClockRunning(g)) {
-        g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
+        g.needs.boarding = Math.max(0, g.needs.boarding - dt * DINING_TUNING.boardingDrainPerSec)
       }
       this.applyHallKit(g, dt, kit)
       this.tickSnack(g, dt)
+      // A diner at a booked seat stays put until the meal ends or the flight calls.
+      if (this.tickMeal(g, dt)) continue
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5284,7 +6625,7 @@ export class Game {
 
       if (g.path.length && g.seg < g.path.length - 1) {
         if (g.route == null) this.armGuestRoute(g)
-        g.t += dt * 1.35
+        g.t += dt * 1.35 * this.walkBoost(g)
         let held = false
         while (g.t >= 1 && g.seg < g.path.length - 1) {
           const finished = g.route
@@ -5379,6 +6720,7 @@ export class Game {
       if (g.job === 'depart' && g.needs.boarding <= 0 && g.node !== 'gate') {
         g.happiness -= 30
         g.dead = true
+        g.lost = false
         this.reputation = Math.max(0, this.reputation - 0.8)
         const aid = this.guestAirlineId(g)
         if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
@@ -5404,6 +6746,10 @@ export class Game {
     // Boarded or left with a snack still in hand: the rubbish stays at their last spot.
     for (const g of this.hallGuests) if (g.dead && g.snack) this.finishSnack(g)
     this.hallGuests = this.hallGuests.filter((g) => !g.dead)
+    if (this.seatBooks.size) {
+      const live = new Set(this.hallGuests.map((g) => g.id))
+      for (const book of this.seatBooks.values()) sweepSeats(book, (id) => live.has(id))
+    }
     if (this.departedFlights.size > 24) {
       const live = new Set(this.hallGuests.map((g) => g.flightId))
       for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
@@ -5529,6 +6875,21 @@ export class Game {
     }
   }
 
+  /** A moving walkway speeds only the metres of this leg that the belt covers. */
+  private walkBoost(g: HallGuest): number {
+    const route = g.route
+    if (!route || route.length < 2) return 1
+    const span = polylineLength(route)
+    if (!(span > 0)) return 1
+    const covered = Math.min(span, this.walkwayCoverMetres(g.hallId))
+    const mult = CONNECTIVITY_CATALOG.moving_walkway.speedMult
+    if (!(covered > 0) || !(mult > 1)) return 1
+    const time = covered / mult + (span - covered)
+    if (!(time > 0)) return 1
+    const boost = span / time
+    return Number.isFinite(boost) && boost > 0 ? boost : 1
+  }
+
   /** `g.t` stays 0..1 for queues. World position is that fraction along the doorway polyline. */
   private sampleGuestRoute(g: HallGuest) {
     const route = g.route
@@ -5541,11 +6902,110 @@ export class Game {
   }
 
   /**
+   * After the scanner. Lounge lovers sit and shop while the flight is still
+   * on the ground. A boarding call sends everyone to the gate.
+   */
+  private routeAfterSecurity(g: HallGuest, open: Set<HallNode>) {
+    const seat = g.showUp
+    if (seat && this.flightBoardingCall(g) && open.has('gate')) {
+      this.routeGuest(g, 'gate', open)
+      return
+    }
+    if (seat?.amenity === 'lounge' && !g.loungeDone) {
+      if (open.has('lounge')) {
+        this.routeGuest(g, 'lounge', open)
+        return
+      }
+      g.happiness = Math.max(0, Math.min(100, g.happiness + seat.moodMiss))
+      g.thought = 'Wanted a lounge — the hall has none'
+      g.loungeDone = true
+    }
+    if (
+      seat?.amenity === 'lounge' &&
+      g.loungeDone &&
+      !g.shopDone &&
+      seat.spendAmenity > 0 &&
+      open.has('shop')
+    ) {
+      this.routeGuest(g, 'shop', open)
+      return
+    }
+    if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
+    else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
+    else if (g.needs.shop > 70 && open.has('shop') && !g.shopDone) this.routeGuest(g, 'shop', open)
+    else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+  }
+
+  /** Lounge lovers pay the stamped lounge price, then walk to the shops. */
+  private chargeStampedLounge(g: HallGuest, open: Set<HallNode>) {
+    const seat = g.showUp
+    if (!seat) return
+    g.loungeDone = true
+    const price = Math.max(0, Math.round(seat.spendLounge))
+    g.needs.energy = Math.max(0, g.needs.energy - 40)
+    let receipt = 'Sat in the lounge'
+    if (price > 0 && seat.willLounge >= 0.5) {
+      g.prefs.lounge = Math.max(g.prefs.lounge, 0.95)
+      const buy = this.tryGuestPay(g, price, 'lounge', true)
+      if (buy.ok) {
+        g.happiness = Math.min(100, g.happiness + seat.moodLounge)
+        receipt = `Lounge (−$${price})`
+      } else {
+        g.happiness = Math.min(100, g.happiness + Math.max(1, Math.round(seat.moodLounge * 0.25)))
+        receipt = 'Lounge fee too rich'
+      }
+    } else {
+      g.happiness = Math.min(100, g.happiness + Math.max(1, Math.round(seat.moodLounge * 0.4)))
+    }
+    if (!g.shopDone && seat.spendAmenity > 0 && open.has('shop') && !this.flightBoardingCall(g)) {
+      this.routeGuest(g, 'shop', open)
+    } else if (open.has('gate')) {
+      this.routeGuest(g, 'gate', open)
+    }
+    g.thought = receipt
+  }
+
+  /** Lounge lovers pay the stamped shop price once, then head for the gate. */
+  private chargeStampedShop(g: HallGuest, open: Set<HallNode>) {
+    const seat = g.showUp
+    if (!seat) return
+    g.shopDone = true
+    const price = Math.max(0, Math.round(seat.spendAmenity))
+    if (this.shopShelf < 1) {
+      this.walkOffEmptyShelf(g, price, 'wish they had a souvenir', open)
+      if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      return
+    }
+    g.prefs.shop = Math.max(g.prefs.shop, 0.95)
+    let receipt = 'Browsed the shop'
+    if (seat.willAmenity >= 0.5) {
+      const buy = this.tryGuestPay(g, price, 'shop', true)
+      if (buy.ok) {
+        g.needs.shop = Math.max(0, g.needs.shop - 60)
+        this.shopShelf -= 1
+        g.happiness = Math.min(100, g.happiness + 5)
+        receipt = `Shop (−$${price})`
+      } else {
+        g.needs.shop = Math.max(0, g.needs.shop - 20)
+      }
+    } else {
+      g.needs.shop = Math.max(0, g.needs.shop - 20)
+    }
+    if (open.has('gate')) this.routeGuest(g, 'gate', open)
+    g.thought = receipt
+  }
+
+  /**
    * One prefab lane serves `servers` people at a time. Everyone else waits.
    * Past the comfort cap the line gets slower and angrier, flights slip,
    * and the advisor asks for an upgrade. Nobody is marked lost.
    */
   tickSecurityLane(g: HallGuest, dt: number, open: Set<HallNode>) {
+    if (g.job === 'depart' && !g.clearedSec) this.rulePremiumScreen(g)
+    if (g.premiumScreen === 'fast_track' || g.premiumScreen === 'vip_room') {
+      this.tickDedicatedLane(g, dt, open)
+      return
+    }
     const fit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
     const lane = laneStats({
       premade: fit?.premade ?? false,
@@ -5563,9 +7023,10 @@ export class Game {
         o.node === 'security' &&
         !o.clearedSec,
     )
-    const fast = g.tag === 'premium'
-    const pool = peers.filter((o) => (o.tag === 'premium') === fast)
-    const premiumHere = peers.some((o) => o.tag === 'premium')
+    const wantsFast = (o: HallGuest) => (o.showUp ? o.showUp.preferFastTrack : o.tag === 'premium')
+    const fast = wantsFast(g)
+    const pool = peers.filter((o) => wantsFast(o) === fast)
+    const fastHere = peers.some((o) => wantsFast(o))
     const wear = Math.max(
       fit?.wearSec ?? 0,
       ...(fit?.items ?? [])
@@ -5574,9 +7035,13 @@ export class Game {
     )
     let servers = lane.servers
     if (fast) servers = Math.min(lane.servers, 1)
-    else if (premiumHere && lane.servers > 1) servers = lane.servers - 1
+    else if (fastHere && lane.servers > 1) servers = lane.servers - 1
     let svc = slowedService(lane.serviceSec, wear)
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
+    svc *= this.disruptions.screeningMultiplier()
+    if (this.disruptions.secureZone()) svc += 0.8
+    if (!Number.isFinite(svc) || svc <= 0) svc = slowedService(lane.serviceSec, wear)
+    svc = Math.min(12, svc)
     const cap = fit?.capGuests ?? 40
     if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
     if (fast) svc *= 0.5
@@ -5594,10 +7059,12 @@ export class Game {
           if (laneItem) laneItem.wear = Math.min(100, laneItem.wear + lane.wearPerUse)
         }
         g.thought = 'Cleared security — the gates are open'
-        if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
-        else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
-        else if (g.needs.shop > 70 && open.has('shop')) this.routeGuest(g, 'shop', open)
-        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+        const seat = g.showUp
+        if (seat) {
+          const delta = seat.preferFastTrack ? seat.moodFast : seat.moodStandard
+          g.happiness = Math.max(0, Math.min(100, g.happiness + delta))
+        }
+        this.routeAfterSecurity(g, open)
       }
       return
     }
@@ -5668,8 +7135,10 @@ export class Game {
 
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
+    const powerNotes = this.powerAdviceItems()
     if (!fit) {
-      this.advice = [...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
+      this.advice = [...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems(), ...powerNotes]
+      this.keepApronFocus(powerNotes)
       this.appendNegotiationAdvice()
       return
     }
@@ -5710,21 +7179,36 @@ export class Game {
         scope: 'apron',
       })
     }
-    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
-    this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
+    hall.push(...this.planHints(fit))
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgetOf('cleaning') / 100))
+    const outletCells = ((fit.items ?? []) as PlacedItem[])
+      .filter((it) => !it.bundle && outletSpec(it.def))
+      .map((it) => ({ c: it.c, r: it.r }))
+    hall.push(...seatingAdvice(this.diningStoodRecently(fit), outletCells))
+    this.advice = mergeHints(
+      hall,
+      standingNotes,
+      this.groundNotes,
+      this.cargoNotes,
+      this.scaleAdviceItems(),
+      powerNotes,
+    )
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
       )
       if (!still) this.advisorCells = []
     }
-    if (this.apronFocus.length) {
-      const still = [...this.groundNotes, ...this.cargoNotes].find((a) =>
-        a.cells.some((c) => this.apronFocus.some((h) => h.c === c.c && h.r === c.r)),
-      )
-      if (!still) this.apronFocus = []
-    }
+    this.keepApronFocus(powerNotes)
     this.appendNegotiationAdvice()
+  }
+
+  private keepApronFocus(powerNotes: Advice[]) {
+    if (!this.apronFocus.length) return
+    const still = [...this.groundNotes, ...this.cargoNotes, ...powerNotes].find((note) =>
+      note.cells.some((cell) => this.apronFocus.some((mark) => mark.c === cell.c && mark.r === cell.r)),
+    )
+    if (!still) this.apronFocus = []
   }
 
   private appendNegotiationAdvice() {
@@ -5742,6 +7226,342 @@ export class Game {
     ]
   }
 
+  /** Terminal-plan hints for a hall. Cached by layout so the periodic refresh stays cheap. */
+  private planHints(fit: TerminalFit): Advice[] {
+    const key = `${this.hallKey(fit)}:${this.hallRev}:${fit.items?.length ?? 0}:${fit.zones?.length ?? 0}`
+    if (this.planAdvice.key !== key) {
+      this.planAdvice = {
+        key,
+        list: liveHallAdvice({ zones: fit.zones, items: fit.items }),
+      }
+    }
+    return this.planAdvice.list
+  }
+
+  /** Hints the panel and its badge show, after the player's mutes. Worst first. */
+  visibleHints(): Advice[] {
+    return visibleHints(this.advice, this.hintPrefs)
+  }
+
+  /** "Don't show hints of this type." Turns All hints enabled off. */
+  muteHint(id: string) {
+    this.hintPrefs = muteHintKind(this.hintPrefs, hintKind(id))
+    writeHintSettings(this.hintPrefs)
+    if (!this.visibleHints().length) this.setSidePanel(null)
+    this.focusAdvice(null)
+  }
+
+  /** Settings → All hints enabled. The only way muted kinds come back. */
+  setAllHints(on: boolean) {
+    this.hintPrefs = setAllHintsEnabled(on)
+    writeHintSettings(this.hintPrefs)
+    if (!on && this.sidePanel === 'hints') this.sidePanel = null
+    this.emit()
+  }
+
+  setSidePanel(panel: 'hud' | 'hints' | null) {
+    if (this.sidePanel === panel) return
+    this.sidePanel = panel
+    this.emit()
+  }
+
+  /** Move the camera to a spot and mark it. Hall cells use the hall grid, apron cells the field grid. */
+  focusAt(at: AlertFocus) {
+    const cell = at.cells[0]
+    if (at.view === 'hall') {
+      if (!this.fits.length) return
+      if (at.hall) {
+        const fit = this.fitByKey(at.hall)
+        if (fit) this.selectedTile = { ...fit.origin }
+      }
+      this.advisorCells = at.cells
+      this.apronFocus = []
+    } else {
+      this.apronFocus = at.cells
+      this.advisorCells = []
+    }
+    if (this.view !== at.view) this.setView(at.view)
+    if (cell) this.camGoal = { view: at.view, c: cell.c, r: cell.r, seq: (this.camGoal?.seq ?? 0) + 1 }
+    this.emit()
+  }
+
+  /** Hint panel "Show me": pan to the note and highlight it. */
+  showHint(id: string) {
+    const hit = this.advice.find((a) => a.id === id)
+    if (!hit) return
+    const view = hit.scope === 'apron' ? 'apron' : 'hall'
+    const fit = this.activeHall() ?? this.fits[0]
+    if (view === 'hall' && !hit.cells.length && fit) {
+      // No cell to point at: still walk inside so the player sees the hall in question.
+      this.focusAt({ view, cells: [], hall: this.hallKey(fit) })
+      return
+    }
+    this.focusAt({ view, cells: hit.cells, hall: fit ? this.hallKey(fit) : undefined })
+  }
+
+  /** Alert "Pan to problem". */
+  panToAlert(id: string) {
+    const a = this.alerts.active.find((x) => x.id === id)
+    if (a?.at) this.focusAt(a.at)
+  }
+
+  dismissAlert(id: string) {
+    this.alerts.dismiss(id, this.clock)
+    this.emit()
+  }
+
+  ignoreAlert(id: string) {
+    this.alerts.ignore(id)
+    this.emit()
+  }
+
+  minimiseAlerts(on: boolean) {
+    this.alerts.setMinimised(on)
+    this.emit()
+  }
+
+  /** Raise an operational alert. Debounced by key inside the stack. */
+  raiseAlert(input: AlertInput) {
+    const before = this.alerts.rev
+    this.alerts.raise(input, this.clock)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  /** Tests and recovery use this. Refuses anything before mid-game. */
+  triggerDisruption(kind: DisruptionId) {
+    const started = this.disruptions.trigger(kind, this.disruptionWorld(), this.disruptionHost())
+    this.syncDisruptionAlert()
+    if (started) this.emit()
+    return started
+  }
+
+  recoverDisruption(id: string) {
+    const result = this.disruptions.recover(id, this.disruptionHost())
+    this.syncDisruptionAlert()
+    this.emit()
+    return result
+  }
+
+  /** Beds stamped on the field. Ash diversions need these, eight per aircraft. */
+  hotelRoomCount(): number {
+    let beds = this.hotelLevel > 0 ? 6 : 0
+    for (const p of tilesOf(this.tiles, 'hotel')) {
+      const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
+      beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
+    }
+    return beds
+  }
+
+  /** One timetable wave: same strip, same 40-second bucket. */
+  private flightBanks(): FlightBank[] {
+    const groups = new Map<string, FlightBank>()
+    for (const slot of this.openSchedule()) {
+      if (slot.status === 'inbound') continue
+      const bucket = Math.floor(slot.eta / 40)
+      const rw = slot.runwayPref ?? -1
+      const id = `rw${rw}-b${bucket}`
+      const label = rw < 0 ? `bank ${bucket + 1}` : `runway ${rw + 1} bank ${bucket + 1}`
+      const group = groups.get(id) ?? { id, label, flightIds: [] }
+      group.flightIds.push(slot.id)
+      groups.set(id, group)
+    }
+    return [...groups.values()]
+  }
+
+  private disruptionWorld(): DisruptionWorld {
+    const level = this.fieldLevel()
+    const mastery = level >= 5
+    return {
+      fieldLevel: level,
+      goalsComplete: mastery,
+      endless: mastery,
+      standsFree: this.freeStands().length,
+      hotelRooms: this.hotelRoomCount(),
+      banks: this.flightBanks(),
+      staffPools: ['maintenance', 'security', 'cleaning', 'fire', 'ambulance', 'desk'],
+      clock: this.clock,
+    }
+  }
+
+  /** Publish the live crisis onto the alert stack. One key, so the card cannot duplicate. */
+  private syncDisruptionAlert() {
+    const event = this.disruptions.active()
+    const before = this.alerts.rev
+    const live = new Set<string>()
+    if (event) {
+      const input = disruptionToAlert(event, disruptionLocus(event, this.disruptionField(event)))
+      live.add(input.key)
+      this.alerts.raise(input, this.clock)
+    }
+    this.alerts.sync(DISRUPTION_ALERT_PREFIX, live)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  private disruptionField(event: { kind: DisruptionId }): DisruptionLocusField {
+    const fit = this.activeHall() ?? this.fits[0]
+    const hosted = this.flights
+      .filter((f) => f.hostKind === 'divert' && f.stand && f.phase !== 'gone')
+      .map((f) => ({ c: f.stand!.c, r: f.stand!.r }))
+    const stands = tilesOf(this.tiles, 'stand')
+    return {
+      stands: event.kind === 'volcanic-ash' && hosted.length ? hosted : stands,
+      runways: tilesOf(this.tiles, 'runway'),
+      fuel: tilesOf(this.tiles, 'fuel'),
+      terminal: tilesOf(this.tiles, 'terminal'),
+      fire: tilesOf(this.tiles, 'fire'),
+      hangar: tilesOf(this.tiles, 'hangar'),
+      tower: tilesOf(this.tiles, 'tower'),
+      police: tilesOf(this.tiles, 'police'),
+      guard: tilesOf(this.tiles, 'guard'),
+      checkin: fit ? this.zoneCellsOf(fit, 'checkin') : [],
+      security: fit ? this.zoneCellsOf(fit, 'security') : [],
+      hallKey: fit ? this.hallKey(fit) : undefined,
+    }
+  }
+
+  private tickDisruptions() {
+    this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
+    this.syncDisruptionAlert()
+  }
+
+  private disruptionHost(): DisruptionHost {
+    return {
+      acceptWeatherDivert: (ask) => this.acceptWeatherDivert(ask),
+      postCash: (amount, reason) => this.postDisruptionCash(amount, reason),
+      delayBank: (ids, sec, reason) => this.delayDisruptionBank(ids, sec, reason),
+      rebookBank: (ids) => this.rebookDisruptionBank(ids),
+      news: (text, tone) => this.pushNews(text, tone),
+    }
+  }
+
+  /**
+   * Land one ash divert on the existing divert path.
+   * The ask matches a weather divert; the aircraft still comes from spawnEmergencyDivert.
+   */
+  private acceptWeatherDivert(ask: { hotelRooms: number }): { hosted: boolean } {
+    if (!(ask.hotelRooms > 0)) return { hosted: false }
+    const airline = this.signed.find((id) => !this.isBanned(id))
+    if (!airline || this.freeStands().length < 1) return { hosted: false }
+    if (!this.spawnEmergencyDivert(airline)) return { hosted: false }
+    this.postDisruptionCash(DIVERT_FEE_MIN, 'Ash divert landing')
+    return { hosted: true }
+  }
+
+  private postDisruptionCash(amount: number, reason: string) {
+    const n = finiteAmount(amount)
+    if (n === 0) return
+    if (!Number.isFinite(this.cash)) this.cash = 0
+    if (n > 0) this.earn(n, reason)
+    else this.charge(-n)
+    if (!Number.isFinite(this.cash)) this.cash = 0
+  }
+
+  private delayDisruptionBank(ids: string[], sec: number, reason: string) {
+    for (const id of ids) {
+      const slot = this.schedule.find((s) => s.id === id)
+      if (!slot || (slot.status !== 'scheduled' && slot.status !== 'delayed')) continue
+      this.delaySlot(slot, sec, reason)
+    }
+  }
+
+  private rebookDisruptionBank(ids: string[]) {
+    for (const id of ids) {
+      const slot = this.schedule.find((s) => s.id === id)
+      if (!slot || slot.status !== 'delayed') continue
+      slot.status = 'scheduled'
+      slot.delayReason = 'Rebanked after the storm'
+    }
+  }
+
+  /** Live condition scan. Throttled; cheap reads only. */
+  private scanAlerts(dt: number) {
+    this.alerts.tick(this.clock)
+    this.alertScanCool -= dt
+    if (this.alertScanCool > 0) return
+    this.alertScanCool = ALERT_TUNING.scanSec
+    const T = ALERT_TUNING
+    const live = new Set<string>()
+    const raise = (input: AlertInput) => {
+      live.add(input.key)
+      this.raiseAlert(input)
+    }
+
+    for (const f of this.flights) {
+      if ((f.craft ?? 'jet') !== 'jet') continue
+      const onGround = (STUCK_PHASES as readonly string[]).includes(f.phase)
+      const stuck = (onGround && f.phaseTime > T.stuckSec) || (f.phase === 'hold' && f.phaseTime > T.holdStuckSec)
+      if (!stuck) continue
+      const spot = f.path[f.seg] ?? f.path[f.path.length - 1] ?? f.stand
+      raise({
+        key: `cond:stuck:${f.id}`,
+        severity: 'warning',
+        title: f.phase === 'hold' ? `${f.flightNo} stuck in the hold` : `${f.flightNo} stuck on the ground`,
+        detail:
+          f.phase === 'hold'
+            ? 'No free stand or runway slot to land into.'
+            : `No progress for ${Math.round(f.phaseTime)}s. Check the taxi route and stand.`,
+        at: spot ? { view: 'apron', cells: [{ c: spot.c, r: spot.r }] } : undefined,
+      })
+    }
+
+    const ground = this.ground?.snapshot()
+    const farm = tilesOf(this.tiles, 'fuel')[0]
+    if (ground && farm && ground.fuelLitres <= 0) {
+      raise({
+        key: 'cond:fuel-out',
+        severity: 'critical',
+        title: 'Fuel farm is empty',
+        detail: 'Departures needing fuel will wait until the next tanker arrives.',
+        at: { view: 'apron', cells: [farm] },
+      })
+    }
+
+    const fit = this.activeHall()
+    if (fit && this.hallOverloaded) {
+      const key = this.hallKey(fit)
+      raise({
+        key: `cond:hall-full:${key}`,
+        severity: 'warning',
+        title: `${this.hallLabel(fit)} over capacity`,
+        detail: 'Queues are longer than this hall can clear.',
+        at: { view: 'hall', hall: key, cells: this.zoneCellsOf(fit, 'security').slice(0, 1) },
+      })
+    }
+    for (const f of this.fits) {
+      const full = ((f.items ?? []) as PlacedItem[]).filter((it) => isBin(it) && binFull(it))
+      const pieces = f.litter?.length ?? 0
+      if (!full.length || pieces < LITTER_TUNING.adviseLitterAt) continue
+      const key = this.hallKey(f)
+      raise({
+        key: `cond:bins:${key}`,
+        severity: 'warning',
+        title: `${this.hallLabel(f)}: bins full, litter piling up`,
+        detail: `${full.length} full can${full.length === 1 ? '' : 's'}, ${pieces} pieces on the floor.`,
+        at: { view: 'hall', hall: key, cells: full.map((b) => ({ c: b.c, r: b.r })) },
+      })
+    }
+
+    if (!this.sandbox && this.cash < T.lowCash) {
+      raise({
+        key: 'cond:cash',
+        severity: this.cash < 0 ? 'critical' : 'warning',
+        title: this.cash < 0 ? 'Cash is negative' : 'Cash is low',
+        detail: `${moneyLeft(this.cash)} in the bank. Upkeep and payroll keep drawing.`,
+      })
+    }
+    this.alerts.sync('cond:', live)
+  }
+
+  private zoneCellsOf(fit: TerminalFit, zone: ZoneId): { c: number; r: number }[] {
+    const out: { c: number; r: number }[] = []
+    fit.zones?.forEach((row, r) =>
+      row.forEach((z, c) => {
+        if (z === zone) out.push({ c, r })
+      }),
+    )
+    return out
+  }
+
   focusAdvice(id: string | null) {
     if (!id) {
       this.advisorCells = []
@@ -5756,6 +7576,7 @@ export class Game {
         hit.cells.every((c, i) => c.c === this.apronFocus[i]?.c && c.r === this.apronFocus[i]?.r)
       this.apronFocus = same ? [] : hit.cells
       this.advisorCells = []
+      if (!same && hit.cells[0]) this.cameraCue = { c: hit.cells[0].c, r: hit.cells[0].r }
       this.emit()
       return
     }
@@ -5912,6 +7733,461 @@ export class Game {
     this.spawnTruck('fuel', f, path, 'fuel', farms[0])
   }
 
+  /** Carrier shape the hub share formula reads. Cargo stays at zero. */
+  private hubProfile(id: string): CarrierProfile {
+    const a = this.airline(id)
+    return {
+      kind: a.kind,
+      bizModel: a.bizModel,
+      tier: a.tier,
+      hub: this.isHub(id),
+      likesLayovers: a.likesLayovers,
+    }
+  }
+
+  /** Transfer share for one carrier, including the current bank. Zero before mid-game. */
+  connectingShare(airlineId: string): number {
+    const base = transferShare(this.fieldLevel(), this.hubProfile(airlineId))
+    return scaledShare(base, this.hubDemand())
+  }
+
+  private hubFacilities(): { transferCentre: boolean; rfid: boolean } {
+    let transferCentre = this.hasResearch('transfer_centre')
+    let rfid = this.hasResearch('rfid_bag_line')
+    const engine = this.economy?.engine
+    if (engine) {
+      if (engine.getModifier(TECH_TRANSFER_CENTRE, 0) > 0) transferCentre = true
+      if (engine.getModifier(TECH_RFID_BAG_LINE, 0) > 0) rfid = true
+    }
+    return { transferCentre, rfid }
+  }
+
+  private hubRide(): boolean {
+    const link = this.connectionLink()
+    return link !== 'walk' && link !== 'walkway'
+  }
+
+  linkStopped(mode: LinkMode): boolean {
+    return mode === 'people_mover' ? this.linkDown.mover : this.linkDown.bus
+  }
+
+  /** Metres of moving walkway in one hall, or across the field when no hall is named. */
+  walkwayCoverMetres(hallId?: string | null): number {
+    const length = CONNECTIVITY_CATALOG.moving_walkway.lengthMetres
+    let count = 0
+    for (const fit of this.fits) {
+      if (hallId && this.hallKey(fit) !== hallId) continue
+      for (const item of fit.items ?? []) {
+        if (item.def === 'walkway') count += 1
+      }
+    }
+    return count * length
+  }
+
+  private hallFootprint(fit: TerminalFit): Vec[] {
+    const span = fit.premade ? 3 : 2
+    const cells: Vec[] = []
+    for (let r = 0; r < span; r++) {
+      for (let c = 0; c < span; c++) cells.push({ c: fit.origin.c + c, r: fit.origin.r + r })
+    }
+    return cells
+  }
+
+  private skywalkTouches(fit: TerminalFit, cell: Vec): boolean {
+    return this.hallFootprint(fit).some(
+      (hall) => Math.abs(hall.c - cell.c) + Math.abs(hall.r - cell.r) <= 1,
+    )
+  }
+
+  /** True when one connected run of skywalk tiles touches both halls. */
+  skywalkBetween(fromKey: string, toKey: string): boolean {
+    if (fromKey === toKey) return false
+    const walks = tilesOf(this.tiles, 'skywalk')
+    if (!walks.length) return false
+    const from = this.fitByKey(fromKey)
+    const to = this.fitByKey(toKey)
+    if (!from || !to) return false
+    const open = new Set(walks.map((cell) => `${cell.c},${cell.r}`))
+    const seen = new Set<string>()
+    for (const start of walks) {
+      const startKey = `${start.c},${start.r}`
+      if (seen.has(startKey)) continue
+      const queue = [start]
+      seen.add(startKey)
+      let hitsFrom = false
+      let hitsTo = false
+      while (queue.length) {
+        const cell = queue.pop()!
+        if (this.skywalkTouches(from, cell)) hitsFrom = true
+        if (this.skywalkTouches(to, cell)) hitsTo = true
+        for (const next of [
+          { c: cell.c + 1, r: cell.r },
+          { c: cell.c - 1, r: cell.r },
+          { c: cell.c, r: cell.r + 1 },
+          { c: cell.c, r: cell.r - 1 },
+        ]) {
+          const key = `${next.c},${next.r}`
+          if (!open.has(key) || seen.has(key)) continue
+          seen.add(key)
+          queue.push(next)
+        }
+      }
+      if (hitsFrom && hitsTo) return true
+    }
+    return false
+  }
+
+  private hallKeyForGate(gateId: string): string | null {
+    const [c, r] = gateId.split(',').map((part) => Number(part))
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return this.fits[0] ? this.hallKey(this.fits[0]) : null
+    const fit = this.roomsAt({ c, r })
+    return fit ? this.hallKey(fit) : null
+  }
+
+  /** People mover, then the airside bus, then the terminal bus, then a skywalk, then a belt. */
+  connectionLink(fromId?: string, toId?: string): PassengerLink {
+    const fromHall = fromId ? this.hallKeyForGate(fromId) : null
+    const toHall = toId ? this.hallKeyForGate(toId) : null
+    const skywalk =
+      fromHall != null && toHall != null && fromHall !== toHall && this.skywalkBetween(fromHall, toHall)
+    return choosePassengerLink({
+      peopleMoverOpen: tilesOf(this.tiles, 'mover').length > 0 && !this.linkDown.mover,
+      transferBusOpen: tilesOf(this.tiles, 'xferbus').length > 0 && !this.linkDown.bus,
+      terminalBusOpen: tilesOf(this.tiles, 'termbus').length > 0,
+      skywalkOpen: skywalk,
+      walkwayMetres: this.walkwayCoverMetres(),
+    })
+  }
+
+  private connectivityTerminals() {
+    return this.fits.map((fit) => ({
+      id: this.hallKey(fit),
+      gateIds: tilesOf(this.tiles, 'stand')
+        .filter((stand) => {
+          const hall = this.roomsAt(stand)
+          return hall != null && this.hallKey(hall) === this.hallKey(fit)
+        })
+        .map((stand) => `${stand.c},${stand.r}`),
+    }))
+  }
+
+  /**
+   * Close one ride. The people mover names the gates it strands.
+   * The transfer bus stops that link and drops its apron traffic.
+   */
+  breakLink(mode: LinkMode) {
+    const terminals = this.connectivityTerminals()
+    const ends = terminals.map((terminal) => terminal.id)
+    const fromId = ends[0] ?? 'hall'
+    const toId = ends[1] ?? 'apron'
+    const attempt = linkTerminals(fromId, toId, mode, mode)
+    if (!attempt.ok) return
+    const stopped = breakdown(attempt.link, terminals)
+    if (mode === 'people_mover') this.linkDown.mover = true
+    else this.linkDown.bus = true
+    if (stopped.event.strandsGates) this.strandedGates = [...stopped.event.strandedGateIds]
+    else if (!this.linkDown.mover) this.strandedGates = []
+    this.linkExplanation = stopped.event.explanation
+    this.pushNews(stopped.event.explanation, 'bad')
+    this.emit()
+  }
+
+  linkRepairOffer(): { mode: LinkMode; label: string; cost: number } | null {
+    if (this.linkDown.mover && tilesOf(this.tiles, 'mover').length > 0) {
+      const spec = CONNECTIVITY_CATALOG.people_mover
+      return {
+        mode: 'people_mover',
+        label: `Repair the people mover · $${spec.repairCost.toLocaleString('en-US')}`,
+        cost: spec.repairCost,
+      }
+    }
+    if (this.linkDown.bus && tilesOf(this.tiles, 'xferbus').length > 0) {
+      const spec = CONNECTIVITY_CATALOG.airside_transfer_bus_depot
+      return {
+        mode: 'airside_transfer_bus',
+        label: `Repair the transfer bus · $${spec.repairCost.toLocaleString('en-US')}`,
+        cost: spec.repairCost,
+      }
+    }
+    return null
+  }
+
+  repairLink(mode: LinkMode) {
+    const down = this.linkStopped(mode)
+    if (!down) return
+    const spec = CONNECTIVITY_CATALOG[mode === 'people_mover' ? 'people_mover' : 'airside_transfer_bus_depot']
+    if (!this.spend(spec.repairCost, spec.name)) return
+    if (!this.sandbox) this.postJournal('construction', spec.repairCost, this.simMinutes())
+    if (mode === 'people_mover') {
+      this.linkDown.mover = false
+      this.linkWear.mover = 0
+    } else {
+      this.linkDown.bus = false
+      this.linkWear.bus = 0
+    }
+    this.strandedGates = []
+    this.linkExplanation = ''
+    this.pushNews(`${spec.name} running again.`, 'good')
+    this.emit()
+  }
+
+  private connectivityUpkeep(): number {
+    const ids: ConnectivityBuildingId[] = []
+    for (const [key, kind] of Object.entries(this.hubLinksBuilt)) {
+      const [c, r] = key.split(',').map((part) => Number(part))
+      const tile = this.tile({ c, r })
+      if (kind === 'people_mover' && tile === 'mover') ids.push('people_mover')
+      else if (kind === 'xferbus' && tile === 'xferbus') ids.push('airside_transfer_bus_depot')
+      else if (kind === 'skywalk' && tile === 'skywalk') ids.push('skywalk')
+    }
+    return linkDailyUpkeep(ids)
+  }
+
+  private hubStampCount(kind: 'people_mover' | 'xferbus' | 'skywalk', tile: Tile): number {
+    let n = 0
+    for (const [key, built] of Object.entries(this.hubLinksBuilt)) {
+      if (built !== kind) continue
+      const [c, r] = key.split(',').map((part) => Number(part))
+      if (this.tile({ c, r }) === tile) n += 1
+    }
+    return n
+  }
+
+  private ageLinks() {
+    if (this.budgets.maintenance >= LINK_MAINT_SAFE) return
+    const wear = (built: boolean, current: number, mode: LinkMode) => {
+      if (!built || this.linkStopped(mode)) return current
+      const next = current + LINK_WEAR_PER_DAY
+      if (next >= LINK_WEAR_BREAK) this.breakLink(mode)
+      return next
+    }
+    this.linkWear.mover = wear(tilesOf(this.tiles, 'mover').length > 0, this.linkWear.mover, 'people_mover')
+    this.linkWear.bus = wear(tilesOf(this.tiles, 'xferbus').length > 0, this.linkWear.bus, 'airside_transfer_bus')
+  }
+
+  private linkWord(link: PassengerLink): string {
+    if (link === 'people_mover') return 'people mover'
+    if (link === 'airside_transfer_bus') return 'transfer bus'
+    if (link === 'terminal_bus') return 'terminal bus'
+    if (link === 'skywalk') return 'skywalk'
+    if (link === 'walkway') return 'moving walkway'
+    return 'walk'
+  }
+
+  linkLines(): string[] {
+    const mover = tilesOf(this.tiles, 'mover').length
+    const bus = tilesOf(this.tiles, 'xferbus').length
+    const sky = tilesOf(this.tiles, 'skywalk').length
+    const belts = this.walkwayCoverMetres()
+    const moverSpec = CONNECTIVITY_CATALOG.people_mover
+    const busSpec = CONNECTIVITY_CATALOG.airside_transfer_bus_depot
+    const lines = [
+      mover
+        ? this.linkDown.mover
+          ? `People mover stopped — ${this.strandedGates.length} gates stranded`
+          : `People mover open · ${moverSpec.rideMinutes} min · ${moverSpec.paxPerHour.toLocaleString('en-US')}/h · $${moverSpec.upkeepPerDay.toLocaleString('en-US')}/day`
+        : `People mover not built · Field ${moverSpec.fieldLevel}`,
+      bus
+        ? this.linkDown.bus
+          ? 'Airside transfer bus stopped — that link is closed'
+          : `Transfer bus open · ${busSpec.rideMinutes} min · apron +${busSpec.apronTrafficPerHour}/h · $${busSpec.upkeepPerDay.toLocaleString('en-US')}/day`
+        : `Transfer bus not built · Field ${busSpec.fieldLevel}`,
+      tilesOf(this.tiles, 'termbus').length
+        ? 'Terminal bus fallback open'
+        : 'No terminal bus — remote stands still walk',
+      sky ? `${sky} skywalk${sky === 1 ? '' : 's'} · $${(sky * CONNECTIVITY_CATALOG.skywalk.upkeepPerDay).toLocaleString('en-US')}/day` : 'No skywalk',
+      belts > 0
+        ? `Moving walkways cover ${belts} m at ×${CONNECTIVITY_CATALOG.moving_walkway.speedMult}`
+        : 'No moving walkway',
+    ]
+    if (this.linkExplanation) lines.push(this.linkExplanation)
+    return lines
+  }
+
+  private hubGates(): GatePoint[] {
+    return tilesOf(this.tiles, 'stand').map((stand) => ({
+      id: `${stand.c},${stand.r}`,
+      x: stand.c * METERS_PER_CELL,
+      y: stand.r * METERS_PER_CELL,
+    }))
+  }
+
+  private hubMovements(): Movement[] {
+    const moves: Movement[] = []
+    for (const slot of this.schedule) {
+      if (slot.status === 'cancelled' || slot.status === 'done') continue
+      const airline = this.airline(slot.airline)
+      if (airline.kind === 'cargo') continue
+      const gateId = slot.standPref ? `${slot.standPref.c},${slot.standPref.r}` : 'stand'
+      const arrival = slot.eta * SIM_MINUTES_PER_REAL_SECOND
+      moves.push({
+        id: `${slot.id}:arr`,
+        airlineId: slot.airline,
+        gateId,
+        direction: 'arr',
+        at: arrival,
+      })
+      moves.push({
+        id: `${slot.id}:dep`,
+        airlineId: slot.airline,
+        gateId,
+        direction: 'dep',
+        at: (slot.eta + PLANNED_TURN_SEC) * SIM_MINUTES_PER_REAL_SECOND,
+      })
+    }
+    return moves
+  }
+
+  private hubDemand(): number {
+    return bankDemand(buildBanks(this.hubMovements()))
+  }
+
+  private hubOnwardMinute(arrivalAt: number): number {
+    let best: number | null = null
+    for (const move of this.hubMovements()) {
+      if (move.direction !== 'dep' || move.at <= arrivalAt) continue
+      if (best == null || move.at < best) best = move.at
+    }
+    return best ?? arrivalAt + DEFAULT_CONNECTION_WINDOW
+  }
+
+  /**
+   * Mark a share of this arrival as connecting. They stay airside and skip
+   * check-in and security. Share is zero before mid-game, so this is a no-op then.
+   */
+  private noteHubArrivals(f: Flight, born: HallGuest[]) {
+    const share = this.connectingShare(f.airline)
+    if (!(share > 0)) return
+    const indexes = connectingIndexes(born.length, share, f.id)
+    if (!indexes.length) return
+    const gates = this.hubGates()
+    const fromId = f.stand ? `${f.stand.c},${f.stand.r}` : gates[0]?.id
+    const from = gates.find((gate) => gate.id === fromId) ?? gates[0]
+    const to = gates.find((gate) => gate.id !== from?.id) ?? from
+    if (!from || !to) return
+    const facilities = this.hubFacilities()
+    const link = this.connectionLink(from.id, to.id)
+    const arrivalAt = this.simMinutes()
+    const departureAt = this.hubOnwardMinute(arrivalAt)
+    for (const index of indexes) {
+      const g = born[index]
+      if (!g) continue
+      const verdict = evaluateConnection({
+        arrivalAt,
+        departureAt,
+        from,
+        to,
+        ride: false,
+        link,
+        walkwayMetres: this.walkwayCoverMetres(),
+        facilities,
+      })
+      g.transfer = true
+      g.clearedSec = true
+      g.needs.bags = 0
+      g.needs.hunger = 0
+      g.needs.bladder = 0
+      g.needs.energy = 0
+      g.needs.shop = 0
+      g.needs.play = 0
+      g.needs.boarding = Math.max(6, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
+      g.node = 'gate'
+      g.path = []
+      g.seg = 0
+      g.t = 0
+      g.route = undefined
+      g.connectFlightId = `connect:${f.id}:${to.id}`
+      g.thought = `Connecting — ${this.linkWord(link)} to gate ${to.id}`
+      this.issueBagTags(g.id, g.flightId, g.tag, g.connectFlightId, 'transfer')
+      const windowSec = Math.max(0.5, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
+      this.hubLinks.push({
+        guestId: g.id,
+        airlineId: f.airline,
+        resolveAt: this.clock + windowSec,
+        made: verdict.made,
+      })
+    }
+  }
+
+  /**
+   * One missed connection: hotel night or rebooking fee on the ledger, and a Standing hit.
+   * Returns the cash amount posted (0 when the bill is not finite).
+   */
+  applyMissedConnection(airlineId: string): number {
+    const bill = missPenalty({ hasHotel: this.hasHotelBeds(), passengers: 1 })
+    if (!(bill.amount > 0) || !Number.isFinite(bill.amount) || !Number.isFinite(this.cash)) return 0
+    if (!this.sandbox) {
+      this.charge(bill.amount)
+      this.postJournal('penalties', bill.amount, this.simMinutes())
+    }
+    if (bill.standing < 0 && Number.isFinite(bill.standing)) {
+      this.adjustHeat(airlineId, bill.standing, 'transfers')
+    }
+    this.missedConnections += 1
+    return bill.amount
+  }
+
+  /** Close connection windows. A miss bills the hotel or a rebooking fee and cuts Standing. */
+  private tickHubConnections() {
+    if (!this.hubLinks.length) return
+    const due = this.hubLinks.filter((link) => this.clock >= link.resolveAt)
+    if (!due.length) return
+    this.hubLinks = this.hubLinks.filter((link) => this.clock < link.resolveAt)
+    let missed = 0
+    for (const link of due) {
+      const guest = this.hallGuests.find((g) => g.id === link.guestId)
+      if (link.made) {
+        if (guest && !guest.dead) {
+          guest.dead = true
+          guest.thought = 'Made the connection'
+          guest.needs.bags = 0
+        }
+        for (const tag of this.bagTags) {
+          if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer') continue
+          tag.loaded = true
+          tag.picked = true
+        }
+        continue
+      }
+      const billed = this.applyMissedConnection(link.airlineId)
+      if (billed > 0) missed += 1
+      let bags = 0
+      for (const tag of this.bagTags) {
+        if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer' || tag.fault) continue
+        tag.fault = 'missed_connection'
+        bags += 1
+      }
+      if (bags > 0) this.bagsMishandled += bags
+      if (guest && !guest.dead) {
+        guest.dead = true
+        guest.bagFault = 'missed_connection'
+        guest.needs.bags = 0
+        guest.thought = this.hasHotelBeds()
+          ? 'Missed connection — hotel night'
+          : 'Missed connection — rebooked'
+      }
+    }
+    if (missed > 0) {
+      this.pushNews(
+        `${missed} missed connection${missed === 1 ? '' : 's'} — hotel or rebook fee, Standing dips.`,
+        'bad',
+      )
+    }
+  }
+
+  /** Click-open connection map: walk/ride minutes and the missed-connection count. */
+  connectionMapLines(): string[] {
+    return connectionMap({
+      gates: this.hubGates(),
+      ride: this.hubRide(),
+      missed: this.missedConnections,
+      facilities: this.hubFacilities(),
+      banks: buildBanks(this.hubMovements()),
+      linkFor: (from, to) => this.connectionLink(from, to),
+      walkwayMetres: this.walkwayCoverMetres(),
+    }).lines
+  }
+
   /** Hotspot markers. Counts stay in infoLines until the player opens one. */
   infoHotspots(): { id: string; label: string }[] {
     const spots: { id: string; label: string }[] = []
@@ -5920,8 +8196,15 @@ export class Game {
       spots.push({ id: 'lost', label: 'Lost passengers' })
       spots.push({ id: 'bags', label: 'Bags' })
       spots.push({ id: 'retail', label: 'Shops' })
+      if (this.fieldLevel() >= 3) {
+        spots.push({ id: 'connections', label: 'Connections' })
+        spots.push({ id: 'links', label: 'Links' })
+      }
     }
     if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
+    spots.push({ id: 'power', label: 'Power' })
+    if (tilesOf(this.tiles, 'mro').length) spots.push({ id: 'mro', label: 'MRO' })
+    if (tilesOf(this.tiles, 'nighthub').length) spots.push({ id: 'nighthub', label: 'Night hub' })
     else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
       spots.push({ id: 'bags', label: 'Bags' })
     }
@@ -5957,6 +8240,19 @@ export class Game {
         : `${this.fuelLoads} bowser loads on the farm`
       return [stock, `${grounded} departures grounded for fuel`]
     }
+    if (id === 'power') {
+      const power = this.powerReport()
+      const offer = powerPlantOffer(this.powerPlantTier)
+      const lines = [
+        `${offer.name} · capacity ${Math.round(power.capacity).toLocaleString('en-US')}`,
+        `Demand ${Math.round(power.demand).toLocaleString('en-US')}`,
+        power.brownout ? 'Brown-out — powered services slowed' : 'Supply covers demand',
+      ]
+      if (offer.upkeepPerDay > 0) lines.push(`Upkeep $${offer.upkeepPerDay.toLocaleString('en-US')} / day`)
+      return lines
+    }
+    if (id === 'mro') return mroInfoLines(this.tier3.snapshot())
+    if (id === 'nighthub') return nightHubInfoLines(this.tier3.snapshot())
     if (id === 'retail') {
       return [
         `${this.foodShelf} burger servings on the shelf`,
@@ -5964,6 +8260,8 @@ export class Game {
         `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
       ]
     }
+    if (id === 'connections') return this.connectionMapLines()
+    if (id === 'links') return this.linkLines()
     return []
   }
 
@@ -6237,6 +8535,241 @@ export class Game {
   }
 
   /** Cargo terminal clock matches the ramp: one sim-second is eight game minutes. */
+  tier3Snapshot() {
+    return this.tier3.snapshot()
+  }
+
+  private tier3Unlock() {
+    return {
+      fieldLevel: this.fieldLevel(),
+      unlockedTech: new Set(this.economyState?.unlockedTech ?? []),
+      research: this.researchUnlocked,
+    }
+  }
+
+  private tier3Buildings(): Tier3Building[] {
+    return [
+      ...tilesOf(this.tiles, 'mro').map((cell) => ({ id: `${cell.c},${cell.r}`, kind: 'mro' as const })),
+      ...tilesOf(this.tiles, 'nighthub').map((cell) => ({ id: `${cell.c},${cell.r}`, kind: 'night_hub' as const })),
+    ]
+  }
+
+  /**
+   * Heavy checks and the freighter night wave. `step` is sim seconds.
+   * Cash postings are finite; a non-finite total is dropped rather than poisoning the books.
+   */
+  tickTier3(step: number) {
+    if (!(step > 0)) return
+    this.tier3.sync(this.tier3Buildings())
+    const mods = this.economyView?.modifiers ?? {}
+    const context: Tier3TickContext = {
+      ...this.tier3Unlock(),
+      staffPools: {
+        maintenance_tech: { hired: this.mechanics, wagePerDay: 0 },
+        ground_crew: {
+          hired: tilesOf(this.tiles, 'depot').length * GROUND_CREW_PER_DEPOT,
+          wagePerDay: 0,
+        },
+      },
+      powerTier: this.powerPlantTier,
+      powerCapacityMultiplier: mods['power.capacity'] ?? 1,
+      powerDemandMultiplier: mods['power.demand'] ?? 1,
+      batteryCapacity: mods['power.batteryCapacity'] ?? 0,
+      otherPowerDemand: this.utilityLoads().power + (this.researchers > 0 ? 35 : 0),
+      isNight: this.isNight(),
+      nightIndex: Math.floor(this.clock / 180),
+      curfewRelaxed: this.hasResearch('night_bank'),
+      candidates: this.mroCandidateFlights().map((flight) => ({
+        id: flight.id,
+        airframeId: flight.airframeId || 'b738',
+        standKey: `${flight.stand!.c},${flight.stand!.r}`,
+      })),
+    }
+    const result = this.tier3.tick(step * GAME_MINUTES_PER_SIM_SECOND, context)
+    for (const posting of result.postings) {
+      if (!Number.isFinite(posting.amount) || posting.amount === 0) continue
+      if (posting.amount > 0) this.earn(posting.amount, posting.label)
+      else this.charge(-posting.amount)
+    }
+    if (result.paxHeat !== 0 && Number.isFinite(result.paxHeat)) {
+      for (const id of this.signed) {
+        if (this.airline(id).kind === 'pax') this.adjustHeat(id, result.paxHeat)
+      }
+    }
+    if (!Number.isFinite(this.cash)) this.cash = 0
+  }
+
+  /**
+   * Only aircraft already on a stand, with a taxiway to a hangar.
+   * A missing path never becomes a teleport into the bay.
+   */
+  private mroCandidateFlights(): Flight[] {
+    const hangars = tilesOf(this.tiles, 'mro')
+    if (!hangars.length) return []
+    return this.flights.filter((flight) => {
+      if (!flight.stand || (flight.craft ?? 'jet') !== 'jet') return false
+      if (
+        flight.phase !== 'parked' &&
+        flight.phase !== 'servicing' &&
+        flight.phase !== 'deboard' &&
+        flight.phase !== 'board'
+      ) {
+        return false
+      }
+      return hangars.some((hangar) => nearestPath(this.tiles, flight.stand!, [hangar], 'jet'))
+    })
+  }
+
+  private routeForMroJob(flight: Flight, buildingId: string, bayId: string, size: 'narrow' | 'wide' | 'jumbo'): TaxiPoint[] | null {
+    if (!flight.stand) return null
+    const cached = this.mroRoutes.get(flight.id)
+    if (cached) return cached
+    const [c, r] = buildingId.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return null
+    const hangar = { c, r }
+    const via = nearestPath(this.tiles, flight.stand, [hangar], 'jet')
+    if (!via) return null
+    const route = mroRoute(flight.stand, via, hangar, bayId, size)
+    this.mroRoutes.set(flight.id, route)
+    return route
+  }
+
+  /** Put a finished check back on its stand. The exit leg already ended there. */
+  private releaseFinishedMro() {
+    const live = new Set(this.tier3.activeJobs().map((job) => job.aircraftId))
+    for (const id of this.mroBound) {
+      if (live.has(id)) continue
+      const flight = this.flights.find((item) => item.id === id)
+      const route = this.mroRoutes.get(id)
+      const stand = flight?.stand ?? route?.[0]
+      if (flight && stand) {
+        flight.x = stand.c
+        flight.y = stand.r
+        flight.z = 0.12
+      }
+      this.mroRoutes.delete(id)
+    }
+    this.mroBound = live
+  }
+
+  /** Hold the turnaround and roll the aircraft along the cached taxiway. */
+  private applyMroHold(flight: Flight): boolean {
+    const job = this.tier3.activeJobs().find((item) => item.aircraftId === flight.id)
+    if (!job) return false
+    const path = this.routeForMroJob(flight, job.buildingId, job.bayId, job.size)
+    if (!path) return false
+    const pose = poseForPhase({ phase: job.phase, remaining: job.remaining, path })
+    flight.x = pose.x
+    flight.y = pose.y
+    flight.z = 0.12
+    flight.heading = pose.heading
+    return true
+  }
+
+  /** Door slide for one hangar. 0 is shut. The renderer ignores this when the camera is far. */
+  mroDoorOpen(cellKey: string): number {
+    let open = 0
+    for (const job of this.tier3.activeJobs()) {
+      if (job.buildingId !== cellKey) continue
+      const flight = this.flights.find((item) => item.id === job.aircraftId)
+      const path = flight ? this.routeForMroJob(flight, job.buildingId, job.bayId, job.size) : null
+      if (!path) {
+        open = Math.max(open, job.phase === 'in_bay' ? 1 : 0)
+        continue
+      }
+      open = Math.max(open, poseForPhase({ phase: job.phase, remaining: job.remaining, path }).door)
+    }
+    return open
+  }
+
+  /** Same loads the hangar session uses, so the info line and the brown-out agree. */
+  powerLoads(): PowerLoad[] {
+    const loads: PowerLoad[] = []
+    const site = this.utilityLoads().power
+    if (site > 0) loads.push({ id: 'site', demand: site })
+    if (this.researchers > 0) loads.push({ id: 'lab', demand: 35 })
+    for (const cell of tilesOf(this.tiles, 'mro')) {
+      loads.push({ id: `${cell.c},${cell.r}`, demand: MRO_POWER_DEMAND })
+    }
+    for (const cell of tilesOf(this.tiles, 'nighthub')) {
+      loads.push({ id: `hub:${cell.c},${cell.r}`, demand: NIGHT_HUB_POWER_DEMAND })
+    }
+    return loads
+  }
+
+  powerReport() {
+    const mods = this.economyView?.modifiers ?? {}
+    return calculatePower(
+      this.powerPlantTier,
+      this.powerLoads(),
+      mods['power.capacity'] ?? 1,
+      mods['power.demand'] ?? 1,
+      mods['power.batteryCapacity'] ?? 0,
+    )
+  }
+
+  private powerProblemCell(): { c: number; r: number } | null {
+    const mro = tilesOf(this.tiles, 'mro')
+    if (mro.length) return mro[mro.length - 1]
+    const hub = tilesOf(this.tiles, 'nighthub')
+    if (hub.length) return hub[hub.length - 1]
+    const terminal = tilesOf(this.tiles, 'terminal')
+    if (terminal.length) return terminal[0]
+    const tower = tilesOf(this.tiles, 'tower')
+    return tower[0] ?? null
+  }
+
+  private powerAdviceItems(): Advice[] {
+    const power = this.powerReport()
+    if (!power.brownout) return []
+    const cell = this.powerProblemCell()
+    const gate = canUpgradePower(this.powerPlantTier, 5)
+    const offer = gate.next ? powerPlantOffer(gate.next) : null
+    return [
+      {
+        id: 'power-brownout',
+        title: 'Power brown-out',
+        detail: `Demand ${Math.round(power.demand)} exceeds capacity ${Math.round(power.capacity)}.`,
+        fix: offer
+          ? `Build ${offer.name} (Field level ${offer.minFieldLevel}).`
+          : 'Shed a hangar or the night hub until demand fits.',
+        cells: cell ? [cell] : [],
+        scope: 'apron',
+      },
+    ]
+  }
+
+  private syncPowerAdvice() {
+    const brown = this.powerReport().brownout
+    const shown = this.advice.some((note) => note.id === 'power-brownout')
+    if (brown !== shown) this.refreshAdvice()
+  }
+
+  upgradePowerPlant() {
+    const gate = canUpgradePower(this.powerPlantTier, this.fieldLevel())
+    if (!gate.ok || gate.next == null) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return
+    }
+    const offer = powerPlantOffer(gate.next)
+    if (!this.spend(gate.cost, offer.name)) return
+    this.powerPlantTier = gate.next
+    this.bumpMap()
+    this.pushNews(
+      `${offer.name} online. Capacity ${POWER_PLANT_CAPACITY[gate.next].toLocaleString('en-US')}. Upkeep $${offer.upkeepPerDay.toLocaleString('en-US')}/day.`,
+      'good',
+    )
+    this.refreshAdvice()
+    this.emit()
+  }
+
+  consumeCameraCue(): { c: number; r: number } | null {
+    const cue = this.cameraCue
+    this.cameraCue = null
+    return cue
+  }
+
   private tickCargo(step: number) {
     if (!(step > 0)) return
     const cargo = this.ensureCargo()
@@ -6547,7 +9080,17 @@ export class Game {
       return
     }
     const next = (tier + 1) as 2 | 3
-    const cost = next === 2 ? 22000 : 48000
+    const need = unlockLevel(next === 2 ? 'prefab_ii' : 'satellite')
+    if (this.fieldLevel() < need) {
+      this.pushNews(
+        `${next === 2 ? 'Prefab II' : 'Satellite'} needs Field level ${need}.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const base = next === 2 ? 22000 : 48000
+    const cost = next === 2 ? base : capstoneCost(base, this.specPaths, 'satellite')
     if (!this.spend(cost, `prefab tier ${next}`)) return
     fit.tier = next
     fit.zones = schemeZones(next)
@@ -6617,8 +9160,9 @@ export class Game {
     }
     const def = itemDef(id)
     if (!def) return
-    if (this.fieldLevel() < def.minFieldLevel) {
-      this.pushNews(`${def.name} needs Field level ${def.minFieldLevel}.`, 'bad')
+    const itemLevel = Math.max(def.minFieldLevel, unlockLevel(def.id))
+    if (this.fieldLevel() < itemLevel) {
+      this.pushNews(`${def.name} needs Field level ${itemLevel}.`, 'bad')
       this.emit()
       return
     }
@@ -6673,6 +9217,7 @@ export class Game {
     if (!fit || !def) return false
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
     if (!this.spend(def.cost, def.name)) return false
+    if (!this.sandbox && id === 'walkway') this.postJournal('construction', def.cost, this.simMinutes())
     fit.items = fit.items ?? []
     this.hallItemSeq += 1
     fit.items.push({
@@ -6808,7 +9353,8 @@ export class Game {
         }
         if (g.bagDepositLeft == null) {
           const units = bagUnitsForTag(g.tag)
-          g.bagDepositLeft = clamp(0.55 + units * 0.55, 0.55, 2.8)
+          const manual = this.disruptions.checkInMultiplier()
+          g.bagDepositLeft = clamp((0.55 + units * 0.55) * manual, 0.55, 8)
           const fl = this.flights.find((x) => x.id === g.flightId)
           if (fl) {
             fl.bagStage = 'pax_deposit'
@@ -6901,17 +9447,20 @@ export class Game {
         }
         this.foodShelf -= 1
         this.mealSold = true
-        this.giveSnack(g, outlet?.item ?? null)
+        const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
+        if (dine === 'stood' && homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
+        else if (dine !== 'sat') this.giveSnack(g, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
           : outlet
             ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
-            : `Ate (−$${pay})`
-      }
+            : `Ate (−$${pay})`      }
       }
     }
-    if (n === 'shop') {
+    if (n === 'shop' && g.showUp?.amenity === 'lounge' && !g.shopDone && g.showUp.spendAmenity > 0) {
+      this.chargeStampedShop(g, open)
+    } else if (n === 'shop') {
       const pay = tagPrice(g.tag, 14, 24, 36, 48)
       if (this.shopShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
@@ -6934,7 +9483,9 @@ export class Game {
       }
       }
     }
-    if (n === 'lounge' && tagSpendsUp(g.tag)) {
+    if (n === 'lounge' && g.showUp?.amenity === 'lounge' && !g.loungeDone) {
+      this.chargeStampedLounge(g, open)
+    } else if (n === 'lounge' && tagSpendsUp(g.tag)) {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
       let happy = 8
       let pay = 0
@@ -7065,13 +9616,17 @@ export class Game {
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
       const called = this.flightBoardingCall(g)
-      if (called || (g.needs.hunger < 40 && g.needs.bladder < 40)) {
+      const early = !g.showUp && g.needs.hunger < 40 && g.needs.bladder < 40
+      if (called || early) {
         g.needs.boarding = 0
         g.dead = true
+        g.lost = false
+        g.thought = 'Boarded'
         this.paxServed += 1
         this.reputation = Math.min(100, this.reputation + 0.4)
       } else {
         g.needs.boarding = Math.max(g.needs.boarding, 8)
+        if (g.showUp) g.thought = 'Waiting for boarding'
       }
     }
     if (n === 'claim' && g.job === 'arrive') {
@@ -7117,6 +9672,7 @@ export class Game {
   private resetPillar() {
     this.contractId = null
     this.tankTier = 1
+    this.powerPlantTier = 1
     this.tankLitres = 0
     this.fuelSupply = 'road'
     this.roadMinutes = 0
@@ -7219,8 +9775,8 @@ export class Game {
       fuelRail: tilesOf(this.tiles, 'fuel_rail').length,
       oil: tilesOf(this.tiles, 'oil').length,
       travelator: tilesOf(this.tiles, 'travelator').length,
-      skywalk: tilesOf(this.tiles, 'skywalk').length,
-      mover: tilesOf(this.tiles, 'mover').length,
+      skywalk: Math.max(0, tilesOf(this.tiles, 'skywalk').length - this.hubStampCount('skywalk', 'skywalk')),
+      mover: Math.max(0, tilesOf(this.tiles, 'mover').length - this.hubStampCount('people_mover', 'mover')),
       wideStands,
       jumboStands,
       hydrant: this.hasResearch('hydrant_fuel'),
@@ -7409,7 +9965,7 @@ export class Game {
     if (this.staffedPost('security')) n += 0.75
     else if (this.deskStaff < 1 && n > 0) n -= 0.5
     // Underfunded security staff can't staff the lanes they built.
-    const staff = this.budgets.security / 100
+    const staff = this.budgetOf('security') / 100
     if (staff < 0.35) n -= 1
     else if (staff < 0.6) n -= 0.5
     return Math.max(0, Math.floor(n))
@@ -7551,7 +10107,8 @@ export class Game {
       if (a.kind === 'cargo' && site && site.cargoMult < 0.9 && Math.random() > 0.35) {
         if (this.startFocus !== 'cargo' && this.startFocus !== 'hybrid') return false
       }
-      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35) {
+      const airlinePull = this.tycoonAirlineInterest()
+      if (a.kind === 'pax' && this.landsidePaxMult() < 0.9 && Math.random() > 0.35 + airlinePull) {
         if (this.startFocus === 'cargo') return false
       }
       return true
@@ -7593,6 +10150,108 @@ export class Game {
     return this.negotiationBridge?.rivalCard() ?? null
   }
 
+  /** Game-days the Bellwater price war has run. 0 before the first day close. */
+  priceWarDay(): number {
+    return this.priceWar?.day ?? 0
+  }
+
+  priceWarCard() {
+    return this.priceWar?.card() ?? null
+  }
+
+  /**
+   * Walk-in kept after Bellwater and walked-airline cuts.
+   * Losses add, then stop at the cap in the price-war table.
+   */
+  rivalWalkInFactor(): number {
+    const negotiation = this.negotiationBridge?.trafficFactor() ?? 1
+    return composeRivalWalkIn(negotiation, this.warWalkInFactor())
+  }
+
+  /** One game day of the price war. The economy day-close calls this. */
+  advancePriceWarDay() {
+    if (!this.site) return
+    const war = this.ensurePriceWar()
+    const event = war.advanceDay({
+      walkedAirlineIds: this.negotiationBridge?.rivalCard()?.airlines ?? [],
+      postedFeeIndex: this.postedFeeIndex(),
+      softOffer: this.softContractOffer(),
+    })
+    if (event.started) {
+      this.raiseAlert({
+        key: `event:price-war:${event.warId}`,
+        severity: 'warning',
+        title: 'Bellwater price war',
+        detail: event.note,
+        event: true,
+      })
+    }
+    if (event.note) this.pushNews(event.note, event.tone)
+    if (event.resolved && event.warId) this.alerts.clear(`event:price-war:${event.warId}`)
+    if (event.poachedOfferId && this.offer?.airline === event.poachedOfferId) {
+      this.offer = null
+      if (this.negotiationBridge?.desk.session?.airlineId === event.poachedOfferId) {
+        this.negotiationBridge.closePanel()
+      }
+    }
+  }
+
+  respondToPriceWar(choice: WarChoice) {
+    const war = this.ensurePriceWar()
+    const quote = war.quote(choice)
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return
+    }
+    if (quote.cost > 0 && !this.spend(quote.cost, 'Bellwater counter-promotion')) return
+    if (quote.cost > 0 && !this.sandbox) this.noteExpense(quote.cost)
+    const warId = war.pendingId()
+    const result = war.commit(choice)
+    if (!result.ok) {
+      this.pushNews(result.note, 'bad')
+      this.emit()
+      return
+    }
+    if (warId) this.alerts.clear(`event:price-war:${warId}`)
+    this.pushNews(result.note, choice === 'hold' ? 'bad' : 'good')
+    this.emit()
+  }
+
+  private warWalkInFactor(): number {
+    return this.priceWar?.walkInFactor() ?? 1
+  }
+
+  private ensurePriceWar(): PriceWar {
+    if (!this.priceWar) this.priceWar = PriceWar.create(this.diplomacySeed || 1)
+    return this.priceWar
+  }
+
+  /** Blend of the posted landing, passenger, and cargo tariffs. 1 is list price. */
+  private postedFeeIndex(): number {
+    const keys = ['landingPerTonne', 'paxFee', 'cargoPerUnit'] as const
+    let sum = 0
+    for (const key of keys) {
+      const base = DEFAULT_FEE_SCHEDULE[key]
+      sum += base > 0 ? this.fees[key] / base : 1
+    }
+    return sum / keys.length
+  }
+
+  private softContractOffer(): { id: string; name: string } | null {
+    const offer = this.offer
+    if (!offer || this.signed.includes(offer.airline)) return null
+    const known = this.allAirlines().find((airline) => airline.id === offer.airline)
+    return { id: offer.airline, name: known?.name ?? offer.airline }
+  }
+
+  /** Match-rates trims what the airport collects. Quiet days leave the amount alone. */
+  private afterRivalMargin(amount: number): number {
+    const margin = this.priceWar?.marginFactor() ?? 1
+    if (margin === 1 || !(amount > 0)) return amount
+    return Math.max(0, Math.round(amount * margin))
+  }
+
   /** Standing rows the diplomacy adapter is holding for this carrier. */
   negotiationStanding(id: string): { source: string; value: number; durationDays: number }[] {
     const rel = this.ensureDiplomacy().relation(id)
@@ -7624,7 +10283,21 @@ export class Game {
   }
 
   setNegotiationFee(service: ServiceId, pct: number) {
-    this.negotiationDesk().setFee(service, pct)
+    const desk = this.negotiationDesk()
+    desk.setFee(service, pct)
+    const id = desk.desk.session?.airlineId
+    if (id) this.ensureDiplomacy().adapter.engine.noteAirlineFee(id, desk.feeFactor(id))
+    this.emit()
+  }
+
+  /** Put the open ask on this carrier's target price and a standard deposit. */
+  matchNegotiationTarget() {
+    const desk = this.negotiationBridge?.desk
+    const session = desk?.session
+    if (!desk || !session || session.status !== 'open') return
+    const pct = (desk.personality(session.airlineId).targetCost - 1) * 100
+    for (const service of SERVICE_IDS) desk.setFee(service, pct)
+    desk.setDeposit('standard')
     this.emit()
   }
 
@@ -7697,6 +10370,7 @@ export class Game {
           },
           notify: (message, tone) => this.pushNews(message, tone),
           ensureCarrier: (profile) => this.ensureNegotiationCarrier(profile),
+          liveQuote: (id) => this.liveQuote(id),
         },
         this.diplomacySeed,
       )
@@ -7707,20 +10381,20 @@ export class Game {
   private applyNegotiationStanding(
     deltas: { id: string; airlineId: string; modifier: string; label: string; value: number; durationDays: number }[],
   ) {
-    const diplomacy = this.ensureDiplomacy()
-    const day = diplomacy.day()
+    const engine = this.ensureDiplomacy().adapter.engine
     for (const delta of deltas) {
-      const rel = diplomacy.relation(delta.airlineId)
-      if (!rel) continue
-      rel.modifiers.push({
-        id: delta.id,
-        kind: 'other',
-        label: delta.label,
-        source: delta.modifier,
+      engine.noteNegotiation({
+        airlineId: delta.airlineId,
         value: delta.value,
-        startDay: day,
+        label: delta.label,
         durationDays: delta.durationDays,
+        source: delta.modifier,
       })
+    }
+    const rivalName = this.negotiationBridge?.rivalCard()?.name ?? 'A rival airport'
+    for (const delta of deltas) {
+      if (delta.modifier !== 'walk') continue
+      engine.noteRivalAirport({ rivalName, airlineId: delta.airlineId, taken: true })
     }
   }
 
@@ -7741,9 +10415,16 @@ export class Game {
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.grantFieldXp(12 + a.tier * 4, 'contract')
+    this.noteCommercialSign(id, a)
+    this.pullCarrierFromRival(id, a.name)
     this.seedScheduleForAirline(id, 3)
+    const leadDays = this.commercialLead[id]?.leadDays ?? 0
+    const held = this.deposits[id]?.held ?? 0
+    const depositBit =
+      held > 0 ? ` ${this.deposits[id].tier} deposit $${held.toLocaleString('en-US')} held.` : ''
+    const leadBit = leadDays > 0 ? ` First flight in ${leadDays} days.` : ''
     this.pushNews(
-      `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.`,
+      `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.${leadBit}${depositBit}`,
       'good',
     )
     this.emit()
@@ -7779,6 +10460,8 @@ export class Game {
       .filter((s) => s.status === 'scheduled' || s.status === 'delayed')
       .sort((x, y) => y.eta - x.eta)[0]
     if (last) t = Math.max(t, last.eta + 16)
+    const gate = this.leadGateClock(airlineId)
+    if (gate > t) t = gate
     const hub = this.isHub(airlineId)
     const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
     const spacing = a.kind === 'cargo'
@@ -7787,13 +10470,14 @@ export class Game {
         ? 12 + Math.random() * 8
         : 18 + Math.random() * 10
     const n = hub ? scaled + 1 : scaled
+    let eta = t
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
         id: uid('slot'),
         airline: airlineId,
         flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
-        eta: t + i * spacing,
+        eta,
         status: 'scheduled',
         delaySec: 0,
         delayReason: null,
@@ -7807,6 +10491,10 @@ export class Game {
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
       this.noteSlotBanked(slot)
+      eta += spacing * arrivalSpacingScale(eta, {
+        nightBank: this.hasResearch('night_bank'),
+        holidayPeak: this.holidayPeakHook,
+      })
     }
   }
 
@@ -7831,7 +10519,7 @@ export class Game {
     }
     const a = this.airline(airlineId)
     this.flightSeq += 1
-    const eta = this.clock + Math.max(8, inSeconds)
+    const eta = Math.max(this.clock + Math.max(8, inSeconds), this.leadGateClock(airlineId))
     const rw = this.pickBalancedRunway()
     const slot: ScheduleSlot = {
       id: uid('slot'),
@@ -7894,7 +10582,7 @@ export class Game {
   pullSlot(slotId: string, bySec = 12) {
     const s = this.schedule.find((x) => x.id === slotId)
     if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
-    const floor = this.clock + 6
+    const floor = Math.max(this.clock + 6, this.leadGateClock(s.airline))
     const next = Math.max(floor, s.eta - bySec)
     if (next >= s.eta - 0.5) {
       this.pushNews(`${s.flightNo} already as early as the tower allows.`, 'ok')
@@ -8226,7 +10914,13 @@ export class Game {
     if (this.scheduleAuto && this.schedulePlanCool <= 0 && this.signed.length) {
       this.schedulePlanCool = 18
       const open = this.openSchedule()
-      const want = Math.min(this.scheduleCap() - 2, 4 + this.runwayStripCount() * 2)
+      const want = bankTarget(
+        4 + this.runwayStripCount() * 2,
+        this.scheduleCap() - 2,
+        this.clock,
+        this.hasResearch('night_bank'),
+        this.holidayPeakHook,
+      )
       if (open.length < want) {
         const pool = this.signed.filter((id) => !this.isBanned(id))
         if (pool.length) {
@@ -8516,7 +11210,12 @@ export class Game {
 
       // Soft day-rate while occupying a stand.
       if (!dayCharged && this.parkRateCool <= 0) {
-        this.earn(GA_PARK_DAY_RATE, `${f.flightNo} parking day-rate`, f)
+        this.earn(
+          this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'),
+          `${f.flightNo} parking day-rate`,
+          f,
+          'parking_fees',
+        )
         this.parkRateCool = GA_PARK_RATE_COOL
         dayCharged = true
       }
@@ -8581,18 +11280,20 @@ export class Game {
     }
     this.parkingCool -= dt
     if (this.parkingCool > 0 || !this.site) return
-    this.parkingCool = 50 + Math.random() * 40
+    const walkIn = Math.max(0.5, this.warWalkInFactor())
+    this.parkingCool = demandInterval(50 + Math.random() * 40, this.fees) / walkIn
     if (!this.freeStands().length) return
-    if (Math.random() > 0.45) return
+    if (Math.random() > walkInOfferChance(this.fees) * this.warWalkInFactor()) return
 
     const frames = ['citation', 'pc12', 'crj700', 'atr72'].filter((id) => AIRFRAMES[id])
     const afId = pick(frames)
     const af = AIRFRAMES[afId]
     if (this.longestRunway() < af.minRunway) return
     this.flightSeq += 1
-    const fee =
-      GA_PARK_FEE_MIN +
-      Math.floor(Math.random() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN))
+    const fee = this.listed(
+      GA_PARK_FEE_MIN + Math.floor(Math.random() * (GA_PARK_FEE_MAX - GA_PARK_FEE_MIN)),
+      'aircraftParkingPerDay',
+    )
     const stay =
       GA_PARK_STAY_MIN +
       Math.floor(Math.random() * (GA_PARK_STAY_MAX - GA_PARK_STAY_MIN))
@@ -8624,7 +11325,7 @@ export class Game {
       this.emit()
       return
     }
-    this.earn(o.fee, `${o.callsign} parking fee`)
+    this.earn(o.fee, `${o.callsign} parking fee`, undefined, 'parking_fees')
     const inbound = this.armApproach(route)
     const load = this.flightLoad(af, 'business', false)
     const f: Flight = {
@@ -8850,7 +11551,7 @@ export class Game {
       return
     }
     // Cleaning budget softens the sticker — full crew does more per dollar.
-    const cleanPct = this.budgets.cleaning / 100
+    const cleanPct = this.budgetOf('cleaning') / 100
     const cost = Math.round(HALL_SCRUB_COST * (1.35 - cleanPct * 0.35))
     if (!this.spend(cost, 'hall scrub')) return
     const cut = 30 + cleanPct * 25
@@ -8887,6 +11588,20 @@ export class Game {
   payrollPreview(): number {
     const lines = (Object.keys(BUDGET_BASE) as BudgetKey[]).map((key) => this.lineCost(key))
     return payrollAmount(lines, this.fieldOpsMult())
+  }
+
+  /**
+   * What the next operating day will bill: staff floor, landside (already a
+   * daily total) plus pillar and premium upkeep, plot holding, and the city
+   * levy on today's cash. The HUD forecast uses this; it does not post.
+   */
+  dailyOperatingCharges(): { payroll: number; upkeep: number; holding: number; levy: number } {
+    return {
+      payroll: this.payrollPreview(),
+      upkeep: this.landsideUpkeep() + this.pillarUpkeepBill() + dailyUpkeep(this.premium),
+      holding: this.site ? this.dailyHoldingQuote() : 0,
+      levy: cityLevy(this.cash, this.sandbox),
+    }
   }
 
   hireJanitor() {
@@ -8931,7 +11646,7 @@ export class Game {
 
   tickJanitors(dt: number) {
     this.janitorCool -= dt
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     if (this.janitors < 1 || clean < 0.2 || !this.fits.length) return
     if (this.janitorCool > 0) return
     this.janitorCool = 8
@@ -9180,6 +11895,141 @@ export class Game {
     }
   }
 
+  hasCtScanners(): boolean {
+    const unlocked = this.economyState?.unlockedTech ?? this.economyView?.state.unlockedTech ?? []
+    return unlocked.includes(CT_TECH_ID)
+  }
+
+  premiumGate() {
+    return {
+      fieldLevel: this.fieldLevel(),
+      hasCt: this.hasCtScanners(),
+      day: Math.floor(Math.max(0, this.clock) / 180),
+      hourIndex: Math.floor(this.simMinutes() / 60),
+      hours: 1,
+    }
+  }
+
+  buyPremium(itemId: PremiumItemId): boolean {
+    const attempt = buyFacility(this.premium, itemId, this.premiumGate())
+    if (!attempt.ok) {
+      this.pushNews(attempt.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(attempt.cost, attempt.name)) return false
+    this.premium = attempt.state
+    this.pushNews(
+      `${attempt.name} open. Upkeep ${moneyLeft(attempt.upkeep)}/day, staffed or idle.`,
+      'ok',
+    )
+    this.emit()
+    return true
+  }
+
+  hirePremiumOfficer(): boolean {
+    const attempt = hireOfficer(this.premium)
+    if (!attempt.ok) {
+      this.pushNews(attempt.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(attempt.cost, 'security officer')) return false
+    this.premium = attempt.state
+    this.pushNews(
+      `Security officer #${this.premium.securityOfficers} joined the shared roster.`,
+      'ok',
+    )
+    this.emit()
+    return true
+  }
+
+  setPremiumFee(on: boolean) {
+    this.premium = setFeeEnabled(this.premium, on)
+    this.pushNews(
+      on ? `Fast-track fee on (${moneyLeft(PREMIUM_RULES.fastTrackFee)} per passenger).` : 'Fast-track fee off.',
+      'ok',
+    )
+    this.emit()
+  }
+
+  /** Daily building upkeep. Idle lanes pay the same as busy ones. */
+  billPremiumUpkeep(): number {
+    const bill = dailyUpkeep(this.premium)
+    if (!(bill > 0)) return 0
+    const before = this.cash
+    this.charge(bill)
+    if (this.cash !== before) this.postJournal('building_upkeep', bill, this.simMinutes())
+    return bill
+  }
+
+  private notePremiumDesk(g: HallGuest) {
+    if (g.usedPremiumCheckin || g.job !== 'depart') return
+    const cabin = g.serviceCabin ?? cabinFromTag(g.tag)
+    if (!expectsHigherService(cabin)) return
+    const open = staffedFacilities(
+      this.premium,
+      { security_officer: this.premium.securityOfficers, terminal_staff: this.deskStaff },
+      this.hasCtScanners(),
+    )
+    if (!open.some((row) => row.kind === 'checkin')) return
+    g.usedPremiumCheckin = true
+    g.thought = 'Premium check-in'
+  }
+
+  private rulePremiumScreen(g: HallGuest) {
+    if (g.premiumScreen || g.job !== 'depart') return
+    // Show-up stamps the lane on preferFastTrack. Lounge lovers carry a premium
+    // wallet and still walk the standard scanners.
+    if (g.showUp && !g.showUp.preferFastTrack) return
+    let cabin = g.serviceCabin ?? cabinFromTag(g.tag)
+    if (g.showUp?.preferFastTrack && !expectsHigherService(cabin)) cabin = 'business'
+    const screened = screenPassengers(
+      this.premium,
+      [{ id: g.id, cabin, airlineId: g.airlineId ?? 'field' }],
+      { security_officer: this.premium.securityOfficers, terminal_staff: this.deskStaff },
+      this.premiumGate(),
+    )
+    this.premium = screened.state
+    const row = screened.rows[0]
+    if (!row) return
+    g.premiumScreen = row.path
+    g.premiumEscort = row.escorted
+    if (row.checkinId) g.usedPremiumCheckin = true
+    if (row.happinessDelta) g.happiness = Math.max(0, Math.min(100, g.happiness + row.happinessDelta))
+    if (row.standingDelta && g.airlineId) {
+      const sens = this.airline(g.airlineId).heatSensitivity || 1
+      this.adjustHeat(g.airlineId as AirlineId, row.standingDelta / sens)
+    }
+    if (row.fee > 0) {
+      this.cash += row.fee
+      this.revenue += row.fee
+      this.noteIncome(row.fee, 'passenger_fees')
+    }
+  }
+
+  private tickDedicatedLane(g: HallGuest, dt: number, open: Set<HallNode>) {
+    const label =
+      g.premiumScreen === 'vip_room' ? 'Private screening' : g.premiumEscort ? 'Escorted fast-track' : 'Fast-track lane'
+    if ((g.serviceLeft ?? 0) > 0) {
+      g.serviceLeft = (g.serviceLeft ?? 0) - dt
+      g.lost = false
+      g.thought = label
+      if ((g.serviceLeft ?? 0) <= 0) {
+        g.serviceLeft = 0
+        g.clearedSec = true
+        g.thought = g.premiumScreen === 'vip_room' ? 'Cleared the private room' : 'Cleared fast-track'
+        if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
+        else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
+        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      }
+      return
+    }
+    g.serviceLeft = PREMIUM_RULES.dedicatedServiceSec
+    g.lost = false
+    g.thought = label
+  }
+
   hireDeskStaff() {
     if (this.deskStaff >= 8) {
       this.pushNews('Desk crew maxed (8).', 'bad')
@@ -9369,7 +12219,7 @@ export class Game {
   considerMxOffers() {
     if (this.mxOffer || this.mxOfferCool > 0) return
     if (!tilesOf(this.tiles, 'hangar').length || this.mechanics < 1) return
-    if (this.budgets.maintenance < 35) return
+    if (this.budgetOf('maintenance') < 35) return
     const candidates = this.signed.filter((id) => !this.mxSigned.includes(id))
     if (!candidates.length) return
     const id = pick(candidates)
@@ -9432,7 +12282,7 @@ export class Game {
   /** Chance (0–1) a jet has a serious pavement incident this check. */
   crashChance(): number {
     const cond = this.runwayCondition / 100
-    const mx = this.budgets.maintenance / 100
+    const mx = this.budgetOf('maintenance') / 100
     const staff = clamp(this.mechanics / 3, 0, 1)
     const neglect = (1 - cond) * (1.15 - mx * 0.55) * (1.1 - staff * 0.35)
     return clamp(neglect * 0.045 * this.weatherCrashMult(), 0, 0.35)
@@ -9442,9 +12292,7 @@ export class Game {
     this.weatherCool -= dt
     if (this.weatherCool > 0) return
     this.weatherCool = 35 + Math.random() * 40
-    const roll = Math.random()
-    const next: Weather =
-      roll < 0.55 ? 'clear' : roll < 0.75 ? 'rain' : roll < 0.9 ? 'fog' : 'storm'
+    const next = rollSeasonWeather(dayIndex(this.clock), Math.random())
     if (next !== this.weather) {
       this.weather = next
       if (next === 'storm') {
@@ -9473,9 +12321,14 @@ export class Game {
 
   /**
    * One game day: staffing floor or the income share, then the 0.5% city levy.
-   * Landside upkeep is the old six payroll-tick slices, billed once.
+   * Landside upkeep is already a daily total (legacy tick × 6).
    */
   private closeOperatingDay(completedDay: number) {
+    this.settleDeposits(completedDay)
+    const premiumBill = this.billPremiumUpkeep()
+    if (premiumBill > 0 && !this.sandbox) {
+      this.pushNews(`Premium upkeep ${moneyLeft(premiumBill)} — idle lanes still bill.`, 'ok')
+    }
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -9487,13 +12340,31 @@ export class Game {
     const rawBill = payrollForGameDay(income, phase, minimum)
     const bill = Number.isFinite(rawBill) && rawBill > 0 ? rawBill : 0
     const fees = this.landsideIncome()
-    const upkeep = this.landsideUpkeep() * 6 + this.pillarUpkeepBill()
+    const upkeep = this.landsideUpkeep() + this.pillarUpkeepBill() + powerPlantOffer(this.powerPlantTier).upkeepPerDay
     if (upkeep > 0) this.charge(upkeep)
     const holding = this.site ? this.dailyHoldingQuote() : 0
     if (holding > 0) {
       this.charge(holding)
       this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
     }
+    const hubBill = hubUpkeep(new Set(this.researchUnlocked))
+    if (hubBill > 0) {
+      this.charge(hubBill)
+      this.postJournal('building_upkeep', hubBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    const linkBill = this.connectivityUpkeep()
+    if (linkBill > 0) {
+      this.charge(linkBill)
+      this.postJournal('building_upkeep', linkBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    const beltBill = this.walkwayCoverMetres() > 0
+      ? (this.walkwayCoverMetres() / CONNECTIVITY_CATALOG.moving_walkway.lengthMetres) *
+        CONNECTIVITY_CATALOG.moving_walkway.upkeepPerDay
+      : 0
+    if (beltBill > 0) {
+      this.postJournal('building_upkeep', beltBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    this.ageLinks()
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
     this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
@@ -9558,15 +12429,16 @@ export class Game {
     if (!this.economy) {
       this.economy = createEconomyAdapter(
         {
-          getFieldLevel: () => this.fieldLevel(),
+          getFieldLevel: () => this.hostedFieldLevel(),
           isAirportOperational: () => this.flightsDone > 0 || this.signed.length > 0,
           getAbsoluteDay: () => Math.floor(this.clock / 180),
           getStaffPools: () => ({
             maintenance_tech: { hired: this.mechanics, wagePerDay: 0 },
             researcher: { hired: this.researchers, wagePerDay: 0 },
             terminal_staff: { hired: this.deskStaff, wagePerDay: 0 },
+            security_officer: { hired: this.premium.securityOfficers, wagePerDay: 0 },
           }),
-          getStaffBuildings: () => [],
+          getStaffBuildings: () => premiumStaffBuildings(this.premium),
           getResearchRooms: () =>
             this.researchers > 0
               ? [{ id: 'field-lab', desks: this.researchers, powerDemand: 35, active: true }]
@@ -9575,7 +12447,7 @@ export class Game {
           getChains: () => [],
           getTransitTier: () => (this.hasRailStation() ? 'rail' : this.hasBusCurb() ? 'bus' : 'road'),
           getHousingTier: () => 0,
-          getPowerPlantTier: () => 1,
+          getPowerPlantTier: () => this.powerPlantTier,
           saveEconomyState: (state) => {
             this.economyState = state
           },
@@ -9592,7 +12464,7 @@ export class Game {
   tickMaintenance(dt: number) {
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
     if (!strips.length) return
-    const mx = this.budgets.maintenance / 100
+    const mx = this.budgetOf('maintenance') / 100
     const staff = this.mechanics
     // Traffic wears pavement; storms chew it faster.
     const liveJets = this.flights.filter(
@@ -9620,7 +12492,7 @@ export class Game {
     }
 
     // Cleaning budget slowly fights hall wear; starved cleaning grows it.
-    const clean = this.budgets.cleaning / 100
+    const clean = this.budgetOf('cleaning') / 100
     for (const f of this.fits) {
       if (clean >= 0.7) {
         f.wearBath = Math.max(0, (f.wearBath ?? 0) - dt * 0.8)
@@ -9666,7 +12538,7 @@ export class Game {
     if (this.fireIncidentCool > 0) return
     this.fireIncidentCool = 50 + Math.random() * 40
     if (!tilesOf(this.tiles, 'fuel').length && !this.flights.length) return
-    const firePct = this.budgets.fire / 100
+    const firePct = this.budgetOf('fire') / 100
     const stations = tilesOf(this.tiles, 'fire').length
     const risk = clamp(0.22 - stations * 0.08 - firePct * 0.15, 0.02, 0.28)
     if (Math.random() > risk) return
@@ -9699,8 +12571,8 @@ export class Game {
   }
 
   crashFlight(f: Flight, moment: 'landing' | 'takeoff') {
-    const amb = this.budgets.ambulance / 100
-    const fire = this.budgets.fire / 100
+    const amb = this.budgetOf('ambulance') / 100
+    const fire = this.budgetOf('fire') / 100
     const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.round(baseFine * (1.4 - mitigate * 0.5))
@@ -9945,6 +12817,12 @@ export class Game {
   flightActivity(f: Flight): string {
     const gate = f.stand ? this.gateLabel(f.stand) : 'gate'
     const hangar = f.hangarBay ? `hangar ${f.hangarBay.c},${f.hangarBay.r}` : 'hangar'
+    const mroJob = this.tier3.activeJobs().find((job) => job.aircraftId === f.id)
+    if (mroJob) {
+      if (mroJob.phase === 'taxi_in') return `Taxiing to MRO bay ${mroJob.bayId}`
+      if (mroJob.phase === 'in_bay') return `In MRO bay ${mroJob.bayId}`
+      return `Taxiing back from MRO bay ${mroJob.bayId}`
+    }
     switch (f.phase) {
       case 'hold':
         return 'Holding for a gate'
@@ -10307,6 +13185,9 @@ export class Game {
       if (site.standAccess) this.standAccess[key] = site.standAccess
       if (site.standScale) this.standScale[key] = site.standScale
       if (site.hangarScale) this.hangarScale[key] = site.hangarScale
+      if (site.tool === 'people_mover') this.hubLinksBuilt[key] = 'people_mover'
+      else if (site.tool === 'xfer_bus') this.hubLinksBuilt[key] = 'xferbus'
+      else if (site.tool === 'hub_skywalk') this.hubLinksBuilt[key] = 'skywalk'
       this.pushNews(site.news ?? `${site.name} open.`, 'good')
     } else if (site.kind === 'runway') {
       for (const p of site.cells) this.tiles[p.r][p.c] = 'runway'
@@ -10363,6 +13244,11 @@ export class Game {
       this.emit()
       return
     }
+    if (cur === 'mro' && this.tier3.isBusy(`${v.c},${v.r}`)) {
+      this.pushNews('A heavy check is in that hangar — wait until the bay clears.', 'bad')
+      this.emit()
+      return
+    }
     if (cur === 'terminal') {
       const origin = this.selectedTerminalOrigin()
       if (origin) {
@@ -10390,6 +13276,7 @@ export class Game {
       delete this.standClass[`${v.c},${v.r}`]
       delete this.standAccess[`${v.c},${v.r}`]
       delete this.standScale[`${v.c},${v.r}`]
+      delete this.hubLinksBuilt[`${v.c},${v.r}`]
       delete this.hangarScale[`${v.c},${v.r}`]
     }
     this.bumpMap()
@@ -10428,6 +13315,14 @@ export class Game {
   }
 
   placeRunway(v: Vec, klass: RunwayClass = 'regional') {
+    if (klass === 'heavy') {
+      const need = unlockLevel('runway_heavy')
+      if (this.fieldLevel() < need) {
+        this.pushNews(`Heavy strip needs Field level ${need}.`, 'bad')
+        this.emit()
+        return
+      }
+    }
     const cells = this.prefabRunway(v, klass)
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
@@ -10526,8 +13421,9 @@ export class Game {
   placeSingle(v: Vec) {
     const building = BUILDINGS.find((b) => b.tool === this.tool)
     if (!building) return
-    if (building.minFieldLevel && this.fieldLevel() < building.minFieldLevel) {
-      this.pushNews(`${building.name} needs Field level ${building.minFieldLevel}.`, 'bad')
+    const needLevel = Math.max(building.minFieldLevel ?? 1, unlockLevel(building.tool))
+    if (this.fieldLevel() < needLevel) {
+      this.pushNews(`${building.name} needs Field level ${needLevel}.`, 'bad')
       this.emit()
       return
     }
@@ -10541,6 +13437,14 @@ export class Game {
       this.pushNews(`${building.name} is still locked in research.`, 'bad')
       this.emit()
       return
+    }
+    if (building.tile === 'stand' && this.standAccessMode === 'jetway') {
+      const bridge = unlockLevel('jet_bridge')
+      if (this.fieldLevel() < bridge) {
+        this.pushNews(`Jet bridge needs Field level ${bridge}.`, 'bad')
+        this.emit()
+        return
+      }
     }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
@@ -10574,6 +13478,14 @@ export class Game {
       this.pushNews('De-ice pad needs taxi / stand / runway edge.', 'bad')
       this.emit()
       return
+    }
+    if (building.tile === 'mro' || building.tile === 'nighthub') {
+      const gate = building.tile === 'mro' ? mroUnlock(this.tier3Unlock()) : nightHubUnlock(this.tier3Unlock())
+      if (!gate.ok) {
+        this.pushNews(gate.why, 'bad')
+        this.emit()
+        return
+      }
     }
     if (this.tool === 'oil') {
       const beside = [
@@ -10631,6 +13543,15 @@ export class Game {
       this.emit()
       return
     }
+    if (
+      !this.sandbox &&
+      (building.tile === 'mover' ||
+        building.tile === 'xferbus' ||
+        building.tile === 'skywalk' ||
+        building.tile === 'travelator')
+    ) {
+      this.postJournal('construction', stampCost, this.simMinutes())
+    }
     const standCls: StandClass = standClassForTool(this.tool) ?? 'M'
     const standScale = standScaleForTool(
       this.tool,
@@ -10657,6 +13578,16 @@ export class Game {
       news = 'Cargo shed online — city trucks need a guard post on the road to deliver cleanly.'
     } else if (building.tile === 'termbus') {
       news = `Terminal bus depot online ($${TERMBUS_COST.toLocaleString()}). Remote stands can ferry instead of walking.`
+    } else if (this.tool === 'people_mover') {
+      news = `People mover online ($${CONNECTIVITY_CATALOG.people_mover.cost.toLocaleString('en-US')}). Connecting passengers ride it. A breakdown strands the link.`
+    } else if (building.tile === 'mover') {
+      news = `Pier mover online ($${stampCost.toLocaleString('en-US')}). Jumbo piers ride this guideway.`
+    } else if (building.tile === 'xferbus') {
+      news = `Airside transfer bus online ($${CONNECTIVITY_CATALOG.airside_transfer_bus_depot.cost.toLocaleString('en-US')}). Slow, and it adds apron traffic.`
+    } else if (this.tool === 'hub_skywalk') {
+      news = `Skywalk open ($${CONNECTIVITY_CATALOG.skywalk.cost.toLocaleString('en-US')}). It links the terminals it touches.`
+    } else if (building.tile === 'skywalk') {
+      news = `Pier skywalk open ($${stampCost.toLocaleString('en-US')}). Widebody gates can use this bridge.`
     } else if (building.tile === 'deice') {
       news = `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`
     } else if (building.tile === 'bus') {
@@ -10665,6 +13596,10 @@ export class Game {
       news = `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`
     } else if (building.tile === 'hangar') {
       news = 'Hangar up.'
+    } else if (building.tile === 'mro') {
+      news = 'MRO hangar open — airlines can buy heavy checks. A bay ties up that stand.'
+    } else if (building.tile === 'nighthub') {
+      news = 'Cargo night hub open — freighters bank after dark. The city will bill the noise.'
     } else if (building.tile === 'belt') {
       news = `Bag belt open ($${BELT_COST.toLocaleString()}). Link hall, sort, and stand.`
     } else if (building.tile === 'kitchen') {
@@ -10776,6 +13711,7 @@ export class Game {
   }
 
   groundBusy(): boolean {
+    if (this.tier3.taxiwayTieCount() > 0) return true
     return this.flights.some(
       (f) =>
         (f.craft ?? 'jet') === 'jet' &&
@@ -10787,6 +13723,7 @@ export class Game {
 
   freeStands(): Vec[] {
     const stands = tilesOf(this.tiles, 'stand')
+    const reserved = this.tier3.tiedStandKeys()
     const used = new Set(
       this.flights
         .filter(
@@ -10799,7 +13736,8 @@ export class Game {
         .map((f) => `${f.stand!.c},${f.stand!.r}`),
     )
     return stands.filter((s) => {
-      if (used.has(`${s.c},${s.r}`)) return false
+      const key = `${s.c},${s.r}`
+      if (used.has(key) || reserved.has(key)) return false
       return Boolean(this.pathStandToRunway(s))
     })
   }
@@ -11043,6 +13981,12 @@ export class Game {
       this.pushNews(`${slot.flightNo} scrubbed — airline banned.`, 'bad')
       return
     }
+    if (this.disruptions.runwayClosed(this.clock)) {
+      this.delaySlot(slot, 8, 'Runway closed')
+      this.spawnCool = 4
+      return
+    }
+    if (this.holdLead(slot)) return
 
     // At inbound capacity or pavement jammed — slip the due slot instead of soft-locking the bank.
     if (inbound.length >= this.maxInbound() || (this.groundBusy() && !this.assignStand())) {
@@ -11117,7 +14061,7 @@ export class Game {
       return
     }
     const approach = this.armApproach(route)
-    const load = this.flightLoad(af, def.persona, def.kind === 'cargo')
+    const load = this.applyRivalLoad(this.flightLoad(af, def.persona, def.kind === 'cargo'), def.kind === 'cargo')
     const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
@@ -11157,6 +14101,7 @@ export class Game {
       claimLane: slot.claimLane ?? null,
     }
     this.flights.push(f)
+    if (this.commercialLead[airlineId]) this.commercialLead[airlineId].opened = true
     if (!f.cargo) this.assignClaimLane(f)
     this.bindShowUp(slot, f)
     this.noteCraft(af.kind)
@@ -11181,7 +14126,7 @@ export class Game {
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.flights.some((f) => f.craft === 'helo' && f.phase !== 'gone')) return
     // Starved ambulance budget — medevac and exec both cool their heels.
-    if (this.budgets.ambulance < 20) {
+    if (this.budgetOf('ambulance') < 20) {
       if (Math.random() < 0.08) {
         this.pushNews('Choppers overflew — no medics on the pad budget.', 'bad')
       }
@@ -11191,7 +14136,7 @@ export class Game {
 
     const pad = pads[0]
     const medevac = Math.random() < 0.45
-    if (medevac && this.budgets.ambulance < 45) {
+    if (medevac && this.budgetOf('ambulance') < 45) {
       // Executives still come; medevac wants real ambulance cover.
       this.heloCool = 12
       return
@@ -11227,7 +14172,7 @@ export class Game {
     }
     this.flights.push(f)
     this.noteCraft(af.kind)
-    this.heloCool = 75 + Math.random() * 40
+    this.heloCool = demandInterval(75 + Math.random() * 40, this.fees)
     this.selectedFlight = this.selectedFlight ?? f.id
     this.pushNews(
       medevac
@@ -11262,7 +14207,7 @@ export class Game {
         f.z = 0.28
         if (!f.posted.landing) {
           f.posted.landing = true
-          this.earn(HELO_LANDING, `${f.flightNo} pad fee`, f)
+          this.earn(this.listed(HELO_LANDING, 'helicopterLanding'), `${f.flightNo} pad fee`, f, 'landside_fees')
           this.reputation = Math.min(100, this.reputation + 1)
         }
       } else if (f.phase === 'approach' && f.phaseTime > 1.2) {
@@ -11391,6 +14336,13 @@ export class Game {
         `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
         'bad',
       )
+      this.raiseAlert({
+        key: 'event:inbound-failed',
+        severity: 'critical',
+        title: 'Inbound flight diverted',
+        detail: `${f.flightNo} held too long and went elsewhere. Free a stand or a runway slot.`,
+        event: true,
+      })
     }
     void dt
   }
@@ -11507,7 +14459,29 @@ export class Game {
           (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
           this.landingFeeMult(f.airline) *
           this.diplomacyFeeFactor(f.airline)
-        this.earn(Math.round(airline.landing * mult), `${f.flightNo} landing (${f.airframeName})`, f)
+        const base = Math.round(airline.landing * mult)
+        this.earn(
+          this.contractBill(f, this.listed(base, 'landingPerTonne'), 'landing', 'landing'),
+          `${f.flightNo} landing (${f.airframeName})`,
+          f,
+          'landing_fees',
+        )
+        this.earn(
+          this.contractBill(f, this.afterRivalMargin(f.pax * this.fees.paxFee), 'landing', 'pax'),
+          `${f.flightNo} passenger fees`,
+          f,
+          'passenger_fees',
+          false,
+        )
+        if (this.negotiationBridge?.signedTerms(f.airline)) {
+          this.earn(
+            this.contractBill(f, this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'), 'service', 'parking'),
+            `${f.flightNo} aircraft parking`,
+            f,
+            'parking_fees',
+            false,
+          )
+        }
       }
       if (
         (f.craft ?? 'jet') === 'jet' &&
@@ -11516,7 +14490,7 @@ export class Game {
         this.mxSigned.includes(f.airline) &&
         tilesOf(this.tiles, 'hangar').length &&
         this.mechanics > 0 &&
-        this.budgets.maintenance >= 40
+        this.budgetOf('maintenance') >= 40
       ) {
         const pay = Math.round(
           airline.landing * (airline.kind === 'cargo' ? 0.22 : 0.18) + this.mechanics * 120,
@@ -11526,7 +14500,7 @@ export class Game {
         f.mxPay = pay
       } else if (
         this.mxSigned.includes(f.airline) &&
-        (this.mechanics < 1 || this.budgets.maintenance < 40)
+        (this.mechanics < 1 || this.budgetOf('maintenance') < 40)
       ) {
         this.pushNews(
           `${airline.name} MX skipped — need funded mechanics in the hangar.`,
@@ -11776,7 +14750,7 @@ export class Game {
   trySpawnAirAmbulance() {
     this.ambuCool = Math.max(0, this.ambuCool)
     if (this.ambuCool > 0) return
-    if (this.budgets.ambulance < 50) return
+    if (this.budgetOf('ambulance') < 50) return
     if (!tilesOf(this.tiles, 'fire').length) return
     if (this.groundBusy()) return
     const af = pickAirframe(
@@ -11960,7 +14934,12 @@ export class Game {
         if (!f.cargo) {
           const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
-          this.earn(Math.round(airline.bags * mult), `${f.flightNo} bag handling`, f)
+          this.earn(
+            this.contractBill(f, this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), 'service', 'bags'),
+            `${f.flightNo} bag handling`,
+            f,
+            'baggage_fees',
+          )
           const fit = this.roomsAt(f.stand)
           if (fit) {
             const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
@@ -11981,9 +14960,14 @@ export class Game {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
           if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
           this.earn(
-            Math.round(airline.landing * 0.35 * cargoMult),
+            serviceCharge(
+              this.listed(Math.round(airline.landing * 0.35 * cargoMult), 'cargoPerUnit'),
+              this.feeTier(f.airline),
+              this.walkInFlight(f),
+            ),
             `${f.flightNo} cargo handling`,
             f,
+            'cargo_fees',
           )
         }
         const fit = this.roomsAt(f.stand)
@@ -12021,21 +15005,36 @@ export class Game {
       f.waitingOn.fuel = false
       this.fuelLoads -= 1
       this.drawTankLitres(LITRES_PER_LEGACY_LOAD)
-      this.earn(FUEL[this.fuelBrand].pump, `${f.flightNo} fuel`, f)
+      this.earn(
+        this.contractBill(f, this.listed(FUEL[this.fuelBrand].pump, 'fuelMarkupPerLitre'), 'service', 'fuel'),
+        `${f.flightNo} fuel`,
+        f,
+        'fuel_sales',
+      )
     }
     if (t.kind === 'catering' && !f.posted.catering && this.caterBrand) {
       f.posted.catering = true
       f.caterLevel = 1
       f.waitingOn.catering = false
       const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
-      this.earn(pay, `${f.flightNo} catering (${CATER[this.caterBrand].name})`, f)
+      this.earn(
+        this.contractBill(f, this.listed(pay, 'cateringPerCart'), 'service', 'catering'),
+        `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
+        f,
+        'catering_fees',
+      )
       this.mealSold = true
       this.reputation = Math.min(100, this.reputation + 1)
     }
     if (t.kind === 'deice' && t.mission === 'deice' && !f.posted.deiced) {
       f.posted.deiced = true
       f.waitingOn.deice = false
-      this.earn(DEICE_FEE, `${f.flightNo} de-ice`, f)
+      this.earn(
+        serviceCharge(this.listed(DEICE_FEE, 'deice'), this.feeTier(f.airline), this.walkInFlight(f)),
+        `${f.flightNo} de-ice`,
+        f,
+        'contract_fees',
+      )
       this.pushNews(`${f.flightNo} de-iced — clear to push.`, 'good')
     }
   }
@@ -12338,13 +15337,13 @@ export class Game {
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
     const wearSec = this.avgWear().sec
-    const staffGap = 1 - this.budgets.security / 100
+    const staffGap = 1 - this.budgetOf('security') / 100
     const hasSecRoom = this.fits.some((f) => (f.rooms.security ?? 0) > 0)
     const airsideOpen = this.fits.some((f) => {
       const r = f.rooms
       return (r.food ?? 0) + (r.gate ?? 0) + (r.lounge ?? 0) + (r.souvenir ?? 0) > 0
     })
-    const exposed = !hasSecRoom || this.budgets.security < 35
+    const exposed = !hasSecRoom || this.budgetOf('security') < 35
     // A gap the player left is checked again soon. A staffed lane is not held for the first hour.
     this.threatCool = exposed ? 10 + Math.random() * 8 : 32 + Math.random() * 12
     // Player shell with airside rooms but no security choke = smuggling / weapons risk.
@@ -12360,7 +15359,7 @@ export class Game {
       0.78,
     )
     if (Math.random() > risk) return
-    const hard = !hasSecRoom || sec < 2 || this.budgets.security < 35
+    const hard = !hasSecRoom || sec < 2 || this.budgetOf('security') < 35
     this.pendingThreat = {
       id: uid('thr'),
       severity: hard ? 'hard' : 'soft',
@@ -12420,6 +15419,13 @@ export class Game {
     this.fireIncidentCool = Math.min(this.fireIncidentCool, 12)
     for (const id of this.signed) this.adjustHeat(id, -2.8)
     if (e.kind === 'divert' && e.airline) this.adjustHeat(e.airline, -7)
+    this.raiseAlert({
+      key: 'event:inbound-failed',
+      severity: 'critical',
+      title: 'Emergency inbound failed',
+      detail: `Could not host it: ${why}.`,
+      event: true,
+    })
     if (this.public) {
       this.shockStock(
         `Failed emergency host — ${why}.`,
@@ -12448,7 +15454,8 @@ export class Game {
     const a = this.airline(airline)
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
     const inbound = this.armApproach(route)
-    const load = this.flightLoad(af, a.persona, a.kind === 'cargo' || af.kind === 'freighter')
+    const cargoLoad = a.kind === 'cargo' || af.kind === 'freighter'
+    const load = this.applyRivalLoad(this.flightLoad(af, a.persona, cargoLoad), cargoLoad)
     const f: Flight = {
       id: uid('div'),
       airline,
@@ -12578,7 +15585,7 @@ export class Game {
     const stormy = this.weather === 'storm' || this.weather === 'fog'
     const storm = this.weather === 'storm'
     const dry = this.weather === 'clear' // wildfire-season feel — airtankers thirsty
-    const fireThin = this.budgets.fire < 45
+    const fireThin = this.budgetOf('fire') < 45
     const hasFuel = this.fuelOnHand()
     const hasHangar = tilesOf(this.tiles, 'hangar').length > 0
     const exposed = !hasFuel || fireThin || tilesOf(this.tiles, 'fire').length === 0
@@ -12808,7 +15815,7 @@ export class Game {
     this.threatCool = 55 + Math.random() * 30
     const sec = this.securityLevel()
     const police = tilesOf(this.tiles, 'police').length
-    const staff = this.budgets.security / 100
+    const staff = this.budgetOf('security') / 100
 
     if (choice === 'scramble') {
       if (!this.spend(THREAT_SCRAMBLE_COST, 'threat scramble')) {
@@ -12906,7 +15913,7 @@ export class Game {
         heliPads: this.freePads().length + held.heliPads,
         guardPads: guard.length + held.guardPads,
         arff: tilesOf(this.tiles, 'fire').length > 0,
-        ambulance: this.budgets.ambulance >= 40,
+        ambulance: this.budgetOf('ambulance') >= 40,
         fuelLitres: simFuel,
         hotelRooms,
         securityCorridor:
@@ -13160,22 +16167,83 @@ export class Game {
     return true
   }
 
+  /** Budget slider, thinned while a strike has that pool out. Never raises a pool. */
+  budgetOf(key: BudgetKey): number {
+    const raw = this.budgets[key]
+    const scale = this.disruptions.staffScale(key)
+    if (!Number.isFinite(raw) || !Number.isFinite(scale) || scale >= 0.999) return raw
+    return raw * Math.min(1, Math.max(0.4, scale))
+  }
+
+  disruptionFeed() {
+    return this.disruptions.visible()
+  }
+
+  disruptionStamp(): string {
+    return this.disruptions.stamp()
+  }
+
+  ignoreDisruption(id: string) {
+    const ok = this.disruptions.ignore(id)
+    if (ok) this.emit()
+    return ok
+  }
+
+  dismissDisruption(id: string) {
+    const ok = this.disruptions.dismiss(id)
+    if (ok) this.emit()
+    return ok
+  }
+
+  minimiseDisruption(id: string) {
+    const ok = this.disruptions.minimise(id)
+    if (ok) this.emit()
+    return ok
+  }
+
+  expandDisruption(id: string) {
+    const ok = this.disruptions.expand(id)
+    if (ok) this.emit()
+    return ok
+  }
+
+  /** Point the player at the hall or the apron. The follow camera stays untouched. */
+  panToDisruption(id: string) {
+    const item = this.disruptions.visible().find((entry) => entry.id === id)
+    if (!item) return
+    const hall = item.focus === 'checkin' || item.focus === 'security'
+    this.setView(hall ? 'hall' : 'apron')
+    this.pushNews(`Pan — ${item.title}. ${item.suggestedFix}`, 'ok')
+    this.emit()
+  }
+
   tick(dt: number) {
+    // Apron builds and bulldozes coalesce into one advisor pass per frame, paused or not.
+    if (this.adviceDirty && this.site) {
+      this.adviceDirty = false
+      this.refreshAdvice()
+      this.emit()
+    }
     if (!this.site || this.speed === 0) return
+    this.suppressEmit++
+    try {
     const step = dt * this.speed
     this.clock += step
+    this.scanAlerts(step)
     this.simClock.advanceRealSeconds(dt, this.speed)
     this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
     this.tickAmbience(dt)
     this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)
-    this.offerCool = Math.max(0, this.offerCool - step)
+    this.offerCool = Math.max(0, this.offerCool - step * (1 + this.tycoonAirlineInterest()))
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
     this.tickConstruction(step)
     this.tickCatering(step)
     this.tickGround(step)
     this.tickCargo(step)
+    this.tickTier3(step)
+    this.syncPowerAdvice()
     this.tickDiplomacy(step)
     this.tickShelves(step)
     // Peak decays so the HUD jam line clears when traffic thins.
@@ -13263,6 +16331,7 @@ export class Game {
     this.tickCargoVolume(step)
     this.tickLayover(step)
     this.tickHub(step)
+    this.tickHubConnections()
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)
@@ -13284,16 +16353,19 @@ export class Game {
     this.tickThreats(step)
     this.tickEmergencies(step)
     this.tickInbound(step)
+    this.tickDisruptions()
     this.tickMarket(step)
     this.tickHall(step)
     this.tickLuggage(step)
     this.tickWeather(step)
     this.tickPayroll(step)
     this.tickScaleFuel(step)
+    this.pokeTycoon()
     this.tickMaintenance(step)
     this.tickFireRisk(step)
     this.crashCool = Math.max(0, this.crashCool - step)
 
+    this.releaseFinishedMro()
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
       f.phaseTime += step
@@ -13301,6 +16373,7 @@ export class Game {
         this.tickHelo(f, step)
         continue
       }
+      if (this.applyMroHold(f)) continue
       if (f.phase === 'hold') {
         f.holdAngle += step * 0.35
         f.x = SIZE / 2 + Math.cos(f.holdAngle) * 9
@@ -13359,7 +16432,12 @@ export class Game {
           f.phaseTime > 2.5 &&
           !f.ledger.some((r) => r.label.includes('cleaning'))
         ) {
-          this.earn(CLEANING_FEE, `${f.flightNo} cabin cleaning`, f)
+          this.earn(
+            serviceCharge(this.listed(CLEANING_FEE, 'cleaning'), this.feeTier(f.airline), this.walkInFlight(f)),
+            `${f.flightNo} cabin cleaning`,
+            f,
+            'contract_fees',
+          )
         }
         const waiting =
           (f.waitingOn.bags && !f.posted.bags) ||
@@ -13944,18 +17022,148 @@ export class Game {
     this.people = this.people.filter((p) => p.stage < 99)
 
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
-    // At 5x, require more sim-time between emits so HUD stays ~2–3 Hz real-time.
+    // At 5× the canvases keep drawing, but the HUD string updates about once a second.
     this.uiAcc += step
-    const uiEvery = this.speed >= 5 ? 1.6 : this.speed >= 3 ? 0.7 : 0.4
+    const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {
       this.uiAcc = 0
       this.emit()
+    }
+    } finally {
+      this.endEmitHold()
     }
   }
 
   /** True when any hall has a security room (choke present). */
   hasSecurityChoke(): boolean {
     return this.fits.some((f) => (f.rooms.security ?? 0) > 0)
+  }
+
+  /** Food rooms, souvenir rooms, and snack bars that can take a brand. */
+  private retailUnits(): TenantUnit[] {
+    const units: TenantUnit[] = []
+    for (const fit of this.fits) {
+      const hall = this.hallLabel(fit)
+      const food = fit.rooms.food ?? 0
+      const shops = fit.rooms.souvenir ?? 0
+      for (let i = 0; i < food; i++) {
+        units.push({ id: `${hall}:food:${i}`, kind: 'food', label: `${hall} food ${i + 1}` })
+      }
+      for (let i = 0; i < shops; i++) {
+        units.push({ id: `${hall}:shop:${i}`, kind: 'retail', label: `${hall} shop ${i + 1}` })
+      }
+    }
+    const snacks = tilesOf(this.tiles, 'snack').length
+    for (let i = 0; i < snacks; i++) {
+      units.push({ id: `snack:${i}`, kind: 'food', label: `Snack bar ${i + 1}` })
+    }
+    return units
+  }
+
+  private gameDayIndex(): number {
+    return Math.floor(Math.max(0, this.clock) / REAL_SECONDS_PER_GAME_DAY)
+  }
+
+  private tycoonBooks(): TycoonBooks {
+    return {
+      balance: () => this.cash,
+      post: (category, amount, meta) => this.postTycoon(category, amount, meta),
+      entriesBetween: (start, end) => this.bank.entriesBetween(start, end),
+    }
+  }
+
+  /** Tenant rent and ad spend share the bank with the rest of the airport. */
+  private postTycoon(category: MoneyCategory, amount: number, meta: BankPostMeta): boolean {
+    const rounded = Math.round(amount)
+    if (!Number.isFinite(rounded) || rounded === 0) return false
+    if (rounded > 0) {
+      this.cash += rounded
+      this.hourIncome += rounded
+      this.revenue += rounded
+      this.bank.post(category, rounded, { ...meta, source: 'tycoon' })
+      return true
+    }
+    const cost = -rounded
+    if (this.cash < cost) return false
+    this.cash -= cost
+    this.noteExpense(cost)
+    this.bank.post(category, rounded, { ...meta, source: 'tycoon' })
+    return true
+  }
+
+  private tycoonPulse(day: number): TycoonPulse {
+    const latest = this.gameDayIndex() - 1
+    const passengers = day === latest ? Math.max(0, Math.round(this.paxPerDay || this.dayPax)) : 0
+    const guests = this.hallGuests
+    const satisfaction = guests.length
+      ? guests.reduce((sum, guest) => sum + guest.happiness, 0) / guests.length
+      : this.fieldRating()
+    const wear = this.avgWear()
+    const cleanliness = 100 - (wear.bath * 0.6 + wear.sec * 0.4)
+    return { passengers, satisfaction, cleanliness }
+  }
+
+  private drainTycoon(): TycoonNote[] {
+    if (!this.site) return []
+    return [
+      ...this.tycoon.syncUnits(this.retailUnits()),
+      ...this.tycoon.catchUp(this.tycoonBooks(), this.gameDayIndex(), (day) => this.tycoonPulse(day)),
+    ]
+  }
+
+  private applyTycoon(notes: TycoonNote[], forceEmit: boolean) {
+    for (const note of notes) {
+      this.pushNews(note.text, note.tone)
+      if (note.reputation) {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + note.reputation))
+      }
+    }
+    if (notes.length || forceEmit) this.emit()
+  }
+
+  /** Open bids and close finished days. Safe while the clock is paused. */
+  pokeTycoon() {
+    this.applyTycoon(this.drainTycoon(), false)
+  }
+
+  tycoonView(): TycoonView {
+    return this.tycoon.view(this.gameDayIndex())
+  }
+
+  pendingYearReport() {
+    return this.tycoon.pendingReport()
+  }
+
+  /** Passenger load-factor multiplier from live ad campaigns. */
+  tycoonDemand(): number {
+    return this.tycoon.demandMultiplier(this.gameDayIndex())
+  }
+
+  /** Extra airline-letter interest from a live campaign. */
+  tycoonAirlineInterest(): number {
+    return this.tycoon.airlineInterest(this.gameDayIndex())
+  }
+
+  acceptTenantBid(unitId: string, bidId: string) {
+    this.pokeTycoon()
+    this.applyTycoon(this.tycoon.acceptBid(unitId, bidId, this.gameDayIndex()), true)
+  }
+
+  rerollTenantBids(unitId: string) {
+    this.pokeTycoon()
+    this.applyTycoon(this.tycoon.rerollBids(unitId, this.gameDayIndex()), true)
+  }
+
+  startAdCampaign(kind: CampaignKind) {
+    this.applyTycoon(
+      this.tycoon.startCampaign(this.tycoonBooks(), kind, this.gameDayIndex(), this.simMinutes()),
+      true,
+    )
+  }
+
+  dismissYearReport() {
+    this.tycoon.dismissReport()
+    this.emit()
   }
 }
 

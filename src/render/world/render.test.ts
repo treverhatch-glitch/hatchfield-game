@@ -125,7 +125,9 @@ describe('initWorldRender', () => {
     expect(g.route && g.route.length).toBeGreaterThan(1)
     const near = camAt(cellX(16), cellZ(20), 14)
     for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
-    const body = scene.getObjectByName('hall-guest-body') as THREE.InstancedMesh
+    const body = (['people-lod0', 'people-lod1', 'people-lod2', 'hall-guest-body']
+      .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
+      .find((mesh) => mesh && mesh.count > 0) ?? scene.getObjectByName('hall-guest-body')) as THREE.InstancedMesh
     expect(body).toBeTruthy()
     expect(body.count).toBeGreaterThan(0)
     const a = new THREE.Matrix4()
@@ -138,6 +140,30 @@ describe('initWorldRender', () => {
     body.getMatrixAt(0, b)
     expect(a.equals(b)).toBe(false)
     expect(g.lost).toBeFalsy()
+    wr.dispose()
+  })
+
+  it('tints the sky by season while night lights still follow the clock', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+    const game = starterGame()
+    const cam = camAt(0, 0, 80)
+    game.clock = 0
+    wr.update(game, cam, 1 / 60)
+    const spring = (scene.background as THREE.Color).getHex()
+    game.clock = 100 * 180
+    wr.update(game, cam, 1 / 60)
+    const summer = (scene.background as THREE.Color).getHex()
+    expect(summer).not.toBe(spring)
+    expect(sun.intensity).toBeGreaterThan(0)
+    wr.setTimeOfDay(2)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.stats().lights).toBe(1)
+    wr.setQuality('low')
+    wr.setTimeOfDay(12)
+    game.clock = 0
+    wr.update(game, cam, 1 / 60)
+    expect(wr.stats().grassTufts).toBe(0)
     wr.dispose()
   })
 

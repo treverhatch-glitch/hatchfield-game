@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three'
 import { setTrs, SKIN_COLORS, type PeopleGeo } from './kit'
-import { FLOOR_Y, PERSON_SCALE } from './terminal'
+import { FLOOR_Y, PERSON_SCALE, SEATED_LIFT, SEATED_SCALE } from './terminal'
 
 export interface HallPose {
   id: string
@@ -13,6 +13,8 @@ export interface HallPose {
   yaw: number
   color: string
   bag: boolean
+  /** Sitting to eat or wait — drawn squat, no walk bob. */
+  seated?: boolean
 }
 
 export function posesFrom(view: object): HallPose[] {
@@ -27,6 +29,7 @@ export function posesFrom(view: object): HallPose[] {
         color?: string
         carryOn?: boolean
         hasChecked?: boolean
+        seated?: boolean
       }[]
     }
   ).hallGuests
@@ -40,6 +43,7 @@ export function posesFrom(view: object): HallPose[] {
       yaw: g.wyaw ?? 0,
       color: g.color ?? '#8b6b4a',
       bag: g.carryOn !== false || Boolean(g.hasChecked),
+      seated: Boolean(g.seated),
     })
   }
   return out
@@ -84,10 +88,11 @@ export class HallCrowd {
     head.count = poses.length
     bag.count = poses.length
     poses.forEach((p, i) => {
-      const bob = Math.abs(Math.sin(time * 7 + i)) * 0.018
-      const y = FLOOR_Y + bob
-      setTrs(body, i, p.x, y, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
-      setTrs(head, i, p.x, y, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      const bob = p.seated ? 0 : Math.abs(Math.sin(time * 7 + i)) * 0.018
+      const y = FLOOR_Y + bob + (p.seated ? SEATED_LIFT : 0)
+      const sy = (p.seated ? SEATED_SCALE : 1) * PERSON_SCALE
+      setTrs(body, i, p.x, y, p.z, p.yaw, PERSON_SCALE, sy)
+      setTrs(head, i, p.x, y, p.z, p.yaw, PERSON_SCALE, sy)
       this.tint.set(p.color)
       body.setColorAt(i, this.tint)
       this.tint.setHex(SKIN_COLORS[skinIndex(p.id)])

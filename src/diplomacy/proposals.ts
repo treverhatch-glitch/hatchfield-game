@@ -16,7 +16,7 @@ import {
   tierCost
 } from './core.ts';
 import type { EngineCore } from './core.ts';
-import { counterChance } from './demands.ts';
+import { applyCounterLines, counterCost, counterSuccess, resolveTicks } from './counter.ts';
 import { composeLetter } from './generator.ts';
 import { nextFloat } from './rng.ts';
 import { alliesOf, evaluate, penalizeRivalsForPerk, refreshPerks, rivalsOf } from './relations.ts';
@@ -46,27 +46,51 @@ export interface SignPreview {
   warnings: string[];
 }
 
-function rivalPenalty(rival: AirlineRelation): number {
-  return -10 - (rival.traits.includes('proud') ? 6 : 0);
-}
+export type ReactionKind = 'sign' | 'perk' | 'hub' | 'slots';
 
-/** Every sign/perk button shows this first: who gets angry, who is pleased, and operational risks. */
-export function previewSign(core: EngineCore, airlineId: string): SignPreview | null {
+const REACTION: Record<ReactionKind, { delta: number; why: string }> = {
+  sign: { delta: -10, why: 'rival' },
+  perk: { delta: -6, why: 'perk for a rival' },
+  hub: { delta: -15, why: 'rival hub' },
+  slots: { delta: -12, why: 'peak slots taken' }
+};
+
+/** Who reacts before a sign, perk, hub, or slot gift. Numbers stay off the button face. */
+export function previewReaction(core: EngineCore, airlineId: string, kind: ReactionKind = 'sign'): SignPreview | null {
   const rel = core.state.relations[airlineId];
   if (!rel) return null;
-  const rivals = rivalsOf(core, rel).map((r) => ({
-    airlineId: r.id,
-    name: r.name,
-    delta: rivalPenalty(r),
-    why: r.traits.includes('proud') ? 'rival, Proud: shared pier' : 'rival'
-  }));
-  const allies = alliesOf(core, rel).map((r) => ({ airlineId: r.id, name: r.name, delta: 5, why: 'alliance partner' }));
+  const spec = REACTION[kind];
+  const allyIds = new Set(alliesOf(core, rel).map((a) => a.id));
+  const rivals = rivalsOf(core, rel)
+    .filter((r) => kind !== 'hub' || !allyIds.has(r.id))
+    .map((r) => {
+      const proud = kind === 'sign' && r.traits.includes('proud');
+      return {
+        airlineId: r.id,
+        name: r.name,
+        delta: spec.delta + (proud ? -6 : 0),
+        why: proud ? 'rival, Proud: shared pier' : spec.why
+      };
+    });
+  const allies =
+    kind === 'sign'
+      ? alliesOf(core, rel).map((r) => ({ airlineId: r.id, name: r.name, delta: 5, why: 'alliance partner' }))
+      : [];
   const warnings: string[] = [];
   const util = core.ctx.metrics.standUtilization;
   if (util !== undefined && util >= 0.95) {
     warnings.push(`Stands at ${Math.round(util * 100)}%: risk of delays.`);
   }
   return { airlineId, rivals, allies, warnings };
+}
+
+/** Every sign/perk button shows this first: who gets angry, who is pleased, and operational risks. */
+export function previewSign(core: EngineCore, airlineId: string): SignPreview | null {
+  return previewReaction(core, airlineId, 'sign');
+}
+
+function rivalPenalty(rival: AirlineRelation): number {
+  return -10 - (rival.traits.includes('proud') ? 6 : 0);
 }
 
 export function signContract(
@@ -89,7 +113,8 @@ export function signContract(
     peakSlotsPerWeek: Math.ceil(terms.slotsPerWeek * 0.4),
     seasonFlights: 0,
     seasonExcused: 0,
-    baseGranted: false
+    baseGranted: false,
+    flightBanks: 1
   };
   rel.flightsEma = terms.slotsPerWeek / 7;
   for (const rival of rivalsOf(core, rel)) {
@@ -119,7 +144,8 @@ export function respondToProposal(
   core: EngineCore,
   proposalId: string,
   response: ProposalResponse,
-  payWith: 'money' | 'favour' = 'money'
+  payWith: 'money' | 'favour' = 'money',
+  ticks?: import('./types.ts').CounterLineKey[]
 ): ActionResult {
   const proposal = core.state.proposals.find((p) => p.id === proposalId);
   if (!proposal) return { ok: false, cost: 0, message: 'No such proposal.' };
@@ -137,23 +163,25 @@ export function respondToProposal(
 
   if (response === 'counter') {
     if (proposal.counterUsed) return { ok: false, cost: 0, message: 'Already countered.' };
+    const chosen = resolveTicks(proposal, ticks);
+    if (chosen.length === 0) return { ok: false, cost: 0, message: 'Tick at least one line.' };
     let cost = 0;
     if (payWith === 'favour') {
       if (rel.favours.length === 0) return { ok: false, cost: 0, message: 'No Favour available.' };
     } else {
-      cost = Math.round(tierCost(rel.tier) * 0.5);
+      cost = counterCost(rel);
       if (!spend(core, cost, 'diplomacy', `Counter-offer to ${rel.name}`)) {
         return { ok: false, cost: 0, message: 'Cannot afford the counter-offer.' };
       }
     }
     proposal.counterUsed = true;
-    const chance = payWith === 'favour' ? 1 : counterChance(rel);
+    const chance = counterSuccess(rel, chosen.length, payWith);
     if (payWith === 'favour') rel.favours.shift();
     if (nextFloat(core.state) >= chance) {
       addModifier(core, rel, 'counter_rejected', 'Counter-offer rejected', proposal.id);
       return { ok: false, cost, chance, message: `${rel.name} rejected the counter-offer.` };
     }
-    applyCounterToProposal(proposal);
+    applyCounterLines(proposal, chosen);
     return { ok: true, cost, chance, message: 'Counter accepted: the terms are now better for you.' };
   }
 
@@ -171,7 +199,20 @@ export function respondToProposal(
 
   switch (proposal.kind) {
     case 'contract':
-    case 'newcomer_incentive': {
+    case 'newcomer_incentive':
+    case 'flights': {
+      if (proposal.kind === 'flights') {
+        if (rel.status !== 'signed' || !rel.contract || !proposal.terms) {
+          return { ok: false, cost: 0, message: 'Flight contracts need a signed master.' };
+        }
+        rel.contract.terms = { ...rel.contract.terms, slotsPerWeek: proposal.terms.slotsPerWeek };
+        rel.contract.flightBanks = (rel.contract.flightBanks ?? 1) + 1;
+        drop();
+        emit(core, 'contract_signed', rel.id, `${rel.name} adds a flight bank (${rel.contract.terms.slotsPerWeek}/week).`, 'good', {
+          flights: rel.contract.flightBanks
+        });
+        return { ok: true, cost, message: `${rel.name} added flights.` };
+      }
       if (rel.status === 'signed') return { ok: false, cost: 0, message: 'Already signed.' };
       if (!proposal.terms) return { ok: false, cost: 0, message: 'Proposal has no terms.' };
       signContract(core, rel, proposal.terms, proposal.discountPct, proposal.discountDays);
@@ -206,21 +247,6 @@ export function respondToProposal(
       drop();
       return { ok: true, cost, message: 'Endeavor agreed.' };
     }
-  }
-}
-
-function applyCounterToProposal(p: Proposal): void {
-  if (p.terms) {
-    p.terms = {
-      ...p.terms,
-      feePerLanding: Math.round(p.terms.feePerLanding * 1.1),
-      feePerPassenger: Math.round(p.terms.feePerPassenger * 1.1),
-      penaltyPerDelayMinute: Math.round(p.terms.penaltyPerDelayMinute * 1.2)
-    };
-  }
-  if (p.discountPct > 0) {
-    p.discountPct = Math.max(5, Math.round(p.discountPct * 0.6));
-    p.discountDays = Math.round(p.discountDays * 0.7);
   }
 }
 
@@ -271,7 +297,7 @@ export function maybeSendLetters(core: EngineCore): void {
       id: newId(core, 'prop'),
       airlineId: rel.id,
       kind: 'contract',
-      text: `${rel.name} proposes ${terms.slotsPerWeek} flights a week.`,
+      text: `${rel.name} proposes a master contract: ${terms.slotsPerWeek} flights a week.`,
       terms,
       discountPct: 0,
       discountDays: 0,

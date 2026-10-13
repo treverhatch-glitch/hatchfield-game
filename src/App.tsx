@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { perfEnd, perfStart } from './core/perf'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
@@ -6,6 +7,7 @@ import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { OfferPanel } from './negotiation/OfferPanel'
+import { PriceWarCard } from './rival/PriceWarCard'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -50,8 +52,13 @@ function applyPendingNewGame() {
   try {
     const raw = sessionStorage.getItem('hatchfield-pending')
     if (!raw) return
-    const pending = JSON.parse(raw) as { sandbox?: boolean; difficulty?: 'easy' | 'standard' }
+    const pending = JSON.parse(raw) as {
+      sandbox?: boolean
+      difficulty?: 'easy' | 'standard'
+      enableHints?: boolean
+    }
     game.sandbox = Boolean(pending.sandbox)
+    game.enableHintsAtStart = pending.enableHints !== false
     game.beginNew(pending.difficulty === 'standard' ? 'standard' : 'easy')
   } catch {
     /* ignore */
@@ -74,48 +81,8 @@ function bootScreen(): Screen {
   return remembered
 }
 
-export default function App() {
-  const [screen, setScreenState] = useState<Screen>(() => bootScreen())
-
-  const setScreen = (s: Screen) => {
-    writeScreen(s)
-    setScreenState(s)
-  }
-
-  // Keep screen aligned with game ownership; never dump a saved field to title.
-  useEffect(() => {
-    if (game.site) {
-      if (screen !== 'play') setScreen('play')
-      return
-    }
-    if (screen === 'play') {
-      if (Game.hasSave() && game.load()) return
-      setScreen('title')
-    }
-  }, [screen])
-
-  useEffect(() => {
-    if (screen !== 'play') return
-    let raf = 0
-    let last = performance.now()
-    const loop = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000)
-      last = now
-      try {
-        game.tick(dt)
-      } catch (err) {
-        console.error('tick failed', err)
-      }
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [screen])
-
-  useSyncExternalStore(
-    game.subscribe,
-    () =>
-      [
+function hudSnapshot(): string {
+  return [
         game.cash,
         game.speed,
         game.tool,
@@ -139,6 +106,7 @@ export default function App() {
         game.parkingOffer?.callsign,
         game.pendingThreat?.id,
         game.pendingEmergency?.id,
+        game.disruptionStamp(),
         game.signed.join(','),
         game.selectedFlight,
         game.selectedGuest,
@@ -179,6 +147,11 @@ export default function App() {
         game.plannerRwFilter,
         game.standAccessMode,
         game.sandbox ? 1 : 0,
+        game.depositTier,
+        Object.values(game.fees).join(','),
+        game.premium.built.length,
+        game.premium.securityOfficers,
+        game.premium.feeEnabled ? 1 : 0,
         game.hallRev,
         game.fits[0]?.tier ?? 0,
         game.fits[0]?.redesigned ? 1 : 0,
@@ -186,19 +159,99 @@ export default function App() {
         game.lostPaxCount(),
         game.hallGuests.find((g) => g.id === game.selectedGuest)?.thought ?? '',
         game.showFlows ? 1 : 0,
-        game.advice.length,
+        game.advice.map((a) => a.id).join(','),
         game.advisorCells.length,
         game.standingAdvisor.activeCards.map((c) => `${c.id}:${c.daysToLeave}`).join(','),
         game.inboundOffer()?.id ?? '',
         Math.ceil(game.inboundOffer()?.secondsLeft ?? 0),
         game.inboundContracts().map((d) => `${d.id}:${d.status}`).join(','),
         game.inboundHasClearance() ? 1 : 0,
+        game.apronFocus.length,
+        game.alerts.rev,
+        game.hintPrefs.muted.join(','),
+        game.hintPrefs.allEnabled ? 1 : 0,
+        game.enableHintsAtStart ? 1 : 0,
+        game.sidePanel,
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
-      ].join('|'),
-    () => 'ssr',
+        game.pendingYearReport()?.year ?? 0,
+        Math.round(game.tycoonDemand() * 100),
+        Math.round(game.tycoonAirlineInterest() * 100),
+      ].join('|')
+}
+
+function CanvasLayers() {
+  // Apron play keeps this snapshot stable so the WebGL trees do not reconcile
+  // on each HUD tick. The hall chrome subscribes only while that view is open.
+  useSyncExternalStore(
+    game.subscribe,
+    () => (game.view === 'hall' ? hudSnapshot() : game.view),
+    () => 'apron',
   )
+  const view = game.view
+  return (
+    <>
+      <div className={`view-layer ${view === 'apron' ? 'live' : 'dim'}`}>
+        <Field game={game} />
+      </div>
+      <div className={`view-layer ${view === 'hall' ? 'live' : 'dim'}`}>
+        <TerminalView game={game} />
+      </div>
+    </>
+  )
+}
+
+function PlayChrome() {
+  useSyncExternalStore(game.subscribe, hudSnapshot, () => 'ssr')
+  return (
+    <>
+      <Hud game={game} />
+      <OfferPanel game={game} />
+      <OwnerChrome game={game} />
+    </>
+  )
+}
+
+export default function App() {
+  const [screen, setScreenState] = useState<Screen>(() => bootScreen())
+
+  const setScreen = (s: Screen) => {
+    writeScreen(s)
+    setScreenState(s)
+  }
+
+  // Keep screen aligned with game ownership; never dump a saved field to title.
+  useEffect(() => {
+    if (game.site) {
+      if (screen !== 'play') setScreen('play')
+      return
+    }
+    if (screen === 'play') {
+      if (Game.hasSave() && game.load()) return
+      setScreen('title')
+    }
+  }, [screen])
+
+  useEffect(() => {
+    if (screen !== 'play') return
+    let raf = 0
+    let last = performance.now()
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      const t0 = perfStart()
+      try {
+        game.tick(dt)
+      } catch (err) {
+        console.error('tick failed', err)
+      }
+      perfEnd('sim.tick', t0)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [screen])
 
   if (screen === 'title') {
     return (
@@ -206,6 +259,11 @@ export default function App() {
         sandbox={game.sandbox}
         onSandboxChange={(on) => {
           game.sandbox = on
+          game.emit()
+        }}
+        enableHints={game.enableHintsAtStart}
+        onEnableHintsChange={(on) => {
+          game.enableHintsAtStart = on
           game.emit()
         }}
         onNewGame={() => {
@@ -225,15 +283,9 @@ export default function App() {
 
   return (
     <div className="shell">
-      <div className={`view-layer ${game.view === 'apron' ? 'live' : 'dim'}`}>
-        <Field game={game} />
-      </div>
-      <div className={`view-layer ${game.view === 'hall' ? 'live' : 'dim'}`}>
-        <TerminalView game={game} />
-      </div>
-      <Hud game={game} />
-      <OfferPanel game={game} />
-      <OwnerChrome game={game} />
+      <CanvasLayers />
+      <PlayChrome />
+      <PriceWarCard game={game} />
     </div>
   )
 }

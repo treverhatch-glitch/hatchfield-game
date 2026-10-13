@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { money } from '../game/catalog'
+import { lockTip, unlockLevel } from '../progression/unlocks'
 import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
@@ -24,6 +25,7 @@ const KIT_TABS: { id: KitCategory; label: string }[] = [
   { id: 'food', label: 'Food' },
   { id: 'seating', label: 'Seating' },
   { id: 'decor', label: 'Decor' },
+  { id: 'links', label: 'Links' },
   { id: 'service', label: 'Service' },
 ]
 
@@ -75,22 +77,23 @@ function KitBar({
       {tab ? (
         <div className="kit-cards" data-testid="kit-cards">
           {cards.map((item) => {
-            const locked = game.fieldLevel() < item.minFieldLevel
+            const need = Math.max(item.minFieldLevel, unlockLevel(item.id))
+            const locked = game.fieldLevel() < need
             return (
               <button
                 key={item.id}
                 type="button"
                 data-testid={`kit-${item.id}`}
-                className="kit-card"
+                className={`kit-card${locked ? ' locked' : ''}`}
                 disabled={locked}
-                title={item.blurb}
+                title={locked ? lockTip(item.name, need, item.blurb) : `${item.blurb} · $${item.upkeep}/day`}
                 onClick={() => {
                   setTab(null)
                   setBuild({ kind: 'place', def: item.id, rot: 0 })
                 }}
               >
                 <strong>{item.name}</strong>
-                <span>{locked ? `Field ${item.minFieldLevel}` : money(item.cost)}</span>
+                <span>{locked ? `FL${need}` : money(item.cost)}</span>
                 <span>${item.upkeep}/day</span>
               </button>
             )
@@ -172,6 +175,9 @@ export function TerminalView({ game }: { game: Game }) {
     if (!canvas) return
     const world = new HallWorld(canvas)
     worldRef.current = world
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __hall?: HallWorld }).__hall = world
+    }
     world.onPlaced = () => setBuild(null)
     world.onHover = setHover
     world.setBuild(buildRef.current)
@@ -219,6 +225,10 @@ export function TerminalView({ game }: { game: Game }) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
+      if (import.meta.env.DEV) {
+        const probe = window as unknown as { __hall?: HallWorld }
+        if (probe.__hall === world) delete probe.__hall
+      }
       worldRef.current = null
       world.dispose()
     }
@@ -291,9 +301,20 @@ export function TerminalView({ game }: { game: Game }) {
           <button
             type="button"
             data-testid="upgrade-prefab"
+            title={
+              game.fieldLevel() < unlockLevel(nextTier === 2 ? 'prefab_ii' : 'satellite')
+                ? lockTip(
+                    PREFAB_TIERS[nextTier].label,
+                    unlockLevel(nextTier === 2 ? 'prefab_ii' : 'satellite'),
+                  )
+                : `Upgrade to ${PREFAB_TIERS[nextTier].label}`
+            }
             onClick={() => game.upgradeHall()}
           >
             Upgrade to {PREFAB_TIERS[nextTier].label} · {money(PREFAB_TIERS[nextTier].upgradeCost)}
+            {game.fieldLevel() < unlockLevel(nextTier === 2 ? 'prefab_ii' : 'satellite')
+              ? ` · FL${unlockLevel(nextTier === 2 ? 'prefab_ii' : 'satellite')}`
+              : ''}
             <span>
               {PREFAB_TIERS[nextTier].paxCap} pax · {Math.round(PREFAB_TIERS[nextTier].servers / PREFAB_TIERS[nextTier].serviceSec * 60)}
               /min · upkeep ${PREFAB_TIERS[nextTier].upkeepDay}/day
@@ -319,19 +340,21 @@ export function TerminalView({ game }: { game: Game }) {
         {zone ? (
           <div className="item-menu" data-testid="item-menu">
             {zoneItems.map((item) => {
-              const locked = game.fieldLevel() < item.minFieldLevel
+              const need = Math.max(item.minFieldLevel, unlockLevel(item.id))
+              const locked = game.fieldLevel() < need
               return (
                 <button
                   key={item.id}
                   type="button"
                   data-testid={`item-${item.id}`}
+                  className={locked ? 'locked' : ''}
                   disabled={locked}
-                  title={item.blurb}
+                  title={locked ? lockTip(item.name, need, item.blurb) : `${item.blurb} · $${item.upkeep}/day`}
                   onClick={() => game.placeHallItem(item.id)}
                 >
                   <span>{item.name}</span>
                   <span>
-                    {locked ? `Field ${item.minFieldLevel}` : money(item.cost)} · ${item.upkeep}/day
+                    {locked ? `FL${need}` : money(item.cost)} · ${item.upkeep}/day
                   </span>
                 </button>
               )

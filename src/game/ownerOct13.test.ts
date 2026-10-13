@@ -201,7 +201,7 @@ describe('owner decisions 13 Oct', () => {
     const game = field()
     expect(game.showFlows).toBe(false)
     const ids = game.infoHotspots().map((h) => h.id)
-    expect(ids).toEqual(['queue', 'lost', 'bags', 'retail', 'fuel'])
+    expect(ids).toEqual(['queue', 'lost', 'bags', 'retail', 'fuel', 'power'])
     expect(game.infoOpen).toBeNull()
     expect(game.infoLines('queue').join(' ')).toMatch(/\d+ waiting at security/)
     expect(game.infoLines('retail').join(' ')).toMatch(/lost spend/)
