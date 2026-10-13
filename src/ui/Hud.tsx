@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
+import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
+import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, tankDef } from '../scale/logic'
 import {
   BUDGET_BLURB,
   BUDGET_LABEL,
@@ -65,17 +67,34 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'stands',
     label: 'Stands',
-    tools: ['stand_s', 'stand', 'stand_l'],
+    tools: ['stand_s', 'stand', 'stand_w', 'stand_l'],
   },
   {
     id: 'terminal',
     label: 'Terminal',
-    tools: ['premade', 'terminal', 'term_bus', 'belt'],
+    tools: ['premade', 'terminal', 'term_bus', 'belt', 'travelator', 'skywalk', 'mover'],
   },
   {
     id: 'ops',
     label: 'Ops',
-    tools: ['fuel', 'kitchen', 'depot', 'bags', 'belt', 'snack', 'fire', 'police', 'cargo', 'guard', 'tower', 'hangar'],
+    tools: [
+      'fuel',
+      'kitchen',
+      'depot',
+      'bags',
+      'belt',
+      'snack',
+      'fire',
+      'police',
+      'cargo',
+      'guard',
+      'tower',
+      'hangar',
+      'hangar_w',
+      'hangar_j',
+      'fuel_rail',
+      'oil',
+    ],
   },
   {
     id: 'landside',
@@ -1577,6 +1596,68 @@ export function Hud({ game }: { game: Game }) {
                       Buy 4 loads
                       {game.fuelBrand ? ` · ${money(FUEL[game.fuelBrand].wholesale * 4)}` : ''}
                     </button>
+                    <p className="muted">
+                      Tank {game.tankTier} · {Math.round(game.tankLitres).toLocaleString('en-US')} /{' '}
+                      {tankDef(game.tankTier).capacityLitres.toLocaleString('en-US')} L · {game.fuelSupply}
+                      {game.contractId ? ` · ${FUEL_CONTRACTS.find((c) => c.id === game.contractId)?.name}` : ''}
+                    </p>
+                    <div className="row">
+                      {FUEL_CONTRACTS.map((c) => {
+                        const gate = canSignContract(c.id, game.fieldLevel(), game.researchUnlocked)
+                        return (
+                          <button key={c.id} type="button" disabled={!gate.ok} onClick={() => game.signScaleContract(c.id)}>
+                            {c.name} {money(c.sign)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="row">
+                      <button type="button" onClick={() => game.setFuelSupply('road')}>
+                        Road tankers
+                      </button>
+                      <button type="button" onClick={() => game.setFuelSupply('rail')}>
+                        Rail
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => game.upgradeTank()}
+                        disabled={!canUpgradeTank(game.tankTier, game.fieldLevel(), game.researchUnlocked).ok}
+                      >
+                        Tank {TANK_TIERS[Math.min(2, game.tankTier)] ? `→ ${tankDef(game.tankTier === 3 ? 3 : ((game.tankTier + 1) as 2 | 3)).capacityLitres.toLocaleString('en-US')} L` : ''}
+                      </button>
+                    </div>
+                    <p className="muted">
+                      Bags: {BAG_SYSTEMS[game.bagSystem].name}. Check-in desks {game.paxDesks}, kiosks {game.paxKiosks}, bag drop {game.paxBagDrops}, scanners {game.scannerLanes}, e-gates {game.eGates}.
+                    </p>
+                    <div className="row">
+                      <button
+                        type="button"
+                        disabled={!canUpgradeBags(game.bagSystem, game.fieldLevel(), game.researchUnlocked).ok}
+                        onClick={() => game.upgradeBagSystem()}
+                      >
+                        Upgrade bags
+                      </button>
+                      {(Object.keys(PAX_UNITS) as (keyof typeof PAX_UNITS)[]).map((id) => {
+                        const gate = canBuyPax(id, game.fieldLevel(), game.researchUnlocked)
+                        return (
+                          <button key={id} type="button" disabled={!gate.ok} onClick={() => game.buyPaxUnit(id)}>
+                            {PAX_UNITS[id].name} {money(PAX_UNITS[id].cost)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="row">
+                      {VEHICLE_OFFERS.map((offer) => {
+                        const gate = canBuyVehicle(offer.type, game.fieldLevel(), game.researchUnlocked)
+                        const owned = game.scaleFleet[offer.type] ?? 0
+                        return (
+                          <button key={offer.type} type="button" disabled={!gate.ok} onClick={() => game.buyScaleVehicle(offer.type)}>
+                            {offer.role} {owned > 0 ? `×${owned} ` : ''}
+                            {money(gate.cost)}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </section>
                   <section>
                     <h3>Catering desk</h3>
