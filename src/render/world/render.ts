@@ -98,6 +98,10 @@ export class WorldRenderer {
   private frame = 0
   private lastShadowKey = ''
   private hallCrowd: HallCrowd | null = null
+  /** Per-frame scratch, so `update` allocates nothing. */
+  private camPos = new THREE.Vector3()
+  private camDir = new THREE.Vector3()
+  private background = new THREE.Color()
 
   constructor(scene: THREE.Scene, quality: QualityLevel, opts: WorldRenderOptions = {}) {
     this.scene = scene
@@ -300,10 +304,8 @@ export class WorldRenderer {
     const lite = this.lite || (view.speed ?? 1) >= 5
     if (lite !== this.lite) this.setLiteMode(lite)
 
-    const camPos = new THREE.Vector3()
-    camera.getWorldPosition(camPos)
-    const dir = new THREE.Vector3()
-    camera.getWorldDirection(dir)
+    const camPos = camera.getWorldPosition(this.camPos)
+    const dir = camera.getWorldDirection(this.camDir)
     const focus = groundFocus(camPos, dir) ?? { x: camPos.x, z: camPos.z }
     const camDist = Math.hypot(camPos.x - focus.x, camPos.y, camPos.z - focus.z)
 
@@ -325,7 +327,7 @@ export class WorldRenderer {
     this.fog.far = s.fogFar
     this.sky.set(s.skyTop, s.skyHorizon, s.stars)
     this.sky.follow(camPos)
-    this.scene.background = new THREE.Color(s.skyHorizon)
+    this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure
 
     const fit = fitShadow(camDist, focus.x, focus.z, Math.max(1, this.q.shadowMapSize))

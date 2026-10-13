@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { inBounds } from '../game/path'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
@@ -7,7 +8,6 @@ import {
   createAircraft,
   createBridges,
   disposeAircraftLibrary,
-  gatePreviewId,
   bridgeYawToward,
   loadAircraftQuality,
   ParkedFleet,
@@ -20,9 +20,20 @@ import {
   type Livery,
   type ParkedPlane,
 } from './aircraft/index'
+import { previewAirframe } from '../scale/logic'
+import {
+  addFuelRail,
+  addHangar,
+  addOilStation,
+  addPeopleMover,
+  addSkywalk,
+  addTravelator,
+} from '../scale/placeholders'
+import type { SizeTier } from '../scale/types'
 import {
   initWorldRender,
   parseQuality,
+  QUALITY,
   REPLACED_TILES,
   suggestQuality,
   type QualityLevel,
@@ -157,6 +168,8 @@ export class World {
   private beltCubes: THREE.Mesh[] = []
   private beltPath: THREE.Vector3[] = []
   private beltRev = -1
+  private sitesHash = ''
+  private siteBars: THREE.Mesh[] = []
   ray = new THREE.Raycaster()
   ndc = new THREE.Vector2()
   ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -181,9 +194,11 @@ export class World {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
+    // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
+    const quality = pickQuality()
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: QUALITY[quality].msaa,
       powerPreference: 'high-performance',
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
@@ -237,34 +252,9 @@ export class World {
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
-    this.wr = initWorldRender(this.scene, this.pickQuality(), {
+    this.wr = initWorldRender(this.scene, quality, {
       renderer: this.renderer,
       sun: this.sun,
-    })
-  }
-
-  /** Saved `hatchfield-gfx`, otherwise a guess (software GL starts on low). */
-  private pickQuality(): QualityLevel {
-    let saved: string | null = null
-    try {
-      saved = globalThis.localStorage?.getItem('hatchfield-gfx') ?? null
-    } catch {
-      saved = null
-    }
-    if (saved) return parseQuality(saved)
-    let gpu = ''
-    try {
-      const gl = this.renderer.getContext()
-      const dbg = gl.getExtension('WEBGL_debug_renderer_info')
-      if (dbg) gpu = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))
-    } catch {
-      gpu = ''
-    }
-    const nav = navigator as Navigator & { deviceMemory?: number }
-    return suggestQuality({
-      renderer: gpu,
-      deviceMemory: nav.deviceMemory,
-      hardwareConcurrency: nav.hardwareConcurrency,
     })
   }
 
@@ -457,6 +447,7 @@ export class World {
             this.building(tile, pos, {
               hotelClass: game.hotelClass[key],
               parkTerm: game.parkTerms[key],
+              hangarTier: game.hangarScale[key],
             }),
           )
         }
@@ -476,7 +467,11 @@ export class World {
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join(',')
-    return `${game.mapRev}|${game.standAccessMode}|${game.fits.length}|${cls}|${acc}`
+    const scale = Object.entries(game.standScale)
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join(',')
+    return `${game.mapRev}|${game.standAccessMode}|${game.fits.length}|${cls}|${acc}|${scale}`
   }
 
   private syncGateBridges(game: Game) {
@@ -528,7 +523,9 @@ export class World {
           }
         }
         if (bestD > 8) continue
-        const preview = createBridges(gatePreviewId(game.standClassAt(stand)))
+        const marked = game.standScale[`${c},${r}`]
+        const tier: SizeTier = marked ?? (game.standClassAt(stand) === 'L' ? 'jumbo' : 'small')
+        const preview = createBridges(previewAirframe(tier))
         preview.position.copy(toWorld(c, r, 0.04))
         preview.rotation.y = bridgeYawToward(stand, best)
         preview.userData.standKey = `${c},${r}`
@@ -540,7 +537,7 @@ export class World {
   building(
     tile: Tile,
     pos: THREE.Vector3,
-    opts: { hotelClass?: HotelClass; parkTerm?: ParkTerm } = {},
+    opts: { hotelClass?: HotelClass; parkTerm?: ParkTerm; hangarTier?: SizeTier } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
@@ -712,13 +709,17 @@ export class World {
       cab.position.y = 5.4
       g.add(shaft, cab)
     } else if (tile === 'hangar') {
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.95, 3.2, CELL * 0.95),
-        new THREE.MeshStandardMaterial({ color: '#7a8490' }),
-      )
-      body.position.y = 1.6
-      body.castShadow = true
-      g.add(body)
+      addHangar(g, opts.hangarTier ?? 'small')
+    } else if (tile === 'fuel_rail') {
+      addFuelRail(g)
+    } else if (tile === 'oil') {
+      addOilStation(g)
+    } else if (tile === 'travelator') {
+      addTravelator(g)
+    } else if (tile === 'skywalk') {
+      addSkywalk(g)
+    } else if (tile === 'mover') {
+      addPeopleMover(g)
     } else if (tile === 'hotel') {
       this.addHotelBuilding(g, opts.hotelClass ?? 'business')
     } else if (
@@ -879,43 +880,6 @@ export class World {
       truck.position.set(0, 0.35, CELL * 0.22)
       truck.castShadow = true
       g.add(shed, bay, truck)
-    } else if (tile === 'mover') {
-      const deck = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.92, 0.16, CELL * 0.28),
-        new THREE.MeshStandardMaterial({ color: '#2a3238', roughness: 0.6 }),
-      )
-      deck.position.y = 1.35
-      const railMat = new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.4, roughness: 0.35 })
-      const railA = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.88, 0.06, 0.06), railMat)
-      railA.position.set(0, 1.5, -CELL * 0.1)
-      const railB = railA.clone()
-      railB.position.z = CELL * 0.1
-      for (const x of [-CELL * 0.28, CELL * 0.28]) {
-        const post = new THREE.Mesh(
-          new THREE.BoxGeometry(0.12, 1.5, 0.12),
-          new THREE.MeshStandardMaterial({ color: '#8a9aaa' }),
-        )
-        post.position.set(x, 0.75, 0)
-        g.add(post)
-      }
-      const pod = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.28, 0.55, CELL * 0.22),
-        new THREE.MeshStandardMaterial({ color: '#e8eef4', metalness: 0.2, roughness: 0.35 }),
-      )
-      pod.position.set(0, 1.85, 0)
-      pod.name = 'pod'
-      pod.userData.home = 0
-      const windowBand = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.22, 0.18, CELL * 0.23),
-        new THREE.MeshStandardMaterial({
-          color: '#7ec8e8',
-          emissive: '#1a4a66',
-          emissiveIntensity: 0.35,
-        }),
-      )
-      windowBand.position.set(0, 1.95, 0)
-      windowBand.name = 'pod-glass'
-      g.add(deck, railA, railB, pod, windowBand)
     } else if (tile === 'xferbus') {
       const pad = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
@@ -937,33 +901,6 @@ export class World {
       bus.name = 'xfer-bus'
       bus.castShadow = true
       g.add(pad, shed, bus)
-    } else if (tile === 'skywalk') {
-      const deck = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.92, 0.18, CELL * 0.55),
-        new THREE.MeshStandardMaterial({ color: '#d5dde4', roughness: 0.35, metalness: 0.1 }),
-      )
-      deck.position.y = 3.2
-      const glass = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.86, 0.7, 0.06),
-        new THREE.MeshStandardMaterial({
-          color: '#9fd4ee',
-          transparent: true,
-          opacity: 0.55,
-          roughness: 0.15,
-        }),
-      )
-      glass.position.set(0, 3.65, CELL * 0.2)
-      const glassB = glass.clone()
-      glassB.position.z = -CELL * 0.2
-      for (const x of [-CELL * 0.3, CELL * 0.3]) {
-        const leg = new THREE.Mesh(
-          new THREE.BoxGeometry(0.16, 3.2, 0.16),
-          new THREE.MeshStandardMaterial({ color: '#5c6b78' }),
-        )
-        leg.position.set(x, 1.6, 0)
-        g.add(leg)
-      }
-      g.add(deck, glass, glassB)
     }
     return g
   }
@@ -1778,7 +1715,44 @@ export class World {
     this.ghostGroup.clear()
   }
 
+  /**
+   * Construction poles + progress bars, advisor / focus rings, fuel and bag-farm rings.
+   * Meshes are rebuilt only when the set of marks changes; bars just rescale each frame.
+   */
   syncSites(game: Game) {
+    const key = this.sitesKey(game)
+    if (key !== this.sitesHash) {
+      this.sitesHash = key
+      this.rebuildSites(game)
+    }
+    let i = 0
+    for (const site of game.sites) {
+      const progress = Math.max(0.04, Math.min(1, site.elapsed / site.duration))
+      for (const cell of site.cells) {
+        const bar = this.siteBars[i++]
+        if (!bar) continue
+        const p = toWorld(cell.c, cell.r, 0)
+        bar.scale.x = progress
+        bar.position.set(p.x - (CELL * 0.7 * (1 - progress)) / 2, 2.5, p.z)
+      }
+    }
+  }
+
+  private sitesKey(game: Game): string {
+    let k = `${game.mapRev}|${game.advisorCells.length ? 1 : 0}|`
+    const fit = game.advisorCells.length ? (game.activeHall() ?? game.fits[0]) : null
+    if (fit) k += `${fit.origin.c},${fit.origin.r}`
+    k += '|'
+    for (const site of game.sites) {
+      k += `${site.cells.length}:`
+      for (const cell of site.cells) k += `${cell.c},${cell.r};`
+    }
+    k += '|'
+    for (const cell of game.apronFocus) k += `${cell.c},${cell.r};`
+    return k
+  }
+
+  private rebuildSites(game: Game) {
     this.siteGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       mesh.geometry?.dispose()
@@ -1787,8 +1761,8 @@ export class World {
       else mat?.dispose()
     })
     this.siteGroup.clear()
+    this.siteBars = []
     for (const site of game.sites) {
-      const progress = Math.max(0.04, Math.min(1, site.elapsed / site.duration))
       for (const cell of site.cells) {
         const p = toWorld(cell.c, cell.r, 0)
         const pole = new THREE.Mesh(
@@ -1797,12 +1771,13 @@ export class World {
         )
         pole.position.set(p.x, 1.2, p.z)
         this.siteGroup.add(pole)
+        // Full-width box scaled on x by progress in syncSites.
         const bar = new THREE.Mesh(
-          new THREE.BoxGeometry(CELL * 0.7 * progress, 0.22, 0.28),
+          new THREE.BoxGeometry(CELL * 0.7, 0.22, 0.28),
           new THREE.MeshLambertMaterial({ color: '#7dcea0' }),
         )
-        bar.position.set(p.x - (CELL * 0.7 * (1 - progress)) / 2, 2.5, p.z)
         this.siteGroup.add(bar)
+        this.siteBars.push(bar)
       }
     }
     if (game.advisorCells.length) {
@@ -1878,16 +1853,28 @@ export class World {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
     this.lastFrame = now
+    perfFrame()
+    let t = perfStart()
     setAircraftNight(game.isNight())
     this.resize()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.animateLinks(game)
     this.syncGhost(game)
+    perfEnd('world.tiles', t)
+    t = perfStart()
     this.syncEntities(game)
+    perfEnd('world.entities', t)
+    t = perfStart()
     this.syncSites(game)
+    perfEnd('world.sites', t)
+    t = perfStart()
     this.wr.update(game, this.camera, dt)
+    perfEnd('world.wr', t)
+    t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    if (perf.syncGpu) this.renderer.getContext().finish()
+    perfEnd('world.gl', t)
   }
 
   dispose() {
@@ -1910,6 +1897,37 @@ export class World {
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
+}
+
+/** Saved `hatchfield-gfx`, otherwise a guess (software GL starts on low). */
+function pickQuality(): QualityLevel {
+  let saved: string | null = null
+  try {
+    saved = globalThis.localStorage?.getItem('hatchfield-gfx') ?? null
+  } catch {
+    saved = null
+  }
+  if (saved) return parseQuality(saved)
+  const nav = navigator as Navigator & { deviceMemory?: number }
+  return suggestQuality({
+    renderer: probeGpu(),
+    deviceMemory: nav.deviceMemory,
+    hardwareConcurrency: nav.hardwareConcurrency,
+  })
+}
+
+/** GPU name from a throwaway context, released at once so it never counts as a second canvas. */
+function probeGpu(): string {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2')
+    if (!gl) return ''
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+    const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : ''
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    return gpu
+  } catch {
+    return ''
+  }
 }
 
 const _euler = new THREE.Euler()

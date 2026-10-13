@@ -1,5 +1,6 @@
 import { DEFAULT_HOLD, DEFAULT_PAX, DEFAULT_VEHICLE_SPECS } from '../logistics/defaults.ts'
 import type { DelayCause, LogisticsConfig, StandAccess as RampAccess, VehicleType } from '../logistics/types.ts'
+import { DEPOT_GRANT } from '../scale/data.ts'
 import { neighbors, tilesOf, walkableFor } from './path.ts'
 import type { StandAccess, Tile } from './types.ts'
 
@@ -18,16 +19,17 @@ export const FUEL_OUTAGE_SLOT_SEC = 12
  */
 export const METRES_PER_CELL = 900
 
-const FLEET: Partial<Record<VehicleType, number>> = {
-  fuel_truck: 2,
-  catering_truck: 2,
-  baggage_tug: 3,
-  pushback_tug: 2,
-  gpu: 2,
-  pax_bus: 2,
-  belt_loader: 2,
-  uld_loader: 1,
-  main_deck_loader: 1,
+const FLEET: Partial<Record<VehicleType, number>> = { ...DEPOT_GRANT }
+
+export interface LogisticsBuildOptions {
+  /** Vehicles the player bought on top of the depot grant. */
+  fleet?: Partial<Record<VehicleType, number>>
+  capacityLitres?: number
+  initialLitres?: number
+  /** Hydrant pits on stands once that research is owned. */
+  hydrant?: boolean
+  /** Big jets refuse trucks below their tier. */
+  strict?: boolean
 }
 
 export const CAUSE_LINE: Record<DelayCause, string> = {
@@ -75,6 +77,7 @@ export function buildLogisticsConfig(
   tiles: Tile[][],
   standAccess: Record<string, StandAccess>,
   hasTermBus: boolean,
+  options: LogisticsBuildOptions = {},
 ): LogisticsConfig | null {
   const depots = tilesOf(tiles, 'depot')
   const farms = tilesOf(tiles, 'fuel')
@@ -137,13 +140,18 @@ export function buildLogisticsConfig(
       const id = `${s.c},${s.r}`
       const link = standAccess[id]
       const access: RampAccess = link === 'jetway' ? 'bridge' : hasTermBus ? 'remote' : 'stairs'
-      return { id, node: id, hydrant: false as const, access }
+      return { id, node: id, hydrant: Boolean(options.hydrant), access }
     })
 
   const vehicles: Partial<Record<VehicleType, number>> = {}
   for (const type of Object.keys(FLEET) as VehicleType[]) {
     vehicles[type] = (FLEET[type] ?? 0) * depots.length
   }
+  for (const [type, count] of Object.entries(options.fleet ?? {}) as [VehicleType, number][]) {
+    if (count > 0) vehicles[type] = (vehicles[type] ?? 0) + count
+  }
+  const capacityLitres = options.capacityLitres ?? 400_000
+  const initialLitres = Math.min(capacityLitres, options.initialLitres ?? 240_000)
 
   return {
     nodes,
@@ -155,14 +163,14 @@ export function buildLogisticsConfig(
     stands,
     fuelFarm: {
       node: farmId,
-      capacityLitres: 400_000,
-      initialLitres: 240_000,
-      lowStockLitres: 60_000,
+      capacityLitres,
+      initialLitres,
+      lowStockLitres: Math.min(60_000, Math.round(capacityLitres * 0.15)),
       purchasePricePerLitre: 0.7,
       throughputFeePerLitre: 0.012,
       tankerLitres: 36_000,
       deliveryLeadMinutes: 90,
-      autoReorder: true,
+      autoReorder: options.strict ? false : true,
     },
     kitchen: kitchenLive
       ? {
@@ -189,6 +197,7 @@ export function buildLogisticsConfig(
     hydrantPumpLpm: 2500,
     pax: DEFAULT_PAX,
     hold: DEFAULT_HOLD,
+    strictSizeTiers: options.strict,
   }
 }
 

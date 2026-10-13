@@ -1,4 +1,5 @@
 import { Maintenance, type MaintenanceMetrics, type WearState } from './maintenance'
+import { sizeTierOf, vehicleCanServe } from '../scale/logic'
 import { needsFor } from './needs'
 import { RoadGraph } from './roads'
 import type {
@@ -1652,6 +1653,7 @@ export class LogisticsSim {
         for (const v of this.vehicles) {
           if (!r.vehicles.includes(v.type) || v.phase !== 'idle') continue
           if (v.heldFor && v.heldFor !== t.externalFlightId) continue
+          if (this.config.strictSizeTiers && !vehicleCanServe(v.type, sizeTierOf(t.needs.airframeId))) continue
           const fit = this.compatMult(r, v.type) * 10 - r.vehicles.indexOf(v.type)
           const tt = this.tripMinutes(v, r, dest)
           if (fit > bestFit + EPS || (Math.abs(fit - bestFit) <= EPS && tt < bestT - EPS)) {
