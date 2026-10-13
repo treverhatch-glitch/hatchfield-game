@@ -1,0 +1,82 @@
+{
+  "aurora": {
+    "name": "Aurora Air",
+    "code": "AU",
+    "tailDecal": "liveries/aurora_tail.svg",
+    "fuselage": "#ffffff",
+    "stripePrimary": "#0b2d5c",
+    "stripeAccent": "#e8b923",
+    "engine": "#0b2d5c",
+    "motif": "sun"
+  },
+  "coralis": {
+    "name": "Coralis",
+    "code": "CR",
+    "tailDecal": "liveries/coralis_tail.svg",
+    "fuselage": "#ffffff",
+    "stripePrimary": "#e4572e",
+    "stripeAccent": "#17bebb",
+    "engine": "#e4572e",
+    "motif": "wave"
+  },
+  "nordwind": {
+    "name": "Nordwind",
+    "code": "NW",
+    "tailDecal": "liveries/nordwind_tail.svg",
+    "fuselage": "#f2f2f2",
+    "stripePrimary": "#2e4057",
+    "stripeAccent": "#66a182",
+    "engine": "#2e4057",
+    "motif": "chevron"
+  },
+  "siamsky": {
+    "name": "SiamSky",
+    "code": "SS",
+    "tailDecal": "liveries/siamsky_tail.svg",
+    "fuselage": "#ffffff",
+    "stripePrimary": "#5b2a86",
+    "stripeAccent": "#f4a259",
+    "engine": "#5b2a86",
+    "motif": "sun"
+  },
+  "pacifica": {
+    "name": "Pacifica",
+    "code": "PC",
+    "tailDecal": "liveries/pacifica_tail.svg",
+    "fuselage": "#ffffff",
+    "stripePrimary": "#00798c",
+    "stripeAccent": "#edae49",
+    "engine": "#00798c",
+    "motif": "wave"
+  },
+  "redtail": {
+    "name": "Redtail Express",
+    "code": "RT",
+    "tailDecal": "liveries/redtail_tail.svg",
+    "fuselage": "#ffffff",
+    "stripePrimary": "#c1121f",
+    "stripeAccent": "#1d1d1d",
+    "engine": "#c1121f",
+    "motif": "chevron"
+  },
+  "meridian": {
+    "name": "Meridian",
+    "code": "MD",
+    "tailDecal": "liveries/meridian_tail.svg",
+    "fuselage": "#e5e5e5",
+    "stripePrimary": "#14213d",
+    "stripeAccent": "#fca311",
+    "engine": "#14213d",
+    "motif": "star"
+  },
+  "hatch_cargo": {
+    "name": "Hatch Cargo",
+    "code": "HC",
+    "tailDecal": "liveries/hatch_cargo_tail.svg",
+    "fuselage": "#ffffff",
+    "stripePrimary": "#3a5a40",
+    "stripeAccent": "#dad7cd",
+    "engine": "#3a5a40",
+    "motif": "star"
+  }
+}

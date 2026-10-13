@@ -89,6 +89,13 @@ describe('quality presets', () => {
     expect(QUALITY.low.grassTufts).toBeLessThan(QUALITY.med.grassTufts)
     expect(QUALITY.med.grassTufts).toBeLessThan(QUALITY.high.grassTufts)
     expect(QUALITY.low.lodScale).toBeLessThan(QUALITY.high.lodScale)
+    // Auto low (SwiftShader) keeps the new art off so the heavy run does not pay for it.
+    expect(QUALITY.low.extraTextures).toBe(false)
+    expect(QUALITY.low.animatedPeople).toBe(false)
+    expect(QUALITY.low.thoughtBubbles).toBe(false)
+    expect(QUALITY.low.crowdDetail).toBe(false)
+    expect(QUALITY.med.animatedPeople).toBe(true)
+    expect(QUALITY.high.crowdDetail).toBe(true)
     // r186 dropped PCFSoftShadowMap; high softens PCF with a radius instead.
     expect(QUALITY.high.shadowType).toBe(THREE.PCFShadowMap)
     expect(QUALITY.high.shadowRadius).toBeGreaterThan(QUALITY.med.shadowRadius)
