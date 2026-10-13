@@ -1,4 +1,5 @@
 import type { InboundState } from '../inbound/types.ts'
+import type { PlaytestYearSave } from '../reports/book.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -936,6 +937,8 @@ export interface GameSnapshot {
   negotiation?: string
   /** Inbound offers, visits, and Guard contracts. */
   inbound?: InboundState
+  /** Year-end disruption, hub, and award counters. Missing on older saves. */
+  playtestYear?: PlaytestYearSave
 }
 
 /** A placed building that is still a construction site. */

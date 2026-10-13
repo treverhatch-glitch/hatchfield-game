@@ -7,6 +7,7 @@ import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { OfferPanel } from './negotiation/OfferPanel'
+import { PlaytestYearPanel } from './reports/PlaytestYearPanel.tsx'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -78,6 +79,12 @@ function bootScreen(): Screen {
   if (remembered === 'play' && Game.hasSave() && game.load()) return 'play'
   if (remembered === 'play') return 'title'
   return remembered
+}
+
+function PlaytestYearMount({ game }: { game: Game }) {
+  const report = game.playtestYearCard()
+  if (!report) return null
+  return <PlaytestYearPanel report={report} onDismiss={() => game.dismissPlaytestYear()} />
 }
 
 export default function App() {
@@ -207,6 +214,7 @@ export default function App() {
         game.hintPrefs.allEnabled ? 1 : 0,
         game.enableHintsAtStart ? 1 : 0,
         game.sidePanel,
+        game.playtestYear.rev,
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
@@ -253,6 +261,7 @@ export default function App() {
       <Hud game={game} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
+      <PlaytestYearMount game={game} />
     </div>
   )
 }
