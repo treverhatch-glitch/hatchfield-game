@@ -82,7 +82,6 @@ import {
   normalizeAirline,
   AIRLINE_TIER_META,
   MECHANIC_HIRE,
-  MECHANIC_WAGE,
   MIN_RUNWAY,
   PARCEL_COST,
   JETWAY_RANGE,
@@ -111,11 +110,8 @@ import {
   RAIL_FARE,
   RAIL_STATION_COST,
   JANITOR_HIRE,
-  JANITOR_WAGE,
   RESEARCHER_HIRE,
-  RESEARCHER_WAGE,
   DESK_STAFF_HIRE,
-  DESK_STAFF_WAGE,
   RP_RATE_BARE,
   RP_RATE_BOARD,
   RP_RATE_DESK,
@@ -158,6 +154,15 @@ import {
   type SpendKind,
   type StaffPost,
 } from './guests'
+import { bagWorkDuration, describeBagStage } from './bags'
+import {
+  budgetLineCost,
+  fieldOpsMultiplier,
+  loanInterestDue,
+  loansAvailable,
+  nextLoanBalance,
+  payrollAmount,
+} from './economy'
 import {
   AIRFRAMES,
   craftRoleLabel,
@@ -1084,11 +1089,7 @@ export class Game {
   }
 
   availableLoans() {
-    if (this.sandbox) return LOAN_PRODUCTS.slice()
-    const lv = this.fieldLevel()
-    return LOAN_PRODUCTS.filter(
-      (p) => lv >= p.minFieldLevel && this.reputation >= p.minRep,
-    )
+    return loansAvailable(LOAN_PRODUCTS, this.fieldLevel(), this.reputation, this.sandbox)
   }
 
   takeLoanProduct(productId: string) {
@@ -2981,35 +2982,11 @@ export class Game {
   /** Seconds of visible load/unload/process work from bag units. */
   bagWorkSeconds(f: Flight, kind: 'ramp' | 'sort' | 'deposit'): number {
     const u = f.bagUnits ?? estimateFlightBagUnits(this.airline(f.airline).persona, f.pax)
-    if (kind === 'deposit') return clamp(0.7 + u * 0.012, 0.7, 3.2)
-    if (kind === 'sort') return clamp(1.1 + u * 0.018, 1.1, 4.5)
-    return clamp(1.8 + u * 0.022, 1.8, 5.5)
+    return bagWorkDuration(u, kind)
   }
 
   bagStageLabel(f: Flight): string {
-    const lane = f.claimLane ? ` · claim ${f.claimLane}` : ''
-    switch (f.bagStage) {
-      case 'pax_deposit':
-        return `Bags: check-in deposit (${f.bagsDeposited ?? 0}/${f.bagUnits ?? '?'})`
-      case 'outbound_sort':
-        return 'Bags: sorting outbound'
-      case 'load_aircraft':
-        return 'Bags: loading aircraft'
-      case 'inflight':
-        return `Bags: on board${lane}`
-      case 'unload_aircraft':
-        return `Bags: unloading${lane}`
-      case 'inbound_sort':
-        return `Bags: processing → claim ${f.claimLane ?? '?'}`
-      case 'deliver_claim':
-        return `Bags: delivering to claim ${f.claimLane ?? '?'}`
-      case 'on_claim':
-        return `Bags: on claim ${f.claimLane ?? '?'}`
-      case 'complete':
-        return 'Bags: complete'
-      default:
-        return lane ? `Bags${lane}` : ''
-    }
+    return describeBagStage(f.bagStage, f.claimLane, f.bagsDeposited, f.bagUnits)
   }
 
   /** Warehouse fill 0–1 for HUD. */
@@ -5227,22 +5204,16 @@ export class Game {
    * scale ops payroll so mid/late game stays a money puzzle (capped).
    */
   fieldOpsMult(): number {
-    const stands = tilesOf(this.tiles, 'stand').length
-    const signed = this.signed.length
-    const load =
-      1 +
-      Math.max(0, signed - 1) * 0.055 +
-      Math.max(0, stands - 2) * 0.04 +
-      Math.min(0.35, this.flightsDone * 0.0035)
-    return Math.min(1.65, load)
+    return fieldOpsMultiplier(
+      this.signed.length,
+      tilesOf(this.tiles, 'stand').length,
+      this.flightsDone,
+    )
   }
 
   payrollPreview(): number {
-    let total = 0
-    for (const key of Object.keys(BUDGET_BASE) as BudgetKey[]) {
-      total += this.lineCost(key)
-    }
-    return Math.round(total * this.fieldOpsMult())
+    const lines = (Object.keys(BUDGET_BASE) as BudgetKey[]).map((key) => this.lineCost(key))
+    return payrollAmount(lines, this.fieldOpsMult())
   }
 
   hireJanitor() {
@@ -5648,36 +5619,25 @@ export class Game {
   }
 
   lineCost(key: BudgetKey): number {
-    const pct = this.budgets[key] / 100
-    let base = BUDGET_BASE[key] * pct
-    if (key === 'maintenance') {
-      base += this.mechanics * MECHANIC_WAGE * pct
-      // Hangar on field adds a shop overhead even at low slider (tools still cost).
-      if (tilesOf(this.tiles, 'hangar').length) base += 90 * Math.max(0.25, pct)
-      // Lab staff wages ride the MX slider — empty labs still cost if hired.
-      base += this.researchers * RESEARCHER_WAGE * Math.max(0.35, pct)
-      const { desks, boards, machines } = this.labGear()
-      base += (desks * 40 + boards * 25 + machines * 70) * Math.max(0.2, pct)
-    }
-    if (key === 'security') {
-      const posts = tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0)
-      base *= 1 + posts * 0.12
-      base += this.deskStaff * DESK_STAFF_WAGE * Math.max(0.4, pct)
-    }
-    if (key === 'cleaning') {
-      const rooms = this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0)
-      base *= 1 + rooms * 0.08
-      base += this.janitors * JANITOR_WAGE * pct
-    }
-    if (key === 'fire') {
-      const stations = Math.max(1, tilesOf(this.tiles, 'fire').length)
-      base *= stations
-      if (!tilesOf(this.tiles, 'fire').length) base *= 0.35 // skeleton ARFF desk
-    }
-    if (key === 'ambulance') {
-      if (!this.signed.length && !tilesOf(this.tiles, 'helipad').length) base *= 0.4
-    }
-    return base
+    const gear = key === 'maintenance' ? this.labGear() : { desks: 0, boards: 0, machines: 0 }
+    return budgetLineCost({
+      key,
+      budgetPct: this.budgets[key],
+      mechanics: this.mechanics,
+      hangars: tilesOf(this.tiles, 'hangar').length,
+      researchers: this.researchers,
+      desks: gear.desks,
+      boards: gear.boards,
+      machines: gear.machines,
+      securityPosts:
+        tilesOf(this.tiles, 'police').length + this.fits.reduce((n, f) => n + f.rooms.security, 0),
+      deskStaff: this.deskStaff,
+      cleanRooms: this.fits.reduce((n, f) => n + f.rooms.bathroom + f.rooms.food, 0),
+      janitors: this.janitors,
+      fireStations: tilesOf(this.tiles, 'fire').length,
+      signed: this.signed.length,
+      helipads: tilesOf(this.tiles, 'helipad').length,
+    })
   }
 
   hireMechanic() {
@@ -8857,10 +8817,7 @@ export class Game {
         this.interestCool = Math.max(12, prod.every)
         const opened =
           this.loanOpened > 0 ? this.loanOpened : prod.principal + prod.fee
-        const tick = Math.max(
-          prod.interestFloor,
-          Math.round(this.loanBalance * prod.rate),
-        )
+        const tick = loanInterestDue(this.loanBalance, prod.rate, prod.interestFloor)
         if (this.cash >= tick) {
           // Paid in full — balance does NOT capitalize (was snowballing every tick).
           this.cash -= tick
@@ -8876,7 +8833,7 @@ export class Game {
           this.cash = 0
           const short = tick - paid
           // Only unpaid shortfall capitalizes — hard-capped.
-          this.loanBalance = Math.min(opened * 2.1, this.loanBalance + short)
+          this.loanBalance = nextLoanBalance(this.loanBalance, short, opened)
           this.reputation = Math.max(0, this.reputation - 1.5)
           if (this.loanNewsCool <= 0) {
             this.pushNews(
