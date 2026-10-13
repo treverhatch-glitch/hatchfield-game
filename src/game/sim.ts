@@ -2896,13 +2896,16 @@ export class Game {
    * Pick the least-loaded claim carousel, counting live arrivals + banked slots.
    * Only inbound pax need claim planning — cargo / GA skip.
    */
-  pickClaimLane(excludeFlightId?: string | null, excludeSlotId?: string | null): number {
-    const fit = this.activeHall() ?? this.fits[0] ?? null
+  pickClaimLane(excludeFlightId?: string | null, excludeSlotId?: string | null, fitParam?: TerminalFit | null): number {
+    const fl = excludeFlightId ? this.flights.find((x) => x.id === excludeFlightId) : null
+    const fit = fitParam ?? (fl?.stand ? this.roomsAt(fl.stand) : null) ?? this.activeHall() ?? this.fits[0] ?? null
     const n = this.claimLaneCount(fit)
     const loads = Array.from({ length: n }, () => 0)
     for (const other of this.flights) {
       if (other.id === excludeFlightId || other.cargo || other.ga || !other.claimLane) continue
       if (other.phase === 'gone' || other.phase === 'takeoff') continue
+      const otherFit = other.stand ? this.roomsAt(other.stand) : null
+      if (fit && otherFit && this.hallKey(otherFit) !== this.hallKey(fit)) continue
       const i = other.claimLane - 1
       if (i >= 0 && i < n) loads[i] += other.bagUnits ?? other.pax
     }
@@ -2910,6 +2913,8 @@ export class Game {
       if (s.id === excludeSlotId || !s.claimLane) continue
       if (s.status !== 'scheduled' && s.status !== 'delayed' && s.status !== 'inbound') continue
       if (this.airline(s.airline).kind === 'cargo') continue
+      const sFit = s.standPref ? this.roomsAt(s.standPref) : null
+      if (fit && sFit && this.hallKey(sFit) !== this.hallKey(fit)) continue
       const i = s.claimLane - 1
       if (i >= 0 && i < n) loads[i] += 40
     }
@@ -3646,9 +3651,11 @@ export class Game {
     if (n === 'security') {
       g.clearedSec = true
       if (g.job === 'depart') {
+        const gFit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
         const wear = this.bumpWear(
           'sec',
           g.tag === 'budget' ? 2.2 : g.tag === 'family' ? 1.5 : 0.6,
+          gFit,
         )
         const unstaffed = !this.staffedPost('security')
         const slow = wear >= 50 || unstaffed
@@ -3674,9 +3681,11 @@ export class Game {
       }
     }
     if (n === 'bathroom') {
+      const gFit = this.fitByKey(g.hallId) ?? this.activeHall() ?? this.fits[0]
       const wear = this.bumpWear(
         'bath',
         g.tag === 'budget' ? 2.8 : g.tag === 'family' ? 1.8 : 0.7,
+        gFit,
       )
       const relief = wear >= 60 ? 30 : wear >= 35 ? 42 : 55
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
@@ -5161,25 +5170,26 @@ export class Game {
     this.emit()
   }
 
-  /** Budget traffic scuffs WC / security. Returns average wear after bump. */
-  bumpWear(kind: 'bath' | 'sec', amount: number): number {
+  /** Budget traffic scuffs WC / security on that specific hall. */
+  bumpWear(kind: 'bath' | 'sec', amount: number, fitParam?: TerminalFit | null): number {
     if (!this.fits.length) return 0
-    let sum = 0
-    for (const f of this.fits) {
-      if (kind === 'bath') f.wearBath = Math.min(100, (f.wearBath ?? 0) + amount)
-      else f.wearSec = Math.min(100, (f.wearSec ?? 0) + amount)
-      sum += kind === 'bath' ? f.wearBath : f.wearSec
-    }
-    return sum / this.fits.length
+    const fit = fitParam ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return 0
+    if (kind === 'bath') fit.wearBath = Math.min(100, (fit.wearBath ?? 0) + amount)
+    else fit.wearSec = Math.min(100, (fit.wearSec ?? 0) + amount)
+    return kind === 'bath' ? fit.wearBath : fit.wearSec
   }
 
-  scrubHall() {
+  scrubHall(fitParam?: TerminalFit | null) {
     if (!this.fits.length) {
       this.pushNews('No hall to scrub.', 'bad')
       return
     }
-    if (this.maxWear() < 5) {
-      this.pushNews('Hall is already clean enough.', 'ok')
+    const fit = fitParam ?? this.activeHall() ?? this.fits[0]
+    if (!fit) return
+    const wear = Math.max(fit.wearBath ?? 0, fit.wearSec ?? 0)
+    if (wear < 5) {
+      this.pushNews(`${this.hallLabel(fit)} is already clean enough.`, 'ok')
       this.emit()
       return
     }
@@ -5188,15 +5198,13 @@ export class Game {
     const cost = Math.round(HALL_SCRUB_COST * (1.35 - cleanPct * 0.35))
     if (!this.spend(cost, 'hall scrub')) return
     const cut = 30 + cleanPct * 25
-    for (const f of this.fits) {
-      f.wearBath = Math.max(0, (f.wearBath ?? 0) - cut)
-      f.wearSec = Math.max(0, (f.wearSec ?? 0) - cut * 0.9)
-    }
+    fit.wearBath = Math.max(0, (fit.wearBath ?? 0) - cut)
+    fit.wearSec = Math.max(0, (fit.wearSec ?? 0) - cut * 0.9)
     this.reputation = Math.min(100, this.reputation + 2)
     this.pushNews(
       cleanPct < 0.4
-        ? 'Thin cleaning crew scrubbed — still sticky in places.'
-        : 'Crew scrubbed WC and security lanes.',
+        ? `${this.hallLabel(fit)}: Thin cleaning crew scrubbed — still sticky in places.`
+        : `${this.hallLabel(fit)}: Crew scrubbed WC and security lanes.`,
       cleanPct < 0.4 ? 'ok' : 'good',
     )
     this.emit()
@@ -6833,8 +6841,8 @@ export class Game {
     })
     scored.sort((a, b) => {
       if (a.jet !== b.jet) return a.jet ? -1 : 1
-      if (a.belt !== b.belt) return a.belt ? -1 : 1
       if (a.load !== b.load) return a.load - b.load
+      if (a.belt !== b.belt) return a.belt ? -1 : 1
       return a.d - b.d
     })
     return scored[0].s
@@ -7444,6 +7452,8 @@ export class Game {
   roomsAt(stand: Vec | null): TerminalFit | null {
     if (!this.fits.length) return null
     if (!stand) return this.fits[0]
+    const jet = this.jetwayHall(stand)
+    if (jet) return jet
     let best = this.fits[0]
     let bestD = 99
     for (const f of this.fits) {
