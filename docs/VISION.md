@@ -27,7 +27,7 @@ Players pick **pax-first, cargo-first, or hybrid** at the plot (city vs factory 
 
 ## Living logistics picture (Manor Lords energy on an airport)
 
-> **IMPORTANT system law:** [HAND_OFFS.md](./HAND_OFFS.md) — passengers, bags, catering, fuel, cargo, buses: every transfer is a visible load/unload/service hand-off. No teleport clears.
+> **IMPORTANT system law:** [HAND_OFFS.md](./HAND_OFFS.md) — apron *and terminal*: passengers, bags, security, claim, amenities, catering, fuel, cargo, buses — every transfer is a visible load/unload/service hand-off. No teleport clears.
 
 The field is not teleport economy. **Schedules drive prep; assets move through pipelines; the player can read the picture.** Planes should feel **serviced** — elements actually pass through aircraft and airport.
 

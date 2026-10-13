@@ -31,6 +31,7 @@ Thresholds players learn: Standing **82+** perk · **≤36** warn · **≤20** a
 4. **Sawyer cap** — hall pathfinding stays shallow (capped BFS). Perfect routing that stalls the sim is worse than guests who get lost.
 5. **Browser = design lab** — Godot/Steam only after Waves A–B feel unfair-fun. Grid stays until **P2.5 freeflow**.
 6. **Dual path equality** — pax and cargo both feed Field XP / Field Level ([PROGRESSION](./PROGRESSION.md)).
+7. **Hand-off picture (IMPORTANT)** — no silent completion; every load/unload/service has travel + dwell scaled by load ([HAND_OFFS](./HAND_OFFS.md)).
 
 ## Real airport ops (inspiration)
 
@@ -91,6 +92,7 @@ Not “place a strip and a plane lands.” A good session: pick pax or cargo foc
 | Doc | Role |
 | --- | --- |
 | [VISION.md](./VISION.md) | North-star: pax + cargo + emergency + mil |
+| [HAND_OFFS.md](./HAND_OFFS.md) | **IMPORTANT** — Manor Lords load/unload law |
 | [REAL_OPS.md](./REAL_OPS.md) | Real airport pipelines → game verbs |
 | [IDEAS.md](./IDEAS.md) | Backlog and spice |
 | [PROBLEMS.md](./PROBLEMS.md) | Gaps, bugs, honesty |

@@ -68,6 +68,7 @@ North star: [VISION](./VISION.md) · Ops bible: [REAL_OPS](./REAL_OPS.md) · Wav
 ## Rules while building
 
 - Money = picture.  
+- **Hand-offs = picture** ([HAND_OFFS](./HAND_OFFS.md)) — no silent `posted.X = true`.  
 - No per-bag agents.  
 - Field Level gates growth; research is specialty.  
 - Keep AT3 first hour (kit still works).  
