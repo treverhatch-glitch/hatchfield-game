@@ -105,6 +105,9 @@ export class HallWorld {
   private ray = new THREE.Raycaster()
   /** Instanced food, seat, and decor meshes. Rebuilt with the room hash. */
   kitGroup = new THREE.Group()
+  private walkGroup = new THREE.Group()
+  private walkSig = ''
+  private walkSlats: { mesh: THREE.Mesh; originX: number; originZ: number; rot: number }[] = []
   /** Floor litter decals and janitor pawns. */
   litter = new HallLitterLayer()
   build: HallBuildMode = null
@@ -163,6 +166,7 @@ export class HallWorld {
 
     this.scene.add(this.roomGroup)
     this.scene.add(this.kitGroup)
+    this.scene.add(this.walkGroup)
     this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
     this.overlay.visible = false
@@ -882,6 +886,7 @@ export class HallWorld {
     this.resize()
     this.rebuildRooms(game)
     this.easeToGoal(game)
+    this.syncWalkways(game)
     this.syncGuests(game)
     this.syncLuggage(game)
     this.syncOverlay(game)
@@ -894,6 +899,42 @@ export class HallWorld {
     this.renderer.render(this.scene, this.camera)
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('hall.gl', t)
+  }
+
+  /** Moving-walkway belts. Slats travel the length of each stamp. */
+  private syncWalkways(game: Game) {
+    const fit = game.activeHall()
+    const items = (fit?.items ?? []).filter((item) => item.def === 'walkway')
+    const sig = items.map((item) => `${item.id}@${item.c},${item.r}r${item.rot ?? 0}`).join(';')
+    if (sig !== this.walkSig) {
+      this.walkSig = sig
+      this.walkGroup.clear()
+      this.walkSlats = []
+      const cols = fit?.zones?.[0]?.length || GRID_C
+      const rows = fit?.zones?.length || GRID_R
+      const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows)
+      for (const { item, x, z } of laid) {
+        if (item.def !== 'walkway') continue
+        const rot = ((item.rot ?? 0) * Math.PI) / 2
+        for (let i = 0; i < 4; i++) {
+          const slat = new THREE.Mesh(
+            new THREE.BoxGeometry(0.7, 0.04, 0.85),
+            new THREE.MeshLambertMaterial({ color: i % 2 ? '#3a8ad8' : '#d8dde2' }),
+          )
+          slat.position.set(x, 0.24, z)
+          slat.rotation.y = rot
+          slat.name = 'belt-slat'
+          this.walkGroup.add(slat)
+          this.walkSlats.push({ mesh: slat, originX: x, originZ: z, rot })
+        }
+      }
+    }
+    const phase = (performance.now() / 900) % 1
+    this.walkSlats.forEach((slat, index) => {
+      const along = (((phase + index / 4) % 1) - 0.5) * 4.6
+      slat.mesh.position.x = slat.originX + Math.cos(slat.rot) * along
+      slat.mesh.position.z = slat.originZ + Math.sin(slat.rot) * along
+    })
   }
 
   /** Belt, hold-bag scanner, sort pile, and claim carousel. Cubes are a capped parade. */
