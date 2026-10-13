@@ -60,9 +60,10 @@ export class HallWorld {
   hotspotGroup = new THREE.Group()
   bagGroup = new THREE.Group()
   guests = new Map<string, THREE.Mesh>()
-  private beltCubes: THREE.Mesh[] = []
+    private beltCubes: THREE.Mesh[] = []
   private claimCubes: THREE.Mesh[] = []
   private sortCubes: THREE.Mesh[] = []
+  private deskCubes: THREE.Mesh[] = []
   private luggageBuilt = false
   roomHash = ''
   private floor: THREE.Mesh
@@ -442,7 +443,12 @@ export class HallWorld {
       pile.set(key, slot + 1)
       const ox = next ? 0 : (slot % 4) * 0.42 - 0.6
       const oz = next ? 0 : Math.floor(slot / 4) * 0.42
-      mesh.position.set(a.x + (b.x - a.x) * t + ox, 0.55, a.z + (b.z - a.z) * t + oz)
+      const desk = g.atBagDesk ? nodeWorld('claim') : null
+      mesh.position.set(
+        desk ? desk.x - 3.4 + (slot % 3) * 0.7 : a.x + (b.x - a.x) * t + ox,
+        0.55,
+        desk ? desk.z + 2.4 : a.z + (b.z - a.z) * t + oz,
+      )
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
       const carry = mesh.userData.carry as THREE.Mesh
@@ -455,7 +461,7 @@ export class HallWorld {
 
   /** Wish line while they leave an empty counter. */
   private syncBubble(mesh: THREE.Mesh, thought: string) {
-    const show = thought.startsWith('wish they')
+    const show = thought.startsWith('wish they') || thought.startsWith('Lost-bag')
     let sprite = mesh.userData.bubble as THREE.Sprite | undefined
     if (!show) {
       if (sprite) sprite.visible = false
@@ -472,17 +478,30 @@ export class HallWorld {
     if (mesh.userData.bubbleText !== thought) {
       const c = document.createElement('canvas')
       c.width = 512
-      c.height = 128
       const ctx = c.getContext('2d')!
+      ctx.font = '700 36px sans-serif'
+      const words = thought.split(' ')
+      const lines: string[] = []
+      let line = ''
+      for (const word of words) {
+        const next = line ? `${line} ${word}` : word
+        if (ctx.measureText(next).width > 470 && line) {
+          lines.push(line)
+          line = word
+        } else line = next
+      }
+      if (line) lines.push(line)
+      const shown = lines.slice(0, 3)
+      c.height = 56 + shown.length * 52
+      ctx.font = '700 36px sans-serif'
       ctx.fillStyle = 'rgba(255,255,255,0.94)'
-      ctx.fillRect(8, 16, 496, 96)
+      ctx.fillRect(8, 10, 496, c.height - 20)
       ctx.strokeStyle = '#1a2a32'
       ctx.lineWidth = 6
-      ctx.strokeRect(8, 16, 496, 96)
+      ctx.strokeRect(8, 10, 496, c.height - 20)
       ctx.fillStyle = '#1a2a32'
-      ctx.font = '700 40px sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText(thought, 256, 78)
+      shown.forEach((row, i) => ctx.fillText(row, 256, 52 + i * 46))
       const tex = new THREE.CanvasTexture(c)
       tex.colorSpace = THREE.SRGBColorSpace
       const mat = sprite.material as THREE.SpriteMaterial
@@ -490,6 +509,8 @@ export class HallWorld {
       mat.map = tex
       mat.needsUpdate = true
       mesh.userData.bubbleText = thought
+      sprite.scale.set(3.4, 0.62 + shown.length * 0.42, 1)
+      sprite.position.y = 1.15 + shown.length * 0.28
     }
     sprite.visible = true
   }
@@ -689,6 +710,10 @@ export class HallWorld {
       const a = (spin + i / this.claimCubes.length) * Math.PI * 2
       cube.position.set(claim.x + Math.cos(a) * 2.15, 0.48, claim.z + Math.sin(a) * 1.15)
     })
+    const pile = game.bagDeskPile()
+    this.deskCubes.forEach((cube, i) => {
+      cube.visible = i < pile
+    })
   }
 
   private buildLuggage() {
@@ -742,6 +767,19 @@ export class HallWorld {
     ring.position.set(claim.x, 0.28, claim.z)
     this.bagGroup.add(ring)
 
+    const deskX = claim.x - 3.4
+    const deskZ = claim.z + 2.4
+    const desk = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.72, 0.7),
+      new THREE.MeshLambertMaterial({ color: '#6a3a32' }),
+    )
+    desk.position.set(deskX, 0.36, deskZ)
+    this.bagGroup.add(desk)
+    const deskLabel = this.makeLabel('LOST BAGS', '#f0d0c8')
+    deskLabel.position.set(deskX, 0.08, deskZ + 0.9)
+    deskLabel.rotation.x = -Math.PI / 2
+    this.bagGroup.add(deskLabel)
+
     const bagMat = new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false })
     const blue = new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false })
     for (let i = 0; i < 6; i++) {
@@ -759,6 +797,13 @@ export class HallWorld {
       const cube = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.42, 0.64), i % 2 ? blue : bagMat)
       this.bagGroup.add(cube)
       this.claimCubes.push(cube)
+    }
+    for (let i = 0; i < 4; i++) {
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.5, 0.36), bagMat)
+      cube.position.set(deskX - 0.72 + i * 0.48, 0.97, deskZ)
+      cube.visible = false
+      this.bagGroup.add(cube)
+      this.deskCubes.push(cube)
     }
   }
 
