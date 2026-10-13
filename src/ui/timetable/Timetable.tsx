@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
 import { boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, type RunwayLaneModel, type ViewSpan } from './layout'
 import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, ICAO_LABEL, standFits } from './time'
 import type { TimetableAdapter, TtFlight } from './types'
@@ -98,7 +98,7 @@ export function Timetable({
     setSel(f.id)
   }
 
-  const gantt = useMemo(() => buildGantt(flights, stands, span), [flights, stands, span])
+  const gantt = buildGantt(flights, stands, span)
   const ticks = hourTicks(span, day)
   const nowX = frac(now, span)
 
