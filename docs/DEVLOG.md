@@ -691,3 +691,20 @@ PR #47 brings the build-your-own kit onto this branch. A fresh passenger game, s
 
 The production bundle is `index-CN6EN7lw.js`, 1,593.14 kB, with `index-jic0D8bj.css`.
 
+## Land plots — 13 Oct
+
+PR #40 is merged. Buying the city site grants the core plot. The next plot has to touch land you already own, and field level caps how many you can hold. A normal new game shows land holding at $236 a day. The loan button reads “Industrial plot 1-2 $27,216 · need Lv2”, and the click says the parcel is locked until Field Level 2. The maintenance contract toggles on at $1,250 a day. Sandbox does not pay the holding. Loan interest is still billed on the loan clock, not a second time here. The city levy is unchanged.
+
+The published margins stay 10.0% early and 24.4% mid-game. With the new holding included, the early cash-flow margin is 8.8% and the mid-game margin is 23.5%. A 30-day bank grows 1.30× from day 20 to day 30.
+
+**Tests.** `tsc -b` clean. Vitest 748 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Vitest | Pass | 748 passed, 2 skipped |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 4 while the other soak was running. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 5 while the other soak was running. |
+| 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, cash finite. Missed 56 while overloaded. One plot, holding about $1,497 a day after the starter kit. |
+| Margins | Pass | 10.0% early and 24.4% mid-game on the published model. 8.8% early and 23.5% mid-game once land holding is in the day. |
+
+

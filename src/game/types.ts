@@ -812,6 +812,10 @@ export interface GameSnapshot {
   /** Airport XP toward field level (airline tier unlocks). */
   fieldXp?: number
   parcels: number
+  /** Expansion plots bought after the starter site. Missing on older saves. */
+  ownedPlots?: { id: string; assessed: number }[]
+  /** Outsourced pavement crew. Missing on older saves. */
+  maintenanceContract?: boolean
   railLinked: boolean
   public: boolean
   sharePrice: number
