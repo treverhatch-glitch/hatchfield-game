@@ -177,11 +177,22 @@ import {
   readHintSettings,
   sanitizeHintPrefs,
   setAllHintsEnabled,
+  severityOf,
   visibleHints,
   writeHintSettings,
   type HintPrefs,
 } from './hints.ts'
 import { HINT_REFRESH_SEC } from './hintsData.ts'
+import {
+  claimHoldUnits,
+  CURB_REACH,
+  OPENING_FIRST_SLOTS,
+  OPENING_SEC,
+  openingSlotCap,
+  openingSpacingBonus,
+  STARTER_CAPACITY,
+} from './openingData.ts'
+import { nextSessionHint } from './sessionHints.ts'
 import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
 import { buildSeconds } from './construction.ts'
@@ -936,6 +947,8 @@ export class Game {
   mechanicCool = 0
   /** First-session coach card dismissed (or auto-cleared after first takeoff). */
   coachDismissed = false
+  /** The player opened the build tray (picked a tool other than pan). */
+  buildTrayOpened = false
   private firstTakeoffNoted = false
   /** Active airline field ask (CEO-style task clock). */
   fieldTask: FieldTask | null = null
@@ -1161,6 +1174,7 @@ export class Game {
     this.craftSeen = {}
     this.mechanicCool = 0
     this.coachDismissed = false
+    this.buildTrayOpened = false
     // New games start with All hints enabled unless the pregame box was unchecked.
     this.hintPrefs = newGameHintPrefs(this.enableHintsAtStart)
     writeHintSettings(this.hintPrefs)
@@ -2167,6 +2181,11 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
+    // Opening: the first small carrier flies regional metal, which the prefab can turn.
+    // A second signature, or the clock leaving the opening, brings the normal mix back.
+    if (this.clock < OPENING_SEC && this.signed.length <= 1 && a.kind === 'pax' && a.tier <= 2) {
+      return 'regional'
+    }
     // Summit / EXFED-class — heavy strip + heavy_pack opens widebody (A380 in the pool).
     if (a.req.heavyRunway && this.hasHeavyRunway()) return 'widebody'
     if (a.persona === 'budget' || a.id === 'northline' || a.procedural) {
@@ -2994,6 +3013,20 @@ export class Game {
     return Math.round(n)
   }
 
+  /**
+   * One curb beside a hall is a handful of drop-off stalls.
+   * Bus, rail, and lots still carry the mid-game; a single road does not.
+   */
+  curbDropoffStalls(): number {
+    if (!this.fits.length) return 0
+    const near = tilesOf(this.tiles, 'road').some((road) =>
+      this.fits.some(
+        (fit) => Math.abs(fit.origin.c - road.c) + Math.abs(fit.origin.r - road.r) <= CURB_REACH,
+      ),
+    )
+    return near ? STARTER_CAPACITY.curbStalls : 0
+  }
+
   /** @deprecated alias — expense is the only "potential" now. */
   landsidePotential(): number {
     return this.landsideUpkeep()
@@ -3006,9 +3039,11 @@ export class Game {
       const cls = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
       beds += cls === 'inn' ? 5 : cls === 'resort' ? 12 : 8
     }
+    const curb = this.curbDropoffStalls()
     return Math.max(
       1,
       beds +
+        curb +
         tilesOf(this.tiles, 'park_s').length * 3 +
         tilesOf(this.tiles, 'park_l').length * 5 +
         tilesOf(this.tiles, 'park_g').length * 7 +
@@ -3485,6 +3520,7 @@ export class Game {
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
+      buildTrayOpened: this.buildTrayOpened,
       fieldTask: this.fieldTask,
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
@@ -3624,6 +3660,7 @@ export class Game {
       // The save wins; older saves fall back to the settings mirror, then to defaults.
       this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
       writeHintSettings(this.hintPrefs)
+      this.buildTrayOpened = s.buildTrayOpened ?? false
       this.alerts.reset()
       this.planAdvice = { key: '', list: [] }
       this.firstTakeoffNoted = this.flightsDone >= 1
@@ -3884,6 +3921,8 @@ export class Game {
     }
     this.tool = tool
     this.runwayStart = null
+    if (tool !== 'pan') this.buildTrayOpened = true
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -5902,10 +5941,32 @@ export class Game {
     this.refreshAdvice()
   }
 
+  private sessionSnapshot() {
+    const fieldUp = runwayStrips(this.tiles, MIN_RUNWAY).length > 0 && tilesOf(this.tiles, 'stand').length > 0
+    return {
+      fieldUp,
+      signed: this.signed.length,
+      offerWaiting: this.offer != null,
+      buildTrayOpened: this.buildTrayOpened,
+      deskStaff: this.deskStaff,
+      needsDesk: this.startFocus !== 'cargo' && this.fits.length > 0,
+      flightsDone: this.flightsDone,
+    }
+  }
+
+  private withSessionHint(list: Advice[]): Advice[] {
+    const session = nextSessionHint(this.sessionSnapshot())
+    return session ? mergeHints(list, [session]) : list
+  }
+
   refreshAdvice() {
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) {
-      this.advice = [...this.groundNotes, ...this.cargoNotes, ...this.scaleAdviceItems()]
+      this.advice = this.withSessionHint([
+        ...this.groundNotes,
+        ...this.cargoNotes,
+        ...this.scaleAdviceItems(),
+      ])
       this.appendNegotiationAdvice()
       return
     }
@@ -5952,12 +6013,14 @@ export class Game {
       .filter((it) => !it.bundle && outletSpec(it.def))
       .map((it) => ({ c: it.c, r: it.r }))
     hall.push(...seatingAdvice(this.diningStoodRecently(fit), outletCells))
+    const session = nextSessionHint(this.sessionSnapshot())
     this.advice = mergeHints(
       hall,
       standingNotes,
       this.groundNotes,
       this.cargoNotes,
       this.scaleAdviceItems(),
+      session ? [session] : [],
     )
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
@@ -6001,9 +6064,17 @@ export class Game {
     return this.planAdvice.list
   }
 
-  /** Hints the panel and its badge show, after the player's mutes. Worst first. */
+  /**
+   * Hints the panel and its badge show, after the player's mutes. Worst first.
+   * While a first-session hint is active, it is the only note — plus any hard
+   * fail, which is never hidden behind the next-step tip.
+   */
   visibleHints(): Advice[] {
-    return visibleHints(this.advice, this.hintPrefs)
+    const shown = visibleHints(this.advice, this.hintPrefs)
+    const session = shown.find((a) => hintKind(a.id) === 'session')
+    if (!session) return shown
+    const hard = shown.filter((a) => a !== session && severityOf(a) === 'blocker')
+    return [...hard, session]
   }
 
   /** "Don't show hints of this type." Turns All hints enabled off. */
@@ -8179,11 +8250,13 @@ export class Game {
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.grantFieldXp(12 + a.tier * 4, 'contract')
-    this.seedScheduleForAirline(id, 3)
+    const opening = this.signed.length <= 1 && this.clock < OPENING_SEC
+    this.seedScheduleForAirline(id, opening ? OPENING_FIRST_SLOTS : 3)
     this.pushNews(
       `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.`,
       'good',
     )
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -8219,12 +8292,23 @@ export class Game {
     if (last) t = Math.max(t, last.eta + 16)
     const hub = this.isHub(airlineId)
     const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
-    const spacing = a.kind === 'cargo'
-      ? 22 + Math.random() * 12
-      : hub
-        ? 12 + Math.random() * 8
-        : 18 + Math.random() * 10
-    const n = hub ? scaled + 1 : scaled
+    const spacing =
+      (a.kind === 'cargo'
+        ? 22 + Math.random() * 12
+        : hub
+          ? 12 + Math.random() * 8
+          : 18 + Math.random() * 10) + openingSpacingBonus(this.clock)
+    let n = hub ? scaled + 1 : scaled
+    const limit = a.kind === 'cargo' ? null : openingSlotCap(this.clock)
+    if (limit != null) {
+      const openPax = this.schedule.filter(
+        (s) =>
+          (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound') &&
+          this.airline(s.airline).kind !== 'cargo',
+      ).length
+      n = Math.max(0, Math.min(n, limit - openPax))
+    }
+    if (n <= 0) return
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
@@ -8664,7 +8748,8 @@ export class Game {
     if (this.scheduleAuto && this.schedulePlanCool <= 0 && this.signed.length) {
       this.schedulePlanCool = 18
       const open = this.openSchedule()
-      const want = Math.min(this.scheduleCap() - 2, 4 + this.runwayStripCount() * 2)
+      const opening = openingSlotCap(this.clock)
+      const want = opening ?? Math.min(this.scheduleCap() - 2, 4 + this.runwayStripCount() * 2)
       if (open.length < want) {
         const pool = this.signed.filter((id) => !this.isBanned(id))
         if (pool.length) {
@@ -9636,6 +9721,7 @@ export class Game {
       `Hired desk agent #${this.deskStaff}. Bodies cover check-in, security, and gate.`,
       'good',
     )
+    this.refreshAdvice()
     this.emit()
   }
 
@@ -12409,7 +12495,11 @@ export class Game {
           const fit = this.roomsAt(f.stand)
           if (fit) {
             const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
-            const claimCap = rooms * (fit.premade ? 55 : 80)
+            const claimCap = claimHoldUnits(
+              Boolean(fit.premade),
+              fit.bagAllowance ?? rooms * (fit.premade ? 55 : 80),
+              rooms,
+            )
             const overflow = Math.max(0, units - claimCap)
             if (overflow > 0.5) {
               const book = this.ensureBagBook(f)
@@ -14095,6 +14185,7 @@ export class Game {
           if (!this.firstTakeoffNoted && f.kind !== 'military' && f.kind !== 'air_ambulance') {
             this.firstTakeoffNoted = true
             this.coachDismissed = true
+            this.refreshAdvice()
             this.reputation = Math.min(100, this.reputation + 2)
             this.pushNews(
               `First turn in the book — ${f.flightNo} airborne. Field Rating ${this.fieldRating()}. Airlines will start asking for upgrades; hangar-side pads unlock Guard.`,

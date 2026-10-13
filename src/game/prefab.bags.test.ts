@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { spawnHallGuest } from './guests.ts'
+import { STARTER_CAPACITY } from './openingData.ts'
 import { Game } from './sim.ts'
 import { SIZE, type Flight, type Truck } from './types.ts'
 
@@ -395,14 +396,16 @@ describe('prefab bags', () => {
     flight.bagStage = 'unload_aircraft'
     flight.posted.bags = false
     game.finishTruck(bagTruck(flight.id, 'unload'))
-    expect(flight.claimLeft).toBe(125)
-    expect(game.bagBook(flight.id)?.claimLeft).toBe(125)
+    const hold = STARTER_CAPACITY.bagAllowance
+    const overflow = 180 - hold
+    expect(flight.claimLeft).toBe(overflow)
+    expect(game.bagBook(flight.id)?.claimLeft).toBe(overflow)
     expect(game.news.some((n) => n.text.includes('claim jammed') && n.text.includes('offloaded'))).toBe(true)
     game.tick(0.5)
     const book = game.bagBook(flight.id)!
     expect(book.lost).toBe(0)
-    expect(book.claimLeft).toBe(125)
-    expect(book.unloaded).toBeLessThanOrEqual(55)
+    expect(book.claimLeft).toBe(overflow)
+    expect(book.unloaded).toBeLessThanOrEqual(hold)
     expect(game.bagsMishandled).toBe(0)
     expect(game.lostPaxCount()).toBe(0)
   })

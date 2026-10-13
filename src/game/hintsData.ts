@@ -6,6 +6,7 @@ import type { HintSeverity } from './hints.ts'
 
 /** Ids that carry a hall, stand, or airline suffix share one mute kind. */
 export const HINT_KIND_PREFIX: [prefix: string, kind: string][] = [
+  ['session-', 'session'],
   ['standing-', 'standing'],
   ['delay-', 'turnaround-delay'],
   ['dead-', 'dead-end'],
@@ -31,6 +32,7 @@ export const HINT_SEVERITY: Record<string, HintSeverity> = {
   'low-fuel': 'warning',
   'turnaround-delay': 'tip',
   standing: 'warning',
+  session: 'tip',
 }
 
 /**

@@ -77,11 +77,15 @@ describe('queue throughput', () => {
     expect(slowedService(3, 100)).toBeCloseTo(4.5)
   })
 
-  it('Prefab I is two lanes at 3.5s, and later tiers stay ahead of it', () => {
+  it('Prefab I clears an opening bank, and later tiers stay ahead of it', () => {
     expect(PREFAB_TIERS[1].servers).toBe(2)
-    expect(PREFAB_TIERS[1].serviceSec).toBe(3.5)
-    expect(PREFAB_TIERS[1].paxCap).toBe(40)
-    expect(paxPerMin(PREFAB_TIERS[1].servers, PREFAB_TIERS[1].serviceSec)).toBeCloseTo(34.29, 1)
+    expect(PREFAB_TIERS[1].serviceSec).toBe(3.2)
+    expect(PREFAB_TIERS[1].paxCap).toBe(46)
+    expect(PREFAB_TIERS[1].queueCap).toBe(16)
+    expect(paxPerMin(PREFAB_TIERS[1].servers, PREFAB_TIERS[1].serviceSec)).toBeCloseTo(37.5, 1)
+    expect(PREFAB_TIERS[2].paxCap).toBeGreaterThan(PREFAB_TIERS[1].paxCap)
+    expect(PREFAB_TIERS[2].queueCap).toBeGreaterThan(PREFAB_TIERS[1].queueCap)
+    expect(PREFAB_TIERS[2].bagAllowance).toBeGreaterThan(PREFAB_TIERS[1].bagAllowance)
     expect(PREFAB_TIERS[2].servers).toBe(3)
     expect(PREFAB_TIERS[2].serviceSec).toBe(3)
     expect(paxPerMin(PREFAB_TIERS[2].servers, PREFAB_TIERS[2].serviceSec)).toBeCloseTo(60)
@@ -149,9 +153,9 @@ describe('security choke', () => {
     const fit = game.fits[0]
     expect(fit.premade).toBe(true)
     expect(fit.tier).toBe(1)
-    expect(fit.capGuests).toBe(40)
-    expect(fit.secPerMin).toBeCloseTo(34.29, 1)
-    expect(fit.bagAllowance).toBe(70)
+    expect(fit.capGuests).toBe(46)
+    expect(fit.secPerMin).toBeCloseTo(37.5, 1)
+    expect(fit.bagAllowance).toBe(88)
     expect(fit.signs).toBe(2)
     expect(fit.zones?.[0]?.length).toBe(8)
     expect(fit.zones?.length).toBe(5)
