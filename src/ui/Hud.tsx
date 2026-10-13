@@ -371,21 +371,26 @@ export function Hud({ game }: { game: Game }) {
             openLetter && letters.some((l) => l.id === openLetter)
               ? openLetter
               : null
-          return letters.map((letter, i) => {
+          return letters.map((letter) => {
             const open = active === letter.id
             return (
               <article
                 key={letter.id}
                 className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
-                style={{ marginTop: i === 0 ? 0 : 6 }}
                 data-testid={letter.id === 'field' ? 'field-task' : undefined}
                 onMouseEnter={() => setOpenLetter(letter.id)}
-                onMouseLeave={() => setOpenLetter((cur) => (cur === letter.id ? null : cur))}
+                onMouseLeave={() =>
+                  setOpenLetter((cur) => (cur === letter.id ? null : cur))
+                }
               >
                 <button
                   type="button"
                   className="letter-tab"
-                  onClick={() => setOpenLetter(open ? null : letter.id)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    /* Open on click — do not toggle closed (mouseenter + click was a no-op). */
+                    setOpenLetter(letter.id)
+                  }}
                 >
                   <span className="letter-kind">{letter.kind}</span>
                   <span className="letter-from">{letter.from}</span>

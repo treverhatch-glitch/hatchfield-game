@@ -731,22 +731,28 @@ button {
 
 .panel-rollout {
   order: 1;
-  max-height: 44px;
+  max-height: 0;
   overflow: hidden;
   margin: 0 4px;
   background: rgba(10, 20, 16, 0.94);
   border: 1px solid rgba(201, 162, 39, 0.35);
   border-bottom: none;
   border-radius: 12px 12px 0 0;
-  transition: max-height 0.28s ease, box-shadow 0.28s ease;
+  transition: max-height 0.28s ease, box-shadow 0.28s ease, opacity 0.2s ease;
   box-shadow: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
+/* Clicked / pinned menus stay open (not hover-only — clicks were invisible). */
+.chrome.has-panel .panel-rollout,
+.chrome.pinned .panel-rollout,
 .chrome:hover .panel-rollout,
-.chrome.pinned:focus-within .panel-rollout,
 .panel-rollout:focus-within {
   max-height: min(42vh, 440px);
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .panel-head {
@@ -942,10 +948,10 @@ button {
   width: min(300px, 92vw);
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 6px;
   max-height: calc(100% - 170px);
   overflow: auto;
-  z-index: 28;
+  z-index: 32;
   pointer-events: none;
 }
 
@@ -963,7 +969,7 @@ button {
 .letter:hover,
 .letter.open,
 .letter:focus-within {
-  max-height: 280px;
+  max-height: 320px;
   border-color: #c9a227;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
   z-index: 2;
