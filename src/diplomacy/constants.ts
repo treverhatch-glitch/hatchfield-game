@@ -138,6 +138,8 @@ export const SPAT_FADE_DAYS = 120;
 export const NEWCOMER_MIN_DAYS = 30;
 export const NEWCOMER_MAX_DAYS = 90;
 export const TIER_FLOOR_PROSPECTS = 2;
+/** Slot-pool newcomers never push a tier past this many live (prospect or signed) airlines of one kind. */
+export const TIER_ROSTER_CAP = 6;
 
 export const SLOT_USE_THRESHOLD = 0.8;
 

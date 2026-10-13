@@ -8,7 +8,8 @@ import {
   NEWCOMER_MIN_DAYS,
   REENTRY_MIN_DAYS,
   SLOT_USE_THRESHOLD,
-  TIER_FLOOR_PROSPECTS
+  TIER_FLOOR_PROSPECTS,
+  TIER_ROSTER_CAP
 } from './constants.ts';
 import {
   addModifier,
@@ -319,6 +320,10 @@ export function processSlotPools(core: EngineCore): void {
     const leaver = core.state.relations[pool.leaverId];
     const kind = leaver?.kind ?? 'pax';
     for (let i = 0; i < pool.newcomers; i++) {
+      const live = allRelations(core).filter(
+        (r) => r.tier === pool.tier && r.kind === kind && (r.status === 'prospect' || r.status === 'signed')
+      ).length;
+      if (live >= TIER_ROSTER_CAP) break;
       spawnNewcomer(core, pool.tier, kind, leaver);
     }
   }

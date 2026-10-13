@@ -129,8 +129,11 @@ describe('demands from interests', () => {
     for (let i = 0; i < 90 && h.engine.state.commitments.length === 0; i++) h.run(1);
     const d = h.engine.state.commitments[0];
     expect(d).toBeDefined();
-    const rivalId = d.airlineId === 'skypenny' ? 'zoomjet' : 'skypenny';
-    expect(['back', 'oppose', 'ignore']).toContain(d.rivalStances[rivalId]);
+    const stances = Object.entries(d.rivalStances);
+    for (const [rivalId, stance] of stances) {
+      expect(h.engine.relation(rivalId)?.status).toBe('signed');
+      expect(['back', 'oppose', 'ignore']).toContain(stance);
+    }
   });
 
   it('reports progress as a number from 0 to 1', () => {

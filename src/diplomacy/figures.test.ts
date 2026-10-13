@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHarness, push } from './testkit.ts';
 import { createDiplomacyState } from './engine.ts';
-import { ROSTER } from './data.ts';
 import { buildPortraitCard, bandChip } from './portrait.ts';
 
 describe('key figures', () => {

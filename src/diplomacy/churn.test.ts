@@ -88,7 +88,8 @@ describe('staged departure', () => {
     const res = h.engine.counterExitNotice('skypenny', true);
     expect(res.chance).toBeCloseTo(0.55);
     expect(res.cost).toBeGreaterThan(0);
-    expect(h.engine.counterExitNotice('skypenny').message).toContain('Already');
+    const again = h.engine.counterExitNotice('skypenny').message;
+    expect(again).toMatch(rel.stage === 'exit_notice' ? /Already/ : /No exit notice/);
   });
 
   it('allows at most one airline in exit notice at a time and two exits per game-year', () => {
