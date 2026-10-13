@@ -168,11 +168,16 @@ import {
   craftRoleLabel,
   jetAirframesBlocked,
   jetAirframesFitting,
+  bagUnitsForAirframe,
+  fuelDwellSeconds,
+  paxForAirframe,
   pickAirframe,
   pickAirframeWithFallback,
   standClassFor,
   stripTier,
+  turnaroundScale,
 } from './airframes'
+import { hasLeftMap, inboundApproach } from './flightpath'
 import {
   advancePaxItinerary,
   spawnArrivalPax,
@@ -2826,7 +2831,8 @@ export class Game {
   noteTurn(f: Flight) {
     if (!(f.cargo || f.kind === 'freighter')) this.dayPax += Math.max(0, f.pax)
     if (f.cargo || f.kind === 'freighter') {
-      this.dayCargo += Math.max(8, f.pax || 16)
+      const hold = AIRFRAMES[f.airframeId]?.cargoHold
+      this.dayCargo += hold && hold > 0 ? hold : Math.max(8, f.pax || 16)
     }
   }
 
@@ -3068,6 +3074,27 @@ export class Game {
   }
 
   /** Seconds of visible load/unload/process work from bag units. */
+  /** Pax, bags, and arrival fuel from the airframe's published-ish figures. */
+  flightLoad(
+    af: (typeof AIRFRAMES)[string],
+    persona: 'budget' | 'business' | 'luxury' | 'cargo_night' | 'military_gov',
+    cargo: boolean,
+  ): { pax: number; bagUnits: number; fuelLevel: number } {
+    const freighter = cargo || af.kind === 'freighter'
+    const pax = freighter ? 0 : paxForAirframe(af)
+    const bagUnits = freighter
+      ? 0
+      : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
+    return { pax, bagUnits, fuelLevel: 0.28 + Math.random() * 0.18 }
+  }
+
+  /** Off-map start so the jet flies the approach instead of popping onto the strip. */
+  armApproach(route: Vec[]): { x: number; y: number; z: number; path: Vec[] } {
+    const path = inboundApproach(route)
+    const start = path[0] ?? route[0]
+    return { x: start.c, y: start.r, z: 16, path }
+  }
+
   bagWorkSeconds(f: Flight, kind: 'ramp' | 'sort' | 'deposit'): number {
     const u = f.bagUnits ?? estimateFlightBagUnits(this.airline(f.airline).persona, f.pax)
     return bagWorkDuration(u, kind)
@@ -5089,24 +5116,25 @@ export class Game {
       return
     }
     this.earn(o.fee, `${o.callsign} parking fee`)
-    const start = route[0]
+    const inbound = this.armApproach(route)
+    const load = this.flightLoad(af, 'business', false)
     const f: Flight = {
       id: uid('ga'),
       airline: 'ga',
       flightNo: o.callsign,
       airframeId: af.id,
       airframeName: af.name,
-      pax: af.paxMin + Math.floor(Math.random() * Math.max(1, af.paxMax - af.paxMin + 1)),
+      pax: load.pax,
       cargo: false,
       craft: 'jet',
       kind: af.kind,
       phase: 'approach',
       stand,
-      x: start.c - 3,
-      y: start.r - 2,
-      z: 7,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -7210,11 +7238,8 @@ export class Game {
       this.spawnCool = 5
       return
     }
-    const start = route[0]
-    const pax =
-      af.paxMax <= 0
-        ? 0
-        : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
+    const approach = this.armApproach(route)
+    const load = this.flightLoad(af, def.persona, def.kind === 'cargo')
     const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
@@ -7222,17 +7247,17 @@ export class Game {
       flightNo: slot.flightNo,
       airframeId: af.id,
       airframeName: af.name,
-      pax,
+      pax: load.pax,
       cargo: def.kind === 'cargo',
       craft: 'jet',
       kind: af.kind,
       phase: 'approach',
       stand,
-      x: start.c - 4,
-      y: start.r - 2,
-      z: 8,
+      x: approach.x,
+      y: approach.y,
+      z: approach.z,
       heading: 0,
-      path: route,
+      path: approach.path,
       seg: 0,
       t: 0,
       holdAngle: Math.random() * Math.PI * 2,
@@ -7243,12 +7268,12 @@ export class Game {
       scheduleId: slot.id,
       boardingSlow: Math.random() < 0.18,
       destination: pick(ROUTE_CITIES),
-      fuelLevel: 0.28 + Math.random() * 0.22,
+      fuelLevel: load.fuelLevel,
       caterLevel: def.kind === 'cargo' ? 1 : 0.18 + Math.random() * 0.2,
       hangarBay: null,
       mxEndsAt: null,
       mxPending: false,
-      bagUnits: def.kind === 'cargo' ? 0 : estimateFlightBagUnits(def.persona, pax),
+      bagUnits: load.bagUnits,
       bagStage: def.kind === 'cargo' ? 'idle' : 'inflight',
       bagsDeposited: 0,
       claimLane: slot.claimLane ?? null,
@@ -7428,15 +7453,16 @@ export class Game {
       }
       return
     }
+    const inbound = this.armApproach(route)
     f.stand = stand
-    f.path = route
+    f.path = inbound.path
     f.seg = 0
     f.t = 0
     f.phase = 'approach'
     f.phaseTime = 0
-    f.z = 8
-    f.x = route[0].c - 3
-    f.y = route[0].r - 2
+    f.z = inbound.z
+    f.x = inbound.x
+    f.y = inbound.y
     if (Math.random() < 0.4) {
       this.pushNews(
         `${f.flightNo} cleared to ${this.gateLabel(stand)}${hasTower ? ' (tower)' : ''}.`,
@@ -7784,6 +7810,7 @@ export class Game {
               : 'RDR'
     const call = `${prefix}${this.flightSeq}`
     const fighter = af.id === 'f15'
+    const inbound = this.armApproach(route)
     const f: Flight = {
       id: uid('mil'),
       airline: this.signed[0] ?? 'harbor',
@@ -7796,11 +7823,11 @@ export class Game {
       kind: 'military',
       phase: 'approach',
       stand,
-      x: route[0].c - 4,
-      y: route[0].r - 2,
-      z: fighter ? 10 : 9,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -7844,23 +7871,24 @@ export class Game {
     if (!route) return
     this.flightSeq += 1
     const call = `LIF${this.flightSeq}`
+    const inbound = this.armApproach(route)
     const f: Flight = {
       id: uid('amb'),
       airline: this.signed[0] ?? 'harbor',
       flightNo: call,
       airframeId: af.id,
       airframeName: af.name,
-      pax: af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1)),
+      pax: this.flightLoad(af, 'business', false).pax,
       cargo: false,
       craft: 'jet',
       kind: 'air_ambulance',
       phase: 'approach',
       stand,
-      x: route[0].c - 3,
-      y: route[0].r - 2,
-      z: 8,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -8494,28 +8522,25 @@ export class Game {
     this.flightSeq += 1
     const a = this.airline(airline)
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
-    const pax =
-      af.paxMax <= 0
-        ? 0
-        : af.paxMin + Math.floor(Math.random() * (af.paxMax - af.paxMin + 1))
-    const start = route[0]
+    const inbound = this.armApproach(route)
+    const load = this.flightLoad(af, a.persona, a.kind === 'cargo' || af.kind === 'freighter')
     const f: Flight = {
       id: uid('div'),
       airline,
       flightNo: call,
       airframeId: af.id,
       airframeName: af.name,
-      pax,
+      pax: load.pax,
       cargo: a.kind === 'cargo' || af.kind === 'freighter',
       craft: 'jet',
       kind: af.kind,
       phase: 'approach',
       stand,
-      x: start.c - 4,
-      y: start.r - 2,
-      z: 9,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -8523,7 +8548,7 @@ export class Game {
       waitingOn: emptyWaiting(),
       phaseTime: 0,
       ledger: [],
-      bagUnits: a.kind === 'cargo' ? 0 : estimateFlightBagUnits(a.persona, pax),
+      bagUnits: load.bagUnits,
       bagStage: a.kind === 'cargo' ? 'idle' : 'inflight',
       bagsDeposited: 0,
       claimLane: null,
@@ -8567,7 +8592,7 @@ export class Game {
     if (!af) return false
     this.flightSeq += 1
     const call = mx ? `ATMX${this.flightSeq}` : `TANK${this.flightSeq}`
-    const start = route[0]
+    const inbound = this.armApproach(route)
     const f: Flight = {
       id: uid('tnk'),
       airline: this.signed[0] ?? 'harbor',
@@ -8580,11 +8605,11 @@ export class Game {
       kind: 'air_ambulance',
       phase: 'approach',
       stand,
-      x: start.c - 3,
-      y: start.r - 2,
-      z: 8,
+      x: inbound.x,
+      y: inbound.y,
+      z: inbound.z,
       heading: 0,
-      path: route,
+      path: inbound.path,
       seg: 0,
       t: 0,
       holdAngle: 0,
@@ -9043,12 +9068,18 @@ export class Game {
         f.z = 9
         f.heading = f.holdAngle + Math.PI / 2
       } else if (f.phase === 'approach') {
-        f.z = lerp(f.z, 1.2, 1 - Math.pow(0.12, step))
-        const arrived = this.followPath(f, 1.6, step)
-        if (arrived || f.phaseTime > 8) {
+        const threshold =
+          f.path.find((p) => inBounds(Math.round(p.c), Math.round(p.r))) ??
+          f.path[f.path.length - 1]
+        const dist = threshold ? Math.hypot(f.x - threshold.c, f.y - threshold.r) : 0
+        const glide = clamp(0.35 + dist * 0.7, 0.35, 22)
+        f.z = lerp(f.z, glide, 1 - Math.pow(0.18, step))
+        const arrived = this.followPath(f, 1.85, step)
+        const onField = inBounds(Math.round(f.x), Math.round(f.y))
+        if (arrived || (onField && f.phaseTime > 10) || f.phaseTime > 36) {
           f.phase = 'landing'
           f.phaseTime = 0
-          f.z = 0.9
+          f.z = Math.min(f.z, 1.4)
         }
       } else if (f.phase === 'landing') {
         f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
@@ -9068,13 +9099,14 @@ export class Game {
         }
       } else if (f.phase === 'deboard') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        const pace = turnaroundScale(AIRFRAMES[f.airframeId], Boolean(f.cargo || f.kind === 'freighter'))
         const deboardReady =
           f.cargo ||
-          (mode === 'jetway' && f.phaseTime > 3.2) ||
+          (mode === 'jetway' && f.phaseTime > 3.2 * pace) ||
           (mode === 'bus' &&
-            ((f.waitingOn.paxOut <= 0 && f.phaseTime > 4.5) || f.phaseTime > 18)) ||
+            ((f.waitingOn.paxOut <= 0 && f.phaseTime > 4.5 * pace) || f.phaseTime > 18 * pace)) ||
           (mode === 'walk' &&
-            ((f.phaseTime > 6 && f.waitingOn.paxOut <= 2) || f.phaseTime > 16))
+            ((f.phaseTime > 6 * pace && f.waitingOn.paxOut <= 2) || f.phaseTime > 16 * pace))
         if (deboardReady) {
           f.phase = 'servicing'
           f.phaseTime = 0
@@ -9093,7 +9125,8 @@ export class Game {
           (f.waitingOn.bags && !f.posted.bags) ||
           (f.waitingOn.fuel && !f.posted.fuel) ||
           (f.waitingOn.catering && !f.posted.catering)
-        if ((!waiting && f.phaseTime > 4) || f.phaseTime > 22) {
+        const pace = turnaroundScale(AIRFRAMES[f.airframeId], Boolean(f.cargo || f.kind === 'freighter'))
+        if ((!waiting && f.phaseTime > 4 * pace) || f.phaseTime > Math.min(36, 22 * pace)) {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
           f.waitingOn.catering = false
@@ -9207,8 +9240,9 @@ export class Game {
         // Occupies stand until releaseGa / auto leave in tickParking.
       } else if (f.phase === 'board') {
         const mode = f.stand ? this.standPaxMode(f.stand) : 'walk'
+        const pace = turnaroundScale(AIRFRAMES[f.airframeId], Boolean(f.cargo || f.kind === 'freighter'))
         const boardLimit =
-          mode === 'jetway'
+          (mode === 'jetway'
             ? f.boardingSlow
               ? 11
               : 7.5
@@ -9218,10 +9252,10 @@ export class Game {
                 : 13
               : f.boardingSlow
                 ? 24
-                : 17
+                : 17) * pace
         const bagsReady = !f.waitingOn.bagsLoad || f.posted.bagsLoad
         const minBoard =
-          mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5
+          (mode === 'jetway' ? (f.boardingSlow ? 5 : 3.2) : f.boardingSlow ? 9 : 5) * pace
         const boardReady =
           f.waitingOn.paxIn <= 0 && bagsReady && f.phaseTime > minBoard
         if (f.boardingSlow && f.phaseTime > 8 && f.phaseTime < 8.4) {
@@ -9305,10 +9339,10 @@ export class Game {
         }
       } else if (f.phase === 'takeoff') {
         if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
-        f.z += step * 3.2
-        f.x += Math.cos(f.heading) * step * 2.4
-        f.y += Math.sin(f.heading) * step * 2.4
-        if (f.phaseTime > 6 || f.z > 14) {
+        f.z += step * 0.9
+        f.x += Math.cos(f.heading) * step * 2.6
+        f.y += Math.sin(f.heading) * step * 2.6
+        if ((hasLeftMap(f.x, f.y, SIZE) && f.z > 6) || f.phaseTime > 26) {
           f.phase = 'gone'
           this.flightsDone += 1
           this.paxServed += f.pax
@@ -9474,7 +9508,15 @@ export class Game {
           }
         } else {
           t.dwell =
-            t.kind === 'fuel' ? 3.6 : t.kind === 'deice' ? 3.2 : 2.2
+            t.kind === 'fuel'
+              ? fuelDwellSeconds(
+                  AIRFRAMES[
+                    this.flights.find((x) => x.id === t.flightId)?.airframeId ?? ''
+                  ],
+                )
+              : t.kind === 'deice'
+                ? 3.2
+                : 2.2
         }
       } else if (done && t.returning) {
         if (t.kind === 'citycargo') {
