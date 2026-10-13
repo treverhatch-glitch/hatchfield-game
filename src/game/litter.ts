@@ -80,14 +80,49 @@ export function dropLitter(
   id: string,
   rand: () => number = Math.random,
 ): 'bin' | 'floor' {
-  const bin = binInRange(hall.items ?? [], c, r)
+  return dropLitterAt(hall, { c, r, ox: rand() * 0.8 - 0.4, oz: rand() * 0.8 - 0.4 }, id)
+}
+
+/** Same as `dropLitter`, at an exact spot. A full can counts as no can. */
+export function dropLitterAt(
+  hall: LitterHall,
+  at: { c: number; r: number; ox: number; oz: number },
+  id: string,
+): 'bin' | 'floor' {
+  const bin = binInRange(hall.items ?? [], at.c, at.r)
   if (bin) {
     bin.fill = (bin.fill ?? 0) + 1
     return 'bin'
   }
   hall.litter = hall.litter ?? []
-  hall.litter.push({ id, c, r, ox: rand() * 0.8 - 0.4, oz: rand() * 0.8 - 0.4 })
+  hall.litter.push({ id, c: at.c, r: at.r, ox: at.ox, oz: at.oz })
   return 'floor'
+}
+
+export type SnackKind = 'drink' | 'meal'
+
+/** The café sells coffee; every other counter sells a meal. */
+export function snackKind(outletDef: string | null | undefined): SnackKind {
+  return outletDef === 'cafe' ? 'drink' : 'meal'
+}
+
+/** Game minutes to finish a snack. `u` in 0…1 picks inside the tuned range. */
+export function snackMinutes(kind: SnackKind, u: number): number {
+  const [lo, hi] = kind === 'drink' ? LITTER_TUNING.drinkMinutes : LITTER_TUNING.mealMinutes
+  return lo + (hi - lo) * Math.min(1, Math.max(0, u))
+}
+
+/**
+ * Hall cell under a normalized point (0…1 across the hall, like NODE_POS),
+ * with the decal offset inside that cell.
+ */
+export function cellAt(x: number, y: number, cols: number, rows: number) {
+  const fx = Math.min(0.999, Math.max(0, x)) * cols
+  const fy = Math.min(0.999, Math.max(0, y)) * rows
+  const c = Math.floor(fx)
+  const r = Math.floor(fy)
+  const clamp = (v: number) => Math.min(0.45, Math.max(-0.45, v))
+  return { c, r, ox: clamp(fx - c - 0.5), oz: clamp(fy - r - 0.5) }
 }
 
 /** Restroom dirt added by one visit. */
