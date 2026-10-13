@@ -1,6 +1,11 @@
 import * as THREE from 'three'
-import { AIRFRAMES } from '../game/airframes'
 import { inBounds } from '../game/path'
+import {
+  createAircraft,
+  disposeAircraftLibrary,
+  releaseAircraft,
+  updateAircraft,
+} from './aircraft/factory'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
@@ -1155,94 +1160,6 @@ export class World {
     g.add(portal, atrium, mouth, ramp, roof, vent)
   }
 
-  makeJet(color: string, stripe: string): THREE.Group {
-    const g = new THREE.Group()
-    const fus = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.42, 3.4, 6, 12),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.45 }),
-    )
-    fus.rotation.z = Math.PI / 2
-    fus.castShadow = true
-    const wing = new THREE.Mesh(
-      new THREE.BoxGeometry(3.6, 0.08, 1.05),
-      new THREE.MeshStandardMaterial({ color: stripe, roughness: 0.4 }),
-    )
-    wing.position.y = -0.05
-    const tail = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 1.1, 0.7),
-      new THREE.MeshStandardMaterial({ color }),
-    )
-    tail.position.set(-1.7, 0.55, 0)
-    const stab = new THREE.Mesh(
-      new THREE.BoxGeometry(1.3, 0.06, 0.4),
-      new THREE.MeshStandardMaterial({ color: stripe }),
-    )
-    stab.position.set(-1.65, 0.15, 0)
-    const engL = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.2, 0.7, 10),
-      new THREE.MeshStandardMaterial({ color: '#333' }),
-    )
-    engL.rotation.z = Math.PI / 2
-    engL.position.set(0.2, -0.22, 1.15)
-    const engR = engL.clone()
-    engR.position.z = -1.15
-    g.add(fus, wing, tail, stab, engL, engR)
-    g.scale.setScalar(1.15)
-    return g
-  }
-
-  makeHelo(color: string, stripe: string): THREE.Group {
-    const g = new THREE.Group()
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.38, 1.4, 6, 10),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.35 }),
-    )
-    body.rotation.z = Math.PI / 2
-    body.castShadow = true
-    const cabin = new THREE.Mesh(
-      new THREE.SphereGeometry(0.42, 10, 8),
-      new THREE.MeshStandardMaterial({
-        color: stripe,
-        roughness: 0.2,
-        metalness: 0.25,
-        transparent: true,
-        opacity: 0.85,
-      }),
-    )
-    cabin.position.set(0.55, 0.1, 0)
-    const mast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.08, 0.55, 8),
-      new THREE.MeshStandardMaterial({ color: '#333' }),
-    )
-    mast.position.set(0, 0.55, 0)
-    const rotor = new THREE.Mesh(
-      new THREE.BoxGeometry(3.6, 0.04, 0.18),
-      new THREE.MeshStandardMaterial({ color: '#222', metalness: 0.5 }),
-    )
-    rotor.position.set(0, 0.82, 0)
-    rotor.name = 'rotor'
-    const rotor2 = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.04, 3.6),
-      new THREE.MeshStandardMaterial({ color: '#222', metalness: 0.5 }),
-    )
-    rotor2.position.set(0, 0.82, 0)
-    const tail = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 0.12, 0.18),
-      new THREE.MeshStandardMaterial({ color }),
-    )
-    tail.position.set(-1.2, 0.15, 0)
-    const skidL = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.06, 0.08),
-      new THREE.MeshStandardMaterial({ color: '#444' }),
-    )
-    skidL.position.set(0.1, -0.45, 0.35)
-    const skidR = skidL.clone()
-    skidR.position.z = -0.35
-    g.add(body, cabin, mast, rotor, rotor2, tail, skidL, skidR)
-    g.scale.setScalar(0.95)
-    return g
-  }
-
   /** Drop shadows / DPR while 5x fast-forward so the apron stays responsive. */
   applyPerfMode(game: Game) {
     const lite = game.speed >= 5
@@ -1317,30 +1234,32 @@ export class World {
           color = '#1a3a4a'
           stripe = '#c9a227'
         }
-        mesh = helo ? this.makeHelo(color, stripe) : this.makeJet(color, stripe)
+        mesh = createAircraft(f.airframeId || 'b738', { body: color, stripe })
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
-      const p = toWorld(f.x, f.y, 0.55 + f.z * 1.15)
-      mesh.position.copy(p)
+      const alt = Math.max(0, f.z - 0.1)
+      mesh.position.copy(toWorld(f.x, f.y, 0.04 + alt * 1.15))
       mesh.rotation.y = -f.heading
       mesh.rotation.x = helo
         ? 0
         : f.phase === 'takeoff' || f.phase === 'approach'
           ? -0.12
           : 0
-      if (helo) {
-        const rotor = mesh.getObjectByName('rotor')
-        if (rotor) rotor.rotation.y += 0.55
-      }
+      const gearDown =
+        helo ||
+        (f.phase !== 'hold' &&
+          f.phase !== 'gone' &&
+          !(f.phase === 'takeoff' && f.z > 1.6) &&
+          !(f.phase === 'approach' && f.z > 3.2))
+      updateAircraft(mesh, gearDown)
       const sel = game.selectedFlight === f.id
-      const base = AIRFRAMES[f.airframeId]?.scale ?? (helo ? 0.95 : 1.15)
-      mesh.scale.setScalar(sel ? base * 1.06 : base)
+      mesh.scale.setScalar(sel ? 1.06 : 1)
     }
     for (const [id, m] of this.jets) {
       if (!seenJ.has(id)) {
         this.entGroup.remove(m)
-        disposeObject(m)
+        releaseAircraft(m)
         this.jets.delete(id)
       }
     }
@@ -1691,6 +1610,9 @@ export class World {
   }
 
   dispose() {
+    for (const mesh of this.jets.values()) releaseAircraft(mesh)
+    this.jets.clear()
+    disposeAircraftLibrary()
     const canvas = this.canvas
     canvas.removeEventListener('contextmenu', this.onContextMenu)
     canvas.removeEventListener('pointerdown', this.onPointerDown)

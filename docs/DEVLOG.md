@@ -365,3 +365,45 @@ The graphics agent's terminal-life render (`src/render/world` from that PR) was 
 - `docs/devlog/media/LUGGAGE-claim.png` — carousel with bags and people waiting
 - `docs/devlog/media/LUGGAGE-apron.png` — suitcases on the belt and the bag cart, chrome hidden
 - `docs/devlog/media/LUGGAGE-hall.webm` — the belt and carousel moving, about 3.5 s
+
+## Aircraft models — 13 Oct 2026, ~11:10 UTC
+
+Each of the 24 airframes now has its own procedural mesh (fuselage, wings, tail, engines, gear, nav and strobe lamps, body and stripe livery). Sizes follow real length, span, and height at 0.12 world units per meter. The renderer hook in `src/render/world.ts` is the only gameplay file touched. Shared geometries and materials live in one pool; windows, engines, fans, and gear legs are instanced. Releasing a plane frees instance buffers and leaves the pool alone. `World.dispose` drops the pool after the jets.
+
+**LOD.** `CrossfadeLOD` subclasses `THREE.LOD` so the renderer updates it, and it does not hard-switch levels. Distance is camera-to-aircraft in world units, divided by `camera.zoom`. The orbit distance runs 28–160 and defaults to 88.
+
+| Band | Distance | What you see |
+| --- | --- | --- |
+| High, fully in | closer than 46 | Mid body plus windows, doors, engine fans, extra bogie wheels |
+| High fade | 46 → 68 | Those details ease out. The silhouette stays the mid mesh |
+| Mid | through 102 | Full body, gear, window band, lamps. Default orbit (88) is entirely here |
+| Low fade | 102 → 128 | Cheap 5-side shell replaces the mid mesh |
+| Low only | beyond 128 | Silhouette, box gear, beacon |
+
+Weights are smoothstep, then chase the target at 10 per second, so a zoom does not pop. The first frame snaps. The window band fades out as the individual windows fade in. The far shell is the same profile, scaled to 0.99, so it sits inside the mid mesh during the blend. High detail is additive: freighters and the C-130 have an empty close group, and the mid mesh is what you see up close. Gear and prop, fan, and rotor spin run in the same update.
+
+**Perf** (this VM, SwiftShader, 1280×720). 5× turns shadows off and locks DPR at 1.
+
+| Setup | FPS |
+| --- | --- |
+| Old capsule, one jet, 5×, orbit 42 | 26 |
+| New model, one jet on approach, 5×, orbit 42 (high band) | 17 |
+| New model, one jet, 5×, orbit 88 (mid) | 10 |
+| New model, two jets, 5×, orbit 140 (low) | 10 |
+| Twelve types parked, speed 0 so shadows are on, orbit 52 and 140 | 10 and 9 |
+
+The close drop against the capsule is the shaded airframe filling the view. At the default orbit the apron dominates: the earlier shadow-on airport baseline was about 8 FPS, and twelve of the new models with shadows on sit at 9–10. Building all 24 types took 40 ms. The pool after one livery of every type is 40 geometries and 22 materials.
+
+737-800 triangles / draws: low 240 / 7, mid 872 / 21, high 696 / 5. A380 close detail is 2344 triangles and 12 draws. Instanced gear legs cut the 737 mid draws from 25 to 21. That did not move the SwiftShader number.
+
+**Bugs.** None from the aircraft models. The playtest count is ten (BUG-001 through BUG-010).
+
+**Tests.** 26 passing (14 existing, 12 on the model factory: catalog, real size and ordering, parts, livery, shared pool, disposal, lamps, continuous LOD weights, camera switch, triangle budget, outward normals).
+
+**Media** (UI hidden):
+
+- `docs/devlog/media/MODELS-before.png` — old capsule on approach
+- `docs/devlog/media/MODELS-after.png` — twelve types at mid range
+- `docs/devlog/media/MODELS-after-close.png` — zoomed in, windows and gear
+- `docs/devlog/media/MODELS-after-far.png` — cheap silhouettes
+- `docs/devlog/media/MODELS-flight.webm` — 28 s, approach, landing, taxi, and departure
