@@ -786,7 +786,16 @@ export interface TerminalFit {
   tier?: 1 | 2 | 3
   /** Painted floor. Null cells are bare shell. */
   zones?: (string | null)[][]
-  items?: { id: string; def: string; c: number; r: number; wear: number; bundle?: boolean }[]
+  items?: {
+    id: string
+    def: string
+    c: number
+    r: number
+    wear: number
+    bundle?: boolean
+    rot?: number
+    revenue?: number
+  }[]
   /** Wayfinding signs. Each one extends the pathfinding junction cap. */
   signs?: number
   bagAllowance?: number
@@ -836,6 +845,10 @@ export interface GameSnapshot {
   /** Airport XP toward field level (airline tier unlocks). */
   fieldXp?: number
   parcels: number
+  /** Expansion plots bought after the starter site. Missing on older saves. */
+  ownedPlots?: { id: string; assessed: number }[]
+  /** Outsourced pavement crew. Missing on older saves. */
+  maintenanceContract?: boolean
   railLinked: boolean
   public: boolean
   sharePrice: number

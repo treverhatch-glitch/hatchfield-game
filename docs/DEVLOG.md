@@ -674,3 +674,60 @@ A 30-game-day headless run (easy, sandbox off, starter kit, offers accepted as t
 PR #34 shares history with this branch only back at `main`, so a merge would replay that whole gap onto the show-up work. The hall-scoped behavior is on this branch instead. A jetway stand resolves to its own terminal. Wear and a scrub stay on that hall, including the lane items. Claim load is counted inside the hall that owns the stand. When two jetway stands are free, the quieter hall is chosen before the belt link. Prefab I is still two lanes at 3.5 seconds with a cap of 40. Screened passengers still keep their path. A premade still counts as a hall once its construction site finishes.
 
 **Tests.** `tsc -b` clean. Vitest 727 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-DNEZgQfm.js`, 1,578.20 kB.
+
+## Terminal kit — 13 Oct
+
+PR #47 brings the build-your-own kit onto this branch. A fresh passenger game, starter hall, then Hall, shows Food, Seating, and Decor above the dock. Fast food, a bench, and a planter go down on a legal cell. Bulldoze takes the planter back for $100. Prefab bundle pieces stay. The show-up boarding clock still waits until a departure is released.
+
+**Tests.** `tsc -b` clean. Vitest 738 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Vitest | Pass | 738 passed, 2 skipped |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 11. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 9. |
+| 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, cash finite. Missed 30 while overloaded. |
+| Margins | Pass | 10.0% early, 24.4% mid-game |
+
+The production bundle is `index-CN6EN7lw.js`, 1,593.14 kB, with `index-jic0D8bj.css`.
+
+## Land plots — 13 Oct
+
+PR #40 is merged. Buying the city site grants the core plot. The next plot has to touch land you already own, and field level caps how many you can hold. A normal new game shows land holding at $236 a day. The loan button reads “Industrial plot 1-2 $27,216 · need Lv2”, and the click says the parcel is locked until Field Level 2. The maintenance contract toggles on at $1,250 a day. Sandbox does not pay the holding. Loan interest is still billed on the loan clock, not a second time here. The city levy is unchanged.
+
+The published margins stay 10.0% early and 24.4% mid-game. With the new holding included, the early cash-flow margin is 8.8% and the mid-game margin is 23.5%. A 30-day bank grows 1.30× from day 20 to day 30.
+
+**Tests.** `tsc -b` clean. Vitest 748 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-6q-0uGsg.js`, 1,601.17 kB.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Vitest | Pass | 748 passed, 2 skipped |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 4 while the other soak was running. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, missed flights 0, bag short 0, stuck 0. SwiftShader minimum 5 while the other soak was running. |
+| 30-day headless | Pass on correctness | lost passengers 0, bags lost 0, cash finite. Missed 56 while overloaded. One plot, holding about $1,497 a day after the starter kit. |
+| Margins | Pass | 10.0% early and 24.4% mid-game on the published model. 8.8% early and 23.5% mid-game once land holding is in the day. |
+
+## Multi-hall history — 13 Oct
+
+PR #34 is merged onto this branch. The hall-scoped capacity, rooms, wear, and claim behavior was already here, so the merge kept that tree and did not bring back the old instant security clear. `tsc -b` clean. Vitest 748 passed, 2 skipped. Lint warnings are the ones already in the tree.
+
+## Standing advisor — 13 Oct
+
+PR #38. A signed airline whose Standing trend points at a leave inside about 3 game days gets one Advisor Warning letter for that episode. The letter names Standing, the predicted days, and the top two causes with a fix. Dismiss clears it. It returns only after Standing recovers past 55, or the trend stretches past 4.5 days, and then drops again. The warning-line Standing card is still posted. Diplomacy internals are unchanged; the letter reads Standing through the adapter this pull request already had.
+
+A fresh passenger game showed the Northline letter (Standing 32, about 0.1 game days, hall amenities and baggage) and Dismiss removed it.
+
+**Tests.** `tsc -b` clean. Vitest 757 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
+## Cancelled departures — 13 Oct
+
+Cancelling a slot after the aircraft is bound now clears the walkers whose flight id was already rewritten off `slot:`. Arrivals on that flight, and departures on any other flight, stay. They are marked dead, not lost.
+
+**Tests.** `tsc -b` clean. Vitest 758 passed, 2 skipped. `oxlint` reports only the warnings already in the tree.
+
+| Gate | Result | Numbers |
+| --- | --- | --- |
+| Playwright mixed, 6 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0. Missed 1 with the hall overloaded. SwiftShader minimum 9. |
+| Playwright heavy, 4 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0. Missed 2 with the hall overloaded. SwiftShader minimum 9. |
+
+
