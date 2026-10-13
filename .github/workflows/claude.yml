@@ -12,7 +12,7 @@ on:
 
 jobs:
   claude:
-    # Only the repo owner can trigger Claude, and only with an @claude mention.
+    # Only the repo owner's account (including posts made through the Cursor app) can trigger Claude.
     if: |
       github.actor == 'trevtheballer' && (
         (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
@@ -32,13 +32,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          ref: cursor/audit-playtest-562d
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: cursor/audit-playtest-562d
           # Sonnet by default; write "use opus" in the issue/comment/review to switch to Opus.
           claude_args: |
             --model ${{ (contains(github.event.comment.body, 'use opus') || contains(github.event.review.body, 'use opus') || contains(github.event.issue.body, 'use opus')) && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
+            --allowedTools "Bash(git:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(gh:*),Edit,Write,Read,Glob,Grep"
