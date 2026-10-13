@@ -20,6 +20,9 @@ const URL = arg('url', 'http://127.0.0.1:5173/')
 const LABEL = arg('label', 'local')
 const SCENARIO = arg('scenario', 'mixed')
 const DAYS = Number(arg('days', SCENARIO === 'heavy' ? 4 : 6))
+const RAMP = arg('ramp', '')
+const LONG = process.argv.includes('--long')
+const RUN_DAYS = LONG ? Math.max(DAYS, 12) : DAYS
 const OUT = arg('out', `/workspace/qa/${LABEL}-${SCENARIO}`)
 const FPS_FLOOR = Number(arg('fps-floor', process.env.FPS_FLOOR ?? 12))
 const VIDEO = arg('video', '1') !== '0'
@@ -135,7 +138,7 @@ try {
     find('high', 'Starter kit did not place prefab terminal I from the UI', `Economy tab → starter-kit left fits=0 (button visible: ${await kit.isVisible().catch(() => false)}). Bot fell back to game.buildStarterKit().`, steps.slice())
     await page.evaluate(() => window.__hatch.buildStarterKit())
   }
-  const close = page.locator('.panel-head button').filter({ hasText: /Close/i })
+  const close = page.getByTestId('panel-close')
   if (await close.isVisible().catch(() => false)) await close.click({ force: true })
 
   step('Expand: heavy runway, 2nd prefab terminal, hangar/cargo/helipad, research, mil agreement')
@@ -189,7 +192,10 @@ try {
     const pax = all.filter((a) => a.kind !== 'cargo').sort((a, b) => Number(g.meetsReq(b.id)) - Number(g.meetsReq(a.id)))
     const cargo = all.filter((a) => a.kind === 'cargo')
     out.signedForced = []
-    for (const a of [...pax.slice(0, 4), ...cargo.slice(0, 2)]) {
+    const ramp = Number(mix.ramp)
+    const paxLimit = Number.isFinite(ramp) && ramp > 0 ? ramp : 4
+    const cargoLimit = Number.isFinite(ramp) && ramp > 0 ? 0 : 2
+    for (const a of [...pax.slice(0, paxLimit), ...cargo.slice(0, cargoLimit)]) {
       if (g.signed.includes(a.id)) continue
       if (!g.meetsReq(a.id)) out.signedForced.push(a.id)
       g.offer = { airline: a.id }
@@ -218,7 +224,7 @@ try {
     out.news = g.news.slice(0, 5).map((n) => n.text)
     g.setSpeed(5)
     return out
-  }, MIX)
+  }, { ...MIX, ramp: RAMP })
   step(`setup ${JSON.stringify(setup)}`)
   if (!setup.heavy) find('high', 'Heavy runway not recognised', JSON.stringify(setup), steps.slice())
   if (!setup.research.includes('heavy_pack'))
@@ -233,7 +239,7 @@ try {
   await shot('setup')
 
   const CHUNK = 30
-  const total = DAYS * 180
+    const total = RUN_DAYS * 180
   let lastDayShot = 0
   let a380Shot = false
   let heavyShot = false
@@ -301,7 +307,7 @@ try {
             }
             const r = qa.flights[f.id]
             r.af = f.airframeId
-            r.last = { phase: f.phase, bagUnits: f.bagUnits ?? 0, bagsDeposited: f.bagsDeposited ?? 0, bagsOffloaded: f.bagsOffloaded ?? 0, bagStage: f.bagStage, pax: f.pax, cargo: f.cargo, kind: f.kind }
+            r.last = { phase: f.phase, bagUnits: f.bagUnits ?? 0, bagsDeposited: f.bagsDeposited ?? 0, bagsLoaded: f.bagsLoaded ?? 0, bagsOffloaded: f.bagsOffloaded ?? 0, bagStage: f.bagStage, pax: f.pax, cargo: f.cargo, kind: f.kind }
             if (f.phase !== r.phase) {
               r.maxPhase[r.phase] = Math.max(r.maxPhase[r.phase] ?? 0, g.clock - r.since)
               r.phase = f.phase
@@ -339,11 +345,18 @@ try {
         }
         const phases = {}
         for (const f of g.flights) phases[f.phase] = (phases[f.phase] ?? 0) + 1
+        const sec = g.hallGuests.filter((x) => !x.dead && x.node === 'security')
+        const checkin = g.hallGuests.filter((x) => !x.dead && x.job === 'depart' && x.node === 'checkin').length
         res.state = {
           clock: g.clock, day: Math.floor(g.clock / 180) + 1, cash: g.cash, cashFinite: Number.isFinite(g.cash),
           lostPax: g.lostPaxCount(), missed: g.missedFlights, flights: g.flights.length, phases,
           trucks: g.trucks.length, guests: g.hallGuests.length, signed: g.signed.length,
           done: g.flightsDone, overloaded: Boolean(g.hallOverloaded),
+          security: sec.length,
+          securityWaiting: sec.filter((x) => x.job === 'depart' && !x.clearedSec && (x.serviceLeft ?? 0) <= 0).length,
+          securityServing: sec.filter((x) => x.job === 'depart' && !x.clearedSec && (x.serviceLeft ?? 0) > 0).length,
+          securityHeld: sec.filter((x) => x.clearedSec).length,
+          checkin,
           a380: g.flights.filter((f) => f.airframeId === 'a380').map((f) => f.phase),
           news: g.news.slice(0, 3).map((x) => x.text),
           nanFields: ['cash', 'reputation', 'loanBalance', 'researchPoints'].filter((k) => typeof g[k] === 'number' && !Number.isFinite(g[k])),
@@ -373,7 +386,7 @@ try {
     if (s.state.day > lastDayShot) {
       lastDayShot = s.state.day
       await shot(`day${s.state.day}`)
-      step(`day ${s.state.day}: cash=${Math.round(s.state.cash)} flights=${s.state.flights} done=${s.state.done} lostPax=${s.state.lostPax} missed=${s.state.missed} trucks=${s.state.trucks} guests=${s.state.guests}`)
+      step(`day ${s.state.day}: cash=${Math.round(s.state.cash)} flights=${s.state.flights} done=${s.state.done} lostPax=${s.state.lostPax} missed=${s.state.missed} sec=${s.state.security} waiting=${s.state.securityWaiting} serving=${s.state.securityServing} held=${s.state.securityHeld} checkin=${s.state.checkin}`)
     }
     if (s.errors.some((e) => e.startsWith('tick threw'))) break
   }
@@ -430,15 +443,33 @@ for (const f of gone) {
   b.departed++
   b.maxLife = Math.max(b.maxLife, f.life)
   const L = f.last
-  const gap = L ? L.bagUnits - L.bagsDeposited : 0
+  const gap = L ? L.bagUnits - (L.bagsLoaded ?? L.bagsDeposited) : 0
   const recorded = L && (L.bagsOffloaded ?? 0) + 0.51 >= gap
   if (L && !L.cargo && L.pax > 0 && gap > 0.51 && !recorded && ['takeoff', 'taxi_out'].includes(L.phase)) {
     bagShort++
     b.bagShort++
-    if (bagEx.length < 3) bagEx.push(`${f.af} ${L.bagsDeposited}/${L.bagUnits} offloaded=${L.bagsOffloaded ?? 0} stage=${L.bagStage}`)
+    if (bagEx.length < 3) bagEx.push(`${f.af} loaded=${L.bagsLoaded ?? 0} offloaded=${L.bagsOffloaded ?? 0}/${L.bagUnits} stage=${L.bagStage}`)
   }
 }
-if (bagShort) find('medium', 'Outbound bag ledger short at takeoff (bags left behind were not recorded)', `${bagShort}/${gone.length} departures left with bagsDeposited < bagUnits and no matching bagsOffloaded; e.g. ${bagEx.join('; ')}`, repro('Compare f.bagsDeposited, f.bagsOffloaded, and f.bagUnits at takeoff'))
+if (bagShort) find('medium', 'Outbound bag ledger short at takeoff (bags left behind were not recorded)', `${bagShort}/${gone.length} departures left with bagsLoaded + bagsOffloaded short of bagUnits; e.g. ${bagEx.join('; ')}`, repro('Compare f.bagsLoaded, f.bagsOffloaded, and f.bagUnits at takeoff'))
+const dayHeld = new Map()
+for (const s of samples) {
+  const d = s.state.day
+  const prev = dayHeld.get(d) ?? { security: 0, serving: 0, waiting: 0, held: 0 }
+  dayHeld.set(d, {
+    security: Math.max(prev.security, s.state.security ?? 0),
+    serving: Math.max(prev.serving, s.state.securityServing ?? 0),
+    waiting: Math.max(prev.waiting, s.state.securityWaiting ?? 0),
+    held: Math.max(prev.held, s.state.securityHeld ?? 0),
+  })
+}
+for (const [day, row] of dayHeld) {
+  if (day < 2) continue
+  if (row.held >= 24 && row.serving === 0) {
+    find('high', 'Screened passengers are not leaving security', `day ${day}: ${row.held} cleared passengers still on the security node, and nobody was at a scanner`, repro('Count hall guests with node security and clearedSec'))
+    break
+  }
+}
 const stuckF = samples.flatMap((s) => s.stuckFlights)
 for (const f of stuckF) (byClass[klass(f.af, f.kind)] ??= blank()).stuck++
 const groupedF = {}
@@ -458,7 +489,7 @@ if (!seen.has('a380')) find('medium', 'A380 never arrived', 'Mix asked for A380s
 const sevRank = { critical: 0, high: 1, medium: 2, low: 3 }
 findings.sort((a, b) => sevRank[a.severity] - sevRank[b.severity])
 const result = {
-  label: LABEL, scenario: SCENARIO, days: DAYS, url: URL, setup, final: last,
+  label: LABEL, scenario: SCENARIO, days: RUN_DAYS, ramp: RAMP || null, url: URL, setup, final: last,
   fpsSamples: samples.map((s) => s.state.fps).filter(Boolean),
   byClass, airframesSeen: [...seen].sort(), airframesNever: never,
   departures: gone.length, findings, shots, steps,

@@ -711,6 +711,7 @@ export function Hud({ game }: { game: Game }) {
               <button
                 type="button"
                 className="ghost"
+                data-testid="panel-close"
                 onClick={() => {
                   setPanel(null)
                   setChromePinned(false)

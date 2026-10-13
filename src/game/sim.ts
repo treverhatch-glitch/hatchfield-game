@@ -3672,6 +3672,7 @@ export class Game {
     const have = f.bagsDeposited ?? 0
     const book = this.ensureBagBook(f)
     if (this.outboundBagsFull(f)) {
+      f.bagsLoaded = have
       f.bagsOffloaded = 0
       book.offloaded = 0
       book.loaded = Math.max(book.loaded, have)
@@ -3685,12 +3686,14 @@ export class Game {
     if (!releasing) {
       f.waitingOn.bagsLoad = true
       f.posted.bagsLoad = false
+      f.bagsLoaded = have
       book.loaded = have
       if (f.bagStage === 'inflight' || f.bagStage === 'complete') this.setBagStage(f, 'load_aircraft')
       return false
     }
     const short = Math.max(0, need - have)
     const already = f.bagsOffloaded ?? 0
+    f.bagsLoaded = have
     f.bagsOffloaded = short
     book.offloaded = short
     book.loaded = have
@@ -4453,7 +4456,11 @@ export class Game {
         }
       }
 
-      if (g.job === 'depart' && g.node === 'security' && !g.clearedSec && g.path.length === 0) {
+      if (g.job === 'depart' && g.node === 'security' && !g.clearedSec) {
+        g.path = []
+        g.seg = 0
+        g.t = 0
+        g.route = undefined
         this.tickSecurityLane(g, dt, open)
         continue
       }
@@ -4481,9 +4488,12 @@ export class Game {
             held = true
             break
           }
+          const screened = g.clearedSec
           if (g.node === 'security') g.clearedSec = true
           this.secureBreach(g)
-          this.serveNode(g, open)
+          // A cleared departure walking back across the checkpoint keeps their path.
+          // serveNode used to start a new route here, so the line never left the node.
+          if (!(g.node === 'security' && screened && g.job === 'depart')) this.serveNode(g, open)
           if (g.seg < g.path.length - 1) this.armGuestRoute(g)
           else {
             g.route = undefined
@@ -4604,10 +4614,18 @@ export class Game {
       }
     }
     const signs = (fit?.signs ?? 0) + (g.node === 'info' ? 1 : 0)
-    let path = hallPath(g.node, target, view, lookaheadDepth(signs))
-    if ((!path || path.length < 2) && prefab) {
-      path = hallPath(g.node, target, view, 12)
-    }
+    const depth = lookaheadDepth(signs)
+    // Once screened, stay airside. The checkpoint is not a shortcut between the gate and the food.
+    const avoidLane =
+      g.clearedSec &&
+      g.node !== 'security' &&
+      target !== 'security' &&
+      isAirside(g.node) &&
+      isAirside(target)
+    const walkView = avoidLane ? new Set([...view].filter((n) => n !== 'security')) : view
+    let path = hallPath(g.node, target, walkView, depth)
+    if ((!path || path.length < 2) && avoidLane) path = hallPath(g.node, target, view, depth)
+    if ((!path || path.length < 2) && prefab) path = hallPath(g.node, target, view, 12)
     if (!path || path.length < 2) {
       if (prefab) {
         g.lost = false
@@ -5868,25 +5886,8 @@ export class Game {
         g.happiness -= 2
       }
     }
-    if (n === 'security') {
+    if (n === 'security' && g.job !== 'depart') {
       g.clearedSec = true
-      if (g.job === 'depart') {
-        const wear = this.bumpWear(
-          'sec',
-          g.tag === 'budget' ? 2.2 : g.tag === 'family' ? 1.5 : 0.6,
-        )
-        const unstaffed = !this.staffedPost('security')
-        const slow = wear >= 50 || unstaffed
-        g.thought = unstaffed
-          ? 'No officer at the lane — slow clear'
-          : slow
-            ? 'Security lane sticky — slow clear'
-            : 'Cleared security — walk to gate'
-        g.happiness += unstaffed ? -2 : slow ? -1 : 2
-        if (unstaffed) g.needs.boarding = Math.max(0, g.needs.boarding - 2)
-        if (g.needs.hunger > 55 && open.has('food')) this.routeGuest(g, 'food', open)
-        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
-      }
     }
     if (n === 'gate' && g.job === 'depart') {
       if (!this.staffedPost('gate')) {
