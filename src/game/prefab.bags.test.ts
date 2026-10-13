@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { spawnHallGuest } from './guests.ts'
 import { Game } from './sim.ts'
-import { SIZE, type Flight } from './types.ts'
+import { SIZE, type Flight, type Truck } from './types.ts'
 
 function quiet(tier: 1 | 2 | 3) {
   const game = new Game()
@@ -287,5 +287,75 @@ describe('prefab bags', () => {
     expect(game.bagsMishandled).toBe(0)
     expect(g.atBagDesk).toBeFalsy()
     expect(g.bagFault == null).toBe(true)
+  })
+
+  function bagTruck(flightId: string, mission: Truck['mission']): Truck {
+    return {
+      id: 'trk-test',
+      kind: 'bags',
+      flightId,
+      x: 0,
+      y: 0,
+      path: [],
+      seg: 0,
+      t: 0,
+      returning: false,
+      dwell: 0,
+      preDwell: 0,
+      patrol: false,
+      mission,
+      home: null,
+      cargoUnits: 0,
+    }
+  }
+
+  it('does not call a short cart loaded, and records the bags left behind on release', () => {
+    const game = quiet(1)
+    const flight = parked(game, 'short-out')
+    flight.phase = 'board'
+    flight.pax = 193
+    flight.bagUnits = 193
+    flight.bagsDeposited = 0
+    flight.bagStage = 'pax_deposit'
+    flight.posted.bagsLoad = false
+    flight.posted.fuel = true
+    flight.waitingOn.bagsLoad = true
+    game.finishTruck(bagTruck(flight.id, 'load'))
+    expect(flight.posted.bagsLoad).toBe(false)
+    expect(flight.bagStage).not.toBe('inflight')
+    expect(flight.bagsOffloaded ?? 0).toBe(0)
+
+    flight.phaseTime = 40
+    game.tick(0.5)
+    expect(['pushback', 'taxi_out', 'takeoff']).toContain(flight.phase)
+    expect(flight.bagsOffloaded).toBe(193)
+    expect(flight.posted.bagsLoad).toBe(false)
+    expect(flight.bagStage).not.toBe('inflight')
+    expect(game.bagBook(flight.id)?.offloaded).toBe(193)
+    expect(game.bagsMishandled).toBe(0)
+    expect(game.bagsLost).toBe(0)
+    expect(game.lostPaxCount()).toBe(0)
+    expect(game.news.some((n) => n.text.includes('offloaded, not loaded'))).toBe(true)
+  })
+
+  it('records widebody bags that do not fit the claim instead of a coin-flip jam', () => {
+    const game = quiet(1)
+    const flight = parked(game, 'wide-claim')
+    flight.phase = 'deboard'
+    flight.pax = 400
+    flight.bagUnits = 180
+    flight.bagStage = 'unload_aircraft'
+    flight.posted.bags = false
+    game.finishTruck(bagTruck(flight.id, 'unload'))
+    expect(flight.claimLeft).toBe(125)
+    expect(game.bagBook(flight.id)?.claimLeft).toBe(125)
+    expect(game.news.some((n) => n.text.includes('claim jammed') && n.text.includes('offloaded'))).toBe(true)
+    game.tick(0.5)
+    const book = game.bagBook(flight.id)!
+    expect(book.lost).toBe(0)
+    expect(book.claimLeft).toBe(125)
+    expect(book.unloaded).toBeLessThanOrEqual(55)
+    expect(game.bagsMishandled).toBe(0)
+    expect(game.lostPaxCount()).toBe(0)
   })
 })

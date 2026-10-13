@@ -15,6 +15,10 @@ export interface BagBook {
   onClaim: number
   claimed: number
   lost: number
+  /** Outbound units that never made the aircraft. */
+  offloaded: number
+  /** Inbound units that did not fit the claim hall. */
+  claimLeft: number
   /** Seconds the current drop has sat in the hold-bag scanner. */
   screenT: number
 }
@@ -39,6 +43,8 @@ export function freshBook(flightId: string, units: number): BagBook {
     onClaim: 0,
     claimed: 0,
     lost: 0,
+    offloaded: 0,
+    claimLeft: 0,
     screenT: 0,
   }
 }
@@ -242,15 +248,17 @@ export function keepPrefabBags(book: BagBook, stage: BagFlowStage | undefined): 
   if (!stage || stage === 'hold_screen' || !PAST_SCREEN.has(stage)) return
   book.screened = Math.max(book.screened, book.dropped)
   book.sorted = Math.max(book.sorted, book.screened)
+  const aboard = Math.max(0, book.sorted - book.offloaded)
   if (
     stage === 'load_aircraft' ||
     stage === 'inflight' ||
     INBOUND.has(stage)
   ) {
-    book.loaded = Math.max(book.loaded, book.sorted)
+    book.loaded = Math.max(book.loaded, aboard)
   }
   if (INBOUND.has(stage)) {
-    book.unloaded = Math.max(book.unloaded, book.units)
+    const presented = Math.max(0, book.units - book.claimLeft)
+    book.unloaded = Math.max(book.unloaded, presented)
     book.loaded = Math.max(book.loaded, book.unloaded)
   }
   if (stage === 'on_claim' || stage === 'complete') {

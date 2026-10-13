@@ -48,7 +48,7 @@ export function payrollAmount(lineCosts: readonly number[], opsMult: number): nu
 
 /** City levy starts on cash above this. Opening banks (easy and standard, after land) sit under it. */
 export const CITY_LEVY_FLOOR = 140_000
-/** Share of the surplus taken once per payroll tick (~30 sim-seconds). */
+/** Share of the surplus taken once per sim day. Payroll itself still ticks every 30 sim-seconds. */
 export const CITY_LEVY_RATE = 0.03
 
 /**

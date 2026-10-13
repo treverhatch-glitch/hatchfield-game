@@ -432,6 +432,27 @@ Cargo is on the same game-minute clock as the ramp. A freighter asks for a main-
 
 - `docs/devlog/media/OCT13-catering.png` — scissor lift up at the stand, driver on the lift and helper at the galley, chrome hidden
 
+## Playtest blockers from the QA bot — 13 Oct
+
+**BUG-011.** A passenger flight could push with almost none of its checked bags and still be marked loaded. An A380 could leave 0 of 193, stage `inflight`, and the book treated that as a full load. A short cart now holds the departure through the boarding window. If the bags still are not there when the window ends, the flight is released, Standing takes a hit, and the missing count is stored as offloaded. The stage does not become "on board". Prefab halls under a normal load still mishandle nothing, and nobody is marked lost. A widebody that dumps more bags than the claim hall can hold records the overflow every time, instead of a coin-flip "claim jammed" line.
+
+**BUG-012.** The hourly cash figure stayed at $0 whenever the last closed hour happened to book no landing, even if the open hour or the hours around it had earnings. The readout now uses recent hours that actually earned, including the hour still in progress. The city levy is still 3% of cash above $140,000, and sandbox is still exempt, but it is taken once per sim day. Charging it on every payroll tick was six times a day, about 18% of a large bank, which is what turned a $12 million field into a $1.3–1.8 million daily burn. A two-day bot run on that same fat non-sandbox pile now drops about $350,000 a day, which is one levy plus payroll.
+
+The build tray no longer opens on Pavement by itself. The apron, including the southern stands, stays visible until a build category is clicked. Clicking that category again collapses the tray.
+
+PR #5's logistics tip is an older engine. Laying it over this branch deletes heavy vehicle tiers, the breakdown and undersized-vehicle delay lines, `poses`, and `openTurnarounds`, and `tsc -b` reports those four errors. This branch already has the newer engine, and `tsc -b` here is clean. That older tip should not be merged over these files.
+
+The HUD redesign's Starter kit button was visible, but the press scrolled the panel before the click finished, so prefab I never landed. The panel no longer focuses a button in a way that steals the click, and a sandbox pile is no longer shown a city-levy estimate (the sim does not charge it). New Game, the budget tab, and Close keep their test ids.
+
+**Bugs.** Twelve.
+
+**Tests.** 398 passing, 2 skipped (the asset binaries). The QA bot (`tests/e2e-bot`, mixed, 2 in-game days) reported no unrecorded short bag loads, no stuck flights, and no console errors. Missed flights under the overloaded prefab and the SwiftShader frame rate are unchanged.
+
+**Media**
+
+- `docs/devlog/media/OCT13-tray-closed.png` — apron with the build tray collapsed, starter field placed
+- `docs/devlog/media/OCT13-tray-open.png` — Pavement tray after it is opened on purpose
+
 
 **Media**
 

@@ -169,14 +169,16 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
 
 export function Hud({ game }: { game: Game }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
-  const [buildMenu, setBuildMenu] = useState(BUILD_MENUS[0].id)
+  const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panel, setPanel] = useState<PanelId>(null)
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [dismissedWarn, setDismissedWarn] = useState(false)
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [inboxOpen, setInboxOpen] = useState(false)
-  const menuTools = BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? BUILD_MENUS[0].tools
+  const menuTools = buildMenu
+    ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
+    : []
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
@@ -247,13 +249,13 @@ export function Hud({ game }: { game: Game }) {
         <button
           type="button"
           className="stat"
-          title="Cash earned in the last in-game hour"
+          title="Recent hourly earnings"
           onClick={() => {
             setEcoTab('income')
             openPanel('economy')
           }}
         >
-          {money(game.incomePerHour)}/hr
+          {money(game.incomeRate())}/hr
         </button>
         <div className="stat" title="One day is a 180-second cycle">
           {formatSimDate(game.clock)}
@@ -738,7 +740,7 @@ export function Hud({ game }: { game: Game }) {
                     <section data-testid="eco-income">
                       <h3>Income</h3>
                       <p className="muted eco-line">
-                        Last hour {money(game.incomePerHour)} · pax/day {game.paxPerDay || game.dayPax}{' '}
+                        Recent {money(game.incomeRate())}/hr · pax/day {game.paxPerDay || game.dayPax}{' '}
                         · cargo/day {game.cargoPerDay || game.dayCargo}
                       </p>
                       <p className="muted">
@@ -848,7 +850,7 @@ export function Hud({ game }: { game: Game }) {
                     </p>
                     <p className="muted">
                       Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}{' '}
-                      · last hour {money(game.incomePerHour)}
+                      · recent {money(game.incomeRate())}/hr
                     </p>
                     </>
                     ) : null}
@@ -1659,7 +1661,7 @@ export function Hud({ game }: { game: Game }) {
                       type="button"
                       className={buildMenu === m.id ? 'on' : ''}
                       onClick={() => {
-                        setBuildMenu(m.id)
+                        setBuildMenu((cur) => (cur === m.id ? null : m.id))
                         setPanel(null)
                         setChromePinned(false)
                       }}
@@ -1709,6 +1711,7 @@ export function Hud({ game }: { game: Game }) {
                     </>
                   ) : null}
                 </div>
+                {buildMenu ? (
                 <div className="tools build-tray" data-testid="build-tray">
                   {menuTools.map((t) => {
                     const def = BUILDINGS.find((b) => b.tool === t)
@@ -1738,6 +1741,7 @@ export function Hud({ game }: { game: Game }) {
                     )
                   })}
                 </div>
+                ) : null}
               </>
             )}
             <p className="hint">

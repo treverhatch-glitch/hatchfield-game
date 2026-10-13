@@ -568,6 +568,8 @@ export class Game {
   weather: Weather = 'clear'
   weatherCool = 45
   payrollCool = 30
+  /** Sim-clock of the last city levy. The 3% cut is once per day, not every payroll tick. */
+  levyMark = 0
   crashCool = 8
   fireIncidentCool = 60
   milAgreement = false
@@ -796,6 +798,7 @@ export class Game {
     this.weather = 'clear'
     this.weatherCool = 45
     this.payrollCool = 30
+    this.levyMark = 0
     this.crashCool = 8
     this.fireIncidentCool = 60
     this.milAgreement = false
@@ -3072,6 +3075,7 @@ export class Game {
       this.difficulty = s.difficulty
       this.site = s.site
       this.clock = s.clock
+      this.levyMark = s.clock
       this.speed = 0
       this.fuelBrand = s.fuelBrand
       this.fuelLoads = s.fuelLoads
@@ -3271,7 +3275,22 @@ export class Game {
     if (this.econHist.length > 96) this.econHist.shift()
     this.hourIncome = 0
     this.hourExpense = 0
-    this.econHour = 0
+    // Keep the leftover so one long tick does not invent an empty hour that reads $0/hr.
+    this.econHour -= hour
+    if (this.econHour >= hour) this.econHour = hour - 0.001
+  }
+
+  /**
+   * Hourly figure for the HUD. A single quiet hour must not hide earnings
+   * already in the book, and an open hour shows as soon as cash is earned.
+   */
+  incomeRate(): number {
+    const recent = this.econHist.slice(-6).map((row) => row.income)
+    if (this.econHour > 0 || this.hourIncome > 0) recent.push(Math.round(this.hourIncome))
+    if (!recent.length) return this.incomePerHour
+    const earned = recent.filter((n) => n > 0)
+    const pool = earned.length ? earned : recent
+    return Math.round(pool.reduce((sum, n) => sum + n, 0) / pool.length)
   }
 
   earn(amount: number, label: string, flight?: Flight) {
@@ -3485,6 +3504,86 @@ export class Game {
 
   setBagStage(f: Flight, stage: BagFlowStage) {
     f.bagStage = stage
+  }
+
+  /** Deposited bags cover the flight's checked-bag count. */
+  private outboundBagsFull(f: Flight): boolean {
+    if (f.cargo) return true
+    const need = f.bagUnits ?? 0
+    if (need <= 0) return true
+    return (f.bagsDeposited ?? 0) + 0.51 >= need
+  }
+
+  /**
+   * A full cart is loaded. A short cart holds the departure until the board
+   * window ends, then the missing bags are offloaded instead of counted as loaded.
+   */
+  private settleOutboundBags(f: Flight, releasing: boolean): boolean {
+    if (f.cargo) return true
+    const need = f.bagUnits ?? 0
+    if (need <= 0) return true
+    const have = f.bagsDeposited ?? 0
+    const book = this.ensureBagBook(f)
+    if (this.outboundBagsFull(f)) {
+      f.bagsOffloaded = 0
+      book.offloaded = 0
+      book.loaded = Math.max(book.loaded, have)
+      f.posted.bagsLoad = true
+      f.waitingOn.bagsLoad = false
+      this.setBagStage(f, 'inflight')
+      this.noteOutboundBagFee(f)
+      this.markOutboundTags(f)
+      return true
+    }
+    if (!releasing) {
+      f.waitingOn.bagsLoad = true
+      f.posted.bagsLoad = false
+      book.loaded = have
+      if (f.bagStage === 'inflight' || f.bagStage === 'complete') this.setBagStage(f, 'load_aircraft')
+      return false
+    }
+    const short = Math.max(0, need - have)
+    f.bagsOffloaded = short
+    book.offloaded = short
+    book.loaded = have
+    f.posted.bagsLoad = false
+    f.waitingOn.bagsLoad = false
+    if (
+      !f.bagStage ||
+      f.bagStage === 'idle' ||
+      f.bagStage === 'pax_deposit' ||
+      f.bagStage === 'hold_screen' ||
+      f.bagStage === 'inflight' ||
+      f.bagStage === 'complete'
+    ) {
+      this.setBagStage(f, 'load_aircraft')
+    }
+    this.noteOutboundBagFee(f)
+    this.markOutboundTags(f)
+    this.adjustHeat(f.airline, -1.6)
+    this.pushNews(
+      `${f.flightNo} left ${Math.round(short)} bags behind — offloaded, not loaded.`,
+      'bad',
+    )
+    return true
+  }
+
+  private noteOutboundBagFee(f: Flight) {
+    if (f.cargo) return
+    if (f.ledger.some((line) => line.label.includes('outbound bags'))) return
+    const airline = this.airline(f.airline)
+    const need = f.bagUnits ?? 0
+    const have = f.bagsDeposited ?? 0
+    const frac = need > 0 ? Math.min(1, have / need) : 1
+    const amount = Math.round(airline.bags * 0.55 * frac)
+    if (amount > 0) this.earn(amount, `${f.flightNo} outbound bags`, f)
+  }
+
+  /** Tags exist only for bags a passenger actually dropped. */
+  private markOutboundTags(f: Flight) {
+    for (const tag of this.bagTags) {
+      if (tag.kind === 'out' && tag.flightId === f.id && !tag.fault) tag.loaded = true
+    }
   }
 
   bagBook(id: string): BagBook | undefined {
@@ -7762,12 +7861,17 @@ export class Game {
     if (this.cash >= bill) {
       this.noteExpense(bill)
       this.cash -= bill
-      // Soft prosperity levy — clips late-game snowballs without a hard tax cliff.
+      // Soft prosperity levy — 3% of the surplus, once per sim day.
+      // Payroll still ticks every 30s. Charging the levy on every tick was 18% a day.
       // Sandbox cash is a trial pile, not a city that owes the levy.
-      const levy = cityLevy(this.cash, this.sandbox)
-      if (levy > 0) {
-        this.noteExpense(levy)
-        this.cash -= levy
+      let levy = 0
+      if (this.clock - this.levyMark >= 180) {
+        levy = cityLevy(this.cash, this.sandbox)
+        this.levyMark = this.clock
+        if (levy > 0) {
+          this.noteExpense(levy)
+          this.cash -= levy
+        }
       }
       this.pushNews(
         `Ops payroll ${moneyLeft(bill)}${
@@ -10028,17 +10132,8 @@ export class Game {
     if (t.kind === 'bags') {
       if (t.mission === 'load') {
         if (!f.posted.bagsLoad) {
-          f.posted.bagsLoad = true
-          f.waitingOn.bagsLoad = false
-          this.setBagStage(f, 'inflight')
           t.cargoUnits = 0
-          if (!f.cargo) {
-            this.earn(
-              Math.round(airline.bags * 0.55),
-              `${f.flightNo} outbound bags`,
-              f,
-            )
-          }
+          this.settleOutboundBags(f, false)
         }
       } else if (t.mission === 'unload' && !f.posted.bags) {
         // Aircraft unload complete — pay; then sort → assigned claim.
@@ -10052,13 +10147,20 @@ export class Game {
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
           this.earn(Math.round(airline.bags * mult), `${f.flightNo} bag handling`, f)
           const fit = this.roomsAt(f.stand)
-          const claimCap = (fit?.rooms.bagclaim ?? 0) * (fit?.premade ? 55 : 80)
-          if (fit && units > claimCap && Math.random() < 0.55) {
-            this.adjustHeat(f.airline, -1.8)
-            this.pushNews(
-              `${f.flightNo} claim jammed — ${units} bag units vs thin hall. Standing dips.`,
-              'bad',
-            )
+          if (fit) {
+            const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
+            const claimCap = rooms * (fit.premade ? 55 : 80)
+            const overflow = Math.max(0, units - claimCap)
+            if (overflow > 0.5) {
+              const book = this.ensureBagBook(f)
+              book.claimLeft = overflow
+              f.claimLeft = overflow
+              this.adjustHeat(f.airline, -1.8)
+              this.pushNews(
+                `${f.flightNo} claim jammed — ${Math.round(overflow)} of ${Math.round(units)} bag units offloaded. The hall holds ${Math.round(claimCap)}.`,
+                'bad',
+              )
+            }
           }
         } else {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
@@ -11332,6 +11434,7 @@ export class Game {
                 'bad',
               )
             }
+            this.settleOutboundBags(f, true)
             f.phase = 'pushback'
             f.phaseTime = 0
             if (f.stand) {
