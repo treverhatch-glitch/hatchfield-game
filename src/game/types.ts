@@ -753,7 +753,21 @@ export interface TerminalFit {
   tier?: 1 | 2 | 3
   /** Painted floor. Null cells are bare shell. */
   zones?: (string | null)[][]
-  items?: { id: string; def: string; c: number; r: number; wear: number; bundle?: boolean }[]
+  items?: {
+    id: string
+    def: string
+    c: number
+    r: number
+    wear: number
+    bundle?: boolean
+    rot?: number
+    revenue?: number
+    fill?: number
+  }[]
+  /** Rubbish on the floor, one decal per piece. */
+  litter?: { id: string; c: number; r: number; ox: number; oz: number }[]
+  /** 0–100. Rises with restroom visits; janitors service it down. */
+  restroomDirt?: number
   /** Wayfinding signs. Each one extends the pathfinding junction cap. */
   signs?: number
   bagAllowance?: number

@@ -6,6 +6,7 @@
  * so a lane is felt without freezing the first flight.
  */
 import { hallPath, isAirside, openForGuest, type HallNode } from './guests.ts'
+import { KIT_ITEMS, KIT_PATCHES, type KitCategory } from './terminalKitData.ts'
 
 export type ZoneId = 'checkin' | 'security' | 'gates' | 'arrivals' | 'retail' | 'toilets'
 
@@ -28,6 +29,14 @@ export type ItemId =
   | 'cafe'
   | 'restaurant'
   | 'wayfinding'
+  | 'fast_food'
+  | 'bench'
+  | 'plant'
+  | 'art'
+  | 'info_screen'
+  | 'info_kiosk'
+  | 'fountain'
+  | 'trash_can'
 
 export const GRID_C = 8
 export const GRID_R = 5
@@ -82,9 +91,18 @@ export interface ItemDef {
   /** Room graph this item opens. */
   room?: 'checkin' | 'security' | 'gate' | 'bagclaim' | 'bathroom' | 'food' | 'bagdrop'
   signs?: number
+  /** Build-bar category for the terminal kit. */
+  category?: KitCategory
+  /** Cell slots this item takes (of 4). Missing means the whole cell. */
+  size?: 1 | 2 | 4
+  /** Seats a waiting guest can take. */
+  seats?: number
+  /** Comfort points at the item's own cell. Fades out to `comfortRadius` cells. */
+  comfort?: number
+  comfortRadius?: number
 }
 
-export const ITEMS: ItemDef[] = [
+const BASE_ITEMS: ItemDef[] = [
   {
     id: 'entrance',
     name: 'Entrance doors',
@@ -366,6 +384,11 @@ export const ITEMS: ItemDef[] = [
   },
 ]
 
+export const ITEMS: ItemDef[] = [
+  ...BASE_ITEMS.map((d) => ({ ...d, ...KIT_PATCHES[d.id] })),
+  ...KIT_ITEMS,
+]
+
 const ITEM_MAP = new Map(ITEMS.map((i) => [i.id, i]))
 
 export function itemDef(id: string): ItemDef | undefined {
@@ -552,6 +575,12 @@ export interface PlacedItem {
   wear: number
   /** Included in the prefab price. Extra stamps pay full upkeep. */
   bundle?: boolean
+  /** Quarter turns, set with R while placing. */
+  rot?: number
+  /** Food sales taken at this outlet. */
+  revenue?: number
+  /** Trash can: pieces inside. Full at LITTER_TUNING.binCap. */
+  fill?: number
 }
 
 export interface Ceilings {
