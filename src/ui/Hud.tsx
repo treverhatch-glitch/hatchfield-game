@@ -235,6 +235,7 @@ export function Hud({ game }: { game: Game }) {
   if (game.securityQueueCount() >= 3) alerts.push('Security queue')
   if (game.lostPaxCount() > 0) alerts.push('Lost pax')
   if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
+  for (const item of game.disruptionFeed()) alerts.push(item.title)
 
   return (
     <div className="hud">
@@ -338,6 +339,51 @@ export function Hud({ game }: { game: Game }) {
             Field {game.fieldRating()} · {game.fieldRatingLabel()} — Standing, hall, and security
             all count.
           </p>
+        </div>
+      ) : null}
+
+      {game.disruptionFeed().length ? (
+        <div
+          className={`disruption-stack${game.showCoach() ? ' below-coach' : ''}`}
+          data-testid="disruption-feed"
+        >
+          {game.disruptionFeed().map((item) =>
+            item.status === 'live' ? (
+              <aside key={item.id} className="disruption" data-testid="disruption-card">
+                <div className="disruption-head">
+                  <strong>{item.title}</strong>
+                  <button type="button" className="ghost" onClick={() => game.minimiseDisruption(item.id)}>
+                    Minimise
+                  </button>
+                </div>
+                <p>{item.explanation}</p>
+                <p className="muted">Fix: {item.suggestedFix}</p>
+                <div className="disruption-actions">
+                  <button type="button" onClick={() => game.panToDisruption(item.id)}>
+                    Pan to problem
+                  </button>
+                  <button type="button" onClick={() => game.recoverDisruption(item.id)}>
+                    Apply fix
+                  </button>
+                  <button type="button" className="ghost" onClick={() => game.ignoreDisruption(item.id)}>
+                    Ignore
+                  </button>
+                  <button type="button" className="ghost" onClick={() => game.dismissDisruption(item.id)}>
+                    Dismiss
+                  </button>
+                </div>
+              </aside>
+            ) : (
+              <button
+                key={item.id}
+                type="button"
+                className="disruption mini"
+                onClick={() => game.expandDisruption(item.id)}
+              >
+                {item.title} · {item.status === 'ignored' ? 'ignored' : 'minimised'}
+              </button>
+            ),
+          )}
         </div>
       ) : null}
 
