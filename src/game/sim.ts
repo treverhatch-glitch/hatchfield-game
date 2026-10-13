@@ -5190,7 +5190,21 @@ export class Game {
       this.schedule,
       this.hallOverloaded,
     )
-    this.advice = [...hall, ...this.groundNotes, ...this.cargoNotes]
+    const standingNotes: Advice[] = []
+    for (const id of this.signed) {
+      const standing = this.standingOf(id)
+      if (standing > HEAT_WARN_THRESHOLD) continue
+      const name = this.airline(id).name
+      standingNotes.push({
+        id: `standing-${id}`,
+        title: `${name} Standing is slipping`,
+        detail: `Standing ${Math.round(standing)}. They leave the airport if it reaches ${HEAT_ABANDON_THRESHOLD}.`,
+        fix: 'Clear the queues and keep the ramp on time before they walk.',
+        cells: [],
+        scope: 'apron',
+      })
+    }
+    this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
         a.cells.some((c) => this.advisorCells.some((h) => h.c === c.c && h.r === c.r)),
@@ -8490,15 +8504,18 @@ export class Game {
       return
     }
     const paid = Math.max(0, this.cash)
-    this.noteExpense(paid)
+    const shown = Math.round(paid)
     this.cash = 0
-    if (paid > 0) this.postJournal('payroll', paid, stamp)
+    if (shown > 0) {
+      this.noteExpense(paid)
+      this.postJournal('payroll', paid, stamp)
+    }
     this.reputation = Math.max(0, this.reputation - 4)
     if (this.budgets.maintenance > 20) this.budgets.maintenance = Math.max(20, this.budgets.maintenance - 10)
     if (this.budgets.security > 20) this.budgets.security = Math.max(20, this.budgets.security - 10)
     this.pushNews(
-      paid > 0
-        ? `Payroll short — paid ${moneyLeft(paid)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
+      shown > 0
+        ? `Payroll short — paid ${moneyLeft(shown)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
         : `Payroll missed entirely (${moneyLeft(bill)} due). Crews walking. Reputation dips.`,
       'bad',
     )
