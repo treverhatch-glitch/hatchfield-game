@@ -11,10 +11,41 @@ import {
   GRID_R,
   HALL_D,
   HALL_W,
+  itemDef,
   prefabZones,
   zoneDef,
+  type ItemId,
+  type PlacedItem,
   type ZoneId,
 } from '../game/terminal'
+import { cellLoad, itemSize, type PlacementCheck } from '../game/terminalKit'
+import {
+  buildGhost,
+  buildKitInstances,
+  disposeKitInstances,
+  hasKitMesh,
+  kitMeshKey,
+  layoutItems,
+  slotCenter,
+} from './hallKitMeshes'
+import { HallLitterLayer } from './hallLitter'
+
+/** Hall build mode, driven by the terminal kit bar. */
+export type HallBuildMode =
+  | { kind: 'place'; def: ItemId; rot: number }
+  | { kind: 'bulldoze' }
+  | null
+
+/** What sits under the cursor while building. Feeds the cost tooltip. */
+export interface HallHover {
+  c: number
+  r: number
+  sx: number
+  sy: number
+  check: PlacementCheck | null
+  /** Bulldoze target: the newest item in the hovered cell. */
+  target: PlacedItem | null
+}
 
 function nodeWorld(id: HallNode): THREE.Vector3 {
   const p = NODE_POS[id]
@@ -71,6 +102,24 @@ export class HallWorld {
   private downX = 0
   private downY = 0
   private ray = new THREE.Raycaster()
+  /** Instanced food, seat, and decor meshes. Rebuilt with the room hash. */
+  kitGroup = new THREE.Group()
+  /** Floor litter decals and janitor pawns. */
+  litter = new HallLitterLayer()
+  build: HallBuildMode = null
+  /** Called after a successful place, so the bar can close. */
+  onPlaced: (() => void) | null = null
+  onHover: ((hover: HallHover | null) => void) | null = null
+  private hover: HallHover | null = null
+  private ghost: THREE.Group | null = null
+  private ghostDef = ''
+  private ghostMat = new THREE.MeshBasicMaterial({
+    color: '#4ade80',
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+  })
+  private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -112,6 +161,8 @@ export class HallWorld {
     this.scene.add(after)
 
     this.scene.add(this.roomGroup)
+    this.scene.add(this.kitGroup)
+    this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
     this.overlay.visible = false
     this.scene.add(this.overlay)
@@ -154,6 +205,7 @@ export class HallWorld {
   }
 
   private onMove = (e: PointerEvent) => {
+    if (this.build) this.trackHover(e)
     if (!this.dragging) return
     const dx = e.clientX - this.lastX
     const dy = e.clientY - this.lastY
@@ -186,13 +238,11 @@ export class HallWorld {
     const dy = e.clientY - this.downY
     this.dragging = null
     if (e.button !== 0 || Math.hypot(dx, dy) > 6 || !this.game) return
-    const canvas = this.renderer.domElement
-    const rect = canvas.getBoundingClientRect()
-    const ndc = new THREE.Vector2(
-      ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-      -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
-    )
-    this.ray.setFromCamera(ndc, this.camera)
+    if (this.build) {
+      this.buildClick(e)
+      return
+    }
+    this.aim(e)
     const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
     const hits = this.ray.intersectObjects(this.guestGroup.children, true)
     const spot = spotHits[0]
@@ -220,6 +270,98 @@ export class HallWorld {
       if (id) break
     }
     this.game.selectGuest(id)
+  }
+
+  private aim(e: PointerEvent) {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    )
+    this.ray.setFromCamera(ndc, this.camera)
+  }
+
+  private zoneGrid(): { cols: number; rows: number } {
+    const zones = this.game?.activeHall()?.zones ?? []
+    return { cols: zones[0]?.length || GRID_C, rows: zones.length || GRID_R }
+  }
+
+  /** Snap the cursor to a hall cell and re-check the placement. */
+  private trackHover(e: PointerEvent) {
+    const game = this.game
+    if (!game || !this.build) return
+    this.aim(e)
+    const hit = new THREE.Vector3()
+    const { cols, rows } = this.zoneGrid()
+    let next: HallHover | null = null
+    if (this.ray.ray.intersectPlane(this.floorPlane, hit)) {
+      const c = Math.floor(((hit.x + HALL_W / 2) / HALL_W) * cols)
+      const r = Math.floor(((hit.z + HALL_D / 2) / HALL_D) * rows)
+      if (c >= 0 && r >= 0 && c < cols && r < rows) {
+        const items = (game.activeHall()?.items ?? []) as PlacedItem[]
+        const inCell = items.filter((i) => i.c === c && i.r === r && !i.bundle)
+        next = {
+          c,
+          r,
+          sx: e.clientX,
+          sy: e.clientY,
+          check: this.build.kind === 'place' ? game.hallPlacement(this.build.def, c, r) : null,
+          target: this.build.kind === 'bulldoze' ? (inCell[inCell.length - 1] ?? null) : null,
+        }
+      }
+    }
+    this.hover = next
+    this.onHover?.(next)
+  }
+
+  private buildClick(e: PointerEvent) {
+    const game = this.game
+    if (!game || !this.build) return
+    this.trackHover(e)
+    const hover = this.hover
+    if (!hover) return
+    if (this.build.kind === 'place') {
+      if (game.placeHallItemAt(this.build.def, hover.c, hover.r, this.build.rot)) {
+        this.onPlaced?.()
+      }
+    } else if (hover.target) {
+      game.removeHallItem(hover.target.id)
+    }
+    this.trackHover(e)
+  }
+
+  /** Set the build mode. Clears the ghost and tooltip when building stops. */
+  setBuild(mode: HallBuildMode) {
+    this.build = mode
+    if (!mode) {
+      this.hover = null
+      this.onHover?.(null)
+    }
+  }
+
+  /** Green / red ghost on the hovered cell's next free slot. */
+  private syncGhost(game: Game) {
+    const mode = this.build
+    const hover = this.hover
+    if (!mode || mode.kind !== 'place' || !hover) {
+      if (this.ghost) this.ghost.visible = false
+      return
+    }
+    if (!this.ghost || this.ghostDef !== mode.def) {
+      if (this.ghost) this.scene.remove(this.ghost)
+      this.ghost = buildGhost(mode.def, this.ghostMat)
+      this.ghostDef = mode.def
+      this.scene.add(this.ghost)
+    }
+    const { cols, rows } = this.zoneGrid()
+    const items = (game.activeHall()?.items ?? []) as PlacedItem[]
+    const start = Math.min(3, cellLoad(items, hover.c, hover.r))
+    const at = slotCenter(hover.c, hover.r, start, itemSize(itemDef(mode.def)), cols, rows)
+    const check = game.hallPlacement(mode.def, hover.c, hover.r)
+    this.ghostMat.color.set(check.ok ? '#4ade80' : '#ef4444')
+    this.ghost.position.set(at.x, 0.07, at.z)
+    this.ghost.rotation.y = (mode.rot * Math.PI) / 2
+    this.ghost.visible = true
   }
 
   private onWheel = (e: WheelEvent) => {
@@ -322,7 +464,7 @@ export class HallWorld {
     const open = [...game.hallOpen()].sort().join(',')
     const choke = game.hasSecurityChoke() ? '1' : '0'
     const paint = zones.map((row) => row.join(',')).join('|')
-    const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}`).join(';')
+    const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
     const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}`
     if (hash === this.roomHash) return
     this.roomHash = hash
@@ -373,12 +515,20 @@ export class HallWorld {
       this.roomGroup.add(beam)
     }
 
-    for (const it of fit?.items ?? []) {
-      const pos = cellCenter(it.c, it.r, cols, rows)
+    const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows)
+    for (const { item: it, x, z } of laid) {
+      if (hasKitMesh(it.def)) continue
       const worn = it.wear >= 55 ? '#8a5a4a' : (ROOM_COLOR[it.def as HallNode] ?? '#e8eef2')
       const tall = String(it.def).includes('security') ? 1.5 : 0.7
-      this.box(1.4, tall, 1.1, worn, pos.x, tall / 2 + 0.05, pos.z)
+      this.box(1.4, tall, 1.1, worn, x, tall / 2 + 0.05, z)
     }
+    this.clearKit()
+    this.kitGroup.add(buildKitInstances(laid))
+  }
+
+  private clearKit() {
+    for (const sub of this.kitGroup.children) disposeKitInstances(sub as THREE.Group)
+    this.kitGroup.clear()
   }
 
   syncGuests(game: Game) {
@@ -675,6 +825,9 @@ export class HallWorld {
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
+    this.syncGhost(game)
+    const { cols, rows } = this.zoneGrid()
+    this.litter.sync(game, cols, rows)
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -815,6 +968,9 @@ export class HallWorld {
     canvas.removeEventListener('pointerup', this.onUp)
     canvas.removeEventListener('pointerleave', this.onUp)
     canvas.removeEventListener('wheel', this.onWheel)
+    this.clearKit()
+    this.ghostMat.dispose()
+    this.litter.dispose()
     this.renderer.dispose()
   }
 }

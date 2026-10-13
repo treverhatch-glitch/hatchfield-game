@@ -192,6 +192,8 @@ import {
   ceilingsFor,
   itemDef,
   laneStats,
+  GRID_C,
+  HALL_W,
   lookaheadDepth,
   needsMaintenance,
   overCapMultiplier,
@@ -214,6 +216,31 @@ import {
   type ShowTag,
   type ShowUpPlan,
 } from '../pax/showup.ts'
+import {
+  NODE_ZONE,
+  nodeComfort,
+  outletExtraStock,
+  pickOutlet,
+  placementCheck,
+  refundFor,
+  seatsByZone,
+  type PlacementCheck,
+} from './terminalKit.ts'
+import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
+import {
+  dropLitter,
+  foodCells,
+  litterAdvice,
+  litterComfortHit,
+  litterInZone,
+  litterJoyDrain,
+  restroomDirtFor,
+  restroomJoyHit,
+  stepJanitor,
+  type HallJanitor,
+  type LitterHall,
+} from './litter.ts'
+import { LITTER_TUNING } from './litterData.ts'
 import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
@@ -338,6 +365,19 @@ function clamp(n: number, a: number, b: number): number {
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
+}
+
+/** The hall's items are the same objects; the stored type is just looser. */
+const asLitterHall = (fit: TerminalFit): LitterHall => fit as unknown as LitterHall
+
+/** Per-tick seat pool and comfort cache for one hall. */
+interface HallKitState {
+  items: PlacedItem[]
+  zones: (string | null)[][]
+  seatsLeft: Map<ZoneId, number>
+  comfort: Map<HallNode, number>
+  /** Floor litter in the zone around each node. */
+  litter: Map<HallNode, number>
 }
 
 const emptyRooms = (): Record<RoomId, number> => ({
@@ -515,6 +555,10 @@ export class Game {
   foodShelf = 0
   /** Souvenirs on the counter. Sales stop at zero. */
   shopShelf = 0
+  /** Food sales through placed outlets (café, fast food, sit-down). */
+  foodCourtRevenue = 0
+  /** Unique suffix for placed hall item ids. */
+  hallItemSeq = 0
   /** Unpaid counter sales, kept for the audit. */
   lostSpend = 0
   /** Checked bags that disappeared. Prefab halls keep this at zero. */
@@ -570,6 +614,12 @@ export class Game {
   standAccessMode: StandAccess = 'remote'
   janitors = 0
   janitorCool = 0
+  /** Janitors walking the halls — sweep litter, empty cans, service WCs. One per hire. */
+  hallJanitors: HallJanitor[] = []
+  /** Unique suffix for litter pieces. */
+  litterSeq = 0
+  /** Seconds until the litter / restroom advisor notes refresh. */
+  litterAdviceCool = 0
   researchers = 0
   researcherCool = 0
   deskStaff = 0
@@ -790,6 +840,7 @@ export class Game {
     this.fuelLoads = 0
     this.foodShelf = 0
     this.shopShelf = 0
+    this.foodCourtRevenue = 0
     this.lostSpend = 0
     this.bagsLost = 0
     this.bagsMishandled = 0
@@ -841,6 +892,9 @@ export class Game {
     this.standAccessMode = 'remote'
     this.janitors = 0
     this.janitorCool = 0
+    this.hallJanitors = []
+    this.litterSeq = 0
+    this.litterAdviceCool = 0
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -2062,6 +2116,7 @@ export class Game {
     this.standAccess = {}
     this.standAccessMode = 'remote'
     this.janitors = 0
+    this.hallJanitors = []
     this.researchers = 0
     this.researcherCool = 0
     this.deskStaff = 0
@@ -4604,6 +4659,125 @@ export class Game {
     }
   }
 
+  /**
+   * Benches and decorations. A waiting guest takes a free seat and rests;
+   * decorations near the guest's zone lift the mood a little each second.
+   */
+  applyHallKit(g: HallGuest, dt: number, cache: Map<string, HallKitState>) {
+    const fit = this.fitByKey(g.hallId) ?? this.activeHall()
+    if (!fit) return
+    const key = this.hallKey(fit)
+    let state = cache.get(key)
+    if (!state) {
+      const items = (fit.items ?? []) as PlacedItem[]
+      const zones = fit.zones ?? []
+      state = {
+        items,
+        zones,
+        seatsLeft: seatsByZone(zones, items),
+        comfort: new Map(),
+        litter: new Map(),
+      }
+      cache.set(key, state)
+    }
+    const walking = g.path.length > 0 && g.seg < g.path.length - 1
+    const zone = NODE_ZONE[g.node]
+    const free = zone ? (state.seatsLeft.get(zone) ?? 0) : 0
+    g.seated = false
+    if (!walking && zone && free > 0 && (SEAT_NODES as readonly HallNode[]).includes(g.node)) {
+      state.seatsLeft.set(zone, free - 1)
+      g.seated = true
+      g.needs.energy = Math.max(0, g.needs.energy - dt * KIT_TUNING.seatRestPerSec)
+      if (g.happiness < 100) {
+        g.happiness = Math.min(100, g.happiness + dt * KIT_TUNING.seatJoyPerSec)
+      }
+    }
+    let comfort = state.comfort.get(g.node)
+    let litter = state.litter.get(g.node)
+    if (comfort == null || litter == null) {
+      litter = zone ? litterInZone(asLitterHall(fit), zone) : 0
+      // Rubbish on the floor eats into what the decorations give.
+      comfort = nodeComfort(state.zones, state.items, g.node) - litterComfortHit(litter)
+      state.comfort.set(g.node, comfort)
+      state.litter.set(g.node, litter)
+    }
+    if (comfort > 0 && g.happiness < 100) {
+      g.happiness = Math.min(100, g.happiness + dt * comfort * KIT_TUNING.comfortJoyPerSec)
+    }
+    if (litter > 0) {
+      g.happiness = Math.max(0, g.happiness - dt * litterJoyDrain(litter))
+    }
+  }
+
+  /**
+   * A meal or a coffee leaves a wrapper or cup. It goes in a can in range,
+   * else on the floor by the counter it came from.
+   */
+  litterFromMeal(fit: TerminalFit, outlet: PlacedItem | null): 'bin' | 'floor' | null {
+    const hall = asLitterHall(fit)
+    if (!hall.zones?.length) hall.zones = fit.premade ? prefabZones() : blankZones()
+    const cells = outlet ? [{ c: outlet.c, r: outlet.r }] : foodCells(hall)
+    if (!cells.length) return null
+    this.litterSeq += 1
+    // Spread by sequence, not Math.random, so litter never shifts a seeded run.
+    const n = this.litterSeq
+    const at = cells[n % cells.length]
+    let k = 0
+    const jitter = () => ((n * 7919 + ++k * 104729) % 1000) / 1000
+    return dropLitter(hall, at.c, at.r, `lit-${n}`, jitter)
+  }
+
+  /** Keep one hall janitor per hire, shared round-robin across halls. */
+  private syncHallJanitors() {
+    const keys = this.fits.map((f) => this.hallKey(f))
+    if (!keys.length) {
+      this.hallJanitors = []
+      return
+    }
+    this.hallJanitors = this.hallJanitors.filter((j) => keys.includes(j.hallId))
+    while (this.hallJanitors.length > this.janitors) this.hallJanitors.pop()
+    while (this.hallJanitors.length < this.janitors) {
+      const hallId = keys[this.hallJanitors.length % keys.length]
+      const fit = this.fitByKey(hallId)
+      const zones = fit?.zones?.length ? fit.zones : prefabZones()
+      this.hallJanitors.push({
+        id: uid('hjan'),
+        hallId,
+        x: (zones[0]?.length ?? GRID_C) / 2,
+        z: zones.length / 2,
+        task: null,
+        work: 0,
+      })
+    }
+  }
+
+  /** Hall janitors walk to litter, full cans, and the WC. Wages ride the cleaning payroll line. */
+  tickHallJanitors(dt: number) {
+    this.syncHallJanitors()
+    const clean = this.budgets.cleaning / 100
+    if (clean >= LITTER_TUNING.minCleaningBudget) {
+      const claimed = new Map<string, Set<string>>()
+      for (const j of this.hallJanitors) {
+        const fit = this.fitByKey(j.hallId)
+        if (!fit) continue
+        const hall = asLitterHall(fit)
+        const cols = hall.zones?.[0]?.length || GRID_C
+        let taken = claimed.get(j.hallId)
+        if (!taken) {
+          taken = new Set()
+          claimed.set(j.hallId, taken)
+        }
+        // A thin cleaning budget means a slower, part-time crew.
+        stepJanitor(j, hall, dt * clean, HALL_W / cols, taken)
+      }
+    }
+    this.litterAdviceCool -= dt
+    if (this.litterAdviceCool <= 0) {
+      this.litterAdviceCool = 5
+      this.refreshAdvice()
+    }
+  }
+
   guestAirlineId(g: HallGuest): AirlineId | null {
     if (g.airlineId) return g.airlineId
     if (g.flightId.startsWith('slot:')) {
@@ -4625,6 +4799,7 @@ export class Game {
       this.hallGuests = []
       return
     }
+    const kit = new Map<string, HallKitState>()
     for (const g of this.hallGuests) {
       if (g.dead) continue
       if (g.releaseAt != null && this.clock < g.releaseAt) continue
@@ -4680,6 +4855,7 @@ export class Game {
       if (g.job === 'depart' && this.departureClockRunning(g)) {
         g.needs.boarding = Math.max(0, g.needs.boarding - dt * 0.42)
       }
+      this.applyHallKit(g, dt, kit)
       // Finish check-in bag deposit dwell (outbound picture).
       if (
         g.job === 'depart' &&
@@ -5217,6 +5393,7 @@ export class Game {
         scope: 'apron',
       })
     }
+    hall.push(...litterAdvice(asLitterHall(fit), this.janitors, this.budgets.cleaning / 100))
     this.advice = [...hall, ...standingNotes, ...this.groundNotes, ...this.cargoNotes]
     if (this.advisorCells.length) {
       const still = hall.find((a) =>
@@ -5282,10 +5459,12 @@ export class Game {
   /** Servings a full shelf holds. Empty rooms hold nothing. */
   shelfCap(kind: 'food' | 'shop'): number {
     let rooms = 0
+    let extra = 0
     for (const fit of this.fits) {
       rooms += kind === 'food' ? (fit.rooms.food ?? 0) : (fit.rooms.souvenir ?? 0)
+      if (kind === 'food') extra += outletExtraStock((fit.items ?? []) as PlacedItem[])
     }
-    return rooms * (kind === 'food' ? 8 : 6)
+    return rooms * (kind === 'food' ? 8 : 6) + extra
   }
 
   /** This airframe uplifts fuel. A zero-fuel type is free to leave. */
@@ -6100,12 +6279,13 @@ export class Game {
       return
     }
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
-    const taken = new Set((fit.items ?? []).map((i) => `${i.c},${i.r}`))
+    const items = (fit.items ?? []) as PlacedItem[]
+    // Ignore cash here so a broke player still hears "not enough cash" from spend().
+    const room = { fieldLevel: this.fieldLevel(), cash: Infinity }
     let cell: { c: number; r: number } | null = null
     for (let r = 0; r < fit.zones.length && !cell; r++) {
       for (let c = 0; c < fit.zones[r].length; c++) {
-        const z = fit.zones[r][c]
-        if (z && def.zones.includes(z as ZoneId) && !taken.has(`${c},${r}`)) {
+        if (placementCheck(fit.zones, items, def, c, r, room).ok) {
           cell = { c, r }
           break
         }
@@ -6116,14 +6296,48 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(def.cost, def.name)) return
+    this.commitHallItem(id, cell.c, cell.r, 0)
+  }
+
+  /** Ghost check for the hall build bar. Same rules as the click. */
+  hallPlacement(id: ItemId, c: number, r: number): PlacementCheck {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return { ok: false, reason: 'Open a hall first', cost: def?.cost ?? 0 }
+    const zones = fit.zones?.length ? fit.zones : fit.premade ? prefabZones() : blankZones()
+    return placementCheck(zones, (fit.items ?? []) as PlacedItem[], def, c, r, {
+      fieldLevel: this.fieldLevel(),
+      cash: this.cash,
+      sandbox: this.sandbox,
+    })
+  }
+
+  /** Place one item on a chosen cell, snapped, with a quarter-turn rotation. */
+  placeHallItemAt(id: ItemId, c: number, r: number, rot = 0): boolean {
+    const check = this.hallPlacement(id, c, r)
+    if (!check.ok) {
+      this.pushNews(`${itemDef(id)?.name ?? 'Item'}: ${check.reason}.`, 'bad')
+      this.emit()
+      return false
+    }
+    return this.commitHallItem(id, c, r, rot)
+  }
+
+  private commitHallItem(id: ItemId, c: number, r: number, rot: number): boolean {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return false
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    if (!this.spend(def.cost, def.name)) return false
     fit.items = fit.items ?? []
+    this.hallItemSeq += 1
     fit.items.push({
-      id: `it-${id}-${cell.c}-${cell.r}-${fit.items.length}`,
+      id: `it-${id}-${c}-${r}-${this.hallItemSeq}`,
       def: id,
-      c: cell.c,
-      r: cell.r,
+      c,
+      r,
       wear: 0,
+      rot: ((Math.round(rot) % 4) + 4) % 4,
     })
     if (def.room) fit.rooms[def.room] += 1
     if (def.room === 'food') this.foodShelf += 8
@@ -6136,6 +6350,33 @@ export class Game {
     )
     this.refreshAdvice()
     this.emit()
+    return true
+  }
+
+  /** Bulldoze a placed hall item for a partial refund. Prefab bundle pieces stay. */
+  removeHallItem(itemId: string): boolean {
+    const fit = this.activeHall()
+    const list = fit?.items ?? []
+    const i = list.findIndex((it) => it.id === itemId)
+    if (!fit || i < 0) return false
+    const it = list[i]
+    const def = itemDef(it.def)
+    if (it.bundle || !def) {
+      this.pushNews('Part of the prefab bundle — it stays with the hall.', 'bad')
+      this.emit()
+      return false
+    }
+    list.splice(i, 1)
+    if (def.room) fit.rooms[def.room] = Math.max(0, fit.rooms[def.room] - 1)
+    if (def.signs) fit.signs = Math.max(0, (fit.signs ?? 0) - def.signs)
+    const refund = refundFor(def)
+    this.cash += refund
+    applyCeilings(fit)
+    this.hallRev++
+    this.pushNews(`${def.name} removed — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
   }
 
   /**
@@ -6268,11 +6509,27 @@ export class Game {
       g.needs.bladder = Math.max(0, g.needs.bladder - relief)
       g.happiness += wear >= 60 ? -2 : 4
       g.thought = wear >= 60 ? 'WC was rough' : 'Relief'
+      const wcFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      if (wcFit) {
+        const dirt = Math.min(100, (wcFit.restroomDirt ?? 0) + restroomDirtFor(g.tag))
+        wcFit.restroomDirt = dirt
+        const hit = restroomJoyHit(dirt)
+        if (hit > 0) {
+          g.happiness -= hit
+          g.thought = 'Restroom was filthy'
+        }
+      }
     }
     if (n === 'food') {
       let pay = tagPrice(g.tag, 12, 18, 24, 32)
       let happy = 6
       let brand = false
+      const homeFit = this.fitByKey(g.hallId) ?? this.activeHall()
+      const outlet = pickOutlet((homeFit?.items ?? []) as PlacedItem[], g.tag)
+      if (outlet) {
+        pay = Math.round(pay * outlet.spec.priceMult)
+        happy = outlet.spec.joy
+      }
       if (g.airlineId && this.hasReward(g.airlineId, 'budget_perk')) {
         pay = Math.round(pay * 1.55)
         happy += 2
@@ -6292,13 +6549,21 @@ export class Game {
               ? 'Meal too pricey for my wallet'
               : 'Skipped the counter — not hungry for that'
       } else {
-        g.needs.hunger = Math.max(0, g.needs.hunger - 50)
+        g.needs.hunger = Math.max(0, g.needs.hunger - (outlet?.spec.hunger ?? 50))
+        if (outlet) {
+          g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
+          outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
+          this.foodCourtRevenue += pay
+        }
         this.foodShelf -= 1
         this.mealSold = true
+        if (homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
         g.happiness += happy
         g.thought = brand
           ? `${this.airline(g.airlineId!).name} franchise meal (−$${pay})`
-          : `Ate (−$${pay})`
+          : outlet
+            ? `${itemDef(outlet.item.def)?.name ?? 'Ate'} (−$${pay})`
+            : `Ate (−$${pay})`
       }
       }
     }
@@ -7893,7 +8158,7 @@ export class Game {
     this.janitors += 1
     this.spawnJanitorPawn()
     this.pushNews(
-      `Hired janitor #${this.janitors}. They scrub WC/security when cleaning budget is funded.`,
+      `Hired janitor #${this.janitors}. They sweep litter, empty trash cans, and service restrooms when cleaning budget is funded.`,
       'good',
     )
     this.emit()
@@ -11880,6 +12145,7 @@ export class Game {
     this.tickHub(step)
     this.tickParking(step)
     this.tickJanitors(step)
+    this.tickHallJanitors(step)
     this.tickResearchers(step)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
