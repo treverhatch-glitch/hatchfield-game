@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AIRFRAMES } from '../game/airframes'
+import type { StandingAdvisorCard } from '../game/standingAdvisor'
 import {
   BUDGET_BLURB,
   BUDGET_LABEL,
@@ -251,6 +252,7 @@ export function Hud({ game }: { game: Game }) {
             tone: 'ok' | 'good' | 'bad' | 'warn'
             left: number | null
             live?: boolean
+            cardData?: StandingAdvisorCard
           }
           const letters: Letter[] = []
           if (game.offer && offerAirline) {
@@ -397,6 +399,22 @@ export function Hud({ game }: { game: Game }) {
               left: null,
             })
           }
+          for (const card of game.standingAdvisor.activeCards) {
+            const a = game.airline(card.airlineId)
+            const causesSummary = card.topCauses
+              .map((c, i) => `${i + 1}. ${c.label} (Fix: ${c.fix})`)
+              .join(' · ')
+            letters.push({
+              id: card.id,
+              kind: 'Advisor Warning',
+              from: a.name,
+              title: `Standing Collapse Risk · ${a.name}`,
+              blurb: `Standing ${card.standing} · predicted departure in ~${card.daysToLeave} game days. Causes & fixes: ${causesSummary}`,
+              tone: 'warn',
+              left: null,
+              cardData: card,
+            })
+          }
           if (!letters.length) return null
           const active =
             openLetter && letters.some((l) => l.id === openLetter)
@@ -444,6 +462,16 @@ export function Hud({ game }: { game: Game }) {
                           Decline
                         </button>
                       </>
+                    ) : null}
+                    {letter.cardData ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (letter.cardData) game.standingAdvisor.dismissCard(letter.cardData.id)
+                        }}
+                      >
+                        Dismiss
+                      </button>
                     ) : null}
                     {letter.id === 'layover' ? (
                       <>
