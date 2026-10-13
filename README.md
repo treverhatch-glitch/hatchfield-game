@@ -2,6 +2,8 @@
 
 Browser sketch of a **3D airport tycoon** (Airport Tycoon 3 field + Airport CEO books). Orbit the apron, stamp pavement, sign carriers, and make money only when trucks and passengers actually finish their jobs. Steam / Godot comes later — this is the playable loop.
 
+**External review / Grok handoff:** one consolidated brief — [`docs/GROK_HANDOFF.md`](./docs/GROK_HANDOFF.md) (shipped features, briefed backlog, loops, play flow, vision). Prefer that Markdown over a PDF for LLM review.
+
 ## Run
 
 ```bash
