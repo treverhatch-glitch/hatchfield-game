@@ -730,4 +730,6 @@ Cancelling a slot after the aircraft is bound now clears the walkers whose fligh
 | Playwright mixed, 6 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0. Missed 1 with the hall overloaded. SwiftShader minimum 9. |
 | Playwright heavy, 4 days | Pass on correctness | lost passengers 0, bag short 0, stuck 0. Missed 2 with the hall overloaded. SwiftShader minimum 9. |
 
+The production bundle is `index-DTVGkqMq.js`, 1,605.57 kB, with `index-jic0D8bj.css`.
+
 
