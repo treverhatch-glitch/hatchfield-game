@@ -128,8 +128,9 @@ export function moneyInText(text: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/** Levy due on the next payroll tick, after staff and upkeep leave the till. */
-export function projectedLevy(cash: number, staff: number, upkeep: number): number {
+/** Levy due on the next payroll tick, after staff and upkeep leave the till. Sandbox is exempt. */
+export function projectedLevy(cash: number, staff: number, upkeep: number, sandbox = false): number {
+  if (sandbox) return 0
   const after = cash - staff - upkeep
   if (after <= LEVY_CASH) return 0
   return Math.round((after - LEVY_CASH) * LEVY_RATE)
@@ -162,7 +163,7 @@ export function scheduledCostLines(snap: CashSnapshot): CashLine[] {
     const perDay = line.perTick * scale * TICKS_PER_DAY
     if (perDay >= 1) lines.push({ label: line.label, perDay })
   }
-  const levy = projectedLevy(snap.cash, snap.payrollPerTick, upkeep)
+  const levy = projectedLevy(snap.cash, snap.payrollPerTick, upkeep, snap.sandbox)
   if (levy >= 1) lines.push({ label: 'Fees', perDay: levy * TICKS_PER_DAY })
   return lines
 }

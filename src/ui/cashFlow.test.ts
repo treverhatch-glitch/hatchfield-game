@@ -137,6 +137,11 @@ describe('cash flow selectors', () => {
     expect(down.some((f) => f.label === 'Upkeep')).toBe(false)
   })
 
+  it('leaves a sandbox pile out of the city levy estimate', () => {
+    expect(projectedLevy(9_999_999, 1_000, 0, true)).toBe(0)
+    expect(projectedLevy(9_999_999, 1_000, 0)).toBeGreaterThan(200_000)
+  })
+
   it('books upkeep on the payroll tick when the field is not a sandbox', () => {
     const seeded = stepCashFlow(null, snap({ cash: 50_000 }), 0)
     const waiting = stepCashFlow(seeded.tracker, snap({ clock: 29, payrollCool: 1 }), 400)
