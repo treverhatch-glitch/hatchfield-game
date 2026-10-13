@@ -8,6 +8,7 @@ import {
   createAircraft,
   createBridges,
   disposeAircraftLibrary,
+  bridgeMirror,
   bridgeYawToward,
   loadAircraftQuality,
   ParkedFleet,
@@ -20,6 +21,8 @@ import {
   type Livery,
   type ParkedPlane,
 } from './aircraft/index'
+import { canvasToPng } from '../camera/capture.ts'
+import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
 import {
   addFuelRail,
@@ -46,6 +49,8 @@ export { CELL }
 /** Closest hall view. The interior cutaway engages below about 54. */
 const MIN_DIST = 12
 const MAX_DIST = 280
+const MIN_PITCH = 0.28
+const MAX_PITCH = 1.35
 
 /**
  * True when the drawing buffer does not match CSS size × pixel ratio.
@@ -73,6 +78,25 @@ export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
 
 function wu(meters: number): number {
   return meters * WORLD_PER_METER
+}
+
+/** Nearest terminal cell, or null when the stand is too far for a bridge. */
+function nearestTerminal(game: Game, stand: Vec): Vec | null {
+  let best: Vec | null = null
+  let bestD = Infinity
+  for (let r = 0; r < SIZE; r++) {
+    const row = game.tiles[r]
+    if (!row) continue
+    for (let c = 0; c < row.length; c++) {
+      if (row[c] !== 'terminal') continue
+      const d = Math.abs(c - stand.c) + Math.abs(r - stand.r)
+      if (d < bestD) {
+        bestD = d
+        best = { c, r }
+      }
+    }
+  }
+  return best && bestD <= 8 ? best : null
 }
 
 /** Length, height, width in meters. Aircraft are the only meshes with a visual exaggeration. */
@@ -178,7 +202,15 @@ export class World {
   sun: THREE.DirectionalLight
   onHover: (v: Vec | null) => void = () => {}
   onClick: (v: Vec, shift: boolean) => void = () => {}
+  /** Fired when a pan or orbit drag actually moves, so follow cam can let go. */
+  onUserDrag: () => void = () => {}
+  /** Wheel while follow cam is held. The orbit rig ignores it until follow ends. */
+  onFollowZoom: (deltaY: number) => void = () => {}
+  /** PNG data URL from the frame that was just drawn. */
+  onCaptured: ((url: string) => void) | null = null
   getTool: () => string = () => 'pan'
+  /** True while an external chase pose owns the camera. */
+  followHeld = false
   lastPaint: Vec | null = null
   private liteMode = false
   private lastFrame = performance.now()
@@ -192,6 +224,8 @@ export class World {
   private onContextMenu!: (e: Event) => void
   /** True after pointerdown already stamped — blocks duplicate up/down fires. */
   private paintedThisGesture = false
+  private lookAim = new THREE.Vector3()
+  private captureWanted = false
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -202,6 +236,7 @@ export class World {
       canvas,
       antialias: preset.msaa,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: true,
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
     // Low (what SwiftShader auto-picks) stays under 1× with the shadow map off.
@@ -335,9 +370,12 @@ export class World {
       const dy = e.clientY - this.lastY
       this.lastX = e.clientX
       this.lastY = e.clientY
+      if ((this.dragging === 'orbit' || this.dragging === 'pan') && (dx !== 0 || dy !== 0)) {
+        this.onUserDrag()
+      }
       if (this.dragging === 'orbit') {
         this.yaw -= dx * 0.007
-        this.pitch = clamp(this.pitch - dy * 0.005, 0.28, 1.35)
+        this.pitch = clamp(this.pitch - dy * 0.005, MIN_PITCH, MAX_PITCH)
         this.placeCam()
       } else if (this.dragging === 'pan') {
         this.nudgePan(-dx * 0.08, dy * 0.08)
@@ -355,6 +393,10 @@ export class World {
     }
     this.onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      if (this.followHeld) {
+        this.onFollowZoom(e.deltaY)
+        return
+      }
       this.dist = clamp(this.dist + e.deltaY * 0.06, MIN_DIST, MAX_DIST)
       this.placeCam()
     }
@@ -367,6 +409,7 @@ export class World {
 
   /** Keyboard / UI pan in camera-local ground plane. */
   nudgePan(rightAmt: number, forwardAmt: number) {
+    if (this.followHeld) return
     const right = new THREE.Vector3()
     this.camera.getWorldDirection(right)
     const forward = right.clone()
@@ -379,13 +422,59 @@ export class World {
   }
 
   nudgeYaw(delta: number) {
+    if (this.followHeld) return
     this.yaw += delta
     this.placeCam()
   }
 
   nudgeZoom(delta: number) {
+    if (this.followHeld) return
     this.dist = clamp(this.dist + delta, MIN_DIST, MAX_DIST)
     this.placeCam()
+  }
+
+  /** Live orbit (or chase) pose, used to seed a smooth follow. */
+  cameraPose(): { position: { x: number; y: number; z: number }; aim: { x: number; y: number; z: number } } {
+    const aim = this.followHeld ? this.lookAim : this.pivot
+    return {
+      position: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
+      aim: { x: aim.x, y: aim.y, z: aim.z },
+    }
+  }
+
+  /** Place the chase camera. Orbit drags call `onUserDrag` and then `releaseFollow`. */
+  applyFollow(position: { x: number; y: number; z: number }, aim: { x: number; y: number; z: number }) {
+    this.followHeld = true
+    this.lookAim.set(aim.x, aim.y, aim.z)
+    this.camera.position.set(position.x, position.y, position.z)
+    this.camera.lookAt(this.lookAim)
+    this.camera.updateMatrixWorld()
+  }
+
+  /** Hand the current shot back to yaw / pitch / distance. */
+  releaseFollow() {
+    if (!this.followHeld) return
+    this.followHeld = false
+    const rig = orbitFromLook(
+      { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
+      { x: this.lookAim.x, y: 0, z: this.lookAim.z },
+      { minDist: MIN_DIST, maxDist: MAX_DIST, minPitch: MIN_PITCH, maxPitch: MAX_PITCH },
+    )
+    this.yaw = rig.yaw
+    this.pitch = rig.pitch
+    this.dist = rig.dist
+    this.pivot.set(rig.pivot.x, 0, rig.pivot.z)
+    this.placeCam()
+  }
+
+  /** Photo mode. `null` follows the sim clock. */
+  setTimeOfDay(hour: number | null) {
+    this.wr.setTimeOfDay(hour)
+  }
+
+  /** Grab a PNG on the next `render`, while the drawing buffer is still current. */
+  requestCapture() {
+    this.captureWanted = true
   }
 
   pick(e: PointerEvent | MouseEvent): Vec | null {
@@ -1441,7 +1530,12 @@ export class World {
       const jetway = f.craft !== 'helo' && f.phase === 'parked' && game.standAccessAt(cell) === 'jetway'
       const bridges = mesh.getObjectByName('bridges')
       if (jetway) {
-        if (!bridges) mesh.add(createBridges(f.airframeId || 'b738'))
+        const term = nearestTerminal(game, cell)
+        const side = term ? bridgeMirror(f.heading, cell, term) : 1
+        if (!bridges || bridges.userData.side !== side) {
+          if (bridges) mesh.remove(bridges)
+          mesh.add(createBridges(f.airframeId || 'b738', side))
+        }
       } else if (bridges) {
         mesh.remove(bridges)
       }
@@ -1911,6 +2005,11 @@ export class World {
     perfEnd('world.wr', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    if (this.captureWanted) {
+      this.captureWanted = false
+      const url = canvasToPng(this.renderer.domElement)
+      if (url) this.onCaptured?.(url)
+    }
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('world.gl', t)
   }

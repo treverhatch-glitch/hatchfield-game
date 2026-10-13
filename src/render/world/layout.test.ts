@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { blankView, rect, starterGame } from './fixtures'
+import { AIRCRAFT_VISUAL_SCALE, STAND_ENVELOPE, WORLD_PER_METER } from '../aircraft/specs'
 import {
   airsideOf,
   apronMasts,
@@ -10,6 +11,8 @@ import {
   runwayLightSpots,
   runwayPaint,
   runways,
+  standBox,
+  standPads,
   standPaint,
   stands,
   taxiLightSpots,
@@ -103,5 +106,26 @@ describe('world layout', () => {
     const sp = standPaint(st)
     expect(sp.some((p) => p.color === 'M')).toBe(true)
     expect(sp.some((p) => p.color === 'red')).toBe(true)
+    const west = st.find((s) => s.c === 12)!
+    const box = standBox(west)
+    const visual = WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE
+    expect(box.width).toBeCloseTo(STAND_ENVELOPE.C.widthM * visual)
+    expect(box.depth).toBeCloseTo(STAND_ENVELOPE.C.depthM * visual)
+    // One taxiway cell is a code-E strip (ICAO 23 m; the grid uses 22 m).
+    expect(CELL / WORLD_PER_METER).toBe(22)
+  })
+
+  it('pulls a stand pad back to the terminal face', () => {
+    const v = blankView(
+      [
+        [5, 5, 'stand'],
+        [6, 5, 'terminal'],
+      ],
+      { standClass: { '5,5': 'M' } },
+    )
+    const [pad] = standPads(v, stands(v))
+    const face = cellX(6) - CELL / 2
+    expect(pad.x + pad.w / 2).toBeLessThanOrEqual(face + 1e-6)
+    expect(pad.w).toBeGreaterThan(CELL)
   })
 })

@@ -3,7 +3,7 @@
  * Length, span, height, wheelbase, and doors come from the verified pack in
  * realworld.ts. One world scale: meters × WORLD_PER_METER for buildings,
  * people, vehicles, and pavement. Aircraft multiply by AIRCRAFT_VISUAL_SCALE
- * on top of that so they read larger, and stand clearance uses the same factor.
+ * on top of that so they read larger, and the stand limit box uses the same factor.
  */
 
 import type { IcaoCode, RealDoor } from './realworld'
@@ -13,8 +13,9 @@ import { REAL_AIRFRAMES } from './realworld'
 export const WORLD_PER_METER = 0.45
 
 /**
- * Aircraft only. 1.2 keeps a 737 recognisable beside a 1.75 m person
- * without swallowing the stand. Stands and wing gaps use this same factor.
+ * Aircraft only. 1.2 keeps a 737 recognisable beside a 1.75 m person.
+ * Stand limit lines use the same factor so the painted box stays around the
+ * drawn wings. Wing-disc clearance stays in real meters.
  */
 export const AIRCRAFT_VISUAL_SCALE = 1.2
 
@@ -33,6 +34,30 @@ export const CELL = METERS_PER_CELL * WORLD_PER_METER
 
 /** Code-C wingtip-to-obstacle clearance, meters. Applied on top of the visual span. */
 export const WING_GAP_M = 4.5
+
+/**
+ * Painted stand limit, real meters, before AIRCRAFT_VISUAL_SCALE.
+ * Width is across the wings. Depth is nose to tail.
+ * Width already holds the ICAO wingtip clearance (code A/B 3 m, C 4.5 m, D–F 7.5 m)
+ * outside the code's span limit, and depth fits the longest type in that class
+ * with nose and tail room.
+ *
+ * Code C is the 36 m span class: 36 + 4.5 + 4.5 = 45 m wide, 52 m deep (A321 is 44.5 m).
+ * Code E is the 65 m class: 65 + 7.5 + 7.5 = 80 m wide, 82 m deep (777-300ER is 73.9 m).
+ * Code F is the 80 m class: 80 + 7.5 + 7.5 = 95 m wide, 88 m deep (A380 is 72.7 × 79.8).
+ */
+export const STAND_ENVELOPE: Record<
+  IcaoCode,
+  { widthM: number; depthM: number; clearanceM: number }
+> = {
+  A: { widthM: 21, depthM: 28, clearanceM: 3 },
+  B: { widthM: 30, depthM: 42, clearanceM: 3 },
+  C: { widthM: 45, depthM: 52, clearanceM: 4.5 },
+  D: { widthM: 67, depthM: 70, clearanceM: 7.5 },
+  E: { widthM: 80, depthM: 82, clearanceM: 7.5 },
+  F: { widthM: 95, depthM: 88, clearanceM: 7.5 },
+  H: { widthM: 20, depthM: 20, clearanceM: 3 },
+}
 
 export type FuselageFamily = 'tube' | 'rearjet' | 'point' | 'prop' | 'helo'
 export type WingletKind = 'none' | 'fence' | 'blended' | 'raked'
@@ -170,6 +195,50 @@ function spec(partial: Core & Partial<Omit<ModelSpec, keyof Core>>): ModelSpec {
 
 /** One entry per airframe id in the sim catalog. */
 export const MODEL_SPECS: Record<string, ModelSpec> = {
+  bn2: spec({
+    id: 'bn2',
+    lengthM: 10.86,
+    spanM: 14.94,
+    heightM: 4.18,
+    family: 'prop',
+    rx: 0.72,
+    ry: 0.82,
+    gear: 0.9,
+    wingAt: 0.42,
+    wingHigh: true,
+    rootChord: 1.6,
+    tipChord: 1.05,
+    sweep: 0,
+    dihedral: 2,
+    thickness: 0.22,
+    winglet: 'none',
+    tail: 'conventional',
+    tailSpan: 4.6,
+    engines: { count: 2, kind: 'turboprop', mount: 'wing', radius: 0.28, length: 1.2 },
+    blades: 2,
+  }),
+  dhc6: spec({
+    id: 'dhc6',
+    lengthM: 15.77,
+    spanM: 19.81,
+    heightM: 5.94,
+    family: 'prop',
+    rx: 0.9,
+    ry: 1.05,
+    gear: 1.15,
+    wingAt: 0.4,
+    wingHigh: true,
+    rootChord: 2.1,
+    tipChord: 1.15,
+    sweep: 0,
+    dihedral: 3,
+    thickness: 0.26,
+    winglet: 'none',
+    tail: 'conventional',
+    tailSpan: 6.2,
+    engines: { count: 2, kind: 'turboprop', mount: 'wing', radius: 0.38, length: 1.6 },
+    blades: 3,
+  }),
   crj700: spec({
     id: 'crj700',
     lengthM: 32.51,

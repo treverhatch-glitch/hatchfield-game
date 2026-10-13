@@ -47,6 +47,7 @@ export function legTargetKind(node: string, guest: { job: 'depart' | 'arrive'; c
 }
 
 function roomOfKind(plan: RoomPlan, kind: RoomKind, rand: () => number): Room | null {
+  if (!plan || !plan.rooms) return null
   const list = plan.rooms.filter((r) => r.kind === kind)
   if (!list.length) return null
   return list[Math.floor(rand() * list.length) % list.length]
@@ -57,6 +58,7 @@ function roomOfKind(plan: RoomPlan, kind: RoomKind, rand: () => number): Room | 
  * `strict` is on: a blocked path is null, not a shortcut through furniture.
  */
 export function legRoute(plan: RoomPlan, guest: RouteGuest, next: HallNode | string): { x: number; z: number }[] | null {
+  if (!plan) return null
   const goalKind = legTargetKind(next, guest)
   const goalRand = seededRand(`${guest.id}:${next}`)
   const goal = roomOfKind(plan, goalKind, goalRand)
@@ -89,6 +91,7 @@ export function legRoute(plan: RoomPlan, guest: RouteGuest, next: HallNode | str
 }
 
 export function polylineLength(route: readonly { x: number; z: number }[]): number {
+  if (!route) return 0
   let n = 0
   for (let i = 1; i < route.length; i++) n += Math.hypot(route[i].x - route[i - 1].x, route[i].z - route[i - 1].z)
   return n
@@ -96,6 +99,7 @@ export function polylineLength(route: readonly { x: number; z: number }[]): numb
 
 /** Position at fraction `t` (0..1) along a doorway polyline. */
 export function pointAlong(route: readonly { x: number; z: number }[], t: number): { x: number; z: number; yaw: number } {
+  if (!route || route.length === 0) return { x: 0, z: 0, yaw: 0 }
   const p0 = route[0] ?? { x: 0, z: 0 }
   if (route.length < 2) return { x: p0.x, z: p0.z, yaw: 0 }
   const cum = [0]
@@ -119,6 +123,7 @@ export function pointAlong(route: readonly { x: number; z: number }[], t: number
 
 /** Room kinds stepped along a polyline. Used to prove a walk stays landside or crosses a door. */
 export function routeRoomKinds(plan: RoomPlan, route: readonly { x: number; z: number }[]): RoomKind[] {
+  if (!plan || !route || route.length === 0) return []
   const out: RoomKind[] = []
   const step = Math.max(plan.size * 0.5, 0.05)
   const push = (x: number, z: number) => {

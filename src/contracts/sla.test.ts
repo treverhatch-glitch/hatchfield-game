@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { auditWeek, cancelFeeEntry, seasonBonuses } from './sla.ts'
+import { auditWeek, cancelFeeEntry, HOSTILE_STANDING, LAWSUIT_BREACH_WEEKS, seasonBonuses } from './sla.ts'
 import { slotRound } from './scheduler.ts'
 import { seasonFor } from './seasons.ts'
 import { active, INFRA, line, SUMMER } from './testkit.ts'
@@ -66,6 +66,121 @@ describe('auditWeek', () => {
   it('empty week is neutral', () => {
     const a = auditWeek(c, [], { season: SUMMER, auditDay: 90, currentStanding: 0 })
     expect(a).toMatchObject({ operated: 0, onTimePct: 1, breached: false, standingDelta: 0, ledger: [] })
+  })
+})
+
+describe('sla.edge: penalty cap, zero flights, all-late cases', () => {
+  it('caps standing delta strictly at -10 even under extreme breaches', () => {
+    const severeBreach = fly(slots(), (s) => ({
+      ...clean(s),
+      offBlock: s.plannedOffBlock + 120, // late miss
+      lostBags: 50,                       // lost bags miss
+      grounded: 'fuel',                   // grounding breach
+      cateringShort: true,               // catering breach
+    }))
+
+    const audit = auditWeek(c, severeBreach, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: 0,
+      offWindowCost: 10,
+    })
+
+    expect(audit.standingDelta).toBe(-10)
+    // Confirm standing clamps to lower bound -100
+    const standingAudit = auditWeek(c, severeBreach, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: -98,
+      offWindowCost: 10,
+    })
+    expect(standingAudit.standingDelta).toBe(-2)
+  })
+
+  it('caps standing delta strictly at +5 even under maximum bonuses', () => {
+    const perfectWeek = fly(slots(), clean)
+    const audit = auditWeek(c, perfectWeek, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: 0,
+      offWindowCost: -10, // negative off-window cost boost
+    })
+
+    expect(audit.standingDelta).toBe(5)
+  })
+
+  it('handles zero flights case gracefully when all slots are cancelled or without actual data', () => {
+    const allCancelledSlots = slots().map((s) => ({ ...s, cancelled: true }))
+    const auditCancelled = auditWeek(c, allCancelledSlots, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: 10,
+    })
+
+    expect(auditCancelled.operated).toBe(0)
+    expect(auditCancelled.onTimePct).toBe(1) // Default 100% on-time when 0 operated
+    expect(auditCancelled.breached).toBe(false)
+    expect(auditCancelled.standingDelta).toBe(0)
+    expect(auditCancelled.ledger).toEqual([])
+
+    const noActualSlots = slots().map((s) => ({ ...s, actual: undefined }))
+    const auditNoActual = auditWeek(c, noActualSlots, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: 10,
+    })
+
+    expect(auditNoActual.operated).toBe(0)
+    expect(auditNoActual.breached).toBe(false)
+    expect(auditNoActual.standingDelta).toBe(0)
+  })
+
+  it('handles 100% late flights case (all-late)', () => {
+    const allLate = fly(slots(), (s) => ({
+      ...clean(s),
+      offBlock: s.plannedOffBlock + 45,
+    }))
+
+    const audit = auditWeek(c, allLate, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: 0,
+    })
+
+    expect(audit.operated).toBe(7)
+    expect(audit.onTimePct).toBe(0)
+    expect(audit.breached).toBe(true)
+    expect(audit.standingDelta).toBe(-3)
+    expect(audit.lateMinOverTarget).toBe(7 * 45)
+
+    const penaltyEntry = audit.ledger.find((l) => l.kind === 'sla_penalty')
+    expect(penaltyEntry).toBeDefined()
+    expect(penaltyEntry?.amount).toBe(-7 * 45 * c.penalties.perLateMin)
+  })
+
+  it('triggers lawsuit on 100% late flights when standing is hostile (<= HOSTILE_STANDING) and breach weeks >= LAWSUIT_BREACH_WEEKS', () => {
+    const allLate = fly(slots(), (s) => ({
+      ...clean(s),
+      offBlock: s.plannedOffBlock + 45,
+    }))
+
+    // Week 1 & 2 breach (priorBreachWeeks < 2) => lawsuit false
+    const audit2 = auditWeek(c, allLate, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: HOSTILE_STANDING,
+      priorBreachWeeks: 1,
+    })
+    expect(audit2.lawsuit).toBe(false)
+
+    // Week 3 breach (priorBreachWeeks = 2, making total breach weeks = 3) => lawsuit true
+    const audit3 = auditWeek(c, allLate, {
+      season: SUMMER,
+      auditDay: 90,
+      currentStanding: HOSTILE_STANDING - 5,
+      priorBreachWeeks: LAWSUIT_BREACH_WEEKS - 1,
+    })
+    expect(audit3.lawsuit).toBe(true)
   })
 })
 

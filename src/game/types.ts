@@ -2,6 +2,7 @@ import type { InboundState } from '../inbound/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
+import type { PlaytestYearSave } from '../reports/book.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -956,7 +957,15 @@ export interface GameSnapshot {
   coachDismissed?: boolean
   /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
   hintPrefs?: { allEnabled: boolean; muted: string[] }
+  /** First-session "open the build tray" step. Missing on older saves. */
+  buildTrayOpened?: boolean
   fieldTask?: FieldTask | null
+  /** Letter keys the player dismissed. Missing on older saves. */
+  ackedLetters?: string[]
+  /** Opening kit budget released so the player can build the field by hand. */
+  starterFreehand?: boolean
+  /** Set once the starter kit is paid for, so the button stays hidden after a reload. */
+  starterKitStamped?: boolean
   /** Freight staged at the cargo shed (city truck intake). */
   cargoWarehouse?: number
   /** Live volume letter — must survive a refresh or the contract vanishes. */
@@ -1003,6 +1012,8 @@ export interface GameSnapshot {
   rival?: string
   /** Late-game disruption engine. Missing on older saves. The alert stack shows the card. */
   disruptions?: string
+  /** Year-end disruption, hub, and award counters. Missing on older saves. */
+  playtestYear?: PlaytestYearSave
 }
 
 /** A placed building that is still a construction site. */
