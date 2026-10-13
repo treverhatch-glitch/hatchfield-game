@@ -52,9 +52,9 @@ Night pax hold until you research **Night bank**. Storms hurt less after **De-ic
 
 **Hall:** 3D orbit view (drag / zoom). Flow is **doors → info/check-in → security choke → airside**. Premade halls ship with security; player shells without it invite smuggling threats. Apron keeps simulating while you’re inside (and vice versa). Guests are RCT-style wallets + prefs.
 
-**Build UI:** Cities: Skylines-style chrome — bottom bar (Apron/Hall, Pause/1x/3x, ticker, cash + Economy/Budget/Research/Airlines/Planner/Services). Menus peek collapsed and **slide up on hover or click**. Build categories (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) sit above the bar. Contracts and asks arrive as **stacked letters on the right** — hover/click to read, Sign/Decline inside; unread letters expire.
+**Build UI:** Cities: Skylines-style chrome — bottom bar (Apron/Hall, Pause/1x/3x/5x, ticker, cash + Economy/Budget/Research/Airlines/Planner/Services). Menus peek collapsed and **slide up on hover or click**. Build categories (Pavement / Stands / Terminal / Ops / Landside / Bulldoze) sit above the bar. Contracts and asks arrive as **stacked letters on the right** — hover/click to read, Sign/Decline inside; unread letters expire.
 
-**Apron inspect:** hover a jet for model, airline, destination, current/next action, and fuel/catering bars. Line-MX aircraft **taxi into a hangar bay** (not sidewalk mechanics); hover the hangar for occupant + time remaining.
+**Apron inspect:** hover a jet for model, airline, destination, current/next action, and fuel/catering bars. Line-MX aircraft **taxi into a hangar bay** (not sidewalk mechanics); hover the hangar for occupant + time remaining. **5x** fast-forward turns inspect off so detail cards never pop while you skim.
 
 **Stands & pax access:** stamp **Remote** bays (cheap) or **Jetway gate** stands (×1.85) that attach to a nearby hall — fast board/deboard, no apron walkers, more hall spend time. Remote stands use a **Terminal bus depot** ferry, or pax **walk** the pavement (slow). Jets, trucks, buses, and walking pax **congest** each other on shared taxi — bad layouts jam.
 

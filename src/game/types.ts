@@ -86,7 +86,7 @@ export type Tool =
   | 'rail'
   | 'clear'
 
-export type Speed = 0 | 1 | 3
+export type Speed = 0 | 1 | 3 | 5
 export type Difficulty = 'easy' | 'standard'
 export type SiteKind = 'city' | 'factory'
 export type FuelBrand = 'apex' | 'kiln'

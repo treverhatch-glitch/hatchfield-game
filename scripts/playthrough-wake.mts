@@ -54,7 +54,9 @@ try {
   let c0 = await readCash(page)
   if (c0 < 120_000 || c0 > 130_000) issues.push(`cash after city land odd: ${c0}`)
 
-  // Starter kit
+  // Starter kit lives in the Economy roll-up panel
+  await page.locator('.cash-chip').click()
+  await page.waitForTimeout(300)
   const starter = page.getByTestId('starter-kit')
   if (!(await starter.isVisible())) issues.push('starter kit button missing')
   await starter.click()
@@ -66,10 +68,15 @@ try {
   // Hall toggle
   await page.getByRole('button', { name: /^Hall$/ }).click()
   await page.waitForTimeout(400)
-  const hallChip = await page.locator('.view-chip').innerText()
-  if (!/Hall/i.test(hallChip) && !(await page.locator('.hall-wrap').isVisible().catch(() => false))) {
-    // chip text flips meaning — check canvas or furnish panel
-    notes.push(`hall chip: ${hallChip}`)
+  const hallVisible = await page.locator('.hall-wrap').isVisible().catch(() => false)
+  const hallChip = await page
+    .locator('.view-chip')
+    .innerText()
+    .catch(() => '')
+  if (!hallVisible && !/Hall|3D/i.test(hallChip)) {
+    issues.push(`hall view did not open (chip: ${hallChip || 'missing'})`)
+  } else {
+    notes.push(`hall ok chip=${hallChip || 'n/a'}`)
   }
   await page.getByRole('button', { name: /^Apron$/ }).click()
   await page.waitForTimeout(300)
@@ -81,12 +88,27 @@ try {
     b.classList.contains('on'),
   )
   if (!threeOn) issues.push('3x did not activate')
+  await page.getByRole('button', { name: /^5x$/ }).click()
+  await page.waitForTimeout(200)
+  const fiveOn = await page.getByRole('button', { name: /^5x$/ }).evaluate((b) =>
+    b.classList.contains('on'),
+  )
+  if (!fiveOn) issues.push('5x did not activate')
+  const inspectAt5 = await page.locator('.inspect-card').count()
+  if (inspectAt5 > 0) issues.push('inspect card visible at 5x')
+  await page.getByRole('button', { name: /^3x$/ }).click()
+  await page.waitForTimeout(100)
 
-  // Accept airline if offered
+  // Accept airline if offered (letter inbox — force click; HUD re-renders on timer ticks)
   for (let i = 0; i < 40; i++) {
-    const sign = page.getByRole('button', { name: /^Sign$/ })
+    const tab = page.locator('.letter-tab').filter({ hasText: /Contract/i }).first()
+    if (await tab.isVisible().catch(() => false)) {
+      await tab.click({ force: true }).catch(() => {})
+      await page.waitForTimeout(150)
+    }
+    const sign = page.locator('.letter-actions button').filter({ hasText: /^Sign$/ }).first()
     if (await sign.isVisible().catch(() => false)) {
-      await sign.click()
+      await sign.click({ force: true })
       notes.push('signed airline offer')
       break
     }
@@ -98,9 +120,18 @@ try {
   const airlines = await page.locator('.stat').nth(2).innerText()
   notes.push(`airlines stat: ${airlines}`)
 
-  // Loan
+  // Loan (Economy panel — open without toggling closed if already pinned)
   const beforeLoan = await readCash(page)
-  await page.getByRole('button', { name: /^Loan/ }).click()
+  const loanBtn = page.getByRole('button', { name: /^Loan/ })
+  if (!(await loanBtn.isVisible().catch(() => false))) {
+    await page.locator('.info-menus button').filter({ hasText: /^Economy$/ }).click()
+    await page.waitForTimeout(300)
+  }
+  if (!(await loanBtn.isVisible().catch(() => false))) {
+    await page.locator('.cash-chip').click()
+    await page.waitForTimeout(300)
+  }
+  await loanBtn.click({ force: true })
   await page.waitForTimeout(300)
   const afterLoan = await readCash(page)
   if (afterLoan <= beforeLoan) {
@@ -116,14 +147,19 @@ try {
     await gotIt.click()
     notes.push('dismissed coach')
   }
-  await page.getByRole('button', { name: /^Hangar$/ }).click({ force: false })
+  await page.locator('.dock').hover()
   await page.waitForTimeout(200)
-  const hangarOn = await page.getByRole('button', { name: /^Hangar$/ }).evaluate((b) =>
-    b.classList.contains('on'),
-  )
+  await page.getByRole('button', { name: /^Ops$/ }).click()
+  await page.waitForTimeout(150)
+  const hangar = page.getByRole('button', { name: /^Hangar/ })
+  await hangar.click({ force: true })
+  await page.waitForTimeout(200)
+  const hangarOn = await hangar.evaluate((b) => b.classList.contains('on')).catch(() => false)
   if (!hangarOn) issues.push('Hangar tool did not select')
 
-  await page.getByRole('button', { name: /^Look$/ }).click()
+  await page.getByRole('button', { name: /^Pavement$/ }).click()
+  await page.waitForTimeout(100)
+  await page.getByRole('button', { name: /^Look|^Pan/i }).first().click({ force: true }).catch(() => {})
 
   // Emergency / offer UI should not crash
   await page.waitForTimeout(2000)

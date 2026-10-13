@@ -1385,11 +1385,18 @@ export function Hud({ game }: { game: Game }) {
             </div>
 
             <div className="bar-cluster speed-cluster">
-              {([0, 1, 3] as Speed[]).map((s) => (
+              {([0, 1, 3, 5] as Speed[]).map((s) => (
                 <button
                   key={s}
                   type="button"
                   className={game.speed === s ? 'on' : ''}
+                  title={
+                    s === 5
+                      ? '5x fast-forward — hover inspect off'
+                      : s === 0
+                        ? 'Pause'
+                        : `${s}x speed`
+                  }
                   onClick={() => game.setSpeed(s)}
                 >
                   {s === 0 ? 'Pause' : `${s}x`}

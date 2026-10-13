@@ -109,6 +109,7 @@ export class World {
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   tileHash = ''
+  ghostHash = ''
   jets = new Map<string, THREE.Group>()
   trucks = new Map<string, THREE.Mesh>()
   people = new Map<string, THREE.Mesh>()
@@ -121,6 +122,7 @@ export class World {
   onClick: (v: Vec, shift: boolean) => void = () => {}
   getTool: () => string = () => 'pan'
   lastPaint: Vec | null = null
+  private liteMode = false
   private grassM: THREE.MeshLambertMaterial
   private rwM: THREE.MeshLambertMaterial
   private taxiM: THREE.MeshLambertMaterial
@@ -316,23 +318,8 @@ export class World {
   }
 
   rebuildTiles(game: Game) {
-    const classHash = Object.entries(game.standClass)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join(';')
-    const accessHash = Object.entries(game.standAccess)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join(';')
-    const parkHash = Object.entries(game.parkTerms)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join(';')
-    const hotelHash = Object.entries(game.hotelClass)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${v}`)
-      .join(';')
-    const hash = `${game.tiles.flat().join('')}|${classHash}|${accessHash}|${parkHash}|${hotelHash}`
+    // Cheap revision check — avoid flattening 32² tiles into a string every frame.
+    const hash = String(game.mapRev)
     if (hash === this.tileHash) return
     this.tileHash = hash
     this.tilesGroup.clear()
@@ -1125,7 +1112,23 @@ export class World {
     return g
   }
 
+  /** Drop shadows / DPR while 5x fast-forward so the apron stays responsive. */
+  applyPerfMode(game: Game) {
+    const lite = game.speed >= 5
+    if (lite === this.liteMode) return
+    this.liteMode = lite
+    this.renderer.shadowMap.enabled = !lite
+    this.sun.castShadow = !lite
+    this.renderer.setPixelRatio(
+      lite ? 1 : Math.min(window.devicePixelRatio || 1, 1.25),
+    )
+  }
+
   syncGhost(game: Game) {
+    const h = game.hover
+    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}`
+    if (next === this.ghostHash) return
+    this.ghostHash = next
     this.ghostGroup.clear()
     const cells = game.ghostCells(game.hover)
     const geo = new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95)
@@ -1279,6 +1282,7 @@ export class World {
 
   render(game: Game) {
     this.resize()
+    this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.syncGhost(game)
     this.syncEntities(game)
