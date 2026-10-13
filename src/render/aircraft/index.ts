@@ -27,7 +27,21 @@ export {
 } from './factory'
 export type { AircraftQuality, AircraftSize, Livery, ModelSpec } from './factory'
 export { createBridges } from './bridges'
-export { bridgeStops, bridgeYawToward, doorBoxes, gatePreviewId, standAccepts, standLetter, wingDiscsClash } from './stands'
+export {
+  bridgeDockMeters,
+  bridgeMirror,
+  bridgeStops,
+  bridgeYawToward,
+  doorBoxes,
+  envelopeLetter,
+  envelopeWorld,
+  gatePreviewId,
+  standAccepts,
+  standLetter,
+  standPreviewId,
+  wingDiscsClash,
+} from './stands'
 export type { BridgeStop, DoorBox, IcaoCode } from './stands'
+export { STAND_ENVELOPE } from './specs'
 export { ParkedFleet } from './batch'
 export type { ParkedPlane } from './batch'

@@ -1,5 +1,12 @@
 import type { RealDoor } from './realworld'
-import { AIRCRAFT_VISUAL_SCALE, CELL, WING_GAP_M, WORLD_PER_METER, type ModelSpec } from './specs'
+import {
+  AIRCRAFT_VISUAL_SCALE,
+  CELL,
+  STAND_ENVELOPE,
+  WING_GAP_M,
+  WORLD_PER_METER,
+  type ModelSpec,
+} from './specs'
 
 export type { IcaoCode } from './realworld'
 import type { IcaoCode } from './realworld'
@@ -30,9 +37,41 @@ export function standLetter(cls: 'S' | 'M' | 'L'): IcaoCode {
 
 /** Empty jetway preview. S/B one low bridge, M/C one, L/F the A380 set. */
 export function gatePreviewId(cls: 'S' | 'M' | 'L'): string {
-  if (cls === 'S') return 'crj700'
-  if (cls === 'L') return 'a380'
+  return standPreviewId(cls, cls === 'L' ? 'jumbo' : 'small')
+}
+
+/** Wide stands are code E. Legacy L stands with no scale stay code F. */
+export function envelopeLetter(
+  cls: 'S' | 'M' | 'L',
+  scale?: 'small' | 'wide' | 'jumbo' | null,
+): IcaoCode {
+  if (scale === 'wide') return 'E'
+  if (scale === 'jumbo' || cls === 'L') return 'F'
+  if (cls === 'S') return 'B'
+  return 'C'
+}
+
+/** Design aircraft whose door the empty-gate bridge aims at. */
+export function standPreviewId(
+  cls: 'S' | 'M' | 'L',
+  scale?: 'small' | 'wide' | 'jumbo' | null,
+): string {
+  const letter = envelopeLetter(cls, scale)
+  if (letter === 'F') return 'a380'
+  if (letter === 'E') return 'b789'
+  if (letter === 'B' || letter === 'A') return 'crj700'
   return 'b738'
+}
+
+/** Stand limit box in world units, including the aircraft visual scale. */
+export function envelopeWorld(letter: IcaoCode): { width: number; depth: number; clearance: number } {
+  const box = STAND_ENVELOPE[letter]
+  const s = WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE
+  return {
+    width: box.widthM * s,
+    depth: box.depthM * s,
+    clearance: box.clearanceM * s,
+  }
 }
 
 /**
@@ -135,6 +174,42 @@ export interface BridgeStop {
   /** Tunnel length reaching toward the terminal, meters. */
   tunnelM: number
   upper: boolean
+}
+
+/**
+ * Outer end of the aircraft tunnel, in meters (nose +X, port +Z).
+ * The terminal bridge stops here so the two tunnels meet.
+ */
+export function bridgeDockMeters(spec: ModelSpec): { x: number; z: number; y: number; h: number; w: number } | null {
+  const stops = bridgeStops(spec)
+  const main = stops.filter((stop) => !stop.upper)
+  const stop = main[0] ?? stops[0]
+  if (!stop) return null
+  const skin = spec.rx + 0.2
+  return {
+    x: stop.x,
+    z: skin + 1.6 + stop.tunnelM,
+    y: stop.cabY,
+    h: stop.cabH * 0.86,
+    w: stop.cabW,
+  }
+}
+
+/**
+ * +1 when local +Z (port) already faces the terminal.
+ * -1 when the terminal is on the starboard side, so the bridges must flip.
+ * `heading` is the flight heading (atan2(dRow, dCol)); the mesh yaws by -heading.
+ */
+export function bridgeMirror(
+  heading: number,
+  stand: { c: number; r: number },
+  terminal: { c: number; r: number },
+): 1 | -1 {
+  const yaw = -heading
+  const portC = Math.sin(yaw)
+  const portR = Math.cos(yaw)
+  const dot = portC * (terminal.c - stand.c) + portR * (terminal.r - stand.r)
+  return dot >= 0 ? 1 : -1
 }
 
 const TUNNEL_M: Record<IcaoCode, number> = {
