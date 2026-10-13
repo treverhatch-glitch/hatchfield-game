@@ -43,6 +43,7 @@ import {
   TOOL_LABEL,
 } from '../game/catalog'
 import { tilesOf } from '../game/path'
+import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { LineChart } from './LineChart'
@@ -289,7 +290,9 @@ export function Hud({ game }: { game: Game }) {
         >
           {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
-        <div className="stat">{game.weatherLabel()}</div>
+        <div className="stat" title={environmentCaption(game.clock, game.weather, game.holidayPeakHook)}>
+          {seasonAtClock(game.clock).name} · {game.weatherLabel()}
+        </div>
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
         </div>
@@ -1002,7 +1005,7 @@ export function Hud({ game }: { game: Game }) {
                       ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                       : ''}{' '}
                     · crash risk {Math.round(game.crashChance() * 1000) / 10}% · RW{' '}
-                    {Math.round(game.runwayCondition)}% · {game.weatherLabel()}
+                    {Math.round(game.runwayCondition)}% · {seasonAtClock(game.clock).name} · {game.weatherLabel()}
                   </p>
                   <div className="row">
                     <button type="button" className="on" onClick={() => game.hireMechanic()}>
