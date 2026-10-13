@@ -5,6 +5,7 @@ import { Hud } from './ui/Hud'
 import { LandScreen } from './ui/LandScreen'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
+import { OfferPanel } from './negotiation/OfferPanel'
 import { TitleScreen } from './ui/TitleScreen'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
@@ -188,6 +189,10 @@ export default function App() {
         game.advice.length,
         game.advisorCells.length,
         game.standingAdvisor.activeCards.map((c) => `${c.id}:${c.daysToLeave}`).join(','),
+        game.inboundOffer()?.id ?? '',
+        Math.ceil(game.inboundOffer()?.secondsLeft ?? 0),
+        game.inboundContracts().map((d) => `${d.id}:${d.status}`).join(','),
+        game.inboundHasClearance() ? 1 : 0,
         game.hallOverloaded ? 1 : 0,
         game.sites.map((s) => Math.round(s.elapsed)).join(','),
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
@@ -227,6 +232,7 @@ export default function App() {
         <TerminalView game={game} />
       </div>
       <Hud game={game} />
+      <OfferPanel game={game} />
       <OwnerChrome game={game} />
     </div>
   )

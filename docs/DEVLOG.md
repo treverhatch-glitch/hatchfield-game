@@ -732,4 +732,28 @@ Cancelling a slot after the aircraft is bound now clears the walkers whose fligh
 
 The production bundle is `index-DTVGkqMq.js`, 1,605.57 kB, with `index-jic0D8bj.css`.
 
+## Contract negotiation — 13 Oct
+
+PR #44 is on this branch. A contract letter opens a side sheet: the player can counter fees, freebies, term, and deposit, and the airline accepts, grudges, or walks. Standing changes go out through the existing diplomacy adapter (`over_ask`, `hard_bargain`, `walk`, `freebie`). `src/diplomacy` is unchanged. A walk puts the carrier on the Bellwater rival card. The sheet does not take clicks meant for the field.
+
+**Tests.** `tsc -b` clean. Vitest 770 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-CmmzvVsS.js`, 1,636.12 kB, with `index-eP-pqaTd.css`.
+
+## Payroll shortfall — 13 Oct
+
+PR #45 is on this branch and closes #26. A covered payroll bill, including a remainder that prints as $0, does not post a shortfall line. A partial payment names due minus cash paid. An empty bank still says the payroll was missed entirely and does not write `paid $0`. Reputation and the maintenance and security sliders move only when that unpaid amount is a real dollar.
+
+**Tests.** `tsc -b` clean. Vitest 771 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-CYIt_ytm.js`, 1,636.42 kB, with `index-eP-pqaTd.css`.
+
+## Litter, trash cans, and janitors — 13 Oct
+
+PR #58 (issue #41) is on this branch, including the follow-up that drops rubbish where the food is finished. A meal or coffee stays in the passenger's hand and lands in a trash can within range of that spot, or on the floor there if the can is full or missing. Boarding or leaving early drops it at the last hall spot. The kit bar has a Service tab with a $150 trash can. Hired janitors sweep litter, empty cans, and service restrooms when the cleaning budget is funded. The hall-route check that an uncleared departure stays landside of security now measures movement in the plane, so a north-south step no longer fails the assertion.
+
+**Tests.** `tsc -b` clean. Vitest 784 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-0Py0oJVZ.js`, 1,646.13 kB, with `index-eP-pqaTd.css`.
+
+## Scale pillars — 13 Oct
+
+PR #48 is on this branch. Aircraft, trucks, fuel, stands, hangars, bags, and passenger processing share small, widebody, and jumbo tiers. A widebody slot waits when the field cannot turn it. Rail fuel moves only when the line reaches the map edge and an oil transfer station sits on that line. Scale advice sits on the same list as the litter notes and the Standing cards. `src/diplomacy` is unchanged.
+
+**Tests.** `tsc -b` clean. Vitest 801 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-BzLWkglV.js`, 1,686.21 kB, with `index-eP-pqaTd.css`.
+
 

@@ -7,7 +7,6 @@ import {
   createAircraft,
   createBridges,
   disposeAircraftLibrary,
-  gatePreviewId,
   bridgeYawToward,
   loadAircraftQuality,
   ParkedFleet,
@@ -20,6 +19,16 @@ import {
   type Livery,
   type ParkedPlane,
 } from './aircraft/index'
+import { previewAirframe } from '../scale/logic'
+import {
+  addFuelRail,
+  addHangar,
+  addOilStation,
+  addPeopleMover,
+  addSkywalk,
+  addTravelator,
+} from '../scale/placeholders'
+import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import {
   initWorldRender,
@@ -454,12 +463,13 @@ export class World {
           if (REPLACED_TILES.has(tile)) continue
           const pos = toWorld(c, r, 0.02)
           const key = `${c},${r}`
-          this.tilesGroup.add(
-            this.building(tile, pos, {
-              hotelClass: game.hotelClass[key],
-              parkTerm: game.parkTerms[key],
-            }),
-          )
+          const built = this.building(tile, pos, {
+            hotelClass: game.hotelClass[key],
+            parkTerm: game.parkTerms[key],
+            hangarTier: game.hangarScale[key],
+          })
+          built.userData.cellKey = key
+          this.tilesGroup.add(built)
         }
       }
       this.gateHash = ''
@@ -477,7 +487,11 @@ export class World {
       .map(([k, v]) => `${k}=${v}`)
       .sort()
       .join(',')
-    return `${game.mapRev}|${game.standAccessMode}|${game.fits.length}|${cls}|${acc}`
+    const scale = Object.entries(game.standScale)
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join(',')
+    return `${game.mapRev}|${game.standAccessMode}|${game.fits.length}|${cls}|${acc}|${scale}`
   }
 
   private syncGateBridges(game: Game) {
@@ -529,7 +543,9 @@ export class World {
           }
         }
         if (bestD > 8) continue
-        const preview = createBridges(gatePreviewId(game.standClassAt(stand)))
+        const marked = game.standScale[`${c},${r}`]
+        const tier: SizeTier = marked ?? (game.standClassAt(stand) === 'L' ? 'jumbo' : 'small')
+        const preview = createBridges(previewAirframe(tier))
         preview.position.copy(toWorld(c, r, 0.04))
         preview.rotation.y = bridgeYawToward(stand, best)
         preview.userData.standKey = `${c},${r}`
@@ -541,7 +557,7 @@ export class World {
   building(
     tile: Tile,
     pos: THREE.Vector3,
-    opts: { hotelClass?: HotelClass; parkTerm?: ParkTerm } = {},
+    opts: { hotelClass?: HotelClass; parkTerm?: ParkTerm; hangarTier?: SizeTier } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
@@ -713,17 +729,21 @@ export class World {
       cab.position.y = 5.4
       g.add(shaft, cab)
     } else if (tile === 'hangar') {
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.95, 3.2, CELL * 0.95),
-        new THREE.MeshStandardMaterial({ color: '#7a8490' }),
-      )
-      body.position.y = 1.6
-      body.castShadow = true
-      g.add(body)
+      addHangar(g, opts.hangarTier ?? 'small')
     } else if (tile === 'mro') {
       addMroMesh(g, CELL)
     } else if (tile === 'nighthub') {
       addNightHubMesh(g, CELL)
+    } else if (tile === 'fuel_rail') {
+      addFuelRail(g)
+    } else if (tile === 'oil') {
+      addOilStation(g)
+    } else if (tile === 'travelator') {
+      addTravelator(g)
+    } else if (tile === 'skywalk') {
+      addSkywalk(g)
+    } else if (tile === 'mover') {
+      addPeopleMover(g)
     } else if (tile === 'hotel') {
       this.addHotelBuilding(g, opts.hotelClass ?? 'business')
     } else if (
@@ -1792,8 +1812,41 @@ export class World {
     this.syncGhost(game)
     this.syncEntities(game)
     this.syncSites(game)
+    this.followCameraCue(game)
+    this.syncMroDoors(game)
     this.wr.update(game, this.camera, dt)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** Advisor pan. One cue, then the player has the camera again. */
+  private followCameraCue(game: Game) {
+    const cue = game.consumeCameraCue()
+    if (!cue) return
+    const p = toWorld(cue.c, cue.r, 0)
+    this.pivot.set(p.x, 0, p.z)
+    this.placeCam()
+  }
+
+  /**
+   * Slide the hangar doors only when the camera is close and the sim is not in the 5× lite pass.
+   * Far buildings keep the shut pose they were built with.
+   */
+  private syncMroDoors(game: Game) {
+    if (this.liteMode) return
+    const cam = this.camera.position
+    for (const child of this.tilesGroup.children) {
+      const key = child.userData.cellKey as string | undefined
+      if (!key || !child.getObjectByName('mro-door')) continue
+      child.getWorldPosition(_doorPos)
+      if (cam.distanceTo(_doorPos) > CELL * 14) continue
+      const open = game.mroDoorOpen(key)
+      child.traverse((obj) => {
+        const door = obj as THREE.Mesh
+        if (!door.userData.mroDoor) return
+        const rest = typeof door.userData.restY === 'number' ? door.userData.restY : door.position.y
+        door.position.y = rest + open * CELL * 0.36
+      })
+    }
   }
 
   dispose() {
@@ -1821,6 +1874,7 @@ function clamp(n: number, a: number, b: number) {
 const _euler = new THREE.Euler()
 const _quat = new THREE.Quaternion()
 const _scale = new THREE.Vector3()
+const _doorPos = new THREE.Vector3()
 
 function flightLivery(game: Game, f: Game['flights'][number]): Livery {
   const a = game.airline(f.airline)

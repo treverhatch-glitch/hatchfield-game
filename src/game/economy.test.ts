@@ -10,6 +10,7 @@ import {
   loansAvailable,
   nextLoanBalance,
   payrollAmount,
+  settlePayroll,
 } from './economy.ts'
 import { Game } from './sim.ts'
 import { SANDBOX_CASH } from './types.ts'
@@ -51,6 +52,70 @@ describe('economy', () => {
     const early = loansAvailable(LOAN_PRODUCTS, 1, 0, false).map((p) => p.id)
     expect(early).toEqual(['micro', 'bridge'])
     expect(loansAvailable(LOAN_PRODUCTS, 1, 0, true)).toHaveLength(LOAN_PRODUCTS.length)
+  })
+
+  it('emits a payroll shortfall only when cash cannot cover the bill', () => {
+    expect(settlePayroll(2_000, 5_000)).toEqual({ due: 2_000, paid: 2_000, shortfall: 0 })
+    expect(settlePayroll(2_000, 750)).toEqual({ due: 2_000, paid: 750, shortfall: 1_250 })
+    expect(settlePayroll(2_000, 0)).toEqual({ due: 2_000, paid: 0, shortfall: 2_000 })
+    expect(settlePayroll(2_000, Number.NaN).shortfall).toBe(2_000)
+    expect(settlePayroll(2_000, -40).shortfall).toBe(2_000)
+    expect(settlePayroll(Number.NaN, 100).shortfall).toBe(0)
+    // A remainder that prints as $0 is not a shortfall row.
+    expect(settlePayroll(2_361, 2_360.6).shortfall).toBe(0)
+
+    const dollars = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+    const shortfallLine = (game: Game) => game.news.find((n) => /Payroll short|Payroll missed/.test(n.text))
+
+    const covered = new Game()
+    covered.sandbox = false
+    covered.clock = 180
+    const coveredDue = covered.payrollPreview()
+    covered.cash = coveredDue + 10_000
+    covered.tickPayroll(0)
+    expect(shortfallLine(covered)).toBeUndefined()
+    expect(covered.cash).toBe(10_000)
+    expect(covered.reputation).toBe(40)
+
+    const cents = new Game()
+    cents.sandbox = false
+    cents.clock = 180
+    const centsDue = cents.payrollPreview()
+    cents.cash = centsDue - 0.4
+    cents.tickPayroll(0)
+    expect(shortfallLine(cents)).toBeUndefined()
+    expect(cents.cash).toBeCloseTo(0)
+    expect(cents.reputation).toBe(40)
+
+    const partial = new Game()
+    partial.sandbox = false
+    partial.clock = 180
+    const due = partial.payrollPreview()
+    const paid = 400
+    partial.cash = paid
+    partial.tickPayroll(0)
+    const shortfall = due - paid
+    expect(shortfall).toBeGreaterThan(0)
+    expect(settlePayroll(due, paid).shortfall).toBe(shortfall)
+    const partialLine = shortfallLine(partial)
+    expect(partialLine?.text).toContain(dollars(shortfall))
+    expect(partialLine?.text).toContain(dollars(paid))
+    expect(partialLine?.text).not.toMatch(/\$0/)
+    expect(partial.cash).toBe(0)
+    expect(partial.reputation).toBe(36)
+
+    const broke = new Game()
+    broke.sandbox = false
+    broke.clock = 180
+    const brokeDue = broke.payrollPreview()
+    broke.cash = 0
+    broke.tickPayroll(0)
+    const brokeLine = shortfallLine(broke)
+    expect(brokeLine?.text).toMatch(/Payroll missed entirely/)
+    expect(brokeLine?.text).toContain(dollars(brokeDue))
+    expect(brokeLine?.text).not.toMatch(/paid \$0|short \$0|shortfall \$0/)
+    expect(settlePayroll(brokeDue, 0).shortfall).toBe(brokeDue)
+    expect(broke.cash).toBe(0)
   })
 
   it('prices a bare payroll line and scales it', () => {
