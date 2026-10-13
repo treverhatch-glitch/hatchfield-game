@@ -637,3 +637,7 @@ The plan is registered when the slot is written, so the first bodies are in the 
 **Media**
 
 - `docs/devlog/media/OCT13-showup.mov` — HUD hidden, passengers in the starter hall before the inbound is on the ground
+
+## Trunk merges — 13 Oct
+
+Audio (#2), branding (#3), features (#7), flow (#8), and the economy tech tree (#11) are already on this branch and add no files of their own. Those pull requests are closed. Contracts (#19) merged as pure logic in `src/contracts`. Its own note says the sim and the HUD are wired later, so the live timetable is unchanged. Crowd (#18) is in `src/crowd` with its tests. The prefab lane numbers on that branch are the old one-lane figures, so `terminal.ts` was not taken from it, and the steering is not hooked into the hall walk. Timetable (#20), advisor (#21), people (#13), and assets (#12) are still red on CI. The HUD tip (#4) has no common history with this branch, so it stays open. Vitest after this pass: 723 passing, 2 skipped.
