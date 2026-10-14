@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CATERING } from '../catering/defaults.ts'
 import { LogisticsSim, defaultConfig, type LogisticsEvent } from '../logistics/index.ts'
-import { CATER_STAND_PHASES, CREW_SHARES, type CrewRole, type CrewService, type CrewStepId } from './crewConfig.ts'
+import { CATER_STAND_PHASES, CREW_SHARES, type CrewService, type CrewStepId } from './crewConfig.ts'
 import { crewStepSpans, sampleCateringStand, sampleService } from './crewActions.ts'
 import { assembleCrew, placeLocal, wingAimLocal } from './present.ts'
 
@@ -9,13 +9,14 @@ const ORDER: CrewStepId[] = ['park', 'exit', 'walk', 'connect', 'work', 'disconn
 
 function jump(service: CrewService, start = 0, end = 10): number {
   let worst = 0
-  let prev: Record<CrewRole, { x: number; y: number; z: number }> | null = null
+  let prev: { driver: { x: number; y: number; z: number }; helper: { x: number; y: number; z: number } } | null = null
   let prevLink = 0
   let prevWork = 0
   for (let t = start; t <= end + 1e-9; t += 0.02) {
     const sample = sampleService(service, start, end, t)
     if (prev) {
       for (const member of sample.crew) {
+        if (member.role !== 'driver' && member.role !== 'helper') continue
         const was = prev[member.role]
         worst = Math.max(worst, Math.hypot(member.x - was.x, member.y - was.y, member.z - was.z))
       }
@@ -36,7 +37,7 @@ function jump(service: CrewService, start = 0, end = 10): number {
 }
 
 describe('crew step machine', () => {
-  it.each(['fuel', 'bags', 'catering'] as const)('%s steps run in order and fill the service window', (service) => {
+  it.each(['fuel', 'bags', 'catering', 'gpu', 'pushback', 'cleaning'] as const)('%s steps run in order and fill the service window', (service) => {
     const start = 4
     const end = 19
     const spans = crewStepSpans(service, start, end)
@@ -72,6 +73,9 @@ describe('crew step machine', () => {
     expect(jump('fuel')).toBeLessThan(0.55)
     expect(jump('bags')).toBeLessThan(0.55)
     expect(jump('catering')).toBeLessThan(0.55)
+    expect(jump('gpu')).toBeLessThan(0.55)
+    expect(jump('pushback')).toBeLessThan(0.55)
+    expect(jump('cleaning')).toBeLessThan(0.55)
   })
 
   it('returns the helper to the belt at both ends of the bag shuttle', () => {
@@ -158,6 +162,34 @@ describe('apron placement', () => {
     expect(pumping.jobs[0]?.step).toBe('work')
     expect(pumping.props.some((prop) => prop.kind === 'hose')).toBe(true)
     expect(pumping.props.find((prop) => prop.kind === 'bar')?.fill).toBeGreaterThan(0)
+
+    const loading = assembleCrew({
+      services: [{ id: 'bag-1', service: 'bags', x: 12, y: 6, heading: 0, start: 0, end: 10, now: 5 }],
+      catering: [],
+      metersPerUnit: 22,
+    })
+    const bags = loading.props.filter((prop) => prop.kind === 'bag')
+    expect(bags).toHaveLength(3)
+    const moving = bags.filter((prop) => prop.fill > 0.05 && prop.fill < 0.95)
+    expect(moving).toHaveLength(1)
+    expect(loading.props.some((prop) => prop.kind === 'belt')).toBe(true)
+    expect(loading.props.some((prop) => prop.kind === 'cart')).toBe(true)
+
+    const lifting = assembleCrew({
+      services: [{ id: 'cat-1', service: 'catering', x: 12, y: 6, heading: 0, start: 0, end: 10, now: 5 }],
+      catering: [],
+      metersPerUnit: 22,
+    })
+    const lift = lifting.props.find((prop) => prop.kind === 'lift')
+    expect(lift).toBeTruthy()
+    expect(lift && lift.alt).toBeGreaterThan(2)
+
+    const pushing = assembleCrew({
+      services: [{ id: 'tug-1', service: 'pushback', x: 12, y: 6, heading: 0, start: 0, end: 10, now: 5, aim: { x: -2, z: 6 } }],
+      catering: [],
+      metersPerUnit: 22,
+    })
+    expect(pushing.people.some((person) => person.role === 'walker')).toBe(true)
     const [a, b] = pumping.people
     expect(Math.hypot(a.c - b.c, a.r - b.r)).toBeGreaterThan(0.01)
   })

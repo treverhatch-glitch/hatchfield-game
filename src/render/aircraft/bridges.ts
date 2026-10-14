@@ -32,13 +32,20 @@ export function createBridges(airframeId: string, side: 1 | -1 = 1): THREE.Group
     const tunnel = new THREE.Mesh(unitBox(), shell)
     tunnel.name = 'bridge-tunnel'
     tunnel.scale.set(stop.cabW * 0.86, stop.cabH * 0.78, stop.tunnelM)
-    tunnel.position.set(stop.x, stop.cabY, side * (skin + 1.6 + stop.tunnelM / 2))
+    const anchor = side * (skin + 1.6)
+    tunnel.position.set(stop.x, stop.cabY, anchor + side * (stop.tunnelM / 2))
+    tunnel.userData.restScaleZ = stop.tunnelM
+    tunnel.userData.anchor = anchor
+    tunnel.userData.side = side
     root.add(tunnel)
     const footZ = side * (skin + 1.6 + stop.tunnelM)
     const column = new THREE.Mesh(unitCylinder(6), steel)
     column.name = 'bridge-column'
     column.scale.set(0.28, Math.max(0.4, stop.sillM), 0.28)
     column.position.set(stop.x, stop.sillM / 2, footZ)
+    column.userData.anchor = anchor
+    column.userData.restScaleZ = stop.tunnelM
+    column.userData.side = side
     root.add(column)
   }
   return root

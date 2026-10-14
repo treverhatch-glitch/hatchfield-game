@@ -4,10 +4,10 @@
  * fill that window and the turnaround clock does not move.
  */
 
-export type CrewService = 'fuel' | 'bags' | 'catering'
+export type CrewService = 'fuel' | 'bags' | 'catering' | 'gpu' | 'pushback' | 'cleaning' | 'pax'
 export type CrewStepId = 'park' | 'exit' | 'walk' | 'connect' | 'work' | 'disconnect' | 'board' | 'drive_off'
 export type CrewPose = 'seated' | 'walk' | 'reach' | 'idle'
-export type CrewRole = 'driver' | 'helper'
+export type CrewRole = 'driver' | 'helper' | 'walker' | 'pax'
 
 export interface StepShare {
   id: CrewStepId
@@ -45,6 +45,47 @@ export const CREW_SHARES: Record<CrewService, readonly StepShare[]> = {
     { id: 'board', share: 0.08 },
     { id: 'drive_off', share: 0.04 },
   ],
+  gpu: [
+    { id: 'park', share: 0.05 },
+    { id: 'exit', share: 0.08 },
+    { id: 'walk', share: 0.12 },
+    { id: 'connect', share: 0.12 },
+    { id: 'work', share: 0.42 },
+    { id: 'disconnect', share: 0.1 },
+    { id: 'board', share: 0.07 },
+    { id: 'drive_off', share: 0.04 },
+  ],
+  pushback: [
+    { id: 'park', share: 0.06 },
+    { id: 'exit', share: 0.1 },
+    { id: 'walk', share: 0.16 },
+    { id: 'connect', share: 0.1 },
+    { id: 'work', share: 0.34 },
+    { id: 'disconnect', share: 0.1 },
+    { id: 'board', share: 0.08 },
+    { id: 'drive_off', share: 0.06 },
+  ],
+  cleaning: [
+    { id: 'park', share: 0.04 },
+    { id: 'exit', share: 0.08 },
+    { id: 'walk', share: 0.12 },
+    { id: 'connect', share: 0.08 },
+    { id: 'work', share: 0.48 },
+    { id: 'disconnect', share: 0.08 },
+    { id: 'board', share: 0.08 },
+    { id: 'drive_off', share: 0.04 },
+  ],
+  /** Passengers are sampled by the boarding flow, not this step list. */
+  pax: [
+    { id: 'park', share: 0.04 },
+    { id: 'exit', share: 0.08 },
+    { id: 'walk', share: 0.12 },
+    { id: 'connect', share: 0.08 },
+    { id: 'work', share: 0.46 },
+    { id: 'disconnect', share: 0.08 },
+    { id: 'board', share: 0.1 },
+    { id: 'drive_off', share: 0.04 },
+  ],
 }
 
 /** Steps where the crew are inside the cab, so the renderer draws nothing. */
@@ -61,8 +102,11 @@ export const CREW_LOD = {
   dotCap: 80,
 } as const
 
-/** How many bag shuttles the helper walks during one load. */
+/** How many bags ride the belt, one at a time, during one load. */
 export const BAG_TRIPS = 3
+
+/** Passengers drawn for one bridge, stair, or bus transfer. */
+export const PAX_STREAM = 4
 
 /** Catering-module phases that happen at the aircraft, in order. */
 export const CATER_STAND_PHASES = [

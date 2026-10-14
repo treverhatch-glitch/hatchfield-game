@@ -3,6 +3,7 @@
  * no meshes. The renderer places these in world units.
  */
 import {
+  BAG_TRIPS,
   CREW_IN_CAB,
   type CaterStandPhase,
   type CrewPose,
@@ -41,7 +42,7 @@ export interface CrewPerson {
 
 export interface CrewProp {
   id: string
-  kind: 'hose' | 'bar' | 'belt' | 'bag' | 'cart'
+  kind: 'hose' | 'bar' | 'belt' | 'bag' | 'cart' | 'lift' | 'stairs'
   c: number
   r: number
   alt: number
@@ -138,9 +139,10 @@ export function placeLocal(
 
 function personOf(clock: CrewClock, member: CrewMemberPose, metersPerUnit: number, service: CrewService): CrewPerson {
   const at = placeLocal(clock, member, metersPerUnit)
+  const role = service === 'pushback' && member.role === 'helper' ? 'walker' : member.role
   return {
     id: `${clock.id}:${member.role}`,
-    role: member.role,
+    role,
     service,
     c: at.c,
     r: at.r,
@@ -178,12 +180,12 @@ function segmentProp(
 
 function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, aircraft?: AircraftAim) {
   if (!(clock.end > clock.start) || clock.now < clock.start || clock.now > clock.end) return
-  const aim = aircraft ? wingAimLocal(aircraft, clock, metersPerUnit) : clock.aim
+  const aim = clock.aim ?? (aircraft ? wingAimLocal(aircraft, clock, metersPerUnit) : undefined)
   const sample = sampleService(clock.service, clock.start, clock.end, clock.now, aim)
   out.jobs.push({ id: clock.id, service: clock.service, step: sample.step, work: sample.work })
   if (CREW_IN_CAB.has(sample.step)) return
   for (const member of sample.crew) out.people.push(personOf(clock, member, metersPerUnit, clock.service))
-  if (sample.link > 0.02 && clock.service === 'fuel') {
+  if (sample.link > 0.02 && (clock.service === 'fuel' || clock.service === 'gpu' || clock.service === 'pushback')) {
     const coupling = clampAim(aim)
     const reel = { x: -1.65, y: 1.05, z: 1.05 }
     const tip = {
@@ -202,21 +204,32 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
     })
   }
   if (sample.link > 0.02 && clock.service === 'bags') {
-    const cart = { x: -1.85, y: 0.55, z: 1.2 }
-    const hold = { x: -0.3, y: 0.7, z: 3.5 }
+    const cart = { x: -1.85, y: 0.45, z: 1.2 }
+    const hold = { x: -0.3, y: 1.85, z: 3.6 }
     const tip = {
       x: lerp(cart.x, hold.x, sample.link),
       y: lerp(cart.y, hold.y, sample.link),
       z: lerp(cart.z, hold.z, sample.link),
     }
     out.props.push(segmentProp(`${clock.id}:belt`, 'belt', clock, cart, tip, metersPerUnit, sample.link))
+    const parked = placeLocal(clock, { x: cart.x, y: 0.35, z: cart.z }, metersPerUnit)
+    out.props.push({
+      id: `${clock.id}:cart`,
+      kind: 'cart',
+      ...parked,
+      heading: clock.heading,
+      length: 1.4,
+      fill: 1,
+    })
     if (sample.step === 'work') {
-      for (let i = 0; i < 3; i++) {
-        const u = (sample.work + i / 3) % 1
+      const trip = Math.min(BAG_TRIPS - 1, Math.floor(sample.work * BAG_TRIPS))
+      const local = (sample.work * BAG_TRIPS) % 1
+      for (let i = 0; i < BAG_TRIPS; i++) {
+        const u = i < trip ? 1 : i === trip ? local : 0
         const bag = {
           x: lerp(cart.x, hold.x, u),
-          y: 0.85,
-          z: lerp(cart.z, hold.z, u),
+          y: lerp(0.85, 2.0, u),
+          z: lerp(cart.z, hold.z, u) + (u === 0 ? (i - 1) * 0.35 : 0),
         }
         const at = placeLocal(clock, bag, metersPerUnit)
         out.props.push({
@@ -227,20 +240,35 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
           alt: at.alt,
           heading: clock.heading,
           length: 0.55,
-          fill: i / 2,
+          fill: u,
         })
       }
     }
   }
   if (clock.service === 'catering' && (sample.step === 'connect' || sample.step === 'work' || sample.step === 'disconnect')) {
-    const y = sample.step === 'work' ? 2.65 : sample.step === 'connect' ? 2.65 * sample.link : 2.65 * sample.link
+    const lift = sample.step === 'work' ? 1 : sample.link
+    const platformY = 0.45 + lift * 2.35
+    out.props.push({
+      id: `${clock.id}:lift`,
+      kind: 'lift',
+      ...placeLocal(clock, { x: -1.2, y: platformY, z: -1.15 }, metersPerUnit),
+      heading: clock.heading,
+      length: 1.8,
+      fill: lift,
+    })
+    const intoDoor = sample.step === 'work' ? sample.work : 0
+    const cart = {
+      x: lerp(-1.2, -2.7, intoDoor),
+      y: lerp(platformY, 2.7, intoDoor),
+      z: lerp(-1.15, -1.7, intoDoor),
+    }
     out.props.push({
       id: `${clock.id}:cart`,
       kind: 'cart',
-      ...placeLocal(clock, { x: -1.3, y: 0.4 + y * 0.35, z: -1.1 }, metersPerUnit),
-      heading: clock.heading,
+      ...placeLocal(clock, cart, metersPerUnit),
+      heading: clock.heading + Math.PI,
       length: 0.8,
-      fill: sample.work,
+      fill: intoDoor,
     })
   }
 }

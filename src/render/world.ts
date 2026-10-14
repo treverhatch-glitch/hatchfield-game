@@ -110,6 +110,25 @@ function wu(meters: number): number {
   return meters * WORLD_PER_METER
 }
 
+/** Grow or fold a jet bridge. The cab stays on the door; the tunnel reaches the terminal. */
+function applyBridge(root: THREE.Object3D, extend: number) {
+  const u = Math.min(1, Math.max(0, extend))
+  root.traverse((obj) => {
+    if (obj.name !== 'bridge-tunnel' && obj.name !== 'bridge-column') return
+    const rest = obj.userData.restScaleZ
+    const anchor = obj.userData.anchor
+    const side = obj.userData.side === -1 ? -1 : 1
+    if (typeof rest !== 'number' || typeof anchor !== 'number') return
+    obj.visible = u > 0.04
+    if (obj.name === 'bridge-tunnel') {
+      obj.scale.z = rest * Math.max(0.02, u)
+      obj.position.z = anchor + side * (obj.scale.z / 2)
+    } else {
+      obj.position.z = anchor + side * rest * u
+    }
+  })
+}
+
 /** Nearest terminal cell, or null when the stand is too far for a bridge. */
 function nearestTerminal(game: Game, stand: Vec): Vec | null {
   let best: Vec | null = null
@@ -1789,7 +1808,10 @@ export class World {
         updateAircraft(mesh, pose.gearDown)
       }
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
-      const jetway = f.craft !== 'helo' && f.phase === 'parked' && game.standAccessAt(cell) === 'jetway'
+      const jetway =
+        f.craft !== 'helo' &&
+        (f.phase === 'deboard' || f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') &&
+        game.standAccessAt(cell) === 'jetway'
       const bridges = mesh.getObjectByName('bridges')
       if (jetway) {
         const term = nearestTerminal(game, cell)
@@ -1801,6 +1823,8 @@ export class World {
       } else if (bridges) {
         mesh.remove(bridges)
       }
+      const docked = mesh.getObjectByName('bridges')
+      if (docked) applyBridge(docked, game.bridgeExtend(f.id))
       mesh.scale.setScalar(game.selectedFlight === f.id ? 1.06 : 1)
     }
     this.stepClimbGhosts(
@@ -2132,6 +2156,7 @@ export class World {
 
     const seenP = new Set<string>()
     for (const p of game.people) {
+      if ((p.job === 'arrive' || p.job === 'board') && game.paxPicture(p.flightId)) continue
       seenP.add(p.id)
       let mesh = this.people.get(p.id)
       if (!mesh) {

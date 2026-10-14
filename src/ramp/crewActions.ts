@@ -114,6 +114,14 @@ function caterGalley(): Pt {
   return { x: -2.85, y: 2.8, z: -1.75, pose: 'reach' }
 }
 
+function tugNose(role: CrewRole): Pt {
+  return { x: 1.15, y: 0, z: role === 'driver' ? 0.4 : 1.15, pose: 'idle' }
+}
+
+function cabin(role: CrewRole): Pt {
+  return { x: -0.2, y: 2.65, z: role === 'driver' ? 0.4 : -0.4, pose: 'walk' }
+}
+
 const LIFT_Y = 2.65
 
 function track(service: CrewService, step: CrewStepId, role: CrewRole, aim: { x: number; z: number }): Pt[] {
@@ -136,6 +144,35 @@ function track(service: CrewService, step: CrewStepId, role: CrewRole, aim: { x:
     if (step === 'work') return [b, b]
     return [b, d, s]
   }
+  if (service === 'gpu') {
+    const w = fuelWing(role, aim)
+    if (step === 'park' || step === 'drive_off') return [s, s]
+    if (step === 'exit') return [s, d]
+    if (step === 'walk') return [d, w]
+    if (step === 'connect' || step === 'work' || step === 'disconnect') return [w, w]
+    return [w, d, s]
+  }
+  if (service === 'pushback') {
+    const nose = tugNose(role)
+    const wing = role === 'driver' ? nose : { x: aim.x, y: 0, z: aim.z, pose: 'walk' as const }
+    if (step === 'park' || step === 'drive_off') return [s, s]
+    if (step === 'exit') return [s, d]
+    if (step === 'walk') return [d, wing]
+    if (step === 'connect' || step === 'work' || step === 'disconnect') return [wing, wing]
+    return [wing, d, s]
+  }
+  if (service === 'cleaning') {
+    const stepDoor = { x: aim.x, y: 0, z: aim.z, pose: 'walk' as const }
+    const inside = cabin(role)
+    if (step === 'park' || step === 'drive_off') return [s, s]
+    if (step === 'exit') return [s, d]
+    if (step === 'walk') return [d, stepDoor]
+    if (step === 'connect') return [stepDoor, inside]
+    if (step === 'work') return [inside, inside]
+    if (step === 'disconnect') return [inside, stepDoor]
+    return [stepDoor, d, s]
+  }
+  if (service === 'pax') return [s, s]
   const ground = caterPad(role, 0)
   const high = caterPad(role, LIFT_Y)
   if (step === 'park' || step === 'drive_off') return [s, s]
@@ -149,7 +186,7 @@ function track(service: CrewService, step: CrewStepId, role: CrewRole, aim: { x:
 
 function faceFor(service: CrewService, step: CrewStepId, aim: { x: number; z: number }): number {
   if (step === 'park' || step === 'drive_off' || step === 'exit' || step === 'board') return 0
-  if (service === 'fuel') return Math.atan2(aim.z, aim.x)
+  if (service === 'fuel' || service === 'gpu' || service === 'pushback' || service === 'cleaning') return Math.atan2(aim.z, aim.x)
   if (service === 'bags') return Math.atan2(3.4, -0.3)
   return Math.PI
 }
@@ -257,6 +294,16 @@ export function sampleService(
         ...lerpPt(home, door, swing),
         heading: Math.PI,
         pose: 'reach',
+      }
+    }
+    if (service === 'cleaning' && span.id === 'work') {
+      const swing = (1 - Math.cos(u * Math.PI * 4)) / 2
+      const inside = cabin(role)
+      const outside = { x: coupling.x, y: 0, z: coupling.z, pose: 'walk' as const }
+      placed = {
+        ...lerpPt(inside, outside, swing),
+        heading: Math.atan2(outside.z - inside.z, outside.x - inside.x),
+        pose: 'walk',
       }
     }
     return { role, x: placed.x, y: placed.y, z: placed.z, heading: placed.heading, pose: placed.pose }

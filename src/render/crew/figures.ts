@@ -27,14 +27,23 @@ interface PartDef {
 
 const HI_VIS = 0xf5c400
 const HI_VIS_B = 0xf97316
+const WALKER = 0x16a34a
+const PAX = 0x2563eb
 const NAVY = 0x1e293b
 const SKIN = 0xd7a57a
 
+function vest(role: CrewRole): number {
+  if (role === 'pax') return PAX
+  if (role === 'walker') return WALKER
+  if (role === 'driver') return HI_VIS
+  return HI_VIS_B
+}
+
 const PARTS: PartDef[] = [
-  { name: 'torso', w: 0.4, h: 0.56, d: 0.22, pivot: [0, 1.18, 0], hang: 0, color: (role) => (role === 'driver' ? HI_VIS : HI_VIS_B) },
+  { name: 'torso', w: 0.4, h: 0.56, d: 0.22, pivot: [0, 1.18, 0], hang: 0, color: vest },
   { name: 'head', w: 0.22, h: 0.24, d: 0.22, pivot: [0, 1.62, 0], hang: 0, color: () => SKIN },
-  { name: 'armL', w: 0.1, h: 0.5, d: 0.1, pivot: [-0.26, 1.4, 0], hang: 0.25, color: (role) => (role === 'driver' ? HI_VIS : HI_VIS_B) },
-  { name: 'armR', w: 0.1, h: 0.5, d: 0.1, pivot: [0.26, 1.4, 0], hang: 0.25, color: (role) => (role === 'driver' ? HI_VIS : HI_VIS_B) },
+  { name: 'armL', w: 0.1, h: 0.5, d: 0.1, pivot: [-0.26, 1.4, 0], hang: 0.25, color: vest },
+  { name: 'armR', w: 0.1, h: 0.5, d: 0.1, pivot: [0.26, 1.4, 0], hang: 0.25, color: vest },
   { name: 'legL', w: 0.12, h: 0.78, d: 0.12, pivot: [-0.1, 0.86, 0], hang: 0.39, color: () => NAVY },
   { name: 'legR', w: 0.12, h: 0.78, d: 0.12, pivot: [0.1, 0.86, 0], hang: 0.39, color: () => NAVY },
 ]
@@ -45,6 +54,8 @@ const PROP_COLOR: Record<CrewProp['kind'], number> = {
   belt: 0x4b5563,
   bag: 0x6a4328,
   cart: 0xd8dee6,
+  lift: 0xe7edf2,
+  stairs: 0xc5ced6,
 }
 
 const _yaw = new THREE.Quaternion()
@@ -163,7 +174,7 @@ export class CrewFigures {
       _person.compose(_pos, _yaw, _scale)
       if (which === 'dot') {
         this.dots.setMatrixAt(dots, _person)
-        this.dots.setColorAt(dots, _color.setHex(row.person.role === 'driver' ? HI_VIS : HI_VIS_B))
+        this.dots.setColorAt(dots, _color.setHex(vest(row.person.role)))
         dots++
         continue
       }
@@ -235,9 +246,9 @@ export class CrewFigures {
         continue
       }
       if (n >= this.cap) continue
-      const long = prop.kind === 'bag' || prop.kind === 'cart' ? prop.length : Math.max(0.15, prop.length)
-      const tall = prop.kind === 'bag' ? 0.4 : prop.kind === 'cart' ? 0.7 : prop.kind === 'hose' || prop.kind === 'belt' ? 0.18 : 0.08
-      const wide = prop.kind === 'bag' ? 0.32 : prop.kind === 'belt' ? 0.55 : prop.kind === 'cart' ? 0.55 : prop.kind === 'hose' ? 0.18 : 0.08
+      const long = prop.kind === 'bag' || prop.kind === 'cart' || prop.kind === 'lift' ? prop.length : prop.kind === 'stairs' ? 1.1 : Math.max(0.15, prop.length)
+      const tall = prop.kind === 'bag' ? 0.4 : prop.kind === 'cart' ? 0.7 : prop.kind === 'lift' ? 0.18 : prop.kind === 'stairs' ? prop.length : prop.kind === 'hose' || prop.kind === 'belt' ? 0.18 : 0.08
+      const wide = prop.kind === 'bag' ? 0.32 : prop.kind === 'belt' ? 0.55 : prop.kind === 'cart' ? 0.55 : prop.kind === 'lift' ? 1.3 : prop.kind === 'stairs' ? 2.4 : prop.kind === 'hose' ? 0.18 : 0.08
       _pos.set(at.x, at.y, at.z)
       _yaw.setFromAxisAngle(_up, -prop.heading)
       _scale.set(WORLD_PER_METER * long, WORLD_PER_METER * tall, WORLD_PER_METER * wide)
