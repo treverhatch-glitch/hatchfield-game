@@ -7246,8 +7246,10 @@ export class Game {
   }
 
   /**
-   * Bright walkers so the hall reads as open on day 1, before a flight releases.
+   * Walkers so the hall reads as open on day 1, before a flight releases.
    * They only pace the curb-to-gate path. Cargo kits have no hall to fill.
+   * Shirts stay in a natural clothing range: neon orange and amber read as
+   * flying dots from the airport camera on a phone.
    */
   private seedDayOneCrowd() {
     const fit = this.fits[0]
@@ -7255,18 +7257,18 @@ export class Game {
     const hallId = this.hallKey(fit)
     const path: HallNode[] = ['entrance', 'checkin', 'security', 'shop', 'gate']
     const shirts = [
-      '#e23b2f',
-      '#3ec6ff',
-      '#ffb703',
-      '#7c5cff',
-      '#3dd68c',
-      '#ff6b9a',
-      '#fb923c',
-      '#60a5fa',
-      '#f472b6',
-      '#a3e635',
-      '#f8fafc',
-      '#f97316',
+      '#2c3e50',
+      '#5c4636',
+      '#3d5c4a',
+      '#7a3e3e',
+      '#cfc6b8',
+      '#4e5b38',
+      '#6b5a48',
+      '#3e5160',
+      '#8a6a52',
+      '#243044',
+      '#5e5648',
+      '#6d7d72',
     ]
     const tags: PaxTag[] = [
       'family',
