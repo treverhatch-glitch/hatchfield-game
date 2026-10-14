@@ -8,6 +8,7 @@ import {
   SECURITY_INCIDENT_SLIDER_FLOOR,
 } from './catalog.ts'
 import { loanInstallment, settleLoanTick } from './economy.ts'
+import { financeBreakdown, ledgerBalances } from './financeBreakdown.ts'
 import { Game } from './sim.ts'
 import type { PendingEmergency, ScheduleSlot } from './types.ts'
 
@@ -130,8 +131,29 @@ describe('cash and the bank ledger tell the same story', () => {
     expect(game.charge(5_000)).toBe(300)
     expect(game.cash).toBe(CASH_DEBT_FLOOR)
     expect(game.bank.balance).toBe(before - 300)
+    expect(game.bank.ledger().byCategory.penalties).toBe(-900)
     expect(game.charge(5_000)).toBe(0)
+    expect(game.cash).toBe(CASH_DEBT_FLOOR)
     expect(game.bank.balance).toBe(bank0 - 1_400)
+    const unpaid = game.bank.ledger().entries.filter((entry) => entry.meta.unpaid)
+    expect(unpaid.map((entry) => entry.amount)).toEqual([-4_700, -5_000])
+    expect(ledgerBalances(game.bank.ledger())).toBe(true)
+    const skipped = financeBreakdown(game.bank.ledger()).find((line) => line.unpaid && line.category === 'penalties')
+    expect(skipped).toMatchObject({ label: 'Penalties unpaid', amount: -9_700 })
+    expect(skipped?.why).toMatch(/Not taken from cash/)
+  })
+
+  it('does not book a sandbox bill as unpaid', () => {
+    const game = fresh()
+    game.sandbox = true
+    const cash = game.cash
+    const balance = game.bank.balance
+    const lines = game.bank.ledger().entries.length
+    expect(game.charge(5_000)).toBe(0)
+    expect(game.cash).toBe(cash)
+    expect(game.bank.balance).toBe(balance)
+    expect(game.bank.ledger().entries).toHaveLength(lines)
+    expect(game.bank.ledger().entries.some((entry) => entry.meta.unpaid)).toBe(false)
   })
 
   it('keeps cash minus bank balance constant over game days with no player spending', () => {
@@ -155,6 +177,22 @@ describe('cash and the bank ledger tell the same story', () => {
 })
 
 describe('a short payroll day', () => {
+  it('journals the payroll cash cannot pay without moving the bank', () => {
+    const game = fresh()
+    game.cash = -8_000
+    const before = game.bank.balance
+    const beforeCount = game.bank.ledger().entries.length
+    game.clock = 181
+    game.tickPayroll(0)
+    const added = game.bank.ledger().entries.slice(beforeCount)
+    const paid = added.filter((entry) => !entry.meta.unpaid).reduce((sum, entry) => sum + entry.amount, 0)
+    const unpaidPayroll = added.filter((entry) => entry.meta.unpaid && entry.category === 'payroll')
+    expect(unpaidPayroll.length).toBeGreaterThan(0)
+    expect(added.some((entry) => entry.category === 'payroll' && !entry.meta.unpaid)).toBe(false)
+    expect(game.bank.balance - before).toBeCloseTo(paid, 5)
+    expect(game.bank.ledger().byCategory.payroll ?? 0).toBe(0)
+  })
+
   it('keeps debt as debt and stops the slider cut above the threat-exposure line', () => {
     const game = fresh()
     game.buildStarterKit()

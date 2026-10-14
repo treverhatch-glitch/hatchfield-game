@@ -52,6 +52,31 @@ describe('shared bank', () => {
     expect(bank.ledger().entries[0].amount).toBe(500)
     expect(new Bank(0, bank.snapshot()).ledger()).toEqual(bank.ledger())
   })
+
+  it('records an unpaid bill without moving the balance or category totals', () => {
+    const bank = new Bank(1_000)
+    bank.post('penalties', -300, { simMinutes: 10 })
+    bank.post('penalties', -4_700, { simMinutes: 11, unpaid: true, label: 'unpaid' })
+    bank.post('payroll', -800, { simMinutes: 1_500, unpaid: true })
+    const ledger = bank.ledger()
+    expect(ledger.balance).toBe(700)
+    expect(ledger.totalExpense).toBe(300)
+    expect(ledger.byCategory).toEqual({ penalties: -300 })
+    expect(ledger.entries.filter((entry) => entry.meta.unpaid).map((entry) => entry.amount)).toEqual([-4_700, -800])
+    expect(ledger.entries.filter((entry) => entry.meta.unpaid).every((entry) => entry.balanceAfter === 700)).toBe(true)
+
+    const day = bank.ledgerForGameDay(0)
+    expect(day.net).toBe(-300)
+    expect(day.byCategory).toEqual({ penalties: -300 })
+    expect(day.entries.some((entry) => entry.meta.unpaid)).toBe(true)
+
+    expect(new Bank(0, bank.snapshot()).ledger()).toEqual(ledger)
+    expect(bank.retainFrom(1_440)).toBe(2)
+    const kept = bank.ledger()
+    expect(kept.balance).toBe(700)
+    expect(kept.byCategory).toEqual({ penalties: -300 })
+    expect(kept.entries.map((entry) => entry.amount)).toEqual([-800])
+  })
 })
 
 describe('daily operating balance', () => {

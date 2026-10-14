@@ -29,7 +29,7 @@ describe('land plots and holding tax, 30 days', () => {
 
     const holdingPosted = g.bank
       .ledger()
-      .entries.filter((e) => e.category === 'building_upkeep').length
+      .entries.filter((e) => e.category === 'land_holding').length
     expect(holdingPosted).toBeGreaterThanOrEqual(25)
   })
 })

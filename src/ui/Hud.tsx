@@ -1219,9 +1219,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       {financeBreakdown(game.bank.ledger()).length ? (
                         financeBreakdown(game.bank.ledger()).map((line) => (
                           <p
-                            key={line.category}
+                            key={`${line.category}${line.unpaid ? '-unpaid' : ''}`}
                             className="muted eco-line"
-                            data-testid={`finance-line-${line.category}`}
+                            data-testid={`finance-line-${line.category}${line.unpaid ? '-unpaid' : ''}`}
                             title={line.why}
                           >
                             {line.label} {money(line.amount)}{' '}

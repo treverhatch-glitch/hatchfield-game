@@ -84,9 +84,10 @@ describe('live hub links', () => {
     game.clock = 179
     game.tick(2)
     const linkUpkeep = CONNECTIVITY_CATALOG.people_mover.upkeepPerDay
-    // Landside upkeep is booked too since #192, so the line is at least holding + link,
+    // Day-close upkeep and land holding are separate lines. The link is inside upkeep,
     // and the ledger moved exactly with the cash that left.
-    expect(game.bank.ledger().byCategory.building_upkeep ?? 0).toBeLessThan(-(game.dailyHoldingQuote() + linkUpkeep))
+    expect(game.bank.ledger().byCategory.land_holding ?? 0).toBeLessThan(0)
+    expect(game.bank.ledger().byCategory.building_upkeep ?? 0).toBeLessThan(-linkUpkeep)
     expect(game.cash - game.bank.balance).toBeCloseTo(gap, 6)
     expect(Number.isFinite(game.cash)).toBe(true)
     expect(game.bagsLost).toBe(0)

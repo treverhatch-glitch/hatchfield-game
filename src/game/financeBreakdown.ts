@@ -7,6 +7,8 @@ export interface FinanceLine {
   amount: number
   /** Hover text: why this line moved. */
   why: string
+  /** The debt floor (or a short payroll or loan tick) skipped this bill. Cash did not move. */
+  unpaid?: boolean
 }
 
 const COPY: Record<MoneyCategory, { label: string; why: string }> = {
@@ -100,11 +102,15 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   },
   payroll: {
     label: 'Payroll',
-    why: 'Once per game day: the staffing floor, or the share of that day’s operating income, whichever is higher. The payroll line shows this bill.',
+    why: 'Once per game day: the staffing floor, or the share of that day’s operating income, whichever is higher. A short day pays what cash allows.',
   },
   building_upkeep: {
     label: 'Upkeep',
-    why: 'Daily upkeep of buildings, links, housing, and the plot. Idle lanes still bill.',
+    why: 'Day-close upkeep of the hall, buildings, links, and housing. Land tax and insurance are the land holding line. Idle lanes still bill.',
+  },
+  land_holding: {
+    label: 'Land holding',
+    why: 'Plot tax, insurance, utilities, and licences. Plot upkeep itself is only part of this bill. Idle land still costs money.',
   },
   vehicle_upkeep: {
     label: 'Vehicle upkeep',
@@ -120,7 +126,7 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   },
   loan_interest: {
     label: 'Loan interest',
-    why: 'Interest taken on the loan clock. Unpaid interest is added to the balance, and the owe figure is that balance.',
+    why: 'Interest taken on the loan clock. Interest cash could not cover is added to the balance, and the owe figure is that balance.',
   },
   loan_repayment: {
     label: 'Loan principal',
@@ -128,7 +134,35 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   },
   penalties: {
     label: 'Penalties',
-    why: 'Fines, failed asks, and breaches. Only the cash that was actually taken is posted.',
+    why: 'Other fines: abandon, overstay, fire, and breaches that are not a named shock, task, refuse, inbound, connection, cargo miss, or crash.',
+  },
+  security_shock: {
+    label: 'Security shocks',
+    why: 'A security failure, or another fine booked on that same shock. Private hard and soft fines differ; a public field is higher.',
+  },
+  task_miss: {
+    label: 'Task misses',
+    why: 'An airline field ask expired unmet.',
+  },
+  emergency_refuse: {
+    label: 'Refused emergencies',
+    why: 'A divert or tanker the field refused or let time out. A host the field could not take is not this fine.',
+  },
+  inbound_fine: {
+    label: 'Inbound fines',
+    why: 'An inbound ask that was refused. An expired toast is not billed.',
+  },
+  missed_connection: {
+    label: 'Missed connections',
+    why: 'A missed connection: the rebook fee, or a hotel night when the field has beds.',
+  },
+  cargo_miss: {
+    label: 'Cargo misses',
+    why: 'A cargo volume window closed short of the target.',
+  },
+  crash_fine: {
+    label: 'Crash fine',
+    why: 'The crash write-off, capped. A missing ambulance is a separate penalty.',
   },
   city_levy: {
     label: 'City levy',
@@ -152,6 +186,23 @@ export function financeBreakdown(ledger: BankLedger): FinanceLine[] {
     if (!amount) continue
     const copy = COPY[category]
     lines.push({ category, label: copy.label, amount, why: copy.why })
+  }
+  const skipped: Partial<Record<MoneyCategory, number>> = {}
+  for (const entry of ledger.entries) {
+    if (!entry.meta.unpaid || !entry.amount) continue
+    skipped[entry.category] = (skipped[entry.category] ?? 0) + entry.amount
+  }
+  for (const category of MONEY_CATEGORIES) {
+    const amount = skipped[category] ?? 0
+    if (!amount) continue
+    const copy = COPY[category]
+    lines.push({
+      category,
+      label: `${copy.label} unpaid`,
+      amount,
+      why: `Not taken from cash. ${copy.why}`,
+      unpaid: true,
+    })
   }
   return lines
 }

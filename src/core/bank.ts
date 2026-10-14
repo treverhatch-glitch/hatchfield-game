@@ -26,12 +26,20 @@ export const MONEY_CATEGORIES = [
   'advertising',
   'payroll',
   'building_upkeep',
+  'land_holding',
   'vehicle_upkeep',
   'fuel_purchase',
   'meal_production',
   'loan_interest',
   'loan_repayment',
   'penalties',
+  'security_shock',
+  'task_miss',
+  'emergency_refuse',
+  'inbound_fine',
+  'missed_connection',
+  'cargo_miss',
+  'crash_fine',
   'city_levy',
   'share_purchases',
   'staff_hiring',
@@ -66,6 +74,11 @@ export interface BankPostMeta {
   source?: string
   sourceId?: string
   label?: string
+  /**
+   * The bill was not taken from cash. The line stays on the journal for the
+   * finance panel and does not move the balance, income, expense, or category totals.
+   */
+  unpaid?: boolean
   details?: Readonly<Record<string, string | number | boolean | null>>
 }
 
@@ -138,15 +151,17 @@ export class Bank {
     if ((direction === 'income' && amount < 0) || (direction === 'expense' && amount > 0)) {
       throw new Error(`${category} is an ${direction} category but received ${amount}`)
     }
+    const unpaid = meta.unpaid === true
     const entry: BankEntry = {
       id: this.nextEntryId++,
       category,
       amount,
       direction,
       meta: cloneMeta(meta),
-      balanceAfter: this.currentBalance + amount,
+      balanceAfter: this.currentBalance,
     }
-    this.apply(entry)
+    if (unpaid) this.records.push(entry)
+    else this.apply(entry)
     if (this.listeners.length > 0) {
       const ledger = this.ledger()
       for (const listener of this.listeners) listener(cloneEntry(entry), ledger)
@@ -209,7 +224,12 @@ export class Bank {
   private restore(entry: BankEntry): void {
     if (!MONEY_CATEGORIES.includes(entry.category)) throw new Error(`Unknown money category: ${entry.category}`)
     if (entry.id >= this.nextEntryId) this.nextEntryId = entry.id + 1
-    this.apply({ ...cloneEntry(entry), balanceAfter: this.currentBalance + entry.amount })
+    const cloned = cloneEntry(entry)
+    if (cloned.meta.unpaid) {
+      this.records.push({ ...cloned, balanceAfter: this.currentBalance })
+      return
+    }
+    this.apply({ ...cloned, balanceAfter: this.currentBalance + entry.amount })
   }
 
   private apply(entry: BankEntry): void {
@@ -267,6 +287,7 @@ function ledgerFromEntries(openingBalance: number, entries: readonly BankEntry[]
   let totalExpense = 0
   let balance = openingBalance
   for (const entry of entries) {
+    if (entry.meta.unpaid) continue
     balance += entry.amount
     if (entry.amount > 0) totalIncome += entry.amount
     else totalExpense += -entry.amount

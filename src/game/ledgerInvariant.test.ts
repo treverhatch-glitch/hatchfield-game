@@ -5,6 +5,7 @@ import { ledgerBalances } from './financeBreakdown.ts'
 import { SMALL_FIELD_FEE_FACTOR } from './economyTuning.ts'
 import { loanFeeForAmount } from './economy.ts'
 import {
+  FIELD_TASK_FAIL_FINE,
   LOAN_PRODUCTS,
   POLICE_COST,
   RUNWAY_PREFAB_COST,
@@ -127,7 +128,9 @@ describe('ledger invariants', () => {
     expect(game.bank.ledger().byCategory.retail_sales).toBeGreaterThan(0)
     expect(game.cash).toBeCloseTo(game.bank.balance, 5)
     const ledger = game.bank.ledger()
-    const signed = ledger.openingBalance + ledger.entries.reduce((sum, entry) => sum + entry.amount, 0)
+    const signed =
+      ledger.openingBalance +
+      ledger.entries.reduce((sum, entry) => sum + (entry.meta.unpaid ? 0 : entry.amount), 0)
     expect(signed).toBeCloseTo(ledger.balance, 5)
     expect(ledgerBalances(ledger)).toBe(true)
   })
@@ -160,5 +163,17 @@ describe('ledger invariants', () => {
     game.buildFieldTask()
     expect(game.cash).toBe(cash - POLICE_COST)
     expect(game.cash).toBeCloseTo(game.bank.balance, 5)
+  })
+
+  it('books a failed field ask on its own line', () => {
+    const game = live()
+    ask(game, 'ask-miss', 'helipad')
+    game.fieldTask!.deadline = game.clock
+    const cash = game.cash
+    game.tickFieldTask(0)
+    expect(game.fieldTask).toBeNull()
+    expect(game.cash).toBe(cash - FIELD_TASK_FAIL_FINE)
+    expect(game.bank.ledger().byCategory.task_miss).toBe(-FIELD_TASK_FAIL_FINE)
+    expect(game.bank.ledger().byCategory.penalties ?? 0).toBe(0)
   })
 })

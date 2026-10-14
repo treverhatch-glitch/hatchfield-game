@@ -2,6 +2,7 @@
  * Player command API. Every method delegates to the Game call the HUD already uses.
  * Bot modules import this file and nothing from the renderer.
  */
+import type { MoneyCategory } from '../core/bank.ts'
 import { MIN_RUNWAY, RESEARCH_NODES, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE } from '../game/catalog.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
@@ -15,6 +16,17 @@ import { queueAtNode } from '../terminalplay/queues.ts'
 import { OPS_TRICKLE_PER_SEC } from '../wave3/config.ts'
 import { roomRate as wave3RoomRate, techNode } from '../wave3/research.ts'
 import type { AirportView, CommandResult, PlayerCommands, Probe, ResearchPools, SystemsBooks } from './types.ts'
+
+const FINE_CATEGORIES = [
+  'penalties',
+  'security_shock',
+  'task_miss',
+  'emergency_refuse',
+  'inbound_fine',
+  'missed_connection',
+  'cargo_miss',
+  'crash_fine',
+] as const satisfies readonly MoneyCategory[]
 
 const LANDED = new Set([
   'landing',
@@ -268,9 +280,11 @@ class GamePlayer implements PlayerCommands {
       .map(([category, amount]) => ({ category, amount: Math.round(amount) }))
       .sort((a, b) => a.amount - b.amount)
     const fieldAskFines = ledger.entries.filter(
-      (entry) => entry.category === 'penalties' && entry.amount === -FIELD_TASK_FAIL_FINE,
+      (entry) => entry.category === 'task_miss' && !entry.meta.unpaid && entry.amount === -FIELD_TASK_FAIL_FINE,
     ).length
-    const penaltyTotal = Math.round(ledger.byCategory.penalties ?? 0)
+    const penaltyTotal = Math.round(
+      FINE_CATEGORIES.reduce((sum, category) => sum + (ledger.byCategory[category] ?? 0), 0),
+    )
     const ids = new Set<string>(game.signed)
     for (const id of Object.keys(game.wave3.state.relations.rows)) ids.add(id)
     const relations = [...ids]

@@ -120,7 +120,7 @@ describe('hub wiring', () => {
     expect(game.standingOf('harbor')).toBeLessThan(standing)
     expect(game.missedConnections).toBe(1)
     expect(game.bagsLost).toBe(0)
-    expect(game.bank.ledger().byCategory.penalties).toBe(-REBOOK_FEE)
+    expect(game.bank.ledger().byCategory.missed_connection).toBe(-REBOOK_FEE)
 
     game.hotelLevel = 1
     const hotelCash = game.cash

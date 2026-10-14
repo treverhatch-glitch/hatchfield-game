@@ -2063,7 +2063,7 @@ export class Game {
     }
     if (this.clock >= t.deadline) {
       const a = this.airline(t.airline)
-      this.charge(FIELD_TASK_FAIL_FINE)
+      this.charge(FIELD_TASK_FAIL_FINE, 'task_miss')
       this.adjustHeat(t.airline, FIELD_TASK_HEAT_FAIL)
       this.reputation = Math.max(0, this.reputation - 1.5)
       this.pushNews(
@@ -2387,7 +2387,7 @@ export class Game {
     if (this.clock >= this.cargoVolume.deadline) {
       const j = this.cargoVolume
       const a = this.airline(j.airline)
-      this.charge(CARGO_VOLUME_FAIL_FINE)
+      this.charge(CARGO_VOLUME_FAIL_FINE, 'cargo_miss')
       this.adjustHeat(j.airline, -5)
       this.pushNews(
         `${a.name} volume missed — ${j.delivered}/${j.targetUnits}u. Fine ${moneyLeft(CARGO_VOLUME_FAIL_FINE)} · On-time dips.`,
@@ -5106,13 +5106,13 @@ export class Game {
 
   shockStock(reason: string, mult: number, fine: number) {
     if (!this.public) {
-      this.charge(fine)
+      this.charge(fine, 'security_shock')
       this.pushNews(reason, 'bad')
       return
     }
     const before = this.sharePrice
     this.sharePrice = Math.max(1.5, Math.round(this.sharePrice * mult * 100) / 100)
-    this.charge(fine)
+    this.charge(fine, 'security_shock')
     this.reputation = Math.max(0, this.reputation - 10)
     const paper = Math.round((this.sharePrice - before) * this.sharesOwned)
     this.pushNews(
@@ -5683,12 +5683,16 @@ export class Game {
 
   /**
    * Fines / bills — may go into debt, but floors so the tape can't spiral forever.
-   * Only what cash actually absorbed is booked, so the bank ledger moves with cash.
-   * Returns the amount taken.
+   * Cash taken is a normal ledger line. The remainder that does not fit above the
+   * debt floor is an unpaid line and does not move cash or the bank balance.
+   * Returns the amount taken. Sandbox bills are not journaled.
    */
   charge(amount: number, category: MoneyCategory = 'penalties', stamp = this.simMinutes()): number {
+    if (this.sandbox || !(amount > 0) || !Number.isFinite(amount)) return 0
     const taken = this.takeCash(amount)
     if (taken > 0) this.postJournal(category, taken, stamp)
+    const skipped = amount - taken
+    if (skipped > 0) this.postUnpaid(category, skipped, stamp)
     return taken
   }
 
@@ -5790,6 +5794,24 @@ export class Game {
       simMinutes: Math.max(0, simMinutes),
       source,
       label,
+    })
+  }
+
+  /** A bill cash did not take. The line is visible and does not move the balance. */
+  private postUnpaid(
+    category: MoneyCategory,
+    magnitude: number,
+    simMinutes: number,
+    label?: string,
+    source = 'unpaid',
+  ) {
+    if (this.sandbox || !(magnitude > 0) || !Number.isFinite(magnitude)) return
+    const signed = moneyDirection(category) === 'income' ? magnitude : -magnitude
+    this.bank.post(category, signed, {
+      simMinutes: Math.max(0, simMinutes),
+      source,
+      label,
+      unpaid: true,
     })
   }
 
@@ -10356,7 +10378,7 @@ export class Game {
     const hotel = this.hasHotelBeds()
     const bill = missPenalty({ hasHotel: hotel, passengers })
     if (!(bill.amount > 0) || !Number.isFinite(bill.amount) || !Number.isFinite(this.cash)) return 0
-    if (!this.sandbox) this.charge(bill.amount)
+    if (!this.sandbox) this.charge(bill.amount, 'missed_connection')
     if (bill.standing < 0 && Number.isFinite(bill.standing)) {
       this.adjustHeat(airlineId, bill.standing, 'transfers')
     }
@@ -15376,7 +15398,7 @@ export class Game {
     const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (upkeep > 0) this.charge(upkeep, 'building_upkeep', stamp)
     const holding = this.site ? scaled(this.dailyHoldingQuote()) : 0
-    if (holding > 0) this.charge(holding, 'building_upkeep', stamp)
+    if (holding > 0) this.charge(holding, 'land_holding', stamp)
     const hubBill = scaled(hubUpkeep(new Set(this.researchUnlocked)))
     if (hubBill > 0) this.charge(hubBill, 'building_upkeep', stamp)
     const builtBill = scaled(this.fits.reduce((s, f) => s + (f.build ? buildUpkeepPerDay(f.build) : 0), 0))
@@ -15441,6 +15463,7 @@ export class Game {
       this.noteExpense(paid)
       this.postJournal('payroll', paid, stamp)
     }
+    this.postUnpaid('payroll', settlement.shortfall, stamp)
     this.reputation = Math.max(0, this.reputation - 4)
     const incidentsRising = this.securityIncidents > this.securityIncidentsAtPayroll
     const securityFloor = incidentsRising ? SECURITY_INCIDENT_SLIDER_FLOOR : PAYROLL_SHORT_SLIDER_FLOOR
@@ -15620,7 +15643,7 @@ export class Game {
     const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.min(CRASH_FINE_CAP, Math.round(baseFine * (1.4 - mitigate * 0.5)))
-    this.charge(fine)
+    this.charge(fine, 'crash_fine')
     this.crashes += 1
     f.ledger.push({ label: `${f.flightNo} crash write-off`, amount: -fine })
     this.reputation = Math.max(0, this.reputation - (amb < 0.3 ? 14 : 8))
@@ -16612,7 +16635,7 @@ export class Game {
           label: line.name,
         })
       }
-      if (line.upkeep > 0) {
+      if (line.upkeep > 0 && !this.sandbox) {
         const paid = this.takeCash(line.upkeep)
         if (paid > 0) {
           this.bank.post('building_upkeep', -paid, {
@@ -16620,6 +16643,16 @@ export class Game {
             source: 'tier3plus',
             sourceId: line.id,
             label: line.name,
+          })
+        }
+        const skipped = line.upkeep - paid
+        if (skipped > 0) {
+          this.bank.post('building_upkeep', -skipped, {
+            simMinutes: stamp,
+            source: 'tier3plus',
+            sourceId: line.id,
+            label: line.name,
+            unpaid: true,
           })
         }
       }
@@ -19999,7 +20032,7 @@ export class Game {
     }
 
     // Refuse / timeout — cleaner than a failed host, still hurts.
-    this.charge(EMERGENCY_REFUSE_FINE)
+    this.charge(EMERGENCY_REFUSE_FINE, 'emergency_refuse')
     this.reputation = Math.max(0, this.reputation - 4)
     if (e.kind === 'divert' && e.airline) {
       this.adjustHeat(e.airline, -8)
@@ -20284,7 +20317,7 @@ export class Game {
   private postInboundLedger() {
     for (const row of this.ensureInbound().freshLedger()) {
       if (row.amount > 0) this.earn(row.amount, row.reason)
-      else if (row.amount < 0) this.charge(-row.amount)
+      else if (row.amount < 0) this.charge(-row.amount, 'inbound_fine')
     }
   }
 
@@ -20525,6 +20558,8 @@ export class Game {
           this.cash -= tick.principalPaid
           this.postJournal('loan_repayment', tick.principalPaid, stamp)
         }
+        this.postUnpaid('loan_interest', tick.interest - tick.interestPaid, stamp)
+        this.postUnpaid('loan_repayment', tick.installment - tick.principalPaid, stamp)
         this.loanBalance = tick.balance
         if (this.loanBalance <= 0) {
           this.loanBalance = 0
