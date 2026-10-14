@@ -6,6 +6,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
+import { artTexture } from './world/textureRegistry'
 
 export type VehicleShape = 'truck' | 'tanker' | 'bus' | 'tug' | 'catering' | 'train'
 
@@ -29,6 +30,27 @@ function sharedMaterial(): THREE.MeshLambertMaterial {
 }
 
 const _c = new THREE.Color()
+
+/** Side-on planar UVs (one tile per UV_TILE_M metres) so the shared photo map has coordinates. */
+const UV_TILE_M = 2.4
+function planarUv(geo: THREE.BufferGeometry) {
+  const pos = geo.getAttribute('position')
+  const uv = new Float32Array(pos.count * 2)
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2] = (pos.getX(i) + pos.getZ(i) * 0.5) / UV_TILE_M
+    uv[i * 2 + 1] = pos.getY(i) / UV_TILE_M
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+}
+
+/** Truck-panel photo on every GSE body (Medium and up). It multiplies the vertex colours. */
+export function setVehiclePhotos(on: boolean, anisotropy = 4) {
+  const m = sharedMaterial()
+  const map = on ? artTexture('truck_white_panel', anisotropy) : null
+  if (m.map === map) return
+  m.map = map
+  m.needsUpdate = true
+}
 
 /** Colour a primitive and place it. `lay` turns a Y-axis cylinder onto the X (length) or Z (axle) axis. */
 function part(geo: THREE.BufferGeometry, hex: string, x: number, y: number, z: number, lay?: 'x' | 'z'): THREE.BufferGeometry {
@@ -157,6 +179,7 @@ export function vehicleGeometry(kind: string, color: string, size: readonly [num
   }
 
   const merged = mergeGeometries(parts)!
+  planarUv(merged)
   for (const p of parts) p.dispose()
   merged.computeVertexNormals()
   merged.computeBoundingSphere()
@@ -183,6 +206,7 @@ function cargoGeometry(mode: 'crates' | 'suitcases', size: readonly [number, num
     }
   }
   const merged = mergeGeometries(parts)!
+  planarUv(merged)
   for (const p of parts) p.dispose()
   merged.computeVertexNormals()
   geos.set(key, merged)

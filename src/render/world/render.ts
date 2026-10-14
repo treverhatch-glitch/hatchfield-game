@@ -44,6 +44,8 @@ import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
+import { setVehiclePhotos } from '../vehicles'
+import { photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
 
@@ -196,7 +198,8 @@ export class WorldRenderer {
     if (!first) this.disposeContent()
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
-    this.tex = makeTextures(q.textureSize, q.anisotropy)
+    setVehiclePhotos(photoTexturesEnabled(q.level), q.anisotropy)
+    this.tex = makeTextures(q.textureSize, q.anisotropy, photoTexturesEnabled(q.level))
     this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
