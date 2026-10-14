@@ -178,6 +178,8 @@ import {
 } from './guests'
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
+import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
+import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
   mergeHints,
@@ -7944,7 +7946,10 @@ export class Game {
     if (this.planAdvice.key !== key) {
       this.planAdvice = {
         key,
-        list: liveHallAdvice({ zones: fit.zones, items: fit.items }),
+        list: [
+          ...liveHallAdvice({ zones: fit.zones, items: fit.items }),
+          ...(fit.build ? buildAdvice(fit.build) : []),
+        ],
       }
     }
     return this.planAdvice.list
@@ -8254,6 +8259,9 @@ export class Game {
         detail: 'Queues are longer than this hall can clear.',
         at: { view: 'hall', hall: key, cells: this.zoneCellsOf(fit, 'security').slice(0, 1) },
       })
+    }
+    for (const f of this.fits) {
+      if (f.build) for (const a of buildAlerts(f.build, this.hallKey(f), this.hallLabel(f))) raise(a)
     }
     for (const f of this.fits) {
       const full = ((f.items ?? []) as PlacedItem[]).filter((it) => isBin(it) && binFull(it))
@@ -9866,6 +9874,24 @@ export class Game {
       'good',
     )
     this.emit()
+  }
+
+  /**
+   * Commit a build-from-scratch edit (src/terminalbuild) to the active hall.
+   * Pays the edit's cost, or banks the refund for removals. Prefab halls are
+   * untouched until the player makes their first build edit.
+   */
+  applyHallBuild(edit: EditResult): boolean {
+    const fit = this.activeHall()
+    if (!fit || edit.error) return false
+    if (edit.cost > 0 && !this.spend(edit.cost, 'Terminal build')) return false
+    if (edit.cost > 0 && !this.sandbox) this.postJournal('construction', edit.cost, this.simMinutes())
+    if (edit.cost < 0 && !this.sandbox) this.cash -= edit.cost
+    fit.build = edit.layout
+    this.hallRev++
+    this.refreshAdvice()
+    this.emit()
+    return true
   }
 
   paintHallCell(c: number, r: number, zone: ZoneId) {
@@ -13369,6 +13395,11 @@ export class Game {
     if (hubBill > 0) {
       this.charge(hubBill)
       this.postJournal('building_upkeep', hubBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
+    }
+    const builtBill = this.fits.reduce((s, f) => s + (f.build ? buildUpkeepPerDay(f.build) : 0), 0)
+    if (builtBill > 0) {
+      this.charge(builtBill)
+      this.postJournal('building_upkeep', builtBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
     }
     const linkBill = this.connectivityUpkeep()
     if (linkBill > 0) {
