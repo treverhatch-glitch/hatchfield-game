@@ -11,6 +11,8 @@ import {
   daylightFactor,
   idleDayNight,
   resolveHour,
+  SKY_PHOTO_WEATHER,
+  skyPhotoBlend,
   type DayNightControl,
   type DayNightSample,
 } from './dayNight'
@@ -226,6 +228,7 @@ export class WorldRenderer {
     this.builtRev = -1
     this.hallCrowd?.dispose()
     this.hallCrowd = new HallCrowd(this.root, this.shared.people)
+    this.sky.setPhotos(q.skyPhotos)
     if (q.colorGrade) gradeTree(this.root)
   }
 
@@ -441,6 +444,9 @@ export class WorldRenderer {
     this.fog.near = s.fogNear
     this.fog.far = s.fogFar
     this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
+    // Climate maps paint their own sky, so the photo gives way as their tint comes in.
+    const photoAmount = (SKY_PHOTO_WEATHER[weather] ?? 1) * (1 - (draw?.skyAmount ?? 0))
+    this.sky.setPhoto(skyPhotoBlend(s.hour, this.dayNightControl?.daylight), photoAmount)
     this.sky.follow(camPos)
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure

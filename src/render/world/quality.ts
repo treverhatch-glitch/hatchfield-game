@@ -57,6 +57,8 @@ export interface QualityPreset {
   contactShadows: boolean
   /** Filmic grade in the material shader. Off on Low: no extra fragment work. */
   colorGrade: boolean
+  /** Pack 6 sky panoramas on the dome. Low keeps the procedural gradient and never loads them. */
+  skyPhotos: boolean
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
@@ -88,6 +90,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     // One blended disc is a large fill on software GL. Medium and High draw it.
     contactShadows: false,
     colorGrade: false,
+    skyPhotos: false,
   },
   med: {
     level: 'med',
@@ -115,6 +118,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     lightBloom: true,
     contactShadows: true,
     colorGrade: true,
+    skyPhotos: true,
   },
   high: {
     level: 'high',
@@ -142,6 +146,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     lightBloom: true,
     contactShadows: true,
     colorGrade: true,
+    skyPhotos: true,
   },
 }
 

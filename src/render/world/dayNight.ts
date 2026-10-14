@@ -9,6 +9,7 @@
  * only overrides the hour. Low quality uses the same sample and skips apron
  * light pools, headlight pools, and per-lamp glow rewrites.
  */
+import type { Weather } from '../../game/types'
 import { DAY_SECONDS, lerpHex, simClockToHour, smoothstep, type SkyState } from './daylight'
 
 export const DAY_NIGHT_CYCLE = {
@@ -171,6 +172,65 @@ export function resolveHour(clock: number, hourOverride: number | null, control:
   if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
   if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
   return simClockToHour(clock)
+}
+
+export type SkyPhotoId = 'dawn' | 'noon' | 'dusk' | 'night'
+
+/**
+ * Pack 6 sky panoramas on the dome. `horizon` is the image row (0 bottom, 1 top)
+ * that sits on the horizon; everything above it stretches up to the zenith.
+ */
+export const SKY_PHOTOS: Record<SkyPhotoId, { url: string; horizon: number }> = {
+  dawn: { url: '/textures/sky/sky_dawn.jpg', horizon: 0.2 },
+  noon: { url: '/textures/sky/sky_noon.jpg', horizon: 0.3 },
+  dusk: { url: '/textures/sky/sky_dusk.jpg', horizon: 0.08 },
+  night: { url: '/textures/sky/sky_night.jpg', horizon: 0.05 },
+}
+
+/** Crossfade windows in sim hours, in clock order. Outside a window the last photo holds. */
+export const SKY_PHOTO_FADES: readonly { from: SkyPhotoId; to: SkyPhotoId; start: number; end: number }[] = [
+  { from: 'night', to: 'dawn', start: 5.0, end: 6.4 },
+  { from: 'dawn', to: 'noon', start: 7.2, end: 9.2 },
+  { from: 'noon', to: 'dusk', start: 17.0, end: 18.8 },
+  { from: 'dusk', to: 'night', start: 19.6, end: 21.0 },
+]
+
+/** How much of the photo shows over the procedural sky. Grey weather keeps mostly the painted gradient. */
+export const SKY_PHOTO_WEATHER: Record<Weather, number> = {
+  clear: 1,
+  rain: 0.35,
+  fog: 0.25,
+  storm: 0.15,
+}
+
+/** Two photos and the mix between them: `t` 0 shows `a`, 1 shows `b`. */
+export interface SkyPhotoBlend {
+  a: SkyPhotoId
+  b: SkyPhotoId
+  t: number
+}
+
+/**
+ * Which panoramas the dome shows at `hour`. A `daylight` override below 1 pulls
+ * the dominant photo toward night, the same way `applyDayNight` dims the rig.
+ */
+export function skyPhotoBlend(hour: number, daylight?: number | null): SkyPhotoBlend {
+  const h = wrapHour(hour)
+  let blend: SkyPhotoBlend | null = null
+  let hold = SKY_PHOTO_FADES[SKY_PHOTO_FADES.length - 1].to
+  for (const f of SKY_PHOTO_FADES) {
+    if (h >= f.start && h < f.end) {
+      blend = { a: f.from, b: f.to, t: smoothstep(f.start, f.end, h) }
+      break
+    }
+    if (h >= f.end) hold = f.to
+  }
+  blend ??= { a: hold, b: hold, t: 0 }
+  if (daylight != null && Number.isFinite(daylight) && daylight < 1) {
+    const lead = blend.t < 0.5 ? blend.a : blend.b
+    return { a: lead, b: 'night', t: 1 - clamp01(daylight) }
+  }
+  return blend
 }
 
 export function airfieldLevels(sample: Pick<DayNightSample, 'runwayEdge' | 'taxiEdge' | 'apron'>): AirfieldLevels {
