@@ -100,10 +100,12 @@ export const VEHICLE_TIER: Record<VehicleType, SizeTier> = {
   highlift_catering: 'jumbo',
   main_deck_loader: 'jumbo',
   heavy_tug: 'jumbo',
+  lavatory_truck: 'small',
+  water_truck: 'small',
 }
 
 /** Vehicles that do not have to match the aircraft tier. */
-export const TIER_FREE: VehicleType[] = ['gpu', 'pax_bus']
+export const TIER_FREE: VehicleType[] = ['gpu', 'pax_bus', 'lavatory_truck', 'water_truck']
 
 export const CARTS_PER_VEHICLE: Partial<Record<VehicleType, number>> = {
   baggage_tug: 2,
@@ -150,6 +152,8 @@ export const DEPOT_GRANT: Partial<Record<VehicleType, number>> = {
   gpu: 2,
   pax_bus: 2,
   belt_loader: 2,
+  lavatory_truck: 1,
+  water_truck: 1,
 }
 
 export interface FuelContractDef {

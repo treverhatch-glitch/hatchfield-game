@@ -64,7 +64,7 @@ export interface VehiclePose {
 export interface ActiveCrew {
   id: string
   type: VehicleType
-  service: 'fuel' | 'bags' | 'catering' | 'gpu' | 'pushback'
+  service: 'fuel' | 'bags' | 'catering' | 'gpu' | 'pushback' | 'lav' | 'water'
   x: number
   y: number
   heading: number
@@ -72,11 +72,18 @@ export interface ActiveCrew {
   end: number
 }
 
+/** Lav / water dock time: about half the cabin clean, never under 4 minutes. */
+export function lavWaterMinutes(cleaningMinutes: number): number {
+  return Math.max(4, Math.round(cleaningMinutes * 0.5))
+}
+
 function crewServiceOf(type: VehicleType): ActiveCrew['service'] | null {
   if (type === 'fuel_truck' || type === 'heavy_fuel_truck' || type === 'hydrant_dispenser') return 'fuel'
   if (type === 'baggage_tug' || type === 'heavy_baggage_tug' || type === 'belt_loader' || type === 'uld_loader') return 'bags'
   if (type === 'catering_truck' || type === 'highlift_catering') return 'catering'
   if (type === 'gpu') return 'gpu'
+  if (type === 'lavatory_truck') return 'lav'
+  if (type === 'water_truck') return 'water'
   if (type === 'pushback_tug' || type === 'heavy_tug') return 'pushback'
   return null
 }
@@ -502,6 +509,11 @@ export class LogisticsSim {
     enable('catering', outbound && booked > 0)
     enable('cleaning', inbound && arriving > 0)
     enable('gpu', true)
+    // Round F: lav and water trucks dock from block-in, overlapping deplaning. Opt-in: only a fleet that owns them gets the job.
+    if (inbound && arriving > 0 && needs.carriesPax) {
+      if (this.fleetHas('lavatory_truck')) t.services.lav = 'blocked'
+      if (this.fleetHas('water_truck')) t.services.water = 'blocked'
+    }
     enable('boarding', booked > 0)
     enable('bag_load', expectedBags > 0)
     enable('cargo_load', t.cargoOut > 0)
@@ -864,6 +876,12 @@ export class LogisticsSim {
       case 'gpu':
         this.addRequest(t, s, 'gpu', 'onsite', 1)
         return
+      case 'lav':
+        this.addRequest(t, s, 'lavatory_truck', 'onsite', 1)
+        return
+      case 'water':
+        this.addRequest(t, s, 'water_truck', 'onsite', 1)
+        return
       case 'pushback':
         this.addRequest(t, s, n.superHeavy ? ['heavy_tug', 'pushback_tug'] : ['pushback_tug', 'heavy_tug'], 'onsite', 1)
         return
@@ -897,7 +915,15 @@ export class LogisticsSim {
         case 'fuel':
           if (t.fuelExternalHold) return false
           return flag || this.isDone(t, 'deplane')
+        // Real turn charts (Boeing ACAPS 5.2, Airbus AC 5-2-0): services overlap rather than queue.
+        // Lav and potable water work from external belly panels, so they start at block-in.
+        case 'lav':
+        case 'water':
+          return true
+        // Catering uses the service-side doors, so it starts once deplaning is under way at the passenger door.
         case 'catering':
+          return t.services.deplane !== 'blocked'
+        // The cleaning crew needs an empty cabin.
         case 'cleaning':
           return this.isDone(t, 'deplane')
         case 'boarding':
@@ -915,6 +941,9 @@ export class LogisticsSim {
             this.isDone(t, 'boarding') &&
             this.isDone(t, 'bag_load') &&
             this.isDone(t, 'cargo_load') &&
+            // Lav / water trucks must be off their panels before the doors close.
+            this.isDone(t, 'lav') &&
+            this.isDone(t, 'water') &&
             (this.isDone(t, 'fuel') || !flag || t.pax.booked === 0)
           )
         case 'pushback':
@@ -1517,7 +1546,7 @@ export class LogisticsSim {
         return
       }
       t.services[r.service] = 'active'
-      v.phaseEnd = this.now + t.needs.gpuMinutes
+      v.phaseEnd = this.now + (r.service === 'lav' || r.service === 'water' ? lavWaterMinutes(t.needs.cleaningMinutes) : t.needs.gpuMinutes)
       return
     }
     if (r.mode === 'carry') {

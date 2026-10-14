@@ -17,6 +17,8 @@ export type VehicleType =
   | 'main_deck_loader'
   | 'heavy_baggage_tug'
   | 'heavy_tug'
+  | 'lavatory_truck'
+  | 'water_truck'
 
 export const VEHICLE_TYPES: readonly VehicleType[] = [
   'fuel_truck',
@@ -33,6 +35,8 @@ export const VEHICLE_TYPES: readonly VehicleType[] = [
   'main_deck_loader',
   'heavy_baggage_tug',
   'heavy_tug',
+  'lavatory_truck',
+  'water_truck',
 ]
 
 /** Turnaround phases / services. */
@@ -51,6 +55,9 @@ export type ServiceKind =
   | 'bag_offload'
   | 'door_close'
   | 'pushback'
+  /** Toilet service and potable water top-up (only when the fleet has the trucks). */
+  | 'lav'
+  | 'water'
 
 export type SizeClass = 'S' | 'M' | 'L'
 
