@@ -49,3 +49,9 @@ export function projectCash(cash: number, hourlyIncome: number, charges: Operati
     charges: { payroll, upkeep, holding, levy },
   }
 }
+
+/** One plain line so the player can tell if they are winning. */
+export function moneySummaryLine(f: CashForecast, money: (v: number) => string): string {
+  const net = `${f.dailyNet > 0 ? '+' : ''}${money(f.dailyNet)}`
+  return `You earn ~${money(f.dailyIncome)}/day · You spend ~${money(f.dailyCharges)}/day · Net ~${net}/day`
+}

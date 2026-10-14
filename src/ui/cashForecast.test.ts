@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { DAYS_PER_WEEK, HOURS_PER_GAME_DAY, projectCash } from './cashForecast'
+import { money } from '../game/catalog.ts'
+import { DAYS_PER_WEEK, HOURS_PER_GAME_DAY, moneySummaryLine, projectCash } from './cashForecast'
 
 describe('cash forecast', () => {
   it('projects hourly income against the scheduled daily and weekly bills', () => {
@@ -22,5 +23,21 @@ describe('cash forecast', () => {
     expect(f.hourlyIncome).toBe(0)
     expect(f.dailyCharges).toBe(10)
     expect(f.cashInSevenDays).toBe(-70)
+  })
+})
+
+describe('money summary line', () => {
+  it('reads earn, spend and net per day from the forecast', () => {
+    const f = projectCash(0, 1_000, { payroll: 8_000, upkeep: 2_000, holding: 500, levy: 0 })
+    expect(moneySummaryLine(f, money)).toBe(
+      'You earn ~$24,000/day · You spend ~$10,500/day · Net ~+$13,500/day',
+    )
+  })
+
+  it('shows a losing day with a minus net', () => {
+    const f = projectCash(0, 0, { payroll: 4_000, upkeep: 0, holding: 0, levy: 0 })
+    expect(moneySummaryLine(f, money)).toBe(
+      'You earn ~$0/day · You spend ~$4,000/day · Net ~-$4,000/day',
+    )
   })
 })

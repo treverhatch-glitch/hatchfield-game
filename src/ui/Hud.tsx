@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react'
-import { projectCash } from './cashForecast'
+import { moneySummaryLine, projectCash } from './cashForecast'
 import { LiveText } from './LiveText'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
@@ -255,6 +255,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   // One panel at a time: an open hint list folds the HUD rollout away.
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
+  const [hoverLetter, setHoverLetter] = useState<string | null>(null)
+  // A letter being read (open or hovered) holds its countdown in the sim.
+  useEffect(() => {
+    game.holdLetters([openLetter, hoverLetter].filter((id): id is string => id != null))
+  }, [game, openLetter, hoverLetter])
+  useEffect(() => () => game.holdLetters([]), [game])
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
@@ -792,6 +798,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               <article
                 key={letter.id}
                 className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
+                onMouseEnter={() => setHoverLetter(letter.id)}
+                onMouseLeave={() => setHoverLetter((cur) => (cur === letter.id ? null : cur))}
                 data-testid={
                   letter.id === 'field'
                     ? 'field-task'
@@ -833,16 +841,24 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           </li>
                         ))}
                       </ul>
+                      <p className="muted letter-hint" data-testid="contract-hint">
+                        Accept: start flights now · Negotiate: haggle fees
+                      </p>
                     </>
                   ) : null}
                   <div className="row letter-actions">
                     {letter.id === 'contract' ? (
                       <>
-                        <button type="button" className="on" onClick={() => game.openNegotiationPanel()}>
-                          Negotiate
-                        </button>
-                        <button type="button" onClick={() => game.acceptNegotiation()}>
+                        <button
+                          type="button"
+                          className="on"
+                          data-testid="contract-accept"
+                          onClick={() => game.acceptNegotiation()}
+                        >
                           Accept
+                        </button>
+                        <button type="button" onClick={() => game.openNegotiationPanel()}>
+                          Negotiate
                         </button>
                         <button type="button" onClick={() => game.walkNegotiation()}>
                           Walk
@@ -1056,6 +1072,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             <div className="panel-body">
               {panel === 'economy' ? (
                 <>
+                  <p
+                    className={`money-summary ${forecast.dailyNet >= 0 ? 'up' : 'down'}`}
+                    data-testid="money-summary"
+                  >
+                    {moneySummaryLine(forecast, money)}
+                  </p>
                   <div className="eco-tabs" role="tablist">
                     {ECO_TABS.map((tab) => (
                       <button
@@ -1376,6 +1398,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
+                  <p
+                    className={`money-summary ${forecast.dailyNet >= 0 ? 'up' : 'down'}`}
+                    data-testid="budget-money-summary"
+                  >
+                    {moneySummaryLine(forecast, money)}
+                  </p>
                   <p
                     className="muted"
                     data-testid="budget-payroll"
