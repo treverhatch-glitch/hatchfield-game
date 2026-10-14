@@ -11,7 +11,7 @@
     "preview": "vite preview --host --port 45217",
     "playthrough": "tsx scripts/playthrough-wake.mts",
     "perf:bench": "tsx scripts/perf-bench.mts",
-    "autoplay":"tsx scripts/autoplay-stabilize.mts",
+    "autoplay": "tsx scripts/autoplay-stabilize.mts",
     "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs"
   },
   "dependencies": {

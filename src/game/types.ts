@@ -1052,6 +1052,8 @@ export interface GameSnapshot {
   missedHotelNights?: number
   /** Crew waiting on the airport hotel. */
   crewHotelNights?: number
+  /** Achievement tracking state. */
+  achievements?: any
 }
 
 /** A placed building that is still a construction site. */
