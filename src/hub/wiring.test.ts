@@ -153,4 +153,33 @@ describe('hub wiring', () => {
     expect(game.bagsLost).toBe(0)
     expect(game.lostPaxCount()).toBe(0)
   })
+
+  it('notes hub connections and hotel nights when a connection window closes', () => {
+    const game = field()
+    game.fieldXp = 220
+    game.hubAirlines = ['harbor']
+    game.hotelLevel = 1
+    game.schedule.push({
+      id: 'tight',
+      airline: 'harbor',
+      flightNo: 'HF200',
+      eta: game.clock - 17,
+      status: 'scheduled',
+      delaySec: 0,
+      delayReason: null,
+      manual: true,
+      flightId: null,
+    })
+    game.seedHallForFlight(arrival('year', 'harbor', { c: 12, r: 21 }), 'arrive')
+    const transfers = game.hallGuests.filter((g) => g.transfer)
+    expect(transfers.length).toBeGreaterThan(0)
+    game.tick(4)
+    const hub = game.playtestYear.liveHub()
+    expect(hub.completed + hub.missed).toBe(transfers.length)
+    expect(hub.missed).toBe(transfers.length)
+    expect(hub.nights).toBe(transfers.length)
+    expect(game.missedHotelNights).toBe(transfers.length)
+    game.tick(1)
+    expect(game.playtestYear.liveHub()).toEqual(hub)
+  })
 })
