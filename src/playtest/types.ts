@@ -282,6 +282,25 @@ export interface SystemsBooks {
   /** Penalty posts booked at the full field-ask fine. */
   fieldAskFines: number
   penaltyTotal: number
+  /** Penalty cash split by what booked it. Amounts are negative expenses. */
+  penaltyBreakdown: {
+    missedConnections: number
+    delays: number
+    refunds: number
+    other: number
+  }
+  /** Connections judged this run, by why they made or missed. */
+  connections: {
+    made: number
+    belowMct: number
+    paxLate: number
+    bagLate: number
+    divert: number
+    judged: number
+    delayMin: number
+    availableMin: number
+    bagMin: number
+  }
   relations: RelationRead[]
   treePoints: number
   treeUnlocked: string[]

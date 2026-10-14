@@ -9,6 +9,8 @@ import {
   BAG_BELT_METRES_PER_MIN,
   BAG_RFID_METRES_PER_MIN,
   BAG_RIDE_METRES_PER_MIN,
+  CONNECTION_RECOVERY_MIN,
+  CONNECTION_RECOVERY_TRIES,
   DEFAULT_CONNECTION_WINDOW,
   DEPLANE_MINUTES,
   MCT_BASE,
@@ -44,6 +46,99 @@ export function bookOnward(moves: readonly Movement[], plannedArrival: number, m
   }
   if (best) return { at: best.at, gateId: best.gateId }
   return { at: planned + Math.max(DEFAULT_CONNECTION_WINDOW, gap), gateId: null }
+}
+
+/**
+ * Departures still ahead of an actual landing, soonest first, inside the
+ * recovery window. The sold flight is often already gone when the inbound is late.
+ */
+export function laterDepartures(
+  moves: readonly Movement[],
+  actualArrival: number,
+  windowMinutes = CONNECTION_RECOVERY_MIN,
+): Movement[] {
+  const arrival = Number.isFinite(actualArrival) ? actualArrival : 0
+  const span = Number.isFinite(windowMinutes) ? Math.max(0, windowMinutes) : 0
+  const latest = arrival + span
+  return moves
+    .filter((move) => move.direction === 'dep' && Number.isFinite(move.at) && move.at > arrival && move.at <= latest)
+    .sort((a, b) => a.at - b.at)
+}
+
+export interface ResolvedConnection {
+  verdict: ConnectionVerdict
+  to: GatePoint
+  departureAt: number
+  /** A later departure saved a sold connection that would have missed. */
+  recovered: boolean
+}
+
+export interface ResolveConnectionInput {
+  moves: readonly Movement[]
+  /** Game-minute the inbound actually landed. */
+  arrivalAt: number
+  /** Game-minute the itinerary was sold against. */
+  plannedArrival: number
+  from: GatePoint
+  gates: readonly GatePoint[]
+  facilities: HubFacilities
+  ride?: boolean
+  walkwayMetres?: number
+  linkFor?: (fromId: string, toId: string) => PassengerLink | undefined
+  recoveryTries?: number
+}
+
+function pickGate(gateId: string | null, gates: readonly GatePoint[], from: GatePoint, preferOther: boolean): GatePoint {
+  if (gateId) {
+    const hit = gates.find((gate) => gate.id === gateId)
+    if (hit) return hit
+  }
+  // A sold flight with no stand yet still leaves from another gate. A recovery
+  // candidate with no stand is this aircraft's own turn, still at the arrival stand.
+  if (preferOther) return gates.find((gate) => gate.id !== from.id) ?? from
+  return from
+}
+
+/**
+ * Sell the connection from the planned arrival. When that flight cannot be
+ * made, take the soonest later departure inside the recovery window that the
+ * walk and the bags can both reach. A belt or a walk that fits none of them
+ * keeps the original miss.
+ */
+export function resolveConnection(input: ResolveConnectionInput): ResolvedConnection | null {
+  if (!input.from) return null
+  const arrivalAt = Number.isFinite(input.arrivalAt) ? input.arrivalAt : 0
+  const plannedArrival = Number.isFinite(input.plannedArrival) ? input.plannedArrival : arrivalAt
+  const facilities = input.facilities
+  const onward = bookOnward(input.moves, plannedArrival, minimumConnectionTime(facilities))
+  const soldGate = pickGate(onward.gateId, input.gates, input.from, true)
+  const walkwayMetres = input.walkwayMetres ?? 0
+  const judge = (gate: GatePoint, departureAt: number) =>
+    evaluateConnection({
+      arrivalAt,
+      departureAt,
+      from: input.from,
+      to: gate,
+      ride: input.ride ?? false,
+      link: input.linkFor?.(input.from.id, gate.id),
+      walkwayMetres,
+      facilities,
+    })
+  const sold = judge(soldGate, onward.at)
+  if (sold.made) {
+    return { verdict: sold, to: soldGate, departureAt: onward.at, recovered: false }
+  }
+  const tries = Number.isFinite(input.recoveryTries) ? Math.max(0, input.recoveryTries ?? 0) : CONNECTION_RECOVERY_TRIES
+  const candidates = laterDepartures(input.moves, arrivalAt).slice(0, tries)
+  for (const candidate of candidates) {
+    if (candidate.at === onward.at && candidate.gateId === onward.gateId) continue
+    const gate = pickGate(candidate.gateId, input.gates, input.from, false)
+    const again = judge(gate, candidate.at)
+    if (again.made) {
+      return { verdict: again, to: gate, departureAt: candidate.at, recovered: true }
+    }
+  }
+  return { verdict: sold, to: soldGate, departureAt: onward.at, recovered: false }
 }
 
 export function minimumConnectionTime(facilities: HubFacilities): number {

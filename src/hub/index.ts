@@ -12,6 +12,7 @@ export {
 export type {
   BankWave,
   CarrierProfile,
+  ConnectionFail,
   ConnectionMap,
   ConnectionVerdict,
   GatePoint,
@@ -28,11 +29,23 @@ export {
   bookOnward,
   evaluateConnection,
   gateMetres,
+  laterDepartures,
   linkTravelMinutes,
   minimumConnectionTime,
+  resolveConnection,
 } from './connect.ts'
-export type { OnwardBooking } from './connect.ts'
+export type { OnwardBooking, ResolvedConnection } from './connect.ts'
 export { connectionMap, gatePairs } from './map.ts'
 export { missPenalty } from './miss.ts'
+export {
+  connectionCauseSentence,
+  connectionHint,
+  connectionMissRate,
+  connectionReportLines,
+  dominantMiss,
+  emptyConnectionTally,
+  recordConnection,
+} from './cause.ts'
+export type { ConnectionMissDetail, ConnectionMissReason, ConnectionTally } from './cause.ts'
 export { connectingIndexes, scaledShare, transferShare } from './share.ts'
 export { HUB_UPGRADES, hubUpgrade, hubUpkeep, isHubUpgrade } from './upgrades.ts'

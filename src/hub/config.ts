@@ -55,6 +55,14 @@ export const MIN_WALK_METRES = 40
 
 /** Onward departure used when the timetable has no later wave. */
 export const DEFAULT_CONNECTION_WINDOW = 80
+/**
+ * Game-minutes after the actual landing in which a later departure can still
+ * save a connection the inbound was too late for. A belt or a walk that cannot
+ * make any departure in this window is still a miss.
+ */
+export const CONNECTION_RECOVERY_MIN = 240
+/** Later departures a late inbound may try before the miss stands. */
+export const CONNECTION_RECOVERY_TRIES = 24
 
 export const ARRIVAL_CLUSTER_MINUTES = 15
 export const DEPARTURE_CLUSTER_MINUTES = 15

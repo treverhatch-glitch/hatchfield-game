@@ -3,6 +3,8 @@ import { BUS_RIDE_MINUTES, CONNECTIVITY_CATALOG, PEOPLE_MOVER_RIDE_MINUTES } fro
 import type { PassengerLink } from '../connectivity/types.ts'
 import {
   BAG_BASE_MINUTES,
+  BAG_BELT_METRES_PER_MIN,
+  CONNECTION_RECOVERY_MIN,
   DEFAULT_CONNECTION_WINDOW,
   DEPLANE_MINUTES,
   MCT_BASE,
@@ -11,7 +13,7 @@ import {
   STANDING_HIT_PER_PAX,
   WALK_METRES_PER_MIN,
 } from './config.ts'
-import { bookOnward, evaluateConnection, linkTravelMinutes } from './connect.ts'
+import { bookOnward, evaluateConnection, laterDepartures, linkTravelMinutes, resolveConnection } from './connect.ts'
 import { missPenalty } from './miss.ts'
 import { connectingIndexes, scaledShare } from './share.ts'
 import type { HubFacilities, Movement } from './types.ts'
@@ -87,6 +89,89 @@ describe('minimum connection time boundary', () => {
       MCT_BASE,
     )
     expect(nanMove.gateId).toBeNull()
+  })
+})
+
+describe('a later wave can save a late inbound', () => {
+  const gates = [near, beside]
+  const deps = (rows: { id: string; at: number; gateId: string }[]): Movement[] =>
+    rows.map((row) => ({ ...row, airlineId: 'harbor', direction: 'dep' as const }))
+
+  it('catches the next close departure inside the recovery window', () => {
+    const arrivalAt = 1_080
+    const planned = 1_000
+    const nextAt = arrivalAt + 100
+    const resolved = resolveConnection({
+      moves: deps([
+        { id: 'sold', at: planned + MCT_BASE, gateId: 'A2' },
+        { id: 'next', at: nextAt, gateId: 'A2' },
+        { id: 'too-late', at: arrivalAt + CONNECTION_RECOVERY_MIN + 1, gateId: 'A2' },
+      ]),
+      arrivalAt,
+      plannedArrival: planned,
+      from: near,
+      gates,
+      facilities: plain,
+    })
+    expect(resolved?.recovered).toBe(true)
+    expect(resolved?.verdict.made).toBe(true)
+    expect(resolved?.verdict.reason).toBe('ok')
+    expect(resolved?.departureAt).toBe(nextAt)
+    expect(resolved?.to.id).toBe('A2')
+  })
+
+  it('still misses when the only departure leaves 16 minutes', () => {
+    const arrivalAt = 1_044
+    const resolved = resolveConnection({
+      moves: deps([{ id: 'tight', at: arrivalAt + 16, gateId: 'A2' }]),
+      arrivalAt,
+      plannedArrival: 1_000,
+      from: near,
+      gates,
+      facilities: plain,
+    })
+    expect(resolved?.recovered).toBe(false)
+    expect(resolved?.verdict.made).toBe(false)
+    expect(resolved?.verdict.reason).toBe('below_mct')
+    expect(resolved?.verdict.available).toBe(16)
+  })
+
+  it('punishes a pier whose belt cannot make any departure in the window', () => {
+    const far = { id: 'Z9', x: 2_000, y: 0 }
+    const arrivalAt = 1_000
+    const metres = 2_000
+    const bag = BAG_BASE_MINUTES.plain + metres / BAG_BELT_METRES_PER_MIN
+    expect(bag).toBeGreaterThan(CONNECTION_RECOVERY_MIN)
+    const resolved = resolveConnection({
+      moves: deps([
+        { id: 'sold', at: arrivalAt + 160, gateId: 'Z9' },
+        { id: 'last', at: arrivalAt + CONNECTION_RECOVERY_MIN, gateId: 'Z9' },
+      ]),
+      arrivalAt,
+      plannedArrival: arrivalAt,
+      from: near,
+      gates: [near, far],
+      facilities: plain,
+    })
+    expect(resolved?.recovered).toBe(false)
+    expect(resolved?.verdict.made).toBe(false)
+    expect(resolved?.verdict.reason).toBe('bag_late')
+    expect(resolved?.verdict.bagMinutes).toBeCloseTo(bag, 6)
+  })
+
+  it('keeps departures inside the window, soonest first', () => {
+    const arrivalAt = 500
+    const listed = laterDepartures(
+      deps([
+        { id: 'past', at: arrivalAt, gateId: 'A2' },
+        { id: 'late', at: arrivalAt + CONNECTION_RECOVERY_MIN + 5, gateId: 'A2' },
+        { id: 'second', at: arrivalAt + 90, gateId: 'A2' },
+        { id: 'first', at: arrivalAt + 20, gateId: 'A2' },
+        { id: 'edge', at: arrivalAt + CONNECTION_RECOVERY_MIN, gateId: 'A2' },
+      ]),
+      arrivalAt,
+    )
+    expect(listed.map((move) => move.id)).toEqual(['first', 'second', 'edge'])
   })
 })
 

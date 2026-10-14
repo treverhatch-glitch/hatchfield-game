@@ -199,7 +199,59 @@ describe('hub wiring', () => {
     expect(hub.missed).toBe(transfers.length)
     expect(hub.nights).toBe(transfers.length)
     expect(game.missedHotelNights).toBe(transfers.length)
+    expect(game.connectionTally.belowMct).toBe(transfers.length)
+    const lines = game.infoLines('connections')
+    expect(lines.some((line) => line.startsWith('Late inbound'))).toBe(true)
+    expect(lines.some((line) => /Inbound was \d+ min late/.test(line))).toBe(true)
+    expect(game.alerts.active.some((alert) => alert.key === 'event:missed-connection' && /minimum/.test(alert.detail))).toBe(true)
     game.tick(1)
     expect(game.playtestYear.liveHub()).toEqual(hub)
+  })
+
+  it('keeps a late inbound when its own aircraft is still on stand', () => {
+    const game = field()
+    game.fieldXp = 220
+    game.hubAirlines = ['harbor']
+    const delayMin = 44
+    game.schedule.push({
+      id: 'in',
+      airline: 'harbor',
+      flightNo: 'HF100',
+      eta: -10_000,
+      status: 'inbound',
+      delaySec: delayMin / SIM_MINUTES_PER_REAL_SECOND,
+      delayReason: null,
+      manual: true,
+      flightId: null,
+    })
+    // The ticketed departure is already inside MCT. The aircraft's own turn is still ahead.
+    game.schedule.push({
+      id: 'tight',
+      airline: 'harbor',
+      flightNo: 'HF200',
+      eta: (game.simMinutes() + 16) / SIM_MINUTES_PER_REAL_SECOND - PLANNED_TURN_SEC,
+      status: 'scheduled',
+      delaySec: 0,
+      delayReason: null,
+      manual: true,
+      flightId: null,
+    })
+    const inbound = arrival('live', 'harbor', { c: 12, r: 21 })
+    inbound.scheduleId = 'in'
+    const cash = game.cash
+    game.seedHallForFlight(inbound, 'arrive')
+    const transfers = game.hallGuests.filter((g) => g.transfer)
+    expect(transfers.length).toBeGreaterThan(0)
+    expect(transfers.every((g) => g.thought.includes('next wave'))).toBe(true)
+    // The turn is 20 real seconds. Nothing is billed before it, or after it leaves.
+    game.tick(4)
+    expect(game.missedConnections).toBe(0)
+    expect(game.cash).toBe(cash)
+    game.tick(20)
+    expect(game.missedConnections).toBe(0)
+    expect(game.cash).toBe(cash)
+    expect(game.connectionTally.made).toBe(transfers.length)
+    expect(game.connectionTally.belowMct).toBe(0)
+    expect(game.hallGuests.filter((g) => g.transfer).every((g) => g.thought === 'Made the connection')).toBe(true)
   })
 })

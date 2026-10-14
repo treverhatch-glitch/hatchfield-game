@@ -325,6 +325,20 @@ class GamePlayer implements PlayerCommands {
     const penaltyTotal = Math.round(
       FINE_CATEGORIES.reduce((sum, category) => sum + (ledger.byCategory[category] ?? 0), 0),
     )
+    const penaltyBreakdown = { missedConnections: 0, delays: 0, refunds: 0, other: 0 }
+    for (const entry of ledger.entries) {
+      if (entry.meta.unpaid || !(entry.amount < 0)) continue
+      if (!(FINE_CATEGORIES as readonly string[]).includes(entry.category)) continue
+      const label = entry.meta.label ?? ''
+      if (entry.category === 'missed_connection') penaltyBreakdown.missedConnections += entry.amount
+      else if (entry.category === 'penalties' && /refund/i.test(label)) penaltyBreakdown.refunds += entry.amount
+      else if (entry.category === 'penalties' && /delay|go-around/i.test(label)) penaltyBreakdown.delays += entry.amount
+      else penaltyBreakdown.other += entry.amount
+    }
+    for (const key of Object.keys(penaltyBreakdown) as (keyof typeof penaltyBreakdown)[]) {
+      penaltyBreakdown[key] = Math.round(penaltyBreakdown[key])
+    }
+    const tally = game.connectionTally
     const ids = new Set<string>(game.signed)
     for (const id of Object.keys(game.wave3.state.relations.rows)) ids.add(id)
     const relations = [...ids]
@@ -350,6 +364,18 @@ class GamePlayer implements PlayerCommands {
       sinks,
       fieldAskFines,
       penaltyTotal,
+      penaltyBreakdown,
+      connections: {
+        made: tally.made,
+        belowMct: tally.belowMct,
+        paxLate: tally.paxLate,
+        bagLate: tally.bagLate,
+        divert: tally.divert,
+        judged: tally.judged,
+        delayMin: Math.round(tally.delayMin),
+        availableMin: Math.round(tally.availableMin),
+        bagMin: Math.round(tally.bagMin),
+      },
       relations,
       treePoints: game.researchTree.points(),
       treeUnlocked: game.researchTree.state.unlocked.slice(),

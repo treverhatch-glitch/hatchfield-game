@@ -584,18 +584,26 @@ import {
   TECH_RFID_BAG_LINE,
   TECH_TRANSFER_CENTRE,
   bankDemand,
-  bookOnward,
   buildBanks,
   connectingIndexes,
+  connectionCauseSentence,
+  connectionHint,
   connectionMap,
-  evaluateConnection,
+  connectionReportLines,
+  emptyConnectionTally,
   hubUpgrade,
+  recordConnection,
   hubUpkeep,
   minimumConnectionTime,
   missPenalty,
+  resolveConnection,
   scaledShare,
   transferShare,
   type CarrierProfile,
+  type ConnectionFail,
+  type ConnectionMissDetail,
+  type ConnectionMissReason,
+  type ConnectionTally,
   type GatePoint,
   type Movement,
 } from '../hub/index.ts'
@@ -1030,7 +1038,21 @@ export class Game {
   linkExplanation = ''
   /** Cells stamped as the hub-priced links, so pier movers keep their own upkeep. */
   hubLinksBuilt: Record<string, 'people_mover' | 'xferbus' | 'skywalk'> = {}
-  private hubLinks: { guestId: string; airlineId: string; resolveAt: number; made: boolean }[] = []
+  private hubLinks: {
+    guestId: string
+    airlineId: string
+    resolveAt: number
+    made: boolean
+    reason: ConnectionFail
+    delayMin: number
+    available: number
+    needed: number
+    mct: number
+    bagMin: number
+  }[] = []
+  /** Why connections made or missed. The info panel and the missed-connection alert read this. */
+  connectionTally: ConnectionTally = emptyConnectionTally()
+  private lastConnectionMiss: ConnectionMissDetail | null = null
   /** 0–1 parade clock for belts and carousels. */
   bagPhase = 0
   /** Screenshot latch so the hall can show the whole chain at once. */
@@ -1549,6 +1571,8 @@ export class Game {
     this.linkExplanation = ''
     this.hubLinksBuilt = {}
     this.hubLinks = []
+    this.connectionTally = emptyConnectionTally()
+    this.lastConnectionMiss = null
     this.bagPhase = 0
     this.bagShow = null
     this.bagBooks.clear()
@@ -5952,12 +5976,12 @@ export class Game {
    * debt floor is an unpaid line and does not move cash or the bank balance.
    * Returns the amount taken. Sandbox bills are not journaled.
    */
-  charge(amount: number, category: MoneyCategory = 'penalties', stamp = this.simMinutes()): number {
+  charge(amount: number, category: MoneyCategory = 'penalties', stamp = this.simMinutes(), label?: string): number {
     if (this.sandbox || !(amount > 0) || !Number.isFinite(amount)) return 0
     const taken = this.takeCash(amount)
-    if (taken > 0) this.postJournal(category, taken, stamp)
+    if (taken > 0) this.postJournal(category, taken, stamp, label)
     const skipped = amount - taken
-    if (skipped > 0) this.postUnpaid(category, skipped, stamp)
+    if (skipped > 0) this.postUnpaid(category, skipped, stamp, label)
     return taken
   }
 
@@ -10636,26 +10660,34 @@ export class Game {
     const from = gates.find((gate) => gate.id === fromId) ?? gates[0]
     const facilities = this.hubFacilities()
     const arrivalAt = this.simMinutes()
-    const onward = bookOnward(
-      this.hubMovements(),
-      arrivalAt - this.hubInboundDelayMinutes(f),
-      minimumConnectionTime(facilities),
-    )
-    const booked = onward.gateId ? gates.find((gate) => gate.id === onward.gateId) : undefined
-    const to = booked ?? gates.find((gate) => gate.id !== from?.id) ?? from
-    if (!from || !to) return
-    const link = this.connectionLink(from.id, to.id)
-    const departureAt = onward.at
-    const verdict = evaluateConnection({
+    if (!from) return
+    const delayMin = this.hubInboundDelayMinutes(f)
+    const moves = this.hubMovements()
+    // Block-in is later than the timetable ETA, so the sold departure can already
+    // be gone while this aircraft is still on stand. Offer its own turn from now.
+    const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
+    if (slot && slot.status !== 'done' && slot.status !== 'cancelled') {
+      moves.push({
+        id: `${slot.id}:block-turn`,
+        airlineId: f.airline,
+        gateId: from.id,
+        direction: 'dep',
+        at: arrivalAt + PLANNED_TURN_SEC * SIM_MINUTES_PER_REAL_SECOND,
+      })
+    }
+    const resolved = resolveConnection({
+      moves,
       arrivalAt,
-      departureAt,
+      plannedArrival: arrivalAt - delayMin,
       from,
-      to,
-      ride: false,
-      link,
-      walkwayMetres: this.walkwayCoverMetres(),
+      gates,
       facilities,
+      ride: false,
+      walkwayMetres: this.walkwayCoverMetres(),
+      linkFor: (fromId, toId) => this.connectionLink(fromId, toId),
     })
+    if (!resolved) return
+    const { verdict, to, departureAt, recovered } = resolved
     for (const index of indexes) {
       const g = born[index]
       if (!g) continue
@@ -10674,14 +10706,29 @@ export class Game {
       g.t = 0
       g.route = undefined
       g.connectFlightId = `connect:${f.id}:${to.id}`
-      g.thought = `Connecting — ${this.linkWord(link)} to gate ${to.id}`
+      const rideWord = this.linkWord(verdict.link)
+      g.thought = recovered
+        ? `Connecting — caught the next wave, ${rideWord} to gate ${to.id}`
+        : `Connecting — ${rideWord} to gate ${to.id}`
       this.issueBagTags(g.id, g.flightId, g.tag, g.connectFlightId, 'transfer')
       const windowSec = Math.max(0.5, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
+      const needed =
+        verdict.reason === 'bag_late'
+          ? verdict.bagMinutes
+          : verdict.reason === 'pax_late'
+            ? verdict.paxMinutes
+            : verdict.mct
       this.hubLinks.push({
         guestId: g.id,
         airlineId: f.airline,
         resolveAt: this.clock + windowSec,
         made: verdict.made,
+        reason: verdict.reason,
+        delayMin,
+        available: verdict.available,
+        needed,
+        mct: verdict.mct,
+        bagMin: verdict.bagMinutes,
       })
     }
   }
@@ -10740,6 +10787,15 @@ export class Game {
     if (count <= 0) return
     this.applyMissedConnections(f.airline, count)
     this.wave3.noteFine(f.airline)
+    for (let i = 0; i < count; i++) recordConnection(this.connectionTally, 'divert')
+    this.lastConnectionMiss = {
+      reason: 'divert',
+      delayMin: 0,
+      available: 0,
+      needed: 0,
+      mct: minimumConnectionTime(this.hubFacilities()),
+    }
+    this.noteConnectionMiss(count, 'divert')
     this.feedYearHub(0, count, 0)
   }
 
@@ -10752,8 +10808,14 @@ export class Game {
     let made = 0
     let missed = 0
     const fined = new Set<string>()
+    const batch: Record<ConnectionMissReason, number> = { below_mct: 0, pax_late: 0, bag_late: 0, divert: 0 }
     for (const link of due) {
       const guest = this.hallGuests.find((g) => g.id === link.guestId)
+      recordConnection(this.connectionTally, link.made ? 'ok' : link.reason, {
+        delayMin: link.delayMin,
+        available: link.available,
+        bagMin: link.bagMin,
+      })
       if (link.made) {
         made += 1
         if (guest && !guest.dead) {
@@ -10767,6 +10829,15 @@ export class Game {
           tag.picked = true
         }
         continue
+      }
+      const reason: ConnectionMissReason = link.reason === 'ok' ? 'below_mct' : link.reason
+      batch[reason] += 1
+      this.lastConnectionMiss = {
+        reason,
+        delayMin: link.delayMin,
+        available: link.available,
+        needed: link.needed,
+        mct: link.mct,
       }
       this.applyMissedConnection(link.airlineId)
       if (!fined.has(link.airlineId)) {
@@ -10788,19 +10859,32 @@ export class Game {
         guest.dead = true
         guest.bagFault = 'missed_connection'
         guest.needs.bags = 0
+        const why = reason === 'bag_late' ? 'bags late' : reason === 'pax_late' ? 'walk too long' : 'inbound late'
         guest.thought = this.hasHotelBeds()
-          ? 'Missed connection — hotel night'
-          : 'Missed connection — rebooked'
+          ? `Missed connection — ${why}, hotel night`
+          : `Missed connection — ${why}, rebooked`
       }
     }
     // Nights already posted inside applyMissedConnection when a hotel bill lands.
     this.feedYearHub(made, missed, 0)
     if (missed > 0) {
-      this.pushNews(
-        `${missed} missed connection${missed === 1 ? '' : 's'} — hotel or rebook fee, Standing dips.`,
-        'bad',
-      )
+      const lead = (Object.entries(batch) as [ConnectionMissReason, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'below_mct'
+      this.noteConnectionMiss(missed, lead)
     }
+  }
+
+  /** News plus an alert that names why the connection failed. */
+  private noteConnectionMiss(missed: number, reason: ConnectionMissReason) {
+    const sentence = this.lastConnectionMiss ? connectionCauseSentence(this.lastConnectionMiss) : connectionHint(reason)
+    const noun = `${missed} missed connection${missed === 1 ? '' : 's'}`
+    this.pushNews(`${noun} — ${sentence}`, 'bad')
+    this.raiseAlert({
+      key: 'event:missed-connection',
+      severity: 'warning',
+      title: 'Missed connections',
+      detail: `${noun}. ${sentence} ${connectionHint(reason)}`,
+      event: true,
+    })
   }
 
   /** Click-open connection map: walk/ride minutes and the missed-connection count. */
@@ -10892,7 +10976,9 @@ export class Game {
         `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
       ]
     }
-    if (id === 'connections') return this.connectionMapLines()
+    if (id === 'connections') {
+      return [...this.connectionMapLines(), ...connectionReportLines(this.connectionTally, this.lastConnectionMiss)]
+    }
     if (id === 'links') return this.linkLines()
     if (id.startsWith('late-site:')) {
       const [c, r] = id.slice('late-site:'.length).split(',').map(Number)
@@ -18966,7 +19052,7 @@ export class Game {
   private cancelStuckFlight(flight: Flight): number {
     const collected = flight.ledger.reduce((sum, line) => sum + (line.amount > 0 ? line.amount : 0), 0)
     const refund = collected > 0 ? Math.round(collected) : STUCK_WATCH.minRefund
-    this.charge(refund, 'penalties')
+    this.charge(refund, 'penalties', this.simMinutes(), 'Cancel refund')
     this.atc.release(flight.id)
     this.atcPaths.delete(flight.id)
     this.trucks = this.trucks.filter((truck) => truck.flightId !== flight.id)
@@ -19266,7 +19352,7 @@ export class Game {
     this.atcPaths.delete(f.id)
     f.goArounds = (f.goArounds ?? 0) + 1
     const fuel = 260 + Math.round((AIRFRAMES[f.airframeId]?.seats ?? 150) * 1.2)
-    this.charge(fuel, 'penalties')
+    this.charge(fuel, 'penalties', this.simMinutes(), 'Go-around delay')
     this.adjustHeat(f.airline, -0.6)
     this.reputation = Math.max(0, this.reputation - 0.25)
     if (f.scheduleId) {
