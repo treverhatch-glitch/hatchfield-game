@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Round 6 bays</title>
+<style>html,body{margin:0;background:#f4f6f8;font-family:Inter,Arial,sans-serif}canvas{display:block}</style></head>
+<body><script type="module">
+// Round 6: each vehicle building at its real lot scale with the real vehicle models
+// (vehicle-visuals MODEL_SIZE, metres) parked on every service point. Doors open.
+//   /scripts/bd6-bays.html?ids=fuel,fire&cols=2&cw=800&ch=600
+// Needs scripts/_vv/vehicleModels.ts (copy of vehicle-visuals src/render/vehicleModels.ts).
+import * as THREE from 'three'
+import { buildModel } from '/src/build/models/index.ts'
+import * as KIT from '/src/build/models/kit.ts'
+import { SERVICE_POINTS } from '/src/build/servicePoints.ts'
+import { LARGEST, lotScale } from '/src/build/fleet.ts'
+import { WORLD_PER_METER } from '/src/render/aircraft/specs.ts'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+const VV = await import('/scripts/_vv/vehicleModels.ts').catch(() => null)
+const Q = new URLSearchParams(location.search)
+const ids = (Q.get('ids') || 'fuel,fire,cargo,kitchen,bags,deice,termbus,bus,hangar').split(',')
+const cols = Number(Q.get('cols') || 3), cw = Number(Q.get('cw') || 640), ch = Number(Q.get('ch') || 480)
+const view = (Q.get('view') || '0.55,0.62,0.7').split(',').map(Number)
+const W = cols * cw, H = Math.ceil(ids.length / cols) * ch
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H); r.setScissorTest(true); r.outputColorSpace = THREE.SRGBColorSpace
+r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.appendChild(r.domElement)
+if (KIT.setKitEnvironment) { const pm = new THREE.PMREMGenerator(r); KIT.setKitEnvironment(pm.fromScene(new RoomEnvironment(), 0.04).texture) }
+const label = document.createElement('canvas'); label.width = W; label.height = H
+label.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none'; document.body.appendChild(label)
+const lx = label.getContext('2d')
+const vmat = new THREE.MeshLambertMaterial({ vertexColors: true })
+const lmat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })
+const MODEL = { fuel_tanker: 'fuel', baggage_train: 'bags', catering_hilift: 'catering', arff: 'fire', deice: 'deice', apron_bus: 'termbus', box_truck: 'citycargo', coach: 'coach', towbarless_tug: 'tow' }
+function vehicle(kind) {
+  const g = new THREE.Group()
+  if (!VV) return g
+  for (const p of VV.buildVehicleParts(VV.vehicleModel(kind), '#2f6f9a')) { const m = new THREE.Mesh(p.geo, p.lit ? lmat : vmat); m.castShadow = true; g.add(m) }
+  return g
+}
+function openDoors(m) {
+  m.traverse((o) => { const a = o.userData.anim; if (!a) return
+    if (a.kind === 'roll') { o.scale.y *= 0.15; o.position.y += (a.amount ?? 1) * 0.425 }
+    if (a.kind === 'slide') o.position[a.axis ?? 'x'] += a.amount ?? 0 })
+}
+function draw() { lx.clearRect(0, 0, W, H); ids.forEach((id, i) => {
+  const tile = id.startsWith('hangar') ? 'hangar' : id
+  const tier = id === 'hangar_w' ? 'wide' : id === 'hangar_j' ? 'jumbo' : 'small'
+  const s = lotScale(tile, tier), sy = 0.55 + 0.45 * s
+  const scene = new THREE.Scene()
+  scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.4))
+  const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-30, 60, 45); key.castShadow = true
+  const sc = key.shadow.camera; sc.left = sc.bottom = -40; sc.right = sc.top = 40; sc.far = 200; key.shadow.mapSize.set(2048, 2048); scene.add(key)
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#7a9a5a' }))
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
+  const m = buildModel(id, { yardSeed: '5,5', hangarTier: tier }); openDoors(m)
+  m.scale.set(s, sy, s); m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } }); scene.add(m)
+  const spec = SERVICE_POINTS[tile]
+  let n = 0
+  if (spec) for (const p of spec.points) {
+    // Skip bays already holding the building's own parked fleet prop.
+    let taken = false
+    m.traverse((o) => { if (o.userData.fleet && Math.hypot(o.position.x - p.x, o.position.z - p.z) < 0.3) taken = true })
+    if (taken) continue
+    const v = vehicle(MODEL[LARGEST[spec.serves[0]]] ?? spec.serves[0])
+    v.scale.setScalar(WORLD_PER_METER)
+    v.position.set(p.x * s, 0.12 * sy, p.z * s)
+    v.rotation.y = p.heading - Math.PI / 2
+    scene.add(v); n++
+  }
+  const cam = new THREE.PerspectiveCamera(30, cw / (ch - 40), 0.5, 800)
+  const bs = new THREE.Box3().setFromObject(m).getBoundingSphere(new THREE.Sphere())
+  const dist = bs.radius / Math.sin(THREE.MathUtils.degToRad(15)) * 0.92
+  cam.position.copy(bs.center).add(new THREE.Vector3(...view).normalize().multiplyScalar(dist)); cam.lookAt(bs.center)
+  const x = (i % cols) * cw, yTop = Math.floor(i / cols) * ch, y = H - yTop - ch
+  r.setViewport(x, y + 40, cw, ch - 40); r.setScissor(x, y, cw, ch)
+  r.setClearColor('#f4f6f8'); r.clear(); r.render(scene, cam)
+  lx.fillStyle = '#1d2126'; lx.font = '600 18px Inter, Arial'; lx.textAlign = 'center'
+  lx.fillText(`${id}  (${s * 22} m lot, ${n} real vehicles${VV ? '' : ' MISSING'})`, x + cw / 2, yTop + ch - 14)
+}) }
+draw()
+setTimeout(() => { draw(); window.__done = true }, 3000)
+</script></body></html>
