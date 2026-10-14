@@ -838,6 +838,11 @@ export interface TerminalFit {
     rot?: number
     revenue?: number
     fill?: number
+    /** Hall-metre centre of a true-footprint placement. */
+    hx?: number
+    hz?: number
+    fw?: number
+    fd?: number
   }[]
   /** Rubbish on the floor, one decal per piece. */
   litter?: { id: string; c: number; r: number; ox: number; oz: number }[]
