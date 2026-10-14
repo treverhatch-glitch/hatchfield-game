@@ -7,6 +7,7 @@ import {
   BAG_TRIPS,
   CATER_STAND_PHASES,
   CREW_SHARES,
+  SERVICE_POINTS,
   type CaterStandPhase,
   type CrewPose,
   type CrewRole,
@@ -114,8 +115,18 @@ function caterGalley(): Pt {
   return { x: -2.85, y: 2.8, z: -1.75, pose: 'reach' }
 }
 
-function tugNose(role: CrewRole): Pt {
-  return { x: 1.15, y: 0, z: role === 'driver' ? 0.4 : 1.15, pose: 'idle' }
+function fuelPanel(): Pt {
+  return { x: SERVICE_POINTS.fuelPanel.x, y: 0, z: SERVICE_POINTS.fuelPanel.z, pose: 'idle' }
+}
+
+function gpuSocket(): Pt {
+  const s = SERVICE_POINTS.gpuSocket
+  return { x: s.x - 0.2, y: 0, z: s.z + 0.55, pose: 'kneel' }
+}
+
+function tugSeat(): Pt {
+  const s = SERVICE_POINTS.tugSeat
+  return { x: s.x, y: s.y, z: s.z, pose: 'seated' }
 }
 
 function cabin(role: CrewRole): Pt {
@@ -127,8 +138,9 @@ const LIFT_Y = 2.65
 function track(service: CrewService, step: CrewStepId, role: CrewRole, aim: { x: number; z: number }): Pt[] {
   const s = seat(role)
   const d = door(role)
-  if (service === 'fuel') {
-    const w = fuelWing(role, aim)
+  if (service === 'fuel' || service === 'gpu') {
+    // Driver couples at the wing (fuel) or nose socket (GPU); the second hand works the truck.
+    const w = role === 'driver' ? fuelWing(role, aim) : service === 'fuel' ? fuelPanel() : gpuSocket()
     if (step === 'park' || step === 'drive_off') return [s, s]
     if (step === 'exit') return [s, d]
     if (step === 'walk') return [d, w]
@@ -144,17 +156,10 @@ function track(service: CrewService, step: CrewStepId, role: CrewRole, aim: { x:
     if (step === 'work') return [b, b]
     return [b, d, s]
   }
-  if (service === 'gpu') {
-    const w = fuelWing(role, aim)
-    if (step === 'park' || step === 'drive_off') return [s, s]
-    if (step === 'exit') return [s, d]
-    if (step === 'walk') return [d, w]
-    if (step === 'connect' || step === 'work' || step === 'disconnect') return [w, w]
-    return [w, d, s]
-  }
   if (service === 'pushback') {
-    const nose = tugNose(role)
-    const wing = role === 'driver' ? nose : { x: aim.x, y: 0, z: aim.z, pose: 'walk' as const }
+    // The tug driver never leaves the cab; the wing walker walks out to the wingtip.
+    if (role === 'driver') return [tugSeat(), tugSeat()]
+    const wing = { x: aim.x, y: 0, z: aim.z, pose: 'walk' as const }
     if (step === 'park' || step === 'drive_off') return [s, s]
     if (step === 'exit') return [s, d]
     if (step === 'walk') return [d, wing]
@@ -250,6 +255,30 @@ function workOf(step: CrewStepId, stepU: number, spans: CrewStepSpan[], now: num
   return 1
 }
 
+function atTruck(step: CrewStepId): boolean {
+  return step === 'connect' || step === 'work' || step === 'disconnect'
+}
+
+/** What the hands are doing at the service point, when it differs from the path pose. */
+function workPose(service: CrewService, step: CrewStepId, role: CrewRole): CrewPose | null {
+  const coupling = step === 'connect' || step === 'disconnect'
+  if (service === 'pushback') {
+    if (role === 'driver') return 'seated'
+    if (step === 'work') return 'signal'
+    return coupling ? 'idle' : null
+  }
+  if (service === 'fuel') {
+    if (role === 'driver') return coupling ? 'reach' : step === 'work' ? 'idle' : null
+    return step === 'work' ? 'reach' : coupling ? 'idle' : null
+  }
+  if (service === 'gpu') {
+    if (role === 'driver') return coupling ? 'reach' : step === 'work' ? 'idle' : null
+    return coupling ? 'kneel' : step === 'work' ? 'idle' : null
+  }
+  if (service === 'bags' && role === 'driver' && step === 'work') return 'lift'
+  return null
+}
+
 function linkOf(step: CrewStepId, stepU: number): number {
   if (step === 'connect') return stepU
   if (step === 'work') return 1
@@ -272,18 +301,20 @@ export function sampleService(
   const spans = crewStepSpans(service, start, safeEnd)
   const clamped = Math.min(safeEnd, Math.max(start, now))
   const { span, u } = spanAt(spans, clamped, safeEnd)
-  const coupling = clampAim(aim)
+  // The wing walker goes all the way to the wingtip; every other coupling stays a short walk.
+  const coupling = service === 'pushback' && aim ? aim : clampAim(aim)
   const face = faceFor(service, span.id, coupling)
   const crew = ROLES.map((role) => {
     let placed = along(track(service, span.id, role, coupling), u, face)
     if (service === 'bags' && role === 'helper' && span.id === 'work') {
+      // Pick a bag off the cart, carry it two steps, hand it onto the belt foot.
       const swing = (1 - Math.cos(u * Math.PI * 2 * BAG_TRIPS)) / 2
       const home = bagBelt(role)
       const cart = bagCart()
       placed = {
         ...lerpPt(home, cart, swing),
         heading: Math.atan2(cart.z - home.z, cart.x - home.x),
-        pose: swing > 0.08 && swing < 0.92 ? 'walk' : 'reach',
+        pose: swing > 0.12 && swing < 0.88 ? 'carry' : 'lift',
       }
     }
     if (service === 'catering' && role === 'helper' && span.id === 'work') {
@@ -293,7 +324,7 @@ export function sampleService(
       placed = {
         ...lerpPt(home, door, swing),
         heading: Math.PI,
-        pose: 'reach',
+        pose: 'push',
       }
     }
     if (service === 'cleaning' && span.id === 'work') {
@@ -303,10 +334,14 @@ export function sampleService(
       placed = {
         ...lerpPt(inside, outside, swing),
         heading: Math.atan2(outside.z - inside.z, outside.x - inside.x),
-        pose: 'walk',
+        pose: 'carry',
       }
     }
-    return { role, x: placed.x, y: placed.y, z: placed.z, heading: placed.heading, pose: placed.pose }
+    const pose = workPose(service, span.id, role) ?? placed.pose
+    let heading = placed.heading
+    if (service === 'pushback' && role === 'driver') heading = 0
+    else if ((service === 'fuel' || service === 'gpu') && role === 'helper' && atTruck(span.id)) heading = -Math.PI / 2
+    return { role, x: placed.x, y: placed.y, z: placed.z, heading, pose }
   }) as [CrewMemberPose, CrewMemberPose]
   const window = safeEnd - start
   return {
@@ -359,7 +394,7 @@ export function sampleCateringStand(phase: CaterStandPhase, u: number): CaterSam
       const from = phase === 'carts_out' ? high : door
       const to = phase === 'carts_out' ? door : high
       const p = lerpPt(from, to, t)
-      return member(role, { ...p, pose: 'reach' }, Math.PI)
+      return member(role, { ...p, pose: 'push' }, Math.PI)
     }
     if (phase === 'lift_lower') {
       const p = lerpPt(high, low, t)

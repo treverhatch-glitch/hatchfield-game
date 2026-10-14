@@ -10,8 +10,37 @@ export type GearKind = 'headset' | 'earDefenders' | 'lanyard' | 'boots'
 export type CrewKind = 'pilot' | 'cabin' | 'ground' | 'marshaller' | 'security' | 'fuel' | 'maintenance'
 export const CREW_KINDS: readonly CrewKind[] = ['pilot', 'cabin', 'ground', 'marshaller', 'security', 'fuel', 'maintenance']
 
-export type PersonPose = 'walk' | 'idle' | 'queue' | 'bagPull' | 'push' | 'wave' | 'reach' | 'seated'
-export const PERSON_POSES: readonly PersonPose[] = ['walk', 'idle', 'queue', 'bagPull', 'push', 'wave', 'reach', 'seated']
+export type PersonPose =
+  | 'walk'
+  | 'idle'
+  | 'queue'
+  | 'bagPull'
+  | 'push'
+  | 'wave'
+  | 'reach'
+  | 'seated'
+  /** Down on one knee at a chock, coupling or panel. */
+  | 'kneel'
+  /** Handing a bag or box up: arms cycle from hip to shoulder. */
+  | 'lift'
+  /** Walking with both hands holding something in front. */
+  | 'carry'
+  /** Wing walker: walking with one wand held out. */
+  | 'signal'
+export const PERSON_POSES: readonly PersonPose[] = [
+  'walk',
+  'idle',
+  'queue',
+  'bagPull',
+  'push',
+  'wave',
+  'reach',
+  'seated',
+  'kneel',
+  'lift',
+  'carry',
+  'signal',
+]
 
 export interface PersonLook {
   /** Stable key for the variant: same look, same key. */
