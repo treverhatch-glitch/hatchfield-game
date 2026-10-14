@@ -248,6 +248,22 @@ export const MATERIALS: Record<string, MatSpec> = {
   logo1: { color: '#ffffff', map: () => logoTex(1), glow: true },
   logo2: { color: '#ffffff', map: () => logoTex(2), glow: true },
   logo3: { color: '#ffffff', map: () => logoTex(3), glow: true },
+  // round 4: staff / officers (low-poly figures on props)
+  skin: { color: '#d4a574', rough: 0.7 },
+  skinDark: { color: '#8d5a3b', rough: 0.7 },
+  hair: { color: '#2a1f18', rough: 0.85 },
+  hairBrown: { color: '#5a3a22', rough: 0.85 },
+  shirtWhite: { color: '#f4f4f0', rough: 0.75 },
+  shirtNavy: { color: '#1a2a4a', rough: 0.7 },
+  pantsNavy: { color: '#1c2740', rough: 0.75 },
+  pantsBlack: { color: '#1a1c20', rough: 0.75 },
+  vestYellow: { color: '#f0c020', rough: 0.55, emissive: '#f0c020', emissiveIntensity: 0.15 },
+  // per-desk number lightboxes
+  desk1: { color: '#ffffff', map: () => bigSign('1', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk2: { color: '#ffffff', map: () => bigSign('2', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk3: { color: '#ffffff', map: () => bigSign('3', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk4: { color: '#ffffff', map: () => bigSign('4', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  deskOpen: { color: '#ffffff', map: () => bigSign('OPEN', '#0a3a14', '#2fd062', 512, 192), glow: true },
   // shop goods
   goodsA: { color: '#c9a24a', rough: 0.3, metal: 0.4 },
   goodsB: { color: '#6a2a52', rough: 0.4 },

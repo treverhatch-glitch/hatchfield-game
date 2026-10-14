@@ -565,6 +565,8 @@ export interface Flight {
   ledger: { label: string; amount: number }[]
   /** Moments this flight already rolled a crash check for. */
   crashRolls?: { landing?: boolean; takeoff?: boolean }
+  /** Go-arounds flown on this arrival (ground control). Diverts at the cap. */
+  goArounds?: number
   /** Linked timetable slot when spawned from the schedule. */
   scheduleId?: string | null
   /** Sim-clock scheduled departure. Show-up is keyed to this, not to boarding. */
@@ -1052,6 +1054,8 @@ export interface GameSnapshot {
   missedHotelNights?: number
   /** Crew waiting on the airport hotel. */
   crewHotelNights?: number
+  /** Achievement tracking state. */
+  achievements?: any
 }
 
 /** A placed building that is still a construction site. */
