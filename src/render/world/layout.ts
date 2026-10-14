@@ -729,6 +729,30 @@ export function standPaint(list: StandInfo[]): Paint[] {
   return out
 }
 
+/**
+ * Equipment restraint boxes at the stand head: hazard-chevron hatching on the
+ * side opposite the stand plate, where GSE must not park. World units.
+ */
+export function standHatch(list: StandInfo[]): { x: number; z: number; w: number; d: number }[] {
+  const out: { x: number; z: number; w: number; d: number }[] = []
+  const wu = aircraftWorldPerMeter()
+  for (const s of list) {
+    const box = standBox(s)
+    const { halfX, halfZ } = halfExtents(box)
+    const into = DIR_VEC[OPPOSITE[s.entry]]
+    const halfAlong = box.depthAlongX ? halfX : halfZ
+    const halfAcross = box.depthAlongX ? halfZ : halfX
+    const side = into.dc === 0 ? { dc: 1, dr: 0 } : { dc: 0, dr: 1 }
+    const along = halfAlong * 0.8
+    const deep = Math.min(halfAlong * 0.25, 4 * wu)
+    const wide = Math.min(halfAcross * 0.45, 6 * wu)
+    const cx = box.x + into.dc * along - side.dc * halfAcross * 0.55
+    const cz = box.z + into.dr * along - side.dr * halfAcross * 0.55
+    out.push({ x: cx, z: cz, w: into.dc ? deep : wide, d: into.dr ? deep : wide })
+  }
+  return out
+}
+
 export function roadPaint(view: WorldView): Paint[] {
   const out: Paint[] = []
   for (let r = 0; r < view.tiles.length; r++) {

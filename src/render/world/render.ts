@@ -28,6 +28,7 @@ import {
   runwayPaint,
   runways,
   standPads,
+  standHatch,
   standPaint,
   stands,
   taxiLightSpots,
@@ -45,7 +46,7 @@ import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
-import { photoTexturesEnabled } from './textureRegistry'
+import { artTexture, photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
 
@@ -107,6 +108,8 @@ export class WorldRenderer {
   private shared!: TerminalShared
   private surfaceMats = new Map<SurfaceKind, THREE.MeshLambertMaterial>()
   private paintMat: THREE.MeshLambertMaterial | null = null
+  /** Hazard-chevron restraint boxes at stand heads (Medium and up). */
+  private hatchMat: THREE.MeshLambertMaterial | null = null
   private contacts = new ContactShadows()
   private kerbMat = new THREE.MeshLambertMaterial({ color: GROUND_LOOK.kerb })
   private staticGroup = new THREE.Group()
@@ -195,6 +198,9 @@ export class WorldRenderer {
     if (!first) this.disposeContent()
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
+    this.hatchMat?.dispose()
+    const chevron = photoTexturesEnabled(q.level) ? artTexture('chevron_stripe', q.anisotropy) : null
+    this.hatchMat = chevron ? new THREE.MeshLambertMaterial({ map: chevron, polygonOffset: true, polygonOffsetFactor: -3 }) : null
     this.tex = makeTextures(q.textureSize, q.anisotropy, photoTexturesEnabled(q.level))
     this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
@@ -339,6 +345,15 @@ export class WorldRenderer {
       const mesh = new THREE.Mesh(geo, this.paintMat)
       mesh.receiveShadow = true
       mesh.name = 'surface-paint'
+      this.staticGroup.add(mesh)
+    }
+    const hatch = this.hatchMat ? standHatch(st) : []
+    if (hatch.length && this.hatchMat) {
+      const geo = rectsGeometry(hatch, 0.03, 1.5 * WORLD_PER_METER)
+      this.staticGeos.push(geo)
+      const mesh = new THREE.Mesh(geo, this.hatchMat)
+      mesh.receiveShadow = true
+      mesh.name = 'surface-stand-hatch'
       this.staticGroup.add(mesh)
     }
     const kerbs = roadKerbs(view)
@@ -789,6 +804,7 @@ export class WorldRenderer {
   dispose() {
     this.disposeContent()
     this.paintMat?.dispose()
+    this.hatchMat?.dispose()
     this.contacts.dispose()
     this.kerbMat.dispose()
     this.sky.dispose()
