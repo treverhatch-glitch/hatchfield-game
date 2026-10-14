@@ -1,6 +1,6 @@
 /** Power family: field substation. */
 import * as THREE from 'three'
-import { box, cyl, emblem, fence, HALF, M, mat, pad, pipe, sign } from './kit'
+import { box, cyl, emblem, fence, HALF, M, mat, pad, pipe, sign, tmat } from './kit'
 
 function transformer(g: THREE.Object3D, x: number, z: number) {
   const body = mat('#6c7a5a', { rough: 0.55, metal: 0.3 })
@@ -34,7 +34,7 @@ function gantry(g: THREE.Object3D, x: number, z: number, h: number) {
 export function substation(g: THREE.Group): void {
   pad(g, HALF * 2, HALF * 2, mat('#9c978c', { rough: 1 }))
   // Gravel yard.
-  box(g, HALF * 1.8, 0.04, HALF * 1.8, mat('#7d7a73', { rough: 1 }), 0, 0.12, 0)
+  box(g, HALF * 1.8, 0.04, HALF * 1.8, tmat('gravel_yard', '#a09a90', 3, 3, { rough: 1 }), 0, 0.12, 0)
   fence(g, HALF * 1.9, HALF * 1.9, 1.5, 1.6)
   transformer(g, -2, -0.6)
   transformer(g, 1.4, -0.6)

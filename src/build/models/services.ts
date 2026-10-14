@@ -1,6 +1,7 @@
 /** Services family: fire station, catering kitchen, vehicle depot, snack bar. */
 import * as THREE from 'three'
-import { box, cyl, emblem, HALF, M, mat, pad, pipe, sign } from './kit'
+import { animate } from '../anim'
+import { box, cyl, emblem, HALF, M, mat, pad, pipe, sign, tmat } from './kit'
 
 export function fireStation(g: THREE.Group): void {
   pad(g, HALF * 2, HALF * 2)
@@ -11,8 +12,9 @@ export function fireStation(g: THREE.Group): void {
   for (let i = 0; i < 3; i++) {
     const x = -2.8 + i * 2.2
     box(g, 2.0, 2.3, 0.05, M.white(), x, 0.12, 1.12)
-    box(g, 1.8, 2.15, 0.06, mat('#d62d20', { rough: 0.4, metal: 0.2 }), x, 0.12, 1.15)
-    for (let k = 1; k < 7; k++) box(g, 1.8, 0.03, 0.08, mat('#9e1f16'), x, 0.12 + k * 0.3, 1.16)
+    const door = box(g, 1.8, 2.15, 0.06, mat('#d62d20', { rough: 0.4, metal: 0.2 }), x, 0.12, 1.15)
+    animate(door, { kind: 'roll', signal: 'fireDispatch', amount: 2.15 })
+    box(g, 1.8, 2.0, 0.04, mat('#2a2d31'), x, 0.12, 1.1) // dark bay behind the door
     box(g, 0.4, 0.15, 0.06, M.glow('#ff3b30'), x, 2.55, 1.15)
   }
   // Hose-drying / training tower: the tall red silhouette.
@@ -44,7 +46,10 @@ export function kitchen(g: THREE.Group): void {
   box(g, 7.6, 0.18, 5.0, mat('#2d7d5a'), 0, 2.92, -1.2)
   // Extraction stacks + rooftop chillers.
   for (const x of [-2.4, -1.4]) cyl(g, 0.3, 0.3, 2.2, M.steel(), x, 3.1, -2.4, 14)
-  for (const x of [1.0, 2.6]) box(g, 1.2, 0.7, 1.2, M.darkSteel(), x, 3.1, -2.0)
+  for (const x of [1.0, 2.6]) {
+    box(g, 1.2, 0.7, 1.2, M.darkSteel(), x, 3.1, -2.0)
+    animate(box(g, 0.9, 0.04, 0.12, M.black(), x, 3.82, -2.0), { kind: 'spin', signal: 'always', axis: 'y', rate: 7 })
+  }
   pipe(g, { x: -2.4, y: 4.0, z: -2.4 }, { x: -2.4, y: 4.0, z: -0.6 }, 0.22, M.steel())
   // High-loader dock: raised doors with two catering trucks (scissor box bodies).
   for (let i = 0; i < 2; i++) {
@@ -66,7 +71,7 @@ export function kitchen(g: THREE.Group): void {
 }
 
 export function depot(g: THREE.Group): void {
-  pad(g, HALF * 2, HALF * 2, M.asphalt())
+  pad(g, HALF * 2, HALF * 2, tmat('dock_floor', '#8e8c88', 3, 3, { rough: 0.9 }))
   // Open-sided steel canopy with a mono-pitch roof.
   const s = mat('#e7b52a', { rough: 0.45, metal: 0.3 })
   for (const x of [-3.8, -1.3, 1.3, 3.8]) for (const z of [-3, 0.8]) box(g, 0.18, 3.0, 0.18, s, x, 0.12, z)
