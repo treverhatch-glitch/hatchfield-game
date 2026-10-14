@@ -54,6 +54,11 @@ export interface NavGuest {
   transfer?: boolean
   /** Fare persona (business / premium / family / budget): seeds the walker's purpose and family groups. */
   tag?: string
+  /**
+   * When set, this walker does or does not stop at check-in. Unset keeps the
+   * walk's own roll. A carry-on bank can be sent straight at security.
+   */
+  bags?: boolean
 }
 
 /** Sim fare persona -> walker purpose. Family fares are leisure or family trips, so they roll. */
@@ -440,13 +445,44 @@ export function includedSecurityLanes(items: readonly { def: string; bundle?: bo
   return n
 }
 
+/** A placed piece the walk can match to a desk. Flags come from the item, not its id. */
+export interface StaffItemRef {
+  id: string
+  def: string
+  bundle?: boolean
+}
+
+/**
+ * The placed piece that spawned this desk. Layout desks are `${item.id}-${n}`.
+ * The longest matching item id wins, so one piece cannot claim another's desk.
+ */
+function itemForDesk(facilityId: string, items: readonly StaffItemRef[]): StaffItemRef | undefined {
+  let best: StaffItemRef | undefined
+  for (const it of items) {
+    if (!it.id) continue
+    if (facilityId !== it.id && !facilityId.startsWith(`${it.id}-`)) continue
+    if (!best || it.id.length > best.id.length) best = it
+  }
+  return best
+}
+
+/**
+ * A check-in piece with servers and a staff of 0 runs itself (the self-service
+ * kiosk). Staff and room live on the item def.
+ */
+function deskRunsItself(defId: string): boolean {
+  const def = itemDef(defId)
+  return Boolean(def && def.room === 'checkin' && def.servers > 0 && def.staff <= 0)
+}
+
 /**
  * Check-in desks and security lanes on the walk, in facility order.
- * A bundle piece is part of the building. A kiosk serves itself.
+ * A bundle piece is part of the building. A def with no staff serves itself.
+ * Security inclusion is the bundle lanes' server count, in facility order.
  */
 export function staffPoints(
   facilities: readonly { id: string; kind: string }[],
-  items: readonly { def: string; bundle?: boolean }[],
+  items: readonly StaffItemRef[],
 ): StaffPoint[] {
   const includedLanes = includedSecurityLanes(items)
   let lane = 0
@@ -456,15 +492,30 @@ export function staffPoints(
       out.push({ id: f.id, kind: 'security_lane', included: lane < includedLanes, automatic: false })
       lane += 1
     } else if (f.kind === 'checkin_desk') {
+      const it = itemForDesk(f.id, items)
       out.push({
         id: f.id,
         kind: 'checkin_desk',
-        included: f.id.startsWith('bundle-'),
-        automatic: f.id.includes('kiosk'),
+        included: Boolean(it?.bundle),
+        automatic: it ? deskRunsItself(it.def) : false,
       })
     }
   }
   return out
+}
+
+/** Open security lanes: the same set the walk will serve. */
+export function openSecurityCount(
+  facilities: readonly { id: string; kind: string }[],
+  items: readonly StaffItemRef[],
+  screenersOnPost: number,
+): number {
+  const points = staffPoints(facilities, items)
+  const hired = Number.isFinite(screenersOnPost) ? Math.max(0, Math.floor(screenersOnPost)) : 0
+  const open = openPointIds(points, { checkin: 0, security: hired })
+  let n = 0
+  for (const p of points) if (p.kind === 'security_lane' && open.has(p.id)) n += 1
+  return n
 }
 
 /**
@@ -513,6 +564,11 @@ export class HallNav {
 
   get nav(): PaxNav | null {
     return this.navObj
+  }
+
+  /** Hall key the walk is reading. Empty until `setHall`. */
+  get hallId(): string {
+    return this.hall
   }
 
   private static newCrew(): CrewNav {
@@ -633,6 +689,7 @@ export class HallNav {
         departAt: this.navNow + Math.max(0, std - clock) * L,
         purpose: g.tag ? TAG_PURPOSE[g.tag] : undefined,
         groupOf: this.groupFor(g),
+        bags: g.bags,
       })
       if (ok) {
         this.depOrder.push(g.id)

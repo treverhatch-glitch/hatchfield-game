@@ -130,18 +130,46 @@ export interface InfoPoint {
   waitSec: number
 }
 
+/** Shown when a player-built hall keeps every point open with nobody hired. */
+export const BUILDING_SERVICE_LINE = 'open: building service (no staff needed)'
+
+/** Shown when the info panel had to guess because the walk is not running. */
+export const WALK_PAUSED_LINE = 'walk paused, estimate'
+
+/**
+ * True when this kind has points and none of them came with the building.
+ * `openPointIds` then keeps every point open. The rule itself stays put.
+ */
+export function isBuildingService(points: readonly { kind: string; included?: boolean }[], kind: string): boolean {
+  let any = false
+  for (const p of points) {
+    if (p.kind !== kind) continue
+    any = true
+    if (p.included) return false
+  }
+  return any
+}
+
 /**
  * Click-open lines: how many points are staffed and in use, then each
- * point's queue and wait.
+ * point's queue and wait. A player-built hall says the building is the service.
  */
-export function serviceInfoLines(label: string, points: readonly InfoPoint[], throughput: Throughput): string[] {
+export function serviceInfoLines(
+  label: string,
+  points: readonly InfoPoint[],
+  throughput: Throughput,
+  buildingService = false,
+): string[] {
   const noun = label === 'Security' ? 'lane' : 'desk'
   const lines = [
     `${label}`,
     `${throughput.staffed} of ${throughput.points} ${noun}${throughput.points === 1 ? '' : 's'} staffed · ${throughput.inUse} in use`,
+  ]
+  if (buildingService) lines.push(BUILDING_SERVICE_LINE)
+  lines.push(
     `Queue ${throughput.queueLength} · wait ${formatWait(throughput.waitSec)}`,
     `Throughput ${throughput.perMin.toFixed(1)}/min`,
-  ]
+  )
   points.forEach((p, i) => {
     const name = p.kind === 'security_lane' ? `Lane ${i + 1}` : `Desk ${i + 1}`
     const state = !p.staffed ? 'unstaffed' : p.serving || p.queueLength > 0 ? 'in use' : 'idle'

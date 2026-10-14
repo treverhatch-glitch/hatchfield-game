@@ -184,6 +184,8 @@ import {
   bagUnitsForTag,
   estimateFlightBagUnits,
   rollPaxTag,
+  HALL_POST,
+  onPostNow,
   spawnHallGuest,
   strongestNeed,
   tagPrice,
@@ -199,7 +201,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout, hallSignage, waitMoodDelta } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -352,7 +354,14 @@ import {
   tickFuel,
 } from '../scale/logic.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
-import { extraOpenServers, serviceInfoLines, throughputOf, type PointLoad } from '../servicepoints/index.ts'
+import {
+  SERVICE_POINT_TUNING,
+  WALK_PAUSED_LINE,
+  isBuildingService,
+  serviceInfoLines,
+  throughputOf,
+  type PointLoad,
+} from '../servicepoints/index.ts'
 import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type Reading } from '../buildinginfo/index.ts'
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -381,7 +390,6 @@ import {
   lookaheadDepth,
   needsMaintenance,
   overCapMultiplier,
-  UNSTAFFED_LANE,
   prefabZones,
   schemeItems,
   schemeLabel,
@@ -8294,8 +8302,8 @@ export class Game {
     )
     this.hallNav.setStaffPlan(
       {
-        checkin: this.hallStaff.filter((s) => s.node === 'checkin' && s.stage === 0).length,
-        security: this.hallStaff.filter((s) => s.node === 'security' && s.stage === 0).length,
+        checkin: this.onPostCount('checkin'),
+        security: this.onPostCount('security'),
       },
       fit.items ?? [],
     )
@@ -8970,11 +8978,14 @@ export class Game {
         .filter((i) => String(i.def).startsWith('security'))
         .map((i) => i.wear),
     )
-    let servers = lane.servers + this.extraSecurityServers(fit)
+    // The walk's open lanes are the only server count. A lane the walk has
+    // open is not also slowed for being unstaffed, and a lane the walk has
+    // closed is not a server here.
+    const openServers = this.securityServers(fit)
+    let servers = openServers
     if (fast) servers = Math.min(servers, 1)
     else if (fastHere && servers > 1) servers = servers - 1
     let svc = slowedService(lane.serviceSec, wear)
-    if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
     svc *= this.disruptions.screeningMultiplier() * this.opsEvents.screeningMultiplier()
     if (this.disruptions.secureZone()) svc += 0.8
     if (!Number.isFinite(svc) || svc <= 0) svc = slowedService(lane.serviceSec, wear)
@@ -9007,7 +9018,7 @@ export class Game {
       return
     }
 
-    if (lane.servers <= 0) {
+    if (openServers <= 0) {
       const prefab = Boolean(fit?.premade && !fit?.redesigned)
       if (prefab) {
         g.lost = false
@@ -11564,31 +11575,47 @@ export class Game {
     return true
   }
 
-  /** Player-added lanes on a prefab, one open server per screener on the post. */
-  private extraSecurityServers(fit: TerminalFit | null): number {
-    if (!fit?.premade || fit.redesigned) return 0
-    let extra = 0
-    for (const it of fit.items ?? []) {
-      if (it.bundle) continue
-      const def = itemDef(it.def)
-      if (def?.room === 'security' && def.servers > 0) extra += def.servers
+  /**
+   * Desks and lanes the walk is staffing for this hall. The live walk's
+   * facilities when it is pointed here, otherwise the layout it will read.
+   */
+  private hallServiceFacilities(fit: TerminalFit | null): { id: string; kind: string }[] {
+    if (!fit) return []
+    const nav = this.hallNav.nav
+    const source =
+      nav && this.hallNav.hallId === this.hallKey(fit) ? nav.facilities.list : (hallNavLayout(fit)?.equipment ?? [])
+    const out: { id: string; kind: string }[] = []
+    for (const f of source) {
+      if (f.kind === 'checkin_desk' || f.kind === 'security_lane') out.push({ id: f.id, kind: f.kind })
     }
-    const hired = this.hallStaff.filter((s) => s.node === 'security' && s.stage === 0).length
-    return extraOpenServers(extra, hired)
+    return out
+  }
+
+  /**
+   * Security lanes that can serve. Same count the walk has open: bundle
+   * lanes stay open, player lanes need a screener on the post, and a
+   * player-built hall with no bundle lanes keeps every lane open.
+   */
+  securityServers(fit: TerminalFit | null = this.activeHall()): number {
+    if (!fit) return 0
+    return openSecurityCount(this.hallServiceFacilities(fit), fit.items ?? [], this.onPostCount('security'))
   }
 
   /**
    * Queue length and wait for each check-in desk or security lane.
-   * The walk's points when they are up; otherwise the hall count.
+   * The walk's points when the walk is running. A paused walk says so
+   * instead of swapping in a hall head-count with no label.
    */
   servicePointLines(node: 'checkin' | 'security'): string[] {
     const kind = node === 'checkin' ? 'checkin_desk' : 'security_lane'
     const label = node === 'checkin' ? 'Check-in' : 'Security'
-    const metrics = this.hallNav.live ? this.hallNav.metrics().filter((m) => m.kind === kind) : []
-    if (!metrics.length) {
+    if (!this.hallNav.live) {
       const count = node === 'security' ? this.securityQueueCount() : queueAtNode(this.hallGuests, node)
-      return [`${count} waiting at ${label.toLowerCase()}`]
+      return [WALK_PAUSED_LINE, `${count} waiting at ${label.toLowerCase()}`]
     }
+    const metrics = this.hallNav.metrics().filter((m) => m.kind === kind)
+    const fit = this.activeHall()
+    const buildingService = isBuildingService(staffPoints(this.hallServiceFacilities(fit), fit?.items ?? []), kind)
     const scale = HALL_NAV_TUNING.navSecPerClockSec
     const limit = (HALL_QUEUE_TUNING.bottleneckSec[kind] ?? 600) / scale
     const loads: PointLoad[] = metrics.map((m) => ({
@@ -11608,7 +11635,7 @@ export class Game {
       serving: p.serving,
       waitSec: p.estWaitSec,
     }))
-    return serviceInfoLines(label, info, throughputOf(loads, limit))
+    return serviceInfoLines(label, info, throughputOf(loads, limit), buildingService)
   }
 
   securityQueueCount(): number {
@@ -12906,9 +12933,19 @@ export class Game {
     this.emit()
   }
 
-  /** True when a body is working that desk (not on break). */
+  /**
+   * Bodies standing this post now. On break, walking to the post, and any
+   * other stage (there is no off-shift on this roster) do not count.
+   */
+  onPostCount(post: StaffPost): number {
+    let n = 0
+    for (const s of this.hallStaff) if (s.node === post && onPostNow(s.stage)) n += 1
+    return n
+  }
+
+  /** True when a body is on that post now. */
   staffedPost(post: StaffPost): boolean {
-    return this.hallStaff.some((s) => s.node === post && s.stage === 0)
+    return this.onPostCount(post) > 0
   }
 
   securityLevel(): number {
@@ -15376,16 +15413,16 @@ export class Game {
               ? 'Screener'
               : 'Gate agent',
         color: node === 'security' ? '#c9a227' : node === 'gate' ? '#6a9ec8' : '#8aaf7a',
-        stage: 0,
+        stage: HALL_POST.onPost,
       })
     }
     if (this.hallStaff.length > this.deskStaff) {
       this.hallStaff.length = this.deskStaff
     }
-    // Rebalance coverage — prefer empty posts.
-    const covered = new Set(this.hallStaff.filter((s) => s.stage === 0).map((s) => s.node))
+    // Rebalance coverage — only bodies on the post can cover or be moved.
+    const covered = new Set(this.hallStaff.filter((s) => onPostNow(s.stage)).map((s) => s.node))
     for (const s of this.hallStaff) {
-      if (s.stage !== 0) continue
+      if (!onPostNow(s.stage)) continue
       if (!posts.includes(s.node)) {
         s.node = posts[0]
         s.label =
@@ -15394,8 +15431,8 @@ export class Game {
     }
     for (const post of posts) {
       if (covered.has(post)) continue
-      const free = this.hallStaff.find((s) => s.stage === 0 && covered.has(s.node) &&
-        this.hallStaff.filter((x) => x.node === s.node && x.stage === 0).length > 1)
+      const free = this.hallStaff.find((s) => onPostNow(s.stage) && covered.has(s.node) &&
+        this.hallStaff.filter((x) => x.node === s.node && onPostNow(x.stage)).length > 1)
       if (free) {
         free.node = post
         free.label =
@@ -15410,17 +15447,29 @@ export class Game {
       this.hallStaff = []
       return
     }
-    this.deskStaffCool -= dt
     this.assignHallStaff()
+    for (const s of this.hallStaff) {
+      if (s.stage !== HALL_POST.commuting) continue
+      s.walkLeft = (s.walkLeft ?? 0) - dt
+      if (s.walkLeft <= 0) {
+        s.walkLeft = 0
+        s.stage = HALL_POST.onPost
+      }
+    }
+    this.deskStaffCool -= dt
     if (this.deskStaffCool > 0) return
     this.deskStaffCool = 14
     for (const s of this.hallStaff) {
-      if (s.stage === 1) {
-        s.stage = 0
+      if (s.stage === HALL_POST.onBreak) {
+        // Back from break: they walk to the post before they count.
+        s.stage = HALL_POST.commuting
+        s.walkLeft = SERVICE_POINT_TUNING.postWalkSec
+        s.label = s.label.split(' ·')[0]
         continue
       }
+      if (s.stage !== HALL_POST.onPost) continue
       if (Math.random() < 0.16) {
-        s.stage = 1
+        s.stage = HALL_POST.onBreak
         s.label = `${s.label.split(' ·')[0]} · break`
       }
     }
@@ -15432,10 +15481,13 @@ export class Game {
     if (open.has('gate')) posts.push('gate')
     if (posts.length < 2) return
     for (const s of this.hallStaff) {
-      if (s.stage !== 0) continue
+      if (!onPostNow(s.stage)) continue
       if (Math.random() < 0.35) {
         const next = posts[Math.floor(Math.random() * posts.length)]
+        if (next === s.node) continue
         s.node = next
+        s.stage = HALL_POST.commuting
+        s.walkLeft = SERVICE_POINT_TUNING.postWalkSec
         s.label =
           next === 'checkin' ? 'Clerk' : next === 'security' ? 'Screener' : 'Gate agent'
         s.color = next === 'security' ? '#c9a227' : next === 'gate' ? '#6a9ec8' : '#8aaf7a'
@@ -16260,7 +16312,7 @@ export class Game {
         plan: 'checkin',
         upkeepPerDay: def?.upkeep ?? 0,
         staffNeeded: def?.staff ?? 0,
-        staffAssigned: def?.staff ? this.hallStaff.filter((s) => s.node === def.room && s.stage === 0).length : null,
+        staffAssigned: def?.staff ? this.hallStaff.filter((s) => s.node === def.room && onPostNow(s.stage)).length : null,
         demand: 0,
         bays: [{ inUse: false }],
         unit: '/ min',
@@ -16280,7 +16332,7 @@ export class Game {
   private queueReading(node: 'checkin' | 'security', name: string): Reading {
     const kind = node === 'checkin' ? 'checkin_desk' : 'security_lane'
     const metrics = this.hallNav.live ? this.hallNav.metrics().filter((m) => m.kind === kind) : []
-    const hired = this.hallStaff.filter((s) => s.node === node && s.stage === 0).length
+    const hired = this.hallStaff.filter((s) => s.node === node && onPostNow(s.stage)).length
     if (!metrics.length) {
       const waiting = node === 'security' ? this.securityQueueCount() : queueAtNode(this.hallGuests, node)
       return {

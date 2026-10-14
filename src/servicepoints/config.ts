@@ -16,4 +16,10 @@ export const SERVICE_POINT_TUNING = {
   serveLean: 0.42,
   /** How far the hand reaches toward the desk, metres. */
   serveReachM: 0.32,
+  /**
+   * Sim seconds a desk body spends walking back from a break or across to
+   * another post. They do not serve until they arrive. A new hire is placed
+   * on the post. Not a wage.
+   */
+  postWalkSec: 4,
 } as const

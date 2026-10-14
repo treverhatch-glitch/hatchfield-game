@@ -1,8 +1,11 @@
 export { SERVICE_POINT_TUNING } from './config.ts'
 export { servePose, type ServePhase, type ServePose } from './anim.ts'
 export {
+  BUILDING_SERVICE_LINE,
+  WALK_PAUSED_LINE,
   extraOpenServers,
   formatWait,
+  isBuildingService,
   openPointIds,
   pointInUse,
   serviceInfoLines,

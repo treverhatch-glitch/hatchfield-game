@@ -115,6 +115,11 @@ export interface HallGuest {
   carryOn?: boolean
   /** Checked suitcase still on the passenger (before drop, or after claim). */
   hasChecked?: boolean
+  /**
+   * Walk override: set to send this departure to check-in or straight to security.
+   * Unset keeps the walk's own bag roll. Not the checked-bag flag above.
+   */
+  bags?: boolean
   /** Onward flight for a through-checked bag. */
   connectFlightId?: string | null
   /** Standing at the lost-bag desk. */
@@ -213,13 +218,31 @@ export const LANDSIDE_NODES: ReadonlySet<HallNode> = new Set([
 /** Desk posts that can be staffed with bodies. */
 export type StaffPost = 'checkin' | 'security' | 'gate'
 
+/**
+ * Where a hired desk body is. Only `onPost` serves a desk or a lane.
+ * Break and the walk to the post do not. This roster has no off-shift
+ * stage — researchers at home live on a different list and never count here.
+ */
+export const HALL_POST = {
+  onPost: 0,
+  onBreak: 1,
+  commuting: 2,
+} as const
+
+/** True when this body is standing the post right now. */
+export function onPostNow(stage: number): boolean {
+  return stage === HALL_POST.onPost
+}
+
 export interface HallStaff {
   id: string
   node: StaffPost
   label: string
   color: string
-  /** 0 working · 1 break */
+  /** `HALL_POST`: on post, on break, or walking to the post. */
   stage: number
+  /** Sim seconds left on the walk to the post. Ignored unless `stage` is commuting. */
+  walkLeft?: number
 }
 
 /**

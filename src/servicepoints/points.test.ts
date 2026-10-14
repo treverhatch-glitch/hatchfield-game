@@ -116,6 +116,11 @@ describe('info lines', () => {
     expect(lines.some((l) => l.startsWith('Lane 1') && l.includes('queue 4') && l.includes('in use'))).toBe(true)
     expect(lines.some((l) => l.startsWith('Lane 2') && l.includes('unstaffed'))).toBe(true)
     expect(lines.some((l) => l.includes('Bottleneck'))).toBe(true)
+    const built = serviceInfoLines('Check-in', points.map((p) => ({ ...p, kind: 'checkin_desk' })), throughputOf(
+      points.map((p) => ({ ...p, kind: 'checkin_desk', serviceSec: 4, estWaitSec: p.waitSec })),
+      15,
+    ), true)
+    expect(built).toContain('open: building service (no staff needed)')
     expect(formatWait(0)).toBe('0s')
     expect(formatWait(95)).toBe('2 min')
   })
