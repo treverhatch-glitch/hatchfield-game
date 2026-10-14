@@ -357,8 +357,13 @@ export function bagSortR5(g: THREE.Group): void {
   const fz = -1.4 + 2.3
   for (const x of [-2.2, 0, 2.2]) {
     box(g, 1.3, 1.3, 0.05, mat('#2a2d31'), x, 0.12, fz + 0.01)
-    box(g, 1.2, 1.25, 0.06, mat('#c9ced3', { metal: 0.5, rough: 0.4 }), x, 0.12, fz + 0.03)
-    for (let k = 1; k < 5; k++) box(g, 1.2, 0.03, 0.07, M.darkSteel(), x, 0.12 + 0.25 * k, fz + 0.03)
+    // Round 7: roller door (slats ride with it) opens for the tug train on this door's point.
+    const door = new THREE.Group()
+    door.position.set(x, 0.12 + 0.625, fz + 0.03)
+    box(door, 1.2, 1.25, 0.06, mat('#c9ced3', { metal: 0.5, rough: 0.4 }), 0, -0.625, 0)
+    for (let k = 1; k < 5; k++) box(door, 1.2, 0.03, 0.07, M.darkSteel(), 0, -0.625 + 0.25 * k, 0)
+    g.add(door)
+    animate(door, { kind: 'roll', signal: 'bayDoor', amount: 1.25, point: [-2.2, 0, 2.2].indexOf(x) })
     // Belt chute out to the make-up position, bags riding it.
     // Round 6: chute stops 1 m short so the 9.6 m tug train fits nose-in (z 3.05).
     box(g, 0.8, 0.12, 0.9, mat('#1d2126'), x, 0.45, fz + 0.5)
@@ -399,8 +404,9 @@ export function cateringR5(g: THREE.Group): void {
   // High-loader docks on the east (service bays x 1.4 / 3.4, z 1.8): raised doors under a
   // canopy; 8.6 m hi-lifts back onto the dock plates, canopy columns stand between the bays.
   canopy(g, 2.4, 1.3, 3.8, 1.4, 2.6, mat('#2d7d5a'), 3)
-  for (const x of [1.4, 3.4]) {
-    box(g, 1.3, 1.4, 0.05, M.darkSteel(), x, 1.1, -0.06)
+  for (const [i, x] of [1.4, 3.4].entries()) {
+    box(g, 1.3, 1.4, 0.05, mat('#1b1e22'), x, 1.1, -0.08)
+    animate(box(g, 1.24, 1.36, 0.05, mat('#9aa6b1', { metal: 0.5, rough: 0.4 }), x, 1.12, -0.03), { kind: 'roll', signal: 'bayDoor', amount: 1.36, point: i })
     box(g, 1.4, 1.0, 0.6, M.concrete(), x, 0.12, 0.25)
   }
   // Cold-store compressor yard behind a screen.
@@ -419,31 +425,14 @@ export function deiceR5(g: THREE.Group): void {
   hatch(g, 0, 0.4, 8.4, 6.6, '#7a3fa0', 0.085)
   paint(g, 0, 0.4, 0.2, 6.4, M.yellow(), 0.09)
   for (let i = 0; i < 6; i++) box(g, 0.2, 0.02, 0.2, M.darkSteel(), -3.5 + i * 1.4, 0.085, -3.0)
-  // Round 6: the boom trucks are the bay vehicles themselves, built at real size
-  // (9.2 x 3.5 x 2.5 m) and parked 22.7 m off the centreline, clear of a 36 m wing.
+  // Round 7: the boom trucks are live vehicles now (vehicle-visuals deice model on the
+  // pad points x ±3.4, z 1.4); the pad keeps their stop boxes and glycol drains.
   for (const s of [-1, 1]) {
-    const t = new THREE.Group()
-    t.userData.fleet = 'deice'
-    t.name = `fleet:deice${s < 0 ? 1 : 2}`
-    t.position.set(s * 3.4, 0.08, 1.4)
-    t.scale.set(0.375 / 1.3, 0.83 / 2.15, 1.38 / 2.9)
-    box(t, 1.3, 1.1, 2.9, mat('#7a3fa0', { rough: 0.4 }), 0, 0.3, 0)
-    box(t, 1.25, 0.75, 0.85, M.glass(), 0, 1.4, 1.0)
-    cyl(t, 0.48, 0.48, 1.2, M.white(), 0, 1.4, -0.6, 14).rotation.x = Math.PI / 2
-    const arm = new THREE.Group()
-    arm.position.set(0, 1.6, -0.6)
-    box(arm, 0.18, 3.4, 0.18, M.yellow(), 0, 0, 0)
-    box(arm, 0.7, 0.55, 0.7, M.white(), 0, 3.4, 0)
-    arm.rotation.z = s * 1.2
-    animate(arm, { kind: 'rot', signal: 'deicing', axis: 'z', amount: -s * 0.75, point: s < 0 ? 0 : 1 })
-    t.add(arm)
-    for (const z of [-1, 1]) for (const x of [-0.68, 0.68]) {
-      const w = cyl(t, 0.28, 0.28, 0.2, M.black(), x, 0, z, 12)
-      w.rotation.z = Math.PI / 2
-      w.position.y = 0.3
-    }
-    g.add(t)
+    paint(g, s * 3.4, 1.4, 0.06, 1.6, M.yellow(), 0.09)
+    for (const z of [0.6, 2.2]) box(g, 0.5, 0.02, 0.12, M.darkSteel(), s * 3.4, 0.085, z)
   }
+  // Amber beacons on the stop boxes flash while a pad is in use.
+  for (const [i, s] of [-1, 1].entries()) animate(box(g, 0.14, 0.14, 0.14, M.glow('#ffb020'), s * 3.4, 0.09, 2.35), { kind: 'blink', signal: 'deicing', rate: 1.5, point: i })
   // Control booth on stilts (west rear corner) with wrap glazing.
   for (const [x, z] of [[-3.9, -4.0], [-2.9, -4.0], [-3.9, -3.2], [-2.9, -3.2]]) box(g, 0.12, 1.6, 0.12, M.darkSteel(), x, 0.08, z)
   block(g, { x: -3.4, z: -3.6, w: 1.4, d: 1.1, floors: 1, fh: 1.0, y0: 1.68, wall: M.white(), faces: ['front', 'right', 'left'], ribbon: 0.6, plant: 0 })
@@ -512,23 +501,6 @@ export function towerR5(g: THREE.Group): void {
 }
 
 // ---------------------------------------------------------------- bus station
-function coach(g: THREE.Object3D, x: number, z: number, color: string, rotY = 0, len = 3.8, real = false) {
-  const b = new THREE.Group()
-  b.position.set(x, 0, z)
-  b.rotation.y = rotY
-  // Real size at the 1-cell bus lot: 2.55 m wide, 3.6 m tall (2.22 m/unit).
-  if (real) { b.scale.set(1.15 / 1.12, 1.62 / 1.62, 1); b.userData.fleet = 'coach'; b.name = 'fleet:coach' }
-  box(b, 1.1, 1.2, len, mat(color, { rough: 0.4, metal: 0.2 }), 0, 0.32, 0)
-  box(b, 1.12, 0.45, len * 0.92, M.glass(), 0, 0.92, 0)
-  box(b, 1.0, 0.1, len * 0.9, M.white(), 0, 1.52, 0)
-  for (const dz of [-len * 0.32, len * 0.32]) for (const dx of [-0.55, 0.55]) {
-    const w = cyl(b, 0.28, 0.28, 0.18, M.black(), dx, 0.25, dz, 12)
-    w.rotation.z = Math.PI / 2
-    w.position.y = 0.28
-  }
-  g.add(b)
-}
-
 /** Bus station: long island platform under a glass-and-steel saw canopy, waiting hall, sawtooth bays. */
 export function busStationR5(g: THREE.Group): void {
   pad(g, HALF * 2, HALF * 2, M.asphalt(), 0.1)
@@ -558,7 +530,7 @@ export function busStationR5(g: THREE.Group): void {
   // coaches park perpendicular to the island (x -1.6 / 1.6, z 1.45), 2.55 m wide + 1 m each side.
   for (const x of [-3.2, 0, 3.2]) paint(g, x, 1.4, 0.1, 5.8, M.yellow(), 0.105)
   for (const x of [-1.6, 1.6]) paint(g, x, -1.3, 2.4, 0.1, M.white(), 0.105)
-  coach(g, -1.6, 1.45, '#2d6a4f', 0, 5.58, true)
+  // Round 7: no parked prop coach: live coaches use both bays.
   // Planted islands at the ends.
   for (const x of [-4.2, 4.2]) {
     box(g, 0.8, 0.25, 1.2, mat('#8a8f86'), x, 0.1, 3.8)

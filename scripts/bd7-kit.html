@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Round 7 starter kits</title>
+<style>body{margin:0;background:#f4f6f8;font-family:Inter,Arial,sans-serif}</style></head>
+<body><canvas id="c"></canvas><script type="module">
+// Round 7: the three starter kits on their real-world lots, with auditWorld's verdict.
+import { stampStarterKit } from '/src/game/starterLayout.ts'
+import { lotCells } from '/src/build/footprints.ts'
+import { auditWorld } from '/src/game/worldRules.ts'
+import { SIZE } from '/src/game/types.ts'
+const COL = { grass: '#8fb36b', road: '#4d5156', taxi: '#7d8288', runway: '#2f3337', stand: '#b9bec4', terminal: '#3d6a8a', belt: '#c9a227', guard: '#7a3fa0', tower: '#d35400', snack: '#e67e22', police: '#2c3e50', fuel: '#2d6a4f', cargo: '#8a5a1f', fire: '#c0392b', bags: '#2f6f9a' }
+const cs = 20, pad = 30, kw = SIZE * cs + pad * 2
+const cv = document.getElementById('c'); cv.width = kw * 3; cv.height = SIZE * cs + 110
+const x = cv.getContext('2d')
+;['pax', 'hybrid', 'cargo'].forEach((f, k) => {
+  const t = Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => 'grass'))
+  const kit = stampStarterKit(t, f)
+  const ox = k * kw + pad, oy = 60
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) { x.fillStyle = COL[t[r][c]] || '#999'; x.fillRect(ox + c * cs, oy + r * cs, cs - 1, cs - 1) }
+  const pending = []
+  for (const [key, lot] of Object.entries(kit.lots)) {
+    const [c, r] = key.split(',').map(Number); const tile = t[r][c]; const cells = lotCells({ c, r }, lot); pending.push({ cells, tile })
+    x.fillStyle = COL[tile] + 'aa'; for (const p of cells) x.fillRect(ox + p.c * cs, oy + p.r * cs, cs - 1, cs - 1)
+    const xs = cells.map((p) => p.c), ys = cells.map((p) => p.r)
+    x.strokeStyle = '#fff'; x.lineWidth = 2; x.strokeRect(ox + Math.min(...xs) * cs, oy + Math.min(...ys) * cs, (Math.max(...xs) - Math.min(...xs) + 1) * cs - 1, (Math.max(...ys) - Math.min(...ys) + 1) * cs - 1)
+    x.fillStyle = '#fff'; x.font = '700 11px Inter'; x.fillText(`${tile} ${lot.w}x${lot.d}`, ox + Math.min(...xs) * cs + 2, oy + Math.min(...ys) * cs + 12)
+    // access arrow
+    x.fillStyle = '#ffeb3b'; x.beginPath(); x.arc(ox + (c + lot.dir.c * 0.5 + 0.5) * cs, oy + (r + lot.dir.r * 0.5 + 0.5) * cs, 4, 0, 7); x.fill()
+  }
+  const v = auditWorld({ tiles: t, pending })
+  x.fillStyle = '#1d2126'; x.font = '700 18px Inter'; x.fillText(`${f} starter kit`, ox, 30)
+  x.font = '600 14px Inter'; x.fillStyle = v.length ? '#c0392b' : '#2d6a4f'
+  x.fillText(v.length ? `auditWorld: ${v.length} violations` : 'auditWorld: clean (lots included)', ox, 50)
+})
+window.__done = true
+</script></body></html>
