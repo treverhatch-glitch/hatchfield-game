@@ -185,7 +185,7 @@ describe('crowd drawing never changes the sim', () => {
   it('the visible cap and culling draw fewer, while sim counts match an undrawn twin', () => {
     const drawnHall = hall()
     const twin = hall()
-    expect(drawnHall.count).toBe(1000)
+    expect(drawnHall.passengers).toBe(1000)
     const crowd = new HallNavCrowd()
     crowd.tuning.maxVisible = 120
     const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.5, 600)

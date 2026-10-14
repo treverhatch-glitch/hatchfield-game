@@ -1,7 +1,8 @@
 /**
- * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts), both
- * departures and arrivals: one instanced body, head and bag for everyone,
- * plus floor dots along every marked queue line. Real metres: a 1.7 m person
+ * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts):
+ * departures, arrivals and crew (in uniform, no bag). One instanced body, head
+ * and bag for everyone, plus floor dots along every marked queue line, red
+ * while that line is a bottleneck. Real metres: a 1.7 m person
  * on the hall floor (y = 0).
  *
  * Drawing is cheap however many people the sim walks:
@@ -14,6 +15,7 @@
  */
 import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
+import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
 
 const SHIRTS = ['#2f6fb0', '#c0392b', '#2e8b57', '#d68910', '#7d3c98', '#34495e', '#e0e0e0', '#16a085', '#b03a7a', '#5d6d7e']
@@ -25,6 +27,17 @@ const LINE_COLOR: Record<string, string> = {
   gate_desk: '#5b8fd6',
   toilet: '#3a9a8a',
   shop_counter: '#e0c04a',
+}
+/** A queue line that cannot keep up paints its dots this colour. */
+const BOTTLENECK_COLOR = '#e23b2f'
+/** Crew uniforms by role, after the passenger shirts in the palette. */
+const CREW_ROLES: readonly CrewRole[] = ['agent', 'screener', 'gate', 'retail', 'cleaner']
+const CREW_SHIRTS: Record<CrewRole, string> = {
+  agent: '#1f3a68',
+  screener: '#22262c',
+  gate: '#1f3a68',
+  retail: '#7a4a1e',
+  cleaner: '#c9d43a',
 }
 /** Body centre height, for the frustum test. */
 const MID_Y = 0.85
@@ -69,7 +82,7 @@ export class HallNavCrowd {
   private readonly headMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly bagMat = new THREE.MeshLambertMaterial({ color: 0x3a3f47 })
   private readonly dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false })
-  private readonly shirts = palette(SHIRTS)
+  private readonly shirts = palette([...SHIRTS, ...CREW_ROLES.map((r) => CREW_SHIRTS[r])])
   private readonly skins = palette(SKINS)
   private body: THREE.InstancedMesh | null = null
   private head: THREE.InstancedMesh | null = null
@@ -89,6 +102,10 @@ export class HallNavCrowd {
   private roster = -1
   private lineRev = -1
   private lineNav: unknown = null
+  /** Per queue line, in metrics order: kit kind, dot count, painted as a bottleneck. */
+  private lineKinds: string[] = []
+  private lineDots: number[] = []
+  private lineHot = new Uint8Array(0)
   private readonly frustum = new THREE.Frustum()
   private readonly pm = new THREE.Matrix4()
   private readonly sphere = new THREE.Sphere(new THREE.Vector3(), 1)
@@ -114,6 +131,7 @@ export class HallNavCrowd {
       return 0
     }
     this.syncLines(nav)
+    this.paintLines(nav)
     this.ensureWalkers(nav.count)
     const total = nav.writePoses(this.poses)
     if (nav.roster !== this.roster) this.recolour(nav, total)
@@ -277,11 +295,35 @@ export class HallNavCrowd {
     this.roster = nav.roster
     for (let i = 0; i < count; i++) {
       const h = hash(nav.idAt(i) || String(i))
-      this.shirtOf[i] = h % SHIRTS.length
+      const role = nav.crewRole(i)
+      this.shirtOf[i] = role ? SHIRTS.length + CREW_ROLES.indexOf(role) : h % SHIRTS.length
       this.skinOf[i] = (h >>> 8) % SKINS.length
       this.bobSeed[i] = (h % 628) / 100
-      this.hasBag[i] = (h >>> 16) % 3 !== 0 ? 1 : 0
+      this.hasBag[i] = !role && (h >>> 16) % 3 !== 0 ? 1 : 0
     }
+  }
+
+  /** Repaint queue line dots when a line starts or stops being a bottleneck. */
+  private paintLines(nav: HallNav) {
+    const dots = this.dots
+    if (!dots) return
+    const loads = nav.loads()
+    if (loads.length !== this.lineKinds.length) return
+    let changed = false
+    for (let k = 0; k < loads.length; k++) {
+      const b = loads[k].bottleneck ? 1 : 0
+      if (this.lineHot[k] !== b) {
+        this.lineHot[k] = b
+        changed = true
+      }
+    }
+    if (!changed) return
+    let i = 0
+    for (let k = 0; k < this.lineKinds.length; k++) {
+      this.c.set(this.lineHot[k] ? BOTTLENECK_COLOR : (LINE_COLOR[this.lineKinds[k]] ?? '#ffffff'))
+      for (let j = 0; j < this.lineDots[k]; j++) dots.setColorAt(i++, this.c)
+    }
+    if (dots.instanceColor) dots.instanceColor.needsUpdate = true
   }
 
   /** Marked queue lines: a dot per metre, rebuilt when the layout changes. */
@@ -299,6 +341,9 @@ export class HallNavCrowd {
     const o = nav.origin()
     const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
     let i = 0
+    this.lineKinds = metrics.map((f) => f.kind)
+    this.lineDots = metrics.map((f) => f.line.length)
+    this.lineHot = new Uint8Array(metrics.length)
     for (const f of metrics) {
       this.c.set(LINE_COLOR[f.kind] ?? '#ffffff')
       for (const pt of f.line) {
