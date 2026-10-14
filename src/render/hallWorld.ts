@@ -7,6 +7,7 @@ import { canvasToPng } from '../camera/capture.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import {
   HALL_CAM_DIST,
+  HALL_CAM_FAR,
   HALL_CAM_FOV,
   HALL_CAM_LOOK_X,
   HALL_CAM_LOOK_Z,
@@ -185,7 +186,7 @@ export class HallWorld {
     this.scene.background = new THREE.Color('#1a2a32')
     this.scene.fog = new THREE.Fog('#1a2a32', 55, 120)
 
-    this.camera = new THREE.PerspectiveCamera(HALL_CAM_FOV, 1, HALL_CAM_NEAR, 200)
+    this.camera = new THREE.PerspectiveCamera(HALL_CAM_FOV, 1, HALL_CAM_NEAR, HALL_CAM_FAR)
     // Curb side of the walk, elevated, looking toward the gate.
     this.pivot.set(HALL_CAM_LOOK_X, 0, HALL_CAM_LOOK_Z)
     this.placeCam()
@@ -467,7 +468,8 @@ export class HallWorld {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault()
-    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + e.deltaY * 0.04))
+    const step = Math.max(0.02, this.dist * 0.0012)
+    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + e.deltaY * step))
     this.placeCam()
   }
 
@@ -510,9 +512,14 @@ export class HallWorld {
     const canvas = this.renderer.domElement
     const w = canvas.clientWidth
     const h = canvas.clientHeight
+    if (w < 2 || h < 2) return
     if (canvas.width !== w || canvas.height !== h) {
       this.renderer.setSize(w, h, false)
-      this.camera.aspect = w / Math.max(1, h)
+    }
+    // The buffer can already match the CSS size while the lens is still square.
+    const aspect = w / h
+    if (Math.abs(this.camera.aspect - aspect) > 0.001) {
+      this.camera.aspect = aspect
       this.camera.updateProjectionMatrix()
     }
   }

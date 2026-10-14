@@ -269,6 +269,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const [inboxOpen, setInboxOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
   const [feesOpen, setFeesOpen] = useState(false)
+  // Terminal view folds the apron cards. A peek belongs to the view it was opened in.
+  const [hallPeek, setHallPeek] = useState<{ view: string; id: 'coach' | 'offer' | 'map' } | null>(null)
+  const inHall = game.view === 'hall'
+  const peek = hallPeek?.view === game.view ? hallPeek.id : null
+  const openPeek = (id: 'coach' | 'offer' | 'map') =>
+    setHallPeek((cur) => (cur?.view === game.view && cur.id === id ? null : { view: game.view, id }))
   const pendingYear = game.pendingYearReport()?.year ?? null
   const [yearShown, setYearShown] = useState<number | null>(null)
   if (panel === 'tycoon' && pendingYear !== yearShown) {
@@ -496,7 +502,42 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         </div>
       </header>
 
-      {game.site ? (
+      {inHall ? (
+        <div className="hall-peeks" data-testid="hall-peeks">
+          {game.showCoach() ? (
+            <button
+              type="button"
+              data-testid="peek-coach"
+              className={peek === 'coach' ? 'on' : ''}
+              onClick={() => openPeek('coach')}
+            >
+              First hour
+            </button>
+          ) : null}
+          {game.inboundOffer() ? (
+            <button
+              type="button"
+              data-testid="peek-offer"
+              className={peek === 'offer' ? 'on' : ''}
+              onClick={() => openPeek('offer')}
+            >
+              {game.inboundOffer()?.title ?? 'Offer'}
+            </button>
+          ) : null}
+          {game.site ? (
+            <button
+              type="button"
+              data-testid="peek-map"
+              className={peek === 'map' ? 'on' : ''}
+              onClick={() => openPeek('map')}
+            >
+              {game.mapSummary().name}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {game.site && (!inHall || peek === 'map') ? (
         <aside className="map-goals" data-testid="map-goals" aria-label="Map goals">
           <div className="map-goals-head">
             <strong>{game.mapSummary().name}</strong>
@@ -518,7 +559,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         </aside>
       ) : null}
 
-      {game.showCoach() ? (
+      {game.showCoach() && (!inHall || peek === 'coach') ? (
         <div className="coach" data-testid="coach">
           <div className="coach-head">
             <strong>First hour</strong>
@@ -570,9 +611,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         </div>
       ) : null}
 
-      {game.inboundOffer() ? (
+      {game.inboundOffer() && (!inHall || peek === 'offer') ? (
         <aside
-          className={`inbound-panel${game.showCoach() ? ' beside-coach' : ''}`}
+          className={`inbound-panel${game.showCoach() && !inHall ? ' beside-coach' : ''}`}
           data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
           {(() => {
             const card = game.inboundOffer()
@@ -2235,7 +2276,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           </div>
         ) : null}
 
-        <div className="dock">
+        <div className={`dock${inHall ? ' dock-slim' : ''}`}>
+          {inHall ? null : (
           <div className="dock-extend">
             {game.view === 'hall' ? (
               <div className="tools">
@@ -2468,6 +2510,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 : ''}
             </p>
           </div>
+          )}
 
           <div className="bottom-bar">
             <div className="bar-cluster view-cluster">
@@ -2492,6 +2535,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 : null}
             </div>
 
+            {inHall ? null : (
+            <>
             <SpeedButtons game={game} speed={game.speed} className="bar-cluster speed-cluster" />
 
             <div className="ticker" title="Recent announcements">
@@ -2535,6 +2580,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </button>
               ))}
             </div>
+            </>
+            )}
           </div>
         </div>
       </div>

@@ -176,6 +176,7 @@ export function TerminalView({ game }: { game: Game }) {
   const worldRef = useRef<HallWorld | null>(null)
   const [zone, setZone] = useState<ZoneId | null>(null)
   const [build, setBuild] = useState<HallBuildMode>(null)
+  const [sheet, setSheet] = useState(false)
   const [hover, setHover] = useState<HallHover | null>(null)
   const buildRef = useRef<HallBuildMode>(null)
 
@@ -304,15 +305,23 @@ export function TerminalView({ game }: { game: Game }) {
       <canvas ref={ref} className="hall-canvas" />
       <div className="hall-chrome">
         <p className="muted">
-          Terminal · roof off · WASD pan · Q/E rotate · click a person or a desk
+          Terminal · roof off · WASD pan · Q/E rotate · scroll zoom · click a person or a desk
           {game.hasSecurityChoke() ? ' · security choke live' : ' · NO SECURITY LANE'}
           {' · '}
           {game.hallGuests.length} pax
+          <button
+            type="button"
+            className={sheet ? 'on' : ''}
+            data-testid="hall-sheet-toggle"
+            onClick={() => setSheet((open) => !open)}
+          >
+            {sheet ? 'Hide sheet' : prefab ? PREFAB_TIERS[tier].label : 'Hall sheet'}
+          </button>
         </p>
       </div>
       <KitBar game={game} build={build} setBuild={setBuild} />
       <KitTooltip build={build} hover={hover} />
-      {game.view === 'hall'
+      {game.view === 'hall' && sheet
         ? createPortal(
             <aside className="hall-build" data-testid="hall-build">
         <div data-testid="prefab-ceilings">
