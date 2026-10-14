@@ -10,7 +10,7 @@ import type * as THREE_NS from 'three'
 import { BUILDINGS } from '../game/catalog'
 import type { Tile } from '../game/types'
 
-export const THUMB_PX = 128
+export const THUMB_PX = 256 // rendered at 2x+ the tray size so icons stay crisp on HiDPI
 
 /** Tool/item id → world tile, for tools whose BuildDef tile differs or is missing. */
 const TOOL_TILE: Record<string, Tile | 'runway_strip' | 'apron' | 'taxi_strip'> = {
@@ -58,11 +58,18 @@ function loadKit(): Promise<Kit | null> {
       renderer.setSize(THUMB_PX, THUMB_PX, false)
       renderer.setClearColor(0x000000, 0)
       renderer.outputColorSpace = THREE.SRGBColorSpace
+      renderer.toneMapping = THREE.ACESFilmicToneMapping
+      renderer.toneMappingExposure = 1.1
       const scene = new THREE.Scene()
-      scene.add(new THREE.HemisphereLight(0xf4f1ea, 0x5a6458, 1.9))
-      const key = new THREE.DirectionalLight(0xffffff, 1.6)
-      key.position.set(6, 10, 7)
-      scene.add(key)
+      // Studio rig: sky/ground fill, warm key from camera-left, cool rim from behind.
+      scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.5))
+      const key = new THREE.DirectionalLight(0xfff1dc, 2.4)
+      key.position.set(-4, 10, 8)
+      const rim = new THREE.DirectionalLight(0xbcd6ff, 1.4)
+      rim.position.set(-6, 5, -9)
+      const fill = new THREE.DirectionalLight(0xffffff, 0.6)
+      fill.position.set(9, 3, 2)
+      scene.add(key, rim, fill)
       const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 500)
       // Borrow the live prop builder without constructing a World (no canvas/scene side effects).
       const proto = Object.create(World.prototype) as InstanceType<typeof World>
@@ -123,6 +130,9 @@ function renderOne(kit: Kit, id: string): Entry {
   scene.add(obj)
   const box = new THREE.Box3().setFromObject(obj)
   const sphere = box.getBoundingSphere(new THREE.Sphere())
+  // Soft contact shadow so the prop sits on something.
+  const shadow = contactShadow(THREE, box)
+  scene.add(shadow)
   const r = Math.max(sphere.radius, 0.5)
   const dist = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 0.92
   const dir = new THREE.Vector3(1, 0.85, 1.15).normalize()
@@ -133,12 +143,42 @@ function renderOne(kit: Kit, id: string): Entry {
   camera.updateProjectionMatrix()
   renderer.render(scene, camera)
   const url = renderer.domElement.toDataURL('image/png')
-  scene.remove(obj)
+  scene.remove(obj, shadow)
+  shadow.geometry.dispose()
+  ;(shadow.material as THREE_NS.Material).dispose()
   obj.traverse((o) => {
     const m = o as THREE_NS.Mesh
     m.geometry?.dispose?.()
   })
   return url
+}
+
+let shadowTex: THREE_NS.Texture | null = null
+function contactShadow(THREE: typeof THREE_NS, box: THREE_NS.Box3): THREE_NS.Mesh {
+  if (!shadowTex) {
+    const c = document.createElement('canvas')
+    c.width = c.height = 64
+    const ctx = c.getContext('2d')
+    if (ctx) {
+      const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32)
+      g.addColorStop(0, 'rgba(0,0,0,0.55)')
+      g.addColorStop(1, 'rgba(0,0,0,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, 64, 64)
+    }
+    shadowTex = new THREE.CanvasTexture(c)
+  }
+  const size = box.getSize(new THREE.Vector3())
+  const center = box.getCenter(new THREE.Vector3())
+  const geo = new THREE.PlaneGeometry(size.x * 1.5 + 0.4, size.z * 1.5 + 0.4)
+  geo.rotateX(-Math.PI / 2)
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, toneMapped: false }),
+  )
+  mesh.position.set(center.x, box.min.y + 0.005, center.z)
+  mesh.renderOrder = -1
+  return mesh
 }
 
 function idle(fn: () => void): void {
