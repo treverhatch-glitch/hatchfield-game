@@ -29,12 +29,13 @@ function done(ev: LogisticsEvent[]) {
 }
 
 describe('turnaround phase order', () => {
-  it('deplane, then cleaning/catering/fuel, then boarding, door close, pushback', () => {
+  it('deplane, then cleaning/fuel (catering overlaps deplaning), then boarding, door close, pushback', () => {
     const { sim, ev } = setup()
     const id = sim.startTurnaround('stand-2', 'b738', 90)
     run(sim, id)
     const deplaned = at(ev, 'service_done', 'deplane')
-    for (const s of ['fuel', 'catering', 'cleaning'] as ServiceKind[]) expect(at(ev, 'service_start', s)).toBeGreaterThanOrEqual(deplaned)
+    for (const s of ['fuel', 'cleaning'] as ServiceKind[]) expect(at(ev, 'service_start', s)).toBeGreaterThanOrEqual(deplaned)
+    expect(at(ev, 'service_start', 'catering')).toBeLessThan(deplaned)
     const board = at(ev, 'service_start', 'boarding')
     for (const s of ['fuel', 'catering', 'cleaning'] as ServiceKind[]) expect(board).toBeGreaterThanOrEqual(at(ev, 'service_done', s))
     const door = at(ev, 'service_start', 'door_close')

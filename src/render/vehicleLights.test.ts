@@ -40,3 +40,26 @@ describe('vehicle headlights', () => {
     lights.dispose()
   })
 })
+
+describe('Round F: beacon halos', () => {
+  it('draws one halo per vehicle whose beacon runs, only at night', async () => {
+    const THREE = await import('three')
+    const { VehicleHeadlights, beaconFlash } = await import('./vehicleLights')
+    const h = new VehicleHeadlights()
+    const roots = [true, false, true].map((b) => {
+      const o = new THREE.Object3D()
+      o.userData.headlight = { length: 4, width: 1, height: 1.3, beacon: b }
+      return o
+    })
+    h.sync(roots, 0.9, true, 3)
+    expect(h.beaconCount).toBe(2)
+    h.sync(roots, 0, true, 3)
+    expect(h.beaconCount).toBe(0)
+    for (let t = 0; t < 2; t += 0.05) {
+      const f = beaconFlash(t, 1)
+      expect(f).toBeGreaterThanOrEqual(0.35 - 1e-9)
+      expect(f).toBeLessThanOrEqual(1)
+    }
+    h.dispose()
+  })
+})

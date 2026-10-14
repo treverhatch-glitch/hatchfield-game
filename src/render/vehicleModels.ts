@@ -309,6 +309,21 @@ class Kit {
     this.add(new THREE.CylinderGeometry(r, r, len, seg), hex, x, y, z, name, lit, lay)
   }
 
+  /** Start point of each hanging hose / cable (the reel end), by part name. */
+  readonly anchors = new Map<string, readonly [number, number, number]>()
+
+  /**
+   * Round F: a hose or cable hanging between the truck (x, y, z) and a point
+   * `len` metres out along +Z and `rise` metres up, sagging `sag` metres as a
+   * catenary. Built as one tube so it still scales with the pay-out pose.
+   */
+  sagLine(hex: string, r: number, x: number, y: number, z: number, len: number, rise: number, sag: number, name: string, seg = 6) {
+    const pts = catenaryPoints(len, rise, sag, 16).map(([dz, dy]) => new THREE.Vector3(0, dy, dz))
+    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, r, seg, false)
+    this.add(geo, hex, x, y, z, name)
+    if (!this.anchors.has(name)) this.anchors.set(name, [x, y, z])
+  }
+
   /** One axle: two tyres, hubs and a tread ring. Doubles for rear truck axles. */
   axle(x: number, r: number, W: number, name: string, dual = false, inset = 0.06) {
     // Each wheel axle is its own part so it can spin about its own centre.
@@ -410,6 +425,34 @@ class Kit {
   }
 }
 
+/**
+ * Points (along, up) of a cable hung between (0, 0) and (len, rise) that sags
+ * `sag` metres below the straight chord at mid-span: y = a·cosh((u-m)/a) + c.
+ */
+export function catenaryPoints(len: number, rise: number, sag: number, n = 16): [number, number][] {
+  const out: [number, number][] = []
+  if (!(sag > 1e-4) || !(len > 1e-4)) {
+    for (let i = 0; i <= n; i++) out.push([(len * i) / n, (rise * i) / n])
+    return out
+  }
+  // a from the level-span sag: a(cosh(L/2a) - 1) = sag (bisection, monotone in a)
+  let lo = 1e-3
+  let hi = 1e4
+  for (let i = 0; i < 60; i++) {
+    const a = (lo + hi) / 2
+    if (a * (Math.cosh(len / 2 / a) - 1) > sag) lo = a
+    else hi = a
+  }
+  const a = (lo + hi) / 2
+  const base = a * Math.cosh(len / 2 / a)
+  for (let i = 0; i <= n; i++) {
+    const u = (len * i) / n
+    // level catenary plus the straight chord to the raised end
+    out.push([u, a * Math.cosh((u - len / 2) / a) - base + (rise * u) / len])
+  }
+  return out
+}
+
 type Builder = (k: Kit, L: number, H: number, W: number) => void
 
 const truckR = 0.5
@@ -419,6 +462,12 @@ export const HOSE_M = 5
 export const CABLE_M = 4
 /** Fuel grounding cable length at full extension, metres. */
 export const GROUND_M = 3.2
+/** Fuel nozzle climbs to the under-wing coupling (18% span, 3.6-9 m out), metres above the reel outlet. */
+export const FUEL_RISE = 0.5
+/** GPU plug climbs to the lower-nose power socket (aircraft pass 5). */
+export const GPU_RISE = 1.0
+/** Lav / water couplings sit on the lower aft fuselage. */
+export const SERVICE_RISE = 0.6
 const gseR = 0.3
 
 const BUILDERS: Record<VehicleModel, Builder> = {
@@ -446,12 +495,12 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.cyl(LIVERY.gseYellow, 0.38, 0.5, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.3, 0.52, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
     // hose paid out sideways from the reel (Round B scales it along Z)
-    k.cyl(LIVERY.hose, 0.13, HOSE_M, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
-    k.box(LIVERY.steel, 0.25, 0.2, 0.3, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M, 'hose') // nozzle
-    k.cyl(LIVERY.black, 0.08, 0.18, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M + 0.12, 'z', 'hose', 8) // nozzle tip
+    k.sagLine(LIVERY.hose, 0.13, -L / 2 + 0.55, r + 1.4, W / 2, HOSE_M, FUEL_RISE, HOSE_M * 0.2, 'hose', 8)
+    k.box(LIVERY.steel, 0.25, 0.2, 0.3, -L / 2 + 0.55, r + 1.4 + FUEL_RISE, W / 2 + HOSE_M, 'hose') // nozzle
+    k.cyl(LIVERY.black, 0.08, 0.18, -L / 2 + 0.55, r + 1.4 + FUEL_RISE, W / 2 + HOSE_M + 0.12, 'z', 'hose', 8) // nozzle tip
     // grounding reel + cable to the landing gear (Round E scales along Z)
     k.cyl(LIVERY.gseYellow, 0.16, 0.22, -L / 2 + 1.4, r + 0.55, W / 2 - 0.1, 'z')
-    k.cyl(LIVERY.black, 0.045, GROUND_M, -L / 2 + 1.4, r + 0.25, W / 2 + GROUND_M / 2, 'z', 'grounding', 6)
+    k.sagLine(LIVERY.black, 0.045, -L / 2 + 1.4, r + 0.25, W / 2, GROUND_M, 0, 0.6, 'grounding', 5)
     k.box(LIVERY.steel, 0.18, 0.12, 0.22, -L / 2 + 1.4, r + 0.25, W / 2 + GROUND_M, 'grounding') // alligator clamp
     // hi-vis reflective band on tank
     k.box(LIVERY.gseYellow, tl * 0.55, 0.12, tr * 2 + 0.02, tx, ty - tr * 0.55, 0)
@@ -476,7 +525,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (const s of [1, -1]) for (const f of [-0.4, 0.4]) k.box(LIVERY.gseYellow, 0.05, 0.85, 0.05, dx + f * dl * 0.8, r + 1.6, s * W * 0.43, 'lift_platform')
     k.cyl(LIVERY.gseYellow, 0.32, 0.4, dx - dl * 0.15, r + 1.45, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.26, 0.42, dx - dl * 0.15, r + 1.45, 0, 'z', 'hose_reel')
-    k.cyl(LIVERY.hose, 0.13, HOSE_M, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
+    k.sagLine(LIVERY.hose, 0.13, dx - dl * 0.15, r + 0.5, W / 2, HOSE_M, 0, 0.35, 'hose', 8)
     k.box(LIVERY.steel, 0.3, 0.3, 0.3, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M, 'hose') // pit coupler
     k.chevrons(-L / 2, r * 0.5, 0.5, W)
     k.tail(-L / 2, r + 0.6, W)
@@ -793,9 +842,9 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.cyl(LIVERY.gseYellow, 0.3, 0.3, L * 0.18, H + 0.15, 0, 'z', 'cable_reel')
     k.cyl(LIVERY.black, 0.24, 0.32, L * 0.18, H + 0.15, 0, 'z', 'cable_reel')
     // power cable paid out to the aircraft (Round E scales along Z)
-    k.cyl(LIVERY.black, 0.05, CABLE_M, L * 0.18, r + 0.35, W / 2 + CABLE_M / 2, 'z', 'cable', 6)
-    k.box(LIVERY.steel, 0.2, 0.14, 0.25, L * 0.18, r + 0.35, W / 2 + CABLE_M, 'cable') // plug
-    k.box(LIVERY.gseYellow, 0.12, 0.08, 0.12, L * 0.18, r + 0.45, W / 2 + CABLE_M + 0.05, 'cable')
+    k.sagLine(LIVERY.black, 0.05, L * 0.18, r + 0.35, W / 2, CABLE_M, GPU_RISE, CABLE_M * 0.22, 'cable', 6)
+    k.box(LIVERY.steel, 0.2, 0.14, 0.25, L * 0.18, r + 0.35 + GPU_RISE, W / 2 + CABLE_M, 'cable') // plug into the nose socket
+    k.box(LIVERY.gseYellow, 0.12, 0.08, 0.12, L * 0.18, r + 0.45 + GPU_RISE, W / 2 + CABLE_M + 0.05, 'cable')
     k.box(LIVERY.steel, 0.9, 0.05, 0.05, L / 2 - 0.1, r, 0) // towbar
     k.chevrons(-L / 2 + L * 0.07 - 0.03, r + 0.2, 0.25, W * 0.95, 4)
     k.box(LIVERY.amber, 0.12, 0.08, 0.12, -L * 0.3, H + 0.04, 0, '', true)
@@ -884,8 +933,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.steel, 0.7, 1.0, W * 0.9, -L / 2 + 0.45, r + 0.7, 0)
     k.cyl(LIVERY.gseYellow, 0.28, 0.4, -L / 2 + 0.45, r + 1.55, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.22, 0.42, -L / 2 + 0.45, r + 1.55, 0, 'z', 'hose_reel')
-    k.cyl('#1a5080', 0.1, CABLE_M, -L / 2 + 0.45, r + 0.9, W / 2 + CABLE_M / 2, 'z', 'hose', 8)
-    k.box(LIVERY.steel, 0.22, 0.18, 0.28, -L / 2 + 0.45, r + 0.9, W / 2 + CABLE_M, 'hose')
+    k.sagLine('#1a5080', 0.1, -L / 2 + 0.45, r + 0.9, W / 2, CABLE_M, SERVICE_RISE, CABLE_M * 0.2, 'hose', 8)
+    k.box(LIVERY.steel, 0.22, 0.18, 0.28, -L / 2 + 0.45, r + 0.9 + SERVICE_RISE, W / 2 + CABLE_M, 'hose')
     k.chevrons(-L / 2, r * 0.4, 0.45, W)
     k.tail(-L / 2, r + 0.5, W)
     void H
@@ -909,8 +958,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.steel, 0.65, 0.9, W * 0.88, -L / 2 + 0.42, r + 0.65, 0)
     k.cyl(LIVERY.gseYellow, 0.26, 0.38, -L / 2 + 0.42, r + 1.45, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.2, 0.4, -L / 2 + 0.42, r + 1.45, 0, 'z', 'hose_reel')
-    k.cyl('#3fa8d6', 0.09, CABLE_M, -L / 2 + 0.42, r + 0.85, W / 2 + CABLE_M / 2, 'z', 'hose', 8)
-    k.box(LIVERY.steel, 0.2, 0.16, 0.24, -L / 2 + 0.42, r + 0.85, W / 2 + CABLE_M, 'hose')
+    k.sagLine('#3fa8d6', 0.09, -L / 2 + 0.42, r + 0.85, W / 2, CABLE_M, SERVICE_RISE, CABLE_M * 0.2, 'hose', 8)
+    k.box(LIVERY.steel, 0.2, 0.16, 0.24, -L / 2 + 0.42, r + 0.85 + SERVICE_RISE, W / 2 + CABLE_M, 'hose')
     k.chevrons(-L / 2, r * 0.4, 0.45, W)
     k.tail(-L / 2, r + 0.5, W)
     void H
@@ -987,4 +1036,19 @@ export function partCentre(model: VehicleModel, part: string): readonly [number,
   const c = box.isEmpty() ? ([0, 0, 0] as const) : ([(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, (box.min.z + box.max.z) / 2] as const)
   byPart.set(part, c)
   return c
+}
+
+const anchorCache = new Map<VehicleModel, Map<string, readonly [number, number, number]>>()
+
+/** Reel-end anchor of a hanging hose / cable part (null when the part is not a sag line). */
+export function lineAnchor(model: VehicleModel, part: string): readonly [number, number, number] | null {
+  let m = anchorCache.get(model)
+  if (!m) {
+    const [L, H, W] = MODEL_SIZE[model]
+    const kit = new Kit('#ffffff')
+    BUILDERS[model](kit, L, H, W)
+    for (const p of kit.parts) p.geo.dispose()
+    anchorCache.set(model, (m = kit.anchors))
+  }
+  return m.get(part) ?? null
 }

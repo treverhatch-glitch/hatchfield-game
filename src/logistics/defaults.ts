@@ -22,6 +22,10 @@ export const DEFAULT_VEHICLE_SPECS: Record<VehicleType, VehicleSpec> = {
   heavy_baggage_tug: { speedKmh: 20, upkeepPerDay: 90, capacity: 200, cargoCapacityKg: 12000, loadMinutes: 4, dropMinutes: 3 },
   /** Towbarless heavy tug rated for A380 / 747-8F / An-124 (~600 t). */
   heavy_tug: { speedKmh: 12, upkeepPerDay: 260, capacity: 0, loadMinutes: 0 },
+  /** Lavatory service truck: drains the toilet tanks at the aft service panel. */
+  lavatory_truck: { speedKmh: 20, upkeepPerDay: 50, capacity: 0, loadMinutes: 0 },
+  /** Potable water truck: tops up the fresh-water tank. */
+  water_truck: { speedKmh: 20, upkeepPerDay: 50, capacity: 0, loadMinutes: 0 },
 }
 
 export interface VehicleUnlock {
@@ -48,6 +52,8 @@ export const VEHICLE_CATALOG: Record<VehicleType, VehicleUnlock> = {
   highlift_catering: { fieldLevel: 5, techTier: 3, cost: 22000, label: 'High-lift catering truck (A380)' },
   main_deck_loader: { fieldLevel: 5, techTier: 3, cost: 32000, label: 'Main-deck ULD loader' },
   heavy_tug: { fieldLevel: 6, techTier: 3, cost: 90000, label: 'Heavy towbarless tug (A380 / 747-8F / An-124)' },
+  lavatory_truck: { fieldLevel: 1, techTier: 1, cost: 2500, label: 'Lavatory service truck' },
+  water_truck: { fieldLevel: 1, techTier: 1, cost: 2500, label: 'Potable water truck' },
 }
 
 /** Third jet bridge (A380 upper deck) for a stand. Sticker price at game scale. */
