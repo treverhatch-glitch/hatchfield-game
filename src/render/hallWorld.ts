@@ -5,6 +5,9 @@
 import * as THREE from 'three'
 import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
+import { buildHallDetail } from './hallKitDetail'
+import { buildTerminalProps, capTerminalPropMetal } from './terminalProps'
+import { hiDetailOn } from './world/terminalHiDetail'
 import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
@@ -690,6 +693,21 @@ export class HallWorld {
     this.watchedShell = []
   }
 
+  /** High / Ultra: a detailed jet bridge docked outside the east jetway door. Kept out of roomGroup so its shared materials survive rebuilds. */
+  private jetBridge: THREE.Group | null = null
+  private placeJetBridge(x: number, z: number) {
+    if (!hiDetailOn(graphicsQuality())) return
+    if (!this.jetBridge) {
+      capTerminalPropMetal(0.4)
+      this.jetBridge = buildTerminalProps([{ type: 'jet_bridge', x: 0, z: 0, yaw: Math.PI / 2 }])
+      this.jetBridge.name = 'hall-jet-bridge'
+      this.scene.add(this.jetBridge)
+    }
+    // Apron level matches the hall floor; the bridge rises to the 3.6 m cab sill.
+    this.jetBridge.position.set(x + 2.2, 0, z)
+    this.jetBridge.visible = true
+  }
+
   private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number, mat?: THREE.Material) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat ?? new THREE.MeshLambertMaterial({ color }))
     mesh.position.set(x, y, z)
@@ -807,6 +825,7 @@ export class HallWorld {
     const eastHalf = (HALL_D - door) / 2
     this.box(t, h, eastHalf, wall, halfW, y, -halfD + eastHalf / 2 - 1.2)
     this.box(t, h, eastHalf * 0.72, wall, halfW, y, eastGapZ + door / 2 + (eastHalf * 0.72) / 2)
+    this.placeJetBridge(halfW, eastGapZ)
     // Cornice only — no roof slab.
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
@@ -865,6 +884,7 @@ export class HallWorld {
     const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}|${rooms}`
     if (hash === this.roomHash) return
     this.roomHash = hash
+    if (this.jetBridge) this.jetBridge.visible = false
     this.releaseShellMats()
     this.roomGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
@@ -935,7 +955,10 @@ export class HallWorld {
       this.roomGroup.add(pick)
     }
     this.clearKit()
-    this.kitGroup.add(buildKitInstances(laid))
+    if (hiDetailOn(graphicsQuality())) {
+      const { group, rest } = buildHallDetail(laid, cols, rows)
+      this.kitGroup.add(group, buildKitInstances(rest))
+    } else this.kitGroup.add(buildKitInstances(laid))
     this.applyRoomLayer()
   }
 
@@ -1858,6 +1881,7 @@ export class HallWorld {
     canvas.removeEventListener('pointerleave', this.onUp)
     canvas.removeEventListener('wheel', this.onWheel)
     this.clearKit()
+    if (this.jetBridge) for (const c of this.jetBridge.children) (c as THREE.InstancedMesh).dispose?.()
     this.clearInterior()
     if (this.terminalShared) disposeTerminalShared(this.terminalShared)
     this.terminalTextures?.dispose()

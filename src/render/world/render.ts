@@ -1,3 +1,4 @@
+import { setAircraftEnvIntensity } from '../aircraft/pool'
 import * as THREE from 'three'
 import { grassColor, nightLighting, paintSky, seasonAtDay, snowCover } from '../../environment/index.ts'
 import { gradeTree } from '../grade'
@@ -44,7 +45,6 @@ import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
-import { setVehiclePhotos } from '../vehicles'
 import { photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
@@ -125,9 +125,6 @@ export class WorldRenderer {
   /** Last frame's cycle sample. The light rig and vehicle/aircraft lamps read this. */
   dayNightSample: DayNightSample = idleDayNight()
   private weatherOverride: Weather | null = null
-  private farmBase = 0xb8c8a8
-  private snowOn = false
-  private snowColor = new THREE.Color()
   private lite = false
   private flash = 0
   private state: SkyState = skyState(11)
@@ -198,7 +195,6 @@ export class WorldRenderer {
     if (!first) this.disposeContent()
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
-    setVehiclePhotos(photoTexturesEnabled(q.level), q.anisotropy)
     this.tex = makeTextures(q.textureSize, q.anisotropy, photoTexturesEnabled(q.level))
     this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
@@ -219,7 +215,6 @@ export class WorldRenderer {
     this.root.add(this.lights.root)
     this.landscape = buildLandscape(this.tex.grass, q.trees)
     this.root.add(this.landscape.group)
-    this.rememberFarmBase()
     this.terrainKey = ''
     this.grass = new GrassRing(q.grassTufts)
     this.root.add(this.grass.mesh)
@@ -417,6 +412,7 @@ export class WorldRenderer {
       ground: season.palette.ground,
       grass: season.palette.grass,
       seasonId: season.id,
+      precip: s.precip,
     }
     const draw = view.mapDraw
     if (draw && draw.skyAmount > 0) {
@@ -443,6 +439,7 @@ export class WorldRenderer {
     this.hemi.color.setHex(s.hemiSky)
     this.hemi.groundColor.setHex(s.hemiGround)
     this.hemi.intensity = s.hemiIntensity + this.flash * 1.2
+    setAircraftEnvIntensity((s.sunIntensity + s.hemiIntensity) / 3)
     this.ambient.intensity = s.ambient
     this.fog.color.setHex(s.fogColor)
     this.fog.near = s.fogNear
@@ -482,7 +479,15 @@ export class WorldRenderer {
       } else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
     this.paintPlot(draw ?? null)
-    this.paintSnow(snow, s.wet)
+    this.rain.cover.paintSnow(
+      snow,
+      s.wet,
+      this.quality,
+      this.surfaceMats.get('grass'),
+      this.landscape?.group.getObjectByName('world-farmland') instanceof THREE.Mesh ? (this.landscape?.group.getObjectByName('world-farmland') as THREE.Mesh).material as THREE.MeshLambertMaterial : undefined,
+      this.landscape?.group.getObjectByName('world-fields') instanceof THREE.Mesh ? (this.landscape?.group.getObjectByName('world-fields') as THREE.Mesh).material as THREE.MeshLambertMaterial : undefined,
+      this.grass?.mesh.material instanceof THREE.MeshLambertMaterial ? this.grass.mesh.material : undefined
+    )
 
     const enclosed = view.view === 'apron'
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
@@ -500,7 +505,7 @@ export class WorldRenderer {
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)
-    this.rain.update(step, s.precip, focus.x, focus.z)
+    this.rain.updateRich(step, s.precip > 0 ? (snow > 0 ? 'snow' : 'rain') : 'none', weather, s.precip, focus.x, focus.z)
   }
 
   /**
@@ -544,68 +549,6 @@ export class WorldRenderer {
     this.landscape?.group.removeFromParent()
     this.landscape = buildLandscape(this.tex.grass, this.q.trees, tint)
     this.root.add(this.landscape.group)
-    this.rememberFarmBase()
-  }
-
-  private rememberFarmBase() {
-    const farm = this.landscape?.group.getObjectByName('world-farmland')
-    if (farm instanceof THREE.Mesh && farm.material instanceof THREE.MeshLambertMaterial) {
-      this.farmBase = farm.material.color.getHex()
-    }
-  }
-
-  /**
-   * Winter snow is a colour and emissive write on grass. The green albedo
-   * would stay green from a multiply alone. Low uses a lighter `snowCover`
-   * and the same write — no extra mesh. Maps with their own ground pass 0.
-   */
-  private paintSnow(snow: number, wet: number) {
-    const grass = this.surfaceMats.get('grass')
-    const farm = this.landscape?.group.getObjectByName('world-farmland')
-    const fields = this.landscape?.group.getObjectByName('world-fields')
-    const farmMat = farm instanceof THREE.Mesh && farm.material instanceof THREE.MeshLambertMaterial ? farm.material : null
-    const fieldMat = fields instanceof THREE.Mesh && fields.material instanceof THREE.MeshLambertMaterial ? fields.material : null
-    const tuft = this.grass?.mesh.material
-    const tuftMat = tuft instanceof THREE.MeshLambertMaterial ? tuft : null
-    if (snow <= 0) {
-      if (!this.snowOn) return
-      this.snowOn = false
-      if (farmMat) {
-        farmMat.color.setHex(this.farmBase)
-        farmMat.emissive.setHex(0x000000)
-        farmMat.emissiveIntensity = 0
-      }
-      if (fieldMat) {
-        fieldMat.color.setHex(0xffffff)
-        fieldMat.emissive.setHex(0x000000)
-        fieldMat.emissiveIntensity = 0
-      }
-      return
-    }
-    this.snowOn = true
-    const wash = 1 - wet * 0.28
-    this.snowColor.setHex(0xe7eef2)
-    if (grass) {
-      grass.color.lerp(this.snowColor, snow)
-      grass.emissive.setHex(0xe4eef4)
-      grass.emissiveIntensity = 0.7 * snow * wash
-    }
-    if (farmMat) {
-      farmMat.color.setHex(this.farmBase)
-      farmMat.color.lerp(this.snowColor, snow)
-      farmMat.emissive.setHex(0xdfe7ee)
-      farmMat.emissiveIntensity = 0.55 * snow * wash
-    }
-    if (fieldMat) {
-      fieldMat.color.setHex(0xf4f7f8)
-      fieldMat.emissive.setHex(0xe7eef3)
-      fieldMat.emissiveIntensity = 0.62 * snow * wash
-    }
-    if (tuftMat && this.quality !== 'low') {
-      tuftMat.color.setHex(0xe7eef2)
-      tuftMat.emissive.setHex(0xf4f7fb)
-      tuftMat.emissiveIntensity = 0.5 * snow
-    }
   }
 
   /** Shadow pass every `shadowEvery` frames, or at once when the shadow box moves. */

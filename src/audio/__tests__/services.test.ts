@@ -16,7 +16,7 @@ describe('system sound catalogue', () => {
     const grouped = Object.values(SFX_GROUPS).flat();
     expect(new Set(grouped).size).toBe(grouped.length);
     expect([...grouped].sort()).toEqual([...SFX_IDS].sort());
-    expect(SFX_GROUPS.serviceVehicles.length).toBe(12);
+    expect(SFX_GROUPS.serviceVehicles.length).toBe(23);
     expect(SFX_GROUPS.maintenance.length).toBe(6);
     expect(SFX_GROUPS.construction.length).toBe(5);
     expect(SFX_GROUPS.terminal.length).toBe(4);
@@ -27,7 +27,7 @@ describe('system sound catalogue', () => {
     expect(SFX_GROUPS.diplomacy.length).toBe(8);
     expect(SFX_GROUPS.terminalAmbience.length).toBe(3);
     expect(SFX_GROUPS.apronAmbience.length).toBe(4);
-    expect(SFX_IDS.length).toBe(69);
+    expect(SFX_IDS.length).toBe(80);
     for (const id of SFX_IDS) expect(CATEGORIES).toContain(sfxCategory(id));
     for (const id of SFX_GROUPS.ui) { expect(sfxCategory(id)).toBe('ui'); expect(sfxLooping(id)).toBe(false); }
     expect(isSfxId('gpuHum')).toBe(true); expect(isSfxId('toString')).toBe(false);

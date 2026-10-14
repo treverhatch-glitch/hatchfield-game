@@ -1,3 +1,4 @@
+import { installAircraftEnvironment } from './aircraft/env'
 import * as THREE from 'three'
 import { rosterPreviewLivery } from './aircraft/procLivery'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
@@ -21,6 +22,7 @@ import {
   aircraftWorldPerMeter,
   CELL,
   updateAircraft,
+  motionForPhase,
   WORLD_PER_METER,
   type Livery,
   type ParkedPlane,
@@ -41,7 +43,9 @@ import {
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
-import { disposeVehicleLibrary, VehicleFleet, type VehicleInstance } from './vehicles.ts'
+import { deployOf, disposeVehicleLibrary, serviceStateOf, setVehicleSurfaceTime, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
+import { steerAngle } from './vehicleAnim.ts'
+import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
@@ -175,29 +179,6 @@ function visualLift(phase: string, u: number, raw: number): number {
   return raw
 }
 
-const CATER_MAST_M = 2.2
-
-function makeCateringRig(): THREE.Group {
-  const g = new THREE.Group()
-  const bodyL = wu(8.5)
-  const bodyW = wu(2.5)
-  const mastH = wu(CATER_MAST_M)
-  const mast = new THREE.Mesh(
-    new THREE.BoxGeometry(wu(0.18), mastH, wu(0.18)),
-    new THREE.MeshStandardMaterial({ color: '#4a4038', roughness: 0.5 }),
-  )
-  mast.name = 'mast'
-  mast.position.set(-bodyL * 0.28, mastH / 2, -bodyW * 0.42)
-  g.add(mast)
-  const platform = new THREE.Mesh(
-    new THREE.BoxGeometry(wu(1.6), wu(0.12), wu(1.1)),
-    new THREE.MeshStandardMaterial({ color: '#d8dee6', roughness: 0.4 }),
-  )
-  platform.name = 'platform'
-  platform.position.set(-bodyL * 0.28, wu(1.2), -bodyW * 0.55)
-  g.add(platform)
-  return g
-}
 
 export class World {
   renderer: THREE.WebGLRenderer
@@ -229,7 +210,42 @@ export class World {
   private arrivalBefore = new Map<string, number>()
   private vehicleFleet = new VehicleFleet()
   private vehicleFrame: VehicleInstance[] = []
-  cateringCrew = new Map<string, THREE.Group>()
+  /** Render-side distance driven per vehicle id (metres), for wheel spin. Not saved. */
+  private odo = new Map<string, { x: number; z: number; m: number }>()
+
+  private odometer(id: string, x: number, z: number): number {
+    const o = this.odo.get(id)
+    if (!o) {
+      this.odo.set(id, { x, z, m: 0 })
+      return 0
+    }
+    const d = Math.hypot(x - o.x, z - o.z) / WORLD_PER_METER
+    // A jump (teleport / respawn) does not spin the wheels.
+    if (d < 25) o.m += d
+    o.x = x
+    o.z = z
+    if (this.odo.size > 4000) this.odo.clear()
+    return o.m
+  }
+  /** Render-side steer per vehicle id: heading change over distance (bicycle model), smoothed. */
+  private steerState = new Map<string, { h: number; m: number; s: number }>()
+
+  private steerOf(id: string, heading: number, odo: number, wheelbase: number): number {
+    const st = this.steerState.get(id)
+    if (!st) {
+      this.steerState.set(id, { h: heading, m: odo, s: 0 })
+      return 0
+    }
+    const dm = odo - st.m
+    if (dm > 0.05) {
+      const target = steerAngle(heading - st.h, dm, wheelbase)
+      st.s += (target - st.s) * 0.5
+      st.h = heading
+      st.m = odo
+    } else if (dm === 0) st.s *= 0.97
+    if (this.steerState.size > 4000) this.steerState.clear()
+    return st.s
+  }
   private crewFigures = new CrewFigures(this.entGroup)
   people = new Map<string, THREE.Mesh>()
   housingGroup = new THREE.Group()
@@ -296,6 +312,8 @@ export class World {
     const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
+    // Sky reflections on aircraft paint, chrome and glass.
+    installAircraftEnvironment(this.renderer)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
     this.renderer.shadowMap.type = preset.shadowType
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -1832,7 +1850,7 @@ export class World {
       if (pose.visible) {
         mesh.position.copy(toWorld(pose.x, pose.y, 0.04 + pose.alt))
         orientAircraft(mesh, pose.heading, pose.pitch)
-        updateAircraft(mesh, pose.gearDown)
+        updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }))
       }
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
       const jetway =
@@ -1997,7 +2015,7 @@ export class World {
       mesh.visible = true
       mesh.position.copy(toWorld(posed.x, posed.y, 0.04 + posed.alt))
       orientAircraft(mesh, posed.heading, posed.pitch)
-      updateAircraft(mesh, posed.gearDown)
+      updateAircraft(mesh, posed.gearDown, motionForPhase({ phase: 'takeoff', alt: posed.alt, gearDown: posed.gearDown }))
       const bridges = mesh.getObjectByName('bridges')
       if (bridges) mesh.remove(bridges)
       mesh.scale.setScalar(1)
@@ -2018,6 +2036,9 @@ export class World {
       const dy = (ahead?.r ?? t.y) - t.y
       const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
+      const atStop = !t.returning && t.seg >= t.path.length - 1
+      const ext = truckDeploy(atStop, t.dwell, t.serviceFor)
+      const moving = !atStop || t.returning
       this.vehicleFrame.push({
         kind: t.kind,
         color,
@@ -2029,62 +2050,63 @@ export class World {
         scale: WORLD_PER_METER,
         cargo: loaded ? (t.kind === 'bags' ? 'suitcases' : t.kind === 'citycargo' ? 'crates' : undefined) : undefined,
         cargoScale: loaded ? clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35) : 1,
+        ext,
+        active: t.kind === 'fire' ? !t.patrol && (ext > 0 || (moving && !t.returning)) : ext > 0 || moving,
+        odo: this.odometer(t.id, pos.x, pos.z),
+        clock: game.clock,
       })
     }
 
-    for (const pose of game.servicePoses()) {
+    const poses = game.servicePoses()
+    // Parked vehicles share a depot node: fan them out so long tankers and trains don't overlap.
+    const yard = yardOffsets(poses, (type) => vehicleSize(type))
+    for (let i = 0; i < poses.length; i++) {
+      const pose = poses[i]
+      // With apron traffic on, the sim already keeps bodies apart; only legacy poses get the yard fan-out.
+      const off = pose.waiting === undefined ? yard[i] : { x: 0, z: 0 }
       const pos = toWorld(pose.x, pose.y, 0)
+      const ext = deployOf(pose.phase, pose.u)
+      const odo = this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER)
       this.vehicleFrame.push({
         kind: pose.type,
         color: serviceColor(pose.type),
         size: vehicleMeters(pose.type),
+        x: pos.x + off.x * WORLD_PER_METER,
+        y: pos.y,
+        z: pos.z + off.z * WORLD_PER_METER,
+        yaw: -pose.heading,
+        scale: WORLD_PER_METER,
+        ext,
+        active: ext > 0 || serviceStateOf(pose.phase, pose.u) === 'drive',
+        reversing: serviceStateOf(pose.phase, pose.u) === 'dock',
+        odo,
+        // heading is CCW in sim space and the render yaw is its negation, so steer flips sign too
+        steer: -this.steerOf(pose.id, pose.heading, odo, vehicleMeters(pose.type)[0] * 0.6),
+        // cones only after dusk (they follow the same headlight level as the lamp pools)
+        beams: (this.wr.dayNightSample?.headlights ?? 0) > 0.3 && (serviceStateOf(pose.phase, pose.u) === 'drive' || pose.waiting === true),
+        clock: game.clock,
+      })
+    }
+
+    for (const pose of game.cateringPoses()) {
+      const pos = toWorld(pose.x, pose.y, 0)
+      const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
+      this.vehicleFrame.push({
+        kind: 'catering_truck',
+        color: '#e07a3d',
+        size: vehicleMeters('catering_truck'),
         x: pos.x,
         y: pos.y,
         z: pos.z,
         yaw: -pose.heading,
         scale: WORLD_PER_METER,
+        ext: lift,
+        active: lift > 0,
+        clock: game.clock,
       })
-    }
-
-    const seenC = new Set<string>()
-    for (const pose of game.cateringPoses()) {
-      seenC.add(pose.id)
-      let rig = this.cateringCrew.get(pose.id)
-      if (!rig) {
-        rig = makeCateringRig()
-        this.cateringCrew.set(pose.id, rig)
-        this.entGroup.add(rig)
-      }
-      rig.position.copy(toWorld(pose.x, pose.y, 0))
-      rig.rotation.y = -pose.heading
-      this.vehicleFrame.push({
-        kind: 'catering_truck',
-        color: '#e07a3d',
-        size: vehicleMeters('catering_truck'),
-        x: rig.position.x,
-        y: rig.position.y,
-        z: rig.position.z,
-        yaw: rig.rotation.y,
-        scale: WORLD_PER_METER,
-      })
-      const mast = rig.getObjectByName('mast')
-      const platform = rig.getObjectByName('platform')
-      const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
-      const h = wu(CATER_MAST_M) + lift * wu(2.4)
-      if (mast) {
-        mast.scale.y = h / wu(CATER_MAST_M)
-        mast.position.y = h / 2
-      }
-      if (platform) platform.position.y = wu(1.2) + lift * wu(2.2)
-    }
-    for (const [id, m] of this.cateringCrew) {
-      if (!seenC.has(id)) {
-        this.entGroup.remove(m)
-        disposeObject(m)
-        this.cateringCrew.delete(id)
-      }
     }
     this.vehicleFleet.sync(this.vehicleFrame)
+    setVehicleSurfaceTime(game.clock)
 
     const seenP = new Set<string>()
     for (const p of game.people) {

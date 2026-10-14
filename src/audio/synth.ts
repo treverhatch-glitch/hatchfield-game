@@ -7,7 +7,7 @@ export type SoundId =
   | 'uiHover' | 'uiClick' | 'buildThunk' | 'cashRegister' | 'chime'
   | 'truckIdle' | 'truckDrive' | 'airBrake' | 'reverseBeeper' | 'fuelPump' | 'baggageTug' | 'beltLoader' | 'cateringLift' | 'jetBridge' | 'gpuHum' | 'pushbackTug' | 'radioChatter' | 'paChime' | 'securityBeep' | 'metalDetector' | 'suitcaseRoll' | 'hammer' | 'drill' | 'craneBeep' | 'expense' | 'mailNotify' | 'contractFanfare' | 'warning' | 'errorBuzz' | 'levelUp' | 'rain' | 'wind' | 'birds' | 'dayNight';
 
-export type Category = 'aircraft' | 'vehicles' | 'ambient' | 'ambience' | 'ui' | 'sfx';
+export type Category = 'aircraft' | 'vehicles' | 'buildings' | 'ambient' | 'ambience' | 'ui' | 'sfx';
 
 export const SOUND_CATEGORY: Record<SoundId, Category> = {
   crowd: 'ambient', uiHover: 'ui', uiClick: 'ui', buildThunk: 'sfx', cashRegister: 'sfx', chime: 'ui',

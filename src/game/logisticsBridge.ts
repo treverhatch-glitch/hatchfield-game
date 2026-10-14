@@ -158,6 +158,8 @@ export function buildLogisticsConfig(
   const initialLitres = Math.min(capacityLitres, Number.isFinite(rawInitial) ? Math.max(0, rawInitial) : 240_000)
 
   return {
+    // Apron traffic: reserved parking slots + yield/wait so service vehicles never overlap.
+    traffic: true,
     nodes,
     edges,
     depotNode: depotId,
