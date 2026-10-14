@@ -9,6 +9,7 @@
  * TERMINAL_ITEM_TO_PROP below and docs/TERMINAL_PROPS.md.
  */
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { footprint, type Part, type Prim } from './parts'
 import { material } from './materials'
 import { MOVING_TRAYS, PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType, type TrayTrack } from './props'
@@ -108,6 +109,7 @@ export function fitScale(type: TerminalPropType, w: number, d: number): number {
 
 const GEOM: Record<Prim, () => THREE.BufferGeometry> = {
   box: () => new THREE.BoxGeometry(1, 1, 1),
+  rbox: () => new RoundedBoxGeometry(1, 1, 1, 3, 0.1),
   cyl: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
   cyl8: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
   sphere: () => new THREE.SphereGeometry(0.5, 24, 16),

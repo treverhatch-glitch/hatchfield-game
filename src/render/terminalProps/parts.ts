@@ -4,7 +4,7 @@
  * (primitive, material) into InstancedMeshes, so a hall full of props costs
  * one draw call per primitive/material pair, not per object.
  */
-export type Prim = 'box' | 'cyl' | 'cyl8' | 'sphere' | 'cone' | 'torus' | 'plane'
+export type Prim = 'box' | 'rbox' | 'cyl' | 'cyl8' | 'sphere' | 'cone' | 'torus' | 'plane'
 
 export interface Part {
   prim: Prim
@@ -27,6 +27,8 @@ export const part = (
 ): Part => (rot ? { prim, size, pos, mat, rot } : { prim, size, pos, mat })
 
 export const box = (s: Part['size'], p: Part['pos'], m: string, r?: Part['rot']) => part('box', s, p, m, r)
+/** Bevelled box: soft rounded edges (unit RoundedBox scaled to size). */
+export const rb = (s: Part['size'], p: Part['pos'], m: string, r?: Part['rot']) => part('rbox', s, p, m, r)
 export const cyl = (s: Part['size'], p: Part['pos'], m: string, r?: Part['rot']) => part('cyl', s, p, m, r)
 
 /** Move a group of parts by an offset and an optional yaw around the group origin. */
