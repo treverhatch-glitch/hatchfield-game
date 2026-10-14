@@ -198,6 +198,12 @@ export interface LogisticsConfig {
    * The turnaround waits for a matching truck instead of crawling along on a small one.
    */
   strictSizeTiers?: boolean
+  /**
+   * Apron traffic (reservation + avoidance, see traffic.ts). Vehicles keep a real
+   * footprint, park in reserved slots, yield and wait instead of overlapping.
+   * Off by default so the timing tests keep their closed-form drive times.
+   */
+  traffic?: boolean | Partial<import('./traffic').TrafficConfig>
 }
 
 export interface TurnaroundNeeds {

@@ -1,0 +1,208 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Vehicle Round D apron</title>
+<style>html,body{margin:0;background:#0d1524;overflow:hidden}canvas{display:block}</style></head>
+<body><script type="module">
+// Round C turnaround: aircraft taxis in under a marshaller, chocks and cones go on, then the
+// service fleet drives up and deploys. Uses the in-game VehicleFleet + PeopleRenderer paths.
+// ?night=1 for the night version, ?ao=0 to skip ambient occlusion, ?cam=close|wide, ?t=seconds.
+import * as THREE from 'three'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { VehicleFleet, setVehicleSurfaceTime } from '/src/render/vehicles.ts'
+import { createAircraft } from '/src/render/aircraft/index.ts'
+import { PeopleRenderer } from '/src/people/index.ts'
+import { vehicleCrew, standCrew, standTimeline, conePoints } from '/src/render/turnaroundCrew.ts'
+import { RoadGraph } from '/src/logistics/roads.ts'
+import { ApronTraffic } from '/src/logistics/traffic.ts'
+import { steerAngle } from '/src/render/vehicleAnim.ts'
+const Q = new URLSearchParams(location.search)
+const NIGHT = Q.get('night') === '1'
+const AO = Q.get('ao') !== '0'
+const CAM = Q.get('cam') ?? 'orbit'
+// ?traffic=1: Round D yield demo. Two service streams cross at a junction behind the stand;
+// motion comes from the real src/logistics ApronTraffic (reserve, yield, wait), nothing scripted.
+const TRAFFIC = Q.get('traffic') === '1'
+const W = innerWidth, H = innerHeight
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping
+r.toneMappingExposure = 1.0
+r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.appendChild(r.domElement)
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(NIGHT ? '#0a1222' : '#a9c4dc')
+scene.fog = new THREE.Fog(scene.background, NIGHT ? 70 : 110, NIGHT ? 190 : 260)
+scene.add(new THREE.HemisphereLight(NIGHT ? 0x3a4a6a : 0xeaf2ff, NIGHT ? 0x1a1610 : 0x6b6253, NIGHT ? 0.35 : 1.25))
+const sun = new THREE.DirectionalLight(NIGHT ? 0x8ea6d8 : 0xfff1dc, NIGHT ? 0.25 : 2.8)
+sun.position.set(-35, 55, 28); sun.castShadow = true
+Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, far: 180 })
+sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03
+scene.add(sun)
+// Apron: concrete slabs with joint lines and lead-in markings.
+const slab = new THREE.MeshLambertMaterial({ color: NIGHT ? '#6d7277' : '#9a9fa4' })
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), slab)
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
+const line = (x, z, w, d, c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color: c })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.012, z); m.receiveShadow = true; scene.add(m) }
+for (let i = -12; i <= 12; i++) { line(i * 7.5, 0, 0.06, 140, '#80858a'); line(0, i * 7.5, 180, 0.06, '#80858a') }
+line(-20, 0, 80, 0.25, '#e8c33a'); line(21, 0, 0.35, 6, '#e8c33a')
+for (const z of [-18, 18]) line(0, z, 90, 0.2, '#d8443a')
+// Floodlight masts (lit at night).
+const masts = []
+for (const [x, z] of [[-30, -36], [26, -36], [0, 38]]) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 24, 8), new THREE.MeshLambertMaterial({ color: '#8a9096' }))
+  pole.position.set(x, 12, z); pole.castShadow = true; scene.add(pole)
+  const head = new THREE.Mesh(new THREE.BoxGeometry(3, 0.6, 1), new THREE.MeshBasicMaterial({ color: NIGHT ? '#fff2cf' : '#d9dde2' }))
+  head.position.set(x, 24.2, z); scene.add(head)
+  if (NIGHT) {
+    const s = new THREE.SpotLight(0xffe2b0, 320, 130, 0.8, 0.6, 1.6)
+    s.position.set(x, 24, z); s.target.position.set(x * 0.2, 0, z * 0.15); s.castShadow = masts.length < 2
+    s.shadow.mapSize.set(1024, 1024); s.shadow.bias = -0.0005
+    scene.add(s, s.target); masts.push(s)
+  }
+}
+const plane = createAircraft('b738', { body: '#2f6f9a', stripe: '#e8eef5' })
+plane.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+let box = new THREE.Box3().setFromObject(plane); const sz = box.getSize(new THREE.Vector3())
+plane.scale.setScalar(39.5 / Math.max(sz.x, sz.z)); scene.add(plane)
+box = new THREE.Box3().setFromObject(plane)
+const frame = { x: 0, z: 0, yaw: 0, nose: box.max.x, tail: box.min.x, semiSpan: box.max.z, noseGear: box.max.x - 5.2 }
+// Cones and chocks
+const coneGeo = new THREE.ConeGeometry(0.22, 0.7, 10).translate(0, 0.35, 0)
+const coneMat = new THREE.MeshLambertMaterial({ color: '#ff6a13' })
+const cones = conePoints(frame).map(([x, z]) => { const m = new THREE.Mesh(coneGeo, coneMat); m.position.set(x, 0, z); m.castShadow = true; m.visible = false; scene.add(m); return m })
+const chocks = [-1, 1].map((s) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.4), new THREE.MeshLambertMaterial({ color: '#f2bf1f' })); m.position.set(frame.noseGear + 0.45, 0.13, s * 0.45); m.castShadow = true; m.visible = false; scene.add(m); return m })
+const fleet = new VehicleFleet(); scene.add(fleet.root)
+fleet.root.traverse(o => { o.receiveShadow = true })
+const people = new PeopleRenderer(scene, { unitsPerMeter: 1 })
+people.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+// kind, final x, z, yaw, arrival time (s)
+const SPOTS = [
+  ['stairs', 12, -4.4, Math.PI / 2, 9.4],
+  ['belt_loader', -9, 5.0, Math.PI / 2, 10.0],
+  ['cargo', 9, 6.9, Math.PI / 2, 11.2],
+  ['catering', -13, -6.4, -Math.PI / 2, 10.6],
+  ['fuel', 2, -12.5, 0, 9.0],
+  ['gpu', 17.2, 4, 0, 9.8],
+  ['pushback_tug', 24.5, 0, 0, 12.0],
+  ['termbus', 4, -24, 0, 12.4],
+  ['deice', -6, 18, Math.PI, 11.6],
+  ['fire', -34, -16, 0.5, 0, 'fire'],
+  ['bags', -20, 11.5, 0, 11.0],
+  ['citycargo', 24, -21, 0, 13.0],
+]
+const COLORS = { termbus: '#3d6a8a', coach: '#3d6a8a', fire: '#c8231e', catering: '#e07a3d', fuel: '#c9a227' }
+const ease = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t) }
+const DRIVE = 4, D = 16, RAMP = 2.5
+const cam = new THREE.PerspectiveCamera(36, W / H, 0.5, 600)
+const composer = new EffectComposer(r)
+composer.addPass(new RenderPass(scene, cam))
+if (AO) {
+  const ao = new GTAOPass(scene, cam, W, H)
+  ao.updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.5, thickness: 1.5, scale: 1.0, samples: 12 })
+  ao.blendIntensity = NIGHT ? 0.7 : 0.9
+  composer.addPass(ao)
+}
+if (NIGHT) composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.4, 0.92))
+composer.addPass(new OutputPass())
+// ---- Round D traffic demo (metres; traffic y == scene z) ----
+const TNODES = [{ id: 'W', x: -95, y: 30 }, { id: 'J', x: -30, y: 30 }, { id: 'E', x: 95, y: 30 }, { id: 'N', x: -30, y: 110 }, { id: 'S', x: -30, y: -80 }]
+const TEDGES = [['W', 'J'], ['J', 'E'], ['N', 'J'], ['J', 'S']].map(([a, b]) => ({ a, b, length: Math.hypot(TNODES.find(n => n.id === a).x - TNODES.find(n => n.id === b).x, TNODES.find(n => n.id === a).y - TNODES.find(n => n.id === b).y) }))
+// type, render kind, from, to, depart (s)
+const STREAM = [
+  ['fuel_truck', 'fuel', 'W', 'E', 0.0], ['catering_truck', 'catering', 'W', 'E', 1.4], ['belt_loader', 'belt_loader', 'W', 'E', 2.8], ['gpu', 'gpu', 'W', 'E', 4.0],
+  ['pax_bus', 'termbus', 'N', 'S', 0.3], ['baggage_tug', 'bags', 'N', 'S', 1.9], ['hydrant_dispenser', 'hydrant', 'N', 'S', 3.4], ['pushback_tug', 'pushback_tug', 'N', 'S', 4.8],
+]
+const MIN_PER_S = 0.05, SPEED = 480 // m/min
+let tr = null, tv = [], tSim = 0, tState = new Map()
+function resetTraffic() {
+  const roads = new RoadGraph(TNODES, TEDGES)
+  tr = new ApronTraffic(roads, TEDGES, { stepMinutes: 0.01 })
+  tv = STREAM.map(([type, kind, from, to, dep], i) => ({ id: `${kind}-${i}`, type, kind, node: from, to, dep, phase: 'idle', phaseEnd: Infinity, route: null, roads }))
+  tv.forEach(v => tr.place(v))
+  tSim = 0; tState = new Map()
+}
+function advanceTraffic(t) {
+  if (!tr || t < tSim - 1e-9) resetTraffic()
+  const dt = tr.cfg.stepMinutes / MIN_PER_S
+  while (tSim + dt <= t + 1e-9) {
+    for (const v of tv) if (v.phase === 'idle' && v.node !== v.to && tSim >= v.dep) {
+      v.route = v.roads.route(v.node, v.to); v.phase = 'to_stand'
+      v.phaseEnd = tSim * MIN_PER_S + tr.begin(v, v.to, tSim * MIN_PER_S, SPEED)
+    }
+    const now = (tSim + dt) * MIN_PER_S
+    tr.step(tv, tr.cfg.stepMinutes, now)
+    for (const v of tv) if (v.phase === 'to_stand' && v.phaseEnd <= now + 1e-9) { v.phase = 'idle'; v.node = v.to }
+    tSim += dt
+    for (const v of tv) {
+      const p = tr.pose(v.id), st = tState.get(v.id) ?? { x: p.x, y: p.y, h: p.heading, odo: 0, steer: 0, waitS: 0 }
+      const d = Math.hypot(p.x - st.x, p.y - st.y)
+      // reversing never happens here; steer from heading change over distance
+      if (d > 0.02) { st.steer += (steerAngle(p.heading - st.h, d, 4) - st.steer) * 0.35; st.odo += d } else st.steer *= 0.9
+      st.moving = d > 0.01; st.waitS = v.phase === 'to_stand' && !st.moving ? st.waitS + dt : 0
+      Object.assign(st, { x: p.x, y: p.y, h: p.heading }); tState.set(v.id, st)
+    }
+    if (tr.overlaps().length) window.__overlap = (window.__overlap ?? 0) + 1
+  }
+  window.__traffic = { ...tr.stats, overlaps: window.__overlap ?? 0 }
+}
+// Waiting marker: a red ring under any vehicle held at the yield line (demo overlay only).
+const ringGeo = new THREE.RingGeometry(2.2, 2.6, 32).rotateX(-Math.PI / 2)
+const rings = STREAM.map(() => { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#ff3b2f', transparent: true, opacity: 0.85 })); m.visible = false; scene.add(m); return m })
+if (TRAFFIC) { line(0, 30, 200, 9, '#565b60'); line(-30, 15, 9, 190, '#565b60'); line(-30, 22, 9, 0.3, '#f4f4f4'); line(-22, 30, 0.3, 9, '#f4f4f4') }
+
+let last = 0
+window.renderAt = (t) => {
+  const dt = Math.max(0, t - last); last = t
+  const st = standTimeline(t)
+  plane.position.x = -48 * (1 - st.planeU)
+  cones.forEach((m, i) => (m.visible = i < st.cones))
+  chocks.forEach((m) => (m.visible = st.chocks))
+  const list = [], agents = []
+  if (TRAFFIC) {
+    advanceTraffic(t)
+    tv.forEach((v, i) => {
+      const st = tState.get(v.id); const p = tr.pose(v.id)
+      list.push({ kind: v.kind, color: COLORS[v.kind] ?? '#2f7fd0', size: [8, 3, 2.5], x: p.x, y: 0, z: p.y, yaw: -p.heading, scale: 1, ext: 0, active: true, clock: t, odo: st?.odo ?? 0, reversing: false, steer: -(st?.steer ?? 0), beams: NIGHT })
+      vehicleCrew({ id: v.id, kind: v.kind, x: p.x, z: p.y, yaw: -p.heading, ext: 0, moving: true }, t, agents)
+      rings[i].visible = (st?.waitS ?? 0) > 0.25; rings[i].position.set(p.x, 0.03, p.y)
+    })
+  }
+  for (const [kind, fx, fz, yaw, arr, mode] of TRAFFIC ? [] : SPOTS) {
+    const f = [Math.cos(yaw), -Math.sin(yaw)]
+    let x = fx, z = fz, odo = 0, moving = false, reversing = false, ext = 0
+    if (mode === 'fire') { ext = ease((t - 4) / 2) } else {
+      if (t < arr - DRIVE) continue
+      const towardPlane = f[1] * -Math.sign(fz || 1) > 0 || (Math.abs(fz) < 1 && f[0] < 0)
+      const dir = towardPlane ? -1 : 1 // start behind (forward-in) or ahead (reverse-in)
+      const k = ease((t - (arr - DRIVE)) / DRIVE)
+      x = fx + f[0] * D * dir * (1 - k); z = fz + f[1] * D * dir * (1 - k)
+      odo = D * k * (towardPlane ? 1 : -1)
+      moving = k < 1
+      reversing = !towardPlane && k < 1
+      ext = ease((t - arr - 0.3) / RAMP)
+      if (!towardPlane && ext > 0 && ext < 1) reversing = true
+    }
+    const id = kind
+    list.push({ kind, color: COLORS[kind] ?? '#2f7fd0', size: [8, 3, 2.5], x, y: 0, z, yaw, scale: 1, ext, active: mode === 'fire' || moving || ext > 0, clock: t, odo, reversing })
+    vehicleCrew({ id, kind, x, z, yaw, ext, moving }, t, agents)
+  }
+  standCrew(frame, t, agents)
+  fleet.sync(list)
+  setVehicleSurfaceTime(t)
+  people.update(agents, cam, dt)
+  window.__agents = agents.length; window.__stats = { ...people.stats }
+  if (CAM === 'fuel') { cam.position.set(-6, 3.6, -1.5); cam.lookAt(1.5, 1.0, -10.5) }
+  else if (CAM === 'belt') { cam.position.set(-16, 5.5, 13); cam.lookAt(-8, 2.4, 4.2) }
+  else if (CAM === 'junction') { cam.position.set(-30 + 34 * Math.cos(0.7 + t * 0.012), 30, 30 + 34 * Math.sin(0.7 + t * 0.012) + 10); cam.lookAt(-30, 0, 30) }
+  else if (CAM === 'close') { cam.position.set(-19 + Math.sin(t * 0.05) * 2, 5.5, 17); cam.lookAt(-8, 1.6, 4) }
+  else if (CAM === 'nose') { cam.position.set(34, 6, 13); cam.lookAt(20, 1.5, 0) }
+  else if (CAM === 'wide') { cam.position.set(46, 34, 52); cam.lookAt(0, 1, 0) }
+  else { const a = 0.95 - t * 0.045; const R = 52 - t * 0.6; cam.position.set(Math.cos(a) * R, 24 - t * 0.35, Math.sin(a) * R); cam.lookAt(t < 7 ? -16 + t * 2.2 : 0, 2, 1) }
+  composer.render()
+}
+window.renderAt(Number(Q.get('t') ?? 16))
+// Vehicle photo maps decode asynchronously: give them a moment, then redraw.
+setTimeout(() => { last = 0; window.renderAt(Number(Q.get('t') ?? 16)); window.__done = true }, 2500)
+</script></body></html>

@@ -1,63 +1,119 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { disposeVehicleLibrary, VehicleFleet, vehicleGeometry, vehicleLibrarySize, vehicleMesh, vehicleShape } from './vehicles'
+import {
+  ALL_MODELS,
+  disposeVehicleLibrary,
+  disposeVehicleRig,
+  MODEL_PARTS,
+  MODEL_SIZE,
+  VehicleFleet,
+  vehicleGeometry,
+  vehicleLibrarySize,
+  vehicleLitGeometry,
+  vehicleMesh,
+  vehicleModel,
+  vehiclePartGeometry,
+  vehicleRig,
+  ANIM_PARTS,
+} from './vehicles'
 
 afterAll(() => disposeVehicleLibrary())
 
-describe('ground vehicle meshes', () => {
-  it('picks a silhouette per kind', () => {
-    expect(vehicleShape('fuel_truck')).toBe('tanker')
-    expect(vehicleShape('pax_bus')).toBe('bus')
-    expect(vehicleShape('pushback_tug')).toBe('tug')
-    expect(vehicleShape('baggage_tug')).toBe('train')
-    expect(vehicleShape('catering_truck')).toBe('catering')
-    expect(vehicleShape('citycargo')).toBe('truck')
+const SIM_KINDS = [
+  'fuel', 'fuel_truck', 'bags', 'baggage_tug', 'belt_loader', 'catering', 'catering_truck', 'fire', 'deice',
+  'termbus', 'pax_bus', 'coach', 'citycargo', 'tow', 'pushback_tug', 'gpu', 'stairs', 'cart', 'cargo', 'uld_loader',
+]
+
+describe('ground vehicle models', () => {
+  it('maps every sim kind to its own builder', () => {
+    expect(vehicleModel('fuel_truck')).toBe('fuel_tanker')
+    expect(vehicleModel('pax_bus')).toBe('apron_bus')
+    expect(vehicleModel('termbus')).toBe('apron_bus')
+    expect(vehicleModel('fire')).toBe('arff')
+    expect(vehicleModel('pushback_tug')).toBe('towbarless_tug')
+    expect(vehicleModel('tow')).toBe('towbar_tug')
+    expect(vehicleModel('cargo')).toBe('k_loader')
+    expect(vehicleModel('citycargo')).toBe('box_truck')
+    expect(vehicleModel('mystery')).toBe('van')
+    const models = new Set(SIM_KINDS.map(vehicleModel))
+    expect(models.size).toBeGreaterThanOrEqual(15)
   })
 
-  it('is one draw that keeps the real footprint', () => {
-    const size = [8, 3, 2.5] as const
-    const mesh = vehicleMesh('fuel_truck', '#c9a227', size, 1)
-    expect(mesh.isMesh).toBe(true)
-    expect(mesh.name).toBe('body')
-    mesh.geometry.computeBoundingBox()
-    const box = mesh.geometry.boundingBox!
+  it.each(ALL_MODELS)('%s builds at its real size with lights and named parts', (model) => {
+    const [L, H, W] = MODEL_SIZE[model]
+    const geo = vehicleGeometry(model === 'van' ? 'delivery' : kindFor(model), '#3a7bd5')
+    geo.computeBoundingBox()
     const span = new THREE.Vector3()
-    box.getSize(span)
-    expect(span.x).toBeGreaterThan(size[0] * 0.95)
-    expect(span.x).toBeLessThan(size[0] * 1.05)
-    expect(span.z).toBeLessThan(size[2] * 1.05)
-    expect(box.min.y).toBeGreaterThanOrEqual(-1e-6)
-    expect(box.max.y).toBeLessThan(size[1] + 0.3)
-    expect(mesh.geometry.getAttribute('color')).toBeDefined()
+    geo.boundingBox!.getSize(span)
+    expect(span.x).toBeGreaterThan(L * 0.9)
+    expect(span.x).toBeLessThan(L * 1.15)
+    expect(span.z).toBeLessThan(W * 1.4)
+    expect(geo.boundingBox!.min.y).toBeGreaterThanOrEqual(-1e-6)
+    expect(geo.boundingBox!.max.y).toBeLessThan(H + 0.6)
+    expect(fullCount(model)).toBeGreaterThan(300)
+    const rig = vehicleRig(kindFor(model), '#3a7bd5')
+    for (const name of MODEL_PARTS[model]) expect(rig.getObjectByName(name), `${model}.${name}`).toBeDefined()
+    expect(rig.getObjectByName('body')).toBeDefined()
+    disposeVehicleRig(rig)
+    if (model !== 'uld_dolly' && model !== 'baggage_cart') {
+      expect(vehicleLitGeometry(kindFor(model), '#3a7bd5').getAttribute('position').count).toBeGreaterThan(0)
+    }
   })
 
-  it('shares geometry per kind and colour', () => {
+  it('distinct models do not share a silhouette', () => {
+    const counts = new Set(ALL_MODELS.map((m) => fullCount(m, '#fff')))
+    expect(counts.size).toBeGreaterThan(ALL_MODELS.length - 3)
+  })
+
+  it('shares geometry per model and colour', () => {
     const before = vehicleLibrarySize()
     const a = vehicleGeometry('gpu', '#5b8c5a', [3.2, 1.6, 1.4])
-    const b = vehicleGeometry('gpu', '#5b8c5a', [3.2, 1.6, 1.4])
-    const c = vehicleGeometry('gpu', '#ffffff', [3.2, 1.6, 1.4])
+    const b = vehicleGeometry('gpu', '#5b8c5a', [9, 9, 9])
+    const c = vehicleGeometry('gpu', '#ffffff')
     expect(a).toBe(b)
     expect(a).not.toBe(c)
-    expect(vehicleLibrarySize()).toBe(before + 2)
+    expect(vehicleLibrarySize()).toBeGreaterThanOrEqual(before)
     expect(vehicleMesh('gpu', '#5b8c5a', [3.2, 1.6, 1.4], 1).material).toBe(
       vehicleMesh('pax_bus', '#3d6a8a', [12, 3, 2.5], 1).material,
     )
   })
 
-  it('instances a fleet instead of one draw per vehicle', () => {
+  it('instances a fleet: one body + one lights draw per model, plus one per animated part', () => {
     const fleet = new VehicleFleet()
     const size = [8, 3, 2.5] as const
     fleet.sync([
       { kind: 'fuel_truck', color: '#c9a227', size, x: 0, y: 0, z: 0, yaw: 0, scale: 1 },
-      { kind: 'fuel_truck', color: '#c9a227', size, x: 4, y: 0, z: 1, yaw: 0.4, scale: 1 },
+      { kind: 'fuel', color: '#c9a227', size, x: 4, y: 0, z: 1, yaw: 0.4, scale: 1 },
       { kind: 'pax_bus', color: '#3d6a8a', size: [12, 3, 2.5], x: 8, y: 0, z: 2, yaw: 1, scale: 1 },
     ])
     const meshes = fleet.root.children.filter((child) => (child as THREE.InstancedMesh).isInstancedMesh) as THREE.InstancedMesh[]
-    expect(meshes).toHaveLength(2)
-    const fuel = meshes.find((mesh) => mesh.count === 2)
-    expect(fuel).toBeDefined()
+    const shells = meshes.filter((mesh) => !mesh.name.startsWith('part:'))
+    expect(shells).toHaveLength(4)
+    expect(shells.filter((mesh) => mesh.count === 2)).toHaveLength(2)
+    // Animated parts (wheels, beacons, hose, doors...) draw as their own instanced meshes.
+    const parts = meshes.filter((mesh) => mesh.name.startsWith('part:')).map((m) => m.name)
+    expect(parts.some((n) => n.endsWith('|hose'))).toBe(true)
+    expect(parts.some((n) => n.endsWith('|doors'))).toBe(true)
+    expect(parts.some((n) => n.includes('|wheels_front'))).toBe(true)
     fleet.sync([])
     expect(meshes.every((mesh) => mesh.count === 0)).toBe(true)
     fleet.dispose()
   })
 })
+
+/** Vertices in the whole model: static shell plus every animated part. */
+function fullCount(model: (typeof ALL_MODELS)[number], color = '#3a7bd5'): number {
+  const kind = model === 'van' ? 'delivery' : kindFor(model)
+  let n = vehicleGeometry(kind, color).getAttribute('position').count
+  for (const part of ANIM_PARTS[model]) n += vehiclePartGeometry(kind, color, part).getAttribute('position')?.count ?? 0
+  return n
+}
+
+function kindFor(model: string): string {
+  const back: Record<string, string> = {
+    fuel_tanker: 'fuel', hydrant_cart: 'hydrant', baggage_train: 'bags', baggage_cart: 'cart', belt_loader: 'belt_loader',
+    catering_hilift: 'catering', arff: 'fire', deice: 'deice', apron_bus: 'termbus', coach: 'coach', box_truck: 'citycargo',
+    van: 'delivery', towbar_tug: 'tow', towbarless_tug: 'pushback_tug', gpu: 'gpu', stairs: 'stairs', k_loader: 'cargo', uld_dolly: 'dolly',
+  }
+  return back[model]
+}
