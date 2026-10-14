@@ -20,6 +20,7 @@ import {
   aircraftWorldPerMeter,
   CELL,
   updateAircraft,
+  motionForPhase,
   WORLD_PER_METER,
   type Livery,
   type ParkedPlane,
@@ -1822,7 +1823,7 @@ export class World {
       if (pose.visible) {
         mesh.position.copy(toWorld(pose.x, pose.y, 0.04 + pose.alt))
         orientAircraft(mesh, pose.heading, pose.pitch)
-        updateAircraft(mesh, pose.gearDown)
+        updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }))
       }
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
       const jetway =
@@ -1987,7 +1988,7 @@ export class World {
       mesh.visible = true
       mesh.position.copy(toWorld(posed.x, posed.y, 0.04 + posed.alt))
       orientAircraft(mesh, posed.heading, posed.pitch)
-      updateAircraft(mesh, posed.gearDown)
+      updateAircraft(mesh, posed.gearDown, motionForPhase({ phase: 'takeoff', alt: posed.alt, gearDown: posed.gearDown }))
       const bridges = mesh.getObjectByName('bridges')
       if (bridges) mesh.remove(bridges)
       mesh.scale.setScalar(1)

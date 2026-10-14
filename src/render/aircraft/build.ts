@@ -7,6 +7,7 @@ import type { LiveryBox } from './liveryUv'
 import { applyRosterLivery } from './procLivery'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
+import { addRig, type RigSet } from './rig'
 import {
   paintMesh,
   unitBox,
@@ -29,6 +30,7 @@ export interface BuiltLevel {
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
   lamps: THREE.Object3D[]
+  rigs: RigSet[]
 }
 
 interface Frame {
@@ -42,6 +44,7 @@ interface Frame {
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
   lamps: THREE.Object3D[]
+  rigs: RigSet[]
   nose: number
   tailX: number
   centerY: number
@@ -67,6 +70,7 @@ function frameFor(spec: ModelSpec, tier: Tier, livery: Livery): Frame {
     strobes: [],
     beacons: [],
     lamps: [],
+    rigs: [],
     nose: spec.lengthM / 2,
     tailX: -spec.lengthM / 2,
     centerY,
@@ -1034,6 +1038,7 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addGear(frame)
     addHeloLights(frame)
     addRealDoors(frame)
+    addRig(frame, [])
     addLogo(frame)
   } else {
     addFuselage(frame)
@@ -1048,6 +1053,7 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addControls(frame)
     addLogo(frame)
     addRealDoors(frame)
+    addRig(frame, frame.spec.engines.count ? enginePoints(frame) : [])
     addLights(frame)
   }
   mergeStaticShell({
@@ -1067,5 +1073,6 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     strobes: frame.strobes,
     beacons: frame.beacons,
     lamps: frame.lamps,
+    rigs: frame.rigs,
   }
 }
