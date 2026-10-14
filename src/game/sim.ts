@@ -655,6 +655,8 @@ import {
 import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
+import { AchievementTracker } from '../achievements/achievements.ts'
+import type { AchievementState } from '../achievements/types.ts'
 import type {
   AircraftKind,
   Airline,
@@ -1005,6 +1007,8 @@ export class Game {
   ownedPlots: OwnedPlot[] = []
   /** On-site dorms, apartments, and the staff village. */
   staffHousing = new StaffHousingBridge()
+  /** Tracker for achievements and milestones */
+  achievements = new AchievementTracker()
   /** Optional outsourced pavement crew. Daily fee, faster repair. */
   maintenanceContract = false
   railLinked = false
@@ -4970,6 +4974,7 @@ export class Game {
       tier3Sites: this.lateSites.map((site) => ({ ...site })),
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
+      achievements: this.achievements.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -5065,6 +5070,7 @@ export class Game {
       this.lateSites = restoreLateSites(s.tier3Sites, this.tiles)
       this.missedHotelNights = wholeNights(s.missedHotelNights ?? 0)
       this.crewHotelNights = wholeNights(s.crewHotelNights ?? 0)
+      if (s.achievements) this.achievements.load(s.achievements as AchievementState)
       // Migrate bare hotel tiles from older saves → business grade.
       for (const p of tilesOf(this.tiles, 'hotel')) {
         const k = `${p.c},${p.r}`
@@ -19869,6 +19875,7 @@ export class Game {
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     // At 5× the canvases keep drawing, but the HUD string updates about once a second.
     this.flushReputation(step)
+    this.achievements.check(this)
     this.uiAcc += step
     const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {
