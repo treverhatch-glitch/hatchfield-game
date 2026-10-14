@@ -23,4 +23,5 @@ Issue #231. Presentation only: sim logic is untouched.
 CI sandbox (software GL, no GPU): 2,500 people update in about 2 to 4 ms CPU and 8 to 28 draw calls.
 Not measured on an RTX 4070 Super: no GPU in CI, so the 60 fps target there is unverified.
 
-Screenshots: `docs/screenshots/people/`.
+Views: `view=lineup` (close-up gallery of every crew kind, poses, a family), `view=close` (street level, 2,500 people), `view=wide` (zoomed out).
+Screenshots are not committed: the CI session could not copy them into the repo. Regenerate them from the demo page.

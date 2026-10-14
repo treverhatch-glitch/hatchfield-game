@@ -79,7 +79,12 @@ let cpuMs = 0
 function loop(now: number) {
   const dt = Math.min(0.05, (now - prev) / 1000)
   prev = now
-  for (const a of agents) if (a.speed) a.x += Math.sin(a.yaw) * a.speed * dt, (a.x > 100 && (a.x = -100)), (a.x < -100 && (a.x = 100))
+  for (const a of agents) {
+    if (!a.speed) continue
+    a.x += Math.sin(a.yaw) * a.speed * dt
+    if (a.x > 100) a.x = -100
+    else if (a.x < -100) a.x = 100
+  }
   const t0 = performance.now()
   const s = people.update(agents, camera, dt)
   cpuMs += performance.now() - t0
