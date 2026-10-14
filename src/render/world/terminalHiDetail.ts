@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three'
 import { buildTerminalProps, capTerminalPropMetal, fitScale, type PropPlacement, type TerminalPropType } from '../terminalProps'
+import { buildingReflectionsActive } from '../reflections'
 import type { QualityLevel } from './quality'
 import type { PropKind, Prop } from './plan'
 import type { PropPart } from './kit'
@@ -67,8 +68,8 @@ export function buildHiDetailProps(
   worldPerMeter: number,
   floorY: number,
 ): THREE.Group {
-  // The world has no environment map; keep chrome and steel from going black.
-  capTerminalPropMetal(0.4)
+  // With the High studio probe, authored metalness reads correctly. Without it, full metal goes black.
+  capTerminalPropMetal(buildingReflectionsActive() ? 1 : 0.4)
   const placements: PropPlacement[] = []
   for (const p of props) {
     const type = HI_DETAIL_KIND[p.kind]

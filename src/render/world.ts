@@ -59,6 +59,7 @@ import {
   type WorldRender,
 } from './world/index'
 import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from './graphicsPrefs'
+import { aircraftReflectionsFor, prepareBuildingReflections } from './reflections'
 import { standBox } from './world/layout'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
@@ -314,8 +315,9 @@ export class World {
     const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
-    // Sky reflections on aircraft paint, chrome and glass.
-    installAircraftEnvironment(this.renderer)
+    // Reflection probes: aircraft sky map from Medium up, building studio map on High / Ultra only.
+    // The PMREM pass roughly doubles boot shader work and each map is unused below its setting.
+    this.syncReflections(quality)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
     this.renderer.shadowMap.type = preset.shadowType
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -558,12 +560,23 @@ export class World {
 
   /** Settings and F8. Aircraft detail follows the same preset. */
   private applyGraphicsQuality(level: QualityLevel) {
+    this.syncReflections(level)
     if (this.wr.quality === level) return
     this.wr.setQuality(level)
     // Building photo maps follow the preset; rebuild the tile meshes with the new skin.
     setBuildingSkinQuality(level, QUALITY[level].anisotropy)
     this.tileHash = ''
     setAircraftQuality(baseLevel(level))
+  }
+
+  /**
+   * One shared studio reflection map so metal and glass read as real materials,
+   * built the first time the High building setting is on. The aircraft sky probe
+   * follows the same rule for presets that actually shade airframes.
+   */
+  private syncReflections(level: QualityLevel) {
+    prepareBuildingReflections(this.renderer, level)
+    if (aircraftReflectionsFor(level)) installAircraftEnvironment(this.renderer)
   }
 
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */

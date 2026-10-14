@@ -17,6 +17,7 @@ import burgerB64 from './tex/shop_burger.b64.txt?raw'
 import checkinB64 from './tex/checkin.b64.txt?raw'
 import securityB64 from './tex/security.b64.txt?raw'
 import { bigSign, brushedRough, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
+import { attachBuildingMaterial } from '../reflections'
 
 export const GEMINI_TEX = {
   terrazzo: terrazzoB64,
@@ -318,6 +319,7 @@ export function material(key: string): THREE.MeshStandardMaterial {
     m.clearcoat = s.clearcoat
     m.clearcoatRoughness = 0.12
   }
+  attachBuildingMaterial(m)
   matCache.set(key, m)
   return m
 }
