@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { createAircraft, disposeAircraftLibrary, releaseAircraft } from './factory'
-import { LIVERY_ART, engineUv, projectedUv } from './liveryUv'
+import { LIVERY_ART, engineUv, outwardUv, projectedUv } from './liveryUv'
+import { bakeGeometry } from './merge'
 
 describe('airline livery UVs', () => {
   it('publishes the art sizes the strips are drawn to', () => {
@@ -20,6 +21,35 @@ describe('airline livery UVs', () => {
     expect(tail[0]).toBeCloseTo(1)
     expect(crown[1]).toBeCloseTo(1)
     expect(belly[1]).toBeCloseTo(0)
+  })
+
+  it('flips starboard U so a left-to-right title reads outward', () => {
+    const box = { x0: 20, x1: -20, y0: 0, y1: 4 }
+    const port = outwardUv(10, 2, -1, box)
+    const starboard = outwardUv(10, 2, 1, box)
+    expect(port[0] + starboard[0]).toBeCloseTo(1)
+    expect(port[1]).toBeCloseTo(starboard[1])
+    expect(outwardUv(20, 2, -1, box)[0]).toBeCloseTo(0)
+    expect(outwardUv(20, 2, 1, box)[0]).toBeCloseTo(1)
+  })
+
+  it('bakes the starboard flip onto fuselage UVs', () => {
+    const baked = bakeGeometry(new THREE.BoxGeometry(2, 2, 2), new THREE.Matrix4(), undefined, {
+      mode: 'fuselage',
+      box: { x0: 1, x1: -1, y0: -1, y1: 1 },
+    })
+    const pos = baked.getAttribute('position')
+    const uv = baked.getAttribute('liveryUv')
+    let port = -1
+    let star = -1
+    for (let i = 0; i < pos.count; i++) {
+      if (Math.abs(pos.getX(i) - 1) > 1e-4 || Math.abs(pos.getY(i) - 1) > 1e-4) continue
+      if (pos.getZ(i) < -0.5) port = uv.getX(i)
+      if (pos.getZ(i) > 0.5) star = uv.getX(i)
+    }
+    expect(port).toBeCloseTo(0)
+    expect(star).toBeCloseTo(1)
+    baked.dispose()
   })
 
   it('wraps the cowling with the seam on local -X and the intake at V 0', () => {

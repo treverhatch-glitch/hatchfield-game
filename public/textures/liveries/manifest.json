@@ -7,14 +7,16 @@
       "airlines": [
         "bushline",
         "bushline_local"
-      ]
+      ],
+      "types": ["bn2", "dhc6"]
     },
     {
       "id": "zoomjet",
       "engine": "#D5D8DC",
       "airlines": [
         "zoomjet"
-      ]
+      ],
+      "types": ["a320neo", "b738", "b38m"]
     },
     {
       "id": "crown_pacific",
@@ -22,21 +24,24 @@
       "airlines": [
         "crown",
         "crown_pacific"
-      ]
+      ],
+      "types": ["a380", "b77w"]
     },
     {
       "id": "siam_breeze",
       "engine": "#F7FBFA",
       "airlines": [
         "siam_breeze"
-      ]
+      ],
+      "types": ["b789", "a321", "a359"]
     },
     {
       "id": "northstar_cargo",
       "engine": "#FFC107",
       "airlines": [
         "northstar_cargo"
-      ]
+      ],
+      "types": ["b752f", "b763f", "b748f"]
     }
   ]
 }

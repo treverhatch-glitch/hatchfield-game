@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { engineUv, projectedUv, type LiveryBox, type LiveryMapKind } from './liveryUv'
+import { engineUv, outwardUv, type LiveryBox, type LiveryMapKind } from './liveryUv'
 import { liveryKey, paintVertexMesh, sharedGeo, type PaintedMesh } from './pool'
 import type { Livery } from './specs'
 
@@ -60,7 +60,7 @@ function writeLivery(
     if (mode === 'engine' && local) {
       ;[u, v] = engineUv(x, y, z)
     } else if ((mode === 'fuselage' || mode === 'tail') && box && !local) {
-      ;[u, v] = projectedUv(x, y, box)
+      ;[u, v] = outwardUv(x, y, z, box)
     }
     uv[i * 2] = u
     uv[i * 2 + 1] = v

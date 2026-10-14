@@ -225,7 +225,7 @@ const d = (geo: THREE.BufferGeometry, mat: string, surface?: PropSurface): PropP
 export function propParts(): Record<string, PropPart[]> {
   return {
     counter: [
-      { geo: box(1.15, 0.42, 0.42, 0, 0.21, 0), mat: 'wood', surface: 'wood' },
+      { geo: box(1.15, 0.42, 0.42, 0, 0.21, 0), mat: 'desk', surface: 'steel' },
       { geo: box(1.2, 0.05, 0.5, 0, 0.44, 0.02), mat: 'deskTop', surface: 'granite' },
       { geo: new THREE.PlaneGeometry(0.72, 0.28).translate(0, 0.22, 0.27), mat: 'logo' },
       { geo: box(1.15, 0.32, 0.04, 0, 0.2, -0.2), mat: 'dark' },
@@ -263,7 +263,7 @@ export function propParts(): Record<string, PropPart[]> {
       d(box(0.28, 0.04, 0.36, 0.45, 0.46, 0.01), 'seat'),
     ],
     podium: [
-      { geo: box(0.7, 0.9, 0.4, 0, 0.45, 0), mat: 'wood', surface: 'wood' },
+      { geo: box(0.7, 0.9, 0.4, 0, 0.45, 0), mat: 'desk', surface: 'steel' },
       { geo: box(0.76, 0.04, 0.46, 0, 0.92, 0.02), mat: 'deskTop', surface: 'granite' },
       { geo: box(0.28, 0.18, 0.03, 0, 1.08, 0.12), mat: 'screen' },
       d(box(0.5, 0.08, 0.02, 0, 1.28, 0.1), 'kiosk'),
@@ -277,7 +277,7 @@ export function propParts(): Record<string, PropPart[]> {
     xray: [
       { geo: box(0.7, 0.7, 1.15, 0, 0.4, 0), mat: 'machine' },
       { geo: box(0.46, 0.4, 0.9, 0, 0.42, 0), mat: 'dark' },
-      { geo: box(0.5, 0.06, 2.2, 0, 0.48, 0), mat: 'rubber' },
+      { geo: box(0.5, 0.06, 2.2, 0, 0.48, 0), mat: 'rubber', surface: 'rubber' },
       { geo: box(0.62, 0.08, 0.08, 0, 0.78, 0.5), mat: 'tape' },
       d(box(0.22, 0.04, 0.32, 0.15, 0.56, 0.7), 'deskTop'),
       d(box(0.22, 0.04, 0.32, 0.15, 0.61, 0.7), 'deskTop'),

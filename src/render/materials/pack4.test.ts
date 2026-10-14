@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { propParts } from '../world/kit'
 import { SurfaceLibrary } from './library'
+import { ROSTER } from '../../airlines/roster'
 import { AIRLINE_LOGOS, BRAND_LOGO, CARPET_ROOMS, PACK4_FILES, TERRAZZO_ROOMS, pack4Edge, pack4Url } from './pack4'
 
 describe('texture pack 4', () => {
@@ -37,6 +38,9 @@ describe('texture pack 4', () => {
     expect(desk.map).toBe(lib.airline[0])
     const brand = lib.brandMaterial()
     expect(brand.map).toBe(lib.brand)
+    expect(lib.roster).toHaveLength(ROSTER.length)
+    expect(lib.rosterMaterial(0).map).toBe(lib.roster[0])
+    expect(lib.rosterMaterial(ROSTER.length).map).toBe(lib.roster[0])
     lib.dispose()
   })
 
@@ -58,6 +62,7 @@ describe('texture pack 4', () => {
   it('puts granite on counter tops and a logo slot on the check-in desk', () => {
     const parts = propParts()
     expect(parts.counter.some((p) => p.surface === 'granite')).toBe(true)
+    expect(parts.counter.some((p) => p.surface === 'steel')).toBe(true)
     expect(parts.counter.some((p) => p.mat === 'logo')).toBe(true)
     expect(parts.kiosk.some((p) => p.surface === 'granite')).toBe(true)
   })

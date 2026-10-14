@@ -71,18 +71,25 @@ describe('procedural livery spec', () => {
   it('caches one spec per airline and model', () => {
     const a = procLiverySpec('brisa', 'a320neo')
     expect(procLiverySpec('brisa', 'a320neo')).toBe(a)
-    expect(procLiverySpec('brisa', 'b738')).not.toBe(a)
+    expect(procLiverySpec('brisa', 'a321')).not.toBe(a)
     expect(procLiverySpec('nobody', 'b738')).toBeUndefined()
   })
 
+  it('leaves a type the airline does not fly unpainted', () => {
+    expect(procLiverySpec('brisa', 'b738')).toBeUndefined()
+    const paint = { body: '#fff', stripe: '#000', airline: 'brisa' }
+    expect(applyRosterLivery(paint, 'b738')).toBe(paint)
+    expect(applyRosterLivery(paint, 'a321').airline).toBe('brisa@a321')
+  })
+
   it('builds a Livery for the shell and swaps catalog liveries for roster ones', () => {
-    const l = rosterLivery('zephyr_go', 'a320neo')!
+    const l = rosterLivery('zephyr_go', 'b738')!
     expect(l.body).toBe(rosterAirline('zephyr_go')!.primary)
-    expect(l.airline).toBe(procLiveryKey('zephyr_go', 'a320neo'))
+    expect(l.airline).toBe(procLiveryKey('zephyr_go', 'b738'))
     expect(applyRosterLivery({ body: '#fff', stripe: '#000', airline: 'zephyr_go' }, 'b738').airline).toBe('zephyr_go@b738')
     const catalog = { body: '#fff', stripe: '#000', airline: 'bushline' }
     expect(applyRosterLivery(catalog, 'b738')).toBe(catalog)
-    expect(applyRosterLivery(l, 'a320neo')).toBe(l)
+    expect(applyRosterLivery(l, 'b738')).toBe(l)
   })
 })
 
@@ -95,7 +102,7 @@ describe('livery texture cache', () => {
     expect(procLiveryTextures(key)).toBe(first)
     expect(procLiveryBuildCount()).toBe(1)
     expect(made).toHaveLength(3)
-    procLiveryTextures(procLiveryKey('brisa', 'b738'))
+    procLiveryTextures(procLiveryKey('brisa', 'a321'))
     procLiveryTextures(procLiveryKey('tango_air', 'a320neo'))
     expect(procLiveryBuildCount()).toBe(3)
     procLiveryTextures(key, 'low')
@@ -117,6 +124,7 @@ describe('livery texture cache', () => {
     fakeCanvasFactory()
     expect(procLiveryTextures('nobody@b738')).toBeUndefined()
     expect(procLiveryTextures('brisa')).toBeUndefined()
+    expect(procLiveryTextures(procLiveryKey('brisa', 'b738'))).toBeUndefined()
   })
 
   it('dispose clears the cache', () => {

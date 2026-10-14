@@ -37,6 +37,8 @@ describe('texture pack 1', () => {
     expect(urls.every((u) => u.startsWith('/assets/pack1/tex_'))).toBe(true)
     const watched = lib.material('panel', 0xffffff, 'wall') as THREE.MeshLambertMaterial
     expect(watched.map).toBe(lib.maps.wall)
+    const belt = lib.material('belt', 0xffffff, 'rubber') as THREE.MeshLambertMaterial
+    expect(belt.map).toBe(lib.maps.rubber)
     lib.dispose()
   })
 })
