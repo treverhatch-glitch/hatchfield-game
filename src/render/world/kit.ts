@@ -228,6 +228,7 @@ export function propParts(): Record<string, PropPart[]> {
       { geo: box(1.15, 0.42, 0.42, 0, 0.21, 0), mat: 'desk', surface: 'steel' },
       { geo: box(1.2, 0.05, 0.5, 0, 0.44, 0.02), mat: 'deskTop', surface: 'granite' },
       { geo: new THREE.PlaneGeometry(0.72, 0.28).translate(0, 0.22, 0.27), mat: 'logo' },
+      { geo: new THREE.PlaneGeometry(0.34, 0.5).translate(-0.38, 0.78, 0.28), mat: 'deskHeader' },
       { geo: box(1.15, 0.32, 0.04, 0, 0.2, -0.2), mat: 'dark' },
       { geo: box(0.28, 0.08, 0.22, 0.35, 0.12, 0.16), mat: 'rubber' },
       d(box(0.22, 0.02, 0.1, -0.2, 0.48, 0.08), 'dark'),

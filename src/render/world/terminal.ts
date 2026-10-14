@@ -58,6 +58,7 @@ import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './p
 import { roomAt, type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
 import { FidsStage, mountFids } from '../../fids/stage'
+import { deskHeaderTexture, fidsBoardTexture, signPanelMaterial, wayfindingSheetTexture } from '../signage/load'
 import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { buildHiDetailProps, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
@@ -121,11 +122,7 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
     chrome: lambert(0xb8c0c8),
     tape: lambert(0xc0392b),
     seat: lambert(0x2f5f8a),
-    board: new THREE.MeshBasicMaterial({
-      map: fids.textures.departures ?? departuresBoardTexture() ?? textures.board,
-      toneMapped: false,
-      side: THREE.FrontSide,
-    }),
+    board: signPanelMaterial(fidsBoardTexture() ?? fids.textures.departures ?? departuresBoardTexture() ?? textures.board, 0x071422),
     machine: lambert(0x8f9aa6),
     kiosk: lambert(0xffffff),
     shelf: lambert(0x7a5a3a),
@@ -459,6 +456,13 @@ export class TerminalBuilding {
   }
 
   private wayfindingSign(title: string, sub?: string): THREE.Material {
+    const panel = title === 'CHECK-IN' ? wayfindingSheetTexture('checkin') : title === 'SECURITY' ? wayfindingSheetTexture('security') : null
+    if (panel) {
+      const photo = signPanelMaterial(panel, 0x0e2230)
+      photo.name = `way:${title}`
+      this.owned.mats.push(photo)
+      return photo
+    }
     const key = `way|${title}|${sub ?? ''}`
     if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture(title, sub))
     const tex = this.shared.signCache.get(key) ?? null
@@ -795,6 +799,7 @@ export class TerminalBuilding {
       { geo: THREE.BufferGeometry; mat: string; surface?: LibraryMap; items: { matrix: THREE.Matrix4; room: number }[] }
     >()
     const logoSlots: THREE.Matrix4[] = []
+    const headerSlots: { matrix: THREE.Matrix4; room: number }[] = []
     const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
     const hi = this.shared.hiDetail === true
     for (const p of this.plan.props) {
@@ -805,6 +810,10 @@ export class TerminalBuilding {
         for (const part of this.shared.parts[p.kind] ?? []) {
           if (part.mat === 'logo') {
             logoSlots.push(matrix)
+            continue
+          }
+          if (part.mat === 'deskHeader') {
+            headerSlots.push({ matrix, room })
             continue
           }
           const surface = partSurface(part)
@@ -931,6 +940,28 @@ export class TerminalBuilding {
         const mesh = instanced(logoGeo, mat, matrices)
         mesh.name = 'desk-logo'
         this.props.add(mesh)
+      }
+    }
+    const headerGeo = this.shared.parts.counter?.find((x) => x.mat === 'deskHeader')?.geo
+    if (headerGeo && headerSlots.length) {
+      const byNumber = new Map<number, { matrix: THREE.Matrix4; room: number }[]>()
+      headerSlots.forEach((slot, i) => {
+        const n = (i % 6) + 1
+        const list = byNumber.get(n) ?? []
+        list.push(slot)
+        byNumber.set(n, list)
+      })
+      for (const [n, slots] of byNumber) {
+        const mat = own(signPanelMaterial(deskHeaderTexture(n), 0x12304a))
+        mat.name = `desk-header:${n}`
+        const mesh = instanced(
+          headerGeo,
+          mat,
+          slots.map((slot) => slot.matrix),
+        )
+        mesh.name = `desk-header-${n}`
+        this.props.add(mesh)
+        this.deskSets.push({ mesh, items: slots })
       }
     }
     const board = this.shared.parts.board?.find((x) => x.mat === 'board')

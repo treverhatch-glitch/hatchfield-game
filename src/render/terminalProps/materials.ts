@@ -16,6 +16,7 @@ import newsB64 from './tex/shop_news.b64.txt?raw'
 import burgerB64 from './tex/shop_burger.b64.txt?raw'
 import checkinB64 from './tex/checkin.b64.txt?raw'
 import securityB64 from './tex/security.b64.txt?raw'
+import { deskHeaderTexture, fidsBoardTexture, wayfindingSheetTexture } from '../signage/load'
 import { bigSign, brushedRough, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 import { attachBuildingMaterial } from '../reflections'
 
@@ -197,7 +198,7 @@ export const MATERIALS: Record<string, MatSpec> = {
   amber: { color: '#ffb000', emissive: '#ffb000', emissiveIntensity: 1.2 },
   // textured / signage
   terrazzo: { color: '#ffffff', rough: 0.25, map: () => geminiTexture('terrazzo', [1, 1]) },
-  fids: { color: '#ffffff', rough: 0.2, map: () => fids2k() ?? fidsTex(), glow: true },
+  fids: { color: '#ffffff', rough: 0.2, map: () => fidsBoardTexture() ?? fids2k() ?? fidsTex(), glow: true },
   fidsArr: { color: '#ffffff', rough: 0.2, map: () => fids2k('ARRIVALS', '#8fd3ff'), glow: true },
   // pass 2: high-res finishes (desktop tier)
   floorTile: { color: '#ffffff', rough: 1, map: () => floorTile('color', [1, 1]), roughMap: () => floorTile('rough', [1, 1]), clearcoat: 0.35 },
@@ -220,16 +221,16 @@ export const MATERIALS: Record<string, MatSpec> = {
   sgnGateA12: { color: '#ffffff', map: () => bigSign('A12', '#ffcf00', '#111111', 512, 256), glow: true },
   sgnGateA14: { color: '#ffffff', map: () => bigSign('A14', '#ffcf00', '#111111', 512, 256), glow: true },
   sgnHatchBig: { color: '#ffffff', map: () => bigSign('HATCHFIELD', '#0e2240', '#ffffff', 2048, 256), glow: true },
-  sgnDepartures: { color: '#ffffff', map: () => bigSign('DEPARTURES  ✈', '#0e2240', '#ffcf00', 1024, 192), glow: true },
-  sgnArrivals: { color: '#ffffff', map: () => bigSign('ARRIVALS', '#0e2240', '#8fd3ff', 1024, 192), glow: true },
+  sgnDepartures: { color: '#ffffff', map: () => wayfindingSheetTexture('departures') ?? bigSign('DEPARTURES  ✈', '#0e2240', '#ffcf00', 1024, 192), glow: true },
+  sgnArrivals: { color: '#ffffff', map: () => wayfindingSheetTexture('arrivals') ?? bigSign('ARRIVALS', '#0e2240', '#8fd3ff', 1024, 192), glow: true },
   asphalt: { color: '#3a3c3f', rough: 0.92 },
   apronConcrete: { color: '#a9a7a1', rough: 0.85 },
-  sgnGates: { color: '#ffffff', map: () => signTex('Gates A1–A12  →', '#20252c', '#ffcf00', '✈'), glow: true },
-  sgnBags: { color: '#ffffff', map: () => signTex('Baggage claim  ↓', '#20252c', '#ffcf00', '▤'), glow: true },
-  sgnWC: { color: '#ffffff', map: () => signTex('Toilets   ←', '#20252c', '#ffcf00', 'WC'), glow: true },
-  sgnExit: { color: '#ffffff', map: () => signTex('Exit  ·  Taxi  ·  Bus', '#1d6b3a', '#ffffff', '⇥'), glow: true },
-  sgnCheckin: { color: '#ffffff', map: () => signTex('Check-in  A  1–8', '#16233b', '#ffffff'), glow: true },
-  sgnSecurity: { color: '#ffffff', map: () => signTex('Security', '#16233b', '#ffffff'), glow: true },
+  sgnGates: { color: '#ffffff', map: () => wayfindingSheetTexture('gates') ?? signTex('Gates A1–A12  →', '#20252c', '#ffcf00', '✈'), glow: true },
+  sgnBags: { color: '#ffffff', map: () => wayfindingSheetTexture('baggage') ?? signTex('Baggage claim  ↓', '#20252c', '#ffcf00', '▤'), glow: true },
+  sgnWC: { color: '#ffffff', map: () => wayfindingSheetTexture('toilets') ?? signTex('Toilets   ←', '#20252c', '#ffcf00', 'WC'), glow: true },
+  sgnExit: { color: '#ffffff', map: () => wayfindingSheetTexture('exit') ?? signTex('Exit  ·  Taxi  ·  Bus', '#1d6b3a', '#ffffff', '⇥'), glow: true },
+  sgnCheckin: { color: '#ffffff', map: () => wayfindingSheetTexture('checkin') ?? signTex('Check-in  A  1–8', '#16233b', '#ffffff'), glow: true },
+  sgnSecurity: { color: '#ffffff', map: () => wayfindingSheetTexture('security') ?? signTex('Security', '#16233b', '#ffffff'), glow: true },
   sgnCoffee: { color: '#ffffff', map: () => signTex('HATCH COFFEE', '#2b1a10', '#f3d7a7'), glow: true },
   sgnDuty: { color: '#ffffff', map: () => signTex('DUTY FREE', '#101010', '#e8c66a'), glow: true },
   sgnNews: { color: '#ffffff', map: () => signTex('NEWS + BOOKS', '#b0201c', '#ffffff'), glow: true },
@@ -260,10 +261,12 @@ export const MATERIALS: Record<string, MatSpec> = {
   pantsBlack: { color: '#1a1c20', rough: 0.75 },
   vestYellow: { color: '#f0c020', rough: 0.55, emissive: '#f0c020', emissiveIntensity: 0.15 },
   // per-desk number lightboxes
-  desk1: { color: '#ffffff', map: () => bigSign('1', '#0e2240', '#ffcf00', 256, 256), glow: true },
-  desk2: { color: '#ffffff', map: () => bigSign('2', '#0e2240', '#ffcf00', 256, 256), glow: true },
-  desk3: { color: '#ffffff', map: () => bigSign('3', '#0e2240', '#ffcf00', 256, 256), glow: true },
-  desk4: { color: '#ffffff', map: () => bigSign('4', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk1: { color: '#ffffff', map: () => deskHeaderTexture(1) ?? bigSign('1', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk2: { color: '#ffffff', map: () => deskHeaderTexture(2) ?? bigSign('2', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk3: { color: '#ffffff', map: () => deskHeaderTexture(3) ?? bigSign('3', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk4: { color: '#ffffff', map: () => deskHeaderTexture(4) ?? bigSign('4', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk5: { color: '#ffffff', map: () => deskHeaderTexture(5) ?? bigSign('5', '#0e2240', '#ffcf00', 256, 256), glow: true },
+  desk6: { color: '#ffffff', map: () => deskHeaderTexture(6) ?? bigSign('6', '#0e2240', '#ffcf00', 256, 256), glow: true },
   deskOpen: { color: '#ffffff', map: () => bigSign('OPEN', '#0a3a14', '#2fd062', 512, 192), glow: true },
   // shop goods
   goodsA: { color: '#c9a24a', rough: 0.3, metal: 0.4 },

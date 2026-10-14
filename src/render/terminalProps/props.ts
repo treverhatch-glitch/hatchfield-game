@@ -167,7 +167,7 @@ function checkinDesk(i: number): Part[] {
     box([0.06, 0.01, 0.06], [0.1, 1.145, 0.07], 'screenGreen'),
     box([0.22, 0.16, 0.22], [0.52, 1.17, -0.35], 'greyPanel'),
     box([0.04, 0.04, 0.12], [-0.79, 1.24, 0.1], 'chrome'),
-    box([0.22, 0.22, 0.02], [-0.79, 1.4, 0.12], `desk${(i % 4) + 1}`),
+    box([0.3, 0.44, 0.02], [-0.72, 1.42, 0.12], `desk${(i % 6) + 1}`),
     // anti-fatigue mat where the agent stands
     box([1.0, 0.012, 0.6], [-0.2, 0.006, -0.8], 'rubber'),
     // back-wall airline screen (slim bezel) with OPEN strip + desk number box
@@ -175,12 +175,12 @@ function checkinDesk(i: number): Part[] {
     box([1.22, 0.62, 0.01], [0.3, 2.39, -1.63], logo),
     box([1.22, 0.1, 0.01], [0.3, 2.02, -1.63], 'deskOpen'),
     box([0.34, 0.34, 0.06], [-0.6, 2.35, -1.64], 'signDark'),
-    box([0.28, 0.28, 0.01], [-0.6, 2.35, -1.605], `desk${(i % 4) + 1}`),
+    box([0.34, 0.5, 0.01], [-0.62, 2.38, -1.605], `desk${(i % 6) + 1}`),
     // agent standing at the counter, hands on the keyboard
     ...place(person(AGENT[i % AGENT.length], { arms: 'forward' }), -0.2, -0.75),
   ]
 }
-function checkinRow(n = 4): Part[] {
+function checkinRow(n = 6): Part[] {
   const pitch = 2.3
   const len = n * pitch + 0.6
   const out: Part[] = []
@@ -196,7 +196,7 @@ function checkinRow(n = 4): Part[] {
   // logo wall: framed back panel, airline lightbox, overhead FIDS-style strip
   out.push(box([len + 0.4, 3.2, 0.25], [0.4, 1.6, -1.8], 'cream'))
   out.push(box([len + 0.5, 0.25, 0.35], [0.4, 3.3, -1.75], 'hatchBlue'))
-  out.push(box([len * 0.45, 0.27, 0.02], [0.4, 3.55, -0.84], 'sgnCheckin'))
+  out.push(box([2.2, 1.02, 0.03], [0.4, 3.15, -0.55], 'sgnCheckin'))
   out.push(box([len + 0.4, 0.06, 0.06], [0.4, 3.0 - 0.3, -1.6], 'lamp'))
   // strip curtain opening where the belt exits
   out.push(box([0.9, 0.6, 0.3], [len / 2 + 0.55, 0.75, -1.15], 'darkSteel'))
@@ -213,7 +213,7 @@ function checkinRow(n = 4): Part[] {
   out.push(...queue(len - 1.2, 3, 1.1, 2.6, beltPost))
   // queue entry sign
   out.push(cyl([0.06, 1.6, 0.06], [-(len - 1.2) / 2 - 0.6, 0.8, 2.6 + 3 * 1.1], 'chrome'))
-  out.push(box([0.5, 0.36, 0.03], [-(len - 1.2) / 2 - 0.6, 1.6, 2.6 + 3 * 1.1], 'sgnCheckin'))
+  out.push(box([0.78, 0.36, 0.03], [-(len - 1.2) / 2 - 0.6, 1.6, 2.6 + 3 * 1.1], 'sgnCheckin'))
   return out
 }
 
@@ -610,9 +610,9 @@ function departuresBoard(): Part[] {
   return [
     box([0.6, 0.04, 0.6], [0, 0.02, 0], 'brushed'),
     box([0.4, 2.2, 0.3], [0, 1.1, 0], 'navy'),
-    box([3.4, 2.1, 0.22], [0, 3.15, 0], 'black'),
-    box([3.2, 1.9, 0.02], [0, 3.15, 0.12], 'fids'),
-    box([3.2, 1.9, 0.02], [0, 3.15, -0.12], 'fids', [0, Math.PI, 0]),
+    box([3.6, 2.05, 0.22], [0, 3.15, 0], 'black'),
+    box([3.42, 1.8, 0.02], [0, 3.15, 0.12], 'fids'),
+    box([3.42, 1.8, 0.02], [0, 3.15, -0.12], 'fids', [0, Math.PI, 0]),
     box([3.5, 0.18, 0.3], [0, 4.28, 0], 'hatchBlue'),
     box([3.0, 0.03, 0.06], [0, 4.2, 0.16], 'lampCool'),
   ]
@@ -621,9 +621,9 @@ function wayfindingSign(mat = 'sgnGates'): Part[] {
   return [
     cyl([0.02, 1.2, 0.02], [-1.3, 4.0, 0], 'chrome'),
     cyl([0.02, 1.2, 0.02], [1.3, 4.0, 0], 'chrome'),
-    box([3.0, 0.62, 0.16], [0, 3.1, 0], 'signDark'),
-    box([2.9, 0.52, 0.02], [0, 3.1, 0.085], mat),
-    box([2.9, 0.52, 0.02], [0, 3.1, -0.085], mat, [0, Math.PI, 0]),
+    box([2.7, 1.32, 0.16], [0, 3.35, 0], 'signDark'),
+    box([2.46, 1.14, 0.02], [0, 3.35, 0.09], mat),
+    box([2.46, 1.14, 0.02], [0, 3.35, -0.09], mat, [0, Math.PI, 0]),
     box([3.0, 0.03, 0.18], [0, 2.78, 0], 'signYellow'),
   ]
 }
@@ -631,11 +631,11 @@ function wayfindingTotem(): Part[] {
   return [
     box([0.9, 2.6, 0.25], [0, 1.3, 0], 'signDark'),
     box([0.8, 0.3, 0.02], [0, 2.3, 0.13], 'signYellow'),
-    box([0.76, 0.2, 0.02], [0, 1.9, 0.13], 'sgnGates'),
-    box([0.76, 0.2, 0.02], [0, 1.6, 0.13], 'sgnBags'),
-    box([0.76, 0.2, 0.02], [0, 1.3, 0.13], 'sgnWC'),
-    box([0.76, 0.2, 0.02], [0, 1.0, 0.13], 'sgnExit'),
-    box([0.76, 0.4, 0.02], [0, 0.45, 0.13], 'screen'),
+    box([0.78, 0.36, 0.02], [0, 1.9, 0.13], 'sgnGates'),
+    box([0.78, 0.36, 0.02], [0, 1.48, 0.13], 'sgnBags'),
+    box([0.78, 0.36, 0.02], [0, 1.06, 0.13], 'sgnWC'),
+    box([0.78, 0.36, 0.02], [0, 0.64, 0.13], 'sgnExit'),
+    box([0.76, 0.28, 0.02], [0, 0.22, 0.13], 'screen'),
   ]
 }
 
@@ -700,8 +700,8 @@ function departuresWall(): Part[] {
   ]
   for (let i = 0; i < 3; i++) {
     const x = (i - 1) * 2.1
-    out.push(box([2.0, 1.25, 0.02], [x, 3.25, 0.16], i === 2 ? 'fidsArr' : 'fids'))
-    out.push(box([2.0, 1.25, 0.02], [x, 3.25, -0.16], 'fids', [0, Math.PI, 0]))
+    out.push(box([2.0, 1.05, 0.02], [x, 3.25, 0.16], i === 2 ? 'fidsArr' : 'fids'))
+    out.push(box([2.0, 1.05, 0.02], [x, 3.25, -0.16], 'fids', [0, Math.PI, 0]))
   }
   return out
 }

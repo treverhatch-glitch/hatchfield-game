@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { fidsBoardTexture, signPanelMaterial, wayfindingSheetTexture } from '../render/signage/load'
 import { BOARD_H, BOARD_METERS, BOARD_W, SIGN_H, SIGN_METERS, SIGN_W } from './config'
 import { blankFlaps, stepFlaps, type FlapState } from './flap'
 import { paintBoard, paintWayfinding, type FlapCanvas } from './paint'
@@ -161,7 +162,8 @@ export function mountFids(
   for (const board of boards) {
     const boardGeo = new THREE.PlaneGeometry(m(BOARD_METERS.w), m(BOARD_METERS.h))
     geos.push(boardGeo)
-    const mat = screenMaterial(board.map, board.side < 0 ? 0x143028 : 0x10283a)
+    const photo = board.side < 0 ? fidsBoardTexture() : null
+    const mat = photo ? signPanelMaterial(photo, 0x071422) : screenMaterial(board.map, board.side < 0 ? 0x143028 : 0x10283a)
     mats.push(mat)
     const mesh = new THREE.Mesh(boardGeo, mat)
     mesh.name = board.name
@@ -193,7 +195,8 @@ export function mountFids(
     const signGeo = new THREE.PlaneGeometry(m(SIGN_METERS.w), m(SIGN_METERS.h))
     const postGeo = new THREE.BoxGeometry(m(SIGN_METERS.post), m(SIGN_METERS.y - SIGN_METERS.h / 2), m(SIGN_METERS.post))
     geos.push(signGeo, postGeo)
-    const mat = screenMaterial(textures.signs[spot.kind], 0x0e2230)
+    const photo = wayfindingSheetTexture(spot.kind)
+    const mat = photo ? signPanelMaterial(photo, 0x0e2230) : screenMaterial(textures.signs[spot.kind], 0x0e2230)
     const postMat = new THREE.MeshLambertMaterial({ color: 0x2a3138 })
     mats.push(mat, postMat)
     const sign = new THREE.Mesh(signGeo, mat)

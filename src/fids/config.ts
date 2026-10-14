@@ -27,5 +27,6 @@ export const COLUMNS = [
 export type ColumnKey = (typeof COLUMNS)[number]['key']
 
 /** Physical sizes in metres. The terminal scales these into world units. */
-export const BOARD_METERS = { w: 5.4, h: 2.5, y: 2.15, gap: 0.35 }
-export const SIGN_METERS = { w: 2.4, h: 1.15, y: 2.35, post: 0.12 }
+/** Screen and sign proportions match the Gemini sheets (about 1.90 and 2.16). */
+export const BOARD_METERS = { w: 4.8, h: 2.52, y: 2.15, gap: 0.35 }
+export const SIGN_METERS = { w: 2.4, h: 1.11, y: 2.45, post: 0.12 }
