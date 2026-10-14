@@ -47,9 +47,11 @@ describe('tier III multi-day run', () => {
     game.tiles[23][11] = 'taxi'
     game.tiles[23][13] = 'taxi'
     game.tiles[22][10] = 'taxi'
+    game.tiles[23][10] = 'taxi'
     game.tiles[22][14] = 'taxi'
     game.tool = 'mro'
-    game.placeSingle({ c: 10, r: 23 })
+    // Column 10 sits on the tower sightline. The west hangar is one cell clear of it.
+    game.placeSingle({ c: 9, r: 23 })
     game.tickConstruction(40)
     game.placeSingle({ c: 14, r: 23 })
     game.tool = 'nighthub'
@@ -59,7 +61,7 @@ describe('tier III multi-day run', () => {
     // (15,10) is inside the passenger hall. The depot sits beside the fuel farm.
     game.placeSingle({ c: 6, r: 5 })
     game.tickConstruction(40)
-    expect(game.tiles[23][10]).toBe('mro')
+    expect(game.tiles[23][9]).toBe('mro')
     expect(game.tiles[23][14]).toBe('mro')
     expect(game.tiles[12][4]).toBe('nighthub')
     game.upgradePowerPlant()

@@ -17,4 +17,8 @@ jobs:
       - run: npx tsc -b
       - run: npm run lint
       - run: npm test
+      - name: World consistency
+        run: npx vitest run src/game/worldRules.test.ts tests/sim/worldConsistency.test.ts
+      - name: Scripted auditor checks
+        run: npx vitest run -c tests/scripted-playthrough/vitest.config.mts
       - run: npm run build

@@ -65,6 +65,8 @@ export interface SimMetrics {
   /** Dotted paths of non-finite numbers found in the game, ledger, or flights. */
   nan: string[]
   ledgerEntries: number
+  /** Physical-rule messages from the world audit at the end of the run. */
+  world: string[]
 }
 
 /** Mulberry32 so a run does not depend on Math.random or test order. Returns the restore fn. */
@@ -194,6 +196,7 @@ export function runDays(g: Game, days: number, opts: RunOptions = {}): SimMetric
     stuck: [...stuck],
     nan: [...nan],
     ledgerEntries: g.bank.ledger().entries.length,
+    world: g.worldAudit().map((v) => v.message),
   }
 }
 
@@ -214,6 +217,7 @@ export function expectHealthy(m: SimMetrics, bounds: HealthBounds = {}) {
   expect(m.stuck.length, `stuck vehicles: ${m.stuck.join(', ')}`).toBeLessThanOrEqual(
     bounds.maxStuck ?? 0,
   )
+  expect(m.world, `world violations: ${m.world.join(' | ')}`).toEqual([])
 }
 
 /**

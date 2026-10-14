@@ -127,7 +127,8 @@ function paintPassenger(chart: Chart, police: boolean) {
   putAt(13, 12, 'belt')
   putAt(13, 11, 'belt')
   putAt(13, 10, 'belt')
-  putAt(12, 13, 'bags')
+  // East of the south stand's wing. (12,13) sat inside that 3×3 envelope.
+  putAt(13, 13, 'bags')
   putAt(7, 5, 'fuel')
   putAt(18, 4, 'road')
   putAt(19, 4, 'cargo')

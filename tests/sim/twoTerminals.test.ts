@@ -21,12 +21,13 @@ describe('two terminals', () => {
     g.tool = 'premade'
     g.placePremade(t2)
     expect(settleBuilds(g)).toBe(true)
-    g.tiles[17][24] = 'stand'
-    for (let r = 18; r <= 25; r++) g.tiles[r][24] = 'taxi'
+    // One row south of the hall so the code-C wing does not cover the premade cells.
+    g.tiles[18][24] = 'stand'
+    for (let r = 19; r <= 25; r++) g.tiles[r][24] = 'taxi'
     // Join the first stand's lead-in (column 20) so both stands reach the strip.
     for (let c = 21; c <= 23; c++) g.tiles[25][c] = 'taxi'
     expect(g.fits).toHaveLength(2)
-    expect(g.pathStandToRunway({ c: 24, r: 17 })).not.toBeNull()
+    expect(g.pathStandToRunway({ c: 24, r: 18 })).not.toBeNull()
 
     const m = runDays(g, 7)
     expectHealthy(m)
