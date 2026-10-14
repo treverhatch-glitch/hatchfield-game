@@ -1,7 +1,9 @@
-"""Side-livery atlas for the turnaround fleet.
+"""Side-livery atlas for the ground fleet.
 
-Five landscape cells, left to right: fuel tanker, catering hi-lift, belt loader,
-pushback tug, apron bus. Names are fictional. JET A-1 is the fuel grade, not a brand.
+Landscape cells, left to right. The first five stay the turnaround set
+(fuel, catering, belt, tug, bus). The rest are lav, water, GPU, stairs,
+bags, dolly, loader, de-ice, fire, police and the cleaning van.
+Names are fictional Hatchfield brands. JET A-1 is the fuel grade, not a brand.
 Each line is scaled to fit the cell so the placard is not clipped.
 """
 from pathlib import Path
@@ -14,7 +16,7 @@ B64 = ROOT / "public/art/textures/vehicles/_b64/livery_atlas.jpg.b64"
 FONT = "/usr/share/fonts/truetype/macos/Inter-Bold.ttf"
 FONT_MED = "/usr/share/fonts/truetype/macos/Inter-SemiBold.ttf"
 
-CELLS = 5
+CELLS = 16
 # Landscape banner. The game scales each placard to this aspect (LIVERY_CELL_ASPECT).
 W, H = 1024, 280
 ATLAS_W = W * CELLS
@@ -87,9 +89,32 @@ def bus(im):
     banner(d, [("HATCHFIELD", (36, 70, 110)), ("SHUTTLE", (40, 44, 48))], 20, H - 44)
 
 
+def panel(bg, ink, word, bar):
+    def paint(im):
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, W, H), fill=bg)
+        d.rectangle(bar[0], fill=bar[1])
+        banner(d, [("HATCHFIELD", ink), (word, ink)], 24, H - 36)
+    return paint
+
+
 def main():
+    rest = [
+        panel((232, 236, 242), (24, 58, 96), "LAV", ((0, 0, 18, H), (42, 106, 168))),
+        panel((236, 244, 248), (28, 92, 140), "WATER", ((0, H - 32, W, H), (63, 168, 214))),
+        panel((244, 242, 230), (40, 44, 48), "POWER", ((0, H - 28, W, H), (242, 191, 31))),
+        panel((240, 242, 244), (40, 44, 48), "STAIRS", ((0, 0, W, 16), (242, 191, 31))),
+        panel((236, 238, 240), (36, 52, 72), "BAGS", ((0, H - 28, W, H), (47, 74, 106))),
+        panel((232, 234, 236), (40, 44, 48), "DOLLY", ((0, 0, 18, H), (125, 134, 143))),
+        panel((244, 240, 220), (40, 44, 48), "LOADER", ((0, H - 28, W, H), (242, 191, 31))),
+        panel((232, 244, 248), (28, 92, 130), "DEICE", ((0, H - 32, W, H), (63, 168, 214))),
+        panel((248, 236, 234), (160, 28, 24), "FIRE", ((0, 0, 18, H), (200, 35, 30))),
+        panel((230, 236, 246), (22, 48, 96), "POLICE", ((0, H - 28, W, H), (42, 108, 255))),
+        panel((240, 242, 238), (40, 44, 48), "CLEAN", ((0, H - 28, W, H), (90, 140, 96))),
+    ]
+    paints = [fuel, catering, belt, tug, bus, *rest]
     cells = []
-    for paint in (fuel, catering, belt, tug, bus):
+    for paint in paints:
         im = Image.new("RGB", (W, H), (255, 255, 255))
         paint(im)
         cells.append(im)

@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <body style="margin:0;background:#bfd0d3">
+    <canvas id="c"></canvas>
+    <script type="module">
+      import * as THREE from 'three'
+      import { vehicleRig } from '/src/render/vehicles.ts'
+
+      const canvas = document.querySelector('#c')
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true })
+      renderer.setSize(1600, 900, false)
+      renderer.toneMapping = THREE.ACESFilmicToneMapping
+      renderer.outputColorSpace = THREE.SRGBColorSpace
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color('#bfd0d3')
+      scene.add(new THREE.HemisphereLight('#e8f3ff', '#6b8a4a', 0.95))
+      const sun = new THREE.DirectionalLight('#fff3d4', 1.15)
+      sun.position.set(8, 14, 10)
+      scene.add(sun)
+      const kinds = ['lav', 'water', 'gpu', 'police', 'fire', 'van']
+      kinds.forEach((kind, i) => {
+        const rig = vehicleRig(kind, '#d8dee6')
+        rig.position.set((i - 2.5) * 8.4, 0, 0)
+        rig.rotation.y = 0
+        scene.add(rig)
+      })
+      const camera = new THREE.PerspectiveCamera(26, 1600 / 900, 0.1, 80)
+      camera.position.set(0, 1.7, 12.5)
+      camera.lookAt(0, 1.15, 0)
+      const draw = () => renderer.render(scene, camera)
+      draw()
+      setTimeout(draw, 400)
+      setTimeout(() => { draw(); window.__ready = true }, 1200)
+    </script>
+  </body>
+</html>

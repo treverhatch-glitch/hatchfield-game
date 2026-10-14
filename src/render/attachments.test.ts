@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createAircraft } from './aircraft/factory'
-import { ALL_MODELS } from './vehicleModels'
+import { ALL_MODELS, vehicleModel, type VehicleModel } from './vehicleModels'
+import { vehicleSocket } from './socketLayout'
 import { LOCK_TOLERANCE_M, STAND_AIRFRAME, TURN_STEPS, type StandSize } from '../logistics/socketTurn'
 import { aircraftSocketRig, crewRig, disposeTurnaround, runTurnaround } from './attachments'
 import { vehicleRig } from './vehicles'
@@ -15,7 +16,7 @@ const KIND: Record<string, string> = {
   fuel_tanker: 'fuel', hydrant_cart: 'hydrant', baggage_train: 'bags', baggage_cart: 'cart', belt_loader: 'belt_loader',
   catering_hilift: 'catering', arff: 'fire', deice: 'deice', apron_bus: 'termbus', coach: 'coach', box_truck: 'citycargo',
   van: 'delivery', towbar_tug: 'tow', towbarless_tug: 'pushback_tug', gpu: 'gpu', stairs: 'stairs', k_loader: 'cargo',
-  uld_dolly: 'dolly', lavatory_truck: 'lav', water_truck: 'water',
+  uld_dolly: 'dolly', lavatory_truck: 'lav', water_truck: 'water', police: 'police',
 }
 
 describe('attachment sockets', () => {
@@ -33,13 +34,42 @@ describe('attachment sockets', () => {
     expect(crew.getObjectByName('crew_hand_r')).toBeTruthy()
     expect(crew.getObjectByName('crew_hand_l')).toBeTruthy()
     const plane = aircraftSocketRig('b738')
-    for (const name of ['plane_fuel_port', 'plane_cargo_door_fwd', 'plane_hold', 'catering_door', 'galley_slot', 'plane_pax_door', 'plane_pax_sill', 'plane_nose_gear']) {
+    for (const name of ['plane_fuel_port', 'plane_cargo_door_fwd', 'plane_hold', 'catering_door', 'galley_slot', 'plane_pax_door', 'plane_pax_sill', 'plane_nose_gear', 'plane_lav_port', 'plane_water_port', 'plane_gpu_port']) {
       expect(plane.getObjectByName(name), name).toBeTruthy()
     }
     const built = createAircraft('e175', { body: '#fff', stripe: '#123' })
     roots.push(built)
     expect(built.getObjectByName('plane_fuel_port')).toBeTruthy()
     expect(built.getObjectByName('plane_nose_gear')).toBeTruthy()
+  })
+
+  it('keeps the rest of the fleet sockets above the ground', () => {
+    const named: [string, string][] = [
+      ['lav', 'lav_nozzle'],
+      ['lav', 'hose_reel_out'],
+      ['water', 'water_nozzle'],
+      ['water', 'hose_reel_out'],
+      ['gpu', 'cable_reel_out'],
+      ['gpu', 'gpu_plug'],
+      ['stairs', 'stairs_top'],
+      ['stairs', 'stairs_foot'],
+      ['deice', 'deice_nozzle'],
+      ['fire', 'foam_nozzle'],
+      ['police', 'patrol_door'],
+      ['delivery', 'clean_door'],
+      ['cart', 'cart_bed'],
+      ['dolly', 'dolly_deck'],
+      ['cargo', 'loader_deck'],
+    ]
+    for (const [kind, name] of named) {
+      const rig = vehicleRig(kind, '#3a7bd5')
+      roots.push(rig)
+      const sock = rig.getObjectByName(name)
+      expect(sock, `${kind}.${name}`).toBeTruthy()
+      expect(sock!.position.y, `${kind}.${name} y`).toBeGreaterThanOrEqual(-0.02)
+      const local = vehicleSocket(vehicleModel(kind) as VehicleModel, name)
+      expect(local, `${kind}.${name} table`).toBeTruthy()
+    }
   })
 
   it.each(['S', 'M', 'L'] as const)('runs a %s stand turnaround on the sockets', (size: StandSize) => {

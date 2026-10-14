@@ -7,7 +7,7 @@
  */
 import type { ModelSpec } from './aircraft/specs'
 import { bridgeStops, doorBoxes } from './aircraft/stands'
-import { beltGeom, catenaryPoints, cateringHinge, lineAnchor, MODEL_SIZE, type VehicleModel } from './vehicleModels'
+import { beltGeom, CABLE_M, catenaryPoints, cateringHinge, GPU_RISE, lineAnchor, MODEL_SIZE, SERVICE_RISE, type VehicleModel } from './vehicleModels'
 
 export type SocketTable = Readonly<Record<string, readonly [number, number, number]>>
 
@@ -35,7 +35,19 @@ export function vehicleSocketTable(model: VehicleModel): SocketTable {
     sockets.catering_lip = [h.x, h.y + 2.4, 0]
     sockets.cart_slot = [h.x - 1.4, h.y + 0.45, 0]
   }
-  if (model === 'stairs') sockets.stairs_top = [-L / 2 + 0.7, H - 0.8, 0]
+  if (model === 'stairs') {
+    sockets.stairs_top = [-L / 2 + 0.7, H - 0.8, 0]
+    const r = 0.42
+    const cabLen = 1.7
+    const back = L / 2 - cabLen
+    const sl = back + L / 2 - 0.2
+    const sx = -L / 2 + sl / 2 + 0.1
+    const rise = H - 0.8 - (r + 0.6)
+    const run = sl * 0.95
+    const hyp = Math.hypot(run, rise)
+    const sy = (r + 0.6 + H - 0.8) / 2
+    sockets.stairs_foot = [sx + (sl / 2) * (run / hyp), sy - (sl / 2) * (rise / hyp), 0]
+  }
   if (model === 'towbarless_tug') sockets.tug_hitch = [-L * 0.25, 0.3, 0]
   if (model === 'towbar_tug') sockets.tug_hitch = [L / 2 + 2.05, 0.47, 0]
   if (model === 'baggage_cart') {
@@ -60,6 +72,33 @@ export function vehicleSocketTable(model: VehicleModel): SocketTable {
     const pl = L * 0.44
     const x = L / 2 - 0.95 - pl / 2
     sockets.loader_deck = [x, r + 1.2 + 0.14, 0]
+  }
+  if (model === 'lavatory_truck') {
+    const r = 0.42
+    sockets.lav_nozzle = [-L / 2 + 0.45, r + 0.9 + SERVICE_RISE, W / 2 + CABLE_M]
+  }
+  if (model === 'water_truck') {
+    const r = 0.42
+    sockets.water_nozzle = [-L / 2 + 0.42, r + 0.85 + SERVICE_RISE, W / 2 + CABLE_M]
+  }
+  if (model === 'gpu') {
+    const r = 0.3
+    sockets.cable_reel_out = [L * 0.18, r + 0.35, W / 2]
+    sockets.gpu_plug = [L * 0.18, r + 0.35 + GPU_RISE, W / 2 + CABLE_M]
+  }
+  if (model === 'deice') sockets.deice_nozzle = [L / 2, H - 0.65, 0]
+  if (model === 'arff') {
+    const cabLen = 3
+    const back = L / 2 - cabLen
+    sockets.foam_nozzle = [back + 1.6, H + 0.4, 0]
+  }
+  if (model === 'police') {
+    const r = 0.32
+    sockets.patrol_door = [-L * 0.02, r + 0.55, W * 0.46]
+  }
+  if (model === 'van') {
+    const r = 0.36
+    sockets.clean_door = [-L * 0.05, r + 0.85, W / 2]
   }
   if (model === 'fuel_tanker') {
     const r = 0.5
@@ -128,6 +167,9 @@ export function aircraftSocketTable(spec: ModelSpec): SocketTable {
     plane_pax_door: paxPoint,
     plane_pax_sill: paxSill,
     plane_nose_gear: [noseX, Math.max(0.35, spec.gear * 0.22), 0],
+    plane_lav_port: [-spec.lengthM * 0.28, Math.max(1.1, centerY - spec.ry * 0.45), -(spec.rx + 0.15)],
+    plane_water_port: [-spec.lengthM * 0.18, Math.max(1.15, centerY - spec.ry * 0.4), -(spec.rx + 0.15)],
+    plane_gpu_port: [nose - spec.lengthM * 0.12, Math.max(0.9, spec.gear * 0.55), spec.rx * 0.2],
   }
 }
 

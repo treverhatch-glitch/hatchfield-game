@@ -2565,6 +2565,7 @@ function extraVehicleYard(): readonly VehicleInstance[] | null {
 }
 
 function truckColor(kind: string): string {
+  if (kind === 'police') return '#1d3f73'
   if (kind === 'fuel') return '#c9a227'
   if (kind === 'bags') return '#6b7280'
   if (kind === 'citycargo') return '#5a4a38'

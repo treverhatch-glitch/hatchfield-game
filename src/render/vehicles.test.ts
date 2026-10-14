@@ -23,6 +23,11 @@ import {
 
 afterAll(() => disposeVehicleLibrary())
 
+const PLACARD_KINDS = [
+  'fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus',
+  'lav', 'water', 'gpu', 'stairs', 'cart', 'bags', 'dolly', 'cargo', 'deice', 'fire', 'police', 'delivery',
+] as const
+
 const SIM_KINDS = [
   'lav', 'water',
   'fuel', 'fuel_truck', 'bags', 'baggage_tug', 'belt_loader', 'catering', 'catering_truck', 'fire', 'deice',
@@ -39,6 +44,8 @@ describe('ground vehicle models', () => {
     expect(vehicleModel('tow')).toBe('towbar_tug')
     expect(vehicleModel('cargo')).toBe('k_loader')
     expect(vehicleModel('citycargo')).toBe('box_truck')
+    expect(vehicleModel('police')).toBe('police')
+    expect(vehicleModel('delivery')).toBe('van')
     expect(vehicleModel('mystery')).toBe('van')
     const models = new Set(SIM_KINDS.map(vehicleModel))
     expect(models.size).toBeGreaterThanOrEqual(15)
@@ -89,8 +96,7 @@ describe('ground vehicle models', () => {
   })
 
   it('reads placard text left to right from the outside of both sides', () => {
-    const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
-    for (const kind of kinds) {
+    for (const kind of PLACARD_KINDS) {
       const model = vehicleModel(kind)
       const geos = [vehicleGeometry(kind, '#3a7bd5')]
       for (const part of MODEL_PARTS[model]) geos.push(vehiclePartGeometry(kind, '#3a7bd5', part))
@@ -101,8 +107,7 @@ describe('ground vehicle models', () => {
   })
 
   it('scales each placard to the livery cell so the brand is not cropped', () => {
-    const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
-    for (const kind of kinds) {
+    for (const kind of PLACARD_KINDS) {
       const model = vehicleModel(kind)
       const geos = [vehicleGeometry(kind, '#3a7bd5')]
       for (const part of MODEL_PARTS[model]) geos.push(vehiclePartGeometry(kind, '#3a7bd5', part))
@@ -131,8 +136,7 @@ describe('ground vehicle models', () => {
   })
 
   it('paints a fictional side livery on each turnaround vehicle', () => {
-    const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
-    for (const kind of kinds) {
+    for (const kind of PLACARD_KINDS) {
       const model = vehicleModel(kind)
       const geos = [vehicleGeometry(kind, '#3a7bd5')]
       for (const part of MODEL_PARTS[model]) geos.push(vehiclePartGeometry(kind, '#3a7bd5', part))
@@ -279,7 +283,7 @@ function kindFor(model: string): string {
     fuel_tanker: 'fuel', hydrant_cart: 'hydrant', baggage_train: 'bags', baggage_cart: 'cart', belt_loader: 'belt_loader',
     catering_hilift: 'catering', arff: 'fire', deice: 'deice', apron_bus: 'termbus', coach: 'coach', box_truck: 'citycargo',
     van: 'delivery', towbar_tug: 'tow', towbarless_tug: 'pushback_tug', gpu: 'gpu', stairs: 'stairs', k_loader: 'cargo', uld_dolly: 'dolly',
-    lavatory_truck: 'lav', water_truck: 'water',
+    lavatory_truck: 'lav', water_truck: 'water', police: 'police',
   }
   return back[model]
 }

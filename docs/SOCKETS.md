@@ -17,7 +17,7 @@ Lock tolerance is **5 cm**. A moving item may hop at most **40 cm** between samp
 | Socket | Lives on | Locks to |
 | --- | --- | --- |
 | `dock` | every vehicle | nose reference, not a service lock |
-| `hose_reel_out` | fuel tanker (and any truck with a hose) | reel end of the hose |
+| `hose_reel_out` | fuel tanker, lavatory truck, water truck (any truck with a hose) | reel end of the hose |
 | `hose_nozzle` | the nozzle prop | `crew_hand_r` while carried, `plane_fuel_port` while fueling, then back to `hose_reel_out` |
 | `truck_fill` | fuel tanker | farm coupler while the truck is being filled |
 | `farm_fill` | fuel farm | farm end of the fill hose |
@@ -29,6 +29,7 @@ Lock tolerance is **5 cm**. A moving item may hop at most **40 cm** between samp
 | `catering_lip` | catering hi-lift | `catering_door` |
 | `cart_slot` | catering hi-lift | catering cart while it is still on the truck |
 | `stairs_top` | stairs | `plane_pax_door` |
+| `stairs_foot` | stairs | bottom of the flight, on the ground side |
 | `tug_hitch` | pushback tug | `plane_nose_gear` |
 | `cart_bed` | bag cart and baggage train | a suitcase |
 | `cart_hitch` | bag cart | tow |
@@ -36,6 +37,14 @@ Lock tolerance is **5 cm**. A moving item may hop at most **40 cm** between samp
 | `dolly_deck` | ULD dolly | a ULD |
 | `dolly_hitch` | ULD dolly | tow |
 | `loader_deck` | cargo loader | a ULD before the hold |
+| `lav_nozzle` | lavatory truck | hose end at full pay-out; locks toward `plane_lav_port` |
+| `water_nozzle` | water truck | hose end at full pay-out; locks toward `plane_water_port` |
+| `cable_reel_out` | GPU cart | reel end of the power cable |
+| `gpu_plug` | GPU cart | plug at full pay-out; locks toward `plane_gpu_port` |
+| `deice_nozzle` | de-icer | spray nozzle in the basket |
+| `foam_nozzle` | ARFF | roof monitor |
+| `patrol_door` | police car | driver's door |
+| `clean_door` | cleaning van | side door |
 | `plane_fuel_port` | aircraft, under the wing on the port side | fuel nozzle |
 | `plane_cargo_door_fwd` | aircraft, forward cargo door | belt tip |
 | `plane_hold` | aircraft, inside that door | a bag or a ULD |
@@ -44,6 +53,9 @@ Lock tolerance is **5 cm**. A moving item may hop at most **40 cm** between samp
 | `plane_pax_door` | aircraft, forward passenger door | stair top |
 | `plane_pax_sill` | aircraft, floor of that door | a passenger's feet |
 | `plane_nose_gear` | aircraft | tug hitch |
+| `plane_lav_port` | aircraft, aft lower fuselage, starboard | lavatory nozzle |
+| `plane_water_port` | aircraft, aft lower fuselage, starboard | water nozzle |
+| `plane_gpu_port` | aircraft, lower nose | GPU plug |
 | `bridge_cab` | jet bridge | mouth at the door |
 | `bridge_hall` | jet bridge | terminal end of the tunnel |
 | `desk_drop` | check-in desk | a bag on the weigh belt |

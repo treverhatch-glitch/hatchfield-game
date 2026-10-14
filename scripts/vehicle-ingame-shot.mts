@@ -11,6 +11,8 @@ const OUT = process.env.SHOT_OUT || '/opt/cursor/artifacts'
 const NAME = process.env.SHOT_NAME || 'vehicles-ingame'
 mkdirSync(OUT, { recursive: true })
 const URL = process.env.SHOT_URL ?? 'http://127.0.0.1:45931/'
+/** `turn` is the five apron trucks. `rest` is the other ground fleet. */
+const FLEET = process.env.SHOT_FLEET === 'rest' ? 'rest' : 'turn'
 const CHROME = process.env.PLAYWRIGHT_CHROME || '/usr/bin/google-chrome'
 const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl']
 const call = (body: string) => new Function(body) as () => unknown
@@ -40,7 +42,7 @@ if (await starter.count()) {
 const coach = page.getByTestId('coach').getByRole('button', { name: 'Got it' })
 if (await coach.count()) await coach.click().catch(() => {})
 await page.waitForFunction(call(`return Boolean(window.__world && window.__world.camera && window.__hatch)`), null, { timeout: 120000 })
-await page.evaluate(call(`window.__hatch.setView('apron')`))
+await page.evaluate(call(`window.__shotFleet = ${JSON.stringify(FLEET)}; window.__hatch.setView('apron')`))
 await page.waitForTimeout(600)
 
 const placed = await page.evaluate(call(`
@@ -62,8 +64,9 @@ const placed = await page.evaluate(call(`
       if (open) { spot = [c, r]; break }
     }
   }
-  const dist = 14
-  const pitch = 0.36
+  const fleet = window.__shotFleet === 'rest' ? 'rest' : 'turn'
+  const dist = fleet === 'rest' ? 26 : 14
+  const pitch = fleet === 'rest' ? 0.4 : 0.36
   const yaw = 1.05
   w.dist = dist
   w.pitch = pitch
@@ -75,21 +78,57 @@ const placed = await page.evaluate(call(`
   const rightZ = -Math.sin(yaw)
   const fwdX = -Math.sin(yaw)
   const fwdZ = -Math.cos(yaw)
-  const yard = [
+  const turn = [
     ['fuel_truck', '#c9a227', [10, 3.2, 2.5]],
     ['catering_truck', '#e07a3d', [8.6, 3.7, 2.5]],
     ['belt_loader', '#f2bf1f', [7.6, 2.4, 2.1]],
     ['pushback_tug', '#f2d24a', [7.8, 1.7, 3.2]],
     ['pax_bus', '#3d6a8a', [14, 3.1, 3]],
   ]
-  window.__vehicleYard = yard.map((row, i) => {
-    const along = (i - 2) * 6.4
+  const rest = [
+    ['lav', '#2a6aa8', [7.2, 2.8, 2.3]],
+    ['water', '#d7e7f2', [7.0, 2.7, 2.3]],
+    ['gpu', '#f2bf1f', [3.4, 1.7, 1.6]],
+    ['stairs', '#f4f1e8', [7.4, 3.6, 2.4]],
+    ['cart', '#2f4a6a', [3.0, 1.7, 1.55]],
+    ['dolly', '#8b939a', [3.4, 0.75, 1.9]],
+    ['bags', '#f2bf1f', [9.6, 1.9, 1.6]],
+    ['cargo', '#f2bf1f', [9, 2.5, 3.4]],
+    ['deice', '#e7f3f8', [9.2, 3.5, 2.5]],
+    ['fire', '#c8231e', [12, 3.6, 3]],
+    ['police', '#1d3f73', [4.9, 1.65, 1.85]],
+    ['van', '#e7e4da', [6, 2.6, 2.1]],
+  ]
+  const yard = fleet === 'rest' ? rest : turn
+  const cols = fleet === 'rest' ? 4 : yard.length
+  const slots = yard.map((row, i) => {
+    const col = i % cols
+    const rowi = Math.floor(i / cols)
+    return { row, col, rowi, len: fleet === 'rest' ? row[2][0] * S + 0.9 : 6.4 }
+  })
+  const rowCount = Math.ceil(yard.length / cols)
+  const rowShift = []
+  for (let r = 0; r < rowCount; r++) {
+    const members = slots.filter((s) => s.rowi === r)
+    const total = members.reduce((n, s) => n + s.len, 0)
+    let cursor = -total / 2
+    const at = []
+    for (const s of members) {
+      at[s.col] = cursor + s.len / 2
+      cursor += s.len
+    }
+    rowShift.push(at)
+  }
+  window.__vehicleYard = slots.map((s) => {
+    const along = fleet === 'rest' ? rowShift[s.rowi][s.col] : (s.col - (cols - 1) / 2) * 6.4
+    const depth = fleet === 'rest' ? (s.rowi - 1) * 3.8 : 4
     return {
-      kind: row[0], color: row[1], size: row[2],
-      x: px + rightX * along + fwdX * 4,
+      kind: s.row[0], color: s.row[1], size: s.row[2],
+      x: px + rightX * along + fwdX * depth,
       y: 0,
-      z: pz + rightZ * along + fwdZ * 4,
-      yaw: yaw + Math.PI * 0.85,
+      z: pz + rightZ * along + fwdZ * depth,
+      // Rest of the fleet: right side toward the lens so the placard faces us and the length runs across the frame.
+      yaw: fleet === 'rest' ? yaw : yaw + Math.PI * 0.85,
       scale: S,
     }
   })
@@ -137,6 +176,10 @@ const gl = await page.evaluate(call(`
     dist: w.dist,
     vehicles: (window.__vehicleYard || []).length,
     fleet: w.vehicleFleet ? w.vehicleFleet.root.children.length : -1,
+    projected: (window.__vehicleYard || []).map((v) => {
+      const p = new (w.camera.position.constructor)(v.x, 1.2, v.z).project(w.camera)
+      return [v.kind, Math.round((p.x * 0.5 + 0.5) * 1600), Math.round((-p.y * 0.5 + 0.5) * 900), Math.round(p.z * 100) / 100]
+    }),
   }
 `))
 console.log('gl', JSON.stringify(gl))

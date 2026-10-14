@@ -104,6 +104,7 @@ const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
   k_loader: ['front_platform', 'rear_platform'],
   lavatory_truck: ['hose_reel', 'hose'],
   water_truck: ['hose_reel', 'hose'],
+  police: ['lightbar'],
 }
 
 /** Shared moving parts: wheels spin, beacons rotate, reverse lights switch. */
@@ -387,6 +388,13 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       if (part !== 'stair' && part !== 'canopy') return false
       reset(out, 1.9, 1.0, 0).rz = (1 - e) * 0.22
       return true
+    case 'police': {
+      if (part !== 'lightbar') return false
+      const c = partCentre(model, 'lightbar')
+      reset(out, c[0], c[1], c[2])
+      if (active && Math.floor(clock * 6) % 2 === 1) out.sx = out.sy = out.sz = 0.0001
+      return true
+    }
     default:
       return false
   }
