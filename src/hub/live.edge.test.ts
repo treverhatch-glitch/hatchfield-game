@@ -285,11 +285,14 @@ describe('live links between terminals', () => {
     game.fieldXp = 420
     rfidOn(game)
     const origin = game.fits[0].origin
-    game.fits.push({ ...game.fits[0], origin: { c: origin.c, r: origin.r - 9 }, items: [] })
-    for (let r = origin.r - 6; r <= origin.r - 1; r++) game.tiles[r][origin.c] = 'skywalk'
-    const near = { c: origin.c - 3, r: origin.r - 8 }
+    // The passenger hall sits on the north apron, so the second hall goes east of the curb.
+    const other = { c: 22, r: 5 }
+    game.fits.push({ ...game.fits[0], origin: other, items: [] })
+    for (let c = origin.c + 2; c <= other.c - 1; c++) game.tiles[7][c] = 'skywalk'
+    game.tiles[6][other.c - 1] = 'skywalk'
+    const near = { c: other.c + 2, r: other.r + 3 }
     game.tiles[near.r][near.c] = 'stand'
-    const far = { c: 12, r: 21 }
+    const far = { c: 11, r: 6 }
     expect(game.connectionLink(`${near.c},${near.r}`, `${far.c},${far.r}`)).toBe('skywalk')
     onward(game, 90, far)
     const transfers = land(game, flight('sky', near))

@@ -142,15 +142,15 @@ function parked(game: Game, stand: Vec): Flight {
 describe('cargo on the field', () => {
   it('arms a freighter turnaround with a reserved main-deck loader', () => {
     const game = field()
-    game.tiles[10][15] = 'depot'
+    game.tiles[5][6] = 'depot'
     game.scaleFleet = { main_deck_loader: 1, hydrant_dispenser: 1, heavy_tug: 1, highlift_catering: 1 }
     game.bumpMap()
     for (let i = 0; i < 10; i++) game.tick(5)
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('12,21')
+    expect(f.groundTurn).toBe('11,6')
     expect(game.loaderHold(f.id)).toBe('main_deck_loader')
-    expect(game.cargoLoadArmed('12,21')).toBe(true)
+    expect(game.cargoLoadArmed('11,6')).toBe(true)
     const snap = game.cargoSnapshot()
     expect(snap?.reservedTonnes ?? 0).toBeGreaterThan(0)
     expect(game.groundBooks.cargoRevenue).toBe(0)

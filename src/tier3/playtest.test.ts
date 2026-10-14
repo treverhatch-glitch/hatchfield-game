@@ -53,13 +53,15 @@ describe('tier III multi-day run', () => {
     game.tickConstruction(40)
     game.placeSingle({ c: 14, r: 23 })
     game.tool = 'nighthub'
-    game.placeSingle({ c: 8, r: 12 })
+    // The west apron taxi now occupies (8,12). The hub sits on open grass beside it.
+    game.placeSingle({ c: 4, r: 12 })
     game.tool = 'depot'
-    game.placeSingle({ c: 15, r: 10 })
+    // (15,10) is inside the passenger hall. The depot sits beside the fuel farm.
+    game.placeSingle({ c: 6, r: 5 })
     game.tickConstruction(40)
     expect(game.tiles[23][10]).toBe('mro')
     expect(game.tiles[23][14]).toBe('mro')
-    expect(game.tiles[12][8]).toBe('nighthub')
+    expect(game.tiles[12][4]).toBe('nighthub')
     game.upgradePowerPlant()
     game.upgradePowerPlant()
     expect(game.powerPlantTier).toBe(3)

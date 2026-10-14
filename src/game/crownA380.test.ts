@@ -25,9 +25,9 @@ function jumboField(): Game {
   for (let r = 7; r <= 22; r++) game.tiles[r][8] = 'taxi'
   game.tiles[20][10] = 'hangar'
   game.tiles[18][10] = 'cargo'
-  game.tiles[21][8] = 'fuel'
-  game.tiles[21][7] = 'oil'
-  for (let r = 22; r < 32; r++) game.tiles[r][7] = 'fuel_rail'
+  // Oil sits on the starter farm. The rail runs south to the map edge.
+  game.tiles[5][6] = 'oil'
+  for (let r = 6; r < 32; r++) game.tiles[r][6] = 'fuel_rail'
   const research: ResearchId[] = [
     'night_bank',
     'deice',
@@ -51,39 +51,37 @@ function jumboField(): Game {
   for (const id of research) {
     if (!game.researchUnlocked.includes(id)) game.researchUnlocked.push(id)
   }
-  game.standClass['20,21'] = 'L'
-  game.standScale['20,21'] = 'jumbo'
-  game.standAccess['20,21'] = 'jetway'
-  game.tiles[24][19] = 'stand'
-  game.standClass['19,24'] = 'L'
-  game.standScale['19,24'] = 'jumbo'
-  game.standAccess['19,24'] = 'jetway'
+  // Jumbo gate south of the hall, on grass outside the runway shoulder, taxi-linked.
+  for (let c = 9; c <= 19; c++) game.tiles[22][c] = 'taxi'
+  game.tiles[22][20] = 'stand'
+  game.standClass['20,22'] = 'L'
+  game.standScale['20,22'] = 'jumbo'
+  game.standAccess['20,22'] = 'jetway'
   const paint = (tile: 'travelator' | 'skywalk' | 'mover', cells: [number, number][]) => {
     for (const [c, r] of cells) game.tiles[r][c] = tile
   }
-  paint('travelator', [
-    [17, 22],
-    [18, 22],
-    [18, 23],
-    [19, 23],
-  ])
-  paint('skywalk', [
-    [16, 22],
-    [16, 23],
-    [16, 24],
-    [17, 24],
-    [18, 24],
-  ])
-  paint('mover', [
-    [15, 22],
-    [15, 23],
-    [15, 24],
-    [15, 25],
-    [16, 25],
-    [17, 25],
-    [18, 25],
-    [19, 25],
-  ])
+  const line = (c0: number, r0: number, c1: number, r1: number): [number, number][] => {
+    const cells: [number, number][] = []
+    const dc = Math.sign(c1 - c0)
+    const dr = Math.sign(r1 - r0)
+    let c = c0
+    let r = r0
+    cells.push([c, r])
+    while (c !== c1) {
+      c += dc
+      cells.push([c, r])
+    }
+    while (r !== r1) {
+      r += dr
+      cells.push([c, r])
+    }
+    return cells
+  }
+  // Each link touches the hall and the jumbo stand. The mover runs east of the curb
+  // so it does not cut the travelator column or the taxi into the stand.
+  paint('travelator', [...line(15, 11, 15, 21), ...line(15, 21, 20, 21)])
+  paint('skywalk', [...line(16, 11, 16, 18), ...line(16, 18, 21, 18), ...line(21, 18, 21, 22)])
+  paint('mover', [...line(16, 7, 24, 7), ...line(24, 7, 24, 23), ...line(24, 23, 20, 23)])
   game.hangarScale['10,20'] = 'jumbo'
   game.bagSystem = 'bhs'
   game.paxDesks = 4

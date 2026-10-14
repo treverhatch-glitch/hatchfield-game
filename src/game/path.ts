@@ -39,6 +39,8 @@ export function walkableFor(
     return tile === 'runway' || tile === 'taxi' || tile === 'stand' || tile === 'hangar' || tile === 'mro'
   }
   if (kind === 'truck') {
+    // Trucks stay on the apron and the public road. The terminal is a building,
+    // so a shortcut through the hall is not a vehicle path.
     return (
       tile === 'taxi' ||
       tile === 'stand' ||
@@ -46,7 +48,6 @@ export function walkableFor(
       tile === 'bags' ||
       tile === 'belt' ||
       tile === 'snack' ||
-      tile === 'terminal' ||
       tile === 'fire' ||
       tile === 'police' ||
       tile === 'cargo' ||
@@ -277,29 +278,74 @@ export function farmBesidePavement(tiles: Tile[][], farm: Vec): boolean {
   })
 }
 
+/**
+ * One strip per connected runway piece.
+ * A 14×2 prefab is a single strip: the centerline is the longest straight run,
+ * so a wide pavement does not count once per row. Length is that run, which is
+ * what airframe gates and the approach use.
+ */
 export function runwayStrips(tiles: Tile[][], min: number): Vec[][] {
+  const seen = new Set<string>()
   const strips: Vec[][] = []
   for (let r = 0; r < SIZE; r++) {
-    let run: Vec[] = []
-    for (let c = 0; c <= SIZE; c++) {
-      const isRw = c < SIZE && tiles[r][c] === 'runway'
-      if (isRw) run.push({ c, r })
-      if (!isRw || c === SIZE) {
-        if (run.length >= min) strips.push(run)
-        run = []
+    for (let c = 0; c < SIZE; c++) {
+      if (tiles[r][c] !== 'runway' || seen.has(`${c},${r}`)) continue
+      const cells: Vec[] = []
+      const stack: Vec[] = [{ c, r }]
+      seen.add(`${c},${r}`)
+      while (stack.length) {
+        const p = stack.pop()!
+        cells.push(p)
+        for (const n of neighbors(p.c, p.r)) {
+          const id = `${n.c},${n.r}`
+          if (seen.has(id) || tiles[n.r][n.c] !== 'runway') continue
+          seen.add(id)
+          stack.push(n)
+        }
       }
-    }
-  }
-  for (let c = 0; c < SIZE; c++) {
-    let run: Vec[] = []
-    for (let r = 0; r <= SIZE; r++) {
-      const isRw = r < SIZE && tiles[r][c] === 'runway'
-      if (isRw) run.push({ c, r })
-      if (!isRw || r === SIZE) {
-        if (run.length >= min) strips.push(run)
-        run = []
-      }
+      const line = runwayCenterline(cells)
+      if (line.length >= min) strips.push(line)
     }
   }
   return strips
+}
+
+/** Longest straight run inside one runway piece, ordered along the strip. */
+function runwayCenterline(cells: Vec[]): Vec[] {
+  const byRow = new Map<number, number[]>()
+  const byCol = new Map<number, number[]>()
+  for (const p of cells) {
+    const cols = byRow.get(p.r)
+    if (cols) cols.push(p.c)
+    else byRow.set(p.r, [p.c])
+    const rows = byCol.get(p.c)
+    if (rows) rows.push(p.r)
+    else byCol.set(p.c, [p.r])
+  }
+  let best: Vec[] = []
+  let bestAxis: 'h' | 'v' = 'h'
+  let bestFixed = Infinity
+  const take = (coords: number[], fixed: number, axis: 'h' | 'v') => {
+    coords.sort((a, b) => a - b)
+    let start = 0
+    for (let i = 1; i <= coords.length; i++) {
+      if (i < coords.length && coords[i] === coords[i - 1] + 1) continue
+      const run = coords.slice(start, i)
+      const longer = run.length > best.length
+      const tie =
+        run.length === best.length &&
+        run.length > 0 &&
+        (axis === 'h' && bestAxis === 'v' || (axis === bestAxis && fixed < bestFixed))
+      if (longer || tie) {
+        bestAxis = axis
+        bestFixed = fixed
+        best =
+          axis === 'h' ? run.map((c) => ({ c, r: fixed })) : run.map((r) => ({ c: fixed, r }))
+      }
+      start = i
+    }
+  }
+  for (const [r, cols] of byRow) take(cols, r, 'h')
+  for (const [c, rows] of byCol) take(rows, c, 'v')
+  return best
 }

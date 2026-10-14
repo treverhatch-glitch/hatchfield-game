@@ -56,6 +56,7 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
+import { starterKitPreview } from '../game/starterLayout'
 import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
@@ -579,10 +580,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       type="button"
                       className="coach-kit"
                       data-testid="starter-kit-coach"
-                      title="Runway, stand, hall, check-in, security and gate in one stamp"
+                      title={starterKitPreview(game.startFocus).summary}
                       onClick={() => game.buildStarterKit()}
                     >
-                      Stamp Starter kit · {money(STARTER_KIT_COST)}
+                      {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                     </button>
                     {game.starterFreehand ? null : (
                       <button
@@ -1270,14 +1271,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           data-testid="starter-kit"
                           onClick={() => game.buildStarterKit()}
                         >
-                          Starter kit · {money(STARTER_KIT_COST)}
+                          {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                         </button>
                         <p className="muted">
-                          {game.startFocus === 'cargo'
-                            ? 'Cargo kit: strip, freighter stand, guard → shed, Apex — no pax hall. Empty plot only.'
-                            : game.startFocus === 'hybrid'
-                              ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
-                              : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). The kit is also the first button on the build bar.'}
+                          {starterKitPreview(game.startFocus).summary}{' '}
+                          {starterKitPreview(game.startFocus).includes.join(' · ')}
                         </p>
                       </>
                     )}
@@ -2305,10 +2303,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         type="button"
                         className={`on${game.showCoach() ? ' dock-kit-target' : ''}`}
                         data-testid="starter-kit-dock"
-                        title="First stamp. A lone runway spends this budget and the kit then reads short."
+                        title={starterKitPreview(game.startFocus).summary}
                         onClick={() => game.buildStarterKit()}
                       >
-                        Starter kit · {money(STARTER_KIT_COST)}
+                        {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                       </button>
                       {game.starterKitProtected() ? (
                         <button
