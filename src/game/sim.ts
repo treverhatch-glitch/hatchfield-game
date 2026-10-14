@@ -598,6 +598,7 @@ import {
   spawnArrivalPax,
   spawnDeparturePax,
 } from './pax'
+import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import {
   astar,
   farmBesidePavement,
@@ -945,6 +946,10 @@ export class Game {
   disruptions = new DisruptionBridge(1)
   securityIncidents = 0
   reputation = 40
+  /** Smoothed 0–100 figure the reputation HUD reads. */
+  reputationShown = 40
+  /** Passenger reputation waiting to be applied a little at a time. */
+  private reputationDrift = 0
   loanBalance = 0
   loanProductId: string | null = null
   loanPrincipal = 0
@@ -1381,6 +1386,8 @@ export class Game {
     this.loanNewsCool = 0
     this.securityIncidents = 0
     this.reputation = 40
+    this.reputationShown = 40
+    this.reputationDrift = 0
     this.loanBalance = 0
     this.loanProductId = null
     this.loanPrincipal = 0
@@ -3039,15 +3046,17 @@ export class Game {
    * Blend of reputation, avg airline heat, hall wear inverse, security budget.
    */
   fieldRating(): number {
-    const rep = this.reputation
+    const rep = clampReputation(this.reputation)
     const heats = this.signed.map((id) => this.heatOf(id))
-    const avgHeat = heats.length
-      ? heats.reduce((s, h) => s + h, 0) / heats.length
-      : 55
+    const avgHeat = clamp(
+      heats.length ? heats.reduce((s, h) => s + h, 0) / heats.length : 55,
+      0,
+      100,
+    )
     const wear = this.avgWear()
-    const wearScore = 100 - (wear.bath * 0.55 + wear.sec * 0.45)
-    const secScore = this.budgetOf('security')
-    const incidents = Math.min(20, this.securityIncidents)
+    const wearScore = clamp(100 - (wear.bath * 0.55 + wear.sec * 0.45), 0, 100)
+    const secScore = clamp(this.budgetOf('security'), 0, 100)
+    const incidents = Math.min(20, Math.max(0, this.securityIncidents))
     const raw =
       rep * 0.34 +
       avgHeat * 0.32 +
@@ -3055,6 +3064,25 @@ export class Game {
       secScore * 0.14 -
       incidents * 1.2
     return clamp(Math.round(raw), 0, 100)
+  }
+
+  /** Whole-number reputation the HUD shows. Eased, never outside 0–100. */
+  reputationDisplay(): number {
+    return Math.round(clampReputation(this.reputationShown))
+  }
+
+  /** Passenger mood. Applied a little per second so a full bank cannot slam the meter. */
+  private queueReputation(delta: number) {
+    if (!Number.isFinite(delta) || delta === 0) return
+    this.reputationDrift += delta
+  }
+
+  private flushReputation(dt: number) {
+    const step = takeReputationDrift(this.reputationDrift, dt)
+    this.reputationDrift = step.left
+    if (step.apply !== 0) this.reputation = clampReputation(this.reputation + step.apply)
+    else this.reputation = clampReputation(this.reputation)
+    this.reputationShown = smoothReputation(this.reputationShown, this.reputation, dt)
   }
 
   fieldRatingLabel(): string {
@@ -4957,7 +4985,9 @@ export class Game {
       this.playtestYear.restore(s.playtestYear, this.paxServed)
       this.revenue = s.revenue
       this.securityIncidents = s.securityIncidents ?? 0
-      this.reputation = s.reputation ?? 40
+      this.reputation = clampReputation(s.reputation ?? 40)
+      this.reputationShown = this.reputation
+      this.reputationDrift = 0
       this.loanBalance = s.loanBalance ?? 0
       this.loanProductId = s.loanProductId ?? (this.loanBalance > 0 ? 'bridge' : null)
       this.loanPrincipal = s.loanPrincipal ?? (this.loanBalance > 0 ? LOAN_PRINCIPAL : 0)
@@ -7331,7 +7361,7 @@ export class Game {
         g.dead = true
         g.thought = 'Boarded'
         this.paxServed += 1
-        this.reputation = Math.min(100, this.reputation + 0.4)
+        this.queueReputation(0.4)
         continue
       }
       if (
@@ -7586,7 +7616,7 @@ export class Game {
         g.happiness -= 30
         g.dead = true
         g.lost = false
-        this.reputation = Math.max(0, this.reputation - 0.8)
+        this.queueReputation(-0.8)
         const aid = this.guestAirlineId(g)
         if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
         this.hallMissNews(
@@ -10672,10 +10702,7 @@ export class Game {
       }
       g.dead = true
       this.paxServed += 1
-      this.reputation = Math.min(
-        100,
-        this.reputation + (g.happiness >= 55 ? 0.35 : 0.1),
-      )
+      this.queueReputation(g.happiness >= 55 ? 0.35 : 0.1)
     }
   }
 
@@ -18497,6 +18524,7 @@ export class Game {
 
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     // At 5× the canvases keep drawing, but the HUD string updates about once a second.
+    this.flushReputation(step)
     this.uiAcc += step
     const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {

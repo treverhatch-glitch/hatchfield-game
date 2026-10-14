@@ -455,6 +455,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
         </div>
+        <div className="stat" data-testid="reputation-stat" title="Public reputation, 0 to 100">
+          Rep <LiveText read={() => `${game.reputationDisplay()}%`} />
+        </div>
         <div
           className={`stat${alerts.length ? ' alert' : ''}`}
           title={alerts.join(' · ') || 'No alerts'}
