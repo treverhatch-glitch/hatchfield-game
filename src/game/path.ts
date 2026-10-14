@@ -112,16 +112,26 @@ export function walkableFor(
   )
 }
 
+function cellOpen(
+  tiles: Tile[][],
+  c: number,
+  r: number,
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  pass?: (c: number, r: number) => boolean,
+): boolean {
+  return inBounds(c, r) && walkableFor(kind, tiles[r][c]) && (!pass || pass(c, r))
+}
+
 export function astar(
   tiles: Tile[][],
   start: Vec,
   goal: Vec,
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  pass?: (c: number, r: number) => boolean,
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return null
   if (start.c === goal.c && start.r === goal.r) return [start]
-  if (!walkableFor(kind, tiles[start.r][start.c])) return null
-  if (!walkableFor(kind, tiles[goal.r][goal.c])) return null
+  if (!cellOpen(tiles, start.c, start.r, kind, pass) || !cellOpen(tiles, goal.c, goal.r, kind, pass)) return null
 
   // Cells are indexed r * SIZE + c in reused scratch arrays. A cell's g/came/open entries
   // count only when its stamp matches this call, so nothing is cleared or allocated per search.
@@ -164,7 +174,7 @@ export function astar(
     for (const d of DIRS) {
       const nc = pc + d.c
       const nr = pr + d.r
-      if (!inBounds(nc, nr) || !walkableFor(kind, tiles[nr][nc])) continue
+      if (!cellOpen(tiles, nc, nr, kind, pass)) continue
       const n = nr * SIZE + nc
       const step = kind === 'person' ? personStepCost(tiles[nr][nc]) : 1
       const ng = searchG[cur] + step
@@ -276,6 +286,65 @@ export function farmBesidePavement(tiles: Tile[][], farm: Vec): boolean {
     const t = tiles[n.r][n.c]
     return t === 'taxi' || t === 'stand' || t === 'runway' || t === 'road'
   })
+}
+
+const CURB: ReadonlySet<Tile> = new Set(['road', 'bus'])
+
+/** A terminal cell with a road or bus curb on one side — the only door apron pax may use. */
+export function isPaxEntrance(tiles: Tile[][], c: number, r: number): boolean {
+  if (!inBounds(c, r) || tiles[r][c] !== 'terminal') return false
+  return neighbors(c, r).some((n) => CURB.has(tiles[n.r][n.c]))
+}
+
+/**
+ * Ground cells for apron passengers. Interior terminal, skywalks and travelators
+ * are closed so a walker cannot cut across the roof. Door cells stay open.
+ */
+export function paxGround(tiles: Tile[][], c: number, r: number): boolean {
+  if (!inBounds(c, r)) return false
+  const tile = tiles[r][c]
+  if (tile === 'skywalk' || tile === 'travelator' || tile === 'grass') return false
+  if (tile === 'terminal') return isPaxEntrance(tiles, c, r)
+  return walkableFor('person', tile)
+}
+
+/** Shortest ground walk. Null when the only route would leave the pavement or cross the roof. */
+export function paxPath(tiles: Tile[][], from: Vec, to: Vec): Vec[] | null {
+  return astar(tiles, from, to, 'person', (c, r) => paxGround(tiles, c, r))
+}
+
+/** True when every step is on a jet tile and no step cuts a corner or a chord. */
+export function jetRouteOnGraph(tiles: Tile[][], path: readonly Vec[]): boolean {
+  if (path.length < 2) return false
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]
+    const b = path[i]
+    const ac = Math.round(a.c)
+    const ar = Math.round(a.r)
+    const bc = Math.round(b.c)
+    const br = Math.round(b.r)
+    if (!inBounds(ac, ar) || !inBounds(bc, br)) return false
+    if (!walkableFor('jet', tiles[ar][ac]) || !walkableFor('jet', tiles[br][bc])) return false
+    if (Math.abs(ac - bc) + Math.abs(ar - br) > 1) return false
+  }
+  return true
+}
+
+/** Road or bus cells that share an edge with a terminal door. */
+export function landsideCurbs(tiles: Tile[][]): Vec[] {
+  const out: Vec[] = []
+  const seen = new Set<string>()
+  for (const door of tilesOf(tiles, 'terminal')) {
+    if (!isPaxEntrance(tiles, door.c, door.r)) continue
+    for (const n of neighbors(door.c, door.r)) {
+      if (!CURB.has(tiles[n.r][n.c])) continue
+      const k = key(n.c, n.r)
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push(n)
+    }
+  }
+  return out
 }
 
 /**
