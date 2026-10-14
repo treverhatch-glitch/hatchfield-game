@@ -1240,3 +1240,20 @@ export const MOVING_TRAYS: Partial<Record<TerminalPropType, TrayTrack[]>> = {
     { x0: 5.5, x1: -6.4, y: 0.39, z: -0.55, n: 5, speed: 0.55 },
   ],
 }
+
+/**
+ * Animated tray tracks in prop-local metres: trays slide x0 → x1 at belt
+ * height y on line z, `n` trays evenly spaced, `speed` m/s.
+ */
+export interface TrayTrack { x0: number; x1: number; y: number; z: number; n: number; speed: number }
+export const MOVING_TRAYS: Partial<Record<TerminalPropType, TrayTrack[]>> = {
+  xray_machine: [{ x0: -3.0, x1: 3.2, y: 0.85, z: 0, n: 5, speed: 0.35 }],
+  security_lane: [
+    { x0: -3.0, x1: 3.2, y: 0.85, z: 0, n: 5, speed: 0.35 },
+    { x0: 4.2, x1: -4.2, y: 0.39, z: -0.7, n: 4, speed: 0.5 },
+  ],
+  security_lane_ct: [
+    { x0: -6.8, x1: 4.0, y: 0.9, z: 0, n: 7, speed: 0.4 },
+    { x0: 5.5, x1: -6.4, y: 0.39, z: -0.55, n: 5, speed: 0.55 },
+  ],
+}
