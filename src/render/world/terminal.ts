@@ -41,11 +41,25 @@ const PROP_COLORS: Record<string, number> = {
 const UNLIT = new Set(['screen', 'lamp'])
 import { pickLod, stepFade } from './lod'
 import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
-import { type RoomKind, type RoomPlan } from './rooms'
+import { roomAt, type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
-import { textTexture, type WorldTextures } from './textures'
+import { type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { CELL, cellX, cellZ } from './view'
+import {
+  DESK_KINDS,
+  hiddenKey,
+  hiddenRooms,
+  makeSignMesh,
+  packSigns,
+  roomSpheres,
+  visibleInstances,
+  writeDeskInstances,
+  writeSignInstances,
+  type RoomSphere,
+  type SignInstance,
+  type SignStamp,
+} from './roomDraw'
 
 /** Authored shell sizes are meters. */
 const m = (meters: number) => meters * WORLD_PER_METER
@@ -169,6 +183,22 @@ export class TerminalBuilding {
   private glassWallMat: THREE.MeshLambertMaterial | null = null
   private wallMats: THREE.Material[] = []
   private nearCut = false
+  /** Merged full-height walls. Shown whenever the cutaway is not animating. */
+  private staticWalls: THREE.Mesh | null = null
+  private staticGlass: THREE.Mesh | null = null
+  private signQueue: (SignStamp & { into: 'shell' | 'props' })[] = []
+  private signSets: { mesh: THREE.InstancedMesh; items: SignInstance[] }[] = []
+  private signTextures: THREE.Texture[] = []
+  private deskSets: { mesh: THREE.InstancedMesh; items: { matrix: THREE.Matrix4; room: number }[] }[] = []
+  private roomBalls: RoomSphere[] = []
+  private hiddenRooms = new Set<number>()
+  private hiddenSig = ''
+  private poseKey = ''
+  private roofTarget = 1
+  private propTarget = 0
+  private lifeTarget = 0
+  private readonly frustum = new THREE.Frustum()
+  private readonly projView = new THREE.Matrix4()
 
   constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number }) {
     this.info = info
@@ -214,6 +244,9 @@ export class TerminalBuilding {
     this.buildProps()
     this.buildRooms(opts.index)
     this.buildLife()
+    this.flushSigns()
+    this.roomBalls = roomSpheres(this.plan.rooms, FLOOR_Y + WALL_H * 0.5)
+    this.syncWallMode()
   }
 
   /** Swap in the SVG pack once it has decoded. Procedural maps stay until then. */
@@ -352,23 +385,42 @@ export class TerminalBuilding {
     this.buildSigns(index)
   }
 
-  private sign(text: string, w: number, h: number, bg = '#13293d', fg = '#f4f6f8'): THREE.Material {
-    const key = `${text}|${bg}|${fg}`
-    if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, textTexture(text, { bg, fg, w: 512, h: Math.round((512 * h) / w) }))
-    const tex = this.shared.signCache.get(key) ?? null
-    const m = new THREE.MeshBasicMaterial(tex ? { map: tex } : { color: new THREE.Color(bg) })
-    this.owned.mats.push(m)
-    return m
+  private queueSign(
+    text: string,
+    w: number,
+    h: number,
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    into: 'shell' | 'props',
+    room = -1,
+    bg = '#13293d',
+    fg = '#f4f6f8',
+  ) {
+    this.signQueue.push({ text, bg, fg, w, h, x, y, z, yaw, room, into })
   }
 
-  private plane(w: number, h: number, mat: THREE.Material, x: number, y: number, z: number, yaw: number, into: THREE.Group) {
-    const g = new THREE.PlaneGeometry(w, h)
-    this.owned.geos.push(g)
-    const m = new THREE.Mesh(g, mat)
-    m.position.set(x, y, z)
-    m.rotation.y = yaw
-    into.add(m)
-    return m
+  /** One instanced mesh per parent. Shell signs and room signs do not share a material, so a prop fade cannot blank the fascia. */
+  private flushSigns() {
+    for (const into of ['shell', 'props'] as const) {
+      const stamps = this.signQueue.filter((s) => s.into === into)
+      if (!stamps.length) continue
+      const packed = packSigns(stamps)
+      const mesh = makeSignMesh(packed, into === 'shell' ? 'shell-signs' : 'room-sign')
+      if (!mesh) {
+        packed.texture?.dispose()
+        continue
+      }
+      if (packed.texture) this.signTextures.push(packed.texture)
+      this.owned.geos.push(mesh.geometry)
+      const mat = mesh.material as THREE.Material
+      this.owned.mats.push(mat)
+      if (into === 'props') this.propMats.push(mat)
+      ;(into === 'shell' ? this.shell : this.props).add(mesh)
+      this.signSets.push({ mesh, items: packed.instances })
+    }
+    this.signQueue = []
   }
 
   private buildSigns(index: number) {
@@ -382,39 +434,45 @@ export class TerminalBuilding {
       const v = DIR_VEC[land]
       const w = Math.min(m(14), landEdges.length * m(8))
       const h = m(1.4)
-      this.plane(
+      this.queueSign(
+        `TERMINAL ${index + 1}`,
         w,
         h,
-        this.sign(`TERMINAL ${index + 1}`, w, h, '#13293d', '#f2c14a'),
         cellX(mid.c) + v.dc * (CELL * 0.5 + m(0.4)),
         m(3.6),
         cellZ(mid.r) + v.dr * (CELL * 0.5 + m(0.4)),
         yawOut(land),
-        this.shell,
+        'shell',
+        -1,
+        '#13293d',
+        '#f2c14a',
       )
       const dep = landEdges[0]
-      this.plane(
+      this.queueSign(
+        'DEPARTURES',
         m(4.8),
         m(0.7),
-        this.sign('DEPARTURES', m(4.8), m(0.7), '#c9a227', '#13293d'),
         cellX(dep.c) + v.dc * (CELL * 0.5 + m(2.4)),
         m(2.45),
         cellZ(dep.r) + v.dr * (CELL * 0.5 + m(2.4)),
         yawOut(land),
-        this.shell,
+        'shell',
+        -1,
+        '#c9a227',
+        '#13293d',
       )
     }
     airEdges.forEach((e, i) => {
       const v = DIR_VEC[airside]
-      this.plane(
+      this.queueSign(
+        `GATE ${String.fromCharCode(65 + index)}${i + 1}`,
         m(2.8),
         m(0.7),
-        this.sign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, m(2.8), m(0.7), '#1b4f72', '#ffffff'),
         cellX(e.c) + v.dc * (CELL * 0.5 + m(0.4)),
         m(3.6),
         cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4)),
         yawOut(airside),
-        this.shell,
+        'shell',
       )
     })
   }
@@ -447,6 +505,7 @@ export class TerminalBuilding {
         full: w.kind === 'glass' ? GLASS_WALL_H : WALL_H,
         header: !!w.header,
         h: -1,
+        rested: false,
       }
       ;(w.kind === 'glass' ? glass : solid).push(inst)
     }
@@ -463,6 +522,8 @@ export class TerminalBuilding {
     add(solid, solidM, 'room-walls', solid.map((w) => (w.header ? 0x46525e : 0xece6dc)))
     add(glass, glassM, 'room-glass')
     for (const set of this.wallSets) this.layoutWalls(set, 1)
+    this.staticWalls = this.bakeWalls(solid, false)
+    this.staticGlass = this.bakeWalls(glass, true)
 
     const land = landsideSide(this.info.airside)
     const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
@@ -470,14 +531,49 @@ export class TerminalBuilding {
       const text = room.kind === 'gate' ? room.label.replace('GATE ', `GATE ${String.fromCharCode(65 + index)}`) : room.label
       const w = Math.min(m(4.2), m(0.7) + text.length * m(0.18))
       const h = m(0.55)
-      const mat = this.sign(text, w, h, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
-      this.propMats.push(mat)
       // Back-to-back so the label reads from either side of the hall.
       for (const [o, a] of [[m(0.02), yaw], [-m(0.02), yaw + Math.PI]] as [number, number][]) {
-        const sign = this.plane(w, h, mat, room.x + Math.sin(yaw) * o, WALL_H + m(0.35), room.z + Math.cos(yaw) * o, a, this.props)
-        sign.name = 'room-sign'
+        this.queueSign(
+          text,
+          w,
+          h,
+          room.x + Math.sin(yaw) * o,
+          WALL_H + m(0.35),
+          room.z + Math.cos(yaw) * o,
+          a,
+          'props',
+          room.id,
+          '#0e2233',
+          SIGN_FG[room.kind] ?? '#ffffff',
+        )
       }
     }
+  }
+
+  /** Full-height walls as one mesh. The instanced set only runs while the cutaway is moving. */
+  private bakeWalls(list: WallInst[], glass: boolean): THREE.Mesh | null {
+    const pieces: BakePiece[] = []
+    for (const w of list) {
+      const sx = w.alongX ? w.len : WALL_T
+      const sz = w.alongX ? WALL_T : w.len
+      const hh = w.header ? w.full - DOOR_H : w.full
+      if (hh <= 0.02) continue
+      const y = w.header ? FLOOR_Y + DOOR_H : FLOOR_Y
+      pieces.push({
+        geo: this.shared.beam,
+        matrix: trs(w.x, y, w.z, 0, sx, hh, sz),
+        color: glass ? 0xb8d8ea : w.header ? 0x46525e : 0xece6dc,
+      })
+    }
+    if (!pieces.length) return null
+    if (glass && this.glassWallMat) {
+      const mesh = this.bakedMesh(pieces, this.glassWallMat, this.props, 'room-glass-static', true, true)
+      return mesh
+    }
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true })
+    this.owned.mats.push(mat)
+    this.wallMats.push(mat)
+    return this.bakedMesh(pieces, mat, this.props, 'room-walls-static', true, true)
   }
 
   /** Lower walls on the camera side (and everything when very close) so rooms never block the view. */
@@ -502,6 +598,7 @@ export class TerminalBuilding {
           else target = Math.min(w.full, WALL_MID)
         }
         const h = w.h < 0 ? target : w.h + (target - w.h) * k
+        w.rested = Math.abs(h - target) < 1e-2
         if (Math.abs(h - w.h) > 1e-3) {
           w.h = h
           dirty = true
@@ -514,7 +611,10 @@ export class TerminalBuilding {
   private layoutWalls(set: { mesh: THREE.InstancedMesh; walls: WallInst[] }, init: number) {
     const m = new THREE.Matrix4()
     set.walls.forEach((w, i) => {
-      if (init) w.h = w.full
+      if (init) {
+        w.h = w.full
+        w.rested = true
+      }
       const sx = w.alongX ? w.len : WALL_T
       const sz = w.alongX ? WALL_T : w.len
       if (w.header) {
@@ -532,8 +632,19 @@ export class TerminalBuilding {
     const unlit: BakePiece[] = []
     const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
+    const desks = new Map<string, { geo: THREE.BufferGeometry; mat: string; items: { matrix: THREE.Matrix4; room: number }[] }>()
     for (const p of this.plan.props) {
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
+      const room = roomAt(this.plan.rooms, p.x, p.z)?.id ?? -1
+      if (DESK_KINDS.has(p.kind)) {
+        for (const part of this.shared.parts[p.kind] ?? []) {
+          const key = `${p.kind}:${part.mat}`
+          const list = desks.get(key) ?? { geo: part.geo, mat: part.mat, items: [] }
+          list.items.push({ matrix, room })
+          desks.set(key, list)
+        }
+        continue
+      }
       for (const part of this.shared.parts[p.kind] ?? []) {
         if (part.mat === 'board') {
           boards.push(matrix)
@@ -551,6 +662,20 @@ export class TerminalBuilding {
     }
     this.bakedMesh(lit, own(new THREE.MeshLambertMaterial({ vertexColors: true })), this.props, 'props-lit')
     this.bakedMesh(unlit, own(new THREE.MeshBasicMaterial({ vertexColors: true })), this.props, 'props-unlit')
+    for (const list of desks.values()) {
+      const src = this.shared.palette[list.mat]
+      const mat = src ? src.clone() : new THREE.MeshLambertMaterial({ color: PROP_COLORS[list.mat] ?? 0xffffff })
+      own(mat)
+      const mesh = instanced(
+        list.geo,
+        mat,
+        list.items.map((item) => item.matrix),
+      )
+      mesh.name = 'props-desks'
+      mesh.frustumCulled = false
+      this.props.add(mesh)
+      this.deskSets.push({ mesh, items: list.items })
+    }
     // Ceiling lamps hang from the roof, so they leave with it in the cutaway.
     const lampM = new THREE.MeshBasicMaterial({ vertexColors: true })
     this.owned.mats.push(lampM)
@@ -625,6 +750,8 @@ export class TerminalBuilding {
   /**
    * Per frame: LOD pick from camera distance, fades, walkers, night glow.
    * `enclosed` is the airport view: the roof stays on and the walls stay up.
+   * A still camera with settled fades skips the rebuild. Off-screen rooms drop
+   * their signs and desks; the merged walls stay one draw.
    */
   update(
     camPos: THREE.Vector3,
@@ -633,33 +760,133 @@ export class TerminalBuilding {
     night: number,
     focus?: { x: number; z: number },
     enclosed = false,
+    camera?: THREE.Camera,
   ) {
+    const look = focus ?? { x: this.center.x, z: this.center.z }
+    const pose = interiorPoseKey(camPos, look, lodScale, night, enclosed)
+    if (pose === this.poseKey && this.settled()) return
+    this.poseKey = pose
+
     const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
     const close = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
     // Hall view only: close and above the roof lifts it off. Airport view stays enclosed.
     const cut = !enclosed && close && camPos.y > ROOF_Y + m(1.5)
     this.nearCut = !enclosed && close
-    this.roofFade = stepFade(this.roofFade, cut ? 0 : 1, dt, 1.1)
+    this.roofTarget = cut ? 0 : 1
+    this.propTarget = this.lod <= 1 ? 1 : 0
+    this.lifeTarget = this.lod === 0 ? 1 : 0
+    this.roofFade = stepFade(this.roofFade, this.roofTarget, dt, 1.1)
     applyFade(this.roof, this.roofMats, this.roofFade)
     // Lift as it fades so the cutaway reads as the roof coming off, not blinking out.
     const lift = 1 - this.roofFade
     this.roof.position.y = lift * lift * m(4)
     this.skyMat.opacity = 0.18 * this.roofFade
-    this.propFade = stepFade(this.propFade, this.lod <= 1 ? 1 : 0, dt, 3)
-    this.lifeFade = stepFade(this.lifeFade, this.lod === 0 ? 1 : 0, dt, 3)
+    this.propFade = stepFade(this.propFade, this.propTarget, dt, 3)
+    this.lifeFade = stepFade(this.lifeFade, this.lifeTarget, dt, 3)
     applyFade(this.props, this.propMats, this.propFade)
     applyFade(this.props, this.wallMats, this.propFade)
     if (this.glassWallMat) this.glassWallMat.opacity = 0.4 * this.propFade
-    if (this.propFade > 0) this.stepWalls(camPos, focus ?? { x: this.center.x, z: this.center.z }, dt)
+    if (!this.nearCut && this.propFade < 0.001) this.snapWallsFull()
+    else if (this.propFade > 0 && (this.nearCut || !this.wallsFull())) this.stepWalls(camPos, look, dt)
+    this.syncWallMode()
     applyFade(this.life, this.lifeMats, this.lifeFade)
     this.time += dt
     if (this.lifeFade > 0) this.stepWalkers(this.time)
+    if (this.propFade > 0.001) this.cullInterior(camera)
     this.floorMat.emissiveIntensity = night * 0.32
     // Curtain wall reads as lit rooms once the sun is down. Day stays at the clear 0.3.
     this.glassMat.opacity = 0.3 + night * 0.22
     this.glassMat.emissiveIntensity = night * 1.05
     this.skyMat.emissiveIntensity = night * 0.25
+  }
+
+  /** True once fades, walls, and walkers have nothing left to animate. */
+  settled(): boolean {
+    if (this.walkers.length > 0 && this.lifeFade > 0.001) return false
+    if (Math.abs(this.roofFade - this.roofTarget) > 1e-3) return false
+    if (Math.abs(this.propFade - this.propTarget) > 1e-3) return false
+    if (Math.abs(this.lifeFade - this.lifeTarget) > 1e-3) return false
+    return this.wallsResting()
+  }
+
+  /** Instanced signs and desks, plus the merged wall meshes, for the draw budget. */
+  drawBudget() {
+    let signInstances = 0
+    let deskInstances = 0
+    for (const set of this.signSets) signInstances += set.mesh.count
+    for (const set of this.deskSets) deskInstances += set.mesh.count
+    return {
+      signMeshes: this.signSets.length,
+      signInstances,
+      deskMeshes: this.deskSets.length,
+      deskInstances,
+      staticWalls: this.staticWalls ? 1 : 0,
+      staticGlass: this.staticGlass ? 1 : 0,
+      hiddenRooms: this.hiddenRooms.size,
+    }
+  }
+
+  /** Merged full-height walls while the cutaway is still. Instanced walls only while they move. */
+  private syncWallMode() {
+    const animate = this.nearCut || !this.wallsFull()
+    for (const set of this.wallSets) set.mesh.visible = animate
+    if (this.staticWalls) this.staticWalls.visible = !animate
+    if (this.staticGlass) this.staticGlass.visible = !animate
+  }
+
+  private wallsFull(): boolean {
+    for (const set of this.wallSets) {
+      for (const w of set.walls) if (Math.abs(w.h - w.full) > 1e-2) return false
+    }
+    return true
+  }
+
+  private wallsResting(): boolean {
+    for (const set of this.wallSets) {
+      for (const w of set.walls) if (!w.rested) return false
+    }
+    return true
+  }
+
+  /** Zoomed-out frames hide the interior, so put every wall back to full height in one step. */
+  private snapWallsFull() {
+    for (const set of this.wallSets) {
+      let dirty = false
+      for (const w of set.walls) {
+        if (w.rested && Math.abs(w.h - w.full) <= 1e-3) continue
+        w.h = w.full
+        w.rested = true
+        dirty = true
+      }
+      if (dirty) this.layoutWalls(set, 0)
+    }
+  }
+
+  /** Drop signs and desks whose room sphere misses the camera. Shell signs stay. */
+  private cullInterior(camera?: THREE.Camera) {
+    if (!camera) {
+      if (!this.hiddenSig) return
+      this.hiddenRooms = new Set()
+      this.hiddenSig = ''
+      this.applyHidden()
+      return
+    }
+    camera.updateMatrixWorld()
+    this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    this.frustum.setFromProjectionMatrix(this.projView)
+    this.props.updateWorldMatrix(true, true)
+    const hidden = hiddenRooms(this.roomBalls, this.props.matrixWorld, this.frustum)
+    const sig = hiddenKey(hidden)
+    if (sig === this.hiddenSig) return
+    this.hiddenRooms = hidden
+    this.hiddenSig = sig
+    this.applyHidden()
+  }
+
+  private applyHidden() {
+    for (const set of this.signSets) writeSignInstances(set.mesh, visibleInstances(set.items, this.hiddenRooms))
+    for (const set of this.deskSets) writeDeskInstances(set.mesh, set.items, this.hiddenRooms)
   }
 
   setShadows(on: boolean) {
@@ -685,6 +912,8 @@ export class TerminalBuilding {
   }
 
   dispose() {
+    for (const t of this.signTextures) t.dispose()
+    this.signTextures = []
     for (const g of this.owned.geos) g.dispose()
     for (const m of this.owned.mats) m.dispose()
     this.root.traverse((o) => {
@@ -692,6 +921,17 @@ export class TerminalBuilding {
     })
     this.root.removeFromParent()
   }
+}
+
+function interiorPoseKey(
+  cam: THREE.Vector3,
+  focus: { x: number; z: number },
+  lodScale: number,
+  night: number,
+  enclosed: boolean,
+): string {
+  const q = (n: number) => Math.round(n * 20)
+  return [q(cam.x), q(cam.y), q(cam.z), q(focus.x), q(focus.z), Math.round(lodScale * 100), Math.round(night * 50), enclosed ? 1 : 0].join(',')
 }
 
 export function landsideSide(airside: 'n' | 's' | 'e' | 'w'): 'n' | 's' | 'e' | 'w' {
@@ -722,6 +962,8 @@ interface WallInst {
   header: boolean
   /** Current animated height. */
   h: number
+  /** Height has caught the cutaway target, so the mesh can sit still. */
+  rested: boolean
 }
 
 /** Terrazzo floor tinted per room, runs merged per row, darker thresholds at doorways. */

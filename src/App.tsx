@@ -259,14 +259,21 @@ function CanvasLayers() {
     () => 'apron',
   )
   const view = game.view
+  // The hall is a second WebGL context. On SwiftShader that context switch
+  // shows up in the compositor even while the canvas is hidden, so it stays
+  // unmounted until the player opens Terminal, then it stays warm.
+  const [hallLive, setHallLive] = useState(view === 'hall')
+  if (view === 'hall' && !hallLive) setHallLive(true)
   return (
     <>
       <div className={`view-layer ${view === 'apron' ? 'live' : 'dim'}`}>
         <Field game={game} />
       </div>
-      <div className={`view-layer ${view === 'hall' ? 'live' : 'dim'}`}>
-        <TerminalView game={game} />
-      </div>
+      {hallLive ? (
+        <div className={`view-layer ${view === 'hall' ? 'live' : 'dim'}`}>
+          <TerminalView game={game} />
+        </div>
+      ) : null}
     </>
   )
 }

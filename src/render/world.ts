@@ -264,6 +264,7 @@ export class World {
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = graphicsQuality()
     setAircraftQuality(quality)
+    markGraphicsPreset(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -518,6 +519,7 @@ export class World {
   setGraphicsQuality(level: QualityLevel) {
     this.applyGraphicsQuality(level)
     chooseGraphicsQuality(level)
+    markGraphicsPreset(level)
   }
 
   /** Settings and F8. Aircraft detail follows the same preset. */
@@ -2507,6 +2509,11 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
+/** Low preset drops the HUD backdrop blur. Med and high keep it. See index.css. */
+function markGraphicsPreset(level: QualityLevel) {
+  const root = globalThis.document?.documentElement
+  if (root) root.dataset.gfx = level
+}
 /** Cycles low → med → high. Function key, so it never collides with typing or camera keys. */
 const GFX_CYCLE_KEY = 'F8'
 
