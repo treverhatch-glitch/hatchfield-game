@@ -154,6 +154,20 @@ const context = await chromium.launchPersistentContext(join(OUT, 'profile'), {
   args: TUNE.chromeArgs,
 })
 const page = context.pages()[0] ?? (await context.newPage())
+
+/** Headless world audit. A missing game (crash before boot) leaves the log alone. */
+async function pullWorldAudit() {
+  try {
+    L.worldViolations = await page.evaluate(() => {
+      const hatch = window.__hatch
+      const rows = hatch && typeof hatch.worldAudit === 'function' ? hatch.worldAudit() : []
+      return (rows ?? []).map((v) => ({ rule: v.rule, c: v.c, r: v.r, message: v.message }))
+    })
+  } catch {
+    /* page may already be gone */
+  }
+}
+
 const simNow = () => L.endT
 page.on('pageerror', (e) => L.consoleErrors.push({ t: simNow(), text: `pageerror: ${e.message}` }))
 page.on('console', (m) => {
@@ -790,6 +804,7 @@ try {
   writeCheckpoint({ ...snap, day: Math.floor(snap.clock / SEC_PER_DAY) }, true)
   await page.evaluate(() => window.__hatch.persist?.())
   S.wallMinutes += (Date.now() - wallStart) / 60000
+  await pullWorldAudit()
 
   const findings = runChecks(L, cfg)
   writeFileSync(join(OUT, 'findings.json'), JSON.stringify(findings, null, 2))
@@ -806,6 +821,7 @@ try {
   S.wallMinutes += (Date.now() - wallStart) / 60000
   saveState()
   try {
+    await pullWorldAudit()
     const findings = runChecks(L, cfg)
     writeFileSync(join(OUT, 'findings.json'), JSON.stringify(findings, null, 2))
     writeReport(findings, Math.floor(L.endT / SEC_PER_DAY), S.wallMinutes)

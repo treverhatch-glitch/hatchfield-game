@@ -91,6 +91,26 @@ button {
   animation: coach-in 0.2s ease-out;
 }
 
+.placement-reason {
+  position: absolute;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  z-index: 18;
+  pointer-events: none;
+  max-width: min(520px, 86vw);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(42, 12, 14, 0.92);
+  border: 1px solid rgba(232, 96, 90, 0.7);
+  color: #ffd7d4;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
 .inspect-card header {
   display: flex;
   justify-content: space-between;
@@ -3052,6 +3072,7 @@ h1.game-title::after {
 .shell.photo-mode .hud,
 .shell.photo-mode .owner-chrome,
 .shell.photo-mode .inspect-card,
+.shell.photo-mode .placement-reason,
 .shell.photo-mode .hall-chrome,
 .shell.photo-mode .hall-build,
 .shell.photo-mode .kit-bar,

@@ -1,5 +1,5 @@
 import { finiteAmount } from '../disruptions/engine.ts'
-import { footprintBlock } from './buildingFootprint.ts'
+import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
 import { OPS_ALERT_PREFIX, OpsEventRunner, opsAlertText, type ActiveOpsEvent } from '../content/events_ops.ts'
@@ -159,8 +159,7 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
-import { clearanceBlocks } from './runwayClearance'
-import { footprintCells, placementHitsStand, standPlaceBlock } from './standFoot'
+import { footprintCells } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { bridgeMirror, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
@@ -3713,7 +3712,13 @@ export class Game {
 
   seedAccessStub() {
     // City edge hint — short road stub from north edge so players see the connection idea.
-    for (let r = 0; r < 3; r++) this.tiles[r][Math.floor(SIZE / 2)] = 'road'
+    const c = Math.floor(SIZE / 2)
+    for (let r = 0; r < 3; r++) {
+      const v = { c, r }
+      if (this.tile(v) !== 'grass') continue
+      if (this.placementBlockReason('road', [v], v, 'Access road')) continue
+      this.tiles[r]![c] = 'road'
+    }
   }
 
   /** One-click AT3 field — flavor follows startFocus (pax / cargo / hybrid). */
@@ -3955,8 +3960,15 @@ export class Game {
     }
     if (!this.spend(RAIL_CITY_COST, 'city rail investment')) return
     this.railLinked = true
-    // City builds to the west edge; player sees a stub.
-    for (let c = 0; c < 4; c++) this.tiles[Math.floor(SIZE / 2)][c] = 'road'
+    // City builds to the west edge; player sees a stub. Skip cells that are already built
+    // or that would cut a taxiway, a building, or a runway shoulder.
+    const row = Math.floor(SIZE / 2)
+    for (let c = 0; c < 4; c++) {
+      const v = { c, r: row }
+      if (this.tile(v) !== 'grass') continue
+      if (this.placementBlockReason('road', [v], v, 'Access road')) continue
+      this.tiles[row]![c] = 'road'
+    }
     this.reputation = Math.min(100, this.reputation + 5)
     this.bumpMap()
     this.pushNews(
@@ -15349,6 +15361,7 @@ export class Game {
       }
     }
     const cells = this.prefabRunway(v, klass)
+    const blocked = this.placementBlockReason('runway', cells, v, 'runway')
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
       this.cellsBlocked(cells)
@@ -15359,12 +15372,12 @@ export class Game {
           : klass === 'short'
             ? 'Need a clear plot for the short strip (10×2). Regionals only.'
             : 'Need a clear plot for the runway. Hit Rotate if it hangs off.'
-      this.pushNews(tip, 'bad')
+      this.pushNews(blocked ?? tip, 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'runway')) {
-      this.pushNews('That strip sits inside runway clearance. Leave the shoulder empty.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15412,18 +15425,14 @@ export class Game {
       { c: v.c, r: v.r + 1 },
       { c: v.c + 1, r: v.r + 1 },
     ]
+    const blocked = this.placementBlockReason('terminal', cells, v, 'terminal shell')
     if (cells.some((p) => this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
-      this.pushNews('Need a clear 2×2 for the shell.', 'bad')
+      this.pushNews(blocked ?? 'Need a clear 2×2 for the shell.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
-      this.pushNews('That shell sits inside runway clearance.', 'bad')
-      this.emit()
-      return
-    }
-    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
-      this.pushNews('That shell sits inside a stand footprint.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15453,18 +15462,14 @@ export class Game {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
     }
+    const blocked = this.placementBlockReason('terminal', cells, v, 'premade hall')
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
-      this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
+      this.pushNews(blocked ?? 'Need a clear 3×3 for the premade hall.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
-      this.pushNews('That hall sits inside runway clearance.', 'bad')
-      this.emit()
-      return
-    }
-    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
-      this.pushNews('That hall sits inside a stand footprint.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15535,18 +15540,19 @@ export class Game {
     if (!id) return
     const spec = buildingById(id)
     if (!spec) return
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.siteAt(v)) {
+      this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, [v], 'road')) {
-      this.pushNews(`${spec.name} sits inside runway clearance.`, 'bad')
+    const blocked = this.placementBlockReason(tileForLate(id), [v], v, spec.name)
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (placementHitsStand(this.tiles, [v], tileForLate(id), this.standClass, this.standScale)) {
-      this.pushNews(`${spec.name} sits inside a stand footprint.`, 'bad')
+    if (this.tile(v) !== 'grass') {
+      this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -15618,42 +15624,19 @@ export class Game {
         return
       }
     }
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.siteAt(v)) {
+      this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    const foot = footprintBlock(this.tiles, building.tile, v)
-    if (foot) {
-      this.pushNews(
-        foot === 'road'
-          ? `${building.name} footprint crosses a road.`
-          : `${building.name} footprint leaves the map.`,
-        'bad',
-      )
+    const blocked = this.placementBlockReason(building.tile, [v], v, building.name)
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (building.tile === 'stand') {
-      const why = standPlaceBlock(
-        this.tiles,
-        v,
-        standClassForTool(this.tool) ?? 'M',
-        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-        this.standClass,
-        this.standScale,
-      )
-      if (why) {
-        this.pushNews(why, 'bad')
-        this.emit()
-        return
-      }
-    } else if (clearanceBlocks(this.tiles, [v], building.tile)) {
-      this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
-      this.emit()
-      return
-    } else if (placementHitsStand(this.tiles, [v], building.tile, this.standClass, this.standScale)) {
-      this.pushNews(`${building.name} sits inside a stand footprint.`, 'bad')
+    if (this.tile(v) !== 'grass') {
+      this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -15917,27 +15900,73 @@ export class Game {
     return late ? tileForLate(late) : null
   }
 
-  /** Red ghost when the stamp would pave a runway shoulder or a stand's wings. Taxi stays legal. */
+  /** Tiles, stand classes, and in-progress sites the collision rules can see. */
+  private worldInput() {
+    return {
+      tiles: this.tiles,
+      standClass: this.standClass,
+      standScale: this.standScale,
+      pending: this.sites.map((s) => ({
+        cells: s.cells,
+        tile: s.tile,
+        standClass: s.standClass,
+        standScale: s.standScale,
+      })),
+    }
+  }
+
+  /**
+   * Physical reason a stamp is illegal, or null when the geometry is clear.
+   * Cash, research, and "needs grass" stay with the caller.
+   */
+  placementBlockReason(tile: Tile, cells: Vec[], origin: Vec, name: string): string | null {
+    return placementReason(this.worldInput(), {
+      tile,
+      cells,
+      origin,
+      name,
+      standClass: tile === 'stand' ? (standClassForTool(this.tool) ?? 'M') : undefined,
+      standScale:
+        tile === 'stand'
+          ? standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5)
+          : undefined,
+    })
+  }
+
+  /** Every physical violation on the current field. Construction sites count as built. */
+  worldAudit(): WorldViolation[] {
+    return auditWorld(this.worldInput())
+  }
+
+  /** Sentence for an illegal ghost. Null when the stamp is geometrically legal. */
+  placementGhostReason(): string | null {
+    if (this.tool === 'clear' || this.tool === 'pan') return null
+    const tile = this.placementTile()
+    if (!tile || !this.hover) return null
+    const cells = this.ghostCells(this.hover)
+    if (!cells.length) return null
+    return this.placementBlockReason(tile, cells, this.hover, this.placementName(tile))
+  }
+
+  private placementName(tile: Tile): string {
+    const building = BUILDINGS.find((b) => b.tool === this.tool)
+    if (building) return building.name
+    const lateId = lateIdForTool(this.tool)
+    const lateName = lateId ? buildingById(lateId)?.name : undefined
+    if (lateName) return lateName
+    if (tile === 'runway') return 'runway'
+    return tile
+  }
+
+  /** Red ghost when the stamp would break a physical rule. Taxiways may still cross a shoulder. */
   ghostBlocked(cells: Vec[]): boolean {
     if (this.tool === 'clear') return false
     const tile = this.placementTile()
     if (!tile) return false
-    if (tile === 'runway') return clearanceBlocks(this.tiles, cells, 'runway')
-    if (tile === 'stand') {
-      if (!this.hover) return true
-      return (
-        standPlaceBlock(
-          this.tiles,
-          this.hover,
-          standClassForTool(this.tool) ?? 'M',
-          standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-          this.standClass,
-          this.standScale,
-        ) !== null
-      )
-    }
-    if (clearanceBlocks(this.tiles, cells, tile)) return true
-    return placementHitsStand(this.tiles, cells, tile, this.standClass, this.standScale)
+    if (tile === 'stand' && !this.hover) return true
+    if (!cells.length) return false
+    const origin = this.hover ?? cells[0]!
+    return this.placementBlockReason(tile, cells, origin, this.placementName(tile)) !== null
   }
 
   /** Geometry only — cash and unlocks do not tint the ghost. */

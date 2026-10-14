@@ -39,6 +39,8 @@ Files in this folder are not part of the `tsc -b` project (`tsconfig.app.json` o
 - No lost passengers (`lostPaxCount()`) and no lost bags (`bagsLost`) unless a scenario passes a bound.
 - No aircraft stuck in a taxi/pushback/hold phase for more than twice the alert threshold
   (`ALERT_TUNING.stuckSec` / `holdStuckSec`).
+- No physical-rule violations on the map at the end of the run (`worldAudit`: overlaps, illegal
+  road/taxiway crossings, wingtip clearance, runway strip / RESA, tower line of sight).
 - 30-day scenarios also call `expectBoundedGrowth`: cash on day 30 is at most 3x day 20 (base floored at 25k).
 
 ## Determinism and speed

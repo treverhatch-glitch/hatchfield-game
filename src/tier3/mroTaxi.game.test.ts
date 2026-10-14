@@ -55,11 +55,13 @@ function field(): Game {
   game.mechanics = 16
   game.tiles[23][11] = 'taxi'
   // Starter stands sit on the north apron. This hangar keeps its own short roll-in.
+  // Column 10 is on the tower's sightline to the west threshold, so the bay sits at column 9.
   game.tiles[21][12] = 'stand'
   game.tiles[22][12] = 'taxi'
   game.tiles[23][12] = 'taxi'
+  game.tiles[23][10] = 'taxi'
   game.tool = 'mro'
-  game.placeSingle({ c: 10, r: 23 })
+  game.placeSingle({ c: 9, r: 23 })
   game.tickConstruction(30)
   game.speed = 1
   game.spawnCool = 10_000
@@ -84,9 +86,10 @@ describe('hangar taxi on the apron', () => {
     const bay = game.tier3Snapshot().mro.jobs[0]
     expect(bay?.phase === 'in_bay' || bay?.phase === 'taxi_out' || bay == null).toBe(true)
     const slot = bayOffset('narrow-a', 'narrow')
-    const visitedBay = samples.some((sample) => Math.hypot(sample.x - (10 + slot.c), sample.y - (23 + slot.r)) < 0.35)
+    const hangarC = 9
+    const visitedBay = samples.some((sample) => Math.hypot(sample.x - (hangarC + slot.c), sample.y - (23 + slot.r)) < 0.35)
     expect(visitedBay).toBe(true)
-    const occupiedWhileThere = samples.filter((sample) => Math.hypot(sample.x - (10 + slot.c), sample.y - (23 + slot.r)) < 0.35)
+    const occupiedWhileThere = samples.filter((sample) => Math.hypot(sample.x - (hangarC + slot.c), sample.y - (23 + slot.r)) < 0.35)
     expect(occupiedWhileThere.length).toBeGreaterThan(0)
     expect(game.tier3Snapshot().mro.occupied).toBe(game.tier3.activeJobs().filter((job) => job.phase === 'in_bay' || job.phase === 'taxi_in' || job.phase === 'taxi_out').length)
 
@@ -99,7 +102,7 @@ describe('hangar taxi on the apron', () => {
       game.tick(0.4)
       const job = game.tier3.activeJobs().find((item) => item.aircraftId === flight.id)
       const distStand = Math.hypot(flight.x - 12, flight.y - 21)
-      const distBay = Math.hypot(flight.x - (10 + slot.c), flight.y - (23 + slot.r))
+      const distBay = Math.hypot(flight.x - (hangarC + slot.c), flight.y - (23 + slot.r))
       if (job?.phase === 'taxi_out' && distStand < distBay) backTowardStand = true
       if (!job || distStand < 0.35) leftBay = true
     }
