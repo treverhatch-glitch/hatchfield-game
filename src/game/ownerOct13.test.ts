@@ -89,13 +89,13 @@ describe('owner decisions 13 Oct', () => {
 
   it('lets a fueled aircraft leave when the ramp is short on something else', () => {
     const game = field()
-    game.tiles[10][15] = 'depot'
+    game.tiles[5][6] = 'depot'
     game.bumpMap()
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     f.phase = 'servicing'
     f.phaseTime = 0
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('12,21')
+    expect(f.groundTurn).toBe('11,6')
     f.posted.fuel = true
     f.phase = 'board'
     f.phaseTime = 400

@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { money, STARTER_KIT_COST } from '../../game/catalog.ts'
+import { starterKitPreview } from '../../game/starterLayout.ts'
 import type { Game } from '../../game/sim.ts'
 import { severityOf, worstSeverity, type HintSeverity } from '../../game/hints.ts'
 
@@ -81,7 +82,7 @@ export function HintPanel({ game }: { game: Game }) {
                       onClick={() => game.buildStarterKit()}
                       style={btn}
                     >
-                      Stamp starter kit · {money(STARTER_KIT_COST)}
+                      {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                     </button>
                     {game.starterFreehand ? null : (
                       <button type="button" onClick={() => game.chooseFreehand()} style={{ ...btn, opacity: 0.75 }}>

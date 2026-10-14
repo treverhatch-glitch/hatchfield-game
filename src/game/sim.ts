@@ -150,6 +150,7 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
+import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
@@ -3661,62 +3662,39 @@ export class Game {
     if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
     this.starterKitStamped = true
 
-    if (this.startFocus === 'cargo') {
-      this.buildCargoStarterKit()
+    // Drop the city-edge stub and any stray paint. The stamp is the whole field.
+    for (const row of this.tiles) row.fill('grass')
+    const kit = stampStarterKit(this.tiles, this.startFocus)
+    this.facing = 'h'
+    for (const stand of kit.stands) {
+      const key = `${stand.c},${stand.r}`
+      this.standClass[key] = stand.cls
+      this.standAccess[key] = stand.access
+    }
+
+    if (!kit.terminal) {
+      this.fits = []
+      this.fuelBrand = 'apex'
+      this.fuelLoads = 5
+      this.contractId = 'apex_local'
+      this.tankLitres = seedLitresFromLoads(5)
+      this.caterBrand = null
+      this.mechanics = 1
+      this.spawnMechanicPawn()
+      this.deskStaff = 0
+      this.hallStaff = []
+      this.offerCool = 2
+      this.spawnCool = 5
+      this.cargoVolumeCool = 18
+      this.pushNews(`${kit.label} down — ${kit.summary}`, 'good')
+      this.bumpMap()
+      this.persist()
+      this.emit()
       return
     }
 
-    this.facing = 'h'
-    // Five cells south of the stands: a code-F wing at the visual scale clears the strip.
-    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
-    this.tiles[21][8] = 'fuel'
-    this.tiles[21][9] = 'road'
-    this.tiles[21][10] = 'bags'
-    this.tiles[17][14] = 'snack'
-    this.tiles[20][8] = 'fire'
-    this.tiles[17][11] = 'tower'
-    // Road from north city edge down to the hall
-    const roadC = 16
-    for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
-    // Curb three cells north of the stands, clear of a code-F nose.
-    for (let c = 8; c <= 22; c++) this.tiles[18][c] = 'road'
-    // Nose spurs so a mechanic can leave a stand. The wing rows stay grass.
-    for (let r = 19; r <= 20; r++) this.tiles[r][9] = 'road'
-    this.tiles[20][12] = 'road'
-    this.tiles[19][13] = 'road'
-    this.tiles[20][13] = 'road'
-    for (let r = 19; r <= 20; r++) this.tiles[r][20] = 'road'
-    // Guard post on the city approach — screens inbound cargo trucks.
-    this.tiles[3][roadC] = 'guard'
-    // Cargo shed on a road stub (city trucks → guard → shed).
-    this.tiles[10][roadC + 1] = 'road'
-    this.tiles[10][roadC + 2] = 'cargo'
-    // Taxi link so freighter GSE can reach the shed. It stops at the curb.
-    for (let r = 11; r <= 17; r++) this.tiles[r][roadC + 2] = 'taxi'
-    // Premade hall touching the curb + road (c15–17, r19–21)
-    const origin = { c: 15, r: 19 }
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) this.tiles[origin.r + r][origin.c + c] = 'terminal'
-    }
-    // Stands AFTER hall so they are not overwritten by the 3×3 terminal stamp.
-    this.tiles[21][12] = 'stand'
-    this.tiles[21][20] = 'stand'
-    this.standClass['12,21'] = 'M'
-    this.standClass['20,21'] = 'M'
-    this.standAccess['12,21'] = 'jetway'
-    this.standAccess['20,21'] = 'jetway'
-    // Each stand has its own lead-in. A through-taxi on the next row sits inside a parked wing.
-    for (const c of [12, 20]) {
-      for (let r = 22; r <= 25; r++) this.tiles[r][c] = 'taxi'
-    }
-    // Bag belt: makeup (bags@10) ↔ stands @12/@20 ↔ hall terminals @15–17
-    this.tiles[21][11] = 'belt'
-    this.tiles[21][13] = 'belt'
-    this.tiles[21][14] = 'belt'
-    this.tiles[21][18] = 'belt'
-    this.tiles[21][19] = 'belt'
     this.fits = [
-      emptyFit(origin, true, {
+      emptyFit(kit.terminal, true, {
         checkin: 2,
         security: 2,
         gate: 2,
@@ -3745,53 +3723,7 @@ export class Game {
     // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = 3
     this.spawnCool = 6
-    this.pushNews(
-      this.startFocus === 'hybrid'
-        ? 'Hybrid kit down — hall + guard/cargo road. Day pax, night freight.'
-        : 'Starter kit down — guard post + cargo shed on the city road, lounge, mechanic + desk. Northline should call.',
-      'good',
-    )
-    this.bumpMap()
-    this.persist()
-    this.emit()
-  }
-
-  /** Cargo-first kit — freighter ready, no pax hall required. */
-  private buildCargoStarterKit() {
-    this.facing = 'h'
-    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
-    this.tiles[21][8] = 'fuel'
-    this.tiles[20][8] = 'fire'
-    this.tiles[20][10] = 'police'
-    this.tiles[17][12] = 'tower'
-    const roadC = 14
-    for (let r = 0; r <= 21; r++) this.tiles[r][roadC] = 'road'
-    this.tiles[3][roadC] = 'guard'
-    this.tiles[12][roadC + 1] = 'road'
-    this.tiles[12][roadC + 2] = 'cargo'
-    for (let r = 13; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
-    for (let c = 9; c <= 15; c++) this.tiles[21][c] = 'road'
-    this.tiles[21][16] = 'stand'
-    this.standClass['16,21'] = 'M'
-    this.standAccess['16,21'] = 'remote'
-    for (let r = 22; r <= 25; r++) this.tiles[r][16] = 'taxi'
-    this.fits = []
-    this.fuelBrand = 'apex'
-    this.fuelLoads = 5
-    this.contractId = 'apex_local'
-    this.tankLitres = seedLitresFromLoads(5)
-    this.caterBrand = null
-    this.mechanics = 1
-    this.spawnMechanicPawn()
-    this.deskStaff = 0
-    this.hallStaff = []
-    this.offerCool = 2
-    this.spawnCool = 5
-    this.cargoVolumeCool = 18
-    this.pushNews(
-      'Cargo kit down — strip, freighter stand, guard → shed pipeline. No pax hall. UPPS should call.',
-      'good',
-    )
+    this.pushNews(`${kit.label} down — ${kit.summary}`, 'good')
     this.bumpMap()
     this.persist()
     this.emit()
