@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { inBounds } from '../game/path'
+import { standEntry } from '../game/standFoot'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
@@ -44,6 +45,8 @@ import {
   type QualityLevel,
   type WorldRender,
 } from './world/index'
+import { standBox } from './world/layout'
+import { ROOF_Y } from './world/terminal'
 
 export { CELL }
 
@@ -1560,41 +1563,126 @@ export class World {
 
   syncGhost(game: Game) {
     const h = game.hover
-    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}`
+    const cells = game.ghostCells(h)
+    const ready = game.ghostReady(cells)
+    const preview = game.standPreview()
+    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}|${preview ? `${preview.cls}${preview.scale ?? ''}` : ''}|${ready ? 1 : 0}`
     if (next === this.ghostHash) return
     this.ghostHash = next
     this.clearGhost()
-    const cells = game.ghostCells(game.hover)
+    const tint = ready ? 0x7dff9a : 0xff6b6b
+    const quad = new THREE.MeshBasicMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    })
     const geo = new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95)
     geo.rotateX(-Math.PI / 2)
-    const ok = new THREE.MeshBasicMaterial({
-      color: '#7dff9a',
-      transparent: true,
-      opacity: 0.38,
-    })
-    const bad = new THREE.MeshBasicMaterial({
-      color: '#ff6b6b',
-      transparent: true,
-      opacity: 0.38,
-    })
-    const stampRunway =
-      game.tool === 'runway' ||
-      game.tool === 'runway_heavy' ||
-      game.tool === 'runway_short'
-    const runwayReady =
-      stampRunway &&
-      cells.length > 1 &&
-      cells.every((p) => inBounds(p.c, p.r) && game.tile(p) === 'grass')
-    const shoulder = game.ghostBlocked(cells)
     for (const p of cells) {
-      if (p.c < 0) continue
-      const t = game.tile(p)
-      const clear = t === 'grass' || game.tool === 'clear'
-      const ready = (stampRunway ? runwayReady : clear) && !shoulder
-      const mesh = new THREE.Mesh(geo, ready ? ok : bad)
+      if (!inBounds(p.c, p.r)) continue
+      const mesh = new THREE.Mesh(geo, quad)
       mesh.position.copy(toWorld(p.c, p.r, 0.12))
       this.ghostGroup.add(mesh)
     }
+    this.addGhostPrefab(game, cells, tint)
+  }
+
+  /** Translucent true-size preview. One mesh for a hall or a runway, the aircraft box for a stand. */
+  private addGhostPrefab(game: Game, cells: Vec[], tint: number) {
+    const tile = game.placementTile()
+    if (!tile || !game.hover || !cells.length) return
+    const mat = new THREE.MeshBasicMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+    })
+    const ghostify = (root: THREE.Object3D) => {
+      const dropped: THREE.Material[] = []
+      root.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return
+        const src = o.material
+        if (Array.isArray(src)) dropped.push(...src)
+        else dropped.push(src)
+        o.material = mat
+        o.castShadow = false
+        o.receiveShadow = false
+      })
+      for (const m of new Set(dropped)) {
+        if (m !== mat) m.dispose()
+      }
+    }
+    if (tile === 'runway' || tile === 'taxi' || tile === 'road') {
+      this.ghostGroup.add(this.ghostSlab(cells, tile === 'runway' ? 0.22 : 0.16, mat))
+      return
+    }
+    if (tile === 'terminal') {
+      const slab = this.ghostSlab(cells, ROOF_Y, mat)
+      slab.position.y = ROOF_Y / 2
+      this.ghostGroup.add(slab)
+      return
+    }
+    if (tile === 'stand') {
+      const spec = game.standPreview()
+      if (!spec) return
+      const entry = standEntry(game.tiles, game.hover.c, game.hover.r)
+      const box = standBox({
+        c: game.hover.c,
+        r: game.hover.r,
+        cls: spec.cls,
+        scale: spec.scale ?? undefined,
+        jetway: game.standAccessMode === 'jetway',
+        entry,
+      })
+      const alongX = box.depthAlongX
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(alongX ? box.depth : box.width, 0.16, alongX ? box.width : box.depth),
+        mat,
+      )
+      pad.position.set(box.x, 0.14, box.z)
+      const fuse = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          alongX ? box.depth * 0.72 : box.width * 0.16,
+          1.35,
+          alongX ? box.width * 0.16 : box.depth * 0.72,
+        ),
+        mat,
+      )
+      fuse.position.set(box.x, 0.9, box.z)
+      this.ghostGroup.add(pad, fuse)
+      return
+    }
+    for (const p of cells) {
+      if (!inBounds(p.c, p.r)) continue
+      const built = this.building(tile, toWorld(p.c, p.r, 0))
+      ghostify(built)
+      this.ghostGroup.add(built)
+    }
+  }
+
+  private ghostSlab(cells: Vec[], height: number, mat: THREE.Material): THREE.Mesh {
+    let minC = Infinity
+    let maxC = -Infinity
+    let minR = Infinity
+    let maxR = -Infinity
+    for (const p of cells) {
+      if (!inBounds(p.c, p.r)) continue
+      minC = Math.min(minC, p.c)
+      maxC = Math.max(maxC, p.c)
+      minR = Math.min(minR, p.r)
+      maxR = Math.max(maxR, p.r)
+    }
+    if (!Number.isFinite(minC)) {
+      return new THREE.Mesh(new THREE.BoxGeometry(CELL, height, CELL), mat)
+    }
+    const w = (maxC - minC + 1) * CELL
+    const d = (maxR - minR + 1) * CELL
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, height, d), mat)
+    const cx = (minC + maxC) / 2
+    const rz = (minR + maxR) / 2
+    mesh.position.copy(toWorld(cx, rz, height / 2))
+    return mesh
   }
 
   /**
@@ -1973,20 +2061,19 @@ export class World {
     }
   }
 
-  /** Ghost tiles share one geometry per rebuild — dispose it once, not every hover forever. */
+  /** Ghost meshes are rebuilt per hover. Dispose every geometry and cloned material. */
   private clearGhost() {
-    let geo: THREE.BufferGeometry | null = null
-    const mats: THREE.Material[] = []
-    for (const child of this.ghostGroup.children) {
-      if (child instanceof THREE.Mesh) {
-        geo = child.geometry
-        const mat = child.material
-        if (Array.isArray(mat)) mats.push(...mat)
-        else mats.push(mat)
-      }
-    }
-    geo?.dispose()
-    for (const m of new Set(mats)) m.dispose()
+    const geos = new Set<THREE.BufferGeometry>()
+    const mats = new Set<THREE.Material>()
+    this.ghostGroup.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return
+      geos.add(o.geometry)
+      const mat = o.material
+      if (Array.isArray(mat)) for (const m of mat) mats.add(m)
+      else mats.add(mat)
+    })
+    for (const g of geos) g.dispose()
+    for (const m of mats) m.dispose()
     this.ghostGroup.clear()
   }
 
