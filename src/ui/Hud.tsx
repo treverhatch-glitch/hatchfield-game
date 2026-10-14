@@ -56,6 +56,8 @@ import {
 import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
+import { lateIdForTool, lateStampLabel } from '../game/lateBuildings.ts'
+import { buildingById } from '../tier3plus/index.ts'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
@@ -150,6 +152,11 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
     ],
   },
   {
+    id: 'late',
+    label: 'Late',
+    tools: ['airport_hotel', 'rail_link', 'saf_blending'],
+  },
+  {
     id: 'bulldoze',
     label: 'Bulldoze',
     tools: ['clear'],
@@ -198,8 +205,12 @@ function TrayMark({ tool }: { tool: string }) {
         ? 'stand'
         : tool === 'clear'
           ? 'clear'
-          : tool.includes('hotel') || tool.startsWith('park') || tool === 'bus' || tool === 'rail'
-            ? 'land'
+      : tool.includes('hotel') ||
+          tool.startsWith('park') ||
+          tool === 'bus' ||
+          tool === 'rail' ||
+          tool === 'rail_link'
+        ? 'land'
             : 'ops'
   return (
     <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
@@ -2321,6 +2332,26 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 {buildMenu ? (
                 <div className="tools build-tray" data-testid="build-tray">
                   {menuTools.map((t) => {
+                    const lateId = lateIdForTool(t)
+                    if (lateId) {
+                      const spec = buildingById(lateId)
+                      const locked = Boolean(spec && game.lateFieldLevel() < spec.fieldLevel)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' is-locked' : ''}`}
+                          data-testid={`late-stamp-${lateId}`}
+                          onClick={() => {
+                            game.toggleInfo(`late:${lateId}`)
+                            if (!locked) game.setTool(t)
+                          }}
+                        >
+                          <TrayMark tool={t} />
+                          <span className="tray-name">{lateStampLabel(lateId)}</span>
+                        </button>
+                      )
+                    }
                     const def = BUILDINGS.find((b) => b.tool === t)
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
@@ -2404,7 +2435,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — pan-click it to walk inside.`
                         : game.tool === 'pan'
                           ? 'Select: click a tile or hall. WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit.'
-                          : tip
+                          : lateIdForTool(game.tool)
+                            ? 'Click the stamp to read cost, upkeep, and the field-level gate.'
+                            : tip
                             ? `${tip.blurb} ${money(tip.cost)}${
                                 tip.upkeepPerDay ? ` · $${tip.upkeepPerDay}/day` : ''
                               }`
