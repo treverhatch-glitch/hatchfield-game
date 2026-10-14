@@ -8050,9 +8050,16 @@ export class Game {
   /** Tests and recovery use this. Refuses anything before mid-game. */
   triggerDisruption(kind: DisruptionId) {
     const started = this.disruptions.trigger(kind, this.disruptionWorld(), this.disruptionHost())
+    if (started) this.noteStartedDisruption(started)
     this.syncDisruptionAlert()
     if (started) this.emit()
     return started
+  }
+
+  /** One line in the open year. Recovery cost is the estimated loss, noted once at the start. */
+  private noteStartedDisruption(started: { kind: string; recoveryCost: number; day: number }) {
+    const impact = Number.isFinite(started.recoveryCost) ? Math.max(0, started.recoveryCost) : 0
+    this.noteDisruption(started.kind, impact, started.day)
   }
 
   recoverDisruption(id: string) {
@@ -8140,7 +8147,8 @@ export class Game {
   }
 
   private tickDisruptions() {
-    this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
+    const started = this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
+    if (started) this.noteStartedDisruption(started)
     this.syncDisruptionAlert()
   }
 
@@ -8854,9 +8862,11 @@ export class Game {
     if (!due.length) return
     this.hubLinks = this.hubLinks.filter((link) => this.clock < link.resolveAt)
     let missed = 0
+    let completed = 0
     for (const link of due) {
       const guest = this.hallGuests.find((g) => g.id === link.guestId)
       if (link.made) {
+        completed += 1
         if (guest && !guest.dead) {
           guest.dead = true
           guest.thought = 'Made the connection'
@@ -8887,6 +8897,9 @@ export class Game {
           : 'Missed connection — rebooked'
       }
     }
+    const unresolved = due.length - completed
+    if (completed > 0 || unresolved > 0) this.noteHubConnections(completed, unresolved)
+    if (unresolved > 0 && this.hasHotelBeds()) this.noteMissedConnectionNights(unresolved)
     if (missed > 0) {
       this.pushNews(
         `${missed} missed connection${missed === 1 ? '' : 's'} — hotel or rebook fee, Standing dips.`,

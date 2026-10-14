@@ -41,6 +41,11 @@ describe('disruptions on the alert stack', () => {
     game.fieldXp = 700
     const ev = game.triggerDisruption('software-outage')
     expect(ev).not.toBeNull()
+    expect(game.playtestYear.liveDisruptions()).toEqual([
+      { day: ev!.day, kind: 'software-outage', revenueImpact: ev!.recoveryCost },
+    ])
+    game.tick(2)
+    expect(game.playtestYear.liveDisruptions()).toHaveLength(1)
     expect(game.disruptions.checkInMultiplier()).toBeGreaterThan(1)
     let rows = disruptionRows(game)
     expect(rows).toHaveLength(1)
