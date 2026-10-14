@@ -198,3 +198,30 @@ describe('Round E stand service lines', () => {
     }
   })
 })
+
+describe('Round F: hanging hoses and cables', () => {
+  it('catenary sags below the chord and meets both ends', async () => {
+    const { catenaryPoints } = await import('./vehicleModels')
+    const pts = catenaryPoints(5, 0.5, 1, 16)
+    expect(pts[0][0]).toBeCloseTo(0)
+    expect(pts[0][1]).toBeCloseTo(0)
+    expect(pts[16][0]).toBeCloseTo(5)
+    expect(pts[16][1]).toBeCloseTo(0.5)
+    const mid = pts[8]
+    expect(0.25 - mid[1]).toBeCloseTo(1, 2)
+  })
+
+  it('hoses pay out from the reel anchor, growing sag with extension', async () => {
+    const { lineAnchor } = await import('./vehicleModels')
+    const { partPose, newPartPose, poseInput } = await import('./vehicleAnim')
+    for (const [m, part] of [['fuel_tanker', 'hose'], ['gpu', 'cable'], ['lavatory_truck', 'hose'], ['water_truck', 'hose'], ['fuel_tanker', 'grounding']] as const) {
+      const a = lineAnchor(m, part)!
+      expect(a).not.toBeNull()
+      const o = newPartPose()
+      expect(partPose(m, part, poseInput(0.5), o)).toBe(true)
+      expect([o.px, o.py, o.pz]).toEqual([a[0], a[1], a[2]])
+      expect(o.sz).toBeCloseTo(part === 'grounding' ? 0.8 : 0.5)
+      expect(o.sy).toBeCloseTo(o.sz)
+    }
+  })
+})

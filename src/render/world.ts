@@ -2042,6 +2042,7 @@ export class World {
         cargoScale: loaded ? clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35) : 1,
         ext,
         active: t.kind === 'fire' ? !t.patrol && (ext > 0 || (moving && !t.returning)) : ext > 0 || moving,
+        beams: (this.wr.dayNightSample?.headlights ?? 0) > 0.3 && moving,
         odo: this.odometer(t.id, pos.x, pos.z),
         clock: game.clock,
       })
@@ -2356,9 +2357,9 @@ export class World {
       this.headlightRoots.push(root)
       root.position.set(v.x, v.y, v.z)
       root.rotation.y = v.yaw
-      root.userData.headlight = { length: v.size[0] * v.scale, width: v.size[2] * v.scale }
+      root.userData.headlight = { length: v.size[0] * v.scale, width: v.size[2] * v.scale, height: v.size[1] * v.scale, beacon: v.active === true }
     }
-    this.headlights.sync(this.headlightRoots, this.wr.dayNightSample.headlights, this.wr.quality !== 'low')
+    this.headlights.sync(this.headlightRoots, this.wr.dayNightSample.headlights, this.wr.quality !== 'low', this.vehicleFrame[0]?.clock ?? 0)
   }
 
   render(game: Game) {

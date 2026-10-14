@@ -1,0 +1,89 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Vehicle Round F stand</title>
+<style>html,body{margin:0;background:#a9c4dc;overflow:hidden}canvas{display:block}</style></head>
+<body><script type="module">
+// Round F stand: a 737 with the full service fleet deployed, hoses hanging, GPU on the nose socket.
+// ?cam=wide|fuel|belt|nose|rear|hose|gpu|lav, ?night=1 for beacons, headlights and apron floods, ?t=clock.
+import * as THREE from 'three'
+import { vehicleRig, poseVehicleRig, vehicleModel } from '/src/render/vehicles.ts'
+import { createAircraft } from '/src/render/aircraft/index.ts'
+import { VehicleHeadlights } from '/src/render/vehicleLights.ts'
+const Q = new URLSearchParams(location.search)
+const CAM = Q.get('cam') ?? 'wide'
+const NIGHT = Q.get('night') === '1'
+const LW = Q.get('lavwater') !== '0'
+const T = Number(Q.get('t') ?? 2.3)
+const W = innerWidth, H = innerHeight
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping
+r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.appendChild(r.domElement)
+const scene = new THREE.Scene(); scene.background = new THREE.Color(NIGHT ? '#0b1220' : '#a9c4dc')
+scene.fog = new THREE.Fog(scene.background, 110, 260)
+scene.add(new THREE.HemisphereLight(NIGHT ? 0x34405a : 0xeaf2ff, NIGHT ? 0x1a1814 : 0x6b6253, NIGHT ? 0.35 : 1.3))
+const sun = new THREE.DirectionalLight(NIGHT ? 0xffd9a0 : 0xfff1dc, NIGHT ? 0.25 : 2.8); sun.position.set(-30, 50, 34); sun.castShadow = true
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, far: 160 }); sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03
+scene.add(sun)
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ color: '#9a9fa4' }))
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
+const line = (x, z, w, d, c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color: c })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.012, z); m.receiveShadow = true; scene.add(m) }
+for (let i = -12; i <= 12; i++) { line(i * 7.5, 0, 0.06, 140, '#80858a'); line(0, i * 7.5, 180, 0.06, '#80858a') }
+line(-20, 0, 80, 0.25, '#e8c33a'); for (const z of [-18, 18]) line(0, z, 90, 0.2, '#d8443a')
+const plane = createAircraft('b738', { body: '#2f6f9a', stripe: '#e8eef5' })
+plane.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+let box = new THREE.Box3().setFromObject(plane); const sz = box.getSize(new THREE.Vector3())
+plane.scale.setScalar(39.5 / Math.max(sz.x, sz.z)); scene.add(plane)
+// kind, x, z, yaw  (same stand layout as the Round C/D apron page, plus Round E lav/water)
+const SPOTS = [
+  ['stairs', 12, -4.4, Math.PI / 2], ['belt_loader', -9, 5.0, Math.PI / 2], ['cargo', 9, 6.9, Math.PI / 2],
+  ['catering', -13, -6.4, -Math.PI / 2], ['fuel', 2, -9.9, 0], ['gpu', 17.6, 4.6, Math.PI], ['tow', 25.5, 0, Math.PI],
+  ['bags', -20, 11.5, 0],
+]
+if (LW) SPOTS.push(['lav', -28, -6, 0], ['water', -20, -6.2, 0])
+const COLORS = { catering: '#e07a3d', fuel: '#c9a227' }
+const placed = []
+for (const [kind, x, z, yaw] of SPOTS) {
+  const m = vehicleRig(kind, COLORS[kind] ?? '#2f7fd0')
+  m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+  poseVehicleRig(m, vehicleModel(kind), 1, T, true)
+  m.position.set(x, 0, z); m.rotation.y = yaw; scene.add(m)
+  m.userData.headlight = { length: 6, width: 2.2, height: 2.6, beacon: true }
+  m.updateMatrixWorld(true); placed.push({ kind, box: new THREE.Box3().setFromObject(m.getObjectByName('body') ?? m) })
+}
+// Footprint overlap check between vehicle bodies (reported for the run log).
+const hits = []
+for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) if (placed[i].box.intersectsBox(placed[j].box)) hits.push(placed[i].kind + '/' + placed[j].kind)
+window.__stats = { overlaps: hits }
+if (NIGHT) {
+  // Same lamp + beacon pass the game runs (src/render/vehicleLights.ts), at full night level.
+  const hl = new VehicleHeadlights(); scene.add(hl.group)
+  hl.sync(scene.children.filter(o => o.userData.headlight), 1, true, T); window.__stats.halos = hl.beaconCount; window.__stats.roots = scene.children.filter(o => o.userData.headlight).length
+  // Apron flood masts at the stand head corners with the game's wash footprint (core + stand wash).
+  const pool = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c) })()
+  const pm = new THREE.MeshBasicMaterial({ map: pool, color: 0xffd9a0, transparent: true, opacity: 0.42, depthWrite: false, blending: THREE.AdditiveBlending })
+  const FLOODS = Q.get('floods') ?? 'wash'
+  for (const [mx, mz] of [[22, -22], [-22, -22], [22, 22], [-22, 22]]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 16, 8), new THREE.MeshLambertMaterial({ color: '#9aa2aa' })); pole.position.set(mx, 8, mz); scene.add(pole)
+    const yaw = Math.atan2(-mx, -mz)
+    const add = (d, w, l) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, l), pm); p.rotation.set(-Math.PI / 2, 0, yaw); p.position.set(mx + Math.sin(yaw) * d, 0.05, mz + Math.cos(yaw) * d); scene.add(p) }
+    add(7.5, 21, 21) // core (9.5 world units)
+    if (FLOODS === 'wash') add(17, 42, 34) // Round F wide stand wash
+    const lamp = new THREE.PointLight(0xffd9a0, 140, 55, 1.8); lamp.position.set(mx * 0.8, 15, mz * 0.8); scene.add(lamp)
+  }
+}
+const cam = new THREE.PerspectiveCamera(34, W / H, 0.3, 600)
+const CAMS = {
+  wide: [[30, 22, 30], [0, 1.5, 0]],
+  fuel: [[9, 5.5, -24], [1, 1.6, -10]],
+  belt: [[-2, 4.5, 16], [-9, 1.6, 4]],
+  nose: [[26, 5, -12], [15, 1.5, 1]],
+  rear: [[-34, 6, -22], [-20, 1.6, -8]],
+  hose: [[9, 2.2, -2.5], [-2, 1.2, -7]],
+  gpu: [[24, 3.2, 9], [16.5, 1.4, 2]],
+  lav: [[-14, 3.2, -15], [-24, 1.4, -4]],
+}
+const [p, t] = CAMS[CAM] ?? CAMS.wide
+cam.position.set(...p); cam.lookAt(...t)
+r.render(scene, cam)
+window.__done = true
+</script></body></html>
