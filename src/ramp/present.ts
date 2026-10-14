@@ -5,6 +5,8 @@
 import {
   BAG_TRIPS,
   CREW_IN_CAB,
+  LINE_LOOK,
+  SERVICE_POINTS,
   type CaterStandPhase,
   type CrewPose,
   type CrewRole,
@@ -42,11 +44,13 @@ export interface CrewPerson {
 
 export interface CrewProp {
   id: string
-  kind: 'hose' | 'bar' | 'belt' | 'bag' | 'cart' | 'lift' | 'stairs'
+  kind: 'hose' | 'cable' | 'bar' | 'belt' | 'bag' | 'cart' | 'lift' | 'stairs' | 'chock' | 'cone'
   c: number
   r: number
   alt: number
   heading: number
+  /** Tilt of the long axis, radians, up toward the far end. */
+  pitch?: number
   /** Meters. */
   length: number
   /** 0..1 fill, shuttle, or colour mix. */
@@ -166,15 +170,46 @@ function segmentProp(
   const dx = (b.c - a.c) * metersPerUnit
   const dy = (b.r - a.r) * metersPerUnit
   const dz = b.alt - a.alt
+  const flat = Math.hypot(dx, dy)
   return {
     id,
     kind,
     c: (a.c + b.c) / 2,
     r: (a.r + b.r) / 2,
     alt: (a.alt + b.alt) / 2,
-    heading: Math.atan2(b.r - a.r, b.c - a.c),
+    heading: flat > 1e-6 ? Math.atan2(b.r - a.r, b.c - a.c) : clock.heading,
+    pitch: Math.atan2(dz, flat),
     length: Math.hypot(dx, dy, dz),
     fill,
+  }
+}
+
+/**
+ * A hose or cable hanging between two points as short tilted segments.
+ * `sag` is the mid-span drop in metres; the line never goes below the apron.
+ */
+export function sagLine(
+  out: CrewProp[],
+  id: string,
+  kind: 'hose' | 'cable',
+  clock: CrewClock,
+  from: { x: number; y: number; z: number },
+  to: { x: number; y: number; z: number },
+  sag: number,
+  metersPerUnit: number,
+  fill: number,
+  segments: number = LINE_LOOK.segments,
+) {
+  const at = (t: number) => ({
+    x: lerp(from.x, to.x, t),
+    y: Math.max(0.03, lerp(from.y, to.y, t) - sag * 4 * t * (1 - t)),
+    z: lerp(from.z, to.z, t),
+  })
+  let prev = at(0)
+  for (let i = 1; i <= segments; i++) {
+    const next = at(i / segments)
+    out.push(segmentProp(`${id}:${i}`, kind, clock, prev, next, metersPerUnit, fill))
+    prev = next
   }
 }
 
@@ -184,16 +219,35 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
   const sample = sampleService(clock.service, clock.start, clock.end, clock.now, aim)
   out.jobs.push({ id: clock.id, service: clock.service, step: sample.step, work: sample.work })
   if (CREW_IN_CAB.has(sample.step)) return
-  for (const member of sample.crew) out.people.push(personOf(clock, member, metersPerUnit, clock.service))
-  if (sample.link > 0.02 && (clock.service === 'fuel' || clock.service === 'gpu' || clock.service === 'pushback')) {
+  for (const member of sample.crew) {
+    out.people.push(personOf(clock, member, metersPerUnit, clock.service))
+    if (clock.service === 'cleaning' && member.pose === 'carry') {
+      // Bin bag held in front at hip height.
+      const hands = { x: member.x + Math.cos(member.heading) * 0.42, y: 0.72, z: member.z + Math.sin(member.heading) * 0.42 }
+      out.props.push({
+        id: `${clock.id}:${member.role}:binbag`,
+        kind: 'bag',
+        ...placeLocal(clock, hands, metersPerUnit),
+        heading: clock.heading + member.heading,
+        length: 0.45,
+        fill: 1,
+      })
+    }
+  }
+  if (sample.link > 0.02 && (clock.service === 'fuel' || clock.service === 'gpu')) {
+    // Fuel hose up to the underwing coupling; ground-power cable across the apron to the nose.
     const coupling = clampAim(aim)
-    const reel = { x: -1.65, y: 1.05, z: 1.05 }
+    const fuel = clock.service === 'fuel'
+    const reel = fuel ? SERVICE_POINTS.hoseReel : SERVICE_POINTS.gpuSocket
+    const plugY = fuel ? SERVICE_POINTS.wingCouplingY : SERVICE_POINTS.gpuPlugY
     const tip = {
       x: lerp(reel.x, coupling.x, sample.link),
-      y: 1.05,
+      y: lerp(reel.y, plugY, sample.link),
       z: lerp(reel.z, coupling.z, sample.link),
     }
-    out.props.push(segmentProp(`${clock.id}:hose`, 'hose', clock, reel, tip, metersPerUnit, sample.link))
+    const run = Math.hypot(tip.x - reel.x, tip.z - reel.z)
+    const sag = Math.min(run * 0.35, fuel ? LINE_LOOK.hoseSag : LINE_LOOK.cableSag)
+    sagLine(out.props, `${clock.id}:${fuel ? 'hose' : 'cable'}`, fuel ? 'hose' : 'cable', clock, reel, tip, sag, metersPerUnit, sample.link)
     out.props.push({
       id: `${clock.id}:bar`,
       kind: 'bar',
@@ -222,15 +276,21 @@ function pushService(out: CrewScene, clock: CrewClock, metersPerUnit: number, ai
       fill: 1,
     })
     if (sample.step === 'work') {
-      const trip = Math.min(BAG_TRIPS - 1, Math.floor(sample.work * BAG_TRIPS))
-      const local = (sample.work * BAG_TRIPS) % 1
+      // Each bag waits on the cart, is lifted onto the belt foot by the helper, then rides up to the hold.
+      const trips = sample.work * BAG_TRIPS
       for (let i = 0; i < BAG_TRIPS; i++) {
-        const u = i < trip ? 1 : i === trip ? local : 0
-        const bag = {
-          x: lerp(cart.x, hold.x, u),
-          y: lerp(0.85, 2.0, u),
-          z: lerp(cart.z, hold.z, u) + (u === 0 ? (i - 1) * 0.35 : 0),
+        const local = trips - i
+        const u = Math.min(1, Math.max(0, local / 1.5))
+        let bag: { x: number; y: number; z: number }
+        if (local < 0.5) bag = { x: cart.x, y: 0.85, z: cart.z + (i - 1) * 0.35 }
+        else if (local < 1) {
+          const k = (local - 0.5) / 0.5
+          bag = { x: cart.x, y: 0.85 + Math.sin(k * Math.PI) * 0.45 + k * 0.05, z: cart.z + (i - 1) * 0.35 * (1 - k) }
+        } else {
+          const k = Math.min(1, local - 1) / 0.5
+          bag = { x: lerp(cart.x, hold.x, Math.min(1, k)), y: lerp(0.9, 2.0, Math.min(1, k)), z: lerp(cart.z, hold.z, Math.min(1, k)) }
         }
+        if (local >= 1.5) continue
         const at = placeLocal(clock, bag, metersPerUnit)
         out.props.push({
           id: `${clock.id}:bag:${i}`,

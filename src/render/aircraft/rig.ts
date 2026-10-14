@@ -3,6 +3,7 @@ import type { AircraftMotion } from './motion'
 import { paintMesh, unitBox, unitCylinder, unitSphere, type PaintedMesh, type PaintSlot } from './pool'
 import type { ModelSpec, Livery } from './specs'
 import { doorBoxes } from './stands'
+import { airfoilGeometry, spinnerConeGeometry } from './geom'
 
 /**
  * Animated airframe parts. Each kind is one InstancedMesh per aircraft and LOD
@@ -221,7 +222,7 @@ function addFlapsAndSlats(frame: RigFrame) {
       }
     }
   }
-  addSet(frame, 'flap', unitBox(), flaps, 'wing')
+  addSet(frame, 'flap', airfoilGeometry(), flaps, 'wing')
   addStatic(frame, unitBox(), fairings, 'wing', 'flap-fairings')
 
   // Slats on swept-wing jets only. Turboprops and GA have fixed leading edges.
@@ -247,7 +248,7 @@ function addFlapsAndSlats(frame: RigFrame) {
       })
     }
   }
-  addSet(frame, 'slat', unitBox(), slats, 'wing')
+  addSet(frame, 'slat', airfoilGeometry(), slats, 'wing')
 }
 
 function addReversers(frame: RigFrame, pts: THREE.Vector3[]) {
@@ -284,9 +285,9 @@ function addSpinnerCones(frame: RigFrame, pts: THREE.Vector3[]) {
   if (!isJet(spec) || pts.length === 0) return
   const eng = spec.engines
   const cones = pts.map((p) =>
-    trs(p.x + eng.length * 0.43, p.y, p.z, IDENT, eng.radius * 0.3, eng.radius * 0.2, eng.radius * 0.2),
+    trs(p.x + eng.length * 0.3, p.y, p.z, IDENT, eng.radius * 0.5, eng.radius * 0.3, eng.radius * 0.3),
   )
-  addStatic(frame, unitSphere(), cones, 'metal', 'spinner-cones')
+  addStatic(frame, spinnerConeGeometry(), cones, 'metal', 'spinner-cones')
 }
 
 function addLandingLights(frame: RigFrame) {

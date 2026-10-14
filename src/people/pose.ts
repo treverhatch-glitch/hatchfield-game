@@ -1,4 +1,4 @@
-import { WALK } from './config.ts'
+import { WALK, WORK_POSE } from './config.ts'
 import type { PersonPose } from './types.ts'
 
 /** Joint angles in radians. Positive X rotation swings a limb forward (+z). */
@@ -38,17 +38,44 @@ export function advancePhase(phase: number, speedMps: number, dt: number): numbe
 }
 
 /** Cycles per second for poses that are not driven by ground speed. */
-const POSE_RATE: Record<Exclude<PersonPose, 'walk' | 'bagPull' | 'push'>, number> = {
+type StridePose = 'walk' | 'bagPull' | 'push' | 'carry' | 'signal'
+
+const POSE_RATE: Record<Exclude<PersonPose, StridePose>, number> = {
   idle: 0.25,
   queue: 0.45,
   wave: 1.6,
   reach: 0,
   seated: 0,
+  kneel: WORK_POSE.kneelRate,
+  lift: WORK_POSE.liftRate,
+}
+
+function strides(pose: PersonPose): pose is StridePose {
+  return pose === 'walk' || pose === 'bagPull' || pose === 'push' || pose === 'carry' || pose === 'signal'
 }
 
 /** Phase advance rate (cycles per second) for a pose at a ground speed. */
 export function phaseRate(pose: PersonPose, speedMps: number): number {
-  return pose === 'walk' || pose === 'bagPull' || pose === 'push' ? strideRate(speedMps) : POSE_RATE[pose]
+  return strides(pose) ? strideRate(speedMps) : POSE_RATE[pose]
+}
+
+/** Blend `from` toward `to` by w (0..1) into `out`. */
+export function blendPose(from: JointPose, to: JointPose, w: number, out: JointPose): JointPose {
+  const k = Math.min(1, Math.max(0, w))
+  out.legL = from.legL + (to.legL - from.legL) * k
+  out.legR = from.legR + (to.legR - from.legR) * k
+  out.armL = from.armL + (to.armL - from.armL) * k
+  out.armR = from.armR + (to.armR - from.armR) * k
+  out.armLRaise = from.armLRaise + (to.armLRaise - from.armLRaise) * k
+  out.armRRaise = from.armRRaise + (to.armRRaise - from.armRRaise) * k
+  out.bob = from.bob + (to.bob - from.bob) * k
+  out.lean = from.lean + (to.lean - from.lean) * k
+  out.drop = from.drop + (to.drop - from.drop) * k
+  return out
+}
+
+export function copyPose(from: JointPose, out: JointPose): JointPose {
+  return blendPose(from, from, 0, out)
 }
 
 const TAU = Math.PI * 2
@@ -121,6 +148,43 @@ export function samplePose(pose: PersonPose, phase: number, speedMps: number, ou
       out.armL = out.armR = 0.4
       out.drop = 0.42
       break
+    case 'kneel':
+      // One knee down, hands working low in front.
+      out.legL = 1.5
+      out.legR = -0.35
+      out.armL = 0.85 + s * 0.08
+      out.armR = 0.95 - s * 0.12
+      out.lean = 0.3
+      out.drop = WORK_POSE.kneelDrop
+      break
+    case 'lift': {
+      // Swing a bag from the hip up onto the belt, then back down for the next.
+      const up = (1 - c) / 2
+      out.armL = out.armR = WORK_POSE.liftLow + (WORK_POSE.liftHigh - WORK_POSE.liftLow) * up
+      out.legL = out.legR = 0.25 * (1 - up)
+      out.lean = 0.28 * (1 - up) - 0.05
+      out.drop = 0.12 * (1 - up)
+      break
+    }
+    case 'carry': {
+      const amp = Math.min(1, 0.35 + Math.max(0, speedMps) / 1.4)
+      out.legL = s * WALK.legSwing * amp
+      out.legR = -out.legL
+      out.armL = out.armR = WORK_POSE.carryArms
+      out.bob = Math.abs(c) * 0.025 * amp
+      out.lean = -0.04
+      break
+    }
+    case 'signal': {
+      const amp = Math.min(1, 0.35 + Math.max(0, speedMps) / 1.4)
+      out.legL = s * WALK.legSwing * amp
+      out.legR = -out.legL
+      out.armL = -s * WALK.armSwing * amp * 0.6
+      out.armR = 0.2
+      out.armRRaise = WORK_POSE.signalRaise + s * 0.08
+      out.bob = Math.abs(c) * 0.03 * amp
+      break
+    }
   }
   return out
 }
