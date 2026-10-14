@@ -621,14 +621,24 @@ export class TerminalBuilding {
     for (const m of this.walkers) m.instanceMatrix.needsUpdate = true
   }
 
-  /** Per frame: LOD pick from camera distance, fades, walkers, night glow. */
-  update(camPos: THREE.Vector3, dt: number, lodScale: number, night: number, focus?: { x: number; z: number }) {
+  /**
+   * Per frame: LOD pick from camera distance, fades, walkers, night glow.
+   * `enclosed` is the airport view: the roof stays on and the walls stay up.
+   */
+  update(
+    camPos: THREE.Vector3,
+    dt: number,
+    lodScale: number,
+    night: number,
+    focus?: { x: number; z: number },
+    enclosed = false,
+  ) {
     const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
-    // Cutaway: close and looking down from above the roof → lift the roof off.
-    const cut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale && camPos.y > ROOF_Y + m(1.5)
-    // Walls cut away whenever the interior is the subject: roof off, or eye level inside the glass.
-    this.nearCut = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
+    const close = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
+    // Hall view only: close and above the roof lifts it off. Airport view stays enclosed.
+    const cut = !enclosed && close && camPos.y > ROOF_Y + m(1.5)
+    this.nearCut = !enclosed && close
     this.roofFade = stepFade(this.roofFade, cut ? 0 : 1, dt, 1.1)
     applyFade(this.roof, this.roofMats, this.roofFade)
     // Lift as it fades so the cutaway reads as the roof coming off, not blinking out.

@@ -39,6 +39,8 @@ export interface WorldView {
   standAccessAt?: (v: Vec | null) => StandAccess
   fits?: { origin: Vec; rooms?: Partial<Record<string, number>> }[]
   deskStaff?: number
+  /** Airport view keeps the terminal roof on. Hall view may cut it away. */
+  view?: 'apron' | 'hall'
 }
 
 export function tileAt(view: WorldView, c: number, r: number): Tile | null {
