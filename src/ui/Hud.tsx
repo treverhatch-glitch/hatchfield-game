@@ -595,51 +595,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           onDismiss={() => game.dismissYearReport()}
         />
       ) : null}
-      {game.disruptionFeed().length ? (
-        <div
-          className={`disruption-stack${game.showCoach() ? ' below-coach' : ''}`}
-          data-testid="disruption-feed"
-        >
-          {game.disruptionFeed().map((item) =>
-            item.status === 'live' ? (
-              <aside key={item.id} className="disruption" data-testid="disruption-card">
-                <div className="disruption-head">
-                  <strong>{item.title}</strong>
-                  <button type="button" className="ghost" onClick={() => game.minimiseDisruption(item.id)}>
-                    Minimise
-                  </button>
-                </div>
-                <p>{item.explanation}</p>
-                <p className="muted">Fix: {item.suggestedFix}</p>
-                <div className="disruption-actions">
-                  <button type="button" onClick={() => game.panToDisruption(item.id)}>
-                    Pan to problem
-                  </button>
-                  <button type="button" onClick={() => game.recoverDisruption(item.id)}>
-                    Apply fix
-                  </button>
-                  <button type="button" className="ghost" onClick={() => game.ignoreDisruption(item.id)}>
-                    Ignore
-                  </button>
-                  <button type="button" className="ghost" onClick={() => game.dismissDisruption(item.id)}>
-                    Dismiss
-                  </button>
-                </div>
-              </aside>
-            ) : (
-              <button
-                key={item.id}
-                type="button"
-                className="disruption mini"
-                onClick={() => game.expandDisruption(item.id)}
-              >
-                {item.title} · {item.status === 'ignored' ? 'ignored' : 'minimised'}
-              </button>
-            ),
-          )}
-        </div>
-      ) : null}
-
       <div
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
