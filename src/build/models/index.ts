@@ -31,6 +31,8 @@ export interface ModelOpts {
   parkTerm?: ParkTerm
   /** Lot key: when set, the yard gets its deterministic instanced clutter. */
   yardSeed?: string
+  /** Tests: keep every mesh separate (no static merge) so parts can be measured. */
+  noMerge?: boolean
 }
 
 type Builder = (g: THREE.Group, o: ModelOpts) => void
@@ -104,6 +106,6 @@ export function buildModel(id: string, opts: ModelOpts = {}): THREE.Group | null
   fn(g, opts)
   enrich(g, id)
   if (opts.yardSeed !== undefined) dressYard(g, id, opts.yardSeed)
-  mergeStatic(g)
+  if (!opts.noMerge) mergeStatic(g)
   return g
 }
