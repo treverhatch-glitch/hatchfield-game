@@ -54,7 +54,6 @@ import {
   HEAT_ABANDON_THRESHOLD,
   HEAT_REWARD_THRESHOLD,
   HEAT_WARN_THRESHOLD,
-  RESEARCH_NODES,
   rewardBlurb,
   rewardDetail,
   rewardForPersona,
@@ -67,7 +66,6 @@ import { starterKitPreview } from '../game/starterLayout'
 import { SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
 import { CeoCardView } from './wave3/CeoCard'
-import { ResearchPanel } from './wave3/ResearchPanel'
 import { ResearchTree } from './research/ResearchTree'
 import { lateIdForTool } from '../game/lateBuildings.ts'
 import { tilesOf } from '../game/path'
@@ -1506,16 +1504,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               {panel === 'research' ? (
                 <ResearchTree
                   key={growthFocus ?? 'growth'}
-                  state={game.researchTree.state}
+                  state={researchTreeState(game)}
                   fieldLevel={game.fieldLevel()}
-                  ratePerSec={game.researchTree.rate(
-                    {
-                      desk: game.labGear().desks,
-                      board: game.labGear().boards,
-                      machine: game.labGear().machines,
-                    },
-                    game.site != null,
-                  )}
+                  ratePerSec={game.researchRate()}
                   focusId={growthFocus}
                   onUnlock={(id) => game.buyResearchNode(id)}
                 />
@@ -1523,9 +1514,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
               {panel === 'research' ? (
                 <section>
-                  <h3>Research desk</h3>
+                  <h3>R&D rooms</h3>
                   <p className="muted">
-                    {Math.floor(game.researchPoints)} RP · turnarounds + lab drip ~
+                    {Math.floor(game.researchPoints)} RP · operations + lab rooms ~
                     {game.researchRate().toFixed(2)}/s
                     {(() => {
                       const g = game.labGear()
@@ -1537,12 +1528,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           return ` · ${c.working} working / ${c.break} break / ${c.home} home`
                         })()
                       : game.opsResearchRate() > 0
-                        ? ' · operations trickle is running — a lab crew speeds it up'
-                        : ' · stamp a strip and a stand to start the operations trickle'}
-                    {game.researchUnlocked.length
-                      ? ` · unlocked ${game.researchUnlocked.length}/${RESEARCH_NODES.length}`
-                      : ' · no unlocks yet'}
-                    {game.isNight() ? ' · night lab slow + more off-shift' : ''}
+                        ? ' · operations trickle is running — furnished rooms add the rest'
+                        : ' · buy land to start the operations trickle'}
                   </p>
                   <div className="row">
                     <button type="button" onClick={() => game.hireResearcher()}>
@@ -1551,41 +1538,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   </div>
                   <h3>Lab rooms</h3>
                   <HallRoomList game={game} ids={HALL_ROOMS.research} />
-                  <ul className="airlines">
-                    {RESEARCH_NODES.map((n) => {
-                      const owned = game.hasResearch(n.id)
-                      const gate = game.canBuyResearch(n.id)
-                      const anchor = `research-node-${n.id}`
-                      return (
-                        <li key={n.id} id={anchor} data-focus={unlockFocus === anchor ? 'true' : undefined}>
-                          <b>
-                            {n.name}{' '}
-                            <span className="muted">
-                              {owned ? '· live' : `· ${n.cost} RP`}
-                            </span>
-                          </b>
-                          <span className="muted">{n.blurb}</span>
-                          {!owned ? (
-                            <button
-                              type="button"
-                              className="wide"
-                              disabled={!gate.ok}
-                              title={gate.ok ? `Buy ${n.name}` : gate.why}
-                              onClick={() => game.buyResearch(n.id)}
-                            >
-                              {gate.ok ? `Unlock · ${n.cost} RP` : gate.why}
-                            </button>
-                          ) : null}
-                        </li>
-                      )
-                    })}
-                  </ul>
                 </section>
               ) : null}
 
               {panel === 'specialize' ? <SpecTree game={game} /> : null}
-
-              {manageTab === 'research' ? <ResearchPanel game={game} /> : null}
 
               {panel === 'rival' ? (
                 rival ? (
@@ -2699,6 +2655,14 @@ function labelPhase(phase: string, craft?: string): string {
     gone: 'Airborne',
   }
   return map[phase] ?? phase
+}
+
+/** Hide a node that still owes its cash build cost so the tree can charge it. */
+function researchTreeState(game: Game) {
+  const pending = new Set(game.unpaidResearchNodes())
+  const state = game.researchTree.state
+  if (!pending.size) return state
+  return { ...state, unlocked: state.unlocked.filter((id) => !pending.has(id)) }
 }
 
 function HallRoomList({ game, ids }: { game: Game; ids: readonly string[] }) {

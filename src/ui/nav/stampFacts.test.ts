@@ -25,7 +25,7 @@ describe('stamp cards', () => {
     const early = stampCard(toolStampInput('stand_w', 1, 1, new Set()))
     expect(early.badge).toEqual({ kind: 'research', label: 'Large stands', nodeId: 'airfield-3' })
     expect(early.sentence).toContain('Requires research: Large stands (Airfield T3).')
-    expect(early.sentence).toContain('Requires research: Widebody ops.')
+    expect(early.sentence).not.toContain('Widebody ops')
     expect(early.sentence).toContain('Field level 4')
     expect(early.link).toEqual({
       tab: 'research',
@@ -39,9 +39,10 @@ describe('stamp cards', () => {
     expect(levelOnly.badge).toEqual({ kind: 'field', label: 'Field level 4' })
     expect(levelOnly.sentence).toBe('Unlocks at Field level 4.')
 
-    const deskOnly = stampCard(toolStampInput('stand_w', 4, 4, new Set(), new Set(['airfield-3'])))
-    expect(deskOnly.badge).toEqual({ kind: 'research', label: 'Widebody ops', nodeId: 'widebody_ops' })
-    expect(deskOnly.sentence).toBe('Requires research: Widebody ops.')
+    const treeOwned = stampCard(toolStampInput('stand_w', 4, 4, new Set(), new Set(['airfield-3'])))
+    expect(treeOwned.locked).toBe(false)
+    expect(treeOwned.badge).toBeNull()
+    expect(treeOwned.sentence).toBeNull()
 
     const owned = stampCard(
       toolStampInput('stand_w', 4, 4, new Set(['widebody_ops']), new Set(['airfield-3'])),

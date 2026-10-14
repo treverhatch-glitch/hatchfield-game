@@ -6,6 +6,7 @@ import { CATEGORIES } from './config.ts'
  * list so the opening kit is not gated twice.
  */
 export const BUILD_LINKS: Readonly<Record<string, string>> = {
+  deice: 'airfield-2',
   stand_w: 'airfield-3',
   stand_l: 'airfield-3',
   runway_heavy: 'airfield-4',
@@ -24,6 +25,7 @@ export const BUILD_LINKS: Readonly<Record<string, string>> = {
   mro: 'airside-5',
   nighthub: 'airside-6',
   fuel_rail: 'airside-6',
+  oil: 'airside-6',
   security_hall: 'safety-4',
   hotel_biz: 'landside-2',
   rail: 'landside-5',

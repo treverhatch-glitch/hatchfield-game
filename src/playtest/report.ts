@@ -167,18 +167,12 @@ function renderResearch(persona: PersonaReport): string[] {
   const gear = `${pools.desks} research desk${pools.desks === 1 ? '' : 's'}, ${pools.boards} chalkboard${pools.boards === 1 ? '' : 's'}, ${pools.machines} lab bench${pools.machines === 1 ? '' : 'es'}`
   lines.push(`Lab furniture at the end: ${gear}. Researchers on payroll: ${pools.researchers}.`)
   lines.push('')
-  const raised: string[] = []
-  if (pools.deskLabRate > 0) raised.push(`the old research desk at ${pools.deskLabRate} RP/s`)
-  if (pools.wave3RoomRate > 0) raised.push(`the Wave 3 R&D pool at ${pools.wave3RoomRate} RP/s`)
-  if (pools.treeRoomRate > 0) raised.push(`the Growth tree at ${pools.treeRoomRate} RP/s`)
-  if (raised.length) {
-    lines.push(`Measured room rates from that furniture: ${raised.join('; ')}.`)
+  if (pools.treeRoomRate > 0) {
+    lines.push(`Measured room rate: ${pools.treeRoomRate} RP/s from the R&D rooms, on top of ${pools.treeOpsRate} RP/s from operations.`)
   } else {
-    lines.push('Measured room rates from that furniture were 0 RP/s on every pool.')
+    lines.push(`Operations trickle ${pools.treeOpsRate} RP/s. R&D rooms were not adding points.`)
   }
-  lines.push(
-    `Old research desk lab rate ${pools.deskLabRate} RP/s (operations trickle ${pools.deskOpsRate} RP/s, which does not read the rooms). Wave 3 room rate ${pools.wave3RoomRate} RP/s on top of its ${pools.wave3OpsRate} RP/s operations trickle. Growth tree room rate ${pools.treeRoomRate} RP/s on top of its ${pools.treeOpsRate} RP/s operations trickle.`,
-  )
+  lines.push('One research pool. The Growth tree is the only wallet.')
   const furnished = persona.days.find((day) => day.labDesks + day.labBoards + day.labMachines > 0)
   const before = furnished ? persona.days.filter((day) => day.day < furnished.day).at(-1) : undefined
   if (furnished) {
@@ -236,7 +230,7 @@ function renderSystems(persona: PersonaReport): string[] {
   }
   const owned = books.treeUnlocked.length ? books.treeUnlocked.join(', ') : 'none'
   lines.push(
-    `Research tree: ${books.treePoints} points, ${books.treeUnlocked.length} nodes (${owned}). Operations trickle: ${books.wave3Points} points.`,
+    `Research tree: ${books.treePoints} points, ${books.treeUnlocked.length} nodes (${owned}).`,
   )
   lines.push(
     `Desks: ${books.deskStaff} agents, check-in ${books.checkinStaffed ? 'staffed' : 'empty'}, security ${books.securityStaffed ? 'staffed' : 'empty'}.`,

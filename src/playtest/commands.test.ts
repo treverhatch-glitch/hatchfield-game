@@ -38,7 +38,7 @@ describe('player command API', () => {
     api.setSpeed(1)
     api.tick(120)
     const view = api.view()
-    expect(view.wave3Points).toBeGreaterThan(0)
+    expect(view.researchPoints).toBeGreaterThan(0)
     expect(view.rooms.rdesk ?? 0).toBe(0)
     const decision = carefulIntents(view, freshMemory())
     expect(decision.intents).toContainEqual({ do: 'room', id: 'rdesk' })

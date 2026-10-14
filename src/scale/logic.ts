@@ -702,15 +702,15 @@ export function placementBlock(
   research: ResearchId[],
 ): string | null {
   const table: Record<string, { fieldLevel: number; research: ResearchId | null; name: string }> = {
-    stand_w: { ...STAND_OFFERS.wide, name: STAND_OFFERS.wide.name },
-    stand_l: { fieldLevel: STAND_OFFERS.jumbo.fieldLevel, research: 'heavy_pack', name: 'Jumbo stand' },
-    hangar_w: { ...HANGAR_OFFERS.wide, name: HANGAR_OFFERS.wide.name },
-    hangar_j: { ...HANGAR_OFFERS.jumbo, name: HANGAR_OFFERS.jumbo.name },
-    fuel_rail: { fieldLevel: LINK_OFFERS.fuel_rail.fieldLevel, research: 'rail_fuel', name: LINK_OFFERS.fuel_rail.name },
-    oil: { fieldLevel: LINK_OFFERS.oil.fieldLevel, research: 'rail_fuel', name: LINK_OFFERS.oil.name },
-    travelator: { fieldLevel: LINK_OFFERS.travelator.fieldLevel, research: 'travelator', name: LINK_OFFERS.travelator.name },
-    skywalk: { fieldLevel: LINK_OFFERS.skywalk.fieldLevel, research: 'skywalk', name: LINK_OFFERS.skywalk.name },
-    mover: { fieldLevel: LINK_OFFERS.mover.fieldLevel, research: 'people_mover', name: LINK_OFFERS.mover.name },
+    stand_w: { fieldLevel: STAND_OFFERS.wide.fieldLevel, research: null, name: STAND_OFFERS.wide.name },
+    stand_l: { fieldLevel: STAND_OFFERS.jumbo.fieldLevel, research: null, name: 'Jumbo stand' },
+    hangar_w: { fieldLevel: HANGAR_OFFERS.wide.fieldLevel, research: null, name: HANGAR_OFFERS.wide.name },
+    hangar_j: { fieldLevel: HANGAR_OFFERS.jumbo.fieldLevel, research: null, name: HANGAR_OFFERS.jumbo.name },
+    fuel_rail: { fieldLevel: LINK_OFFERS.fuel_rail.fieldLevel, research: null, name: LINK_OFFERS.fuel_rail.name },
+    oil: { fieldLevel: LINK_OFFERS.oil.fieldLevel, research: null, name: LINK_OFFERS.oil.name },
+    travelator: { fieldLevel: LINK_OFFERS.travelator.fieldLevel, research: null, name: LINK_OFFERS.travelator.name },
+    skywalk: { fieldLevel: LINK_OFFERS.skywalk.fieldLevel, research: null, name: LINK_OFFERS.skywalk.name },
+    mover: { fieldLevel: LINK_OFFERS.mover.fieldLevel, research: null, name: LINK_OFFERS.mover.name },
   }
   const rule = table[tool]
   if (!rule) return null

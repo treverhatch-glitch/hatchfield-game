@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { OPS_RP_PER_SEC } from '../research/config.ts'
 import { Game } from './sim.ts'
-import { OPS_TRICKLE_PER_SEC } from '../wave3/config.ts'
 
 function opened(): Game {
   const game = new Game()
@@ -16,11 +16,12 @@ describe('wave 3 on the field', () => {
     expect(game.researchers).toBe(0)
     expect(game.labGear()).toEqual({ desks: 0, boards: 0, machines: 0 })
     expect(game.fits.length).toBe(0)
-    const before = game.wave3.points() + game.wave3.state.research.carry
+    const before = game.researchTree.points() + game.researchTree.state.carry
     game.tick(120)
-    const after = game.wave3.points() + game.wave3.state.research.carry
-    expect(after - before).toBeCloseTo(OPS_TRICKLE_PER_SEC * 120, 5)
-    expect(game.wave3.points()).toBeGreaterThan(0)
+    const after = game.researchTree.points() + game.researchTree.state.carry
+    expect(after - before).toBeCloseTo(OPS_RP_PER_SEC * 120, 5)
+    expect(game.wave3.points()).toBe(0)
+    expect(game.researchPoints).toBeGreaterThan(0)
     expect(game.researchers).toBe(0)
   })
 

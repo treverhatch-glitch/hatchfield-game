@@ -1172,8 +1172,7 @@ export const BUILDINGS: BuildDef[] = [
     name: STAND_OFFERS.wide.name,
     cost: STAND_OFFERS.wide.cost,
     minFieldLevel: 4,
-    research: 'widebody_ops',
-    blurb: 'Widebody bay, two jet-bridge doors. Needs Field level 4 and Widebody ops.',
+    blurb: 'Widebody bay, two jet-bridge doors. Needs Field level 4 and Large stands.',
   },
   {
     tool: 'stand_l',
@@ -1181,8 +1180,7 @@ export const BUILDINGS: BuildDef[] = [
     name: 'Jumbo stand',
     cost: STAND_OFFERS.jumbo.cost,
     minFieldLevel: 5,
-    research: 'heavy_pack',
-    blurb: 'Jumbo bay for the A380 class, three bridges. Needs Field level 5 and Heavy metal pack.',
+    blurb: 'Jumbo bay for the A380 class, three bridges. Needs Field level 5 and Large stands.',
   },
   {
     tool: 'term_bus',
@@ -1322,7 +1320,6 @@ export const BUILDINGS: BuildDef[] = [
     name: HANGAR_OFFERS.wide.name,
     cost: HANGAR_OFFERS.wide.cost,
     minFieldLevel: 4,
-    research: 'widebody_ops',
     blurb: 'Widebody bay. A 787-class jet will not take line maintenance in the small hangar.',
   },
   {
@@ -1331,7 +1328,6 @@ export const BUILDINGS: BuildDef[] = [
     name: HANGAR_OFFERS.jumbo.name,
     cost: HANGAR_OFFERS.jumbo.cost,
     minFieldLevel: 5,
-    research: 'heavy_pack',
     blurb: 'Jumbo bay. Required before an A380-class aircraft can take hangar maintenance.',
   },
   {
@@ -1340,7 +1336,6 @@ export const BUILDINGS: BuildDef[] = [
     name: LINK_OFFERS.fuel_rail.name,
     cost: LINK_OFFERS.fuel_rail.cost,
     minFieldLevel: 5,
-    research: 'rail_fuel',
     blurb: 'Paint a line from the map edge to the oil station. Research alone does not deliver fuel.',
   },
   {
@@ -1349,7 +1344,6 @@ export const BUILDINGS: BuildDef[] = [
     name: LINK_OFFERS.oil.name,
     cost: LINK_OFFERS.oil.cost,
     minFieldLevel: 5,
-    research: 'rail_fuel',
     blurb: 'Unloads the fuel train into the tank farm. Place it against the farm and the rail.',
   },
   {
@@ -1358,7 +1352,6 @@ export const BUILDINGS: BuildDef[] = [
     name: LINK_OFFERS.travelator.name,
     cost: LINK_OFFERS.travelator.cost,
     minFieldLevel: 3,
-    research: 'travelator',
     blurb: 'Moving walkway. Passengers on it move faster. Link the terminal to a widebody stand.',
   },
   {
@@ -1367,7 +1360,6 @@ export const BUILDINGS: BuildDef[] = [
     name: 'Pier skywalk',
     cost: LINK_OFFERS.skywalk.cost,
     minFieldLevel: 4,
-    research: 'skywalk',
     blurb: 'Bridge between the terminal and a pier. Widebody gates need this link.',
   },
   {
@@ -1376,7 +1368,6 @@ export const BUILDINGS: BuildDef[] = [
     name: 'Pier mover',
     cost: LINK_OFFERS.mover.cost,
     minFieldLevel: 5,
-    research: 'people_mover',
     blurb: 'Automated people-mover. Jumbo piers are too far to walk.',
   },
   {

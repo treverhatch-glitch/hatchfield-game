@@ -105,14 +105,14 @@ export function stampCard(input: StampInput): StampCard {
   const locked = levelShort || treeShort || deskShort
   const parts: string[] = []
   if (treeShort && treeLink) parts.push(`Requires research: ${treeLink.label}.`)
-  if (deskShort && node) parts.push(`Requires research: ${node.name}.`)
+  else if (deskShort && node) parts.push(`Requires research: ${node.name}.`)
   if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
   let badge: StampBadge | null = null
   let link: UnlockLink | null = null
   if (treeShort && tree) {
     badge = { kind: 'research', label: tree.name, nodeId: tree.id }
     link = { tab: 'research', anchor: `research-node-${tree.id}`, label: tree.name }
-  } else if (deskShort && node) {
+  } else if (!treeLink && deskShort && node) {
     badge = { kind: 'research', label: node.name, nodeId: node.id }
     link = { tab: 'research', anchor: `research-node-${node.id}`, label: node.name }
   } else if (levelShort) {

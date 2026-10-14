@@ -30,7 +30,6 @@ describe('BuildTray lock badges', () => {
     expect(fuel).not.toContain('lock-badge-saf_blending')
     expect(fuel).toContain('data-testid="research-badge-airside-6"')
     expect(fuel).toContain('Night bank')
-    expect(fuel).toContain('data-testid="research-badge-rail_fuel"')
-    expect(fuel).toContain('Fuel rail')
+    expect(fuel).not.toContain('research-badge-rail_fuel')
   })
 })

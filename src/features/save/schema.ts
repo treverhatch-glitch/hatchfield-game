@@ -5,14 +5,17 @@
  *   1  cash was `money`, the name was flat, tiles could be `{ w, h, fill }`
  *   2  `cash` plus `airport: { name, code }`, tiles expanded to a grid
  *   3  flat `airportName` / `code`, map, parcels, budgets, fuel pillar, plots
- *   4  current sim snapshot: fee index, deposit tier, speed, runway condition
+ *   4  fee index, deposit tier, clock speed, and runway condition
+ *   5  one research pool: desk and Wave 3 progress fold into the Growth tree
  *
  * A game save is written at SAVE_SCHEMA_VERSION. Older envelopes walk this chain.
  * Rendering never sees this module.
  */
+import { fieldLevelOf } from '../../game/catalog.ts'
+import { foldResearchSave } from '../../research/legacy.ts'
 import type { Migration, SaveIssue } from './save.ts'
 
-export const SAVE_SCHEMA_VERSION = 4
+export const SAVE_SCHEMA_VERSION = 5
 
 const MAPS = new Set<string | number>(['temperate', 'tropical', 'desert'])
 const SPEEDS = new Set<string | number>([0, 1, 3, 5])
@@ -113,11 +116,19 @@ export function migrateV3ToV4(data: unknown): unknown {
   return next
 }
 
+/** 4 → 5. Fold the research desk and Wave 3 into the Growth tree. */
+export function migrateV4ToV5(data: unknown): unknown {
+  const o = asRecord(data)
+  const xp = finiteNumber(o.fieldXp) ?? 0
+  return foldResearchSave(o, fieldLevelOf(xp))
+}
+
 /** `migrations[v]` upgrades a save from schema v to v+1. Keys cover 1 .. SAVE_SCHEMA_VERSION-1. */
 export const SAVE_MIGRATIONS: Record<number, Migration> = {
   1: migrateV1ToV2,
   2: migrateV2ToV3,
   3: migrateV3ToV4,
+  4: migrateV4ToV5,
 }
 
 export function migrationSources(): number[] {

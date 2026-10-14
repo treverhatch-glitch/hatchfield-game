@@ -13,8 +13,7 @@ import { OPS_RP_PER_SEC } from '../research/config.ts'
 import { nodeCost, nodeState, roomRate as treeRoomRate } from '../research/logic.ts'
 import { RESEARCH_NODES as TREE_NODES, nodeById } from '../research/nodes.ts'
 import { queueAtNode } from '../terminalplay/queues.ts'
-import { OPS_TRICKLE_PER_SEC } from '../wave3/config.ts'
-import { roomRate as wave3RoomRate, techNode } from '../wave3/research.ts'
+import { techNode } from '../wave3/research.ts'
 import type { AirportView, CommandResult, PlayerCommands, Probe, ResearchPools, SystemsBooks } from './types.ts'
 
 const FINE_CATEGORIES = [
@@ -345,15 +344,14 @@ class GamePlayer implements PlayerCommands {
     })
     const spent = (rows: { cost: number }[]) => rows.reduce((sum, row) => sum + row.cost, 0)
     const deskCarry = 0
-    const wave3Carry = game.wave3.state.research.carry
     const treeCarry = game.researchTree.state.carry
     return {
       deskPoints: round2(game.researchPoints),
       deskCarry,
       deskEarned: round2(game.researchPoints + spent(deskUnlocked)),
-      wave3Points: game.wave3.points(),
-      wave3Carry: round2(wave3Carry),
-      wave3Earned: round2(game.wave3.points() + wave3Carry + spent(wave3Unlocked)),
+      wave3Points: 0,
+      wave3Carry: 0,
+      wave3Earned: 0,
       treePoints: game.researchTree.points(),
       treeCarry: round2(treeCarry),
       treeEarned: round2(game.researchTree.points() + treeCarry + spent(treeUnlocked)),
@@ -363,8 +361,8 @@ class GamePlayer implements PlayerCommands {
       machines: gear.machines,
       deskLabRate: round2(game.labResearchRate()),
       deskOpsRate: round2(game.opsResearchRate()),
-      wave3RoomRate: round2(wave3RoomRate(rooms)),
-      wave3OpsRate: OPS_TRICKLE_PER_SEC,
+      wave3RoomRate: 0,
+      wave3OpsRate: 0,
       treeRoomRate: round2(treeRoomRate(rooms)),
       treeOpsRate: game.site != null ? OPS_RP_PER_SEC : 0,
       deskUnlocked,

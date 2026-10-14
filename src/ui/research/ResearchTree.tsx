@@ -190,7 +190,13 @@ function NodeButton({
       data-state={status}
       onClick={() => onSelect(node.id)}
     >
-      <span className="rtree-ring" />
+      {status === 'locked' ? (
+        <span className="rtree-lock" aria-label="Locked">
+          🔒
+        </span>
+      ) : (
+        <span className="rtree-ring" />
+      )}
       <span className="rtree-name">{node.name}</span>
       <span className={`rtree-cost${status === 'available' ? ' is-open' : ''}`}>{cost === 0 ? 'Free' : cost}</span>
     </button>

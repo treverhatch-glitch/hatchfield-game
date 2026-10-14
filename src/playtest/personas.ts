@@ -49,7 +49,7 @@ function roomCost(id: RoomId): number {
 
 /** Next lab room, once the operations trickle has banked a point and cash covers it. */
 function nextLabRoom(view: AirportView): RoomId | null {
-  if (view.wave3Points < 1 || view.terminals < 1) return null
+  if ((view.researchPoints < 1 && view.wave3Points < 1) || view.terminals < 1) return null
   for (const id of T.labRooms) {
     if (roomTotal(view, id) < 1 && view.cash >= roomCost(id)) return id
   }

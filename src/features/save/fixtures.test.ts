@@ -28,7 +28,7 @@ describe('save schema chain', () => {
   it('has one step from every older version up to the current schema', () => {
     const sources = migrationSources()
     expect(sources).toEqual(Array.from({ length: SAVE_SCHEMA_VERSION - 1 }, (_, i) => i + 1))
-    expect(SAVE_SCHEMA_VERSION).toBe(4)
+    expect(SAVE_SCHEMA_VERSION).toBe(5)
   })
 
   it('loads a v1 fixture through every migration', () => {

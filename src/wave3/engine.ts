@@ -1,9 +1,8 @@
-import { OPS_RP_PER_TURNAROUND } from './config.ts'
 import { ceoFor } from './ceo.ts'
 import { contractShape, landingOffer } from './contracts.ts'
 import { fleetIdsFor, fleetLabel, metalAllowed } from './fleet.ts'
 import { labFrame } from './animation.ts'
-import { accrue, buyNode, emptyResearch, techNode, TECH_NODES } from './research.ts'
+import { buyNode, emptyResearch, techNode, TECH_NODES } from './research.ts'
 import { emptyRelations, feeFactorFor, noteLetter, noteTurnaround, readRelation } from './relations.ts'
 import type { CeoCard, LabFrame, RelationsState, ResearchState, RoomCounts, Wave3State } from './types.ts'
 
@@ -19,13 +18,14 @@ export class Wave3Engine {
   }
 
   /**
-   * Day-1 operations trickle. `operating` is true once the airport exists.
-   * Staff are not required. Rooms add the larger share.
+   * Lab animation only. Research points live on the Growth tree.
+   * `operating` and `rooms` stay in the signature so callers do not change.
    */
-  tick(seconds: number, operating: boolean, rooms: RoomCounts): void {
+  tick(seconds: number, _operating: boolean, _rooms: RoomCounts): void {
+    const extra = Math.max(0, seconds)
     this.state = {
       ...this.state,
-      research: accrue(this.state.research, seconds, rooms, operating),
+      research: { ...this.state.research, animSeconds: this.state.research.animSeconds + extra },
     }
   }
 
@@ -34,18 +34,7 @@ export class Wave3Engine {
   }
 
   noteTurnaround(airlineId: string, kind: 'success' | 'delay' | 'cancel'): void {
-    const relations = noteTurnaround(this.state.relations, airlineId, kind)
-    const bonus = kind === 'cancel' ? 0 : OPS_RP_PER_TURNAROUND
-    const carry = this.state.research.carry + bonus
-    const whole = Math.floor(carry)
-    this.state = {
-      relations,
-      research: {
-        ...this.state.research,
-        points: this.state.research.points + whole,
-        carry: carry - whole,
-      },
-    }
+    this.state = { ...this.state, relations: noteTurnaround(this.state.relations, airlineId, kind) }
   }
 
   points(): number {

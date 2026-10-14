@@ -3959,6 +3959,12 @@ h1.game-title::after {
 
 .rtree-node.is-locked {
   opacity: 0.55;
+  filter: grayscale(0.85);
+}
+
+.rtree-lock {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .rtree-node.is-selected {

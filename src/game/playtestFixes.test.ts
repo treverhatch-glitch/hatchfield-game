@@ -12,7 +12,6 @@ import {
   money,
   POLICE_COST,
   RESEARCH_NODES,
-  RP_RATE_OPS,
   RUNWAY_PREFAB_COST,
   START_CASH,
   STARTER_KIT_COST,
@@ -20,6 +19,7 @@ import {
 import { itemDef, itemsForZone, schemeItems, schemeZones } from './terminal.ts'
 import { placementCheck } from './terminalKit.ts'
 import { contractedAirframes } from './airframes.ts'
+import { OPS_RP_PER_SEC } from '../research/config.ts'
 import { Game } from './sim.ts'
 import type { FieldTask } from './types.ts'
 
@@ -329,20 +329,18 @@ function openGrass(game: Game): { c: number; r: number } {
 }
 
 describe('operations research trickle', () => {
-  it('banks Night bank from the field before a researcher is hired', () => {
+  it('banks research from the field before a researcher is hired', () => {
     const game = fresh('easy')
-    expect(game.researchRate()).toBe(0)
+    expect(game.researchRate()).toBe(OPS_RP_PER_SEC)
     game.buildStarterKit()
     expect(game.researchers).toBe(0)
-    expect(game.opsResearchRate()).toBe(RP_RATE_OPS)
-    expect(game.researchRate()).toBe(RP_RATE_OPS)
-    const night = RESEARCH_NODES.find((n) => n.id === 'night_bank')
-    expect(night?.cost).toBe(28)
-    expect(RP_RATE_OPS * 600).toBeGreaterThanOrEqual(night!.cost)
+    expect(game.opsResearchRate()).toBe(OPS_RP_PER_SEC)
+    expect(game.researchRate()).toBe(OPS_RP_PER_SEC)
+    expect(RESEARCH_NODES.some((node) => node.id === 'night_bank')).toBe(true)
     game.speed = 1
-    const before = game.researchPoints
+    const before = game.researchPoints + game.researchTree.state.carry
     game.tick(20)
-    expect(game.researchPoints).toBeGreaterThan(before)
+    expect(game.researchPoints + game.researchTree.state.carry).toBeGreaterThan(before)
     expect(game.researchers).toBe(0)
   })
 })

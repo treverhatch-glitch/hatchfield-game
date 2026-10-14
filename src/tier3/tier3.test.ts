@@ -225,7 +225,7 @@ describe('cargo night hub', () => {
 })
 
 describe('unlock gating', () => {
-  it('stays shut in the early game and opens on tier III tech or the research desk', () => {
+  it('stays shut until field level 4 and the one research node', () => {
     const early = { fieldLevel: 1, unlockedTech: new Set<string>(), research: [] as string[] }
     expect(mroUnlock(early).ok).toBe(false)
     expect(nightHubUnlock(early).ok).toBe(false)
@@ -235,11 +235,9 @@ describe('unlock gating', () => {
     const lateBare = { fieldLevel: 4, unlockedTech: new Set<string>(), research: [] as string[] }
     expect(mroUnlock(lateBare).ok).toBe(false)
     expect(nightHubUnlock(lateBare).ok).toBe(false)
-    expect(mroUnlock({ fieldLevel: 4, unlockedTech: new Set(['maintenance.t2']), research: [] }).ok).toBe(false)
-    expect(mroUnlock({ fieldLevel: 4, unlockedTech: new Set(['maintenance.t3']), research: [] }).ok).toBe(true)
-    expect(mroUnlock({ fieldLevel: 5, unlockedTech: new Set(['maintenance.t4']), research: [] }).ok).toBe(true)
-    expect(nightHubUnlock({ fieldLevel: 5, unlockedTech: new Set(['cargo.t2']), research: [] }).ok).toBe(false)
-    expect(nightHubUnlock({ fieldLevel: 5, unlockedTech: new Set(['cargo.t3']), research: [] }).ok).toBe(true)
+    expect(mroUnlock({ fieldLevel: 4, unlockedTech: new Set(['maintenance.t3', 'maintenance.t4']), research: [] }).ok).toBe(false)
+    expect(mroUnlock({ fieldLevel: 4, unlockedTech: new Set<string>(), research: ['mro_hangar'] }).ok).toBe(true)
+    expect(nightHubUnlock({ fieldLevel: 5, unlockedTech: new Set(['cargo.t3', 'cargo.t4']), research: [] }).ok).toBe(false)
     expect(nightHubUnlock({ fieldLevel: 4, unlockedTech: new Set(), research: ['cargo_night_hub'] }).ok).toBe(true)
   })
 

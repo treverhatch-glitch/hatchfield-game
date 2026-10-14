@@ -2,23 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { generateContractOffers } from '../airlines/logic.ts'
 import { DEFAULT_AIRLINES } from '../airlines/data.ts'
 import type { AirlineState, AirportCapabilities } from '../airlines/types.ts'
-import { LATE_LAB, OPS_TRICKLE_PER_SEC } from './config.ts'
 import { Wave3Engine } from './engine.ts'
 import { fleetHasMainlineNarrowbody, fleetIdsFor, metalAllowed } from './fleet.ts'
 import { shapeAirlineOffer } from './contracts.ts'
-import { branchCost, projectResearch } from './research.ts'
 import { labFrame } from './animation.ts'
 import { shiftScore } from './relations.ts'
 import { emptyRelations } from './relations.ts'
 
 describe('wave 3 research points', () => {
-  it('earns a passive operations trickle on day 1 before any staff or rooms', () => {
+  it('keeps lab animation and does not bank a second research wallet', () => {
     const engine = new Wave3Engine()
     expect(engine.points()).toBe(0)
-    engine.tick(120, true, { desk: 0, board: 0, machine: 0 })
-    const earned = engine.points() + engine.state.research.carry
-    expect(earned).toBeCloseTo(OPS_TRICKLE_PER_SEC * 120, 5)
-    expect(engine.points()).toBeGreaterThan(0)
+    engine.tick(120, true, { desk: 8, board: 4, machine: 4 })
+    expect(engine.points()).toBe(0)
+    expect(engine.state.research.carry).toBe(0)
+    expect(engine.state.research.animSeconds).toBeCloseTo(120, 5)
   })
 
   it('changes the HUD key when a relationship moves, so the letter repaints', () => {
@@ -36,23 +34,11 @@ describe('wave 3 research points', () => {
     expect(engine.state.research.carry).toBe(0)
   })
 
-  it('gets most of its points from placed research rooms', () => {
-    const late = projectResearch(LATE_LAB)
-    expect(late.ops).toBeGreaterThan(0)
-    expect(late.rooms).toBeGreaterThan(late.ops * 4)
-    const one = branchCost('passenger')
-    expect(late.total).toBeGreaterThan(one * 0.85)
-    expect(late.total).toBeLessThan(one)
-    expect(late.total).toBeLessThan(one * 2)
-  })
-
-  it('buys a branch in order and refuses a node the field has not reached', () => {
+  it('does not pay research points when a turnaround is graded', () => {
     const engine = new Wave3Engine()
-    engine.tick(200_000, true, { desk: 8, board: 4, machine: 4 })
-    expect(engine.buy('passenger.2', 5).ok).toBe(false)
-    expect(engine.buy('passenger.1', 1).ok).toBe(true)
-    expect(engine.buy('passenger.8', 5).ok).toBe(false)
-    expect(engine.state.research.unlocked).toEqual(['passenger.1'])
+    engine.noteTurnaround('harbor', 'success')
+    expect(engine.points()).toBe(0)
+    expect(engine.relation('harbor').score).toBeGreaterThan(0)
   })
 })
 

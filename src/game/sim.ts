@@ -142,11 +142,6 @@ import {
   RESEARCHER_HIRE,
   DESK_STAFF_HIRE,
   CONTRACT_FLEET,
-  RP_RATE_BARE,
-  RP_RATE_BOARD,
-  RP_RATE_DESK,
-  RP_RATE_MACHINE,
-  RP_RATE_OPS,
   ROOMS,
   HEAVY_RUNWAY_COST,
   HEAVY_RUNWAY_LEN,
@@ -589,7 +584,12 @@ import {
   type GatePoint,
   type Movement,
 } from '../hub/index.ts'
+import { OPS_RP_PER_SEC, CATEGORIES } from '../research/config.ts'
 import { ResearchEngine } from '../research/engine.ts'
+import { researchMods } from '../research/effects.ts'
+import { DESK_TO_NODE, deskIdsForNode, foldResearchSave, WAVE3_TO_NODE } from '../research/legacy.ts'
+import { categoryUnlocked, nodeCost, nodeState } from '../research/logic.ts'
+import { nodeById } from '../research/nodes.ts'
 import { Wave3Engine } from '../wave3/engine.ts'
 import { metalAllowed } from '../wave3/fleet.ts'
 import {
@@ -1256,12 +1256,20 @@ export class Game {
   airlineWarned: Record<string, boolean> = {}
   /** Accrued sim-seconds under abandon heat threshold. */
   airlineLowAcc: Record<string, number> = {}
-  researchPoints = 0
   researchUnlocked: ResearchId[] = []
-  /** Relationship scores, CEO cards, and the specialization research currency. */
+  /** Relationship scores and CEO cards. Research points live on the Growth tree. */
   wave3 = new Wave3Engine()
-  /** Development tree. Separate from the catalog research desk. */
+  /** The only research wallet. Desk projects and Wave 3 nodes are grants on this tree. */
   researchTree = new ResearchEngine()
+
+  get researchPoints(): number {
+    return this.researchTree.state.points
+  }
+
+  set researchPoints(value: number) {
+    if (!Number.isFinite(value)) return
+    this.researchTree.state.points = value
+  }
   /** Signed volume contract. Apex on the old desk counts when this is empty. */
   contractId: string | null = null
   tankTier: 1 | 2 | 3 = 1
@@ -1656,10 +1664,10 @@ export class Game {
     this.airlineReward = {}
     this.airlineWarned = {}
     this.airlineLowAcc = {}
-    this.researchPoints = 0
     this.researchUnlocked = []
     this.wave3 = new Wave3Engine()
     this.researchTree = new ResearchEngine()
+    this.researchPoints = 0
     this.resetPillar()
     this.layoverOffer = null
     this.layoverOfferCool = 50
@@ -2635,15 +2643,15 @@ export class Game {
   }
 
   scaledTurnMinutes(base: number): number {
-    return turnMinutes(base, this.specMods(), this.isNight())
+    return turnMinutes(base, this.specMods(), this.isNight()) * researchMods(this.researchTree.state.unlocked).turn
   }
 
   screenPace(premium: boolean): number {
-    return screenMultiplier(this.specMods(), premium)
+    return screenMultiplier(this.specMods(), premium) * researchMods(this.researchTree.state.unlocked).security
   }
 
   cargoWarehouseCap(): number {
-    return warehouseCapacity(CARGO_WAREHOUSE_CAP, this.specMods(), this.railLinked)
+    return warehouseCapacity(CARGO_WAREHOUSE_CAP, this.specMods(), this.railLinked) + researchMods(this.researchTree.state.unlocked).cargo
   }
 
   canBuySpecNode(id: string): { ok: boolean; why: string } {
@@ -2695,7 +2703,7 @@ export class Game {
   }
 
   private dressRetail(tag: string, pay: number, kind: 'tenant' | 'lounge'): number {
-    return retailPrice(pay, this.specMods(), kind, tag === 'budget')
+    return retailPrice(pay, this.specMods(), kind, tag === 'budget') * researchMods(this.researchTree.state.unlocked).retail
   }
 
   /**
@@ -3606,7 +3614,7 @@ export class Game {
   /** Catchment load factor. 1 when Bellwater and the player split demand evenly. */
   rivalDemandFactor(): number {
     if (!this.site) return 1
-    return this.ensureRival().demand(this.playerRivalSnapshot()).playerFactor
+    return this.ensureRival().demand(this.playerRivalSnapshot()).playerFactor * researchMods(this.researchTree.state.unlocked).demand
   }
 
   rivalPanel() {
@@ -3720,7 +3728,63 @@ export class Game {
   }
 
   hasResearch(id: ResearchId): boolean {
-    return this.researchUnlocked.includes(id)
+    if (this.researchUnlocked.includes(id)) return true
+    if (hubUpgrade(id)) return false
+    const nodeId = DESK_TO_NODE[id]
+    return nodeId ? this.researchTree.owns(nodeId) : false
+  }
+
+  /** Desk projects implied by the tree, plus ids already stored. Hub upgrades stay explicit. */
+  private grantedResearch(): ResearchId[] {
+    const ids = new Set(this.researchUnlocked)
+    for (const id of deskIdsForNode(this.researchTree.state.unlocked)) {
+      if (!hubUpgrade(id)) ids.add(id)
+    }
+    return [...ids]
+  }
+
+  /** Desk projects the owned tree nodes grant, plus anything already on the save. Hub cash stays explicit. */
+  private noteTreeGrants() {
+    for (const id of deskIdsForNode(this.researchTree.state.unlocked)) {
+      if (hubUpgrade(id)) continue
+      if (!this.researchUnlocked.includes(id)) this.researchUnlocked.push(id)
+    }
+  }
+
+  /** Owned tree nodes whose hub build cost has not been paid. */
+  unpaidResearchNodes(): string[] {
+    const pending: string[] = []
+    for (const nodeId of this.researchTree.state.unlocked) {
+      for (const deskId of deskIdsForNode([nodeId])) {
+        const upgrade = hubUpgrade(deskId)
+        if (upgrade && !this.researchUnlocked.includes(deskId)) pending.push(nodeId)
+      }
+    }
+    return pending
+  }
+
+  private chargeHubBills(nodeId: string): { ok: boolean; paid: boolean; why: string } {
+    let paid = false
+    for (const deskId of deskIdsForNode([nodeId])) {
+      const upgrade = hubUpgrade(deskId)
+      if (!upgrade || this.researchUnlocked.includes(deskId)) continue
+      if (upgrade.requires && !this.hasResearch(upgrade.requires)) {
+        const need = hubUpgrade(upgrade.requires)
+        return { ok: false, paid, why: `Need ${need?.name ?? upgrade.requires} first.` }
+      }
+      if (this.fieldLevel() < upgrade.minFieldLevel) {
+        return { ok: false, paid, why: `Need Field Level ${upgrade.minFieldLevel}.` }
+      }
+      if (!this.sandbox && this.cash < upgrade.buildCost) {
+        return { ok: false, paid, why: `Need ${moneyLeft(upgrade.buildCost)} cash.` }
+      }
+      if (upgrade.buildCost > 0 && !this.spend(upgrade.buildCost, upgrade.name)) {
+        return { ok: false, paid, why: `Need ${moneyLeft(upgrade.buildCost)} cash.` }
+      }
+      this.researchUnlocked.push(deskId)
+      paid = true
+    }
+    return { ok: true, paid, why: '' }
   }
 
   /** Sim day cycle ~180s; night is the last third. */
@@ -3729,27 +3793,33 @@ export class Game {
   }
 
   canBuyResearch(id: ResearchId): { ok: boolean; why: string } {
-    const node = RESEARCH_NODES.find((n) => n.id === id)
-    if (!node) return { ok: false, why: 'Unknown project.' }
+    const nodeId = DESK_TO_NODE[id]
+    const treeNode = nodeId ? nodeById(nodeId) : undefined
+    if (!treeNode) return { ok: false, why: 'Unknown project.' }
     if (this.hasResearch(id)) return { ok: false, why: 'Already unlocked.' }
-    if (node.requires && !this.hasResearch(node.requires)) {
-      const need = RESEARCH_NODES.find((n) => n.id === node.requires)
-      return { ok: false, why: `Need ${need?.name ?? node.requires} first.` }
-    }
-    if (node.minFieldLevel && this.fieldLevel() < node.minFieldLevel) {
-      return { ok: false, why: `Needs Field level ${node.minFieldLevel}.` }
-    }
     const upgrade = hubUpgrade(id)
+    if (upgrade?.requires && !this.hasResearch(upgrade.requires)) {
+      const need = hubUpgrade(upgrade.requires)
+      return { ok: false, why: `Need ${need?.name ?? upgrade.requires} first.` }
+    }
     if (upgrade && this.fieldLevel() < upgrade.minFieldLevel) {
       return { ok: false, why: `Need Field Level ${upgrade.minFieldLevel}.` }
     }
     if (upgrade && !this.sandbox && this.cash < upgrade.buildCost) {
       return { ok: false, why: `Need ${moneyLeft(upgrade.buildCost)} cash.` }
     }
-    if (this.researchPoints < node.cost) {
-      return {
-        ok: false,
-        why: `Need ${node.cost} RP (have ${Math.floor(this.researchPoints)}).`,
+    if (!this.researchTree.owns(treeNode.id)) {
+      const status = nodeState(this.researchTree.state, treeNode, this.fieldLevel())
+      if (status === 'locked') {
+        if (!categoryUnlocked(treeNode.category, this.fieldLevel())) {
+          const row = CATEGORIES.find((item) => item.id === treeNode.category)
+          return { ok: false, why: `Needs Field Level ${row?.unlockLevel ?? 1}.` }
+        }
+        return { ok: false, why: 'Research the previous step first.' }
+      }
+      const cost = nodeCost(this.researchTree.state, treeNode)
+      if (this.researchPoints < cost) {
+        return { ok: false, why: `Need ${cost} RP (have ${Math.floor(this.researchPoints)}).` }
       }
     }
     return { ok: true, why: '' }
@@ -3768,8 +3838,17 @@ export class Game {
     if (upgrade && upgrade.buildCost > 0) {
       if (!this.spend(upgrade.buildCost, upgrade.name)) return
     }
-    this.researchPoints -= node.cost
-    this.researchUnlocked.push(id)
+    const nodeId = DESK_TO_NODE[id]
+    if (nodeId && !this.researchTree.owns(nodeId)) {
+      const bought = this.researchTree.buy(nodeId, this.fieldLevel())
+      if (!bought.ok) {
+        this.pushNews(bought.why, 'bad')
+        this.emit()
+        return
+      }
+    }
+    if (!this.researchUnlocked.includes(id)) this.researchUnlocked.push(id)
+    this.noteTreeGrants()
     this.pushNews(`R&D unlocked: ${node.name} — ${node.blurb}`, 'good')
     this.reputation = Math.min(100, this.reputation + 1)
     this.emit()
@@ -3781,29 +3860,48 @@ export class Game {
   }
 
   wave3BuyPreview(id: string): { ok: boolean; why: string } {
-    const node = this.wave3.node(id)
+    const nodeId = WAVE3_TO_NODE[id]
+    const node = nodeId ? nodeById(nodeId) : undefined
     if (!node) return { ok: false, why: 'Unknown research.' }
-    if (this.wave3.state.research.unlocked.includes(id)) return { ok: false, why: 'Already researched.' }
-    if (this.fieldLevel() < node.fieldLevel) return { ok: false, why: `Needs Field Level ${node.fieldLevel}.` }
-    for (const req of node.requires) {
-      if (!this.wave3.state.research.unlocked.includes(req)) return { ok: false, why: 'Buy the previous step first.' }
-    }
-    if (this.wave3.points() < node.cost) return { ok: false, why: `Need ${node.cost} research points.` }
+    if (this.researchTree.owns(node.id)) return { ok: false, why: 'Already researched.' }
+    const status = nodeState(this.researchTree.state, node, this.fieldLevel())
+    if (status === 'locked') return { ok: false, why: 'Research the previous step first.' }
+    const cost = nodeCost(this.researchTree.state, node)
+    if (this.researchPoints < cost) return { ok: false, why: `Need ${cost} research points.` }
     return { ok: true, why: node.name }
   }
 
   buyResearchNode(id: string) {
+    if (this.researchTree.owns(id)) {
+      const bill = this.chargeHubBills(id)
+      this.noteTreeGrants()
+      if (!bill.ok) this.pushNews(bill.why, 'bad')
+      else this.pushNews(bill.paid ? 'Research: paid the build cost.' : 'Already researched.', bill.paid ? 'good' : 'bad')
+      this.emit()
+      return bill.ok && bill.paid
+    }
     const result = this.researchTree.buy(id, this.fieldLevel())
-    this.pushNews(result.ok ? `Research: ${result.why}` : result.why, result.ok ? 'good' : 'bad')
+    if (!result.ok) {
+      this.pushNews(result.why, 'bad')
+      this.emit()
+      return false
+    }
+    const bill = this.chargeHubBills(id)
+    this.noteTreeGrants()
+    this.pushNews(bill.ok ? `Research: ${result.why}` : bill.why, bill.ok ? 'good' : 'bad')
     this.emit()
-    return result.ok
+    return bill.ok
   }
 
+  /** Wave 3 ids are aliases onto the Growth tree. */
   buyWave3(id: string) {
-    const result = this.wave3.buy(id, this.fieldLevel())
-    this.pushNews(result.ok ? `Research: ${result.why}` : result.why, result.ok ? 'good' : 'bad')
-    this.emit()
-    return result.ok
+    const nodeId = WAVE3_TO_NODE[id]
+    if (!nodeId) {
+      this.pushNews('Unknown research.', 'bad')
+      this.emit()
+      return false
+    }
+    return this.buyResearchNode(nodeId)
   }
 
   /** Award RP when a jet/helo finishes takeoff. */
@@ -5326,6 +5424,7 @@ export class Game {
       airlineWarned: this.airlineWarned,
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
+      researchUnified: true,
       wave3: this.wave3.save(),
       researchTree: this.researchTree.save(),
       missedConnections: this.missedConnections,
@@ -5520,10 +5619,22 @@ export class Game {
       this.airlineReward = s.airlineReward ?? {}
       this.airlineWarned = s.airlineWarned ?? {}
       this.airlineLowAcc = {}
-      this.researchPoints = s.researchPoints ?? 0
-      this.researchUnlocked = s.researchUnlocked ?? []
-      this.wave3.load(s.wave3)
-      this.researchTree.load(s.researchTree, this.fieldLevel())
+      const folded = foldResearchSave(
+        {
+          researchPoints: s.researchPoints,
+          researchUnlocked: s.researchUnlocked,
+          researchTree: s.researchTree,
+          researchUnified: s.researchUnified,
+          wave3: s.wave3,
+        },
+        this.fieldLevel(),
+      )
+      const foldedTree = folded.researchTree as GameSnapshot['researchTree']
+      const foldedWave = folded.wave3 as GameSnapshot['wave3']
+      this.researchUnlocked = (folded.researchUnlocked as ResearchId[] | undefined) ?? []
+      this.wave3.load(foldedWave)
+      this.researchTree.load(foldedTree, this.fieldLevel())
+      this.noteTreeGrants()
       this.missedConnections = s.missedConnections ?? 0
       this.linkWear = {
         mover: Number.isFinite(s.linkWear?.mover) ? s.linkWear!.mover : 0,
@@ -10871,7 +10982,7 @@ export class Game {
     return {
       fieldLevel: this.fieldLevel(),
       unlockedTech: new Set(this.economyState?.unlockedTech ?? []),
-      research: this.researchUnlocked,
+      research: this.grantedResearch(),
     }
   }
 
@@ -14640,31 +14751,21 @@ export class Game {
     return { desks, boards, machines }
   }
 
-  /** RP/sec from turning the field, before a researcher is hired. */
+  /** RP/sec from operations. Rooms add the larger share via labResearchRate. */
   opsResearchRate(): number {
-    if (!this.starterFieldUp()) return 0
-    return RP_RATE_OPS
+    if (!this.site) return 0
+    return OPS_RP_PER_SEC
   }
 
-  /** RP/sec from hired researchers and lab furniture. */
+  /** RP/sec from animated R&D rooms. Staff are not required. */
   labResearchRate(): number {
-    if (this.researchers < 1) return 0
-    const { desks, boards, machines } = this.labGear()
-    const stations = Math.max(1, desks + boards + machines)
-    const workingCap = Math.min(this.researchers, Math.max(1, desks || (stations > 0 ? 1 : 0)))
-    if (desks + boards + machines < 1) {
-      return this.researchers * RP_RATE_BARE * this.staffHousing.outputPace()
-    }
-    const gear =
-      Math.min(desks, workingCap) * RP_RATE_DESK +
-      Math.min(boards, workingCap) * RP_RATE_BOARD +
-      Math.min(machines, workingCap) * RP_RATE_MACHINE
-    // Extra warm bodies beyond gear still drip a little.
-    const overflow = Math.max(0, this.researchers - workingCap) * RP_RATE_BARE
-    return (gear + overflow) * this.staffHousing.outputPace()
+    if (!this.site) return 0
+    const gear = this.labGear()
+    const rooms = { desk: gear.desks, board: gear.boards, machine: gear.machines }
+    return Math.max(0, this.researchTree.rate(rooms, true) - OPS_RP_PER_SEC)
   }
 
-  /** RP/sec the research desk should show: operations trickle plus the lab. */
+  /** RP/sec of the one research pool: operations trickle plus the lab rooms. */
   researchRate(): number {
     return this.opsResearchRate() + this.labResearchRate()
   }
@@ -14848,12 +14949,8 @@ export class Game {
       p.y = lerp(p.y, ty, 1 - Math.pow(0.1, dt))
     }
 
-    const rate = this.labResearchRate()
     const staff = this.people.filter((p) => p.job === 'researcher')
     const workFrac = staff.length ? working / staff.length : 0
-    // Night lab is quieter — half drip; off-shift bodies don't bank RP.
-    const night = this.isNight() ? 0.55 : 1
-    this.researchPoints += rate * workFrac * night * dt
 
     if (
       staff.length >= 2 &&
@@ -16740,11 +16837,6 @@ export class Game {
       this.emit()
       return
     }
-    if (building.research && !this.hasResearch(building.research)) {
-      this.pushNews(`${building.name} is still locked in research.`, 'bad')
-      this.emit()
-      return
-    }
     if (building.tile === 'stand' && this.standAccessMode === 'jetway') {
       const bridge = unlockLevel('jet_bridge')
       if (this.fieldLevel() < bridge) {
@@ -16820,11 +16912,6 @@ export class Game {
         this.emit()
         return
       }
-    }
-    if (building.tile === 'deice' && !this.hasResearch('deice')) {
-      this.pushNews('De-ice pad locked — research De-ice ops first.', 'bad')
-      this.emit()
-      return
     }
     const isLandside =
       building.tile === 'hotel' ||
@@ -20619,8 +20706,6 @@ export class Game {
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)
-    const opsRp = this.opsResearchRate()
-    if (opsRp > 0) this.researchPoints += opsRp * step
     this.tickResearchers(step)
     // Day 1 specialization points. No staff and no rooms required.
     const gear = this.labGear()

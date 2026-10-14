@@ -949,9 +949,11 @@ export interface GameSnapshot {
   airlineWarned?: Record<string, boolean>
   researchPoints?: number
   researchUnlocked?: ResearchId[]
-  /** Wave 3 relationship scores and specialization research. Missing on older saves. */
+  /** True once desk and Wave 3 progress have been folded into the Growth tree. */
+  researchUnified?: boolean
+  /** Wave 3 relationship scores. Research points on this block are legacy. */
   wave3?: Wave3State
-  /** Development-tree research points and owned nodes. Missing on older saves. */
+  /** Growth-tree research points and owned nodes. The only research wallet. */
   researchTree?: ResearchState
   /** Wear on the people mover and the airside transfer bus. */
   linkWear?: { mover: number; bus: number }
