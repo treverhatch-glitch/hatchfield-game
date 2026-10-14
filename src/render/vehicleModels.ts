@@ -8,6 +8,7 @@
  * light bars) are tagged `lit` and drawn unlit so they read as glowing.
  */
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 
 export type VehicleModel =
   | 'fuel_tanker'
@@ -207,22 +208,22 @@ export interface VPart {
 
 /** Named moving parts each model exposes, for Round B rigs and tests. */
 export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
-  fuel_tanker: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'beacon', 'hose_reel', 'hose', 'reverse'],
-  hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose', 'reverse'],
-  baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2'],
+  fuel_tanker: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'beacon', 'hose_reel', 'hose', 'reverse', 'beam'],
+  hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose', 'reverse', 'beam'],
+  baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2', 'beam'],
   baggage_cart: ['wheels_front', 'wheels_rear', 'curtain'],
   belt_loader: ['wheels_front', 'wheels_rear', 'beacon', 'belt', 'belt_bags', 'reverse'],
-  catering_hilift: ['wheels_front', 'wheels_rear', 'beacon', 'scissor', 'box', 'deck', 'reverse'],
-  arff: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'lightbar', 'roof_turret', 'bumper_turret', 'locker_doors', 'foam', 'reverse'],
-  deice: ['wheels_front', 'wheels_rear', 'beacon', 'boom', 'basket', 'spray', 'reverse'],
-  apron_bus: ['wheels_front', 'wheels_rear', 'beacon', 'doors', 'reverse'],
-  coach: ['wheels_front', 'wheels_rear', 'doors', 'reverse'],
-  box_truck: ['wheels_front', 'wheels_rear', 'rollup_door', 'tail_lift', 'reverse'],
-  van: ['wheels_front', 'wheels_rear', 'beacon', 'reverse'],
-  towbar_tug: ['wheels_front', 'wheels_rear', 'beacon', 'towbar', 'reverse'],
-  towbarless_tug: ['wheels_front', 'wheels_rear', 'beacon', 'cradle'],
+  catering_hilift: ['wheels_front', 'wheels_rear', 'beacon', 'scissor', 'box', 'deck', 'reverse', 'beam'],
+  arff: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'lightbar', 'roof_turret', 'bumper_turret', 'locker_doors', 'foam', 'reverse', 'beam'],
+  deice: ['wheels_front', 'wheels_rear', 'beacon', 'boom', 'basket', 'spray', 'reverse', 'beam'],
+  apron_bus: ['wheels_front', 'wheels_rear', 'beacon', 'doors', 'reverse', 'beam'],
+  coach: ['wheels_front', 'wheels_rear', 'doors', 'reverse', 'beam'],
+  box_truck: ['wheels_front', 'wheels_rear', 'rollup_door', 'tail_lift', 'reverse', 'beam'],
+  van: ['wheels_front', 'wheels_rear', 'beacon', 'reverse', 'beam'],
+  towbar_tug: ['wheels_front', 'wheels_rear', 'beacon', 'towbar', 'reverse', 'beam'],
+  towbarless_tug: ['wheels_front', 'wheels_rear', 'beacon', 'cradle', 'beam'],
   gpu: ['wheels_front', 'wheels_rear', 'cable_reel'],
-  stairs: ['wheels_front', 'wheels_rear', 'beacon', 'stair', 'canopy', 'reverse'],
+  stairs: ['wheels_front', 'wheels_rear', 'beacon', 'stair', 'canopy', 'reverse', 'beam'],
   k_loader: ['wheels_front', 'wheels_front_2', 'wheels_rear', 'wheels_rear_2', 'beacon', 'front_platform', 'rear_platform', 'reverse'],
   uld_dolly: ['wheels_front', 'wheels_rear', 'rollers'],
 }
@@ -260,8 +261,26 @@ class Kit {
     this.parts.push({ name, lit, geo: flat })
   }
 
+  /** Boxes over ~25 cm get bevelled edges so panels catch a highlight instead of a hard CG corner. */
   box(hex: string, w: number, h: number, d: number, x: number, y: number, z: number, name = '', lit = false) {
-    this.add(new THREE.BoxGeometry(w, h, d), hex, x, y, z, name, lit)
+    const m = Math.min(w, h, d)
+    if (m < 0.25 || lit) this.add(new THREE.BoxGeometry(w, h, d), hex, x, y, z, name, lit)
+    else this.rbox(hex, w, h, d, x, y, z, Math.min(0.08, m * 0.12), name)
+  }
+
+  /** Rounded box with an explicit corner radius (cabs, hoods). */
+  rbox(hex: string, w: number, h: number, d: number, x: number, y: number, z: number, radius: number, name = '') {
+    const rad = Math.max(0.005, Math.min(radius, Math.min(w, h, d) * 0.49))
+    this.add(new RoundedBoxGeometry(w, h, d, 2, rad), hex, x, y, z, name)
+  }
+
+  /** Headlight lens plus a soft forward light cone (part 'beam', drawn additive when lit). */
+  head(w: number, h: number, d: number, x: number, y: number, z: number, _name = '', _lit = true) {
+    this.box(LIVERY.head, w, h, d, x, y, z, '', true)
+    const len = 5.5
+    const cone = new THREE.ConeGeometry(0.95, len, 14, 1, true).rotateZ(Math.PI / 2)
+    cone.rotateZ(-0.06) // dipped beam: aim slightly down
+    this.add(cone, '#fff1c4', x + w / 2 + len / 2, y - 0.2, z, 'beam', true)
   }
 
   /** Box rotated about Z (pitch), for booms, belts and stairs. */
@@ -286,7 +305,19 @@ class Kit {
     const tw = r * 0.62
     for (const s of [1, -1]) {
       const z = s * (W / 2 - tw / 2 - inset)
-      this.cyl(LIVERY.tyre, r, tw, x, r, z, 'z', name, 14)
+      this.cyl(LIVERY.tyre, r * 0.94, tw, x, r, z, 'z', name, 18)
+      // tread: raised lugs round the crown, alternating offset so it reads as a block pattern
+      const lugs = Math.max(12, Math.round(r * 40))
+      for (let j = 0; j < lugs; j++) {
+        const a = (j / lugs) * Math.PI * 2
+        const lug = new THREE.BoxGeometry(r * 0.1, (Math.PI * 2 * r) / lugs * 0.55, tw * 0.46)
+        lug.translate(r * 0.95, 0, (j % 2 ? 0.25 : -0.25) * tw).rotateZ(a)
+        this.add(lug, LIVERY.tyre, x, r, z, name)
+      }
+      // wheel arch: dark half-ring flare above the tyre (static shell)
+      const arch = new THREE.TorusGeometry(r * 1.14, 0.06, 5, 14, Math.PI)
+      this.add(arch, LIVERY.black, x, r, s * (W / 2 + 0.01))
+      this.add(new THREE.TorusGeometry(r * 1.14, 0.06, 5, 14, Math.PI), LIVERY.black, x, r, s * (W / 2 - tw - inset))
       this.cyl(LIVERY.hub, r * 0.52, tw * 1.04, x, r, z, 'z', name, 10)
       this.cyl(LIVERY.chassis, r * 0.18, tw * 1.1, x, r, z, 'z', name, 6)
       if (dual) this.cyl(LIVERY.tyre, r, tw * 0.9, x, r, z - s * tw * 0.98, 'z', name, 14)
@@ -303,8 +334,8 @@ class Kit {
   cab(L: number, W: number, base: number, h: number, len: number, hex: string, opts: { beacon?: boolean } = {}) {
     const x0 = L / 2 - len / 2
     const top = base + h
-    this.box(hex, len, h * 0.5, W, x0, base + h * 0.25, 0) // lower cab
-    this.box(hex, len * 0.86, h * 0.08, W * 0.98, x0 - len * 0.06, top - h * 0.04, 0) // roof
+    this.rbox(hex, len, h * 0.5, W, x0, base + h * 0.25, 0, Math.min(0.22, h * 0.1)) // lower cab, rounded corners
+    this.rbox(hex, len * 0.9, h * 0.14, W * 0.98, x0 - len * 0.05, top - h * 0.07, 0, h * 0.07) // domed roof
     // glazing band with pillars
     const gy = base + h * 0.7
     const gh = h * 0.38
@@ -317,7 +348,7 @@ class Kit {
       this.box(LIVERY.black, 0.05, 0.05, 0.28, L / 2 - 0.2, gy + gh * 0.2, s * (W / 2 + 0.14))
       this.box(LIVERY.black, 0.07, 0.36, 0.18, L / 2 - 0.2, gy, s * (W / 2 + 0.3))
       // headlights + indicators
-      this.box(LIVERY.head, 0.04, 0.16, 0.34, L / 2 + 0.01, base + 0.32, s * (W / 2 - 0.3), '', true)
+      this.head(0.04, 0.16, 0.34, L / 2 + 0.01, base + 0.32, s * (W / 2 - 0.3), '', true)
       this.box(LIVERY.amber, 0.04, 0.1, 0.14, L / 2 + 0.01, base + 0.32, s * (W / 2 - 0.08), '', true)
     }
     this.box(LIVERY.black, 0.08, 0.26, W * 1.02, L / 2 + 0.02, base + 0.08, 0) // bumper
@@ -396,7 +427,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.cyl(LIVERY.gseYellow, 0.38, 0.5, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.3, 0.52, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
     // hose paid out sideways from the reel (Round B scales it along Z)
-    k.cyl(LIVERY.hose, 0.06, HOSE_M, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
+    k.cyl(LIVERY.hose, 0.13, HOSE_M, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
     k.box(LIVERY.steel, 0.25, 0.2, 0.3, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M, 'hose') // nozzle
     k.box(LIVERY.chassis, 1.8, 0.5, W * 1.0, tx, r + 0.25, 0)
     k.chevrons(-L / 2, r * 0.4, 0.5, W)
@@ -418,7 +449,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (const s of [1, -1]) for (const f of [-0.4, 0.4]) k.box(LIVERY.gseYellow, 0.05, 0.85, 0.05, dx + f * dl * 0.8, r + 1.6, s * W * 0.43, 'lift_platform')
     k.cyl(LIVERY.gseYellow, 0.32, 0.4, dx - dl * 0.15, r + 1.45, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.26, 0.42, dx - dl * 0.15, r + 1.45, 0, 'z', 'hose_reel')
-    k.cyl(LIVERY.hose, 0.07, HOSE_M, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
+    k.cyl(LIVERY.hose, 0.13, HOSE_M, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
     k.box(LIVERY.steel, 0.3, 0.3, 0.3, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M, 'hose') // pit coupler
     k.chevrons(-L / 2, r * 0.5, 0.5, W)
     k.tail(-L / 2, r + 0.6, W)
@@ -440,7 +471,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.gseYellow, 1.5, 0.06, W, tx - 0.42, H - 0.06, 0) // canopy
     k.box(LIVERY.glass, 0.04, 0.55, W * 0.85, tx + 0.28, r + 1.2, 0)
     k.beacon(tx - 0.42, H - 0.03)
-    for (const s of [1, -1]) k.box(LIVERY.head, 0.03, 0.12, 0.2, L / 2 + 0.01, r + 0.62, s * (W / 2 - 0.2), '', true)
+    for (const s of [1, -1]) k.head(0.03, 0.12, 0.2, L / 2 + 0.01, r + 0.62, s * (W / 2 - 0.2), '', true)
     k.chevrons(tx - tL / 2, r - 0.05, 0.3, W, 4)
     const cL = 2.6
     for (const [i, name] of [[0, 'cart_1'], [1, 'cart_2']] as const) {
@@ -593,7 +624,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.chassis, L * 0.6, 0.35, W * 0.6, 0, H + 0.17, 0) // roof AC pod
     k.beacon(L * 0.3, H + 0.34)
     for (const s of [1, -1]) {
-      k.box(LIVERY.head, 0.03, 0.15, 0.4, L / 2 + 0.02, fl + 0.45, s * (W / 2 - 0.35), '', true)
+      k.head(0.03, 0.15, 0.4, L / 2 + 0.02, fl + 0.45, s * (W / 2 - 0.35), '', true)
       k.box(LIVERY.black, 0.06, 0.35, 0.16, L / 2 + 0.15, H - 0.7, s * (W / 2 + 0.12))
     }
     k.tail(-L / 2 - 0.01, fl + 0.5, W)
@@ -615,7 +646,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (let i = 0; i < 4; i++) k.box(LIVERY.steel, L * 0.12, 0.6, 0.02, -L * 0.2 + i * L * 0.13, fl + 0.55, W / 2 + 0.01) // luggage bays
     k.box(LIVERY.glass, 0.9, bh * 0.85, 0.03, L / 2 - 0.7, fl + bh * 0.45, -W / 2 - 0.01, 'doors')
     for (const s of [1, -1]) {
-      k.box(LIVERY.head, 0.03, 0.15, 0.45, L / 2 + 0.02, fl + 0.45, s * (W / 2 - 0.35), '', true)
+      k.head(0.03, 0.15, 0.45, L / 2 + 0.02, fl + 0.45, s * (W / 2 - 0.35), '', true)
       k.box(LIVERY.black, 0.4, 0.06, 0.06, L / 2 + 0.15, H - 0.5, s * (W / 2 + 0.05))
       k.box(LIVERY.black, 0.08, 0.5, 0.18, L / 2 + 0.35, H - 0.8, s * (W / 2 + 0.05))
     }
@@ -650,7 +681,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.glass, 0.9, 0.55, W * 1.005, L / 2 - 1.35, H - 0.55, 0)
     k.sideStripe(-L * 0.1, L * 0.7, r + 0.7, W, k.accent, 0.18)
     for (const s of [1, -1]) {
-      k.box(LIVERY.head, 0.03, 0.12, 0.3, L / 2 + 0.01, r + 0.65, s * (W / 2 - 0.3), '', true)
+      k.head(0.03, 0.12, 0.3, L / 2 + 0.01, r + 0.65, s * (W / 2 - 0.3), '', true)
       k.box(LIVERY.black, 0.06, 0.24, 0.12, L / 2 - 1.0, H - 0.7, s * (W / 2 + 0.1))
     }
     k.beacon(L * 0.1, H)
@@ -671,7 +702,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.beacon(L * 0.15, H, -W * 0.18)
     k.chevrons(L / 2 + 0.03, r - 0.05, 0.3, W * 0.9, 6)
     k.chevrons(-L / 2, r - 0.05, 0.3, W * 0.9, 6)
-    for (const s of [1, -1]) k.box(LIVERY.head, 0.03, 0.12, 0.25, L / 2 + 0.05, r + 0.4, s * (W / 2 - 0.35), '', true)
+    for (const s of [1, -1]) k.head(0.03, 0.12, 0.25, L / 2 + 0.05, r + 0.4, s * (W / 2 - 0.35), '', true)
     k.tail(-L / 2, r + 0.4, W * 0.9)
     k.box(LIVERY.steel, 1.4, 0.1, 0.1, L / 2 + 0.6 - 0.75, r - 0.05, 0, 'towbar')
   },
@@ -694,7 +725,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.beacon(L * 0.32, H, -W * 0.28)
     k.chevrons(L / 2 + 0.06, r - 0.1, 0.35, W * 0.95, 8)
     for (const s of [1, -1]) {
-      k.box(LIVERY.head, 0.03, 0.12, 0.3, L / 2 + 0.07, r + 0.35, s * (W / 2 - 0.4), '', true)
+      k.head(0.03, 0.12, 0.3, L / 2 + 0.07, r + 0.35, s * (W / 2 - 0.4), '', true)
       k.box(LIVERY.tail, 0.03, 0.14, 0.2, -L / 2 - 0.01 + L * 0.05, r + 0.35, s * (W / 2 - 0.2), '', true)
     }
   },

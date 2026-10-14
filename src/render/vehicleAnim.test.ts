@@ -165,3 +165,22 @@ describe('depot yard spacing', () => {
     }
   })
 })
+
+describe('Round D steering', () => {
+  it('steers the front axle from heading change over distance, clamped, and ignores the rear', async () => {
+    const { steerAngle, STEER_MAX, partPose, poseInput, newPartPose } = await import('./vehicleAnim')
+    expect(steerAngle(0, 5, 4)).toBe(0)
+    expect(steerAngle(0.1, 1, 4)).toBeGreaterThan(0)
+    expect(steerAngle(-0.1, 1, 4)).toBeLessThan(0)
+    expect(steerAngle(3, 0.1, 4)).toBe(STEER_MAX)
+    expect(steerAngle(0.2, 0, 4)).toBe(0)
+    const inp = poseInput()
+    inp.steer = 0.3
+    const out = newPartPose()
+    partPose('fuel_tanker', 'wheels_front', inp, out)
+    expect(out.ry).toBeCloseTo(0.3)
+    partPose('fuel_tanker', 'wheels_rear', inp, out)
+    expect(out.ry).toBe(0)
+  })
+})
+

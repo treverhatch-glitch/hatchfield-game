@@ -30,6 +30,15 @@ function sharedLitMaterial(): THREE.MeshBasicMaterial {
   return litMaterial
 }
 
+let beamMaterial: THREE.MeshBasicMaterial | null = null
+/** Headlight cones: faint additive glow, no depth write so they never hide the apron. */
+function sharedBeamMaterial(): THREE.MeshBasicMaterial {
+  beamMaterial ??= new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+  })
+  return beamMaterial
+}
+
 /** Real model size in metres (length, height, width). */
 export function vehicleSize(kind: string): readonly [number, number, number] {
   return MODEL_SIZE[vehicleModel(kind)]
@@ -114,7 +123,7 @@ export function vehicleRig(kind: string, color: string, worldPerMeter = 1): THRE
       holder.add(m)
     }
     if (b.lit.length) {
-      const m = new THREE.Mesh(merge(b.lit), sharedLitMaterial())
+      const m = new THREE.Mesh(merge(b.lit), name === 'beam' ? sharedBeamMaterial() : sharedLitMaterial())
       m.name = name ? `${name}:lights` : 'lights'
       holder.add(m)
     }
@@ -198,6 +207,10 @@ export interface VehicleInstance {
   odo?: number
   /** Backing onto a stand: reverse lights. */
   reversing?: boolean
+  /** Front-wheel steer, radians. */
+  steer?: number
+  /** Headlight beams on (night / dusk, moving). */
+  beams?: boolean
 }
 
 export class VehicleFleet {
@@ -244,7 +257,7 @@ export class VehicleFleet {
           if (!geo.getAttribute('position')) continue
           const pk = `${key}|${part}${lit ? '|lit' : ''}`
           seenParts.add(pk)
-          this.write(this.parts, pk, items, () => geo, false, lit ? sharedLitMaterial() : sharedMaterial(), model, part)
+          this.write(this.parts, pk, items, () => geo, false, lit ? (part === 'beam' ? sharedBeamMaterial() : sharedLitMaterial()) : sharedMaterial(), model, part)
         }
       }
     }
@@ -302,6 +315,8 @@ export class VehicleFleet {
       inp.active = item.active ?? false
       inp.odo = item.odo ?? 0
       inp.reversing = item.reversing ?? false
+      inp.steer = item.steer ?? 0
+      inp.beams = item.beams ?? false
       if (model && part && partPose(model, part, inp, this.pose)) {
         this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
       }
