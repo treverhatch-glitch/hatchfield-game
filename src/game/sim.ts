@@ -13,6 +13,10 @@ import {
   BELT_COST,
   BUDGET_BASE,
   BULLDOZE_REFUND,
+  CASH_DEBT_FLOOR,
+  DELAY_HEAT_REF_SEC,
+  PAYROLL_SHORT_SLIDER_FLOOR,
+  PAYROLL_SHORT_SLIDER_STEP,
   BUILDINGS,
   CATER,
   CLEANING_FEE,
@@ -39,6 +43,8 @@ import {
   DIVERT_FEE_MAX,
   DIVERT_FEE_MIN,
   EMERGENCY_REFUSE_FINE,
+  EMERGENCY_UNABLE_HEAT,
+  EMERGENCY_UNABLE_REP,
   CONTRACT_LETTER_DEADLINE,
   FIELD_TASK_COOL,
   FIELD_TASK_DEADLINE,
@@ -568,10 +574,9 @@ import {
   budgetLineCost,
   cityLevy,
   fieldOpsMultiplier,
-  loanInterestDue,
   loansAvailable,
-  nextLoanBalance,
   payrollAmount,
+  settleLoanTick,
   settlePayroll,
 } from './economy'
 import {
@@ -944,6 +949,8 @@ export class Game {
   securityIncidents = 0
   reputation = 40
   loanBalance = 0
+  /** Game day of the last loan-short reputation dip (one per day). */
+  private loanShortDay = -1
   loanProductId: string | null = null
   loanPrincipal = 0
   loanOpened = 0
@@ -2943,6 +2950,7 @@ export class Game {
     this.loanOpened = p.principal + p.fee
     this.loanBalance = this.loanOpened
     this.cash += p.principal
+    this.postJournal('loan_proceeds', p.principal, this.simMinutes())
     this.interestCool = p.every
     this.loanNewsCool = 0
     this.pushNews(
@@ -3802,6 +3810,7 @@ export class Game {
   repayLoan() {
     if (this.loanBalance <= 0) return
     if (!this.spend(this.loanBalance, 'loan payoff')) return
+    if (!this.sandbox) this.postJournal('loan_repayment', this.loanBalance, this.simMinutes())
     this.loanBalance = 0
     this.loanProductId = null
     this.loanPrincipal = 0
@@ -4729,7 +4738,7 @@ export class Game {
     }
     if (this.fuelLoads <= 1 && this.fuelBrand && roll < 0.25) {
       const spike = 3500 + Math.floor(Math.random() * 2500)
-      this.charge(spike)
+      this.charge(spike, 'fuel_purchase')
       this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.94) * 100) / 100)
       this.pushNews(
         `Jet-A spike hits the tape. Spot buy ${moneyLeft(spike)}. HATCH $${this.sharePrice.toFixed(2)}.`,
@@ -5163,12 +5172,26 @@ export class Game {
     return true
   }
 
-  /** Fines / interest — may go into debt, but floors so the tape can't spiral forever. */
-  charge(amount: number) {
-    if (this.sandbox) return
-    this.noteExpense(amount)
-    this.cash -= amount
-    if (this.cash < -25_000) this.cash = -25_000
+  /**
+   * Fines / bills — may go into debt, but floors so the tape can't spiral forever.
+   * Only what cash actually absorbed is booked, so the bank ledger moves with cash.
+   * Returns the amount taken.
+   */
+  charge(amount: number, category: MoneyCategory = 'penalties', stamp = this.simMinutes()): number {
+    const taken = this.takeCash(amount)
+    if (taken > 0) this.postJournal(category, taken, stamp)
+    return taken
+  }
+
+  /** Cash side of `charge()` without the journal line, for callers that post richer bank meta. */
+  private takeCash(amount: number): number {
+    if (this.sandbox || !(amount > 0) || !Number.isFinite(amount)) return 0
+    const room = Number.isFinite(this.cash) ? Math.max(0, this.cash - CASH_DEBT_FLOOR) : 0
+    const taken = Math.min(amount, room)
+    if (!(taken > 0)) return 0
+    this.noteExpense(taken)
+    this.cash -= taken
+    return taken
   }
 
   noteIncome(amount: number, category: MoneyCategory = 'landing_fees') {
@@ -8915,10 +8938,7 @@ export class Game {
     const hotel = this.hasHotelBeds()
     const bill = missPenalty({ hasHotel: hotel, passengers })
     if (!(bill.amount > 0) || !Number.isFinite(bill.amount) || !Number.isFinite(this.cash)) return 0
-    if (!this.sandbox) {
-      this.charge(bill.amount)
-      this.postJournal('penalties', bill.amount, this.simMinutes())
-    }
+    if (!this.sandbox) this.charge(bill.amount)
     if (bill.standing < 0 && Number.isFinite(bill.standing)) {
       this.adjustHeat(airlineId, bill.standing, 'transfers')
     }
@@ -10707,7 +10727,7 @@ export class Game {
     const result = tickFuel(this.pillarField(), state, minutes, this.cash)
     this.roadMinutes = state.roadMinutes
     this.tankLitres = state.litres
-    if (result.paid > 0) this.charge(result.paid)
+    if (result.paid > 0) this.charge(result.paid, 'fuel_purchase')
     if (result.delivered > 0) {
       this.fuelLoads += loadsFromLitres(result.delivered)
       if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
@@ -11759,7 +11779,10 @@ export class Game {
   ): number {
     const add = Math.min(22, Math.max(6, sec))
     slot.eta += add
+    const slotBefore = slot.delaySec
     slot.delaySec = Math.min(120, slot.delaySec + add)
+    // Standing follows the delay actually booked, not how often a held slot is retried.
+    const share = (added: number) => Math.min(1, Math.max(0, added) / DELAY_HEAT_REF_SEC)
     slot.status = 'delayed'
     slot.delayReason = reason
     // Ripple later slots that would collide — capped so the bank doesn't explode.
@@ -11779,11 +11802,12 @@ export class Game {
       if (x.eta < cursor) {
         const push = Math.min(18, cursor - x.eta)
         x.eta += push
+        const xBefore = x.delaySec
         x.delaySec = Math.min(120, x.delaySec + push)
         x.status = 'delayed'
         x.delayReason = 'Cascade from earlier delay'
         // Player rearrange hurts relations more than weather acts of god.
-        this.adjustHeat(x.airline, playerRearrange ? -1.1 : -0.35)
+        this.adjustHeat(x.airline, (playerRearrange ? -1.1 : -0.35) * share(x.delaySec - xBefore))
         cascaded += 1
         cursor = x.eta + 14
       } else {
@@ -11794,7 +11818,7 @@ export class Game {
     const backlog = reason === 'Runway backlog' || reason === 'Pavement busy'
     this.adjustHeat(
       slot.airline,
-      playerRearrange ? -0.6 : backlog ? -0.25 : -0.45,
+      (playerRearrange ? -0.6 : backlog ? -0.25 : -0.45) * share(slot.delaySec - slotBefore),
     )
     if (cascaded >= 2 && !playerRearrange && this.cascadeNewsCool <= 0) {
       this.pushNews(
@@ -12631,12 +12655,7 @@ export class Game {
   private settleStaffHousing(completedDay: number) {
     const roll = this.staffHousing.closeDay(this.staffField(), completedDay)
     if (roll.upkeep > 0 && !this.sandbox) {
-      this.charge(roll.upkeep)
-      this.postJournal(
-        'building_upkeep',
-        roll.upkeep,
-        (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1,
-      )
+      this.charge(roll.upkeep, 'building_upkeep', (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
     }
     if (roll.reputationHit > 0) this.reputation = Math.max(0, this.reputation - roll.reputationHit)
     if (roll.quit) this.releaseStaff(roll.quit)
@@ -13033,9 +13052,7 @@ export class Game {
   billPremiumUpkeep(): number {
     const bill = dailyUpkeep(this.premium)
     if (!(bill > 0)) return 0
-    const before = this.cash
-    this.charge(bill)
-    if (this.cash !== before) this.postJournal('building_upkeep', bill, this.simMinutes())
+    this.charge(bill, 'building_upkeep')
     return bill
   }
 
@@ -13485,40 +13502,27 @@ export class Game {
     const bill = Number.isFinite(rawBill) && rawBill > 0 ? rawBill : 0
     const fees = this.landsideIncome()
     const upkeep = this.landsideUpkeep() + this.pillarUpkeepBill() + powerPlantOffer(this.powerPlantTier).upkeepPerDay
-    if (upkeep > 0) this.charge(upkeep)
+    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
+    if (upkeep > 0) this.charge(upkeep, 'building_upkeep', stamp)
     const holding = this.site ? this.dailyHoldingQuote() : 0
-    if (holding > 0) {
-      this.charge(holding)
-      this.postJournal('building_upkeep', holding, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
-    }
+    if (holding > 0) this.charge(holding, 'building_upkeep', stamp)
     const hubBill = hubUpkeep(new Set(this.researchUnlocked))
-    if (hubBill > 0) {
-      this.charge(hubBill)
-      this.postJournal('building_upkeep', hubBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
-    }
+    if (hubBill > 0) this.charge(hubBill, 'building_upkeep', stamp)
     const builtBill = this.fits.reduce((s, f) => s + (f.build ? buildUpkeepPerDay(f.build) : 0), 0)
-    if (builtBill > 0) {
-      this.charge(builtBill)
-      this.postJournal('building_upkeep', builtBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
-    }
+    if (builtBill > 0) this.charge(builtBill, 'building_upkeep', stamp)
     const linkBill = this.connectivityUpkeep()
-    if (linkBill > 0) {
-      this.charge(linkBill)
-      this.postJournal('building_upkeep', linkBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
-    }
+    if (linkBill > 0) this.charge(linkBill, 'building_upkeep', stamp)
+    // Walkway belts were booked in the ledger but never left cash; they now bill like every other link.
     const beltBill = this.walkwayCoverMetres() > 0
       ? (this.walkwayCoverMetres() / CONNECTIVITY_CATALOG.moving_walkway.lengthMetres) *
         CONNECTIVITY_CATALOG.moving_walkway.upkeepPerDay
       : 0
-    if (beltBill > 0) {
-      this.postJournal('building_upkeep', beltBill, (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1)
-    }
+    if (beltBill > 0) this.charge(beltBill, 'building_upkeep', stamp)
     this.ageLinks()
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()
     this.landsideUses = Math.max(0, Math.floor(this.landsideUses * 0.45 ** 6))
     this.landsideFeeWindow = 0
-    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (bill <= 0) {
       if (upkeep > 0 || fees > 0 || holding > 0) {
         this.pushNews(
@@ -13558,14 +13562,18 @@ export class Game {
     }
     const paid = settlement.paid
     const shown = Math.round(paid)
-    this.cash = 0
+    // Pay what cash covers. Debt stays debt: a short day never lifts negative cash back to $0.
+    this.cash -= paid
     if (shown > 0) {
       this.noteExpense(paid)
       this.postJournal('payroll', paid, stamp)
     }
     this.reputation = Math.max(0, this.reputation - 4)
-    if (this.budgets.maintenance > 20) this.budgets.maintenance = Math.max(20, this.budgets.maintenance - 10)
-    if (this.budgets.security > 20) this.budgets.security = Math.max(20, this.budgets.security - 10)
+    for (const key of ['maintenance', 'security'] as const) {
+      if (this.budgets[key] > PAYROLL_SHORT_SLIDER_FLOOR) {
+        this.budgets[key] = Math.max(PAYROLL_SHORT_SLIDER_FLOOR, this.budgets[key] - PAYROLL_SHORT_SLIDER_STEP)
+      }
+    }
     this.pushNews(
       shown > 0
         ? `Payroll short ${moneyLeft(settlement.shortfall)} — paid ${moneyLeft(shown)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
@@ -14654,9 +14662,7 @@ export class Game {
         })
       }
       if (line.upkeep > 0) {
-        const before = this.cash
-        this.charge(line.upkeep)
-        const paid = before - this.cash
+        const paid = this.takeCash(line.upkeep)
         if (paid > 0) {
           this.bank.post('building_upkeep', -paid, {
             simMinutes: stamp,
@@ -17100,6 +17106,20 @@ export class Game {
       return
     }
 
+    // A field that cannot host it (no free stand, no hangar, dry farm) is not fined for saying so.
+    // The miss still shows: the fee is gone and the news names the gap to fix.
+    const gap = this.emergencyHostGap(e)
+    if (gap) {
+      this.reputation = Math.max(0, this.reputation - EMERGENCY_UNABLE_REP)
+      if (e.kind === 'divert' && e.airline) this.adjustHeat(e.airline, -EMERGENCY_UNABLE_HEAT)
+      this.pushNews(
+        `${e.kind === 'divert' ? 'Divert' : 'Firefighting plane'} went elsewhere — we could not host it (${gap}). Missed ${moneyLeft(e.fee)}.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+
     // Refuse / timeout — cleaner than a failed host, still hurts.
     this.charge(EMERGENCY_REFUSE_FINE)
     this.reputation = Math.max(0, this.reputation - 4)
@@ -17597,29 +17617,45 @@ export class Game {
         this.interestCool = Math.max(12, prod.every)
         const opened =
           this.loanOpened > 0 ? this.loanOpened : prod.principal + prod.fee
-        const tick = loanInterestDue(this.loanBalance, prod.rate, prod.interestFloor)
-        if (this.cash >= tick) {
-          // Paid in full — balance does NOT capitalize (was snowballing every tick).
-          this.noteExpense(tick)
-          this.cash -= tick
+        // Interest plus a principal installment. Cash below zero pays nothing and is never reset upward.
+        const tick = settleLoanTick(this.loanBalance, this.cash, opened, prod)
+        const stamp = this.simMinutes()
+        if (tick.interestPaid > 0) {
+          this.noteExpense(tick.interestPaid)
+          this.cash -= tick.interestPaid
+          this.postJournal('loan_interest', tick.interestPaid, stamp)
+        }
+        if (tick.principalPaid > 0) {
+          this.cash -= tick.principalPaid
+          this.postJournal('loan_repayment', tick.principalPaid, stamp)
+        }
+        this.loanBalance = tick.balance
+        if (this.loanBalance <= 0) {
+          this.loanBalance = 0
+          this.loanProductId = null
+          this.loanPrincipal = 0
+          this.loanOpened = 0
+          this.reputation = Math.min(100, this.reputation + 3)
+          this.grantFieldXp(8, 'loan clear')
+          this.pushNews(`${prod.label} repaid on schedule. Loan cleared.`, 'good')
+        } else if (!(tick.short > 0)) {
           if (this.loanNewsCool <= 0) {
             this.pushNews(
-              `${prod.label} interest ${moneyLeft(tick)}. Owed ${moneyLeft(this.loanBalance)}.`,
+              `${prod.label} payment ${moneyLeft(tick.interestPaid + tick.principalPaid)} (interest ${moneyLeft(tick.interestPaid)}). Owed ${moneyLeft(this.loanBalance)}.`,
               'ok',
             )
             this.loanNewsCool = Math.max(40, prod.every * 0.85)
           }
         } else {
-          const paid = Math.max(0, this.cash)
-          this.noteExpense(paid)
-          this.cash = 0
-          const short = tick - paid
-          // Only unpaid shortfall capitalizes — hard-capped.
-          this.loanBalance = nextLoanBalance(this.loanBalance, short, opened)
-          this.reputation = Math.max(0, this.reputation - 1.5)
+          // One dip per game day like payroll, not one per ~55s tick (that stacked ~-5 rep a day).
+          const day = this.gameDay()
+          if (day !== this.loanShortDay) {
+            this.loanShortDay = day
+            this.reputation = Math.max(0, this.reputation - 1.5)
+          }
           if (this.loanNewsCool <= 0) {
             this.pushNews(
-              `${prod.label} interest short ${moneyLeft(short)} — debt ${moneyLeft(this.loanBalance)}.`,
+              `${prod.label} payment short ${moneyLeft(tick.short)}, reputation dips. Owed ${moneyLeft(this.loanBalance)}.`,
               'bad',
             )
             this.loanNewsCool = 25
