@@ -1088,6 +1088,8 @@ export class Game {
   branding: BrandingSave = defaultBranding()
   private ambience: AmbienceMixer | null = null
   crashCool = 8
+  /** Real crash write-offs; the only source of crashFlight charges. */
+  crashes = 0
   fireIncidentCool = 60
   milAgreement = false
   milCool = 55
@@ -1450,6 +1452,7 @@ export class Game {
     this.ambience?.stopAll(0)
     this.ambience = null
     this.crashCool = 8
+    this.crashes = 0
     this.fireIncidentCool = 60
     this.milAgreement = false
     this.milCool = 55
@@ -2190,7 +2193,10 @@ export class Game {
 
   /** Premade + live procedural regionals. */
   allAirlines(): Airline[] {
-    return [...airlineList(), ...this.extraAirlines]
+    // Negotiation-only carriers (Zoomjet etc.) resolve through airline(); list them so they can be signed.
+    const known = new Set([...airlineList(), ...this.extraAirlines].map((a) => a.id))
+    const negotiated = NEGOTIATION_AIRLINES.filter((a) => !known.has(a.id)).map((a) => this.airline(a.id))
+    return [...airlineList(), ...this.extraAirlines, ...negotiated]
   }
 
   airline(id: AirlineId): Airline {
@@ -5766,6 +5772,8 @@ export class Game {
 
   private noteOutboundBagFee(f: Flight) {
     if (f.cargo) return
+    // GA owners carry their own bags: no handling service is sold, so there is no bag fee to book.
+    if (f.airline === 'ga') return
     if (f.ledger.some((line) => line.label.includes('outbound bags'))) return
     const airline = this.airline(f.airline)
     const need = f.bagUnits ?? 0
@@ -13671,7 +13679,11 @@ export class Game {
 
   checkCrash(f: Flight, moment: 'landing' | 'takeoff') {
     if ((f.craft ?? 'jet') !== 'jet') return false
-    if (this.crashCool > 0) return false
+    if (f.phase === 'gone' || this.crashCool > 0) return false
+    // One roll per flight per moment, not one per frame, so a stuck jet cannot crash by repetition.
+    const rolled = (f.crashRolls ??= {})
+    if (rolled[moment]) return false
+    rolled[moment] = true
     const chance = this.crashChance() * (moment === 'landing' ? 1 : 0.85)
     if (Math.random() > chance) return false
     this.crashCool = 25
@@ -13686,6 +13698,8 @@ export class Game {
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.round(baseFine * (1.4 - mitigate * 0.5))
     this.charge(fine)
+    this.crashes += 1
+    f.ledger.push({ label: `${f.flightNo} crash write-off`, amount: -fine })
     this.reputation = Math.max(0, this.reputation - (amb < 0.3 ? 14 : 8))
     this.runwayCondition = clamp(this.runwayCondition - 12, 0, 100)
     this.securityIncidents += 1

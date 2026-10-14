@@ -247,6 +247,14 @@ try {
     }
     out.b789 = report('b789')
     out.a380 = report('a380')
+    if (out.a380.ok) {
+      g.reputation = Math.max(Number(g.reputation) || 0, 90)
+      if (!g.signed.includes('crown')) {
+        g.offer = { airline: 'crown', age: 0, deadline: 120 }
+        g.acceptOffer()
+      }
+      out.crown = g.signed.includes('crown')
+    }
     out.tankTier = g.tankTier
     out.fuelTiles = g.tiles.flat().filter((t) => t === 'fuel').length
     out.railTiles = g.tiles.flat().filter((t) => t === 'fuel_rail').length
