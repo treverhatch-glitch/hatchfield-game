@@ -1710,7 +1710,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     const meta = AIRLINE_TIER_META[tier]
                     const unlocked = game.tierUnlocked(tier)
                     const carriers = game
-                      .allAirlines()
+                      .panelAirlines()
                       .filter((a) => a.tier === tier)
                       .sort((a, b) => a.name.localeCompare(b.name))
                     if (!carriers.length) return null

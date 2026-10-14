@@ -579,6 +579,10 @@ import {
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
 import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
+import { rosterAirline } from '../airlines/roster.ts'
+import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
+import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
+import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines } from './rosterAirlines.ts'
 import { standCrewPeople, standProps, type StandArrival } from '../ramp/standCrew.ts'
 import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
@@ -2259,12 +2263,36 @@ export class Game {
     return craftRoleLabel(kind)
   }
 
-  /** Premade + live procedural regionals. */
+  /** Premade catalog, the 45-airline roster, live procedural regionals and negotiation carriers. */
   allAirlines(): Airline[] {
+    const roster = rosterGameAirlines().map((a) => normalizeAirline(a))
     // Negotiation-only carriers (Zoomjet etc.) resolve through airline(); list them so they can be signed.
-    const known = new Set([...airlineList(), ...this.extraAirlines].map((a) => a.id))
+    const known = new Set([...airlineList(), ...roster, ...this.extraAirlines].map((a) => a.id))
     const negotiated = NEGOTIATION_AIRLINES.filter((a) => !known.has(a.id)).map((a) => this.airline(a.id))
-    return [...airlineList(), ...this.extraAirlines, ...negotiated]
+    return [...airlineList(), ...roster, ...this.extraAirlines, ...negotiated]
+  }
+
+  /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
+  panelAirlines(): Airline[] {
+    return this.allAirlines().filter((a) => !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(a.id) && !this.signed.includes(a.id)))
+  }
+
+  /** Airport size (1 to 5) and reputation, as the roster unlock table reads them. */
+  rosterAirport(): { size: number; reputation: number } {
+    return { size: Math.min(ROSTER_SIZE_CAP, this.hostedFieldLevel()), reputation: this.reputation }
+  }
+
+  /**
+   * Will this carrier write to us? Roster carriers need their size and
+   * reputation gate (helicopter operators also a helipad); while the roster
+   * is live, catalog carriers no longer send new letters.
+   */
+  rosterOpen(id: AirlineId): boolean {
+    const r = rosterAirline(id)
+    if (!r) return !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(id))
+    if (!ROSTER_LIVE) return false
+    if (r.type === 'heli' && !this.readiness().helipad) return false
+    return isAirlineUnlocked(r, this.rosterAirport())
   }
 
   airline(id: AirlineId): Airline {
@@ -2333,9 +2361,15 @@ export class Game {
     }
     const raw =
       AIRLINES[id] ??
+      rosterGameAirline(id) ??
       this.extraAirlines.find((a) => a.id === id) ??
       AIRLINES.northline
     return normalizeAirline(raw)
+  }
+
+  /** Airframe ids a contract sells: catalog fleet, or the roster carrier's own (no helicopters on the jet flow). */
+  private contractFleet(id: AirlineId): readonly string[] | undefined {
+    return CONTRACT_FLEET[id] ?? rosterFleet(id)?.filter((m) => AIRFRAMES[m] && !AIRFRAMES[m].kind.startsWith('helo'))
   }
 
   fieldLevel(): FieldLevel {
@@ -3515,7 +3549,7 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
-    const contracted = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const contracted = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (contracted.length) {
       const counts = new Map<AircraftKind, number>()
       for (const af of contracted) counts.set(af.kind, (counts.get(af.kind) ?? 0) + 1)
@@ -11536,7 +11570,7 @@ export class Game {
   private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const a = this.airline(airlineId)
     if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
-    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (!pool.length) return this.pickOperable(this.pickAircraftKind(airlineId), false)
     const level = this.fieldLevel()
     const research = this.researchUnlocked
@@ -11841,6 +11875,9 @@ export class Game {
     const a = this.airline(id)
     const r = this.readiness()
     const miss: string[] = []
+    const roster = rosterAirline(id)
+    if (roster && this.rosterAirport().size < unlockGate(roster).size) miss.push(`Field Lv${unlockGate(roster).size}+`)
+    if (roster?.type === 'heli' && !this.readiness().helipad) miss.push('helipad')
     if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
     if (!r.runway) miss.push('runway')
     if (a.req.heavyRunway && !r.heavyRunway) miss.push('heavy runway')
@@ -11915,7 +11952,7 @@ export class Game {
   contractCraftNeed(id: AirlineId): { label: string; met: boolean } | null {
     const a = this.airline(id)
     if (a.kind === 'cargo') return null
-    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (!pool.length) return null
     let need: StandClass = 'S'
     for (const af of pool) {
@@ -11940,6 +11977,7 @@ export class Game {
     const site = this.site ? LAND[this.site] : null
     // Light procedural regionals — keep the phone from always being the same six faces.
     if (
+      !ROSTER_LIVE &&
       this.signed.length >= 1 &&
       this.extraAirlines.filter((a) => a.procedural).length < 5 &&
       Math.random() < 0.4
@@ -11955,6 +11993,7 @@ export class Game {
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
       if (a.procedural && procSigned >= 3) return false
+      if (!this.rosterOpen(a.id)) return false
       if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
       // Start focus biases early letters (never hard-locks the other path).
@@ -12388,7 +12427,7 @@ export class Game {
       const slot: ScheduleSlot = {
         id: uid('slot'),
         airline: airlineId,
-        flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+        flightNo: `${rosterAirline(airlineId)?.code ?? a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
         eta,
         status: 'scheduled',
         delaySec: 0,
