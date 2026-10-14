@@ -45,6 +45,8 @@ import {
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
+import type { HallNav } from '../game/hallNav'
+import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
 import { hallQueues } from '../terminalplay/queues'
 
 /** Hall build mode, driven by the terminal kit bar. */
@@ -540,13 +542,29 @@ export class HallWorld {
   }
 
   /** Perimeter shell with door gaps, plus walls where security meets the curb side. */
-  private buildShell(zones: ZoneId[][]) {
+  private buildShell(zones: ZoneId[][], nav: HallNav) {
     const h = 3.15
     const t = 0.38
     const y = h / 2
     const wall = '#d5ddd8'
     const halfW = HALL_W / 2
     const halfD = HALL_D / 2
+    const layout = nav.live ? nav.nav?.layout : null
+    if (layout) {
+      // Walkers are live: draw exactly the walls they walk round, gaps at every door.
+      const m = BUILD_TUNING.tileMetres
+      const o = nav.origin()
+      const outer = (e: Edge) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)
+      for (const e of layout.walls) {
+        const color = outer(e) ? wall : '#c9a27a'
+        const thick = outer(e) ? t : 0.28
+        if (e.dir === 'E') this.box(thick, h, m + thick, color, o.x + (e.x + 1) * m, y, o.z + (e.y + 0.5) * m)
+        else this.box(m + thick, h, thick, color, o.x + (e.x + 0.5) * m, y, o.z + (e.y + 1) * m)
+      }
+      this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
+      this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
+      return
+    }
     // North and south — solid. The roof is gone so the floor stays readable.
     this.box(HALL_W + t, h, t, wall, 0, y, -halfD)
     this.box(HALL_W + t, h, t, wall, 0, y, halfD)
@@ -606,7 +624,9 @@ export class HallWorld {
     const choke = game.hasSecurityChoke() ? '1' : '0'
     const paint = zones.map((row) => row.join(',')).join('|')
     const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
-    const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}`
+    const nav = game.hallNav
+    const walk = nav.live ? `${nav.nav?.revision}:${nav.nav?.layout.walls.length}:${nav.nav?.layout.doors.length}` : '-'
+    const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}`
     if (hash === this.roomHash) return
     this.roomHash = hash
     this.roomGroup.traverse((obj) => {
@@ -619,7 +639,7 @@ export class HallWorld {
     this.roomGroup.clear()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    this.buildShell(zones as ZoneId[][])
+    this.buildShell(zones as ZoneId[][], nav)
 
     const cw = HALL_W / cols
     const rh = HALL_D / rows

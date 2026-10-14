@@ -2,7 +2,8 @@
  * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts): one
  * instanced body, head and bag for everyone, plus floor dots along every
  * marked queue line. Real metres: a 1.7 m person on the hall floor (y = 0).
- * Three draw calls for the crowd however many people are in the hall.
+ * Three draw calls for the crowd however many people are in the hall, and
+ * low-poly bodies (~130 triangles each) so a 1000+ hall stays cheap to fill.
  */
 import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
@@ -26,8 +27,8 @@ function hash(id: string): number {
 
 export class HallNavCrowd {
   readonly group = new THREE.Group()
-  private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 3, 8)
-  private readonly headGeo = new THREE.SphereGeometry(0.12, 10, 8)
+  private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 2, 6)
+  private readonly headGeo = new THREE.SphereGeometry(0.12, 7, 5)
   private readonly bagGeo = new THREE.BoxGeometry(0.34, 0.5, 0.22)
   private readonly dotGeo = new THREE.CircleGeometry(0.16, 10)
   private readonly bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff })

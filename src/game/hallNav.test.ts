@@ -36,6 +36,24 @@ describe('hall walkers (paxnav glue)', () => {
       expect(l.rooms.some((r) => r.kind === 'gate')).toBe(true)
       // Kit never lands on the bag hall.
       for (const e of l.equipment) expect(l.zones[e.y][e.x]).not.toBe('baggage')
+      // The check-in side reaches security only through a lane tile.
+      const walls = new Set(l.walls.map((e) => `${e.x},${e.y},${e.dir}`))
+      const lanes = new Set(l.equipment.filter((e) => e.kind === 'security_lane').map((e) => `${e.x},${e.y}`))
+      const pre = (z: string | null) => z === 'checkin' || z === 'landside'
+      for (let y = 0; y < l.h; y++) {
+        for (let x = 0; x < l.w; x++) {
+          for (const [nx, ny, dir] of [
+            [x + 1, y, 'E'],
+            [x, y + 1, 'S'],
+          ] as const) {
+            if (nx >= l.w || ny >= l.h || walls.has(`${x},${y},${dir}`)) continue
+            const a = l.zones[y][x]
+            const b = l.zones[ny][nx]
+            const sec = a === 'security' && pre(b) ? `${x},${y}` : b === 'security' && pre(a) ? `${nx},${ny}` : null
+            if (sec) expect(lanes.has(sec)).toBe(true)
+          }
+        }
+      }
     }
   })
 
