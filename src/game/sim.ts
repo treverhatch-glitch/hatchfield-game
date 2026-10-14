@@ -16795,7 +16795,8 @@ export class Game {
   /** Ground taxi may follow only the remaining steps that sit on the taxiway graph. */
   private taxiRouteReady(f: Flight): boolean {
     const rest = f.path.slice(Math.max(0, f.seg))
-    if (rest.length < 2) return false
+    // Already on the last node — nothing left to cross, including after the landing roll.
+    if (rest.length < 2) return true
     return jetRouteOnGraph(this.tiles, rest)
   }
 
