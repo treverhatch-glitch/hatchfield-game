@@ -46,6 +46,7 @@ import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
 import { pathHeading } from '../ramp/present.ts'
 import {
+  baseLevel,
   initWorldRender,
   QUALITY,
   REPLACED_TILES,
@@ -279,7 +280,7 @@ export class World {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = graphicsQuality()
-    setAircraftQuality(quality)
+    setAircraftQuality(baseLevel(quality))
     markGraphicsPreset(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
@@ -290,7 +291,8 @@ export class World {
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
     // Low (what SwiftShader auto-picks) stays under 1× with the shadow map off.
-    const pixelCap = quality === 'low' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
+    // Ultra is desktop-GPU only, so it keeps its own cap instead of the 1.25 safety clamp.
+    const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
@@ -536,7 +538,7 @@ export class World {
   private applyGraphicsQuality(level: QualityLevel) {
     if (this.wr.quality === level) return
     this.wr.setQuality(level)
-    setAircraftQuality(level)
+    setAircraftQuality(baseLevel(level))
   }
 
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
