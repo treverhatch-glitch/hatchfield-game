@@ -62,6 +62,8 @@ import {
   type HallFit,
 } from './hallRooms'
 import { terminals } from './world/layout'
+import { PACK1_REPEAT_M, tileByPosition } from './materials/pack1'
+import { bootQuality } from './world/quality'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
 import type { RoomPlan } from './world/rooms'
 import { makeTextures, type WorldTextures } from './world/textures'
@@ -601,11 +603,16 @@ export class HallWorld {
     }
   }
 
-  private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshLambertMaterial({ color }),
-    )
+  private watchedShell: THREE.Material[] = []
+
+  private releaseShellMats() {
+    const surfaces = this.terminalShared?.surfaces
+    for (const mat of this.watchedShell) surfaces?.unwatch(mat)
+    this.watchedShell = []
+  }
+
+  private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number, mat?: THREE.Material) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat ?? new THREE.MeshLambertMaterial({ color }))
     mesh.position.set(x, y, z)
     this.roomGroup.add(mesh)
   }
@@ -614,6 +621,18 @@ export class HallWorld {
    * Walls around the fitted rooms, with a door on the west side.
    * The full 48 m hall is wider than the square terminal, so the shell follows the rooms.
    */
+  /** Cream wall panels on the fitted shell. Repeat is in metres (this view is). */
+  private shellWallMat(): THREE.Material {
+    const map = this.terminalShared?.surfaces.maps.wall
+    const mat = new THREE.MeshLambertMaterial({ color: map ? 0xffffff : 0xd5ddd8, map: map ?? null })
+    if (map && this.terminalShared) {
+      tileByPosition(mat, PACK1_REPEAT_M.wall)
+      this.terminalShared.surfaces.watch(mat)
+      this.watchedShell.push(mat)
+    }
+    return mat
+  }
+
   private buildFittedShell() {
     const plan = this.roomPlan
     const fit = this.interiorFit
@@ -622,18 +641,17 @@ export class HallWorld {
     const h = 3.15
     const t = 0.38
     const y = h / 2
-    const wall = '#d5ddd8'
     const width = b.maxX - b.minX
     const depth = b.maxZ - b.minZ
     const cx = (b.minX + b.maxX) / 2
     const cz = (b.minZ + b.maxZ) / 2
     const door = 3.2
     const side = Math.max(0.4, (depth - door) / 2)
-    this.box(width + t, h, t, wall, cx, y, b.minZ)
-    this.box(width + t, h, t, wall, cx, y, b.maxZ)
-    this.box(t, h, depth, wall, b.maxX, y, cz)
-    this.box(t, h, side, wall, b.minX, y, b.minZ + side / 2)
-    this.box(t, h, side, wall, b.minX, y, b.maxZ - side / 2)
+    this.box(width + t, h, t, '#d5ddd8', cx, y, b.minZ, this.shellWallMat())
+    this.box(width + t, h, t, '#d5ddd8', cx, y, b.maxZ, this.shellWallMat())
+    this.box(t, h, depth, '#d5ddd8', b.maxX, y, cz, this.shellWallMat())
+    this.box(t, h, side, '#d5ddd8', b.minX, y, b.minZ + side / 2, this.shellWallMat())
+    this.box(t, h, side, '#d5ddd8', b.minX, y, b.maxZ - side / 2, this.shellWallMat())
     this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.minZ)
     this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.maxZ)
   }
@@ -754,6 +772,7 @@ export class HallWorld {
     const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}|${rooms}`
     if (hash === this.roomHash) return
     this.roomHash = hash
+    this.releaseShellMats()
     this.roomGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       if (mesh.geometry) mesh.geometry.dispose()
@@ -832,7 +851,7 @@ export class HallWorld {
       if (hit) {
         if (!this.terminalShared) {
           this.terminalTextures = makeTextures(64, 4)
-          this.terminalShared = makeTerminalShared(this.terminalTextures)
+          this.terminalShared = makeTerminalShared(this.terminalTextures, bootQuality())
         }
         const fit = hallFitFor(hit.info)
         const building = new TerminalBuilding(hit.info, this.terminalShared, {
@@ -860,7 +879,7 @@ export class HallWorld {
     const roof = building.root.getObjectByName('terminal-roof-group')
     if (shell) {
       shell.visible = true
-      for (const child of shell.children) child.visible = child.name === 'terminal-floor'
+      for (const child of shell.children) child.visible = child.name === 'terminal-floor' || child.name === 'terminal-carpet'
     }
     if (roof) roof.visible = false
   }

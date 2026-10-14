@@ -127,6 +127,38 @@ export function parseQuality(v: unknown, fallback: QualityLevel = 'med'): Qualit
   return fallback
 }
 
+const GFX_KEY = 'hatchfield-gfx'
+
+/** Saved texture-quality setting, otherwise a guess from the GPU. */
+export function bootQuality(): QualityLevel {
+  let saved: string | null = null
+  try {
+    saved = globalThis.localStorage?.getItem(GFX_KEY) ?? null
+  } catch {
+    saved = null
+  }
+  if (saved) return parseQuality(saved)
+  let renderer = ''
+  try {
+    if (typeof document !== 'undefined') {
+      const gl = document.createElement('canvas').getContext('webgl2')
+      if (gl) {
+        const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+        renderer = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : ''
+        gl.getExtension('WEBGL_lose_context')?.loseContext()
+      }
+    }
+  } catch {
+    renderer = ''
+  }
+  const nav = (typeof navigator === 'undefined' ? {} : navigator) as Navigator & { deviceMemory?: number }
+  return suggestQuality({
+    renderer,
+    deviceMemory: nav.deviceMemory,
+    hardwareConcurrency: nav.hardwareConcurrency,
+  })
+}
+
 /** Rough guess for first boot: software GL or tiny screens start low. */
 export function suggestQuality(info: {
   renderer?: string

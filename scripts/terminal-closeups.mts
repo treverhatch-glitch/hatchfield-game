@@ -67,9 +67,25 @@ for (let i = 0; i < 40; i++) {
 console.log('apron fps', JSON.stringify(await fps(page, 4000)))
 
 console.log('apron fps settled', JSON.stringify(await fps(page, 4000)))
-await page.evaluate(call(`window.__hatch.setView('hall'); window.__hatch.speed = 1`))
+await page.evaluate(call(`localStorage.setItem('hatchfield-gfx', 'high'); window.__hatch.setView('hall'); window.__hatch.speed = 1`))
 await page.waitForFunction(() => Boolean((window as unknown as { __hall?: { guests: Map<string, unknown> } }).__hall))
-await page.waitForTimeout(1500)
+await page.waitForTimeout(2500)
+const pack = await page.evaluate(
+  call(`
+    const hall = window.__hall
+    const map = hall.terminalShared.surfaces.maps.wall
+    const img = map && map.image
+    return {
+      hasLoad: typeof hall.terminalShared.surfaces.loadPack1,
+      ctor: img && img.constructor && img.constructor.name,
+      w: img && img.width,
+      src: img && img.src,
+      view: window.__hatch.view,
+    }
+  `),
+)
+console.log('pack probe', JSON.stringify(pack))
+await page.waitForTimeout(800)
 const aimed = await page.evaluate(
   call(`
     const hall = window.__hall
@@ -109,5 +125,31 @@ const framed = await page.evaluate(
 console.log('passenger frame', JSON.stringify(framed))
 await page.waitForTimeout(600)
 await page.screenshot({ path: `${OUT}/terminal-materials-passengers.png` })
+
+async function aimRoom(kind: string, dist: number) {
+  const at = await page.evaluate(
+    call(`
+      const hall = window.__hall
+      const room = hall.roomPlan.rooms.find((r) => r.kind === ${JSON.stringify(kind)})
+      const fit = hall.interiorFit
+      const x = (room.x - fit.cx) * fit.scale
+      const z = (room.z - fit.cz) * fit.scale
+      hall.pivot.set(x, 1.15, z)
+      hall.dist = ${dist}
+      hall.pitch = 0.38
+      hall.yaw = 0.6
+      hall.placeCam()
+      return { x, z, label: room.label }
+    `),
+  )
+  console.log('aim', kind, JSON.stringify(at))
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: `${OUT}/terminal-pack1-${kind}.png` })
+}
+
+await aimRoom('checkin', 7)
+await aimRoom('security', 7)
+await aimRoom('gate', 6.5)
+await aimRoom('shops', 7)
 console.log('wrote', OUT)
 await browser.close()

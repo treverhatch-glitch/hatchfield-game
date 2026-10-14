@@ -195,7 +195,15 @@ export function peopleGeo(): PeopleGeo {
   return { body, torso: upper, legL, legR, head, bag }
 }
 
-export type PropSurface = 'wood' | 'wall'
+export type PropSurface = 'wood' | 'wall' | 'shop' | 'steel' | 'fabric' | 'rubber' | 'glass'
+
+/** Photo surface for a part. Chrome and seat cloth pick one up even without a tag. */
+export function partSurface(part: PropPart): PropSurface | undefined {
+  if (part.surface) return part.surface
+  if (part.mat === 'chrome') return 'steel'
+  if (part.mat === 'seat') return 'fabric'
+  return undefined
+}
 
 export type PropPart = {
   geo: THREE.BufferGeometry
@@ -231,7 +239,7 @@ export function propParts(): Record<string, PropPart[]> {
     ],
     belt: [
       { geo: box(5.2, 0.18, 0.42, 0, 0.09, 0), mat: 'dark' },
-      { geo: box(5.2, 0.04, 0.28, 0, 0.2, 0), mat: 'rubber' },
+      { geo: box(5.2, 0.04, 0.28, 0, 0.2, 0), mat: 'rubber', surface: 'rubber' },
       { geo: box(0.08, 0.16, 0.46, -2.5, 0.1, 0), mat: 'chrome' },
       { geo: box(0.08, 0.16, 0.46, 2.5, 0.1, 0), mat: 'chrome' },
       d(box(5.0, 0.01, 0.04, 0, 0.23, 0.08), 'tape'),
@@ -291,7 +299,7 @@ export function propParts(): Record<string, PropPart[]> {
       { geo: box(1.12, 0.05, 0.62, 0, 0.87, 0.04), mat: 'deskTop' },
       { geo: box(0.7, 0.42, 0.04, 0, 1.2, 0.26), mat: 'screen' },
       { geo: box(0.78, 0.5, 0.04, 0, 1.22, -0.26), mat: 'kiosk' },
-      { geo: box(0.16, 0.7, 0.5, -0.55, 0.7, 0), mat: 'shelf', surface: 'wood' },
+      { geo: box(0.16, 0.7, 0.5, -0.55, 0.7, 0), mat: 'shelf', surface: 'shop' },
       d(box(0.22, 0.28, 0.2, 0.28, 1.05, 0), 'dark'),
       d(cyl(0.06, 0.05, 0.16, 6, -0.2, 0.98, 0.1), 'chrome'),
     ],

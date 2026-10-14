@@ -83,7 +83,85 @@ export function textTexture(
   ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 2)
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
-  tex.anisotropy = 4
+  tex.anisotropy = 8
+  tex.needsUpdate = true
+  return tex
+}
+
+/** Wayfinding words drawn in code. The photo signs were angled and unusable. */
+export function wayfindingTexture(title: string, sub?: string): THREE.Texture | null {
+  if (typeof document === 'undefined') return null
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = sub ? 512 : 360
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = '#0e2233'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = '#f2c14a'
+  ctx.fillRect(0, 0, canvas.width, 28)
+  ctx.fillRect(0, canvas.height - 18, canvas.width, 18)
+  ctx.fillStyle = '#f4f7fb'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = `700 ${sub ? 168 : 148}px system-ui, sans-serif`
+  ctx.fillText(title, canvas.width / 2, sub ? canvas.height * 0.4 : canvas.height * 0.52)
+  if (sub) {
+    ctx.fillStyle = '#f2c14a'
+    ctx.font = '700 120px system-ui, sans-serif'
+    ctx.fillText(sub, canvas.width / 2, canvas.height * 0.72)
+  }
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
+  tex.needsUpdate = true
+  return tex
+}
+
+/** Rows on the departures board. Drawn as text, not a photo of a screen. */
+export const DEPARTURES_ROWS: readonly (readonly [string, string, string, string, string])[] = [
+  ['14:20', 'AA 214', 'BKK', 'A1', 'ON TIME'],
+  ['14:35', 'SK 881', 'CPH', 'A2', 'BOARDING'],
+  ['14:50', 'TG 402', 'NRT', 'A3', 'GATE OPEN'],
+  ['15:10', 'QF 018', 'SYD', 'B2', 'ON TIME'],
+  ['15:40', 'BA 010', 'LHR', 'B4', 'DELAYED'],
+]
+
+export function departuresBoardTexture(): THREE.Texture | null {
+  if (typeof document === 'undefined') return null
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 640
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = '#071422'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = '#12304a'
+  ctx.fillRect(0, 0, canvas.width, 108)
+  ctx.fillStyle = '#f2c14a'
+  ctx.font = '700 64px system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('DEPARTURES', 36, 54)
+  const cols = [36, 240, 500, 700, 820]
+  ctx.font = '600 28px system-ui, sans-serif'
+  ctx.fillStyle = '#8fb4cc'
+  const heads = ['TIME', 'FLIGHT', 'TO', 'GATE', 'STATUS']
+  heads.forEach((h, i) => ctx.fillText(h, cols[i], 150))
+  DEPARTURES_ROWS.forEach((row, r) => {
+    const y = 230 + r * 78
+    ctx.fillStyle = r % 2 === 0 ? '#0c1c2e' : '#102438'
+    ctx.fillRect(16, y - 32, canvas.width - 32, 68)
+    row.forEach((cell, i) => {
+      const status = i === 4
+      ctx.fillStyle = status ? (cell === 'DELAYED' ? '#e07a5f' : cell === 'BOARDING' ? '#f2c14a' : '#7dcea0') : '#e8f0f6'
+      ctx.font = status ? '700 30px system-ui, sans-serif' : '600 34px system-ui, sans-serif'
+      ctx.fillText(cell, cols[i], y)
+    })
+  })
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
   tex.needsUpdate = true
   return tex
 }

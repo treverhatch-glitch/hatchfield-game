@@ -167,7 +167,7 @@ export class WorldRenderer {
     const q = this.q
     if (!first) this.disposeContent()
     this.tex = makeTextures(q.textureSize, q.anisotropy)
-    this.shared = makeTerminalShared(this.tex)
+    this.shared = makeTerminalShared(this.tex, q.level)
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
       runway: this.tex.runway,

@@ -5,7 +5,9 @@
  */
 import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
-import { SurfaceLibrary } from '../materials/library'
+import { SurfaceLibrary, type LibraryMap } from '../materials/library'
+import { tileByPosition } from '../materials/pack1'
+import type { QualityLevel } from './quality'
 import {
   BAG_COLORS,
   bake,
@@ -15,6 +17,7 @@ import {
   KIOSK_COLORS,
   PAX_COLORS,
   peopleGeo,
+  partSurface,
   propParts,
   setTrs,
   setYawPitch,
@@ -50,7 +53,7 @@ import { pickLod, stepFade } from './lod'
 import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
 import { type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
-import { textTexture, type WorldTextures } from './textures'
+import { departuresBoardTexture, textTexture, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { CELL, cellX, cellZ } from './view'
 
@@ -77,9 +80,10 @@ export interface TerminalShared {
   signCache: Map<string, THREE.Texture | null>
 }
 
-export function makeTerminalShared(textures: WorldTextures): TerminalShared {
+export function makeTerminalShared(textures: WorldTextures, quality: QualityLevel = 'high'): TerminalShared {
   const surfaces = new SurfaceLibrary()
   surfaces.loadPngs()
+  surfaces.loadPack1(quality)
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
     new THREE.MeshLambertMaterial({ color, ...extra })
   const palette: Record<string, THREE.Material> = {
@@ -91,7 +95,7 @@ export function makeTerminalShared(textures: WorldTextures): TerminalShared {
     chrome: lambert(0xb8c0c8),
     tape: lambert(0xc0392b),
     seat: lambert(0x2f5f8a),
-    board: new THREE.MeshBasicMaterial({ map: textures.board }),
+    board: new THREE.MeshBasicMaterial({ map: departuresBoardTexture() ?? textures.board }),
     machine: lambert(0x8f9aa6),
     kiosk: lambert(0xffffff),
     shelf: lambert(0x7a5a3a),
@@ -219,14 +223,17 @@ export class TerminalBuilding {
     shared.surfaces.watch(this.floorMat)
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
-        color: 0x9cc4dc,
+        color: 0xffffff,
+        map: shared.surfaces.maps.glass,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.82,
         depthWrite: false,
         emissive: 0xffc070,
         emissiveIntensity: 0,
       }),
     )
+    shared.surfaces.watch(this.glassMat)
+    tileByPosition(this.glassMat, shared.surfaces.repeatFor('glass'))
     this.skyMat = own(this.glassMat.clone())
     this.skyMat.opacity = 0.18
     this.buildShell(opts.index)
@@ -235,18 +242,11 @@ export class TerminalBuilding {
     this.buildLife()
   }
 
-  /** Swap in the SVG pack once it has decoded. Procedural maps stay until then. */
-  applyPackMaps(floor: THREE.Texture | null, glass: THREE.Texture | null) {
-    if (floor) {
-      this.floorMat.map = floor
-      this.floorMat.needsUpdate = true
-    }
-    if (glass) {
-      this.glassMat.map = glass
-      this.glassMat.color.setHex(0xffffff)
-      this.glassMat.needsUpdate = true
-    }
-  }
+  /**
+   * The SVG pack used to replace floor and glass. Texture pack 1 owns those
+   * surfaces now, so a later SVG decode must not paint over the JPEGs.
+   */
+  applyPackMaps(_floor: THREE.Texture | null, _glass: THREE.Texture | null) {}
 
   get rooms(): RoomPlan {
     return this.plan.rooms
@@ -371,6 +371,15 @@ export class TerminalBuilding {
     this.buildSigns(index)
   }
 
+  private wayfindingSign(title: string, sub?: string): THREE.Material {
+    const key = `way|${title}|${sub ?? ''}`
+    if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture(title, sub))
+    const tex = this.shared.signCache.get(key) ?? null
+    const m = new THREE.MeshBasicMaterial(tex ? { map: tex } : { color: 0x0e2233 })
+    this.owned.mats.push(m)
+    return m
+  }
+
   private sign(text: string, w: number, h: number, bg = '#13293d', fg = '#f4f6f8'): THREE.Material {
     const key = `${text}|${bg}|${fg}`
     if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, textTexture(text, { bg, fg, w: 512, h: Math.round((512 * h) / w) }))
@@ -441,11 +450,31 @@ export class TerminalBuilding {
   /** Room floors, interior walls / partitions / lintels, and a hanging sign per room. */
   private buildRooms(index: number) {
     const rp = this.plan.rooms
-    const floor = new THREE.Mesh(roomFloorGeometry(rp, FLOOR_Y), this.floorMat)
-    this.owned.geos.push(floor.geometry)
-    floor.receiveShadow = true
-    floor.name = 'terminal-floor'
-    this.shell.add(floor)
+    const rubberKinds = new Set(rp.rooms.filter((r) => r.kind !== 'gate').map((r) => r.kind))
+    const rubberGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: rubberKinds, flat: true })
+    const carpetGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(['gate']), flat: true })
+    const carpetMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.carpet,
+      vertexColors: true,
+    })
+    this.shared.surfaces.watch(carpetMat)
+    tileByPosition(carpetMat, this.shared.surfaces.repeatFor('carpet'))
+    this.owned.mats.push(carpetMat)
+    for (const [geo, mat, name] of [
+      [rubberGeo, this.floorMat, 'terminal-floor'],
+      [carpetGeo, carpetMat, 'terminal-carpet'],
+    ] as const) {
+      if (!geo.getAttribute('position')?.count) {
+        geo.dispose()
+        continue
+      }
+      const mesh = new THREE.Mesh(geo, mat)
+      this.owned.geos.push(geo)
+      mesh.receiveShadow = true
+      mesh.name = name
+      this.shell.add(mesh)
+    }
+    tileByPosition(this.floorMat, this.shared.surfaces.repeatFor('floor'))
 
     const solidM = new THREE.MeshLambertMaterial({
       color: 0xffffff,
@@ -453,11 +482,18 @@ export class TerminalBuilding {
       vertexColors: true,
     })
     this.shared.surfaces.watch(solidM)
+    tileByPosition(solidM, this.shared.surfaces.repeatFor('wall'))
     this.owned.mats.push(solidM)
     this.wallMats.push(solidM)
-    const glassM = this.glassMat.clone()
-    glassM.opacity = 0.4
-    glassM.color.setHex(0xb8d8ea)
+    const glassM = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      map: this.shared.surfaces.maps.glass,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: true,
+    })
+    this.shared.surfaces.watch(glassM)
+    tileByPosition(glassM, this.shared.surfaces.repeatFor('glass'))
     this.owned.mats.push(glassM)
     this.glassWallMat = glassM
     const solid: WallInst[] = []
@@ -484,17 +520,21 @@ export class TerminalBuilding {
       this.props.add(mesh)
       this.wallSets.push({ mesh, walls: list })
     }
-    add(solid, solidM, 'room-walls', solid.map((w) => (w.header ? 0x46525e : 0xece6dc)))
+    add(solid, solidM, 'room-walls', solid.map((w) => (w.header ? 0xd7d1c6 : 0xffffff)))
     add(glass, glassM, 'room-glass')
     for (const set of this.wallSets) this.layoutWalls(set, 1)
 
     const land = landsideSide(this.info.airside)
     const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
     for (const room of rp.rooms) {
-      const text = room.kind === 'gate' ? room.label.replace('GATE ', `GATE ${String.fromCharCode(65 + index)}`) : room.label
-      const w = Math.min(m(4.2), m(0.7) + text.length * m(0.18))
-      const h = m(0.55)
-      const mat = this.sign(text, w, h, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
+      const gateId = `${String.fromCharCode(65 + index)}${room.label.replace(/\D/g, '') || ''}`
+      const wayfinding = room.kind === 'checkin' || room.kind === 'security' || room.kind === 'gate'
+      const text = room.kind === 'gate' ? `GATE ${gateId}` : room.label
+      const w = wayfinding ? m(5.6) : Math.min(m(4.2), m(0.7) + text.length * m(0.18))
+      const h = wayfinding ? m(1.5) : m(0.55)
+      const mat = wayfinding
+        ? this.wayfindingSign(room.kind === 'checkin' ? 'CHECK-IN' : room.kind === 'security' ? 'SECURITY' : 'GATES', room.kind === 'gate' ? gateId : undefined)
+        : this.sign(text, w, h, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
       this.propMats.push(mat)
       // Back-to-back so the label reads from either side of the hall.
       for (const [o, a] of [[m(0.02), yaw], [-m(0.02), yaw + Math.PI]] as [number, number][]) {
@@ -556,19 +596,24 @@ export class TerminalBuilding {
     const wood: BakePiece[] = []
     const plaster: BakePiece[] = []
     const unlit: BakePiece[] = []
+    const extraSurfaces = new Map<LibraryMap, BakePiece[]>()
     const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
     const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
     for (const p of this.plan.props) {
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
       for (const part of this.shared.parts[p.kind] ?? []) {
-        const color =
-          part.mat === 'kiosk' ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length] : (PROP_COLORS[part.mat] ?? 0xffffff)
+        const surface = partSurface(part)
+        const color = surface
+          ? 0xffffff
+          : part.mat === 'kiosk'
+            ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length]
+            : (PROP_COLORS[part.mat] ?? 0xffffff)
         if (part.detail) {
-          const mat = part.surface
-            ? this.shared.surfaces.material(part.mat, 0xffffff, part.surface)
+          const mat = surface
+            ? this.shared.surfaces.material(part.mat, 0xffffff, surface === 'rubber' ? 'floor' : surface === 'shop' ? 'shop' : surface)
             : (this.shared.palette[part.mat] ?? this.shared.palette.desk)
-          const key = `${part.geo.uuid}|${part.mat}|${part.surface ?? ''}`
+          const key = `${part.geo.uuid}|${part.mat}|${surface ?? ''}`
           let batch = detail.get(key)
           if (!batch) {
             batch = { geo: part.geo, mat, matrices: [], colors: [] }
@@ -583,8 +628,27 @@ export class TerminalBuilding {
           continue
         }
         const bucket =
-          p.kind === 'light' ? lamps : part.surface === 'wood' ? wood : part.surface === 'wall' ? plaster : UNLIT.has(part.mat) ? unlit : lit
-        bucket.push({ geo: part.geo, matrix, color })
+          p.kind === 'light'
+            ? lamps
+            : surface
+              ? surface === 'wall'
+                ? plaster
+                : surface === 'wood'
+                  ? wood
+                  : null
+              : UNLIT.has(part.mat)
+                ? unlit
+                : lit
+        if (bucket) bucket.push({ geo: part.geo, matrix, color })
+        else if (surface) {
+          const kind: LibraryMap = surface === 'rubber' ? 'floor' : surface
+          let extra = extraSurfaces.get(kind)
+          if (!extra) {
+            extra = []
+            extraSurfaces.set(kind, extra)
+          }
+          extra.push({ geo: part.geo, matrix, color })
+        }
       }
     }
     const own = <T extends THREE.Material>(m: T) => {
@@ -598,8 +662,14 @@ export class TerminalBuilding {
       return m
     }
     this.bakedMesh(lit, own(new THREE.MeshLambertMaterial({ vertexColors: true })), this.props, 'props-lit')
-    this.bakedMesh(wood, mapped(this.shared.surfaces.maps.wood), this.props, 'props-wood')
-    this.bakedMesh(plaster, mapped(this.shared.surfaces.maps.wall), this.props, 'props-wall')
+    const mappedKind = (kind: LibraryMap) => {
+      const m = mapped(this.shared.surfaces.maps[kind])
+      tileByPosition(m, this.shared.surfaces.repeatFor(kind))
+      return m
+    }
+    this.bakedMesh(wood, mappedKind('wood'), this.props, 'props-wood')
+    this.bakedMesh(plaster, mappedKind('wall'), this.props, 'props-wall')
+    for (const [kind, pieces] of extraSurfaces) this.bakedMesh(pieces, mappedKind(kind), this.props, `props-${kind}`)
     this.bakedMesh(unlit, own(new THREE.MeshBasicMaterial({ vertexColors: true })), this.props, 'props-unlit')
     // Ceiling lamps hang from the roof, so they leave with it in the cutaway.
     const lampM = new THREE.MeshBasicMaterial({ vertexColors: true })
@@ -717,7 +787,7 @@ export class TerminalBuilding {
     applyFade(this.props, this.propMats, this.propFade)
     applyFade(this.props, this.wallMats, this.propFade)
     this.detail.visible = this.lod === 0 && this.propFade > 0.2
-    if (this.glassWallMat) this.glassWallMat.opacity = 0.4 * this.propFade
+    if (this.glassWallMat) this.glassWallMat.opacity = 0.9 * this.propFade
     if (this.propFade > 0) this.stepWalls(camPos, focus ?? { x: this.center.x, z: this.center.z }, dt)
     applyFade(this.life, this.lifeMats, this.lifeFade)
     this.time += dt
@@ -793,14 +863,26 @@ interface WallInst {
 }
 
 /** Terrazzo floor tinted per room, runs merged per row, darker thresholds at doorways. */
-export function roomFloorGeometry(rp: RoomPlan, y: number): THREE.BufferGeometry {
+export function roomFloorGeometry(
+  rp: RoomPlan,
+  y: number,
+  opts: { kinds?: ReadonlySet<string>; flat?: boolean } = {},
+): THREE.BufferGeometry {
   const near = new Uint8Array(rp.w * rp.h)
   for (const e of rp.doorEdges) {
     const s = e >> 1
     near[s] = 1
     near[s + ((e & 1) === 0 ? 1 : rp.w)] = 1
   }
-  const colorOf = (s: number) => (near[s] ? THRESHOLD : ROOM_FLOOR[rp.rooms[rp.grid[s]].kind])
+  const accept = (s: number) => {
+    if (rp.grid[s] < 0) return false
+    const kind = rp.rooms[rp.grid[s]]?.kind
+    return !opts.kinds || (kind != null && opts.kinds.has(kind))
+  }
+  const colorOf = (s: number) => {
+    if (opts.flat) return 0xffffff
+    return near[s] ? THRESHOLD : ROOM_FLOOR[rp.rooms[rp.grid[s]].kind]
+  }
   const pos: number[] = []
   const uv: number[] = []
   const col: number[] = []
@@ -811,13 +893,13 @@ export function roomFloorGeometry(rp: RoomPlan, y: number): THREE.BufferGeometry
     let i = 0
     while (i < rp.w) {
       const s = j * rp.w + i
-      if (rp.grid[s] < 0) {
+      if (!accept(s)) {
         i++
         continue
       }
       const hex = colorOf(s)
       let i1 = i + 1
-      while (i1 < rp.w && rp.grid[j * rp.w + i1] >= 0 && colorOf(j * rp.w + i1) === hex) i1++
+      while (i1 < rp.w && accept(j * rp.w + i1) && colorOf(j * rp.w + i1) === hex) i1++
       const xa = rp.x0 + i * rp.size
       const xb = rp.x0 + i1 * rp.size
       const za = rp.z0 + j * rp.size

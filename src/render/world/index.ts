@@ -10,7 +10,7 @@ import type * as THREE from 'three'
 import type { QualityLevel } from './quality'
 import { WorldRenderer, type WorldRenderOptions } from './render'
 
-export { QUALITY, parseQuality, suggestQuality, type QualityLevel, type QualityPreset } from './quality'
+export { QUALITY, bootQuality, parseQuality, suggestQuality, type QualityLevel, type QualityPreset } from './quality'
 export { REPLACED_TILES, WorldRenderer, type RendererLike, type WorldRenderOptions, type WorldRenderStats } from './render'
 export { simClockToHour, skyState, type SkyState } from './daylight'
 export type { WorldView } from './view'
