@@ -7,6 +7,9 @@ import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
+import { Phone } from './phone/Phone.tsx'
+import { useDesktop } from './phone/useDesktop.ts'
+import { phoneOwnsLetter } from '../phone/logic.ts'
 import { loanAmountLabel, loanDeskRows, loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { AIRFRAMES } from '../game/airframes'
@@ -267,10 +270,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [hoverLetter, setHoverLetter] = useState<string | null>(null)
-  // A letter being read (open or hovered) holds its countdown in the sim.
+  // Desktop reads those letters on the phone, which holds them itself.
+  const desktopPhone = useDesktop()
   useEffect(() => {
+    if (desktopPhone) return
     game.holdLetters([openLetter, hoverLetter].filter((id): id is string => id != null))
-  }, [game, openLetter, hoverLetter])
+  }, [game, openLetter, hoverLetter, desktopPhone])
   useEffect(() => () => game.holdLetters([]), [game])
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
@@ -701,6 +706,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           onDismiss={() => game.dismissYearReport()}
         />
       ) : null}
+      <Phone game={game} desktop={desktopPhone} />
       <div
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
@@ -881,6 +887,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               left: null,
               cardData: card,
             })
+          }
+          if (desktopPhone) {
+            for (let i = letters.length - 1; i >= 0; i--) {
+              if (phoneOwnsLetter(letters[i].id)) letters.splice(i, 1)
+            }
           }
           if (!letters.length) return null
           const active =
