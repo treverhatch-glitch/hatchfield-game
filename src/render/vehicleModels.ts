@@ -424,8 +424,9 @@ class Kit {
   }
 
   /**
-   * Side sign from the shared livery atlas. +X is the nose, so the words
-   * read correctly when you stand on either side of the truck.
+   * Side sign from the shared livery atlas. The plane faces outward.
+   * On the +Z side the nose (+X) is to the viewer's right, so U grows with X.
+   * On the -Z side the nose is to the viewer's left, so U runs the other way.
    * `z` is how far outside the centreline the sign sits.
    */
   livery(cell: number, w: number, h: number, x: number, y: number, z: number, face: 1 | -1, name = '') {
@@ -454,7 +455,7 @@ class Kit {
     for (let i = 0; i < pos.count; i++) {
       let u = (pos.getX(i) - x0) / dx
       const v = (pos.getY(i) - y0) / dy
-      if (face > 0) u = 1 - u
+      if (face < 0) u = 1 - u
       uv.setXY(i, (cell + 0.02 + u * 0.96) / LIVERY_CELLS, 0.02 + v * 0.96)
     }
   }

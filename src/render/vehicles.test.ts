@@ -85,6 +85,18 @@ describe('ground vehicle models', () => {
     disposeVehicleRig(rig)
   })
 
+  it('reads placard text left to right from the outside of both sides', () => {
+    const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
+    for (const kind of kinds) {
+      const model = vehicleModel(kind)
+      const geos = [vehicleGeometry(kind, '#3a7bd5')]
+      for (const part of MODEL_PARTS[model]) geos.push(vehiclePartGeometry(kind, '#3a7bd5', part))
+      let sides = 0
+      for (const geo of geos) sides += placardSides(geo)
+      expect(sides, kind).toBe(2)
+    }
+  })
+
   it('paints a fictional side livery on each turnaround vehicle', () => {
     const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
     for (const kind of kinds) {
@@ -136,6 +148,60 @@ describe('ground vehicle models', () => {
     fleet.dispose()
   })
 })
+
+/**
+ * How many outward placard faces read left-to-right and right-side-up.
+ * U must increase toward the viewer's right; V must increase upward
+ * (texture v = 1 is the top of the atlas, where the words start).
+ */
+function placardSides(geo: THREE.BufferGeometry): number {
+  const pos = geo.getAttribute('position')
+  const uv = geo.getAttribute('uvm')
+  const tid = geo.getAttribute('tid')
+  if (!pos || !uv || !tid) return 0
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  const ab = new THREE.Vector3()
+  const ac = new THREE.Vector3()
+  const n = new THREE.Vector3()
+  const right = new THREE.Vector3()
+  const up = new THREE.Vector3(0, 1, 0)
+  const seen = new Set<number>()
+  let sides = 0
+  for (let i = 0; i + 2 < pos.count; i += 3) {
+    if (tid.getX(i) !== 6) continue
+    a.fromBufferAttribute(pos, i)
+    b.fromBufferAttribute(pos, i + 1)
+    c.fromBufferAttribute(pos, i + 2)
+    ab.subVectors(b, a)
+    ac.subVectors(c, a)
+    n.crossVectors(ab, ac)
+    if (n.lengthSq() < 1e-8 || Math.abs(n.z) < Math.abs(n.y)) continue
+    n.normalize()
+    const sign = n.z > 0 ? 1 : -1
+    if (seen.has(sign)) continue
+    right.crossVectors(n.clone().negate(), up).normalize()
+    const sample = [a, b, c]
+    const us = [uv.getX(i), uv.getX(i + 1), uv.getX(i + 2)]
+    const vs = [uv.getY(i), uv.getY(i + 1), uv.getY(i + 2)]
+    let left = 0
+    let rightI = 0
+    let low = 0
+    let high = 0
+    for (let k = 1; k < 3; k++) {
+      if (sample[k].dot(right) < sample[left].dot(right)) left = k
+      if (sample[k].dot(right) > sample[rightI].dot(right)) rightI = k
+      if (sample[k].y < sample[low].y) low = k
+      if (sample[k].y > sample[high].y) high = k
+    }
+    expect(us[rightI], `u ${sign > 0 ? '+' : '-'}Z`).toBeGreaterThan(us[left] + 1e-4)
+    expect(vs[high], `v ${sign > 0 ? '+' : '-'}Z`).toBeGreaterThan(vs[low] + 1e-4)
+    seen.add(sign)
+    sides++
+  }
+  return sides
+}
 
 /** Vertices in the whole model: static shell plus every animated part. */
 function fullCount(model: (typeof ALL_MODELS)[number], color = '#3a7bd5'): number {
