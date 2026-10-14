@@ -25,6 +25,7 @@ import {
 } from './aircraft/index'
 import { arrivalPose, finalStraight, orientAircraft, takeoffPose, takeoffTimeline } from './flightPose'
 import { canvasToPng } from '../camera/capture.ts'
+import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
 import {
@@ -251,7 +252,6 @@ export class World {
   private onPointerUp!: (e: PointerEvent) => void
   private onWheel!: (e: WheelEvent) => void
   private onContextMenu!: (e: Event) => void
-  private onKeyDown!: (e: KeyboardEvent) => void
   /** True after pointerdown already stamped — blocks duplicate up/down fires. */
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
@@ -428,21 +428,14 @@ export class World {
       this.paintedThisGesture = false
     }
     this.onWheel = (e: WheelEvent) => {
+      if (!inputMap.wheelMatches(e.deltaY)) return
       e.preventDefault()
       if (this.followHeld) {
         this.onFollowZoom(e.deltaY)
         return
       }
-      this.dist = clamp(this.dist + e.deltaY * 0.06, MIN_DIST, MAX_DIST)
-      this.placeCam()
+      this.nudgeZoom(e.deltaY * 0.06)
     }
-    this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== GFX_CYCLE_KEY || e.repeat) return
-      e.preventDefault()
-      const order: QualityLevel[] = ['low', 'med', 'high']
-      this.setGraphicsQuality(order[(order.indexOf(this.wr.quality) + 1) % order.length])
-    }
-    window.addEventListener('keydown', this.onKeyDown)
     canvas.addEventListener('contextmenu', this.onContextMenu)
     canvas.addEventListener('pointerdown', this.onPointerDown)
     canvas.addEventListener('pointermove', this.onPointerMove)
@@ -513,7 +506,7 @@ export class World {
   /**
    * Graphics preset for ground, lights, shadows and aircraft detail. Saved for the next
    * boot; MSAA is fixed with the WebGL context, so that part follows on reload.
-   * Bound to F8 here; a settings control can call this directly.
+   * F8 reaches this through the action map. A settings control can call it directly.
    */
   setGraphicsQuality(level: QualityLevel) {
     this.applyGraphicsQuality(level)
@@ -2493,7 +2486,6 @@ export class World {
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
     const canvas = this.canvas
-    window.removeEventListener('keydown', this.onKeyDown)
     canvas.removeEventListener('contextmenu', this.onContextMenu)
     canvas.removeEventListener('pointerdown', this.onPointerDown)
     canvas.removeEventListener('pointermove', this.onPointerMove)
@@ -2506,9 +2498,6 @@ export class World {
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
-
-/** Cycles low → med → high. Function key, so it never collides with typing or camera keys. */
-const GFX_CYCLE_KEY = 'F8'
 
 const _euler = new THREE.Euler()
 const _quat = new THREE.Quaternion()

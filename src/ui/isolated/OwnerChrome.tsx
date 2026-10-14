@@ -21,19 +21,6 @@ export function OwnerChrome({ game }: { game: Game }) {
   // 4px above the strip and 4px below it before the panels hang underneath.
   useHudBandVar(strip, '--hud-strip-h', 'height', 8)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault()
-        game.toggleFlows()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [game])
-
   const site = game.hover ? game.siteAt(game.hover) : undefined
   const ground = game.groundSnapshot()
 
