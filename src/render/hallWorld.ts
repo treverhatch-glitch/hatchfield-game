@@ -49,6 +49,20 @@ import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
 import type { HallNav } from '../game/hallNav'
 import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
+import { WORLD_PER_METER } from './aircraft/specs'
+import {
+  apronToHall,
+  hallFitFor,
+  hallGuestScale,
+  hallToApron,
+  matchTerminal,
+  poseOnPlan,
+  type HallFit,
+} from './hallRooms'
+import { terminals } from './world/layout'
+import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
+import type { RoomPlan } from './world/rooms'
+import { makeTextures, type WorldTextures } from './world/textures'
 import { hallQueues } from '../terminalplay/queues'
 
 /** Hall build mode, driven by the terminal kit bar. */
@@ -155,6 +169,17 @@ export class HallWorld {
   private deskCubes: THREE.Mesh[] = []
   private luggageBuilt = false
   roomHash = ''
+  /** Apron terminal drawn inside the hall: rooms, plaster, glass, signs, desks. */
+  private interiorGroup = new THREE.Group()
+  private interior: TerminalBuilding | null = null
+  private interiorFit: HallFit | null = null
+  private roomPlan: RoomPlan | null = null
+  private interiorKey = ''
+  private interiorMs = 0
+  private readonly apronCamPos = new THREE.Vector3()
+  private readonly routeCache = new Map<string, { x: number; z: number }[] | null>()
+  private terminalTextures: WorldTextures | null = null
+  private terminalShared: TerminalShared | null = null
   private floor: THREE.Mesh
   /** Shared polished-floor map. Room slabs tint it; they do not own it. */
   private terrazzo: THREE.Texture
@@ -249,6 +274,8 @@ export class HallWorld {
     this.scene.add(after)
 
     this.scene.add(this.roomGroup)
+    this.interiorGroup.name = 'hall-rooms'
+    this.scene.add(this.interiorGroup)
     this.zoneTint.visible = false
     this.scene.add(this.zoneTint)
     this.scene.add(this.kitGroup)
@@ -576,8 +603,12 @@ export class HallWorld {
     this.roomGroup.add(mesh)
   }
 
-  /** Perimeter shell with door gaps, plus walls where security meets the curb side. */
-  private buildShell(zones: ZoneId[][], nav: HallNav) {
+  /**
+   * Perimeter shell with door gaps, plus walls where security meets the curb side.
+   * When the room interior is up, the nav grid's inner partitions stay off so the
+   * nine rooms are the walls you see. The outer shell still frames the hall.
+   */
+  private buildShell(zones: ZoneId[][], nav: HallNav, rooms: boolean) {
     const h = 3.15
     const t = 0.38
     const y = h / 2
@@ -591,6 +622,7 @@ export class HallWorld {
       const o = nav.origin()
       const outer = (e: Edge) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)
       for (const e of layout.walls) {
+        if (rooms && !outer(e)) continue
         const color = outer(e) ? wall : '#c9a27a'
         const thick = outer(e) ? t : 0.28
         if (e.dir === 'E') this.box(thick, h, m + thick, color, o.x + (e.x + 1) * m, y, o.z + (e.y + 0.5) * m)
@@ -604,6 +636,7 @@ export class HallWorld {
           this.box(0.42, h, 0.42, '#e6eaee', x, y, z)
         }
       }
+      if (rooms) this.buildSecureWalls(zones)
       return
     }
     // North and south — solid. The roof is gone so the floor stays readable.
@@ -631,18 +664,15 @@ export class HallWorld {
     this.buildSecureWalls(zones)
   }
 
-  /**
-   * A floor threshold where security meets check-in or arrivals.
-   * The gate side stays open. Full-height partitions hid the lanes.
-   */
+  /** Full-height plaster where security meets check-in or arrivals. The gate side stays open. */
   private buildSecureWalls(zones: ZoneId[][]) {
     const rows = zones.length
     const cols = zones[0]?.length ?? 0
     if (!rows || !cols) return
     const cw = HALL_W / cols
     const rh = HALL_D / rows
-    const h = 0.08
-    const t = 0.16
+    const h = 3.15
+    const t = 0.28
     const blocks = (a: ZoneId, b: ZoneId) => {
       if (a === b) return false
       const air = (z: ZoneId) => z === 'gates' || z === 'retail'
@@ -656,12 +686,12 @@ export class HallWorld {
         if (c + 1 < cols && zones[r][c + 1] && blocks(z, zones[r][c + 1])) {
           const x = -HALL_W / 2 + (c + 1) * cw
           const zpos = -HALL_D / 2 + (r + 0.5) * rh
-          this.box(t, h, rh * 0.92, '#6f7a84', x, h / 2 + 0.03, zpos)
+          this.box(t, h, rh * 0.9, '#c9a27a', x, h / 2, zpos)
         }
         if (r + 1 < rows && zones[r + 1][c] && blocks(z, zones[r + 1][c])) {
           const x = -HALL_W / 2 + (c + 0.5) * cw
           const zpos = -HALL_D / 2 + (r + 1) * rh
-          this.box(cw * 0.92, h, t, '#6f7a84', x, h / 2 + 0.03, zpos)
+          this.box(cw * 0.9, h, t, '#c9a27a', x, h / 2, zpos)
         }
       }
     }
@@ -676,7 +706,8 @@ export class HallWorld {
     const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
     const nav = game.hallNav
     const walk = nav.live ? `${nav.nav?.revision}:${nav.nav?.layout.walls.length}:${nav.nav?.layout.doors.length}` : '-'
-    const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}`
+    const rooms = this.roomPlan ? 'rooms' : 'open'
+    const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}|${rooms}`
     if (hash === this.roomHash) return
     this.roomHash = hash
     this.roomGroup.traverse((obj) => {
@@ -689,7 +720,7 @@ export class HallWorld {
     this.roomGroup.clear()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    this.buildShell(zones as ZoneId[][], nav)
+    this.buildShell(zones as ZoneId[][], nav, this.roomPlan != null)
 
     const cw = HALL_W / cols
     const rh = HALL_D / rows
@@ -731,6 +762,93 @@ export class HallWorld {
   private clearKit() {
     for (const sub of this.kitGroup.children) disposeKitInstances(sub as THREE.Group)
     this.kitGroup.clear()
+  }
+
+  /**
+   * Draw the active hall's planTerminal rooms in the hall frame.
+   * Decorative walkers stay at 0; the sim's hallGuests are the crowd.
+   */
+  private syncInterior(game: Game) {
+    const origin = game.activeHall()?.origin ?? null
+    const hit = matchTerminal(terminals(game), origin)
+    const key = hit ? `${game.mapRev}|${hit.index}|${hit.info.cluster.minC},${hit.info.cluster.minR}` : ''
+    if (key !== this.interiorKey) {
+      this.interiorKey = key
+      this.clearInterior()
+      this.routeCache.clear()
+      if (hit) {
+        if (!this.terminalShared) {
+          this.terminalTextures = makeTextures(64, 4)
+          this.terminalShared = makeTerminalShared(this.terminalTextures)
+        }
+        const fit = hallFitFor(hit.info)
+        const building = new TerminalBuilding(hit.info, this.terminalShared, {
+          density: 1,
+          walkersPerCell: 0,
+          index: hit.index,
+        })
+        building.root.position.set(-fit.cx, 0, -fit.cz)
+        building.propFade = 1
+        building.lifeFade = 1
+        this.hideTerminalShell(building)
+        this.interiorGroup.scale.setScalar(fit.scale)
+        this.interiorGroup.position.y = -FLOOR_Y * fit.scale
+        this.interiorGroup.add(building.root)
+        this.interior = building
+        this.interiorFit = fit
+        this.roomPlan = building.rooms
+      }
+    }
+    this.stepInterior()
+  }
+
+  private hideTerminalShell(building: TerminalBuilding) {
+    const shell = building.root.getObjectByName('terminal-shell')
+    const roof = building.root.getObjectByName('terminal-roof-group')
+    if (shell) shell.visible = false
+    if (roof) roof.visible = false
+  }
+
+  /** Cutaway follows the hall camera, pulled in so near walls drop. */
+  private stepInterior() {
+    const building = this.interior
+    const fit = this.interiorFit
+    if (!building || !fit) return
+    const now = performance.now()
+    const dt = this.interiorMs ? Math.min(0.05, (now - this.interiorMs) / 1000) : 0.016
+    this.interiorMs = now
+    const cam = this.camera.position
+    const local = hallToApron(cam.x, cam.z, fit)
+    let x = local.x
+    let z = local.z
+    const dx = x - building.center.x
+    const dz = z - building.center.z
+    const flat = Math.hypot(dx, dz) || 1
+    const maxFlat = 10
+    if (flat > maxFlat) {
+      x = building.center.x + (dx / flat) * maxFlat
+      z = building.center.z + (dz / flat) * maxFlat
+    }
+    const y = Math.max(cam.y / fit.scale, ROOF_Y + WORLD_PER_METER * 2)
+    this.apronCamPos.set(x, y, z)
+    building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false)
+    this.hideTerminalShell(building)
+  }
+
+  private clearInterior() {
+    this.interior?.dispose()
+    this.interior = null
+    this.interiorFit = null
+    this.roomPlan = null
+    this.interiorGroup.clear()
+    this.interiorGroup.scale.set(1, 1, 1)
+    this.interiorGroup.position.y = 0
+  }
+
+  /** Rooms, walls and walker count for the fitted interior. Null until a hall has a terminal. */
+  interiorCounts() {
+    const counts = this.interior?.counts() ?? null
+    return counts ? { ...counts, figures: this.guests.size } : null
   }
 
   /** Head, torso, arms, and two legs. Shared geometries; materials stay per person. */
@@ -831,9 +949,11 @@ export class HallWorld {
   }
 
   syncGuests(game: Game) {
-    // Departures and arrivals walk on the nav grid (navCrowd) when the hall has a curb door and a gate.
+    // Room interior: every hall guest walks the doorway plan. Otherwise departures
+    // and arrivals stay on the nav-grid crowd so the two pictures do not stack.
     const nav = game.hallNav
-    const drawn = nav.live ? game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id)) : game.hallGuests
+    const routed = this.roomPlan != null && this.interiorFit != null
+    const drawn = routed || !nav.live ? game.hallGuests : game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id))
     const live = new Set(drawn.map((g) => g.id))
     for (const [id, mesh] of this.guests) {
       if (!live.has(id)) {
@@ -862,9 +982,38 @@ export class HallWorld {
       const key = `${node}:${next ?? ''}`
       const slot = pile.get(key) ?? 0
       pile.set(key, slot + 1)
+      const pose =
+        routed && this.roomPlan && this.interiorFit
+          ? poseOnPlan(
+              this.roomPlan,
+              {
+                id: g.id,
+                node,
+                job: g.job,
+                clearedSec: g.clearedSec,
+                wx: g.wx,
+                wz: g.wz,
+                t: g.t,
+                wyaw: g.wyaw,
+                route: g.route,
+              },
+              next,
+              this.routeCache,
+            )
+          : null
       let x = a.x + (b.x - a.x) * t
       let z = a.z + (b.z - a.z) * t
-      if (next) {
+      if (pose && this.interiorFit) {
+        const hall = apronToHall(pose.x, pose.z, this.interiorFit)
+        x = hall.x
+        z = hall.z
+        if (next && !pose.fromSim) {
+          const lane = (g.lane ?? guestLane(g.id)) * 0.28
+          x += -Math.cos(pose.yaw) * lane
+          z += Math.sin(pose.yaw) * lane
+        }
+        mesh.rotation.y = pose.yaw + (g.previewDir === -1 ? Math.PI : 0)
+      } else if (next) {
         const dx = b.x - a.x
         const dz = b.z - a.z
         const len = Math.hypot(dx, dz) || 1
@@ -878,7 +1027,8 @@ export class HallWorld {
       }
       const desk = g.atBagDesk ? nodeWorld('claim') : null
       mesh.position.set(desk ? desk.x - 3.4 + (slot % 3) * 0.7 : x, 0, desk ? desk.z + 2.4 : z)
-      mesh.scale.set(1, 1, 1)
+      const figure = this.interiorFit ? hallGuestScale(this.interiorFit) : 1
+      mesh.scale.set(figure, figure, figure)
       if (g.meal) {
         // Walk the tray from the counter to the booked seat, then sit: lower and squat.
         const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
@@ -887,7 +1037,7 @@ export class HallWorld {
         const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
         mesh.position.x += (sx - mesh.position.x) * k
         mesh.position.z += (sz - mesh.position.z) * k
-        if (g.seated) mesh.scale.y = 0.72
+        if (g.seated) mesh.scale.y = figure * 0.72
       }
       const walking = Boolean(next) && !g.seated
       const swing = walking ? Math.sin(game.clock * 6.5 + (guestSalt(g.id) % 628) / 100) * 0.7 : 0
@@ -1230,12 +1380,18 @@ export class HallWorld {
     perfFrame()
     let t = perfStart()
     this.resize()
+    this.syncInterior(game)
     this.rebuildRooms(game)
     this.syncZoneTint(game)
     this.easeToGoal(game)
     this.syncWalkways(game)
     this.syncGuests(game)
-    this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
+    if (this.roomPlan) {
+      this.navCrowd.group.visible = false
+      this.navDrawn = 0
+    } else {
+      this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
+    }
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
@@ -1435,6 +1591,11 @@ export class HallWorld {
     canvas.removeEventListener('pointerleave', this.onUp)
     canvas.removeEventListener('wheel', this.onWheel)
     this.clearKit()
+    this.clearInterior()
+    if (this.terminalShared) disposeTerminalShared(this.terminalShared)
+    this.terminalTextures?.dispose()
+    this.terminalShared = null
+    this.terminalTextures = null
     for (const tex of this.queueTex.values()) tex.dispose()
     this.queueTex.clear()
     this.ghostMat.dispose()
