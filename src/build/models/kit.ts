@@ -400,6 +400,22 @@ const texMats = new Map<string, THREE.MeshStandardMaterial>()
  * Material tinted by colour that picks up a repeat-wrapped sRGB photo map once it
  * loads. Until then (or in Node, or if the file is absent) it is the plain colour.
  */
+/**
+ * Call `cb` with a material's photo map once it exists (now if already loaded).
+ * Clones made before the photo arrived (construction stages) use this to pick it up.
+ * Returns an unsubscribe function.
+ */
+export function onMaterialMap(src: THREE.Material, cb: (map: THREE.Texture) => void): () => void {
+  const m = src as THREE.MeshStandardMaterial
+  if (m.map) {
+    cb(m.map)
+    return () => {}
+  }
+  const set = (m.userData.mapWaiters ??= new Set()) as Set<(map: THREE.Texture) => void>
+  set.add(cb)
+  return () => set.delete(cb)
+}
+
 export function tmat(name: BuildingTex, color: string, rx = 1, ry = 1, o: MatOpts = {}): THREE.MeshStandardMaterial {
   if (!hasDom()) return mat(color, o)
   const key = `${name}|${rx}|${ry}|${color}|${o.rough ?? 0.6}|${o.metal ?? 0.1}|${o.opacity ?? 1}|${o.emissive ?? ''}|${o.ei ?? 0}`
@@ -421,6 +437,9 @@ export function tmat(name: BuildingTex, color: string, rx = 1, ry = 1, o: MatOpt
       t.needsUpdate = true
       made.map = t
       made.needsUpdate = true
+      const waiting = made.userData.mapWaiters as Set<(map: THREE.Texture) => void> | undefined
+      if (waiting) for (const cb of waiting) cb(t)
+      delete made.userData.mapWaiters
     })
     texMats.set(key, made)
     m = made

@@ -15,12 +15,12 @@ export function cargo(g: THREE.Group): void {
   for (let i = 0; i < 4; i++) {
     const x = -3.0 + i * 2.0
     const door = box(g, 1.5, 1.8, 0.06, mat('#d7a43b', { metal: 0.4, rough: 0.45 }), x, 1.02, 1.45)
-    animate(door, { kind: 'roll', signal: 'dockActive', amount: 1.8 })
+    animate(door, { kind: 'roll', signal: 'dockActive', amount: 1.8, point: i })
     box(g, 1.6, 0.25, 0.3, M.darkSteel(), x, 2.82, 1.5) // shutter head box
     const lev = new THREE.Group()
     lev.position.set(x, 1.02, 2.6)
     box(lev, 1.3, 0.05, 0.6, M.steel(), 0, 0, 0.3)
-    animate(lev, { kind: 'rot', signal: 'dockActive', axis: 'x', amount: 0.35 })
+    animate(lev, { kind: 'rot', signal: 'dockActive', axis: 'x', amount: 0.35, point: i })
     g.add(lev)
     box(g, 0.2, 0.4, 0.2, M.black(), x - 0.85, 0.5, 2.62)
     box(g, 0.2, 0.4, 0.2, M.black(), x + 0.85, 0.5, 2.62)

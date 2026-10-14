@@ -61,7 +61,7 @@ export function deicePad(g: THREE.Group): void {
     box(arm, 0.2, 3.6, 0.2, M.yellow(), 0, 0, 0)
     box(arm, 0.8, 0.6, 0.8, M.white(), 0, 3.6, 0)
     arm.rotation.z = s * 1.2
-    animate(arm, { kind: 'rot', signal: 'deicing', axis: 'z', amount: -s * 0.75 })
+    animate(arm, { kind: 'rot', signal: 'deicing', axis: 'z', amount: -s * 0.75, point: s < 0 ? 0 : 1 })
     t.add(arm)
     for (const z of [-1, 1]) for (const x of [-0.7, 0.7]) {
       const w = cyl(t, 0.3, 0.3, 0.2, M.black(), x, 0, z, 12)
@@ -87,7 +87,7 @@ export function mro(g: THREE.Group): void {
   for (const x of [-2.2, 2.2]) {
     for (const half of [-1, 1]) {
       const leaf = box(g, 2.0, 3.1, 0.08, mat('#1e242b', { metal: 0.4 }), x + half * 1.0, 0.12, 1.56 + (half > 0 ? 0.04 : 0))
-      animate(leaf, { kind: 'slide', signal: 'hangarBusy', axis: 'x', amount: half * 1.7 })
+      animate(leaf, { kind: 'slide', signal: 'hangarBusy', axis: 'x', amount: half * 1.7, point: x < 0 ? 0 : 1 })
     }
     for (let k = 0; k < 4; k++) box(g, 0.04, 3.1, 0.1, M.steel(), x - 1.5 + k, 0.12, 1.58)
   }
