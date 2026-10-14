@@ -68,6 +68,7 @@ import { LineChart } from './LineChart'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
+import { StaffHousingPanel } from './StaffHousingPanel'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -175,6 +176,7 @@ type PanelId =
   | 'premium'
   | 'tycoon'
   | 'rival'
+  | 'staff'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -233,6 +235,7 @@ function TrayMark({ tool }: { tool: string }) {
 const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
+  { id: 'staff', label: 'Staff', tip: 'Commute, housing, morale' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
   { id: 'specialize', label: 'Specs', tip: 'Hub, low-cost, cargo, and luxury trees' },
   { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
@@ -1430,16 +1433,16 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   </p>
                   <div className="row">
                     <button type="button" className="on" onClick={() => game.hireMechanic()}>
-                      Hire mechanic · {money(MECHANIC_HIRE)}
+                      Hire mechanic · {money(game.staffHireCost(MECHANIC_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.hireJanitor()}>
-                      Hire janitor · {money(JANITOR_HIRE)}
+                      Hire janitor · {money(game.staffHireCost(JANITOR_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.hireResearcher()}>
-                      Hire researcher · {money(RESEARCHER_HIRE)}
+                      Hire researcher · {money(game.staffHireCost(RESEARCHER_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.hireDeskStaff()}>
-                      Hire desk agent · {money(DESK_STAFF_HIRE)}
+                      Hire desk agent · {money(game.staffHireCost(DESK_STAFF_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.fireMechanic()}>
                       Lay off
@@ -2071,6 +2074,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   }}
                 />
               ) : null}
+              {panel === 'staff' ? <StaffHousingPanel game={game} /> : null}
 
               {panel === 'services' ? (
                 <>
