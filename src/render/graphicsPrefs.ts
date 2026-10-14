@@ -29,6 +29,7 @@ export function explainGraphics(info: {
   if ((info.deviceMemory ?? 8) <= 2 || (info.hardwareConcurrency ?? 8) <= 2) {
     return { level, reason: 'a small device' }
   }
+  if (level === 'ultra') return { level, reason: 'a desktop graphics card' }
   if (level === 'high') return { level, reason: 'a strong machine' }
   return { level, reason: 'this machine' }
 }
@@ -108,7 +109,9 @@ export function graphicsNote(current: QualityLevel, auto: GraphicsReason): strin
       ? 'Soft shadows, contact shadows, and the wider light bloom stay off, so a busy airport keeps its pace.'
       : current === 'med'
         ? 'Soft shadows follow the camera, with contact shadows, a colour grade, and a light bloom on the field lights.'
-        : 'Sharper shadows, a wider light bloom, and the same contact shadows and colour grade.'
+        : current === 'high'
+          ? 'Sharper shadows, a wider light bloom, and the same contact shadows and colour grade.'
+          : 'High, plus 4096 shadows, 16× texture filtering, full-resolution rendering, longer detail distances and denser grass and trees. Needs a desktop graphics card.'
   const picked =
     current === auto.level
       ? `This device starts on ${start} (${auto.reason}).`
