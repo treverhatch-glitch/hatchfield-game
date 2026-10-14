@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
+import { PerfOverlay } from '../perf'
 import { inBounds } from '../game/path'
 import { standEntry } from '../game/standFoot'
 import type { Game } from '../game/sim'
@@ -269,6 +270,7 @@ export class World {
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
   private captureWanted = false
+  private perfOverlay = new PerfOverlay()
   private headlights = new VehicleHeadlights()
   private headlightRoots: THREE.Object3D[] = []
   private headlightPool: THREE.Object3D[] = []
@@ -2363,6 +2365,7 @@ export class World {
     perfEnd('world.wr', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    this.perfOverlay.update(this.renderer, this.scene)
     if (this.captureWanted) {
       this.captureWanted = false
       const url = canvasToPng(this.renderer.domElement)
@@ -2416,6 +2419,7 @@ export class World {
     disposeVehicleLibrary()
     this.offGfx()
     this.wr.dispose()
+    this.perfOverlay.dispose()
     this.headlights.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
