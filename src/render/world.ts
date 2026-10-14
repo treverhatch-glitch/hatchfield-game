@@ -29,6 +29,17 @@ import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
+import { ConstructionLayer } from '../build/construction'
+import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
+import { buildModel, standAircraftGhost } from '../build/models'
+import { getNightLevel, setKitEnvironment, setMaterialFx, setNightLevel } from '../build/models/kit'
+import { LotLamps } from './world/lotLamps'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { daylightFactor } from './world/dayNight'
+import { simClockToHour } from './world/daylight'
+import { lotFrame, type Lot } from '../build/footprints'
+import { AnimSystem, buildingSignals, siteSignals } from '../build/anim'
+import { ServiceFx } from './serviceFx'
 import {
   addFuelRail,
   addHangar,
@@ -55,7 +66,7 @@ import {
   type QualityLevel,
   type WorldRender,
 } from './world/index'
-import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from './graphicsPrefs'
+import { chooseGraphicsQuality, graphicsQuality, materialFxOn, materialFxPref, subscribeGraphicsQuality, subscribeMaterialFx } from './graphicsPrefs'
 import { standBox } from './world/layout'
 import { ROOF_Y } from './world/terminal'
 
@@ -158,7 +169,7 @@ function vehicleMeters(kind: string): [number, number, number] {
   if (kind === 'citycargo' || kind === 'catering_truck') return [8.5, 3.2, 2.5]
   if (kind === 'delivery' || kind === 'contractor') return [7.2, 2.8, 2.4]
   if (kind === 'fuel' || kind === 'fuel_truck') return [8, 3, 2.5]
-  if (kind === 'pax_bus') return [12, 3, 2.5]
+  if (kind === 'pax_bus' || kind === 'coach') return [12, 3.3, 2.55]
   if (kind === 'uld_loader') return [8, 2.4, 2.6]
   if (kind === 'gpu') return [3.2, 1.6, 1.4]
   if (kind === 'baggage_tug' || kind === 'bags') return [7.2, 1.7, 1.55]
@@ -194,6 +205,18 @@ export class World {
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   siteGroup = new THREE.Group()
+  /** Live lot table from the last synced game (construction sites reserve theirs at stamp time). */
+  private lotsRef: Record<string, Lot> = {}
+  /** Movable building parts (doors, radar, fans, booms) driven by sim signals. */
+  buildingAnim = new AnimSystem()
+  /** Nearest lot lamps as real point lights at night. */
+  lotLamps = new LotLamps(0)
+  private offFx: (() => void) | null = null
+  serviceFx!: ServiceFx
+  construction = new ConstructionLayer((tile, c, r) => {
+    const g = this.building(tile as Tile, toWorld(c, r, 0.02), { lot: this.lotsRef[`${c},${r}`] })
+    return g.children.length ? g : null
+  })
   /** Empty-gate jet bridges. Kept off tilesGroup so releaseTiles cannot dispose shared bridge geometry. */
   gateGroup = new THREE.Group()
   parkedFleet = new ParkedFleet()
@@ -314,6 +337,15 @@ export class World {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.renderer.localClippingEnabled = true // construction reveal
+    // Building kit PBR: one shared studio reflection map so metal/glass read as real materials.
+    try {
+      const pm = new THREE.PMREMGenerator(this.renderer)
+      setKitEnvironment(pm.fromScene(new RoomEnvironment(), 0.04).texture)
+      pm.dispose()
+    } catch {
+      /* headless / no WebGL2: plain lighting */
+    }
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#87b7d9')
@@ -355,11 +387,13 @@ export class World {
     this.scene.add(this.gateGroup)
     this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
+    this.serviceFx = new ServiceFx(this.entGroup, toWorld)
     this.scene.add(this.headlights.group)
     this.entGroup.add(this.parkedFleet.root)
     this.entGroup.add(this.vehicleFleet.root)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
+    this.scene.add(this.construction.group)
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
@@ -368,6 +402,9 @@ export class World {
       sun: this.sun,
     })
     this.offGfx = subscribeGraphicsQuality((level) => this.applyGraphicsQuality(level))
+    this.scene.add(this.lotLamps.group)
+    this.applyBuildingFx(quality)
+    this.offFx = subscribeMaterialFx(() => this.applyBuildingFx(this.wr.quality))
   }
 
   addPlotFence() {
@@ -553,6 +590,14 @@ export class World {
     if (this.wr.quality === level) return
     this.wr.setQuality(level)
     setAircraftQuality(baseLevel(level))
+    this.applyBuildingFx(level)
+  }
+
+  /** Building weathering / reflections (Settings override or preset) and the lot-lamp budget. */
+  private applyBuildingFx(level: QualityLevel) {
+    const q = QUALITY[level]
+    setMaterialFx(materialFxOn(materialFxPref(), q.materialFx))
+    if (this.lotLamps.budget !== q.lotLamps) this.lotLamps.setBudget(q.lotLamps)
   }
 
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
@@ -664,11 +709,15 @@ export class World {
             parkTerm: game.parkTerms[key],
             hangarTier: game.hangarScale[key],
             lateOpen: game.lateOpenAt(c, r),
+            lot: game.lots[key],
+            yardSeed: key,
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
         }
       }
+      this.buildingAnim.collect(this.tilesGroup)
+      this.lotLamps.collect(this.tilesGroup)
       this.gateHash = ''
     }
     this.syncGateBridges(game)
@@ -759,10 +808,25 @@ export class World {
       parkTerm?: ParkTerm
       hangarTier?: SizeTier
       lateOpen?: boolean
+      lot?: Lot
+      yardSeed?: string
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
+    const model = buildModel(tile, { hangarTier: opts.hangarTier, hotelClass: opts.hotelClass, parkTerm: opts.parkTerm, yardSeed: opts.yardSeed })
+    if (model) {
+      if (opts.lot) {
+        // Real-world lot: scale the cell-sized model up and centre it on its lot,
+        // front facing the access side. Height grows slower than plan size.
+        const f = lotFrame(opts.lot)
+        model.position.set(f.dc * CELL, 0, f.dr * CELL)
+        model.rotation.y = f.yaw
+        model.scale.set(f.scale, 0.55 + 0.45 * f.scale, f.scale)
+        g.add(model)
+      } else g.add(...model.children)
+      return g
+    }
     if (tile === 'terminal') {
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.92, 3.4, CELL * 0.92),
@@ -1682,32 +1746,24 @@ export class World {
   private addGhostPrefab(game: Game, cells: Vec[], tint: number) {
     const tile = game.placementTile()
     if (!tile || !game.hover || !cells.length) return
-    const mat = new THREE.MeshBasicMaterial({
-      color: tint,
-      transparent: true,
-      opacity: 0.62,
-      depthWrite: false,
-    })
-    const ghostify = (root: THREE.Object3D) => {
-      const dropped: THREE.Material[] = []
-      root.traverse((o) => {
-        if (!(o instanceof THREE.Mesh)) return
-        const src = o.material
-        if (Array.isArray(src)) dropped.push(...src)
-        else dropped.push(src)
-        o.material = mat
-        o.castShadow = false
-        o.receiveShadow = false
-      })
-      for (const m of new Set(dropped)) {
-        if (m !== mat) m.dispose()
-      }
-    }
+    const ghostMats = ghostMaterials(tint !== 0xff6b6b)
+    const mat = ghostMats.body
+    this.ghostGroup.userData.ghostMats = ghostMats
     if (tile === 'runway' || tile === 'taxi' || tile === 'road') {
       this.ghostGroup.add(this.ghostSlab(cells, tile === 'runway' ? 0.22 : 0.16, mat))
       return
     }
     if (tile === 'terminal') {
+      let real = 0
+      for (const p of cells) {
+        if (!inBounds(p.c, p.r)) continue
+        const built = this.building(tile, toWorld(p.c, p.r, 0))
+        if (!built.children.length) continue
+        ghostifyModel(built, ghostMats, { edges: false })
+        this.ghostGroup.add(built)
+        real++
+      }
+      if (real) return
       const slab = this.ghostSlab(cells, ROOF_Y, mat)
       slab.position.y = ROOF_Y / 2
       this.ghostGroup.add(slab)
@@ -1731,22 +1787,30 @@ export class World {
         mat,
       )
       pad.position.set(box.x, 0.14, box.z)
-      const fuse = new THREE.Mesh(
-        new THREE.BoxGeometry(
-          alongX ? box.depth * 0.72 : box.width * 0.16,
-          1.35,
-          alongX ? box.width * 0.16 : box.depth * 0.72,
-        ),
-        mat,
-      )
-      fuse.position.set(box.x, 0.9, box.z)
-      this.ghostGroup.add(pad, fuse)
+      const planeMat = mat.clone()
+      planeMat.opacity = 0.78
+      planeMat.emissiveIntensity = 0.55
+      const plane = standAircraftGhost(box.depth, box.width, planeMat, alongX)
+      plane.position.set(box.x, 0.14, box.z)
+      this.ghostGroup.add(pad, plane)
+      return
+    }
+    const tool = String(game.tool)
+    const ghostOpts = {
+      hangarTier: (tool === 'hangar_j' ? 'jumbo' : tool === 'hangar_w' ? 'wide' : undefined) as SizeTier | undefined,
+      hotelClass: (tool === 'hotel_inn' ? 'inn' : tool === 'hotel_resort' ? 'resort' : tool === 'hotel_biz' ? 'business' : undefined) as HotelClass | undefined,
+    }
+    const ghostLot = game.ghostLot()
+    if (ghostLot && game.hover) {
+      const built = this.building(tile, toWorld(game.hover.c, game.hover.r, 0), { ...ghostOpts, lot: ghostLot })
+      ghostifyModel(built, ghostMats)
+      this.ghostGroup.add(built)
       return
     }
     for (const p of cells) {
       if (!inBounds(p.c, p.r)) continue
-      const built = this.building(tile, toWorld(p.c, p.r, 0))
-      ghostify(built)
+      const built = this.building(tile, toWorld(p.c, p.r, 0), ghostOpts)
+      ghostifyModel(built, ghostMats)
       this.ghostGroup.add(built)
     }
   }
@@ -2020,7 +2084,10 @@ export class World {
       const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
       const dx = (ahead?.c ?? t.x) - t.x
       const dy = (ahead?.r ?? t.y) - t.y
-      const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
+      // Docked in a service-yard bay: face the bay, not the last path segment.
+      const heading = t.yard
+        ? t.yard.heading
+        : Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
       const atStop = !t.returning && t.seg >= t.path.length - 1
       const ext = truckDeploy(atStop, t.dwell, t.serviceFor)
@@ -2195,7 +2262,7 @@ export class World {
     const geos = new Set<THREE.BufferGeometry>()
     const mats = new Set<THREE.Material>()
     this.ghostGroup.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return
+      if (!(o instanceof THREE.Mesh) && !(o instanceof THREE.LineSegments)) return
       geos.add(o.geometry)
       const mat = o.material
       if (Array.isArray(mat)) for (const m of mat) mats.add(m)
@@ -2216,6 +2283,8 @@ export class World {
       this.sitesHash = key
       this.rebuildSites(game)
     }
+    this.lotsRef = game.lots
+    this.construction.sync(game.sites)
     let i = 0
     for (const site of game.sites) {
       const progress = Math.max(0.04, Math.min(1, site.elapsed / site.duration))
@@ -2375,6 +2444,16 @@ export class World {
     perfEnd('world.entities', t)
     t = perfStart()
     this.syncSites(game)
+    // Windows, wall-packs and lot lamps come up as the sky darkens.
+    setNightLevel(1 - Math.min(1, Math.max(0, (daylightFactor(simClockToHour(game.clock)) - 0.12) / 0.5)))
+    this.lotLamps.update(this.pivot, getNightLevel())
+    this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera, (key) => {
+      const tile = game.yard.tileOf(key)
+      if (tile === 'mro') return siteSignals(tile, game.yard.activePoints(key), game.mroDoorOpen(key) > 0 || game.hangarInUse(key))
+      if (tile === 'hangar') return siteSignals(tile, game.yard.activePoints(key), game.hangarInUse(key))
+      return siteSignals(tile, game.yard.activePoints(key))
+    })
+    this.serviceFx.sync(game, dt)
     perfEnd('world.sites', t)
     t = perfStart()
     this.followCameraCue(game)
@@ -2438,6 +2517,7 @@ export class World {
     disposeAircraftLibrary()
     disposeVehicleLibrary()
     this.offGfx()
+    this.offFx?.()
     this.wr.dispose()
     this.perfOverlay.dispose()
     this.headlights.dispose()
