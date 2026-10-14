@@ -1,7 +1,8 @@
 /**
  * First-session hints. One next action at a time, in a fixed order.
  * Completed steps are skipped, so a starter kit that already hired a clerk
- * does not repeat that step. Muted as one kind (`session`) from the hint panel.
+ * does not repeat that step. The last step covers the second letter, then the
+ * sequence ends. Muted as one kind (`session`) from the hint panel.
  */
 import type { Advice } from './advisor.ts'
 
@@ -15,6 +16,8 @@ export interface SessionState {
   /** Cargo starts have no check-in desk to staff. */
   needsDesk: boolean
   flightsDone: number
+  /** Red rows on the waiting letter. Empty when no letter waits or it qualifies. */
+  offerMissing?: readonly string[]
 }
 
 export const SESSION_ORDER = [
@@ -22,6 +25,7 @@ export const SESSION_ORDER = [
   'session-build',
   'session-desk',
   'session-depart',
+  'session-second',
 ] as const
 
 export type SessionHintId = (typeof SESSION_ORDER)[number]
@@ -78,6 +82,32 @@ export function nextSessionHint(state: SessionState): Advice | null {
       'Watch the first departure',
       'The jet lands, turns at the gate, and leaves. That is the whole loop.',
       'Leave the clock running until the first flight is airborne. Try 3× if the apron is quiet.',
+    )
+  }
+  // The second carrier is the first real choice: it shares the same stands and hall.
+  if (state.signed === 1) {
+    const missing = state.offerMissing ?? []
+    if (state.offerWaiting && missing.length) {
+      return tip(
+        'session-second',
+        'Read the red rows first',
+        `The new letter is missing ${missing.slice(0, 2).join(', ')}. Their flights hold until that is built.`,
+        'Build the red row, or press Later and they write again.',
+      )
+    }
+    if (state.offerWaiting) {
+      return tip(
+        'session-second',
+        'A second carrier wrote',
+        'Every row is green. Their flights share your stands and the hall with the first carrier.',
+        'Sign it if the hall queues are short. Otherwise press Later.',
+      )
+    }
+    return tip(
+      'session-second',
+      'The next carrier is on the way',
+      'Carriers write once your flights are turning. Each one you sign shares the same stands.',
+      'Keep the first flights on time. The next letter shows what it needs in green and red.',
     )
   }
   return null

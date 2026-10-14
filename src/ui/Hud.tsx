@@ -852,6 +852,14 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           : ''}
                       </p>
                       <ul className="req-list">
+                        {(() => {
+                          const verdict = game.letterVerdict(offerAirline.id)
+                          return (
+                            <li data-met={verdict.met ? '1' : '0'} data-testid="contract-verdict">
+                              <strong>{verdict.label}</strong>
+                            </li>
+                          )
+                        })()}
                         {game.reqReport(offerAirline.id).map((row) => (
                           <li key={row.label} data-met={row.met ? '1' : '0'}>
                             {row.met ? 'Met' : 'Missing'} · {row.label}
