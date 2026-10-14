@@ -200,6 +200,7 @@ window.renderAt = (t) => {
   else if (CAM === 'close') { cam.position.set(-19 + Math.sin(t * 0.05) * 2, 5.5, 17); cam.lookAt(-8, 1.6, 4) }
   else if (CAM === 'nose') { cam.position.set(34, 6, 13); cam.lookAt(20, 1.5, 0) }
   else if (CAM === 'wide') { cam.position.set(46, 34, 52); cam.lookAt(0, 1, 0) }
+  else if (CAM === 'apron') { cam.position.set(36, 14, 30); cam.lookAt(2, 1.8, -2) }
   else { const a = 0.95 - t * 0.045; const R = 52 - t * 0.6; cam.position.set(Math.cos(a) * R, 24 - t * 0.35, Math.sin(a) * R); cam.lookAt(t < 7 ? -16 + t * 2.2 : 0, 2, 1) }
   composer.render()
 }
