@@ -1,0 +1,47 @@
+[
+  {
+    "path": "public/art/textures/buildings/chevron_stripe.jpg",
+    "b64": "public__art__textures__buildings__chevron_stripe.jpg.b64",
+    "nbytes": 272184
+  },
+  {
+    "path": "public/art/textures/buildings/dock_floor.jpg",
+    "b64": "public__art__textures__buildings__dock_floor.jpg.b64",
+    "nbytes": 282680
+  },
+  {
+    "path": "public/art/textures/buildings/gravel_yard.jpg",
+    "b64": "public__art__textures__buildings__gravel_yard.jpg.b64",
+    "nbytes": 427478
+  },
+  {
+    "path": "public/art/textures/buildings/hangar_cladding.jpg",
+    "b64": "public__art__textures__buildings__hangar_cladding.jpg.b64",
+    "nbytes": 180758
+  },
+  {
+    "path": "public/art/textures/buildings/roof_membrane.jpg",
+    "b64": "public__art__textures__buildings__roof_membrane.jpg.b64",
+    "nbytes": 98154
+  },
+  {
+    "path": "public/art/textures/buildings/tank_steel.jpg",
+    "b64": "public__art__textures__buildings__tank_steel.jpg.b64",
+    "nbytes": 116173
+  },
+  {
+    "path": "public/art/textures/buildings/terminal_glass.jpg",
+    "b64": "public__art__textures__buildings__terminal_glass.jpg.b64",
+    "nbytes": 111253
+  },
+  {
+    "path": "public/art/textures/buildings/terrazzo_floor.jpg",
+    "b64": "public__art__textures__buildings__terrazzo_floor.jpg.b64",
+    "nbytes": 264037
+  },
+  {
+    "path": "public/art/textures/buildings/warehouse_panels.jpg",
+    "b64": "public__art__textures__buildings__warehouse_panels.jpg.b64",
+    "nbytes": 150023
+  }
+]
