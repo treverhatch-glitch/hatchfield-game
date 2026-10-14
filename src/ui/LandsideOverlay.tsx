@@ -56,7 +56,9 @@ export function LandsideOverlay({ game }: { game: Game }) {
               testId="landside-summary-live"
               read={() => {
                 const live = game.landsideView()
-                return `Arrivals ${one(live.arrivalsPerMin)}/min · road ${one(live.roadFlowPerMin)}/${one(live.laneFlowPerMin)} per min · curb ${one(live.curbBusy)}/${live.curbStalls} · queue ${one(live.queue)} · ${live.delaySec > 1 ? `${Math.round(live.delaySec)}s late` : 'on time'}`
+                const missed = game.missedCheckIns
+                const withheld = Math.round(missed * game.fees.paxFee)
+                return `Arrivals ${one(live.arrivalsPerMin)}/min · road ${one(live.roadFlowPerMin)}/${one(live.laneFlowPerMin)} per min · curb ${one(live.curbBusy)}/${live.curbStalls} · queue ${one(live.queue)} · ${live.delaySec > 1 ? `${Math.round(live.delaySec)}s late` : 'on time'} · missed check-ins ${missed}${missed > 0 ? ` · $${withheld.toLocaleString('en-US')} passenger fees not collected` : ''}`
               }}
             />
           </p>

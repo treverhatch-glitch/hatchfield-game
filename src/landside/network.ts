@@ -100,6 +100,64 @@ export function approachPath(roads: Cell[], entry: Cell | null, frontage: Cell[]
   return []
 }
 
+function rebuild(prev: Map<string, string | null>, goal: Cell): Cell[] {
+  const path: Cell[] = [goal]
+  let walk: string | null = prev.get(cellId(goal)) ?? null
+  while (walk) {
+    const [c, r] = walk.split(',').map(Number)
+    path.push({ c, r })
+    walk = prev.get(walk) ?? null
+  }
+  path.reverse()
+  return path
+}
+
+/**
+ * Road from the curb onward, never back down the approach.
+ * Cars leave forward and drop off the far end. A dead-end curb still
+ * gets two cells of departure so they do not turn around on the way in.
+ */
+export function exitPath(drive: Cell[], approach: Cell[]): Cell[] {
+  if (approach.length < 2) return []
+  const curb = approach[approach.length - 1]
+  const driveSet = new Set(drive.map(cellId))
+  const inbound = new Set(approach.slice(0, -1).map(cellId))
+  const queue: Cell[] = [curb]
+  const prev = new Map<string, string | null>([[cellId(curb), null]])
+  let farthest = curb
+  let farthestD = 0
+  let border: Cell | null = null
+  const entryId = cellId(approach[0])
+  for (let i = 0; i < queue.length; i++) {
+    const cur = queue[i]
+    for (const next of ortho(cur)) {
+      const id = cellId(next)
+      if (!driveSet.has(id) || prev.has(id) || inbound.has(id)) continue
+      prev.set(id, cellId(cur))
+      const d = manhattan(next, curb)
+      if (d > farthestD) {
+        farthest = next
+        farthestD = d
+      }
+      if (!border && onBorder(next) && id !== entryId) border = next
+      queue.push(next)
+    }
+  }
+  const goal = border ?? (farthestD > 0 ? farthest : null)
+  const walked = goal ? rebuild(prev, goal) : [curb]
+  const tail = walked.length > 1 ? walked[walked.length - 1] : curb
+  const prevCell = walked.length > 1 ? walked[walked.length - 2] : approach[approach.length - 2]
+  const dc = Math.sign(tail.c - prevCell.c)
+  const dr = Math.sign(tail.r - prevCell.r)
+  const stepC = dc || 0
+  const stepR = dr || 1
+  return [
+    ...walked,
+    { c: tail.c + stepC, r: tail.r + stepR },
+    { c: tail.c + stepC * 2, r: tail.r + stepR * 2 },
+  ]
+}
+
 /**
  * Lanes are the narrowest cross-section of the approach.
  * A parallel road beside every cell of the approach adds a lane.
@@ -146,5 +204,6 @@ export function buildNetwork(field: LandsideField): Network {
     parkSpaces: countParkSpaces(field.parks),
     busBays: uniq(field.busBays).length,
     door: nearestDoor(frontage, terminals),
+    exit: exitPath(drive, path),
   }
 }

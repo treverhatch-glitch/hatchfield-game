@@ -1,9 +1,11 @@
 /**
- * Landside traffic tunables. Capacity, mode split, and the satisfaction nudge
- * live here so the curb can be retuned without touching fees or upkeep.
+ * Landside traffic tunables. Capacity, mode split, the satisfaction nudge,
+ * and how many late arrivals miss check-in live here so the curb can be
+ * retuned without touching fees or upkeep.
  *
  * This is a capacity model: each road lane and curb stall has a number.
- * It is not a street-level traffic sim.
+ * It is not a street-level traffic sim. The cars that are drawn still have
+ * to enter at the map edge, dwell, and leave forward.
  */
 export const LANDSIDE = {
   /** Vehicles one lane can hold on a single 22 m road cell. */
@@ -44,6 +46,18 @@ export const LANDSIDE = {
   satPerLateSec: 0.002,
   /** Ceiling on the nudge, reputation points per sim-second. */
   satCapPerSec: 0.05,
+  /**
+   * Share of arrivals who miss check-in, per second of lateness past the grace.
+   * The passenger fee itself stays on the fee card.
+   */
+  missPerLateSec: 0.012,
+  /** Cap on that share, so a jammed curb does not erase the whole bank. */
+  missShareCap: 0.5,
+  /**
+   * Furthest a drawn car may move in one sim-second.
+   * A spawn in the middle of the road, or a snap back to the city, is past this.
+   */
+  maxFrameJumpM: 7,
   /** How fast the meters chase a new load, seconds. */
   smoothSec: 6,
   /** Cars drawn on the approach. The capacity math stays aggregate. */

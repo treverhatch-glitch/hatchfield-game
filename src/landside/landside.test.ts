@@ -48,6 +48,8 @@ describe('curb network', () => {
     expect(net.lanes).toBe(1)
     expect(net.path[0]).toEqual({ c: 7, r: 0 })
     expect(net.path.at(-1)?.c).toBe(7)
+    expect(net.exit[0]).toEqual(net.path.at(-1))
+    expect(net.exit.at(-1)!.r).toBeGreaterThan(net.path.at(-1)!.r)
   })
 
   it('counts a parallel road as a second lane only when it runs the whole approach', () => {
@@ -143,6 +145,48 @@ describe('capacity', () => {
     expect(pressureColor(0.2)).toBe('#3dbe6e')
     expect(pressureColor(0.8)).toBe('#e0b15a')
     expect(pressureColor(1.4)).toBe('#d35a4a')
+  })
+
+  it('does not teleport a car: they enter at the edge, dwell, and leave forward', () => {
+    const sim = new LandsideTraffic()
+    const seen = new Map<string, { c: number; r: number }>()
+    const entry = { c: 7, r: 0 }
+    let sawStop = false
+    let sawLeave = false
+    let dwelling: string[] = []
+    const dt = 0.25
+    const cap = LANDSIDE.maxFrameJumpM * dt
+    for (let t = 0; t < 400; t++) {
+      const view = sim.tick(dt, field({ departures: 14, paxPerDay: 2400 }))
+      const live = new Set(view.vehicles.map((car) => car.id))
+      for (const id of dwelling) expect(live.has(id)).toBe(true)
+      for (const car of view.vehicles) {
+        const prev = seen.get(car.id)
+        if (!prev) {
+          const fromEdge = Math.hypot((car.c - entry.c) * LANDSIDE.cellM, (car.r - entry.r) * LANDSIDE.cellM)
+          expect(fromEdge).toBeLessThanOrEqual(cap + 1e-6)
+        } else {
+          const hop = Math.hypot((car.c - prev.c) * LANDSIDE.cellM, (car.r - prev.r) * LANDSIDE.cellM)
+          expect(hop).toBeLessThanOrEqual(cap + 1e-6)
+          expect(car.r).toBeGreaterThanOrEqual(prev.r - 1e-6)
+        }
+        if (car.state === 'stop') sawStop = true
+        if (car.state === 'leave') sawLeave = true
+        seen.set(car.id, { c: car.c, r: car.r })
+      }
+      dwelling = view.vehicles.filter((car) => car.state === 'stop').map((car) => car.id)
+      for (const id of [...seen.keys()]) if (!live.has(id)) seen.delete(id)
+    }
+    expect(sawStop).toBe(true)
+    expect(sawLeave).toBe(true)
+    let missed = 0
+    const late = new LandsideTraffic()
+    for (let t = 0; t < 40; t++) missed += late.tick(1, field({ departures: 14, paxPerDay: 2400 })).missedCheckIns
+    expect(missed).toBeGreaterThan(1)
+    let quiet = 0
+    const calm = new LandsideTraffic()
+    for (let t = 0; t < 40; t++) quiet += calm.tick(1, field()).missedCheckIns
+    expect(quiet).toBe(0)
   })
 
   it('repeats the same cars for the same field', () => {

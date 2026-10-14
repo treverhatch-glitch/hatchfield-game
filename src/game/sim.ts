@@ -1110,6 +1110,11 @@ export class Game {
   landsideOpen = false
   landsideFocus: string | null = null
   private landsideNewsCool = 0
+  /** Passengers who missed check-in because the curb was late. */
+  missedCheckIns = 0
+  /** Whole misses not yet taken off a departure's passenger fee. */
+  curbFeeMisses = 0
+  private curbMissedFrac = 0
   /** Road tankers and the pipeline. Rendering and the farm panel read the snapshot. */
   private fuelChain = new FuelChain()
   fuelOpen = false
@@ -1533,6 +1538,9 @@ export class Game {
     this.landsideOpen = false
     this.landsideFocus = null
     this.landsideNewsCool = 0
+    this.missedCheckIns = 0
+    this.curbFeeMisses = 0
+    this.curbMissedFrac = 0
     this.fuelChain.reset()
     this.fuelOpen = false
     this.fuelRoadLoad = 0
@@ -4794,7 +4802,8 @@ export class Game {
 
   /**
    * Roads and the curb have a capacity. Over it, cars queue and passengers
-   * step out late, which nudges reputation. Fees and upkeep stay as they are.
+   * step out late. That nudges reputation, and the late ones miss check-in
+   * so the next departure does not collect their passenger fee.
    */
   private tickLandside(dt: number) {
     this.noteFuelChain(dt)
@@ -4816,7 +4825,24 @@ export class Game {
     })
     if (view.satisfactionDelta !== 0) this.queueReputation(view.satisfactionDelta)
     this.landsideNewsCool = Math.max(0, this.landsideNewsCool - dt)
-    if (view.news && this.landsideNewsCool <= 0) {
+    let missedNews = false
+    if (view.missedCheckIns > 0) {
+      this.curbMissedFrac += view.missedCheckIns
+      const ripe = Math.floor(this.curbMissedFrac)
+      if (ripe > 0) {
+        this.curbMissedFrac -= ripe
+        this.missedCheckIns += ripe
+        this.curbFeeMisses += ripe
+        missedNews = true
+      }
+    }
+    if (missedNews && this.landsideNewsCool <= 0) {
+      this.pushNews(
+        'Curb delay — passengers missed check-in, so their passenger fees are not collected.',
+        'bad',
+      )
+      this.landsideNewsCool = 90
+    } else if (view.news && this.landsideNewsCool <= 0) {
       this.pushNews(view.news, 'bad')
       this.landsideNewsCool = 90
     }
@@ -5560,6 +5586,10 @@ export class Game {
       this.landsideTraffic.reset()
       this.landsideOpen = false
       this.landsideFocus = null
+      this.landsideNewsCool = 0
+      this.missedCheckIns = 0
+      this.curbFeeMisses = 0
+      this.curbMissedFrac = 0
       this.fuelChain.reset()
       this.fuelOpen = false
       this.fuelRoadLoad = 0
@@ -18409,9 +18439,12 @@ export class Game {
         const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
         const delayMin = (slot?.delaySec ?? 0) * GAME_MINUTES_PER_SIM_SECOND
         this.wave3.noteTurnaround(f.airline, delayMin > 15 ? 'delay' : 'success')
+        const missed = Math.min(Math.max(0, Math.floor(f.pax)), this.curbFeeMisses)
+        this.curbFeeMisses -= missed
+        const paying = Math.max(0, f.pax - missed)
         this.earn(
-          this.contractBill(f, this.afterRivalMargin(f.pax * this.fees.paxFee), 'landing', 'pax'),
-          `${f.flightNo} passenger fees`,
+          this.contractBill(f, this.afterRivalMargin(paying * this.fees.paxFee), 'landing', 'pax'),
+          missed > 0 ? `${f.flightNo} passenger fees (${missed} missed check-in)` : `${f.flightNo} passenger fees`,
           f,
           'passenger_fees',
           false,

@@ -224,6 +224,7 @@ function hudSnapshot(): string {
         game.landsideFocus ?? '',
         Math.round(game.landsideView().delaySec),
         Math.round(game.landsideView().queue),
+        game.missedCheckIns,
         game.playtestYear.rev,
         game.hallOverloaded ? 1 : 0,
         game.sites.length,

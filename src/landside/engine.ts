@@ -34,11 +34,10 @@ interface Sample {
 interface Agent {
   id: string
   kind: VehicleKind
-  /** Metres from the city end of the approach. */
+  /** Metres from the city end. Increases through the curb and the exit. */
   metres: number
   state: VehicleState
   dwell: number
-  slot: number
   dropped: boolean
 }
 
@@ -74,6 +73,8 @@ function emptyView(): LandsideView {
     delaySec: 0,
     pressure: 0,
     satisfactionDelta: 0,
+    missedCheckIns: 0,
+    missShare: 0,
     news: '',
     fixes: [],
     focusId: null,
@@ -285,6 +286,7 @@ export class LandsideTraffic {
   private wasLate = false
   private agents: Agent[] = []
   private walkers: Walker[] = []
+  private route: Cell[] = []
   private nextId = 1
   private view: LandsideView = emptyView()
 
@@ -295,6 +297,7 @@ export class LandsideTraffic {
     this.wasLate = false
     this.agents = []
     this.walkers = []
+    this.route = []
     this.nextId = 1
     this.view = emptyView()
   }
@@ -320,8 +323,10 @@ export class LandsideTraffic {
     const satisfactionDelta = late
       ? -Math.min(LANDSIDE.satCapPerSec * dt, LANDSIDE.satPerLateSec * lateBy * dt)
       : 0
+    const missShare = late ? Math.min(LANDSIDE.missShareCap, lateBy * LANDSIDE.missPerLateSec) : 0
+    const missedCheckIns = sample.arrivalsPerMin * (dt / 60) * missShare
     this.stepAgents(dt, net, sample)
-    const vehicles = this.agents.flatMap((agent) => this.readAgent(agent, net))
+    const vehicles = this.agents.flatMap((agent) => this.readAgent(agent))
     const passengers = this.readWalkers()
     this.view = {
       segments: segmentsFor(net, sample, this.queue, this.curbBusy),
@@ -342,6 +347,8 @@ export class LandsideTraffic {
       delaySec: this.delaySec,
       pressure: sample.pressure,
       satisfactionDelta,
+      missedCheckIns,
+      missShare,
       news,
       fixes: fixesFor(field, net, sample),
       focusId: null,
@@ -350,79 +357,115 @@ export class LandsideTraffic {
   }
 
   private stepAgents(dt: number, net: Network, sample: Sample): void {
-    const path = net.path
-    if (path.length < 2 || !(sample.arrivalsPerMin > 0) || dt <= 0) {
+    const approach = net.path
+    const exit = net.exit.length > 0 ? net.exit : approach.slice(-1)
+    if (approach.length < 2 || exit.length < 2 || !(sample.arrivalsPerMin > 0) || dt <= 0) {
       this.agents = []
       this.walkers = []
+      this.route = []
       return
     }
-    const want = Math.max(
-      1,
-      Math.min(
-        LANDSIDE.visualCap,
-        Math.ceil(sample.curbBusy + this.queue + sample.roadVehPerMin * (sample.travelSec / 60)),
-      ),
+    const route = approach.slice(0, -1).concat(exit)
+    this.route = route
+    const cellM = LANDSIDE.cellM
+    const end = (route.length - 1) * cellM
+    const curbStart = (approach.length - 1) * cellM
+    const front = new Set(net.frontage.map(cellId))
+    let curbEnd = curbStart
+    for (let i = approach.length - 1; i < route.length; i++) {
+      if (!front.has(cellId(route[i]))) break
+      curbEnd = i * cellM
+    }
+    const slow = sample.pressure > 1 ? 1 / sample.pressure : 1
+    const step = LANDSIDE.speedMps * slow * dt
+    const gap = LANDSIDE.queueGapM
+    const stallCount = Math.max(1, Math.min(net.curbStalls, LANDSIDE.visualCap))
+    const stalls: number[] = []
+    for (let i = 0; i < stallCount; i++) stalls.push(Math.max(curbStart, curbEnd - i * gap))
+
+    const nearestIn = this.agents.reduce(
+      (min, agent) => (agent.state === 'leave' ? min : Math.min(min, agent.metres)),
+      Infinity,
     )
-    while (this.agents.length < want) {
-      const index = this.agents.length
+    if (this.agents.length < LANDSIDE.visualCap && (nearestIn === Infinity || nearestIn >= gap)) {
       this.agents.push({
         id: `curb-${this.nextId++}`,
-        kind: kindFor(index, sample),
-        metres: (index / want) * Math.max(LANDSIDE.cellM, (path.length - 1) * LANDSIDE.cellM),
+        kind: kindFor(this.nextId, sample),
+        metres: 0,
         state: 'drive',
         dwell: 0,
-        slot: 0,
         dropped: false,
       })
     }
-    if (this.agents.length > want) this.agents.length = want
 
-    const end = (path.length - 1) * LANDSIDE.cellM
-    const slow = sample.pressure > 1 ? 1 / sample.pressure : 1
-    const speed = LANDSIDE.speedMps * slow
-    const queued = Math.min(this.agents.length, Math.round(this.queue))
-    for (let i = 0; i < this.agents.length; i++) {
-      const agent = this.agents[i]
-      agent.kind = kindFor(i, sample)
-      const held = i < queued && agent.state !== 'stop'
-      agent.slot = held ? queued - i : 0
-      if (held && agent.state !== 'leave') {
-        const pin = Math.max(0, end - agent.slot * LANDSIDE.queueGapM)
-        if (agent.metres >= pin - 0.5) {
-          agent.metres = pin
-          agent.state = 'queue'
-          continue
-        }
+    const taken = new Set<number>()
+    const ordered = [...this.agents].sort((a, b) => b.metres - a.metres)
+    let ahead = Infinity
+    for (const agent of ordered) {
+      if (agent.state === 'leave') {
+        agent.metres = Math.min(end, agent.metres + step)
+        ahead = agent.metres
+        continue
       }
-      if (agent.state === 'queue' && !held) agent.state = 'drive'
-      if (agent.state === 'drive' || agent.state === 'queue') {
-        agent.metres = Math.min(end, agent.metres + speed * dt)
-        if (agent.metres >= end - 0.2 && !held) {
-          agent.metres = end
-          agent.state = 'stop'
-          agent.dwell = agent.kind === 'bus' ? LANDSIDE.busDwellSec : LANDSIDE.dwellSec
-          if (!agent.dropped) {
-            agent.dropped = true
-            this.dropPassengers(agent, net)
-          }
-        } else if (agent.state !== 'queue') agent.state = 'drive'
-      } else if (agent.state === 'stop') {
+      if (agent.state === 'stop') {
         agent.dwell -= dt
-        if (agent.dwell <= 0) agent.state = 'leave'
-      } else {
-        agent.metres = Math.max(0, agent.metres - speed * dt)
-        if (agent.metres <= 0) {
-          agent.state = 'drive'
-          agent.dropped = false
-          agent.metres = 0
+        const held = stalls.findIndex((stall) => Math.abs(stall - agent.metres) < gap * 0.5)
+        if (held >= 0) taken.add(held)
+        if (agent.dwell <= 0) {
+          agent.state = 'leave'
+          agent.metres = Math.min(end, agent.metres + step)
+          if (held >= 0) taken.delete(held)
         }
+        ahead = agent.metres
+        continue
       }
+      let stall = -1
+      for (let i = 0; i < stalls.length; i++) {
+        if (taken.has(i) || stalls[i] + 0.2 < agent.metres) continue
+        if (stall < 0 || stalls[i] > stalls[stall]) stall = i
+      }
+      if (stall >= 0) taken.add(stall)
+      const stopAt = stall >= 0 ? stalls[stall] : null
+      const follow = Number.isFinite(ahead) ? ahead - gap : Infinity
+      if (stopAt == null) {
+        if (follow > agent.metres + 0.05) {
+          agent.metres = Math.min(agent.metres + step, follow)
+          agent.state = 'drive'
+        } else {
+          agent.state = 'queue'
+        }
+        ahead = agent.metres
+        continue
+      }
+      const room = Math.min(stopAt, follow)
+      if (room <= agent.metres + 0.05) {
+        agent.state = 'queue'
+        ahead = agent.metres
+        continue
+      }
+      const next = Math.min(agent.metres + step, room)
+      agent.metres = Math.max(agent.metres, next)
+      if (agent.metres >= stopAt - 0.15 && stopAt - agent.metres <= step + 0.15) {
+        agent.metres = stopAt
+        agent.state = 'stop'
+        agent.dwell = agent.kind === 'bus' ? LANDSIDE.busDwellSec : LANDSIDE.dwellSec
+        if (!agent.dropped) {
+          agent.dropped = true
+          this.dropPassengers(agent, net)
+        }
+      } else if (room - agent.metres <= 0.05) {
+        agent.state = 'queue'
+      } else {
+        agent.state = 'drive'
+      }
+      ahead = agent.metres
     }
+    this.agents = this.agents.filter((agent) => agent.state !== 'leave' || agent.metres < end - 0.05)
     this.stepWalkers(dt)
   }
 
   private dropPassengers(agent: Agent, net: Network): void {
-    const pose = poseAt(net.path, agent.metres)
+    const pose = poseAt(this.route, agent.metres)
     const door = net.door
     const count = LANDSIDE.alight[agent.kind]
     const toC = door ? door.c : pose.c
@@ -450,8 +493,8 @@ export class LandsideTraffic {
     this.walkers = next
   }
 
-  private readAgent(agent: Agent, net: Network): VehicleRead[] {
-    const pose = poseAt(net.path, agent.metres)
+  private readAgent(agent: Agent): VehicleRead[] {
+    const pose = poseAt(this.route, agent.metres)
     return [
       {
         id: agent.id,

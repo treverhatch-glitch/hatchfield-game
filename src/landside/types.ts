@@ -88,6 +88,10 @@ export interface LandsideView {
   pressure: number
   /** Reputation points for this tick. Negative when passengers are late. */
   satisfactionDelta: number
+  /** Arrivals this tick who miss check-in because the curb was late. */
+  missedCheckIns: number
+  /** Share of arrivals missing check-in, 0 when the curb is inside the grace. */
+  missShare: number
   /** Rising-edge line for the news ticker. Empty when nothing new happened. */
   news: string
   /** What would loosen the curb, in player language. */
@@ -109,4 +113,10 @@ export interface Network {
   busBays: number
   /** Nearest terminal cell, for people walking off a car. */
   door: Cell | null
+  /**
+   * Forward road from the curb to the way out.
+   * The first cell is the curb. The last cells leave the pavement
+   * so a car can drive off instead of turning around.
+   */
+  exit: Cell[]
 }

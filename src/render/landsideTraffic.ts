@@ -182,6 +182,8 @@ export class LandsideLayer {
         delaySec: 0,
         pressure: 0,
         satisfactionDelta: 0,
+        missedCheckIns: 0,
+        missShare: 0,
         news: '',
         fixes: [],
         focusId: null,

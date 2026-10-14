@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Game } from '../game/sim.ts'
+import type { Flight, Vec } from '../game/types.ts'
 import { openCurbFlow } from '../landside/index.ts'
 import { LandsideOverlay } from '../ui/LandsideOverlay.tsx'
 
@@ -12,6 +13,64 @@ function field(): Game {
   game.buildStarterKit()
   game.speed = 1
   return game
+}
+
+function hold(game: Game) {
+  game.scheduleAuto = false
+  game.schedule = []
+  game.spawnCool = 1e9
+  game.offerCool = 1e9
+  game.heloCool = 1e9
+  game.milCool = 1e9
+  game.ambuCool = 1e9
+  game.threatCool = 1e9
+  game.emergencyCool = 1e9
+}
+
+function parked(id: string, stand: Vec, bill: boolean): Flight {
+  return {
+    id,
+    airline: 'northline',
+    flightNo: id,
+    airframeId: 'crj700',
+    airframeName: 'CRJ-700',
+    pax: bill ? 40 : 20,
+    cargo: false,
+    craft: 'jet',
+    kind: 'regional',
+    phase: 'board',
+    stand,
+    x: stand.c,
+    y: stand.r,
+    z: 0.12,
+    heading: 0,
+    path: [stand],
+    seg: 0,
+    t: 0,
+    holdAngle: 0,
+    posted: {
+      landing: !bill,
+      bags: true,
+      bagsLoad: true,
+      fuel: true,
+      catering: true,
+      bagDrop: true,
+      mx: false,
+      deiced: true,
+    },
+    waitingOn: {
+      bags: false,
+      bagsLoad: false,
+      fuel: false,
+      catering: false,
+      mx: false,
+      deice: false,
+      paxOut: 0,
+      paxIn: 0,
+    },
+    phaseTime: 400,
+    ledger: [],
+  }
 }
 
 describe('landside wiring', () => {
@@ -42,6 +101,31 @@ describe('landside wiring', () => {
     openCurbFlow(game, { c: 17, r: 8 })
     expect(game.landsideOpen).toBe(true)
     expect(game.landsideFocus).toBe('17,8')
+  })
+
+  it('withholds passenger fees after the curb misses check-ins', () => {
+    const game = field()
+    hold(game)
+    const stand = { c: 11, r: 6 }
+    for (let i = 0; i < 16; i++) game.flights.push(parked(`hold-${i}`, stand, false))
+    game.setFee('paxFee', 24)
+    for (let t = 0; t < 90 && game.missedCheckIns < 1; t++) game.tick(1)
+    expect(game.missedCheckIns).toBeGreaterThan(0)
+    expect(game.curbFeeMisses).toBe(game.missedCheckIns)
+    const flight = parked('NL100', stand, true)
+    game.flights.push(flight)
+    const misses = Math.min(flight.pax, game.curbFeeMisses)
+    game.beginServicing(flight)
+    const paid = game.bank.ledger().entries.filter((entry) => entry.category === 'passenger_fees')
+    expect(paid.at(-1)?.amount).toBeLessThan(flight.pax * game.fees.paxFee)
+    expect(paid.at(-1)?.amount).toBeGreaterThan(0)
+    expect(flight.ledger.some((line) => /missed check-in/.test(line.label))).toBe(true)
+    expect(game.curbFeeMisses).toBe(game.missedCheckIns - misses)
+    const html = renderToStaticMarkup(<LandsideOverlay game={game} />)
+    game.openLandside(null)
+    const open = renderToStaticMarkup(<LandsideOverlay game={game} />)
+    expect(open).toContain('missed check-ins')
+    expect(html).toContain('landside-flow-toggle')
   })
 
   it('renders the click-open overlay with capacity and flow', () => {
