@@ -5,19 +5,26 @@
  */
 import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
+import { SurfaceLibrary } from '../materials/library'
 import {
   BAG_COLORS,
   bake,
+  FIGURE_HIP_X,
+  FIGURE_HIP_Y,
   instanced,
   KIOSK_COLORS,
   PAX_COLORS,
   peopleGeo,
   propParts,
   setTrs,
+  setYawPitch,
   SKIN_COLORS,
   STAFF_COLOR,
+  TROUSER_COLORS,
   trs,
   unitBeam,
+  walkSwing,
+  yawOffset,
   type BakePiece,
   type PeopleGeo,
   type PropPart,
@@ -66,10 +73,13 @@ export interface TerminalShared {
   parts: Record<string, PropPart[]>
   palette: Record<string, THREE.Material>
   textures: WorldTextures
+  surfaces: SurfaceLibrary
   signCache: Map<string, THREE.Texture | null>
 }
 
 export function makeTerminalShared(textures: WorldTextures): TerminalShared {
+  const surfaces = new SurfaceLibrary()
+  surfaces.loadPngs()
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
     new THREE.MeshLambertMaterial({ color, ...extra })
   const palette: Record<string, THREE.Material> = {
@@ -98,6 +108,7 @@ export function makeTerminalShared(textures: WorldTextures): TerminalShared {
     parts: propParts(),
     palette,
     textures,
+    surfaces,
     signCache: new Map(),
   }
 }
@@ -105,10 +116,14 @@ export function makeTerminalShared(textures: WorldTextures): TerminalShared {
 export function disposeTerminalShared(s: TerminalShared) {
   s.beam.dispose()
   s.people.body.dispose()
+  s.people.torso.dispose()
+  s.people.legL.dispose()
+  s.people.legR.dispose()
   s.people.head.dispose()
   s.people.bag.dispose()
   for (const list of Object.values(s.parts)) for (const p of list) p.geo.dispose()
   for (const m of Object.values(s.palette)) m.dispose()
+  s.surfaces.dispose()
   for (const t of s.signCache.values()) t?.dispose()
 }
 
@@ -169,6 +184,7 @@ export class TerminalBuilding {
   private glassWallMat: THREE.MeshLambertMaterial | null = null
   private wallMats: THREE.Material[] = []
   private nearCut = false
+  private detail = new THREE.Group()
 
   constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number }) {
     this.info = info
@@ -184,6 +200,8 @@ export class TerminalBuilding {
     this.root.name = `terminal-${opts.index}`
     this.shell.name = 'terminal-shell'
     this.roof.name = 'terminal-roof-group'
+    this.detail.name = 'props-detail'
+    this.props.add(this.detail)
     this.root.add(this.shell, this.roof, this.props, this.life)
 
     const own = <T extends THREE.Material>(m: T) => {
@@ -192,12 +210,13 @@ export class TerminalBuilding {
     }
     this.floorMat = own(
       new THREE.MeshLambertMaterial({
-        map: shared.textures.terrazzo,
+        map: shared.surfaces.maps.floor,
         vertexColors: true,
         emissive: 0xffe2b0,
         emissiveIntensity: 0,
       }),
     )
+    shared.surfaces.watch(this.floorMat)
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
         color: 0x9cc4dc,
@@ -428,7 +447,12 @@ export class TerminalBuilding {
     floor.name = 'terminal-floor'
     this.shell.add(floor)
 
-    const solidM = new THREE.MeshLambertMaterial({ color: 0xffffff })
+    const solidM = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      map: this.shared.surfaces.maps.wall,
+      vertexColors: true,
+    })
+    this.shared.surfaces.watch(solidM)
     this.owned.mats.push(solidM)
     this.wallMats.push(solidM)
     const glassM = this.glassMat.clone()
@@ -529,19 +553,38 @@ export class TerminalBuilding {
 
   private buildProps() {
     const lit: BakePiece[] = []
+    const wood: BakePiece[] = []
+    const plaster: BakePiece[] = []
     const unlit: BakePiece[] = []
     const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
+    const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
     for (const p of this.plan.props) {
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
       for (const part of this.shared.parts[p.kind] ?? []) {
+        const color =
+          part.mat === 'kiosk' ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length] : (PROP_COLORS[part.mat] ?? 0xffffff)
+        if (part.detail) {
+          const mat = part.surface
+            ? this.shared.surfaces.material(part.mat, 0xffffff, part.surface)
+            : (this.shared.palette[part.mat] ?? this.shared.palette.desk)
+          const key = `${part.geo.uuid}|${part.mat}|${part.surface ?? ''}`
+          let batch = detail.get(key)
+          if (!batch) {
+            batch = { geo: part.geo, mat, matrices: [], colors: [] }
+            detail.set(key, batch)
+          }
+          batch.matrices.push(matrix)
+          batch.colors.push(color)
+          continue
+        }
         if (part.mat === 'board') {
           boards.push(matrix)
           continue
         }
-        const color =
-          part.mat === 'kiosk' ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length] : (PROP_COLORS[part.mat] ?? 0xffffff)
-        ;(p.kind === 'light' ? lamps : UNLIT.has(part.mat) ? unlit : lit).push({ geo: part.geo, matrix, color })
+        const bucket =
+          p.kind === 'light' ? lamps : part.surface === 'wood' ? wood : part.surface === 'wall' ? plaster : UNLIT.has(part.mat) ? unlit : lit
+        bucket.push({ geo: part.geo, matrix, color })
       }
     }
     const own = <T extends THREE.Material>(m: T) => {
@@ -549,7 +592,14 @@ export class TerminalBuilding {
       this.propMats.push(m)
       return m
     }
+    const mapped = (map: THREE.Texture) => {
+      const m = own(new THREE.MeshLambertMaterial({ vertexColors: true, map }))
+      this.shared.surfaces.watch(m)
+      return m
+    }
     this.bakedMesh(lit, own(new THREE.MeshLambertMaterial({ vertexColors: true })), this.props, 'props-lit')
+    this.bakedMesh(wood, mapped(this.shared.surfaces.maps.wood), this.props, 'props-wood')
+    this.bakedMesh(plaster, mapped(this.shared.surfaces.maps.wall), this.props, 'props-wall')
     this.bakedMesh(unlit, own(new THREE.MeshBasicMaterial({ vertexColors: true })), this.props, 'props-unlit')
     // Ceiling lamps hang from the roof, so they leave with it in the cutaway.
     const lampM = new THREE.MeshBasicMaterial({ vertexColors: true })
@@ -561,6 +611,12 @@ export class TerminalBuilding {
       const m = instanced(board.geo, own(this.shared.palette.board.clone()), boards)
       m.name = 'props-boards'
       this.props.add(m)
+    }
+    for (const batch of detail.values()) {
+      const mesh = instanced(batch.geo, batch.mat, batch.matrices, batch.colors)
+      mesh.castShadow = false
+      mesh.frustumCulled = false
+      this.detail.add(mesh)
     }
   }
 
@@ -591,25 +647,35 @@ export class TerminalBuilding {
     const w = this.plan.walkers
     if (w.length) {
       const zero = w.map(() => trs(0, -10, 0))
-      const wb = mk(g.body, 'body', zero, w.map((x) => (x.staff ? STAFF_COLOR : PAX_COLORS[x.tint % PAX_COLORS.length])))
+      const shirts = w.map((x) => (x.staff ? STAFF_COLOR : PAX_COLORS[x.tint % PAX_COLORS.length]))
+      const trousers = w.map((x) => TROUSER_COLORS[x.tint % TROUSER_COLORS.length])
+      const wt = mk(g.torso, 'body', zero, shirts)
       const wh = mk(g.head, 'head', zero, w.map((_, i) => SKIN_COLORS[(i * 3) % SKIN_COLORS.length]))
       const bags = w.filter((x) => x.bag)
       const wl = mk(g.bag, 'bag', bags.map(() => trs(0, -10, 0)), bags.map((_, i) => BAG_COLORS[i % BAG_COLORS.length]))
-      for (const m of [wb, wh, wl]) m.frustumCulled = false
-      this.walkers = [wb, wh, wl]
+      const wL = mk(g.legL, 'body', zero, trousers)
+      const wR = mk(g.legR, 'body', zero, trousers)
+      for (const mesh of [wt, wh, wl, wL, wR]) mesh.frustumCulled = false
+      this.walkers = [wt, wh, wl, wL, wR]
       this.stepWalkers(0)
     }
   }
 
   private stepWalkers(t: number) {
     if (!this.walkers.length) return
-    const [wb, wh, wl] = this.walkers
+    const [wt, wh, wl, wL, wR] = this.walkers
     let bi = 0
     this.plan.walkers.forEach((w, i) => {
       const p = walkerAt(w, t)
       const bob = Math.abs(Math.sin(t * 7 * w.speed + i)) * m(0.04)
-      setTrs(wb, i, p.x, FLOOR_Y + bob, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
-      setTrs(wh, i, p.x, FLOOR_Y + bob, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      const y = FLOOR_Y + bob
+      setTrs(wt, i, p.x, y, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      setTrs(wh, i, p.x, y, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      const swing = walkSwing(t, w.phase, w.speed)
+      yawOffset(p.yaw, -FIGURE_HIP_X * PERSON_SCALE, FIGURE_HIP_Y * PERSON_SCALE + bob, 0, HIP)
+      setYawPitch(wL, i, p.x + HIP.x, FLOOR_Y + HIP.y, p.z + HIP.z, p.yaw, swing, PERSON_SCALE, PERSON_SCALE)
+      yawOffset(p.yaw, FIGURE_HIP_X * PERSON_SCALE, FIGURE_HIP_Y * PERSON_SCALE + bob, 0, HIP)
+      setYawPitch(wR, i, p.x + HIP.x, FLOOR_Y + HIP.y, p.z + HIP.z, p.yaw, -swing, PERSON_SCALE, PERSON_SCALE)
       if (w.bag) {
         // Case trails behind and to the right of the walker.
         const back = 0.32 * PERSON_SCALE
@@ -619,7 +685,7 @@ export class TerminalBuilding {
         setTrs(wl, bi++, p.x - sx * back + sz * side, FLOOR_Y, p.z - sz * back - sx * side, p.yaw, PERSON_SCALE, PERSON_SCALE)
       }
     })
-    for (const m of this.walkers) m.instanceMatrix.needsUpdate = true
+    for (const mesh of this.walkers) mesh.instanceMatrix.needsUpdate = true
   }
 
   /**
@@ -650,6 +716,7 @@ export class TerminalBuilding {
     this.lifeFade = stepFade(this.lifeFade, this.lod === 0 ? 1 : 0, dt, 3)
     applyFade(this.props, this.propMats, this.propFade)
     applyFade(this.props, this.wallMats, this.propFade)
+    this.detail.visible = this.lod === 0 && this.propFade > 0.2
     if (this.glassWallMat) this.glassWallMat.opacity = 0.4 * this.propFade
     if (this.propFade > 0) this.stepWalls(camPos, focus ?? { x: this.center.x, z: this.center.z }, dt)
     applyFade(this.life, this.lifeMats, this.lifeFade)
@@ -683,6 +750,8 @@ export class TerminalBuilding {
   }
 
   dispose() {
+    this.shared.surfaces.unwatch(this.floorMat)
+    for (const mat of this.owned.mats) this.shared.surfaces.unwatch(mat)
     for (const g of this.owned.geos) g.dispose()
     for (const m of this.owned.mats) m.dispose()
     this.root.traverse((o) => {
@@ -710,6 +779,7 @@ function applyFade(group: THREE.Group, mats: THREE.Material[], f: number) {
 }
 
 const Q0 = new THREE.Quaternion()
+const HIP = new THREE.Vector3()
 
 interface WallInst {
   x: number

@@ -32,6 +32,44 @@ export function setTrs(
   mesh.setMatrixAt(i, tmpM)
 }
 
+const AXIS_X = new THREE.Vector3(1, 0, 0)
+const qYaw = new THREE.Quaternion()
+const qPitch = new THREE.Quaternion()
+const qBoth = new THREE.Quaternion()
+
+/** Yaw around +Y, then a local pitch. Used for a leg swinging from the hip. */
+export function setYawPitch(
+  mesh: THREE.InstancedMesh,
+  i: number,
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  pitch: number,
+  s = 1,
+  sy = s,
+) {
+  qYaw.setFromAxisAngle(UP, yaw)
+  qPitch.setFromAxisAngle(AXIS_X, pitch)
+  qBoth.multiplyQuaternions(qYaw, qPitch)
+  tmpS.set(s, sy, s)
+  tmpP.set(x, y, z)
+  tmpM.compose(tmpP, qBoth, tmpS)
+  mesh.setMatrixAt(i, tmpM)
+}
+
+/** Local offset rotated by yaw only (the hip, before the leg pitches). */
+export function yawOffset(yaw: number, lx: number, ly: number, lz: number, out: THREE.Vector3) {
+  const sn = Math.sin(yaw)
+  const cs = Math.cos(yaw)
+  out.set(lx * cs + lz * sn, ly, -lx * sn + lz * cs)
+}
+
+/** Opposite legs. `phase` is per person so a crowd does not march in step. */
+export function walkSwing(time: number, phase: number, speed = 1): number {
+  return Math.sin(time * 7 * speed + phase) * 0.55
+}
+
 export function instanced(
   geo: THREE.BufferGeometry,
   mat: THREE.Material,
@@ -114,90 +152,193 @@ export function unitBeam(): THREE.BufferGeometry {
 }
 
 export interface PeopleGeo {
+  /** Torso, pelvis and both legs, for seated and standing people that do not animate. */
   body: THREE.BufferGeometry
+  /** Chest and pelvis. The hip is the origin of each leg. */
+  torso: THREE.BufferGeometry
+  /** Hip at the origin, foot toward -Y. Place it at the hip and pitch it. */
+  legL: THREE.BufferGeometry
+  legR: THREE.BufferGeometry
   head: THREE.BufferGeometry
   bag: THREE.BufferGeometry
 }
 
+/** Hip in the 0.9-tall figure, before PERSON_SCALE. */
+export const FIGURE_HIP_X = 0.08
+export const FIGURE_HIP_Y = 0.3
+
 /** ~0.9 tall standing figure; seated figures reuse it with a squashed y scale. */
 export function peopleGeo(): PeopleGeo {
-  const body = new THREE.CapsuleGeometry(0.13, 0.36, 3, 8)
-  body.translate(0, 0.33, 0)
+  const torso = box(0.32, 0.34, 0.18, 0, 0.52, 0)
+  const pelvis = box(0.28, 0.1, 0.16, 0, 0.32, 0)
+  const leg = box(0.1, 0.28, 0.11, 0, -0.14, 0)
+  const legL = leg
+  const legR = leg.clone()
+  const body = merge([
+    torso.clone(),
+    pelvis.clone(),
+    leg.clone().translate(-FIGURE_HIP_X, FIGURE_HIP_Y, 0),
+    leg.clone().translate(FIGURE_HIP_X, FIGURE_HIP_Y, 0),
+  ])
+  const upper = merge([torso, pelvis])
   const head = new THREE.SphereGeometry(0.105, 8, 6)
   head.translate(0, 0.77, 0)
   // Roller case tipped onto its wheels, handle leaning toward the walker (+z).
-  const bag = merge([box(0.2, 0.3, 0.12, 0, 0.15, 0), box(0.02, 0.24, 0.02, 0, 0.42, 0), box(0.18, 0.03, 0.03, 0, 0.01, -0.05)])
+  const bag = merge([
+    box(0.2, 0.32, 0.12, 0, 0.16, 0),
+    box(0.02, 0.28, 0.02, 0, 0.42, 0.02),
+    box(0.16, 0.03, 0.03, 0, 0.55, 0.04),
+    box(0.04, 0.04, 0.04, -0.06, 0.03, 0.05),
+    box(0.04, 0.04, 0.04, 0.06, 0.03, 0.05),
+  ])
   bag.rotateX(0.38)
-  return { body, head, bag }
+  return { body, torso: upper, legL, legR, head, bag }
 }
 
-export type PropPart = { geo: THREE.BufferGeometry; mat: string }
+export type PropSurface = 'wood' | 'wall'
+
+export type PropPart = {
+  geo: THREE.BufferGeometry
+  mat: string
+  /** Wood and plaster pick up the shared surface map. */
+  surface?: PropSurface
+  /** Close-up only. The coarse parts stay in the baked mesh at every LOD. */
+  detail?: boolean
+}
+
+const d = (geo: THREE.BufferGeometry, mat: string, surface?: PropSurface): PropPart => ({
+  geo,
+  mat,
+  surface,
+  detail: true,
+})
 
 /** Geometry for each interior prop kind; `mat` keys into the building palette. */
 export function propParts(): Record<string, PropPart[]> {
   return {
     counter: [
-      { geo: box(1.15, 0.48, 0.45, 0, 0.24, 0), mat: 'desk' },
-      { geo: box(1.2, 0.05, 0.5, 0, 0.5, 0), mat: 'deskTop' },
+      { geo: box(1.15, 0.42, 0.42, 0, 0.21, 0), mat: 'wood', surface: 'wood' },
+      { geo: box(1.2, 0.05, 0.5, 0, 0.44, 0.02), mat: 'deskTop' },
+      { geo: box(1.15, 0.32, 0.04, 0, 0.2, -0.2), mat: 'dark' },
+      { geo: box(0.28, 0.08, 0.22, 0.35, 0.12, 0.16), mat: 'rubber' },
+      d(box(0.22, 0.02, 0.1, -0.2, 0.48, 0.08), 'dark'),
+      d(box(0.16, 0.1, 0.08, 0.28, 0.52, 0), 'screen'),
     ],
-    monitor: [{ geo: box(0.32, 0.22, 0.04, 0, 0.64, 0), mat: 'screen' }],
+    monitor: [
+      { geo: box(0.32, 0.22, 0.04, 0, 0.64, 0), mat: 'screen' },
+      { geo: box(0.08, 0.06, 0.06, 0, 0.5, 0), mat: 'dark' },
+      d(box(0.28, 0.16, 0.01, 0, 0.64, 0.025), 'screen'),
+    ],
     belt: [
-      { geo: box(5.2, 0.2, 0.38, 0, 0.1, 0), mat: 'dark' },
-      { geo: box(5.2, 0.03, 0.3, 0, 0.215, 0), mat: 'rubber' },
+      { geo: box(5.2, 0.18, 0.42, 0, 0.09, 0), mat: 'dark' },
+      { geo: box(5.2, 0.04, 0.28, 0, 0.2, 0), mat: 'rubber' },
+      { geo: box(0.08, 0.16, 0.46, -2.5, 0.1, 0), mat: 'chrome' },
+      { geo: box(0.08, 0.16, 0.46, 2.5, 0.1, 0), mat: 'chrome' },
+      d(box(5.0, 0.01, 0.04, 0, 0.23, 0.08), 'tape'),
     ],
     stanchion: [
       { geo: merge([cyl(0.03, 0.04, 0.48, 6, -0.45, 0.24, 0), cyl(0.03, 0.04, 0.48, 6, 0.45, 0.24, 0)]), mat: 'chrome' },
       { geo: box(0.9, 0.05, 0.015, 0, 0.44, 0), mat: 'tape' },
+      d(cyl(0.07, 0.07, 0.02, 6, -0.45, 0.01, 0), 'dark'),
+      d(cyl(0.07, 0.07, 0.02, 6, 0.45, 0.01, 0), 'dark'),
     ],
     bench: [
-      {
-        geo: merge([
-          box(1.3, 0.07, 0.42, 0, 0.25, 0),
-          box(1.3, 0.36, 0.05, 0, 0.45, -0.19),
-          box(0.05, 0.22, 0.3, -0.6, 0.11, 0),
-          box(0.05, 0.22, 0.3, 0.6, 0.11, 0),
-        ]),
-        mat: 'seat',
-      },
+      { geo: box(1.3, 0.06, 0.42, 0, 0.42, 0), mat: 'seat' },
+      { geo: box(1.3, 0.32, 0.06, 0, 0.58, -0.18), mat: 'seat' },
+      { geo: box(0.06, 0.4, 0.36, -0.6, 0.2, 0), mat: 'chrome' },
+      { geo: box(0.06, 0.4, 0.36, 0.6, 0.2, 0), mat: 'chrome' },
+      { geo: box(0.04, 0.22, 0.04, -0.32, 0.52, -0.16), mat: 'chrome' },
+      { geo: box(0.04, 0.22, 0.04, 0.32, 0.52, -0.16), mat: 'chrome' },
+      d(box(0.28, 0.04, 0.36, -0.45, 0.46, 0.01), 'seat'),
+      d(box(0.28, 0.04, 0.36, 0, 0.46, 0.01), 'seat'),
+      d(box(0.28, 0.04, 0.36, 0.45, 0.46, 0.01), 'seat'),
     ],
     podium: [
-      { geo: box(0.9, 0.55, 0.45, 0, 0.275, 0), mat: 'desk' },
-      { geo: box(0.3, 0.2, 0.04, 0, 0.66, 0.05), mat: 'screen' },
+      { geo: box(0.7, 0.9, 0.4, 0, 0.45, 0), mat: 'wood', surface: 'wood' },
+      { geo: box(0.76, 0.04, 0.46, 0, 0.92, 0.02), mat: 'deskTop' },
+      { geo: box(0.28, 0.18, 0.03, 0, 1.08, 0.12), mat: 'screen' },
+      d(box(0.5, 0.08, 0.02, 0, 1.28, 0.1), 'kiosk'),
     ],
     board: [
       { geo: cyl(0.04, 0.05, 1.3, 6, 0, 0.65, 0), mat: 'chrome' },
-      { geo: box(1.1, 0.58, 0.05, 0, 1.55, 0), mat: 'board' },
+      { geo: box(1.15, 0.62, 0.06, 0, 1.52, 0), mat: 'dark' },
+      { geo: box(1.02, 0.5, 0.02, 0, 1.52, 0.035), mat: 'board' },
+      d(box(0.18, 0.08, 0.02, -0.38, 1.7, 0.05), 'lamp'),
     ],
     xray: [
-      { geo: box(0.62, 0.62, 1.4, 0, 0.31, 0), mat: 'machine' },
-      { geo: box(0.5, 0.06, 2.3, 0, 0.42, 0), mat: 'rubber' },
+      { geo: box(0.7, 0.7, 1.15, 0, 0.4, 0), mat: 'machine' },
+      { geo: box(0.46, 0.4, 0.9, 0, 0.42, 0), mat: 'dark' },
+      { geo: box(0.5, 0.06, 2.2, 0, 0.48, 0), mat: 'rubber' },
+      { geo: box(0.62, 0.08, 0.08, 0, 0.78, 0.5), mat: 'tape' },
+      d(box(0.22, 0.04, 0.32, 0.15, 0.56, 0.7), 'deskTop'),
+      d(box(0.22, 0.04, 0.32, 0.15, 0.61, 0.7), 'deskTop'),
     ],
     arch: [
       {
-        geo: merge([box(0.09, 1.15, 0.12, -0.42, 0.575, 0), box(0.09, 1.15, 0.12, 0.42, 0.575, 0), box(0.93, 0.12, 0.14, 0, 1.2, 0)]),
+        geo: merge([
+          box(0.08, 1.2, 0.1, -0.4, 0.6, 0),
+          box(0.08, 1.2, 0.1, 0.4, 0.6, 0),
+          box(0.88, 0.1, 0.12, 0, 1.22, 0),
+          box(0.2, 0.04, 0.2, -0.4, 0.02, 0),
+          box(0.2, 0.04, 0.2, 0.4, 0.02, 0),
+        ]),
         mat: 'machine',
       },
+      d(box(0.06, 0.06, 0.02, 0, 1.05, 0.06), 'lamp'),
     ],
     kiosk: [
-      { geo: box(1.2, 0.95, 1.7, 0, 0.475, 0), mat: 'kiosk' },
-      { geo: box(1.26, 0.06, 1.76, 0, 0.98, 0), mat: 'deskTop' },
-      { geo: box(0.08, 1.4, 1.7, -0.6, 0.7, 0), mat: 'shelf' },
+      { geo: box(1.05, 0.85, 0.55, 0, 0.42, 0), mat: 'wood', surface: 'wood' },
+      { geo: box(1.12, 0.05, 0.62, 0, 0.87, 0.04), mat: 'deskTop' },
+      { geo: box(0.7, 0.42, 0.04, 0, 1.2, 0.26), mat: 'screen' },
+      { geo: box(0.78, 0.5, 0.04, 0, 1.22, -0.26), mat: 'kiosk' },
+      { geo: box(0.16, 0.7, 0.5, -0.55, 0.7, 0), mat: 'shelf', surface: 'wood' },
+      d(box(0.22, 0.28, 0.2, 0.28, 1.05, 0), 'dark'),
+      d(cyl(0.06, 0.05, 0.16, 6, -0.2, 0.98, 0.1), 'chrome'),
     ],
-    awning: [{ geo: box(0.4, 0.08, 1.8, 0, 1.55, 0), mat: 'kiosk' }],
-    stool: [{ geo: cyl(0.13, 0.11, 0.26, 8, 0, 0.13, 0), mat: 'seat' }],
+    awning: [{ geo: box(0.45, 0.06, 1.7, 0, 1.7, 0), mat: 'kiosk' }],
+    stool: [
+      { geo: cyl(0.14, 0.14, 0.04, 8, 0, 0.42, 0), mat: 'seat' },
+      { geo: cyl(0.03, 0.04, 0.4, 6, 0, 0.2, 0), mat: 'chrome' },
+    ],
     table: [
-      { geo: cyl(0.3, 0.3, 0.04, 12, 0, 0.42, 0), mat: 'deskTop' },
-      { geo: cyl(0.03, 0.12, 0.4, 6, 0, 0.2, 0), mat: 'chrome' },
+      { geo: cyl(0.32, 0.32, 0.04, 10, 0, 0.72, 0), mat: 'deskTop' },
+      { geo: cyl(0.03, 0.08, 0.7, 6, 0, 0.35, 0), mat: 'chrome' },
     ],
     planter: [
-      { geo: cyl(0.22, 0.17, 0.36, 10, 0, 0.18, 0), mat: 'pot' },
-      { geo: new THREE.IcosahedronGeometry(0.32, 1).translate(0, 0.62, 0), mat: 'leaf' },
+      { geo: cyl(0.22, 0.16, 0.32, 8, 0, 0.16, 0), mat: 'pot' },
+      { geo: cyl(0.18, 0.18, 0.04, 8, 0, 0.34, 0), mat: 'dark' },
+      { geo: new THREE.IcosahedronGeometry(0.28, 0).translate(0, 0.62, 0), mat: 'leaf' },
+      d(new THREE.IcosahedronGeometry(0.16, 0).translate(0.12, 0.78, 0.06), 'leaf'),
     ],
     light: [{ geo: box(1.6, 0.04, 0.3, 0, 3.8, 0), mat: 'lamp' }],
+    bin: [
+      { geo: cyl(0.16, 0.14, 0.42, 8, 0, 0.21, 0), mat: 'dark' },
+      { geo: cyl(0.18, 0.18, 0.04, 8, 0, 0.44, 0), mat: 'chrome' },
+      d(box(0.1, 0.06, 0.08, 0.04, 0.5, 0), 'tape'),
+    ],
+    wc: [
+      { geo: box(1.35, 1.15, 0.08, 0, 0.7, -0.35), mat: 'wall', surface: 'wall' },
+      { geo: box(0.08, 1.15, 0.7, -0.64, 0.7, 0), mat: 'wall', surface: 'wall' },
+      { geo: box(0.08, 1.15, 0.7, 0.64, 0.7, 0), mat: 'wall', surface: 'wall' },
+      { geo: box(0.04, 1.05, 0.7, 0, 0.65, 0), mat: 'wall', surface: 'wall' },
+      { geo: box(0.58, 0.9, 0.04, -0.32, 0.55, 0.32), mat: 'wood', surface: 'wood' },
+      { geo: box(0.58, 0.9, 0.04, 0.32, 0.55, 0.32), mat: 'seat' },
+      { geo: box(1.2, 0.16, 0.28, 0, 0.85, -0.18), mat: 'deskTop' },
+      d(cyl(0.08, 0.06, 0.12, 6, -0.4, 0.2, 0.1), 'chrome'),
+      d(cyl(0.08, 0.06, 0.12, 6, 0.4, 0.2, 0.1), 'chrome'),
+    ],
+    bag: [
+      { geo: box(0.38, 0.28, 0.22, 0, 0.16, 0), mat: 'bag' },
+      { geo: box(0.16, 0.04, 0.16, 0, 0.32, 0), mat: 'dark' },
+      d(box(0.06, 0.1, 0.04, 0, 0.38, 0.06), 'chrome'),
+      d(cyl(0.03, 0.03, 0.04, 6, -0.12, 0.03, 0.08), 'dark'),
+      d(cyl(0.03, 0.03, 0.04, 6, 0.12, 0.03, 0.08), 'dark'),
+    ],
   }
 }
 
 export const PAX_COLORS = [0xc0392b, 0x2e86c1, 0x27ae60, 0xd4ac0d, 0x8e44ad, 0xe67e22, 0x5d6d7e, 0xecf0f1]
+export const TROUSER_COLORS = [0x243044, 0x3a332c, 0x2c3a32, 0x1c2838, 0x4a3a32]
 export const SKIN_COLORS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac]
 export const STAFF_COLOR = 0x1f3a5f
 export const KIOSK_COLORS = [0xc0392b, 0x16a085, 0xd68910, 0x7d3c98]

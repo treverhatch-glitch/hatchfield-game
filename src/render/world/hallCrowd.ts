@@ -3,7 +3,18 @@
  * sim stored (`wx` / `wz`). Decorative walkers stay off so the two do not stack.
  */
 import * as THREE from 'three'
-import { setTrs, SKIN_COLORS, type PeopleGeo } from './kit'
+import {
+  BAG_COLORS,
+  FIGURE_HIP_X,
+  FIGURE_HIP_Y,
+  setTrs,
+  setYawPitch,
+  SKIN_COLORS,
+  TROUSER_COLORS,
+  walkSwing,
+  yawOffset,
+  type PeopleGeo,
+} from './kit'
 import { onField } from './guestActors'
 import { FLOOR_Y, PERSON_SCALE, SEATED_LIFT, SEATED_SCALE } from './terminal'
 
@@ -56,14 +67,19 @@ function skinIndex(id: string): number {
   return h % SKIN_COLORS.length
 }
 
+const HIP = new THREE.Vector3()
+
 export class HallCrowd {
   private body: THREE.InstancedMesh | null = null
+  private legL: THREE.InstancedMesh | null = null
+  private legR: THREE.InstancedMesh | null = null
   private head: THREE.InstancedMesh | null = null
   private bag: THREE.InstancedMesh | null = null
   private cap = 0
   private readonly bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
+  private readonly legMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly headMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
-  private readonly bagMat = new THREE.MeshLambertMaterial({ color: 0xc4a574 })
+  private readonly bagMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly tint = new THREE.Color()
 
   private readonly root: THREE.Object3D
@@ -75,31 +91,47 @@ export class HallCrowd {
   }
 
   sync(poses: readonly HallPose[], time: number) {
+    const meshes = [this.body, this.legL, this.legR, this.head, this.bag]
     if (!poses.length) {
-      if (this.body) this.body.count = 0
-      if (this.head) this.head.count = 0
-      if (this.bag) this.bag.count = 0
+      for (const mesh of meshes) if (mesh) mesh.count = 0
       return
     }
     this.ensure(poses.length)
     const body = this.body!
+    const legL = this.legL!
+    const legR = this.legR!
     const head = this.head!
     const bag = this.bag!
-    body.count = poses.length
-    head.count = poses.length
-    bag.count = poses.length
+    const n = poses.length
+    body.count = n
+    legL.count = n
+    legR.count = n
+    head.count = n
+    bag.count = n
     poses.forEach((p, i) => {
       const bob = p.seated ? 0 : Math.abs(Math.sin(time * 7 + i)) * 0.018
       const y = FLOOR_Y + bob + (p.seated ? SEATED_LIFT : 0)
       const sy = (p.seated ? SEATED_SCALE : 1) * PERSON_SCALE
-      setTrs(body, i, p.x, y, p.z, p.yaw, PERSON_SCALE, sy)
-      setTrs(head, i, p.x, y, p.z, p.yaw, PERSON_SCALE, sy)
+      const s = PERSON_SCALE
+      setTrs(body, i, p.x, y, p.z, p.yaw, s, sy)
+      setTrs(head, i, p.x, y, p.z, p.yaw, s, sy)
+      const swing = p.seated ? 0 : walkSwing(time, skinIndex(p.id))
+      const hipY = (p.seated ? SEATED_LIFT : 0) + bob + FIGURE_HIP_Y * sy
+      yawOffset(p.yaw, -FIGURE_HIP_X * s, hipY, 0, HIP)
+      setYawPitch(legL, i, p.x + HIP.x, FLOOR_Y + HIP.y, p.z + HIP.z, p.yaw, swing, s, sy)
+      yawOffset(p.yaw, FIGURE_HIP_X * s, hipY, 0, HIP)
+      setYawPitch(legR, i, p.x + HIP.x, FLOOR_Y + HIP.y, p.z + HIP.z, p.yaw, -swing, s, sy)
       this.tint.set(p.color)
       body.setColorAt(i, this.tint)
       this.tint.setHex(SKIN_COLORS[skinIndex(p.id)])
       head.setColorAt(i, this.tint)
-      const back = 0.32 * PERSON_SCALE
-      const side = 0.16 * PERSON_SCALE
+      this.tint.setHex(TROUSER_COLORS[skinIndex(p.id) % TROUSER_COLORS.length])
+      legL.setColorAt(i, this.tint)
+      legR.setColorAt(i, this.tint)
+      this.tint.setHex(BAG_COLORS[skinIndex(p.id) % BAG_COLORS.length])
+      bag.setColorAt(i, this.tint)
+      const back = 0.32 * s
+      const side = 0.16 * s
       const sx = Math.sin(p.yaw)
       const sz = Math.cos(p.yaw)
       setTrs(
@@ -109,29 +141,29 @@ export class HallCrowd {
         p.bag ? FLOOR_Y : -20,
         p.z - sz * back - sx * side,
         p.yaw,
-        PERSON_SCALE,
-        PERSON_SCALE,
+        s,
+        s,
       )
     })
-    body.instanceMatrix.needsUpdate = true
-    head.instanceMatrix.needsUpdate = true
-    bag.instanceMatrix.needsUpdate = true
-    if (body.instanceColor) body.instanceColor.needsUpdate = true
-    if (head.instanceColor) head.instanceColor.needsUpdate = true
+    for (const mesh of [body, legL, legR, head, bag]) {
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    }
   }
 
   dispose() {
-    for (const mesh of [this.body, this.head, this.bag]) mesh?.removeFromParent()
-    this.body = this.head = this.bag = null
+    for (const mesh of [this.body, this.legL, this.legR, this.head, this.bag]) mesh?.removeFromParent()
+    this.body = this.legL = this.legR = this.head = this.bag = null
     this.cap = 0
     this.bodyMat.dispose()
+    this.legMat.dispose()
     this.headMat.dispose()
     this.bagMat.dispose()
   }
 
   private ensure(n: number) {
-    if (this.cap >= n && this.body) return
-    for (const mesh of [this.body, this.head, this.bag]) mesh?.removeFromParent()
+    if (this.cap >= n && this.body && this.legL && this.legR) return
+    for (const mesh of [this.body, this.legL, this.legR, this.head, this.bag]) mesh?.removeFromParent()
     this.cap = Math.max(128, n)
     const make = (geo: THREE.BufferGeometry, mat: THREE.Material, name: string) => {
       const mesh = new THREE.InstancedMesh(geo, mat, this.cap)
@@ -142,7 +174,9 @@ export class HallCrowd {
       this.root.add(mesh)
       return mesh
     }
-    this.body = make(this.people.body, this.bodyMat, 'hall-guest-body')
+    this.body = make(this.people.torso, this.bodyMat, 'hall-guest-body')
+    this.legL = make(this.people.legL, this.legMat, 'hall-guest-leg-l')
+    this.legR = make(this.people.legR, this.legMat, 'hall-guest-leg-r')
     this.head = make(this.people.head, this.headMat, 'hall-guest-head')
     this.bag = make(this.people.bag, this.bagMat, 'hall-guest-bag')
   }
