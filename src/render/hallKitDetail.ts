@@ -12,8 +12,8 @@ import type { KitPlacement } from './hallKitMeshes'
 /** Catalog item id → detailed model. */
 export const HALL_ITEM_PROP: Readonly<Record<string, TerminalPropType>> = {
   kiosk: 'kiosk_bank',
-  checkin_belt: 'checkin_row',
-  checkin_express: 'checkin_row',
+  checkin_belt: 'checkin_pair',
+  checkin_express: 'checkin_pair',
   security_small: 'security_lane',
   security_medium: 'security_lane',
   security_large: 'security_lane_ct',
@@ -35,6 +35,9 @@ export const HALL_ITEM_PROP: Readonly<Record<string, TerminalPropType>> = {
   plant: 'planter',
   trash_can: 'bin',
 }
+
+/** Props that must read at real size even when slightly larger than their cell. */
+const REAL_SIZE: ReadonlySet<TerminalPropType> = new Set<TerminalPropType>(['checkin_pair'])
 
 export function hallItemProp(def: string): TerminalPropType | undefined {
   return HALL_ITEM_PROP[def]
@@ -63,7 +66,9 @@ export function buildHallDetail(
     const d = slots >= 4 ? ch : ch / 2
     const yaw = ((k.item.rot ?? 0) * Math.PI) / 2
     const odd = (k.item.rot ?? 0) % 2 !== 0
-    const scale = fitScale(type, (odd ? d : w) * 0.92, (odd ? w : d) * 0.92)
+    const fit = fitScale(type, (odd ? d : w) * 0.92, (odd ? w : d) * 0.92)
+    // Check-in desks stay near real size (1.6 m counters); a little overhang into the aisle reads better than toy desks.
+    const scale = REAL_SIZE.has(type) ? Math.max(fit, 0.9) : fit
     placements.push({ type, x: k.x, z: k.z, y: 0.07, yaw, scale })
   }
   const group = buildTerminalProps(placements, { shadows: false })
