@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
 import { SurfaceLibrary, type LibraryMap } from '../materials/library'
 import { tileByPosition } from '../materials/pack1'
+import { AIRLINE_LOGOS, CARPET_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
 import type { QualityLevel } from './quality'
 import {
   BAG_COLORS,
@@ -53,7 +54,7 @@ import { pickLod, stepFade } from './lod'
 import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
 import { type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
-import { departuresBoardTexture, textTexture, wayfindingTexture, type WorldTextures } from './textures'
+import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, textTexture, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { CELL, cellX, cellZ } from './view'
 
@@ -84,6 +85,7 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
   const surfaces = new SurfaceLibrary()
   surfaces.loadPngs()
   surfaces.loadPack1(quality)
+  surfaces.loadPack4(quality)
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
     new THREE.MeshLambertMaterial({ color, ...extra })
   const palette: Record<string, THREE.Material> = {
@@ -186,6 +188,9 @@ export class TerminalBuilding {
   private time = 0
   private wallSets: { mesh: THREE.InstancedMesh; walls: WallInst[] }[] = []
   private glassWallMat: THREE.MeshLambertMaterial | null = null
+  private ceiling: THREE.Mesh | null = null
+  /** Hall view sets this when the real camera is under the tiles. */
+  ceilingForce = false
   private wallMats: THREE.Material[] = []
   private nearCut = false
   private detail = new THREE.Group()
@@ -380,6 +385,17 @@ export class TerminalBuilding {
     return m
   }
 
+  /** Navy gate board with the airline mark painted on the left once the JPEG arrives. */
+  private gateSign(gateId: string, slot: number): THREE.Material {
+    const key = `way|GATES|${gateId}`
+    if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture('GATES', gateId))
+    const tex = this.shared.signCache.get(key) ?? null
+    const mat = new THREE.MeshBasicMaterial(tex ? { map: tex, toneMapped: false } : { color: 0x0e2233 })
+    this.owned.mats.push(mat)
+    if (tex) this.shared.surfaces.onLogo(slot, (image) => stampWayfindingLogo(tex, 'GATES', gateId, image))
+    return mat
+  }
+
   private sign(text: string, w: number, h: number, bg = '#13293d', fg = '#f4f6f8'): THREE.Material {
     const key = `${text}|${bg}|${fg}`
     if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, textTexture(text, { bg, fg, w: 512, h: Math.round((512 * h) / w) }))
@@ -408,14 +424,14 @@ export class TerminalBuilding {
     if (landEdges.length) {
       const mid = landEdges[Math.floor(landEdges.length / 2)]
       const v = DIR_VEC[land]
-      const w = Math.min(m(14), landEdges.length * m(8))
-      const h = m(1.4)
+      const brand = this.shared.surfaces.brandMaterial()
+      this.owned.mats.push(brand)
       this.plane(
-        w,
-        h,
-        this.sign(`TERMINAL ${index + 1}`, w, h, '#13293d', '#f2c14a'),
+        m(4.6),
+        m(4.6),
+        brand,
         cellX(mid.c) + v.dc * (CELL * 0.5 + m(0.4)),
-        m(3.6),
+        m(3.2),
         cellZ(mid.r) + v.dr * (CELL * 0.5 + m(0.4)),
         yawOut(land),
         this.shell,
@@ -434,34 +450,46 @@ export class TerminalBuilding {
     }
     airEdges.forEach((e, i) => {
       const v = DIR_VEC[airside]
+      const x = cellX(e.c) + v.dc * (CELL * 0.5 + m(0.4))
+      const z = cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4))
+      const yaw = yawOut(airside)
       this.plane(
-        m(2.8),
+        m(2.2),
         m(0.7),
-        this.sign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, m(2.8), m(0.7), '#1b4f72', '#ffffff'),
-        cellX(e.c) + v.dc * (CELL * 0.5 + m(0.4)),
+        this.sign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, m(2.2), m(0.7), '#1b4f72', '#ffffff'),
+        x,
         m(3.6),
-        cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4)),
-        yawOut(airside),
+        z,
+        yaw,
         this.shell,
       )
+      const logo = this.shared.surfaces.logoMaterial(i)
+      this.owned.mats.push(logo)
+      const side = yaw + Math.PI / 2
+      this.plane(m(0.9), m(0.9), logo, x + Math.sin(side) * m(1.7), m(3.6), z + Math.cos(side) * m(1.7), yaw, this.shell)
     })
   }
 
   /** Room floors, interior walls / partitions / lintels, and a hanging sign per room. */
   private buildRooms(index: number) {
     const rp = this.plan.rooms
-    const rubberKinds = new Set(rp.rooms.filter((r) => r.kind !== 'gate').map((r) => r.kind))
-    const rubberGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: rubberKinds, flat: true })
-    const carpetGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(['gate']), flat: true })
-    const carpetMat = new THREE.MeshLambertMaterial({
-      map: this.shared.surfaces.maps.carpet,
+    const hallGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(TERRAZZO_ROOMS), flat: true })
+    const carpetGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(CARPET_ROOMS), flat: true })
+    const hallMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.terrazzo,
       vertexColors: true,
     })
+    const carpetMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.carpetGrey,
+      vertexColors: true,
+    })
+    this.shared.surfaces.watch(hallMat)
     this.shared.surfaces.watch(carpetMat)
-    tileByPosition(carpetMat, this.shared.surfaces.repeatFor('carpet'))
-    this.owned.mats.push(carpetMat)
+    tileByPosition(hallMat, this.shared.surfaces.repeatFor('terrazzo'))
+    tileByPosition(carpetMat, this.shared.surfaces.repeatFor('carpetGrey'))
+    this.owned.mats.push(hallMat, carpetMat)
     for (const [geo, mat, name] of [
-      [rubberGeo, this.floorMat, 'terminal-floor'],
+      [hallGeo, hallMat, 'terminal-floor'],
       [carpetGeo, carpetMat, 'terminal-carpet'],
     ] as const) {
       if (!geo.getAttribute('position')?.count) {
@@ -474,7 +502,22 @@ export class TerminalBuilding {
       mesh.name = name
       this.shell.add(mesh)
     }
-    tileByPosition(this.floorMat, this.shared.surfaces.repeatFor('floor'))
+    const ceilGeo = roomFloorGeometry(rp, ROOF_Y - m(0.12), { flat: true })
+    const ceilMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.ceiling,
+      side: THREE.DoubleSide,
+      color: 0xffffff,
+    })
+    this.shared.surfaces.watch(ceilMat)
+    tileByPosition(ceilMat, this.shared.surfaces.repeatFor('ceiling'))
+    this.owned.mats.push(ceilMat)
+    if (ceilGeo.getAttribute('position')?.count) {
+      const ceiling = new THREE.Mesh(ceilGeo, ceilMat)
+      this.owned.geos.push(ceilGeo)
+      ceiling.name = 'terminal-ceiling'
+      this.shell.add(ceiling)
+      this.ceiling = ceiling
+    } else ceilGeo.dispose()
 
     const solidM = new THREE.MeshLambertMaterial({
       color: 0xffffff,
@@ -526,20 +569,25 @@ export class TerminalBuilding {
 
     const land = landsideSide(this.info.airside)
     const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
+    let gateN = 0
     for (const room of rp.rooms) {
       const gateId = `${String.fromCharCode(65 + index)}${room.label.replace(/\D/g, '') || ''}`
-      const wayfinding = room.kind === 'checkin' || room.kind === 'security' || room.kind === 'gate'
-      const text = room.kind === 'gate' ? `GATE ${gateId}` : room.label
-      const w = wayfinding ? m(5.6) : Math.min(m(4.2), m(0.7) + text.length * m(0.18))
-      const h = wayfinding ? m(1.5) : m(0.55)
-      const mat = wayfinding
-        ? this.wayfindingSign(room.kind === 'checkin' ? 'CHECK-IN' : room.kind === 'security' ? 'SECURITY' : 'GATES', room.kind === 'gate' ? gateId : undefined)
-        : this.sign(text, w, h, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
+      const gate = room.kind === 'gate'
+      const wayfinding = room.kind === 'checkin' || room.kind === 'security' || gate
+      const text = gate ? `GATE ${gateId}` : room.label
+      const w = gate ? m(1.72 * (GATE_SIGN.w / GATE_SIGN.h)) : wayfinding ? m(5.6) : Math.min(m(4.2), m(0.7) + text.length * m(0.18))
+      const h = gate ? m(1.72) : wayfinding ? m(1.5) : m(0.55)
+      const mat = gate
+        ? this.gateSign(gateId, gateN++)
+        : wayfinding
+          ? this.wayfindingSign(room.kind === 'checkin' ? 'CHECK-IN' : room.kind === 'security' ? 'SECURITY' : 'GATES', undefined)
+          : this.sign(text, w, h, '#0e2233', SIGN_FG[room.kind] ?? '#ffffff')
       this.propMats.push(mat)
-      // Back-to-back so the label reads from either side of the hall.
-      for (const [o, a] of [[m(0.02), yaw], [-m(0.02), yaw + Math.PI]] as [number, number][]) {
-        const sign = this.plane(w, h, mat, room.x + Math.sin(yaw) * o, WALL_H + m(0.35), room.z + Math.cos(yaw) * o, a, this.props)
-        sign.name = 'room-sign'
+      for (const a of [yaw, yaw + Math.PI]) {
+        const nx = Math.sin(a)
+        const nz = Math.cos(a)
+        const board = this.plane(w, h, mat, room.x + nx * m(0.03), WALL_H + m(0.35), room.z + nz * m(0.03), a, this.props)
+        board.name = gate ? 'gate-sign' : 'room-sign'
       }
     }
   }
@@ -599,6 +647,7 @@ export class TerminalBuilding {
     const extraSurfaces = new Map<LibraryMap, BakePiece[]>()
     const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
+    const logoSlots: THREE.Matrix4[] = []
     const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
     for (const p of this.plan.props) {
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
@@ -625,6 +674,10 @@ export class TerminalBuilding {
         }
         if (part.mat === 'board') {
           boards.push(matrix)
+          continue
+        }
+        if (part.mat === 'logo') {
+          logoSlots.push(matrix)
           continue
         }
         const bucket =
@@ -676,6 +729,22 @@ export class TerminalBuilding {
     this.owned.mats.push(lampM)
     this.roofMats.push(lampM)
     this.bakedMesh(lamps, lampM, this.roof, 'roof-lamps')
+    const logoGeo = this.shared.parts.counter?.find((x) => x.mat === 'logo')?.geo
+    if (logoGeo && logoSlots.length) {
+      const byMark = new Map<number, THREE.Matrix4[]>()
+      logoSlots.forEach((matrix, i) => {
+        const slot = i % AIRLINE_LOGOS.length
+        const list = byMark.get(slot) ?? []
+        list.push(matrix)
+        byMark.set(slot, list)
+      })
+      for (const [slot, matrices] of byMark) {
+        const mat = own(this.shared.surfaces.logoMaterial(slot))
+        const mesh = instanced(logoGeo, mat, matrices)
+        mesh.name = 'desk-logo'
+        this.props.add(mesh)
+      }
+    }
     const board = this.shared.parts.board?.find((x) => x.mat === 'board')
     if (board && boards.length) {
       const m = instanced(board.geo, own(this.shared.palette.board.clone()), boards)
@@ -775,6 +844,8 @@ export class TerminalBuilding {
     const close = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
     // Hall view only: close and above the roof lifts it off. Airport view stays enclosed.
     const cut = !enclosed && close && camPos.y > ROOF_Y + m(1.5)
+    const aboveCeiling = camPos.y > ROOF_Y - m(0.2)
+    if (this.ceiling) this.ceiling.visible = this.ceilingForce || !aboveCeiling
     this.nearCut = !enclosed && close
     this.roofFade = stepFade(this.roofFade, cut ? 0 : 1, dt, 1.1)
     applyFade(this.roof, this.roofMats, this.roofFade)

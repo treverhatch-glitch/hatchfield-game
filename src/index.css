@@ -2131,22 +2131,20 @@ h1 {
 }
 
 h1.game-title {
-  font-family: Impact, 'Arial Black', 'Segoe UI', system-ui, sans-serif;
-  font-weight: 900;
-  font-size: clamp(72px, 11vw, 112px);
-  line-height: 0.86;
-  letter-spacing: 0.02em;
+  font-size: 0;
+  line-height: 0;
   margin: 0 0 16px;
-  color: #f7f3e8;
-  text-shadow:
-    0 1px 0 #fff8e8,
-    0 3px 0 #1a1208,
-    0 6px 0 #3a2a14,
-    0 10px 0 #6a4a18,
-    0 16px 18px rgba(0, 0, 0, 0.45);
   transform-style: preserve-3d;
   transition: transform 0.08s linear;
   cursor: default;
+}
+
+h1.game-title img {
+  display: block;
+  width: min(440px, 86vw);
+  height: auto;
+  background: #fff;
+  border-radius: 16px;
   user-select: none;
 }
 

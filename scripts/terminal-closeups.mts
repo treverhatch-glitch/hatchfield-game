@@ -45,6 +45,8 @@ page.on('pageerror', (err) => console.log('pageerror', err.message))
 await page.goto(URL, { waitUntil: 'domcontentloaded' })
 await page.evaluate(call('localStorage.clear(); sessionStorage.clear()'))
 await page.reload({ waitUntil: 'networkidle' })
+await page.waitForTimeout(600)
+await page.screenshot({ path: `${OUT}/terminal-pack4-title.png` })
 await page.getByTestId('new-game').click()
 await page.getByTestId('start-pax').click()
 await page.getByTestId('tab-economy').click()
@@ -150,6 +152,70 @@ async function aimRoom(kind: string, dist: number) {
 await aimRoom('checkin', 7)
 await aimRoom('security', 7)
 await aimRoom('gate', 6.5)
+const gateSign = await page.evaluate(
+  call(`
+    const hall = window.__hall
+    let sign = null
+    hall.scene.traverse((o) => {
+      if (!sign && o.name === 'gate-sign') sign = o
+    })
+    const logo = hall.terminalShared.surfaces.airline[0]
+    const img = logo && logo.image
+    if (!sign) return { logoW: img && img.width, missing: true }
+    const p = hall.camera.position.clone()
+    sign.getWorldPosition(p)
+    const q = hall.camera.quaternion.clone()
+    sign.getWorldQuaternion(q)
+    const n = new p.constructor(0, 0, 1).applyQuaternion(q)
+    hall.pivot.set(p.x, p.y, p.z)
+    hall.yaw = Math.atan2(n.x, n.z)
+    hall.pitch = 0.02
+    hall.dist = 3.2
+    hall.placeCam()
+    return { x: p.x, y: p.y, z: p.z, logoW: img && img.width, src: img && img.src }
+  `),
+)
+console.log('gate sign', JSON.stringify(gateSign))
+await page.waitForTimeout(600)
+await page.screenshot({ path: `${OUT}/terminal-pack4-gate.png` })
 await aimRoom('shops', 7)
+await aimRoom('office', 6)
+
+const inside = await page.evaluate(
+  call(`
+    const hall = window.__hall
+    const room = hall.roomPlan.rooms.find((r) => r.kind === 'checkin')
+    const fit = hall.interiorFit
+    const x = (room.x - fit.cx) * fit.scale
+    const z = (room.z - fit.cz) * fit.scale
+    hall.pivot.set(x, 1.6, z)
+    hall.dist = 4.2
+    hall.pitch = 0.22
+    hall.yaw = 0.4
+    hall.placeCam()
+    if (hall.interior) hall.interior.ceilingForce = true
+    return { y: hall.camera.position.y, ceil: hall.interior && hall.interior.ceilingForce }
+  `),
+)
+console.log('inside', JSON.stringify(inside))
+await page.waitForTimeout(500)
+await page.screenshot({ path: `${OUT}/terminal-pack4-counter.png` })
+
+const facade = await page.evaluate(
+  call(`
+    const hall = window.__hall
+    const mark = hall.scene.getObjectByName('hatchfield-logo')
+    if (!mark) return null
+    hall.pivot.set(mark.position.x + 6, 1.6, mark.position.z)
+    hall.dist = 8
+    hall.pitch = 0.28
+    hall.yaw = -1.57
+    hall.placeCam()
+    return { x: mark.position.x, y: mark.position.y, z: mark.position.z }
+  `),
+)
+console.log('facade', JSON.stringify(facade))
+await page.waitForTimeout(400)
+await page.screenshot({ path: `${OUT}/terminal-pack4-facade.png` })
 console.log('wrote', OUT)
 await browser.close()

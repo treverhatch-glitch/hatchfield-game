@@ -607,7 +607,10 @@ export class HallWorld {
 
   private releaseShellMats() {
     const surfaces = this.terminalShared?.surfaces
-    for (const mat of this.watchedShell) surfaces?.unwatch(mat)
+    for (const mat of this.watchedShell) {
+      surfaces?.unwatch(mat)
+      surfaces?.releaseLogo(mat)
+    }
     this.watchedShell = []
   }
 
@@ -654,6 +657,20 @@ export class HallWorld {
     this.box(t, h, side, '#d5ddd8', b.minX, y, b.maxZ - side / 2, this.shellWallMat())
     this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.minZ)
     this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.maxZ)
+    this.brandMark(b.minX - 0.04, 2.15, cz)
+  }
+
+  /** Hatchfield mark on the landside face, above the door. */
+  private brandMark(x: number, y: number, z: number) {
+    const surfaces = this.terminalShared?.surfaces
+    if (!surfaces) return
+    const mat = surfaces.brandMaterial()
+    this.watchedShell.push(mat)
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), mat)
+    mesh.position.set(x, y, z)
+    mesh.rotation.y = -Math.PI / 2
+    mesh.name = 'hatchfield-logo'
+    this.roomGroup.add(mesh)
   }
 
   /** Zone boxes, the carousel and the old columns draw only when the room plan is off. */
@@ -906,6 +923,8 @@ export class HallWorld {
     }
     const y = Math.max(cam.y / fit.scale, ROOF_Y + WORLD_PER_METER * 2)
     this.apronCamPos.set(x, y, z)
+    const ceilingY = (ROOF_Y - FLOOR_Y) * fit.scale
+    building.ceilingForce = cam.y < ceilingY
     building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false)
     this.hideTerminalShell(building)
   }
