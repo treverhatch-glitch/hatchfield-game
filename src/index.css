@@ -522,6 +522,23 @@ button {
   line-height: 1.35;
 }
 
+.building-note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #f0c14a;
+}
+
+.building-hire {
+  width: auto;
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  background: #f0c14a;
+  color: #1a2a32;
+  border: 0;
+  border-radius: 6px;
+  font: 700 12px sans-serif;
+}
+
 .building-icons {
   display: flex;
   flex-wrap: wrap;

@@ -65,4 +65,24 @@ describe('building panel', () => {
     expect(html).toContain('data-testid="building-why-bottleneck"')
     expect(html).toContain('first bay whose kit or crew is missing')
   })
+
+  it('shows a paused walk estimate and a one-click hire', () => {
+    const card = buildingCard({
+      id: 'security',
+      name: 'Security',
+      plan: 'security',
+      upkeepPerDay: 0,
+      note: 'walk paused, estimate',
+      bays: [{ inUse: false, limit: 'closed: no staff', icon: 'staff', badge: 'staff' }],
+    })
+    expect(card.note).toBe('walk paused, estimate')
+    expect(card.hire).toBe(true)
+    const html = renderToStaticMarkup(
+      <BuildingPanelView card={card} open={new Set()} onToggle={() => {}} onClose={() => {}} onHire={() => {}} />,
+    )
+    expect(html).toContain('data-testid="building-note"')
+    expect(html).toContain('walk paused, estimate')
+    expect(html).toContain('data-testid="building-hire"')
+    expect(html).toContain('>Hire<')
+  })
 })

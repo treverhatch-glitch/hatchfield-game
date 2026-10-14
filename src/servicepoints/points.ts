@@ -5,10 +5,9 @@
  * closed lane shows up as a queue instead of a hidden cap.
  *
  * Prefab points that come with the building stay open (their upkeep is
- * already in the prefab). Points the player adds on top need a hired body
- * on that post, one body per extra point. A hall with no included points
- * (a terminal the player built) keeps every point open: that building is
- * the service, same as before.
+ * already in the prefab). A self-serve kiosk or a bag drop defined with
+ * staff 0 runs on its own. Every other desk or lane needs one hired body
+ * on that post, including a hall the player built from scratch.
  */
 import { SERVICE_POINT_TUNING } from './config.ts'
 
@@ -33,10 +32,9 @@ export function openPointIds(points: readonly StaffPoint[], hired: HiredPosts): 
   const open = new Set<string>()
   for (const kind of ['checkin_desk', 'security_lane'] as const) {
     const group = points.filter((p) => p.kind === kind)
-    const building = group.some((p) => p.included)
     let spare = Math.max(0, kind === 'security_lane' ? hired.security : hired.checkin)
     for (const p of group) {
-      if (p.automatic || p.included || !building) {
+      if (p.automatic || p.included) {
         open.add(p.id)
         continue
       }
@@ -130,42 +128,28 @@ export interface InfoPoint {
   waitSec: number
 }
 
-/** Shown when a player-built hall keeps every point open with nobody hired. */
-export const BUILDING_SERVICE_LINE = 'open: building service (no staff needed)'
+/** Shown when a desk or lane is placed and nobody is on that post. */
+export const CLOSED_NO_STAFF_LINE = 'closed: no staff'
 
 /** Shown when the info panel had to guess because the walk is not running. */
 export const WALK_PAUSED_LINE = 'walk paused, estimate'
 
 /**
- * True when this kind has points and none of them came with the building.
- * `openPointIds` then keeps every point open. The rule itself stays put.
- */
-export function isBuildingService(points: readonly { kind: string; included?: boolean }[], kind: string): boolean {
-  let any = false
-  for (const p of points) {
-    if (p.kind !== kind) continue
-    any = true
-    if (p.included) return false
-  }
-  return any
-}
-
-/**
  * Click-open lines: how many points are staffed and in use, then each
- * point's queue and wait. A player-built hall says the building is the service.
+ * point's queue and wait. A point with nobody on it says so.
  */
 export function serviceInfoLines(
   label: string,
   points: readonly InfoPoint[],
   throughput: Throughput,
-  buildingService = false,
+  closedForStaff = false,
 ): string[] {
   const noun = label === 'Security' ? 'lane' : 'desk'
   const lines = [
     `${label}`,
     `${throughput.staffed} of ${throughput.points} ${noun}${throughput.points === 1 ? '' : 's'} staffed · ${throughput.inUse} in use`,
   ]
-  if (buildingService) lines.push(BUILDING_SERVICE_LINE)
+  if (closedForStaff) lines.push(CLOSED_NO_STAFF_LINE)
   lines.push(
     `Queue ${throughput.queueLength} · wait ${formatWait(throughput.waitSec)}`,
     `Throughput ${throughput.perMin.toFixed(1)}/min`,

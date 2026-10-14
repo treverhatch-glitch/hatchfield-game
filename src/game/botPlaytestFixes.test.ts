@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { spawnHallGuest } from './guests.ts'
 import { Game } from './sim.ts'
+import { itemDef } from './terminal.ts'
 import { arrivalKeys, createPhoneShell, flashPreview, letterOnStack, phoneSync } from '../phone/logic.ts'
 import { readPhoneCards } from '../phone/readGame.ts'
 
@@ -47,7 +48,17 @@ describe('hall mood stays on the 0–100 scale', () => {
   it('does not let an empty check-in desk drive mood below 0', () => {
     const game = passengerField()
     game.hallStaff = []
-    const guest = spawnHallGuest('desk', 'depart', 'budget')
+    const fit = game.activeHall()!
+    // The starter kiosk would still be open. This case is a hall with no open desk.
+    fit.items = (fit.items ?? []).filter((it) => {
+      const def = itemDef(it.def)
+      return !(def && def.staff <= 0 && (def.room === 'checkin' || def.room === 'bagdrop'))
+    })
+    for (const it of fit.items) {
+      const def = itemDef(it.def)
+      if (def?.room === 'checkin' || def?.room === 'bagdrop') it.bundle = false
+    }
+    const guest = spawnHallGuest('desk', 'depart', 'budget', { hallId: game.hallKey(fit) })
     guest.node = 'checkin'
     guest.happiness = 1
     game.serveNode(guest, game.hallOpen())

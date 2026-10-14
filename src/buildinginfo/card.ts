@@ -3,6 +3,7 @@
  * The panel shows the name, status, and why immediately. Counts stay on the
  * card so the view can hide them until a subsection is opened.
  */
+import { CLOSED_NO_STAFF_LINE } from '../servicepoints/index.ts'
 import { SERVICE_KITS, fleetHas, planFor, type BayPlan, type SizeTier } from './config.ts'
 
 export type BuildingStatus = 'working' | 'limited' | 'idle' | 'closed'
@@ -57,6 +58,10 @@ export interface BuildingCard {
   bottleneckText: string
   bottleneckWhy: string
   icons: BottleneckIcon[]
+  /** Walk was not running, so the counts are a guess. */
+  note?: string
+  /** A desk or lane is closed until someone is hired onto the post. */
+  hire?: boolean
 }
 
 export interface Reading {
@@ -83,6 +88,8 @@ export interface Reading {
   /** People or vehicles waiting on this building. Omitted means there is no line. */
   queueLength?: number
   queueKind?: 'passengers' | 'vehicles' | 'none'
+  /** Shown as its own line. The walk-paused estimate uses this. */
+  note?: string
 }
 
 const STATUS_LABEL: Record<BuildingStatus, string> = {
@@ -258,6 +265,8 @@ export function buildingCard(reading: Reading): BuildingCard {
     bottleneckText: why,
     bottleneckWhy,
     icons: reading.closed ? [] : iconsFor(bays, inputs, staffAssigned, staffNeeded),
+    note: reading.note,
+    hire: bays.some((bay) => bay.limit === CLOSED_NO_STAFF_LINE),
   }
 }
 

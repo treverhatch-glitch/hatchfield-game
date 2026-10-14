@@ -22,4 +22,9 @@ export const SERVICE_POINT_TUNING = {
    * on the post. Not a wage.
    */
   postWalkSec: 4,
+  /**
+   * A self-serve kiosk takes this share of a staffed check-in desk's service
+   * time. Bag drops run themselves and stay at desk speed. Not a wage.
+   */
+  kioskServiceShare: 0.45,
 } as const

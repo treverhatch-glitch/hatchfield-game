@@ -21,11 +21,13 @@ export function BuildingPanelView({
   open,
   onToggle,
   onClose,
+  onHire,
 }: {
   card: BuildingCard
   open: ReadonlySet<SectionId>
   onToggle: (id: SectionId) => void
   onClose: () => void
+  onHire?: () => void
 }) {
   const figures: Record<SectionId, string> = {
     throughput: card.throughputText,
@@ -59,6 +61,16 @@ export function BuildingPanelView({
       <p className="building-why" data-testid="building-why">
         {card.why}
       </p>
+      {card.note ? (
+        <p className="building-note" data-testid="building-note">
+          {card.note}
+        </p>
+      ) : null}
+      {onHire ? (
+        <button type="button" className="building-hire" data-testid="building-hire" onClick={onHire}>
+          Hire
+        </button>
+      ) : null}
       {card.icons.length > 0 ? (
         <div className="building-icons" data-testid="building-icons">
           {card.icons.map((icon) => (
@@ -116,7 +128,15 @@ export function BuildingPanelView({
   )
 }
 
-export function BuildingPanel({ card, onClose }: { card: BuildingCard | null; onClose: () => void }) {
+export function BuildingPanel({
+  card,
+  onClose,
+  onHire,
+}: {
+  card: BuildingCard | null
+  onClose: () => void
+  onHire?: () => void
+}) {
   const [open, setOpen] = useState<ReadonlySet<SectionId>>(new Set())
   const [forId, setForId] = useState(card?.id ?? '')
   if ((card?.id ?? '') !== forId) {
@@ -137,6 +157,7 @@ export function BuildingPanel({ card, onClose }: { card: BuildingCard | null; on
         })
       }
       onClose={onClose}
+      onHire={onHire}
     />
   )
 }

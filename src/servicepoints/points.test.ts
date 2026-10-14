@@ -49,14 +49,23 @@ describe('service point staffing', () => {
     expect(open.has('lane-extra')).toBe(true)
   })
 
-  it('a built terminal with no included points keeps every point open', () => {
+  it('a built terminal closes staffed points until someone is on the post', () => {
     const built: StaffPoint[] = [
       point({ id: 'd1', kind: 'checkin_desk' }),
       point({ id: 'd2', kind: 'checkin_desk' }),
+      point({ id: 'kiosk', kind: 'checkin_desk', automatic: true }),
       point({ id: 's1', kind: 'security_lane' }),
     ]
-    const open = openPointIds(built, { checkin: 0, security: 0 })
-    expect([...open].sort()).toEqual(['d1', 'd2', 's1'])
+    const closed = openPointIds(built, { checkin: 0, security: 0 })
+    expect(closed.has('kiosk')).toBe(true)
+    expect(closed.has('d1')).toBe(false)
+    expect(closed.has('d2')).toBe(false)
+    expect(closed.has('s1')).toBe(false)
+    const one = openPointIds(built, { checkin: 1, security: 1 })
+    expect(one.has('d1')).toBe(true)
+    expect(one.has('d2')).toBe(false)
+    expect(one.has('s1')).toBe(true)
+    expect(one.has('kiosk')).toBe(true)
   })
 
   it('extra servers open one per hired screener and never past the lanes placed', () => {
@@ -120,7 +129,7 @@ describe('info lines', () => {
       points.map((p) => ({ ...p, kind: 'checkin_desk', serviceSec: 4, estWaitSec: p.waitSec })),
       15,
     ), true)
-    expect(built).toContain('open: building service (no staff needed)')
+    expect(built).toContain('closed: no staff')
     expect(formatWait(0)).toBe('0s')
     expect(formatWait(95)).toBe('2 min')
   })

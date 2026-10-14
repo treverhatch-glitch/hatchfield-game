@@ -252,6 +252,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     document.getElementById(unlockFocus)?.scrollIntoView({ block: 'nearest' })
   }, [unlockFocus, manageTab])
 
+  const building = game.buildingCard()
   const ticker = game.news.slice(0, 5)
   const xp = game.fieldXpToNext()
   const standing = game.avgStanding()
@@ -262,7 +263,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
   return (
     <div className="hud">
-      <BuildingPanel card={game.buildingCard()} onClose={() => game.closeBuilding()} />
+      <BuildingPanel
+        card={building}
+        onClose={() => game.closeBuilding()}
+        onHire={building?.hire ? () => game.hireDeskStaff() : undefined}
+      />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
       {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}

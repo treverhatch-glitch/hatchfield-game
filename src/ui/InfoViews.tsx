@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Game } from '../game/sim.ts'
+import { CLOSED_NO_STAFF_LINE } from '../servicepoints/index.ts'
 import { moreInfoSpots, moreMenuSnapshot, setMoreMenu, subscribeMoreMenu } from '../info/moreMenu.ts'
 import { readMapView } from '../info/read.ts'
 import {
@@ -202,6 +203,8 @@ function Legend({ model, open, onNumbers }: { model: InfoViewModel; open: boolea
 function LinesPanel({ game, id, onClose }: { game: Game; id: string; onClose: () => void }) {
   const title = game.infoHotspots().find((spot) => spot.id === id)?.label ?? 'Info'
   const repair = id === 'links' ? game.linkRepairOffer() : null
+  const lines = game.infoLines(id)
+  const hireForPoint = lines.includes(CLOSED_NO_STAFF_LINE)
   return (
     <div className="info-detail">
       <aside className="info-panel" data-testid="info-view-panel">
@@ -212,12 +215,17 @@ function LinesPanel({ game, id, onClose }: { game: Game; id: string; onClose: ()
           </button>
         </header>
         <ul>
-          {game.infoLines(id).map((line) => (
+          {lines.map((line) => (
             <li key={line} className="info-detail-row" data-testid="info-line">
               {line}
             </li>
           ))}
         </ul>
+        {hireForPoint ? (
+          <button type="button" data-testid="hire-for-point" onClick={() => game.hireDeskStaff()}>
+            Hire
+          </button>
+        ) : null}
         {repair ? (
           <button
             type="button"

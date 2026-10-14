@@ -123,5 +123,20 @@ describe('building card', () => {
     expect(card.queueText).toBe('4 waiting')
     expect(card.queueWhy).toContain('people waiting')
     expect(card.throughputWhy).toContain('staffed and actually in use')
+    expect(card.hire).toBe(false)
+  })
+
+  it('offers a hire when a point is closed for lack of staff, and keeps a paused note', () => {
+    const card = buildingCard({
+      id: 'security',
+      name: 'Security',
+      plan: 'security',
+      upkeepPerDay: 0,
+      note: 'walk paused, estimate',
+      bays: [{ inUse: false, limit: 'closed: no staff', icon: 'staff', badge: 'staff' }],
+    })
+    expect(card.note).toBe('walk paused, estimate')
+    expect(card.hire).toBe(true)
+    expect(card.why).toBe('Bay 1 idle: closed: no staff')
   })
 })

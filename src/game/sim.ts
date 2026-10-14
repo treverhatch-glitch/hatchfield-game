@@ -208,7 +208,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout, hallSignage, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage, openCheckinCount, openSecurityCount, waitMoodDelta } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -363,9 +363,9 @@ import {
 } from '../scale/logic.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import {
+  CLOSED_NO_STAFF_LINE,
   SERVICE_POINT_TUNING,
   WALK_PAUSED_LINE,
-  isBuildingService,
   serviceInfoLines,
   throughputOf,
   type PointLoad,
@@ -11988,12 +11988,21 @@ export class Game {
 
   /**
    * Security lanes that can serve. Same count the walk has open: bundle
-   * lanes stay open, player lanes need a screener on the post, and a
-   * player-built hall with no bundle lanes keeps every lane open.
+   * lanes stay open, and every other lane needs a screener on the post.
    */
   securityServers(fit: TerminalFit | null = this.activeHall()): number {
     if (!fit) return 0
     return openSecurityCount(this.hallServiceFacilities(fit), fit.items ?? [], this.onPostCount('security'))
+  }
+
+  /**
+   * Check-in desks that can serve. Same count the walk has open: bundle
+   * desks and self-serve kiosks stay open, and every other desk needs a
+   * clerk on the post.
+   */
+  checkinServers(fit: TerminalFit | null = this.activeHall()): number {
+    if (!fit) return 0
+    return openCheckinCount(this.hallServiceFacilities(fit), fit.items ?? [], this.onPostCount('checkin'))
   }
 
   /**
@@ -12009,8 +12018,6 @@ export class Game {
       return [WALK_PAUSED_LINE, `${count} waiting at ${label.toLowerCase()}`]
     }
     const metrics = this.hallNav.metrics().filter((m) => m.kind === kind)
-    const fit = this.activeHall()
-    const buildingService = isBuildingService(staffPoints(this.hallServiceFacilities(fit), fit?.items ?? []), kind)
     const scale = HALL_NAV_TUNING.navSecPerClockSec
     const limit = (HALL_QUEUE_TUNING.bottleneckSec[kind] ?? 600) / scale
     const loads: PointLoad[] = metrics.map((m) => ({
@@ -12030,7 +12037,8 @@ export class Game {
       serving: p.serving,
       waitSec: p.estWaitSec,
     }))
-    return serviceInfoLines(label, info, throughputOf(loads, limit), buildingService)
+    const closedForStaff = info.some((p) => !p.staffed)
+    return serviceInfoLines(label, info, throughputOf(loads, limit), closedForStaff)
   }
 
   securityQueueCount(): number {
@@ -12644,8 +12652,9 @@ export class Game {
         if (dest) this.routeGuest(g, dest, open)
       }
     }
-    if (n === 'checkin' && g.job === 'depart') {
-      if (!this.staffedPost('checkin')) {
+    // A cleared guest walking back through the desk is not checking in again.
+    if (n === 'checkin' && g.job === 'depart' && !g.clearedSec) {
+      if (this.checkinServers(this.fitByKey(g.hallId) ?? this.activeHall()) <= 0) {
         g.thought = 'Empty check-in — waiting on a clerk'
         g.happiness -= 1.5
         g.needs.boarding = Math.max(0, g.needs.boarding - 1.5)
@@ -16853,8 +16862,9 @@ export class Game {
       const item = (fit?.items ?? []).find((it) => it.id === id.slice(5))
       if (!item) return null
       const def = itemDef(item.def)
-      if (def?.room === 'checkin' || def?.room === 'security') {
-        return this.queueReading(def.room, def.name)
+      if (def?.room === 'checkin' || def?.room === 'bagdrop' || def?.room === 'security') {
+        const node = def.room === 'security' ? 'security' : 'checkin'
+        return this.queueReading(node, def.name)
       }
       return {
         id,
@@ -16903,6 +16913,7 @@ export class Game {
             badge: 'staff',
           },
         ],
+        note: this.hallNav.live ? undefined : WALK_PAUSED_LINE,
       }
     }
     const scale = HALL_NAV_TUNING.navSecPerClockSec
@@ -16921,7 +16932,7 @@ export class Game {
       const busy = point.staffed && (point.serving || point.queueLength > 0)
       return {
         inUse: busy,
-        limit: point.staffed ? undefined : 'unstaffed',
+        limit: point.staffed ? undefined : CLOSED_NO_STAFF_LINE,
         icon: point.staffed ? undefined : 'staff',
         badge: 'staff',
       }

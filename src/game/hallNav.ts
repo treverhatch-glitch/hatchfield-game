@@ -29,12 +29,13 @@ import {
   type PaxEvent,
   type PaxWait,
   type Signage,
+  serviceSecOf,
 } from '../paxnav/index.ts'
 import type { HallQueue } from '../terminalplay/queues.ts'
 import type { HallNode } from './guests.ts'
 import { facilityBlockers } from '../terminalplay/facilities.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
-import { openPointIds, type HiredPosts, type StaffPoint } from '../servicepoints/index.ts'
+import { SERVICE_POINT_TUNING, openPointIds, type HiredPosts, type StaffPoint } from '../servicepoints/index.ts'
 import { HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
 import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
 
@@ -467,10 +468,18 @@ function itemForDesk(facilityId: string, items: readonly StaffItemRef[]): StaffI
 }
 
 /**
- * A check-in piece with servers and a staff of 0 runs itself (the self-service
- * kiosk). Staff and room live on the item def.
+ * A piece with servers and a staff of 0 runs itself: a self-service kiosk
+ * or a bag drop. Staff and room live on the item def, not the id.
  */
-function deskRunsItself(defId: string): boolean {
+function pointRunsItself(defId: string): boolean {
+  const def = itemDef(defId)
+  if (!def || def.servers <= 0 || def.staff > 0) return false
+  const kind = def.room ? PREFAB_ROOM_KIT[def.room] : undefined
+  return kind === 'checkin_desk' || kind === 'security_lane'
+}
+
+/** A self-serve check-in kiosk. Bag drops run themselves and keep desk speed. */
+function isKioskDef(defId: string): boolean {
   const def = itemDef(defId)
   return Boolean(def && def.room === 'checkin' && def.servers > 0 && def.staff <= 0)
 }
@@ -497,11 +506,24 @@ export function staffPoints(
         id: f.id,
         kind: 'checkin_desk',
         included: Boolean(it?.bundle),
-        automatic: it ? deskRunsItself(it.def) : false,
+        automatic: it ? pointRunsItself(it.def) : false,
       })
     }
   }
   return out
+}
+
+function countOpen(
+  facilities: readonly { id: string; kind: string }[],
+  items: readonly StaffItemRef[],
+  hired: HiredPosts,
+  kind: 'checkin_desk' | 'security_lane',
+): number {
+  const points = staffPoints(facilities, items)
+  const open = openPointIds(points, hired)
+  let n = 0
+  for (const p of points) if (p.kind === kind && open.has(p.id)) n += 1
+  return n
 }
 
 /** Open security lanes: the same set the walk will serve. */
@@ -510,12 +532,18 @@ export function openSecurityCount(
   items: readonly StaffItemRef[],
   screenersOnPost: number,
 ): number {
-  const points = staffPoints(facilities, items)
   const hired = Number.isFinite(screenersOnPost) ? Math.max(0, Math.floor(screenersOnPost)) : 0
-  const open = openPointIds(points, { checkin: 0, security: hired })
-  let n = 0
-  for (const p of points) if (p.kind === 'security_lane' && open.has(p.id)) n += 1
-  return n
+  return countOpen(facilities, items, { checkin: 0, security: hired }, 'security_lane')
+}
+
+/** Open check-in desks: bundle desks, self-serve kiosks, and desks with a clerk on the post. */
+export function openCheckinCount(
+  facilities: readonly { id: string; kind: string }[],
+  items: readonly StaffItemRef[],
+  clerksOnPost: number,
+): number {
+  const hired = Number.isFinite(clerksOnPost) ? Math.max(0, Math.floor(clerksOnPost)) : 0
+  return countOpen(facilities, items, { checkin: hired, security: 0 }, 'checkin_desk')
 }
 
 /**
@@ -848,7 +876,21 @@ export class HallNav {
     return total
   }
 
+  /** Kiosk service time is a share of the desk, recomputed from the equipment so it does not compound. */
+  private applyKioskPace(nav: PaxNav): void {
+    const share = SERVICE_POINT_TUNING.kioskServiceShare
+    if (!(share > 0) || share > 1) return
+    for (const eq of nav.layout.equipment) {
+      if (eq.kind !== 'checkin_desk') continue
+      const it = itemForDesk(eq.id, this.staffItems)
+      if (!it || !isKioskDef(it.def)) continue
+      const facility = nav.facilities.byId.get(eq.id)
+      if (facility) facility.serviceSec = serviceSecOf(eq) * share
+    }
+  }
+
   private applyStaffing(nav: PaxNav): void {
+    this.applyKioskPace(nav)
     if (!this.hired) return
     const points = staffPoints(nav.facilities.list, this.staffItems)
     nav.setStaffing(openPointIds(points, this.hired))

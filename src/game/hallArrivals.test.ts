@@ -163,7 +163,9 @@ describe('arrivals on the hall nav grid', () => {
     expect(game.hallNav.drawsArrival(transfer.id)).toBe(false)
     const out = new Float32Array(game.hallNav.count * 4)
     expect(game.hallNav.writePoses(out)).toBe(game.hallNav.count)
-    for (let i = 0; i < 4000 && game.hallNav.left < 20; i++) game.tickHallNav(0.02)
+    // A faster kiosk puts the starter bank into the hall sooner, so one arrival
+    // needs a little longer than 80s to reach the curb.
+    for (let i = 0; i < 5600 && game.hallNav.left < 20; i++) game.tickHallNav(0.02)
     expect(game.hallNav.left).toBe(20)
   })
 })

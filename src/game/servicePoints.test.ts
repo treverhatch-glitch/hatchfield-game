@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { BUILDING_SERVICE_LINE, WALK_PAUSED_LINE, openPointIds } from '../servicepoints/index.ts'
+import { CLOSED_NO_STAFF_LINE, SERVICE_POINT_TUNING, WALK_PAUSED_LINE, openPointIds } from '../servicepoints/index.ts'
 import { HALL_POST, onPostNow, spawnHallGuest } from './guests.ts'
-import { openSecurityCount, prefabNavLayout, staffPoints } from './hallNav.ts'
+import { openCheckinCount, openSecurityCount, prefabNavLayout, staffPoints } from './hallNav.ts'
 import { Game } from './sim.ts'
 import { itemDef, schemeItems, schemeZones } from './terminal.ts'
 import type { ShowUpPlan } from '../pax/showup.ts'
@@ -119,12 +119,17 @@ describe('service point source of truth', () => {
     custom.hallRev++
     sync(custom)
     const customLanes = custom.hallNav.nav!.facilities.list.filter((f) => f.kind === 'security_lane')
+    const customDesks = custom.hallNav.nav!.facilities.list.filter((f) => f.kind === 'checkin_desk')
     expect(customLanes.length).toBeGreaterThan(0)
-    expect(customLanes.every((f) => f.staffed)).toBe(true)
-    expect(custom.securityServers()).toBe(customLanes.length)
+    expect(customLanes.every((f) => !f.staffed)).toBe(true)
+    expect(custom.securityServers()).toBe(0)
     expect(custom.onPostCount('security')).toBe(0)
-    expect(custom.servicePointLines('security')).toContain(BUILDING_SERVICE_LINE)
-    expect(custom.servicePointLines('checkin')).toContain(BUILDING_SERVICE_LINE)
+    expect(customDesks.some((f) => f.id.includes('kiosk') && f.staffed)).toBe(true)
+    expect(customDesks.some((f) => !f.staffed)).toBe(true)
+    expect(custom.checkinServers()).toBe(customDesks.filter((f) => f.staffed).length)
+    expect(custom.servicePointLines('security')).toContain(CLOSED_NO_STAFF_LINE)
+    expect(custom.servicePointLines('checkin')).toContain(CLOSED_NO_STAFF_LINE)
+    expect(custom.servicePointLines('security')).not.toContain('open: building service')
 
     const kiosk = field()
     const fit = kiosk.activeHall()!
@@ -200,7 +205,110 @@ describe('service point source of truth', () => {
     expect(g.serviceLeft).toBeGreaterThan(2.5)
     expect(g.serviceLeft).toBeLessThan(4)
   })
+
+  it('serves a kiosk in 40 to 50 percent of a staffed desk and leaves a bag drop at desk speed', () => {
+    const game = field()
+    const fit = game.activeHall()!
+    const spot = freeCheckinCell(fit)
+    expect(spot).toBeTruthy()
+    fit.items!.push({ id: 'drop-1', def: 'bag_drop', c: spot!.c, r: spot!.r, wear: 0, bundle: false })
+    game.hallRev++
+    sync(game)
+    const list = game.hallNav.nav!.facilities.list
+    const kiosk = list.find((f) => f.kind === 'checkin_desk' && f.id.includes('kiosk'))
+    const belt = list.find((f) => f.kind === 'checkin_desk' && f.id.includes('checkin_belt'))
+    const drop = list.find((f) => f.id.startsWith('drop-1'))
+    expect(kiosk).toBeTruthy()
+    expect(belt).toBeTruthy()
+    expect(drop?.staffed).toBe(true)
+    const ratio = kiosk!.serviceSec / belt!.serviceSec
+    expect(ratio).toBeGreaterThanOrEqual(0.4)
+    expect(ratio).toBeLessThanOrEqual(0.5)
+    expect(ratio).toBeCloseTo(SERVICE_POINT_TUNING.kioskServiceShare)
+    expect(drop!.serviceSec).toBeCloseTo(belt!.serviceSec)
+    const points = staffPoints(list, fit.items ?? [])
+    expect(points.find((p) => p.id.startsWith('drop-1'))).toMatchObject({ automatic: true, included: false })
+    expect(openPointIds(points, { checkin: 0, security: 0 }).has(drop!.id)).toBe(true)
+    expect(game.checkinServers()).toBe(openCheckinCount(list, fit.items ?? [], 0))
+  })
+
+  it('lets an open kiosk check a passenger in with no clerk, and waits when nothing is open', () => {
+    const open = field()
+    const openFit = open.activeHall()!
+    for (const it of openFit.items ?? []) {
+      const def = itemDef(it.def)
+      if (def?.room === 'checkin' && def.staff > 0) it.bundle = false
+    }
+    open.hallRev++
+    sync(open)
+    expect(open.onPostCount('checkin')).toBe(0)
+    expect(open.checkinServers()).toBeGreaterThan(0)
+    const served = spawnHallGuest('kiosk-pax', 'depart', 'budget', { hallId: open.hallKey(openFit) })
+    served.node = 'checkin'
+    served.bagsDropped = true
+    served.path = []
+    open.serveNode(served, open.hallOpen())
+    expect(served.thought).not.toBe('Empty check-in — waiting on a clerk')
+    expect(served.thought).toBe('Heading to security')
+
+    const shut = field()
+    const shutFit = shut.activeHall()!
+    shutFit.items = (shutFit.items ?? []).filter((it) => {
+      const def = itemDef(it.def)
+      return !(def && def.staff <= 0 && (def.room === 'checkin' || def.room === 'bagdrop'))
+    })
+    for (const it of shutFit.items) {
+      const def = itemDef(it.def)
+      if (def?.room === 'checkin' || def?.room === 'bagdrop') it.bundle = false
+    }
+    shut.hallRev++
+    sync(shut)
+    expect(shut.checkinServers()).toBe(0)
+    const waiting = spawnHallGuest('desk-pax', 'depart', 'budget', { hallId: shut.hallKey(shutFit) })
+    waiting.node = 'checkin'
+    waiting.path = []
+    shut.serveNode(waiting, shut.hallOpen())
+    expect(waiting.thought).toBe('Empty check-in — waiting on a clerk')
+  })
+
+  it('puts the paused estimate on the building card, and a hire on a closed lane', () => {
+    const game = field()
+    game.setView('hall')
+    game.selectFacility('security')
+    const paused = game.buildingCard()
+    expect(paused?.note).toBe(WALK_PAUSED_LINE)
+    expect(paused?.hire).toBe(false)
+
+    sync(game)
+    const live = game.buildingCard()
+    expect(live?.note).toBeUndefined()
+    expect(live?.hire).toBe(false)
+
+    const custom = field()
+    const fit = custom.activeHall()!
+    for (const it of fit.items ?? []) it.bundle = false
+    custom.hallRev++
+    custom.setView('hall')
+    custom.selectFacility('security')
+    sync(custom)
+    const card = custom.buildingCard()
+    expect(card?.note).toBeUndefined()
+    expect(card?.hire).toBe(true)
+    expect(card?.bays.some((bay) => bay.limit === CLOSED_NO_STAFF_LINE)).toBe(true)
+    expect(card?.why).toContain(CLOSED_NO_STAFF_LINE)
+  })
 })
+
+function freeCheckinCell(fit: NonNullable<ReturnType<Game['activeHall']>>): { c: number; r: number } | null {
+  const taken = new Set((fit.items ?? []).map((it) => `${it.c},${it.r}`))
+  const zones = fit.zones ?? []
+  for (let r = 0; r < zones.length; r++) {
+    for (let c = 0; c < (zones[r]?.length ?? 0); c++) {
+      if (zones[r][c] === 'checkin' && !taken.has(`${c},${r}`)) return { c, r }
+    }
+  }
+  return null
+}
 
 function release(game: Game, n: number, leadClock: number, tag: string) {
   const hallId = game.hallKey(game.activeHall()!)
@@ -297,6 +405,8 @@ describe('waits feed misses, mood and reputation', () => {
     expect(meanMood(thin, 'again')).toBeGreaterThan(thinMood)
     const repAfterQueue = thin.reputation
     flushReputation(thin, 20)
-    expect(thin.reputation).toBeGreaterThanOrEqual(repAfterQueue - 0.05)
+    // The kiosk is faster than the desk, so this bank reaches the lane a little sooner.
+    // The flush may nick reputation. It does not give back the unstaffed drop.
+    expect(thin.reputation).toBeGreaterThanOrEqual(repAfterQueue - 0.1)
   }, 120_000)
 })
