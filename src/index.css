@@ -481,6 +481,12 @@ button {
   justify-content: space-between;
   gap: 8px;
   align-items: flex-start;
+  position: sticky;
+  top: -12px;
+  z-index: 3;
+  margin: -12px -12px 0;
+  padding: 12px 12px 8px;
+  background: rgba(10, 20, 16, 0.96);
 }
 
 .building-panel h2 {
@@ -537,6 +543,7 @@ button {
 
 .building-tip {
   display: none;
+  pointer-events: none;
   position: absolute;
   left: 0;
   top: calc(100% + 4px);
@@ -586,7 +593,17 @@ button {
 }
 
 .building-figure p {
+  position: relative;
   margin: 2px 0;
+}
+
+.building-figure p > span {
+  cursor: help;
+}
+
+.building-figure p:hover .building-tip,
+.building-figure p:focus-within .building-tip {
+  display: block;
 }
 
 .hall-alert {

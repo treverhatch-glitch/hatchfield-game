@@ -90,7 +90,7 @@ Cities: Skylines keeps the HUD thin and puts the breakdown on the thing you clic
 
 | Click | Opens | Numbers stay behind |
 | --- | --- | --- |
-| A placed building (not grass, runway, or taxiway) | Left building panel: name, status, one why line, bottleneck icons | Throughput, Bays, Upkeep, Staff. Bays lists each bay, including "Bay 2 idle: no tug". Check-in and security use this same panel from inside the hall. |
+| A placed building (not grass, runway, or taxiway) | Left building panel: name, status, one why line, bottleneck icons | Throughput, Bays, Queue, Staff, Upkeep, Bottleneck. Each figure's tooltip starts with "Inputs:". Bays lists each bay, including "Bay 2 idle: no tug". Queue is people at a desk or vehicles waiting on a taken bay. Check-in and security use this same panel from inside the hall. |
 | An info-view pill | Legend: title, colour key, short scores, a why tooltip that starts with "Inputs:" | The Numbers control. Traffic reuses the landside panel. Fuel reuses the fuel-farm panel. The others use `info-view-panel` (scores, per-cell details, fix lines). |
 | Field badge | Growth → Field Levels | The per-level stamp list. |
 | Cash | Forecast card | The charge lines. Open books jumps to Money → Overview. |

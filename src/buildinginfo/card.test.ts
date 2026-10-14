@@ -23,6 +23,14 @@ describe('building card', () => {
     })
     expect(card.throughputText).toBe('4 services')
     expect(card.staffText).toBe('1 / 1')
+    expect(card.queueText).toBe('0 waiting')
+    expect(card.queueWhy).toMatch(/^Inputs:/)
+    expect(card.throughputWhy).toMatch(/^Inputs:/)
+    expect(card.baysWhy).toMatch(/^Inputs:/)
+    expect(card.staffWhy).toMatch(/^Inputs:/)
+    expect(card.upkeepWhy).toMatch(/^Inputs:/)
+    expect(card.bottleneckText).toBe('Bay 2 idle: no tug')
+    expect(card.bottleneckWhy).toContain('Bay 2 idle: no tug')
   })
 
   it('a jumbo stand stays limited when only a small tug is on the fleet', () => {
@@ -99,6 +107,8 @@ describe('building card', () => {
       throughputPerMin: 6.25,
       unit: 'pax/min',
       demand: 1,
+      queueLength: 4,
+      queueKind: 'passengers',
       bays: [
         { inUse: true },
         { inUse: false, limit: 'unstaffed', icon: 'staff', badge: 'staff' },
@@ -110,5 +120,8 @@ describe('building card', () => {
     expect(card.upkeepText).toBe('$40 / day')
     expect(card.staffText).toBe('1 / 2')
     expect(card.icons[0]?.why).toBe('Bay 2 idle: unstaffed')
+    expect(card.queueText).toBe('4 waiting')
+    expect(card.queueWhy).toContain('people waiting')
+    expect(card.throughputWhy).toContain('staffed and actually in use')
   })
 })

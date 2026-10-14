@@ -147,6 +147,7 @@ function hudSnapshot(): string {
         game.disruptionStamp(),
         game.signed.join(','),
         game.selectedFlight,
+        game.selectedBuilding ?? '',
         game.selectedGuest,
         game.news[0]?.id,
         game.fuelLoads,

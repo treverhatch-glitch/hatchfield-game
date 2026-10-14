@@ -30,10 +30,14 @@ describe('building panel', () => {
     expect(html).toContain('class="building-tip"')
     expect(html).not.toContain('data-testid="building-figure-throughput"')
     expect(html).not.toContain('data-testid="building-figure-bays"')
+    expect(html).not.toContain('data-testid="building-figure-queue"')
     expect(html).not.toContain('data-testid="building-figure-upkeep"')
     expect(html).not.toContain('data-testid="building-figure-staff"')
+    expect(html).not.toContain('data-testid="building-figure-bottleneck"')
     expect(html).not.toContain('4 / 5')
     expect(html).not.toContain('$0 / day')
+    expect(html).not.toContain('0 waiting')
+    expect(html).not.toContain('Inputs:')
   })
 
   it('shows the bay count and the idle line once Bays is opened', () => {
@@ -44,6 +48,21 @@ describe('building panel', () => {
     expect(html).toContain('data-testid="building-figure-bays"')
     expect(html).toContain('4 / 5')
     expect(html).toContain('Bay 2 · idle · no tug')
+    expect(html).toContain('title="Inputs: bays in use against this building')
     expect(html).not.toContain('data-testid="building-figure-throughput"')
+  })
+
+  it('explains the queue and the bottleneck once those sections are open', () => {
+    const card = standCard()
+    const html = renderToStaticMarkup(
+      <BuildingPanelView card={card} open={new Set(['queue', 'bottleneck'])} onToggle={() => {}} onClose={() => {}} />,
+    )
+    expect(html).toContain('data-testid="building-figure-queue"')
+    expect(html).toContain('0 waiting')
+    expect(html).toContain('data-testid="building-why-queue"')
+    expect(html).toContain('no passenger line')
+    expect(html).toContain('data-testid="building-figure-bottleneck"')
+    expect(html).toContain('data-testid="building-why-bottleneck"')
+    expect(html).toContain('first bay whose kit or crew is missing')
   })
 })

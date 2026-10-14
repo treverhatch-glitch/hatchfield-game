@@ -16397,31 +16397,43 @@ export class Game {
       upkeepPerDay: spec.upkeep,
       closed: Boolean(late && !isOpen(late)),
     }
-    if (base.closed) return base
-    if (tile === 'mro') return this.mroReading(base)
-    if (tile === 'nighthub') return this.nightHubReading(base)
+    if (base.closed) return this.withQueue(base, 'none', 0)
+    if (tile === 'mro') return this.attachVehicleQueue(this.mroReading(base))
+    if (tile === 'nighthub') return this.attachVehicleQueue(this.nightHubReading(base))
     if (tile === 'stand') {
-      return {
-        ...base,
-        demand: this.standOccupied(v) ? 1 : 0,
-        staffAssigned: this.crewOn(fleet, [
-          'pushback_tug',
-          'heavy_tug',
-          'fuel_truck',
-          'heavy_fuel_truck',
-          'baggage_tug',
-          'belt_loader',
-          'catering_truck',
-        ]),
-      }
+      return this.withQueue(
+        {
+          ...base,
+          demand: this.standOccupied(v) ? 1 : 0,
+          staffAssigned: this.crewOn(fleet, [
+            'pushback_tug',
+            'heavy_tug',
+            'fuel_truck',
+            'heavy_fuel_truck',
+            'baggage_tug',
+            'belt_loader',
+            'catering_truck',
+          ]),
+        },
+        'vehicles',
+        this.standQueue(id),
+      )
     }
     if (tile === 'fuel') {
       const demand = this.flights.some((f) => f.phase !== 'gone' && f.waitingOn.fuel) ? 1 : 0
-      return { ...base, demand, staffAssigned: this.crewOn(fleet, ['fuel_truck', 'heavy_fuel_truck', 'hydrant_dispenser']) }
+      return this.attachVehicleQueue({
+        ...base,
+        demand,
+        staffAssigned: this.crewOn(fleet, ['fuel_truck', 'heavy_fuel_truck', 'hydrant_dispenser']),
+      })
     }
     if (tile === 'kitchen') {
       const demand = this.flights.some((f) => f.phase !== 'gone' && f.waitingOn.catering) ? 1 : 0
-      return { ...base, demand, staffAssigned: this.crewOn(fleet, ['catering_truck', 'highlift_catering']) }
+      return this.attachVehicleQueue({
+        ...base,
+        demand,
+        staffAssigned: this.crewOn(fleet, ['catering_truck', 'highlift_catering']),
+      })
     }
     if (tile === 'bags' || tile === 'depot' || tile === 'cargo') {
       const demand = this.flights.some((f) => f.phase !== 'gone' && (f.waitingOn.bags || f.waitingOn.bagsLoad)) ? 1 : 0
@@ -16431,20 +16443,47 @@ export class Game {
           : tile === 'bags'
             ? ['baggage_tug', 'heavy_baggage_tug']
             : ['pushback_tug', 'heavy_tug', 'fuel_truck', 'belt_loader']
-      return { ...base, demand, staffAssigned: this.crewOn(fleet, types) }
+      return this.attachVehicleQueue({ ...base, demand, staffAssigned: this.crewOn(fleet, types) })
     }
     if (tile === 'hangar') {
-      return {
+      return this.attachVehicleQueue({
         ...base,
         demand: this.hangarOccupant(v) ? 1 : 0,
         staffAssigned: this.mechanics,
-      }
+      })
     }
     if (tile === 'terminal') {
       const demand = this.hallGuests.some((g) => !g.dead) ? 1 : 0
-      return { ...base, demand, staffAssigned: this.deskStaff }
+      return this.attachVehicleQueue({ ...base, demand, staffAssigned: this.deskStaff })
     }
-    return base
+    return this.attachVehicleQueue(base)
+  }
+
+  /** People or vehicles waiting on this building. A missing line stays at zero. */
+  private withQueue(reading: Reading, queueKind: 'passengers' | 'vehicles' | 'none', queueLength: number): Reading {
+    return { ...reading, queueKind, queueLength: Math.max(0, Math.floor(queueLength)) }
+  }
+
+  private standQueue(id: string): number {
+    return this.bayView().stands.find((stand) => stand.id === id)?.queued ?? 0
+  }
+
+  private dockQueue(ownerId: string): number {
+    const docks = this.ground?.sim.dockReport() ?? []
+    let queued = 0
+    for (const row of docks) {
+      if (row.ownerId === ownerId) queued += Math.max(0, row.queued)
+    }
+    return queued
+  }
+
+  /** Vehicle bay-queue when logistics has a dock for this tile. Otherwise there is no line. */
+  private attachVehicleQueue(reading: Reading): Reading {
+    if (reading.queueKind) return reading
+    const docks = this.ground?.sim.dockReport() ?? []
+    const listed = docks.some((row) => row.ownerId === reading.id)
+    if (!listed) return this.withQueue(reading, 'none', 0)
+    return this.withQueue(reading, 'vehicles', this.dockQueue(reading.id))
   }
 
   private mroReading(base: Reading): Reading {
@@ -16538,6 +16577,8 @@ export class Game {
         staffAssigned: hired,
         staffNeeded: Math.max(1, hired),
         demand: waiting > 0 ? 1 : 0,
+        queueLength: waiting,
+        queueKind: 'passengers',
         bays: [
           {
             inUse: false,
@@ -16579,6 +16620,8 @@ export class Game {
       demand: throughput.inUse > 0 || throughput.queueLength > 0 ? 1 : 0,
       throughputPerMin: throughput.perMin,
       unit: 'pax/min',
+      queueLength: throughput.queueLength,
+      queueKind: 'passengers',
       bays,
     }
   }

@@ -44,9 +44,18 @@ export interface BuildingCard {
   bays: BayView[]
   upkeepPerDay: number
   upkeepText: string
+  upkeepWhy: string
   staffAssigned: number
   staffNeeded: number
   staffText: string
+  staffWhy: string
+  queueLength: number
+  queueText: string
+  queueWhy: string
+  throughputWhy: string
+  baysWhy: string
+  bottleneckText: string
+  bottleneckWhy: string
   icons: BottleneckIcon[]
 }
 
@@ -71,6 +80,9 @@ export interface Reading {
   /** Replaces in-use × rate when the sim already measured throughput. */
   throughputPerMin?: number
   unit?: string
+  /** People or vehicles waiting on this building. Omitted means there is no line. */
+  queueLength?: number
+  queueKind?: 'passengers' | 'vehicles' | 'none'
 }
 
 const STATUS_LABEL: Record<BuildingStatus, string> = {
@@ -185,6 +197,7 @@ export function buildingCard(reading: Reading): BuildingCard {
     }
   }
   if (reading.closed) throughput = 0
+  const measured = Number.isFinite(finite(reading.throughputPerMin, NaN))
 
   const equipment = bays.find((bay) => bay.limit && bay.limit !== 'short of staff')
   const staffBay = bays.find((bay) => bay.limit === 'short of staff')
@@ -208,6 +221,11 @@ export function buildingCard(reading: Reading): BuildingCard {
     why = 'Idle — nothing is using a bay'
   }
 
+  const queueKind = reading.queueKind ?? 'none'
+  const queueLength = reading.closed ? 0 : Math.max(0, Math.floor(finite(reading.queueLength)))
+  const queueWhy = queueExplanation(queueKind, reading.closed)
+  const bottleneckWhy = bottleneckExplanation(status, why, equipment, short, staffAssigned, staffNeeded)
+
   return {
     id: reading.id,
     name: reading.name,
@@ -216,15 +234,51 @@ export function buildingCard(reading: Reading): BuildingCard {
     why,
     throughputPerMin: throughput,
     throughputText: `${amount(throughput)} ${unit}`,
+    throughputWhy: reading.closed
+      ? 'Inputs: the building is still going up, so throughput is zero.'
+      : measured
+        ? 'Inputs: the clear rate of the points that are staffed and actually in use.'
+        : 'Inputs: each in-use bay times its plan rate. An idle or closed bay adds nothing.',
     baysInUse,
     baysTotal,
     baysText: `${baysInUse} / ${baysTotal}`,
+    baysWhy:
+      'Inputs: bays in use against this building\'s bay count. A bay is in use only when its kit is present, the crew is not zero, and something is asking for it.',
     bays,
+    queueLength,
+    queueText: `${queueLength} waiting`,
+    queueWhy,
     upkeepPerDay: finite(reading.upkeepPerDay),
     upkeepText: `${dollars(reading.upkeepPerDay)} / day`,
+    upkeepWhy: 'Inputs: the catalog daily upkeep for this building. It bills whether or not a bay is in use.',
     staffAssigned,
     staffNeeded,
     staffText: `${staffAssigned} / ${staffNeeded}`,
+    staffWhy: 'Inputs: bodies assigned on this building against the crew the plan calls for. Zero bodies idle every bay.',
+    bottleneckText: why,
+    bottleneckWhy,
     icons: reading.closed ? [] : iconsFor(bays, inputs, staffAssigned, staffNeeded),
   }
+}
+
+function queueExplanation(kind: 'passengers' | 'vehicles' | 'none', closed: boolean | undefined): string {
+  if (closed) return 'Inputs: the building is still going up, so the line is empty.'
+  if (kind === 'passengers') return 'Inputs: people waiting at these desks, not counting the passenger being served.'
+  if (kind === 'vehicles') return 'Inputs: vehicles waiting because a bay on this building is already taken.'
+  return 'Inputs: this building has no passenger line and no vehicle bay-queue.'
+}
+
+function bottleneckExplanation(
+  status: BuildingStatus,
+  why: string,
+  equipment: BayView | undefined,
+  short: number,
+  staffAssigned: number,
+  staffNeeded: number,
+): string {
+  if (status === 'closed') return 'Inputs: construction is not finished, so the building is closed.'
+  if (equipment) return `Inputs: ${why}. That is the first bay whose kit or crew is missing.`
+  if (short > 0) return `Inputs: ${staffAssigned} assigned against ${staffNeeded} needed. The shortfall is the bottleneck.`
+  if (status === 'idle') return 'Inputs: no bay is in use. Nothing is asking this building to work.'
+  return 'Inputs: every open bay can run, and at least one is in use. There is no bottleneck.'
 }

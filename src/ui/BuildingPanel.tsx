@@ -4,8 +4,10 @@ import type { BuildingCard } from '../buildinginfo/card.ts'
 const SECTIONS = [
   ['throughput', 'Throughput'],
   ['bays', 'Bays'],
-  ['upkeep', 'Upkeep'],
+  ['queue', 'Queue'],
   ['staff', 'Staff'],
+  ['upkeep', 'Upkeep'],
+  ['bottleneck', 'Bottleneck'],
 ] as const
 
 type SectionId = (typeof SECTIONS)[number][0]
@@ -28,8 +30,18 @@ export function BuildingPanelView({
   const figures: Record<SectionId, string> = {
     throughput: card.throughputText,
     bays: card.baysText,
-    upkeep: card.upkeepText,
+    queue: card.queueText,
     staff: card.staffText,
+    upkeep: card.upkeepText,
+    bottleneck: card.bottleneckText,
+  }
+  const whys: Record<SectionId, string> = {
+    throughput: card.throughputWhy,
+    bays: card.baysWhy,
+    queue: card.queueWhy,
+    staff: card.staffWhy,
+    upkeep: card.upkeepWhy,
+    bottleneck: card.bottleneckWhy,
   }
   return (
     <aside className="building-panel" data-testid="building-panel" data-status={card.status}>
@@ -80,7 +92,14 @@ export function BuildingPanelView({
             </button>
             {shown ? (
               <div className="building-figure" data-testid={`building-figure-${id}`}>
-                <p>{figures[id]}</p>
+                <p>
+                  <span tabIndex={0} title={whys[id]} data-testid={`building-why-${id}`}>
+                    {figures[id]}
+                    <span className="building-tip" role="tooltip">
+                      {whys[id]}
+                    </span>
+                  </span>
+                </p>
                 {id === 'bays'
                   ? card.bays.map((bay) => (
                       <p key={bay.index} data-testid={`building-bay-${bay.index}`}>
