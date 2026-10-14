@@ -1,0 +1,118 @@
+{
+  "day": 1,
+  "clock": 181.5,
+  "gameTime": "day 2 00:12",
+  "cash": 56390,
+  "loanBalance": 47800,
+  "revenue": 32559,
+  "incomeByCategory": {
+    "deposits": 11760,
+    "retail_sales": 1312,
+    "landing_fees": 13073,
+    "passenger_fees": 972,
+    "baggage_fees": 620,
+    "catering_fees": 258,
+    "contract_fees": 2700,
+    "fuel_sales": 9600,
+    "parking_fees": 4024
+  },
+  "costsByCategory": {
+    "penalties": -720,
+    "building_upkeep": -1210,
+    "payroll": -24419
+  },
+  "byCategoryRaw": {
+    "deposits": 11760,
+    "retail_sales": 1312,
+    "landing_fees": 13073,
+    "passenger_fees": 972,
+    "baggage_fees": 620,
+    "catering_fees": 258,
+    "contract_fees": 2700,
+    "fuel_sales": 9600,
+    "parking_fees": 4024,
+    "penalties": -720,
+    "building_upkeep": -1210,
+    "payroll": -24419
+  },
+  "totalIncome": 44319,
+  "totalExpense": 26349,
+  "fieldXp": 28,
+  "fieldLevel": 1,
+  "reputation": 56.55,
+  "researchUnlocked": [],
+  "activeAirlines": [
+    "bushline"
+  ],
+  "airlinesFlying": [
+    "bushline",
+    "ga"
+  ],
+  "flightsActive": 2,
+  "flightsDone": 3,
+  "paxLost": 0,
+  "bagsLost": 0,
+  "missedFlights": 0,
+  "stuckVehicles": 0,
+  "anomalies": [
+    {
+      "severity": "high",
+      "category": "double-spend",
+      "title": "charge posted twice for $400",
+      "gameTime": "day 1 15:02",
+      "evidence": "charge at t=52.5 and t=112.75 (action #7)"
+    },
+    {
+      "severity": "high",
+      "category": "double-spend",
+      "title": "charge posted twice for $400",
+      "gameTime": "day 1 17:42",
+      "evidence": "charge at t=112.75 and t=132.75 (action #7)"
+    },
+    {
+      "severity": "medium",
+      "category": "script-gap",
+      "title": "could not sign zoomjet",
+      "gameTime": "day 1 00:00",
+      "evidence": "{\"ok\":false,\"why\":\"airline not in allAirlines()\"}"
+    },
+    {
+      "severity": "medium",
+      "category": "low-fee",
+      "title": "Income of $0: N205B bag handling",
+      "gameTime": "day 1 23:12",
+      "evidence": "earn \"N205B bag handling\" amount=0 cash 81409 -> 81409"
+    },
+    {
+      "severity": "medium",
+      "category": "script-gap",
+      "title": "no research purchase succeeded during the whole run",
+      "gameTime": "day 2 00:12",
+      "evidence": "every canBuyResearch() check failed; see log for reasons"
+    },
+    {
+      "severity": "low",
+      "category": "unledgered-cash",
+      "title": "16 cash changes had no earn/spend/charge line (net 54322)",
+      "gameTime": "day 1 00:03",
+      "evidence": "day 1 00:03 +11760 (action: sign bushline); day 1 00:03 +45000 (action: loan); day 1 03:20 +180 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 04:20 +266 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 06:20 +18 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge))"
+    },
+    {
+      "severity": "low",
+      "category": "double-spend",
+      "title": "City cargo intake (12u) posted twice for $474",
+      "gameTime": "day 1 08:00",
+      "evidence": "earn at t=35 and t=60 (action #7)"
+    },
+    {
+      "severity": "low",
+      "category": "double-spend",
+      "title": "City cargo intake (22u) posted twice for $624",
+      "gameTime": "day 1 15:42",
+      "evidence": "earn at t=105.25 and t=117.75 (action #7)"
+    }
+  ],
+  "consoleErrors": 0,
+  "moneyLines": 58,
+  "final": true
+}

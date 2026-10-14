@@ -1,0 +1,80 @@
+{
+  "day": 5,
+  "clock": 901.4168,
+  "gameTime": "day 6 00:11",
+  "cash": 0,
+  "loanBalance": 47800,
+  "revenue": 100757,
+  "incomeByCategory": {
+    "retail_sales": 5542,
+    "landing_fees": 38614,
+    "passenger_fees": 989,
+    "parking_fees": 3906,
+    "baggage_fees": 3208,
+    "catering_fees": 568,
+    "contract_fees": 14490,
+    "fuel_sales": 33440
+  },
+  "costsByCategory": {
+    "penalties": -1800,
+    "building_upkeep": -6386,
+    "payroll": -62621
+  },
+  "byCategoryRaw": {
+    "retail_sales": 5542,
+    "landing_fees": 38614,
+    "passenger_fees": 989,
+    "parking_fees": 3906,
+    "baggage_fees": 3208,
+    "catering_fees": 568,
+    "contract_fees": 14490,
+    "fuel_sales": 33440,
+    "penalties": -1800,
+    "building_upkeep": -6386,
+    "payroll": -62621
+  },
+  "totalIncome": 100757,
+  "totalExpense": 70807,
+  "fieldXp": 100,
+  "fieldLevel": 2,
+  "reputation": 77.54999999999998,
+  "researchUnlocked": [],
+  "activeAirlines": [
+    "bushline"
+  ],
+  "airlinesFlying": [
+    "bushline"
+  ],
+  "flightsActive": 0,
+  "flightsDone": 19,
+  "paxLost": 0,
+  "bagsLost": 0,
+  "missedFlights": 0,
+  "stuckVehicles": 0,
+  "anomalies": [
+    {
+      "severity": "medium",
+      "category": "script-gap",
+      "title": "could not sign zoomjet",
+      "gameTime": "day 1 00:00",
+      "evidence": "{\"ok\":false,\"why\":\"airline not in game.allAirlines() (it only exists in negotiation/diplomacy data)\"}"
+    },
+    {
+      "severity": "medium",
+      "category": "stuck-flight",
+      "title": "5x flight in \"taxi_out\" > 2 game h (bushline)",
+      "gameTime": "day 2 11:21",
+      "evidence": "worst: flt-dttq48 2.2 game h; key bushline@taxi_out"
+    },
+    {
+      "severity": "low",
+      "category": "unledgered-cash",
+      "title": "87 cash changes had no earn/spend/charge line (net -33879)",
+      "gameTime": "day 1 00:02",
+      "evidence": "day 1 00:02 +45000 (action: loan); day 1 03:19 +162 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 04:21 +282 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 06:21 +18 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 08:21 -1250 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge))"
+    }
+  ],
+  "consoleErrors": 0,
+  "moneyLines": 270,
+  "final": false
+}

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "preview": "vite preview --host --port 45217",
     "playthrough": "tsx scripts/playthrough-wake.mts",
-    "autoplay": "tsx scripts/autoplay-stabilize.mts"
+    "autoplay": "tsx scripts/autoplay-stabilize.mts",
+    "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
