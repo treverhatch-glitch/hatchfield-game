@@ -73,7 +73,51 @@ Map to the hall's world frame in the renderer.
 - Body-to-body avoidance for walkers outside queues. Each walker keeps a fixed
   sideways offset so crowds do not walk single file. Use `render/world/guestMotion`
   for visual steering if needed.
-- Hooking into `GameSim` and the hall renderer. That is the build/view
-  workstream's call; the API above is all it needs.
-
 Tunables live in `src/paxnav/config.ts`.
+
+## Live in the game (`src/game/hallNav.ts`)
+
+`Game.hallNav` (a `HallNav`) runs one PaxNav for the active hall:
+
+- **Layout.** The hall's own `fit.build` when it has one. Prefab and
+  zone-painted halls have none, so `prefabNavLayout` reads them as one on
+  4 m tiles (48 m x 32 m = 12 x 8):
+  - Zones: check-in, security, gates and retail map across. Arrivals become
+    the bag hall. Toilets take the side they open onto.
+  - Kit: placed kit becomes desks, lanes, toilets, counters, seats and
+    boarding desks, one piece per server where the cell has room.
+  - Lanes sit on the security tiles that face the check-in side.
+  - Doors: curb doors at the entrance kit, and a jet bridge door on each
+    gate room's outside wall.
+  - Walls: security is walled from the check-in side except at the lanes.
+  - The read is free: no cost and no refund.
+- **Edits.** `Game.tickHallNav` re-reads the layout whenever `hallRev`
+  changes (prefab edits and `applyHallBuild`). It calls `setLayout` only when
+  the layout really changed, and everyone re-plans.
+- **Spawns.** Each departing guest the sim releases into the hall gets a
+  walker at a curb door. Its gate is a gate room picked by flight. Its
+  `departAt` is the flight's STD, scaled to nav time. Day-one walkers loop
+  back to the curb after boarding until real passengers replace them.
+- **Time.** PaxNav runs in real seconds; a game day is 180 clock seconds.
+  `HALL_NAV_TUNING` (`src/game/hallNavData.ts`) sets two scales:
+  - `navSecPerClockSec` (30) sets walking pace: walkers move at about the
+    old hall figures' speed.
+  - `departLeadScale` (120) stretches the sim's 3-hour show-up window into
+    45 nav minutes. That leaves time for the needs stops before boarding
+    opens. Only real queues make anyone miss.
+- **Render.** `HallWorld` draws the walkers with `HallNavCrowd`. That is three
+  instanced meshes (body, head, bag) whatever the headcount, plus a floor
+  dot on every marked queue line. While the walk is live it replaces the old
+  departing and day-one figures, and the shell walls are drawn from the nav
+  layout, so a drawn wall is always a wall to the walkers.
+- **Read-outs.** `game.hallNav.metrics()` gives per-facility queue length,
+  waits and served counts. `boarded`, `missed` and `stuck` are running totals.
+
+The walk is the hall's picture and its queue read-out. Fares, ratings and
+the sim's own boarding still come from the hall model in `sim.ts`. Arrivals
+still use the old figures. Walkers are not saved; they restart from the next
+released departures after a load.
+
+Smoke: `npx tsx scripts/hall-nav-smoke.mts`. It starts Vite, runs the starter
+kit into the Terminal view, takes a close shot and a 1200-walker shot, and
+reports FPS plus per-frame glue cost.

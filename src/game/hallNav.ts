@@ -13,7 +13,7 @@
  * The walk is the hall's picture and queue read-out. Fares, ratings and
  * boarding still come from the sim's own hall model.
  */
-import { BUILD_TUNING } from '../terminalbuild/config.ts'
+import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
 import type { BuildLayout, BuildZone, Door, Edge, Equip, Room, Tile } from '../terminalbuild/types.ts'
 import { PaxNav, type FacilityMetrics, type PaxEvent } from '../paxnav/index.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
@@ -154,30 +154,69 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
   }
 
   // Outside edges: curb doors at the entrance kit (else along all check-in
-  // floor), apron doors along the gates, walls on the rest.
+  // floor), a jet bridge door on each gate room's outside wall (else along
+  // all gates floor), walls on the rest.
+  const key = (t: Tile) => `${t.x},${t.y}`
   const entrance = new Set<string>()
   for (const it of items) {
     if (it.def !== 'entrance') continue
-    for (const t of tilesOf.get(`${it.c},${it.r}`) ?? []) entrance.add(`${t.x},${t.y}`)
+    for (const t of tilesOf.get(`${it.c},${it.r}`) ?? []) entrance.add(key(t))
+  }
+  const outerOf = (t: Tile): Edge[] => {
+    const out: Edge[] = []
+    if (t.x === w - 1) out.push({ x: t.x, y: t.y, dir: 'E' })
+    if (t.x === 0) out.push({ x: -1, y: t.y, dir: 'E' })
+    if (t.y === h - 1) out.push({ x: t.x, y: t.y, dir: 'S' })
+    if (t.y === 0) out.push({ x: t.x, y: -1, dir: 'S' })
+    return out
+  }
+  const free = (t: Tile) => !used.has(key(t))
+  const bridge = new Set<string>()
+  for (const room of rooms) {
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        const t = { x, y }
+        if (zoneAt(t) === 'gates' && free(t) && outerOf(t).length) bridge.add(key(t))
+      }
+    }
   }
   const doors: Door[] = []
   const walls: Edge[] = []
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const t = { x, y }
-      const outer: Edge[] = []
-      if (x === w - 1) outer.push({ x, y, dir: 'E' })
-      if (x === 0) outer.push({ x: -1, y, dir: 'E' })
-      if (y === h - 1) outer.push({ x, y, dir: 'S' })
-      if (y === 0) outer.push({ x, y: -1, dir: 'S' })
-      const free = !used.has(`${x},${y}`)
-      const curb = free && landside(t) && (entrance.size ? entrance.has(`${x},${y}`) : true)
-      const apron = free && zoneAt(t) === 'gates'
-      for (const e of outer) {
+      const curb = free(t) && landside(t) && (entrance.size ? entrance.has(key(t)) : true)
+      const apron = free(t) && zoneAt(t) === 'gates' && (bridge.size ? bridge.has(key(t)) : true)
+      for (const e of outerOf(t)) {
         if (curb) doors.push({ ...e, kind: 'curb' })
         else if (apron) doors.push({ ...e, kind: 'apron' })
         else walls.push(e)
       }
+    }
+  }
+
+  // Inside walls, as the hall draws them: security is walled off from the
+  // check-in side except where a lane opens onto it, and the two sides of
+  // security never share an open edge.
+  const lane = new Set(equipment.filter((e) => e.kind === 'security_lane').map(key))
+  const side = (t: Tile) => {
+    const z = zoneAt(t)
+    return z ? ZONE_SIDE[z] : null
+  }
+  const parts = (a: Tile, b: Tile) => {
+    const sa = side(a)
+    const sb = side(b)
+    if (!sa || !sb || sa === sb || sa === 'staff' || sb === 'staff') return false
+    if (sa === 'security' || sb === 'security') {
+      const [sec, other] = sa === 'security' ? [a, sb] : [b, sa]
+      return other === 'landside' && !lane.has(key(sec))
+    }
+    return (sa === 'landside' && sb === 'airside') || (sa === 'airside' && sb === 'landside')
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x + 1 < w && parts({ x, y }, { x: x + 1, y })) walls.push({ x, y, dir: 'E' })
+      if (y + 1 < h && parts({ x, y }, { x, y: y + 1 })) walls.push({ x, y, dir: 'S' })
     }
   }
 
