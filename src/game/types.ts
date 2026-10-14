@@ -743,6 +743,8 @@ export interface Truck {
   home: Vec | null
   /** Visible load — bag units on this cart (Manor Lords crate feel). */
   cargoUnits?: number
+  /** Stand-service dwell this stop started with, in sim seconds. Crew steps fill it. */
+  serviceFor?: number
 }
 
 export type PaxStop =

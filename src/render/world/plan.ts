@@ -26,6 +26,9 @@ export type PropKind =
   | 'stool'
   | 'planter'
   | 'light'
+  | 'bin'
+  | 'wc'
+  | 'bag'
 
 export interface Prop {
   kind: PropKind
@@ -129,6 +132,7 @@ export function planTerminal(
     shopCells.reduce((best, z) => (alongOf(z.c, z.r) > alongOf(best.c, best.r) ? z : best)).zone = 'backoffice'
   }
   const zoneAt = new Map(zones.map((z) => [`${z.c},${z.r}`, z.zone]))
+  let wcPlaced = false
 
   for (const { c, r, zone } of zones) {
     const cx = cellX(c)
@@ -164,6 +168,14 @@ export function planTerminal(
         if (rand() < 0.45) person('pax', u + (rand() - 0.5) * 0.4, -0.95, yawAir)
       }
       if (!facesSecurity) prop('belt', 0, 1.3, yawAir)
+      if (!wcPlaced) {
+        prop('wc', -2.5, 2.25, yawAir)
+        wcPlaced = true
+      }
+      for (const u of slots) {
+        if (rand() < 0.4) prop('bag', u + 0.42, 1.15, yawAir)
+      }
+      prop('bin', 2.45, 2.15)
       for (const u of [-2.3, -1.3, -0.3, 0.7, 1.7]) prop('stanchion', u, -1.55)
       for (const u of [-1.8, -0.8, 0.2, 1.2, 2.2]) prop('stanchion', u, -2.15)
       prop('board', 0, -2.55, yawAir + Math.PI)
@@ -196,6 +208,8 @@ export function planTerminal(
       }
       prop('planter', 2.5, -2.4)
       prop('planter', -2.5, -2.4)
+      prop('bin', 2.4, 2.3)
+      prop('bag', 0.2, 1.7, yawAir)
     } else if (zone === 'backoffice') {
       // Landside half: staff offices.
       for (const u of density >= 1 ? [-1.5, 0, 1.5] : [-0.8, 0.8]) {
@@ -229,6 +243,8 @@ export function planTerminal(
       person('staff', 1.8, 2.65, yawAir + Math.PI)
       prop('board', -1.9, 2.3, yawAir + Math.PI)
       prop('planter', -2.5, -2.4)
+      prop('bin', 2.45, -2.3)
+      prop('bag', -2.15, 1.9, yawAir)
     }
   }
 

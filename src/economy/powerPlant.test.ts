@@ -47,8 +47,10 @@ function lateField(): Game {
   game.cash = 500_000
   game.tiles[23][11] = 'taxi'
   game.tiles[23][13] = 'taxi'
+  game.tiles[23][10] = 'taxi'
   game.tool = 'mro'
-  game.placeSingle({ c: 10, r: 23 })
+  // Column 10 sits on the tower sightline, so the west hangar is one cell clear of it.
+  game.placeSingle({ c: 9, r: 23 })
   game.tickConstruction(30)
   game.placeSingle({ c: 14, r: 23 })
   game.tool = 'nighthub'

@@ -14,6 +14,7 @@ export function Field({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const worldRef = useRef<World | null>(null)
   const [inspect, setInspect] = useState<ApronInspect | null>(null)
+  const [placeReason, setPlaceReason] = useState<string | null>(null)
 
   useEffect(() => {
     const canvas = ref.current
@@ -134,8 +135,11 @@ export function Field({ game }: { game: Game }) {
         } else if (!game.inspectEnabled()) {
           setInspect(null)
         }
+        const reason = game.placementGhostReason()
+        setPlaceReason((prev) => (prev === reason ? prev : reason))
       } else {
         releaseApronAudio()
+        setPlaceReason((prev) => (prev === null ? prev : null))
       }
       raf = requestAnimationFrame(loop)
     }
@@ -236,6 +240,11 @@ export function Field({ game }: { game: Game }) {
             </>
           )}
         </aside>
+      ) : null}
+      {placeReason && game.view === 'apron' ? (
+        <p className="placement-reason" data-testid="placement-reason" role="status">
+          {placeReason}
+        </p>
       ) : null}
     </div>
   )

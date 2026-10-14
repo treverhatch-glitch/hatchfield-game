@@ -1,5 +1,5 @@
 import { finiteAmount } from '../disruptions/engine.ts'
-import { footprintBlock } from './buildingFootprint.ts'
+import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
 import { OPS_ALERT_PREFIX, OpsEventRunner, opsAlertText, type ActiveOpsEvent } from '../content/events_ops.ts'
@@ -159,11 +159,10 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
-import { clearanceBlocks } from './runwayClearance'
-import { footprintCells, placementHitsStand, standPlaceBlock } from './standFoot'
+import { footprintCells } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
-import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
+import { bridgeMirror, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
 import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
 import { terminals } from '../render/world/layout.ts'
@@ -578,6 +577,8 @@ import {
   type PassengerLink,
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
+import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
   commitPlot,
   dailySinks,
@@ -3711,7 +3712,13 @@ export class Game {
 
   seedAccessStub() {
     // City edge hint — short road stub from north edge so players see the connection idea.
-    for (let r = 0; r < 3; r++) this.tiles[r][Math.floor(SIZE / 2)] = 'road'
+    const c = Math.floor(SIZE / 2)
+    for (let r = 0; r < 3; r++) {
+      const v = { c, r }
+      if (this.tile(v) !== 'grass') continue
+      if (this.placementBlockReason('road', [v], v, 'Access road')) continue
+      this.tiles[r]![c] = 'road'
+    }
   }
 
   /** One-click AT3 field — flavor follows startFocus (pax / cargo / hybrid). */
@@ -3953,8 +3960,15 @@ export class Game {
     }
     if (!this.spend(RAIL_CITY_COST, 'city rail investment')) return
     this.railLinked = true
-    // City builds to the west edge; player sees a stub.
-    for (let c = 0; c < 4; c++) this.tiles[Math.floor(SIZE / 2)][c] = 'road'
+    // City builds to the west edge; player sees a stub. Skip cells that are already built
+    // or that would cut a taxiway, a building, or a runway shoulder.
+    const row = Math.floor(SIZE / 2)
+    for (let c = 0; c < 4; c++) {
+      const v = { c, r: row }
+      if (this.tile(v) !== 'grass') continue
+      if (this.placementBlockReason('road', [v], v, 'Access road')) continue
+      this.tiles[row]![c] = 'road'
+    }
     this.reputation = Math.min(100, this.reputation + 5)
     this.bumpMap()
     this.pushNews(
@@ -7257,8 +7271,10 @@ export class Game {
   }
 
   /**
-   * Bright walkers so the hall reads as open on day 1, before a flight releases.
+   * Walkers so the hall reads as open on day 1, before a flight releases.
    * They only pace the curb-to-gate path. Cargo kits have no hall to fill.
+   * Shirts stay in a natural clothing range: neon orange and amber read as
+   * flying dots from the airport camera on a phone.
    */
   private seedDayOneCrowd() {
     const fit = this.fits[0]
@@ -7266,18 +7282,18 @@ export class Game {
     const hallId = this.hallKey(fit)
     const path: HallNode[] = ['entrance', 'checkin', 'security', 'shop', 'gate']
     const shirts = [
-      '#e23b2f',
-      '#3ec6ff',
-      '#ffb703',
-      '#7c5cff',
-      '#3dd68c',
-      '#ff6b9a',
-      '#fb923c',
-      '#60a5fa',
-      '#f472b6',
-      '#a3e635',
-      '#f8fafc',
-      '#f97316',
+      '#2c3e50',
+      '#5c4636',
+      '#3d5c4a',
+      '#7a3e3e',
+      '#cfc6b8',
+      '#4e5b38',
+      '#6b5a48',
+      '#3e5160',
+      '#8a6a52',
+      '#243044',
+      '#5e5648',
+      '#6d7d72',
     ]
     const tags: PaxTag[] = [
       'family',
@@ -8751,6 +8767,264 @@ export class Game {
   /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
   servicePoses() {
     return this.ensureGround()?.sim.poses() ?? []
+  }
+
+  /**
+   * Driver and helper for a fuel, bag, or catering stop.
+   * Steps fill the sim's service window. Parked crew stay in the cab and are omitted.
+   */
+  crewScene(): CrewScene {
+    const services: CrewClock[] = []
+    const ground = this.ground?.sim
+    if (ground) {
+      for (const job of ground.activeCrew()) {
+        services.push({
+          id: job.id,
+          service: job.service,
+          x: job.x,
+          y: job.y,
+          heading: job.heading,
+          start: job.start,
+          end: job.end,
+          now: ground.now,
+        })
+      }
+    }
+    for (const truck of this.trucks) {
+      const clock = this.legacyCrewClock(truck)
+      if (clock) services.push(clock)
+    }
+    for (const clock of this.turnaroundClocks(services)) services.push(clock)
+    const scene = assembleCrew({
+      services,
+      catering: this.cateringPoses().map((pose) => ({
+        id: pose.id,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        phase: pose.phase,
+        phaseU: pose.phaseU,
+      })),
+      metersPerUnit: METERS_PER_CELL,
+      aircraftFor: (x, y) => this.aircraftAim(x, y),
+    })
+    for (const clock of this.paxClocks()) {
+      const sample = samplePax(clock)
+      scene.people.push(...sample.people)
+      scene.props.push(...sample.props)
+    }
+    return scene
+  }
+
+  /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
+  bridgeExtend(flightId: string): number {
+    const flight = this.flights.find((item) => item.id === flightId)
+    if (!flight?.stand || flight.cargo || this.standPaxMode(flight.stand) !== 'jetway') return 0
+    if (flight.phase === 'servicing' || flight.phase === 'parked') return bridgeHold()
+    if (flight.phase !== 'deboard' && flight.phase !== 'board') return 0
+    return samplePax(this.paxClock(flight)).extend
+  }
+
+  /** Apron capsules stand down while the boarding picture draws these passengers. */
+  paxPicture(flightId: string): boolean {
+    const flight = this.flights.find((item) => item.id === flightId)
+    return !!flight && !flight.cargo && (flight.phase === 'deboard' || flight.phase === 'board')
+  }
+
+  private aircraftAim(x: number, y: number): AircraftAim | undefined {
+    let best: Flight | undefined
+    let bestD = 1.4
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.phase === 'gone' || flight.phase === 'hold') continue
+      const d = Math.hypot(flight.x - x, flight.y - y)
+      if (d < bestD) {
+        bestD = d
+        best = flight
+      }
+    }
+    if (!best) return undefined
+    const spec = getAircraftSpec(best.airframeId || 'b738')
+    return {
+      x: best.x,
+      y: best.y,
+      heading: best.heading,
+      lengthM: spec.lengthM,
+      spanM: spec.spanM,
+      wingAt: spec.wingAt,
+    }
+  }
+
+  /** Legacy bowser / cart / galley truck. The dwell it was given is the whole service. */
+  private legacyCrewClock(t: Truck): CrewClock | null {
+    if (t.returning || !(t.dwell > 0) || !(t.serviceFor && t.serviceFor > 0)) return null
+    let service: CrewClock['service'] | null = null
+    if (t.kind === 'fuel' && t.mission === 'fuel') service = 'fuel'
+    else if (t.kind === 'bags' && (t.mission === 'load' || t.mission === 'unload')) service = 'bags'
+    else if (t.kind === 'catering') service = 'catering'
+    if (!service) return null
+    const total = t.serviceFor
+    return {
+      id: t.id,
+      service,
+      x: t.x,
+      y: t.y,
+      heading: pathHeading(t.path),
+      start: 0,
+      end: total,
+      now: Math.min(total, Math.max(0, total - t.dwell)),
+    }
+  }
+
+  /**
+   * Cleaning, ground power, and the pushback tug when the logistics module
+   * has not already parked a vehicle on that job. The window is the flight
+   * phase the sim already uses.
+   */
+  private turnaroundClocks(existing: CrewClock[]): CrewClock[] {
+    const clocks: CrewClock[] = []
+    const has = (service: CrewClock['service'], x: number, y: number) =>
+      existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.cargo || flight.kind === 'military') continue
+      const pace = this.rampPace(flight.airframeId, false, flight.airline)
+      const door = this.paxDoor(flight)
+      const origin = { x: flight.x, y: flight.y, heading: flight.heading }
+      if (flight.phase === 'servicing') {
+        const end = 4 * pace
+        const now = Math.min(end, Math.max(0, flight.phaseTime))
+        if (!has('cleaning', flight.x, flight.y)) {
+          const at = placeLocal(origin, { x: door.x - 1.4, y: 0, z: door.z + Math.sign(door.z || 1) * 3.2 }, METERS_PER_CELL)
+          clocks.push({
+            id: `${flight.id}:clean`,
+            service: 'cleaning',
+            x: at.c,
+            y: at.r,
+            heading: flight.heading + Math.PI / 2,
+            start: 0,
+            end,
+            now,
+            aim: { x: 2.2, z: Math.sign(door.z || 1) * 2.4 },
+          })
+        }
+        if (!has('gpu', flight.x, flight.y)) {
+          const spec = getAircraftSpec(flight.airframeId || 'b738')
+          const at = placeLocal(origin, { x: spec.lengthM * 0.22, y: 0, z: door.z + Math.sign(door.z || 1) * 2.4 }, METERS_PER_CELL)
+          clocks.push({
+            id: `${flight.id}:gpu`,
+            service: 'gpu',
+            x: at.c,
+            y: at.r,
+            heading: flight.heading,
+            start: 0,
+            end,
+            now,
+            aim: { x: 1.6, z: -Math.sign(door.z || 1) * 2.2 },
+          })
+        }
+      }
+      if (flight.phase === 'pushback' && !has('pushback', flight.x, flight.y)) {
+        const spec = getAircraftSpec(flight.airframeId || 'b738')
+        const end = 2.8
+        const at = placeLocal(origin, { x: spec.lengthM * 0.5 + 4, y: 0, z: 0.4 }, METERS_PER_CELL)
+        clocks.push({
+          id: `${flight.id}:tug`,
+          service: 'pushback',
+          x: at.c,
+          y: at.r,
+          heading: flight.heading + Math.PI,
+          start: 0,
+          end,
+          now: Math.min(end, Math.max(0, flight.phaseTime)),
+          aim: { x: -2.4, z: spec.spanM * 0.22 },
+        })
+      }
+    }
+    return clocks
+  }
+
+  private paxDoor(flight: Flight): PaxDoor {
+    const spec = getAircraftSpec(flight.airframeId || 'b738')
+    const side = this.paxSide(flight)
+    const door = spec.doors.find((item) => item.kind === 'pax' && item.side === side) ?? spec.doors.find((item) => item.kind === 'pax')
+    const t = door?.t ?? 0.16
+    const signed = door && door.side !== 0 ? door.side : side
+    return {
+      x: spec.lengthM * (0.5 - t),
+      z: signed * (spec.rx + 0.55),
+      sill: Math.max(2.5, spec.gear * 0.45 + 2.1),
+    }
+  }
+
+  private paxSide(flight: Flight): 1 | -1 {
+    if (!flight.stand) return 1
+    const hall = this.jetwayHall(flight.stand)
+    const gate = hall?.origin ?? this.nearestFit(flight.stand)
+    if (!gate) return 1
+    return bridgeMirror(flight.heading, flight.stand, gate)
+  }
+
+  private nearestFit(stand: { c: number; r: number }): { c: number; r: number } | null {
+    let best: { c: number; r: number } | null = null
+    let bestD = Infinity
+    for (const fit of this.fits) {
+      const d = Math.abs(fit.origin.c - stand.c) + Math.abs(fit.origin.r - stand.r)
+      if (d < bestD) {
+        bestD = d
+        best = fit.origin
+      }
+    }
+    return best
+  }
+
+  private paxMode(flight: Flight): PaxMode {
+    const mode = flight.stand ? this.standPaxMode(flight.stand) : 'walk'
+    if (mode === 'jetway') return 'bridge'
+    if (mode === 'bus') return 'bus'
+    return 'stairs'
+  }
+
+  private paxClocks(): PaxClock[] {
+    const clocks: PaxClock[] = []
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.cargo) continue
+      if (flight.phase !== 'deboard' && flight.phase !== 'board') continue
+      clocks.push(this.paxClock(flight))
+    }
+    return clocks
+  }
+
+  private paxClock(flight: Flight): PaxClock {
+    const leg = flight.phase === 'board' ? 'board' : 'deplane'
+    const mode = this.paxMode(flight)
+    const pace = this.rampPace(flight.airframeId, false, flight.airline)
+    const end =
+      leg === 'deplane'
+        ? (mode === 'bridge' ? 3.2 : mode === 'bus' ? 4.5 : 6) * pace
+        : (mode === 'bridge' ? (flight.boardingSlow ? 5 : 3.2) : flight.boardingSlow ? 9 : 5) * pace
+    const gate = this.paxGate(flight)
+    const bus = this.trucks.find((truck) => truck.kind === 'termbus' && truck.flightId === flight.id && !truck.returning)
+    const riding = mode === 'bus' && !!bus && !(bus.dwell > 0) && !(bus.preDwell > 0)
+    return {
+      id: flight.id,
+      mode,
+      leg,
+      start: 0,
+      end: Math.max(0.4, end),
+      now: Math.max(0, flight.phaseTime),
+      aircraft: { x: flight.x, y: flight.y, heading: flight.heading },
+      door: this.paxDoor(flight),
+      gate,
+      riding,
+      metersPerUnit: METERS_PER_CELL,
+    }
+  }
+
+  private paxGate(flight: Flight): { x: number; y: number } {
+    const depot = tilesOf(this.tiles, 'termbus')[0]
+    if (flight.stand && this.standPaxMode(flight.stand) === 'bus' && depot) return { x: depot.c, y: depot.r }
+    const hall = flight.stand ? this.jetwayHall(flight.stand) : null
+    const fit = hall?.origin ?? (flight.stand ? this.nearestFit(flight.stand) : null)
+    return fit ? { x: fit.c, y: fit.r } : { x: flight.x, y: flight.y }
   }
 
   /** Fuel, meals, and how many trucks are out. Null before the depot is built. */
@@ -15087,6 +15361,7 @@ export class Game {
       }
     }
     const cells = this.prefabRunway(v, klass)
+    const blocked = this.placementBlockReason('runway', cells, v, 'runway')
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
       this.cellsBlocked(cells)
@@ -15097,12 +15372,12 @@ export class Game {
           : klass === 'short'
             ? 'Need a clear plot for the short strip (10×2). Regionals only.'
             : 'Need a clear plot for the runway. Hit Rotate if it hangs off.'
-      this.pushNews(tip, 'bad')
+      this.pushNews(blocked ?? tip, 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'runway')) {
-      this.pushNews('That strip sits inside runway clearance. Leave the shoulder empty.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15150,18 +15425,14 @@ export class Game {
       { c: v.c, r: v.r + 1 },
       { c: v.c + 1, r: v.r + 1 },
     ]
+    const blocked = this.placementBlockReason('terminal', cells, v, 'terminal shell')
     if (cells.some((p) => this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
-      this.pushNews('Need a clear 2×2 for the shell.', 'bad')
+      this.pushNews(blocked ?? 'Need a clear 2×2 for the shell.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
-      this.pushNews('That shell sits inside runway clearance.', 'bad')
-      this.emit()
-      return
-    }
-    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
-      this.pushNews('That shell sits inside a stand footprint.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15191,18 +15462,14 @@ export class Game {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
     }
+    const blocked = this.placementBlockReason('terminal', cells, v, 'premade hall')
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
-      this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
+      this.pushNews(blocked ?? 'Need a clear 3×3 for the premade hall.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
-      this.pushNews('That hall sits inside runway clearance.', 'bad')
-      this.emit()
-      return
-    }
-    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
-      this.pushNews('That hall sits inside a stand footprint.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15273,18 +15540,19 @@ export class Game {
     if (!id) return
     const spec = buildingById(id)
     if (!spec) return
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.siteAt(v)) {
+      this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, [v], 'road')) {
-      this.pushNews(`${spec.name} sits inside runway clearance.`, 'bad')
+    const blocked = this.placementBlockReason(tileForLate(id), [v], v, spec.name)
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (placementHitsStand(this.tiles, [v], tileForLate(id), this.standClass, this.standScale)) {
-      this.pushNews(`${spec.name} sits inside a stand footprint.`, 'bad')
+    if (this.tile(v) !== 'grass') {
+      this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -15356,42 +15624,19 @@ export class Game {
         return
       }
     }
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.siteAt(v)) {
+      this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    const foot = footprintBlock(this.tiles, building.tile, v)
-    if (foot) {
-      this.pushNews(
-        foot === 'road'
-          ? `${building.name} footprint crosses a road.`
-          : `${building.name} footprint leaves the map.`,
-        'bad',
-      )
+    const blocked = this.placementBlockReason(building.tile, [v], v, building.name)
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (building.tile === 'stand') {
-      const why = standPlaceBlock(
-        this.tiles,
-        v,
-        standClassForTool(this.tool) ?? 'M',
-        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-        this.standClass,
-        this.standScale,
-      )
-      if (why) {
-        this.pushNews(why, 'bad')
-        this.emit()
-        return
-      }
-    } else if (clearanceBlocks(this.tiles, [v], building.tile)) {
-      this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
-      this.emit()
-      return
-    } else if (placementHitsStand(this.tiles, [v], building.tile, this.standClass, this.standScale)) {
-      this.pushNews(`${building.name} sits inside a stand footprint.`, 'bad')
+    if (this.tile(v) !== 'grass') {
+      this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -15655,27 +15900,73 @@ export class Game {
     return late ? tileForLate(late) : null
   }
 
-  /** Red ghost when the stamp would pave a runway shoulder or a stand's wings. Taxi stays legal. */
+  /** Tiles, stand classes, and in-progress sites the collision rules can see. */
+  private worldInput() {
+    return {
+      tiles: this.tiles,
+      standClass: this.standClass,
+      standScale: this.standScale,
+      pending: this.sites.map((s) => ({
+        cells: s.cells,
+        tile: s.tile,
+        standClass: s.standClass,
+        standScale: s.standScale,
+      })),
+    }
+  }
+
+  /**
+   * Physical reason a stamp is illegal, or null when the geometry is clear.
+   * Cash, research, and "needs grass" stay with the caller.
+   */
+  placementBlockReason(tile: Tile, cells: Vec[], origin: Vec, name: string): string | null {
+    return placementReason(this.worldInput(), {
+      tile,
+      cells,
+      origin,
+      name,
+      standClass: tile === 'stand' ? (standClassForTool(this.tool) ?? 'M') : undefined,
+      standScale:
+        tile === 'stand'
+          ? standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5)
+          : undefined,
+    })
+  }
+
+  /** Every physical violation on the current field. Construction sites count as built. */
+  worldAudit(): WorldViolation[] {
+    return auditWorld(this.worldInput())
+  }
+
+  /** Sentence for an illegal ghost. Null when the stamp is geometrically legal. */
+  placementGhostReason(): string | null {
+    if (this.tool === 'clear' || this.tool === 'pan') return null
+    const tile = this.placementTile()
+    if (!tile || !this.hover) return null
+    const cells = this.ghostCells(this.hover)
+    if (!cells.length) return null
+    return this.placementBlockReason(tile, cells, this.hover, this.placementName(tile))
+  }
+
+  private placementName(tile: Tile): string {
+    const building = BUILDINGS.find((b) => b.tool === this.tool)
+    if (building) return building.name
+    const lateId = lateIdForTool(this.tool)
+    const lateName = lateId ? buildingById(lateId)?.name : undefined
+    if (lateName) return lateName
+    if (tile === 'runway') return 'runway'
+    return tile
+  }
+
+  /** Red ghost when the stamp would break a physical rule. Taxiways may still cross a shoulder. */
   ghostBlocked(cells: Vec[]): boolean {
     if (this.tool === 'clear') return false
     const tile = this.placementTile()
     if (!tile) return false
-    if (tile === 'runway') return clearanceBlocks(this.tiles, cells, 'runway')
-    if (tile === 'stand') {
-      if (!this.hover) return true
-      return (
-        standPlaceBlock(
-          this.tiles,
-          this.hover,
-          standClassForTool(this.tool) ?? 'M',
-          standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-          this.standClass,
-          this.standScale,
-        ) !== null
-      )
-    }
-    if (clearanceBlocks(this.tiles, cells, tile)) return true
-    return placementHitsStand(this.tiles, cells, tile, this.standClass, this.standScale)
+    if (tile === 'stand' && !this.hover) return true
+    if (!cells.length) return false
+    const origin = this.hover ?? cells[0]!
+    return this.placementBlockReason(tile, cells, origin, this.placementName(tile)) !== null
   }
 
   /** Geometry only — cash and unlocks do not tint the ghost. */
@@ -18983,6 +19274,7 @@ export class Game {
             if (t.mission === 'ferry_dep') fl.waitingOn.paxIn = 0
           }
           t.dwell = 1.8
+          t.serviceFor = t.dwell
         } else if (t.kind === 'bags') {
           const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
           if (t.mission === 'unload') {
@@ -19000,6 +19292,7 @@ export class Game {
           } else {
             t.dwell = 2.2
           }
+          if (t.dwell > 0) t.serviceFor = t.dwell
         } else {
           t.dwell =
             t.kind === 'fuel'
@@ -19011,6 +19304,7 @@ export class Game {
               : t.kind === 'deice'
                 ? 3.2
                 : 2.2
+          if ((t.kind === 'fuel' || t.kind === 'catering') && t.dwell > 0) t.serviceFor = t.dwell
         }
       } else if (done && t.returning) {
         if (t.kind === 'citycargo') {

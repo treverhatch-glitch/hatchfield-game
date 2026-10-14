@@ -11,6 +11,8 @@ import {
   daylightFactor,
   idleDayNight,
   resolveHour,
+  SKY_PHOTO_WEATHER,
+  skyPhotoBlend,
   type DayNightControl,
   type DayNightSample,
 } from './dayNight'
@@ -19,6 +21,7 @@ import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './
 import {
   apronMasts,
   jetBridges,
+  roadKerbs,
   roadPaint,
   runwayLightSpots,
   runwayPaint,
@@ -36,7 +39,7 @@ import { GuestMotion } from './guestMotion'
 import { fitShadow, groundFocus } from './lod'
 import { onPackReady, packArtEnabled, packImage, packTexture, setPackArt, shopLogoPaths, signIconPaths } from './packArt'
 import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
-import { paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
+import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
@@ -102,6 +105,7 @@ export class WorldRenderer {
   private surfaceMats = new Map<SurfaceKind, THREE.MeshLambertMaterial>()
   private paintMat: THREE.MeshLambertMaterial | null = null
   private contacts = new ContactShadows()
+  private kerbMat = new THREE.MeshLambertMaterial({ color: GROUND_LOOK.kerb })
   private staticGroup = new THREE.Group()
   private staticGeos: THREE.BufferGeometry[] = []
   private bridgeMats: THREE.Material[] = []
@@ -192,19 +196,19 @@ export class WorldRenderer {
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
     this.tex = makeTextures(q.textureSize, q.anisotropy)
-    this.shared = makeTerminalShared(this.tex)
+    this.shared = makeTerminalShared(this.tex, q.level)
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
       runway: this.tex.runway,
       taxi: this.tex.asphalt,
       apron: this.tex.concrete,
-      road: this.tex.asphalt,
+      road: this.tex.road,
       pad: this.tex.concrete,
     }
     for (const k of Object.keys(surf) as SurfaceKind[]) {
       this.surfaceMats.set(
         k,
-        new THREE.MeshLambertMaterial({ map: surf[k], vertexColors: true, color: k === 'pad' ? 0xd8dadc : k === 'road' ? 0xc0c0c0 : 0xffffff }),
+        new THREE.MeshLambertMaterial({ map: surf[k], vertexColors: true, color: k === 'pad' ? 0xd8dadc : 0xffffff }),
       )
     }
     this.lights = new AirfieldLights(this.tex)
@@ -224,6 +228,7 @@ export class WorldRenderer {
     this.builtRev = -1
     this.hallCrowd?.dispose()
     this.hallCrowd = new HallCrowd(this.root, this.shared.people)
+    this.sky.setPhotos(q.skyPhotos)
     if (q.colorGrade) gradeTree(this.root)
   }
 
@@ -308,7 +313,7 @@ export class WorldRenderer {
         y: SURFACE_Y[k],
         uvSize: k === 'grass' ? 7 : k === 'runway' ? 10 : k === 'apron' || k === 'pad' ? 6.2 : 8,
         sub: k === 'grass' ? 2 : 1,
-        macro: k === 'grass' ? 0.22 : 0.06,
+        macro: k === 'grass' ? 0.34 : 0.06,
         seed: k.length,
       })
       this.staticGeos.push(geo)
@@ -335,6 +340,16 @@ export class WorldRenderer {
       const mesh = new THREE.Mesh(geo, this.paintMat)
       mesh.receiveShadow = true
       mesh.name = 'surface-paint'
+      this.staticGroup.add(mesh)
+    }
+    const kerbs = roadKerbs(view)
+    if (kerbs.length) {
+      const geo = kerbGeometry(kerbs)
+      this.staticGeos.push(geo)
+      const mesh = new THREE.Mesh(geo, this.kerbMat)
+      mesh.castShadow = false
+      mesh.receiveShadow = true
+      mesh.name = 'surface-kerb'
       this.staticGroup.add(mesh)
     }
     const spots = [...rws.flatMap((r) => runwayLightSpots(r)), ...taxiLightSpots(view)]
@@ -429,6 +444,9 @@ export class WorldRenderer {
     this.fog.near = s.fogNear
     this.fog.far = s.fogFar
     this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
+    // Climate maps paint their own sky, so the photo gives way as their tint comes in.
+    const photoAmount = (SKY_PHOTO_WEATHER[weather] ?? 1) * (1 - (draw?.skyAmount ?? 0))
+    this.sky.setPhoto(skyPhotoBlend(s.hour, this.dayNightControl?.daylight), photoAmount)
     this.sky.follow(camPos)
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure
@@ -825,6 +843,7 @@ export class WorldRenderer {
     this.disposeContent()
     this.paintMat?.dispose()
     this.contacts.dispose()
+    this.kerbMat.dispose()
     this.sky.dispose()
     this.root.removeFromParent()
     for (const l of this.ownLights) l.removeFromParent()

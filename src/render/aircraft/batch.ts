@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { buildAircraft, createWindowMesh } from './build'
 import { getAircraftQuality, lodWeights } from './lod'
 import { bakeGeometry, bakeGroup } from './merge'
+import { bindLiveryUniforms, resolveLiveryAirline } from './liveryTex'
 import { liveryKey, releaseAircraft, sharedGeo, vertexMaterials } from './pool'
 import { getAircraftSpec, type Livery } from './specs'
 
@@ -61,11 +62,18 @@ function makeInstances(
   geo: THREE.BufferGeometry,
   material: THREE.Material,
   capacity: number,
+  airline: string | undefined,
 ): THREE.InstancedMesh {
   const mesh = new THREE.InstancedMesh(geo, material, capacity)
   mesh.count = 0
   mesh.visible = false
   mesh.frustumCulled = true
+  mesh.userData.airline = airline
+  mesh.onBeforeRender = () => {
+    const mat = mesh.material
+    if (Array.isArray(mat)) return
+    bindLiveryUniforms(mat, resolveLiveryAirline(mesh.userData.airline as string | undefined))
+  }
   return mesh
 }
 
@@ -131,21 +139,24 @@ export class ParkedFleet {
         }
       }
       const capacity = Math.max(4, list.length)
+      const airline = sample.livery.airline
       const mid = makeInstances(
         shellGeometry(sample.airframeId, sample.livery, 'mid'),
         vertexMaterials('mid').opaque,
         capacity,
+        airline,
       )
       const low = makeInstances(
         shellGeometry(sample.airframeId, sample.livery, 'low'),
         vertexMaterials('low').opaque,
         capacity,
+        airline,
       )
       mid.castShadow = true
       const windowsGeo = windowGeometry(sample.airframeId, sample.livery)
       const windows =
         windowsGeo && windowsGeo.getAttribute('position')
-          ? makeInstances(windowsGeo, vertexMaterials('mid').opaque, capacity)
+          ? makeInstances(windowsGeo, vertexMaterials('mid').opaque, capacity, airline)
           : null
       this.root.add(mid, low)
       if (windows) this.root.add(windows)

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { leadSecForTag, type ShowUpPlan } from '../pax/showup.ts'
 import { CURB, moveOpen, AIR, PRE } from '../paxnav/index.ts'
 import { sampleTerminal } from '../terminalbuild/sample.ts'
 import { HallNavCrowd } from '../render/hallNavCrowd.ts'
@@ -81,6 +82,10 @@ describe('hall walkers (paxnav glue)', () => {
     game.hallGuests = game.hallGuests.filter((g) => !g.preview)
     game.tickHallNav(0.01)
     release(game, 60)
+    // Boarding opens 30 nav minutes before STD. A near departure lets this
+    // short run see them board at the slower walk.
+    game.showUps.push({ slotId: 'wall', flightId: 'wall', std: game.clock + 6 } as ShowUpPlan)
+    for (const g of game.hallGuests) g.flightId = 'wall'
     const nav = game.hallNav.nav!
     const g = nav.nav
     const last = new Map<string, number>()
@@ -147,6 +152,33 @@ describe('hall walkers (paxnav glue)', () => {
     const per = (performance.now() - t0) / frames
     // A 60 fps frame is 16.7 ms; the walk must leave nearly all of it to drawing.
     expect(per).toBeLessThan(8)
+  })
+
+  it('boards a leisure bank, and a lead shorter than the walk is what misses', () => {
+    const game = field()
+    game.hallGuests = game.hallGuests.filter((g) => !g.preview)
+    const hallId = game.hallKey(game.activeHall()!)
+    const leisure = leadSecForTag('budget')
+    game.showUps.push({ slotId: 'leisure', flightId: 'leisure', std: game.clock + leisure } as ShowUpPlan)
+    const n = 12
+    for (let i = 0; i < n; i++) {
+      const g = spawnHallGuest(`ok-${i}`, 'depart', 'budget', { hallId })
+      g.flightId = 'leisure'
+      game.hallGuests.push(g)
+    }
+    for (let i = 0; i < 2000 && game.hallNav.boarded < n && game.hallNav.missed === 0; i++) game.tickHallNav(0.5)
+    // Walking, security and a shop stop still fit. Nothing misses unless the lead closes first.
+    expect(game.hallNav.missed).toBe(0)
+    expect(game.hallNav.boarded).toBe(n)
+
+    game.showUps.push({ slotId: 'crush', flightId: 'crush', std: game.clock + 0.5 } as ShowUpPlan)
+    for (let i = 0; i < 24; i++) {
+      const g = spawnHallGuest(`late-${i}`, 'depart', 'budget', { hallId })
+      g.flightId = 'crush'
+      game.hallGuests.push(g)
+    }
+    for (let i = 0; i < 20; i++) game.tickHallNav(0.25)
+    expect(game.hallNav.missed).toBeGreaterThan(0)
   })
 
   it('draws every walker on the hall floor in hall metres', () => {

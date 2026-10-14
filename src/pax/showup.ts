@@ -1,7 +1,7 @@
 /**
  * Departure show-up. Pure planner — a later `src/pax` module can replace this
  * file. The sim calls `planShowUp` when a slot is banked and releases at most
- * three passengers per second per entrance.
+ * four passengers per second per entrance.
  *
  * One sim-second is eight game minutes (the same clock as diplomacy).
  * Scheduled departure (STD) is the slot's approach ETA plus `PLANNED_TURN_SEC`.
@@ -19,7 +19,7 @@ export const LEISURE_LEAD_GAME_MIN = 180
 export const TIMED_LEAD_GAME_MIN = 120
 export const CHECKIN_CLOSE_INTL_GAME_MIN = 45
 export const CHECKIN_CLOSE_DOM_GAME_MIN = 30
-export const MAX_SPAWNS_PER_SEC = 3
+export const MAX_SPAWNS_PER_SEC = 4
 /** Last release sits this far ahead of the counter closing, so the bag drop can start. */
 export const CHECKIN_WALK_SEC = 1.25
 /**

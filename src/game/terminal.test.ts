@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_SPAWNS_PER_SEC } from '../pax/showup.ts'
 import { hallPath, openNodesFromRooms, type HallNode } from './guests.ts'
 import { Game } from './sim.ts'
 import type { Flight } from './types.ts'
@@ -229,7 +230,7 @@ describe('security choke', () => {
       const s = Math.floor(t + 1e-6)
       buckets.set(s, (buckets.get(s) ?? 0) + 1)
     }
-    for (const n of buckets.values()) expect(n).toBeLessThanOrEqual(3)
+    for (const n of buckets.values()) expect(n).toBeLessThanOrEqual(MAX_SPAWNS_PER_SEC)
     const held = wave.filter((g) => (g.releaseAt ?? 0) > game.clock)
     expect(held.length).toBeGreaterThan(0)
     expect(held.every((g) => g.path.length === 0)).toBe(true)

@@ -3,7 +3,7 @@ import { HALL_D, HALL_W } from '../game/terminal'
 import { starterGame } from './world/fixtures'
 import { terminals } from './world/layout'
 import { planTerminal, terminalPlanSeed } from './world/plan'
-import { apronToHall, hallFitFor, hallGuestScale, matchTerminal, poseOnPlan } from './hallRooms'
+import { apronToHall, hallFitFor, hallGuestScale, matchTerminal, poseOnPlan, roomShellBounds, showLegacyHallFurniture } from './hallRooms'
 
 describe('hall room fit', () => {
   it('fits the nine starter rooms inside the hall and leaves decorative walkers off', () => {
@@ -33,6 +33,19 @@ describe('hall room fit', () => {
     }
     expect(hallGuestScale(fit)).toBeGreaterThan(0.2)
     expect(hallGuestScale(fit)).toBeLessThan(1)
+    const shell = roomShellBounds(rp, fit)
+    const shellW = shell.maxX - shell.minX
+    expect(shellW).toBeLessThan(HALL_W - 6)
+    expect(shellW).toBeGreaterThan(HALL_D * 0.7)
+    for (const [x, z] of corners) {
+      const p = apronToHall(x, z, fit)
+      expect(p.x).toBeGreaterThan(shell.minX)
+      expect(p.x).toBeLessThan(shell.maxX)
+      expect(p.z).toBeGreaterThan(shell.minZ)
+      expect(p.z).toBeLessThan(shell.maxZ)
+    }
+    expect(showLegacyHallFurniture(true)).toBe(false)
+    expect(showLegacyHallFurniture(false)).toBe(true)
   })
 
   it('walks a cleared guest from check-in toward food through the fitted hall', () => {
