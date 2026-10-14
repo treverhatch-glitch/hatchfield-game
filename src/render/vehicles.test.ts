@@ -77,6 +77,17 @@ describe('ground vehicle models', () => {
     expect(counts.size).toBeGreaterThan(ALL_MODELS.length - 3)
   })
 
+  it('keeps the de-ice basket on the boom tip', async () => {
+    const { partCentre } = await import('./vehicleModels')
+    const [L, H] = MODEL_SIZE.deice
+    const basket = partCentre('deice', 'basket')
+    expect(basket[0]).toBeCloseTo(L / 2 - 0.6, 0)
+    expect(basket[1]).toBeCloseTo(H - 0.4, 0)
+    const boom = partCentre('deice', 'boom')
+    expect(boom[0]).toBeGreaterThan(0)
+    expect(boom[1]).toBeGreaterThan(1.2)
+  })
+
   it('names the fuel tanker cab, tank, hose reel and wheels for the hose animation', () => {
     const rig = vehicleRig('fuel', '#c9a227')
     for (const name of ['cab', 'tank', 'hoseReel', 'wheels']) expect(rig.getObjectByName(name), name).toBeTruthy()
