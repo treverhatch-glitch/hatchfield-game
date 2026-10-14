@@ -173,6 +173,8 @@ describe('initWorldRender', () => {
     firstBody(a)
     for (let i = 0; i < 6; i++) {
       game.tick(0.3)
+      // Keep the camera on the guest: it can walk out of a fixed view before the last frame.
+      near = camAt(g.wx ?? 0, g.wz ?? 0, 14)
       wr.update(game, near, 1 / 30)
     }
     firstBody(b)
