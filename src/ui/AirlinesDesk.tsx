@@ -129,7 +129,7 @@ export function AirlinesDesk({ game }: { game: Game }) {
                           data-testid="diplomacy-figure-open"
                           onClick={() => setMenu(menu === 'figure' ? null : 'figure')}
                         >
-                          Figure
+                          Contact
                         </button>
                       ) : null}
                       <button type="button" className={menu === 'rivals' ? 'on' : ''} onClick={() => setMenu(menu === 'rivals' ? null : 'rivals')}>
@@ -158,7 +158,7 @@ export function AirlinesDesk({ game }: { game: Game }) {
                               Apology
                             </button>
                             <button type="button" onClick={() => game.diplomacyEndeavor(card.id)}>
-                              Endeavor
+                              Joint endeavor
                             </button>
                           </div>
                         ) : null}
@@ -247,7 +247,7 @@ export function AirlinesDesk({ game }: { game: Game }) {
                                 Court
                               </button>
                               <button type="button" onClick={() => setSpatFigures((v) => !v)}>
-                                Figures
+                                Contacts
                               </button>
                             </div>
                             {courting ? (

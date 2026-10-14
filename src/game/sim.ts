@@ -10128,7 +10128,7 @@ export class Game {
     }
     if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
     spots.push({ id: 'power', label: 'Power' })
-    if (tilesOf(this.tiles, 'mro').length) spots.push({ id: 'mro', label: 'MRO' })
+    if (tilesOf(this.tiles, 'mro').length) spots.push({ id: 'mro', label: 'Maintenance' })
     if (tilesOf(this.tiles, 'nighthub').length) spots.push({ id: 'nighthub', label: 'Night hub' })
     else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
       spots.push({ id: 'bags', label: 'Bags' })
@@ -16902,7 +16902,7 @@ export class Game {
         )
       } else if (anyFree) {
         this.pushNews(
-          `${slot.flightNo} needs Stand ${needCls}+ — class or path missing.`,
+          `${slot.flightNo} needs ${standClassLabel(needCls)}+ — class or path missing.`,
           'bad',
         )
       }

@@ -407,7 +407,7 @@ export interface BuildOffer {
 export const STAND_OFFERS: Record<'small' | 'wide' | 'jumbo', BuildOffer> = {
   small: {
     id: 'stand',
-    name: 'Stand M',
+    name: 'Medium stand',
     tier: 'small',
     fieldLevel: 1,
     research: null,
@@ -417,7 +417,7 @@ export const STAND_OFFERS: Record<'small' | 'wide' | 'jumbo', BuildOffer> = {
   },
   wide: {
     id: 'stand_w',
-    name: 'Stand W',
+    name: 'Wide stand',
     tier: 'wide',
     fieldLevel: 4,
     research: 'widebody_ops',
@@ -427,7 +427,7 @@ export const STAND_OFFERS: Record<'small' | 'wide' | 'jumbo', BuildOffer> = {
   },
   jumbo: {
     id: 'stand_l',
-    name: 'Stand J',
+    name: 'Jumbo stand',
     tier: 'jumbo',
     fieldLevel: 5,
     research: 'heavy_pack',

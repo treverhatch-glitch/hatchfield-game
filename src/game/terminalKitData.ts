@@ -9,7 +9,7 @@ import type { PaxTag } from './guests.ts'
 
 import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
 
-export type KitCategory = 'food' | 'seating' | 'decor' | 'links' | 'service' | 'rooms'
+export type KitCategory = 'commercial' | 'seating' | 'decor' | 'links' | 'service' | 'rooms'
 
 /** One hall cell holds this many slots. Desks and lanes fill the whole cell. */
 export const CELL_SLOTS = 4
@@ -84,7 +84,7 @@ export const KIT_ITEMS: ItemDef[] = [
     minFieldLevel: 1,
     wearPerUse: 0.3,
     room: 'food',
-    category: 'food',
+    category: 'commercial',
     size: 2,
   },
   {
@@ -330,15 +330,15 @@ export const KIT_ITEMS: ItemDef[] = [
     minFieldLevel: 1,
     wearPerUse: 0.2,
     room: 'souvenir',
-    category: 'rooms',
+    category: 'commercial',
     size: 2,
   },
 ]
 
 /** Kit fields layered onto the existing food and seat items. */
 export const KIT_PATCHES: Partial<Record<string, Partial<ItemDef>>> = {
-  cafe: { category: 'food', size: 2 },
-  restaurant: { category: 'food', size: 4 },
+  cafe: { category: 'commercial', size: 2 },
+  restaurant: { category: 'commercial', size: 4 },
   seat_row: { category: 'seating', size: 1, seats: 4 },
   checkin_belt: { category: 'rooms' },
   security_small: { category: 'rooms' },

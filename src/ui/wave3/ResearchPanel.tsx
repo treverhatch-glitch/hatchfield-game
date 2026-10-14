@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react'
 import { BRANCHES, type ResearchBranch } from '../../wave3/config.ts'
+
+const BRANCH_LABEL: Record<ResearchBranch, string> = {
+  passenger: 'Passenger',
+  cargo: 'Cargo',
+  efficiency: 'Efficiency',
+  prestige: 'Prestige',
+}
+
+function branchLabel(id: ResearchBranch): string {
+  return BRANCH_LABEL[id]
+}
 import type { Game } from '../../game/sim.ts'
 import { CeoCardView } from './CeoCard.tsx'
 import { LabAnimation } from './LabAnimation.tsx'
@@ -39,7 +50,7 @@ export function ResearchPanel({ game }: { game: Game }) {
 
   return (
     <section className="wave3-panel" data-testid="wave3-panel">
-      <h3>Research</h3>
+      <h3>Branches</h3>
       <p className="muted" data-testid="wave3-points">
         {points} research points · operations trickle is on from day 1, before anyone is hired.
         Rooms add the rest
@@ -59,7 +70,7 @@ export function ResearchPanel({ game }: { game: Game }) {
             aria-selected={branch === id}
             onClick={() => setBranch(id)}
           >
-            {id}
+            {branchLabel(id)}
           </button>
         ))}
       </div>

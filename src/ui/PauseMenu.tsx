@@ -130,7 +130,7 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
       {onNewGame ? (
         <>
           <button type="button" className="wide" data-testid="settings-new-game" onClick={onNewGame}>
-            New Game
+            Back to title
           </button>
           <p className="muted">Back to the title. Start again from there, or continue this field.</p>
         </>

@@ -1132,14 +1132,14 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'stand_s',
     tile: 'stand',
-    name: 'Stand S',
+    name: 'Small stand',
     cost: STAND_S_COST,
     blurb: 'Small remote bay — walk or terminal-bus. Toggle Jetway for a pre-attached gate (pricier).',
   },
   {
     tool: 'stand',
     tile: 'stand',
-    name: 'Stand M',
+    name: 'Medium stand',
     cost: STAND_COST,
     blurb: 'Medium remote bay. Jetway toggle attaches a hall gate for fast board/deboard.',
   },
@@ -1155,7 +1155,7 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'stand_l',
     tile: 'stand',
-    name: 'Stand J',
+    name: 'Jumbo stand',
     cost: STAND_OFFERS.jumbo.cost,
     minFieldLevel: 5,
     research: 'heavy_pack',
@@ -1359,7 +1359,7 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'mro',
     tile: 'mro',
-    name: 'MRO hangar',
+    name: 'Maintenance hangar',
     cost: MRO_COST,
     minFieldLevel: 4,
     blurb: `Field level 4. Heavy checks for narrow, wide, and jumbo bays. Airlines pay, but the aircraft ties up its stand. Needs mechanics and power. $${MRO_UPKEEP_PER_DAY.toLocaleString('en-US')}/day.`,
@@ -1508,15 +1508,15 @@ export const ROOMS: RoomDef[] = [
 
 export const TOOL_LABEL: Record<Tool, string> = {
   pan: 'Select',
-  runway_short: 'Short strip',
+  runway_short: 'Short runway',
   runway: 'Runway',
-  runway_heavy: 'Heavy strip',
+  runway_heavy: 'Heavy runway',
   helipad: 'Helipad',
   taxi: 'Taxiway',
-  stand_s: 'Stand S',
-  stand: 'Stand M',
-  stand_w: 'Stand W',
-  stand_l: 'Stand J',
+  stand_s: 'Small stand',
+  stand: 'Medium stand',
+  stand_w: 'Wide stand',
+  stand_l: 'Jumbo stand',
   hangar_w: 'Wide hangar',
   hangar_j: 'Jumbo hangar',
   fuel_rail: 'Fuel rail',
@@ -1526,7 +1526,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   mover: 'Pier mover',
   terminal: 'Shell',
   premade: 'Premade hall',
-  snack: 'Snack',
+  snack: 'Snack bar',
   bags: 'Bags',
   belt: 'Belt',
   fuel: 'Fuel',
@@ -1539,18 +1539,18 @@ export const TOOL_LABEL: Record<Tool, string> = {
   road: 'Road',
   tower: 'Tower',
   hangar: 'Hangar',
-  mro: 'MRO',
+  mro: 'Maintenance hangar',
   nighthub: 'Night hub',
   hotel_inn: 'Inn',
-  hotel_biz: 'Biz hotel',
+  hotel_biz: 'Business hotel',
   hotel_resort: 'Resort',
-  park_s: 'Lot S',
-  park_l: 'Lot L',
-  park_g: 'Garage',
-  park_u: 'Under',
+  park_s: 'Small lot',
+  park_l: 'Large lot',
+  park_g: 'Parking garage',
+  park_u: 'Underground park',
   deice: 'De-ice',
   bus: 'Bus',
-  term_bus: 'Term bus',
+  term_bus: 'Terminal bus',
   people_mover: 'People mover',
   xfer_bus: 'Transfer bus',
   hub_skywalk: 'Skywalk',
@@ -1558,7 +1558,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   airport_hotel: 'Hotel',
   rail_link: 'Rail link',
   saf_blending: 'SAF',
-  clear: 'Clear',
+  clear: 'Bulldoze',
 }
 
 export function standAccessLabel(a: StandAccess): string {
@@ -1570,7 +1570,7 @@ export function hotelClassLabel(c: 'inn' | 'business' | 'resort'): string {
 }
 
 export function standClassLabel(c: StandClass): string {
-  return c === 'S' ? 'Stand S' : c === 'L' ? 'Stand L' : 'Stand M'
+  return c === 'S' ? 'Small stand' : c === 'L' ? 'Large stand' : 'Medium stand'
 }
 
 export function standClassRank(c: StandClass): number {

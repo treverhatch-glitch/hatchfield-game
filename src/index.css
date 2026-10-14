@@ -547,7 +547,9 @@ button {
   pointer-events: none;
   position: absolute;
   inset: 0;
-  z-index: 20;
+  /* Above the offer sheet (z-index 36) so an open menu stays clickable.
+     The box itself ignores hits, so the sheet still receives clicks on the field. */
+  z-index: 40;
 }
 
 .top,
@@ -1385,6 +1387,8 @@ html[data-gfx='low'] .view-layer.dim {
 }
 
 .dock-extend {
+  position: relative;
+  z-index: 1;
   max-height: none;
   overflow: visible;
   opacity: 1;
@@ -1582,6 +1586,8 @@ html[data-gfx='low'] .view-layer.dim {
 }
 
 .bottom-bar {
+  position: relative;
+  z-index: 8;
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
@@ -1645,10 +1651,40 @@ html[data-gfx='low'] .view-layer.dim {
   border-color: rgba(201, 162, 39, 0.45) !important;
 }
 
+.info-menus {
+  position: relative;
+  z-index: 8;
+}
+
 .info-menus button {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 11px;
+}
+
+.info-group {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.info-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(12, 22, 18, 0.96);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 8px;
+}
+
+.info-sub button {
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
 }
 
 .staff-subs {

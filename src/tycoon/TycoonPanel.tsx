@@ -98,7 +98,7 @@ export function TycoonPanel({
 }) {
   const tabs: { id: TycoonTab; label: string }[] = [
     { id: 'shops', label: 'Shops' },
-    { id: 'ads', label: 'Ads' },
+    { id: 'ads', label: 'Campaigns' },
     { id: 'awards', label: 'Awards' },
   ]
   if (view.report) tabs.push({ id: 'year', label: 'Year' })
@@ -113,6 +113,7 @@ export function TycoonPanel({
             role="tab"
             aria-selected={tab === item.id}
             className={tab === item.id ? 'on' : ''}
+            data-testid={`tycoon-tab-${item.id}`}
             onClick={() => onTab(item.id)}
           >
             {item.label}

@@ -27,15 +27,7 @@ import {
 } from '../game/terminal'
 import { refundFor } from '../game/terminalKit'
 import type { KitCategory } from '../game/terminalKitData'
-
-const KIT_TABS: { id: KitCategory; label: string }[] = [
-  { id: 'rooms', label: 'Rooms' },
-  { id: 'food', label: 'Food' },
-  { id: 'seating', label: 'Seating' },
-  { id: 'decor', label: 'Decor' },
-  { id: 'links', label: 'Links' },
-  { id: 'service', label: 'Service' },
-]
+import { KIT_TABS } from './uiCatalog'
 
 /** Slim build bar for the terminal kit. Cards close once the item is placed. */
 function KitBar({
@@ -118,7 +110,7 @@ function KitBar({
                 }}
               >
                 <strong>{item.name}</strong>
-                <span>{locked ? `FL${need}` : money(item.cost)}</span>
+                <span>{locked ? `Lv ${need}` : money(item.cost)}</span>
                 <span>${item.upkeep}/day</span>
               </button>
             )

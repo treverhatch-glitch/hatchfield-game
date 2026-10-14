@@ -142,7 +142,7 @@ describe('the letter says what it needs', () => {
     const game = started()
     const rows = game.reqReport('northline').map((r) => r.label)
     expect(rows.some((l) => /stand(s)?$/.test(l))).toBe(true)
-    expect(rows.some((l) => /Stand [SML]\+/.test(l))).toBe(true)
+    expect(rows.some((l) => /(Small|Medium|Large) stand\+/.test(l))).toBe(true)
     expect(rows.some((l) => /security/i.test(l))).toBe(true)
     const verdict = game.letterVerdict('northline')
     expect(verdict.met).toBe(game.reqReport('northline').every((r) => r.met))
@@ -160,7 +160,7 @@ describe('the letter says what it needs', () => {
   it('names the metal the carrier card sells', () => {
     const game = started()
     const craft = game.contractCraftNeed('bushline')
-    expect(craft?.label).toMatch(/Stand S\+/)
+    expect(craft?.label).toMatch(/Small stand\+/)
     expect(craft?.met).toBe(true)
   })
 })
