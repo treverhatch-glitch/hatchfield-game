@@ -40,6 +40,8 @@ export const GATE_SCORE_CAP = 2
 export const CAPACITY_HEADROOM = 0.3
 /** Below this, the ramp is strained and capacity pulls the score down. */
 export const CAPACITY_STRAIN = 0.15
+/** Turns before stand, lounge and gate credit counts in full. A signed carrier that never flies does not climb on the building. */
+export const EXPERIENCE_TURNS = 8
 
 /**
  * Contract quality from the relationship score.

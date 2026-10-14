@@ -3,6 +3,7 @@ import {
   CAPACITY_HEADROOM,
   CAPACITY_STRAIN,
   CONTRACT_TIERS,
+  EXPERIENCE_TURNS,
   GATE_SCORE_CAP,
   LOUNGE_SCORE_CAP,
   RELATION_MAX,
@@ -219,11 +220,13 @@ export function reviewRelationDay(state: RelationsState, facts: RelationDayFacts
   for (const airlineId of facts.signed) {
     const prev = readRelation(next, airlineId)
     if (prev.reviewedDay >= facts.day) continue
+    const turns = prev.counts.onTime + prev.counts.delay
+    const scale = Math.min(1, turns / EXPERIENCE_TURNS)
     let capacity = 0
-    if (facts.stands > 0 && headroom >= CAPACITY_HEADROOM) capacity = SCORE_CAPACITY
-    else if (facts.stands <= 0 || headroom < CAPACITY_STRAIN) capacity = SCORE_CAPACITY_STRAIN
-    const lounges = Math.min(Math.max(0, facts.lounges), LOUNGE_SCORE_CAP) * SCORE_PER_LOUNGE
-    const gates = Math.min(Math.max(0, facts.gates), GATE_SCORE_CAP) * SCORE_PER_GATE
+    if (facts.stands > 0 && headroom >= CAPACITY_HEADROOM) capacity = SCORE_CAPACITY * scale
+    else if (turns > 0 && (facts.stands <= 0 || headroom < CAPACITY_STRAIN)) capacity = SCORE_CAPACITY_STRAIN
+    const lounges = Math.min(Math.max(0, facts.lounges), LOUNGE_SCORE_CAP) * SCORE_PER_LOUNGE * scale
+    const gates = Math.min(Math.max(0, facts.gates), GATE_SCORE_CAP) * SCORE_PER_GATE * scale
     next = applyParts(
       next,
       airlineId,
