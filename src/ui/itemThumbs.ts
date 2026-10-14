@@ -52,6 +52,8 @@ type Kit = {
   scene: THREE_NS.Scene
   camera: THREE_NS.PerspectiveCamera
   build: (tile: string) => THREE_NS.Object3D | null
+  env: THREE_NS.Texture | null
+  kitMod: typeof import('../build/models/kit') | null
 }
 let kitP: Promise<Kit | null> | null = null
 
@@ -61,6 +63,9 @@ function loadKit(): Promise<Kit | null> {
       const THREE = await import('three')
       const { World } = await import('../render/world')
       const { buildModel } = await import('../build/models')
+      const kitMod = await import('../build/models/kit')
+      // Icons wait for the Gemini photo textures so every icon shows real materials.
+      await kitMod.preloadPhotos()
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = THUMB_PX
       const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true })
@@ -70,11 +75,25 @@ function loadKit(): Promise<Kit | null> {
       renderer.outputColorSpace = THREE.SRGBColorSpace
       renderer.toneMapping = THREE.ACESFilmicToneMapping
       renderer.toneMappingExposure = 1.1
+      renderer.shadowMap.enabled = true
+      renderer.shadowMap.type = THREE.PCFShadowMap
       const scene = new THREE.Scene()
+      let env: THREE_NS.Texture | null = null
+      try {
+        const { RoomEnvironment } = await import('three/examples/jsm/environments/RoomEnvironment.js')
+        const pm = new THREE.PMREMGenerator(renderer)
+        env = pm.fromScene(new RoomEnvironment(), 0.04).texture
+        pm.dispose()
+      } catch {
+        env = null
+      }
       // Studio rig: sky/ground fill, warm key from camera-left, cool rim from behind.
       scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.5))
       const key = new THREE.DirectionalLight(0xfff1dc, 2.4)
       key.position.set(-4, 10, 8)
+      key.castShadow = true
+      key.shadow.mapSize.set(1024, 1024)
+      key.shadow.bias = -0.0005
       const rim = new THREE.DirectionalLight(0xbcd6ff, 1.4)
       rim.position.set(-6, 5, -9)
       const fill = new THREE.DirectionalLight(0xffffff, 0.6)
@@ -90,7 +109,7 @@ function loadKit(): Promise<Kit | null> {
         const g = proto.building(tile as Tile, new THREE.Vector3())
         return g.children.length ? g : null
       }
-      return { THREE, renderer, scene, camera, build }
+      return { THREE, renderer, scene, camera, build, env, kitMod }
     } catch {
       return null
     }
@@ -153,7 +172,29 @@ function renderOne(kit: Kit, id: string): Entry {
   camera.near = dist / 50
   camera.far = dist * 4
   camera.updateProjectionMatrix()
+  // Key-light shadow box sized to the prop; meshes cast/receive so roof plant and lamps read.
+  const key = scene.children.find((o) => (o as THREE_NS.DirectionalLight).isDirectionalLight && (o as THREE_NS.DirectionalLight).castShadow) as THREE_NS.DirectionalLight | undefined
+  if (key) {
+    key.target.position.copy(sphere.center)
+    key.position.copy(sphere.center).add(new THREE.Vector3(-4, 10, 8).normalize().multiplyScalar(r * 3))
+    key.target.updateMatrixWorld()
+    const sc = key.shadow.camera
+    sc.left = sc.bottom = -r * 1.3
+    sc.right = sc.top = r * 1.3
+    sc.near = 0.1
+    sc.far = r * 7
+    sc.updateProjectionMatrix()
+    if (!key.target.parent) scene.add(key.target)
+  }
+  obj.traverse((o) => {
+    const m = o as THREE_NS.Mesh
+    if (m.isMesh) m.receiveShadow = true
+  })
+  // Kit materials are shared with the live world: borrow them with this renderer's env map, then hand back.
+  const worldEnv = kit.kitMod?.getKitEnvironment() ?? null
+  kit.kitMod?.setKitEnvironment(kit.env)
   renderer.render(scene, camera)
+  kit.kitMod?.setKitEnvironment(worldEnv)
   const url = renderer.domElement.toDataURL('image/png')
   scene.remove(obj, shadow)
   shadow.geometry.dispose()

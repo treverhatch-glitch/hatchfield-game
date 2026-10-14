@@ -4,21 +4,29 @@
 <body><script type="module">
 import * as THREE from 'three'
 import { buildModel, MODEL_BUILDERS } from '/src/build/models/index.ts'
+import * as KIT from '/src/build/models/kit.ts'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+const Q = new URLSearchParams(location.search)
+const NIGHT = Q.get('night') === '1'
 const NAMES = { fuel:'Fuel farm', fire:'Fire station', police:'Police post', cargo:'Cargo shed', guard:'Guard post', tower:'Control tower', hangar:'Line hangar', hangar_w:'Wide hangar', hangar_j:'Jumbo hangar', snack:'Snack bar', bags:'Bag sort', kitchen:'Catering kitchen', depot:'Vehicle depot', substation:'Substation', hydrant:'Hydrant pit', tilt_tray:'Tilt-tray sort', fuel_farm_iii:'Fuel farm III', atc_approach:'ATC approach', remote_screening:'Remote screening', prefab_ii:'Prefab II', checkin_hall:'Check-in hall', security_hall:'Security hall', concourse:'Concourse', pier_ii:'Pier II', satellite:'Satellite', prestige_landmark:'Prestige landmark', hotel_inn:'Airport inn', hotel_biz:'Business hotel', hotel_resort:'Airport resort', park_s:'Small lot', park_l:'Large lot', park_g:'Parking garage', park_u:'Underground park', bus:'Bus curb', rail:'Rail station', termbus:'Terminal bus depot', xferbus:'Transfer bus depot', helipad:'Helipad', deice:'De-ice pad', mro:'MRO hangar', nighthub:'Cargo night hub', fuel_rail:'Fuel rail', oil:'Oil transfer', travelator:'Travelator', skywalk:'Skywalk', mover:'People mover' }
-const ids = Object.keys(MODEL_BUILDERS).filter((id) => id !== 'hotel')
-const cols = 8, cw = 300, ch = 280
+const ids = Q.get('ids') ? Q.get('ids').split(',') : Object.keys(MODEL_BUILDERS).filter((id) => id !== 'hotel')
+const cols = Number(Q.get('cols') || 8), cw = Number(Q.get('cw') || 300), ch = Number(Q.get('ch') || 280)
 const W = cols * cw, H = Math.ceil(ids.length / cols) * ch
 const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
 r.setSize(W, H); r.setScissorTest(true); r.outputColorSpace = THREE.SRGBColorSpace
 r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = true
 document.body.appendChild(r.domElement)
+r.shadowMap.type = THREE.PCFSoftShadowMap
+if (KIT.setKitEnvironment) { const pm = new THREE.PMREMGenerator(r); KIT.setKitEnvironment(pm.fromScene(new RoomEnvironment(), 0.04).texture) }
+if (KIT.setNightLevel) KIT.setNightLevel(NIGHT ? 1 : 0)
 const label = document.createElement('canvas'); label.width = W; label.height = H
 label.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none'; document.body.appendChild(label)
 const lx = label.getContext('2d')
 function draw() { lx.clearRect(0, 0, W, H); ids.forEach((id, i) => {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(i % 2 ? '#d6e0e8' : '#cbd6df')
-  scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.4))
-  const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-6, 12, 9); key.castShadow = true
+  if (NIGHT) scene.background = new THREE.Color('#0d1524')
+  scene.add(new THREE.HemisphereLight(NIGHT ? 0x34486a : 0xeaf2ff, NIGHT ? 0x10141a : 0x6b6253, NIGHT ? 0.5 : 1.4))
+  const key = new THREE.DirectionalLight(NIGHT ? 0x8fa6d6 : 0xfff1dc, NIGHT ? 0.35 : 2.6); key.position.set(-6, 12, 9); key.castShadow = true
   key.shadow.camera.left = key.shadow.camera.bottom = -8; key.shadow.camera.right = key.shadow.camera.top = 8; key.shadow.mapSize.set(1024,1024)
   scene.add(key)
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: '#7a9a5a' }))
@@ -31,8 +39,8 @@ function draw() { lx.clearRect(0, 0, W, H); ids.forEach((id, i) => {
   const x = (i % cols) * cw, yTop = Math.floor(i / cols) * ch
   const y = H - yTop - ch
   r.setViewport(x, y + 40, cw, ch - 40); r.setScissor(x, y, cw, ch)
-  r.setClearColor('#f4f6f8'); r.clear(); r.render(scene, cam)
-  lx.fillStyle = '#1d2126'; lx.font = '600 17px Inter, Arial'; lx.textAlign = 'center'
+  r.setClearColor(NIGHT ? '#0d1524' : '#f4f6f8'); r.clear(); r.render(scene, cam)
+  lx.fillStyle = NIGHT ? '#e8eef6' : '#1d2126'; lx.font = '600 17px Inter, Arial'; lx.textAlign = 'center'
   lx.fillText(NAMES[id] || id, x + cw / 2, yTop + ch - 14)
 }) }
 draw()

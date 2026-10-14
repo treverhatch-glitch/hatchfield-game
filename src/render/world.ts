@@ -31,6 +31,10 @@ import { previewAirframe } from '../scale/logic'
 import { ConstructionLayer } from '../build/construction'
 import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
 import { buildModel, standAircraftGhost } from '../build/models'
+import { setKitEnvironment, setNightLevel } from '../build/models/kit'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { daylightFactor } from './world/dayNight'
+import { simClockToHour } from './world/daylight'
 import { lotFrame, type Lot } from '../build/footprints'
 import { AnimSystem, buildingSignals, siteSignals } from '../build/anim'
 import { ServiceFx } from './serviceFx'
@@ -160,7 +164,7 @@ function vehicleMeters(kind: string): [number, number, number] {
   if (kind === 'citycargo' || kind === 'catering_truck') return [8.5, 3.2, 2.5]
   if (kind === 'delivery' || kind === 'contractor') return [7.2, 2.8, 2.4]
   if (kind === 'fuel' || kind === 'fuel_truck') return [8, 3, 2.5]
-  if (kind === 'pax_bus') return [12, 3, 2.5]
+  if (kind === 'pax_bus' || kind === 'coach') return [12, 3.3, 2.55]
   if (kind === 'uld_loader') return [8, 2.4, 2.6]
   if (kind === 'gpu') return [3.2, 1.6, 1.4]
   if (kind === 'baggage_tug' || kind === 'belt_loader' || kind === 'bags') return [6.5, 1.8, 1.6]
@@ -310,6 +314,14 @@ export class World {
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.localClippingEnabled = true // construction reveal
+    // Building kit PBR: one shared studio reflection map so metal/glass read as real materials.
+    try {
+      const pm = new THREE.PMREMGenerator(this.renderer)
+      setKitEnvironment(pm.fromScene(new RoomEnvironment(), 0.04).texture)
+      pm.dispose()
+    } catch {
+      /* headless / no WebGL2: plain lighting */
+    }
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#87b7d9')
@@ -2041,6 +2053,8 @@ export class World {
                   ? '#4aa8c8'
                   : t.kind === 'termbus'
                     ? '#e8c56a'
+                    : t.kind === 'coach'
+                      ? '#2f6f9a'
                     : t.kind === 'contractor'
                       ? '#d8dee6'
                       : t.kind === 'delivery'
@@ -2476,6 +2490,8 @@ export class World {
     perfEnd('world.entities', t)
     t = perfStart()
     this.syncSites(game)
+    // Windows, wall-packs and lot lamps come up as the sky darkens.
+    setNightLevel(1 - Math.min(1, Math.max(0, (daylightFactor(simClockToHour(game.clock)) - 0.12) / 0.5)))
     this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera, (key) => {
       const tile = game.yard.tileOf(key)
       if (tile === 'mro') return siteSignals(tile, [], game.mroDoorOpen(key) > 0 || game.hangarInUse(key))

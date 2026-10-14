@@ -30,6 +30,18 @@ export function ghostMaterials(valid: boolean): GhostMaterials {
     opacity: 0.45,
     depthWrite: false,
   })
+  // Fresnel rim: silhouettes and roof edges glow, flat faces stay see-through, so depth reads at any zoom.
+  body.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      '#include <dithering_fragment>',
+      `#include <dithering_fragment>
+  float gRim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.2);
+  float gUp = clamp(normalize(vNormal).y, 0.0, 1.0);
+  gl_FragColor.rgb += diffuse * (gRim * 0.75 + gUp * 0.12);
+  gl_FragColor.a = clamp(gl_FragColor.a + gRim * 0.4, 0.0, 0.92);`,
+    )
+  }
+  body.customProgramCacheKey = () => 'hf-ghost'
   const edge = new THREE.LineBasicMaterial({ color: tint, transparent: true, opacity: 0.95, depthWrite: false })
   return {
     body,
@@ -69,6 +81,27 @@ export function ghostify(root: THREE.Object3D, mats: GhostMaterials, opts: { edg
     }
   }
   for (const m of dropped) if (m !== mats.body) m.dispose()
+  // Footprint plate: the lot the building will claim, outlined on the ground.
+  if (opts.edges !== false && meshes.length) {
+    root.updateMatrixWorld(true)
+    const inv = new THREE.Matrix4().copy(root.matrixWorld).invert()
+    const b = new THREE.Box3()
+    for (const m of meshes) b.union(new THREE.Box3().setFromObject(m).applyMatrix4(inv))
+    if (!b.isEmpty()) {
+      const w = b.max.x - b.min.x
+      const d = b.max.z - b.min.z
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mats.body)
+      plate.rotation.x = -Math.PI / 2
+      plate.position.set((b.min.x + b.max.x) / 2, b.min.y + 0.03, (b.min.z + b.max.z) / 2)
+      plate.renderOrder = 1
+      plate.userData.ghostPlate = true
+      const outline = new THREE.LineSegments(new THREE.EdgesGeometry(plate.geometry), mats.edge)
+      outline.renderOrder = 3
+      outline.userData.ghostEdge = true
+      plate.add(outline)
+      root.add(plate)
+    }
+  }
   root.userData.ghost = true
   return root
 }
