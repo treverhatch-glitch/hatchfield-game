@@ -88,6 +88,8 @@ import {
   fieldLevelOf,
   fieldProgress,
   prestigeStarsOf,
+  LATE_FIELD_XP,
+  lateFieldLevelFromXp,
   type FieldLevel,
   normalizeAirline,
   AIRLINE_TIER_META,
@@ -254,6 +256,8 @@ import { NEGOTIATION, SERVICE_IDS, ULCC_IDS, negotiatedBagTurnFee } from '../neg
 import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
 import { PriceWar, composeRivalWalkIn } from '../rival/index.ts'
 import type { WarChoice } from '../rival/index.ts'
+import { StaffHousingBridge, type StaffField } from './staffHousingBridge.ts'
+import type { HousingTierId, StaffSeat } from '../staffhousing/types.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
@@ -433,11 +437,23 @@ import {
 } from '../commercial/index.ts'
 import { progressionBuildable, unlockLevel } from '../progression/unlocks.ts'
 import {
+  bankSlotCount,
+  bankSpacing,
   capstoneCost,
+  foldSpecMods,
+  isSpecNode,
   isSpecPath,
+  retailPrice,
+  screenMultiplier,
   siteUpkeepMultiplier,
+  specCashCost,
+  specNode,
   specPath,
   specPointsForLevel,
+  treePointsForProgress,
+  turnMinutes,
+  warehouseCapacity,
+  type SpecMods,
   type SpecPath,
 } from '../progression/specializations.ts'
 import {
@@ -474,6 +490,30 @@ import {
   seasonAtDay,
   type HolidayPeakHook,
 } from '../environment/index.ts'
+import {
+  accrueChallenges,
+  challengeCards,
+  climateAlert,
+  climateCaption,
+  climateWear,
+  demandCalendar,
+  engineDerate,
+  environmentBinding,
+  feedWinterOps,
+  fieldDraw,
+  holidaysOn,
+  mapById,
+  parseMapId,
+  passengerFactor,
+  rollMapWeather,
+  seasonOn,
+  weatherTitle,
+  winterForecast,
+  type ChallengeCard,
+  type MapDraw,
+  type MapId,
+  type WinterOpsReading,
+} from '../maps/index.ts'
 import { audit, FlowGraph, registerTerminal, type TerminalZone } from '../flow/index.ts'
 import {
   DEFAULT_CONNECTION_WINDOW,
@@ -555,12 +595,27 @@ import {
   farmBesidePavement,
   hasBeltNetwork,
   inBounds,
+  neighbors,
   nearestPath,
   runwayStrips,
   standBeltLinked,
   tilesOf,
   walkableFor,
 } from './path'
+import {
+  advanceLateDay,
+  lateCatalogLines,
+  lateIdForTool,
+  lateSiteLines,
+  railDemandScale,
+  restoreLateSites,
+  safFuelCost,
+  tileForLate,
+  wholeNights,
+  type LatePlacement,
+} from './lateBuildings.ts'
+import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
+import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import type {
   AircraftKind,
@@ -888,11 +943,15 @@ export class Game {
   fieldXp = 0
   /** Paths chosen at FL6, FL8, and FL10. Order is the order they were picked. */
   specPaths: SpecPath[] = []
+  /** Bought specialization-tree nodes. Order is purchase order. */
+  specNodes: string[] = []
   /** Commissioned progression stamps (check-in hall, hydrant, landmark, …). */
   progressionBuilt: string[] = []
   parcels = 1
   /** Owned expansion plots. Empty until the city or factory site is bought. */
   ownedPlots: OwnedPlot[] = []
+  /** On-site dorms, apartments, and the staff village. */
+  staffHousing = new StaffHousingBridge()
   /** Optional outsourced pavement crew. Daily fee, faster repair. */
   maintenanceContract = false
   railLinked = false
@@ -905,6 +964,15 @@ export class Game {
   parkTerm: ParkTerm = 'short'
   /** Stamped hotel tiles: "c,r" → inn / business / resort. */
   hotelClass: Record<string, HotelClass> = {}
+  /** Placed hotel, rail link, and SAF blending sites. */
+  lateSites: LatePlacement[] = []
+  /**
+   * Missed-connection guests waiting on a hotel bed.
+   * The connecting hub is not on trunk; it should call noteMissedConnectionNights.
+   */
+  missedHotelNights = 0
+  /** Crew members waiting on a hotel bed. Nothing in the live sim fills this yet. */
+  crewHotelNights = 0
   /** Stand tile "c,r" → S/M/L. Missing defaults to M. */
   standClass: Record<string, StandClass> = {}
   /** Stand key → remote bay vs jetway-attached gate. */
@@ -984,6 +1052,12 @@ export class Game {
    * multiplies those (or any active holiday id) again.
    */
   holidayPeakHook: HolidayPeakHook = defaultHolidayPeak
+  /** New-game climate. Temperate keeps today's calendar, weather roll, and ramp. */
+  mapId: MapId = 'temperate'
+  mapChallenges: Record<string, number> = {}
+  /** Snow sample pushed into winter ops, when that module is installed. */
+  winterOps: WinterOpsReading | null = null
+  private mapClimateKey = ''
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
@@ -1299,9 +1373,11 @@ export class Game {
     this.loanOpened = 0
     this.fieldXp = 0
     this.specPaths = []
+    this.specNodes = []
     this.progressionBuilt = []
     this.parcels = 1
     this.ownedPlots = []
+    this.staffHousing.reset()
     this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
@@ -1310,6 +1386,9 @@ export class Game {
     this.parkTerms = {}
     this.parkTerm = 'short'
     this.hotelClass = {}
+    this.lateSites = []
+    this.missedHotelNights = 0
+    this.crewHotelNights = 0
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
@@ -1344,6 +1423,10 @@ export class Game {
     this.weather = 'clear'
     this.weatherCool = 45
     this.holidayPeakHook = defaultHolidayPeak
+    this.mapId = 'temperate'
+    this.mapChallenges = {}
+    this.winterOps = null
+    this.mapClimateKey = ''
     this.payrollCool = 30
     this.payrollDay = 0
     this.playtestYear.reset(0)
@@ -1495,11 +1578,106 @@ export class Game {
           sandbox: this.sandbox,
           difficulty: this.difficulty,
           enableHints: this.enableHintsAtStart,
+          mapId: this.mapId,
         }),
       )
     } catch {
       /* node / private mode */
     }
+  }
+
+  /** Climate for a new field. Safe before the plot is bought. */
+  setMap(id: MapId) {
+    const next = parseMapId(id)
+    if (next !== this.mapId) {
+      this.mapId = next
+      if (!this.site) this.mapChallenges = {}
+      this.mapClimateKey = ''
+      this.economy?.engine.setCalendar(demandCalendar(this.mapId))
+      this.refreshWinter()
+    }
+    this.rememberPending()
+    this.emit()
+  }
+
+  private rememberPending() {
+    if (this.site) return
+    try {
+      sessionStorage.setItem(
+        'hatchfield-pending',
+        JSON.stringify({
+          sandbox: this.sandbox,
+          difficulty: this.difficulty,
+          enableHints: this.enableHintsAtStart,
+          mapId: this.mapId,
+        }),
+      )
+    } catch {
+      /* node / private mode */
+    }
+  }
+
+  gameDay(): number {
+    return Math.floor(Math.max(0, this.clock) / 180)
+  }
+
+  /** Sky and farmland tint. Null on the temperate map. */
+  get mapDraw(): MapDraw | null {
+    return fieldDraw(this.mapId, this.gameDay())
+  }
+
+  mapEngineDerate(): number {
+    return engineDerate(this.mapId, this.gameDay())
+  }
+
+  mapGoalCards(): ChallengeCard[] {
+    return challengeCards(this.mapId, this.mapChallenges)
+  }
+
+  mapSummary(): { name: string; region: string; season: string; blurb: string } {
+    const map = mapById(this.mapId)
+    const season = seasonOn(map, this.gameDay())
+    return { name: map.name, region: map.region, season: season?.name ?? map.name, blurb: map.blurb }
+  }
+
+  climateCaption(): string {
+    const line = climateCaption(this.mapId, this.gameDay(), this.weather)
+    if (this.winterOps?.needsDeicing) return `${line} · De-ice`
+    return line
+  }
+
+  private refreshWinter() {
+    this.winterOps = feedWinterOps(winterForecast(this.mapId, this.gameDay(), this.weather))
+  }
+
+  private noteMapClimate() {
+    this.refreshWinter()
+    if (this.mapId === 'temperate' || !this.site) return
+    const binding = environmentBinding(this.mapId, this.gameDay())
+    const key = `${binding.season.id}|${binding.activeHolidays.map((holiday) => holiday.id).join(',')}`
+    if (key === this.mapClimateKey) return
+    const first = this.mapClimateKey === ''
+    this.mapClimateKey = key
+    if (first) return
+    const holiday = binding.activeHolidays.map((item) => item.name).join(' and ')
+    this.pushNews(
+      holiday
+        ? `${binding.season.name} · ${holiday} peak on the board.`
+        : `${binding.season.name} has started.`,
+      'ok',
+    )
+  }
+
+  private noteMapGoals(pax: number) {
+    const map = mapById(this.mapId)
+    const season = seasonOn(map, this.gameDay())
+    const next = accrueChallenges(this.mapId, this.mapChallenges, {
+      pax,
+      seasonId: season?.id ?? null,
+      holidayIds: holidaysOn(map, this.gameDay()).map((holiday) => holiday.id),
+      heat: engineDerate(this.mapId, this.gameDay()) > 1,
+    })
+    this.mapChallenges = next
   }
 
   /** Morning checklist — hides once dismissed or after the first takeoff. */
@@ -1931,13 +2109,16 @@ export class Game {
     if (this.startFocus === 'pax' && this.flightsDone < 2 && Math.random() > 0.35) return
     const airline = pick(pool)
     const a = this.airline(airline)
-    const target =
-      this.startFocus === 'cargo'
+    const mods = this.specMods()
+    const target = Math.round(
+      (this.startFocus === 'cargo'
         ? 48 + Math.floor(Math.random() * 36)
-        : 36 + Math.floor(Math.random() * 28)
+        : 36 + Math.floor(Math.random() * 28)) * mods.cargoTonnage,
+    )
     const fee = Math.round(
-      CARGO_VOLUME_FEE_MIN +
-        Math.random() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN),
+      (CARGO_VOLUME_FEE_MIN +
+        Math.random() * (CARGO_VOLUME_FEE_MAX - CARGO_VOLUME_FEE_MIN)) *
+        mods.cargoVolumeFee,
     )
     const window = 55 + Math.random() * 35
     this.cargoVolume = {
@@ -2119,6 +2300,105 @@ export class Game {
     return true
   }
 
+  specMods(): SpecMods {
+    return foldSpecMods(this.specNodes)
+  }
+
+  treePointsEarned(): number {
+    return treePointsForProgress(this.fieldLevel(), this.prestigeStars())
+  }
+
+  treePointsSpent(): number {
+    return this.specNodes.reduce((sum, id) => sum + (specNode(id)?.cost ?? 0), 0)
+  }
+
+  treePointsLeft(): number {
+    return Math.max(0, this.treePointsEarned() - this.treePointsSpent())
+  }
+
+  /** Satellite hall is tier 3, or the satellite stamp is already commissioned. */
+  satelliteLive(): boolean {
+    return (
+      this.progressionBuilt.includes('satellite') || this.fits.some((f) => (f.tier ?? 1) >= 3)
+    )
+  }
+
+  /** Extra simultaneous approaches from the hub tree. The satellite feed waits for the building. */
+  specInboundBonus(): number {
+    const mods = this.specMods()
+    let n = mods.inboundBonus
+    if (mods.satelliteFeed && this.satelliteLive()) n += mods.satelliteInbound
+    return n
+  }
+
+  hubHeatNeed(): number {
+    return Math.max(40, HUB_HEAT_NEED + this.specMods().hubHeatNeedDelta)
+  }
+
+  scaledTurnMinutes(base: number): number {
+    return turnMinutes(base, this.specMods(), this.isNight())
+  }
+
+  screenPace(premium: boolean): number {
+    return screenMultiplier(this.specMods(), premium)
+  }
+
+  cargoWarehouseCap(): number {
+    return warehouseCapacity(CARGO_WAREHOUSE_CAP, this.specMods(), this.railLinked)
+  }
+
+  canBuySpecNode(id: string): { ok: boolean; why: string } {
+    const node = specNode(id)
+    if (!node) return { ok: false, why: 'Unknown specialization.' }
+    if (this.specNodes.includes(id)) return { ok: false, why: 'Already unlocked.' }
+    if (!this.specPaths.includes(node.path)) {
+      return { ok: false, why: `Commit the ${specPath(node.path)?.label ?? node.path} path first.` }
+    }
+    for (const req of node.requires) {
+      if (!this.specNodes.includes(req)) {
+        return { ok: false, why: `Need ${specNode(req)?.name ?? req} first.` }
+      }
+    }
+    if (this.treePointsLeft() < node.cost) {
+      return {
+        ok: false,
+        why: `Need ${node.cost} tree point${node.cost === 1 ? '' : 's'} (have ${this.treePointsLeft()}).`,
+      }
+    }
+    const price = node.capstone ? specCashCost(node.cash, this.specPaths, node.path) : node.cash
+    if (price > 0 && this.cash < price && !this.sandbox) {
+      return { ok: false, why: `Need $${price.toLocaleString('en-US')}.` }
+    }
+    return { ok: true, why: '' }
+  }
+
+  /** Buy one tree node. The path must already be committed. Nothing on the tree is free. */
+  buySpecNode(id: string): boolean {
+    const gate = this.canBuySpecNode(id)
+    const node = specNode(id)
+    if (!node) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return false
+    }
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return false
+    }
+    const price = node.capstone ? specCashCost(node.cash, this.specPaths, node.path) : node.cash
+    if (price > 0 && !this.spend(price, node.name)) return false
+    this.specNodes.push(id)
+    const bill = node.upkeepPerDay > 0 ? ` Upkeep $${node.upkeepPerDay.toLocaleString('en-US')}/day.` : ''
+    this.pushNews(`${node.name} — ${node.perk} ${node.tradeoff}${bill}`, 'good')
+    this.emit()
+    return true
+  }
+
+  private dressRetail(tag: string, pay: number, kind: 'tenant' | 'lounge'): number {
+    return retailPrice(pay, this.specMods(), kind, tag === 'budget')
+  }
+
   /**
    * Buy a progression stamp that is not an apron tile.
    * Refuses when the field level is short of the unlock table.
@@ -2188,6 +2468,22 @@ export class Game {
    */
   private hostedFieldLevel(): number {
     return Math.min(5, this.fieldLevel())
+  }
+
+  /** Late-building rung. Matches field level through 5, then keeps climbing. */
+  lateFieldLevel(): number {
+    return lateFieldLevelFromXp(this.fieldXp)
+  }
+
+  lateXpToNext(): { level: number; xp: number; need: number; pct: number } {
+    const level = this.lateFieldLevel()
+    const xp = Number.isFinite(this.fieldXp) && this.fieldXp > 0 ? this.fieldXp : 0
+    const cap = LATE_FIELD_XP.length - 1
+    if (level >= cap) return { level, xp, need: LATE_FIELD_XP[level] ?? xp, pct: 1 }
+    const floor = LATE_FIELD_XP[level] ?? 0
+    const need = LATE_FIELD_XP[level + 1] ?? floor
+    const pct = need <= floor ? 1 : Math.min(1, Math.max(0, (xp - floor) / (need - floor)))
+    return { level, xp, need, pct }
   }
 
   /** Diplomacy day, 0 until the clock has run. */
@@ -2264,7 +2560,7 @@ export class Game {
         familyAmenities: family,
         prestigeItems: prestige,
         exclusivePier: 0,
-        nightSlots: this.hasResearch('night_bank') ? 1 : 0,
+        nightSlots: (this.hasResearch('night_bank') ? 1 : 0) + this.specMods().nightSlots,
         coldChainRooms: 0,
         cargoFacilities: tilesOf(this.tiles, 'cargo').length,
         incentiveDealActive: 0,
@@ -2327,7 +2623,11 @@ export class Game {
   private rampPace(airframeId: string, cargo: boolean, airlineId: string): number {
     const slow = this.diplomacy?.slowFactor(airlineId) ?? 1
     const climate = seasonAtDay(dayIndex(this.clock)).climate
-    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow * groundOpsPace(this.weather, climate)
+    const pace =
+      this.mapId === 'temperate'
+        ? groundOpsPace(this.weather, climate)
+        : this.mapEngineDerate()
+    return turnaroundScale(AIRFRAMES[airframeId], cargo) * slow * pace
   }
 
   private gradeDiplomacyTurn(f: Flight) {
@@ -2549,9 +2849,11 @@ export class Game {
     if (amount <= 0) return
     const before = this.fieldLevel()
     const starsBefore = prestigeStarsOf(this.fieldXp)
+    const beforeLate = this.lateFieldLevel()
     this.fieldXp += amount
     const after = this.fieldLevel()
     const starsAfter = prestigeStarsOf(this.fieldXp)
+    const afterLate = this.lateFieldLevel()
     if (after > before) {
       const meta = after <= 5 ? AIRLINE_TIER_META[after as AirlineTier] : undefined
       this.pushNews(
@@ -2563,6 +2865,8 @@ export class Game {
     }
     if (starsAfter > starsBefore) {
       this.pushNews(`Prestige star P${starsAfter}.`, 'good')
+    } else if (afterLate > beforeLate && afterLate > 5 && after === before) {
+      this.pushNews(`Field Level ${afterLate}.`, 'good')
     } else if (why && amount >= 12 && after === before) {
       /* quiet drip — big chunks can mention */
       void why
@@ -2672,7 +2976,8 @@ export class Game {
   }
 
   banThreshold(id: AirlineId): number {
-    return this.isHub(id) ? HUB_BAN_THRESHOLD : HEAT_BAN_THRESHOLD
+    if (!this.isHub(id)) return HEAT_BAN_THRESHOLD
+    return HUB_BAN_THRESHOLD + this.specMods().hubBanDelta
   }
 
   banAirline(id: AirlineId, reason: string) {
@@ -2856,10 +3161,18 @@ export class Game {
   }
 
   landingFeeMult(airlineId: AirlineId): number {
+    const mods = this.specMods()
     const r = this.rewardOf(airlineId)
     // Negotiated percents land on each line in contractBill, not as a blanket.
+    // Spec trees scale the same published index: low-cost cuts, luxury and pax landing stack.
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
     let mult = base * this.publishedFeeIndex * this.disruptions.feeMultiplier()
+    const a = this.airline(airlineId)
+    if (a.bizModel === 'lcc' || a.persona === 'budget') mult *= mods.lowCostFee
+    if (a.bizModel === 'full_service' || a.persona === 'luxury' || a.persona === 'business') {
+      mult *= mods.premiumFee
+    }
+    if (a.kind === 'pax') mult *= mods.paxLanding
     if (!Number.isFinite(mult) || mult <= 0) return 1
     return Math.min(2, Math.max(0.5, mult))
   }
@@ -3255,6 +3568,7 @@ export class Game {
     this.speed = 1
     this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
+    this.staffHousing.reset()
     this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
@@ -3262,6 +3576,9 @@ export class Game {
     this.carParkLong = false
     this.parkTerms = {}
     this.hotelClass = {}
+    this.lateSites = []
+    this.missedHotelNights = 0
+    this.crewHotelNights = 0
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
@@ -3913,7 +4230,38 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    return m * this.rivalWalkInFactor() * this.tycoonDemand()
+    const rail = railDemandScale(this.lateSites)
+    return m * this.rivalWalkInFactor() * this.tycoonDemand() * rail
+  }
+
+  /** Nights the airport hotel can still book. The hub hook fills `transfers`. */
+  hotelNightDemand(): HotelNight {
+    return { transfers: this.missedHotelNights, crew: this.crewHotelNights }
+  }
+
+  /**
+   * Connecting guests who need a bed. The open airport hotel books the rooms at day close,
+   * and the year card counts the same nights.
+   */
+  noteMissedConnectionNights(nights: number): void {
+    const count = wholeNights(nights)
+    this.missedHotelNights += count
+    this.playtestYear.noteNights(count)
+  }
+
+  /** Crew beds for the airport hotel. No live system fills this yet. */
+  noteCrewHotelNights(crew: number): void {
+    this.crewHotelNights += wholeNights(crew)
+  }
+
+  lateOpenAt(c: number, r: number): boolean {
+    const site = this.lateSites.find((row) => row.c === c && row.r === r)
+    if (!site) return true
+    return isOpen(site)
+  }
+
+  lateMeshSig(): string {
+    return this.lateSites.map((site) => `${site.c},${site.r},${site.elapsedDays}`).join('|')
   }
 
   /**
@@ -3956,6 +4304,7 @@ export class Game {
     for (const id of this.progressionBuilt) {
       n += progressionBuildable(id)?.upkeepPerDay ?? 0
     }
+    n += this.specMods().upkeepPerDay
     return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
 
@@ -4413,9 +4762,11 @@ export class Game {
       loanOpened: this.loanOpened,
       fieldXp: this.fieldXp,
       specPaths: this.specPaths,
+      specNodes: this.specNodes,
       progressionBuilt: this.progressionBuilt,
       parcels: this.parcels,
       ownedPlots: this.ownedPlots,
+      staffHousing: this.staffHousing.save(),
       maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
@@ -4482,6 +4833,8 @@ export class Game {
       cargoWarehouse: this.cargoWarehouse,
       cargoVolume: this.cargoVolume,
       startFocus: this.startFocus,
+      mapId: this.mapId,
+      mapChallenges: this.mapChallenges,
       sandbox: this.sandbox,
       sites: this.sites,
       tier3: this.tier3.save(),
@@ -4502,6 +4855,9 @@ export class Game {
       rival: this.rival?.serialize(),
       disruptions: this.disruptions.save(),
       playtestYear: this.playtestYear.save(),
+      tier3Sites: this.lateSites.map((site) => ({ ...site })),
+      missedHotelNights: this.missedHotelNights,
+      crewHotelNights: this.crewHotelNights,
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -4578,11 +4934,13 @@ export class Game {
         (this.loanBalance > 0 ? LOAN_PRINCIPAL + LOAN_FEE : 0)
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.specPaths = (s.specPaths ?? []).filter((id): id is SpecPath => isSpecPath(id))
+      this.specNodes = (s.specNodes ?? []).filter((id) => isSpecNode(id))
       this.progressionBuilt = (s.progressionBuilt ?? []).filter((id) => Boolean(progressionBuildable(id)))
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
       this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
       if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
+      this.staffHousing.load(s.staffHousing)
       this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
@@ -4590,6 +4948,9 @@ export class Game {
       this.carParkLong = s.carParkLong ?? false
       this.parkTerms = s.parkTerms ?? {}
       this.hotelClass = s.hotelClass ?? {}
+      this.lateSites = restoreLateSites(s.tier3Sites, this.tiles)
+      this.missedHotelNights = wholeNights(s.missedHotelNights ?? 0)
+      this.crewHotelNights = wholeNights(s.crewHotelNights ?? 0)
       // Migrate bare hotel tiles from older saves → business grade.
       for (const p of tilesOf(this.tiles, 'hotel')) {
         const k = `${p.c},${p.r}`
@@ -4685,6 +5046,10 @@ export class Game {
       this.cargoWarehouse = s.cargoWarehouse ?? 0
       this.cityCargoCool = 6
       this.startFocus = s.startFocus ?? (s.site === 'factory' ? 'cargo' : 'pax')
+      this.mapId = parseMapId(s.mapId)
+      this.mapChallenges = s.mapChallenges ?? {}
+      this.winterOps = null
+      this.mapClimateKey = ''
       this.sandbox = s.sandbox ?? false
       this.sites = s.sites ?? []
       this.diplomacy = null
@@ -4872,6 +5237,8 @@ export class Game {
       const hold = AIRFRAMES[f.airframeId]?.cargoHold
       this.dayCargo += hold && hold > 0 ? hold : Math.max(8, f.pax || 16)
     }
+    const pax = f.cargo || f.kind === 'freighter' ? 0 : Math.max(0, f.pax)
+    this.noteMapGoals(pax)
   }
 
   /** Hourly book for the economy charts. One in-game hour is 7.5 sim-seconds. */
@@ -5463,28 +5830,35 @@ export class Game {
 
   /** Onward flight still on the ground, or an open connection id. */
   private pickConnectFlight(airlineId: AirlineId): string {
+    const airlines = new Set<string>([airlineId])
+    if (this.specMods().interline) {
+      for (const id of this.signed) {
+        if (this.airline(id).kind === 'pax') airlines.add(id)
+      }
+    }
     const onward = this.flights.find(
-      (f) =>
-        f.airline === airlineId &&
-        !f.cargo &&
-        f.phase !== 'gone' &&
-        f.phase !== 'takeoff' &&
-        f.phase !== 'taxi_out' &&
-        f.phase !== 'pushback',
+      (f) => airlines.has(f.airline) && !f.cargo && !this.connectionClosed(f),
     )
     return onward?.id ?? `connect:${airlineId}`
+  }
+
+  /**
+   * A departure has left the connection window.
+   * Slack from the hub tree keeps pushback, then taxi, inside the window.
+   */
+  private connectionClosed(f: Flight): boolean {
+    if (f.phase === 'gone' || f.phase === 'takeoff') return true
+    const slack = this.specMods().connectSlackSec
+    if (f.phase === 'taxi_out') return slack < 16
+    if (f.phase === 'pushback') return slack < 8
+    return false
   }
 
   private flightDeparted(id: string): boolean {
     if (id.startsWith('connect:')) return false
     const f = this.flights.find((x) => x.id === id)
     if (!f) return true
-    return (
-      f.phase === 'pushback' ||
-      f.phase === 'taxi_out' ||
-      f.phase === 'takeoff' ||
-      f.phase === 'gone'
-    )
+    return this.connectionClosed(f)
   }
 
   private bagClock() {
@@ -5517,6 +5891,10 @@ export class Game {
     g.atBagDesk = true
     g.deskTime = 0
     g.happiness = Math.max(0, g.happiness - 8)
+    if (fault === 'missed_connection' && g.airlineId) {
+      const extra = this.specMods().missHeat - 1
+      if (extra > 0) this.adjustHeat(g.airlineId, -2.2 * extra)
+    }
     g.node = 'claim'
     g.path = []
     g.seg = 0
@@ -5624,9 +6002,10 @@ export class Game {
   ): { pax: number; bagUnits: number; fuelLevel: number } {
     const freighter = cargo || af.kind === 'freighter'
     const basePax = freighter ? 0 : paxForAirframe(af)
+    const factor = passengerFactor(this.mapId, this.gameDay())
     const pax = freighter
       ? 0
-      : Math.max(af.paxMin, Math.min(af.paxMax, Math.round(basePax * this.tycoonDemand())))
+      : Math.max(af.paxMin, Math.min(af.paxMax, Math.round(basePax * this.tycoonDemand() * factor)))
     const bagUnits = freighter
       ? 0
       : bagUnitsForAirframe(af, estimateFlightBagUnits(persona, pax))
@@ -5651,7 +6030,7 @@ export class Game {
 
   /** Warehouse fill 0–1 for HUD. */
   cargoWarehouseFill(): number {
-    return clamp(this.cargoWarehouse / CARGO_WAREHOUSE_CAP, 0, 1.2)
+    return clamp(this.cargoWarehouse / this.cargoWarehouseCap(), 0, 1.2)
   }
 
   /** Road cells on the map edge — city truck spawn points. */
@@ -5693,7 +6072,7 @@ export class Game {
         f.phase !== 'takeoff' &&
         f.phase !== 'hold',
     )
-    const wantStock = this.cargoWarehouse < CARGO_WAREHOUSE_CAP * 0.85
+    const wantStock = this.cargoWarehouse < this.cargoWarehouseCap() * 0.85
     if (!cargoSigned && !freighterBusy && !wantStock) return
     if (!wantStock && !freighterBusy) return
 
@@ -5803,7 +6182,7 @@ export class Game {
     }
     if (t.mission === 'city_shed') {
       const units = t.cargoUnits ?? 12
-      const room = Math.max(0, CARGO_WAREHOUSE_CAP - this.cargoWarehouse)
+      const room = Math.max(0, this.cargoWarehouseCap() - this.cargoWarehouse)
       const accepted = Math.min(units, room)
       this.cargoWarehouse += accepted
       if (accepted > 0) {
@@ -7351,7 +7730,8 @@ export class Game {
     svc = Math.min(12, svc)
     const cap = fit?.capGuests ?? 40
     if (peers.length > cap) svc *= overCapMultiplier(peers.length, cap)
-    if (fast) svc *= 0.5
+    if (fast) svc *= 0.5 * this.screenPace(true)
+    else svc *= this.screenPace(false)
 
     if ((g.serviceLeft ?? 0) > 0) {
       g.serviceLeft = (g.serviceLeft ?? 0) - dt
@@ -8602,6 +8982,20 @@ export class Game {
     }
     if (id === 'connections') return this.connectionMapLines()
     if (id === 'links') return this.linkLines()
+    if (id.startsWith('late-site:')) {
+      const [c, r] = id.slice('late-site:'.length).split(',').map(Number)
+      const index = this.lateSites.findIndex((site) => site.c === c && site.r === r)
+      return lateSiteLines(this.lateSites, index, this.hotelNightDemand())
+    }
+    if (id.startsWith('late:')) {
+      const lateId = lateIdForTool(id.slice('late:'.length))
+      if (!lateId) return []
+      return lateCatalogLines(
+        lateId,
+        this.lateFieldLevel(),
+        this.lateSites.filter((site) => site.id === lateId).length,
+      )
+    }
     return []
   }
 
@@ -9233,7 +9627,7 @@ export class Game {
     } catch {
       return false
     }
-    const scheduled = needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40
+    const scheduled = this.scaledTurnMinutes(needs.sizeClass === 'L' ? 90 : needs.sizeClass === 'M' ? 55 : 40)
     const pax = f.cargo || f.kind === 'freighter' || f.kind === 'military' ? 0 : f.pax
     if (pax > 0) {
       const longHaul = needs.sizeClass === 'L' || f.kind === 'widebody'
@@ -9620,7 +10014,8 @@ export class Game {
   ): { ok: boolean; why?: string } {
     if (pay <= 0) return { ok: true }
     const pref = g.prefs[kind] ?? 0
-    if (!desperate && pref < 0.28) {
+    const floor = 0.28 + this.specMods().tenantPref
+    if (!desperate && pref < floor) {
       return { ok: false, why: 'not interested' }
     }
     if (g.wallet < pay) {
@@ -9765,6 +10160,7 @@ export class Game {
         happy += 2
         brand = true
       }
+      pay = this.dressRetail(g.tag, pay, 'tenant')
       if (this.foodShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
       } else {
@@ -9801,7 +10197,7 @@ export class Game {
     if (n === 'shop' && g.showUp?.amenity === 'lounge' && !g.shopDone && g.showUp.spendAmenity > 0) {
       this.chargeStampedShop(g, open)
     } else if (n === 'shop') {
-      const pay = tagPrice(g.tag, 14, 24, 36, 48)
+      const pay = this.dressRetail(g.tag, tagPrice(g.tag, 14, 24, 36, 48), 'tenant')
       if (this.shopShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
       } else {
@@ -9830,7 +10226,7 @@ export class Game {
       let happy = 8
       let pay = 0
       if (g.airlineId && this.hasReward(g.airlineId, 'brand_lounge')) {
-        pay = tagPrice(g.tag, 40, 45, 55, 65)
+        pay = this.dressRetail(g.tag, tagPrice(g.tag, 40, 45, 55, 65), 'lounge')
         const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 60)
         if (buy.ok) {
           happy += 10
@@ -9918,9 +10314,11 @@ export class Game {
       }
     }
     if (n === 'spa') {
-      const pay = g.transfer
-        ? tagPrice(g.tag, 48, 58, 72, 85)
-        : tagPrice(g.tag, 28, 40, 52, 62)
+      const pay = this.dressRetail(
+        g.tag,
+        g.transfer ? tagPrice(g.tag, 48, 58, 72, 85) : tagPrice(g.tag, 28, 40, 52, 62),
+        'lounge',
+      )
       const buy = this.tryGuestPay(g, pay, 'lounge', g.needs.energy >= 65 || g.transfer)
       if (!buy.ok) {
         g.needs.energy = Math.max(0, g.needs.energy - 12)
@@ -10294,8 +10692,18 @@ export class Game {
       return
     }
     const c = FUEL[this.fuelBrand]
-    const cost = c.wholesale * LOADS_PER_BUY
+    const cost = safFuelCost(c.wholesale, LOADS_PER_BUY, this.lateSites)
+    const before = this.cash
     if (!this.spend(cost, 'fuel loads')) return
+    const paid = before - this.cash
+    if (paid > 0 && fuelMultiplier(this.lateSites) !== 1) {
+      this.noteExpense(paid)
+      this.bank.post('fuel_purchase', -paid, {
+        simMinutes: this.simMinutes(),
+        source: 'tier3plus',
+        label: 'Fuel loads',
+      })
+    }
     this.fuelLoads += LOADS_PER_BUY
     this.addTankLitres(LITRES_PER_LEGACY_LOAD * LOADS_PER_BUY)
     this.pushNews(`Four loads on the farm. ${this.fuelLoads} ready.`, 'ok')
@@ -10855,14 +11263,17 @@ export class Game {
     if (gate > t) t = gate
     const inOpeningBank = t < OPENING_SEC
     const hub = this.isHub(airlineId)
-    const scaled = Math.max(1, Math.round(count * this.diplomacyCapacity(airlineId)))
+    const mods = this.specMods()
+    const lcc = a.bizModel === 'lcc' || a.persona === 'budget'
     const spacing =
-      (a.kind === 'cargo'
-        ? 22 + Math.random() * 12
-        : hub
-          ? 12 + Math.random() * 8
-          : 18 + Math.random() * 10) + (inOpeningBank ? openingSpacingBonus(this.clock) : 0)
-    let n = hub ? scaled + 1 : scaled
+      bankSpacing(a.kind === 'cargo' ? 'cargo' : 'pax', hub, mods, Math.random()) +
+      (inOpeningBank ? openingSpacingBonus(this.clock) : 0)
+    let n = bankSlotCount(count, {
+      hub,
+      lcc,
+      capacity: this.diplomacyCapacity(airlineId),
+      mods,
+    })
     const limit = inOpeningBank ? openingLimit : null
     if (limit != null) {
       const openish = (s: { status: string }) =>
@@ -11338,10 +11749,15 @@ export class Game {
           const cargo = pool.filter((id) => this.airline(id).kind === 'cargo')
           const paxSeen = (this.craftSeen.regional ?? 0) + (this.craftSeen.narrowbody ?? 0)
           const freightSeen = this.craftSeen.freighter ?? 0
+          const mods = this.specMods()
           const nightCargo =
-            this.hasResearch('night_bank') && this.isNight() && cargo.length
+            this.isNight() && cargo.length && (this.hasResearch('night_bank') || mods.nightHub)
+          const nightChance = Math.min(
+            0.92,
+            (this.hasResearch('night_bank') ? 0.7 : mods.nightHub ? 0.35 : 0) + mods.nightHubBias,
+          )
           const pickId =
-            nightCargo && Math.random() < 0.7
+            nightCargo && Math.random() < nightChance
               ? pick(cargo)
               : cargo.length && freightSeen * 3 < paxSeen && Math.random() < 0.55
                 ? pick(cargo)
@@ -11543,7 +11959,7 @@ export class Game {
     if (this.hubOffer || this.isHub(airlineId) || this.isBanned(airlineId)) return
     if (this.hubOfferCool > 0) return
     if ((this.layoverWins[airlineId] ?? 0) < HUB_LAYOVER_WINS) return
-    if (this.heatOf(airlineId) < HUB_HEAT_NEED) return
+    if (this.heatOf(airlineId) < this.hubHeatNeed()) return
     if (!this.signed.includes(airlineId)) return
     const a = this.airline(airlineId)
     if (a.kind === 'cargo' || a.persona === 'military_gov') return
@@ -12014,13 +12430,113 @@ export class Game {
     }
   }
 
+  staffPanel() {
+    return this.staffHousing.panel(this.staffField())
+  }
+
+  staffSites() {
+    return this.staffHousing.sites()
+  }
+
+  staffWalkers() {
+    return this.staffHousing.walkers(this.staffField())
+  }
+
+  staffHireCost(base: number): number {
+    return this.staffHousing.hirePrice(base, this.staffField())
+  }
+
+  buildStaffHousing(tier: HousingTierId): boolean {
+    const quote = this.staffHousing.quote(tier, this.staffField())
+    if (!quote.ok) {
+      this.pushNews(quote.reason, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.sandbox) {
+      if (!this.spend(quote.cost, quote.name)) return false
+      this.postJournal('construction', quote.cost, this.simMinutes())
+    }
+    this.staffHousing.commit(quote)
+    const plots = quote.plotIds.length === 1 ? '1 plot' : `${quote.plotIds.length} plots`
+    this.pushNews(`${quote.name} is open on ${plots}. Crew can live on the field.`, 'good')
+    this.emit()
+    return true
+  }
+
+  private staffField(): StaffField {
+    const origin = this.fits[0]?.origin
+    return {
+      tiles: this.tiles,
+      railLinked: this.railLinked,
+      fieldLevel: this.fieldLevel(),
+      ownedPlots: this.ownedPlots,
+      counts: {
+        desk: this.deskStaff,
+        janitor: this.janitors,
+        mechanic: this.mechanics,
+        researcher: this.researchers,
+      },
+      clock: Math.max(0, this.clock),
+      work: origin ? { c: origin.c + 1, r: origin.r + 1 } : { c: 16, r: 16 },
+    }
+  }
+
+  private payHire(base: number, label: string): boolean {
+    const cost = this.staffHireCost(base)
+    if (!this.spend(cost, label)) return false
+    if (!this.sandbox && cost > 0) this.postJournal('staff_hiring', cost, this.simMinutes())
+    return true
+  }
+
+  private settleStaffHousing(completedDay: number) {
+    const roll = this.staffHousing.closeDay(this.staffField(), completedDay)
+    if (roll.upkeep > 0 && !this.sandbox) {
+      this.charge(roll.upkeep)
+      this.postJournal(
+        'building_upkeep',
+        roll.upkeep,
+        (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1,
+      )
+    }
+    if (roll.reputationHit > 0) this.reputation = Math.max(0, this.reputation - roll.reputationHit)
+    if (roll.quit) this.releaseStaff(roll.quit)
+    if (roll.news) this.pushNews(roll.news, roll.late || roll.quit ? 'bad' : 'ok')
+  }
+
+  private releaseStaff(role: StaffSeat) {
+    if (role === 'desk' && this.deskStaff > 0) {
+      this.deskStaff -= 1
+      this.assignHallStaff()
+      return
+    }
+    if (role === 'janitor' && this.janitors > 0) {
+      this.janitors -= 1
+      const pawn = this.people.findIndex((person) => person.job === 'janitor')
+      if (pawn >= 0) this.people.splice(pawn, 1)
+      return
+    }
+    if (role === 'mechanic' && this.mechanics > 0) {
+      this.mechanics -= 1
+      const pawn = this.people.findIndex((person) => person.job === 'mechanic')
+      if (pawn >= 0) this.people.splice(pawn, 1)
+      return
+    }
+    if (role === 'researcher' && this.researchers > 0) {
+      this.researchers -= 1
+      const pawn = this.people.findIndex((person) => person.job === 'researcher')
+      if (pawn >= 0) this.people.splice(pawn, 1)
+    }
+  }
+
+
   hireJanitor() {
     if (this.janitors >= 6) {
       this.pushNews('Janitor crew maxed (6).', 'bad')
       this.emit()
       return
     }
-    if (!this.spend(JANITOR_HIRE, 'hire janitor')) return
+    if (!this.payHire(JANITOR_HIRE, 'hire janitor')) return
     this.janitors += 1
     this.spawnJanitorPawn()
     this.pushNews(
@@ -12105,7 +12621,7 @@ export class Game {
     const stations = Math.max(1, desks + boards + machines)
     const workingCap = Math.min(this.researchers, Math.max(1, desks || (stations > 0 ? 1 : 0)))
     if (desks + boards + machines < 1) {
-      return this.researchers * RP_RATE_BARE
+      return this.researchers * RP_RATE_BARE * this.staffHousing.outputPace()
     }
     const gear =
       Math.min(desks, workingCap) * RP_RATE_DESK +
@@ -12113,7 +12629,7 @@ export class Game {
       Math.min(machines, workingCap) * RP_RATE_MACHINE
     // Extra warm bodies beyond gear still drip a little.
     const overflow = Math.max(0, this.researchers - workingCap) * RP_RATE_BARE
-    return gear + overflow
+    return (gear + overflow) * this.staffHousing.outputPace()
   }
 
   /** RP/sec the research desk should show: operations trickle plus the lab. */
@@ -12132,7 +12648,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(RESEARCHER_HIRE, 'hire researcher')) return
+    if (!this.payHire(RESEARCHER_HIRE, 'hire researcher')) return
     this.researchers += 1
     this.spawnResearcherPawn()
     const { desks } = this.labGear()
@@ -12462,7 +12978,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(DESK_STAFF_HIRE, 'hire desk staff')) return
+    if (!this.payHire(DESK_STAFF_HIRE, 'hire desk staff')) return
     this.deskStaff += 1
     this.assignHallStaff()
     this.pushNews(
@@ -12591,7 +13107,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(MECHANIC_HIRE, 'hire mechanic')) return
+    if (!this.payHire(MECHANIC_HIRE, 'hire mechanic')) return
     this.mechanics += 1
     this.spawnMechanicPawn()
     this.pushNews(
@@ -12683,14 +13199,7 @@ export class Game {
   }
 
   weatherLabel(): string {
-    return (
-      {
-        clear: 'Clear',
-        rain: 'Rain',
-        fog: 'Fog',
-        storm: 'Storm',
-      } as const
-    )[this.weather]
+    return weatherTitle(this.mapId, this.gameDay(), this.weather)
   }
 
   weatherCrashMult(): number {
@@ -12714,32 +13223,34 @@ export class Game {
     this.weatherCool -= dt
     if (this.weatherCool > 0) return
     this.weatherCool = 35 + Math.random() * 40
-    const next = rollSeasonWeather(dayIndex(this.clock), Math.random())
+    const roll = Math.random()
+    const next =
+      this.mapId === 'temperate'
+        ? rollSeasonWeather(dayIndex(this.clock), roll)
+        : rollMapWeather(this.mapId, this.gameDay(), roll)
     if (next !== this.weather) {
       this.weather = next
-      if (next === 'storm') {
-        this.stormPulseCool = 0
-        this.pushNews(
-          this.hasResearch('deice')
-            ? 'Storm cell over the field — de-ice pads online; expect soft slips, not a washout.'
-            : 'Storm cell over the field — wet strip, high crash risk if pavement is soft. Research De-ice ops.',
-          'bad',
-        )
-      } else if (next === 'clear' && this.runwayCondition < 50) {
-        this.pushNews('Skies clear, but the runway still needs work.', 'ok')
-      } else if (next !== 'clear') {
-        this.pushNews(`Weather: ${this.weatherLabel()}.`, 'ok')
+      if (this.mapId === 'temperate') {
+        if (next === 'storm') {
+          this.stormPulseCool = 0
+          this.pushNews(
+            this.hasResearch('deice')
+              ? 'Storm cell over the field — de-ice pads online; expect soft slips, not a washout.'
+              : 'Storm cell over the field — wet strip, high crash risk if pavement is soft. Research De-ice ops.',
+            'bad',
+          )
+        } else if (next === 'clear' && this.runwayCondition < 50) {
+          this.pushNews('Skies clear, but the runway still needs work.', 'ok')
+        } else if (next !== 'clear') {
+          this.pushNews(`Weather: ${this.weatherLabel()}.`, 'ok')
+        }
+      } else {
+        if (next === 'storm') this.stormPulseCool = 0
+        const alert = climateAlert(this.mapId, this.gameDay(), next)
+        if (alert) this.pushNews(alert.text, alert.tone)
       }
     }
-  }
-
-  /**
-   * Hotel nights billed for missed connections this year.
-   * PR #70 can call this from its miss path. The year report reads the counter.
-   * A missing caller leaves the count at zero.
-   */
-  noteMissedConnectionNights(nights: number): void {
-    this.playtestYear.noteNights(nights)
+    this.refreshWinter()
   }
 
   /** Connecting passengers who completed or missed, for the open year. */
@@ -12821,6 +13332,8 @@ export class Game {
     if (premiumBill > 0 && !this.sandbox) {
       this.pushNews(`Premium upkeep ${moneyLeft(premiumBill)} — idle lanes still bill.`, 'ok')
     }
+    this.settleLateBuildings(completedDay)
+    this.settleStaffHousing(completedDay)
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -12938,7 +13451,7 @@ export class Game {
           getPowerLoads: () => [],
           getChains: () => [],
           getTransitTier: () => (this.hasRailStation() ? 'rail' : this.hasBusCurb() ? 'bus' : 'road'),
-          getHousingTier: () => 0,
+          getHousingTier: () => this.staffHousing.economyTier(),
           getPowerPlantTier: () => this.powerPlantTier,
           saveEconomyState: (state) => {
             this.economyState = state
@@ -12949,6 +13462,7 @@ export class Game {
         },
         { initialState: this.economyState ?? undefined },
       )
+      this.economy.engine.setCalendar(demandCalendar(this.mapId))
     }
     return this.economy
   }
@@ -12962,10 +13476,9 @@ export class Game {
     const liveJets = this.flights.filter(
       (f) => (f.craft ?? 'jet') === 'jet' && f.phase !== 'gone' && f.phase !== 'hold',
     ).length
-    const decay =
-      dt *
-      (0.35 + liveJets * 0.25 + (this.weather === 'storm' ? 0.55 : this.weather === 'rain' ? 0.25 : 0)) *
-      (1.4 - mx * 0.6)
+    const wet = this.weather === 'storm' ? 0.55 : this.weather === 'rain' ? 0.25 : 0
+    const wear = this.mapId === 'temperate' ? wet : wet * climateWear(this.mapId, this.gameDay())
+    const decay = dt * (0.35 + liveJets * 0.25 + wear) * (1.4 - mx * 0.6)
     this.runwayCondition = clamp(this.runwayCondition - decay, 0, 100)
 
     // Funded mechanics repair.
@@ -13137,6 +13650,11 @@ export class Game {
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
+      const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
+      if (late) {
+        this.toggleInfo(`late-site:${v.c},${v.r}`)
+        return
+      }
       const tile = this.tile(v)
       if (tile === 'fuel') this.toggleInfo('fuel')
       else if (tile === 'bags') this.toggleInfo('bags')
@@ -13178,6 +13696,10 @@ export class Game {
     }
     if (this.tool === 'premade') {
       this.placePremade(v)
+      return
+    }
+    if (lateIdForTool(this.tool)) {
+      this.placeLate(v)
       return
     }
     this.placeSingle(v)
@@ -13723,10 +14245,34 @@ export class Game {
     this.emit()
   }
 
+  private removeLate(site: LatePlacement) {
+    const spec = buildingById(site.id)
+    const refund = spec ? Math.round(spec.cost * BULLDOZE_REFUND) : 0
+    this.lateSites = this.lateSites.filter((row) => row !== site)
+    if (this.tile(site) === tileForLate(site.id)) this.tiles[site.r]![site.c] = 'grass'
+    if (refund > 0) {
+      this.cash += refund
+      this.bank.post('refunds', refund, {
+        simMinutes: this.simMinutes(),
+        source: 'tier3plus',
+        sourceId: site.id,
+        label: spec?.name ?? site.id,
+      })
+    }
+    this.bumpMap()
+    this.ensureGround()
+    this.emit()
+  }
+
   clearTile(v: Vec) {
     const building = this.siteAt(v)
     if (building) {
       this.cancelSite(building.id)
+      return
+    }
+    const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
+    if (late) {
+      this.removeLate(late)
       return
     }
     const cur = this.tile(v)
@@ -13929,6 +14475,99 @@ export class Game {
       tool: 'premade',
       origin: v,
     })
+  }
+
+  /**
+   * Book the day's late-building income and upkeep, then advance construction.
+   * Posted before the payroll read so hotel nights count in that day's income.
+   */
+  private settleLateBuildings(completedDay: number) {
+    if (!this.lateSites.length && this.missedHotelNights <= 0 && this.crewHotelNights <= 0) return
+    const night = this.hotelNightDemand()
+    const settled = advanceLateDay(this.lateSites, night, 1)
+    this.lateSites = settled.sites
+    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
+    let bookedTransfers = 0
+    let bookedCrew = 0
+    for (const line of settled.pnl.lines) {
+      bookedTransfers += line.transferRooms
+      bookedCrew += line.crewRooms
+      if (line.income > 0) {
+        this.cash += line.income
+        this.revenue += line.income
+        this.hourIncome += line.income
+        this.bank.post('landside_fees', line.income, {
+          simMinutes: stamp,
+          source: 'tier3plus',
+          sourceId: line.id,
+          label: line.name,
+        })
+      }
+      if (line.upkeep > 0) {
+        const before = this.cash
+        this.charge(line.upkeep)
+        const paid = before - this.cash
+        if (paid > 0) {
+          this.bank.post('building_upkeep', -paid, {
+            simMinutes: stamp,
+            source: 'tier3plus',
+            sourceId: line.id,
+            label: line.name,
+          })
+        }
+      }
+    }
+    this.missedHotelNights = Math.max(0, this.missedHotelNights - bookedTransfers)
+    this.crewHotelNights = Math.max(0, this.crewHotelNights - bookedCrew)
+  }
+
+  placeLate(v: Vec) {
+    const id = lateIdForTool(this.tool)
+    if (!id) return
+    const spec = buildingById(id)
+    if (!spec) return
+    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
+      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+      this.emit()
+      return
+    }
+    const gated = placeBuilding(id, this.lateFieldLevel())
+    if (!gated.ok) {
+      this.pushNews(gated.reason, 'bad')
+      this.emit()
+      return
+    }
+    if (id === 'saf_blending') {
+      if (!farmBesidePavement(this.tiles, v)) {
+        this.pushNews('SAF blending needs taxi, stand, runway, or road beside it.', 'bad')
+        this.emit()
+        return
+      }
+    } else if (!neighbors(v.c, v.r).some((p) => this.tile(p) === 'road')) {
+      this.pushNews(`${spec.name} needs a road edge.`, 'bad')
+      this.emit()
+      return
+    }
+    const before = this.cash
+    if (!this.spend(gated.cost, spec.name)) return
+    const paid = before - this.cash
+    if (paid > 0) {
+      this.bank.post('construction', -paid, {
+        simMinutes: this.simMinutes(),
+        source: 'tier3plus',
+        sourceId: id,
+        label: spec.name,
+      })
+    }
+    this.tiles[v.r]![v.c] = tileForLate(id)
+    this.lateSites.push({ id, c: v.c, r: v.r, elapsedDays: 0 })
+    const opened = isOpen({ id, elapsedDays: 0 })
+    this.pushNews(
+      opened ? `${spec.name} open.` : `${spec.name} under construction — ${spec.buildDays} days.`,
+      'good',
+    )
+    this.bumpMap()
+    this.emit()
   }
 
   placeSingle(v: Vec) {
@@ -14342,7 +14981,7 @@ export class Game {
   /** Open timetable slots scale with stamped strips (not a hard 2-RW world). */
   scheduleCap(): number {
     const strips = Math.max(1, this.runwayStripCount())
-    return Math.min(28, 10 + strips * 4)
+    return Math.min(28, Math.max(6, 10 + strips * 4 + this.specMods().scheduleCap))
   }
 
   maxInbound(): number {
@@ -14353,6 +14992,7 @@ export class Game {
     const strips = this.runwayStripCount()
     let n = 1 + Math.min(6, Math.max(1, strips))
     if (this.hasResearch('stand_class')) n += 1
+    n += this.specInboundBonus()
     // Extra terminal campuses — one more simultaneous approach each (cap 2).
     if (this.fits.length >= 2) n += Math.min(2, this.fits.length - 1)
     return Math.min(10, n)
@@ -15484,6 +16124,7 @@ export class Game {
         } else {
           let cargoMult = this.hasReward(f.airline, 'cargo_night') ? 1.28 : 1
           if (this.hasResearch('night_bank') && this.isNight()) cargoMult *= 1.35
+          cargoMult *= this.isNight() ? this.specMods().nightCargoFee : this.specMods().dayCargoFee
           this.earn(
             serviceCharge(
               this.listed(Math.round(airline.landing * 0.35 * cargoMult), 'cargoPerUnit'),
@@ -15735,7 +16376,8 @@ export class Game {
     if (!hasBeltNetwork(this.tiles)) return
     if (standBeltLinked(this.tiles, f.stand)) return
     f.boardingSlow = true
-    this.adjustHeat(f.airline, -2.2)
+    const belt = this.isHub(f.airline) ? this.specMods().hubBeltHeat : this.specMods().otherBeltHeat
+    this.adjustHeat(f.airline, -2.2 * belt)
     if (Math.random() < 0.55) {
       this.pushNews(
         `${f.flightNo} bags late — belt broken between hall, sort, and stand.`,
@@ -16889,6 +17531,7 @@ export class Game {
     this.tickHall(step)
     this.tickLuggage(step)
     this.tickWeather(step)
+    this.noteMapClimate()
     this.tickPayroll(step)
     this.tickScaleFuel(step)
     this.pokeTycoon()

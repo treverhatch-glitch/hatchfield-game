@@ -53,8 +53,11 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
-import { capstoneCost, SPEC_PATHS, type SpecPath } from '../progression/specializations'
+import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
+import { SpecTree } from './SpecTree'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
+import { lateIdForTool, lateStampLabel } from '../game/lateBuildings.ts'
+import { buildingById } from '../tier3plus/index.ts'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
@@ -65,6 +68,7 @@ import { LineChart } from './LineChart'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
+import { StaffHousingPanel } from './StaffHousingPanel'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -149,6 +153,11 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
     ],
   },
   {
+    id: 'late',
+    label: 'Late',
+    tools: ['airport_hotel', 'rail_link', 'saf_blending'],
+  },
+  {
     id: 'bulldoze',
     label: 'Bulldoze',
     tools: ['clear'],
@@ -159,6 +168,7 @@ type PanelId =
   | 'economy'
   | 'budget'
   | 'research'
+  | 'specialize'
   | 'airlines'
   | 'planner'
   | 'services'
@@ -166,6 +176,7 @@ type PanelId =
   | 'premium'
   | 'tycoon'
   | 'rival'
+  | 'staff'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -196,8 +207,12 @@ function TrayMark({ tool }: { tool: string }) {
         ? 'stand'
         : tool === 'clear'
           ? 'clear'
-          : tool.includes('hotel') || tool.startsWith('park') || tool === 'bus' || tool === 'rail'
-            ? 'land'
+      : tool.includes('hotel') ||
+          tool.startsWith('park') ||
+          tool === 'bus' ||
+          tool === 'rail' ||
+          tool === 'rail_link'
+        ? 'land'
             : 'ops'
   return (
     <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
@@ -220,7 +235,9 @@ function TrayMark({ tool }: { tool: string }) {
 const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
+  { id: 'staff', label: 'Staff', tip: 'Commute, housing, morale' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
+  { id: 'specialize', label: 'Specs', tip: 'Hub, low-cost, cargo, and luxury trees' },
   { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
@@ -434,8 +451,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         >
           {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
         </div>
-        <div className="stat" title={environmentCaption(game.clock, game.weather, game.holidayPeakHook)}>
-          {seasonAtClock(game.clock).name} · {game.weatherLabel()}
+        <div
+          className="stat"
+          title={
+            game.mapId === 'temperate'
+              ? environmentCaption(game.clock, game.weather, game.holidayPeakHook)
+              : game.climateCaption()
+          }
+          data-testid="weather-stat"
+        >
+          {game.mapId === 'temperate'
+            ? `${seasonAtClock(game.clock).name} · ${game.weatherLabel()}`
+            : game.weatherLabel()}
         </div>
         <div className="stat" title="Free stands / jets holding">
           Gate {freeGates} · Hold {holding}
@@ -457,6 +484,28 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           {game.runwayStripCount() > 0 ? ` · ${game.runwayStripCount()}RW` : ''}
         </div>
       </header>
+
+      {game.site ? (
+        <aside className="map-goals" data-testid="map-goals" aria-label="Map goals">
+          <div className="map-goals-head">
+            <strong>{game.mapSummary().name}</strong>
+            <span>{game.mapSummary().season}</span>
+          </div>
+          <ul>
+            {game.mapGoalCards().map((goal) => (
+              <li key={goal.id} data-testid={`goal-${goal.id}`} data-done={goal.done ? '1' : '0'}>
+                <span className="mark">{goal.done ? '✓' : '·'}</span>
+                <span>
+                  {goal.title}{' '}
+                  <em>
+                    {goal.value}/{goal.target}
+                  </em>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
 
       {game.showCoach() ? (
         <div className="coach" data-testid="coach">
@@ -1384,16 +1433,16 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   </p>
                   <div className="row">
                     <button type="button" className="on" onClick={() => game.hireMechanic()}>
-                      Hire mechanic · {money(MECHANIC_HIRE)}
+                      Hire mechanic · {money(game.staffHireCost(MECHANIC_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.hireJanitor()}>
-                      Hire janitor · {money(JANITOR_HIRE)}
+                      Hire janitor · {money(game.staffHireCost(JANITOR_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.hireResearcher()}>
-                      Hire researcher · {money(RESEARCHER_HIRE)}
+                      Hire researcher · {money(game.staffHireCost(RESEARCHER_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.hireDeskStaff()}>
-                      Hire desk agent · {money(DESK_STAFF_HIRE)}
+                      Hire desk agent · {money(game.staffHireCost(DESK_STAFF_HIRE))}
                     </button>
                     <button type="button" onClick={() => game.fireMechanic()}>
                       Lay off
@@ -1504,6 +1553,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </section>
               ) : null}
 
+              {panel === 'specialize' ? <SpecTree game={game} /> : null}
+
               {panel === 'rival' ? (
                 rival ? (
                   <RivalPanel model={rival} onCourt={(id) => game.courtRivalCarrier(id)} />
@@ -1589,36 +1640,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     {HEAT_WARN_THRESHOLD} · abandon ≤{HEAT_ABANDON_THRESHOLD}.
                     Cross-cut: Charter / LCC / Full-service / Cargo.
                   </p>
-                  <div className="spec-paths" data-testid="spec-paths">
-                    <p className="muted">
-                      Specialization {game.specPointsLeft()} left · earned {game.specPointsEarned()} at
-                      FL6 / FL8 / FL10. Paths mix. Each path after the first: capstone +50% and site
-                      upkeep +10%.
-                    </p>
-                    <div className="row">
-                      {SPEC_PATHS.map((path) => {
-                        const owned = game.specPaths.includes(path.id)
-                        const open = !owned && game.specPointsLeft() > 0
-                        return (
-                          <button
-                            key={path.id}
-                            type="button"
-                            className={owned ? 'on' : ''}
-                            disabled={!owned && !open}
-                            title={
-                              owned
-                                ? `${path.label} is on the field. ${path.blurb}`
-                                : `${path.blurb} Capstone price rises if this is not your first path.`
-                            }
-                            onClick={() => game.chooseSpec(path.id as SpecPath)}
-                          >
-                            {path.label}
-                            {owned ? ' · on' : ''}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                  <p className="muted" data-testid="spec-paths">
+                    Specs {game.specPointsLeft()} path point{game.specPointsLeft() === 1 ? '' : 's'}{' '}
+                    left · {game.treePointsLeft()} tree point{game.treePointsLeft() === 1 ? '' : 's'}{' '}
+                    left
+                    {game.specPaths.length
+                      ? ` · ${game.specPaths
+                          .map((id) => SPEC_PATHS.find((p) => p.id === id)?.label ?? id)
+                          .join(', ')}`
+                      : ''}
+                    . Open Specs for the trees. Paths mix: capstone +50% and site upkeep +10% after
+                    the first.
+                  </p>
                   {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
                     const meta = AIRLINE_TIER_META[tier]
                     const unlocked = game.tierUnlocked(tier)
@@ -2041,6 +2074,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   }}
                 />
               ) : null}
+              {panel === 'staff' ? <StaffHousingPanel game={game} /> : null}
 
               {panel === 'services' ? (
                 <>
@@ -2302,6 +2336,26 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 {buildMenu ? (
                 <div className="tools build-tray" data-testid="build-tray">
                   {menuTools.map((t) => {
+                    const lateId = lateIdForTool(t)
+                    if (lateId) {
+                      const spec = buildingById(lateId)
+                      const locked = Boolean(spec && game.lateFieldLevel() < spec.fieldLevel)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' is-locked' : ''}`}
+                          data-testid={`late-stamp-${lateId}`}
+                          onClick={() => {
+                            game.toggleInfo(`late:${lateId}`)
+                            if (!locked) game.setTool(t)
+                          }}
+                        >
+                          <TrayMark tool={t} />
+                          <span className="tray-name">{lateStampLabel(lateId)}</span>
+                        </button>
+                      )
+                    }
                     const def = BUILDINGS.find((b) => b.tool === t)
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
@@ -2385,7 +2439,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         ? `One-click working terminal (${money(PREMADE_TERMINAL_COST)}) — pan-click it to walk inside.`
                         : game.tool === 'pan'
                           ? 'Select: click a tile or hall. WASD/arrows pan · Q/E rotate · scroll zoom · middle/right orbit.'
-                          : tip
+                          : lateIdForTool(game.tool)
+                            ? 'Click the stamp to read cost, upkeep, and the field-level gate.'
+                            : tip
                             ? `${tip.blurb} ${money(tip.cost)}${
                                 tip.upkeepPerDay ? ` · $${tip.upkeepPerDay}/day` : ''
                               }`

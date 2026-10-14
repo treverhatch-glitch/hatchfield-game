@@ -59,10 +59,12 @@ function applyPendingNewGame() {
       sandbox?: boolean
       difficulty?: 'easy' | 'standard'
       enableHints?: boolean
+      mapId?: 'temperate' | 'tropical' | 'desert'
     }
     game.sandbox = Boolean(pending.sandbox)
     game.enableHintsAtStart = pending.enableHints !== false
     game.beginNew(pending.difficulty === 'standard' ? 'standard' : 'easy')
+    if (pending.mapId) game.setMap(pending.mapId)
   } catch {
     /* ignore */
   }
@@ -124,6 +126,8 @@ function hudSnapshot(): string {
         game.loanProductId,
         game.fieldXp,
         game.fieldLevel(),
+        game.specPaths.join(','),
+        game.specNodes.join(','),
         game.parcels,
         game.railLinked,
         game.public,
@@ -158,6 +162,8 @@ function hudSnapshot(): string {
         game.premium.built.length,
         game.premium.securityOfficers,
         game.premium.feeEnabled ? 1 : 0,
+        game.mapId,
+        game.mapGoalCards().map((goal) => `${goal.id}:${goal.value}`).join(','),
         game.hallRev,
         game.fits[0]?.tier ?? 0,
         game.fits[0]?.redesigned ? 1 : 0,

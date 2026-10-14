@@ -281,6 +281,20 @@ export function fieldProgress(xp: number): FieldProgress {
   }
 }
 
+/** Same rungs as FIELD_LEVEL_XP through FL9. Hotel needs 7, SAF blending 8, rail link 9. */
+export const LATE_FIELD_XP = [0, 0, 90, 220, 420, 700, 1_100, 1_600, 2_300, 3_200] as const
+
+
+/** Field level used by late buildings. Levels 1–5 match `fieldLevelFromXp`. */
+export function lateFieldLevelFromXp(xp: number): number {
+  const safe = Number.isFinite(xp) && xp > 0 ? xp : 0
+  let level = 1
+  for (let i = 2; i < LATE_FIELD_XP.length; i++) {
+    if (safe >= LATE_FIELD_XP[i]!) level = i
+  }
+  return level
+}
+
 export const AIRLINE_TIER_META: Record<
   AirlineTier,
   { label: string; short: string; blurb: string; fleet: string; scope: string }
@@ -1505,6 +1519,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   xfer_bus: 'Transfer bus',
   hub_skywalk: 'Skywalk',
   rail: 'Rail',
+  airport_hotel: 'Hotel',
+  rail_link: 'Rail link',
+  saf_blending: 'SAF',
   clear: 'Clear',
 }
 
