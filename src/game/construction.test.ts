@@ -46,10 +46,10 @@ describe('construction', () => {
     const game = field()
     expect(game.sites).toEqual([])
     expect(game.tile({ c: 8, r: 26 })).toBe('runway')
-    expect(game.tile({ c: 12, r: 22 })).toBe('taxi')
+    expect(game.tile({ c: 7, r: 12 })).toBe('taxi')
     expect(game.tile({ c: 14, r: 22 })).toBe('grass')
-    expect(game.pathStandToRunway({ c: 12, r: 21 })?.length).toBeGreaterThan(1)
-    expect(game.pathStandToRunway({ c: 20, r: 21 })?.length).toBeGreaterThan(1)
+    expect(game.pathStandToRunway({ c: 11, r: 6 })?.length).toBeGreaterThan(1)
+    expect(game.pathStandToRunway({ c: 11, r: 12 })?.length).toBeGreaterThan(1)
   })
 
   it('progress runs even when the van has not arrived, then the tile flips', () => {

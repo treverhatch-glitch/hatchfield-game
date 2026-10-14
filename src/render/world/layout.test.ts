@@ -106,7 +106,7 @@ describe('world layout', () => {
     const sp = standPaint(st)
     expect(sp.some((p) => p.color === 'M')).toBe(true)
     expect(sp.some((p) => p.color === 'red')).toBe(true)
-    const west = st.find((s) => s.c === 12)!
+    const west = [...st].sort((a, b) => a.c - b.c || a.r - b.r)[0]
     const box = standBox(west)
     const visual = WORLD_PER_METER * AIRCRAFT_VISUAL_SCALE
     expect(box.width).toBeCloseTo(STAND_ENVELOPE.C.widthM * visual)

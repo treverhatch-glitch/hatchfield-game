@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { astar, key, neighbors, parseKey, tilesOf, walkableFor } from './path'
+import { astar, key, neighbors, parseKey, runwayStrips, tilesOf, walkableFor } from './path'
 import { SIZE, type Tile, type Vec } from './types'
 
 /** The string-keyed A* this module shipped before the typed-array rewrite (issue #25). */
@@ -90,6 +90,41 @@ describe('astar', () => {
     expect(astar(tiles, { c: 4, r: 4 }, { c: 4, r: 4 }, 'truck')).toEqual([{ c: 4, r: 4 }])
     tiles[0][0] = 'grass'
     expect(astar(tiles, { c: 0, r: 0 }, { c: 5, r: 5 }, 'truck')).toBeNull()
+  })
+})
+
+function blank(): Tile[][] {
+  return Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => 'grass' as Tile))
+}
+
+describe('runwayStrips', () => {
+  it('counts a connected 14×2 prefab as one strip and keeps a separate strip apart', () => {
+    const tiles = blank()
+    for (let c = 8; c <= 21; c++) {
+      tiles[26][c] = 'runway'
+      tiles[27][c] = 'runway'
+    }
+    const one = runwayStrips(tiles, 6)
+    expect(one).toHaveLength(1)
+    expect(one[0]).toHaveLength(14)
+    expect(one[0][0]).toEqual({ c: 8, r: 26 })
+    expect(one[0][13]).toEqual({ c: 21, r: 26 })
+
+    for (let r = 4; r <= 17; r++) {
+      tiles[r][2] = 'runway'
+      tiles[r][3] = 'runway'
+    }
+    const two = runwayStrips(tiles, 6)
+    expect(two).toHaveLength(2)
+    expect(two[0]).toHaveLength(14)
+    expect(two[0][0]).toEqual({ c: 2, r: 4 })
+    expect(two[1]).toHaveLength(14)
+    expect(runwayStrips(tiles, 20)).toEqual([])
+
+    const corner = blank()
+    for (let c = 0; c <= 13; c++) corner[10][c] = 'runway'
+    for (let c = 14; c <= 27; c++) corner[11][c] = 'runway'
+    expect(runwayStrips(corner, 6)).toHaveLength(2)
   })
 })
 
