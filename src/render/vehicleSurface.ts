@@ -33,13 +33,33 @@ function base(): string {
   return `${env?.BASE_URL ?? '/'}art/textures/vehicles/_b64/`
 }
 
+/**
+ * Round D: desktop-class clients (fine pointer, wide screen, >= 4 GB) get the
+ * 1024px detail set from _b64/hi; phones and tablets keep the 512px set.
+ */
+export function wantsHiResVehicleTextures(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  try {
+    if (/[?&]vehtex=lo\b/.test(window.location?.search ?? '')) return false
+    const fine = window.matchMedia?.('(pointer: fine)').matches ?? true
+    const wide = Math.max(window.screen?.width ?? 0, window.innerWidth ?? 0) >= 1200
+    const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent ?? '')
+    return fine && wide && mem >= 4 && !mobile
+  } catch {
+    return false
+  }
+}
+
 function loadMaps(): THREE.Texture[] {
   if (maps) return maps
   maps = VEHICLE_TEXTURES.map(() => white())
   uniforms.uMaps.value = maps
   if (typeof window === 'undefined' || typeof fetch === 'undefined' || typeof document === 'undefined') return maps
+  const hi = wantsHiResVehicleTextures()
   VEHICLE_TEXTURES.forEach((name, i) => {
-    fetch(`${base()}${name}.jpg.b64`)
+    const lo = `${base()}${name}.jpg.b64`
+    ;(hi ? fetch(`${base()}hi/${name}.jpg.b64`).then((r) => (r.ok ? r : fetch(lo))) : fetch(lo))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
       .then((b64) => {
         const img = new Image()
@@ -47,7 +67,9 @@ function loadMaps(): THREE.Texture[] {
           const tex = new THREE.Texture(img)
           tex.wrapS = tex.wrapT = THREE.RepeatWrapping
           tex.colorSpace = THREE.SRGBColorSpace
-          tex.anisotropy = 4
+          tex.anisotropy = hi ? 8 : 4
+          tex.generateMipmaps = true
+          tex.minFilter = THREE.LinearMipmapLinearFilter
           tex.needsUpdate = true
           uniforms.uMean.value[i] = meanLuma(img)
           maps![i] = tex
