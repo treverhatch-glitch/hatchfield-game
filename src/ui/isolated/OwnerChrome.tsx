@@ -172,7 +172,7 @@ export function OwnerChrome({ game }: { game: Game }) {
       ) : null}
       <HintPanel game={game} />
       <AlertStackView game={game} />
-      {(game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
+      {game.view !== 'hall' && (game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
         <div
           data-testid="diplomacy-panel"
           style={{
