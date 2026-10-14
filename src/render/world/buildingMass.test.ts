@@ -1,10 +1,12 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { addHangar } from '../../scale/placeholders'
+import { addFuelRail, addHangar, addOilStation, addPeopleMover, addSkywalk, addTravelator } from '../../scale/placeholders'
 import { addMroMesh, addNightHubMesh, MESH_TRIANGLE_BUDGET, meshTriangleCount } from '../../tier3/meshes'
 import { CELL } from '../aircraft/specs'
+import { FUEL_TILE_SOCKETS } from '../socketLayout'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './apronBuildings'
+import { addAtcApproach, addPrefabPier, addRemoteScreening, addSubstation, addTiltTray } from './progressionBuildings'
 
 function named(root: THREE.Object3D, prefix: string): THREE.Object3D[] {
   const found: THREE.Object3D[] = []
@@ -81,5 +83,46 @@ describe('concept building massing', () => {
 
   it('does not ship concept JPEGs or flat facade plates', () => {
     expect(existsSync('public/art/concepts')).toBe(false)
+  })
+
+  it('models the later links and buys without moving the fuel-farm socket', () => {
+    expect(FUEL_TILE_SOCKETS.farm_fill).toEqual([1.25, 0.55, 0])
+    const oil = new THREE.Group()
+    addOilStation(oil)
+    const tanks = oil.children.filter((c) => (c as THREE.Mesh).geometry?.type === 'CylinderGeometry')
+    expect(tanks.map((t) => [t.position.x, t.position.y, t.position.z])).toEqual([
+      [-CELL * 0.18, 1.3, 0],
+      [CELL * 0.16, 1.3, 0],
+    ])
+    const mover = new THREE.Group()
+    addPeopleMover(mover)
+    const pod = mover.getObjectByName('pod')
+    const glass = mover.getObjectByName('pod-glass')
+    expect(pod?.parent).toBe(mover)
+    expect(glass?.parent).toBe(mover)
+    expect(pod?.userData.home).toBe(0)
+    const built = [
+      ['fuel', addFuelRail],
+      ['walk', addTravelator],
+      ['link', addSkywalk],
+      ['move', addPeopleMover],
+      ['remote', addRemoteScreening],
+      ['grid', addSubstation],
+      ['sort', addTiltTray],
+      ['atc', addAtcApproach],
+      ['pier', addPrefabPier],
+    ] as const
+    for (const [label, build] of built) {
+      const g = new THREE.Group()
+      build(g)
+      expect(named(g, 'sign:').length, label).toBeGreaterThan(0)
+      expect(meshTriangleCount(g), label).toBeLessThanOrEqual(220)
+      signFacesFront(g)
+    }
+    for (const build of [addRemoteScreening, addSubstation, addTiltTray, addAtcApproach, addFuelRail, addTravelator]) {
+      const g = new THREE.Group()
+      build(g)
+      expect(named(g, 'service-dock')).toHaveLength(1)
+    }
   })
 })

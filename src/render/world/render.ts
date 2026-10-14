@@ -53,6 +53,7 @@ import { objectIsFidsBoard } from '../../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
+import { apronPrefabTier } from './progressionBuildings'
 import { worldToCell, type WorldView } from './view'
 
 /** Minimal renderer surface we touch, so tests can pass a stub. */
@@ -126,6 +127,7 @@ export class WorldRenderer {
   private grass!: GrassRing
   private rain!: Rain
   private builtRev = -1
+  private builtKey = ''
   private bridgeCount = 0
   private hourOverride: number | null = null
   /** Lighting-rig override. Photo mode uses `hourOverride` and leaves this in place. */
@@ -236,6 +238,7 @@ export class WorldRenderer {
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixelRatioCap))
     }
     this.builtRev = -1
+    this.builtKey = ''
     this.hallCrowd?.dispose()
     this.hallCrowd = new HallCrowd(this.root, this.shared.people)
     this.sky.setPhotos(q.skyPhotos)
@@ -384,11 +387,13 @@ export class WorldRenderer {
       jb.group.name = 'jet-bridges'
       this.staticGroup.add(jb.group)
     }
+    const pier = apronPrefabTier(view.fits) >= 2
     terminals(view).forEach((t, i) => {
       const b = new TerminalBuilding(t, this.shared, {
         density: this.q.propDensity,
         walkersPerCell: this.q.walkersPerCell,
         index: i,
+        pier,
       })
       this.buildings.push(b)
       this.staticGroup.add(b.root)
@@ -408,7 +413,11 @@ export class WorldRenderer {
     // Generous clamp: software GL runs ~5–15 FPS and the crowd should still walk at pace.
     const step = Math.min(0.25, Math.max(0, dt))
     this.time += step
-    if (view.mapRev !== this.builtRev) this.rebuild(view)
+    const builtKey = `${view.mapRev}|${apronPrefabTier(view.fits)}`
+    if (builtKey !== this.builtKey) {
+      this.builtKey = builtKey
+      this.rebuild(view)
+    }
     const lite = this.lite || (view.speed ?? 1) >= 5
     if (lite !== this.lite) this.setLiteMode(lite)
 

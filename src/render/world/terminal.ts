@@ -240,8 +240,10 @@ export class TerminalBuilding {
   private readonly frustum = new THREE.Frustum()
   private readonly projView = new THREE.Matrix4()
   private detail = new THREE.Group()
+  /** Prefab II / III: an airside band and a short stub. Real jet bridges stay on the stands. */
+  private pier = false
 
-  constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number }) {
+  constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number; pier?: boolean }) {
     this.info = info
     this.shared = shared
     this.plan = planTerminal(info, {
@@ -253,6 +255,7 @@ export class TerminalBuilding {
     this.center = new THREE.Vector3(c.x, 2, c.z)
     this.radius = clusterRadius(info.cluster)
     this.root.name = `terminal-${opts.index}`
+    this.pier = opts.pier === true
     this.shell.name = 'terminal-shell'
     this.roof.name = 'terminal-roof-group'
     this.detail.name = 'props-detail'
@@ -553,6 +556,32 @@ export class TerminalBuilding {
         '#c9a227',
         '#13293d',
       )
+    }
+    if (this.pier && airEdges.length) {
+      const mid = airEdges[Math.floor(airEdges.length / 2)]
+      const v = DIR_VEC[airside]
+      const x = cellX(mid.c) + v.dc * (CELL * 0.5 + m(0.35))
+      const z = cellZ(mid.r) + v.dr * (CELL * 0.5 + m(0.35))
+      const yaw = yawOut(airside)
+      this.queueSign('PREFAB', m(2.4), m(0.45), x, m(4.4), z, yaw, 'shell', -1, '#1f3b57', '#f4f7fa')
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(m(3.4), m(0.28), m(0.12)),
+        new THREE.MeshLambertMaterial({ color: 0x2f6fa8 }),
+      )
+      band.position.set(x, m(4.05), z)
+      band.rotation.y = yaw
+      band.name = 'prefab-band'
+      this.owned.mats.push(band.material)
+      this.shell.add(band)
+      const stub = new THREE.Mesh(
+        new THREE.BoxGeometry(m(0.7), m(0.4), m(2.4)),
+        new THREE.MeshLambertMaterial({ color: 0xd7dee6 }),
+      )
+      stub.position.set(x + v.dc * m(1.4), m(2.5), z + v.dr * m(1.4))
+      stub.rotation.y = yaw
+      stub.name = 'prefab-stub'
+      this.owned.mats.push(stub.material)
+      this.shell.add(stub)
     }
     airEdges.forEach((e, i) => {
       const v = DIR_VEC[airside]

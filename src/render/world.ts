@@ -72,6 +72,14 @@ import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, 
 import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
+import {
+  addAtcApproach,
+  addPrefabPier,
+  addRemoteScreening,
+  addSubstation,
+  addTiltTray,
+  apronPrefabTier,
+} from './world/progressionBuildings'
 
 interface ClimbOut {
   airframeId: string
@@ -115,6 +123,54 @@ export function needsResize(
   const bw = Math.floor(clientWidth * pixelRatio)
   const bh = Math.floor(clientHeight * pixelRatio)
   return canvasWidth !== bw || canvasHeight !== bh
+}
+
+const BESIDE: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [-1, 1],
+  [2, 0],
+  [0, 2],
+  [-2, 0],
+]
+
+/** First grass cell next to an anchor, else any grass cell. Never a built tile. */
+function grassBeside(game: Game, anchors: readonly Tile[], used: Set<string>): Vec | null {
+  const seeds: Vec[] = []
+  for (let r = 0; r < SIZE; r++) {
+    const row = game.tiles[r]
+    if (!row) continue
+    for (let c = 0; c < SIZE; c++) {
+      if (anchors.includes(row[c])) seeds.push({ c, r })
+    }
+  }
+  const open = (c: number, r: number) => {
+    if (!inBounds(c, r)) return false
+    const key = `${c},${r}`
+    if (used.has(key)) return false
+    return game.tiles[r]?.[c] === 'grass'
+  }
+  for (const seed of seeds) {
+    for (const [dc, dr] of BESIDE) {
+      const c = seed.c + dc
+      const r = seed.r + dr
+      if (open(c, r)) return { c, r }
+    }
+  }
+  for (let r = SIZE - 2; r >= 1; r--) {
+    for (let c = 1; c < SIZE - 1; c++) {
+      if (open(c, r)) return { c, r }
+    }
+  }
+  return null
+}
+
+/** Pier massing once Prefab II is the live prefab hall. Tier 1 keeps the plain terminal block. */
+function prefabTier(game: Game): 1 | 2 | 3 {
+  return apronPrefabTier(game.fits)
 }
 
 export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
@@ -205,6 +261,9 @@ export class World {
   downX = 0
   downY = 0
   tilesGroup = new THREE.Group()
+  /** Bought progression buildings. Kept off the tile grid so apron docks stay where they are. */
+  progressionGroup = new THREE.Group()
+  private progressionSig = ''
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   siteGroup = new THREE.Group()
@@ -370,7 +429,9 @@ export class World {
 
     this.gateGroup.name = 'gate-bridges'
     this.housingGroup.name = 'staff-housing'
+    this.progressionGroup.name = 'progression-buildings'
     this.scene.add(this.tilesGroup)
+    this.scene.add(this.progressionGroup)
     this.scene.add(this.gateGroup)
     this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
@@ -696,7 +757,8 @@ export class World {
 
   rebuildTiles(game: Game) {
     // Cheap revision check — avoid flattening 32² tiles into a string every frame.
-    const hash = `${game.mapRev}|${game.lateMeshSig()}`
+    const pierTier = prefabTier(game)
+    const hash = `${game.mapRev}|${game.lateMeshSig()}|${pierTier}`
     if (hash !== this.tileHash) {
       this.tileHash = hash
       this.releaseTiles()
@@ -712,6 +774,7 @@ export class World {
             parkTerm: game.parkTerms[key],
             hangarTier: game.hangarScale[key],
             lateOpen: game.lateOpenAt(c, r),
+            terminalTier: pierTier,
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
@@ -720,6 +783,44 @@ export class World {
       this.gateHash = ''
     }
     this.syncGateBridges(game)
+  }
+
+  /**
+   * Progression buys are not apron tiles. Drop each mesh on a grass cell beside
+   * its anchor so the docks already on the field are not rebuilt or shifted.
+   */
+  private syncProgressionBuildings(game: Game) {
+    const sig = `${game.mapRev}|${game.progressionBuilt.join(',')}`
+    if (sig === this.progressionSig) return
+    this.progressionSig = sig
+    const geos = new Set<THREE.BufferGeometry>()
+    const mats = new Set<THREE.Material>()
+    this.progressionGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (mesh.geometry) geos.add(mesh.geometry)
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) for (const m of mat) mats.add(m)
+      else if (mat) mats.add(mat)
+    })
+    for (const geo of geos) geo.dispose()
+    for (const mat of mats) mat.dispose()
+    this.progressionGroup.clear()
+    const used = new Set<string>()
+    const place = (id: string, build: (g: THREE.Group) => void, anchors: Tile[]) => {
+      if (!game.progressionBuilt.includes(id)) return
+      const cell = grassBeside(game, anchors, used)
+      if (!cell) return
+      used.add(`${cell.c},${cell.r}`)
+      const g = new THREE.Group()
+      g.name = `progression:${id}`
+      build(g)
+      g.position.copy(toWorld(cell.c, cell.r, 0.02))
+      this.progressionGroup.add(g)
+    }
+    place('substation', addSubstation, ['terminal'])
+    place('tilt_tray', addTiltTray, ['cargo', 'bags'])
+    place('atc_approach', addAtcApproach, ['tower'])
+    place('remote_screening', addRemoteScreening, ['bus', 'termbus'])
   }
 
   /** Stand class and jetway links can change without a map revision. */
@@ -807,11 +908,14 @@ export class World {
       parkTerm?: ParkTerm
       hangarTier?: SizeTier
       lateOpen?: boolean
+      terminalTier?: 1 | 2 | 3
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
-    if (tile === 'terminal') {
+    if (tile === 'terminal' && (opts.terminalTier ?? 1) >= 2) {
+      addPrefabPier(g)
+    } else if (tile === 'terminal') {
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.92, 3.4, CELL * 0.92),
         new THREE.MeshStandardMaterial({
@@ -2399,6 +2503,7 @@ export class World {
     this.applyCelebrationBeat()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
+    this.syncProgressionBuildings(game)
     this.animateLinks(game)
     this.syncGhost(game)
     perfEnd('world.tiles', t)

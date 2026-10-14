@@ -37,7 +37,7 @@ export interface WorldView {
   /** Wide is code E, jumbo is code F. Missing on an L stand means jumbo. */
   standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   standAccessAt?: (v: Vec | null) => StandAccess
-  fits?: { origin: Vec; rooms?: Partial<Record<string, number>> }[]
+  fits?: { origin: Vec; rooms?: Partial<Record<string, number>>; tier?: 1 | 2 | 3; premade?: boolean; redesigned?: boolean }[]
   deskStaff?: number
   /** Airport view keeps the terminal roof on. Hall view may cut it away. */
   view?: 'apron' | 'hall'
