@@ -1,67 +1,64 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, MouseEvent } from 'react'
 import type { Game } from '../../game/sim.ts'
-import type { AlertSeverity } from '../../game/alerts.ts'
+import type { Alert } from '../../game/alerts.ts'
 import { ALERT_TUNING } from '../../game/alertsData.ts'
 import { DISRUPTION_ALERT_PREFIX } from '../../disruptions/alertFeed.ts'
 
-const SEV_COLOR: Record<AlertSeverity, string> = {
+/** The stack shows these two levels. Info notes stay in the sim and off this dock. */
+const STACK_SEVERITY = ['critical', 'warning'] as const
+type StackSeverity = (typeof STACK_SEVERITY)[number]
+
+const SEV_COLOR: Record<StackSeverity, string> = {
   critical: '#e0574a',
   warning: '#f0c14a',
-  info: '#7eb6e0',
+}
+
+const SEV_LABEL: Record<StackSeverity, string> = {
+  critical: 'Critical',
+  warning: 'Warning',
+}
+
+function isStackAlert(alert: Alert): alert is Alert & { severity: StackSeverity } {
+  return alert.severity === 'critical' || alert.severity === 'warning'
+}
+
+function keepClick(run: () => void) {
+  return (event: MouseEvent) => {
+    event.stopPropagation()
+    run()
+  }
 }
 
 /**
- * Live operational alerts, a small stack on the left edge — never over the field centre.
- * Each row pans to the problem, dismisses, or is ignored. The stack minimises to a counter.
+ * Live operational alerts, bottom right, above the build bar.
+ * Critical and warning only. Clicking a card jumps the camera to the problem.
+ * Dismiss, ignore, and apply-fix stay on the card and do not pan.
+ * Emergencies are letters, not rows here, and they never go through the phone.
  */
 export function AlertStackView({ game }: { game: Game }) {
   const stack = game.alerts
-  const rows = stack.ranked()
+  const rows = stack.ranked().filter(isStackAlert)
   if (!rows.length) return null
   const worst = rows[0].severity
   if (stack.minimised) {
     return (
       <button
         type="button"
+        className="alert-dock alert-dock-min"
         data-testid="alert-counter"
         onClick={() => game.minimiseAlerts(false)}
         title="Show alerts"
-        style={{
-          pointerEvents: 'auto',
-          position: 'absolute',
-          left: 8,
-          top: 44,
-          background: 'rgba(12, 22, 28, 0.92)',
-          color: '#e7eee9',
-          border: `1px solid ${SEV_COLOR[worst]}`,
-          borderRadius: 999,
-          padding: '3px 10px',
-          font: '700 12px sans-serif',
-        }}
+        style={{ borderColor: SEV_COLOR[worst] }}
       >
-        ⚠ {rows.length}
+        {SEV_LABEL[worst]} · {rows.length}
       </button>
     )
   }
   const shown = rows.slice(0, ALERT_TUNING.visible)
   return (
-    <div
-      data-testid="alert-stack"
-      style={{
-        pointerEvents: 'auto',
-        position: 'absolute',
-        left: 8,
-        top: 44,
-        width: 250,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-        font: '12px sans-serif',
-        color: '#e7eee9',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ font: '700 11px sans-serif', opacity: 0.85 }}>
+    <div className="alert-dock" data-testid="alert-stack">
+      <div className="alert-dock-head">
+        <span>
           Alerts · {rows.length}
           {rows.length > shown.length ? ` (${rows.length - shown.length} more)` : ''}
         </span>
@@ -78,39 +75,45 @@ export function AlertStackView({ game }: { game: Game }) {
       {shown.map((a) => (
         <div
           key={a.id}
+          className="alert-card"
           data-testid={`alert-${a.key}`}
-          style={{
-            background: 'rgba(12, 22, 28, 0.92)',
-            borderLeft: `3px solid ${SEV_COLOR[a.severity]}`,
-            borderRadius: 6,
-            padding: '5px 8px',
-          }}
+          data-severity={a.severity}
+          title="Jump the camera to this problem"
+          onClick={() => game.panToAlert(a.id)}
         >
-          <span style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+          <span className="alert-card-title">
             <strong>
+              <span className="alert-sev" data-severity={a.severity}>
+                {SEV_LABEL[a.severity]}
+              </span>
               {a.title}
               {a.count > 1 ? ` ×${a.count}` : ''}
             </strong>
             <button
               type="button"
               data-testid={`alert-dismiss-${a.key}`}
-              onClick={() => game.dismissAlert(a.id)}
+              onClick={keepClick(() => game.dismissAlert(a.id))}
               title="Dismiss"
               style={iconBtn}
             >
               ×
             </button>
           </span>
-          <span style={{ display: 'block', opacity: 0.85 }}>{a.detail}</span>
-          <span style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            <button type="button" data-testid={`alert-pan-${a.key}`} onClick={() => game.panToAlert(a.id)} style={btn}>
+          <span className="alert-card-detail">{a.detail}</span>
+          <span className="alert-card-actions">
+            <button
+              type="button"
+              data-testid={`alert-pan-${a.key}`}
+              onClick={keepClick(() => game.panToAlert(a.id))}
+              style={btn}
+            >
               Pan to problem
             </button>
             {a.key.startsWith(DISRUPTION_ALERT_PREFIX) ? (
               <button
                 type="button"
                 data-testid={`alert-fix-${a.key}`}
-                onClick={() => game.recoverDisruption(a.key.slice(DISRUPTION_ALERT_PREFIX.length))}
+                onClick={keepClick(() => game.recoverDisruption(a.key.slice(DISRUPTION_ALERT_PREFIX.length)))}
                 style={btn}
               >
                 Apply fix
@@ -119,7 +122,7 @@ export function AlertStackView({ game }: { game: Game }) {
             <button
               type="button"
               data-testid={`alert-ignore-${a.key}`}
-              onClick={() => game.ignoreAlert(a.id)}
+              onClick={keepClick(() => game.ignoreAlert(a.id))}
               title="Stay quiet about this until it clears"
               style={{ ...btn, opacity: 0.75 }}
             >

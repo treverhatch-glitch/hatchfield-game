@@ -8,6 +8,7 @@ import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
+import { AlertStackView } from './isolated/AlertStack.tsx'
 import { useDesktop } from './phone/useDesktop.ts'
 import { phoneOwnsLetter } from '../phone/logic.ts'
 import { loanAmountLabel, loanDeskRows, loanDrawLabel, loanFeeForAmount, loanProductLabel, payrollPreviewLabel } from '../game/economy.ts'
@@ -592,6 +593,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         />
       ) : null}
       <Phone game={game} desktop={desktopPhone} />
+      <AlertStackView game={game} />
       <div
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"

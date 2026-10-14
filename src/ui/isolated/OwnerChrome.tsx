@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { Game } from '../../game/sim.ts'
 import { useHudBandVar } from '../hudBand.ts'
 import { LiveText } from '../LiveText.tsx'
-import { AlertStackView } from './AlertStack.tsx'
 import { HintPanel } from './HintPanel.tsx'
 import { TipChips } from './TipChips.tsx'
 
 /**
- * Isolated chrome for the flow overlay, the hint panel, alerts, and build tooltips.
+ * Isolated chrome for the flow overlay, the hint panel, and build tooltips.
+ * Operational alerts live on the HUD, bottom right.
  * Inline styles so a HUD redesign can lift this without the old stylesheet.
  */
 export function OwnerChrome({ game }: { game: Game }) {
@@ -159,7 +159,6 @@ export function OwnerChrome({ game }: { game: Game }) {
         </div>
       ) : null}
       <HintPanel game={game} />
-      <AlertStackView game={game} />
       <TipChips game={game} />
       {game.view !== 'hall' && (game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
         <div

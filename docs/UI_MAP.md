@@ -88,12 +88,12 @@ Five menus, one submenu each. The second click on an open sub-tab closes the pan
 ## Offers, letters, and goals
 
 - **Inbound offer** — traffic or priority card (`inbound-offer`). Accept or Refuse. On a desktop the same letters also land on the phone, and the card shifts right while the handset is open so both stay clickable.
-- **Letters** — contract, layover, hub, maintenance, security, and emergency cards on the left. A card with no countdown is marked Note.
+- **Letters** — contract, layover, hub, maintenance, security, and emergency cards on the left. A card with no countdown is marked Note. Emergencies and threats stay on this stack. The phone never receives them.
 - **Diplomacy letters** — airline proposals with accept, counter, and decline
 - **Goals** — field goals beside the apron, from the feedback layer
 - **Coach** — first-hour steps. Got it dismisses the card
 - **Tip chips** — one-time notes near cash, the build tray, or a tile. Dismiss with ×
-- **Alerts** — stack with pan, fix, ignore, dismiss
+- **Alerts** — bottom-right dock (`alert-dock`), above the build bar. Only Critical and Warning. Click a card to jump the camera to the problem. Pan to problem, Apply fix, Ignore, and Dismiss stay on the card and do not move the camera by themselves. Info notes are not stacked.
 - **Hints** — hint list, mute, and the starter-kit hint
 - **Year report** — card on the field, and again under Commercial while it is open
 - **Negotiation** — offer and counter sheet when a deal is on the table

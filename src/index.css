@@ -564,6 +564,91 @@ button {
   pointer-events: auto;
 }
 
+/* Operational alerts. Bottom right, above the build bar, under an open panel (z-index 30). */
+.alert-dock {
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  bottom: 168px;
+  width: min(280px, calc(100vw - 24px));
+  max-height: min(40vh, 320px);
+  overflow: auto;
+  z-index: 22;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 12px sans-serif;
+  color: #e7eee9;
+}
+
+.alert-dock .alert-card,
+.alert-dock button {
+  pointer-events: auto;
+}
+
+.alert-dock-min {
+  width: auto;
+  align-self: flex-end;
+  pointer-events: auto;
+  background: rgba(12, 22, 28, 0.92);
+  color: #e7eee9;
+  border: 1px solid #e0574a;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: 700 12px sans-serif;
+  cursor: pointer;
+}
+
+.alert-dock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font: 700 11px sans-serif;
+  opacity: 0.85;
+}
+
+.alert-card {
+  cursor: pointer;
+  background: rgba(12, 22, 28, 0.92);
+  border-radius: 6px;
+  padding: 5px 8px;
+  border-left: 3px solid #f0c14a;
+}
+
+.alert-card[data-severity='critical'] {
+  border-left-color: #e0574a;
+}
+
+.alert-card-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.alert-card-detail {
+  display: block;
+  opacity: 0.85;
+}
+
+.alert-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.alert-sev {
+  display: inline-block;
+  margin-right: 6px;
+  font: 700 10px sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f0c14a;
+}
+
+.alert-sev[data-severity='critical'] {
+  color: #e0574a;
+}
+
 /* Year report sits in the corner so the field stays visible. Not a blocking modal. */
 .year-report {
   position: absolute;
