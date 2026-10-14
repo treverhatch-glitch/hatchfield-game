@@ -102,11 +102,12 @@ Tunables live in `src/paxnav/config.ts`.
   back to the curb after boarding until real passengers replace them.
 - **Time.** PaxNav runs in real seconds; a game day is 180 clock seconds.
   `HALL_NAV_TUNING` (`src/game/hallNavData.ts`) sets two scales:
-  - `navSecPerClockSec` (30) sets walking pace: walkers move at about the
-    old hall figures' speed.
-  - `departLeadScale` (120) stretches the sim's 3-hour show-up window into
-    45 nav minutes. That leaves time for the needs stops before boarding
-    opens. Only real queues make anyone miss.
+  - `navSecPerClockSec` (10) sets walking pace: 13 m/s on screen at 1x
+    (1.3 m/s × 10). 3x and 5x multiply that, because the tick is already
+    in clock seconds × game speed.
+  - `departLeadScale` (360) stretches the sim's 3-hour show-up window into
+    135 nav minutes, so the slower walk still leaves time for the needs
+    stops before boarding opens. Only real queues make anyone miss.
 - **Render.** `HallWorld` draws the walkers with `HallNavCrowd`. That is three
   instanced meshes (body, head, bag) whatever the headcount, plus a floor
   dot on every marked queue line. While the walk is live it replaces the old

@@ -5,6 +5,17 @@
  */
 import { Crowd } from '../../crowd/crowd'
 import type { Door, Waypoint } from '../../crowd/types'
+import { HALL_NAV_TUNING } from '../../game/hallNavData.ts'
+
+/**
+ * Overlay pace at the old nav scale of 30 s per clock second (queue 1.1 m/s,
+ * walk 1.25 m/s). Scaled with `navSecPerClockSec` so the apron picture and
+ * the terminal walk slow by the same factor. Game speed is already in the
+ * sim step that owns these positions.
+ */
+const OVERLAY_PACE = HALL_NAV_TUNING.navSecPerClockSec / 30
+const QUEUE_SPEED = 1.1 * OVERLAY_PACE
+const WALK_SPEED = 1.25 * OVERLAY_PACE
 
 /** Above this, steering is skipped and the sim positions are drawn as-is. */
 export const STEER_CAP = 180
@@ -104,7 +115,7 @@ export class GuestMotion {
       )
       const order = queued.slice().sort((a, b) => (b.x - cx) * fx + (b.z - cz) * fz - ((a.x - cx) * fx + (a.z - cz) * fz))
       for (const p of order) {
-        const i = this.crowd.addAgent({ pos: { x: p.x, z: p.z }, route: [], speed: 1.1, radius: 0.28 })
+        const i = this.crowd.addAgent({ pos: { x: p.x, z: p.z }, route: [], speed: QUEUE_SPEED, radius: 0.28 })
         this.crowd.joinQueue(i, 'line')
         ids.push(p.id)
       }
@@ -113,7 +124,7 @@ export class GuestMotion {
       this.crowd.addAgent({
         pos: { x: p.x, z: p.z },
         route: routeTo(p.x, p.z, p, doors),
-        speed: 1.25,
+        speed: WALK_SPEED,
         radius: 0.28,
       })
       ids.push(p.id)

@@ -19,6 +19,8 @@ describe('day-one hall crowd', () => {
     expect(crowd.length).toBeGreaterThanOrEqual(8)
     const colors = new Set(crowd.map((g) => g.color))
     expect(colors.size).toBeGreaterThanOrEqual(8)
+    // High-vis orange and amber read as flying dots from the airport camera.
+    for (const color of colors) expect(['#ffb703', '#fb923c', '#f97316', '#e23b2f']).not.toContain(color)
     for (const g of crowd) {
       expect(g.clearedSec).toBe(true)
       expect(g.path[0]).toBe('entrance')

@@ -11,7 +11,7 @@ export const PAXNAV_TUNING = {
   doorCells: 2,
   /** Average walk speed, m/s, and the +/- share each passenger varies by. */
   walkMps: BUILD_TUNING.walkMps,
-  walkSpread: 0.15,
+  walkSpread: 0.10,
   /** Each walker keeps a fixed sideways offset so a crowd does not walk single file. Must stay under half a cell. */
   lateralM: 0.3,
   /** Gap between people standing in a queue line, metres. */

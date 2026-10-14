@@ -5,22 +5,21 @@ import type { ItemDef } from './terminal.ts'
 export const HALL_NAV_TUNING = {
   /**
    * PaxNav seconds per sim clock second at 1x. PaxNav walks and serves in real
-   * seconds (1.3 m/s, 75 s check-in); a game day is 180 clock seconds. 30 keeps
-   * walkers near the old hall guests' pace (a clock second is 8 game minutes,
-   * so any readable walk is already fast-forward against the timetable).
+   * seconds (1.3 m/s, 75 s check-in); a game day is 180 clock seconds.
+   * 10 puts a walker at 13 m/s on screen at 1x (was 39 m/s). Tick already
+   * multiplies by game speed, so 3× and 5× stay three and five times this.
    */
-  navSecPerClockSec: 30,
+  navSecPerClockSec: 10,
   /**
-   * Nav seconds of departure lead per clock second left to STD. Larger than
-   * the walk scale because the sim's show-up window (3 game hours = 22.5 clock s)
-   * is far shorter than a real one once walking is readable: 120 turns a
-   * leisure show-up into 45 nav minutes, time for security and a toilet or
-   * shop stop before boarding opens (30 nav min out). Only real queues make
-   * anyone miss.
+   * Nav seconds of departure lead per clock second left to STD. The show-up
+   * window (3 game hours = 22.5 clock s) is short once walking is slow enough
+   * to read: 360 turns a leisure show-up into 135 nav minutes, time for
+   * security and a toilet or shop stop before boarding opens (30 nav min out).
+   * Only real queues make anyone miss.
    */
-  departLeadScale: 120,
+  departLeadScale: 360,
   /** Departure lead, clock seconds, for a walker with no flight yet (day-one walkers, unbound slots). */
-  unknownLeadClockSec: 20,
+  unknownLeadClockSec: 40,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
 }

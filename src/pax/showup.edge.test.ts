@@ -4,6 +4,7 @@ import {
   checkInCloseAt,
   gameMinToSim,
   leadSecForTag,
+  MAX_SPAWNS_PER_SEC,
   planShowUp,
   SHOWUP_LEAD_GAME_MIN,
   type ShowTag,
@@ -124,7 +125,7 @@ describe('pax show-up edge & distribution tests', () => {
       expect(Number.isNaN(t)).toBe(false)
     }
 
-    // Per-second density check: max 3 per second
+    // Per-second density check: the entrance cap, shared with the first batch.
     const secondCounts = new Map<number, number>()
     for (const t of allReleases) {
       const sec = Math.floor(t + 1e-6)
@@ -132,7 +133,7 @@ describe('pax show-up edge & distribution tests', () => {
     }
 
     for (const count of secondCounts.values()) {
-      expect(count).toBeLessThanOrEqual(3)
+      expect(count).toBeLessThanOrEqual(MAX_SPAWNS_PER_SEC)
     }
   })
 })
