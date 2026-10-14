@@ -150,11 +150,16 @@ describe('ledger invariants', () => {
     expect(game.cash).toBeCloseTo(game.bank.balance, 5)
   })
 
-  it('clears a field ask on Got it and does not spend a second Build', () => {
+  it('keeps a field ask on Later, retires it on Decline, and does not spend a second Build', () => {
     const game = live()
     ask(game, 'ask-clear', 'police')
+    const parked = game.cash
     game.ackLetter('field:ask-clear')
+    expect(game.fieldTask?.id).toBe('ask-clear')
+    expect(game.cash).toBe(parked)
+    game.declineFieldTask()
     expect(game.fieldTask).toBeNull()
+    expect(game.cash).toBe(parked)
 
     ask(game, 'ask-pay', 'police')
     const cash = game.cash
