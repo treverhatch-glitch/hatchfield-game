@@ -1862,6 +1862,25 @@ button {
   margin-top: 4px;
 }
 
+.letter-body p.letter-hint {
+  margin: 0 0 6px;
+  font-size: 11px;
+}
+
+.money-summary {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.money-summary.up {
+  color: #8fd19e;
+}
+
+.money-summary.down {
+  color: #f08a7a;
+}
+
 /* Hide legacy permanent sidebar if any remnant mounts */
 .side {
   display: none;
