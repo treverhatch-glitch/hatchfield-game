@@ -1,6 +1,6 @@
 # Why Careful and Greedy finish the month in the red
 
-The bot report in `report.json` (generated 2026-10-14, standard start **$150,000**) is the cash evidence. That file has no category ledger, so the named sinks below come from a second headless run of the same personas on current `main`, which starts at **$168,000**. Both runs end in the same place. Balance numbers were not changed for this note.
+The bot report in `report.json` (generated 2026-10-14, standard start **$150,000**) is the cash evidence. That run does not include the later lab rule: once the day-1 research trickle banks a point, Careful, Greedy, and Chaotic furnish a research desk, chalkboard, and lab bench. Those rooms are catalog purchases. This note does not retune their prices. That file has no category ledger, so the named sinks below come from a second headless run of the same personas on current `main`, which starts at **$168,000**. Both runs end in the same place. Balance numbers were not changed for this note.
 
 | Persona | Report days | Report flights | Report signed | Report end cash | Replay end cash (start $168,000) |
 | --- | --- | --- | --- | --- | --- |

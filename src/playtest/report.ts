@@ -23,7 +23,7 @@ export function renderReport(report: PlaytestReport): string {
   lines.push(`Generated ${report.generatedAt}.`)
   lines.push('')
   lines.push(
-    `Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids) and run at ${report.tuning.maxSpeed}×. One sim day is ${report.tuning.daySeconds}s. Tick dt is ${report.tuning.tickDt}s.`,
+    `Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids) and run at ${report.tuning.maxSpeed}×. One sim day is ${report.tuning.daySeconds}s. Tick dt is ${report.tuning.tickDt}s. Once the day-1 research trickle banks a whole point, each persona furnishes a research desk, then a chalkboard, then a lab bench, when the hall exists and cash covers the catalog price.`,
   )
   lines.push('')
   lines.push('## Headless personas')

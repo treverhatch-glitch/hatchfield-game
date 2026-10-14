@@ -36,6 +36,8 @@ export interface AirportView {
   janitors: number
   mechanics: number
   researchPoints: number
+  /** Whole points from the day-1 operations trickle. Rooms wait until this is at least 1. */
+  wave3Points: number
   nextResearch: { id: string; name: string } | null
   yearReportPending: boolean
   flightsDone: number

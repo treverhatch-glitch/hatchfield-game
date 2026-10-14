@@ -33,6 +33,7 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     janitors: 0,
     mechanics: 1,
     researchPoints: 0,
+    wave3Points: 0,
     nextResearch: null,
     yearReportPending: false,
     flightsDone: 1,
@@ -83,6 +84,45 @@ describe('playtest personas', () => {
     )
     expect(decision.intents).toContainEqual({ do: 'accept' })
     expect(decision.intents).toContainEqual({ do: 'loan', id: 'bridge' })
+  })
+
+  it('builds a research room once the operations trickle has banked a point', () => {
+    const quiet = carefulIntents(board({ wave3Points: 0, cash: 20_000 }), freshMemory())
+    expect(quiet.intents.some((intent) => intent.do === 'room' && intent.id === 'rdesk')).toBe(false)
+
+    const careful = carefulIntents(board({ wave3Points: 2, cash: 30_000, stands: 2 }), freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'room', id: 'rdesk' })
+    expect(careful.intents.some((intent) => intent.do === 'stamp')).toBe(false)
+
+    const broke = carefulIntents(board({ wave3Points: 2, cash: 1_000 }), freshMemory())
+    expect(broke.intents.some((intent) => intent.do === 'room' && intent.id === 'rdesk')).toBe(false)
+
+    const chalkboard = carefulIntents(
+      board({
+        wave3Points: 3,
+        cash: 20_000,
+        rooms: { food: 1, souvenir: 1, checkin: 2, security: 2, gate: 2, rdesk: 1 },
+      }),
+      freshMemory(),
+    )
+    expect(chalkboard.intents).toContainEqual({ do: 'room', id: 'rboard' })
+
+    const greedy = greedyIntents(
+      board({
+        wave3Points: 2,
+        cash: 40_000,
+        offer: { name: 'Zoomjet', met: false, missing: ['bag sort'], deadline: 30 },
+      }),
+      freshMemory(),
+    )
+    expect(greedy.intents).toContainEqual({ do: 'room', id: 'rdesk' })
+
+    const chaotic = chaoticIntents(board({ wave3Points: 2, cash: 20_000 }), freshMemory(), () => 0)
+    expect(chaotic.intents).toContainEqual({ do: 'room', id: 'rdesk' })
+
+    const stamped = carefulIntents(board({ cash: 30_000, stands: 2, wave3Points: 0 }), freshMemory())
+    const afterTrickle = carefulIntents(board({ cash: 30_000, stands: 2, wave3Points: 2 }), stamped.memory)
+    expect(afterTrickle.intents).toContainEqual({ do: 'room', id: 'rdesk' })
   })
 
   it('chaotic clicks are stable for a seed', () => {

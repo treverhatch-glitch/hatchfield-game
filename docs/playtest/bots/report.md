@@ -2,7 +2,9 @@
 
 Generated 2026-10-14T18:40:41.522Z.
 
-Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids) and run at 5×. One sim day is 180s. Tick dt is 0.25s.
+Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids) and run at 5×. One sim day is 180s. Tick dt is 0.25s. Once the day-1 research trickle banks a whole point, each persona furnishes a research desk, then a chalkboard, then a lab bench, when the hall exists and cash covers the catalog price.
+
+The curves below were recorded before that lab rule. See `personas.md` for the current build order.
 
 ## Headless personas
 

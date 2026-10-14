@@ -1,5 +1,7 @@
+import { ROOMS } from '../game/catalog.ts'
 import type { RoomId, Speed, Tool, Vec } from '../game/types.ts'
 import { SIZE } from '../game/types.ts'
+import { PLAYTEST_TUNING as T } from './tuning.ts'
 import type { AirportView, Intent, PersonaDecision, PersonaMemory } from './types.ts'
 
 export function freshMemory(): PersonaMemory {
@@ -13,6 +15,19 @@ function memoryOn(view: AirportView, memory: PersonaMemory): PersonaMemory {
 
 function roomTotal(view: AirportView, id: RoomId): number {
   return view.rooms[id] ?? 0
+}
+
+function roomCost(id: RoomId): number {
+  return ROOMS.find((room) => room.id === id)?.cost ?? Number.POSITIVE_INFINITY
+}
+
+/** Next lab room, once the operations trickle has banked a point and cash covers it. */
+function nextLabRoom(view: AirportView): RoomId | null {
+  if (view.wave3Points < 1 || view.terminals < 1) return null
+  for (const id of T.labRooms) {
+    if (roomTotal(view, id) < 1 && view.cash >= roomCost(id)) return id
+  }
+  return null
 }
 
 /** Keeps a cash buffer, signs letters that already pass, and adds one piece a day. */
@@ -37,6 +52,11 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   }
   if (view.satisfaction != null && view.satisfaction < 45 && view.janitors < 2 && view.cash > 8_000) {
     intents.push({ do: 'janitor' })
+  }
+  const lab = nextLabRoom(view)
+  if (lab) {
+    intents.push({ do: 'room', id: lab })
+    return { intents, memory: { builtOnDay: view.day, stampsToday: next.stampsToday } }
   }
   if (view.day === next.builtOnDay) return { intents, memory: next }
   const built: PersonaMemory = { builtOnDay: view.day, stampsToday: next.stampsToday }
@@ -93,6 +113,8 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
     if (richest && view.cash < 80_000) intents.push({ do: 'loan', id: richest.id })
   }
   if (view.openShopBids > 0) intents.push({ do: 'lease' })
+  const lab = nextLabRoom(view)
+  if (lab) intents.push({ do: 'room', id: lab })
   if (view.nextResearch) intents.push({ do: 'research', id: view.nextResearch.id })
   if (view.day !== next.builtOnDay || next.stampsToday < 4) {
     const built: PersonaMemory = {
@@ -137,7 +159,7 @@ const CHAOS_TOOLS: Tool[] = [
   'tower',
 ]
 
-const CHAOS_ROOMS: RoomId[] = ['food', 'souvenir', 'bathroom', 'gate', 'checkin', 'security', 'lounge']
+const CHAOS_ROOMS: RoomId[] = ['food', 'souvenir', 'bathroom', 'gate', 'checkin', 'security', 'lounge', ...T.labRooms]
 const CHAOS_SPEEDS: Speed[] = [0, 1, 3, 5]
 
 /** Clicks tools, letters, and rooms without a plan. */
@@ -158,6 +180,11 @@ export function chaoticIntents(
     return { intents, memory: next }
   }
   if (view.yearReportPending && rng() < 0.5) intents.push({ do: 'dismissYear' })
+  const lab = nextLabRoom(view)
+  if (lab && rng() < 0.5) {
+    intents.push({ do: 'room', id: lab })
+    return { intents, memory: { ...next, builtOnDay: view.day } }
+  }
   const kind = Math.floor(rng() * 7)
   if (kind === 0 && view.offer) {
     const pick = rng()

@@ -281,6 +281,7 @@ class GamePlayer implements PlayerCommands {
       janitors: game.janitors,
       mechanics: game.mechanics,
       researchPoints: game.researchPoints,
+      wave3Points: game.wave3.points(),
       nextResearch,
       yearReportPending: game.pendingYearReport() != null,
       flightsDone: game.flightsDone,

@@ -21,4 +21,9 @@ export const PLAYTEST_TUNING = {
   landlessActs: 120,
   slowestTickCount: 8,
   couldNotLimit: 40,
+  /**
+   * Hall rooms the personas furnish once the day-1 research trickle has banked
+   * a whole point. Order is desk, then board, then bench. Costs stay in the catalog.
+   */
+  labRooms: ['rdesk', 'rboard', 'rmachine'] as const,
 } as const

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { START_CASH } from '../game/catalog.ts'
 import { createPlayer } from './commands.ts'
+import { carefulIntents, freshMemory } from './personas.ts'
 import { assembleReport, renderReport } from './report.ts'
 import { PERSONAS, runHeadless } from './run.ts'
 import type { BrowserReport, PersonaReport } from './types.ts'
@@ -24,6 +25,25 @@ describe('player command API', () => {
     api.setSpeed(5)
     api.tick(0.25)
     expect(api.probe().clock).toBeGreaterThan(0)
+  })
+
+  it('furnishes a research desk once the day-1 trickle banks a point', () => {
+    const api = createPlayer()
+    api.setSandbox(false)
+    api.beginNew('standard')
+    api.setFocus('pax')
+    api.buyLand('city')
+    expect(api.buildStarterKit().ok).toBe(true)
+    expect(api.view().wave3Points).toBe(0)
+    api.setSpeed(1)
+    api.tick(120)
+    const view = api.view()
+    expect(view.wave3Points).toBeGreaterThan(0)
+    expect(view.rooms.rdesk ?? 0).toBe(0)
+    const decision = carefulIntents(view, freshMemory())
+    expect(decision.intents).toContainEqual({ do: 'room', id: 'rdesk' })
+    expect(api.buyRoom('rdesk').ok).toBe(true)
+    expect(api.view().rooms.rdesk).toBe(1)
   })
 })
 
