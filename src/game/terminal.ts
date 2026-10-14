@@ -30,6 +30,10 @@ export type ItemId =
   | 'cafe'
   | 'restaurant'
   | 'wayfinding'
+  | 'bag_drop'
+  | 'scanner'
+  | 'wall'
+  | 'newsagent'
   | 'fast_food'
   | 'bench'
   | 'plant'
@@ -91,7 +95,7 @@ export interface ItemDef {
   paxCap?: number
   bagAllowance?: number
   /** Room graph this item opens. */
-  room?: 'checkin' | 'security' | 'gate' | 'bagclaim' | 'bathroom' | 'food' | 'bagdrop'
+  room?: 'checkin' | 'security' | 'gate' | 'bagclaim' | 'bathroom' | 'food' | 'bagdrop' | 'souvenir'
   signs?: number
   /** Build-bar category for the terminal kit. */
   category?: KitCategory
@@ -102,6 +106,11 @@ export interface ItemDef {
   /** Comfort points at the item's own cell. Fades out to `comfortRadius` cells. */
   comfort?: number
   comfortRadius?: number
+  /**
+   * `wall` and `belt` fill the cell. Passengers cannot walk them and
+   * nothing else can be placed on them.
+   */
+  footprint?: 'wall' | 'belt'
 }
 
 const BASE_ITEMS: ItemDef[] = [
@@ -305,6 +314,7 @@ const BASE_ITEMS: ItemDef[] = [
     wearPerUse: 0.4,
     bagAllowance: 50,
     room: 'bagdrop',
+    footprint: 'belt',
   },
   {
     id: 'toilet',

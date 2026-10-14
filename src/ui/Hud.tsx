@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { moneySummaryLine, projectCash } from './cashForecast'
 import { useHudBandVar } from './hudBand'
 import { LiveText } from './LiveText'
+import { ViewModeToggle } from './ViewModeToggle'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
@@ -380,7 +381,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
           <span>
-            {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Apron' : 'Hall'}
+            {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Airport' : 'Terminal'}
           </span>
         </div>
         <button
@@ -2430,7 +2431,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             )}
             <p className="hint">
               {game.view === 'hall'
-                ? '3D hall: doors → security → gates. Esc / H returns — the apron keeps running.'
+                ? 'Terminal: doors → check-in → security → gate. Esc / H returns — the airport keeps running.'
                 : game.tool === 'runway_short'
                   ? `Short strip 10×2 (${money(SHORT_RUNWAY_COST)}) — ATR / CRJ / E175 / Citation / F-15.`
                   : game.tool === 'runway'
@@ -2470,20 +2471,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
           <div className="bottom-bar">
             <div className="bar-cluster view-cluster">
-              <button
-                type="button"
-                className={game.view === 'apron' ? 'on' : ''}
-                onClick={() => game.setView('apron')}
-              >
-                Apron
-              </button>
-              <button
-                type="button"
-                className={game.view === 'hall' ? 'on' : ''}
-                onClick={() => game.setView('hall')}
-              >
-                Hall
-              </button>
+              <ViewModeToggle game={game} />
               {game.fits.length > 1
                 ? game.fits.map((f) => {
                     const active =

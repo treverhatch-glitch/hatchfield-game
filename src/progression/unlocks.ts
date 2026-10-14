@@ -75,6 +75,10 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   info_kiosk: 1,
   fountain: 1,
   trash_can: 1,
+  bag_drop: 1,
+  scanner: 1,
+  wall: 1,
+  newsagent: 1,
 
   // FL2 — already gated before this ladder
   kitchen: 2,

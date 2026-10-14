@@ -9,7 +9,7 @@ import type { PaxTag } from './guests.ts'
 
 import { CONNECTIVITY_CATALOG } from '../connectivity/catalog.ts'
 
-export type KitCategory = 'food' | 'seating' | 'decor' | 'links' | 'service'
+export type KitCategory = 'food' | 'seating' | 'decor' | 'links' | 'service' | 'rooms'
 
 /** One hall cell holds this many slots. Desks and lanes fill the whole cell. */
 export const CELL_SLOTS = 4
@@ -46,6 +46,7 @@ export const KIT_TUNING = {
 export const SEAT_NODES = ['gate', 'claim', 'food', 'lounge'] as const
 
 const ANY_PUBLIC: ItemDef['zones'] = ['checkin', 'gates', 'arrivals', 'retail', 'toilets']
+const ALL_ZONES: ItemDef['zones'] = ['checkin', 'security', 'gates', 'arrivals', 'retail', 'toilets']
 
 /** Outlet tuning for the food items. The café keeps the old counter numbers. */
 export const OUTLETS: Partial<Record<string, OutletSpec>> = {
@@ -209,6 +210,7 @@ export const KIT_ITEMS: ItemDef[] = [
     wearPerUse: 0.05,
     category: 'links',
     size: 4,
+    footprint: 'belt',
     perk: 'Faster walk along the belt',
   },
   {
@@ -227,6 +229,74 @@ export const KIT_ITEMS: ItemDef[] = [
     category: 'service',
     size: 1,
   },
+  {
+    id: 'bag_drop',
+    name: 'Bag drop',
+    blurb: 'Drops a checked bag after the ticket. The belt behind it has to stay clear.',
+    zones: ['checkin'],
+    servers: 1,
+    queueCap: 6,
+    serviceSec: 2,
+    cost: 7_000,
+    upkeep: 25,
+    staff: 0,
+    minFieldLevel: 1,
+    wearPerUse: 0.3,
+    room: 'bagdrop',
+    category: 'rooms',
+    size: 4,
+  },
+  {
+    id: 'scanner',
+    name: 'Security scanner',
+    blurb: 'An extra X-ray and walk-through. Adds a server on the secure line.',
+    zones: ['security'],
+    servers: 1,
+    queueCap: 8,
+    serviceSec: 2.5,
+    cost: 9_000,
+    upkeep: 45,
+    staff: 1,
+    minFieldLevel: 1,
+    wearPerUse: 0.6,
+    room: 'security',
+    category: 'rooms',
+    size: 2,
+  },
+  {
+    id: 'wall',
+    name: 'Wall',
+    blurb: 'Closes a cell. Passengers walk around it. Nothing can be placed on it.',
+    zones: ALL_ZONES,
+    servers: 0,
+    queueCap: 0,
+    serviceSec: 0,
+    cost: 400,
+    upkeep: 1,
+    staff: 0,
+    minFieldLevel: 1,
+    wearPerUse: 0,
+    category: 'rooms',
+    size: 4,
+    footprint: 'wall',
+  },
+  {
+    id: 'newsagent',
+    name: 'Newsagent',
+    blurb: 'Airside shop. Browsing clears the shop need.',
+    zones: ['retail', 'gates'],
+    servers: 1,
+    queueCap: 6,
+    serviceSec: 4,
+    cost: 6_000,
+    upkeep: 40,
+    staff: 1,
+    minFieldLevel: 1,
+    wearPerUse: 0.2,
+    room: 'souvenir',
+    category: 'rooms',
+    size: 2,
+  },
 ]
 
 /** Kit fields layered onto the existing food and seat items. */
@@ -234,4 +304,9 @@ export const KIT_PATCHES: Partial<Record<string, Partial<ItemDef>>> = {
   cafe: { category: 'food', size: 2 },
   restaurant: { category: 'food', size: 4 },
   seat_row: { category: 'seating', size: 1, seats: 4 },
+  checkin_belt: { category: 'rooms' },
+  security_small: { category: 'rooms' },
+  toilet: { category: 'rooms' },
+  wayfinding: { category: 'rooms' },
+  bag_system: { category: 'rooms' },
 }
