@@ -978,6 +978,8 @@ export interface GameSnapshot {
   standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   /** Hangar key → bay size. Missing hangars stay small. */
   hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
+  /** Anchor key → reserved real-world lot. Missing = grandfathered 1×1. */
+  lots?: Record<string, { w: number; d: number; dir: Vec }>
   janitors?: number
   researchers?: number
   deskStaff?: number
@@ -1057,6 +1059,8 @@ export interface GameSnapshot {
 /** A placed building that is still a construction site. */
 export interface BuildSite {
   id: string
+  /** Reserved real-world lot (single stamps only). */
+  lot?: { w: number; d: number; dir: Vec }
   kind: 'single' | 'runway' | 'terminal' | 'premade'
   cells: Vec[]
   tile: Tile

@@ -28,13 +28,6 @@ const TOOL_TILE: Record<string, Tile | 'runway_strip' | 'apron' | 'taxi_strip'> 
 
 /** Commissioned capstones without their own model borrow a family look. */
 const PROGRESSION_TILE: Record<string, string> = {
-  prefab_ii: 'terminal',
-  checkin_hall: 'terminal',
-  security_hall: 'remote_screening',
-  concourse: 'terminal',
-  pier_ii: 'terminal',
-  satellite: 'terminal',
-  prestige_landmark: 'terminal',
   code_e: 'apron',
   code_f: 'apron',
 }

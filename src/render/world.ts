@@ -31,6 +31,8 @@ import { previewAirframe } from '../scale/logic'
 import { ConstructionLayer } from '../build/construction'
 import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
 import { buildModel, standAircraftGhost } from '../build/models'
+import { lotFrame, type Lot } from '../build/footprints'
+import { AnimSystem, buildingSignals } from '../build/anim'
 import {
   addFuelRail,
   addHangar,
@@ -215,8 +217,12 @@ export class World {
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   siteGroup = new THREE.Group()
+  /** Live lot table from the last synced game (construction sites reserve theirs at stamp time). */
+  private lotsRef: Record<string, Lot> = {}
+  /** Movable building parts (doors, radar, fans, booms) driven by sim signals. */
+  buildingAnim = new AnimSystem()
   construction = new ConstructionLayer((tile, c, r) => {
-    const g = this.building(tile as Tile, toWorld(c, r, 0.02))
+    const g = this.building(tile as Tile, toWorld(c, r, 0.02), { lot: this.lotsRef[`${c},${r}`] })
     return g.children.length ? g : null
   })
   /** Empty-gate jet bridges. Kept off tilesGroup so releaseTiles cannot dispose shared bridge geometry. */
@@ -652,11 +658,13 @@ export class World {
             parkTerm: game.parkTerms[key],
             hangarTier: game.hangarScale[key],
             lateOpen: game.lateOpenAt(c, r),
+            lot: game.lots[key],
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
         }
       }
+      this.buildingAnim.collect(this.tilesGroup)
       this.gateHash = ''
     }
     this.syncGateBridges(game)
@@ -747,13 +755,22 @@ export class World {
       parkTerm?: ParkTerm
       hangarTier?: SizeTier
       lateOpen?: boolean
+      lot?: Lot
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
-    const model = buildModel(tile, { hangarTier: opts.hangarTier })
+    const model = buildModel(tile, { hangarTier: opts.hangarTier, hotelClass: opts.hotelClass, parkTerm: opts.parkTerm })
     if (model) {
-      g.add(...model.children)
+      if (opts.lot) {
+        // Real-world lot: scale the cell-sized model up and centre it on its lot,
+        // front facing the access side. Height grows slower than plan size.
+        const f = lotFrame(opts.lot)
+        model.position.set(f.dc * CELL, 0, f.dr * CELL)
+        model.rotation.y = f.yaw
+        model.scale.set(f.scale, 0.55 + 0.45 * f.scale, f.scale)
+        g.add(model)
+      } else g.add(...model.children)
       return g
     }
     if (tile === 'terminal') {
@@ -1716,14 +1733,29 @@ export class World {
         mat,
       )
       pad.position.set(box.x, 0.14, box.z)
-      const plane = standAircraftGhost(box.depth, box.width, mat, alongX)
+      const planeMat = mat.clone()
+      planeMat.opacity = 0.78
+      planeMat.emissiveIntensity = 0.55
+      const plane = standAircraftGhost(box.depth, box.width, planeMat, alongX)
       plane.position.set(box.x, 0.14, box.z)
       this.ghostGroup.add(pad, plane)
       return
     }
+    const tool = String(game.tool)
+    const ghostOpts = {
+      hangarTier: (tool === 'hangar_j' ? 'jumbo' : tool === 'hangar_w' ? 'wide' : undefined) as SizeTier | undefined,
+      hotelClass: (tool === 'hotel_inn' ? 'inn' : tool === 'hotel_resort' ? 'resort' : tool === 'hotel_biz' ? 'business' : undefined) as HotelClass | undefined,
+    }
+    const ghostLot = game.ghostLot()
+    if (ghostLot && game.hover) {
+      const built = this.building(tile, toWorld(game.hover.c, game.hover.r, 0), { ...ghostOpts, lot: ghostLot })
+      ghostifyModel(built, ghostMats)
+      this.ghostGroup.add(built)
+      return
+    }
     for (const p of cells) {
       if (!inBounds(p.c, p.r)) continue
-      const built = this.building(tile, toWorld(p.c, p.r, 0))
+      const built = this.building(tile, toWorld(p.c, p.r, 0), ghostOpts)
       ghostifyModel(built, ghostMats)
       this.ghostGroup.add(built)
     }
@@ -2287,6 +2319,7 @@ export class World {
       this.sitesHash = key
       this.rebuildSites(game)
     }
+    this.lotsRef = game.lots
     this.construction.sync(game.sites)
     let i = 0
     for (const site of game.sites) {
@@ -2438,6 +2471,7 @@ export class World {
     perfEnd('world.entities', t)
     t = perfStart()
     this.syncSites(game)
+    this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera)
     perfEnd('world.sites', t)
     t = perfStart()
     this.followCameraCue(game)
