@@ -44,6 +44,7 @@ import {
   slotCenter,
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
+import { HallNavCrowd } from './hallNavCrowd'
 import { hallQueues } from '../terminalplay/queues'
 
 /** Hall build mode, driven by the terminal kit bar. */
@@ -116,6 +117,10 @@ export class HallWorld {
   lastY = 0
   roomGroup = new THREE.Group()
   guestGroup = new THREE.Group()
+  /** Curb-to-boarding walkers from the hall's PaxNav. Stands in for departing figures while live. */
+  readonly navCrowd = new HallNavCrowd()
+  /** Walkers drawn last frame (tests, perf probes). */
+  navDrawn = 0
   /** Routes, heat, and advisor marks. Hidden unless the player asks or a note is focused. */
   overlay = new THREE.Group()
   /** Queue, lost, bag, and shop markers. Always drawn. Numbers open on click. */
@@ -218,6 +223,7 @@ export class HallWorld {
     this.scene.add(this.walkGroup)
     this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
+    this.scene.add(this.navCrowd.group)
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
@@ -773,7 +779,10 @@ export class HallWorld {
   }
 
   syncGuests(game: Game) {
-    const live = new Set(game.hallGuests.map((g) => g.id))
+    // Departures walk on the nav grid (navCrowd) when the hall has a curb door and a gate.
+    const navLive = game.hallNav.live
+    const drawn = navLive ? game.hallGuests.filter((g) => g.job !== 'depart') : game.hallGuests
+    const live = new Set(drawn.map((g) => g.id))
     for (const [id, mesh] of this.guests) {
       if (!live.has(id)) {
         this.guestGroup.remove(mesh)
@@ -785,7 +794,7 @@ export class HallWorld {
     const zones = game.activeHall()?.zones ?? []
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    for (const g of game.hallGuests) {
+    for (const g of drawn) {
       if (g.releaseAt != null && g.releaseAt > game.clock) continue
       let mesh = this.guests.get(g.id)
       if (!mesh) {
@@ -1128,6 +1137,7 @@ export class HallWorld {
     this.easeToGoal(game)
     this.syncWalkways(game)
     this.syncGuests(game)
+    this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock)
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
@@ -1331,6 +1341,7 @@ export class HallWorld {
     this.queueTex.clear()
     this.ghostMat.dispose()
     this.litter.dispose()
+    this.navCrowd.dispose()
     this.renderer.dispose()
   }
 }

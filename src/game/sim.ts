@@ -190,6 +190,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
+import { HallNav, hallNavLayout } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -1184,6 +1185,8 @@ export class Game {
   selectedFacility: string | null = null
   /** Bumps when the hall layout changes so the HUD repaints. */
   hallRev = 0
+  /** Curb-to-boarding walkers for the active hall (src/paxnav), drawn by the Terminal view. */
+  readonly hallNav = new HallNav()
   private secSeq = 1
   view: 'apron' | 'hall' = 'apron'
   spawnCool = 8
@@ -7377,6 +7380,20 @@ export class Game {
     g.previewDir = next
     g.seg = 1
     g.node = path[1] ?? 'checkin'
+  }
+
+  /** Feed the active hall's walkers: re-read the layout on edits, admit released departures, step. */
+  tickHallNav(step: number) {
+    const fit = this.activeHall()
+    if (!fit) return
+    this.hallNav.setHall(this.hallKey(fit), String(this.hallRev), () => hallNavLayout(fit))
+    this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
+      const f = this.flights.find((x) => x.id === flightId)
+      if (f?.std != null) return f.std
+      const slot = flightId.startsWith('slot:') ? flightId.slice(5) : null
+      return this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
+    })
+    this.hallNav.tick(step)
   }
 
   tickHall(dt: number) {
@@ -18049,6 +18066,7 @@ export class Game {
     this.tickOpsEvents()
     this.tickMarket(step)
     this.tickHall(step)
+    this.tickHallNav(step)
     this.tickLuggage(step)
     this.tickWeather(step)
     this.noteMapClimate()
