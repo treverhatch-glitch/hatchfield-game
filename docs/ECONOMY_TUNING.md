@@ -32,21 +32,23 @@ A one- or two-carrier field with no hotel, parking, or rail still pays 35% of bu
 
 ## Before
 
-From `economy_findings.md`. Start cash $168,000. Careful is about day 45. Greedy is about day 60. Chaotic was not in that note.
+`docs/playtest/bots/rerun_oct15_0330.md` is the latest rerun on main before these cuts. Start cash $168,000. The personas already buy research and hire desk agents.
 
 | Persona | End cash |
 | --- | ---: |
-| Careful | about −$21,000 |
-| Greedy | about −$18,400 |
+| Careful (day 45) | −$16,952 |
+| Greedy (day 60) | −$17,124 |
+
+The earlier findings note, on the previous persona set, had careful and greedy both near −$21,000.
 
 ## After
 
-Same personas, same seeds, after the cuts above.
+Same persona file, after the cuts above.
 
 | Persona | Day 30 | End | Minimum | Carriers | Flights |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Careful (day 45) | $179,469 | $158,363 | $20,383 | 12 | 85 |
-| Greedy (day 60) | $7,829 | $2,602 | −$2,439 | 12 | 105 |
-| Chaotic / sloppy (day 30) | $3,332 | $3,332 | −$17,847 | 0 | 24 |
+| Careful (day 45) | $183,906 | $158,936 | $13,900 | 12 | 87 |
+| Greedy (day 60) | $26,636 | $1,840 | −$924 | 12 | 105 |
+| Chaotic / sloppy (day 30) | $23,188 | $23,188 | $884 | 0 | 86 |
 
-Careful is in the black by day 30 and still there at day 45. Greedy stays near the waterline and spends time below zero. Chaotic falls to about −$18,000 and climbs back above zero by day 30.
+Careful is in the black by day 30 and still there at day 45. Greedy finishes just above zero and spends time below it. Chaotic falls to $884 and is back above $20,000 by day 30.
