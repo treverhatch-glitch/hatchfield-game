@@ -1,6 +1,7 @@
 /** Baggage family: bag sort hall and tilt-tray sorter. */
 import * as THREE from 'three'
-import { box, cyl, emblem, HALF, M, mat, pad, pipe, sign } from './kit'
+import { animate } from '../anim'
+import { box, cyl, emblem, HALF, M, mat, pad, pipe, sign, tmat } from './kit'
 
 function rollerDoors(g: THREE.Object3D, n: number, w: number, z: number, dw = 1.3, dh = 1.4) {
   for (let i = 0; i < n; i++) {
@@ -12,13 +13,16 @@ function rollerDoors(g: THREE.Object3D, n: number, w: number, z: number, dw = 1.
 
 export function bagSort(g: THREE.Group): void {
   pad(g, HALF * 2, HALF * 2)
-  box(g, 7.2, 2.6, 5.6, mat('#8a909a', { rough: 0.5, metal: 0.3 }), 0, 0.12, -0.8)
+  box(g, 7.2, 2.6, 5.6, tmat('warehouse_panels', '#aab0ba', 3, 1, { rough: 0.5, metal: 0.3 }), 0, 0.12, -0.8)
   box(g, 7.4, 0.15, 5.8, M.darkSteel(), 0, 2.72, -0.8)
   rollerDoors(g, 3, 6.6, 2.02)
   // Belt chutes feeding out to the apron.
   for (const x of [-2.2, 0, 2.2]) {
     box(g, 0.8, 0.14, 2.0, M.black(), x, 0.4, 3.0)
-    for (let k = 0; k < 4; k++) box(g, 0.5, 0.35, 0.4, mat(['#c0392b', '#2f6f9a', '#e7b52a', '#2d6a4f'][k % 4]), x, 0.54, 2.3 + k * 0.45)
+    for (let k = 0; k < 4; k++) {
+      const bag = box(g, 0.5, 0.35, 0.4, mat(['#c0392b', '#2f6f9a', '#e7b52a', '#2d6a4f'][k % 4]), x, 0.54, 2.1)
+      animate(bag, { kind: 'cycle', signal: 'bagsFlow', axis: 'z', amount: 1.8, rate: 0.4, phase: k / 4 })
+    }
   }
   sign(g, 'BAG SORT', '#2f6f9a', '#ffffff', 2.4, 0.42, 0, 2.3, 2.04)
   emblem(g, 'bag', '#2f6f9a', 2.2, 0, 2.82, -0.8, true)
@@ -27,7 +31,7 @@ export function bagSort(g: THREE.Group): void {
 /** Tilt-tray sorter: a loop building with a visible tray oval, ducting and gantry. */
 export function tiltTray(g: THREE.Group): void {
   pad(g, HALF * 2, HALF * 2)
-  const shell = mat('#c6ccd2', { rough: 0.45, metal: 0.35 })
+  const shell = tmat('warehouse_panels', '#d6dce2', 3, 1, { rough: 0.45, metal: 0.35 })
   // Rounded-end hall (stadium plan) whose shape echoes the tray loop.
   box(g, 4.8, 3.0, 5.0, shell, 0, 0.12, -0.4)
   for (const x of [-2.4, 2.4]) cyl(g, 2.5, 2.5, 3.0, shell, x, 0.12, -0.4, 28)
@@ -41,11 +45,23 @@ export function tiltTray(g: THREE.Group): void {
   loop.scale.set(2.0, 1, 1)
   loop.position.set(0, 1.25, 0.2)
   g.add(loop)
+  // Tilt trays riding the loop.
+  const trays = new THREE.Group()
+  trays.position.set(0, 1.42, 0.2)
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2
+    box(trays, 0.4, 0.06, 0.4, mat(i % 2 ? '#e7b52a' : '#2f6f9a'), Math.cos(a) * 1.6, 0, Math.sin(a) * 1.6)
+  }
+  trays.scale.set(2.0, 1, 1)
+  g.add(animate(trays, { kind: 'spin', signal: 'bagsFlow', axis: 'y', rate: 0.8 }))
   // Roof ducting: two big runs with elbows and fans.
   const duct = M.steel()
   pipe(g, { x: -4.2, y: 3.7, z: -1.6 }, { x: 4.2, y: 3.7, z: -1.6 }, 0.38, duct)
   pipe(g, { x: -4.2, y: 3.7, z: 0.6 }, { x: 3.0, y: 3.7, z: 0.6 }, 0.28, duct)
-  for (const x of [-3.2, 0, 3.2]) cyl(g, 0.55, 0.55, 0.5, M.darkSteel(), x, 3.26, -2.6, 16)
+  for (const x of [-3.2, 0, 3.2]) {
+    cyl(g, 0.55, 0.55, 0.5, M.darkSteel(), x, 3.26, -2.6, 16)
+    animate(box(g, 0.9, 0.04, 0.12, M.black(), x, 3.78, -2.6), { kind: 'spin', signal: 'always', axis: 'y', rate: 5 })
+  }
   // Inbound / outbound conveyors on gantries.
   for (const [x, dir] of [[-4.0, -1], [4.0, 1]] as const) {
     box(g, 0.9, 0.18, 3.2, M.black(), x, 1.8, 3.0)

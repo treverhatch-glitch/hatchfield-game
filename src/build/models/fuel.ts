@@ -1,9 +1,10 @@
 /** Fuel family: tank farms (I and III), hydrant pit. */
 import * as THREE from 'three'
-import { box, cyl, emblem, HALF, M, mat, pad, pipe, sign } from './kit'
+import { animate } from '../anim'
+import { box, cyl, emblem, HALF, M, mat, pad, pipe, sign, tmat } from './kit'
 
 function tank(g: THREE.Object3D, x: number, z: number, r: number, h: number) {
-  const shell = mat('#e9ecef', { rough: 0.35, metal: 0.45 })
+  const shell = tmat('tank_steel', '#f2f4f6', 3, 1, { rough: 0.35, metal: 0.45 })
   cyl(g, r, r, h, shell, x, 0.3, z, 32)
   // Domed / floating roof and a coloured product band.
   const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 8, 0, Math.PI * 2, 0, Math.PI * 0.18), shell)
@@ -30,7 +31,7 @@ function bund(g: THREE.Object3D, w: number, d: number) {
 }
 
 export function fuelFarm(g: THREE.Group, heavy = false): void {
-  pad(g, HALF * 2, HALF * 2, mat('#8f8b82', { rough: 0.95 }))
+  pad(g, HALF * 2, HALF * 2, tmat('gravel_yard', '#b0aa9e', 3, 3, { rough: 0.95 }))
   bund(g, HALF * 1.9, HALF * 1.9)
   const steel = M.steel()
   const spots: [number, number, number, number][] = heavy
@@ -52,7 +53,11 @@ export function fuelFarm(g: THREE.Group, heavy = false): void {
     pipe(g, { x, y: 0.55, z: fz }, { x, y: 0.55, z: z + r * 0.9 }, 0.09, steel)
   }
   // Pump skid + loading arm.
-  box(g, 1.4, 0.8, 0.9, mat('#2d6a4f', { rough: 0.5 }), heavy ? 0 : 0, 0.12, fz + 0.2)
+  box(g, 1.4, 0.8, 0.9, mat('#2d6a4f', { rough: 0.5 }), 0, 0.12, fz + 0.2)
+  const valve = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.04, 6, 16), M.red())
+  valve.position.set(0, 1.12, fz + 0.2)
+  valve.rotation.x = Math.PI / 2
+  g.add(animate(valve, { kind: 'spin', signal: 'fuelFlow', axis: 'z', rate: 3 }))
   if (heavy) {
     // Third-farm signature: extra slim day-tank pair and a high-flow pump house.
     cyl(g, 0.6, 0.6, 2.2, mat('#e9ecef', { rough: 0.35, metal: 0.45 }), 0, 0.3, -0.4, 20)
@@ -87,7 +92,9 @@ export function hydrant(g: THREE.Group): void {
   box(cart, 2.4, 0.9, 1.3, mat('#f2f2f0', { rough: 0.5 }), 0, 0.45, 0)
   box(cart, 0.9, 0.85, 1.25, mat('#2d6a4f'), -0.9, 1.35, 0)
   box(cart, 0.7, 0.3, 0.06, M.glass(), -0.9, 1.7, 0.63)
-  cyl(cart, 0.32, 0.32, 0.4, mat('#222'), 0.6, 1.35, 0, 18).rotation.x = Math.PI / 2
+  const reel = cyl(cart, 0.32, 0.32, 0.4, mat('#222'), 0.6, 1.35, 0, 18)
+  reel.rotation.x = Math.PI / 2
+  animate(reel, { kind: 'spin', signal: 'fuelFlow', axis: 'y', rate: 4 })
   for (const [x, z] of [[-0.8, 0.66], [0.8, 0.66], [-0.8, -0.66], [0.8, -0.66]]) {
     const wheel = cyl(cart, 0.32, 0.32, 0.22, M.black(), x, 0.21, z, 14)
     wheel.rotation.x = Math.PI / 2

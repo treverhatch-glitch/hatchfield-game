@@ -347,3 +347,83 @@ export function emblem(g: THREE.Object3D, kind: EmblemKind, color: string, size:
 export function roofStripe(g: THREE.Object3D, w: number, d: number, y: number, color: string): void {
   box(g, w, 0.03, d, mat(color, { rough: 0.6 }), 0, y, 0)
 }
+
+// ---------- photo textures (public/art/textures/buildings) ----------
+export type BuildingTex =
+  | 'hangar_cladding'
+  | 'warehouse_panels'
+  | 'terminal_glass'
+  | 'dock_floor'
+  | 'tank_steel'
+  | 'roof_membrane'
+  | 'gravel_yard'
+  | 'terrazzo_floor'
+  | 'chevron_stripe'
+
+const photoBase = new Map<string, THREE.Texture>()
+const photoReady = new Set<string>()
+const photoWaiters = new Map<string, (() => void)[]>()
+let loader: THREE.TextureLoader | null = null
+
+function texBase(): string {
+  const env = (import.meta as unknown as { env?: { BASE_URL?: string } }).env
+  return `${env?.BASE_URL ?? '/'}art/textures/buildings/`
+}
+
+/** Load (once) a photo texture; `ready` runs when pixels are in. A missing file just never applies. */
+function loadPhoto(name: BuildingTex, ready: (t: THREE.Texture) => void): void {
+  let base = photoBase.get(name)
+  if (!base) {
+    loader ??= new THREE.TextureLoader()
+    base = loader.load(
+      `${texBase()}${name}.jpg`,
+      () => {
+        photoReady.add(name)
+        for (const cb of photoWaiters.get(name) ?? []) cb()
+        photoWaiters.delete(name)
+      },
+      undefined,
+      () => photoWaiters.delete(name),
+    )
+    base.colorSpace = THREE.SRGBColorSpace
+    base.wrapS = base.wrapT = THREE.RepeatWrapping
+    base.anisotropy = 8
+    photoBase.set(name, base)
+  }
+  const b = base
+  if (photoReady.has(name)) ready(b)
+  else photoWaiters.set(name, [...(photoWaiters.get(name) ?? []), () => ready(b)])
+}
+
+const texMats = new Map<string, THREE.MeshStandardMaterial>()
+/**
+ * Material tinted by colour that picks up a repeat-wrapped sRGB photo map once it
+ * loads. Until then (or in Node, or if the file is absent) it is the plain colour.
+ */
+export function tmat(name: BuildingTex, color: string, rx = 1, ry = 1, o: MatOpts = {}): THREE.MeshStandardMaterial {
+  if (!hasDom()) return mat(color, o)
+  const key = `${name}|${rx}|${ry}|${color}|${o.rough ?? 0.6}|${o.metal ?? 0.1}|${o.opacity ?? 1}|${o.emissive ?? ''}|${o.ei ?? 0}`
+  let m = texMats.get(key)
+  if (!m) {
+    const made = new THREE.MeshStandardMaterial({
+      color,
+      roughness: o.rough ?? 0.6,
+      metalness: o.metal ?? 0.1,
+      emissive: o.emissive ?? '#000000',
+      emissiveIntensity: o.ei ?? 0,
+      transparent: (o.opacity ?? 1) < 1,
+      opacity: o.opacity ?? 1,
+    })
+    loadPhoto(name, (base) => {
+      const t = base.clone()
+      t.wrapS = t.wrapT = THREE.RepeatWrapping
+      t.repeat.set(rx, ry)
+      t.needsUpdate = true
+      made.map = t
+      made.needsUpdate = true
+    })
+    texMats.set(key, made)
+    m = made
+  }
+  return m
+}

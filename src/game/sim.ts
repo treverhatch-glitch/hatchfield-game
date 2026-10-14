@@ -1,5 +1,6 @@
 import { finiteAmount } from '../disruptions/engine.ts'
 import { footprintBlock } from './buildingFootprint.ts'
+import { chooseLot, lotCells, lotSize, type Lot } from '../build/footprints.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
 import { OPS_ALERT_PREFIX, OpsEventRunner, opsAlertText, type ActiveOpsEvent } from '../content/events_ops.ts'
@@ -1160,6 +1161,8 @@ export class Game {
   eGates = 0
   standScale: Record<string, SizeTier> = {}
   hangarScale: Record<string, SizeTier> = {}
+  /** Anchor key → reserved lot. Buildings without one are grandfathered 1×1. */
+  lots: Record<string, Lot> = {}
   private lastRailFlowing = false
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
@@ -4812,6 +4815,7 @@ export class Game {
       standAccess: this.standAccess,
       standScale: this.standScale,
       hangarScale: this.hangarScale,
+      lots: this.lots,
       pillar: {
         contractId: this.contractId,
         tankTier: this.tankTier,
@@ -4996,6 +5000,7 @@ export class Game {
       this.standAccess = s.standAccess ?? {}
       this.standScale = s.standScale ?? {}
       this.hangarScale = s.hangarScale ?? {}
+      this.lots = s.lots ?? {}
       this.contractId = s.pillar?.contractId ?? null
       this.tankTier = s.pillar?.tankTier ?? 1
       this.tankLitres = s.pillar?.litres ?? seedLitresFromLoads(s.fuelLoads)
@@ -11361,6 +11366,7 @@ export class Game {
     this.eGates = 0
     this.standScale = {}
     this.hangarScale = {}
+    this.lots = {}
     this.lastRailFlowing = false
   }
 
@@ -15009,7 +15015,50 @@ export class Game {
   }
 
   cellsBlocked(cells: Vec[]): boolean {
-    return cells.some((p) => this.siteAt(p))
+    return cells.some((p) => this.siteAt(p) || this.lotOwnerAt(p) != null)
+  }
+
+  /** Anchor of the lot reserving this (non-anchor) cell, or null. */
+  lotOwnerAt(v: Vec): Vec | null {
+    for (const key in this.lots) {
+      const [c, r] = key.split(',').map(Number) as [number, number]
+      if (c === v.c && r === v.r) continue
+      const cells = lotCells({ c, r }, this.lots[key]!)
+      if (cells.some((p) => p.c === v.c && p.r === v.r)) return { c, r }
+    }
+    return null
+  }
+
+  /** Front-cell access rule for a lot: what the building must face. */
+  private lotAccess(tile: Tile): ((v: Vec) => boolean) | null {
+    const t = (v: Vec) => (inBounds(v.c, v.r) ? this.tile(v) : null)
+    const paved = (v: Vec) => {
+      const x = t(v)
+      return x === 'taxi' || x === 'stand' || x === 'runway' || x === 'road'
+    }
+    const road = (v: Vec) => t(v) === 'road'
+    if (tile === 'fuel' || tile === 'kitchen' || tile === 'depot' || tile === 'deice') return paved
+    if (
+      tile === 'hotel' || tile === 'park_s' || tile === 'park_l' || tile === 'park_g' ||
+      tile === 'park_u' || tile === 'bus' || tile === 'rail'
+    )
+      return road
+    return null
+  }
+
+  /** Lot this tool would reserve at v, or null when it is 1×1 / nothing fits. */
+  planLot(v: Vec, tile: Tile, tool: string): { lot: Lot | null; size: ReturnType<typeof lotSize> } {
+    const size = lotSize(tile, tile === 'hangar' ? (hangarScaleForTool(tool as Tool) ?? 'small') : null)
+    if (!size) return { lot: null, size: null }
+    const lot = chooseLot(v, size, {
+      inBounds: (p) => inBounds(p.c, p.r),
+      free: (p) =>
+        (p.c === v.c && p.r === v.r) ||
+        (this.tile(p) === 'grass' && !this.siteAt(p) && this.lotOwnerAt(p) == null),
+      access: this.lotAccess(tile),
+      prefer: [{ c: 0, r: 1 }],
+    })
+    return { lot, size }
   }
 
   enqueueBuild(site: Omit<BuildSite, 'id' | 'elapsed' | 'duration' | 'warned' | 'vanArrived' | 'delivered' | 'crewSpawned'> & Partial<BuildSite>) {
@@ -15037,6 +15086,7 @@ export class Game {
     if (!site) return
     const refund = Math.round(site.cost * BULLDOZE_REFUND)
     this.cash += refund
+    if (site.lot && site.origin) delete this.lots[`${site.origin.c},${site.origin.r}`]
     this.sites = this.sites.filter((s) => s.id !== id)
     this.trucks = this.trucks.filter((t) => t.flightId !== id)
     this.pushNews(`Construction cancelled — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
@@ -15251,6 +15301,7 @@ export class Game {
   }
 
   clearTile(v: Vec) {
+    v = this.lotOwnerAt(v) ?? v
     const building = this.siteAt(v)
     if (building) {
       this.cancelSite(building.id)
@@ -15302,6 +15353,7 @@ export class Game {
       delete this.standScale[`${v.c},${v.r}`]
       delete this.hubLinksBuilt[`${v.c},${v.r}`]
       delete this.hangarScale[`${v.c},${v.r}`]
+      delete this.lots[`${v.c},${v.r}`]
     }
     this.bumpMap()
     this.ensureGround()
@@ -15535,8 +15587,11 @@ export class Game {
     if (!id) return
     const spec = buildingById(id)
     if (!spec) return
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.tile(v) !== 'grass' || this.siteAt(v) || this.lotOwnerAt(v)) {
+      this.pushNews(
+        this.siteAt(v) ? 'Already a construction site.' : this.lotOwnerAt(v) ? 'That ground belongs to a building lot.' : 'Needs grass.',
+        'bad',
+      )
       this.emit()
       return
     }
@@ -15618,8 +15673,11 @@ export class Game {
         return
       }
     }
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.tile(v) !== 'grass' || this.siteAt(v) || this.lotOwnerAt(v)) {
+      this.pushNews(
+        this.siteAt(v) ? 'Already a construction site.' : this.lotOwnerAt(v) ? 'That ground belongs to a building lot.' : 'Needs grass.',
+        'bad',
+      )
       this.emit()
       return
     }
@@ -15634,6 +15692,19 @@ export class Game {
       this.emit()
       return
     }
+    const planned = this.planLot(v, building.tile, building.tool)
+    if (planned.size && !planned.lot) {
+      const m = (n: number) => n * 22
+      this.pushNews(
+        `${building.name} needs a ${planned.size.w}×${planned.size.d} lot (${m(planned.size.w)}×${m(planned.size.d)} m) of clear grass${
+          this.lotAccess(building.tile) ? ' facing its road or pavement' : ''
+        }.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const lotArea = planned.lot ? lotCells(v, planned.lot) : [v]
     if (building.tile === 'stand') {
       const why = standPlaceBlock(
         this.tiles,
@@ -15648,11 +15719,11 @@ export class Game {
         this.emit()
         return
       }
-    } else if (clearanceBlocks(this.tiles, [v], building.tile)) {
+    } else if (clearanceBlocks(this.tiles, lotArea, building.tile)) {
       this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
       this.emit()
       return
-    } else if (placementHitsStand(this.tiles, [v], building.tile, this.standClass, this.standScale)) {
+    } else if (placementHitsStand(this.tiles, lotArea, building.tile, this.standClass, this.standScale)) {
       this.pushNews(`${building.name} sits inside a stand footprint.`, 'bad')
       this.emit()
       return
@@ -15700,7 +15771,8 @@ export class Game {
         { c: v.c, r: v.r + 1 },
         { c: v.c, r: v.r - 1 },
       ].some((p) => {
-        const t = this.tile(p)
+        const owner = this.lotOwnerAt(p)
+        const t = this.tile(owner ?? p)
         return t === 'fuel' || t === 'fuel_rail'
       })
       if (!beside) {
@@ -15842,7 +15914,9 @@ export class Game {
           ? this.parkTerm
           : undefined,
       origin: v,
+      lot: planned.lot ?? undefined,
     })
+    if (planned.lot) this.lots[`${v.c},${v.r}`] = planned.lot
   }
 
   /** Wide stands are code E. Legacy L stands with no scale stay code F. */
@@ -15989,7 +16063,20 @@ export class Game {
         standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
       )
     }
+    const def = BUILDINGS.find((b) => b.tool === this.tool)
+    if (def && inBounds(hover.c, hover.r)) {
+      const plan = this.planLot(hover, def.tile, def.tool)
+      if (plan.size) return lotCells(hover, plan.lot ?? { w: plan.size.w, d: plan.size.d, dir: { c: 0, r: 1 } })
+    }
     return [hover]
+  }
+
+  /** Lot the ghost would reserve at the hover cell (for the renderer). */
+  ghostLot(): Lot | null {
+    const def = BUILDINGS.find((b) => b.tool === this.tool)
+    if (!def || !this.hover) return null
+    const plan = this.planLot(this.hover, def.tile, def.tool)
+    return plan.lot ?? (plan.size ? { w: plan.size.w, d: plan.size.d, dir: { c: 0, r: 1 } } : null)
   }
 
   ghostRunway(hover: Vec): Vec[] {

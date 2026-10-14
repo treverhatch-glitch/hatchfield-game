@@ -35,7 +35,9 @@ describe('building models', () => {
 
   it('silhouettes are distinct (bbox + mesh-count signature)', () => {
     const sig = new Map<string, string>()
+    const aliases = new Set(['hotel']) // default class = hotel_biz
     for (const id of Object.keys(MODEL_BUILDERS)) {
+      if (aliases.has(id)) continue
       const { size, meshes } = stats(buildModel(id)!)
       const key = `${size.x.toFixed(1)}|${size.y.toFixed(1)}|${size.z.toFixed(1)}|${meshes}`
       expect(sig.has(key), `${id} matches ${sig.get(key)}`).toBe(false)

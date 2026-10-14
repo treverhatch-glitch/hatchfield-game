@@ -1,6 +1,7 @@
 /** Security family: remote screening hall, police post, guard post. */
 import * as THREE from 'three'
-import { box, cyl, emblem, HALF, M, mat, pad, sign } from './kit'
+import { animate } from '../anim'
+import { box, cyl, emblem, HALF, M, mat, pad, sign, tmat } from './kit'
 
 export function remoteScreening(g: THREE.Group): void {
   pad(g, HALF * 2, HALF * 2)
@@ -63,7 +64,11 @@ export function guard(g: THREE.Group): void {
   cyl(g, 0.15, 0.15, 0.3, M.glow('#ffb020'), -2.2, 2.17, 0, 10)
   // Boom barrier striped red/white.
   box(g, 0.3, 1.0, 0.3, M.yellow(), -1.2, 0.12, 1.6)
-  for (let i = 0; i < 8; i++) box(g, 0.6, 0.12, 0.12, i % 2 ? M.red() : M.white(), -0.7 + i * 0.6, 1.0, 1.6)
+  const boom = new THREE.Group()
+  boom.position.set(-1.0, 1.06, 1.6)
+  box(boom, 4.8, 0.12, 0.12, tmat('chevron_stripe', '#ffffff', 6, 1), 2.4, -0.06, 0)
+  animate(boom, { kind: 'rot', signal: 'gateTraffic', axis: 'z', amount: 1.35 })
+  g.add(boom)
   // Lane islands + truck-height canopy.
   box(g, 7.6, 0.2, 0.5, M.yellow(), 0.4, 0.12, -1.0)
   for (const x of [-3.2, 3.6]) box(g, 0.2, 3.6, 0.2, M.steel(), x, 0.12, -1.0)
