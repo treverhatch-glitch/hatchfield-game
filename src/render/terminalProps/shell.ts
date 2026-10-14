@@ -6,6 +6,8 @@
  */
 import * as THREE from 'three'
 import { geminiTexture, material } from './materials'
+import { floorTile, frit, slats } from './hiq'
+import { buildTerminalProps } from './index'
 
 export interface HallSpec {
   width: number
@@ -13,6 +15,12 @@ export interface HallSpec {
   height: number
   /** Add real point lights (desktop quality). */
   lights?: boolean
+  /** 'high' (default, desktop RTX 4070 tier) adds slat ceiling, LED coves, column capitals, 2K floor. */
+  quality?: 'low' | 'high'
+  /** Carpeted gate lounges, in hall coordinates (centre x/z, size w/d). */
+  carpets?: { x: number; z: number; w: number; d: number }[]
+  /** Airside jet bridges along the -Z facade (exterior only): x positions. */
+  jetBridges?: number[]
 }
 
 type M = THREE.Matrix4
@@ -37,10 +45,15 @@ function glassMat(): THREE.Material {
   return new THREE.MeshPhysicalMaterial({
     color: '#a9d3e0',
     map: tex,
-    roughness: 0.05,
-    metalness: 0.1,
+    roughness: 0.03,
+    metalness: 0.15,
+    ior: 1.5,
+    reflectivity: 0.6,
+    envMapIntensity: 1.4,
+    clearcoat: 1,
+    clearcoatRoughness: 0.02,
     transparent: true,
-    opacity: 0.32,
+    opacity: 0.26,
     depthWrite: false,
     side: THREE.DoubleSide,
   })
@@ -52,11 +65,12 @@ export function buildTerminalHall(spec: HallSpec): THREE.Group {
   g.name = 'terminalHall'
 
   // terrazzo floor with brass divider strips every 6 m
-  const floorTex = geminiTexture('terrazzo', [W / 3, D / 3])
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(W, D),
-    new THREE.MeshStandardMaterial({ color: '#ffffff', map: floorTex, roughness: 0.22, metalness: 0.05 }),
-  )
+  const hiq = spec.quality !== 'low'
+  const floorTex = hiq ? floorTile('color', [W / 4.8, D / 4.8]) : geminiTexture('terrazzo', [W / 3, D / 3])
+  const floorMat = hiq
+    ? new THREE.MeshPhysicalMaterial({ color: '#d9d4cb', map: floorTex, roughnessMap: floorTile('rough', [W / 4.8, D / 4.8]), roughness: 0.55, clearcoat: 0.45, clearcoatRoughness: 0.08 })
+    : new THREE.MeshStandardMaterial({ color: '#ffffff', map: floorTex, roughness: 0.22, metalness: 0.05 })
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMat)
   floor.rotation.x = -Math.PI / 2
   floor.receiveShadow = true
   g.add(floor)
@@ -131,11 +145,51 @@ export function buildTerminalHall(spec: HallSpec): THREE.Group {
   g.add(inst(unitBox, material('lamp'), lamps))
   g.add(inst(unitBox, material('black'), rods))
 
-  g.add(new THREE.HemisphereLight('#f3f6ff', '#b8a990', 0.9))
+  if (hiq) {
+    // timber slat baffle ceiling hung below the truss bottom chords
+    const slatMat = new THREE.MeshStandardMaterial({ color: '#b98a5a', roughness: 0.6 })
+    const sl: M[] = []
+    for (let z = -D / 2 + 0.6; z < D / 2 - 0.4; z += 0.6) sl.push(bx(0, Ht - 0.05, z, W - 0.4, 0.28, 0.06))
+    const slatMesh = inst(unitBox, slatMat, sl)
+    slatMesh.name = 'slatCeiling'
+    g.add(slatMesh)
+    // perimeter LED cove + column capitals + plinths
+    const cove: M[] = []
+    for (const [cx, cz, len, ry] of sides) cove.push(bx(cx * 0.995, Ht - 0.32, cz * 0.995, len - 0.6, 0.05, 0.08, ry))
+    g.add(inst(unitBox, material('ledWarm'), cove))
+    const caps: M[] = [], plinth: M[] = []
+    for (let x = -W / 2 + 4.5; x < W / 2 - 1; x += 9)
+      for (const z of [-D / 2 + 0.6, D / 2 - 0.6]) {
+        caps.push(new THREE.Matrix4().compose(new THREE.Vector3(x, Ht - 0.6, z), new THREE.Quaternion(), new THREE.Vector3(1.4, 1.2, 1.4)))
+        plinth.push(bx(x, 0.15, z, 0.9, 0.3, 0.9))
+      }
+    g.add(inst(new THREE.CylinderGeometry(0.5, 0.18, 1, 24), steel, caps, true))
+    g.add(inst(unitBox, material('stainless'), plinth))
+    // carpet lounges with stainless edge trims
+    if (spec.carpets?.length) {
+      const cg = new THREE.Group()
+      cg.name = 'carpets'
+      for (const c of spec.carpets) {
+        const cm = new THREE.Mesh(new THREE.PlaneGeometry(c.w, c.d), material('carpet'))
+        cm.rotation.x = -Math.PI / 2
+        cm.position.set(c.x, 0.006, c.z)
+        cm.receiveShadow = true
+        cg.add(cm)
+        cg.add(inst(unitBox, material('stainless'), [
+          bx(c.x, 0.008, c.z - c.d / 2, c.w, 0.012, 0.05), bx(c.x, 0.008, c.z + c.d / 2, c.w, 0.012, 0.05),
+          bx(c.x - c.w / 2, 0.008, c.z, 0.05, 0.012, c.d), bx(c.x + c.w / 2, 0.008, c.z, 0.05, 0.012, c.d),
+        ]))
+      }
+      g.add(cg)
+    }
+  }
+
+  g.add(new THREE.HemisphereLight('#f3f6ff', '#b8a990', hiq ? 0.6 : 0.9))
   if (spec.lights) {
-    for (let x = -W / 2 + 9; x < W / 2 - 1; x += 27)
+    const stepX = hiq ? 18 : 27
+    for (let x = -W / 2 + 9; x < W / 2 - 1; x += stepX)
       for (let z = -D / 4; z < D / 2; z += D / 2) {
-        const l = new THREE.PointLight('#fff1d6', 40, 22, 1.6)
+        const l = new THREE.PointLight('#fff1d6', hiq ? 55 : 40, 24, 1.6)
         l.position.set(x, Ht - 0.8, z)
         g.add(l)
       }
@@ -201,5 +255,75 @@ export function buildTerminalExterior(spec: HallSpec): THREE.Group {
   }
   g.add(inst(unitBox, material('darkSteel'), vest, true))
   g.add(inst(unitBox, glassMat(), vglass))
+  if (spec.quality !== 'low') exteriorHigh(g, spec, cz)
   return g
+}
+
+/** Desktop-tier exterior: roof overhang soffit, fins, louvres, kerb furniture, sign letters, jet bridges. */
+function exteriorHigh(g: THREE.Group, spec: HallSpec, cz: number) {
+  const { width: W, depth: D, height: Ht } = spec
+  const roofTop = Ht + 2
+  // deep roof overhang with timber soffit and downlights on all sides
+  const ov = 4
+  const soffitMat = new THREE.MeshStandardMaterial({ color: '#ffffff', map: slats('color', [W / 6, 1]), roughness: 0.75 })
+  const soff: M[] = [
+    bx(0, roofTop - 0.02, D / 2 + 1.5 + ov / 2, W + 3 + 2 * ov, 0.04, ov), bx(0, roofTop - 0.02, -D / 2 - 1.5 - ov / 2, W + 3 + 2 * ov, 0.04, ov),
+    bx(-W / 2 - 1.5 - ov / 2, roofTop - 0.02, 0, ov, 0.04, D + 3), bx(W / 2 + 1.5 + ov / 2, roofTop - 0.02, 0, ov, 0.04, D + 3),
+  ]
+  g.add(inst(unitBox, soffitMat, soff))
+  const edge: M[] = [
+    bx(0, roofTop + 0.25, D / 2 + 1.5 + ov, W + 3.4 + 2 * ov, 0.9, 0.35), bx(0, roofTop + 0.25, -D / 2 - 1.5 - ov, W + 3.4 + 2 * ov, 0.9, 0.35),
+    bx(-W / 2 - 1.5 - ov, roofTop + 0.25, 0, 0.35, 0.9, D + 3.4 + 2 * ov), bx(W / 2 + 1.5 + ov, roofTop + 0.25, 0, 0.35, 0.9, D + 3.4 + 2 * ov),
+  ]
+  const top: M[] = [
+    bx(0, roofTop + 0.5, D / 2 + 1.5 + ov / 2, W + 3 + 2 * ov, 0.3, ov), bx(0, roofTop + 0.5, -D / 2 - 1.5 - ov / 2, W + 3 + 2 * ov, 0.3, ov),
+    bx(-W / 2 - 1.5 - ov / 2, roofTop + 0.5, 0, ov, 0.3, D + 3), bx(W / 2 + 1.5 + ov / 2, roofTop + 0.5, 0, ov, 0.3, D + 3),
+  ]
+  g.add(inst(unitBox, material('lacquerWhite'), [...edge, ...top], true))
+  const dl: M[] = []
+  for (let x = -W / 2; x <= W / 2; x += 4) for (const z of [D / 2 + 1.5 + ov / 2, -D / 2 - 1.5 - ov / 2]) dl.push(bx(x, roofTop - 0.05, z, 0.3, 0.02, 0.3))
+  g.add(inst(new THREE.CylinderGeometry(0.5, 0.5, 1, 16), material('ledWarm'), dl))
+  // vertical aluminium fins + fritted sunshade louvres on the long facades
+  const fins: M[] = [], louv: M[] = []
+  for (const zs of [1, -1]) {
+    for (let x = -W / 2; x <= W / 2; x += 3) fins.push(bx(x, Ht / 2, zs * (D / 2 + 0.35), 0.1, Ht, 0.6))
+    for (const y of [Ht * 0.72, Ht * 0.82, Ht * 0.92]) louv.push(bx(0, y, zs * (D / 2 + 0.7), W, 0.03, 0.5, 0, 0))
+  }
+  g.add(inst(unitBox, material('brushed'), fins, true))
+  const louvMat = new THREE.MeshStandardMaterial({ color: '#dfe5ea', alphaMap: frit(), transparent: true, metalness: 0.6, roughness: 0.4, side: THREE.DoubleSide })
+  g.add(inst(unitBox, louvMat, louv))
+  // rooftop skylight ridges
+  const sky: M[] = []
+  for (let x = -W / 2 + 9; x < W / 2; x += 9) sky.push(bx(x, roofTop + 0.75, 0, 2.4, 0.5, D - 4))
+  g.add(inst(unitBox, glassMat(), sky))
+  // landside: 3D sign letters with halo backing on the canopy fascia
+  g.add(inst(unitBox, material('sgnHatchBig'), [bx(0, 7.15, cz + 5.12, Math.min(28, W * 0.55), 1.3, 0.12)]))
+  g.add(inst(unitBox, material('ledBlue'), [bx(0, 7.15, cz + 5.04, Math.min(28.6, W * 0.56), 1.42, 0.04)]))
+  g.add(inst(unitBox, material('sgnDepartures'), [bx(-W / 4, 5.6, cz + 5.0, 8, 1.2, 0.1)]))
+  g.add(inst(unitBox, material('sgnArrivals'), [bx(W / 4, 5.6, cz + 5.0, 8, 1.2, 0.1)]))
+  // lamp posts, bollards, kerb planters
+  const posts: M[] = [], heads: M[] = [], boll: M[] = [], tops: M[] = []
+  for (let x = -W / 2; x <= W / 2; x += 12) {
+    posts.push(bx(x, 4, cz + 11, 0.18, 8, 0.18))
+    heads.push(bx(x, 8, cz + 10.5, 0.4, 0.15, 1.2))
+  }
+  for (let x = -W * 0.44; x <= W * 0.44; x += 1.8) {
+    boll.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 0.55, D / 2 + 5.8), new THREE.Quaternion(), new THREE.Vector3(0.2, 0.8, 0.2)))
+    tops.push(bx(x, 0.92, D / 2 + 5.8, 0.18, 0.04, 0.18))
+  }
+  const cg = new THREE.CylinderGeometry(0.5, 0.5, 1, 16)
+  g.add(inst(unitBox, material('darkSteel'), posts, true), inst(unitBox, material('ledWarm'), heads))
+  g.add(inst(cg, material('stainless'), boll, true), inst(cg, material('led'), tops))
+  // airside apron strip + jet bridges docked on the -Z facade
+  const apron = new THREE.Mesh(new THREE.PlaneGeometry(W + 40, 50), material('apronConcrete'))
+  apron.rotation.x = -Math.PI / 2
+  apron.position.set(0, 0.01, -D / 2 - 25)
+  apron.receiveShadow = true
+  g.add(apron)
+  const xs = spec.jetBridges ?? [-W / 3, 0, W / 3]
+  if (xs.length) {
+    const jb = buildTerminalProps(xs.map((x) => ({ type: 'jet_bridge' as const, x, z: -D / 2 - 3.2, yaw: Math.PI })), { shadows: true })
+    jb.name = 'jetBridges'
+    g.add(jb)
+  }
 }

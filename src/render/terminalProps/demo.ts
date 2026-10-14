@@ -3,9 +3,11 @@
  * Not part of the game bundle; used for screenshots and art review.
  */
 import * as THREE from 'three'
-import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, TERMINAL_PROP_TYPES, terminalProp, type PropPlacement } from './index'
+import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, setupTerminalEnvironment, TERMINAL_PROP_TYPES, terminalProp, type PropPlacement } from './index'
 
-const view = new URLSearchParams(location.search).get('view') ?? 'interior'
+const qs = new URLSearchParams(location.search)
+const view = qs.get('view') ?? 'interior'
+const quality = (qs.get('q') ?? 'high') as 'low' | 'high'
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
 renderer.setSize(innerWidth, innerHeight)
 renderer.setPixelRatio(1)
@@ -15,11 +17,13 @@ renderer.outputColorSpace = THREE.SRGBColorSpace
 document.body.appendChild(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color('#bcd3e6')
+if (quality === 'high') setupTerminalEnvironment(renderer, scene)
 const cam = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 600)
 const sun = new THREE.DirectionalLight('#fff6e8', 2.2)
 sun.position.set(30, 60, 40)
 sun.castShadow = true
-sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.mapSize.set(quality === 'high' ? 4096 : 2048, quality === 'high' ? 4096 : 2048)
+sun.shadow.bias = -0.0004
 Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, far: 200 })
 scene.add(sun, new THREE.AmbientLight('#ffffff', 0.35))
 
@@ -45,7 +49,8 @@ if (view === 'lineup') {
   cam.position.set(0, 30, 31)
   cam.lookAt(0, 0, 1)
 } else {
-  const hall = buildTerminalHall({ width: W, depth: D, height: H, lights: view === 'interior' })
+  const carpets = [{ x: 13, z: 13.5, w: 26, d: 10 }]
+  const hall = buildTerminalHall({ width: W, depth: D, height: H, lights: view !== 'exterior' && view !== 'airside', quality, carpets })
   scene.add(hall)
   const P: PropPlacement[] = []
   for (let i = 0; i < 3; i++) P.push({ type: 'checkin_row', x: -30 + i * 14, z: -18 })
@@ -55,20 +60,39 @@ if (view === 'lineup') {
   P.push({ type: 'gate_seating', x: 6, z: 12 }, { type: 'gate_seating', x: 20, z: 12 })
   P.push({ type: 'restroom_block', x: 4, z: 23.5, yaw: Math.PI })
   P.push({ type: 'baggage_carousel', x: 36, z: 16 })
-  P.push({ type: 'departures_board', x: -4, z: -4 }, { type: 'departures_board', x: -16, z: -4 })
+  if (quality === 'high') {
+    P.push({ type: 'departures_wall', x: -10, z: -6 })
+    P.push({ type: 'kiosk_bank', x: -38, z: -10 }, { type: 'kiosk_bank', x: 0, z: -10 })
+    P.push({ type: 'gate_pylon', x: 1, z: 9 }, { type: 'gate_pylon', x: 26, z: 9 })
+  } else P.push({ type: 'departures_board', x: -4, z: -4 }, { type: 'departures_board', x: -16, z: -4 })
   P.push({ type: 'wayfinding_sign', x: -10, z: 2 }, { type: 'wayfinding_sign', x: 10, z: 2 }, { type: 'wayfinding_totem', x: 0, z: 4 })
   for (let i = 0; i < 6; i++) P.push({ type: 'planter_long', x: -36 + i * 8, z: 0 })
   for (let i = 0; i < 4; i++) P.push({ type: 'bin', x: -32 + i * 16, z: 4 })
   P.push({ type: 'planter', x: -45, z: -4 }, { type: 'planter', x: 45, z: -4 })
   scene.add(buildTerminalProps(P, { shadows: true }))
-  if (view === 'exterior') {
-    scene.add(buildTerminalExterior({ width: W, depth: D, height: H }))
+  if (view === 'exterior' || view === 'airside') {
+    scene.add(buildTerminalExterior({ width: W, depth: D, height: H, quality }))
     const grass = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: '#6f8f55' }))
     grass.rotation.x = -Math.PI / 2
     grass.position.y = -0.02
     scene.add(grass)
-    cam.position.set(-70, 32, 95)
-    cam.lookAt(0, 4, 20)
+    if (view === 'airside') {
+      cam.position.set(30, 14, -70)
+      cam.lookAt(0, 4, -36)
+    } else {
+      cam.position.set(-70, 32, 95)
+      cam.lookAt(0, 4, 20)
+    }
+  } else if (view === 'checkin') {
+    cam.position.set(-24, 3.2, 2)
+    cam.lookAt(-30, 1.6, -18)
+    cam.fov = 55
+    cam.updateProjectionMatrix()
+  } else if (view === 'gates') {
+    cam.position.set(-2, 3.0, 22)
+    cam.lookAt(14, 1.2, 10)
+    cam.fov = 60
+    cam.updateProjectionMatrix()
   } else {
     // camera inside, looking across the hall from a mezzanine height
     cam.position.set(-6, 8, -6)

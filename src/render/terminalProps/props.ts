@@ -70,7 +70,8 @@ function checkinDesk(i: number): Part[] {
     // counter body + granite top + bag-drop step
     box([1.6, 1.05, 0.7], [0, 0.525, -0.2], 'corian'),
     box([1.64, 0.04, 0.78], [0, 1.07, -0.2], 'granite'),
-    box([1.5, 0.12, 0.02], [0, 0.85, 0.16], 'hatchBlue'),
+    box([1.5, 0.12, 0.02], [0, 0.85, 0.16], 'lacquerBlue'),
+    box([1.56, 0.02, 0.02], [0, 0.06, 0.16], 'ledBlue'),
     box([0.25, 0.16, 0.03], [-0.4, 0.95, 0.17], 'screen'),
     // agent monitor, printer, keyboard
     ...place(monitor(0.48, 0.3), -0.35, -0.38, Math.PI, 1.3),
@@ -388,13 +389,14 @@ function gateSeating(): Part[] {
 }
 function gatePodium(): Part[] {
   return [
-    box([2.2, 1.05, 0.7], [0, 0.53, 0], 'hatchBlue'),
+    box([2.2, 1.05, 0.7], [0, 0.53, 0], 'lacquerBlue'),
+    box([2.2, 0.03, 0.02], [0, 0.08, 0.36], 'ledBlue'),
     box([2.26, 0.04, 0.76], [0, 1.07, 0], 'granite'),
     ...place(monitor(0.45, 0.3), -0.5, -0.1, Math.PI, 1.3),
     box([0.4, 0.2, 0.3], [0.5, 1.18, -0.1], 'black'),
     box([2.6, 1.0, 0.08], [0, 2.6, -0.6], 'fids'),
     box([2.7, 1.1, 0.06], [0, 2.6, -0.66], 'black'),
-    box([0.8, 0.8, 0.1], [-1.9, 2.6, -0.6], 'signYellow'),
+    box([0.8, 0.8, 0.1], [-1.9, 2.6, -0.6], 'sgnGateA12'),
     cyl([0.1, 2.2, 0.1], [-1.9, 1.1, -0.6], 'darkSteel'),
   ]
 }
@@ -403,15 +405,16 @@ function gatePodium(): Part[] {
 function restroom(): Part[] {
   const w = 7, d = 5, h = 3
   const out: Part[] = [
-    box([w, h, 0.2], [0, h / 2, -d], 'tileGreen'),
+    box([w, h, 0.2], [0, h / 2, -d], 'tileWhite'),
     box([0.2, h, d], [-w / 2, h / 2, -d / 2], 'tileGreen'),
     box([0.2, h, d], [w / 2, h / 2, -d / 2], 'tileGreen'),
-    box([0.2, h, d], [0, h / 2, -d / 2], 'tileGreen'),
+    box([0.2, h, d], [0, h / 2, -d / 2], 'tileTeal'),
     box([w, 0.02, d], [0, 0.01, -d / 2], 'pebble'),
     // front wall with two baffle entrances
     box([w, 0.6, 0.25], [0, h - 0.3, 0], 'cream'),
-    box([1.6, h - 0.6, 0.25], [-2.6, (h - 0.6) / 2, 0], 'cream'),
-    box([1.6, h - 0.6, 0.25], [2.6, (h - 0.6) / 2, 0], 'cream'),
+    box([1.6, h - 0.6, 0.25], [-2.6, (h - 0.6) / 2, 0], 'tileTeal'),
+    box([1.6, h - 0.6, 0.25], [2.6, (h - 0.6) / 2, 0], 'tileTeal'),
+    box([w, 0.04, 0.05], [0, h - 0.62, 0.15], 'ledWarm'),
     box([0.7, h - 0.6, 0.25], [0, (h - 0.6) / 2, 0], 'cream'),
     box([1.4, 2.0, 0.12], [-1.3, 1.0, -1.2], 'cream'),
     box([1.4, 2.0, 0.12], [1.3, 1.0, -1.2], 'cream'),
@@ -421,7 +424,7 @@ function restroom(): Part[] {
   ]
   for (const side of [-1, 1]) {
     // vanity with basins + mirror
-    out.push(box([2.4, 0.08, 0.55], [side * 1.75, 0.85, -2.0], 'granite'), box([2.4, 0.9, 0.04], [side * 1.75, 1.6, -2.3], 'chrome'))
+    out.push(box([2.4, 0.08, 0.55], [side * 1.75, 0.85, -2.0], 'granite'), box([2.4, 0.9, 0.04], [side * 1.75, 1.6, -2.3], 'mirror'), box([0.25, 0.3, 0.12], [side * 3.1, 1.3, -2.2], 'stainless'))
     for (let i = 0; i < 3; i++) out.push(cyl([0.4, 0.12, 0.35], [side * 1.75 - 0.75 + i * 0.75, 0.86, -2.0], 'porcelain'), cyl([0.03, 0.2, 0.03], [side * 1.75 - 0.75 + i * 0.75, 1.0, -2.2], 'chrome'))
     out.push(box([2.4, 0.04, 0.55], [side * 1.75, 2.6, -2.0], 'lamp'))
     // cubicles
@@ -541,6 +544,121 @@ function stanchionQueue(): Part[] {
   return queue(5.4, 4, 1.0, -2)
 }
 
+
+// ---------- pass 2: desktop-tier props ----------
+/** Self-service check-in kiosk with portrait screen, card reader and tag printer. */
+function selfKiosk(): Part[] {
+  return [
+    box([0.62, 0.04, 0.5], [0, 0.02, 0], 'stainless'),
+    box([0.5, 1.0, 0.36], [0, 0.52, -0.02], 'lacquerWhite'),
+    box([0.52, 0.06, 0.4], [0, 1.03, 0], 'lacquerBlue'),
+    box([0.52, 0.78, 0.1], [0, 1.45, -0.08], 'lacquerWhite', [-0.18, 0, 0]),
+    box([0.42, 0.62, 0.01], [0, 1.46, -0.02], 'kiosk', [-0.18, 0, 0]),
+    box([0.2, 0.08, 0.12], [-0.12, 1.08, 0.13], 'black'),
+    box([0.14, 0.02, 0.01], [0.12, 0.9, 0.17], 'black'),
+    box([0.08, 0.04, 0.005], [-0.12, 1.12, 0.19], 'screenGreen'),
+    box([0.46, 0.02, 0.02], [0, 1.86, -0.15], 'ledBlue'),
+  ]
+}
+function kioskBank(): Part[] {
+  const out: Part[] = []
+  for (let i = 0; i < 4; i++) out.push(...place(selfKiosk(), (i - 1.5) * 0.85, 0))
+  out.push(box([3.6, 0.5, 0.06], [0, 2.4, -0.2], 'sgnCheckin'), cyl([0.04, 0.6, 0.04], [-1.6, 2.85, -0.2], 'chrome'), cyl([0.04, 0.6, 0.04], [1.6, 2.85, -0.2], 'chrome'))
+  return out
+}
+
+/** Departures wall: three 86" panels in a lit frame on a lacquered pylon. */
+function departuresWall(): Part[] {
+  const out: Part[] = [
+    box([1.0, 0.06, 0.8], [0, 0.03, 0], 'stainless'),
+    box([0.7, 2.4, 0.5], [0, 1.2, 0], 'lacquerBlue'),
+    box([0.72, 0.03, 0.52], [0, 2.4, 0], 'led'),
+    box([6.4, 1.5, 0.3], [0, 3.25, 0], 'black'),
+    box([6.6, 0.25, 0.4], [0, 4.13, 0], 'navy'),
+    box([6.0, 0.22, 0.02], [0, 4.13, 0.21], 'sgnDepartures'),
+    box([6.6, 0.03, 0.03], [0, 2.48, 0.17], 'led'),
+  ]
+  for (let i = 0; i < 3; i++) {
+    const x = (i - 1) * 2.1
+    out.push(box([2.0, 1.25, 0.02], [x, 3.25, 0.16], i === 2 ? 'fidsArr' : 'fids'))
+    out.push(box([2.0, 1.25, 0.02], [x, 3.25, -0.16], 'fids', [0, Math.PI, 0]))
+  }
+  return out
+}
+
+/** Gate pylon: lit gate number cube on a tall post, visible across the pier. */
+function gatePylon(sign = 'sgnGateA12'): Part[] {
+  return [
+    box([0.5, 0.05, 0.5], [0, 0.025, 0], 'stainless'),
+    cyl([0.16, 3.4, 0.16], [0, 1.75, 0], 'darkSteel'),
+    box([1.3, 0.75, 0.9], [0, 3.85, 0], 'signDark'),
+    box([1.2, 0.62, 0.02], [0, 3.85, 0.46], sign),
+    box([1.2, 0.62, 0.02], [0, 3.85, -0.46], sign, [0, Math.PI, 0]),
+    box([0.02, 0.62, 0.8], [0.66, 3.85, 0], 'signYellow'),
+    box([0.02, 0.62, 0.8], [-0.66, 3.85, 0], 'signYellow'),
+    box([1.32, 0.03, 0.92], [0, 3.46, 0], 'led'),
+  ]
+}
+
+/**
+ * Apron-drive jet bridge, +Z = aircraft end. Rotunda at the origin (meets the
+ * gate-room wall), two telescoping tunnels, cab with bellows canopy, drive
+ * column with bogie wheels and a service stair. About 18 m long.
+ */
+function jetBridge(): Part[] {
+  const fy = 3.6 // floor height at the rotunda
+  const out: Part[] = [
+    // rotunda + its column
+    cyl([3.6, 3.0, 3.6], [0, fy + 1.4, 0], 'corrugated'),
+    cyl([3.8, 0.2, 3.8], [0, fy + 3.0, 0], 'lacquerWhite'),
+    cyl([0.7, fy, 0.7], [0, fy / 2, 0], 'lacquerWhite'),
+    cyl([1.4, 0.15, 1.4], [0, 0.08, 0], 'apronConcrete'),
+  ]
+  // tunnels: A (outer, larger) then B (inner telescoping), sloping down 0.4 m
+  const segs: [number, number, number, number][] = [[1.6, 8.4, 2.9, 2.8], [8.6, 14.6, 2.7, 2.6]]
+  const slope = -0.4 / 14
+  for (const [z0, z1, w, h] of segs) {
+    const L = z1 - z0, zc = (z0 + z1) / 2, y = fy + 1.4 + zc * slope
+    const tilt = -Math.atan(slope)
+    out.push(box([w, h, L], [0, y, zc], 'corrugated', [tilt, 0, 0]))
+    out.push(box([w + 0.06, 0.12, L], [0, y + h / 2 + 0.05, zc], 'lacquerWhite', [tilt, 0, 0]))
+    out.push(box([w + 0.06, 0.18, L], [0, y - h / 2 - 0.07, zc], 'darkSteel', [tilt, 0, 0]))
+    out.push(box([0.02, 0.9, L - 0.6], [w / 2 + 0.01, y + 0.2, zc], 'jbGlass', [tilt, 0, 0]))
+    out.push(box([0.02, 0.9, L - 0.6], [-w / 2 - 0.01, y + 0.2, zc], 'jbGlass', [tilt, 0, 0]))
+    out.push(box([0.03, 0.05, L], [w / 2 + 0.03, y - 0.4, zc], 'hatchBlue', [tilt, 0, 0]))
+    out.push(box([0.03, 0.05, L], [-w / 2 - 0.03, y - 0.4, zc], 'hatchBlue', [tilt, 0, 0]))
+  }
+  // cab, rotated slightly to meet the door, with bellows + canopy + lit sign
+  const cz = 16.0, cy = fy + 1.0
+  out.push(
+    box([3.4, 2.7, 2.6], [0, cy, cz], 'lacquerWhite'),
+    box([3.0, 2.4, 0.5], [0, cy, cz + 1.5], 'bellows'),
+    box([3.2, 0.12, 0.6], [0, cy + 1.3, cz + 1.6], 'bellows'),
+    box([0.02, 1.0, 1.8], [1.71, cy + 0.3, cz], 'jbGlass'),
+    box([0.02, 1.0, 1.8], [-1.71, cy + 0.3, cz], 'jbGlass'),
+    box([1.6, 0.3, 0.02], [0, cy + 1.05, cz - 1.31], 'sgnGateA12'),
+    box([0.3, 0.12, 0.12], [1.5, cy + 1.45, cz + 1.0], 'amber'),
+    box([3.4, 0.06, 0.06], [0, cy - 1.32, cz + 1.3], 'ledWarm'),
+  )
+  // drive column (wheel bogie) under tunnel B
+  const dz = 12.6, dy = fy + 1.4 + dz * slope - 1.4
+  out.push(
+    box([0.5, dy - 0.7, 0.5], [-0.6, (dy - 0.7) / 2 + 0.7, dz], 'darkSteel'),
+    box([0.5, dy - 0.7, 0.5], [0.6, (dy - 0.7) / 2 + 0.7, dz], 'darkSteel'),
+    box([2.4, 0.4, 0.9], [0, 0.75, dz], 'signYellow'),
+    box([1.6, 0.18, 0.7], [0, dy - 0.05, dz], 'darkSteel'),
+  )
+  for (const x of [-0.9, 0.9]) out.push(cyl([0.9, 0.45, 0.9], [x, 0.45, dz], 'rubber', [0, 0, H]), cyl([0.5, 0.47, 0.5], [x, 0.45, dz], 'steel', [0, 0, H]))
+  // hydraulic rams
+  for (const x of [-0.6, 0.6]) out.push(cyl([0.12, dy - 0.8, 0.12], [x, (dy - 0.8) / 2 + 0.8, dz + 0.4], 'chrome'))
+  // service stair from cab to apron
+  const sx = 2.3
+  for (let i = 0; i < 12; i++) out.push(box([0.9, 0.04, 0.28], [sx, 0.2 + i * 0.36, cz - 3.4 + i * 0.27], 'plate'))
+  out.push(box([0.05, 4.6, 0.05], [sx + 0.45, 2.6, cz - 1.0], 'signYellow'), box([0.05, 0.05, 3.4], [sx + 0.45, 3.0, cz - 1.8], 'signYellow', [-0.92, 0, 0]))
+  out.push(box([1.0, 0.06, 1.0], [sx, cy - 1.3, cz - 0.1], 'plate'))
+  return out
+}
+
 // ---------- registry ----------
 export const TERMINAL_PROP_TYPES = [
   'checkin_row',
@@ -568,6 +686,11 @@ export const TERMINAL_PROP_TYPES = [
   'bin',
   'stanchion',
   'stanchion_queue',
+  'self_checkin_kiosk',
+  'kiosk_bank',
+  'departures_wall',
+  'gate_pylon',
+  'jet_bridge',
 ] as const
 export type TerminalPropType = (typeof TERMINAL_PROP_TYPES)[number]
 
@@ -597,4 +720,9 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   bin: binUnit,
   stanchion: stanchionPost,
   stanchion_queue: stanchionQueue,
+  self_checkin_kiosk: selfKiosk,
+  kiosk_bank: kioskBank,
+  departures_wall: departuresWall,
+  gate_pylon: () => gatePylon(),
+  jet_bridge: jetBridge,
 }

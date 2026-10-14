@@ -10,7 +10,7 @@ describe('terminal props registry', () => {
       expect(e.parts.length, t).toBeGreaterThanOrEqual(3)
       expect(e.size.w, t).toBeGreaterThan(0.1)
       expect(e.size.w, t).toBeLessThan(30)
-      expect(e.size.h, t).toBeLessThan(6)
+      expect(e.size.h, t).toBeLessThan(t === 'jet_bridge' ? 8 : 6)
       for (const p of e.parts) expect(MATERIALS[p.mat], `${t}:${p.mat}`).toBeDefined()
     }
   })
@@ -24,6 +24,19 @@ describe('terminal props registry', () => {
     const count = g.children.reduce((s, c) => s + (c as THREE.InstancedMesh).count, 0)
     expect(count).toBe(parts * 40)
     expect(g.children.length).toBeLessThan(30)
+  })
+  it('pass 2 props: jet bridge reaches ~18 m, kiosks are kiosk-sized', () => {
+    const jb = terminalProp('jet_bridge').size
+    expect(jb.d).toBeGreaterThan(16)
+    expect(jb.d).toBeLessThan(22)
+    expect(terminalProp('self_checkin_kiosk').size.h).toBeLessThan(2.1)
+    expect(TERMINAL_ITEM_TO_PROP.jet_bridge).toBe('jet_bridge')
+  })
+  it('hall accepts carpet zones and quality tiers', () => {
+    const hi = buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'high', carpets: [{ x: 10, z: 8, w: 12, d: 8 }] })
+    const lo = buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'low' })
+    expect(hi.getObjectByName('carpets')).toBeDefined()
+    expect(hi.children.length).toBeGreaterThan(lo.children.length)
   })
   it('builds hall shell and exterior', () => {
     expect(buildTerminalHall({ width: 60, depth: 36, height: 9 }).children.length).toBeGreaterThan(8)
