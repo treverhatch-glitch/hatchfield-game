@@ -1,6 +1,7 @@
 import { finiteAmount } from '../disruptions/engine.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
+import { OPS_ALERT_PREFIX, OpsEventRunner, opsAlertText, type ActiveOpsEvent } from '../content/events_ops.ts'
 import {
   GameDiplomacyAdapter,
   StandingAdvisor,
@@ -941,6 +942,8 @@ export class Game {
   emergencyCool = 70
   /** Late-game disruptions. Quiet until Field Level 3. Cards go on `alerts`. */
   disruptions = new DisruptionBridge(1)
+  /** Live ops events (strikes, outages, bird strikes, VIPs). Quiet for the first days. */
+  opsEvents = new OpsEventRunner()
   securityIncidents = 0
   reputation = 40
   loanBalance = 0
@@ -1536,6 +1539,7 @@ export class Game {
     this.rival = null
     this.rivalWalkaways = []
     this.disruptions = new DisruptionBridge(this.diplomacySeed)
+    this.opsEvents.reset()
     this.hallOverloaded = false
     this.missedFlights = 0
     this.queueDelayFlight = new Set()
@@ -5083,6 +5087,7 @@ export class Game {
       this.diplomacy = null
       this.diplomacySeed = s.diplomacySeed ?? 1
       this.disruptions = DisruptionBridge.restore(this.diplomacySeed, s.disruptions)
+      this.opsEvents.reset()
       this.publishedFeeIndex = s.publishedFeeIndex ?? 1
       this.missedByAirline = {}
       if (s.diplomacy) this.ensureDiplomacy().load(s.diplomacy)
@@ -7901,7 +7906,7 @@ export class Game {
     else if (fastHere && lane.servers > 1) servers = lane.servers - 1
     let svc = slowedService(lane.serviceSec, wear)
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
-    svc *= this.disruptions.screeningMultiplier()
+    svc *= this.disruptions.screeningMultiplier() * this.opsEvents.screeningMultiplier()
     if (this.disruptions.secureZone()) svc += 0.8
     if (!Number.isFinite(svc) || svc <= 0) svc = slowedService(lane.serviceSec, wear)
     svc = Math.min(12, svc)
@@ -8330,6 +8335,63 @@ export class Game {
     const started = this.disruptions.advance(this.disruptionWorld(), this.disruptionHost())
     if (started) this.noteStartedDisruption(started)
     this.syncDisruptionAlert()
+  }
+
+  /** Tests and debug use this. Still quiet for the first in-game days. */
+  triggerOpsEvent(id: string) {
+    const started = this.opsEvents.start(id, this.opsWorld())
+    if (started) this.onOpsEventStarted(started)
+    this.syncOpsAlerts()
+    return started
+  }
+
+  private opsWorld() {
+    const freeStands = () => this.freeStands().map((s) => `${s.c},${s.r}`)
+    return { clock: this.clock, level: this.fieldLevel(), freeStands }
+  }
+
+  private tickOpsEvents() {
+    const started = this.opsEvents.tick(this.opsWorld())
+    if (started) this.onOpsEventStarted(started)
+    this.syncOpsAlerts()
+  }
+
+  /** Delay events push the departures inside the window once, through the normal delay path. */
+  private onOpsEventStarted(run: ActiveOpsEvent) {
+    this.pushNews(`${run.event.name} — ${run.event.blurb}`, 'bad')
+    if (run.event.effect.kind !== 'delay') return
+    for (const slot of this.schedule) {
+      if (slot.status !== 'scheduled' && slot.status !== 'delayed') continue
+      if (slot.eta < run.startedAt || slot.eta >= run.endsAt) continue
+      this.delaySlot(slot, run.event.effect.delaySec ?? 0, run.event.name)
+    }
+  }
+
+  /** One alert row per live ops event. Pan lands on the desks, the lanes, the closed stand, or the runway. */
+  private syncOpsAlerts() {
+    const before = this.alerts.rev
+    const live = new Set<string>()
+    for (const run of this.opsEvents.active) {
+      const input = { ...opsAlertText(run), at: this.opsFocus(run) }
+      live.add(input.key)
+      this.alerts.raise(input, this.clock)
+    }
+    this.alerts.sync(OPS_ALERT_PREFIX, live)
+    if (this.alerts.rev !== before) this.emit()
+  }
+
+  private opsFocus(run: ActiveOpsEvent): AlertFocus {
+    const focus = run.event.focus
+    if (focus === 'checkin' || focus === 'security') {
+      const fit = this.activeHall() ?? this.fits[0]
+      if (fit) return { view: 'hall', hall: this.hallKey(fit), cells: this.zoneCellsOf(fit, focus).slice(0, 1) }
+    }
+    if (focus === 'gate' && run.gateKeys.length) {
+      const [c, r] = run.gateKeys[0].split(',').map(Number)
+      return { view: 'apron', cells: [{ c, r }] }
+    }
+    const spot = tilesOf(this.tiles, 'runway')[0] ?? tilesOf(this.tiles, 'terminal')[0]
+    return { view: 'apron', cells: spot ? [{ c: spot.c, r: spot.r }] : [] }
   }
 
   private disruptionHost(): DisruptionHost {
@@ -10354,7 +10416,7 @@ export class Game {
         }
         if (g.bagDepositLeft == null) {
           const units = bagUnitsForTag(g.tag)
-          const manual = this.disruptions.checkInMultiplier()
+          const manual = this.disruptions.checkInMultiplier() * this.opsEvents.checkInMultiplier()
           g.bagDepositLeft = clamp((0.55 + units * 0.55) * manual, 0.55, 8)
           const fl = this.flights.find((x) => x.id === g.flightId)
           if (fl) {
@@ -15165,6 +15227,7 @@ export class Game {
   freeStands(): Vec[] {
     const stands = tilesOf(this.tiles, 'stand')
     const reserved = this.tier3.tiedStandKeys()
+    const closed = this.opsEvents.closedGates()
     const used = new Set(
       this.flights
         .filter(
@@ -15178,7 +15241,7 @@ export class Game {
     )
     return stands.filter((s) => {
       const key = `${s.c},${s.r}`
-      if (used.has(key) || reserved.has(key)) return false
+      if (used.has(key) || reserved.has(key) || closed.has(key)) return false
       return Boolean(this.pathStandToRunway(s))
     })
   }
@@ -17802,6 +17865,7 @@ export class Game {
     this.tickEmergencies(step)
     this.tickInbound(step)
     this.tickDisruptions()
+    this.tickOpsEvents()
     this.tickMarket(step)
     this.tickHall(step)
     this.tickLuggage(step)
