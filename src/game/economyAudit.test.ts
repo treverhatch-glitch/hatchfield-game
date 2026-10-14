@@ -92,4 +92,27 @@ describe('GA bag handling', () => {
     expect(f.ledger).toHaveLength(0)
     expect(game.cash).toBe(cash)
   })
+
+  it('does not post a $0 "bag handling" line for inbound GA bags', () => {
+    const game = fresh()
+    const f = { ...stubJet('parked'), airline: 'ga', pax: 3, bagUnits: 2 } as unknown as Flight
+    const cash = game.cash
+    inboundBagFee(game, f, 'ga')
+    expect(f.ledger).toHaveLength(0)
+    expect(game.cash).toBe(cash)
+  })
+
+  it('still pays contract carriers for inbound bags', () => {
+    const game = fresh()
+    const f = { ...stubJet('parked'), pax: 60, bagUnits: 40 } as unknown as Flight
+    const cash = game.cash
+    inboundBagFee(game, f, 'northline')
+    expect(f.ledger.some((l) => l.label.includes('bag handling'))).toBe(true)
+    expect(game.cash).toBeGreaterThan(cash)
+  })
 })
+
+function inboundBagFee(game: Game, f: Flight, airlineId: string) {
+  const g = game as unknown as { postInboundBagFee(f: Flight, a: unknown): void }
+  g.postInboundBagFee(f, game.airline(airlineId))
+}
