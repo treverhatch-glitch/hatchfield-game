@@ -1,0 +1,117 @@
+{
+  "day": 65,
+  "clock": 11701.416799999999,
+  "gameTime": "day 66 00:11",
+  "cash": 0,
+  "loanBalance": 100380,
+  "revenue": 1207338,
+  "incomeByCategory": {
+    "retail_sales": 63084,
+    "landing_fees": 397370,
+    "passenger_fees": 18183,
+    "parking_fees": 160766,
+    "baggage_fees": 31204,
+    "catering_fees": 8031,
+    "contract_fees": 148860,
+    "fuel_sales": 379840
+  },
+  "costsByCategory": {
+    "penalties": -57000,
+    "building_upkeep": -170845,
+    "payroll": -160767
+  },
+  "byCategoryRaw": {
+    "retail_sales": 63084,
+    "landing_fees": 397370,
+    "passenger_fees": 18183,
+    "parking_fees": 160766,
+    "baggage_fees": 31204,
+    "catering_fees": 8031,
+    "contract_fees": 148860,
+    "fuel_sales": 379840,
+    "penalties": -57000,
+    "building_upkeep": -170845,
+    "payroll": -160767
+  },
+  "totalIncome": 1207338,
+  "totalExpense": 388612,
+  "fieldXp": 895,
+  "fieldLevel": 5,
+  "reputation": 0,
+  "researchUnlocked": [
+    "night_bank"
+  ],
+  "activeAirlines": [],
+  "airlinesFlying": [
+    "bushline",
+    "ga",
+    "harbor"
+  ],
+  "flightsActive": 0,
+  "flightsDone": 206,
+  "paxLost": 0,
+  "bagsLost": 0,
+  "missedFlights": 4,
+  "stuckVehicles": 0,
+  "anomalies": [
+    {
+      "severity": "high",
+      "category": "contract-mismatch",
+      "title": "Flight from \"harbor\" with no active contract",
+      "gameTime": "day 56 02:01",
+      "evidence": "flight amb-dg9w1q first seen in \"approach\"; signed=never"
+    },
+    {
+      "severity": "medium",
+      "category": "script-gap",
+      "title": "could not sign zoomjet",
+      "gameTime": "day 1 00:00",
+      "evidence": "{\"ok\":false,\"why\":\"airline not in game.allAirlines() (it only exists in negotiation/diplomacy data)\"}"
+    },
+    {
+      "severity": "medium",
+      "category": "low-fee",
+      "title": "Income of $0: N231B bag handling (x9, first shown)",
+      "gameTime": "day 6 23:41",
+      "evidence": "earn \"N231B bag handling\" amount=0 cash 7181 -> 7181"
+    },
+    {
+      "severity": "medium",
+      "category": "stuck-flight",
+      "title": "10x flight in \"servicing\" > 2 game h (bushline)",
+      "gameTime": "day 10 12:21",
+      "evidence": "worst: amb-oi8sv2 3.3 game h; key bushline@servicing"
+    },
+    {
+      "severity": "medium",
+      "category": "stuck-flight",
+      "title": "71x flight in \"taxi_out\" > 2 game h (bushline)",
+      "gameTime": "day 12 14:21",
+      "evidence": "worst: amb-rf0d0q 2.5 game h; key bushline@taxi_out"
+    },
+    {
+      "severity": "medium",
+      "category": "stuck-flight",
+      "title": "1x flight in \"board\" > 2 game h (bushline)",
+      "gameTime": "day 51 12:21",
+      "evidence": "worst: flt-uvolp6 2.2 game h; key bushline@board"
+    },
+    {
+      "severity": "medium",
+      "category": "stuck-flight",
+      "title": "2x flight in \"taxi_out\" > 2 game h (harbor)",
+      "gameTime": "day 57 09:11",
+      "evidence": "worst: amb-tzy5yg 2.2 game h; key harbor@taxi_out"
+    },
+    {
+      "severity": "low",
+      "category": "unledgered-cash",
+      "title": "1023 cash changes had no earn/spend/charge line (net 1106834)",
+      "gameTime": "day 1 00:02",
+      "evidence": "day 1 00:02 +45000 (action: loan); day 1 03:19 +162 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 04:21 +282 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 06:21 +18 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge)); day 1 08:21 -1250 (residual cash change (payroll/upkeep/loan/etc. outside earn/spend/charge))"
+    }
+  ],
+  "consoleErrors": 0,
+  "moneyLines": 3066,
+  "final": false
+}
