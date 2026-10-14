@@ -117,10 +117,11 @@ export function snack(g: THREE.Group): void {
   cyl(g, 0.58, 0.58, 0.12, M.red(), 0, 3.32, -0.6, 18)
   cyl(g, 0.04, 0.04, 0.8, M.red(), 0.2, 3.44, -0.6, 6).rotation.z = 0.3
   // Bistro tables + umbrellas.
-  for (const x of [-1.6, 1.6]) {
-    cyl(g, 0.4, 0.4, 0.06, M.white(), x, 0.8, 2.8, 14)
-    cyl(g, 0.05, 0.05, 2.0, M.darkSteel(), x, 0.12, 2.8, 6)
-    cyl(g, 0.02, 1.1, 0.4, M.red(), x, 2.0, 2.8, 16)
+  // Round 6: tables sit off the catering bay (8.6 m hi-lift along the front, z 3.75).
+  for (const x of [-2.6, 2.6]) {
+    cyl(g, 0.4, 0.4, 0.06, M.white(), x, 0.8, 1.9, 14)
+    cyl(g, 0.05, 0.05, 2.0, M.darkSteel(), x, 0.12, 1.9, 6)
+    cyl(g, 0.02, 0.7, 0.4, M.red(), x, 2.0, 1.9, 16)
   }
   sign(g, 'SNACKS', '#b33', '#ffffff', 2.0, 0.4, 0, 1.68, 0.93)
   emblem(g, 'cup', '#b33', 0.9, 1.8, 1.25, 0.95)

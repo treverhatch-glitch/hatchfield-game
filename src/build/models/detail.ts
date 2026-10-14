@@ -11,6 +11,8 @@
  * material, so the extra detail costs triangles, not draw calls.
  */
 import * as THREE from 'three'
+import { SERVICE_POINTS } from '../servicePoints'
+import { FLEET_M, LARGEST, SIDE_CLEAR_M, fromM, lotScale } from '../fleet'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { box, cyl, framedWindow, HALF, M, mat } from './kit'
 
@@ -51,6 +53,26 @@ function boxParams(m: THREE.Mesh): { width: number; height: number; depth: numbe
 const LIMIT = HALF * 1.04
 const inside = (x: number, z: number, r = 0) => Math.abs(x) + r <= LIMIT && Math.abs(z) + r <= LIMIT
 
+/** Clearance boxes of every service bay of a model id, model-local. */
+export function bayKeepOut(id: string): THREE.Box3[] {
+  const tile = (id.startsWith('hangar') ? 'hangar' : id) as keyof typeof SERVICE_POINTS
+  const spec = SERVICE_POINTS[tile]
+  if (!spec) return []
+  const s = lotScale(tile)
+  const out: THREE.Box3[] = []
+  for (const k of spec.serves) {
+    const [L, , W] = FLEET_M[LARGEST[k]]
+    const hl = fromM(L / 2 + 0.5, s)
+    const hw = fromM(W / 2 + SIDE_CLEAR_M, s)
+    for (const p of spec.points) {
+      const ex = Math.abs(Math.sin(p.heading)) * hl + Math.abs(Math.cos(p.heading)) * hw
+      const ez = Math.abs(Math.cos(p.heading)) * hl + Math.abs(Math.sin(p.heading)) * hw
+      out.push(new THREE.Box3(new THREE.Vector3(p.x - ex, 0.13, p.z - ez), new THREE.Vector3(p.x + ex, 50, p.z + ez)))
+    }
+  }
+  return out
+}
+
 export function enrich(g: THREE.Group, id: string): void {
   const r = rng(id)
   g.updateMatrixWorld(true)
@@ -73,6 +95,8 @@ export function enrich(g: THREE.Group, id: string): void {
     return true
   }
   const claim = (b: THREE.Box3) => added.push(b)
+  // Round 6: vehicle bays (largest vehicle + 1 m each side, full height) stay clear of detail.
+  for (const b of bayKeepOut(id)) added.push(b)
   const bx = (x: number, y: number, z: number, w: number, h: number, d: number) =>
     new THREE.Box3(new THREE.Vector3(x - w / 2, y, z - d / 2), new THREE.Vector3(x + w / 2, y + h, z + d / 2))
 

@@ -2,8 +2,10 @@
 import * as THREE from 'three'
 import { box, cyl, emblem, HALF, M, mat, pad, sign } from './kit'
 
-function bus(g: THREE.Object3D, x: number, z: number, color: string, rotY = 0, len = 4.2) {
+function bus(g: THREE.Object3D, x: number, z: number, color: string, rotY = 0, len = 4.2, real = false) {
   const b = new THREE.Group()
+  // Real apron bus at a 2x2 lot (4.44 m/unit across, 3.22 up): 14 x 3 x 3.1 m.
+  if (real) { b.scale.set(0.675 / 1.22, 0.96 / 1.65, 1); b.userData.fleet = 'termbus'; b.name = 'fleet:termbus' }
   b.position.set(x, 0, z)
   b.rotation.y = rotY
   box(b, 1.2, 1.3, len, mat(color, { rough: 0.4, metal: 0.2 }), 0, 0.35, 0)
@@ -74,10 +76,11 @@ export function busDepot(g: THREE.Group, transfer: boolean): void {
     t.rotation.z = 0.2
   }
   for (let i = 0; i < 3; i++) box(g, 1.8, 2.2, 0.06, M.darkSteel(), -2.8 + i * 2.8, 0.1, -0.58)
-  bus(g, -2.0, 2.2, color, 0, transfer ? 5.2 : 4.0)
-  bus(g, 1.0, 2.2, color, 0, transfer ? 5.2 : 4.0)
-  if (transfer) box(g, 1.0, 0.6, 3.4, M.yellow(), 3.6, 0.1, 2.0) // apron boarding island
-  else cyl(g, 0.4, 0.4, 1.6, M.steel(), 3.6, 0.1, 2.2, 12) // charger
+  // Round 6: buses at real size (14 m = 3.15 units) on two of the three bays (x -2.8 / 0 / 2.8, z 2.3).
+  bus(g, -2.8, 2.3, color, 0, 3.15, true)
+  bus(g, 0, 2.3, color, 0, 3.15, true)
+  if (transfer) box(g, 0.7, 0.6, 3.0, M.yellow(), 4.1, 0.1, 2.2) // apron boarding island
+  else cyl(g, 0.3, 0.3, 1.6, M.steel(), 4.15, 0.1, 2.3, 12) // charger
   sign(g, transfer ? 'TRANSFER BUS' : 'TERMINAL BUS', color, '#ffffff', 3.0, 0.45, 0, 2.6, -0.56)
   emblem(g, 'plane', color, 1.0, 3.6, 1.6, -0.56)
 }

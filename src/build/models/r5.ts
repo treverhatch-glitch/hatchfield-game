@@ -24,17 +24,21 @@ function lampPost(g: THREE.Group, x: number, z: number, h = 3.6): void {
 // ---------------------------------------------------------------- hangar
 /** Arched maintenance hangar flanked by concrete door pylons and a stepped office wing. */
 export function hangarR5(g: THREE.Group, tier: 'small' | 'wide' | 'jumbo' = 'small'): void {
-  const h = tier === 'jumbo' ? 6.6 : tier === 'wide' ? 5.0 : 3.6
+  // Round 6: sized so the door clears the tier's design aircraft (span + 2 m, tail + 1 m),
+  // see HANGAR_DESIGN in ../fleet. Small lot = 6.67 m/unit, wide 8.89, jumbo 11.1.
+  const h = tier === 'jumbo' ? 7.1 : tier === 'wide' ? 6.1 : 5.4
   const accent = tier === 'jumbo' ? '#c9a227' : tier === 'wide' ? '#3d6a8a' : '#7d8c9b'
   pad(g, HALF * 2, HALF * 2, tmat('apron_concrete', '#cfcdc6', 3, 3, { rough: 0.9 }))
-  const w = 6.4
+  const big = tier !== 'small'
+  const w = big ? 7.9 : 6.4
   const d = 6.6
   const cz = -1.0
   const fz = cz + d / 2
   const clad = tmat('hangar_cladding', '#bcc4cc', 4, 1, { rough: 0.45, metal: 0.45 })
   const eave = h * 0.62
   // Main shell + side walls with vertical ribs.
-  box(g, w, eave, d, clad, 0.4, 0.12, cz)
+  const hx = big ? 0 : 0.4
+  box(g, w, eave, d, clad, hx, 0.12, cz)
   // Barrel roof, low rise like the concept.
   const r = w / 2 + 0.2
   const archH = h - eave
@@ -42,49 +46,51 @@ export function hangarR5(g: THREE.Group, tier: 'small' | 'wide' | 'jumbo' = 'sma
   arch.rotateX(Math.PI / 2)
   arch.scale(1, archH / r, 1)
   const roof = new THREE.Mesh(arch, tmat('hangar_cladding', '#d4dbe2', 1, 6, { rough: 0.35, metal: 0.55 }))
-  roof.position.set(0.4, 0.12 + eave, cz)
+  roof.position.set(hx, 0.12 + eave, cz)
   roof.castShadow = true
   g.add(roof)
   // Arched roof ribs + ridge skylight band.
   for (let i = 0; i < 6; i++) {
     const rib = new THREE.Mesh(new THREE.TorusGeometry(r + 0.02, 0.05, 4, 24, Math.PI), M.darkSteel())
     rib.scale.set(1, archH / r, 1)
-    rib.position.set(0.4, 0.12 + eave, cz - d / 2 + (d / 5) * i)
+    rib.position.set(hx, 0.12 + eave, cz - d / 2 + (d / 5) * i)
     g.add(rib)
   }
-  box(g, 0.9, 0.08, d * 0.86, M.glass(), 0.4, 0.12 + h - 0.02, cz)
+  box(g, 0.9, 0.08, d * 0.86, M.glass(), hx, 0.12 + h - 0.02, cz)
   // Front gable: arched clerestory glazing above the door, framed fill.
   const cap = new THREE.Mesh(new THREE.CircleGeometry(r, 40, 0, Math.PI), clad)
   cap.scale.set(1, archH / r, 1)
-  cap.position.set(0.4, 0.12 + eave, fz + 0.02)
+  cap.position.set(hx, 0.12 + eave, fz + 0.02)
   g.add(cap)
   const back = cap.clone()
   back.position.z = cz - d / 2 - 0.02
   back.rotation.y = Math.PI
   g.add(back)
   const dh = eave * 0.92
-  curtainWall(g, 0.4, fz + 0.05, w - 1.0, archH * 0.55, 0.12 + dh + 0.25, M.glass(), 10, 2)
+  curtainWall(g, hx, fz + 0.05, w - 1.0, archH * 0.55, 0.12 + dh + 0.25, M.glass(), 10, 2)
   // Concrete door pylons, taller than the eave (the concept's book-end towers).
   for (const sx of [-1, 1]) {
-    const px = 0.4 + sx * (w / 2 + 0.3)
-    box(g, 0.75, eave + archH * 0.7, 1.2, concreteWall(), px, 0.12, fz - 0.4)
-    for (let k = 0; k < 3; k++) box(g, 0.06, eave * 0.2, 0.5, M.window(), px + sx * 0.38, 0.6 + k * eave * 0.28, fz - 0.4)
-    box(g, 0.8, 0.12, 1.25, M.coping(), px, 0.12 + eave + archH * 0.7, fz - 0.4)
+    const px = hx + sx * (w / 2 + (big ? 0.25 : 0.3))
+    box(g, big ? 0.5 : 0.75, eave + archH * 0.7, 1.2, concreteWall(), px, 0.12, fz - 0.4)
+    for (let k = 0; k < 3; k++) box(g, 0.06, eave * 0.2, 0.5, M.window(), px + sx * (big ? 0.26 : 0.38), 0.6 + k * eave * 0.28, fz - 0.4)
+    box(g, big ? 0.55 : 0.8, 0.12, 1.25, M.coping(), px, 0.12 + eave + archH * 0.7, fz - 0.4)
   }
   // Door leaves stack outward when an aircraft is in work.
   const leaves = tier === 'jumbo' ? 6 : 4
   const dw = w - 0.3
-  box(g, dw, dh, 0.04, mat('#2a2d31'), 0.4, 0.12, fz - 0.06) // bay interior
+  g.userData.hangarDoor = { w: dw, h: dh, x: hx, z: fz }
+  box(g, dw, dh, 0.04, mat('#2a2d31'), hx, 0.12, fz - 0.06) // bay interior
   for (let i = 0; i < leaves; i++) {
-    const x = 0.4 - dw / 2 + (dw / leaves) * (i + 0.5)
+    const x = hx - dw / 2 + (dw / leaves) * (i + 0.5)
     const leaf = box(g, dw / leaves - 0.05, dh, 0.08, mat('#566270', { rough: 0.5, metal: 0.45 }), x, 0.12, fz + 0.02 - (i % 2) * 0.09)
-    animate(leaf, { kind: 'slide', signal: 'hangarBusy', axis: 'x', amount: (x - 0.4 < 0 ? -1 : 1) * (dw / 2 - Math.abs(x - 0.4)) * 0.9 })
+    animate(leaf, { kind: 'slide', signal: 'hangarBusy', axis: 'x', amount: (x - hx < 0 ? -1 : 1) * (dw / 2 - Math.abs(x - hx)) * 0.9 })
   }
-  box(g, dw + 0.4, 0.34, 0.16, tmat('chevron_stripe', '#ffffff', 6, 1, { rough: 0.4 }), 0.4, 0.12 + dh, fz + 0.04)
-  sign(g, tier === 'jumbo' ? 'HANGAR J' : tier === 'wide' ? 'HANGAR W' : 'HANGAR', accent, '#ffffff', 2.4, 0.42, 0.4, 0.12 + dh + 0.36, fz + 0.1)
-  box(g, 0.9, 0.9, 0.04, M.white(), 0.4 + w / 2 + 0.3, 0.12 + eave * 0.8, fz + 0.22)
-  emblem(g, 'wrench', accent, 0.7, 0.4 + w / 2 + 0.3, 0.12 + eave * 0.8 + 0.1, fz + 0.25)
+  box(g, dw + 0.4, 0.34, 0.16, tmat('chevron_stripe', '#ffffff', 6, 1, { rough: 0.4 }), hx, 0.12 + dh, fz + 0.04)
+  sign(g, tier === 'jumbo' ? 'HANGAR J' : tier === 'wide' ? 'HANGAR W' : 'HANGAR', accent, '#ffffff', 2.4, 0.42, hx, 0.12 + dh + 0.36, fz + 0.1)
+  box(g, 0.9, 0.9, 0.04, M.white(), hx + w / 2 + 0.3, 0.12 + eave * 0.8, fz + 0.22)
+  emblem(g, 'wrench', accent, 0.7, hx + w / 2 + 0.3, 0.12 + eave * 0.8 + 0.1, fz + 0.25)
   // Stepped office / workshop wing down the west side (3 then 2 storeys).
+  if (!big) {
   const ow = 1.7
   const ox = 0.4 - w / 2 - 0.75 - ow / 2 + 0.35
   block(g, { x: ox, z: cz - 1.4, w: ow, d: 3.6, floors: 3, fh: 0.9, wall: concreteWall(), faces: ['left', 'front'], plant: 1, win: M.window() })
@@ -93,9 +99,10 @@ export function hangarR5(g: THREE.Group, tier: 'small' | 'wide' | 'jumbo' = 'sma
   // Lean-to stores + tank pair on the east side (concept's back corner).
   block(g, { x: 4.1, z: cz - 2.3, w: 0.8, d: 2.4, floors: 1, fh: 1.2, wall: greyPanel(), faces: ['right'], parapet: false })
   for (const z of [-4.0, -3.2]) cyl(g, 0.35, 0.35, 1.5, M.white(), 4.2, 0.12, z, 16)
+  }
   // Apron: lead-in line, stop bar, red hatched equipment boxes either side.
-  paint(g, 0.4, fz + 0.9, 0.18, 1.4)
-  paint(g, 0.4, fz + 0.3, 2.4, 0.12)
+  paint(g, hx, fz + 0.9, 0.18, 1.4)
+  paint(g, hx, fz + 0.3, 2.4, 0.12)
   hatch(g, -3.0, 3.6, 2.4, 1.4)
   hatch(g, 3.4, 3.6, 1.8, 1.4)
   lampPost(g, -4.3, 4.3)
@@ -172,8 +179,8 @@ export function fuelFarmR5(g: THREE.Group, heavy = false): void {
   sign(g, heavy ? 'FUEL III' : 'JET A-1', '#2d6a4f', '#ffffff', 1.6, 0.36, 0, 2.66, 4.32)
   emblem(g, 'fuel', '#2d6a4f', 1.2, tanks[1][0], 0.3 + tanks[1][3] + 0.22, tanks[1][1], true)
   box(g, 0.7, 0.45, 0.04, M.red(), -3.0, 0.15, bz + bd / 2 + 0.12)
-  lampPost(g, -4.3, 2.6)
-  lampPost(g, 4.3, 2.6)
+  lampPost(g, -4.3, 1.9)
+  lampPost(g, 4.3, 1.9)
 }
 
 // ---------------------------------------------------------------- cargo
@@ -197,7 +204,7 @@ export function cargoR5(g: THREE.Group): void {
   const top = block(g, { x: ox, z: sz + 0.4, w: 1.5, d: 3.2, floors: 3, fh: 1.05, wall: concreteWall(), faces: ['front', 'right'], plant: 2 })
   curtainWall(g, ox + 0.1, sz + 2.02, 1.0, top - 0.3, 0.2, M.window(), 3, 3)
   stair(g, ox, sz - 1.3, 2.8, Math.PI)
-  // Dock row: canopy, four roll-up doors with levellers (service points x -3,-1,1,3 z 3.3).
+  // Dock row: canopy, four roll-up doors with levellers (service points x -3,-1,1,3 z 3.0: 8.5 m box trucks back onto the levellers).
   const dz = sz + sd / 2
   box(g, 8.6, 0.85, 1.0, M.concrete(), 0, 0.12, dz + 0.5)
   canopy(g, 0, dz + 0.55, 8.6, 1.2, 2.9, mat('#5c646c', { metal: 0.4 }), 0)
@@ -232,18 +239,35 @@ export function fireStationR5(g: THREE.Group): void {
   const trim = M.white()
   // Apparatus hall (tall single volume) with crew floor above at the back.
   const hz = -1.4
-  box(g, 7.2, 2.9, 4.4, brick, -0.6, 0.12, hz)
+  // Round 6: a real drive-in hall. Three 8 m x 7 m openings (ARFF 12 x 3.6 x 3 m + 1 m
+  // each side + 1 m headroom at 4.44 m/unit across, 3.22 m/unit up) through a shell, not
+  // a solid block, so the tenders park inside on their bay points (z -0.9).
+  const hx0 = -4.2, hx1 = 3.0, hzb = hz - 2.2, hzf = hz + 2.2, wt = 0.16, hh = 2.9
+  const dark = mat('#24272b', { rough: 0.9 })
+  box(g, hx1 - hx0, hh, wt, brick, -0.6, 0.12, hzb + wt / 2)
+  box(g, wt, hh, hzf - hzb, brick, hx0 + wt / 2, 0.12, hz)
+  box(g, wt, hh, hzf - hzb, brick, hx1 - wt / 2, 0.12, hz)
+  box(g, hx1 - hx0, 0.16, hzf - hzb, brick, -0.6, 0.12 + hh - 0.16, hz)
+  box(g, hx1 - hx0 - 0.4, 0.02, hzf - hzb - 0.4, dark, -0.6, 0.12, hz) // bay floor
+  box(g, hx1 - hx0 - 0.4, hh - 0.3, 0.02, dark, -0.6, 0.12, hzb + wt + 0.02) // back wall inside
   box(g, 7.3, 0.18, 4.5, trim, -0.6, 3.02, hz)
-  for (let i = 0; i < 3; i++) {
-    const x = -2.8 + i * 2.2
-    box(g, 2.0, 2.35, 0.05, trim, x, 0.12, hz + 2.21)
-    box(g, 1.8, 2.0, 0.04, mat('#2a2d31'), x, 0.12, hz + 2.2)
-    const door = box(g, 1.8, 2.15, 0.06, mat('#d62d20', { rough: 0.4, metal: 0.2 }), x, 0.12, hz + 2.24)
-    animate(door, { kind: 'roll', signal: 'fireDispatch', amount: 2.15, point: i })
-    for (let k = 1; k < 4; k++) box(g, 1.6, 0.25, 0.02, M.window(), x, 0.3 + k * 0.5, hz + 2.28)
-    box(g, 0.4, 0.15, 0.06, M.glow('#ff3b30'), x, 2.55, hz + 2.24)
-    box(g, 0.12, 2.6, 0.12, trim, x + 1.08, 0.12, hz + 2.24)
-  }
+  const DW = 1.8, DH = 2.15
+  const xs = [-2.8, -0.6, 1.6]
+  // Front wall: piers between the openings + lintel above them.
+  const edges = [hx0, ...xs.flatMap((x) => [x - DW / 2, x + DW / 2]), hx1]
+  for (let i = 0; i < edges.length; i += 2) if (edges[i + 1] - edges[i] > 0.01) box(g, edges[i + 1] - edges[i], hh, wt, brick, (edges[i] + edges[i + 1]) / 2, 0.12, hzf - wt / 2)
+  box(g, hx1 - hx0, hh - DH, wt, brick, -0.6, 0.12 + DH, hzf - wt / 2)
+  xs.forEach((x, i) => {
+    box(g, DW + 0.2, 0.12, 0.05, trim, x, 0.12 + DH, hzf + 0.01)
+    // Door + its window band roll up together.
+    const door = new THREE.Group()
+    door.position.set(x, 0.12 + DH / 2, hzf + 0.04) // centred, like a shutter mesh
+    box(door, DW, DH, 0.06, mat('#d62d20', { rough: 0.4, metal: 0.2 }), 0, -DH / 2, 0)
+    for (let k = 1; k < 4; k++) box(door, DW - 0.2, 0.25, 0.02, M.window(), 0, -DH / 2 + 0.18 + k * 0.5, 0.04)
+    g.add(door)
+    animate(door, { kind: 'roll', signal: 'fireDispatch', amount: DH, point: i })
+    box(g, 0.4, 0.15, 0.06, M.glow('#ff3b30'), x, 0.12 + DH + 0.25, hzf + 0.04)
+  })
   // Second storey (crew quarters), set back, with window band and white cornice.
   const top = block(g, { x: -0.6, z: hz - 0.8, w: 7.2, d: 2.8, floors: 1, fh: 1.1, y0: 3.2, wall: brick, faces: ['front', 'left'], ribbon: 0.45, pitch: 0.6, band: trim, plant: 2 })
   box(g, 7.3, 0.12, 2.9, trim, -0.6, top - 0.02, hz - 0.8)
@@ -259,7 +283,7 @@ export function fireStationR5(g: THREE.Group): void {
   emblem(g, 'flame', '#d62d20', 1.0, 3.6, 4.4, -2.92)
   emblem(g, 'flame', '#d62d20', 2.0, -2.0, top + 0.02, hz - 0.8, true)
   // Apron: hatched bay fronts + yellow keep-clear lines.
-  for (let i = 0; i < 3; i++) paint(g, -2.8 + i * 2.2, 2.3, 1.8, 0.1)
+  for (let i = 0; i < 3; i++) paint(g, -2.8 + i * 2.2, 2.3, 1.2, 0.1)
   hatch(g, -0.6, 3.6, 6.6, 1.0, '#d62d20')
   lampPost(g, -4.3, 2.0)
   lampPost(g, 4.3, 3.6)
@@ -329,18 +353,19 @@ export function bagSortR5(g: THREE.Group): void {
   block(g, { x: 3.4, z: -1.6, w: 1.8, d: 3.4, floors: 2, fh: 1.0, wall: light, faces: ['front', 'right'], plant: 1 })
   // Sawtooth roof lights on the hall.
   sawtooth(g, 0, top + 0.02, -1.6, 4.2, 2.4, 5, mat('#8d949b'), M.glass())
-  // Roller doors at apron level (service doors at x -2.2, 0, 2.2 z 3.6).
+  // Roller doors at apron level (service doors at x -2.2, 0, 2.2 z 3.15).
   const fz = -1.4 + 2.3
   for (const x of [-2.2, 0, 2.2]) {
     box(g, 1.3, 1.3, 0.05, mat('#2a2d31'), x, 0.12, fz + 0.01)
     box(g, 1.2, 1.25, 0.06, mat('#c9ced3', { metal: 0.5, rough: 0.4 }), x, 0.12, fz + 0.03)
     for (let k = 1; k < 5; k++) box(g, 1.2, 0.03, 0.07, M.darkSteel(), x, 0.12 + 0.25 * k, fz + 0.03)
     // Belt chute out to the make-up position, bags riding it.
-    box(g, 0.8, 0.12, 1.8, mat('#1d2126'), x, 0.45, fz + 0.95)
-    for (const s of [-0.38, 0.38]) box(g, 0.04, 0.12, 1.8, M.steel(), x + s, 0.55, fz + 0.95)
+    // Round 6: chute stops 1 m short so the 9.6 m tug train fits nose-in (z 3.05).
+    box(g, 0.8, 0.12, 0.9, mat('#1d2126'), x, 0.45, fz + 0.5)
+    for (const s of [-0.38, 0.38]) box(g, 0.04, 0.12, 0.9, M.steel(), x + s, 0.55, fz + 0.5)
     for (let k = 0; k < 4; k++) {
       const bag = box(g, 0.45, 0.32, 0.38, mat(['#c0392b', '#2f6f9a', '#e7b52a', '#2d6a4f'][k % 4]), x, 0.57, fz + 0.15)
-      animate(bag, { kind: 'cycle', signal: 'bagsFlow', axis: 'z', amount: 1.6, rate: 0.4, phase: k / 4 })
+      animate(bag, { kind: 'cycle', signal: 'bagsFlow', axis: 'z', amount: 0.75, rate: 0.4, phase: k / 4 })
     }
   }
   // Elevated transfer conveyor bridge leaving the top floor toward the terminal.
@@ -363,7 +388,7 @@ export function cateringR5(g: THREE.Group): void {
   box(g, 7.92, 0.12, 4.32, M.coping(), 0, 3.0, -2.2)
   // Office front: 3 storeys on the west, stepping to 2 then the dock canopy.
   const top = block(g, { x: -2.6, z: 0.0, w: 2.6, d: 1.6, floors: 3, fh: 0.95, wall: concreteWall(), faces: ['front', 'left'], plant: 1, band: mat('#2d7d5a') })
-  block(g, { x: 0.2, z: -0.1, w: 3.0, d: 1.4, floors: 2, fh: 0.95, wall: concreteWall(), faces: ['front'], plant: 1 })
+  block(g, { x: 0.0, z: -0.1, w: 2.6, d: 1.4, floors: 2, fh: 0.95, wall: concreteWall(), faces: ['front'], plant: 1 })
   // Extraction stacks + chillers on the hall roof.
   for (const x of [-1.6, -0.8]) cyl(g, 0.22, 0.22, 1.8, M.steel(), x, 3.12, -3.4, 12)
   pipe(g, { x: -1.6, y: 4.6, z: -3.4 }, { x: -1.6, y: 4.6, z: -2.0 }, 0.18, M.steel())
@@ -371,13 +396,13 @@ export function cateringR5(g: THREE.Group): void {
     box(g, 1.0, 0.6, 1.0, M.darkSteel(), x, 3.12, -3.0)
     animate(box(g, 0.8, 0.04, 0.1, M.black(), x, 3.74, -3.0), { kind: 'spin', signal: 'always', axis: 'y', rate: 7 })
   }
-  // High-loader docks on the east (service bays x -1.8 / 1.8, z 2.6): raised doors under a canopy.
+  // High-loader docks on the east (service bays x 1.4 / 3.4, z 1.8): raised doors under a
+  // canopy; 8.6 m hi-lifts back onto the dock plates, canopy columns stand between the bays.
   canopy(g, 2.4, 1.3, 3.8, 1.4, 2.6, mat('#2d7d5a'), 3)
-  for (const x of [1.8, 3.4]) {
+  for (const x of [1.4, 3.4]) {
     box(g, 1.3, 1.4, 0.05, M.darkSteel(), x, 1.1, -0.06)
     box(g, 1.4, 1.0, 0.6, M.concrete(), x, 0.12, 0.25)
   }
-  canopy(g, -1.8, 1.3, 1.6, 1.0, 2.6, mat('#2d7d5a'), 2)
   // Cold-store compressor yard behind a screen.
   for (let i = 0; i < 3; i++) box(g, 0.8, 0.7, 0.8, M.steel(), -3.6 + i * 1.0, 0.12, -4.4)
   sign(g, 'FLIGHT CATERING', '#2d7d5a', '#ffffff', 2.4, 0.42, -2.6, top - 0.5, 0.82)
@@ -394,9 +419,14 @@ export function deiceR5(g: THREE.Group): void {
   hatch(g, 0, 0.4, 8.4, 6.6, '#7a3fa0', 0.085)
   paint(g, 0, 0.4, 0.2, 6.4, M.yellow(), 0.09)
   for (let i = 0; i < 6; i++) box(g, 0.2, 0.02, 0.2, M.darkSteel(), -3.5 + i * 1.4, 0.085, -3.0)
+  // Round 6: the boom trucks are the bay vehicles themselves, built at real size
+  // (9.2 x 3.5 x 2.5 m) and parked 22.7 m off the centreline, clear of a 36 m wing.
   for (const s of [-1, 1]) {
     const t = new THREE.Group()
-    t.position.set(s * 3.2, 0.08, 1.4)
+    t.userData.fleet = 'deice'
+    t.name = `fleet:deice${s < 0 ? 1 : 2}`
+    t.position.set(s * 3.4, 0.08, 1.4)
+    t.scale.set(0.375 / 1.3, 0.83 / 2.15, 1.38 / 2.9)
     box(t, 1.3, 1.1, 2.9, mat('#7a3fa0', { rough: 0.4 }), 0, 0.3, 0)
     box(t, 1.25, 0.75, 0.85, M.glass(), 0, 1.4, 1.0)
     cyl(t, 0.48, 0.48, 1.2, M.white(), 0, 1.4, -0.6, 14).rotation.x = Math.PI / 2
@@ -482,10 +512,12 @@ export function towerR5(g: THREE.Group): void {
 }
 
 // ---------------------------------------------------------------- bus station
-function coach(g: THREE.Object3D, x: number, z: number, color: string, rotY = 0, len = 3.8) {
+function coach(g: THREE.Object3D, x: number, z: number, color: string, rotY = 0, len = 3.8, real = false) {
   const b = new THREE.Group()
   b.position.set(x, 0, z)
   b.rotation.y = rotY
+  // Real size at the 1-cell bus lot: 2.55 m wide, 3.6 m tall (2.22 m/unit).
+  if (real) { b.scale.set(1.15 / 1.12, 1.62 / 1.62, 1); b.userData.fleet = 'coach'; b.name = 'fleet:coach' }
   box(b, 1.1, 1.2, len, mat(color, { rough: 0.4, metal: 0.2 }), 0, 0.32, 0)
   box(b, 1.12, 0.45, len * 0.92, M.glass(), 0, 0.92, 0)
   box(b, 1.0, 0.1, len * 0.9, M.white(), 0, 1.52, 0)
@@ -522,11 +554,11 @@ export function busStationR5(g: THREE.Group): void {
   // Benches, departures board, bins.
   for (let i = 0; i < 4; i++) box(g, 0.9, 0.3, 0.3, M.darkSteel(), -3.4 + i * 2.2, 0.32, -2.3)
   box(g, 1.2, 0.5, 0.06, M.glow('#9fe3ff'), 0, 1.6, -2.0)
-  // Bay markings + buses at the kerb.
-  for (const x of [-2.2, 2.2]) paint(g, x, -1.2, 3.8, 0.1, M.yellow(), 0.105)
-  for (let i = 0; i < 5; i++) paint(g, -4.0 + i * 2.0, 1.4, 1.0, 0.1, M.white(), 0.105)
-  coach(g, -2.2, -0.9, '#2d6a4f', Math.PI / 2)
-  coach(g, 2.6, 2.6, '#e7b52a', Math.PI / 2)
+  // Round 6: sawtooth nose-in bays. A 12.4 m coach is 5.6 units here (2.22 m/unit), so two
+  // coaches park perpendicular to the island (x -1.6 / 1.6, z 1.45), 2.55 m wide + 1 m each side.
+  for (const x of [-3.2, 0, 3.2]) paint(g, x, 1.4, 0.1, 5.8, M.yellow(), 0.105)
+  for (const x of [-1.6, 1.6]) paint(g, x, -1.3, 2.4, 0.1, M.white(), 0.105)
+  coach(g, -1.6, 1.45, '#2d6a4f', 0, 5.58, true)
   // Planted islands at the ends.
   for (const x of [-4.2, 4.2]) {
     box(g, 0.8, 0.25, 1.2, mat('#8a8f86'), x, 0.1, 3.8)
@@ -536,7 +568,7 @@ export function busStationR5(g: THREE.Group): void {
   }
   cyl(g, 0.06, 0.06, 2.8, M.steel(), 4.3, 0.1, -1.4, 6)
   sign(g, 'BUS', '#2d6a4f', '#ffffff', 1.0, 0.5, 4.3, 2.4, -1.36)
-  sign(g, 'BUS STATION', '#2d6a4f', '#ffffff', 2.8, 0.42, 0, 2.25, -1.24)
+  sign(g, 'BUS STATION', '#2d6a4f', '#ffffff', 2.8, 0.42, 0, 2.25, -1.7)
   emblem(g, 'plane', '#2d6a4f', 1.4, 0, 3.0, -2.5, true)
   lampPost(g, -4.4, 0.4)
   lampPost(g, 4.4, 0.4)
