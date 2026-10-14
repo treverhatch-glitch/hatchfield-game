@@ -44,6 +44,12 @@ export const LITTER_TUNING = {
   mealMinutes: [6, 10],
   /** Advisor warns once a hall has this many floor pieces. */
   adviseLitterAt: 6,
+  /**
+   * Floor pieces kept. Past this the oldest wrapper is replaced. The joy
+   * drain already stops climbing well before this, so a trashed hall still
+   * hurts and the pile cannot grow for the whole save.
+   */
+  maxFloorPieces: 48,
 } as const
 
 /** Kit item id for the trash can. */

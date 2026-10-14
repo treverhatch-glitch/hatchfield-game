@@ -316,4 +316,13 @@ describe('litter in the live sim', () => {
     expect(game.hallJanitors).toHaveLength(1)
     expect(fit.litter).toHaveLength(0)
   })
+
+  it('replaces the oldest floor piece once the pile is full', () => {
+    const hall: LitterHall = { zones: ZONES, items: [], litter: [] }
+    const cap = LITTER_TUNING.maxFloorPieces
+    for (let i = 0; i < cap + 5; i++) dropLitter(hall, 1, 1, `p${i}`, fixed)
+    expect(hall.litter).toHaveLength(cap)
+    expect(hall.litter![0].id).toBe('p5')
+    expect(hall.litter![cap - 1].id).toBe(`p${cap + 4}`)
+  })
 })

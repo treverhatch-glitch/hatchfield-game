@@ -95,6 +95,7 @@ export function dropLitterAt(
     return 'bin'
   }
   hall.litter = hall.litter ?? []
+  if (hall.litter.length >= LITTER_TUNING.maxFloorPieces) hall.litter.shift()
   hall.litter.push({ id, c: at.c, r: at.r, ox: at.ox, oz: at.oz })
   return 'floor'
 }
