@@ -286,7 +286,12 @@ export class LogisticsSim {
   /** Service-point bays when config.docks is set. Null keeps the old closed-form stops. */
   readonly flow: ServiceFlow | null = null
   now = 0
-  fuelLitres: number
+  /**
+   * Standalone sims keep this number. A game binds {@link bindFuelStock} so
+   * every read and write hits the sim tank instead.
+   */
+  private ownFuelLitres = 0
+  private fuelStock: { get(): number; set(litres: number): void } | null = null
   meals: number
   readonly vehicles: VehicleState[] = []
   readonly ledger: Ledger = {
@@ -350,7 +355,7 @@ export class LogisticsSim {
       }
       this.flow = new ServiceFlow(anchors, caps)
     }
-    this.fuelLitres = Math.min(config.fuelFarm.initialLitres, config.fuelFarm.capacityLitres)
+    this.ownFuelLitres = Math.min(config.fuelFarm.initialLitres, config.fuelFarm.capacityLitres)
     this.meals = Math.min(config.kitchen.initialMeals, config.kitchen.capacityMeals)
     for (const type of VEHICLE_TYPES) {
       const count = config.vehicles[type] ?? 0
@@ -851,6 +856,24 @@ export class LogisticsSim {
     if (b.atMakeup > b.expected) b.expected = b.atMakeup
     if (n > 0) this.retryStockWaiters()
     return n
+  }
+
+  /** Farm litres. Bound sims use the game tank; others use the private stock. */
+  get fuelLitres(): number {
+    return this.fuelStock ? this.fuelStock.get() : this.ownFuelLitres
+  }
+
+  set fuelLitres(value: number) {
+    if (this.fuelStock) this.fuelStock.set(value)
+    else this.ownFuelLitres = value
+  }
+
+  /**
+   * Truck loads, the hydrant, and a tanker arrival read and write this port.
+   * The private stock is left behind so a later unbind cannot resurrect it.
+   */
+  bindFuelStock(stock: { get(): number; set(litres: number): void }): void {
+    this.fuelStock = stock
   }
 
   /** Order a tanker delivery. Paid on arrival. */

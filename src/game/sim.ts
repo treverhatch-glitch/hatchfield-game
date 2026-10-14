@@ -4999,8 +4999,12 @@ export class Game {
     this.emit()
   }
 
-  /** Last fuel-farm snapshot. The renderer and the side panel both read this. */
+  /** Fuel-farm snapshot. Litres are the sim tank, refreshed when a write landed outside the tick. */
   fuelView(): FuelView {
+    const cap = tankDef(this.tankTier).capacityLitres
+    const litres = Math.min(cap, Math.max(0, this.tankLitres))
+    const view = this.fuelChain.snapshot()
+    if (view.litres !== litres || view.capacityLitres !== cap) this.noteFuelChain(0)
     return this.fuelChain.snapshot()
   }
 
@@ -9384,7 +9388,7 @@ export class Game {
         f.phaseTime >= TIP_STUCK_SEC,
     )
     const fuelCell = tilesOf(this.tiles, 'fuel')[0] ?? null
-    const litres = this.groundSnapshot()?.fuelLitres
+    const litres = this.groundSnapshot() ? this.tankLitres : undefined
     const hall = this.fits[0]
     const runwayCell = strips[0]?.[0] ?? exits[0] ?? null
     return {
@@ -9753,7 +9757,7 @@ export class Game {
 
     const ground = this.ground?.snapshot()
     const farm = tilesOf(this.tiles, 'fuel')[0]
-    if (ground && farm && ground.fuelLitres <= 0) {
+    if (ground && farm && this.tankLitres <= 0) {
       raise({
         key: 'cond:fuel-out',
         severity: 'critical',
@@ -10245,7 +10249,7 @@ export class Game {
   /** Farm, contract, or bowser loads can still put fuel on a wing. */
   fuelOnHand(): boolean {
     const snap = this.groundSnapshot()
-    if (snap) return snap.fuelLitres >= 1
+    if (snap) return this.tankLitres >= 1
     return (
       tilesOf(this.tiles, 'fuel').length > 0 && this.fuelBrand != null && this.fuelLoads >= 1
     )
@@ -10968,7 +10972,7 @@ export class Game {
         ? `${live.daysCover >= 1 ? live.daysCover.toFixed(1) : (live.daysCover * 24).toFixed(1)} ${live.daysCover >= 1 ? 'days' : 'hours'} of cover`
         : 'no uplift on the clock'
       return [
-        `${Math.round(live.litres).toLocaleString('en-US')} L of ${Math.round(live.capacityLitres).toLocaleString('en-US')} L`,
+        `${Math.round(this.tankLitres).toLocaleString('en-US')} L of ${Math.round(tankDef(this.tankTier).capacityLitres).toLocaleString('en-US')} L`,
         cover,
         `${live.queue.length} in the delivery queue`,
         `${live.groundedIds.length} departures grounded for fuel`,
@@ -11090,7 +11094,6 @@ export class Game {
       return null
     }
     if (prev) {
-      config.fuelFarm.initialLitres = Math.min(config.fuelFarm.capacityLitres, Math.max(0, prev.fuelLitres))
       config.kitchen.initialMeals = Math.min(config.kitchen.capacityMeals, Math.max(0, prev.meals))
     }
     const first = !this.groundAnnounced
@@ -11121,6 +11124,13 @@ export class Game {
       },
       config,
     )
+    this.ground.sim.bindFuelStock({
+      get: () => this.tankLitres,
+      set: (litres) => {
+        const next = Math.min(tankDef(this.tankTier).capacityLitres, Math.max(0, litres))
+        this.tankLitres = Number.isFinite(next) ? next : 0
+      },
+    })
     this.groundRev = rev
     if (first) {
       this.groundAnnounced = true
@@ -11240,7 +11250,7 @@ export class Game {
     if (!(step > 0)) return
     const cat = this.ensureCatering()
     const now = this.clock * GAME_MINUTES_PER_SIM_SECOND
-    const litres = this.groundSnapshot()?.fuelLitres ?? (this.fuelOnHand() ? 1_000_000 : 0)
+    const litres = this.groundSnapshot() ? this.tankLitres : this.fuelOnHand() ? 1_000_000 : 0
     const demands = this.flights
       .filter((f) => f.phase !== 'gone' && this.departureNeedsFuel(f) && !f.posted.fuel)
       .map((f) => ({
@@ -11604,11 +11614,11 @@ export class Game {
     const kitchen = tilesOf(this.tiles, 'kitchen')[0]
     const depot = tilesOf(this.tiles, 'depot')[0]
     const stock: Advice[] = []
-    if (snap.fuelLitres < cfg.fuelFarm.lowStockLitres && farm) {
+    if (this.tankLitres < cfg.fuelFarm.lowStockLitres && farm) {
       stock.push({
         id: 'low-fuel',
         title: 'Fuel farm running low',
-        detail: `${Math.round(snap.fuelLitres).toLocaleString('en-US')} L left in the farm.`,
+        detail: `${Math.round(this.tankLitres).toLocaleString('en-US')} L left in the farm.`,
         fix: 'A tanker rolls when the farm drops under the line. The purchase posts to the books.',
         cells: [farm],
         scope: 'apron',
@@ -12888,28 +12898,21 @@ export class Game {
     })
   }
 
-  /** Bowser loads and the tank are the same fuel. A pump has to open room for the next delivery. */
+  /** Bowser loads leave the sim tank. The ramp reads that same number. */
   private drawTankLitres(litres: number) {
     if (litres <= 0) return
     this.tankLitres = Math.max(0, this.tankLitres - litres)
-    const sim = this.ground?.sim
-    if (sim) sim.fuelLitres = Math.max(0, sim.fuelLitres - litres)
   }
 
   private addTankLitres(litres: number) {
     if (litres <= 0) return
     const cap = tankDef(this.tankTier).capacityLitres
     this.tankLitres = Math.min(cap, this.tankLitres + litres)
-    const sim = this.ground?.sim
-    if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + litres)
   }
 
   private tickScaleFuel(step: number) {
     const minutes = gameMinutes(step)
     if (minutes <= 0 || !this.site) return
-    const cap = tankDef(this.tankTier).capacityLitres
-    const sim = this.ground?.sim
-    if (sim) this.tankLitres = Math.min(cap, this.tankLitres, Math.max(0, sim.fuelLitres))
     const state = this.pillarState()
     const result = tickFuel(this.pillarField(), state, minutes, this.cash)
     this.roadMinutes = state.roadMinutes
@@ -12917,7 +12920,6 @@ export class Game {
     if (result.paid > 0) this.charge(result.paid, 'fuel_purchase')
     if (result.delivered > 0) {
       this.fuelLoads += loadsFromLitres(result.delivered)
-      if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
       this.fuelJustDelivered = true
     }
     if (result.railFlowing && !this.lastRailFlowing) {
@@ -21069,7 +21071,7 @@ export class Game {
     const snap = this.groundSnapshot()
     const simFuel =
       snap != null
-        ? snap.fuelLitres
+        ? this.tankLitres
         : this.fuelBrand && this.fuelLoads > 0
           ? this.fuelLoads * UPLIFT_LITRES
           : 0
@@ -21579,6 +21581,7 @@ export class Game {
     this.noteMapClimate()
     this.tickPayroll(step)
     this.tickScaleFuel(step)
+    this.noteFuelChain(0)
     this.pokeTycoon()
     this.tickMaintenance(step)
     this.tickFireRisk(step)
