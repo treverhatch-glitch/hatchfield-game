@@ -35,7 +35,7 @@ Trunk reached `main` after that note. The first sync commit above `9a65d96` is `
 
 ## Recheck after main moved
 
-`main` advanced to `816456ecd004fa335dd6b7eb491f4b3cf1231ee6` before this note landed. Those four commits (`e7a8ce4` staffed service points, `b0a2e30` Wave 3 relations, `c9e16fd` bot lab furnishing, `816456e` terminal/vehicle/airline art) sit on top of `50ce0c1`. `50ce0c1` and `f05693b` are still ancestors. `src/ramp/paxFlow.ts` and `public/textures/sky/sky_noon.jpg` are still in the tree. The verdict below does not change.
+`main` kept moving while this note was written. The presence check was repeated on `816456ecd004fa335dd6b7eb491f4b3cf1231ee6` and again on `3b7deb86cc10d22d304ef78e8266322d3c84edba` (landside curb traffic, phone and board labels, HUD grouping, turnaround placards and a far vehicle LOD, on top of the art and service commits through `816456e`). `50ce0c1` and `f05693b` are still ancestors. `src/ramp/paxFlow.ts` and `public/textures/sky/sky_noon.jpg` are still in the tree. The verdict below does not change.
 
 ## Verdict
 
