@@ -6,8 +6,10 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
-import { buildVehicleParts, MODEL_SIZE, vehicleModel } from './vehicleModels'
+import { buildVehicleParts, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
+import { ANIM_PARTS, newPartPose, partMatrix, partPose } from './vehicleAnim'
 
+export { ANIM_PARTS, deployOf, partPose, poseVehicleRig, serviceStateOf, truckDeploy } from './vehicleAnim'
 export { vehicleModel, MODEL_SIZE, MODEL_PARTS, ALL_MODELS, type VehicleModel } from './vehicleModels'
 
 const geos = new Map<string, THREE.BufferGeometry>()
@@ -44,13 +46,29 @@ function buildCached(kind: string, color: string) {
   const hit = geos.get(key)
   if (hit) return { body: hit, lit: geos.get(key + '|lit')! }
   const parts = buildVehicleParts(model, color)
-  const body = merge(parts.filter((p) => !p.lit).map((p) => p.geo))
-  const lit = merge(parts.filter((p) => p.lit).map((p) => p.geo))
+  const anim = new Set(ANIM_PARTS[model] ?? [])
+  const shell = parts.filter((p) => !anim.has(p.name))
+  const body = merge(shell.filter((p) => !p.lit).map((p) => p.geo))
+  const lit = merge(shell.filter((p) => p.lit).map((p) => p.geo))
+  for (const name of anim) {
+    const mine = parts.filter((p) => p.name === name)
+    geos.set(`${key}|part:${name}`, merge(mine.filter((p) => !p.lit).map((p) => p.geo)))
+    geos.set(`${key}|part:${name}|lit`, merge(mine.filter((p) => p.lit).map((p) => p.geo)))
+  }
   for (const p of parts) p.geo.dispose()
   geos.set(key, body)
   geos.set(key + '|lit', lit)
   return { body, lit }
 }
+
+/** Geometry of one animated part (Round B), cached beside the shell. Empty if the part has none. */
+export function vehiclePartGeometry(kind: string, color: string, part: string, lit = false): THREE.BufferGeometry {
+  const model = vehicleModel(kind)
+  buildCached(kind, color)
+  return geos.get(`${model}|${color}|part:${part}${lit ? '|lit' : ''}`) ?? EMPTY
+}
+
+const EMPTY = new THREE.BufferGeometry()
 
 /**
  * Vehicle body geometry in metres: +X forward, ground at y = 0, centred on the footprint.
@@ -168,6 +186,12 @@ export interface VehicleInstance {
   scale: number
   cargo?: 'crates' | 'suitcases'
   cargoScale?: number
+  /** Round B: 0 stowed .. 1 deployed at the aircraft. */
+  ext?: number
+  /** Light bar / beacons running (ARFF call, etc.). */
+  active?: boolean
+  /** Sim clock in seconds for running parts (belts, turrets, flashing). */
+  clock?: number
 }
 
 export class VehicleFleet {
@@ -175,7 +199,10 @@ export class VehicleFleet {
   private bodies = new Map<string, THREE.InstancedMesh>()
   private lights = new Map<string, THREE.InstancedMesh>()
   private cargo = new Map<string, THREE.InstancedMesh>()
+  private parts = new Map<string, THREE.InstancedMesh>()
   private dummy = new THREE.Object3D()
+  private pose = newPartPose()
+  private local = new THREE.Matrix4()
 
   sync(list: readonly VehicleInstance[]) {
     const groups = new Map<string, VehicleInstance[]>()
@@ -200,6 +227,23 @@ export class VehicleFleet {
       this.write(this.bodies, key, items, (sample) => vehicleGeometry(sample.kind, sample.color), false)
       this.write(this.lights, key, items, (sample) => vehicleLitGeometry(sample.kind, sample.color), false, sharedLitMaterial())
     }
+    const seenParts = new Set<string>()
+    for (const [key, items] of groups) {
+      const sample = items[0]
+      const model = vehicleModel(sample.kind)
+      for (const part of ANIM_PARTS[model] ?? []) {
+        for (const lit of [false, true]) {
+          const geo = vehiclePartGeometry(sample.kind, sample.color, part, lit)
+          if (!geo.getAttribute('position')) continue
+          const pk = `${key}|${part}${lit ? '|lit' : ''}`
+          seenParts.add(pk)
+          this.write(this.parts, pk, items, () => geo, false, lit ? sharedLitMaterial() : sharedMaterial(), model, part)
+        }
+      }
+    }
+    for (const [key, mesh] of this.parts) {
+      if (!seenParts.has(key)) mesh.count = 0
+    }
     for (const bucket of [this.bodies, this.lights]) {
       for (const [key, mesh] of bucket) {
         if (!seen.has(key)) mesh.count = 0
@@ -223,6 +267,8 @@ export class VehicleFleet {
     geometry: (sample: VehicleInstance) => THREE.BufferGeometry,
     asCargo: boolean,
     mat: THREE.Material = sharedMaterial(),
+    model?: VehicleModel,
+    part?: string,
   ) {
     let mesh = bucket.get(key)
     if (!mesh || mesh.instanceMatrix.count < items.length) {
@@ -233,7 +279,7 @@ export class VehicleFleet {
       mesh.castShadow = mat === sharedMaterial()
       mesh.frustumCulled = false
       mesh.userData.shared = true
-      mesh.name = asCargo ? `cargo:${key}` : mat === sharedMaterial() ? `fleet:${key}` : `lights:${key}`
+      mesh.name = part ? `part:${key}` : asCargo ? `cargo:${key}` : mat === sharedMaterial() ? `fleet:${key}` : `lights:${key}`
       this.root.add(mesh)
       bucket.set(key, mesh)
     }
@@ -243,6 +289,9 @@ export class VehicleFleet {
       this.dummy.rotation.set(0, item.yaw, 0)
       this.dummy.scale.setScalar(s)
       this.dummy.updateMatrix()
+      if (model && part && partPose(model, part, item.ext ?? 0, item.clock ?? 0, item.active ?? false, this.pose)) {
+        this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
+      }
       mesh!.setMatrixAt(i, this.dummy.matrix)
     })
     mesh.count = items.length
@@ -253,6 +302,8 @@ export class VehicleFleet {
     for (const mesh of this.bodies.values()) mesh.dispose()
     for (const mesh of this.cargo.values()) mesh.dispose()
     for (const mesh of this.lights.values()) mesh.dispose()
+    for (const mesh of this.parts.values()) mesh.dispose()
+    this.parts.clear()
     this.lights.clear()
     this.bodies.clear()
     this.cargo.clear()

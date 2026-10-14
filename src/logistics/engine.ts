@@ -51,6 +51,10 @@ export interface VehiclePose {
   x: number
   y: number
   heading: number
+  /** Current job phase, for render rigs (lift up while servicing, etc.). */
+  phase: VehiclePhase
+  /** 0..1 progress through the phase on the sim clock (1 when unbounded). */
+  u: number
 }
 
 /** A vehicle standing at an aircraft, with the sim clock for that service. */
@@ -594,18 +598,18 @@ export class LogisticsSim {
   poses(): VehiclePose[] {
     const driving = new Set<VehiclePhase>(['to_source', 'to_stand', 'to_dropoff', 'to_maintenance', 'towed'])
     return this.vehicles.map((v) => {
+      const start = v.phaseStart ?? this.now
+      const span = v.phaseEnd - start
+      const u = Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
       const here = this.roads.at(v.node)
-      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: this.arrivalHeading(v) }
+      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: this.arrivalHeading(v), phase: v.phase, u }
       if (!driving.has(v.phase) || !v.route || v.route.length < 2) {
         return { id: v.id, type: v.type, ...parked }
       }
       const pts = v.route.map((id) => this.roads.at(id)).filter((n): n is NonNullable<typeof n> => Boolean(n))
       if (pts.length < 2) return { id: v.id, type: v.type, ...parked }
-      const start = v.phaseStart ?? this.now
-      const span = v.phaseEnd - start
-      const u = Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
       const at = pointAlong(pts, u)
-      return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading }
+      return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading, phase: v.phase, u }
     })
   }
 

@@ -34,12 +34,15 @@ export function vehicleModel(kind: string): VehicleModel {
   switch (kind) {
     case 'fuel':
     case 'fuel_truck':
+    case 'heavy_fuel_truck':
       return 'fuel_tanker'
     case 'hydrant':
     case 'hydrant_cart':
+    case 'hydrant_dispenser':
       return 'hydrant_cart'
     case 'bags':
     case 'baggage_tug':
+    case 'heavy_baggage_tug':
       return 'baggage_train'
     case 'cart':
       return 'baggage_cart'
@@ -47,6 +50,7 @@ export function vehicleModel(kind: string): VehicleModel {
       return 'belt_loader'
     case 'catering':
     case 'catering_truck':
+    case 'highlift_catering':
       return 'catering_hilift'
     case 'fire':
     case 'arff':
@@ -63,6 +67,7 @@ export function vehicleModel(kind: string): VehicleModel {
     case 'tow':
       return 'towbar_tug'
     case 'pushback_tug':
+    case 'heavy_tug':
       return 'towbarless_tug'
     case 'gpu':
       return 'gpu'
@@ -70,6 +75,7 @@ export function vehicleModel(kind: string): VehicleModel {
       return 'stairs'
     case 'cargo':
     case 'uld_loader':
+    case 'main_deck_loader':
       return 'k_loader'
     case 'dolly':
     case 'uld_dolly':
@@ -131,11 +137,11 @@ export interface VPart {
 
 /** Named moving parts each model exposes, for Round B rigs and tests. */
 export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
-  fuel_tanker: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel'],
-  hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel'],
+  fuel_tanker: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel', 'hose'],
+  hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose'],
   baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2'],
   baggage_cart: ['wheels_front', 'wheels_rear', 'curtain'],
-  belt_loader: ['wheels_front', 'wheels_rear', 'beacon', 'belt'],
+  belt_loader: ['wheels_front', 'wheels_rear', 'beacon', 'belt', 'belt_bags'],
   catering_hilift: ['wheels_front', 'wheels_rear', 'beacon', 'scissor', 'box', 'deck'],
   arff: ['wheels_front', 'wheels_rear', 'lightbar', 'roof_turret', 'bumper_turret', 'locker_doors'],
   deice: ['wheels_front', 'wheels_rear', 'beacon', 'boom', 'basket'],
@@ -270,6 +276,8 @@ class Kit {
 type Builder = (k: Kit, L: number, H: number, W: number) => void
 
 const truckR = 0.5
+/** Fuel hose length paid out at full extension, metres. */
+export const HOSE_M = 5
 const gseR = 0.3
 
 const BUILDERS: Record<VehicleModel, Builder> = {
@@ -296,6 +304,9 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.steel, 0.9, 1.1, W * 0.96, -L / 2 + 0.55, r + 0.75, 0)
     k.cyl(LIVERY.gseYellow, 0.38, 0.5, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.3, 0.52, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
+    // hose paid out sideways from the reel (Round B scales it along Z)
+    k.cyl(LIVERY.hose, 0.06, HOSE_M, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
+    k.box(LIVERY.steel, 0.25, 0.2, 0.3, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M, 'hose') // nozzle
     k.box(LIVERY.chassis, 1.8, 0.5, W * 1.0, tx, r + 0.25, 0)
     k.chevrons(-L / 2, r * 0.4, 0.5, W)
     k.tail(-L / 2, r + 0.5, W)
@@ -316,6 +327,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (const s of [1, -1]) for (const f of [-0.4, 0.4]) k.box(LIVERY.gseYellow, 0.05, 0.85, 0.05, dx + f * dl * 0.8, r + 1.6, s * W * 0.43, 'lift_platform')
     k.cyl(LIVERY.gseYellow, 0.32, 0.4, dx - dl * 0.15, r + 1.45, 0, 'z', 'hose_reel')
     k.cyl(LIVERY.hose, 0.26, 0.42, dx - dl * 0.15, r + 1.45, 0, 'z', 'hose_reel')
+    k.cyl(LIVERY.hose, 0.07, HOSE_M, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
+    k.box(LIVERY.steel, 0.3, 0.3, 0.3, dx - dl * 0.15, r + 0.5, W / 2 + HOSE_M, 'hose') // pit coupler
     k.chevrons(-L / 2, r * 0.5, 0.5, W)
     k.tail(-L / 2, r + 0.6, W)
     void H
@@ -365,8 +378,18 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const bl = L * 1.0
     const pitch = Math.atan2(H - (r + 0.9), bl * 0.9)
     const by = (r + 0.85 + H - 0.1) / 2
-    k.slab(LIVERY.rubber, bl * 0.98, 0.08, 0.7, 0, by, W * 0.15, pitch, 'belt')
-    for (const s of [1, -1]) k.slab(LIVERY.steel, bl * 0.98, 0.16, 0.05, 0, by + 0.08, W * 0.15 + s * 0.38, pitch, 'belt')
+    k.slab(LIVERY.chassis, bl * 0.96, 0.26, 0.82, 0, by - 0.2, W * 0.15, pitch, 'belt') // boom frame
+    k.slab(LIVERY.rubber, bl * 0.98, 0.18, 0.76, 0, by, W * 0.15, pitch, 'belt')
+    for (const s of [1, -1]) k.slab(LIVERY.steel, bl * 0.98, 0.3, 0.08, 0, by + 0.12, W * 0.15 + s * 0.42, pitch, 'belt')
+    // bags riding the belt (Round B slides them up the slope)
+    const bagHex = ['#6a5340', '#2f4a6a', '#8c2f2f']
+    for (let i = 0; i < 3; i++) {
+      const f = -0.3 + i * 0.3
+      const g = new THREE.BoxGeometry(0.6, 0.4, 0.45)
+      g.translate(f * bl, 0.3, 0)
+      g.rotateZ(pitch)
+      k.add(g, bagHex[i], 0, by, W * 0.15, 'belt_bags')
+    }
     k.box(LIVERY.black, 0.08, 0.2, 0.9, L / 2 - 0.05, H - 0.12, W * 0.15, 'belt') // bumper pad
     k.chevrons(-L / 2 + L * 0.05, r - 0.1, 0.4, W, 4)
     k.tail(-L / 2 + L * 0.05, r + 0.35, W)
@@ -625,9 +648,10 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     // roller platforms
     const pl = L * 0.44
     for (const [x, name, y] of [[L * 0.27, 'front_platform', r + 1.2], [-L * 0.24, 'rear_platform', r + 0.65]] as const) {
-      k.box(LIVERY.diamond, pl, 0.16, W * 0.96, x, y, 0, name)
-      for (let i = 0; i < 8; i++) k.cyl(LIVERY.steel, 0.05, W * 0.9, x - pl / 2 + pl * (i + 0.5) / 8, y + 0.1, 0, 'z', name, 6)
-      for (const s of [1, -1]) k.box(LIVERY.gseYellow, pl, 0.12, 0.08, x, y + 0.18, s * W * 0.47, name)
+      k.box(LIVERY.chassis, pl * 0.98, 0.3, W * 0.9, x, y - 0.22, 0, name) // deck frame
+      k.box(LIVERY.diamond, pl, 0.24, W * 0.96, x, y, 0, name)
+      for (let i = 0; i < 8; i++) k.cyl(LIVERY.steel, 0.07, W * 0.9, x - pl / 2 + pl * (i + 0.5) / 8, y + 0.14, 0, 'z', name, 6)
+      for (const s of [1, -1]) k.box(LIVERY.gseYellow, pl, 0.22, 0.12, x, y + 0.24, s * W * 0.47, name)
       if (name === 'front_platform') for (const s of [1, -1]) k.slab(LIVERY.chassis, pl * 0.9, 0.1, 0.1, x, r + 0.7, s * W * 0.4, 0.15, name)
     }
     // operator cab on the front-left corner
