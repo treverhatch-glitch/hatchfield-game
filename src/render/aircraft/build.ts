@@ -1,14 +1,18 @@
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
-import { cylinderSides, finGeometry, fuselageSides, paintedLoftGeometry, wingGeometry } from './geom'
+import { cylinderSides, finGeometry, fuselageSides, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, windowGeometry, wingGeometry } from './geom'
 import type { LiveryBox } from './liveryUv'
 import { applyRosterLivery } from './procLivery'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
+import { addRig, type RigSet } from './rig'
+import { bayDoorsGeometry, doorwayGeometry, legGeometry, wellGeometry, type LegKind } from './gear'
 import {
   paintMesh,
+  paintVertexMesh,
   unitBox,
   unitCylinder,
   unitDisc,
@@ -29,6 +33,7 @@ export interface BuiltLevel {
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
   lamps: THREE.Object3D[]
+  rigs: RigSet[]
 }
 
 interface Frame {
@@ -42,6 +47,7 @@ interface Frame {
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
   lamps: THREE.Object3D[]
+  rigs: RigSet[]
   nose: number
   tailX: number
   centerY: number
@@ -67,6 +73,7 @@ function frameFor(spec: ModelSpec, tier: Tier, livery: Livery): Frame {
     strobes: [],
     beacons: [],
     lamps: [],
+    rigs: [],
     nose: spec.lengthM / 2,
     tailX: -spec.lengthM / 2,
     centerY,
@@ -180,15 +187,22 @@ function enginePoints(frame: Frame): THREE.Vector3[] {
     pts.push(new THREE.Vector3(x, centerY, z), new THREE.Vector3(x, centerY, -z))
     return pts
   }
-  const y =
-    spec.wingHigh && eng.kind === 'turboprop'
-      ? wingY
-      : wingY - eng.radius * (spec.wingHigh ? 0.85 : 0.95)
   const semi = spec.spanM / 2
   const fracs = eng.count === 4 ? [0.34, 0.68] : [0.4]
+  const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
+  const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
+  const fan = eng.kind !== 'turboprop'
   for (const frac of fracs) {
     const z = semi * frac
-    pts.push(new THREE.Vector3(wingX, y, z), new THREE.Vector3(wingX, y, -z))
+    // Follow the swept, dihedral leading edge so the pod hangs under the wing, not behind it.
+    const chordAt = spec.rootChord + (spec.tipChord - spec.rootChord) * frac
+    const le = wingX + spec.rootChord / 2 - tanSweep * z
+    const wy = wingY + tanDih * z
+    const x = fan ? le + eng.length * 0.12 : le - chordAt * 0.15 + eng.length * 0.2
+    const y = spec.wingHigh
+      ? (fan ? wy - eng.radius * 1.15 : wy - eng.radius * 0.2)
+      : (fan ? wy - eng.radius * 1.3 - spec.thickness * 0.2 : wy + eng.radius * 0.1)
+    pts.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, -z))
   }
   return pts
 }
@@ -332,23 +346,26 @@ function addEngines(frame: Frame) {
   const matrices = pts.map((p) =>
     compose(p.x, p.y, p.z, 0, 0, Math.PI / 2, eng.radius, eng.length, eng.radius),
   )
-  const mesh = addInstances(frame, unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
+  const fanPod = eng.kind === 'turbofan' || eng.kind === 'turbojet'
+  const mesh = addInstances(frame, fanPod && tier === 'mid' ? nacelleGeometry(sides) : unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
   if (mesh) {
     mesh.name = 'engines'
     markLivery(mesh, 'engine')
   }
   if (tier !== 'low' && eng.mount === 'wing') {
     const pylons: THREE.Matrix4[] = []
+    const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
     for (const p of pts) {
-      const nacelleTop = p.y + eng.radius * 0.55
-      const h = frame.wingY - nacelleTop
-      if (h < 0.25) continue
-      pylons.push(compose(p.x - eng.length * 0.05, nacelleTop + h / 2, p.z, 0, 0, 0, Math.max(0.35, eng.length * 0.28), h, 0.14))
+      const nacelleTop = p.y + eng.radius * 0.7
+      const h = frame.wingY + tanDih * Math.abs(p.z) - nacelleTop + 0.1
+      if (h < 0.2) continue
+      // Swept pylon: blade from the cowl back to the wing box, raked like the real strut.
+      pylons.push(compose(p.x - eng.length * 0.28, nacelleTop + h / 2, p.z, 0, 0, 0.18, eng.length * 0.75, h, Math.max(0.16, eng.radius * 0.16)))
     }
     const pylon = addInstances(frame, unitBox(), pylons, 'metal', 'mesh', 'pylon')
     if (pylon) pylon.name = 'pylon'
   }
-  if (tier !== 'low' && eng.kind !== 'turboprop') {
+  if (tier !== 'low' && eng.kind !== 'turboprop' && !fanPod) {
     const nozzles = pts.map((p) =>
       compose(p.x - eng.length * 0.4, p.y, p.z, 0, 0, Math.PI / 2, eng.radius * 0.62, eng.length * 0.18, eng.radius * 0.62),
     )
@@ -373,19 +390,19 @@ function addEngines(frame: Frame) {
       intakeR,
     ),
   )
-  addInstances(frame, unitCylinder(sides), intakes, 'metal', 'mesh', 'intakes')
+  if (!fanPod) addInstances(frame, unitCylinder(sides), intakes, 'metal', 'mesh', 'intakes')
   if (eng.kind === 'turbofan' || eng.kind === 'turbojet') {
     const discs = pts.map((p) =>
       compose(
-        p.x + eng.length * 0.4,
+        p.x + eng.length * 0.39,
         p.y,
         p.z,
         0,
         0,
         Math.PI / 2,
-        eng.radius * 0.72,
-        0.05,
-        eng.radius * 0.72,
+        eng.radius * 0.8,
+        0.04,
+        eng.radius * 0.8,
       ),
     )
     addInstances(frame, unitCylinder(sides), discs, 'dark', 'mesh', 'fan-disc')
@@ -454,6 +471,76 @@ function addFans(frame: Frame) {
   addPropBlades(frame, enginePoints(frame), eng, 'fan')
 }
 
+/**
+ * Height above ground of the lowest airframe skin over (x, z): the fuselage loft,
+ * the wing-to-body fairing or the wing's lower surface, whichever the leg meets first.
+ */
+const skinRay = new THREE.Raycaster()
+export function skinUnderside(frame: Pick<Frame, 'spec' | 'nose' | 'centerY' | 'wingX' | 'wingY'> & { group?: THREE.Group }, x: number, z: number): number | null {
+  const { spec, nose, centerY, wingX, wingY } = frame
+  const hits: number[] = []
+  // Ground truth first: the skin already built (fuselage, wing, tail), hit from below.
+  if (frame.group) {
+    frame.group.updateMatrixWorld(true)
+    const skin: THREE.Object3D[] = []
+    frame.group.traverse((o) => {
+      if (!(o as THREE.Mesh).isMesh) return
+      for (let a: THREE.Object3D | null = o; a; a = a.parent) if (a.name.startsWith('gear') || a.name === 'engines') return
+      skin.push(o)
+    })
+    skinRay.set(new THREE.Vector3(x, 0.01, z), new THREE.Vector3(0, 1, 0))
+    const hit = skinRay.intersectObjects(skin, false)[0]
+    if (hit && hit.point.y < centerY + spec.ry) hits.push(hit.point.y)
+  }
+  const fam = spec.family === 'rearjet' ? 'rearjet' : spec.family === 'prop' ? 'prop' : spec.family === 'helo' ? 'helo' : 'tube'
+  const t = (nose - x) / spec.lengthM
+  if (!frame.group && t >= 0 && t <= 1) {
+    const st = loftStation(fam, t)
+    const u = Math.abs(z) / (spec.rx * st.r)
+    if (u < 0.98) hits.push(centerY + spec.ry * (st.dy - st.r * Math.sqrt(1 - u * u)))
+  }
+  if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) {
+    const a = spec.rootChord * 0.95
+    const c = spec.rx * 0.93
+    const dx = (x - (wingX - spec.rootChord * 0.05)) / a
+    const dz = z / c
+    const q = 1 - dx * dx - dz * dz
+    if (q > 0.02) hits.push(centerY - spec.ry * 0.7 - spec.ry * 0.42 * Math.sqrt(q))
+  }
+  if (!frame.group && !spec.wingHigh && spec.family !== 'helo') {
+    const semi = spec.spanM / 2
+    const az = Math.abs(z)
+    if (az < semi) {
+      const frac = az / semi
+      const chord = spec.rootChord + (spec.tipChord - spec.rootChord) * frac
+      const le = wingX + spec.rootChord / 2 - Math.tan((spec.sweep * Math.PI) / 180) * az
+      if (x <= le + 0.1 && x >= le - chord - 0.1) {
+        hits.push(wingY + Math.tan((spec.dihedral * Math.PI) / 180) * az - spec.thickness * 0.5)
+      }
+    }
+  }
+  // Nothing overhead (e.g. a wide-track leg on a high wing): use the belly line, sponson-style.
+  if (!hits.length) return null
+  return Math.max(0.4, Math.min(...hits))
+}
+
+/** Streamlined gear pods on both hips, blending the main legs into the fuselage. */
+function addSponsons(frame: Frame, gear: THREE.Group, x: number, roof: number, wheelR: number, bogie: boolean) {
+  const { spec } = frame
+  for (const s of [1, -1]) {
+    const pod = new THREE.Mesh(smoothSphere())
+    pod.name = 'sponson'
+    pod.scale.set(wheelR * (bogie ? 4.2 : 3), Math.max(0.3, spec.ry * 0.3), spec.rx * 0.32)
+    pod.position.set(x, roof - spec.gear + pod.scale.y * 0.55, s * spec.rx * 0.82)
+    const painted = paintMesh(pod, 'belly', frame.livery, 'mesh', frame.tier)
+    gear.add(painted)
+    frame.meshes.push(painted)
+  }
+}
+
+/** Real 777s ride on six-wheel main bogies. */
+const SIX_WHEEL_MAINS = new Set(['b77w'])
+
 function addGear(frame: Frame) {
   const { spec, tier, nose, tailX } = frame
   const gear = new THREE.Group()
@@ -467,35 +554,68 @@ function addGear(frame: Frame) {
   const lowBoxes: THREE.Matrix4[] = []
   const struts: THREE.Matrix4[] = []
   const wheels: THREE.Matrix4[] = []
+  const bays: THREE.BufferGeometry[] = []
 
-  const mount = (x: number, z: number, bogie: boolean) => {
-    // Close LOD only adds the extra bogie wheels and doors. The mid gear stays,
-    // so detail fades in instead of swapping the whole leg.
-    if (tier === 'high') {
-      if (!bogie) return
-      const strutLen = Math.max(0.3, spec.gear - wheelR)
-      for (const step of [-1, 1]) {
-        wheels.push(
-          compose(x + step * wheelR * 1.15, localGround + wheelR, z, Math.PI / 2, 0, 0, wheelR, wheelR * 0.38, wheelR),
-        )
-      }
-      const door = new THREE.Mesh(unitBox())
-      door.scale.set(wheelR * 1.1, strutLen * 0.85, 0.06)
-      door.position.set(x, localGround + wheelR + strutLen * 0.45, z + wheelR * 0.75)
-      const paintedDoor = paintMesh(door, 'body', frame.livery, 'mesh', tier)
-      gear.add(paintedDoor)
-      frame.meshes.push(paintedDoor)
-      return
-    }
+  const mount = (x: number, z: number, bogie: boolean, role: 'nose' | 'main' | 'body' = 'main') => {
+    // Close LOD reuses the mid legs; they already carry links, hubs and doors.
+    if (tier === 'high') return
     if (tier === 'low') {
       lowBoxes.push(
         compose(x, localGround + spec.gear * 0.46, z, 0, 0, 0, wheelR * 1.4, spec.gear * 0.92, wheelR * 0.7),
       )
       return
     }
-    const strutLen = Math.max(0.3, spec.gear - wheelR)
-    struts.push(compose(x, localGround + wheelR + strutLen / 2, z, 0, 0, 0, 0.09, strutLen, 0.09))
-    wheels.push(compose(x, localGround + wheelR, z, Math.PI / 2, 0, 0, wheelR, wheelR * 0.38, wheelR))
+    const airliner = spec.lengthM > 20 && spec.family !== 'point'
+    const six = (role === 'main' && SIX_WHEEL_MAINS.has(spec.id)) || (role === 'body' && spec.lengthM > 68)
+    const kind: LegKind = role === 'nose'
+      ? (airliner ? 'nose' : 'single')
+      : bogie ? (six ? 'bogie6' : 'bogie4') : airliner ? 'twin' : 'single'
+    // Built for the starboard side; port legs mirror on Z so both share one geometry.
+    const doorSide = role === 'main' && spec.family !== 'helo' ? 1 : 0
+    // The leg hangs from the real skin above it (fuselage, belly fairing or wing), not
+    // from a fixed height, so the oleo starts inside the bay and the tyres sit on the ground.
+    let roof = skinUnderside(frame, x, z)
+    if (roof === null || (spec.wingHigh && role === 'main' && Math.abs(z) > spec.rx * 0.7)) {
+      // Nothing overhead (high wing, or a leg aft of the wing): tuck it under the hip
+      // in a sponson, like the ATR, C-130 and C-17 gear pods.
+      z = Math.sign(z || 1) * spec.rx * 0.78
+      roof = skinUnderside(frame, x, z) ?? Math.max(spec.gear, frame.centerY - spec.ry * 0.85)
+      if (role === 'main' && z > 0) addSponsons(frame, gear, x, roof, wheelR, bogie)
+    }
+    const embed = Math.max(0.12, wheelR * 0.35)
+    const legH = roof + embed
+    const geo = legGeometry({
+      kind,
+      height: legH,
+      wheelR: role === 'nose' ? wheelR * 0.8 : wheelR,
+      doorSide,
+      skinR: Math.max(spec.rx, spec.ry),
+    })
+    const leg = new THREE.Group()
+    leg.name = `gear-${role}`
+    leg.position.set(x, legH - spec.gear, z)
+    if (z < 0) leg.scale.z = -1
+    // Nose swings forward about Z; mains fold inboard about X.
+    leg.userData.retract = role === 'nose'
+      ? { axis: 'z', angle: spec.tailWheel ? -1.5 : 1.5 }
+      : { axis: 'x', angle: (z >= 0 ? 1 : -1) * 1.5 }
+    // One mesh per leg. The nose leg steers about its own vertical axis (Euler YXZ),
+    // which only applies while the gear is fully down.
+    const mesh = paintVertexMesh(new THREE.Mesh(geo), 'mid', 'mesh', 'gear')
+    mesh.name = 'leg'
+    leg.add(mesh)
+    frame.meshes.push(mesh)
+    leg.rotation.order = 'YXZ'
+    if (role === 'nose' && !spec.tailWheel) leg.userData.steer = true
+    gear.add(leg)
+    frame.gears.push(leg)
+    // Wheel well and open bay doors at the skin, merged into one mesh for all legs below.
+    const r = role === 'nose' ? wheelR * 0.8 : wheelR
+    const span = kind === 'bogie6' ? r * 5.6 : kind === 'bogie4' ? r * 3.4 : r * 2.4
+    const wid = kind === 'single' ? r * 1.1 : r * 1.9
+    const at = new THREE.Matrix4().makeTranslation(x, roof + 0.02 - spec.gear, z)
+    bays.push(wellGeometry(span, wid).applyMatrix4(at))
+    if (spec.family !== 'helo') bays.push(bayDoorsGeometry(span * 0.9, wid, Math.min(r * 1.5, legH * 0.45), Math.max(spec.rx, spec.ry)).applyMatrix4(at))
   }
 
   if (spec.skids) {
@@ -539,13 +659,13 @@ function addGear(frame: Frame) {
     mount(forwardX, -mainZ, false)
     mount(aftX, 0, false)
   } else {
-    mount(forwardX, 0, false)
+    mount(forwardX, 0, false, 'nose')
     mount(aftX, mainZ, spec.bogie)
     mount(aftX, -mainZ, spec.bogie)
     if (spec.bodyGear) {
       const bodyX = aftX - Math.min(spec.rootChord * 0.35, spec.lengthM * 0.08)
-      mount(bodyX, spec.rx * 0.28, spec.bogie)
-      mount(bodyX, -spec.rx * 0.28, spec.bogie)
+      mount(bodyX, spec.rx * 0.32, spec.bogie, 'body')
+      mount(bodyX, -spec.rx * 0.32, spec.bogie, 'body')
     }
   }
 
@@ -563,36 +683,73 @@ function addGear(frame: Frame) {
   park(unitBox(), lowBoxes, 'metal')
   park(unitCylinder(cylinderSides(tier === 'low' ? 'low' : 'mid')), struts, 'metal')
   park(unitCylinder(8), wheels, 'rubber')
+  if (bays.length) {
+    const bay = new THREE.Group()
+    bay.name = 'gear-bay'
+    // Never swings; hidden once the gear is up and the doors shut.
+    bay.userData.bay = true
+    const merged = mergeGeometries(bays)!
+    bays.forEach((g) => g.dispose())
+    const mesh = paintVertexMesh(new THREE.Mesh(merged), 'mid', 'mesh', 'gear')
+    mesh.name = 'bay-doors'
+    bay.add(mesh)
+    frame.meshes.push(mesh)
+    gear.add(bay)
+    frame.gears.push(bay)
+  }
+  if (tier === 'mid') gear.userData.legs = true
 }
 
 function addWindows(frame: Frame) {
   if (frame.tier !== 'mid' || !frame.spec.windows || frame.spec.family === 'helo') return
-  const { spec, centerY } = frame
-  const perSide = Math.min(AIRCRAFT_LOOK.windowCount, Math.max(6, Math.round(spec.lengthM / 2.8)))
-  const matrices: THREE.Matrix4[] = []
-  const x0 = spec.lengthM * 0.3
-  const x1 = -spec.lengthM * 0.24
-  for (let i = 0; i < perSide; i++) {
-    const x = perSide === 1 ? 0 : x0 + ((x1 - x0) * i) / (perSide - 1)
-    if (Math.abs(x - frame.wingX) < spec.rootChord * 0.22) continue
-    for (const sign of [1, -1]) {
-      for (let deck = 0; deck < Math.min(spec.decks, 2); deck++) {
-        const y = centerY + spec.ry * (deck === 0 ? 0.2 : 0.52)
-        matrices.push(compose(x, y, sign * (spec.rx + 0.035), 0, 0, 0, 0.36, 0.2, 0.05))
-      }
-    }
-  }
-  const band = addInstances(frame, unitBox(), matrices, 'glass', 'band', 'window-band')
+  const { spec } = frame
+  // Same stations as the close-up window mesh so the two LODs overlap exactly.
+  const matrices = windowMatrices(spec, Math.min(spec.decks, 2))
+  const band = addInstances(frame, windowGeometry(), matrices, 'glass', 'band', 'window-band')
   if (band) band.name = 'window-band'
 }
 
 /** Pack door stations, one instanced mesh. Close LOD only. */
 function addRealDoors(frame: Frame) {
   if (frame.tier !== 'high' || frame.spec.doors.length === 0) return
-  const matrices = doorBoxes(frame.spec).map((box) =>
-    compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth),
-  )
-  addInstances(frame, unitBox(), matrices, 'dark', 'mesh', 'doors')
+  const boxes = doorBoxes(frame.spec)
+  // Ramps and belly doors keep the plain dark cut; side doors get a framed doorway with
+  // a cabin glimpse, seen when the leaf swings open.
+  const plain = boxes.filter((b) => b.door.side === 0)
+  if (plain.length) {
+    addInstances(frame, unitBox(), plain.map((box) => compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth)), 'dark', 'mesh', 'doors')
+  }
+  const parts = boxes
+    .filter((b) => b.door.side !== 0)
+    .map((b) => {
+      const g = doorwayGeometry(b.w, b.h)
+      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 0.985)
+      if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
+      g.applyMatrix4(m)
+      if (b.door.side < 0) {
+        // Mirroring flips the winding; swap it back so faces stay outward.
+        const pos = g.getAttribute('position')
+        for (let i = 0; i < pos.count; i += 3) {
+          for (const attr of Object.values(g.attributes)) {
+            const a = attr as THREE.BufferAttribute
+            for (let c = 0; c < a.itemSize; c++) {
+              const t = a.getComponent(i + 1, c)
+              a.setComponent(i + 1, c, a.getComponent(i + 2, c))
+              a.setComponent(i + 2, c, t)
+            }
+          }
+        }
+        g.computeVertexNormals()
+      }
+      return g
+    })
+  if (parts.length) {
+    const mesh = paintVertexMesh(new THREE.Mesh(mergeGeometries(parts)!), 'mid', 'mesh', 'gear')
+    mesh.name = 'doorways'
+    parts.forEach((g) => g.dispose())
+    frame.group.add(mesh)
+    frame.meshes.push(mesh)
+  }
 }
 
 function finPose(frame: Frame) {
@@ -610,17 +767,23 @@ function addControls(frame: Frame) {
   if (frame.tier !== 'mid' || frame.spec.family === 'helo') return
   const { spec, wingX, wingY } = frame
   const semi = spec.spanM / 2
-  const sweep = Math.tan((spec.sweep * Math.PI) / 180) * semi * 0.72
-  const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi * 0.72
+  const f = 0.8
+  const sweepFull = Math.tan((spec.sweep * Math.PI) / 180) * semi
+  const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi * f
+  // Trailing edge at span fraction f, on the tapered, swept planform.
+  const teX = wingX - (spec.rootChord / 2) * (1 - f) + (spec.rootChord / 2 - sweepFull - spec.tipChord) * f
+  const teYaw = Math.atan2(spec.rootChord - sweepFull - spec.tipChord, semi)
+  const chordAt = spec.rootChord * (1 - f) + spec.tipChord * f
   const aileronSpan = Math.max(0.7, spec.spanM * 0.1)
-  const aileronChord = Math.max(0.28, spec.tipChord * 0.7)
+  const aileronChord = Math.max(0.28, chordAt * 0.24)
   for (const sign of [1, -1] as const) {
     const mesh = addBox(
       frame,
-      [aileronChord, Math.max(0.05, spec.thickness * 0.18), aileronSpan],
-      [wingX - spec.rootChord * 0.28 - sweep, wingY + lift, sign * semi * 0.72],
+      [aileronChord, Math.max(0.05, spec.thickness * 0.14), aileronSpan],
+      [teX + aileronChord * 0.45, wingY + lift + spec.thickness * 0.05, sign * semi * f],
       'wing',
       'control',
+      [0, sign * teYaw, 0],
     )
     mesh.name = 'aileron'
     mesh.userData.surface = 'aileron'
@@ -708,27 +871,35 @@ function addLogo(frame: Frame) {
   }
 }
 
-/** Individual windows. Built on demand so mid-range aircraft skip the instance buffer. */
-export function createWindowMesh(spec: ModelSpec, livery: Livery): THREE.InstancedMesh | null {
-  if (!spec.windows || spec.family === 'helo') return null
+/** Cabin window stations: a dark band of oval windows, skipping the wing box. */
+function windowMatrices(spec: ModelSpec, decks: number): THREE.Matrix4[] {
   const centerY = spec.gear + spec.ry
   const wingX = spec.lengthM * (0.5 - spec.wingAt)
-  const count = Math.max(8, Math.round(spec.lengthM / 1.7))
-  const matrices: THREE.Matrix4[] = []
+  const pitch = 0.86
   const x0 = spec.lengthM * 0.32
   const x1 = -spec.lengthM * 0.28
+  const count = Math.max(8, Math.round((x0 - x1) / pitch))
+  const matrices: THREE.Matrix4[] = []
   for (let i = 0; i < count; i++) {
     const x = x0 + ((x1 - x0) * i) / (count - 1)
-    if (Math.abs(x - wingX) < spec.rootChord * 0.28) continue
+    if (Math.abs(x - wingX) < spec.rootChord * 0.12) continue
     for (const sign of [1, -1]) {
-      for (let deck = 0; deck < spec.decks; deck++) {
-        const y = centerY + spec.ry * (deck === 0 ? 0.16 : 0.52)
-        matrices.push(compose(x, y, sign * (spec.rx + 0.03), 0, 0, 0, 0.42, 0.28, 0.05))
+      for (let deck = 0; deck < decks; deck++) {
+        const k = deck === 0 ? 0.16 : 0.56
+        const z = spec.rx * Math.sqrt(1 - k * k) + 0.01
+        matrices.push(compose(x, centerY + spec.ry * k, sign * z, 0, sign > 0 ? 0 : Math.PI, 0, 0.3, 0.42, 1))
       }
     }
   }
+  return matrices
+}
+
+/** Individual windows. Built on demand so mid-range aircraft skip the instance buffer. */
+export function createWindowMesh(spec: ModelSpec, livery: Livery): THREE.InstancedMesh | null {
+  if (!spec.windows || spec.family === 'helo') return null
+  const matrices = windowMatrices(spec, spec.decks)
   if (!matrices.length) return null
-  const mesh = new THREE.InstancedMesh(unitBox(), new THREE.MeshBasicMaterial(), matrices.length)
+  const mesh = new THREE.InstancedMesh(windowGeometry(), new THREE.MeshBasicMaterial(), matrices.length)
   matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
   mesh.instanceMatrix.needsUpdate = true
   mesh.name = 'windows'
@@ -802,30 +973,77 @@ function addFeatures(frame: Frame) {
     ).name = 'hull'
   }
   if (frame.tier === 'mid') {
-    addBox(
-      frame,
-      [spec.lengthM * 0.55, spec.ry * 0.16, spec.rx * 2.02],
-      [0, centerY + spec.ry * 0.42, 0],
-      'stripe',
-      'mesh',
-    ).name = 'cheatline'
-    addBox(
-      frame,
-      [spec.lengthM * 0.7, spec.ry * 0.28, spec.rx * 1.7],
-      [0, spec.gear + spec.ry * 0.2, 0],
-      'belly',
-      'mesh',
-    )
-    const glassW = spec.family === 'point' ? spec.rx * 0.9 : spec.rx * 0.55
-    const glass = spec.family === 'point'
-      ? new THREE.Mesh(unitSphere())
-      : new THREE.Mesh(unitBox())
-    if (spec.family === 'point') glass.scale.set(1.15, 0.62, 0.7)
-    else glass.scale.set(spec.lengthM * 0.07, spec.ry * 0.38, glassW)
-    glass.position.set(nose - spec.lengthM * 0.1, centerY + spec.ry * 0.35, 0)
-    glass.name = 'cockpit'
-    addMesh(frame, glass, 'glass', 'mesh')
+    // Cheatline as paint on each flank, not a box around the tube.
+    const lineY = 0.42
+    const lineZ = spec.rx * Math.sqrt(1 - lineY * lineY) + 0.02
+    for (const sign of [1, -1]) {
+      addBox(
+        frame,
+        [spec.lengthM * 0.56, spec.ry * 0.11, 0.04],
+        [-spec.lengthM * 0.02, centerY + spec.ry * lineY, sign * lineZ],
+        'stripe',
+        'mesh',
+      ).name = 'cheatline'
+    }
+    if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) addBellyFairing(frame)
+    if (spec.family === 'point') {
+      const glass = new THREE.Mesh(smoothSphere())
+      glass.scale.set(1.15, 0.62, 0.7)
+      glass.position.set(nose - spec.lengthM * 0.1, centerY + spec.ry * 0.35, 0)
+      glass.name = 'cockpit'
+      addMesh(frame, glass, 'glass', 'mesh')
+    } else {
+      addCockpitWindows(frame)
+    }
   }
+}
+
+/** Wing-to-body fairing: a smooth blister under the wing box. */
+function addBellyFairing(frame: Frame) {
+  const { spec, centerY, wingX } = frame
+  const mesh = new THREE.Mesh(smoothSphere())
+  mesh.scale.set(spec.rootChord * 0.95, spec.ry * 0.42, spec.rx * 0.93)
+  mesh.position.set(wingX - spec.rootChord * 0.05, centerY - spec.ry * 0.7, 0)
+  mesh.name = 'wing-body-fairing'
+  addMesh(frame, mesh, 'belly', 'mesh')
+}
+
+/**
+ * Flight-deck glazing laid on the nose skin: two front panes, two side panes and
+ * a small aft pane each side, each oriented to the loft normal.
+ */
+function addCockpitWindows(frame: Frame) {
+  const { spec, centerY, nose } = frame
+  const fam = spec.family === 'rearjet' ? 'rearjet' : spec.family === 'prop' ? 'prop' : 'tube'
+  const L = spec.lengthM
+  const tAt = Math.min(0.065, 3.2 / L)
+  const panes: THREE.Matrix4[] = []
+  const pane = (t: number, ang: number, w: number, h: number) => {
+    const st = loftStation(fam, t)
+    const ahead = loftStation(fam, Math.max(0, t - 0.004))
+    const x = nose - t * L
+    const y = centerY + spec.ry * (Math.sin(ang) * st.r + st.dy)
+    const z = spec.rx * Math.cos(ang) * st.r
+    // Surface normal: radial part plus forward lean from the taper.
+    const dr = ((st.r - ahead.r) * Math.max(spec.rx, spec.ry)) / (0.004 * L)
+    const n = new THREE.Vector3(dr, Math.sin(ang) / spec.ry, Math.cos(ang) / spec.rx).normalize()
+    const up = new THREE.Vector3(0, 1, 0).addScaledVector(n, -n.y).normalize()
+    const side = new THREE.Vector3().crossVectors(up, n).normalize()
+    const basis = new THREE.Matrix4().makeBasis(side, up, n)
+    const q = new THREE.Quaternion().setFromRotationMatrix(basis)
+    const pos = new THREE.Vector3(x, y, z).addScaledVector(n, 0.015)
+    panes.push(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(w, h, 0.05)))
+  }
+  const h = Math.max(0.22, spec.ry * 0.2)
+  const w = Math.max(0.3, spec.rx * 0.3)
+  // Angle runs from +Z toward +Y; the port side mirrors it to (π − a).
+  for (const sign of [1, -1]) {
+    const a = (v: number) => (sign > 0 ? v : Math.PI - v)
+    pane(tAt * 0.72, a(1.18), w, h)
+    pane(tAt * 0.95, a(0.78), w * 0.95, h * 0.95)
+    pane(tAt * 1.22, a(0.55), w * 0.6, h * 0.8)
+  }
+  addInstances(frame, unitBox(), panes, 'glass', 'mesh', 'cockpit')
 }
 
 function addHelo(frame: Frame) {
@@ -955,7 +1173,8 @@ function addHelo(frame: Frame) {
 function addLights(frame: Frame) {
   const { spec, wingY, centerY, top } = frame
   if (spec.family === 'helo') return
-  const radius = Math.min(1.15, Math.max(0.75, spec.spanM * 0.016))
+  // Real nav lamps are fist-sized; scale with the fuselage so they stay on the airframe's scale.
+  const radius = Math.min(0.35, Math.max(0.12, spec.rx * 0.12))
   const lamp = (slot: PaintSlot, pos: [number, number, number], kind: 'light' | 'strobe' | 'beacon', name: string) => {
     if (frame.tier === 'high') return
     if (frame.tier === 'low' && kind !== 'beacon') return
@@ -970,21 +1189,27 @@ function addLights(frame: Frame) {
     if (kind === 'beacon') frame.beacons.push(painted)
   }
   const semi = spec.spanM / 2
-  lamp('navRed', [frame.wingX, wingY, semi - radius], 'light', 'nav-port')
-  lamp('navGreen', [frame.wingX, wingY, -(semi - radius)], 'light', 'nav-starboard')
-  lamp('navWhite', [frame.tailX + radius, centerY + spec.ry * 0.15, 0], 'light', 'nav-tail')
-  lamp('navWhite', [frame.wingX, wingY + radius, semi - radius * 1.4], 'strobe', 'strobe')
-  lamp('navWhite', [frame.wingX, wingY + radius, -(semi - radius * 1.4)], 'strobe', 'strobe')
+  // Wingtips sit aft and up on swept, dihedral wings.
+  const tipX = frame.wingX + spec.rootChord / 2 - Math.tan((spec.sweep * Math.PI) / 180) * semi - spec.tipChord * 0.25
+  const tipY = wingY + Math.tan((spec.dihedral * Math.PI) / 180) * semi
+  // Nose is +X and up is +Y, so starboard (right) is +Z and port (left) is -Z.
+  lamp('navRed', [tipX, tipY, -(semi - radius * 0.5)], 'light', 'nav-port')
+  lamp('navGreen', [tipX, tipY, semi - radius * 0.5], 'light', 'nav-starboard')
+  const fam = spec.family === 'rearjet' || spec.family === 'prop' || spec.family === 'point' ? spec.family : 'tube'
+  const cone = loftStation(fam, 0.995)
+  lamp('navWhite', [frame.tailX + spec.lengthM * 0.005, centerY + spec.ry * cone.dy, 0], 'light', 'nav-tail')
+  lamp('navWhite', [tipX - spec.tipChord * 0.4, tipY + radius * 0.4, semi - radius * 0.6], 'strobe', 'strobe')
+  lamp('navWhite', [tipX - spec.tipChord * 0.4, tipY + radius * 0.4, -(semi - radius * 0.6)], 'strobe', 'strobe')
   if (frame.tier !== 'low') {
-    lamp('navWhite', [0, spec.gear + 0.2, 0], 'strobe', 'strobe')
+    lamp('beacon', [0, spec.gear, 0], 'beacon', 'beacon-belly')
   }
   lamp('beacon', [spec.lengthM * 0.02, Math.min(top + 0.02, spec.heightM - radius * 0.7), 0], 'beacon', 'beacon')
 }
 
 function addHeloLights(frame: Frame) {
   if (frame.spec.family !== 'helo' || frame.tier === 'high') return
-  const radius = 0.55
   const { spec, centerY, tailX } = frame
+  const radius = Math.min(0.25, Math.max(0.1, spec.rx * 0.12))
   if (frame.tier === 'low') {
     const mesh = new THREE.Mesh(unitSphere())
     mesh.scale.setScalar(radius * 0.8)
@@ -998,20 +1223,23 @@ function addHeloLights(frame: Frame) {
   }
   const port = new THREE.Mesh(unitSphere())
   port.scale.setScalar(radius)
-  port.position.set(spec.lengthM * 0.05, centerY, spec.rx + 0.1)
+  // Port (left) is -Z with the nose on +X. Lamps sit flush on the cabin flank.
+  port.position.set(spec.lengthM * 0.05, centerY, -spec.rx * 0.95)
   port.name = 'nav-port'
+  port.userData.baseScale = radius
   frame.lamps.push(addMesh(frame, port, 'navRed', 'light'))
   const star = port.clone()
   star.position.z *= -1
   star.name = 'nav-starboard'
   frame.lamps.push(addMesh(frame, star, 'navGreen', 'light'))
   const tail = port.clone()
-  tail.position.set(tailX + 0.2, centerY, 0)
+  const tailSt = loftStation('helo', 0.99)
+  tail.position.set(tailX + spec.lengthM * 0.01, centerY + spec.ry * tailSt.dy, 0)
   tail.name = 'nav-tail'
   frame.lamps.push(addMesh(frame, tail, 'navWhite', 'light'))
   const beacon = port.clone()
   beacon.scale.setScalar(radius * 0.75)
-  beacon.position.set(0, centerY + spec.ry + 0.15, 0)
+  beacon.position.set(0, centerY + spec.ry * 0.97, 0)
   beacon.name = 'beacon'
   beacon.userData.baseScale = beacon.scale.x
   const paintedBeacon = addMesh(frame, beacon, 'beacon', 'beacon')
@@ -1034,6 +1262,7 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addGear(frame)
     addHeloLights(frame)
     addRealDoors(frame)
+    addRig(frame, [])
     addLogo(frame)
   } else {
     addFuselage(frame)
@@ -1048,6 +1277,7 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addControls(frame)
     addLogo(frame)
     addRealDoors(frame)
+    addRig(frame, frame.spec.engines.count ? enginePoints(frame) : [])
     addLights(frame)
   }
   mergeStaticShell({
@@ -1067,5 +1297,6 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     strobes: frame.strobes,
     beacons: frame.beacons,
     lamps: frame.lamps,
+    rigs: frame.rigs,
   }
 }

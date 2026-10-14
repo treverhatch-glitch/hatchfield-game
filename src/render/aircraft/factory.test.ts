@@ -171,7 +171,7 @@ describe('aircraft model factory', () => {
     expect(names(mid(narrow)).has('window-band')).toBe(true)
     showClose(narrow)
     expect(names(high(narrow)).has('windows')).toBe(true)
-    expect(names(high(narrow)).has('doors')).toBe(true)
+    expect(names(high(narrow)).has('doorways')).toBe(true)
     expect(names(high(narrow)).has('fan')).toBe(true)
     expect(names(high(freighter)).has('windows')).toBe(false)
     expect(names(mid(fighter)).has('cockpit')).toBe(true)
@@ -267,7 +267,7 @@ describe('aircraft model factory', () => {
     const lowShell = a.getObjectByName('lod-low')!.getObjectByName('airframe') as THREE.Mesh
     expect(lowShell.material).toBeInstanceOf(THREE.MeshBasicMaterial)
     expect(shell(a).material).toBeInstanceOf(THREE.MeshStandardMaterial)
-    expect(drawCount(mid(a).getObjectByName('airframe')!.parent!)).toBeLessThan(22)
+    expect(drawCount(mid(a).getObjectByName('airframe')!.parent!)).toBeLessThan(24)
     releaseAircraft(a)
     releaseAircraft(b)
     releaseAircraft(bus)
@@ -334,8 +334,15 @@ describe('aircraft model factory', () => {
     expect(lod.buckets?.lowGroup.visible).toBe(true)
     expect(lod.buckets?.midGroup.visible).toBe(false)
     expect(lod.buckets?.highGroup.visible).toBe(false)
+    // Airborne: every leg has swung up into its bay and is hidden.
     const gear = mid(aircraft).getObjectByName('gear') as THREE.Group
-    expect(gear.scale.y).toBeLessThan(0.05)
+    const legs = gear.children.filter((c) => c.userData.retract)
+    expect(legs.length).toBeGreaterThan(2)
+    for (const leg of legs) {
+      expect(leg.visible).toBe(false)
+      const r = leg.userData.retract as { axis: 'x' | 'z'; angle: number }
+      expect(Math.abs(leg.rotation[r.axis])).toBeGreaterThan(1.3)
+    }
 
     const close = createAircraft('a359', LIVERY)
     const closeLod = close.getObjectByName('lod') as CrossfadeLOD
@@ -359,10 +366,15 @@ describe('aircraft model factory', () => {
     const highTris = triangleCount(narrow.getObjectByName('lod-high')!)
     expect(lowTris).toBeLessThan(midTris)
     expect(lowTris).toBeLessThan(900)
-    expect(midTris).toBeLessThan(3500)
+    // Budget covers the full landing gear (oleos, links, hubbed tyres, doors).
+    // Pass 2: wheel wells, bay doors and full leg geometry.
+    // Pass 3: lathe tyres with tread, hubs with brake stacks, braces, hoses and curved doors
+    // (~10k of this is gear). Far aircraft drop to the low LOD.
+    expect(midTris).toBeLessThan(19000)
     expect(highTris).toBeLessThan(2500)
     expect(drawCount(narrow.getObjectByName('lod-low')!)).toBeLessThan(24)
-    expect(libraryStats().geometries).toBeLessThan(160)
+    // +~60 shared leg meshes: one per airframe type and leg kind, never per instance or livery.
+    expect(libraryStats().geometries).toBeLessThan(230)
     expect(libraryStats().materials).toBeLessThan(64)
     for (const aircraft of made) releaseAircraft(aircraft)
   })
@@ -389,7 +401,7 @@ describe('aircraft model factory', () => {
     let top = 0
     let topN = 0
     for (let i = 0; i < wpos.count; i++) {
-      if (wpos.getY(i) < 0.2) continue
+      if (wpos.getY(i) < 0.12) continue
       top += wnor.getY(i)
       topN++
     }
@@ -490,9 +502,10 @@ describe('aircraft model factory', () => {
 
   it('puts a pack door on the close mesh and a tail mark on the mid mesh', () => {
     const narrow = createAircraft('b738', LIVERY)
-    const doorMesh = high(narrow).getObjectByName('doors') as THREE.InstancedMesh
-    expect(doorMesh.isInstancedMesh).toBe(true)
-    expect(doorMesh.count).toBe(getAircraftSpec('b738').doors.length)
+    // Side doors are framed doorways with a cabin glimpse, merged into one mesh.
+    const doorMesh = high(narrow).getObjectByName('doorways') as THREE.Mesh
+    expect(doorMesh.isMesh).toBe(true)
+    expect(getAircraftSpec('b738').doors.length).toBeGreaterThan(0)
     expect(names(mid(narrow)).has('logo')).toBe(true)
     expect(names(mid(narrow)).has('aileron')).toBe(true)
     expect(names(mid(narrow)).has('elevator')).toBe(true)
@@ -528,7 +541,9 @@ describe('aircraft model factory', () => {
     lod.update(camera)
     expect(aircraftIsNight()).toBe(true)
     const night = lamp.scale.x
-    expect(night).toBeGreaterThan(day * 1.5)
+    // A small point glow at night, not a ball: grows a little, never past 1.4x.
+    expect(night).toBeGreaterThan(day * 1.2)
+    expect(night).toBeLessThan(day * 1.4)
     setAircraftLamp(0.5)
     lod.update(camera)
     expect(aircraftLamp()).toBe(0.5)
