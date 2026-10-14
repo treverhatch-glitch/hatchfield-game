@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vehicle bakeoff</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #efefed; }
+    canvas { display: block; width: 1024px; height: 768px; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/node_modules/three/build/three.module.js",
+      "three/addons/": "/node_modules/three/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="c" width="1024" height="768"></canvas>
+  <script type="module">
+    import { createTanker } from './tanker.js';
+    import { createCatering } from './catering.js';
+    import { createBeltLoader } from './belt_loader.js';
+    import { createPushbackTug } from './pushback_tug.js';
+    import { createApronBus } from './apron_bus.js';
+    import { makeStudio, lightStudio, frameCamera, frameOf } from './studio.js';
+    import { countStats } from './lib/kit.js';
+
+    const builders = {
+      tanker: createTanker,
+      catering: createCatering,
+      belt_loader: createBeltLoader,
+      pushback_tug: createPushbackTug,
+      apron_bus: createApronBus,
+    };
+
+    const params = new URLSearchParams(location.search);
+    const asset = params.get('asset') || 'tanker';
+    const view = params.get('view') || 'side';
+
+    try {
+      if (document.fonts?.ready) await document.fonts.ready;
+      const build = builders[asset];
+      if (!build) throw new Error('unknown asset ' + asset);
+      const group = build();
+      const stats = countStats(group);
+      const { renderer, scene, camera } = makeStudio(document.getElementById('c'));
+      scene.add(group);
+      const { center, size } = frameOf(group);
+      lightStudio(scene, center, size);
+      frameCamera(camera, center, size, view === '34' ? '34' : 'side');
+      renderer.render(scene, camera);
+      requestAnimationFrame(() => {
+        renderer.render(scene, camera);
+        window.__stats = stats;
+        window.__ready = true;
+      });
+    } catch (err) {
+      window.__error = String(err && err.stack || err);
+      window.__ready = false;
+      console.error(err);
+    }
+  </script>
+</body>
+</html>

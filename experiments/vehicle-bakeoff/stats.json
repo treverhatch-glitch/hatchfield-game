@@ -1,0 +1,22 @@
+{
+  "tanker": {
+    "meshes": 100,
+    "triangles": 11944
+  },
+  "catering": {
+    "meshes": 84,
+    "triangles": 9930
+  },
+  "belt_loader": {
+    "meshes": 60,
+    "triangles": 7506
+  },
+  "pushback_tug": {
+    "meshes": 65,
+    "triangles": 10094
+  },
+  "apron_bus": {
+    "meshes": 76,
+    "triangles": 8116
+  }
+}
