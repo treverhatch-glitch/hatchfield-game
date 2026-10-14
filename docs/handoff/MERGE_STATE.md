@@ -111,3 +111,50 @@ git -C /tmp/main-sync push origin main
 No force-push. `claude.yml` must stay on both branches.
 
 Last production deploy before this wind-down served `assets/index-BGxtKhlP.js` from main `40910f81d6279073873285211a71c13c907a7414` (trunk `144dbf5`, pause menu, no #225 yet).
+
+---
+
+## Wind-down addendum — 2026-10-14 16:30 ICT (after Cursor usage ran out)
+
+Written by the producer bot after every Cursor agent stopped. Nothing was merged in this pass.
+
+### State snapshot
+
+| Thing | Value |
+| --- | --- |
+| Trunk `cursor/audit-playtest-562d` | `2c0e910` (contains #225 at `b3740e7` — **#225 is pushed and on remote trunk**) |
+| Trunk CI (`ci.yml` / `check`) on `2c0e910` | in progress at time of writing |
+| `main` | `40910f8` = trunk `144dbf5` (no #225) |
+| Live https://hatchfield.pages.dev | `assets/index-BGxtKhlP.js` = main `40910f8`. **#225 is not deployed yet.** |
+
+### Open PRs vs trunk `2c0e910` (checked with `git merge-tree`)
+
+| PR | Branch @ head | Draft | Size vs trunk | Conflicts vs trunk | Handoff file |
+| --- | --- | --- | --- | --- | --- |
+| #227 boarding/ramp crews | `cursor/boarding-ramp-crews-1829` @ `ddaa779` | ready | 29 files, +2558/−34 | `src/render/world.ts` | none (see PR body) |
+| #216 physical rules | `cursor/world-collision-0750` @ `51eeab9` | draft | 22 files, +1171/−90 | `src/ui/Field.tsx` | none |
+| #221 ground crew | `cursor/crew-refuel-steps-1829` @ `40804ce` | draft | 19 files | `src/render/world.ts` | superseded by #227 — close, don't merge |
+| #219 apron materials | `cursor/visual-round1-materials-81f6` @ `745e5c0` | draft | 31 files, +1362/−317 | `world.ts`, `world/render.ts` | `docs/handoff/cursor/visual-round1-materials-81f6.md` (on trunk, written in this pass) |
+| #226 livery art | `cursor/livery-art-81f6` @ `84abf9c` | draft | 82 files (= #219 + liveries) | `world.ts`, `world/render.ts` | none; take #226 **instead of** #219 |
+| #215 terminal materials | `cursor/terminal-materials-8919` @ `a720a20` | draft | 58 files, +2199/−238 | `index.css`, `hallKitMeshes.ts`, `hallWorld.ts`, `world.ts`, `world/terminal.ts`, `TitleScreen.tsx` | on branch: `docs/handoff/cursor/terminal-materials-8919.md` |
+| Item pictures (bc-62b6e497) | no branch newer than `cursor/pause-controls-gamepad-a244` (@ `b9ae99c`, already merged as #223) | — | — | — | **work not pushed; treat as not started** |
+
+Already merged on trunk: #214, #217, #218, #220, #223, #224, #225. Not merged: #216, #219, #215, #221, #227, #226, item pictures.
+
+### Recommended order (supersedes the list above where they differ)
+
+1. #227 (fix `world.ts`), then close #221 as superseded.
+2. #216 (fix `Field.tsx`).
+3. #226 (includes #219; fix `world.ts` + `world/render.ts`). Close #219 after.
+4. #215 last (six conflicts; biggest risk). Read its branch handoff first.
+5. Main sync + deploy (steps above). Then the pack6 wiring below.
+
+Drafts must be marked ready (or merged directly by Claude with `git merge`) — the user has approved finishing this queue.
+
+### Art still to wire — branch `art/pack6-refs` @ `58b6fec`, folder `public/art/refs/pack6/`
+
+- `skies/sky_{dawn,noon,dusk,night}.jpg` → day/night skybox (`SkyDome` in `src/render/world/` + `src/render/world/dayNight.ts`): equirect texture, crossfade by sim hour. Medium/Low: downscale or keep the procedural dome.
+- `ref_passengers.jpg`, `ref_crew_uniforms.jpg` → palettes for `src/render/people/` crowd/crew colors (sample hex values; no texture needed).
+- `ref_terminal_props.jpg`, `ref_security_lane.jpg`, `ref_belt_loader_color.jpg` → modelling references for terminal kit (`src/render/world/kit.ts`, `hallKitMeshes.ts`) and the belt loader in `src/render/vehicles.ts`.
+- `render_*.jpg`, `contact_sheet.jpg` → targets only, do not ship in the bundle.
+- **Delete `public/art/refs/pack6/_pack6_b64/`** before merging that branch (upload scaffolding, ~1.3× duplicate size). Consider moving refs out of `public/` so Vite does not copy ~MBs of concept art into `dist`.
