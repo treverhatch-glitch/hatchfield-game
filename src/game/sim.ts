@@ -16056,8 +16056,9 @@ export class Game {
       f.waitingOn.paxOut = 1
     } else {
       const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
-      f.waitingOn.paxOut = visual
-      this.people.push(...spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual))
+      const walkers = spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual)
+      f.waitingOn.paxOut = walkers.length
+      this.people.push(...walkers)
       if (mode !== 'walk') {
         this.pushNews(
           `${f.flightNo} walking remote stand — bus depot missing or blocked.`,
@@ -16627,8 +16628,9 @@ export class Game {
       f.waitingOn.paxIn = 1
     } else {
       const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
-      f.waitingOn.paxIn = visual
-      this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
+      const walkers = spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual)
+      f.waitingOn.paxIn = walkers.length
+      this.people.push(...walkers)
     }
     // Outbound bags: shed makeup pickup → plane deposit.
     const bagBuild = tilesOf(this.tiles, 'bags')
