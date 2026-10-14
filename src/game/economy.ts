@@ -39,6 +39,34 @@ export function loanProductLabel(p: Pick<LoanProduct, 'label' | 'principal' | 'f
   return `${p.label} · ${money(p.principal)} · fee ${money(p.fee)} · owe ${money(p.principal + p.fee)}`
 }
 
+const GUARD_LOAN = /host military|military\s*\/\s*guard|guard loan/i
+
+/** One row per id and per label. Host Military/Guard is listed once even if the desk repeats it. */
+export function loanDeskRows<T extends { id: string; label: string }>(products: readonly T[]): T[] {
+  const seen = new Set<string>()
+  let guard = false
+  const out: T[] = []
+  for (const p of products) {
+    if (!p?.id || !p.label) continue
+    const label = p.label.trim().toLowerCase()
+    if (GUARD_LOAN.test(p.label)) {
+      if (guard) continue
+      guard = true
+    }
+    const key = `${p.id}|${label}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(p)
+  }
+  return out
+}
+
+/** Slider caption: the name and the amount the thumb is on. */
+export function loanAmountLabel(amount: number): string {
+  const n = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0
+  return `Loan amount · ${money(n)}`
+}
+
 /** Interest due this loan tick: at least the product floor, else ~rate × balance. */
 export function loanInterestDue(balance: number, rate: number, floor: number): number {
   const safeBalance = Number.isFinite(balance) && balance > 0 ? balance : 0

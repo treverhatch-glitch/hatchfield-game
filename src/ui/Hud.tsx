@@ -6,7 +6,7 @@ import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
-import { loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
+import { loanAmountLabel, loanDeskRows, loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
@@ -264,6 +264,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   useEffect(() => () => game.holdLetters([]), [game])
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const [loanAmount, setLoanAmount] = useState(25_000)
   const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
   const [inboxOpen, setInboxOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
@@ -1255,8 +1256,22 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             } · owe ${money(game.loanBalance)}`
                           : 'No open loan — pick a product (bigger = higher fee, needs Field Level).'}
                       </p>
+                      <label className="loan-amount" data-testid="loan-amount">
+                        <span>{loanAmountLabel(loanAmount)}</span>
+                        <input
+                          type="range"
+                          min={25_000}
+                          max={250_000}
+                          step={5_000}
+                          value={loanAmount}
+                          aria-label="Loan amount"
+                          aria-valuetext={money(loanAmount)}
+                          onChange={(e) => setLoanAmount(Number(e.target.value))}
+                        />
+                        <output>{money(loanAmount)}</output>
+                      </label>
                       <div className="loan-grid">
-                        {LOAN_PRODUCTS.map((p) => {
+                        {loanDeskRows(LOAN_PRODUCTS).map((p) => {
                           const open = game.availableLoans().some((x) => x.id === p.id)
                           const active = game.loanProductId === p.id && game.loanBalance > 0
                           return (
@@ -1494,8 +1509,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             max={100}
                             step={5}
                             value={game.budgets[key]}
+                            aria-label={`${BUDGET_LABEL[key]} budget`}
+                            aria-valuetext={`${game.budgets[key]} percent`}
                             onChange={(e) => game.setBudget(key, Number(e.target.value))}
                           />
+                          <output data-testid={`budget-${key}`}>{game.budgets[key]}%</output>
                         </label>
                         <small>{BUDGET_BLURB[key]}</small>
                       </li>
