@@ -33,6 +33,10 @@ Trunk reached `main` after that note. The first sync commit above `9a65d96` is `
 
 `.github/workflows/ci.yml` is still the workflow from `39df452` (checkout, Node 22, `npm ci`, `tsc -b`, lint, test, build). It is not a substitute for a local gate: GitHub is suspended, so that workflow does not run.
 
+## Recheck after main moved
+
+`main` advanced to `816456ecd004fa335dd6b7eb491f4b3cf1231ee6` before this note landed. Those four commits (`e7a8ce4` staffed service points, `b0a2e30` Wave 3 relations, `c9e16fd` bot lab furnishing, `816456e` terminal/vehicle/airline art) sit on top of `50ce0c1`. `50ce0c1` and `f05693b` are still ancestors. `src/ramp/paxFlow.ts` and `public/textures/sky/sky_noon.jpg` are still in the tree. The verdict below does not change.
+
 ## Verdict
 
 The changes #228 recorded are on `main`. The merge commits, the sky photos, the day/night wiring, boarding modes, and placement rules are still in the tree at `50ce0c1`. This was a presence check (`git merge-base --is-ancestor` plus the files above). It is not a replay of the 14 Oct visual checklist.
