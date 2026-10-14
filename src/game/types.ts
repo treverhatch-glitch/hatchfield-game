@@ -743,6 +743,10 @@ export interface Truck {
   home: Vec | null
   /** Visible load — bag units on this cart (Manor Lords crate feel). */
   cargoUnits?: number
+  /** Building service-yard pose while queued / docked / working (render reads it). */
+  yard?: { key: string; action: string | null; phase: string; progress: number; heading: number; point: number }
+  /** Yard visit finished; resume the arrival logic once. */
+  yardDone?: boolean
   /** Stand-service dwell this stop started with, in sim seconds. Crew steps fill it. */
   serviceFor?: number
 }

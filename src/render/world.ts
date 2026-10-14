@@ -32,7 +32,8 @@ import { ConstructionLayer } from '../build/construction'
 import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
 import { buildModel, standAircraftGhost } from '../build/models'
 import { lotFrame, type Lot } from '../build/footprints'
-import { AnimSystem, buildingSignals } from '../build/anim'
+import { AnimSystem, buildingSignals, siteSignals } from '../build/anim'
+import { ServiceFx } from './serviceFx'
 import {
   addFuelRail,
   addHangar,
@@ -221,6 +222,7 @@ export class World {
   private lotsRef: Record<string, Lot> = {}
   /** Movable building parts (doors, radar, fans, booms) driven by sim signals. */
   buildingAnim = new AnimSystem()
+  serviceFx!: ServiceFx
   construction = new ConstructionLayer((tile, c, r) => {
     const g = this.building(tile as Tile, toWorld(c, r, 0.02), { lot: this.lotsRef[`${c},${r}`] })
     return g.children.length ? g : null
@@ -349,6 +351,7 @@ export class World {
     this.scene.add(this.gateGroup)
     this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
+    this.serviceFx = new ServiceFx(this.entGroup, toWorld)
     this.scene.add(this.headlights.group)
     this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
@@ -2087,7 +2090,9 @@ export class World {
       const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
       const dx = (ahead?.c ?? t.x) - t.x
       const dy = (ahead?.r ?? t.y) - t.y
-      const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
+      const heading = t.yard
+        ? t.yard.heading
+        : Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
       mesh.rotation.y = -heading
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
       const crate = mesh.getObjectByName('crate')
@@ -2471,7 +2476,13 @@ export class World {
     perfEnd('world.entities', t)
     t = perfStart()
     this.syncSites(game)
-    this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera)
+    this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera, (key) => {
+      const tile = game.yard.tileOf(key)
+      if (tile === 'mro') return siteSignals(tile, [], game.mroDoorOpen(key) > 0 || game.hangarInUse(key))
+      if (tile === 'hangar') return siteSignals(tile, [], game.hangarInUse(key))
+      return siteSignals(tile, game.yard.activePoints(key))
+    })
+    this.serviceFx.sync(game, dt)
     perfEnd('world.sites', t)
     t = perfStart()
     this.followCameraCue(game)

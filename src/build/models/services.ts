@@ -13,7 +13,7 @@ export function fireStation(g: THREE.Group): void {
     const x = -2.8 + i * 2.2
     box(g, 2.0, 2.3, 0.05, M.white(), x, 0.12, 1.12)
     const door = box(g, 1.8, 2.15, 0.06, mat('#d62d20', { rough: 0.4, metal: 0.2 }), x, 0.12, 1.15)
-    animate(door, { kind: 'roll', signal: 'fireDispatch', amount: 2.15 })
+    animate(door, { kind: 'roll', signal: 'fireDispatch', amount: 2.15, point: i })
     box(g, 1.8, 2.0, 0.04, mat('#2a2d31'), x, 0.12, 1.1) // dark bay behind the door
     box(g, 0.4, 0.15, 0.06, M.glow('#ff3b30'), x, 2.55, 1.15)
   }
