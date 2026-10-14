@@ -143,6 +143,36 @@ export interface PaintedMesh extends THREE.Mesh {
  * Gear, lamps, and control surfaces stay Lambert so the close view does not compile a shader per part.
  * A bump map for panel lines cost about 3 FPS on SwiftShader, so the shell stays smooth.
  */
+/**
+ * Landing gear: physical material whose roughness and metalness come per vertex from a
+ * `pbr` attribute, so chrome pistons, rubber, painted struts and brakes share one draw.
+ * No livery hook: gear is never in airline paint.
+ */
+function pbrHook(mat: THREE.MeshStandardMaterial) {
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 pbr;\nvarying vec2 vPbr;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPbr = pbr;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPbr;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vPbr.x;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vPbr.y;')
+  }
+  mat.customProgramCacheKey = () => 'aircraft-gear-pbr'
+  return mat
+}
+
+export function gearMaterials(tier: 'low' | 'mid'): { opaque: THREE.Material; fade: THREE.Material } {
+  if (tier === 'low') return vertexMaterials('low', 'metal')
+  const opaque = sharedMat('vc:gear', () => pbrHook(new THREE.MeshStandardMaterial({ vertexColors: true, envMapIntensity: 1.2 })))
+  const fade = sharedMat('fade:vc:gear', () => {
+    const m = pbrHook(new THREE.MeshStandardMaterial({ vertexColors: true, envMapIntensity: 1.2 }))
+    m.transparent = true
+    return m
+  })
+  return { opaque, fade }
+}
+
 export function vertexMaterials(
   tier: 'low' | 'mid',
   finish: 'paint' | 'metal' = 'paint',
@@ -218,9 +248,9 @@ export function paintVertexMesh(
   mesh: THREE.Mesh,
   tier: 'low' | 'mid',
   kind: string,
-  finish: 'paint' | 'metal' = 'paint',
+  finish: 'paint' | 'metal' | 'gear' = 'paint',
 ): PaintedMesh {
-  const { opaque, fade } = vertexMaterials(tier, finish)
+  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish)
   const fadeMat = fade as THREE.Material & { opacity: number }
   mesh.material = opaque
   mesh.userData.opaqueMat = opaque

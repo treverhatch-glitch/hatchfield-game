@@ -589,6 +589,7 @@ function addGear(frame: Frame) {
       height: legH,
       wheelR: role === 'nose' ? wheelR * 0.8 : wheelR,
       doorSide,
+      skinR: Math.max(spec.rx, spec.ry),
     })
     const leg = new THREE.Group()
     leg.name = `gear-${role}`
@@ -600,7 +601,7 @@ function addGear(frame: Frame) {
       : { axis: 'x', angle: (z >= 0 ? 1 : -1) * 1.5 }
     // One mesh per leg. The nose leg steers about its own vertical axis (Euler YXZ),
     // which only applies while the gear is fully down.
-    const mesh = paintVertexMesh(new THREE.Mesh(geo), 'mid', 'mesh', 'metal')
+    const mesh = paintVertexMesh(new THREE.Mesh(geo), 'mid', 'mesh', 'gear')
     mesh.name = 'leg'
     leg.add(mesh)
     frame.meshes.push(mesh)
@@ -614,7 +615,7 @@ function addGear(frame: Frame) {
     const wid = kind === 'single' ? r * 1.1 : r * 1.9
     const at = new THREE.Matrix4().makeTranslation(x, roof + 0.02 - spec.gear, z)
     bays.push(wellGeometry(span, wid).applyMatrix4(at))
-    if (spec.family !== 'helo') bays.push(bayDoorsGeometry(span * 0.9, wid, Math.min(r * 1.5, legH * 0.45)).applyMatrix4(at))
+    if (spec.family !== 'helo') bays.push(bayDoorsGeometry(span * 0.9, wid, Math.min(r * 1.5, legH * 0.45), Math.max(spec.rx, spec.ry)).applyMatrix4(at))
   }
 
   if (spec.skids) {
@@ -689,7 +690,7 @@ function addGear(frame: Frame) {
     bay.userData.bay = true
     const merged = mergeGeometries(bays)!
     bays.forEach((g) => g.dispose())
-    const mesh = paintVertexMesh(new THREE.Mesh(merged), 'mid', 'mesh', 'metal')
+    const mesh = paintVertexMesh(new THREE.Mesh(merged), 'mid', 'mesh', 'gear')
     mesh.name = 'bay-doors'
     bay.add(mesh)
     frame.meshes.push(mesh)
