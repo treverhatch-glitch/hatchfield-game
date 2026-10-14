@@ -16,7 +16,8 @@
     "playthrough": "tsx scripts/playthrough-wake.mts",
     "perf:bench": "tsx scripts/perf-bench.mts",
     "autoplay": "tsx scripts/autoplay-stabilize.mts",
-    "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs"
+    "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs",
+    "soak:150": "node scripts/soak-150.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

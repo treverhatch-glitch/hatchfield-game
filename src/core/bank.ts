@@ -147,8 +147,10 @@ export class Bank {
       balanceAfter: this.currentBalance + amount,
     }
     this.apply(entry)
-    const ledger = this.ledger()
-    for (const listener of this.listeners) listener(cloneEntry(entry), ledger)
+    if (this.listeners.length > 0) {
+      const ledger = this.ledger()
+      for (const listener of this.listeners) listener(cloneEntry(entry), ledger)
+    }
     return cloneEntry(entry)
   }
 
@@ -176,6 +178,19 @@ export class Bank {
     return this.records
       .filter((entry) => entry.meta.simMinutes >= start && entry.meta.simMinutes < end)
       .map(cloneEntry)
+  }
+
+  /**
+   * Forget journal lines older than `simMinutes`. Category totals and the
+   * balance stay, so year cards and the HUD still add up. Callers keep the
+   * window that year-close and tycoon catch-up still read.
+   */
+  retainFrom(simMinutes: number): number {
+    if (!Number.isFinite(simMinutes) || simMinutes <= 0) return 0
+    const index = this.records.findIndex((entry) => entry.meta.simMinutes >= simMinutes)
+    const drop = index < 0 ? this.records.length : index
+    if (drop > 0) this.records.splice(0, drop)
+    return drop
   }
 
   ledgerForGameDay(gameDay: number): BankLedger {

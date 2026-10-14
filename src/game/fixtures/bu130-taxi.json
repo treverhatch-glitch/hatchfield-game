@@ -1,0 +1,9 @@
+{
+  "flightNo": "BU130",
+  "airline": "bushline",
+  "klass": "taxi_out",
+  "airframeId": "bn2",
+  "pax": 9,
+  "ledger": [{ "label": "BU130 landing", "amount": 2800 }],
+  "note": "Bushline departure whose taxi-out path chords across grass. The aircraft holds instead of leaving the taxiway graph, the taxi_out stall."
+}

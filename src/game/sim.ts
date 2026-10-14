@@ -224,6 +224,8 @@ import { coolAfterSign, lettersSettled } from './contractPacing.ts'
 import { LETTER_PACING } from './contractPacingData.ts'
 import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
+import { StuckWatchdog, type RecoveryAction, type RecoveryLogEntry, type WatchSample } from './stuckWatchdog.ts'
+import { STUCK_MOVING_PHASES, STUCK_WATCH } from './stuckWatchdogData.ts'
 import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
 import { disruptionLocus, type DisruptionLocusField } from '../disruptions/locus.ts'
 import {
@@ -500,6 +502,7 @@ import {
   type TycoonView,
 } from '../tycoon/index.ts'
 import { PLAYTEST_YEAR_DAYS } from '../reports/config.ts'
+import { MAX_CATCHUP_DAYS } from '../tycoon/config.ts'
 import { YearPlaytestBook } from '../reports/book.ts'
 import type { YearAwardInput } from '../reports/sources.ts'
 import { mergePlaytestAndTycoon, type PlaytestYearReport, type TycoonYearLike } from '../reports/yearEnd.ts'
@@ -1146,6 +1149,15 @@ export class Game {
   /** Path each aircraft was last cleared along (by identity). */
   private atcPaths = new Map<string, Vec[]>()
   private atcYields = new Map<string, number>()
+  /** Stall ladder. Timing is pure; this class only applies each step. */
+  private stuckWatch = new StuckWatchdog()
+  /** Recoveries logged by the ladder. The debug HUD reads the count. */
+  recoveryCount = 0
+  recoveryLog: RecoveryLogEntry[] = []
+  /** Corner debug readout. The shell turns it on in dev builds. */
+  debugHud = false
+  /** Headless soaks turn this off so the periodic save does not run. */
+  autosave = true
   /** Real crash write-offs; the only source of crashFlight charges. */
   crashes = 0
   fireIncidentCool = 60
@@ -4847,7 +4859,7 @@ export class Game {
   }
 
   persist() {
-    if (!this.site) return
+    if (!this.autosave || !this.site) return
     const snap: GameSnapshot = {
       tiles: this.tiles,
       terminalFits: this.fits,
@@ -6214,9 +6226,14 @@ export class Game {
       }
     }
     this.bagTags = this.bagTags.filter((tag) => {
-      if (!tag.picked && !tag.fault) return true
       const owner = this.hallGuests.find((g) => g.id === tag.ownerPassengerId)
-      return !owner?.dead
+      if (owner?.dead) return false
+      if (!tag.picked && !tag.fault) {
+        const flight = this.flights.find((item) => item.id === tag.flightId)
+        const live = flight != null && flight.phase !== 'gone'
+        if (!live && !owner) return false
+      }
+      return true
     })
   }
 
@@ -14479,6 +14496,9 @@ export class Game {
       this.closeOperatingDay(completed)
       this.rollPlaytestYear(completed)
     }
+    // Year close and tycoon catch-up only reread this window. Older lines stay
+    // in the category totals, so a long airport does not keep every fee forever.
+    this.bank.retainFrom(Math.max(0, day - MAX_CATCHUP_DAYS) * SIM_MINUTES_PER_GAME_DAY)
   }
 
   private rollPlaytestYear(completedDay: number) {
@@ -16827,6 +16847,328 @@ export class Game {
       this.divertFlight(f, `${f.flightNo} diverted after long hold — gate freed, Standing dips.`)
     }
     void dt
+  }
+
+  /** Entities the ladder could not clear. The headless soak fails on a non-empty list. */
+  stuckOutstanding() {
+    return this.stuckWatch.outstanding(this.simMinutes())
+  }
+
+  /** One watchdog pass. `tick` calls this after movement; tests can call it on a frozen truck. */
+  watchStuck() {
+    this.tickStuckWatchdog()
+  }
+
+  private tickStuckWatchdog() {
+    const actions = this.stuckWatch.observe(this.stuckSamples(this.simMinutes()))
+    if (!actions.length) return
+    for (const action of actions) {
+      const detail = this.applyStuckRecovery(action)
+      this.recoveryCount += 1
+      this.recoveryLog.unshift({
+        atMin: this.simMinutes(),
+        id: action.id,
+        label: action.label,
+        kind: action.kind,
+        state: action.state,
+        step: action.step,
+        detail,
+      })
+      if (this.recoveryLog.length > STUCK_WATCH.logCap) this.recoveryLog.length = STUCK_WATCH.logCap
+      this.pushNews(detail, action.step === 'cancel' ? 'bad' : 'ok')
+    }
+    this.emit()
+  }
+
+  private stuckSamples(nowMin: number): WatchSample[] {
+    const hard = new Set<string>()
+    for (const flight of this.flights) {
+      if (this.flightHardStuck(flight)) hard.add(flight.id)
+    }
+    const out: WatchSample[] = []
+    for (const flight of this.flights) {
+      if (flight.phase === 'gone') continue
+      const moving = STUCK_MOVING_PHASES.has(flight.phase)
+      const hardStuck = hard.has(flight.id)
+      if (flight.phase === 'pushback' && flight.phaseTime < STUCK_WATCH.pushbackGraceSec) continue
+      if (!hardStuck && !moving) continue
+      if (moving && !hardStuck && this.holdIsAuthorized(flight, hard)) continue
+      out.push({
+        id: flight.id,
+        kind: moving ? 'aircraft' : 'flight',
+        state: flight.phase,
+        token: this.flightStallToken(flight),
+        nowMin,
+        label: flight.flightNo,
+      })
+    }
+    for (const truck of this.trucks) {
+      if (truck.patrol || truck.dwell > 0 || truck.preDwell > 0) continue
+      if (truck.kind === 'contractor' || truck.kind === 'delivery') continue
+      out.push({
+        id: truck.id,
+        kind: 'vehicle',
+        state: truck.mission,
+        token: `${truck.mission}|${this.stuckPos(truck.x)}|${this.stuckPos(truck.y)}|${truck.seg}|${this.stuckPos(truck.t)}`,
+        nowMin,
+        label: `${truck.kind} ${truck.mission}`,
+      })
+    }
+    return out
+  }
+
+  /** Dead boarding, or a taxi path that leaves the graph. These are stalls, not queues. */
+  private flightHardStuck(flight: Flight): boolean {
+    if (flight.phase === 'gone' || flight.phase === 'hold' || flight.phase === 'parked' || flight.phase === 'mx_bay') {
+      return false
+    }
+    if (flight.fuelHeld) return false
+    if ((flight.craft ?? 'jet') === 'helo' && (flight.phase === 'servicing' || flight.phase === 'board' || flight.phase === 'deboard')) {
+      return false
+    }
+    if (flight.phase === 'board' || flight.phase === 'deboard') {
+      const outbound = flight.phase === 'board'
+      const waiting = outbound ? flight.waitingOn.paxIn : flight.waitingOn.paxOut
+      if (waiting > 0) {
+        const job = outbound ? 'board' : 'arrive'
+        const walkers = this.people.some((person) => person.flightId === flight.id && person.job === job)
+        const bus = this.trucks.some((truck) => truck.flightId === flight.id && truck.kind === 'termbus')
+        if (!walkers && !bus) return true
+      }
+    }
+    const rolling =
+      flight.phase === 'taxi_in' ||
+      flight.phase === 'taxi_out' ||
+      flight.phase === 'pushback' ||
+      flight.phase === 'mx_taxi' ||
+      flight.phase === 'mx_return'
+    return rolling && flight.path.length >= 2 && !this.taxiRouteReady(flight)
+  }
+
+  /** A live ground-control hold inside the legal window is progress, not a stall. */
+  private holdIsAuthorized(flight: Flight, hard: ReadonlySet<string>): boolean {
+    const wait = this.atc.waitFor(flight.id)
+    if (!wait) return false
+    const ageMin = Math.max(0, this.clock - wait.since) * SIM_MINUTES_PER_REAL_SECOND
+    if (ageMin >= STUCK_WATCH.authorizedHoldMin) return false
+    if (wait.blocker && hard.has(wait.blocker)) return false
+    if (wait.blocker && !this.flights.some((other) => other.id === wait.blocker && other.phase !== 'gone')) return false
+    return wait.reason === 'runway' || wait.reason === 'taxi'
+  }
+
+  private flightStallToken(flight: Flight): string {
+    return [
+      flight.phase,
+      this.stuckPos(flight.x),
+      this.stuckPos(flight.y),
+      flight.seg,
+      this.stuckPos(flight.t),
+      flight.waitingOn.paxIn,
+      flight.waitingOn.paxOut,
+    ].join('|')
+  }
+
+  private stuckPos(value: number): number {
+    return Math.round(value * 20) / 20
+  }
+
+  private applyStuckRecovery(action: RecoveryAction): string {
+    if (action.kind === 'vehicle') return this.applyStuckTruck(action)
+    const flight = this.flights.find((item) => item.id === action.id)
+    if (!flight || flight.phase === 'gone') return `${action.label} already gone.`
+    if (action.step === 'repath') {
+      this.repathStuckFlight(flight)
+      return `${flight.flightNo} re-pathed while ${flight.phase.replace('_', ' ')}.`
+    }
+    if (action.step === 'release') {
+      this.releaseStuckFlight(flight)
+      return `${flight.flightNo} reservation released.`
+    }
+    if (action.step === 'teleport') {
+      const node = this.teleportStuckFlight(flight)
+      return node
+        ? `${flight.flightNo} teleported to ${node.c},${node.r}.`
+        : `${flight.flightNo} had no safe node to teleport to.`
+    }
+    const refund = this.cancelStuckFlight(flight)
+    return `${flight.flightNo} cancelled — refunded $${refund.toLocaleString('en-US')}.`
+  }
+
+  private repathStuckFlight(flight: Flight) {
+    if (flight.phase === 'board' || flight.phase === 'deboard' || flight.phase === 'servicing') {
+      if (!flight.stand) return
+      const served = this.people.some((person) => person.flightId === flight.id)
+      const truck = this.trucks.some((item) => item.flightId === flight.id)
+      if (!served) {
+        flight.waitingOn.paxIn = 0
+        flight.waitingOn.paxOut = 0
+      }
+      if (!truck) {
+        flight.waitingOn.bags = false
+        flight.waitingOn.bagsLoad = false
+        flight.waitingOn.fuel = false
+        flight.waitingOn.catering = false
+        flight.posted.bags = true
+        flight.posted.bagsLoad = true
+        flight.posted.fuel = true
+        flight.posted.catering = true
+      }
+      if (flight.stand) {
+        flight.path = this.pushbackPath(flight.stand, flight.heading)
+        flight.seg = 0
+        flight.t = 0
+        flight.phase = 'pushback'
+        flight.phaseTime = 0
+        this.atcPaths.delete(flight.id)
+      }
+      return
+    }
+    if (flight.phase === 'landing' || flight.phase === 'taxi_in' || flight.phase === 'approach') {
+      if (!flight.stand) return
+      const route = this.landingRoute(flight.stand)
+      if (!route || route.length < 2) return
+      const here = { c: Math.round(flight.x), r: Math.round(flight.y) }
+      let start = 0
+      let best = Number.POSITIVE_INFINITY
+      route.forEach((cell, index) => {
+        const dist = Math.abs(cell.c - here.c) + Math.abs(cell.r - here.r)
+        if (dist < best) {
+          best = dist
+          start = index
+        }
+      })
+      const next = route.slice(start)
+      flight.path = next.length >= 2 ? next : route.slice(-2)
+      flight.seg = 0
+      flight.t = 0
+      this.atcPaths.delete(flight.id)
+      return
+    }
+    if (flight.phase === 'taxi_out' || flight.phase === 'pushback' || flight.phase === 'mx_return' || flight.phase === 'mx_taxi') {
+      if (!flight.stand) return
+      const out = this.departurePath(flight)
+      if (!out || out.length < 2 || !jetRouteOnGraph(this.tiles, out)) return
+      flight.path = out
+      flight.seg = 0
+      flight.t = 0
+      if (flight.phase !== 'taxi_out') {
+        flight.phase = 'taxi_out'
+        flight.phaseTime = 0
+      }
+      this.atcPaths.delete(flight.id)
+    }
+  }
+
+  private releaseStuckFlight(flight: Flight) {
+    const wait = this.atc.waitFor(flight.id)
+    if (wait?.blocker) {
+      const blocker = this.flights.find((other) => other.id === wait.blocker)
+      if (blocker && this.flightHardStuck(blocker)) {
+        this.atc.release(blocker.id)
+        this.atcPaths.delete(blocker.id)
+      }
+    }
+    this.atc.release(flight.id)
+    this.atcPaths.delete(flight.id)
+  }
+
+  private teleportStuckFlight(flight: Flight): Vec | null {
+    const node = this.safeNodeFor(flight)
+    if (!node) return null
+    flight.x = node.c
+    flight.y = node.r
+    flight.z = 0.12
+    if (!flight.stand || this.tile(flight.stand) === 'grass' || this.tile(flight.stand) == null) {
+      const stand = tilesOf(this.tiles, 'stand')[0]
+      if (stand) flight.stand = { c: stand.c, r: stand.r }
+    }
+    const out = flight.stand ? this.departurePath(flight) : null
+    flight.path = out && out.length >= 2 ? out : [node]
+    flight.seg = 0
+    flight.t = 0
+    flight.phase = 'taxi_out'
+    flight.phaseTime = 0
+    this.atc.release(flight.id)
+    this.atcPaths.delete(flight.id)
+    return node
+  }
+
+  private cancelStuckFlight(flight: Flight): number {
+    const collected = flight.ledger.reduce((sum, line) => sum + (line.amount > 0 ? line.amount : 0), 0)
+    const refund = collected > 0 ? Math.round(collected) : STUCK_WATCH.minRefund
+    this.charge(refund, 'penalties')
+    this.atc.release(flight.id)
+    this.atcPaths.delete(flight.id)
+    this.trucks = this.trucks.filter((truck) => truck.flightId !== flight.id)
+    this.people = this.people.filter((person) => person.flightId !== flight.id)
+    if (flight.scheduleId) {
+      const slot = this.schedule.find((item) => item.id === flight.scheduleId)
+      if (slot && slot.status !== 'done') slot.status = 'cancelled'
+    }
+    flight.phase = 'gone'
+    flight.phaseTime = 0
+    flight.path = []
+    this.noteCargoCancel(flight)
+    return refund
+  }
+
+  private safeNodeFor(flight: Flight): Vec | null {
+    const occupied = new Set(
+      this.flights
+        .filter((other) => other.id !== flight.id && other.phase !== 'gone')
+        .map((other) => `${Math.round(other.x)},${Math.round(other.y)}`),
+    )
+    const ownStand =
+      flight.stand && this.tile(flight.stand) && this.tile(flight.stand) !== 'grass' ? flight.stand : null
+    const candidates = [
+      ...(ownStand ? [ownStand] : []),
+      ...tilesOf(this.tiles, 'stand'),
+      ...tilesOf(this.tiles, 'taxi'),
+      ...tilesOf(this.tiles, 'runway'),
+    ]
+    return candidates.find((cell) => !occupied.has(`${cell.c},${cell.r}`)) ?? candidates[0] ?? null
+  }
+
+  private applyStuckTruck(action: RecoveryAction): string {
+    const truck = this.trucks.find((item) => item.id === action.id)
+    if (!truck) return `${action.label} already gone.`
+    if (action.step === 'repath') {
+      this.repathStuckTruck(truck)
+      return `${action.label} re-pathed.`
+    }
+    if (action.step === 'release') {
+      truck.flightId = null
+      truck.returning = true
+      return `${action.label} released from its stop.`
+    }
+    if (action.step === 'teleport') {
+      const home = truck.home ?? tilesOf(this.tiles, 'taxi')[0] ?? tilesOf(this.tiles, 'road')[0]
+      if (home) {
+        truck.x = home.c
+        truck.y = home.r
+        truck.path = [home]
+        truck.seg = 0
+        truck.t = 0
+        return `${action.label} teleported to ${home.c},${home.r}.`
+      }
+      return `${action.label} had no safe node to teleport to.`
+    }
+    this.trucks = this.trucks.filter((item) => item.id !== truck.id)
+    return `${action.label} removed — call cancelled.`
+  }
+
+  private repathStuckTruck(truck: Truck) {
+    const from = { c: Math.round(truck.x), r: Math.round(truck.y) }
+    const flight = truck.flightId ? this.flights.find((item) => item.id === truck.flightId) : null
+    const goal = flight?.stand ?? truck.home
+    if (!goal) return
+    const path = nearestPath(this.tiles, from, [goal], 'truck')
+    if (!path || path.length < 2) return
+    truck.path = path
+    truck.seg = 0
+    truck.t = 0
+    truck.dwell = 0
+    truck.preDwell = 0
   }
 
   /** Nearby jets / trucks / apron walkers slow everyone — bad layouts jam. */
@@ -19873,6 +20215,8 @@ export class Game {
       }
     }
     this.people = this.people.filter((p) => p.stage < 99)
+
+    this.tickStuckWatchdog()
 
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     // At 5× the canvases keep drawing, but the HUD string updates about once a second.

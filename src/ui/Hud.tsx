@@ -78,6 +78,7 @@ import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
 import { AchievementToast, type AchievementDef } from '../achievements'
+import { DebugHud } from './DebugHud'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -375,6 +376,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
   return (
     <div className="hud">
+      <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
       {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
       <button

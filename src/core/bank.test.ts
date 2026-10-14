@@ -31,6 +31,17 @@ describe('shared bank', () => {
     expect(() => bank.post('retail_sales', -100, { simMinutes: 0 })).toThrow(/income category/)
   })
 
+  it('drops old journal lines without moving the balance or category totals', () => {
+    const bank = new Bank(1_000)
+    bank.post('landing_fees', 400, { simMinutes: 10 })
+    bank.post('payroll', -50, { simMinutes: 2_000 })
+    expect(bank.retainFrom(1_440)).toBe(1)
+    const ledger = bank.ledger()
+    expect(ledger.entries.map((entry) => entry.meta.simMinutes)).toEqual([2_000])
+    expect(ledger.balance).toBe(1_350)
+    expect(ledger.byCategory).toEqual({ landing_fees: 400, payroll: -50 })
+  })
+
   it('provides immutable daily views and serializable restoration', () => {
     const bank = new Bank(10_000)
     bank.post('retail_sales', 500, { simMinutes: 100 })
