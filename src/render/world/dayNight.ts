@@ -75,6 +75,7 @@ export interface DayNightSample {
   ground: number
   grass: number
   seasonId: string
+  precip: number
 }
 
 export interface AirfieldLevels {
@@ -164,6 +165,7 @@ export function idleDayNight(): DayNightSample {
     ground: 0x5a7a44,
     grass: 0xb7d49a,
     seasonId: 'spring',
+    precip: 0,
   }
 }
 

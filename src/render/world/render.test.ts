@@ -226,7 +226,7 @@ describe('initWorldRender', () => {
     wr.setTimeOfDay(12)
     wr.setWeather('storm')
     wr.update(game, cam, 1 / 60)
-    expect(scene.getObjectByName('world-rain')?.visible).toBe(true)
+    expect(scene.getObjectByName('world-weather')?.visible).toBe(true)
     wr.dispose()
   })
 
