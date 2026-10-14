@@ -1,3 +1,4 @@
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
@@ -8,7 +9,7 @@ import { applyRosterLivery } from './procLivery'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
 import { addRig, type RigSet } from './rig'
-import { legGeometry, type LegKind } from './gear'
+import { bayDoorsGeometry, legGeometry, wellGeometry, type LegKind } from './gear'
 import {
   paintMesh,
   paintVertexMesh,
@@ -470,6 +471,73 @@ function addFans(frame: Frame) {
   addPropBlades(frame, enginePoints(frame), eng, 'fan')
 }
 
+/**
+ * Height above ground of the lowest airframe skin over (x, z): the fuselage loft,
+ * the wing-to-body fairing or the wing's lower surface, whichever the leg meets first.
+ */
+const skinRay = new THREE.Raycaster()
+export function skinUnderside(frame: Pick<Frame, 'spec' | 'nose' | 'centerY' | 'wingX' | 'wingY'> & { group?: THREE.Group }, x: number, z: number): number | null {
+  const { spec, nose, centerY, wingX, wingY } = frame
+  const hits: number[] = []
+  // Ground truth first: the skin already built (fuselage, wing, tail), hit from below.
+  if (frame.group) {
+    frame.group.updateMatrixWorld(true)
+    const skin: THREE.Object3D[] = []
+    frame.group.traverse((o) => {
+      if (!(o as THREE.Mesh).isMesh) return
+      for (let a: THREE.Object3D | null = o; a; a = a.parent) if (a.name.startsWith('gear') || a.name === 'engines') return
+      skin.push(o)
+    })
+    skinRay.set(new THREE.Vector3(x, 0.01, z), new THREE.Vector3(0, 1, 0))
+    const hit = skinRay.intersectObjects(skin, false)[0]
+    if (hit && hit.point.y < centerY + spec.ry) hits.push(hit.point.y)
+  }
+  const fam = spec.family === 'rearjet' ? 'rearjet' : spec.family === 'prop' ? 'prop' : spec.family === 'helo' ? 'helo' : 'tube'
+  const t = (nose - x) / spec.lengthM
+  if (!frame.group && t >= 0 && t <= 1) {
+    const st = loftStation(fam, t)
+    const u = Math.abs(z) / (spec.rx * st.r)
+    if (u < 0.98) hits.push(centerY + spec.ry * (st.dy - st.r * Math.sqrt(1 - u * u)))
+  }
+  if (spec.family === 'tube' && spec.engines.mount === 'wing' && spec.lengthM > 25) {
+    const a = spec.rootChord * 0.95
+    const c = spec.rx * 0.93
+    const dx = (x - (wingX - spec.rootChord * 0.05)) / a
+    const dz = z / c
+    const q = 1 - dx * dx - dz * dz
+    if (q > 0.02) hits.push(centerY - spec.ry * 0.7 - spec.ry * 0.42 * Math.sqrt(q))
+  }
+  if (!frame.group && !spec.wingHigh && spec.family !== 'helo') {
+    const semi = spec.spanM / 2
+    const az = Math.abs(z)
+    if (az < semi) {
+      const frac = az / semi
+      const chord = spec.rootChord + (spec.tipChord - spec.rootChord) * frac
+      const le = wingX + spec.rootChord / 2 - Math.tan((spec.sweep * Math.PI) / 180) * az
+      if (x <= le + 0.1 && x >= le - chord - 0.1) {
+        hits.push(wingY + Math.tan((spec.dihedral * Math.PI) / 180) * az - spec.thickness * 0.5)
+      }
+    }
+  }
+  // Nothing overhead (e.g. a wide-track leg on a high wing): use the belly line, sponson-style.
+  if (!hits.length) return null
+  return Math.max(0.4, Math.min(...hits))
+}
+
+/** Streamlined gear pods on both hips, blending the main legs into the fuselage. */
+function addSponsons(frame: Frame, gear: THREE.Group, x: number, roof: number, wheelR: number, bogie: boolean) {
+  const { spec } = frame
+  for (const s of [1, -1]) {
+    const pod = new THREE.Mesh(smoothSphere())
+    pod.name = 'sponson'
+    pod.scale.set(wheelR * (bogie ? 4.2 : 3), Math.max(0.3, spec.ry * 0.3), spec.rx * 0.32)
+    pod.position.set(x, roof - spec.gear + pod.scale.y * 0.55, s * spec.rx * 0.82)
+    const painted = paintMesh(pod, 'belly', frame.livery, 'mesh', frame.tier)
+    gear.add(painted)
+    frame.meshes.push(painted)
+  }
+}
+
 /** Real 777s ride on six-wheel main bogies. */
 const SIX_WHEEL_MAINS = new Set(['b77w'])
 
@@ -486,6 +554,7 @@ function addGear(frame: Frame) {
   const lowBoxes: THREE.Matrix4[] = []
   const struts: THREE.Matrix4[] = []
   const wheels: THREE.Matrix4[] = []
+  const bays: THREE.BufferGeometry[] = []
 
   const mount = (x: number, z: number, bogie: boolean, role: 'nose' | 'main' | 'body' = 'main') => {
     // Close LOD reuses the mid legs; they already carry links, hubs and doors.
@@ -503,15 +572,27 @@ function addGear(frame: Frame) {
       : bogie ? (six ? 'bogie6' : 'bogie4') : airliner ? 'twin' : 'single'
     // Built for the starboard side; port legs mirror on Z so both share one geometry.
     const doorSide = role === 'main' && spec.family !== 'helo' ? 1 : 0
+    // The leg hangs from the real skin above it (fuselage, belly fairing or wing), not
+    // from a fixed height, so the oleo starts inside the bay and the tyres sit on the ground.
+    let roof = skinUnderside(frame, x, z)
+    if (roof === null || (spec.wingHigh && role === 'main' && Math.abs(z) > spec.rx * 0.7)) {
+      // Nothing overhead (high wing, or a leg aft of the wing): tuck it under the hip
+      // in a sponson, like the ATR, C-130 and C-17 gear pods.
+      z = Math.sign(z || 1) * spec.rx * 0.78
+      roof = skinUnderside(frame, x, z) ?? Math.max(spec.gear, frame.centerY - spec.ry * 0.85)
+      if (role === 'main' && z > 0) addSponsons(frame, gear, x, roof, wheelR, bogie)
+    }
+    const embed = Math.max(0.12, wheelR * 0.35)
+    const legH = roof + embed
     const geo = legGeometry({
       kind,
-      height: spec.gear,
+      height: legH,
       wheelR: role === 'nose' ? wheelR * 0.8 : wheelR,
       doorSide,
     })
     const leg = new THREE.Group()
     leg.name = `gear-${role}`
-    leg.position.set(x, 0, z)
+    leg.position.set(x, legH - spec.gear, z)
     if (z < 0) leg.scale.z = -1
     // Nose swings forward about Z; mains fold inboard about X.
     leg.userData.retract = role === 'nose'
@@ -527,6 +608,13 @@ function addGear(frame: Frame) {
     if (role === 'nose' && !spec.tailWheel) leg.userData.steer = true
     gear.add(leg)
     frame.gears.push(leg)
+    // Wheel well and open bay doors at the skin, merged into one mesh for all legs below.
+    const r = role === 'nose' ? wheelR * 0.8 : wheelR
+    const span = kind === 'bogie6' ? r * 5.6 : kind === 'bogie4' ? r * 3.4 : r * 2.4
+    const wid = kind === 'single' ? r * 1.1 : r * 1.9
+    const at = new THREE.Matrix4().makeTranslation(x, roof + 0.02 - spec.gear, z)
+    bays.push(wellGeometry(span, wid).applyMatrix4(at))
+    if (spec.family !== 'helo') bays.push(bayDoorsGeometry(span * 0.9, wid, Math.min(r * 1.5, legH * 0.45)).applyMatrix4(at))
   }
 
   if (spec.skids) {
@@ -594,6 +682,20 @@ function addGear(frame: Frame) {
   park(unitBox(), lowBoxes, 'metal')
   park(unitCylinder(cylinderSides(tier === 'low' ? 'low' : 'mid')), struts, 'metal')
   park(unitCylinder(8), wheels, 'rubber')
+  if (bays.length) {
+    const bay = new THREE.Group()
+    bay.name = 'gear-bay'
+    // Never swings; hidden once the gear is up and the doors shut.
+    bay.userData.bay = true
+    const merged = mergeGeometries(bays)!
+    bays.forEach((g) => g.dispose())
+    const mesh = paintVertexMesh(new THREE.Mesh(merged), 'mid', 'mesh', 'metal')
+    mesh.name = 'bay-doors'
+    bay.add(mesh)
+    frame.meshes.push(mesh)
+    gear.add(bay)
+    frame.gears.push(bay)
+  }
   if (tier === 'mid') gear.userData.legs = true
 }
 

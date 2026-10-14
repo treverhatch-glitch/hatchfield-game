@@ -141,3 +141,38 @@ export function legGeometry(shape: LegShape): THREE.BufferGeometry {
   }
   return sharedGeo(key, build)
 }
+
+const WELL = new THREE.Color('#1b1e21')
+
+/** Dark wheel-well recess, flush under the skin at the leg's attach point. Local origin = bay roof. Unshared: callers bake and merge it. */
+export function wellGeometry(len: number, wid: number): THREE.BufferGeometry {
+  return ((() => {
+    const g = mergeGeometries([
+      box(len, 0.06, wid, WELL, T(0, -0.03, 0)),
+      // Bay rim, so the opening reads as a cut-out in the skin.
+      box(len + 0.08, 0.03, 0.05, C.link, T(0, -0.055, wid / 2)),
+      box(len + 0.08, 0.03, 0.05, C.link, T(0, -0.055, -wid / 2)),
+      box(0.05, 0.03, wid, C.link, T(len / 2, -0.055, 0)),
+      box(0.05, 0.03, wid, C.link, T(-len / 2, -0.055, 0)),
+    ])!
+    return g
+  })())
+}
+
+/**
+ * Bay doors hinged on the long edges of the well, hanging open and splayed outward.
+ * Local origin = bay roof; the doors hang down (−Y), so scaling Y folds them shut.
+ */
+export function bayDoorsGeometry(len: number, wid: number, drop: number): THREE.BufferGeometry {
+  return ((() => {
+    const splay = 0.22
+    const parts: THREE.BufferGeometry[] = []
+    for (const s of [1, -1]) {
+      parts.push(box(len * 0.96, drop, 0.04, C.door,
+        T(0, -drop / 2 * Math.cos(splay), s * (wid / 2 + Math.sin(splay) * drop / 2), -s * splay, 0, 0)))
+      // Hinge bar along the bay edge.
+      parts.push(cyl(0.035, len * 0.9, 6, C.link, T(0, -0.04, s * wid / 2, 0, 0, Math.PI / 2)))
+    }
+    return mergeGeometries(parts)!
+  })())
+}

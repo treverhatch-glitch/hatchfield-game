@@ -235,6 +235,10 @@ export class CrossfadeLOD extends THREE.LOD {
     this.lastHeading = heading
     this.steer += (THREE.MathUtils.clamp(yawRate * 2.2, -0.7, 0.7) - this.steer) * Math.min(1, dt * 6)
     for (const gear of buckets.gears) {
+      if (gear.userData.bay) {
+        gear.visible = this.gearT > 0.03
+        continue
+      }
       const retract = gear.userData.retract as { axis: 'x' | 'z'; angle: number } | undefined
       if (retract) {
         gear.rotation[retract.axis] = (1 - this.gearT) * retract.angle
