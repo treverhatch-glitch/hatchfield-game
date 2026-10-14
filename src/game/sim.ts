@@ -17649,7 +17649,7 @@ export class Game {
           this.trySpawn(depth + 1)
           return
         }
-        this.pushNews(`${slot.flightNo} holding — ${structural}.`, 'bad')
+        this.pushNews(`${slot.flightNo} delayed — ${structural}.`, 'bad')
         return
       }
       const why = hint?.fix ?? structural ?? `strip ${this.longestRunway()}c can't take their metal`
