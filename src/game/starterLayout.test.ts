@@ -42,9 +42,10 @@ describe('starter kits', () => {
     expect(tilesOf(first.tiles, 'guard').length).toBe(1)
     expect(tilesOf(first.tiles, 'cargo').length).toBe(1)
     expect(tilesOf(first.tiles, 'fuel').length).toBe(1)
-    expect(boxes).toHaveLength(1)
-    expect(runwayStrips(first.tiles, 6)).toHaveLength(1)
+    expect(boxes).toHaveLength(2)
+    expect(runwayStrips(first.tiles, 6)).toHaveLength(2)
     expect(runwayStrips(first.tiles, 6)[0]).toHaveLength(14)
+    expect(runwayStrips(first.tiles, 6)[1]).toHaveLength(14)
     expect(clearanceIntrusions(first.tiles)).toEqual([])
 
     for (const stand of stands) {

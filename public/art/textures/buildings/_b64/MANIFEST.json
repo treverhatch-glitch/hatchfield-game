@@ -1,0 +1,82 @@
+[
+  {
+    "path": "public/art/textures/buildings/chevron_stripe.jpg",
+    "b64": "public__art__textures__buildings__chevron_stripe.jpg.b64",
+    "nbytes": 272184
+  },
+  {
+    "path": "public/art/textures/buildings/dock_floor.jpg",
+    "b64": "public__art__textures__buildings__dock_floor.jpg.b64",
+    "nbytes": 282680
+  },
+  {
+    "path": "public/art/textures/buildings/gravel_yard.jpg",
+    "b64": "public__art__textures__buildings__gravel_yard.jpg.b64",
+    "nbytes": 427478
+  },
+  {
+    "path": "public/art/textures/buildings/hangar_cladding.jpg",
+    "b64": "public__art__textures__buildings__hangar_cladding.jpg.b64",
+    "nbytes": 651976
+  },
+  {
+    "path": "public/art/textures/buildings/roof_membrane.jpg",
+    "b64": "public__art__textures__buildings__roof_membrane.jpg.b64",
+    "nbytes": 395401
+  },
+  {
+    "path": "public/art/textures/buildings/tank_steel.jpg",
+    "b64": "public__art__textures__buildings__tank_steel.jpg.b64",
+    "nbytes": 630680
+  },
+  {
+    "path": "public/art/textures/buildings/terminal_glass.jpg",
+    "b64": "public__art__textures__buildings__terminal_glass.jpg.b64",
+    "nbytes": 111253
+  },
+  {
+    "path": "public/art/textures/buildings/terrazzo_floor.jpg",
+    "b64": "public__art__textures__buildings__terrazzo_floor.jpg.b64",
+    "nbytes": 264037
+  },
+  {
+    "path": "public/art/textures/buildings/warehouse_panels.jpg",
+    "b64": "public__art__textures__buildings__warehouse_panels.jpg.b64",
+    "nbytes": 575864
+  },
+  {
+    "path": "public/art/textures/buildings/airport_grass.jpg",
+    "b64": "public__art__textures__buildings__airport_grass.jpg.b64",
+    "nbytes": 286674
+  },
+  {
+    "path": "public/art/textures/buildings/apron_concrete.jpg",
+    "b64": "public__art__textures__buildings__apron_concrete.jpg.b64",
+    "nbytes": 264414
+  },
+  {
+    "path": "public/art/textures/buildings/asphalt_road.jpg",
+    "b64": "public__art__textures__buildings__asphalt_road.jpg.b64",
+    "nbytes": 298063
+  },
+  {
+    "path": "public/art/textures/buildings/conveyor_belt.jpg",
+    "b64": "public__art__textures__buildings__conveyor_belt.jpg.b64",
+    "nbytes": 196430
+  },
+  {
+    "path": "public/art/textures/buildings/diamond_plate.jpg",
+    "b64": "public__art__textures__buildings__diamond_plate.jpg.b64",
+    "nbytes": 226072
+  },
+  {
+    "path": "public/art/textures/buildings/gse_yellow_paint.jpg",
+    "b64": "public__art__textures__buildings__gse_yellow_paint.jpg.b64",
+    "nbytes": 214279
+  },
+  {
+    "path": "public/art/textures/buildings/truck_white_panel.jpg",
+    "b64": "public__art__textures__buildings__truck_white_panel.jpg.b64",
+    "nbytes": 146323
+  }
+]

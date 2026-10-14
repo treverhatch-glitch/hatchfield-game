@@ -3,6 +3,7 @@ import { moneySummaryLine, projectCash } from './cashForecast'
 import { useHudBandVar } from './hudBand'
 import { LiveText } from './LiveText'
 import { ViewModeToggle } from './ViewModeToggle'
+import { useItemThumb } from './itemThumbs'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
@@ -207,6 +208,8 @@ function toolCost(tool: Tool): number | null {
 }
 
 function TrayMark({ tool }: { tool: string }) {
+  const thumb = useItemThumb(tool)
+  if (thumb) return <img className="tray-thumb" src={thumb} alt="" aria-hidden draggable={false} />
   const kind = tool.includes('runway')
     ? 'strip'
     : tool === 'taxi' || tool === 'road' || tool === 'belt'

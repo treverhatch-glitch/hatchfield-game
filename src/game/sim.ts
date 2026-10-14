@@ -9,6 +9,9 @@ import {
   StandingAdvisor,
   type StandingCauseCategory,
 } from './standingAdvisor.ts'
+import { ServiceYard, type YardBuilding } from '../build/serviceYard'
+import { SERVICE_POINTS, type VehicleKind } from '../build/servicePoints'
+import { chooseLot, lotCells, lotSize, type Lot } from '../build/footprints.ts'
 import {
   AIRLINES,
   airlineList,
@@ -1168,6 +1171,11 @@ export class Game {
   eGates = 0
   standScale: Record<string, SizeTier> = {}
   hangarScale: Record<string, SizeTier> = {}
+  /** Anchor key → reserved lot. Buildings without one are grandfathered 1×1. */
+  lots: Record<string, Lot> = {}
+  /** Per-building service points: docks, hoses, bays (render + throughput). */
+  yard = new ServiceYard()
+  private yardTick = 0
   private lastRailFlowing = false
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
@@ -3752,6 +3760,7 @@ export class Game {
     // Drop the city-edge stub and any stray paint. The stamp is the whole field.
     for (const row of this.tiles) row.fill('grass')
     const kit = stampStarterKit(this.tiles, this.startFocus)
+    this.lots = { ...kit.lots }
     this.facing = 'h'
     for (const stand of kit.stands) {
       const key = `${stand.c},${stand.r}`
@@ -4833,6 +4842,7 @@ export class Game {
       standAccess: this.standAccess,
       standScale: this.standScale,
       hangarScale: this.hangarScale,
+      lots: this.lots,
       pillar: {
         contractId: this.contractId,
         tankTier: this.tankTier,
@@ -4913,6 +4923,7 @@ export class Game {
       tier3Sites: this.lateSites.map((site) => ({ ...site })),
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
+      yard: this.yard.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -4944,6 +4955,9 @@ export class Game {
         })
       })
       this.cash = s.cash
+      this.yard = new ServiceYard()
+      this.yard.restore(s.yard)
+      this.tugJobs.clear()
       this.branding = (typeof s.branding === 'string' && deserializeBranding(s.branding)) || defaultBranding()
       this.difficulty = s.difficulty
       this.site = s.site
@@ -5017,6 +5031,7 @@ export class Game {
       this.standAccess = s.standAccess ?? {}
       this.standScale = s.standScale ?? {}
       this.hangarScale = s.hangarScale ?? {}
+      this.lots = s.lots ?? {}
       this.contractId = s.pillar?.contractId ?? null
       this.tankTier = s.pillar?.tankTier ?? 1
       this.tankLitres = s.pillar?.litres ?? seedLitresFromLoads(s.fuelLoads)
@@ -10232,6 +10247,18 @@ export class Game {
   }
 
   /** Door slide for one hangar. 0 is shut. The renderer ignores this when the camera is far. */
+  /** A line-MX aircraft is heading into / sitting in / leaving this hangar cell. */
+  hangarInUse(cellKey: string): boolean {
+    const [c, r] = cellKey.split(',').map(Number)
+    for (const f of this.flights) {
+      if (f.phase !== 'mx_taxi' && f.phase !== 'mx_bay' && f.phase !== 'mx_return') continue
+      const end = f.phase === 'mx_return' ? f.path[0] : f.path[f.path.length - 1]
+      if (end && Math.abs(end.c - c!) <= 1 && Math.abs(end.r - r!) <= 1) return true
+      if (Math.abs(Math.round(f.x) - c!) <= 1 && Math.abs(Math.round(f.y) - r!) <= 1) return true
+    }
+    return false
+  }
+
   mroDoorOpen(cellKey: string): number {
     let open = 0
     for (const job of this.tier3.activeJobs()) {
@@ -11442,6 +11469,7 @@ export class Game {
     this.eGates = 0
     this.standScale = {}
     this.hangarScale = {}
+    this.lots = {}
     this.lastRailFlowing = false
   }
 
@@ -15092,7 +15120,50 @@ export class Game {
   }
 
   cellsBlocked(cells: Vec[]): boolean {
-    return cells.some((p) => this.siteAt(p))
+    return cells.some((p) => this.siteAt(p) || this.lotOwnerAt(p) != null)
+  }
+
+  /** Anchor of the lot reserving this (non-anchor) cell, or null. */
+  lotOwnerAt(v: Vec): Vec | null {
+    for (const key in this.lots) {
+      const [c, r] = key.split(',').map(Number) as [number, number]
+      if (c === v.c && r === v.r) continue
+      const cells = lotCells({ c, r }, this.lots[key]!)
+      if (cells.some((p) => p.c === v.c && p.r === v.r)) return { c, r }
+    }
+    return null
+  }
+
+  /** Front-cell access rule for a lot: what the building must face. */
+  private lotAccess(tile: Tile): ((v: Vec) => boolean) | null {
+    const t = (v: Vec) => (inBounds(v.c, v.r) ? this.tile(v) : null)
+    const paved = (v: Vec) => {
+      const x = t(v)
+      return x === 'taxi' || x === 'stand' || x === 'runway' || x === 'road'
+    }
+    const road = (v: Vec) => t(v) === 'road'
+    if (tile === 'fuel' || tile === 'kitchen' || tile === 'depot' || tile === 'deice') return paved
+    if (
+      tile === 'hotel' || tile === 'park_s' || tile === 'park_l' || tile === 'park_g' ||
+      tile === 'park_u' || tile === 'bus' || tile === 'rail'
+    )
+      return road
+    return null
+  }
+
+  /** Lot this tool would reserve at v, or null when it is 1×1 / nothing fits. */
+  planLot(v: Vec, tile: Tile, tool: string): { lot: Lot | null; size: ReturnType<typeof lotSize> } {
+    const size = lotSize(tile, tile === 'hangar' ? (hangarScaleForTool(tool as Tool) ?? 'small') : null)
+    if (!size) return { lot: null, size: null }
+    const lot = chooseLot(v, size, {
+      inBounds: (p) => inBounds(p.c, p.r),
+      free: (p) =>
+        (p.c === v.c && p.r === v.r) ||
+        (this.tile(p) === 'grass' && !this.siteAt(p) && this.lotOwnerAt(p) == null),
+      access: this.lotAccess(tile),
+      prefer: [{ c: 0, r: 1 }],
+    })
+    return { lot, size }
   }
 
   enqueueBuild(site: Omit<BuildSite, 'id' | 'elapsed' | 'duration' | 'warned' | 'vanArrived' | 'delivered' | 'crewSpawned'> & Partial<BuildSite>) {
@@ -15120,6 +15191,7 @@ export class Game {
     if (!site) return
     const refund = Math.round(site.cost * BULLDOZE_REFUND)
     this.cash += refund
+    if (site.lot && site.origin) delete this.lots[`${site.origin.c},${site.origin.r}`]
     this.sites = this.sites.filter((s) => s.id !== id)
     this.trucks = this.trucks.filter((t) => t.flightId !== id)
     this.pushNews(`Construction cancelled — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
@@ -15334,6 +15406,7 @@ export class Game {
   }
 
   clearTile(v: Vec) {
+    v = this.lotOwnerAt(v) ?? v
     const building = this.siteAt(v)
     if (building) {
       this.cancelSite(building.id)
@@ -15385,6 +15458,7 @@ export class Game {
       delete this.standScale[`${v.c},${v.r}`]
       delete this.hubLinksBuilt[`${v.c},${v.r}`]
       delete this.hangarScale[`${v.c},${v.r}`]
+      delete this.lots[`${v.c},${v.r}`]
     }
     this.bumpMap()
     this.ensureGround()
@@ -15611,8 +15685,8 @@ export class Game {
     if (!id) return
     const spec = buildingById(id)
     if (!spec) return
-    if (this.siteAt(v)) {
-      this.pushNews('Already a construction site.', 'bad')
+    if (this.siteAt(v) || this.lotOwnerAt(v)) {
+      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'That ground belongs to a building lot.', 'bad')
       this.emit()
       return
     }
@@ -15695,11 +15769,12 @@ export class Game {
         return
       }
     }
-    if (this.siteAt(v)) {
-      this.pushNews('Already a construction site.', 'bad')
+    if (this.siteAt(v) || this.lotOwnerAt(v)) {
+      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'That ground belongs to a building lot.', 'bad')
       this.emit()
       return
     }
+    // Physical reason first (it names what is in the way), then the plain grass rule.
     const blocked = this.placementBlockReason(building.tile, [v], v, building.name)
     if (blocked) {
       this.pushNews(blocked, 'bad')
@@ -15710,6 +15785,28 @@ export class Game {
       this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
+    }
+    const planned = this.planLot(v, building.tile, building.tool)
+    if (planned.size && !planned.lot) {
+      const m = (n: number) => n * 22
+      this.pushNews(
+        `${building.name} needs a ${planned.size.w}×${planned.size.d} lot (${m(planned.size.w)}×${m(planned.size.d)} m) of clear grass${
+          this.lotAccess(building.tile) ? ' facing its road or pavement' : ''
+        }.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    const lotArea = planned.lot ? lotCells(v, planned.lot) : [v]
+    if (planned.lot) {
+      // The whole lot (not just the anchor) must clear runway strips, stands and other stamps.
+      const lotBlocked = this.placementBlockReason(building.tile, lotArea, v, building.name)
+      if (lotBlocked) {
+        this.pushNews(lotBlocked, 'bad')
+        this.emit()
+        return
+      }
     }
     if (building.tile === 'fuel' && !farmBesidePavement(this.tiles, v)) {
       this.pushNews('Park the farm beside taxi, stand, runway, or road.', 'bad')
@@ -15754,7 +15851,8 @@ export class Game {
         { c: v.c, r: v.r + 1 },
         { c: v.c, r: v.r - 1 },
       ].some((p) => {
-        const t = this.tile(p)
+        const owner = this.lotOwnerAt(p)
+        const t = this.tile(owner ?? p)
         return t === 'fuel' || t === 'fuel_rail'
       })
       if (!beside) {
@@ -15896,7 +15994,9 @@ export class Game {
           ? this.parkTerm
           : undefined,
       origin: v,
+      lot: planned.lot ?? undefined,
     })
+    if (planned.lot) this.lots[`${v.c},${v.r}`] = planned.lot
   }
 
   /** Wide stands are code E. Legacy L stands with no scale stay code F. */
@@ -16089,7 +16189,20 @@ export class Game {
         standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
       )
     }
+    const def = BUILDINGS.find((b) => b.tool === this.tool)
+    if (def && inBounds(hover.c, hover.r)) {
+      const plan = this.planLot(hover, def.tile, def.tool)
+      if (plan.size) return lotCells(hover, plan.lot ?? { w: plan.size.w, d: plan.size.d, dir: { c: 0, r: 1 } })
+    }
     return [hover]
+  }
+
+  /** Lot the ghost would reserve at the hover cell (for the renderer). */
+  ghostLot(): Lot | null {
+    const def = BUILDINGS.find((b) => b.tool === this.tool)
+    if (!def || !this.hover) return null
+    const plan = this.planLot(this.hover, def.tile, def.tool)
+    return plan.lot ?? (plan.size ? { w: plan.size.w, d: plan.size.d, dir: { c: 0, r: 1 } } : null)
   }
 
   ghostRunway(hover: Vec): Vec[] {
@@ -16558,6 +16671,7 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.dispatchFireTender(pad)
     this.noteCraft(af.kind)
     this.heloCool = demandInterval(75 + Math.random() * 40, this.fees)
     this.selectedFlight = this.selectedFlight ?? f.id
@@ -17429,6 +17543,7 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.dispatchFireTender(stand)
     this.noteCraft('air_ambulance')
     this.ambuCool = 130 + Math.random() * 70
     this.pushNews(
@@ -17496,6 +17611,152 @@ export class Game {
       home: home ?? (path.length ? path[0] : null),
       cargoUnits,
     })
+    if (kind === 'fire' && start) {
+      const key = `${start.c},${start.r}`
+      const tr = this.trucks[this.trucks.length - 1]!
+      if (this.yard.serves(key, 'fire') && this.yard.depart(tr.id, 'fire', key)) this.yard.step(tr.id, 0)
+    }
+  }
+
+  /** Standby run: a tender rolls out of a free fire-station bay to meet the arrival, then returns. */
+  dispatchFireTender(target: Vec | null | undefined) {
+    if (!target) return
+    if (this.trucks.some((t) => t.kind === 'fire')) return
+    const stations = tilesOf(this.tiles, 'fire')
+    if (!stations.length) return
+    const path = nearestPath(this.tiles, stations[0]!, [target], 'truck')
+    if (!path || path.length < 2) return
+    this.spawnTruck('fire', null, path, 'patrol', stations[0])
+  }
+
+  /** Buildings with service points → the yard (anchor + lot). */
+  syncYard() {
+    const out: YardBuilding[] = []
+    for (let r = 0; r < this.tiles.length; r++) {
+      const row = this.tiles[r]!
+      for (let c = 0; c < row.length; c++) {
+        const tile = row[c]!
+        if (!SERVICE_POINTS[tile]) continue
+        const key = `${c},${r}`
+        out.push({ key, tile, anchor: { c, r }, lot: this.lots[key] ?? null })
+      }
+    }
+    this.yard.sync(out)
+  }
+
+  private tugJobs = new Map<string, string>()
+  /**
+   * Tow tugs as yard vehicles at hangars / MRO: one tug per tow leg (in on
+   * mx_taxi, out on mx_return). If the door is busy the tug waits in the
+   * hangar's own queue lane; when the tow ends it rolls out the exit lane.
+   */
+  tickTugs(step: number) {
+    const want = new Map<string, string>()
+    for (const f of this.flights) {
+      if (!f.hangarBay || (f.phase !== 'mx_taxi' && f.phase !== 'mx_return')) continue
+      want.set(`tug:${f.id}:${f.phase === 'mx_taxi' ? 'in' : 'out'}`, `${f.hangarBay.c},${f.hangarBay.r}`)
+    }
+    for (const [id, key] of want) {
+      if (this.tugJobs.has(id)) continue
+      if (!this.yard.serves(key, 'tow')) this.syncYard()
+      if (!this.yard.serves(key, 'tow')) continue
+      const spec = this.yard.spec(key)!
+      const from = spec.queue[spec.queue.length - 1] ?? spec.approach
+      if (this.yard.arrive(id, 'tow', key, from, 900)) this.tugJobs.set(id, key)
+    }
+    for (const id of [...this.tugJobs.keys()]) {
+      if (!want.has(id)) this.yard.finishWork(id)
+      const r = this.yard.step(id, step)
+      if (r === 'released' || r === null) this.tugJobs.delete(id)
+    }
+  }
+
+  /** Live tow-tug yard poses (render: tugs queue, dock at the door, leave). */
+  tugPoses(): { id: string; flightId: string; key: string; phase: string; c: number; r: number; heading: number }[] {
+    const out: { id: string; flightId: string; key: string; phase: string; c: number; r: number; heading: number }[] = []
+    for (const [id, key] of this.tugJobs) {
+      const j = this.yard.job(id)
+      if (!j) continue
+      out.push({ id, flightId: id.split(':')[1] ?? '', key, phase: j.phase, c: j.c, r: j.r, heading: j.heading })
+    }
+    return out
+  }
+
+  private coachClock = 0
+  /**
+   * Landside coaches: every bus-station kerb keeps up to two coaches cycling.
+   * Each one starts a few blocks out on the road, drives the road network to the
+   * kerb, docks at a free bay (or queues on the approach lane), boards, and leaves.
+   */
+  tickCoaches() {
+    if (this.coachClock-- > 0) return
+    this.coachClock = 4
+    const kerbs = tilesOf(this.tiles, 'bus')
+    for (const k of kerbs.slice(0, 8)) {
+      const live = this.trucks.filter((t) => t.kind === 'coach' && t.home && t.home.c === k.c && t.home.r === k.r).length
+      if (live >= 2) continue
+      const near: Vec[] = []
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const v = { c: k.c + dc, r: k.r + dr }
+        if (this.tile(v) === 'road') near.push(v)
+      }
+      if (!near.length) continue
+      let start: Vec | null = null
+      let best = 0
+      for (let dr = -9; dr <= 9; dr++) {
+        for (let dc = -9; dc <= 9; dc++) {
+          const v = { c: k.c + dc, r: k.r + dr }
+          const d = Math.abs(dc) + Math.abs(dr)
+          if (d < 4 || d <= best || this.tile(v) !== 'road') continue
+          best = d
+          start = v
+        }
+      }
+      if (!start) continue
+      const path = nearestPath(this.tiles, start, near, 'truck')
+      if (!path || path.length < 2) continue
+      path.push({ c: k.c, r: k.r })
+      this.trucks.push({
+        id: uid('coach'),
+        kind: 'coach',
+        flightId: null,
+        x: start.c,
+        y: start.r,
+        path,
+        seg: 0,
+        t: 0,
+        returning: true,
+        dwell: 0,
+        preDwell: live ? 2.5 : 0,
+        patrol: false,
+        mission: 'coach_run',
+        home: { c: k.c, r: k.r },
+      })
+    }
+  }
+
+  /** Hand a truck that reached its building to the yard (queue → dock → action → exit). */
+  yardArrive(t: Truck, at?: Vec | null): boolean {
+    const cell = at ?? t.home
+    if (!cell || t.kind === 'fire') return false
+    const key = `${cell.c},${cell.r}`
+    const kind = t.kind as VehicleKind
+    if (!this.yard.serves(key, kind)) {
+      this.syncYard()
+      if (!this.yard.serves(key, kind)) return false
+    }
+    const work =
+      t.kind === 'fuel' ? 2.6
+        : t.kind === 'bags' ? 1.6 + Math.min(2, (t.cargoUnits ?? 8) * 0.04)
+          : t.kind === 'catering' ? 2.8
+            : t.kind === 'citycargo' ? 2.2 + Math.min(2, (t.cargoUnits ?? 12) * 0.04)
+              : t.kind === 'deice' ? 2.2
+                : t.kind === 'coach' ? 3.2
+                  : 1.8
+    if (!this.yard.arrive(t.id, kind, key, { c: t.x, r: t.y }, work)) return false
+    const j = this.yard.job(t.id)!
+    t.yard = { key, action: j.action, phase: j.phase, progress: 0, heading: j.heading, point: j.point }
+    return true
   }
 
   /** Storm/fog + De-ice ops research + stamped pad → glycol truck before pushback. */
@@ -19496,10 +19757,28 @@ export class Game {
       return false
     })
 
+    if (this.yardTick-- <= 0) {
+      this.yardTick = 20
+      this.syncYard()
+      this.tickCoaches()
+    }
+    this.tickTugs(step)
     for (const t of this.trucks) {
       if (t.kind === 'contractor' || t.kind === 'delivery') {
         this.tickBuildTruck(t, step)
         continue
+      }
+      const ys = this.yard.step(t.id, step)
+      if (ys === 'hold') {
+        const j = this.yard.job(t.id)!
+        t.x = j.c
+        t.y = j.r
+        t.yard = { key: j.key, action: j.action, phase: j.phase, progress: j.progress, heading: j.heading, point: j.point }
+        continue
+      }
+      if (ys === 'released') {
+        t.yard = undefined
+        t.yardDone = true
       }
       // Makeup / farm bottom-load before rolling.
       if (t.preDwell > 0) {
@@ -19591,6 +19870,8 @@ export class Game {
             // Visible screen time at the post (Manor Lords handoff).
             t.dwell = 1.4 + Math.min(2.2, (t.cargoUnits ?? 12) * 0.04)
           } else if (t.mission === 'city_shed') {
+            if (!t.yardDone && this.yardArrive(t, t.path[t.path.length - 1])) continue
+            t.yardDone = false
             t.dwell = 1.6 + Math.min(2.5, (t.cargoUnits ?? 12) * 0.05)
           } else {
             t.dwell = 1.2
@@ -19635,6 +19916,8 @@ export class Game {
           if ((t.kind === 'fuel' || t.kind === 'catering') && t.dwell > 0) t.serviceFor = t.dwell
         }
       } else if (done && t.returning) {
+        if (!t.yardDone && this.yardArrive(t)) continue
+        t.yardDone = false
         if (t.kind === 'citycargo') {
           this.finishCityCargo(t)
           continue
@@ -19679,6 +19962,7 @@ export class Game {
         t.dwell = -99
       }
     }
+    for (const t of this.trucks) if (t.dwell === -99) this.yard.forget(t.id)
     this.trucks = this.trucks.filter((t) => t.dwell !== -99)
 
     for (const p of this.people) {

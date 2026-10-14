@@ -4,6 +4,9 @@ import { type AudioBus } from '../features/settings/settings.ts'
 import { Game } from '../game/sim.ts'
 import {
   chooseGraphicsQuality,
+  chooseMaterialFx,
+  materialFxPref,
+  type MaterialFxPref,
   graphicsAuto,
   graphicsNote,
   graphicsQuality,
@@ -117,6 +120,7 @@ export function PauseMenu({ game, onQuit }: { game: Game; onQuit: () => void }) 
 export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
   const [audioMix, setAudioMix] = useState(() => audioSettings().get())
   const [gfx, setGfx] = useState<QualityLevel>(graphicsQuality)
+  const [fx, setFx] = useState<MaterialFxPref>(materialFxPref)
   useEffect(() => subscribeGraphicsQuality(setGfx), [])
   return (
     <div data-testid="settings-game">
@@ -213,6 +217,25 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
       <p className="muted" data-testid="gfx-note">
         {graphicsNote(gfx, graphicsAuto())}
       </p>
+      <div className="gfx-quality" role="radiogroup" aria-label="Building surface detail">
+        <span className="muted">Building surface detail</span>
+        {(['auto', 'on', 'off'] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            role="radio"
+            aria-checked={fx === p}
+            data-testid={`matfx-${p}`}
+            className={fx === p ? 'on' : ''}
+            onClick={() => {
+              chooseMaterialFx(p)
+              setFx(p)
+            }}
+          >
+            {p === 'auto' ? 'Auto (High only)' : p === 'on' ? 'On' : 'Off'}
+          </button>
+        ))}
+      </div>
       <h3>Hints</h3>
       <label className="sandbox-toggle">
         <input
