@@ -4,7 +4,8 @@
  * Art lives at `public/textures/liveries/<airline>/` and is listed in
  * `manifest.json`. Until a file is listed and loads, the shell keeps its
  * procedural vertex colours. Opaque texels replace that paint; transparent
- * texels leave it alone.
+ * texels leave it alone. Shipped plates are JPEGs. Their pixel size follows
+ * the texture-quality setting; the UVs below stay 0–1 either way.
  *
  * Image axes (Three flips Y, so the top of the PNG is V = 1):
  *

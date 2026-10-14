@@ -4,6 +4,7 @@ import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
 import { cylinderSides, finGeometry, fuselageSides, paintedLoftGeometry, wingGeometry } from './geom'
 import type { LiveryBox } from './liveryUv'
+import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
 import {
   paintMesh,
@@ -679,8 +680,12 @@ function addLogo(frame: Frame) {
     mesh.userData.lodOpacity = 1
     mesh.userData.kind = 'decal'
     mesh.userData.tier = frame.tier
+    mesh.userData.airline = frame.livery.airline
     const fadeMat = fade as THREE.Material & { opacity: number }
     mesh.onBeforeRender = () => {
+      const airline = resolveLiveryAirline(mesh.userData.airline as string | undefined)
+      // The fin already wears the tail plate. The initials decal would cover it.
+      mesh.visible = !airline || !liveryPlateReady(airline)
       if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
     }
     frame.group.add(mesh)

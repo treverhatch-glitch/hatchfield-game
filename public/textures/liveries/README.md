@@ -1,34 +1,32 @@
-# Airline livery strips
+# Airline livery plates
 
-Drop PNGs here when the art is ready. List the airline id in `manifest.json`
-(`["northline", "crown"]`). Airlines that are absent keep the procedural paint.
+Full-resolution originals live in `assets/liveries/<id>/` and are not served.
+`scripts/build-liveries.py` writes the browser copies here. High-res is the
+default file. `med/` and `low/` are the only smaller copies. The game picks
+one with `localStorage['hatchfield-texture-quality']` (`low`, `med`, or
+`high`). Anything else, including a missing key, stays on high.
 
 ```
-public/textures/liveries/<airline>/fuselage.png
-public/textures/liveries/<airline>/tail.png
-public/textures/liveries/<airline>/engine.png
+public/textures/liveries/<id>/fuselage.jpg
+public/textures/liveries/<id>/tail.jpg
+public/textures/liveries/<id>/med/…
+public/textures/liveries/<id>/low/…
 ```
 
-Airline ids match the catalog: `bushline`, `northline`, `harbor`, `summit`,
-`crown`, `umazon`, `upps`, `exfed`.
+`manifest.json` lists each plate, the catalog ids that wear it, and the solid
+engine colour. Engines are not a texture file.
 
-Three.js flips the image, so the **top row of the PNG is V = 1**. Opaque pixels
-replace the procedural colour. Transparent pixels leave it.
+| Airline | Also worn by | Engine |
+| --- | --- | --- |
+| `bushline_local` | `bushline` | cream `#F5E6C8` |
+| `zoomjet` | `zoomjet` | light grey `#D5D8DC` |
+| `crown_pacific` | `crown` | gold `#C5A059` |
+| `siam_breeze` | — | white `#F7FBFA` |
+| `northstar_cargo` | — | yellow `#FFC107` |
 
-| File | Pixels | U (left → right) | V (bottom → top) |
-| --- | --- | --- | --- |
-| `fuselage.png` | 1024×256 (4:1) | nose → tail | belly → crown |
-| `tail.png` | 512×512 | leading edge → trailing edge | root → tip |
-| `engine.png` | 512×128 (4:1) | around the cowling, seam at the bottom | intake → exhaust |
+Three.js flips Y, so the **top row of the JPEG is V = 1**. The plates are
+opaque. Nose is on the left of `fuselage.jpg` and the crown is the top.
+`tail.jpg` has the leading edge on the left and the tip at the top. A word
+reads on the port side and is mirrored on the starboard side.
 
-The fuselage strip is a flat side elevation, mapped the same way on both sides
-(not mirrored). Horizontal bands and window rows line up. A word in the strip
-reads on the port side and is mirrored on the starboard side, so keep titles
-symmetric or put the mark in `tail.png`. The nose tip sits near the vertical
-middle of the strip; the crown is the top edge.
-
-`engine.png` is the unwrapped barrel. A horizontal stripe becomes a band around
-the cowling. The intake lip, nozzle and pylon stay bare metal.
-
-The maps bind on the mid and far shells (the airframe you see from the apron).
-Close-up doors and fan blades stay procedural.
+Long side of a high plate is at most 1280 px. Med is 640, low is 320.

@@ -142,8 +142,9 @@ export interface Livery {
    */
   scheme?: 'twotone' | 'solid'
   /**
-   * Catalog airline id (`northline`, `crown`, …). When set, the shell looks for
-   * `public/textures/liveries/<airline>/{fuselage,tail,engine}.png`.
+   * Catalog airline id (`bushline`, `crown`, …). When set, the shell looks up
+   * `public/textures/liveries/manifest.json` and samples that airline's
+   * fuselage and tail JPEGs. Engines use the manifest's solid colour.
    * Missing art keeps the procedural colours.
    */
   airline?: string

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { AIRCRAFT_LOOK } from '../look'
-import { bindLiveryUniforms, disposeLiveryTextures, hookLiveryMaterial } from './liveryTex'
+import { bindLiveryUniforms, disposeLiveryTextures, hookLiveryMaterial, resolveLiveryAirline } from './liveryTex'
 import type { Livery } from './specs'
 
 const geos = new Map<string, THREE.BufferGeometry>()
@@ -217,7 +217,7 @@ export function paintVertexMesh(
   mesh.userData.tier = tier
   mesh.onBeforeRender = () => {
     const current = mesh.material as THREE.Material
-    bindLiveryUniforms(current, mesh.userData.airline as string | undefined)
+    bindLiveryUniforms(current, resolveLiveryAirline(mesh.userData.airline as string | undefined))
     if (current === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
   }
   return mesh as PaintedMesh
