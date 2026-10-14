@@ -28,6 +28,8 @@ import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
+import { ConstructionLayer } from '../build/construction'
+import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
 import {
   addFuelRail,
   addHangar,
@@ -212,6 +214,10 @@ export class World {
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
   siteGroup = new THREE.Group()
+  construction = new ConstructionLayer((tile, c, r) => {
+    const g = this.building(tile as Tile, toWorld(c, r, 0.02))
+    return g.children.length ? g : null
+  })
   /** Empty-gate jet bridges. Kept off tilesGroup so releaseTiles cannot dispose shared bridge geometry. */
   gateGroup = new THREE.Group()
   parkedFleet = new ParkedFleet()
@@ -294,6 +300,7 @@ export class World {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.renderer.localClippingEnabled = true // construction reveal
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#87b7d9')
@@ -339,6 +346,7 @@ export class World {
     this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
+    this.scene.add(this.construction.group)
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
@@ -1661,32 +1669,24 @@ export class World {
   private addGhostPrefab(game: Game, cells: Vec[], tint: number) {
     const tile = game.placementTile()
     if (!tile || !game.hover || !cells.length) return
-    const mat = new THREE.MeshBasicMaterial({
-      color: tint,
-      transparent: true,
-      opacity: 0.62,
-      depthWrite: false,
-    })
-    const ghostify = (root: THREE.Object3D) => {
-      const dropped: THREE.Material[] = []
-      root.traverse((o) => {
-        if (!(o instanceof THREE.Mesh)) return
-        const src = o.material
-        if (Array.isArray(src)) dropped.push(...src)
-        else dropped.push(src)
-        o.material = mat
-        o.castShadow = false
-        o.receiveShadow = false
-      })
-      for (const m of new Set(dropped)) {
-        if (m !== mat) m.dispose()
-      }
-    }
+    const ghostMats = ghostMaterials(tint !== 0xff6b6b)
+    const mat = ghostMats.body
+    this.ghostGroup.userData.ghostMats = ghostMats
     if (tile === 'runway' || tile === 'taxi' || tile === 'road') {
       this.ghostGroup.add(this.ghostSlab(cells, tile === 'runway' ? 0.22 : 0.16, mat))
       return
     }
     if (tile === 'terminal') {
+      let real = 0
+      for (const p of cells) {
+        if (!inBounds(p.c, p.r)) continue
+        const built = this.building(tile, toWorld(p.c, p.r, 0))
+        if (!built.children.length) continue
+        ghostifyModel(built, ghostMats, { edges: false })
+        this.ghostGroup.add(built)
+        real++
+      }
+      if (real) return
       const slab = this.ghostSlab(cells, ROOF_Y, mat)
       slab.position.y = ROOF_Y / 2
       this.ghostGroup.add(slab)
@@ -1725,7 +1725,7 @@ export class World {
     for (const p of cells) {
       if (!inBounds(p.c, p.r)) continue
       const built = this.building(tile, toWorld(p.c, p.r, 0))
-      ghostify(built)
+      ghostifyModel(built, ghostMats)
       this.ghostGroup.add(built)
     }
   }
@@ -2267,7 +2267,7 @@ export class World {
     const geos = new Set<THREE.BufferGeometry>()
     const mats = new Set<THREE.Material>()
     this.ghostGroup.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return
+      if (!(o instanceof THREE.Mesh) && !(o instanceof THREE.LineSegments)) return
       geos.add(o.geometry)
       const mat = o.material
       if (Array.isArray(mat)) for (const m of mat) mats.add(m)
@@ -2288,6 +2288,7 @@ export class World {
       this.sitesHash = key
       this.rebuildSites(game)
     }
+    this.construction.sync(game.sites)
     let i = 0
     for (const site of game.sites) {
       const progress = Math.max(0.04, Math.min(1, site.elapsed / site.duration))
