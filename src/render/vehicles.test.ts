@@ -76,7 +76,7 @@ describe('ground vehicle models', () => {
     )
   })
 
-  it('instances a fleet: one body + one lights draw per model', () => {
+  it('instances a fleet: one body + one lights draw per model, plus one per animated part', () => {
     const fleet = new VehicleFleet()
     const size = [8, 3, 2.5] as const
     fleet.sync([
@@ -85,8 +85,11 @@ describe('ground vehicle models', () => {
       { kind: 'pax_bus', color: '#3d6a8a', size: [12, 3, 2.5], x: 8, y: 0, z: 2, yaw: 1, scale: 1 },
     ])
     const meshes = fleet.root.children.filter((child) => (child as THREE.InstancedMesh).isInstancedMesh) as THREE.InstancedMesh[]
-    expect(meshes).toHaveLength(4)
-    expect(meshes.filter((mesh) => mesh.count === 2)).toHaveLength(2)
+    const shells = meshes.filter((mesh) => !mesh.name.startsWith('part:'))
+    expect(shells).toHaveLength(4)
+    expect(shells.filter((mesh) => mesh.count === 2)).toHaveLength(2)
+    // tanker: hose reel + hose; bus: doors
+    expect(meshes.filter((mesh) => mesh.name.startsWith('part:'))).toHaveLength(3)
     fleet.sync([])
     expect(meshes.every((mesh) => mesh.count === 0)).toBe(true)
     fleet.dispose()

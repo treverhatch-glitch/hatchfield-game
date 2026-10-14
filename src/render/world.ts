@@ -40,7 +40,8 @@ import {
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
-import { disposeVehicleLibrary, VehicleFleet, type VehicleInstance } from './vehicles.ts'
+import { deployOf, disposeVehicleLibrary, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
+import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
@@ -174,29 +175,6 @@ function visualLift(phase: string, u: number, raw: number): number {
   return raw
 }
 
-const CATER_MAST_M = 2.2
-
-function makeCateringRig(): THREE.Group {
-  const g = new THREE.Group()
-  const bodyL = wu(8.5)
-  const bodyW = wu(2.5)
-  const mastH = wu(CATER_MAST_M)
-  const mast = new THREE.Mesh(
-    new THREE.BoxGeometry(wu(0.18), mastH, wu(0.18)),
-    new THREE.MeshStandardMaterial({ color: '#4a4038', roughness: 0.5 }),
-  )
-  mast.name = 'mast'
-  mast.position.set(-bodyL * 0.28, mastH / 2, -bodyW * 0.42)
-  g.add(mast)
-  const platform = new THREE.Mesh(
-    new THREE.BoxGeometry(wu(1.6), wu(0.12), wu(1.1)),
-    new THREE.MeshStandardMaterial({ color: '#d8dee6', roughness: 0.4 }),
-  )
-  platform.name = 'platform'
-  platform.position.set(-bodyL * 0.28, wu(1.2), -bodyW * 0.55)
-  g.add(platform)
-  return g
-}
 
 export class World {
   renderer: THREE.WebGLRenderer
@@ -228,7 +206,6 @@ export class World {
   private arrivalBefore = new Map<string, number>()
   private vehicleFleet = new VehicleFleet()
   private vehicleFrame: VehicleInstance[] = []
-  cateringCrew = new Map<string, THREE.Group>()
   private crewFigures = new CrewFigures(this.entGroup)
   people = new Map<string, THREE.Mesh>()
   housingGroup = new THREE.Group()
@@ -2008,6 +1985,9 @@ export class World {
       const dy = (ahead?.r ?? t.y) - t.y
       const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
+      const atStop = !t.returning && t.seg >= t.path.length - 1
+      const ext = truckDeploy(atStop, t.dwell, t.serviceFor)
+      const moving = !atStop || t.returning
       this.vehicleFrame.push({
         kind: t.kind,
         color,
@@ -2019,60 +1999,51 @@ export class World {
         scale: WORLD_PER_METER,
         cargo: loaded ? (t.kind === 'bags' ? 'suitcases' : t.kind === 'citycargo' ? 'crates' : undefined) : undefined,
         cargoScale: loaded ? clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35) : 1,
+        ext,
+        active: t.kind === 'fire' ? !t.patrol && (ext > 0 || (moving && !t.returning)) : ext > 0,
+        clock: game.clock,
       })
     }
 
-    for (const pose of game.servicePoses()) {
+    const poses = game.servicePoses()
+    // Parked vehicles share a depot node: fan them out so long tankers and trains don't overlap.
+    const yard = yardOffsets(poses, (type) => vehicleSize(type))
+    for (let i = 0; i < poses.length; i++) {
+      const pose = poses[i]
+      const off = yard[i]
       const pos = toWorld(pose.x, pose.y, 0)
+      const ext = deployOf(pose.phase, pose.u)
       this.vehicleFrame.push({
         kind: pose.type,
         color: serviceColor(pose.type),
         size: vehicleMeters(pose.type),
+        x: pos.x + off.x * WORLD_PER_METER,
+        y: pos.y,
+        z: pos.z + off.z * WORLD_PER_METER,
+        yaw: -pose.heading,
+        scale: WORLD_PER_METER,
+        ext,
+        active: ext > 0,
+        clock: game.clock,
+      })
+    }
+
+    for (const pose of game.cateringPoses()) {
+      const pos = toWorld(pose.x, pose.y, 0)
+      const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
+      this.vehicleFrame.push({
+        kind: 'catering_truck',
+        color: '#e07a3d',
+        size: vehicleMeters('catering_truck'),
         x: pos.x,
         y: pos.y,
         z: pos.z,
         yaw: -pose.heading,
         scale: WORLD_PER_METER,
+        ext: lift,
+        active: lift > 0,
+        clock: game.clock,
       })
-    }
-
-    const seenC = new Set<string>()
-    for (const pose of game.cateringPoses()) {
-      seenC.add(pose.id)
-      let rig = this.cateringCrew.get(pose.id)
-      if (!rig) {
-        rig = makeCateringRig()
-        this.cateringCrew.set(pose.id, rig)
-        this.entGroup.add(rig)
-      }
-      rig.position.copy(toWorld(pose.x, pose.y, 0))
-      rig.rotation.y = -pose.heading
-      this.vehicleFrame.push({
-        kind: 'catering_truck',
-        color: '#e07a3d',
-        size: vehicleMeters('catering_truck'),
-        x: rig.position.x,
-        y: rig.position.y,
-        z: rig.position.z,
-        yaw: rig.rotation.y,
-        scale: WORLD_PER_METER,
-      })
-      const mast = rig.getObjectByName('mast')
-      const platform = rig.getObjectByName('platform')
-      const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
-      const h = wu(CATER_MAST_M) + lift * wu(2.4)
-      if (mast) {
-        mast.scale.y = h / wu(CATER_MAST_M)
-        mast.position.y = h / 2
-      }
-      if (platform) platform.position.y = wu(1.2) + lift * wu(2.2)
-    }
-    for (const [id, m] of this.cateringCrew) {
-      if (!seenC.has(id)) {
-        this.entGroup.remove(m)
-        disposeObject(m)
-        this.cateringCrew.delete(id)
-      }
     }
     this.vehicleFleet.sync(this.vehicleFrame)
 
