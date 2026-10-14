@@ -19,6 +19,8 @@ import { PauseMenu } from './ui/PauseMenu'
 import { pauseState } from './ui/pauseState'
 import type { StartFocus } from './game/types'
 import { applyStoredAudio, bindUiClicks, preloadAudioClips } from './audio'
+import { tickLiveFeedback } from './feedback/live.ts'
+import { FeedbackChrome } from './feedback/ui/FeedbackChrome.tsx'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
 function getGame(): Game {
@@ -288,6 +290,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
       <Hud game={game} onNewGame={onNewGame} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
+      <FeedbackChrome />
       <PlaytestYearMount game={game} />
       <CameraChrome view={game.view} clockOf={() => game.clock} />
     </>
@@ -331,6 +334,7 @@ export default function App() {
       if (!cameraSession.frozen && !pauseState.open) {
         try {
           game.tick(dt)
+          tickLiveFeedback(game)
         } catch (err) {
           console.error('tick failed', err)
         }

@@ -36,6 +36,9 @@ import {
   terminals,
 } from './layout'
 import { posesFrom, HallCrowd } from './hallCrowd'
+import { bubbleAnchorY, ThoughtBubbleLayer } from '../../feedback/render/bubbles.ts'
+import { liveBubbles } from '../../feedback/stage.ts'
+import { FEEDBACK } from '../../feedback/config.ts'
 import { actorsFrom, bubbleFor } from './guestActors'
 import { GuestMotion } from './guestMotion'
 import { fitShadow, groundFocus } from './lod'
@@ -45,7 +48,7 @@ import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
 import { WORLD_PER_METER } from '../aircraft/specs'
-import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
+import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
@@ -626,6 +629,7 @@ export class WorldRenderer {
       this.people?.update([], step)
       this.hallCrowd?.sync(showGuests ? posesFrom(view) : [], this.time)
       this.clearThoughts()
+      this.moodBubbles?.clear()
       return
     }
     const actors = actorsFrom(view).slice(0, 480)
@@ -669,6 +673,50 @@ export class WorldRenderer {
       step,
     )
     this.syncThoughts(placed, !lite && this.q.thoughtBubbles)
+    this.syncMoodBubbles(placed, camera, !lite && this.q.thoughtBubbles)
+  }
+
+  private moodBubbles: ThoughtBubbleLayer | null = null
+
+  /** Occasional mood icons. One instanced mesh per icon, slots reused each frame. */
+  private syncMoodBubbles(
+    actors: readonly { id: string; x: number; z: number }[],
+    camera: THREE.Camera,
+    on: boolean,
+  ) {
+    const wanted = on ? liveBubbles() : []
+    if (wanted.length === 0) {
+      this.moodBubbles?.clear()
+      return
+    }
+    this.moodBubbles ??= new ThoughtBubbleLayer(this.root, {
+      capacity: FEEDBACK.bubbleCap,
+      unit: WORLD_PER_METER,
+      head: 2.2,
+      width: FEEDBACK.bubbleWidthM,
+    })
+    const at = new Map(actors.map((actor) => [actor.id, actor]))
+    const draw = []
+    const head = 2.2
+    for (const bubble of wanted) {
+      const actor = at.get(bubble.passengerId)
+      if (!actor) continue
+      const y = bubbleAnchorY(FLOOR_Y, ROOF_Y, this.roofCovers(actor.x, actor.z), head, WORLD_PER_METER)
+      draw.push({ id: bubble.passengerId, icon: bubble.icon, x: actor.x, y, z: actor.z })
+    }
+    this.moodBubbles.sync(draw, camera)
+  }
+
+  /** Closed roofs hide the hall. Icons over those passengers clear the roof. */
+  private roofCovers(x: number, z: number): boolean {
+    for (const building of this.buildings) {
+      if (building.roofFade < 0.55) continue
+      const dx = x - building.center.x
+      const dz = z - building.center.z
+      const reach = building.radius * 0.92
+      if (dx * dx + dz * dz <= reach * reach) return true
+    }
+    return false
   }
 
   private syncThoughts(actors: readonly { id: string; x: number; z: number; thought: string }[], on: boolean) {
