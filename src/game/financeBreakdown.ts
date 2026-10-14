@@ -68,6 +68,10 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
     label: 'Task rewards',
     why: 'Field-ask and mission bonuses. They post once, when the ask is met.',
   },
+  level_reward: {
+    label: 'Level reward',
+    why: 'Cash paid once when the field reaches a new level. It is not operating income, so payroll ignores it.',
+  },
   loan_proceeds: {
     label: 'Loan proceeds',
     why: 'Principal the bank wired. The fee is added to what you owe and is not cash in the drawer.',

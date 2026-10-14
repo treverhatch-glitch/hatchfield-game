@@ -29,9 +29,12 @@ describe('research tree on the field', () => {
     game.grantFieldXp(90)
     expect(game.fieldLevel()).toBe(2)
     expect(game.cash).toBe(cash + levelReward(2).cash)
+    expect(game.bank.ledger().byCategory.level_reward).toBe(levelReward(2).cash)
+    expect(game.cash).toBeCloseTo(game.bank.balance, 5)
     expect(game.researchTree.points()).toBe(levelReward(2).rp)
     game.grantFieldXp(1)
     expect(game.cash).toBe(cash + levelReward(2).cash)
+    expect(game.bank.ledger().byCategory.level_reward).toBe(levelReward(2).cash)
     expect(game.researchTree.points()).toBe(levelReward(2).rp)
   })
 

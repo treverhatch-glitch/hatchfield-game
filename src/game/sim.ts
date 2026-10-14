@@ -957,6 +957,7 @@ const FINANCING_CATEGORIES = new Set([
   'share_purchases',
   'refunds',
   'deposits',
+  'level_reward',
 ])
 
 const ATC_MAX_GO_AROUNDS = 3
@@ -3168,7 +3169,7 @@ export class Game {
       const meta = after <= 5 ? AIRLINE_TIER_META[after as AirlineTier] : undefined
       const payouts = this.researchTree.claimNewLevels(after)
       const paid = payouts.reduce((sum, row) => sum + row.cash, 0)
-      if (paid > 0) this.cash += paid
+      if (paid > 0) this.credit(paid, 'level_reward', `Field Level ${after}`)
       const lump = payouts.length
         ? ` +$${paid.toLocaleString('en-US')} and ${payouts.reduce((sum, row) => sum + row.rp, 0)} RP.`
         : ''
@@ -14387,7 +14388,7 @@ export class Game {
     return payrollAmount(lines, this.fieldOpsMult())
   }
 
-  /** Operating income already posted for one game day. Financing is excluded. */
+  /** Operating income already posted for one game day. Financing and the level grant are excluded. */
   private dayOperatingIncome(day: number): number {
     const ledger = this.bank.ledgerForGameDay(day)
     let income = 0
