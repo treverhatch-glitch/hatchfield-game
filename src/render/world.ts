@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { PostStack, postConfig } from './quality/post'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { PerfOverlay } from '../perf'
 import { inBounds } from '../game/path'
@@ -272,6 +273,8 @@ export class World {
   private lookAim = new THREE.Vector3()
   private captureWanted = false
   private perfOverlay = new PerfOverlay()
+  private post: PostStack | null = null
+  private postKey = ''
   private headlights = new VehicleHeadlights()
   private headlightRoots: THREE.Object3D[] = []
   private headlightPool: THREE.Object3D[] = []
@@ -285,7 +288,8 @@ export class World {
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: preset.msaa,
+      // High/Ultra anti-alias in the post stack (SMAA); a multisampled canvas would be wasted.
+      antialias: preset.msaa && !postConfig(preset).smaa,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: true,
     })
@@ -541,6 +545,16 @@ export class World {
     setAircraftQuality(baseLevel(level))
   }
 
+  /** Build, rebuild or drop the SMAA stack to match the live quality level. */
+  private syncPost() {
+    const cfg = postConfig({ level: this.wr.quality })
+    const key = cfg.smaa ? `${cfg.samples}` : ''
+    if (key === this.postKey) return
+    this.post?.dispose()
+    this.post = cfg.smaa ? new PostStack(this.renderer, this.scene, this.camera, cfg) : null
+    this.postKey = key
+  }
+
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
   setTimeOfDay(hour: number | null) {
     this.wr.setTimeOfDay(hour)
@@ -611,6 +625,7 @@ export class World {
     const h = canvas.clientHeight
     if (needsResize(canvas.width, canvas.height, w, h, this.renderer.getPixelRatio())) {
       this.renderer.setSize(w, h, false)
+      this.post?.resize(this.renderer)
       this.camera.aspect = w / Math.max(1, h)
       this.camera.updateProjectionMatrix()
     }
@@ -2366,7 +2381,9 @@ export class World {
     setAircraftLamp(this.wr.dayNightSample.aircraft)
     perfEnd('world.wr', t)
     t = perfStart()
-    this.renderer.render(this.scene, this.camera)
+    this.syncPost()
+    if (this.post) this.post.render()
+    else this.renderer.render(this.scene, this.camera)
     this.perfOverlay.update(this.renderer, this.scene)
     if (this.captureWanted) {
       this.captureWanted = false
@@ -2431,6 +2448,7 @@ export class World {
     canvas.removeEventListener('pointermove', this.onPointerMove)
     canvas.removeEventListener('pointerup', this.onPointerUp)
     canvas.removeEventListener('wheel', this.onWheel)
+    this.post?.dispose()
     this.renderer.dispose()
   }
 }

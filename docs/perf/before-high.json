@@ -1,0 +1,14 @@
+{
+  "quality": "high",
+  "speed": "5x",
+  "gpu": false,
+  "fps": {
+    "avg": 1.6,
+    "min": 0.8,
+    "low1": 0.8,
+    "p99Ms": 1199.9,
+    "frames": 17
+  },
+  "overlay": "1 fps  (p99 2580.6 ms)\ndraws 125   tris 92.1k\ngeos 129   tex 44 (~110 MB)",
+  "errors": []
+}

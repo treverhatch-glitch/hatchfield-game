@@ -8,7 +8,7 @@
  * Run it on a real GPU (RTX 4070 Super is the target). Headless SwiftShader numbers only
  * prove the script works; they say nothing about desktop frame rate.
  */
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 function arg(name: string, fallback: string): string {
@@ -21,6 +21,7 @@ const quality = arg('quality', 'high')
 const seconds = Number(arg('seconds', '10'))
 const speed = arg('speed', '5x')
 const out = arg('out', '')
+const shot = arg('shot', '')
 const useGpu = arg('gpu', 'on') === 'on'
 
 const browser = await chromium.launch({
@@ -35,15 +36,31 @@ const errors: string[] = []
 page.on('pageerror', (e) => errors.push(e.message))
 
 await page.goto(url, { waitUntil: 'networkidle' })
-await page.evaluate((q) => {
-  localStorage.clear()
-  localStorage.setItem('hatchfield-gfx', q)
-}, quality)
+// --save <file>: a save snapshot (JSON) written to the game's save slot, then Continue. This is
+// how a heavy late-game airport is benched; without it the run starts a fresh passenger game.
+const saveFile = arg('save', '')
+const save = saveFile ? readFileSync(saveFile, 'utf8') : ''
+await page.evaluate(
+  ([q, s]) => {
+    localStorage.clear()
+    localStorage.setItem('hatchfield-gfx', q)
+    if (s) localStorage.setItem('apron-save-v25', s)
+  },
+  [quality, save],
+)
 await page.goto(`${url}?perf`, { waitUntil: 'networkidle' })
-await page.getByTestId('new-game').click()
-await page.waitForTimeout(500)
-const starter = page.getByTestId('starter-kit')
-if (await starter.isVisible().catch(() => false)) await starter.click()
+if (save) {
+  await page.getByTestId('continue-game').click()
+} else {
+  await page.getByTestId('new-game').click()
+  await page.getByTestId('start-pax').click()
+  await page.waitForTimeout(800)
+  const starter = page
+    .locator('[data-testid="starter-kit-dock"], [data-testid="starter-kit-coach"], [data-testid="starter-kit"]')
+    .first()
+  if (await starter.isVisible().catch(() => false)) await starter.click()
+  await page.waitForTimeout(500)
+}
 await page.getByRole('button', { name: new RegExp(`^${speed}$`) }).click().catch(() => {})
 await page.waitForTimeout(3000)
 
@@ -96,6 +113,7 @@ const fps = await page.evaluate(
   seconds * 1000,
 )
 await pathDone
+if (shot) await page.screenshot({ path: shot })
 const overlay = await page.getByTestId('perf-overlay').textContent().catch(() => null)
 const result = { quality, speed, gpu: useGpu, fps, overlay, errors }
 console.log(JSON.stringify(result))
