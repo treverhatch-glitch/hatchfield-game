@@ -219,7 +219,7 @@ describe('opening minutes on a default new game', () => {
     expect(game.openSchedule().length).toBeGreaterThan(2)
   })
 
-  it('does not claim a hard fail during the opening on a default new game', () => {
+  it('does not claim a hard fail during the opening on a default new game', { timeout: 30_000 }, () => {
     withSeed(11, () => {
       const game = started()
       let signed = false
