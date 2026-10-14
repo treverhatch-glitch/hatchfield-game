@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three'
 import { beltGeom, cateringHinge, lineAnchor, MODEL_PARTS, MODEL_SIZE, partCentre, type VehicleModel } from './vehicleModels'
+import { vehicleSocket } from './socketLayout'
 
 /** Round F: pay a hanging line out from its reel anchor; sag and climb grow with it. */
 function payOut(out: PartPose, model: VehicleModel, part: string, k: number, fx: number, fy: number, fz: number): PartPose {
@@ -189,7 +190,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
     case 'fuel_tanker':
     case 'hydrant_cart': {
       const tanker = model === 'fuel_tanker'
-      const reel = tanker ? partCentre(model, 'hose_reel') : ([-1.53, 1.87, 0] as const)
+      const reel = (tanker ? vehicleSocket('fuel_tanker', 'hose_reel_out') : null) ?? (tanker ? partCentre(model, 'hose_reel') : ([-1.53, 1.87, 0] as const))
       if (part === 'hose_reel') {
         reset(out, reel[0], reel[1], reel[2]).rz = -e * 9
         return true

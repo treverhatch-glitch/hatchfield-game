@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Hose locked to the port</title>
+<style>html,body{margin:0;background:#8aa4b8;overflow:hidden}canvas{display:block}</style></head>
+<body><script type="module">
+import * as THREE from 'three'
+import { fuelLockScene } from '/src/render/attachments.ts'
+
+const root = fuelLockScene()
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(innerWidth, innerHeight)
+r.outputColorSpace = THREE.SRGBColorSpace
+r.shadowMap.enabled = true
+document.body.appendChild(r.domElement)
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#a9c4dc')
+scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.15))
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4)
+sun.position.set(-30, 40, 18)
+scene.add(sun)
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: '#9aa3a0' }))
+ground.rotation.x = -Math.PI / 2
+scene.add(ground)
+scene.add(root.root)
+const cam = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.2, 200)
+cam.position.copy(root.cam)
+cam.lookAt(root.look)
+r.render(scene, cam)
+window.__done = true
+</script></body></html>

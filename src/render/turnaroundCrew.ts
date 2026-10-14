@@ -14,6 +14,7 @@ import type { PeopleAgent } from '../people/renderer.ts'
 import type { CrewKind, PersonLook, PersonPose } from '../people/types.ts'
 import { newPartPose, partPose, poseInput } from './vehicleAnim'
 import { beltGeom, cateringHinge, HOSE_M, lineAnchor, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
+import { vehicleSocket } from './socketLayout'
 
 export interface CrewVehicle {
   id: string
@@ -127,7 +128,7 @@ export function vehicleCrew(v: CrewVehicle, clock: number, out: PeopleAgent[], u
       break
     case 'fuel_tanker':
     case 'hydrant_cart': {
-      const hose = lineAnchor(model, 'hose')
+      const hose = vehicleSocket(model, 'hose_reel_out') ?? lineAnchor(model, 'hose')
       const x = hose ? hose[0] : model === 'fuel_tanker' ? -L / 2 + 0.55 : -1.53
       place(out, `${v.id}:fueler`, 'fuel', 'reach', v, x + 0.5, 0, W / 2 + HOSE_M * e + 0.3, Math.PI / 2, upm)
       break

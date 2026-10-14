@@ -8,6 +8,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
 import { buildVehicleParts, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
 import { ANIM_PARTS, newPartPose, partMatrix, partPose, poseInput } from './vehicleAnim'
+import { vehicleSocketTable } from './socketLayout'
+import { mountSockets } from './socketMount'
 import { applyVehicleSurface } from './vehicleSurface'
 
 export { ANIM_PARTS, deployOf, partPose, poseInput, poseVehicleRig, serviceStateOf, truckDeploy, type PoseInput } from './vehicleAnim'
@@ -129,6 +131,7 @@ export function vehicleRig(kind: string, color: string, worldPerMeter = 1): THRE
     }
   }
   for (const p of parts) p.geo.dispose()
+  mountSockets(g, vehicleSocketTable(model))
   // Fuel tanker keeps the group names the hose animation looks up. Wheel axles
   // stay wheels_front / wheels_rear so they can spin and steer on their own;
   // hoseReel rides inside hose_reel so the coil and the payout share one spin.

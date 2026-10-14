@@ -32,6 +32,7 @@ export {
   type VehicleUnlock,
 } from './defaults'
 export { createLogisticsAdapter } from './adapter'
+export { LOCK_TOLERANCE_M, TURN_STEPS, STEP_LOCKS, STAND_AIRFRAME, VEHICLE_DOCKS, type TurnStep, type StandSize } from './socketTurn'
 export { Maintenance, MAINTENANCE_TIERS, defaultMaintenanceConfig } from './maintenance'
 export type {
   CrewType,

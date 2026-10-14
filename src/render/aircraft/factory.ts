@@ -4,6 +4,8 @@ import { CrossfadeLOD, type LodBuckets } from './lod'
 import type { PaintedMesh } from './pool'
 import type { AircraftMotion } from './motion'
 import { aircraftWorldPerMeter, getAircraftSpec, type Livery, type ModelSpec } from './specs'
+import { aircraftSocketTable } from '../socketLayout'
+import { mountSockets } from '../socketMount'
 
 export {
   LOD_DIST,
@@ -150,6 +152,7 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
   lod.add(low.group)
   lod.add(mid.group)
   lod.add(high.group)
+  mountSockets(lod, aircraftSocketTable(spec))
   // Renderer snaps the real mix on the first frame. Until then show the mid mesh.
   low.group.visible = false
   high.group.visible = false
