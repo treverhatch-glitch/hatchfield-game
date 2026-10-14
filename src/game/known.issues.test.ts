@@ -16,12 +16,15 @@ describe('known overnight fixes', () => {
     const game = field()
     game.bank.post('landing_fees', 20_000, { simMinutes: 10, source: 'sim' })
     game.cash = 0.4
+    const gap = game.cash - game.bank.balance
     game.clock = 179
     game.tick(2)
     const line = game.news.find((n) => /Payroll/.test(n.text))
     expect(line?.text ?? '').toMatch(/Payroll missed entirely/)
     expect(line?.text ?? '').not.toMatch(/paid \$0/)
-    expect(game.cash).toBe(0)
+    // The day's upkeep leaves cash in debt; a missed payroll no longer lifts it back to $0 (#192).
+    expect(game.cash).toBeLessThan(0)
+    expect(game.cash - game.bank.balance).toBeCloseTo(gap, 6)
   })
 
   it('warns in the advisor before Standing collapses', () => {
