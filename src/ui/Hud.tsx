@@ -1578,11 +1578,16 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     {' · '}
                     clearance {game.inboundHasClearance() ? 'held' : money(CLEARANCE_LICENCE_COST)}
                   </p>
-                  {game.inboundHasClearance() ? null : (
-                    <button type="button" onClick={() => game.buyInboundClearance()}>
-                      Buy security clearance · {money(CLEARANCE_LICENCE_COST)}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    data-testid="buy-clearance"
+                    disabled={game.inboundHasClearance() || (!game.sandbox && game.cash < CLEARANCE_LICENCE_COST)}
+                    onClick={() => game.buyInboundClearance()}
+                  >
+                    {game.inboundHasClearance()
+                      ? 'Security clearance · Owned'
+                      : `Buy security clearance · ${money(CLEARANCE_LICENCE_COST)}`}
+                  </button>
                   {game.inboundContracts().length === 0 ? (
                     <p className="muted">No Guard contracts yet. A signed agreement brings the first offer.</p>
                   ) : (
