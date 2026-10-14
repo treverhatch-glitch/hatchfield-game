@@ -5,8 +5,10 @@ import { pickTrackable } from '../camera/pick.ts'
 import { cameraSession } from '../camera/session.ts'
 import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
+import { inputMap } from '../input/map.ts'
 import { World } from '../render/world'
 import { releaseApronAudio, syncApronAudio } from '../audio/stage'
+import type { QualityLevel } from '../render/world/quality.ts'
 
 export function Field({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -51,34 +53,14 @@ export function Field({ game }: { game: Game }) {
       if (!cameraSession.frozen) live.setTimeOfDay(null)
     })
 
-    const keys = new Set<string>()
-    const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (e.key === 'Escape') {
-        game.exitHall()
-        return
-      }
-      if (e.key === 'h' || e.key === 'H') {
-        game.setView(game.view === 'hall' ? 'apron' : 'hall')
-        return
-      }
-      if (game.view !== 'apron') return
-      if (e.key === 'r' || e.key === 'R') {
-        game.rotatePiece()
-        return
-      }
-      keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key)
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        e.preventDefault()
-      }
-    }
-    const onKeyUp = (e: KeyboardEvent) => {
-      keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key)
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
+    const gfxOrder: QualityLevel[] = ['low', 'med', 'high']
+    const offPress = inputMap.onPress((id) => {
+      if (id !== 'system.graphics') return
+      const live = worldRef.current
+      if (!live) return
+      const next = gfxOrder[(gfxOrder.indexOf(live.wr.quality) + 1) % gfxOrder.length]
+      if (next) live.setGraphicsQuality(next)
+    })
 
     let raf = 0
     let last = performance.now()
@@ -94,20 +76,20 @@ export function Field({ game }: { game: Game }) {
             game.diplomacyTourSeconds = Math.max(0, game.diplomacyTourSeconds - dt)
           } else if (!cameraSession.following) {
             const speed = 28 * dt
-            let fx = 0
-            let fy = 0
-            if (keys.has('w') || keys.has('ArrowUp')) fy -= speed
-            if (keys.has('s') || keys.has('ArrowDown')) fy += speed
-            if (keys.has('a') || keys.has('ArrowLeft')) fx -= speed
-            if (keys.has('d') || keys.has('ArrowRight')) fx += speed
+            const fx = (inputMap.analog('camera.panRight') - inputMap.analog('camera.panLeft')) * speed
+            const fy = (inputMap.analog('camera.panBack') - inputMap.analog('camera.panForward')) * speed
             if (fx || fy) w.nudgePan(fx, fy)
-            if (keys.has('q')) w.nudgeYaw(1.4 * dt)
-            if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+            const yaw = (inputMap.analog('camera.rotateLeft') - inputMap.analog('camera.rotateRight')) * 1.4 * dt
+            if (yaw) w.nudgeYaw(yaw)
+            const zoom = inputMap.analog('camera.zoomIn') - inputMap.analog('camera.zoomOut')
+            if (zoom) w.nudgeZoom(-zoom * 48 * dt)
             if (w.followHeld) w.releaseFollow()
           } else {
             const pose = cameraSession.step(dt, tracksFrom(snapshotFrom(game)), FIELD_LAYOUT)
             if (pose) w.applyFollow(pose.position, pose.aim)
             else if (w.followHeld) w.releaseFollow()
+            const zoom = inputMap.analog('camera.zoomIn') - inputMap.analog('camera.zoomOut')
+            if (zoom) cameraSession.noteWheel(-zoom * 80 * dt)
           }
           w.setTimeOfDay(cameraSession.frozen ? cameraSession.timeOfDay : null)
           if (cameraSession.consumeCapture()) w.requestCapture()
@@ -159,8 +141,7 @@ export function Field({ game }: { game: Game }) {
     }
     raf = requestAnimationFrame(loop)
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
+      offPress()
       cancelAnimationFrame(raf)
       releaseApronAudio()
       unbindPose()

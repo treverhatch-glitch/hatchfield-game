@@ -463,7 +463,7 @@ export class WorldRenderer {
     this.paintSnow(snow, s.wet)
 
     const enclosed = view.view === 'apron'
-    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed)
+    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
     this.syncGuests(view, camera, step, showGuests, lite)
     this.syncPack(view, lite)

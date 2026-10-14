@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
 import { canvasToPng } from '../camera/capture.ts'
+import { inputMap } from '../input/map.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import {
   HALL_CAM_DIST,
@@ -21,6 +22,7 @@ import {
   HALL_OCCLUDE_M,
 } from './hallCamera'
 import { HALL_EDGES, NODE_POS, type HallNode } from '../game/guests'
+import { bake, type BakePiece } from './world/kit'
 import { paintTerrazzo } from './world/raster'
 import { rasterTexture } from './world/textures'
 import type { Game } from '../game/sim'
@@ -184,6 +186,10 @@ export class HallWorld {
   private roomPlan: RoomPlan | null = null
   private interiorKey = ''
   private interiorMs = 0
+  /** Last hall-camera pose passed into the interior. A match plus a settled building skips the step. */
+  private interiorPose = ''
+  private fadeCamKey = ''
+  private hotspotSig = ''
   private readonly apronCamPos = new THREE.Vector3()
   private readonly routeCache = new Map<string, { x: number; z: number }[] | null>()
   private terminalTextures: WorldTextures | null = null
@@ -377,6 +383,12 @@ export class HallWorld {
 
   nudgeYaw(delta: number) {
     this.yaw += delta
+    this.placeCam()
+  }
+
+  /** Positive delta pulls back. Keyboard and triggers pass a distance; the wheel scales it. */
+  nudgeZoom(delta: number) {
+    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
     this.placeCam()
   }
 
@@ -590,10 +602,10 @@ export class HallWorld {
   }
 
   private onWheel = (e: WheelEvent) => {
+    if (!inputMap.wheelMatches(e.deltaY)) return
     e.preventDefault()
     const step = Math.max(0.02, this.dist * 0.0012)
-    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + e.deltaY * step))
-    this.placeCam()
+    this.nudgeZoom(e.deltaY * step)
   }
 
   private goalSeq = 0
@@ -777,20 +789,35 @@ export class HallWorld {
 
     const cw = HALL_W / cols
     const rh = HALL_D / rows
+    const floorPieces: BakePiece[] = []
+    const floorGeos: THREE.BufferGeometry[] = []
+    const tint = new THREE.Color()
     for (let r = 0; r < zones.length; r++) {
       for (let c = 0; c < zones[r].length; c++) {
         const z = zones[r][c] as ZoneId | null
         if (!z) continue
         const pos = cellCenter(c, r, cols, rows)
-        const tile = new THREE.Mesh(
-          new THREE.PlaneGeometry(cw - 0.04, rh - 0.04),
-          new THREE.MeshLambertMaterial({ map: this.terrazzo, color: FLOOR_TINT[z] }),
-        )
-        tile.rotation.x = -Math.PI / 2
-        tile.position.set(pos.x, 0.02, pos.z)
-        this.roomGroup.add(tile)
+        const geo = new THREE.PlaneGeometry(cw - 0.04, rh - 0.04)
+        geo.rotateX(-Math.PI / 2)
+        floorGeos.push(geo)
+        floorPieces.push({
+          geo,
+          matrix: new THREE.Matrix4().makeTranslation(pos.x, 0.02, pos.z),
+          color: tint.set(FLOOR_TINT[z]).getHex(),
+        })
       }
     }
+    const floorGeo = bake(floorPieces, true)
+    for (const geo of floorGeos) geo.dispose()
+    if (floorGeo) {
+      const floor = new THREE.Mesh(
+        floorGeo,
+        new THREE.MeshLambertMaterial({ map: this.terrazzo, vertexColors: true }),
+      )
+      floor.name = 'hall-floor'
+      this.roomGroup.add(floor)
+    }
+    this.fadeCamKey = ''
 
     const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows)
     for (const { item: it, x, z } of laid) {
@@ -850,6 +877,7 @@ export class HallWorld {
         this.interior = building
         this.interiorFit = fit
         this.roomPlan = building.rooms
+        this.interiorPose = ''
       }
     }
     this.stepInterior()
@@ -883,8 +911,11 @@ export class HallWorld {
       z = building.center.z + (dz / flat) * maxFlat
     }
     const y = Math.max(cam.y / fit.scale, ROOF_Y + WORLD_PER_METER * 2)
+    const pose = `${x.toFixed(2)}|${y.toFixed(2)}|${z.toFixed(2)}`
+    if (pose === this.interiorPose && building.settled()) return
+    this.interiorPose = pose
     this.apronCamPos.set(x, y, z)
-    building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false)
+    building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false, this.camera)
     this.hideTerminalShell(building)
   }
 
@@ -1121,6 +1152,9 @@ export class HallWorld {
   /** Walls and counters that sit in the lens fade instead of clipping the frame. */
   private fadeNearShell() {
     const cam = this.camera.position
+    const key = `${cam.x.toFixed(2)}|${cam.y.toFixed(2)}|${cam.z.toFixed(2)}`
+    if (key === this.fadeCamKey) return
+    this.fadeCamKey = key
     const limit = HALL_OCCLUDE_M
     this.roomGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
@@ -1303,6 +1337,10 @@ export class HallWorld {
 
   /** Markers stay up. The counts live in the click submenu. */
   syncHotspots(game: Game) {
+    const ids = game.fits.length ? game.infoHotspots().map((h) => h.id).sort().join(',') : ''
+    const sig = `${game.fits.length}|${ids}`
+    if (sig === this.hotspotSig) return
+    this.hotspotSig = sig
     this.clearHotspots()
     if (!game.fits.length) return
     const spots: { id: string; node: HallNode; color: string }[] = [

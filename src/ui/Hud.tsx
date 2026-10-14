@@ -66,6 +66,10 @@ import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
+import { inputMap } from '../input/map'
+import { pauseState } from './pauseState'
+import { GameSettings } from './PauseMenu'
+import { ControlsPanel } from './ControlsPanel'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
@@ -73,17 +77,6 @@ import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
-import { applyAudioSettings, audioSettings } from '../audio/prefs'
-import { type AudioBus } from '../features/settings/settings.ts'
-import {
-  chooseGraphicsQuality,
-  graphicsAuto,
-  graphicsNote,
-  graphicsQuality,
-  QUALITY_LABEL,
-  subscribeGraphicsQuality,
-  type QualityLevel,
-} from '../render/graphicsPrefs'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -247,15 +240,6 @@ function TrayMark({ tool }: { tool: string }) {
   )
 }
 
-const AUDIO_ROWS: { id: AudioBus; label: string }[] = [
-  { id: 'aircraft', label: 'Jets' },
-  { id: 'vehicles', label: 'Vehicles' },
-  { id: 'ambient', label: 'Terminal' },
-  { id: 'ambience', label: 'Outdoors' },
-  { id: 'ui', label: 'Interface' },
-  { id: 'sfx', label: 'Effects' },
-]
-
 const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
@@ -272,12 +256,9 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
 ]
 
 export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
-  const [gfx, setGfx] = useState<QualityLevel>(graphicsQuality)
-  useEffect(() => subscribeGraphicsQuality(setGfx), [])
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panelPick, setPanel] = useState<PanelId>(null)
-  const [audioMix, setAudioMix] = useState(() => audioSettings().get())
   // One panel at a time: an open hint list folds the HUD rollout away.
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
@@ -338,11 +319,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   useHudBandVar(topBar, '--hud-bar-bottom', 'bottom')
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (e.key !== 'l' && e.key !== 'L') return
-      e.preventDefault()
+    return inputMap.onPress((id) => {
+      if (id !== 'view.airlines') return
       setPanel((cur) => {
         if (cur === 'airlines') {
           setChromePinned(false)
@@ -351,9 +329,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         setChromePinned(true)
         return 'airlines'
       })
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    })
   }, [])
 
   const togglePanel = (id: Exclude<PanelId, null>) => {
@@ -415,6 +391,15 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             {site ? site.name : 'No plot'} · {game.view === 'apron' ? 'Airport' : 'Terminal'}
           </span>
         </div>
+        <button
+          type="button"
+          className="stat"
+          data-testid="hud-menu"
+          title="Menu (Esc)"
+          onClick={() => pauseState.openMenu()}
+        >
+          Menu
+        </button>
         <button
           type="button"
           className="stat"
@@ -1469,119 +1454,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </>
               ) : null}
 
-              {panel === 'settings' ? (
-                <section data-testid="settings-panel">
-                  <h3>Game</h3>
-                  <button
-                    type="button"
-                    className="wide"
-                    data-testid="settings-new-game"
-                    onClick={() => onNewGame?.()}
-                  >
-                    New Game
-                  </button>
-                  <p className="muted">Back to the title. Start again from there, or continue this field.</p>
-                  <h3>Sound</h3>
-                  <label className="sandbox-toggle">
-                    <input
-                      type="checkbox"
-                      data-testid="settings-audio-mute"
-                      checked={audioMix.audioMuted}
-                      onChange={(e) => {
-                        const next = audioSettings().update((s) => ({ ...s, audioMuted: e.target.checked }))
-                        applyAudioSettings(next)
-                        setAudioMix(next)
-                      }}
-                    />
-                    <span>Mute</span>
-                  </label>
-                  <ul className="budgets" data-testid="settings-audio">
-                    <li>
-                      <label>
-                        <span>
-                          Master <span className="muted">{Math.round(audioMix.masterVolume * 100)}%</span>
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          data-testid="settings-audio-master"
-                          value={audioMix.masterVolume}
-                          onChange={(e) => {
-                            const masterVolume = Number(e.target.value)
-                            const next = audioSettings().update((s) => ({ ...s, masterVolume }))
-                            applyAudioSettings(next)
-                            setAudioMix(next)
-                          }}
-                        />
-                      </label>
-                    </li>
-                    {AUDIO_ROWS.map((row) => (
-                      <li key={row.id}>
-                        <label>
-                          <span>
-                            {row.label} <span className="muted">{Math.round(audioMix.busVolume[row.id] * 100)}%</span>
-                          </span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            data-testid={`settings-audio-${row.id}`}
-                            value={audioMix.busVolume[row.id]}
-                            onChange={(e) => {
-                              const value = Number(e.target.value)
-                              const next = audioSettings().update((s) => ({
-                                ...s,
-                                busVolume: { ...s.busVolume, [row.id]: value },
-                              }))
-                              applyAudioSettings(next)
-                              setAudioMix(next)
-                            }}
-                          />
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                  <h3>Graphics</h3>
-                  <div className="gfx-quality" role="radiogroup" aria-label="Graphics quality">
-                    {(['low', 'med', 'high'] as const).map((level) => (
-                      <button
-                        key={level}
-                        type="button"
-                        role="radio"
-                        aria-checked={gfx === level}
-                        data-testid={`gfx-${level}`}
-                        className={gfx === level ? 'on' : ''}
-                        onClick={() => chooseGraphicsQuality(level)}
-                      >
-                        {QUALITY_LABEL[level]}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="muted" data-testid="gfx-note">
-                    {graphicsNote(gfx, graphicsAuto())}
-                  </p>
-                  <h3>Hints</h3>
-                  <label className="sandbox-toggle">
-                    <input
-                      type="checkbox"
-                      data-testid="settings-all-hints"
-                      checked={game.hintPrefs.allEnabled}
-                      onChange={(e) => game.setAllHints(e.target.checked)}
-                    />
-                    <span>All hints enabled</span>
-                  </label>
-                  <p className="muted">
-                    {game.hintPrefs.allEnabled
-                      ? 'Every advisor hint shows in the panel, bottom right.'
-                      : game.hintPrefs.muted.includes('*')
-                        ? 'Hints are off. Tick the box to turn every type back on.'
-                        : `${game.hintPrefs.muted.length} hint type${game.hintPrefs.muted.length === 1 ? '' : 's'} hidden. Tick the box to turn every type back on.`}
-                  </p>
-                </section>
-              ) : null}
+              {panel === 'settings' ? <HudSettings game={game} onNewGame={onNewGame} /> : null}
 
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
@@ -2783,4 +2656,31 @@ function labelPhase(phase: string, craft?: string): string {
     gone: 'Airborne',
   }
   return map[phase] ?? phase
+}
+
+function HudSettings({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
+  const [tab, setTab] = useState<'game' | 'controls'>('game')
+  return (
+    <section data-testid="settings-panel">
+      <div className="settings-tabs">
+        <button
+          type="button"
+          className={tab === 'game' ? 'on' : ''}
+          data-testid="hud-settings-tab-game"
+          onClick={() => setTab('game')}
+        >
+          Game
+        </button>
+        <button
+          type="button"
+          className={tab === 'controls' ? 'on' : ''}
+          data-testid="hud-settings-tab-controls"
+          onClick={() => setTab('controls')}
+        >
+          Controls
+        </button>
+      </div>
+      {tab === 'game' ? <GameSettings game={game} onNewGame={onNewGame} /> : <ControlsPanel />}
+    </section>
+  )
 }

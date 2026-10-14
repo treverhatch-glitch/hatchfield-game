@@ -120,6 +120,10 @@ describe('initWorldRender', () => {
     expect(t0.wallsLowered).toBe(0)
     expect(scene.getObjectByName('room-walls')).toBeTruthy()
     expect(scene.getObjectByName('room-glass')).toBeTruthy()
+    // Full height is one merged mesh. The instanced set waits for the cutaway.
+    expect(scene.getObjectByName('room-walls-static')?.visible).toBe(true)
+    expect(scene.getObjectByName('room-glass-static')?.visible).toBe(true)
+    expect(scene.getObjectByName('room-walls')?.visible).toBe(false)
     const near = camAt(hall.x, hall.z, 20)
     game.view = 'hall'
     for (let i = 0; i < 40; i++) wr.update(game, near, 1 / 30)
@@ -127,6 +131,8 @@ describe('initWorldRender', () => {
     expect(t1.roof).toBe(0)
     expect(t1.wallsLowered).toBeGreaterThan(0)
     expect(t1.wallsLowered).toBeLessThan(t1.walls)
+    expect(scene.getObjectByName('room-walls')?.visible).toBe(true)
+    expect(scene.getObjectByName('room-walls-static')?.visible).toBe(false)
     wr.dispose()
   })
 
