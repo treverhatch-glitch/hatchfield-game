@@ -1904,7 +1904,9 @@ export class World {
         this.people.set(p.id, mesh)
         this.entGroup.add(mesh)
       }
-      mesh.position.copy(toWorld(p.x, p.y, wu(p.job === 'mechanic' ? 0.925 : 0.875)))
+      const gc = Math.min(SIZE - 1, Math.max(0, p.x))
+      const gr = Math.min(SIZE - 1, Math.max(0, p.y))
+      mesh.position.copy(toWorld(gc, gr, wu(p.job === 'mechanic' ? 0.925 : 0.875)))
       // Face travel direction so flow reads clearly
       if (p.path.length > 1) {
         const a = p.path[Math.min(p.seg, p.path.length - 1)]
