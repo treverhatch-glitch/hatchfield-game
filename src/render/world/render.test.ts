@@ -19,6 +19,21 @@ function legacyScene() {
   return { scene, sun, earth }
 }
 
+function hallFocus(game: { tiles: string[][] }) {
+  let c = 0
+  let r = 0
+  let n = 0
+  for (let rr = 0; rr < game.tiles.length; rr++) {
+    for (let cc = 0; cc < game.tiles[rr].length; cc++) {
+      if (game.tiles[rr][cc] !== 'terminal') continue
+      c += cc
+      r += rr
+      n++
+    }
+  }
+  return { x: cellX(n ? c / n : 16), z: cellZ(n ? r / n : 20) }
+}
+
 function stubRenderer(): RendererLike & { ratio: number } {
   return {
     shadowMap: { enabled: false, type: THREE.BasicShadowMap, autoUpdate: true },
@@ -65,7 +80,7 @@ describe('initWorldRender', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
     const game = starterGame()
-    const hall = { x: cellX(16), z: cellZ(20) }
+    const hall = hallFocus(game)
     const far = camAt(hall.x, hall.z, 220)
     for (let i = 0; i < 30; i++) wr.update(game, far, 1 / 30)
     expect(wr.stats().terminals[0].lod).toBe(2)
@@ -75,8 +90,10 @@ describe('initWorldRender', () => {
     for (let i = 0; i < 30; i++) wr.update(game, near, 1 / 30)
     const s = wr.stats()
     expect(s.terminals[0].lod).toBe(0)
-    // Roof lifts off for the close-up cutaway.
-    expect(s.terminals[0].roof).toBe(0)
+    // Airport view keeps the roof and the walls up, even up close.
+    expect(game.view).toBe('apron')
+    expect(s.terminals[0].roof).toBe(1)
+    expect(s.terminals[0].wallsLowered).toBe(0)
     expect(s.meshes).toBeGreaterThan(farMeshes)
     const seated = scene.getObjectByName('people-static')
     expect(seated?.visible || seated?.parent?.visible).toBe(true)
@@ -88,7 +105,7 @@ describe('initWorldRender', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
     const game = starterGame()
-    const hall = { x: cellX(16), z: cellZ(20) }
+    const hall = hallFocus(game)
     const mid = camAt(hall.x, hall.z, 70)
     for (let i = 0; i < 20; i++) wr.update(game, mid, 1 / 30)
     const t0 = wr.stats().terminals[0]
@@ -98,8 +115,10 @@ describe('initWorldRender', () => {
     expect(scene.getObjectByName('room-walls')).toBeTruthy()
     expect(scene.getObjectByName('room-glass')).toBeTruthy()
     const near = camAt(hall.x, hall.z, 20)
+    game.view = 'hall'
     for (let i = 0; i < 40; i++) wr.update(game, near, 1 / 30)
     const t1 = wr.stats().terminals[0]
+    expect(t1.roof).toBe(0)
     expect(t1.wallsLowered).toBeGreaterThan(0)
     expect(t1.wallsLowered).toBeLessThan(t1.walls)
     wr.dispose()
@@ -124,7 +143,7 @@ describe('initWorldRender', () => {
     game.hallGuests = [g]
     game.routeGuest(g, 'security', game.hallOpenFor(fit))
     expect(g.route && g.route.length).toBeGreaterThan(1)
-    const near = camAt(cellX(16), cellZ(20), 14)
+    const near = camAt(hallFocus(game).x, hallFocus(game).z, 14)
     for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
     const body = (['people-lod0', 'people-lod1', 'people-lod2', 'hall-guest-body']
       .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)

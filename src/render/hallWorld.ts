@@ -18,7 +18,9 @@ import {
   HALL_CAM_YAW,
   HALL_OCCLUDE_M,
 } from './hallCamera'
-import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
+import { HALL_EDGES, NODE_POS, type HallNode } from '../game/guests'
+import { paintTerrazzo } from './world/raster'
+import { rasterTexture } from './world/textures'
 import type { Game } from '../game/sim'
 import {
   cellCenter,
@@ -86,6 +88,16 @@ function guestLane(id: string): number {
   return ((guestSalt(id) % 5) - 2) * 0.72
 }
 
+/** Living-interior floor tints. These multiply the terrazzo; they are not the zone paint. */
+const FLOOR_TINT: Record<ZoneId, string> = {
+  checkin: '#f4f1ea',
+  security: '#f2dca6',
+  gates: '#e2e6ea',
+  arrivals: '#f7f4ee',
+  retail: '#f1d3bc',
+  toilets: '#e7efe9',
+}
+
 const ROOM_COLOR: Partial<Record<HallNode, string>> = {
   entrance: '#6a8a72',
   info: '#5a7a8a',
@@ -144,6 +156,13 @@ export class HallWorld {
   private luggageBuilt = false
   roomHash = ''
   private floor: THREE.Mesh
+  /** Shared polished-floor map. Room slabs tint it; they do not own it. */
+  private terrazzo: THREE.Texture
+  private floorMap: THREE.Texture
+  /** Loud zone colours. Off unless the player is building or painting. */
+  private zoneTint = new THREE.Group()
+  private zoneTintSig = ''
+  private paintZones = false
   private game: Game | null = null
   private downX = 0
   private downY = 0
@@ -182,30 +201,39 @@ export class HallWorld {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: false,
+      alpha: false,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: true,
     })
+    this.renderer.setClearColor('#c5d0d8', 1)
     this.renderer.setPixelRatio(1)
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color('#1a2a32')
-    this.scene.fog = new THREE.Fog('#1a2a32', 55, 120)
+    this.scene.background = new THREE.Color('#c5d0d8')
+    this.scene.fog = new THREE.Fog('#c5d0d8', 120, 240)
 
     this.camera = new THREE.PerspectiveCamera(HALL_CAM_FOV, 1, HALL_CAM_NEAR, HALL_CAM_FAR)
     // Curb side of the walk, elevated, looking toward the gate.
     this.pivot.set(HALL_CAM_LOOK_X, 0, HALL_CAM_LOOK_Z)
     this.placeCam()
 
-    this.scene.add(new THREE.HemisphereLight('#d0e8f8', '#2a3a40', 0.9))
-    const sun = new THREE.DirectionalLight('#fff4e0', 0.7)
-    sun.position.set(12, 28, 8)
+    // Lambert divides by pi, so the fill sits above 1 or the terrazzo reads as mud.
+    this.scene.add(new THREE.HemisphereLight('#f7fbff', '#e4d9c8', 1.45))
+    const sun = new THREE.DirectionalLight('#fff6e8', 1.7)
+    sun.position.set(18, 42, 14)
     this.scene.add(sun)
+    this.scene.add(new THREE.AmbientLight('#fff8f0', 0.42))
 
+    const terrazzo = rasterTexture(paintTerrazzo(256), { anisotropy: 4 })
+    this.terrazzo = terrazzo
+    const floorMap = terrazzo.clone()
+    floorMap.repeat.set((HALL_W + 8) / 4.2, (HALL_D + 8) / 4.2)
+    this.floorMap = floorMap
     this.floor = new THREE.Mesh(
       new THREE.PlaneGeometry(HALL_W + 8, HALL_D + 8),
-      new THREE.MeshLambertMaterial({ color: '#2a3840' }),
+      new THREE.MeshLambertMaterial({ map: floorMap, color: '#f4f1ea' }),
     )
     this.floor.rotation.x = -Math.PI / 2
     this.floor.position.y = 0
@@ -221,6 +249,8 @@ export class HallWorld {
     this.scene.add(after)
 
     this.scene.add(this.roomGroup)
+    this.zoneTint.visible = false
+    this.scene.add(this.zoneTint)
     this.scene.add(this.kitGroup)
     this.scene.add(this.walkGroup)
     this.scene.add(this.litter.group)
@@ -443,6 +473,11 @@ export class HallWorld {
     }
   }
 
+  /** Zone paint from the hall sheet. Tint stays off during ordinary play. */
+  setPaintZones(on: boolean) {
+    this.paintZones = on
+  }
+
   /** Green / red ghost on the hovered cell's next free slot. */
   private syncGhost(game: Game) {
     const mode = this.build
@@ -563,6 +598,12 @@ export class HallWorld {
       }
       this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
       this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
+      // Living-interior columns stay up while the nav shell is drawn.
+      for (const x of [-16, -4, 8, 18]) {
+        for (const z of [-11, 11]) {
+          this.box(0.42, h, 0.42, '#e6eaee', x, y, z)
+        }
+      }
       return
     }
     // North and south — solid. The roof is gone so the floor stays readable.
@@ -581,18 +622,27 @@ export class HallWorld {
     // Cornice only — no roof slab.
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
+    // Columns down the concourse, clear of the doors and the centre walk.
+    for (const x of [-16, -4, 8, 18]) {
+      for (const z of [-11, 11]) {
+        this.box(0.42, h, 0.42, '#e6eaee', x, y, z)
+      }
+    }
     this.buildSecureWalls(zones)
   }
 
-  /** Wall a security cell against check-in or arrivals. Leave the gate side open. */
+  /**
+   * A floor threshold where security meets check-in or arrivals.
+   * The gate side stays open. Full-height partitions hid the lanes.
+   */
   private buildSecureWalls(zones: ZoneId[][]) {
     const rows = zones.length
     const cols = zones[0]?.length ?? 0
     if (!rows || !cols) return
     const cw = HALL_W / cols
     const rh = HALL_D / rows
-    const h = 3.15
-    const t = 0.28
+    const h = 0.08
+    const t = 0.16
     const blocks = (a: ZoneId, b: ZoneId) => {
       if (a === b) return false
       const air = (z: ZoneId) => z === 'gates' || z === 'retail'
@@ -606,12 +656,12 @@ export class HallWorld {
         if (c + 1 < cols && zones[r][c + 1] && blocks(z, zones[r][c + 1])) {
           const x = -HALL_W / 2 + (c + 1) * cw
           const zpos = -HALL_D / 2 + (r + 0.5) * rh
-          this.box(t, h, rh * 0.9, '#c9a27a', x, h / 2, zpos)
+          this.box(t, h, rh * 0.92, '#6f7a84', x, h / 2 + 0.03, zpos)
         }
         if (r + 1 < rows && zones[r + 1][c] && blocks(z, zones[r + 1][c])) {
           const x = -HALL_W / 2 + (c + 0.5) * cw
           const zpos = -HALL_D / 2 + (r + 1) * rh
-          this.box(cw * 0.9, h, t, '#c9a27a', x, h / 2, zpos)
+          this.box(cw * 0.92, h, t, '#6f7a84', x, h / 2 + 0.03, zpos)
         }
       }
     }
@@ -649,31 +699,13 @@ export class HallWorld {
         if (!z) continue
         const pos = cellCenter(c, r, cols, rows)
         const tile = new THREE.Mesh(
-          new THREE.BoxGeometry(cw - 0.18, 0.06, rh - 0.18),
-          new THREE.MeshLambertMaterial({ color: zoneDef(z).color }),
+          new THREE.PlaneGeometry(cw - 0.04, rh - 0.04),
+          new THREE.MeshLambertMaterial({ map: this.terrazzo, color: FLOOR_TINT[z] }),
         )
-        tile.position.set(pos.x, 0.04, pos.z)
+        tile.rotation.x = -Math.PI / 2
+        tile.position.set(pos.x, 0.02, pos.z)
         this.roomGroup.add(tile)
       }
-    }
-
-    for (const [a, b] of HALL_EDGES) {
-      if (!game.hallOpen().has(a) || !game.hallOpen().has(b)) continue
-      const pa = nodeWorld(a)
-      const pb = nodeWorld(b)
-      const mid = pa.clone().add(pb).multiplyScalar(0.5)
-      const len = pa.distanceTo(pb)
-      const beam = new THREE.Mesh(
-        new THREE.BoxGeometry(Math.max(0.4, len - 1.2), 0.05, 0.4),
-        new THREE.MeshLambertMaterial({
-          color: isAirside(a) || isAirside(b) ? '#3a5a70' : '#3a5a48',
-        }),
-      )
-      beam.position.copy(mid)
-      beam.position.y = 0.08
-      beam.lookAt(pb.x, 0.08, pb.z)
-      beam.rotateY(Math.PI / 2)
-      this.roomGroup.add(beam)
     }
 
     const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows)
@@ -1048,6 +1080,51 @@ export class HallWorld {
     this.overlay.clear()
   }
 
+  /** Bright zone paint. Hidden in play; on while placing, moving, bulldozing, or painting. */
+  private syncZoneTint(game: Game) {
+    const show = this.paintZones || this.build != null
+    if (!show) {
+      this.zoneTint.visible = false
+      return
+    }
+    const fit = game.activeHall()
+    const zones = fit?.zones ?? []
+    const sig = zones.map((row) => row.join(',')).join('|')
+    this.zoneTint.visible = true
+    if (sig === this.zoneTintSig && this.zoneTint.children.length > 0) return
+    this.zoneTintSig = sig
+    for (const child of this.zoneTint.children) {
+      const mesh = child as THREE.Mesh
+      mesh.geometry?.dispose()
+      const mat = mesh.material as THREE.Material | undefined
+      mat?.dispose()
+    }
+    this.zoneTint.clear()
+    const cols = zones[0]?.length || GRID_C
+    const rows = zones.length || GRID_R
+    const cw = HALL_W / cols
+    const rh = HALL_D / rows
+    for (let r = 0; r < zones.length; r++) {
+      for (let c = 0; c < (zones[r]?.length ?? 0); c++) {
+        const z = zones[r][c] as ZoneId | null
+        if (!z) continue
+        const pos = cellCenter(c, r, cols, rows)
+        const tile = new THREE.Mesh(
+          new THREE.PlaneGeometry(cw - 0.12, rh - 0.12),
+          new THREE.MeshBasicMaterial({
+            color: zoneDef(z).color,
+            transparent: true,
+            opacity: 0.38,
+            depthWrite: false,
+          }),
+        )
+        tile.rotation.x = -Math.PI / 2
+        tile.position.set(pos.x, 0.05, pos.z)
+        this.zoneTint.add(tile)
+      }
+    }
+  }
+
   /**
    * Separate layer. Hidden unless Show passenger flows is on.
    * An advisor highlight draws only the marked cells, not the flow lines.
@@ -1154,6 +1231,7 @@ export class HallWorld {
     let t = perfStart()
     this.resize()
     this.rebuildRooms(game)
+    this.syncZoneTint(game)
     this.easeToGoal(game)
     this.syncWalkways(game)
     this.syncGuests(game)
@@ -1360,6 +1438,8 @@ export class HallWorld {
     for (const tex of this.queueTex.values()) tex.dispose()
     this.queueTex.clear()
     this.ghostMat.dispose()
+    this.terrazzo.dispose()
+    this.floorMap.dispose()
     this.litter.dispose()
     this.navCrowd.dispose()
     this.renderer.dispose()

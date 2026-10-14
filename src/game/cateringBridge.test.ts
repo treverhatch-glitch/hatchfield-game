@@ -73,14 +73,14 @@ function parked(game: Game, stand: Vec): Flight {
 describe('catering wiring', () => {
   it('books a galley at the stand and posts the meal fee once', () => {
     const game = field()
-    game.tiles[10][15] = 'depot'
+    game.tiles[5][6] = 'depot'
     game.bumpMap()
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('12,21')
+    expect(f.groundTurn).toBe('11,6')
     const galley = game.galleyFor(f.id)
     expect(galley?.status).toBe('waiting')
-    expect(galley?.standId).toBe('12,21')
+    expect(galley?.standId).toBe('11,6')
     game.tick(5)
     game.tick(5)
     expect(game.galleyFor(f.id)?.status === 'complete' || game.galleyFor(f.id)?.status === 'short').toBe(true)
@@ -93,14 +93,14 @@ describe('catering wiring', () => {
 
   it('shows the crew on the stand while the lift is up', () => {
     const game = field()
-    game.tiles[10][15] = 'depot'
+    game.tiles[5][6] = 'depot'
     game.bumpMap()
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
     let sawLift = false
     for (let i = 0; i < 12 && !sawLift; i++) {
       game.tick(0.4)
-      const pose = game.cateringPoses().find((p) => p.standId === '12,21')
+      const pose = game.cateringPoses().find((p) => p.standId === '11,6')
       if (pose && pose.liftHeight > 0 && pose.crew.some((c) => c.at === 'lift' || c.at === 'galley')) sawLift = true
     }
     expect(sawLift).toBe(true)

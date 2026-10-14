@@ -2,6 +2,7 @@
  * Tiny RGBA software raster for procedural textures. Runs in Node (tests) and the
  * browser with no canvas dependency; output feeds THREE.DataTexture.
  */
+import { GROUND_LOOK } from '../look'
 
 export function hash2(x: number, y: number, seed = 0): number {
   let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1442695041)) | 0
@@ -125,13 +126,16 @@ function shade(c: RGB, k: number): RGB {
 
 export function paintGrass(size: number, seed = 1): Raster {
   const r = new Raster(size, size)
-  const dark = hexRgb(0x4f7240)
-  const mid = hexRgb(0x6e9452)
-  const dry = hexRgb(0xa6a86c)
+  const dark = hexRgb(GROUND_LOOK.grassDark)
+  const mid = hexRgb(GROUND_LOOK.grassMid)
+  const dry = hexRgb(GROUND_LOOK.grassDry)
+  const mow = GROUND_LOOK.mowStripe
   r.fill((u, v) => {
     const n = fbm(u, v, 4, 4, seed)
     const d = fbm(u, v, 2, 2, seed + 9)
-    return mix(mix(dark, mid, n * 1.3), dry, Math.max(0, d - 0.62) * 2.2)
+    // Two mowing bands per tile with soft edges; seamless because the tile wraps at u = 0 / 1.
+    const band = 1 + mow * Math.max(-1, Math.min(1, Math.sin(u * Math.PI * 2) * 4))
+    return shade(mix(mix(dark, mid, n * 1.3), dry, Math.max(0, d - 0.62) * 2.2), band)
   })
   const rand = rng(seed * 31 + 7)
   // Blade strokes: short vertical dashes, lighter tips.
@@ -140,7 +144,7 @@ export function paintGrass(size: number, seed = 1): Raster {
     const x = Math.floor(rand() * size)
     const y = Math.floor(rand() * size)
     const len = 1 + Math.floor(rand() * Math.max(2, size / 64))
-    const tone = rand() < 0.5 ? hexRgb(0x6c9a52) : hexRgb(0x34583a)
+    const tone = rand() < 0.5 ? hexRgb(GROUND_LOOK.grassBladeLight) : hexRgb(GROUND_LOOK.grassBladeDark)
     for (let k = 0; k < len; k++) r.blend(x, y - k, tone, 0.55 - k * 0.1)
   }
   // Clover / weed specks.
@@ -180,7 +184,7 @@ export function paintAsphalt(size: number, seed = 2, base = 0x3b3e44): Raster {
 }
 
 /** Concrete apron slabs: a 2×2 slab grid per texture tile with sealed joints. */
-export function paintConcrete(size: number, seed = 3, base = 0xb4b8bd): Raster {
+export function paintConcrete(size: number, seed = 3, base: number = GROUND_LOOK.concrete): Raster {
   const r = new Raster(size, size)
   const c0 = hexRgb(base)
   r.fill((u, v, x, y) => {

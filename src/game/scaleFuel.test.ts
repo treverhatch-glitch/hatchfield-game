@@ -110,11 +110,11 @@ describe('scale fuel stays in step with bowser loads', () => {
     game.fuelSupply = 'rail'
     game.tankTier = 3
     game.tankLitres = 10_000
-    game.tiles[21][7] = 'oil'
+    game.tiles[5][6] = 'oil'
     const dry = game.tankLitres
     game.tick(2)
     expect(game.tankLitres).toBe(dry)
-    for (let r = 22; r < 32; r++) game.tiles[r][7] = 'fuel_rail'
+    for (let r = 6; r < 32; r++) game.tiles[r][6] = 'fuel_rail'
     game.tick(2)
     expect(game.tankLitres).toBeGreaterThan(dry + 1_000)
     expect(game.news.some((n) => n.text.includes('Fuel rail is flowing'))).toBe(true)

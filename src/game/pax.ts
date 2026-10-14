@@ -1,5 +1,5 @@
-import { astar, nearestPath, tilesOf } from './path'
-import type { PaxStop, Person, TerminalFit, Tile, Vec } from './types'
+import { isPaxEntrance, landsideCurbs, paxPath, tilesOf } from './path'
+import { SIZE, type PaxStop, type Person, type TerminalFit, type Tile, type Vec } from './types'
 
 function uid(): string {
   return `pax-${Math.random().toString(36).slice(2, 8)}`
@@ -7,6 +7,25 @@ function uid(): string {
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function nearest(points: readonly Vec[], target: Vec): Vec | null {
+  let best: Vec | null = null
+  let bestD = Infinity
+  for (const p of points) {
+    const d = Math.abs(p.c - target.c) + Math.abs(p.r - target.r)
+    if (d < bestD) {
+      bestD = d
+      best = p
+    }
+  }
+  return best
+}
+
+/** Door cells only — hall stops are reached by walking in, not across the roof. */
+function entrancesNear(tiles: Tile[][], target: Vec): Vec | null {
+  const doors = tilesOf(tiles, 'terminal').filter((p) => isPaxEntrance(tiles, p.c, p.r))
+  return nearest(doors, target)
 }
 
 function stopGoal(
@@ -18,33 +37,41 @@ function stopGoal(
   const hall = tilesOf(tiles, 'terminal')
   const bags = tilesOf(tiles, 'bags')
   const snack = tilesOf(tiles, 'snack')
-  const roads = tilesOf(tiles, 'road')
-  const hallOrigin = fit?.origin ?? hall[0] ?? null
+  const hallOrigin = fit?.origin ?? hall[0] ?? stand
+  const door = entrancesNear(tiles, hallOrigin)
+  const curb = nearest(landsideCurbs(tiles), hallOrigin)
 
   switch (stop) {
     case 'plane':
       return stand
     case 'bags':
       return bags[0] ?? null
-    case 'claim':
-      return hallOrigin
     case 'food':
-      return snack[0] ?? hallOrigin
-    case 'shop':
-      return hallOrigin
+      return snack[0] ?? door
     case 'exit':
-      return roads[roads.length - 1] ?? roads[0] ?? hallOrigin
+      return curb
+    case 'claim':
+    case 'shop':
     case 'checkin':
     case 'security':
     case 'gate':
-      return hallOrigin
+      return door
     default:
       return null
   }
 }
 
 function pathTo(tiles: Tile[][], from: Vec, to: Vec): Vec[] | null {
-  return astar(tiles, from, to, 'person')
+  const path = paxPath(tiles, { c: Math.round(from.c), r: Math.round(from.r) }, { c: Math.round(to.c), r: Math.round(to.r) })
+  if (!path || path.length < 2) return null
+  return path
+}
+
+/** Stay inside the curb cell. A jitter must not push a walker off the map. */
+function onCell(cell: Vec): { x: number; y: number } {
+  const x = Math.min(SIZE - 1, Math.max(0, cell.c + (Math.random() - 0.5) * 0.3))
+  const y = Math.min(SIZE - 1, Math.max(0, cell.r + (Math.random() - 0.5) * 0.3))
+  return { x, y }
 }
 
 /** Arrival: leave the jet, hit bags/claim, maybe food/shop, then walk out the road. */
@@ -67,13 +94,16 @@ export function spawnArrivalPax(
     itinerary.push('exit')
 
     const first = itinerary[0]
-    const goal = stopGoal(first, tiles, stand, fit) ?? stand
-    const path = pathTo(tiles, stand, goal) ?? [stand, goal]
+    const goal = stopGoal(first, tiles, stand, fit)
+    const path = goal ? pathTo(tiles, stand, goal) : null
+    // No chord across grass or the roof. Hold the walker off the apron if the door is blocked.
+    if (!path) continue
+    const at = onCell(stand)
     out.push({
       id: uid(),
       flightId,
-      x: stand.c + (Math.random() - 0.5) * 0.35,
-      y: stand.r + (Math.random() - 0.5) * 0.35,
+      x: at.x,
+      y: at.y,
       path,
       seg: 0,
       t: -Math.random() * 1.2,
@@ -100,13 +130,10 @@ export function spawnDeparturePax(
   fit: TerminalFit | null,
   count: number,
 ): Person[] {
-  const roads = tilesOf(tiles, 'road')
   const hall = tilesOf(tiles, 'terminal')
-  const start =
-    roads[0] ??
-    hall[0] ??
-    nearestPath(tiles, stand, roads.length ? roads : hall, 'person')?.[0] ??
-    stand
+  const hallOrigin = fit?.origin ?? hall[0] ?? stand
+  const start = nearest(landsideCurbs(tiles), hallOrigin)
+  if (!start) return []
 
   const out: Person[] = []
   for (let i = 0; i < count; i++) {
@@ -120,13 +147,15 @@ export function spawnDeparturePax(
     itinerary.push('plane')
 
     const first = itinerary[0]
-    const goal = stopGoal(first, tiles, stand, fit) ?? stand
-    const path = pathTo(tiles, start, goal) ?? [start, goal]
+    const goal = stopGoal(first, tiles, stand, fit)
+    const path = goal ? pathTo(tiles, start, goal) : null
+    if (!path) continue
+    const at = onCell(start)
     out.push({
       id: uid(),
       flightId,
-      x: start.c + (Math.random() - 0.5) * 0.4,
-      y: start.r + (Math.random() - 0.5) * 0.4,
+      x: at.x,
+      y: at.y,
       path,
       seg: 0,
       t: -Math.random() * 2.5,

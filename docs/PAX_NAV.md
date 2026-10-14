@@ -73,6 +73,7 @@ Map to the hall's world frame in the renderer.
 - Body-to-body avoidance for walkers outside queues. Each walker keeps a fixed
   sideways offset so crowds do not walk single file. Use `render/world/guestMotion`
   for visual steering if needed.
+
 Tunables live in `src/paxnav/config.ts`.
 
 ## Live in the game (`src/game/hallNav.ts`)

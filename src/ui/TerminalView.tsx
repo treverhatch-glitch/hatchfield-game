@@ -18,6 +18,7 @@ import {
   moodWord,
   PREFAB_TIERS,
   unclearedReachesGate,
+  zoneCellBlocked,
   zoneDef,
   type ZoneId,
 } from '../game/terminal'
@@ -184,6 +185,10 @@ export function TerminalView({ game }: { game: Game }) {
     buildRef.current = build
     worldRef.current?.setBuild(build)
   }, [build])
+
+  useEffect(() => {
+    worldRef.current?.setPaintZones(zone != null)
+  }, [zone])
 
   useEffect(() => {
     // Capture phase, so Esc cancels a build before it leaves the hall.
@@ -426,15 +431,22 @@ export function TerminalView({ game }: { game: Game }) {
           {Array.from({ length: zones?.length || GRID_R }, (_, r) =>
             Array.from({ length: zones?.[r]?.length || zones?.[0]?.length || GRID_C }, (_, c) => {
               const painted = (zones?.[r]?.[c] ?? null) as ZoneId | null
-              const color = painted ? zoneDef(painted).color : '#2a3840'
+              const blocked = zoneCellBlocked(fit?.items ?? [], c, r)
+              const color = blocked ? '#6a3030' : painted ? zoneDef(painted).color : '#2a3840'
               return (
                 <button
                   key={`${c}-${r}`}
                   type="button"
                   data-testid={`cell-${c}-${r}`}
-                  style={{ background: color }}
-                  title={painted ? zoneDef(painted).label : 'Bare'}
+                  data-blocked={blocked ? '1' : '0'}
+                  style={{
+                    background: blocked
+                      ? `repeating-linear-gradient(135deg, ${color}, ${color} 4px, #e0574a 4px, #e0574a 6px)`
+                      : color,
+                  }}
+                  title={blocked ? 'Belt or wall — zone paint stops here' : painted ? zoneDef(painted).label : 'Bare'}
                   onClick={() => {
+                    if (blocked) return
                     // A coloured cell is the zone. Selecting it lists what fits there.
                     // Painting a new colour still happens when a different zone is armed.
                     if (painted && (!zone || zone === painted)) {

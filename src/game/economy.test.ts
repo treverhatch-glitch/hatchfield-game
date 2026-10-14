@@ -6,6 +6,8 @@ import {
   budgetLineCost,
   cityLevy,
   fieldOpsMultiplier,
+  loanAmountLabel,
+  loanDeskRows,
   loanInterestDue,
   loansAvailable,
   nextLoanBalance,
@@ -293,5 +295,18 @@ describe('economy', () => {
     game.hourIncome = 800
     game.econHour = 1
     expect(game.incomeRate()).toBeGreaterThan(0)
+  })
+
+  it('lists Host Military/Guard once and names the loan amount', () => {
+    const rows = loanDeskRows([
+      ...LOAN_PRODUCTS,
+      ...LOAN_PRODUCTS,
+      { id: 'guard-a', label: 'Host Military/Guard', principal: 18000, fee: 0 },
+      { id: 'guard-b', label: 'Host military / Guard', principal: 18000, fee: 0 },
+    ])
+    expect(rows.filter((p) => /military|guard/i.test(p.label))).toHaveLength(1)
+    expect(new Set(rows.map((p) => p.id)).size).toBe(rows.length)
+    expect(loanAmountLabel(25_000)).toContain('25,000')
+    expect(loanAmountLabel(25_000).startsWith('Loan amount')).toBe(true)
   })
 })

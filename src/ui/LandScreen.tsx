@@ -1,24 +1,12 @@
 import { LAND, money } from '../game/catalog'
+import { STARTER_KITS } from '../game/starterLayout'
 import type { Game } from '../game/sim'
 import type { SiteKind, StartFocus } from '../game/types'
 import { MAP_LIST, mapById, mapSwatch } from '../maps/index'
 
-const PAX_NEEDS = [
-  'Runway',
-  'Stand',
-  'Terminal',
-  'Check-in',
-  'Security',
-  'Gate',
-] as const
-
-const CARGO_NEEDS = [
-  'Runway',
-  'Cargo stand',
-  'Truck gate (guard)',
-  'Shed',
-  'Warehouse',
-] as const
+const PAX_NEEDS = STARTER_KITS.pax.includes
+const CARGO_NEEDS = STARTER_KITS.cargo.includes
+const HYBRID_NEEDS = STARTER_KITS.hybrid.includes
 
 export function LandScreen({
   game,
@@ -79,9 +67,9 @@ export function LandScreen({
           >
             <strong>Passenger</strong>
             <em>
-              {LAND.city.name} · {money(LAND.city.cost)}
+              {STARTER_KITS.pax.label} · {money(LAND.city.cost)}
             </em>
-            <p>Hall + jetways. Northline / Bushline first hour.</p>
+            <p>{STARTER_KITS.pax.summary}</p>
             <ul>
               {PAX_NEEDS.map((n) => (
                 <li key={n}>{n}</li>
@@ -96,9 +84,9 @@ export function LandScreen({
           >
             <strong>Cargo</strong>
             <em>
-              {LAND.factory.name} · {money(LAND.factory.cost)}
+              {STARTER_KITS.cargo.label} · {money(LAND.factory.cost)}
             </em>
-            <p>Shed, guard, freighter stand — no pax hall required.</p>
+            <p>{STARTER_KITS.cargo.summary}</p>
             <ul>
               {CARGO_NEEDS.map((n) => (
                 <li key={n}>{n}</li>
@@ -112,8 +100,8 @@ export function LandScreen({
           data-testid="start-hybrid"
           onClick={() => buy('city', 'hybrid')}
         >
-          Hybrid · {LAND.city.name}
-          <span>Lean hall + cargo road. Day pax, night freight.</span>
+          {STARTER_KITS.hybrid.label}
+          <span>{HYBRID_NEEDS.join(' · ')}</span>
         </button>
       </div>
     </div>

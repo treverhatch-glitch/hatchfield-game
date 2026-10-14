@@ -43,5 +43,6 @@ export {
 } from './stands'
 export type { BridgeStop, DoorBox, IcaoCode } from './stands'
 export { STAND_ENVELOPE } from './specs'
+export { liveryKey } from './pool'
 export { ParkedFleet } from './batch'
 export type { ParkedPlane } from './batch'

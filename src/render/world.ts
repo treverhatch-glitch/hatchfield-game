@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { inBounds } from '../game/path'
+import { standEntry } from '../game/standFoot'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
@@ -10,10 +11,12 @@ import {
   disposeAircraftLibrary,
   bridgeMirror,
   bridgeYawToward,
+  liveryKey,
   loadAircraftQuality,
   ParkedFleet,
   releaseAircraft,
   setAircraftNight,
+  setAircraftQuality,
   aircraftWorldPerMeter,
   CELL,
   updateAircraft,
@@ -36,6 +39,7 @@ import {
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
+import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
 import {
   initWorldRender,
   parseQuality,
@@ -45,6 +49,8 @@ import {
   type QualityLevel,
   type WorldRender,
 } from './world/index'
+import { standBox } from './world/layout'
+import { ROOF_Y } from './world/terminal'
 
 interface ClimbOut {
   airframeId: string
@@ -146,15 +152,8 @@ const CATER_MAST_M = 2.2
 function makeCateringRig(): THREE.Group {
   const g = new THREE.Group()
   const bodyL = wu(8.5)
-  const bodyH = wu(3.2)
   const bodyW = wu(2.5)
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(bodyL, bodyH, bodyW),
-    new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.45 }),
-  )
-  body.position.y = bodyH / 2
-  body.castShadow = true
-  g.add(body)
+  g.add(vehicleMesh('catering_truck', '#e07a3d', vehicleMeters('catering_truck'), WORLD_PER_METER))
   const mastH = wu(CATER_MAST_M)
   const mast = new THREE.Mesh(
     new THREE.BoxGeometry(wu(0.18), mastH, wu(0.18)),
@@ -251,6 +250,7 @@ export class World {
   private onPointerUp!: (e: PointerEvent) => void
   private onWheel!: (e: WheelEvent) => void
   private onContextMenu!: (e: Event) => void
+  private onKeyDown!: (e: KeyboardEvent) => void
   /** True after pointerdown already stamped — blocks duplicate up/down fires. */
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
@@ -431,6 +431,13 @@ export class World {
       this.dist = clamp(this.dist + e.deltaY * 0.06, MIN_DIST, MAX_DIST)
       this.placeCam()
     }
+    this.onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== GFX_CYCLE_KEY || e.repeat) return
+      e.preventDefault()
+      const order: QualityLevel[] = ['low', 'med', 'high']
+      this.setGraphicsQuality(order[(order.indexOf(this.wr.quality) + 1) % order.length])
+    }
+    window.addEventListener('keydown', this.onKeyDown)
     canvas.addEventListener('contextmenu', this.onContextMenu)
     canvas.addEventListener('pointerdown', this.onPointerDown)
     canvas.addEventListener('pointermove', this.onPointerMove)
@@ -496,6 +503,21 @@ export class World {
     this.dist = rig.dist
     this.pivot.set(rig.pivot.x, 0, rig.pivot.z)
     this.placeCam()
+  }
+
+  /**
+   * Graphics preset for ground, lights, shadows and aircraft detail. Saved for the next
+   * boot; MSAA is fixed with the WebGL context, so that part follows on reload.
+   * Bound to F8 here; a settings control can call this directly.
+   */
+  setGraphicsQuality(level: QualityLevel) {
+    this.wr.setQuality(level)
+    setAircraftQuality(level)
+    try {
+      globalThis.localStorage?.setItem(GFX_KEY, level)
+    } catch {
+      // Storage is unavailable in some private windows.
+    }
   }
 
   /** Photo mode. `null` follows the sim clock. */
@@ -711,7 +733,7 @@ export class World {
       body.castShadow = true
       body.receiveShadow = true
       const roof = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 1.02, 0.18, CELL * 1.02),
+        new THREE.BoxGeometry(CELL * 0.96, 0.18, CELL * 0.96),
         new THREE.MeshStandardMaterial({ color: '#2f6f9a', roughness: 0.5 }),
       )
       roof.position.y = 3.5
@@ -853,17 +875,20 @@ export class World {
       mesh.receiveShadow = true
       g.add(mesh)
     } else if (tile === 'tower') {
+      // Round cab stays inside the cell. The keep-out in buildingFootprint
+      // refuses a stamp whose neighbours are roads, so the shaft cannot sit on one.
+      const cabR = CELL * 0.42
       const shaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.55, 0.9, 5.2, 8),
+        new THREE.CylinderGeometry(cabR * 0.45, cabR * 0.72, CELL * 0.55, 10),
         new THREE.MeshStandardMaterial({ color: '#cfd8e3' }),
       )
-      shaft.position.y = 2.6
+      shaft.position.y = CELL * 0.28
       shaft.castShadow = true
       const cab = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.3, 1.1, 1.1, 8),
+        new THREE.CylinderGeometry(cabR, cabR * 0.86, CELL * 0.12, 12),
         new THREE.MeshStandardMaterial({ color: '#2f6f9a', metalness: 0.3 }),
       )
-      cab.position.y = 5.4
+      cab.position.y = CELL * 0.58
       g.add(shaft, cab)
     } else if (tile === 'hangar') {
       addHangar(g, opts.hangarTier ?? 'small')
@@ -1279,7 +1304,7 @@ export class World {
         new THREE.BoxGeometry(CELL * 0.7, 0.12, CELL * 0.45),
         new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.3 }),
       )
-      canopy.position.set(0, 2.4, CELL * 0.4)
+      canopy.position.set(0, 2.4, CELL * 0.22)
       const crown = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.78, 0.45, CELL * 0.68),
         new THREE.MeshStandardMaterial({
@@ -1329,13 +1354,13 @@ export class World {
       new THREE.BoxGeometry(CELL * 0.5, 1.6, CELL * 0.22),
       new THREE.MeshStandardMaterial({ color: '#8a9088', roughness: 0.4 }),
     )
-    entry.position.set(0, 0.9, CELL * 0.42)
+    entry.position.set(0, 0.9, CELL * 0.34)
     entry.castShadow = true
     const canopy = new THREE.Mesh(
       new THREE.BoxGeometry(CELL * 0.62, 0.1, CELL * 0.35),
       new THREE.MeshStandardMaterial({ color: '#2f6f9a' }),
     )
-    canopy.position.set(0, 1.85, CELL * 0.48)
+    canopy.position.set(0, 1.85, CELL * 0.28)
     g.add(body, roof, entry, canopy)
     for (let floor = 0; floor < 3; floor++) {
       for (const dx of [-1.15, 0, 1.15]) {
@@ -1585,40 +1610,126 @@ export class World {
 
   syncGhost(game: Game) {
     const h = game.hover
-    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}`
+    const cells = game.ghostCells(h)
+    const ready = game.ghostReady(cells)
+    const preview = game.standPreview()
+    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}|${preview ? `${preview.cls}${preview.scale ?? ''}` : ''}|${ready ? 1 : 0}`
     if (next === this.ghostHash) return
     this.ghostHash = next
     this.clearGhost()
-    const cells = game.ghostCells(game.hover)
+    const tint = ready ? 0x7dff9a : 0xff6b6b
+    const quad = new THREE.MeshBasicMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    })
     const geo = new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95)
     geo.rotateX(-Math.PI / 2)
-    const ok = new THREE.MeshBasicMaterial({
-      color: '#7dff9a',
-      transparent: true,
-      opacity: 0.38,
-    })
-    const bad = new THREE.MeshBasicMaterial({
-      color: '#ff6b6b',
-      transparent: true,
-      opacity: 0.38,
-    })
-    const stampRunway =
-      game.tool === 'runway' ||
-      game.tool === 'runway_heavy' ||
-      game.tool === 'runway_short'
-    const runwayReady =
-      stampRunway &&
-      cells.length > 1 &&
-      cells.every((p) => inBounds(p.c, p.r) && game.tile(p) === 'grass')
     for (const p of cells) {
-      if (p.c < 0) continue
-      const t = game.tile(p)
-      const clear = t === 'grass' || game.tool === 'clear'
-      const ready = stampRunway ? runwayReady : clear
-      const mesh = new THREE.Mesh(geo, ready ? ok : bad)
+      if (!inBounds(p.c, p.r)) continue
+      const mesh = new THREE.Mesh(geo, quad)
       mesh.position.copy(toWorld(p.c, p.r, 0.12))
       this.ghostGroup.add(mesh)
     }
+    this.addGhostPrefab(game, cells, tint)
+  }
+
+  /** Translucent true-size preview. One mesh for a hall or a runway, the aircraft box for a stand. */
+  private addGhostPrefab(game: Game, cells: Vec[], tint: number) {
+    const tile = game.placementTile()
+    if (!tile || !game.hover || !cells.length) return
+    const mat = new THREE.MeshBasicMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+    })
+    const ghostify = (root: THREE.Object3D) => {
+      const dropped: THREE.Material[] = []
+      root.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return
+        const src = o.material
+        if (Array.isArray(src)) dropped.push(...src)
+        else dropped.push(src)
+        o.material = mat
+        o.castShadow = false
+        o.receiveShadow = false
+      })
+      for (const m of new Set(dropped)) {
+        if (m !== mat) m.dispose()
+      }
+    }
+    if (tile === 'runway' || tile === 'taxi' || tile === 'road') {
+      this.ghostGroup.add(this.ghostSlab(cells, tile === 'runway' ? 0.22 : 0.16, mat))
+      return
+    }
+    if (tile === 'terminal') {
+      const slab = this.ghostSlab(cells, ROOF_Y, mat)
+      slab.position.y = ROOF_Y / 2
+      this.ghostGroup.add(slab)
+      return
+    }
+    if (tile === 'stand') {
+      const spec = game.standPreview()
+      if (!spec) return
+      const entry = standEntry(game.tiles, game.hover.c, game.hover.r)
+      const box = standBox({
+        c: game.hover.c,
+        r: game.hover.r,
+        cls: spec.cls,
+        scale: spec.scale ?? undefined,
+        jetway: game.standAccessMode === 'jetway',
+        entry,
+      })
+      const alongX = box.depthAlongX
+      const pad = new THREE.Mesh(
+        new THREE.BoxGeometry(alongX ? box.depth : box.width, 0.16, alongX ? box.width : box.depth),
+        mat,
+      )
+      pad.position.set(box.x, 0.14, box.z)
+      const fuse = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          alongX ? box.depth * 0.72 : box.width * 0.16,
+          1.35,
+          alongX ? box.width * 0.16 : box.depth * 0.72,
+        ),
+        mat,
+      )
+      fuse.position.set(box.x, 0.9, box.z)
+      this.ghostGroup.add(pad, fuse)
+      return
+    }
+    for (const p of cells) {
+      if (!inBounds(p.c, p.r)) continue
+      const built = this.building(tile, toWorld(p.c, p.r, 0))
+      ghostify(built)
+      this.ghostGroup.add(built)
+    }
+  }
+
+  private ghostSlab(cells: Vec[], height: number, mat: THREE.Material): THREE.Mesh {
+    let minC = Infinity
+    let maxC = -Infinity
+    let minR = Infinity
+    let maxR = -Infinity
+    for (const p of cells) {
+      if (!inBounds(p.c, p.r)) continue
+      minC = Math.min(minC, p.c)
+      maxC = Math.max(maxC, p.c)
+      minR = Math.min(minR, p.r)
+      maxR = Math.max(maxR, p.r)
+    }
+    if (!Number.isFinite(minC)) {
+      return new THREE.Mesh(new THREE.BoxGeometry(CELL, height, CELL), mat)
+    }
+    const w = (maxC - minC + 1) * CELL
+    const d = (maxR - minR + 1) * CELL
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, height, d), mat)
+    const cx = (minC + maxC) / 2
+    const rz = (minR + maxR) / 2
+    mesh.position.copy(toWorld(cx, rz, height / 2))
+    return mesh
   }
 
   /**
@@ -1634,7 +1745,7 @@ export class World {
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
       if (game.standAccessAt(cell) === 'jetway') continue
       const paint = flightLivery(game, f)
-      const key = `${f.airframeId}|${paint.body}|${paint.stripe}`
+      const key = `${f.airframeId}|${liveryKey(paint)}`
       const list = groups.get(key)
       if (list) list.push(f)
       else groups.set(key, [f])
@@ -1874,19 +1985,10 @@ export class World {
                       : t.kind === 'delivery'
                         ? '#c47a3a'
                         : '#c45c26'
-        const [lenM, htM, widM] = vehicleMeters(t.kind)
-        const len = wu(lenM)
-        const ht = wu(htM)
-        const wid = wu(widM)
+        const size = vehicleMeters(t.kind)
+        const ht = wu(size[1])
         const g = new THREE.Group()
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(len, ht, wid),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
-        )
-        body.position.y = ht / 2
-        body.castShadow = true
-        body.name = 'body'
-        g.add(body)
+        g.add(vehicleMesh(t.kind, color, size, WORLD_PER_METER))
         // Manor Lords-style visible load — crates on bag carts / city trucks.
         if (t.kind === 'bags' || t.kind === 'citycargo') {
           const crateH = wu(t.kind === 'citycargo' ? 1.2 : 0.7)
@@ -1970,13 +2072,7 @@ export class World {
         const ht = wu(htM)
         const wid = wu(widM)
         const g = new THREE.Group()
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(len, ht, wid),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.45 }),
-        )
-        body.position.y = ht / 2
-        body.castShadow = true
-        g.add(body)
+        g.add(vehicleMesh(pose.type, color, [lenM, htM, widM], WORLD_PER_METER))
         if (pose.type === 'baggage_tug' || pose.type === 'belt_loader') {
           const bed = new THREE.Mesh(
             new THREE.BoxGeometry(wu(2.4), wu(0.25), wid),
@@ -2069,7 +2165,9 @@ export class World {
         this.people.set(p.id, mesh)
         this.entGroup.add(mesh)
       }
-      mesh.position.copy(toWorld(p.x, p.y, wu(p.job === 'mechanic' ? 0.925 : 0.875)))
+      const gc = Math.min(SIZE - 1, Math.max(0, p.x))
+      const gr = Math.min(SIZE - 1, Math.max(0, p.y))
+      mesh.position.copy(toWorld(gc, gr, wu(p.job === 'mechanic' ? 0.925 : 0.875)))
       // Face travel direction so flow reads clearly
       if (p.path.length > 1) {
         const a = p.path[Math.min(p.seg, p.path.length - 1)]
@@ -2137,20 +2235,19 @@ export class World {
     }
   }
 
-  /** Ghost tiles share one geometry per rebuild — dispose it once, not every hover forever. */
+  /** Ghost meshes are rebuilt per hover. Dispose every geometry and cloned material. */
   private clearGhost() {
-    let geo: THREE.BufferGeometry | null = null
-    const mats: THREE.Material[] = []
-    for (const child of this.ghostGroup.children) {
-      if (child instanceof THREE.Mesh) {
-        geo = child.geometry
-        const mat = child.material
-        if (Array.isArray(mat)) mats.push(...mat)
-        else mats.push(mat)
-      }
-    }
-    geo?.dispose()
-    for (const m of new Set(mats)) m.dispose()
+    const geos = new Set<THREE.BufferGeometry>()
+    const mats = new Set<THREE.Material>()
+    this.ghostGroup.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return
+      geos.add(o.geometry)
+      const mat = o.material
+      if (Array.isArray(mat)) for (const m of mat) mats.add(m)
+      else mats.add(mat)
+    })
+    for (const g of geos) g.dispose()
+    for (const m of mats) m.dispose()
     this.ghostGroup.clear()
   }
 
@@ -2363,10 +2460,12 @@ export class World {
     this.parkedFleet.dispose()
     this.gateGroup.clear()
     disposeAircraftLibrary()
+    disposeVehicleLibrary()
     this.wr.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
     const canvas = this.canvas
+    window.removeEventListener('keydown', this.onKeyDown)
     canvas.removeEventListener('contextmenu', this.onContextMenu)
     canvas.removeEventListener('pointerdown', this.onPointerDown)
     canvas.removeEventListener('pointermove', this.onPointerMove)
@@ -2380,11 +2479,15 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
+const GFX_KEY = 'hatchfield-gfx'
+/** Cycles low → med → high. Function key, so it never collides with typing or camera keys. */
+const GFX_CYCLE_KEY = 'F8'
+
 /** Saved `hatchfield-gfx`, otherwise a guess (software GL starts on low). */
 function pickQuality(): QualityLevel {
   let saved: string | null = null
   try {
-    saved = globalThis.localStorage?.getItem('hatchfield-gfx') ?? null
+    saved = globalThis.localStorage?.getItem(GFX_KEY) ?? null
   } catch {
     saved = null
   }
@@ -2416,10 +2519,14 @@ const _quat = new THREE.Quaternion()
 const _scale = new THREE.Vector3()
 const _doorPos = new THREE.Vector3()
 
+const SOLID_PAINT = new Set<string>(['military', 'air_ambulance', 'helo_med', 'freighter', 'helo_exec'])
+
 function flightLivery(game: Game, f: Game['flights'][number]): Livery {
   const a = game.airline(f.airline)
   let body = a.color
   let stripe = a.stripe
+  // Airline fin over a white crown. Special kinds keep their solid paint below.
+  if (!SOLID_PAINT.has(f.kind)) return { body, stripe, tail: body, scheme: 'twotone' }
   if (f.kind === 'military') {
     body = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
     stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
@@ -2433,11 +2540,13 @@ function flightLivery(game: Game, f: Game['flights'][number]): Livery {
     body = '#1a3a4a'
     stripe = '#c9a227'
   }
-  return { body, stripe, tail: stripe }
+  return { body, stripe, tail: stripe, scheme: 'solid' }
 }
 
 function disposeObject(root: THREE.Object3D) {
   root.traverse((obj) => {
+    // Pooled vehicle shells outlive any one truck.
+    if (obj.userData.shared) return
     const mesh = obj as THREE.Mesh
     mesh.geometry?.dispose()
     const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
