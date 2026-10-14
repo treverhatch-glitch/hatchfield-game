@@ -5,7 +5,7 @@ import type { CrewRole } from '../paxnav/crew.ts'
 import { barrierPosts, HallServiceFx, servicePoint, type DeskBrand } from './hallService'
 
 function facility(id: string, kind: FacilityMetrics['kind'], line: { x: number; z: number }[], serving = false, served = 0, queueLength = 0): FacilityMetrics {
-  return { id, kind, roomId: null, queueLength, serving, incoming: 0, avgWaitSec: 0, longestWaitSec: 0, estWaitSec: 0, served, leftQueue: 0, stock: null, line }
+  return { id, kind, roomId: null, queueLength, serving, incoming: 0, avgWaitSec: 0, longestWaitSec: 0, estWaitSec: 0, staffed: true, inUse: serving || queueLength > 0, serviceSec: 30, served, leftQueue: 0, stock: null, line }
 }
 
 function fakeNav(metrics: () => FacilityMetrics[], crew: (CrewRole | null)[] = []) {

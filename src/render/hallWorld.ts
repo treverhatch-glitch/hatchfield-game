@@ -1175,11 +1175,14 @@ export class HallWorld {
   }
 
   syncGuests(game: Game) {
-    // Room interior: every hall guest walks the doorway plan. Otherwise departures
-    // and arrivals stay on the nav-grid crowd so the two pictures do not stack.
+    // Departures and arrivals on the live walk are the nav-grid crowd (one
+    // queue per desk or lane, plus the serve pose). Doorway figures stay for
+    // everyone the walk does not draw, so the two pictures do not stack.
     const nav = game.hallNav
     const routed = this.roomPlan != null && this.interiorFit != null
-    const drawn = routed || !nav.live ? game.hallGuests : game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id))
+    const drawn = nav.live
+      ? game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id))
+      : game.hallGuests
     const live = new Set(drawn.map((g) => g.id))
     for (const [id, mesh] of this.guests) {
       if (!live.has(id)) {
@@ -1701,10 +1704,16 @@ export class HallWorld {
     this.syncWalkways(game)
     this.buildFrameQueues(game)
     this.syncGuests(game)
-    if (this.roomPlan) {
+    // The room plan keeps its own counters. The walk's crowd still stands in
+    // those queues, so a staffed desk shows the line and the serve pose.
+    const walk = game.hallNav.live
+    if (!walk) {
       this.navCrowd.group.visible = false
       this.serviceFx.group.visible = false
       this.navDrawn = 0
+    } else if (this.roomPlan) {
+      this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
+      this.serviceFx.group.visible = false
     } else {
       this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
       const crew = this.navCrowd.lastPoses()

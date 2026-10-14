@@ -1,0 +1,19 @@
+/**
+ * Tunables for check-in desks and security lanes as service points.
+ * Times are seconds on the clock the caller uses (nav seconds in the walk,
+ * clock seconds in the pace model). Nothing here is a price or a wage.
+ */
+
+export const SERVICE_POINT_TUNING = {
+  /**
+   * Wait shown for a line at a point with nobody working it.
+   * Long enough that the info panel and the floor marker call it a bottleneck.
+   */
+  unstaffedWaitSec: 1200,
+  /** Serve animation: handoff cycles per second while a passenger is at the point. */
+  serveCycleHz: 1.6,
+  /** Forward lean at the top of the handoff, radians. */
+  serveLean: 0.42,
+  /** How far the hand reaches toward the desk, metres. */
+  serveReachM: 0.32,
+} as const

@@ -357,6 +357,41 @@ describe('re-path on layout edits', () => {
   })
 })
 
+describe('service points', () => {
+  it('sends passengers to the staffed lane and does not serve a closed one', () => {
+    const nav = new PaxNav(sample(), { seed: 4 })
+    const open = new Set(nav.metrics().map((m) => m.id))
+    open.delete('lane2')
+    nav.setStaffing(open)
+    for (let i = 0; i < 8; i++) nav.spawn({ id: `p${i}`, gate: 'g1', departAt: 4000, bags: false, needs: [] })
+    runChecked(nav, 0, 80, 0.25)
+    expect(nav.metricsFor('lane2')!.served).toBe(0)
+    expect(nav.metricsFor('lane2')!.queueLength).toBe(0)
+    expect(nav.poses().every((p) => p.facility !== 'lane2')).toBe(true)
+    expect(nav.metricsFor('lane1')!.served).toBeGreaterThan(0)
+    const phases = new Uint8Array(nav.count)
+    expect(nav.writePhases(phases)).toBe(nav.count)
+  })
+
+  it('holds the line at a closed lane until someone is staffing it', () => {
+    const nav = new PaxNav(sample(), { seed: 5 })
+    const open = new Set(nav.metrics().map((m) => m.id))
+    open.delete('lane1')
+    open.delete('lane2')
+    nav.setStaffing(open)
+    for (let i = 0; i < 4; i++) nav.spawn({ id: `p${i}`, gate: 'g1', departAt: 4000, bags: false, needs: [] })
+    runChecked(nav, 0, 50, 0.25)
+    const lanes = nav.metrics().filter((m) => m.kind === 'security_lane')
+    expect(lanes.every((m) => m.served === 0 && !m.staffed)).toBe(true)
+    expect(lanes.some((m) => m.queueLength > 0)).toBe(true)
+    expect(nav.poses().some((p) => p.phase === 'service')).toBe(false)
+    const both = new Set(nav.metrics().map((m) => m.id))
+    nav.setStaffing(both)
+    runChecked(nav, 50, 120, 0.25)
+    expect(nav.metrics().some((m) => m.kind === 'security_lane' && m.served > 0)).toBe(true)
+  })
+})
+
 describe('queues', () => {
   it('forms a visible, evenly spaced line and reports length and waits', () => {
     const l = build(sample(), [(x) => removeEquipment(x, 'desk2')])
