@@ -11,9 +11,9 @@ Feature merge already on this branch, before this handoff file:
 - `#225` slower walks: `b3740e79600c5b47e59314b7c17bd1a6bf5d899a`
   ("Merge slower terminal walks (#225)")
 
-The commit that adds this file is the trunk tip. Fill the SHA below once `git rev-parse HEAD` is known, then leave it.
+Handoff body commit: `a01bbdd87b869a3df5183d7603500537c4e04e11`.
 
-- Trunk SHA: `PENDING`
+The trunk tip is whatever `git rev-parse HEAD` prints after this line was filled in. It is this note's commit, one commit after `a01bbdd`, parent `b3740e7` then `a01bbdd`. Do not hunt an older SHA.
 
 `main` cannot be checked out in `/workspace` (it is already checked out at `/tmp/main-sync`).
 Sync with `git -C /tmp/main-sync merge --no-ff`, not a fast-forward. Main's sync commits are not on trunk.
