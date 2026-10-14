@@ -5,6 +5,18 @@
 import * as THREE from 'three'
 import { canvasToPng } from '../camera/capture.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
+import {
+  HALL_CAM_DIST,
+  HALL_CAM_FOV,
+  HALL_CAM_LOOK_X,
+  HALL_CAM_LOOK_Z,
+  HALL_CAM_MAX_DIST,
+  HALL_CAM_MIN_DIST,
+  HALL_CAM_NEAR,
+  HALL_CAM_PITCH,
+  HALL_CAM_YAW,
+  HALL_OCCLUDE_M,
+} from './hallCamera'
 import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
 import type { Game } from '../game/sim'
 import {
@@ -54,6 +66,20 @@ function nodeWorld(id: HallNode): THREE.Vector3 {
   return new THREE.Vector3((p.x - 0.5) * HALL_W, 0, (p.y - 0.5) * HALL_D)
 }
 
+const FIGURE_SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
+const FIGURE_TROUSERS = ['#f2e2c4', '#6ea2e0', '#8fbf7a', '#d08a62', '#c9b59a', '#e8eef4']
+
+function guestSalt(id: string): number {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+
+/** Lateral offset so walkers on the same edge don't stack into one blob. */
+function guestLane(id: string): number {
+  return ((guestSalt(id) % 5) - 2) * 0.72
+}
+
 const ROOM_COLOR: Partial<Record<HallNode, string>> = {
   entrance: '#6a8a72',
   info: '#5a7a8a',
@@ -79,9 +105,9 @@ export class HallWorld {
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   pivot = new THREE.Vector3(0, 0, 0)
-  yaw = 0.55
-  pitch = 0.95
-  dist = 52
+  yaw = HALL_CAM_YAW
+  pitch = HALL_CAM_PITCH
+  dist = HALL_CAM_DIST
   dragging: 'orbit' | 'pan' | null = null
   lastX = 0
   lastY = 0
@@ -92,7 +118,15 @@ export class HallWorld {
   /** Queue, lost, bag, and shop markers. Always drawn. Numbers open on click. */
   hotspotGroup = new THREE.Group()
   bagGroup = new THREE.Group()
-  guests = new Map<string, THREE.Mesh>()
+  guests = new Map<string, THREE.Object3D>()
+  private readonly figLeg = new THREE.BoxGeometry(0.18, 0.86, 0.18)
+  private readonly figTorso = new THREE.BoxGeometry(0.46, 0.56, 0.26)
+  private readonly figHead = new THREE.SphereGeometry(0.2, 14, 10)
+  private readonly figArm = new THREE.BoxGeometry(0.12, 0.48, 0.12)
+  private readonly figCarry = new THREE.BoxGeometry(0.18, 0.24, 0.1)
+  private readonly figBag = new THREE.BoxGeometry(0.22, 0.32, 0.14)
+  private readonly figPin = new THREE.ConeGeometry(0.09, 0.26, 6)
+  private readonly figSnack = new THREE.BoxGeometry(0.1, 0.12, 0.1)
     private beltCubes: THREE.Mesh[] = []
   private claimCubes: THREE.Mesh[] = []
   private sortCubes: THREE.Mesh[] = []
@@ -142,9 +176,11 @@ export class HallWorld {
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#1a2a32')
-    this.scene.fog = new THREE.Fog('#1a2a32', 40, 90)
+    this.scene.fog = new THREE.Fog('#1a2a32', 55, 120)
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200)
+    this.camera = new THREE.PerspectiveCamera(HALL_CAM_FOV, 1, HALL_CAM_NEAR, 200)
+    // Curb side of the walk, elevated, looking toward the gate.
+    this.pivot.set(HALL_CAM_LOOK_X, 0, HALL_CAM_LOOK_Z)
     this.placeCam()
 
     this.scene.add(new THREE.HemisphereLight('#d0e8f8', '#2a3a40', 0.9))
@@ -378,7 +414,7 @@ export class HallWorld {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault()
-    this.dist = Math.min(70, Math.max(18, this.dist + e.deltaY * 0.04))
+    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + e.deltaY * 0.04))
     this.placeCam()
   }
 
@@ -570,22 +606,109 @@ export class HallWorld {
     this.kitGroup.clear()
   }
 
+  /** Head, torso, arms, and two legs. Shared geometries; materials stay per person. */
+  private buildFigure(id: string, color: string): THREE.Group {
+    const root = new THREE.Group()
+    root.userData.guestId = id
+    const salt = guestSalt(id)
+    const skin = FIGURE_SKINS[salt % FIGURE_SKINS.length]
+    const trousers = FIGURE_TROUSERS[(salt >>> 4) % FIGURE_TROUSERS.length]
+    const shirt = new THREE.MeshLambertMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.55,
+    })
+    const legs = new THREE.MeshLambertMaterial({
+      color: trousers,
+      emissive: trousers,
+      emissiveIntensity: 0.35,
+    })
+    const face = new THREE.MeshLambertMaterial({
+      color: skin,
+      emissive: skin,
+      emissiveIntensity: 0.4,
+    })
+
+    const left = new THREE.Group()
+    left.position.set(-0.11, 0.86, 0)
+    const leftLeg = new THREE.Mesh(this.figLeg, legs)
+    leftLeg.position.y = -0.43
+    left.add(leftLeg)
+    root.add(left)
+
+    const right = new THREE.Group()
+    right.position.set(0.11, 0.86, 0)
+    const rightLeg = new THREE.Mesh(this.figLeg, legs)
+    rightLeg.position.y = -0.43
+    right.add(rightLeg)
+    root.add(right)
+    root.userData.leftLeg = left
+    root.userData.rightLeg = right
+
+    const torso = new THREE.Mesh(this.figTorso, shirt)
+    torso.position.y = 1.13
+    root.add(torso)
+    const armL = new THREE.Mesh(this.figArm, shirt)
+    armL.position.set(-0.27, 1.14, 0)
+    root.add(armL)
+    const armR = new THREE.Mesh(this.figArm, shirt)
+    armR.position.set(0.27, 1.14, 0)
+    root.add(armR)
+
+    const head = new THREE.Mesh(this.figHead, face)
+    head.position.y = 1.58
+    root.add(head)
+
+    const pin = new THREE.Mesh(this.figPin, new THREE.MeshLambertMaterial({ color: '#e23b2f' }))
+    pin.position.y = 1.98
+    root.add(pin)
+    root.userData.pin = pin
+
+    const carry = new THREE.Mesh(
+      this.figCarry,
+      new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false }),
+    )
+    carry.position.set(0.36, 0.98, 0.06)
+    root.add(carry)
+    root.userData.carry = carry
+
+    const checked = new THREE.Mesh(
+      this.figBag,
+      new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false }),
+    )
+    checked.position.set(-0.32, 0.22, 0.04)
+    root.add(checked)
+    root.userData.checked = checked
+
+    const snack = new THREE.Mesh(this.figSnack, new THREE.MeshLambertMaterial({ color: '#f4efe4' }))
+    snack.position.set(0.28, 1.08, 0.16)
+    root.add(snack)
+    root.userData.snack = snack
+    return root
+  }
+
+  private disposeFigure(root: THREE.Object3D) {
+    const seen = new Set<THREE.Material>()
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      const list = Array.isArray(mat) ? mat : mat ? [mat] : []
+      for (const m of list) {
+        if (seen.has(m)) continue
+        seen.add(m)
+        const mapped = m as THREE.Material & { map?: THREE.Texture | null }
+        mapped.map?.dispose()
+        m.dispose()
+      }
+    })
+  }
+
   syncGuests(game: Game) {
     const live = new Set(game.hallGuests.map((g) => g.id))
     for (const [id, mesh] of this.guests) {
       if (!live.has(id)) {
         this.guestGroup.remove(mesh)
-        mesh.geometry.dispose()
-        ;(mesh.material as THREE.Material).dispose()
-        for (const key of ['pin', 'carry', 'checked', 'snack'] as const) {
-          const child = mesh.userData[key] as THREE.Mesh | undefined
-          child?.geometry.dispose()
-          ;(child?.material as THREE.Material | undefined)?.dispose()
-        }
-        const bubble = mesh.userData.bubble as THREE.Sprite | undefined
-        const bubbleMat = bubble?.material as THREE.SpriteMaterial | undefined
-        bubbleMat?.map?.dispose()
-        bubbleMat?.dispose()
+        this.disposeFigure(mesh)
         this.guests.delete(id)
       }
     }
@@ -597,40 +720,7 @@ export class HallWorld {
       if (g.releaseAt != null && g.releaseAt > game.clock) continue
       let mesh = this.guests.get(g.id)
       if (!mesh) {
-        mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.22, 0.55, 3, 6),
-          new THREE.MeshLambertMaterial({ color: g.color }),
-        )
-        mesh.userData.guestId = g.id
-        const pin = new THREE.Mesh(
-          new THREE.ConeGeometry(0.16, 0.42, 5),
-          new THREE.MeshLambertMaterial({ color: '#e23b2f' }),
-        )
-        pin.position.y = 1.15
-        mesh.add(pin)
-        mesh.userData.pin = pin
-        const carry = new THREE.Mesh(
-          new THREE.BoxGeometry(0.28, 0.36, 0.16),
-          new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false }),
-        )
-        carry.position.set(0.46, 0.2, 0)
-        mesh.add(carry)
-        mesh.userData.carry = carry
-        const checked = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, 0.62, 0.28),
-          new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false }),
-        )
-        checked.position.set(-0.62, -0.12, 0.18)
-        mesh.add(checked)
-        mesh.userData.checked = checked
-        // Coffee cup or meal box in hand until it is finished.
-        const snack = new THREE.Mesh(
-          new THREE.BoxGeometry(0.12, 0.16, 0.12),
-          new THREE.MeshLambertMaterial({ color: '#f4efe4' }),
-        )
-        snack.position.set(0.3, 0.05, 0.22)
-        mesh.add(snack)
-        mesh.userData.snack = snack
+        mesh = this.buildFigure(g.id, g.color)
         this.guests.set(g.id, mesh)
         this.guestGroup.add(mesh)
       }
@@ -642,15 +732,23 @@ export class HallWorld {
       const key = `${node}:${next ?? ''}`
       const slot = pile.get(key) ?? 0
       pile.set(key, slot + 1)
-      const ox = next ? 0 : (slot % 4) * 0.42 - 0.6
-      const oz = next ? 0 : Math.floor(slot / 4) * 0.42
+      let x = a.x + (b.x - a.x) * t
+      let z = a.z + (b.z - a.z) * t
+      if (next) {
+        const dx = b.x - a.x
+        const dz = b.z - a.z
+        const len = Math.hypot(dx, dz) || 1
+        const lane = g.lane ?? guestLane(g.id)
+        x += (-dz / len) * lane
+        z += (dx / len) * lane
+        mesh.rotation.y = Math.atan2(dx, dz) + (g.previewDir === -1 ? Math.PI : 0)
+      } else {
+        x += (slot % 4) * 0.48 - 0.72
+        z += Math.floor(slot / 4) * 0.48
+      }
       const desk = g.atBagDesk ? nodeWorld('claim') : null
-      mesh.position.set(
-        desk ? desk.x - 3.4 + (slot % 3) * 0.7 : a.x + (b.x - a.x) * t + ox,
-        0.55,
-        desk ? desk.z + 2.4 : a.z + (b.z - a.z) * t + oz,
-      )
-      mesh.scale.y = 1
+      mesh.position.set(desk ? desk.x - 3.4 + (slot % 3) * 0.7 : x, 0, desk ? desk.z + 2.4 : z)
+      mesh.scale.set(1, 1, 1)
       if (g.meal) {
         // Walk the tray from the counter to the booked seat, then sit: lower and squat.
         const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
@@ -659,11 +757,15 @@ export class HallWorld {
         const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
         mesh.position.x += (sx - mesh.position.x) * k
         mesh.position.z += (sz - mesh.position.z) * k
-        if (g.seated) {
-          mesh.scale.y = 0.7
-          mesh.position.y = 0.42
-        }
+        if (g.seated) mesh.scale.y = 0.72
       }
+      const walking = Boolean(next) && !g.seated
+      const swing = walking ? Math.sin(game.clock * 6.5 + (guestSalt(g.id) % 628) / 100) * 0.7 : 0
+      const left = mesh.userData.leftLeg as THREE.Object3D
+      const right = mesh.userData.rightLeg as THREE.Object3D
+      left.rotation.x = swing
+      right.rotation.x = -swing
+      if (walking) mesh.position.y = Math.abs(Math.sin(game.clock * 6.5)) * 0.045
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
       const carry = mesh.userData.carry as THREE.Mesh
@@ -677,8 +779,34 @@ export class HallWorld {
     }
   }
 
+  /** Walls and counters that sit in the lens fade instead of clipping the frame. */
+  private fadeNearShell() {
+    const cam = this.camera.position
+    const limit = HALL_OCCLUDE_M
+    this.roomGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (!mesh.isMesh) return
+      const geo = mesh.geometry as THREE.BoxGeometry
+      const h = geo.parameters?.height ?? 0
+      if (h < 0.5) return
+      const mat = mesh.material as THREE.MeshLambertMaterial
+      if (!mat || Array.isArray(mat) || !('opacity' in mat)) return
+      const d = mesh.position.distanceTo(cam)
+      if (d < limit) {
+        const opacity = Math.max(0.05, (d - HALL_CAM_NEAR) / (limit - HALL_CAM_NEAR))
+        mat.transparent = true
+        mat.opacity = opacity
+        mat.depthWrite = opacity > 0.85
+      } else if (mat.opacity !== 1 || mat.transparent) {
+        mat.opacity = 1
+        mat.transparent = false
+        mat.depthWrite = true
+      }
+    })
+  }
+
   /** Wish line while they leave an empty counter. */
-  private syncBubble(mesh: THREE.Mesh, thought: string) {
+  private syncBubble(mesh: THREE.Object3D, thought: string) {
     const show = thought.startsWith('wish they') || thought.startsWith('Lost-bag')
     let sprite = mesh.userData.bubble as THREE.Sprite | undefined
     if (!show) {
@@ -688,7 +816,7 @@ export class HallWorld {
     if (!sprite) {
       const mat = new THREE.SpriteMaterial({ transparent: true, depthWrite: false })
       sprite = new THREE.Sprite(mat)
-      sprite.position.set(0, 1.45, 0)
+      sprite.position.set(0, 2.15, 0)
       sprite.scale.set(2.8, 0.75, 1)
       mesh.add(sprite)
       mesh.userData.bubble = sprite
@@ -728,7 +856,7 @@ export class HallWorld {
       mat.needsUpdate = true
       mesh.userData.bubbleText = thought
       sprite.scale.set(3.4, 0.62 + shown.length * 0.42, 1)
-      sprite.position.y = 1.15 + shown.length * 0.28
+      sprite.position.y = 1.9 + shown.length * 0.28
     }
     sprite.visible = true
   }
@@ -899,6 +1027,7 @@ export class HallWorld {
     this.syncGhost(game)
     const { cols, rows } = this.zoneGrid()
     this.litter.sync(game, cols, rows)
+    this.fadeNearShell()
     perfEnd('hall.sync', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
