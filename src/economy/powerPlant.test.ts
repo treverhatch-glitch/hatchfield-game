@@ -54,7 +54,8 @@ function lateField(): Game {
   game.tickConstruction(30)
   game.placeSingle({ c: 14, r: 23 })
   game.tool = 'nighthub'
-  game.placeSingle({ c: 8, r: 16 })
+  // The night hub needs an 88×66 m lot; (8,16) is too tight beside the apron.
+  game.placeSingle({ c: 22, r: 6 })
   game.tickConstruction(30)
   return game
 }
