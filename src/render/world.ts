@@ -342,14 +342,8 @@ export class World {
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.localClippingEnabled = true // construction reveal
-    // Building kit PBR: one shared studio reflection map so metal/glass read as real materials.
-    try {
-      const pm = new THREE.PMREMGenerator(this.renderer)
-      setKitEnvironment(pm.fromScene(new RoomEnvironment(), 0.04).texture)
-      pm.dispose()
-    } catch {
-      /* headless / no WebGL2: plain lighting */
-    }
+    // Building kit PBR reflection map: built lazily in applyBuildingFx, only when material FX is on
+    // (the PMREM pass roughly doubles boot shader work and the map is unused otherwise).
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#87b7d9')
@@ -597,10 +591,26 @@ export class World {
     this.applyBuildingFx(level)
   }
 
+  private kitEnvBuilt = false
+  /** One shared studio reflection map so metal/glass read as real materials (first time FX turns on). */
+  private ensureKitEnvironment() {
+    if (this.kitEnvBuilt) return
+    this.kitEnvBuilt = true
+    try {
+      const pm = new THREE.PMREMGenerator(this.renderer)
+      setKitEnvironment(pm.fromScene(new RoomEnvironment(), 0.04).texture)
+      pm.dispose()
+    } catch {
+      /* headless / no WebGL2: plain lighting */
+    }
+  }
+
   /** Building weathering / reflections (Settings override or preset) and the lot-lamp budget. */
   private applyBuildingFx(level: QualityLevel) {
     const q = QUALITY[level]
-    setMaterialFx(materialFxOn(materialFxPref(), q.materialFx))
+    const fxOn = materialFxOn(materialFxPref(), q.materialFx)
+    if (fxOn) this.ensureKitEnvironment()
+    setMaterialFx(fxOn)
     if (this.lotLamps.budget !== q.lotLamps) this.lotLamps.setBudget(q.lotLamps)
   }
 

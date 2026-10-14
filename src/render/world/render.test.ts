@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { spawnHallGuest } from '../../game/guests'
 import { blankView, rect, starterGame } from './fixtures'
 import { initWorldRender, REPLACED_TILES, type RendererLike } from './index'
@@ -137,6 +137,16 @@ describe('initWorldRender', () => {
   })
 
   it('hall guests walk their doorway route between frames', () => {
+    // Spawn spots, routes and LOD picks use Math.random; pin it so the guest is reliably on screen.
+    let seed = 7
+    const rnd = vi.spyOn(Math, 'random').mockImplementation(() => {
+      seed = (seed + 0x6d2b79f5) >>> 0
+      let t = seed
+      t = Math.imul(t ^ (t >>> 15), t | 1)
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    })
+    try {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
     const game = starterGame()
@@ -179,6 +189,9 @@ describe('initWorldRender', () => {
     expect(a.equals(b)).toBe(false)
     expect(g.lost).toBeFalsy()
     wr.dispose()
+    } finally {
+      rnd.mockRestore()
+    }
   })
 
   it('tints the sky by season while night lights still follow the clock', () => {
