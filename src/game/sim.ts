@@ -5770,6 +5770,20 @@ export class Game {
     return true
   }
 
+  /** Bag handling for an unloaded passenger flight. */
+  private postInboundBagFee(f: Flight, airline: Airline) {
+    // GA owners carry their own bags: no handling service is sold, so skip the $0 earn on purpose.
+    if (f.airline === 'ga') return
+    const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
+    const mult = clamp(0.75 + units / 180, 0.75, 1.55)
+    this.earn(
+      this.contractBill(f, this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), 'service', 'bags'),
+      `${f.flightNo} bag handling`,
+      f,
+      'baggage_fees',
+    )
+  }
+
   private noteOutboundBagFee(f: Flight) {
     if (f.cargo) return
     // GA owners carry their own bags: no handling service is sold, so there is no bag fee to book.
@@ -16213,13 +16227,7 @@ export class Game {
         t.cargoUnits = f.bagUnits ?? 0
         if (!f.cargo) {
           const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
-          const mult = clamp(0.75 + units / 180, 0.75, 1.55)
-          this.earn(
-            this.contractBill(f, this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), 'service', 'bags'),
-            `${f.flightNo} bag handling`,
-            f,
-            'baggage_fees',
-          )
+          this.postInboundBagFee(f, airline)
           const fit = this.roomsAt(f.stand)
           if (fit) {
             const rooms = Math.max(fit.premade ? 1 : 0, fit.rooms.bagclaim ?? 0)
