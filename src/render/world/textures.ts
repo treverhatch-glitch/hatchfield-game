@@ -6,6 +6,7 @@ import {
   paintConcrete,
   paintGlow,
   paintGrass,
+  paintRoad,
   paintRoof,
   paintTerrazzo,
   type Raster,
@@ -30,6 +31,7 @@ export interface WorldTextures {
   grass: THREE.DataTexture
   asphalt: THREE.DataTexture
   runway: THREE.DataTexture
+  road: THREE.DataTexture
   concrete: THREE.DataTexture
   terrazzo: THREE.DataTexture
   roof: THREE.DataTexture
@@ -47,6 +49,7 @@ export function makeTextures(size: number, anisotropy: number): WorldTextures {
     grass: rasterTexture(paintGrass(size), a),
     asphalt: rasterTexture(paintAsphalt(size, 2, GROUND_LOOK.taxiAsphalt), a),
     runway: rasterTexture(paintAsphalt(size, 8, GROUND_LOOK.runwayAsphalt), a),
+    road: rasterTexture(paintRoad(size), a),
     concrete: rasterTexture(paintConcrete(size), a),
     terrazzo: rasterTexture(paintTerrazzo(Math.min(size, 256)), a),
     roof: rasterTexture(paintRoof(Math.min(size, 256)), a),

@@ -2,7 +2,9 @@ import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
-import { cylinderSides, fuselageSides, paintedLoftGeometry, wingGeometry } from './geom'
+import { cylinderSides, finGeometry, fuselageSides, paintedLoftGeometry, wingGeometry } from './geom'
+import type { LiveryBox } from './liveryUv'
+import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
 import {
   paintMesh,
@@ -71,6 +73,21 @@ function frameFor(spec: ModelSpec, tier: Tier, livery: Livery): Frame {
     finH,
     wingX: spec.lengthM * (0.5 - spec.wingAt),
     wingY: spec.wingHigh ? centerY + spec.ry * 0.7 : centerY - spec.ry * 0.28,
+  }
+}
+
+function markLivery(mesh: THREE.Object3D, mode: 'fuselage' | 'tail' | 'engine', box?: LiveryBox) {
+  mesh.userData.liveryMap = mode
+  if (box) mesh.userData.liveryBox = box
+}
+
+function fuselageBox(frame: Frame): LiveryBox {
+  const { spec, centerY, nose, tailX } = frame
+  return {
+    x0: nose,
+    x1: tailX,
+    y0: centerY - spec.ry,
+    y1: centerY + spec.ry * (spec.hump ? 1.45 : 1),
   }
 }
 
@@ -201,7 +218,8 @@ function addFuselage(frame: Frame) {
   mesh.scale.set(spec.lengthM, spec.ry, spec.rx)
   mesh.position.set(0, frame.centerY, 0)
   mesh.name = 'fuselage'
-  addMesh(frame, mesh, 'body', 'mesh', frame.tier === 'mid')
+  const body = addMesh(frame, mesh, 'body', 'mesh', frame.tier === 'mid')
+  markLivery(body, 'fuselage', fuselageBox(frame))
   if (spec.hump) {
     const top = fuselagePaint(frame.livery).crown
     const hump = new THREE.Mesh(
@@ -210,7 +228,7 @@ function addFuselage(frame: Frame) {
     hump.scale.set(spec.lengthM * 0.4, spec.ry * 0.52, spec.rx * 0.62)
     hump.position.set(spec.lengthM * 0.16, frame.top - spec.ry * 0.05, 0)
     hump.name = 'hump'
-    addMesh(frame, hump, 'body', 'mesh', frame.tier === 'mid')
+    markLivery(addMesh(frame, hump, 'body', 'mesh', frame.tier === 'mid'), 'fuselage', fuselageBox(frame))
   }
 }
 
@@ -270,31 +288,27 @@ function addTail(frame: Frame) {
   const chord = Math.max(1.1, spec.lengthM * 0.11)
   const thick = Math.max(0.08, spec.rx * 0.08)
   const finX = tailX + chord * 0.55
-  const sweep = -0.35
+  const tailPaint = frame.livery.tail || frame.livery.stripe
+  const finBox: LiveryBox = {
+    x0: finX + chord * 0.42,
+    x1: finX - chord * 0.5,
+    y0: top,
+    y1: top + finH,
+  }
+  const placeFin = (z: number, name: string) => {
+    const mesh = new THREE.Mesh(finGeometry(tailPaint, frame.livery.stripe))
+    mesh.scale.set(chord, finH, thick)
+    mesh.position.set(finX, top, z)
+    mesh.name = name
+    const painted = addMesh(frame, mesh, 'tail', 'mesh', frame.tier === 'mid')
+    markLivery(painted, 'tail', finBox)
+  }
   if (spec.tail === 'twin') {
     const spread = Math.max(0.7, spec.rx * 0.85)
-    for (const sign of [1, -1]) {
-      addBox(
-        frame,
-        [chord * 0.85, finH, thick],
-        [finX, top + finH / 2, sign * spread],
-        'tail',
-        'mesh',
-        [0, 0, sign * 0.12],
-        frame.tier === 'mid',
-      )
-    }
+    placeFin(spread, 'tail')
+    placeFin(-spread, 'tail')
   } else {
-    const mesh = addBox(
-      frame,
-      [chord, finH, thick],
-      [finX, top + finH / 2, 0],
-      'tail',
-      'mesh',
-      [0, 0, sweep],
-      frame.tier === 'mid',
-    )
-    mesh.name = 'tail'
+    placeFin(0, 'tail')
   }
   const stabY = spec.tail === 't' ? frame.spec.heightM - 0.12 : centerY + spec.ry * 0.2
   const stabChord = Math.max(0.8, spec.rootChord * 0.42)
@@ -318,7 +332,28 @@ function addEngines(frame: Frame) {
     compose(p.x, p.y, p.z, 0, 0, Math.PI / 2, eng.radius, eng.length, eng.radius),
   )
   const mesh = addInstances(frame, unitCylinder(sides), matrices, 'metal', 'mesh', 'engines')
-  if (mesh) mesh.name = 'engines'
+  if (mesh) {
+    mesh.name = 'engines'
+    markLivery(mesh, 'engine')
+  }
+  if (tier !== 'low' && eng.mount === 'wing') {
+    const pylons: THREE.Matrix4[] = []
+    for (const p of pts) {
+      const nacelleTop = p.y + eng.radius * 0.55
+      const h = frame.wingY - nacelleTop
+      if (h < 0.25) continue
+      pylons.push(compose(p.x - eng.length * 0.05, nacelleTop + h / 2, p.z, 0, 0, 0, Math.max(0.35, eng.length * 0.28), h, 0.14))
+    }
+    const pylon = addInstances(frame, unitBox(), pylons, 'metal', 'mesh', 'pylon')
+    if (pylon) pylon.name = 'pylon'
+  }
+  if (tier !== 'low' && eng.kind !== 'turboprop') {
+    const nozzles = pts.map((p) =>
+      compose(p.x - eng.length * 0.4, p.y, p.z, 0, 0, Math.PI / 2, eng.radius * 0.62, eng.length * 0.18, eng.radius * 0.62),
+    )
+    const nozzle = addInstances(frame, unitCylinder(sides), nozzles, 'dark', 'mesh', 'nozzle')
+    if (nozzle) nozzle.name = 'nozzle'
+  }
   if (tier === 'low') {
     if (eng.kind === 'turboprop') addPropDiscs(frame, pts, eng)
     return
@@ -530,28 +565,24 @@ function addGear(frame: Frame) {
 }
 
 function addWindows(frame: Frame) {
-  if (frame.tier === 'low' || frame.spec.family === 'helo') return
+  if (frame.tier !== 'mid' || !frame.spec.windows || frame.spec.family === 'helo') return
   const { spec, centerY } = frame
-  if (frame.tier === 'mid' && spec.windows) {
-    const band = addBox(
-      frame,
-      [spec.lengthM * 0.62, spec.ry * 0.22, spec.rx * 2.04],
-      [spec.lengthM * 0.02, centerY + spec.ry * 0.18, 0],
-      'dark',
-      'band',
-    )
-    band.name = 'window-band'
-    if (spec.decks === 2) {
-      addBox(
-        frame,
-        [spec.lengthM * 0.5, spec.ry * 0.16, spec.rx * 2.02],
-        [spec.lengthM * 0.04, centerY + spec.ry * 0.55, 0],
-        'dark',
-        'band',
-      )
+  const perSide = Math.min(AIRCRAFT_LOOK.windowCount, Math.max(6, Math.round(spec.lengthM / 2.8)))
+  const matrices: THREE.Matrix4[] = []
+  const x0 = spec.lengthM * 0.3
+  const x1 = -spec.lengthM * 0.24
+  for (let i = 0; i < perSide; i++) {
+    const x = perSide === 1 ? 0 : x0 + ((x1 - x0) * i) / (perSide - 1)
+    if (Math.abs(x - frame.wingX) < spec.rootChord * 0.22) continue
+    for (const sign of [1, -1]) {
+      for (let deck = 0; deck < Math.min(spec.decks, 2); deck++) {
+        const y = centerY + spec.ry * (deck === 0 ? 0.2 : 0.52)
+        matrices.push(compose(x, y, sign * (spec.rx + 0.035), 0, 0, 0, 0.36, 0.2, 0.05))
+      }
     }
-    return
   }
+  const band = addInstances(frame, unitBox(), matrices, 'glass', 'band', 'window-band')
+  if (band) band.name = 'window-band'
 }
 
 /** Pack door stations, one instanced mesh. Close LOD only. */
@@ -649,8 +680,12 @@ function addLogo(frame: Frame) {
     mesh.userData.lodOpacity = 1
     mesh.userData.kind = 'decal'
     mesh.userData.tier = frame.tier
+    mesh.userData.airline = frame.livery.airline
     const fadeMat = fade as THREE.Material & { opacity: number }
     mesh.onBeforeRender = () => {
+      const airline = resolveLiveryAirline(mesh.userData.airline as string | undefined)
+      // The fin already wears the tail plate. The initials decal would cover it.
+      mesh.visible = !airline || !liveryPlateReady(airline)
       if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
     }
     frame.group.add(mesh)
@@ -800,7 +835,7 @@ function addHelo(frame: Frame) {
     body.scale.set(spec.lengthM, spec.ry, spec.rx)
     body.position.set(0, centerY, 0)
     body.name = 'fuselage'
-    addMesh(frame, body, 'body', 'mesh', tier === 'mid')
+    markLivery(addMesh(frame, body, 'body', 'mesh', tier === 'mid'), 'fuselage', fuselageBox(frame))
   }
   if (tier === 'mid') {
     addBox(

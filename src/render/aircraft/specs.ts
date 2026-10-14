@@ -141,6 +141,13 @@ export interface Livery {
    * `solid`: the whole airframe in `body` (military, medevac, freighters).
    */
   scheme?: 'twotone' | 'solid'
+  /**
+   * Catalog airline id (`bushline`, `crown`, …). When set, the shell looks up
+   * `public/textures/liveries/manifest.json` and samples that airline's
+   * fuselage and tail JPEGs. Engines use the manifest's solid colour.
+   * Missing art keeps the procedural colours.
+   */
+  airline?: string
 }
 
 type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>

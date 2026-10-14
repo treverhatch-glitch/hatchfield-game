@@ -1,33 +1,30 @@
 /**
- * Ground vehicles as one merged, vertex-coloured mesh each: chassis, cab with
- * glazing, load body (box, tank or bus shell), wheels, hi-vis band, roof beacon.
- * Geometry is cached per kind + colour and one material is shared, so a vehicle
- * still costs a single draw call.
+ * Ground vehicles as low-poly meshes built in code. Each kind is one merged,
+ * vertex-coloured geometry. A VehicleFleet draws every live copy of that
+ * geometry with a single InstancedMesh.
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
 
-export type VehicleShape = 'truck' | 'tanker' | 'bus' | 'tug'
+export type VehicleShape = 'truck' | 'tanker' | 'bus' | 'tug' | 'catering' | 'train'
 
 /** Silhouette per vehicle kind. Unknown kinds read as a small van/truck. */
 export function vehicleShape(kind: string): VehicleShape {
   if (kind === 'fuel' || kind === 'fuel_truck' || kind === 'deice') return 'tanker'
   if (kind === 'pax_bus' || kind === 'termbus') return 'bus'
-  if (kind === 'pushback_tug' || kind === 'baggage_tug' || kind === 'belt_loader' || kind === 'gpu') return 'tug'
-  // Bag runs and city trucks carry their load on the roof line, so they keep a full-height body.
+  if (kind === 'catering_truck') return 'catering'
+  if (kind === 'baggage_tug') return 'train'
+  if (kind === 'pushback_tug' || kind === 'belt_loader' || kind === 'gpu') return 'tug'
   return 'truck'
 }
 
 const geos = new Map<string, THREE.BufferGeometry>()
-let material: THREE.MeshStandardMaterial | null = null
+let material: THREE.MeshLambertMaterial | null = null
 
-function sharedMaterial(): THREE.MeshStandardMaterial {
-  material ??= new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    metalness: VEHICLE_LOOK.material.metalness,
-    roughness: VEHICLE_LOOK.material.roughness,
-  })
+/** Lambert, not standard: a physical shader on every truck cost frames on SwiftShader. */
+function sharedMaterial(): THREE.MeshLambertMaterial {
+  material ??= new THREE.MeshLambertMaterial({ vertexColors: true })
   return material
 }
 
@@ -57,6 +54,29 @@ function box(hex: string, w: number, h: number, d: number, x: number, y: number,
   return part(new THREE.BoxGeometry(w, h, d), hex, x, y, z)
 }
 
+function addWheels(parts: THREE.BufferGeometry[], L: number, W: number, r: number, fracs: readonly number[]) {
+  const look = VEHICLE_LOOK
+  for (const k of fracs) {
+    for (const side of [1, -1]) {
+      const z = side * (W / 2 - r * 0.55)
+      parts.push(part(new THREE.CylinderGeometry(r, r, r * 0.5, 8), look.tyre, k * L, r, z, 'z'))
+      parts.push(part(new THREE.CylinderGeometry(r * 0.45, r * 0.45, r * 0.56, 6), look.hub, k * L, r, z, 'z'))
+    }
+  }
+}
+
+function cab(parts: THREE.BufferGeometry[], color: string, L: number, W: number, deck: number, top: number) {
+  const look = VEHICLE_LOOK
+  const cabL = L * look.cabShare
+  const cabH = Math.max(0.4, (top - deck) * 0.78)
+  const cabX = L / 2 - cabL / 2 - 0.02
+  parts.push(box(color, cabL, cabH, W * 0.92, cabX, deck + cabH / 2, 0))
+  parts.push(box(look.glass, 0.06, cabH * 0.38, W * 0.72, L / 2 - 0.02, deck + cabH * 0.66, 0))
+  parts.push(box(look.glass, cabL * 0.48, cabH * 0.32, W * 0.96, cabX + cabL * 0.1, deck + cabH * 0.66, 0))
+  parts.push(box(look.beacon, 0.18, 0.1, 0.18, cabX, deck + cabH + 0.05, 0))
+  return { cabL, cabH, cabX, bodyL: L - cabL - 0.28, bodyX: -L / 2 + (L - cabL - 0.28) / 2 + 0.02 }
+}
+
 /** Vehicle geometry in meters: +X forward, ground at y = 0, centred on the footprint. */
 export function vehicleGeometry(kind: string, color: string, size: readonly [number, number, number]): THREE.BufferGeometry {
   const [L, H, W] = size
@@ -65,67 +85,106 @@ export function vehicleGeometry(kind: string, color: string, size: readonly [num
   if (hit) return hit
   const look = VEHICLE_LOOK
   const shape = vehicleShape(kind)
-  const r = shape === 'tug' ? Math.min(look.wheelM * 0.75, H * 0.22) : look.wheelM
+  const r = shape === 'tug' || shape === 'train' ? Math.min(look.wheelM * 0.72, H * 0.22) : look.wheelM
   const deck = r * 1.15
   const parts: THREE.BufferGeometry[] = []
-  // Chassis rail under everything.
-  parts.push(box(look.chassis, L * 0.96, r * 0.7, W * 0.9, 0, deck - r * 0.1, 0))
-  // Wheels: two axles, a third on long rigs.
-  const axles = L > 9 ? [0.36, -0.2, -0.36] : [0.33, -0.33]
-  for (const k of axles) {
-    for (const side of [1, -1]) {
-      const z = side * (W / 2 - r * 0.32)
-      parts.push(part(new THREE.CylinderGeometry(r, r, r * 0.62, 10), look.tyre, k * L, r, z, 'z'))
-      parts.push(part(new THREE.CylinderGeometry(r * 0.48, r * 0.48, r * 0.66, 8), look.hub, k * L, r, z, 'z'))
-    }
-  }
-  const top = H
+  parts.push(box(look.chassis, L * 0.98, r * 0.55, W * 0.82, 0, deck * 0.45, 0))
+
   if (shape === 'bus') {
-    const h = top - deck
-    parts.push(box(color, L, h, W, 0, deck + h / 2, 0))
-    // Window band on both sides and a deep windscreen.
-    parts.push(box(look.glass, L * 0.86, h * 0.34, W * 1.02, -L * 0.03, deck + h * 0.62, 0))
-    parts.push(box(look.glass, 0.08, h * 0.45, W * 0.86, L / 2 + 0.02, deck + h * 0.6, 0))
-    parts.push(box(look.stripe, L * 1.004, h * 0.07, W * 1.01, 0, deck + h * 0.2, 0))
+    addWheels(parts, L, W, r, [0.34, -0.02, -0.36])
+    const h = H - deck
+    parts.push(box(color, L * 0.98, h, W * 0.98, 0, deck + h / 2, 0))
+    parts.push(box(look.glass, L * 0.78, h * 0.32, W * 1.01, -L * 0.02, deck + h * 0.62, 0))
+    parts.push(box(look.glass, 0.06, h * 0.42, W * 0.7, L / 2, deck + h * 0.58, 0))
+    parts.push(box(look.chassis, 0.08, h * 0.55, W * 0.2, L * 0.28, deck + h * 0.4, W * 0.5))
+    parts.push(box(look.stripe, L * 0.99, h * 0.06, W * 1.01, 0, deck + h * 0.22, 0))
   } else if (shape === 'tug') {
-    const h = Math.max(0.3, (top - deck) * 0.55)
-    parts.push(box(color, L, h, W, 0, deck + h / 2, 0))
-    // Open driver's cab at the front: roof on four posts, dark screen, beacon.
-    const cabL = L * 0.3
-    const cabH = top - deck - h
-    parts.push(box(color, cabL, cabH * 0.12, W * 0.9, L / 2 - cabL / 2, top - cabH * 0.06, 0))
-    for (const side of [1, -1]) {
-      parts.push(box(look.chassis, 0.08, cabH, 0.08, L / 2 - cabL * 0.1, deck + h + cabH / 2, side * W * 0.4))
-      parts.push(box(look.chassis, 0.08, cabH, 0.08, L / 2 - cabL * 0.9, deck + h + cabH / 2, side * W * 0.4))
-    }
-    parts.push(box(look.glass, 0.06, cabH * 0.7, W * 0.8, L / 2 - cabL * 0.08, deck + h + cabH * 0.45, 0))
-    parts.push(box(look.beacon, 0.22, 0.14, 0.22, L / 2 - cabL / 2, top + 0.07, 0))
-    parts.push(box(look.stripe, L * 1.004, Math.min(0.12, h * 0.25), W * 1.01, 0, deck + h * 0.35, 0))
-  } else {
-    // Cab forward, load body behind.
-    const cabL = L * look.cabShare
-    const cabH = (top - deck) * 0.82
-    const cabX = L / 2 - cabL / 2
-    parts.push(box(color, cabL, cabH, W * 0.96, cabX, deck + cabH / 2, 0))
-    parts.push(box(look.glass, 0.08, cabH * 0.42, W * 0.82, L / 2 + 0.02, deck + cabH * 0.68, 0))
-    parts.push(box(look.glass, cabL * 0.55, cabH * 0.36, W * 0.98, cabX + cabL * 0.12, deck + cabH * 0.68, 0))
-    parts.push(box(look.beacon, 0.24, 0.16, 0.24, cabX, deck + cabH + 0.08, 0))
-    const bodyL = L - cabL - 0.2
-    const bodyX = -L / 2 + bodyL / 2
-    if (shape === 'tanker') {
-      const tr = Math.min(W / 2, (top - deck) / 2) * 0.96
-      parts.push(part(new THREE.CylinderGeometry(tr, tr, bodyL, 14), color, bodyX, deck + tr, 0, 'x'))
-      parts.push(box(look.stripe, bodyL * 0.98, 0.14, W * 0.98, bodyX, deck + tr * 0.55, 0))
+    addWheels(parts, L, W, r, kind === 'pushback_tug' ? [0.22, -0.28] : [0.28, -0.28])
+    const h = Math.max(0.28, (H - deck) * (kind === 'pushback_tug' ? 0.42 : 0.5))
+    parts.push(box(color, L * 0.72, h, W * 0.96, -L * 0.06, deck + h / 2, 0))
+    const cabL = L * 0.28
+    const cabH = Math.max(0.2, H - deck - h)
+    const cabX = L / 2 - cabL / 2 - L * 0.04
+    parts.push(box(color, cabL, cabH * 0.12, W * 0.84, cabX, H - cabH * 0.06, 0))
+    parts.push(box(look.glass, 0.05, cabH * 0.55, W * 0.7, cabX + cabL * 0.35, deck + h + cabH * 0.4, 0))
+    parts.push(box(look.beacon, 0.16, 0.1, 0.16, cabX, H + 0.04, 0))
+    parts.push(box(look.stripe, L * 0.7, Math.min(0.1, h * 0.3), W * 1.01, -L * 0.06, deck + h * 0.35, 0))
+    if (kind === 'pushback_tug') {
+      parts.push(box(look.chassis, L * 0.22, 0.08, 0.08, L * 0.38, r * 0.9, 0))
+    } else if (kind === 'belt_loader') {
+      parts.push(box(look.chassis, L * 0.46, 0.08, W * 0.55, -L * 0.16, deck + h + 0.12, 0))
     } else {
-      const h = top - deck
-      parts.push(box(color, bodyL, h, W, bodyX, deck + h / 2, 0))
-      parts.push(box(look.stripe, bodyL * 1.004, 0.14, W * 1.01, bodyX, deck + h * 0.14, 0))
+      parts.push(box(look.hose, L * 0.18, H * 0.35, W * 0.55, -L * 0.28, deck + h * 0.7, 0))
+    }
+  } else if (shape === 'train') {
+    // Tractor in front, two baggage carts behind, all inside the footprint.
+    addWheels(parts, L, W, r, [0.4, 0.22, -0.08, -0.36])
+    const tugL = L * 0.32
+    const tugX = L / 2 - tugL / 2 - 0.04
+    const h = Math.max(0.32, (H - deck) * 0.62)
+    parts.push(box(color, tugL, h, W * 0.9, tugX, deck + h / 2, 0))
+    parts.push(box(look.glass, 0.05, h * 0.4, W * 0.62, L / 2 - 0.06, deck + h * 0.62, 0))
+    parts.push(box(look.beacon, 0.14, 0.08, 0.14, tugX, deck + h + 0.04, 0))
+    const cartL = L * 0.26
+    const cartH = Math.max(0.16, h * 0.28)
+    for (const [i, bagColor] of [[0, look.bag], [1, '#2f4a6a']] as const) {
+      const cx = L * 0.02 - i * (cartL + L * 0.06)
+      parts.push(box(look.cart, cartL, cartH, W * 0.86, cx, deck + cartH / 2, 0))
+      parts.push(box(bagColor, cartL * 0.7, H * 0.28, W * 0.55, cx, deck + cartH + H * 0.14, 0))
+    }
+  } else if (shape === 'tanker') {
+    addWheels(parts, L, W, r, L > 9 ? [0.34, -0.08, -0.36] : [0.32, -0.32])
+    const fitted = cab(parts, color, L, W, deck, H)
+    const tr = Math.min(W * 0.42, (H - deck) * 0.42)
+    parts.push(part(new THREE.CylinderGeometry(tr, tr, fitted.bodyL * 0.92, 10), color, fitted.bodyX, deck + tr, 0, 'x'))
+    parts.push(box(look.stripe, fitted.bodyL * 0.9, 0.1, W * 0.9, fitted.bodyX, deck + tr * 0.35, 0))
+    parts.push(part(new THREE.CylinderGeometry(tr * 0.28, tr * 0.28, tr * 0.2, 8), look.hose, fitted.bodyX - fitted.bodyL * 0.22, deck + tr * 1.7, 0))
+    parts.push(box(look.hose, 0.22, tr * 0.7, 0.22, fitted.bodyX - fitted.bodyL * 0.46, deck + tr * 0.45, W * 0.28))
+  } else if (shape === 'catering') {
+    addWheels(parts, L, W, r, [0.32, -0.3])
+    const fitted = cab(parts, color, L, W, deck, H * 0.82)
+    const h = H - deck
+    parts.push(box(color, fitted.bodyL, h, W * 0.96, fitted.bodyX, deck + h / 2, 0))
+    parts.push(box(look.stripe, fitted.bodyL * 1.01, 0.1, W * 1.01, fitted.bodyX, deck + h * 0.18, 0))
+    parts.push(box('#d5dbe3', fitted.bodyL * 0.22, 0.08, W * 0.7, fitted.bodyX - fitted.bodyL * 0.38, deck + h * 0.72, 0))
+    parts.push(box(look.chassis, 0.08, h * 0.55, 0.08, fitted.bodyX - fitted.bodyL * 0.3, deck + h * 0.4, W * 0.42))
+  } else {
+    addWheels(parts, L, W, r, L > 9 ? [0.34, -0.08, -0.36] : [0.32, -0.32])
+    const fitted = cab(parts, color, L, W, deck, H)
+    const h = H - deck
+    parts.push(box(color, fitted.bodyL, h, W * 0.98, fitted.bodyX, deck + h / 2, 0))
+    parts.push(box(look.stripe, fitted.bodyL * 1.01, 0.12, W * 1.01, fitted.bodyX, deck + h * 0.16, 0))
+  }
+
+  const merged = mergeGeometries(parts)!
+  for (const p of parts) p.dispose()
+  merged.computeVertexNormals()
+  merged.computeBoundingSphere()
+  geos.set(key, merged)
+  return merged
+}
+
+function cargoGeometry(mode: 'crates' | 'suitcases', size: readonly [number, number, number]): THREE.BufferGeometry {
+  const [L, H, W] = size
+  const key = `cargo:${mode}|${L}|${H}|${W}`
+  const hit = geos.get(key)
+  if (hit) return hit
+  const look = VEHICLE_LOOK
+  const cabL = L * look.cabShare
+  const bodyL = L - cabL - 0.28
+  const bodyX = -L / 2 + bodyL / 2 + 0.02
+  const parts: THREE.BufferGeometry[] = []
+  if (mode === 'crates') {
+    parts.push(box('#9a7a40', bodyL * 0.62, H * 0.32, W * 0.7, bodyX, H + H * 0.16, 0))
+  } else {
+    parts.push(box('#8a7348', bodyL * 0.4, H * 0.22, W * 0.55, bodyX, H + H * 0.1, 0))
+    for (const [i, hex] of [[-1, '#ffb703'], [0, '#3ec6ff'], [1, '#ffb703']] as const) {
+      parts.push(box(hex, 0.55, 0.4, 0.32, bodyX + i * 0.7, H + 0.28, 0))
     }
   }
   const merged = mergeGeometries(parts)!
   for (const p of parts) p.dispose()
   merged.computeVertexNormals()
-  merged.computeBoundingSphere()
   geos.set(key, merged)
   return merged
 }
@@ -138,6 +197,100 @@ export function vehicleMesh(kind: string, color: string, size: readonly [number,
   mesh.name = 'body'
   mesh.userData.shared = true
   return mesh
+}
+
+export interface VehicleInstance {
+  kind: string
+  color: string
+  size: readonly [number, number, number]
+  x: number
+  y: number
+  z: number
+  yaw: number
+  scale: number
+  cargo?: 'crates' | 'suitcases'
+  cargoScale?: number
+}
+
+export class VehicleFleet {
+  readonly root = new THREE.Group()
+  private bodies = new Map<string, THREE.InstancedMesh>()
+  private cargo = new Map<string, THREE.InstancedMesh>()
+  private dummy = new THREE.Object3D()
+
+  sync(list: readonly VehicleInstance[]) {
+    const groups = new Map<string, VehicleInstance[]>()
+    const loads = new Map<string, VehicleInstance[]>()
+    for (const item of list) {
+      const key = `${item.kind}|${item.color}|${item.size[0]}|${item.size[1]}|${item.size[2]}`
+      const arr = groups.get(key) ?? []
+      arr.push(item)
+      groups.set(key, arr)
+      if (item.cargo) {
+        const ck = `${item.cargo}|${item.size[0]}|${item.size[1]}|${item.size[2]}`
+        const bin = loads.get(ck) ?? []
+        bin.push(item)
+        loads.set(ck, bin)
+      }
+    }
+    const seen = new Set<string>()
+    for (const [key, items] of groups) {
+      seen.add(key)
+      this.write(this.bodies, key, items, (sample) => vehicleGeometry(sample.kind, sample.color, sample.size), false)
+    }
+    for (const [key, mesh] of this.bodies) {
+      if (!seen.has(key)) mesh.count = 0
+    }
+    const seenCargo = new Set<string>()
+    for (const [key, items] of loads) {
+      seenCargo.add(key)
+      const mode = key.startsWith('suitcases') ? 'suitcases' : 'crates'
+      this.write(this.cargo, key, items, (sample) => cargoGeometry(mode, sample.size), true)
+    }
+    for (const [key, mesh] of this.cargo) {
+      if (!seenCargo.has(key)) mesh.count = 0
+    }
+  }
+
+  private write(
+    bucket: Map<string, THREE.InstancedMesh>,
+    key: string,
+    items: VehicleInstance[],
+    geometry: (sample: VehicleInstance) => THREE.BufferGeometry,
+    asCargo: boolean,
+  ) {
+    let mesh = bucket.get(key)
+    if (!mesh || mesh.instanceMatrix.count < items.length) {
+      mesh?.removeFromParent()
+      mesh?.dispose()
+      mesh = new THREE.InstancedMesh(geometry(items[0]), sharedMaterial(), Math.max(8, items.length))
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      mesh.castShadow = true
+      mesh.frustumCulled = false
+      mesh.userData.shared = true
+      mesh.name = asCargo ? `cargo:${key}` : `fleet:${key}`
+      this.root.add(mesh)
+      bucket.set(key, mesh)
+    }
+    items.forEach((item, i) => {
+      const s = item.scale * (asCargo ? item.cargoScale ?? 1 : 1)
+      this.dummy.position.set(item.x, item.y, item.z)
+      this.dummy.rotation.set(0, item.yaw, 0)
+      this.dummy.scale.setScalar(s)
+      this.dummy.updateMatrix()
+      mesh!.setMatrixAt(i, this.dummy.matrix)
+    })
+    mesh.count = items.length
+    mesh.instanceMatrix.needsUpdate = true
+  }
+
+  dispose() {
+    for (const mesh of this.bodies.values()) mesh.dispose()
+    for (const mesh of this.cargo.values()) mesh.dispose()
+    this.bodies.clear()
+    this.cargo.clear()
+    this.root.clear()
+  }
 }
 
 export function vehicleLibrarySize(): number {

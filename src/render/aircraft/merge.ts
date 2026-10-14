@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { engineUv, projectedUv, type LiveryBox, type LiveryMapKind } from './liveryUv'
 import { liveryKey, paintVertexMesh, sharedGeo, type PaintedMesh } from './pool'
 import type { Livery } from './specs'
 
@@ -39,18 +40,53 @@ function isLoose(mesh: THREE.Mesh): boolean {
   return kind === 'control' || kind === 'decal'
 }
 
-/** Bake a transformed clone that carries only position, normal, and color. */
+function writeLivery(
+  geo: THREE.BufferGeometry,
+  mode: LiveryMapKind | undefined,
+  box: LiveryBox | undefined,
+  local: boolean,
+) {
+  const pos = geo.getAttribute('position')
+  const uv = new Float32Array(pos.count * 2)
+  const slot = new Float32Array(pos.count)
+  const id = mode === 'fuselage' ? 0 : mode === 'tail' ? 1 : mode === 'engine' ? 2 : 3
+  for (let i = 0; i < pos.count; i++) {
+    slot[i] = id
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const z = pos.getZ(i)
+    let u = 0
+    let v = 0
+    if (mode === 'engine' && local) {
+      ;[u, v] = engineUv(x, y, z)
+    } else if ((mode === 'fuselage' || mode === 'tail') && box && !local) {
+      ;[u, v] = projectedUv(x, y, box)
+    }
+    uv[i * 2] = u
+    uv[i * 2 + 1] = v
+  }
+  geo.setAttribute('liveryUv', new THREE.BufferAttribute(uv, 2))
+  geo.setAttribute('liverySlot', new THREE.BufferAttribute(slot, 1))
+}
+
+/** Bake a transformed clone that carries position, normal, colour, and livery UVs. */
 export function bakeGeometry(
   src: THREE.BufferGeometry,
   matrix: THREE.Matrix4,
   hex?: string,
+  livery?: { mode?: LiveryMapKind; box?: LiveryBox },
 ): THREE.BufferGeometry {
   const geo = src.clone()
+  const hadLivery = Boolean(geo.getAttribute('liveryUv') && geo.getAttribute('liverySlot'))
+  if (!hadLivery && livery?.mode === 'engine') writeLivery(geo, 'engine', undefined, true)
   geo.applyMatrix4(matrix)
+  if (!hadLivery && livery?.mode !== 'engine') writeLivery(geo, livery?.mode, livery?.box, false)
   const flat = geo.index ? geo.toNonIndexed() : geo
   if (flat !== geo) geo.dispose()
   for (const name of Object.keys(flat.attributes)) {
-    if (name !== 'position' && name !== 'normal' && name !== 'color') flat.deleteAttribute(name)
+    if (name !== 'position' && name !== 'normal' && name !== 'color' && name !== 'liveryUv' && name !== 'liverySlot') {
+      flat.deleteAttribute(name)
+    }
   }
   if (!flat.getAttribute('normal')) flat.computeVertexNormals()
   const pos = flat.getAttribute('position')
@@ -64,25 +100,35 @@ export function bakeGeometry(
     }
     flat.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   }
-  const uv = new Float32Array(pos.count * 2)
-  for (let i = 0; i < pos.count; i++) {
-    uv[i * 2] = pos.getX(i) * 0.18
-    uv[i * 2 + 1] = pos.getZ(i) * 0.12 + pos.getY(i) * 0.04
+  if (!flat.getAttribute('uv')) {
+    const uv = new Float32Array(pos.count * 2)
+    for (let i = 0; i < pos.count; i++) {
+      uv[i * 2] = pos.getX(i) * 0.18
+      uv[i * 2 + 1] = pos.getZ(i) * 0.12 + pos.getY(i) * 0.04
+    }
+    flat.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
   }
-  flat.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+  if (!flat.getAttribute('liveryUv')) writeLivery(flat, 'none', undefined, false)
   return flat
+}
+
+function liveryOf(mesh: THREE.Mesh): { mode?: LiveryMapKind; box?: LiveryBox } {
+  const mode = mesh.userData.liveryMap as LiveryMapKind | undefined
+  const box = mesh.userData.liveryBox as LiveryBox | undefined
+  return { mode, box }
 }
 
 function piecesOf(mesh: THREE.Mesh, matrix: THREE.Matrix4): THREE.BufferGeometry[] {
   const inst = mesh as THREE.InstancedMesh
   const keep = !inst.isInstancedMesh && Boolean(mesh.geometry.getAttribute('color'))
   const hex = keep ? undefined : (mesh.userData.paint as string) || '#888888'
-  if (!inst.isInstancedMesh) return [bakeGeometry(mesh.geometry, matrix, hex)]
+  const livery = liveryOf(mesh)
+  if (!inst.isInstancedMesh) return [bakeGeometry(mesh.geometry, matrix, hex, livery)]
   const parts: THREE.BufferGeometry[] = []
   for (let i = 0; i < inst.count; i++) {
     inst.getMatrixAt(i, _instance)
     _combined.multiplyMatrices(matrix, _instance)
-    parts.push(bakeGeometry(mesh.geometry, _combined, hex))
+    parts.push(bakeGeometry(mesh.geometry, _combined, hex, livery))
   }
   return parts
 }
@@ -123,6 +169,7 @@ function takeShell(
   const shell = new THREE.Mesh(geometry)
   shell.name = name
   const painted = paintVertexMesh(shell, frame.tier === 'low' ? 'low' : 'mid', 'mesh', finish)
+  painted.userData.airline = frame.livery.airline
   painted.castShadow = frame.tier === 'mid'
   frame.group.add(painted)
   frame.meshes.push(painted)
