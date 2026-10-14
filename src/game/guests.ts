@@ -213,6 +213,18 @@ export interface HallStaff {
   stage: number
 }
 
+/**
+ * Open nodes a connecting passenger may use. They stay airside and may only
+ * pass the security point between airside rooms. Curb, check-in, landside WC and exit are hidden.
+ */
+export function openForTransfer(open: Set<HallNode>): Set<HallNode> {
+  const s = new Set<HallNode>()
+  for (const n of open) {
+    if (isAirside(n) || n === 'security') s.add(n)
+  }
+  return s
+}
+
 /** Open nodes visible to a guest given clearance. */
 export function openForGuest(open: Set<HallNode>, cleared: boolean): Set<HallNode> {
   if (cleared) return open
