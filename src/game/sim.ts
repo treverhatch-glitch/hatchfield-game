@@ -1251,6 +1251,10 @@ export class Game {
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
   hallOverloaded = false
+  /** Sim clock before which the over-capacity hint stays dismissed. */
+  capacityHintUntil = 0
+  /** Guest cap recorded when the hall last went over, so an expansion can clear it. */
+  private overloadCap = 0
   missedFlights = 0
   private queueDelayFlight = new Set<string>()
   sites: BuildSite[] = []
@@ -7651,10 +7655,51 @@ export class Game {
       for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
     }
     const fit = this.activeHall() ?? this.fits[0]
-    const present = this.hallGuests.filter(
+    const present = this.hallHeadcount()
+    const cap = fit?.capGuests ?? 40
+    if (fit && present > cap) this.markHallOverloaded()
+    else if (this.hallOverloaded && cap > this.overloadCap) this.releaseHallIfFits()
+  }
+
+  /** Headcount against the live ceiling. Preview and not-yet-released guests do not count. */
+  private hallHeadcount(): number {
+    return this.hallGuests.filter(
       (g) => !g.preview && (g.releaseAt == null || g.releaseAt <= this.clock),
     ).length
-    if (fit && present > (fit.capGuests ?? 40)) this.markHallOverloaded()
+  }
+
+  /**
+   * The corner card stays while the crowd or the security line still exceeds
+   * the live ceiling. An upgrade or a new lane recalculates that ceiling.
+   */
+  private securityLineOver(fit: TerminalFit): boolean {
+    const key = this.hallKey(fit)
+    const waiting = this.hallGuests.filter(
+      (g) =>
+        !g.dead &&
+        !g.preview &&
+        g.hallId === key &&
+        g.job === 'depart' &&
+        g.node === 'security' &&
+        !g.clearedSec,
+    ).length
+    if (waiting <= 0) return false
+    const lane = laneStats({
+      premade: fit.premade,
+      redesigned: fit.redesigned,
+      tier: fit.tier,
+      items: (fit.items ?? []) as PlacedItem[],
+      roomsSecurity: fit.rooms.security,
+    })
+    const cap = fit.capGuests ?? 40
+    return waiting > cap || waiting > lane.queueCap + Math.max(0, lane.servers)
+  }
+
+  private releaseHallIfFits() {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit || !this.hallOverloaded) return
+    const cap = fit.capGuests ?? 40
+    if (this.hallHeadcount() <= cap && !this.securityLineOver(fit)) this.clearHallOverload()
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
@@ -8021,6 +8066,8 @@ export class Game {
   }
 
   markHallOverloaded() {
+    const fit = this.activeHall() ?? this.fits[0]
+    this.overloadCap = fit?.capGuests ?? this.overloadCap
     if (this.hallOverloaded) return
     this.hallOverloaded = true
     this.reputation = Math.max(0, this.reputation - 1)
@@ -8030,6 +8077,26 @@ export class Game {
       'bad',
     )
     this.refreshAdvice()
+  }
+
+  /** Headcount is back inside the cap, including after an expansion. */
+  clearHallOverload() {
+    if (!this.hallOverloaded) return
+    this.hallOverloaded = false
+    for (const row of [...this.alerts.active]) {
+      if (row.key.startsWith('cond:hall-full')) this.alerts.clear(row.key)
+    }
+    this.refreshAdvice()
+  }
+
+  /** Hide the corner card and the alert. They can return after the cooldown if the hall is still full. */
+  dismissCapacityHint() {
+    this.capacityHintUntil = this.clock + ALERT_TUNING.capacityCoolSec
+    for (const row of [...this.alerts.active]) {
+      if (row.key.startsWith('cond:hall-full')) this.alerts.dismiss(row.id, this.clock)
+    }
+    if (this.sidePanel === 'hints') this.setSidePanel(null)
+    this.emit()
   }
 
   private sessionSnapshot() {
@@ -8171,7 +8238,9 @@ export class Game {
    * fail, which is never hidden behind the next-step tip.
    */
   visibleHints(): Advice[] {
-    const shown = visibleHints(this.advice, this.hintPrefs)
+    const raw = visibleHints(this.advice, this.hintPrefs)
+    const shown =
+      this.clock < this.capacityHintUntil ? raw.filter((a) => a.id !== 'over-capacity') : raw
     const session = shown.find((a) => hintKind(a.id) === 'session')
     if (!session) return shown
     const hard = shown.filter((a) => a !== session && severityOf(a) === 'blocker')
@@ -10128,7 +10197,7 @@ export class Game {
     applyCeilings(fit)
     this.foodShelf = Math.max(this.foodShelf, Math.min(this.shelfCap('food'), this.foodShelf + 8))
     this.shopShelf = Math.max(this.shopShelf, Math.min(this.shelfCap('shop'), this.shopShelf + 6))
-    this.hallOverloaded = false
+    this.releaseHallIfFits()
     this.hallRev++
     this.refreshAdvice()
     this.pushNews(
@@ -10169,6 +10238,7 @@ export class Game {
     if (wasPrefab) {
       fit.redesigned = true
       applyCeilings(fit)
+      this.releaseHallIfFits()
       this.pushNews(
         `Custom layout — the prefab discount is gone. Upkeep is now $${Math.round(
           ceilingsFor({
@@ -10269,6 +10339,7 @@ export class Game {
     if (def.room === 'food') this.foodShelf += 8
     if (def.signs) fit.signs = (fit.signs ?? 0) + def.signs
     applyCeilings(fit)
+    this.releaseHallIfFits()
     this.hallRev++
     this.pushNews(
       `${def.name} placed — $${def.upkeep}/day upkeep${def.perk ? `. ${def.perk}.` : '.'}`,
@@ -10298,6 +10369,7 @@ export class Game {
     const refund = refundFor(def)
     this.cash += refund
     applyCeilings(fit)
+    this.releaseHallIfFits()
     this.hallRev++
     this.pushNews(`${def.name} removed — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
     this.refreshAdvice()
