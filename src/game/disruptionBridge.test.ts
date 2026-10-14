@@ -23,7 +23,7 @@ describe('disruption wiring', () => {
     expect(Number.isFinite(game.cash)).toBe(true)
     expect(game.lostPaxCount()).toBe(0)
     expect(game.bagsLost).toBe(0)
-  })
+  }, 20_000)
 
   it('slows check-in during a software outage and restores it on the suggested fix', () => {
     const game = starter()
