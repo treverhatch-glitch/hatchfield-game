@@ -38,7 +38,7 @@ export function advancePhase(phase: number, speedMps: number, dt: number): numbe
 }
 
 /** Cycles per second for poses that are not driven by ground speed. */
-const POSE_RATE: Record<Exclude<PersonPose, 'walk' | 'bagPull'>, number> = {
+const POSE_RATE: Record<Exclude<PersonPose, 'walk' | 'bagPull' | 'push'>, number> = {
   idle: 0.25,
   queue: 0.45,
   wave: 1.6,
@@ -48,7 +48,7 @@ const POSE_RATE: Record<Exclude<PersonPose, 'walk' | 'bagPull'>, number> = {
 
 /** Phase advance rate (cycles per second) for a pose at a ground speed. */
 export function phaseRate(pose: PersonPose, speedMps: number): number {
-  return pose === 'walk' || pose === 'bagPull' ? strideRate(speedMps) : POSE_RATE[pose]
+  return pose === 'walk' || pose === 'bagPull' || pose === 'push' ? strideRate(speedMps) : POSE_RATE[pose]
 }
 
 const TAU = Math.PI * 2
@@ -95,6 +95,16 @@ export function samplePose(pose: PersonPose, phase: number, speedMps: number, ou
       out.armR = -0.55
       out.bob = Math.abs(c) * 0.03 * amp
       out.lean = 0.1
+      break
+    }
+    case 'push': {
+      // Both hands on a stroller handle; legs walk, arms stay put.
+      const amp = Math.min(1, 0.35 + Math.max(0, speedMps) / 1.4)
+      out.legL = s * WALK.legSwing * amp
+      out.legR = -out.legL
+      out.armL = out.armR = 1.05
+      out.bob = Math.abs(c) * 0.02 * amp
+      out.lean = 0.08
       break
     }
     case 'wave':

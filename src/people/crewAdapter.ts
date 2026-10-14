@@ -25,7 +25,7 @@ export function crewKindFor(service: CrewService, role: CrewRole): CrewKind {
 
 export function poseFor(kind: CrewKind | null, pose: CrewPose, look: PersonLook): PersonPose {
   if (kind === 'marshaller' && (pose === 'idle' || pose === 'reach')) return 'wave'
-  if (pose === 'walk') return look.carry === 'roller' ? 'bagPull' : 'walk'
+  if (pose === 'walk') return look.carry === 'roller' ? 'bagPull' : look.carry === 'stroller' ? 'push' : 'walk'
   return pose
 }
 

@@ -8,6 +8,8 @@ import { InstancePool } from './pool.ts'
 import { advancePhase, samplePose, strideRate } from './pose.ts'
 import { PeopleRenderer, type PeopleAgent } from './renderer.ts'
 import { CREW_KINDS, PERSON_POSES } from './types.ts'
+import { PART_DEFS, partGeometry, partsFor } from './parts.ts'
+import { CREW_OUTFITS, PASSENGER_OUTFITS } from './outfits.ts'
 import { crewLook, followSlot, groupLooks, passengerLook } from './variants.ts'
 
 describe('variants', () => {
@@ -24,7 +26,7 @@ describe('variants', () => {
     expect(new Set(looks.map((l) => l.hair))).toEqual(new Set(['none', 'short', 'long', 'bun']))
     expect(new Set(looks.map((l) => l.hat)).size).toBeGreaterThanOrEqual(4)
     expect(looks.some((l) => l.backpack)).toBe(true)
-    expect(new Set(looks.map((l) => l.carry))).toEqual(new Set(['none', 'roller', 'duffel', 'cart']))
+    expect(new Set(looks.map((l) => l.carry))).toEqual(new Set(['none', 'roller', 'duffel', 'cart', 'stroller']))
   })
 
   it('gives every crew kind a distinct uniform', () => {
@@ -178,7 +180,7 @@ describe('renderer', () => {
     const cam = camera()
     const m = new THREE.Matrix4()
     const leg = () => {
-      r.mesh('legL')!.getMatrixAt(0, m)
+      r.mesh('leg')!.getMatrixAt(0, m)
       return m.elements[6]
     }
     const still = { ...agent('s', 0, 'reach'), speed: 0 }
@@ -200,7 +202,7 @@ describe('static meshes', () => {
     expect(pax.getObjectByName('roller')).toBeDefined()
     expect(pax.getObjectByName('torso')).toBeDefined()
     const marshaller = createCrewMesh('marshaller', 1, { pose: 'wave' })
-    expect(marshaller.getObjectByName('wandR')).toBeDefined()
+    expect(marshaller.getObjectByName('wand')).toBeDefined()
     expect(marshaller.getObjectByName('hatHelmet')).toBeDefined()
     const block = createCrewMesh('pilot', 1, { lod: 2 })
     expect(block.children).toHaveLength(1)
@@ -218,5 +220,75 @@ describe('ramp crew adapter', () => {
     expect(crewAgent({ ...base, pose: 'idle' }, at).pose).toBe('wave')
     expect(crewAgent({ ...base, pose: 'walk' }, at).speed).toBeGreaterThan(0)
     expect(crewAgent({ ...base, pose: 'idle' }, at).speed).toBe(0)
+  })
+})
+
+describe('shared base body', () => {
+  const BODY_IDS = ['torso', 'head', 'arm', 'hand', 'leg', 'shoe']
+
+  it('draws passengers and every crew kind from the same body parts', () => {
+    const looks = [passengerLook('b1', { outfit: 'casual' }), ...CREW_KINDS.map((k) => crewLook(k, 1))]
+    for (const look of looks) {
+      const ids = partsFor(look, 0).map((p) => p.id)
+      for (const id of BODY_IDS) expect(ids).toContain(id)
+    }
+  })
+
+  it('stands about 1.75 m tall with a head near 1/7.5 of the height', () => {
+    const head = PART_DEFS.find((p) => p.id === 'head')!
+    const box = partGeometry(head).boundingBox ?? (partGeometry(head).computeBoundingBox(), partGeometry(head).boundingBox!)
+    expect(box.max.y).toBeGreaterThan(1.72)
+    expect(box.max.y).toBeLessThan(1.78)
+    const headHeight = 2 * 0.1 * 1.18
+    expect(1.75 / headHeight).toBeGreaterThan(7)
+    expect(1.75 / headHeight).toBeLessThan(8)
+  })
+
+  it('varies age: kids have bigger heads, elders stoop, builds differ', () => {
+    const kid = passengerLook('k', { age: 'kid' })
+    const adult = passengerLook('a', { age: 'adult' })
+    const elder = passengerLook('e', { age: 'elder' })
+    expect(kid.headScale).toBeGreaterThan(adult.headScale)
+    expect(kid.height).toBeLessThan(adult.height)
+    expect(elder.stoop).toBeGreaterThan(0)
+    expect(adult.stoop).toBe(0)
+    const widths = Array.from({ length: 100 }, (_, i) => passengerLook(i, { age: 'adult' }).width)
+    expect(Math.max(...widths) - Math.min(...widths)).toBeGreaterThan(0.2)
+    const ages = new Set(Array.from({ length: 300 }, (_, i) => passengerLook(i).age))
+    expect(ages.has('elder')).toBe(true)
+  })
+
+  it('rolls casual, business and tourist outfits', () => {
+    const looks = Array.from({ length: 400 }, (_, i) => passengerLook(i, { age: 'adult' }))
+    expect(new Set(looks.map((l) => l.outfit))).toEqual(new Set(['casual', 'business', 'tourist']))
+    expect(looks.filter((l) => l.outfit === 'business').every((l) => l.jacket !== 0)).toBe(true)
+    expect(looks.some((l) => l.outfit === 'tourist' && l.shorts)).toBe(true)
+    expect(looks.filter((l) => l.outfit === 'casual').every((l) => l.jacket === 0)).toBe(true)
+    expect(Object.keys(PASSENGER_OUTFITS)).toHaveLength(3)
+  })
+
+  it('adds crew gear to the same body from the role table', () => {
+    expect(Object.keys(CREW_OUTFITS).sort()).toEqual([...CREW_KINDS].sort())
+    const ids = (kind: (typeof CREW_KINDS)[number]) => partsFor(crewLook(kind, 1), 0).map((p) => p.id)
+    expect(ids('ground')).toContain('earDefenders')
+    expect(ids('ground')).toContain('outer')
+    expect(ids('marshaller')).toContain('headset')
+    expect(ids('security')).toContain('lanyard')
+    expect(ids('pilot')).toContain('hatPeaked')
+    expect(ids('pilot')).not.toContain('earDefenders')
+  })
+
+  it('draws a stroller and pushes it with both hands', () => {
+    const look = passengerLook('s', { carry: 'stroller' })
+    expect(partsFor(look, 0).map((p) => p.id)).toContain('stroller')
+    const pose = samplePose('push', 0.3, 1)
+    expect(pose.armL).toBeGreaterThan(0.8)
+    expect(pose.armR).toBeGreaterThan(0.8)
+  })
+
+  it('keeps mid detail to three meshes and the block to one', () => {
+    const look = passengerLook('m', { carry: 'roller' })
+    expect(partsFor(look, 1).map((p) => p.id).sort()).toEqual(['headLo', 'legLo', 'torsoLo'])
+    expect(partsFor(look, 2).map((p) => p.id)).toEqual(['block'])
   })
 })

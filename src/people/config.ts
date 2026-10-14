@@ -32,15 +32,26 @@ export const PAX_RATES = {
   cart: 0.05,
   longHair: 0.4,
   bald: 0.06,
+  stroller: 0.03,
+  /** Share of passengers (when no age is forced) who are elderly. */
+  elder: 0.08,
 } as const
 
 export const BODY = {
   /** Kids and teens are scaled copies of adults. */
   kidScale: 0.62,
   teenScale: 0.86,
+  elderScale: 0.96,
   heightSpread: 0.07,
-  widthSpread: 0.14,
+  /** Build: slim to stocky. */
+  widthSpread: 0.2,
+  /** Head size relative to an adult: children keep big heads. */
+  headScale: { adult: 1, elder: 1, teen: 1.08, kid: 1.3 },
+  /** Forward stoop in radians. */
+  elderStoop: 0.2,
 } as const
+
+export const ELDER_HAIR = [0xe5e5e5, 0xbdbdbd, 0x8a8a8a] as const
 
 /** Strides per second derive from ground speed, clamped. */
 export const WALK = {
