@@ -63,7 +63,7 @@ export function worstSeverity(list: readonly Advice[]): HintSeverity | null {
  *
  * Rules:
  * - New games start with All hints enabled ON and nothing muted.
- * - The pregame "Enable hints" box, unchecked, starts the game with every kind
+ * - The pregame "Start with hints off" box, checked, starts the game with every kind
  *   muted (`'*'`) and All hints enabled OFF.
  * - "Don't show hints of this type" mutes one kind, and muting any kind flips
  *   All hints enabled OFF — the toggle only reads ON while nothing is muted.

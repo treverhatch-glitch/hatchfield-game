@@ -1216,7 +1216,7 @@ export class Game {
   apronFocus: { c: number; r: number }[] = []
   /** Hint switches for this game. Saved, and mirrored to settings. */
   hintPrefs: HintPrefs = newGameHintPrefs()
-  /** Pregame "Enable hints" box. Read once by beginNew. */
+  /** Pregame "Start with hints off" box, inverted. Read once by beginNew. */
   enableHintsAtStart = true
   /** Live operational problems (stuck aircraft, fuel out, full hall, disruptions, ...). */
   alerts = new AlertStack()

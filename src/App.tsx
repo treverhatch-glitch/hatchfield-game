@@ -7,12 +7,14 @@ import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
 import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
+import { MenuFlyover } from './ui/MenuFlyover'
 import { TerminalView } from './ui/TerminalView'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { OfferPanel } from './negotiation/OfferPanel'
 import { PriceWarCard } from './rival/PriceWarCard'
 import { PlaytestYearPanel } from './reports/PlaytestYearPanel'
 import { TitleScreen } from './ui/TitleScreen'
+import type { StartFocus } from './game/types'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
 function getGame(): Game {
@@ -211,6 +213,22 @@ function hudSnapshot(): string {
       ].join('|')
 }
 
+/** Keep a route-screen refresh on the hints choice the player just made. */
+function setEnableHints(on: boolean) {
+  game.enableHintsAtStart = on
+  try {
+    const raw = sessionStorage.getItem('hatchfield-pending')
+    if (raw) {
+      const pending = JSON.parse(raw) as { enableHints?: boolean }
+      pending.enableHints = on
+      sessionStorage.setItem('hatchfield-pending', JSON.stringify(pending))
+    }
+  } catch {
+    /* ignore */
+  }
+  game.emit()
+}
+
 function PlaytestYearMount({ game }: { game: Game }) {
   const report = game.playtestYearCard()
   if (!report) return null
@@ -307,32 +325,43 @@ export default function App() {
     return () => cancelAnimationFrame(raf)
   }, [screen])
 
-  if (screen === 'title') {
-    return (
-      <TitleScreen
-        sandbox={game.sandbox}
-        onSandboxChange={(on) => {
-          game.sandbox = on
-          game.emit()
-        }}
-        enableHints={game.enableHintsAtStart}
-        onEnableHintsChange={(on) => {
-          game.enableHintsAtStart = on
-          game.emit()
-        }}
-        onNewGame={() => {
-          game.beginNew(game.sandbox ? 'easy' : 'standard')
-          setScreen('land')
-        }}
-        onContinue={() => {
-          if (game.load()) setScreen('play')
-        }}
-      />
-    )
+  const openNewGame = (focus: StartFocus) => {
+    game.beginNew(game.sandbox ? 'easy' : 'standard')
+    game.startFocus = focus
+    setScreen('land')
   }
 
-  if (screen === 'land') {
-    return <LandScreen game={game} onBought={() => setScreen('play')} />
+  if (screen === 'title' || screen === 'land') {
+    return (
+      <div className="menu-shell">
+        <MenuFlyover />
+        <div className="menu-scrim" aria-hidden="true" />
+        {screen === 'title' ? (
+          <TitleScreen
+            sandbox={game.sandbox}
+            onSandboxChange={(on) => {
+              game.sandbox = on
+              game.emit()
+            }}
+            enableHints={game.enableHintsAtStart}
+            onEnableHintsChange={setEnableHints}
+            onNewGame={() => openNewGame('pax')}
+            onChooseKit={openNewGame}
+            onContinue={() => {
+              if (game.load()) setScreen('play')
+            }}
+          />
+        ) : (
+          <LandScreen
+            game={game}
+            enableHints={game.enableHintsAtStart}
+            onEnableHintsChange={setEnableHints}
+            onBought={() => setScreen('play')}
+            onBack={() => setScreen('title')}
+          />
+        )}
+      </div>
+    )
   }
 
   return (

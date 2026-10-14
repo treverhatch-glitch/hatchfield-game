@@ -2103,6 +2103,116 @@ button {
   margin: 8px 0 0;
 }
 
+.menu-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.menu-flyover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.menu-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgb(8 12 20 / 0.9) 0px, rgb(8 12 20 / 0.62) 280px, rgb(8 12 20 / 0.08) 520px, transparent 640px),
+    linear-gradient(180deg, rgb(8 12 20 / 0.28) 0%, transparent 18%, transparent 82%, rgb(8 12 20 / 0.28) 100%);
+}
+
+.menu-panel,
+.menu-sheet {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  overflow: auto;
+  padding: 28px 28px 36px;
+  pointer-events: auto;
+}
+
+.menu-panel {
+  width: min(460px, 100%);
+}
+
+.menu-sheet {
+  width: min(920px, 100%);
+  background: linear-gradient(90deg, rgb(8 12 20 / 0.5), rgb(8 12 20 / 0.22) 80%, transparent);
+}
+
+.menu-label {
+  margin: 18px 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.kit-offers {
+  display: grid;
+  gap: 8px;
+}
+
+.kit-offer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  color: #e8eef4;
+  background: rgb(15 23 42 / 0.72);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.kit-offer strong {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.kit-offer p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #cbd5e1;
+}
+
+.kit-offer ul {
+  margin: 4px 0 0;
+  padding: 0 0 0 16px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e2e8f0;
+}
+
+.kit-offer:hover {
+  transform: translateY(-2px);
+  border-color: #7dd3fc;
+}
+
+.back-link {
+  margin-bottom: 10px;
+  background: rgb(15 23 42 / 0.72);
+  color: #e8eef4;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+
 .title-wrap {
   min-height: 100%;
   display: grid;
@@ -2130,24 +2240,57 @@ h1 {
   letter-spacing: -0.03em;
 }
 
+.game-title-idle {
+  display: inline-block;
+  margin: 0 0 12px;
+  animation: hatch-idle 4.4s ease-in-out infinite;
+  transform-origin: 15% 80%;
+}
+
+@keyframes hatch-idle {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.35deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(0.35deg);
+  }
+}
+
 h1.game-title {
   font-family: Impact, 'Arial Black', 'Segoe UI', system-ui, sans-serif;
   font-weight: 900;
-  font-size: clamp(72px, 11vw, 112px);
+  font-size: clamp(48px, 7vw, 78px);
   line-height: 0.86;
-  letter-spacing: 0.02em;
-  margin: 0 0 16px;
+  letter-spacing: 0.045em;
+  margin: 0;
   color: #f7f3e8;
   text-shadow:
     0 1px 0 #fff8e8,
     0 3px 0 #1a1208,
     0 6px 0 #3a2a14,
     0 10px 0 #6a4a18,
-    0 16px 18px rgba(0, 0, 0, 0.45);
+    0 16px 18px rgba(0, 0, 0, 0.55);
   transform-style: preserve-3d;
   transition: transform 0.08s linear;
   cursor: default;
   user-select: none;
+}
+
+h1.game-title::after {
+  content: '';
+  display: block;
+  width: 46%;
+  height: 6px;
+  margin-top: 12px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #e6c85a, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-title-idle {
+    animation: none;
+  }
 }
 
 .lede {
@@ -2351,7 +2494,8 @@ h1.game-title {
 }
 
 .route-card strong {
-  font-size: 20px;
+  font-size: 16px;
+  line-height: 1.25;
   letter-spacing: -0.02em;
 }
 
@@ -2396,6 +2540,30 @@ h1.game-title {
   color: #b7c4b8;
   font-size: 12px;
   margin-top: 4px;
+}
+
+.hybrid-link.on {
+  border-color: #e6c85a;
+  box-shadow: inset 0 0 0 1px #e6c85a;
+}
+
+@media (max-width: 720px) {
+  .menu-scrim {
+    background: linear-gradient(180deg, transparent 0%, rgb(8 12 20 / 0.2) 18%, rgb(8 12 20 / 0.88) 42%);
+  }
+
+  .menu-panel,
+  .menu-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: auto;
+    max-height: 74%;
+    border-radius: 16px 16px 0 0;
+    background: rgb(15 23 42 / 0.9);
+  }
 }
 
 @media (max-width: 640px) {
