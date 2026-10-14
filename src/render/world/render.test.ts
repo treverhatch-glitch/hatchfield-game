@@ -155,9 +155,12 @@ describe('initWorldRender', () => {
     game.hallGuests = [g]
     game.routeGuest(g, 'security', game.hallOpenFor(fit))
     expect(g.route && g.route.length).toBeGreaterThan(1)
-    const near = camAt(hallFocus(game).x, hallFocus(game).z, 14)
+    // The crowd draws only what the camera sees, so aim at the guest once it has a spot.
+    let near = camAt(hallFocus(game).x, hallFocus(game).z, 14)
+    wr.update(game, near, 1 / 30)
+    near = camAt(g.wx ?? 0, g.wz ?? 0, 14)
     for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
-    const body = (['people-lod0', 'people-lod1', 'people-lod2', 'hall-guest-body']
+    const body = (['people-torso', 'hall-guest-body']
       .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
       .find((mesh) => mesh && mesh.count > 0) ?? scene.getObjectByName('hall-guest-body')) as THREE.InstancedMesh
     expect(body).toBeTruthy()

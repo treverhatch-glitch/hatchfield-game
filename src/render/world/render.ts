@@ -42,6 +42,7 @@ import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
 import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
+import { WORLD_PER_METER } from '../aircraft/specs'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
@@ -690,7 +691,7 @@ export class WorldRenderer {
         return p ? { ...a, x: p.x, z: p.z } : a
       })
     }
-    this.people ??= createCrowd(this.root, { camera, capacity: 480, lod: [40, 110], cull: 220, frustum: false })
+    this.people ??= createCrowd(this.root, { camera, capacity: 480, unitsPerMeter: WORLD_PER_METER })
     this.people.setCamera(camera)
     this.hallCrowd?.sync([], this.time)
     this.people.update(
