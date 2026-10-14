@@ -47,6 +47,7 @@ import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
 import { deployOf, disposeVehicleLibrary, serviceStateOf, setVehicleSurfaceTime, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
 import { LandsideLayer } from './landsideTraffic.ts'
+import { FuelLayer } from './fuelDeliveries.ts'
 import { steerAngle } from './vehicleAnim.ts'
 import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
@@ -218,6 +219,7 @@ export class World {
   private arrivalBefore = new Map<string, number>()
   private vehicleFleet = new VehicleFleet()
   private landsideLayer = new LandsideLayer()
+  private fuelLayer = new FuelLayer()
   private vehicleFrame: VehicleInstance[] = []
   /** Render-side distance driven per vehicle id (metres), for wheel spin. Not saved. */
   private odo = new Map<string, { x: number; z: number; m: number }>()
@@ -374,6 +376,7 @@ export class World {
     this.entGroup.add(this.parkedFleet.root)
     this.entGroup.add(this.vehicleFleet.root)
     this.entGroup.add(this.landsideLayer.group)
+    this.entGroup.add(this.fuelLayer.group)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
     this.addPlotFence()
@@ -2120,6 +2123,7 @@ export class World {
     this.vehicleFleet.sync(this.vehicleFrame, this.camera.position)
     setVehicleSurfaceTime(game.clock)
     this.landsideLayer.sync(game.landsideView(), game.landsideOpen, game.landsideFocus)
+    this.fuelLayer.sync(game.fuelView())
 
     const seenP = new Set<string>()
     for (const p of game.people) {
@@ -2496,6 +2500,7 @@ export class World {
     this.arrivalBefore.clear()
     this.vehicleFleet.dispose()
     this.landsideLayer.dispose()
+    this.fuelLayer.dispose()
     this.parkedFleet.dispose()
     this.crewFigures.dispose()
     this.gateGroup.clear()

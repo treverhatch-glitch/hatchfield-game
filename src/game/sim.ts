@@ -337,6 +337,7 @@ import {
   pillarUpkeep,
   placementBlock,
   scaleAdvice,
+  contractById,
   seedLitresFromLoads,
   sizeTierOf,
   tierOpen,
@@ -653,6 +654,7 @@ import {
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import { LandsideTraffic, type LandsideView } from '../landside/index.ts'
+import { FUEL as FUEL_CHAIN, FuelChain, type FuelView } from '../fuel/index.ts'
 import {
   astar,
   farmBesidePavement,
@@ -1096,6 +1098,11 @@ export class Game {
   landsideOpen = false
   landsideFocus: string | null = null
   private landsideNewsCool = 0
+  /** Road tankers and the pipeline. Rendering and the farm panel read the snapshot. */
+  private fuelChain = new FuelChain()
+  fuelOpen = false
+  private fuelRoadLoad = 0
+  private fuelJustDelivered = false
   /** Passenger landside fees collected since last payroll window (HUD). */
   landsideFeeWindow = 0
   /** Planner filter: null = all banks; 0..n-1 = that strip; -1 = tower-auto only. */
@@ -1507,6 +1514,10 @@ export class Game {
     this.landsideOpen = false
     this.landsideFocus = null
     this.landsideNewsCool = 0
+    this.fuelChain.reset()
+    this.fuelOpen = false
+    this.fuelRoadLoad = 0
+    this.fuelJustDelivered = false
     this.loanBalance = 0
     this.loanProductId = null
     this.loanPrincipal = 0
@@ -4635,11 +4646,72 @@ export class Game {
     this.emit()
   }
 
+  /** Last fuel-farm snapshot. The renderer and the side panel both read this. */
+  fuelView(): FuelView {
+    return this.fuelChain.snapshot()
+  }
+
+  /** Click-open the fuel farm panel. The same control toggles it shut. */
+  openFuelFarm() {
+    this.noteFuelChain(0)
+    this.fuelOpen = !this.fuelOpen
+    this.emit()
+  }
+
+  closeFuelFarm() {
+    if (!this.fuelOpen) return
+    this.fuelOpen = false
+    this.emit()
+  }
+
+  /**
+   * Tankers and the pipeline occupy the public road. Stock and the bill stay
+   * with the fuel contract; this only records the queue, the draw, and who is grounded.
+   */
+  private noteFuelChain(step: number) {
+    const minutes = gameMinutes(step)
+    const contract = contractById(this.contractId) ?? (this.fuelBrand ? contractById('apex_local') : null)
+    const cap = tankDef(this.tankTier).capacityLitres
+    let pending = 0
+    const flights: { id: string; litres: number; departAt: number }[] = []
+    for (const f of this.flights) {
+      if (f.phase === 'gone' || f.posted.fuel || !this.departureNeedsFuel(f)) continue
+      const need = this.fuelNeedLitres(f)
+      pending += need
+      flights.push({ id: f.id, litres: need, departAt: f.fuelHeldSince ?? this.clock })
+    }
+    const perMin = pending / FUEL_CHAIN.upliftWindowMin
+    const hydrant = this.hasResearch('hydrant_fuel')
+    this.fuelChain.observe({
+      capacityLitres: cap,
+      litres: this.tankLitres,
+      mode: this.fuelSupply === 'rail' ? 'pipeline' : 'tanker',
+      tankerLitres: contract?.tankerLitres ?? 0,
+      leadMinutes: contract?.leadMinutes ?? 0,
+      wholesalePerLitre: contract?.wholesalePerLitre ?? 0,
+      cash: this.cash,
+      truckDrawPerMin: hydrant ? 0 : perMin,
+      hydrantDrawPerMin: hydrant ? perMin : 0,
+      pipelinePerMin: contract ? contract.railLitresPerHour / 60 : 0,
+      roads: tilesOf(this.tiles, 'road'),
+      connectors: tilesOf(this.tiles, 'guard'),
+      farms: tilesOf(this.tiles, 'fuel'),
+      flights,
+      roadMinutes: this.roadMinutes,
+      justDelivered: this.fuelJustDelivered,
+      pipelineFlowing: this.fuelSupply === 'rail' && this.lastRailFlowing,
+      minutes,
+    })
+    this.fuelJustDelivered = false
+    this.fuelRoadLoad = this.fuelChain.snapshot().roadVehPerMin
+  }
+
   /**
    * Roads and the curb have a capacity. Over it, cars queue and passengers
    * step out late, which nudges reputation. Fees and upkeep stay as they are.
    */
   private tickLandside(dt: number) {
+    this.noteFuelChain(dt)
     const view = this.landsideTraffic.tick(dt, {
       roads: tilesOf(this.tiles, 'road'),
       connectors: tilesOf(this.tiles, 'guard'),
@@ -4650,6 +4722,7 @@ export class Game {
       ),
       rail: this.hasRailStation(),
       paxPerDay: Math.max(0, this.paxPerDay, this.dayPax),
+      extraVehPerMin: this.fuelRoadLoad,
       departures: this.flights.reduce(
         (n, f) => n + (f.phase === 'gone' || f.cargo || f.kind === 'freighter' ? 0 : 1),
         0,
@@ -5400,6 +5473,10 @@ export class Game {
       this.landsideTraffic.reset()
       this.landsideOpen = false
       this.landsideFocus = null
+      this.fuelChain.reset()
+      this.fuelOpen = false
+      this.fuelRoadLoad = 0
+      this.fuelJustDelivered = false
       this.trucks = []
       this.people = []
       this.hallGuests = []
@@ -10255,12 +10332,16 @@ export class Game {
       ]
     }
     if (id === 'fuel') {
-      const snap = this.groundSnapshot()
-      const grounded = this.flights.filter((f) => f.phase !== 'gone' && this.fuelOutage(f)).length
-      const stock = snap
-        ? `${Math.round(snap.fuelLitres).toLocaleString('en-US')} L in the farm`
-        : `${this.fuelLoads} bowser loads on the farm`
-      return [stock, `${grounded} departures grounded for fuel`]
+      const live = this.fuelView()
+      const cover = Number.isFinite(live.daysCover)
+        ? `${live.daysCover >= 1 ? live.daysCover.toFixed(1) : (live.daysCover * 24).toFixed(1)} ${live.daysCover >= 1 ? 'days' : 'hours'} of cover`
+        : 'no uplift on the clock'
+      return [
+        `${Math.round(live.litres).toLocaleString('en-US')} L of ${Math.round(live.capacityLitres).toLocaleString('en-US')} L`,
+        cover,
+        `${live.queue.length} in the delivery queue`,
+        `${live.groundedIds.length} departures grounded for fuel`,
+      ]
     }
     if (id === 'power') {
       const power = this.powerReport()
@@ -12135,6 +12216,7 @@ export class Game {
     if (result.delivered > 0) {
       this.fuelLoads += loadsFromLitres(result.delivered)
       if (sim) sim.fuelLitres = Math.min(cap, sim.fuelLitres + result.delivered)
+      this.fuelJustDelivered = true
     }
     if (result.railFlowing && !this.lastRailFlowing) {
       this.pushNews('Fuel rail is flowing into the tank farm.', 'good')
@@ -15284,7 +15366,7 @@ export class Game {
         return
       }
       const tile = this.tile(v)
-      if (tile === 'fuel') this.toggleInfo('fuel')
+      if (tile === 'fuel') this.openFuelFarm()
       else if (tile === 'bags') this.toggleInfo('bags')
       if (
         tile === 'road' ||

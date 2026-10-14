@@ -17,6 +17,8 @@ export interface LandsideField {
   paxPerDay: number
   /** Live passenger departures. Pressure grows with this. */
   departures: number
+  /** Extra vehicles per minute on the approach, such as a fuel tanker. They do not use the curb. */
+  extraVehPerMin?: number
 }
 
 export type VehicleKind = 'car' | 'taxi' | 'bus'

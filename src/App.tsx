@@ -7,6 +7,7 @@ import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
 import { LandsideOverlay } from './ui/LandsideOverlay'
+import { FuelOverlay } from './ui/FuelOverlay'
 import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
 import { MenuFlyover } from './ui/MenuFlyover'
@@ -216,6 +217,10 @@ function hudSnapshot(): string {
         game.enableHintsAtStart ? 1 : 0,
         game.sidePanel,
         game.landsideOpen ? 1 : 0,
+        game.fuelOpen ? 1 : 0,
+        Math.round(game.fuelView().litres),
+        game.fuelView().queue.map((row) => `${row.state}:${Math.round(row.progress * 10)}`).join(','),
+        game.fuelView().groundedIds.length,
         game.landsideFocus ?? '',
         Math.round(game.landsideView().delaySec),
         Math.round(game.landsideView().queue),
@@ -302,6 +307,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
     <>
       <Hud game={game} onNewGame={onNewGame} />
       <LandsideOverlay game={game} />
+      <FuelOverlay game={game} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
       <FeedbackChrome />

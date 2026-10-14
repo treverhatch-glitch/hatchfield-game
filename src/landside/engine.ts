@@ -137,7 +137,9 @@ export function measure(field: LandsideField, net: Network = buildNetwork(field)
   const curbCars = carVeh - parked
   const taxiVeh = taxiPax / LANDSIDE.paxPerTaxi
   const busVeh = busPax / LANDSIDE.paxPerBus
-  const roadVehPerMin = carVeh + taxiVeh + busVeh
+  const extraRaw = field.extraVehPerMin ?? 0
+  const extraVeh = Number.isFinite(extraRaw) && extraRaw > 0 ? extraRaw : 0
+  const roadVehPerMin = carVeh + taxiVeh + busVeh + extraVeh
   const curbVehPerMin =
     curbCars + taxiVeh + (net.busBays > 0 ? 0 : busVeh * LANDSIDE.busOnCurbWeight)
   const hops = Math.max(0, net.path.length - 1)
