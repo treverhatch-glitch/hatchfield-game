@@ -350,13 +350,13 @@
 }
 
 .kit-bar {
-  left: 50%;
+  left: 12px;
   right: auto;
   bottom: 78px;
-  transform: translateX(-50%);
+  transform: none;
   width: max-content;
-  max-width: min(640px, 52vw);
-  align-items: center;
+  max-width: min(420px, 34vw);
+  align-items: flex-start;
 }
 
 .kit-tabs {

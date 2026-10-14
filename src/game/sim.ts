@@ -2621,7 +2621,9 @@ export class Game {
 
   /** Share of premium departures already through screening. 1 when nobody premium is in the hall. */
   private premiumScreenRate(): number {
-    const premium = this.hallGuests.filter((g) => !g.dead && g.tag === 'premium' && g.job === 'depart')
+    const premium = this.hallGuests.filter(
+      (g) => !g.preview && !g.dead && g.tag === 'premium' && g.job === 'depart',
+    )
     if (!premium.length) return 1
     const waiting = premium.filter((g) => g.node === 'security' && !g.clearedSec).length
     return 1 - waiting / premium.length
@@ -3738,6 +3740,7 @@ export class Game {
     // One desk body so the first bank doesn't miss gates on an empty counter.
     this.deskStaff = 1
     this.assignHallStaff()
+    this.seedDayOneCrowd()
     // Airport is live — first airline call comes quick; later ones stay slow.
     // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = 3
@@ -5207,7 +5210,7 @@ export class Game {
     const parked = this.flights.filter((f) => f.phase === 'parked' || f.phase === 'board' || f.phase === 'deboard').length
     this.ensureAmbience().update(
       {
-        checkinOccupancy: Math.min(1, this.hallGuests.length / 40),
+        checkinOccupancy: Math.min(1, this.hallGuests.filter((g) => !g.preview).length / 40),
         walkingWithBagsOccupancy: Math.min(1, this.people.length / 40),
         securityLanesOpen: Math.max(1, this.fits[0]?.rooms.security ?? 0),
         securityThroughputPerMin: this.securityQueueCount(),
@@ -5613,8 +5616,8 @@ export class Game {
     const cap = fit?.capGuests ?? 40
     const key = fit ? this.hallKey(fit) : null
     const pop = key
-      ? this.hallGuests.filter((g) => !g.dead && g.hallId === key).length
-      : this.hallGuests.length
+      ? this.hallGuests.filter((g) => !g.preview && !g.dead && g.hallId === key).length
+      : this.hallGuests.filter((g) => !g.preview).length
     const crowd = pop > cap ? 1 / (1 + (pop - cap) * 0.08) : 1
     const allow = fit?.bagAllowance ?? 9999
     let bagMul = 1
@@ -7172,6 +7175,126 @@ export class Game {
     return f?.airline ?? null
   }
 
+  /**
+   * Bright walkers so the hall reads as open on day 1, before a flight releases.
+   * They only pace the curb-to-gate path. Cargo kits have no hall to fill.
+   */
+  private seedDayOneCrowd() {
+    const fit = this.fits[0]
+    if (!fit) return
+    const hallId = this.hallKey(fit)
+    const path: HallNode[] = ['entrance', 'checkin', 'food', 'shop', 'gate']
+    const shirts = [
+      '#e23b2f',
+      '#3ec6ff',
+      '#ffb703',
+      '#7c5cff',
+      '#3dd68c',
+      '#ff6b9a',
+      '#fb923c',
+      '#60a5fa',
+      '#f472b6',
+      '#a3e635',
+      '#f8fafc',
+      '#f97316',
+    ]
+    const tags: PaxTag[] = [
+      'family',
+      'budget',
+      'business',
+      'family',
+      'budget',
+      'business',
+      'family',
+      'budget',
+      'business',
+      'family',
+      'budget',
+      'business',
+    ]
+    // Spread along the walk that the opening camera frames. Node stays off the
+    // security desk so these bodies are not a lane.
+    const spots = [
+      { seg: 1, t: 0.18, lane: -1.7 },
+      { seg: 1, t: 0.28, lane: -0.4 },
+      { seg: 1, t: 0.38, lane: 0.7 },
+      { seg: 1, t: 0.48, lane: 1.8 },
+      { seg: 1, t: 0.24, lane: -1.2 },
+      { seg: 1, t: 0.42, lane: 1.2 },
+      { seg: 1, t: 0.34, lane: -0.15 },
+      { seg: 1, t: 0.33, lane: 0.15 },
+      { seg: 1, t: 0.5, lane: 1.5 },
+      { seg: 1, t: 0.22, lane: -0.85 },
+      { seg: 1, t: 0.45, lane: 0.95 },
+      { seg: 1, t: 0.36, lane: -1.6 },
+    ]
+    const names = ['Ada', 'Ben', 'Cara', 'Dev', 'Eve', 'Finn', 'Gia', 'Hank', 'Ivy', 'Jon', 'Kim', 'Leo']
+    for (let i = 0; i < spots.length; i++) {
+      // Built by hand so the crowd does not consume the sim's random stream.
+      const g: HallGuest = {
+        id: `day1-preview-${i}`,
+        flightId: `day1-preview-${i}`,
+        name: names[i],
+        tag: tags[i],
+        job: 'depart',
+        node: path[spots[i].seg],
+        path: [...path],
+        seg: spots[i].seg,
+        t: spots[i].t,
+        lane: spots[i].lane,
+        preview: true,
+        previewDir: 1,
+        needs: { hunger: 4, bladder: 4, energy: 4, boarding: 80, bags: 0, shop: 4, play: 4 },
+        wallet: 0,
+        prefs: { food: 0, shop: 0, play: 0, lounge: 0, nap: 0, landside: 0 },
+        happiness: 70,
+        patience: 70,
+        spent: 0,
+        thought: 'Walking to the gate',
+        color: shirts[i],
+        dead: false,
+        clearedSec: true,
+        carryOn: i % 2 === 0,
+        hasChecked: i % 5 === 0,
+        hallId,
+        lost: false,
+      }
+      this.hallGuests.push(g)
+    }
+  }
+
+  /** Real released passengers replace the day-one pacing crowd. */
+  private retireDayOneCrowd() {
+    if (!this.hallGuests.some((g) => g.preview)) return
+    const real = this.hallGuests.filter(
+      (g) => !g.preview && !g.dead && (g.releaseAt == null || g.releaseAt <= this.clock),
+    ).length
+    if (real >= 8) this.hallGuests = this.hallGuests.filter((g) => !g.preview)
+  }
+
+  /**
+   * Stroll the framed part of check-in → food, then turn back.
+   * No security, spend, or boarding. They stay in the opening shot.
+   */
+  private tickPreviewGuest(g: HallGuest, dt: number) {
+    const path = g.path
+    if (path.length < 2) return
+    const dir = g.previewDir ?? 1
+    let t = g.t + dt * 0.09 * dir
+    let next: 1 | -1 = dir
+    if (t > 0.58) {
+      t = 0.58
+      next = -1
+    } else if (t < 0.12) {
+      t = 0.12
+      next = 1
+    }
+    g.t = t
+    g.previewDir = next
+    g.seg = 1
+    g.node = path[1] ?? 'checkin'
+  }
+
   tickHall(dt: number) {
     if (!this.fits.length) {
       this.hallGuests = []
@@ -7185,8 +7308,13 @@ export class Game {
       return
     }
     const kit = new Map<string, HallKitState>()
+    this.retireDayOneCrowd()
     for (const g of this.hallGuests) {
       if (g.dead) continue
+      if (g.preview) {
+        this.tickPreviewGuest(g, dt)
+        continue
+      }
       if (g.releaseAt != null && this.clock < g.releaseAt) continue
       const open = this.openForGuest(g)
       if (!open.size) continue
@@ -7488,7 +7616,9 @@ export class Game {
       for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
     }
     const fit = this.activeHall() ?? this.fits[0]
-    const present = this.hallGuests.filter((g) => g.releaseAt == null || g.releaseAt <= this.clock).length
+    const present = this.hallGuests.filter(
+      (g) => !g.preview && (g.releaseAt == null || g.releaseAt <= this.clock),
+    ).length
     if (fit && present > (fit.capGuests ?? 40)) this.markHallOverloaded()
   }
 
@@ -18414,7 +18544,7 @@ export class Game {
   private tycoonPulse(day: number): TycoonPulse {
     const latest = this.gameDayIndex() - 1
     const passengers = day === latest ? Math.max(0, Math.round(this.paxPerDay || this.dayPax)) : 0
-    const guests = this.hallGuests
+    const guests = this.hallGuests.filter((g) => !g.preview)
     const satisfaction = guests.length
       ? guests.reduce((sum, guest) => sum + guest.happiness, 0) / guests.length
       : this.fieldRating()
