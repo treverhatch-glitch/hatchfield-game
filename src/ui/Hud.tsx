@@ -9,6 +9,10 @@ import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
 import { AlertStackView } from './isolated/AlertStack.tsx'
+import { BuildTray } from './nav/BuildTray.tsx'
+import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
+import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
+import type { UnlockLink } from './nav/stampFacts.ts'
 import { useDesktop } from './phone/useDesktop.ts'
 import { phoneOwnsLetter } from '../phone/logic.ts'
 import { loanAmountLabel, loanDeskRows, loanDrawLabel, loanFeeForAmount, loanProductLabel, payrollPreviewLabel } from '../game/economy.ts'
@@ -58,24 +62,21 @@ import {
   RUNWAY_PREFAB_COST,
   SHORT_RUNWAY_COST,
   STARTER_KIT_COST,
-  TOOL_LABEL,
 } from '../game/catalog'
 import { starterKitPreview } from '../game/starterLayout'
-import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
+import { SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
 import { CeoCardView } from './wave3/CeoCard'
 import { ResearchPanel } from './wave3/ResearchPanel'
 import { ResearchTree } from './research/ResearchTree'
-import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
-import { lateIdForTool, lateStampLabel } from '../game/lateBuildings.ts'
-import { buildingById } from '../tier3plus/index.ts'
+import { lateIdForTool } from '../game/lateBuildings.ts'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import { inputMap } from '../input/map'
 import { pauseState } from './pauseState'
-import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
+import type { AirlineTier, BudgetKey, Speed } from '../game/types'
 import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
 import { BoardPanel } from '../fids/BoardPanel'
@@ -88,7 +89,6 @@ import { ACHIEVEMENTS, AchievementToast, type AchievementDef } from '../achievem
 import { liveBubbles } from '../feedback/stage'
 import { DebugHud } from './DebugHud'
 import { HALL_ROOMS } from './uiCatalog'
-import { requestKit } from './nav/kitFocus'
 import {
   BUILD_MENUS,
   headingFor,
@@ -110,49 +110,6 @@ const BUDGET_KEYS: BudgetKey[] = [
   'fire',
   'ambulance',
 ]
-
-function toolCost(tool: Tool): number | null {
-  if (tool === 'runway_short') return SHORT_RUNWAY_COST
-  if (tool === 'runway') return RUNWAY_PREFAB_COST
-  if (tool === 'runway_heavy') return HEAVY_RUNWAY_COST
-  if (tool === 'premade') return PREMADE_TERMINAL_COST
-  if (tool === 'clear') return null
-  return BUILDINGS.find((b) => b.tool === tool)?.cost ?? null
-}
-
-function TrayMark({ tool }: { tool: string }) {
-  const kind = tool.includes('runway')
-    ? 'strip'
-    : tool === 'taxi' || tool === 'road' || tool === 'belt'
-      ? 'path'
-      : tool.startsWith('stand')
-        ? 'stand'
-        : tool === 'clear'
-          ? 'clear'
-      : tool.includes('hotel') ||
-          tool.startsWith('park') ||
-          tool === 'bus' ||
-          tool === 'rail' ||
-          tool === 'rail_link'
-        ? 'land'
-            : 'ops'
-  return (
-    <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
-      {kind === 'strip' ? <rect x="3" y="13" width="26" height="6" rx="1" fill="currentColor" /> : null}
-      {kind === 'path' ? (
-        <path d="M6 24 L16 8 L26 24" fill="none" stroke="currentColor" strokeWidth="2.4" />
-      ) : null}
-      {kind === 'stand' ? (
-        <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" strokeWidth="2.4" />
-      ) : null}
-      {kind === 'clear' ? (
-        <path d="M8 8 L24 24 M24 8 L8 24" stroke="currentColor" strokeWidth="2.4" />
-      ) : null}
-      {kind === 'land' ? <rect x="7" y="9" width="18" height="14" rx="2" fill="currentColor" /> : null}
-      {kind === 'ops' ? <path d="M16 5 L28 26 H4 Z" fill="currentColor" /> : null}
-    </svg>
-  )
-}
 
 export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
@@ -195,6 +152,14 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     setHallPeek((cur) => (cur?.view === game.view && cur.id === id ? null : { view: game.view, id }))
   const pendingYear = game.pendingYearReport()?.year ?? null
   const [yearShown, setYearShown] = useState<number | null>(null)
+  const fieldNow = game.fieldLevel()
+  const [fieldSeen, setFieldSeen] = useState(fieldNow)
+  const [levelUp, setLevelUp] = useState<number | null>(null)
+  const [unlockFocus, setUnlockFocus] = useState<string | null>(null)
+  if (fieldNow > fieldSeen) {
+    setFieldSeen(fieldNow)
+    setLevelUp(fieldNow)
+  }
   if (manageTab === 'commercial' && pendingYear !== yearShown) {
     setYearShown(pendingYear)
     if (pendingYear != null) setTycoonTab('year')
@@ -205,7 +170,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
   const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
   const buildEntry = buildMenu ? BUILD_MENUS.find((m) => m.id === buildMenu) : undefined
-  const menuTools = buildEntry?.tools ?? []
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
@@ -266,6 +230,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     setChromePinned(true)
     game.setSidePanel('hud')
   }
+
+  const openUnlock = (link: UnlockLink) => {
+    setUnlockFocus(link.anchor)
+    if (link.anchor.startsWith('research-node-')) setGrowthFocus(link.anchor.slice('research-node-'.length))
+    setInfoGroup('growth')
+    openPanel(link.tab)
+  }
+
+  useEffect(() => {
+    if (!unlockFocus) return
+    document.getElementById(unlockFocus)?.scrollIntoView({ block: 'nearest' })
+  }, [unlockFocus, manageTab])
 
   const ticker = game.news.slice(0, 5)
   const xp = game.fieldXpToNext()
@@ -376,14 +352,15 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           <LiveText read={() => formatSimDate(game.clock)} />
         </div>
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
-        <div
-          className="stat"
-          title={`Field Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}`}
-          data-testid="field-level"
-        >
-          Field {xp.label}
-          {xp.pct < 1 ? ` · ${xp.xp}/${xp.need} XP` : ` · ${xp.xp} XP`}
-        </div>
+        <FieldBadge
+          progress={xp}
+          points={() => `${Math.floor(game.researchPoints)} RP`}
+          title={`Field ${xp.label}. Rating ${game.fieldRating()} — ${game.fieldRatingLabel()}. ${Math.floor(game.researchPoints)} research points.`}
+          onOpen={() => {
+            setInfoGroup('growth')
+            openPanel('levels')
+          }}
+        />
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
         </div>
@@ -594,6 +571,19 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       ) : null}
       <Phone game={game} desktop={desktopPhone} />
       <AlertStackView game={game} />
+      {levelUp != null ? (
+        <LevelUpCard
+          level={levelUp}
+          onClose={() => setLevelUp(null)}
+          onProgression={() => {
+            const reached = levelUp
+            setLevelUp(null)
+            setUnlockFocus(`level-${reached}`)
+            setInfoGroup('growth')
+            openPanel('levels')
+          }}
+        />
+      ) : null}
       <div
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
@@ -1510,7 +1500,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </section>
               ) : null}
 
-              {panel === 'growth' ? (
+              {panel === 'research' ? (
                 <ResearchTree
                   key={growthFocus ?? 'growth'}
                   state={game.researchTree.state}
@@ -1562,8 +1552,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     {RESEARCH_NODES.map((n) => {
                       const owned = game.hasResearch(n.id)
                       const gate = game.canBuyResearch(n.id)
+                      const anchor = `research-node-${n.id}`
                       return (
-                        <li key={n.id}>
+                        <li key={n.id} id={anchor} data-focus={unlockFocus === anchor ? 'true' : undefined}>
                           <b>
                             {n.name}{' '}
                             <span className="muted">
@@ -2150,19 +2141,13 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {panel === 'premium' ? <PremiumPanel game={game} /> : null}
-              {manageTab === 'commercial' || manageTab === 'awards' ? (
+              {manageTab === 'commercial' ? (
                 <>
                   <TycoonPanel
                     view={game.tycoonView()}
                     cash={game.cash}
-                    showTabs={manageTab === 'commercial'}
-                    tab={
-                      manageTab === 'awards'
-                        ? 'awards'
-                        : tycoonTab === 'year' && !game.pendingYearReport()
-                          ? 'shops'
-                          : tycoonTab
-                    }
+                    showTabs
+                    tab={tycoonTab === 'year' && !game.pendingYearReport() ? 'shops' : tycoonTab}
                     formatMoney={money}
                     onTab={setTycoonTab}
                     onAccept={(unitId, bidId) => game.acceptTenantBid(unitId, bidId)}
@@ -2204,23 +2189,42 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   )}
                 </section>
               ) : null}
+              {manageTab === 'levels' ? <FieldLevelsPanel level={game.fieldLevel()} focus={unlockFocus} /> : null}
               {manageTab === 'achievements' ? (
-                <section data-testid="achievements-panel">
-                  <h3>Achievements</h3>
-                  <ul className="airlines">
-                    {Object.values(ACHIEVEMENTS).map((item) => {
-                      const unlocked = game.achievements.state.unlocked[item.id]
-                      return (
-                        <li key={item.id}>
-                          <b>
-                            {item.name} <span className="muted">{unlocked ? '· earned' : '· still ahead'}</span>
-                          </b>
-                          <span className="muted">{item.description}</span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </section>
+                <>
+                  <section data-testid="achievements-panel">
+                    <h3>Achievements</h3>
+                    <ul className="airlines">
+                      {Object.values(ACHIEVEMENTS).map((item) => {
+                        const unlocked = game.achievements.state.unlocked[item.id]
+                        return (
+                          <li key={item.id}>
+                            <b>
+                              {item.name} <span className="muted">{unlocked ? '· earned' : '· still ahead'}</span>
+                            </b>
+                            <span className="muted">{item.description}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
+                  <h3>Awards</h3>
+                  <TycoonPanel
+                    view={game.tycoonView()}
+                    cash={game.cash}
+                    showTabs={false}
+                    tab="awards"
+                    formatMoney={money}
+                    onTab={setTycoonTab}
+                    onAccept={(unitId, bidId) => game.acceptTenantBid(unitId, bidId)}
+                    onReroll={(unitId) => game.rerollTenantBids(unitId)}
+                    onCampaign={(kind) => game.startAdCampaign(kind)}
+                    onDismissReport={() => {
+                      game.dismissYearReport()
+                      setTycoonTab('shops')
+                    }}
+                  />
+                </>
               ) : null}
 
               {panel === 'services' ? (
@@ -2477,159 +2481,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     </>
                   ) : null}
                 </div>
-                {buildMenu ? (
-                <div className="tools build-tray" data-testid="build-tray">
-                  {menuTools.map((t) => {
-                    const lateId = lateIdForTool(t)
-                    if (lateId) {
-                      const spec = buildingById(lateId)
-                      const researchLink = game.researchTree.linkFor(lateId)
-                      const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
-                      const fieldLocked = Boolean(spec && game.lateFieldLevel() < spec.fieldLevel)
-                      const locked = fieldLocked || researchLocked
-                      return (
-                        <button
-                          key={t}
-                          type="button"
-                          className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' is-locked' : ''}`}
-                          data-testid={`late-stamp-${lateId}`}
-                          title={
-                            researchLocked && researchLink
-                              ? `Requires research: ${researchLink.label}.`
-                              : spec
-                                ? lockTip(spec.name, spec.fieldLevel, spec.purpose)
-                                : lateStampLabel(lateId)
-                          }
-                          onClick={() => {
-                            if (researchLink && (fieldLocked || researchLocked)) {
-                              setGrowthFocus(researchLink.nodeId)
-                              openPanel('research')
-                              return
-                            }
-                            game.toggleInfo(`late:${lateId}`)
-                            if (!locked) game.setTool(t)
-                          }}
-                        >
-                          <TrayMark tool={t} />
-                          <span className="tray-name">{lateStampLabel(lateId)}</span>
-                          {locked && spec ? (
-                            <span className="tray-price" data-testid={`lock-badge-${lateId}`}>
-                              Field level {spec.fieldLevel}
-                            </span>
-                          ) : null}
-                        </button>
-                      )
-                    }
-                    const def = BUILDINGS.find((b) => b.tool === t)
-                    const cost = toolCost(t)
-                    const name = def?.name ?? TOOL_LABEL[t]
-                    const need = unlockLevel(t)
-                    const researchLink = game.researchTree.linkFor(t)
-                    const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
-                    const fieldLocked = t !== 'clear' && game.fieldLevel() < need
-                    const locked = fieldLocked || researchLocked
-                    const upkeep = def?.upkeepPerDay ?? 0
-                    const researchTip = researchLocked && researchLink ? `Requires research: ${researchLink.label}.` : ''
-                    const tip =
-                      t === 'clear'
-                        ? 'Bulldoze — refunds 40% of the stamp.'
-                        : fieldLocked
-                          ? `${lockTip(name, need, def?.blurb)} ${researchTip}`.trim()
-                          : researchTip
-                            ? `${def?.blurb ?? TOOL_LABEL[t]} ${researchTip}`
-                            : (def?.blurb ?? TOOL_LABEL[t])
-                    const priceTip = locked
-                      ? tip
-                      : cost != null
-                        ? `${tip} ${money(cost)}${upkeep > 0 ? ` · $${upkeep}/day` : ''}`
-                        : tip
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' locked' : ''}`}
-                        onClick={() => {
-                          if (researchLink && (fieldLocked || researchLocked)) {
-                            setGrowthFocus(researchLink.nodeId)
-                            openPanel('research')
-                            return
-                          }
-                          game.setTool(t)
-                        }}
-                        title={priceTip}
-                        data-testid={`tray-${t}`}
-                      >
-                        <TrayMark tool={t} />
-                        <span className="tray-name">{name}</span>
-                        <span className="tray-price">
-                          {fieldLocked ? `Lv ${need}` : researchLocked ? 'Research' : cost != null ? money(cost) : 'Refund'}
-                        </span>
-                        {upkeep > 0 ? <span className="tray-upkeep">${upkeep}/day</span> : null}
-                      </button>
-                    )
-                  })}
-                  {(buildEntry?.furnish ?? []).map((entry) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className="tray-item"
-                      data-testid={`tray-${entry.id}`}
-                      title={game.fits.length ? `Open the hall kit · ${entry.label}` : 'Place a hall first'}
-                      onClick={() => {
-                        const hall = game.fits[0]
-                        if (!hall) return
-                        requestKit(entry.kit)
-                        game.selectHall(hall)
-                      }}
-                    >
-                      <TrayMark tool={entry.id} />
-                      <span className="tray-name">{entry.label}</span>
-                    </button>
-                  ))}
-                  {PROGRESSION_BUILDABLES.filter((row) => buildEntry?.progression.includes(row.id)).map((row) => {
-                    const need = unlockLevel(row.id)
-                    const researchLink = game.researchTree.linkFor(row.id)
-                    const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
-                    const fieldLocked = game.fieldLevel() < need
-                    const locked = fieldLocked || researchLocked
-                    const cost = capstoneCost(row.cost, game.specPaths, row.id)
-                    const researchTip = researchLocked && researchLink ? `Requires research: ${researchLink.label}.` : ''
-                    const tip = fieldLocked
-                      ? `${lockTip(row.name, need, row.blurb)} ${researchTip}`.trim()
-                      : `${row.blurb}${row.cost > 0 ? ` ${money(cost)}` : ''}${
-                          row.upkeepPerDay > 0 ? ` · $${row.upkeepPerDay}/day` : ''
-                        } ${researchTip}`.trim()
-                    return (
-                      <button
-                        key={row.id}
-                        type="button"
-                        className={`tray-item${locked ? ' locked' : ''}${
-                          game.progressionBuilt.includes(row.id) ? ' on' : ''
-                        }`}
-                        title={tip}
-                        data-testid={`tray-${row.id}`}
-                        onClick={() => {
-                          if (researchLink && (fieldLocked || researchLocked)) {
-                            setGrowthFocus(researchLink.nodeId)
-                            openPanel('research')
-                            return
-                          }
-                          game.commission(row.id)
-                        }}
-                      >
-                        <TrayMark tool={row.id} />
-                        <span className="tray-name">{row.name}</span>
-                        <span className="tray-price">
-                          {fieldLocked ? `Lv ${need}` : researchLocked ? 'Research' : row.cost > 0 ? money(cost) : 'Select'}
-                        </span>
-                        {row.upkeepPerDay > 0 ? (
-                          <span className="tray-upkeep">${row.upkeepPerDay}/day</span>
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                </div>
-                ) : null}
+                {buildEntry ? <BuildTray game={game} menu={buildEntry} onOpen={openUnlock} /> : null}
               </>
             )}
             <p className="hint">
@@ -2735,7 +2587,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           <LiveText read={() => money(game.cash)} />
                         </>
                       ) : null}
-                      {menu.id === 'growth' && game.pendingYearReport() ? ' •' : ''}
+                      {menu.id === 'money' && game.pendingYearReport() ? ' •' : ''}
                     </button>
                     {open ? (
                       <div className="info-sub" data-testid={`submenu-${menu.id}`} role="menu">
@@ -2749,7 +2601,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             data-testid={`tab-${item.id}`}
                             onClick={() => {
                               if (item.id === 'commercial') setTycoonTab('shops')
-                              if (item.id === 'awards') setTycoonTab('awards')
                               if (manageTab === item.id) togglePanel(item.id)
                               else openPanel(item.id)
                               setInfoGroup(null)
@@ -2758,7 +2609,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             {item.label}
                           </button>
                         ))}
-                        {menu.id === 'growth' && game.pendingYearReport() ? (
+                        {menu.id === 'money' && game.pendingYearReport() ? (
                           <button
                             type="button"
                             role="menuitem"

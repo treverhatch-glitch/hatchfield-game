@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest'
+import { unlocksAtLevel } from './levelUnlocks.ts'
+import { stampCard, toolStampInput } from './stampFacts.ts'
+import { STAMP_HOVER_MS } from './taxonomy.ts'
+
+describe('stamp cards', () => {
+  it('waits 400 ms before a hover card and names a field-level lock', () => {
+    expect(STAMP_HOVER_MS).toBe(400)
+    const card = stampCard(toolStampInput('saf_blending', 1, 1, new Set()))
+    expect(card.locked).toBe(true)
+    expect(card.sentence).toBe('Unlocks at Field level 8.')
+    expect(card.link).toEqual({ tab: 'levels', anchor: 'level-8', label: 'Field level 8' })
+    expect(card.price).not.toBe('Refund')
+    expect(card.upkeep).toMatch(/day/)
+  })
+
+  it('names the research node once the field level is met', () => {
+    const early = stampCard(toolStampInput('stand_w', 1, 1, new Set()))
+    expect(early.sentence).toContain('Field level 4')
+    expect(early.sentence).toContain('Widebody ops')
+    expect(early.link?.tab).toBe('levels')
+
+    const ready = stampCard(toolStampInput('stand_w', 4, 4, new Set()))
+    expect(ready.locked).toBe(true)
+    expect(ready.sentence).toBe('Requires research: Widebody ops.')
+    expect(ready.link).toEqual({
+      tab: 'research',
+      anchor: 'research-node-widebody_ops',
+      label: 'Widebody ops',
+    })
+
+    const owned = stampCard(toolStampInput('stand_w', 4, 4, new Set(['widebody_ops'])))
+    expect(owned.locked).toBe(false)
+    expect(owned.link).toBeNull()
+  })
+
+  it('puts price, upkeep, capacity, and noise on the card', () => {
+    const runway = stampCard(toolStampInput('runway_heavy', 5, 5, new Set()))
+    expect(runway.price).not.toBe('—')
+    expect(runway.capacity).toBe('20 × 3 cells')
+    expect(runway.upkeep).toBe('None')
+    const night = stampCard(toolStampInput('nighthub', 4, 4, new Set()))
+    expect(night.noise).toBe('The city bills it')
+    const hotel = stampCard(toolStampInput('airport_hotel', 7, 7, new Set()))
+    expect(hotel.capacity).toBe('120 rooms')
+    expect(hotel.locked).toBe(false)
+  })
+})
+
+describe('field level unlocks', () => {
+  it('lists the heavy runway at field level 5 and research that opens there', () => {
+    const names = unlocksAtLevel(5).map((row) => row.name)
+    expect(names).toContain('Heavy runway')
+    expect(names).toContain('Heavy metal pack')
+    expect(unlocksAtLevel(4).map((row) => row.name)).toContain('Widebody ops')
+    expect(unlocksAtLevel(8).map((row) => row.name)).toContain('SAF blending')
+  })
+})

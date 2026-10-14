@@ -71,8 +71,10 @@ describe('every menu opens, has content, and closes', () => {
             expect(await page.getByTestId('tray-guard').count()).toBe(1)
           }
           if (menu.id === 'terminal') {
+            await page.getByTestId('build-group-processing').click()
             expect(await page.getByTestId('tray-belt').count()).toBe(1)
           }
+          await page.getByTestId('build-subtabs').waitFor({ state: 'visible' })
           await page.screenshot({ path: `${shots}/build-${menu.id}.png` })
           const stamp = tray.locator('button').first()
           await stamp.click()

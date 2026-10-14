@@ -560,7 +560,8 @@ button {
 .offer,
 .view-chip,
 .guest-card,
-.year-report {
+.year-report,
+.level-up {
   pointer-events: auto;
 }
 
@@ -1513,14 +1514,6 @@ html[data-gfx='low'] .view-layer.dim {
   border-color: rgba(201, 162, 39, 0.28);
 }
 
-.build-tray {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  margin-bottom: 4px;
-  padding-bottom: 2px;
-}
-
 .tray-item {
   display: flex;
   flex-direction: column;
@@ -1532,6 +1525,195 @@ html[data-gfx='low'] .view-layer.dim {
   min-height: 84px;
   padding: 6px 4px 5px;
   text-align: center;
+}
+
+.build-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 6px;
+}
+
+.build-subtabs button {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.build-tray {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 4px;
+  overflow: visible;
+  margin-bottom: 4px;
+  padding-bottom: 2px;
+}
+
+.build-tray .tray-item {
+  position: relative;
+  width: auto;
+  min-width: 0;
+  min-height: 68px;
+  padding: 4px 3px 3px;
+}
+
+.build-tray .tray-ico {
+  width: 22px;
+  height: 22px;
+}
+
+.tray-slot {
+  position: relative;
+}
+
+.tray-item.is-locked {
+  filter: grayscale(1);
+  opacity: 0.58;
+}
+
+.lock-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  color: #f0c14a;
+}
+
+.lock-pad {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.stamp-card {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 8;
+  width: 220px;
+  padding: 8px 10px;
+  background: rgba(12, 22, 18, 0.96);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 8px;
+  color: #e7eee9;
+  text-align: left;
+  pointer-events: auto;
+}
+
+.stamp-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.stamp-card p,
+.stamp-card dl {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+.stamp-card dl {
+  display: grid;
+  gap: 2px;
+}
+
+.stamp-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stamp-card dt {
+  opacity: 0.7;
+}
+
+.stamp-card dd {
+  margin: 0;
+}
+
+.stamp-card .stamp-lock {
+  color: #f0c14a;
+}
+
+.stamp-card button {
+  margin-top: 6px;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.field-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 112px;
+  cursor: pointer;
+}
+
+.field-badge-label {
+  font-size: 12px;
+}
+
+.xp-track {
+  display: block;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.xp-fill {
+  display: block;
+  height: 100%;
+  background: #7dcea0;
+}
+
+.field-rp {
+  font-size: 10px;
+  color: #9ee0b0;
+}
+
+.level-up {
+  position: absolute;
+  top: calc(var(--hud-top) + 10px);
+  left: 16px;
+  width: min(300px, calc(100vw - 32px));
+  z-index: 34;
+  background: rgba(12, 22, 18, 0.96);
+  border: 1px solid rgba(125, 206, 160, 0.55);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #e7eee9;
+}
+
+.level-up h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.level-up ul {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  font-size: 12px;
+}
+
+.level-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.level-list li {
+  margin: 0 0 8px;
+}
+
+.level-list li[data-current='true'] {
+  color: #f2c14a;
+}
+
+[data-focus='true'] {
+  outline: 1px solid #e6c85a;
+  border-radius: 4px;
 }
 
 .tray-ico {

@@ -22,119 +22,196 @@ export interface FurnishEntry {
   kit: KitCategory
 }
 
-export interface BuildMenu {
-  id: BuildMenuId
+/** Named row under a build category. The thumbnail grid shows one group at a time. */
+export interface BuildGroup {
+  id: string
   label: string
   tools: readonly Tool[]
-  /** Progression rows that share this tray. Ids from the unlock table. */
   progression: readonly string[]
   furnish?: readonly FurnishEntry[]
 }
 
+export interface BuildMenu {
+  id: BuildMenuId
+  label: string
+  groups: readonly BuildGroup[]
+  /** Flattened from groups so a tool is still listed once. */
+  tools: readonly Tool[]
+  progression: readonly string[]
+  furnish: readonly FurnishEntry[]
+}
+
+function menu(
+  id: BuildMenuId,
+  label: string,
+  groups: readonly BuildGroup[],
+): BuildMenu {
+  return {
+    id,
+    label,
+    groups,
+    tools: groups.flatMap((group) => group.tools),
+    progression: groups.flatMap((group) => group.progression),
+    furnish: groups.flatMap((group) => group.furnish ?? []),
+  }
+}
+
 export const BUILD_MENUS: readonly BuildMenu[] = [
-  {
-    id: 'airfield',
-    label: 'Airfield',
-    tools: [
-      'runway_short',
-      'runway',
-      'runway_heavy',
-      'taxi',
-      'stand_s',
-      'stand',
-      'stand_w',
-      'stand_l',
-      'helipad',
-      'deice',
-      'tower',
-    ],
-    progression: ['jet_bridge', 'code_e', 'code_f', 'jet_bridge_3', 'atc_approach'],
-  },
-  {
-    id: 'terminal',
-    label: 'Terminal',
-    tools: [
-      'premade',
-      'terminal',
-      'belt',
-      'travelator',
-      'skywalk',
-      'hub_skywalk',
-      'mover',
-      'people_mover',
-      'term_bus',
-      'xfer_bus',
-    ],
-    progression: ['prefab_ii', 'checkin_hall', 'security_hall', 'concourse', 'pier_ii', 'satellite', 'remote_screening'],
-    furnish: [
-      { id: 'checkin', label: 'Check-in', kit: 'rooms' },
-      { id: 'security', label: 'Security', kit: 'rooms' },
-      { id: 'gates', label: 'Gates', kit: 'rooms' },
-    ],
-  },
-  {
-    id: 'airside',
-    label: 'Airside Ops',
-    tools: [
-      'fuel',
-      'fuel_rail',
-      'oil',
-      'saf_blending',
-      'depot',
-      'kitchen',
-      'bags',
-      'cargo',
-      'hangar',
-      'hangar_w',
-      'hangar_j',
-      'mro',
-      'nighthub',
-    ],
-    progression: ['hydrant', 'substation', 'tilt_tray', 'fuel_farm_iii'],
-  },
-  {
-    id: 'safety',
-    label: 'Safety & Security',
-    tools: ['fire', 'police', 'guard'],
-    progression: [],
-  },
-  {
-    id: 'landside',
-    label: 'Landside',
-    tools: [
-      'road',
-      'park_s',
-      'park_l',
-      'park_g',
-      'park_u',
-      'bus',
-      'rail',
-      'rail_link',
-      'hotel_inn',
-      'hotel_biz',
-      'hotel_resort',
-      'airport_hotel',
-    ],
-    progression: [],
-  },
-  {
-    id: 'retail',
-    label: 'Retail & Comfort',
-    tools: ['snack'],
-    progression: ['prestige_landmark'],
-    furnish: [
-      { id: 'food', label: 'Food', kit: 'commercial' },
-      { id: 'shops', label: 'Shops', kit: 'commercial' },
-      { id: 'lounges', label: 'Lounges', kit: 'rooms' },
-      { id: 'decor', label: 'Decor', kit: 'decor' },
-    ],
-  },
-  {
-    id: 'tools',
-    label: 'Tools',
-    tools: ['clear'],
-    progression: [],
-  },
+  menu('airfield', 'Airfield', [
+    {
+      id: 'runways',
+      label: 'Runways',
+      tools: ['runway_short', 'runway', 'runway_heavy', 'helipad'],
+      progression: [],
+    },
+    {
+      id: 'taxiways',
+      label: 'Taxiways',
+      tools: ['taxi', 'deice'],
+      progression: [],
+    },
+    {
+      id: 'stands',
+      label: 'Stands',
+      tools: ['stand_s', 'stand', 'stand_w', 'stand_l'],
+      progression: ['jet_bridge', 'code_e', 'code_f', 'jet_bridge_3'],
+    },
+    {
+      id: 'tower',
+      label: 'Tower',
+      tools: ['tower'],
+      progression: ['atc_approach'],
+    },
+  ]),
+  menu('terminal', 'Terminal', [
+    {
+      id: 'halls',
+      label: 'Halls',
+      tools: ['premade', 'terminal'],
+      progression: ['prefab_ii', 'concourse', 'pier_ii', 'satellite'],
+    },
+    {
+      id: 'processing',
+      label: 'Processing',
+      tools: ['belt'],
+      progression: ['checkin_hall', 'security_hall', 'remote_screening'],
+      furnish: [
+        { id: 'checkin', label: 'Check-in', kit: 'rooms' },
+        { id: 'security', label: 'Security', kit: 'rooms' },
+      ],
+    },
+    {
+      id: 'gates',
+      label: 'Gates',
+      tools: [],
+      progression: [],
+      furnish: [{ id: 'gates', label: 'Gates', kit: 'rooms' }],
+    },
+    {
+      id: 'movers',
+      label: 'Movers',
+      tools: ['travelator', 'skywalk', 'hub_skywalk', 'mover', 'people_mover', 'term_bus', 'xfer_bus'],
+      progression: [],
+    },
+  ]),
+  menu('airside', 'Airside Ops', [
+    {
+      id: 'fuel',
+      label: 'Fuel',
+      tools: ['fuel', 'fuel_rail', 'oil', 'saf_blending'],
+      progression: ['hydrant', 'fuel_farm_iii'],
+    },
+    {
+      id: 'gse',
+      label: 'GSE/Catering',
+      tools: ['depot', 'kitchen'],
+      progression: [],
+    },
+    {
+      id: 'bags',
+      label: 'Bags/Cargo',
+      tools: ['bags', 'cargo'],
+      progression: ['tilt_tray'],
+    },
+    {
+      id: 'hangars',
+      label: 'Hangars/MRO',
+      tools: ['hangar', 'hangar_w', 'hangar_j', 'mro', 'nighthub'],
+      progression: ['substation'],
+    },
+  ]),
+  menu('safety', 'Safety & Security', [
+    {
+      id: 'stations',
+      label: 'Stations',
+      tools: ['fire', 'police', 'guard'],
+      progression: [],
+    },
+  ]),
+  menu('landside', 'Landside', [
+    {
+      id: 'roads',
+      label: 'Roads',
+      tools: ['road'],
+      progression: [],
+    },
+    {
+      id: 'parking',
+      label: 'Parking',
+      tools: ['park_s', 'park_l', 'park_g', 'park_u'],
+      progression: [],
+    },
+    {
+      id: 'transit',
+      label: 'Transit',
+      tools: ['bus', 'rail', 'rail_link'],
+      progression: [],
+    },
+    {
+      id: 'hotels',
+      label: 'Hotels',
+      tools: ['hotel_inn', 'hotel_biz', 'hotel_resort', 'airport_hotel'],
+      progression: [],
+    },
+  ]),
+  menu('retail', 'Retail & Comfort', [
+    {
+      id: 'food',
+      label: 'Food',
+      tools: ['snack'],
+      progression: [],
+      furnish: [{ id: 'food', label: 'Food', kit: 'commercial' }],
+    },
+    {
+      id: 'shops',
+      label: 'Shops',
+      tools: [],
+      progression: [],
+      furnish: [{ id: 'shops', label: 'Shops', kit: 'commercial' }],
+    },
+    {
+      id: 'lounges',
+      label: 'Lounges',
+      tools: [],
+      progression: [],
+      furnish: [{ id: 'lounges', label: 'Lounges', kit: 'rooms' }],
+    },
+    {
+      id: 'decor',
+      label: 'Decor',
+      tools: [],
+      progression: ['prestige_landmark'],
+      furnish: [{ id: 'decor', label: 'Decor', kit: 'decor' }],
+    },
+  ]),
+  menu('tools', 'Tools', [
+    {
+      id: 'edit',
+      label: 'Edit',
+      tools: ['clear'],
+      progression: [],
+    },
+  ]),
 ]
 
 export type ManageMenuId = 'money' | 'airlines' | 'operations' | 'people' | 'growth'
@@ -153,6 +230,7 @@ export type ManageSheet =
   | 'staff'
   | 'thoughts'
   | 'research'
+  | 'levels'
   | 'specialize'
   | 'tycoon'
   | 'achievements'
@@ -165,6 +243,7 @@ export type ManageTabId =
   | 'charts'
   | 'fees'
   | 'payroll'
+  | 'commercial'
   | 'roster'
   | 'letters'
   | 'hubs'
@@ -179,9 +258,8 @@ export type ManageTabId =
   | 'morale'
   | 'thoughts'
   | 'research'
+  | 'levels'
   | 'specializations'
-  | 'commercial'
-  | 'awards'
   | 'achievements'
 
 export interface ManageTab {
@@ -202,7 +280,7 @@ export const MANAGE_MENUS: readonly ManageMenu[] = [
   {
     id: 'money',
     label: 'Money',
-    tip: 'Cash, fees, and payroll',
+    tip: 'Cash, fees, payroll, and commercial',
     tabs: [
       { id: 'overview', label: 'Overview', tip: 'Cash, capital, and the live forecast', sheet: 'economy' },
       { id: 'income', label: 'Income', tip: 'Recent income and landside fees', sheet: 'economy' },
@@ -211,6 +289,7 @@ export const MANAGE_MENUS: readonly ManageMenu[] = [
       { id: 'charts', label: 'Charts', tip: 'Cash, income, passengers, and cargo', sheet: 'economy' },
       { id: 'fees', label: 'Fees', tip: 'Landing, passenger, and service prices', sheet: 'fees' },
       { id: 'payroll', label: 'Payroll', tip: 'Operations budgets and hiring', sheet: 'budget' },
+      { id: 'commercial', label: 'Commercial', tip: 'Shop bids, campaigns, and awards', sheet: 'tycoon' },
     ],
   },
   {
@@ -250,20 +329,19 @@ export const MANAGE_MENUS: readonly ManageMenu[] = [
   {
     id: 'growth',
     label: 'Growth',
-    tip: 'Research, specializations, commercial, awards, and achievements',
+    tip: 'Research tree, field levels, specializations, and achievements',
     tabs: [
-      { id: 'research', label: 'Research', tip: 'Research points, the lab, and branch trees', sheet: 'research' },
+      { id: 'research', label: 'Research tree', tip: 'Research points, the lab, and branch trees', sheet: 'research' },
+      { id: 'levels', label: 'Field Levels', tip: 'What each field level unlocks', sheet: 'levels' },
       { id: 'specializations', label: 'Specializations', tip: 'Hub, low-cost, cargo, and luxury trees', sheet: 'specialize' },
-      { id: 'commercial', label: 'Commercial', tip: 'Shop bids and campaigns', sheet: 'tycoon' },
-      { id: 'awards', label: 'Awards', tip: 'Yearly awards and prestige', sheet: 'tycoon' },
-      { id: 'achievements', label: 'Achievements', tip: 'Milestones already reached', sheet: 'achievements' },
+      { id: 'achievements', label: 'Achievements', tip: 'Milestones already reached, and yearly awards', sheet: 'achievements' },
     ],
   },
 ]
 
 export function manageTab(id: ManageTabId): ManageTab {
-  for (const menu of MANAGE_MENUS) {
-    const tab = menu.tabs.find((row) => row.id === id)
+  for (const row of MANAGE_MENUS) {
+    const tab = row.tabs.find((item) => item.id === id)
     if (tab) return tab
   }
   throw new Error(`unknown manage tab ${id}`)
@@ -278,5 +356,8 @@ export function headingFor(id: ManageTabId): string {
 }
 
 export function menuForTool(tool: Tool): BuildMenu | undefined {
-  return BUILD_MENUS.find((menu) => menu.tools.includes(tool))
+  return BUILD_MENUS.find((row) => row.tools.includes(tool))
 }
+
+/** How long a stamp waits before the hover card appears. Cities-style, not instant. */
+export const STAMP_HOVER_MS = 400

@@ -24,7 +24,7 @@ Labels are title case. Short forms that were doing real work now say the work: O
 - **Menu** — pause sheet (Esc)
 - **Title** — back to the title screen. New Game and Continue live there
 - Cash and daily flow — opens the cash forecast
-- Field level
+- **Field level** — badge with the level, an XP bar, and a research-points counter. Click it to open Growth → Field Levels. A level-up card lists what just unlocked and has Open Progression.
 - Reputation
 - Free gates and holding
 - HATCH price — only after listing; opens Money → Overview
@@ -63,27 +63,27 @@ A card with no countdown is marked Note. Line maintenance is spelled out.
 
 ## Build bar
 
-Pick a category, then a stamp. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. SAF blending, the airport hotel, and the rail link sit in their real trays with a Field level badge until they unlock. The bag belt and the guard post appear once.
+Bottom toolbar, then a named sub-tab row, then a thumbnail grid. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. Locked stamps stay in their sub-tab, greyed, with a padlock. The hover card (about 400 ms) shows price, upkeep, capacity, and noise, and names the exact gate: a field level, a research node, or both. Open on that card jumps to Field Levels or that node on the research desk. The bag belt and the guard post appear once.
 
-| Category | What it holds |
+| Category | Sub-tabs |
 | --- | --- |
-| Airfield | Runways, taxiway, stands, helipad, de-icing, tower. Remote bay / Jetway gate toggles sit here. Later: jet bridge, Code E, Code F, triple jet bridge, ATC approach. |
-| Terminal | Halls, bag belt, walkways, people mover, terminal bus, transfer bus. Check-in, security, and gates open the hall kit. Later halls: Prefab II, check-in hall, security hall, concourse, Pier II, satellite, remote screening. |
-| Airside Ops | Fuel, fuel rail, oil, SAF blending, ground-vehicle depot, catering, baggage hall, cargo, hangars, maintenance hangar, night hub. Later: hydrant, substation, tilt-tray sort, fuel farm III. |
-| Safety & Security | Fire station, police post, guard post. |
-| Landside | Roads, parking, bus, rail, rail link, hotels. Short-term / Long-term toggles sit here. |
-| Retail & Comfort | Snack bar, plus Food, Shops, Lounges, and Decor, which open the hall kit. Prestige landmark joins this tray. |
-| Tools | Bulldoze (refunds 40%). |
+| Airfield | Runways, Taxiways, Stands, Tower. Remote bay / Jetway gate toggles sit on the toolbar. |
+| Terminal | Halls, Processing, Gates, Movers. Check-in, security, and gates open the hall kit. |
+| Airside Ops | Fuel, GSE/Catering, Bags/Cargo, Hangars/MRO. |
+| Safety & Security | Stations (fire, police, guard post). |
+| Landside | Roads, Parking, Transit, Hotels. Short-term / Long-term toggles sit on the toolbar. |
+| Retail & Comfort | Food, Shops, Lounges, Decor. Food, shops, lounges, and decor open the hall kit. |
+| Tools | Edit (bulldoze, refunds 40%). |
 
 ## Manage bar
 
 Five menus, one submenu each. The second click on an open sub-tab closes the panel. The Money button also shows the cash figure.
 
-- **Money** — Overview, Income, Expenses, Loans, Charts, Fees, Payroll. Fees are the commercial prices (landing, passenger, both aircraft-parking rates, and the rest). Payroll is the old budget desk: hiring, the guard agreement, and the operations sliders.
+- **Money** — Overview, Income, Expenses, Loans, Charts, Fees, Payroll, Commercial. Fees are the commercial prices (landing, passenger, both aircraft-parking rates, and the rest). Payroll is the old budget desk: hiring, the guard agreement, and the operations sliders. Commercial is shop bids, campaigns, and the awards tab inside that desk. A year report appears here only while one is waiting.
 - **Airlines** — Roster, Letters, Hubs, Rival, Negotiation.
 - **Operations** — Planner, Stands, Services, Premium.
 - **People** — Staff, Commute, Morale, Thoughts. Thoughts lists the passenger icons currently on the field.
-- **Growth** — Research (desk, lab rooms, and the passenger / cargo / efficiency / prestige branches), Specializations, Commercial (shop bids and campaigns), Awards, Achievements. A year report appears here only while one is waiting.
+- **Growth** — Research tree (the desk, lab rooms, and the passenger / cargo / efficiency / prestige branches), Field Levels, Specializations, Achievements. Achievements also lists yearly awards.
 
 ## Offers, letters, and goals
 
@@ -95,7 +95,7 @@ Five menus, one submenu each. The second click on an open sub-tab closes the pan
 - **Tip chips** — one-time notes near cash, the build tray, or a tile. Dismiss with ×
 - **Alerts** — bottom-right dock (`alert-dock`), above the build bar. Only Critical and Warning. Click a card to jump the camera to the problem. Pan to problem, Apply fix, Ignore, and Dismiss stay on the card and do not move the camera by themselves. Info notes are not stacked.
 - **Hints** — hint list, mute, and the starter-kit hint
-- **Year report** — card on the field, and again under Commercial while it is open
+- **Year report** — card on the field, and again under Money → Commercial while it is open
 - **Negotiation** — offer and counter sheet when a deal is on the table
 - **Achievements** — toast when one unlocks
 - **Debug** — recovery count, dev builds only
@@ -133,7 +133,12 @@ Move and Bulldoze sit beside the tabs. A hover tooltip names the item, the price
 
 ## Tooltips
 
-- Build-tray titles: blurb, price, daily upkeep, or the field-level lock
+- Build stamps: a hover card after about 400 ms with price, upkeep, capacity, and noise. A locked stamp names the field level or the research node and links to it.
 - Stamp cursor tooltip on the apron: site name and build progress
 - Kit tooltip in the hall
 - Button `title` attributes on speed, fees, cash, and menu groups
+
+## Next
+
+- **Research-tree node UI.** The Research tree tab is still the desk list. The follow-up is the node graph: cost badges, prerequisite lines, locked / available / owned, and a Research button on a detail card.
+- **Building info panel.** Clicking a placed building should open a docked panel on the left (upkeep, efficiency, staff, a capacity bar, KPIs) with an upgrades tray at the bottom. That panel is not built yet.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PROGRESSION_BUILDABLES } from '../../progression/unlocks'
 import type { Tool } from '../../game/types'
-import { BUILD_MENUS, MANAGE_MENUS, type ManageTabId } from './taxonomy'
+import { BUILD_MENUS, MANAGE_MENUS, STAMP_HOVER_MS, type ManageTabId } from './taxonomy'
 
 /** Every stamp except Select. A missing key fails the type-check. */
 const EVERY_STAMP = {
@@ -84,6 +84,19 @@ describe('menu taxonomy', () => {
     expect(seen.get('rail_link')).toBe('landside')
     expect(seen.get('road')).toBe('landside')
     expect(seen.get('tower')).toBe('airfield')
+    for (const menu of BUILD_MENUS) {
+      expect(menu.groups.length).toBeGreaterThan(0)
+      const grouped = menu.groups.flatMap((group) => group.tools)
+      expect(grouped).toEqual([...menu.tools])
+      expect(menu.groups.every((group) => group.label.trim().length > 1)).toBe(true)
+    }
+    expect(BUILD_MENUS.find((menu) => menu.id === 'airfield')?.groups.map((group) => group.label)).toEqual([
+      'Runways',
+      'Taxiways',
+      'Stands',
+      'Tower',
+    ])
+    expect(STAMP_HOVER_MS).toBe(400)
   })
 
   it('lists every progression row once', () => {
@@ -119,11 +132,22 @@ describe('menu taxonomy', () => {
     expect(seen.get('staff')).toBe('people')
     expect(seen.get('thoughts')).toBe('people')
     expect(seen.get('specializations')).toBe('growth')
-    expect(seen.get('commercial')).toBe('growth')
+    expect(seen.get('commercial')).toBe('money')
+    expect(seen.get('levels')).toBe('growth')
     expect(seen.get('achievements')).toBe('growth')
     expect(MANAGE_MENUS.find((menu) => menu.id === 'growth')?.tabs.find((tab) => tab.id === 'specializations')?.label).toBe(
       'Specializations',
     )
+    expect(MANAGE_MENUS.find((menu) => menu.id === 'growth')?.tabs.find((tab) => tab.id === 'research')?.label).toBe(
+      'Research tree',
+    )
+    expect(MANAGE_MENUS.find((menu) => menu.id === 'growth')?.tabs.map((tab) => tab.id)).toEqual([
+      'research',
+      'levels',
+      'specializations',
+      'achievements',
+    ])
+    expect(seen.has('awards' as ManageTabId)).toBe(false)
     const settings = [...seen.keys()].filter((id) => id === ('settings' as ManageTabId))
     expect(settings).toHaveLength(0)
   })

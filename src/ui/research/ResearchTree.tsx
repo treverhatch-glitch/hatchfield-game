@@ -97,7 +97,7 @@ export function ResearchTree({
           ) : null}
         </aside>
       </div>
-      <footer className="rtree-foot" data-testid="research-points">
+      <footer className="rtree-foot" data-testid="research-tree-points">
         Available research points: {state.points}
         {needCopy ? ` · ${needCopy}` : ''}
       </footer>
