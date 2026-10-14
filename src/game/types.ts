@@ -687,6 +687,7 @@ export interface PendingEmergency {
  * mx:   hangar mechanic walk (people), not a truck
  */
 export type TruckMission =
+  | 'coach_run'
   | 'unload'
   | 'to_claim'
   | 'pickup'
@@ -726,6 +727,8 @@ export interface Truck {
     | 'citycargo'
     | 'contractor'
     | 'delivery'
+    /** Landside coach: drives in on the road, docks at a bus-station kerb bay, boards, leaves. */
+    | 'coach'
   flightId: string | null
   x: number
   y: number
@@ -743,6 +746,10 @@ export interface Truck {
   home: Vec | null
   /** Visible load — bag units on this cart (Manor Lords crate feel). */
   cargoUnits?: number
+  /** Building service-yard pose while queued / docked / working (render reads it). */
+  yard?: { key: string; action: string | null; phase: string; progress: number; heading: number; point: number }
+  /** Yard visit finished; resume the arrival logic once. */
+  yardDone?: boolean
   /** Stand-service dwell this stop started with, in sim seconds. Crew steps fill it. */
   serviceFor?: number
 }
@@ -978,6 +985,8 @@ export interface GameSnapshot {
   standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   /** Hangar key → bay size. Missing hangars stay small. */
   hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
+  /** Anchor key → reserved real-world lot. Missing = grandfathered 1×1. */
+  lots?: Record<string, { w: number; d: number; dir: Vec }>
   janitors?: number
   researchers?: number
   deskStaff?: number
@@ -1052,11 +1061,15 @@ export interface GameSnapshot {
   missedHotelNights?: number
   /** Crew waiting on the airport hotel. */
   crewHotelNights?: number
+  /** Service-yard throughput per building (round 4). Vehicles are transient. */
+  yard?: { served: Record<string, number> }
 }
 
 /** A placed building that is still a construction site. */
 export interface BuildSite {
   id: string
+  /** Reserved real-world lot (single stamps only). */
+  lot?: { w: number; d: number; dir: Vec }
   kind: 'single' | 'runway' | 'terminal' | 'premade'
   cells: Vec[]
   tile: Tile
