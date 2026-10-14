@@ -45,7 +45,7 @@ export const PAXNAV_TUNING = {
 } as const
 
 /** Stops a passenger can make, and the kit that serves each. */
-export type StopKind = 'checkin' | 'security' | 'toilet' | 'food' | 'shop' | 'gate'
+export type StopKind = 'checkin' | 'security' | 'toilet' | 'food' | 'shop' | 'gate' | 'rebook'
 
 export const STOP_KIT: Record<StopKind, EquipKind> = {
   checkin: 'checkin_desk',
@@ -54,7 +54,12 @@ export const STOP_KIT: Record<StopKind, EquipKind> = {
   food: 'shop_counter',
   shop: 'shop_counter',
   gate: 'gate_desk',
+  // After a missed flight: an airline desk on their side of security (check-in before, any boarding desk after).
+  rebook: 'checkin_desk',
 }
+
+/** Desks that can rebook a missed flight, by side of security. */
+export const REBOOK_KIT: Record<'pre' | 'air', EquipKind> = { pre: 'checkin_desk', air: 'gate_desk' }
 
 /** Optional stops after security, in the order they are tried. */
 export const NEED_STOPS = ['toilet', 'food', 'shop'] as const satisfies readonly StopKind[]

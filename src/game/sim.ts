@@ -193,7 +193,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -7411,6 +7411,7 @@ export class Game {
       String(this.hallRev),
       () => hallNavLayout(fit),
       () => hallClaimHall(fit),
+      () => hallSignage(fit),
     )
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
@@ -7419,6 +7420,8 @@ export class Game {
       return this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
     })
     this.hallNav.tick(step)
+    // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
+    this.queueReputation(this.hallNav.takeReputation())
   }
 
   tickHall(dt: number) {
