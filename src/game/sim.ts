@@ -213,12 +213,28 @@ import { HINT_REFRESH_SEC } from './hintsData.ts'
 import {
   claimHoldUnits,
   CURB_REACH,
+  FIRST_LETTER_COOL,
+  FIRST_SLOT_GAP,
+  FIRST_SLOT_JITTER,
   OPENING_FIRST_SLOTS,
   OPENING_SEC,
   openingSlotCap,
   openingSpacingBonus,
   STARTER_CAPACITY,
 } from './openingData.ts'
+import {
+  dismissTip as dismissTipId,
+  evaluateTips,
+  newTipBook,
+  runwayExitCells,
+  sanitizeTipBook,
+  setTipsEnabled,
+  stepTips,
+  type TipBook,
+  type TipOffer,
+  type TipWorld,
+} from './tips.ts'
+import { TIP_PHASES, TIP_STUCK_SEC } from './tipsData.ts'
 import { nextSessionHint } from './sessionHints.ts'
 import { coolAfterSign, lettersSettled } from './contractPacing.ts'
 import { LETTER_PACING } from './contractPacingData.ts'
@@ -1261,6 +1277,9 @@ export class Game {
   apronFocus: { c: number; r: number }[] = []
   /** Hint switches for this game. Saved, and mirrored to settings. */
   hintPrefs: HintPrefs = newGameHintPrefs()
+  /** Stuck-state tip chips. Separate from hints, letters, and alerts. */
+  tipBook: TipBook = newTipBook()
+  tipVisible: TipOffer[] = []
   /** Pregame "Start with hints off" box, inverted. Read once by beginNew. */
   enableHintsAtStart = true
   /** Live operational problems (stuck aircraft, fuel out, full hall, disruptions, ...). */
@@ -1644,6 +1663,8 @@ export class Game {
     // New games start with All hints enabled unless the pregame box was unchecked.
     this.hintPrefs = newGameHintPrefs(this.enableHintsAtStart)
     writeHintSettings(this.hintPrefs)
+    this.tipBook = newTipBook()
+    this.tipVisible = []
     this.alerts.reset()
     this.alertScanCool = 0
     this.sidePanel = null
@@ -3814,6 +3835,17 @@ export class Game {
     }
   }
 
+  /**
+   * New-game card. Buys the plot for this focus and stamps its kit, so the
+   * clock starts on a field that can take the first contract.
+   */
+  startChosenKit(kind: SiteKind, focus: StartFocus): boolean {
+    this.startFocus = focus
+    if (!this.buyLand(kind)) return false
+    this.buildStarterKit()
+    return this.starterKitStamped
+  }
+
   /** One-click AT3 field — flavor follows startFocus (pax / cargo / hybrid). */
   buildStarterKit() {
     if (!this.site) {
@@ -3854,7 +3886,7 @@ export class Game {
       this.spawnMechanicPawn()
       this.deskStaff = 0
       this.hallStaff = []
-      this.offerCool = 2
+      this.offerCool = FIRST_LETTER_COOL
       this.spawnCool = 5
       this.cargoVolumeCool = 18
       this.pushNews(`${kit.label} down — ${kit.summary}`, 'good')
@@ -3892,7 +3924,7 @@ export class Game {
     this.seedDayOneCrowd()
     // Airport is live — first airline call comes quick; later ones stay slow.
     // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
-    this.offerCool = 3
+    this.offerCool = FIRST_LETTER_COOL
     this.spawnCool = 6
     this.pushNews(`${kit.label} down — ${kit.summary}`, 'good')
     this.bumpMap()
@@ -4964,6 +4996,7 @@ export class Game {
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
+      tipChips: this.tipBook,
       buildTrayOpened: this.buildTrayOpened,
       fieldTask: this.fieldTask,
       ackedLetters: this.ackedLetters,
@@ -5170,6 +5203,8 @@ export class Game {
       // The save wins; older saves fall back to the settings mirror, then to defaults.
       this.hintPrefs = sanitizeHintPrefs(s.hintPrefs ?? readHintSettings())
       writeHintSettings(this.hintPrefs)
+      this.tipBook = sanitizeTipBook(s.tipChips)
+      this.tipVisible = []
       this.buildTrayOpened = s.buildTrayOpened ?? false
       this.alerts.reset()
       this.planAdvice = { key: '', list: [] }
@@ -8484,6 +8519,104 @@ export class Game {
     this.focusAdvice(null)
   }
 
+  /** Chips the overlay should draw. Empty when the toggle is off. */
+  visibleTips(): TipOffer[] {
+    return this.tipVisible
+  }
+
+  /** Settings → Tip chips. Does not bring back an id that was already shown. */
+  setTipChips(on: boolean) {
+    this.tipBook = setTipsEnabled(this.tipBook, on)
+    this.refreshTips()
+    this.emit()
+  }
+
+  /** The player closed one chip. That id does not return. */
+  dismissTip(id: string) {
+    this.tipBook = dismissTipId(this.tipBook, id)
+    this.tipVisible = this.tipVisible.filter((t) => t.id !== id)
+    this.emit()
+  }
+
+  /** Recompute stuck-state chips from the field. Emits only when the set changes. */
+  refreshTips() {
+    const next = stepTips(this.tipBook, evaluateTips(this.tipWorld()))
+    const prev = this.tipVisible.map((t) => t.id).join('|')
+    const now = next.visible.map((t) => t.id).join('|')
+    this.tipBook = next.book
+    this.tipVisible = next.visible
+    if (prev !== now) this.emit()
+  }
+
+  private tipWorld(): TipWorld {
+    if (!this.site) {
+      return {
+        site: false,
+        sandbox: this.sandbox,
+        cash: this.cash,
+        hasRunway: false,
+        stands: 0,
+        exits: 0,
+        orphans: 0,
+        queueWait: 0,
+        queueCount: 0,
+        hallQueue: 0,
+        fuelEmpty: false,
+        stuck: false,
+        runwayCell: null,
+        queueCell: null,
+        hallCell: null,
+        fuelCell: null,
+        stuckCell: null,
+      }
+    }
+    const stands = tilesOf(this.tiles, 'stand')
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    const exits = runwayExitCells(this.tiles)
+    const orphans = stands.filter((s) => !this.pathStandToRunway(s)).length
+    const queues = this.atcQueues()
+    let queueWait = 0
+    let queueCell: { c: number; r: number } | null = null
+    let queueCount = 0
+    for (const q of queues) {
+      queueCount += q.count
+      if (q.longest >= queueWait) {
+        queueWait = q.longest
+        queueCell = q.cell
+      }
+    }
+    const stuck = this.flights.find(
+      (f) =>
+        !f.ga &&
+        (f.craft ?? 'jet') === 'jet' &&
+        (TIP_PHASES as readonly string[]).includes(f.phase) &&
+        f.phaseTime >= TIP_STUCK_SEC,
+    )
+    const fuelCell = tilesOf(this.tiles, 'fuel')[0] ?? null
+    const litres = this.groundSnapshot()?.fuelLitres
+    const hall = this.fits[0]
+    const runwayCell = strips[0]?.[0] ?? exits[0] ?? null
+    return {
+      site: true,
+      sandbox: this.sandbox,
+      cash: this.cash,
+      hasRunway: strips.length > 0,
+      stands: stands.length,
+      exits: exits.length,
+      orphans,
+      queueWait,
+      queueCount,
+      hallQueue: this.securityQueueCount(),
+      fuelEmpty: Boolean(fuelCell) && typeof litres === 'number' && litres <= 0 && this.signed.length > 0,
+      stuck: Boolean(stuck),
+      runwayCell,
+      queueCell,
+      hallCell: hall ? { c: hall.origin.c, r: hall.origin.r } : null,
+      fuelCell,
+      stuckCell: stuck ? { c: Math.round(stuck.x), r: Math.round(stuck.y) } : null,
+    }
+  }
+
   /** Settings → All hints enabled. The only way muted kinds come back. */
   setAllHints(on: boolean) {
     this.hintPrefs = setAllHintsEnabled(on)
@@ -8876,6 +9009,7 @@ export class Game {
       })
     }
     this.alerts.sync('cond:', live)
+    this.refreshTips()
   }
 
   private zoneCellsOf(fit: TerminalFit, zone: ZoneId): { c: number; r: number }[] {
@@ -12472,7 +12606,17 @@ export class Game {
   seedScheduleForAirline(airlineId: AirlineId, count: number) {
     if (this.isBanned(airlineId)) return
     const a = this.airline(airlineId)
-    let t = this.clock + 12 + Math.random() * 10
+    const firstBank =
+      this.signed.length <= 1 &&
+      this.clock < OPENING_SEC &&
+      !this.schedule.some(
+        (s) =>
+          s.airline === airlineId &&
+          (s.status === 'scheduled' || s.status === 'delayed' || s.status === 'inbound'),
+      )
+    let t = firstBank
+      ? this.clock + FIRST_SLOT_GAP + Math.random() * FIRST_SLOT_JITTER
+      : this.clock + 12 + Math.random() * 10
     // Lead-gated flights sit past the opening. They must not shove the
     // opening bank forward, and the opening cap must not erase them.
     const openingLimit = a.kind === 'cargo' ? null : openingSlotCap(this.clock)
@@ -19401,6 +19545,7 @@ export class Game {
     if (this.adviceDirty && this.site) {
       this.adviceDirty = false
       this.refreshAdvice()
+      this.refreshTips()
       this.emit()
     }
     if (!this.site || this.speed === 0) return

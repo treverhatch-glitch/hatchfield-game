@@ -6,7 +6,8 @@ import { cameraSession } from '../camera/session.ts'
 import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { inputMap } from '../input/map.ts'
-import { World } from '../render/world'
+import { toWorld, World } from '../render/world'
+import { writeTipPoints, type TipPoint } from './tipScreen'
 import { releaseApronAudio, syncApronAudio } from '../audio/stage'
 import type { QualityLevel } from '../render/world/quality.ts'
 
@@ -97,6 +98,18 @@ export function Field({ game }: { game: Game }) {
           w.render(game)
           const cam = w.camera
           cam.updateMatrixWorld()
+          const tips = new Map<string, TipPoint>()
+          for (const tip of game.visibleTips()) {
+            if (tip.anchor.kind !== 'world') continue
+            const v = toWorld(tip.anchor.cell.c, tip.anchor.cell.r, 3)
+            v.project(cam)
+            const nx = v.x * 0.5 + 0.5
+            const ny = -v.y * 0.5 + 0.5
+            // project() leaves z in clip space. In front of the camera it stays below 1.
+            const on = v.z < 1 && nx >= 0.02 && nx <= 0.98 && ny >= 0.04 && ny <= 0.92
+            tips.set(tip.id, { x: nx, y: ny, on })
+          }
+          writeTipPoints(tips)
           const e = cam.matrixWorld.elements
           syncApronAudio(game, {
             position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },

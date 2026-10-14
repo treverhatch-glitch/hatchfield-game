@@ -189,7 +189,7 @@ describe('title cash and a second stamp', () => {
     const game = new Game()
     expect(game.sandbox).toBe(false)
     game.beginNew('standard')
-    expect(game.cash).toBe(150_000)
+    expect(game.cash).toBe(START_CASH.standard)
     expect(sandboxChoiceLabel(false)).toMatch(/standard/)
     expect(sandboxChoiceLabel(false)).toContain(money(START_CASH.standard))
     expect(sandboxChoiceLabel(true)).not.toMatch(/standard/)

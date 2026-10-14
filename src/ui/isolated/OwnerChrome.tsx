@@ -4,6 +4,7 @@ import { useHudBandVar } from '../hudBand.ts'
 import { LiveText } from '../LiveText.tsx'
 import { AlertStackView } from './AlertStack.tsx'
 import { HintPanel } from './HintPanel.tsx'
+import { TipChips } from './TipChips.tsx'
 
 /**
  * Isolated chrome for the flow overlay, the hint panel, alerts, and build tooltips.
@@ -159,6 +160,7 @@ export function OwnerChrome({ game }: { game: Game }) {
       ) : null}
       <HintPanel game={game} />
       <AlertStackView game={game} />
+      <TipChips game={game} />
       {game.view !== 'hall' && (game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
         <div
           data-testid="diplomacy-panel"

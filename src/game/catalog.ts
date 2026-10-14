@@ -29,8 +29,15 @@ import type {
 } from './types'
 import { MRO_COST, MRO_UPKEEP_PER_DAY, NIGHT_HUB_COST, NIGHT_HUB_UPKEEP_PER_DAY } from '../tier3/config.ts'
 
-/** Cash in hand before you buy the plot. */
-export const START_CASH = { easy: 220_000, standard: 150_000 } as const
+/**
+ * Operating cash left after the city plot and the starter kit on a standard game.
+ * High enough that payroll does not look like a bankruptcy before the first landing,
+ * and low enough that a regional runway still cannot be bought in place of the kit.
+ */
+export const OPENING_RESERVE = 25_000
+
+/** Cash in hand before you buy the plot. Standard is plot + kit + reserve. */
+export const START_CASH = { easy: 220_000, standard: 168_000 } as const
 
 export const LAND: Record<'city' | 'factory', LandSite> = {
   city: {

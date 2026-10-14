@@ -23,7 +23,7 @@ type HatchProbe = {
 }
 
 describe('HUD top band layout', () => {
-  it('keeps the info-view chips and overlays off the top bar, and the coach points at the kit', async () => {
+  it('keeps the info-view chips and overlays off the top bar after the kit is stamped', async () => {
     const port = 46118
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
@@ -52,16 +52,14 @@ describe('HUD top band layout', () => {
           await page.getByTestId('start-pax').click()
           await page.waitForFunction(() => Boolean((window as unknown as { __hatch?: HatchProbe }).__hatch))
 
-          // First-run coach: step one is a one-click link to the starter kit.
-          const kitLink = page.getByTestId('starter-kit-coach')
-          await kitLink.waitFor({ state: 'visible' })
-          await expectNoOverlap(page, ['coach', 'photo-mode', 'info-strip', 'tab-fees'], viewport)
-          await kitLink.click()
+          // The new-game card stamps the kit, so the coach no longer offers that button.
           await page.waitForFunction(
             () => !(window as unknown as { __hatch: HatchProbe }).__hatch.showStarterKit(),
           )
           expect(await page.getByTestId('starter-kit-coach').count()).toBe(0)
           expect(await page.getByTestId('starter-kit-dock').count()).toBe(0)
+          await page.getByTestId('coach').waitFor({ state: 'visible' })
+          await expectNoOverlap(page, ['coach', 'photo-mode', 'info-strip', 'tab-fees'], viewport)
 
           // Widest chip row: a hall is down, and Connections / Links show from Field Lv 3.
           await page.evaluate(() => {

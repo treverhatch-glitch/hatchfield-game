@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LAND, LOAN_PRODUCTS, START_CASH, STARTER_KIT_COST } from './catalog.ts'
+import { LAND, LOAN_PRODUCTS, OPENING_RESERVE, START_CASH, STARTER_KIT_COST } from './catalog.ts'
 import { operatingMargin, payrollForGameDay } from '../core/bank.ts'
 import {
   CITY_LEVY_FLOOR,
@@ -207,8 +207,10 @@ describe('economy', () => {
   it('clips surplus cash with a small levy and leaves a sandbox pile alone', () => {
     const easyAfterKit = START_CASH.easy - LAND.city.cost - STARTER_KIT_COST
     const standardAfterLand = START_CASH.standard - LAND.city.cost
+    const standardAfterKit = standardAfterLand - STARTER_KIT_COST
     expect(easyAfterKit).toBe(77_000)
-    expect(standardAfterLand).toBe(55_000)
+    expect(standardAfterLand).toBe(73_000)
+    expect(standardAfterKit).toBe(OPENING_RESERVE)
     expect(easyAfterKit).toBeLessThanOrEqual(CITY_LEVY_FLOOR)
     expect(cityLevy(easyAfterKit)).toBe(0)
     expect(cityLevy(standardAfterLand)).toBe(0)

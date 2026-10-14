@@ -36,7 +36,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     summary: 'Hall curb on the public road, two jetway stands facing the gates, one runway linked by taxiway.',
     includes: [
       'One 14×2 runway with a clearance shoulder',
-      'Taxiway linking the strip to the stands',
+      'Taxiway linking the strip to the stands, plus a mid-strip exit',
       'Terminal rotated so the curb faces the road and the gates face the stands',
       'Jet bridges, bags, fuel, guard, and a cargo shed',
     ],
@@ -47,7 +47,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     summary: 'Freighter stand, guard, and shed on the city road. One runway. No passenger hall.',
     includes: [
       'One 14×2 runway with a clearance shoulder',
-      'Taxiway to one remote freighter stand',
+      'Taxiway to one remote freighter stand, plus a mid-strip exit',
       'Guard post and cargo shed',
       'No passenger terminal',
     ],
@@ -59,7 +59,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     includes: [
       'Passenger hall, curb, and two jetway stands',
       'Guard, cargo shed, and a police post',
-      'One runway with a taxiway to the stands',
+      'One runway with a taxiway to the stands and a mid-strip exit',
       'Landside road stays off the hall footprint',
     ],
   },
@@ -92,6 +92,10 @@ function paintRunways(putAt: (c: number, r: number, tile: Tile) => void) {
   }
   // Spine just west of the threshold, from the apron to the strip.
   for (let r = 6; r <= 27; r++) putAt(7, r, 'taxi')
+  // Mid-strip exit along the north edge of the strip. Row 24 stays grass:
+  // the clearance tests place a shoulder taxi there. This row touches the
+  // pavement, so an arrival can leave without rolling to the far threshold.
+  for (let c = 8; c <= 15; c++) putAt(c, 25, 'taxi')
 }
 
 function paintPassenger(chart: Chart, police: boolean) {

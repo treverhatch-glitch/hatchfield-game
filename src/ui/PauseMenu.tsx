@@ -26,6 +26,13 @@ const AUDIO_ROWS: { id: AudioBus; label: string }[] = [
 /** Side sheet. The field stays visible behind a light scrim, and the clock waits. */
 export function PauseMenu({ game, onQuit }: { game: Game; onQuit: () => void }) {
   const snap = useSyncExternalStore(pauseState.subscribe, pauseState.getSnapshot)
+  const [, setRev] = useState(0)
+  useEffect(() => {
+    const off = game.subscribe(() => setRev((n) => n + 1))
+    return () => {
+      off()
+    }
+  }, [game])
   if (!snap.open) return null
   const hasSave = Game.hasSave()
 
@@ -229,6 +236,21 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
           : game.hintPrefs.muted.includes('*')
             ? 'Hints are off. Tick the box to turn every type back on.'
             : `${game.hintPrefs.muted.length} hint type${game.hintPrefs.muted.length === 1 ? '' : 's'} hidden. Tick the box to turn every type back on.`}
+      </p>
+      <h3>Tip chips</h3>
+      <label className="sandbox-toggle">
+        <input
+          type="checkbox"
+          data-testid="settings-tip-chips"
+          checked={game.tipBook.enabled}
+          onChange={(e) => game.setTipChips(e.target.checked)}
+        />
+        <span>Tip chips</span>
+      </label>
+      <p className="muted">
+        {game.tipBook.enabled
+          ? 'Small notes when the field is stuck. Each one shows once. Separate from hints and alerts.'
+          : 'Tip chips are off. The hint panel and the alert stack are unchanged.'}
       </p>
     </div>
   )
