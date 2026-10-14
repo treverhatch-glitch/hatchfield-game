@@ -7,7 +7,17 @@
  * here allocates per call: callers pass `out` objects they own.
  */
 import * as THREE from 'three'
-import { beltGeom, cateringHinge, MODEL_PARTS, MODEL_SIZE, partCentre, type VehicleModel } from './vehicleModels'
+import { beltGeom, cateringHinge, lineAnchor, MODEL_PARTS, MODEL_SIZE, partCentre, type VehicleModel } from './vehicleModels'
+
+/** Round F: pay a hanging line out from its reel anchor; sag and climb grow with it. */
+function payOut(out: PartPose, model: VehicleModel, part: string, k: number, fx: number, fy: number, fz: number): PartPose {
+  const a = lineAnchor(model, part)
+  const s = Math.max(0.02, k)
+  reset(out, a ? a[0] : fx, a ? a[1] : fy, a ? a[2] : fz)
+  out.sz = s
+  out.sy = s
+  return out
+}
 
 export interface PartPose {
   /** Pivot in model metres. Rotation and scale happen about it. */
@@ -185,7 +195,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
         return true
       }
       if (part === 'hose') {
-        reset(out, reelX, tanker ? 1.9 : 0.92, W / 2).sz = Math.max(0.02, e)
+        payOut(out, model, 'hose', e, reelX, tanker ? 1.9 : 0.92, W / 2)
         return true
       }
       if (part === 'lift_platform') {
@@ -195,7 +205,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       if (part === 'grounding') {
         // Bonding cable goes on first and comes off last: leads the hose out.
         const c = partCentre(model, 'grounding')
-        reset(out, c[0], c[1], W / 2).sz = Math.max(0.02, Math.min(1, e * 1.6))
+        payOut(out, model, 'grounding', Math.min(1, e * 1.6), c[0], c[1], W / 2)
         return true
       }
       return false
@@ -209,7 +219,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       }
       if (part === 'hose') {
         const c = partCentre(model, 'hose')
-        reset(out, c[0], c[1], W / 2).sz = Math.max(0.02, e)
+        payOut(out, model, 'hose', e, c[0], c[1], W / 2)
         return true
       }
       return false
@@ -366,7 +376,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
     case 'gpu':
       if (part === 'cable') {
         const c = partCentre(model, 'cable')
-        reset(out, c[0], c[1], W / 2).sz = Math.max(0.02, e)
+        payOut(out, model, 'cable', e, c[0], c[1], W / 2)
         return true
       }
       if (part !== 'cable_reel') return false
