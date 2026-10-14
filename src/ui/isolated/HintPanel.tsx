@@ -91,7 +91,35 @@ export function HintPanel({ game }: { game: Game }) {
                     )}
                   </span>
                 ) : null}
-                <span style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <span style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                  {note.id === 'over-capacity' ? (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="capacity-pan"
+                        onClick={() => game.focusAdvice(note.id)}
+                        style={btn}
+                      >
+                        Pan to problem
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="capacity-minimise"
+                        onClick={() => game.setSidePanel(null)}
+                        style={btn}
+                      >
+                        Minimise
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="capacity-dismiss"
+                        onClick={() => game.dismissCapacityHint()}
+                        style={btn}
+                      >
+                        Dismiss
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     data-testid={`hint-show-${note.id}`}

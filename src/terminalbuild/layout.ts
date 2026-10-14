@@ -114,17 +114,72 @@ export function removeDoor(l: BuildLayout, e: Edge): EditResult {
   return { layout: next, cost: refund(DOOR_COST[d.kind].build) }
 }
 
-/** Paint (or clear with null) a zone. Bare tiles are skipped: zones need floor. */
+const BELT_KIT = new Set<Equip['kind']>(['bag_belt', 'makeup_carousel'])
+
+function wallBetween(walls: Set<string>, a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+  if (b.x === a.x + 1 && b.y === a.y) return walls.has(edgeKey({ x: a.x, y: a.y, dir: 'E' }))
+  if (a.x === b.x + 1 && a.y === b.y) return walls.has(edgeKey({ x: b.x, y: b.y, dir: 'E' }))
+  if (b.y === a.y + 1 && b.x === a.x) return walls.has(edgeKey({ x: a.x, y: a.y, dir: 'S' }))
+  if (a.y === b.y + 1 && a.x === b.x) return walls.has(edgeKey({ x: b.x, y: b.y, dir: 'S' }))
+  return true
+}
+
+/**
+ * Zone cells the brush may take. Belts are solid. A wall splits the stroke:
+ * only the side that contains the rectangle's first open tile is painted.
+ * `invalid` is what the painter tints red.
+ */
+export function zonePaintMask(
+  l: BuildLayout,
+  r: Rect,
+): { paint: { x: number; y: number }[]; invalid: { x: number; y: number }[] } {
+  const belts = new Set(
+    l.equipment.filter((e) => BELT_KIT.has(e.kind)).map((e) => tileKey(e.x, e.y)),
+  )
+  const walls = new Set(l.walls.map(edgeKey))
+  const invalid: { x: number; y: number }[] = []
+  const open: { x: number; y: number }[] = []
+  for (const t of tilesIn(r)) {
+    if (!isFloor(l, t.x, t.y)) continue
+    if (belts.has(tileKey(t.x, t.y))) invalid.push(t)
+    else open.push(t)
+  }
+  if (!open.length) return { paint: [], invalid }
+  const anchor = open.find((t) => t.x === r.x && t.y === r.y) ?? open[0]
+  const seen = new Set<string>([tileKey(anchor.x, anchor.y)])
+  const q = [anchor]
+  while (q.length) {
+    const cur = q.shift()!
+    for (const n of open) {
+      const k = tileKey(n.x, n.y)
+      if (seen.has(k)) continue
+      const step = Math.abs(n.x - cur.x) + Math.abs(n.y - cur.y)
+      if (step !== 1 || wallBetween(walls, cur, n)) continue
+      seen.add(k)
+      q.push(n)
+    }
+  }
+  const paint = open.filter((t) => seen.has(tileKey(t.x, t.y)))
+  for (const t of open) if (!seen.has(tileKey(t.x, t.y))) invalid.push(t)
+  return { paint, invalid }
+}
+
+/** Paint (or clear with null) a zone. Bare tiles are skipped. Walls and belts are not painted. */
 export function paintZone(l: BuildLayout, r: Rect, zone: BuildZone | null): EditResult {
   if (!rectInBounds(l, r)) return reject(l, 'Off the plot.')
+  const mask = zonePaintMask(l, r)
+  if (zone && mask.paint.length === 0 && mask.invalid.length > 0) {
+    return { layout: l, cost: 0, error: 'Wall or belt in the way.', rejected: mask.invalid }
+  }
   const next = clone(l)
   let n = 0
+  const take = new Set(mask.paint.map((t) => tileKey(t.x, t.y)))
   for (const t of tilesIn(r)) {
-    if (!next.floor[t.y][t.x] || next.zones[t.y][t.x] === zone) continue
+    if (!take.has(tileKey(t.x, t.y)) || next.zones[t.y][t.x] === zone) continue
     next.zones[t.y][t.x] = zone
     if (zone) n++
   }
-  return { layout: next, cost: n * ZONE_COST.build }
+  return { layout: next, cost: n * ZONE_COST.build, rejected: mask.invalid.length ? mask.invalid : undefined }
 }
 
 /** Room footprints may not overlap. Zone fit is a validator hint, not a hard stop. */

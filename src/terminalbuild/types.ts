@@ -103,4 +103,6 @@ export interface EditResult {
   cost: number
   /** Set when the edit was rejected; `layout` is then the input unchanged. */
   error?: string
+  /** Cells the zone brush could not take. The painter tints these invalid. */
+  rejected?: Tile[]
 }
