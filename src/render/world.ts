@@ -60,6 +60,7 @@ import {
 } from './world/index'
 import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from './graphicsPrefs'
 import { aircraftReflectionsFor, prepareBuildingReflections } from './reflections'
+import { beatZoom, clearCameraBeat, peekCameraBeat } from '../feedback/beat.ts'
 import { standBox } from './world/layout'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
@@ -2377,6 +2378,7 @@ export class World {
     let t = perfStart()
     this.resize()
     this.easeToGoal(game, dt)
+    this.applyCelebrationBeat()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
     this.animateLinks(game)
@@ -2409,6 +2411,37 @@ export class World {
     }
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('world.gl', t)
+  }
+
+  private beatSeen = ''
+  private beatStart = 0
+
+  /**
+   * A short dolly in and back for a celebration. Distance is restored before
+   * the method returns, so a wheel zoom during the beat is kept.
+   */
+  private applyCelebrationBeat() {
+    if (this.followHeld) return
+    const beat = peekCameraBeat()
+    if (!beat) {
+      this.beatSeen = ''
+      return
+    }
+    if (beat.id !== this.beatSeen) {
+      this.beatSeen = beat.id
+      this.beatStart = performance.now()
+    }
+    const elapsed = (performance.now() - this.beatStart) / 1000
+    if (elapsed >= beat.duration) {
+      clearCameraBeat()
+      this.beatSeen = ''
+      this.placeCam()
+      return
+    }
+    const held = this.dist
+    this.dist = held * beatZoom(elapsed, beat.duration, beat.dolly)
+    this.placeCam()
+    this.dist = held
   }
 
   /** Advisor pan. One cue, then the player has the camera again. */
