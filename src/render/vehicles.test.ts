@@ -20,6 +20,7 @@ import {
 afterAll(() => disposeVehicleLibrary())
 
 const SIM_KINDS = [
+  'lav', 'water',
   'fuel', 'fuel_truck', 'bags', 'baggage_tug', 'belt_loader', 'catering', 'catering_truck', 'fire', 'deice',
   'termbus', 'pax_bus', 'coach', 'citycargo', 'tow', 'pushback_tug', 'gpu', 'stairs', 'cart', 'cargo', 'uld_loader',
 ]
@@ -114,6 +115,7 @@ function kindFor(model: string): string {
     fuel_tanker: 'fuel', hydrant_cart: 'hydrant', baggage_train: 'bags', baggage_cart: 'cart', belt_loader: 'belt_loader',
     catering_hilift: 'catering', arff: 'fire', deice: 'deice', apron_bus: 'termbus', coach: 'coach', box_truck: 'citycargo',
     van: 'delivery', towbar_tug: 'tow', towbarless_tug: 'pushback_tug', gpu: 'gpu', stairs: 'stairs', k_loader: 'cargo', uld_dolly: 'dolly',
+    lavatory_truck: 'lav', water_truck: 'water',
   }
   return back[model]
 }
