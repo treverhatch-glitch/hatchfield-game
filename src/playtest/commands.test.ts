@@ -4,7 +4,7 @@ import { createPlayer } from './commands.ts'
 import { carefulIntents, freshMemory } from './personas.ts'
 import { assembleReport, renderReport } from './report.ts'
 import { PERSONAS, runHeadless } from './run.ts'
-import type { BrowserReport, PersonaReport } from './types.ts'
+import type { BrowserReport, PersonaReport, SystemsBooks, SystemsPeaks } from './types.ts'
 
 describe('player command API', () => {
   it('starts a standard field and stamps a kit with a runway, stands, rooms, and shops', () => {
@@ -45,6 +45,27 @@ describe('player command API', () => {
     expect(api.buyRoom('rdesk').ok).toBe(true)
     expect(api.view().rooms.rdesk).toBe(1)
   })
+
+  it('buys a free tree node, hires a desk agent, and stamps a bus bay on the road', () => {
+    const api = createPlayer()
+    api.setSandbox(false)
+    api.beginNew('standard')
+    api.setFocus('pax')
+    api.buyLand('city')
+    expect(api.buildStarterKit().ok).toBe(true)
+    const view = api.view()
+    expect(view.nextTree?.cost).toBe(0)
+    expect(view.nextTree?.id).toBe('airfield-1')
+    expect(api.buyTree(view.nextTree!.id).ok).toBe(true)
+    expect(api.view().treeUnlocked).toContain('airfield-1')
+    const staffed = api.view().deskStaff
+    expect(api.hireDesk().ok).toBe(true)
+    expect(api.view().deskStaff).toBe(staffed + 1)
+    expect(api.view().busBays).toBe(0)
+    const curb = api.relieveCurb()
+    expect(curb.ok).toBe(true)
+    expect(curb.detail).toMatch(/bus/)
+  })
 })
 
 describe('playtest report', () => {
@@ -59,6 +80,7 @@ describe('playtest report', () => {
       'Passenger satisfaction',
       'Slowest sim ticks',
       'Anything the bot could not do',
+      'New systems',
     ]) {
       expect(markdown).toContain(heading)
     }
@@ -159,5 +181,62 @@ function samplePersona(): PersonaReport {
       flightsDone: 1,
     },
     notes: [],
+    days: [],
+    peaks: emptyPeaks(),
+    books: emptyBooks(),
+    nanFlags: [],
+    researchBuys: [{ pool: 'tree', day: 1, id: 'airfield-1', name: 'Apron charter', cost: 0 }],
+    research: {
+      deskPoints: 4,
+      deskCarry: 0,
+      deskEarned: 4,
+      wave3Points: 2,
+      wave3Carry: 0.2,
+      wave3Earned: 2.2,
+      treePoints: 1,
+      treeCarry: 0.1,
+      treeEarned: 1.1,
+      researchers: 0,
+      desks: 1,
+      boards: 0,
+      machines: 0,
+      deskLabRate: 0,
+      deskOpsRate: 0.05,
+      wave3RoomRate: 0.06,
+      wave3OpsRate: 0.02,
+      treeRoomRate: 0.04,
+      treeOpsRate: 0.01,
+      deskUnlocked: [],
+      wave3Unlocked: [],
+      treeUnlocked: [{ id: 'airfield-1', name: 'Apron charter', cost: 0 }],
+    },
+  }
+}
+
+function emptyPeaks(): SystemsPeaks {
+  return { happiness: null, guests: 0, checkinWaiting: 0, securityWaiting: 0, curbPressure: 0, curbQueue: 0 }
+}
+
+function emptyBooks(): SystemsBooks {
+  return {
+    sinks: [{ category: 'penalties', amount: -1600 }],
+    fieldAskFines: 1,
+    penaltyTotal: -1600,
+    relations: [{ id: 'bush', name: 'Bushline', score: 2, band: 'neutral', tier: 1, label: 'Published' }],
+    treePoints: 1,
+    treeUnlocked: ['airfield-1'],
+    wave3Points: 1,
+    deskStaff: 2,
+    checkinStaffed: true,
+    securityStaffed: true,
+    checkinWaiting: 0,
+    securityWaiting: 0,
+    checkinLines: [],
+    securityLines: [],
+    curbPressure: 0.4,
+    curbQueue: 0,
+    curbDelaySec: 0,
+    lanes: 1,
+    busBays: 1,
   }
 }

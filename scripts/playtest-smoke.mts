@@ -89,19 +89,24 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     await shot(page, outDir, screenshots, '02-route')
     await page.getByTestId('start-pax').click()
     script.push('passenger start')
-    await page.getByTestId('starter-kit-coach').waitFor({ state: 'visible', timeout: 8000 })
+    // The new-game card stamps the kit. The coach no longer offers starter-kit-coach.
+    await page.waitForFunction(
+      () => {
+        const hatch = (window as unknown as { __hatch?: { showStarterKit?: () => boolean } }).__hatch
+        return Boolean(hatch) && hatch.showStarterKit?.() === false
+      },
+      { timeout: 8000 },
+    )
+    await page.getByTestId('coach').waitFor({ state: 'visible', timeout: 8000 })
+    notes.push('Starter kit stamped by the new-game card. The coach no longer shows starter-kit-coach.')
+    script.push('starter kit stamped by the new-game card')
     await shot(page, outDir, screenshots, '03-field')
-
-    await page.getByTestId('starter-kit-coach').click()
-    script.push('starter kit')
     await page.waitForTimeout(600)
     await shot(page, outDir, screenshots, '04-kit')
 
     const letter = page.getByTestId('contract-letter')
-    const letterShown = await letter.waitFor({ state: 'visible', timeout: 25_000 }).then(() => true).catch(() => false)
-    if (!letterShown) {
-      couldNot.push({ command: 'acceptContract', detail: 'contract letter did not appear', count: 1 })
-    } else {
+    const letterShown = await letter.waitFor({ state: 'visible', timeout: 12_000 }).then(() => true).catch(() => false)
+    if (letterShown) {
       await letter.locator('.letter-tab').click()
       script.push('open contract letter')
       await shot(page, outDir, screenshots, '05-contract')
@@ -114,6 +119,32 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
       }
       await page.waitForTimeout(400)
       await shot(page, outDir, screenshots, '06-accepted')
+    } else {
+      const peek = page.getByTestId('phone-peek')
+      if (await peek.isVisible().catch(() => false)) {
+        await peek.click()
+        script.push('open phone')
+      }
+      const card = page.getByTestId('phone-card-contract')
+      const onPhone = await card.waitFor({ state: 'visible', timeout: 12_000 }).then(() => true).catch(() => false)
+      if (!onPhone) {
+        couldNot.push({ command: 'acceptContract', detail: 'contract letter did not appear on the stack or the phone', count: 1 })
+        await shot(page, outDir, screenshots, '05-contract')
+      } else {
+        script.push('contract letter on the phone')
+        await shot(page, outDir, screenshots, '05-contract')
+        const sign = page.getByTestId('phone-action-contract-sign')
+        if (await sign.isVisible().catch(() => false)) {
+          await sign.click()
+          script.push('sign contract on the phone')
+        } else {
+          couldNot.push({ command: 'acceptContract', detail: 'Phone contract card had no Sign button', count: 1 })
+        }
+        await page.waitForTimeout(400)
+        await shot(page, outDir, screenshots, '06-accepted')
+        const shut = page.getByTestId('phone-close')
+        if (await shut.isVisible().catch(() => false)) await shut.click()
+      }
     }
 
     const backToApron = async () => {
@@ -144,6 +175,11 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     }
 
     await backToApron()
+    const servicesMenu = page.getByTestId('menu-operations')
+    if (await servicesMenu.isVisible().catch(() => false)) {
+      await servicesMenu.click({ timeout: 4000 })
+      script.push('operations menu')
+    }
     const services = page.getByTestId('tab-services')
     if (await services.isVisible().catch(() => false)) {
       await services.click({ timeout: 4000 })

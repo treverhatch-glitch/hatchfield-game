@@ -35,6 +35,20 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     researchPoints: 0,
     wave3Points: 0,
     nextResearch: null,
+    treePoints: 0,
+    treeUnlocked: [],
+    nextTree: null,
+    deskStaff: 2,
+    checkinStaffed: true,
+    securityStaffed: true,
+    deskHireCost: 3600,
+    checkinWaiting: 0,
+    securityWaiting: 0,
+    curbPressure: 0,
+    curbQueue: 0,
+    curbDelaySec: 0,
+    lanes: 2,
+    busBays: 1,
     yearReportPending: false,
     flightsDone: 1,
     activeFlights: 1,
@@ -123,6 +137,57 @@ describe('playtest personas', () => {
     const stamped = carefulIntents(board({ cash: 30_000, stands: 2, wave3Points: 0 }), freshMemory())
     const afterTrickle = carefulIntents(board({ cash: 30_000, stands: 2, wave3Points: 2 }), stamped.memory)
     expect(afterTrickle.intents).toContainEqual({ do: 'room', id: 'rdesk' })
+  })
+
+  it('buys one affordable research-tree node a day and staffs empty desks', () => {
+    const open = board({
+      nextTree: { id: 'airfield-1', name: 'Apron charter', cost: 0 },
+      treePoints: 0,
+      deskStaff: 0,
+      checkinStaffed: false,
+      securityStaffed: false,
+      cash: 40_000,
+    })
+    const first = carefulIntents(open, freshMemory())
+    expect(first.intents).toContainEqual({ do: 'tree', id: 'airfield-1' })
+    expect(first.intents).toContainEqual({ do: 'desk' })
+    const again = carefulIntents(open, first.memory)
+    expect(again.intents.some((intent) => intent.do === 'tree')).toBe(false)
+
+    const broke = carefulIntents(board({ deskStaff: 0, checkinStaffed: false, cash: 2_000 }), freshMemory())
+    expect(broke.intents.some((intent) => intent.do === 'desk')).toBe(false)
+
+    const greedy = greedyIntents(
+      board({
+        nextTree: { id: 'terminal-1', name: 'Hall shell', cost: 0 },
+        deskStaff: 0,
+        checkinStaffed: false,
+        securityStaffed: true,
+        cash: 20_000,
+      }),
+      freshMemory(),
+    )
+    expect(greedy.intents).toContainEqual({ do: 'tree', id: 'terminal-1' })
+    expect(greedy.intents).toContainEqual({ do: 'desk' })
+  })
+
+  it('careful answers a jammed curb with a bay or a lane, after the lab', () => {
+    const jammed = carefulIntents(
+      board({ curbPressure: 1.4, busBays: 0, lanes: 1, cash: 30_000, stands: 2 }),
+      freshMemory(),
+    )
+    expect(jammed.intents).toContainEqual({ do: 'curb' })
+    expect(jammed.intents.some((intent) => intent.do === 'stamp')).toBe(false)
+
+    const labFirst = carefulIntents(
+      board({ curbPressure: 1.8, busBays: 0, lanes: 1, wave3Points: 2, cash: 30_000 }),
+      freshMemory(),
+    )
+    expect(labFirst.intents).toContainEqual({ do: 'room', id: 'rdesk' })
+    expect(labFirst.intents.some((intent) => intent.do === 'curb')).toBe(false)
+
+    const clear = carefulIntents(board({ curbPressure: 0.4, busBays: 0, cash: 30_000, stands: 2 }), freshMemory())
+    expect(clear.intents.some((intent) => intent.do === 'curb')).toBe(false)
   })
 
   it('chaotic clicks are stable for a seed', () => {

@@ -39,6 +39,23 @@ export interface AirportView {
   /** Whole points from the day-1 operations trickle. Rooms wait until this is at least 1. */
   wave3Points: number
   nextResearch: { id: string; name: string } | null
+  /** Cities-style tree. Points are separate from the operations trickle. */
+  treePoints: number
+  treeUnlocked: string[]
+  /** Cheapest node the field can buy right now. Null when nothing is affordable. */
+  nextTree: { id: string; name: string; cost: number } | null
+  deskStaff: number
+  checkinStaffed: boolean
+  securityStaffed: boolean
+  deskHireCost: number
+  checkinWaiting: number
+  securityWaiting: number
+  /** Demand against the tighter of the lane and the curb. Above 1 the curb is over. */
+  curbPressure: number
+  curbQueue: number
+  curbDelaySec: number
+  lanes: number
+  busBays: number
   yearReportPending: boolean
   flightsDone: number
   activeFlights: number
@@ -92,7 +109,17 @@ export interface PlayerCommands {
   hireJanitor(): CommandResult
   hireMechanic(): CommandResult
   buyResearch(id: string): CommandResult
+  /** Cities-style research tree under Growth. Costs research points, not cash. */
+  buyTree(id: string): CommandResult
+  /** Hire one desk agent. Bodies cover check-in, security, and the gate. */
+  hireDesk(): CommandResult
+  /** One bus bay, or one road cell on the narrowest part of the approach. */
+  relieveCurb(): CommandResult
   acceptBestShopBid(): CommandResult
+  /** End-of-run books: cash categories, relations, queues, and the tree. */
+  books(): SystemsBooks
+  /** Read-only snapshot of the three research pools. Does not buy or tick. */
+  researchPools(): ResearchPools
   dismissYearReport(): CommandResult
   tick(dt: number): void
   view(): AirportView
@@ -114,6 +141,9 @@ export type Intent =
   | { do: 'janitor' }
   | { do: 'mechanic' }
   | { do: 'research'; id: string }
+  | { do: 'tree'; id: string }
+  | { do: 'desk' }
+  | { do: 'curb' }
   | { do: 'parcel' }
   | { do: 'speed'; speed: Speed }
   | { do: 'dismissYear' }
@@ -122,6 +152,8 @@ export type Intent =
 export interface PersonaMemory {
   builtOnDay: number
   stampsToday: number
+  /** Sim day the persona last bought a research-tree node. -1 if never. */
+  treeOnDay: number
 }
 
 export interface PersonaDecision {
@@ -166,6 +198,120 @@ export interface SlowTick {
   guests: number
 }
 
+/** One sim day of the systems the latest main added. */
+export interface DaySystems {
+  day: number
+  checkinWaiting: number
+  securityWaiting: number
+  curbPressure: number
+  curbQueue: number
+  lanes: number
+  busBays: number
+  treePoints: number
+  treeNodes: number
+  deskStaff: number
+  fieldRating: number
+  guests: number
+  /** Whole points still in each pool when the day began. */
+  deskPoints: number
+  wave3Points: number
+  /** Whole points plus fractional carry plus the cost of nodes already bought. */
+  deskEarned: number
+  wave3Earned: number
+  treeEarned: number
+  researchers: number
+  labDesks: number
+  labBoards: number
+  labMachines: number
+  /** RP/sec the old desk adds from researchers standing at lab furniture. */
+  deskLabRate: number
+  /** RP/sec the Wave 3 pool adds from lab furniture, not the operations trickle. */
+  wave3RoomRate: number
+  /** RP/sec the Growth tree adds from lab furniture, not its own trickle. */
+  treeRoomRate: number
+}
+
+export interface SystemsPeaks {
+  happiness: number | null
+  guests: number
+  checkinWaiting: number
+  securityWaiting: number
+  curbPressure: number
+  curbQueue: number
+}
+
+export interface RelationRead {
+  id: string
+  name: string
+  score: number
+  band: string
+  tier: number
+  label: string
+}
+
+export interface SystemsBooks {
+  sinks: { category: string; amount: number }[]
+  /** Penalty posts booked at the full field-ask fine. */
+  fieldAskFines: number
+  penaltyTotal: number
+  relations: RelationRead[]
+  treePoints: number
+  treeUnlocked: string[]
+  wave3Points: number
+  deskStaff: number
+  checkinStaffed: boolean
+  securityStaffed: boolean
+  checkinWaiting: number
+  securityWaiting: number
+  checkinLines: string[]
+  securityLines: string[]
+  curbPressure: number
+  curbQueue: number
+  curbDelaySec: number
+  lanes: number
+  busBays: number
+}
+
+export interface ResearchNodeRead {
+  id: string
+  name: string
+  cost: number
+}
+
+/** The three research currencies on current main, read from the live sim. */
+export interface ResearchPools {
+  deskPoints: number
+  deskCarry: number
+  deskEarned: number
+  wave3Points: number
+  wave3Carry: number
+  wave3Earned: number
+  treePoints: number
+  treeCarry: number
+  treeEarned: number
+  researchers: number
+  desks: number
+  boards: number
+  machines: number
+  deskLabRate: number
+  deskOpsRate: number
+  wave3RoomRate: number
+  wave3OpsRate: number
+  treeRoomRate: number
+  treeOpsRate: number
+  deskUnlocked: ResearchNodeRead[]
+  wave3Unlocked: ResearchNodeRead[]
+  treeUnlocked: ResearchNodeRead[]
+}
+
+export interface ResearchBuy {
+  pool: 'desk' | 'wave3' | 'tree'
+  day: number
+  id: string
+  name: string
+  cost: number
+}
+
 export interface PersonaReport {
   persona: 'careful' | 'greedy' | 'chaotic'
   label: string
@@ -206,6 +352,12 @@ export interface PersonaReport {
     flightsDone: number
   }
   notes: string[]
+  days: DaySystems[]
+  peaks: SystemsPeaks
+  books: SystemsBooks
+  nanFlags: string[]
+  researchBuys: ResearchBuy[]
+  research: ResearchPools
 }
 
 export interface BrowserReport {

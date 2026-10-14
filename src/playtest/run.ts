@@ -6,14 +6,18 @@ import { PLAYTEST_TUNING as T } from './tuning.ts'
 import type {
   CommandResult,
   CouldNot,
+  DaySystems,
   Intent,
   PersonaDecision,
   PersonaMemory,
   PersonaReport,
   PlayerCommands,
   Probe,
+  ResearchBuy,
+  ResearchPools,
   SlowTick,
   StuckRecord,
+  SystemsPeaks,
 } from './types.ts'
 
 export interface PersonaSpec {
@@ -94,6 +98,22 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
   const openStuck = new Map<string, StuckRecord>()
   const pendingClear = new Map<string, number>()
   const recovered: StuckRecord[] = []
+  const days: DaySystems[] = []
+  const nanFlags: string[] = []
+  const researchBuys: ResearchBuy[] = []
+  const seenResearch = {
+    desk: new Set<string>(),
+    wave3: new Set<string>(),
+    tree: new Set<string>(),
+  }
+  const peaks: SystemsPeaks = {
+    happiness: null,
+    guests: 0,
+    checkinWaiting: 0,
+    securityWaiting: 0,
+    curbPressure: 0,
+    curbQueue: 0,
+  }
   let landing: { sec: number; day: number; phase: string; flight: string } | null = null
   let sampledDay = -1
 
@@ -163,7 +183,35 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
         flightsDone: view.flightsDone,
       },
       notes,
+      days,
+      peaks: {
+        ...peaks,
+        happiness: peaks.happiness == null ? null : round(peaks.happiness),
+        curbPressure: round(peaks.curbPressure),
+        curbQueue: round(peaks.curbQueue),
+      },
+      books: api.books(),
+      nanFlags,
+      researchBuys,
+      research: noteResearch(api.view().day),
     }
+  }
+
+  function noteResearch(day: number): ResearchPools {
+    const read = api.researchPools()
+    collectBuys(seenResearch.desk, read.deskUnlocked, 'desk', day, researchBuys)
+    collectBuys(seenResearch.wave3, read.wave3Unlocked, 'wave3', day, researchBuys)
+    collectBuys(seenResearch.tree, read.treeUnlocked, 'tree', day, researchBuys)
+    for (const [label, value] of [
+      ['research desk points', read.deskPoints],
+      ['wave 3 points', read.wave3Points],
+      ['growth tree points', read.treePoints],
+    ] as const) {
+      if (Number.isFinite(value)) continue
+      const line = `${label} were ${value} on day ${day}`
+      if (!nanFlags.includes(line) && nanFlags.length < 12) nanFlags.push(line)
+    }
+    return read
   }
 
   while (api.view().day < spec.days) {
@@ -188,6 +236,7 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
         }
       }
       lastAct = api.view().clock
+      noteResearch(api.view().day)
       if (api.view().hasLand && api.view().speed !== T.maxSpeed) {
         api.setSpeed(T.maxSpeed)
       }
@@ -231,6 +280,7 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
       }
     }
     trackStuck(openStuck, pendingClear, recovered, after)
+    noteNan(nanFlags, after)
     if (after.day !== sampledDay) {
       sampledDay = after.day
       cashCurve.push({ day: after.day, cash: Math.round(after.cash) })
@@ -240,6 +290,50 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
         avg: after.guestHappiness == null ? null : round(after.guestHappiness),
         fieldRating: after.fieldRating,
       })
+      const board = api.view()
+      const pools = noteResearch(after.day)
+      days.push({
+        day: after.day,
+        checkinWaiting: board.checkinWaiting,
+        securityWaiting: board.securityWaiting,
+        curbPressure: round(board.curbPressure),
+        curbQueue: round(board.curbQueue),
+        lanes: board.lanes,
+        busBays: board.busBays,
+        treePoints: pools.treePoints,
+        treeNodes: pools.treeUnlocked.length,
+        deskStaff: board.deskStaff,
+        fieldRating: after.fieldRating,
+        guests: after.guestCount,
+        deskPoints: pools.deskPoints,
+        wave3Points: pools.wave3Points,
+        deskEarned: pools.deskEarned,
+        wave3Earned: pools.wave3Earned,
+        treeEarned: pools.treeEarned,
+        researchers: pools.researchers,
+        labDesks: pools.desks,
+        labBoards: pools.boards,
+        labMachines: pools.machines,
+        deskLabRate: pools.deskLabRate,
+        wave3RoomRate: pools.wave3RoomRate,
+        treeRoomRate: pools.treeRoomRate,
+      })
+      if (after.guestCount > peaks.guests) peaks.guests = after.guestCount
+      if (after.guestHappiness != null && (peaks.happiness == null || after.guestHappiness > peaks.happiness)) {
+        peaks.happiness = after.guestHappiness
+      }
+      if (board.checkinWaiting > peaks.checkinWaiting) peaks.checkinWaiting = board.checkinWaiting
+      if (board.securityWaiting > peaks.securityWaiting) peaks.securityWaiting = board.securityWaiting
+      if (board.curbPressure > peaks.curbPressure) peaks.curbPressure = board.curbPressure
+      if (board.curbQueue > peaks.curbQueue) peaks.curbQueue = board.curbQueue
+      if (!Number.isFinite(board.curbPressure)) {
+        const line = `curb pressure was ${board.curbPressure} on day ${after.day}`
+        if (!nanFlags.includes(line)) nanFlags.push(line)
+      }
+      if (!Number.isFinite(board.treePoints)) {
+        const line = `research tree points were ${board.treePoints} on day ${after.day}`
+        if (!nanFlags.includes(line)) nanFlags.push(line)
+      }
       if (after.day !== loggedDay && after.day % 5 === 0) {
         loggedDay = after.day
         log(`  ${spec.id} day ${after.day} cash ${Math.round(after.cash)} flights ${after.flightsDone}`)
@@ -300,6 +394,12 @@ function execute(api: PlayerCommands, intent: Intent, rng: () => number): Comman
       return api.hireMechanic()
     case 'research':
       return api.buyResearch(intent.id)
+    case 'tree':
+      return api.buyTree(intent.id)
+    case 'desk':
+      return api.hireDesk()
+    case 'curb':
+      return api.relieveCurb()
     case 'parcel':
       return api.buyParcel()
     case 'speed':
@@ -389,4 +489,31 @@ function round(n: number): number {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function collectBuys(
+  seen: Set<string>,
+  nodes: { id: string; name: string; cost: number }[],
+  pool: ResearchBuy['pool'],
+  day: number,
+  buys: ResearchBuy[],
+) {
+  for (const node of nodes) {
+    if (seen.has(node.id)) continue
+    seen.add(node.id)
+    buys.push({ pool, day, id: node.id, name: node.name, cost: node.cost })
+  }
+}
+
+function noteNan(flags: string[], probe: Probe): void {
+  const checks: [string, number | null][] = [
+    ['cash', probe.cash],
+    ['field rating', probe.fieldRating],
+    ['guest happiness', probe.guestHappiness],
+  ]
+  for (const [label, value] of checks) {
+    if (value == null || Number.isFinite(value)) continue
+    const line = `${label} was ${value} on day ${probe.day}`
+    if (!flags.includes(line) && flags.length < 12) flags.push(line)
+  }
 }

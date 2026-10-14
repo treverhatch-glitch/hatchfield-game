@@ -4,13 +4,39 @@ import { SIZE } from '../game/types.ts'
 import { PLAYTEST_TUNING as T } from './tuning.ts'
 import type { AirportView, Intent, PersonaDecision, PersonaMemory } from './types.ts'
 
+const CAREFUL_CASH_BUFFER = 8_000
+const CURB_CASH_BUFFER = 12_000
+
 export function freshMemory(): PersonaMemory {
-  return { builtOnDay: -1, stampsToday: 0 }
+  return { builtOnDay: -1, stampsToday: 0, treeOnDay: -1 }
 }
 
 function memoryOn(view: AirportView, memory: PersonaMemory): PersonaMemory {
-  if (view.day === memory.builtOnDay) return memory
-  return { builtOnDay: memory.builtOnDay, stampsToday: 0 }
+  const treeOnDay = memory.treeOnDay ?? -1
+  if (view.day === memory.builtOnDay) return { ...memory, treeOnDay }
+  return { builtOnDay: memory.builtOnDay, stampsToday: 0, treeOnDay }
+}
+
+function withTree(memory: PersonaMemory, view: AirportView, bought: boolean): PersonaMemory {
+  return { ...memory, treeOnDay: bought ? view.day : memory.treeOnDay }
+}
+
+/** One affordable tree node. Careful waits until the next day before another. */
+function takeTree(view: AirportView, memory: PersonaMemory, daily: boolean): { intent: Intent | null; memory: PersonaMemory } {
+  if (!view.nextTree) return { intent: null, memory }
+  if (daily && memory.treeOnDay === view.day) return { intent: null, memory }
+  return {
+    intent: { do: 'tree', id: view.nextTree.id },
+    memory: withTree(memory, view, true),
+  }
+}
+
+/** Hire until check-in and security both have a working body, and stop at three. */
+function needsDesk(view: AirportView, cashBuffer: number): boolean {
+  const posts = (view.rooms.checkin ?? 0) > 0 || (view.rooms.security ?? 0) > 0
+  if (!posts || view.terminals < 1 || view.deskStaff >= 3) return false
+  if (view.checkinStaffed && view.securityStaffed) return false
+  return view.cash > view.deskHireCost + cashBuffer
 }
 
 function roomTotal(view: AirportView, id: RoomId): number {
@@ -50,16 +76,24 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   if (view.openShopBids > 0 && view.leasedShops < view.shopUnits) {
     intents.push({ do: 'lease' })
   }
-  if (view.satisfaction != null && view.satisfaction < 45 && view.janitors < 2 && view.cash > 8_000) {
+  if (view.satisfaction != null && view.satisfaction < 45 && view.janitors < 2 && view.cash > CAREFUL_CASH_BUFFER) {
     intents.push({ do: 'janitor' })
   }
+  const tree = takeTree(view, next, true)
+  if (tree.intent) intents.push(tree.intent)
+  if (needsDesk(view, CAREFUL_CASH_BUFFER)) intents.push({ do: 'desk' })
   const lab = nextLabRoom(view)
   if (lab) {
     intents.push({ do: 'room', id: lab })
-    return { intents, memory: { builtOnDay: view.day, stampsToday: next.stampsToday } }
+    return { intents, memory: withTree({ builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay }, view, false) }
   }
-  if (view.day === next.builtOnDay) return { intents, memory: next }
-  const built: PersonaMemory = { builtOnDay: view.day, stampsToday: next.stampsToday }
+  if (view.day === next.builtOnDay) return { intents, memory: tree.memory }
+  const built: PersonaMemory = { builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay }
+  if (view.curbPressure > 1 && view.cash > CURB_CASH_BUFFER && (view.busBays < 1 || view.lanes < 2)) {
+    intents.push({ do: 'curb' })
+    built.stampsToday += 1
+    return { intents, memory: built }
+  }
   if (view.cash < 5_000 && view.loanBalance <= 0) {
     const micro = view.loans.find((loan) => loan.id === 'micro')
     if (micro) intents.push({ do: 'loan', id: micro.id })
@@ -115,11 +149,15 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
   if (view.openShopBids > 0) intents.push({ do: 'lease' })
   const lab = nextLabRoom(view)
   if (lab) intents.push({ do: 'room', id: lab })
+  const tree = takeTree(view, next, false)
+  if (tree.intent) intents.push(tree.intent)
+  if (needsDesk(view, 0)) intents.push({ do: 'desk' })
   if (view.nextResearch) intents.push({ do: 'research', id: view.nextResearch.id })
   if (view.day !== next.builtOnDay || next.stampsToday < 4) {
     const built: PersonaMemory = {
       builtOnDay: view.day,
       stampsToday: view.day === next.builtOnDay ? next.stampsToday : 0,
+      treeOnDay: tree.memory.treeOnDay,
     }
     const queue: Intent[] = []
     if (view.runway < 1) queue.push({ do: 'stamp', tool: 'runway' })
@@ -138,7 +176,7 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
     }
     return { intents, memory: built }
   }
-  return { intents, memory: next }
+  return { intents, memory: tree.memory }
 }
 
 const CHAOS_TOOLS: Tool[] = [
@@ -185,7 +223,12 @@ export function chaoticIntents(
     intents.push({ do: 'room', id: lab })
     return { intents, memory: { ...next, builtOnDay: view.day } }
   }
-  const kind = Math.floor(rng() * 7)
+  const tree = takeTree(view, next, false)
+  if (tree.intent && rng() < 0.45) {
+    intents.push(tree.intent)
+    return { intents, memory: { ...tree.memory, builtOnDay: view.day } }
+  }
+  const kind = Math.floor(rng() * 8)
   if (kind === 0 && view.offer) {
     const pick = rng()
     intents.push({ do: pick < 0.4 ? 'accept' : pick < 0.7 ? 'walk' : 'snooze' })
@@ -209,6 +252,8 @@ export function chaoticIntents(
   } else if (kind === 6) {
     if (rng() < 0.5) intents.push({ do: 'janitor' })
     else intents.push({ do: 'stamp', tool: CHAOS_TOOLS[Math.floor(rng() * 5)] ?? 'taxi' })
+  } else if (kind === 7 && needsDesk(view, 0)) {
+    intents.push({ do: 'desk' })
   } else if (!view.hasLand) {
     intents.push({ do: 'buyLand', kind: 'city' })
   } else {

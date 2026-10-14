@@ -2,13 +2,20 @@
  * Player command API. Every method delegates to the Game call the HUD already uses.
  * Bot modules import this file and nothing from the renderer.
  */
-import { MIN_RUNWAY, RESEARCH_NODES, STARTER_KIT_COST } from '../game/catalog.ts'
+import { MIN_RUNWAY, RESEARCH_NODES, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE } from '../game/catalog.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
 import type { Difficulty, RoomId, SiteKind, Speed, StartFocus, Tool, Vec } from '../game/types.ts'
 import { SIZE } from '../game/types.ts'
-import type { AirportView, CommandResult, PlayerCommands, Probe } from './types.ts'
+import { buildNetwork } from '../landside/network.ts'
+import { OPS_RP_PER_SEC } from '../research/config.ts'
+import { nodeCost, nodeState, roomRate as treeRoomRate } from '../research/logic.ts'
+import { RESEARCH_NODES as TREE_NODES, nodeById } from '../research/nodes.ts'
+import { queueAtNode } from '../terminalplay/queues.ts'
+import { OPS_TRICKLE_PER_SEC } from '../wave3/config.ts'
+import { roomRate as wave3RoomRate, techNode } from '../wave3/research.ts'
+import type { AirportView, CommandResult, PlayerCommands, Probe, ResearchPools, SystemsBooks } from './types.ts'
 
 const LANDED = new Set([
   'landing',
@@ -30,6 +37,15 @@ const GRASS = new Set(['grass'])
 
 function result(ok: boolean, command: string, detail: string): CommandResult {
   return { ok, command, detail }
+}
+
+function finite(n: number): number {
+  return Number.isFinite(n) ? n : 0
+}
+
+function round2(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  return Math.round(n * 100) / 100
 }
 
 export function createPlayer(): PlayerCommands {
@@ -192,6 +208,43 @@ class GamePlayer implements PlayerCommands {
     return result(ok, 'buyResearch', ok ? node.name : this.latest(this.game.canBuyResearch(node.id).why))
   }
 
+  buyTree(id: string): CommandResult {
+    const node = nodeById(id)
+    if (!node) return result(false, 'buyTree', `unknown ${id}`)
+    const before = this.game.researchTree.state.unlocked.length
+    const ok = this.game.buyResearchNode(id)
+    const after = this.game.researchTree.state.unlocked.length
+    return result(ok && after > before, 'buyTree', ok ? node.name : this.latest('research tree refused'))
+  }
+
+  hireDesk(): CommandResult {
+    const before = this.game.deskStaff
+    this.game.hireDeskStaff()
+    const ok = this.game.deskStaff > before
+    return result(ok, 'hireDesk', ok ? `#${this.game.deskStaff}` : this.latest('desk agent not hired'))
+  }
+
+  relieveCurb(): CommandResult {
+    const roads = tilesOf(this.game.tiles, 'road')
+    if (!roads.length) return result(false, 'relieveCurb', 'no public road')
+    const buses = tilesOf(this.game.tiles, 'bus')
+    if (buses.length === 0) {
+      if (this.game.sites.some((site) => site.tool === 'bus')) {
+        return result(true, 'relieveCurb', 'bus bay already under construction')
+      }
+      const placed = this.stampBeside(roads, 'bus')
+      if (placed) return placed
+      return result(false, 'relieveCurb', 'no grass on the road edge for a bus bay')
+    }
+    if (this.game.sites.some((site) => site.tool === 'road')) {
+      return result(true, 'relieveCurb', 'approach lane already under construction')
+    }
+    const path = this.approachCells()
+    const placed = this.stampBeside(path.length ? path : roads, 'road')
+    if (placed) return placed
+    return result(false, 'relieveCurb', 'no grass beside the approach for another lane')
+  }
+
   acceptBestShopBid(): CommandResult {
     const board = this.game.tycoonView()
     let best: { unitId: string; bidId: string; rent: number; brand: string } | null = null
@@ -207,6 +260,103 @@ class GamePlayer implements PlayerCommands {
     this.game.acceptTenantBid(best.unitId, best.bidId)
     const leased = this.game.tycoonView().units.some((unit) => unit.id === best.unitId && unit.lease)
     return result(leased, 'acceptShopBid', leased ? best.brand : this.latest('bid not accepted'))
+  }
+
+  books(): SystemsBooks {
+    const game = this.game
+    const ledger = game.bank.ledger()
+    const sinks = Object.entries(ledger.byCategory)
+      .filter(([, amount]) => amount !== 0 && Number.isFinite(amount))
+      .map(([category, amount]) => ({ category, amount: Math.round(amount) }))
+      .sort((a, b) => a.amount - b.amount)
+    const fieldAskFines = ledger.entries.filter(
+      (entry) => entry.category === 'penalties' && entry.amount === -FIELD_TASK_FAIL_FINE,
+    ).length
+    const penaltyTotal = Math.round(ledger.byCategory.penalties ?? 0)
+    const ids = new Set<string>(game.signed)
+    for (const id of Object.keys(game.wave3.state.relations.rows)) ids.add(id)
+    const relations = [...ids]
+      .map((id) => {
+        const row = game.wave3.relation(id)
+        return {
+          id,
+          name: game.airline(id).name,
+          score: Math.round(row.score * 10) / 10,
+          band: row.band,
+          tier: row.tier,
+          label: row.label,
+        }
+      })
+      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    const curb = game.landsideView()
+    return {
+      sinks,
+      fieldAskFines,
+      penaltyTotal,
+      relations,
+      treePoints: game.researchTree.points(),
+      treeUnlocked: game.researchTree.state.unlocked.slice(),
+      wave3Points: game.wave3.points(),
+      deskStaff: game.deskStaff,
+      checkinStaffed: game.staffedPost('checkin'),
+      securityStaffed: game.staffedPost('security'),
+      checkinWaiting: queueAtNode(game.hallGuests, 'checkin'),
+      securityWaiting: game.securityQueueCount(),
+      checkinLines: game.servicePointLines('checkin'),
+      securityLines: game.servicePointLines('security'),
+      curbPressure: finite(curb.pressure),
+      curbQueue: finite(curb.queue),
+      curbDelaySec: finite(curb.delaySec),
+      lanes: curb.lanes,
+      busBays: curb.busBays,
+    }
+  }
+
+  researchPools(): ResearchPools {
+    const game = this.game
+    const gear = game.labGear()
+    const rooms = { desk: gear.desks, board: gear.boards, machine: gear.machines }
+    const deskUnlocked = game.researchUnlocked.map((id) => {
+      const node = RESEARCH_NODES.find((row) => row.id === id)
+      return { id, name: node?.name ?? id, cost: node?.cost ?? 0 }
+    })
+    const wave3Unlocked = game.wave3.state.research.unlocked.map((id) => {
+      const node = techNode(id)
+      return { id, name: node?.name ?? id, cost: node?.cost ?? 0 }
+    })
+    const treeUnlocked = game.researchTree.state.unlocked.map((id) => {
+      const node = nodeById(id)
+      const cost = node ? nodeCost(game.researchTree.state, node) : 0
+      return { id, name: node?.name ?? id, cost }
+    })
+    const spent = (rows: { cost: number }[]) => rows.reduce((sum, row) => sum + row.cost, 0)
+    const deskCarry = 0
+    const wave3Carry = game.wave3.state.research.carry
+    const treeCarry = game.researchTree.state.carry
+    return {
+      deskPoints: round2(game.researchPoints),
+      deskCarry,
+      deskEarned: round2(game.researchPoints + spent(deskUnlocked)),
+      wave3Points: game.wave3.points(),
+      wave3Carry: round2(wave3Carry),
+      wave3Earned: round2(game.wave3.points() + wave3Carry + spent(wave3Unlocked)),
+      treePoints: game.researchTree.points(),
+      treeCarry: round2(treeCarry),
+      treeEarned: round2(game.researchTree.points() + treeCarry + spent(treeUnlocked)),
+      researchers: game.researchers,
+      desks: gear.desks,
+      boards: gear.boards,
+      machines: gear.machines,
+      deskLabRate: round2(game.labResearchRate()),
+      deskOpsRate: round2(game.opsResearchRate()),
+      wave3RoomRate: round2(wave3RoomRate(rooms)),
+      wave3OpsRate: OPS_TRICKLE_PER_SEC,
+      treeRoomRate: round2(treeRoomRate(rooms)),
+      treeOpsRate: game.site != null ? OPS_RP_PER_SEC : 0,
+      deskUnlocked,
+      wave3Unlocked,
+      treeUnlocked,
+    }
   }
 
   dismissYearReport(): CommandResult {
@@ -242,6 +392,16 @@ class GamePlayer implements PlayerCommands {
         break
       }
     }
+    let nextTree: AirportView['nextTree'] = null
+    for (const node of TREE_NODES) {
+      if (nodeState(game.researchTree.state, node, game.fieldLevel()) !== 'available') continue
+      const cost = nodeCost(game.researchTree.state, node)
+      if (game.researchTree.points() < cost) continue
+      if (!nextTree || cost < nextTree.cost || (cost === nextTree.cost && node.id < nextTree.id)) {
+        nextTree = { id: node.id, name: node.name, cost }
+      }
+    }
+    const curb = game.landsideView()
     const offer = game.offer
       ? {
           name: game.airline(game.offer.airline).name,
@@ -283,6 +443,20 @@ class GamePlayer implements PlayerCommands {
       researchPoints: game.researchPoints,
       wave3Points: game.wave3.points(),
       nextResearch,
+      treePoints: game.researchTree.points(),
+      treeUnlocked: game.researchTree.state.unlocked.slice(),
+      nextTree,
+      deskStaff: game.deskStaff,
+      checkinStaffed: game.staffedPost('checkin'),
+      securityStaffed: game.staffedPost('security'),
+      deskHireCost: game.staffHireCost(DESK_STAFF_HIRE),
+      checkinWaiting: queueAtNode(game.hallGuests, 'checkin'),
+      securityWaiting: game.securityQueueCount(),
+      curbPressure: finite(curb.pressure),
+      curbQueue: finite(curb.queue),
+      curbDelaySec: finite(curb.delaySec),
+      lanes: curb.lanes,
+      busBays: curb.busBays,
       yearReportPending: game.pendingYearReport() != null,
       flightsDone: game.flightsDone,
       activeFlights: game.flights.length,
@@ -345,6 +519,52 @@ class GamePlayer implements PlayerCommands {
       })),
       teleports: game.recoveryTeleports,
     }
+  }
+
+  private approachCells(): Vec[] {
+    const net = buildNetwork({
+      roads: tilesOf(this.game.tiles, 'road'),
+      connectors: tilesOf(this.game.tiles, 'guard'),
+      terminals: tilesOf(this.game.tiles, 'terminal'),
+      busBays: tilesOf(this.game.tiles, 'bus'),
+      parks: [],
+      rail: false,
+      paxPerDay: 0,
+      departures: 0,
+    })
+    return net.path
+  }
+
+  /** Widen the narrowest approach cell first. A bus bay can sit on any road edge. */
+  private stampBeside(anchors: Vec[], tool: Tool): CommandResult | null {
+    const ranked = [...anchors].sort((a, b) => this.sideRoads(a) - this.sideRoads(b) || a.r - b.r || a.c - b.c)
+    for (const anchor of ranked) {
+      const around = [
+        { c: anchor.c + 1, r: anchor.r },
+        { c: anchor.c - 1, r: anchor.r },
+        { c: anchor.c, r: anchor.r + 1 },
+        { c: anchor.c, r: anchor.r - 1 },
+      ]
+      for (const cell of around) {
+        if (this.game.tile(cell) !== 'grass') continue
+        if (this.game.sites.some((site) => site.cells.some((at) => at.c === cell.c && at.r === cell.r))) continue
+        const ghost = this.preview(tool, cell)
+        if (ghost) continue
+        const clicked = this.clickTile(cell)
+        if (clicked.ok) return result(true, 'relieveCurb', `${tool} @ ${cell.c},${cell.r}`)
+      }
+    }
+    return null
+  }
+
+  private sideRoads(cell: Vec): number {
+    const around = [
+      { c: cell.c + 1, r: cell.r },
+      { c: cell.c - 1, r: cell.r },
+      { c: cell.c, r: cell.r + 1 },
+      { c: cell.c, r: cell.r - 1 },
+    ]
+    return around.filter((next) => this.game.tile(next) === 'road').length
   }
 
   private selectTerminal(): CommandResult {
