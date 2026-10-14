@@ -3746,6 +3746,7 @@ export class Game {
     // Drop the city-edge stub and any stray paint. The stamp is the whole field.
     for (const row of this.tiles) row.fill('grass')
     const kit = stampStarterKit(this.tiles, this.startFocus)
+    this.lots = { ...kit.lots }
     this.facing = 'h'
     for (const stand of kit.stands) {
       const key = `${stand.c},${stand.r}`

@@ -5,6 +5,8 @@
  */
 import type { StandAccess, StandClass, StartFocus, Tile, Vec } from './types'
 import { SIZE } from './types'
+import { lotCells, lotSize, type Lot } from '../build/footprints'
+import { auditWorld, type PendingStamp } from './worldRules'
 
 export interface StarterStand {
   c: number
@@ -27,6 +29,8 @@ export interface StarterStamp {
   summary: string
   terminal: Vec | null
   stands: StarterStand[]
+  /** Real-world lots for the kit's multi-cell buildings (anchor key "c,r"). */
+  lots: Record<string, Lot>
 }
 
 export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
@@ -115,7 +119,10 @@ function paintPassenger(chart: Chart, police: boolean) {
   }
   putAt(PAX_ROAD_COL, 2, 'guard')
   // North and south bypasses so trucks reach the apron without crossing the hall.
-  for (let c = 7; c <= 16; c++) putAt(c, 4, 'road')
+  // Round 7: the bypass stops at c9 so the 3x3 fuel lot (c6-8, r3-5) keeps the old farm
+  // anchor (7,5); trucks drop to the apron at (9,5).
+  for (let c = 9; c <= 16; c++) putAt(c, 4, 'road')
+  putAt(9, 5, 'road')
   for (let c = 8; c <= 16; c++) putAt(c, 14, 'road')
   putAt(PAX_ROAD_COL, 14, 'road')
   // Belts: each stand to the hall, and the sort to the south stand.
@@ -127,11 +134,6 @@ function paintPassenger(chart: Chart, police: boolean) {
   putAt(13, 12, 'belt')
   putAt(13, 11, 'belt')
   putAt(13, 10, 'belt')
-  putAt(12, 13, 'bags')
-  putAt(7, 5, 'fuel')
-  putAt(18, 4, 'road')
-  putAt(19, 4, 'cargo')
-  putAt(19, 8, 'fire')
   putAt(19, 10, 'tower')
   putAt(19, 13, 'snack')
   if (police) putAt(20, 5, 'police')
@@ -149,12 +151,77 @@ function paintCargo(chart: Chart) {
   putAt(PAX_ROAD_COL, 2, 'guard')
   for (let c = 13; c <= 16; c++) putAt(c, 10, 'road')
   putAt(PAX_ROAD_COL, 10, 'road')
-  putAt(6, 10, 'fuel')
-  putAt(18, 5, 'road')
-  putAt(19, 5, 'cargo')
-  putAt(19, 8, 'fire')
   putAt(19, 11, 'police')
   putAt(19, 14, 'tower')
+}
+
+/**
+ * Round 7: the kit's lot buildings (fuel 3x3, cargo 3x2, fire 2x2, bag sort 2x2) are
+ * placed on their real-world lots, not as 1x1 stamps. Each one searches outward from a
+ * hint cell in a fixed order and takes the first lot that is all grass, faces its
+ * access (paved apron or road), and keeps auditWorld clean (no overlap with roads,
+ * stands' wing envelopes or runway strips). The chart is fixed, so the result is too.
+ */
+const LOT_PLAN: Record<StartFocus, [Tile, number, number][]> = {
+  pax: [['fuel', 7, 5], ['bags', 14, 12], ['cargo', 19, 4], ['fire', 19, 7]],
+  hybrid: [['fuel', 7, 5], ['bags', 14, 12], ['cargo', 19, 4], ['fire', 19, 7]],
+  cargo: [['fuel', 6, 10], ['cargo', 19, 4], ['fire', 19, 7]],
+}
+const DIRS: readonly Vec[] = [{ c: 1, r: 0 }, { c: -1, r: 0 }, { c: 0, r: 1 }, { c: 0, r: -1 }]
+
+function accessOk(tile: Tile, front: Tile | undefined): boolean {
+  if (!front) return false
+  if (tile === 'cargo') return front === 'road'
+  // The sort hall is fed by the belt network: its anchor faces a belt run.
+  if (tile === 'bags') return front === 'belt'
+  return front === 'road' || front === 'taxi'
+}
+
+function placeLots(chart: Chart, focus: StartFocus): { at: Vec; tile: Tile; lot: Lot }[] {
+  const grid: Tile[][] = Array.from({ length: SIZE }, (_, r) => Array.from({ length: SIZE }, (_, c) => chart.get(`${c},${r}`) ?? 'grass'))
+  const pending: PendingStamp[] = []
+  const base = auditWorld({ tiles: grid }).length
+  const out: { at: Vec; tile: Tile; lot: Lot }[] = []
+  const taken = new Set<string>()
+  for (const [tile, hc, hr] of LOT_PLAN[focus]) {
+    const size = lotSize(tile)!
+    let found: { at: Vec; lot: Lot; cells: Vec[] } | null = null
+    for (let rad = 0; rad <= 8 && !found; rad++) {
+      for (let dr = -rad; dr <= rad && !found; dr++) for (let dc = -rad; dc <= rad && !found; dc++) {
+        if (Math.max(Math.abs(dc), Math.abs(dr)) !== rad) continue
+        const at = { c: hc + dc, r: hr + dr }
+        for (const dir of DIRS) {
+          const lot = { w: size.w, d: size.d, dir }
+          const cells = lotCells(at, lot)
+          // One grass cell of margin around the lot (yard fence, kerb, no touching).
+          const ok = cells.every((p) => p.c >= 1 && p.r >= 1 && p.c < SIZE - 1 && p.r < SIZE - 1 && grid[p.r][p.c] === 'grass' && !taken.has(`${p.c},${p.r}`))
+          if (!ok) continue
+          const fr = at.r + dir.r, fc = at.c + dir.c
+          if (!accessOk(tile, grid[fr]?.[fc])) continue
+          const trial = [...pending, { cells, tile }]
+          if (auditWorld({ tiles: grid, pending: trial }).length > base) continue
+          found = { at, lot, cells }
+          break
+        }
+      }
+    }
+    if (!found) throw new Error(`starter kit: no lot for ${tile} near ${hc},${hr}`)
+    pending.push({ cells: found.cells, tile })
+    for (const p of found.cells) {
+      taken.add(`${p.c},${p.r}`)
+      for (const d of DIRS) taken.add(`${p.c + d.c},${p.r + d.r}`)
+    }
+    out.push({ at: found.at, tile, lot: found.lot })
+  }
+  return out
+}
+
+const LOT_CACHE = new Map<StartFocus, { at: Vec; tile: Tile; lot: Lot }[]>()
+/** Lots of a kit (computed once per focus). */
+export function starterLots(focus: StartFocus): { at: Vec; tile: Tile; lot: Lot }[] {
+  let l = LOT_CACHE.get(focus)
+  if (!l) LOT_CACHE.set(focus, (l = placeLots(chartFor(focus), focus)))
+  return l
 }
 
 function chartFor(focus: StartFocus): Chart {
@@ -172,6 +239,11 @@ export function starterKitPreview(focus: StartFocus): StarterKitPreview {
 export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStamp {
   const preview = STARTER_KITS[focus]
   const chart = chartFor(focus)
+  const lots: Record<string, Lot> = {}
+  for (const l of starterLots(focus)) {
+    chart.set(`${l.at.c},${l.at.r}`, l.tile)
+    lots[`${l.at.c},${l.at.r}`] = l.lot
+  }
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       const tile = chart.get(`${c},${r}`)
@@ -185,6 +257,7 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
       summary: preview.summary,
       terminal: null,
       stands: [{ c: 12, r: 10, cls: 'M', access: 'remote' }],
+      lots,
     }
   }
   return {
@@ -196,5 +269,6 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
       { c: 11, r: 6, cls: 'M', access: 'jetway' },
       { c: 11, r: 12, cls: 'M', access: 'jetway' },
     ],
+    lots,
   }
 }
