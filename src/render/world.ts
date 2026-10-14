@@ -2105,6 +2105,23 @@ export class World {
         clock: game.clock,
       })
     }
+    // GPU carts, cleaning vans and pushback tugs under the turnaround crew the logistics module isn't drawing.
+    for (const eq of game.turnaroundEquipment()) {
+      const pos = toWorld(eq.x, eq.y, 0)
+      this.vehicleFrame.push({
+        kind: eq.kind,
+        color: serviceColor(eq.kind),
+        size: vehicleMeters(eq.kind),
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        yaw: -eq.heading,
+        scale: WORLD_PER_METER,
+        ext: 1,
+        active: eq.kind === 'pushback_tug',
+        clock: game.clock,
+      })
+    }
     this.vehicleFleet.sync(this.vehicleFrame)
     setVehicleSurfaceTime(game.clock)
 

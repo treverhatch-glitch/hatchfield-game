@@ -578,6 +578,8 @@ import {
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
+import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
+import { standCrewPeople, standProps, type StandArrival } from '../ramp/standCrew.ts'
 import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
   commitPlot,
@@ -8808,6 +8810,73 @@ export class Game {
    * Steps fill the sim's service window. Parked crew stay in the cab and are omitted.
    */
   crewScene(): CrewScene {
+    const services = this.serviceClocks()
+    for (const clock of this.turnaroundClocks(services)) services.push(clock)
+    const scene = assembleCrew({
+      services,
+      catering: this.cateringPoses().map((pose) => ({
+        id: pose.id,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        phase: pose.phase,
+        phaseU: pose.phaseU,
+      })),
+      metersPerUnit: METERS_PER_CELL,
+      aircraftFor: (x, y) => this.aircraftAim(x, y),
+    })
+    for (const clock of this.paxClocks()) {
+      const sample = samplePax(clock)
+      scene.people.push(...sample.people)
+      scene.props.push(...sample.props)
+    }
+    for (const arrival of this.standArrivals()) {
+      standCrewPeople(arrival, METERS_PER_CELL, scene.people)
+      standProps(arrival, METERS_PER_CELL, scene.props)
+    }
+    return scene
+  }
+
+  /**
+   * Aircraft arriving on or sitting at a stand, timed for the marshaller,
+   * chocks and cones. Guiding starts a few cells out on the taxi-in; chocks
+   * and cones stay until pushback.
+   */
+  standArrivals(): StandArrival[] {
+    const out: StandArrival[] = []
+    for (const f of this.flights) {
+      if (!f.stand || f.craft === 'helo') continue
+      let t: number
+      if (f.phase === 'taxi_in') {
+        const d = Math.hypot(f.x - f.stand.c, f.y - f.stand.r)
+        if (d > STAND_TIMELINE.guideCells) continue
+        t = STAND_TIMELINE.taxi * (1 - d / STAND_TIMELINE.guideCells)
+      } else if (f.phase === 'deboard') t = STAND_TIMELINE.taxi + f.phaseTime
+      else if (f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') t = STAND_TIMELINE.settled
+      else continue
+      const spec = getAircraftSpec(f.airframeId || 'b738')
+      out.push({ id: f.id, x: f.x, y: f.y, heading: f.heading, lengthM: spec.lengthM, spanM: spec.spanM, t })
+    }
+    return out
+  }
+
+  /**
+   * The GPU cart, cleaning van and pushback tug behind the crew of a
+   * turnaround the logistics module is not already drawing. Same clocks as
+   * crewScene, so the crew always have their equipment under them.
+   */
+  turnaroundEquipment(): { id: string; kind: string; x: number; y: number; heading: number }[] {
+    const kinds: Partial<Record<CrewClock['service'], string>> = { cleaning: 'van', gpu: 'gpu', pushback: 'pushback_tug' }
+    const out: { id: string; kind: string; x: number; y: number; heading: number }[] = []
+    for (const clock of this.turnaroundClocks(this.serviceClocks())) {
+      const kind = kinds[clock.service]
+      if (kind) out.push({ id: clock.id, kind, x: clock.x, y: clock.y, heading: clock.heading })
+    }
+    return out
+  }
+
+  /** Logistics vehicles and legacy trucks currently on a service stop. */
+  private serviceClocks(): CrewClock[] {
     const services: CrewClock[] = []
     const ground = this.ground?.sim
     if (ground) {
@@ -8828,26 +8897,7 @@ export class Game {
       const clock = this.legacyCrewClock(truck)
       if (clock) services.push(clock)
     }
-    for (const clock of this.turnaroundClocks(services)) services.push(clock)
-    const scene = assembleCrew({
-      services,
-      catering: this.cateringPoses().map((pose) => ({
-        id: pose.id,
-        x: pose.x,
-        y: pose.y,
-        heading: pose.heading,
-        phase: pose.phase,
-        phaseU: pose.phaseU,
-      })),
-      metersPerUnit: METERS_PER_CELL,
-      aircraftFor: (x, y) => this.aircraftAim(x, y),
-    })
-    for (const clock of this.paxClocks()) {
-      const sample = samplePax(clock)
-      scene.people.push(...sample.people)
-      scene.props.push(...sample.props)
-    }
-    return scene
+    return services
   }
 
   /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
@@ -8969,7 +9019,8 @@ export class Game {
           start: 0,
           end,
           now: Math.min(end, Math.max(0, flight.phaseTime)),
-          aim: { x: -2.4, z: spec.spanM * 0.22 },
+          // Wing walker: tug-local metres to just outside the wingtip (the tug faces the aircraft).
+          aim: { x: 4 + spec.lengthM * spec.wingAt + spec.spanM * 0.15, z: spec.spanM / 2 + SERVICE_POINTS.wingWalkOut },
         })
       }
     }
