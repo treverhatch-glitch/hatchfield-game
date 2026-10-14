@@ -1,6 +1,7 @@
 import { LAND, money } from '../game/catalog'
 import type { Game } from '../game/sim'
 import type { SiteKind, StartFocus } from '../game/types'
+import { MAP_LIST, mapById, mapSwatch } from '../maps/index'
 
 const PAX_NEEDS = [
   'Runway',
@@ -40,9 +41,35 @@ export function LandScreen({
         </p>
         <h1>Choose your start</h1>
         <p className="lede">
-          Each route needs a different kit. Starter kit matches the focus; you can
-          grow the other path later.
+          Pick a climate, then a route. The temperate belt plays the field you
+          already know. Starter kit matches the focus.
         </p>
+        <div className="map-cards" data-testid="map-select">
+          {MAP_LIST.map((id) => {
+            const map = mapById(id)
+            const on = game.mapId === id
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`map-card${on ? ' on' : ''}`}
+                data-testid={`map-${id}`}
+                aria-pressed={on}
+                onClick={() => game.setMap(id)}
+              >
+                <i className="map-swatch" style={{ background: mapSwatch(id) }} />
+                <strong>{map.name}</strong>
+                <em>{map.region}</em>
+                <p>{map.blurb}</p>
+                <ul>
+                  {map.challenges.map((goal) => (
+                    <li key={goal.id}>{goal.title}</li>
+                  ))}
+                </ul>
+              </button>
+            )
+          })}
+        </div>
         <div className="route-cards">
           <button
             type="button"

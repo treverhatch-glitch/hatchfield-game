@@ -34,6 +34,7 @@ import {
 } from '../scale/placeholders'
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
+import { syncStaffHousing } from './staffHousing.ts'
 import {
   initWorldRender,
   parseQuality,
@@ -190,6 +191,9 @@ export class World {
   service = new Map<string, THREE.Object3D>()
   cateringCrew = new Map<string, THREE.Group>()
   people = new Map<string, THREE.Mesh>()
+  housingGroup = new THREE.Group()
+  private housingMeshes = new Map<string, THREE.Group>()
+  private housingWalkers = new Map<string, THREE.Group>()
   private beltCubes: THREE.Mesh[] = []
   private beltPath: THREE.Vector3[] = []
   private beltRev = -1
@@ -284,8 +288,10 @@ export class World {
     this.scene.add(earth)
 
     this.gateGroup.name = 'gate-bridges'
+    this.housingGroup.name = 'staff-housing'
     this.scene.add(this.tilesGroup)
     this.scene.add(this.gateGroup)
+    this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
     this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
@@ -552,7 +558,7 @@ export class World {
 
   rebuildTiles(game: Game) {
     // Cheap revision check — avoid flattening 32² tiles into a string every frame.
-    const hash = String(game.mapRev)
+    const hash = `${game.mapRev}|${game.lateMeshSig()}`
     if (hash !== this.tileHash) {
       this.tileHash = hash
       this.releaseTiles()
@@ -567,6 +573,7 @@ export class World {
             hotelClass: game.hotelClass[key],
             parkTerm: game.parkTerms[key],
             hangarTier: game.hangarScale[key],
+            lateOpen: game.lateOpenAt(c, r),
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
@@ -657,7 +664,12 @@ export class World {
   building(
     tile: Tile,
     pos: THREE.Vector3,
-    opts: { hotelClass?: HotelClass; parkTerm?: ParkTerm; hangarTier?: SizeTier } = {},
+    opts: {
+      hotelClass?: HotelClass
+      parkTerm?: ParkTerm
+      hangarTier?: SizeTier
+      lateOpen?: boolean
+    } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
@@ -1025,8 +1037,133 @@ export class World {
       bus.name = 'xfer-bus'
       bus.castShadow = true
       g.add(pad, shed, bus)
+    } else if (tile === 'late_hotel') {
+      this.addLateHotel(g)
+    } else if (tile === 'late_rail') {
+      if (opts.lateOpen === false) this.addRailScaffold(g)
+      else this.addLateRail(g)
+    } else if (tile === 'saf') {
+      this.addSafPlant(g)
     }
     return g
+  }
+
+  /** Airport hotel — a short tower, not the landside inn. */
+  addLateHotel(g: THREE.Group) {
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.92, 0.2, CELL * 0.92),
+      new THREE.MeshStandardMaterial({ color: '#6a6e76', roughness: 0.8 }),
+    )
+    plinth.position.y = 0.1
+    plinth.receiveShadow = true
+    const tower = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.62, 5.2, CELL * 0.5),
+      new THREE.MeshStandardMaterial({ color: '#d8d2c4', roughness: 0.55 }),
+    )
+    tower.position.y = 2.8
+    tower.castShadow = true
+    const band = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.66, 0.35, CELL * 0.54),
+      new THREE.MeshStandardMaterial({ color: '#2f6f9a', roughness: 0.4 }),
+    )
+    band.position.y = 4.6
+    const pent = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.36, 0.7, CELL * 0.3),
+      new THREE.MeshStandardMaterial({ color: '#8a939c', roughness: 0.45 }),
+    )
+    pent.position.y = 5.6
+    pent.castShadow = true
+    g.add(plinth, tower, band, pent)
+  }
+
+  /** Rail link under its 10-day build. */
+  addRailScaffold(g: THREE.Group) {
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.9, 0.12, CELL * 0.9),
+      new THREE.MeshStandardMaterial({ color: '#8a7048', roughness: 0.85 }),
+    )
+    pad.position.y = 0.06
+    pad.receiveShadow = true
+    const postMat = new THREE.MeshStandardMaterial({ color: '#c4a46a', roughness: 0.6 })
+    const posts: THREE.Object3D[] = [pad]
+    for (const [x, z] of [
+      [-0.8, -0.8],
+      [0.8, -0.8],
+      [-0.8, 0.8],
+      [0.8, 0.8],
+    ] as const) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.2, 0.14), postMat)
+      post.position.set(x, 1.15, z)
+      post.castShadow = true
+      posts.push(post)
+    }
+    const beam = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.7, 0.12, CELL * 0.7),
+      new THREE.MeshStandardMaterial({ color: '#a88848', roughness: 0.55 }),
+    )
+    beam.position.y = 2.2
+    posts.push(beam)
+    g.add(...posts)
+  }
+
+  /** Open rail link — platform, rails, and a small hall. */
+  addLateRail(g: THREE.Group) {
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.96, 0.16, CELL * 0.96),
+      new THREE.MeshStandardMaterial({ color: '#3a3f46', roughness: 0.7 }),
+    )
+    pad.position.y = 0.08
+    pad.receiveShadow = true
+    const railMat = new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.45, roughness: 0.35 })
+    const railA = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.9, 0.08, 0.08), railMat)
+    railA.position.set(0, 0.22, -0.35)
+    const railB = railA.clone()
+    railB.position.z = 0.35
+    const hall = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.55, 2.2, CELL * 0.4),
+      new THREE.MeshStandardMaterial({ color: '#8aa0b4', roughness: 0.45 }),
+    )
+    hall.position.set(0, 1.2, -CELL * 0.22)
+    hall.castShadow = true
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.85, 0.1, CELL * 0.7),
+      new THREE.MeshStandardMaterial({ color: '#2f6f9a', roughness: 0.4 }),
+    )
+    canopy.position.y = 2.4
+    g.add(pad, railA, railB, hall, canopy)
+  }
+
+  /** SAF tanks beside a low blending shed. */
+  addSafPlant(g: THREE.Group) {
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.94, 0.12, CELL * 0.94),
+      new THREE.MeshStandardMaterial({ color: '#2c3338', roughness: 0.75 }),
+    )
+    pad.position.y = 0.06
+    pad.receiveShadow = true
+    const shed = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.42, 1.6, CELL * 0.55),
+      new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.5 }),
+    )
+    shed.position.set(-CELL * 0.18, 0.9, 0)
+    shed.castShadow = true
+    const band = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL * 0.44, 0.22, CELL * 0.57),
+      new THREE.MeshStandardMaterial({ color: '#3d8a4a', roughness: 0.45 }),
+    )
+    band.position.set(-CELL * 0.18, 1.35, 0)
+    const tankMat = new THREE.MeshStandardMaterial({ color: '#e7eef2', metalness: 0.25, roughness: 0.35 })
+    const tankA = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 1.7, 8), tankMat)
+    tankA.position.set(CELL * 0.18, 0.95, -0.4)
+    tankA.castShadow = true
+    const tankB = tankA.clone()
+    tankB.position.z = 0.4
+    const pipe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.1, 0.1),
+      new THREE.MeshStandardMaterial({ color: '#3d8a4a', roughness: 0.4 }),
+    )
+    pipe.position.set(0.05, 1.15, 0)
+    g.add(pad, shed, band, tankA, tankB, pipe)
   }
 
   /** Outside hotel grades — real buildings, not flat pads. */
@@ -1783,6 +1920,14 @@ export class World {
       }
     }
     this.syncBeltBags(game)
+    syncStaffHousing(
+      this.housingGroup,
+      this.housingMeshes,
+      this.housingWalkers,
+      game.staffSites(),
+      game.staffWalkers(),
+      toWorld,
+    )
   }
 
   /** A few suitcases sliding the apron belt. The ledger stays aggregate. */
@@ -2052,6 +2197,7 @@ export class World {
     this.gateGroup.clear()
     disposeAircraftLibrary()
     this.wr.dispose()
+    syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
     const canvas = this.canvas
     canvas.removeEventListener('contextmenu', this.onContextMenu)
