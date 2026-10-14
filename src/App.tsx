@@ -186,6 +186,7 @@ function hudSnapshot(): string {
         game.securityQueueCount(),
         game.lostPaxCount(),
         game.hallGuests.find((g) => g.id === game.selectedGuest)?.thought ?? '',
+        game.selectedFacility ?? '',
         game.showFlows ? 1 : 0,
         game.advice.map((a) => a.id).join(','),
         game.advisorCells.length,

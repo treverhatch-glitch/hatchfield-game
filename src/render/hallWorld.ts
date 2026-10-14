@@ -43,11 +43,13 @@ import {
   slotCenter,
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
+import { hallQueues } from '../terminalplay/queues'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
   | { kind: 'place'; def: ItemId; rot: number }
   | { kind: 'bulldoze' }
+  | { kind: 'move'; itemId: string | null; def: ItemId | null; rot: number }
   | null
 
 /** What sits under the cursor while building. Feeds the cost tooltip. */
@@ -148,11 +150,16 @@ export class HallWorld {
   build: HallBuildMode = null
   /** Called after a successful place, so the bar can close. */
   onPlaced: (() => void) | null = null
+  /** Move mode: the player picked a piece, or cleared the pick. */
+  onMovePick: ((id: string | null, def: ItemId | null) => void) | null = null
   /** PNG data URL from the frame that was just drawn. */
   onCaptured: ((url: string) => void) | null = null
   private captureWanted = false
   onHover: ((hover: HallHover | null) => void) | null = null
   private hover: HallHover | null = null
+  private queueGroup = new THREE.Group()
+  private queueSig = ''
+  private queueTex = new Map<string, THREE.CanvasTexture>()
   private ghost: THREE.Group | null = null
   private ghostDef = ''
   private ghostMat = new THREE.MeshBasicMaterial({
@@ -213,6 +220,7 @@ export class HallWorld {
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
+    this.scene.add(this.queueGroup)
     this.scene.add(this.bagGroup)
 
     canvas.addEventListener('pointerdown', this.onDown)
@@ -292,9 +300,29 @@ export class HallWorld {
     }
     this.aim(e)
     const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
+    const queueHits = this.ray.intersectObjects(this.queueGroup.children, true)
+    const roomHits = this.ray.intersectObjects(this.roomGroup.children, true)
     const hits = this.ray.intersectObjects(this.guestGroup.children, true)
     const spot = spotHits[0]
     const person = hits[0]
+    const facilityHit = [...queueHits, ...roomHits].find((hit) => {
+      let obj: THREE.Object3D | null = hit.object
+      while (obj) {
+        if (typeof obj.userData.facilityId === 'string') return true
+        obj = obj.parent
+      }
+      return false
+    })
+    if (facilityHit && (!person || facilityHit.distance <= person.distance)) {
+      let obj: THREE.Object3D | null = facilityHit.object
+      while (obj) {
+        if (typeof obj.userData.facilityId === 'string') {
+          this.game.selectFacility(obj.userData.facilityId)
+          return
+        }
+        obj = obj.parent
+      }
+    }
     if (spot && (!person || spot.distance <= person.distance)) {
       let obj: THREE.Object3D | null = spot.object
       while (obj) {
@@ -347,14 +375,27 @@ export class HallWorld {
       const r = Math.floor(((hit.z + HALL_D / 2) / HALL_D) * rows)
       if (c >= 0 && r >= 0 && c < cols && r < rows) {
         const items = (game.activeHall()?.items ?? []) as PlacedItem[]
-        const inCell = items.filter((i) => i.c === c && i.r === r && !i.bundle)
+        const inCell = items.filter((i) => i.c === c && i.r === r)
+        const loose = inCell.filter((i) => !i.bundle)
+        const moveId = this.build.kind === 'move' ? this.build.itemId : null
+        const picking = this.build.kind === 'move' && !moveId
         next = {
           c,
           r,
           sx: e.clientX,
           sy: e.clientY,
-          check: this.build.kind === 'place' ? game.hallPlacement(this.build.def, c, r) : null,
-          target: this.build.kind === 'bulldoze' ? (inCell[inCell.length - 1] ?? null) : null,
+          check:
+            this.build.kind === 'place'
+              ? game.hallPlacement(this.build.def, c, r)
+              : moveId
+                ? game.hallMoveCheck(moveId, c, r)
+                : null,
+          target:
+            this.build.kind === 'bulldoze'
+              ? (loose[loose.length - 1] ?? null)
+              : picking
+                ? (loose[loose.length - 1] ?? inCell[inCell.length - 1] ?? null)
+                : null,
         }
       }
     }
@@ -371,6 +412,12 @@ export class HallWorld {
     if (this.build.kind === 'place') {
       if (game.placeHallItemAt(this.build.def, hover.c, hover.r, this.build.rot)) {
         this.onPlaced?.()
+      }
+    } else if (this.build.kind === 'move') {
+      if (!this.build.itemId) {
+        if (hover.target) this.onMovePick?.(hover.target.id, hover.target.def)
+      } else if (game.moveHallItem(this.build.itemId, hover.c, hover.r, this.build.rot)) {
+        this.onMovePick?.(null, null)
       }
     } else if (hover.target) {
       game.removeHallItem(hover.target.id)
@@ -391,24 +438,30 @@ export class HallWorld {
   private syncGhost(game: Game) {
     const mode = this.build
     const hover = this.hover
-    if (!mode || mode.kind !== 'place' || !hover) {
+    const def = mode?.kind === 'place' ? mode.def : mode?.kind === 'move' ? mode.def : null
+    if (!mode || !def || !hover) {
       if (this.ghost) this.ghost.visible = false
       return
     }
-    if (!this.ghost || this.ghostDef !== mode.def) {
+    if (!this.ghost || this.ghostDef !== def) {
       if (this.ghost) this.scene.remove(this.ghost)
-      this.ghost = buildGhost(mode.def, this.ghostMat)
-      this.ghostDef = mode.def
+      this.ghost = buildGhost(def, this.ghostMat)
+      this.ghostDef = def
       this.scene.add(this.ghost)
     }
     const { cols, rows } = this.zoneGrid()
     const items = (game.activeHall()?.items ?? []) as PlacedItem[]
-    const start = Math.min(3, cellLoad(items, hover.c, hover.r))
-    const at = slotCenter(hover.c, hover.r, start, itemSize(itemDef(mode.def)), cols, rows)
-    const check = game.hallPlacement(mode.def, hover.c, hover.r)
+    const carried = mode.kind === 'move' ? mode.itemId : null
+    const rot = mode.kind === 'move' || mode.kind === 'place' ? mode.rot : 0
+    const loadItems = carried ? items.filter((it) => it.id !== carried) : items
+    const start = Math.min(3, cellLoad(loadItems, hover.c, hover.r))
+    const at = slotCenter(hover.c, hover.r, start, itemSize(itemDef(def)), cols, rows)
+    const check = carried
+      ? game.hallMoveCheck(carried, hover.c, hover.r)
+      : game.hallPlacement(def, hover.c, hover.r)
     this.ghostMat.color.set(check.ok ? '#4ade80' : '#ef4444')
     this.ghost.position.set(at.x, 0.07, at.z)
-    this.ghost.rotation.y = (mode.rot * Math.PI) / 2
+    this.ghost.rotation.y = (rot * Math.PI) / 2
     this.ghost.visible = true
   }
 
@@ -596,6 +649,15 @@ export class HallWorld {
       const worn = it.wear >= 55 ? '#8a5a4a' : (ROOM_COLOR[it.def as HallNode] ?? '#e8eef2')
       const tall = String(it.def).includes('security') ? 1.5 : 0.7
       this.box(1.4, tall, 1.1, worn, x, tall / 2 + 0.05, z)
+    }
+    for (const { item: it, x, z } of laid) {
+      const pick = new THREE.Mesh(
+        new THREE.BoxGeometry(1.8, 1.6, 1.4),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+      )
+      pick.position.set(x, 0.9, z)
+      pick.userData.facilityId = `item:${it.id}`
+      this.roomGroup.add(pick)
     }
     this.clearKit()
     this.kitGroup.add(buildKitInstances(laid))
@@ -872,6 +934,44 @@ export class HallWorld {
     this.hotspotGroup.clear()
   }
 
+  /** Queue counts float over the desks. Red means the line is a bottleneck. */
+  private syncQueues(game: Game) {
+    const rows = hallQueues(game.hallGuests)
+    const sig = rows.map((row) => `${row.node}:${row.count}:${row.bottleneck ? 1 : 0}`).join('|')
+    if (sig === this.queueSig) return
+    this.queueSig = sig
+    for (const child of this.queueGroup.children) {
+      const sprite = child as THREE.Sprite
+      sprite.material.dispose()
+    }
+    this.queueGroup.clear()
+    for (const row of rows) {
+      const key = `${row.count}:${row.bottleneck ? 1 : 0}`
+      let tex = this.queueTex.get(key)
+      if (!tex) {
+        const c = document.createElement('canvas')
+        c.width = 128
+        c.height = 64
+        const ctx = c.getContext('2d')!
+        ctx.fillStyle = row.bottleneck ? '#e23b2f' : '#e0a020'
+        ctx.fillRect(4, 8, 120, 48)
+        ctx.fillStyle = '#1a1408'
+        ctx.font = '700 28px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText(String(row.count), 64, 42)
+        tex = new THREE.CanvasTexture(c)
+        tex.colorSpace = THREE.SRGBColorSpace
+        this.queueTex.set(key, tex)
+      }
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }))
+      sprite.scale.set(1.6, 0.8, 1)
+      const at = nodeWorld(row.node)
+      sprite.position.set(at.x, 2.35, at.z)
+      sprite.userData.facilityId = row.node
+      this.queueGroup.add(sprite)
+    }
+  }
+
   /** Markers stay up. The counts live in the click submenu. */
   syncHotspots(game: Game) {
     this.clearHotspots()
@@ -1024,6 +1124,7 @@ export class HallWorld {
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
+    this.syncQueues(game)
     this.syncGhost(game)
     const { cols, rows } = this.zoneGrid()
     this.litter.sync(game, cols, rows)
@@ -1219,6 +1320,8 @@ export class HallWorld {
     canvas.removeEventListener('pointerleave', this.onUp)
     canvas.removeEventListener('wheel', this.onWheel)
     this.clearKit()
+    for (const tex of this.queueTex.values()) tex.dispose()
+    this.queueTex.clear()
     this.ghostMat.dispose()
     this.litter.dispose()
     this.renderer.dispose()

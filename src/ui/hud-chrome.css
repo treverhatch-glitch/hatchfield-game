@@ -370,7 +370,8 @@
   color: #0f172a;
 }
 
-.guest-card {
+.guest-card,
+.facility-card {
   left: 12px;
   bottom: 86px;
   background: rgb(15 23 42 / 0.9);

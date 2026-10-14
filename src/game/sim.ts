@@ -378,6 +378,9 @@ import {
   type PlacementCheck,
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
+import { facilitiesFromItems } from '../terminalplay/facilities.ts'
+import { footprintOf } from '../terminalplay/place.ts'
+import { hallQueues, queueAtNode } from '../terminalplay/queues.ts'
 import {
   binFull,
   cellAt,
@@ -1165,6 +1168,8 @@ export class Game {
   selectedFlight: string | null = null
   selectedTile: Vec | null = null
   selectedGuest: string | null = null
+  /** Clicked desk, lane, shop, or queue marker inside the terminal. */
+  selectedFacility: string | null = null
   /** Bumps when the hall layout changes so the HUD repaints. */
   hallRev = 0
   private secSeq = 1
@@ -5580,7 +5585,52 @@ export class Game {
 
   selectGuest(id: string | null) {
     this.selectedGuest = id
+    this.selectedFacility = null
     this.emit()
+  }
+
+  /** Open the facility card. A passenger click clears it. */
+  selectFacility(id: string | null) {
+    this.selectedFacility = id
+    if (id) this.selectedGuest = null
+    this.emit()
+  }
+
+  /** Lines for the facility card. `item:…` is a placed piece; a bare id is a queue node. */
+  facilityInfo(id: string): { title: string; lines: string[] } | null {
+    const fit = this.activeHall()
+    if (!fit) return null
+    const cols = fit.zones?.[0]?.length ?? 8
+    const rows = fit.zones?.length ?? 5
+    const catalog = facilitiesFromItems((fit.items ?? []) as PlacedItem[], cols, rows)
+    if (id.startsWith('item:')) {
+      const item = (fit.items ?? []).find((it) => it.id === id.slice(5))
+      if (!item) return null
+      const def = itemDef(item.def)
+      const facility = catalog.find((row) => row.id === item.id)
+      const lines = [
+        def?.blurb ?? '',
+        facility ? `${facility.type} · capacity ${facility.capacity}` : 'Fixture',
+        `At ${item.c}, ${item.r}`,
+        `Wear ${Math.round(item.wear)}`,
+        `Upkeep $${def?.upkeep ?? 0}/day`,
+      ]
+      if (footprintOf(def) === 'wall') lines.push('Solid wall — passengers walk around it')
+      if (footprintOf(def) === 'belt') lines.push('Belt — nothing else can sit on this cell')
+      return { title: def?.name ?? 'Facility', lines }
+    }
+    const row = hallQueues(this.hallGuests).find((q) => q.node === id)
+    if (!row) {
+      const count = queueAtNode(this.hallGuests, id as HallNode)
+      return { title: id, lines: [`Queue ${count}`] }
+    }
+    return {
+      title: row.label,
+      lines: [
+        `${row.count} waiting`,
+        row.bottleneck ? 'Bottleneck — add a lane, a desk, or a wider queue' : 'Line is moving',
+      ],
+    }
   }
 
   activeHall(): TerminalFit | null {
@@ -10247,6 +10297,51 @@ export class Game {
       return
     }
     this.commitHallItem(id, cell.c, cell.r, 0)
+  }
+
+  /**
+   * Ghost check for a move. The item being carried does not block its own cell,
+   * and the move itself is free.
+   */
+  hallMoveCheck(itemId: string, c: number, r: number): PlacementCheck {
+    const fit = this.activeHall()
+    const items = (fit?.items ?? []) as PlacedItem[]
+    const it = items.find((row) => row.id === itemId)
+    const def = it ? itemDef(it.def) : undefined
+    if (!fit || !it || !def) return { ok: false, reason: 'Nothing to move', cost: 0 }
+    if (it.bundle) return { ok: false, reason: 'Part of the prefab bundle', cost: 0 }
+    const zones = fit.zones?.length ? fit.zones : fit.premade ? prefabZones() : blankZones()
+    return placementCheck(
+      zones,
+      items.filter((row) => row.id !== itemId),
+      def,
+      c,
+      r,
+      { fieldLevel: this.fieldLevel(), cash: 0, sandbox: true },
+    )
+  }
+
+  /**
+   * Slide a placed item onto another cell. Walls and belts still refuse the drop.
+   * Prefab bundle pieces stay where the kit put them.
+   */
+  moveHallItem(itemId: string, c: number, r: number, rot = 0): boolean {
+    const check = this.hallMoveCheck(itemId, c, r)
+    const fit = this.activeHall()
+    const it = fit?.items?.find((row) => row.id === itemId)
+    if (!fit || !it || !check.ok) {
+      this.pushNews(`${itemDef(it?.def ?? '')?.name ?? 'Item'}: ${check.reason}.`, 'bad')
+      this.emit()
+      return false
+    }
+    it.c = c
+    it.r = r
+    it.rot = ((Math.round(rot) % 4) + 4) % 4
+    this.hallRev++
+    this.pushNews(`${itemDef(it.def)?.name ?? 'Item'} moved.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
   }
 
   /** Ghost check for the hall build bar. Same rules as the click. */
