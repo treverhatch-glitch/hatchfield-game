@@ -31,7 +31,8 @@ import { previewAirframe } from '../scale/logic'
 import { ConstructionLayer } from '../build/construction'
 import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
 import { buildModel, standAircraftGhost } from '../build/models'
-import { setKitEnvironment, setNightLevel } from '../build/models/kit'
+import { getNightLevel, setKitEnvironment, setMaterialFx, setNightLevel } from '../build/models/kit'
+import { LotLamps } from './world/lotLamps'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { daylightFactor } from './world/dayNight'
 import { simClockToHour } from './world/daylight'
@@ -61,7 +62,7 @@ import {
   type QualityLevel,
   type WorldRender,
 } from './world/index'
-import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from './graphicsPrefs'
+import { chooseGraphicsQuality, graphicsQuality, materialFxOn, materialFxPref, subscribeGraphicsQuality, subscribeMaterialFx } from './graphicsPrefs'
 import { standBox } from './world/layout'
 import { ROOF_Y } from './world/terminal'
 
@@ -226,6 +227,9 @@ export class World {
   private lotsRef: Record<string, Lot> = {}
   /** Movable building parts (doors, radar, fans, booms) driven by sim signals. */
   buildingAnim = new AnimSystem()
+  /** Nearest lot lamps as real point lights at night. */
+  lotLamps = new LotLamps(0)
+  private offFx: (() => void) | null = null
   serviceFx!: ServiceFx
   construction = new ConstructionLayer((tile, c, r) => {
     const g = this.building(tile as Tile, toWorld(c, r, 0.02), { lot: this.lotsRef[`${c},${r}`] })
@@ -377,6 +381,9 @@ export class World {
       sun: this.sun,
     })
     this.offGfx = subscribeGraphicsQuality((level) => this.applyGraphicsQuality(level))
+    this.scene.add(this.lotLamps.group)
+    this.applyBuildingFx(quality)
+    this.offFx = subscribeMaterialFx(() => this.applyBuildingFx(this.wr.quality))
   }
 
   addPlotFence() {
@@ -562,6 +569,14 @@ export class World {
     if (this.wr.quality === level) return
     this.wr.setQuality(level)
     setAircraftQuality(level)
+    this.applyBuildingFx(level)
+  }
+
+  /** Building weathering / reflections (Settings override or preset) and the lot-lamp budget. */
+  private applyBuildingFx(level: QualityLevel) {
+    const q = QUALITY[level]
+    setMaterialFx(materialFxOn(materialFxPref(), q.materialFx))
+    if (this.lotLamps.budget !== q.lotLamps) this.lotLamps.setBudget(q.lotLamps)
   }
 
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
@@ -674,12 +689,14 @@ export class World {
             hangarTier: game.hangarScale[key],
             lateOpen: game.lateOpenAt(c, r),
             lot: game.lots[key],
+            yardSeed: key,
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
         }
       }
       this.buildingAnim.collect(this.tilesGroup)
+      this.lotLamps.collect(this.tilesGroup)
       this.gateHash = ''
     }
     this.syncGateBridges(game)
@@ -771,11 +788,12 @@ export class World {
       hangarTier?: SizeTier
       lateOpen?: boolean
       lot?: Lot
+      yardSeed?: string
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
-    const model = buildModel(tile, { hangarTier: opts.hangarTier, hotelClass: opts.hotelClass, parkTerm: opts.parkTerm })
+    const model = buildModel(tile, { hangarTier: opts.hangarTier, hotelClass: opts.hotelClass, parkTerm: opts.parkTerm, yardSeed: opts.yardSeed })
     if (model) {
       if (opts.lot) {
         // Real-world lot: scale the cell-sized model up and centre it on its lot,
@@ -2492,6 +2510,7 @@ export class World {
     this.syncSites(game)
     // Windows, wall-packs and lot lamps come up as the sky darkens.
     setNightLevel(1 - Math.min(1, Math.max(0, (daylightFactor(simClockToHour(game.clock)) - 0.12) / 0.5)))
+    this.lotLamps.update(this.pivot, getNightLevel())
     this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera, (key) => {
       const tile = game.yard.tileOf(key)
       if (tile === 'mro') return siteSignals(tile, [], game.mroDoorOpen(key) > 0 || game.hangarInUse(key))
@@ -2560,6 +2579,7 @@ export class World {
     disposeAircraftLibrary()
     disposeVehicleLibrary()
     this.offGfx()
+    this.offFx?.()
     this.wr.dispose()
     this.headlights.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)

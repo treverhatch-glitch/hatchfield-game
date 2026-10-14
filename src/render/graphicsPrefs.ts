@@ -115,3 +115,38 @@ export function graphicsNote(current: QualityLevel, auto: GraphicsReason): strin
       : `Saved on ${using}. A fresh visit on this device starts on ${start} (${auto.reason}).`
   return `${using}. ${detail} ${picked}`
 }
+
+// ---------- building surface detail (per-pixel material effects) ----------
+const FX_KEY = 'hatchfield-matfx'
+export type MaterialFxPref = 'auto' | 'on' | 'off'
+const fxListeners = new Set<(p: MaterialFxPref) => void>()
+
+/** Saved override for building weathering + reflections; 'auto' follows the preset (on for High). */
+export function materialFxPref(): MaterialFxPref {
+  try {
+    const v = globalThis.localStorage?.getItem(FX_KEY)
+    return v === 'on' || v === 'off' ? v : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
+export function chooseMaterialFx(p: MaterialFxPref): void {
+  try {
+    if (p === 'auto') globalThis.localStorage?.removeItem(FX_KEY)
+    else globalThis.localStorage?.setItem(FX_KEY, p)
+  } catch {
+    // Storage is unavailable in some private windows.
+  }
+  for (const fn of [...fxListeners]) fn(p)
+}
+
+export function subscribeMaterialFx(fn: (p: MaterialFxPref) => void): () => void {
+  fxListeners.add(fn)
+  return () => fxListeners.delete(fn)
+}
+
+/** Resolve the pref against a preset default. */
+export function materialFxOn(p: MaterialFxPref, presetDefault: boolean): boolean {
+  return p === 'auto' ? presetDefault : p === 'on'
+}

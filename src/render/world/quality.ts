@@ -57,6 +57,13 @@ export interface QualityPreset {
   contactShadows: boolean
   /** Filmic grade in the material shader. Off on Low: no extra fragment work. */
   colorGrade: boolean
+  /**
+   * Per-pixel building material effects: procedural weathering + env reflections.
+   * Round 4 put these on every kit material; in software GL they cost ~3x FPS.
+   */
+  materialFx: boolean
+  /** Real point lights from the nearest building-lot lamps at night (0 = off). */
+  lotLamps: number
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
@@ -88,6 +95,8 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     // One blended disc is a large fill on software GL. Medium and High draw it.
     contactShadows: false,
     colorGrade: false,
+    materialFx: false,
+    lotLamps: 0,
   },
   med: {
     level: 'med',
@@ -115,6 +124,8 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     lightBloom: true,
     contactShadows: true,
     colorGrade: true,
+    materialFx: false,
+    lotLamps: 3,
   },
   high: {
     level: 'high',
@@ -142,6 +153,8 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     lightBloom: true,
     contactShadows: true,
     colorGrade: true,
+    materialFx: true,
+    lotLamps: 6,
   },
 }
 
