@@ -1,0 +1,30 @@
+/** Cargo family: cargo shed with roll-up doors and loading docks. */
+import * as THREE from 'three'
+import { box, emblem, HALF, M, mat, pad, sign } from './kit'
+
+export function cargo(g: THREE.Group): void {
+  pad(g, HALF * 2, HALF * 2, M.asphalt())
+  const wall = mat('#7a6f63', { rough: 0.7 })
+  box(g, 8.2, 3.2, 5.6, wall, 0, 0.12, -1.4)
+  // Ribbed cladding.
+  for (let i = 0; i < 20; i++) box(g, 0.05, 3.2, 0.06, mat('#6a6258'), -4 + i * 0.42, 0.12, 1.4)
+  box(g, 8.4, 0.2, 5.8, M.darkSteel(), 0, 3.32, -1.4)
+  // Raised dock with bumpers, 4 roll-up doors with dock levellers.
+  box(g, 8.2, 0.9, 1.2, M.concrete(), 0, 0.12, 2.0)
+  for (let i = 0; i < 4; i++) {
+    const x = -3.0 + i * 2.0
+    box(g, 1.5, 1.8, 0.06, mat('#d7a43b', { metal: 0.4, rough: 0.45 }), x, 1.02, 1.45)
+    for (let k = 1; k < 7; k++) box(g, 1.5, 0.03, 0.08, mat('#9a7425'), x, 1.02 + k * 0.26, 1.45)
+    box(g, 0.2, 0.4, 0.2, M.black(), x - 0.85, 0.5, 2.62)
+    box(g, 0.2, 0.4, 0.2, M.black(), x + 0.85, 0.5, 2.62)
+    box(g, 1.7, 0.18, 0.06, M.glow('#ffd27a'), x, 2.95, 1.46)
+  }
+  // ULD containers + a trailer backed onto a dock.
+  for (let i = 0; i < 3; i++) box(g, 1.1, 1.1, 1.1, mat('#b8c0c8', { metal: 0.5, rough: 0.4 }), -3.4 + i * 1.2, 0.12, 3.6)
+  const trailer = box(g, 1.6, 1.9, 3.4, M.white(), 2.0, 0.6, 3.6)
+  trailer.name = 'trailer'
+  box(g, 1.7, 0.4, 3.4, M.darkSteel(), 2.0, 0.2, 3.6)
+  sign(g, 'CARGO', '#d7a43b', '#1d2126', 2.6, 0.55, 0, 3.75, 1.35)
+  emblem(g, 'box', '#8a5a1f', 2.6, 0, 3.53, -1.4, true)
+  emblem(g, 'box', '#8a5a1f', 0.9, 3.6, 2.4, 1.45)
+}
