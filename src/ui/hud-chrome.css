@@ -180,7 +180,10 @@
 
 .hud .build-menus button.on,
 .hud .dock .tools button.on,
-.hud .bottom-bar button.on {
+.hud .bottom-bar button.on,
+.hud .panel-body button.on,
+.hud .letter-actions button.on,
+.hud .inbound-card button.on {
   background: #38bdf8;
   color: #0f172a;
   border-color: #7dd3fc;
@@ -376,4 +379,51 @@
   background: rgb(15 23 42 / 0.9);
   border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 16px;
+}
+
+/* Letters and inbound cards use the same slate sheet as the side panel. */
+.hud .letter,
+.hud .inbound-card {
+  background: rgb(15 23 42 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.hud .letter.open,
+.hud .letter:focus-within,
+.hud .letter.tone-good {
+  border-color: rgb(125 211 252 / 0.55);
+}
+
+.hud .letter-kind,
+.hud .inbound-card header {
+  color: #7dd3fc;
+}
+
+.hud .letter-timer {
+  color: #ffe08a;
+  background: rgb(15 23 42 / 0.65);
+  border-radius: 999px;
+}
+
+.hud .letter-body p {
+  color: #cbd5e1;
+}
+
+/* Operational alerts sit under the status strip, to the right of the letter column. */
+.owner-chrome .alert-stack,
+.owner-chrome .alert-counter {
+  top: calc(var(--hud-top) + 8px) !important;
+  left: 312px !important;
+  background: rgb(15 23 42 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 12px;
+  color: #e2e8f0;
+}
+
+.owner-chrome .alert-stack button,
+.owner-chrome .alert-counter {
+  border-color: rgb(125 211 252 / 0.55);
+  color: #e2e8f0;
 }

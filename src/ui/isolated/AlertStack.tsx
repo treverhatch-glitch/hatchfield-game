@@ -23,16 +23,17 @@ export function AlertStackView({ game }: { game: Game }) {
     return (
       <button
         type="button"
+        className="alert-counter"
         data-testid="alert-counter"
         onClick={() => game.minimiseAlerts(false)}
         title="Show alerts"
         style={{
           pointerEvents: 'auto',
           position: 'absolute',
-          left: 8,
-          top: 44,
-          background: 'rgba(12, 22, 28, 0.92)',
-          color: '#e7eee9',
+          left: 312,
+          top: 'calc(var(--hud-top) + 8px)',
+          background: 'rgb(15 23 42 / 0.94)',
+          color: '#e2e8f0',
           border: `1px solid ${SEV_COLOR[worst]}`,
           borderRadius: 999,
           padding: '3px 10px',
@@ -46,18 +47,19 @@ export function AlertStackView({ game }: { game: Game }) {
   const shown = rows.slice(0, ALERT_TUNING.visible)
   return (
     <div
+      className="alert-stack"
       data-testid="alert-stack"
       style={{
         pointerEvents: 'auto',
         position: 'absolute',
-        left: 8,
-        top: 44,
+        left: 312,
+        top: 'calc(var(--hud-top) + 8px)',
         width: 250,
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
         font: '12px sans-serif',
-        color: '#e7eee9',
+        color: '#e2e8f0',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -80,9 +82,10 @@ export function AlertStackView({ game }: { game: Game }) {
           key={a.id}
           data-testid={`alert-${a.key}`}
           style={{
-            background: 'rgba(12, 22, 28, 0.92)',
+            background: 'rgb(15 23 42 / 0.94)',
+            border: '1px solid rgb(255 255 255 / 0.12)',
             borderLeft: `3px solid ${SEV_COLOR[a.severity]}`,
-            borderRadius: 6,
+            borderRadius: 12,
             padding: '5px 8px',
           }}
         >
@@ -136,9 +139,9 @@ export function AlertStackView({ game }: { game: Game }) {
 
 const btn: CSSProperties = {
   background: 'transparent',
-  color: '#e7eee9',
-  border: '1px solid #c9a27a',
-  borderRadius: 4,
+  color: '#e2e8f0',
+  border: '1px solid rgb(125 211 252 / 0.55)',
+  borderRadius: 999,
   padding: '1px 7px',
   font: '600 11px sans-serif',
   cursor: 'pointer',
@@ -146,7 +149,7 @@ const btn: CSSProperties = {
 
 const iconBtn: CSSProperties = {
   background: 'transparent',
-  color: '#e7eee9',
+  color: '#e2e8f0',
   border: 'none',
   font: '700 14px sans-serif',
   cursor: 'pointer',
