@@ -32,9 +32,11 @@ describe('Round F: lavatory and water trucks', () => {
     }
     expect(sim.getTurnaround(id)!.completedAt).not.toBeNull()
     const deplaned = find(ev, 'service_done', 'deplane')!
+    // Real turn charts: lav and potable water start at block-in, overlapping deplaning.
     for (const s of ['lav', 'water']) {
-      expect(find(ev, 'service_start', s)).toBeGreaterThanOrEqual(deplaned)
-      expect(find(ev, 'service_done', s)).toBeDefined()
+      expect(find(ev, 'service_start', s)).toBe(0)
+      expect(find(ev, 'service_start', s)).toBeLessThan(deplaned)
+      expect(find(ev, 'service_done', s)).toBeLessThanOrEqual(find(ev, 'service_start', 'door_close')!)
     }
     for (const type of ['lavatory_truck', 'water_truck']) {
       const seen = phases.get(type)!
@@ -43,6 +45,18 @@ describe('Round F: lavatory and water trucks', () => {
     }
     // trucks are back off the stand when the turn completes
     for (const p of sim.poses()) if (p.type === 'lavatory_truck' || p.type === 'water_truck') expect(p.phase).not.toBe('servicing')
+  })
+
+  it('overlaps real-life: catering during deplaning, cleaning only on an empty cabin, boarding after both', () => {
+    const { sim, ev } = setup({ lavatory_truck: 1, water_truck: 1 })
+    const id = sim.startTurnaround('stand-2', 'b738', 90)
+    for (let i = 0; i < 3000 && sim.getTurnaround(id)!.completedAt === null; i++) sim.tick(1)
+    const deplaned = find(ev, 'service_done', 'deplane')!
+    expect(find(ev, 'service_start', 'catering')).toBeLessThan(deplaned)
+    expect(find(ev, 'service_start', 'cleaning')).toBeGreaterThanOrEqual(deplaned)
+    const board = find(ev, 'service_start', 'boarding')!
+    expect(board).toBeGreaterThanOrEqual(find(ev, 'service_done', 'cleaning')!)
+    expect(board).toBeGreaterThanOrEqual(find(ev, 'service_done', 'catering')!)
   })
 
   it('crew list reports lav / water stops while docked', () => {

@@ -509,7 +509,7 @@ export class LogisticsSim {
     enable('catering', outbound && booked > 0)
     enable('cleaning', inbound && arriving > 0)
     enable('gpu', true)
-    // Round F: lav and water trucks dock while passengers are off. Opt-in: only a fleet that owns them gets the job.
+    // Round F: lav and water trucks dock from block-in, overlapping deplaning. Opt-in: only a fleet that owns them gets the job.
     if (inbound && arriving > 0 && needs.carriesPax) {
       if (this.fleetHas('lavatory_truck')) t.services.lav = 'blocked'
       if (this.fleetHas('water_truck')) t.services.water = 'blocked'
@@ -915,10 +915,16 @@ export class LogisticsSim {
         case 'fuel':
           if (t.fuelExternalHold) return false
           return flag || this.isDone(t, 'deplane')
-        case 'catering':
-        case 'cleaning':
+        // Real turn charts (Boeing ACAPS 5.2, Airbus AC 5-2-0): services overlap rather than queue.
+        // Lav and potable water work from external belly panels, so they start at block-in.
         case 'lav':
         case 'water':
+          return true
+        // Catering uses the service-side doors, so it starts once deplaning is under way at the passenger door.
+        case 'catering':
+          return t.services.deplane !== 'blocked'
+        // The cleaning crew needs an empty cabin.
+        case 'cleaning':
           return this.isDone(t, 'deplane')
         case 'boarding':
           return (
@@ -935,6 +941,9 @@ export class LogisticsSim {
             this.isDone(t, 'boarding') &&
             this.isDone(t, 'bag_load') &&
             this.isDone(t, 'cargo_load') &&
+            // Lav / water trucks must be off their panels before the doors close.
+            this.isDone(t, 'lav') &&
+            this.isDone(t, 'water') &&
             (this.isDone(t, 'fuel') || !flag || t.pax.booked === 0)
           )
         case 'pushback':
