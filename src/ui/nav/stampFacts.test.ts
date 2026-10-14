@@ -6,7 +6,13 @@ import { STAMP_HOVER_MS } from './taxonomy.ts'
 describe('stamp cards', () => {
   it('waits 400 ms before a hover card and names a field-level lock', () => {
     expect(STAMP_HOVER_MS).toBe(400)
-    const card = stampCard(toolStampInput('saf_blending', 1, 1, new Set()))
+    const locked = stampCard(toolStampInput('saf_blending', 1, 1, new Set()))
+    expect(locked.locked).toBe(true)
+    expect(locked.badge).toEqual({ kind: 'research', label: 'SAF blend', nodeId: 'spec-green-1' })
+    expect(locked.sentence).toContain('Requires research: SAF blend (Specialisations T1).')
+    expect(locked.sentence).toContain('Field level 8')
+    expect(locked.link?.tab).toBe('research')
+    const card = stampCard(toolStampInput('saf_blending', 1, 1, new Set(), new Set(['spec-green-1'])))
     expect(card.locked).toBe(true)
     expect(card.badge).toEqual({ kind: 'field', label: 'Field level 8' })
     expect(card.sentence).toBe('Unlocks at Field level 8.')
@@ -17,29 +23,29 @@ describe('stamp cards', () => {
 
   it('wears the research node badge, including its name, even before the field level', () => {
     const early = stampCard(toolStampInput('stand_w', 1, 1, new Set()))
-    expect(early.badge).toEqual({ kind: 'research', label: 'Widebody ops', nodeId: 'widebody_ops' })
+    expect(early.badge).toEqual({ kind: 'research', label: 'Large stands', nodeId: 'airfield-3' })
+    expect(early.sentence).toContain('Requires research: Large stands (Airfield T3).')
     expect(early.sentence).toContain('Requires research: Widebody ops.')
     expect(early.sentence).toContain('Field level 4')
     expect(early.link).toEqual({
       tab: 'research',
-      anchor: 'research-node-widebody_ops',
-      label: 'Widebody ops',
+      anchor: 'research-node-airfield-3',
+      label: 'Large stands',
     })
 
-    const levelOnly = stampCard(toolStampInput('stand_w', 1, 1, new Set(['widebody_ops'])))
+    const levelOnly = stampCard(
+      toolStampInput('stand_w', 1, 1, new Set(['widebody_ops']), new Set(['airfield-3'])),
+    )
     expect(levelOnly.badge).toEqual({ kind: 'field', label: 'Field level 4' })
     expect(levelOnly.sentence).toBe('Unlocks at Field level 4.')
 
-    const ready = stampCard(toolStampInput('stand_w', 4, 4, new Set()))
-    expect(ready.locked).toBe(true)
-    expect(ready.sentence).toBe('Requires research: Widebody ops.')
-    expect(ready.link).toEqual({
-      tab: 'research',
-      anchor: 'research-node-widebody_ops',
-      label: 'Widebody ops',
-    })
+    const deskOnly = stampCard(toolStampInput('stand_w', 4, 4, new Set(), new Set(['airfield-3'])))
+    expect(deskOnly.badge).toEqual({ kind: 'research', label: 'Widebody ops', nodeId: 'widebody_ops' })
+    expect(deskOnly.sentence).toBe('Requires research: Widebody ops.')
 
-    const owned = stampCard(toolStampInput('stand_w', 4, 4, new Set(['widebody_ops'])))
+    const owned = stampCard(
+      toolStampInput('stand_w', 4, 4, new Set(['widebody_ops']), new Set(['airfield-3'])),
+    )
     expect(owned.locked).toBe(false)
     expect(owned.link).toBeNull()
   })
@@ -51,9 +57,11 @@ describe('stamp cards', () => {
     expect(runway.upkeep).toBe('None')
     const night = stampCard(toolStampInput('nighthub', 4, 4, new Set()))
     expect(night.noise).toBe('The city bills it')
-    const hotel = stampCard(toolStampInput('airport_hotel', 7, 7, new Set()))
+    const hotel = stampCard(toolStampInput('airport_hotel', 7, 7, new Set(), new Set(['landside-6'])))
     expect(hotel.capacity).toBe('120 rooms')
     expect(hotel.locked).toBe(false)
+    const hotelLocked = stampCard(toolStampInput('airport_hotel', 7, 7, new Set()))
+    expect(hotelLocked.badge).toEqual({ kind: 'research', label: 'Airport hotel', nodeId: 'landside-6' })
   })
 })
 

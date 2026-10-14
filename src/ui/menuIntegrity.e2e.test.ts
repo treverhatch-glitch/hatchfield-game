@@ -57,7 +57,8 @@ describe('every menu opens, has content, and closes', () => {
           expect(await tray.locator('button').count()).toBeGreaterThan(0)
           if (menu.id === 'airside') {
             await page.getByTestId('tray-fuel').waitFor({ state: 'visible' })
-            await page.getByTestId('lock-badge-saf_blending').waitFor({ state: 'visible' })
+            await page.getByTestId('research-badge-spec-green-1').waitFor({ state: 'visible' })
+            expect(await page.getByTestId('lock-badge-saf_blending').count()).toBe(0)
             expect(await page.getByTestId('tray-snack').count()).toBe(0)
             expect(await page.getByTestId('tray-belt').count()).toBe(0)
             expect(await page.getByTestId('tray-guard').count()).toBe(0)

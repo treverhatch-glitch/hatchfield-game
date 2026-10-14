@@ -63,7 +63,7 @@ A card with no countdown is marked Note. Line maintenance is spelled out.
 
 ## Build bar
 
-Bottom toolbar, then a named sub-tab row, then a thumbnail grid. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. Locked stamps stay in their sub-tab, greyed. A field-level lock wears a padlock. A stamp that needs a research node wears that node's name as its badge, and the hover card repeats the name. The card (about 400 ms) also shows price, upkeep, capacity, and noise. Open jumps to that research node, or to Field Levels when the only gate is the level. The bag belt and the guard post appear once.
+Bottom toolbar, then a named sub-tab row, then a thumbnail grid. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. Locked stamps stay in their sub-tab, greyed. A field-level lock wears a padlock. A stamp that needs a research-tree node wears that node's name as its badge, and the hover card repeats the name. Open jumps to that node on the Research tree. When the tree node is already owned and an older desk unlock is still missing, the badge names that desk node instead. A padlock remains only when the field level is the only gate. The card (about 400 ms) also shows price, upkeep, capacity, and noise. The bag belt and the guard post appear once.
 
 | Category | Sub-tabs |
 | --- | --- |
@@ -83,7 +83,7 @@ Five menus, one submenu each. The second click on an open sub-tab closes the pan
 - **Airlines** — Roster, Letters, Hubs, Rival, Negotiation.
 - **Operations** — Planner, Stands, Services, Premium.
 - **People** — Staff, Commute, Morale, Thoughts. Thoughts lists the passenger icons currently on the field.
-- **Growth** — Research tree (the desk, lab rooms, and the passenger / cargo / efficiency / prestige branches), Field Levels, Specializations, Achievements. Achievements also lists yearly awards.
+- **Growth** — Research tree (the category tree, then the desk, lab rooms, and the passenger / cargo / efficiency / prestige branches), Field Levels, Specializations, Achievements. Achievements also lists yearly awards.
 
 ## Offers, letters, and goals
 
@@ -140,5 +140,4 @@ Move and Bulldoze sit beside the tabs. A hover tooltip names the item, the price
 
 ## Next
 
-- **Research-tree node UI.** The Research tree tab is still the desk list. The follow-up is the node graph: cost badges, prerequisite lines, locked / available / owned, and a Research button on a detail card.
-- **Building info panel.** Clicking a placed building should open a docked panel on the left (upkeep, efficiency, staff, a capacity bar, KPIs) with an upgrades tray at the bottom. That panel is not built yet.
+- **Building info panel.** Clicking a placed building should open a docked panel on the left (upkeep, efficiency, staff, a capacity bar, KPIs) with an upgrades tray at the bottom. That panel is not built yet. The research tree itself is the Growth → Research tree tab: category lanes, cost badges, locked / available / owned, and an Unlock button.

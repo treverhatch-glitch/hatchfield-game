@@ -18,16 +18,18 @@ describe('BuildTray lock badges', () => {
     const stands = renderToStaticMarkup(
       <BuildTray game={game} menu={groupMenu('airfield', 'stands')} onOpen={() => {}} />,
     )
-    expect(stands).toContain('data-testid="research-badge-widebody_ops"')
-    expect(stands).toContain('Widebody ops')
-    expect(stands).toContain('data-testid="research-badge-heavy_pack"')
-    expect(stands).toContain('Heavy metal pack')
+    expect(stands).toContain('data-testid="research-badge-airfield-3"')
+    expect(stands).toContain('Large stands')
+    expect(stands).not.toContain('research-badge-widebody_ops')
 
     const fuel = renderToStaticMarkup(
       <BuildTray game={game} menu={groupMenu('airside', 'fuel')} onOpen={() => {}} />,
     )
-    expect(fuel).toContain('data-testid="lock-badge-saf_blending"')
-    expect(fuel).not.toContain('research-badge-saf_blending')
+    expect(fuel).toContain('data-testid="research-badge-spec-green-1"')
+    expect(fuel).toContain('SAF blend')
+    expect(fuel).not.toContain('lock-badge-saf_blending')
+    expect(fuel).toContain('data-testid="research-badge-airside-6"')
+    expect(fuel).toContain('Night bank')
     expect(fuel).toContain('data-testid="research-badge-rail_fuel"')
     expect(fuel).toContain('Fuel rail')
   })

@@ -185,6 +185,7 @@ function NodeButton({
     <button
       type="button"
       className={`rtree-node is-${status}${selected ? ' is-selected' : ''}`}
+      id={`research-node-${node.id}`}
       data-testid={`research-node-${node.id}`}
       data-state={status}
       onClick={() => onSelect(node.id)}

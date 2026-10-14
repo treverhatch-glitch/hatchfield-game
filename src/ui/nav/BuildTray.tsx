@@ -160,6 +160,7 @@ export function BuildTray({
   const group = menu.groups.find((row) => row.id === groupId) ?? menu.groups[0]
   if (!group) return null
   const owned = new Set(game.researchUnlocked)
+  const treeOwned = new Set(game.researchTree.state.unlocked)
   return (
     <div className="build-sheet">
       <div className="build-subtabs" data-testid="build-subtabs" role="tablist">
@@ -179,13 +180,13 @@ export function BuildTray({
       </div>
       <div className="tools build-tray" data-testid="build-tray">
         {group.tools.map((tool) => (
-          <ToolStamp key={tool} game={game} tool={tool} owned={owned} onOpen={onOpen} />
+          <ToolStamp key={tool} game={game} tool={tool} owned={owned} treeOwned={treeOwned} onOpen={onOpen} />
         ))}
         {(group.furnish ?? []).map((entry) => (
           <FurnishStamp key={entry.id} game={game} entry={entry} />
         ))}
         {PROGRESSION_BUILDABLES.filter((row) => group.progression.includes(row.id)).map((row) => (
-          <ProgressStamp key={row.id} game={game} id={row.id} owned={owned} onOpen={onOpen} />
+          <ProgressStamp key={row.id} game={game} id={row.id} owned={owned} treeOwned={treeOwned} onOpen={onOpen} />
         ))}
       </div>
     </div>
@@ -196,15 +197,17 @@ function ToolStamp({
   game,
   tool,
   owned,
+  treeOwned,
   onOpen,
 }: {
   game: Game
   tool: Tool
   owned: Set<string>
+  treeOwned: Set<string>
   onOpen: (link: UnlockLink) => void
 }) {
   const lateId = lateIdForTool(tool)
-  const input = toolStampInput(tool, game.fieldLevel(), game.lateFieldLevel(), owned)
+  const input = toolStampInput(tool, game.fieldLevel(), game.lateFieldLevel(), owned, treeOwned)
   if (lateId) {
     const spec = buildingById(lateId)
     input.name = lateStampLabel(lateId)
@@ -268,17 +271,19 @@ function ProgressStamp({
   game,
   id,
   owned,
+  treeOwned,
   onOpen,
 }: {
   game: Game
   id: string
   owned: Set<string>
+  treeOwned: Set<string>
   onOpen: (link: UnlockLink) => void
 }) {
   const row = PROGRESSION_BUILDABLES.find((item) => item.id === id)
   if (!row) return null
   const cost = capstoneCost(row.cost, game.specPaths, row.id)
-  const input = toolStampInput(id, game.fieldLevel(), game.lateFieldLevel(), owned)
+  const input = toolStampInput(id, game.fieldLevel(), game.lateFieldLevel(), owned, treeOwned)
   input.name = row.name
   input.blurb = row.blurb
   input.cost = cost
