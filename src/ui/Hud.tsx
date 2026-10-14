@@ -1,5 +1,6 @@
-import { memo, useEffect, useState } from 'react'
-import { projectCash } from './cashForecast'
+import { memo, useEffect, useRef, useState } from 'react'
+import { moneySummaryLine, projectCash } from './cashForecast'
+import { useHudBandVar } from './hudBand'
 import { LiveText } from './LiveText'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
@@ -255,6 +256,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   // One panel at a time: an open hint list folds the HUD rollout away.
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
+  const [hoverLetter, setHoverLetter] = useState<string | null>(null)
+  // A letter being read (open or hovered) holds its countdown in the sim.
+  useEffect(() => {
+    game.holdLetters([openLetter, hoverLetter].filter((id): id is string => id != null))
+  }, [game, openLetter, hoverLetter])
+  useEffect(() => () => game.holdLetters([]), [game])
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
   const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
@@ -295,6 +302,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
   const rival = game.rivalPanel()
+  const topBar = useRef<HTMLElement>(null)
+  useHudBandVar(topBar, '--hud-bar-bottom', 'bottom')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -367,7 +376,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           onClose={() => setFeesOpen(false)}
         />
       ) : null}
-      <header className="top" data-testid="stats-bar">
+      <header className="top" data-testid="stats-bar" ref={topBar}>
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
           <span>
@@ -517,30 +526,42 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             </button>
           </div>
           <ol>
-            {game.coachSteps().map((s) => (
-              <li key={s.id} data-done={s.done ? '1' : '0'}>
-                <span className="mark">{s.done ? '✓' : '·'}</span>
-                {s.label}
-              </li>
-            ))}
+            {game.coachSteps().map((s) =>
+              s.id === 'field' && game.showStarterKit() ? (
+                // First step points straight at the kit: one click stamps it, so a
+                // new player doesn't spend the opening budget on a lone runway.
+                <li key={s.id} data-done="0" className="coach-kit-step">
+                  <span className="mark">→</span>
+                  <span>
+                    <button
+                      type="button"
+                      className="coach-kit"
+                      data-testid="starter-kit-coach"
+                      title="Runway, stand, hall, check-in, security and gate in one stamp"
+                      onClick={() => game.buildStarterKit()}
+                    >
+                      Stamp Starter kit · {money(STARTER_KIT_COST)}
+                    </button>
+                    {game.starterFreehand ? null : (
+                      <button
+                        type="button"
+                        className="coach-freehand"
+                        data-testid="build-freehand"
+                        onClick={() => game.chooseFreehand()}
+                      >
+                        or build freehand
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ) : (
+                <li key={s.id} data-done={s.done ? '1' : '0'}>
+                  <span className="mark">{s.done ? '✓' : '·'}</span>
+                  {s.label}
+                </li>
+              ),
+            )}
           </ol>
-          {game.showStarterKit() ? (
-            <div className="row">
-              <button
-                type="button"
-                className="on"
-                data-testid="starter-kit-coach"
-                onClick={() => game.buildStarterKit()}
-              >
-                Stamp starter kit · {money(STARTER_KIT_COST)}
-              </button>
-              {game.starterFreehand ? null : (
-                <button type="button" data-testid="build-freehand" onClick={() => game.chooseFreehand()}>
-                  Build freehand
-                </button>
-              )}
-            </div>
-          ) : null}
           <p className="muted">
             Field {game.fieldRating()} · {game.fieldRatingLabel()} — Standing, hall, and security
             all count.
@@ -549,7 +570,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       ) : null}
 
       {game.inboundOffer() ? (
-        <aside className="inbound-panel" data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
+        <aside
+          className={`inbound-panel${game.showCoach() ? ' beside-coach' : ''}`}
+          data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
           {(() => {
             const card = game.inboundOffer()
             if (!card) return null
@@ -792,6 +815,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               <article
                 key={letter.id}
                 className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
+                onMouseEnter={() => setHoverLetter(letter.id)}
+                onMouseLeave={() => setHoverLetter((cur) => (cur === letter.id ? null : cur))}
                 data-testid={
                   letter.id === 'field'
                     ? 'field-task'
@@ -833,16 +858,24 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           </li>
                         ))}
                       </ul>
+                      <p className="muted letter-hint" data-testid="contract-hint">
+                        Accept: start flights now · Negotiate: haggle fees
+                      </p>
                     </>
                   ) : null}
                   <div className="row letter-actions">
                     {letter.id === 'contract' ? (
                       <>
-                        <button type="button" className="on" onClick={() => game.openNegotiationPanel()}>
-                          Negotiate
-                        </button>
-                        <button type="button" onClick={() => game.acceptNegotiation()}>
+                        <button
+                          type="button"
+                          className="on"
+                          data-testid="contract-accept"
+                          onClick={() => game.acceptNegotiation()}
+                        >
                           Accept
+                        </button>
+                        <button type="button" onClick={() => game.openNegotiationPanel()}>
+                          Negotiate
                         </button>
                         <button type="button" onClick={() => game.walkNegotiation()}>
                           Walk
@@ -1056,6 +1089,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             <div className="panel-body">
               {panel === 'economy' ? (
                 <>
+                  <p
+                    className={`money-summary ${forecast.dailyNet >= 0 ? 'up' : 'down'}`}
+                    data-testid="money-summary"
+                  >
+                    {moneySummaryLine(forecast, money)}
+                  </p>
                   <div className="eco-tabs" role="tablist">
                     {ECO_TABS.map((tab) => (
                       <button
@@ -1376,6 +1415,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
                   <h3>Ops budgets</h3>
+                  <p
+                    className={`money-summary ${forecast.dailyNet >= 0 ? 'up' : 'down'}`}
+                    data-testid="budget-money-summary"
+                  >
+                    {moneySummaryLine(forecast, money)}
+                  </p>
                   <p
                     className="muted"
                     data-testid="budget-payroll"
@@ -2207,7 +2252,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <>
                       <button
                         type="button"
-                        className="on"
+                        className={`on${game.showCoach() ? ' dock-kit-target' : ''}`}
                         data-testid="starter-kit-dock"
                         title="First stamp. A lone runway spends this budget and the kit then reads short."
                         onClick={() => game.buildStarterKit()}

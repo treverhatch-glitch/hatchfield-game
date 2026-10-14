@@ -39,8 +39,10 @@ import {
   DIVERT_FEE_MAX,
   DIVERT_FEE_MIN,
   EMERGENCY_REFUSE_FINE,
+  CONTRACT_LETTER_DEADLINE,
   FIELD_TASK_COOL,
   FIELD_TASK_DEADLINE,
+  FIRST_CONTRACT_LETTER_DEADLINE,
   FIELD_TASK_DEFS,
   FIELD_TASK_FAIL_FINE,
   FIELD_TASK_HEAT_FAIL,
@@ -928,6 +930,8 @@ export class Game {
   signed: AirlineId[] = []
   offer: ContractOffer | null = null
   offerCool = 12
+  /** Letter ids open or hovered in the HUD; their countdowns pause. UI state, not saved. */
+  private heldLetters = new Set<string>()
   mxOffer: MxOffer | null = null
   mxOfferCool = 30
   mxSigned: AirlineId[] = []
@@ -1845,6 +1849,8 @@ export class Game {
     }
     const t = this.fieldTask
     t.age += dt
+    // Clock-based deadline: push it out while the player is reading the letter.
+    if (this.letterHeld('field')) t.deadline += dt
     if (this.fieldTaskMet(t.kind)) {
       const a = this.airline(t.airline)
       this.cash += t.bonus
@@ -1874,6 +1880,15 @@ export class Game {
       this.fieldTaskCool = FIELD_TASK_COOL + 12
       this.emit()
     }
+  }
+
+  /** Set the letters the player is reading (open or hovered); their countdowns hold. */
+  holdLetters(ids: Iterable<string>) {
+    this.heldLetters = new Set(ids)
+  }
+
+  letterHeld(id: string): boolean {
+    return this.heldLetters.has(id)
   }
 
   /** Seconds left on the active field ask, if any. */
@@ -11026,7 +11041,10 @@ export class Game {
           ? pick(procs)
           : candidates[0]
     const negotiated = this.negotiationDesk().present(pickA)
-    this.offer = { airline: negotiated, age: 0, deadline: 36 }
+    const deadline = this.signed.length
+      ? CONTRACT_LETTER_DEADLINE
+      : FIRST_CONTRACT_LETTER_DEADLINE
+    this.offer = { airline: negotiated, age: 0, deadline }
     const shown = this.airline(negotiated)
     const tag = shown.procedural && !ULCC_IDS.includes(shown.id) ? ' (regional)' : ''
     this.pushNews(
@@ -12025,7 +12043,7 @@ export class Game {
     this.layoverOfferCool = Math.max(0, this.layoverOfferCool - dt)
     if (this.layoverOffer) {
       this.layoverOffer.age += dt
-      this.layoverOffer.deadline -= dt
+      if (!this.letterHeld('layover')) this.layoverOffer.deadline -= dt
       if (this.layoverOffer.deadline <= 0) {
         this.expireLayover()
         return
@@ -12209,7 +12227,7 @@ export class Game {
 
     if (this.parkingOffer) {
       this.parkingOffer.age += dt
-      this.parkingOffer.deadline -= dt
+      if (!this.letterHeld('parking')) this.parkingOffer.deadline -= dt
       if (this.parkingOffer.deadline <= 0) {
         this.pushNews(`${this.parkingOffer.callsign} took parking elsewhere.`, 'ok')
         this.parkingOffer = null
@@ -17565,7 +17583,7 @@ export class Game {
     for (const n of this.news) n.age += step
     if (this.offer) {
       this.offer.age += step
-      this.offer.deadline -= step
+      if (!this.letterHeld('contract')) this.offer.deadline -= step
       if (this.offer.deadline <= 0) this.expireOffer()
     }
 
@@ -17621,7 +17639,7 @@ export class Game {
     this.mxOfferCool = Math.max(0, this.mxOfferCool - step)
     if (this.mxOffer) {
       this.mxOffer.age += step
-      this.mxOffer.deadline -= step
+      if (!this.letterHeld('mx')) this.mxOffer.deadline -= step
       if (this.mxOffer.deadline <= 0) this.expireMxOffer()
     }
     this.considerMxOffers()

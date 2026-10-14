@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Game } from '../../game/sim.ts'
+import { useHudBandVar } from '../hudBand.ts'
 import { LiveText } from '../LiveText.tsx'
 import { AlertStackView } from './AlertStack.tsx'
 import { HintPanel } from './HintPanel.tsx'
@@ -16,6 +17,9 @@ export function OwnerChrome({ game }: { game: Game }) {
       off()
     }
   }, [game])
+  const strip = useRef<HTMLDivElement>(null)
+  // 4px above the strip and 4px below it before the panels hang underneath.
+  useHudBandVar(strip, '--hud-strip-h', 'height', 8)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -39,68 +43,98 @@ export function OwnerChrome({ game }: { game: Game }) {
       data-testid="owner-chrome"
       style={{ position: 'absolute', inset: 0, zIndex: 40, pointerEvents: 'none' }}
     >
-      <label
-        data-testid="flow-toggle"
-        style={{
-          pointerEvents: 'auto',
-          position: 'absolute',
-          top: 8,
-          right: 8,
-          display: 'flex',
-          gap: 8,
-          alignItems: 'center',
-          background: 'rgba(12, 22, 28, 0.82)',
-          color: '#e7eee9',
-          font: '600 12px sans-serif',
-          padding: '6px 8px',
-          borderRadius: 6,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={game.showFlows}
-          onChange={() => game.toggleFlows()}
-        />
-        Show passenger flows
-        <span style={{ opacity: 0.7 }}>F</span>
-      </label>
+      {/* Own row under the top bar: ground stock · info-view chips · flow toggle. */}
       <div
-        data-testid="info-hotspots"
+        ref={strip}
+        data-testid="info-strip"
         style={{
-          pointerEvents: 'auto',
           position: 'absolute',
-          top: 40,
-          left: '50%',
-          transform: 'translateX(-50%)',
+          top: 'calc(var(--hud-bar-bottom) + 4px)',
+          left: 16,
+          right: 16,
           display: 'flex',
-          gap: 6,
+          alignItems: 'center',
+          gap: 8,
         }}
       >
-        {game.infoHotspots().map((spot) => (
-          <button
-            key={spot.id}
-            type="button"
-            data-testid={`info-hotspot-${spot.id}`}
-            onClick={() => game.toggleInfo(spot.id)}
+        <div style={{ flex: '1 1 0', display: 'flex', minWidth: 0 }}>
+          {ground && (
+            <div
+              data-testid="ground-stock"
+              style={{
+                background: 'rgba(12, 22, 28, 0.82)',
+                color: '#e7eee9',
+                font: '600 12px sans-serif',
+                padding: '6px 8px',
+                borderRadius: 6,
+              }}
+            >
+              <LiveText read={() => groundLine(game)} />
+            </div>
+          )}
+        </div>
+        <div
+          data-testid="info-hotspots"
+          style={{
+            pointerEvents: 'auto',
+            flex: '0 1 auto',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: 6,
+          }}
+        >
+          {game.infoHotspots().map((spot) => (
+            <button
+              key={spot.id}
+              type="button"
+              data-testid={`info-hotspot-${spot.id}`}
+              onClick={() => game.toggleInfo(spot.id)}
+              style={{
+                background: game.infoOpen === spot.id ? '#f0c14a' : 'rgba(12, 22, 28, 0.88)',
+                color: game.infoOpen === spot.id ? '#1a2a32' : '#e7eee9',
+                border: '1px solid #c9a27a',
+                borderRadius: 999,
+                padding: '4px 10px',
+                font: '700 12px sans-serif',
+              }}
+            >
+              {spot.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ flex: '1 1 0', display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
+          <label
+            data-testid="flow-toggle"
             style={{
-              background: game.infoOpen === spot.id ? '#f0c14a' : 'rgba(12, 22, 28, 0.88)',
-              color: game.infoOpen === spot.id ? '#1a2a32' : '#e7eee9',
-              border: '1px solid #c9a27a',
-              borderRadius: 999,
-              padding: '4px 10px',
-              font: '700 12px sans-serif',
+              pointerEvents: 'auto',
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              whiteSpace: 'nowrap',
+              background: 'rgba(12, 22, 28, 0.82)',
+              color: '#e7eee9',
+              font: '600 12px sans-serif',
+              padding: '6px 8px',
+              borderRadius: 6,
             }}
           >
-            {spot.label}
-          </button>
-        ))}
+            <input
+              type="checkbox"
+              checked={game.showFlows}
+              onChange={() => game.toggleFlows()}
+            />
+            Show passenger flows
+            <span style={{ opacity: 0.7 }}>F</span>
+          </label>
+        </div>
       </div>
       {game.infoOpen ? (
         <div
           data-testid="info-panel"
           style={{
             position: 'absolute',
-            top: 76,
+            top: 'calc(var(--hud-top) + 4px)',
             left: '50%',
             transform: 'translateX(-50%)',
             background: 'rgba(12, 22, 28, 0.94)',
@@ -136,23 +170,6 @@ export function OwnerChrome({ game }: { game: Game }) {
           ) : null}
         </div>
       ) : null}
-      {ground && (
-        <div
-          data-testid="ground-stock"
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: 8,
-            background: 'rgba(12, 22, 28, 0.82)',
-            color: '#e7eee9',
-            font: '600 12px sans-serif',
-            padding: '6px 8px',
-            borderRadius: 6,
-          }}
-        >
-          <LiveText read={() => groundLine(game)} />
-        </div>
-      )}
       <HintPanel game={game} />
       <AlertStackView game={game} />
       {(game.diplomacyLetters().length > 0 || game.diplomacyRoster().length > 0) && (
