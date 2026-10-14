@@ -182,9 +182,11 @@ Not covered: agent-to-agent avoidance, so walkers and queuing passengers can ove
 | Night light pools | no | yes | yes |
 | Walkers / terminal cell | 0.6 | 1 | 2 |
 
-`suggestQuality` picks `low` for SwiftShader, llvmpipe, and other software GL, or for very small devices. It picks `high` for 8 GB / 8-core machines and `med` otherwise.
+**Ultra** (issue 232) is a fourth level: High plus a 4096 shadow map (radius 5, reach 0.8), 1024² ground textures, 16× anisotropy, LOD scale 1.8, 6000 grass tufts, 900 trees, 3000 precipitation streaks, and its own pixel-ratio cap of 2 (the other levels keep the 1.25 clamp in `World`). Art and LOD ladders keyed on three levels (aircraft, sky, season, terminal pack textures) use `baseLevel('ultra') === 'high'`. Pack 1/4 terminal textures therefore load at High's anisotropy; raising that needs a change in `render/materials/`.
 
-**Toggle:** press **F8** on the apron to cycle low → med → high. `World.setGraphicsQuality(level)` switches the world layer and the aircraft LOD together and saves the choice to `hatchfield-gfx`. MSAA is fixed when the WebGL context is created, so that part follows on the next load. A settings control can call the same method.
+`suggestQuality` picks `low` for SwiftShader, llvmpipe, and other software GL, or for very small devices. It picks `ultra` for 8 GB / 8-core machines whose GPU name looks like a desktop card (NVIDIA / GeForce / RTX / GTX / Radeon RX / Radeon Pro / Arc), `high` for other 8 GB / 8-core machines, and `med` otherwise.
+
+**Toggle:** press **F8** on the apron to cycle low → med → high → ultra. `World.setGraphicsQuality(level)` switches the world layer and the aircraft LOD together and saves the choice to `hatchfield-gfx`. MSAA is fixed when the WebGL context is created, so that part follows on the next load. A settings control can call the same method.
 
 ## Look tunables (issue 193)
 
