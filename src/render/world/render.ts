@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { grassColor, nightLighting, paintSky } from '../../environment/index.ts'
+import { GROUND_LOOK } from '../look'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
 import { lerpHex, simClockToHour, skyState, type SkyState } from './daylight'
@@ -62,6 +63,8 @@ export interface WorldRenderStats {
 
 /** Tiles this layer redraws; the legacy World should skip (or hide) its own meshes for these. */
 export const REPLACED_TILES = new Set(['grass', 'runway', 'taxi', 'stand', 'road', 'terminal'])
+
+const WHITE = new THREE.Color(1, 1, 1)
 
 const SURFACE_Y: Record<SurfaceKind, number> = { grass: 0.004, pad: 0.008, runway: 0.012, taxi: 0.012, apron: 0.012, road: 0.012 }
 
@@ -368,7 +371,7 @@ export class WorldRenderer {
     this.fog.color.setHex(s.fogColor)
     this.fog.near = s.fogNear
     this.fog.far = s.fogFar
-    this.sky.set(s.skyTop, s.skyHorizon, s.stars)
+    this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
     this.sky.follow(camPos)
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure
@@ -393,7 +396,11 @@ export class WorldRenderer {
       if (k === 'grass') {
         if (grassHex == null) m.color.setScalar(s.wet > 0 ? 1 - s.wet * 0.22 : 1)
         else {
+          // Season tint shifts the hue only: normalised so med/high grass is as bright as low,
+          // then eased toward white so a saturated palette does not turn the field lime.
           m.color.setHex(grassHex)
+          m.color.multiplyScalar(1 / Math.max(1e-3, m.color.r, m.color.g, m.color.b))
+          m.color.lerp(WHITE, 1 - GROUND_LOOK.seasonTint)
           if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.22)
         }
       } else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
@@ -421,7 +428,7 @@ export class WorldRenderer {
     if (!grass) return
     const ground = draw?.terrain?.ground
     if (ground == null) {
-      grass.color.setHex(0xffffff)
+      // Colour already holds the season tint and wetness from `update`; only clear the terrain glow.
       grass.emissive.setHex(0x000000)
     } else {
       grass.color.setHex(ground)
@@ -600,19 +607,8 @@ export class WorldRenderer {
 
   private applyPack() {
     if (!this.q.extraTextures || !packTexture('grass')) return
-    const set = (kind: SurfaceKind, name: string) => {
-      const tex = packTexture(name)
-      const mat = this.surfaceMats.get(kind)
-      if (!tex || !mat) return
-      mat.map = tex
-      mat.needsUpdate = true
-    }
-    set('grass', 'grass')
-    set('runway', 'runway')
-    set('taxi', 'tarmac')
-    set('apron', 'concrete_apron')
-    set('road', 'tarmac')
-    set('pad', 'concrete_apron')
+    // Ground keeps the procedural maps on every preset: the pack's ground SVGs are a flat
+    // fill with dots and read as plastic next to them.
     const floor = packTexture('terrazzo')
     const glass = packTexture('terminal_glass')
     for (const b of this.buildings) b.applyPackMaps(floor, glass)

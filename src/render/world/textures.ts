@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { GROUND_LOOK } from '../look'
 import {
   paintAsphalt,
   paintBoard,
@@ -42,8 +43,8 @@ export function makeTextures(size: number, anisotropy: number): WorldTextures {
   const a = { anisotropy }
   const t: Omit<WorldTextures, 'dispose'> = {
     grass: rasterTexture(paintGrass(size), a),
-    asphalt: rasterTexture(paintAsphalt(size, 2, 0x45484e), a),
-    runway: rasterTexture(paintAsphalt(size, 8, 0x34373c), a),
+    asphalt: rasterTexture(paintAsphalt(size, 2, GROUND_LOOK.taxiAsphalt), a),
+    runway: rasterTexture(paintAsphalt(size, 8, GROUND_LOOK.runwayAsphalt), a),
     concrete: rasterTexture(paintConcrete(size), a),
     terrazzo: rasterTexture(paintTerrazzo(Math.min(size, 256)), a),
     roof: rasterTexture(paintRoof(Math.min(size, 256)), a),
