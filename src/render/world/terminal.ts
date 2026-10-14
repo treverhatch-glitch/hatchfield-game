@@ -182,6 +182,7 @@ export class TerminalBuilding {
     this.center = new THREE.Vector3(c.x, 2, c.z)
     this.radius = clusterRadius(info.cluster)
     this.root.name = `terminal-${opts.index}`
+    this.shell.name = 'terminal-shell'
     this.roof.name = 'terminal-roof-group'
     this.root.add(this.shell, this.roof, this.props, this.life)
 
