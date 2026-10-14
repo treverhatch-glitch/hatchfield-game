@@ -35,7 +35,7 @@ Trunk reached `main` after that note. The first sync commit above `9a65d96` is `
 
 ## Recheck after main moved
 
-`main` kept moving while this note was written. The presence check was repeated on `816456ecd004fa335dd6b7eb491f4b3cf1231ee6` and again on `3b7deb86cc10d22d304ef78e8266322d3c84edba` (landside curb traffic, phone and board labels, HUD grouping, turnaround placards and a far vehicle LOD, on top of the art and service commits through `816456e`). `50ce0c1` and `f05693b` are still ancestors. `src/ramp/paxFlow.ts` and `public/textures/sky/sky_noon.jpg` are still in the tree. The verdict below does not change.
+Presence was checked again after each rebase onto `main`. The latest base at the last edit of this section is `7776b7a4cf62f67720052b8ac0b97b53016821c6` (research tree and Growth menu, fleet placards, on top of `3b7deb8` landside curb traffic and `816456e` art wiring). `50ce0c1` and `f05693b` are still ancestors of that tip. `src/ramp/paxFlow.ts` and `public/textures/sky/sky_noon.jpg` are still in the tree. The verdict below does not change.
 
 ## Verdict
 
