@@ -51,6 +51,7 @@ import {
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
+import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
 import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
 import { WORLD_PER_METER } from './aircraft/specs'
@@ -71,7 +72,7 @@ import { PACK1_REPEAT_M, tileByPosition } from './materials/pack1'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
 import type { RoomPlan } from './world/rooms'
 import { makeTextures, type WorldTextures } from './world/textures'
-import { hallQueues } from '../terminalplay/queues'
+import { hallQueues, type HallQueue } from '../terminalplay/queues'
 import { footprintHit, footprintSpec, stampFrom } from '../terminalplay/footprints'
 import { queueAnchor, queueOrder, slotsAlong, standingInQueue, type QueueSlot } from '../terminalplay/lines'
 import { PLAY_TUNING } from '../terminalplay/config'
@@ -417,6 +418,16 @@ export class HallWorld {
     const hits = this.ray.intersectObjects(this.guestGroup.children, true)
     const spot = spotHits[0]
     const person = hits[0]
+    // Nav-grid walkers are instanced: pick the one nearest where the ray crosses body height.
+    if (!person && this.game.hallNav.live) {
+      const r = this.ray.ray
+      const t = Math.abs(r.direction.y) > 1e-6 ? (HALL_WALKER_PICK.bodyY - r.origin.y) / r.direction.y : -1
+      const id = t > 0 ? this.game.hallNav.pickAt(r.origin.x + r.direction.x * t, r.origin.z + r.direction.z * t, HALL_WALKER_PICK.radiusM) : null
+      if (id) {
+        this.game.selectGuest(id)
+        return
+      }
+    }
     const facilityHit = [...queueHits, ...roomHits].find((hit) => {
       let obj: THREE.Object3D | null = hit.object
       while (obj) {
@@ -1373,7 +1384,9 @@ export class HallWorld {
 
   /** Queue counts float over the desks. Red means the line is a bottleneck. */
   private syncQueues(game: Game) {
-    const rows = hallQueues(game.hallGuests)
+    // While the walk is live its real lines are the queues; else the hall figures' count.
+    const walk = game.hallNav.live
+    const rows: readonly (HallQueue & { at?: { x: number; z: number } })[] = walk ? game.hallNav.queues() : hallQueues(game.hallGuests)
     const rooms = this.roomPlan ? 1 : 0
     const sig = `${rooms}|${rows.map((row) => `${row.node}:${row.count}:${row.bottleneck ? 1 : 0}`).join('|')}|${this.frameLines.map((l) => `${l.x.toFixed(1)},${l.z.toFixed(1)}`).join(';')}`
     if (sig === this.queueSig) return
@@ -1406,8 +1419,8 @@ export class HallWorld {
       }
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }))
       sprite.scale.set(1.6, 0.8, 1)
-      const line = this.frameLines.find((l) => l.node === row.node)
-      const at = line ? { x: line.x2, z: line.z2 } : nodeWorld(row.node)
+      const line = walk ? undefined : this.frameLines.find((l) => l.node === row.node)
+      const at = row.at ?? (line ? { x: line.x2, z: line.z2 } : nodeWorld(row.node))
       sprite.position.set(at.x, 2.35, at.z)
       sprite.userData.facilityId = row.node
       this.queueGroup.add(sprite)

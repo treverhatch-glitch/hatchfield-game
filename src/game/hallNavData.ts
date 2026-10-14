@@ -22,6 +22,41 @@ export const HALL_NAV_TUNING = {
   unknownLeadClockSec: 40,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
+  /** Walkers are guests: traits, needs, thoughts, groups, rebooking (src/paxnav/guests.ts). */
+  guests: true,
+  /** Family fares on one flight: share that walk as a party, and most followers behind the first. */
+  familyGroups: { share: 0.6, maxFollowers: 3 },
+  /** Placed items that count as departure boards for wayfinding. */
+  boardItems: ['info_screen', 'info_kiosk'] as readonly string[],
+}
+
+/**
+ * Live queue read-out and its pull on passenger mood. Seconds are nav seconds
+ * (the walk's own clock; boarding opens 30 nav minutes before departure).
+ */
+export const HALL_QUEUE_TUNING = {
+  /** Nav seconds between queue read-outs (badges, info panel, bottleneck paint). */
+  readEveryNavSec: 5,
+  /**
+   * A facility is a bottleneck once someone joining now would wait this long,
+   * or its line has spilled past the marked floor. Set so the starter hall
+   * only turns red a week or so in, once the first airlines fill it.
+   */
+  bottleneckSec: { checkin_desk: 900, security_lane: 600, toilet: 300, shop_counter: 420, gate_desk: 900 } as Partial<Record<EquipKind, number>>,
+  /** A wait up to this long costs no mood. */
+  toleranceSec: { checkin_desk: 600, security_lane: 420, toilet: 180, shop_counter: 300, gate_desk: 600 } as Partial<Record<EquipKind, number>>,
+  /** Happiness lost per nav minute past tolerance. */
+  moodPerMinOver: 0.6,
+  /** Most happiness one wait can cost. */
+  maxMoodHit: 15,
+  /** Happiness for being served in under a quarter of the tolerance. */
+  quickMood: 1,
+}
+
+/** Terminal crew in the hall walk (src/paxnav/crew.ts). */
+export const HALL_CREW_TUNING = {
+  /** Clock seconds per shift: a third of the 180 s game day. */
+  shiftClockSec: 60,
 }
 
 /** Arriving passengers on the hall's nav grid (src/game/hallArrivals.ts). Nav seconds, metres. */
@@ -54,6 +89,12 @@ export const HALL_CROWD_TUNING = {
   lodDistM: 55,
   /** Frustum test radius around a walker, metres. */
   cullRadiusM: 1.2,
+}
+
+/** Clicking a nav-grid walker in the Terminal view: ray height (mid body) and how close counts, metres. */
+export const HALL_WALKER_PICK = {
+  bodyY: 0.9,
+  radiusM: 0.7,
 }
 
 /**

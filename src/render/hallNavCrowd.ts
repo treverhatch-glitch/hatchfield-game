@@ -1,7 +1,8 @@
 /**
- * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts), both
- * departures and arrivals: one instanced body, head and bag for everyone,
- * plus floor dots along every marked queue line. Real metres: a 1.7 m person
+ * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts):
+ * departures, arrivals and crew (in uniform, no bag). One instanced body, head
+ * and bag for everyone, plus floor dots along every marked queue line, red
+ * while that line is a bottleneck. Real metres: a 1.7 m person
  * on the hall floor (y = 0).
  *
  * Drawing is cheap however many people the sim walks:
@@ -14,7 +15,9 @@
  */
 import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
+import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
+import { WALKER_LOST, WALKER_REBOOK } from '../paxnav/paxnav.ts'
 
 const SHIRTS = ['#2f6fb0', '#c0392b', '#2e8b57', '#d68910', '#7d3c98', '#34495e', '#e0e0e0', '#16a085', '#b03a7a', '#5d6d7e']
 const SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
@@ -25,6 +28,17 @@ const LINE_COLOR: Record<string, string> = {
   gate_desk: '#5b8fd6',
   toilet: '#3a9a8a',
   shop_counter: '#e0c04a',
+}
+/** A queue line that cannot keep up paints its dots this colour. */
+const BOTTLENECK_COLOR = '#e23b2f'
+/** Crew uniforms by role, after the passenger shirts in the palette. */
+const CREW_ROLES: readonly CrewRole[] = ['agent', 'screener', 'gate', 'retail', 'cleaner']
+const CREW_SHIRTS: Record<CrewRole, string> = {
+  agent: '#1f3a68',
+  screener: '#22262c',
+  gate: '#1f3a68',
+  retail: '#7a4a1e',
+  cleaner: '#c9d43a',
 }
 /** Body centre height, for the frustum test. */
 const MID_Y = 0.85
@@ -54,13 +68,15 @@ export interface CrowdDrawStats {
   bags: number
   /** Instances drawn across body, head and bag. */
   instances: number
+  /** Thought markers drawn (lost, rebooking, unhappy guests). */
+  marks: number
 }
 
 export class HallNavCrowd {
   readonly group = new THREE.Group()
   /** Tunables; tests and the debug console may change them. */
   readonly tuning = { ...HALL_CROWD_TUNING }
-  readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0 }
+  readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0, marks: 0 }
   private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 2, 6)
   private readonly headGeo = new THREE.SphereGeometry(0.12, 7, 5)
   private readonly bagGeo = new THREE.BoxGeometry(0.34, 0.5, 0.22)
@@ -69,11 +85,19 @@ export class HallNavCrowd {
   private readonly headMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly bagMat = new THREE.MeshLambertMaterial({ color: 0x3a3f47 })
   private readonly dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false })
-  private readonly shirts = palette(SHIRTS)
+  /** Thought marker over a guest's head: lost (yellow), rebooking (orange), unhappy (red). */
+  private readonly markGeo = new THREE.SphereGeometry(0.17, 8, 6)
+  private readonly markMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  private readonly markLost = palette(['#ffd23f'])
+  private readonly markRebook = palette(['#ff8c1a'])
+  private readonly markSad = palette(['#e0413a'])
+  private readonly shirts = palette([...SHIRTS, ...CREW_ROLES.map((r) => CREW_SHIRTS[r])])
   private readonly skins = palette(SKINS)
   private body: THREE.InstancedMesh | null = null
   private head: THREE.InstancedMesh | null = null
   private bag: THREE.InstancedMesh | null = null
+  private mark: THREE.InstancedMesh | null = null
+  private flags = new Uint8Array(0)
   private dots: THREE.InstancedMesh | null = null
   /** Instance slots in the meshes. */
   private cap = 0
@@ -89,6 +113,10 @@ export class HallNavCrowd {
   private roster = -1
   private lineRev = -1
   private lineNav: unknown = null
+  /** Per queue line, in metrics order: kit kind, dot count, painted as a bottleneck. */
+  private lineKinds: string[] = []
+  private lineDots: number[] = []
+  private lineHot = new Uint8Array(0)
   private readonly frustum = new THREE.Frustum()
   private readonly pm = new THREE.Matrix4()
   private readonly sphere = new THREE.Sphere(new THREE.Vector3(), 1)
@@ -110,10 +138,11 @@ export class HallNavCrowd {
     const live = nav.live
     this.group.visible = live
     if (!live) {
-      st.walkers = st.visible = st.bodies = st.heads = st.bags = st.instances = 0
+      st.walkers = st.visible = st.bodies = st.heads = st.bags = st.instances = st.marks = 0
       return 0
     }
     this.syncLines(nav)
+    this.paintLines(nav)
     this.ensureWalkers(nav.count)
     const total = nav.writePoses(this.poses)
     if (nav.roster !== this.roster) this.recolour(nav, total)
@@ -172,9 +201,14 @@ export class HallNavCrowd {
     const gm = bag.instanceMatrix.array as Float32Array
     const bc = body.instanceColor!.array as Float32Array
     const hc = head.instanceColor!.array as Float32Array
+    const mark = this.mark!
+    const mm = mark.instanceMatrix.array as Float32Array
+    const mc = mark.instanceColor!.array as Float32Array
+    nav.writeFlags(this.flags)
     const lod2 = camera ? T.lodDistM * T.lodDistM : Infinity
     let nh = 0
     let ng = 0
+    let nm = 0
     for (let k = 0; k < capN; k++) {
       const i = visIdx[k]
       const x = poses[i * 4] + ox
@@ -200,10 +234,22 @@ export class HallNavCrowd {
         writeYaw(gm, ng, x - sn * 0.38 + cs * 0.2, 0.25, z - cs * 0.38 - sn * 0.2, sn, cs)
         ng++
       }
+      // Thought bubble over lost, rebooking and unhappy guests.
+      const fl = this.flags[i]
+      if (fl) {
+        const col = fl & WALKER_LOST ? this.markLost : fl & WALKER_REBOOK ? this.markRebook : this.markSad
+        writeYaw(mm, nm, x, 2.15 + bob, z, 0, 1)
+        mc[nm * 3] = col[0]
+        mc[nm * 3 + 1] = col[1]
+        mc[nm * 3 + 2] = col[2]
+        nm++
+      }
     }
     this.flush(body, capN, true)
     this.flush(head, nh, true)
     this.flush(bag, ng, false)
+    this.flush(mark, nm, true)
+    st.marks = nm
     st.bodies = capN
     st.heads = nh
     st.bags = ng
@@ -216,14 +262,17 @@ export class HallNavCrowd {
     this.body?.dispose()
     this.head?.dispose()
     this.bag?.dispose()
+    this.mark?.dispose()
     this.dots?.dispose()
     this.bodyGeo.dispose()
     this.headGeo.dispose()
     this.bagGeo.dispose()
+    this.markGeo.dispose()
     this.dotGeo.dispose()
     this.bodyMat.dispose()
     this.headMat.dispose()
     this.bagMat.dispose()
+    this.markMat.dispose()
     this.dotMat.dispose()
   }
 
@@ -277,11 +326,35 @@ export class HallNavCrowd {
     this.roster = nav.roster
     for (let i = 0; i < count; i++) {
       const h = hash(nav.idAt(i) || String(i))
-      this.shirtOf[i] = h % SHIRTS.length
+      const role = nav.crewRole(i)
+      this.shirtOf[i] = role ? SHIRTS.length + CREW_ROLES.indexOf(role) : h % SHIRTS.length
       this.skinOf[i] = (h >>> 8) % SKINS.length
       this.bobSeed[i] = (h % 628) / 100
-      this.hasBag[i] = (h >>> 16) % 3 !== 0 ? 1 : 0
+      this.hasBag[i] = !role && (h >>> 16) % 3 !== 0 ? 1 : 0
     }
+  }
+
+  /** Repaint queue line dots when a line starts or stops being a bottleneck. */
+  private paintLines(nav: HallNav) {
+    const dots = this.dots
+    if (!dots) return
+    const loads = nav.loads()
+    if (loads.length !== this.lineKinds.length) return
+    let changed = false
+    for (let k = 0; k < loads.length; k++) {
+      const b = loads[k].bottleneck ? 1 : 0
+      if (this.lineHot[k] !== b) {
+        this.lineHot[k] = b
+        changed = true
+      }
+    }
+    if (!changed) return
+    let i = 0
+    for (let k = 0; k < this.lineKinds.length; k++) {
+      this.c.set(this.lineHot[k] ? BOTTLENECK_COLOR : (LINE_COLOR[this.lineKinds[k]] ?? '#ffffff'))
+      for (let j = 0; j < this.lineDots[k]; j++) dots.setColorAt(i++, this.c)
+    }
+    if (dots.instanceColor) dots.instanceColor.needsUpdate = true
   }
 
   /** Marked queue lines: a dot per metre, rebuilt when the layout changes. */
@@ -299,6 +372,9 @@ export class HallNavCrowd {
     const o = nav.origin()
     const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)
     let i = 0
+    this.lineKinds = metrics.map((f) => f.kind)
+    this.lineDots = metrics.map((f) => f.line.length)
+    this.lineHot = new Uint8Array(metrics.length)
     for (const f of metrics) {
       this.c.set(LINE_COLOR[f.kind] ?? '#ffffff')
       for (const pt of f.line) {
@@ -327,13 +403,14 @@ export class HallNavCrowd {
     this.skinOf = new Uint8Array(cap)
     this.visIdx = new Int32Array(cap)
     this.visD = new Float32Array(cap)
+    this.flags = new Uint8Array(cap)
     this.roster = -1
   }
 
   /** Instance slots: as many as get drawn (the cap bounds this, not the sim). */
   private ensureMeshes(n: number) {
     if (this.cap >= n && this.body) return
-    for (const mesh of [this.body, this.head, this.bag]) {
+    for (const mesh of [this.body, this.head, this.bag, this.mark]) {
       mesh?.removeFromParent()
       mesh?.dispose()
     }
@@ -355,6 +432,7 @@ export class HallNavCrowd {
     this.body = make(this.bodyGeo, this.bodyMat, 'hall-nav-body', true)
     this.head = make(this.headGeo, this.headMat, 'hall-nav-head', true)
     this.bag = make(this.bagGeo, this.bagMat, 'hall-nav-bag', false)
+    this.mark = make(this.markGeo, this.markMat, 'hall-nav-thought', true)
   }
 }
 

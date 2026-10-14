@@ -169,15 +169,17 @@ describe('arrivals on the hall nav grid', () => {
 })
 
 describe('crowd drawing never changes the sim', () => {
+  // One guest list for every hall: sim guest ids are random, and walkers roll their traits from their ids.
+  const guests = [
+    ...Array.from({ length: 700 }, (_, i) => spawnHallGuest(`d-${i}`, 'depart', 'budget', {})),
+    ...Array.from({ length: 300 }, (_, i) => spawnHallGuest(`a-${i}`, 'arrive', 'budget', {})),
+  ]
+
   function hall(): HallNav {
     const zones = schemeZones(1)
     const items = schemeItems(1)
     const nav = new HallNav()
     nav.setHall('h', '1', () => prefabNavLayout(zones, items), () => prefabClaimHall(zones, items))
-    const guests = [
-      ...Array.from({ length: 700 }, (_, i) => spawnHallGuest(`d-${i}`, 'depart', 'budget', {})),
-      ...Array.from({ length: 300 }, (_, i) => spawnHallGuest(`a-${i}`, 'arrive', 'budget', {})),
-    ]
     nav.admit(guests, 0, () => 20)
     return nav
   }
@@ -185,7 +187,7 @@ describe('crowd drawing never changes the sim', () => {
   it('the visible cap and culling draw fewer, while sim counts match an undrawn twin', () => {
     const drawnHall = hall()
     const twin = hall()
-    expect(drawnHall.count).toBe(1000)
+    expect(drawnHall.passengers).toBe(1000)
     const crowd = new HallNavCrowd()
     crowd.tuning.maxVisible = 120
     const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.5, 600)
