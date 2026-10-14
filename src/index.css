@@ -458,6 +458,137 @@ button {
   vertical-align: middle;
 }
 
+/* Left dock for one building. Counts stay in the subsections. Not an info-view overlay. */
+.building-panel {
+  pointer-events: auto;
+  position: absolute;
+  /* Lower left, clear of the offer and letter stack that own the upper left. */
+  left: 56px;
+  bottom: 112px;
+  width: min(280px, 34vw);
+  max-height: min(420px, 48vh);
+  overflow: auto;
+  z-index: 31;
+  background: rgba(10, 20, 16, 0.92);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 10px;
+  padding: 12px;
+  color: #e7eee9;
+}
+
+.building-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.building-panel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.building-status {
+  margin: 2px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.building-panel[data-status='limited'] .building-status {
+  color: #e07a4a;
+}
+
+.building-panel[data-status='working'] .building-status {
+  color: #7dcea0;
+}
+
+.building-close {
+  width: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.building-why {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.building-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.building-icon {
+  position: relative;
+  width: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(224, 122, 74, 0.8);
+  background: rgba(90, 32, 18, 0.85);
+  color: #ffd7c2;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.building-tip {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 2;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(12, 18, 16, 0.96);
+  border: 1px solid rgba(224, 122, 74, 0.55);
+  color: #f3efe6;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.building-icon:hover .building-tip,
+.building-icon:focus-visible .building-tip {
+  display: block;
+}
+
+.building-section {
+  margin-top: 4px;
+}
+
+.building-section > button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #e7eee9;
+  font-size: 12px;
+}
+
+.building-section[data-open='true'] > button {
+  border-color: rgba(201, 162, 39, 0.7);
+}
+
+.building-figure {
+  margin: 4px 0 6px;
+  padding-left: 8px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.building-figure p {
+  margin: 2px 0;
+}
+
 .hall-alert {
   position: absolute;
   top: 72px;

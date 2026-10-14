@@ -261,7 +261,6 @@ export function TerminalView({ game }: { game: Game }) {
   }, [game])
 
   const guest = game.hallGuests.find((g) => g.id === game.selectedGuest)
-  const facility = game.selectedFacility ? game.facilityInfo(game.selectedFacility) : null
   const fit = game.activeHall()
   const tier = (fit?.tier ?? 1) as 1 | 2 | 3
   const prefab = Boolean(fit?.premade && !fit?.redesigned)
@@ -493,19 +492,6 @@ export function TerminalView({ game }: { game: Game }) {
       ) : (
         <WalkerOnlyCard game={game} id={game.selectedGuest} />
       )}
-      {facility && !guest ? (
-        <aside className="facility-card" data-testid="facility-card">
-          <h2>{facility.title}</h2>
-          <ul>
-            {facility.lines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          <button type="button" onClick={() => game.selectFacility(null)}>
-            Close
-          </button>
-        </aside>
-      ) : null}
     </div>
   )
 }

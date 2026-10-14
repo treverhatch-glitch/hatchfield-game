@@ -138,7 +138,12 @@ Move and Bulldoze sit beside the tabs. A hover tooltip names the item, the price
 - Stamp cursor tooltip on the apron: site name and build progress
 - Kit tooltip in the hall
 - Button `title` attributes on speed, fees, cash, and menu groups
+- Bottleneck icons on the building panel: hover shows the why line, for example "Bay 2 idle: no tug"
+
+## Building panel
+
+Pan-click a placed building (anything that is not grass, runway, or taxiway). A dock opens on the left with the name, status, and a why line. Throughput, bays in use against the total, upkeep, and staff stay behind click-open subsections. Stands report service points; a missing tug reads "Bay 2 idle: no tug". Check-in and security use the same panel from inside the hall. Info-view chips are a separate overlay and are not part of this dock.
 
 ## Next
 
-- **Building info panel.** Clicking a placed building should open a docked panel on the left (upkeep, efficiency, staff, a capacity bar, KPIs) with an upgrades tray at the bottom. That panel is not built yet. The research tree itself is the Growth → Research tree tab: category lanes, cost badges, locked / available / owned, and an Unlock button.
+- The research tree itself is the Growth → Research tree tab: category lanes, cost badges, locked / available / owned, and an Unlock button.

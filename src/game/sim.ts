@@ -273,7 +273,7 @@ import { CateringBridge, cateringCue } from './cateringBridge.ts'
 import { CargoBridge } from './cargoBridge.ts'
 import { POWER_PLANT_CAPACITY, calculatePower } from '../economy/power.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant.ts'
-import { MRO_POWER_DEMAND, NIGHT_HUB_POWER_DEMAND } from '../tier3/config.ts'
+import { MRO_BAYS, MRO_POWER_DEMAND, MRO_TECHS_REQUIRED, NIGHT_BANK_SLOTS, NIGHT_HUB_POWER_DEMAND } from '../tier3/config.ts'
 import {
   GROUND_CREW_PER_DEPOT,
   mroInfoLines,
@@ -336,6 +336,7 @@ import {
   canUpgradeTank,
   gameMinutes,
   hangarScaleForTool,
+  operatingFleet,
   loadsFromLitres,
   personSpeedMult,
   pillarReport,
@@ -352,6 +353,7 @@ import {
 } from '../scale/logic.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import { extraOpenServers, serviceInfoLines, throughputOf, type PointLoad } from '../servicepoints/index.ts'
+import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type Reading } from '../buildinginfo/index.ts'
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
@@ -1333,6 +1335,8 @@ export class Game {
   selectedGuest: string | null = null
   /** Clicked desk, lane, shop, or queue marker inside the terminal. */
   selectedFacility: string | null = null
+  /** Cell key of the building open in the left info panel. Not saved. */
+  selectedBuilding: string | null = null
   /** Bumps when the hall layout changes so the HUD repaints. */
   hallRev = 0
   /** Curb-to-boarding walkers for the active hall (src/paxnav), drawn by the Terminal view. */
@@ -1704,6 +1708,7 @@ export class Game {
     this.selectedFlight = null
     this.selectedTile = null
     this.selectedGuest = null
+    this.selectedBuilding = null
     this.view = 'apron'
     this.spawnCool = 10
     this.heloCool = 22
@@ -6423,6 +6428,29 @@ export class Game {
     this.selectedFacility = id
     if (id) this.selectedGuest = null
     this.emit()
+  }
+
+  /** Close the left building panel. */
+  closeBuilding() {
+    this.selectedBuilding = null
+    this.selectedFacility = null
+    this.emit()
+  }
+
+  /**
+   * Card for the building under the cursor, or the hall piece that was clicked.
+   * Info-view overlays stay on their own chips; this is the per-building dock.
+   */
+  buildingCard(): BuildingCard | null {
+    if (this.view === 'hall' && this.selectedFacility) {
+      const facility = this.facilityReading(this.selectedFacility)
+      if (facility) return buildingCard(facility)
+    }
+    if (!this.selectedBuilding) return null
+    const [c, r] = this.selectedBuilding.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return null
+    const reading = this.readingAt({ c, r })
+    return reading ? buildingCard(reading) : null
   }
 
   /** Lines for the facility card. `item:…` is a placed piece; a bare id is a queue node. */
@@ -16015,18 +16043,312 @@ export class Game {
   private lastPlaceAt = 0
   private lastPlaceKey = ''
 
+  private fleetNow(): Record<string, number> {
+    const fleet = operatingFleet(this.pillarField(), this.pillarState())
+    const out: Record<string, number> = {}
+    for (const [type, count] of Object.entries(fleet)) {
+      if (typeof count === 'number' && count > 0) out[type] = count
+    }
+    return out
+  }
+
+  private crewOn(fleet: Record<string, number>, types: readonly string[]): number {
+    return types.some((type) => (fleet[type] ?? 0) > 0) ? 1 : 0
+  }
+
+  private standOccupied(v: Vec): boolean {
+    return this.flights.some((f) => f.phase !== 'gone' && f.stand?.c === v.c && f.stand?.r === v.r)
+  }
+
+  /** Name, upkeep, and which service-point plan a placed tile uses. */
+  private buildingSpec(v: Vec): { name: string; upkeep: number; tier: SizeTier; plan: string } | null {
+    const tile = this.tile(v)
+    if (!tile || !isBuildingTile(tile)) return null
+    const key = `${v.c},${v.r}`
+    if (tile === 'stand') {
+      const scale = this.standScale[key]
+      const cls = this.standClass[key]
+      const tier: SizeTier = scale === 'wide' || scale === 'jumbo' ? scale : cls === 'L' ? 'jumbo' : 'small'
+      const name =
+        tier === 'jumbo' ? 'Jumbo stand' : tier === 'wide' ? 'Widebody stand' : cls === 'S' ? 'Small stand' : 'Medium stand'
+      return { name, upkeep: 0, tier, plan: 'stand' }
+    }
+    if (tile === 'hangar') {
+      const scale = this.hangarScale[key] ?? 'small'
+      const tier: SizeTier = scale === 'jumbo' || scale === 'wide' ? scale : 'small'
+      const tool = tier === 'jumbo' ? 'hangar_j' : tier === 'wide' ? 'hangar_w' : 'hangar'
+      const row = BUILDINGS.find((b) => b.tool === tool)
+      return { name: row?.name ?? 'Hangar', upkeep: row?.upkeepPerDay ?? 0, tier, plan: 'hangar' }
+    }
+    if (tile === 'hotel') {
+      const cls = this.hotelClass[key] ?? 'business'
+      const tool = cls === 'inn' ? 'hotel_inn' : cls === 'resort' ? 'hotel_resort' : 'hotel_biz'
+      const row = BUILDINGS.find((b) => b.tool === tool)
+      return { name: row?.name ?? 'Hotel', upkeep: row?.upkeepPerDay ?? 0, tier: 'small', plan: tile }
+    }
+    if (tile === 'park_s' || tile === 'park_l' || tile === 'park_g' || tile === 'park_u') {
+      const term = this.parkTerms[key] ?? 'short'
+      const row = BUILDINGS.find((b) => b.tile === tile)
+      return { name: row?.name ?? 'Car park', upkeep: PARK_EXPENSE[tile][term], tier: 'small', plan: tile }
+    }
+    const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
+    if (late) {
+      const spec = buildingById(late.id)
+      return {
+        name: spec?.name ?? late.id,
+        upkeep: isOpen(late) ? (spec?.dailyUpkeep ?? 0) : 0,
+        tier: 'small',
+        plan: tile,
+      }
+    }
+    if (tile === 'terminal') {
+      const fit =
+        this.fits.find((f) => Math.abs(f.origin.c - v.c) <= 2 && Math.abs(f.origin.r - v.r) <= 2) ?? null
+      const upkeep = fit
+        ? ceilingsFor({
+            premade: fit.premade,
+            redesigned: fit.redesigned,
+            tier: fit.tier,
+            items: (fit.items ?? []) as PlacedItem[],
+            roomsSecurity: fit.rooms.security,
+          }).upkeepDay
+        : 0
+      return { name: fit ? `${this.hallLabel(fit)} hall` : 'Terminal', upkeep, tier: 'small', plan: 'terminal' }
+    }
+    const row = BUILDINGS.find((b) => b.tile === tile)
+    const link =
+      tile === 'mover'
+        ? CONNECTIVITY_CATALOG.people_mover
+        : tile === 'xferbus'
+          ? CONNECTIVITY_CATALOG.airside_transfer_bus_depot
+          : tile === 'skywalk'
+            ? CONNECTIVITY_CATALOG.skywalk
+            : tile === 'travelator'
+              ? CONNECTIVITY_CATALOG.moving_walkway
+              : null
+    return {
+      name: row?.name ?? link?.name ?? tile,
+      upkeep: row?.upkeepPerDay || link?.upkeepPerDay || 0,
+      tier: 'small',
+      plan: tile,
+    }
+  }
+
+  private readingAt(v: Vec): Reading | null {
+    const spec = this.buildingSpec(v)
+    if (!spec) return null
+    const tile = this.tile(v)
+    const id = `${v.c},${v.r}`
+    const fleet = this.fleetNow()
+    const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
+    const base: Reading = {
+      id,
+      name: spec.name,
+      plan: spec.plan,
+      tier: spec.tier,
+      fleet,
+      upkeepPerDay: spec.upkeep,
+      closed: Boolean(late && !isOpen(late)),
+    }
+    if (base.closed) return base
+    if (tile === 'mro') return this.mroReading(base)
+    if (tile === 'nighthub') return this.nightHubReading(base)
+    if (tile === 'stand') {
+      return {
+        ...base,
+        demand: this.standOccupied(v) ? 1 : 0,
+        staffAssigned: this.crewOn(fleet, [
+          'pushback_tug',
+          'heavy_tug',
+          'fuel_truck',
+          'heavy_fuel_truck',
+          'baggage_tug',
+          'belt_loader',
+          'catering_truck',
+        ]),
+      }
+    }
+    if (tile === 'fuel') {
+      const demand = this.flights.some((f) => f.phase !== 'gone' && f.waitingOn.fuel) ? 1 : 0
+      return { ...base, demand, staffAssigned: this.crewOn(fleet, ['fuel_truck', 'heavy_fuel_truck', 'hydrant_dispenser']) }
+    }
+    if (tile === 'kitchen') {
+      const demand = this.flights.some((f) => f.phase !== 'gone' && f.waitingOn.catering) ? 1 : 0
+      return { ...base, demand, staffAssigned: this.crewOn(fleet, ['catering_truck', 'highlift_catering']) }
+    }
+    if (tile === 'bags' || tile === 'depot' || tile === 'cargo') {
+      const demand = this.flights.some((f) => f.phase !== 'gone' && (f.waitingOn.bags || f.waitingOn.bagsLoad)) ? 1 : 0
+      const types =
+        tile === 'cargo'
+          ? ['belt_loader', 'uld_loader', 'main_deck_loader']
+          : tile === 'bags'
+            ? ['baggage_tug', 'heavy_baggage_tug']
+            : ['pushback_tug', 'heavy_tug', 'fuel_truck', 'belt_loader']
+      return { ...base, demand, staffAssigned: this.crewOn(fleet, types) }
+    }
+    if (tile === 'hangar') {
+      return {
+        ...base,
+        demand: this.hangarOccupant(v) ? 1 : 0,
+        staffAssigned: this.mechanics,
+      }
+    }
+    if (tile === 'terminal') {
+      const demand = this.hallGuests.some((g) => !g.dead) ? 1 : 0
+      return { ...base, demand, staffAssigned: this.deskStaff }
+    }
+    return base
+  }
+
+  private mroReading(base: Reading): Reading {
+    const snap = this.tier3.snapshot()
+    const blocked =
+      snap.mro.techsAssigned <= 0 ? 'no techs' : snap.mro.powerCapacity < snap.mro.powerDemand ? 'no power' : ''
+    const icon = blocked === 'no techs' ? 'techs' : blocked === 'no power' ? 'power' : undefined
+    const bays: BayInput[] = MRO_BAYS.map((bay) => {
+      const job = snap.mro.jobs.find((row) => row.bayId === bay.id)
+      const inBay = job?.phase === 'in_bay'
+      return {
+        label: bay.id,
+        inUse: Boolean(inBay) && !blocked,
+        limit: blocked || undefined,
+        icon,
+        badge: icon,
+      }
+    })
+    return {
+      ...base,
+      staffAssigned: snap.mro.techsAssigned,
+      staffNeeded: Math.max(MRO_TECHS_REQUIRED, snap.mro.techsRequired),
+      bays,
+      demand: snap.mro.occupied > 0 ? 1 : 0,
+    }
+  }
+
+  private nightHubReading(base: Reading): Reading {
+    const hub = this.tier3.snapshot().nightHub
+    const short = hub.groundCrewAssigned < hub.groundCrewRequired
+    const bays: BayInput[] = NIGHT_BANK_SLOTS.map((slot, i) => ({
+      label: slot.id,
+      inUse: !short && i < hub.flights,
+      limit: short ? 'short of ground crew' : undefined,
+      icon: short ? 'staff' : undefined,
+      badge: short ? 'crew' : undefined,
+    }))
+    return {
+      ...base,
+      staffAssigned: hub.groundCrewAssigned,
+      staffNeeded: hub.groundCrewRequired,
+      bays,
+      demand: hub.flights > 0 ? 1 : 0,
+    }
+  }
+
+  private facilityReading(id: string): Reading | null {
+    if (id === 'checkin' || id === 'security') return this.queueReading(id, id === 'checkin' ? 'Check-in' : 'Security')
+    if (id.startsWith('item:')) {
+      const fit = this.activeHall()
+      const item = (fit?.items ?? []).find((it) => it.id === id.slice(5))
+      if (!item) return null
+      const def = itemDef(item.def)
+      if (def?.room === 'checkin' || def?.room === 'security') {
+        return this.queueReading(def.room, def.name)
+      }
+      return {
+        id,
+        name: def?.name ?? 'Facility',
+        plan: 'checkin',
+        upkeepPerDay: def?.upkeep ?? 0,
+        staffNeeded: def?.staff ?? 0,
+        staffAssigned: def?.staff ? this.hallStaff.filter((s) => s.node === def.room && s.stage === 0).length : null,
+        demand: 0,
+        bays: [{ inUse: false }],
+        unit: '/ min',
+      }
+    }
+    const info = this.facilityInfo(id)
+    if (!info) return null
+    return {
+      id,
+      name: info.title,
+      upkeepPerDay: 0,
+      demand: 0,
+      bays: [{ inUse: false }],
+    }
+  }
+
+  private queueReading(node: 'checkin' | 'security', name: string): Reading {
+    const kind = node === 'checkin' ? 'checkin_desk' : 'security_lane'
+    const metrics = this.hallNav.live ? this.hallNav.metrics().filter((m) => m.kind === kind) : []
+    const hired = this.hallStaff.filter((s) => s.node === node && s.stage === 0).length
+    if (!metrics.length) {
+      const waiting = node === 'security' ? this.securityQueueCount() : queueAtNode(this.hallGuests, node)
+      return {
+        id: node,
+        name,
+        plan: node,
+        upkeepPerDay: 0,
+        staffAssigned: hired,
+        staffNeeded: Math.max(1, hired),
+        demand: waiting > 0 ? 1 : 0,
+        bays: [
+          {
+            inUse: false,
+            limit: waiting > 0 && hired <= 0 ? 'unstaffed' : undefined,
+            icon: waiting > 0 && hired <= 0 ? 'staff' : undefined,
+            badge: 'staff',
+          },
+        ],
+      }
+    }
+    const scale = HALL_NAV_TUNING.navSecPerClockSec
+    const limit = (HALL_QUEUE_TUNING.bottleneckSec[kind] ?? 600) / scale
+    const loads: PointLoad[] = metrics.map((m) => ({
+      id: m.id,
+      kind: m.kind,
+      staffed: m.staffed,
+      queueLength: m.queueLength,
+      serving: m.serving,
+      serviceSec: m.serviceSec / scale,
+      estWaitSec: m.estWaitSec / scale,
+    }))
+    const throughput = throughputOf(loads, limit)
+    const bays: BayInput[] = loads.map((point) => {
+      const busy = point.staffed && (point.serving || point.queueLength > 0)
+      return {
+        inUse: busy,
+        limit: point.staffed ? undefined : 'unstaffed',
+        icon: point.staffed ? undefined : 'staff',
+        badge: 'staff',
+      }
+    })
+    return {
+      id: node,
+      name,
+      plan: node,
+      upkeepPerDay: 0,
+      staffAssigned: throughput.staffed,
+      staffNeeded: throughput.points,
+      demand: throughput.inUse > 0 || throughput.queueLength > 0 ? 1 : 0,
+      throughputPerMin: throughput.perMin,
+      unit: 'pax/min',
+      bays,
+    }
+  }
+
   clickTile(v: Vec) {
     if (!inBounds(v.c, v.r)) return
     this.selectedTile = v
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
+      const tile = this.tile(v)
+      this.selectedBuilding = tile && isBuildingTile(tile) ? `${v.c},${v.r}` : null
       const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
       if (late) {
         this.toggleInfo(`late-site:${v.c},${v.r}`)
         return
       }
-      const tile = this.tile(v)
       if (tile === 'fuel') this.openFuelFarm()
       else if (tile === 'bags') this.toggleInfo('bags')
       if (

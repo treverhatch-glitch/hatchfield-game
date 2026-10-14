@@ -87,6 +87,7 @@ import { StaffHousingPanel } from './StaffHousingPanel'
 import { ACHIEVEMENTS, AchievementToast, type AchievementDef } from '../achievements'
 import { liveBubbles } from '../feedback/stage'
 import { DebugHud } from './DebugHud'
+import { BuildingPanel } from './BuildingPanel'
 import { HALL_ROOMS } from './uiCatalog'
 import {
   BUILD_MENUS,
@@ -268,6 +269,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
   return (
     <div className="hud">
+      <BuildingPanel card={game.buildingCard()} onClose={() => game.closeBuilding()} />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
       {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
