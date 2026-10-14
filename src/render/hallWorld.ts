@@ -5,6 +5,14 @@
 import * as THREE from 'three'
 import { canvasToPng } from '../camera/capture.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
+import {
+  HALL_CAM_DIST,
+  HALL_CAM_MAX_DIST,
+  HALL_CAM_MIN_DIST,
+  HALL_CAM_PITCH,
+  HALL_CAM_YAW,
+  HALL_PAX_SCALE,
+} from './hallCamera'
 import { HALL_EDGES, isAirside, NODE_POS, type HallNode } from '../game/guests'
 import type { Game } from '../game/sim'
 import {
@@ -79,9 +87,9 @@ export class HallWorld {
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   pivot = new THREE.Vector3(0, 0, 0)
-  yaw = 0.55
-  pitch = 0.95
-  dist = 52
+  yaw = HALL_CAM_YAW
+  pitch = HALL_CAM_PITCH
+  dist = HALL_CAM_DIST
   dragging: 'orbit' | 'pan' | null = null
   lastX = 0
   lastY = 0
@@ -142,9 +150,11 @@ export class HallWorld {
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#1a2a32')
-    this.scene.fog = new THREE.Fog('#1a2a32', 40, 90)
+    this.scene.fog = new THREE.Fog('#1a2a32', 55, 120)
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200)
+    // Look along the curb-to-gate walk so the opening frame is passengers, not empty floor.
+    this.pivot.set(-6, 0, -4)
     this.placeCam()
 
     this.scene.add(new THREE.HemisphereLight('#d0e8f8', '#2a3a40', 0.9))
@@ -378,7 +388,7 @@ export class HallWorld {
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault()
-    this.dist = Math.min(70, Math.max(18, this.dist + e.deltaY * 0.04))
+    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + e.deltaY * 0.04))
     this.placeCam()
   }
 
@@ -599,7 +609,7 @@ export class HallWorld {
       if (!mesh) {
         mesh = new THREE.Mesh(
           new THREE.CapsuleGeometry(0.22, 0.55, 3, 6),
-          new THREE.MeshLambertMaterial({ color: g.color }),
+          new THREE.MeshBasicMaterial({ color: g.color }),
         )
         mesh.userData.guestId = g.id
         const pin = new THREE.Mesh(
@@ -642,15 +652,15 @@ export class HallWorld {
       const key = `${node}:${next ?? ''}`
       const slot = pile.get(key) ?? 0
       pile.set(key, slot + 1)
-      const ox = next ? 0 : (slot % 4) * 0.42 - 0.6
-      const oz = next ? 0 : Math.floor(slot / 4) * 0.42
+      const ox = next ? 0 : ((slot % 4) * 0.42 - 0.6) * HALL_PAX_SCALE
+      const oz = next ? 0 : Math.floor(slot / 4) * 0.42 * HALL_PAX_SCALE
       const desk = g.atBagDesk ? nodeWorld('claim') : null
       mesh.position.set(
         desk ? desk.x - 3.4 + (slot % 3) * 0.7 : a.x + (b.x - a.x) * t + ox,
-        0.55,
+        0.55 * HALL_PAX_SCALE,
         desk ? desk.z + 2.4 : a.z + (b.z - a.z) * t + oz,
       )
-      mesh.scale.y = 1
+      mesh.scale.set(HALL_PAX_SCALE, HALL_PAX_SCALE, HALL_PAX_SCALE)
       if (g.meal) {
         // Walk the tray from the counter to the booked seat, then sit: lower and squat.
         const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
@@ -660,8 +670,8 @@ export class HallWorld {
         mesh.position.x += (sx - mesh.position.x) * k
         mesh.position.z += (sz - mesh.position.z) * k
         if (g.seated) {
-          mesh.scale.y = 0.7
-          mesh.position.y = 0.42
+          mesh.scale.y = HALL_PAX_SCALE * 0.7
+          mesh.position.y = 0.42 * HALL_PAX_SCALE
         }
       }
       const pin = mesh.userData.pin as THREE.Mesh
