@@ -12,7 +12,9 @@ import {
   vehicleLitGeometry,
   vehicleMesh,
   vehicleModel,
+  vehiclePartGeometry,
   vehicleRig,
+  ANIM_PARTS,
 } from './vehicles'
 
 afterAll(() => disposeVehicleLibrary())
@@ -48,7 +50,7 @@ describe('ground vehicle models', () => {
     expect(span.z).toBeLessThan(W * 1.4)
     expect(geo.boundingBox!.min.y).toBeGreaterThanOrEqual(-1e-6)
     expect(geo.boundingBox!.max.y).toBeLessThan(H + 0.6)
-    expect(geo.getAttribute('position').count).toBeGreaterThan(300)
+    expect(fullCount(model)).toBeGreaterThan(300)
     const rig = vehicleRig(kindFor(model), '#3a7bd5')
     for (const name of MODEL_PARTS[model]) expect(rig.getObjectByName(name), `${model}.${name}`).toBeDefined()
     expect(rig.getObjectByName('body')).toBeDefined()
@@ -59,7 +61,7 @@ describe('ground vehicle models', () => {
   })
 
   it('distinct models do not share a silhouette', () => {
-    const counts = new Set(ALL_MODELS.map((m) => vehicleGeometry(kindFor(m), '#fff').getAttribute('position').count))
+    const counts = new Set(ALL_MODELS.map((m) => fullCount(m, '#fff')))
     expect(counts.size).toBeGreaterThan(ALL_MODELS.length - 3)
   })
 
@@ -88,13 +90,24 @@ describe('ground vehicle models', () => {
     const shells = meshes.filter((mesh) => !mesh.name.startsWith('part:'))
     expect(shells).toHaveLength(4)
     expect(shells.filter((mesh) => mesh.count === 2)).toHaveLength(2)
-    // tanker: hose reel + hose; bus: doors
-    expect(meshes.filter((mesh) => mesh.name.startsWith('part:'))).toHaveLength(3)
+    // Animated parts (wheels, beacons, hose, doors...) draw as their own instanced meshes.
+    const parts = meshes.filter((mesh) => mesh.name.startsWith('part:')).map((m) => m.name)
+    expect(parts.some((n) => n.endsWith('|hose'))).toBe(true)
+    expect(parts.some((n) => n.endsWith('|doors'))).toBe(true)
+    expect(parts.some((n) => n.includes('|wheels_front'))).toBe(true)
     fleet.sync([])
     expect(meshes.every((mesh) => mesh.count === 0)).toBe(true)
     fleet.dispose()
   })
 })
+
+/** Vertices in the whole model: static shell plus every animated part. */
+function fullCount(model: (typeof ALL_MODELS)[number], color = '#3a7bd5'): number {
+  const kind = model === 'van' ? 'delivery' : kindFor(model)
+  let n = vehicleGeometry(kind, color).getAttribute('position').count
+  for (const part of ANIM_PARTS[model]) n += vehiclePartGeometry(kind, color, part).getAttribute('position')?.count ?? 0
+  return n
+}
 
 function kindFor(model: string): string {
   const back: Record<string, string> = {

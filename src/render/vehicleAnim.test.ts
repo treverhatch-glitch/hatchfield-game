@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { ANIM_PARTS, deployOf, newPartPose, partMatrix, partPose, poseVehicleRig, serviceStateOf, truckDeploy } from './vehicleAnim'
+import { ANIM_PARTS, deployOf, newPartPose, partMatrix, partPose, poseInput, poseVehicleRig, serviceStateOf, truckDeploy } from './vehicleAnim'
 import { MODEL_PARTS, type VehicleModel } from './vehicleModels'
 import { disposeVehicleRig, VehicleFleet, vehicleRig } from './vehicles'
 import { yardOffsets, minYardClearance } from './vehicleYard'
 
 const lift = (model: VehicleModel, part: string, ext: number, clock = 0, active = false) => {
   const p = newPartPose()
-  expect(partPose(model, part, ext, clock, active, p)).toBe(true)
+  expect(partPose(model, part, poseInput(ext, clock, active), p)).toBe(true)
   return p
 }
 
@@ -47,11 +47,35 @@ describe('Round B part poses per state', () => {
     expect(b.tx).not.toBeCloseTo(a.tx, 3)
   })
 
-  it('catering scissor lifts the box and the deck reaches forward', () => {
+  it('catering scissor lifts the box and the deck folds down from stowed', () => {
     expect(lift('catering_hilift', 'box', 0).ty).toBe(0)
     expect(lift('catering_hilift', 'box', 1).ty).toBeCloseTo(2.4)
     expect(lift('catering_hilift', 'scissor', 1).sy).toBeGreaterThan(3)
-    expect(lift('catering_hilift', 'deck', 1).tx).toBeGreaterThan(0.5)
+    expect(lift('catering_hilift', 'deck', 0).rz).toBeCloseTo(Math.PI / 2)
+    expect(lift('catering_hilift', 'deck', 1).rz).toBe(0)
+    expect(lift('catering_hilift', 'deck', 1).ty).toBeCloseTo(2.4)
+  })
+
+  it('Round C: wheels roll with distance, beacons turn when active, reverse lights switch', () => {
+    const p = newPartPose()
+    partPose('fuel_tanker', 'wheels_rear_2', poseInput(0, 0, false, 3), p)
+    expect(p.rz).toBeCloseTo(-3 / 0.5, 1)
+    expect(p.px).toBeLessThan(-2)
+    partPose('fuel_tanker', 'beacon', poseInput(0, 1, true), p)
+    expect(p.ry).toBeGreaterThan(1)
+    partPose('fuel_tanker', 'beacon', poseInput(0, 1, false), p)
+    expect(p.ry).toBe(0)
+    partPose('stairs', 'reverse', poseInput(0.5, 0, false, 0, true), p)
+    expect(p.sx).toBe(1)
+    partPose('stairs', 'reverse', poseInput(0.5, 0, false, 0, false), p)
+    expect(p.sx).toBeLessThan(0.01)
+  })
+
+  it('Round C: de-ice spray and ARFF foam only while working', () => {
+    expect(lift('deice', 'spray', 0.5).sx).toBeLessThan(0.01)
+    expect(lift('deice', 'spray', 1, 2).sx).toBeGreaterThan(0.5)
+    expect(lift('arff', 'foam', 1, 2, false).sx).toBeLessThan(0.01)
+    expect(lift('arff', 'foam', 1, 2, true).sx).toBeGreaterThan(0.5)
   })
 
   it('k-loader platforms rise, front higher than rear', () => {
