@@ -1,5 +1,7 @@
 import * as THREE from 'three'
+import { easeMotion, MOTION_RUNNING, type AircraftMotion } from './motion'
 import type { PaintedMesh } from './pool'
+import { poseRig, rigValue, type RigSet } from './rig'
 
 /**
  * Camera-to-aircraft distance in world units.
@@ -117,6 +119,8 @@ export interface LodBuckets {
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
   lamps: THREE.Object3D[]
+  /** Flaps, slats, reversers and door leaves. */
+  rigs?: RigSet[]
 }
 
 const _cam = new THREE.Vector3()
@@ -171,6 +175,10 @@ export class CrossfadeLOD extends THREE.LOD {
   /** Builds window instances the first time this aircraft enters the high band. */
   requestWindows: (() => void) | null = null
   windowsReady = false
+  /** Eased motion actually drawn. */
+  motion: AircraftMotion = { ...MOTION_RUNNING }
+  spinAngle = 0
+  motionPosed = false
 
   constructor() {
     super()
@@ -217,13 +225,28 @@ export class CrossfadeLOD extends THREE.LOD {
     const gearScale = Math.max(0.0001, this.gearT)
     for (const gear of buckets.gears) gear.scale.y = gearScale
 
+    const goal = (this.parent?.userData.motion as AircraftMotion | undefined) ?? MOTION_RUNNING
+    if (!this.motionPosed) {
+      Object.assign(this.motion, goal)
+      this.motionPosed = true
+    } else {
+      easeMotion(this.motion, goal, dt)
+    }
+    // Shut-down engines still windmill a little.
+    this.spinAngle += dt * (0.04 + this.motion.spool * 0.96)
+    const a = this.spinAngle
     for (const spinner of buckets.spinners) {
       if (spinner.name === 'rotor' || spinner.name === 'tail-rotor') {
-        const speed = spinner.name === 'tail-rotor' ? 22 : 11
-        if (spinner.name === 'tail-rotor') spinner.rotation.z = now * speed
-        else spinner.rotation.y = now * speed
+        if (spinner.name === 'tail-rotor') spinner.rotation.z = a * 22
+        else spinner.rotation.y = a * 11
       } else {
-        spinner.rotation.x = now * (spinner.name === 'fan' ? 28 : 14)
+        spinner.rotation.x = a * (spinner.name === 'fan' ? 28 : 14)
+      }
+    }
+    if (buckets.rigs) {
+      for (const rig of buckets.rigs) {
+        if (rig.posed >= 0 && rig.mesh.parent && !rig.mesh.parent.visible) continue
+        poseRig(rig, rigValue(rig.kind, this.motion))
       }
     }
 
