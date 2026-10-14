@@ -16,18 +16,20 @@ describe('two terminals', () => {
     // Let the opening window pass, then queue a second hall east of the first
     // (layout from scripts/soak-heavy-campus.mts). Premade halls build via a contractor.
     runDays(g, 1)
-    const t2 = { c: 22, r: 14 }
+    // r10: the starter's second runway (r18-19) keeps a shoulder and end safety area south of r16.
+    const t2 = { c: 22, r: 10 }
     for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) g.tiles[t2.r + r][t2.c + c] = 'grass'
     g.tool = 'premade'
     g.placePremade(t2)
     expect(settleBuilds(g)).toBe(true)
-    // One row south of the hall so the code-C wing does not cover the premade cells.
-    g.tiles[18][24] = 'stand'
-    for (let r = 19; r <= 25; r++) g.tiles[r][24] = 'taxi'
+    // Hall sits on r10-12 (clear of the second runway's shoulder and RESA); the stand goes one
+    // row south of it so the code-C wing does not cover the premade cells.
+    g.tiles[14][24] = 'stand'
+    for (let r = 15; r <= 25; r++) g.tiles[r][24] = 'taxi'
     // Join the first stand's lead-in (column 20) so both stands reach the strip.
     for (let c = 21; c <= 23; c++) g.tiles[25][c] = 'taxi'
     expect(g.fits).toHaveLength(2)
-    expect(g.pathStandToRunway({ c: 24, r: 18 })).not.toBeNull()
+    expect(g.pathStandToRunway({ c: 24, r: 14 })).not.toBeNull()
 
     const m = runDays(g, 7)
     expectHealthy(m)
