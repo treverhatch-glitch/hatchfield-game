@@ -73,6 +73,7 @@ describe('inbound on the live field', () => {
     expect(game.cash).toBe(booked - CLEARANCE_LICENCE_COST)
     expect(game.inboundHasClearance()).toBe(true)
     expect(game.buyInboundClearance()).toBe(false)
+    expect(game.cash).toBe(booked - CLEARANCE_LICENCE_COST)
 
     game.speed = 5
     let ticks = 0
@@ -85,5 +86,18 @@ describe('inbound on the live field', () => {
     const served = game.flights.find((item) => item.id === flight?.id)
     expect(served && SERVED.has(served.phase)).toBe(true)
     expect(served?.ledger.some((row) => /landing/i.test(row.label))).toBe(false)
+  })
+
+  it('refuses security clearance when the desk cannot pay, and does not mark it owned', () => {
+    const game = field()
+    game.cash = CLEARANCE_LICENCE_COST - 1
+    expect(game.buyInboundClearance()).toBe(false)
+    expect(game.inboundHasClearance()).toBe(false)
+    expect(game.cash).toBe(CLEARANCE_LICENCE_COST - 1)
+    game.cash = CLEARANCE_LICENCE_COST
+    expect(game.buyInboundClearance()).toBe(true)
+    expect(game.inboundHasClearance()).toBe(true)
+    expect(game.buyInboundClearance()).toBe(false)
+    expect(game.cash).toBe(0)
   })
 })

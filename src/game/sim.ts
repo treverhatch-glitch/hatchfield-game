@@ -268,6 +268,7 @@ import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
 import type { InboundContractRow, InboundOfferView } from './inboundBridge.ts'
 import {
+  CLEARANCE_LICENCE_COST,
   REP_FAIL,
   SIM_DAY_SEC,
   UPLIFT_LITRES,
@@ -1234,6 +1235,8 @@ export class Game {
   private priceWar: PriceWar | null = null
   /** Inbound offers and Guard contracts. Null until the clock or a card needs it. */
   private inbound: InboundBridge | null = null
+  /** Set for the duration of a clearance purchase so a second click cannot post another charge. */
+  private clearanceBusy = false
   /** Bellwater Intl. Headless; null until the field exists. */
   private rival: RivalAirport | null = null
   private rivalWalkaways: Walkaway[] = []
@@ -17435,16 +17438,32 @@ export class Game {
   }
 
   buyInboundClearance(): boolean {
-    const result = this.ensureInbound().buyClearance()
-    if (!result.ok) {
-      this.pushNews(result.reason, 'bad')
+    if (this.clearanceBusy) return false
+    if (this.inboundHasClearance()) {
+      this.pushNews('Security clearance already owned.', 'ok')
       this.emit()
       return false
     }
-    this.postInboundLedger()
-    this.pushNews('Security clearance licence on the books.', 'good')
-    this.emit()
-    return true
+    if (!this.sandbox && this.cash < CLEARANCE_LICENCE_COST) {
+      this.pushNews(`Need ${moneyLeft(CLEARANCE_LICENCE_COST)} for security clearance.`, 'bad')
+      this.emit()
+      return false
+    }
+    this.clearanceBusy = true
+    try {
+      const result = this.ensureInbound().buyClearance()
+      if (!result.ok) {
+        this.pushNews(result.reason, 'bad')
+        this.emit()
+        return false
+      }
+      this.postInboundLedger()
+      this.pushNews('Security clearance licence on the books.', 'good')
+      this.emit()
+      return true
+    } finally {
+      this.clearanceBusy = false
+    }
   }
 
   private tickInbound(step: number) {
