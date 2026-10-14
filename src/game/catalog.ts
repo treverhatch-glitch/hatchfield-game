@@ -1817,6 +1817,10 @@ export const GA_OVERSTAY_FINE = 5000
 export const GA_PARK_DAY_RATE = 380
 export const GA_PARK_RATE_COOL = 32
 
+/** Contract letter countdown (s). The first letter gets longer so a new player can read it. */
+export const CONTRACT_LETTER_DEADLINE = 36
+export const FIRST_CONTRACT_LETTER_DEADLINE = 90
+
 /** Airline field-task asks — clock + bonus / fail fine. */
 export const FIELD_TASK_DEADLINE = 95
 export const FIELD_TASK_COOL = 52
