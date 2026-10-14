@@ -96,7 +96,11 @@ describe('Round B part poses per state', () => {
   it('fuel hose pays out and the reel turns', () => {
     expect(lift('fuel_tanker', 'hose', 0).sz).toBeLessThan(0.05)
     expect(lift('fuel_tanker', 'hose', 1).sz).toBe(1)
-    expect(Math.abs(lift('fuel_tanker', 'hose_reel', 1).rz)).toBeGreaterThan(1)
+    const reel = lift('fuel_tanker', 'hose_reel', 1)
+    expect(Math.abs(reel.rz)).toBeGreaterThan(1)
+    // Reel sits in the bay behind the cab (+X), not on the tail.
+    expect(reel.px).toBeGreaterThan(1)
+    expect(reel.pz).toBeGreaterThan(0.5)
   })
 
   it('stairs, bus doors, tugs', () => {

@@ -129,6 +129,23 @@ export function vehicleRig(kind: string, color: string, worldPerMeter = 1): THRE
     }
   }
   for (const p of parts) p.geo.dispose()
+  // Fuel tanker keeps the group names the hose animation looks up. Wheel axles
+  // stay wheels_front / wheels_rear so they can spin and steer on their own;
+  // hoseReel rides inside hose_reel so the coil and the payout share one spin.
+  if (model === 'fuel_tanker') {
+    const wheels = new THREE.Group()
+    wheels.name = 'wheels'
+    g.add(wheels)
+    for (const child of [...g.children]) {
+      if (child !== wheels && child.name.startsWith('wheels')) wheels.attach(child)
+    }
+    const reel = g.getObjectByName('hose_reel')
+    if (reel && !reel.getObjectByName('hoseReel')) {
+      const alias = new THREE.Group()
+      alias.name = 'hoseReel'
+      reel.add(alias)
+    }
+  }
   g.scale.setScalar(worldPerMeter)
   return g
 }

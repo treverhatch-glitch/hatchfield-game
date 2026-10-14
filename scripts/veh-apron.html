@@ -193,7 +193,8 @@ window.renderAt = (t) => {
   setVehicleSurfaceTime(t)
   people.update(agents, cam, dt)
   window.__agents = agents.length; window.__stats = { ...people.stats }
-  if (CAM === 'fuel') { cam.position.set(-6, 3.6, -1.5); cam.lookAt(1.5, 1.0, -10.5) }
+  if (CAM === 'fuel') { cam.position.set(1.0, 2.5, -5.8); cam.lookAt(3.2, 1.35, -12.4) }
+  else if (CAM === 'fueltail') { cam.position.set(-8.4, 1.7, -11.2); cam.lookAt(-2.6, 1.6, -12.3) }
   else if (CAM === 'belt') { cam.position.set(-16, 5.5, 13); cam.lookAt(-8, 2.4, 4.2) }
   else if (CAM === 'junction') { cam.position.set(-30 + 34 * Math.cos(0.7 + t * 0.012), 30, 30 + 34 * Math.sin(0.7 + t * 0.012) + 10); cam.lookAt(-30, 0, 30) }
   else if (CAM === 'close') { cam.position.set(-19 + Math.sin(t * 0.05) * 2, 5.5, 17); cam.lookAt(-8, 1.6, 4) }

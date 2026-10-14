@@ -6,6 +6,7 @@ import {
   disposeVehicleRig,
   MODEL_PARTS,
   MODEL_SIZE,
+  poseVehicleRig,
   VehicleFleet,
   vehicleGeometry,
   vehicleLibrarySize,
@@ -64,6 +65,24 @@ describe('ground vehicle models', () => {
   it('distinct models do not share a silhouette', () => {
     const counts = new Set(ALL_MODELS.map((m) => fullCount(m, '#fff')))
     expect(counts.size).toBeGreaterThan(ALL_MODELS.length - 3)
+  })
+
+  it('names the fuel tanker cab, tank, hose reel and wheels for the hose animation', () => {
+    const rig = vehicleRig('fuel', '#c9a227')
+    for (const name of ['cab', 'tank', 'hoseReel', 'wheels']) expect(rig.getObjectByName(name), name).toBeTruthy()
+    const reel = rig.getObjectByName('hose_reel')!
+    expect(reel.getObjectByName('hoseReel')?.parent).toBe(reel)
+    expect(rig.getObjectByName('wheels_front')?.parent?.name).toBe('wheels')
+    expect(rig.getObjectByName('wheels_rear_2')?.parent?.name).toBe('wheels')
+    poseVehicleRig(rig, 'fuel_tanker', 1, 0, false, 3)
+    const spun = reel.matrix.elements.some((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) > 1e-3)
+    expect(spun).toBe(true)
+    const alias = reel.getObjectByName('hoseReel')!
+    expect(alias.matrix.elements[0]).toBeCloseTo(1)
+    expect(alias.matrix.elements[5]).toBeCloseTo(1)
+    const front = rig.getObjectByName('wheels_front')!
+    expect(front.matrix.elements.some((v, i) => Math.abs(v - (i % 5 === 0 ? 1 : 0)) > 1e-3)).toBe(true)
+    disposeVehicleRig(rig)
   })
 
   it('paints a fictional side livery on each turnaround vehicle', () => {

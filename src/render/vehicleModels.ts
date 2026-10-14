@@ -363,28 +363,29 @@ class Kit {
   }
 
   /** Forward-control truck cab at the +X end. Returns the cab rear X. */
-  cab(L: number, W: number, base: number, h: number, len: number, hex: string, opts: { beacon?: boolean } = {}) {
+  cab(L: number, W: number, base: number, h: number, len: number, hex: string, opts: { beacon?: boolean; part?: string } = {}) {
+    const shell = opts.part ?? ''
     const x0 = L / 2 - len / 2
     const top = base + h
-    this.rbox(hex, len, h * 0.5, W, x0, base + h * 0.25, 0, Math.min(0.22, h * 0.1)) // lower cab, rounded corners
-    this.rbox(hex, len * 0.9, h * 0.14, W * 0.98, x0 - len * 0.05, top - h * 0.07, 0, h * 0.07) // domed roof
+    this.rbox(hex, len, h * 0.5, W, x0, base + h * 0.25, 0, Math.min(0.22, h * 0.1), shell) // lower cab, rounded corners
+    this.rbox(hex, len * 0.9, h * 0.14, W * 0.98, x0 - len * 0.05, top - h * 0.07, 0, h * 0.07, shell) // domed roof
     // glazing band with pillars
     const gy = base + h * 0.7
     const gh = h * 0.38
-    this.box(LIVERY.glass, 0.05, gh, W * 0.86, L / 2 - 0.02, gy, 0)
-    this.box(LIVERY.glass, len * 0.72, gh, W * 1.005, x0 + len * 0.04, gy, 0)
+    this.box(LIVERY.glass, 0.05, gh, W * 0.86, L / 2 - 0.02, gy, 0, shell)
+    this.box(LIVERY.glass, len * 0.72, gh, W * 1.005, x0 + len * 0.04, gy, 0, shell)
     for (const s of [1, -1]) {
-      this.box(hex, 0.09, gh, 0.09, L / 2 - 0.04, gy, s * (W / 2 - 0.05)) // A pillar
-      this.box(hex, 0.12, gh, W * 1.01, x0 - len * 0.34, gy, 0) // B pillar band
+      this.box(hex, 0.09, gh, 0.09, L / 2 - 0.04, gy, s * (W / 2 - 0.05), shell) // A pillar
+      this.box(hex, 0.12, gh, W * 1.01, x0 - len * 0.34, gy, 0, shell) // B pillar band
       // mirror arm + head
-      this.box(LIVERY.black, 0.05, 0.05, 0.28, L / 2 - 0.2, gy + gh * 0.2, s * (W / 2 + 0.14))
-      this.box(LIVERY.black, 0.07, 0.36, 0.18, L / 2 - 0.2, gy, s * (W / 2 + 0.3))
-      // headlights + indicators
+      this.box(LIVERY.black, 0.05, 0.05, 0.28, L / 2 - 0.2, gy + gh * 0.2, s * (W / 2 + 0.14), shell)
+      this.box(LIVERY.black, 0.07, 0.36, 0.18, L / 2 - 0.2, gy, s * (W / 2 + 0.3), shell)
+      // headlights + indicators stay on the shell so the beam part is unchanged
       this.head(0.04, 0.16, 0.34, L / 2 + 0.01, base + 0.32, s * (W / 2 - 0.3), '', true)
       this.box(LIVERY.amber, 0.04, 0.1, 0.14, L / 2 + 0.01, base + 0.32, s * (W / 2 - 0.08), '', true)
     }
-    this.box(LIVERY.black, 0.08, 0.26, W * 1.02, L / 2 + 0.02, base + 0.08, 0) // bumper
-    this.box(LIVERY.chassis, 0.03, h * 0.16, W * 0.5, L / 2 + 0.01, base + h * 0.42, 0) // grille
+    this.box(LIVERY.black, 0.08, 0.26, W * 1.02, L / 2 + 0.02, base + 0.08, 0, shell) // bumper
+    this.box(LIVERY.chassis, 0.03, h * 0.16, W * 0.5, L / 2 + 0.01, base + h * 0.42, 0, shell) // grille
     if (opts.beacon !== false) this.beacon(x0 - len * 0.1, top + 0.02)
     return L / 2 - len
   }
@@ -413,8 +414,8 @@ class Kit {
   }
 
   /** Hazard stripe along both sides. */
-  sideStripe(x: number, len: number, y: number, W: number, hex = this.accent, h = 0.14) {
-    this.box(hex, len, h, W + 0.02, x, y, 0)
+  sideStripe(x: number, len: number, y: number, W: number, hex = this.accent, h = 0.14, name = '') {
+    this.box(hex, len, h, W + 0.02, x, y, 0, name)
   }
 
   /** Fleet number plate block on each door (reads as a dark tag). */
@@ -521,35 +522,55 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.axle(-L * 0.18, r, W, 'wheels_rear', true)
     k.axle(-L * 0.32, r, W, 'wheels_rear', true)
     k.chassisRail(L * 0.96, W, r + 0.15)
-    const back = k.cab(L, W, r + 0.2, 2.3, 2.3, LIVERY.white)
+    const back = k.cab(L, W, r + 0.2, 2.3, 2.3, LIVERY.white, { part: 'cab' })
     k.fleetNo(L / 2 - 1.1, r + 0.85, W)
-    const tl = back - (-L / 2) - 0.4
-    const tx = -L / 2 + tl / 2 + 0.1
+    // Door placard. A box, not a Mesh with the arguments swapped.
+    k.box('#b42318', 0.02, 0.22, 0.22, L / 2 - 1.15, r + 1.15, W / 2 + 0.02, 'cab')
+    // Leave a bay between the cab and the tank for the hose reel. Capsule caps
+    // already bulge outward along +X / -X; extra hemispheres would flip inward.
+    const reelBay = 1.7
+    const tailGap = 0.28
+    const tl = back + L / 2 - tailGap - reelBay
+    const tx = -L / 2 + tailGap + tl / 2
     const tr = Math.min(W * 0.46, (H - r - 0.4) / 2)
     const ty = r + 0.4 + tr
-    k.add(new THREE.CapsuleGeometry(tr, tl - tr * 2, 6, 16).rotateZ(Math.PI / 2), LIVERY.white, tx, ty, 0)
-    k.liveryBoth(0, Math.min(tl * 0.42, 3.2), Math.min(tr * 0.85, 1.15), tx + tl * 0.06, ty, tr + 0.04)
-    k.sideStripe(tx, tl * 0.9, ty - tr * 0.35, tr * 2, k.accent, 0.18)
-    k.sideStripe(tx, tl * 0.9, ty + tr * 0.1, tr * 2, LIVERY.gseYellow, 0.08)
+    const tankNose = tx + tl / 2
+    const reelX = tankNose + reelBay / 2
+    const reelY = r + 1.15
+    const reelZ = W * 0.45 + 0.22
+    k.add(new THREE.CapsuleGeometry(tr, tl - tr * 2, 6, 16).rotateZ(Math.PI / 2), LIVERY.white, tx, ty, 0, 'tank')
+    k.liveryBoth(0, Math.min(tl * 0.42, 3.2), Math.min(tr * 0.85, 1.15), tx + tl * 0.06, ty, tr + 0.04, 'tank')
+    k.sideStripe(tx, tl * 0.9, ty - tr * 0.35, tr * 2, k.accent, 0.18, 'tank')
+    k.sideStripe(tx, tl * 0.9, ty + tr * 0.1, tr * 2, LIVERY.gseYellow, 0.08, 'tank')
     // top walkway + rail + manholes
-    k.box(LIVERY.diamond, tl * 0.7, 0.05, 0.6, tx, ty + tr, 0)
-    for (const s of [1, -1]) k.box(LIVERY.steel, tl * 0.7, 0.04, 0.04, tx, ty + tr + 0.45, s * 0.3)
-    for (const f of [-0.25, 0, 0.25]) k.cyl(LIVERY.steel, 0.22, 0.08, tx + f * tl, ty + tr + 0.06, 0, undefined)
-    // pump cabinet + hose reel at rear, side lockers
-    k.box(LIVERY.steel, 0.9, 1.1, W * 0.96, -L / 2 + 0.55, r + 0.75, 0)
-    k.cyl(LIVERY.gseYellow, 0.38, 0.5, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
-    k.cyl(LIVERY.hose, 0.3, 0.52, -L / 2 + 0.55, r + 1.7, 0, 'z', 'hose_reel')
+    k.box(LIVERY.diamond, tl * 0.7, 0.05, 0.6, tx, ty + tr, 0, 'tank')
+    for (const s of [1, -1]) k.box(LIVERY.steel, tl * 0.7, 0.04, 0.04, tx, ty + tr + 0.45, s * 0.3, 'tank')
+    for (const f of [-0.25, 0, 0.25]) k.cyl(LIVERY.steel, 0.22, 0.08, tx + f * tl, ty + tr + 0.06, 0, undefined, 'tank')
+    // Rear access ladder, clear of the tail cap. Rungs lie on Z (rotateX); rails stand on Y.
+    const lx = -L / 2 + 0.12
+    const lz = 0.82
+    k.cyl(LIVERY.steel, 0.04, 2.55, lx, 1.85, lz - 0.18, undefined, 'tank', 8)
+    k.cyl(LIVERY.steel, 0.04, 2.55, lx, 1.85, lz + 0.18, undefined, 'tank', 8)
+    for (let i = 0; i < 8; i++) k.cyl(LIVERY.steel, 0.022, 0.4, lx, 0.7 + i * 0.3, lz, 'z', 'tank', 8)
+    // pump cabinet in the bay behind the cab, coil on the service side
+    k.box(LIVERY.steel, 1.35, 1.4, W * 0.9, reelX, r + 0.95, 0)
+    k.box(LIVERY.chassis, 0.85, 0.62, 0.04, reelX, r + 1.05, W * 0.45 + 0.02)
+    // Torus lies in XY (hole along Z) so the coil faces the side. Do not yaw it edge-on.
+    k.add(new THREE.TorusGeometry(0.34, 0.06, 8, 18), LIVERY.gseYellow, reelX, reelY, reelZ, 'hose_reel')
+    k.cyl(LIVERY.gseYellow, 0.22, 0.22, reelX, reelY, reelZ, 'z', 'hose_reel', 14)
+    k.cyl(LIVERY.hose, 0.16, 0.24, reelX, reelY, reelZ, 'z', 'hose_reel', 12)
     // hose paid out sideways from the reel (Round B scales it along Z)
-    k.sagLine(LIVERY.hose, 0.13, -L / 2 + 0.55, r + 1.4, W / 2, HOSE_M, FUEL_RISE, HOSE_M * 0.2, 'hose', 8)
-    k.box(LIVERY.steel, 0.25, 0.2, 0.3, -L / 2 + 0.55, r + 1.4 + FUEL_RISE, W / 2 + HOSE_M, 'hose') // nozzle
-    k.cyl(LIVERY.black, 0.08, 0.18, -L / 2 + 0.55, r + 1.4 + FUEL_RISE, W / 2 + HOSE_M + 0.12, 'z', 'hose', 8) // nozzle tip
+    k.sagLine(LIVERY.hose, 0.13, reelX, reelY - 0.2, reelZ, HOSE_M, FUEL_RISE, HOSE_M * 0.2, 'hose', 8)
+    k.box(LIVERY.steel, 0.25, 0.2, 0.3, reelX, reelY - 0.2 + FUEL_RISE, reelZ + HOSE_M, 'hose') // nozzle
+    k.cyl(LIVERY.black, 0.08, 0.18, reelX, reelY - 0.2 + FUEL_RISE, reelZ + HOSE_M + 0.12, 'z', 'hose', 8) // nozzle tip
     // grounding reel + cable to the landing gear (Round E scales along Z)
-    k.cyl(LIVERY.gseYellow, 0.16, 0.22, -L / 2 + 1.4, r + 0.55, W / 2 - 0.1, 'z')
-    k.sagLine(LIVERY.black, 0.045, -L / 2 + 1.4, r + 0.25, W / 2, GROUND_M, 0, 0.6, 'grounding', 5)
-    k.box(LIVERY.steel, 0.18, 0.12, 0.22, -L / 2 + 1.4, r + 0.25, W / 2 + GROUND_M, 'grounding') // alligator clamp
+    const gx = reelX - 0.15
+    k.cyl(LIVERY.gseYellow, 0.16, 0.22, gx, r + 0.55, W * 0.32, 'z')
+    k.sagLine(LIVERY.black, 0.045, gx, r + 0.25, W / 2, GROUND_M, 0, 0.6, 'grounding', 5)
+    k.box(LIVERY.steel, 0.18, 0.12, 0.22, gx, r + 0.25, W / 2 + GROUND_M, 'grounding') // alligator clamp
     // hi-vis reflective band on tank
-    k.box(LIVERY.gseYellow, tl * 0.55, 0.12, tr * 2 + 0.02, tx, ty - tr * 0.55, 0)
-    k.box(LIVERY.black, tl * 0.55, 0.06, tr * 2 + 0.025, tx, ty - tr * 0.55 - 0.09, 0)
+    k.box(LIVERY.gseYellow, tl * 0.55, 0.12, tr * 2 + 0.02, tx, ty - tr * 0.55, 0, 'tank')
+    k.box(LIVERY.black, tl * 0.55, 0.06, tr * 2 + 0.025, tx, ty - tr * 0.55 - 0.09, 0, 'tank')
     k.box(LIVERY.chassis, 1.8, 0.5, W * 1.0, tx, r + 0.25, 0)
     k.chevrons(-L / 2, r * 0.4, 0.5, W)
     k.tail(-L / 2, r + 0.5, W)

@@ -160,7 +160,7 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
   const { ext, clock, active } = input
   const e = ext <= 0 ? 0 : ext >= 1 ? 1 : ext
   const working = e >= 0.999
-  if (part.startsWith('wheels')) {
+  if (part.startsWith('wheels_')) {
     const c = partCentre(model, part)
     // Roll without slipping: angle = distance / radius (radius = axle height).
     reset(out, c[0], c[1], 0).rz = -input.odo / Math.max(0.15, c[1])
@@ -189,13 +189,13 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
     case 'fuel_tanker':
     case 'hydrant_cart': {
       const tanker = model === 'fuel_tanker'
-      const reelX = tanker ? -L / 2 + 0.55 : -1.53
+      const reel = tanker ? partCentre(model, 'hose_reel') : ([-1.53, 1.87, 0] as const)
       if (part === 'hose_reel') {
-        reset(out, reelX, tanker ? 2.2 : 1.87, 0).rz = -e * 9
+        reset(out, reel[0], reel[1], reel[2]).rz = -e * 9
         return true
       }
       if (part === 'hose') {
-        payOut(out, model, 'hose', e, reelX, tanker ? 1.9 : 0.92, W / 2)
+        payOut(out, model, 'hose', e, reel[0], tanker ? reel[1] : 0.92, tanker ? reel[2] : W / 2)
         return true
       }
       if (part === 'lift_platform') {
@@ -418,11 +418,16 @@ export function poseVehicleRig(rig: THREE.Object3D, model: VehicleModel, ext: nu
   _in.active = active
   _in.odo = odo
   _in.reversing = reversing
-  for (const child of rig.children) {
-    if (!child.name || child.name === 'body' || child.name === 'lights') continue
-    if (!partPose(model, child.name, _in, _pose)) continue
-    child.matrixAutoUpdate = false
-    partMatrix(_pose, child.matrix)
-    child.matrixWorldNeedsUpdate = true
+  const poseTree = (node: THREE.Object3D) => {
+    for (const child of node.children) {
+      const name = child.name
+      if (name && name !== 'body' && name !== 'lights' && !name.includes(':') && partPose(model, name, _in, _pose)) {
+        child.matrixAutoUpdate = false
+        partMatrix(_pose, child.matrix)
+        child.matrixWorldNeedsUpdate = true
+      }
+      if (child.children.length) poseTree(child)
+    }
   }
+  poseTree(rig)
 }
