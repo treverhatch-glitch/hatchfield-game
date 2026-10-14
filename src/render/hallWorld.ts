@@ -64,6 +64,9 @@ import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBui
 import type { RoomPlan } from './world/rooms'
 import { makeTextures, type WorldTextures } from './world/textures'
 import { hallQueues } from '../terminalplay/queues'
+import { footprintHit, footprintSpec, stampFrom } from '../terminalplay/footprints'
+import { queueAnchor, queueOrder, slotsAlong, standingInQueue, type QueueSlot } from '../terminalplay/lines'
+import { PLAY_TUNING } from '../terminalplay/config'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
@@ -76,6 +79,9 @@ export type HallBuildMode =
 export interface HallHover {
   c: number
   r: number
+  /** Hall metres under the cursor. Footprint placement uses these, not the cell. */
+  hx: number
+  hz: number
   sx: number
   sy: number
   check: PlacementCheck | null
@@ -220,6 +226,18 @@ export class HallWorld {
     opacity: 0.55,
     depthWrite: false,
   })
+  /** Slab the size of the piece, sitting on the floor so the footprint reads from above. */
+  private ghostPlate = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 0.08, 1),
+    new THREE.MeshBasicMaterial({
+      color: '#4ade80',
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    }),
+  )
+  private frameQueues = new Map<string, QueueSlot>()
+  private frameLines: { node: HallNode; x: number; z: number; x2: number; z2: number }[] = []
   private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 
   constructor(canvas: HTMLCanvasElement) {
@@ -287,6 +305,8 @@ export class HallWorld {
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
     this.scene.add(this.queueGroup)
+    this.ghostPlate.visible = false
+    this.scene.add(this.ghostPlate)
     this.scene.add(this.bagGroup)
 
     canvas.addEventListener('pointerdown', this.onDown)
@@ -445,23 +465,30 @@ export class HallWorld {
         const loose = inCell.filter((i) => !i.bundle)
         const moveId = this.build.kind === 'move' ? this.build.itemId : null
         const picking = this.build.kind === 'move' && !moveId
+        const placeDef = this.build.kind === 'place' ? this.build.def : null
+        const moveDef = this.build.kind === 'move' ? this.build.def : null
+        const footDef = placeDef ?? (moveId ? moveDef : null)
+        const useFoot = Boolean(footDef && footprintSpec(footDef) && this.roomPlan && this.interiorFit)
+        const stamped = footprintHit(items, hit.x, hit.z) as PlacedItem | null
+        const cellTarget = loose[loose.length - 1] ?? (picking ? (inCell[inCell.length - 1] ?? null) : null)
         next = {
           c,
           r,
+          hx: hit.x,
+          hz: hit.z,
           sx: e.clientX,
           sy: e.clientY,
-          check:
-            this.build.kind === 'place'
+          check: useFoot
+            ? game.hallFootprintCheck(footDef as ItemId, hit.x, hit.z, this.build.kind === 'move' || this.build.kind === 'place' ? this.build.rot : 0, moveId ?? undefined)
+            : this.build.kind === 'place'
               ? game.hallPlacement(this.build.def, c, r)
               : moveId
                 ? game.hallMoveCheck(moveId, c, r)
                 : null,
           target:
-            this.build.kind === 'bulldoze'
-              ? (loose[loose.length - 1] ?? null)
-              : picking
-                ? (loose[loose.length - 1] ?? inCell[inCell.length - 1] ?? null)
-                : null,
+            this.build.kind === 'bulldoze' || picking
+              ? (stamped && !stamped.bundle ? stamped : cellTarget)
+              : null,
         }
       }
     }
@@ -476,14 +503,20 @@ export class HallWorld {
     const hover = this.hover
     if (!hover) return
     if (this.build.kind === 'place') {
-      if (game.placeHallItemAt(this.build.def, hover.c, hover.r, this.build.rot)) {
-        this.onPlaced?.()
-      }
+      const foot = footprintSpec(this.build.def) && this.roomPlan && this.interiorFit
+      const placed = foot
+        ? game.placeHallFootprint(this.build.def, hover.hx, hover.hz, this.build.rot)
+        : game.placeHallItemAt(this.build.def, hover.c, hover.r, this.build.rot)
+      if (placed) this.onPlaced?.()
     } else if (this.build.kind === 'move') {
       if (!this.build.itemId) {
         if (hover.target) this.onMovePick?.(hover.target.id, hover.target.def)
-      } else if (game.moveHallItem(this.build.itemId, hover.c, hover.r, this.build.rot)) {
-        this.onMovePick?.(null, null)
+      } else {
+        const foot = Boolean(this.build.def && footprintSpec(this.build.def) && this.roomPlan && this.interiorFit)
+        const moved = foot
+          ? game.moveHallFootprint(this.build.itemId, hover.hx, hover.hz, this.build.rot)
+          : game.moveHallItem(this.build.itemId, hover.c, hover.r, this.build.rot)
+        if (moved) this.onMovePick?.(null, null)
       }
     } else if (hover.target) {
       game.removeHallItem(hover.target.id)
@@ -512,6 +545,7 @@ export class HallWorld {
     const def = mode?.kind === 'place' ? mode.def : mode?.kind === 'move' ? mode.def : null
     if (!mode || !def || !hover) {
       if (this.ghost) this.ghost.visible = false
+      this.ghostPlate.visible = false
       return
     }
     if (!this.ghost || this.ghostDef !== def) {
@@ -524,16 +558,30 @@ export class HallWorld {
     const items = (game.activeHall()?.items ?? []) as PlacedItem[]
     const carried = mode.kind === 'move' ? mode.itemId : null
     const rot = mode.kind === 'move' || mode.kind === 'place' ? mode.rot : 0
+    const stamp = footprintSpec(def) && this.roomPlan && this.interiorFit ? stampFrom(def, hover.hx, hover.hz, rot) : null
     const loadItems = carried ? items.filter((it) => it.id !== carried) : items
     const start = Math.min(3, cellLoad(loadItems, hover.c, hover.r))
-    const at = slotCenter(hover.c, hover.r, start, itemSize(itemDef(def)), cols, rows)
-    const check = carried
-      ? game.hallMoveCheck(carried, hover.c, hover.r)
-      : game.hallPlacement(def, hover.c, hover.r)
-    this.ghostMat.color.set(check.ok ? '#4ade80' : '#ef4444')
+    const at = stamp
+      ? { x: stamp.hx, z: stamp.hz }
+      : slotCenter(hover.c, hover.r, start, itemSize(itemDef(def)), cols, rows)
+    const check = stamp
+      ? game.hallFootprintCheck(def as ItemId, hover.hx, hover.hz, rot, carried ?? undefined)
+      : carried
+        ? game.hallMoveCheck(carried, hover.c, hover.r)
+        : game.hallPlacement(def, hover.c, hover.r)
+    const color = check.ok ? '#4ade80' : '#ef4444'
+    this.ghostMat.color.set(color)
     this.ghost.position.set(at.x, 0.07, at.z)
     this.ghost.rotation.y = (rot * Math.PI) / 2
     this.ghost.visible = true
+    if (stamp) {
+      this.ghostPlate.scale.set(stamp.w, 1, stamp.d)
+      this.ghostPlate.position.set(stamp.hx, 0.16, stamp.hz)
+      ;(this.ghostPlate.material as THREE.MeshBasicMaterial).color.set(color)
+      this.ghostPlate.visible = true
+    } else {
+      this.ghostPlate.visible = false
+    }
   }
 
   private onWheel = (e: WheelEvent) => {
@@ -1025,6 +1073,12 @@ export class HallWorld {
         x += (slot % 4) * 0.48 - 0.72
         z += Math.floor(slot / 4) * 0.48
       }
+      const queued = this.frameQueues.get(g.id)
+      if (queued) {
+        x = queued.x
+        z = queued.z
+        mesh.rotation.y = queued.yaw
+      }
       const desk = g.atBagDesk ? nodeWorld('claim') : null
       mesh.position.set(desk ? desk.x - 3.4 + (slot % 3) * 0.7 : x, 0, desk ? desk.z + 2.4 : z)
       const figure = this.interiorFit ? hallGuestScale(this.interiorFit) : 1
@@ -1152,15 +1206,48 @@ export class HallWorld {
     this.hotspotGroup.clear()
   }
 
+  /**
+   * People who have reached a desk stand in a spaced line. The badge count
+   * is the same set, painted red once it is long enough to be a bottleneck.
+   */
+  private buildFrameQueues(game: Game) {
+    this.frameQueues.clear()
+    this.frameLines = []
+    const plan = this.roomPlan
+    const fit = this.interiorFit
+    if (!plan || !fit) return
+    const items = game.activeHall()?.items ?? []
+    const nodes: HallNode[] = ['checkin', 'security', 'bathroom', 'food', 'shop', 'gate']
+    for (const node of nodes) {
+      const people = queueOrder(
+        game.hallGuests.filter((g) => standingInQueue(g, node, game.clock)),
+      )
+      if (!people.length) continue
+      const anchor = queueAnchor(plan, fit, items, node)
+      if (!anchor) continue
+      const slots = slotsAlong(anchor, people.length, PLAY_TUNING.queueSpacingM)
+      people.forEach((g, i) => {
+        const slot = slots[i]
+        if (slot) this.frameQueues.set(g.id, slot)
+      })
+      const tail = slots[slots.length - 1]
+      if (tail) this.frameLines.push({ node, x: anchor.x, z: anchor.z, x2: tail.x, z2: tail.z })
+    }
+  }
+
   /** Queue counts float over the desks. Red means the line is a bottleneck. */
   private syncQueues(game: Game) {
     const rows = hallQueues(game.hallGuests)
-    const sig = rows.map((row) => `${row.node}:${row.count}:${row.bottleneck ? 1 : 0}`).join('|')
+    const rooms = this.roomPlan ? 1 : 0
+    const sig = `${rooms}|${rows.map((row) => `${row.node}:${row.count}:${row.bottleneck ? 1 : 0}`).join('|')}|${this.frameLines.map((l) => `${l.x.toFixed(1)},${l.z.toFixed(1)}`).join(';')}`
     if (sig === this.queueSig) return
     this.queueSig = sig
     for (const child of this.queueGroup.children) {
-      const sprite = child as THREE.Sprite
-      sprite.material.dispose()
+      const mesh = child as THREE.Mesh
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+      else mat?.dispose()
+      if (child.type === 'Mesh') mesh.geometry?.dispose()
     }
     this.queueGroup.clear()
     for (const row of rows) {
@@ -1183,10 +1270,29 @@ export class HallWorld {
       }
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }))
       sprite.scale.set(1.6, 0.8, 1)
-      const at = nodeWorld(row.node)
+      const line = this.frameLines.find((l) => l.node === row.node)
+      const at = line ? { x: line.x2, z: line.z2 } : nodeWorld(row.node)
       sprite.position.set(at.x, 2.35, at.z)
       sprite.userData.facilityId = row.node
       this.queueGroup.add(sprite)
+      if (line) {
+        const dx = line.x2 - line.x
+        const dz = line.z2 - line.z
+        const len = Math.hypot(dx, dz)
+        if (len > 0.15) {
+          const strip = new THREE.Mesh(
+            new THREE.BoxGeometry(0.22, 0.03, len),
+            new THREE.MeshBasicMaterial({
+              color: row.bottleneck ? '#e23b2f' : '#e0a020',
+              transparent: true,
+              opacity: 0.9,
+            }),
+          )
+          strip.position.set((line.x + line.x2) / 2, 0.18, (line.z + line.z2) / 2)
+          strip.rotation.y = Math.atan2(dx, dz)
+          this.queueGroup.add(strip)
+        }
+      }
     }
   }
 
@@ -1385,6 +1491,7 @@ export class HallWorld {
     this.syncZoneTint(game)
     this.easeToGoal(game)
     this.syncWalkways(game)
+    this.buildFrameQueues(game)
     this.syncGuests(game)
     if (this.roomPlan) {
       this.navCrowd.group.visible = false
@@ -1599,6 +1706,8 @@ export class HallWorld {
     for (const tex of this.queueTex.values()) tex.dispose()
     this.queueTex.clear()
     this.ghostMat.dispose()
+    this.ghostPlate.geometry.dispose()
+    ;(this.ghostPlate.material as THREE.Material).dispose()
     this.terrazzo.dispose()
     this.floorMap.dispose()
     this.litter.dispose()

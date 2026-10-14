@@ -149,6 +149,20 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [2, 0.9, 0.08], [0, 1.3, 0.18], '#c45c5c'),
     p('box', [1.6, 0.9, 0.7], [0, 0.45, 0.45], '#8a6a4a'),
   ],
+  toilet: [
+    p('box', [3.6, 0.12, 2.6], [0, 0.06, 0], '#d5e4ea'),
+    p('box', [3.4, 2.1, 0.12], [0, 1.1, -1.2], '#eef3f6'),
+    p('box', [0.08, 1.6, 2.2], [-1.1, 0.9, 0.1], '#c5d5de'),
+    p('box', [0.08, 1.6, 2.2], [0, 0.9, 0.1], '#c5d5de'),
+    p('box', [0.08, 1.6, 2.2], [1.1, 0.9, 0.1], '#c5d5de'),
+    p('box', [0.7, 1.4, 0.08], [-1.6, 0.8, 1.15], '#7eb0c8'),
+    p('box', [0.7, 1.4, 0.08], [1.6, 0.8, 1.15], '#e090b0'),
+  ],
+  toilet_plus: [
+    p('box', [3.6, 0.12, 2.6], [0, 0.06, 0], '#d5e4ea'),
+    p('box', [3.4, 2.1, 0.12], [0, 1.1, -1.2], '#eef3f6'),
+    p('box', [1.4, 1.5, 0.08], [0, 0.85, 1.15], '#7eb08a'),
+  ],
 }
 
 /** Mesh variant for an item — a full trash can swaps to its overflowing look. */
@@ -210,6 +224,10 @@ export function layoutItems(items: readonly PlacedItem[], cols: number, rows: nu
   const load = new Map<string, number>()
   const out: KitPlacement[] = []
   for (const item of items) {
+    if (item.hx != null && item.hz != null) {
+      out.push({ item, x: item.hx, z: item.hz })
+      continue
+    }
     const key = `${item.c},${item.r}`
     const start = load.get(key) ?? 0
     const size = itemSize(itemDef(item.def))
