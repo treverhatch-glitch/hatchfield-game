@@ -1,3 +1,4 @@
-34 airline livery reference images (Gemini, 1600px JPEG) stored as base64 JSON packs because the upload connector is text-only.
-Unpack with `python3 public/art/refs/airlines/_b64/unpack.py` from repo root, commit the resulting `public/art/refs/airlines/*.jpg`, and delete `_b64/`.
-Files: andaman_hop, atlas_cargo, aurora_nordic, baltic_breeze, borneo_wings, brisa, celtic_isle, cityhopper, fjord_atlantic, gulf_pearl, harbor_heli, himalaya_air, island_heli, kiwi_wings, lotus_air, maple_coastal, medevac_one, mekong_express, monarch_holidays, outback_link, pacific_isles, pampas_air, polar_freight, rio_sol, rotorlink, royal_sakura, saharan_freight, savanna_air, suncharter, tango_air, volga_cargo, zephyr_go, northstar_767f, zoomjet_a320.
+42 airline livery reference images (Gemini, 1600px JPEG) stored as base64 JSON packs because the upload connector is text-only.
+Unpack with `python3 public/art/refs/airlines/_b64/unpack.py` from repo root, then commit the .jpg files and delete `_b64/`.
+
+Packs: pack0–pack3 (34 images, first batches + redos), pack4 (8 newest: indus_airways, alpine_swift, coral_coast, ironclad_cargo, seoul_star, dune_jet, kauri_air, skyline_rescue).
