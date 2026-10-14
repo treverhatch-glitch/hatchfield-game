@@ -1,5 +1,6 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { projectCash } from './cashForecast'
+import { useHudBandVar } from './hudBand'
 import { LiveText } from './LiveText'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
@@ -295,6 +296,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const holding = game.holdingCount()
   const freeGates = game.freeStands().length
   const rival = game.rivalPanel()
+  const topBar = useRef<HTMLElement>(null)
+  useHudBandVar(topBar, '--hud-bar-bottom', 'bottom')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -367,7 +370,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           onClose={() => setFeesOpen(false)}
         />
       ) : null}
-      <header className="top" data-testid="stats-bar">
+      <header className="top" data-testid="stats-bar" ref={topBar}>
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
           <span>
@@ -517,30 +520,42 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             </button>
           </div>
           <ol>
-            {game.coachSteps().map((s) => (
-              <li key={s.id} data-done={s.done ? '1' : '0'}>
-                <span className="mark">{s.done ? '✓' : '·'}</span>
-                {s.label}
-              </li>
-            ))}
+            {game.coachSteps().map((s) =>
+              s.id === 'field' && game.showStarterKit() ? (
+                // First step points straight at the kit: one click stamps it, so a
+                // new player doesn't spend the opening budget on a lone runway.
+                <li key={s.id} data-done="0" className="coach-kit-step">
+                  <span className="mark">→</span>
+                  <span>
+                    <button
+                      type="button"
+                      className="coach-kit"
+                      data-testid="starter-kit-coach"
+                      title="Runway, stand, hall, check-in, security and gate in one stamp"
+                      onClick={() => game.buildStarterKit()}
+                    >
+                      Stamp Starter kit · {money(STARTER_KIT_COST)}
+                    </button>
+                    {game.starterFreehand ? null : (
+                      <button
+                        type="button"
+                        className="coach-freehand"
+                        data-testid="build-freehand"
+                        onClick={() => game.chooseFreehand()}
+                      >
+                        or build freehand
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ) : (
+                <li key={s.id} data-done={s.done ? '1' : '0'}>
+                  <span className="mark">{s.done ? '✓' : '·'}</span>
+                  {s.label}
+                </li>
+              ),
+            )}
           </ol>
-          {game.showStarterKit() ? (
-            <div className="row">
-              <button
-                type="button"
-                className="on"
-                data-testid="starter-kit-coach"
-                onClick={() => game.buildStarterKit()}
-              >
-                Stamp starter kit · {money(STARTER_KIT_COST)}
-              </button>
-              {game.starterFreehand ? null : (
-                <button type="button" data-testid="build-freehand" onClick={() => game.chooseFreehand()}>
-                  Build freehand
-                </button>
-              )}
-            </div>
-          ) : null}
           <p className="muted">
             Field {game.fieldRating()} · {game.fieldRatingLabel()} — Standing, hall, and security
             all count.
@@ -549,7 +564,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       ) : null}
 
       {game.inboundOffer() ? (
-        <aside className="inbound-panel" data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
+        <aside
+          className={`inbound-panel${game.showCoach() ? ' beside-coach' : ''}`}
+          data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
           {(() => {
             const card = game.inboundOffer()
             if (!card) return null
@@ -2207,7 +2224,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <>
                       <button
                         type="button"
-                        className="on"
+                        className={`on${game.showCoach() ? ' dock-kit-target' : ''}`}
                         data-testid="starter-kit-dock"
                         title="First stamp. A lone runway spends this budget and the kit then reads short."
                         onClick={() => game.buildStarterKit()}

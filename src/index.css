@@ -4,6 +4,14 @@
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
   color: #e8eef4;
   background: #0f1c16;
+  /*
+   * Bottom of the top band. The HUD writes the stats bar's bottom edge (it wraps
+   * to two rows on narrow screens) and the owner chrome writes the info-view strip
+   * height. Everything that hangs under the HUD anchors to --hud-top.
+   */
+  --hud-bar-bottom: 64px;
+  --hud-strip-h: 0px;
+  --hud-top: calc(var(--hud-bar-bottom) + var(--hud-strip-h));
 }
 
 * {
@@ -71,7 +79,7 @@ button {
   position: absolute;
   /* Sit beside the First hour checklist (also top-left) so the jet card stays readable. */
   left: 312px;
-  top: 72px;
+  top: calc(var(--hud-top) + 8px);
   width: min(280px, 86vw);
   z-index: 18;
   pointer-events: none;
@@ -193,7 +201,7 @@ button {
 .disruption-stack {
   position: absolute;
   left: 16px;
-  top: 72px;
+  top: calc(var(--hud-top) + 44px);
   width: min(300px, 92vw);
   z-index: 24;
   display: flex;
@@ -203,7 +211,7 @@ button {
 }
 
 .disruption-stack.below-coach {
-  top: 300px;
+  top: calc(var(--hud-top) + 272px);
 }
 
 .disruption {
@@ -254,10 +262,10 @@ button {
 }
 
 .coach {
-  /* Top-left under the HUD — never cover the bottom tool dock (was z>dock). */
+  /* Top-left under the HUD (below the photo button) — never cover the bottom tool dock (was z>dock). */
   position: absolute;
   left: 16px;
-  top: 72px;
+  top: calc(var(--hud-top) + 44px);
   width: min(280px, 90vw);
   max-height: min(42vh, 360px);
   overflow: auto;
@@ -332,6 +340,56 @@ button {
 
 .coach .muted {
   margin: 8px 0 0;
+}
+
+/* Step one is the kit itself — a gold link the player can't miss. */
+.coach li.coach-kit-step .mark {
+  color: #e6c85a;
+}
+
+.coach .coach-kit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #e6c85a;
+  background: #c9a227;
+  color: #1a1406;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  animation: coach-kit-pulse 1.6s ease-in-out infinite;
+}
+
+.coach .coach-kit:hover {
+  background: #e6c85a;
+}
+
+.coach .coach-freehand {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #b7c4b8;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The dock kit button echoes the coach while it points at it. */
+.dock-kit-target {
+  animation: coach-kit-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-kit-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(230, 200, 90, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(230, 200, 90, 0);
+  }
 }
 
 .guest-card {
@@ -487,7 +545,7 @@ button {
 /* Year report sits in the corner so the field stays visible. Not a blocking modal. */
 .year-report {
   position: absolute;
-  top: 74px;
+  top: calc(var(--hud-top) + 10px);
   right: 16px;
   width: min(320px, calc(100vw - 32px));
   max-height: min(46vh, 420px);
@@ -794,7 +852,7 @@ button {
 
 .offer {
   position: absolute;
-  top: 64px;
+  top: var(--hud-top);
   left: 50%;
   transform: translateX(-50%);
   width: min(520px, 92vw);
@@ -825,7 +883,7 @@ button {
 }
 
 .offer.layover {
-  top: 132px;
+  top: calc(var(--hud-top) + 68px);
   border-color: #6a9e7a;
   background: rgba(16, 36, 28, 0.96);
 }
@@ -835,36 +893,36 @@ button {
 }
 
 .offer.hub {
-  top: 132px;
+  top: calc(var(--hud-top) + 68px);
   border-color: #c9a227;
   background: rgba(36, 28, 12, 0.96);
 }
 
 .offer.mx {
-  top: 200px;
+  top: calc(var(--hud-top) + 136px);
   border-color: #7a9bb8;
 }
 
 .offer.threat {
-  top: 268px;
+  top: calc(var(--hud-top) + 204px);
   border-color: #ff6b6b;
   background: rgba(48, 18, 18, 0.96);
 }
 
 .offer.emergency {
-  top: 336px;
+  top: calc(var(--hud-top) + 272px);
   border-color: #e09a4a;
   background: rgba(40, 28, 12, 0.96);
 }
 
 .offer.parking {
-  top: 404px;
+  top: calc(var(--hud-top) + 340px);
   border-color: #8aa4b8;
   background: rgba(18, 28, 36, 0.96);
 }
 
 .offer.field-task {
-  top: 472px;
+  top: calc(var(--hud-top) + 408px);
   border-color: #c9a227;
   background: rgba(22, 32, 18, 0.96);
 }
@@ -1583,7 +1641,7 @@ button {
 /* Letters slide in from the left. Click a card to read it; extras sit in the inbox. */
 .letter-stack {
   position: absolute;
-  top: 78px;
+  top: calc(var(--hud-top) + 50px);
   left: 16px;
   right: auto;
   width: min(280px, 92vw);
@@ -1597,25 +1655,36 @@ button {
 }
 
 .letter-stack.below-coach {
-  top: 300px;
+  top: calc(var(--hud-top) + 272px);
 }
 
 .letter-stack.below-inbound {
-  top: 268px;
+  top: calc(var(--hud-top) + 240px);
 }
 
 .letter-stack.below-coach.below-inbound {
-  top: 470px;
+  top: calc(var(--hud-top) + 442px);
 }
 
 /* One inbound card. It sits over the apron corner and leaves the field clickable. */
 .inbound-panel {
   position: absolute;
-  top: 78px;
+  top: calc(var(--hud-top) + 50px);
   left: 16px;
   width: min(280px, 92vw);
   z-index: 34;
   pointer-events: none;
+}
+
+/* While the First hour coach is up the card sits beside it, so the kit link stays visible. */
+@media (min-width: 801px) {
+  .inbound-panel.beside-coach {
+    left: 312px;
+    top: calc(var(--hud-top) + 44px);
+  }
+  .letter-stack.below-coach.below-inbound {
+    top: calc(var(--hud-top) + 272px);
+  }
 }
 
 .inbound-card {
@@ -2349,8 +2418,8 @@ h1 {
 .rival-card {
   pointer-events: auto;
   position: absolute;
-  top: 108px;
-  max-height: calc(100% - 128px);
+  top: calc(var(--hud-top) + 44px);
+  max-height: calc(100% - var(--hud-top) - 64px);
   overflow: auto;
   background: rgba(10, 18, 16, 0.92);
   color: #e8eef4;
@@ -2514,7 +2583,7 @@ h1 {
 /* Fees sit on the right edge. The rest of the apron stays clickable. */
 .fees-toggle {
   position: absolute;
-  top: 62px;
+  top: calc(var(--hud-top) + 4px);
   right: 12px;
   z-index: 38;
   pointer-events: auto;
@@ -2535,10 +2604,10 @@ h1 {
 
 .fees-dock {
   position: absolute;
-  top: 102px;
+  top: calc(var(--hud-top) + 44px);
   right: 12px;
   width: min(340px, calc(100vw - 24px));
-  max-height: calc(100vh - 150px);
+  max-height: calc(100vh - var(--hud-top) - 86px);
   overflow: auto;
   z-index: 36;
   pointer-events: auto;

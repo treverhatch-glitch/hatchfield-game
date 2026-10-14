@@ -6,10 +6,10 @@ import { formatHour } from './space.ts'
 const clusterStyle = {
   position: 'absolute' as const,
   left: 16,
-  top: 96,
+  // First row under the HUD's top band; the coach and letters start 44px lower.
+  top: 'calc(var(--hud-top) + 8px)',
   display: 'flex',
-  flexDirection: 'column' as const,
-  alignItems: 'flex-start',
+  alignItems: 'center',
   gap: 8,
   pointerEvents: 'none' as const,
 }
