@@ -2513,8 +2513,8 @@ export class World {
     this.lotLamps.update(this.pivot, getNightLevel())
     this.buildingAnim.update(Math.min(dt, 0.1), buildingSignals(game), this.camera, (key) => {
       const tile = game.yard.tileOf(key)
-      if (tile === 'mro') return siteSignals(tile, [], game.mroDoorOpen(key) > 0 || game.hangarInUse(key))
-      if (tile === 'hangar') return siteSignals(tile, [], game.hangarInUse(key))
+      if (tile === 'mro') return siteSignals(tile, game.yard.activePoints(key), game.mroDoorOpen(key) > 0 || game.hangarInUse(key))
+      if (tile === 'hangar') return siteSignals(tile, game.yard.activePoints(key), game.hangarInUse(key))
       return siteSignals(tile, game.yard.activePoints(key))
     })
     this.serviceFx.sync(game, dt)

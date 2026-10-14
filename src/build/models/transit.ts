@@ -1,6 +1,7 @@
 /** Transit family: bus curb, rail station, terminal-bus depot, transfer-bus depot. */
 import * as THREE from 'three'
 import { box, cyl, emblem, HALF, M, mat, pad, sign } from './kit'
+import { animate } from '../anim'
 
 function bus(g: THREE.Object3D, x: number, z: number, color: string, rotY = 0, len = 4.2, real = false) {
   const b = new THREE.Group()
@@ -75,12 +76,15 @@ export function busDepot(g: THREE.Group, transfer: boolean): void {
     t.rotation.x = 0.0
     t.rotation.z = 0.2
   }
-  for (let i = 0; i < 3; i++) box(g, 1.8, 2.2, 0.06, M.darkSteel(), -2.8 + i * 2.8, 0.1, -0.58)
-  // Round 6: buses at real size (14 m = 3.15 units) on two of the three bays (x -2.8 / 0 / 2.8, z 2.3).
-  bus(g, -2.8, 2.3, color, 0, 3.15, true)
-  bus(g, 0, 2.3, color, 0, 3.15, true)
+  for (let i = 0; i < 3; i++) {
+    box(g, 1.8, 2.2, 0.03, mat('#1b1e22'), -2.8 + i * 2.8, 0.1, -0.6)
+    // Round 7: each garage door rolls up for the bus on its bay.
+    animate(box(g, 1.76, 2.16, 0.06, mat('#5c6f82', { metal: 0.45, rough: 0.45 }), -2.8 + i * 2.8, 0.1, -0.56), { kind: 'roll', signal: 'bayDoor', amount: 2.16, point: i })
+  }
+  // Round 7: no parked prop buses on the bays: the live apron buses park there.
   if (transfer) box(g, 0.7, 0.6, 3.0, M.yellow(), 4.1, 0.1, 2.2) // apron boarding island
   else cyl(g, 0.3, 0.3, 1.6, M.steel(), 4.15, 0.1, 2.3, 12) // charger
+  if (!transfer) for (const x of [-3.0, 3.0]) cyl(g, 0.18, 0.22, 0.5, M.steel(), x, 3.1, -3.6, 10) // roof vents
   sign(g, transfer ? 'TRANSFER BUS' : 'TERMINAL BUS', color, '#ffffff', 3.0, 0.45, 0, 2.6, -0.56)
   emblem(g, 'plane', color, 1.0, 3.6, 1.6, -0.56)
 }

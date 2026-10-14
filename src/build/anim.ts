@@ -17,6 +17,8 @@ export type AnimSignal =
   | 'dockActive'
   | 'hangarBusy'
   | 'deicing'
+  /** Any service bay of this building is in use (approach, work or exit). */
+  | 'bayDoor'
 
 export type AnimKind = 'spin' | 'slide' | 'roll' | 'rot' | 'blink' | 'sway' | 'cycle'
 
@@ -92,6 +94,11 @@ const YARD_SIGNAL: Record<string, AnimSignal> = {
   cargo: 'dockActive',
   fire: 'fireDispatch',
   deice: 'deicing',
+  kitchen: 'bayDoor',
+  snack: 'bayDoor',
+  termbus: 'bayDoor',
+  xferbus: 'bayDoor',
+  bus: 'bayDoor',
 }
 
 /**
@@ -105,14 +112,16 @@ export function siteSignals(
   hangarBusy?: boolean,
 ): SiteSignals | undefined {
   if (!tile) return undefined
+  const any = points.some(Boolean) ? 1 : 0
   if (tile === 'hangar' || tile === 'mro') {
-    const busy = hangarBusy ? 1 : 0
-    return { hangarBusy: busy, points: points.length ? points : undefined }
+    // Doors open for the aircraft in work and for a tow tug on its door point.
+    const busy = hangarBusy || any ? 1 : 0
+    return { hangarBusy: busy, bayDoor: any, points: points.length ? points : undefined }
   }
   const sig = YARD_SIGNAL[tile]
   if (!sig) return undefined
-  const any = points.some(Boolean) ? 1 : 0
-  return { [sig]: any, points } as SiteSignals
+  // Per-point parts (doors, levellers) follow their own point; site-wide parts the signal.
+  return { [sig]: any, bayDoor: any, points } as SiteSignals
 }
 
 const tmpBox = new THREE.Box3()
