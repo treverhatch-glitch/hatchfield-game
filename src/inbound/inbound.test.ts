@@ -210,7 +210,7 @@ describe('inbound requests', () => {
   })
 
   it('times out a missed inbound ask on its own path, without the refuse fine', () => {
-    expect(EMERGENCY_TIMEOUT_FINE).toBe(EMERGENCY_REFUSE_FINE)
+    expect(EMERGENCY_TIMEOUT_FINE).toBe(EMERGENCY_REFUSE_FINE / 2)
     const state = createInboundState(1)
     const divert = spawnOffer(state, 'weather_divert')
     expect(divert.fineOnTimeout).toBe(0)

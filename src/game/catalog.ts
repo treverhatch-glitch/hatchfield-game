@@ -1859,11 +1859,10 @@ export const TANKER_FEE = 6800
 export const TANKER_MX_FEE = 9200
 export const EMERGENCY_REFUSE_FINE = 800
 /**
- * Unanswered emergency. Same dollars as a deliberate refuse until a balance
- * pass sets its own value. The path and the news line differ. An unanswered
- * inbound card is $0; that cut already landed.
+ * Unanswered emergency. Half a deliberate refuse. The news line stays
+ * "Missed — no answer". An unanswered inbound card is $0; that cut already landed.
  */
-export const EMERGENCY_TIMEOUT_FINE = EMERGENCY_REFUSE_FINE
+export const EMERGENCY_TIMEOUT_FINE = EMERGENCY_REFUSE_FINE / 2
 /**
  * Declining (or timing out) an emergency the field cannot host — no free stand, no hangar,
  * dry farm — costs the fee and this much reputation, not the refuse fine. The starter field

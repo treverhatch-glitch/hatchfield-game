@@ -411,7 +411,8 @@ describe('field ask build', () => {
 
 describe('emergency timeout', () => {
   it('bills a missed ask on the timeout fine and says so, and a refuse stays a refuse', () => {
-    expect(EMERGENCY_TIMEOUT_FINE).toBe(EMERGENCY_REFUSE_FINE)
+    expect(EMERGENCY_TIMEOUT_FINE).toBe(EMERGENCY_REFUSE_FINE / 2)
+    expect(EMERGENCY_TIMEOUT_FINE).toBeLessThan(EMERGENCY_REFUSE_FINE)
     const game = fresh('easy')
     game.buildStarterKit()
     game.signed = ['northline']
