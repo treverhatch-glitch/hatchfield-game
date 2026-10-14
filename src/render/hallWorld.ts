@@ -66,6 +66,7 @@ import {
   type HallFit,
 } from './hallRooms'
 import { terminals } from './world/layout'
+import { baseLevel } from './world/quality'
 import { PACK1_REPEAT_M, tileByPosition } from './materials/pack1'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
 import type { RoomPlan } from './world/rooms'
@@ -947,7 +948,7 @@ export class HallWorld {
       if (hit) {
         if (!this.terminalShared) {
           this.terminalTextures = makeTextures(64, 4)
-          this.terminalShared = makeTerminalShared(this.terminalTextures, graphicsQuality())
+          this.terminalShared = makeTerminalShared(this.terminalTextures, baseLevel(graphicsQuality()))
         }
         const fit = hallFitFor(hit.info)
         const building = new TerminalBuilding(hit.info, this.terminalShared, {
