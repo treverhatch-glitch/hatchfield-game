@@ -7,7 +7,10 @@ import {
   MODEL_PARTS,
   MODEL_SIZE,
   poseVehicleRig,
+  VEHICLE_LOD_M,
+  LIVERY_CELL_ASPECT,
   VehicleFleet,
+  vehicleFarGeometry,
   vehicleGeometry,
   vehicleLibrarySize,
   vehicleLitGeometry,
@@ -97,6 +100,36 @@ describe('ground vehicle models', () => {
     }
   })
 
+  it('scales each placard to the livery cell so the brand is not cropped', () => {
+    const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
+    for (const kind of kinds) {
+      const model = vehicleModel(kind)
+      const geos = [vehicleGeometry(kind, '#3a7bd5')]
+      for (const part of MODEL_PARTS[model]) geos.push(vehiclePartGeometry(kind, '#3a7bd5', part))
+      let minX = Infinity
+      let maxX = -Infinity
+      let minY = Infinity
+      let maxY = -Infinity
+      let n = 0
+      for (const geo of geos) {
+        const pos = geo.getAttribute('position')
+        const tid = geo.getAttribute('tid')
+        if (!pos || !tid) continue
+        for (let i = 0; i < tid.count; i++) {
+          if (tid.getX(i) !== 6) continue
+          n++
+          minX = Math.min(minX, pos.getX(i))
+          maxX = Math.max(maxX, pos.getX(i))
+          minY = Math.min(minY, pos.getY(i))
+          maxY = Math.max(maxY, pos.getY(i))
+        }
+      }
+      expect(n, kind).toBeGreaterThan(8)
+      const aspect = (maxX - minX) / Math.max(1e-4, maxY - minY)
+      expect(aspect, kind).toBeCloseTo(LIVERY_CELL_ASPECT, 1)
+    }
+  })
+
   it('paints a fictional side livery on each turnaround vehicle', () => {
     const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
     for (const kind of kinds) {
@@ -145,6 +178,36 @@ describe('ground vehicle models', () => {
     expect(parts.some((n) => n.includes('|wheels_front'))).toBe(true)
     fleet.sync([])
     expect(meshes.every((mesh) => mesh.count === 0)).toBe(true)
+    fleet.dispose()
+  })
+
+  it('instances one cheap shell per model past the lod distance', () => {
+    const fleet = new VehicleFleet()
+    const size = [8, 3, 2.5] as const
+    const list = Array.from({ length: 60 }, (_, i) => ({
+      kind: i % 2 === 0 ? 'fuel' : 'pax_bus',
+      color: '#c9a227',
+      size,
+      x: (i % 10) * 6,
+      y: 0,
+      z: Math.floor(i / 10) * 8,
+      yaw: 0,
+      scale: 1,
+    }))
+    const camera = { x: 0, y: 4, z: -(VEHICLE_LOD_M + 40) }
+    fleet.sync(list, camera)
+    const meshes = fleet.root.children.filter((child) => (child as THREE.InstancedMesh).isInstancedMesh) as THREE.InstancedMesh[]
+    const far = meshes.filter((mesh) => mesh.name.startsWith('far:') && mesh.count > 0)
+    const near = meshes.filter((mesh) => mesh.name.startsWith('fleet:') && mesh.count > 0)
+    expect(near).toHaveLength(0)
+    expect(far).toHaveLength(2)
+    expect(far.reduce((n, mesh) => n + mesh.count, 0)).toBe(60)
+    const close = vehicleGeometry('fuel', '#c9a227').getAttribute('position').count
+    const cheap = vehicleFarGeometry('fuel', '#c9a227').getAttribute('position').count
+    expect(cheap).toBeLessThan(close / 8)
+    expect(cheap).toBeGreaterThan(8)
+    fleet.sync(list.slice(0, 4))
+    expect(far.every((mesh) => mesh.count === 0)).toBe(true)
     fleet.dispose()
   })
 })

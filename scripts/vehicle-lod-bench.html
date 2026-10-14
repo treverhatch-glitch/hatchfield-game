@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+  <body>
+    <canvas id="c"></canvas>
+    <script type="module">
+      import * as THREE from 'three'
+      import { VehicleFleet } from '/src/render/vehicles.ts'
+
+      const canvas = document.querySelector('#c')
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })
+      renderer.setSize(1280, 720, false)
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color('#bfd0d3')
+      const camera = new THREE.PerspectiveCamera(40, 1280 / 720, 0.1, 4000)
+      camera.position.set(0, 18, 60)
+      camera.lookAt(0, 1, 0)
+      scene.add(new THREE.HemisphereLight('#e8f3ff', '#6b8a4a', 0.9))
+      const sun = new THREE.DirectionalLight('#fff3d4', 1.1)
+      sun.position.set(30, 50, 10)
+      scene.add(sun)
+
+      const fleet = new VehicleFleet()
+      scene.add(fleet.root)
+      const kinds = ['fuel', 'pax_bus', 'belt_loader', 'catering', 'pushback_tug']
+      const list = []
+      for (let i = 0; i < 60; i++) {
+        const far = i >= 8
+        list.push({
+          kind: kinds[i % kinds.length],
+          color: i % 2 ? '#c9a227' : '#3d6a8a',
+          size: [10, 3.2, 2.5],
+          // Close row is ~25 m from the camera. The other 52 sit ~300 m down the apron.
+          x: far ? ((i % 10) - 4.5) * 18 : (i - 3.5) * 6,
+          y: 0,
+          z: far ? -90 : 48,
+          yaw: 0.4,
+          scale: 0.45,
+        })
+      }
+
+      const sample = (useLod) =>
+        new Promise((resolve) => {
+          const deltas = []
+          let last = performance.now()
+          const step = (now) => {
+            fleet.sync(list, useLod ? camera.position : undefined)
+            renderer.render(scene, camera)
+            deltas.push(now - last)
+            last = now
+            if (deltas.length < 40) requestAnimationFrame(step)
+            else {
+              const sorted = deltas.slice(8).sort((a, b) => a - b)
+              const mid = sorted[Math.floor(sorted.length * 0.5)]
+              const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+              const far = fleet.root.children.filter((m) => m.name && m.name.startsWith('far:') && m.count > 0)
+              const near = fleet.root.children.filter((m) => m.name && m.name.startsWith('fleet:') && m.count > 0)
+              resolve({
+                useLod,
+                meanMs: Math.round((sorted.reduce((a, b) => a + b, 0) / sorted.length) * 10) / 10,
+                p95Ms: Math.round(p95 * 10) / 10,
+                medianMs: Math.round(mid * 10) / 10,
+                calls: renderer.info.render.calls,
+                tris: renderer.info.render.triangles,
+                nearDraws: near.length,
+                farDraws: far.length,
+                farCopies: far.reduce((n, m) => n + m.count, 0),
+                nearCopies: near.reduce((n, m) => n + m.count, 0),
+              })
+            }
+          }
+          requestAnimationFrame(step)
+        })
+
+      window.__bench = await sample(true)
+      window.__benchAllNear = await sample(false)
+      window.__ready = true
+    </script>
+  </body>
+</html>

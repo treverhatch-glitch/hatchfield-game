@@ -151,6 +151,16 @@ export const LIVERY = {
 export const TEX = { none: 0, paint: 1, panel: 2, plate: 3, chevron: 4, belt: 5, livery: 6 } as const
 /** Cells across the shared side-livery atlas. */
 export const LIVERY_CELLS = 5
+/**
+ * One cell is a landscape banner (see scripts/apron_livery.py).
+ * Placards are scaled to this aspect so the brand is not stretched or cropped.
+ */
+export const LIVERY_CELL_ASPECT = 1024 / 280
+/**
+ * Camera distance in metres. Closer than this, the fleet draws the full rig.
+ * Farther, it draws one cheap instanced shell per model.
+ */
+export const VEHICLE_LOD_M = 130
 export type TexId = (typeof TEX)[keyof typeof TEX]
 
 function autoTex(hex: string, lit: boolean): TexId {
@@ -430,7 +440,12 @@ class Kit {
    * `z` is how far outside the centreline the sign sits.
    */
   livery(cell: number, w: number, h: number, x: number, y: number, z: number, face: 1 | -1, name = '') {
-    const g = new THREE.PlaneGeometry(w, h)
+    // Contain the whole cell inside the panel. A wide slot letterboxes; a tall slot pillars.
+    let pw = Math.max(0.05, w)
+    let ph = Math.max(0.05, h)
+    if (pw / ph > LIVERY_CELL_ASPECT) pw = ph * LIVERY_CELL_ASPECT
+    else ph = pw / LIVERY_CELL_ASPECT
+    const g = new THREE.PlaneGeometry(pw, ph)
     if (face < 0) g.rotateY(Math.PI)
     this.tex = TEX.livery
     this.add(g, '#f4f5f6', x, y, face * Math.abs(z), name)
@@ -1075,6 +1090,19 @@ function cart(k: Kit, cx: number, cL: number, W: number, H: number, name: string
   // bags
   const bags = ['#6a5340', '#2f4a6a', '#8c2f2f', '#3e5a3a', '#55595f']
   for (let i = 0; i < 5; i++) k.box(bags[i], cL * 0.17, 0.42, W * 0.55, cx - cL * 0.4 + i * cL * 0.2, r + 0.46, W * 0.1, name)
+}
+
+/**
+ * Far LOD: three boxes (body, cab, wheels). No bevels, no animated parts.
+ * The close rig keeps every socket and part name; this shell only stands in at distance.
+ */
+export function buildVehicleFarParts(model: VehicleModel, accent: string): VPart[] {
+  const [L, H, W] = MODEL_SIZE[model]
+  const k = new Kit(accent)
+  k.add(new THREE.BoxGeometry(L * 0.9, H * 0.55, W * 0.88), LIVERY.white, 0, H * 0.46, 0)
+  k.add(new THREE.BoxGeometry(L * 0.24, H * 0.32, W * 0.8), accent, L * 0.3, H * 0.52, 0)
+  k.add(new THREE.BoxGeometry(L * 0.62, Math.min(0.45, H * 0.22), W * 0.98), LIVERY.tyre, 0, Math.min(0.22, H * 0.12), 0)
+  return k.parts
 }
 
 /** Build every primitive for one model. Caller owns and disposes the result. */

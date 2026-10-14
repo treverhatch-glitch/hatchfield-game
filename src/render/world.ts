@@ -2112,7 +2112,9 @@ export class World {
         clock: game.clock,
       })
     }
-    this.vehicleFleet.sync(this.vehicleFrame)
+    const posed = extraVehicleYard()
+    if (posed) for (const item of posed) this.vehicleFrame.push(item)
+    this.vehicleFleet.sync(this.vehicleFrame, this.camera.position)
     setVehicleSurfaceTime(game.clock)
 
     const seenP = new Set<string>()
@@ -2549,6 +2551,12 @@ function flightLivery(game: Game, f: Game['flights'][number]): Livery {
     stripe = '#c9a227'
   }
   return { body, stripe, tail: stripe, scheme: 'solid', airline: f.airline }
+}
+
+/** Screenshot / debug yard. The sim does not spawn these; the play loop ignores the list when it is empty. */
+function extraVehicleYard(): readonly VehicleInstance[] | null {
+  const list = (globalThis as { __vehicleYard?: VehicleInstance[] }).__vehicleYard
+  return Array.isArray(list) && list.length ? list : null
 }
 
 function truckColor(kind: string): string {

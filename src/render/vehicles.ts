@@ -6,7 +6,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
-import { buildVehicleParts, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
+import { buildVehicleFarParts, buildVehicleParts, MODEL_SIZE, VEHICLE_LOD_M, vehicleModel, type VehicleModel } from './vehicleModels'
 import { ANIM_PARTS, newPartPose, partMatrix, partPose, poseInput } from './vehicleAnim'
 import { vehicleSocketTable } from './socketLayout'
 import { mountSockets } from './socketMount'
@@ -14,7 +14,7 @@ import { applyVehicleSurface } from './vehicleSurface'
 
 export { ANIM_PARTS, deployOf, partPose, poseInput, poseVehicleRig, serviceStateOf, truckDeploy, type PoseInput } from './vehicleAnim'
 export { setVehicleSurfaceTime, setVehicleWear } from './vehicleSurface'
-export { vehicleModel, MODEL_SIZE, MODEL_PARTS, ALL_MODELS, type VehicleModel } from './vehicleModels'
+export { vehicleModel, MODEL_SIZE, MODEL_PARTS, ALL_MODELS, VEHICLE_LOD_M, LIVERY_CELL_ASPECT, type VehicleModel } from './vehicleModels'
 
 const geos = new Map<string, THREE.BufferGeometry>()
 let material: THREE.MeshLambertMaterial | null = null
@@ -95,6 +95,29 @@ export function vehicleGeometry(kind: string, color: string, _size?: readonly [n
 /** Emissive parts (lights, beacons, light bars) for the same model, drawn unlit. */
 export function vehicleLitGeometry(kind: string, color: string): THREE.BufferGeometry {
   return buildCached(kind, color).lit
+}
+
+function buildFarCached(kind: string, color: string): THREE.BufferGeometry {
+  const model = vehicleModel(kind)
+  const key = `${model}|${color}|far`
+  const hit = geos.get(key)
+  if (hit) return hit
+  const parts = buildVehicleFarParts(model, color)
+  const body = merge(parts.map((p) => p.geo))
+  for (const p of parts) p.geo.dispose()
+  geos.set(key, body)
+  return body
+}
+
+/** Cheap stand-in used past VEHICLE_LOD_M. Shared per model and colour, same as the close shell. */
+export function vehicleFarGeometry(kind: string, color: string): THREE.BufferGeometry {
+  return buildFarCached(kind, color)
+}
+
+/** True when this copy should draw the cheap shell. Distance is in metres. */
+export function vehicleIsFar(item: { x: number; y: number; z: number; scale: number }, camera: { x: number; y: number; z: number }): boolean {
+  const metres = Math.hypot(item.x - camera.x, item.y - camera.y, item.z - camera.z) / (item.scale || 1)
+  return metres > VEHICLE_LOD_M
 }
 
 /**
@@ -239,15 +262,22 @@ export class VehicleFleet {
   private lights = new Map<string, THREE.InstancedMesh>()
   private cargo = new Map<string, THREE.InstancedMesh>()
   private parts = new Map<string, THREE.InstancedMesh>()
+  private farBodies = new Map<string, THREE.InstancedMesh>()
   private dummy = new THREE.Object3D()
   private pose = newPartPose()
   private local = new THREE.Matrix4()
   private input = poseInput()
 
-  sync(list: readonly VehicleInstance[]) {
+  sync(list: readonly VehicleInstance[], camera?: { x: number; y: number; z: number }) {
+    const near: VehicleInstance[] = []
+    const far: VehicleInstance[] = []
+    for (const item of list) {
+      if (camera && vehicleIsFar(item, camera)) far.push(item)
+      else near.push(item)
+    }
     const groups = new Map<string, VehicleInstance[]>()
     const loads = new Map<string, VehicleInstance[]>()
-    for (const item of list) {
+    for (const item of near) {
       const model = vehicleModel(item.kind)
       const key = `${model}|${item.color}`
       const arr = groups.get(key) ?? []
@@ -297,6 +327,26 @@ export class VehicleFleet {
     }
     for (const [key, mesh] of this.cargo) {
       if (!seenCargo.has(key)) mesh.count = 0
+    }
+    const farGroups = new Map<string, VehicleInstance[]>()
+    for (const item of far) {
+      const key = `${vehicleModel(item.kind)}|${item.color}`
+      const arr = farGroups.get(key) ?? []
+      arr.push(item)
+      farGroups.set(key, arr)
+    }
+    const seenFar = new Set<string>()
+    for (const [key, items] of farGroups) {
+      seenFar.add(key)
+      this.write(this.farBodies, key, items, (sample) => vehicleFarGeometry(sample.kind, sample.color), false)
+      const mesh = this.farBodies.get(key)
+      if (mesh) {
+        mesh.name = `far:${key}`
+        mesh.castShadow = false
+      }
+    }
+    for (const [key, mesh] of this.farBodies) {
+      if (!seenFar.has(key)) mesh.count = 0
     }
   }
 
@@ -361,7 +411,9 @@ export class VehicleFleet {
     for (const mesh of this.cargo.values()) mesh.dispose()
     for (const mesh of this.lights.values()) mesh.dispose()
     for (const mesh of this.parts.values()) mesh.dispose()
+    for (const mesh of this.farBodies.values()) mesh.dispose()
     this.parts.clear()
+    this.farBodies.clear()
     this.lights.clear()
     this.bodies.clear()
     this.cargo.clear()
