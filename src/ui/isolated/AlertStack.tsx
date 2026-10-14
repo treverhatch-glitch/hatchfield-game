@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { Game } from '../../game/sim.ts'
 import type { AlertSeverity } from '../../game/alerts.ts'
 import { ALERT_TUNING } from '../../game/alertsData.ts'
+import { DISRUPTION_ALERT_PREFIX } from '../../disruptions/alertFeed.ts'
 
 const SEV_COLOR: Record<AlertSeverity, string> = {
   critical: '#e0574a',
@@ -105,6 +106,16 @@ export function AlertStackView({ game }: { game: Game }) {
             {a.at && a.at.cells.length ? (
               <button type="button" data-testid={`alert-pan-${a.key}`} onClick={() => game.panToAlert(a.id)} style={btn}>
                 Pan to problem
+              </button>
+            ) : null}
+            {a.key.startsWith(DISRUPTION_ALERT_PREFIX) ? (
+              <button
+                type="button"
+                data-testid={`alert-fix-${a.key}`}
+                onClick={() => game.recoverDisruption(a.key.slice(DISRUPTION_ALERT_PREFIX.length))}
+                style={btn}
+              >
+                Apply fix
               </button>
             ) : null}
             <button
