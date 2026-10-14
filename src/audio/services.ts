@@ -48,6 +48,18 @@ const arp = (wave: OscillatorType, freqs: number[], gap: number, dcy: number, lv
 
 const RECIPES = {
   // ---- service vehicles ----
+  deiceSpray: loop('vehicles', [nz('highpass', 4000, 1.0, 0.4, 0, 0), nz('bandpass', 1200, 2.0, 0.3, 0, 0)]),
+  hangarDoorOpen: shot('sfx', [hum(80, 4, 0.2, 'square'), nz('lowpass', 400, 1, 0.1)]),
+  hangarDoorClose: shot('sfx', [hum(80, 4, 0.2, 'square'), nz('lowpass', 400, 1, 0.1), bs('lowpass', 200, 1.8, 0.5, 0.4)]),
+  fireSiren: loop('vehicles', [tn('sine', 800, 0, 1, 0.3, 1200), tn('sine', 1200, 1, 1, 0.3, 800)]),
+  fireWaterCannon: loop('vehicles', [nz('lowpass', 2000, 0.5, 0.5, 0, 0)]),
+  busEngine: loop('vehicles', [eng(30, 200, 0.3), nz('lowpass', 250, 0.7, 0.08)]),
+  fuelHoseReel: loop('vehicles', [hum(120, 2, 0.1, 'sawtooth'), nz('bandpass', 2000, 4, 0.05)]),
+  cargoDockDoor: shot('sfx', [hum(100, 3, 0.15, 'square')]),
+  cargoForklift: loop('vehicles', [eng(40, 300, 0.2), beep(1200, 2, 0.1)]),
+  tugEngine: loop('vehicles', [eng(22, 130, 0.4), hum(90, 2, 0.04, 'sawtooth')]),
+  cateringHydraulics: loop('vehicles', [hum(160, 3, 0.06, 'sawtooth'), nz('bandpass', 900, 3, 0.06, 3, 0.6)]),
+
   heavyFuelTruck: loop('vehicles', [eng(24, 150, 0.35), nz('lowpass', 180, 0.7, 0.12, 0.6, 0.3)]),
   hydrantDispenser: loop('vehicles', [eng(40, 260, 0.25), nz('bandpass', 420, 1.2, 0.08)]),
   hydrantPump: loop('vehicles', [nz('bandpass', 300, 1.5, 0.3, 18, 0.5), hum(55, 3, 0.05, 'sawtooth')]),
@@ -133,7 +145,7 @@ export type SfxId = keyof typeof RECIPES;
 export const SFX_IDS = Object.keys(RECIPES) as SfxId[];
 export type SfxGroup = 'serviceVehicles' | 'maintenance' | 'construction' | 'terminal' | 'ui' | 'catering' | 'contracts' | 'crowd' | 'diplomacy' | 'terminalAmbience' | 'apronAmbience';
 export const SFX_GROUPS: Record<SfxGroup, SfxId[]> = {
-  serviceVehicles: ['heavyFuelTruck', 'hydrantDispenser', 'hydrantPump', 'cateringScissorLift', 'beltLoader', 'uldLoader', 'baggageTugCart', 'towbarlessTug', 'gpuHum', 'passengerBus', 'busDoorHiss', 'reversingBeeper'],
+  serviceVehicles: ['heavyFuelTruck', 'hydrantDispenser', 'hydrantPump', 'cateringScissorLift', 'beltLoader', 'uldLoader', 'baggageTugCart', 'towbarlessTug', 'gpuHum', 'passengerBus', 'busDoorHiss', 'reversingBeeper', 'deiceSpray', 'hangarDoorOpen', 'hangarDoorClose', 'fireSiren', 'fireWaterCannon', 'busEngine', 'fuelHoseReel', 'cargoDockDoor', 'cargoForklift', 'tugEngine', 'cateringHydraulics'],
   maintenance: ['repairVan', 'towTruck', 'runwaySweeper', 'impactWrench', 'breakdownClunk', 'hazardTicks'],
   construction: ['contractorVan', 'deliveryTruck', 'scaffolding', 'hammering', 'concreteMixer'],
   terminal: ['crowdMurmur', 'rollingSuitcases', 'boardingChime', 'jetBridgeDock'],
@@ -152,7 +164,7 @@ export const sfxLooping = (id: SfxId): boolean => RECIPES[id].looping;
 /** Fixed per-variant character so variants differ even with zero jitter: [pitch, level, tempo]. */
 const CHARACTER: [number, number, number][] = [[1, 1, 1], [0.92, 1.08, 1.1], [1.07, 0.92, 0.9], [0.86, 1.12, 1.18], [1.13, 0.88, 0.84]];
 /** Jitter kept small for UI so cues stay recognisable. */
-const JITTER: Record<Category, number> = { aircraft: 0.08, vehicles: 0.08, ambient: 0.06, ambience: 0.06, sfx: 0.08, ui: 0.025 };
+const JITTER: Record<Category, number> = { aircraft: 0.08, vehicles: 0.08, buildings: 0.08, ambient: 0.06, ambience: 0.06, sfx: 0.08, ui: 0.025 };
 
 export interface SfxParams {
   id: SfxId; variant: number; seed: number;

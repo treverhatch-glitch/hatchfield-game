@@ -9876,8 +9876,19 @@ export class Game {
     this.ground = createLogisticsAdapter(
       {
         addMoney: (amount, category) => this.postGroundMoney(amount, category),
-        playSound: (cue) => {
-          this.noteSound(soundForEvent({ type: cue }, 'logistics'))
+        playSound: (cue, standId) => {
+          let position: { x: number; y: number; z: number } | undefined = undefined;
+          if (standId) {
+            const parts = standId.split(',');
+            if (parts.length === 2) {
+              const c = Number(parts[0]);
+              const r = Number(parts[1]);
+              if (Number.isFinite(c) && Number.isFinite(r)) {
+                position = { x: c, y: r, z: 0 };
+              }
+            }
+          }
+          this.noteSound(soundForEvent({ type: cue, standId }, 'logistics'), position);
         },
         notify: (message, severity) => {
           this.pushNews(message, severity === 'warn' ? 'bad' : 'ok')
@@ -9983,13 +9994,13 @@ export class Game {
     return this.catering?.poses(kitchen) ?? []
   }
 
-  private noteSound(name: string | null) {
+  private noteSound(name: string | null, position?: { x: number; y: number; z: number }) {
     if (!name) return
     this.soundCues.push(name)
     if (this.soundCues.length > 24) this.soundCues.shift()
     if (typeof window === 'undefined') return
     try {
-      getAudio().playEvent(name)
+      getAudio().playEvent(name, { position })
     } catch {
       // Headless tests have no audio device.
     }
