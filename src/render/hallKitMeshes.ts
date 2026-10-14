@@ -34,6 +34,14 @@ const p = (prim: Prim, size: Part['size'], pos: Part['pos'], color: string): Par
   color,
 })
 
+/** Stainless divest table at the lane entry and a two-pod body scanner at the exit side. */
+const divestAndScanner = (halfW: number): Part[] => [
+  p('box', [1.1, 0.06, 0.6], [-halfW - 0.55, 0.82, -0.15], '#b8c0c8'),
+  p('box', [1.0, 0.78, 0.5], [-halfW - 0.55, 0.39, -0.15], '#6a7580'),
+  p('cyl', [0.7, 2.0, 0.7], [halfW + 0.2, 1.0, 0.45], '#dfe5ea'),
+  p('cyl', [0.72, 0.08, 0.72], [halfW + 0.2, 2.02, 0.45], '#3a8ec2'),
+]
+
 const counter = (color: string, awning: string): Part[] => [
   p('box', [2.6, 0.95, 1], [0, 0.48, 0.4], color),
   p('box', [2.6, 2.4, 0.2], [0, 1.2, -0.6], '#3a3430'),
@@ -116,6 +124,8 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [0.1, 1.45, 0.1], [-0.7, 0.85, 0.55], '#d8dde4'),
     p('box', [0.1, 1.45, 0.1], [0.7, 0.85, 0.55], '#d8dde4'),
     p('box', [1.3, 0.22, 0.06], [0, 1.72, 0.55], '#f2c14a'),
+    // Divest table ahead of the X-ray, body scanner pod beside the arch.
+    ...divestAndScanner(1.6),
   ],
   security_medium: [
     p('box', [4.4, 0.08, 1.4], [0, 0.06, 0.15], '#1c1f24'),
@@ -124,6 +134,7 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [1.4, 0.1, 0.1], [0, 1.5, 0.5], '#d8dde4'),
     p('box', [0.1, 1.4, 0.1], [-0.65, 0.8, 0.5], '#d8dde4'),
     p('box', [0.1, 1.4, 0.1], [0.65, 0.8, 0.5], '#d8dde4'),
+    ...divestAndScanner(2.2),
   ],
   security_large: [
     p('box', [5.2, 0.08, 1.5], [0, 0.06, 0.1], '#1c1f24'),
@@ -133,6 +144,7 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [2.2, 0.1, 0.1], [0, 1.55, 0.55], '#d8dde4'),
     p('box', [0.1, 1.45, 0.1], [-1.05, 0.85, 0.55], '#d8dde4'),
     p('box', [0.1, 1.45, 0.1], [1.05, 0.85, 0.55], '#d8dde4'),
+    ...divestAndScanner(2.6),
   ],
   bag_drop: [
     p('box', [2.4, 0.9, 0.9], [0, 0.45, 0.2], '#a07850'),

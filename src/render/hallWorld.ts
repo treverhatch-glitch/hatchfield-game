@@ -54,6 +54,7 @@ import {
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
+import { HallServiceFx } from './hallService'
 import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
 import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
@@ -165,6 +166,8 @@ export class HallWorld {
   guestGroup = new THREE.Group()
   /** Departures and arrivals from the hall's PaxNav. Stand in for the old hall figures while live. */
   readonly navCrowd = new HallNavCrowd()
+  /** Check-in and security interiors: desk signs, bag scales, X-ray trays, queue barriers, staff figures. */
+  readonly serviceFx = new HallServiceFx()
   /** Walkers drawn last frame (tests, perf probes). */
   navDrawn = 0
   /** Routes, heat, and advisor marks. Hidden unless the player asks or a note is focused. */
@@ -325,6 +328,8 @@ export class HallWorld {
     this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
     this.scene.add(this.navCrowd.group)
+    this.navCrowd.skipRole = HallServiceFx.drawsRole
+    this.scene.add(this.serviceFx.group)
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
@@ -1671,9 +1676,12 @@ export class HallWorld {
     this.syncGuests(game)
     if (this.roomPlan) {
       this.navCrowd.group.visible = false
+      this.serviceFx.group.visible = false
       this.navDrawn = 0
     } else {
       this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
+      const crew = this.navCrowd.lastPoses()
+      this.serviceFx.sync(game.hallNav, game.clock, this.camera, game.deskBrands(), crew.poses, crew.total)
     }
     this.syncLuggage(game)
     this.syncOverlay(game)
@@ -1896,6 +1904,7 @@ export class HallWorld {
     this.floorMap.dispose()
     this.litter.dispose()
     this.navCrowd.dispose()
+    this.serviceFx.dispose()
     this.offGfx()
     for (const mat of this.figMats.values()) mat.dispose()
     this.figMats.clear()

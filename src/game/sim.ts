@@ -2272,6 +2272,27 @@ export class Game {
     return [...airlineList(), ...roster, ...this.extraAirlines, ...negotiated]
   }
 
+  /**
+   * Check-in desk signs, in desk order: signed passenger carriers, or while
+   * nobody is signed yet, the roster carriers currently open to this field.
+   */
+  deskBrands(): { id: string; name: string; code: string; primary: string; secondary: string }[] {
+    const key = `${this.signed.join(',')}|${this.reputation >> 2}|${this.hostedFieldLevel()}`
+    if (this.deskBrandCache?.key === key) return this.deskBrandCache.list
+    const brand = (id: AirlineId) => {
+      const a = this.airline(id)
+      const r = rosterAirline(id)
+      return { id, name: a.name, code: r?.code ?? a.name.slice(0, 3).toUpperCase(), primary: r?.primary ?? a.color, secondary: r?.secondary ?? a.stripe }
+    }
+    const signed = this.signed.filter((id) => this.airline(id).kind === 'pax')
+    const ids = signed.length ? signed : ROSTER_LIVE ? rosterGameAirlines().filter((a) => a.kind === 'pax' && this.rosterOpen(a.id)).slice(0, 6).map((a) => a.id) : []
+    const list = ids.map(brand)
+    this.deskBrandCache = { key, list }
+    return list
+  }
+
+  private deskBrandCache: { key: string; list: { id: string; name: string; code: string; primary: string; secondary: string }[] } | null = null
+
   /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
   panelAirlines(): Airline[] {
     return this.allAirlines().filter((a) => !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(a.id) && !this.signed.includes(a.id)))
