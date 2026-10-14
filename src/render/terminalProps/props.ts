@@ -4,7 +4,7 @@
  * Dimensions follow real kit: 1.0 m check-in desks, 0.9 m x-ray tunnels,
  * 0.76 m bench seats, 2.1 m arches, 0.75 m tables.
  */
-import { box, cyl, markNear, part, place, type Part } from './parts'
+import { box, cyl, markNear, part, place, rb, type Part } from './parts'
 
 const H = Math.PI / 2
 
@@ -136,8 +136,8 @@ function checkinDesk(i: number): Part[] {
   const logo = `logo${i % 4}`
   return [
     // counter body + granite top + bag-drop step
-    box([1.6, 1.05, 0.7], [0, 0.525, -0.2], 'oak'),
-    box([1.64, 0.04, 0.78], [0, 1.07, -0.2], 'granite'),
+    rb([1.6, 1.05, 0.7], [0, 0.525, -0.2], 'corian'),
+    rb([1.64, 0.04, 0.78], [0, 1.07, -0.2], 'granite'),
     box([1.5, 0.12, 0.02], [0, 0.85, 0.16], 'lacquerBlue'),
     box([1.56, 0.02, 0.02], [0, 0.06, 0.16], 'ledBlue'),
     box([0.25, 0.16, 0.03], [-0.4, 0.95, 0.17], 'screen'),
@@ -147,7 +147,7 @@ function checkinDesk(i: number): Part[] {
     box([0.42, 0.02, 0.14], [-0.35, 1.1, -0.3], 'black'),
     // bag-drop weigh scale: stainless frame, powered belt with rollers, side
     // guards, weight readout on a post, injection belt to the collector
-    box([0.9, 0.3, 0.86], [1.25, 0.15, -0.15], 'stainless'),
+    rb([0.9, 0.3, 0.86], [1.25, 0.15, -0.15], 'stainless'),
     box([0.84, 0.035, 0.8], [1.25, 0.32, -0.15], 'belt'),
     cyl([0.07, 0.84, 0.07], [1.25, 0.31, 0.25], 'chrome', [0, 0, H]),
     cyl([0.07, 0.84, 0.07], [1.25, 0.31, -0.55], 'chrome', [0, 0, H]),
@@ -165,7 +165,7 @@ function checkinDesk(i: number): Part[] {
     box([0.26, 0.16, 0.005], [-0.35, 1.22, 0.08], 'kiosk', [-0.35, 0, 0]),
     box([0.1, 0.05, 0.14], [0.1, 1.115, 0.05], 'black'),
     box([0.06, 0.01, 0.06], [0.1, 1.145, 0.07], 'screenGreen'),
-    box([0.22, 0.16, 0.22], [0.52, 1.17, -0.35], 'greyPanel'),
+    rb([0.22, 0.16, 0.22], [0.52, 1.17, -0.35], 'greyPanel'),
     box([0.04, 0.04, 0.12], [-0.79, 1.24, 0.1], 'chrome'),
     box([0.3, 0.44, 0.02], [-0.72, 1.42, 0.12], `desk${(i % 6) + 1}`),
     // anti-fatigue mat where the agent stands
@@ -180,13 +180,13 @@ function checkinDesk(i: number): Part[] {
     ...place(person(AGENT[i % AGENT.length], { arms: 'forward' }), -0.2, -0.75),
   ]
 }
-function checkinRow(n = 6): Part[] {
+function checkinRow(n = 4, lanes = 3): Part[] {
   const pitch = 2.3
   const len = n * pitch + 0.6
   const out: Part[] = []
   for (let i = 0; i < n; i++) out.push(...place(checkinDesk(i), (i - (n - 1) / 2) * pitch, 0))
   // collector belt behind the desks
-  out.push(box([len, 0.42, 0.9], [0.4, 0.21, -1.15], 'steel'))
+  out.push(rb([len, 0.42, 0.9], [0.4, 0.21, -1.15], 'steel'))
   out.push(box([len, 0.04, 0.8], [0.4, 0.44, -1.15], 'belt'))
   out.push(box([len, 0.12, 0.04], [0.4, 0.5, -0.72], 'brushed'))
   out.push(box([len, 0.12, 0.04], [0.4, 0.5, -1.58], 'brushed'))
@@ -195,7 +195,7 @@ function checkinRow(n = 6): Part[] {
   for (let i = 0; i < n + 1; i++) out.push(...place(bagFlat(bags[i % 4], 0.6, 0.4), (i - n / 2) * pitch * 0.9 + 0.6, -1.15, 0.2 * (i % 2), 0.44))
   // logo wall: framed back panel, airline lightbox, overhead FIDS-style strip
   out.push(box([len + 0.4, 3.2, 0.25], [0.4, 1.6, -1.8], 'cream'))
-  out.push(box([len + 0.5, 0.25, 0.35], [0.4, 3.3, -1.75], 'hatchBlue'))
+  out.push(rb([len + 0.5, 0.25, 0.35], [0.4, 3.3, -1.75], 'hatchBlue'))
   out.push(box([2.2, 1.02, 0.03], [0.4, 3.15, -0.55], 'sgnCheckin'))
   out.push(box([1.8, 0.42, 0.03], [-2.2, 2.55, -1.66], 'sgnArrivals'))
   out.push(box([len + 0.4, 0.06, 0.06], [0.4, 3.0 - 0.3, -1.6], 'lamp'))
@@ -203,7 +203,7 @@ function checkinRow(n = 6): Part[] {
   out.push(box([0.9, 0.6, 0.3], [len / 2 + 0.55, 0.75, -1.15], 'darkSteel'))
   out.push(box([0.8, 0.5, 0.02], [len / 2 + 0.5, 0.7, -1.0], 'rubber'))
   // soffit over the desks with a hanging FIDS monitor per desk
-  out.push(box([len + 0.4, 0.3, 0.9], [0.4, 3.55, -1.3], 'lacquerWhite'))
+  out.push(rb([len + 0.4, 0.3, 0.9], [0.4, 3.55, -1.3], 'lacquerWhite'))
   out.push(box([len + 0.4, 0.04, 0.04], [0.4, 3.39, -0.86], 'ledBlue'))
   for (let i = 0; i < n; i++) {
     const x = (i - (n - 1) / 2) * pitch
@@ -211,10 +211,10 @@ function checkinRow(n = 6): Part[] {
     out.push(box([0.72, 0.42, 0.05], [x, 3.0, -0.95], 'black'), box([0.66, 0.36, 0.01], [x, 3.0, -0.92], 'fids'))
   }
   // serpentine queue in front with retractable-belt posts
-  out.push(...queue(len - 1.2, 3, 1.1, 2.6, beltPost))
+  out.push(...queue(len - 1.2, lanes, 1.1, 2.6, beltPost))
   // queue entry sign
-  out.push(cyl([0.06, 1.6, 0.06], [-(len - 1.2) / 2 - 0.6, 0.8, 2.6 + 3 * 1.1], 'chrome'))
-  out.push(box([0.78, 0.36, 0.03], [-(len - 1.2) / 2 - 0.6, 1.6, 2.6 + 3 * 1.1], 'sgnCheckin'))
+  out.push(cyl([0.06, 1.6, 0.06], [-(len - 1.2) / 2 - 0.6, 0.8, 2.6 + lanes * 1.1], 'chrome'))
+  out.push(box([0.78, 0.36, 0.03], [-(len - 1.2) / 2 - 0.6, 1.6, 2.6 + lanes * 1.1], 'sgnCheckin'))
   return out
 }
 
@@ -242,13 +242,13 @@ function queue(w: number, lanes: number, gap: number, z0: number, post: () => Pa
 function xray(): Part[] {
   const out: Part[] = [
     // in-feed roller bed
-    box([1.8, 0.08, 0.7], [-2.1, 0.75, 0], 'steel'),
+    rb([1.8, 0.08, 0.7], [-2.1, 0.75, 0], 'steel'),
     ...Array.from({ length: 12 }, (_, i) => cyl([0.05, 0.66, 0.05], [-2.9 + i * 0.145, 0.8, 0], 'chrome', [H, 0, 0])),
     box([1.8, 0.7, 0.05], [-2.1, 0.4, 0.33], 'greyPanel'),
     box([1.8, 0.7, 0.05], [-2.1, 0.4, -0.33], 'greyPanel'),
     // tunnel housing
-    box([2.2, 1.45, 1.1], [0, 0.73, 0], 'white'),
-    box([2.25, 0.08, 1.15], [0, 1.48, 0], 'hatchBlue'),
+    rb([2.2, 1.45, 1.1], [0, 0.73, 0], 'white'),
+    rb([2.25, 0.08, 1.15], [0, 1.48, 0], 'hatchBlue'),
     // lead curtain strips at both mouths
     ...[-1.11, 1.11].flatMap((cx) => Array.from({ length: 6 }, (_, k) => box([0.02, 0.6, 0.13], [cx, 1.0, -0.33 + k * 0.132], 'rubber'))),
     box([0.02, 0.06, 0.84], [-1.11, 1.32, 0], 'darkSteel'),
@@ -268,12 +268,12 @@ function xray(): Part[] {
     box([1.4, 0.3, 0.02], [0, 1.2, 0.56], 'greyPanel'),
     box([0.6, 0.08, 0.02], [0, 1.2, 0.575], 'signYellow'),
     // out-feed + exit rollers
-    box([2.4, 0.08, 0.7], [2.4, 0.75, 0], 'steel'),
+    rb([2.4, 0.08, 0.7], [2.4, 0.75, 0], 'steel'),
     ...Array.from({ length: 16 }, (_, i) => cyl([0.05, 0.66, 0.05], [1.3 + i * 0.145, 0.8, 0], 'chrome', [H, 0, 0])),
     box([2.4, 0.7, 0.05], [2.4, 0.4, 0.33], 'greyPanel'),
     // operator desk with two monitors
-    box([1.1, 0.75, 0.6], [0.2, 0.38, -1.1], 'greyPanel'),
-    box([1.14, 0.03, 0.64], [0.2, 0.77, -1.1], 'granite'),
+    rb([1.1, 0.75, 0.6], [0.2, 0.38, -1.1], 'greyPanel'),
+    rb([1.14, 0.03, 0.64], [0.2, 0.77, -1.1], 'granite'),
     ...place(monitor(0.5, 0.32), 0, -1.2, 0, 1.05),
     ...place(monitor(0.5, 0.32), 0.52, -1.2, 0, 1.05),
     ...place(chair('black'), 0.2, -1.65),
@@ -285,9 +285,9 @@ function xray(): Part[] {
 }
 function archDetector(): Part[] {
   return [
-    box([0.14, 2.1, 0.6], [-0.48, 1.05, 0], 'greyPanel'),
-    box([0.14, 2.1, 0.6], [0.48, 1.05, 0], 'greyPanel'),
-    box([1.1, 0.2, 0.62], [0, 2.18, 0], 'white'),
+    rb([0.14, 2.1, 0.6], [-0.48, 1.05, 0], 'greyPanel'),
+    rb([0.14, 2.1, 0.6], [0.48, 1.05, 0], 'greyPanel'),
+    rb([1.1, 0.2, 0.62], [0, 2.18, 0], 'white'),
     box([0.03, 1.7, 0.02], [-0.41, 1.0, 0.25], 'lampCool'),
     box([0.03, 1.7, 0.02], [0.41, 1.0, 0.25], 'lampCool'),
     box([0.14, 0.05, 0.12], [-0.48, 2.3, 0.2], 'screenGreen'),
@@ -381,8 +381,8 @@ function shelfUnit(goods: string[], w = 1.8): Part[] {
 }
 function counterUnit(len: number, top = 'granite', face = 'brushed'): Part[] {
   return [
-    box([len, 1.0, 0.7], [0, 0.5, 0], face),
-    box([len + 0.06, 0.05, 0.76], [0, 1.03, 0], top),
+    rb([len, 1.0, 0.7], [0, 0.5, 0], face),
+    rb([len + 0.06, 0.05, 0.76], [0, 1.03, 0], top),
     box([len, 0.1, 0.02], [0, 0.08, 0.36], 'black'),
     box([len - 0.2, 0.03, 0.03], [0, 0.85, 0.37], 'amber'),
   ]
@@ -476,7 +476,7 @@ function shopGadget(): Part[] {
 // ---------- food court ----------
 function cafeTable(seats = 4): Part[] {
   const out: Part[] = [
-    box([0.9, 0.04, 0.9], [0, 0.75, 0], 'corian'),
+    rb([0.9, 0.04, 0.9], [0, 0.75, 0], 'corian'),
     cyl([0.08, 0.72, 0.08], [0, 0.37, 0], 'darkSteel'),
     cyl([0.5, 0.03, 0.5], [0, 0.015, 0], 'darkSteel'),
     cyl([0.2, 0.08, 0.2], [0.15, 0.81, 0.1], 'red'),
@@ -578,9 +578,9 @@ function gateSeating(): Part[] {
 }
 function gatePodium(): Part[] {
   return [
-    box([2.2, 1.05, 0.7], [0, 0.53, 0], 'lacquerBlue'),
+    rb([2.2, 1.05, 0.7], [0, 0.53, 0], 'lacquerBlue'),
     box([2.2, 0.03, 0.02], [0, 0.08, 0.36], 'ledBlue'),
-    box([2.26, 0.04, 0.76], [0, 1.07, 0], 'granite'),
+    rb([2.26, 0.04, 0.76], [0, 1.07, 0], 'granite'),
     ...place(monitor(0.45, 0.3), -0.5, -0.1, Math.PI, 1.3),
     box([0.4, 0.2, 0.3], [0.5, 1.18, -0.1], 'black'),
     box([2.6, 1.0, 0.08], [0, 2.6, -0.6], 'fids'),
@@ -918,7 +918,7 @@ function securityLaneCT(): Part[] {
   const out: Part[] = [box([16.2, 0.012, 7.4], [-0.4, 0.004, 0.4], 'intRubber')]
   for (let i = 0; i < 4; i++) out.push(...place(divestStation(i), -6.4 + i * 1.3, 0))
   // CT scanner: deep housing with ring gantry face and lead curtains
-  out.push(box([2.6, 1.7, 1.4], [-0.6, 0.85, 0], 'lacquerWhite'), box([2.64, 0.12, 1.44], [-0.6, 1.76, 0], 'lacquerBlue'))
+  out.push(rb([2.6, 1.7, 1.4], [-0.6, 0.85, 0], 'lacquerWhite'), rb([2.64, 0.12, 1.44], [-0.6, 1.76, 0], 'lacquerBlue'))
   out.push(part('torus', [1.5, 1.5, 0.8], [-1.92, 0.95, 0], 'stainless', [0, H, 0]))
   for (let i = 0; i < 6; i++) {
     out.push(box([0.02, 0.6, 0.14], [-1.93, 0.98, -0.35 + i * 0.14], 'rubber'))
@@ -929,9 +929,9 @@ function securityLaneCT(): Part[] {
   out.push(box([3.4, 0.08, 0.72], [2.5, 0.78, 0], 'steel'))
   for (let i = 0; i < 22; i++) out.push(cyl([0.05, 0.66, 0.05], [0.9 + i * 0.15, 0.83, 0], 'chrome', [H, 0, 0]))
   out.push(box([2.2, 0.08, 0.72], [2.0, 0.78, -0.95], 'steel'), box([2.2, 0.7, 0.04], [2.0, 0.4, -1.3], 'red'))
-  out.push(box([1.0, 0.75, 0.6], [3.4, 0.38, -2.0], 'stainless'), box([1.04, 0.03, 0.64], [3.4, 0.77, -2.0], 'granite'), ...place(monitor(0.5, 0.32), 3.4, -2.1, 0, 1.05))
+  out.push(rb([1.0, 0.75, 0.6], [3.4, 0.38, -2.0], 'stainless'), rb([1.04, 0.03, 0.64], [3.4, 0.77, -2.0], 'granite'), ...place(monitor(0.5, 0.32), 3.4, -2.1, 0, 1.05))
   // recompose bench + tray return under the lane
-  out.push(box([2.6, 0.45, 0.5], [5.2, 0.23, 1.2], 'oak'), box([2.6, 0.06, 0.6], [5.2, 0.46, 1.2], 'lacquerBlue'))
+  out.push(rb([2.6, 0.45, 0.5], [5.2, 0.23, 1.2], 'oak'), rb([2.6, 0.06, 0.6], [5.2, 0.46, 1.2], 'lacquerBlue'))
   out.push(box([12.4, 0.32, 0.5], [-0.5, 0.17, -0.55], 'darkSteel'), box([12.4, 0.03, 0.44], [-0.5, 0.34, -0.55], 'belt'))
   for (const x of [-5, -2, 1.5, 4]) out.push(box([0.6, 0.07, 0.42], [x, 0.39, -0.55], 'tray'))
   // trays with bags in flight
@@ -1127,6 +1127,7 @@ function arrivalsSign(): Part[] {
 // ---------- registry ----------
 export const TERMINAL_PROP_TYPES = [
   'checkin_row',
+  'checkin_pair',
   'security_lane',
   'walkthrough_arch',
   'xray_machine',
@@ -1177,6 +1178,8 @@ export type TerminalPropType = (typeof TERMINAL_PROP_TYPES)[number]
 
 export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   checkin_row: () => checkinRow(4),
+  /** Real-size two-desk bank that fits one hall cell without shrinking. */
+  checkin_pair: () => checkinRow(2, 1),
   security_lane: securityLane,
   walkthrough_arch: archDetector,
   xray_machine: xray,
@@ -1222,23 +1225,6 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   lounge_cluster: loungeCluster,
   staff_office: staffOffice,
   arrivals_sign: arrivalsSign,
-}
-
-/**
- * Animated tray tracks in prop-local metres: trays slide x0 → x1 at belt
- * height y on line z, `n` trays evenly spaced, `speed` m/s.
- */
-export interface TrayTrack { x0: number; x1: number; y: number; z: number; n: number; speed: number }
-export const MOVING_TRAYS: Partial<Record<TerminalPropType, TrayTrack[]>> = {
-  xray_machine: [{ x0: -3.0, x1: 3.2, y: 0.85, z: 0, n: 5, speed: 0.35 }],
-  security_lane: [
-    { x0: -3.0, x1: 3.2, y: 0.85, z: 0, n: 5, speed: 0.35 },
-    { x0: 4.2, x1: -4.2, y: 0.39, z: -0.7, n: 4, speed: 0.5 },
-  ],
-  security_lane_ct: [
-    { x0: -6.8, x1: 4.0, y: 0.9, z: 0, n: 7, speed: 0.4 },
-    { x0: 5.5, x1: -6.4, y: 0.39, z: -0.55, n: 5, speed: 0.55 },
-  ],
 }
 
 /**
