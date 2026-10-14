@@ -312,6 +312,23 @@ export function paxPath(tiles: Tile[][], from: Vec, to: Vec): Vec[] | null {
   return astar(tiles, from, to, 'person', (c, r) => paxGround(tiles, c, r))
 }
 
+/** True when every step is on a jet tile and no step cuts a corner or a chord. */
+export function jetRouteOnGraph(tiles: Tile[][], path: readonly Vec[]): boolean {
+  if (path.length < 2) return false
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]
+    const b = path[i]
+    const ac = Math.round(a.c)
+    const ar = Math.round(a.r)
+    const bc = Math.round(b.c)
+    const br = Math.round(b.r)
+    if (!inBounds(ac, ar) || !inBounds(bc, br)) return false
+    if (!walkableFor('jet', tiles[ar][ac]) || !walkableFor('jet', tiles[br][bc])) return false
+    if (Math.abs(ac - bc) + Math.abs(ar - br) > 1) return false
+  }
+  return true
+}
+
 /** Road or bus cells that share an edge with a terminal door. */
 export function landsideCurbs(tiles: Tile[][]): Vec[] {
   const out: Vec[] = []

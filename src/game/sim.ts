@@ -605,6 +605,7 @@ import {
   hasBeltNetwork,
   inBounds,
   neighbors,
+  jetRouteOnGraph,
   nearestPath,
   runwayStrips,
   standBeltLinked,
@@ -16764,7 +16765,38 @@ export class Game {
     if (!f.stand) return null
     const inbound = this.landingRoute(f.stand)
     if (!inbound) return null
-    return [...inbound].reverse()
+    const path = [...inbound].reverse()
+    return jetRouteOnGraph(this.tiles, path) ? path : null
+  }
+
+  /** Pushback stays on the stand or a jet neighbour. A grass offset is not a taxi route. */
+  private pushbackPath(stand: Vec, heading: number): Vec[] {
+    const back = {
+      c: stand.c - Math.cos(heading || 0) * 0.8,
+      r: stand.r - Math.sin(heading || 0) * 0.8,
+    }
+    if (jetRouteOnGraph(this.tiles, [stand, back])) return [stand, back]
+    const next = neighbors(stand.c, stand.r).find(
+      (p) => inBounds(p.c, p.r) && walkableFor('jet', this.tiles[p.r][p.c]),
+    )
+    return next ? [stand, next] : [stand]
+  }
+
+  private holdForTaxi(f: Flight) {
+    this.raiseAlert({
+      key: `cond:taxi-blocked:${f.id}`,
+      severity: 'warning',
+      title: `${f.flightNo} holding — no taxiway`,
+      detail: 'No path on the taxiway graph. The aircraft stays put instead of crossing the grass.',
+      at: f.stand ? { view: 'apron', cells: [{ c: f.stand.c, r: f.stand.r }] } : undefined,
+    })
+  }
+
+  /** Ground taxi may follow only the remaining steps that sit on the taxiway graph. */
+  private taxiRouteReady(f: Flight): boolean {
+    const rest = f.path.slice(Math.max(0, f.seg))
+    if (rest.length < 2) return false
+    return jetRouteOnGraph(this.tiles, rest)
   }
 
   tickPatrols(dt: number) {
@@ -17905,7 +17937,9 @@ export class Game {
         }
       } else if (f.phase === 'taxi_in') {
         f.z = 0.12
-        if (this.followPath(f, 1.1, step)) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.1, step)) {
           f.phase = 'deboard'
           f.phaseTime = 0
           this.beginServicing(f)
@@ -17992,13 +18026,7 @@ export class Game {
               f.phase = 'pushback'
               f.phaseTime = 0
               if (f.stand) {
-                f.path = [
-                  f.stand,
-                  {
-                    c: f.stand.c - 0.7,
-                    r: f.stand.r,
-                  },
-                ]
+                f.path = this.pushbackPath(f.stand, f.heading)
                 f.seg = 0
                 f.t = 0
               }
@@ -18011,7 +18039,9 @@ export class Game {
         }
       } else if (f.phase === 'mx_taxi') {
         f.z = 0.12
-        if (this.followPath(f, 1.05, step) || f.phaseTime > 40) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.05, step)) {
           const bay = f.hangarBay
           if (bay) {
             f.x = bay.c
@@ -18040,7 +18070,7 @@ export class Game {
               nearestPath(this.tiles, f.hangarBay ?? { c: f.x, r: f.y }, [f.stand], 'jet') ?? [
                 f.stand,
               ]
-            f.path = back
+            f.path = jetRouteOnGraph(this.tiles, back) ? back : []
             f.seg = 0
             f.t = 0
             f.phase = 'mx_return'
@@ -18053,7 +18083,9 @@ export class Game {
         }
       } else if (f.phase === 'mx_return') {
         f.z = 0.12
-        if (this.followPath(f, 1.05, step) || f.phaseTime > 40) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.05, step)) {
           if (f.stand) {
             f.x = f.stand.c
             f.y = f.stand.r
@@ -18074,7 +18106,7 @@ export class Game {
               f.phase = 'pushback'
               f.phaseTime = 0
               if (f.stand) {
-                f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
+                f.path = this.pushbackPath(f.stand, f.heading)
                 f.seg = 0
                 f.t = 0
               }
@@ -18149,12 +18181,7 @@ export class Game {
             f.phase = 'pushback'
             f.phaseTime = 0
             if (f.stand) {
-              // Nudge off the nose — visual push, then real taxi path.
-              const back = {
-                c: f.stand.c - Math.cos(f.heading || 0) * 0.8,
-                r: f.stand.r - Math.sin(f.heading || 0) * 0.8,
-              }
-              f.path = [f.stand, back]
+              f.path = this.pushbackPath(f.stand, f.heading)
               f.seg = 0
               f.t = 0
             }
@@ -18170,7 +18197,7 @@ export class Game {
         }
       } else if (f.phase === 'pushback') {
         // Short shove off the stand, then join the outbound taxi.
-        this.followPath(f, 0.55, step)
+        if (this.taxiRouteReady(f)) this.followPath(f, 0.55, step)
         if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
           if (out && !this.groundBusy()) {
@@ -18180,20 +18207,21 @@ export class Game {
             if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
-          } else if (f.phaseTime > 8) {
-            // Force clear — don't soft-lock the gate on pushback.
-            if (out) {
-              f.path = out
-              f.seg = 0
-              f.t = 0
-            }
+          } else if (f.phaseTime > 8 && out) {
+            f.path = out
+            f.seg = 0
+            f.t = 0
             if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
+          } else if (f.phaseTime > 8) {
+            this.holdForTaxi(f)
           }
         }
       } else if (f.phase === 'taxi_out') {
-        if (this.followPath(f, 1.2, step)) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.2, step)) {
           f.phase = 'takeoff'
           f.phaseTime = 0
         }
