@@ -1,66 +1,144 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Vehicle Round B apron</title>
-<style>html,body{margin:0;background:#cfd9e2;overflow:hidden}canvas{display:block}</style></head>
+<html><head><meta charset="utf-8"><title>Vehicle Round C apron</title>
+<style>html,body{margin:0;background:#0d1524;overflow:hidden}canvas{display:block}</style></head>
 <body><script type="module">
-// Round B check: a busy stand served by the in-game VehicleFleet path, parts posed by ext/clock.
+// Round C turnaround: aircraft taxis in under a marshaller, chocks and cones go on, then the
+// service fleet drives up and deploys. Uses the in-game VehicleFleet + PeopleRenderer paths.
+// ?night=1 for the night version, ?ao=0 to skip ambient occlusion, ?cam=close|wide, ?t=seconds.
 import * as THREE from 'three'
-import { VehicleFleet } from '/src/render/vehicles.ts'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { VehicleFleet, setVehicleSurfaceTime } from '/src/render/vehicles.ts'
 import { createAircraft } from '/src/render/aircraft/index.ts'
+import { PeopleRenderer } from '/src/people/index.ts'
+import { vehicleCrew, standCrew, standTimeline, conePoints } from '/src/render/turnaroundCrew.ts'
+const Q = new URLSearchParams(location.search)
+const NIGHT = Q.get('night') === '1'
+const AO = Q.get('ao') !== '0'
+const CAM = Q.get('cam') ?? 'orbit'
 const W = innerWidth, H = innerHeight
 const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
 r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping
+r.toneMappingExposure = 1.0
 r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap
 document.body.appendChild(r.domElement)
-const scene = new THREE.Scene(); scene.background = new THREE.Color('#bcd0e2')
-scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.4))
-const sun = new THREE.DirectionalLight(0xfff1dc, 2.6); sun.position.set(-30, 50, 25); sun.castShadow = true
-Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, far: 160 }); sun.shadow.mapSize.set(2048, 2048)
+const scene = new THREE.Scene()
+scene.background = new THREE.Color(NIGHT ? '#0a1222' : '#a9c4dc')
+scene.fog = new THREE.Fog(scene.background, NIGHT ? 70 : 110, NIGHT ? 190 : 260)
+scene.add(new THREE.HemisphereLight(NIGHT ? 0x3a4a6a : 0xeaf2ff, NIGHT ? 0x1a1610 : 0x6b6253, NIGHT ? 0.35 : 1.25))
+const sun = new THREE.DirectionalLight(NIGHT ? 0x8ea6d8 : 0xfff1dc, NIGHT ? 0.25 : 2.8)
+sun.position.set(-35, 55, 28); sun.castShadow = true
+Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, far: 180 })
+sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03
 scene.add(sun)
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshLambertMaterial({ color: '#8e9398' }))
+// Apron: concrete slabs with joint lines and lead-in markings.
+const slab = new THREE.MeshLambertMaterial({ color: NIGHT ? '#6d7277' : '#9a9fa4' })
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), slab)
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
-for (const [x, z, w, d] of [[0, 0, 70, 0.25], [0, -16, 70, 0.2], [0, 16, 70, 0.2]]) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: '#e8c33a' }))
-  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, z); scene.add(m)
+const line = (x, z, w, d, c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color: c })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.012, z); m.receiveShadow = true; scene.add(m) }
+for (let i = -12; i <= 12; i++) { line(i * 7.5, 0, 0.06, 140, '#80858a'); line(0, i * 7.5, 180, 0.06, '#80858a') }
+line(-20, 0, 80, 0.25, '#e8c33a'); line(21, 0, 0.35, 6, '#e8c33a')
+for (const z of [-18, 18]) line(0, z, 90, 0.2, '#d8443a')
+// Floodlight masts (lit at night).
+const masts = []
+for (const [x, z] of [[-30, -36], [26, -36], [0, 38]]) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 24, 8), new THREE.MeshLambertMaterial({ color: '#8a9096' }))
+  pole.position.set(x, 12, z); pole.castShadow = true; scene.add(pole)
+  const head = new THREE.Mesh(new THREE.BoxGeometry(3, 0.6, 1), new THREE.MeshBasicMaterial({ color: NIGHT ? '#fff2cf' : '#d9dde2' }))
+  head.position.set(x, 24.2, z); scene.add(head)
+  if (NIGHT) {
+    const s = new THREE.SpotLight(0xffe2b0, 320, 130, 0.8, 0.6, 1.6)
+    s.position.set(x, 24, z); s.target.position.set(x * 0.2, 0, z * 0.15); s.castShadow = masts.length < 2
+    s.shadow.mapSize.set(1024, 1024); s.shadow.bias = -0.0005
+    scene.add(s, s.target); masts.push(s)
+  }
 }
-const WPM = 1
 const plane = createAircraft('b738', { body: '#2f6f9a', stripe: '#e8eef5' })
-plane.traverse(o => { if (o.isMesh) o.castShadow = true })
-const box = new THREE.Box3().setFromObject(plane); const sz = box.getSize(new THREE.Vector3())
+plane.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+let box = new THREE.Box3().setFromObject(plane); const sz = box.getSize(new THREE.Vector3())
 plane.scale.setScalar(39.5 / Math.max(sz.x, sz.z)); scene.add(plane)
+box = new THREE.Box3().setFromObject(plane)
+const frame = { x: 0, z: 0, yaw: 0, nose: box.max.x, tail: box.min.x, semiSpan: box.max.z, noseGear: box.max.x - 5.2 }
+// Cones and chocks
+const coneGeo = new THREE.ConeGeometry(0.22, 0.7, 10).translate(0, 0.35, 0)
+const coneMat = new THREE.MeshLambertMaterial({ color: '#ff6a13' })
+const cones = conePoints(frame).map(([x, z]) => { const m = new THREE.Mesh(coneGeo, coneMat); m.position.set(x, 0, z); m.castShadow = true; m.visible = false; scene.add(m); return m })
+const chocks = [-1, 1].map((s) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.4), new THREE.MeshLambertMaterial({ color: '#f2bf1f' })); m.position.set(frame.noseGear + 0.45, 0.13, s * 0.45); m.castShadow = true; m.visible = false; scene.add(m); return m })
 const fleet = new VehicleFleet(); scene.add(fleet.root)
-// kind, x, z, yaw, phase offset (s), mode
+fleet.root.traverse(o => { o.receiveShadow = true })
+const people = new PeopleRenderer(scene, { unitsPerMeter: 1 })
+people.group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } })
+// kind, final x, z, yaw, arrival time (s)
 const SPOTS = [
-  ['stairs', 12, -4.2, Math.PI / 2, 0],
-  ['belt_loader', -9, 5.2, Math.PI / 2, 1.2],
-  ['cargo', 9, 6.8, Math.PI / 2, 2.2],
-  ['catering', -13, -6.2, -Math.PI / 2, 0.6],
-  ['fuel', 2, -12.5, 0, 1.6],
-  ['gpu', 17, 4, 0, 3],
-  ['pushback_tug', 24, 0, 0, 0.3],
-  ['termbus', 4, -24, 0, 2.6],
-  ['deice', -6, 18, Math.PI, 1.0],
+  ['stairs', 12, -4.4, Math.PI / 2, 9.4],
+  ['belt_loader', -9, 5.0, Math.PI / 2, 10.0],
+  ['cargo', 9, 6.9, Math.PI / 2, 11.2],
+  ['catering', -13, -6.4, -Math.PI / 2, 10.6],
+  ['fuel', 2, -12.5, 0, 9.0],
+  ['gpu', 17.2, 4, 0, 9.8],
+  ['pushback_tug', 24.5, 0, 0, 12.0],
+  ['termbus', 4, -24, 0, 12.4],
+  ['deice', -6, 18, Math.PI, 11.6],
   ['fire', -34, -16, 0.5, 0, 'fire'],
-  ['tow', 30, 14, 0, 1.8],
-  ['citycargo', 22, -20, 0, 2.4],
-  ['coach', -26, -30, 0, 0.8],
+  ['bags', -20, 11.5, 0, 11.0],
+  ['citycargo', 24, -21, 0, 13.0],
 ]
 const COLORS = { termbus: '#3d6a8a', coach: '#3d6a8a', fire: '#c8231e', catering: '#e07a3d', fuel: '#c9a227' }
 const ease = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t) }
-const cam = new THREE.PerspectiveCamera(38, W / H, 0.5, 600)
-window.renderAt = (t) => {
-  const list = SPOTS.map(([kind, x, z, yaw, off, mode]) => {
-    const local = t - off
-    const ext = mode === 'fire' ? ease(local / 2) : ease(local / 2.5) * ease((11 - local) / 2.5)
-    return { kind, color: COLORS[kind] ?? '#2f7fd0', size: [8, 3, 2.5], x, y: 0, z, yaw, scale: WPM, ext, active: mode === 'fire' || ext > 0, clock: t }
-  })
-  // baggage train driving in
-  const bx = -48 + Math.min(t, 7) * 4.4
-  list.push({ kind: 'bags', color: '#2f7fd0', size: [9, 2, 1.6], x: bx, y: 0, z: 11, yaw: 0, scale: WPM, ext: 0, clock: t })
-  fleet.sync(list)
-  const a = -0.55 + t * 0.035
-  cam.position.set(Math.cos(a) * 58, 30, Math.sin(a) * 58 + 4); cam.lookAt(0, 2, 2)
-  r.render(scene, cam)
+const DRIVE = 4, D = 16, RAMP = 2.5
+const cam = new THREE.PerspectiveCamera(36, W / H, 0.5, 600)
+const composer = new EffectComposer(r)
+composer.addPass(new RenderPass(scene, cam))
+if (AO) {
+  const ao = new GTAOPass(scene, cam, W, H)
+  ao.updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.5, thickness: 1.5, scale: 1.0, samples: 12 })
+  ao.blendIntensity = NIGHT ? 0.7 : 0.9
+  composer.addPass(ao)
 }
-window.renderAt(Number(new URLSearchParams(location.search).get('t') ?? 6))
-window.__done = true
+if (NIGHT) composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.4, 0.92))
+composer.addPass(new OutputPass())
+let last = 0
+window.renderAt = (t) => {
+  const dt = Math.max(0, t - last); last = t
+  const st = standTimeline(t)
+  plane.position.x = -48 * (1 - st.planeU)
+  cones.forEach((m, i) => (m.visible = i < st.cones))
+  chocks.forEach((m) => (m.visible = st.chocks))
+  const list = [], agents = []
+  for (const [kind, fx, fz, yaw, arr, mode] of SPOTS) {
+    const f = [Math.cos(yaw), -Math.sin(yaw)]
+    let x = fx, z = fz, odo = 0, moving = false, reversing = false, ext = 0
+    if (mode === 'fire') { ext = ease((t - 4) / 2) } else {
+      if (t < arr - DRIVE) continue
+      const towardPlane = f[1] * -Math.sign(fz || 1) > 0 || (Math.abs(fz) < 1 && f[0] < 0)
+      const dir = towardPlane ? -1 : 1 // start behind (forward-in) or ahead (reverse-in)
+      const k = ease((t - (arr - DRIVE)) / DRIVE)
+      x = fx + f[0] * D * dir * (1 - k); z = fz + f[1] * D * dir * (1 - k)
+      odo = D * k * (towardPlane ? 1 : -1)
+      moving = k < 1
+      reversing = !towardPlane && k < 1
+      ext = ease((t - arr - 0.3) / RAMP)
+      if (!towardPlane && ext > 0 && ext < 1) reversing = true
+    }
+    const id = kind
+    list.push({ kind, color: COLORS[kind] ?? '#2f7fd0', size: [8, 3, 2.5], x, y: 0, z, yaw, scale: 1, ext, active: mode === 'fire' || moving || ext > 0, clock: t, odo, reversing })
+    vehicleCrew({ id, kind, x, z, yaw, ext, moving }, t, agents)
+  }
+  standCrew(frame, t, agents)
+  fleet.sync(list)
+  setVehicleSurfaceTime(t)
+  people.update(agents, cam, dt)
+  window.__agents = agents.length; window.__stats = { ...people.stats }
+  if (CAM === 'close') { cam.position.set(-19 + Math.sin(t * 0.05) * 2, 5.5, 17); cam.lookAt(-8, 1.6, 4) }
+  else if (CAM === 'nose') { cam.position.set(34, 6, 13); cam.lookAt(20, 1.5, 0) }
+  else if (CAM === 'wide') { cam.position.set(46, 34, 52); cam.lookAt(0, 1, 0) }
+  else { const a = 0.95 - t * 0.045; const R = 52 - t * 0.6; cam.position.set(Math.cos(a) * R, 24 - t * 0.35, Math.sin(a) * R); cam.lookAt(t < 7 ? -16 + t * 2.2 : 0, 2, 1) }
+  composer.render()
+}
+window.renderAt(Number(Q.get('t') ?? 16))
+// Vehicle photo maps decode asynchronously: give them a moment, then redraw.
+setTimeout(() => { last = 0; window.renderAt(Number(Q.get('t') ?? 16)); window.__done = true }, 2500)
 </script></body></html>

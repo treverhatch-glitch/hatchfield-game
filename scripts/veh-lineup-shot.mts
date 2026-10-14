@@ -8,5 +8,6 @@ p.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text
 await p.goto(url)
 await p.waitForFunction(() => (window as any).__done, null, { timeout: 240000 })
 await p.waitForTimeout(1500)
+console.log('stats', JSON.stringify(await p.evaluate(() => [(window as any).__agents, (window as any).__stats])))
 await p.screenshot({ path: out, fullPage: true })
 await b.close()
