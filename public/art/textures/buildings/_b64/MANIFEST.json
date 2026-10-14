@@ -45,29 +45,29 @@
     "nbytes": 150023
   },
   {
+    "path": "public/art/textures/buildings/airport_grass.jpg",
+    "b64": "public__art__textures__buildings__airport_grass.jpg.b64",
+    "nbytes": 286674
+  },
+  {
     "path": "public/art/textures/buildings/apron_concrete.jpg",
     "b64": "public__art__textures__buildings__apron_concrete.jpg.b64",
-    "nbytes": 306960
+    "nbytes": 264414
   },
   {
     "path": "public/art/textures/buildings/asphalt_road.jpg",
     "b64": "public__art__textures__buildings__asphalt_road.jpg.b64",
-    "nbytes": 398060
-  },
-  {
-    "path": "public/art/textures/buildings/airport_grass.jpg",
-    "b64": "public__art__textures__buildings__airport_grass.jpg.b64",
-    "nbytes": 388385
-  },
-  {
-    "path": "public/art/textures/buildings/diamond_plate.jpg",
-    "b64": "public__art__textures__buildings__diamond_plate.jpg.b64",
-    "nbytes": 226072
+    "nbytes": 298063
   },
   {
     "path": "public/art/textures/buildings/conveyor_belt.jpg",
     "b64": "public__art__textures__buildings__conveyor_belt.jpg.b64",
     "nbytes": 196430
+  },
+  {
+    "path": "public/art/textures/buildings/diamond_plate.jpg",
+    "b64": "public__art__textures__buildings__diamond_plate.jpg.b64",
+    "nbytes": 226072
   },
   {
     "path": "public/art/textures/buildings/gse_yellow_paint.jpg",
