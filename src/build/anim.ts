@@ -29,6 +29,8 @@ export interface AnimSpec {
   /** spin: rad/s; cycle: loops/s; blink: Hz. */
   rate?: number
   phase?: number
+  /** Service-point index this part belongs to (only that dock/bay/door opens). */
+  point?: number
 }
 
 /** Tag a part as movable. Returns it for chaining. */
@@ -48,7 +50,11 @@ interface Part {
   state: number
 }
 
+/** Per-building overrides: signals for this site plus which service points are in use. */
+export type SiteSignals = Signals & { points?: readonly boolean[] }
+
 interface Root {
+  key?: string
   root: THREE.Object3D
   sphere: THREE.Sphere
   parts: Part[]
@@ -78,6 +84,35 @@ export function buildingSignals(g: {
     hangarBusy: phases.has('mx_bay') || phases.has('mx_taxi') || phases.has('mx_return') ? 1 : 0,
     deicing: has('deice') || w === 'storm' ? 1 : 0,
   }
+}
+
+const YARD_SIGNAL: Record<string, AnimSignal> = {
+  fuel: 'fuelFlow',
+  bags: 'bagsFlow',
+  cargo: 'dockActive',
+  fire: 'fireDispatch',
+  deice: 'deicing',
+}
+
+/**
+ * Signals for one building from its own service-point occupancy: only the
+ * dock / bay / door actually in use opens. Hangars and MRO read their own
+ * maintenance slot.
+ */
+export function siteSignals(
+  tile: string | undefined,
+  points: readonly boolean[],
+  hangarBusy?: boolean,
+): SiteSignals | undefined {
+  if (!tile) return undefined
+  if (tile === 'hangar' || tile === 'mro') {
+    const busy = hangarBusy ? 1 : 0
+    return { hangarBusy: busy, points: points.length ? points : undefined }
+  }
+  const sig = YARD_SIGNAL[tile]
+  if (!sig) return undefined
+  const any = points.some(Boolean) ? 1 : 0
+  return { [sig]: any, points } as SiteSignals
 }
 
 const tmpBox = new THREE.Box3()
@@ -114,10 +149,10 @@ export class AnimSystem {
     root.updateWorldMatrix(true, true)
     tmpBox.setFromObject(root)
     const sphere = tmpBox.isEmpty() ? new THREE.Sphere(root.getWorldPosition(new THREE.Vector3()), 10) : tmpBox.getBoundingSphere(new THREE.Sphere())
-    this.roots.push({ root, sphere, parts })
+    this.roots.push({ key: root.userData?.cellKey as string | undefined, root, sphere, parts })
   }
 
-  update(dt: number, sig: Signals, camera?: THREE.Camera) {
+  update(dt: number, sig: Signals, camera?: THREE.Camera, site?: (key: string) => SiteSignals | undefined) {
     this.time += dt
     if (camera) {
       camera.updateMatrixWorld()
@@ -129,10 +164,16 @@ export class AnimSystem {
     for (const r of this.roots) {
       if (camera && !frustum.intersectsSphere(r.sphere)) continue
       active++
+      const over = r.key && site ? site(r.key) : undefined
+      const s = over ? { ...sig, ...over } : sig
       for (const p of r.parts) {
-        const target = sig[p.spec.signal] ?? 0
+        const pts = over?.points
+        const target =
+          pts && p.spec.point != null && p.spec.signal !== 'always'
+            ? pts[p.spec.point] ? 1 : 0
+            : s[p.spec.signal] ?? 0
         p.state += (target - p.state) * ease
-        apply(p, dt, this.time, sig)
+        apply(p, dt, this.time, s)
       }
     }
     this.lastActive = active

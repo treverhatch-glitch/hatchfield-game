@@ -8,6 +8,7 @@
  * what you get when the timer ends.
  */
 import * as THREE from 'three'
+import { onMaterialMap } from './models/kit'
 
 export type ConstructionStage = 'foundation' | 'frame' | 'finish' | 'done'
 
@@ -103,6 +104,14 @@ export class ConstructionPiece {
         // Open-topped while rising: show inner walls instead of a hollow gap.
         c.side = THREE.DoubleSide
         this.owned.push(c)
+        // Photo textures load after the first frame: copy the map onto the stage clone when it lands.
+        if (!(c as THREE.MeshStandardMaterial).map) {
+          const off = onMaterialMap(m, (map) => {
+            ;(c as THREE.MeshStandardMaterial).map = map
+            c.needsUpdate = true
+          })
+          this.owned.push({ dispose: off })
+        }
         return c
       }
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(clip) : clip(mesh.material)
