@@ -36,6 +36,12 @@ describe('hall restock screens', () => {
         await page.getByTestId('new-game').click()
         await page.getByTestId('start-pax').click()
         await page.waitForFunction(() => Boolean((window as unknown as { __hatch?: { site?: string } }).__hatch?.site))
+        // The plot stays empty until the coach stamps the kit. Terminal needs that hall.
+        await page.getByTestId('starter-kit-coach').click()
+        await page.waitForFunction(
+          () =>
+            !(window as unknown as { __hatch: { showStarterKit: () => boolean } }).__hatch.showStarterKit(),
+        )
         const gotIt = page.getByRole('button', { name: 'Got it' })
         if (await gotIt.count()) await gotIt.click()
         await page.getByTestId('view-terminal').click()
