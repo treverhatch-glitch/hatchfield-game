@@ -186,6 +186,10 @@ export function TerminalView({ game }: { game: Game }) {
   }, [build])
 
   useEffect(() => {
+    worldRef.current?.setPaintZones(zone != null)
+  }, [zone])
+
+  useEffect(() => {
     // Capture phase, so Esc cancels a build before it leaves the hall.
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
