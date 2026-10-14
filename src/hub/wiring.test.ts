@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { SIM_MINUTES_PER_REAL_SECOND } from '../core/clock.ts'
 import { Game } from '../game/sim.ts'
 import type { Flight, Vec } from '../game/types.ts'
+import { PLANNED_TURN_SEC } from '../pax/showup.ts'
 import { HOTEL_NIGHT_COST, REBOOK_FEE } from './index.ts'
 
 function field() {
@@ -159,18 +161,36 @@ describe('hub wiring', () => {
     game.fieldXp = 220
     game.hubAirlines = ['harbor']
     game.hotelLevel = 1
+    // Sold against the planned arrival. The inbound is 44 game-minutes late, so the
+    // booked departure is only 16 minutes after landing — under MCT, and the window
+    // closes inside one short tick. An on-time slot this tight is not sold at all.
+    const delayMin = 44
+    const slackMin = 16
+    game.schedule.push({
+      id: 'in',
+      airline: 'harbor',
+      flightNo: 'HF100',
+      eta: -10_000,
+      status: 'done',
+      delaySec: delayMin / SIM_MINUTES_PER_REAL_SECOND,
+      delayReason: null,
+      manual: true,
+      flightId: null,
+    })
     game.schedule.push({
       id: 'tight',
       airline: 'harbor',
       flightNo: 'HF200',
-      eta: game.clock - 17,
+      eta: (game.simMinutes() + slackMin) / SIM_MINUTES_PER_REAL_SECOND - PLANNED_TURN_SEC,
       status: 'scheduled',
       delaySec: 0,
       delayReason: null,
       manual: true,
       flightId: null,
     })
-    game.seedHallForFlight(arrival('year', 'harbor', { c: 12, r: 21 }), 'arrive')
+    const inbound = arrival('year', 'harbor', { c: 12, r: 21 })
+    inbound.scheduleId = 'in'
+    game.seedHallForFlight(inbound, 'arrive')
     const transfers = game.hallGuests.filter((g) => g.transfer)
     expect(transfers.length).toBeGreaterThan(0)
     game.tick(4)

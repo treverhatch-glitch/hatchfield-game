@@ -25,11 +25,13 @@ export { bankCrowd, bankDemand, buildBanks } from './banks.ts'
 export {
   assistedWalkMinutes,
   bagTransferMinutes,
+  bookOnward,
   evaluateConnection,
   gateMetres,
   linkTravelMinutes,
   minimumConnectionTime,
 } from './connect.ts'
+export type { OnwardBooking } from './connect.ts'
 export { connectionMap, gatePairs } from './map.ts'
 export { missPenalty } from './miss.ts'
 export { connectingIndexes, scaledShare, transferShare } from './share.ts'
