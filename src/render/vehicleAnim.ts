@@ -7,7 +7,17 @@
  * here allocates per call: callers pass `out` objects they own.
  */
 import * as THREE from 'three'
-import { beltGeom, cateringHinge, MODEL_PARTS, MODEL_SIZE, partCentre, type VehicleModel } from './vehicleModels'
+import { beltGeom, cateringHinge, lineAnchor, MODEL_PARTS, MODEL_SIZE, partCentre, type VehicleModel } from './vehicleModels'
+
+/** Round F: pay a hanging line out from its reel anchor; sag and climb grow with it. */
+function payOut(out: PartPose, model: VehicleModel, part: string, k: number, fx: number, fy: number, fz: number): PartPose {
+  const a = lineAnchor(model, part)
+  const s = Math.max(0.02, k)
+  reset(out, a ? a[0] : fx, a ? a[1] : fy, a ? a[2] : fz)
+  out.sz = s
+  out.sy = s
+  return out
+}
 
 export interface PartPose {
   /** Pivot in model metres. Rotation and scale happen about it. */
@@ -77,7 +87,7 @@ export function steerAngle(dHeading: number, dist: number, wheelbase: number): n
 }
 
 const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
-  fuel_tanker: ['hose_reel', 'hose'],
+  fuel_tanker: ['hose_reel', 'hose', 'grounding'],
   hydrant_cart: ['lift_platform', 'hose_reel', 'hose'],
   belt_loader: ['belt', 'belt_bags'],
   catering_hilift: ['scissor', 'box', 'deck'],
@@ -88,9 +98,11 @@ const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
   box_truck: ['rollup_door', 'tail_lift'],
   towbar_tug: ['towbar'],
   towbarless_tug: ['cradle'],
-  gpu: ['cable_reel'],
+  gpu: ['cable_reel', 'cable'],
   stairs: ['stair', 'canopy'],
   k_loader: ['front_platform', 'rear_platform'],
+  lavatory_truck: ['hose_reel', 'hose'],
+  water_truck: ['hose_reel', 'hose'],
 }
 
 /** Shared moving parts: wheels spin, beacons rotate, reverse lights switch. */
@@ -183,11 +195,31 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
         return true
       }
       if (part === 'hose') {
-        reset(out, reelX, tanker ? 1.9 : 0.92, W / 2).sz = Math.max(0.02, e)
+        payOut(out, model, 'hose', e, reelX, tanker ? 1.9 : 0.92, W / 2)
         return true
       }
       if (part === 'lift_platform') {
         reset(out).ty = e * LIFT_M.hydrant
+        return true
+      }
+      if (part === 'grounding') {
+        // Bonding cable goes on first and comes off last: leads the hose out.
+        const c = partCentre(model, 'grounding')
+        payOut(out, model, 'grounding', Math.min(1, e * 1.6), c[0], c[1], W / 2)
+        return true
+      }
+      return false
+    }
+    case 'lavatory_truck':
+    case 'water_truck': {
+      const reel = partCentre(model, 'hose_reel')
+      if (part === 'hose_reel') {
+        reset(out, reel[0], reel[1], 0).rz = -e * 8
+        return true
+      }
+      if (part === 'hose') {
+        const c = partCentre(model, 'hose')
+        payOut(out, model, 'hose', e, c[0], c[1], W / 2)
         return true
       }
       return false
@@ -342,6 +374,11 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       out.sz = 1 - 0.25 * e
       return true
     case 'gpu':
+      if (part === 'cable') {
+        const c = partCentre(model, 'cable')
+        payOut(out, model, 'cable', e, c[0], c[1], W / 2)
+        return true
+      }
       if (part !== 'cable_reel') return false
       reset(out, L * 0.18, H + 0.15, 0).rz = -e * 6
       return true

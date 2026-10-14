@@ -8,6 +8,11 @@ import type { AirfieldLevels } from './dayNight'
 import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
+import { CELL } from './view'
+
+/** Apron flood wash: centre distance from the mast and size (across, along), world units. */
+export const FLOOD_REACH = CELL * 0.42
+export const FLOOD_WASH = [CELL * 1.05, CELL * 0.85] as const
 
 export const LIGHT_RGB: Record<LightKind, number> = {
   rwEdge: 0xfff2d0,
@@ -145,7 +150,11 @@ export class AirfieldLights {
         this.pools = instanced(
           plane,
           this.poolMat,
-          masts.map((m) => trs(m.x + Math.sin(m.yaw) * 3.4, 0.05, m.z + Math.cos(m.yaw) * 3.4, m.yaw, 9.5, 1, 9.5)),
+          // Round F: a bright core under the mast plus a wide wash that floods the stand (same draw call).
+          masts.flatMap((m) => [
+            trs(m.x + Math.sin(m.yaw) * 3.4, 0.05, m.z + Math.cos(m.yaw) * 3.4, m.yaw, 9.5, 1, 9.5),
+            trs(m.x + Math.sin(m.yaw) * FLOOD_REACH, 0.045, m.z + Math.cos(m.yaw) * FLOOD_REACH, m.yaw, FLOOD_WASH[0], 1, FLOOD_WASH[1]),
+          ]),
         )
         this.pools.renderOrder = 4
         this.root.add(this.pools)
@@ -214,7 +223,7 @@ export class AirfieldLights {
     this.headMat.color.setRGB(0.54 + apron * 1.2, 0.54 + apron * 1.0, 0.5 + apron * 0.6)
     if (this.pools) {
       this.pools.visible = apron > 0.02
-      this.poolMat.opacity = apron * 0.5
+      this.poolMat.opacity = apron * 0.42
     }
     for (const g of this.socks) {
       const s = g.getObjectByName('sock')

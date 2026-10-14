@@ -48,6 +48,8 @@ export const FOOTPRINT: Record<VehicleType, readonly [number, number]> = {
   belt_loader: [7.6, 2.1],
   uld_loader: [9, 3.4],
   main_deck_loader: [11, 3.6],
+  lavatory_truck: [7.2, 2.3],
+  water_truck: [7.0, 2.3],
 }
 
 export interface Body {
