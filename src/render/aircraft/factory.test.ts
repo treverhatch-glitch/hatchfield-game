@@ -367,7 +367,8 @@ describe('aircraft model factory', () => {
     expect(lowTris).toBeLessThan(midTris)
     expect(lowTris).toBeLessThan(900)
     // Budget covers the full landing gear (oleos, links, hubbed tyres, doors).
-    expect(midTris).toBeLessThan(4400)
+    // Pass 2: wheel wells, bay doors and full leg geometry.
+    expect(midTris).toBeLessThan(4800)
     expect(highTris).toBeLessThan(2500)
     expect(drawCount(narrow.getObjectByName('lod-low')!)).toBeLessThan(24)
     // +~60 shared leg meshes: one per airframe type and leg kind, never per instance or livery.
