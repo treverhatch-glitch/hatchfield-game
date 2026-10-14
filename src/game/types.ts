@@ -561,6 +561,8 @@ export interface Flight {
   }
   phaseTime: number
   ledger: { label: string; amount: number }[]
+  /** Moments this flight already rolled a crash check for. */
+  crashRolls?: { landing?: boolean; takeoff?: boolean }
   /** Linked timetable slot when spawned from the schedule. */
   scheduleId?: string | null
   /** Sim-clock scheduled departure. Show-up is keyed to this, not to boarding. */
