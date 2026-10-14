@@ -69,7 +69,8 @@ Map to the hall's world frame in the renderer.
 
 ## Not done yet
 
-- Arrivals (jet bridge → exit door → curb) and transfers.
+- Arrivals inside `PaxNav` itself. They walk in the game glue instead (see
+  "Arrivals" below). Transfers still use the old hall figures.
 - Body-to-body avoidance for walkers outside queues. Each walker keeps a fixed
   sideways offset so crowds do not walk single file. Use `render/world/guestMotion`
   for visual steering if needed.
@@ -114,10 +115,47 @@ Tunables live in `src/paxnav/config.ts`.
   waits and served counts. `boarded`, `missed` and `stuck` are running totals.
 
 The walk is the hall's picture and its queue read-out. Fares, ratings and
-the sim's own boarding still come from the hall model in `sim.ts`. Arrivals
-still use the old figures. Walkers are not saved; they restart from the next
-released departures after a load.
+the sim's own boarding still come from the hall model in `sim.ts`. Walkers
+are not saved; they restart from the next released guests after a load.
 
-Smoke: `npx tsx scripts/hall-nav-smoke.mts`. It starts Vite, runs the starter
-kit into the Terminal view, takes a close shot and a 1200-walker shot, and
-reports FPS plus per-frame glue cost.
+## Arrivals (`src/game/hallArrivals.ts`)
+
+`HallNav.arrivals` (a `HallArrivals`) walks each non-transfer arrival the sim
+releases into the hall: jet bridge door of its gate room → toilet / shop if
+needed → bag claim (if it has a bag and the hall has a belt) or an exit door →
+curb door, then it is gone. It is glue over the paxnav exports (`buildNavGrid`,
+`computeField`, `buildFacilities`, `apronCells`) and does not change `src/paxnav`.
+
+- **Grid.** The departures' layout with the arrival rules from
+  `terminalbuild`: exit doors open (one way), security lanes closed, and a
+  prefab hall's painted arrivals zone (`prefabClaimHall`) is floor with its
+  carousel and bag hall kit solid. Built halls have no passenger claim hall;
+  their arrivals leave through exit doors.
+- **Layers.** Arrivals walk AIR until they reach a claim spot or an exit, then
+  PRE to the curb, and never go back. The security floor is never a way out.
+- **Queues.** At a toilet or shop counter they stand on the same marked line,
+  behind everyone in the departures' line, and are served when the desk is
+  free.
+- **Claim.** They wait at a free spot within `claimReachCells` of a belt for
+  `claimWaitSec`. Tunables: `HALL_ARRIVAL_TUNING` (`src/game/hallNavData.ts`).
+- **Fallback.** No way from the jet bridge to a curb: no walker, and the old
+  hall figure keeps that guest.
+
+## Drawing the crowd (`src/render/hallNavCrowd.ts`)
+
+The sim walks everyone; drawing only picks who is on screen.
+`HALL_CROWD_TUNING` sets the following:
+
+- `drawDistM`: walkers farther than this from the camera are skipped.
+- Frustum: walkers outside the camera's frustum are skipped.
+- `lodDistM`: past this distance a walker is drawn as a body only.
+- `maxVisible`: the most walkers drawn, nearest first.
+
+Instance matrices and colours go straight into preallocated buffers, and only
+the drawn range is uploaded. The per-frame path allocates nothing.
+`crowd.stats` reports walkers, visible, bodies, heads, bags and instances.
+
+Smoke: `npx tsx scripts/hall-nav-smoke.mts`. It starts Vite and runs the
+starter kit into the Terminal view. It takes a close shot, an arrivals close
+shot and a 1200-walker shot. Then it reports FPS, per-frame glue cost and draw
+stats, with the cap and cull on and then off, on the same camera.

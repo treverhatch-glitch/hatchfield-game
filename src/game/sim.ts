@@ -194,7 +194,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallNavLayout } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -7356,11 +7356,16 @@ export class Game {
     g.node = path[1] ?? 'checkin'
   }
 
-  /** Feed the active hall's walkers: re-read the layout on edits, admit released departures, step. */
+  /** Feed the active hall's walkers: re-read the layout on edits, admit released departures and arrivals, step. */
   tickHallNav(step: number) {
     const fit = this.activeHall()
     if (!fit) return
-    this.hallNav.setHall(this.hallKey(fit), String(this.hallRev), () => hallNavLayout(fit))
+    this.hallNav.setHall(
+      this.hallKey(fit),
+      String(this.hallRev),
+      () => hallNavLayout(fit),
+      () => hallClaimHall(fit),
+    )
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
       if (f?.std != null) return f.std

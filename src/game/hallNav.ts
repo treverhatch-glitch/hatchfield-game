@@ -17,7 +17,8 @@ import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
 import type { BuildLayout, BuildZone, Door, Edge, Equip, Room, Tile } from '../terminalbuild/types.ts'
 import { PaxNav, type FacilityMetrics, type PaxEvent } from '../paxnav/index.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
-import { HALL_NAV_TUNING, PREFAB_ROOM_KIT } from './hallNavData.ts'
+import { HALL_NAV_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
+import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
 
 type Zones = readonly (readonly (ZoneId | null)[])[]
 
@@ -31,6 +32,8 @@ export interface NavGuest {
   releaseAt?: number
   /** Day-one walker: walks again from the curb once boarded, until real passengers replace it. */
   preview?: boolean
+  /** Arrival connecting to another flight: stays airside, so it keeps the old hall figure. */
+  transfer?: boolean
 }
 
 const PREFAB_ZONE: Record<ZoneId, BuildZone | null> = {
@@ -232,6 +235,42 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
   }
 }
 
+/**
+ * A prefab hall's claim hall (its painted arrivals zone) on the same 4 m
+ * tiles as `prefabNavLayout`: the floor arrivals cross to the curb side, the
+ * solid belt kit on it, and the belts they wait beside. Null when the hall
+ * has no arrivals paint.
+ */
+export function prefabClaimHall(zones: Zones, items: readonly PlacedItem[], tileM = BUILD_TUNING.tileMetres): ClaimHall | null {
+  const rows = zones.length
+  const cols = zones[0]?.length ?? 0
+  const w = Math.round(HALL_W / tileM)
+  const h = Math.round(HALL_D / tileM)
+  const cw = HALL_W / Math.max(1, cols)
+  const rh = HALL_D / Math.max(1, rows)
+  const tiles: Tile[] = []
+  const solid: Tile[] = []
+  const belts: Tile[] = []
+  const solidAt = new Map<string, string>()
+  for (const it of items) if (PREFAB_CLAIM_KIT.solid.includes(it.def)) solidAt.set(`${it.c},${it.r}`, it.def)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = Math.min(cols - 1, Math.floor(((x + 0.5) * tileM) / cw))
+      const r = Math.min(rows - 1, Math.floor(((y + 0.5) * tileM) / rh))
+      if (zones[r]?.[c] !== 'arrivals') continue
+      const t = { x, y }
+      const kit = solidAt.get(`${c},${r}`)
+      if (!kit) tiles.push(t)
+      else {
+        solid.push(t)
+        if (PREFAB_CLAIM_KIT.belts.includes(kit)) belts.push(t)
+      }
+    }
+  }
+  if (!tiles.length) return null
+  return { tiles: [...tiles, ...solid], solid, belts }
+}
+
 /** The layout a hall's walkers use: its own build, else a read of its prefab zones and kit. */
 export function hallNavLayout(fit: {
   build?: BuildLayout
@@ -243,27 +282,45 @@ export function hallNavLayout(fit: {
   return prefabNavLayout(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
 }
 
+/** A hall's claim hall for arrivals. Built halls have none (their bag hall is staff only): arrivals use the exit doors. */
+export function hallClaimHall(fit: { build?: BuildLayout; zones?: (string | null)[][]; items?: readonly unknown[] }): ClaimHall | null {
+  if (fit.build || !fit.zones?.length) return null
+  return prefabClaimHall(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
+}
+
 /**
  * The active hall's walkers. `Game` calls `setHall`, `admit` and `tick`
  * every tick; the Terminal view reads `writePoses`, `origin` and `metrics`.
  */
 export class HallNav {
   private navObj: PaxNav | null = null
+  private arr = new HallArrivals()
   private hall = ''
   private stamp = ''
   private shape = ''
   private seen = new Set<string>()
+  /** Sim arrivals walking (or done walking) on the nav grid: the old hall figure is not drawn for them. */
+  private owned = new Set<string>()
   private gates: string[] = []
+  /** Departure ids in PaxNav's pose order, so colours follow people without reading `poses()`. */
+  private depOrder: string[] = []
   /** Nav seconds since this hall's walk started. */
   navNow = 0
   boarded = 0
   missed = 0
   stuck = 0
+  /** Arrivals that reached a curb door and left. */
+  left = 0
   /** Bumps whenever someone joins or leaves, so a renderer can re-read ids and colours. */
   roster = 0
 
   get nav(): PaxNav | null {
     return this.navObj
+  }
+
+  /** Jet bridge to curb walkers. */
+  get arrivals(): HallArrivals {
+    return this.arr
   }
 
   /** True when the hall has a curb door and a gate, so walkers replace the old hall figures. */
@@ -272,15 +329,21 @@ export class HallNav {
     return Boolean(n && n.nav.spawns.length && this.gates.length)
   }
 
+  /** Everyone walking: departures, then arrivals (pose order). */
   get count(): number {
-    return this.navObj?.count ?? 0
+    return (this.navObj?.count ?? 0) + this.arr.count
+  }
+
+  /** The sim arrival is drawn by the walk, not as an old hall figure. */
+  drawsArrival(id: string): boolean {
+    return this.live && this.owned.has(id)
   }
 
   /**
    * Point the walk at a hall. A new hall starts a fresh walk; a new `stamp`
    * (the sim's hall revision) re-reads the layout and everyone re-plans.
    */
-  setHall(hall: string, stamp: string, layout: () => BuildLayout | null) {
+  setHall(hall: string, stamp: string, layout: () => BuildLayout | null, claim: () => ClaimHall | null = () => null) {
     if (hall === this.hall && stamp === this.stamp) return
     const next = layout()
     if (!next) {
@@ -290,13 +353,16 @@ export class HallNav {
       this.shape = ''
       return
     }
+    const claimHall = claim()
     // Many sim edits bump the revision without moving any kit; only re-plan on a real change.
-    const shape = JSON.stringify(next)
+    const shape = JSON.stringify(next) + JSON.stringify(claimHall)
     if (hall !== this.hall || !this.navObj) {
       this.reset()
       this.navObj = new PaxNav(next, { seed: HALL_NAV_TUNING.seed })
+      this.arr.setLayout(next, claimHall)
     } else if (shape !== this.shape) {
       this.navObj.setLayout(next)
+      this.arr.setLayout(next, claimHall)
     }
     this.hall = hall
     this.stamp = stamp
@@ -305,8 +371,9 @@ export class HallNav {
   }
 
   /**
-   * Walk the departing guests the sim has released into this hall. Each one
-   * steps out at a curb door and keeps the flight's departure, scaled to nav time.
+   * Walk the guests the sim has released into this hall. Departures step out
+   * at a curb door and keep the flight's departure, scaled to nav time.
+   * Arrivals step off at their gate's jet bridge door and walk out to the curb.
    */
   admit(guests: readonly NavGuest[], clock: number, stdOf: (flightId: string) => number | undefined) {
     const nav = this.navObj
@@ -314,21 +381,39 @@ export class HallNav {
     const L = HALL_NAV_TUNING.departLeadScale
     const still = new Set<string>()
     for (const g of guests) {
-      if (g.job !== 'depart' || g.dead || (g.hallId && g.hallId !== this.hall)) continue
+      if (g.dead || (g.hallId && g.hallId !== this.hall)) continue
       if (g.releaseAt != null && g.releaseAt > clock) continue
+      const gate = this.gates[hashId(g.flightId) % this.gates.length]
+      if (g.job === 'arrive') {
+        if (g.transfer) continue
+        still.add(g.id)
+        if (this.seen.has(g.id)) continue
+        this.seen.add(g.id)
+        // No way from the jet bridge to a curb: the old figure keeps them.
+        if (this.arr.spawn({ id: g.id, gate })) {
+          this.owned.add(g.id)
+          this.roster++
+        }
+        continue
+      }
+      if (g.job !== 'depart') continue
       still.add(g.id)
       if (this.seen.has(g.id) && !(g.preview && nav.cellOf(g.id) < 0)) continue
       this.seen.add(g.id)
       const std = stdOf(g.flightId) ?? clock + HALL_NAV_TUNING.unknownLeadClockSec
       const ok = nav.spawn({
         id: g.id,
-        gate: this.gates[hashId(g.flightId) % this.gates.length],
+        gate,
         departAt: this.navNow + Math.max(0, std - clock) * L,
       })
-      if (ok) this.roster++
+      if (ok) {
+        this.depOrder.push(g.id)
+        this.roster++
+      }
     }
-    // Forget ids the sim has dropped so the set does not grow all day.
+    // Forget ids the sim has dropped so the sets do not grow all day.
     for (const id of this.seen) if (!still.has(id)) this.seen.delete(id)
+    for (const id of this.owned) if (!still.has(id)) this.owned.delete(id)
   }
 
   /** Advance by `step` clock seconds (game speed already applied). */
@@ -338,14 +423,41 @@ export class HallNav {
     const dt = step * HALL_NAV_TUNING.navSecPerClockSec
     this.navNow += dt
     nav.tick(dt, this.navNow)
+    this.arr.tick(dt, this.navNow, nav)
     const events = nav.drainEvents()
+    let gone: Set<string> | null = null
     for (const e of events) {
       if (e.kind === 'boarded') this.boarded++
       else if (e.kind === 'missed') this.missed++
       else this.stuck++
-      if (e.kind !== 'stuck') this.roster++
+      if (e.kind !== 'stuck') {
+        this.roster++
+        ;(gone ??= new Set()).add(e.id)
+      }
+    }
+    if (gone) this.depOrder = this.depOrder.filter((id) => !gone.has(id))
+    for (const e of this.arr.drainEvents()) {
+      if (e.kind === 'left') {
+        this.left++
+        this.roster++
+      } else this.stuck++
     }
     return events
+  }
+
+  /** Id of the walker in pose slot `i` (departures first, then arrivals). */
+  idAt(i: number): string {
+    const nav = this.navObj
+    const n = nav?.count ?? 0
+    if (i >= n) return this.arr.idAt(i - n)
+    // Spawned outside `admit` (tests, the smoke's waves): re-read the order once.
+    if (this.depOrder.length !== n) this.depOrder = nav!.poses().map((p) => p.id)
+    return this.depOrder[i] ?? ''
+  }
+
+  /** Slot `i` is an arriving passenger. */
+  isArrival(i: number): boolean {
+    return i >= (this.navObj?.count ?? 0)
   }
 
   /** Hall-view metres of terminal (0, 0): the layout is centred on the hall origin. */
@@ -356,9 +468,22 @@ export class HallNav {
     return { x: (-l.w * m) / 2, z: (-l.h * m) / 2 }
   }
 
-  /** x, y, z, yaw per walker (stride 4), terminal metres. */
+  /** `origin().x` without allocating (per-frame callers). */
+  get originX(): number {
+    const l = this.navObj?.layout
+    return l ? (-l.w * BUILD_TUNING.tileMetres) / 2 : 0
+  }
+
+  /** `origin().z` without allocating (per-frame callers). */
+  get originZ(): number {
+    const l = this.navObj?.layout
+    return l ? (-l.h * BUILD_TUNING.tileMetres) / 2 : 0
+  }
+
+  /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals. */
   writePoses(out: Float32Array): number {
-    return this.navObj?.writePoses(out) ?? 0
+    const n = this.navObj?.writePoses(out) ?? 0
+    return n + this.arr.writePoses(out, n)
   }
 
   metrics(): FacilityMetrics[] {
@@ -367,12 +492,16 @@ export class HallNav {
 
   private reset() {
     this.navObj = null
+    this.arr = new HallArrivals()
     this.seen.clear()
+    this.owned.clear()
+    this.depOrder = []
     this.gates = []
     this.navNow = 0
     this.boarded = 0
     this.missed = 0
     this.stuck = 0
+    this.left = 0
     this.roster++
   }
 }

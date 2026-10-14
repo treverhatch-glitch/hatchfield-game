@@ -1,12 +1,20 @@
 /**
- * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts): one
- * instanced body, head and bag for everyone, plus floor dots along every
- * marked queue line. Real metres: a 1.7 m person on the hall floor (y = 0).
- * Three draw calls for the crowd however many people are in the hall, and
- * low-poly bodies (~130 triangles each) so a 1000+ hall stays cheap to fill.
+ * Terminal-view walkers from the hall's PaxNav (src/game/hallNav.ts), both
+ * departures and arrivals: one instanced body, head and bag for everyone,
+ * plus floor dots along every marked queue line. Real metres: a 1.7 m person
+ * on the hall floor (y = 0).
+ *
+ * Drawing is cheap however many people the sim walks:
+ * - walkers outside the camera frustum or past `drawDistM` are not drawn;
+ * - past `lodDistM` they draw as a body only (no head, no bag);
+ * - at most `maxVisible` are drawn, nearest first.
+ * None of this touches the sim: everyone still walks, queues and counts.
+ * The per-frame path writes instance matrices and colours straight into
+ * preallocated buffers and allocates nothing.
  */
 import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
+import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
 
 const SHIRTS = ['#2f6fb0', '#c0392b', '#2e8b57', '#d68910', '#7d3c98', '#34495e', '#e0e0e0', '#16a085', '#b03a7a', '#5d6d7e']
 const SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
@@ -18,6 +26,8 @@ const LINE_COLOR: Record<string, string> = {
   toilet: '#3a9a8a',
   shop_counter: '#e0c04a',
 }
+/** Body centre height, for the frustum test. */
+const MID_Y = 0.85
 
 function hash(id: string): number {
   let h = 2166136261
@@ -25,8 +35,32 @@ function hash(id: string): number {
   return h >>> 0
 }
 
+function palette(list: readonly string[]): Float32Array {
+  const out = new Float32Array(list.length * 3)
+  const c = new THREE.Color()
+  list.forEach((hex, i) => c.set(hex).toArray(out, i * 3))
+  return out
+}
+
+/** What the last `sync` drew. Reused object; read it, do not keep it. */
+export interface CrowdDrawStats {
+  /** Walkers the sim has in the hall. */
+  walkers: number
+  /** In view and in range, before the cap. */
+  visible: number
+  /** Bodies drawn (after the cap). */
+  bodies: number
+  heads: number
+  bags: number
+  /** Instances drawn across body, head and bag. */
+  instances: number
+}
+
 export class HallNavCrowd {
   readonly group = new THREE.Group()
+  /** Tunables; tests and the debug console may change them. */
+  readonly tuning = { ...HALL_CROWD_TUNING }
+  readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0 }
   private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 2, 6)
   private readonly headGeo = new THREE.SphereGeometry(0.12, 7, 5)
   private readonly bagGeo = new THREE.BoxGeometry(0.34, 0.5, 0.22)
@@ -35,87 +69,219 @@ export class HallNavCrowd {
   private readonly headMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly bagMat = new THREE.MeshLambertMaterial({ color: 0x3a3f47 })
   private readonly dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false })
+  private readonly shirts = palette(SHIRTS)
+  private readonly skins = palette(SKINS)
   private body: THREE.InstancedMesh | null = null
   private head: THREE.InstancedMesh | null = null
   private bag: THREE.InstancedMesh | null = null
   private dots: THREE.InstancedMesh | null = null
+  /** Instance slots in the meshes. */
   private cap = 0
+  /** Walker slots in the per-walker buffers. */
+  private walkCap = 0
   private poses = new Float32Array(0)
   private bobSeed = new Float32Array(0)
   private hasBag = new Uint8Array(0)
+  private shirtOf = new Uint8Array(0)
+  private skinOf = new Uint8Array(0)
+  private visIdx = new Int32Array(0)
+  private visD = new Float32Array(0)
   private roster = -1
   private lineRev = -1
   private lineNav: unknown = null
+  private readonly frustum = new THREE.Frustum()
+  private readonly pm = new THREE.Matrix4()
+  private readonly sphere = new THREE.Sphere(new THREE.Vector3(), 1)
   private readonly m = new THREE.Matrix4()
-  private readonly q = new THREE.Quaternion()
   private readonly p = new THREE.Vector3()
   private readonly s = new THREE.Vector3(1, 1, 1)
-  private readonly up = new THREE.Vector3(0, 1, 0)
   private readonly c = new THREE.Color()
 
   constructor() {
     this.group.name = 'hall-nav-crowd'
   }
 
-  /** Draw the walkers. Returns how many were drawn. */
-  sync(nav: HallNav, time: number): number {
+  /**
+   * Draw the walkers. With a camera, off-screen and far walkers are skipped
+   * and far ones drop to a body. Returns how many were drawn.
+   */
+  sync(nav: HallNav, time: number, camera?: THREE.Camera): number {
+    const st = this.stats
     const live = nav.live
     this.group.visible = live
-    if (!live) return 0
+    if (!live) {
+      st.walkers = st.visible = st.bodies = st.heads = st.bags = st.instances = 0
+      return 0
+    }
     this.syncLines(nav)
-    const n = nav.count
-    this.ensure(n)
-    const count = nav.writePoses(this.poses)
-    if (nav.roster !== this.roster) this.recolour(nav, count)
-    const o = nav.origin()
+    this.ensureWalkers(nav.count)
+    const total = nav.writePoses(this.poses)
+    if (nav.roster !== this.roster) this.recolour(nav, total)
+    const ox = nav.originX
+    const oz = nav.originZ
+    const T = this.tuning
+    const poses = this.poses
+    const visIdx = this.visIdx
+    const visD = this.visD
+
+    // Cull: in front of the camera and in range. The sim still walks everyone.
+    let vis = 0
+    if (camera) {
+      this.pm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+      this.frustum.setFromProjectionMatrix(this.pm)
+      const e = camera.matrixWorld.elements
+      const cx = e[12]
+      const cy = e[13]
+      const cz = e[14]
+      const far2 = T.drawDistM > 0 ? T.drawDistM * T.drawDistM : Infinity
+      const sphere = this.sphere
+      sphere.radius = T.cullRadiusM
+      for (let i = 0; i < total; i++) {
+        const x = poses[i * 4] + ox
+        const z = poses[i * 4 + 2] + oz
+        const dx = x - cx
+        const dy = MID_Y - cy
+        const dz = z - cz
+        const d2 = dx * dx + dy * dy + dz * dz
+        if (d2 > far2) continue
+        sphere.center.set(x, MID_Y, z)
+        if (!this.frustum.intersectsSphere(sphere)) continue
+        visIdx[vis] = i
+        visD[vis] = d2
+        vis++
+      }
+    } else {
+      for (let i = 0; i < total; i++) {
+        visIdx[i] = i
+        visD[i] = 0
+      }
+      vis = total
+    }
+    st.walkers = total
+    st.visible = vis
+    // Cap: nearest first.
+    const capN = T.maxVisible > 0 ? Math.min(vis, T.maxVisible) : vis
+    if (capN < vis) this.selectNearest(vis, capN)
+    this.ensureMeshes(capN)
+
     const body = this.body!
     const head = this.head!
     const bag = this.bag!
-    for (let i = 0; i < count; i++) {
-      const x = this.poses[i * 4] + o.x
-      const z = this.poses[i * 4 + 2] + o.z
-      const yaw = this.poses[i * 4 + 3]
+    const bm = body.instanceMatrix.array as Float32Array
+    const hm = head.instanceMatrix.array as Float32Array
+    const gm = bag.instanceMatrix.array as Float32Array
+    const bc = body.instanceColor!.array as Float32Array
+    const hc = head.instanceColor!.array as Float32Array
+    const lod2 = camera ? T.lodDistM * T.lodDistM : Infinity
+    let nh = 0
+    let ng = 0
+    for (let k = 0; k < capN; k++) {
+      const i = visIdx[k]
+      const x = poses[i * 4] + ox
+      const z = poses[i * 4 + 2] + oz
+      const yaw = poses[i * 4 + 3]
       const bob = Math.abs(Math.sin(time * 7 + this.bobSeed[i])) * 0.03
-      this.q.setFromAxisAngle(this.up, yaw)
-      this.place(body, i, x, 0.65 + bob, z)
-      this.place(head, i, x, 1.57 + bob, z)
-      // Roller bag trails behind and to the side; parked under the floor when they have none.
-      const sx = Math.sin(yaw)
-      const sz = Math.cos(yaw)
-      this.place(bag, i, x - sx * 0.38 + sz * 0.2, this.hasBag[i] ? 0.25 : -5, z - sz * 0.38 - sx * 0.2)
+      const sn = Math.sin(yaw)
+      const cs = Math.cos(yaw)
+      writeYaw(bm, k, x, 0.65 + bob, z, sn, cs)
+      const sh = this.shirtOf[i] * 3
+      bc[k * 3] = this.shirts[sh]
+      bc[k * 3 + 1] = this.shirts[sh + 1]
+      bc[k * 3 + 2] = this.shirts[sh + 2]
+      if (visD[k] > lod2) continue
+      writeYaw(hm, nh, x, 1.57 + bob, z, sn, cs)
+      const sk = this.skinOf[i] * 3
+      hc[nh * 3] = this.skins[sk]
+      hc[nh * 3 + 1] = this.skins[sk + 1]
+      hc[nh * 3 + 2] = this.skins[sk + 2]
+      nh++
+      // Roller bag trails behind and to the side.
+      if (this.hasBag[i]) {
+        writeYaw(gm, ng, x - sn * 0.38 + cs * 0.2, 0.25, z - cs * 0.38 - sn * 0.2, sn, cs)
+        ng++
+      }
     }
-    for (const mesh of [body, head, bag]) {
-      mesh.count = count
-      mesh.instanceMatrix.needsUpdate = true
-    }
-    return count
+    this.flush(body, capN, true)
+    this.flush(head, nh, true)
+    this.flush(bag, ng, false)
+    st.bodies = capN
+    st.heads = nh
+    st.bags = ng
+    st.instances = capN + nh + ng
+    return capN
   }
 
   dispose() {
     this.group.removeFromParent()
-    for (const mesh of [this.body, this.head, this.bag, this.dots]) mesh?.dispose()
-    for (const g of [this.bodyGeo, this.headGeo, this.bagGeo, this.dotGeo]) g.dispose()
-    for (const mat of [this.bodyMat, this.headMat, this.bagMat, this.dotMat]) mat.dispose()
+    this.body?.dispose()
+    this.head?.dispose()
+    this.bag?.dispose()
+    this.dots?.dispose()
+    this.bodyGeo.dispose()
+    this.headGeo.dispose()
+    this.bagGeo.dispose()
+    this.dotGeo.dispose()
+    this.bodyMat.dispose()
+    this.headMat.dispose()
+    this.bagMat.dispose()
+    this.dotMat.dispose()
   }
 
-  private place(mesh: THREE.InstancedMesh, i: number, x: number, y: number, z: number) {
-    this.p.set(x, y, z)
-    this.m.compose(this.p, this.q, this.s)
-    mesh.setMatrixAt(i, this.m)
+  private flush(mesh: THREE.InstancedMesh, count: number, colour: boolean) {
+    mesh.count = count
+    const im = mesh.instanceMatrix
+    im.clearUpdateRanges()
+    im.addUpdateRange(0, count * 16)
+    im.needsUpdate = true
+    if (colour && mesh.instanceColor) {
+      const ic = mesh.instanceColor
+      ic.clearUpdateRanges()
+      ic.addUpdateRange(0, count * 3)
+      ic.needsUpdate = true
+    }
+  }
+
+  /** Partial quickselect: the `k` nearest of the first `n` visible walkers end up in front. */
+  private selectNearest(n: number, k: number) {
+    const idx = this.visIdx
+    const d = this.visD
+    let lo = 0
+    let hi = n - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      const pivot = d[mid]
+      let i = lo
+      let j = hi
+      while (i <= j) {
+        while (d[i] < pivot) i++
+        while (d[j] > pivot) j--
+        if (i <= j) {
+          const td = d[i]
+          d[i] = d[j]
+          d[j] = td
+          const ti = idx[i]
+          idx[i] = idx[j]
+          idx[j] = ti
+          i++
+          j--
+        }
+      }
+      if (k - 1 <= j) hi = j
+      else if (k - 1 >= i) lo = i
+      else break
+    }
   }
 
   /** Colours follow the person, not the slot, so they are re-read when the roster changes. */
   private recolour(nav: HallNav, count: number) {
     this.roster = nav.roster
-    const poses = nav.nav?.poses() ?? []
     for (let i = 0; i < count; i++) {
-      const h = hash(poses[i]?.id ?? String(i))
-      this.body!.setColorAt(i, this.c.set(SHIRTS[h % SHIRTS.length]))
-      this.head!.setColorAt(i, this.c.set(SKINS[(h >>> 8) % SKINS.length]))
+      const h = hash(nav.idAt(i) || String(i))
+      this.shirtOf[i] = h % SHIRTS.length
+      this.skinOf[i] = (h >>> 8) % SKINS.length
       this.bobSeed[i] = (h % 628) / 100
       this.hasBag[i] = (h >>> 16) % 3 !== 0 ? 1 : 0
     }
-    for (const mesh of [this.body!, this.head!]) if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   }
 
   /** Marked queue lines: a dot per metre, rebuilt when the layout changes. */
@@ -149,29 +315,66 @@ export class HallNavCrowd {
     this.group.add(dots)
   }
 
-  private ensure(n: number) {
+  /** Per-walker buffers: one slot per person in the sim. Grows in steps, never shrinks. */
+  private ensureWalkers(n: number) {
+    if (this.walkCap >= n && this.walkCap > 0) return
+    const cap = Math.max(256, Math.ceil((n * 1.5) / 256) * 256)
+    this.walkCap = cap
+    this.poses = new Float32Array(cap * 4)
+    this.bobSeed = new Float32Array(cap)
+    this.hasBag = new Uint8Array(cap)
+    this.shirtOf = new Uint8Array(cap)
+    this.skinOf = new Uint8Array(cap)
+    this.visIdx = new Int32Array(cap)
+    this.visD = new Float32Array(cap)
+    this.roster = -1
+  }
+
+  /** Instance slots: as many as get drawn (the cap bounds this, not the sim). */
+  private ensureMeshes(n: number) {
     if (this.cap >= n && this.body) return
     for (const mesh of [this.body, this.head, this.bag]) {
       mesh?.removeFromParent()
       mesh?.dispose()
     }
-    // Grow in steps so a filling hall does not rebuild every frame. Never a cap on people.
     this.cap = Math.max(256, Math.ceil((n * 1.5) / 256) * 256)
-    this.poses = new Float32Array(this.cap * 4)
-    this.bobSeed = new Float32Array(this.cap)
-    this.hasBag = new Uint8Array(this.cap)
-    const make = (geo: THREE.BufferGeometry, mat: THREE.Material, name: string) => {
+    const make = (geo: THREE.BufferGeometry, mat: THREE.Material, name: string, colour: boolean) => {
       const mesh = new THREE.InstancedMesh(geo, mat, this.cap)
       mesh.name = name
       mesh.count = 0
+      // Culled per walker above; the mesh-level test would only see the whole crowd.
       mesh.frustumCulled = false
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      if (colour) {
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.cap * 3).fill(1), 3)
+        mesh.instanceColor.setUsage(THREE.DynamicDrawUsage)
+      }
       this.group.add(mesh)
       return mesh
     }
-    this.body = make(this.bodyGeo, this.bodyMat, 'hall-nav-body')
-    this.head = make(this.headGeo, this.headMat, 'hall-nav-head')
-    this.bag = make(this.bagGeo, this.bagMat, 'hall-nav-bag')
-    this.roster = -1
+    this.body = make(this.bodyGeo, this.bodyMat, 'hall-nav-body', true)
+    this.head = make(this.headGeo, this.headMat, 'hall-nav-head', true)
+    this.bag = make(this.bagGeo, this.bagMat, 'hall-nav-bag', false)
   }
+}
+
+/** Column-major translation + rotation about +Y into instance slot `k`, as `makeRotationY` then `setPosition`. */
+function writeYaw(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number) {
+  const o = k * 16
+  arr[o] = cs
+  arr[o + 1] = 0
+  arr[o + 2] = -sn
+  arr[o + 3] = 0
+  arr[o + 4] = 0
+  arr[o + 5] = 1
+  arr[o + 6] = 0
+  arr[o + 7] = 0
+  arr[o + 8] = sn
+  arr[o + 9] = 0
+  arr[o + 10] = cs
+  arr[o + 11] = 0
+  arr[o + 12] = x
+  arr[o + 13] = y
+  arr[o + 14] = z
+  arr[o + 15] = 1
 }

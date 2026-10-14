@@ -1,6 +1,7 @@
 // Terminal-view smoke for the paxnav walkers: npx tsx scripts/hall-nav-smoke.mts  (starts vite itself)
-// Starter kit -> Terminal view -> walkers on the nav grid. Screenshots wide and up close,
-// then FPS with the day-one crowd and with 1200 walkers. Writes to HALL_NAV_OUT (default ./hall-nav-out).
+// Starter kit -> Terminal view -> departures and arrivals on the nav grid. Screenshots wide and up close,
+// then FPS with the day-one crowd and with 1200 more walkers, drawn culled and capped, then drawn
+// the old way (everyone, full detail) on the same camera. Writes to HALL_NAV_OUT (default ./hall-nav-out).
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -58,7 +59,7 @@ await page.evaluate(`(() => {
   const tick = g.tickHallNav.bind(g)
   g.tickHallNav = (s) => { const a = performance.now(); tick(s); t.tick += performance.now() - a }
   const sync = w.navCrowd.sync.bind(w.navCrowd)
-  w.navCrowd.sync = (n, c) => { const a = performance.now(); const r = sync(n, c); t.draw += performance.now() - a; t.frames++; return r }
+  w.navCrowd.sync = (n, c, cam) => { const a = performance.now(); const r = sync(n, c, cam); t.draw += performance.now() - a; t.frames++; return r }
 })()`)
 // Offer panels sit over the hall; close them so the shot is of the floor.
 const clearPanels = async () => {
@@ -77,14 +78,30 @@ const spawnWave = (n: number, tag: string) =>
     },
     { n, tag },
   )
+// Arrivals off the jet bridges, walking out to the claim belt and the curb.
+const spawnArrivals = (n: number, tag: string) =>
+  page.evaluate(
+    ({ n, tag }) => {
+      const hn = (window as any).__hatch.hallNav
+      for (let i = 0; i < n; i++) hn.arrivals.spawn({ id: `${tag}-${i}`, gate: '' })
+      hn.roster++
+    },
+    { n, tag },
+  )
+/** What the crowd drew last frame: walkers in the sim vs instances on screen. */
+const drawStats = async () => page.evaluate(() => ({ ...(window as any).__hall.navCrowd.stats }))
 await spawnWave(90, 'wave')
 await page.waitForTimeout(9000)
+await spawnArrivals(40, 'arr')
+await page.waitForTimeout(2500)
 await navMs()
 const calm = { ...(await fps()), ...(await navMs()) }
 const stats = await page.evaluate(() => {
   const g = (window as any).__hatch
   return {
     walkers: g.hallNav.count,
+    arrivals: g.hallNav.arrivals.count,
+    left: g.hallNav.left,
     boarded: g.hallNav.boarded,
     clock: g.clock,
     drawn: (window as any).__hall.navDrawn,
@@ -106,6 +123,33 @@ await page.waitForTimeout(800)
 await clearPanels()
 await page.screenshot({ path: `${out}/hall-close.png` })
 
+// Up close where the claim hall meets check-in: arrivals walking out past the departures' queues.
+// A clock second is 30 nav seconds, so walks are short: pause once arrivals are walking out
+// from the belt to the curb, through the check-in hall, and look at them there.
+await spawnArrivals(30, 'arr2')
+await page.waitForFunction(
+  // Terminal x < 26 m: past the claim hall, in the check-in hall with the departures.
+  () => (window as any).__hatch.hallNav.arrivals.poses().some((p: any) => p.phase === 'curb' && p.x < 26),
+  null,
+  { timeout: 30000, polling: 30 },
+)
+await page.evaluate(() => {
+  const g = (window as any).__hatch
+  g.speed = 0
+  // The one farthest along toward the curb, so the shot is in the check-in hall.
+  const out = g.hallNav.arrivals.poses().filter((p: any) => p.phase === 'curb')
+  const lead = out.reduce((a: any, b: any) => (b.x < a.x ? b : a))
+  const w = (window as any).__hall
+  w.pivot.set(lead.x + g.hallNav.originX, 0, lead.z + g.hallNav.originZ)
+  w.dist = 24
+  w.pitch = 0.9
+  w.placeCam()
+})
+await clearPanels()
+await page.waitForTimeout(500)
+await page.screenshot({ path: `${out}/hall-arrivals-close.png` })
+await page.evaluate(() => ((window as any).__hatch.speed = 1))
+
 // Same whole-hall camera with and without the heavy wave, so the walkers' own cost shows.
 await page.evaluate(() => {
   const w = (window as any).__hall
@@ -115,16 +159,27 @@ await page.evaluate(() => {
   w.placeCam()
 })
 await page.waitForTimeout(1000)
-const wideBase = await fps()
+const wideBase = { ...(await fps()), draw: await drawStats() }
 await spawnWave(heavy, 'heavy')
 await page.waitForTimeout(3000)
 await navMs()
-const loaded = { ...(await fps()), ...(await navMs()) }
+const loaded = { ...(await fps()), ...(await navMs()), draw: await drawStats() }
 const heavyCount = await page.evaluate(() => (window as any).__hatch.hallNav.count)
 await clearPanels()
 await page.screenshot({ path: `${out}/hall-heavy.png` })
+// Same camera and crowd with the old draw-everything path (no cap, no cull, full detail), for before/after.
+await page.evaluate(() => {
+  const t = (window as any).__hall.navCrowd.tuning
+  t.maxVisible = 0
+  t.drawDistM = 0
+  t.lodDistM = 1e6
+  t.cullRadiusM = 1e6
+})
+await page.waitForTimeout(1000)
+await navMs()
+const uncapped = { ...(await fps()), ...(await navMs()), draw: await drawStats() }
 
-const report = { calm: { ...calm, ...stats }, wideBase, heavy:{ ...loaded, walkers: heavyCount }, errors }
+const report = { calm: { ...calm, ...stats }, wideBase, heavy: { ...loaded, walkers: heavyCount }, heavyUncapped: uncapped, errors }
 writeFileSync(`${out}/report.json`, JSON.stringify(report, null, 2))
 console.log(JSON.stringify(report, null, 2))
 await browser.close()

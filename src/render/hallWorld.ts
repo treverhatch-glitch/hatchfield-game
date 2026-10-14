@@ -119,7 +119,7 @@ export class HallWorld {
   lastY = 0
   roomGroup = new THREE.Group()
   guestGroup = new THREE.Group()
-  /** Curb-to-boarding walkers from the hall's PaxNav. Stands in for departing figures while live. */
+  /** Departures and arrivals from the hall's PaxNav. Stand in for the old hall figures while live. */
   readonly navCrowd = new HallNavCrowd()
   /** Walkers drawn last frame (tests, perf probes). */
   navDrawn = 0
@@ -799,9 +799,9 @@ export class HallWorld {
   }
 
   syncGuests(game: Game) {
-    // Departures walk on the nav grid (navCrowd) when the hall has a curb door and a gate.
-    const navLive = game.hallNav.live
-    const drawn = navLive ? game.hallGuests.filter((g) => g.job !== 'depart') : game.hallGuests
+    // Departures and arrivals walk on the nav grid (navCrowd) when the hall has a curb door and a gate.
+    const nav = game.hallNav
+    const drawn = nav.live ? game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id)) : game.hallGuests
     const live = new Set(drawn.map((g) => g.id))
     for (const [id, mesh] of this.guests) {
       if (!live.has(id)) {
@@ -1157,7 +1157,7 @@ export class HallWorld {
     this.easeToGoal(game)
     this.syncWalkways(game)
     this.syncGuests(game)
-    this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock)
+    this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
