@@ -164,11 +164,17 @@ function applyMeshes(meshes: PaintedMesh[], weight: number, nearHigh: number) {
  * Distance crossfade. Subclasses THREE.LOD so the renderer calls `update`
  * every frame, but does not hard-switch levels (that pops).
  */
+function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a))
+}
+
 export class CrossfadeLOD extends THREE.LOD {
   wHigh = 0
   wMid = 1
   wLow = 0
   gearT = 1
+  steer = 0
+  lastHeading: number | null = null
   posed = false
   lastT = -1
   buckets: LodBuckets | null = null
@@ -223,7 +229,21 @@ export class CrossfadeLOD extends THREE.LOD {
     cullLamps(buckets.lamps, camera)
 
     const gearScale = Math.max(0.0001, this.gearT)
-    for (const gear of buckets.gears) gear.scale.y = gearScale
+    // Nose-wheel steering follows the turn rate of the airframe.
+    const heading = this.parent?.rotation.y ?? 0
+    const yawRate = dt > 0 && this.lastHeading !== null ? wrapAngle(heading - this.lastHeading) / dt : 0
+    this.lastHeading = heading
+    this.steer += (THREE.MathUtils.clamp(yawRate * 2.2, -0.7, 0.7) - this.steer) * Math.min(1, dt * 6)
+    for (const gear of buckets.gears) {
+      const retract = gear.userData.retract as { axis: 'x' | 'z'; angle: number } | undefined
+      if (retract) {
+        gear.rotation[retract.axis] = (1 - this.gearT) * retract.angle
+        gear.visible = this.gearT > 0.03
+        if (gear.userData.steer) gear.rotation.y = this.gearT > 0.98 ? this.steer : 0
+      } else if (!gear.userData.legs) {
+        gear.scale.y = gearScale
+      }
+    }
 
     const goal = (this.parent?.userData.motion as AircraftMotion | undefined) ?? MOTION_RUNNING
     if (!this.motionPosed) {
@@ -250,7 +270,8 @@ export class CrossfadeLOD extends THREE.LOD {
       }
     }
 
-    const nightScale = 0.85 + lamp * 0.7
+    // Glow grows a little at night but never past ~1.3x, so lamps stay small points on the tips.
+    const nightScale = 0.95 + lamp * 0.3
     for (const lamp of buckets.lamps) {
       const kind = lamp.userData.kind as string
       if (kind === 'strobe' || kind === 'beacon') continue
@@ -261,11 +282,11 @@ export class CrossfadeLOD extends THREE.LOD {
     const beacon = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now * 5))
     for (const lamp of buckets.strobes) {
       const base = (lamp.userData.baseScale as number) || 1
-      lamp.scale.setScalar(base * nightScale * (0.7 + strobe * 1.15))
+      lamp.scale.setScalar(base * nightScale * (0.8 + strobe * 0.5))
     }
     for (const lamp of buckets.beacons) {
       const base = (lamp.userData.baseScale as number) || 1
-      lamp.scale.setScalar(base * nightScale * (0.75 + beacon * 0.45))
+      lamp.scale.setScalar(base * nightScale * (0.8 + beacon * 0.3))
     }
 
     const ail = Math.sin(now * 0.7) * 0.18

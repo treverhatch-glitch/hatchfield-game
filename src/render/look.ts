@@ -18,7 +18,7 @@ export const AIRCRAFT_LOOK = {
   /** Belly shade, as a multiple of the airline colour. */
   bellyShade: 0.78,
   /** Fuselage sides per LOD. Smooth normals hide the facets, so mid can stay modest. */
-  fuselageSides: { low: 5, mid: 12 },
+  fuselageSides: { low: 5, mid: 16 },
   /** Window panes along one side at mid LOD, before the deck multiplier. */
   windowCount: 12,
   /** Painted shell material. */
