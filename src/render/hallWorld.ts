@@ -54,6 +54,8 @@ import {
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
+import { HallFigureBatch, type FigureDraw } from './hallFigures'
+import { releasePerfOverlay, retainPerfOverlay } from '../perf'
 import { HallServiceFx } from './hallService'
 import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
@@ -176,11 +178,9 @@ export class HallWorld {
   hotspotGroup = new THREE.Group()
   bagGroup = new THREE.Group()
   guests = new Map<string, THREE.Object3D>()
-  private readonly figLeg = new THREE.BoxGeometry(0.18, 0.86, 0.18)
-  private readonly figTorso = new THREE.BoxGeometry(0.46, 0.56, 0.26)
-  private readonly figHead = new THREE.SphereGeometry(0.2, 14, 10)
-  private readonly figArm = new THREE.BoxGeometry(0.12, 0.48, 0.12)
-  private readonly figCarry = new THREE.BoxGeometry(0.18, 0.24, 0.1)
+  /** Legs, arms, torso, head, and carry-on: five instanced meshes for every guest. */
+  readonly figures = new HallFigureBatch()
+  private perfOverlay = retainPerfOverlay()
   private readonly figBag = new THREE.BoxGeometry(0.22, 0.32, 0.14)
   private readonly figPin = new THREE.ConeGeometry(0.09, 0.26, 6)
   private readonly figSnack = new THREE.BoxGeometry(0.1, 0.12, 0.1)
@@ -327,6 +327,7 @@ export class HallWorld {
     this.scene.add(this.walkGroup)
     this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
+    this.scene.add(this.figures.group)
     this.scene.add(this.navCrowd.group)
     this.navCrowd.skipRole = HallServiceFx.drawsRole
     this.scene.add(this.serviceFx.group)
@@ -423,9 +424,10 @@ export class HallWorld {
     const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
     const queueHits = this.ray.intersectObjects(this.queueGroup.children, true)
     const roomHits = this.ray.intersectObjects(this.roomGroup.children, true)
+    const bodyHits = this.ray.intersectObject(this.figures.torso, false)
     const hits = this.ray.intersectObjects(this.guestGroup.children, true)
     const spot = spotHits[0]
-    const person = hits[0]
+    const person = bodyHits[0] && (!hits[0] || bodyHits[0].distance <= hits[0].distance) ? bodyHits[0] : hits[0]
     // Nav-grid walkers are instanced: pick the one nearest where the ray crosses body height.
     if (!person && this.game.hallNav.live) {
       const r = this.ray.ray
@@ -465,7 +467,11 @@ export class HallWorld {
       }
     }
     let id: string | null = null
-    for (const hit of hits) {
+    const body = bodyHits[0]
+    if (body && (!hits[0] || body.distance <= hits[0].distance)) {
+      id = this.figures.guestId(body.instanceId ?? -1)
+    }
+    for (const hit of id ? [] : hits) {
       let obj: THREE.Object3D | null = hit.object
       while (obj) {
         if (typeof obj.userData.guestId === 'string') {
@@ -1088,54 +1094,60 @@ export class HallWorld {
     const salt = guestSalt(id)
     const skin = FIGURE_SKINS[salt % FIGURE_SKINS.length]
     const trousers = FIGURE_TROUSERS[(salt >>> 4) % FIGURE_TROUSERS.length]
-    const shirt = this.sharedMat('lambert', color, 0.55)
-    const legs = this.sharedMat('lambert', trousers, 0.35)
-    const face = this.sharedMat('lambert', skin, 0.4)
 
     const left = new THREE.Group()
     left.position.set(-0.11, 0.86, 0)
-    const leftLeg = new THREE.Mesh(this.figLeg, legs)
+    const leftLeg = new THREE.Object3D()
     leftLeg.position.y = -0.43
     left.add(leftLeg)
     root.add(left)
 
     const right = new THREE.Group()
     right.position.set(0.11, 0.86, 0)
-    const rightLeg = new THREE.Mesh(this.figLeg, legs)
+    const rightLeg = new THREE.Object3D()
     rightLeg.position.y = -0.43
     right.add(rightLeg)
     root.add(right)
     root.userData.leftLeg = left
     root.userData.rightLeg = right
+    root.userData.legL = leftLeg
+    root.userData.legR = rightLeg
 
-    const torso = new THREE.Mesh(this.figTorso, shirt)
+    const torso = new THREE.Object3D()
     torso.position.y = 1.13
     root.add(torso)
+    root.userData.torso = torso
     const armL = new THREE.Group()
     armL.position.set(-0.27, 1.38, 0)
-    const armMeshL = new THREE.Mesh(this.figArm, shirt)
+    const armMeshL = new THREE.Object3D()
     armMeshL.position.y = -0.24
     armL.add(armMeshL)
     root.add(armL)
     const armR = new THREE.Group()
     armR.position.set(0.27, 1.38, 0)
-    const armMeshR = new THREE.Mesh(this.figArm, shirt)
+    const armMeshR = new THREE.Object3D()
     armMeshR.position.y = -0.24
     armR.add(armMeshR)
     root.add(armR)
     root.userData.leftArm = armL
     root.userData.rightArm = armR
+    root.userData.armL = armMeshL
+    root.userData.armR = armMeshR
 
-    const head = new THREE.Mesh(this.figHead, face)
+    const head = new THREE.Object3D()
     head.position.y = 1.58
     root.add(head)
+    root.userData.head = head
+    root.userData.shirtColor = new THREE.Color(color)
+    root.userData.trouserColor = new THREE.Color(trousers)
+    root.userData.skinColor = new THREE.Color(skin)
 
     const pin = new THREE.Mesh(this.figPin, this.sharedMat('lambert', '#e23b2f', 0.2))
     pin.position.y = 1.98
     root.add(pin)
     root.userData.pin = pin
 
-    const carry = new THREE.Mesh(this.figCarry, this.sharedMat('basic', '#3ec6ff'))
+    const carry = new THREE.Object3D()
     carry.position.set(0.36, 0.98, 0.06)
     root.add(carry)
     root.userData.carry = carry
@@ -1177,6 +1189,7 @@ export class HallWorld {
       }
     }
     const pile = new Map<string, number>()
+    const figureDraws: FigureDraw[] = []
     const zones = game.activeHall()?.zones ?? []
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
@@ -1274,15 +1287,29 @@ export class HallWorld {
       if (walking) mesh.position.y = Math.abs(Math.sin(game.clock * 6.5)) * 0.045
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
-      const carry = mesh.userData.carry as THREE.Mesh
       const checked = mesh.userData.checked as THREE.Mesh
-      carry.visible = g.carryOn !== false
       checked.visible = Boolean(g.hasChecked)
       const snack = mesh.userData.snack as THREE.Mesh
       snack.visible = Boolean(g.snack)
       if (g.snack) snack.scale.set(g.snack.kind === 'meal' ? 1.8 : 1, g.snack.kind === 'meal' ? 0.6 : 1, 1)
       this.syncBubble(mesh, g.thought)
+      mesh.updateWorldMatrix(true, true)
+      figureDraws.push({
+        id: g.id,
+        legL: mesh.userData.legL as THREE.Object3D,
+        legR: mesh.userData.legR as THREE.Object3D,
+        armL: mesh.userData.armL as THREE.Object3D,
+        armR: mesh.userData.armR as THREE.Object3D,
+        torso: mesh.userData.torso as THREE.Object3D,
+        head: mesh.userData.head as THREE.Object3D,
+        carry: mesh.userData.carry as THREE.Object3D,
+        showCarry: g.carryOn !== false,
+        shirt: mesh.userData.shirtColor as THREE.Color,
+        trousers: mesh.userData.trouserColor as THREE.Color,
+        skin: mesh.userData.skinColor as THREE.Color,
+      })
     }
+    this.figures.write(figureDraws)
   }
 
   /** Walls and counters that sit in the lens fade instead of clipping the frame. */
@@ -1694,6 +1721,11 @@ export class HallWorld {
     perfEnd('hall.sync', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    this.perfOverlay.update(this.renderer, this.scene, {
+      passengers: game.hallGuests.length,
+      vehicles: game.trucks.length + game.servicePoses().length + game.cateringPoses().length,
+      aircraft: game.flights.length,
+    })
     if (this.captureWanted) {
       this.captureWanted = false
       const url = canvasToPng(this.renderer.domElement)
@@ -1905,6 +1937,8 @@ export class HallWorld {
     this.litter.dispose()
     this.navCrowd.dispose()
     this.serviceFx.dispose()
+    this.figures.dispose()
+    releasePerfOverlay()
     this.offGfx()
     for (const mat of this.figMats.values()) mat.dispose()
     this.figMats.clear()

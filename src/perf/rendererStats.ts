@@ -90,11 +90,23 @@ export class FrameMeter {
   }
 }
 
+export interface EntityCounts {
+  passengers: number
+  vehicles: number
+  aircraft: number
+}
+
 export function formatStats(fps: number, p99Ms: number, s: RenderStats): string {
   const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+  const frameMs = fps > 0 ? 1000 / fps : 0
   return [
-    `${fps.toFixed(0)} fps  (p99 ${p99Ms.toFixed(1)} ms)`,
+    `${fps.toFixed(0)} fps  ${frameMs.toFixed(1)} ms  (p99 ${p99Ms.toFixed(1)} ms)`,
     `draws ${s.drawCalls}   tris ${k(s.triangles)}`,
     `geos ${s.geometries}   tex ${s.textures} (~${s.textureMB} MB)`,
   ].join('\n')
+}
+
+/** Passengers, vehicles, aircraft, and the last sim tick. Rendering does not compute these. */
+export function formatEntities(e: EntityCounts, simMs: number): string {
+  return `pax ${e.passengers}   vehicles ${e.vehicles}   aircraft ${e.aircraft}\nsim ${simMs.toFixed(1)} ms`
 }

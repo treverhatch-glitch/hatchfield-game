@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { CameraChrome } from './camera/chrome.tsx'
 import { cameraSession } from './camera/session.ts'
 import { perfEnd, perfStart } from './core/perf'
+import { recordSimTick } from './perf/simSample'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
@@ -328,6 +329,7 @@ export default function App() {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       const t0 = perfStart()
+      const tickAt = performance.now()
       if (!cameraSession.frozen && !pauseState.open) {
         try {
           game.tick(dt)
@@ -335,6 +337,7 @@ export default function App() {
           console.error('tick failed', err)
         }
       }
+      recordSimTick(performance.now() - tickAt)
       perfEnd('sim.tick', t0)
       raf = requestAnimationFrame(loop)
     }

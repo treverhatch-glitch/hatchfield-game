@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { FrameMeter, formatStats, textureBytes } from './rendererStats'
+import { FrameMeter, formatEntities, formatStats, textureBytes } from './rendererStats'
+import { recordSimTick, simTickMs } from './simSample'
 
 describe('rendererStats', () => {
   it('counts a mip chain as a third extra', () => {
@@ -35,7 +36,20 @@ describe('rendererStats', () => {
       textureMB: 96.5,
     })
     expect(s).toContain('61 fps')
+    expect(s).toContain('16.3 ms')
     expect(s).toContain('draws 420')
     expect(s).toContain('tris 1250.0k')
+  })
+
+  it('lists entity counts and the sim tick', () => {
+    recordSimTick(4.25)
+    expect(simTickMs()).toBe(4.25)
+    const line = formatEntities({ passengers: 1500, vehicles: 150, aircraft: 12 }, simTickMs())
+    expect(line).toContain('pax 1500')
+    expect(line).toContain('vehicles 150')
+    expect(line).toContain('aircraft 12')
+    expect(line).toContain('sim 4.3 ms')
+    recordSimTick(Number.NaN)
+    expect(simTickMs()).toBe(0)
   })
 })

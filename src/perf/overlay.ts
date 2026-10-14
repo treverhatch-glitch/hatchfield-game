@@ -3,8 +3,9 @@
  * A small corner readout: it never blocks the view and ignores pointer input.
  */
 import type * as THREE from 'three'
-import { FrameMeter, formatStats, readRenderStats } from './rendererStats'
+import { FrameMeter, formatEntities, formatStats, readRenderStats, type EntityCounts } from './rendererStats'
 import { formatLodAdvice, loadLodScale, saveLodScale, type LodTuneInput } from './lodTune'
+import { simTickMs } from './simSample'
 
 declare global {
   interface Window {
@@ -15,6 +16,24 @@ declare global {
 
 /** Texture memory walks the scene, so refresh it at this interval, not per frame. */
 const REFRESH_MS = 500
+
+let shared: PerfOverlay | null = null
+let users = 0
+
+/** One F3 readout for the apron and the terminal. Each view retains it and releases on dispose. */
+export function retainPerfOverlay(): PerfOverlay {
+  users += 1
+  if (!shared) shared = new PerfOverlay()
+  return shared
+}
+
+export function releasePerfOverlay() {
+  users = Math.max(0, users - 1)
+  if (users === 0 && shared) {
+    shared.dispose()
+    shared = null
+  }
+}
 
 export class PerfOverlay {
   private el: HTMLPreElement | null = null
@@ -59,14 +78,16 @@ export class PerfOverlay {
   }
 
   /** Call right after `renderer.render`, so `renderer.info` holds this frame's counts. */
-  update(renderer: THREE.WebGLRenderer, scene: THREE.Object3D, now = performance.now()) {
+  update(renderer: THREE.WebGLRenderer, scene: THREE.Object3D, entities?: EntityCounts, now = performance.now()) {
     if (this.last) this.meter.push(now - this.last)
     this.last = now
     if (!this.visible || !this.el || now - this.lastText < REFRESH_MS) return
     this.lastText = now
 
     const stats = readRenderStats(renderer, scene)
+    const counts = entities ?? { passengers: 0, vehicles: 0, aircraft: 0 }
     let text = formatStats(this.meter.fps, this.meter.percentileMs(0.99), stats)
+    text += '\n' + formatEntities(counts, simTickMs())
 
     if (typeof window !== 'undefined' && window.__lodTuneInput) {
       const storage = window.sessionStorage || window.localStorage
