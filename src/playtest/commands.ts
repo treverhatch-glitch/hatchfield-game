@@ -53,6 +53,20 @@ function finite(n: number): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function fieldAskView(game: Game): AirportView['fieldAsk'] {
+  const task = game.fieldTask
+  const offer = game.fieldAskOffer()
+  if (!task || !offer) return null
+  return {
+    kind: task.kind,
+    title: task.title,
+    cost: offer.cost,
+    bonus: offer.bonus,
+    secondsLeft: Math.max(0, Math.ceil(game.fieldTaskLeft())),
+    canBuild: offer.enabled,
+  }
+}
+
 function round2(n: number): number {
   if (!Number.isFinite(n)) return 0
   return Math.round(n * 100) / 100
@@ -232,6 +246,33 @@ class GamePlayer implements PlayerCommands {
     this.game.hireDeskStaff()
     const ok = this.game.deskStaff > before
     return result(ok, 'hireDesk', ok ? `#${this.game.deskStaff}` : this.latest('desk agent not hired'))
+  }
+
+  buildFieldAsk(): CommandResult {
+    const task = this.game.fieldTask
+    if (!task) return result(false, 'buildFieldAsk', 'no field ask')
+    const offer = this.game.fieldAskOffer()
+    if (!offer?.enabled) return result(false, 'buildFieldAsk', 'cannot build that ask')
+    const cash = this.game.cash
+    const sites = this.game.sites.length
+    const desk = this.game.deskStaff
+    const janitors = this.game.janitors
+    this.game.buildFieldTask()
+    const progressed =
+      this.game.cash < cash ||
+      this.game.sites.length > sites ||
+      this.game.deskStaff > desk ||
+      this.game.janitors > janitors ||
+      this.game.fieldTask?.id !== task.id ||
+      this.game.fieldTaskMet(task.kind)
+    return result(progressed, 'buildFieldAsk', progressed ? task.title : this.latest('did not build'))
+  }
+
+  declineFieldAsk(): CommandResult {
+    const task = this.game.fieldTask
+    if (!task) return result(false, 'declineFieldAsk', 'no field ask')
+    this.game.declineFieldTask()
+    return result(this.game.fieldTask == null, 'declineFieldAsk', task.title)
   }
 
   relieveCurb(): CommandResult {
@@ -474,6 +515,7 @@ class GamePlayer implements PlayerCommands {
       yearReportPending: game.pendingYearReport() != null,
       flightsDone: game.flightsDone,
       activeFlights: game.flights.length,
+      fieldAsk: fieldAskView(game),
     }
   }
 

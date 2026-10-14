@@ -54,6 +54,7 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     yearReportPending: false,
     flightsDone: 1,
     activeFlights: 1,
+    fieldAsk: null,
     ...partial,
   }
 }
@@ -202,6 +203,45 @@ describe('playtest personas', () => {
       freshMemory(),
     )
     expect(built.intents.some((intent) => intent.do === 'curb')).toBe(false)
+  })
+
+  it('builds a field ask the till can cover and declines one that would empty it', () => {
+    const police = {
+      kind: 'police' as const,
+      title: 'Police post',
+      cost: 11_000,
+      bonus: 12_500,
+      secondsLeft: 80,
+      canBuild: true,
+    }
+    const careful = carefulIntents(board({ fieldAsk: police, cash: 40_000 }), freshMemory())
+    expect(careful.intents).toContainEqual({ do: 'fieldBuild' })
+    const tight = carefulIntents(
+      board({
+        fieldAsk: { kind: 'hotel', title: 'Landside hotel', cost: 18_000, bonus: 7_000, secondsLeft: 40, canBuild: true },
+        cash: 25_000,
+      }),
+      freshMemory(),
+    )
+    expect(tight.intents).toContainEqual({ do: 'fieldDecline' })
+    const comfortable = carefulIntents(
+      board({
+        fieldAsk: { kind: 'hotel', title: 'Landside hotel', cost: 18_000, bonus: 7_000, secondsLeft: 40, canBuild: true },
+        cash: 40_000,
+      }),
+      freshMemory(),
+    )
+    expect(comfortable.intents).toContainEqual({ do: 'fieldBuild' })
+    const blocked = carefulIntents(board({ fieldAsk: { ...police, canBuild: false } }), freshMemory())
+    expect(blocked.intents).toContainEqual({ do: 'fieldDecline' })
+    const greedy = greedyIntents(
+      board({
+        fieldAsk: { kind: 'hotel', title: 'Landside hotel', cost: 18_000, bonus: 7_000, secondsLeft: 40, canBuild: true },
+        cash: 19_000,
+      }),
+      freshMemory(),
+    )
+    expect(greedy.intents).toContainEqual({ do: 'fieldBuild' })
   })
 
   it('chaotic clicks are stable for a seed', () => {

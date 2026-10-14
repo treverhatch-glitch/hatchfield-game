@@ -59,6 +59,9 @@ import {
   FIRST_CONTRACT_LETTER_DEADLINE,
   FIELD_TASK_DEFS,
   FIELD_TASK_DECLINE_HEAT,
+  FIELD_TASK_DECLINE_KIND_SEC,
+  FIELD_TASK_EARLY_DAYS,
+  FIELD_TASK_EARLY_QUIET,
   FIELD_TASK_FAIL_FINE,
   FIELD_TASK_HEAT_FAIL,
   FIELD_TASK_HEAT_OK,
@@ -1440,6 +1443,10 @@ export class Game {
   /** Active airline field ask (CEO-style task clock). */
   fieldTask: FieldTask | null = null
   fieldTaskCool = 28
+  /** Extra quiet after an ask closes on the opening days. Ticks down with the cooldown. */
+  private fieldAskQuiet = 0
+  /** Clock time before a declined kind may be asked again. */
+  private fieldAskPassed = new Map<FieldTaskKind, number>()
   /** Field asks already paid for. A second Build click does not spend again. */
   private fieldAskSpent = new Set<string>()
   /**
@@ -1765,6 +1772,8 @@ export class Game {
     this.firstTakeoffNoted = false
     this.fieldTask = null
     this.fieldTaskCool = 28
+    this.fieldAskQuiet = 0
+    this.fieldAskPassed.clear()
     this.ackedLetters = []
     this.starterFreehand = false
     this.starterKitStamped = false
@@ -2020,13 +2029,17 @@ export class Game {
   }
 
   considerFieldTasks() {
-    if (this.fieldTask || this.fieldTaskCool > 0) return
+    if (this.fieldTask || this.fieldTaskCool > 0 || this.fieldAskQuiet > 0) return
     if (this.signed.length < 1 || this.flightsDone < 1) return
     const pool = this.signed.filter((id) => !this.isBanned(id))
     if (!pool.length) return
     const airlineId = pick(pool)
     const a = this.airline(airlineId)
-    const open = FIELD_TASK_DEFS.filter((d) => !this.fieldTaskMet(d.kind))
+    const open = FIELD_TASK_DEFS.filter((d) => {
+      if (this.fieldTaskMet(d.kind)) return false
+      if ((this.fieldAskPassed.get(d.kind) ?? 0) > this.clock) return false
+      return this.fieldAskFeasible(d.kind)
+    })
     if (!open.length) return
     const preferred = open.filter((d) => d.personas?.includes(a.persona))
     const pickDef = preferred.length && Math.random() < 0.7 ? pick(preferred) : pick(open)
@@ -2049,6 +2062,7 @@ export class Game {
 
   tickFieldTask(dt: number) {
     this.fieldTaskCool = Math.max(0, this.fieldTaskCool - dt)
+    this.fieldAskQuiet = Math.max(0, this.fieldAskQuiet - dt)
     if (!this.fieldTask) {
       this.considerFieldTasks()
       return
@@ -2070,6 +2084,7 @@ export class Game {
       )
       this.fieldTask = null
       this.fieldTaskCool = FIELD_TASK_COOL
+      this.noteFieldAskClosed()
       this.emit()
       return
     }
@@ -2084,8 +2099,15 @@ export class Game {
       )
       this.fieldTask = null
       this.fieldTaskCool = FIELD_TASK_COOL + 12
+      this.noteFieldAskClosed()
       this.emit()
     }
+  }
+
+  /** Opening days wait longer between letters. The fine cooldown itself stays put. */
+  private noteFieldAskClosed() {
+    if (this.gameDay() >= FIELD_TASK_EARLY_DAYS) return
+    this.fieldAskQuiet = Math.max(this.fieldAskQuiet, FIELD_TASK_EARLY_QUIET)
   }
 
   /**
@@ -2097,8 +2119,10 @@ export class Game {
     if (!task) return
     const airline = this.airline(task.airline)
     this.adjustHeat(task.airline, FIELD_TASK_DECLINE_HEAT)
+    this.fieldAskPassed.set(task.kind, this.clock + FIELD_TASK_DECLINE_KIND_SEC)
     this.fieldTask = null
     this.fieldTaskCool = FIELD_TASK_COOL
+    this.noteFieldAskClosed()
     this.pushNews(`Declined ${airline.name} — ${task.title}. A small Standing nick, no fine.`, 'ok')
     this.emit()
   }
@@ -2161,12 +2185,38 @@ export class Game {
       }
       case 'desk':
       case 'desk_extra':
-        return { cost: DESK_STAFF_HIRE, label: 'Desk agent', hire: 'desk' }
+        return { cost: this.staffHireCost(DESK_STAFF_HIRE), label: 'Desk agent', hire: 'desk' }
       case 'janitor':
-        return { cost: JANITOR_HIRE, label: 'Janitor', hire: 'janitor' }
+        return { cost: this.staffHireCost(JANITOR_HIRE), label: 'Janitor', hire: 'janitor' }
       default:
         return { cost: 0, label: kind }
     }
+  }
+
+  /**
+   * True when one Build click can finish this ask right now: the till covers
+   * the quote, the stamp is unlocked, and the plot (or the hall, or the hire
+   * roll) has room. A kind already under construction is left off the list —
+   * it will count as done when the crew finishes.
+   */
+  private fieldAskFeasible(kind: FieldTaskKind): boolean {
+    const offer = this.quoteFieldTask(kind)
+    if (offer.cost > 0 && !this.sandbox && this.cash < offer.cost) return false
+    if (offer.hire === 'desk') {
+      if (!this.fits.length || this.deskStaff >= 8) return false
+      return kind === 'desk_extra' ? this.deskStaff === 1 : this.deskStaff < 1
+    }
+    if (offer.hire === 'janitor') return this.janitors < 6
+    if (offer.hallItem) return this.hallSpot(offer.hallItem) != null
+    if (!offer.tool) return false
+    if (this.sites.some((site) => site.tool === offer.tool)) return false
+    const building = BUILDINGS.find((row) => row.tool === offer.tool)
+    if (!building) return false
+    const needLevel = Math.max(building.minFieldLevel ?? 1, unlockLevel(building.tool))
+    if (this.fieldLevel() < needLevel) return false
+    if (this.researchTree.blockReason(building.tool)) return false
+    if (placementBlock(offer.tool, this.fieldLevel(), this.researchUnlocked)) return false
+    return this.cellForStamp(offer.tool) != null
   }
 
   /** Build line for the open field letter: cost against the bonus, off when the cash is short. */
@@ -11735,24 +11785,33 @@ export class Game {
       return
     }
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
-    const items = (fit.items ?? []) as PlacedItem[]
-    // Ignore cash here so a broke player still hears "not enough cash" from spend().
-    const room = { fieldLevel: this.fieldLevel(), cash: Infinity }
-    let cell: { c: number; r: number } | null = null
-    for (let r = 0; r < fit.zones.length && !cell; r++) {
-      for (let c = 0; c < fit.zones[r].length; c++) {
-        if (placementCheck(fit.zones, items, def, c, r, room).ok) {
-          cell = { c, r }
-          break
-        }
-      }
-    }
+    const cell = this.hallSpot(id)
     if (!cell) {
       this.pushNews(`Paint a ${def.zones.join(' / ')} cell before placing ${def.name}.`, 'bad')
       this.emit()
       return
     }
     this.commitHallItem(id, cell.c, cell.r, 0)
+  }
+
+  /** First hall cell that would accept this item. Does not spend cash or write zones. */
+  private hallSpot(id: ItemId): { c: number; r: number } | null {
+    const fit = this.activeHall()
+    const def = itemDef(id)
+    if (!fit || !def) return null
+    const itemLevel = Math.max(def.minFieldLevel, unlockLevel(def.id))
+    if (this.fieldLevel() < itemLevel) return null
+    const zones = fit.zones?.length ? fit.zones : fit.premade ? prefabZones() : blankZones()
+    const items = (fit.items ?? []) as PlacedItem[]
+    const room = { fieldLevel: this.fieldLevel(), cash: Infinity }
+    for (let r = 0; r < zones.length; r++) {
+      const row = zones[r]
+      if (!row) continue
+      for (let c = 0; c < row.length; c++) {
+        if (placementCheck(zones, items, def, c, r, room).ok) return { c, r }
+      }
+    }
+    return null
   }
 
   /**

@@ -1908,6 +1908,15 @@ export const FIELD_TASK_HEAT_OK = 4.5
 export const FIELD_TASK_HEAT_FAIL = -5.5
 /** Decline retires the ask now. A small Standing nick, no fine, the usual cooldown. */
 export const FIELD_TASK_DECLINE_HEAT = -1
+/**
+ * Opening days (0 through this, exclusive) keep a quiet gap after an ask closes
+ * so the letter tray holds about one ask at a time.
+ */
+export const FIELD_TASK_EARLY_DAYS = 8
+/** Sim seconds of quiet after an ask closes during those opening days. */
+export const FIELD_TASK_EARLY_QUIET = 160
+/** A declined kind stays off the list this long, so the same letter does not return on the next cooldown. */
+export const FIELD_TASK_DECLINE_KIND_SEC = 720
 
 export type FieldTaskDef = {
   kind: import('./types').FieldTaskKind

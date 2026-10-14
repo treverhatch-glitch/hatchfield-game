@@ -1,4 +1,4 @@
-import type { Difficulty, RoomId, SiteKind, Speed, StartFocus, Tool, Vec } from '../game/types.ts'
+import type { Difficulty, FieldTaskKind, RoomId, SiteKind, Speed, StartFocus, Tool, Vec } from '../game/types.ts'
 
 /** What a player command returned. Failures become "couldn't do" lines. */
 export interface CommandResult {
@@ -61,6 +61,15 @@ export interface AirportView {
   yearReportPending: boolean
   flightsDone: number
   activeFlights: number
+  /** The open airline field ask, when one Build or Decline can answer it. */
+  fieldAsk: {
+    kind: FieldTaskKind
+    title: string
+    cost: number
+    bonus: number
+    secondsLeft: number
+    canBuild: boolean
+  } | null
 }
 
 export interface Probe {
@@ -115,6 +124,10 @@ export interface PlayerCommands {
   buyTree(id: string): CommandResult
   /** Hire one desk agent. Bodies cover check-in, security, and the gate. */
   hireDesk(): CommandResult
+  /** Pay the open field ask's stamp or hire. */
+  buildFieldAsk(): CommandResult
+  /** Retire the open field ask. A small Standing nick, no fine. */
+  declineFieldAsk(): CommandResult
   /** One bus bay, then a taxi rank, then a curb lane. */
   relieveCurb(): CommandResult
   acceptBestShopBid(): CommandResult
@@ -145,6 +158,8 @@ export type Intent =
   | { do: 'research'; id: string }
   | { do: 'tree'; id: string }
   | { do: 'desk' }
+  | { do: 'fieldBuild' }
+  | { do: 'fieldDecline' }
   | { do: 'curb' }
   | { do: 'parcel' }
   | { do: 'speed'; speed: Speed }

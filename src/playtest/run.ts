@@ -398,6 +398,10 @@ function execute(api: PlayerCommands, intent: Intent, rng: () => number): Comman
       return api.buyTree(intent.id)
     case 'desk':
       return api.hireDesk()
+    case 'fieldBuild':
+      return api.buildFieldAsk()
+    case 'fieldDecline':
+      return api.declineFieldAsk()
     case 'curb':
       return api.relieveCurb()
     case 'parcel':

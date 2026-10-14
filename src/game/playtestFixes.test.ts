@@ -11,7 +11,9 @@ import {
   EMERGENCY_TIMEOUT_FINE,
   FIELD_TASK_COOL,
   FIELD_TASK_DECLINE_HEAT,
+  FIELD_TASK_DECLINE_KIND_SEC,
   FIELD_TASK_DEFS,
+  FIELD_TASK_EARLY_QUIET,
   FIELD_TASK_FAIL_FINE,
   FIELD_TASK_HEAT_FAIL,
   LOAN_PRODUCTS,
@@ -406,6 +408,84 @@ describe('field ask build', () => {
     const def = FIELD_TASK_DEFS.find((d) => d.kind === 'police')!
     expect(def.bonus).toBe(12_500)
     expect(def.bonus).toBeGreaterThan(POLICE_COST)
+  })
+
+  it('issues only an ask the till can pay and the plot can hold', () => {
+    const broke = fresh()
+    broke.buildStarterKit()
+    broke.signed = ['northline']
+    broke.flightsDone = 1
+    broke.cash = 500
+    broke.fieldTaskCool = 0
+    broke.considerFieldTasks()
+    expect(broke.fieldTask).toBeNull()
+
+    const game = fresh()
+    game.buildStarterKit()
+    game.signed = ['northline']
+    game.flightsDone = 1
+    game.cash = 4_000
+    game.fieldTaskCool = 0
+    game.considerFieldTasks()
+    expect(game.fieldTask).not.toBeNull()
+    const offer = game.fieldAskOffer()
+    expect(offer?.enabled).toBe(true)
+    expect(offer!.cost).toBeLessThanOrEqual(4_000)
+    const kind = game.fieldTask!.kind
+    game.buildFieldTask()
+    expect(game.fieldTaskMet(kind)).toBe(true)
+
+    const paved = fresh()
+    paved.buildStarterKit()
+    paved.signed = ['northline']
+    paved.flightsDone = 1
+    paved.cash = 80_000
+    for (const row of paved.tiles) {
+      for (let c = 0; c < row.length; c++) if (row[c] === 'grass') row[c] = 'taxi'
+    }
+    paved.fieldTaskCool = 0
+    paved.considerFieldTasks()
+    expect(paved.fieldTask).not.toBeNull()
+    expect(['janitor', 'desk', 'desk_extra', 'bathroom', 'food']).toContain(paved.fieldTask!.kind)
+    expect(paved.fieldAskOffer()?.enabled).toBe(true)
+  })
+
+  it('keeps one opening ask at a time and does not repeat a decline immediately', () => {
+    const game = fresh()
+    game.buildStarterKit()
+    game.signed = ['northline']
+    game.flightsDone = 1
+    game.cash = 80_000
+    game.fieldTaskCool = 0
+    game.considerFieldTasks()
+    const kind = game.fieldTask?.kind
+    expect(kind).toBeTruthy()
+    game.declineFieldTask()
+    expect(game.fieldTask).toBeNull()
+    expect(game.fieldTaskCool).toBe(FIELD_TASK_COOL)
+    game.fieldTaskCool = 0
+    game.tickFieldTask(FIELD_TASK_EARLY_QUIET - 1)
+    expect(game.fieldTask).toBeNull()
+    game.tickFieldTask(2)
+    expect(game.fieldTask).not.toBeNull()
+    expect(game.fieldTask!.kind).not.toBe(kind)
+
+    const later = fresh()
+    later.buildStarterKit()
+    later.signed = ['northline']
+    later.flightsDone = 1
+    later.cash = 80_000
+    later.clock = 8 * 180
+    later.fieldTaskCool = 0
+    later.considerFieldTasks()
+    const again = later.fieldTask!.kind
+    later.declineFieldTask()
+    later.fieldTaskCool = 0
+    later.tickFieldTask(0.1)
+    expect(later.fieldTask).not.toBeNull()
+    expect(later.fieldTask!.kind).not.toBe(again)
+    expect(FIELD_TASK_DECLINE_KIND_SEC).toBeGreaterThan(FIELD_TASK_COOL)
+    expect(FIELD_TASK_FAIL_FINE).toBe(500)
   })
 })
 

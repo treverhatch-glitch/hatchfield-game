@@ -7,6 +7,15 @@ import type { AirportView, Intent, PersonaDecision, PersonaMemory } from './type
 const CAREFUL_CASH_BUFFER = 8_000
 const CURB_CASH_BUFFER = 12_000
 
+/** Build when the bonus covers the stamp, or the till still clears the cash floor. Otherwise decline. */
+function fieldAskIntent(view: AirportView, cashFloor: number): Intent | null {
+  const ask = view.fieldAsk
+  if (!ask) return null
+  const covered = ask.bonus >= ask.cost
+  if (ask.canBuild && (covered || view.cash - ask.cost >= cashFloor)) return { do: 'fieldBuild' }
+  return { do: 'fieldDecline' }
+}
+
 export function freshMemory(): PersonaMemory {
   return { builtOnDay: -1, stampsToday: 0, treeOnDay: -1 }
 }
@@ -69,6 +78,8 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
+  const fieldAsk = fieldAskIntent(view, CAREFUL_CASH_BUFFER)
+  if (fieldAsk) intents.push(fieldAsk)
   if (view.offer) {
     if (view.offer.met) intents.push({ do: 'accept' })
     else intents.push({ do: 'snooze' })
@@ -145,6 +156,8 @@ export function greedyIntents(view: AirportView, memory: PersonaMemory): Persona
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
+  const fieldAsk = fieldAskIntent(view, 0)
+  if (fieldAsk) intents.push(fieldAsk)
   if (view.offer) intents.push({ do: 'accept' })
   if (view.loanBalance <= 0 && view.loans.length) {
     const richest = [...view.loans].sort((a, b) => b.principal - a.principal)[0]
@@ -221,6 +234,8 @@ export function chaoticIntents(
     intents.push({ do: 'starterKit' })
     return { intents, memory: next }
   }
+  const ask = view.fieldAsk
+  if (ask) intents.push(ask.canBuild && rng() < 0.55 ? { do: 'fieldBuild' } : { do: 'fieldDecline' })
   if (view.yearReportPending && rng() < 0.5) intents.push({ do: 'dismissYear' })
   const lab = nextLabRoom(view)
   if (lab && rng() < 0.5) {
