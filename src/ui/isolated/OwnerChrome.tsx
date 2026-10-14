@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Game } from '../../game/sim.ts'
+import { LiveText } from '../LiveText.tsx'
 import { AlertStackView } from './AlertStack.tsx'
 import { HintPanel } from './HintPanel.tsx'
 
@@ -149,8 +150,7 @@ export function OwnerChrome({ game }: { game: Game }) {
             borderRadius: 6,
           }}
         >
-          Fuel farm {Math.round(ground.fuelLitres).toLocaleString('en-US')} L · Kitchen {ground.meals} meals ·{' '}
-          {ground.busyVehicles}/{ground.totalVehicles} trucks out
+          <LiveText read={() => groundLine(game)} />
         </div>
       )}
       <HintPanel game={game} />
@@ -224,9 +224,21 @@ export function OwnerChrome({ game }: { game: Game }) {
             borderRadius: 6,
           }}
         >
-          {site.name} · {Math.min(100, Math.round((site.elapsed / site.duration) * 100))}%
+          {site.name} · <LiveText read={() => sitePct(game)} />
         </div>
       )}
     </div>
   )
+}
+
+/** Ground stock moves every tick; the live pump writes it, not React. */
+function groundLine(game: Game): string {
+  const ground = game.groundSnapshot()
+  if (!ground) return ''
+  return `Fuel farm ${Math.round(ground.fuelLitres).toLocaleString('en-US')} L · Kitchen ${ground.meals} meals · ${ground.busyVehicles}/${ground.totalVehicles} trucks out`
+}
+
+function sitePct(game: Game): string {
+  const site = game.hover ? game.siteAt(game.hover) : undefined
+  return site ? `${Math.min(100, Math.round((site.elapsed / site.duration) * 100))}%` : ''
 }
