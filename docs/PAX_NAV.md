@@ -161,3 +161,79 @@ Smoke: `npx tsx scripts/hall-nav-smoke.mts`. It starts Vite and runs the
 starter kit into the Terminal view. It takes a close shot, an arrivals close
 shot and a 1200-walker shot. Then it reports FPS, per-frame glue cost and draw
 stats, with the cap and cull on and then off, on the same camera.
+
+## Guests: personalities, needs and thoughts (`src/paxnav/guests.ts`)
+
+With `new PaxNav(layout, { guests: true })` every walker is also a guest,
+RollerCoaster Tycoon style. `HallNav` turns this on (`HALL_NAV_TUNING.guests`).
+With it off, the walker behaves exactly as described above. All tunables are in
+`src/paxnav/guestConfig.ts` (`GUEST_TUNING`, `TRAIT_FX`, `THOUGHTS`).
+
+- **Traits.** Each guest has one purpose (business, leisure, family or budget).
+  Flags can be added on top: first-timer *or* frequent flyer, reduced mobility,
+  with kids. They are rolled from the guest's own id and the walk's seed, so the
+  same guest is the same person whoever else is in the hall. On a reload, the
+  same ids give the same people, so nothing extra is saved. Traits multiply
+  together (`TRAIT_FX`) and set:
+  - walk speed
+  - patience in a line
+  - how much they spend
+  - anxiety and the chance of getting lost
+  - how fast each need rises
+  - how much they want food or shops
+
+  The sim's fare tag seeds the purpose: business and premium fares are business
+  guests, budget fares are budget guests, and family fares roll. `spawn({ purpose,
+  flags })` can force them.
+- **Needs** (0 to 1): hunger, thirst, bladder, boredom, tiredness and comfort
+  rise per nav hour. They rise faster in a line or a crowd, and sitting at the
+  gate rests tiredness and comfort. Anxiety comes from the slack to boarding:
+  the time left, less what the stops ahead should take. A departure board in
+  view calms it.
+- **Think step.** Needs, thoughts and choices run on each guest's staggered
+  `thinkSec` step, never per frame. Walking stays the O(1) flow-field step.
+- **Optional stops.** After security, a simple utility score decides whether
+  to visit a toilet, food or a shop. The score is the urge times taste, minus
+  anxiety, minus the share of the slack the stop would use. A stop only counts
+  if it fits before boarding. `spawn({ needs })` still fixes the stops.
+- **Wayfinding.** While walking to a stop, a guest can get lost:
+  - The chance is `lostPerMin`, scaled by traits and anxiety, divided by the
+    sign coverage on their cell.
+  - A lost guest wanders 6–14 cells on walkable floor (a wrong turn, or back the
+    way they came), then carries on.
+  - Placed `wayfinding` signs and `info_screen` / `info_kiosk` boards
+    (`hallSignage`) cover the cells around them. Scheme signs not placed as
+    items count everywhere.
+  - Lost guests set `WALKER_LOST` in `writeFlags`, which draws a thought marker
+    over them.
+- **Thoughts.** These are lines like "This queue is too long", "Can't find the
+  restroom", "Shop is out of stock" and "Nice seats". Each one changes
+  satisfaction (`THOUGHTS[key].delta`) and has a cooldown. The last five are on
+  the guest card.
+- **Shops.** Each shop counter holds `stockCap` units and restocks
+  `restockPerHour`. An empty shelf means no sale, a satisfaction hit, and that
+  guest avoids the counter for a while. `addStock(id, n)` lets other systems
+  restock it or take stock away.
+- **Groups.** `spawn({ groupOf })` adds a follower who walks the leader's own
+  trail, `groupGapM` apart. The group walks at its slowest member's pace,
+  queues as one (desks take longer per extra member), and boards or rebooks
+  together. `HallNav` groups family fares on the same flight.
+- **Crowds.** Past `crowdCellPax` bodies on a 1 m cell, walkers slow down and
+  give way, down to `crowdMinPace`. Queue spacing is unchanged. Walk distance
+  is linear in `dt`, so 3× and 5× game speed walk three and five times as far.
+- **Impatience.** After half their patience in a line, a guest says it is too
+  long. Once patience runs out, they leave the line if the stop is optional, or
+  walk to another facility if it is clearly quicker. If they cannot leave,
+  they complain.
+- **Missed flights.** With guests on, a missed guest (`missed` event) walks to
+  a rebooking desk: a check-in desk before security, any boarding desk after.
+  They are served for `rebookSec` and leave (`rebooked` event). Both cost
+  satisfaction and reputation.
+
+Read-outs: `guest(id)` (the card), `satisfaction()`, `drainFeedback()`,
+`writeFlags(out)`, `pick(x, z)` and `metrics()[i].stock` / `.leftQueue`.
+`HallNav` adds `guestCard`, `pickAt` (hall metres) and `takeReputation()`. The
+sim feeds `takeReputation()` into its eased reputation every tick
+(`GUEST_TUNING.repPerSatPoint`, `repPerMissed`, `repPerComplaint`). The
+Terminal view's guest card shows the walker section (`src/ui/WalkerCard.tsx`),
+and a click on an instanced walker selects them.

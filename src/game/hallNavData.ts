@@ -62,6 +62,12 @@ export const HALL_CROWD_TUNING = {
   cullRadiusM: 1.2,
 }
 
+/** Clicking a nav-grid walker in the Terminal view: ray height (mid body) and how close counts, metres. */
+export const HALL_WALKER_PICK = {
+  bodyY: 0.9,
+  radiusM: 0.7,
+}
+
 /**
  * Prefab kit room -> build kit it stands for when a prefab hall is read as a
  * build layout. One piece per server, as far as the item's cell has room.
