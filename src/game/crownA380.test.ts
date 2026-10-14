@@ -109,10 +109,7 @@ function jumboField(): Game {
 }
 
 describe('Crown Pacific A380', () => {
-  // One run, 2026-10-14: pillar hints were empty and Crown was signed, but 24
-  // slots spawned only b77w. No A380 reached a jumbo stand. Left as a recorded
-  // failure so the suite stays green without another theory pass.
-  it.fails('spawns a Crown-contracted A380 onto a jumbo stand', () => {
+  it('spawns a Crown-contracted A380 onto a jumbo stand', () => {
     const game = jumboField()
     const report = game.scaleReport('a380')
     expect(report.hints.map((h) => h.id)).toEqual([])
@@ -124,6 +121,13 @@ describe('Crown Pacific A380', () => {
     const seen = new Set<string>()
     let hit: { c: number; r: number } | null = null
     for (let n = 0; n < 24 && !hit; n++) {
+      // Crown's contract is A380 or 777. Clear the bank so each try rolls again.
+      game.flights = []
+      for (const slot of game.schedule) {
+        if (slot.status === 'scheduled' || slot.status === 'delayed' || slot.status === 'inbound') {
+          slot.status = 'cancelled'
+        }
+      }
       game.spawnCool = 0
       game.addManualSlot('crown', 8)
       for (let i = 0; i < 40 && !hit; i++) {
