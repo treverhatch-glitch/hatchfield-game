@@ -8,6 +8,7 @@ import { fieldDraw } from '../../maps/index'
 import { bake } from './kit'
 import { paintGeometry, quadsGeometry } from './surfaces'
 import { cellX, cellZ } from './view'
+import { contactSpots } from './contact'
 
 function legacyScene() {
   const scene = new THREE.Scene()
@@ -69,6 +70,11 @@ describe('initWorldRender', () => {
     expect(renderer.shadowMap.enabled).toBe(true)
     expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap)
     expect(sun.castShadow).toBe(true)
+    expect(scene.getObjectByName('world-contact')).toBeTruthy()
+    expect(scene.getObjectByName('airfield-bloom')).toBeTruthy()
+    expect(s.contacts).toBeGreaterThan(0)
+    expect(contactSpots(game).length).toBe(s.contacts)
+    expect(s.colorGrade).toBe(true)
     // No extra lights were added; the legacy trio is driven instead.
     expect(scene.children.filter((o) => o instanceof THREE.Light)).toHaveLength(3)
     wr.dispose()
@@ -202,10 +208,97 @@ describe('initWorldRender', () => {
     expect(renderer.shadowMap.enabled).toBe(false)
     expect(sun.castShadow).toBe(false)
     expect(wr.stats().grassTufts).toBe(0)
+    expect(wr.stats().colorGrade).toBe(false)
+    expect(wr.stats().lightBloom).toBe(false)
+    expect(wr.stats().contacts).toBe(0)
+    expect(scene.getObjectByName('airfield-bloom')).toBeUndefined()
+    expect(scene.getObjectByName('world-contact')?.visible).toBe(false)
+    wr.setDayNight({ hour: 12, daylight: 0, lights: 1 })
+    wr.update(game, cam, 1 / 60)
+    expect(wr.stats().lights).toBe(1)
+    expect(sun.intensity).toBeLessThan(0.5)
     wr.setTimeOfDay(12)
     wr.setWeather('storm')
     wr.update(game, cam, 1 / 60)
     expect(scene.getObjectByName('world-rain')?.visible).toBe(true)
+    wr.dispose()
+  })
+
+  it('lights the terminal before the field at dusk, and snows the grass in winter', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+    const game = starterGame()
+    const cam = camAt(0, 0, 80)
+    const glass = () => {
+      let intensity = 0
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh
+        const mat = mesh.material as THREE.MeshLambertMaterial | undefined
+        if (mat && mat.emissive && mat.emissive.getHex() === 0xffc070) intensity = Math.max(intensity, mat.emissiveIntensity)
+      })
+      return intensity
+    }
+    wr.setTimeOfDay(18)
+    game.clock = 100 * 180
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.windows).toBeGreaterThan(0)
+    expect(wr.dayNightSample.runwayEdge).toBe(0)
+    expect(wr.dayNightSample.taxiEdge).toBe(0)
+    expect(wr.dayNightSample.apron).toBe(0)
+    expect(glass()).toBeGreaterThan(0.05)
+    expect(scene.getObjectByName('airfield-glow')?.visible).toBe(false)
+
+    wr.setTimeOfDay(23)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.runwayEdge).toBe(1)
+    expect(wr.dayNightSample.taxiEdge).toBe(1)
+    expect(wr.dayNightSample.apron).toBe(1)
+    expect(wr.dayNightSample.aircraft).toBe(1)
+    expect(wr.dayNightSample.headlights).toBe(1)
+    expect(wr.dayNightSample.apronPools).toBe(true)
+    expect(scene.getObjectByName('airfield-glow')?.visible).toBe(true)
+    expect(sun.position.y).toBeGreaterThan(10)
+
+    wr.setTimeOfDay(12)
+    wr.update(game, cam, 1 / 60)
+    const summerGrass = (scene.getObjectByName('surface-grass') as THREE.Mesh).material as THREE.MeshLambertMaterial
+    expect(summerGrass.emissiveIntensity).toBe(0)
+    expect(wr.dayNightSample.snow).toBe(0)
+    expect(wr.dayNightSample.seasonId).toBe('summer')
+
+    game.clock = 300 * 180
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.seasonId).toBe('winter')
+    expect(wr.dayNightSample.snow).toBeGreaterThan(0.7)
+    expect(summerGrass.emissiveIntensity).toBeGreaterThan(0.4)
+    const farm = scene.getObjectByName('world-farmland') as THREE.Mesh
+    expect((farm.material as THREE.MeshLambertMaterial).emissiveIntensity).toBeGreaterThan(0.3)
+
+    const highSnow = wr.dayNightSample.snow
+    wr.setQuality('low')
+    wr.setTimeOfDay(23)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.snow).toBeGreaterThan(0.5)
+    expect(wr.dayNightSample.snow).toBeLessThan(highSnow)
+    expect(wr.dayNightSample.apronPools).toBe(false)
+    expect(wr.dayNightSample.runwayEdge).toBe(1)
+    expect(scene.getObjectByName('airfield-glow')?.visible).toBe(true)
+
+    wr.setDayNight(null)
+    wr.setTimeOfDay(12)
+    wr.update(game, cam, 1 / 60)
+    const daySun = sun.intensity
+    wr.setDayNight({ daylight: 0, lights: 1 })
+    wr.update(game, cam, 1 / 60)
+    expect(sun.intensity).toBeLessThan(daySun * 0.25)
+    expect(wr.dayNightSample.lights).toBe(1)
+    wr.setTimeOfDay(null)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.lights).toBe(1)
+    wr.setDayNight(null)
+    wr.setTimeOfDay(12)
+    wr.update(game, cam, 1 / 60)
+    expect(wr.dayNightSample.lights).toBe(0)
     wr.dispose()
   })
 

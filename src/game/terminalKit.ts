@@ -25,6 +25,7 @@ export function itemSize(def: ItemDef | undefined): number {
 export function cellLoad(items: readonly PlacedItem[], c: number, r: number): number {
   let n = 0
   for (const it of items) {
+    if (it.hx != null && it.hz != null) continue
     if (it.c === c && it.r === r) n += itemSize(itemDef(it.def))
   }
   return n

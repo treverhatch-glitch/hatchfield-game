@@ -6,6 +6,7 @@ import { cameraSession } from '../camera/session.ts'
 import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { World } from '../render/world'
+import { releaseApronAudio, syncApronAudio } from '../audio/stage'
 
 export function Field({ game }: { game: Game }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -111,6 +112,13 @@ export function Field({ game }: { game: Game }) {
           w.setTimeOfDay(cameraSession.frozen ? cameraSession.timeOfDay : null)
           if (cameraSession.consumeCapture()) w.requestCapture()
           w.render(game)
+          const cam = w.camera
+          cam.updateMatrixWorld()
+          const e = cam.matrixWorld.elements
+          syncApronAudio(game, {
+            position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+            right: { x: e[0], y: e[1], z: e[2] },
+          })
         }
         if (game.hover && game.inspectEnabled()) {
           const next = game.inspectAt(game.hover)
@@ -144,6 +152,8 @@ export function Field({ game }: { game: Game }) {
         } else if (!game.inspectEnabled()) {
           setInspect(null)
         }
+      } else {
+        releaseApronAudio()
       }
       raf = requestAnimationFrame(loop)
     }
@@ -152,6 +162,7 @@ export function Field({ game }: { game: Game }) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
+      releaseApronAudio()
       unbindPose()
       offCamera()
       worldRef.current = null

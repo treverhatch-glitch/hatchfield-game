@@ -22,6 +22,7 @@ describe('day-one hall crowd', () => {
     for (const g of crowd) {
       expect(g.clearedSec).toBe(true)
       expect(g.path[0]).toBe('entrance')
+      expect(g.path).toContain('security')
       expect(g.path.at(-1)).toBe('gate')
       expect(g.seg).toBeGreaterThanOrEqual(0)
       expect(g.seg).toBeLessThan(g.path.length - 1)

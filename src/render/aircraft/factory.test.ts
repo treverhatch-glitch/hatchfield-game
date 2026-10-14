@@ -4,7 +4,7 @@ import { AIRFRAMES } from '../../game/airframes'
 import { AIRCRAFT_LOOK } from '../look'
 import { resolveBrand } from './branding'
 import { loftGeometry, wingGeometry } from './geom'
-import { aircraftIsNight, CrossfadeLOD, setAircraftNight } from './lod'
+import { aircraftIsNight, aircraftLamp, CrossfadeLOD, setAircraftLamp, setAircraftNight } from './lod'
 import { REAL_AIRFRAMES } from './realworld'
 import { ParkedFleet } from './batch'
 import {
@@ -527,7 +527,13 @@ describe('aircraft model factory', () => {
     setAircraftNight(true)
     lod.update(camera)
     expect(aircraftIsNight()).toBe(true)
-    expect(lamp.scale.x).toBeGreaterThan(day * 1.5)
+    const night = lamp.scale.x
+    expect(night).toBeGreaterThan(day * 1.5)
+    setAircraftLamp(0.5)
+    lod.update(camera)
+    expect(aircraftLamp()).toBe(0.5)
+    expect(lamp.scale.x).toBeGreaterThan(day)
+    expect(lamp.scale.x).toBeLessThan(night)
     const aileron = mid(aircraft).getObjectByName('aileron') as THREE.Mesh
     expect(Math.abs(aileron.rotation.z)).toBeGreaterThan(0)
     setAircraftNight(false)

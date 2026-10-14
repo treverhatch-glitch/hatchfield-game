@@ -601,6 +601,12 @@ export interface PlacedItem {
   revenue?: number
   /** Trash can: pieces inside. Full at LITTER_TUNING.binCap. */
   fill?: number
+  /** Hall-metre centre when the piece was placed on its true footprint. */
+  hx?: number
+  hz?: number
+  /** Unrotated footprint, hall metres. */
+  fw?: number
+  fd?: number
 }
 
 export interface Ceilings {

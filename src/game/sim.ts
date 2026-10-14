@@ -348,6 +348,7 @@ import {
   laneStats,
   GRID_C,
   GRID_R,
+  HALL_D,
   HALL_W,
   lookaheadDepth,
   needsMaintenance,
@@ -395,8 +396,10 @@ import {
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
 import { facilitiesFromItems } from '../terminalplay/facilities.ts'
+import { findFootprint, footprintReason, footprintSpec, stampFrom } from '../terminalplay/footprints.ts'
 import { footprintOf } from '../terminalplay/place.ts'
 import { hallQueues, queueAtNode } from '../terminalplay/queues.ts'
+import { hallFitFor, matchTerminal } from '../render/hallRooms.ts'
 import {
   binFull,
   cellAt,
@@ -1249,6 +1252,8 @@ export class Game {
   private cargoNotes: Advice[] = []
   /** Recent sound names, for the apron audio cues. */
   soundCues: string[] = []
+  private cashChimeAt = -99
+  private alertChimeAt = -99
   private catering: CateringBridge | null = null
   private cargo: CargoBridge | null = null
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
@@ -5349,6 +5354,10 @@ export class Game {
     this.noteIncome(amount, category)
     if (flight) flight.ledger.push({ label, amount })
     if (announce) this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+    if (announce && this.clock - this.cashChimeAt >= 1.25) {
+      this.cashChimeAt = this.clock
+      this.noteSound('cash_in')
+    }
   }
 
   /** Walk-in traffic multiplier from the fee card. 1 at the published prices. */
@@ -7244,7 +7253,7 @@ export class Game {
     const fit = this.fits[0]
     if (!fit) return
     const hallId = this.hallKey(fit)
-    const path: HallNode[] = ['entrance', 'checkin', 'food', 'shop', 'gate']
+    const path: HallNode[] = ['entrance', 'checkin', 'security', 'shop', 'gate']
     const shirts = [
       '#e23b2f',
       '#3ec6ff',
@@ -7273,21 +7282,21 @@ export class Game {
       'budget',
       'business',
     ]
-    // Spread along the walk that the opening camera frames. Node stays off the
-    // security desk so these bodies are not a lane.
+    // Already cleared, so they walk the whole route without joining the lane.
+    // Spread them from the doors through security to the shops.
     const spots = [
-      { seg: 1, t: 0.18, lane: -1.7 },
-      { seg: 1, t: 0.28, lane: -0.4 },
-      { seg: 1, t: 0.38, lane: 0.7 },
-      { seg: 1, t: 0.48, lane: 1.8 },
-      { seg: 1, t: 0.24, lane: -1.2 },
-      { seg: 1, t: 0.42, lane: 1.2 },
-      { seg: 1, t: 0.34, lane: -0.15 },
-      { seg: 1, t: 0.33, lane: 0.15 },
-      { seg: 1, t: 0.5, lane: 1.5 },
-      { seg: 1, t: 0.22, lane: -0.85 },
-      { seg: 1, t: 0.45, lane: 0.95 },
-      { seg: 1, t: 0.36, lane: -1.6 },
+      { seg: 0, t: 0.4, lane: -1.2 },
+      { seg: 0, t: 0.72, lane: 0.4 },
+      { seg: 1, t: 0.22, lane: -1.4 },
+      { seg: 1, t: 0.48, lane: 0.2 },
+      { seg: 1, t: 0.7, lane: 1.3 },
+      { seg: 2, t: 0.28, lane: -0.8 },
+      { seg: 2, t: 0.58, lane: 0.55 },
+      { seg: 3, t: 0.2, lane: -1.1 },
+      { seg: 3, t: 0.48, lane: 0.25 },
+      { seg: 3, t: 0.74, lane: 1.15 },
+      { seg: 2, t: 0.82, lane: -0.15 },
+      { seg: 1, t: 0.34, lane: 0.9 },
     ]
     const names = ['Ada', 'Ben', 'Cara', 'Dev', 'Eve', 'Finn', 'Gia', 'Hank', 'Ivy', 'Jon', 'Kim', 'Leo']
     for (let i = 0; i < spots.length; i++) {
@@ -7334,26 +7343,36 @@ export class Game {
   }
 
   /**
-   * Stroll the framed part of check-in → food, then turn back.
-   * No security, spend, or boarding. They stay in the opening shot.
+   * Pace the full curb → check-in → security → shop → gate walk, then loop.
+   * They are already cleared, so the security desk does not take them as a queue.
    */
   private tickPreviewGuest(g: HallGuest, dt: number) {
     const path = g.path
     if (path.length < 2) return
-    const dir = g.previewDir ?? 1
-    let t = g.t + dt * 0.09 * dir
-    let next: 1 | -1 = dir
-    if (t > 0.58) {
-      t = 0.58
-      next = -1
-    } else if (t < 0.12) {
-      t = 0.12
-      next = 1
+    if (g.route == null) this.armGuestRoute(g)
+    g.t += dt * 0.22
+    while (g.t >= 1 && g.seg < path.length - 1) {
+      const finished = g.route
+      g.t -= 1
+      g.seg += 1
+      g.node = path[g.seg] ?? g.node
+      if (finished && finished.length) {
+        const end = finished[finished.length - 1]
+        g.wx = end.x
+        g.wz = end.z
+      }
+      if (g.seg >= path.length - 1) {
+        g.seg = 0
+        g.t = 0
+        g.node = path[0] ?? 'entrance'
+        g.wx = undefined
+        g.wz = undefined
+        g.route = undefined
+      }
+      this.armGuestRoute(g)
     }
-    g.t = t
-    g.previewDir = next
-    g.seg = 1
-    g.node = path[1] ?? 'checkin'
+    g.node = path[g.seg] ?? g.node
+    this.sampleGuestRoute(g)
   }
 
   /** Feed the active hall's walkers: re-read the layout on edits, admit released departures and arrivals, step. */
@@ -8368,8 +8387,18 @@ export class Game {
 
   /** Raise an operational alert. Debounced by key inside the stack. */
   raiseAlert(input: AlertInput) {
+    const fresh = !this.alerts.active.some((a) => a.key === input.key)
     const before = this.alerts.rev
-    this.alerts.raise(input, this.clock)
+    const row = this.alerts.raise(input, this.clock)
+    if (
+      fresh &&
+      row &&
+      (input.severity === 'critical' || input.severity === 'warning') &&
+      this.clock - this.alertChimeAt >= 2.5
+    ) {
+      this.alertChimeAt = this.clock
+      this.noteSound('disruption')
+    }
     if (this.alerts.rev !== before) this.emit()
   }
 
@@ -10435,6 +10464,119 @@ export class Game {
     return true
   }
 
+  /** Nine-room frame for the active hall, in the same metres the view uses. */
+  private hallFrame(): { plan: RoomPlan; fit: ReturnType<typeof hallFitFor> } | null {
+    const hall = this.activeHall()
+    if (!hall) return null
+    const plan = this.roomPlanForHall(this.hallKey(hall))
+    if (!plan) return null
+    const hit = matchTerminal(terminals(this), hall.origin ?? null)
+    if (!hit) return null
+    return { plan, fit: hallFitFor(hit.info) }
+  }
+
+  /**
+   * Ghost check for a true footprint. Walls, doors, and the nine rooms decide.
+   * A red ghost and a refused click share this result.
+   */
+  hallFootprintCheck(id: ItemId, hx: number, hz: number, rot = 0, ignoreId?: string): PlacementCheck {
+    const hall = this.activeHall()
+    const def = itemDef(id)
+    const spec = footprintSpec(id)
+    if (!hall || !def || !spec) return { ok: false, reason: 'Open a hall first', cost: def?.cost ?? 0 }
+    const frame = this.hallFrame()
+    if (!frame) return { ok: false, reason: 'Hall has no rooms yet', cost: def.cost }
+    const spatial = footprintReason(
+      frame.plan,
+      frame.fit,
+      (hall.items ?? []) as PlacedItem[],
+      id,
+      hx,
+      hz,
+      rot,
+      ignoreId,
+    )
+    if (spatial) return { ok: false, reason: spatial, cost: def.cost }
+    const needLevel = Math.max(def.minFieldLevel, unlockLevel(id))
+    if (this.fieldLevel() < needLevel) return { ok: false, reason: `Needs Field level ${needLevel}`, cost: def.cost }
+    if (!this.sandbox && this.cash < def.cost) return { ok: false, reason: 'Not enough cash', cost: def.cost }
+    return { ok: true, reason: 'Click to place', cost: def.cost }
+  }
+
+  /** Place one piece on its true footprint inside the nine rooms. */
+  placeHallFootprint(id: ItemId, hx: number, hz: number, rot = 0): boolean {
+    const check = this.hallFootprintCheck(id, hx, hz, rot)
+    if (!check.ok) {
+      this.pushNews(`${itemDef(id)?.name ?? 'Item'}: ${check.reason}.`, 'bad')
+      this.emit()
+      return false
+    }
+    const stamp = stampFrom(id, hx, hz, rot)
+    const spec = footprintSpec(id)
+    if (!stamp || !spec) return false
+    const cell = this.hallCellAt(stamp.hx, stamp.hz)
+    return this.commitHallItem(id, cell.c, cell.r, stamp.rot, {
+      hx: stamp.hx,
+      hz: stamp.hz,
+      fw: spec.w,
+      fd: spec.d,
+    })
+  }
+
+  /** Slide a footprint piece to a new spot. The same room rules apply. */
+  moveHallFootprint(itemId: string, hx: number, hz: number, rot = 0): boolean {
+    const hall = this.activeHall()
+    const it = hall?.items?.find((row) => row.id === itemId)
+    const def = itemDef(it?.def ?? '')
+    if (!hall || !it || !def || it.bundle || !footprintSpec(it.def)) {
+      this.pushNews(`${def?.name ?? 'Item'} stays where it is.`, 'bad')
+      this.emit()
+      return false
+    }
+    const check = this.hallFootprintCheck(it.def as ItemId, hx, hz, rot, itemId)
+    if (!check.ok) {
+      this.pushNews(`${def.name}: ${check.reason}.`, 'bad')
+      this.emit()
+      return false
+    }
+    const stamp = stampFrom(it.def, hx, hz, rot)
+    const spec = footprintSpec(it.def)
+    if (!stamp || !spec) return false
+    const cell = this.hallCellAt(stamp.hx, stamp.hz)
+    it.c = cell.c
+    it.r = cell.r
+    it.rot = stamp.rot
+    it.hx = stamp.hx
+    it.hz = stamp.hz
+    it.fw = spec.w
+    it.fd = spec.d
+    this.hallRev++
+    this.pushNews(`${def.name} moved.`, 'ok')
+    this.refreshAdvice()
+    this.emit()
+    return true
+  }
+
+  /** Zone cell under a hall-metre point, so older reads still find the piece. */
+  private hallCellAt(hx: number, hz: number): { c: number; r: number } {
+    const hall = this.activeHall()
+    const zones = hall?.zones?.length ? hall.zones : hall?.premade ? prefabZones() : blankZones()
+    const cols = zones[0]?.length || GRID_C
+    const rows = zones.length || GRID_R
+    const c = Math.max(0, Math.min(cols - 1, Math.floor(((hx + HALL_W / 2) / HALL_W) * cols)))
+    const r = Math.max(0, Math.min(rows - 1, Math.floor(((hz + HALL_D / 2) / HALL_D) * rows)))
+    return { c, r }
+  }
+
+  /** A free spot for this piece, used by tests and the first-fit helpers. */
+  findHallFootprint(id: ItemId, rot = 0): { hx: number; hz: number; rot: number } | null {
+    const hall = this.activeHall()
+    const frame = this.hallFrame()
+    if (!hall || !frame || !footprintSpec(id)) return null
+    const stamp = findFootprint(frame.plan, frame.fit, (hall.items ?? []) as PlacedItem[], id, rot)
+    return stamp ? { hx: stamp.hx, hz: stamp.hz, rot: stamp.rot } : null
+  }
+
   /** Ghost check for the hall build bar. Same rules as the click. */
   hallPlacement(id: ItemId, c: number, r: number): PlacementCheck {
     const fit = this.activeHall()
@@ -10459,7 +10601,13 @@ export class Game {
     return this.commitHallItem(id, c, r, rot)
   }
 
-  private commitHallItem(id: ItemId, c: number, r: number, rot: number): boolean {
+  private commitHallItem(
+    id: ItemId,
+    c: number,
+    r: number,
+    rot: number,
+    pose?: { hx: number; hz: number; fw: number; fd: number },
+  ): boolean {
     const fit = this.activeHall()
     const def = itemDef(id)
     if (!fit || !def) return false
@@ -10475,6 +10623,10 @@ export class Game {
       r,
       wear: 0,
       rot: ((Math.round(rot) % 4) + 4) % 4,
+      hx: pose?.hx,
+      hz: pose?.hz,
+      fw: pose?.fw,
+      fd: pose?.fd,
     })
     if (def.room) fit.rooms[def.room] += 1
     if (def.room === 'food') this.foodShelf += 8
@@ -11464,6 +11616,7 @@ export class Game {
       ? CONTRACT_LETTER_DEADLINE
       : FIRST_CONTRACT_LETTER_DEADLINE
     this.offer = { airline: negotiated, age: 0, deadline }
+    this.noteSound('contract_offer')
     const shown = this.airline(negotiated)
     const tag = shown.procedural && !ULCC_IDS.includes(shown.id) ? ' (regional)' : ''
     this.pushNews(
@@ -11609,6 +11762,7 @@ export class Game {
   presentNegotiation(id: string) {
     this.negotiationDesk().openNamed(id)
     this.offer = { airline: id, age: 0, deadline: 120 }
+    this.noteSound('contract_offer')
     this.emit()
   }
 
@@ -11780,6 +11934,7 @@ export class Game {
       `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.${leadBit}${depositBit}`,
       'good',
     )
+    this.noteSound('contract_offer')
     this.refreshAdvice()
     this.emit()
   }

@@ -1,4 +1,6 @@
 import { buildSound, LOOPING, SOUND_CATEGORY, type Category, type SoundId, type Voice } from './synth';
+import { CLIP_FILE, aircraftSample, sfxSample, soundSample, type SampleSpec } from './library';
+import { buildSample } from './samples';
 import { aircraftParams, buildAircraftSound, LOOPING_PHASES, PHASES, VARIANTS_PER_PHASE, type AircraftPhase } from './aircraft';
 import { buildWeatherBed, buildWeatherEvent, eventParams, weatherParams, WEATHER_VARIANTS, type WeatherEvent, type WeatherKind } from './weather';
 import { buildSfx, sfxParams, SFX_VARIANTS, type SfxId } from './services';
@@ -103,6 +105,7 @@ export class AudioEngine {
   private live = new Set<Live>();
   private lastFired = new Map<string, number>();
   private eventLoops = new Map<string, SoundHandle>();
+  private clips = new Map<string, AudioBuffer>();
   private listener: Vec3 = { x: 0, y: 0, z: 0 };
   private listenerRight: Vec3 = { x: 1, y: 0, z: 0 };
   private readonly opts: Required<Omit<AudioEngineOptions, 'visibility'>> & { visibility: VisibilitySource | null };
@@ -145,6 +148,10 @@ export class AudioEngine {
 
   get context(): AudioContext | null { return this.ctx; }
 
+  /** Register a decoded CC0 clip. `file` is the name in CLIP_FILE (e.g. crowd.ogg). */
+  setClip(file: string, buffer: AudioBuffer): void { this.clips.set(file, buffer); }
+  hasClip(file: string): boolean { return this.clips.has(file); }
+
   // ---- volume API ----
   getMasterVolume(): number { return this.master; }
   setMasterVolume(v: number): void { this.master = clamp01(v); this.applyGains(); }
@@ -172,12 +179,20 @@ export class AudioEngine {
   play(id: string, a?: PlayOptions | AircraftPhase, b?: AircraftPlayOptions): SoundHandle | null {
     if (typeof a === 'string') return this.playAircraft(id, a, b ?? {});
     const sid = id as SoundId;
+    const spec = soundSample(sid);
+    if (spec && this.hasClip(CLIP_FILE[spec.clip])) {
+      return this.playSample(sid, SOUND_CATEGORY[sid], LOOPING[sid], spec, a ?? {});
+    }
     return this.spawn(sid, SOUND_CATEGORY[sid], LOOPING[sid], (ctx, out) => buildSound(ctx, sid, out), a ?? {});
   }
 
   playAircraft(typeId: string, phase: AircraftPhase, options: AircraftPlayOptions = {}): SoundHandle | null {
     if (!PHASES.includes(phase)) throw new Error(`unknown aircraft phase ${phase}`);
     const variant = options.variant ?? Math.floor(Math.random() * VARIANTS_PER_PHASE);
+    const spec = aircraftSample(phase);
+    if (spec && this.hasClip(CLIP_FILE[spec.clip])) {
+      return this.playSample(`${typeId}:${phase}`, 'aircraft', LOOPING_PHASES[phase], spec, options, variant);
+    }
     const p = aircraftParams(typeId, phase, variant, options.seed ?? 0);
     return this.spawn(`${typeId}:${phase}`, 'aircraft', LOOPING_PHASES[phase], (ctx, out) => buildAircraftSound(ctx, p, out), options, p.variant);
   }
@@ -187,7 +202,17 @@ export class AudioEngine {
   playSfx(id: SfxId, options: SfxPlayOptions = {}): SoundHandle | null {
     const variant = options.variant ?? Math.floor(Math.random() * SFX_VARIANTS);
     const p = sfxParams(id, variant, options.seed ?? 0);
+    const spec = sfxSample(id);
+    if (spec && this.hasClip(CLIP_FILE[spec.clip])) {
+      return this.playSample(`sfx:${id}`, p.category, p.looping, spec, options, p.variant);
+    }
     return this.spawn(`sfx:${id}`, p.category, p.looping, (ctx, out) => buildSfx(ctx, p, out), options, p.variant);
+  }
+
+  private playSample(id: string, category: Category, looping: boolean, spec: SampleSpec, options: PlayOptions, variant?: number): SoundHandle | null {
+    const buf = this.clips.get(CLIP_FILE[spec.clip]);
+    if (!buf) return null;
+    return this.spawn(id, category, looping, (ctx, out) => buildSample(ctx, buf, out, spec, looping), options, variant);
   }
 
   /**

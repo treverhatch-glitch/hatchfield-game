@@ -8,6 +8,20 @@ export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra'
 export type ColorBlindMode = 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia'
 export type OverlayId = 'pathfinding' | 'congestion' | 'zones' | 'noise' | 'utilities' | 'designAdvisor'
 
+/** Same buses as the audio engine categories. */
+export const AUDIO_BUSES = ['aircraft', 'vehicles', 'ambient', 'ambience', 'ui', 'sfx'] as const
+export type AudioBus = (typeof AUDIO_BUSES)[number]
+export type BusVolume = Record<AudioBus, number>
+
+export const DEFAULT_BUS_VOLUME: BusVolume = {
+  aircraft: 0.8,
+  vehicles: 0.7,
+  ambient: 0.5,
+  ambience: 0.5,
+  ui: 0.6,
+  sfx: 0.8,
+}
+
 export interface GraphicsSettings {
   preset: QualityPreset | 'custom'
   shadows: 'off' | 'low' | 'high'
@@ -33,6 +47,9 @@ export interface Settings {
   graphics: GraphicsSettings
   overlays: Record<OverlayId, boolean>
   masterVolume: number
+  /** Master mute. Category sliders stay put so unmuting restores the mix. */
+  audioMuted: boolean
+  busVolume: BusVolume
 }
 
 export const GRAPHICS_PRESETS: Record<QualityPreset, Omit<GraphicsSettings, 'preset'>> = {
@@ -53,6 +70,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // Pathfinding/congestion are off by default (owner rule: layered view opened from settings).
   overlays: { pathfinding: false, congestion: false, zones: false, noise: false, utilities: false, designAdvisor: true },
   masterVolume: 0.8,
+  audioMuted: false,
+  busVolume: { ...DEFAULT_BUS_VOLUME },
 }
 
 /** Overlay palettes: good -> warn -> bad -> path -> highlight, chosen to stay distinct per mode. */
@@ -74,7 +93,7 @@ const PRESETS: QualityPreset[] = ['low', 'medium', 'high', 'ultra']
 /** Coerces anything (old/corrupt/partial JSON) into valid Settings. */
 export function sanitizeSettings(raw: unknown): Settings {
   const d = DEFAULT_SETTINGS
-  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Settings> & { graphics?: Partial<GraphicsSettings>; overlays?: Partial<Record<OverlayId, boolean>> }
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Settings> & { graphics?: Partial<GraphicsSettings>; overlays?: Partial<Record<OverlayId, boolean>>; busVolume?: Partial<BusVolume> }
   const num = (v: unknown, def: number, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : def)
   const bool = (v: unknown, def: boolean) => (typeof v === 'boolean' ? v : def)
   const g: Partial<GraphicsSettings> = r.graphics ?? {}
@@ -94,6 +113,8 @@ export function sanitizeSettings(raw: unknown): Settings {
     : base
   const overlays = { ...d.overlays }
   for (const k of Object.keys(overlays) as OverlayId[]) overlays[k] = bool(r.overlays?.[k], d.overlays[k])
+  const busVolume = { ...d.busVolume }
+  for (const k of AUDIO_BUSES) busVolume[k] = num(r.busVolume?.[k], d.busVolume[k], 0, 1)
   return {
     version: 1,
     fpsCap: FPS.includes(r.fpsCap as Settings['fpsCap']) ? (r.fpsCap as Settings['fpsCap']) : d.fpsCap,
@@ -104,6 +125,8 @@ export function sanitizeSettings(raw: unknown): Settings {
     graphics,
     overlays,
     masterVolume: num(r.masterVolume, d.masterVolume, 0, 1),
+    audioMuted: bool(r.audioMuted, d.audioMuted),
+    busVolume,
   }
 }
 
