@@ -22,10 +22,11 @@ describe('staff housing on the field', () => {
     game.grantFieldXp(90)
     expect(game.buyParcel()).toBe(true)
     const before = game.cash
+    const built = game.bank.ledger().byCategory.construction ?? 0
     expect(game.buildStaffHousing('dorm')).toBe(true)
     const dorm = HOUSING_TIERS[0]!
     expect(game.cash).toBe(before - dorm.cost)
-    expect(game.bank.ledger().byCategory.construction).toBe(-dorm.cost)
+    expect(game.bank.ledger().byCategory.construction).toBe(built - dorm.cost)
     expect(game.staffSites()).toHaveLength(1)
     expect(game.staffWalkers().length).toBeGreaterThan(1)
     expect(game.staffPanel().commuteSummary).toBe('Access road')

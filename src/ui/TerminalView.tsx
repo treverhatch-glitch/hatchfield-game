@@ -324,6 +324,11 @@ export function TerminalView({ game }: { game: Game }) {
           <p className="muted" data-testid="food-court">
             Food court {money(game.foodCourtRevenue)} · {game.foodShelf} servings
           </p>
+          <ul className="muted" data-testid="hall-shops">
+            {game.hallShopLines().map((line, i) => (
+              <li key={`${line}-${i}`}>{line}</li>
+            ))}
+          </ul>
         </div>
         {prefab && nextTier ? (
           <button

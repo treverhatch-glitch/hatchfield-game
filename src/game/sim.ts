@@ -458,7 +458,7 @@ import { AmbienceMixer } from '../audio/ambience.ts'
 import { PRESETS } from '../branding/presets.ts'
 import type { BrandingSave } from '../branding/types.ts'
 import { deserializeBranding, serializeBranding, suggestCode } from '../branding/validate.ts'
-import { Bank, moneyDirection, payrollForGameDay, type BankPostMeta, type MoneyCategory } from '../core/bank.ts'
+import { Bank, DAILY_PAYROLL_SHARE, moneyDirection, payrollForGameDay, type BankPostMeta, type MoneyCategory } from '../core/bank.ts'
 import {
   type AirlineLead,
   type DepositTier as CommercialDepositTier,
@@ -625,11 +625,14 @@ import {
   budgetLineCost,
   cityLevy,
   fieldOpsMultiplier,
+  loanFeeForAmount,
   loansAvailable,
   payrollAmount,
+  payrollChargeWhy,
   settleLoanTick,
   settlePayroll,
 } from './economy'
+import { SMALL_FIELD_FEE_FACTOR, SMALL_FIELD_MAX_CARRIERS, SMALL_FIELD_UPKEEP_FACTOR } from './economyTuning.ts'
 import {
   AIRFRAMES,
   type Airframe,
@@ -715,6 +718,7 @@ import type {
   HubOffer,
   LayoverContract,
   LayoverOffer,
+  LoanProduct,
   MarketMission,
   ParkingOffer,
   ParkTerm,
@@ -1028,6 +1032,8 @@ export class Game {
   /** Game day of the last loan-short reputation dip (one per day). */
   private loanShortDay = -1
   loanProductId: string | null = null
+  /** Slider draw that is not a catalog product. Interest uses this row. */
+  private drawnLoan: LoanProduct | null = null
   loanPrincipal = 0
   loanOpened = 0
   /** Airport XP — field levels 1–10, then prestige stars. */
@@ -1168,7 +1174,7 @@ export class Game {
   playtestYear = new YearPlaytestBook()
   /** Sim-clock of the last city levy. Kept so older saves do not bill a backlog. */
   levyMark = 0
-  /** Categorized journal. Player cash stays on `cash`; the day close reads this book. */
+  /** Categorized journal. Opening balance is the starting cash. Every later cash move posts here. */
   bank = new Bank(0)
   /** Player fee card. Defaults match the live catalog, so an untouched field bills the same. */
   fees: FeeSchedule = { ...DEFAULT_FEE_SCHEDULE }
@@ -1393,6 +1399,8 @@ export class Game {
   /** Active airline field ask (CEO-style task clock). */
   fieldTask: FieldTask | null = null
   fieldTaskCool = 28
+  /** Field asks already paid for. A second Build click does not spend again. */
+  private fieldAskSpent = new Set<string>()
   /**
    * Letters the player put away. Keyed so a new ask (new id) can appear,
    * while "Got it" on the same field letter does not bring it straight back.
@@ -1524,6 +1532,8 @@ export class Game {
     this.fuelJustDelivered = false
     this.loanBalance = 0
     this.loanProductId = null
+    this.drawnLoan = null
+    this.fieldAskSpent.clear()
     this.loanPrincipal = 0
     this.loanOpened = 0
     this.fieldXp = 0
@@ -1586,7 +1596,7 @@ export class Game {
     this.payrollDay = 0
     this.playtestYear.reset(0)
     this.levyMark = 0
-    this.bank = new Bank(0)
+    this.bank = new Bank(this.sandbox ? 0 : this.cash)
     this.fees = { ...DEFAULT_FEE_SCHEDULE }
     this.depositTier = 'standard'
     this.deposits = {}
@@ -2108,10 +2118,15 @@ export class Game {
     }
   }
 
-  /** Stamp or hire the open field ask. A second stamp waits while that contractor is driving in. */
+  /** Stamp or hire the open field ask. A second click does not spend again. */
   buildFieldTask() {
     const task = this.fieldTask
     if (!task) return
+    if (this.fieldAskSpent.has(task.id)) {
+      this.pushNews('That field ask is already paid.', 'ok')
+      this.emit()
+      return
+    }
     const offer = this.quoteFieldTask(task.kind)
     if (!this.sandbox && this.cash < offer.cost) {
       this.pushNews(
@@ -2121,16 +2136,21 @@ export class Game {
       this.emit()
       return
     }
+    const cashBefore = this.cash
+    const sitesBefore = this.sites.length
     if (offer.hire === 'desk') {
       this.hireDeskStaff()
+      this.noteFieldAskPaid(task.id, task.kind, cashBefore, sitesBefore)
       return
     }
     if (offer.hire === 'janitor') {
       this.hireJanitor()
+      this.noteFieldAskPaid(task.id, task.kind, cashBefore, sitesBefore)
       return
     }
     if (offer.hallItem) {
       this.placeHallItem(offer.hallItem)
+      this.noteFieldAskPaid(task.id, task.kind, cashBefore, sitesBefore)
       return
     }
     if (!offer.tool) return
@@ -2152,6 +2172,14 @@ export class Game {
     this.tool = offer.tool
     this.placeSingle(cell)
     this.tool = prev
+    this.noteFieldAskPaid(task.id, task.kind, cashBefore, sitesBefore)
+  }
+
+  /** Remember a field ask once cash left or the stamp landed, so a second click is free. */
+  private noteFieldAskPaid(id: string, kind: FieldTaskKind, cashBefore: number, sitesBefore: number) {
+    if (this.cash < cashBefore || this.sites.length > sitesBefore || this.fieldTaskMet(kind)) {
+      this.fieldAskSpent.add(id)
+    }
   }
 
   /** First legal grass cell for a tool, including a road edge when the stamp needs one. */
@@ -2192,11 +2220,15 @@ export class Game {
     return null
   }
 
-  /** Hide one letter. The underlying ask keeps running until it is done or late. */
+  /** Hide one letter. Got it on a field ask clears it so it cannot be paid twice. */
   ackLetter(key: string) {
     if (!key || this.ackedLetters.includes(key)) return
     this.ackedLetters.push(key)
     if (this.ackedLetters.length > 40) this.ackedLetters.splice(0, this.ackedLetters.length - 40)
+    if (key.startsWith('field:') && this.fieldTask && key === `field:${this.fieldTask.id}`) {
+      this.fieldTask = null
+      this.fieldTaskCool = FIELD_TASK_COOL
+    }
     this.emit()
   }
 
@@ -2756,8 +2788,12 @@ export class Game {
       return
     }
     if (amount < 0) {
-      this.noteExpense(-amount)
-      if (!this.sandbox) this.cash += amount
+      const cost = -amount
+      this.noteExpense(cost)
+      if (!this.sandbox) {
+        this.cash -= cost
+        this.postJournal('penalties', cost, this.simMinutes(), 'diplomacy')
+      }
     }
   }
 
@@ -3127,7 +3163,44 @@ export class Game {
   }
 
   loanProduct(id: string | null | undefined) {
+    if (id && this.drawnLoan?.id === id) return this.drawnLoan
     return LOAN_PRODUCTS.find((p) => p.id === id) ?? null
+  }
+
+  /**
+   * Slider draw. An exact catalog principal uses that product.
+   * Any other amount books principal plus the micro fee rate, and the button owes both.
+   */
+  drawLoan(amount: number) {
+    const principal = Math.round(Number.isFinite(amount) ? amount : 0)
+    if (principal <= 0) {
+      this.pushNews('Pick a loan amount first.', 'bad')
+      this.emit()
+      return
+    }
+    const catalog = LOAN_PRODUCTS.find((p) => p.principal === principal)
+    if (catalog) {
+      this.drawnLoan = null
+      this.takeLoanProduct(catalog.id)
+      return
+    }
+    const bridge = LOAN_PRODUCTS.find((p) => p.id === 'bridge') ?? LOAN_PRODUCTS[0]
+    if (!bridge) return
+    const fee = loanFeeForAmount(principal)
+    this.drawnLoan = {
+      id: 'drawn',
+      label: 'Drawn loan',
+      blurb: 'Slider draw at the bridge rate.',
+      principal,
+      fee,
+      rate: bridge.rate,
+      interestFloor: bridge.interestFloor,
+      every: bridge.every,
+      termDays: bridge.termDays,
+      minFieldLevel: 1,
+      minRep: 0,
+    }
+    this.takeLoanProduct('drawn')
   }
 
   availableLoans() {
@@ -3654,7 +3727,6 @@ export class Game {
     const upgrade = hubUpgrade(id)
     if (upgrade && upgrade.buildCost > 0) {
       if (!this.spend(upgrade.buildCost, upgrade.name)) return
-      this.postJournal('construction', upgrade.buildCost, this.simMinutes())
     }
     this.researchPoints -= node.cost
     this.researchUnlocked.push(id)
@@ -3856,6 +3928,10 @@ export class Game {
       return false
     }
     this.cash -= land.cost
+    if (!this.sandbox) {
+      this.noteExpense(land.cost)
+      this.postJournal('construction', land.cost, this.simMinutes(), land.name)
+    }
     this.site = kind
     this.tiles = emptyTiles()
     this.seedAccessStub()
@@ -4019,8 +4095,7 @@ export class Game {
 
   repayLoan() {
     if (this.loanBalance <= 0) return
-    if (!this.spend(this.loanBalance, 'loan payoff')) return
-    if (!this.sandbox) this.postJournal('loan_repayment', this.loanBalance, this.simMinutes())
+    if (!this.spend(this.loanBalance, 'loan payoff', 'loan_repayment')) return
     this.loanBalance = 0
     this.loanProductId = null
     this.loanPrincipal = 0
@@ -4851,7 +4926,7 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(IPO_LISTING_FEE, 'IPO listing')) return
+    if (!this.spend(IPO_LISTING_FEE, 'IPO listing', 'contract_signing')) return
     const price = this.fairSharePrice()
     const float = IPO_SHARES - IPO_FOUNDER_SHARES
     const raise = Math.round(float * price)
@@ -4860,7 +4935,7 @@ export class Game {
     this.ipoPrice = price
     this.sharesOwned = IPO_FOUNDER_SHARES
     this.sharesFloat = float
-    this.cash += raise
+    this.credit(raise, 'ipo_proceeds', 'IPO')
     this.reputation = Math.min(100, this.reputation + 6)
     this.pushNews(
       `HATCH lists at $${price.toFixed(2)}. Raised ${moneyLeft(raise)}. You keep ${IPO_FOUNDER_SHARES} shares — the street owns the rest. Protect security or the ticker dies.`,
@@ -4881,7 +4956,7 @@ export class Game {
       return
     }
     const cost = Math.round(qty * this.sharePrice)
-    if (!this.spend(cost, 'share buyback')) return
+    if (!this.spend(cost, 'share buyback', 'share_purchases')) return
     this.sharesOwned += qty
     this.sharesFloat -= qty
     this.sharePrice = Math.round((this.sharePrice * 1.02) * 100) / 100
@@ -4899,7 +4974,7 @@ export class Game {
     const gain = Math.round(qty * this.sharePrice)
     this.sharesOwned -= qty
     this.sharesFloat += qty
-    this.cash += gain
+    this.credit(gain, 'share_sales', 'share sale')
     this.sharePrice = Math.max(2, Math.round((this.sharePrice * 0.97) * 100) / 100)
     this.pushNews(`Sold ${qty} shares for ${moneyLeft(gain)}.`, 'ok')
     this.emit()
@@ -5280,7 +5355,7 @@ export class Game {
       this.clock = s.clock
       this.payrollDay = Math.floor(Math.max(0, s.clock) / 180)
       this.levyMark = s.clock
-      this.bank = new Bank(0)
+      this.bank = new Bank(s.sandbox ? 0 : this.cash)
       this.fees = restoreFees(s.fees)
       this.depositTier = restoreTier(s.depositTier)
       this.deposits = restoreDeposits(s.deposits)
@@ -5512,7 +5587,7 @@ export class Game {
     this.adviceDirty = true
   }
 
-  spend(amount: number, label: string): boolean {
+  spend(amount: number, label: string, category: MoneyCategory = 'construction', source = 'sim'): boolean {
     if (this.sandbox) {
       if (this.cash < SANDBOX_CASH * 0.5) this.cash = SANDBOX_CASH
       return true
@@ -5534,7 +5609,9 @@ export class Game {
       this.emit()
       return false
     }
+    this.noteExpense(amount)
     this.cash -= amount
+    if (amount > 0) this.postJournal(category, amount, this.simMinutes(), label, source)
     return true
   }
 
@@ -5634,10 +5711,27 @@ export class Game {
     return 'landing_fees'
   }
 
-  private postJournal(category: MoneyCategory, magnitude: number, simMinutes: number) {
+  private postJournal(
+    category: MoneyCategory,
+    magnitude: number,
+    simMinutes: number,
+    label?: string,
+    source = 'sim',
+  ) {
     if (!(magnitude > 0) || !Number.isFinite(magnitude)) return
     const signed = moneyDirection(category) === 'income' ? magnitude : -magnitude
-    this.bank.post(category, signed, { simMinutes: Math.max(0, simMinutes), source: 'sim' })
+    this.bank.post(category, signed, {
+      simMinutes: Math.max(0, simMinutes),
+      source,
+      label,
+    })
+  }
+
+  /** Cash in that is not an operating earn. Refunds, the IPO, and share sales. */
+  private credit(amount: number, category: MoneyCategory, label?: string, source = 'sim') {
+    if (!(amount > 0) || !Number.isFinite(amount)) return
+    this.cash += amount
+    if (!this.sandbox) this.postJournal(category, amount, this.simMinutes(), label, source)
   }
 
   noteExpense(amount: number) {
@@ -5714,11 +5808,21 @@ export class Game {
     announce = true,
   ) {
     if (!(amount > 0) || !Number.isFinite(amount)) return
-    this.cash += amount
-    this.revenue += amount
-    this.noteIncome(amount, category)
-    if (flight) flight.ledger.push({ label, amount })
-    if (announce) this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+    const turnFee =
+      category === 'landing_fees' ||
+      category === 'passenger_fees' ||
+      category === 'baggage_fees' ||
+      category === 'fuel_sales' ||
+      category === 'catering_fees' ||
+      category === 'retail_sales' ||
+      category === 'contract_fees'
+    const booked = turnFee && this.smallField() ? Math.round(amount * SMALL_FIELD_FEE_FACTOR) : amount
+    if (!(booked > 0)) return
+    this.cash += booked
+    this.revenue += booked
+    this.noteIncome(booked, category)
+    if (flight) flight.ledger.push({ label, amount: booked })
+    if (announce) this.pushNews(`${label}  +$${booked.toLocaleString('en-US')}`, 'good')
     if (announce && this.clock - this.cashChimeAt >= 1.25) {
       this.cashChimeAt = this.clock
       this.noteSound('cash_in')
@@ -9967,7 +10071,6 @@ export class Game {
     if (!down) return
     const spec = CONNECTIVITY_CATALOG[mode === 'people_mover' ? 'people_mover' : 'airside_transfer_bus_depot']
     if (!this.spend(spec.repairCost, spec.name)) return
-    if (!this.sandbox) this.postJournal('construction', spec.repairCost, this.simMinutes())
     if (mode === 'people_mover') {
       this.linkDown.mover = false
       this.linkWear.mover = 0
@@ -10364,6 +10467,7 @@ export class Game {
       return [
         `${this.foodShelf} burger servings on the shelf`,
         `${this.shopShelf} souvenirs on the shelf`,
+        ...this.hallShopLines(),
         `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
       ]
     }
@@ -11314,8 +11418,7 @@ export class Game {
     const fit = this.activeHall()
     if (!fit || edit.error) return false
     if (edit.cost > 0 && !this.spend(edit.cost, 'Terminal build')) return false
-    if (edit.cost > 0 && !this.sandbox) this.postJournal('construction', edit.cost, this.simMinutes())
-    if (edit.cost < 0 && !this.sandbox) this.cash -= edit.cost
+    if (edit.cost < 0 && !this.sandbox) this.credit(-edit.cost, 'refunds', 'Terminal build')
     fit.build = edit.layout
     this.hallRev++
     this.refreshAdvice()
@@ -11586,7 +11689,6 @@ export class Game {
     if (!fit || !def) return false
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
     if (!this.spend(def.cost, def.name)) return false
-    if (!this.sandbox && id === 'walkway') this.postJournal('construction', def.cost, this.simMinutes())
     fit.items = fit.items ?? []
     this.hallItemSeq += 1
     fit.items.push({
@@ -11633,7 +11735,7 @@ export class Game {
     if (def.room) fit.rooms[def.room] = Math.max(0, fit.rooms[def.room] - 1)
     if (def.signs) fit.signs = Math.max(0, (fit.signs ?? 0) - def.signs)
     const refund = refundFor(def)
-    this.cash += refund
+    this.credit(refund, 'refunds', def.name)
     applyCeilings(fit)
     this.releaseHallIfFits()
     this.hallRev++
@@ -11820,8 +11922,8 @@ export class Game {
         if (outlet) {
           g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
           outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
-          this.foodCourtRevenue += pay
         }
+        this.foodCourtRevenue += pay
         this.foodShelf -= 1
         this.mealSold = true
         const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
@@ -12339,17 +12441,8 @@ export class Game {
     }
     const c = FUEL[this.fuelBrand]
     const cost = safFuelCost(c.wholesale, LOADS_PER_BUY, this.lateSites)
-    const before = this.cash
-    if (!this.spend(cost, 'fuel loads')) return
-    const paid = before - this.cash
-    if (paid > 0 && fuelMultiplier(this.lateSites) !== 1) {
-      this.noteExpense(paid)
-      this.bank.post('fuel_purchase', -paid, {
-        simMinutes: this.simMinutes(),
-        source: 'tier3plus',
-        label: 'Fuel loads',
-      })
-    }
+    const saf = fuelMultiplier(this.lateSites) !== 1
+    if (!this.spend(cost, 'fuel loads', 'fuel_purchase', saf ? 'tier3plus' : 'sim')) return
     this.fuelLoads += LOADS_PER_BUY
     this.addTankLitres(LITRES_PER_LEGACY_LOAD * LOADS_PER_BUY)
     this.pushNews(`Four loads on the farm. ${this.fuelLoads} ready.`, 'ok')
@@ -12673,8 +12766,7 @@ export class Game {
       this.emit()
       return
     }
-    if (quote.cost > 0 && !this.spend(quote.cost, 'Bellwater counter-promotion')) return
-    if (quote.cost > 0 && !this.sandbox) this.noteExpense(quote.cost)
+    if (quote.cost > 0 && !this.spend(quote.cost, 'Bellwater counter-promotion', 'advertising')) return
     const warId = war.pendingId()
     const result = war.commit(choice)
     if (!result.ok) {
@@ -14132,16 +14224,83 @@ export class Game {
     return payrollAmount(lines, this.fieldOpsMult())
   }
 
+  /** Operating income already posted for one game day. Financing is excluded. */
+  private dayOperatingIncome(day: number): number {
+    const ledger = this.bank.ledgerForGameDay(day)
+    let income = 0
+    for (const [category, amount] of Object.entries(ledger.byCategory)) {
+      if (FINANCING_CATEGORIES.has(category) || !(amount && amount > 0)) continue
+      income += amount
+    }
+    return income
+  }
+
+  /**
+   * The payroll bill the day close will charge: staffing floor, or the income
+   * share when that is higher. The HUD line uses this, not the floor alone.
+   */
+  payrollCharged(): number {
+    const day = Math.floor(Math.max(0, this.clock) / REAL_SECONDS_PER_GAME_DAY)
+    const phase = this.clock <= 600 ? 'early' : 'midgame'
+    return payrollForGameDay(this.dayOperatingIncome(day), phase, this.payrollPreview())
+  }
+
+  payrollChargeTitle(): string {
+    const phase = this.clock <= 600 ? 'early' : 'midgame'
+    return payrollChargeWhy(
+      this.payrollCharged(),
+      this.payrollPreview(),
+      DAILY_PAYROLL_SHARE[phase],
+      REAL_SECONDS_PER_GAME_DAY,
+    )
+  }
+
+  /**
+   * Catering the turn will actually bill. A $0 airline rate still sells a share of a cart.
+   * The contract letter and the earn path both use this.
+   */
+  quotedCatering(airlineId: string, pax: number): number {
+    const airline = this.airline(airlineId)
+    const mult = this.caterBrand ? CATER[this.caterBrand].payoutMult : 1
+    const pay = cateringTurnFee(
+      airline.catering,
+      mult,
+      Math.max(0, pax),
+      DEFAULT_FEE_SCHEDULE.cateringPerCart,
+    )
+    const stub = { airline: airlineId, ga: false } as Flight
+    return this.contractBill(stub, this.listed(pay, 'cateringPerCart'), 'service', 'catering')
+  }
+
+  /** Hall counters and the airside shop SKUs, so the retail panel is not an empty shelf. */
+  hallShopLines(): string[] {
+    const lines: string[] = []
+    for (const fit of this.fits) {
+      for (const item of fit.items ?? []) {
+        const def = itemDef(item.def)
+        if (!def) continue
+        if (def.room === 'food' || def.room === 'souvenir') lines.push(def.name)
+      }
+    }
+    const engine = this.ensureCatering().engine
+    for (const shop of engine.shops.values()) {
+      const bits = shop.skus.map((sku) => `${sku} ×${shop.stock[sku]} @ $${engine.config.prices[sku]}`)
+      lines.push(`${shop.name}: ${bits.join(', ')}`)
+    }
+    return lines
+  }
+
   /**
    * What the next operating day will bill: staff floor, landside (already a
    * daily total) plus pillar and premium upkeep, plot holding, and the city
    * levy on today's cash. The HUD forecast uses this; it does not post.
    */
   dailyOperatingCharges(): { payroll: number; upkeep: number; holding: number; levy: number } {
+    const relief = this.upkeepRelief()
     return {
-      payroll: this.payrollPreview(),
-      upkeep: this.landsideUpkeep() + this.pillarUpkeepBill() + dailyUpkeep(this.premium),
-      holding: this.site ? this.dailyHoldingQuote() : 0,
+      payroll: this.payrollCharged(),
+      upkeep: Math.round((this.landsideUpkeep() + this.pillarUpkeepBill()) * relief) + dailyUpkeep(this.premium),
+      holding: this.site ? Math.round(this.dailyHoldingQuote() * relief) : 0,
       levy: cityLevy(this.cash, this.sandbox),
     }
   }
@@ -14171,7 +14330,6 @@ export class Game {
     }
     if (!this.sandbox) {
       if (!this.spend(quote.cost, quote.name)) return false
-      this.postJournal('construction', quote.cost, this.simMinutes())
     }
     this.staffHousing.commit(quote)
     const plots = quote.plotIds.length === 1 ? '1 plot' : `${quote.plotIds.length} plots`
@@ -14200,8 +14358,7 @@ export class Game {
 
   private payHire(base: number, label: string): boolean {
     const cost = this.staffHireCost(base)
-    if (!this.spend(cost, label)) return false
-    if (!this.sandbox && cost > 0) this.postJournal('staff_hiring', cost, this.simMinutes())
+    if (!this.spend(cost, label, 'staff_hiring')) return false
     return true
   }
 
@@ -15034,6 +15191,26 @@ export class Game {
     this.emit()
   }
 
+  private smallField(): boolean {
+    const carriers = this.signed.length
+    return (
+      carriers >= 1 &&
+      carriers <= SMALL_FIELD_MAX_CARRIERS &&
+      this.hotelLevel === 0 &&
+      !this.carParkShort &&
+      !this.carParkLong &&
+      !this.railLinked
+    )
+  }
+
+  /**
+   * A one- or two-carrier field with no hotel, parking, or rail pays a share of
+   * building upkeep. Growth (another carrier or a landside building) drops it.
+   */
+  private upkeepRelief(): number {
+    return this.smallField() ? SMALL_FIELD_UPKEEP_FACTOR : 1
+  }
+
   /**
    * One game day: staffing floor or the income share, then the 0.5% city levy.
    * Landside upkeep is already a daily total (legacy tick × 6).
@@ -15046,32 +15223,31 @@ export class Game {
     }
     this.settleLateBuildings(completedDay)
     this.settleStaffHousing(completedDay)
-    const ledger = this.bank.ledgerForGameDay(completedDay)
-    let income = 0
-    for (const [category, amount] of Object.entries(ledger.byCategory)) {
-      if (FINANCING_CATEGORIES.has(category) || !(amount && amount > 0)) continue
-      income += amount
-    }
+    const income = this.dayOperatingIncome(completedDay)
     const phase = this.clock <= 600 ? 'early' : 'midgame'
     const minimum = this.payrollPreview()
     const rawBill = payrollForGameDay(income, phase, minimum)
     const bill = Number.isFinite(rawBill) && rawBill > 0 ? rawBill : 0
     const fees = this.landsideIncome()
-    const upkeep = this.landsideUpkeep() + this.pillarUpkeepBill() + powerPlantOffer(this.powerPlantTier).upkeepPerDay
+    const relief = this.upkeepRelief()
+    const scaled = (amount: number) => (amount > 0 ? Math.round(amount * relief) : 0)
+    const upkeep = scaled(this.landsideUpkeep() + this.pillarUpkeepBill() + powerPlantOffer(this.powerPlantTier).upkeepPerDay)
     const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
     if (upkeep > 0) this.charge(upkeep, 'building_upkeep', stamp)
-    const holding = this.site ? this.dailyHoldingQuote() : 0
+    const holding = this.site ? scaled(this.dailyHoldingQuote()) : 0
     if (holding > 0) this.charge(holding, 'building_upkeep', stamp)
-    const hubBill = hubUpkeep(new Set(this.researchUnlocked))
+    const hubBill = scaled(hubUpkeep(new Set(this.researchUnlocked)))
     if (hubBill > 0) this.charge(hubBill, 'building_upkeep', stamp)
-    const builtBill = this.fits.reduce((s, f) => s + (f.build ? buildUpkeepPerDay(f.build) : 0), 0)
+    const builtBill = scaled(this.fits.reduce((s, f) => s + (f.build ? buildUpkeepPerDay(f.build) : 0), 0))
     if (builtBill > 0) this.charge(builtBill, 'building_upkeep', stamp)
-    const linkBill = this.connectivityUpkeep()
+    const linkBill = scaled(this.connectivityUpkeep())
     if (linkBill > 0) this.charge(linkBill, 'building_upkeep', stamp)
     // Walkway belts were booked in the ledger but never left cash; they now bill like every other link.
     const beltBill = this.walkwayCoverMetres() > 0
-      ? (this.walkwayCoverMetres() / CONNECTIVITY_CATALOG.moving_walkway.lengthMetres) *
-        CONNECTIVITY_CATALOG.moving_walkway.upkeepPerDay
+      ? scaled(
+          (this.walkwayCoverMetres() / CONNECTIVITY_CATALOG.moving_walkway.lengthMetres) *
+            CONNECTIVITY_CATALOG.moving_walkway.upkeepPerDay,
+        )
       : 0
     if (beltBill > 0) this.charge(beltBill, 'building_upkeep', stamp)
     this.ageLinks()
@@ -15777,7 +15953,7 @@ export class Game {
     const site = this.sites.find((s) => s.id === id)
     if (!site) return
     const refund = Math.round(site.cost * BULLDOZE_REFUND)
-    this.cash += refund
+    this.credit(refund, 'refunds', site.name)
     this.sites = this.sites.filter((s) => s.id !== id)
     this.trucks = this.trucks.filter((t) => t.flightId !== id)
     this.pushNews(`Construction cancelled — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
@@ -16029,12 +16205,14 @@ export class Game {
         this.fits = this.fits.filter(
           (f) => !(f.origin.c === origin.c && f.origin.r === origin.r),
         )
-        this.cash += Math.round(
-          (fit?.premade ? PREMADE_TERMINAL_COST : TERMINAL_COST) * BULLDOZE_REFUND,
+        this.credit(
+          Math.round((fit?.premade ? PREMADE_TERMINAL_COST : TERMINAL_COST) * BULLDOZE_REFUND),
+          'refunds',
+          'terminal',
         )
       }
     } else {
-      this.cash += this.refundFor(cur, v)
+      this.credit(this.refundFor(cur, v), 'refunds', cur)
       this.tiles[v.r][v.c] = 'grass'
       delete this.parkTerms[`${v.c},${v.r}`]
       delete this.hotelClass[`${v.c},${v.r}`]
@@ -16314,17 +16492,7 @@ export class Game {
       this.emit()
       return
     }
-    const before = this.cash
-    if (!this.spend(gated.cost, spec.name)) return
-    const paid = before - this.cash
-    if (paid > 0) {
-      this.bank.post('construction', -paid, {
-        simMinutes: this.simMinutes(),
-        source: 'tier3plus',
-        sourceId: id,
-        label: spec.name,
-      })
-    }
+    if (!this.spend(gated.cost, spec.name, 'construction', 'tier3plus')) return
     this.tiles[v.r]![v.c] = tileForLate(id)
     this.lateSites.push({ id, c: v.c, r: v.r, elapsedDays: 0 })
     const opened = isOpen({ id, elapsedDays: 0 })
@@ -16486,15 +16654,6 @@ export class Game {
     if (!this.spend(stampCost, jetwayStand ? `${building.name} + jetway` : building.name)) {
       this.emit()
       return
-    }
-    if (
-      !this.sandbox &&
-      (building.tile === 'mover' ||
-        building.tile === 'xferbus' ||
-        building.tile === 'skywalk' ||
-        building.tile === 'travelator')
-    ) {
-      this.postJournal('construction', stampCost, this.simMinutes())
     }
     const standCls: StandClass = standClassForTool(this.tool) ?? 'M'
     const standScale = standScaleForTool(
@@ -18781,14 +18940,9 @@ export class Game {
       f.posted.catering = true
       f.caterLevel = 1
       f.waitingOn.catering = false
-      const pay = cateringTurnFee(
-        airline.catering,
-        CATER[this.caterBrand].payoutMult,
-        f.pax,
-        DEFAULT_FEE_SCHEDULE.cateringPerCart,
-      )
+      const pay = this.quotedCatering(f.airline, f.pax)
       this.earn(
-        this.contractBill(f, this.listed(pay, 'cateringPerCart'), 'service', 'catering'),
+        pay,
         `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
         f,
         'catering_fees',

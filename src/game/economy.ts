@@ -4,6 +4,7 @@ import {
   BUDGET_BASE,
   DESK_STAFF_WAGE,
   JANITOR_WAGE,
+  LOAN_PRODUCTS,
   MECHANIC_WAGE,
   money,
   RESEARCHER_WAGE,
@@ -62,10 +63,32 @@ export function loanDeskRows<T extends { id: string; label: string }>(products: 
   return out
 }
 
-/** Slider caption: the name and the amount the thumb is on. */
-export function loanAmountLabel(amount: number): string {
+/** Fee on a slider principal. An exact catalog principal uses that product's fee. */
+export function loanFeeForAmount(principal: number): number {
+  const n = Number.isFinite(principal) ? Math.max(0, Math.round(principal)) : 0
+  const exact = LOAN_PRODUCTS.find((p) => p.principal === n)
+  if (exact) return exact.fee
+  const micro = LOAN_PRODUCTS[0]
+  if (!micro || micro.principal <= 0) return 0
+  return Math.max(0, Math.round((n * micro.fee) / micro.principal))
+}
+
+/**
+ * Slider caption. When a fee is known, the line includes what the desk will
+ * actually book as owed (principal plus fee), not the cash that gets wired.
+ */
+export function loanAmountLabel(amount: number, fee = 0): string {
   const n = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0
+  const f = Number.isFinite(fee) && fee > 0 ? Math.round(fee) : 0
+  if (f > 0) return `Loan amount · ${money(n)} · fee ${money(f)} · owe ${money(n + f)}`
   return `Loan amount · ${money(n)}`
+}
+
+/** Draw button: the balance the loan will open at. */
+export function loanDrawLabel(principal: number, fee: number): string {
+  const n = Number.isFinite(principal) ? Math.max(0, Math.round(principal)) : 0
+  const f = Number.isFinite(fee) && fee > 0 ? Math.round(fee) : 0
+  return `Draw loan · owe ${money(n + f)}`
 }
 
 /** Interest due this loan tick: at least the product floor, else ~rate × balance. */
@@ -162,6 +185,21 @@ export function payrollPreviewLabel(amount: number, formatMoney: (n: number) => 
 
 export function payrollPreviewTitle(daySeconds: number): string {
   return `Staffing floor, charged once per game day (${daySeconds}s). Cash can still rise between days.`
+}
+
+/**
+ * Why the payroll line equals the day-close bill.
+ * The bill is the staffing floor or the income share, whichever is higher.
+ */
+export function payrollChargeWhy(due: number, floor: number, share: number, daySeconds: number): string {
+  const bill = Number.isFinite(due) && due > 0 ? Math.round(due) : 0
+  const staff = Number.isFinite(floor) && floor > 0 ? Math.round(floor) : 0
+  const pct = Number.isFinite(share) && share > 0 ? Math.round(share * 100) : 0
+  const reason =
+    bill > staff
+      ? `Today's operating income × ${pct}% is ${money(bill)}, above the staffing floor of ${money(staff)}.`
+      : `Staffing floor of ${money(staff)}. The income share is lower, so the floor is the bill.`
+  return `Charged once per game day (${daySeconds}s). ${reason} This line is that bill.`
 }
 
 export function payrollAmount(lineCosts: readonly number[], opsMult: number): number {

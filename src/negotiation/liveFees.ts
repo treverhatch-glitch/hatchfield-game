@@ -6,6 +6,7 @@ import {
 import { NEGOTIATION } from './data.ts'
 import { clamp } from './rng.ts'
 import type { OfferTerms, ServiceId } from './types.ts'
+import { termDailyRate } from './valuation.ts'
 
 /** One negotiated month, in game days. The live deposit is held for termMonths of these. */
 export const TERM_DAYS = 30
@@ -85,7 +86,7 @@ export function liveDailyMargin(
 ): number {
   const turns = Math.max(0, finite(quote.turnsPerDay))
   const pax = Math.max(0, finite(quote.pax)) * turns
-  const fees = liveTurnRevenue(quote, terms) * turns
+  const fees = liveTurnRevenue(quote, terms) * turns * termDailyRate(terms.termMonths)
   const retail = Math.max(0, finite(spendPerPax)) * pax * NEGOTIATION.economics.retailTake
   const marketing = terms.freebies.marketingFund / Math.max(TERM_DAYS, terms.termMonths * TERM_DAYS)
   const walkIn = NEGOTIATION.economics.walkInPerDay * (Number.isFinite(trafficFactor) ? trafficFactor : 1)
