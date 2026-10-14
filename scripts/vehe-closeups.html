@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>VE before</title>
+<style>html,body{margin:0;background:#cfd9e2}</style></head>
+<body><script type="module">
+import * as THREE from 'three'
+import { MODEL_SIZE, vehicleRig, poseVehicleRig, vehicleModel } from '/src/render/vehicles.ts'
+const kinds = ['fuel','belt_loader','catering','gpu','pushback_tug','stairs','bags']
+const cols = kinds.length, cw = 480, ch = 420
+const W = cols * cw, H = ch
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H); r.setScissorTest(true); r.outputColorSpace = THREE.SRGBColorSpace
+r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.appendChild(r.domElement)
+kinds.forEach((kind, i) => {
+  const id = vehicleModel(kind)
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(i % 2 ? '#d6e0e8' : '#cbd6df')
+  scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.5))
+  const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-6, 12, 9); key.castShadow = true
+  key.shadow.camera.left = key.shadow.camera.bottom = -9; key.shadow.camera.right = key.shadow.camera.top = 9
+  key.shadow.mapSize.set(1024, 1024); scene.add(key)
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshLambertMaterial({ color: '#8b9096' }))
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
+  const m = vehicleRig(kind, '#2f7fd0'); m.traverse(o => { if (o.isMesh) o.castShadow = true })
+  poseVehicleRig(m, id, 1, 1.6, true); scene.add(m)
+  const [L, Hh] = MODEL_SIZE[id]
+  const cam = new THREE.PerspectiveCamera(28, cw / ch, 0.1, 200)
+  const rad = Math.hypot(L, Hh + 2.4) / 2 + 1.4
+  const dist = rad / Math.sin(THREE.MathUtils.degToRad(14))
+  cam.position.set(dist * 0.55, dist * 0.38, dist * 0.72); cam.lookAt(0, Hh * 0.35, 0)
+  const x = i * cw
+  r.setViewport(x, 0, cw, ch); r.setScissor(x, 0, cw, ch)
+  r.setClearColor(scene.background); r.render(scene, cam)
+})
+window.__done = true
+</script></body></html>

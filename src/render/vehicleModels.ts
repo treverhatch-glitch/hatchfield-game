@@ -1,5 +1,5 @@
 /**
- * Round A service-vehicle models. One builder per vehicle model, real sizes in
+ * Round E service-vehicle models. One builder per vehicle model, real sizes in
  * metres (+X forward, +Y up, Z across, ground at y = 0, centred on the footprint).
  *
  * A builder emits coloured primitives tagged with a part name. Static parts
@@ -29,6 +29,8 @@ export type VehicleModel =
   | 'stairs'
   | 'k_loader'
   | 'uld_dolly'
+  | 'lavatory_truck'
+  | 'water_truck'
 
 /** Sim / render kind -> model. Unknown kinds draw as a van. */
 export function vehicleModel(kind: string): VehicleModel {
@@ -81,6 +83,15 @@ export function vehicleModel(kind: string): VehicleModel {
     case 'dolly':
     case 'uld_dolly':
       return 'uld_dolly'
+    case 'lav':
+    case 'lavatory':
+    case 'lavatory_truck':
+      return 'lavatory_truck'
+    case 'water':
+    case 'potable':
+    case 'water_truck':
+    case 'potable_water':
+      return 'water_truck'
     default:
       return 'van'
   }
@@ -106,6 +117,8 @@ export const MODEL_SIZE: Record<VehicleModel, readonly [number, number, number]>
   stairs: [7.4, 3.6, 2.4],
   k_loader: [9, 2.5, 3.4],
   uld_dolly: [3.4, 0.75, 1.9],
+  lavatory_truck: [7.2, 2.8, 2.3],
+  water_truck: [7.0, 2.7, 2.3],
 }
 
 /** Neutral GSE livery; the caller's colour is the airport accent tint. */
@@ -208,7 +221,7 @@ export interface VPart {
 
 /** Named moving parts each model exposes, for Round B rigs and tests. */
 export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
-  fuel_tanker: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'beacon', 'hose_reel', 'hose', 'reverse', 'beam'],
+  fuel_tanker: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'beacon', 'hose_reel', 'hose', 'grounding', 'reverse', 'beam'],
   hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose', 'reverse', 'beam'],
   baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2', 'beam'],
   baggage_cart: ['wheels_front', 'wheels_rear', 'curtain'],
@@ -222,10 +235,12 @@ export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
   van: ['wheels_front', 'wheels_rear', 'beacon', 'reverse', 'beam'],
   towbar_tug: ['wheels_front', 'wheels_rear', 'beacon', 'towbar', 'reverse', 'beam'],
   towbarless_tug: ['wheels_front', 'wheels_rear', 'beacon', 'cradle', 'beam'],
-  gpu: ['wheels_front', 'wheels_rear', 'cable_reel'],
+  gpu: ['wheels_front', 'wheels_rear', 'cable_reel', 'cable'],
   stairs: ['wheels_front', 'wheels_rear', 'beacon', 'stair', 'canopy', 'reverse', 'beam'],
   k_loader: ['wheels_front', 'wheels_front_2', 'wheels_rear', 'wheels_rear_2', 'beacon', 'front_platform', 'rear_platform', 'reverse'],
   uld_dolly: ['wheels_front', 'wheels_rear', 'rollers'],
+  lavatory_truck: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel', 'hose', 'reverse', 'beam'],
+  water_truck: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel', 'hose', 'reverse', 'beam'],
 }
 
 const _c = new THREE.Color()
@@ -400,6 +415,10 @@ type Builder = (k: Kit, L: number, H: number, W: number) => void
 const truckR = 0.5
 /** Fuel hose length paid out at full extension, metres. */
 export const HOSE_M = 5
+/** GPU / lav / water service hose or cable paid out at full extension, metres. */
+export const CABLE_M = 4
+/** Fuel grounding cable length at full extension, metres. */
+export const GROUND_M = 3.2
 const gseR = 0.3
 
 const BUILDERS: Record<VehicleModel, Builder> = {
@@ -429,6 +448,14 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     // hose paid out sideways from the reel (Round B scales it along Z)
     k.cyl(LIVERY.hose, 0.13, HOSE_M, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M / 2, 'z', 'hose', 8)
     k.box(LIVERY.steel, 0.25, 0.2, 0.3, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M, 'hose') // nozzle
+    k.cyl(LIVERY.black, 0.08, 0.18, -L / 2 + 0.55, r + 1.4, W / 2 + HOSE_M + 0.12, 'z', 'hose', 8) // nozzle tip
+    // grounding reel + cable to the landing gear (Round E scales along Z)
+    k.cyl(LIVERY.gseYellow, 0.16, 0.22, -L / 2 + 1.4, r + 0.55, W / 2 - 0.1, 'z')
+    k.cyl(LIVERY.black, 0.045, GROUND_M, -L / 2 + 1.4, r + 0.25, W / 2 + GROUND_M / 2, 'z', 'grounding', 6)
+    k.box(LIVERY.steel, 0.18, 0.12, 0.22, -L / 2 + 1.4, r + 0.25, W / 2 + GROUND_M, 'grounding') // alligator clamp
+    // hi-vis reflective band on tank
+    k.box(LIVERY.gseYellow, tl * 0.55, 0.12, tr * 2 + 0.02, tx, ty - tr * 0.55, 0)
+    k.box(LIVERY.black, tl * 0.55, 0.06, tr * 2 + 0.025, tx, ty - tr * 0.55 - 0.09, 0)
     k.box(LIVERY.chassis, 1.8, 0.5, W * 1.0, tx, r + 0.25, 0)
     k.chevrons(-L / 2, r * 0.4, 0.5, W)
     k.tail(-L / 2, r + 0.5, W)
@@ -463,8 +490,9 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const tx = L / 2 - tL / 2
     k.axle(tx + 0.85, r, W, 'wheels_front')
     k.axle(tx - 0.85, r, W, 'wheels_rear')
-    k.box(LIVERY.gseYellow, tL, 0.55, W, tx, r + 0.2, 0)
-    k.box(LIVERY.gseYellow, 1.0, 0.45, W * 0.9, tx + 0.85, r + 0.68, 0) // hood
+    k.rbox(LIVERY.gseYellow, tL, 0.55, W, tx, r + 0.2, 0, 0.08)
+    k.rbox(LIVERY.gseYellow, 1.0, 0.45, W * 0.9, tx + 0.85, r + 0.68, 0, 0.1) // rounded hood
+    k.box('#f7f3a8', tL * 0.7, 0.08, W + 0.02, tx, r + 0.48, 0) // hi-vis
     k.box(LIVERY.black, 0.1, 0.3, W * 1.02, L / 2, r + 0.05, 0)
     k.box(LIVERY.black, 0.5, 0.5, 0.5, tx - 0.4, r + 0.75, 0) // seat
     for (const s of [1, -1]) for (const f of [0.25, -1.1]) k.box(LIVERY.black, 0.06, 1.0, 0.06, tx + f, r + 1.0, s * (W / 2 - 0.08))
@@ -489,27 +517,41 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const r = gseR
     k.axle(L * 0.3, r, W, 'wheels_front')
     k.axle(-L * 0.3, r, W, 'wheels_rear')
-    k.box(LIVERY.gseYellow, L * 0.9, 0.5, W, 0, r + 0.15, 0)
+    k.rbox(LIVERY.gseYellow, L * 0.9, 0.5, W, 0, r + 0.15, 0, 0.06)
     k.sideStripe(0, L * 0.9, r + 0.1, W, LIVERY.black, 0.08)
-    // side cab at mid-left
-    k.box(LIVERY.gseYellow, 1.4, 0.9, 0.9, -L * 0.05, r + 0.85, -W / 2 + 0.45)
+    // hi-vis reflective tape along chassis
+    k.box('#f7f3a8', L * 0.7, 0.08, W + 0.03, 0, r + 0.42, 0)
+    // rounded side cab at mid-left
+    k.rbox(LIVERY.gseYellow, 1.4, 0.9, 0.9, -L * 0.05, r + 0.85, -W / 2 + 0.45, 0.1)
     k.box(LIVERY.glass, 1.2, 0.5, 0.92, -L * 0.05, r + 1.25, -W / 2 + 0.45)
-    k.box(LIVERY.gseYellow, 1.5, 0.06, 1.0, -L * 0.05, r + 1.55, -W / 2 + 0.45)
+    k.rbox(LIVERY.gseYellow, 1.5, 0.06, 1.0, -L * 0.05, r + 1.55, -W / 2 + 0.45, 0.03)
     k.beacon(-L * 0.05, r + 1.58, -W / 2 + 0.45)
     // inclined belt with side rails (rises to the front)
     const bl = L * 1.0
     const { pitch, by } = beltGeom(L, H)
-    // lift rams from the chassis up to the belt underside (static)
-    for (const f of [0.18, -0.12]) for (const s of [1, -1]) k.box(LIVERY.steel, 0.12, 0.6, 0.12, f * L, r + 0.6, W * 0.15 + s * 0.3)
+    // hydraulic lift rams
+    for (const f of [0.18, -0.12]) for (const s of [1, -1]) {
+      k.cyl(LIVERY.steel, 0.06, 0.7, f * L, r + 0.65, W * 0.15 + s * 0.3, undefined, '', 8)
+      k.cyl(LIVERY.chassis, 0.04, 0.45, f * L, r + 0.95, W * 0.15 + s * 0.3, undefined, '', 6)
+    }
     k.slab(LIVERY.chassis, bl * 0.96, 0.26, 0.82, 0, by - 0.2, W * 0.15, pitch, 'belt') // boom frame
     k.slab(LIVERY.rubber, bl * 0.98, 0.18, 0.76, 0, by, W * 0.15, pitch, 'belt')
+    // belt rollers along the boom (read as moving conveyor)
+    for (let i = 0; i < 7; i++) {
+      const f = (i / 6 - 0.5) * bl * 0.9
+      const g = new THREE.CylinderGeometry(0.07, 0.07, 0.72, 8)
+      g.rotateX(Math.PI / 2)
+      g.translate(f, 0.05, 0)
+      g.rotateZ(pitch)
+      k.add(g, LIVERY.hub, 0, by, W * 0.15, 'belt')
+    }
     for (const s of [1, -1]) k.slab(LIVERY.steel, bl * 0.98, 0.3, 0.08, 0, by + 0.12, W * 0.15 + s * 0.42, pitch, 'belt')
     // bags riding the belt (Round B slides them up the slope)
-    const bagHex = ['#6a5340', '#2f4a6a', '#8c2f2f']
-    for (let i = 0; i < 3; i++) {
-      const f = -0.3 + i * 0.3
-      const g = new THREE.BoxGeometry(0.6, 0.4, 0.45)
-      g.translate(f * bl, 0.3, 0)
+    const bagHex = ['#6a5340', '#2f4a6a', '#8c2f2f', '#3e5a3a', '#55595f']
+    for (let i = 0; i < 5; i++) {
+      const f = -0.38 + i * 0.2
+      const g = new THREE.BoxGeometry(0.55, 0.38, 0.42)
+      g.translate(f * bl, 0.28, 0)
       g.rotateZ(pitch)
       k.add(g, bagHex[i], 0, by, W * 0.15, 'belt_bags')
     }
@@ -527,12 +569,16 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.fleetNo(L / 2 - 1.0, r + 0.8, W)
     const bl = back + L / 2 - 0.15
     const bx = -L / 2 + bl / 2
-    // scissor (stowed): crossed beams between chassis and box
+    // scissor (stowed): crossed X beams + mid pins (Round E thicker, reads when rising)
     const sy = r + 0.55
     for (const s of [1, -1]) {
-      k.slab(LIVERY.chassis, bl * 0.8, 0.12, 0.1, bx, sy, s * W * 0.38, 0.12, 'scissor')
-      k.slab(LIVERY.chassis, bl * 0.8, 0.12, 0.1, bx, sy, s * W * 0.38, -0.12, 'scissor')
+      k.slab(LIVERY.chassis, bl * 0.82, 0.14, 0.12, bx, sy, s * W * 0.38, 0.18, 'scissor')
+      k.slab(LIVERY.chassis, bl * 0.82, 0.14, 0.12, bx, sy, s * W * 0.38, -0.18, 'scissor')
+      k.slab(LIVERY.steel, bl * 0.7, 0.1, 0.08, bx, sy + 0.35, s * W * 0.38, 0.28, 'scissor')
+      k.slab(LIVERY.steel, bl * 0.7, 0.1, 0.08, bx, sy + 0.35, s * W * 0.38, -0.28, 'scissor')
+      k.cyl(LIVERY.gseYellow, 0.08, 0.14, bx, sy + 0.18, s * W * 0.38, 'z', 'scissor', 8)
     }
+    k.box('#f7f3a8', bl * 0.9, 0.1, W + 0.03, bx, r + 0.45, 0) // hi-vis skirt
     const by0 = r + 0.75
     const bh = H - by0
     k.box(LIVERY.white, bl, bh, W, bx, by0 + bh / 2, 0, 'box')
@@ -704,7 +750,11 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.chevrons(-L / 2, r - 0.05, 0.3, W * 0.9, 6)
     for (const s of [1, -1]) k.head(0.03, 0.12, 0.25, L / 2 + 0.05, r + 0.4, s * (W / 2 - 0.35), '', true)
     k.tail(-L / 2, r + 0.4, W * 0.9)
-    k.box(LIVERY.steel, 1.4, 0.1, 0.1, L / 2 + 0.6 - 0.75, r - 0.05, 0, 'towbar')
+    k.box('#f7f3a8', L * 0.8, 0.08, W * 0.94, 0, r + 0.55, 0) // hi-vis
+    // articulated towbar with hitch eye (Round E)
+    k.box(LIVERY.steel, 2.2, 0.12, 0.12, L / 2 + 0.9, r + 0.05, 0, 'towbar')
+    k.cyl(LIVERY.chassis, 0.1, 0.08, L / 2 + 2.0, r + 0.05, 0, 'x', 'towbar', 8)
+    k.cyl(LIVERY.gseYellow, 0.14, 0.04, L / 2 + 2.05, r + 0.05, 0, 'x', 'towbar', 10)
   },
 
   towbarless_tug(k, L, H, W) {
@@ -723,6 +773,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.glass, 1.2, 0.45, 1.0, L * 0.32, r + 0.85, -W * 0.28)
     k.box(LIVERY.gseYellow, 1.3, 0.06, 1.1, L * 0.32, H - 0.03, -W * 0.28)
     k.beacon(L * 0.32, H, -W * 0.28)
+    k.box('#f7f3a8', L * 0.35, 0.1, W * 0.96, L * 0.27, r + 0.7, 0) // hi-vis nose
     k.chevrons(L / 2 + 0.06, r - 0.1, 0.35, W * 0.95, 8)
     for (const s of [1, -1]) {
       k.head(0.03, 0.12, 0.3, L / 2 + 0.07, r + 0.35, s * (W / 2 - 0.4), '', true)
@@ -735,11 +786,16 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.axle(L * 0.28, r, W, 'wheels_front', false, 0.02)
     k.axle(-L * 0.28, r, W, 'wheels_rear', false, 0.02)
     k.box(LIVERY.chassis, L * 0.95, 0.18, W * 0.8, 0, r + 0.05, 0)
-    k.box(LIVERY.white, L * 0.86, H - r - 0.2, W * 0.95, -L * 0.03, (H + r + 0.2) / 2, 0)
+    k.rbox(LIVERY.white, L * 0.86, H - r - 0.2, W * 0.95, -L * 0.03, (H + r + 0.2) / 2, 0, 0.08)
     k.box(k.accent, L * 0.862, 0.18, W * 0.955, -L * 0.03, r + 0.35, 0)
+    k.box('#f7f3a8', L * 0.7, 0.08, W * 0.96, -L * 0.03, r + 0.55, 0) // hi-vis
     for (let i = 0; i < 6; i++) k.box(LIVERY.chassis, 0.04, 0.5, 0.02, -L * 0.3 + i * 0.12, H - 0.5, W * 0.476) // louvres
     k.cyl(LIVERY.gseYellow, 0.3, 0.3, L * 0.18, H + 0.15, 0, 'z', 'cable_reel')
     k.cyl(LIVERY.black, 0.24, 0.32, L * 0.18, H + 0.15, 0, 'z', 'cable_reel')
+    // power cable paid out to the aircraft (Round E scales along Z)
+    k.cyl(LIVERY.black, 0.05, CABLE_M, L * 0.18, r + 0.35, W / 2 + CABLE_M / 2, 'z', 'cable', 6)
+    k.box(LIVERY.steel, 0.2, 0.14, 0.25, L * 0.18, r + 0.35, W / 2 + CABLE_M, 'cable') // plug
+    k.box(LIVERY.gseYellow, 0.12, 0.08, 0.12, L * 0.18, r + 0.45, W / 2 + CABLE_M + 0.05, 'cable')
     k.box(LIVERY.steel, 0.9, 0.05, 0.05, L / 2 - 0.1, r, 0) // towbar
     k.chevrons(-L / 2 + L * 0.07 - 0.03, r + 0.2, 0.25, W * 0.95, 4)
     k.box(LIVERY.amber, 0.12, 0.08, 0.12, -L * 0.3, H + 0.04, 0, '', true)
@@ -760,11 +816,18 @@ const BUILDERS: Record<VehicleModel, Builder> = {
       const f = (i + 0.5) / 12 - 0.5
       k.box(LIVERY.steel, 0.24, 0.05, W * 0.7, sx + f * sl * Math.cos(pitch), sy - f * sl * Math.sin(pitch) + 0.1, 0, 'stair')
     }
-    for (const s of [1, -1]) k.slab(LIVERY.white, sl, 0.7, 0.06, sx, sy + 0.4, s * W * 0.36, -pitch, 'stair')
+    for (const s of [1, -1]) {
+      k.slab(LIVERY.white, sl, 0.7, 0.06, sx, sy + 0.4, s * W * 0.36, -pitch, 'stair')
+      k.slab(LIVERY.gseYellow, sl, 0.05, 0.05, sx, sy + 0.75, s * W * 0.36, -pitch, 'stair') // handrail
+    }
     // top platform + canopy at the rear (high end)
     k.box(LIVERY.diamond, 1.2, 0.1, W * 0.8, -L / 2 + 0.7, H - 0.8, 0, 'stair')
-    for (const s of [1, -1]) k.box(LIVERY.white, 0.06, 0.8, 0.06, -L / 2 + 0.2, H - 0.4, s * W * 0.38, 'canopy')
+    for (const s of [1, -1]) {
+      k.box(LIVERY.white, 0.06, 0.8, 0.06, -L / 2 + 0.2, H - 0.4, s * W * 0.38, 'canopy')
+      k.box(LIVERY.gseYellow, 0.06, 0.06, W * 0.76, -L / 2 + 0.2, H - 0.05, 0, 'canopy')
+    }
     k.box(k.accent, 1.3, 0.08, W * 0.85, -L / 2 + 0.7, H, 0, 'canopy')
+    k.box('#f7f3a8', sl * 0.6, 0.08, W + 0.02, sx, r + 0.5, 0) // hi-vis
     k.chevrons(-L / 2 + 0.1, r * 0.4, 0.4, W)
     k.tail(-L / 2 + 0.1, r + 0.4, W)
   },
@@ -800,6 +863,57 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (let i = 0; i < 10; i++) k.cyl(LIVERY.hub, 0.04, W * 0.9, -L * 0.45 + (L * 0.9 * (i + 0.5)) / 10, H - 0.04, 0, 'z', 'rollers', 6)
     for (const s of [1, -1]) k.box(LIVERY.gseYellow, 0.08, 0.2, 0.08, -L / 2 + 0.1, H + 0.05, s * W * 0.44, 'rollers')
     k.box(LIVERY.steel, 1.0, 0.05, 0.05, L / 2 + 0.1 - 0.5, r + 0.1, 0)
+  },
+
+  /** Blue honey-wagon: waste tank, hose reel, hi-vis. */
+  lavatory_truck(k, L, H, W) {
+    const r = 0.42
+    k.axle(L * 0.32, r, W, 'wheels_front')
+    k.axle(-L * 0.28, r, W, 'wheels_rear')
+    k.chassisRail(L * 0.94, W, r + 0.12)
+    const back = k.cab(L, W, r + 0.18, 2.0, 1.9, LIVERY.white)
+    k.fleetNo(L / 2 - 0.95, r + 0.8, W)
+    const tl = back + L / 2 - 0.25
+    const tx = -L / 2 + tl / 2 + 0.1
+    // horizontal waste tank (blue)
+    const blue = '#2a6aa8'
+    k.add(new THREE.CapsuleGeometry(W * 0.4, tl - W * 0.8, 5, 14).rotateZ(Math.PI / 2), blue, tx, r + 1.15, 0)
+    k.sideStripe(tx, tl * 0.85, r + 0.85, W * 0.82, LIVERY.gseYellow, 0.14)
+    k.box('#f7f3a8', tl * 0.6, 0.1, W * 0.82 + 0.02, tx, r + 0.7, 0)
+    // pump cabinet + hose at rear
+    k.box(LIVERY.steel, 0.7, 1.0, W * 0.9, -L / 2 + 0.45, r + 0.7, 0)
+    k.cyl(LIVERY.gseYellow, 0.28, 0.4, -L / 2 + 0.45, r + 1.55, 0, 'z', 'hose_reel')
+    k.cyl(LIVERY.hose, 0.22, 0.42, -L / 2 + 0.45, r + 1.55, 0, 'z', 'hose_reel')
+    k.cyl('#1a5080', 0.1, CABLE_M, -L / 2 + 0.45, r + 0.9, W / 2 + CABLE_M / 2, 'z', 'hose', 8)
+    k.box(LIVERY.steel, 0.22, 0.18, 0.28, -L / 2 + 0.45, r + 0.9, W / 2 + CABLE_M, 'hose')
+    k.chevrons(-L / 2, r * 0.4, 0.45, W)
+    k.tail(-L / 2, r + 0.5, W)
+    void H
+  },
+
+  /** Potable water tanker: white tank, blue stripe, hose to the aircraft. */
+  water_truck(k, L, H, W) {
+    const r = 0.42
+    k.axle(L * 0.32, r, W, 'wheels_front')
+    k.axle(-L * 0.28, r, W, 'wheels_rear')
+    k.chassisRail(L * 0.94, W, r + 0.12)
+    const back = k.cab(L, W, r + 0.18, 2.0, 1.9, LIVERY.white)
+    k.fleetNo(L / 2 - 0.95, r + 0.8, W)
+    const tl = back + L / 2 - 0.25
+    const tx = -L / 2 + tl / 2 + 0.1
+    k.add(new THREE.CapsuleGeometry(W * 0.38, tl - W * 0.76, 5, 14).rotateZ(Math.PI / 2), LIVERY.white, tx, r + 1.1, 0)
+    k.sideStripe(tx, tl * 0.85, r + 0.9, W * 0.78, '#3fa8d6', 0.2)
+    k.box('#f7f3a8', tl * 0.55, 0.1, W * 0.78 + 0.02, tx, r + 0.68, 0)
+    // fill hatch on top
+    k.cyl(LIVERY.steel, 0.2, 0.08, tx, r + 1.1 + W * 0.38 + 0.04, 0, undefined)
+    k.box(LIVERY.steel, 0.65, 0.9, W * 0.88, -L / 2 + 0.42, r + 0.65, 0)
+    k.cyl(LIVERY.gseYellow, 0.26, 0.38, -L / 2 + 0.42, r + 1.45, 0, 'z', 'hose_reel')
+    k.cyl(LIVERY.hose, 0.2, 0.4, -L / 2 + 0.42, r + 1.45, 0, 'z', 'hose_reel')
+    k.cyl('#3fa8d6', 0.09, CABLE_M, -L / 2 + 0.42, r + 0.85, W / 2 + CABLE_M / 2, 'z', 'hose', 8)
+    k.box(LIVERY.steel, 0.2, 0.16, 0.24, -L / 2 + 0.42, r + 0.85, W / 2 + CABLE_M, 'hose')
+    k.chevrons(-L / 2, r * 0.4, 0.45, W)
+    k.tail(-L / 2, r + 0.5, W)
+    void H
   },
 }
 

@@ -8,7 +8,7 @@ const Q = new URLSearchParams(location.search)
 const NIGHT = Q.get('night') === '1'
 const EXT = Number(Q.get('ext') ?? 0)
 const CLOCK = Number(Q.get('t') ?? 1.2)
-const KIND = { fuel_tanker:'fuel', hydrant_cart:'hydrant', baggage_train:'bags', baggage_cart:'cart', belt_loader:'belt_loader', catering_hilift:'catering', arff:'fire', deice:'deice', apron_bus:'termbus', coach:'coach', box_truck:'citycargo', van:'delivery', towbar_tug:'tow', towbarless_tug:'pushback_tug', gpu:'gpu', stairs:'stairs', k_loader:'cargo', uld_dolly:'dolly' }
+const KIND = { fuel_tanker:'fuel', hydrant_cart:'hydrant', baggage_train:'bags', baggage_cart:'cart', belt_loader:'belt_loader', catering_hilift:'catering', arff:'fire', deice:'deice', apron_bus:'termbus', coach:'coach', box_truck:'citycargo', van:'delivery', towbar_tug:'tow', towbarless_tug:'pushback_tug', gpu:'gpu', stairs:'stairs', k_loader:'cargo', uld_dolly:'dolly', lavatory_truck:'lav', water_truck:'water' }
 const ids = ALL_MODELS
 const cols = 6, cw = 400, ch = 320
 const W = cols * cw, H = Math.ceil(ids.length / cols) * ch

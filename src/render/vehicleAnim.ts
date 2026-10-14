@@ -77,7 +77,7 @@ export function steerAngle(dHeading: number, dist: number, wheelbase: number): n
 }
 
 const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
-  fuel_tanker: ['hose_reel', 'hose'],
+  fuel_tanker: ['hose_reel', 'hose', 'grounding'],
   hydrant_cart: ['lift_platform', 'hose_reel', 'hose'],
   belt_loader: ['belt', 'belt_bags'],
   catering_hilift: ['scissor', 'box', 'deck'],
@@ -88,9 +88,11 @@ const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
   box_truck: ['rollup_door', 'tail_lift'],
   towbar_tug: ['towbar'],
   towbarless_tug: ['cradle'],
-  gpu: ['cable_reel'],
+  gpu: ['cable_reel', 'cable'],
   stairs: ['stair', 'canopy'],
   k_loader: ['front_platform', 'rear_platform'],
+  lavatory_truck: ['hose_reel', 'hose'],
+  water_truck: ['hose_reel', 'hose'],
 }
 
 /** Shared moving parts: wheels spin, beacons rotate, reverse lights switch. */
@@ -188,6 +190,26 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       }
       if (part === 'lift_platform') {
         reset(out).ty = e * LIFT_M.hydrant
+        return true
+      }
+      if (part === 'grounding') {
+        // Bonding cable goes on first and comes off last: leads the hose out.
+        const c = partCentre(model, 'grounding')
+        reset(out, c[0], c[1], W / 2).sz = Math.max(0.02, Math.min(1, e * 1.6))
+        return true
+      }
+      return false
+    }
+    case 'lavatory_truck':
+    case 'water_truck': {
+      const reel = partCentre(model, 'hose_reel')
+      if (part === 'hose_reel') {
+        reset(out, reel[0], reel[1], 0).rz = -e * 8
+        return true
+      }
+      if (part === 'hose') {
+        const c = partCentre(model, 'hose')
+        reset(out, c[0], c[1], W / 2).sz = Math.max(0.02, e)
         return true
       }
       return false
@@ -342,6 +364,11 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
       out.sz = 1 - 0.25 * e
       return true
     case 'gpu':
+      if (part === 'cable') {
+        const c = partCentre(model, 'cable')
+        reset(out, c[0], c[1], W / 2).sz = Math.max(0.02, e)
+        return true
+      }
       if (part !== 'cable_reel') return false
       reset(out, L * 0.18, H + 0.15, 0).rz = -e * 6
       return true
