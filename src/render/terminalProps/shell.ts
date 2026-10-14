@@ -8,6 +8,8 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { geminiTexture, material } from './materials'
 import { floorTile, frit, slats } from './hiq'
+import { PACK4_DIR, PACK4_FILES, PACK4_REPEAT_M, pack4Edge } from '../materials/pack4'
+import { parseTextureQuality, TEXTURE_QUALITY_KEY, type TextureQuality } from '../aircraft/liveryFiles'
 import { buildTerminalProps } from './index'
 
 export interface HallSpec {
@@ -22,6 +24,48 @@ export interface HallSpec {
   carpets?: { x: number; z: number; w: number; d: number }[]
   /** Airside jet bridges along the -Z facade (exterior only): x positions. */
   jetBridges?: number[]
+}
+
+/** Swap a hall material onto a pack-4 JPEG. High keeps the file pixels; med and low draw a smaller copy. */
+function mountPackTile(
+  mat: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial,
+  file: string,
+  repeat: [number, number],
+  force?: TextureQuality,
+) {
+  if (typeof document === 'undefined') return
+  let level: TextureQuality = force ?? 'high'
+  if (!force) {
+    try {
+      level = parseTextureQuality(globalThis.localStorage?.getItem(TEXTURE_QUALITY_KEY))
+    } catch {
+      level = 'high'
+    }
+  }
+  const edge = pack4Edge(level)
+  new THREE.TextureLoader().load(`${PACK4_DIR}/${file}`, (loaded) => {
+    let tex: THREE.Texture = loaded
+    const img = loaded.image as (CanvasImageSource & { width?: number; height?: number }) | undefined
+    const w = img?.width ?? 0
+    const h = img?.height ?? 0
+    if (edge && w > edge && h > 0 && img) {
+      const canvas = document.createElement('canvas')
+      const scale = edge / Math.max(w, h)
+      canvas.width = Math.max(1, Math.round(w * scale))
+      canvas.height = Math.max(1, Math.round(h * scale))
+      canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+      tex = new THREE.CanvasTexture(canvas)
+      loaded.dispose()
+    }
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.wrapS = THREE.RepeatWrapping
+    tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(repeat[0], repeat[1])
+    tex.anisotropy = level === 'high' ? 8 : 4
+    tex.needsUpdate = true
+    mat.map = tex
+    mat.needsUpdate = true
+  })
 }
 
 type M = THREE.Matrix4
@@ -86,10 +130,12 @@ export function buildTerminalHall(spec: HallSpec): THREE.Group {
 
   // terrazzo floor with brass divider strips every 6 m
   const hiq = spec.quality !== 'low'
+  const floorRepeat: [number, number] = [W / PACK4_REPEAT_M.terrazzo, D / PACK4_REPEAT_M.terrazzo]
   const floorTex = hiq ? floorTile('color', [W / 4.8, D / 4.8]) : geminiTexture('terrazzo', [W / 3, D / 3])
   const floorMat = hiq
     ? new THREE.MeshPhysicalMaterial({ color: '#d9d4cb', map: floorTex, roughnessMap: floorTile('rough', [W / 4.8, D / 4.8]), roughness: 0.55, clearcoat: 0.45, clearcoatRoughness: 0.08 })
     : new THREE.MeshStandardMaterial({ color: '#ffffff', map: floorTex, roughness: 0.22, metalness: 0.05 })
+  mountPackTile(floorMat, PACK4_FILES.terrazzo, floorRepeat, spec.quality === 'low' ? 'low' : undefined)
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMat)
   floor.rotation.x = -Math.PI / 2
   floor.receiveShadow = true
@@ -173,13 +219,14 @@ export function buildTerminalHall(spec: HallSpec): THREE.Group {
   g.add(inst(unitBox, material('black'), rods))
 
   if (hiq) {
-    // timber slat baffle ceiling hung below the truss bottom chords
-    const slatMat = new THREE.MeshStandardMaterial({ color: '#b98a5a', roughness: 0.6 })
-    const sl: M[] = []
-    for (let z = -D / 2 + 0.6; z < D / 2 - 0.4; z += 0.6) sl.push(bx(0, Ht - 0.05, z, W - 0.4, 0.28, 0.06))
-    const slatMesh = inst(unitBox, slatMat, sl)
-    slatMesh.name = 'slatCeiling'
-    g.add(slatMesh)
+    // Acoustic tile plane under the trusses. Front face points down so the grid is not mirrored.
+    const ceilMat = new THREE.MeshStandardMaterial({ color: '#f3f1ec', roughness: 0.92, side: THREE.FrontSide })
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.8, D - 0.8), ceilMat)
+    ceil.rotation.x = Math.PI / 2
+    ceil.position.y = Ht - 0.12
+    ceil.name = 'acousticCeiling'
+    g.add(ceil)
+    mountPackTile(ceilMat, PACK4_FILES.ceiling, [(W - 0.8) / PACK4_REPEAT_M.ceiling, (D - 0.8) / PACK4_REPEAT_M.ceiling])
     // perimeter LED cove + column capitals + plinths
     const cove: M[] = []
     for (const [cx, cz, len, ry] of sides) cove.push(bx(cx * 0.995, Ht - 0.32, cz * 0.995, len - 0.6, 0.05, 0.08, ry))

@@ -10,17 +10,16 @@
  * Image axes (Three flips Y, so the top of the PNG is V = 1):
  *
  * fuselage.png — 1024×256 (4:1 side elevation)
- *   U 0 → 1 = nose → tail, on both sides (the strip is not mirrored).
+ *   U 0 → 1 = nose → tail on the port side (−Z). Starboard (+Z) flips U so a
+ *   left-to-right wordmark reads outward on both sides.
  *   V 0 → 1 = belly → crown. The nose tip sits near V 0.5, the crown at V 1.
- *   Lettering reads on the port side and is mirrored on the starboard side.
- *   Horizontal bands and window rows line up on both sides. Put titles in the
- *   tail art or keep them symmetric.
+ *   Horizontal bands still meet at the belly. The cheatline sweep reverses
+ *   on the starboard side because that is the same flip that unmirrors text.
  *
  * tail.png — 512×512 (fin, viewed from the side)
- *   U 0 → 1 = leading edge → trailing edge.
+ *   U 0 → 1 = leading edge → trailing edge on the port face.
+ *   Starboard (+Z) flips U, same rule as the fuselage, so a title reads outward.
  *   V 0 → 1 = root → tip.
- *   Same mapping on both faces, so a wordmark is mirrored on one side.
- *   A centred mark still reads.
  *
  * engine.png — 512×128 (cowling unwrap, 4:1)
  *   U 0 → 1 wraps the barrel. The seam is at the bottom of the nacelle.
@@ -66,6 +65,15 @@ export function projectedUv(x: number, y: number, box: LiveryBox): [number, numb
   const u = Math.abs(du) < 1e-4 ? 0 : (box.x0 - x) / du
   const v = Math.abs(dv) < 1e-4 ? 0 : (y - box.y0) / dv
   return [clamp01(u), clamp01(v)]
+}
+
+/**
+ * Port (−Z) keeps nose-to-tail U. Starboard (+Z) flips U so lettering drawn
+ * left to right on the plate reads outward from either side.
+ */
+export function outwardUv(x: number, y: number, z: number, box: LiveryBox): [number, number] {
+  const [u, v] = projectedUv(x, y, box)
+  return z > 0 ? [1 - u, v] : [u, v]
 }
 
 /**

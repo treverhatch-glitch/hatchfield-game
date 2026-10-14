@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_TEXTURE_QUALITY, LIVERY_LONG_SIDE, liveryFile, parseTextureQuality } from './liveryFiles'
+import { DEFAULT_TEXTURE_QUALITY, LIVERY_LONG_SIDE, jpegLiveryFits, liveryFile, parseTextureQuality } from './liveryFiles'
 
 describe('livery texture files', () => {
   it('defaults to the high-res plate', () => {
@@ -20,7 +20,7 @@ describe('livery texture files', () => {
   it('lists the five Grok liveries and the engine colours', () => {
     const manifest = JSON.parse(readFileSync('public/textures/liveries/manifest.json', 'utf8')) as {
       defaultQuality: string
-      liveries: { id: string; engine: string; airlines: string[] }[]
+      liveries: { id: string; engine: string; airlines: string[]; types: string[] }[]
     }
     expect(manifest.defaultQuality).toBe('high')
     const byId = new Map(manifest.liveries.map((row) => [row.id, row]))
@@ -31,6 +31,15 @@ describe('livery texture files', () => {
     expect(byId.get('crown_pacific')?.airlines).toContain('crown')
     for (const id of ['bushline_local', 'zoomjet', 'crown_pacific', 'siam_breeze', 'northstar_cargo']) {
       expect(byId.has(id)).toBe(true)
+      expect(byId.get(id)?.types.length).toBeGreaterThan(0)
     }
+    expect(byId.get('bushline_local')?.types).toEqual(['bn2', 'dhc6'])
+    expect(byId.get('crown_pacific')?.types).toEqual(['a380', 'b77w'])
+    expect(jpegLiveryFits('bushline', 'bn2')).toBe(true)
+    expect(jpegLiveryFits('bushline', 'a380')).toBe(false)
+    expect(jpegLiveryFits('crown', 'b77w')).toBe(true)
+    expect(jpegLiveryFits('zoomjet', 'b738')).toBe(true)
+    expect(jpegLiveryFits('zoomjet', 'a380')).toBe(false)
+    expect(jpegLiveryFits('northline', 'b738')).toBe(true)
   })
 })

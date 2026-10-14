@@ -8,6 +8,7 @@
  * always in Node), the maps are flat white and the vehicles keep plain colours.
  */
 import * as THREE from 'three'
+import { TEXTURE_QUALITY_KEY, parseTextureQuality } from './aircraft/liveryFiles'
 
 export const VEHICLE_TEXTURES = ['gse_yellow_paint', 'truck_white_panel', 'diamond_plate', 'chevron_stripe', 'conveyor_belt'] as const
 
@@ -30,9 +31,60 @@ const uniforms = {
 }
 let liveryStarted = false
 
-function base(): string {
+function artRoot(): string {
   const env = (import.meta as unknown as { env?: { BASE_URL?: string } }).env
-  return `${env?.BASE_URL ?? '/'}art/textures/vehicles/_b64/`
+  return `${env?.BASE_URL ?? '/'}art/textures/vehicles/`
+}
+
+function base(): string {
+  return `${artRoot()}_b64/`
+}
+
+/** Longest side kept when texture quality is below high. The JPEG on disk stays full size. */
+const LIVERY_EDGE = { med: 512, low: 256 } as const
+
+function publishLivery(img: CanvasImageSource & { width: number; height: number }) {
+  let source: CanvasImageSource = img
+  let quality: ReturnType<typeof parseTextureQuality> = 'high'
+  try {
+    quality = parseTextureQuality(globalThis.localStorage?.getItem(TEXTURE_QUALITY_KEY))
+  } catch {
+    quality = 'high'
+  }
+  const cap = quality === 'high' ? 0 : LIVERY_EDGE[quality]
+  if (cap && typeof document !== 'undefined') {
+    const scale = Math.min(1, cap / Math.max(img.width, img.height))
+    if (scale < 1) {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(img.width * scale))
+      canvas.height = Math.max(1, Math.round(img.height * scale))
+      canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+      source = canvas
+    }
+  }
+  const tex = new THREE.Texture(source)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
+  tex.anisotropy = 8
+  tex.generateMipmaps = true
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.needsUpdate = true
+  const prev = uniforms.uLivery.value
+  uniforms.uLivery.value = tex
+  if (prev !== tex) prev.dispose()
+}
+
+function loadLiveryB64() {
+  fetch(`${base()}livery_atlas.jpg.b64`)
+    .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+    .then((b64) => {
+      const img = new Image()
+      img.onload = () => publishLivery(img)
+      img.src = `data:image/jpeg;base64,${b64.trim()}`
+    })
+    .catch(() => {
+      /* plain side colour */
+    })
 }
 
 /**
@@ -56,26 +108,11 @@ export function wantsHiResVehicleTextures(): boolean {
 function loadLivery() {
   if (liveryStarted) return
   liveryStarted = true
-  if (typeof window === 'undefined' || typeof fetch === 'undefined' || typeof document === 'undefined') return
-  fetch(`${base()}livery_atlas.jpg.b64`)
-    .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
-    .then((b64) => {
-      const img = new Image()
-      img.onload = () => {
-        const tex = new THREE.Texture(img)
-        tex.colorSpace = THREE.SRGBColorSpace
-        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
-        tex.anisotropy = 8
-        tex.generateMipmaps = true
-        tex.minFilter = THREE.LinearMipmapLinearFilter
-        tex.needsUpdate = true
-        uniforms.uLivery.value = tex
-      }
-      img.src = `data:image/jpeg;base64,${b64.trim()}`
-    })
-    .catch(() => {
-      /* plain side colour */
-    })
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  const img = new Image()
+  img.onload = () => publishLivery(img)
+  img.onerror = () => loadLiveryB64()
+  img.src = `${artRoot()}livery_atlas.jpg`
 }
 
 function loadMaps(): THREE.Texture[] {

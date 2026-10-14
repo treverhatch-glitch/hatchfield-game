@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { PACK1_DIR, PACK1_REPEAT_M, pack1Edge, pack1Url, packWorldRepeat, tileByPosition, type Pack1File } from './pack1'
 import { AIRLINE_LOGOS, BRAND_LOGO, PACK4_DIR, PACK4_FILES, PACK4_REPEAT_M, pack4Edge, pack4Url, type Pack4File } from './pack4'
 import { paintSurface, surfacePngUrl, type SurfaceKind } from './paint'
+import { drawRosterMark, rosterMarkEdge, ROSTER } from './rosterMarks'
 import { QUALITY, type QualityLevel } from '../world/quality'
 
 export type { SurfaceKind } from './paint'
@@ -24,6 +25,7 @@ export type LibraryMap =
   | 'carpetGrey'
   | 'ceiling'
   | 'granite'
+  | 'rubber'
 
 const PROCEDURAL: SurfaceKind[] = ['floor', 'wall', 'wood']
 
@@ -32,14 +34,14 @@ const PACK_ONTO: Record<Pack1File, LibraryMap> = {
   glass: 'glass',
   oak: 'wood',
   steel: 'steel',
-  rubber: 'floor',
+  rubber: 'rubber',
   shopWood: 'shop',
   fabric: 'fabric',
   carpet: 'carpet',
 }
 
 const REPEAT_M: Record<LibraryMap, number> = {
-  floor: PACK1_REPEAT_M.rubber,
+  floor: 2.4,
   wall: PACK1_REPEAT_M.wall,
   wood: PACK1_REPEAT_M.oak,
   carpet: PACK1_REPEAT_M.carpet,
@@ -51,6 +53,7 @@ const REPEAT_M: Record<LibraryMap, number> = {
   carpetGrey: PACK4_REPEAT_M.carpetGrey,
   ceiling: PACK4_REPEAT_M.ceiling,
   granite: PACK4_REPEAT_M.granite,
+  rubber: PACK1_REPEAT_M.rubber,
 }
 
 const PACK4_ONTO: Record<Pack4File, LibraryMap> = {
@@ -70,6 +73,7 @@ const FLAT: Record<Exclude<LibraryMap, SurfaceKind>, [number, number, number]> =
   carpetGrey: [150, 148, 142],
   ceiling: [232, 232, 228],
   granite: [36, 38, 40],
+  rubber: [21, 23, 26],
 }
 
 export interface TextureLoad {
@@ -134,8 +138,10 @@ type LogoListen = { slot: number; fn: (image: CanvasImageSource) => void }
 
 export class SurfaceLibrary {
   readonly maps: Record<LibraryMap, THREE.Texture>
-  /** Airline marks. Slot -1 on a waiter is the Hatchfield brand. */
+  /** Photographed catalog marks. Slot -1 on a waiter is the Hatchfield brand. */
   readonly airline: THREE.Texture[]
+  /** One canvas mark per roster airline, in roster order. */
+  readonly roster: THREE.Texture[]
   brand: THREE.Texture
   private readonly made = new Map<string, THREE.Material>()
   private readonly watched = new Set<Mapped>()
@@ -156,16 +162,45 @@ export class SurfaceLibrary {
       carpetGrey: flatTexture(FLAT.carpetGrey),
       ceiling: flatTexture(FLAT.ceiling),
       granite: flatTexture(FLAT.granite),
+      rubber: flatTexture(FLAT.rubber),
     }
     const blank = () => flatTexture([255, 255, 255])
     this.airline = AIRLINE_LOGOS.map(() => blank())
     this.brand = blank()
+    this.roster = ROSTER.map((airline) => this.makeRosterMark(airline))
+  }
+
+  private makeRosterMark(airline: (typeof ROSTER)[number]): THREE.Texture {
+    const n = Number.parseInt(airline.primary.replace('#', ''), 16)
+    const rgb: [number, number, number] = Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [40, 44, 48]
+    if (typeof document === 'undefined') return flatTexture(rgb)
+    const edge = rosterMarkEdge()
+    const canvas = document.createElement('canvas')
+    canvas.width = edge
+    canvas.height = edge
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return flatTexture(rgb)
+    drawRosterMark(ctx, edge, airline)
+    return finish(new THREE.CanvasTexture(canvas), false, 8)
+  }
+
+  /** Roster mark for desk fascias and gate boards. Slot wraps the full roster. */
+  rosterMaterial(slot: number): THREE.MeshBasicMaterial {
+    const index = ((slot % this.roster.length) + this.roster.length) % this.roster.length
+    return new THREE.MeshBasicMaterial({ color: 0xffffff, map: this.roster[index], toneMapped: false, side: THREE.FrontSide })
+  }
+
+  /** Fires now when that roster mark is already a readable canvas. */
+  onRosterLogo(slot: number, fn: (image: CanvasImageSource) => void) {
+    const index = ((slot % this.roster.length) + this.roster.length) % this.roster.length
+    const image = this.roster[index].image as CanvasImageSource & { width?: number }
+    if ((image?.width ?? 0) > 32) fn(image)
   }
 
   /** Backlit airline mark. The map fills in when the JPEG arrives. */
   logoMaterial(slot: number): THREE.MeshBasicMaterial {
     const index = ((slot % this.airline.length) + this.airline.length) % this.airline.length
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, map: this.airline[index], toneMapped: false })
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, map: this.airline[index], toneMapped: false, side: THREE.FrontSide })
     this.logoWait.push({ mat, slot: index })
     return mat
   }
@@ -183,7 +218,7 @@ export class SurfaceLibrary {
 
   /** Hatchfield mark for the facade and anywhere else the airport name is a sign. */
   brandMaterial(): THREE.MeshBasicMaterial {
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, map: this.brand, toneMapped: false })
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, map: this.brand, toneMapped: false, side: THREE.FrontSide })
     this.logoWait.push({ mat, slot: -1 })
     return mat
   }
@@ -376,6 +411,7 @@ export class SurfaceLibrary {
   dispose() {
     for (const tex of Object.values(this.maps)) tex.dispose()
     for (const tex of this.airline) tex.dispose()
+    for (const tex of this.roster) tex.dispose()
     this.brand.dispose()
     this.logoWait.length = 0
     this.logoListen.length = 0

@@ -36,6 +36,7 @@ describe('terminal props registry', () => {
     const hi = buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'high', carpets: [{ x: 10, z: 8, w: 12, d: 8 }] })
     const lo = buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'low' })
     expect(hi.getObjectByName('carpets')).toBeDefined()
+    expect(hi.getObjectByName('acousticCeiling')).toBeDefined()
     expect(hi.children.length).toBeGreaterThan(lo.children.length)
   })
   it('builds hall shell and exterior', () => {

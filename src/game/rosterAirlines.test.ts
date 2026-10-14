@@ -88,7 +88,7 @@ describe('roster airlines in the live game', () => {
 
   it('paints a roster flight with its procedural livery', () => {
     const r = ROSTER[20]
-    const paint = rosterLivery(r.id, 'a320neo')
+    const paint = rosterLivery(r.id, r.fleet[0])
     expect(paint).toBeTruthy()
     expect(paint!.airline).toContain(r.id)
   })

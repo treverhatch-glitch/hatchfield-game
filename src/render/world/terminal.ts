@@ -7,7 +7,8 @@ import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
 import { SurfaceLibrary, type LibraryMap } from '../materials/library'
 import { tileByPosition } from '../materials/pack1'
-import { AIRLINE_LOGOS, CARPET_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
+import { CARPET_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
+import { ROSTER } from '../../airlines/roster'
 import type { QualityLevel } from './quality'
 import { MATERIAL_TARGETS } from '../../build/materialTargets'
 import { tint as lighten } from './buildingSkin'
@@ -123,6 +124,7 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
     board: new THREE.MeshBasicMaterial({
       map: fids.textures.departures ?? departuresBoardTexture() ?? textures.board,
       toneMapped: false,
+      side: THREE.FrontSide,
     }),
     machine: lambert(0x8f9aa6),
     kiosk: lambert(0xffffff),
@@ -266,13 +268,14 @@ export class TerminalBuilding {
     }
     this.floorMat = own(
       new THREE.MeshLambertMaterial({
-        map: shared.surfaces.maps.floor,
+        map: shared.surfaces.maps.terrazzo,
         vertexColors: true,
         emissive: 0xffe2b0,
         emissiveIntensity: 0,
       }),
     )
     shared.surfaces.watch(this.floorMat)
+    tileByPosition(this.floorMat, shared.surfaces.repeatFor('terrazzo'))
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
         color: 0xffffff,
@@ -389,8 +392,9 @@ export class TerminalBuilding {
     }
     const beam = this.shared.beam
     const piece = (list: THREE.Matrix4[], color: number) => list.map((matrix) => ({ geo: beam, matrix, color }))
+    this.bakedMesh(piece(slab, 0xffffff), this.floorMat, this.shell, 'terminal-slab', false, true)
     this.bakedMesh(
-      [...piece(slab, 0x9aa0a6), ...piece(columns, 0xe6eaee), ...piece(mullions, 0x5b6672), ...piece(fascia, 0xe6eaee)],
+      [...piece(columns, 0xe6eaee), ...piece(mullions, 0x5b6672), ...piece(fascia, 0xe6eaee)],
       shellM,
       this.shell,
       'terminal-shell',
@@ -458,7 +462,7 @@ export class TerminalBuilding {
     const key = `way|${title}|${sub ?? ''}`
     if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture(title, sub))
     const tex = this.shared.signCache.get(key) ?? null
-    const m = new THREE.MeshBasicMaterial(tex ? { map: tex } : { color: 0x0e2233 })
+    const m = new THREE.MeshBasicMaterial(tex ? { map: tex, side: THREE.FrontSide } : { color: 0x0e2233, side: THREE.FrontSide })
     this.owned.mats.push(m)
     return m
   }
@@ -468,9 +472,9 @@ export class TerminalBuilding {
     const key = `way|GATES|${gateId}`
     if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture('GATES', gateId))
     const tex = this.shared.signCache.get(key) ?? null
-    const mat = new THREE.MeshBasicMaterial(tex ? { map: tex, toneMapped: false } : { color: 0x0e2233 })
+    const mat = new THREE.MeshBasicMaterial(tex ? { map: tex, toneMapped: false, side: THREE.FrontSide } : { color: 0x0e2233, side: THREE.FrontSide })
     this.owned.mats.push(mat)
-    if (tex) this.shared.surfaces.onLogo(slot, (image) => stampWayfindingLogo(tex, 'GATES', gateId, image))
+    if (tex) this.shared.surfaces.onRosterLogo(slot, (image) => stampWayfindingLogo(tex, 'GATES', gateId, image))
     return mat
   }
 
@@ -552,7 +556,7 @@ export class TerminalBuilding {
       const z = cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4))
       const yaw = yawOut(airside)
       this.queueSign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, m(2.2), m(0.7), x, m(3.6), z, yaw, 'shell', -1, '#1b4f72', '#ffffff')
-      const logo = this.shared.surfaces.logoMaterial(i)
+      const logo = this.shared.surfaces.rosterMaterial(i)
       this.owned.mats.push(logo)
       const side = yaw + Math.PI / 2
       this.plane(m(0.9), m(0.9), logo, x + Math.sin(side) * m(1.7), m(3.6), z + Math.cos(side) * m(1.7), yaw, this.shell)
@@ -804,7 +808,7 @@ export class TerminalBuilding {
             continue
           }
           const surface = partSurface(part)
-          const map: LibraryMap | undefined = surface === 'rubber' ? 'floor' : surface
+          const map: LibraryMap | undefined = surface
           const key = `${part.geo.uuid}|${part.mat}|${map ?? ''}`
           const list = desks.get(key) ?? { geo: part.geo, mat: part.mat, surface: map, items: [] }
           list.items.push({ matrix, room })
@@ -821,7 +825,7 @@ export class TerminalBuilding {
             : (PROP_COLORS[part.mat] ?? 0xffffff)
         if (part.detail) {
           const mat = surface
-            ? this.shared.surfaces.material(part.mat, 0xffffff, surface === 'rubber' ? 'floor' : surface === 'shop' ? 'shop' : surface)
+            ? this.shared.surfaces.material(part.mat, 0xffffff, surface)
             : (this.shared.palette[part.mat] ?? this.shared.palette.desk)
           const key = `${part.geo.uuid}|${part.mat}|${surface ?? ''}`
           let batch = detail.get(key)
@@ -855,7 +859,7 @@ export class TerminalBuilding {
                 : lit
         if (bucket) bucket.push({ geo: part.geo, matrix, color })
         else if (surface) {
-          const kind: LibraryMap = surface === 'rubber' ? 'floor' : surface
+          const kind: LibraryMap = surface
           let extra = extraSurfaces.get(kind)
           if (!extra) {
             extra = []
@@ -917,13 +921,13 @@ export class TerminalBuilding {
     if (logoGeo && logoSlots.length) {
       const byMark = new Map<number, THREE.Matrix4[]>()
       logoSlots.forEach((matrix, i) => {
-        const slot = i % AIRLINE_LOGOS.length
+        const slot = i % ROSTER.length
         const list = byMark.get(slot) ?? []
         list.push(matrix)
         byMark.set(slot, list)
       })
       for (const [slot, matrices] of byMark) {
-        const mat = own(this.shared.surfaces.logoMaterial(slot))
+        const mat = own(this.shared.surfaces.rosterMaterial(slot))
         const mesh = instanced(logoGeo, mat, matrices)
         mesh.name = 'desk-logo'
         this.props.add(mesh)

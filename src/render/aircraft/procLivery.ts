@@ -8,7 +8,7 @@
  * High-res is the default; only the texture-quality setting scales the plates down.
  *
  * Callers pass `airline: "<rosterId>@<modelId>"` on the Livery. The aircraft
- * builder does that for any Livery whose airline is a roster id.
+ * builder does that when the airline is on the roster and the model is in its fleet.
  */
 import * as THREE from 'three'
 import { rosterAirline, type RosterAirline, type TailMotif } from '../../airlines/roster'
@@ -71,13 +71,13 @@ export function parseProcLiveryKey(key: string | undefined): { airlineId: string
   return { airlineId: key.slice(0, at), modelId: key.slice(at + 1) }
 }
 
-/** Cached per airline and model. Returns undefined for ids outside the roster. */
+/** Cached per airline and model. Undefined outside the roster, or for a type that airline does not fly. */
 export function procLiverySpec(airlineId: string, modelId: string): ProcLivery | undefined {
   const key = procLiveryKey(airlineId, modelId)
   const hit = specCache.get(key)
   if (hit) return hit
   const airline = rosterAirline(airlineId)
-  if (!airline) return undefined
+  if (!airline || !airline.fleet.includes(modelId)) return undefined
   const scheme = schemeFor(airline, modelId)
   const lightPrimary = luma(airline.primary) > 0.75
   const made: ProcLivery = {
