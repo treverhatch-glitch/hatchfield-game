@@ -28,20 +28,110 @@ export function mat(color: string, o: MatOpts = {}): THREE.MeshStandardMaterial 
       transparent: (o.opacity ?? 1) < 1,
       opacity: o.opacity ?? 1,
     })
+    dress(m, o)
     mats.set(key, m)
   }
   return m
 }
 
+// ---------- PBR dressing: weathering, env reflections, night glow ----------
+const WEATHER_VERT_HEAD = 'varying vec3 vHfW;\n'
+const WEATHER_FRAG_HEAD = `varying vec3 vHfW;
+float hfHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float hfNoise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hfHash(i), hfHash(i + vec2(1.0, 0.0)), f.x), mix(hfHash(i + vec2(0.0, 1.0)), hfHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+`
+/**
+ * Procedural weathering on every opaque kit material: grime band at the wall
+ * base, macro colour drift, faint rain streaks, and roughness break-up. Pure
+ * shader, so it costs nothing in draw calls and shares one program per variant.
+ */
+function weather(m: THREE.MeshStandardMaterial): void {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = WEATHER_VERT_HEAD + sh.vertexShader.replace(
+      '#include <project_vertex>',
+      '#include <project_vertex>\n  vHfW = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+    )
+    sh.fragmentShader = WEATHER_FRAG_HEAD + sh.fragmentShader
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+  float hfN = hfNoise(vHfW.xz * 0.23 + vHfW.y * 0.11);
+  float hfS = hfNoise(vec2((vHfW.x + vHfW.z) * 2.7, vHfW.y * 0.18));
+  float hfBase = mix(0.74, 1.0, smoothstep(0.04, 1.3, vHfW.y));
+  diffuseColor.rgb *= mix(0.9, 1.06, hfN) * (1.0 - 0.08 * hfS * hfS) * hfBase;`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+  roughnessFactor = clamp(roughnessFactor * mix(0.82, 1.16, hfN), 0.04, 1.0);`,
+      )
+  }
+  m.customProgramCacheKey = () => 'hf-weather'
+}
+
+let envTex: THREE.Texture | null = null
+const envMats = new Set<THREE.MeshStandardMaterial>()
+/** Shared studio reflection map for kit materials (metal and glass read as PBR, not plastic). */
+export function setKitEnvironment(t: THREE.Texture | null): void {
+  envTex = t
+  for (const m of envMats) {
+    m.envMap = t
+    m.needsUpdate = true
+  }
+}
+
+interface NightSpec { m: THREE.MeshStandardMaterial; day: THREE.Color; dayI: number; night: THREE.Color; nightI: number }
+const nightMats: NightSpec[] = []
+let nightLevel = 0
+/** Register a material that glows at night (windows, lamps, signs). */
+export function nightGlow(m: THREE.MeshStandardMaterial, night: string, nightI: number): THREE.MeshStandardMaterial {
+  if (nightMats.some((n) => n.m === m)) return m
+  nightMats.push({ m, day: m.emissive.clone(), dayI: m.emissiveIntensity, night: new THREE.Color(night), nightI })
+  if (nightLevel > 0) setNightLevel(nightLevel)
+  return m
+}
+/** 0 = day, 1 = full night. Lerps every registered glow material. Cheap (uniform updates only). */
+export function setNightLevel(k: number): void {
+  const v = Math.min(1, Math.max(0, k))
+  if (Math.abs(v - nightLevel) < 0.002 && v !== 0 && v !== 1) return
+  nightLevel = v
+  for (const n of nightMats) {
+    n.m.emissive.copy(n.day).lerp(n.night, v)
+    n.m.emissiveIntensity = n.dayI + (n.nightI - n.dayI) * v
+  }
+}
+export function getKitEnvironment(): THREE.Texture | null {
+  return envTex
+}
+export function getNightLevel(): number {
+  return nightLevel
+}
+
+function dress(m: THREE.MeshStandardMaterial, o: MatOpts): void {
+  if ((o.opacity ?? 1) >= 1 && (o.ei ?? 0) < 0.6) weather(m)
+  m.envMapIntensity = (o.metal ?? 0.1) > 0.3 ? 0.9 : 0.45
+  if (envTex) m.envMap = envTex
+  envMats.add(m)
+}
+
 export const M = {
   concrete: () => mat('#b9b5ab', { rough: 0.9 }),
-  asphalt: () => mat('#3b3e44', { rough: 0.95 }),
+  asphalt: () => tmat('asphalt_road', '#5a5d63', 2, 2, { rough: 0.95 }),
+  plate: () => tmat('diamond_plate', '#b4bac0', 2, 2, { rough: 0.4, metal: 0.7 }),
   steel: () => mat('#9aa4ad', { rough: 0.35, metal: 0.7 }),
   darkSteel: () => mat('#4a525b', { rough: 0.45, metal: 0.6 }),
   white: () => mat('#eef1f4', { rough: 0.5 }),
-  glass: () => mat('#6fb3dc', { rough: 0.08, metal: 0.5, emissive: '#1a3a55', ei: 0.35 }),
-  glow: (c = '#ffe9a8') => mat(c, { emissive: c, ei: 0.9, rough: 0.4 }),
-  yellow: () => mat('#e7b52a', { rough: 0.5 }),
+  glass: () => nightGlow(mat('#6fb3dc', { rough: 0.08, metal: 0.5, emissive: '#1a3a55', ei: 0.35 }), '#ffc97a', 1.25),
+  /** Office / room glazing: reflective by day, warm lit interior at night. */
+  window: () => nightGlow(mat('#5d8fb0', { rough: 0.06, metal: 0.6, emissive: '#16283a', ei: 0.25 }), '#ffd08a', 1.5),
+  glow: (c = '#ffe9a8') => nightGlow(mat(c, { emissive: c, ei: 0.9, rough: 0.4 }), c, 2.2),
+  frame: () => mat('#3a4048', { rough: 0.35, metal: 0.75 }),
+  coping: () => mat('#7d8288', { rough: 0.5, metal: 0.55 }),
+  kerb: () => mat('#cfccc4', { rough: 0.85 }),
+  yellow: () => tmat('gse_yellow_paint', '#f0c03a', 1, 1, { rough: 0.5 }),
   red: () => mat('#c0392b', { rough: 0.5 }),
   black: () => mat('#1d2126', { rough: 0.7 }),
 }
@@ -114,11 +204,25 @@ export function fence(g: THREE.Object3D, w: number, d: number, h = 1.1, gap = 0)
 }
 
 /** Row of glowing windows on a facade facing +z at depth z. */
-export function windows(g: THREE.Object3D, w: number, y: number, z: number, n: number, ww = 0.5, wh = 0.5, m = M.glass()): void {
+export function windows(g: THREE.Object3D, w: number, y: number, z: number, n: number, ww = 0.5, wh = 0.5, m = M.window()): void {
   for (let i = 0; i < n; i++) {
     const x = -w / 2 + (w / n) * (i + 0.5)
-    box(g, ww, wh, 0.06, m, x, y, z)
+    framedWindow(g, ww, wh, m, x, y, z)
   }
+}
+
+/** One window facing +z: recessed glass, aluminium frame, centre mullion, concrete sill. */
+export function framedWindow(g: THREE.Object3D, ww: number, wh: number, m: THREE.Material, x: number, y: number, z: number): void {
+  const f = M.frame()
+  const t = Math.min(0.06, ww * 0.1)
+  box(g, ww, wh, 0.04, m, x, y, z)
+  box(g, ww + t * 2, t, 0.08, f, x, y + wh, z)
+  box(g, ww + t * 2, t, 0.08, f, x, y - t, z)
+  box(g, t, wh, 0.08, f, x - ww / 2 - t / 2, y, z)
+  box(g, t, wh, 0.08, f, x + ww / 2 + t / 2, y, z)
+  if (ww > 0.7) box(g, t * 0.7, wh, 0.07, f, x, y, z)
+  if (wh > 0.9) box(g, ww, t * 0.7, 0.07, f, x, y + wh * 0.62, z)
+  box(g, ww + t * 3, 0.05, 0.16, M.kerb(), x, y - t - 0.05, z + 0.04)
 }
 
 // ---------- canvas signage ----------
@@ -359,8 +463,78 @@ export type BuildingTex =
   | 'gravel_yard'
   | 'terrazzo_floor'
   | 'chevron_stripe'
+  | 'apron_concrete'
+  | 'asphalt_road'
+  | 'airport_grass'
+  | 'diamond_plate'
+  | 'conveyor_belt'
+  | 'gse_yellow_paint'
+  | 'truck_white_panel'
 
 const photoBase = new Map<string, THREE.Texture>()
+const photoDerived = new Map<string, { normal: THREE.Texture; rough: THREE.Texture } | null>()
+
+/**
+ * Normal + roughness maps derived from the photo's luminance (Sobel height
+ * gradient). Gives every Gemini texture real surface relief under the sun.
+ */
+function derivedMaps(name: string, img: CanvasImageSource & { width: number; height: number }): { normal: THREE.Texture; rough: THREE.Texture } | null {
+  if (photoDerived.has(name)) return photoDerived.get(name)!
+  let out: { normal: THREE.Texture; rough: THREE.Texture } | null = null
+  try {
+    const S = 512
+    const c = document.createElement('canvas')
+    c.width = c.height = S
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, S, S)
+      const src = ctx.getImageData(0, 0, S, S).data
+      const lum = new Float32Array(S * S)
+      for (let i = 0; i < S * S; i++) lum[i] = (src[i * 4]! * 0.299 + src[i * 4 + 1]! * 0.587 + src[i * 4 + 2]! * 0.114) / 255
+      const L = (x: number, y: number) => lum[((y + S) % S) * S + ((x + S) % S)]!
+      const nc = document.createElement('canvas')
+      nc.width = nc.height = S
+      const rc = document.createElement('canvas')
+      rc.width = rc.height = S
+      const nctx = nc.getContext('2d')!
+      const rctx = rc.getContext('2d')!
+      const nd = nctx.createImageData(S, S)
+      const rd = rctx.createImageData(S, S)
+      const k = 3.2
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const dx = (L(x + 1, y - 1) + 2 * L(x + 1, y) + L(x + 1, y + 1)) - (L(x - 1, y - 1) + 2 * L(x - 1, y) + L(x - 1, y + 1))
+        const dy = (L(x - 1, y + 1) + 2 * L(x, y + 1) + L(x + 1, y + 1)) - (L(x - 1, y - 1) + 2 * L(x, y - 1) + L(x + 1, y - 1))
+        let nx = -dx * k
+        let ny = dy * k
+        const inv = 1 / Math.hypot(nx, ny, 1)
+        nx *= inv
+        ny *= inv
+        const i = (y * S + x) * 4
+        nd.data[i] = (nx * 0.5 + 0.5) * 255
+        nd.data[i + 1] = (ny * 0.5 + 0.5) * 255
+        nd.data[i + 2] = (inv * 0.5 + 0.5) * 255
+        nd.data[i + 3] = 255
+        // Darker grain (pits, joints, grime) is rougher; bright worn faces a touch smoother.
+        const r = 255 * (0.72 + 0.28 * (1 - L(x, y)))
+        rd.data[i] = rd.data[i + 1] = rd.data[i + 2] = r
+        rd.data[i + 3] = 255
+      }
+      nctx.putImageData(nd, 0, 0)
+      rctx.putImageData(rd, 0, 0)
+      const mk = (cv: HTMLCanvasElement) => {
+        const t = new THREE.CanvasTexture(cv)
+        t.wrapS = t.wrapT = THREE.RepeatWrapping
+        t.anisotropy = 8
+        return t
+      }
+      out = { normal: mk(nc), rough: mk(rc) }
+    }
+  } catch {
+    out = null
+  }
+  photoDerived.set(name, out)
+  return out
+}
 const photoReady = new Set<string>()
 const photoWaiters = new Map<string, (() => void)[]>()
 let loader: THREE.TextureLoader | null = null
@@ -393,6 +567,27 @@ function loadPhoto(name: BuildingTex, ready: (t: THREE.Texture) => void): void {
   const b = base
   if (photoReady.has(name)) ready(b)
   else photoWaiters.set(name, [...(photoWaiters.get(name) ?? []), () => ready(b)])
+}
+
+const ALL_TEX: BuildingTex[] = [
+  'hangar_cladding', 'warehouse_panels', 'terminal_glass', 'dock_floor', 'tank_steel', 'roof_membrane', 'gravel_yard',
+  'terrazzo_floor', 'chevron_stripe', 'apron_concrete', 'asphalt_road', 'airport_grass', 'diamond_plate', 'conveyor_belt',
+  'gse_yellow_paint', 'truck_white_panel',
+]
+/** Resolve once every building photo texture has loaded (or failed / timed out). Icons wait on this. */
+export function preloadPhotos(timeoutMs = 5000): Promise<void> {
+  if (!hasDom()) return Promise.resolve()
+  return new Promise((resolve) => {
+    let left = ALL_TEX.length
+    const done = () => {
+      if (--left <= 0) resolve()
+    }
+    setTimeout(resolve, timeoutMs)
+    for (const n of ALL_TEX) {
+      if (photoReady.has(n)) done()
+      else loadPhoto(n, () => done())
+    }
+  })
 }
 
 const texMats = new Map<string, THREE.MeshStandardMaterial>()
@@ -430,12 +625,26 @@ export function tmat(name: BuildingTex, color: string, rx = 1, ry = 1, o: MatOpt
       transparent: (o.opacity ?? 1) < 1,
       opacity: o.opacity ?? 1,
     })
+    dress(made, o)
     loadPhoto(name, (base) => {
       const t = base.clone()
       t.wrapS = t.wrapT = THREE.RepeatWrapping
       t.repeat.set(rx, ry)
       t.needsUpdate = true
       made.map = t
+      const img = base.image as (CanvasImageSource & { width: number; height: number }) | undefined
+      const d = img && img.width ? derivedMaps(name, img) : null
+      if (d) {
+        const n = d.normal.clone()
+        n.repeat.set(rx, ry)
+        n.needsUpdate = true
+        const r = d.rough.clone()
+        r.repeat.set(rx, ry)
+        r.needsUpdate = true
+        made.normalMap = n
+        made.normalScale.set(0.55, 0.55)
+        made.roughnessMap = r
+      }
       made.needsUpdate = true
       const waiting = made.userData.mapWaiters as Set<(map: THREE.Texture) => void> | undefined
       if (waiting) for (const cb of waiting) cb(t)

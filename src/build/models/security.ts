@@ -75,5 +75,19 @@ export function guard(g: THREE.Group): void {
   box(g, 7.2, 0.25, 3.0, mat('#3d4a3a'), 0.2, 3.72, 0)
   sign(g, 'CHECKPOINT', '#3d4a3a', '#f2c230', 3.0, 0.4, 0.2, 3.5, 1.52)
   emblem(g, 'eye', '#3d4a3a', 0.8, -2.2, 0.62, 0.82)
+  // Canopy downlights, CCTV mast, tyre-killer strip, painted stop bar and lane arrows.
+  for (const x of [-1.8, 0.2, 2.2]) box(g, 0.9, 0.05, 0.3, M.glow('#f4f8ff'), x, 3.67, 0)
+  box(g, 7.2, 0.08, 0.1, M.frame(), 0.2, 3.97, 1.5)
+  cyl(g, 0.06, 0.08, 3.2, M.darkSteel(), 3.6, 0.12, 1.4, 8)
+  box(g, 0.35, 0.18, 0.18, M.white(), 3.45, 3.2, 1.4).rotation.y = 0.6
+  box(g, 0.08, 0.08, 0.14, M.black(), 3.3, 3.2, 1.5)
+  box(g, 4.4, 0.06, 0.3, M.darkSteel(), 1.4, 0.12, 0.9)
+  for (let i = 0; i < 12; i++) box(g, 0.05, 0.08, 0.12, M.yellow(), -0.7 + i * 0.38, 0.18, 0.9)
+  box(g, 4.4, 0.012, 0.2, M.white(), 1.4, 0.12, 2.1)
+  for (const x of [0.4, 2.6]) {
+    box(g, 0.14, 0.012, 0.9, M.white(), x, 0.12, -0.2)
+    const head = box(g, 0.4, 0.012, 0.4, M.white(), x, 0.12, 0.3)
+    head.rotation.y = Math.PI / 4
+  }
 
 }

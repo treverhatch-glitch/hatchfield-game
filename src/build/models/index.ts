@@ -19,6 +19,7 @@ import { hotel } from './hotel'
 import { parking } from './parking'
 import { busCurb, busDepot, railStation } from './transit'
 import { deicePad, helipad, mro, nightHub } from './aviation'
+import { enrich, mergeStatic } from './detail'
 import { fuelRail, oilTransfer, peopleMover, skywalk, travelator } from './links'
 import type { HotelClass, ParkTerm } from '../../game/types'
 
@@ -99,5 +100,7 @@ export function buildModel(id: string, opts: ModelOpts = {}): THREE.Group | null
   const g = new THREE.Group()
   g.name = `model:${id}`
   fn(g, opts)
+  enrich(g, id)
+  mergeStatic(g)
   return g
 }
