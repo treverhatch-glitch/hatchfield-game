@@ -12,6 +12,15 @@ export {
 } from './valuation.ts'
 export { createNegotiation, NegotiationDesk, faceFor, formatBump } from './engine.ts'
 export type { PanelModel, LineRow } from './engine.ts'
+export {
+  TERM_DAYS,
+  commercialDepositTier,
+  liveDailyMargin,
+  liveTurnRevenue,
+  negotiatedLineFactor,
+  quoteUnit,
+} from './liveFees.ts'
+export type { LiveTurnQuote } from './liveFees.ts'
 export { runNegotiationBot } from './bot.ts'
 export type { BotReport } from './bot.ts'
 export type {

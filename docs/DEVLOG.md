@@ -764,4 +764,9 @@ A fresh passenger game with the sandbox off refused a charter and the cash staye
 
 **Tests.** `tsc -b` clean. Vitest 825 passed, 2 skipped. `oxlint` reports only the warnings already in the tree. The production bundle is `index-C_kqyg27.js`, 1,718.64 kB, with `index-BkTnL8_N.css`.
 
+## Show-up in the live hall — 13 Oct
+
+Departing passengers now release from `createPaxShowUpAdapter` / `stampDeparture`. Lounge lovers are in the hall first, road warriors later, and the entrance still holds three a second. A clump is stretched out to check-in close so the lane does not take the whole bank at once, and nobody is released after that close unless the slot was already late. A late body whose jet has pushed is a missed flight, not a lost passenger. Road warriors take the premium fast-track when that lane is built and staffed, and otherwise the fast-track split on the open security lanes. Lounge lovers pay the lounge and then the shop, walk the standard lane, and wait at the gate until boarding is called. `src/diplomacy` is unchanged.
+
+**Tests.** `tsc -b` clean. Vitest 803 passed, 2 skipped on the show-up branch before this merge. `oxlint` reports only the warnings already in the tree. A prefab six-day run stayed under 1% missed departures, with lost passengers 0 and bags lost 0.
 

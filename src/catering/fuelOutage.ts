@@ -40,3 +40,34 @@ export class FuelOutageMonitor {
     return this.grounded.has(flightId)
   }
 }
+
+/** Negative and non-finite litre inputs count as none. */
+function usableLitres(n: number): number {
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return n
+}
+
+/**
+ * Litres of flights that cannot be fuelled.
+ * Same departure-order reservation as {@link FuelOutageMonitor.evaluate}:
+ * earlier departures take a full load or none, and the remainder stays
+ * available for a later flight that fits. shortLitres is the total litres
+ * of flights that could not be cleared — never negative and never NaN.
+ */
+export function fuelShortfall(
+  availableLitres: number,
+  demands: FuelDemand[],
+): { shortLitres: number; groundedIds: string[] } {
+  let left = usableLitres(availableLitres)
+  let shortLitres = 0
+  const groundedIds: string[] = []
+  for (const d of [...demands].sort((a, b) => a.departAt - b.departAt)) {
+    const need = usableLitres(d.litres)
+    if (left >= need) left -= need
+    else {
+      shortLitres += need
+      groundedIds.push(d.flightId)
+    }
+  }
+  return { shortLitres, groundedIds }
+}

@@ -86,6 +86,20 @@ describe('planShowUp', () => {
     expect(Math.max(...times) - Math.min(...times)).toBeGreaterThan(0.3)
   })
 
+  it('snaps stamped leads onto the entrance cap without dumping the wave', () => {
+    const std = 100
+    const desired = [72, 88, 88, 88, 88, 94, 61, 80]
+    const times = planShowUp({ std, now: 0, tags, intl: false, desired })
+    expect(times).toHaveLength(desired.length)
+    const close = checkInCloseAt(std, false)
+    expect(Math.max(...times)).toBeLessThanOrEqual(close - 1 + 1e-6)
+    expect(Math.max(...times) - Math.min(...times)).toBeGreaterThan(10)
+    expect(perSecond(times)).toBeLessThanOrEqual(MAX_SPAWNS_PER_SEC)
+    const outer = std - gameMinToSim(SHOWUP_LEAD_GAME_MIN)
+    expect(Math.min(...times)).toBeGreaterThanOrEqual(outer - 1e-6)
+    expect(Math.min(...times)).toBeLessThan(80)
+  })
+
   it('puts the first body before landing when STD is approach plus the planned turn', () => {
     const eta = 50
     const std = eta + PLANNED_TURN_SEC

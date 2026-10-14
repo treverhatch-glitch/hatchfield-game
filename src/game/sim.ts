@@ -218,7 +218,8 @@ import {
   type DiplomacyBridge,
 } from './diplomacyBridge.ts'
 import { NegotiationBridge } from './negotiationBridge.ts'
-import { ULCC_IDS } from '../negotiation/index.ts'
+import { SERVICE_IDS, ULCC_IDS } from '../negotiation/index.ts'
+import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
@@ -302,14 +303,24 @@ import {
   type PlacedItem,
   type ZoneId,
 } from './terminal.ts'
+import { createPaxShowUpAdapter, stampDeparture } from '../pax/adapter.ts'
+import type { PaxShowUpAdapter } from '../pax/adapter.ts'
+import {
+  LOUNGE_QUALITY_PER_ROOM,
+  SHOWUP_WINDOWS,
+  businessMixForPersona,
+} from '../pax/config.ts'
 import {
   PLANNED_TURN_SEC,
+  SHOWUP_LEAD_GAME_MIN,
   checkInCloseAt,
   isIntlKind,
   planShowUp,
   type ShowTag,
   type ShowUpPlan,
+  type ShowUpSeat,
 } from '../pax/showup.ts'
+import type { ShowUpFacts } from '../pax/types.ts'
 import {
   NODE_ZONE,
   nodeComfort,
@@ -969,6 +980,8 @@ export class Game {
   schedule: ScheduleSlot[] = []
   /** Per-slot departure show-up. Passengers release before the aircraft exists. */
   showUps: ShowUpPlan[] = []
+  /** Seeded mix and leads. The hall stamps these onto the entrance cap. */
+  private paxAdapter: PaxShowUpAdapter = createPaxShowUpAdapter(0x5382)
   /** Flights that have left the field. The boarding call stays up until those passengers are aboard or miss. */
   private departedFlights = new Set<string>()
   scheduleAuto = true
@@ -1104,8 +1117,26 @@ export class Game {
     return () => this.listeners.delete(fn)
   }
 
+  /** Mid-tick emits collapse into one HUD pass so React does not render per guest. */
+  private suppressEmit = 0
+  private emitWaiting = false
+
   emit() {
+    if (this.suppressEmit > 0) {
+      this.emitWaiting = true
+      return
+    }
+    this.flushEmit()
+  }
+
+  private flushEmit() {
+    this.emitWaiting = false
     for (const fn of this.listeners) fn()
+  }
+
+  private endEmitHold() {
+    this.suppressEmit = Math.max(0, this.suppressEmit - 1)
+    if (this.suppressEmit === 0 && this.emitWaiting) this.flushEmit()
   }
 
   beginNew(difficulty: Difficulty) {
@@ -1252,6 +1283,8 @@ export class Game {
     this.parkingCool = 65
     this.parkRateCool = 0
     this.schedule = []
+    this.showUps = []
+    this.paxAdapter = createPaxShowUpAdapter(0x5382)
     this.scheduleAuto = true
     this.schedulePlanCool = 8
     this.hallMissCool = {}
@@ -2354,9 +2387,9 @@ export class Game {
 
   landingFeeMult(airlineId: AirlineId): number {
     const r = this.rewardOf(airlineId)
+    // Negotiated percents land on each line in contractBill, not as a blanket.
     const base = r === 'biz_priority' ? 1.14 : r === 'cargo_night' ? 1.2 : 1
-    const negotiated = this.negotiationBridge?.feeFactor(airlineId) ?? 1
-    let mult = (negotiated === 1 ? base : base * negotiated) * this.disruptions.feeMultiplier()
+    let mult = base * this.disruptions.feeMultiplier()
     if (!Number.isFinite(mult) || mult <= 0) return 1
     return Math.min(2, Math.max(0.5, mult))
   }
@@ -4360,6 +4393,52 @@ export class Game {
     return this.deposits[airlineId]?.tier ?? 'standard'
   }
 
+  /**
+   * List amount after the deposit tier, then the signed line (percent and freebies).
+   * Walk-ins stay on the list price.
+   */
+  private contractBill(
+    flight: Flight,
+    amount: number,
+    group: 'landing' | 'service',
+    service: ServiceId,
+  ): number {
+    const walkIn = this.walkInFlight(flight)
+    const tier = this.feeTier(flight.airline)
+    const priced =
+      group === 'landing' ? landingCharge(amount, tier, walkIn) : serviceCharge(amount, tier, walkIn)
+    if (walkIn || !(priced > 0)) return priced
+    const factor = this.negotiationBridge?.lineFactor(flight.airline, service) ?? 1
+    if (!Number.isFinite(factor) || factor === 1) return priced
+    return Math.round(priced * Math.max(0, factor))
+  }
+
+  /** Live fee card for the offer sheet. Sliders move these numbers; the ask percent does not. */
+  liveQuote(id: string) {
+    const catalog = AIRLINES[id] ?? this.extraAirlines.find((airline) => airline.id === id)
+    const profile = this.negotiationBridge?.desk.profile(id)
+    const landingBase = catalog?.landing ?? profile?.posted.landing ?? 0
+    const bagsBase = catalog?.bags ?? profile?.posted.bags ?? 0
+    const cateringBase = catalog?.catering ?? profile?.posted.catering ?? 0
+    const pax = catalog
+      ? Math.max(1, Math.round(((catalog.paxMin ?? 0) + (catalog.paxMax ?? 0)) / 2) || 1)
+      : Math.max(1, profile?.seats ?? 1)
+    const turns = (catalog?.tier ?? 0) >= 4 ? 3 : (profile?.flightsPerDay ?? 4)
+    const fuelBase = this.fuelBrand ? FUEL[this.fuelBrand].pump : (profile?.posted.fuel ?? 0)
+    const cateringPay = this.caterBrand ? CATER[this.caterBrand].payoutMult : 1
+    return {
+      landing: this.listed(landingBase, 'landingPerTonne'),
+      paxFee: this.fees.paxFee,
+      bags: this.listed(bagsBase, 'bagsPerBag'),
+      fuel: this.listed(fuelBase, 'fuelMarkupPerLitre'),
+      catering: this.listed(Math.round(cateringBase * cateringPay), 'cateringPerCart'),
+      parking: this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'),
+      pax,
+      turnsPerDay: turns,
+      handlingPerDay: catalog ? Math.round(landingBase * 0.35) : (profile?.handlingPerDay ?? Math.round(landingBase * 0.35)),
+    }
+  }
+
   private walkInFlight(f: Flight): boolean {
     return Boolean(f.ga) || f.airline === 'ga'
   }
@@ -4400,20 +4479,25 @@ export class Game {
   }
 
   private noteCommercialSign(id: AirlineId, airline: Airline) {
+    const terms = this.negotiationBridge?.signedTerms(id) ?? null
     const starter = this.signed.length === 1
-    this.commercialLead[id] = openLead({
+    const lead = openLead({
       clock: this.clock,
       starter,
       tier: airline.tier,
       hub: this.isHub(id),
     })
+    if (terms?.freebies.waivedLeadTime) lead.leadDays = 0
+    this.commercialLead[id] = lead
     if (this.feeStandingApplied !== 0) this.adjustHeat(id, this.feeStandingApplied)
+    const day = Math.floor(Math.max(0, this.clock) / 180)
     const taken = signDeposit({
       airlineId: id,
-      tier: this.depositTier,
+      tier: terms ? commercialDepositTier(terms.deposit) : this.depositTier,
       landingFee: airline.landing,
-      day: Math.floor(Math.max(0, this.clock) / 180),
+      day,
     })
+    if (terms) taken.account.termEndDay = day + terms.termMonths * TERM_DAYS
     this.deposits[id] = taken.account
     this.postDepositEntry(taken.entry)
   }
@@ -5337,14 +5421,17 @@ export class Game {
   /** Fallback wave (boarding with no banked plan, or a direct seed). Drips — never a single dump. */
   private releaseDepartureWave(wave: HallGuest[], f: Flight, open: Set<HallNode>) {
     const std = f.std ?? this.clock + PLANNED_TURN_SEC
-    const times = planShowUp({
-      std,
-      now: this.clock,
-      tags: wave.map((g) => g.tag),
-      intl: isIntlKind(f.kind),
-    })
+    const intl = isIntlKind(f.kind)
+    const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.activeHall() ?? this.fits[0] ?? null
+    const persona = this.airline(f.airline).persona
+    const hallId = fit ? this.hallKey(fit) : ''
+    const drawn = this.composeDeparture(wave.length, std, intl, persona, fit, hallId)
     wave.forEach((g, i) => {
-      const at = times[i] ?? this.clock
+      const tag = drawn.tags[i]
+      const seat = drawn.seats[i]
+      if (tag) g.tag = tag
+      if (seat) this.paintShowUp(g, seat)
+      const at = drawn.releases[i] ?? this.clock
       if (at <= this.clock + 0.001) this.openDepartingGuest(g, open)
       else {
         g.releaseAt = at
@@ -5354,6 +5441,163 @@ export class Game {
         g.thought = 'On the way to the doors'
       }
     })
+  }
+
+  /** Lounge quality, an open fast-track, and how business-heavy this carrier is. */
+  private showUpFactsFor(fit: TerminalFit | null, intl: boolean, persona: string): ShowUpFacts {
+    const rooms = Math.max(0, fit?.rooms.lounge ?? 0)
+    return {
+      loungeQuality: Math.min(1, rooms * LOUNGE_QUALITY_PER_ROOM),
+      fastTrackAvailable: this.fastTrackOpen(fit),
+      intl,
+      businessMix: businessMixForPersona(persona),
+    }
+  }
+
+  /**
+   * Premium fast-track when that module is on the sim and a lane is built.
+   * Otherwise any open security lane is the fast-track.
+   */
+  private fastTrackOpen(fit: TerminalFit | null): boolean {
+    const built = this.premium?.built
+    if (Array.isArray(built) && built.some((b) => String(b.itemId ?? '').startsWith('fast_track'))) {
+      return true
+    }
+    if (!fit) return false
+    const lane = laneStats({
+      premade: fit.premade ?? false,
+      redesigned: fit.redesigned,
+      tier: fit.tier,
+      items: (fit.items ?? []) as PlacedItem[],
+      roomsSecurity: fit.rooms.security ?? 0,
+    })
+    return lane.servers > 0
+  }
+
+  /** Draw a wave from the show-up adapter and snap the leads onto the entrance cap. */
+  private composeDeparture(
+    count: number,
+    std: number,
+    intl: boolean,
+    persona: string,
+    fit: TerminalFit | null,
+    hallId: string,
+    exceptSlot?: string,
+  ): { tags: ShowTag[]; releases: number[]; seats: ShowUpSeat[] } {
+    this.paxAdapter.setFacts(this.showUpFactsFor(fit, intl, persona))
+    const profiles = this.paxAdapter.sample(count)
+    const stamps = profiles.map((p) => stampDeparture(p, std))
+    const tags = stamps.map((s) => s.walletTag)
+    const seats: ShowUpSeat[] = stamps.map((s, i) => ({
+      segment: s.segment,
+      preferFastTrack: s.preferFastTrack,
+      amenity: s.amenity,
+      leadSimSec: profiles[i]?.leadSimSec ?? 0,
+      spendLounge: s.spend.lounge,
+      spendAmenity: s.spend.amenity,
+      willLounge: s.willingness.lounge,
+      willAmenity: s.willingness.amenity,
+      moodArrive: s.mood.onArrival,
+      moodFast: s.mood.onFastTrack,
+      moodStandard: s.mood.onStandardQueue,
+      moodLounge: s.mood.onLoungeVisit,
+      moodMiss: s.mood.onLoungeMiss,
+      intlApplied: intl,
+    }))
+    const releases = planShowUp({
+      std,
+      now: this.clock,
+      tags,
+      intl,
+      taken: this.entranceReleaseTimes(hallId, exceptSlot),
+      desired: stamps.map((s) => s.releaseAt),
+    })
+    return this.orderDeparture(tags, releases, seats)
+  }
+
+  /** Keep tag, release, and seat aligned, earliest release first. */
+  private orderDeparture(
+    tags: ShowTag[],
+    releases: number[],
+    seats: ShowUpSeat[],
+  ): { tags: ShowTag[]; releases: number[]; seats: ShowUpSeat[] } {
+    const order = releases.map((_, i) => i).sort((a, b) => releases[a] - releases[b] || a - b)
+    return {
+      tags: order.map((i) => tags[i]),
+      releases: order.map((i) => releases[i]),
+      seats: order.map((i) => seats[i]),
+    }
+  }
+
+  /** Move unreleased bodies when STD shifts, using the lead they were stamped with. */
+  private restampRemaining(plan: ShowUpPlan) {
+    if (!plan.seats || plan.seats.length !== plan.tags.length) return
+    if (plan.spawned >= plan.tags.length) return
+    const seats = plan.seats.slice(plan.spawned)
+    const tags = plan.tags.slice(plan.spawned)
+    const desired = seats.map((s) => plan.std - s.leadSimSec)
+    const fresh = planShowUp({
+      std: plan.std,
+      now: this.clock,
+      tags,
+      intl: plan.intl,
+      taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
+      desired,
+    })
+    const ordered = this.orderDeparture(tags, fresh, seats)
+    plan.tags = [...plan.tags.slice(0, plan.spawned), ...ordered.tags]
+    plan.releases = [...plan.releases.slice(0, plan.spawned), ...ordered.releases]
+    plan.seats = [...plan.seats.slice(0, plan.spawned), ...ordered.seats]
+  }
+
+  /** Wide-body banks show a little earlier. Applied once per unreleased seat. */
+  private applyIntlLead(plan: ShowUpPlan) {
+    if (!plan.intl || !plan.seats) return
+    const cap = SHOWUP_LEAD_GAME_MIN / GAME_MINUTES_PER_SIM_SECOND
+    let changed = false
+    for (let i = plan.spawned; i < plan.seats.length; i++) {
+      const seat = plan.seats[i]
+      if (!seat || seat.intlApplied) continue
+      const extraMin = SHOWUP_WINDOWS[seat.segment].intlExtra
+      seat.leadSimSec = Math.min(cap, seat.leadSimSec + extraMin / GAME_MINUTES_PER_SIM_SECOND)
+      seat.intlApplied = true
+      changed = true
+    }
+    if (changed) this.restampRemaining(plan)
+  }
+
+  private paintShowUp(g: HallGuest, seat: ShowUpSeat) {
+    g.showUp = seat
+    g.happiness = Math.max(0, Math.min(100, g.happiness + seat.moodArrive))
+    if (seat.segment === 'lounge_lover') {
+      g.needs.energy = Math.max(g.needs.energy, 72)
+      g.needs.shop = Math.max(g.needs.shop, 74)
+      g.needs.boarding = Math.max(g.needs.boarding, 58)
+      g.prefs.lounge = Math.max(g.prefs.lounge, 0.92)
+      g.prefs.shop = Math.max(g.prefs.shop, 0.88)
+      const bill = Math.max(0, seat.spendLounge) + Math.max(0, seat.spendAmenity)
+      const floor = Math.ceil(bill / 0.75) + 12
+      if (g.wallet < floor) g.wallet = floor
+    } else if (seat.segment === 'road_warrior') {
+      g.needs.hunger = Math.min(g.needs.hunger, 28)
+      g.prefs.lounge = Math.min(g.prefs.lounge, 0.15)
+    }
+  }
+
+  /** The jet has pushed. A body that has not reached the gate is a miss, not a lost passenger. */
+  private planFlightGone(plan: ShowUpPlan): boolean {
+    if (!plan.flightId) return false
+    const f = this.flights.find((x) => x.id === plan.flightId)
+    if (!f) return this.departedFlights.has(plan.flightId)
+    return f.phase === 'pushback' || f.phase === 'taxi_out' || f.phase === 'takeoff' || f.phase === 'gone'
+  }
+
+  private noteCleanMiss(plan: ShowUpPlan) {
+    this.missedFlights += 1
+    this.hallMissNews(
+      `late-${plan.slotId}`,
+      `Late passenger on ${plan.slotId.slice(0, 12)} — the flight had left.`,
+    )
   }
 
   private visualDepartureCount(f: Flight): number {
@@ -5379,25 +5623,18 @@ export class Game {
     if (a.kind === 'cargo') return
     const fit = this.activeHall() ?? this.fits[0]
     if (!fit) return
-    const tags: ShowTag[] = []
-    for (let i = 0; i < 12; i++) tags.push(rollPaxTag(a.persona))
     const std = slot.eta + PLANNED_TURN_SEC
     const hallId = this.hallKey(fit)
-    const releases = planShowUp({
-      std,
-      now: this.clock,
-      tags,
-      intl: false,
-      taken: this.entranceReleaseTimes(hallId),
-    })
+    const drawn = this.composeDeparture(12, std, false, a.persona, fit, hallId)
     this.showUps.push({
       slotId: slot.id,
       std,
       hallId,
       airlineId: slot.airline,
       intl: false,
-      tags,
-      releases,
+      tags: drawn.tags,
+      releases: drawn.releases,
+      seats: drawn.seats,
       spawned: 0,
       flightId: null,
       closed: false,
@@ -5471,12 +5708,18 @@ export class Game {
   }
 
   private spawnShowUpGuest(plan: ShowUpPlan, open: Set<HallNode>) {
+    if (this.planFlightGone(plan)) {
+      this.noteCleanMiss(plan)
+      return
+    }
     const tag = plan.tags[plan.spawned] ?? 'budget'
     const flightId = plan.flightId ?? `slot:${plan.slotId}`
     const g = spawnHallGuest(flightId, 'depart', tag, {
       airlineId: plan.airlineId,
       hallId: plan.hallId,
     })
+    const seat = plan.seats?.[plan.spawned]
+    if (seat) this.paintShowUp(g, seat)
     const persona = this.airline(plan.airlineId as AirlineId).persona
     g.serviceCabin = cabinFromGuest(tag, persona, g.id)
     const modes = this.pickGuestMode(tag, persona, 'depart')
@@ -5502,6 +5745,10 @@ export class Game {
     const flight = plan.flightId ? this.flights.find((f) => f.id === plan.flightId) : undefined
     if (flight) flight.std = std
     if (plan.spawned >= plan.tags.length) return
+    if (plan.seats && plan.seats.length === plan.tags.length) {
+      this.restampRemaining(plan)
+      return
+    }
     const remain = plan.tags.slice(plan.spawned)
     const fresh = planShowUp({
       std,
@@ -5544,27 +5791,32 @@ export class Game {
       this.tuneDepartureGuest(g, f)
     }
     const want = this.visualDepartureCount(f)
+    const persona = this.airline(f.airline).persona
     if (want > plan.tags.length) {
-      const extra: ShowTag[] = []
-      const persona = this.airline(f.airline).persona
-      for (let i = plan.tags.length; i < want; i++) extra.push(rollPaxTag(persona))
-      const more = planShowUp({
-        std: plan.std,
-        now: this.clock,
-        tags: extra,
-        intl: plan.intl,
-        taken: this.entranceReleaseTimes(plan.hallId, plan.slotId),
-      })
-      plan.tags.push(...extra)
-      plan.releases.push(...more)
+      const extra = this.composeDeparture(
+        want - plan.tags.length,
+        plan.std,
+        plan.intl,
+        persona,
+        fit ?? null,
+        plan.hallId,
+        plan.slotId,
+      )
+      plan.tags.push(...extra.tags)
+      plan.releases.push(...extra.releases)
+      plan.seats = [...(plan.seats ?? []), ...extra.seats]
     } else if (want < plan.tags.length) {
       const cut = Math.min(plan.tags.length - want, plan.tags.length - plan.spawned)
       if (cut > 0) {
         plan.tags.splice(plan.tags.length - cut, cut)
         plan.releases.splice(plan.releases.length - cut, cut)
+        plan.seats?.splice(plan.seats.length - cut, cut)
       }
     }
-    if (plan.intl && plan.spawned < plan.tags.length) {
+    if (plan.seats && plan.seats.length === plan.tags.length) {
+      this.applyIntlLead(plan)
+      this.restampRemaining(plan)
+    } else if (plan.intl && plan.spawned < plan.tags.length) {
       const remain = plan.tags.slice(plan.spawned)
       const fresh = planShowUp({
         std: plan.std,
@@ -6197,6 +6449,7 @@ export class Game {
       if (g.job === 'depart' && g.needs.boarding <= 0 && g.node !== 'gate') {
         g.happiness -= 30
         g.dead = true
+        g.lost = false
         this.reputation = Math.max(0, this.reputation - 0.8)
         const aid = this.guestAirlineId(g)
         if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
@@ -6363,6 +6616,100 @@ export class Game {
   }
 
   /**
+   * After the scanner. Lounge lovers sit and shop while the flight is still
+   * on the ground. A boarding call sends everyone to the gate.
+   */
+  private routeAfterSecurity(g: HallGuest, open: Set<HallNode>) {
+    const seat = g.showUp
+    if (seat && this.flightBoardingCall(g) && open.has('gate')) {
+      this.routeGuest(g, 'gate', open)
+      return
+    }
+    if (seat?.amenity === 'lounge' && !g.loungeDone) {
+      if (open.has('lounge')) {
+        this.routeGuest(g, 'lounge', open)
+        return
+      }
+      g.happiness = Math.max(0, Math.min(100, g.happiness + seat.moodMiss))
+      g.thought = 'Wanted a lounge — the hall has none'
+      g.loungeDone = true
+    }
+    if (
+      seat?.amenity === 'lounge' &&
+      g.loungeDone &&
+      !g.shopDone &&
+      seat.spendAmenity > 0 &&
+      open.has('shop')
+    ) {
+      this.routeGuest(g, 'shop', open)
+      return
+    }
+    if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
+    else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
+    else if (g.needs.shop > 70 && open.has('shop') && !g.shopDone) this.routeGuest(g, 'shop', open)
+    else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+  }
+
+  /** Lounge lovers pay the stamped lounge price, then walk to the shops. */
+  private chargeStampedLounge(g: HallGuest, open: Set<HallNode>) {
+    const seat = g.showUp
+    if (!seat) return
+    g.loungeDone = true
+    const price = Math.max(0, Math.round(seat.spendLounge))
+    g.needs.energy = Math.max(0, g.needs.energy - 40)
+    let receipt = 'Sat in the lounge'
+    if (price > 0 && seat.willLounge >= 0.5) {
+      g.prefs.lounge = Math.max(g.prefs.lounge, 0.95)
+      const buy = this.tryGuestPay(g, price, 'lounge', true)
+      if (buy.ok) {
+        g.happiness = Math.min(100, g.happiness + seat.moodLounge)
+        receipt = `Lounge (−$${price})`
+      } else {
+        g.happiness = Math.min(100, g.happiness + Math.max(1, Math.round(seat.moodLounge * 0.25)))
+        receipt = 'Lounge fee too rich'
+      }
+    } else {
+      g.happiness = Math.min(100, g.happiness + Math.max(1, Math.round(seat.moodLounge * 0.4)))
+    }
+    if (!g.shopDone && seat.spendAmenity > 0 && open.has('shop') && !this.flightBoardingCall(g)) {
+      this.routeGuest(g, 'shop', open)
+    } else if (open.has('gate')) {
+      this.routeGuest(g, 'gate', open)
+    }
+    g.thought = receipt
+  }
+
+  /** Lounge lovers pay the stamped shop price once, then head for the gate. */
+  private chargeStampedShop(g: HallGuest, open: Set<HallNode>) {
+    const seat = g.showUp
+    if (!seat) return
+    g.shopDone = true
+    const price = Math.max(0, Math.round(seat.spendAmenity))
+    if (this.shopShelf < 1) {
+      this.walkOffEmptyShelf(g, price, 'wish they had a souvenir', open)
+      if (open.has('gate')) this.routeGuest(g, 'gate', open)
+      return
+    }
+    g.prefs.shop = Math.max(g.prefs.shop, 0.95)
+    let receipt = 'Browsed the shop'
+    if (seat.willAmenity >= 0.5) {
+      const buy = this.tryGuestPay(g, price, 'shop', true)
+      if (buy.ok) {
+        g.needs.shop = Math.max(0, g.needs.shop - 60)
+        this.shopShelf -= 1
+        g.happiness = Math.min(100, g.happiness + 5)
+        receipt = `Shop (−$${price})`
+      } else {
+        g.needs.shop = Math.max(0, g.needs.shop - 20)
+      }
+    } else {
+      g.needs.shop = Math.max(0, g.needs.shop - 20)
+    }
+    if (open.has('gate')) this.routeGuest(g, 'gate', open)
+    g.thought = receipt
+  }
+
+  /**
    * One prefab lane serves `servers` people at a time. Everyone else waits.
    * Past the comfort cap the line gets slower and angrier, flights slip,
    * and the advisor asks for an upgrade. Nobody is marked lost.
@@ -6390,9 +6737,10 @@ export class Game {
         o.node === 'security' &&
         !o.clearedSec,
     )
-    const fast = g.tag === 'premium'
-    const pool = peers.filter((o) => (o.tag === 'premium') === fast)
-    const premiumHere = peers.some((o) => o.tag === 'premium')
+    const wantsFast = (o: HallGuest) => (o.showUp ? o.showUp.preferFastTrack : o.tag === 'premium')
+    const fast = wantsFast(g)
+    const pool = peers.filter((o) => wantsFast(o) === fast)
+    const fastHere = peers.some((o) => wantsFast(o))
     const wear = Math.max(
       fit?.wearSec ?? 0,
       ...(fit?.items ?? [])
@@ -6401,7 +6749,7 @@ export class Game {
     )
     let servers = lane.servers
     if (fast) servers = Math.min(lane.servers, 1)
-    else if (premiumHere && lane.servers > 1) servers = lane.servers - 1
+    else if (fastHere && lane.servers > 1) servers = lane.servers - 1
     let svc = slowedService(lane.serviceSec, wear)
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
     svc *= this.disruptions.screeningMultiplier()
@@ -6425,10 +6773,12 @@ export class Game {
           if (laneItem) laneItem.wear = Math.min(100, laneItem.wear + lane.wearPerUse)
         }
         g.thought = 'Cleared security — the gates are open'
-        if (g.needs.bladder > 62 && open.has('bathroom')) this.routeGuest(g, 'bathroom', open)
-        else if (g.needs.hunger > 58 && open.has('food')) this.routeGuest(g, 'food', open)
-        else if (g.needs.shop > 70 && open.has('shop')) this.routeGuest(g, 'shop', open)
-        else if (open.has('gate')) this.routeGuest(g, 'gate', open)
+        const seat = g.showUp
+        if (seat) {
+          const delta = seat.preferFastTrack ? seat.moodFast : seat.moodStandard
+          g.happiness = Math.max(0, Math.min(100, g.happiness + delta))
+        }
+        this.routeAfterSecurity(g, open)
       }
       return
     }
@@ -8171,7 +8521,9 @@ export class Game {
             : `Ate (−$${pay})`      }
       }
     }
-    if (n === 'shop') {
+    if (n === 'shop' && g.showUp?.amenity === 'lounge' && !g.shopDone && g.showUp.spendAmenity > 0) {
+      this.chargeStampedShop(g, open)
+    } else if (n === 'shop') {
       const pay = tagPrice(g.tag, 14, 24, 36, 48)
       if (this.shopShelf < 1) {
         this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
@@ -8194,7 +8546,9 @@ export class Game {
       }
       }
     }
-    if (n === 'lounge' && tagSpendsUp(g.tag)) {
+    if (n === 'lounge' && g.showUp?.amenity === 'lounge' && !g.loungeDone) {
+      this.chargeStampedLounge(g, open)
+    } else if (n === 'lounge' && tagSpendsUp(g.tag)) {
       g.needs.energy = Math.max(0, g.needs.energy - 45)
       let happy = 8
       let pay = 0
@@ -8325,13 +8679,17 @@ export class Game {
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
       const called = this.flightBoardingCall(g)
-      if (called || (g.needs.hunger < 40 && g.needs.bladder < 40)) {
+      const early = !g.showUp && g.needs.hunger < 40 && g.needs.bladder < 40
+      if (called || early) {
         g.needs.boarding = 0
         g.dead = true
+        g.lost = false
+        g.thought = 'Boarded'
         this.paxServed += 1
         this.reputation = Math.min(100, this.reputation + 0.4)
       } else {
         g.needs.boarding = Math.max(g.needs.boarding, 8)
+        if (g.showUp) g.thought = 'Waiting for boarding'
       }
     }
     if (n === 'claim' && g.job === 'arrive') {
@@ -8889,6 +9247,17 @@ export class Game {
     this.emit()
   }
 
+  /** Put the open ask on this carrier's target price and a standard deposit. */
+  matchNegotiationTarget() {
+    const desk = this.negotiationBridge?.desk
+    const session = desk?.session
+    if (!desk || !session || session.status !== 'open') return
+    const pct = (desk.personality(session.airlineId).targetCost - 1) * 100
+    for (const service of SERVICE_IDS) desk.setFee(service, pct)
+    desk.setDeposit('standard')
+    this.emit()
+  }
+
   toggleNegotiationFreebie(id: string) {
     this.negotiationDesk().toggleFreebie(id)
     this.emit()
@@ -8958,6 +9327,7 @@ export class Game {
           },
           notify: (message, tone) => this.pushNews(message, tone),
           ensureCarrier: (profile) => this.ensureNegotiationCarrier(profile),
+          liveQuote: (id) => this.liveQuote(id),
         },
         this.diplomacySeed,
       )
@@ -10176,6 +10546,20 @@ export class Game {
     return payrollAmount(lines, this.fieldOpsMult())
   }
 
+  /**
+   * What the next operating day will bill: staff floor, landside (already a
+   * daily total) plus pillar and premium upkeep, plot holding, and the city
+   * levy on today's cash. The HUD forecast uses this; it does not post.
+   */
+  dailyOperatingCharges(): { payroll: number; upkeep: number; holding: number; levy: number } {
+    return {
+      payroll: this.payrollPreview(),
+      upkeep: this.landsideUpkeep() + this.pillarUpkeepBill() + dailyUpkeep(this.premium),
+      holding: this.site ? this.dailyHoldingQuote() : 0,
+      levy: cityLevy(this.cash, this.sandbox),
+    }
+  }
+
   hireJanitor() {
     if (this.janitors >= 6) {
       this.pushNews('Janitor crew maxed (6).', 'bad')
@@ -10551,7 +10935,11 @@ export class Game {
 
   private rulePremiumScreen(g: HallGuest) {
     if (g.premiumScreen || g.job !== 'depart') return
-    const cabin = g.serviceCabin ?? cabinFromTag(g.tag)
+    // Show-up stamps the lane on preferFastTrack. Lounge lovers carry a premium
+    // wallet and still walk the standard scanners.
+    if (g.showUp && !g.showUp.preferFastTrack) return
+    let cabin = g.serviceCabin ?? cabinFromTag(g.tag)
+    if (g.showUp?.preferFastTrack && !expectsHigherService(cabin)) cabin = 'business'
     const screened = screenPassengers(
       this.premium,
       [{ id: g.id, cabin, airlineId: g.airlineId ?? 'field' }],
@@ -12966,20 +13354,28 @@ export class Game {
           this.landingFeeMult(f.airline) *
           this.diplomacyFeeFactor(f.airline)
         const base = Math.round(airline.landing * mult)
-        const walkIn = this.walkInFlight(f)
         this.earn(
-          landingCharge(this.listed(base, 'landingPerTonne'), this.feeTier(f.airline), walkIn),
+          this.contractBill(f, this.listed(base, 'landingPerTonne'), 'landing', 'landing'),
           `${f.flightNo} landing (${f.airframeName})`,
           f,
           'landing_fees',
         )
         this.earn(
-          landingCharge(f.pax * this.fees.paxFee, this.feeTier(f.airline), walkIn),
+          this.contractBill(f, f.pax * this.fees.paxFee, 'landing', 'pax'),
           `${f.flightNo} passenger fees`,
           f,
           'passenger_fees',
           false,
         )
+        if (this.negotiationBridge?.signedTerms(f.airline)) {
+          this.earn(
+            this.contractBill(f, this.listed(GA_PARK_DAY_RATE, 'aircraftParkingPerDay'), 'service', 'parking'),
+            `${f.flightNo} aircraft parking`,
+            f,
+            'parking_fees',
+            false,
+          )
+        }
       }
       if (
         (f.craft ?? 'jet') === 'jet' &&
@@ -13433,7 +13829,7 @@ export class Game {
           const units = f.bagUnits ?? estimateFlightBagUnits(airline.persona, f.pax)
           const mult = clamp(0.75 + units / 180, 0.75, 1.55)
           this.earn(
-            serviceCharge(this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), this.feeTier(f.airline), this.walkInFlight(f)),
+            this.contractBill(f, this.listed(Math.round(airline.bags * mult), 'bagsPerBag'), 'service', 'bags'),
             `${f.flightNo} bag handling`,
             f,
             'baggage_fees',
@@ -13504,7 +13900,7 @@ export class Game {
       this.fuelLoads -= 1
       this.drawTankLitres(LITRES_PER_LEGACY_LOAD)
       this.earn(
-        serviceCharge(this.listed(FUEL[this.fuelBrand].pump, 'fuelMarkupPerLitre'), this.feeTier(f.airline), this.walkInFlight(f)),
+        this.contractBill(f, this.listed(FUEL[this.fuelBrand].pump, 'fuelMarkupPerLitre'), 'service', 'fuel'),
         `${f.flightNo} fuel`,
         f,
         'fuel_sales',
@@ -13516,7 +13912,7 @@ export class Game {
       f.waitingOn.catering = false
       const pay = Math.round(airline.catering * CATER[this.caterBrand].payoutMult)
       this.earn(
-        serviceCharge(this.listed(pay, 'cateringPerCart'), this.feeTier(f.airline), this.walkInFlight(f)),
+        this.contractBill(f, this.listed(pay, 'cateringPerCart'), 'service', 'catering'),
         `${f.flightNo} catering (${CATER[this.caterBrand].name})`,
         f,
         'catering_fees',
@@ -14831,6 +15227,8 @@ export class Game {
       this.emit()
     }
     if (!this.site || this.speed === 0) return
+    this.suppressEmit++
+    try {
     const step = dt * this.speed
     this.clock += step
     this.scanAlerts(step)
@@ -15622,12 +16020,15 @@ export class Game {
     this.people = this.people.filter((p) => p.stage < 99)
 
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
-    // At 5x, require more sim-time between emits so HUD stays ~2–3 Hz real-time.
+    // At 5× the canvases keep drawing, but the HUD string updates about once a second.
     this.uiAcc += step
-    const uiEvery = this.speed >= 5 ? 1.6 : this.speed >= 3 ? 0.7 : 0.4
+    const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {
       this.uiAcc = 0
       this.emit()
+    }
+    } finally {
+      this.endEmitHold()
     }
   }
 

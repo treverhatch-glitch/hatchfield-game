@@ -196,16 +196,19 @@ export class World {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = pickQuality()
+    const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: QUALITY[quality].msaa,
+      antialias: preset.msaa,
       powerPreference: 'high-performance',
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25))
+    // Low (what SwiftShader auto-picks) stays under 1× with the shadow map off.
+    const pixelCap = quality === 'low' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
-    this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.BasicShadowMap
+    this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
+    this.renderer.shadowMap.type = preset.shadowType
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -221,8 +224,11 @@ export class World {
     this.scene.add(hemi)
     this.sun = new THREE.DirectionalLight('#fff3d4', 1.2)
     this.sun.position.set(40, 70, 18)
-    this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(1024, 1024)
+    this.sun.castShadow = preset.shadowMapSize > 0
+    this.sun.shadow.mapSize.set(
+      preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024,
+      preset.shadowMapSize > 0 ? preset.shadowMapSize : 1024,
+    )
     this.sun.shadow.camera.near = 10
     this.sun.shadow.camera.far = 400
     this.sun.shadow.camera.left = -140
