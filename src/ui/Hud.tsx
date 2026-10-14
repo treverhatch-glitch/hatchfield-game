@@ -73,6 +73,7 @@ import { ControlsPanel } from './ControlsPanel'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
+import { FinanceScreen } from '../reports/FinanceScreen.tsx'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
@@ -188,7 +189,7 @@ type PanelId =
   | 'staff'
   | null
 
-type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
+type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts' | 'finance'
 
 const ECO_TABS: { id: EcoTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -196,6 +197,7 @@ const ECO_TABS: { id: EcoTab; label: string }[] = [
   { id: 'expenses', label: 'Expenses' },
   { id: 'loans', label: 'Loans' },
   { id: 'charts', label: 'Charts' },
+  { id: 'finance', label: 'Finance' },
 ]
 
 function toolCost(tool: Tool): number | null {
@@ -1270,6 +1272,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         series={[{ name: 'Cargo', color: '#c9a227', values: game.econHist.map((p) => p.cargo) }]}
                       />
                     </section>
+                  ) : null}
+                  {ecoTab === 'finance' ? (
+                    <FinanceScreen game={game} />
                   ) : null}
                   {ecoTab === 'overview' || ecoTab === 'loans' ? (
                   <section>
