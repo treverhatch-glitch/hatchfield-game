@@ -1,7 +1,4 @@
-import { ServiceYard, type YardBuilding } from '../build/serviceYard'
-import { SERVICE_POINTS, type VehicleKind } from '../build/servicePoints'
 import { finiteAmount } from '../disruptions/engine.ts'
-import { chooseLot, lotCells, lotSize, type Lot } from '../build/footprints.ts'
 import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
@@ -11,6 +8,9 @@ import {
   StandingAdvisor,
   type StandingCauseCategory,
 } from './standingAdvisor.ts'
+import { ServiceYard, type YardBuilding } from '../build/serviceYard'
+import { SERVICE_POINTS, type VehicleKind } from '../build/servicePoints'
+import { chooseLot, lotCells, lotSize, type Lot } from '../build/footprints.ts'
 import {
   AIRLINES,
   airlineList,

@@ -624,6 +624,24 @@ export function preloadPhotos(timeoutMs = 5000): Promise<void> {
   })
 }
 
+const deriveQueue: (() => void)[] = []
+let deriveScheduled = false
+/** Run heavy derived-map work one job per idle slot (falls back to a timer). */
+function idleDerive(job: () => void): void {
+  deriveQueue.push(job)
+  if (deriveScheduled) return
+  deriveScheduled = true
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback
+  const next = () => {
+    const j = deriveQueue.shift()
+    if (j) j()
+    if (deriveQueue.length) schedule()
+    else deriveScheduled = false
+  }
+  const schedule = () => (ric ? ric(next, { timeout: 2000 }) : setTimeout(next, 16))
+  schedule()
+}
+
 const texMats = new Map<string, THREE.MeshStandardMaterial>()
 /**
  * Material tinted by colour that picks up a repeat-wrapped sRGB photo map once it
@@ -667,17 +685,23 @@ export function tmat(name: BuildingTex, color: string, rx = 1, ry = 1, o: MatOpt
       t.needsUpdate = true
       made.map = t
       const img = base.image as (CanvasImageSource & { width: number; height: number }) | undefined
-      const d = img && img.width ? derivedMaps(name, img) : null
-      if (d) {
-        const n = d.normal.clone()
-        n.repeat.set(rx, ry)
-        n.needsUpdate = true
-        const r = d.rough.clone()
-        r.repeat.set(rx, ry)
-        r.needsUpdate = true
-        made.normalMap = n
-        made.normalScale.set(0.55, 0.55)
-        made.roughnessMap = r
+      // Relief maps are a 1024² Sobel pass per photo: run them off the load path, one per idle slot,
+      // so page load and first frames aren't blocked (CI page.goto networkidle timeouts on #258).
+      if (img && img.width) {
+        idleDerive(() => {
+          const d = derivedMaps(name, img)
+          if (!d) return
+          const n = d.normal.clone()
+          n.repeat.set(rx, ry)
+          n.needsUpdate = true
+          const r = d.rough.clone()
+          r.repeat.set(rx, ry)
+          r.needsUpdate = true
+          made.normalMap = n
+          made.normalScale.set(0.55, 0.55)
+          made.roughnessMap = r
+          made.needsUpdate = true
+        })
       }
       made.needsUpdate = true
       const waiting = made.userData.mapWaiters as Set<(map: THREE.Texture) => void> | undefined
