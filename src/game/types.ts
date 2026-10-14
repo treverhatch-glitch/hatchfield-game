@@ -3,6 +3,7 @@ import type { Tier3Save } from '../tier3/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
 import type { PlaytestYearSave } from '../reports/book.ts'
+import type { StaffHousingSave } from '../staffhousing/types.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -57,6 +58,12 @@ export type Tile =
   | 'fuel_rail'
   /** Unloads a fuel train into the tank farm. */
   | 'oil'
+  /** Late-game airport hotel (transfer and crew nights). */
+  | 'late_hotel'
+  /** Late-game rail link station. Demand bonus once the build finishes. */
+  | 'late_rail'
+  /** Sustainable aviation fuel blending plant. */
+  | 'saf'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -131,6 +138,9 @@ export type Tool =
   | 'travelator'
   | 'skywalk'
   | 'mover'
+  | 'airport_hotel'
+  | 'rail_link'
+  | 'saf_blending'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -878,11 +888,15 @@ export interface GameSnapshot {
   fieldXp?: number
   /** Specialization paths chosen at FL6 / FL8 / FL10. Order is purchase order. */
   specPaths?: string[]
+  /** Bought specialization-tree node ids. Missing on older saves. */
+  specNodes?: string[]
   /** Progression stamps that are not apron tiles (halls, hydrant, landmarks). */
   progressionBuilt?: string[]
   parcels: number
   /** Expansion plots bought after the starter site. Missing on older saves. */
   ownedPlots?: { id: string; assessed: number }[]
+  /** Staff housing on expansion plots. Missing on older saves. */
+  staffHousing?: StaffHousingSave
   /** Outsourced pavement crew. Missing on older saves. */
   maintenanceContract?: boolean
   railLinked: boolean
@@ -971,6 +985,10 @@ export interface GameSnapshot {
   /** Live volume letter — must survive a refresh or the contract vanishes. */
   cargoVolume?: CargoVolumeJob | null
   startFocus?: StartFocus
+  /** Climate picked on the new-game cards. Missing saves stay on the temperate belt. */
+  mapId?: 'temperate' | 'tropical' | 'desert'
+  /** Progress toward the three goals for `mapId`. */
+  mapChallenges?: Record<string, number>
   sandbox?: boolean
   /** In-progress construction. Grass stays until the timer finishes. */
   sites?: BuildSite[]
@@ -1014,6 +1032,12 @@ export interface GameSnapshot {
   disruptions?: string
   /** Year-end disruption, hub, and award counters. Missing on older saves. */
   playtestYear?: PlaytestYearSave
+  /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
+  tier3Sites?: { id: 'airport_hotel' | 'rail_link' | 'saf_blending'; c: number; r: number; elapsedDays: number }[]
+  /** Missed-connection guests waiting on the airport hotel. */
+  missedHotelNights?: number
+  /** Crew waiting on the airport hotel. */
+  crewHotelNights?: number
 }
 
 /** A placed building that is still a construction site. */
