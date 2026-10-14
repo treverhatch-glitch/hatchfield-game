@@ -37,9 +37,9 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
   pax: {
     focus: 'pax',
     label: 'Passenger-focused starter kit',
-    summary: 'Hall curb on the public road, two jetway stands facing the gates, one runway linked by taxiway.',
+    summary: 'Hall curb on the public road, two jetway stands facing the gates, two parallel runways linked by taxiways.',
     includes: [
-      'One 14×2 runway with a clearance shoulder',
+      'Two parallel 14×2 runways, ~1.4 km apart, with clearance shoulders',
       'Taxiway linking the strip to the stands',
       'Terminal rotated so the curb faces the road and the gates face the stands',
       'Jet bridges, bags, fuel, guard, and a cargo shed',
@@ -48,9 +48,9 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
   cargo: {
     focus: 'cargo',
     label: 'Cargo-focused starter kit',
-    summary: 'Freighter stand, guard, and shed on the city road. One runway. No passenger hall.',
+    summary: 'Freighter stand, guard, and shed on the city road. Two parallel runways. No passenger hall.',
     includes: [
-      'One 14×2 runway with a clearance shoulder',
+      'Two parallel 14×2 runways, ~1.4 km apart, with clearance shoulders',
       'Taxiway to one remote freighter stand',
       'Guard post and cargo shed',
       'No passenger terminal',
@@ -63,7 +63,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     includes: [
       'Passenger hall, curb, and two jetway stands',
       'Guard, cargo shed, and a police post',
-      'One runway with a taxiway to the stands',
+      'Two parallel runways with taxiways to the stands',
       'Landside road stays off the hall footprint',
     ],
   },
@@ -88,14 +88,31 @@ function put(chart: Chart, c: number, r: number, tile: Tile) {
   chart.set(key, tile)
 }
 
-/** One 14×2 east-west strip (the regional prefab at c8,r26) with a taxi to the apron. */
+/** Second strip rows. 8 rows centreline-to-centreline from the main strip (r26-27). */
+export const STARTER_RUNWAY_ROWS: readonly [number, number][] = [[18, 19], [26, 27]]
+/**
+ * Minimum grass gap, in cells, between the two parallel strips. Strips are 14 cells
+ * (~2.5 km), so a cell is ~180 m and 8 cells centreline spacing is ~1.4 km, above the
+ * ICAO 1,035 m minimum for independent parallel approaches. Each strip's 2-cell shoulder
+ * also stays clear of the other.
+ */
+export const STARTER_RUNWAY_GAP = 6
+
+/**
+ * Two parallel 14×2 east-west strips (c8-21) with a west spine to the apron and an
+ * east connector, so traffic can cross between strips at both ends.
+ */
 function paintRunways(putAt: (c: number, r: number, tile: Tile) => void) {
-  for (let c = 8; c <= 21; c++) {
-    putAt(c, 26, 'runway')
-    putAt(c, 27, 'runway')
+  for (const [a, b] of STARTER_RUNWAY_ROWS) {
+    for (let c = 8; c <= 21; c++) {
+      putAt(c, a, 'runway')
+      putAt(c, b, 'runway')
+    }
   }
-  // Spine just west of the threshold, from the apron to the strip.
+  // Spine just west of the thresholds, from the apron past both strips.
   for (let r = 6; r <= 27; r++) putAt(7, r, 'taxi')
+  // East connector between the far ends of the strips.
+  for (let r = 18; r <= 27; r++) putAt(22, r, 'taxi')
 }
 
 function paintPassenger(chart: Chart, police: boolean) {

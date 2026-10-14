@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { lotCells, lotFrame } from '../build/footprints'
-import { stampStarterKit } from './starterLayout'
+import { STARTER_RUNWAY_GAP, stampStarterKit } from './starterLayout'
+import { runwayBoxes, runwayEdgeGap } from './runwayClearance'
 import { SIZE, type StartFocus, type Tile } from './types'
 import { auditWorld } from './worldRules'
 
@@ -42,5 +43,35 @@ describe('round-7 starter kits on real lots', () => {
     const hall = tiles.flatMap((row, r) => row.map((t, c) => (t === 'terminal' ? { c, r } : null)).filter(Boolean)) as { c: number; r: number }[]
     const roadTouches = hall.some(({ c, r }) => tiles[r][c + 1] === 'road')
     expect(roadTouches).toBe(true)
+  })
+
+  it.each(['pax', 'cargo', 'hybrid'] as StartFocus[])('%s: two parallel runways, spaced and linked by taxiways to every stand', (focus) => {
+    const tiles = blank()
+    const kit = stampStarterKit(tiles, focus)
+    const boxes = runwayBoxes(tiles)
+    expect(boxes).toHaveLength(2)
+    expect(boxes[0].axis).toBe(boxes[1].axis)
+    expect(runwayEdgeGap(boxes[0], boxes[1])).toBeGreaterThanOrEqual(STARTER_RUNWAY_GAP)
+    // Flood the movement area (runway, taxi, stand) from the first strip.
+    const MOVE = new Set<Tile>(['runway', 'taxi', 'stand'])
+    const start = boxes[0].cells[0]
+    const seen = new Set([`${start.c},${start.r}`])
+    const q = [start]
+    while (q.length) {
+      const p = q.pop()!
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const c = p.c + dc, r = p.r + dr
+        const k = `${c},${r}`
+        if (seen.has(k) || !MOVE.has(tiles[r]?.[c] as Tile)) continue
+        seen.add(k)
+        q.push({ c, r })
+      }
+    }
+    for (const b of boxes) expect(b.cells.every((p) => seen.has(`${p.c},${p.r}`))).toBe(true)
+    for (const s of kit.stands) expect(seen.has(`${s.c},${s.r}`), `stand ${s.c},${s.r}`).toBe(true)
+    // Two connectors between the strips (west spine and east link) so a blocked one never strands a strip.
+    const between = new Set<number>()
+    for (let c = 0; c < SIZE; c++) if ([20, 21, 22, 23, 24, 25].every((r) => tiles[r][c] === 'taxi')) between.add(c)
+    expect(between.size).toBeGreaterThanOrEqual(2)
   })
 })
