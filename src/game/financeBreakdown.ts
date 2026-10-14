@@ -132,6 +132,10 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
     label: 'Meal production',
     why: 'Meals cooked for the galley. A turn that sells catering still pays to produce the food.',
   },
+  retail_cogs: {
+    label: 'Cost of goods',
+    why: 'What a restock run put on the food and shop shelves. Sale prices are unchanged; this is the cost of those servings.',
+  },
   loan_interest: {
     label: 'Loan interest',
     why: 'Interest taken on the loan clock. Interest cash could not cover is added to the balance, and the owe figure is that balance.',

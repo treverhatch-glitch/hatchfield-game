@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { SIM_MINUTES_PER_GAME_DAY } from './clock.ts'
 import {
   Bank,
   cityLevyForGameDay,
@@ -29,6 +30,19 @@ describe('shared bank', () => {
     const bank = new Bank()
     expect(() => bank.post('payroll', 100, { simMinutes: 0 })).toThrow(/expense category/)
     expect(() => bank.post('retail_sales', -100, { simMinutes: 0 })).toThrow(/income category/)
+  })
+
+  it('folds a second same-day retail sale into the open line', () => {
+    const bank = new Bank(1_000)
+    bank.post('retail_sales', 12, { simMinutes: 10 })
+    expect(bank.addToLatest('retail_sales', 18, 20)).toBe(true)
+    expect(bank.addToLatest('retail_sales', 5, SIM_MINUTES_PER_GAME_DAY + 1)).toBe(false)
+    const ledger = bank.ledger()
+    expect(ledger.entries).toHaveLength(1)
+    expect(ledger.entries[0].amount).toBe(30)
+    expect(ledger.byCategory.retail_sales).toBe(30)
+    expect(ledger.balance).toBe(1_030)
+    expect(ledger.entries[0].balanceAfter).toBe(1_030)
   })
 
   it('drops old journal lines without moving the balance or category totals', () => {

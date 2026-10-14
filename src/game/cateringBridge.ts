@@ -1,4 +1,6 @@
 import { CateringEngine, FuelOutageMonitor, type CateringEvent, type CateringPhase, type ShopSku } from '../catering/index.ts'
+import { HALL_COUNTER, type HallCounterKind } from '../catering/hallShelf.ts'
+import { etaToUnload, supplyPose, type SupplyCartPose } from '../catering/supplyPath.ts'
 import type { PurchaseResult } from '../catering/types.ts'
 
 /** Where a crew member stands relative to the truck, for the apron renderer. */
@@ -61,6 +63,69 @@ export class CateringBridge {
     const safePax = Number.isFinite(bookedPax) ? Math.max(0, bookedPax) : 0
     const safeDueBy = Number.isFinite(dueBy) ? Math.max(0, dueBy) : 0
     return this.engine.orderCatering({ flightId, standId, seats: safeSeats, bookedPax: safePax, longHaul, dueBy: safeDueBy })
+  }
+
+  /** Servings on the prefab counter. The engine shop is the shelf. */
+  hallUnits(kind: HallCounterKind): number {
+    const spec = HALL_COUNTER[kind]
+    return this.engine.skuCount(spec.shopId, spec.sku)
+  }
+
+  /** Mirror a shelf edit (save, test, or a placed counter) onto the engine. */
+  setHallUnits(kind: HallCounterKind, units: number): void {
+    const spec = HALL_COUNTER[kind]
+    this.engine.setSku(spec.shopId, spec.sku, units)
+  }
+
+  /** One sale. Does not ring the catering price; the hall already did. */
+  takeHallUnit(kind: HallCounterKind): boolean {
+    const spec = HALL_COUNTER[kind]
+    return this.engine.takeSku(spec.shopId, spec.sku)
+  }
+
+  /** Prefab opening: a full shelf and a reorder point, still one runner. */
+  openHallShelf(kind: HallCounterKind): number {
+    const spec = HALL_COUNTER[kind]
+    return this.engine.openShelf(spec.shopId, spec.sku, spec.opening, spec.reorderAt)
+  }
+
+  /** Same cap and reorder after a load, without filling the shelf. */
+  adoptHallCaps(): void {
+    for (const spec of Object.values(HALL_COUNTER)) {
+      this.engine.adoptShelf(spec.shopId, spec.sku, spec.opening, spec.reorderAt)
+    }
+  }
+
+  setHallReorder(kind: HallCounterKind, level: number): void {
+    this.engine.setReorderAt(HALL_COUNTER[kind].shopId, level)
+  }
+
+  requestHallRestock(kind: HallCounterKind): boolean {
+    return this.engine.requestRestock(HALL_COUNTER[kind].shopId)
+  }
+
+  /** Clock seconds until the unload that fills this counter. */
+  restockEtaSec(kind: HallCounterKind, gameMinutesPerSimSecond: number): number {
+    const spec = HALL_COUNTER[kind]
+    const mins = etaToUnload(this.engine.runners, this.engine.now, this.engine.config.supplyDurations, spec.shopId)
+    const per = gameMinutesPerSimSecond > 0 ? gameMinutesPerSimSecond : 8
+    return mins / per
+  }
+
+  /** Cart poses for the renderer. Idle runners wait on the back-of-house dock. */
+  supplyPoses(): SupplyCartPose[] {
+    const out: SupplyCartPose[] = []
+    for (const runner of this.engine.runners) {
+      const kind: HallCounterKind = runner.shopId === HALL_COUNTER.shop.shopId ? 'shop' : 'food'
+      const clock =
+        runner.phase === 'idle'
+          ? { ...runner, phase: 'loading_at_depot' as const, phaseEndsAt: this.engine.now, shopId: runner.shopId }
+          : runner
+      const pose = supplyPose(clock, this.engine.now, this.engine.config.supplyDurations, kind)
+      if (runner.phase === 'idle') pose.phase = 'idle'
+      out.push(pose)
+    }
+    return out
   }
 
   /**

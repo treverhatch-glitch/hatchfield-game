@@ -214,9 +214,8 @@ export const GUEST_TUNING = {
   crowdThoughtPax: 4,
   /** Spend per visit at base, before trait and a +/- 40% roll. */
   spend: { food: 14, shop: 22 },
-  /** Shop counter stock: full shelf, and units restocked per nav hour. One sale uses one unit. */
+  /** Shop counter stock cap. Servings come from the catering shelf; this walk does not refill. */
   stockCap: 40,
-  restockPerHour: 30,
   /** Out-of-stock counter: seconds to find out and walk off. */
   outOfStockSec: 4,
   /** They do not try an empty counter again for this long. */

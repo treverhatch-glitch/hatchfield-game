@@ -222,7 +222,42 @@ describe('thoughts, queues and feedback', () => {
     expect(nav.drainFeedback().outOfStock).toBe(1)
   })
 
-  it('a stocked shelf sells, spends by trait, and restocks over time', () => {
+  it('a restock lets the next guest buy, and their mood is above the stockout', () => {
+    const nav = guestNav(11)
+    nav.addStock('shop1', -1000)
+    nav.spawn({
+      id: 'hungry',
+      gate: 'g1',
+      departAt: 3 * 3600,
+      bags: false,
+      purpose: 'leisure',
+      flags: [],
+      startNeeds: { hunger: 0.95, bladder: 0, boredom: 0, thirst: 0 },
+    })
+    const sat0 = nav.guest('hungry')!.satisfaction
+    runChecked(nav, 0, 400, 0.25)
+    const hit = nav.guest('hungry')!
+    expect(hit.thoughts.map((t) => t.text)).toContain('Shop is out of stock')
+    expect(hit.satisfaction).toBeLessThan(sat0)
+    nav.mirrorShelves(GUEST_TUNING.stockCap, GUEST_TUNING.stockCap)
+    expect(nav.metricsFor('shop1')!.stock).toBe(GUEST_TUNING.stockCap)
+    nav.spawn({
+      id: 'next',
+      gate: 'g1',
+      departAt: 4 * 3600,
+      bags: false,
+      purpose: 'leisure',
+      flags: [],
+      startNeeds: { hunger: 0.95, bladder: 0, boredom: 0, thirst: 0 },
+    })
+    runChecked(nav, 400, 2200, 0.25)
+    const next = nav.guest('next')!
+    expect(next.spent).toBeGreaterThan(0)
+    expect(next.thoughts.map((t) => t.text)).not.toContain('Shop is out of stock')
+    expect(next.satisfaction).toBeGreaterThan(hit.satisfaction)
+  })
+
+  it('a stocked shelf sells by trait and does not refill itself', () => {
     const run = (purpose: GuestPurpose) => {
       const nav = guestNav(8)
       for (let i = 0; i < 6; i++) {
@@ -234,8 +269,14 @@ describe('thoughts, queues and feedback', () => {
     const biz = run('business')
     const budget = run('budget')
     expect(biz.fb.spent).toBeGreaterThan(budget.fb.spent)
-    expect(biz.stock).toBeLessThanOrEqual(GUEST_TUNING.stockCap)
-    expect(biz.stock).toBeGreaterThan(GUEST_TUNING.stockCap - 6)
+    expect(biz.stock).toBeLessThan(GUEST_TUNING.stockCap)
+    const nav = guestNav(8)
+    nav.addStock('shop1', -4)
+    const before = nav.metricsFor('shop1')!.stock!
+    runChecked(nav, 0, 600, 0.5)
+    expect(nav.metricsFor('shop1')!.stock).toBeLessThanOrEqual(before)
+    nav.mirrorShelves(GUEST_TUNING.stockCap, GUEST_TUNING.stockCap)
+    expect(nav.metricsFor('shop1')!.stock).toBe(GUEST_TUNING.stockCap)
   })
 
   it('feedback turns into a reputation change', () => {

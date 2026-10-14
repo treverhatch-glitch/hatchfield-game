@@ -69,6 +69,8 @@ Lock tolerance is **5 cm**. A moving item may hop at most **40 cm** between samp
 | `bag_grip` | suitcase | handle |
 | `uld_lock` | ULD | dolly, loader or hold |
 | `cart_deck` | catering cart | truck, lip or galley |
+| `counter_restock` | food counter, shop counter | crate while it is being shelved |
+| `stores_dock` | back-of-house dock | stores cart while it is loading |
 | `pax_feet` | passenger | bridge or door sill |
 | `coupler_jaw` | fuel coupler | `farm_fill`, then `truck_fill` |
 

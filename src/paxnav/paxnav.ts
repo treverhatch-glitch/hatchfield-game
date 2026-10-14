@@ -1140,7 +1140,7 @@ export class PaxNav {
     const guests = this.guests
     if (guests) {
       this.countDensity()
-      this.restock(dt)
+      this.restock()
     }
     for (const a of this.agents) {
       if (a.dead) continue
@@ -1193,11 +1193,29 @@ export class PaxNav {
     if (this.agents.some((a) => a.dead)) this.agents = this.agents.filter((a) => !a.dead)
   }
 
-  private restock(dt: number) {
-    const add = (GUEST_TUNING.restockPerHour * dt) / 3600
-    for (const st of this.states.values()) {
-      if (st.kind === 'shop_counter' && st.stock < GUEST_TUNING.stockCap) st.stock = Math.min(GUEST_TUNING.stockCap, st.stock + add)
-    }
+  private mirroredFood: number | null = null
+  private mirroredShop: number | null = null
+
+  /**
+   * The hall shelf lives on the catering engine. When this is set, counters
+   * read those servings and this module does not refill them.
+   */
+  mirrorShelves(food: number | null, shop: number | null): void {
+    this.mirroredFood = food == null || !Number.isFinite(food) ? null : Math.max(0, food)
+    this.mirroredShop = shop == null || !Number.isFinite(shop) ? null : Math.max(0, shop)
+    this.restock()
+  }
+
+  /** Copy the catering shelf onto the counters. No local refill. */
+  private restock() {
+    if (this.mirroredFood == null && this.mirroredShop == null) return
+    const counters = this.fac.list.filter((f) => f.kind === 'shop_counter')
+    counters.forEach((f, i) => {
+      const st = this.states.get(f.id)
+      if (!st) return
+      const units = counters.length === 1 ? (this.mirroredFood ?? this.mirroredShop ?? 0) : i % 2 === 0 ? (this.mirroredFood ?? 0) : (this.mirroredShop ?? 0)
+      st.stock = Math.max(0, Math.min(GUEST_TUNING.stockCap, units))
+    })
   }
 
   /** Queue distance (metres to the service point) of a cell for facility f. */

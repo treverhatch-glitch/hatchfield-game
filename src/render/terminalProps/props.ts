@@ -347,9 +347,9 @@ function shopShell(kind: ShopKind, w = 8, d = 6, h = 4): Part[] {
     box([w, h, 0.2], [0, h / 2, -d], 'cream'),
     box([0.25, h, d], [-w / 2, h / 2, -d / 2], 'cream'),
     box([0.25, h, d], [w / 2, h / 2, -d / 2], 'cream'),
-    // fascia + illuminated sign + lightbox posters
+    // fascia + illuminated sign. The wordmark is a plane facing +Z so the letters stay left to right.
     box([w + 0.3, 0.9, 0.35], [0, h - 0.45, 0.05], s.accent),
-    box([w * 0.62, 0.6, 0.04], [0, h - 0.45, 0.24], s.sign),
+    part('plane', [w * 0.62, 0.55, 0.02], [0, h - 0.45, 0.28], s.sign),
     box([w + 0.3, 0.04, 0.06], [0, h - 0.92, 0.2], 'ledWarm'),
     box([0.08, 0.9, 0.9], [w / 2 + 0.05, h - 1.6, 0.5], 'darkSteel'),
     box([0.02, 0.7, 0.75], [w / 2 + 0.1, h - 1.6, 0.5], s.sign, [0, H, 0]),
@@ -424,7 +424,7 @@ function shop(kind: ShopKind): Part[] {
     out.push(box([6.6, 0.95, 0.8], [0, 0.48, -5.3], 'brushed'), box([6.6, 0.6, 0.6], [0, 2.6, -5.4], 'steel'))
     for (let i = 0; i < 3; i++) out.push(box([0.9, 0.3, 0.6], [-2 + i * 2, 1.15, -5.3], 'darkSteel'))
     out.push(box([5.4, 0.9, 0.05], [0, 3.0, -5.85], 'black'))
-    for (let i = 0; i < 4; i++) out.push(box([1.25, 0.75, 0.02], [-1.95 + i * 1.3, 3.0, -5.82], i % 2 ? 'lbBurger' : 'screen'))
+    for (let i = 0; i < 4; i++) out.push(part('plane', [1.2, 0.72, 0.02], [-1.8 + i * 1.2, 3.0, -5.7], i % 2 ? 'lbBurger' : 'screen'))
     for (let i = 0; i < 4; i++) out.push(part('sphere', [0.14, 0.08, 0.14], [-1 + i * 0.3, 1.1, -2.5], 'bun'))
     out.push(box([0.6, 1.8, 0.4], [3.4, 0.9, -1.0], 'signYellow'), box([0.5, 0.5, 0.02], [3.4, 1.3, -0.79], 'screen'))
   }

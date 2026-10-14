@@ -650,6 +650,17 @@ export class HallNav {
     this.stamp = stamp
     this.shape = shape
     this.gates = next.rooms.filter((r) => r.kind === 'gate').map((r) => r.id)
+    if (this.shelfFood != null || this.shelfShop != null) this.navObj?.mirrorShelves(this.shelfFood, this.shelfShop)
+  }
+
+  private shelfFood: number | null = null
+  private shelfShop: number | null = null
+
+  /** Counters read the catering shelf. This walk does not refill them. */
+  setShopStock(food: number, shop: number): void {
+    this.shelfFood = food
+    this.shelfShop = shop
+    this.navObj?.mirrorShelves(food, shop)
   }
 
   /**

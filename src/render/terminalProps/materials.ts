@@ -17,6 +17,7 @@ import burgerB64 from './tex/shop_burger.b64.txt?raw'
 import checkinB64 from './tex/checkin.b64.txt?raw'
 import securityB64 from './tex/security.b64.txt?raw'
 import { deskHeaderTexture, fidsBoardTexture, wayfindingSheetTexture } from '../signage/load'
+import { counterSheetTexture } from './counterArt'
 import { bigSign, brushedRough, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 import { attachBuildingMaterial } from '../reflections'
 
@@ -240,10 +241,10 @@ export const MATERIALS: Record<string, MatSpec> = {
   sgnWomen: { color: '#ffffff', map: () => signTex('Women', '#16233b', '#ffffff', '♀', 256, 128), glow: true },
   sgnBelt: { color: '#ffffff', map: () => signTex('Belt 3   ZJ214 BKK', '#06122a', '#ffd34d'), glow: true },
   sgnHatch: { color: '#ffffff', map: () => signTex('HATCHFIELD INTERNATIONAL', '#ffffff', '#1f4e8c', '', 1024, 128), glow: true },
-  lbCoffee: { color: '#ffffff', map: () => geminiTexture('shop_coffee'), glow: true },
-  lbDuty: { color: '#ffffff', map: () => geminiTexture('shop_dutyfree'), glow: true },
-  lbNews: { color: '#ffffff', map: () => geminiTexture('shop_news'), glow: true },
-  lbBurger: { color: '#ffffff', map: () => geminiTexture('shop_burger'), glow: true },
+  lbCoffee: { color: '#ffffff', map: () => counterSheetTexture('coffee') ?? geminiTexture('shop_coffee'), glow: true },
+  lbDuty: { color: '#ffffff', map: () => counterSheetTexture('dutyfree') ?? geminiTexture('shop_dutyfree'), glow: true },
+  lbNews: { color: '#ffffff', map: () => counterSheetTexture('news') ?? geminiTexture('shop_news'), glow: true },
+  lbBurger: { color: '#ffffff', map: () => counterSheetTexture('burger') ?? geminiTexture('shop_burger'), glow: true },
   lbCheckin: { color: '#ffffff', map: () => geminiTexture('checkin'), glow: true },
   lbSecurity: { color: '#ffffff', map: () => geminiTexture('security'), glow: true },
   logo0: { color: '#ffffff', map: () => logoTex(0), glow: true },

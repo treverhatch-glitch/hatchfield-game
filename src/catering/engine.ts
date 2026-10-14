@@ -113,6 +113,17 @@ export class CateringEngine {
     if (s) s.reorderAt = Math.max(0, Math.floor(level))
   }
 
+  /**
+   * Raise the shelf cap and the reorder point without putting servings on it.
+   * Opening stock is `openShelf`. A live refill is a supply run.
+   */
+  adoptShelf(shopId: string, sku: ShopSku, capacity: number, reorderAt: number): void {
+    const s = this.shops.get(shopId)
+    if (!s || !s.skus.includes(sku)) return
+    s.capacityPerSku = Math.max(s.capacityPerSku, Math.max(1, Math.floor(capacity)))
+    s.reorderAt = Math.max(0, Math.floor(reorderAt))
+  }
+
   /** Book catering for a departing flight. */
   orderCatering(o: FlightCateringOrder): GalleyState {
     const required = galleyRequirement(o)
@@ -154,6 +165,45 @@ export class CateringEngine {
     this.emit({ type: 'pax_walk_away', time: this.now, shopId, paxId })
     this.maybeReorder(s)
     return { ok: false, thought, happinessDelta: delta, walkAway: true, lostSale: price }
+  }
+
+  /** Servings of one SKU. Unknown shops read as empty. */
+  skuCount(shopId: string, sku: ShopSku): number {
+    return this.shops.get(shopId)?.stock[sku] ?? 0
+  }
+
+  /**
+   * Set one SKU. This does not create servings; a restock run does that.
+   * Callers use it to mirror a shelf the player or a save already set.
+   */
+  setSku(shopId: string, sku: ShopSku, units: number): void {
+    const s = this.shops.get(shopId)
+    if (!s || !s.skus.includes(sku) || !Number.isFinite(units)) return
+    s.stock[sku] = Math.max(0, Math.min(s.capacityPerSku, Math.floor(units)))
+    this.maybeReorder(s)
+  }
+
+  /**
+   * Take one serving off the shelf. No sale is rung: the hall already
+   * charged the guest its own price. Returns false when the shelf is empty.
+   */
+  takeSku(shopId: string, sku: ShopSku): boolean {
+    const s = this.shops.get(shopId)
+    if (!s || s.stock[sku] <= 0) return false
+    s.stock[sku]--
+    this.maybeReorder(s)
+    return true
+  }
+
+  /** Raise the shelf cap and fill this SKU up to it. Used when the hall opens. */
+  openShelf(shopId: string, sku: ShopSku, capacity: number, reorderAt: number): number {
+    const s = this.shops.get(shopId)
+    if (!s || !s.skus.includes(sku)) return 0
+    const cap = Math.max(1, Math.floor(capacity))
+    s.capacityPerSku = Math.max(s.capacityPerSku, cap)
+    s.reorderAt = Math.max(0, Math.floor(reorderAt))
+    s.stock[sku] = s.capacityPerSku
+    return s.stock[sku]
   }
 
   /** Manual restock order from the shop's info panel. */

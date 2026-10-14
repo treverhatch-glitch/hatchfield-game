@@ -7,6 +7,7 @@ import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
 import { buildHallDetail } from './hallKitDetail'
 import { buildTerminalProps, capTerminalPropMetal } from './terminalProps'
+import { SupplyCartLayer } from './supplyCart'
 import { hiDetailOn } from './world/terminalHiDetail'
 import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
@@ -225,6 +226,7 @@ export class HallWorld {
   private ray = new THREE.Raycaster()
   /** Instanced food, seat, and decor meshes. Rebuilt with the room hash. */
   kitGroup = new THREE.Group()
+  private supply = new SupplyCartLayer()
   private walkGroup = new THREE.Group()
   private walkSig = ''
   private walkSlats: { mesh: THREE.Mesh; originX: number; originZ: number; rot: number }[] = []
@@ -328,6 +330,8 @@ export class HallWorld {
     this.zoneTint.visible = false
     this.scene.add(this.zoneTint)
     this.scene.add(this.kitGroup)
+    this.scene.add(this.supply.counters)
+    this.scene.add(this.supply.group)
     this.scene.add(this.walkGroup)
     this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
@@ -1734,6 +1738,7 @@ export class HallWorld {
       const crew = this.navCrowd.lastPoses()
       this.serviceFx.sync(game.hallNav, game.clock, this.camera, game.deskBrands(), crew.poses, crew.total)
     }
+    this.supply.sync(game.supplyCartPoses())
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)

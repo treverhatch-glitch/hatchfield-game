@@ -279,6 +279,7 @@ import {
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
+import { cogsFor, stockoutChip, type HallCounterKind } from '../catering/hallShelf.ts'
 import { CargoBridge } from './cargoBridge.ts'
 import { POWER_PLANT_CAPACITY, calculatePower } from '../economy/power.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant.ts'
@@ -1020,10 +1021,13 @@ export class Game {
   mapRev = 0
   fuelBrand: FuelBrand | null = null
   fuelLoads = 0
-  /** Burger servings on the counter. Sales stop at zero. */
+  /** Burger servings on the counter. The catering engine is the shelf. */
   foodShelf = 0
-  /** Souvenirs on the counter. Sales stop at zero. */
+  /** Souvenirs on the counter. The catering engine is the shelf. */
   shopShelf = 0
+  /** Last shelf counts pushed into the catering engine. NaN until the first push. */
+  private pushedFood = Number.NaN
+  private pushedShop = Number.NaN
   /** Food sales through placed outlets (café, fast food, sit-down). */
   foodCourtRevenue = 0
   /** Unique suffix for placed hall item ids. */
@@ -1782,6 +1786,8 @@ export class Game {
     this.cargoNotes = []
     this.soundCues = []
     this.catering = null
+    this.pushedFood = Number.NaN
+    this.pushedShop = Number.NaN
     this.cargo = null
     this.diplomacy = null
     this.diplomacySeed = 1
@@ -4348,8 +4354,7 @@ export class Game {
     this.fuelLoads = 4
     this.contractId = 'apex_local'
     this.tankLitres = seedLitresFromLoads(4)
-    this.foodShelf = this.shelfCap('food')
-    this.shopShelf = this.shelfCap('shop')
+    this.primeHallShelves()
     this.caterBrand = 'skybite'
     this.mechanics = 1
     this.spawnMechanicPawn()
@@ -6091,7 +6096,11 @@ export class Game {
   noteIncome(amount: number, category: MoneyCategory = 'landing_fees') {
     if (!(amount > 0)) return
     this.hourIncome += amount
-    this.postJournal(category, amount, this.simMinutes())
+    const stamp = this.simMinutes()
+    // A stocked counter sells all day. One retail line per game day keeps
+    // the cash and the category total, without a journal row per serving.
+    if (category === 'retail_sales' && this.bank.addToLatest(category, amount, stamp)) return
+    this.postJournal(category, amount, stamp)
   }
 
   /** Sim minutes on the shared clock. One field second is eight game minutes. */
@@ -8430,6 +8439,7 @@ export class Game {
       },
       fit.items ?? [],
     )
+    this.hallNav.setShopStock(this.foodShelf, this.shopShelf)
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
       if (f?.std != null) return f.std
@@ -9050,7 +9060,11 @@ export class Game {
       const buy = this.tryGuestPay(g, price, 'shop', true)
       if (buy.ok) {
         g.needs.shop = Math.max(0, g.needs.shop - 60)
-        this.shopShelf -= 1
+        if (!this.drawShelf('shop')) {
+          this.walkOffEmptyShelf(g, price, 'wish they had a souvenir', open)
+          if (open.has('gate')) this.routeGuest(g, 'gate', open)
+          return
+        }
         g.happiness = Math.min(100, g.happiness + 5)
         receipt = `Shop (−$${price})`
       } else {
@@ -11063,8 +11077,10 @@ export class Game {
     if (id === 'nighthub') return nightHubInfoLines(this.tier3.snapshot())
     if (id === 'retail') {
       return [
-        `${this.foodShelf} burger servings on the shelf`,
-        `${this.shopShelf} souvenirs on the shelf`,
+        this.foodShelf < 1 ? this.shelfChip('food') : `${this.foodShelf} burger servings on the shelf`,
+        this.shopShelf < 1 ? this.shelfChip('shop') : `${this.shopShelf} souvenirs on the shelf`,
+        this.retailTillLine(),
+        `${this.ensureCatering().engine.runners.length} supply runner${this.ensureCatering().engine.runners.length === 1 ? '' : 's'}`,
         ...this.hallShopLines(),
         `$${Math.round(this.lostSpend).toLocaleString('en-US')} lost spend`,
       ]
@@ -11095,17 +11111,107 @@ export class Game {
     this.emit()
   }
 
-  /** One serving back on each shelf that still has a room. A crowd can outrun this. */
-  private tickShelves(dt: number) {
-    const foodCap = this.shelfCap('food')
-    const shopCap = this.shelfCap('shop')
-    if (this.foodShelf > foodCap) this.foodShelf = foodCap
-    if (this.shopShelf > shopCap) this.shopShelf = shopCap
-    this.shelfCool -= dt
-    if (this.shelfCool > 0) return
-    this.shelfCool = 14
-    if (this.foodShelf < foodCap) this.foodShelf += 1
-    if (this.shopShelf < shopCap) this.shopShelf += 1
+  /** Staffed shop tills. Throughput is how many of them are serving. */
+  private retailTillLine(): string {
+    if (this.hallNav.live) {
+      const tills = this.hallNav.metrics().filter((m) => m.kind === 'shop_counter')
+      if (tills.length > 0) {
+        const staffed = tills.filter((m) => m.staffed).length
+        const inUse = tills.filter((m) => m.inUse).length
+        return `${inUse} of ${staffed} tills in use`
+      }
+    }
+    const n = this.fits.reduce((sum, fit) => sum + (fit.rooms.food ?? 0) + (fit.rooms.souvenir ?? 0), 0)
+    return `${n} staffed till${n === 1 ? '' : 's'}`
+  }
+
+  /**
+   * Mirror the catering shelves. Nothing is added here: a supply runner is
+   * the only way a serving gets back on the counter.
+   */
+  private tickShelves(_dt: number) {
+    this.pullShelves()
+  }
+
+  /** Write a shelf edit into the engine before the runner or a sale moves it. */
+  private pushShelfEdits() {
+    if (!this.catering && Number.isNaN(this.pushedFood) && this.foodShelf === 0 && this.shopShelf === 0) return
+    const cat = this.ensureCatering()
+    if (this.foodShelf !== this.pushedFood) {
+      cat.setHallUnits('food', this.foodShelf)
+      this.pushedFood = this.foodShelf
+    }
+    if (this.shopShelf !== this.pushedShop) {
+      cat.setHallUnits('shop', this.shopShelf)
+      this.pushedShop = this.shopShelf
+    }
+  }
+
+  /** Read the engine back. The field is a view of that shelf. */
+  private pullShelves() {
+    if (!this.catering) return
+    this.foodShelf = this.catering.hallUnits('food')
+    this.shopShelf = this.catering.hallUnits('shop')
+    this.pushedFood = this.foodShelf
+    this.pushedShop = this.shopShelf
+  }
+
+  /** Opening stock for the prefab counters. One runner, two shelves. */
+  private primeHallShelves() {
+    const cat = this.ensureCatering()
+    this.foodShelf = cat.openHallShelf('food')
+    this.shopShelf = cat.openHallShelf('shop')
+    this.pushedFood = this.foodShelf
+    this.pushedShop = this.shopShelf
+  }
+
+  /** One serving leaves with the guest. False when the shelf was already empty. */
+  private drawShelf(kind: HallCounterKind): boolean {
+    this.pushShelfEdits()
+    const ok = this.ensureCatering().takeHallUnit(kind)
+    this.pullShelves()
+    return ok
+  }
+
+  /** A new counter adds room on the shelf, still capped by the engine. */
+  private grantShelf(kind: HallCounterKind, units: number) {
+    this.pushShelfEdits()
+    const cat = this.ensureCatering()
+    cat.setHallUnits(kind, cat.hallUnits(kind) + units)
+    this.pullShelves()
+  }
+
+  /** Seconds until the runner unloads this counter. */
+  shelfEtaSec(kind: HallCounterKind): number {
+    return this.ensureCatering().restockEtaSec(kind, GAME_MINUTES_PER_SIM_SECOND)
+  }
+
+  /** Info chip for an empty food or shop shelf. */
+  shelfChip(kind: HallCounterKind): string {
+    return stockoutChip(this.shelfEtaSec(kind))
+  }
+
+  /** Player fix when one cart cannot keep both counters stocked. */
+  buySupplyRunner(): boolean {
+    const cost = 4500
+    if (!this.spend(cost, 'supply runner', 'construction')) return false
+    this.ensureCatering().engine.addRunner()
+    this.pushNews('Second supply runner. The cart starts from the back-of-house dock.', 'good')
+    this.emit()
+    return true
+  }
+
+  setHallReorder(kind: HallCounterKind, level: number) {
+    this.ensureCatering().setHallReorder(kind, level)
+  }
+
+  requestHallRestock(kind: HallCounterKind): boolean {
+    return this.ensureCatering().requestHallRestock(kind)
+  }
+
+  /** Carts the renderer draws. Idle carts wait on the dock. */
+  supplyCartPoses() {
+    return this.ensureCatering().supplyPoses()
   }
 
   /** Empty counter: mild mood hit, no cash, a wish, then they leave the queue. */
@@ -11241,7 +11347,10 @@ export class Game {
   }
 
   private ensureCatering(): CateringBridge {
-    return (this.catering ??= new CateringBridge())
+    if (this.catering) return this.catering
+    this.catering = new CateringBridge()
+    this.catering.adoptHallCaps()
+    return this.catering
   }
 
   private ensureCargo(): CargoBridge {
@@ -11340,6 +11449,10 @@ export class Game {
     cat.engine.tick(now)
     for (const event of cat.engine.drainEvents()) {
       this.noteSound(cateringCue(event))
+      if (event.type === 'shop_restocked') {
+        const cost = cogsFor(event.added)
+        if (cost > 0) this.charge(cost, 'retail_cogs')
+      }
       if (event.type === 'catering_done') {
         const flight = this.flights.find((f) => f.id === event.flightId)
         if (flight?.groundTurn) {
@@ -12019,8 +12132,8 @@ export class Game {
       fit.rooms.souvenir = Math.max(fit.rooms.souvenir, 2)
     }
     applyCeilings(fit)
-    this.foodShelf = Math.max(this.foodShelf, Math.min(this.shelfCap('food'), this.foodShelf + 8))
-    this.shopShelf = Math.max(this.shopShelf, Math.min(this.shelfCap('shop'), this.shopShelf + 6))
+    this.grantShelf('food', 8)
+    this.grantShelf('shop', 6)
     this.releaseHallIfFits()
     this.hallRev++
     this.refreshAdvice()
@@ -12335,7 +12448,8 @@ export class Game {
       fd: pose?.fd,
     })
     if (def.room) fit.rooms[def.room] += 1
-    if (def.room === 'food') this.foodShelf += 8
+    if (def.room === 'food') this.grantShelf('food', 8)
+    if (def.room === 'souvenir') this.grantShelf('shop', 6)
     if (def.signs) fit.signs = (fit.signs ?? 0) + def.signs
     applyCeilings(fit)
     this.releaseHallIfFits()
@@ -12555,8 +12669,11 @@ export class Game {
           g.needs.energy = Math.max(0, g.needs.energy - outlet.spec.energy)
           outlet.item.revenue = (outlet.item.revenue ?? 0) + pay
         }
+        if (!this.drawShelf('food')) {
+          this.walkOffEmptyShelf(g, pay, 'wish they had burgers', open)
+          return
+        }
         this.foodCourtRevenue += pay
-        this.foodShelf -= 1
         this.mealSold = true
         const dine = homeFit && outlet ? this.seatDiner(g, homeFit, outlet.item) : 'walk'
         if (dine === 'stood' && homeFit) this.litterFromMeal(homeFit, outlet?.item ?? null)
@@ -12587,8 +12704,11 @@ export class Game {
               ? 'Souvenir — not blowing the trip fund'
               : 'Browsed, did not buy'
       } else {
+        if (!this.drawShelf('shop')) {
+          this.walkOffEmptyShelf(g, pay, 'wish they had a souvenir', open)
+          return
+        }
         g.needs.shop = Math.max(0, g.needs.shop - 60)
-        this.shopShelf -= 1
         g.happiness += 5
         g.thought = `Bought a souvenir (−$${pay})`
       }
@@ -21680,6 +21800,7 @@ export class Game {
     this.tickCityCargo(step)
     this.tickLandside(step)
     this.tickConstruction(step)
+    this.pushShelfEdits()
     this.tickCatering(step)
     this.tickGround(step)
     this.tickCargo(step)

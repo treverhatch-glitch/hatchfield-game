@@ -14,6 +14,24 @@ Self-contained module that does not import sim, logistics or render. It follows 
 - Restock happens through a visible supply run: `loading_at_depot → driving_to_dock → security_screening → trolley_to_shop → shelving → returning`. Stock comes from a finite landside depot that gets a daily delivery.
 - `reorderAt` is set by the player (0 = manual only, via `requestRestock`).
 
+## Prefab hall counters
+The food counter and the souvenir shop in the prefab hall read one shelf: this engine. Nothing else adds a serving. `openShelf` fills the counter when the hall opens. After that, a stores cart is the only refill.
+
+The cart leaves `stores_dock`, follows the hall path in hops of at most 40 cm, docks on `counter_restock`, and unloads. The shelf rises at the end of `shelving`, after the crate has docked. One runner is on one counter at a time. A second runner is a purchase.
+
+Sale prices stay in `DEFAULT_CATERING.prices`. Each finished unload posts `retail_cogs` for the units just shelved:
+
+| SKU | Price | COGS | Margin |
+| --- | --- | --- | --- |
+| burger | $12 | $3 | 75% |
+| coffee | $5 | $1 | 80% |
+| sandwich | $8 | $2 | 75% |
+| water | $3 | $1 | 67% |
+| magazine | $7 | $2 | 71% |
+| souvenir | $18 | $4 | 78% |
+
+A full burger restock is 80 × $3 = $240 against 80 × $12 = $960. A stocked counter stays profitable. The prefab opens at 80 burgers (reorder 32) and 60 souvenirs (reorder 24) so one runner covers the starter hall for the first days.
+
 ## Fuel outages (`FuelOutageMonitor`)
 Owner decision #9: if the fuel farm can't cover a departure, the flight is grounded. Fuel is reserved in departure order, and flights are released once enough fuel is available again.
 

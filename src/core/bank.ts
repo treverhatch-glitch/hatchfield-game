@@ -32,6 +32,7 @@ export const MONEY_CATEGORIES = [
   'vehicle_upkeep',
   'fuel_purchase',
   'meal_production',
+  'retail_cogs',
   'loan_interest',
   'loan_repayment',
   'penalties',
@@ -146,6 +147,33 @@ export class Bank {
 
   get balance(): number {
     return this.currentBalance
+  }
+
+  /**
+   * Add `amount` onto the newest same-category line in this game day.
+   * The balance and the category total move with that line. Returns false
+   * when this day has no line yet, so the caller posts a new one.
+   * Hall food and shop sales use this: one line per day, not one per burger.
+   */
+  addToLatest(category: MoneyCategory, amount: number, simMinutes: number): boolean {
+    if (!Number.isFinite(amount) || amount === 0) return false
+    if (!Number.isFinite(simMinutes) || simMinutes < 0) return false
+    const direction = moneyDirection(category)
+    if ((direction === 'income' && amount < 0) || (direction === 'expense' && amount > 0)) return false
+    const dayStart = Math.floor(simMinutes / SIM_MINUTES_PER_GAME_DAY) * SIM_MINUTES_PER_GAME_DAY
+    for (let i = this.records.length - 1; i >= 0; i--) {
+      const entry = this.records[i]
+      if (entry.meta.simMinutes < dayStart) return false
+      if (entry.category !== category) continue
+      entry.amount += amount
+      this.currentBalance += amount
+      if (amount > 0) this.income += amount
+      else this.expense += -amount
+      this.totals[category] = (this.totals[category] ?? 0) + amount
+      for (let j = i; j < this.records.length; j++) this.records[j].balanceAfter += amount
+      return true
+    }
+    return false
   }
 
   post(category: MoneyCategory, amount: number, meta: BankPostMeta): BankEntry {

@@ -301,11 +301,29 @@ export const ITEM_SOCKETS: Record<string, SocketTable> = {
   coupler: { coupler_jaw: [0, 0, 0] },
 }
 
+/**
+ * Staff side of a counter, where a stores cart unloads.
+ * Prop frame: origin on the floor, passenger side +Z. Y is the counter lip.
+ */
+export const COUNTER_SOCKETS: Record<string, SocketTable> = {
+  shop_fastfood: { counter_restock: [0, 0.92, -2.95] as const },
+  shop_news: { counter_restock: [2.4, 0.92, -1.95] as const },
+  shop_coffee: { counter_restock: [0.9, 0.92, -4.58] as const },
+  shop_dutyfree: { counter_restock: [-3.35, 0.92, -1.4] as const },
+}
+
+/** Crate rest on a stores cart, and the nose lock. +X is forward. */
+export const STORES_CART_SOCKETS: SocketTable = {
+  cart_bed: [0.55, 0.82, 0] as const,
+  dock: [1.15, 0.45, 0] as const,
+}
+
 export function stationSocketTable(type: string): SocketTable | null {
   if (type === 'checkin_row') return checkinRowSockets()
   if (type === 'checkin_desk') return DESK_SOCKETS
   if (type === 'baggage_carousel') return CAROUSEL_SOCKETS
   if (type === 'jet_bridge') return JET_BRIDGE_PROP_SOCKETS
+  if (COUNTER_SOCKETS[type]) return COUNTER_SOCKETS[type]
   return null
 }
 
