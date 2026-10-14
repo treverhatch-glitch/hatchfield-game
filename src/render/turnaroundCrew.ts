@@ -115,8 +115,11 @@ export function vehicleCrew(v: CrewVehicle, clock: number, out: PeopleAgent[], u
       place(out, `${v.id}:belt`, 'ground', 'reach', v, g.lowX - 0.7, 0, W * 0.15 + 0.15, 0, upm)
       _pi.ext = e
       partPose(model, 'belt', _pi, _pp)
-      const top = g.lowY + Math.tan(g.pitch + _pp.rz) * (L / 2 + 0.6 - g.lowX)
-      place(out, `${v.id}:hold`, 'ground', (Math.floor(clock / 1.6) % 2 ? 'reach' : 'push'), v, L / 2 + 0.7, Math.max(0, top - 0.15), W * 0.15, Math.PI, upm)
+      // Hold loader stands on the top of the belt, just short of the door sill, outside the fuselage,
+      // facing the hold and passing bags in.
+      const hx = L / 2 - 1.1
+      const top = g.lowY + Math.tan(g.pitch + _pp.rz) * (hx - g.lowX)
+      place(out, `${v.id}:hold`, 'ground', (Math.floor(clock / 1.6) % 2 ? 'reach' : 'push'), v, hx, Math.max(0, top + 0.12), -W * 0.12, 0, upm)
       break
     }
     case 'k_loader':

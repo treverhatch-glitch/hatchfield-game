@@ -53,10 +53,27 @@ export interface PoseInput {
   odo: number
   /** Backing onto the aircraft: reverse lights on. */
   reversing: boolean
+  /** Front-wheel steer angle, radians (+ = turning left / toward +Z). */
+  steer?: number
+  /** Headlight beams on. */
+  beams?: boolean
 }
 
 export function poseInput(ext = 0, clock = 0, active = false, odo = 0, reversing = false): PoseInput {
-  return { ext, clock, active, odo, reversing }
+  return { ext, clock, active, odo, reversing, steer: 0, beams: false }
+}
+
+/** Max visual steer lock, radians. */
+export const STEER_MAX = 0.55
+
+/** Bicycle-model steer angle from heading change over distance driven. */
+export function steerAngle(dHeading: number, dist: number, wheelbase: number): number {
+  if (!(Math.abs(dist) > 1e-4)) return 0
+  let d = dHeading
+  while (d > Math.PI) d -= Math.PI * 2
+  while (d < -Math.PI) d += Math.PI * 2
+  const a = Math.atan((wheelbase * d) / Math.abs(dist))
+  return a > STEER_MAX ? STEER_MAX : a < -STEER_MAX ? -STEER_MAX : a
 }
 
 const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
@@ -77,7 +94,7 @@ const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
 }
 
 /** Shared moving parts: wheels spin, beacons rotate, reverse lights switch. */
-const SHARED = (name: string) => name.startsWith('wheels') || name === 'beacon' || name === 'reverse'
+const SHARED = (name: string) => name.startsWith('wheels') || name === 'beacon' || name === 'reverse' || name === 'beam'
 
 /** Named parts each model animates. Everything else stays in the merged shell. */
 export const ANIM_PARTS = Object.fromEntries(
@@ -135,6 +152,8 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
     const c = partCentre(model, part)
     // Roll without slipping: angle = distance / radius (radius = axle height).
     reset(out, c[0], c[1], 0).rz = -input.odo / Math.max(0.15, c[1])
+    // Front axle steers (yaw applied after spin: Euler order YZX).
+    if (part === 'wheels_front' && input.steer) out.ry = input.steer
     return true
   }
   if (part === 'beacon') {
@@ -142,6 +161,11 @@ export function partPose(model: VehicleModel, part: string, input: PoseInput, ou
     reset(out, c[0], c[1], c[2])
     out.ry = active ? clock * 9 : 0
     if (!active) out.sx = out.sy = out.sz = 1
+    return true
+  }
+  if (part === 'beam') {
+    reset(out)
+    if (!input.beams) out.sx = out.sy = out.sz = 0.0001
     return true
   }
   if (part === 'reverse') {

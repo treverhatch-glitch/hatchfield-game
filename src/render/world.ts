@@ -41,6 +41,7 @@ import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
 import { deployOf, disposeVehicleLibrary, serviceStateOf, setVehicleSurfaceTime, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
+import { steerAngle } from './vehicleAnim.ts'
 import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from './world/dayNight'
@@ -222,6 +223,25 @@ export class World {
     o.z = z
     if (this.odo.size > 4000) this.odo.clear()
     return o.m
+  }
+  /** Render-side steer per vehicle id: heading change over distance (bicycle model), smoothed. */
+  private steerState = new Map<string, { h: number; m: number; s: number }>()
+
+  private steerOf(id: string, heading: number, odo: number, wheelbase: number): number {
+    const st = this.steerState.get(id)
+    if (!st) {
+      this.steerState.set(id, { h: heading, m: odo, s: 0 })
+      return 0
+    }
+    const dm = odo - st.m
+    if (dm > 0.05) {
+      const target = steerAngle(heading - st.h, dm, wheelbase)
+      st.s += (target - st.s) * 0.5
+      st.h = heading
+      st.m = odo
+    } else if (dm === 0) st.s *= 0.97
+    if (this.steerState.size > 4000) this.steerState.clear()
+    return st.s
   }
   private crewFigures = new CrewFigures(this.entGroup)
   people = new Map<string, THREE.Mesh>()
@@ -2028,9 +2048,11 @@ export class World {
     const yard = yardOffsets(poses, (type) => vehicleSize(type))
     for (let i = 0; i < poses.length; i++) {
       const pose = poses[i]
-      const off = yard[i]
+      // With apron traffic on, the sim already keeps bodies apart; only legacy poses get the yard fan-out.
+      const off = pose.waiting === undefined ? yard[i] : { x: 0, z: 0 }
       const pos = toWorld(pose.x, pose.y, 0)
       const ext = deployOf(pose.phase, pose.u)
+      const odo = this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER)
       this.vehicleFrame.push({
         kind: pose.type,
         color: serviceColor(pose.type),
@@ -2043,7 +2065,11 @@ export class World {
         ext,
         active: ext > 0 || serviceStateOf(pose.phase, pose.u) === 'drive',
         reversing: serviceStateOf(pose.phase, pose.u) === 'dock',
-        odo: this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER),
+        odo,
+        // heading is CCW in sim space and the render yaw is its negation, so steer flips sign too
+        steer: -this.steerOf(pose.id, pose.heading, odo, vehicleMeters(pose.type)[0] * 0.6),
+        // cones only after dusk (they follow the same headlight level as the lamp pools)
+        beams: (this.wr.dayNightSample?.headlights ?? 0) > 0.3 && (serviceStateOf(pose.phase, pose.u) === 'drive' || pose.waiting === true),
         clock: game.clock,
       })
     }
