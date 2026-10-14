@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
+import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './airsideMass'
 import { addFuelRail, addHangar, addOilStation, addPeopleMover, addSkywalk, addTravelator } from '../../scale/placeholders'
 import { addMroMesh, addNightHubMesh, MESH_TRIANGLE_BUDGET, meshTriangleCount } from '../../tier3/meshes'
 import { CELL } from '../aircraft/specs'
@@ -124,5 +125,47 @@ describe('concept building massing', () => {
       build(g)
       expect(named(g, 'service-dock')).toHaveLength(1)
     }
+  })
+
+  it('gives airside support a named bay a vehicle can path to', () => {
+    const fuel = new THREE.Group()
+    addFuelFarm(fuel)
+    const tank = fuel.getObjectByName('fuel-tank')!
+    expect(tank.position.toArray()).toEqual([0, 1.2, 0])
+    expect(fuel.getObjectByName('service-bay:fill')).toBeTruthy()
+    expect(named(fuel, 'sign:FUEL')).toHaveLength(1)
+    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(320)
+    const fire = new THREE.Group()
+    addFireStation(fire)
+    expect(fire.getObjectByName('service-bay:1')).toBeTruthy()
+    expect(fire.getObjectByName('service-bay:2')).toBeTruthy()
+    expect(named(fire, 'sign:FIRE')).toHaveLength(1)
+    const cargo = new THREE.Group()
+    addCargoShed(cargo)
+    for (const id of ['1', '2', '3']) expect(cargo.getObjectByName(`service-bay:${id}`), id).toBeTruthy()
+    expect(named(cargo, 'sign:CARGO')).toHaveLength(1)
+    const deice = new THREE.Group()
+    addDeicePad(deice)
+    expect(deice.getObjectByName('service-bay:pad')).toBeTruthy()
+    expect(deice.getObjectByName('service-bay:truck')).toBeTruthy()
+    const tower = new THREE.Group()
+    addControlTower(tower)
+    expect(tower.getObjectByName('service-bay:ramp')).toBeTruthy()
+    expect(named(tower, 'sign:TOWER')).toHaveLength(1)
+    const oil = new THREE.Group()
+    addOilStation(oil)
+    expect(oil.getObjectByName('service-bay:transfer')).toBeTruthy()
+    const hangar = new THREE.Group()
+    addHangar(hangar, 'small')
+    expect(hangar.getObjectByName('service-bay:nose')).toBeTruthy()
+    const mro = new THREE.Group()
+    addMroMesh(mro, CELL)
+    for (const id of ['narrow', 'wide', 'jumbo']) expect(mro.getObjectByName(`service-bay:${id}`), id).toBeTruthy()
+    for (const g of [fire, cargo, deice, tower]) {
+      expect(meshTriangleCount(g)).toBeLessThanOrEqual(220)
+      signFacesFront(g)
+    }
+    signFacesFront(fuel)
+    signFacesFront(oil)
   })
 })

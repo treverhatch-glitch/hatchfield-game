@@ -226,7 +226,7 @@ export function buildTerminalHall(spec: HallSpec): THREE.Group {
     ceil.position.y = Ht - 0.12
     ceil.name = 'acousticCeiling'
     g.add(ceil)
-    mountPackTile(ceilMat, PACK4_FILES.ceiling, [(W - 0.8) / PACK4_REPEAT_M.ceiling, (D - 0.8) / PACK4_REPEAT_M.ceiling])
+    mountPackTile(ceilMat, 'tex_acoustic_ceiling.jpg', [(W - 0.8) / PACK4_REPEAT_M.ceiling, (D - 0.8) / PACK4_REPEAT_M.ceiling])
     // perimeter LED cove + column capitals + plinths
     const cove: M[] = []
     for (const [cx, cz, len, ry] of sides) cove.push(bx(cx * 0.995, Ht - 0.32, cz * 0.995, len - 0.6, 0.05, 0.08, ry))

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { CELL, WORLD_PER_METER } from '../render/aircraft/specs'
 import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from '../render/world/buildingSkin'
-import { mountDock, mountGable, mountSign } from '../render/world/buildingSign'
+import { mountDock, mountGable, mountServiceBay, mountSign } from '../render/world/buildingSign'
 import { addFuelRailMass, addPeopleMoverMass, addSkywalkMass, addTravelatorMass } from '../render/world/progressionBuildings'
 import { SKIN_TILE_M } from '../build/materialTargets'
 import type { SizeTier } from './types'
@@ -44,6 +44,7 @@ export function addOilStation(g: THREE.Group) {
   bund.position.set(0, 0.2, CELL * 0.22)
   mountSign(g, 'OIL', { w: 0.9, h: 0.24, x: 0, y: 2.15, z: CELL * 0.22 + 0.12 }, '#2a3038', '#f4f7fa')
   mountDock(g, CELL * 0.45, 0.9, CELL * 0.28, CELL * 0.22 + 0.7)
+  mountServiceBay(g, 'transfer', 1.4, 1.1, CELL * 0.28, CELL * 0.22 + 0.15, '#e07a3d')
   g.add(pad, tank, tank2, gantry, hose, bund)
 }
 
@@ -89,6 +90,7 @@ export function addHangar(g: THREE.Group, tier: SizeTier) {
     '#f4f7fa',
   )
   mountDock(g, doorW, 1.1, 0, depth / 2 + 0.85)
+  mountServiceBay(g, 'nose', doorW * 0.72, 0.9, 0, depth / 2 + 0.4, '#d7a21a')
   g.add(back, sideL, sideR, lintel, door, stripe, canopy)
 }
 

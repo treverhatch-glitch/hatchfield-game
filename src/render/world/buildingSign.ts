@@ -54,13 +54,30 @@ export function mountSign(
 }
 
 /** Painted apron where a truck or aircraft nose stops. One box, so it stays cheap. */
-export function mountDock(group: THREE.Group, w: number, d: number, x: number, z: number, color = '#4a5160'): THREE.Mesh {
+export function mountDock(group: THREE.Group, w: number, d: number, x: number, z: number, color = '#4a5160', name = 'service-dock'): THREE.Mesh {
   const mesh = new THREE.Mesh(
     metreUv(new THREE.BoxGeometry(w, 0.04, d), 4, WORLD_PER_METER),
     photoMaterial('apron_concrete', color),
   )
-  mesh.name = 'service-dock'
+  mesh.name = name
   mesh.position.set(x, 0.05, z)
+  mesh.receiveShadow = true
+  group.add(mesh)
+  return mesh
+}
+
+/**
+ * A named bay mark on the apron. Vehicles path to this name.
+ * A flat plane (two triangles) so a row of bays stays inside the mesh budget.
+ */
+export function mountServiceBay(group: THREE.Group, id: string, w: number, d: number, x: number, z: number, color = '#c9a227'): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    metreUv(new THREE.PlaneGeometry(w, d), 4, WORLD_PER_METER),
+    photoMaterial('chevron_stripe', color),
+  )
+  mesh.name = `service-bay:${id}`
+  mesh.rotation.x = -Math.PI / 2
+  mesh.position.set(x, 0.07, z)
   mesh.receiveShadow = true
   group.add(mesh)
   return mesh

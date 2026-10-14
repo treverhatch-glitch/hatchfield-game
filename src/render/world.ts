@@ -1,7 +1,5 @@
 import { installAircraftEnvironment } from './aircraft/env'
 import * as THREE from 'three'
-import { FUEL_TILE_SOCKETS } from './socketLayout'
-import { mountSockets } from './socketMount'
 import { rosterPreviewLivery } from './aircraft/procLivery'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { releasePerfOverlay, retainPerfOverlay } from '../perf'
@@ -73,6 +71,7 @@ import { setFidsOpen } from '../fids/open'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
 import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
+import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './world/airsideMass'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
 import {
@@ -997,54 +996,13 @@ export class World {
       roller.position.y = 0.09
       g.add(deck, railA, railB, roller)
     } else if (tile === 'fuel') {
-      const tank = new THREE.Mesh(
-        tankUv(new THREE.CylinderGeometry(1.1, 1.1, 2.4, 16), SKIN_TILE_M.tank, WORLD_PER_METER),
-        skinMaterial('fuel_farm', 'wall', { metalness: 0.35 }),
-      )
-      tank.position.y = 1.2
-      tank.castShadow = true
-      // Red safety band near the top and a gravel bund yard under the tank.
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.12, 0.22, 16, 1, true), skinMaterial('fuel_farm', 'trim'))
-      band.position.y = 2.05
-      const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.9, CELL * 0.9), 4, WORLD_PER_METER), yardMaterial('gravel'))
-      yard.rotation.x = -Math.PI / 2
-      yard.position.y = 0.035
-      yard.receiveShadow = true
-      g.add(yard, tank, band)
-      mountSockets(g, FUEL_TILE_SOCKETS)
+      addFuelFarm(g)
     } else if (tile === 'fire') {
-      const body = new THREE.Mesh(skinBox(CELL * 0.75, 2.2, CELL * 0.7, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('fire_station', 'wall'))
-      body.position.y = 1.1
-      body.castShadow = true
-      const roof = new THREE.Mesh(skinBox(CELL * 0.79, 0.14, CELL * 0.74, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('fire_station', 'roof'))
-      roof.position.y = 2.27
-      const bay = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.5, 1.1, 0.12), skinMaterial('fire_station', 'door'))
-      bay.position.set(0, 0.9, CELL * 0.36)
-      // Hazard chevrons on the bay apron.
-      const apron = new THREE.Mesh(
-        metreUv(new THREE.PlaneGeometry(CELL * 0.5, CELL * 0.1), SKIN_TILE_M.chevron, WORLD_PER_METER),
-        photoMaterial('chevron_stripe', '#f0c040'),
-      )
-      apron.rotation.x = -Math.PI / 2
-      apron.position.set(0, 0.04, CELL * 0.44)
-      g.add(body, roof, bay, apron)
+      addFireStation(g)
     } else if (tile === 'police') {
       addPoliceBuilding(g)
     } else if (tile === 'cargo') {
-      const body = new THREE.Mesh(skinBox(CELL * 0.9, 2.6, CELL * 0.85, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('cargo_terminal', 'wall'))
-      body.position.y = 1.3
-      body.castShadow = true
-      const roof = new THREE.Mesh(skinBox(CELL * 0.93, 0.14, CELL * 0.88, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('cargo_terminal', 'roof'))
-      roof.position.y = 2.67
-      // Truck dock doors along the front, with a lintel in the target accent.
-      for (const x of [-0.28, 0, 0.28]) {
-        const door = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.18, 1.3, 0.08), skinMaterial('cargo_terminal', 'door'))
-        door.position.set(CELL * x, 0.65, CELL * 0.425 + 0.04)
-        const lintel = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.2, 0.1, 0.1), skinMaterial('cargo_terminal', 'trim'))
-        lintel.position.set(CELL * x, 1.35, CELL * 0.425 + 0.05)
-        g.add(door, lintel)
-      }
-      g.add(body, roof)
+      addCargoShed(g)
     } else if (tile === 'guard') {
       addGuardBuilding(g)
     } else if (tile === 'road') {
@@ -1059,23 +1017,7 @@ export class World {
     } else if (tile === 'tower') {
       // Round cab stays inside the cell. The keep-out in buildingFootprint
       // refuses a stamp whose neighbours are roads, so the shaft cannot sit on one.
-      const cabR = CELL * 0.42
-      const shaft = new THREE.Mesh(
-        tankUv(new THREE.CylinderGeometry(cabR * 0.45, cabR * 0.72, CELL * 0.55, 10), SKIN_TILE_M.wall, WORLD_PER_METER),
-        skinMaterial('control_tower', 'wall'),
-      )
-      shaft.position.y = CELL * 0.28
-      shaft.castShadow = true
-      const cab = new THREE.Mesh(
-        new THREE.CylinderGeometry(cabR, cabR * 0.86, CELL * 0.12, 12),
-        new THREE.MeshStandardMaterial({ color: '#2f6f9a', metalness: 0.3 }),
-      )
-      cab.position.y = CELL * 0.58
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(cabR * 0.7, cabR * 1.04, CELL * 0.04, 12), skinMaterial('control_tower', 'roof'))
-      cap.position.y = CELL * 0.66
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(cabR * 0.88, cabR * 0.88, CELL * 0.025, 12, 1, true), skinMaterial('control_tower', 'trim'))
-      band.position.y = CELL * 0.51
-      g.add(shaft, cab, cap, band)
+      addControlTower(g)
     } else if (tile === 'hangar') {
       addHangar(g, opts.hangarTier ?? 'small')
     } else if (tile === 'mro') {
@@ -1126,31 +1068,7 @@ export class World {
       cross.position.y = 0.16
       g.add(pad, ring, bar, cross)
     } else if (tile === 'deice') {
-      const pad = new THREE.Mesh(
-        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
-        new THREE.MeshLambertMaterial({ color: '#3a4a58' }),
-      )
-      pad.rotation.x = -Math.PI / 2
-      pad.position.y = 0.04
-      pad.receiveShadow = true
-      const tank = new THREE.Mesh(
-        tankUv(new THREE.CylinderGeometry(0.55, 0.65, 1.6, 12), SKIN_TILE_M.tank, WORLD_PER_METER),
-        skinMaterial('deice_pad', 'wall', { metalness: 0.35 }),
-      )
-      tank.position.set(-CELL * 0.18, 0.85, 0)
-      tank.castShadow = true
-      const boom = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.55, 0.12, 0.18), skinMaterial('deice_pad', 'trim'))
-      boom.position.set(CELL * 0.12, 1.35, 0)
-      const drip = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 0.55, 0.14),
-        new THREE.MeshStandardMaterial({
-          color: '#7ec8e0',
-          emissive: '#2a6070',
-          emissiveIntensity: 0.25,
-        }),
-      )
-      drip.position.set(CELL * 0.32, 1.0, 0)
-      g.add(pad, tank, boom, drip)
+      addDeicePad(g)
     } else if (tile === 'bus') {
       const curb = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.55),

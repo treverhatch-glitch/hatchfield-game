@@ -3,7 +3,7 @@ import { MESH_TRIANGLE_BUDGET } from './config.ts'
 import { SKIN_TILE_M, type BuildingTargetId } from '../build/materialTargets.ts'
 import { WORLD_PER_METER } from '../render/aircraft/specs.ts'
 import { skinBox, skinMaterial, type SkinPart } from '../render/world/buildingSkin.ts'
-import { mountDock, mountSign } from '../render/world/buildingSign.ts'
+import { mountDock, mountServiceBay, mountSign } from '../render/world/buildingSign.ts'
 
 export { MESH_TRIANGLE_BUDGET }
 
@@ -47,13 +47,17 @@ export function addMroMesh(group: THREE.Group, cell: number): void {
   group.add(skinned('maintenance_shed', 'wall', wallT, wallH, depth * 0.84, w / 2, wallH / 2, -cell * 0.04))
   group.add(skinned('maintenance_shed', 'roof', w * 0.98, 0.1, depth * 0.9, 0, wallH, -cell * 0.02))
   const doors = [w * 0.16, w * 0.24, w * 0.34]
+  const bayIds = ['narrow', 'wide', 'jumbo'] as const
   let cursor = -w * 0.38
-  for (const width of doors) {
-    const door = skinned('maintenance_shed', 'door', width, cell * 0.3, 0.12, cursor + width / 2, cell * 0.16, depth / 2 - cell * 0.04)
+  for (let i = 0; i < doors.length; i++) {
+    const width = doors[i]!
+    const x = cursor + width / 2
+    const door = skinned('maintenance_shed', 'door', width, cell * 0.3, 0.12, x, cell * 0.16, depth / 2 - cell * 0.04)
     door.name = 'mro-door'
     door.userData.mroDoor = true
     door.userData.restY = door.position.y
     group.add(door)
+    mountServiceBay(group, bayIds[i]!, width * 0.85, cell * 0.1, x, depth / 2 + cell * 0.02, '#d7a21a')
     cursor += width + w * 0.03
   }
   group.add(box(cell * 0.2, cell * 0.16, cell * 0.18, '#c4b49a', w * 0.32, cell * 0.1, -depth * 0.28))
