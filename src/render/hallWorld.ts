@@ -61,9 +61,13 @@ import {
   hallToApron,
   matchTerminal,
   poseOnPlan,
+  roomShellBounds,
+  showLegacyHallFurniture,
   type HallFit,
 } from './hallRooms'
 import { terminals } from './world/layout'
+import { baseLevel } from './world/quality'
+import { PACK1_REPEAT_M, tileByPosition } from './materials/pack1'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
 import type { RoomPlan } from './world/rooms'
 import { makeTextures, type WorldTextures } from './world/textures'
@@ -173,6 +177,9 @@ export class HallWorld {
   private readonly figBag = new THREE.BoxGeometry(0.22, 0.32, 0.14)
   private readonly figPin = new THREE.ConeGeometry(0.09, 0.26, 6)
   private readonly figSnack = new THREE.BoxGeometry(0.1, 0.12, 0.1)
+  private readonly figMats = new Map<string, THREE.Material>()
+  private beforeLabel!: THREE.Mesh
+  private afterLabel!: THREE.Mesh
     private beltCubes: THREE.Mesh[] = []
   private claimCubes: THREE.Mesh[] = []
   private sortCubes: THREE.Mesh[] = []
@@ -296,10 +303,12 @@ export class HallWorld {
     const before = this.makeLabel('BEFORE SECURITY', '#8ee0a8')
     before.position.set(-HALL_W * 0.28, 0.08, -HALL_D * 0.42)
     before.rotation.x = -Math.PI / 2
+    this.beforeLabel = before
     this.scene.add(before)
     const after = this.makeLabel('AFTER SECURITY', '#7ec3e8')
     after.position.set(HALL_W * 0.28, 0.08, -HALL_D * 0.42)
     after.rotation.x = -Math.PI / 2
+    this.afterLabel = after
     this.scene.add(after)
 
     this.scene.add(this.roomGroup)
@@ -659,13 +668,83 @@ export class HallWorld {
     }
   }
 
-  private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number) {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshLambertMaterial({ color }),
-    )
+  private watchedShell: THREE.Material[] = []
+
+  private releaseShellMats() {
+    const surfaces = this.terminalShared?.surfaces
+    for (const mat of this.watchedShell) {
+      surfaces?.unwatch(mat)
+      surfaces?.releaseLogo(mat)
+    }
+    this.watchedShell = []
+  }
+
+  private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number, mat?: THREE.Material) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat ?? new THREE.MeshLambertMaterial({ color }))
     mesh.position.set(x, y, z)
     this.roomGroup.add(mesh)
+  }
+
+  /**
+   * Walls around the fitted rooms, with a door on the west side.
+   * The full 48 m hall is wider than the square terminal, so the shell follows the rooms.
+   */
+  /** Cream wall panels on the fitted shell. Repeat is in metres (this view is). */
+  private shellWallMat(): THREE.Material {
+    const map = this.terminalShared?.surfaces.maps.wall
+    const mat = new THREE.MeshLambertMaterial({ color: map ? 0xffffff : 0xd5ddd8, map: map ?? null })
+    if (map && this.terminalShared) {
+      tileByPosition(mat, PACK1_REPEAT_M.wall)
+      this.terminalShared.surfaces.watch(mat)
+      this.watchedShell.push(mat)
+    }
+    return mat
+  }
+
+  private buildFittedShell() {
+    const plan = this.roomPlan
+    const fit = this.interiorFit
+    if (!plan || !fit) return
+    const b = roomShellBounds(plan, fit)
+    const h = 3.15
+    const t = 0.38
+    const y = h / 2
+    const width = b.maxX - b.minX
+    const depth = b.maxZ - b.minZ
+    const cx = (b.minX + b.maxX) / 2
+    const cz = (b.minZ + b.maxZ) / 2
+    const door = 3.2
+    const side = Math.max(0.4, (depth - door) / 2)
+    this.box(width + t, h, t, '#d5ddd8', cx, y, b.minZ, this.shellWallMat())
+    this.box(width + t, h, t, '#d5ddd8', cx, y, b.maxZ, this.shellWallMat())
+    this.box(t, h, depth, '#d5ddd8', b.maxX, y, cz, this.shellWallMat())
+    this.box(t, h, side, '#d5ddd8', b.minX, y, b.minZ + side / 2, this.shellWallMat())
+    this.box(t, h, side, '#d5ddd8', b.minX, y, b.maxZ - side / 2, this.shellWallMat())
+    this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.minZ)
+    this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.maxZ)
+    this.brandMark(b.minX - 0.04, 2.15, cz)
+  }
+
+  /** Hatchfield mark on the landside face, above the door. */
+  private brandMark(x: number, y: number, z: number) {
+    const surfaces = this.terminalShared?.surfaces
+    if (!surfaces) return
+    const mat = surfaces.brandMaterial()
+    this.watchedShell.push(mat)
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), mat)
+    mesh.position.set(x, y, z)
+    mesh.rotation.y = -Math.PI / 2
+    mesh.name = 'hatchfield-logo'
+    this.roomGroup.add(mesh)
+  }
+
+  /** Zone boxes, the carousel and the old columns draw only when the room plan is off. */
+  private applyRoomLayer() {
+    const legacy = showLegacyHallFurniture(this.roomPlan != null)
+    this.kitGroup.visible = legacy
+    this.beforeLabel.visible = legacy
+    this.afterLabel.visible = legacy
+    this.floor.position.y = legacy ? 0 : -0.05
   }
 
   /**
@@ -775,6 +854,7 @@ export class HallWorld {
     const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}|${rooms}`
     if (hash === this.roomHash) return
     this.roomHash = hash
+    this.releaseShellMats()
     this.roomGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       if (mesh.geometry) mesh.geometry.dispose()
@@ -785,7 +865,15 @@ export class HallWorld {
     this.roomGroup.clear()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    this.buildShell(zones as ZoneId[][], nav, this.roomPlan != null)
+    const hasRooms = this.roomPlan != null && this.interiorFit != null
+    if (hasRooms) this.buildFittedShell()
+    else this.buildShell(zones as ZoneId[][], nav, false)
+
+    if (hasRooms) {
+      this.clearKit()
+      this.applyRoomLayer()
+      return
+    }
 
     const cw = HALL_W / cols
     const rh = HALL_D / rows
@@ -837,6 +925,7 @@ export class HallWorld {
     }
     this.clearKit()
     this.kitGroup.add(buildKitInstances(laid))
+    this.applyRoomLayer()
   }
 
   private clearKit() {
@@ -859,7 +948,7 @@ export class HallWorld {
       if (hit) {
         if (!this.terminalShared) {
           this.terminalTextures = makeTextures(64, 4)
-          this.terminalShared = makeTerminalShared(this.terminalTextures)
+          this.terminalShared = makeTerminalShared(this.terminalTextures, baseLevel(graphicsQuality()))
         }
         const fit = hallFitFor(hit.info)
         const building = new TerminalBuilding(hit.info, this.terminalShared, {
@@ -886,7 +975,10 @@ export class HallWorld {
   private hideTerminalShell(building: TerminalBuilding) {
     const shell = building.root.getObjectByName('terminal-shell')
     const roof = building.root.getObjectByName('terminal-roof-group')
-    if (shell) shell.visible = false
+    if (shell) {
+      shell.visible = true
+      for (const child of shell.children) child.visible = child.name === 'terminal-floor' || child.name === 'terminal-carpet'
+    }
     if (roof) roof.visible = false
   }
 
@@ -911,10 +1003,13 @@ export class HallWorld {
       z = building.center.z + (dz / flat) * maxFlat
     }
     const y = Math.max(cam.y / fit.scale, ROOF_Y + WORLD_PER_METER * 2)
-    const pose = `${x.toFixed(2)}|${y.toFixed(2)}|${z.toFixed(2)}`
+    const ceilingY = (ROOF_Y - FLOOR_Y) * fit.scale
+    const ceiling = cam.y < ceilingY
+    const pose = `${x.toFixed(2)}|${y.toFixed(2)}|${z.toFixed(2)}|${ceiling ? 1 : 0}`
     if (pose === this.interiorPose && building.settled()) return
     this.interiorPose = pose
     this.apronCamPos.set(x, y, z)
+    building.ceilingForce = ceiling
     building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false, this.camera)
     this.hideTerminalShell(building)
   }
@@ -935,28 +1030,28 @@ export class HallWorld {
     return counts ? { ...counts, figures: this.guests.size } : null
   }
 
-  /** Head, torso, arms, and two legs. Shared geometries; materials stay per person. */
+  private sharedMat(kind: 'lambert' | 'basic', color: string, glow = 0): THREE.Material {
+    const key = `${kind}|${color}|${glow}`
+    const hit = this.figMats.get(key)
+    if (hit) return hit
+    const mat =
+      kind === 'basic'
+        ? new THREE.MeshBasicMaterial({ color, fog: false })
+        : new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: glow })
+    this.figMats.set(key, mat)
+    return mat
+  }
+
+  /** Head, torso, arms, and two legs. Geometries and clothing materials are shared. */
   private buildFigure(id: string, color: string): THREE.Group {
     const root = new THREE.Group()
     root.userData.guestId = id
     const salt = guestSalt(id)
     const skin = FIGURE_SKINS[salt % FIGURE_SKINS.length]
     const trousers = FIGURE_TROUSERS[(salt >>> 4) % FIGURE_TROUSERS.length]
-    const shirt = new THREE.MeshLambertMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.55,
-    })
-    const legs = new THREE.MeshLambertMaterial({
-      color: trousers,
-      emissive: trousers,
-      emissiveIntensity: 0.35,
-    })
-    const face = new THREE.MeshLambertMaterial({
-      color: skin,
-      emissive: skin,
-      emissiveIntensity: 0.4,
-    })
+    const shirt = this.sharedMat('lambert', color, 0.55)
+    const legs = this.sharedMat('lambert', trousers, 0.35)
+    const face = this.sharedMat('lambert', skin, 0.4)
 
     const left = new THREE.Group()
     left.position.set(-0.11, 0.86, 0)
@@ -977,39 +1072,41 @@ export class HallWorld {
     const torso = new THREE.Mesh(this.figTorso, shirt)
     torso.position.y = 1.13
     root.add(torso)
-    const armL = new THREE.Mesh(this.figArm, shirt)
-    armL.position.set(-0.27, 1.14, 0)
+    const armL = new THREE.Group()
+    armL.position.set(-0.27, 1.38, 0)
+    const armMeshL = new THREE.Mesh(this.figArm, shirt)
+    armMeshL.position.y = -0.24
+    armL.add(armMeshL)
     root.add(armL)
-    const armR = new THREE.Mesh(this.figArm, shirt)
-    armR.position.set(0.27, 1.14, 0)
+    const armR = new THREE.Group()
+    armR.position.set(0.27, 1.38, 0)
+    const armMeshR = new THREE.Mesh(this.figArm, shirt)
+    armMeshR.position.y = -0.24
+    armR.add(armMeshR)
     root.add(armR)
+    root.userData.leftArm = armL
+    root.userData.rightArm = armR
 
     const head = new THREE.Mesh(this.figHead, face)
     head.position.y = 1.58
     root.add(head)
 
-    const pin = new THREE.Mesh(this.figPin, new THREE.MeshLambertMaterial({ color: '#e23b2f' }))
+    const pin = new THREE.Mesh(this.figPin, this.sharedMat('lambert', '#e23b2f', 0.2))
     pin.position.y = 1.98
     root.add(pin)
     root.userData.pin = pin
 
-    const carry = new THREE.Mesh(
-      this.figCarry,
-      new THREE.MeshBasicMaterial({ color: '#3ec6ff', fog: false }),
-    )
+    const carry = new THREE.Mesh(this.figCarry, this.sharedMat('basic', '#3ec6ff'))
     carry.position.set(0.36, 0.98, 0.06)
     root.add(carry)
     root.userData.carry = carry
 
-    const checked = new THREE.Mesh(
-      this.figBag,
-      new THREE.MeshBasicMaterial({ color: '#ffb703', fog: false }),
-    )
+    const checked = new THREE.Mesh(this.figBag, this.sharedMat('basic', '#ffb703'))
     checked.position.set(-0.32, 0.22, 0.04)
     root.add(checked)
     root.userData.checked = checked
 
-    const snack = new THREE.Mesh(this.figSnack, new THREE.MeshLambertMaterial({ color: '#f4efe4' }))
+    const snack = new THREE.Mesh(this.figSnack, this.sharedMat('lambert', '#f4efe4', 0.15))
     snack.position.set(0.28, 1.08, 0.16)
     root.add(snack)
     root.userData.snack = snack
@@ -1017,18 +1114,12 @@ export class HallWorld {
   }
 
   private disposeFigure(root: THREE.Object3D) {
-    const seen = new Set<THREE.Material>()
     root.traverse((obj) => {
-      const mesh = obj as THREE.Mesh
-      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
-      const list = Array.isArray(mat) ? mat : mat ? [mat] : []
-      for (const m of list) {
-        if (seen.has(m)) continue
-        seen.add(m)
-        const mapped = m as THREE.Material & { map?: THREE.Texture | null }
-        mapped.map?.dispose()
-        m.dispose()
-      }
+      const sprite = obj as THREE.Sprite
+      if (!sprite.isSprite) return
+      const mat = sprite.material
+      mat.map?.dispose()
+      mat.dispose()
     })
   }
 
@@ -1135,6 +1226,12 @@ export class HallWorld {
       const right = mesh.userData.rightLeg as THREE.Object3D
       left.rotation.x = swing
       right.rotation.x = -swing
+      const leftArm = mesh.userData.leftArm as THREE.Object3D | undefined
+      const rightArm = mesh.userData.rightArm as THREE.Object3D | undefined
+      if (leftArm && rightArm) {
+        leftArm.rotation.x = -swing * 0.65
+        rightArm.rotation.x = swing * 0.65
+      }
       if (walking) mesh.position.y = Math.abs(Math.sin(game.clock * 6.5)) * 0.045
       const pin = mesh.userData.pin as THREE.Mesh
       pin.visible = Boolean(g.lost)
@@ -1605,7 +1702,7 @@ export class HallWorld {
 
   /** Belt, hold-bag scanner, sort pile, and claim carousel. Cubes are a capped parade. */
   private syncLuggage(game: Game) {
-    if (!game.fits.length) {
+    if (!game.fits.length || this.roomPlan) {
       this.bagGroup.visible = false
       return
     }
@@ -1763,6 +1860,8 @@ export class HallWorld {
     this.litter.dispose()
     this.navCrowd.dispose()
     this.offGfx()
+    for (const mat of this.figMats.values()) mat.dispose()
+    this.figMats.clear()
     this.renderer.dispose()
   }
 }

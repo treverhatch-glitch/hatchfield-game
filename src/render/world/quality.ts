@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-export type QualityLevel = 'low' | 'med' | 'high'
+export type QualityLevel = 'low' | 'med' | 'high' | 'ultra'
 
 export interface QualityPreset {
   level: QualityLevel
@@ -57,6 +57,8 @@ export interface QualityPreset {
   contactShadows: boolean
   /** Filmic grade in the material shader. Off on Low: no extra fragment work. */
   colorGrade: boolean
+  /** Pack 6 sky panoramas on the dome. Low keeps the procedural gradient and never loads them. */
+  skyPhotos: boolean
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
@@ -88,6 +90,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     // One blended disc is a large fill on software GL. Medium and High draw it.
     contactShadows: false,
     colorGrade: false,
+    skyPhotos: false,
   },
   med: {
     level: 'med',
@@ -115,6 +118,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     lightBloom: true,
     contactShadows: true,
     colorGrade: true,
+    skyPhotos: true,
   },
   high: {
     level: 'high',
@@ -142,17 +146,52 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     lightBloom: true,
     contactShadows: true,
     colorGrade: true,
+    skyPhotos: true,
   },
+  // High plus the knobs only a desktop GPU can afford. Everything else follows High.
+  ultra: {
+    level: 'ultra',
+    shadowMapSize: 4096,
+    shadowType: THREE.PCFShadowMap,
+    shadowRadius: 5,
+    pixelRatioCap: 2,
+    msaa: true,
+    shadowEvery: 1,
+    textureSize: 1024,
+    anisotropy: 16,
+    lodScale: 1.8,
+    grassTufts: 6000,
+    trees: 900,
+    precipitation: 3000,
+    propDensity: 1,
+    lightPools: true,
+    walkersPerCell: 0,
+    extraTextures: true,
+    animatedPeople: true,
+    thoughtBubbles: true,
+    crowdDetail: true,
+    shadowReach: 0.8,
+    lightBloom: true,
+    contactShadows: true,
+    colorGrade: true,
+    skyPhotos: true,
+  },
+}
+
+/** Ultra shares High's art and LOD ladders; modules keyed on three levels use this. */
+export function baseLevel(level: QualityLevel): 'low' | 'med' | 'high' {
+  return level === 'ultra' ? 'high' : level
 }
 
 export const QUALITY_LABEL: Record<QualityLevel, string> = {
   low: 'Low',
   med: 'Medium',
   high: 'High',
+  ultra: 'Ultra',
 }
 
 export function parseQuality(v: unknown, fallback: QualityLevel = 'med'): QualityLevel {
-  if (v === 'low' || v === 'med' || v === 'high') return v
+  if (v === 'low' || v === 'med' || v === 'high' || v === 'ultra') return v
   if (v === 'medium') return 'med'
   return fallback
 }
@@ -166,6 +205,9 @@ export function suggestQuality(info: {
   const r = (info.renderer ?? '').toLowerCase()
   if (r.includes('swiftshader') || r.includes('llvmpipe') || r.includes('software')) return 'low'
   if ((info.deviceMemory ?? 8) <= 2 || (info.hardwareConcurrency ?? 8) <= 2) return 'low'
-  if ((info.deviceMemory ?? 8) >= 8 && (info.hardwareConcurrency ?? 8) >= 8) return 'high'
+  const strong = (info.deviceMemory ?? 8) >= 8 && (info.hardwareConcurrency ?? 8) >= 8
+  // Desktop discrete GPUs start on Ultra; integrated and mobile parts stay on High.
+  if (strong && /nvidia|geforce|rtx|gtx|radeon rx|radeon pro|arc a\d/.test(r)) return 'ultra'
+  if (strong) return 'high'
   return 'med'
 }

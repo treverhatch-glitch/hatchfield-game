@@ -47,7 +47,7 @@ export function TitleScreen({
           }}
           onPointerLeave={() => setTilt({ x: 0, y: 0, hot: false })}
         >
-          HATCHFIELD
+          <img src="/assets/pack4/logo_hatchfield.jpg" alt="Hatchfield" />
         </h1>
       </div>
       <p className="lede">

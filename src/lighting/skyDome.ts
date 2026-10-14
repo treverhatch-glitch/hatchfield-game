@@ -67,7 +67,11 @@ export class SkyDome {
         uniform sampler2D texB;
         uniform float blend;
         uniform float useTex;
+<<<<<<< Updated upstream
 
+=======
+
+>>>>>>> Stashed changes
         varying vec3 vDir;
         varying vec2 vUv;
         float h(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -75,6 +79,7 @@ export class SkyDome {
           float t = clamp(vDir.y * 1.6, 0.0, 1.0);
           vec3 procC = mix(horizon, top, pow(t, 0.7));
           procC = mix(procC, vec3(1.0), haze * (1.0 - smoothstep(0.0, 0.18, abs(vDir.y))));
+<<<<<<< Updated upstream
 
           vec4 colorA = texture2D(texA, vUv);
           vec4 colorB = texture2D(texB, vUv);
@@ -82,6 +87,15 @@ export class SkyDome {
 
           vec3 c = mix(procC, texC, useTex);
 
+=======
+
+          vec4 colorA = texture2D(texA, vUv);
+          vec4 colorB = texture2D(texB, vUv);
+          vec3 texC = mix(colorA.rgb, colorB.rgb, blend);
+
+          vec3 c = mix(procC, texC, useTex);
+
+>>>>>>> Stashed changes
           float sun = max(dot(normalize(vDir), sunDir), 0.0);
           c += sunColor * glow * (pow(sun, glowPower) + 0.25 * pow(sun, 3.0)) * (1.0 - stars);
           vec3 cell = floor(vDir * 220.0);
@@ -106,7 +120,11 @@ export class SkyDome {
     this.mat.uniforms.stars.value = stars
     if (sunDir) this.mat.uniforms.sunDir.value.set(sunDir.x, sunDir.y, sunDir.z)
     if (sunColor != null) this.mat.uniforms.sunColor.value.setHex(sunColor)
+<<<<<<< Updated upstream
 
+=======
+
+>>>>>>> Stashed changes
     if (hour !== undefined && texDawn && texNoon && texDusk && texNight) {
       this.mat.uniforms.useTex.value = 1.0
       const h = ((hour % 24) + 24) % 24

@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { simClockToHour, skyState } from './daylight'
+<<<<<<< Updated upstream
+import {
+  applyDayNight,
+  clockForHour,
+  daylightFactor,
+  DAY_NIGHT,
+  NIGHT_FLOOR,
+  resolveHour,
+  SKY_PHOTO_FADES,
+  SKY_PHOTOS,
+  skyPhotoBlend,
+} from './dayNight'
+import { SkyDome } from './environment'
+import { QUALITY } from './quality'
+=======
 import { applyDayNight, clockForHour, daylightFactor, DAY_NIGHT, NIGHT_FLOOR, resolveHour } from './dayNight'
+>>>>>>> Stashed changes
 
 describe('day/night hooks', () => {
   it('round-trips screenshot hours through the sim clock', () => {
@@ -40,3 +56,56 @@ describe('day/night hooks', () => {
     expect(resolveHour(0, null, null)).toBe(8)
   })
 })
+<<<<<<< Updated upstream
+
+describe('pack 6 sky photos', () => {
+  it('shows one photo per screenshot hour', () => {
+    expect(skyPhotoBlend(DAY_NIGHT.shots.noon)).toEqual({ a: 'noon', b: 'noon', t: 0 })
+    expect(skyPhotoBlend(DAY_NIGHT.shots.night)).toEqual({ a: 'night', b: 'night', t: 0 })
+    expect(skyPhotoBlend(3)).toEqual({ a: 'night', b: 'night', t: 0 })
+    const dawn = skyPhotoBlend(DAY_NIGHT.shots.dawn)
+    expect(dawn.t < 0.5 ? dawn.a : dawn.b).toBe('dawn')
+    const dusk = skyPhotoBlend(DAY_NIGHT.shots.dusk)
+    expect(dusk.t < 0.5 ? dusk.a : dusk.b).toBe('dusk')
+  })
+
+  it('crossfades inside each window without a jump at either end', () => {
+    for (const f of SKY_PHOTO_FADES) {
+      const mid = skyPhotoBlend((f.start + f.end) / 2)
+      expect(mid.a).toBe(f.from)
+      expect(mid.b).toBe(f.to)
+      expect(mid.t).toBeGreaterThan(0.3)
+      expect(mid.t).toBeLessThan(0.7)
+      const before = skyPhotoBlend(f.start - 0.01)
+      expect(before.t === 0 ? before.a : before.b).toBe(f.from)
+      const after = skyPhotoBlend(f.end + 0.01)
+      expect(after).toEqual({ a: f.to, b: f.to, t: 0 })
+    }
+    expect(skyPhotoBlend(24 + 12)).toEqual(skyPhotoBlend(12))
+  })
+
+  it('a daylight override pulls the sky toward the night photo', () => {
+    expect(skyPhotoBlend(12, 0)).toEqual({ a: 'noon', b: 'night', t: 1 })
+    expect(skyPhotoBlend(12, 1)).toEqual({ a: 'noon', b: 'noon', t: 0 })
+  })
+
+  it('every photo has a horizon row inside the image', () => {
+    for (const photo of Object.values(SKY_PHOTOS)) {
+      expect(photo.horizon).toBeGreaterThanOrEqual(0)
+      expect(photo.horizon).toBeLessThan(1)
+      expect(photo.url).toMatch(/^\/textures\/sky\/sky_\w+\.jpg$/)
+    }
+  })
+
+  it('Low keeps the procedural dome', () => {
+    expect(QUALITY.low.skyPhotos).toBe(false)
+    expect(QUALITY.med.skyPhotos).toBe(true)
+    const sky = new SkyDome()
+    sky.setPhotos(QUALITY.low.skyPhotos)
+    sky.setPhoto(skyPhotoBlend(12), 1)
+    expect(sky.photoAmount()).toBe(0)
+    sky.dispose()
+  })
+})
+=======
+>>>>>>> Stashed changes

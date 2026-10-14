@@ -18,6 +18,8 @@ import {
   stands,
   taxiLightSpots,
   taxiLinkVisible,
+  roadKerbs,
+  roadPaint,
   taxiPaint,
   terminals,
 } from './layout'
@@ -141,5 +143,14 @@ describe('world layout', () => {
     const face = cellX(6) - CELL / 2
     expect(pad.x + pad.w / 2).toBeLessThanOrEqual(face + 1e-6)
     expect(pad.w).toBeGreaterThan(CELL)
+  })
+
+  it('paints road lanes and raises a kerb on open edges', () => {
+    const game = starterGame()
+    const paint = roadPaint(game)
+    expect(paint.some((p) => p.color === 'yellow')).toBe(true)
+    expect(paint.some((p) => p.color === 'white')).toBe(true)
+    const kerbs = roadKerbs(game)
+    expect(kerbs.length).toBeGreaterThan(4)
   })
 })

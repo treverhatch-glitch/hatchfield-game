@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
+import { PerfOverlay } from '../perf'
 import { inBounds } from '../game/path'
 import { standEntry } from '../game/standFoot'
 import type { Game } from '../game/sim'
@@ -39,12 +40,13 @@ import {
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
-import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
+import { disposeVehicleLibrary, VehicleFleet, type VehicleInstance } from './vehicles.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from '../lighting/dayNight'
 import { CrewFigures } from './crew/figures.ts'
 import { pathHeading } from '../ramp/present.ts'
 import {
+  baseLevel,
   initWorldRender,
   QUALITY,
   REPLACED_TILES,
@@ -157,7 +159,9 @@ function vehicleMeters(kind: string): [number, number, number] {
   if (kind === 'pax_bus') return [12, 3, 2.5]
   if (kind === 'uld_loader') return [8, 2.4, 2.6]
   if (kind === 'gpu') return [3.2, 1.6, 1.4]
-  if (kind === 'baggage_tug' || kind === 'belt_loader' || kind === 'bags') return [6.5, 1.8, 1.6]
+  if (kind === 'baggage_tug' || kind === 'bags') return [7.2, 1.7, 1.55]
+  if (kind === 'belt_loader') return [6.2, 1.8, 1.6]
+  if (kind === 'pushback_tug') return [5.4, 1.65, 2.15]
   return [4.5, 1.9, 1.8]
 }
 
@@ -176,7 +180,6 @@ function makeCateringRig(): THREE.Group {
   const g = new THREE.Group()
   const bodyL = wu(8.5)
   const bodyW = wu(2.5)
-  g.add(vehicleMesh('catering_truck', '#e07a3d', vehicleMeters('catering_truck'), WORLD_PER_METER))
   const mastH = wu(CATER_MAST_M)
   const mast = new THREE.Mesh(
     new THREE.BoxGeometry(wu(0.18), mastH, wu(0.18)),
@@ -223,8 +226,8 @@ export class World {
   private climbOut = new Map<string, ClimbOut>()
   /** Sim distance before the threshold, latched on the first approach frame. */
   private arrivalBefore = new Map<string, number>()
-  trucks = new Map<string, THREE.Object3D>()
-  service = new Map<string, THREE.Object3D>()
+  private vehicleFleet = new VehicleFleet()
+  private vehicleFrame: VehicleInstance[] = []
   cateringCrew = new Map<string, THREE.Group>()
   private crewFigures = new CrewFigures(this.entGroup)
   people = new Map<string, THREE.Mesh>()
@@ -268,14 +271,16 @@ export class World {
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
   private captureWanted = false
+  private perfOverlay = new PerfOverlay()
   private headlights = new VehicleHeadlights()
   private headlightRoots: THREE.Object3D[] = []
+  private headlightPool: THREE.Object3D[] = []
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = graphicsQuality()
-    setAircraftQuality(quality)
+    setAircraftQuality(baseLevel(quality))
     markGraphicsPreset(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
@@ -286,7 +291,8 @@ export class World {
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
     // Low (what SwiftShader auto-picks) stays under 1× with the shadow map off.
-    const pixelCap = quality === 'low' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
+    // Ultra is desktop-GPU only, so it keeps its own cap instead of the 1.25 safety clamp.
+    const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
@@ -337,6 +343,7 @@ export class World {
     this.scene.add(this.entGroup)
     this.scene.add(this.headlights.group)
     this.entGroup.add(this.parkedFleet.root)
+    this.entGroup.add(this.vehicleFleet.root)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
     this.addPlotFence()
@@ -531,7 +538,7 @@ export class World {
   private applyGraphicsQuality(level: QualityLevel) {
     if (this.wr.quality === level) return
     this.wr.setQuality(level)
-    setAircraftQuality(level)
+    setAircraftQuality(baseLevel(level))
   }
 
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
@@ -1991,150 +1998,42 @@ export class World {
   syncEntities(game: Game, dt = 0) {
     this.syncAircraft(game, dt)
 
-    const seenT = new Set<string>()
+    this.vehicleFrame.length = 0
     for (const t of game.trucks) {
-      seenT.add(t.id)
-      let mesh = this.trucks.get(t.id)
-      if (!mesh) {
-        const color =
-          t.kind === 'fuel'
-            ? '#c9a227'
-            : t.kind === 'bags'
-              ? '#6b7280'
-              : t.kind === 'citycargo'
-                ? '#5a4a38'
-                : t.kind === 'deice'
-                  ? '#4aa8c8'
-                  : t.kind === 'termbus'
-                    ? '#e8c56a'
-                    : t.kind === 'contractor'
-                      ? '#d8dee6'
-                      : t.kind === 'delivery'
-                        ? '#c47a3a'
-                        : '#c45c26'
-        const size = vehicleMeters(t.kind)
-        const ht = wu(size[1])
-        const g = new THREE.Group()
-        g.userData.headlight = { length: wu(size[0]), width: wu(size[2]) }
-        g.add(vehicleMesh(t.kind, color, size, WORLD_PER_METER))
-        // Manor Lords-style visible load — crates on bag carts / city trucks.
-        if (t.kind === 'bags' || t.kind === 'citycargo') {
-          const crateH = wu(t.kind === 'citycargo' ? 1.2 : 0.7)
-          const crate = new THREE.Mesh(
-            new THREE.BoxGeometry(wu(t.kind === 'citycargo' ? 2.2 : 1.1), crateH, wu(t.kind === 'citycargo' ? 2.0 : 1.0)),
-            new THREE.MeshStandardMaterial({
-              color: t.kind === 'citycargo' ? '#9a7a40' : '#8a7348',
-              roughness: 0.55,
-              emissive: '#3a2e14',
-              emissiveIntensity: 0.15,
-            }),
-          )
-          crate.position.set(0, ht + crateH / 2, 0)
-          crate.name = 'crate'
-          crate.visible = false
-          g.add(crate)
-          if (t.kind === 'bags') {
-            for (let i = 0; i < 3; i++) {
-              const bag = new THREE.Mesh(
-                new THREE.BoxGeometry(wu(0.7), wu(0.5), wu(0.35)),
-                new THREE.MeshBasicMaterial({
-                  color: i === 1 ? '#3ec6ff' : '#ffb703',
-                  fog: false,
-                }),
-              )
-              bag.position.set((i - 1) * wu(0.8), ht + wu(0.35), 0)
-              bag.name = 'suitcase'
-              g.add(bag)
-            }
-          }
-        }
-        mesh = g
-        this.trucks.set(t.id, mesh)
-        this.entGroup.add(mesh)
-      }
-      mesh.position.copy(toWorld(t.x, t.y, 0))
+      const color = truckColor(t.kind)
+      const size = vehicleMeters(t.kind)
+      const pos = toWorld(t.x, t.y, 0)
       const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
       const dx = (ahead?.c ?? t.x) - t.x
       const dy = (ahead?.r ?? t.y) - t.y
       const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
-      mesh.rotation.y = -heading
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
-      const crate = mesh.getObjectByName('crate')
-      if (crate) {
-        crate.visible = loaded
-        const s = clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35)
-        crate.scale.set(s, s, s)
-      }
-      mesh.traverse((obj) => {
-        if (obj.name === 'suitcase') obj.visible = loaded
+      this.vehicleFrame.push({
+        kind: t.kind,
+        color,
+        size,
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        yaw: -heading,
+        scale: WORLD_PER_METER,
+        cargo: loaded ? (t.kind === 'bags' ? 'suitcases' : t.kind === 'citycargo' ? 'crates' : undefined) : undefined,
+        cargoScale: loaded ? clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35) : 1,
       })
     }
-    for (const [id, m] of this.trucks) {
-      if (!seenT.has(id)) {
-        this.entGroup.remove(m)
-        disposeObject(m)
-        this.trucks.delete(id)
-      }
-    }
 
-    const seenS = new Set<string>()
     for (const pose of game.servicePoses()) {
-      seenS.add(pose.id)
-      let mesh = this.service.get(pose.id)
-      if (!mesh) {
-        const color =
-          pose.type === 'fuel_truck'
-            ? '#c9a227'
-            : pose.type === 'catering_truck'
-              ? '#e07a3d'
-              : pose.type === 'pax_bus'
-                ? '#3d6a8a'
-                : pose.type === 'pushback_tug'
-                  ? '#f2d24a'
-                  : pose.type === 'gpu'
-                    ? '#5b8c5a'
-                    : pose.type === 'uld_loader'
-                      ? '#4a5568'
-                      : '#8a93a0'
-        const [lenM, htM, widM] = vehicleMeters(pose.type)
-        const len = wu(lenM)
-        const ht = wu(htM)
-        const wid = wu(widM)
-        const g = new THREE.Group()
-        g.userData.headlight = { length: len, width: wid }
-        g.add(vehicleMesh(pose.type, color, [lenM, htM, widM], WORLD_PER_METER))
-        if (pose.type === 'baggage_tug' || pose.type === 'belt_loader') {
-          const bed = new THREE.Mesh(
-            new THREE.BoxGeometry(wu(2.4), wu(0.25), wid),
-            new THREE.MeshStandardMaterial({ color: '#3d4650', roughness: 0.6 }),
-          )
-          bed.position.set(-len * 0.28, ht * 0.55, 0)
-          g.add(bed)
-          for (let i = 0; i < 3; i++) {
-            const bag = new THREE.Mesh(
-              new THREE.BoxGeometry(wu(0.7), wu(0.5), wu(0.35)),
-              new THREE.MeshStandardMaterial({
-                color: i === 1 ? '#2f4a6a' : '#6a4328',
-                roughness: 0.55,
-              }),
-            )
-            bag.position.set(-len * 0.28 + (i - 1) * wu(0.8), ht * 0.55 + wu(0.4), 0)
-            g.add(bag)
-          }
-        }
-        mesh = g
-        this.service.set(pose.id, mesh)
-        this.entGroup.add(mesh)
-      }
-      mesh.position.copy(toWorld(pose.x, pose.y, 0))
-      mesh.rotation.y = -pose.heading
-    }
-    for (const [id, m] of this.service) {
-      if (!seenS.has(id)) {
-        this.entGroup.remove(m)
-        disposeObject(m)
-        this.service.delete(id)
-      }
+      const pos = toWorld(pose.x, pose.y, 0)
+      this.vehicleFrame.push({
+        kind: pose.type,
+        color: serviceColor(pose.type),
+        size: vehicleMeters(pose.type),
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        yaw: -pose.heading,
+        scale: WORLD_PER_METER,
+      })
     }
 
     const seenC = new Set<string>()
@@ -2148,6 +2047,16 @@ export class World {
       }
       rig.position.copy(toWorld(pose.x, pose.y, 0))
       rig.rotation.y = -pose.heading
+      this.vehicleFrame.push({
+        kind: 'catering_truck',
+        color: '#e07a3d',
+        size: vehicleMeters('catering_truck'),
+        x: rig.position.x,
+        y: rig.position.y,
+        z: rig.position.z,
+        yaw: rig.rotation.y,
+        scale: WORLD_PER_METER,
+      })
       const mast = rig.getObjectByName('mast')
       const platform = rig.getObjectByName('platform')
       const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
@@ -2165,6 +2074,7 @@ export class World {
         this.cateringCrew.delete(id)
       }
     }
+    this.vehicleFleet.sync(this.vehicleFrame)
 
     const seenP = new Set<string>()
     for (const p of game.people) {
@@ -2414,9 +2324,18 @@ export class World {
 
   /** Headlamps follow trucks and service vehicles. Pools stay off on Low. */
   private syncHeadlights() {
+    // Vehicles are instanced now, so lamps read light proxies built from this frame's instances.
+    const frame = this.vehicleFrame
+    while (this.headlightPool.length < frame.length) this.headlightPool.push(new THREE.Object3D())
     this.headlightRoots.length = 0
-    for (const mesh of this.trucks.values()) this.headlightRoots.push(mesh)
-    for (const mesh of this.service.values()) this.headlightRoots.push(mesh)
+    for (let i = 0; i < frame.length; i++) {
+      const v = frame[i]
+      const root = this.headlightPool[i]
+      this.headlightRoots.push(root)
+      root.position.set(v.x, v.y, v.z)
+      root.rotation.y = v.yaw
+      root.userData.headlight = { length: v.size[0] * v.scale, width: v.size[2] * v.scale }
+    }
     this.headlights.sync(this.headlightRoots, this.wr.dayNightSample.headlights, this.wr.quality !== 'low')
   }
 
@@ -2448,6 +2367,7 @@ export class World {
     perfEnd('world.wr', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    this.perfOverlay.update(this.renderer, this.scene)
     if (this.captureWanted) {
       this.captureWanted = false
       const url = canvasToPng(this.renderer.domElement)
@@ -2493,6 +2413,7 @@ export class World {
     this.jets.clear()
     this.climbOut.clear()
     this.arrivalBefore.clear()
+    this.vehicleFleet.dispose()
     this.parkedFleet.dispose()
     this.crewFigures.dispose()
     this.gateGroup.clear()
@@ -2500,6 +2421,7 @@ export class World {
     disposeVehicleLibrary()
     this.offGfx()
     this.wr.dispose()
+    this.perfOverlay.dispose()
     this.headlights.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
@@ -2535,7 +2457,7 @@ function flightLivery(game: Game, f: Game['flights'][number]): Livery {
   let body = a.color
   let stripe = a.stripe
   // Airline fin over a white crown. Special kinds keep their solid paint below.
-  if (!SOLID_PAINT.has(f.kind)) return { body, stripe, tail: body, scheme: 'twotone' }
+  if (!SOLID_PAINT.has(f.kind)) return { body, stripe, tail: body, scheme: 'twotone', airline: f.airline }
   if (f.kind === 'military') {
     body = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
     stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
@@ -2549,7 +2471,28 @@ function flightLivery(game: Game, f: Game['flights'][number]): Livery {
     body = '#1a3a4a'
     stripe = '#c9a227'
   }
-  return { body, stripe, tail: stripe, scheme: 'solid' }
+  return { body, stripe, tail: stripe, scheme: 'solid', airline: f.airline }
+}
+
+function truckColor(kind: string): string {
+  if (kind === 'fuel') return '#c9a227'
+  if (kind === 'bags') return '#6b7280'
+  if (kind === 'citycargo') return '#5a4a38'
+  if (kind === 'deice') return '#4aa8c8'
+  if (kind === 'termbus') return '#e8c56a'
+  if (kind === 'contractor') return '#d8dee6'
+  if (kind === 'delivery') return '#c47a3a'
+  return '#c45c26'
+}
+
+function serviceColor(kind: string): string {
+  if (kind === 'fuel_truck') return '#c9a227'
+  if (kind === 'catering_truck') return '#e07a3d'
+  if (kind === 'pax_bus') return '#3d6a8a'
+  if (kind === 'pushback_tug') return '#f2d24a'
+  if (kind === 'gpu') return '#5b8c5a'
+  if (kind === 'uld_loader') return '#4a5568'
+  return '#8a93a0'
 }
 
 function disposeObject(root: THREE.Object3D) {

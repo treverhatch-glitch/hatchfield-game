@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { disposeVehicleLibrary, vehicleGeometry, vehicleLibrarySize, vehicleMesh, vehicleShape } from './vehicles'
+import { disposeVehicleLibrary, VehicleFleet, vehicleGeometry, vehicleLibrarySize, vehicleMesh, vehicleShape } from './vehicles'
 
 afterAll(() => disposeVehicleLibrary())
 
@@ -9,6 +9,8 @@ describe('ground vehicle meshes', () => {
     expect(vehicleShape('fuel_truck')).toBe('tanker')
     expect(vehicleShape('pax_bus')).toBe('bus')
     expect(vehicleShape('pushback_tug')).toBe('tug')
+    expect(vehicleShape('baggage_tug')).toBe('train')
+    expect(vehicleShape('catering_truck')).toBe('catering')
     expect(vehicleShape('citycargo')).toBe('truck')
   })
 
@@ -40,5 +42,22 @@ describe('ground vehicle meshes', () => {
     expect(vehicleMesh('gpu', '#5b8c5a', [3.2, 1.6, 1.4], 1).material).toBe(
       vehicleMesh('pax_bus', '#3d6a8a', [12, 3, 2.5], 1).material,
     )
+  })
+
+  it('instances a fleet instead of one draw per vehicle', () => {
+    const fleet = new VehicleFleet()
+    const size = [8, 3, 2.5] as const
+    fleet.sync([
+      { kind: 'fuel_truck', color: '#c9a227', size, x: 0, y: 0, z: 0, yaw: 0, scale: 1 },
+      { kind: 'fuel_truck', color: '#c9a227', size, x: 4, y: 0, z: 1, yaw: 0.4, scale: 1 },
+      { kind: 'pax_bus', color: '#3d6a8a', size: [12, 3, 2.5], x: 8, y: 0, z: 2, yaw: 1, scale: 1 },
+    ])
+    const meshes = fleet.root.children.filter((child) => (child as THREE.InstancedMesh).isInstancedMesh) as THREE.InstancedMesh[]
+    expect(meshes).toHaveLength(2)
+    const fuel = meshes.find((mesh) => mesh.count === 2)
+    expect(fuel).toBeDefined()
+    fleet.sync([])
+    expect(meshes.every((mesh) => mesh.count === 0)).toBe(true)
+    fleet.dispose()
   })
 })
