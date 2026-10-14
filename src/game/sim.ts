@@ -193,7 +193,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout, waitMoodDelta } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage, waitMoodDelta } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -7427,6 +7427,7 @@ export class Game {
       String(this.hallRev),
       () => hallNavLayout(fit),
       () => hallClaimHall(fit),
+      () => hallSignage(fit),
     )
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
@@ -7436,6 +7437,8 @@ export class Game {
     })
     this.hallNav.tick(step)
     this.applyHallWaits()
+    // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
+    this.queueReputation(this.hallNav.takeReputation())
   }
 
   /** Waits in the walk's real queues move the waiting guest's mood: quick service pleases, a long line stings. */

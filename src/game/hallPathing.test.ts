@@ -56,6 +56,8 @@ function metric(over: Partial<FacilityMetrics>): FacilityMetrics {
     longestWaitSec: 0,
     estWaitSec: 0,
     served: 0,
+    leftQueue: 0,
+    stock: null,
     line: Array.from({ length: 12 }, (_, i) => ({ x: i, z: 0 })),
     ...over,
   }

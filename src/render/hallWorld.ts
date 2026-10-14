@@ -51,6 +51,7 @@ import {
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
+import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
 import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
 import { WORLD_PER_METER } from './aircraft/specs'
@@ -417,6 +418,16 @@ export class HallWorld {
     const hits = this.ray.intersectObjects(this.guestGroup.children, true)
     const spot = spotHits[0]
     const person = hits[0]
+    // Nav-grid walkers are instanced: pick the one nearest where the ray crosses body height.
+    if (!person && this.game.hallNav.live) {
+      const r = this.ray.ray
+      const t = Math.abs(r.direction.y) > 1e-6 ? (HALL_WALKER_PICK.bodyY - r.origin.y) / r.direction.y : -1
+      const id = t > 0 ? this.game.hallNav.pickAt(r.origin.x + r.direction.x * t, r.origin.z + r.direction.z * t, HALL_WALKER_PICK.radiusM) : null
+      if (id) {
+        this.game.selectGuest(id)
+        return
+      }
+    }
     const facilityHit = [...queueHits, ...roomHits].find((hit) => {
       let obj: THREE.Object3D | null = hit.object
       while (obj) {

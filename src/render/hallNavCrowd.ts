@@ -17,6 +17,7 @@ import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
 import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
+import { WALKER_LOST, WALKER_REBOOK } from '../paxnav/paxnav.ts'
 
 const SHIRTS = ['#2f6fb0', '#c0392b', '#2e8b57', '#d68910', '#7d3c98', '#34495e', '#e0e0e0', '#16a085', '#b03a7a', '#5d6d7e']
 const SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
@@ -67,13 +68,15 @@ export interface CrowdDrawStats {
   bags: number
   /** Instances drawn across body, head and bag. */
   instances: number
+  /** Thought markers drawn (lost, rebooking, unhappy guests). */
+  marks: number
 }
 
 export class HallNavCrowd {
   readonly group = new THREE.Group()
   /** Tunables; tests and the debug console may change them. */
   readonly tuning = { ...HALL_CROWD_TUNING }
-  readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0 }
+  readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0, marks: 0 }
   private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 2, 6)
   private readonly headGeo = new THREE.SphereGeometry(0.12, 7, 5)
   private readonly bagGeo = new THREE.BoxGeometry(0.34, 0.5, 0.22)
@@ -82,11 +85,19 @@ export class HallNavCrowd {
   private readonly headMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
   private readonly bagMat = new THREE.MeshLambertMaterial({ color: 0x3a3f47 })
   private readonly dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false })
+  /** Thought marker over a guest's head: lost (yellow), rebooking (orange), unhappy (red). */
+  private readonly markGeo = new THREE.SphereGeometry(0.17, 8, 6)
+  private readonly markMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+  private readonly markLost = palette(['#ffd23f'])
+  private readonly markRebook = palette(['#ff8c1a'])
+  private readonly markSad = palette(['#e0413a'])
   private readonly shirts = palette([...SHIRTS, ...CREW_ROLES.map((r) => CREW_SHIRTS[r])])
   private readonly skins = palette(SKINS)
   private body: THREE.InstancedMesh | null = null
   private head: THREE.InstancedMesh | null = null
   private bag: THREE.InstancedMesh | null = null
+  private mark: THREE.InstancedMesh | null = null
+  private flags = new Uint8Array(0)
   private dots: THREE.InstancedMesh | null = null
   /** Instance slots in the meshes. */
   private cap = 0
@@ -127,7 +138,7 @@ export class HallNavCrowd {
     const live = nav.live
     this.group.visible = live
     if (!live) {
-      st.walkers = st.visible = st.bodies = st.heads = st.bags = st.instances = 0
+      st.walkers = st.visible = st.bodies = st.heads = st.bags = st.instances = st.marks = 0
       return 0
     }
     this.syncLines(nav)
@@ -190,9 +201,14 @@ export class HallNavCrowd {
     const gm = bag.instanceMatrix.array as Float32Array
     const bc = body.instanceColor!.array as Float32Array
     const hc = head.instanceColor!.array as Float32Array
+    const mark = this.mark!
+    const mm = mark.instanceMatrix.array as Float32Array
+    const mc = mark.instanceColor!.array as Float32Array
+    nav.writeFlags(this.flags)
     const lod2 = camera ? T.lodDistM * T.lodDistM : Infinity
     let nh = 0
     let ng = 0
+    let nm = 0
     for (let k = 0; k < capN; k++) {
       const i = visIdx[k]
       const x = poses[i * 4] + ox
@@ -218,10 +234,22 @@ export class HallNavCrowd {
         writeYaw(gm, ng, x - sn * 0.38 + cs * 0.2, 0.25, z - cs * 0.38 - sn * 0.2, sn, cs)
         ng++
       }
+      // Thought bubble over lost, rebooking and unhappy guests.
+      const fl = this.flags[i]
+      if (fl) {
+        const col = fl & WALKER_LOST ? this.markLost : fl & WALKER_REBOOK ? this.markRebook : this.markSad
+        writeYaw(mm, nm, x, 2.15 + bob, z, 0, 1)
+        mc[nm * 3] = col[0]
+        mc[nm * 3 + 1] = col[1]
+        mc[nm * 3 + 2] = col[2]
+        nm++
+      }
     }
     this.flush(body, capN, true)
     this.flush(head, nh, true)
     this.flush(bag, ng, false)
+    this.flush(mark, nm, true)
+    st.marks = nm
     st.bodies = capN
     st.heads = nh
     st.bags = ng
@@ -234,14 +262,17 @@ export class HallNavCrowd {
     this.body?.dispose()
     this.head?.dispose()
     this.bag?.dispose()
+    this.mark?.dispose()
     this.dots?.dispose()
     this.bodyGeo.dispose()
     this.headGeo.dispose()
     this.bagGeo.dispose()
+    this.markGeo.dispose()
     this.dotGeo.dispose()
     this.bodyMat.dispose()
     this.headMat.dispose()
     this.bagMat.dispose()
+    this.markMat.dispose()
     this.dotMat.dispose()
   }
 
@@ -372,13 +403,14 @@ export class HallNavCrowd {
     this.skinOf = new Uint8Array(cap)
     this.visIdx = new Int32Array(cap)
     this.visD = new Float32Array(cap)
+    this.flags = new Uint8Array(cap)
     this.roster = -1
   }
 
   /** Instance slots: as many as get drawn (the cap bounds this, not the sim). */
   private ensureMeshes(n: number) {
     if (this.cap >= n && this.body) return
-    for (const mesh of [this.body, this.head, this.bag]) {
+    for (const mesh of [this.body, this.head, this.bag, this.mark]) {
       mesh?.removeFromParent()
       mesh?.dispose()
     }
@@ -400,6 +432,7 @@ export class HallNavCrowd {
     this.body = make(this.bodyGeo, this.bodyMat, 'hall-nav-body', true)
     this.head = make(this.headGeo, this.headMat, 'hall-nav-head', true)
     this.bag = make(this.bagGeo, this.bagMat, 'hall-nav-bag', false)
+    this.mark = make(this.markGeo, this.markMat, 'hall-nav-thought', true)
   }
 }
 
