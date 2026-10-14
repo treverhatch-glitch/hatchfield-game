@@ -269,6 +269,15 @@ function logoTex(i: number): THREE.Texture | null {
 }
 
 const matCache = new Map<string, THREE.MeshStandardMaterial>()
+let metalCap = 1
+/**
+ * Scenes without an environment map (the game world) render full-metal
+ * surfaces near black. Cap metalness there; the preview page keeps PMREM.
+ */
+export function capTerminalPropMetal(cap: number) {
+  metalCap = cap
+  for (const [k, m] of matCache) m.metalness = Math.min(MATERIALS[k]?.metal ?? 0, cap)
+}
 export function material(key: string): THREE.MeshStandardMaterial {
   const hit = matCache.get(key)
   if (hit) return hit
@@ -278,7 +287,7 @@ export function material(key: string): THREE.MeshStandardMaterial {
   const m = new Ctor({
     color: s.color,
     roughness: s.rough ?? 0.6,
-    metalness: s.metal ?? 0,
+    metalness: Math.min(s.metal ?? 0, metalCap),
     map,
     emissive: s.glow ? '#ffffff' : (s.emissive ?? '#000000'),
     emissiveMap: s.glow ? map : null,

@@ -16,6 +16,7 @@ import { PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType } from './pro
 export { TERMINAL_PROP_TYPES, type TerminalPropType } from './props'
 export { buildTerminalHall, buildTerminalExterior, type HallSpec } from './shell'
 export { setupTerminalEnvironment } from './env'
+export { capTerminalPropMetal } from './materials'
 
 export interface PropEntry {
   type: TerminalPropType
@@ -95,6 +96,14 @@ export interface PropPlacement {
   yaw?: number
   /** Floor height (multi-level terminals). */
   y?: number
+  /** Uniform scale (fit a real-size prop into a smaller game cell). */
+  scale?: number
+}
+
+/** Uniform scale (<= 1) that fits a prop's footprint inside w x d metres. */
+export function fitScale(type: TerminalPropType, w: number, d: number): number {
+  const s = terminalProp(type).size
+  return Math.min(1, w / Math.max(0.01, s.w), d / Math.max(0.01, s.d))
 }
 
 const GEOM: Record<Prim, () => THREE.BufferGeometry> = {
@@ -125,6 +134,7 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
   const e = new THREE.Euler()
   for (const pl of placements) {
     item.makeRotationY(pl.yaw ?? 0).setPosition(pl.x, pl.y ?? 0, pl.z)
+    if (pl.scale && pl.scale !== 1) item.multiply(new THREE.Matrix4().makeScale(pl.scale, pl.scale, pl.scale))
     for (const part of terminalProp(pl.type).parts) {
       e.set(...(part.rot ?? [0, 0, 0]))
       q.setFromEuler(e)

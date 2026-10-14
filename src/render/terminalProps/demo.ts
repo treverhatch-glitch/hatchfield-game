@@ -54,7 +54,8 @@ if (view === 'lineup') {
   scene.add(hall)
   const P: PropPlacement[] = []
   for (let i = 0; i < 3; i++) P.push({ type: 'checkin_row', x: -30 + i * 14, z: -18 })
-  for (let i = 0; i < 3; i++) P.push({ type: 'security_lane', x: 22, z: -20 + i * 5 })
+  for (let i = 0; i < 2; i++) P.push({ type: 'security_lane', x: 22, z: -24 + i * 5.5 })
+  P.push({ type: 'security_lane_ct', x: 22, z: -11.5 })
   P.push({ type: 'shop_coffee', x: -40, z: 23.5, yaw: Math.PI }, { type: 'shop_dutyfree', x: -31, z: 23.5, yaw: Math.PI }, { type: 'shop_news', x: -22, z: 23.5, yaw: Math.PI }, { type: 'shop_fastfood', x: -13, z: 23.5, yaw: Math.PI })
   P.push({ type: 'food_court', x: -26, z: 14 })
   P.push({ type: 'gate_seating', x: 6, z: 12 }, { type: 'gate_seating', x: 20, z: 12 })
@@ -83,6 +84,16 @@ if (view === 'lineup') {
       cam.position.set(-70, 32, 95)
       cam.lookAt(0, 4, 20)
     }
+  } else if (view === 'security') {
+    cam.position.set(12, 3.4, -2)
+    cam.lookAt(22, 1.0, -14)
+    cam.fov = 55
+    cam.updateProjectionMatrix()
+  } else if (view === 'retail') {
+    cam.position.set(-34, 2.6, 14)
+    cam.lookAt(-38, 1.4, 22)
+    cam.fov = 60
+    cam.updateProjectionMatrix()
   } else if (view === 'checkin') {
     cam.position.set(-24, 3.2, 2)
     cam.lookAt(-30, 1.6, -18)

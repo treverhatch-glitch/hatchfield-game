@@ -198,8 +198,9 @@ function securityLane(): Part[] {
     for (let k = 0; k < 6; k++) out.push(box([0.55, 0.06, 0.4], [x, 0.89 + k * 0.065, 0], 'tray'))
   }
   // walk-through arch beside the tunnel; body scanner pad
-  out.push(...place(archDetector(), -0.6, 1.6))
-  out.push(box([1.0, 0.4, 0.04], [-0.6, 2.6, 1.6], 'lbSecurity'))
+  out.push(...place(archDetector(), 1.0, 1.6))
+  out.push(...place(bodyScanner(), -1.4, 1.6))
+  out.push(box([1.0, 0.4, 0.04], [1.0, 2.6, 1.6], 'lbSecurity'))
   // reclaim (composure) table + tray return conveyor underneath back to start
   out.push(box([2.4, 0.82, 0.8], [4.6, 0.41, 0.05], 'corian'), box([2.44, 0.03, 0.84], [4.6, 0.84, 0.05], 'brushed'))
   out.push(box([8.8, 0.3, 0.5], [0, 0.17, -0.7], 'darkSteel'))
@@ -235,6 +236,13 @@ function shopShell(kind: ShopKind, w = 8, d = 6, h = 4): Part[] {
     // fascia + illuminated sign + lightbox posters
     box([w + 0.3, 0.9, 0.35], [0, h - 0.45, 0.05], s.accent),
     box([w * 0.62, 0.6, 0.04], [0, h - 0.45, 0.24], s.sign),
+    box([w + 0.3, 0.04, 0.06], [0, h - 0.92, 0.2], 'ledWarm'),
+    box([0.08, 0.9, 0.9], [w / 2 + 0.05, h - 1.6, 0.5], 'darkSteel'),
+    box([0.02, 0.7, 0.75], [w / 2 + 0.1, h - 1.6, 0.5], s.sign, [0, H, 0]),
+    box([0.02, 0.7, 0.75], [w / 2, h - 1.6, 0.5], s.sign, [0, -H, 0]),
+    box([0.3, h - 0.9, 0.3], [-w / 2 + 0.15, (h - 0.9) / 2, 0.1], 'stainless'),
+    box([0.3, h - 0.9, 0.3], [w / 2 - 0.15, (h - 0.9) / 2, 0.1], 'stainless'),
+    box([2.4, 0.18, 0.12], [0, h - 1.0, 0.12], 'darkSteel'),
     box([1.4, 2.0, 0.08], [-w / 2 + 0.95, 1.35, 0.05], s.lb),
     // shopfront glazing with mullions + open doorway in centre
     box([w / 2 - 2.2, 2.6, 0.04], [-w / 4 - 0.1 + 0.55, 1.4, 0.02], 'glass'),
@@ -267,12 +275,7 @@ function counterUnit(len: number, top = 'granite', face = 'walnut'): Part[] {
 function shop(kind: ShopKind): Part[] {
   const out = shopShell(kind)
   if (kind === 'coffee') {
-    out.push(...place(counterUnit(4.2, 'granite', 'walnut'), 0.6, -3.2))
-    out.push(box([0.7, 0.5, 0.55], [0.9, 1.3, -3.25], 'chrome'), box([0.5, 0.25, 0.04], [0.9, 1.35, -2.96], 'black'))
-    out.push(box([1.4, 0.45, 0.5], [2.1, 1.28, -3.2], 'glass'), box([1.3, 0.12, 0.4], [2.1, 1.12, -3.2], 'bun'))
-    for (let i = 0; i < 5; i++) out.push(cyl([0.09, 0.12, 0.09], [-0.9 + i * 0.12, 1.12, -3.0], 'cup'))
-    out.push(box([3.5, 0.9, 0.05], [0.5, 2.6, -5.85], 'black'), box([3.3, 0.75, 0.02], [0.5, 2.6, -5.82], 'lbCoffee'))
-    out.push(box([3.6, 0.04, 0.35], [0.5, 1.7, -5.75], 'oak'), box([3.6, 0.04, 0.35], [0.5, 2.0, -5.75], 'oak'))
+    out.push(...place(cafeCounter(), 0.9, -4.2))
     for (const [x, z] of [[-2.6, -1.4], [-2.6, -4.6]]) {
       out.push(cyl([0.7, 0.04, 0.7], [x, 0.74, z], 'oak'), cyl([0.08, 0.72, 0.08], [x, 0.36, z], 'darkSteel'))
       out.push(...place(chair('leather'), x - 0.55, z, H), ...place(chair('leather'), x + 0.55, z, -H))
@@ -287,6 +290,7 @@ function shop(kind: ShopKind): Part[] {
     }
     out.push(...place(counterUnit(2, 'granite', 'black'), -3, -1.4, H))
     out.push(box([0.6, 1.7, 0.1], [0, 0.85, -1.2], 'lbDuty'))
+    out.push(...place(gondola(['bottle', 'goodsA', 'bottle', 'goodsB']), 0, -4.2))
   } else if (kind === 'news') {
     out.push(...place(shelfUnit(['goodsC', 'red', 'goodsD', 'signYellow']), -2.6, -5.6), ...place(shelfUnit(['goodsD', 'goodsC', 'hatchBlue']), -0.7, -5.6))
     out.push(...place(shelfUnit(['red', 'goodsD', 'goodsC']), 1.2, -5.6))
@@ -297,6 +301,7 @@ function shop(kind: ShopKind): Part[] {
     for (let k = 0; k < 4; k++) for (let i = 0; i < 6; i++) out.push(cyl([0.07, 0.22, 0.07], [2.6 + i * 0.2, 0.4 + k * 0.45, -5.2], i % 2 ? 'bagTeal' : 'red'))
     out.push(box([1.4, 0.04, 0.6], [3.1, 2.05, -5.4], 'lampCool'))
     out.push(...place(counterUnit(1.8, 'corian', 'red'), 2.4, -1.6))
+    out.push(...place(gondola(['goodsC', 'red', 'goodsD', 'signYellow']), -1.2, -3.0))
     out.push(box([0.4, 0.3, 0.3], [2.4, 1.2, -1.6], 'black'))
   } else {
     out.push(...place(counterUnit(5.6, 'brushed', 'red'), 0, -2.6))
@@ -659,6 +664,156 @@ function jetBridge(): Part[] {
   return out
 }
 
+
+// ---------- round 3: security + retail detail ----------
+/** Millimetre-wave body scanner: two curved glass pods on a plinth, hands-up floor marks, operator screen. */
+function bodyScanner(): Part[] {
+  const out: Part[] = [
+    box([2.0, 0.06, 1.7], [0, 0.03, 0], 'lacquerWhite'),
+    box([1.9, 0.01, 1.6], [0, 0.065, 0], 'rubber'),
+    box([0.34, 0.02, 0.5], [-0.25, 0.08, 0], 'signYellow', [0, 0.25, 0]),
+    box([0.34, 0.02, 0.5], [0.25, 0.08, 0], 'signYellow', [0, -0.25, 0]),
+    box([2.0, 0.22, 1.7], [0, 2.3, 0], 'lacquerWhite'),
+    box([1.9, 0.03, 1.6], [0, 2.18, 0], 'led'),
+    box([1.2, 0.18, 0.02], [0, 2.3, 0.86], 'lacquerBlue'),
+  ]
+  // curved pods: 7 facets per side
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 7; i++) {
+      const a = (-0.75 + (i / 6) * 1.5)
+      const x = side * Math.cos(a) * 0.85, z = Math.sin(a) * 0.75
+      out.push(box([0.06, 2.1, 0.24], [x, 1.12, z], i === 0 || i === 6 ? 'lacquerWhite' : 'glassTint', [0, -side * a, 0]))
+    }
+    out.push(box([0.12, 2.1, 0.12], [side * 0.62, 1.12, 0.62], 'stainless'), box([0.12, 2.1, 0.12], [side * 0.62, 1.12, -0.62], 'stainless'))
+    out.push(box([0.02, 1.6, 0.02], [side * 0.78, 1.1, 0], 'ledBlue'))
+  }
+  out.push(cyl([0.08, 1.2, 0.08], [1.25, 0.6, 0.7], 'stainless'), box([0.4, 0.3, 0.05], [1.25, 1.35, 0.7], 'black', [-0.4, 0, 0]), box([0.36, 0.26, 0.01], [1.25, 1.36, 0.73], 'screenGreen', [-0.4, 0, 0]))
+  return out
+}
+
+/** Divest station: stainless counter with powered rollers, tray dispenser and number light. */
+function divestStation(n: number): Part[] {
+  const out: Part[] = [
+    box([1.2, 0.8, 0.8], [0, 0.4, 0], 'stainless'),
+    box([1.24, 0.04, 0.84], [0, 0.82, 0], 'brushed'),
+    box([0.24, 0.24, 0.02], [0, 1.5, 0.4], n % 2 ? 'screenGreen' : 'ledBlue'),
+    cyl([0.04, 0.7, 0.04], [0, 1.15, 0.38], 'chrome'),
+  ]
+  for (let i = 0; i < 8; i++) out.push(cyl([0.05, 0.7, 0.05], [-0.52 + i * 0.15, 0.87, 0], 'chrome', [H, 0, 0]))
+  for (let k = 0; k < 3; k++) out.push(box([0.6, 0.07, 0.42], [0, 0.95 + k * 0.075, 0], 'tray'))
+  return out
+}
+
+/** Automated tray return lane (ATRS) with CT scanner gantry, 4 divest stations, reject line, recompose bench. */
+function securityLaneCT(): Part[] {
+  const out: Part[] = []
+  for (let i = 0; i < 4; i++) out.push(...place(divestStation(i), -6.4 + i * 1.3, 0))
+  // CT scanner: deep housing with ring gantry face and lead curtains
+  out.push(box([2.6, 1.7, 1.4], [-0.6, 0.85, 0], 'lacquerWhite'), box([2.64, 0.12, 1.44], [-0.6, 1.76, 0], 'lacquerBlue'))
+  out.push(part('torus', [1.5, 1.5, 0.8], [-1.92, 0.95, 0], 'stainless', [0, H, 0]))
+  for (let i = 0; i < 6; i++) {
+    out.push(box([0.02, 0.6, 0.14], [-1.93, 0.98, -0.35 + i * 0.14], 'rubber'))
+    out.push(box([0.02, 0.6, 0.14], [0.72, 0.98, -0.35 + i * 0.14], 'rubber'))
+  }
+  out.push(box([2.6, 0.04, 0.72], [-0.6, 0.76, 0], 'belt'), box([0.8, 0.06, 0.06], [-0.6, 1.83, 0.6], 'screenGreen'))
+  // out-feed rollers splitting to reject (lower) and clear lines
+  out.push(box([3.4, 0.08, 0.72], [2.5, 0.78, 0], 'steel'))
+  for (let i = 0; i < 22; i++) out.push(cyl([0.05, 0.66, 0.05], [0.9 + i * 0.15, 0.83, 0], 'chrome', [H, 0, 0]))
+  out.push(box([2.2, 0.08, 0.72], [2.0, 0.78, -0.95], 'steel'), box([2.2, 0.7, 0.04], [2.0, 0.4, -1.3], 'red'))
+  out.push(box([1.0, 0.75, 0.6], [3.4, 0.38, -2.0], 'stainless'), box([1.04, 0.03, 0.64], [3.4, 0.77, -2.0], 'granite'), ...place(monitor(0.5, 0.32), 3.4, -2.1, 0, 1.05))
+  // recompose bench + tray return under the lane
+  out.push(box([2.6, 0.45, 0.5], [5.2, 0.23, 1.2], 'oak'), box([2.6, 0.06, 0.6], [5.2, 0.46, 1.2], 'lacquerBlue'))
+  out.push(box([12.4, 0.32, 0.5], [-0.5, 0.17, -0.55], 'darkSteel'), box([12.4, 0.03, 0.44], [-0.5, 0.34, -0.55], 'belt'))
+  for (const x of [-5, -2, 1.5, 4]) out.push(box([0.6, 0.07, 0.42], [x, 0.39, -0.55], 'tray'))
+  // trays with bags in flight
+  for (const [x, m] of [[-5.1, 'bagBlack'], [-3.8, 'bagSilver'], [1.4, 'bagTeal'], [2.9, 'bagRed'], [2.0, 'navy']] as const) {
+    const z = x === 2.0 ? -0.95 : 0
+    out.push(box([0.6, 0.1, 0.42], [x, 0.9, z], 'tray'), box([0.42, 0.16, 0.28], [x, 1.02, z], m))
+  }
+  // people side: body scanner + arch, glass screens, lane light
+  out.push(...place(bodyScanner(), -1.0, 2.4))
+  out.push(...place(archDetector(), 1.4, 2.4))
+  out.push(box([0.3, 2.4, 0.3], [-7.3, 1.2, 1.4], 'lacquerBlue'), box([0.32, 0.4, 0.02], [-7.3, 2.1, 1.56], 'screenGreen'))
+  for (const z of [-2.6, 3.6]) {
+    out.push(box([14.4, 1.1, 0.03], [-0.6, 0.65, z], 'glass'), box([14.4, 0.05, 0.06], [-0.6, 1.22, z], 'chrome'))
+    for (let x = -7.6; x <= 6.6; x += 2.4) out.push(cyl([0.05, 1.2, 0.05], [x, 0.6, z], 'chrome'))
+  }
+  return out
+}
+
+/** Specialty coffee counter: espresso machine with group heads, grinders, tiered pastry case, till, menu boards. */
+function cafeCounter(): Part[] {
+  const out: Part[] = [
+    box([4.4, 1.0, 0.75], [0, 0.5, 0], 'walnut'),
+    box([4.46, 0.05, 0.82], [0, 1.03, 0], 'granite'),
+    box([4.4, 0.1, 0.02], [0, 0.07, 0.38], 'ledWarm'),
+    ...Array.from({ length: 11 }, (_, i) => box([0.06, 0.86, 0.03], [-2.0 + i * 0.4, 0.5, 0.385], 'oakSlat')),
+    // espresso machine
+    box([1.0, 0.45, 0.55], [-0.8, 1.28, -0.05], 'stainless'),
+    box([1.0, 0.06, 0.55], [-0.8, 1.53, -0.05], 'chrome'),
+    box([0.9, 0.12, 0.02], [-0.8, 1.4, 0.23], 'lacquerBlue'),
+  ]
+  for (let i = 0; i < 3; i++) out.push(cyl([0.08, 0.1, 0.08], [-1.1 + i * 0.3, 1.1, 0.18], 'chrome'), cyl([0.07, 0.08, 0.07], [-1.1 + i * 0.3, 1.09, 0.32], 'cup'))
+  for (const x of [-1.6, 0.0]) out.push(cyl([0.18, 0.3, 0.18], [x, 1.25, -0.1], 'darkSteel'), part('cone', [0.2, 0.25, 0.2], [x, 1.53, -0.1], 'glassTint', [Math.PI, 0, 0]))
+  // pastry case: 3 lit tiers behind curved glass
+  out.push(box([1.4, 0.55, 0.6], [1.3, 1.33, 0.02], 'glass'), box([1.4, 0.02, 0.6], [1.3, 1.6, 0.02], 'ledWarm'))
+  for (let k = 0; k < 2; k++) {
+    out.push(box([1.3, 0.02, 0.5], [1.3, 1.1 + k * 0.22, 0], 'chrome'))
+    for (let i = 0; i < 5; i++) out.push(part('sphere', [0.16, 0.08, 0.14], [0.8 + i * 0.25, 1.15 + k * 0.22, 0], k ? 'bun' : 'goodsD'))
+  }
+  out.push(box([0.35, 0.25, 0.3], [2.0, 1.18, 0.15], 'black'), box([0.28, 0.18, 0.01], [2.0, 1.33, 0.25], 'screen', [-0.4, 0, 0]))
+  // back bar: shelves of cups + three menu boards + pendants
+  out.push(box([4.4, 2.6, 0.12], [0, 1.3, -1.2], 'oakSlat'), box([4.3, 0.04, 0.3], [0, 1.6, -1.08], 'oak'), box([4.3, 0.04, 0.3], [0, 1.95, -1.08], 'oak'))
+  for (let i = 0; i < 12; i++) out.push(cyl([0.09, 0.11, 0.09], [-2.0 + i * 0.36, 1.68, -1.06], i % 3 ? 'cup' : 'goodsD'))
+  for (let i = 0; i < 3; i++) out.push(box([1.3, 0.75, 0.04], [-1.4 + i * 1.4, 2.6, -1.12], 'black'), box([1.2, 0.66, 0.01], [-1.4 + i * 1.4, 2.6, -1.09], i === 1 ? 'lbCoffee' : 'sgnCoffee'))
+  for (const x of [-1.5, 0, 1.5]) out.push(cyl([0.01, 0.9, 0.01], [x, 3.25, 0], 'black'), part('cone', [0.32, 0.26, 0.32], [x, 2.7, 0], 'black'), cyl([0.12, 0.02, 0.12], [x, 2.57, 0], 'ledWarm'))
+  return out
+}
+
+/** Double-sided retail gondola with end cap, price strips and stocked shelves. */
+function gondola(goods: string[] = ['goodsA', 'goodsB', 'goodsC', 'goodsD']): Part[] {
+  const L = 2.4
+  const out: Part[] = [
+    box([L, 0.12, 0.9], [0, 0.06, 0], 'black'),
+    box([L, 1.6, 0.06], [0, 0.9, 0], 'lacquerWhite'),
+    box([0.08, 1.7, 0.95], [-L / 2, 0.85, 0], 'black'),
+    box([0.08, 1.7, 0.95], [L / 2, 0.85, 0], 'black'),
+    box([L + 0.1, 0.18, 0.95], [0, 1.78, 0], 'lacquerBlue'),
+  ]
+  for (const zs of [1, -1])
+    for (let k = 0; k < 4; k++) {
+      const y = 0.3 + k * 0.4
+      out.push(box([L - 0.1, 0.03, 0.4], [0, y, zs * 0.24], 'chrome'), box([L - 0.1, 0.04, 0.01], [0, y - 0.02, zs * 0.445], 'led'))
+      for (let i = 0; i < 7; i++) {
+        const m = goods[(i + k) % goods.length]
+        const tall = m === 'bottle'
+        out.push(tall ? cyl([0.09, 0.28, 0.09], [-1.0 + i * 0.33, y + 0.15, zs * 0.26], m) : box([0.26, 0.22, 0.28], [-1.0 + i * 0.33, y + 0.13, zs * 0.25], m))
+      }
+    }
+  return out
+}
+
+/** Island coffee kiosk with canopy, menu board and stools (the plan's shop kiosk). */
+function shopKiosk(): Part[] {
+  return [
+    box([2.2, 1.0, 1.2], [0, 0.5, 0], 'walnut'),
+    box([2.3, 0.05, 1.3], [0, 1.03, 0], 'granite'),
+    box([2.2, 0.08, 0.02], [0, 0.07, 0.61], 'ledWarm'),
+    box([0.6, 0.4, 0.45], [-0.5, 1.25, -0.2], 'stainless'),
+    box([0.6, 0.35, 0.45], [0.55, 1.23, 0], 'glass'),
+    cyl([0.08, 1.6, 0.08], [-1.0, 1.85, -0.5], 'darkSteel'),
+    cyl([0.08, 1.6, 0.08], [1.0, 1.85, -0.5], 'darkSteel'),
+    box([2.5, 0.12, 1.6], [0, 2.7, 0], 'walnut'),
+    box([1.4, 0.4, 0.04], [0, 2.95, 0.6], 'sgnCoffee'),
+    ...[-0.6, 0.6].flatMap((x) => [cyl([0.36, 0.04, 0.36], [x, 0.75, 0.95], 'leather'), cyl([0.05, 0.75, 0.05], [x, 0.38, 0.95], 'chrome')]),
+  ]
+}
+
+/** Single check-in desk (for the in-game plan's per-desk counters). */
+function checkinDeskSingle(): Part[] {
+  return [...checkinDesk(0), box([1.7, 2.6, 0.12], [0, 1.3, -0.75], 'cream'), box([1.2, 0.36, 0.03], [0, 2.3, -0.68], 'logo0'), box([1.7, 0.04, 0.05], [0, 2.62, -0.68], 'led')]
+}
+
 // ---------- registry ----------
 export const TERMINAL_PROP_TYPES = [
   'checkin_row',
@@ -691,6 +846,13 @@ export const TERMINAL_PROP_TYPES = [
   'departures_wall',
   'gate_pylon',
   'jet_bridge',
+  'body_scanner',
+  'security_lane_ct',
+  'divest_station',
+  'cafe_counter',
+  'shop_gondola',
+  'shop_kiosk',
+  'checkin_desk',
 ] as const
 export type TerminalPropType = (typeof TERMINAL_PROP_TYPES)[number]
 
@@ -725,4 +887,11 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   departures_wall: departuresWall,
   gate_pylon: () => gatePylon(),
   jet_bridge: jetBridge,
+  body_scanner: bodyScanner,
+  security_lane_ct: securityLaneCT,
+  divest_station: () => divestStation(0),
+  cafe_counter: cafeCounter,
+  shop_gondola: () => gondola(),
+  shop_kiosk: shopKiosk,
+  checkin_desk: checkinDeskSingle,
 }
