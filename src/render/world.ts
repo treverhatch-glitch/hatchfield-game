@@ -21,6 +21,7 @@ import {
   type Livery,
   type ParkedPlane,
 } from './aircraft/index'
+import { arrivalPose, finalStraight, orientAircraft, takeoffPose, takeoffTimeline } from './flightPose'
 import { canvasToPng } from '../camera/capture.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
@@ -44,6 +45,26 @@ import {
   type QualityLevel,
   type WorldRender,
 } from './world/index'
+
+interface ClimbOut {
+  airframeId: string
+  livery: Livery
+  ox: number
+  oy: number
+  heading: number
+  elapsed: number
+  retired: boolean
+}
+
+interface DrawnPose {
+  x: number
+  y: number
+  alt: number
+  heading: number
+  pitch: number
+  gearDown: boolean
+  visible: boolean
+}
 
 export { CELL }
 
@@ -187,6 +208,10 @@ export class World {
   private gateHash = ''
   ghostHash = ''
   jets = new Map<string, THREE.Group>()
+  /** Visual takeoff roll. Continues after the sim drops the flight. */
+  private climbOut = new Map<string, ClimbOut>()
+  /** Sim distance before the threshold, latched on the first approach frame. */
+  private arrivalBefore = new Map<string, number>()
   trucks = new Map<string, THREE.Object3D>()
   service = new Map<string, THREE.Object3D>()
   cateringCrew = new Map<string, THREE.Group>()
@@ -1601,7 +1626,8 @@ export class World {
    * Jetway bridges parent on the aircraft root while parked.
    * Remote duplicates share a parked batch.
    */
-  private syncAircraft(game: Game) {
+  private syncAircraft(game: Game, dt: number) {
+    const step = Math.min(0.05, Math.max(0, dt)) * Math.max(0, game.speed)
     const groups = new Map<string, Game['flights']>()
     for (const f of game.flights) {
       if (f.phase !== 'parked' || f.craft === 'helo' || game.selectedFlight === f.id) continue
@@ -1651,18 +1677,13 @@ export class World {
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
-      const alt = Math.max(0, f.z - 0.1)
-      mesh.position.copy(toWorld(f.x, f.y, 0.04 + alt))
-      mesh.rotation.y = -f.heading
-      mesh.rotation.x =
-        f.craft === 'helo' ? 0 : f.phase === 'takeoff' || f.phase === 'approach' ? -0.12 : 0
-      const gearDown = !(
-        f.phase === 'hold' ||
-        f.phase === 'gone' ||
-        (f.phase === 'takeoff' && f.z > 1.6) ||
-        (f.phase === 'approach' && f.z > 3.2)
-      )
-      updateAircraft(mesh, gearDown)
+      const pose = this.poseAircraft(game, f, paint, step)
+      mesh.visible = pose.visible
+      if (pose.visible) {
+        mesh.position.copy(toWorld(pose.x, pose.y, 0.04 + pose.alt))
+        orientAircraft(mesh, pose.heading, pose.pitch)
+        updateAircraft(mesh, pose.gearDown)
+      }
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
       const jetway = f.craft !== 'helo' && f.phase === 'parked' && game.standAccessAt(cell) === 'jetway'
       const bridges = mesh.getObjectByName('bridges')
@@ -1678,6 +1699,11 @@ export class World {
       }
       mesh.scale.setScalar(game.selectedFlight === f.id ? 1.06 : 1)
     }
+    this.stepClimbGhosts(
+      step,
+      new Set(game.flights.map((f) => f.id)),
+      seen,
+    )
     for (const [id, mesh] of this.jets) {
       if (seen.has(id)) continue
       releaseAircraft(mesh)
@@ -1685,8 +1711,147 @@ export class World {
     }
   }
 
-  syncEntities(game: Game) {
-    this.syncAircraft(game)
+  /**
+   * Jets draw a kinematic takeoff and a 3° arrival. Helos keep the sim altitude.
+   * The sim phase clock is not touched.
+   */
+  private poseAircraft(game: Game, f: Game['flights'][number], paint: Livery, step: number): DrawnPose {
+    if (f.craft === 'helo') {
+      this.climbOut.delete(f.id)
+      this.arrivalBefore.delete(f.id)
+      return {
+        x: f.x,
+        y: f.y,
+        alt: Math.max(0, f.z - 0.1),
+        heading: f.heading,
+        pitch: 0,
+        gearDown: !(
+          f.phase === 'hold' ||
+          f.phase === 'gone' ||
+          (f.phase === 'takeoff' && f.z > 1.6) ||
+          (f.phase === 'approach' && f.z > 3.2)
+        ),
+        visible: true,
+      }
+    }
+    if (f.phase !== 'taxi_out' && f.phase !== 'takeoff') this.climbOut.delete(f.id)
+    const climb = this.trackClimb(f, paint)
+    if (climb) {
+      if (!climb.retired) climb.elapsed += step
+      const posed = takeoffPose(climb.elapsed, climb.ox, climb.oy, climb.heading, climb.airframeId)
+      if (posed.retire) climb.retired = true
+      return {
+        x: posed.x,
+        y: posed.y,
+        alt: posed.alt,
+        heading: posed.heading,
+        pitch: posed.pitch,
+        gearDown: posed.gearDown,
+        visible: !climb.retired,
+      }
+    }
+    if (f.phase === 'approach' || f.phase === 'landing') {
+      const posed = arrivalPose({
+        x: f.x,
+        y: f.y,
+        heading: f.heading,
+        path: f.path,
+        airframeId: f.airframeId || 'b738',
+        initialBefore: this.arrivalBefore.get(f.id) ?? null,
+        onRunway: (p) => {
+          const c = Math.round(p.c)
+          const r = Math.round(p.r)
+          return inBounds(c, r) && game.tiles[r]?.[c] === 'runway'
+        },
+      })
+      this.arrivalBefore.set(f.id, posed.initialBefore)
+      return {
+        x: posed.x,
+        y: posed.y,
+        alt: posed.alt,
+        heading: posed.heading,
+        pitch: posed.pitch,
+        gearDown: true,
+        visible: true,
+      }
+    }
+    this.arrivalBefore.delete(f.id)
+    return {
+      x: f.x,
+      y: f.y,
+      alt: Math.max(0, f.z - 0.1),
+      heading: f.heading,
+      pitch: 0,
+      gearDown: f.phase !== 'hold' && f.phase !== 'gone',
+      visible: true,
+    }
+  }
+
+  /** Latch the roll once the jet is on the departure straight, inside its class distance. */
+  private trackClimb(f: Game['flights'][number], paint: Livery): ClimbOut | null {
+    const existing = this.climbOut.get(f.id)
+    if (existing) return existing
+    if (f.phase !== 'taxi_out' && f.phase !== 'takeoff') return null
+    const timeline = takeoffTimeline(f.airframeId || 'b738')
+    const straight = finalStraight(f.path, f.x, f.y, f.seg)
+    const ready =
+      f.phase === 'takeoff' || (straight != null && straight.remaining <= timeline.rollCells + 0.2)
+    if (!ready) return null
+    const heading = straight?.heading ?? f.heading
+    let ox = f.x
+    let oy = f.y
+    let elapsed = 0
+    if (f.phase === 'takeoff' && (straight == null || straight.remaining < 0.45)) {
+      elapsed = timeline.tRotate
+      ox = f.x - Math.cos(heading) * timeline.rollCells
+      oy = f.y - Math.sin(heading) * timeline.rollCells
+    }
+    const climb: ClimbOut = {
+      airframeId: f.airframeId || 'b738',
+      livery: paint,
+      ox,
+      oy,
+      heading,
+      elapsed,
+      retired: false,
+    }
+    this.climbOut.set(f.id, climb)
+    return climb
+  }
+
+  /** Keep a departing jet in the air after the sim has deleted it, until it is clear of the field. */
+  private stepClimbGhosts(step: number, live: Set<string>, seen: Set<string>) {
+    for (const [id, climb] of this.climbOut) {
+      if (live.has(id)) continue
+      if (climb.retired) {
+        this.climbOut.delete(id)
+        continue
+      }
+      climb.elapsed += step
+      const posed = takeoffPose(climb.elapsed, climb.ox, climb.oy, climb.heading, climb.airframeId)
+      if (posed.retire) {
+        this.climbOut.delete(id)
+        continue
+      }
+      let mesh = this.jets.get(id)
+      if (!mesh) {
+        mesh = createAircraft(climb.airframeId, climb.livery)
+        this.jets.set(id, mesh)
+        this.entGroup.add(mesh)
+      }
+      mesh.visible = true
+      mesh.position.copy(toWorld(posed.x, posed.y, 0.04 + posed.alt))
+      orientAircraft(mesh, posed.heading, posed.pitch)
+      updateAircraft(mesh, posed.gearDown)
+      const bridges = mesh.getObjectByName('bridges')
+      if (bridges) mesh.remove(bridges)
+      mesh.scale.setScalar(1)
+      seen.add(id)
+    }
+  }
+
+  syncEntities(game: Game, dt = 0) {
+    this.syncAircraft(game, dt)
 
     const seenT = new Set<string>()
     for (const t of game.trucks) {
@@ -2138,7 +2303,7 @@ export class World {
     this.syncGhost(game)
     perfEnd('world.tiles', t)
     t = perfStart()
-    this.syncEntities(game)
+    this.syncEntities(game, dt)
     perfEnd('world.entities', t)
     t = perfStart()
     this.syncSites(game)
@@ -2193,6 +2358,8 @@ export class World {
   dispose() {
     for (const mesh of this.jets.values()) releaseAircraft(mesh)
     this.jets.clear()
+    this.climbOut.clear()
+    this.arrivalBefore.clear()
     this.parkedFleet.dispose()
     this.gateGroup.clear()
     disposeAircraftLibrary()
