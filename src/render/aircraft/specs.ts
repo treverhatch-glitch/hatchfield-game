@@ -136,6 +136,11 @@ export interface Livery {
   tail?: string
   /** Two-letter tail mark. Resolved from the airline when omitted. */
   mark?: string
+  /**
+   * `twotone` (default): white crown over the airline-colour belly, grey wings.
+   * `solid`: the whole airframe in `body` (military, medevac, freighters).
+   */
+  scheme?: 'twotone' | 'solid'
 }
 
 type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>

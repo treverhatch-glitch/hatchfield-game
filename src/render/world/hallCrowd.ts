@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three'
 import { setTrs, SKIN_COLORS, type PeopleGeo } from './kit'
+import { onField } from './guestActors'
 import { FLOOR_Y, PERSON_SCALE, SEATED_LIFT, SEATED_SCALE } from './terminal'
 
 export interface HallPose {
@@ -35,7 +36,7 @@ export function posesFrom(view: object): HallPose[] {
   ).hallGuests
   const out: HallPose[] = []
   for (const g of guests ?? []) {
-    if (g.dead || g.wx == null || g.wz == null || !Number.isFinite(g.wx) || !Number.isFinite(g.wz)) continue
+    if (g.dead || g.wx == null || g.wz == null || !onField(g.wx, g.wz)) continue
     out.push({
       id: g.id,
       x: g.wx,

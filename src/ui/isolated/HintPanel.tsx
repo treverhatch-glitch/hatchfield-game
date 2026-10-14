@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { money, STARTER_KIT_COST } from '../../game/catalog.ts'
+import { starterKitPreview } from '../../game/starterLayout.ts'
 import type { Game } from '../../game/sim.ts'
 import { severityOf, worstSeverity, type HintSeverity } from '../../game/hints.ts'
 
@@ -81,7 +82,7 @@ export function HintPanel({ game }: { game: Game }) {
                       onClick={() => game.buildStarterKit()}
                       style={btn}
                     >
-                      Stamp starter kit · {money(STARTER_KIT_COST)}
+                      {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                     </button>
                     {game.starterFreehand ? null : (
                       <button type="button" onClick={() => game.chooseFreehand()} style={{ ...btn, opacity: 0.75 }}>
@@ -90,7 +91,35 @@ export function HintPanel({ game }: { game: Game }) {
                     )}
                   </span>
                 ) : null}
-                <span style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <span style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                  {note.id === 'over-capacity' ? (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="capacity-pan"
+                        onClick={() => game.focusAdvice(note.id)}
+                        style={btn}
+                      >
+                        Pan to problem
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="capacity-minimise"
+                        onClick={() => game.setSidePanel(null)}
+                        style={btn}
+                      >
+                        Minimise
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="capacity-dismiss"
+                        onClick={() => game.dismissCapacityHint()}
+                        style={btn}
+                      >
+                        Dismiss
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     data-testid={`hint-show-${note.id}`}

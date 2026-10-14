@@ -173,7 +173,7 @@ Not covered: agent-to-agent avoidance, so walkers and queuing passengers can ove
 
 | | low | med | high |
 | --- | --- | --- | --- |
-| Shadows | off | 1024 PCF, refreshed every 2nd frame | 2048 PCF, radius 2.5 |
+| Shadows | off | 1024 PCF, radius 2 (soft), refreshed every 2nd frame | 2048 PCF, radius 3.5 |
 | Max pixel ratio | 0.8 | 1.25 | 2 |
 | Ground texture | 128² | 256² | 512² |
 | LOD distance scale | 0.6 | 1.0 | 1.4 |
@@ -183,6 +183,17 @@ Not covered: agent-to-agent avoidance, so walkers and queuing passengers can ove
 | Walkers / terminal cell | 0.6 | 1 | 2 |
 
 `suggestQuality` picks `low` for SwiftShader, llvmpipe, and other software GL, or for very small devices. It picks `high` for 8 GB / 8-core machines and `med` otherwise.
+
+**Toggle:** press **F8** on the apron to cycle low → med → high. `World.setGraphicsQuality(level)` switches the world layer and the aircraft LOD together and saves the choice to `hatchfield-gfx`. MSAA is fixed when the WebGL context is created, so that part follows on the next load. A settings control can call the same method.
+
+## Look tunables (issue 193)
+
+Paint, livery, vehicle, ground and sky numbers live in `src/render/look.ts`, not in the render code.
+
+- **Light balance** (`world/daylight.ts` keys): a warm sun key at about 3 over a cooler sky fill at about 1, with exposure 0.9 at midday. three's physical lights divide diffuse by π, so the older values (1.35 / 0.9) left sunlit concrete near mid-grey. The fog starts at 150 and ends at 600 to give light aerial haze. The sky dome adds a sun halo and a pale horizon band (`SKY_LOOK`).
+- **Ground:** the procedural maps are used on every preset. The asset pack's ground SVGs are flat fills, so they no longer replace these maps; the pack still dresses terminals. Grass is a muted olive with about 8 m mowing bands. The season tint is normalised and eased toward white (`GROUND_LOOK.seasonTint`), so med/high grass matches low instead of turning lime.
+- **Aircraft:** airline liveries are `twotone` by default. The crown is white, the lower fuselage takes the airline colour, the belly is darker, the fin is in airline colour, and the wings are grey. Military, medevac, freighter and exec liveries pass `scheme: 'solid'`. The fuselage loft has welded smooth normals and 12 sides at mid LOD. All paint is baked into the existing merged shell's vertex colours, so the draw count is unchanged. `liveryKey()` is the cache key everywhere a livery is pooled.
+- **Ground vehicles** (`src/render/vehicles.ts`): each truck or service vehicle is one merged, vertex-coloured mesh with a chassis, a cab with glazing, wheels with hubs, a hi-vis band and a roof beacon. Tankers, buses and tugs have their own silhouettes. Geometry is pooled per kind and colour, and all vehicles share one material. `disposeObject` skips these pooled meshes (`userData.shared`).
 
 ## Performance
 
@@ -240,3 +251,7 @@ The auto **low** preset (SwiftShader, llvmpipe, software GL) keeps the expensive
 `SLICE-E-*.png` stills (wide, mid, close, closest, facade, night, night-close,
 storm) to `docs/devlog/media` (override with `SLICE_E_OUT`). `SLICE_E_VIDEO=1`
 adds a close-up crowd clip (needs `npx playwright install ffmpeg`).
+
+Issue 193 look pass: start the dev server (`npx vite --port 45217`; the `__hatch` probe is dev-only), then run
+`npx tsx scripts/visual-polish-shots.mts before|after [low|med|high]`. It writes
+`ISSUE-193-<tag>-{overview,close,vehicle}.png` and prints min/avg FPS for the overview, the close-up and 5×.

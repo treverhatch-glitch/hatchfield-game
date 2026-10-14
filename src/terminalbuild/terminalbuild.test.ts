@@ -5,6 +5,7 @@ import {
   FLOOR_COST,
   blankLayout,
   buildUpkeepPerDay,
+  paintZone,
   placeDoor,
   placeEquipment,
   placeFloor,
@@ -59,6 +60,29 @@ describe('build tools', () => {
     expect(built().rooms.length).toBe(4)
     const r = sampleTerminal().layout
     expect(placeFloor(r, { x: 7, y: 5, w: 3, h: 1 }).error).toBeTruthy()
+  })
+
+  it('zone paint stops at walls and baggage belts', () => {
+    let l = ok(placeFloor(blankLayout(4, 3), { x: 0, y: 0, w: 4, h: 3 }))
+    l = ok(placeWall(l, { x: 1, y: 0, dir: 'E' }))
+    l = ok(placeWall(l, { x: 1, y: 1, dir: 'E' }))
+    l = ok(placeWall(l, { x: 1, y: 2, dir: 'E' }))
+    l = ok(placeEquipment(l, { id: 'belt', kind: 'bag_belt', x: 0, y: 2 }))
+    const painted = paintZone(l, { x: 0, y: 0, w: 4, h: 3 }, 'checkin')
+    expect(painted.error).toBeUndefined()
+    expect(painted.layout.zones[0][0]).toBe('checkin')
+    expect(painted.layout.zones[0][1]).toBe('checkin')
+    expect(painted.layout.zones[0][2]).toBeNull()
+    expect(painted.layout.zones[1][2]).toBeNull()
+    expect(painted.layout.zones[2][0]).toBeNull()
+    const blocked = new Set((painted.rejected ?? []).map((t) => `${t.x},${t.y}`))
+    expect(blocked.has('0,2')).toBe(true)
+    expect(blocked.has('2,0')).toBe(true)
+    expect(painted.cost).toBeGreaterThan(0)
+    const onlyBelt = paintZone(l, { x: 0, y: 2, w: 1, h: 1 }, 'baggage')
+    expect(onlyBelt.error).toBe('Wall or belt in the way.')
+    expect(onlyBelt.layout.zones[2][0]).toBeNull()
+    expect(onlyBelt.cost).toBe(0)
   })
 
   it('a door replaces the wall on its edge and a wall replaces a door', () => {
