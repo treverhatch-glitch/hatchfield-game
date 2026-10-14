@@ -8812,6 +8812,8 @@ export class Game {
     const ground = this.ground?.sim
     if (ground) {
       for (const job of ground.activeCrew()) {
+        // Lav / water trucks run their hose from the cab: no walking crew yet.
+        if (job.service === 'lav' || job.service === 'water') continue
         services.push({
           id: job.id,
           service: job.service,
