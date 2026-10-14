@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { AIRCRAFT_LOOK } from '../look'
+import { bindLiveryUniforms, disposeLiveryTextures, hookLiveryMaterial } from './liveryTex'
 import type { Livery } from './specs'
 
 const geos = new Map<string, THREE.BufferGeometry>()
@@ -146,11 +147,17 @@ export function vertexMaterials(
       roughness: AIRCRAFT_LOOK.paint.roughness,
     })
   })
+  if (!mat.userData.liveryHook) {
+    hookLiveryMaterial(mat)
+    mat.userData.liveryHook = true
+  }
   const fade = sharedMat(`fade:${key}`, () => {
     const copy = mat.clone()
     copy.transparent = true
     copy.opacity = 1
     copy.depthWrite = true
+    hookLiveryMaterial(copy)
+    copy.userData.liveryHook = true
     return copy
   })
   return { opaque: mat, fade }
@@ -209,7 +216,9 @@ export function paintVertexMesh(
   mesh.userData.kind = kind
   mesh.userData.tier = tier
   mesh.onBeforeRender = () => {
-    if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
+    const current = mesh.material as THREE.Material
+    bindLiveryUniforms(current, mesh.userData.airline as string | undefined)
+    if (current === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
   }
   return mesh as PaintedMesh
 }
@@ -224,6 +233,7 @@ export function disposeAircraftLibrary() {
   geos.clear()
   for (const mat of mats.values()) mat.dispose()
   mats.clear()
+  disposeLiveryTextures()
 }
 
 /**

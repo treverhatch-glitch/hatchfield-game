@@ -5,6 +5,7 @@
 import * as THREE from 'three'
 import type { Tile, Vec } from '../../game/types'
 import type { Paint, PaintColor } from './layout'
+import { GROUND_LOOK } from '../look'
 import { fbm } from './raster'
 import { CELL, cellX, cellZ, type WorldView } from './view'
 
@@ -186,6 +187,75 @@ export function paintGeometry(list: readonly Paint[], y = 0.035): THREE.BufferGe
     })
     const b = i * 4
     idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3)
+  })
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  g.setIndex(idx)
+  g.computeBoundingSphere()
+  return g
+}
+
+/** One merged kerb mesh. Each segment is a low box sitting on the road edge. */
+export function kerbGeometry(list: readonly { x: number; z: number; w: number; d: number }[]): THREE.BufferGeometry {
+  const h = GROUND_LOOK.kerbH
+  const y0 = 0.02
+  const pos = new Float32Array(list.length * 24 * 3)
+  const nor = new Float32Array(list.length * 24 * 3)
+  const col = new Float32Array(list.length * 24 * 3)
+  const idx: number[] = []
+  const tint = new THREE.Color(GROUND_LOOK.kerb)
+  const faces: number[][] = [
+    [0, 1, 2, 0, 2, 3],
+    [4, 6, 5, 4, 7, 6],
+    [0, 4, 5, 0, 5, 1],
+    [1, 5, 6, 1, 6, 2],
+    [2, 6, 7, 2, 7, 3],
+    [3, 7, 4, 3, 4, 0],
+  ]
+  const normals: [number, number, number][] = [
+    [0, 1, 0],
+    [0, -1, 0],
+    [0, 0, -1],
+    [1, 0, 0],
+    [0, 0, 1],
+    [-1, 0, 0],
+  ]
+  list.forEach((seg, n) => {
+    const x0 = seg.x - seg.w / 2
+    const x1 = seg.x + seg.w / 2
+    const z0 = seg.z - seg.d / 2
+    const z1 = seg.z + seg.d / 2
+    const corners: [number, number, number][] = [
+      [x0, y0 + h, z0],
+      [x1, y0 + h, z0],
+      [x1, y0 + h, z1],
+      [x0, y0 + h, z1],
+      [x0, y0, z0],
+      [x1, y0, z0],
+      [x1, y0, z1],
+      [x0, y0, z1],
+    ]
+    const base = n * 24
+    faces.forEach((face, f) => {
+      const normal = normals[f]
+      face.forEach((corner, k) => {
+        const v = base + f * 4 + k
+        const p = corners[corner]
+        pos[v * 3] = p[0]
+        pos[v * 3 + 1] = p[1]
+        pos[v * 3 + 2] = p[2]
+        nor[v * 3] = normal[0]
+        nor[v * 3 + 1] = normal[1]
+        nor[v * 3 + 2] = normal[2]
+        col[v * 3] = tint.r
+        col[v * 3 + 1] = tint.g
+        col[v * 3 + 2] = tint.b
+      })
+      const b = base + f * 4
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3)
+    })
   })
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3))

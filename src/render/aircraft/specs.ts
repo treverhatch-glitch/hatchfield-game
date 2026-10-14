@@ -141,6 +141,12 @@ export interface Livery {
    * `solid`: the whole airframe in `body` (military, medevac, freighters).
    */
   scheme?: 'twotone' | 'solid'
+  /**
+   * Catalog airline id (`northline`, `crown`, …). When set, the shell looks for
+   * `public/textures/liveries/<airline>/{fuselage,tail,engine}.png`.
+   * Missing art keeps the procedural colours.
+   */
+  airline?: string
 }
 
 type Core = Pick<ModelSpec, 'id' | 'lengthM' | 'spanM' | 'heightM'>

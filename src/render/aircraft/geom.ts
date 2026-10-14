@@ -6,29 +6,33 @@ import { sharedGeo } from './pool'
 /** Normalized fuselage stations, nose t=0 → tail t=1, radius 0–1. */
 const PROFILES: Record<string, { t: number; r: number }[]> = {
   tube: [
-    { t: 0, r: 0.02 },
-    { t: 0.02, r: 0.18 },
-    { t: 0.05, r: 0.48 },
-    { t: 0.09, r: 0.78 },
-    { t: 0.14, r: 0.94 },
-    { t: 0.2, r: 1 },
-    { t: 0.72, r: 1 },
-    { t: 0.82, r: 0.86 },
-    { t: 0.9, r: 0.55 },
-    { t: 0.96, r: 0.22 },
-    { t: 1, r: 0.04 },
+    { t: 0, r: 0.015 },
+    { t: 0.018, r: 0.14 },
+    { t: 0.04, r: 0.4 },
+    { t: 0.07, r: 0.7 },
+    { t: 0.1, r: 0.88 },
+    { t: 0.14, r: 0.97 },
+    { t: 0.18, r: 1 },
+    { t: 0.74, r: 1 },
+    { t: 0.8, r: 0.9 },
+    { t: 0.86, r: 0.68 },
+    { t: 0.92, r: 0.4 },
+    { t: 0.97, r: 0.16 },
+    { t: 1, r: 0.03 },
   ],
   rearjet: [
-    { t: 0, r: 0.03 },
-    { t: 0.03, r: 0.28 },
-    { t: 0.08, r: 0.72 },
-    { t: 0.14, r: 0.96 },
+    { t: 0, r: 0.02 },
+    { t: 0.025, r: 0.2 },
+    { t: 0.06, r: 0.58 },
+    { t: 0.1, r: 0.86 },
+    { t: 0.15, r: 0.98 },
     { t: 0.2, r: 1 },
-    { t: 0.58, r: 1 },
-    { t: 0.72, r: 0.78 },
-    { t: 0.84, r: 0.42 },
-    { t: 0.94, r: 0.18 },
-    { t: 1, r: 0.05 },
+    { t: 0.56, r: 1 },
+    { t: 0.66, r: 0.86 },
+    { t: 0.76, r: 0.58 },
+    { t: 0.86, r: 0.32 },
+    { t: 0.94, r: 0.14 },
+    { t: 1, r: 0.04 },
   ],
   point: [
     { t: 0, r: 0.01 },
@@ -246,4 +250,59 @@ export function cylinderSides(tier: 'low' | 'mid' | 'high'): number {
 
 export function fuselageSides(tier: 'low' | 'mid'): number {
   return AIRCRAFT_LOOK.fuselageSides[tier]
+}
+
+/**
+ * Swept fin in unit space: leading edge toward +X, root at y = 0, tip at y = 1.
+ * Trailing-edge vertices take the stripe colour so the fin reads as tail art
+ * before a tail.png is bound.
+ */
+export function finGeometry(tail: string, stripe: string): THREE.BufferGeometry {
+  return sharedGeo(`fin:${tail}:${stripe}`, () => {
+    const lead = 0.42
+    const trail = -0.5
+    const tipLead = -0.04
+    const tipTrail = -0.4
+    const z = 0.5
+    const zTip = 0.32
+    const root: number[][] = [
+      [lead, 0, z],
+      [trail, 0, z],
+      [trail, 0, -z],
+      [lead, 0, -z],
+    ]
+    const tip: number[][] = [
+      [tipLead, 1, zTip],
+      [tipTrail, 1, zTip],
+      [tipTrail, 1, -zTip],
+      [tipLead, 1, -zTip],
+    ]
+    const positions: number[] = []
+    const colors: number[] = []
+    const tailC = new THREE.Color(tail)
+    const stripeC = new THREE.Color(stripe)
+    const push = (a: number[], b: number[], c: number[], stripeFace: boolean) => {
+      const col = stripeFace ? stripeC : tailC
+      for (const p of [a, c, b]) {
+        positions.push(p[0], p[1], p[2])
+        colors.push(col.r, col.g, col.b)
+      }
+    }
+    const quadFace = (a: number[], b: number[], c: number[], d: number[], stripeFace: boolean) => {
+      push(a, b, c, stripeFace)
+      push(a, c, d, stripeFace)
+    }
+    // Port, starboard, leading, trailing (stripe), root, tip.
+    quadFace(root[0], root[1], tip[1], tip[0], false)
+    quadFace(root[3], tip[3], tip[2], root[2], false)
+    quadFace(root[3], root[0], tip[0], tip[3], false)
+    quadFace(root[1], root[2], tip[2], tip[1], true)
+    quadFace(root[0], root[3], root[2], root[1], false)
+    quadFace(tip[0], tip[1], tip[2], tip[3], false)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
 }
