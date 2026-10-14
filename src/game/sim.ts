@@ -12937,6 +12937,16 @@ export class Game {
     return capacityWarning(places, signedWant, carrierTurnsWanted(this.airline(id).tier), heli ? 'pad' : 'stand')
   }
 
+  /**
+   * At least one of the carrier's types can use this field.
+   * An empty apron still banks slots — the tower holds them until a stand exists.
+   * A fleet the stands cannot take must not fill the passenger bank.
+   */
+  private airlineParkable(id: AirlineId): boolean {
+    if (!tilesOf(this.tiles, 'stand').length && !tilesOf(this.tiles, 'helipad').length) return true
+    return this.fleetHasOperable(id)
+  }
+
   considerOffers() {
     if (this.offer || this.offerCool > 0) return
     // A small book waits until its carriers are turning flights before the next one writes.
@@ -13356,6 +13366,9 @@ export class Game {
 
   seedScheduleForAirline(airlineId: AirlineId, count: number) {
     if (this.isBanned(airlineId)) return
+    // A freighter (or any metal the stands cannot take) must not occupy the bank.
+    // One unfit slot at the head cascades every passenger flight behind it.
+    if (!this.airlineParkable(airlineId)) return
     const a = this.airline(airlineId)
     const firstBank =
       this.signed.length <= 1 &&
@@ -13739,6 +13752,21 @@ export class Game {
   }
 
   /**
+   * Push one slot later without moving the flights behind it.
+   * Used when this metal cannot use the stands that are free — those flights should still launch.
+   */
+  private slipSlot(slot: ScheduleSlot, sec: number, reason: string) {
+    const add = Math.min(180, Math.max(6, sec))
+    slot.eta += add
+    const before = slot.delaySec
+    slot.delaySec = Math.min(120, slot.delaySec + add)
+    slot.status = 'delayed'
+    slot.delayReason = reason
+    const share = Math.min(1, Math.max(0, slot.delaySec - before) / DELAY_HEAT_REF_SEC)
+    this.adjustHeat(slot.airline, -0.45 * share)
+  }
+
+  /**
    * Delay a slot and cascade later ETAs that would collide.
    * Returns how many downstream slots were pushed (airline heat already applied).
    */
@@ -13875,9 +13903,13 @@ export class Game {
           this.hasResearch('night_bank'),
           this.holidayPeakHook,
         )
-      const banked = opening == null ? open.length : open.filter((s) => s.eta < OPENING_SEC).length
+      const fitsField = (s: ScheduleSlot) => this.airlineParkable(s.airline)
+      const banked =
+        opening == null
+          ? open.filter(fitsField).length
+          : open.filter((s) => s.eta < OPENING_SEC && fitsField(s)).length
       if (banked < want) {
-        const pool = this.signed.filter((id) => !this.isBanned(id))
+        const pool = this.signed.filter((id) => !this.isBanned(id) && this.airlineParkable(id))
         if (pool.length) {
           // Bias toward cargo if freighters are starving vs pax bank.
           const cargo = pool.filter((id) => this.airline(id).kind === 'cargo')
@@ -17535,7 +17567,8 @@ export class Game {
     }`
   }
 
-  trySpawn() {
+  trySpawn(depth = 0) {
+    if (depth > 4) return
     if (!this.signed.length) return
     if (!runwayStrips(this.tiles, MIN_RUNWAY).length) return
     if (!tilesOf(this.tiles, 'stand').length) return
@@ -17599,7 +17632,27 @@ export class Game {
     const af = picked.af
     if (!af) {
       const hint = picked.blocked?.hints[0]
-      const why = hint?.fix ?? this.fleetOperateGap(airlineId) ?? `strip ${this.longestRunway()}c can't take their metal`
+      const structural = this.fleetOperateGap(airlineId)
+      // Nothing this carrier flies can use the field. Hold this slot only —
+      // cascading it parks every passenger turn behind metal that cannot land.
+      if (structural) {
+        const other = this.openSchedule().find(
+          (s) =>
+            s.id !== slot.id &&
+            (s.status === 'scheduled' || s.status === 'delayed') &&
+            this.airlineParkable(s.airline),
+        )
+        const gap = other ? Math.max(16, other.eta - slot.eta + 18) : 30
+        this.slipSlot(slot, gap, 'Stand class short')
+        if (other && other.eta <= this.clock + 1.5 && depth < 4) {
+          this.spawnCool = 0
+          this.trySpawn(depth + 1)
+          return
+        }
+        this.pushNews(`${slot.flightNo} holding — ${structural}.`, 'bad')
+        return
+      }
+      const why = hint?.fix ?? structural ?? `strip ${this.longestRunway()}c can't take their metal`
       this.delaySlot(slot, 20, hint ? 'Pillar short' : why)
       this.pushNews(`${slot.flightNo} delayed — ${why}.`, 'bad')
       this.spawnCool = 8
@@ -17629,6 +17682,27 @@ export class Game {
           : anyFree
             ? 'Stand class short'
             : 'No gate / path'
+      // Wrong stand size is this flight's problem. Cascading it holds every passenger turn behind an aircraft that can never park.
+      if (reason === 'Stand class short') {
+        const other = this.openSchedule().find(
+          (s) =>
+            s.id !== slot.id &&
+            (s.status === 'scheduled' || s.status === 'delayed') &&
+            this.airlineParkable(s.airline),
+        )
+        const gap = other ? Math.max(16, other.eta - slot.eta + 18) : 30
+        this.slipSlot(slot, gap, reason)
+        if (other && other.eta <= this.clock + 1.5) {
+          this.spawnCool = 0
+          this.trySpawn(depth + 1)
+          return
+        }
+        this.pushNews(
+          `${slot.flightNo} needs ${standClassLabel(needCls)}+ — class or path missing.`,
+          'bad',
+        )
+        return
+      }
       this.delaySlot(slot, 10 + Math.random() * 8, reason)
       if (!anyFree && hosts.length) {
         this.pushNews(

@@ -195,6 +195,58 @@ describe('contracted metal', () => {
     expect(seen.has('b738')).toBe(false)
     expect(seen.has('a321')).toBe(false)
   })
+
+  it('does not let a freighter the stands cannot take hold the passenger bank', () => {
+    const game = fresh()
+    game.buildStarterKit()
+    const craft = game.contractCraftNeed('air_cargo_1')
+    expect(craft?.met).toBe(false)
+    expect(craft?.label).toMatch(/Large stand\+/)
+    expect(game.letterVerdict('air_cargo_1').met).toBe(false)
+    game.seedScheduleForAirline('air_cargo_1', 3)
+    expect(game.schedule.some((slot) => slot.airline === 'air_cargo_1')).toBe(false)
+
+    game.signed = ['bushline', 'air_cargo_1']
+    game.scheduleAuto = false
+    game.spawnCool = 0
+    game.clock = 40
+    game.airlineHeat.bushline = 70
+    game.airlineHeat.air_cargo_1 = 70
+    const due = game.clock - 1
+    game.schedule = [
+      {
+        id: 'c1',
+        airline: 'air_cargo_1',
+        flightNo: 'HLC1',
+        eta: due,
+        status: 'scheduled',
+        delaySec: 0,
+        delayReason: null,
+        manual: false,
+        flightId: null,
+      },
+      {
+        id: 'p1',
+        airline: 'bushline',
+        flightNo: 'PDJ1',
+        eta: due,
+        status: 'scheduled',
+        delaySec: 0,
+        delayReason: null,
+        manual: false,
+        flightId: null,
+      },
+    ]
+    game.trySpawn()
+    expect(game.flights.some((flight) => flight.airline === 'bushline')).toBe(true)
+    expect(game.flights.some((flight) => flight.airline === 'air_cargo_1')).toBe(false)
+    const cargo = game.schedule.find((slot) => slot.id === 'c1')
+    const pax = game.schedule.find((slot) => slot.id === 'p1')
+    expect(cargo?.eta).toBeGreaterThan(game.clock)
+    expect(cargo?.delayReason).toBe('Stand class short')
+    expect(pax?.status).toBe('inbound')
+    expect(pax?.delayReason).not.toBe('Cascade from earlier delay')
+  })
 })
 
 describe('money the player can read', () => {
