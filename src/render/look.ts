@@ -22,7 +22,8 @@ export const AIRCRAFT_LOOK = {
   /** Window panes along one side at mid LOD, before the deck multiplier. */
   windowCount: 12,
   /** Painted shell material. */
-  paint: { metalness: 0.08, roughness: 0.38 },
+  /** Glossy clear-coated livery: low roughness picks up the sky and sun from the env map. */
+  paint: { metalness: 0.1, roughness: 0.24 },
 } as const
 
 /** Ground service vehicles. Lengths come from `vehicleMeters` in world.ts. */

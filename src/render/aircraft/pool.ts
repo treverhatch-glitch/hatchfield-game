@@ -16,12 +16,42 @@ export function sharedGeo(key: string, build: () => THREE.BufferGeometry): THREE
   return geo
 }
 
+let envMap: THREE.Texture | null = null
+let envScale = 1
+
+function applyEnv(mat: THREE.Material) {
+  const m = mat as THREE.MeshStandardMaterial
+  if (!m.isMeshStandardMaterial) return
+  if (m.userData.envBase === undefined) m.userData.envBase = m.envMapIntensity ?? 1
+  m.envMap = envMap
+  m.envMapIntensity = (m.userData.envBase as number) * envScale
+  m.needsUpdate = true
+}
+
+/** Reflection probe for every aircraft material (see env.ts). */
+export function setAircraftEnvMap(tex: THREE.Texture | null) {
+  envMap = tex
+  for (const mat of mats.values()) applyEnv(mat)
+}
+
+/** Dim reflections with the daylight so jets do not glow at night (0..1). */
+export function setAircraftEnvIntensity(k: number) {
+  const next = Math.max(0.04, Math.min(1, k))
+  if (Math.abs(next - envScale) < 0.01) return
+  envScale = next
+  for (const mat of mats.values()) {
+    const m = mat as THREE.MeshStandardMaterial
+    if (m.isMeshStandardMaterial && m.userData.envBase !== undefined) m.envMapIntensity = (m.userData.envBase as number) * envScale
+  }
+}
+
 export function sharedMat(key: string, build: () => THREE.Material): THREE.Material {
   let mat = mats.get(key)
   if (!mat) {
     mat = build()
     mat.name = key
     mats.set(key, mat)
+    if (envMap) applyEnv(mat)
   }
   return mat
 }
