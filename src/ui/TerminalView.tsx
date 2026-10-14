@@ -25,6 +25,7 @@ import { refundFor } from '../game/terminalKit'
 import type { KitCategory } from '../game/terminalKitData'
 
 const KIT_TABS: { id: KitCategory; label: string }[] = [
+  { id: 'rooms', label: 'Rooms' },
   { id: 'food', label: 'Food' },
   { id: 'seating', label: 'Seating' },
   { id: 'decor', label: 'Decor' },
@@ -61,6 +62,17 @@ function KitBar({
         ))}
         <button
           type="button"
+          data-testid="kit-move"
+          className={build?.kind === 'move' ? 'on' : ''}
+          onClick={() => {
+            setTab(null)
+            setBuild(build?.kind === 'move' ? null : { kind: 'move', itemId: null, def: null, rot: 0 })
+          }}
+        >
+          Move
+        </button>
+        <button
+          type="button"
           data-testid="kit-bulldoze"
           className={build?.kind === 'bulldoze' ? 'on' : ''}
           onClick={() => {
@@ -72,8 +84,14 @@ function KitBar({
         </button>
         {build ? (
           <span className="kit-status" data-testid="kit-status">
-            {placing ? `Placing ${placing.name} · R rotate` : 'Bulldoze · click an item for a refund'} · Esc
-            cancel
+            {placing
+              ? `Placing ${placing.name} · R rotate`
+              : build.kind === 'move'
+                ? build.def
+                  ? `Moving ${itemDef(build.def)?.name ?? 'item'} · click a free cell`
+                  : 'Move · click an item, then a free cell'
+                : 'Bulldoze · click an item for a refund'}{' '}
+            · Esc cancel
           </span>
         ) : null}
       </div>
@@ -110,6 +128,17 @@ function KitBar({
 function KitTooltip({ build, hover }: { build: HallBuildMode; hover: HallHover | null }) {
   if (!build || !hover) return null
   const style = { left: hover.sx + 16, top: hover.sy + 16 }
+  if (build.kind === 'move') {
+    const def = build.def ? itemDef(build.def) : hover.target ? itemDef(hover.target.def) : null
+    return (
+      <div className="kit-tip" style={style} data-testid="kit-tip">
+        <strong>{def?.name ?? 'Move'}</strong>
+        <span className={hover.check?.ok === false ? 'bad' : 'good'}>
+          {hover.check?.reason ?? (hover.target ? 'Click to pick up' : 'Click an item')}
+        </span>
+      </div>
+    )
+  }
   if (build.kind === 'bulldoze') {
     const def = hover.target ? itemDef(hover.target.def) : null
     return (
@@ -147,6 +176,7 @@ export function TerminalView({ game }: { game: Game }) {
   const worldRef = useRef<HallWorld | null>(null)
   const [zone, setZone] = useState<ZoneId | null>(null)
   const [build, setBuild] = useState<HallBuildMode>(null)
+  const [sheet, setSheet] = useState(false)
   const [hover, setHover] = useState<HallHover | null>(null)
   const buildRef = useRef<HallBuildMode>(null)
 
@@ -164,7 +194,7 @@ export function TerminalView({ game }: { game: Game }) {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation()
         setBuild(null)
-      } else if ((e.key === 'r' || e.key === 'R') && buildRef.current.kind === 'place') {
+      } else if ((e.key === 'r' || e.key === 'R') && (buildRef.current.kind === 'place' || buildRef.current.kind === 'move')) {
         const cur = buildRef.current
         setBuild({ ...cur, rot: (cur.rot + 1) % 4 })
       }
@@ -182,6 +212,8 @@ export function TerminalView({ game }: { game: Game }) {
       ;(window as unknown as { __hall?: HallWorld }).__hall = world
     }
     world.onPlaced = () => setBuild(null)
+    world.onMovePick = (id, def) =>
+      setBuild({ kind: 'move', itemId: id, def, rot: buildRef.current?.kind === 'move' ? buildRef.current.rot : 0 })
     world.onHover = setHover
     world.onCaptured = (url) => savePng(url, pngName(new Date()))
     world.setBuild(buildRef.current)
@@ -240,6 +272,7 @@ export function TerminalView({ game }: { game: Game }) {
   }, [game])
 
   const guest = game.hallGuests.find((g) => g.id === game.selectedGuest)
+  const facility = game.selectedFacility ? game.facilityInfo(game.selectedFacility) : null
   const fit = game.activeHall()
   const tier = (fit?.tier ?? 1) as 1 | 2 | 3
   const prefab = Boolean(fit?.premade && !fit?.redesigned)
@@ -272,15 +305,23 @@ export function TerminalView({ game }: { game: Game }) {
       <canvas ref={ref} className="hall-canvas" />
       <div className="hall-chrome">
         <p className="muted">
-          Roof cut away · WASD pan · Q/E rotate · click a person
+          Terminal · roof off · WASD pan · Q/E rotate · scroll zoom · click a person or a desk
           {game.hasSecurityChoke() ? ' · security choke live' : ' · NO SECURITY LANE'}
           {' · '}
           {game.hallGuests.length} pax
+          <button
+            type="button"
+            className={sheet ? 'on' : ''}
+            data-testid="hall-sheet-toggle"
+            onClick={() => setSheet((open) => !open)}
+          >
+            {sheet ? 'Hide sheet' : prefab ? PREFAB_TIERS[tier].label : 'Hall sheet'}
+          </button>
         </p>
       </div>
       <KitBar game={game} build={build} setBuild={setBuild} />
       <KitTooltip build={build} hover={hover} />
-      {game.view === 'hall'
+      {game.view === 'hall' && sheet
         ? createPortal(
             <aside className="hall-build" data-testid="hall-build">
         <div data-testid="prefab-ceilings">
@@ -446,6 +487,19 @@ export function TerminalView({ game }: { game: Game }) {
             </li>
             <li>{guest.clearedSec ? 'Cleared security' : 'Before security'}</li>
           </ul>
+        </aside>
+      ) : null}
+      {facility && !guest ? (
+        <aside className="facility-card" data-testid="facility-card">
+          <h2>{facility.title}</h2>
+          <ul>
+            {facility.lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => game.selectFacility(null)}>
+            Close
+          </button>
         </aside>
       ) : null}
     </div>

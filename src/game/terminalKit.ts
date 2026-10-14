@@ -6,6 +6,7 @@ import type { HallNode, PaxTag } from './guests.ts'
 import { unlockLevel } from '../progression/unlocks.ts'
 import { itemDef, type ItemDef, type PlacedItem, type ZoneId } from './terminal.ts'
 import { CELL_SLOTS, KIT_TUNING, OUTLETS, type OutletSpec } from './terminalKitData.ts'
+import { collisionReason } from '../terminalplay/place.ts'
 
 export type HallZones = readonly (readonly (string | null)[])[]
 
@@ -63,6 +64,8 @@ export function placementCheck(
       cost,
     }
   }
+  const blocked = collisionReason(items, def, c, r)
+  if (blocked) return { ok: false, reason: blocked, cost }
   if (cellLoad(items, c, r) + itemSize(def) > CELL_SLOTS) {
     return { ok: false, reason: 'Cell is full', cost }
   }
