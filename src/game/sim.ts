@@ -151,6 +151,7 @@ import {
   TERMINAL_COST,
 } from './catalog'
 import { clearanceBlocks } from './runwayClearance'
+import { footprintCells, placementHitsStand, standPlaceBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
@@ -14649,6 +14650,11 @@ export class Game {
       this.emit()
       return
     }
+    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
+      this.pushNews('That shell sits inside a stand footprint.', 'bad')
+      this.emit()
+      return
+    }
     if (this.sites.some((s) => s.tool === 'terminal')) {
       this.pushNews('A terminal shell is already a construction site — a contractor is driving in.', 'bad')
       this.emit()
@@ -14682,6 +14688,11 @@ export class Game {
     }
     if (clearanceBlocks(this.tiles, cells, 'terminal')) {
       this.pushNews('That hall sits inside runway clearance.', 'bad')
+      this.emit()
+      return
+    }
+    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
+      this.pushNews('That hall sits inside a stand footprint.', 'bad')
       this.emit()
       return
     }
@@ -14764,6 +14775,11 @@ export class Game {
       this.emit()
       return
     }
+    if (placementHitsStand(this.tiles, [v], tileForLate(id), this.standClass, this.standScale)) {
+      this.pushNews(`${spec.name} sits inside a stand footprint.`, 'bad')
+      this.emit()
+      return
+    }
     const gated = placeBuilding(id, this.lateFieldLevel())
     if (!gated.ok) {
       this.pushNews(gated.reason, 'bad')
@@ -14837,8 +14853,26 @@ export class Game {
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, [v], building.tile)) {
+    if (building.tile === 'stand') {
+      const why = standPlaceBlock(
+        this.tiles,
+        v,
+        standClassForTool(this.tool) ?? 'M',
+        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+        this.standClass,
+        this.standScale,
+      )
+      if (why) {
+        this.pushNews(why, 'bad')
+        this.emit()
+        return
+      }
+    } else if (clearanceBlocks(this.tiles, [v], building.tile)) {
       this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
+      this.emit()
+      return
+    } else if (placementHitsStand(this.tiles, [v], building.tile, this.standClass, this.standScale)) {
+      this.pushNews(`${building.name} sits inside a stand footprint.`, 'bad')
       this.emit()
       return
     }
@@ -15082,15 +15116,67 @@ export class Game {
     return !wingDiscsClash(stand, spec.spanM, others, blocks)
   }
 
-  /** Red ghost when the stamp would pave a runway shoulder. Taxi stays legal. */
+  /** Class and scale of the stand tool, or null when the tool is not a stand. */
+  standPreview(): { cls: StandClass; scale: SizeTier | null } | null {
+    const cls = standClassForTool(this.tool)
+    if (!cls) return null
+    return {
+      cls,
+      scale: standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+    }
+  }
+
+  /** Tile the current tool would stamp, or null for pan / inspect. */
+  placementTile(): Tile | null {
+    if (this.tool === 'runway' || this.tool === 'runway_short' || this.tool === 'runway_heavy') return 'runway'
+    if (this.tool === 'terminal' || this.tool === 'premade') return 'terminal'
+    const building = BUILDINGS.find((b) => b.tool === this.tool)
+    if (building) return building.tile
+    const late = lateIdForTool(this.tool)
+    return late ? tileForLate(late) : null
+  }
+
+  /** Red ghost when the stamp would pave a runway shoulder or a stand's wings. Taxi stays legal. */
   ghostBlocked(cells: Vec[]): boolean {
     if (this.tool === 'clear') return false
-    if (this.tool === 'runway' || this.tool === 'runway_short' || this.tool === 'runway_heavy') {
-      return clearanceBlocks(this.tiles, cells, 'runway')
+    const tile = this.placementTile()
+    if (!tile) return false
+    if (tile === 'runway') return clearanceBlocks(this.tiles, cells, 'runway')
+    if (tile === 'stand') {
+      if (!this.hover) return true
+      return (
+        standPlaceBlock(
+          this.tiles,
+          this.hover,
+          standClassForTool(this.tool) ?? 'M',
+          standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+          this.standClass,
+          this.standScale,
+        ) !== null
+      )
     }
-    const building = BUILDINGS.find((b) => b.tool === this.tool)
-    if (!building) return false
-    return clearanceBlocks(this.tiles, cells, building.tile)
+    if (clearanceBlocks(this.tiles, cells, tile)) return true
+    return placementHitsStand(this.tiles, cells, tile, this.standClass, this.standScale)
+  }
+
+  /** Geometry only — cash and unlocks do not tint the ghost. */
+  ghostReady(cells: Vec[]): boolean {
+    if (this.tool === 'clear') return true
+    const tile = this.placementTile()
+    if (!tile || !cells.length) return false
+    if (tile === 'stand') {
+      return (
+        this.hover != null &&
+        this.tile(this.hover) === 'grass' &&
+        !this.siteAt(this.hover) &&
+        !this.ghostBlocked(cells)
+      )
+    }
+    const paved =
+      cells.length > 0 &&
+      cells.every((p) => inBounds(p.c, p.r) && this.tile(p) === 'grass') &&
+      !this.cellsBlocked(cells)
+    return paved && !this.ghostBlocked(cells)
   }
 
   ghostCells(hover: Vec | null): Vec[] {
@@ -15112,6 +15198,15 @@ export class Game {
         for (let c = 0; c < 3; c++) cells.push({ c: hover.c + c, r: hover.r + r })
       }
       return cells
+    }
+    const standCls = standClassForTool(this.tool)
+    if (standCls) {
+      return footprintCells(
+        this.tiles,
+        hover,
+        standCls,
+        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+      )
     }
     return [hover]
   }
