@@ -118,6 +118,21 @@ export function applyRosterLivery(livery: Livery, modelId: string): Livery {
   return rosterLivery(livery.airline, modelId) ?? livery
 }
 
+/** Dev preview: every live aircraft wears this roster airline. `null` leaves flights alone. */
+let rosterPreviewId: string | null = null
+
+export function setRosterPreview(id: string | null) {
+  rosterPreviewId = id
+}
+
+export function rosterPreviewLivery(modelId: string): Livery | undefined {
+  return rosterPreviewId ? rosterLivery(rosterPreviewId, modelId) : undefined
+}
+
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as { __rosterPreview?: typeof setRosterPreview }).__rosterPreview = setRosterPreview
+}
+
 type Ctx = CanvasRenderingContext2D
 
 /** Fuselage plate: U nose to tail, V belly (bottom of image) to crown (top). */

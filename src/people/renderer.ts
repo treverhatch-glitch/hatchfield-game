@@ -4,11 +4,11 @@
  * computed once per person and shared by all of that person's parts.
  */
 import * as THREE from 'three'
-import { PEOPLE_CAPACITY, PEOPLE_LOD } from './config.ts'
+import { PEOPLE_CAPACITY, PEOPLE_LOD, WORK_POSE } from './config.ts'
 import { assignPeopleLod, type LodLimits } from './lod.ts'
 import { emitPerson, PART_DEFS, partGeometry, type PartDef } from './parts.ts'
 import { InstancePool } from './pool.ts'
-import { neutralPose, phaseRate, samplePose } from './pose.ts'
+import { blendPose, copyPose, neutralPose, phaseRate, samplePose, type JointPose } from './pose.ts'
 import type { PersonLook, PersonPose } from './types.ts'
 
 export interface PeopleAgent {
@@ -51,6 +51,9 @@ export class PeopleRenderer {
   private readonly pool: InstancePool
   private readonly material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true })
   private readonly phases = new Map<string, number>()
+  /** Per person: last pose, joints drawn last frame, and the snapshot a pose change blends from. */
+  private readonly blends = new Map<string, { pose: PersonPose; age: number; from: JointPose; last: JointPose }>()
+  private readonly target = neutralPose()
   private readonly unitsPerMeter: number
   private readonly lod: LodLimits
   private readonly joints = neutralPose()
@@ -142,10 +145,11 @@ export class PeopleRenderer {
       if (lod === 0) near++
       else if (lod === 1) mid++
       else far++
-      if (lod !== 2) samplePose(a.pose, phase, a.speed, this.joints)
+      if (lod !== 2) this.poseFor(a, phase, dt)
       emitPerson(a.look, lod, this.joints, a.x, a.y, a.z, a.yaw, upm, sink)
     }
     for (const id of this.phases.keys()) if (!seen.has(id)) this.phases.delete(id)
+    for (const id of this.blends.keys()) if (!seen.has(id)) this.blends.delete(id)
 
     for (const [id, mesh] of this.meshes) {
       mesh.count = this.pool.count(id)
@@ -161,11 +165,30 @@ export class PeopleRenderer {
     return this.stats
   }
 
+  /** Sample the agent's pose into `joints`, easing over WORK_POSE.blendSec when the pose changes. */
+  private poseFor(a: PeopleAgent, phase: number, dt: number) {
+    samplePose(a.pose, phase, a.speed, this.target)
+    let b = this.blends.get(a.id)
+    if (!b) {
+      b = { pose: a.pose, age: Infinity, from: neutralPose(), last: copyPose(this.target, neutralPose()) }
+      this.blends.set(a.id, b)
+    } else if (b.pose !== a.pose) {
+      copyPose(b.last, b.from)
+      b.pose = a.pose
+      b.age = 0
+    } else b.age += Math.max(0, dt)
+    const u = b.age / WORK_POSE.blendSec
+    if (u >= 1) copyPose(this.target, this.joints)
+    else blendPose(b.from, this.target, u * u * (3 - 2 * u), this.joints)
+    copyPose(this.joints, b.last)
+  }
+
   dispose(): void {
     this.group.removeFromParent()
     for (const mesh of this.meshes.values()) mesh.dispose()
     this.meshes.clear()
     this.material.dispose()
     this.phases.clear()
+    this.blends.clear()
   }
 }

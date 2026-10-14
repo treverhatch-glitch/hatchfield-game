@@ -62,6 +62,23 @@ export const WALK = {
   armSwing: 0.5,
 } as const
 
+/** Ground-crew work motions. Rates are cycles per second; angles radians; drops metres. */
+export const WORK_POSE = {
+  /** One bag from hip height to the belt and back. */
+  liftRate: 0.55,
+  liftLow: 0.35,
+  liftHigh: 2.05,
+  /** Small hand movements while kneeling at a coupling or chock. */
+  kneelRate: 0.5,
+  kneelDrop: 0.42,
+  /** Arms held forward while carrying. */
+  carryArms: 0.75,
+  /** Sideways raise of the wing walker's wand arm. */
+  signalRaise: 1.45,
+  /** Seconds to blend from one pose into the next. */
+  blendSec: 0.3,
+} as const
+
 /** Family members stay inside these radii of the lead. */
 export const GROUP = {
   kidLeashM: 1.6,
