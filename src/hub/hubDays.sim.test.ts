@@ -99,16 +99,28 @@ describe('three game days on a live hub', () => {
     expect(carriers.size).toBeGreaterThan(1)
     expect(carriers.has('umazon')).toBe(false)
 
-    // Every bag of a made connection rode the outbound with its passenger.
+    // Every bag of a made connection rode the outbound with its passenger, bar the rare
+    // sort misconnect (src/connections) that stays behind and is on the ledger.
+    let madeBags = 0
+    let sortMisconnects = 0
     for (const id of made) {
       const bags = game.bagTagsFor(id).filter((tag) => tag.kind === 'transfer')
       expect(bags.length).toBeGreaterThan(0)
       for (const tag of bags) {
+        madeBags += 1
+        if (tag.fault === 'missed_connection') {
+          sortMisconnects += 1
+          expect(tag.loaded).toBe(false)
+          continue
+        }
         expect(tag.fault).toBeNull()
         expect(tag.loaded).toBe(true)
         expect(tag.picked).toBe(true)
       }
     }
+    expect(sortMisconnects).toBeLessThanOrEqual(game.connections.ledger.totals().misconnectedBags)
+    // RFID with spare sort capacity keeps misconnects well under 5 %.
+    expect(sortMisconnects / Math.max(1, madeBags)).toBeLessThan(0.05)
     // A missed connection's bags are left behind once and rebooked with the passenger.
     let leftBehind = 0
     for (const id of missed) {

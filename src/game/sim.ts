@@ -276,6 +276,14 @@ import { TERM_DAYS, commercialDepositTier } from '../negotiation/liveFees.ts'
 import { PriceWar, composeRivalWalkIn } from '../rival/index.ts'
 import type { WarChoice } from '../rival/index.ts'
 import { StaffHousingBridge, type StaffField } from './staffHousingBridge.ts'
+import {
+  ConnectionsBridge,
+  type ConnectionsLayout,
+  type HotelPanelRow,
+  type StrandSlot,
+} from './connectionsBridge.ts'
+import { bagMisconnects, paxMix, sortCapacityPerHour, type ConnectionsAlert } from '../connections/index.ts'
+import { hotelLink, hotelSite, type HotelSite } from '../hotels/index.ts'
 import type { HousingTierId, StaffSeat } from '../staffhousing/types.ts'
 import { AIRLINES as NEGOTIATION_AIRLINES } from '../negotiation/data.ts'
 import type { DepositTier, ServiceId } from '../negotiation/types.ts'
@@ -551,6 +559,7 @@ import {
   connectingIndexes,
   connectionMap,
   evaluateConnection,
+  gateMetres,
   hubUpgrade,
   hubUpkeep,
   minimumConnectionTime,
@@ -939,7 +948,16 @@ export class Game {
   linkExplanation = ''
   /** Cells stamped as the hub-priced links, so pier movers keep their own upkeep. */
   hubLinksBuilt: Record<string, 'people_mover' | 'xferbus' | 'skywalk'> = {}
-  private hubLinks: { guestId: string; airlineId: string; resolveAt: number; made: boolean }[] = []
+  private hubLinks: {
+    guestId: string
+    airlineId: string
+    resolveAt: number
+    made: boolean
+    belowMct?: boolean
+  }[] = []
+  /** Transfers, layovers, stranded passengers and airport hotels (src/connections, src/hotels). */
+  connections = new ConnectionsBridge()
+  private connectionsScanAt = 0
   /** 0–1 parade clock for belts and carousels. */
   bagPhase = 0
   /** Screenshot latch so the hall can show the whole chain at once. */
@@ -1438,6 +1456,7 @@ export class Game {
     this.parcels = 1
     this.ownedPlots = []
     this.staffHousing.reset()
+    this.connections.reset()
     this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
@@ -3669,6 +3688,7 @@ export class Game {
     this.ownedPlots = [starterHolding(LAND_PLOT)]
     this.parcels = 1
     this.staffHousing.reset()
+    this.connections.reset()
     this.maintenanceContract = false
     this.railLinked = false
     this.hotelLevel = 0
@@ -4813,6 +4833,7 @@ export class Game {
       parcels: this.parcels,
       ownedPlots: this.ownedPlots,
       staffHousing: this.staffHousing.save(),
+      connections: this.connections.save(),
       maintenanceContract: this.maintenanceContract,
       railLinked: this.railLinked,
       hotelLevel: this.hotelLevel,
@@ -4989,6 +5010,7 @@ export class Game {
       this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
       if (this.ownedPlots.length) this.parcels = this.ownedPlots.length
       this.staffHousing.load(s.staffHousing)
+      this.connections.load(s.connections)
       this.maintenanceContract = s.maintenanceContract ?? false
       this.railLinked = s.railLinked ?? false
       this.hotelLevel = s.hotelLevel ?? 0
@@ -5981,6 +6003,7 @@ export class Game {
     for (let i = 0; i < pieces; i++) {
       this.bagTags.push(makeBagTag(ownerId, flightId, i, connectFlightId, kind))
     }
+    this.connections.noteSorted(this.simMinutes(), pieces)
   }
 
   /** Onward flight still on the ground, or an open connection id. */
@@ -6532,6 +6555,7 @@ export class Game {
       }
       this.hallGuests.push(g)
     }
+    if (arrivals.length) this.noteConnectionsArrival(f)
     if (arrivals.length) this.noteHubArrivals(f, arrivals)
     if (departWave.length) this.releaseDepartureWave(departWave, f, open)
   }
@@ -7517,10 +7541,11 @@ export class Game {
       const drain =
         g.tag === 'budget' ? 1.25 : g.tag === 'family' ? 1.1 : g.tag === 'business' ? 0.9 : 0.85
       const wearBoost = 1 + this.maxWear() / 200
-      g.needs.hunger = Math.min(100, g.needs.hunger + dt * 1.8 * drain)
+      const wait = g.layoverDrain ?? 1
+      g.needs.hunger = Math.min(100, g.needs.hunger + dt * 1.8 * drain * wait)
       g.needs.bladder = Math.min(100, g.needs.bladder + dt * 1.4 * drain * wearBoost)
-      g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1)
-      g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6)
+      g.needs.energy = Math.min(100, g.needs.energy + dt * 1.1 * wait)
+      g.needs.shop = Math.min(100, g.needs.shop + dt * 0.6 * wait)
       g.needs.play = Math.min(
         100,
         g.needs.play + dt * (g.tag === 'family' ? 1.25 : tagSpendsUp(g.tag) ? 1.05 : 0.7),
@@ -9530,37 +9555,65 @@ export class Game {
     const from = gates.find((gate) => gate.id === fromId) ?? gates[0]
     const facilities = this.hubFacilities()
     const arrivalAt = this.simMinutes()
-    const onward = bookOnward(
-      this.hubMovements(),
-      arrivalAt - this.hubInboundDelayMinutes(f),
-      minimumConnectionTime(facilities),
-    )
-    const booked = onward.gateId ? gates.find((gate) => gate.id === onward.gateId) : undefined
-    const to = booked ?? gates.find((gate) => gate.id !== from?.id) ?? from
-    if (!from || !to) return
-    const link = this.connectionLink(from.id, to.id)
-    const departureAt = onward.at
-    const verdict = evaluateConnection({
-      arrivalAt,
-      departureAt,
-      from,
-      to,
-      ride: false,
-      link,
-      walkwayMetres: this.walkwayCoverMetres(),
-      facilities,
-    })
+    const plannedArrival = arrivalAt - this.hubInboundDelayMinutes(f)
+    const moves = this.hubMovements()
+    const layout = this.connectionsLayout()
+    const screenShare = paxMix(this.fieldLevel(), this.hubProfile(f.airline)).screen
+    // Sold on the published layout MCT for this carrier's mix, never under the facility floor.
+    const mct = Math.max(minimumConnectionTime(facilities), this.connections.mct({ ...layout, screenShare }).total)
+    const hotels = this.layoverHotels()
+    const walkwayMetres = this.walkwayCoverMetres()
     for (const index of indexes) {
       const g = born[index]
       if (!g) continue
+      const itinerary = this.connections.itineraryOffset(g.id, plannedArrival)
+      let onward = bookOnward(moves, plannedArrival + itinerary.offset, mct)
+      // A later flight is only sold when the timetable has one.
+      if (itinerary.offset > 0 && !itinerary.overnight && !onward.gateId) {
+        onward = bookOnward(moves, plannedArrival, mct)
+      }
+      // Last bank with nothing onward tonight: first wave next morning.
+      if (!onward.gateId && this.connections.lateBank(plannedArrival)) {
+        onward = { at: plannedArrival + this.connections.untilMorning(plannedArrival), gateId: null }
+      }
+      const booked = onward.gateId ? gates.find((gate) => gate.id === onward.gateId) : undefined
+      const to = booked ?? gates.find((gate) => gate.id !== from?.id) ?? from
+      if (!from || !to) continue
+      const link = this.connectionLink(from.id, to.id)
+      const departureAt = onward.at
+      const verdict = evaluateConnection({
+        arrivalAt,
+        departureAt,
+        from,
+        to,
+        ride: false,
+        link,
+        walkwayMetres,
+        facilities,
+      })
+      const plan = this.connections.planGuest({
+        guestId: g.id,
+        tag: g.tag,
+        screenShare,
+        arrivalAt,
+        departureAt,
+        metres: gateMetres(from, to),
+        link,
+        walkwayMetres,
+        transferLane: layout.transferLane,
+        verdict,
+        mct,
+        hotels,
+      })
       g.transfer = true
       g.clearedSec = true
       g.needs.bags = 0
-      g.needs.hunger = 0
+      g.needs.hunger = plan.needs?.hunger ?? 0
       g.needs.bladder = 0
-      g.needs.energy = 0
-      g.needs.shop = 0
-      g.needs.play = 0
+      g.needs.energy = plan.needs?.energy ?? 0
+      g.needs.shop = plan.needs?.shop ?? 0
+      g.needs.play = plan.needs?.play ?? 0
+      g.layoverDrain = plan.drain > 1 ? plan.drain : undefined
       g.needs.boarding = Math.max(6, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
       g.node = 'gate'
       g.path = []
@@ -9569,14 +9622,22 @@ export class Game {
       g.route = undefined
       g.connectFlightId = `connect:${f.id}:${to.id}`
       g.thought = `Connecting — ${this.linkWord(link)} to gate ${to.id}`
+      if (!plan.route.airsideOnly) g.thought = 'Connecting — no transfer lane, out through arrivals to re-screen'
+      if (plan.overnight === 'transit_hotel') g.thought = 'Overnight — transit hotel airside'
+      else if (plan.overnight === 'landside_hotel') g.thought = 'Overnight — hotel shuttle'
+      else if (plan.overnight === 'lounge') g.thought = 'Long layover — lounge until the onward flight'
+      else if (plan.overnight === 'terminal_sleep') g.thought = 'Long layover — sleeping in the terminal'
       this.issueBagTags(g.id, g.flightId, g.tag, g.connectFlightId, 'transfer')
       const windowSec = Math.max(0.5, (departureAt - arrivalAt) / SIM_MINUTES_PER_REAL_SECOND)
       this.hubLinks.push({
         guestId: g.id,
         airlineId: f.airline,
         resolveAt: this.clock + windowSec,
-        made: verdict.made,
+        made: plan.verdict.made,
+        belowMct: plan.verdict.reason === 'below_mct',
       })
+      // A hotel guest leaves the hall for the night; the link still resolves on time.
+      if (plan.overnight === 'transit_hotel' || plan.overnight === 'landside_hotel') g.dead = true
     }
   }
 
@@ -9644,8 +9705,16 @@ export class Game {
     this.hubLinks = this.hubLinks.filter((link) => this.clock < link.resolveAt)
     let made = 0
     let missed = 0
+    let reputationHit = 0
+    let transferBags = 0
+    let misconnected = 0
+    const missedBy: Record<string, number> = {}
+    const now = this.simMinutes()
+    const facilities = this.hubFacilities()
+    const rate = this.connections.misconnectRate(now, this.sortLines(), facilities)
     for (const link of due) {
       const guest = this.hallGuests.find((g) => g.id === link.guestId)
+      reputationHit += this.connections.noteResolved(link.made, link.belowMct === true)
       if (link.made) {
         made += 1
         if (guest && !guest.dead) {
@@ -9655,12 +9724,21 @@ export class Game {
         }
         for (const tag of this.bagTags) {
           if (tag.ownerPassengerId !== link.guestId || tag.kind !== 'transfer' || tag.fault) continue
+          transferBags += 1
+          // Sort overload: the passenger makes it, the bag does not.
+          if (bagMisconnects(tag.id, rate)) {
+            tag.fault = 'missed_connection'
+            tag.loaded = false
+            misconnected += 1
+            continue
+          }
           tag.loaded = true
           tag.picked = true
         }
         continue
       }
       this.applyMissedConnection(link.airlineId)
+      missedBy[link.airlineId] = (missedBy[link.airlineId] ?? 0) + 1
       missed += 1
       // Left behind once and rebooked with the passenger. Never counted as loaded on the outbound.
       let bags = 0
@@ -9683,12 +9761,316 @@ export class Game {
     }
     // Nights already posted inside applyMissedConnection when a hotel bill lands.
     this.feedYearHub(made, missed, 0)
+    this.settleConnectionWindows({ reputationHit, transferBags, misconnected, missedBy, rate })
     if (missed > 0) {
       this.pushNews(
         `${missed} missed connection${missed === 1 ? '' : 's'} — hotel or rebook fee, Standing dips.`,
         'bad',
       )
     }
+  }
+
+  /** Layout inputs for the published MCT. */
+  connectionsLayout(): ConnectionsLayout {
+    const gates = this.hubGates().slice(0, 40)
+    const pairMetres: number[] = []
+    for (let i = 0; i < gates.length; i++) {
+      for (let j = i + 1; j < gates.length; j++) pairMetres.push(gateMetres(gates[i], gates[j]))
+    }
+    const facilities = this.hubFacilities()
+    let screenShare = 0
+    for (const id of new Set([...this.signed, ...this.hubAirlines])) {
+      const mix = paxMix(this.fieldLevel(), this.hubProfile(id))
+      if (mix.transfer > 0) screenShare = Math.max(screenShare, mix.screen)
+    }
+    return {
+      facilities,
+      pairMetres,
+      link: this.connectionLink(),
+      walkwayMetres: this.walkwayCoverMetres(),
+      // The Transfer Centre includes an airside transfer screening lane.
+      transferLane: facilities.transferCentre,
+      screenShare,
+    }
+  }
+
+  /** Bag make-up lines feeding the sort. A belt network alone counts as one. */
+  sortLines(): number {
+    const halls = tilesOf(this.tiles, 'bags').length
+    return halls > 0 ? halls : hasBeltNetwork(this.tiles) ? 1 : 0
+  }
+
+  /** Every bed the airport sells: landside hotel stamps, the hotel wings, and airside day rooms. */
+  hotelSites(): HotelSite[] {
+    const sites: HotelSite[] = []
+    const shuttle = this.hasBusCurb()
+    const terminals = this.fits.map((fit) => fit.origin)
+    const metresToTerminal = (c: number, r: number) => {
+      let best = Infinity
+      for (const t of terminals) best = Math.min(best, Math.hypot(t.c - c, t.r - r) * METERS_PER_CELL)
+      return best
+    }
+    for (const p of tilesOf(this.tiles, 'hotel')) {
+      const grade = this.hotelClass[`${p.c},${p.r}`] ?? 'business'
+      sites.push(
+        hotelSite({
+          id: `hotel:${p.c},${p.r}`,
+          grade,
+          link: hotelLink(metresToTerminal(p.c, p.r), shuttle),
+          upkeep: HOTEL_CLASS_EXPENSE[grade],
+          rateMult: this.connections.rates.landside,
+          cell: { c: p.c, r: p.r },
+        }),
+      )
+    }
+    if (this.hotelLevel > 0) {
+      const at = terminals[0]
+      sites.push(
+        hotelSite({
+          id: 'hotel:wings',
+          grade: 'business',
+          link: 'walkway',
+          upkeep: HOTEL_META_EXPENSE[clamp(this.hotelLevel, 0, 2)] ?? 0,
+          rateMult: this.connections.rates.landside,
+          units: this.hotelLevel,
+          cell: at ? { c: at.c, r: at.r } : undefined,
+        }),
+      )
+    }
+    for (const fit of this.fits) {
+      const blocks = Math.min(3, fit.rooms.dayhotel ?? 0)
+      if (blocks <= 0) continue
+      sites.push(
+        hotelSite({
+          id: `transit:${this.hallKey(fit)}`,
+          grade: 'transit',
+          link: 'inside',
+          upkeep: (HALL_AMENITY_EXPENSE.dayhotel ?? 0) * blocks,
+          rateMult: this.connections.rates.airside,
+          units: blocks,
+          cell: { c: fit.origin.c, r: fit.origin.r },
+        }),
+      )
+    }
+    return sites
+  }
+
+  /** What an overnight transfer can choose from right now. */
+  private layoverHotels() {
+    let transitRooms = 0
+    let landsideRooms = 0
+    let landsideLinked = false
+    for (const site of this.hotelSites()) {
+      if (site.side === 'airside') transitRooms += site.rooms
+      else {
+        landsideRooms += site.rooms
+        if (site.link !== 'none') landsideLinked = true
+      }
+    }
+    const lounge = this.fits.some((fit) => (fit.rooms.lounge ?? 0) > 0)
+    return { transitRooms, landsideRooms, landsideLinked, lounge }
+  }
+
+  /** Timetable rows as the stranded-passenger scan reads them. */
+  private strandSlots(): StrandSlot[] {
+    return this.schedule.map((slot) => {
+      const airline = this.airline(slot.airline)
+      const cargo = airline.kind === 'cargo'
+      return {
+        id: slot.id,
+        airlineId: slot.airline,
+        status: slot.status,
+        at: slot.eta * SIM_MINUTES_PER_REAL_SECOND,
+        delayMinutes: Math.max(0, slot.delaySec ?? 0) * SIM_MINUTES_PER_REAL_SECOND,
+        seats: cargo ? 0 : Math.round((airline.paxMin + airline.paxMax) / 2),
+        transferShare: cargo ? 0 : this.connectingShare(slot.airline),
+        cargo,
+        cell: slot.standPref ? { c: slot.standPref.c, r: slot.standPref.r } : undefined,
+      }
+    })
+  }
+
+  /** Local visitors and night-stopping crew from one landed flight. */
+  private noteConnectionsArrival(f: Flight) {
+    if (f.hostKind) return
+    // The hall shows a sample of bodies; hotel demand reads the real load.
+    const load = Math.max(0, f.pax)
+    const transfer = Math.round(load * this.connectingShare(f.airline))
+    this.connections.noteArrival({
+      odPax: load - transfer,
+      seats: load,
+      at: this.simMinutes(),
+      hub: this.isHub(f.airline),
+      cargo: f.cargo,
+    })
+  }
+
+  private raiseConnectionsAlert(alert: ConnectionsAlert, severity: 'warning' | 'info' = 'warning') {
+    const titles: Record<ConnectionsAlert['kind'], string> = {
+      mct_miss: 'Missed connections',
+      misconnect: 'Transfer bags misconnecting',
+      stranded: 'Stranded passengers',
+      hotel_full: 'Hotels full',
+      recheck: 'No transfer security lane',
+    }
+    const fit = this.activeHall() ?? this.fits[0]
+    const at: AlertFocus | undefined = alert.cell
+      ? { view: 'apron', cells: [alert.cell] }
+      : fit
+        ? { view: 'hall', cells: [], hall: this.hallKey(fit) }
+        : undefined
+    this.raiseAlert({ key: `conn:${alert.kind}`, severity, title: titles[alert.kind], detail: alert.text, at, event: true })
+  }
+
+  /** Reputation, courier bills, stranded rebooking and alerts for windows that just closed. */
+  private settleConnectionWindows(roll: {
+    reputationHit: number
+    transferBags: number
+    misconnected: number
+    missedBy: Record<string, number>
+    rate: number
+  }) {
+    if (roll.reputationHit > 0) this.reputation = Math.max(0, this.reputation - roll.reputationHit)
+    const courier = this.connections.noteTransferBags(roll.transferBags, roll.misconnected)
+    if (roll.misconnected > 0) {
+      this.bagsMishandled += roll.misconnected
+      if (courier > 0 && !this.sandbox) this.charge(courier, 'penalties')
+      const sort = tilesOf(this.tiles, 'bags')[0]
+      this.raiseConnectionsAlert(
+        this.connections.alert(
+          'misconnect',
+          `${roll.misconnected} transfer bag${roll.misconnected === 1 ? '' : 's'} missed the onward flight — sort misconnect ${(roll.rate * 100).toFixed(1)}%. Add bag halls or RFID.`,
+          sort ? { c: sort.c, r: sort.r } : undefined,
+        ),
+      )
+    }
+    const now = this.simMinutes()
+    const day = Math.floor(now / SIM_MINUTES_PER_GAME_DAY)
+    let missed = 0
+    for (const [airlineId, pax] of Object.entries(roll.missedBy)) {
+      missed += pax
+      this.connections.strandMissed(airlineId, pax, this.strandSlots(), now, day)
+    }
+    if (missed > 0) {
+      const mct = this.connections.mct(this.connectionsLayout()).total
+      this.raiseConnectionsAlert(
+        this.connections.alert(
+          'mct_miss',
+          `${missed} missed connection${missed === 1 ? '' : 's'} (published MCT ${mct} min). Shorten gate walks, add links or the Transfer Centre.`,
+        ),
+      )
+    }
+  }
+
+  /** Strand and rebook passengers from fresh cancels and long delays. Throttled to once a second. */
+  private tickConnections() {
+    if (this.clock < this.connectionsScanAt) return
+    this.connectionsScanAt = this.clock + 1
+    if (!this.schedule.length) return
+    const now = this.simMinutes()
+    const day = Math.floor(now / SIM_MINUTES_PER_GAME_DAY)
+    const roll = this.connections.scanDisruptions(this.strandSlots(), now, day)
+    if (roll.airportCost > 0 && !this.sandbox) this.charge(roll.airportCost, 'penalties')
+    for (const line of roll.news) this.pushNews(line, 'bad')
+    if (roll.alert) this.raiseConnectionsAlert(roll.alert)
+    const today = this.connections.ledger.today
+    const told = this.connections.ledger.alerts.some((a) => a.kind === 'recheck' && a.day === today.day)
+    if (today.landsideRecheck > 0 && !told) {
+      this.raiseConnectionsAlert(
+        this.connections.alert(
+          'recheck',
+          `${today.landsideRecheck} transfers re-screened landside today. Research the Transfer Centre for an airside lane.`,
+        ),
+        'info',
+      )
+    }
+  }
+
+  /** Book tonight's hotel rooms and close the connections day. */
+  private settleConnections(completedDay: number) {
+    const roll = this.connections.closeDay(completedDay, this.hotelSites())
+    const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
+    if (roll.income > 0 && Number.isFinite(roll.income)) {
+      // Booked on the night that just closed, like the tier-III hotel.
+      this.cash += roll.income
+      this.revenue += roll.income
+      this.hourIncome += roll.income
+      this.bank.post('landside_fees', roll.income, {
+        simMinutes: stamp,
+        source: 'hotels',
+        label: 'Hotel nights',
+        details: { rooms: roll.night.rooms, occupied: roll.night.occupied },
+      })
+    }
+    if (roll.outsideCost > 0 && !this.sandbox) this.charge(roll.outsideCost, 'penalties', stamp)
+    for (const line of roll.news) this.pushNews(line, 'ok')
+    for (const alert of roll.alerts) this.raiseConnectionsAlert(alert)
+  }
+
+  /** View-model for the Connections info view. */
+  connectionsPanel() {
+    const layout = this.connectionsLayout()
+    const now = this.simMinutes()
+    return {
+      mct: this.connections.mct(layout),
+      transferLane: layout.transferLane,
+      sortCapacity: sortCapacityPerHour({ belts: this.sortLines(), ...layout.facilities }),
+      sortLoad: this.connections.sortLoad.perHour(now),
+      misconnectRate: this.connections.misconnectRate(now, this.sortLines(), layout.facilities),
+      today: { ...this.connections.ledger.today },
+      history: this.connections.ledger.history.map((d) => ({ ...d })),
+      totals: this.connections.ledger.totals(),
+      alerts: [...this.connections.ledger.alerts],
+      hubAirlines: this.hubAirlines.map((id) => ({
+        id,
+        name: this.airline(id).name,
+        share: this.connectingShare(id),
+        screen: paxMix(this.fieldLevel(), this.hubProfile(id)).screen,
+      })),
+    }
+  }
+
+  /** View-model for the hotel panel. */
+  hotelPanel() {
+    const last = this.connections.lastNight
+    const rows: HotelPanelRow[] = this.hotelSites().map((site) => {
+      const line = last?.lines.find((l) => l.id === site.id)
+      return {
+        id: site.id,
+        name: site.name,
+        stars: site.stars,
+        side: site.side,
+        rooms: site.rooms,
+        rate: site.rate,
+        link: site.link,
+        occupancy: line?.occupancy ?? 0,
+        revenue: line?.revenue ?? 0,
+        upkeep: site.upkeep,
+        cell: site.cell,
+      }
+    })
+    return {
+      rows,
+      rates: { ...this.connections.rates },
+      tonight: this.connections.demandSoFar(),
+      last,
+      nights: [...this.connections.nights],
+    }
+  }
+
+  setHotelRate(side: 'landside' | 'airside', mult: number) {
+    this.connections.setRate(side, mult)
+    this.emit()
+  }
+
+  /** Pan to a hotel or a connections alert cell; no cell walks into the hall. */
+  focusConnections(cell?: { c: number; r: number }) {
+    if (cell) {
+      this.focusAt({ view: 'apron', cells: [cell] })
+      return
+    }
+    const fit = this.activeHall() ?? this.fits[0]
+    if (fit) this.focusAt({ view: 'hall', cells: [], hall: this.hallKey(fit) })
   }
 
   /** Click-open connection map: walk/ride minutes and the missed-connection count. */
@@ -14375,6 +14757,7 @@ export class Game {
     }
     this.settleLateBuildings(completedDay)
     this.settleStaffHousing(completedDay)
+    this.settleConnections(completedDay)
     const ledger = this.bank.ledgerForGameDay(completedDay)
     let income = 0
     for (const [category, amount] of Object.entries(ledger.byCategory)) {
@@ -18778,6 +19161,7 @@ export class Game {
     this.tickLayover(step)
     this.tickHub(step)
     this.tickHubConnections()
+    this.tickConnections()
     this.tickParking(step)
     this.tickJanitors(step)
     this.tickHallJanitors(step)

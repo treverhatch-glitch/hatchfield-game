@@ -77,6 +77,8 @@ import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
+import { ConnectionsPanel } from './ConnectionsPanel'
+import { HotelPanel } from './HotelPanel'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -185,6 +187,8 @@ type PanelId =
   | 'tycoon'
   | 'rival'
   | 'staff'
+  | 'connections'
+  | 'hotels'
   | null
 
 type EcoTab = 'overview' | 'income' | 'expenses' | 'loans' | 'charts'
@@ -247,6 +251,8 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
   { id: 'specialize', label: 'Specs', tip: 'Hub, low-cost, cargo, and luxury trees' },
   { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
+  { id: 'connections', label: 'Connections', tip: 'Transfers, MCT, misconnected bags, stranded pax' },
+  { id: 'hotels', label: 'Hotels', tip: 'Rooms, occupancy, nightly revenue, rates' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
   { id: 'settings', label: 'Settings', tip: 'Sound, graphics, hints, and game options' },
@@ -2129,6 +2135,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 />
               ) : null}
               {panel === 'staff' ? <StaffHousingPanel game={game} /> : null}
+              {panel === 'connections' ? <ConnectionsPanel game={game} /> : null}
+              {panel === 'hotels' ? <HotelPanel game={game} /> : null}
 
               {panel === 'services' ? (
                 <>

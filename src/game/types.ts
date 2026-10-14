@@ -910,6 +910,8 @@ export interface GameSnapshot {
   /** Expansion plots bought after the starter site. Missing on older saves. */
   ownedPlots?: { id: string; assessed: number }[]
   /** Staff housing on expansion plots. Missing on older saves. */
+  /** Transfers ledger, hotel rates and tonight's hotel demand. */
+  connections?: unknown
   staffHousing?: StaffHousingSave
   /** Outsourced pavement crew. Missing on older saves. */
   maintenanceContract?: boolean

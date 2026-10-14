@@ -113,6 +113,8 @@ describe('hub wiring', () => {
 
     const cash = game.cash
     const standing = game.standingOf('harbor')
+    // A rare sort misconnect during the tick posts a courier fee to penalties too.
+    const penalties = game.bank.ledger().byCategory.penalties ?? 0
     const billed = game.applyMissedConnection('harbor')
     expect(billed).toBe(REBOOK_FEE)
     expect(game.cash).toBe(cash - REBOOK_FEE)
@@ -120,7 +122,7 @@ describe('hub wiring', () => {
     expect(game.standingOf('harbor')).toBeLessThan(standing)
     expect(game.missedConnections).toBe(1)
     expect(game.bagsLost).toBe(0)
-    expect(game.bank.ledger().byCategory.penalties).toBe(-REBOOK_FEE)
+    expect((game.bank.ledger().byCategory.penalties ?? 0) - penalties).toBe(-REBOOK_FEE)
 
     game.hotelLevel = 1
     const hotelCash = game.cash

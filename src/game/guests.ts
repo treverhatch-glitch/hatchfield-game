@@ -100,6 +100,8 @@ export interface HallGuest {
   clearedSec: boolean
   /** Layover-bank transfer — longer dwell, captive spend. */
   transfer?: boolean
+  /** Need-drain multiplier on a long connection wait. Unset means 1. */
+  layoverDrain?: number
   airlineId?: string
   /** Which terminal campus hall this guest belongs to (`c,r` origin key). */
   hallId?: string
