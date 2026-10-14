@@ -14,11 +14,20 @@ import { hangar } from './hangar'
 import { substation } from './power'
 import { guard, police, remoteScreening } from './security'
 import { depot, fireStation, kitchen, snack } from './services'
+import { checkinHall, concourse, pierII, prefabII, prestigeLandmark, satellite, securityHall } from './terminal'
+import { hotel } from './hotel'
+import { parking } from './parking'
+import { busCurb, busDepot, railStation } from './transit'
+import { deicePad, helipad, mro, nightHub } from './aviation'
+import { fuelRail, oilTransfer, peopleMover, skywalk, travelator } from './links'
+import type { HotelClass, ParkTerm } from '../../game/types'
 
 export { standAircraftGhost } from './stand'
 
 export interface ModelOpts {
   hangarTier?: SizeTier
+  hotelClass?: HotelClass
+  parkTerm?: ParkTerm
 }
 
 type Builder = (g: THREE.Group, o: ModelOpts) => void
@@ -45,6 +54,38 @@ export const MODEL_BUILDERS: Record<string, Builder> = {
   fuel_farm_iii: (g) => fuelFarm(g, true),
   atc_approach: (g) => atcApproach(g),
   remote_screening: (g) => remoteScreening(g),
+  // Terminal upgrades (menu icons)
+  prefab_ii: (g) => prefabII(g),
+  checkin_hall: (g) => checkinHall(g),
+  security_hall: (g) => securityHall(g),
+  concourse: (g) => concourse(g),
+  pier_ii: (g) => pierII(g),
+  satellite: (g) => satellite(g),
+  prestige_landmark: (g) => prestigeLandmark(g),
+  // Landside
+  hotel: (g, o) => hotel(g, o.hotelClass ?? 'business'),
+  hotel_inn: (g) => hotel(g, 'inn'),
+  hotel_biz: (g) => hotel(g, 'business'),
+  hotel_resort: (g) => hotel(g, 'resort'),
+  park_s: (g, o) => parking(g, 'park_s', o.parkTerm),
+  park_l: (g, o) => parking(g, 'park_l', o.parkTerm),
+  park_g: (g, o) => parking(g, 'park_g', o.parkTerm),
+  park_u: (g, o) => parking(g, 'park_u', o.parkTerm),
+  bus: (g) => busCurb(g),
+  rail: (g) => railStation(g),
+  termbus: (g) => busDepot(g, false),
+  xferbus: (g) => busDepot(g, true),
+  // Airside support
+  helipad: (g) => helipad(g),
+  deice: (g) => deicePad(g),
+  mro: (g) => mro(g),
+  nighthub: (g) => nightHub(g),
+  // Links
+  fuel_rail: (g) => fuelRail(g),
+  oil: (g) => oilTransfer(g),
+  travelator: (g) => travelator(g),
+  skywalk: (g) => skywalk(g),
+  mover: (g) => peopleMover(g),
 }
 
 export function hasModel(id: string): boolean {
