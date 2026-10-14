@@ -75,6 +75,9 @@ import {
 import { terminals } from './world/layout'
 import { baseLevel } from './world/quality'
 import { PACK1_REPEAT_M, tileByPosition } from './materials/pack1'
+import { boardSnapshot, isFidsSource } from '../fids/project'
+import { setFidsOpen } from '../fids/open'
+import { objectIsFidsBoard } from '../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
 import type { RoomPlan } from './world/rooms'
 import { makeTextures, type WorldTextures } from './world/textures'
@@ -258,6 +261,7 @@ export class HallWorld {
       depthWrite: false,
     }),
   )
+  private fidsAt = 0
   private frameQueues = new Map<string, QueueSlot>()
   private frameLines: { node: HallNode; x: number; z: number; x2: number; z2: number }[] = []
   private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -437,6 +441,11 @@ export class HallWorld {
         this.game.selectGuest(id)
         return
       }
+    }
+    const fidsHit = this.ray.intersectObjects(this.interiorGroup.children, true).find((hit) => objectIsFidsBoard(hit.object))
+    if (fidsHit && (!person || fidsHit.distance <= person.distance)) {
+      setFidsOpen(true)
+      return
     }
     const facilityHit = [...queueHits, ...roomHits].find((hit) => {
       let obj: THREE.Object3D | null = hit.object
@@ -1691,6 +1700,12 @@ export class HallWorld {
 
   render(game: Game) {
     this.game = game
+    if (this.terminalShared && isFidsSource(game)) {
+      const now = performance.now()
+      const dt = this.fidsAt ? Math.min(0.05, (now - this.fidsAt) / 1000) : 0
+      this.fidsAt = now
+      this.terminalShared.fids.tick(dt, boardSnapshot(game))
+    }
     perfFrame()
     let t = perfStart()
     this.resize()

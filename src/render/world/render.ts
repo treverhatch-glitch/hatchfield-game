@@ -48,6 +48,8 @@ import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
 import { WORLD_PER_METER } from '../aircraft/specs'
+import { boardSnapshot, isFidsSource } from '../../fids/project'
+import { objectIsFidsBoard } from '../../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
@@ -395,6 +397,13 @@ export class WorldRenderer {
     if (this.q.colorGrade) gradeTree(this.staticGroup)
   }
 
+  /** True when the ray hits a split-flap board. */
+  pickFids(raycaster: THREE.Raycaster): boolean {
+    const roots = this.buildings.map((building) => building.fidsGroup)
+    if (!roots.length) return false
+    return raycaster.intersectObjects(roots, true).some((hit) => objectIsFidsBoard(hit.object))
+  }
+
   update(view: WorldView, camera: THREE.Camera, dt: number) {
     // Generous clamp: software GL runs ~5–15 FPS and the crowd should still walk at pace.
     const step = Math.min(0.25, Math.max(0, dt))
@@ -509,6 +518,16 @@ export class WorldRenderer {
 
     const enclosed = view.view === 'apron'
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
+    const feed = isFidsSource(view)
+      ? view
+      : {
+          clock: view.clock ?? 0,
+          schedule: [],
+          flights: [],
+          airline: () => undefined,
+          gateLabel: () => '--',
+        }
+    this.shared.fids.tick(step, boardSnapshot(feed))
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
     this.syncGuests(view, camera, step, showGuests, lite)
     this.syncPack(view, lite)

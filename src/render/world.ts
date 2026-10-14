@@ -62,6 +62,7 @@ import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from
 import { aircraftReflectionsFor, prepareBuildingReflections } from './reflections'
 import { beatZoom, clearCameraBeat, peekCameraBeat } from '../feedback/beat.ts'
 import { standBox } from './world/layout'
+import { setFidsOpen } from '../fids/open'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
 import { HOTEL_WALL, SKIN_TILE_M } from '../build/materialTargets'
@@ -467,6 +468,10 @@ export class World {
       this.dragging = null
       if (was === 'pending' && e.button === 0 && !this.paintedThisGesture) {
         const v = this.pick(e)
+        if (this.wr.pickFids(this.ray)) {
+          setFidsOpen(true)
+          return
+        }
         if (v) this.onClick(v, e.shiftKey)
       }
       this.lastPaint = null

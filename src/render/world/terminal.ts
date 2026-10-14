@@ -56,6 +56,7 @@ import { pickLod, stepFade } from './lod'
 import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
 import { roomAt, type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
+import { FidsStage, mountFids } from '../../fids/stage'
 import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { buildHiDetailProps, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
@@ -98,9 +99,12 @@ export interface TerminalShared {
   signCache: Map<string, THREE.Texture | null>
   /** High / Ultra: detailed render/terminalProps models replace the low-poly plan props. */
   hiDetail: boolean
+  /** Live split-flap boards and wayfinding canvases shared by every terminal. */
+  fids: FidsStage
 }
 
 export function makeTerminalShared(textures: WorldTextures, quality: QualityLevel = 'high'): TerminalShared {
+  const fids = new FidsStage()
   const surfaces = new SurfaceLibrary()
   surfaces.loadPngs()
   surfaces.loadPack1(quality)
@@ -116,7 +120,10 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
     chrome: lambert(0xb8c0c8),
     tape: lambert(0xc0392b),
     seat: lambert(0x2f5f8a),
-    board: new THREE.MeshBasicMaterial({ map: departuresBoardTexture() ?? textures.board }),
+    board: new THREE.MeshBasicMaterial({
+      map: fids.textures.departures ?? departuresBoardTexture() ?? textures.board,
+      toneMapped: false,
+    }),
     machine: lambert(0x8f9aa6),
     kiosk: lambert(0xffffff),
     shelf: lambert(0x7a5a3a),
@@ -136,6 +143,7 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
     surfaces,
     signCache: new Map(),
     hiDetail: hiDetailOn(quality),
+    fids,
   }
 }
 
@@ -151,6 +159,7 @@ export function disposeTerminalShared(s: TerminalShared) {
   for (const m of Object.values(s.palette)) m.dispose()
   s.surfaces.dispose()
   for (const t of s.signCache.values()) t?.dispose()
+  s.fids.dispose()
 }
 
 /** Floor tint per room (multiplies the terrazzo) so room boundaries read from above. */
@@ -192,6 +201,8 @@ export class TerminalBuilding {
   lifeFade = 0
   private shell = new THREE.Group()
   private roof = new THREE.Group()
+  /** Split-flap boards and wayfinding signs. Clicking a board opens the panel. */
+  readonly fidsGroup = new THREE.Group()
   private roofMats: THREE.Material[] = []
   /** 1 = roof on; fades to 0 for the close-up cutaway. */
   roofFade = 1
@@ -280,6 +291,7 @@ export class TerminalBuilding {
     this.buildShell(opts.index)
     this.buildProps()
     this.buildRooms(opts.index)
+    this.mountFids()
     this.buildLife()
     this.flushSigns()
     this.roomBalls = roomSpheres(this.plan.rooms, FLOOR_Y + WALL_H * 0.5)
@@ -482,6 +494,20 @@ export class TerminalBuilding {
       this.signSets.push({ mesh, items: packed.instances })
     }
     this.signQueue = []
+  }
+
+  /** Departures, arrivals, and the check-in / security / gates / baggage signs. */
+  private mountFids() {
+    const land = landsideSide(this.info.airside)
+    const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
+    this.fidsGroup.name = 'fids-install'
+    this.props.add(this.fidsGroup)
+    const mounted = mountFids(this.fidsGroup, this.plan.rooms.rooms, yaw, m, this.shared.fids.textures)
+    this.owned.geos.push(...mounted.geos)
+    for (const mat of mounted.mats) {
+      this.owned.mats.push(mat)
+      this.propMats.push(mat)
+    }
   }
 
   private buildSigns(index: number) {

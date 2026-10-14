@@ -73,6 +73,8 @@ import { ControlsPanel } from './ControlsPanel'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
+import { BoardPanel } from '../fids/BoardPanel'
+import { fidsIsOpen, setFidsOpen, subscribeFids } from '../fids/open'
 import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
@@ -277,6 +279,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const [inboxOpen, setInboxOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
   const [feesOpen, setFeesOpen] = useState(false)
+  const [boardsOpen, setBoardsOpen] = useState(fidsIsOpen)
+  useEffect(() => subscribeFids(setBoardsOpen), [])
   // Terminal view folds the apron cards. A peek belongs to the view it was opened in.
   const [hallPeek, setHallPeek] = useState<{ view: string; id: 'coach' | 'offer' | 'map' } | null>(null)
   const inHall = game.view === 'hall'
@@ -381,6 +385,15 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
       <button
         type="button"
+        className={`fids-toggle${boardsOpen ? ' on' : ''}`}
+        title="Departures and arrivals"
+        data-testid="tab-boards"
+        onClick={() => setFidsOpen(!fidsIsOpen())}
+      >
+        Boards
+      </button>
+      <button
+        type="button"
         className={`fees-toggle${feesOpen ? ' on' : ''}`}
         title="Landing, passenger, and service prices"
         data-testid="tab-fees"
@@ -388,6 +401,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       >
         Fees
       </button>
+      {boardsOpen ? <BoardPanel source={game} onClose={() => setFidsOpen(false)} /> : null}
       {feesOpen ? (
         <FeesPanel
           fees={game.fees}
