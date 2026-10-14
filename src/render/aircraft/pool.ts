@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { AIRCRAFT_LOOK } from '../look'
 import type { Livery } from './specs'
 
 const geos = new Map<string, THREE.BufferGeometry>()
@@ -52,6 +53,7 @@ export function unitDisc(kind: 'prop' | 'rotor'): THREE.BufferGeometry {
 
 export type PaintSlot =
   | 'body'
+  | 'wing'
   | 'stripe'
   | 'tail'
   | 'belly'
@@ -64,6 +66,11 @@ export type PaintSlot =
   | 'navWhite'
   | 'beacon'
 
+/** Cache key for everything a livery paints: body, cheatline, fin and scheme. */
+export function liveryKey(livery: Livery): string {
+  return `${livery.body}|${livery.stripe}|${livery.tail ?? ''}|${livery.scheme ?? 'twotone'}`
+}
+
 function shade(hex: string, factor: number): string {
   const color = new THREE.Color(hex)
   color.multiplyScalar(factor)
@@ -74,6 +81,8 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
   switch (slot) {
     case 'body':
       return livery.body
+    case 'wing':
+      return livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.wing
     case 'stripe':
       return livery.stripe
     case 'tail':
@@ -81,7 +90,7 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     case 'belly':
       return shade(livery.body, 0.58)
     case 'metal':
-      return '#4a545c'
+      return AIRCRAFT_LOOK.metal
     case 'dark':
       return '#14181d'
     case 'glass':
@@ -133,8 +142,8 @@ export function vertexMaterials(
     if (metal) return new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
     return new THREE.MeshStandardMaterial({
       vertexColors: true,
-      metalness: 0.18,
-      roughness: 0.46,
+      metalness: AIRCRAFT_LOOK.paint.metalness,
+      roughness: AIRCRAFT_LOOK.paint.roughness,
     })
   })
   const fade = sharedMat(`fade:${key}`, () => {

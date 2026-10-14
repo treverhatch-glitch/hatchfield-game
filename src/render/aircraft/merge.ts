@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { paintVertexMesh, sharedGeo, type PaintedMesh } from './pool'
+import { liveryKey, paintVertexMesh, sharedGeo, type PaintedMesh } from './pool'
 import type { Livery } from './specs'
 
 type Tier = 'low' | 'mid' | 'high'
@@ -144,7 +144,7 @@ export function mergeStaticShell(frame: ShellSource) {
     ? staticMeshes.filter((mesh) => mesh.userData.slot === 'metal')
     : []
   const paint = staticMeshes.filter((mesh) => !metal.includes(mesh))
-  const base = `shell:${frame.tier}:${frame.specId}:${frame.livery.body}:${frame.livery.stripe}`
+  const base = `shell:${frame.tier}:${frame.specId}:${liveryKey(frame.livery)}`
   takeShell(frame, paint, base, 'airframe', 'paint')
   takeShell(frame, metal, `${base}:metal`, 'nacelles', 'metal')
 }
