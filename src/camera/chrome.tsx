@@ -49,29 +49,6 @@ export function CameraChrome({
     return () => shell.classList.remove('photo-mode')
   }, [snap.photo])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null
-      const tag = el?.tagName
-      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
-      const ours = Boolean(el?.closest?.('[data-camera-ui]'))
-      if (typing && !ours) return
-      if (e.key === 'Escape') {
-        if (cameraSession.noteEscape() !== 'none') {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-        return
-      }
-      if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault()
-        cameraSession.togglePhoto(simClockToHour(clockOf()))
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [clockOf])
-
   return (
     <div data-camera-ui style={{ position: 'absolute', inset: 0, zIndex: 36, pointerEvents: 'none' }}>
       {snap.photo ? (

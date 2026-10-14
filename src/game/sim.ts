@@ -5573,7 +5573,7 @@ export class Game {
       this.tool = 'pan'
       if (prev !== 'hall') {
         this.pushNews(
-          'Inside the terminal — prefab ceilings are on the card. Paint a zone or upgrade the shell. Esc / Apron to leave.',
+          'Inside the terminal — prefab ceilings are on the card. Paint a zone or upgrade the shell. H or Apron to leave.',
           'ok',
         )
       }
@@ -5596,6 +5596,17 @@ export class Game {
 
   exitHall() {
     if (this.view === 'hall') this.setView('apron')
+  }
+
+  /**
+   * Leave the field for the title screen without touching the save.
+   * The play screen bounces back while a site is still owned.
+   */
+  shelveForTitle() {
+    this.speed = 0
+    this.site = null
+    this.tool = 'pan'
+    this.emit()
   }
 
   selectGuest(id: string | null) {

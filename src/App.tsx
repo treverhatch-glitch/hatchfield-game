@@ -14,6 +14,9 @@ import { OfferPanel } from './negotiation/OfferPanel'
 import { PriceWarCard } from './rival/PriceWarCard'
 import { PlaytestYearPanel } from './reports/PlaytestYearPanel'
 import { TitleScreen } from './ui/TitleScreen'
+import { PlayInput } from './ui/PlayInput'
+import { PauseMenu } from './ui/PauseMenu'
+import { pauseState } from './ui/pauseState'
 import type { StartFocus } from './game/types'
 import { applyStoredAudio, bindUiClicks, preloadAudioClips } from './audio'
 
@@ -325,7 +328,7 @@ export default function App() {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       const t0 = perfStart()
-      if (!cameraSession.frozen) {
+      if (!cameraSession.frozen && !pauseState.open) {
         try {
           game.tick(dt)
         } catch (err) {
@@ -381,11 +384,16 @@ export default function App() {
   return (
     <div className="shell">
       <CanvasLayers />
+      <PlayInput game={game} />
       <PlayChrome
         onNewGame={() => {
           game.beginNew(game.sandbox ? 'easy' : game.difficulty)
           setScreen('title')
         }}
+      />
+      <PauseMenu
+        game={game}
+        onQuit={() => setScreen('title')}
       />
       <PriceWarCard game={game} />
     </div>

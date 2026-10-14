@@ -6,6 +6,8 @@ import { money } from '../game/catalog'
 import { lockTip, unlockLevel } from '../progression/unlocks'
 import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
+import { registerHallTools } from '../input/hallTools.ts'
+import { inputMap } from '../input/map.ts'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
 import {
   GRID_C,
@@ -191,21 +193,20 @@ export function TerminalView({ game }: { game: Game }) {
   }, [zone])
 
   useEffect(() => {
-    // Capture phase, so Esc cancels a build before it leaves the hall.
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (game.view !== 'hall' || !buildRef.current) return
-      if (e.key === 'Escape') {
-        e.stopImmediatePropagation()
+    return registerHallTools({
+      active: () => game.view === 'hall' && buildRef.current != null,
+      cancel: () => {
+        if (game.view !== 'hall' || !buildRef.current) return false
         setBuild(null)
-      } else if ((e.key === 'r' || e.key === 'R') && (buildRef.current.kind === 'place' || buildRef.current.kind === 'move')) {
+        return true
+      },
+      rotate: () => {
         const cur = buildRef.current
+        if (game.view !== 'hall' || !cur || (cur.kind !== 'place' && cur.kind !== 'move')) return false
         setBuild({ ...cur, rot: (cur.rot + 1) % 4 })
-      }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+        return true
+      },
+    })
   }, [game])
 
   useEffect(() => {
@@ -222,21 +223,6 @@ export function TerminalView({ game }: { game: Game }) {
     world.onHover = setHover
     world.onCaptured = (url) => savePng(url, pngName(new Date()))
     world.setBuild(buildRef.current)
-    const keys = new Set<string>()
-    const onKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      if (game.view !== 'hall') return
-      keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key)
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        e.preventDefault()
-      }
-    }
-    const onKeyUp = (e: KeyboardEvent) => {
-      keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
 
     let raf = 0
     let last = performance.now()
@@ -247,15 +233,13 @@ export function TerminalView({ game }: { game: Game }) {
         const w = worldRef.current
         if (w) {
           const speed = 18 * dt
-          let fx = 0
-          let fy = 0
-          if (keys.has('w') || keys.has('ArrowUp')) fy -= speed
-          if (keys.has('s') || keys.has('ArrowDown')) fy += speed
-          if (keys.has('a') || keys.has('ArrowLeft')) fx -= speed
-          if (keys.has('d') || keys.has('ArrowRight')) fx += speed
+          const fx = (inputMap.analog('camera.panRight') - inputMap.analog('camera.panLeft')) * speed
+          const fy = (inputMap.analog('camera.panBack') - inputMap.analog('camera.panForward')) * speed
           if (fx || fy) w.nudgePan(fx, fy)
-          if (keys.has('q')) w.nudgeYaw(1.4 * dt)
-          if (keys.has('e')) w.nudgeYaw(-1.4 * dt)
+          const yaw = (inputMap.analog('camera.rotateLeft') - inputMap.analog('camera.rotateRight')) * 1.4 * dt
+          if (yaw) w.nudgeYaw(yaw)
+          const zoom = inputMap.analog('camera.zoomIn') - inputMap.analog('camera.zoomOut')
+          if (zoom) w.nudgeZoom(-zoom * 28 * dt)
           if (cameraSession.consumeCapture()) w.requestCapture()
           w.render(game)
         }
@@ -264,8 +248,6 @@ export function TerminalView({ game }: { game: Game }) {
     }
     raf = requestAnimationFrame(loop)
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
       cancelAnimationFrame(raf)
       if (import.meta.env.DEV) {
         const probe = window as unknown as { __hall?: HallWorld }

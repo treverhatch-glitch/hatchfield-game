@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
 import { canvasToPng } from '../camera/capture.ts'
+import { inputMap } from '../input/map.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import {
   HALL_CAM_DIST,
@@ -385,6 +386,12 @@ export class HallWorld {
     this.placeCam()
   }
 
+  /** Positive delta pulls back. Keyboard and triggers pass a distance; the wheel scales it. */
+  nudgeZoom(delta: number) {
+    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
+    this.placeCam()
+  }
+
   private onUp = (e: PointerEvent) => {
     const dx = e.clientX - this.downX
     const dy = e.clientY - this.downY
@@ -595,10 +602,10 @@ export class HallWorld {
   }
 
   private onWheel = (e: WheelEvent) => {
+    if (!inputMap.wheelMatches(e.deltaY)) return
     e.preventDefault()
     const step = Math.max(0.02, this.dist * 0.0012)
-    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + e.deltaY * step))
-    this.placeCam()
+    this.nudgeZoom(e.deltaY * step)
   }
 
   private goalSeq = 0
