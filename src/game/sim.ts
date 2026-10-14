@@ -14844,12 +14844,12 @@ export class Game {
     return OPS_RP_PER_SEC
   }
 
-  /** RP/sec from animated R&D rooms. Staff are not required. */
+  /** RP/sec from animated R&D rooms. Hired researchers raise this; they are not required. */
   labResearchRate(): number {
     if (!this.site) return 0
     const gear = this.labGear()
     const rooms = { desk: gear.desks, board: gear.boards, machine: gear.machines }
-    return Math.max(0, this.researchTree.rate(rooms, true) - OPS_RP_PER_SEC)
+    return Math.max(0, this.researchTree.rate(rooms, true, this.researchers) - OPS_RP_PER_SEC)
   }
 
   /** RP/sec of the one research pool: operations trickle plus the lab rooms. */
@@ -20866,7 +20866,7 @@ export class Game {
     // Day 1 specialization points. No staff and no rooms required.
     const gear = this.labGear()
     this.wave3.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines })
-    this.researchTree.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines })
+    this.researchTree.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines }, this.researchers)
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)

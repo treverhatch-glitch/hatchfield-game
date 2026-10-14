@@ -9,13 +9,25 @@ import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 export const OPS_RP_PER_SEC = 0.01
 export const ROOM_RP_PER_SEC = { desk: 0.04, board: 0.03, machine: 0.06 } as const
 
+/**
+ * Each hired researcher multiplies the room rate by (1 + n × this).
+ * Rooms earn with an empty payroll. Bare staff do not add a second trickle.
+ */
+export const STAFF_ROOM_BOOST = 0.5
+
 /** One game day, used to turn a shortfall into "~N days". */
 export const RESEARCH_DAY_SEC = REAL_SECONDS_PER_GAME_DAY
 
 /** Other specialisation branches cost this much more after the first pick. */
 export const SPEC_PENALTY = 1.5
 
-export const TIER_COSTS = [0, 1, 2, 4, 8, 16] as const
+/**
+ * Point costs by tier. The first node of a line is free so the category can open.
+ * A careful lab — one desk, one chalkboard, one bench, no researchers — earns
+ * less than the second-tier cost in one game day (180s). Later tiers double,
+ * so that lab does not buy a node every day.
+ */
+export const TIER_COSTS = [0, 50, 100, 200, 400, 800] as const
 
 export const CATEGORIES = [
   { id: 'airfield', label: 'Airfield', unlockLevel: 1 },

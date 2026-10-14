@@ -1549,7 +1549,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           return ` · ${c.working} working / ${c.break} break / ${c.home} home`
                         })()
                       : game.opsResearchRate() > 0
-                        ? ' · operations trickle is running — furnished rooms add the rest'
+                        ? ' · operations trickle is running — furnished rooms add the rest, and researchers raise that room rate'
                         : ' · buy land to start the operations trickle'}
                   </p>
                   <div className="row">

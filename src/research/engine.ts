@@ -9,13 +9,13 @@ export class ResearchEngine {
     this.state = saved ? cloneState(saved) : emptyResearchState()
   }
 
-  /** Operations trickle from the first tick. Rooms add the larger share. Staff are not required. */
-  tick(seconds: number, operating: boolean, rooms: RoomCounts): void {
-    this.state = accrue(this.state, seconds, rooms, operating)
+  /** Operations trickle from the first tick. Rooms add the larger share. Staff raise the room share. */
+  tick(seconds: number, operating: boolean, rooms: RoomCounts, staff = 0): void {
+    this.state = accrue(this.state, seconds, rooms, operating, staff)
   }
 
-  rate(rooms: RoomCounts, operating: boolean): number {
-    return researchRate(rooms, operating)
+  rate(rooms: RoomCounts, operating: boolean, staff = 0): number {
+    return researchRate(rooms, operating, staff)
   }
 
   points(): number {

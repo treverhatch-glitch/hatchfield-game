@@ -1,4 +1,4 @@
-import { CATEGORIES, OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, SPEC_PENALTY, levelReward } from './config.ts'
+import { CATEGORIES, OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, SPEC_PENALTY, STAFF_ROOM_BOOST, levelReward } from './config.ts'
 import { linkFor } from './links.ts'
 import { RESEARCH_NODES, nodeById, nodesInCategory } from './nodes.ts'
 import type { NodeState, ResearchNode, ResearchState, RoomCounts } from './types.ts'
@@ -15,14 +15,23 @@ export function roomRate(rooms: RoomCounts): number {
   )
 }
 
-export function researchRate(rooms: RoomCounts, operating: boolean): number {
+/** Operations trickle plus room output. Hired researchers raise only the room share. */
+export function researchRate(rooms: RoomCounts, operating: boolean, staff = 0): number {
   if (!operating) return 0
-  return OPS_RP_PER_SEC + roomRate(rooms)
+  const crew = Math.max(0, staff)
+  const boost = 1 + crew * STAFF_ROOM_BOOST
+  return OPS_RP_PER_SEC + roomRate(rooms) * boost
 }
 
-export function accrue(state: ResearchState, seconds: number, rooms: RoomCounts, operating: boolean): ResearchState {
+export function accrue(
+  state: ResearchState,
+  seconds: number,
+  rooms: RoomCounts,
+  operating: boolean,
+  staff = 0,
+): ResearchState {
   if (!(seconds > 0) || !operating) return state
-  const sum = state.carry + researchRate(rooms, true) * seconds
+  const sum = state.carry + researchRate(rooms, true, staff) * seconds
   const whole = Math.floor(sum)
   return { ...state, points: state.points + whole, carry: sum - whole }
 }

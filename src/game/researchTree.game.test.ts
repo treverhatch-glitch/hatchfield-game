@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OPS_RP_PER_SEC, levelReward } from '../research/config.ts'
+import { OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, TIER_COSTS, levelReward } from '../research/config.ts'
 import { Game } from './sim.ts'
 
 function opened(): Game {
@@ -21,6 +21,26 @@ describe('research tree on the field', () => {
     expect(after - before).toBeCloseTo(OPS_RP_PER_SEC * 180, 5)
     expect(game.researchTree.points()).toBeGreaterThan(0)
     expect(game.researchers).toBe(0)
+  })
+
+  it('banks room points with no researchers, and pays more once one is hired', () => {
+    const game = opened()
+    game.buildStarterKit()
+    const hall = game.fits[0]
+    expect(hall).toBeTruthy()
+    hall!.rooms.rdesk = 1
+    hall!.rooms.rboard = 1
+    hall!.rooms.rmachine = 1
+    const roomSum = ROOM_RP_PER_SEC.desk + ROOM_RP_PER_SEC.board + ROOM_RP_PER_SEC.machine
+    expect(game.researchers).toBe(0)
+    const bare = OPS_RP_PER_SEC + roomSum
+    expect(game.researchRate()).toBeCloseTo(bare, 5)
+    expect(game.researchRate() * RESEARCH_DAY_SEC).toBeLessThan(TIER_COSTS[1]!)
+    const before = game.researchPoints + game.researchTree.state.carry
+    game.tick(1)
+    expect(game.researchPoints + game.researchTree.state.carry - before).toBeCloseTo(bare, 5)
+    game.researchers = 1
+    expect(game.researchRate()).toBeGreaterThan(bare)
   })
 
   it('pays the field-level lump in cash and research points once', () => {
