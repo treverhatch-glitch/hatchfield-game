@@ -18,7 +18,8 @@
     "autoplay": "tsx scripts/autoplay-stabilize.mts",
     "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs",
     "soak:150": "node scripts/soak-150.mjs",
-    "playtest:bots": "vitest run --config vitest.playtest.config.ts"
+    "playtest:bots": "node scripts/playtest-bots-run.mjs",
+    "gate": "node scripts/gate.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

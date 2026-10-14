@@ -131,6 +131,7 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
       stateGrowth: stateWarm > 0 ? Number(((stateEnd - stateWarm) / stateWarm).toFixed(4)) : 0,
       biggestFieldsWarm: fieldsWarm,
       biggestFields: biggestFields(game),
+      cashEnd: Math.round(game.cash),
       recoveries: game.recoveryCount,
       recoveriesByStep: byStep,
       recoveriesByState: byState,
