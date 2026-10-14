@@ -99,3 +99,37 @@ New views: `?view=checkin`, `gates`, `airside`.
 
 New item ids: `kiosk`, `self_checkin`, `departures_wall`, `gate_sign`, `jet_bridge`, `airbridge`.
 All new textures are canvas-generated at load (no binaries).
+
+## Round 3: security, retail, in-game hookup
+
+New props: `body_scanner` (mmWave pods), `security_lane_ct` (CT gantry, 4
+divest stations with powered rollers, reject line, recompose bench, tray
+return), `divest_station`, `cafe_counter` (espresso machine, grinders, lit
+pastry case, back bar, menu boards, pendants), `shop_gondola`, `shop_kiosk`,
+`checkin_desk` (single desk). `security_lane` now has a body scanner beside the
+arch; shops get stainless portals, LED reveals and blade signs; coffee uses
+`cafe_counter`; duty free and news get gondolas.
+
+`PropPlacement.scale` and `fitScale(type, w, d)` fit real-size props into
+game cells. `capTerminalPropMetal(cap)` keeps metals readable in scenes
+without an environment map (the game world).
+
+### In game (High / Ultra graphics only; Low / Medium unchanged)
+
+- **Apron terminals** (`src/render/world/terminal.ts` via
+  `world/terminalHiDetail.ts`): plan props `xray, arch, kiosk, board, bench,
+  planter, bin, stanchion` draw the detailed models, scaled to the low-poly
+  footprint so layouts and walk lanes do not move (`awning` is absorbed into
+  `shop_kiosk`). Board → `departures_wall`; every gate podium gets a lit
+  `gate_pylon` beside it. Desks (`counter, monitor, podium`) stay low-poly so
+  per-room cutaway culling keeps working.
+- **Hall view, placed catalog items** (`src/render/hallKitDetail.ts`):
+  `HALL_ITEM_PROP` maps catalog ids (kiosk → `kiosk_bank`, security_large →
+  `security_lane_ct`, info_screen → `departures_board`, …) and fits them to
+  their cell slots.
+- **Hall view, east jetway door**: a detailed `jet_bridge` docks outside.
+- **Catalog**: new decor items `departures_wall` (2 slots, comfort 3, radius 3,
+  field level 2) and `gate_pylon` (gates only, 1 slot). Registered in
+  unlocks, terminalplay facilities and the advisor adapter.
+- Apron stand jet bridges stay in `render/aircraft/bridges.ts` (aircraft
+  worker's files, not touched).
