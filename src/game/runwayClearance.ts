@@ -116,6 +116,51 @@ export function runwayEdgeGap(a: RunwayBox, b: RunwayBox): number | null {
   return null
 }
 
+/**
+ * A new strip may not pave an existing shoulder, and its own shoulder may not
+ * already hold a building. Taxi and grass in the shoulder are fine.
+ */
+export function runwayStampBlocked(tiles: Tile[][], cells: Vec[]): boolean {
+  const onMap = cells.filter((p) => p.c >= 0 && p.r >= 0 && p.c < SIZE && p.r < SIZE)
+  if (onMap.some((p) => cellInRunwayClearance(tiles, p.c, p.r))) return true
+  if (!onMap.length) return false
+  let minC = onMap[0].c
+  let maxC = onMap[0].c
+  let minR = onMap[0].r
+  let maxR = onMap[0].r
+  for (const p of onMap) {
+    minC = Math.min(minC, p.c)
+    maxC = Math.max(maxC, p.c)
+    minR = Math.min(minR, p.r)
+    maxR = Math.max(maxR, p.r)
+  }
+  const rect = clearanceRect({
+    minC,
+    maxC,
+    minR,
+    maxR,
+    axis: maxC - minC >= maxR - minR ? 'h' : 'v',
+    cells: onMap,
+  })
+  const paved = new Set(onMap.map((p) => `${p.c},${p.r}`))
+  for (let r = Math.max(0, rect.minR); r <= Math.min(SIZE - 1, rect.maxR); r++) {
+    for (let c = Math.max(0, rect.minC); c <= Math.min(SIZE - 1, rect.maxC); c++) {
+      if (paved.has(`${c},${r}`)) continue
+      const tile = tiles[r][c]
+      if (tile === 'grass' || tile === 'runway' || tile === 'taxi') continue
+      return true
+    }
+  }
+  return false
+}
+
+/** Taxiways may cross a shoulder. Everything else may not. */
+export function clearanceBlocks(tiles: Tile[][], cells: Vec[], tile: Tile): boolean {
+  if (tile === 'taxi') return false
+  if (tile === 'runway') return runwayStampBlocked(tiles, cells)
+  return cells.some((p) => cellInRunwayClearance(tiles, p.c, p.r))
+}
+
 const CLEARANCE_OK = new Set<Tile>(['grass', 'runway', 'taxi'])
 
 /** Tiles that may not occupy a clearance shoulder. */
