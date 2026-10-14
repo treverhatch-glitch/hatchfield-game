@@ -220,6 +220,7 @@ function hudSnapshot(): string {
         game.hover ? `${game.hover.c},${game.hover.r}` : '',
         game.pendingYearReport()?.year ?? 0,
         Math.floor(game.researchPoints),
+        game.wave3.chromeKey(),
         Math.round(game.tycoonDemand() * 100),
         Math.round(game.tycoonAirlineInterest() * 100),
       ].join('|')

@@ -1,3 +1,5 @@
+import type { RelationsState } from '../wave3/types.ts'
+
 export type AirlineTier = 'regional' | 'low-cost' | 'full-service' | 'flag-carrier' | 'cargo';
 
 export interface AirportCapabilities {
@@ -51,6 +53,10 @@ export interface ContractOffer {
   terms: ContractTerms;
   expiresAtMinute: number; // sim minute when the offer expires
   penaltyTier: number; // 0 = normal, 1 = worse, 2 = even worse
+  /** Relationship contract tier. 1 keeps the published terms. */
+  contractTier?: number;
+  /** Airframe ids from this carrier's own fleet. Tiers do not add metal. */
+  airframes?: string[];
 }
 
 export interface ActiveContract {
@@ -79,4 +85,6 @@ export interface AirlineState {
   penaltyTiers: Record<string, number>; // airlineId -> current penalty tier (re-entry worse terms)
   elapsedMinutes: number; // Changed from elapsedHours to sim minutes
   events: AirlineEvent[]; // Event emitter queue
+  /** Relationship scores. Missing on older states — offers stay at tier 1. */
+  relations?: RelationsState;
 }

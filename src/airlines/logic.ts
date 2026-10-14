@@ -1,3 +1,4 @@
+import { shapeAirlineOffer } from '../wave3/contracts.ts';
 import type {
   AirlineState,
   AirportCapabilities,
@@ -163,13 +164,20 @@ export function generateContractOffers(state: AirlineState, airport: AirportCapa
       if (Math.random() < prob) {
         const penaltyTier = state.penaltyTiers[airlineId] || 0;
         const offerId = `offer_${Date.now()}_${airline.id}`;
-        
+        const shaped = shapeAirlineOffer(
+          airline,
+          generateTermsForTier(airline.tier, penaltyTier),
+          state.relations,
+        );
+
         newOffers.push({
           id: offerId,
           airlineId: airline.id,
-          terms: generateTermsForTier(airline.tier, penaltyTier),
+          terms: shaped.terms,
           expiresAtMinute: state.elapsedMinutes + (7 * 1440), // Expires in 7 days
-          penaltyTier
+          penaltyTier,
+          contractTier: shaped.tier,
+          airframes: [...shaped.airframes],
         });
         
         newEvents.push({

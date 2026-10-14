@@ -1701,6 +1701,16 @@ html[data-gfx='low'] .view-layer.dim {
   top: calc(var(--hud-top) + 272px);
 }
 
+/* A contract letter carries a CEO card. Sit it beside the coach so Accept stays on screen. */
+@media (min-width: 801px) {
+  .letter-stack:has(.wave3-ceo) {
+    top: calc(var(--hud-top) + 44px);
+    left: 312px;
+    width: min(360px, 42vw);
+    max-height: calc(100vh - var(--hud-top) - 120px);
+  }
+}
+
 .letter-stack.below-inbound {
   top: calc(var(--hud-top) + 240px);
 }
@@ -1810,6 +1820,11 @@ html[data-gfx='low'] .view-layer.dim {
   border-color: #c9a227;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
   z-index: 2;
+}
+
+.letter.open:has(.wave3-ceo),
+.letter:focus-within:has(.wave3-ceo) {
+  max-height: 760px;
 }
 
 .letter.dip.open,
@@ -3346,4 +3361,37 @@ h1.game-title::after {
     width: min(100vw - 24px, 720px);
     max-height: min(46vh, 420px);
   }
+}
+
+.wave3-panel .wave3-lab {
+  width: 100%;
+  height: 96px;
+  margin: 8px 0;
+  display: block;
+}
+
+.wave3-ceo {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 8px 0;
+}
+
+.wave3-ceo p {
+  margin: 2px 0;
+}
+
+.wave3-tree {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wave3-tree li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }

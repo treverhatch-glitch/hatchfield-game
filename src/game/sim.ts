@@ -584,6 +584,8 @@ import {
   type GatePoint,
   type Movement,
 } from '../hub/index.ts'
+import { Wave3Engine } from '../wave3/engine.ts'
+import { metalAllowed } from '../wave3/fleet.ts'
 import {
   CONNECTIVITY_CATALOG,
   LINK_MAINT_SAFE,
@@ -1202,6 +1204,8 @@ export class Game {
   airlineLowAcc: Record<string, number> = {}
   researchPoints = 0
   researchUnlocked: ResearchId[] = []
+  /** Relationship scores, CEO cards, and the specialization research currency. */
+  wave3 = new Wave3Engine()
   /** Signed volume contract. Apex on the old desk counts when this is empty. */
   contractId: string | null = null
   tankTier: 1 | 2 | 3 = 1
@@ -1582,6 +1586,7 @@ export class Game {
     this.airlineLowAcc = {}
     this.researchPoints = 0
     this.researchUnlocked = []
+    this.wave3 = new Wave3Engine()
     this.resetPillar()
     this.layoverOffer = null
     this.layoverOfferCool = 50
@@ -3617,6 +3622,30 @@ export class Game {
     this.emit()
   }
 
+  /** Metal this carrier is allowed to fly. A named fleet never grows with contract tier. */
+  previewMetal(airlineId: string): string | null {
+    return this.pickForAirline(airlineId, this.airline(airlineId).kind === 'cargo').af?.id ?? null
+  }
+
+  wave3BuyPreview(id: string): { ok: boolean; why: string } {
+    const node = this.wave3.node(id)
+    if (!node) return { ok: false, why: 'Unknown research.' }
+    if (this.wave3.state.research.unlocked.includes(id)) return { ok: false, why: 'Already researched.' }
+    if (this.fieldLevel() < node.fieldLevel) return { ok: false, why: `Needs Field Level ${node.fieldLevel}.` }
+    for (const req of node.requires) {
+      if (!this.wave3.state.research.unlocked.includes(req)) return { ok: false, why: 'Buy the previous step first.' }
+    }
+    if (this.wave3.points() < node.cost) return { ok: false, why: `Need ${node.cost} research points.` }
+    return { ok: true, why: node.name }
+  }
+
+  buyWave3(id: string) {
+    const result = this.wave3.buy(id, this.fieldLevel())
+    this.pushNews(result.ok ? `Research: ${result.why}` : result.why, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result.ok
+  }
+
   /** Award RP when a jet/helo finishes takeoff. */
   grantResearchForFlight(f: Flight) {
     let rp = RP_PER_FLIGHT
@@ -4989,6 +5018,7 @@ export class Game {
       airlineWarned: this.airlineWarned,
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
+      wave3: this.wave3.save(),
       missedConnections: this.missedConnections,
       linkWear: this.linkWear,
       linkDown: this.linkDown,
@@ -5182,6 +5212,7 @@ export class Game {
       this.airlineLowAcc = {}
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
+      this.wave3.load(s.wave3)
       this.missedConnections = s.missedConnections ?? 0
       this.linkWear = {
         mover: Number.isFinite(s.linkWear?.mover) ? s.linkWear!.mover : 0,
@@ -11913,13 +11944,20 @@ export class Game {
   private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const a = this.airline(airlineId)
     if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
-    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
-    if (!pool.length) return this.pickOperable(this.pickAircraftKind(airlineId), false)
+    const fleet = this.contractFleet(a.id)
+    const pool = contractedAirframes(fleet, a.paxMin, a.paxMax).filter((af) =>
+      metalAllowed(fleet ?? [], af.id),
+    )
+    if (!pool.length) {
+      if (fleet && fleet.length) return { af: null, blocked: null }
+      return this.pickOperable(this.pickAircraftKind(airlineId), false)
+    }
     const level = this.fieldLevel()
     const research = this.researchUnlocked
     const runway = this.longestRunway()
     const fit = pool.filter(
       (af) =>
+        metalAllowed(fleet ?? pool.map((row) => row.id), af.id) &&
         (af.minRunway === 0 || runway >= af.minRunway) &&
         (!af.research || research.includes(af.research)) &&
         tierOpen(af.id, level, research) &&
@@ -12676,6 +12714,7 @@ export class Game {
     const id = this.offer.airline
     const a = this.airline(id)
     this.signed.push(id)
+    this.wave3.noteLetter(id, 'accept')
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.offer = null
     // Each carrier on the books stretches the gap to the next letter.
@@ -13292,6 +13331,7 @@ export class Game {
     const a = this.airline(id)
     this.offer = null
     this.offerCool = LETTER_PACING.afterDecline
+    this.wave3.noteLetter(id, 'decline')
     this.adjustHeat(id, -2)
     this.pushNews(`${a.name} hung up. They may call again later.`, 'ok')
     this.emit()
@@ -17831,10 +17871,12 @@ export class Game {
       } else if (f.kind === 'air_ambulance') {
         this.earn(AIR_AMBULANCE_FEE, `${f.flightNo} ${f.airframeName}`, f)
       } else {
+        const relFee = this.wave3.feeFactor(f.airline)
         const mult =
           (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
           this.landingFeeMult(f.airline) *
-          this.diplomacyFeeFactor(f.airline)
+          this.diplomacyFeeFactor(f.airline) *
+          relFee
         const base = Math.round(airline.landing * mult)
         this.earn(
           this.contractBill(f, this.listed(base, 'landingPerTonne'), 'landing', 'landing'),
@@ -17842,6 +17884,9 @@ export class Game {
           f,
           'landing_fees',
         )
+        const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
+        const delayMin = (slot?.delaySec ?? 0) * GAME_MINUTES_PER_SIM_SECOND
+        this.wave3.noteTurnaround(f.airline, delayMin > 15 ? 'delay' : 'success')
         this.earn(
           this.contractBill(f, this.afterRivalMargin(f.pax * this.fees.paxFee), 'landing', 'pax'),
           `${f.flightNo} passenger fees`,
@@ -19799,6 +19844,9 @@ export class Game {
     const opsRp = this.opsResearchRate()
     if (opsRp > 0) this.researchPoints += opsRp * step
     this.tickResearchers(step)
+    // Day 1 specialization points. No staff and no rooms required.
+    const gear = this.labGear()
+    this.wave3.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines })
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)

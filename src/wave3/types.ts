@@ -1,0 +1,81 @@
+import type { ContractTier, ResearchBranch } from './config.ts'
+
+export type RelationBand = 'hostile' | 'cold' | 'neutral' | 'warm' | 'partner'
+
+export interface RelationRow {
+  score: number
+  band: RelationBand
+}
+
+export interface RelationsState {
+  rows: Record<string, RelationRow>
+}
+
+export interface PortraitSlot {
+  seed: number
+  skin: string
+  hair: string
+  hairStyle: 'short' | 'long' | 'bun' | 'bald'
+  suit: string
+  accent: string
+  glasses: boolean
+}
+
+export interface CeoCard {
+  airlineId: string
+  name: string
+  title: string
+  traits: readonly [string, string]
+  portrait: PortraitSlot
+  /** One trait-flavoured line for the letter. */
+  voice: string
+}
+
+export interface ContractShape {
+  tier: ContractTier
+  label: string
+  feeMult: number
+  extraSlots: number
+  /** Airframe ids this carrier actually flies. Tiers do not add to this list. */
+  airframes: readonly string[]
+}
+
+export interface ResearchState {
+  points: number
+  /** Fractional carry so a slow trickle is not lost to rounding. */
+  carry: number
+  unlocked: string[]
+  /** Seconds the placeholder lab animation has been running. */
+  animSeconds: number
+}
+
+export interface Wave3State {
+  relations: RelationsState
+  research: ResearchState
+}
+
+export interface RoomCounts {
+  desk: number
+  board: number
+  machine: number
+}
+
+export interface LabFrame {
+  seconds: number
+  rooms: number
+  phase: 'empty' | 'idle' | 'scan' | 'spark'
+  bob: number
+  glow: number
+  spark: number
+}
+
+export interface TechNode {
+  id: string
+  branch: ResearchBranch
+  depth: number
+  name: string
+  blurb: string
+  cost: number
+  fieldLevel: number
+  requires: readonly string[]
+}

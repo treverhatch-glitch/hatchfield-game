@@ -62,6 +62,8 @@ import {
 import { starterKitPreview } from '../game/starterLayout'
 import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
+import { CeoCardView } from './wave3/CeoCard'
+import { ResearchPanel } from './wave3/ResearchPanel'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
 import { lateIdForTool, lateStampLabel } from '../game/lateBuildings.ts'
 import { buildingById } from '../tier3plus/index.ts'
@@ -184,6 +186,7 @@ type PanelId =
   | 'budget'
   | 'research'
   | 'specialize'
+  | 'rnd'
   | 'airlines'
   | 'planner'
   | 'services'
@@ -252,6 +255,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
   { id: 'staff', label: 'Staff', tip: 'Commute, housing, morale' },
   { id: 'research', label: 'Research', tip: 'RP unlocks and lab crew' },
+  { id: 'rnd', label: 'R&D', tip: 'Research points, lab, and contract tiers' },
   { id: 'specialize', label: 'Specs', tip: 'Hub, low-cost, cargo, and luxury trees' },
   { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
@@ -939,11 +943,25 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   {letter.id === 'contract' && offerAirline ? (
                     <>
                       <p className="muted">
-                        Terms · landing {money(offerAirline.landing)} · bags {money(offerAirline.bags)}
+                        Terms · landing {money(game.wave3.landingOffer(offerAirline.id, offerAirline.landing))} · bags{' '}
+                        {money(offerAirline.bags)}
                         {offerAirline.catering
                           ? ` · catering ${money(offerAirline.catering)}`
                           : ''}
                       </p>
+                      {(() => {
+                        const rel = game.wave3.relation(offerAirline.id)
+                        return (
+                          <CeoCardView
+                            card={rel.ceo}
+                            score={rel.score}
+                            band={rel.band}
+                            tierLabel={`T${rel.tier} ${rel.label}`}
+                            fleet={rel.fleetLabel}
+                            line={rel.ceo.voice}
+                          />
+                        )
+                      })()}
                       <ul className="req-list">
                         {(() => {
                           const verdict = game.letterVerdict(offerAirline.id)
@@ -1641,6 +1659,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {panel === 'specialize' ? <SpecTree game={game} /> : null}
+
+              {panel === 'rnd' ? <ResearchPanel game={game} /> : null}
 
               {panel === 'rival' ? (
                 rival ? (
