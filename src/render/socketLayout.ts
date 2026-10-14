@@ -5,7 +5,7 @@
  * Vehicles: +X forward, +Y up, +Z to the right. Crew faces +Z, feet at y = 0.
  * Aircraft: +X nose, +Y up, +Z port.
  */
-import type { ModelSpec } from './aircraft/specs'
+import { WORLD_PER_METER, type ModelSpec } from './aircraft/specs'
 import { bridgeStops, doorBoxes } from './aircraft/stands'
 import { beltGeom, CABLE_M, catenaryPoints, cateringHinge, GPU_RISE, lineAnchor, MODEL_SIZE, SERVICE_RISE, type VehicleModel } from './vehicleModels'
 
@@ -228,6 +228,68 @@ export const FUEL_TILE_SOCKETS: SocketTable = {
 export const FARM_SOCKETS: SocketTable = {
   farm_fill: [0, 1.45, 1.35],
   farm_bay: [4.2, 2.05, 1.35],
+}
+
+/** Nose height of a docked ground vehicle, in the building's world units. */
+const MASS3_DOCK_Y = 0.2 * WORLD_PER_METER
+
+export interface Mass3Socket {
+  /** Point the vehicle `dock` socket meets. Same space as the building mesh. */
+  at: readonly [number, number, number]
+  /** Null: the bay is drawn and named, and no ground vehicle docks there yet. */
+  vehicle: VehicleModel | null
+}
+
+/**
+ * Pass-3 airside and landside bays. Keys are `service-bay:*` ids.
+ * A null vehicle is listed in docs/art/BUILDING_SOCKETS.md as defined with no vehicle yet.
+ */
+export const MASS3_SOCKETS: Record<string, Record<string, Mass3Socket>> = {
+  hydrant: {
+    dispenser: { at: [0, MASS3_DOCK_Y, 2.65], vehicle: 'hydrant_cart' },
+  },
+  kitchen: {
+    '1': { at: [-1.55, MASS3_DOCK_Y, 3.2], vehicle: 'catering_hilift' },
+    '2': { at: [1.55, MASS3_DOCK_Y, 3.2], vehicle: 'catering_hilift' },
+  },
+  bags: {
+    '1': { at: [-2.15, MASS3_DOCK_Y, 3.25], vehicle: 'baggage_train' },
+    '2': { at: [0, MASS3_DOCK_Y, 3.25], vehicle: 'baggage_train' },
+    '3': { at: [2.15, MASS3_DOCK_Y, 3.25], vehicle: 'baggage_train' },
+  },
+  bus: {
+    '1': { at: [-2.05, MASS3_DOCK_Y, 1.85], vehicle: 'coach' },
+    '2': { at: [2.05, MASS3_DOCK_Y, 1.85], vehicle: 'coach' },
+  },
+  rail: {
+    track1: { at: [0, MASS3_DOCK_Y, 1.15], vehicle: null },
+    track2: { at: [0, MASS3_DOCK_Y, 2.55], vehicle: null },
+  },
+  helipad: {
+    pad: { at: [0, MASS3_DOCK_Y, 0], vehicle: null },
+    bowser: { at: [3.35, MASS3_DOCK_Y, 2.45], vehicle: 'fuel_tanker' },
+  },
+  hotel_inn: {
+    drop: { at: [0, MASS3_DOCK_Y, 3.7], vehicle: 'coach' },
+    service: { at: [4.35, MASS3_DOCK_Y, 0.15], vehicle: 'van' },
+  },
+  hotel_biz: {
+    drop: { at: [0, MASS3_DOCK_Y, 3.7], vehicle: 'coach' },
+    service: { at: [4.4, MASS3_DOCK_Y, 0.1], vehicle: 'van' },
+  },
+  hotel_resort: {
+    drop: { at: [0, MASS3_DOCK_Y, 3.75], vehicle: 'coach' },
+    service: { at: [-2.4, MASS3_DOCK_Y, -3.55], vehicle: 'van' },
+  },
+}
+
+/** Socket table for one pass-3 building. Names match the bay ids. */
+export function mass3SocketTable(building: string): SocketTable {
+  const rows = MASS3_SOCKETS[building]
+  const table: Record<string, readonly [number, number, number]> = {}
+  if (!rows) return table
+  for (const [id, row] of Object.entries(rows)) table[id] = row.at
+  return table
 }
 
 /** Item lock points. The origin of each rig is this socket, so a lock sits the item on the station. */

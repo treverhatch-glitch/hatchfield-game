@@ -72,6 +72,7 @@ import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
 import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
 import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './world/airsideMass'
+import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass, addHydrantPit, addRailStation } from './world/massPass3'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
 import {
@@ -825,6 +826,7 @@ export class World {
     place('tilt_tray', addTiltTray, ['cargo', 'bags'])
     place('atc_approach', addAtcApproach, ['tower'])
     place('remote_screening', addRemoteScreening, ['bus', 'termbus'])
+    place('hydrant', addHydrantPit, ['stand', 'fuel'])
   }
 
   /** Stand class and jetway links can change without a map revision. */
@@ -956,14 +958,7 @@ export class World {
       awning.position.set(0, 1.55, 0.6)
       g.add(body, awning)
     } else if (tile === 'bags') {
-      const body = new THREE.Mesh(skinBox(CELL * 0.78, 2.1, CELL * 0.7, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('baggage_hall', 'wall'))
-      body.position.y = 1.05
-      body.castShadow = true
-      const roof = new THREE.Mesh(skinBox(CELL * 0.82, 0.12, CELL * 0.74, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('baggage_hall', 'roof'))
-      roof.position.y = 2.16
-      const door = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.3, 1.2, 0.08), skinMaterial('baggage_hall', 'door'))
-      door.position.set(0, 0.6, CELL * 0.35 + 0.04)
-      g.add(body, roof, door)
+      addBagSort(g)
     } else if (tile === 'belt') {
       // Low conveyor strip — distinct from taxi/road so broken chains read on the apron.
       const deck = new THREE.Mesh(
@@ -1035,7 +1030,7 @@ export class World {
     } else if (tile === 'mover') {
       addPeopleMover(g)
     } else if (tile === 'hotel') {
-      this.addHotelBuilding(g, opts.hotelClass ?? 'business')
+      addHotelMass(g, opts.hotelClass ?? 'business')
     } else if (
       tile === 'park_s' ||
       tile === 'park_l' ||
@@ -1044,48 +1039,11 @@ export class World {
     ) {
       this.addParkBuilding(g, tile, opts.parkTerm ?? 'short')
     } else if (tile === 'helipad') {
-      const pad = new THREE.Mesh(
-        new THREE.CylinderGeometry(CELL * 0.42, CELL * 0.42, 0.12, 24),
-        new THREE.MeshStandardMaterial({ color: '#3a3f48', roughness: 0.55 }),
-      )
-      pad.position.y = 0.08
-      pad.receiveShadow = true
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(CELL * 0.32, 0.05, 8, 28),
-        new THREE.MeshStandardMaterial({ color: '#c9a227', roughness: 0.4 }),
-      )
-      ring.rotation.x = Math.PI / 2
-      ring.position.y = 0.16
-      const bar = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.08, 0.06, CELL * 0.42),
-        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
-      )
-      bar.position.y = 0.16
-      const cross = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.42, 0.06, CELL * 0.08),
-        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
-      )
-      cross.position.y = 0.16
-      g.add(pad, ring, bar, cross)
+      addHelipad(g)
     } else if (tile === 'deice') {
       addDeicePad(g)
     } else if (tile === 'bus') {
-      const curb = new THREE.Mesh(
-        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.55),
-        new THREE.MeshLambertMaterial({ color: '#3d4248' }),
-      )
-      curb.rotation.x = -Math.PI / 2
-      curb.position.y = 0.05
-      curb.receiveShadow = true
-      const shelter = new THREE.Mesh(skinBox(CELL * 0.55, 1.4, 0.35, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('transit_station', 'trim'))
-      shelter.position.set(0, 0.75, -CELL * 0.25)
-      shelter.castShadow = true
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.06, 0.06, 2.2, 6),
-        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
-      )
-      pole.position.set(CELL * 0.28, 1.1, CELL * 0.1)
-      g.add(curb, shelter, pole)
+      addBusStation(g)
     } else if (tile === 'curb_lane') {
       const pad = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.72),
@@ -1139,27 +1097,9 @@ export class World {
       bus.castShadow = true
       g.add(pad, shed, bus)
     } else if (tile === 'rail') {
-      const pad = new THREE.Mesh(
-        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
-        new THREE.MeshLambertMaterial({ color: '#2a3238' }),
-      )
-      pad.rotation.x = -Math.PI / 2
-      pad.position.y = 0.04
-      pad.receiveShadow = true
-      const hall = new THREE.Mesh(skinBox(CELL * 0.7, 2.4, CELL * 0.55, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('transit_station', 'wall'))
-      hall.position.y = 1.2
-      hall.castShadow = true
-      const canopy = new THREE.Mesh(skinBox(CELL * 0.9, 0.12, CELL * 0.75, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('transit_station', 'roof'))
-      canopy.position.y = 2.5
-      g.add(pad, hall, canopy)
+      addRailStation(g)
     } else if (tile === 'kitchen') {
-      const body = new THREE.Mesh(skinBox(CELL * 0.8, 2.2, CELL * 0.7, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('catering_kitchen', 'wall'))
-      body.position.y = 1.1
-      body.castShadow = true
-      const vent = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.35, 0.45, CELL * 0.28), skinMaterial('catering_kitchen', 'trim'))
-      vent.position.set(0, 2.35, 0)
-      vent.castShadow = true
-      g.add(body, vent)
+      addCateringKitchen(g)
     } else if (tile === 'depot') {
       addDepotBuilding(g)
     } else if (tile === 'xferbus') {
@@ -1296,166 +1236,6 @@ export class World {
     )
     pipe.position.set(0.05, 1.15, 0)
     g.add(pad, shed, band, tankA, tankB, pipe)
-  }
-
-  /** Outside hotel grades — real buildings, not flat pads. */
-  addHotelBuilding(g: THREE.Group, cls: HotelClass) {
-    const plinth = new THREE.Mesh(
-      new THREE.BoxGeometry(CELL * 0.96, 0.18, CELL * 0.96),
-      new THREE.MeshStandardMaterial({ color: '#6a6e76', roughness: 0.8 }),
-    )
-    plinth.position.y = 0.09
-    plinth.receiveShadow = true
-    g.add(plinth)
-
-    if (cls === 'inn') {
-      const body = new THREE.Mesh(
-        skinBox(CELL * 0.82, 2.6, CELL * 0.7, SKIN_TILE_M.wall, WORLD_PER_METER),
-        skinMaterial('hotel', 'wall', { color: HOTEL_WALL.inn }),
-      )
-      body.position.y = 1.45
-      body.castShadow = true
-      const roof = new THREE.Mesh(
-        new THREE.ConeGeometry(CELL * 0.62, 1.1, 4),
-        new THREE.MeshStandardMaterial({ color: '#6b3a2a', roughness: 0.65 }),
-      )
-      roof.position.y = 3.3
-      roof.rotation.y = Math.PI / 4
-      roof.castShadow = true
-      const awning = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.45, 0.1, CELL * 0.28),
-        new THREE.MeshStandardMaterial({ color: '#2f6f9a' }),
-      )
-      awning.position.set(0, 1.55, CELL * 0.38)
-      const door = new THREE.Mesh(
-        new THREE.BoxGeometry(0.55, 1.1, 0.08),
-        new THREE.MeshStandardMaterial({ color: '#3a2a1a' }),
-      )
-      door.position.set(0, 0.75, CELL * 0.36)
-      const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.35, 0.28, 0.06),
-        new THREE.MeshStandardMaterial({
-          color: '#c9a227',
-          emissive: '#6a5010',
-          emissiveIntensity: 0.2,
-        }),
-      )
-      sign.position.set(0, 2.35, CELL * 0.37)
-      for (const dx of [-0.9, 0.9]) {
-        const win = new THREE.Mesh(
-          new THREE.BoxGeometry(0.55, 0.55, 0.06),
-          new THREE.MeshStandardMaterial({
-            color: '#7ec3e8',
-            emissive: '#1a3a55',
-            emissiveIntensity: 0.25,
-            roughness: 0.15,
-          }),
-        )
-        win.position.set(dx, 1.85, CELL * 0.36)
-        g.add(win)
-      }
-      g.add(body, roof, awning, door, sign)
-      return
-    }
-
-    if (cls === 'resort') {
-      const tower = new THREE.Mesh(
-        skinBox(CELL * 0.72, 7.2, CELL * 0.62, SKIN_TILE_M.wall, WORLD_PER_METER),
-        skinMaterial('hotel', 'wall', { color: HOTEL_WALL.resort, metalness: 0.15 }),
-      )
-      tower.position.y = 3.7
-      tower.castShadow = true
-      const glass = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.58, 5.8, 0.08),
-        new THREE.MeshStandardMaterial({
-          color: '#5eb8d8',
-          emissive: '#163848',
-          emissiveIntensity: 0.3,
-          roughness: 0.1,
-          metalness: 0.45,
-        }),
-      )
-      glass.position.set(0, 3.4, CELL * 0.32)
-      const wing = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.95, 2.2, CELL * 0.55),
-        new THREE.MeshStandardMaterial({ color: '#b8c4ce', roughness: 0.45 }),
-      )
-      wing.position.set(0, 1.2, -CELL * 0.12)
-      wing.castShadow = true
-      const canopy = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.7, 0.12, CELL * 0.45),
-        new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.3 }),
-      )
-      canopy.position.set(0, 2.4, CELL * 0.22)
-      const crown = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.78, 0.45, CELL * 0.68),
-        new THREE.MeshStandardMaterial({
-          color: '#2f6f9a',
-          emissive: '#1a3a55',
-          emissiveIntensity: 0.15,
-        }),
-      )
-      crown.position.y = 7.5
-      const mast = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 1.2, 6),
-        new THREE.MeshStandardMaterial({ color: '#e8eef4' }),
-      )
-      mast.position.y = 8.2
-      g.add(tower, glass, wing, canopy, crown, mast)
-      // Window grid on sides
-      for (let floor = 0; floor < 5; floor++) {
-        for (const side of [-1, 1] as const) {
-          const win = new THREE.Mesh(
-            new THREE.BoxGeometry(0.06, 0.45, 0.7),
-            new THREE.MeshStandardMaterial({
-              color: '#7ec3e8',
-              emissive: '#1a3a55',
-              emissiveIntensity: 0.2,
-            }),
-          )
-          win.position.set(side * CELL * 0.37, 2.2 + floor * 1.05, 0)
-          g.add(win)
-        }
-      }
-      return
-    }
-
-    // Business mid-rise
-    const body = new THREE.Mesh(
-      skinBox(CELL * 0.86, 4.8, CELL * 0.74, SKIN_TILE_M.wall, WORLD_PER_METER),
-      skinMaterial('hotel', 'wall', { color: HOTEL_WALL.business }),
-    )
-    body.position.y = 2.5
-    body.castShadow = true
-    const roof = new THREE.Mesh(skinBox(CELL * 0.92, 0.28, CELL * 0.8, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('hotel', 'roof', { color: '#4a4038' }))
-    roof.position.y = 5.05
-    const entry = new THREE.Mesh(
-      new THREE.BoxGeometry(CELL * 0.5, 1.6, CELL * 0.22),
-      new THREE.MeshStandardMaterial({ color: '#8a9088', roughness: 0.4 }),
-    )
-    entry.position.set(0, 0.9, CELL * 0.34)
-    entry.castShadow = true
-    const canopy = new THREE.Mesh(
-      new THREE.BoxGeometry(CELL * 0.62, 0.1, CELL * 0.35),
-      new THREE.MeshStandardMaterial({ color: '#2f6f9a' }),
-    )
-    canopy.position.set(0, 1.85, CELL * 0.28)
-    g.add(body, roof, entry, canopy)
-    for (let floor = 0; floor < 3; floor++) {
-      for (const dx of [-1.15, 0, 1.15]) {
-        const win = new THREE.Mesh(
-          new THREE.BoxGeometry(0.7, 0.55, 0.06),
-          new THREE.MeshStandardMaterial({
-            color: '#7ec3e8',
-            emissive: '#1a3a55',
-            emissiveIntensity: 0.22,
-            roughness: 0.12,
-          }),
-        )
-        win.position.set(dx, 2.4 + floor * 0.95, CELL * 0.38)
-        g.add(win)
-      }
-    }
   }
 
   /** Four park versions × short/long term paint — real buildings / structures. */
