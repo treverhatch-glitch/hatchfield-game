@@ -67,10 +67,10 @@ export interface AudioEngineOptions {
 }
 
 /** 'ambient' = terminal/indoor beds & PA; 'ambience' = outdoor weather/nature/day-night. */
-export const CATEGORIES: Category[] = ['aircraft', 'vehicles', 'ambient', 'ambience', 'ui', 'sfx'];
+export const CATEGORIES: Category[] = ['aircraft', 'vehicles', 'buildings', 'ambient', 'ambience', 'ui', 'sfx'];
 
 /** Categories muffled by weather (UI and the weather bed itself stay clear). */
-export const WEATHER_FILTERED: Category[] = ['aircraft', 'vehicles', 'ambient', 'sfx'];
+export const WEATHER_FILTERED: Category[] = ['aircraft', 'vehicles', 'buildings', 'ambient', 'sfx'];
 
 const clamp01 = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
@@ -99,7 +99,7 @@ export class AudioEngine {
   private weatherBed: SoundHandle | null = null;
   private weatherKind: WeatherKind | null = null;
   private master = 1;
-  private cat: Record<Category, number> = { aircraft: 0.8, vehicles: 0.7, ambient: 0.5, ambience: 0.5, ui: 0.6, sfx: 0.8 };
+  private cat: Record<Category, number> = { aircraft: 0.8, vehicles: 0.7, buildings: 0.8, ambient: 0.5, ambience: 0.5, ui: 0.6, sfx: 0.8 };
   private muted = false;
   private hiddenPaused = false;
   private live = new Set<Live>();
