@@ -4,6 +4,7 @@ import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
 import { cylinderSides, finGeometry, fuselageSides, paintedLoftGeometry, wingGeometry } from './geom'
 import type { LiveryBox } from './liveryUv'
+import { applyRosterLivery } from './procLivery'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
 import {
@@ -1025,7 +1026,8 @@ function addHeloLights(frame: Frame) {
   frame.lamps.push(paintedStrobe)
 }
 
-export function buildAircraft(spec: ModelSpec, tier: Tier, livery: Livery): BuiltLevel {
+export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): BuiltLevel {
+  const livery = applyRosterLivery(paint, spec.id)
   const frame = frameFor(spec, tier, livery)
   if (spec.family === 'helo') {
     addHelo(frame)
