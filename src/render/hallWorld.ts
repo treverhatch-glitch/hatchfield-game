@@ -46,6 +46,9 @@ import {
   slotCenter,
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
+import { HallNavCrowd } from './hallNavCrowd'
+import type { HallNav } from '../game/hallNav'
+import { BUILD_TUNING, type Edge } from '../terminalbuild/index.ts'
 import { hallQueues } from '../terminalplay/queues'
 
 /** Hall build mode, driven by the terminal kit bar. */
@@ -128,6 +131,10 @@ export class HallWorld {
   lastY = 0
   roomGroup = new THREE.Group()
   guestGroup = new THREE.Group()
+  /** Departures and arrivals from the hall's PaxNav. Stand in for the old hall figures while live. */
+  readonly navCrowd = new HallNavCrowd()
+  /** Walkers drawn last frame (tests, perf probes). */
+  navDrawn = 0
   /** Routes, heat, and advisor marks. Hidden unless the player asks or a note is focused. */
   overlay = new THREE.Group()
   /** Queue, lost, bag, and shop markers. Always drawn. Numbers open on click. */
@@ -248,6 +255,7 @@ export class HallWorld {
     this.scene.add(this.walkGroup)
     this.scene.add(this.litter.group)
     this.scene.add(this.guestGroup)
+    this.scene.add(this.navCrowd.group)
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
@@ -569,13 +577,35 @@ export class HallWorld {
   }
 
   /** Perimeter shell with door gaps, plus walls where security meets the curb side. */
-  private buildShell(zones: ZoneId[][]) {
+  private buildShell(zones: ZoneId[][], nav: HallNav) {
     const h = 3.15
     const t = 0.38
     const y = h / 2
     const wall = '#d5ddd8'
     const halfW = HALL_W / 2
     const halfD = HALL_D / 2
+    const layout = nav.live ? nav.nav?.layout : null
+    if (layout) {
+      // Walkers are live: draw exactly the walls they walk round, gaps at every door.
+      const m = BUILD_TUNING.tileMetres
+      const o = nav.origin()
+      const outer = (e: Edge) => e.x < 0 || e.y < 0 || (e.dir === 'E' ? e.x >= layout.w - 1 : e.y >= layout.h - 1)
+      for (const e of layout.walls) {
+        const color = outer(e) ? wall : '#c9a27a'
+        const thick = outer(e) ? t : 0.28
+        if (e.dir === 'E') this.box(thick, h, m + thick, color, o.x + (e.x + 1) * m, y, o.z + (e.y + 0.5) * m)
+        else this.box(m + thick, h, thick, color, o.x + (e.x + 0.5) * m, y, o.z + (e.y + 1) * m)
+      }
+      this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
+      this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
+      // Living-interior columns stay up while the nav shell is drawn.
+      for (const x of [-16, -4, 8, 18]) {
+        for (const z of [-11, 11]) {
+          this.box(0.42, h, 0.42, '#e6eaee', x, y, z)
+        }
+      }
+      return
+    }
     // North and south — solid. The roof is gone so the floor stays readable.
     this.box(HALL_W + t, h, t, wall, 0, y, -halfD)
     this.box(HALL_W + t, h, t, wall, 0, y, halfD)
@@ -644,7 +674,9 @@ export class HallWorld {
     const choke = game.hasSecurityChoke() ? '1' : '0'
     const paint = zones.map((row) => row.join(',')).join('|')
     const stuff = (fit?.items ?? []).map((i) => `${i.def}@${i.c},${i.r}r${i.rot ?? 0}${kitMeshKey(i as PlacedItem)}`).join(';')
-    const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}`
+    const nav = game.hallNav
+    const walk = nav.live ? `${nav.nav?.revision}:${nav.nav?.layout.walls.length}:${nav.nav?.layout.doors.length}` : '-'
+    const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}`
     if (hash === this.roomHash) return
     this.roomHash = hash
     this.roomGroup.traverse((obj) => {
@@ -657,7 +689,7 @@ export class HallWorld {
     this.roomGroup.clear()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    this.buildShell(zones as ZoneId[][])
+    this.buildShell(zones as ZoneId[][], nav)
 
     const cw = HALL_W / cols
     const rh = HALL_D / rows
@@ -799,7 +831,10 @@ export class HallWorld {
   }
 
   syncGuests(game: Game) {
-    const live = new Set(game.hallGuests.map((g) => g.id))
+    // Departures and arrivals walk on the nav grid (navCrowd) when the hall has a curb door and a gate.
+    const nav = game.hallNav
+    const drawn = nav.live ? game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id)) : game.hallGuests
+    const live = new Set(drawn.map((g) => g.id))
     for (const [id, mesh] of this.guests) {
       if (!live.has(id)) {
         this.guestGroup.remove(mesh)
@@ -811,7 +846,7 @@ export class HallWorld {
     const zones = game.activeHall()?.zones ?? []
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    for (const g of game.hallGuests) {
+    for (const g of drawn) {
       if (g.releaseAt != null && g.releaseAt > game.clock) continue
       let mesh = this.guests.get(g.id)
       if (!mesh) {
@@ -1200,6 +1235,7 @@ export class HallWorld {
     this.easeToGoal(game)
     this.syncWalkways(game)
     this.syncGuests(game)
+    this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
@@ -1405,6 +1441,7 @@ export class HallWorld {
     this.terrazzo.dispose()
     this.floorMap.dispose()
     this.litter.dispose()
+    this.navCrowd.dispose()
     this.renderer.dispose()
   }
 }
