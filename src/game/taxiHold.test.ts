@@ -95,4 +95,24 @@ describe('taxi stays on the taxiway graph', () => {
     expect(f.y).toBeCloseTo(before.y)
     expect(game.alerts.active.some((a) => a.key === 'cond:taxi-blocked:flt-taxi')).toBe(true)
   })
+
+  it('completes taxi_in once the aircraft is already on the last node', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.buildStarterKit()
+    game.speed = 1
+    game.scheduleAuto = false
+    game.schedule = []
+    game.spawnCool = 1e9
+    const stand = { c: 12, r: 21 }
+    const f = parked(game, stand)
+    f.phase = 'taxi_in'
+    f.path = [{ c: stand.c, r: stand.r - 1 }, stand]
+    f.seg = 1
+    game.tick(0.2)
+    expect(f.phase).toBe('deboard')
+    expect(game.alerts.active.some((a) => a.key.startsWith('cond:taxi-blocked'))).toBe(false)
+  })
 })
