@@ -1585,11 +1585,12 @@ export class World {
       stampRunway &&
       cells.length > 1 &&
       cells.every((p) => inBounds(p.c, p.r) && game.tile(p) === 'grass')
+    const shoulder = game.ghostBlocked(cells)
     for (const p of cells) {
       if (p.c < 0) continue
       const t = game.tile(p)
       const clear = t === 'grass' || game.tool === 'clear'
-      const ready = stampRunway ? runwayReady : clear
+      const ready = (stampRunway ? runwayReady : clear) && !shoulder
       const mesh = new THREE.Mesh(geo, ready ? ok : bad)
       mesh.position.copy(toWorld(p.c, p.r, 0.12))
       this.ghostGroup.add(mesh)

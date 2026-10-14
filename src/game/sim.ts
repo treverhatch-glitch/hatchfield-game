@@ -150,6 +150,7 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
+import { clearanceBlocks } from './runwayClearance'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
@@ -14589,6 +14590,11 @@ export class Game {
       this.emit()
       return
     }
+    if (clearanceBlocks(this.tiles, cells, 'runway')) {
+      this.pushNews('That strip sits inside runway clearance. Leave the shoulder empty.', 'bad')
+      this.emit()
+      return
+    }
     const cost =
       klass === 'heavy'
         ? HEAVY_RUNWAY_COST
@@ -14638,6 +14644,11 @@ export class Game {
       this.emit()
       return
     }
+    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
+      this.pushNews('That shell sits inside runway clearance.', 'bad')
+      this.emit()
+      return
+    }
     if (this.sites.some((s) => s.tool === 'terminal')) {
       this.pushNews('A terminal shell is already a construction site — a contractor is driving in.', 'bad')
       this.emit()
@@ -14666,6 +14677,11 @@ export class Game {
     }
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
+      this.emit()
+      return
+    }
+    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
+      this.pushNews('That hall sits inside runway clearance.', 'bad')
       this.emit()
       return
     }
@@ -14743,6 +14759,11 @@ export class Game {
       this.emit()
       return
     }
+    if (clearanceBlocks(this.tiles, [v], 'road')) {
+      this.pushNews(`${spec.name} sits inside runway clearance.`, 'bad')
+      this.emit()
+      return
+    }
     const gated = placeBuilding(id, this.lateFieldLevel())
     if (!gated.ok) {
       this.pushNews(gated.reason, 'bad')
@@ -14813,6 +14834,11 @@ export class Game {
     }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+      this.emit()
+      return
+    }
+    if (clearanceBlocks(this.tiles, [v], building.tile)) {
+      this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
       this.emit()
       return
     }
@@ -15054,6 +15080,17 @@ export class Game {
       }
     }
     return !wingDiscsClash(stand, spec.spanM, others, blocks)
+  }
+
+  /** Red ghost when the stamp would pave a runway shoulder. Taxi stays legal. */
+  ghostBlocked(cells: Vec[]): boolean {
+    if (this.tool === 'clear') return false
+    if (this.tool === 'runway' || this.tool === 'runway_short' || this.tool === 'runway_heavy') {
+      return clearanceBlocks(this.tiles, cells, 'runway')
+    }
+    const building = BUILDINGS.find((b) => b.tool === this.tool)
+    if (!building) return false
+    return clearanceBlocks(this.tiles, cells, building.tile)
   }
 
   ghostCells(hover: Vec | null): Vec[] {
