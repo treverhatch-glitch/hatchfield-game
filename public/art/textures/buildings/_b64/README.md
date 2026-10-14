@@ -1,7 +1,7 @@
 # Building textures (base64)
 
 The GitHub push path for this repo carries text only, so the building photo
-textures (`public/art/textures/buildings/*.jpg`, 1024 px sRGB, repeat-wrapped
+textures (`public/art/textures/buildings/*.jpg`, 1024 px sRGB; round 8 upgraded warehouse_panels, hangar_cladding, roof_membrane and tank_steel to 2048 px, repeat-wrapped
 in `src/build/models/kit.ts` → `tmat`) live here as base64, same pattern as
 `public/art/refs/pack6/_pack6_b64/`.
 
