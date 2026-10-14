@@ -7,7 +7,7 @@ import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
-import { loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
+import { loanAmountLabel, loanDeskRows, loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
@@ -56,6 +56,7 @@ import {
   STARTER_KIT_COST,
   TOOL_LABEL,
 } from '../game/catalog'
+import { starterKitPreview } from '../game/starterLayout'
 import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
@@ -265,6 +266,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   useEffect(() => () => game.holdLetters([]), [game])
   const [chromePinned, setChromePinned] = useState(false)
   const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const [loanAmount, setLoanAmount] = useState(25_000)
   const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
   const [inboxOpen, setInboxOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
@@ -462,6 +464,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <div className="stat" title="Average Standing of signed airlines">
           Standing {standing == null ? '—' : Math.round(standing)}
         </div>
+        <div className="stat" data-testid="reputation-stat" title="Public reputation, 0 to 100">
+          Rep <LiveText read={() => `${game.reputationDisplay()}%`} />
+        </div>
         <div
           className={`stat${alerts.length ? ' alert' : ''}`}
           title={alerts.join(' · ') || 'No alerts'}
@@ -579,10 +584,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       type="button"
                       className="coach-kit"
                       data-testid="starter-kit-coach"
-                      title="Runway, stand, hall, check-in, security and gate in one stamp"
+                      title={starterKitPreview(game.startFocus).summary}
                       onClick={() => game.buildStarterKit()}
                     >
-                      Stamp Starter kit · {money(STARTER_KIT_COST)}
+                      {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                     </button>
                     {game.starterFreehand ? null : (
                       <button
@@ -1270,14 +1275,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           data-testid="starter-kit"
                           onClick={() => game.buildStarterKit()}
                         >
-                          Starter kit · {money(STARTER_KIT_COST)}
+                          {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                         </button>
                         <p className="muted">
-                          {game.startFocus === 'cargo'
-                            ? 'Cargo kit: strip, freighter stand, guard → shed, Apex — no pax hall. Empty plot only.'
-                            : game.startFocus === 'hybrid'
-                              ? 'Hybrid kit: hall + jetways + guard/cargo road. Empty plot only.'
-                              : 'Passenger kit: Northline-ready hall + Apex + SkyBite (+ cargo road). The kit is also the first button on the build bar.'}
+                          {starterKitPreview(game.startFocus).summary}{' '}
+                          {starterKitPreview(game.startFocus).includes.join(' · ')}
                         </p>
                       </>
                     )}
@@ -1302,8 +1304,22 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             } · owe ${money(game.loanBalance)}`
                           : 'No open loan — pick a product (bigger = higher fee, needs Field Level).'}
                       </p>
+                      <label className="loan-amount" data-testid="loan-amount">
+                        <span>{loanAmountLabel(loanAmount)}</span>
+                        <input
+                          type="range"
+                          min={25_000}
+                          max={250_000}
+                          step={5_000}
+                          value={loanAmount}
+                          aria-label="Loan amount"
+                          aria-valuetext={money(loanAmount)}
+                          onChange={(e) => setLoanAmount(Number(e.target.value))}
+                        />
+                        <output>{money(loanAmount)}</output>
+                      </label>
                       <div className="loan-grid">
-                        {LOAN_PRODUCTS.map((p) => {
+                        {loanDeskRows(LOAN_PRODUCTS).map((p) => {
                           const open = game.availableLoans().some((x) => x.id === p.id)
                           const active = game.loanProductId === p.id && game.loanBalance > 0
                           return (
@@ -1541,8 +1557,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             max={100}
                             step={5}
                             value={game.budgets[key]}
+                            aria-label={`${BUDGET_LABEL[key]} budget`}
+                            aria-valuetext={`${game.budgets[key]} percent`}
                             onChange={(e) => game.setBudget(key, Number(e.target.value))}
                           />
+                          <output data-testid={`budget-${key}`}>{game.budgets[key]}%</output>
                         </label>
                         <small>{BUDGET_BLURB[key]}</small>
                       </li>
@@ -1628,11 +1647,16 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     {' · '}
                     clearance {game.inboundHasClearance() ? 'held' : money(CLEARANCE_LICENCE_COST)}
                   </p>
-                  {game.inboundHasClearance() ? null : (
-                    <button type="button" onClick={() => game.buyInboundClearance()}>
-                      Buy security clearance · {money(CLEARANCE_LICENCE_COST)}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    data-testid="buy-clearance"
+                    disabled={game.inboundHasClearance() || (!game.sandbox && game.cash < CLEARANCE_LICENCE_COST)}
+                    onClick={() => game.buyInboundClearance()}
+                  >
+                    {game.inboundHasClearance()
+                      ? 'Security clearance · Owned'
+                      : `Buy security clearance · ${money(CLEARANCE_LICENCE_COST)}`}
+                  </button>
                   {game.inboundContracts().length === 0 ? (
                     <p className="muted">No Guard contracts yet. A signed agreement brings the first offer.</p>
                   ) : (
@@ -2305,10 +2329,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         type="button"
                         className={`on${game.showCoach() ? ' dock-kit-target' : ''}`}
                         data-testid="starter-kit-dock"
-                        title="First stamp. A lone runway spends this budget and the kit then reads short."
+                        title={starterKitPreview(game.startFocus).summary}
                         onClick={() => game.buildStarterKit()}
                       >
-                        Starter kit · {money(STARTER_KIT_COST)}
+                        {starterKitPreview(game.startFocus).label} · {money(STARTER_KIT_COST)}
                       </button>
                       {game.starterKitProtected() ? (
                         <button

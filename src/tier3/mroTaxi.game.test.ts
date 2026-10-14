@@ -54,6 +54,10 @@ function field(): Game {
   game.cash = 400_000
   game.mechanics = 16
   game.tiles[23][11] = 'taxi'
+  // Starter stands sit on the north apron. This hangar keeps its own short roll-in.
+  game.tiles[21][12] = 'stand'
+  game.tiles[22][12] = 'taxi'
+  game.tiles[23][12] = 'taxi'
   game.tool = 'mro'
   game.placeSingle({ c: 10, r: 23 })
   game.tickConstruction(30)

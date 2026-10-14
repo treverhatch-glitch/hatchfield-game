@@ -129,7 +129,7 @@ describe('ground logistics wiring', () => {
     const game = field()
     expect(game.groundSnapshot()).toBeNull()
     expect(game.servicePoses()).toEqual([])
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
     expect(f.groundTurn).toBeFalsy()
     expect(game.trucks.some((t) => t.kind === 'fuel')).toBe(true)
@@ -137,25 +137,26 @@ describe('ground logistics wiring', () => {
 
   it('builds a service-road graph and runs the turnaround through the module', () => {
     const game = field()
-    game.tiles[10][15] = 'depot'
-    game.tiles[10][17] = 'kitchen'
+    // Depot and kitchen sit on grass beside the fuel farm so the service graph reaches the jetway.
+    game.tiles[5][6] = 'depot'
+    game.tiles[5][5] = 'kitchen'
     game.bumpMap()
     const config = buildLogisticsConfig(game.tiles, game.standAccess, false)
     expect(config).toBeTruthy()
     const roads = new RoadGraph(config!.nodes, config!.edges)
-    expect(roads.distance(config!.depotNode, '12,21')).toBeLessThan(Infinity)
-    expect(config!.stands.find((s) => s.id === '12,21')?.access).toBe('bridge')
-    expect(roads.route(config!.depotNode, '12,21').length).toBeGreaterThan(2)
+    expect(roads.distance(config!.depotNode, '11,6')).toBeLessThan(Infinity)
+    expect(config!.stands.find((s) => s.id === '11,6')?.access).toBe('bridge')
+    expect(roads.route(config!.depotNode, '11,6').length).toBeGreaterThan(2)
 
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     game.beginServicing(f)
-    expect(f.groundTurn).toBe('12,21')
+    expect(f.groundTurn).toBe('11,6')
     expect(game.trucks.some((t) => t.kind === 'fuel' || t.kind === 'catering')).toBe(false)
 
     game.tick(3)
     const poses = game.servicePoses()
     expect(poses.length).toBeGreaterThan(0)
-    const moved = poses.filter((p) => Math.hypot(p.x - 15, p.y - 10) > 0.4)
+    const moved = poses.filter((p) => Math.hypot(p.x - 6, p.y - 5) > 0.4)
     expect(moved.length).toBeGreaterThan(0)
     for (const pose of moved) {
       const tile = game.tile({ c: Math.round(pose.x), r: Math.round(pose.y) })
@@ -176,7 +177,7 @@ describe('ground logistics wiring', () => {
 
   it('warns in the advisor when the kitchen is missing', () => {
     const game = field()
-    game.tiles[10][15] = 'depot'
+    game.tiles[5][6] = 'depot'
     game.bumpMap()
     game.tick(1)
     const note = game.advice.find((a) => a.id === 'low-meals')
@@ -189,7 +190,7 @@ describe('ground logistics wiring', () => {
   it('cancels a departure that stays grounded for fuel past the slot', () => {
     const game = field()
     game.fuelLoads = 0
-    const f = parked(game, { c: 12, r: 21 })
+    const f = parked(game, { c: 11, r: 6 })
     f.phase = 'board'
     f.phaseTime = 400
     game.tick(0.3)
@@ -250,8 +251,8 @@ describe('logisticsBridge edge cases and cause lines', () => {
 
     // Valid layout with edge-case options
     const game = field()
-    game.tiles[10][15] = 'depot'
-    game.tiles[10][17] = 'fuel'
+    game.tiles[5][6] = 'depot'
+    game.tiles[5][5] = 'fuel'
     game.bumpMap()
 
     const configZero = buildLogisticsConfig(game.tiles, game.standAccess, false, {

@@ -4,6 +4,15 @@
  */
 import type { Role } from '../people/roles'
 import { THOUGHT_BUBBLES } from '../../assets/manifest'
+import { SIZE } from '../../game/types'
+import { CELL } from '../aircraft/specs'
+
+/** Half the apron plus one cell. Guests past this are off the field, not in the air. */
+const MAP_REACH = ((SIZE - 1) / 2) * CELL + CELL
+
+export function onField(x: number, z: number): boolean {
+  return Number.isFinite(x) && Number.isFinite(z) && Math.abs(x) <= MAP_REACH && Math.abs(z) <= MAP_REACH
+}
 
 export interface GuestActor {
   id: string
@@ -46,7 +55,7 @@ export function actorsFrom(view: object): GuestActor[] {
   const guests = (view as { hallGuests?: readonly RawGuest[] }).hallGuests
   const out: GuestActor[] = []
   for (const g of guests ?? []) {
-    if (g.dead || g.wx == null || g.wz == null || !Number.isFinite(g.wx) || !Number.isFinite(g.wz)) continue
+    if (g.dead || g.wx == null || g.wz == null || !onField(g.wx, g.wz)) continue
     const thought = g.thought ?? ''
     const seated = Boolean(g.seated)
     const queued = isQueued(thought, seated, g.serviceLeft ?? 0, g.node ?? '')

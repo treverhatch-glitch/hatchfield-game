@@ -580,6 +580,13 @@ export const PREFAB_TIERS: Record<1 | 2 | 3, PrefabTier> = {
   },
 }
 
+/** Desk belts and claim belts occupy the cell. Zone paint cannot cover them. */
+const ZONE_SOLID: ReadonlySet<ItemId> = new Set(['checkin_belt', 'claim_carousel', 'bag_system'])
+
+export function zoneCellBlocked(items: readonly { def: string; c: number; r: number }[], c: number, r: number): boolean {
+  return items.some((it) => it.c === c && it.r === r && ZONE_SOLID.has(it.def as ItemId))
+}
+
 export interface PlacedItem {
   id: string
   def: ItemId

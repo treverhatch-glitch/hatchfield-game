@@ -1,4 +1,5 @@
 import { finiteAmount } from '../disruptions/engine.ts'
+import { footprintBlock } from './buildingFootprint.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
 import { OPS_ALERT_PREFIX, OpsEventRunner, opsAlertText, type ActiveOpsEvent } from '../content/events_ops.ts'
@@ -158,6 +159,9 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
+import { clearanceBlocks } from './runwayClearance'
+import { footprintCells, placementHitsStand, standPlaceBlock } from './standFoot'
+import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
 import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
@@ -279,6 +283,7 @@ import type { DepositTier, ServiceId } from '../negotiation/types.ts'
 import { INBOUND_AIRFRAMES, InboundBridge, inboundCallsign } from './inboundBridge.ts'
 import type { InboundContractRow, InboundOfferView } from './inboundBridge.ts'
 import {
+  CLEARANCE_LICENCE_COST,
   REP_FAIL,
   SIM_DAY_SEC,
   UPLIFT_LITRES,
@@ -354,6 +359,7 @@ import {
   schemeSigns,
   schemeZones,
   slowedService,
+  zoneCellBlocked,
   type ItemId,
   type PlacedItem,
   type ZoneId,
@@ -609,12 +615,14 @@ import {
   spawnArrivalPax,
   spawnDeparturePax,
 } from './pax'
+import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import {
   astar,
   farmBesidePavement,
   hasBeltNetwork,
   inBounds,
   neighbors,
+  jetRouteOnGraph,
   nearestPath,
   runwayStrips,
   standBeltLinked,
@@ -960,6 +968,10 @@ export class Game {
   opsEvents = new OpsEventRunner()
   securityIncidents = 0
   reputation = 40
+  /** Smoothed 0–100 figure the reputation HUD reads. */
+  reputationShown = 40
+  /** Passenger reputation waiting to be applied a little at a time. */
+  private reputationDrift = 0
   loanBalance = 0
   /** Game day of the last loan-short reputation dip (one per day). */
   private loanShortDay = -1
@@ -1257,6 +1269,8 @@ export class Game {
   private priceWar: PriceWar | null = null
   /** Inbound offers and Guard contracts. Null until the clock or a card needs it. */
   private inbound: InboundBridge | null = null
+  /** Set for the duration of a clearance purchase so a second click cannot post another charge. */
+  private clearanceBusy = false
   /** Bellwater Intl. Headless; null until the field exists. */
   private rival: RivalAirport | null = null
   private rivalWalkaways: Walkaway[] = []
@@ -1264,6 +1278,10 @@ export class Game {
   showFlows = false
   /** True once a wave exceeds this hall's queue or passenger cap. */
   hallOverloaded = false
+  /** Sim clock before which the over-capacity hint stays dismissed. */
+  capacityHintUntil = 0
+  /** Guest cap recorded when the hall last went over, so an expansion can clear it. */
+  private overloadCap = 0
   missedFlights = 0
   private queueDelayFlight = new Set<string>()
   sites: BuildSite[] = []
@@ -1401,6 +1419,8 @@ export class Game {
     this.loanNewsCool = 0
     this.securityIncidents = 0
     this.reputation = 40
+    this.reputationShown = 40
+    this.reputationDrift = 0
     this.loanBalance = 0
     this.loanProductId = null
     this.loanPrincipal = 0
@@ -3061,15 +3081,17 @@ export class Game {
    * Blend of reputation, avg airline heat, hall wear inverse, security budget.
    */
   fieldRating(): number {
-    const rep = this.reputation
+    const rep = clampReputation(this.reputation)
     const heats = this.signed.map((id) => this.heatOf(id))
-    const avgHeat = heats.length
-      ? heats.reduce((s, h) => s + h, 0) / heats.length
-      : 55
+    const avgHeat = clamp(
+      heats.length ? heats.reduce((s, h) => s + h, 0) / heats.length : 55,
+      0,
+      100,
+    )
     const wear = this.avgWear()
-    const wearScore = 100 - (wear.bath * 0.55 + wear.sec * 0.45)
-    const secScore = this.budgetOf('security')
-    const incidents = Math.min(20, this.securityIncidents)
+    const wearScore = clamp(100 - (wear.bath * 0.55 + wear.sec * 0.45), 0, 100)
+    const secScore = clamp(this.budgetOf('security'), 0, 100)
+    const incidents = Math.min(20, Math.max(0, this.securityIncidents))
     const raw =
       rep * 0.34 +
       avgHeat * 0.32 +
@@ -3077,6 +3099,25 @@ export class Game {
       secScore * 0.14 -
       incidents * 1.2
     return clamp(Math.round(raw), 0, 100)
+  }
+
+  /** Whole-number reputation the HUD shows. Eased, never outside 0–100. */
+  reputationDisplay(): number {
+    return Math.round(clampReputation(this.reputationShown))
+  }
+
+  /** Passenger mood. Applied a little per second so a full bank cannot slam the meter. */
+  private queueReputation(delta: number) {
+    if (!Number.isFinite(delta) || delta === 0) return
+    this.reputationDrift += delta
+  }
+
+  private flushReputation(dt: number) {
+    const step = takeReputationDrift(this.reputationDrift, dt)
+    this.reputationDrift = step.left
+    if (step.apply !== 0) this.reputation = clampReputation(this.reputation + step.apply)
+    else this.reputation = clampReputation(this.reputation)
+    this.reputationShown = smoothReputation(this.reputationShown, this.reputation, dt)
   }
 
   fieldRatingLabel(): string {
@@ -3687,62 +3728,39 @@ export class Game {
     if (!this.spend(STARTER_KIT_COST, 'starter kit')) return
     this.starterKitStamped = true
 
-    if (this.startFocus === 'cargo') {
-      this.buildCargoStarterKit()
+    // Drop the city-edge stub and any stray paint. The stamp is the whole field.
+    for (const row of this.tiles) row.fill('grass')
+    const kit = stampStarterKit(this.tiles, this.startFocus)
+    this.facing = 'h'
+    for (const stand of kit.stands) {
+      const key = `${stand.c},${stand.r}`
+      this.standClass[key] = stand.cls
+      this.standAccess[key] = stand.access
+    }
+
+    if (!kit.terminal) {
+      this.fits = []
+      this.fuelBrand = 'apex'
+      this.fuelLoads = 5
+      this.contractId = 'apex_local'
+      this.tankLitres = seedLitresFromLoads(5)
+      this.caterBrand = null
+      this.mechanics = 1
+      this.spawnMechanicPawn()
+      this.deskStaff = 0
+      this.hallStaff = []
+      this.offerCool = 2
+      this.spawnCool = 5
+      this.cargoVolumeCool = 18
+      this.pushNews(`${kit.label} down — ${kit.summary}`, 'good')
+      this.bumpMap()
+      this.persist()
+      this.emit()
       return
     }
 
-    this.facing = 'h'
-    // Five cells south of the stands: a code-F wing at the visual scale clears the strip.
-    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
-    this.tiles[21][8] = 'fuel'
-    this.tiles[21][9] = 'road'
-    this.tiles[21][10] = 'bags'
-    this.tiles[17][14] = 'snack'
-    this.tiles[20][8] = 'fire'
-    this.tiles[17][11] = 'tower'
-    // Road from north city edge down to the hall
-    const roadC = 16
-    for (let r = 0; r <= 18; r++) this.tiles[r][roadC] = 'road'
-    // Curb three cells north of the stands, clear of a code-F nose.
-    for (let c = 8; c <= 22; c++) this.tiles[18][c] = 'road'
-    // Nose spurs so a mechanic can leave a stand. The wing rows stay grass.
-    for (let r = 19; r <= 20; r++) this.tiles[r][9] = 'road'
-    this.tiles[20][12] = 'road'
-    this.tiles[19][13] = 'road'
-    this.tiles[20][13] = 'road'
-    for (let r = 19; r <= 20; r++) this.tiles[r][20] = 'road'
-    // Guard post on the city approach — screens inbound cargo trucks.
-    this.tiles[3][roadC] = 'guard'
-    // Cargo shed on a road stub (city trucks → guard → shed).
-    this.tiles[10][roadC + 1] = 'road'
-    this.tiles[10][roadC + 2] = 'cargo'
-    // Taxi link so freighter GSE can reach the shed. It stops at the curb.
-    for (let r = 11; r <= 17; r++) this.tiles[r][roadC + 2] = 'taxi'
-    // Premade hall touching the curb + road (c15–17, r19–21)
-    const origin = { c: 15, r: 19 }
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) this.tiles[origin.r + r][origin.c + c] = 'terminal'
-    }
-    // Stands AFTER hall so they are not overwritten by the 3×3 terminal stamp.
-    this.tiles[21][12] = 'stand'
-    this.tiles[21][20] = 'stand'
-    this.standClass['12,21'] = 'M'
-    this.standClass['20,21'] = 'M'
-    this.standAccess['12,21'] = 'jetway'
-    this.standAccess['20,21'] = 'jetway'
-    // Each stand has its own lead-in. A through-taxi on the next row sits inside a parked wing.
-    for (const c of [12, 20]) {
-      for (let r = 22; r <= 25; r++) this.tiles[r][c] = 'taxi'
-    }
-    // Bag belt: makeup (bags@10) ↔ stands @12/@20 ↔ hall terminals @15–17
-    this.tiles[21][11] = 'belt'
-    this.tiles[21][13] = 'belt'
-    this.tiles[21][14] = 'belt'
-    this.tiles[21][18] = 'belt'
-    this.tiles[21][19] = 'belt'
     this.fits = [
-      emptyFit(origin, true, {
+      emptyFit(kit.terminal, true, {
         checkin: 2,
         security: 2,
         gate: 2,
@@ -3771,53 +3789,7 @@ export class Game {
     // Threats and emergency asks are not held back. A thin lane or an empty farm shows up on its own.
     this.offerCool = 3
     this.spawnCool = 6
-    this.pushNews(
-      this.startFocus === 'hybrid'
-        ? 'Hybrid kit down — hall + guard/cargo road. Day pax, night freight.'
-        : 'Starter kit down — guard post + cargo shed on the city road, lounge, mechanic + desk. Northline should call.',
-      'good',
-    )
-    this.bumpMap()
-    this.persist()
-    this.emit()
-  }
-
-  /** Cargo-first kit — freighter ready, no pax hall required. */
-  private buildCargoStarterKit() {
-    this.facing = 'h'
-    for (const p of this.prefabRunway({ c: 8, r: 26 })) this.tiles[p.r][p.c] = 'runway'
-    this.tiles[21][8] = 'fuel'
-    this.tiles[20][8] = 'fire'
-    this.tiles[20][10] = 'police'
-    this.tiles[17][12] = 'tower'
-    const roadC = 14
-    for (let r = 0; r <= 21; r++) this.tiles[r][roadC] = 'road'
-    this.tiles[3][roadC] = 'guard'
-    this.tiles[12][roadC + 1] = 'road'
-    this.tiles[12][roadC + 2] = 'cargo'
-    for (let r = 13; r <= 20; r++) this.tiles[r][roadC + 2] = 'taxi'
-    for (let c = 9; c <= 15; c++) this.tiles[21][c] = 'road'
-    this.tiles[21][16] = 'stand'
-    this.standClass['16,21'] = 'M'
-    this.standAccess['16,21'] = 'remote'
-    for (let r = 22; r <= 25; r++) this.tiles[r][16] = 'taxi'
-    this.fits = []
-    this.fuelBrand = 'apex'
-    this.fuelLoads = 5
-    this.contractId = 'apex_local'
-    this.tankLitres = seedLitresFromLoads(5)
-    this.caterBrand = null
-    this.mechanics = 1
-    this.spawnMechanicPawn()
-    this.deskStaff = 0
-    this.hallStaff = []
-    this.offerCool = 2
-    this.spawnCool = 5
-    this.cargoVolumeCool = 18
-    this.pushNews(
-      'Cargo kit down — strip, freighter stand, guard → shed pipeline. No pax hall. UPPS should call.',
-      'good',
-    )
+    this.pushNews(`${kit.label} down — ${kit.summary}`, 'good')
     this.bumpMap()
     this.persist()
     this.emit()
@@ -4980,7 +4952,9 @@ export class Game {
       this.playtestYear.restore(s.playtestYear, this.paxServed)
       this.revenue = s.revenue
       this.securityIncidents = s.securityIncidents ?? 0
-      this.reputation = s.reputation ?? 40
+      this.reputation = clampReputation(s.reputation ?? 40)
+      this.reputationShown = this.reputation
+      this.reputationDrift = 0
       this.loanBalance = s.loanBalance ?? 0
       this.loanProductId = s.loanProductId ?? (this.loanBalance > 0 ? 'bridge' : null)
       this.loanPrincipal = s.loanPrincipal ?? (this.loanBalance > 0 ? LOAN_PRINCIPAL : 0)
@@ -7428,7 +7402,7 @@ export class Game {
         g.dead = true
         g.thought = 'Boarded'
         this.paxServed += 1
-        this.reputation = Math.min(100, this.reputation + 0.4)
+        this.queueReputation(0.4)
         continue
       }
       if (
@@ -7683,7 +7657,7 @@ export class Game {
         g.happiness -= 30
         g.dead = true
         g.lost = false
-        this.reputation = Math.max(0, this.reputation - 0.8)
+        this.queueReputation(-0.8)
         const aid = this.guestAirlineId(g)
         if (aid) this.adjustHeat(aid, g.transfer ? -2.5 : -1.3)
         this.hallMissNews(
@@ -7717,10 +7691,51 @@ export class Game {
       for (const id of this.departedFlights) if (!live.has(id)) this.departedFlights.delete(id)
     }
     const fit = this.activeHall() ?? this.fits[0]
-    const present = this.hallGuests.filter(
+    const present = this.hallHeadcount()
+    const cap = fit?.capGuests ?? 40
+    if (fit && present > cap) this.markHallOverloaded()
+    else if (this.hallOverloaded && cap > this.overloadCap) this.releaseHallIfFits()
+  }
+
+  /** Headcount against the live ceiling. Preview and not-yet-released guests do not count. */
+  private hallHeadcount(): number {
+    return this.hallGuests.filter(
       (g) => !g.preview && (g.releaseAt == null || g.releaseAt <= this.clock),
     ).length
-    if (fit && present > (fit.capGuests ?? 40)) this.markHallOverloaded()
+  }
+
+  /**
+   * The corner card stays while the crowd or the security line still exceeds
+   * the live ceiling. An upgrade or a new lane recalculates that ceiling.
+   */
+  private securityLineOver(fit: TerminalFit): boolean {
+    const key = this.hallKey(fit)
+    const waiting = this.hallGuests.filter(
+      (g) =>
+        !g.dead &&
+        !g.preview &&
+        g.hallId === key &&
+        g.job === 'depart' &&
+        g.node === 'security' &&
+        !g.clearedSec,
+    ).length
+    if (waiting <= 0) return false
+    const lane = laneStats({
+      premade: fit.premade,
+      redesigned: fit.redesigned,
+      tier: fit.tier,
+      items: (fit.items ?? []) as PlacedItem[],
+      roomsSecurity: fit.rooms.security,
+    })
+    const cap = fit.capGuests ?? 40
+    return waiting > cap || waiting > lane.queueCap + Math.max(0, lane.servers)
+  }
+
+  private releaseHallIfFits() {
+    const fit = this.activeHall() ?? this.fits[0]
+    if (!fit || !this.hallOverloaded) return
+    const cap = fit.capGuests ?? 40
+    if (this.hallHeadcount() <= cap && !this.securityLineOver(fit)) this.clearHallOverload()
   }
 
   routeGuest(g: HallGuest, dest: HallNode, open: Set<HallNode>) {
@@ -8087,6 +8102,8 @@ export class Game {
   }
 
   markHallOverloaded() {
+    const fit = this.activeHall() ?? this.fits[0]
+    this.overloadCap = fit?.capGuests ?? this.overloadCap
     if (this.hallOverloaded) return
     this.hallOverloaded = true
     this.reputation = Math.max(0, this.reputation - 1)
@@ -8096,6 +8113,26 @@ export class Game {
       'bad',
     )
     this.refreshAdvice()
+  }
+
+  /** Headcount is back inside the cap, including after an expansion. */
+  clearHallOverload() {
+    if (!this.hallOverloaded) return
+    this.hallOverloaded = false
+    for (const row of [...this.alerts.active]) {
+      if (row.key.startsWith('cond:hall-full')) this.alerts.clear(row.key)
+    }
+    this.refreshAdvice()
+  }
+
+  /** Hide the corner card and the alert. They can return after the cooldown if the hall is still full. */
+  dismissCapacityHint() {
+    this.capacityHintUntil = this.clock + ALERT_TUNING.capacityCoolSec
+    for (const row of [...this.alerts.active]) {
+      if (row.key.startsWith('cond:hall-full')) this.alerts.dismiss(row.id, this.clock)
+    }
+    if (this.sidePanel === 'hints') this.setSidePanel(null)
+    this.emit()
   }
 
   private sessionSnapshot() {
@@ -8238,7 +8275,9 @@ export class Game {
    * fail, which is never hidden behind the next-step tip.
    */
   visibleHints(): Advice[] {
-    const shown = visibleHints(this.advice, this.hintPrefs)
+    const raw = visibleHints(this.advice, this.hintPrefs)
+    const shown =
+      this.clock < this.capacityHintUntil ? raw.filter((a) => a.id !== 'over-capacity') : raw
     const session = shown.find((a) => hintKind(a.id) === 'session')
     if (!session) return shown
     const hard = shown.filter((a) => a !== session && severityOf(a) === 'blocker')
@@ -10249,7 +10288,7 @@ export class Game {
     applyCeilings(fit)
     this.foodShelf = Math.max(this.foodShelf, Math.min(this.shelfCap('food'), this.foodShelf + 8))
     this.shopShelf = Math.max(this.shopShelf, Math.min(this.shelfCap('shop'), this.shopShelf + 6))
-    this.hallOverloaded = false
+    this.releaseHallIfFits()
     this.hallRev++
     this.refreshAdvice()
     this.pushNews(
@@ -10277,18 +10316,20 @@ export class Game {
     return true
   }
 
-  paintHallCell(c: number, r: number, zone: ZoneId) {
+  paintHallCell(c: number, r: number, zone: ZoneId): boolean {
     const fit = this.activeHall()
-    if (!fit) return
+    if (!fit) return false
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
     const row = fit.zones[r]
-    if (!row || c < 0 || c >= row.length) return
-    if (row[c] === zone) return
+    if (!row || c < 0 || c >= row.length) return false
+    if (zoneCellBlocked((fit.items ?? []) as PlacedItem[], c, r)) return false
+    if (row[c] === zone) return true
     const wasPrefab = fit.premade && !fit.redesigned
     row[c] = zone
     if (wasPrefab) {
       fit.redesigned = true
       applyCeilings(fit)
+      this.releaseHallIfFits()
       this.pushNews(
         `Custom layout — the prefab discount is gone. Upkeep is now $${Math.round(
           ceilingsFor({
@@ -10305,6 +10346,7 @@ export class Game {
     this.hallRev++
     this.refreshAdvice()
     this.emit()
+    return true
   }
 
   placeHallItem(id: ItemId) {
@@ -10433,6 +10475,7 @@ export class Game {
     if (def.room === 'food') this.foodShelf += 8
     if (def.signs) fit.signs = (fit.signs ?? 0) + def.signs
     applyCeilings(fit)
+    this.releaseHallIfFits()
     this.hallRev++
     this.pushNews(
       `${def.name} placed — $${def.upkeep}/day upkeep${def.perk ? `. ${def.perk}.` : '.'}`,
@@ -10462,6 +10505,7 @@ export class Game {
     const refund = refundFor(def)
     this.cash += refund
     applyCeilings(fit)
+    this.releaseHallIfFits()
     this.hallRev++
     this.pushNews(`${def.name} removed — refunded $${refund.toLocaleString('en-US')}.`, 'ok')
     this.refreshAdvice()
@@ -10867,10 +10911,7 @@ export class Game {
       }
       g.dead = true
       this.paxServed += 1
-      this.reputation = Math.min(
-        100,
-        this.reputation + (g.happiness >= 55 ? 0.35 : 0.1),
-      )
+      this.queueReputation(g.happiness >= 55 ? 0.35 : 0.1)
     }
   }
 
@@ -14889,6 +14930,11 @@ export class Game {
       this.emit()
       return
     }
+    if (clearanceBlocks(this.tiles, cells, 'runway')) {
+      this.pushNews('That strip sits inside runway clearance. Leave the shoulder empty.', 'bad')
+      this.emit()
+      return
+    }
     const cost =
       klass === 'heavy'
         ? HEAVY_RUNWAY_COST
@@ -14938,6 +14984,16 @@ export class Game {
       this.emit()
       return
     }
+    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
+      this.pushNews('That shell sits inside runway clearance.', 'bad')
+      this.emit()
+      return
+    }
+    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
+      this.pushNews('That shell sits inside a stand footprint.', 'bad')
+      this.emit()
+      return
+    }
     if (this.sites.some((s) => s.tool === 'terminal')) {
       this.pushNews('A terminal shell is already a construction site — a contractor is driving in.', 'bad')
       this.emit()
@@ -14966,6 +15022,16 @@ export class Game {
     }
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
       this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
+      this.emit()
+      return
+    }
+    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
+      this.pushNews('That hall sits inside runway clearance.', 'bad')
+      this.emit()
+      return
+    }
+    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
+      this.pushNews('That hall sits inside a stand footprint.', 'bad')
       this.emit()
       return
     }
@@ -15041,6 +15107,16 @@ export class Game {
       this.emit()
       return
     }
+    if (clearanceBlocks(this.tiles, [v], 'road')) {
+      this.pushNews(`${spec.name} sits inside runway clearance.`, 'bad')
+      this.emit()
+      return
+    }
+    if (placementHitsStand(this.tiles, [v], tileForLate(id), this.standClass, this.standScale)) {
+      this.pushNews(`${spec.name} sits inside a stand footprint.`, 'bad')
+      this.emit()
+      return
+    }
     const gated = placeBuilding(id, this.lateFieldLevel())
     if (!gated.ok) {
       this.pushNews(gated.reason, 'bad')
@@ -15111,6 +15187,40 @@ export class Game {
     }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+      this.emit()
+      return
+    }
+    const foot = footprintBlock(this.tiles, building.tile, v)
+    if (foot) {
+      this.pushNews(
+        foot === 'road'
+          ? `${building.name} footprint crosses a road.`
+          : `${building.name} footprint leaves the map.`,
+        'bad',
+      )
+      this.emit()
+      return
+    }
+    if (building.tile === 'stand') {
+      const why = standPlaceBlock(
+        this.tiles,
+        v,
+        standClassForTool(this.tool) ?? 'M',
+        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+        this.standClass,
+        this.standScale,
+      )
+      if (why) {
+        this.pushNews(why, 'bad')
+        this.emit()
+        return
+      }
+    } else if (clearanceBlocks(this.tiles, [v], building.tile)) {
+      this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
+      this.emit()
+      return
+    } else if (placementHitsStand(this.tiles, [v], building.tile, this.standClass, this.standScale)) {
+      this.pushNews(`${building.name} sits inside a stand footprint.`, 'bad')
       this.emit()
       return
     }
@@ -15354,6 +15464,69 @@ export class Game {
     return !wingDiscsClash(stand, spec.spanM, others, blocks)
   }
 
+  /** Class and scale of the stand tool, or null when the tool is not a stand. */
+  standPreview(): { cls: StandClass; scale: SizeTier | null } | null {
+    const cls = standClassForTool(this.tool)
+    if (!cls) return null
+    return {
+      cls,
+      scale: standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+    }
+  }
+
+  /** Tile the current tool would stamp, or null for pan / inspect. */
+  placementTile(): Tile | null {
+    if (this.tool === 'runway' || this.tool === 'runway_short' || this.tool === 'runway_heavy') return 'runway'
+    if (this.tool === 'terminal' || this.tool === 'premade') return 'terminal'
+    const building = BUILDINGS.find((b) => b.tool === this.tool)
+    if (building) return building.tile
+    const late = lateIdForTool(this.tool)
+    return late ? tileForLate(late) : null
+  }
+
+  /** Red ghost when the stamp would pave a runway shoulder or a stand's wings. Taxi stays legal. */
+  ghostBlocked(cells: Vec[]): boolean {
+    if (this.tool === 'clear') return false
+    const tile = this.placementTile()
+    if (!tile) return false
+    if (tile === 'runway') return clearanceBlocks(this.tiles, cells, 'runway')
+    if (tile === 'stand') {
+      if (!this.hover) return true
+      return (
+        standPlaceBlock(
+          this.tiles,
+          this.hover,
+          standClassForTool(this.tool) ?? 'M',
+          standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+          this.standClass,
+          this.standScale,
+        ) !== null
+      )
+    }
+    if (clearanceBlocks(this.tiles, cells, tile)) return true
+    return placementHitsStand(this.tiles, cells, tile, this.standClass, this.standScale)
+  }
+
+  /** Geometry only — cash and unlocks do not tint the ghost. */
+  ghostReady(cells: Vec[]): boolean {
+    if (this.tool === 'clear') return true
+    const tile = this.placementTile()
+    if (!tile || !cells.length) return false
+    if (tile === 'stand') {
+      return (
+        this.hover != null &&
+        this.tile(this.hover) === 'grass' &&
+        !this.siteAt(this.hover) &&
+        !this.ghostBlocked(cells)
+      )
+    }
+    const paved =
+      cells.length > 0 &&
+      cells.every((p) => inBounds(p.c, p.r) && this.tile(p) === 'grass') &&
+      !this.cellsBlocked(cells)
+    return paved && !this.ghostBlocked(cells)
+  }
+
   ghostCells(hover: Vec | null): Vec[] {
     if (!hover) return []
     if (this.tool === 'runway_short') return this.prefabRunway(hover, 'short')
@@ -15373,6 +15546,15 @@ export class Game {
         for (let c = 0; c < 3; c++) cells.push({ c: hover.c + c, r: hover.r + r })
       }
       return cells
+    }
+    const standCls = standClassForTool(this.tool)
+    if (standCls) {
+      return footprintCells(
+        this.tiles,
+        hover,
+        standCls,
+        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
+      )
     }
     return [hover]
   }
@@ -16287,8 +16469,9 @@ export class Game {
       f.waitingOn.paxOut = 1
     } else {
       const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
-      f.waitingOn.paxOut = visual
-      this.people.push(...spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual))
+      const walkers = spawnArrivalPax(this.tiles, f.id, f.stand, fit, visual)
+      f.waitingOn.paxOut = walkers.length
+      this.people.push(...walkers)
       if (mode !== 'walk') {
         this.pushNews(
           `${f.flightNo} walking remote stand — bus depot missing or blocked.`,
@@ -16858,8 +17041,9 @@ export class Game {
       f.waitingOn.paxIn = 1
     } else {
       const visual = Math.max(8, Math.min(18, Math.round(f.pax / 6)))
-      f.waitingOn.paxIn = visual
-      this.people.push(...spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual))
+      const walkers = spawnDeparturePax(this.tiles, f.id, f.stand, fit, visual)
+      f.waitingOn.paxIn = walkers.length
+      this.people.push(...walkers)
     }
     // Outbound bags: shed makeup pickup → plane deposit.
     const bagBuild = tilesOf(this.tiles, 'bags')
@@ -16960,7 +17144,39 @@ export class Game {
     if (!f.stand) return null
     const inbound = this.landingRoute(f.stand)
     if (!inbound) return null
-    return [...inbound].reverse()
+    const path = [...inbound].reverse()
+    return jetRouteOnGraph(this.tiles, path) ? path : null
+  }
+
+  /** Pushback stays on the stand or a jet neighbour. A grass offset is not a taxi route. */
+  private pushbackPath(stand: Vec, heading: number): Vec[] {
+    const back = {
+      c: stand.c - Math.cos(heading || 0) * 0.8,
+      r: stand.r - Math.sin(heading || 0) * 0.8,
+    }
+    if (jetRouteOnGraph(this.tiles, [stand, back])) return [stand, back]
+    const next = neighbors(stand.c, stand.r).find(
+      (p) => inBounds(p.c, p.r) && walkableFor('jet', this.tiles[p.r][p.c]),
+    )
+    return next ? [stand, next] : [stand]
+  }
+
+  private holdForTaxi(f: Flight) {
+    this.raiseAlert({
+      key: `cond:taxi-blocked:${f.id}`,
+      severity: 'warning',
+      title: `${f.flightNo} holding — no taxiway`,
+      detail: 'No path on the taxiway graph. The aircraft stays put instead of crossing the grass.',
+      at: f.stand ? { view: 'apron', cells: [{ c: f.stand.c, r: f.stand.r }] } : undefined,
+    })
+  }
+
+  /** Ground taxi may follow only the remaining steps that sit on the taxiway graph. */
+  private taxiRouteReady(f: Flight): boolean {
+    const rest = f.path.slice(Math.max(0, f.seg))
+    // Already on the last node — nothing left to cross, including after the landing roll.
+    if (rest.length < 2) return true
+    return jetRouteOnGraph(this.tiles, rest)
   }
 
   tickPatrols(dt: number) {
@@ -17678,16 +17894,32 @@ export class Game {
   }
 
   buyInboundClearance(): boolean {
-    const result = this.ensureInbound().buyClearance()
-    if (!result.ok) {
-      this.pushNews(result.reason, 'bad')
+    if (this.clearanceBusy) return false
+    if (this.inboundHasClearance()) {
+      this.pushNews('Security clearance already owned.', 'ok')
       this.emit()
       return false
     }
-    this.postInboundLedger()
-    this.pushNews('Security clearance licence on the books.', 'good')
-    this.emit()
-    return true
+    if (!this.sandbox && this.cash < CLEARANCE_LICENCE_COST) {
+      this.pushNews(`Need ${moneyLeft(CLEARANCE_LICENCE_COST)} for security clearance.`, 'bad')
+      this.emit()
+      return false
+    }
+    this.clearanceBusy = true
+    try {
+      const result = this.ensureInbound().buyClearance()
+      if (!result.ok) {
+        this.pushNews(result.reason, 'bad')
+        this.emit()
+        return false
+      }
+      this.postInboundLedger()
+      this.pushNews('Security clearance licence on the books.', 'good')
+      this.emit()
+      return true
+    } finally {
+      this.clearanceBusy = false
+    }
   }
 
   private tickInbound(step: number) {
@@ -18117,7 +18349,9 @@ export class Game {
         }
       } else if (f.phase === 'taxi_in') {
         f.z = 0.12
-        if (this.followPath(f, 1.1, step)) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.1, step)) {
           f.phase = 'deboard'
           f.phaseTime = 0
           this.beginServicing(f)
@@ -18204,13 +18438,7 @@ export class Game {
               f.phase = 'pushback'
               f.phaseTime = 0
               if (f.stand) {
-                f.path = [
-                  f.stand,
-                  {
-                    c: f.stand.c - 0.7,
-                    r: f.stand.r,
-                  },
-                ]
+                f.path = this.pushbackPath(f.stand, f.heading)
                 f.seg = 0
                 f.t = 0
               }
@@ -18223,7 +18451,9 @@ export class Game {
         }
       } else if (f.phase === 'mx_taxi') {
         f.z = 0.12
-        if (this.followPath(f, 1.05, step) || f.phaseTime > 40) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.05, step)) {
           const bay = f.hangarBay
           if (bay) {
             f.x = bay.c
@@ -18252,7 +18482,7 @@ export class Game {
               nearestPath(this.tiles, f.hangarBay ?? { c: f.x, r: f.y }, [f.stand], 'jet') ?? [
                 f.stand,
               ]
-            f.path = back
+            f.path = jetRouteOnGraph(this.tiles, back) ? back : []
             f.seg = 0
             f.t = 0
             f.phase = 'mx_return'
@@ -18265,7 +18495,9 @@ export class Game {
         }
       } else if (f.phase === 'mx_return') {
         f.z = 0.12
-        if (this.followPath(f, 1.05, step) || f.phaseTime > 40) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.05, step)) {
           if (f.stand) {
             f.x = f.stand.c
             f.y = f.stand.r
@@ -18286,7 +18518,7 @@ export class Game {
               f.phase = 'pushback'
               f.phaseTime = 0
               if (f.stand) {
-                f.path = [f.stand, { c: f.stand.c - 0.7, r: f.stand.r }]
+                f.path = this.pushbackPath(f.stand, f.heading)
                 f.seg = 0
                 f.t = 0
               }
@@ -18361,12 +18593,7 @@ export class Game {
             f.phase = 'pushback'
             f.phaseTime = 0
             if (f.stand) {
-              // Nudge off the nose — visual push, then real taxi path.
-              const back = {
-                c: f.stand.c - Math.cos(f.heading || 0) * 0.8,
-                r: f.stand.r - Math.sin(f.heading || 0) * 0.8,
-              }
-              f.path = [f.stand, back]
+              f.path = this.pushbackPath(f.stand, f.heading)
               f.seg = 0
               f.t = 0
             }
@@ -18382,7 +18609,7 @@ export class Game {
         }
       } else if (f.phase === 'pushback') {
         // Short shove off the stand, then join the outbound taxi.
-        this.followPath(f, 0.55, step)
+        if (this.taxiRouteReady(f)) this.followPath(f, 0.55, step)
         if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
           if (out && !this.groundBusy()) {
@@ -18392,20 +18619,21 @@ export class Game {
             if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
-          } else if (f.phaseTime > 8) {
-            // Force clear — don't soft-lock the gate on pushback.
-            if (out) {
-              f.path = out
-              f.seg = 0
-              f.t = 0
-            }
+          } else if (f.phaseTime > 8 && out) {
+            f.path = out
+            f.seg = 0
+            f.t = 0
             if (!f.cargo) this.settleOutboundBags(f, true)
             f.phase = 'taxi_out'
             f.phaseTime = 0
+          } else if (f.phaseTime > 8) {
+            this.holdForTaxi(f)
           }
         }
       } else if (f.phase === 'taxi_out') {
-        if (this.followPath(f, 1.2, step)) {
+        if (!this.taxiRouteReady(f)) {
+          this.holdForTaxi(f)
+        } else if (this.followPath(f, 1.2, step)) {
           f.phase = 'takeoff'
           f.phaseTime = 0
         }
@@ -18736,6 +18964,7 @@ export class Game {
 
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     // At 5× the canvases keep drawing, but the HUD string updates about once a second.
+    this.flushReputation(step)
     this.uiAcc += step
     const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {

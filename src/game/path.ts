@@ -39,6 +39,8 @@ export function walkableFor(
     return tile === 'runway' || tile === 'taxi' || tile === 'stand' || tile === 'hangar' || tile === 'mro'
   }
   if (kind === 'truck') {
+    // Trucks stay on the apron and the public road. The terminal is a building,
+    // so a shortcut through the hall is not a vehicle path.
     return (
       tile === 'taxi' ||
       tile === 'stand' ||
@@ -46,7 +48,6 @@ export function walkableFor(
       tile === 'bags' ||
       tile === 'belt' ||
       tile === 'snack' ||
-      tile === 'terminal' ||
       tile === 'fire' ||
       tile === 'police' ||
       tile === 'cargo' ||
@@ -111,16 +112,26 @@ export function walkableFor(
   )
 }
 
+function cellOpen(
+  tiles: Tile[][],
+  c: number,
+  r: number,
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  pass?: (c: number, r: number) => boolean,
+): boolean {
+  return inBounds(c, r) && walkableFor(kind, tiles[r][c]) && (!pass || pass(c, r))
+}
+
 export function astar(
   tiles: Tile[][],
   start: Vec,
   goal: Vec,
   kind: 'jet' | 'truck' | 'person' | 'mechanic',
+  pass?: (c: number, r: number) => boolean,
 ): Vec[] | null {
   if (!inBounds(start.c, start.r) || !inBounds(goal.c, goal.r)) return null
   if (start.c === goal.c && start.r === goal.r) return [start]
-  if (!walkableFor(kind, tiles[start.r][start.c])) return null
-  if (!walkableFor(kind, tiles[goal.r][goal.c])) return null
+  if (!cellOpen(tiles, start.c, start.r, kind, pass) || !cellOpen(tiles, goal.c, goal.r, kind, pass)) return null
 
   // Cells are indexed r * SIZE + c in reused scratch arrays. A cell's g/came/open entries
   // count only when its stamp matches this call, so nothing is cleared or allocated per search.
@@ -163,7 +174,7 @@ export function astar(
     for (const d of DIRS) {
       const nc = pc + d.c
       const nr = pr + d.r
-      if (!inBounds(nc, nr) || !walkableFor(kind, tiles[nr][nc])) continue
+      if (!cellOpen(tiles, nc, nr, kind, pass)) continue
       const n = nr * SIZE + nc
       const step = kind === 'person' ? personStepCost(tiles[nr][nc]) : 1
       const ng = searchG[cur] + step
@@ -277,29 +288,133 @@ export function farmBesidePavement(tiles: Tile[][], farm: Vec): boolean {
   })
 }
 
-export function runwayStrips(tiles: Tile[][], min: number): Vec[][] {
-  const strips: Vec[][] = []
-  for (let r = 0; r < SIZE; r++) {
-    let run: Vec[] = []
-    for (let c = 0; c <= SIZE; c++) {
-      const isRw = c < SIZE && tiles[r][c] === 'runway'
-      if (isRw) run.push({ c, r })
-      if (!isRw || c === SIZE) {
-        if (run.length >= min) strips.push(run)
-        run = []
-      }
+const CURB: ReadonlySet<Tile> = new Set(['road', 'bus'])
+
+/** A terminal cell with a road or bus curb on one side — the only door apron pax may use. */
+export function isPaxEntrance(tiles: Tile[][], c: number, r: number): boolean {
+  if (!inBounds(c, r) || tiles[r][c] !== 'terminal') return false
+  return neighbors(c, r).some((n) => CURB.has(tiles[n.r][n.c]))
+}
+
+/**
+ * Ground cells for apron passengers. Interior terminal, skywalks and travelators
+ * are closed so a walker cannot cut across the roof. Door cells stay open.
+ */
+export function paxGround(tiles: Tile[][], c: number, r: number): boolean {
+  if (!inBounds(c, r)) return false
+  const tile = tiles[r][c]
+  if (tile === 'skywalk' || tile === 'travelator' || tile === 'grass') return false
+  if (tile === 'terminal') return isPaxEntrance(tiles, c, r)
+  return walkableFor('person', tile)
+}
+
+/** Shortest ground walk. Null when the only route would leave the pavement or cross the roof. */
+export function paxPath(tiles: Tile[][], from: Vec, to: Vec): Vec[] | null {
+  return astar(tiles, from, to, 'person', (c, r) => paxGround(tiles, c, r))
+}
+
+/** True when every step is on a jet tile and no step cuts a corner or a chord. */
+export function jetRouteOnGraph(tiles: Tile[][], path: readonly Vec[]): boolean {
+  if (path.length < 2) return false
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1]
+    const b = path[i]
+    const ac = Math.round(a.c)
+    const ar = Math.round(a.r)
+    const bc = Math.round(b.c)
+    const br = Math.round(b.r)
+    if (!inBounds(ac, ar) || !inBounds(bc, br)) return false
+    if (!walkableFor('jet', tiles[ar][ac]) || !walkableFor('jet', tiles[br][bc])) return false
+    if (Math.abs(ac - bc) + Math.abs(ar - br) > 1) return false
+  }
+  return true
+}
+
+/** Road or bus cells that share an edge with a terminal door. */
+export function landsideCurbs(tiles: Tile[][]): Vec[] {
+  const out: Vec[] = []
+  const seen = new Set<string>()
+  for (const door of tilesOf(tiles, 'terminal')) {
+    if (!isPaxEntrance(tiles, door.c, door.r)) continue
+    for (const n of neighbors(door.c, door.r)) {
+      if (!CURB.has(tiles[n.r][n.c])) continue
+      const k = key(n.c, n.r)
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push(n)
     }
   }
-  for (let c = 0; c < SIZE; c++) {
-    let run: Vec[] = []
-    for (let r = 0; r <= SIZE; r++) {
-      const isRw = r < SIZE && tiles[r][c] === 'runway'
-      if (isRw) run.push({ c, r })
-      if (!isRw || r === SIZE) {
-        if (run.length >= min) strips.push(run)
-        run = []
+  return out
+}
+
+/**
+ * One strip per connected runway piece.
+ * A 14×2 prefab is a single strip: the centerline is the longest straight run,
+ * so a wide pavement does not count once per row. Length is that run, which is
+ * what airframe gates and the approach use.
+ */
+export function runwayStrips(tiles: Tile[][], min: number): Vec[][] {
+  const seen = new Set<string>()
+  const strips: Vec[][] = []
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (tiles[r][c] !== 'runway' || seen.has(`${c},${r}`)) continue
+      const cells: Vec[] = []
+      const stack: Vec[] = [{ c, r }]
+      seen.add(`${c},${r}`)
+      while (stack.length) {
+        const p = stack.pop()!
+        cells.push(p)
+        for (const n of neighbors(p.c, p.r)) {
+          const id = `${n.c},${n.r}`
+          if (seen.has(id) || tiles[n.r][n.c] !== 'runway') continue
+          seen.add(id)
+          stack.push(n)
+        }
       }
+      const line = runwayCenterline(cells)
+      if (line.length >= min) strips.push(line)
     }
   }
   return strips
+}
+
+/** Longest straight run inside one runway piece, ordered along the strip. */
+function runwayCenterline(cells: Vec[]): Vec[] {
+  const byRow = new Map<number, number[]>()
+  const byCol = new Map<number, number[]>()
+  for (const p of cells) {
+    const cols = byRow.get(p.r)
+    if (cols) cols.push(p.c)
+    else byRow.set(p.r, [p.c])
+    const rows = byCol.get(p.c)
+    if (rows) rows.push(p.r)
+    else byCol.set(p.c, [p.r])
+  }
+  let best: Vec[] = []
+  let bestAxis: 'h' | 'v' = 'h'
+  let bestFixed = Infinity
+  const take = (coords: number[], fixed: number, axis: 'h' | 'v') => {
+    coords.sort((a, b) => a - b)
+    let start = 0
+    for (let i = 1; i <= coords.length; i++) {
+      if (i < coords.length && coords[i] === coords[i - 1] + 1) continue
+      const run = coords.slice(start, i)
+      const longer = run.length > best.length
+      const tie =
+        run.length === best.length &&
+        run.length > 0 &&
+        (axis === 'h' && bestAxis === 'v' || (axis === bestAxis && fixed < bestFixed))
+      if (longer || tie) {
+        bestAxis = axis
+        bestFixed = fixed
+        best =
+          axis === 'h' ? run.map((c) => ({ c, r: fixed })) : run.map((r) => ({ c: fixed, r }))
+      }
+      start = i
+    }
+  }
+  for (const [r, cols] of byRow) take(cols, r, 'h')
+  for (const [c, rows] of byCol) take(rows, c, 'v')
+  return best
 }
