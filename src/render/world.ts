@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
+import { PerfOverlay } from '../perf'
 import { inBounds } from '../game/path'
 import { standEntry } from '../game/standFoot'
 import type { Game } from '../game/sim'
@@ -45,6 +46,7 @@ import type { DayNightControl } from './world/dayNight'
 import { CrewFigures } from './crew/figures.ts'
 import { pathHeading } from '../ramp/present.ts'
 import {
+  baseLevel,
   initWorldRender,
   QUALITY,
   REPLACED_TILES,
@@ -269,6 +271,7 @@ export class World {
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
   private captureWanted = false
+  private perfOverlay = new PerfOverlay()
   private headlights = new VehicleHeadlights()
   private headlightRoots: THREE.Object3D[] = []
   private headlightPool: THREE.Object3D[] = []
@@ -277,7 +280,7 @@ export class World {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
     const quality = graphicsQuality()
-    setAircraftQuality(quality)
+    setAircraftQuality(baseLevel(quality))
     markGraphicsPreset(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
@@ -288,7 +291,8 @@ export class World {
     })
     // Cap DPR + shadows — software GL / cloud desktops hitch hard at 2× + 2k maps.
     // Low (what SwiftShader auto-picks) stays under 1× with the shadow map off.
-    const pixelCap = quality === 'low' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
+    // Ultra is desktop-GPU only, so it keeps its own cap instead of the 1.25 safety clamp.
+    const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
@@ -534,7 +538,7 @@ export class World {
   private applyGraphicsQuality(level: QualityLevel) {
     if (this.wr.quality === level) return
     this.wr.setQuality(level)
-    setAircraftQuality(level)
+    setAircraftQuality(baseLevel(level))
   }
 
   /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
@@ -2363,6 +2367,7 @@ export class World {
     perfEnd('world.wr', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
+    this.perfOverlay.update(this.renderer, this.scene)
     if (this.captureWanted) {
       this.captureWanted = false
       const url = canvasToPng(this.renderer.domElement)
@@ -2416,6 +2421,7 @@ export class World {
     disposeVehicleLibrary()
     this.offGfx()
     this.wr.dispose()
+    this.perfOverlay.dispose()
     this.headlights.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
