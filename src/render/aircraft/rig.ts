@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { cylinderSides } from './geom'
 import type { AircraftMotion } from './motion'
 import { paintMesh, unitBox, unitCylinder, unitSphere, type PaintedMesh, type PaintSlot } from './pool'
 import type { ModelSpec, Livery } from './specs'
@@ -280,24 +279,6 @@ function addApu(frame: RigFrame) {
   addStatic(frame, unitCylinder(10), [trs(frame.tailX + 0.05, y, 0, CYL_X, r, 0.5, r)], 'dark', 'apu-exhaust')
 }
 
-function addWindscreen(frame: RigFrame) {
-  const { spec } = frame
-  if (spec.family === 'helo') return
-  const x = frame.nose - Math.min(spec.lengthM * 0.07, 2.6)
-  const y = frame.centerY + spec.ry * 0.42
-  const h = Math.max(0.18, spec.ry * 0.22)
-  const w = Math.max(0.25, spec.rx * 0.32)
-  const panes: THREE.Matrix4[] = []
-  const rake = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, -0.75))
-  for (const side of [1, -1]) {
-    // Front pane, angled side pane, small eyebrow pane.
-    panes.push(trs(x, y, side * spec.rx * 0.26, rake, 0.05, h, w))
-    const sideQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, side * 0.9, -0.5))
-    panes.push(trs(x - w * 0.7, y - h * 0.05, side * spec.rx * 0.7, sideQ, 0.05, h * 0.85, w * 0.9))
-  }
-  addStatic(frame, unitBox(), panes, 'glass', 'windscreen')
-}
-
 function addSpinnerCones(frame: RigFrame, pts: THREE.Vector3[]) {
   const { spec } = frame
   if (!isJet(spec) || pts.length === 0) return
@@ -334,13 +315,14 @@ function addDoorLeaves(frame: RigFrame) {
   for (const box of doorBoxes(spec)) {
     const side = box.door.side
     if (side === 0) continue
-    const z = side * (box.z === 0 ? spec.rx : Math.abs(box.z)) + side * 0.03
+    // Leaf sits proud of the doorway frame, with real thickness.
+    const z = side * (box.z === 0 ? spec.rx : Math.abs(box.z)) + side * 0.1
     if (box.door.kind === 'cargo') {
       cargo.push({
         hinge: new THREE.Matrix4().makeTranslation(box.x, box.y + box.h / 2, z),
         offset: new THREE.Vector3(0, -box.h / 2, 0),
         base: IDENT,
-        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.07),
+        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.12),
         side,
         reach: box.h,
       })
@@ -349,7 +331,7 @@ function addDoorLeaves(frame: RigFrame) {
         hinge: new THREE.Matrix4().makeTranslation(box.x + box.w / 2, box.y, z),
         offset: new THREE.Vector3(-box.w / 2, 0, 0),
         base: IDENT,
-        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.07),
+        size: new THREE.Vector3(box.w * 1.04, box.h * 1.02, 0.12),
         side,
         reach: box.w,
       })

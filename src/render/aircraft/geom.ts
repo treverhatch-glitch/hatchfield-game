@@ -235,28 +235,6 @@ export function paintedLoftGeometry(
   })
 }
 
-function quad(
-  out: number[],
-  a: number[],
-  b: number[],
-  c: number[],
-  d: number[],
-) {
-  pushTri(out, a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
-  pushTri(out, a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2])
-}
-
-function mirrorZ(src: number[]): number[] {
-  const out: number[] = []
-  for (let i = 0; i < src.length; i += 9) {
-    const order = [0, 2, 1]
-    for (const k of order) {
-      out.push(src[i + k * 3], src[i + k * 3 + 1], -src[i + k * 3 + 2])
-    }
-  }
-  return out
-}
-
 /** Tapered wing pair in meters, root on the centerline, nose toward +X. */
 export function wingGeometry(
   span: number,

@@ -171,7 +171,7 @@ describe('aircraft model factory', () => {
     expect(names(mid(narrow)).has('window-band')).toBe(true)
     showClose(narrow)
     expect(names(high(narrow)).has('windows')).toBe(true)
-    expect(names(high(narrow)).has('doors')).toBe(true)
+    expect(names(high(narrow)).has('doorways')).toBe(true)
     expect(names(high(narrow)).has('fan')).toBe(true)
     expect(names(high(freighter)).has('windows')).toBe(false)
     expect(names(mid(fighter)).has('cockpit')).toBe(true)
@@ -502,9 +502,10 @@ describe('aircraft model factory', () => {
 
   it('puts a pack door on the close mesh and a tail mark on the mid mesh', () => {
     const narrow = createAircraft('b738', LIVERY)
-    const doorMesh = high(narrow).getObjectByName('doors') as THREE.InstancedMesh
-    expect(doorMesh.isInstancedMesh).toBe(true)
-    expect(doorMesh.count).toBe(getAircraftSpec('b738').doors.length)
+    // Side doors are framed doorways with a cabin glimpse, merged into one mesh.
+    const doorMesh = high(narrow).getObjectByName('doorways') as THREE.Mesh
+    expect(doorMesh.isMesh).toBe(true)
+    expect(getAircraftSpec('b738').doors.length).toBeGreaterThan(0)
     expect(names(mid(narrow)).has('logo')).toBe(true)
     expect(names(mid(narrow)).has('aileron')).toBe(true)
     expect(names(mid(narrow)).has('elevator')).toBe(true)

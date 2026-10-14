@@ -9,7 +9,7 @@ import { applyRosterLivery } from './procLivery'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
 import { addRig, type RigSet } from './rig'
-import { bayDoorsGeometry, legGeometry, wellGeometry, type LegKind } from './gear'
+import { bayDoorsGeometry, doorwayGeometry, legGeometry, wellGeometry, type LegKind } from './gear'
 import {
   paintMesh,
   paintVertexMesh,
@@ -702,7 +702,7 @@ function addGear(frame: Frame) {
 
 function addWindows(frame: Frame) {
   if (frame.tier !== 'mid' || !frame.spec.windows || frame.spec.family === 'helo') return
-  const { spec, centerY } = frame
+  const { spec } = frame
   // Same stations as the close-up window mesh so the two LODs overlap exactly.
   const matrices = windowMatrices(spec, Math.min(spec.decks, 2))
   const band = addInstances(frame, windowGeometry(), matrices, 'glass', 'band', 'window-band')
@@ -712,10 +712,44 @@ function addWindows(frame: Frame) {
 /** Pack door stations, one instanced mesh. Close LOD only. */
 function addRealDoors(frame: Frame) {
   if (frame.tier !== 'high' || frame.spec.doors.length === 0) return
-  const matrices = doorBoxes(frame.spec).map((box) =>
-    compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth),
-  )
-  addInstances(frame, unitBox(), matrices, 'dark', 'mesh', 'doors')
+  const boxes = doorBoxes(frame.spec)
+  // Ramps and belly doors keep the plain dark cut; side doors get a framed doorway with
+  // a cabin glimpse, seen when the leaf swings open.
+  const plain = boxes.filter((b) => b.door.side === 0)
+  if (plain.length) {
+    addInstances(frame, unitBox(), plain.map((box) => compose(box.x, box.y, box.z, 0, 0, 0, box.w, box.h, box.depth)), 'dark', 'mesh', 'doors')
+  }
+  const parts = boxes
+    .filter((b) => b.door.side !== 0)
+    .map((b) => {
+      const g = doorwayGeometry(b.w, b.h)
+      const m = new THREE.Matrix4().makeTranslation(b.x, b.y, b.door.side * frame.spec.rx * 0.985)
+      if (b.door.side < 0) m.multiply(new THREE.Matrix4().makeScale(1, 1, -1))
+      g.applyMatrix4(m)
+      if (b.door.side < 0) {
+        // Mirroring flips the winding; swap it back so faces stay outward.
+        const pos = g.getAttribute('position')
+        for (let i = 0; i < pos.count; i += 3) {
+          for (const attr of Object.values(g.attributes)) {
+            const a = attr as THREE.BufferAttribute
+            for (let c = 0; c < a.itemSize; c++) {
+              const t = a.getComponent(i + 1, c)
+              a.setComponent(i + 1, c, a.getComponent(i + 2, c))
+              a.setComponent(i + 2, c, t)
+            }
+          }
+        }
+        g.computeVertexNormals()
+      }
+      return g
+    })
+  if (parts.length) {
+    const mesh = paintVertexMesh(new THREE.Mesh(mergeGeometries(parts)!), 'mid', 'mesh', 'gear')
+    mesh.name = 'doorways'
+    parts.forEach((g) => g.dispose())
+    frame.group.add(mesh)
+    frame.meshes.push(mesh)
+  }
 }
 
 function finPose(frame: Frame) {
