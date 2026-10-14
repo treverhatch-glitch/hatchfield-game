@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { projectCash } from './cashForecast'
+import { LiveText } from './LiveText'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
@@ -390,7 +391,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             data-testid="cash-hero"
             onClick={() => setCashOpen((open) => !open)}
           >
-            <span className="cash-amount">{money(game.cash)}</span>
+            <LiveText className="cash-amount" read={() => money(game.cash)} />
             <span className={`cash-flow${forecast.dailyNet >= 0 ? ' up' : ' down'}`} data-testid="cash-forecast">
               {flowLabel}
             </span>
@@ -431,7 +432,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           ) : null}
         </div>
         <div className="stat" title="One day is a 180-second cycle">
-          {formatSimDate(game.clock)}
+          <LiveText read={() => formatSimDate(game.clock)} />
         </div>
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
         <div
@@ -556,7 +557,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               <div className="inbound-card">
                 <header>
                   <span className="kind">{card.priority ? 'Priority' : 'Traffic'}</span>
-                  <span className="timer">{Math.ceil(card.secondsLeft)}s</span>
+                  <LiveText className="timer" read={() => `${Math.ceil(game.inboundOffer()?.secondsLeft ?? 0)}s`} />
                 </header>
                 <h3>{card.title}</h3>
                 <p>{card.blurb}</p>
@@ -609,7 +610,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             title: string
             blurb: string
             tone: 'ok' | 'good' | 'bad' | 'warn'
-            left: number | null
+            /** Countdown in seconds; read by the live pump, not on render. */
+            left: (() => number) | null
             live?: boolean
             cardData?: StandingAdvisorCard
           }
@@ -622,7 +624,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${offerAirline.name} wants a contract${offerAirline.procedural ? ' · regional' : ''}`,
               blurb: `${personaBlurb(offerAirline.persona)} · ${offerAirline.blurb}`,
               tone: 'good',
-              left: Math.ceil(game.offer.deadline),
+              left: () => Math.ceil(game.offer?.deadline ?? 0),
             })
           }
           if (game.fieldTask && !game.letterAcked(`field:${game.fieldTask.id}`)) {
@@ -633,7 +635,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${game.airline(game.fieldTask.airline).name} · ${game.fieldTask.title}`,
               blurb: `${game.fieldTask.blurb} · ${money(game.fieldTask.bonus)} if done`,
               tone: 'ok',
-              left: Math.ceil(game.fieldTaskLeft()),
+              left: () => Math.ceil(game.fieldTaskLeft()),
             })
           }
           if (game.cargoVolume && !game.letterAcked(`cargo:${game.cargoVolume.id}`)) {
@@ -646,7 +648,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${a.name} volume window`,
               blurb: `Stage ${v.delivered}/${v.targetUnits}u through the shed · ${money(v.fee)} · On-time on the line`,
               tone: v.delivered >= v.targetUnits * 0.55 ? 'good' : 'ok',
-              left: Math.ceil(game.cargoVolumeLeft()),
+              left: () => Math.ceil(game.cargoVolumeLeft()),
               live: true,
             })
           }
@@ -658,7 +660,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${layoverAirline.name} layover bank`,
               blurb: `${money(game.layoverOffer.fee)} up front · ${game.layoverOffer.transferPax} transfers · ~${game.layoverOffer.duration}s. Keep Standing above the ban line.`,
               tone: 'good',
-              left: Math.ceil(game.layoverOffer.deadline),
+              left: () => Math.ceil(game.layoverOffer?.deadline ?? 0),
             })
           } else if (game.layover && layoverAirline && !game.letterAcked(`layover-live:${game.layover.airline}`)) {
             letters.push({
@@ -668,7 +670,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${layoverAirline.name} layover live`,
               blurb: `${game.layover.spawned}/${game.layover.transferPax} transfers · ${Math.ceil(game.layover.remaining)}s left · Standing ${Math.round(game.standingOf(game.layover.airline))}${game.layover.samples ? ` · avg happy ${Math.round(game.layover.happySum / game.layover.samples)}` : ''}`,
               tone: 'ok',
-              left: Math.ceil(game.layover.remaining),
+              left: () => Math.ceil(game.layover?.remaining ?? 0),
               live: true,
             })
           }
@@ -680,7 +682,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${hubAirline.name} Hub plaque`,
               blurb: `${money(game.hubOffer.fee)} · denser slots, brand lounge, persona reward. Fail a layover and the ban is harsher.`,
               tone: 'good',
-              left: Math.ceil(game.hubOffer.deadline),
+              left: () => Math.ceil(game.hubOffer?.deadline ?? 0),
             })
           }
           if (game.mxOffer && mxAirline) {
@@ -691,7 +693,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `${mxAirline.name} wants line MX`,
               blurb: `Hangar turnaround fee ${money(game.mxOffer.payout)} per visit. Needs funded mechanics.`,
               tone: 'good',
-              left: Math.ceil(game.mxOffer.deadline),
+              left: () => Math.ceil(game.mxOffer?.deadline ?? 0),
             })
           }
           if (game.pendingThreat) {
@@ -703,7 +705,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 game.pendingThreat.severity === 'hard' ? 'HARD THREAT' : 'Security alert',
               blurb: game.pendingThreat.blurb,
               tone: 'bad',
-              left: Math.ceil(game.pendingThreat.deadline),
+              left: () => Math.ceil(game.pendingThreat?.deadline ?? 0),
             })
           }
           if (game.pendingEmergency) {
@@ -723,7 +725,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 return gap ? ` · RISK: ${gap}` : ' · ready to host'
               })()}`,
               tone: 'warn',
-              left: Math.ceil(e.deadline),
+              left: () => Math.ceil(e.deadline),
             })
           }
           if (game.parkingOffer) {
@@ -734,7 +736,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               title: `Independent parking · ${game.parkingOffer.callsign}`,
               blurb: `${AIRFRAMES[game.parkingOffer.airframeId]?.name ?? 'Aircraft'} · fee ${money(game.parkingOffer.fee)} · ~${game.parkingOffer.staySec}s then leave request`,
               tone: 'ok',
-              left: Math.ceil(game.parkingOffer.deadline),
+              left: () => Math.ceil(game.parkingOffer?.deadline ?? 0),
             })
           }
           const warnKey = `warn:${game.warnedAirlines().slice().sort().join(',')}`
@@ -808,7 +810,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   <span className="letter-kind">{letter.kind}</span>
                   <span className="letter-from">{letter.from}</span>
                   {letter.left != null ? (
-                    <span className="letter-timer">{letter.left}s</span>
+                    <LiveText className="letter-timer" read={() => `${letter.left?.() ?? 0}s`} />
                   ) : (
                     <span className="letter-timer">info</span>
                   )}
@@ -1017,7 +1019,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           }}
                         >
                           {letter.kind} · {letter.from}
-                          {letter.left != null ? ` · ${letter.left}s` : ''}
+                          {letter.left != null ? ` · ${letter.left()}s` : ''}
                         </button>
                       ))
                     : null}
@@ -1162,7 +1164,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <>
                     <h3>Cash & capital</h3>
                     <p className="muted eco-line" data-testid="economy-cash">
-                      Bank {money(game.cash)}
+                      Bank <LiveText read={() => money(game.cash)} />
                       {game.sandbox ? ' · sandbox' : ''}
                       {game.loanBalance ? ` · loan owed ${money(game.loanBalance)}` : ''}
                       {' · '}pax fees {money(game.landsideIncome())} / expense{' '}
@@ -2480,7 +2482,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 title="Economy"
                 onClick={() => openPanel('economy')}
               >
-                {money(game.cash)}
+                <LiveText read={() => money(game.cash)} />
               </button>
               {INFO_MENUS.map((m) => (
                 <button
