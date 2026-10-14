@@ -4,35 +4,41 @@ import { AIRCRAFT_LOOK } from '../look'
 import { sharedGeo } from './pool'
 
 /** Normalized fuselage stations, nose t=0 → tail t=1, radius 0–1. */
-const PROFILES: Record<string, { t: number; r: number }[]> = {
+const PROFILES: Record<string, { t: number; r: number; dy?: number }[]> = {
+  // Airliner nose: elliptical, centreline drooping below the cabin axis.
+  // Tail cone: upswept belly so the APU sits high, like the real tailcone.
   tube: [
-    { t: 0, r: 0.015 },
-    { t: 0.018, r: 0.14 },
-    { t: 0.04, r: 0.4 },
-    { t: 0.07, r: 0.7 },
-    { t: 0.1, r: 0.88 },
-    { t: 0.14, r: 0.97 },
-    { t: 0.18, r: 1 },
-    { t: 0.74, r: 1 },
-    { t: 0.8, r: 0.9 },
-    { t: 0.86, r: 0.68 },
-    { t: 0.92, r: 0.4 },
-    { t: 0.97, r: 0.16 },
-    { t: 1, r: 0.03 },
+    { t: 0, r: 0.02, dy: -0.2 },
+    { t: 0.004, r: 0.22, dy: -0.19 },
+    { t: 0.012, r: 0.38, dy: -0.17 },
+    { t: 0.025, r: 0.54, dy: -0.14 },
+    { t: 0.045, r: 0.71, dy: -0.1 },
+    { t: 0.07, r: 0.85, dy: -0.06 },
+    { t: 0.1, r: 0.94, dy: -0.03 },
+    { t: 0.13, r: 0.985, dy: -0.01 },
+    { t: 0.16, r: 1 },
+    { t: 0.72, r: 1 },
+    { t: 0.78, r: 0.92, dy: 0.06 },
+    { t: 0.84, r: 0.76, dy: 0.18 },
+    { t: 0.9, r: 0.56, dy: 0.34 },
+    { t: 0.95, r: 0.36, dy: 0.5 },
+    { t: 0.985, r: 0.2, dy: 0.6 },
+    { t: 1, r: 0.12, dy: 0.64 },
   ],
   rearjet: [
-    { t: 0, r: 0.02 },
-    { t: 0.025, r: 0.2 },
-    { t: 0.06, r: 0.58 },
-    { t: 0.1, r: 0.86 },
-    { t: 0.15, r: 0.98 },
-    { t: 0.2, r: 1 },
+    { t: 0, r: 0.02, dy: -0.2 },
+    { t: 0.006, r: 0.24, dy: -0.18 },
+    { t: 0.02, r: 0.46, dy: -0.15 },
+    { t: 0.045, r: 0.68, dy: -0.1 },
+    { t: 0.08, r: 0.86, dy: -0.05 },
+    { t: 0.12, r: 0.96, dy: -0.02 },
+    { t: 0.17, r: 1 },
     { t: 0.56, r: 1 },
-    { t: 0.66, r: 0.86 },
-    { t: 0.76, r: 0.58 },
-    { t: 0.86, r: 0.32 },
-    { t: 0.94, r: 0.14 },
-    { t: 1, r: 0.04 },
+    { t: 0.66, r: 0.88, dy: 0.08 },
+    { t: 0.76, r: 0.64, dy: 0.24 },
+    { t: 0.86, r: 0.42, dy: 0.42 },
+    { t: 0.94, r: 0.24, dy: 0.56 },
+    { t: 1, r: 0.12, dy: 0.62 },
   ],
   point: [
     { t: 0, r: 0.01 },
@@ -97,7 +103,7 @@ export function loftGeometry(family: string, sides: number): THREE.BufferGeometr
       for (let i = 0; i < sides; i++) {
         const a = (i / sides) * Math.PI * 2
         ring[i * 3] = x
-        ring[i * 3 + 1] = Math.sin(a) * station.r
+        ring[i * 3 + 1] = Math.sin(a) * station.r + (station.dy ?? 0)
         ring[i * 3 + 2] = Math.cos(a) * station.r
       }
       rings.push(ring)
@@ -126,12 +132,14 @@ export function loftGeometry(family: string, sides: number): THREE.BufferGeometr
     }
     const nose = rings[0]
     const tail = rings[rings.length - 1]
+    const noseY = profile[0].dy ?? 0
+    const tailY = profile[profile.length - 1].dy ?? 0
     for (let i = 0; i < sides; i++) {
       const i2 = (i + 1) % sides
       const a = i * 3
       const b = i2 * 3
-      pushTri(positions, 0.51, 0, 0, nose[b], nose[b + 1], nose[b + 2], nose[a], nose[a + 1], nose[a + 2])
-      pushTri(positions, -0.51, 0, 0, tail[a], tail[a + 1], tail[a + 2], tail[b], tail[b + 1], tail[b + 2])
+      pushTri(positions, 0.501, noseY, 0, nose[b], nose[b + 1], nose[b + 2], nose[a], nose[a + 1], nose[a + 2])
+      pushTri(positions, -0.5, tailY, 0, tail[a], tail[a + 1], tail[a + 2], tail[b], tail[b + 1], tail[b + 2])
     }
     const soup = new THREE.BufferGeometry()
     soup.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
@@ -218,8 +226,9 @@ export function wingGeometry(
     const semi = span / 2
     const sweep = Math.tan((sweepDeg * Math.PI) / 180) * semi
     const lift = Math.tan((dihedralDeg * Math.PI) / 180) * semi
-    const yT = thickness / 2
-    const yTip = Math.max(0.08, thickness * 0.28)
+    // Thin, tapered section: root ~ 11% t/c look at game scale, tip down to a blade.
+    const yT = thickness * 0.32
+    const yTip = Math.max(0.05, thickness * 0.12)
     const leR = [rootChord / 2, yT, 0]
     const teR = [-rootChord / 2, yT, 0]
     const leT = [rootChord / 2 - sweep, lift + yTip, semi]
@@ -305,4 +314,56 @@ export function finGeometry(tail: string, stripe: string): THREE.BufferGeometry 
     geo.computeVertexNormals()
     return geo
   })
+}
+
+/**
+ * Turbofan nacelle in unit space: axis along Y, intake at y = -0.5, radius 1.
+ * Rounded inlet lip, recessed fan face, tapered fan cowl, core cowl and exhaust plug.
+ * Built on Y so it drops in where the unit cylinder used to go.
+ */
+export function nacelleGeometry(sides: number): THREE.BufferGeometry {
+  return sharedGeo(`nacelle:${sides}`, () => {
+    // [radius, y] from the fan face, out over the lip, aft to the plug tip.
+    const prof: [number, number][] = [
+      [0.001, -0.4],
+      [0.8, -0.4],
+      [0.9, -0.505],
+      [1.0, -0.44],
+      [1.0, -0.12],
+      [0.88, 0.22],
+      [0.6, 0.31],
+      [0.5, 0.48],
+      [0.3, 0.54],
+      [0.001, 0.66],
+    ]
+    const pts = prof.map(([r, y]) => new THREE.Vector2(r, y))
+    const geo = new THREE.LatheGeometry(pts, Math.max(20, sides * 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/** Oval cabin window decal facing +Z, 10 triangles. Scale is (width, height, 1). */
+export function windowGeometry(): THREE.BufferGeometry {
+  return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 10))
+}
+
+/** Loft radius and centreline offset at fraction t (0 nose, 1 tail), unit space. */
+export function loftStation(family: string, t: number): { r: number; dy: number } {
+  const prof = PROFILES[family] ?? PROFILES.tube
+  for (let i = 0; i < prof.length - 1; i++) {
+    const a = prof[i]
+    const b = prof[i + 1]
+    if (t <= b.t) {
+      const k = (t - a.t) / Math.max(1e-6, b.t - a.t)
+      return { r: a.r + (b.r - a.r) * k, dy: (a.dy ?? 0) + ((b.dy ?? 0) - (a.dy ?? 0)) * k }
+    }
+  }
+  const last = prof[prof.length - 1]
+  return { r: last.r, dy: last.dy ?? 0 }
+}
+
+/** Smooth unit sphere for fairings and radomes. */
+export function smoothSphere(): THREE.BufferGeometry {
+  return sharedGeo('sphere:smooth', () => new THREE.SphereGeometry(1, 14, 8))
 }

@@ -259,23 +259,24 @@ function addReversers(frame: RigFrame, pts: THREE.Vector3[]) {
     hinge: new THREE.Matrix4().makeTranslation(p.x - eng.length * 0.18, p.y, p.z),
     offset: new THREE.Vector3(0, 0, 0),
     base: CYL_X,
-    size: new THREE.Vector3(eng.radius * 1.015, eng.length * 0.34, eng.radius * 1.015),
+    size: new THREE.Vector3(eng.radius * 0.985, eng.length * 0.3, eng.radius * 0.985),
     side: p.z >= 0 ? 1 : -1,
     reach: eng.length,
   }))
-  addSet(frame, 'reverser', unitCylinder(cylinderSides(frame.tier)), parts, 'metal')
+  addSet(frame, 'reverser', unitCylinder(12), parts, 'metal')
   // Cascade band revealed when the sleeve slides aft.
   const bands = pts.map((p) =>
-    trs(p.x - eng.length * 0.02, p.y, p.z, CYL_X, eng.radius * 0.97, eng.length * 0.12, eng.radius * 0.97),
+    trs(p.x - eng.length * 0.02, p.y, p.z, CYL_X, eng.radius * 0.94, eng.length * 0.12, eng.radius * 0.94),
   )
-  addStatic(frame, unitCylinder(cylinderSides(frame.tier)), bands, 'dark', 'cascades')
+  addStatic(frame, unitCylinder(10), bands, 'dark', 'cascades')
 }
 
 function addApu(frame: RigFrame) {
   const { spec } = frame
   if (spec.family === 'helo' || spec.lengthM < 18 || !isJet(spec)) return
   const r = Math.min(0.32, spec.ry * 0.09)
-  const y = frame.centerY + spec.ry * 0.3
+  // Tailcone is upswept (loft dy ≈ 0.64 at the tip), so the APU outlet sits high.
+  const y = frame.centerY + spec.ry * (spec.family === 'tube' ? 0.62 : 0.6)
   addStatic(frame, unitCylinder(10), [trs(frame.tailX + 0.05, y, 0, CYL_X, r, 0.5, r)], 'dark', 'apu-exhaust')
 }
 
@@ -312,7 +313,7 @@ function addLandingLights(frame: RigFrame) {
   if (spec.family === 'helo' || spec.spanM < 10) return
   const p = planform(frame)
   const f = Math.min(0.3, (spec.rx * 1.6) / p.semi)
-  const r = Math.min(0.5, Math.max(0.22, spec.spanM * 0.008))
+  const r = Math.min(0.28, Math.max(0.1, spec.rx * 0.1))
   for (const side of [1, -1]) {
     const mesh = new THREE.Mesh(unitSphere())
     mesh.scale.setScalar(r)
@@ -373,6 +374,5 @@ export function addRig(frame: RigFrame, enginePts: THREE.Vector3[]) {
     return
   }
   addDoorLeaves(frame)
-  addWindscreen(frame)
   addSpinnerCones(frame, enginePts)
 }

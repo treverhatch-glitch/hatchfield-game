@@ -95,7 +95,7 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     case 'dark':
       return '#14181d'
     case 'glass':
-      return '#1a3c52'
+      return '#0c141c'
     case 'rubber':
       return '#1a1c1e'
     case 'navRed':
@@ -109,6 +109,19 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     default:
       return '#888888'
   }
+}
+
+/** [metalness, roughness]: gloss paint, bare alloy, rubber, glazing. */
+const SLOT_PBR: Partial<Record<PaintSlot, [number, number]>> = {
+  body: [0.08, 0.34],
+  stripe: [0.08, 0.34],
+  tail: [0.08, 0.34],
+  belly: [0.1, 0.45],
+  wing: [0.25, 0.5],
+  metal: [0.45, 0.38],
+  dark: [0.4, 0.55],
+  glass: [0.2, 0.08],
+  rubber: [0, 0.92],
 }
 
 function isLamp(slot: PaintSlot): boolean {
@@ -140,7 +153,7 @@ export function vertexMaterials(
   const mat = sharedMat(key, () => {
     if (unlit) return new THREE.MeshBasicMaterial({ vertexColors: true })
     // Nacelles stay Lambert so the close view compiles one physical shader, on the painted shell.
-    if (metal) return new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
+    if (metal) return new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.38 })
     return new THREE.MeshStandardMaterial({
       vertexColors: true,
       metalness: AIRCRAFT_LOOK.paint.metalness,
@@ -172,12 +185,12 @@ export function paintMesh(
 ): PaintedMesh {
   const color = slotColor(slot, livery)
   const unlit = tier === 'low' || isLamp(slot)
-  const key = `${unlit ? 'basic' : 'lambert'}:${slot}:${color}`
-  const mat = sharedMat(key, () =>
-    unlit
-      ? new THREE.MeshBasicMaterial({ color })
-      : new THREE.MeshLambertMaterial({ color, flatShading: true }),
-  )
+  const key = `${unlit ? 'basic' : 'pbr'}:${slot}:${color}`
+  const mat = sharedMat(key, () => {
+    if (unlit) return new THREE.MeshBasicMaterial({ color })
+    const [metalness, roughness] = SLOT_PBR[slot] ?? [0.08, 0.4]
+    return new THREE.MeshStandardMaterial({ color, metalness, roughness })
+  })
   mesh.userData.paint = color
   mesh.userData.slot = slot
   if (isLamp(slot)) mesh.frustumCulled = true
