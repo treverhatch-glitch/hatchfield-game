@@ -54,14 +54,26 @@ export function loadAircraftQuality() {
 }
 
 let night = false
+/** 0 = day lamps, 1 = full nav and beacon. The sim sets this once per frame. */
+let lamp = 0
+
+/** Brightness for nav, strobe, and beacon lamps. Values above 0.45 count as night. */
+export function setAircraftLamp(level: number) {
+  lamp = Math.max(0, Math.min(1, Number.isFinite(level) ? level : 0))
+  night = lamp > 0.45
+}
 
 /** Day/night lamp scale. The sim sets this once per frame. */
 export function setAircraftNight(on: boolean) {
-  night = on
+  setAircraftLamp(on ? 1 : 0)
 }
 
 export function aircraftIsNight(): boolean {
   return night
+}
+
+export function aircraftLamp(): number {
+  return lamp
 }
 
 export interface LodWeights {
@@ -215,7 +227,7 @@ export class CrossfadeLOD extends THREE.LOD {
       }
     }
 
-    const nightScale = night ? 1.55 : 0.85
+    const nightScale = 0.85 + lamp * 0.7
     for (const lamp of buckets.lamps) {
       const kind = lamp.userData.kind as string
       if (kind === 'strobe' || kind === 'beacon') continue

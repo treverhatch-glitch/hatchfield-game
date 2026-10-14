@@ -15,6 +15,8 @@ export {
   MODEL_SPECS,
   releaseAircraft,
   setAircraftNight,
+  setAircraftLamp,
+  aircraftLamp,
   setAircraftQuality,
   triangleCount,
   updateAircraft,

@@ -14,7 +14,7 @@ import {
   liveryKey,
   ParkedFleet,
   releaseAircraft,
-  setAircraftNight,
+  setAircraftLamp,
   setAircraftQuality,
   aircraftWorldPerMeter,
   CELL,
@@ -39,11 +39,12 @@ import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
 import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
+import { VehicleHeadlights } from './vehicleLights.ts'
+import type { DayNightControl } from './world/dayNight'
 import {
   initWorldRender,
   QUALITY,
   REPLACED_TILES,
-  type DayNightSample,
   type QualityLevel,
   type WorldRender,
 } from './world/index'
@@ -255,6 +256,8 @@ export class World {
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
   private captureWanted = false
+  private headlights = new VehicleHeadlights()
+  private headlightRoots: THREE.Object3D[] = []
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -319,6 +322,7 @@ export class World {
     this.scene.add(this.gateGroup)
     this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
+    this.scene.add(this.headlights.group)
     this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
@@ -523,14 +527,17 @@ export class World {
     setAircraftQuality(level)
   }
 
-  /** Photo mode. `null` follows the sim clock. Does not clear day/night overrides. */
+  /** Photo mode. `null` follows the sim clock and leaves any day/night override in place. */
   setTimeOfDay(hour: number | null) {
     this.wr.setTimeOfDay(hour)
   }
 
-  /** Later day/night cycle. See `DayNightSample`. */
-  setDayNight(sample: DayNightSample | null) {
-    this.wr.setDayNight(sample)
+  /**
+   * Lighting-rig hook. `null` returns the sky to the sim clock.
+   * `daylight` blends the sun toward night; `lights` drives the field lamps.
+   */
+  setDayNight(control: DayNightControl | null) {
+    this.wr.setDayNight(control)
   }
 
   /** Grab a PNG on the next `render`, while the drawing buffer is still current. */
@@ -1996,6 +2003,7 @@ export class World {
         const size = vehicleMeters(t.kind)
         const ht = wu(size[1])
         const g = new THREE.Group()
+        g.userData.headlight = { length: wu(size[0]), width: wu(size[2]) }
         g.add(vehicleMesh(t.kind, color, size, WORLD_PER_METER))
         // Manor Lords-style visible load — crates on bag carts / city trucks.
         if (t.kind === 'bags' || t.kind === 'citycargo') {
@@ -2080,6 +2088,7 @@ export class World {
         const ht = wu(htM)
         const wid = wu(widM)
         const g = new THREE.Group()
+        g.userData.headlight = { length: len, width: wid }
         g.add(vehicleMesh(pose.type, color, [lenM, htM, widM], WORLD_PER_METER))
         if (pose.type === 'baggage_tug' || pose.type === 'belt_loader') {
           const bed = new THREE.Mesh(
@@ -2393,13 +2402,20 @@ export class World {
     })
   }
 
+  /** Headlamps follow trucks and service vehicles. Pools stay off on Low. */
+  private syncHeadlights() {
+    this.headlightRoots.length = 0
+    for (const mesh of this.trucks.values()) this.headlightRoots.push(mesh)
+    for (const mesh of this.service.values()) this.headlightRoots.push(mesh)
+    this.headlights.sync(this.headlightRoots, this.wr.dayNightSample.headlights, this.wr.quality !== 'low')
+  }
+
   render(game: Game) {
     const now = performance.now()
     const dt = (now - this.lastFrame) / 1000
     this.lastFrame = now
     perfFrame()
     let t = perfStart()
-    setAircraftNight(game.isNight())
     this.resize()
     this.easeToGoal(game, dt)
     this.applyPerfMode(game)
@@ -2417,6 +2433,8 @@ export class World {
     this.followCameraCue(game)
     this.syncMroDoors(game)
     this.wr.update(game, this.camera, dt)
+    this.syncHeadlights()
+    setAircraftLamp(this.wr.dayNightSample.aircraft)
     perfEnd('world.wr', t)
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
@@ -2471,6 +2489,7 @@ export class World {
     disposeVehicleLibrary()
     this.offGfx()
     this.wr.dispose()
+    this.headlights.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
     const canvas = this.canvas

@@ -14,7 +14,9 @@ export {
   setAircraftQuality,
   loadAircraftQuality,
   setAircraftNight,
+  setAircraftLamp,
   aircraftIsNight,
+  aircraftLamp,
 } from './lod'
 export type { AircraftQuality } from './lod'
 export { disposeAircraftLibrary, libraryStats, releaseAircraft } from './pool'

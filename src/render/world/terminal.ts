@@ -656,7 +656,9 @@ export class TerminalBuilding {
     this.time += dt
     if (this.lifeFade > 0) this.stepWalkers(this.time)
     this.floorMat.emissiveIntensity = night * 0.32
-    this.glassMat.emissiveIntensity = night * 0.35
+    // Curtain wall reads as lit rooms once the sun is down. Day stays at the clear 0.3.
+    this.glassMat.opacity = 0.3 + night * 0.22
+    this.glassMat.emissiveIntensity = night * 1.05
     this.skyMat.emissiveIntensity = night * 0.25
   }
 

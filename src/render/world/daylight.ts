@@ -1,6 +1,7 @@
 /**
  * Day / night + weather lighting model. Pure numbers in, pure numbers out, so the
  * sim clock, a photo-mode override, or a future weather system can all drive it.
+ * The light rig reads the painted sky, then `applyDayNight` in `dayNight.ts`.
  */
 import type { Weather } from '../../game/types'
 import { DAYLIGHT_KEYS, LIGHT_LOOK, type DaylightKey } from '../look'

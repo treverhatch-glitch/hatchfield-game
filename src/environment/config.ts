@@ -139,3 +139,14 @@ export const CLIMATE_LABEL: Record<ClimateId, string> = {
   rainy: 'rainy',
   cool: 'cool',
 }
+
+/**
+ * Winter ground snow. A colour + emissive write on the grass, not a particle
+ * system. Low uses the lighter mix so the field still reads as snow.
+ */
+export const SNOW = {
+  cover: 0.82,
+  lowCover: 0.64,
+  /** Emissive strength at full cover. Low scales with `lowCover`. */
+  emissive: 0.72,
+}

@@ -1,13 +1,15 @@
 /**
- * Hooks for a later day/night cycle.
+ * Day/night cycle the lighting rig reads after the sim clock paints the sky.
  *
- * The apron still follows the sim clock. A cycle should call `setDayNight`
- * once per frame (after photo mode applies its hour) with any field it wants
- * to own. Null fields keep the clock's value. `setDayNight(null)` hands the
- * sun back. `setTimeOfDay` only overrides the hour and leaves these hooks.
+ * `paintSky` owns the sun arc, sky colour, and season tint. `applyDayNight`
+ * then blends that painted sky toward night, or pins the field lights, without
+ * replacing a season colour when `daylight` stays at 1.
+ *
+ * `World.setDayNight(null)` hands the sun back to the clock. `setTimeOfDay`
+ * only overrides the hour. Low quality uses the same sample and skips apron
+ * light pools, headlight pools, and per-lamp glow rewrites.
  */
-import { DAYLIGHT_KEYS } from '../look'
-import { DAY_SECONDS, lerpHex, type SkyState } from './daylight'
+import { DAY_SECONDS, lerpHex, simClockToHour, smoothstep, type SkyState } from './daylight'
 
 export const DAY_NIGHT_CYCLE = {
   /** Sun clears the horizon. Matches the dawn ramp in `lightsFactor`. */
@@ -18,39 +20,159 @@ export const DAY_NIGHT_CYCLE = {
   daySeconds: DAY_SECONDS,
 } as const
 
-export interface DayNightSample {
-  /** 0–24. Null follows the simulation clock (or a photo-mode hour). */
-  hour: number | null
-  /** 0 = night floor, 1 = the clock's full sun. Null leaves the sun alone. */
-  daylight: number | null
-  /** 0 = field lights off, 1 = fully on. Null follows the clock and weather. */
-  lights: number | null
+export const DAY_NIGHT = {
+  /** Sun clears the horizon. */
+  sunrise: 6.4,
+  /** Sun meets the horizon again. */
+  sunset: 19.2,
+  daySeconds: DAY_SECONDS,
+  /** Hours used by the dawn / noon / dusk / night screenshots. */
+  shots: { dawn: 6.6, noon: 12, dusk: 19, night: 23 },
+} as const
+
+/** Rig values a full-night override blends toward. Matches the midnight key. */
+export const NIGHT_FLOOR = {
+  sunIntensity: 0.16,
+  hemiIntensity: 0.32,
+  exposure: 1.15,
+  sunColor: 0x8ea6d8,
+  hemiSky: 0x30406a,
+  hemiGround: 0x1a2418,
+  ambient: 0.24,
+  stars: 1,
+} as const
+
+/**
+ * Partial override. Omit a field, or pass null, to keep the sim clock.
+ * `daylight` 1 leaves the painted sky; 0 blends the rig to `NIGHT_FLOOR`.
+ * `lights` is field-light brightness (runway, taxi, apron, aircraft, headlights).
+ */
+export interface DayNightControl {
+  hour?: number | null
+  daylight?: number | null
+  lights?: number | null
 }
 
-export function emptyDayNight(): DayNightSample {
-  return { hour: null, daylight: null, lights: null }
+/** What the renderer and the lighting rig both read, once per frame. */
+export interface DayNightSample {
+  hour: number
+  /** 1 = full painted day, 0 = night floor. */
+  daylight: number
+  /** 0 = field lights off, 1 = fully on. */
+  lights: number
+  windows: number
+  runwayEdge: number
+  taxiEdge: number
+  apron: number
+  apronPools: boolean
+  /** Aircraft nav and beacon brightness. */
+  aircraft: number
+  /** Vehicle headlight brightness. */
+  headlights: number
+  /** 0–1 winter snow on grass. 0 on other seasons and on maps with their own ground. */
+  snow: number
+  ground: number
+  grass: number
+  seasonId: string
+}
+
+export interface AirfieldLevels {
+  runway: number
+  taxi: number
+  apron: number
 }
 
 function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(1, n))
 }
 
+function wrapHour(hour: number): number {
+  if (!Number.isFinite(hour)) return 0
+  return ((hour % 24) + 24) % 24
+}
+
+/** 1 through the middle of the day, 0 overnight. Informational; the sky keys already paint this. */
+export function daylightFactor(hour: number): number {
+  const h = wrapHour(hour)
+  if (h >= 12) return 1 - smoothstep(17.4, 20.4, h)
+  return smoothstep(5.8, 8.6, h)
+}
+
 /**
- * Scale a clock-driven sky toward night, or pin the field lights.
- * Pure: the input sky is not mutated.
+ * Absolute sim clock (seconds) whose hour and season day match.
+ * `day` is the economy day index (`floor(clock / 180)`).
  */
-export function applyDayNight(sky: SkyState, sample: DayNightSample | null): SkyState {
-  if (!sample || (sample.daylight == null && sample.lights == null)) return sky
-  const night = DAYLIGHT_KEYS[0]
-  const next: SkyState = { ...sky, sunDir: { ...sky.sunDir } }
-  if (sample.daylight != null) {
-    const d = clamp01(sample.daylight)
-    next.sunIntensity = night.sunI + (sky.sunIntensity - night.sunI) * d
-    next.hemiIntensity = night.hemiI + (sky.hemiIntensity - night.hemiI) * d
-    next.exposure = night.exposure + (sky.exposure - night.exposure) * d
-    next.sunColor = lerpHex(night.sun, sky.sunColor, d)
-    next.stars = Math.max(sky.stars, 1 - d)
+export function clockForHour(day: number, hour: number): number {
+  const h = wrapHour(hour)
+  const safeDay = Number.isFinite(day) ? Math.max(0, Math.floor(day)) : 0
+  let p: number
+  if (h >= 8 && h < 19) {
+    p = ((h - 8) / 11) * (2 / 3)
+  } else {
+    const from19 = h >= 19 ? h - 19 : h + 5
+    p = 2 / 3 + (from19 / 13) * (1 / 3)
   }
-  if (sample.lights != null) next.lights = clamp01(sample.lights)
+  return safeDay * DAY_SECONDS + p * DAY_SECONDS
+}
+
+/** Null fields. Passing this (or null) leaves the clock sky alone. */
+export function emptyDayNight(): DayNightControl {
+  return { hour: null, daylight: null, lights: null }
+}
+
+/**
+ * Blend a painted sky toward `NIGHT_FLOOR` when `daylight` is set, then apply
+ * an optional field-light override. Does not mutate `sky`. Season colours
+ * already in `sky` stay when `daylight` is omitted or 1.
+ */
+export function applyDayNight(sky: SkyState, control: DayNightControl | null): SkyState {
+  if (!control) return sky
+  const hasDay = control.daylight != null && Number.isFinite(control.daylight)
+  const hasLights = control.lights != null && Number.isFinite(control.lights)
+  if (!hasDay && !hasLights) return sky
+  const next: SkyState = { ...sky, sunDir: { ...sky.sunDir } }
+  if (hasDay) {
+    const t = 1 - clamp01(control.daylight as number)
+    next.sunIntensity += (NIGHT_FLOOR.sunIntensity - next.sunIntensity) * t
+    next.hemiIntensity += (NIGHT_FLOOR.hemiIntensity - next.hemiIntensity) * t
+    next.exposure += (NIGHT_FLOOR.exposure - next.exposure) * t
+    next.ambient += (NIGHT_FLOOR.ambient - next.ambient) * t
+    next.sunColor = lerpHex(next.sunColor, NIGHT_FLOOR.sunColor, t)
+    next.hemiSky = lerpHex(next.hemiSky, NIGHT_FLOOR.hemiSky, t)
+    next.hemiGround = lerpHex(next.hemiGround, NIGHT_FLOOR.hemiGround, t)
+    next.stars = Math.max(next.stars, t)
+  }
+  if (hasLights) next.lights = clamp01(control.lights as number)
   return next
+}
+
+export function idleDayNight(): DayNightSample {
+  return {
+    hour: 12,
+    daylight: 1,
+    lights: 0,
+    windows: 0,
+    runwayEdge: 0,
+    taxiEdge: 0,
+    apron: 0,
+    apronPools: false,
+    aircraft: 0,
+    headlights: 0,
+    snow: 0,
+    ground: 0x5a7a44,
+    grass: 0xb7d49a,
+    seasonId: 'spring',
+  }
+}
+
+/** Photo-mode hour wins; otherwise the control hour; otherwise the sim clock. */
+export function resolveHour(clock: number, hourOverride: number | null, control: DayNightControl | null): number {
+  if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
+  if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
+  return simClockToHour(clock)
+}
+
+export function airfieldLevels(sample: Pick<DayNightSample, 'runwayEdge' | 'taxiEdge' | 'apron'>): AirfieldLevels {
+  return { runway: sample.runwayEdge, taxi: sample.taxiEdge, apron: sample.apron }
 }
