@@ -69,7 +69,9 @@ import { standBox } from './world/layout'
 import { setFidsOpen } from '../fids/open'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
-import { HOTEL_WALL, SKIN_TILE_M } from '../build/materialTargets'
+import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
+import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
+import { mountDock, mountSign } from './world/buildingSign'
 
 interface ClimbOut {
   airframeId: string
@@ -910,12 +912,7 @@ export class World {
       apron.position.set(0, 0.04, CELL * 0.44)
       g.add(body, roof, bay, apron)
     } else if (tile === 'police') {
-      const body = new THREE.Mesh(skinBox(CELL * 0.7, 2.0, CELL * 0.65, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('police_station', 'wall'))
-      body.position.y = 1.0
-      body.castShadow = true
-      const roof = new THREE.Mesh(skinBox(CELL * 0.74, 0.12, CELL * 0.69, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('police_station', 'roof'))
-      roof.position.y = 2.06
-      g.add(body, roof)
+      addPoliceBuilding(g)
     } else if (tile === 'cargo') {
       const body = new THREE.Mesh(skinBox(CELL * 0.9, 2.6, CELL * 0.85, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('cargo_terminal', 'wall'))
       body.position.y = 1.3
@@ -932,25 +929,7 @@ export class World {
       }
       g.add(body, roof)
     } else if (tile === 'guard') {
-      // City-edge booth — screens inbound trucks.
-      const booth = new THREE.Mesh(skinBox(CELL * 0.55, 1.7, CELL * 0.55, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('guard_booth', 'wall'))
-      booth.position.y = 0.85
-      booth.castShadow = true
-      const bar = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.85, 0.1, 0.12),
-        skinMaterial('guard_booth', 'trim', { emissive: '#4a3a10', emissiveIntensity: 0.2 }),
-      )
-      bar.position.set(0, 1.15, CELL * 0.28)
-      const lamp = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 0.35, 0.18),
-        new THREE.MeshStandardMaterial({
-          color: '#e8d080',
-          emissive: '#8a7020',
-          emissiveIntensity: 0.35,
-        }),
-      )
-      lamp.position.set(0, 1.9, 0)
-      g.add(booth, bar, lamp)
+      addGuardBuilding(g)
     } else if (tile === 'road') {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.98, CELL * 0.98),
@@ -1113,23 +1092,7 @@ export class World {
       vent.castShadow = true
       g.add(body, vent)
     } else if (tile === 'depot') {
-      const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.96, CELL * 0.96), 4, WORLD_PER_METER), yardMaterial('gravel'))
-      yard.rotation.x = -Math.PI / 2
-      yard.position.y = 0.035
-      yard.receiveShadow = true
-      g.add(yard)
-      const shed = new THREE.Mesh(skinBox(CELL * 0.9, 1.8, CELL * 0.75, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('ground_services', 'wall'))
-      shed.position.y = 0.9
-      shed.castShadow = true
-      const bay = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.55, 0.9, 0.12), skinMaterial('ground_services', 'trim'))
-      bay.position.set(0, 0.7, CELL * 0.38)
-      const truck = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.4, 0.45, CELL * 0.22),
-        new THREE.MeshStandardMaterial({ color: '#c9a227', roughness: 0.4 }),
-      )
-      truck.position.set(0, 0.35, CELL * 0.22)
-      truck.castShadow = true
-      g.add(shed, bay, truck)
+      addDepotBuilding(g)
     } else if (tile === 'xferbus') {
       const pad = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
@@ -1433,11 +1396,10 @@ export class World {
     term: ParkTerm,
   ) {
     const accent = term === 'short' ? '#3a8fd4' : '#d4782a'
+    const lot = PARK_PAINT[kind].lot
     const pad = new THREE.Mesh(
       new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),
-      new THREE.MeshLambertMaterial({
-        color: kind === 'park_u' ? '#2a3038' : kind === 'park_g' ? '#3a4550' : '#3d4248',
-      }),
+      new THREE.MeshLambertMaterial({ color: lot }),
     )
     pad.rotation.x = -Math.PI / 2
     pad.position.y = 0.03
@@ -1458,18 +1420,19 @@ export class World {
     }
 
     if (kind === 'park_s') {
-      // Small lot — ticket booth + boom arm
+      // Ticket booth and boom on the apron face, where a car actually stops.
+      const boothZ = CELL * 0.16
       const booth = new THREE.Mesh(
         new THREE.BoxGeometry(1.1, 1.5, 1.1),
-        new THREE.MeshStandardMaterial({ color: '#e8eef4', roughness: 0.45 }),
+        new THREE.MeshStandardMaterial({ color: PARK_PAINT.park_s.booth, roughness: 0.45 }),
       )
-      booth.position.set(-CELL * 0.28, 0.85, -CELL * 0.28)
+      booth.position.set(-CELL * 0.22, 0.85, boothZ)
       booth.castShadow = true
       const boothRoof = new THREE.Mesh(
         new THREE.BoxGeometry(1.35, 0.15, 1.35),
         new THREE.MeshStandardMaterial({ color: accent }),
       )
-      boothRoof.position.set(-CELL * 0.28, 1.7, -CELL * 0.28)
+      boothRoof.position.set(-CELL * 0.22, 1.7, boothZ)
       const window = new THREE.Mesh(
         new THREE.BoxGeometry(0.55, 0.45, 0.06),
         new THREE.MeshStandardMaterial({
@@ -1478,17 +1441,19 @@ export class World {
           emissiveIntensity: 0.2,
         }),
       )
-      window.position.set(-CELL * 0.28, 1.05, -CELL * 0.28 + 0.56)
+      window.position.set(-CELL * 0.22, 1.05, boothZ + 0.56)
       const boom = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.55, 0.08, 0.08),
+        new THREE.BoxGeometry(CELL * 0.5, 0.08, 0.08),
         new THREE.MeshStandardMaterial({ color: '#e8c44a' }),
       )
-      boom.position.set(CELL * 0.05, 0.95, -CELL * 0.28)
+      boom.position.set(CELL * 0.1, 0.95, boothZ)
       const pole = new THREE.Mesh(
         new THREE.CylinderGeometry(0.07, 0.07, 1.0, 6),
         new THREE.MeshStandardMaterial({ color: '#c9c4b0' }),
       )
-      pole.position.set(-CELL * 0.05, 0.55, -CELL * 0.28)
+      pole.position.set(CELL * 0.02, 0.55, boothZ)
+      mountSign(g, 'PARK', { w: 1.15, h: 0.34, x: -CELL * 0.22, y: 1.42, z: boothZ + 0.64 }, accent, '#f7f4ee')
+      mountDock(g, CELL * 0.55, 1.2, CELL * 0.02, boothZ + 1.05, '#c8c2b4')
       g.add(booth, boothRoof, window, boom, pole)
       return
     }
@@ -1497,32 +1462,28 @@ export class World {
       // Large lot — entry canopy building + dual lamps
       const office = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.55, 2.2, CELL * 0.4),
-        new THREE.MeshStandardMaterial({ color: '#b8c0c8', roughness: 0.5 }),
+        new THREE.MeshStandardMaterial({ color: PARK_PAINT.park_l.office, roughness: 0.5 }),
       )
-      office.position.set(-CELL * 0.2, 1.2, -CELL * 0.28)
+      const officeZ = CELL * 0.02
+      office.position.set(-CELL * 0.2, 1.2, officeZ)
       office.castShadow = true
       const canopy = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.9, 0.14, CELL * 0.55),
         new THREE.MeshStandardMaterial({ color: accent, metalness: 0.25 }),
       )
-      canopy.position.set(0.2, 2.45, -CELL * 0.1)
+      const canopyZ = CELL * 0.14
+      canopy.position.set(0.2, 2.45, canopyZ)
       canopy.castShadow = true
       const pillarL = new THREE.Mesh(
         new THREE.CylinderGeometry(0.1, 0.12, 2.3, 8),
         new THREE.MeshStandardMaterial({ color: '#8a9098' }),
       )
-      pillarL.position.set(-CELL * 0.25, 1.15, CELL * 0.12)
+      pillarL.position.set(-CELL * 0.25, 1.15, canopyZ + CELL * 0.16)
       const pillarR = pillarL.clone()
-      pillarR.position.set(CELL * 0.35, 1.15, CELL * 0.12)
-      const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.4, 0.35, 0.08),
-        new THREE.MeshStandardMaterial({
-          color: accent,
-          emissive: accent,
-          emissiveIntensity: 0.15,
-        }),
-      )
-      sign.position.set(-CELL * 0.2, 2.0, -CELL * 0.08)
+      pillarR.position.set(CELL * 0.35, 1.15, canopyZ + CELL * 0.16)
+      const canopyFront = canopyZ + (CELL * 0.55) / 2
+      mountSign(g, 'PARK', { w: CELL * 0.46, h: 0.4, x: 0.15, y: 2.05, z: canopyFront + 0.06 }, accent, '#f7f4ee')
+      mountDock(g, CELL * 0.55, 1.15, 0.1, canopyFront + 0.65, '#c8c2b4')
       for (const [x, z] of [
         [CELL * 0.32, CELL * 0.32],
         [-CELL * 0.32, CELL * 0.32],
@@ -1543,7 +1504,7 @@ export class World {
         head.position.set(x, 2.45, z)
         g.add(lamp, head)
       }
-      g.add(office, canopy, pillarL, pillarR, sign)
+      g.add(office, canopy, pillarL, pillarR)
       return
     }
 
@@ -1577,28 +1538,21 @@ export class World {
       )
       ramp.position.set(CELL * 0.28, 0.55, 0)
       ramp.rotation.x = -0.35
-      const badge = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 0.5, 0.4, 0.1),
-        new THREE.MeshStandardMaterial({
-          color: accent,
-          emissive: accent,
-          emissiveIntensity: 0.2,
-        }),
-      )
-      badge.position.set(0, 5.0, CELL * 0.48)
+      mountSign(g, 'PARK', { w: CELL * 0.5, h: 0.4, x: 0, y: 3.85, z: CELL * 0.52 }, accent, '#f7f4ee')
+      mountDock(g, CELL * 0.4, 0.7, -CELL * 0.12, CELL * 0.42, '#2a3038')
       const parapet = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.96, 0.35, CELL * 0.96),
         new THREE.MeshStandardMaterial({ color: '#6a7480' }),
       )
       parapet.position.y = 4.85
-      g.add(ramp, badge, parapet)
+      g.add(ramp, parapet)
       return
     }
 
     // Underground — portal building + ramp into ground
     const portal = new THREE.Mesh(
       new THREE.BoxGeometry(CELL * 0.7, 2.8, CELL * 0.45),
-      new THREE.MeshStandardMaterial({ color: '#8a949e', roughness: 0.45 }),
+      new THREE.MeshStandardMaterial({ color: PARK_PAINT.park_u.portal, roughness: 0.45 }),
     )
     portal.position.set(0, 1.5, -CELL * 0.2)
     portal.castShadow = true
@@ -1615,9 +1569,10 @@ export class World {
     atrium.position.set(0, 1.7, -CELL * 0.2 + 0.24)
     const mouth = new THREE.Mesh(
       new THREE.BoxGeometry(CELL * 0.55, 1.4, CELL * 0.5),
-      new THREE.MeshStandardMaterial({ color: '#1a2028', roughness: 0.9 }),
+      new THREE.MeshStandardMaterial({ color: PARK_PAINT.park_u.mouth, roughness: 0.9 }),
     )
     mouth.position.set(0, 0.75, CELL * 0.15)
+    mouth.name = 'service-dock'
     const ramp = new THREE.Mesh(
       new THREE.BoxGeometry(CELL * 0.5, 0.18, CELL * 0.7),
       new THREE.MeshStandardMaterial({ color: '#3a4048' }),
@@ -1634,6 +1589,8 @@ export class World {
       new THREE.MeshStandardMaterial({ color: '#5a6068' }),
     )
     vent.position.set(CELL * 0.28, 0.4, CELL * 0.28)
+    const mouthFront = CELL * 0.15 + (CELL * 0.5) / 2
+    mountSign(g, 'PARK', { w: CELL * 0.48, h: 0.4, x: 0, y: 1.9, z: mouthFront + 0.06 }, accent, '#f7f4ee')
     g.add(portal, atrium, mouth, ramp, roof, vent)
   }
 
