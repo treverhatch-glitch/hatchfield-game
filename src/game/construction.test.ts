@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildSeconds, cancelRefund } from './construction.ts'
 import { Game } from './sim.ts'
+import { standPlaceBlock } from './standFoot.ts'
 import { SIZE, type Vec } from './types.ts'
 import { walkableFor } from './path.ts'
 
@@ -19,6 +20,7 @@ function findGrass(game: Game, besideTruck: boolean) {
     for (let c = 1; c < SIZE - 1; c++) {
       const v = { c, r }
       if (game.tile(v) !== 'grass' || game.siteAt(v)) continue
+      if (standPlaceBlock(game.tiles, v, 'M', 'small', game.standClass, game.standScale)) continue
       const near = [
         { c: c + 1, r },
         { c: c - 1, r },
