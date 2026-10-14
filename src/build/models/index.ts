@@ -27,7 +27,8 @@ const R8_SKIP = /terminal|checkin|gate|pier|lounge|security/
 
 /** Round 7: buildings vehicles use get bay decals, number boards, floods and facade polish. */
 const VEHICLE_BUILDINGS = new Set(['fuel', 'fuel_farm_iii', 'fire', 'cargo', 'kitchen', 'snack', 'bags', 'deice', 'termbus', 'xferbus', 'bus', 'hangar', 'hangar_w', 'hangar_j', 'mro'])
-import { bagSortR5, busStationR5, cargoR5, cateringR5, checkinHallR5, deiceR5, fireStationR5, fuelFarmR5, hangarR5, towerR5 } from './r5'
+import { bagSortR5, busStationR5, cargoR5, cateringR5, checkinHallR5, deiceR5, fireStationR5, fuelFarmR5, towerR5 } from './r5'
+import { hangarTiered } from './hangars'
 import { fuelRail, oilTransfer, peopleMover, skywalk, travelator } from './links'
 import type { HotelClass, ParkTerm } from '../../game/types'
 
@@ -53,9 +54,9 @@ export const MODEL_BUILDERS: Record<string, Builder> = {
   cargo: (g) => cargoR5(g),
   guard: (g) => guard(g),
   tower: (g) => towerR5(g),
-  hangar: (g, o) => hangarR5(g, o.hangarTier ?? 'small'),
-  hangar_w: (g) => hangarR5(g, 'wide'),
-  hangar_j: (g) => hangarR5(g, 'jumbo'),
+  hangar: (g, o) => hangarTiered(g, o.hangarTier ?? 'small'),
+  hangar_w: (g) => hangarTiered(g, 'wide'),
+  hangar_j: (g) => hangarTiered(g, 'jumbo'),
   snack: (g) => snack(g),
   bags: (g) => bagSortR5(g),
   kitchen: (g) => cateringR5(g),
