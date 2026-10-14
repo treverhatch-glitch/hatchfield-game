@@ -3753,6 +3753,11 @@ export class Game {
     return nodeId ? this.researchTree.owns(nodeId) : false
   }
 
+  /** Desk projects the tree grants, plus anything already stored. Hub upgrades stay explicit. */
+  researchGrants(): ResearchId[] {
+    return this.grantedResearch()
+  }
+
   /** Desk projects implied by the tree, plus ids already stored. Hub upgrades stay explicit. */
   private grantedResearch(): ResearchId[] {
     const ids = new Set(this.researchUnlocked)
@@ -12448,7 +12453,7 @@ export class Game {
     return {
       size: SIZE,
       fieldLevel: this.fieldLevel(),
-      research: this.researchUnlocked,
+      research: this.researchGrants(),
       tiles: this.tiles,
       standScale: this.standScale,
       standClass: this.standClass,
@@ -12687,7 +12692,7 @@ export class Game {
   }
 
   buyScaleVehicle(type: VehicleType) {
-    const gate = canBuyVehicle(type, this.fieldLevel(), this.researchUnlocked)
+    const gate = canBuyVehicle(type, this.fieldLevel(), this.researchGrants())
     if (!gate.ok) {
       this.pushNews(gate.why, 'bad')
       this.emit()

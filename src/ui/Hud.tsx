@@ -2298,7 +2298,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     </div>
                     <div className="row">
                       {VEHICLE_OFFERS.map((offer) => {
-                        const gate = canBuyVehicle(offer.type, game.fieldLevel(), game.researchUnlocked)
+                        const gate = canBuyVehicle(offer.type, game.fieldLevel(), game.researchGrants())
                         const owned = game.scaleFleet[offer.type] ?? 0
                         return (
                           <button key={offer.type} type="button" disabled={!gate.ok} onClick={() => game.buyScaleVehicle(offer.type)}>

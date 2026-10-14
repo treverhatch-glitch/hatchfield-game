@@ -58,6 +58,21 @@ describe('research tree on the field', () => {
     expect(game.researchTree.points()).toBe(levelReward(2).rp)
   })
 
+  it('opens the hydrant dispenser from the Fuel farm node, with the old desk list still empty', () => {
+    const game = opened()
+    game.fieldXp = 700
+    game.cash = 200_000
+    expect(game.fieldLevel()).toBe(5)
+    expect(game.researchUnlocked).not.toContain('hydrant_fuel')
+    expect(game.buyScaleVehicle('hydrant_dispenser')).toBeUndefined()
+    expect(game.scaleFleet.hydrant_dispenser ?? 0).toBe(0)
+    game.researchTree.state.unlocked.push('airside-1')
+    expect(game.researchGrants()).toContain('hydrant_fuel')
+    expect(game.researchUnlocked).not.toContain('hydrant_fuel')
+    game.buyScaleVehicle('hydrant_dispenser')
+    expect(game.scaleFleet.hydrant_dispenser).toBe(1)
+  })
+
   it('refuses a linked stamp until its node is owned', () => {
     const game = opened()
     game.fieldXp = 90

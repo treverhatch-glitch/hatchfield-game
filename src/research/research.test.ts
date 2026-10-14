@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, SPEC_PENALTY, STAFF_ROOM_BOOST, TIER_COSTS } from './config.ts'
 import { ResearchEngine } from './engine.ts'
 import { linkFor } from './links.ts'
-import { buyNode, emptyResearchState, nodeCost, nodeState, researchRate, shortfallCopy } from './logic.ts'
+import { accrue, buyNode, emptyResearchState, nodeCost, nodeState, researchRate, shortfallCopy } from './logic.ts'
+import type { ResearchState, RoomCounts } from './types.ts'
 import { RESEARCH_NODES, nodesInCategory } from './nodes.ts'
 
 describe('research tree', () => {
-  it('charges nothing for a category first node and doubles each later tier', () => {
+  it('charges nothing for a category first node and a flat price after that', () => {
     for (const category of ['airfield', 'terminal', 'airside', 'landside', 'safety', 'retail'] as const) {
       const nodes = nodesInCategory(category)
       expect(nodes.map((node) => node.baseCost)).toEqual([...TIER_COSTS])
@@ -80,6 +81,21 @@ describe('research tree', () => {
     expect(engine.points()).toBe(2)
   })
 
+  it('paces one lab to about a third of the tree by day 30 and the rest after day 120', () => {
+    const careful = playDays(30, { desk: 1, board: 1, machine: 1 }, 0)
+    const share30 = careful / RESEARCH_NODES.length
+    expect(share30).toBeGreaterThanOrEqual(0.25)
+    expect(share30).toBeLessThanOrEqual(0.35)
+    expect(playDays(22, { desk: 1, board: 1, machine: 1 }, 0)).toBeLessThan(RESEARCH_NODES.length)
+    const share120 = playDays(120, { desk: 1, board: 1, machine: 1 }, 0) / RESEARCH_NODES.length
+    expect(share120).toBeGreaterThanOrEqual(0.9)
+    expect(share120).toBeLessThan(1)
+    expect(playDays(150, { desk: 1, board: 1, machine: 1 }, 0)).toBe(RESEARCH_NODES.length)
+    const staffed = playDays(30, { desk: 2, board: 2, machine: 2 }, 2)
+    expect(staffed / RESEARCH_NODES.length).toBeGreaterThan(share30)
+    expect(playDays(60, { desk: 2, board: 2, machine: 2 }, 2)).toBe(RESEARCH_NODES.length)
+  })
+
   it('links a locked build item to its node', () => {
     const link = linkFor('stand_l')
     expect(link?.label).toBe('Large stands (Airfield T3)')
@@ -88,3 +104,22 @@ describe('research tree', () => {
     expect(engine.blockReason('runway')).toBeNull()
   })
 })
+
+/** Field level 4, so every category is open and points are the only limit. Buys the cheapest node whenever it is affordable. */
+function playDays(days: number, rooms: RoomCounts, staff: number): number {
+  let state: ResearchState = emptyResearchState()
+  for (let day = 0; day < days; day++) {
+    state = accrue(state, RESEARCH_DAY_SEC, rooms, true, staff)
+    while (true) {
+      const open = RESEARCH_NODES.filter((node) => nodeState(state, node, 4) === 'available').sort(
+        (a, b) => nodeCost(state, a) - nodeCost(state, b) || a.id.localeCompare(b.id),
+      )
+      const next = open[0]
+      if (!next) break
+      const bought = buyNode(state, next.id, 4)
+      if (!bought.ok) break
+      state = bought.state
+    }
+  }
+  return state.unlocked.length
+}
