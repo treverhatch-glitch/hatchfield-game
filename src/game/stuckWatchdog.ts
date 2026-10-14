@@ -3,14 +3,20 @@
  *
  * The host samples flights, aircraft, and vehicles whose state is not progressing
  * and applies the returned step. Steps always run in order, one per observation:
- * re-path, release the reservation, teleport to a safe node, cancel with a refund.
+ * re-path, release the reservation, hold short (roll along the graph or stay put),
+ * cancel with a refund.
  */
 import { STUCK_WATCH, stuckLadderMin, stuckLimitMin } from './stuckWatchdogData.ts'
 
 export type WatchKind = 'flight' | 'aircraft' | 'vehicle'
-export type RecoveryStep = 'repath' | 'release' | 'teleport' | 'cancel'
+export type RecoveryStep = 'repath' | 'release' | 'holdshort' | 'cancel'
 
-export const RECOVERY_STEPS: readonly RecoveryStep[] = ['repath', 'release', 'teleport', 'cancel']
+export const RECOVERY_STEPS: readonly RecoveryStep[] = ['repath', 'release', 'holdshort', 'cancel']
+
+/** Soak and bot line. `jumpEntries` counts coordinate assignments; the ladder leaves it at 0. */
+export function taxiOutRecoveryNote(cleared: number, jumpEntries: number): string {
+  return `taxi-out recoveries cleared ${cleared} stalls; teleport entries: ${jumpEntries}`
+}
 
 export interface WatchSample {
   id: string

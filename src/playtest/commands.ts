@@ -604,7 +604,7 @@ class GamePlayer implements PlayerCommands {
         id: entry.id,
         step: entry.reason,
       })),
-      teleports: game.recoveryTeleports,
+      jumps: game.recoveryJumps,
     }
   }
 

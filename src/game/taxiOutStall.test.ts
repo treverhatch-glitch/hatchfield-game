@@ -112,8 +112,7 @@ describe('taxi-out stall', () => {
     }
     expect(departure.phase).toBe('takeoff')
     expect(peak).toBeLessThan(40)
-    expect(game.recoveryTeleports).toBe(0)
-    expect(game.recoveryLog.some((entry) => entry.reason === 'teleport')).toBe(false)
+    expect(game.recoveryJumps).toBe(0)
   })
 
   it('apron walkers beside the taxiway do not freeze a jet', () => {
@@ -129,7 +128,7 @@ describe('taxi-out stall', () => {
     expect(game.congestionAt(7, 10, dep.id)).toBe(1)
   })
 
-  it('an on-screen stall drives or cancels and never teleports', () => {
+  it('a stalled truck holds short where it is, then the call is cancelled', () => {
     const game = field()
     const home = tilesOf(game.tiles, 'taxi')[0]
     if (!home) throw new Error('no taxi home')
@@ -150,21 +149,84 @@ describe('taxi-out stall', () => {
       home,
     }
     game.trucks.push(truck)
-    game.noteRecoveryView(1, 1, 4)
     game.watchStuck()
     for (let i = 0; i < 8; i++) {
+      const live = game.trucks.find((item) => item.id === 'trk-screen')
+      if (live) {
+        expect(live.x).toBe(1)
+        expect(live.y).toBe(1)
+      }
       game.clock += 0.2
       game.watchStuck()
     }
-    expect(game.recoveryTeleports).toBe(0)
+    expect(game.recoveryJumps).toBe(0)
     expect(game.trucks.some((item) => item.id === 'trk-screen')).toBe(false)
     const reasons = game.recoveryLog.map((entry) => entry.reason)
-    expect(reasons).toContain('drive-failed')
+    expect(reasons).toContain('hold-short')
     expect(reasons).toContain('cancel-refund')
-    expect(reasons).not.toContain('teleport')
-    expect(game.news.some((item) => item.text.includes('reason:drive-failed'))).toBe(true)
+    expect(game.news.some((item) => item.text.includes('reason:hold-short'))).toBe(true)
     expect(game.news.some((item) => item.text.includes('reason:cancel-refund'))).toBe(true)
     const alert = game.alerts.active.find((item) => item.key.startsWith('event:recovery:'))
     expect(alert?.detail).toContain('reason:')
+  })
+
+  it('a taxi-out off the pavement holds short and cancels on the same coordinates', () => {
+    const game = new Game()
+    game.beginNew('easy')
+    game.buyLand('city')
+    for (const row of game.tiles) row.fill('grass')
+    quietField(game)
+    const flight = pose('off', 'OFF1', 'taxi_out', { c: 4, r: 4 }, 4.2, 4.4, [
+      { c: 4, r: 4 },
+      { c: 9, r: 4 },
+    ])
+    game.flights.push(flight)
+    for (let i = 0; i < 40 && flight.phase !== 'gone'; i++) {
+      game.tick(0.05)
+      if (flight.phase === 'taxi_out') {
+        expect(flight.x).toBe(4.2)
+        expect(flight.y).toBe(4.4)
+      }
+    }
+    expect(flight.phase).toBe('gone')
+    expect(flight.x).toBe(4.2)
+    expect(flight.y).toBe(4.4)
+    expect(game.recoveryJumps).toBe(0)
+    const steps = game.recoveryLog
+      .filter((entry) => entry.label === 'OFF1')
+      .map((entry) => entry.step)
+      .reverse()
+    expect(steps).toEqual(['repath', 'release', 'holdshort', 'cancel'])
+    expect(game.news.some((item) => item.text.includes('reason:cancel-refund'))).toBe(true)
+  })
+
+  it('a taxi-out on pavement rolls to an open node without a coordinate jump', () => {
+    const game = field()
+    const spot = tilesOf(game.tiles, 'taxi').find((cell) =>
+      tilesOf(game.tiles, 'runway').some((runway) => Math.abs(runway.c - cell.c) + Math.abs(runway.r - cell.r) > 3),
+    )
+    if (!spot) throw new Error('no taxi cell off the runway')
+    const flight = pose('roll', 'ROLL1', 'taxi_out', spot, spot.c + 0.2, spot.r, [
+      spot,
+      { c: spot.c + 5, r: spot.r + 5 },
+    ])
+    flight.stand = null
+    game.flights.push(flight)
+    let prevX = flight.x
+    let prevY = flight.y
+    let moved = 0
+    let maxHop = 0
+    for (let i = 0; i < 80 && flight.phase !== 'gone' && flight.phase !== 'takeoff'; i++) {
+      game.tick(0.05)
+      const hop = Math.hypot(flight.x - prevX, flight.y - prevY)
+      if (hop > maxHop) maxHop = hop
+      moved += hop
+      prevX = flight.x
+      prevY = flight.y
+    }
+    expect(moved).toBeGreaterThan(0.2)
+    expect(maxHop).toBeLessThan(1.05)
+    expect(game.recoveryJumps).toBe(0)
+    expect(game.recoveryLog.some((entry) => entry.label === 'ROLL1' && entry.reason === 'drive')).toBe(true)
   })
 })

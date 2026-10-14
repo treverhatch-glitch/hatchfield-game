@@ -1,3 +1,4 @@
+import { taxiOutRecoveryNote } from '../game/stuckWatchdog.ts'
 import type { Difficulty, StartFocus } from '../game/types.ts'
 import { tryStamp } from './build.ts'
 import { createPlayer } from './commands.ts'
@@ -142,7 +143,8 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
     if (heldSpeed) {
       notes.push('Driver put the clock back to 5× after the persona touched the speed buttons.')
     }
-    notes.push(`recovery teleports: ${api.probe().teleports}`)
+    const taxiOutCleared = recovered.filter((row) => row.detail.includes('taxi_out')).length
+    notes.push(taxiOutRecoveryNote(taxiOutCleared, api.probe().jumps))
     return {
       persona: spec.id,
       label: spec.label,

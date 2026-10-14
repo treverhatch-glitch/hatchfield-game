@@ -13,7 +13,7 @@ describe('stuck watchdog ladder', () => {
     }
   })
 
-  it('fires re-path, release, teleport, then cancel while the token stays put', () => {
+  it('fires re-path, release, hold-short, then cancel while the token stays put', () => {
     const watch = new StuckWatchdog()
     const steps: string[] = []
     let cancelledAt = Number.POSITIVE_INFINITY
@@ -24,7 +24,7 @@ describe('stuck watchdog ladder', () => {
         if (action.step === 'cancel') cancelledAt = now
       }
     }
-    expect(steps).toEqual(['repath', 'release', 'teleport', 'cancel'])
+    expect(steps).toEqual(['repath', 'release', 'holdshort', 'cancel'])
     expect(cancelledAt).toBeLessThanOrEqual(STUCK_WATCH.recoverWithinMin)
   })
 
@@ -50,7 +50,7 @@ describe('stuck watchdog ladder', () => {
         if (action.step === 'repath') token = 'pushback|4|4|0'
       }
     }
-    expect(seen).toEqual(['repath', 'release', 'teleport', 'cancel'])
+    expect(seen).toEqual(['repath', 'release', 'holdshort', 'cancel'])
   })
 
   it('uses the per-state limit for a vehicle mission', () => {

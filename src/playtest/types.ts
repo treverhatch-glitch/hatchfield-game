@@ -88,8 +88,8 @@ export interface Probe {
   stuck: { id: string; detail: string }[]
   /** Newest watchdog resolutions, so a stall can name the step that cleared it. */
   recoveries: { id: string; step: string }[]
-  /** Coordinate jumps the watchdog used. A player-visible run stays at 0. */
-  teleports: number
+  /** Watchdog steps that wrote a coordinate. The ladder leaves this at 0. */
+  jumps: number
 }
 
 /**

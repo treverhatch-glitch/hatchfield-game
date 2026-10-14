@@ -215,6 +215,58 @@ export function nearestPath(
   return best
 }
 
+/**
+ * One walk to the closest reachable goal, not including `start`.
+ * The path begins on the entity's current cell so the next step can roll from there.
+ */
+export function pathToNearest(
+  tiles: Tile[][],
+  start: Vec,
+  goals: readonly Vec[],
+  kind: 'jet' | 'truck' | 'person' | 'mechanic',
+): Vec[] | null {
+  if (!inBounds(start.c, start.r) || !cellOpen(tiles, start.c, start.r, kind)) return null
+  const goal = new Uint8Array(SIZE * SIZE)
+  let count = 0
+  for (const cell of goals) {
+    if (!inBounds(cell.c, cell.r) || (cell.c === start.c && cell.r === start.r)) continue
+    if (!cellOpen(tiles, cell.c, cell.r, kind)) continue
+    const index = cell.r * SIZE + cell.c
+    if (goal[index]) continue
+    goal[index] = 1
+    count += 1
+  }
+  if (!count) return null
+  const parent = new Int32Array(SIZE * SIZE)
+  parent.fill(-2)
+  const startI = start.r * SIZE + start.c
+  parent[startI] = -1
+  const queue = [startI]
+  let head = 0
+  while (head < queue.length) {
+    const cur = queue[head]
+    head += 1
+    if (goal[cur]) {
+      const path: Vec[] = []
+      for (let k = cur; k >= 0; k = parent[k]) path.push({ c: k % SIZE, r: Math.floor(k / SIZE) })
+      path.reverse()
+      return path
+    }
+    const pc = cur % SIZE
+    const pr = (cur - pc) / SIZE
+    for (const d of DIRS) {
+      const nc = pc + d.c
+      const nr = pr + d.r
+      if (!cellOpen(tiles, nc, nr, kind)) continue
+      const next = nr * SIZE + nc
+      if (parent[next] !== -2) continue
+      parent[next] = cur
+      queue.push(next)
+    }
+  }
+  return null
+}
+
 /** Bag-belt graph: painted belt + makeup (bags) + stand bay + terminal drop. */
 export function beltNode(tile: Tile): boolean {
   return tile === 'belt' || tile === 'bags' || tile === 'stand' || tile === 'terminal'

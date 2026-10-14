@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks'
 import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
 import { STUCK_WATCH } from './stuckWatchdogData.ts'
+import { RECOVERY_STEPS, taxiOutRecoveryNote } from './stuckWatchdog.ts'
 
 function roughBytes(value: unknown, seen = new Set<object>()): number {
   if (typeof value === 'string') return value.length * 2
@@ -76,6 +77,8 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
     const warmupClock = game.clock + FIELD_SECONDS_PER_DAY
     let errors = 0
     let seenRecoveries = 0
+    let jumpEntries = 0
+    const taxiOutIds = new Set<string>()
     const byStep: Record<string, number> = {}
     const byState: Record<string, number> = {}
 
@@ -94,6 +97,8 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
         for (const entry of game.recoveryLog.slice(0, fresh)) {
           byStep[entry.step] = (byStep[entry.step] ?? 0) + 1
           byState[`${entry.kind}:${entry.state}`] = (byState[`${entry.kind}:${entry.state}`] ?? 0) + 1
+          if (entry.state === 'taxi_out') taxiOutIds.add(entry.id)
+          if (!(RECOVERY_STEPS as readonly string[]).includes(entry.step)) jumpEntries += 1
         }
         seenRecoveries = game.recoveryCount
       }
@@ -112,6 +117,8 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
     const stateEnd = roughBytes(game)
     const growth = heapWarm > 0 ? (heapEnd - heapWarm) / heapWarm : 0
     const outstanding = game.stuckOutstanding()
+    const taxiOutCleared = [...taxiOutIds].filter((id) => !outstanding.some((row) => row.id === id)).length
+    const taxiOutNote = taxiOutRecoveryNote(taxiOutCleared, game.recoveryJumps)
     const bankEntries = game.bank.ledger().entries.length
     const sorted = [...tickMs].sort((a, b) => a - b)
     const pick = (p: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1))] ?? 0
@@ -139,7 +146,10 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
       people: game.people.length,
       hallGuests: game.hallGuests.length,
       outstanding,
-      teleports: game.recoveryTeleports,
+      jumps: game.recoveryJumps,
+      jumpEntries,
+      taxiOutCleared,
+      taxiOutRecoveryNote: taxiOutNote,
       flights: game.flights.length,
       trucks: game.trucks.length,
       flightsDone: game.flightsDone,
@@ -153,7 +163,9 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
     expect(errors).toBe(0)
     expect(report.reachedDay).toBeGreaterThanOrEqual(DAYS)
     expect(outstanding).toEqual([])
-    expect(game.recoveryTeleports).toBe(0)
+    expect(game.recoveryJumps).toBe(0)
+    expect(jumpEntries).toBe(0)
+    expect(taxiOutNote).toBe(taxiOutRecoveryNote(taxiOutCleared, 0))
     expect(growth).toBeLessThanOrEqual(0.15)
   }, 1_140_000)
 })

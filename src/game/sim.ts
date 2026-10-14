@@ -713,6 +713,7 @@ import {
   neighbors,
   jetRouteOnGraph,
   nearestPath,
+  pathToNearest,
   runwayStrips,
   standBeltLinked,
   tilesOf,
@@ -1287,10 +1288,8 @@ export class Game {
   /** Recoveries logged by the ladder. The debug HUD reads the count. */
   recoveryCount = 0
   recoveryLog: RecoveryLogEntry[] = []
-  /** Coordinate jumps. Headless and off-screen only; the player path drives instead. */
-  recoveryTeleports = 0
-  /** Camera footprint in cells. Null until a renderer reports one (headless stays null). */
-  private recoveryView: { c: number; r: number; span: number } | null = null
+  /** Watchdog steps that wrote a coordinate. Hold-short rolls or waits, so this stays 0. */
+  recoveryJumps = 0
   /** Corner debug readout. The shell turns it on in dev builds. */
   debugHud = false
   /** Headless soaks turn this off so the periodic save does not run. */
@@ -19182,7 +19181,14 @@ export class Game {
     const actions = this.stuckWatch.observe(this.stuckSamples(this.simMinutes()))
     if (!actions.length) return
     for (const action of actions) {
+      const flight = action.kind === 'vehicle' ? undefined : this.flights.find((item) => item.id === action.id)
+      const truck = action.kind === 'vehicle' ? this.trucks.find((item) => item.id === action.id) : undefined
+      const x0 = flight?.x ?? truck?.x
+      const y0 = flight?.y ?? truck?.y
       const outcome = this.applyStuckRecovery(action)
+      const x1 = flight?.x ?? truck?.x
+      const y1 = flight?.y ?? truck?.y
+      if (x0 != null && y0 != null && x1 != null && y1 != null && (x0 !== x1 || y0 !== y1)) this.recoveryJumps += 1
       this.recoveryCount += 1
       this.recoveryLog.unshift({
         atMin: this.simMinutes(),
@@ -19328,23 +19334,17 @@ export class Game {
       this.releaseStuckFlight(flight)
       return { detail: `${flight.flightNo} reservation released.`, reason: 'release-reservation' }
     }
-    if (action.step === 'teleport') {
-      if (this.driveStuckFlight(flight)) {
+    if (action.step === 'holdshort') {
+      if (this.rollToOpenNode(flight)) {
         return {
-          detail: `${flight.flightNo} released and driving to the nearest open node.`,
+          detail: `${flight.flightNo} rolling to the nearest open node.`,
           reason: 'drive',
         }
       }
-      if (!this.recoveryOnScreen(flight.x, flight.y)) {
-        const node = this.teleportStuckFlight(flight)
-        if (node) {
-          this.recoveryTeleports += 1
-          return { detail: `${flight.flightNo} teleported to ${node.c},${node.r}.`, reason: 'teleport' }
-        }
-      }
+      this.holdShortStuckFlight(flight)
       return {
-        detail: `${flight.flightNo} stayed put — no open node to drive to.`,
-        reason: 'drive-failed',
+        detail: `${flight.flightNo} holding short at ${Math.round(flight.x)},${Math.round(flight.y)}.`,
+        reason: 'hold-short',
       }
     }
     const refund = this.cancelStuckFlight(flight)
@@ -19432,65 +19432,62 @@ export class Game {
     this.atcPaths.delete(flight.id)
   }
 
-  /** Renderer footprint. Headless runs never call this, so recovery stays off-screen. */
-  noteRecoveryView(c: number, r: number, span: number) {
-    if (!Number.isFinite(c) || !Number.isFinite(r) || !(span > 0)) {
-      this.recoveryView = null
-      return
-    }
-    this.recoveryView = { c, r, span }
-  }
-
-  private recoveryOnScreen(x: number, y: number): boolean {
-    const view = this.recoveryView
-    if (!view) return false
-    return Math.abs(x - view.c) <= view.span && Math.abs(y - view.r) <= view.span
-  }
-
-  /** Release the reservation and roll to a nearby pavement node. No coordinate jump. */
-  private driveStuckFlight(flight: Flight): boolean {
+  /**
+   * Roll from the current cell onto the departure route, or to the runway.
+   * The path starts at the live coordinates, so the next frame does not jump.
+   */
+  private rollToOpenNode(flight: Flight): boolean {
     this.atc.release(flight.id)
     this.atcPaths.delete(flight.id)
     const from = { c: Math.round(flight.x), r: Math.round(flight.y) }
-    const goals = [...tilesOf(this.tiles, 'taxi'), ...tilesOf(this.tiles, 'stand'), ...tilesOf(this.tiles, 'runway')]
-    const near = goals
-      .filter((cell) => {
-        const dist = Math.abs(cell.c - from.c) + Math.abs(cell.r - from.r)
-        return dist > 0 && dist <= 8
-      })
-      .sort((a, b) => Math.abs(a.c - from.c) + Math.abs(a.r - from.r) - (Math.abs(b.c - from.c) + Math.abs(b.r - from.r)))
-      .slice(0, 12)
-    const hop = nearestPath(this.tiles, from, near, 'jet')
-    if (!hop || hop.length < 2 || !jetRouteOnGraph(this.tiles, hop)) return false
+    if (!inBounds(from.c, from.r) || !walkableFor('jet', this.tiles[from.r][from.c])) return false
     const out = flight.stand ? this.departurePath(flight) : null
-    let path = hop
-    if (out && out.length >= 2 && jetRouteOnGraph(this.tiles, out)) {
-      const end = hop[hop.length - 1]
-      let at = 0
-      let best = Number.POSITIVE_INFINITY
-      out.forEach((cell, index) => {
-        const dist = Math.abs(cell.c - end.c) + Math.abs(cell.r - end.r)
-        if (dist < best) {
-          best = dist
-          at = index
-        }
-      })
-      if (best <= 1) path = [...hop.slice(0, -1), ...out.slice(at)]
+    let path: Vec[] | null = null
+    if (out && out.length >= 2) {
+      const join = pathToNearest(this.tiles, from, out, 'jet')
+      if (join && join.length >= 2) {
+        const end = join[join.length - 1]
+        const at = out.findIndex((cell) => cell.c === end.c && cell.r === end.r)
+        path = [...join.slice(0, -1), ...out.slice(at < 0 ? 0 : at)]
+      }
     }
-    if (!jetRouteOnGraph(this.tiles, path)) return false
-    flight.path = path
+    if (!path || path.length < 2) {
+      const runway = tilesOf(this.tiles, 'runway')
+      const goals = runway.length ? runway : [...tilesOf(this.tiles, 'taxi'), ...tilesOf(this.tiles, 'stand')]
+      path = pathToNearest(this.tiles, from, goals, 'jet')
+    }
+    if (!path || path.length < 2 || !jetRouteOnGraph(this.tiles, path)) return false
+    flight.path = this.anchorRoute(flight.x, flight.y, path, 'jet')
     flight.seg = 0
     flight.t = 0
     return true
   }
 
+  /** Keep the first step on the entity. A route that starts on another cell is not used. */
+  private anchorRoute(x: number, y: number, path: Vec[], kind: 'jet' | 'truck'): Vec[] {
+    const first = path[0]
+    if (!first) return path
+    if (Math.abs(x - first.c) < 1e-4 && Math.abs(y - first.r) < 1e-4) return path
+    if (Math.round(x) !== Math.round(first.c) || Math.round(y) !== Math.round(first.r)) return path
+    const anchored = [{ c: x, r: y }, ...path.slice(1)]
+    if (kind === 'jet' && !jetRouteOnGraph(this.tiles, anchored)) return path
+    return anchored
+  }
+
+  /** Stay on the current coordinates and give the reservation back. */
+  private holdShortStuckFlight(flight: Flight) {
+    this.atc.release(flight.id)
+    this.atcPaths.delete(flight.id)
+  }
+
   private driveStuckTruck(truck: Truck): boolean {
     const from = { c: Math.round(truck.x), r: Math.round(truck.y) }
+    if (!inBounds(from.c, from.r) || !walkableFor('truck', this.tiles[from.r][from.c])) return false
     const goal = truck.home ?? tilesOf(this.tiles, 'road')[0] ?? tilesOf(this.tiles, 'taxi')[0]
     if (!goal) return false
-    const path = nearestPath(this.tiles, from, [goal], 'truck')
+    const path = pathToNearest(this.tiles, from, [goal], 'truck')
     if (!path || path.length < 2) return false
-    truck.path = path
+    truck.path = this.anchorRoute(truck.x, truck.y, path, 'truck')
     truck.seg = 0
     truck.t = 0
     truck.dwell = 0
@@ -19498,27 +19495,6 @@ export class Game {
     truck.returning = true
     truck.flightId = null
     return true
-  }
-
-  private teleportStuckFlight(flight: Flight): Vec | null {
-    const node = this.safeNodeFor(flight)
-    if (!node) return null
-    flight.x = node.c
-    flight.y = node.r
-    flight.z = 0.12
-    if (!flight.stand || this.tile(flight.stand) === 'grass' || this.tile(flight.stand) == null) {
-      const stand = tilesOf(this.tiles, 'stand')[0]
-      if (stand) flight.stand = { c: stand.c, r: stand.r }
-    }
-    const out = flight.stand ? this.departurePath(flight) : null
-    flight.path = out && out.length >= 2 ? out : [node]
-    flight.seg = 0
-    flight.t = 0
-    flight.phase = 'taxi_out'
-    flight.phaseTime = 0
-    this.atc.release(flight.id)
-    this.atcPaths.delete(flight.id)
-    return node
   }
 
   private cancelStuckFlight(flight: Flight): number {
@@ -19541,23 +19517,6 @@ export class Game {
     return refund
   }
 
-  private safeNodeFor(flight: Flight): Vec | null {
-    const occupied = new Set(
-      this.flights
-        .filter((other) => other.id !== flight.id && other.phase !== 'gone')
-        .map((other) => `${Math.round(other.x)},${Math.round(other.y)}`),
-    )
-    const ownStand =
-      flight.stand && this.tile(flight.stand) && this.tile(flight.stand) !== 'grass' ? flight.stand : null
-    const candidates = [
-      ...(ownStand ? [ownStand] : []),
-      ...tilesOf(this.tiles, 'stand'),
-      ...tilesOf(this.tiles, 'taxi'),
-      ...tilesOf(this.tiles, 'runway'),
-    ]
-    return candidates.find((cell) => !occupied.has(`${cell.c},${cell.r}`)) ?? candidates[0] ?? null
-  }
-
   private applyStuckTruck(action: RecoveryAction): { detail: string; reason: string } {
     const truck = this.trucks.find((item) => item.id === action.id)
     if (!truck) return { detail: `${action.label} already gone.`, reason: 'gone' }
@@ -19570,21 +19529,13 @@ export class Game {
       truck.returning = true
       return { detail: `${action.label} released from its stop.`, reason: 'release-reservation' }
     }
-    if (action.step === 'teleport') {
+    if (action.step === 'holdshort') {
       if (this.driveStuckTruck(truck)) {
         return { detail: `${action.label} released and driving back.`, reason: 'drive' }
       }
-      const home = truck.home ?? tilesOf(this.tiles, 'taxi')[0] ?? tilesOf(this.tiles, 'road')[0]
-      if (home && !this.recoveryOnScreen(truck.x, truck.y)) {
-        truck.x = home.c
-        truck.y = home.r
-        truck.path = [home]
-        truck.seg = 0
-        truck.t = 0
-        this.recoveryTeleports += 1
-        return { detail: `${action.label} teleported to ${home.c},${home.r}.`, reason: 'teleport' }
-      }
-      return { detail: `${action.label} stayed put — no road back.`, reason: 'drive-failed' }
+      truck.flightId = null
+      truck.returning = true
+      return { detail: `${action.label} holding short — no road back.`, reason: 'hold-short' }
     }
     this.trucks = this.trucks.filter((item) => item.id !== truck.id)
     return { detail: `${action.label} removed — call cancelled.`, reason: 'cancel-refund' }

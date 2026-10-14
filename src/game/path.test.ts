@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { astar, key, neighbors, parseKey, runwayStrips, tilesOf, walkableFor } from './path'
+import { astar, key, neighbors, parseKey, pathToNearest, runwayStrips, tilesOf, walkableFor } from './path'
 import { SIZE, type Tile, type Vec } from './types'
 
 /** The string-keyed A* this module shipped before the typed-array rewrite (issue #25). */
@@ -125,6 +125,30 @@ describe('runwayStrips', () => {
     for (let c = 0; c <= 13; c++) corner[10][c] = 'runway'
     for (let c = 14; c <= 27; c++) corner[11][c] = 'runway'
     expect(runwayStrips(corner, 6)).toHaveLength(2)
+  })
+})
+
+describe('pathToNearest', () => {
+  it('walks along the pavement to the closest reachable goal', () => {
+    const tiles = blank()
+    for (let c = 2; c <= 8; c++) tiles[4][c] = 'taxi'
+    tiles[4][8] = 'runway'
+    tiles[6][2] = 'runway'
+    expect(pathToNearest(tiles, { c: 2, r: 4 }, [{ c: 8, r: 4 }, { c: 2, r: 6 }], 'jet')).toEqual([
+      { c: 2, r: 4 },
+      { c: 3, r: 4 },
+      { c: 4, r: 4 },
+      { c: 5, r: 4 },
+      { c: 6, r: 4 },
+      { c: 7, r: 4 },
+      { c: 8, r: 4 },
+    ])
+  })
+
+  it('returns null when the start cell is grass', () => {
+    const tiles = blank()
+    tiles[4][8] = 'taxi'
+    expect(pathToNearest(tiles, { c: 2, r: 4 }, [{ c: 8, r: 4 }], 'jet')).toBeNull()
   })
 })
 

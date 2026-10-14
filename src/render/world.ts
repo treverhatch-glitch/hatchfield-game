@@ -718,14 +718,6 @@ export class World {
     this.placeCam()
   }
 
-  /** Cells under the camera. The sim will not teleport an aircraft inside this span. */
-  private noteAircraftView(game: Game) {
-    const c = this.pivot.x / CELL + (SIZE - 1) / 2
-    const r = this.pivot.z / CELL + (SIZE - 1) / 2
-    const span = this.dist / CELL + 6
-    game.noteRecoveryView(c, r, span)
-  }
-
   placeCam() {
     const x = Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist
     const y = Math.sin(this.pitch) * this.dist
@@ -2257,7 +2249,6 @@ export class World {
     let t = perfStart()
     this.resize()
     this.easeToGoal(game, dt)
-    this.noteAircraftView(game)
     this.applyCelebrationBeat()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
