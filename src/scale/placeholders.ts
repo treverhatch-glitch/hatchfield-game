@@ -1,5 +1,7 @@
 import * as THREE from 'three'
-import { CELL } from '../render/aircraft/specs'
+import { CELL, WORLD_PER_METER } from '../render/aircraft/specs'
+import { metreUv, skinBox, skinMaterial, tankUv, yardMaterial } from '../render/world/buildingSkin'
+import { SKIN_TILE_M } from '../build/materialTargets'
 import type { SizeTier } from './types'
 
 /**
@@ -31,13 +33,13 @@ export function addFuelRail(g: THREE.Group) {
 }
 
 export function addOilStation(g: THREE.Group) {
-  const pad = new THREE.Mesh(
-    new THREE.BoxGeometry(CELL * 0.92, 0.1, CELL * 0.92),
-    new THREE.MeshLambertMaterial({ color: '#343a40' }),
-  )
+  const pad = new THREE.Mesh(metreUv(new THREE.BoxGeometry(CELL * 0.92, 0.1, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   pad.position.y = 0.05
   pad.receiveShadow = true
-  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 2.4, 12), metal('#c4b07a', 0.4))
+  const tank = new THREE.Mesh(
+    tankUv(new THREE.CylinderGeometry(0.7, 0.7, 2.4, 12), SKIN_TILE_M.tank, WORLD_PER_METER),
+    skinMaterial('fuel_farm', 'wall', { metalness: 0.25 }),
+  )
   tank.position.set(-CELL * 0.18, 1.3, 0)
   tank.castShadow = true
   const tank2 = tank.clone()
@@ -51,23 +53,23 @@ export function addOilStation(g: THREE.Group) {
 
 export function addHangar(g: THREE.Group, tier: SizeTier) {
   const height = tier === 'jumbo' ? 6.4 : tier === 'wide' ? 4.6 : 3.2
+  // Clad walls and membrane roof from the hangar material target.
   const body = new THREE.Mesh(
-    new THREE.BoxGeometry(CELL * 0.95, height, CELL * 0.95),
-    metal(tier === 'jumbo' ? '#6e7884' : '#7a8490', 0.55),
+    skinBox(CELL * 0.95, height, CELL * 0.95, SKIN_TILE_M.wall, WORLD_PER_METER),
+    skinMaterial('hangar', 'wall', { metalness: 0.25 }),
   )
   body.position.y = height / 2
   body.castShadow = true
-  const door = new THREE.Mesh(
-    new THREE.BoxGeometry(CELL * 0.62, height * 0.55, 0.08),
-    new THREE.MeshStandardMaterial({ color: '#1e242b', roughness: 0.6 }),
-  )
+  const roof = new THREE.Mesh(skinBox(CELL * 0.98, 0.14, CELL * 0.98, SKIN_TILE_M.roof, WORLD_PER_METER), skinMaterial('hangar', 'roof'))
+  roof.position.y = height + 0.07
+  const door = new THREE.Mesh(new THREE.BoxGeometry(CELL * 0.62, height * 0.55, 0.08), skinMaterial('hangar', 'door'))
   door.position.set(0, height * 0.28, CELL * 0.46)
   const stripe = new THREE.Mesh(
     new THREE.BoxGeometry(CELL * 0.7, 0.12, 0.1),
-    metal(tier === 'jumbo' ? '#c9a227' : tier === 'wide' ? '#3d6a8a' : '#9aa3ad'),
+    tier === 'small' ? skinMaterial('hangar', 'trim', { metalness: 0.25 }) : metal(tier === 'jumbo' ? '#c9a227' : '#3d6a8a'),
   )
   stripe.position.set(0, height - 0.2, CELL * 0.46)
-  g.add(body, door, stripe)
+  g.add(body, roof, door, stripe)
 }
 
 export function addTravelator(g: THREE.Group) {

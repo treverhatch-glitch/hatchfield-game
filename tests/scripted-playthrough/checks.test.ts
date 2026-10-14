@@ -186,6 +186,20 @@ describe('scripted playthrough checks', () => {
     expect(f[0]).toMatchObject({ category: 'unledgered-cash', severity: 'low' })
   })
 
+  it('turns a world-audit violation into a finding', () => {
+    const log = clean()
+    log.worldViolations = [
+      { rule: 'overlap', c: 15, r: 9, message: 'Road at 15,9 cuts through the terminal at 15,9.' },
+    ]
+    const f = run(log)
+    expect(f).toHaveLength(1)
+    expect(f[0]).toMatchObject({
+      category: 'world-violation',
+      severity: 'high',
+      title: 'Road at 15,9 cuts through the terminal at 15,9.',
+    })
+  })
+
   it('formats game time and tables', () => {
     expect(clockLabel(0)).toBe('day 1 00:00')
     expect(clockLabel(180 + 7.5)).toBe('day 2 01:00')

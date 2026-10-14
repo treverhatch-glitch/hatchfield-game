@@ -5,24 +5,58 @@ import type { ItemDef } from './terminal.ts'
 export const HALL_NAV_TUNING = {
   /**
    * PaxNav seconds per sim clock second at 1x. PaxNav walks and serves in real
-   * seconds (1.3 m/s, 75 s check-in); a game day is 180 clock seconds. 30 keeps
-   * walkers near the old hall guests' pace (a clock second is 8 game minutes,
-   * so any readable walk is already fast-forward against the timetable).
+   * seconds (1.3 m/s, 75 s check-in); a game day is 180 clock seconds.
+   * 10 puts a walker at 13 m/s on screen at 1x (was 39 m/s). Tick already
+   * multiplies by game speed, so 3× and 5× stay three and five times this.
    */
-  navSecPerClockSec: 30,
+  navSecPerClockSec: 10,
   /**
-   * Nav seconds of departure lead per clock second left to STD. Larger than
-   * the walk scale because the sim's show-up window (3 game hours = 22.5 clock s)
-   * is far shorter than a real one once walking is readable: 120 turns a
-   * leisure show-up into 45 nav minutes, time for security and a toilet or
-   * shop stop before boarding opens (30 nav min out). Only real queues make
-   * anyone miss.
+   * Nav seconds of departure lead per clock second left to STD. The show-up
+   * window (3 game hours = 22.5 clock s) is short once walking is slow enough
+   * to read: 360 turns a leisure show-up into 135 nav minutes, time for
+   * security and a toilet or shop stop before boarding opens (30 nav min out).
+   * Only real queues make anyone miss.
    */
-  departLeadScale: 120,
+  departLeadScale: 360,
   /** Departure lead, clock seconds, for a walker with no flight yet (day-one walkers, unbound slots). */
-  unknownLeadClockSec: 20,
+  unknownLeadClockSec: 40,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
+  /** Walkers are guests: traits, needs, thoughts, groups, rebooking (src/paxnav/guests.ts). */
+  guests: true,
+  /** Family fares on one flight: share that walk as a party, and most followers behind the first. */
+  familyGroups: { share: 0.6, maxFollowers: 3 },
+  /** Placed items that count as departure boards for wayfinding. */
+  boardItems: ['info_screen', 'info_kiosk'] as readonly string[],
+}
+
+/**
+ * Live queue read-out and its pull on passenger mood. Seconds are nav seconds
+ * (the walk's own clock; boarding opens 30 nav minutes before departure).
+ */
+export const HALL_QUEUE_TUNING = {
+  /** Nav seconds between queue read-outs (badges, info panel, bottleneck paint). */
+  readEveryNavSec: 5,
+  /**
+   * A facility is a bottleneck once someone joining now would wait this long,
+   * or its line has spilled past the marked floor. Set so the starter hall
+   * only turns red a week or so in, once the first airlines fill it.
+   */
+  bottleneckSec: { checkin_desk: 900, security_lane: 600, toilet: 300, shop_counter: 420, gate_desk: 900 } as Partial<Record<EquipKind, number>>,
+  /** A wait up to this long costs no mood. */
+  toleranceSec: { checkin_desk: 600, security_lane: 420, toilet: 180, shop_counter: 300, gate_desk: 600 } as Partial<Record<EquipKind, number>>,
+  /** Happiness lost per nav minute past tolerance. */
+  moodPerMinOver: 0.6,
+  /** Most happiness one wait can cost. */
+  maxMoodHit: 15,
+  /** Happiness for being served in under a quarter of the tolerance. */
+  quickMood: 1,
+}
+
+/** Terminal crew in the hall walk (src/paxnav/crew.ts). */
+export const HALL_CREW_TUNING = {
+  /** Clock seconds per shift: a third of the 180 s game day. */
+  shiftClockSec: 60,
 }
 
 /** Arriving passengers on the hall's nav grid (src/game/hallArrivals.ts). Nav seconds, metres. */
@@ -55,6 +89,12 @@ export const HALL_CROWD_TUNING = {
   lodDistM: 55,
   /** Frustum test radius around a walker, metres. */
   cullRadiusM: 1.2,
+}
+
+/** Clicking a nav-grid walker in the Terminal view: ray height (mid body) and how close counts, metres. */
+export const HALL_WALKER_PICK = {
+  bodyY: 0.9,
+  radiusM: 0.7,
 }
 
 /**

@@ -2,6 +2,7 @@ import { Maintenance, type MaintenanceMetrics, type WearState } from './maintena
 import { sizeTierOf, vehicleCanServe } from '../scale/logic'
 import { needsFor } from './needs'
 import { RoadGraph } from './roads'
+import { ApronTraffic } from './traffic'
 import type {
   DelayCause,
   FlightKind,
@@ -51,6 +52,33 @@ export interface VehiclePose {
   x: number
   y: number
   heading: number
+  /** Current job phase, for render rigs (lift up while servicing, etc.). */
+  phase: VehiclePhase
+  /** 0..1 progress through the phase on the sim clock (1 when unbounded). */
+  u: number
+  /** Apron traffic: held up, yielding to another vehicle. */
+  waiting?: boolean
+}
+
+/** A vehicle standing at an aircraft, with the sim clock for that service. */
+export interface ActiveCrew {
+  id: string
+  type: VehicleType
+  service: 'fuel' | 'bags' | 'catering' | 'gpu' | 'pushback'
+  x: number
+  y: number
+  heading: number
+  start: number
+  end: number
+}
+
+function crewServiceOf(type: VehicleType): ActiveCrew['service'] | null {
+  if (type === 'fuel_truck' || type === 'heavy_fuel_truck' || type === 'hydrant_dispenser') return 'fuel'
+  if (type === 'baggage_tug' || type === 'heavy_baggage_tug' || type === 'belt_loader' || type === 'uld_loader') return 'bags'
+  if (type === 'catering_truck' || type === 'highlift_catering') return 'catering'
+  if (type === 'gpu') return 'gpu'
+  if (type === 'pushback_tug' || type === 'heavy_tug') return 'pushback'
+  return null
 }
 
 /**
@@ -218,6 +246,8 @@ export type LogisticsListener = (e: LogisticsEvent) => void
 export class LogisticsSim {
   readonly config: LogisticsConfig
   readonly roads: RoadGraph
+  /** Apron traffic when config.traffic is set; null = closed-form drive times. */
+  readonly traffic: ApronTraffic | null = null
   now = 0
   fuelLitres: number
   meals: number
@@ -259,6 +289,7 @@ export class LogisticsSim {
       if (!this.roads.has(s.node)) throw new Error(`Stand ${s.id} on unknown node ${s.node}`)
       this.stands.set(s.id, s)
     }
+    if (config.traffic) this.traffic = new ApronTraffic(this.roads, config.edges, config.traffic === true ? {} : config.traffic)
     this.fuelLitres = Math.min(config.fuelFarm.initialLitres, config.fuelFarm.capacityLitres)
     this.meals = Math.min(config.kitchen.initialMeals, config.kitchen.capacityMeals)
     for (const type of VEHICLE_TYPES) {
@@ -572,20 +603,66 @@ export class LogisticsSim {
    */
   poses(): VehiclePose[] {
     const driving = new Set<VehiclePhase>(['to_source', 'to_stand', 'to_dropoff', 'to_maintenance', 'towed'])
+    const traffic = this.traffic
     return this.vehicles.map((v) => {
+      const start = v.phaseStart ?? this.now
+      const span = v.phaseEnd - start
+      const u = Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
+      if (traffic) traffic.place(v)
+      const tp = traffic?.pose(v.id)
+      if (tp) return { id: v.id, type: v.type, x: tp.x, y: tp.y, heading: tp.heading, phase: v.phase, u, waiting: traffic!.waiting(v.id) }
       const here = this.roads.at(v.node)
-      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: 0 }
+      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: this.arrivalHeading(v), phase: v.phase, u }
       if (!driving.has(v.phase) || !v.route || v.route.length < 2) {
         return { id: v.id, type: v.type, ...parked }
       }
       const pts = v.route.map((id) => this.roads.at(id)).filter((n): n is NonNullable<typeof n> => Boolean(n))
       if (pts.length < 2) return { id: v.id, type: v.type, ...parked }
-      const start = v.phaseStart ?? this.now
-      const span = v.phaseEnd - start
-      const u = Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
       const at = pointAlong(pts, u)
-      return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading }
+      return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading, phase: v.phase, u }
     })
+  }
+
+  /** Heading of the last drive, so a parked truck still faces the way it arrived. */
+  private arrivalHeading(v: VehicleState): number {
+    const route = v.route
+    if (!route || route.length < 2) return 0
+    const a = this.roads.at(route[route.length - 2])
+    const b = this.roads.at(route[route.length - 1])
+    if (!a || !b) return 0
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    if (dx * dx + dy * dy < 1e-8) return 0
+    return Math.atan2(dy, dx)
+  }
+
+  /**
+   * Vehicles currently working a fuel, bag, or catering job.
+   * `start` and `end` are the sim clock for that work. Crew steps fill this
+   * window; they do not add time.
+   */
+  activeCrew(): ActiveCrew[] {
+    const poseOf = new Map(this.poses().map((pose) => [pose.id, pose]))
+    const out: ActiveCrew[] = []
+    for (const v of this.vehicles) {
+      const started = v.phaseStart
+      if (v.phase !== 'servicing' || started === undefined || !Number.isFinite(v.phaseEnd) || !(v.phaseEnd > started)) continue
+      const service = crewServiceOf(v.type)
+      if (!service) continue
+      const pose = poseOf.get(v.id)
+      if (!pose) continue
+      out.push({
+        id: v.id,
+        type: v.type,
+        service,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        start: started,
+        end: v.phaseEnd,
+      })
+    }
+    return out
   }
 
   /** Requests still waiting for a vehicle. */
@@ -666,10 +743,28 @@ export class LogisticsSim {
         this.now = next
       }
       const progressed = this.processDue()
-      if (progressed) this.dispatch()
+      if (progressed) {
+        this.flushContinuousMoney()
+        this.dispatch()
+      }
       if (this.now >= target - EPS && !progressed) break
     }
     this.now = target
+    this.flushContinuousMoney()
+  }
+
+  /**
+   * With apron traffic on, the clock advances in small driving steps; meal and upkeep
+   * costs accrue here and post once per event / tick instead of once per step
+   * (same totals, far fewer money events for listeners).
+   */
+  private contMoney = { meals: 0, upkeep: 0 }
+
+  private flushContinuousMoney(): void {
+    const c = this.contMoney
+    if (c.meals) this.money(-c.meals, 'meal_production')
+    if (c.upkeep) this.money(-c.upkeep, 'vehicle_upkeep')
+    c.meals = c.upkeep = 0
   }
 
   // ---------------------------------------------------------------- internals
@@ -1115,6 +1210,7 @@ export class LogisticsSim {
       if (v.wear.breakAt !== null) consider(v.wear.breakAt)
     }
     if (this.maintenance) consider(this.maintenance.nextEventTime())
+    if (this.traffic?.driving()) consider(this.now + this.traffic.cfg.stepMinutes)
     for (const h of this.timers) consider(h.end)
     for (const d of this.deliveries) consider(d.eta)
     for (const t of this.turnarounds.values()) {
@@ -1139,16 +1235,19 @@ export class LogisticsSim {
 
   /** Kitchen production, vehicle upkeep, boarding flow and wait accounting. */
   private advanceContinuous(dt: number): void {
+    this.traffic?.step(this.vehicles, dt, this.now + dt)
     const k = this.config.kitchen
     const made = Math.min(k.capacityMeals - this.meals, (k.mealsPerHour * dt) / 60)
     if (made > 0) {
       this.meals += made
-      this.money(-made * k.costPerMeal, 'meal_production')
+      if (this.traffic) this.contMoney.meals += made * k.costPerMeal
+      else this.money(-made * k.costPerMeal, 'meal_production')
       if (this.mealsLowFlag && this.meals >= k.lowStockMeals) this.mealsLowFlag = false
     }
     let upkeep = 0
     for (const v of this.vehicles) upkeep += (this.config.vehicleSpecs[v.type].upkeepPerDay * dt) / 1440
-    this.money(-upkeep, 'vehicle_upkeep')
+    if (this.traffic) this.contMoney.upkeep += upkeep
+    else this.money(-upkeep, 'vehicle_upkeep')
     this.maintenance?.advanceContinuous(dt)
     for (const t of this.turnarounds.values()) {
       if (t.completedAt !== null || t.services.boarding !== 'active') continue
@@ -1308,7 +1407,8 @@ export class LogisticsSim {
     v.route = this.roads.route(v.node, dest)
     v.phaseStart = this.now
     v.phase = phase
-    const mins = this.roads.travelMinutes(v.node, dest, this.speed(v))
+    let mins = this.roads.travelMinutes(v.node, dest, this.speed(v))
+    if (this.traffic && Number.isFinite(mins)) mins = this.traffic.begin(v, dest, this.now, (this.speed(v) * 1000) / 60)
     v.phaseEnd = this.now + mins
     this.maintenance?.onTravel(v, v.node, dest, mins)
   }
@@ -1399,6 +1499,7 @@ export class LogisticsSim {
   private arriveAtStand(v: VehicleState, r: ServiceRequest): void {
     const t = this.turnarounds.get(r.turnaroundId)!
     v.phase = 'servicing'
+    v.phaseStart = this.now
     if (r.mode === 'onsite') {
       if (r.service === 'loader') {
         t.loaderVehicle = v.id
@@ -1473,6 +1574,7 @@ export class LogisticsSim {
     const end = begin + v.serving / rate
     if (hold) t.loaderBusyUntil = end
     else t.doorBusyUntil = end
+    v.phaseStart = begin
     v.phaseEnd = end
   }
 

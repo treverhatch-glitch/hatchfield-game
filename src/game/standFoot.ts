@@ -14,7 +14,8 @@ export type Dir = 'n' | 's' | 'e' | 'w'
 export type StandScale = 'small' | 'wide' | 'jumbo'
 
 /** Grass, pavement, and belts may sit under the wings. Buildings may not. */
-const WING_OK = new Set<Tile>(['grass', 'taxi', 'runway', 'road', 'belt'])
+export const WING_CLEAR_TILES = new Set<Tile>(['grass', 'taxi', 'runway', 'road', 'belt'])
+const WING_OK = WING_CLEAR_TILES
 
 /** These stamps may cross a stand. A building may not. */
 const CROSSES_STAND = new Set<Tile>(['taxi', 'runway', 'road', 'belt', 'grass'])

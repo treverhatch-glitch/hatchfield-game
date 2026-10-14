@@ -1,3 +1,4 @@
+import { setAircraftEnvIntensity } from '../aircraft/pool'
 import * as THREE from 'three'
 import { grassColor, nightLighting, paintSky, seasonAtDay, snowCover } from '../../environment/index.ts'
 import { gradeTree } from '../grade'
@@ -11,6 +12,8 @@ import {
   daylightFactor,
   idleDayNight,
   resolveHour,
+  SKY_PHOTO_WEATHER,
+  skyPhotoBlend,
   type DayNightControl,
   type DayNightSample,
 } from './dayNight'
@@ -19,11 +22,13 @@ import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './
 import {
   apronMasts,
   jetBridges,
+  roadKerbs,
   roadPaint,
   runwayLightSpots,
   runwayPaint,
   runways,
   standPads,
+  standHatch,
   standPaint,
   stands,
   taxiLightSpots,
@@ -35,11 +40,13 @@ import { actorsFrom, bubbleFor } from './guestActors'
 import { GuestMotion } from './guestMotion'
 import { fitShadow, groundFocus } from './lod'
 import { onPackReady, packArtEnabled, packImage, packTexture, setPackArt, shopLogoPaths, signIconPaths } from './packArt'
-import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
-import { paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
+import { baseLevel, QUALITY, type QualityLevel, type QualityPreset } from './quality'
+import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
+import { WORLD_PER_METER } from '../aircraft/specs'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, TerminalBuilding, type TerminalShared } from './terminal'
+import { artTexture, photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
 import { worldToCell, type WorldView } from './view'
 
@@ -101,7 +108,10 @@ export class WorldRenderer {
   private shared!: TerminalShared
   private surfaceMats = new Map<SurfaceKind, THREE.MeshLambertMaterial>()
   private paintMat: THREE.MeshLambertMaterial | null = null
+  /** Hazard-chevron restraint boxes at stand heads (Medium and up). */
+  private hatchMat: THREE.MeshLambertMaterial | null = null
   private contacts = new ContactShadows()
+  private kerbMat = new THREE.MeshLambertMaterial({ color: GROUND_LOOK.kerb })
   private staticGroup = new THREE.Group()
   private staticGeos: THREE.BufferGeometry[] = []
   private bridgeMats: THREE.Material[] = []
@@ -118,9 +128,6 @@ export class WorldRenderer {
   /** Last frame's cycle sample. The light rig and vehicle/aircraft lamps read this. */
   dayNightSample: DayNightSample = idleDayNight()
   private weatherOverride: Weather | null = null
-  private farmBase = 0xb8c8a8
-  private snowOn = false
-  private snowColor = new THREE.Color()
   private lite = false
   private flash = 0
   private state: SkyState = skyState(11)
@@ -191,27 +198,29 @@ export class WorldRenderer {
     if (!first) this.disposeContent()
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
-    this.tex = makeTextures(q.textureSize, q.anisotropy)
-    this.shared = makeTerminalShared(this.tex)
+    this.hatchMat?.dispose()
+    const chevron = photoTexturesEnabled(q.level) ? artTexture('chevron_stripe', q.anisotropy) : null
+    this.hatchMat = chevron ? new THREE.MeshLambertMaterial({ map: chevron, polygonOffset: true, polygonOffsetFactor: -3 }) : null
+    this.tex = makeTextures(q.textureSize, q.anisotropy, photoTexturesEnabled(q.level))
+    this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
       runway: this.tex.runway,
       taxi: this.tex.asphalt,
       apron: this.tex.concrete,
-      road: this.tex.asphalt,
+      road: this.tex.road,
       pad: this.tex.concrete,
     }
     for (const k of Object.keys(surf) as SurfaceKind[]) {
       this.surfaceMats.set(
         k,
-        new THREE.MeshLambertMaterial({ map: surf[k], vertexColors: true, color: k === 'pad' ? 0xd8dadc : k === 'road' ? 0xc0c0c0 : 0xffffff }),
+        new THREE.MeshLambertMaterial({ map: surf[k], vertexColors: true, color: k === 'pad' ? 0xd8dadc : 0xffffff }),
       )
     }
     this.lights = new AirfieldLights(this.tex)
     this.root.add(this.lights.root)
     this.landscape = buildLandscape(this.tex.grass, q.trees)
     this.root.add(this.landscape.group)
-    this.rememberFarmBase()
     this.terrainKey = ''
     this.grass = new GrassRing(q.grassTufts)
     this.root.add(this.grass.mesh)
@@ -224,6 +233,7 @@ export class WorldRenderer {
     this.builtRev = -1
     this.hallCrowd?.dispose()
     this.hallCrowd = new HallCrowd(this.root, this.shared.people)
+    this.sky.setPhotos(q.skyPhotos)
     if (q.colorGrade) gradeTree(this.root)
   }
 
@@ -308,7 +318,7 @@ export class WorldRenderer {
         y: SURFACE_Y[k],
         uvSize: k === 'grass' ? 7 : k === 'runway' ? 10 : k === 'apron' || k === 'pad' ? 6.2 : 8,
         sub: k === 'grass' ? 2 : 1,
-        macro: k === 'grass' ? 0.22 : 0.06,
+        macro: k === 'grass' ? 0.34 : 0.06,
         seed: k.length,
       })
       this.staticGeos.push(geo)
@@ -335,6 +345,25 @@ export class WorldRenderer {
       const mesh = new THREE.Mesh(geo, this.paintMat)
       mesh.receiveShadow = true
       mesh.name = 'surface-paint'
+      this.staticGroup.add(mesh)
+    }
+    const hatch = this.hatchMat ? standHatch(st) : []
+    if (hatch.length && this.hatchMat) {
+      const geo = rectsGeometry(hatch, 0.03, 1.5 * WORLD_PER_METER)
+      this.staticGeos.push(geo)
+      const mesh = new THREE.Mesh(geo, this.hatchMat)
+      mesh.receiveShadow = true
+      mesh.name = 'surface-stand-hatch'
+      this.staticGroup.add(mesh)
+    }
+    const kerbs = roadKerbs(view)
+    if (kerbs.length) {
+      const geo = kerbGeometry(kerbs)
+      this.staticGeos.push(geo)
+      const mesh = new THREE.Mesh(geo, this.kerbMat)
+      mesh.castShadow = false
+      mesh.receiveShadow = true
+      mesh.name = 'surface-kerb'
       this.staticGroup.add(mesh)
     }
     const spots = [...rws.flatMap((r) => runwayLightSpots(r)), ...taxiLightSpots(view)]
@@ -379,10 +408,10 @@ export class WorldRenderer {
     const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
-    let s = applyDayNight(paintSky(hour, weather, day, this.quality), this.dayNightControl)
+    let s = applyDayNight(paintSky(hour, weather, day, baseLevel(this.quality)), this.dayNightControl)
     const night = nightLighting(s.hour, s.lights, this.q.lightPools && !this.lite)
     const season = seasonAtDay(day)
-    const snow = view.mapDraw ? 0 : snowCover(day, this.quality)
+    const snow = view.mapDraw ? 0 : snowCover(day, baseLevel(this.quality))
     this.dayNightSample = {
       hour: s.hour,
       daylight: this.dayNightControl?.daylight ?? daylightFactor(s.hour),
@@ -398,6 +427,7 @@ export class WorldRenderer {
       ground: season.palette.ground,
       grass: season.palette.grass,
       seasonId: season.id,
+      precip: s.precip,
     }
     const draw = view.mapDraw
     if (draw && draw.skyAmount > 0) {
@@ -424,11 +454,15 @@ export class WorldRenderer {
     this.hemi.color.setHex(s.hemiSky)
     this.hemi.groundColor.setHex(s.hemiGround)
     this.hemi.intensity = s.hemiIntensity + this.flash * 1.2
+    setAircraftEnvIntensity((s.sunIntensity + s.hemiIntensity) / 3)
     this.ambient.intensity = s.ambient
     this.fog.color.setHex(s.fogColor)
     this.fog.near = s.fogNear
     this.fog.far = s.fogFar
     this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
+    // Climate maps paint their own sky, so the photo gives way as their tint comes in.
+    const photoAmount = (SKY_PHOTO_WEATHER[weather] ?? 1) * (1 - (draw?.skyAmount ?? 0))
+    this.sky.setPhoto(skyPhotoBlend(s.hour, this.dayNightControl?.daylight), photoAmount)
     this.sky.follow(camPos)
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure
@@ -448,7 +482,7 @@ export class WorldRenderer {
     this.scheduleShadow(fit)
 
     const wetK = 1 - s.wet * 0.28
-    const grassHex = grassColor(day, this.quality)
+    const grassHex = grassColor(day, baseLevel(this.quality))
     for (const [k, m] of this.surfaceMats) {
       if (k === 'grass') {
         // Season tint shifts the hue only: normalised so every preset stays as bright as the albedo,
@@ -460,7 +494,15 @@ export class WorldRenderer {
       } else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
     this.paintPlot(draw ?? null)
-    this.paintSnow(snow, s.wet)
+    this.rain.cover.paintSnow(
+      snow,
+      s.wet,
+      this.quality,
+      this.surfaceMats.get('grass'),
+      this.landscape?.group.getObjectByName('world-farmland') instanceof THREE.Mesh ? (this.landscape?.group.getObjectByName('world-farmland') as THREE.Mesh).material as THREE.MeshLambertMaterial : undefined,
+      this.landscape?.group.getObjectByName('world-fields') instanceof THREE.Mesh ? (this.landscape?.group.getObjectByName('world-fields') as THREE.Mesh).material as THREE.MeshLambertMaterial : undefined,
+      this.grass?.mesh.material instanceof THREE.MeshLambertMaterial ? this.grass.mesh.material : undefined
+    )
 
     const enclosed = view.view === 'apron'
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
@@ -478,7 +520,7 @@ export class WorldRenderer {
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)
-    this.rain.update(step, s.precip, focus.x, focus.z)
+    this.rain.updateRich(step, s.precip > 0 ? (snow > 0 ? 'snow' : 'rain') : 'none', weather, s.precip, focus.x, focus.z)
   }
 
   /**
@@ -522,68 +564,6 @@ export class WorldRenderer {
     this.landscape?.group.removeFromParent()
     this.landscape = buildLandscape(this.tex.grass, this.q.trees, tint)
     this.root.add(this.landscape.group)
-    this.rememberFarmBase()
-  }
-
-  private rememberFarmBase() {
-    const farm = this.landscape?.group.getObjectByName('world-farmland')
-    if (farm instanceof THREE.Mesh && farm.material instanceof THREE.MeshLambertMaterial) {
-      this.farmBase = farm.material.color.getHex()
-    }
-  }
-
-  /**
-   * Winter snow is a colour and emissive write on grass. The green albedo
-   * would stay green from a multiply alone. Low uses a lighter `snowCover`
-   * and the same write — no extra mesh. Maps with their own ground pass 0.
-   */
-  private paintSnow(snow: number, wet: number) {
-    const grass = this.surfaceMats.get('grass')
-    const farm = this.landscape?.group.getObjectByName('world-farmland')
-    const fields = this.landscape?.group.getObjectByName('world-fields')
-    const farmMat = farm instanceof THREE.Mesh && farm.material instanceof THREE.MeshLambertMaterial ? farm.material : null
-    const fieldMat = fields instanceof THREE.Mesh && fields.material instanceof THREE.MeshLambertMaterial ? fields.material : null
-    const tuft = this.grass?.mesh.material
-    const tuftMat = tuft instanceof THREE.MeshLambertMaterial ? tuft : null
-    if (snow <= 0) {
-      if (!this.snowOn) return
-      this.snowOn = false
-      if (farmMat) {
-        farmMat.color.setHex(this.farmBase)
-        farmMat.emissive.setHex(0x000000)
-        farmMat.emissiveIntensity = 0
-      }
-      if (fieldMat) {
-        fieldMat.color.setHex(0xffffff)
-        fieldMat.emissive.setHex(0x000000)
-        fieldMat.emissiveIntensity = 0
-      }
-      return
-    }
-    this.snowOn = true
-    const wash = 1 - wet * 0.28
-    this.snowColor.setHex(0xe7eef2)
-    if (grass) {
-      grass.color.lerp(this.snowColor, snow)
-      grass.emissive.setHex(0xe4eef4)
-      grass.emissiveIntensity = 0.7 * snow * wash
-    }
-    if (farmMat) {
-      farmMat.color.setHex(this.farmBase)
-      farmMat.color.lerp(this.snowColor, snow)
-      farmMat.emissive.setHex(0xdfe7ee)
-      farmMat.emissiveIntensity = 0.55 * snow * wash
-    }
-    if (fieldMat) {
-      fieldMat.color.setHex(0xf4f7f8)
-      fieldMat.emissive.setHex(0xe7eef3)
-      fieldMat.emissiveIntensity = 0.62 * snow * wash
-    }
-    if (tuftMat && this.quality !== 'low') {
-      tuftMat.color.setHex(0xe7eef2)
-      tuftMat.emissive.setHex(0xf4f7fb)
-      tuftMat.emissiveIntensity = 0.5 * snow
-    }
   }
 
   /** Shadow pass every `shadowEvery` frames, or at once when the shadow box moves. */
@@ -672,7 +652,7 @@ export class WorldRenderer {
         return p ? { ...a, x: p.x, z: p.z } : a
       })
     }
-    this.people ??= createCrowd(this.root, { camera, capacity: 480, lod: [40, 110], cull: 220, frustum: false })
+    this.people ??= createCrowd(this.root, { camera, capacity: 480, unitsPerMeter: WORLD_PER_METER })
     this.people.setCamera(camera)
     this.hallCrowd?.sync([], this.time)
     this.people.update(
@@ -824,7 +804,9 @@ export class WorldRenderer {
   dispose() {
     this.disposeContent()
     this.paintMat?.dispose()
+    this.hatchMat?.dispose()
     this.contacts.dispose()
+    this.kerbMat.dispose()
     this.sky.dispose()
     this.root.removeFromParent()
     for (const l of this.ownLights) l.removeFromParent()

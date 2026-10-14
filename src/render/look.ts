@@ -18,9 +18,12 @@ export const AIRCRAFT_LOOK = {
   /** Belly shade, as a multiple of the airline colour. */
   bellyShade: 0.78,
   /** Fuselage sides per LOD. Smooth normals hide the facets, so mid can stay modest. */
-  fuselageSides: { low: 5, mid: 12 },
+  fuselageSides: { low: 5, mid: 16 },
+  /** Window panes along one side at mid LOD, before the deck multiplier. */
+  windowCount: 12,
   /** Painted shell material. */
-  paint: { metalness: 0.08, roughness: 0.38 },
+  /** Glossy clear-coated livery: low roughness picks up the sky and sun from the env map. */
+  paint: { metalness: 0.1, roughness: 0.24 },
 } as const
 
 /** Ground service vehicles. Lengths come from `vehicleMeters` in world.ts. */
@@ -36,7 +39,10 @@ export const VEHICLE_LOOK = {
   cabShare: 0.26,
   /** Wheel radius in meters. */
   wheelM: 0.42,
-  material: { metalness: 0.12, roughness: 0.52 },
+  /** Baggage cart bed and bag boxes on the tug train. */
+  cart: '#3e4650',
+  bag: '#6a5340',
+  hose: '#22262b',
 } as const
 
 /** Procedural ground palette (sRGB hex). */
@@ -47,12 +53,23 @@ export const GROUND_LOOK = {
   grassBladeLight: 0x8a9864,
   grassBladeDark: 0x43553c,
   /** Mowing bands across the infield (two per texture tile, about 8 m wide), as a ± brightness swing. */
-  mowStripe: 0.05,
+  mowStripe: 0.07,
   /** How much of the season's grass tint reaches the plot (0 = none, 1 = full). */
   seasonTint: 0.45,
+  /** Worn brown patches mixed into the grass texture. */
+  grassWorn: 0x8d7d58,
   taxiAsphalt: 0x56595e,
   runwayAsphalt: 0x4a4d52,
+  /** Landside roads: darker and browner than taxi asphalt. */
+  roadAsphalt: 0x3c3f44,
   concrete: 0xb9bcbf,
+  /** Slabs along each edge of one concrete texture tile. */
+  slabCount: 3,
+  joint: 0x5a5e62,
+  /** Raised kerb along an open road edge, in world units. */
+  kerb: 0xc8cbcf,
+  kerbH: 0.08,
+  kerbW: 0.2,
 } as const
 
 /** Sky dome extras. The dome is a horizon → mid → zenith gradient plus this halo. */

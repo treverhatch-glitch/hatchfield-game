@@ -4,6 +4,7 @@
  * Everything here is plain data so it can be unit tested without WebGL.
  */
 import type { StandClass, Tile, Vec } from '../../game/types'
+import { GROUND_LOOK } from '../look'
 import { aircraftWorldPerMeter, getAircraftSpec } from '../aircraft/specs'
 import { bridgeDockMeters, envelopeLetter, envelopeWorld, standPreviewId } from '../aircraft/stands'
 import { CELL, cellX, cellZ, tileAt, type WorldView } from './view'
@@ -555,15 +556,17 @@ export function taxiPaint(view: WorldView): Paint[] {
         if (isLink(t) || t === 'runway') {
           links++
           const len = t === 'runway' ? CELL * 0.5 : CELL * 0.5 + 0.09
-          const mx = x + v.dc * len * 0.5
-          const mz = z + v.dr * len * 0.5
-          out.push({
-            x: mx,
-            z: mz,
-            w: v.dc ? len : 0.2,
-            d: v.dr ? len : 0.2,
-            color: 'yellow',
-          })
+          // Dashed centreline: two yellow bars along the half-link.
+          const dash = len * 0.32
+          for (const shift of [-0.2, 0.2]) {
+            out.push({
+              x: x + v.dc * (len * 0.5 + shift * len),
+              z: z + v.dr * (len * 0.5 + shift * len),
+              w: v.dc ? dash : 0.18,
+              d: v.dr ? dash : 0.18,
+              color: 'yellow',
+            })
+          }
           if (t === 'runway') {
             // Hold-short bar: two solid + two dashed lines across the link.
             for (const k of [0.38, 0.44]) {
@@ -583,8 +586,8 @@ export function taxiPaint(view: WorldView): Paint[] {
           out.push({
             x: ex,
             z: ez,
-            w: v.dc ? 0.12 : CELL * 0.98,
-            d: v.dr ? 0.12 : CELL * 0.98,
+            w: v.dc ? 0.16 : CELL * 0.98,
+            d: v.dr ? 0.16 : CELL * 0.98,
             color: 'yellow',
           })
         }
@@ -698,6 +701,18 @@ export function standPaint(list: StandInfo[]): Paint[] {
       d: into.dr ? t * 2.2 : bar,
       color: 'yellow',
     })
+    // Shoulder lines flanking the lead-in.
+    const across = into.dc === 0 ? { dc: 1, dr: 0 } : { dc: 0, dr: 1 }
+    const shoulder = Math.min(halfAcross * 0.28, 2.4 * wu)
+    for (const sign of [1, -1]) {
+      out.push({
+        x: x + into.dc * mid + across.dc * sign * shoulder,
+        z: z + into.dr * mid + across.dr * sign * shoulder,
+        w: into.dc ? len * 0.7 : line * 0.75,
+        d: into.dr ? len * 0.7 : line * 0.75,
+        color: 'white',
+      })
+    }
     // Red safety envelope — the class limit, not the one-cell tile.
     out.push({ x, z: z - halfZ, w: halfX * 2, d: t, color: 'red' })
     out.push({ x, z: z + halfZ, w: halfX * 2, d: t, color: 'red' })
@@ -714,6 +729,30 @@ export function standPaint(list: StandInfo[]): Paint[] {
   return out
 }
 
+/**
+ * Equipment restraint boxes at the stand head: hazard-chevron hatching on the
+ * side opposite the stand plate, where GSE must not park. World units.
+ */
+export function standHatch(list: StandInfo[]): { x: number; z: number; w: number; d: number }[] {
+  const out: { x: number; z: number; w: number; d: number }[] = []
+  const wu = aircraftWorldPerMeter()
+  for (const s of list) {
+    const box = standBox(s)
+    const { halfX, halfZ } = halfExtents(box)
+    const into = DIR_VEC[OPPOSITE[s.entry]]
+    const halfAlong = box.depthAlongX ? halfX : halfZ
+    const halfAcross = box.depthAlongX ? halfZ : halfX
+    const side = into.dc === 0 ? { dc: 1, dr: 0 } : { dc: 0, dr: 1 }
+    const along = halfAlong * 0.8
+    const deep = Math.min(halfAlong * 0.25, 4 * wu)
+    const wide = Math.min(halfAcross * 0.45, 6 * wu)
+    const cx = box.x + into.dc * along - side.dc * halfAcross * 0.55
+    const cz = box.z + into.dr * along - side.dr * halfAcross * 0.55
+    out.push({ x: cx, z: cz, w: into.dc ? deep : wide, d: into.dr ? deep : wide })
+  }
+  return out
+}
+
 export function roadPaint(view: WorldView): Paint[] {
   const out: Paint[] = []
   for (let r = 0; r < view.tiles.length; r++) {
@@ -725,14 +764,24 @@ export function roadPaint(view: WorldView): Paint[] {
         const t = tileAt(view, c + DIR_VEC[d].dc, r + DIR_VEC[d].dr)
         const v = DIR_VEC[d]
         if (t === 'road') {
-          // One dash per half-link.
+          // Yellow centre dash, plus a white lane line each side of a 22 m carriageway.
           out.push({
-            x: x + v.dc * CELL * 0.3,
-            z: z + v.dr * CELL * 0.3,
-            w: v.dc ? 1.4 : 0.14,
-            d: v.dr ? 1.4 : 0.14,
-            color: 'white',
+            x: x + v.dc * CELL * 0.28,
+            z: z + v.dr * CELL * 0.28,
+            w: v.dc ? 1.15 : 0.14,
+            d: v.dr ? 1.15 : 0.14,
+            color: 'yellow',
           })
+          const lane = CELL * 0.16
+          for (const side of [1, -1]) {
+            out.push({
+              x: x + v.dc * CELL * 0.28 + (v.dc === 0 ? side * lane : 0),
+              z: z + v.dr * CELL * 0.28 + (v.dr === 0 ? side * lane : 0),
+              w: v.dc ? 0.7 : 0.1,
+              d: v.dr ? 0.7 : 0.1,
+              color: 'white',
+            })
+          }
         } else {
           out.push({
             x: x + v.dc * CELL * 0.42,
@@ -742,6 +791,39 @@ export function roadPaint(view: WorldView): Paint[] {
             color: 'white',
           })
         }
+      }
+    }
+  }
+  return out
+}
+
+export interface KerbSeg {
+  x: number
+  z: number
+  w: number
+  d: number
+}
+
+/** Raised kerb on every road edge that does not continue into another road cell. */
+export function roadKerbs(view: WorldView): KerbSeg[] {
+  const out: KerbSeg[] = []
+  const width = GROUND_LOOK.kerbW
+  for (let r = 0; r < view.tiles.length; r++) {
+    for (let c = 0; c < view.tiles[r].length; c++) {
+      if (view.tiles[r][c] !== 'road') continue
+      const x = cellX(c)
+      const z = cellZ(r)
+      for (const d of DIRS) {
+        const t = tileAt(view, c + DIR_VEC[d].dc, r + DIR_VEC[d].dr)
+        if (t === 'road') continue
+        const v = DIR_VEC[d]
+        const along = CELL * 0.9
+        out.push({
+          x: x + v.dc * CELL * 0.46,
+          z: z + v.dr * CELL * 0.46,
+          w: v.dc ? width : along,
+          d: v.dr ? width : along,
+        })
       }
     }
   }

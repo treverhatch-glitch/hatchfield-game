@@ -5,19 +5,32 @@
  */
 import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
+import { SurfaceLibrary, type LibraryMap } from '../materials/library'
+import { tileByPosition } from '../materials/pack1'
+import { AIRLINE_LOGOS, CARPET_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
+import type { QualityLevel } from './quality'
+import { MATERIAL_TARGETS } from '../../build/materialTargets'
+import { tint as lighten } from './buildingSkin'
 import {
   BAG_COLORS,
   bake,
+  FIGURE_HIP_X,
+  FIGURE_HIP_Y,
   instanced,
   KIOSK_COLORS,
   PAX_COLORS,
   peopleGeo,
+  partSurface,
   propParts,
   setTrs,
+  setYawPitch,
   SKIN_COLORS,
   STAFF_COLOR,
+  TROUSER_COLORS,
   trs,
   unitBeam,
+  walkSwing,
+  yawOffset,
   type BakePiece,
   type PeopleGeo,
   type PropPart,
@@ -43,8 +56,9 @@ import { pickLod, stepFade } from './lod'
 import { planTerminal, terminalPlanSeed, walkerAt, type TerminalPlan } from './plan'
 import { roomAt, type RoomKind, type RoomPlan } from './rooms'
 import { quadsGeometry } from './surfaces'
-import { type WorldTextures } from './textures'
+import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
+import { buildHiDetailProps, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
 import { CELL, cellX, cellZ } from './view'
 import {
   DESK_KINDS,
@@ -80,10 +94,17 @@ export interface TerminalShared {
   parts: Record<string, PropPart[]>
   palette: Record<string, THREE.Material>
   textures: WorldTextures
+  surfaces: SurfaceLibrary
   signCache: Map<string, THREE.Texture | null>
+  /** High / Ultra: detailed render/terminalProps models replace the low-poly plan props. */
+  hiDetail: boolean
 }
 
-export function makeTerminalShared(textures: WorldTextures): TerminalShared {
+export function makeTerminalShared(textures: WorldTextures, quality: QualityLevel = 'high'): TerminalShared {
+  const surfaces = new SurfaceLibrary()
+  surfaces.loadPngs()
+  surfaces.loadPack1(quality)
+  surfaces.loadPack4(quality)
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
     new THREE.MeshLambertMaterial({ color, ...extra })
   const palette: Record<string, THREE.Material> = {
@@ -95,7 +116,7 @@ export function makeTerminalShared(textures: WorldTextures): TerminalShared {
     chrome: lambert(0xb8c0c8),
     tape: lambert(0xc0392b),
     seat: lambert(0x2f5f8a),
-    board: new THREE.MeshBasicMaterial({ map: textures.board }),
+    board: new THREE.MeshBasicMaterial({ map: departuresBoardTexture() ?? textures.board }),
     machine: lambert(0x8f9aa6),
     kiosk: lambert(0xffffff),
     shelf: lambert(0x7a5a3a),
@@ -112,17 +133,23 @@ export function makeTerminalShared(textures: WorldTextures): TerminalShared {
     parts: propParts(),
     palette,
     textures,
+    surfaces,
     signCache: new Map(),
+    hiDetail: hiDetailOn(quality),
   }
 }
 
 export function disposeTerminalShared(s: TerminalShared) {
   s.beam.dispose()
   s.people.body.dispose()
+  s.people.torso.dispose()
+  s.people.legL.dispose()
+  s.people.legR.dispose()
   s.people.head.dispose()
   s.people.bag.dispose()
   for (const list of Object.values(s.parts)) for (const p of list) p.geo.dispose()
   for (const m of Object.values(s.palette)) m.dispose()
+  s.surfaces.dispose()
   for (const t of s.signCache.values()) t?.dispose()
 }
 
@@ -181,6 +208,9 @@ export class TerminalBuilding {
   private time = 0
   private wallSets: { mesh: THREE.InstancedMesh; walls: WallInst[] }[] = []
   private glassWallMat: THREE.MeshLambertMaterial | null = null
+  private ceiling: THREE.Mesh | null = null
+  /** Hall view sets this when the real camera is under the tiles. */
+  ceilingForce = false
   private wallMats: THREE.Material[] = []
   private nearCut = false
   /** Merged full-height walls. Shown whenever the cutaway is not animating. */
@@ -199,6 +229,7 @@ export class TerminalBuilding {
   private lifeTarget = 0
   private readonly frustum = new THREE.Frustum()
   private readonly projView = new THREE.Matrix4()
+  private detail = new THREE.Group()
 
   constructor(info: TerminalInfo, shared: TerminalShared, opts: { density: number; walkersPerCell: number; index: number }) {
     this.info = info
@@ -214,6 +245,8 @@ export class TerminalBuilding {
     this.root.name = `terminal-${opts.index}`
     this.shell.name = 'terminal-shell'
     this.roof.name = 'terminal-roof-group'
+    this.detail.name = 'props-detail'
+    this.props.add(this.detail)
     this.root.add(this.shell, this.roof, this.props, this.life)
 
     const own = <T extends THREE.Material>(m: T) => {
@@ -222,22 +255,26 @@ export class TerminalBuilding {
     }
     this.floorMat = own(
       new THREE.MeshLambertMaterial({
-        map: shared.textures.terrazzo,
+        map: shared.surfaces.maps.floor,
         vertexColors: true,
         emissive: 0xffe2b0,
         emissiveIntensity: 0,
       }),
     )
+    shared.surfaces.watch(this.floorMat)
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
-        color: 0x9cc4dc,
+        color: 0xffffff,
+        map: shared.surfaces.maps.glass,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.82,
         depthWrite: false,
         emissive: 0xffc070,
         emissiveIntensity: 0,
       }),
     )
+    shared.surfaces.watch(this.glassMat)
+    tileByPosition(this.glassMat, shared.surfaces.repeatFor('glass'))
     this.skyMat = own(this.glassMat.clone())
     this.skyMat.opacity = 0.18
     this.buildShell(opts.index)
@@ -249,18 +286,11 @@ export class TerminalBuilding {
     this.syncWallMode()
   }
 
-  /** Swap in the SVG pack once it has decoded. Procedural maps stay until then. */
-  applyPackMaps(floor: THREE.Texture | null, glass: THREE.Texture | null) {
-    if (floor) {
-      this.floorMat.map = floor
-      this.floorMat.needsUpdate = true
-    }
-    if (glass) {
-      this.glassMat.map = glass
-      this.glassMat.color.setHex(0xffffff)
-      this.glassMat.needsUpdate = true
-    }
-  }
+  /**
+   * The SVG pack used to replace floor and glass. Texture pack 1 owns those
+   * surfaces now, so a later SVG decode must not paint over the JPEGs.
+   */
+  applyPackMaps(_floor: THREE.Texture | null, _glass: THREE.Texture | null) {}
 
   get rooms(): RoomPlan {
     return this.plan.rooms
@@ -282,7 +312,8 @@ export class TerminalBuilding {
     const { cluster, edges, airside } = this.info
     const own = <T extends THREE.Material>(m: T) => (this.owned.mats.push(m), m)
     const shellM = own(new THREE.MeshLambertMaterial({ vertexColors: true }))
-    const roofM = own(new THREE.MeshLambertMaterial({ map: this.shared.textures.roof }))
+    // Roof tint from the terminal material target; the membrane photo or raster is the map.
+    const roofM = own(new THREE.MeshLambertMaterial({ map: this.shared.textures.roof, color: lighten(MATERIAL_TARGETS.terminal.roof) }))
 
     const slab: THREE.Matrix4[] = []
     const roofFrame: THREE.Matrix4[] = []
@@ -401,6 +432,36 @@ export class TerminalBuilding {
     this.signQueue.push({ text, bg, fg, w, h, x, y, z, yaw, room, into })
   }
 
+  private plane(w: number, h: number, mat: THREE.Material, x: number, y: number, z: number, yaw: number, into: THREE.Group) {
+    const g = new THREE.PlaneGeometry(w, h)
+    this.owned.geos.push(g)
+    const mesh = new THREE.Mesh(g, mat)
+    mesh.position.set(x, y, z)
+    mesh.rotation.y = yaw
+    into.add(mesh)
+    return mesh
+  }
+
+  private wayfindingSign(title: string, sub?: string): THREE.Material {
+    const key = `way|${title}|${sub ?? ''}`
+    if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture(title, sub))
+    const tex = this.shared.signCache.get(key) ?? null
+    const m = new THREE.MeshBasicMaterial(tex ? { map: tex } : { color: 0x0e2233 })
+    this.owned.mats.push(m)
+    return m
+  }
+
+  /** Navy gate board with the airline mark painted on the left once the JPEG arrives. */
+  private gateSign(gateId: string, slot: number): THREE.Material {
+    const key = `way|GATES|${gateId}`
+    if (!this.shared.signCache.has(key)) this.shared.signCache.set(key, wayfindingTexture('GATES', gateId))
+    const tex = this.shared.signCache.get(key) ?? null
+    const mat = new THREE.MeshBasicMaterial(tex ? { map: tex, toneMapped: false } : { color: 0x0e2233 })
+    this.owned.mats.push(mat)
+    if (tex) this.shared.surfaces.onLogo(slot, (image) => stampWayfindingLogo(tex, 'GATES', gateId, image))
+    return mat
+  }
+
   /** One instanced mesh per parent. Shell signs and room signs do not share a material, so a prop fade cannot blank the fascia. */
   private flushSigns() {
     for (const into of ['shell', 'props'] as const) {
@@ -432,20 +493,17 @@ export class TerminalBuilding {
     if (landEdges.length) {
       const mid = landEdges[Math.floor(landEdges.length / 2)]
       const v = DIR_VEC[land]
-      const w = Math.min(m(14), landEdges.length * m(8))
-      const h = m(1.4)
-      this.queueSign(
-        `TERMINAL ${index + 1}`,
-        w,
-        h,
+      const brand = this.shared.surfaces.brandMaterial()
+      this.owned.mats.push(brand)
+      this.plane(
+        m(4.6),
+        m(4.6),
+        brand,
         cellX(mid.c) + v.dc * (CELL * 0.5 + m(0.4)),
-        m(3.6),
+        m(3.2),
         cellZ(mid.r) + v.dr * (CELL * 0.5 + m(0.4)),
         yawOut(land),
-        'shell',
-        -1,
-        '#13293d',
-        '#f2c14a',
+        this.shell,
       )
       const dep = landEdges[0]
       this.queueSign(
@@ -464,34 +522,84 @@ export class TerminalBuilding {
     }
     airEdges.forEach((e, i) => {
       const v = DIR_VEC[airside]
-      this.queueSign(
-        `GATE ${String.fromCharCode(65 + index)}${i + 1}`,
-        m(2.8),
-        m(0.7),
-        cellX(e.c) + v.dc * (CELL * 0.5 + m(0.4)),
-        m(3.6),
-        cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4)),
-        yawOut(airside),
-        'shell',
-      )
+      const x = cellX(e.c) + v.dc * (CELL * 0.5 + m(0.4))
+      const z = cellZ(e.r) + v.dr * (CELL * 0.5 + m(0.4))
+      const yaw = yawOut(airside)
+      this.queueSign(`GATE ${String.fromCharCode(65 + index)}${i + 1}`, m(2.2), m(0.7), x, m(3.6), z, yaw, 'shell', -1, '#1b4f72', '#ffffff')
+      const logo = this.shared.surfaces.logoMaterial(i)
+      this.owned.mats.push(logo)
+      const side = yaw + Math.PI / 2
+      this.plane(m(0.9), m(0.9), logo, x + Math.sin(side) * m(1.7), m(3.6), z + Math.cos(side) * m(1.7), yaw, this.shell)
     })
   }
 
   /** Room floors, interior walls / partitions / lintels, and a hanging sign per room. */
   private buildRooms(index: number) {
     const rp = this.plan.rooms
-    const floor = new THREE.Mesh(roomFloorGeometry(rp, FLOOR_Y), this.floorMat)
-    this.owned.geos.push(floor.geometry)
-    floor.receiveShadow = true
-    floor.name = 'terminal-floor'
-    this.shell.add(floor)
+    const hallGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(TERRAZZO_ROOMS), flat: true })
+    const carpetGeo = roomFloorGeometry(rp, FLOOR_Y, { kinds: new Set(CARPET_ROOMS), flat: true })
+    const hallMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.terrazzo,
+      vertexColors: true,
+    })
+    const carpetMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.carpetGrey,
+      vertexColors: true,
+    })
+    this.shared.surfaces.watch(hallMat)
+    this.shared.surfaces.watch(carpetMat)
+    tileByPosition(hallMat, this.shared.surfaces.repeatFor('terrazzo'))
+    tileByPosition(carpetMat, this.shared.surfaces.repeatFor('carpetGrey'))
+    this.owned.mats.push(hallMat, carpetMat)
+    for (const [geo, mat, name] of [
+      [hallGeo, hallMat, 'terminal-floor'],
+      [carpetGeo, carpetMat, 'terminal-carpet'],
+    ] as const) {
+      if (!geo.getAttribute('position')?.count) {
+        geo.dispose()
+        continue
+      }
+      const mesh = new THREE.Mesh(geo, mat)
+      this.owned.geos.push(geo)
+      mesh.receiveShadow = true
+      mesh.name = name
+      this.shell.add(mesh)
+    }
+    const ceilGeo = roomFloorGeometry(rp, ROOF_Y - m(0.12), { flat: true })
+    const ceilMat = new THREE.MeshLambertMaterial({
+      map: this.shared.surfaces.maps.ceiling,
+      side: THREE.DoubleSide,
+      color: 0xffffff,
+    })
+    this.shared.surfaces.watch(ceilMat)
+    tileByPosition(ceilMat, this.shared.surfaces.repeatFor('ceiling'))
+    this.owned.mats.push(ceilMat)
+    if (ceilGeo.getAttribute('position')?.count) {
+      const ceiling = new THREE.Mesh(ceilGeo, ceilMat)
+      this.owned.geos.push(ceilGeo)
+      ceiling.name = 'terminal-ceiling'
+      this.shell.add(ceiling)
+      this.ceiling = ceiling
+    } else ceilGeo.dispose()
 
-    const solidM = new THREE.MeshLambertMaterial({ color: 0xffffff })
+    const solidM = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      map: this.shared.surfaces.maps.wall,
+      vertexColors: true,
+    })
+    this.shared.surfaces.watch(solidM)
+    tileByPosition(solidM, this.shared.surfaces.repeatFor('wall'))
     this.owned.mats.push(solidM)
     this.wallMats.push(solidM)
-    const glassM = this.glassMat.clone()
-    glassM.opacity = 0.4
-    glassM.color.setHex(0xb8d8ea)
+    const glassM = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      map: this.shared.surfaces.maps.glass,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: true,
+    })
+    this.shared.surfaces.watch(glassM)
+    tileByPosition(glassM, this.shared.surfaces.repeatFor('glass'))
     this.owned.mats.push(glassM)
     this.glassWallMat = glassM
     const solid: WallInst[] = []
@@ -519,7 +627,7 @@ export class TerminalBuilding {
       this.props.add(mesh)
       this.wallSets.push({ mesh, walls: list })
     }
-    add(solid, solidM, 'room-walls', solid.map((w) => (w.header ? 0x46525e : 0xece6dc)))
+    add(solid, solidM, 'room-walls', solid.map((w) => (w.header ? 0xd7d1c6 : 0xffffff)))
     add(glass, glassM, 'room-glass')
     for (const set of this.wallSets) this.layoutWalls(set, 1)
     this.staticWalls = this.bakeWalls(solid, false)
@@ -527,8 +635,25 @@ export class TerminalBuilding {
 
     const land = landsideSide(this.info.airside)
     const yaw = land === 's' ? 0 : land === 'n' ? Math.PI : land === 'e' ? Math.PI / 2 : -Math.PI / 2
+    let gateN = 0
     for (const room of rp.rooms) {
-      const text = room.kind === 'gate' ? room.label.replace('GATE ', `GATE ${String.fromCharCode(65 + index)}`) : room.label
+      const gate = room.kind === 'gate'
+      if (gate || room.kind === 'checkin' || room.kind === 'security') {
+        // Wayfinding boards keep their own texture so the gate board can take the airline mark.
+        const gateId = `${String.fromCharCode(65 + index)}${room.label.replace(/\D/g, '') || ''}`
+        const w = gate ? m(1.72 * (GATE_SIGN.w / GATE_SIGN.h)) : m(5.6)
+        const h = gate ? m(1.72) : m(1.5)
+        const mat = gate
+          ? this.gateSign(gateId, gateN++)
+          : this.wayfindingSign(room.kind === 'checkin' ? 'CHECK-IN' : 'SECURITY')
+        this.propMats.push(mat)
+        for (const a of [yaw, yaw + Math.PI]) {
+          const board = this.plane(w, h, mat, room.x + Math.sin(a) * m(0.03), WALL_H + m(0.35), room.z + Math.cos(a) * m(0.03), a, this.props)
+          board.name = gate ? 'gate-sign' : 'wayfinding-sign'
+        }
+        continue
+      }
+      const text = room.label
       const w = Math.min(m(4.2), m(0.7) + text.length * m(0.18))
       const h = m(0.55)
       // Back-to-back so the label reads from either side of the hall.
@@ -629,30 +754,89 @@ export class TerminalBuilding {
 
   private buildProps() {
     const lit: BakePiece[] = []
+    const wood: BakePiece[] = []
+    const plaster: BakePiece[] = []
     const unlit: BakePiece[] = []
+    const extraSurfaces = new Map<LibraryMap, BakePiece[]>()
     const lamps: BakePiece[] = []
     const boards: THREE.Matrix4[] = []
-    const desks = new Map<string, { geo: THREE.BufferGeometry; mat: string; items: { matrix: THREE.Matrix4; room: number }[] }>()
+    const desks = new Map<
+      string,
+      { geo: THREE.BufferGeometry; mat: string; surface?: LibraryMap; items: { matrix: THREE.Matrix4; room: number }[] }
+    >()
+    const logoSlots: THREE.Matrix4[] = []
+    const detail = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.Material; matrices: THREE.Matrix4[]; colors: number[] }>()
+    const hi = this.shared.hiDetail === true
     for (const p of this.plan.props) {
+      if (hiDetailOwns(p.kind, hi)) continue
       const matrix = trs(p.x, FLOOR_Y, p.z, p.yaw, WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
       const room = roomAt(this.plan.rooms, p.x, p.z)?.id ?? -1
       if (DESK_KINDS.has(p.kind)) {
         for (const part of this.shared.parts[p.kind] ?? []) {
-          const key = `${p.kind}:${part.mat}`
-          const list = desks.get(key) ?? { geo: part.geo, mat: part.mat, items: [] }
+          if (part.mat === 'logo') {
+            logoSlots.push(matrix)
+            continue
+          }
+          const surface = partSurface(part)
+          const map: LibraryMap | undefined = surface === 'rubber' ? 'floor' : surface
+          const key = `${part.geo.uuid}|${part.mat}|${map ?? ''}`
+          const list = desks.get(key) ?? { geo: part.geo, mat: part.mat, surface: map, items: [] }
           list.items.push({ matrix, room })
           desks.set(key, list)
         }
         continue
       }
       for (const part of this.shared.parts[p.kind] ?? []) {
+        const surface = partSurface(part)
+        const color = surface
+          ? 0xffffff
+          : part.mat === 'kiosk'
+            ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length]
+            : (PROP_COLORS[part.mat] ?? 0xffffff)
+        if (part.detail) {
+          const mat = surface
+            ? this.shared.surfaces.material(part.mat, 0xffffff, surface === 'rubber' ? 'floor' : surface === 'shop' ? 'shop' : surface)
+            : (this.shared.palette[part.mat] ?? this.shared.palette.desk)
+          const key = `${part.geo.uuid}|${part.mat}|${surface ?? ''}`
+          let batch = detail.get(key)
+          if (!batch) {
+            batch = { geo: part.geo, mat, matrices: [], colors: [] }
+            detail.set(key, batch)
+          }
+          batch.matrices.push(matrix)
+          batch.colors.push(color)
+          continue
+        }
         if (part.mat === 'board') {
           boards.push(matrix)
           continue
         }
-        const color =
-          part.mat === 'kiosk' ? KIOSK_COLORS[(p.tint ?? 0) % KIOSK_COLORS.length] : (PROP_COLORS[part.mat] ?? 0xffffff)
-        ;(p.kind === 'light' ? lamps : UNLIT.has(part.mat) ? unlit : lit).push({ geo: part.geo, matrix, color })
+        if (part.mat === 'logo') {
+          logoSlots.push(matrix)
+          continue
+        }
+        const bucket =
+          p.kind === 'light'
+            ? lamps
+            : surface
+              ? surface === 'wall'
+                ? plaster
+                : surface === 'wood'
+                  ? wood
+                  : null
+              : UNLIT.has(part.mat)
+                ? unlit
+                : lit
+        if (bucket) bucket.push({ geo: part.geo, matrix, color })
+        else if (surface) {
+          const kind: LibraryMap = surface === 'rubber' ? 'floor' : surface
+          let extra = extraSurfaces.get(kind)
+          if (!extra) {
+            extra = []
+            extraSurfaces.set(kind, extra)
+          }
+          extra.push({ geo: part.geo, matrix, color })
+        }
       }
     }
     const own = <T extends THREE.Material>(m: T) => {
@@ -660,11 +844,33 @@ export class TerminalBuilding {
       this.propMats.push(m)
       return m
     }
+    const mapped = (map: THREE.Texture) => {
+      const m = own(new THREE.MeshLambertMaterial({ vertexColors: true, map }))
+      this.shared.surfaces.watch(m)
+      return m
+    }
     this.bakedMesh(lit, own(new THREE.MeshLambertMaterial({ vertexColors: true })), this.props, 'props-lit')
+    const mappedKind = (kind: LibraryMap) => {
+      const m = mapped(this.shared.surfaces.maps[kind])
+      tileByPosition(m, this.shared.surfaces.repeatFor(kind))
+      return m
+    }
+    this.bakedMesh(wood, mappedKind('wood'), this.props, 'props-wood')
+    this.bakedMesh(plaster, mappedKind('wall'), this.props, 'props-wall')
+    for (const [kind, pieces] of extraSurfaces) this.bakedMesh(pieces, mappedKind(kind), this.props, `props-${kind}`)
     this.bakedMesh(unlit, own(new THREE.MeshBasicMaterial({ vertexColors: true })), this.props, 'props-unlit')
     for (const list of desks.values()) {
       const src = this.shared.palette[list.mat]
-      const mat = src ? src.clone() : new THREE.MeshLambertMaterial({ color: PROP_COLORS[list.mat] ?? 0xffffff })
+      let mat: THREE.Material
+      if (list.surface) {
+        // Granite tops and the like: per-terminal copy so the prop fade does not touch other terminals.
+        const surfaced = new THREE.MeshLambertMaterial({ color: 0xffffff, map: this.shared.surfaces.maps[list.surface] })
+        tileByPosition(surfaced, this.shared.surfaces.repeatFor(list.surface))
+        this.shared.surfaces.watch(surfaced)
+        mat = surfaced
+      } else {
+        mat = src ? src.clone() : new THREE.MeshLambertMaterial({ color: PROP_COLORS[list.mat] ?? 0xffffff })
+      }
       own(mat)
       const mesh = instanced(
         list.geo,
@@ -681,12 +887,35 @@ export class TerminalBuilding {
     this.owned.mats.push(lampM)
     this.roofMats.push(lampM)
     this.bakedMesh(lamps, lampM, this.roof, 'roof-lamps')
+    const logoGeo = this.shared.parts.counter?.find((x) => x.mat === 'logo')?.geo
+    if (logoGeo && logoSlots.length) {
+      const byMark = new Map<number, THREE.Matrix4[]>()
+      logoSlots.forEach((matrix, i) => {
+        const slot = i % AIRLINE_LOGOS.length
+        const list = byMark.get(slot) ?? []
+        list.push(matrix)
+        byMark.set(slot, list)
+      })
+      for (const [slot, matrices] of byMark) {
+        const mat = own(this.shared.surfaces.logoMaterial(slot))
+        const mesh = instanced(logoGeo, mat, matrices)
+        mesh.name = 'desk-logo'
+        this.props.add(mesh)
+      }
+    }
     const board = this.shared.parts.board?.find((x) => x.mat === 'board')
     if (board && boards.length) {
       const m = instanced(board.geo, own(this.shared.palette.board.clone()), boards)
       m.name = 'props-boards'
       this.props.add(m)
     }
+    for (const batch of detail.values()) {
+      const mesh = instanced(batch.geo, batch.mat, batch.matrices, batch.colors)
+      mesh.castShadow = false
+      mesh.frustumCulled = false
+      this.detail.add(mesh)
+    }
+    if (hi) this.props.add(buildHiDetailProps(this.plan.props, this.shared.parts, WORLD_PER_METER, FLOOR_Y))
   }
 
   private buildLife() {
@@ -716,25 +945,35 @@ export class TerminalBuilding {
     const w = this.plan.walkers
     if (w.length) {
       const zero = w.map(() => trs(0, -10, 0))
-      const wb = mk(g.body, 'body', zero, w.map((x) => (x.staff ? STAFF_COLOR : PAX_COLORS[x.tint % PAX_COLORS.length])))
+      const shirts = w.map((x) => (x.staff ? STAFF_COLOR : PAX_COLORS[x.tint % PAX_COLORS.length]))
+      const trousers = w.map((x) => TROUSER_COLORS[x.tint % TROUSER_COLORS.length])
+      const wt = mk(g.torso, 'body', zero, shirts)
       const wh = mk(g.head, 'head', zero, w.map((_, i) => SKIN_COLORS[(i * 3) % SKIN_COLORS.length]))
       const bags = w.filter((x) => x.bag)
       const wl = mk(g.bag, 'bag', bags.map(() => trs(0, -10, 0)), bags.map((_, i) => BAG_COLORS[i % BAG_COLORS.length]))
-      for (const m of [wb, wh, wl]) m.frustumCulled = false
-      this.walkers = [wb, wh, wl]
+      const wL = mk(g.legL, 'body', zero, trousers)
+      const wR = mk(g.legR, 'body', zero, trousers)
+      for (const mesh of [wt, wh, wl, wL, wR]) mesh.frustumCulled = false
+      this.walkers = [wt, wh, wl, wL, wR]
       this.stepWalkers(0)
     }
   }
 
   private stepWalkers(t: number) {
     if (!this.walkers.length) return
-    const [wb, wh, wl] = this.walkers
+    const [wt, wh, wl, wL, wR] = this.walkers
     let bi = 0
     this.plan.walkers.forEach((w, i) => {
       const p = walkerAt(w, t)
       const bob = Math.abs(Math.sin(t * 7 * w.speed + i)) * m(0.04)
-      setTrs(wb, i, p.x, FLOOR_Y + bob, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
-      setTrs(wh, i, p.x, FLOOR_Y + bob, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      const y = FLOOR_Y + bob
+      setTrs(wt, i, p.x, y, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      setTrs(wh, i, p.x, y, p.z, p.yaw, PERSON_SCALE, PERSON_SCALE)
+      const swing = walkSwing(t, w.phase, w.speed)
+      yawOffset(p.yaw, -FIGURE_HIP_X * PERSON_SCALE, FIGURE_HIP_Y * PERSON_SCALE + bob, 0, HIP)
+      setYawPitch(wL, i, p.x + HIP.x, FLOOR_Y + HIP.y, p.z + HIP.z, p.yaw, swing, PERSON_SCALE, PERSON_SCALE)
+      yawOffset(p.yaw, FIGURE_HIP_X * PERSON_SCALE, FIGURE_HIP_Y * PERSON_SCALE + bob, 0, HIP)
+      setYawPitch(wR, i, p.x + HIP.x, FLOOR_Y + HIP.y, p.z + HIP.z, p.yaw, -swing, PERSON_SCALE, PERSON_SCALE)
       if (w.bag) {
         // Case trails behind and to the right of the walker.
         const back = 0.32 * PERSON_SCALE
@@ -744,7 +983,7 @@ export class TerminalBuilding {
         setTrs(wl, bi++, p.x - sx * back + sz * side, FLOOR_Y, p.z - sz * back - sx * side, p.yaw, PERSON_SCALE, PERSON_SCALE)
       }
     })
-    for (const m of this.walkers) m.instanceMatrix.needsUpdate = true
+    for (const mesh of this.walkers) mesh.instanceMatrix.needsUpdate = true
   }
 
   /**
@@ -763,7 +1002,7 @@ export class TerminalBuilding {
     camera?: THREE.Camera,
   ) {
     const look = focus ?? { x: this.center.x, z: this.center.z }
-    const pose = interiorPoseKey(camPos, look, lodScale, night, enclosed)
+    const pose = `${interiorPoseKey(camPos, look, lodScale, night, enclosed)}|${this.ceilingForce ? 1 : 0}`
     if (pose === this.poseKey && this.settled()) return
     this.poseKey = pose
 
@@ -772,6 +1011,8 @@ export class TerminalBuilding {
     const close = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
     // Hall view only: close and above the roof lifts it off. Airport view stays enclosed.
     const cut = !enclosed && close && camPos.y > ROOF_Y + m(1.5)
+    const aboveCeiling = camPos.y > ROOF_Y - m(0.2)
+    if (this.ceiling) this.ceiling.visible = this.ceilingForce || !aboveCeiling
     this.nearCut = !enclosed && close
     this.roofTarget = cut ? 0 : 1
     this.propTarget = this.lod <= 1 ? 1 : 0
@@ -786,7 +1027,8 @@ export class TerminalBuilding {
     this.lifeFade = stepFade(this.lifeFade, this.lifeTarget, dt, 3)
     applyFade(this.props, this.propMats, this.propFade)
     applyFade(this.props, this.wallMats, this.propFade)
-    if (this.glassWallMat) this.glassWallMat.opacity = 0.4 * this.propFade
+    this.detail.visible = this.lod === 0 && this.propFade > 0.2
+    if (this.glassWallMat) this.glassWallMat.opacity = 0.9 * this.propFade
     if (!this.nearCut && this.propFade < 0.001) this.snapWallsFull()
     else if (this.propFade > 0 && (this.nearCut || !this.wallsFull())) this.stepWalls(camPos, look, dt)
     this.syncWallMode()
@@ -914,6 +1156,8 @@ export class TerminalBuilding {
   dispose() {
     for (const t of this.signTextures) t.dispose()
     this.signTextures = []
+    this.shared.surfaces.unwatch(this.floorMat)
+    for (const mat of this.owned.mats) this.shared.surfaces.unwatch(mat)
     for (const g of this.owned.geos) g.dispose()
     for (const m of this.owned.mats) m.dispose()
     this.root.traverse((o) => {
@@ -952,6 +1196,7 @@ function applyFade(group: THREE.Group, mats: THREE.Material[], f: number) {
 }
 
 const Q0 = new THREE.Quaternion()
+const HIP = new THREE.Vector3()
 
 interface WallInst {
   x: number
@@ -967,14 +1212,26 @@ interface WallInst {
 }
 
 /** Terrazzo floor tinted per room, runs merged per row, darker thresholds at doorways. */
-export function roomFloorGeometry(rp: RoomPlan, y: number): THREE.BufferGeometry {
+export function roomFloorGeometry(
+  rp: RoomPlan,
+  y: number,
+  opts: { kinds?: ReadonlySet<string>; flat?: boolean } = {},
+): THREE.BufferGeometry {
   const near = new Uint8Array(rp.w * rp.h)
   for (const e of rp.doorEdges) {
     const s = e >> 1
     near[s] = 1
     near[s + ((e & 1) === 0 ? 1 : rp.w)] = 1
   }
-  const colorOf = (s: number) => (near[s] ? THRESHOLD : ROOM_FLOOR[rp.rooms[rp.grid[s]].kind])
+  const accept = (s: number) => {
+    if (rp.grid[s] < 0) return false
+    const kind = rp.rooms[rp.grid[s]]?.kind
+    return !opts.kinds || (kind != null && opts.kinds.has(kind))
+  }
+  const colorOf = (s: number) => {
+    if (opts.flat) return 0xffffff
+    return near[s] ? THRESHOLD : ROOM_FLOOR[rp.rooms[rp.grid[s]].kind]
+  }
   const pos: number[] = []
   const uv: number[] = []
   const col: number[] = []
@@ -985,13 +1242,13 @@ export function roomFloorGeometry(rp: RoomPlan, y: number): THREE.BufferGeometry
     let i = 0
     while (i < rp.w) {
       const s = j * rp.w + i
-      if (rp.grid[s] < 0) {
+      if (!accept(s)) {
         i++
         continue
       }
       const hex = colorOf(s)
       let i1 = i + 1
-      while (i1 < rp.w && rp.grid[j * rp.w + i1] >= 0 && colorOf(j * rp.w + i1) === hex) i1++
+      while (i1 < rp.w && accept(j * rp.w + i1) && colorOf(j * rp.w + i1) === hex) i1++
       const xa = rp.x0 + i * rp.size
       const xb = rp.x0 + i1 * rp.size
       const za = rp.z0 + j * rp.size

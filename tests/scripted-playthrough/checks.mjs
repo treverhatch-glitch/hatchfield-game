@@ -10,6 +10,7 @@
  *   signed:       [{ t, airline }]
  *   consoleErrors:[{ t, text }]
  *   scriptGaps:   [{ t, what, detail }]                         steps the script could not do
+ *   worldViolations: [{ rule, c, r, message }]                apron audit at the end of the run
  *   endT:         final sim clock
  */
 
@@ -282,6 +283,19 @@ export function checkScriptGaps(log) {
   return (log.scriptGaps ?? []).map((g) => finding('medium', 'script-gap', g.what, g.t ?? null, g.detail ?? ''))
 }
 
+/** Roads through buildings, illegal crossings, wingtip and runway clearance, tower sightlines. */
+export function checkWorld(log) {
+  return (log.worldViolations ?? []).map((v) =>
+    finding(
+      'high',
+      'world-violation',
+      v.message ?? `${v.rule ?? 'violation'} at ${v.c},${v.r}`,
+      null,
+      `${v.rule ?? 'rule'} @ ${v.c},${v.r}`,
+    ),
+  )
+}
+
 export function runChecks(log, cfg = CONFIG) {
   const all = [
     ...checkMoneyLines(log, cfg),
@@ -292,6 +306,7 @@ export function runChecks(log, cfg = CONFIG) {
     ...checkFleetVsContracts(log, cfg),
     ...checkConsole(log, cfg),
     ...checkScriptGaps(log),
+    ...checkWorld(log),
   ]
   return all.sort((a, b) => SEV[a.severity] - SEV[b.severity] || (a.t ?? 0) - (b.t ?? 0))
 }

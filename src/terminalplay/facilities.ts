@@ -1,7 +1,8 @@
 /**
  * Facilities the terminal pathing layer reads.
- * This file does not move passengers. `placeholderRoute` is a stand-in
- * until the navmesh (entrance → boarding) lands.
+ * This file does not move passengers. The live walk (entrance → boarding) is
+ * src/paxnav via src/game/hallNav.ts, which reads `facilityBlockers` for the
+ * prefab nav grid. `placeholderRoute` stays as the plain stop order.
  */
 import { cellCenter, itemDef, type PlacedItem } from '../game/terminal.ts'
 import { blockedCellKeys } from './place.ts'
@@ -53,6 +54,8 @@ const DEF_TYPE: Record<string, FacilityType> = {
   newsagent: 'shop',
   wayfinding: 'sign',
   info_screen: 'sign',
+  departures_wall: 'sign',
+  gate_pylon: 'sign',
   boarding_desk: 'gate',
   wall: 'wall',
   bag_system: 'belt',
@@ -110,14 +113,14 @@ export function facilitiesFromItems(
   return out
 }
 
-/** Cells a future navmesh must not cross. Walls and belts. */
+/** Cells the nav grid never walks: walls and belts (see `prefabNavLayout`). */
 export function facilityBlockers(items: readonly { def: string; c: number; r: number }[]): Set<string> {
   return blockedCellKeys(items)
 }
 
 /**
  * Straight list of stops: doors, check-in, bag drop, security, airside
- * restroom / food / shop, seats, gate. Ignores walls. Not wired to guests.
+ * restroom / food / shop, seats, gate. Ignores walls; the walk uses the nav grid.
  */
 export function placeholderRoute(facilities: readonly TerminalFacility[]): TerminalFacility[] {
   const stops = facilities.filter((f) => ROUTE_ORDER.includes(f.type))

@@ -1,143 +1,352 @@
 /**
- * Ground vehicles as one merged, vertex-coloured mesh each: chassis, cab with
- * glazing, load body (box, tank or bus shell), wheels, hi-vis band, roof beacon.
- * Geometry is cached per kind + colour and one material is shared, so a vehicle
- * still costs a single draw call.
+ * Ground vehicles as low-poly meshes built in code. Each kind is one merged,
+ * vertex-coloured geometry. A VehicleFleet draws every live copy of that
+ * geometry with a single InstancedMesh.
  */
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
+import { buildVehicleParts, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
+import { ANIM_PARTS, newPartPose, partMatrix, partPose, poseInput } from './vehicleAnim'
+import { applyVehicleSurface } from './vehicleSurface'
 
-export type VehicleShape = 'truck' | 'tanker' | 'bus' | 'tug'
-
-/** Silhouette per vehicle kind. Unknown kinds read as a small van/truck. */
-export function vehicleShape(kind: string): VehicleShape {
-  if (kind === 'fuel' || kind === 'fuel_truck' || kind === 'deice') return 'tanker'
-  if (kind === 'pax_bus' || kind === 'termbus') return 'bus'
-  if (kind === 'pushback_tug' || kind === 'baggage_tug' || kind === 'belt_loader' || kind === 'gpu') return 'tug'
-  // Bag runs and city trucks carry their load on the roof line, so they keep a full-height body.
-  return 'truck'
-}
+export { ANIM_PARTS, deployOf, partPose, poseInput, poseVehicleRig, serviceStateOf, truckDeploy, type PoseInput } from './vehicleAnim'
+export { setVehicleSurfaceTime, setVehicleWear } from './vehicleSurface'
+export { vehicleModel, MODEL_SIZE, MODEL_PARTS, ALL_MODELS, type VehicleModel } from './vehicleModels'
 
 const geos = new Map<string, THREE.BufferGeometry>()
-let material: THREE.MeshStandardMaterial | null = null
+let material: THREE.MeshLambertMaterial | null = null
+let litMaterial: THREE.MeshBasicMaterial | null = null
 
-function sharedMaterial(): THREE.MeshStandardMaterial {
-  material ??= new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    metalness: VEHICLE_LOOK.material.metalness,
-    roughness: VEHICLE_LOOK.material.roughness,
-  })
+/** Lambert, not standard: a physical shader on every truck cost frames on SwiftShader. */
+function sharedMaterial(): THREE.MeshLambertMaterial {
+  material ??= applyVehicleSurface(new THREE.MeshLambertMaterial({ vertexColors: true }))
   return material
+}
+
+/** Unlit vertex colours: head/tail lights, beacons and light bars read as glowing. */
+function sharedLitMaterial(): THREE.MeshBasicMaterial {
+  litMaterial ??= new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })
+  return litMaterial
+}
+
+let beamMaterial: THREE.MeshBasicMaterial | null = null
+/** Headlight cones: faint additive glow, no depth write so they never hide the apron. */
+function sharedBeamMaterial(): THREE.MeshBasicMaterial {
+  beamMaterial ??= new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.07, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+  })
+  return beamMaterial
+}
+
+/** Real model size in metres (length, height, width). */
+export function vehicleSize(kind: string): readonly [number, number, number] {
+  return MODEL_SIZE[vehicleModel(kind)]
+}
+
+function merge(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const merged = parts.length ? mergeGeometries(parts)! : new THREE.BufferGeometry()
+  if (parts.length) merged.computeVertexNormals()
+  merged.computeBoundingSphere()
+  return merged
+}
+
+function buildCached(kind: string, color: string) {
+  const model = vehicleModel(kind)
+  const key = `${model}|${color}`
+  const hit = geos.get(key)
+  if (hit) return { body: hit, lit: geos.get(key + '|lit')! }
+  const parts = buildVehicleParts(model, color)
+  const anim = new Set(ANIM_PARTS[model] ?? [])
+  const shell = parts.filter((p) => !anim.has(p.name))
+  const body = merge(shell.filter((p) => !p.lit).map((p) => p.geo))
+  const lit = merge(shell.filter((p) => p.lit).map((p) => p.geo))
+  for (const name of anim) {
+    const mine = parts.filter((p) => p.name === name)
+    geos.set(`${key}|part:${name}`, merge(mine.filter((p) => !p.lit).map((p) => p.geo)))
+    geos.set(`${key}|part:${name}|lit`, merge(mine.filter((p) => p.lit).map((p) => p.geo)))
+  }
+  for (const p of parts) p.geo.dispose()
+  geos.set(key, body)
+  geos.set(key + '|lit', lit)
+  return { body, lit }
+}
+
+/** Geometry of one animated part (Round B), cached beside the shell. Empty if the part has none. */
+export function vehiclePartGeometry(kind: string, color: string, part: string, lit = false): THREE.BufferGeometry {
+  const model = vehicleModel(kind)
+  buildCached(kind, color)
+  return geos.get(`${model}|${color}|part:${part}${lit ? '|lit' : ''}`) ?? EMPTY
+}
+
+const EMPTY = new THREE.BufferGeometry()
+
+/**
+ * Vehicle body geometry in metres: +X forward, ground at y = 0, centred on the footprint.
+ * Cached per model + accent colour. `size` is accepted for older callers; the
+ * model now carries its own real dimensions (see MODEL_SIZE).
+ */
+export function vehicleGeometry(kind: string, color: string, _size?: readonly [number, number, number]): THREE.BufferGeometry {
+  return buildCached(kind, color).body
+}
+
+/** Emissive parts (lights, beacons, light bars) for the same model, drawn unlit. */
+export function vehicleLitGeometry(kind: string, color: string): THREE.BufferGeometry {
+  return buildCached(kind, color).lit
+}
+
+/**
+ * Posable rig for Round B: a Group with a static `body` + `lights` shell and one
+ * child per named moving part (see MODEL_PARTS). Not cached; dispose with disposeVehicleRig.
+ */
+export function vehicleRig(kind: string, color: string, worldPerMeter = 1): THREE.Group {
+  const model = vehicleModel(kind)
+  const parts = buildVehicleParts(model, color)
+  const g = new THREE.Group()
+  g.name = `rig:${model}`
+  const buckets = new Map<string, { body: THREE.BufferGeometry[]; lit: THREE.BufferGeometry[] }>()
+  for (const p of parts) {
+    const b = buckets.get(p.name) ?? { body: [], lit: [] }
+    ;(p.lit ? b.lit : b.body).push(p.geo)
+    buckets.set(p.name, b)
+  }
+  for (const [name, b] of buckets) {
+    const holder = name ? new THREE.Group() : g
+    if (name) {
+      holder.name = name
+      g.add(holder)
+    }
+    if (b.body.length) {
+      const m = new THREE.Mesh(merge(b.body), sharedMaterial())
+      m.name = name ? `${name}:body` : 'body'
+      m.castShadow = true
+      holder.add(m)
+    }
+    if (b.lit.length) {
+      const m = new THREE.Mesh(merge(b.lit), name === 'beam' ? sharedBeamMaterial() : sharedLitMaterial())
+      m.name = name ? `${name}:lights` : 'lights'
+      holder.add(m)
+    }
+  }
+  for (const p of parts) p.geo.dispose()
+  g.scale.setScalar(worldPerMeter)
+  return g
+}
+
+export function disposeVehicleRig(rig: THREE.Object3D) {
+  rig.traverse((o) => (o as THREE.Mesh).geometry?.dispose())
 }
 
 const _c = new THREE.Color()
 
-/** Colour a primitive and place it. `lay` turns a Y-axis cylinder onto the X (length) or Z (axle) axis. */
-function part(geo: THREE.BufferGeometry, hex: string, x: number, y: number, z: number, lay?: 'x' | 'z'): THREE.BufferGeometry {
-  if (lay === 'z') geo.rotateX(Math.PI / 2)
-  else if (lay === 'x') geo.rotateZ(Math.PI / 2)
-  geo.translate(x, y, z)
-  const flat = geo.index ? geo.toNonIndexed() : geo
-  if (flat !== geo) geo.dispose()
-  flat.deleteAttribute('uv')
-  const n = flat.getAttribute('position').count
+function box(hex: string, w: number, h: number, d: number, x: number, y: number, z: number): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(w, h, d).translate(x, y, z).toNonIndexed()
+  geo.deleteAttribute('uv')
+  const n = geo.getAttribute('position').count
   const colors = new Float32Array(n * 3)
   _c.set(hex)
-  for (let i = 0; i < n; i++) {
-    colors[i * 3] = _c.r
-    colors[i * 3 + 1] = _c.g
-    colors[i * 3 + 2] = _c.b
-  }
-  flat.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-  return flat
+  for (let i = 0; i < n; i++) colors.set([_c.r, _c.g, _c.b], i * 3)
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return geo
 }
 
-function box(hex: string, w: number, h: number, d: number, x: number, y: number, z: number) {
-  return part(new THREE.BoxGeometry(w, h, d), hex, x, y, z)
-}
-
-/** Vehicle geometry in meters: +X forward, ground at y = 0, centred on the footprint. */
-export function vehicleGeometry(kind: string, color: string, size: readonly [number, number, number]): THREE.BufferGeometry {
+function cargoGeometry(mode: 'crates' | 'suitcases', size: readonly [number, number, number]): THREE.BufferGeometry {
   const [L, H, W] = size
-  const key = `${kind}|${color}|${L}|${H}|${W}`
+  const key = `cargo:${mode}|${L}|${H}|${W}`
   const hit = geos.get(key)
   if (hit) return hit
   const look = VEHICLE_LOOK
-  const shape = vehicleShape(kind)
-  const r = shape === 'tug' ? Math.min(look.wheelM * 0.75, H * 0.22) : look.wheelM
-  const deck = r * 1.15
+  const cabL = L * look.cabShare
+  const bodyL = L - cabL - 0.28
+  const bodyX = -L / 2 + bodyL / 2 + 0.02
   const parts: THREE.BufferGeometry[] = []
-  // Chassis rail under everything.
-  parts.push(box(look.chassis, L * 0.96, r * 0.7, W * 0.9, 0, deck - r * 0.1, 0))
-  // Wheels: two axles, a third on long rigs.
-  const axles = L > 9 ? [0.36, -0.2, -0.36] : [0.33, -0.33]
-  for (const k of axles) {
-    for (const side of [1, -1]) {
-      const z = side * (W / 2 - r * 0.32)
-      parts.push(part(new THREE.CylinderGeometry(r, r, r * 0.62, 10), look.tyre, k * L, r, z, 'z'))
-      parts.push(part(new THREE.CylinderGeometry(r * 0.48, r * 0.48, r * 0.66, 8), look.hub, k * L, r, z, 'z'))
-    }
-  }
-  const top = H
-  if (shape === 'bus') {
-    const h = top - deck
-    parts.push(box(color, L, h, W, 0, deck + h / 2, 0))
-    // Window band on both sides and a deep windscreen.
-    parts.push(box(look.glass, L * 0.86, h * 0.34, W * 1.02, -L * 0.03, deck + h * 0.62, 0))
-    parts.push(box(look.glass, 0.08, h * 0.45, W * 0.86, L / 2 + 0.02, deck + h * 0.6, 0))
-    parts.push(box(look.stripe, L * 1.004, h * 0.07, W * 1.01, 0, deck + h * 0.2, 0))
-  } else if (shape === 'tug') {
-    const h = Math.max(0.3, (top - deck) * 0.55)
-    parts.push(box(color, L, h, W, 0, deck + h / 2, 0))
-    // Open driver's cab at the front: roof on four posts, dark screen, beacon.
-    const cabL = L * 0.3
-    const cabH = top - deck - h
-    parts.push(box(color, cabL, cabH * 0.12, W * 0.9, L / 2 - cabL / 2, top - cabH * 0.06, 0))
-    for (const side of [1, -1]) {
-      parts.push(box(look.chassis, 0.08, cabH, 0.08, L / 2 - cabL * 0.1, deck + h + cabH / 2, side * W * 0.4))
-      parts.push(box(look.chassis, 0.08, cabH, 0.08, L / 2 - cabL * 0.9, deck + h + cabH / 2, side * W * 0.4))
-    }
-    parts.push(box(look.glass, 0.06, cabH * 0.7, W * 0.8, L / 2 - cabL * 0.08, deck + h + cabH * 0.45, 0))
-    parts.push(box(look.beacon, 0.22, 0.14, 0.22, L / 2 - cabL / 2, top + 0.07, 0))
-    parts.push(box(look.stripe, L * 1.004, Math.min(0.12, h * 0.25), W * 1.01, 0, deck + h * 0.35, 0))
+  if (mode === 'crates') {
+    parts.push(box('#9a7a40', bodyL * 0.62, H * 0.32, W * 0.7, bodyX, H + H * 0.16, 0))
   } else {
-    // Cab forward, load body behind.
-    const cabL = L * look.cabShare
-    const cabH = (top - deck) * 0.82
-    const cabX = L / 2 - cabL / 2
-    parts.push(box(color, cabL, cabH, W * 0.96, cabX, deck + cabH / 2, 0))
-    parts.push(box(look.glass, 0.08, cabH * 0.42, W * 0.82, L / 2 + 0.02, deck + cabH * 0.68, 0))
-    parts.push(box(look.glass, cabL * 0.55, cabH * 0.36, W * 0.98, cabX + cabL * 0.12, deck + cabH * 0.68, 0))
-    parts.push(box(look.beacon, 0.24, 0.16, 0.24, cabX, deck + cabH + 0.08, 0))
-    const bodyL = L - cabL - 0.2
-    const bodyX = -L / 2 + bodyL / 2
-    if (shape === 'tanker') {
-      const tr = Math.min(W / 2, (top - deck) / 2) * 0.96
-      parts.push(part(new THREE.CylinderGeometry(tr, tr, bodyL, 14), color, bodyX, deck + tr, 0, 'x'))
-      parts.push(box(look.stripe, bodyL * 0.98, 0.14, W * 0.98, bodyX, deck + tr * 0.55, 0))
-    } else {
-      const h = top - deck
-      parts.push(box(color, bodyL, h, W, bodyX, deck + h / 2, 0))
-      parts.push(box(look.stripe, bodyL * 1.004, 0.14, W * 1.01, bodyX, deck + h * 0.14, 0))
+    parts.push(box('#8a7348', bodyL * 0.4, H * 0.22, W * 0.55, bodyX, H + H * 0.1, 0))
+    for (const [i, hex] of [[-1, '#ffb703'], [0, '#3ec6ff'], [1, '#ffb703']] as const) {
+      parts.push(box(hex, 0.55, 0.4, 0.32, bodyX + i * 0.7, H + 0.28, 0))
     }
   }
   const merged = mergeGeometries(parts)!
   for (const p of parts) p.dispose()
   merged.computeVertexNormals()
-  merged.computeBoundingSphere()
   geos.set(key, merged)
   return merged
 }
 
 /** One-draw vehicle mesh, scaled from meters to world units. Shared GPU data: never dispose it. */
 export function vehicleMesh(kind: string, color: string, size: readonly [number, number, number], worldPerMeter: number): THREE.Mesh {
-  const mesh = new THREE.Mesh(vehicleGeometry(kind, color, size), sharedMaterial())
+  void size
+  const mesh = new THREE.Mesh(vehicleGeometry(kind, color), sharedMaterial())
   mesh.scale.setScalar(worldPerMeter)
   mesh.castShadow = true
   mesh.name = 'body'
   mesh.userData.shared = true
   return mesh
+}
+
+export interface VehicleInstance {
+  kind: string
+  color: string
+  size: readonly [number, number, number]
+  x: number
+  y: number
+  z: number
+  yaw: number
+  scale: number
+  cargo?: 'crates' | 'suitcases'
+  cargoScale?: number
+  /** Round B: 0 stowed .. 1 deployed at the aircraft. */
+  ext?: number
+  /** Light bar / beacons running (ARFF call, etc.). */
+  active?: boolean
+  /** Sim clock in seconds for running parts (belts, turrets, flashing). */
+  clock?: number
+  /** Distance driven, metres: wheel spin. */
+  odo?: number
+  /** Backing onto a stand: reverse lights. */
+  reversing?: boolean
+  /** Front-wheel steer, radians. */
+  steer?: number
+  /** Headlight beams on (night / dusk, moving). */
+  beams?: boolean
+}
+
+export class VehicleFleet {
+  readonly root = new THREE.Group()
+  private bodies = new Map<string, THREE.InstancedMesh>()
+  private lights = new Map<string, THREE.InstancedMesh>()
+  private cargo = new Map<string, THREE.InstancedMesh>()
+  private parts = new Map<string, THREE.InstancedMesh>()
+  private dummy = new THREE.Object3D()
+  private pose = newPartPose()
+  private local = new THREE.Matrix4()
+  private input = poseInput()
+
+  sync(list: readonly VehicleInstance[]) {
+    const groups = new Map<string, VehicleInstance[]>()
+    const loads = new Map<string, VehicleInstance[]>()
+    for (const item of list) {
+      const model = vehicleModel(item.kind)
+      const key = `${model}|${item.color}`
+      const arr = groups.get(key) ?? []
+      arr.push(item)
+      groups.set(key, arr)
+      // Baggage trains and box trucks carry their load in the model now.
+      if (item.cargo && model !== 'baggage_train' && model !== 'box_truck') {
+        const ck = `${item.cargo}|${item.size[0]}|${item.size[1]}|${item.size[2]}`
+        const bin = loads.get(ck) ?? []
+        bin.push(item)
+        loads.set(ck, bin)
+      }
+    }
+    const seen = new Set<string>()
+    for (const [key, items] of groups) {
+      seen.add(key)
+      this.write(this.bodies, key, items, (sample) => vehicleGeometry(sample.kind, sample.color), false)
+      this.write(this.lights, key, items, (sample) => vehicleLitGeometry(sample.kind, sample.color), false, sharedLitMaterial())
+    }
+    const seenParts = new Set<string>()
+    for (const [key, items] of groups) {
+      const sample = items[0]
+      const model = vehicleModel(sample.kind)
+      for (const part of ANIM_PARTS[model] ?? []) {
+        for (const lit of [false, true]) {
+          const geo = vehiclePartGeometry(sample.kind, sample.color, part, lit)
+          if (!geo.getAttribute('position')) continue
+          const pk = `${key}|${part}${lit ? '|lit' : ''}`
+          seenParts.add(pk)
+          this.write(this.parts, pk, items, () => geo, false, lit ? (part === 'beam' ? sharedBeamMaterial() : sharedLitMaterial()) : sharedMaterial(), model, part)
+        }
+      }
+    }
+    for (const [key, mesh] of this.parts) {
+      if (!seenParts.has(key)) mesh.count = 0
+    }
+    for (const bucket of [this.bodies, this.lights]) {
+      for (const [key, mesh] of bucket) {
+        if (!seen.has(key)) mesh.count = 0
+      }
+    }
+    const seenCargo = new Set<string>()
+    for (const [key, items] of loads) {
+      seenCargo.add(key)
+      const mode = key.startsWith('suitcases') ? 'suitcases' : 'crates'
+      this.write(this.cargo, key, items, (sample) => cargoGeometry(mode, sample.size), true)
+    }
+    for (const [key, mesh] of this.cargo) {
+      if (!seenCargo.has(key)) mesh.count = 0
+    }
+  }
+
+  private write(
+    bucket: Map<string, THREE.InstancedMesh>,
+    key: string,
+    items: VehicleInstance[],
+    geometry: (sample: VehicleInstance) => THREE.BufferGeometry,
+    asCargo: boolean,
+    mat: THREE.Material = sharedMaterial(),
+    model?: VehicleModel,
+    part?: string,
+  ) {
+    let mesh = bucket.get(key)
+    if (!mesh || mesh.instanceMatrix.count < items.length) {
+      mesh?.removeFromParent()
+      mesh?.dispose()
+      mesh = new THREE.InstancedMesh(geometry(items[0]), mat, Math.max(8, items.length))
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      mesh.castShadow = mat === sharedMaterial()
+      mesh.frustumCulled = false
+      mesh.userData.shared = true
+      mesh.name = part ? `part:${key}` : asCargo ? `cargo:${key}` : mat === sharedMaterial() ? `fleet:${key}` : `lights:${key}`
+      this.root.add(mesh)
+      bucket.set(key, mesh)
+    }
+    items.forEach((item, i) => {
+      const s = item.scale * (asCargo ? item.cargoScale ?? 1 : 1)
+      this.dummy.position.set(item.x, item.y, item.z)
+      this.dummy.rotation.set(0, item.yaw, 0)
+      this.dummy.scale.setScalar(s)
+      this.dummy.updateMatrix()
+      const inp = this.input
+      inp.ext = item.ext ?? 0
+      inp.clock = item.clock ?? 0
+      inp.active = item.active ?? false
+      inp.odo = item.odo ?? 0
+      inp.reversing = item.reversing ?? false
+      inp.steer = item.steer ?? 0
+      inp.beams = item.beams ?? false
+      if (model && part && partPose(model, part, inp, this.pose)) {
+        this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
+      }
+      mesh!.setMatrixAt(i, this.dummy.matrix)
+    })
+    mesh.count = items.length
+    mesh.instanceMatrix.needsUpdate = true
+    if (part === 'belt') {
+      let run = mesh.geometry.getAttribute('iRun') as THREE.InstancedBufferAttribute | undefined
+      if (!run || run.count < mesh.instanceMatrix.count) {
+        run = new THREE.InstancedBufferAttribute(new Float32Array(mesh.instanceMatrix.count), 1)
+        run.setUsage(THREE.DynamicDrawUsage)
+        mesh.geometry.setAttribute('iRun', run)
+      }
+      items.forEach((item, i) => run!.setX(i, (item.ext ?? 0) >= 0.999 ? 1 : 0))
+      run.needsUpdate = true
+    }
+  }
+
+  dispose() {
+    for (const mesh of this.bodies.values()) mesh.dispose()
+    for (const mesh of this.cargo.values()) mesh.dispose()
+    for (const mesh of this.lights.values()) mesh.dispose()
+    for (const mesh of this.parts.values()) mesh.dispose()
+    this.parts.clear()
+    this.lights.clear()
+    this.bodies.clear()
+    this.cargo.clear()
+    this.root.clear()
+  }
 }
 
 export function vehicleLibrarySize(): number {
@@ -149,4 +358,6 @@ export function disposeVehicleLibrary() {
   geos.clear()
   material?.dispose()
   material = null
+  litMaterial?.dispose()
+  litMaterial = null
 }

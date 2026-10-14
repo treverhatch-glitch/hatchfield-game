@@ -1,5 +1,6 @@
 import { finiteAmount } from '../disruptions/engine.ts'
-import { footprintBlock } from './buildingFootprint.ts'
+import { GroundControl, RIGHT_OF_WAY, type AtcRole, type RouteCell } from '../atc/groundControl.ts'
+import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
 import { OPS_ALERT_PREFIX, OpsEventRunner, opsAlertText, type ActiveOpsEvent } from '../content/events_ops.ts'
@@ -159,11 +160,10 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
-import { clearanceBlocks } from './runwayClearance'
-import { footprintCells, placementHitsStand, standPlaceBlock } from './standFoot'
+import { footprintCells } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
-import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
+import { bridgeMirror, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
 import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
 import { terminals } from '../render/world/layout.ts'
@@ -194,7 +194,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage, waitMoodDelta } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -578,6 +578,14 @@ import {
   type PassengerLink,
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
+import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
+import { rosterAirline } from '../airlines/roster.ts'
+import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
+import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
+import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines } from './rosterAirlines.ts'
+import { standCrewPeople, standProps, type StandArrival } from '../ramp/standCrew.ts'
+import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
   commitPlot,
   dailySinks,
@@ -647,6 +655,8 @@ import {
 import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
+import { AchievementTracker } from '../achievements/achievements.ts'
+import type { AchievementState } from '../achievements/types.ts'
 import type {
   AircraftKind,
   Airline,
@@ -887,6 +897,9 @@ const FINANCING_CATEGORIES = new Set([
   'deposits',
 ])
 
+const ATC_MAX_GO_AROUNDS = 3
+const ATC_DEPARTURE_STARVE_SEC = 30
+
 export class Game {
   standingAdvisor: StandingAdvisor = new StandingAdvisor(
     new GameDiplomacyAdapter(
@@ -994,6 +1007,8 @@ export class Game {
   ownedPlots: OwnedPlot[] = []
   /** On-site dorms, apartments, and the staff village. */
   staffHousing = new StaffHousingBridge()
+  /** Tracker for achievements and milestones */
+  achievements = new AchievementTracker()
   /** Optional outsourced pavement crew. Daily fee, faster repair. */
   maintenanceContract = false
   railLinked = false
@@ -1126,6 +1141,11 @@ export class Game {
   branding: BrandingSave = defaultBranding()
   private ambience: AmbienceMixer | null = null
   crashCool = 8
+  /** Ground traffic control: taxi reservations and runway locks. */
+  atc = new GroundControl()
+  /** Path each aircraft was last cleared along (by identity). */
+  private atcPaths = new Map<string, Vec[]>()
+  private atcYields = new Map<string, number>()
   /** Real crash write-offs; the only source of crashFlight charges. */
   crashes = 0
   fireIncidentCool = 60
@@ -2256,12 +2276,57 @@ export class Game {
     return craftRoleLabel(kind)
   }
 
-  /** Premade + live procedural regionals. */
+  /** Premade catalog, the 45-airline roster, live procedural regionals and negotiation carriers. */
   allAirlines(): Airline[] {
+    const roster = rosterGameAirlines().map((a) => normalizeAirline(a))
     // Negotiation-only carriers (Zoomjet etc.) resolve through airline(); list them so they can be signed.
-    const known = new Set([...airlineList(), ...this.extraAirlines].map((a) => a.id))
+    const known = new Set([...airlineList(), ...roster, ...this.extraAirlines].map((a) => a.id))
     const negotiated = NEGOTIATION_AIRLINES.filter((a) => !known.has(a.id)).map((a) => this.airline(a.id))
-    return [...airlineList(), ...this.extraAirlines, ...negotiated]
+    return [...airlineList(), ...roster, ...this.extraAirlines, ...negotiated]
+  }
+
+  /**
+   * Check-in desk signs, in desk order: signed passenger carriers, or while
+   * nobody is signed yet, the roster carriers currently open to this field.
+   */
+  deskBrands(): { id: string; name: string; code: string; primary: string; secondary: string }[] {
+    const key = `${this.signed.join(',')}|${this.reputation >> 2}|${this.hostedFieldLevel()}`
+    if (this.deskBrandCache?.key === key) return this.deskBrandCache.list
+    const brand = (id: AirlineId) => {
+      const a = this.airline(id)
+      const r = rosterAirline(id)
+      return { id, name: a.name, code: r?.code ?? a.name.slice(0, 3).toUpperCase(), primary: r?.primary ?? a.color, secondary: r?.secondary ?? a.stripe }
+    }
+    const signed = this.signed.filter((id) => this.airline(id).kind === 'pax')
+    const ids = signed.length ? signed : ROSTER_LIVE ? rosterGameAirlines().filter((a) => a.kind === 'pax' && this.rosterOpen(a.id)).slice(0, 6).map((a) => a.id) : []
+    const list = ids.map(brand)
+    this.deskBrandCache = { key, list }
+    return list
+  }
+
+  private deskBrandCache: { key: string; list: { id: string; name: string; code: string; primary: string; secondary: string }[] } | null = null
+
+  /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
+  panelAirlines(): Airline[] {
+    return this.allAirlines().filter((a) => !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(a.id) && !this.signed.includes(a.id)))
+  }
+
+  /** Airport size (1 to 5) and reputation, as the roster unlock table reads them. */
+  rosterAirport(): { size: number; reputation: number } {
+    return { size: Math.min(ROSTER_SIZE_CAP, this.hostedFieldLevel()), reputation: this.reputation }
+  }
+
+  /**
+   * Will this carrier write to us? Roster carriers need their size and
+   * reputation gate (helicopter operators also a helipad); while the roster
+   * is live, catalog carriers no longer send new letters.
+   */
+  rosterOpen(id: AirlineId): boolean {
+    const r = rosterAirline(id)
+    if (!r) return !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(id))
+    if (!ROSTER_LIVE) return false
+    if (r.type === 'heli' && !this.readiness().helipad) return false
+    return isAirlineUnlocked(r, this.rosterAirport())
   }
 
   airline(id: AirlineId): Airline {
@@ -2330,9 +2395,15 @@ export class Game {
     }
     const raw =
       AIRLINES[id] ??
+      rosterGameAirline(id) ??
       this.extraAirlines.find((a) => a.id === id) ??
       AIRLINES.northline
     return normalizeAirline(raw)
+  }
+
+  /** Airframe ids a contract sells: catalog fleet, or the roster carrier's own (no helicopters on the jet flow). */
+  private contractFleet(id: AirlineId): readonly string[] | undefined {
+    return CONTRACT_FLEET[id] ?? rosterFleet(id)?.filter((m) => AIRFRAMES[m] && !AIRFRAMES[m].kind.startsWith('helo'))
   }
 
   fieldLevel(): FieldLevel {
@@ -3512,7 +3583,7 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
-    const contracted = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const contracted = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (contracted.length) {
       const counts = new Map<AircraftKind, number>()
       for (const af of contracted) counts.set(af.kind, (counts.get(af.kind) ?? 0) + 1)
@@ -3711,7 +3782,13 @@ export class Game {
 
   seedAccessStub() {
     // City edge hint — short road stub from north edge so players see the connection idea.
-    for (let r = 0; r < 3; r++) this.tiles[r][Math.floor(SIZE / 2)] = 'road'
+    const c = Math.floor(SIZE / 2)
+    for (let r = 0; r < 3; r++) {
+      const v = { c, r }
+      if (this.tile(v) !== 'grass') continue
+      if (this.placementBlockReason('road', [v], v, 'Access road')) continue
+      this.tiles[r]![c] = 'road'
+    }
   }
 
   /** One-click AT3 field — flavor follows startFocus (pax / cargo / hybrid). */
@@ -3953,8 +4030,15 @@ export class Game {
     }
     if (!this.spend(RAIL_CITY_COST, 'city rail investment')) return
     this.railLinked = true
-    // City builds to the west edge; player sees a stub.
-    for (let c = 0; c < 4; c++) this.tiles[Math.floor(SIZE / 2)][c] = 'road'
+    // City builds to the west edge; player sees a stub. Skip cells that are already built
+    // or that would cut a taxiway, a building, or a runway shoulder.
+    const row = Math.floor(SIZE / 2)
+    for (let c = 0; c < 4; c++) {
+      const v = { c, r: row }
+      if (this.tile(v) !== 'grass') continue
+      if (this.placementBlockReason('road', [v], v, 'Access road')) continue
+      this.tiles[row]![c] = 'road'
+    }
     this.reputation = Math.min(100, this.reputation + 5)
     this.bumpMap()
     this.pushNews(
@@ -4890,6 +4974,7 @@ export class Game {
       tier3Sites: this.lateSites.map((site) => ({ ...site })),
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
+      achievements: this.achievements.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -4985,6 +5070,7 @@ export class Game {
       this.lateSites = restoreLateSites(s.tier3Sites, this.tiles)
       this.missedHotelNights = wholeNights(s.missedHotelNights ?? 0)
       this.crewHotelNights = wholeNights(s.crewHotelNights ?? 0)
+      if (s.achievements) this.achievements.load(s.achievements as AchievementState)
       // Migrate bare hotel tiles from older saves → business grade.
       for (const p of tilesOf(this.tiles, 'hotel')) {
         const k = `${p.c},${p.r}`
@@ -5644,6 +5730,22 @@ export class Game {
       if (footprintOf(def) === 'wall') lines.push('Solid wall — passengers walk around it')
       if (footprintOf(def) === 'belt') lines.push('Belt — nothing else can sit on this cell')
       return { title: def?.name ?? 'Facility', lines }
+    }
+    if (this.hallNav.live) {
+      // The walk's real lines: count, worst wait, and whether the kit keeps up.
+      const live = this.hallNav.queues().find((q) => q.node === id)
+      const loads = this.hallNav.loads().filter((l) => l.node === id)
+      if (live || loads.length) {
+        const mins = Math.round((live?.waitSec ?? 0) / 60)
+        return {
+          title: live?.label ?? id,
+          lines: [
+            `${live?.count ?? 0} waiting at ${loads.length} ${loads.length === 1 ? 'point' : 'points'}`,
+            `Wait ~${mins} min`,
+            live?.bottleneck ? 'Bottleneck — add a lane, a desk, or a wider queue' : 'Line is moving',
+          ],
+        }
+      }
     }
     const row = hallQueues(this.hallGuests).find((q) => q.node === id)
     if (!row) {
@@ -7257,8 +7359,10 @@ export class Game {
   }
 
   /**
-   * Bright walkers so the hall reads as open on day 1, before a flight releases.
+   * Walkers so the hall reads as open on day 1, before a flight releases.
    * They only pace the curb-to-gate path. Cargo kits have no hall to fill.
+   * Shirts stay in a natural clothing range: neon orange and amber read as
+   * flying dots from the airport camera on a phone.
    */
   private seedDayOneCrowd() {
     const fit = this.fits[0]
@@ -7266,18 +7370,18 @@ export class Game {
     const hallId = this.hallKey(fit)
     const path: HallNode[] = ['entrance', 'checkin', 'security', 'shop', 'gate']
     const shirts = [
-      '#e23b2f',
-      '#3ec6ff',
-      '#ffb703',
-      '#7c5cff',
-      '#3dd68c',
-      '#ff6b9a',
-      '#fb923c',
-      '#60a5fa',
-      '#f472b6',
-      '#a3e635',
-      '#f8fafc',
-      '#f97316',
+      '#2c3e50',
+      '#5c4636',
+      '#3d5c4a',
+      '#7a3e3e',
+      '#cfc6b8',
+      '#4e5b38',
+      '#6b5a48',
+      '#3e5160',
+      '#8a6a52',
+      '#243044',
+      '#5e5648',
+      '#6d7d72',
     ]
     const tags: PaxTag[] = [
       'family',
@@ -7395,6 +7499,7 @@ export class Game {
       String(this.hallRev),
       () => hallNavLayout(fit),
       () => hallClaimHall(fit),
+      () => hallSignage(fit),
     )
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
@@ -7403,6 +7508,23 @@ export class Game {
       return this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
     })
     this.hallNav.tick(step)
+    this.applyHallWaits()
+    // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
+    this.queueReputation(this.hallNav.takeReputation())
+  }
+
+  /** Waits in the walk's real queues move the waiting guest's mood: quick service pleases, a long line stings. */
+  applyHallWaits() {
+    const waits = this.hallNav.drainWaits()
+    if (!waits.length) return
+    const byId = new Map<string, HallGuest>()
+    for (const g of this.hallGuests) if (!g.dead && !g.preview) byId.set(g.id, g)
+    for (const w of waits) {
+      const g = byId.get(w.id)
+      if (!g) continue
+      const delta = waitMoodDelta(w.kind, w.waitSec)
+      if (delta) g.happiness = Math.max(0, Math.min(100, g.happiness + delta))
+    }
   }
 
   tickHall(dt: number) {
@@ -8655,6 +8777,21 @@ export class Game {
       })
     }
 
+    for (const q of this.atcQueues()) {
+      if (q.longest < this.atc.tune.longWaitSec) continue
+      raise({
+        key: q.runway ? `cond:atc-holdshort:${q.cell.c},${q.cell.r}` : `cond:atc-queue:${q.cell.c},${q.cell.r}`,
+        severity: q.count >= 3 || q.longest > 60 ? 'critical' : 'warning',
+        title: q.runway
+          ? `${q.count} departure${q.count === 1 ? '' : 's'} holding short`
+          : `Taxi queue: ${q.count} aircraft`,
+        detail: q.runway
+          ? `Waiting ${Math.round(q.longest)}s for the runway. Arrivals have right of way; a second runway or more exits clears it.`
+          : `Waiting ${Math.round(q.longest)}s behind traffic on a single lane. Add a parallel taxiway or a bypass.`,
+        at: { view: 'apron', cells: [q.cell] },
+      })
+    }
+
     const ground = this.ground?.snapshot()
     const farm = tilesOf(this.tiles, 'fuel')[0]
     if (ground && farm && ground.fuelLitres <= 0) {
@@ -8751,6 +8888,313 @@ export class Game {
   /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
   servicePoses() {
     return this.ensureGround()?.sim.poses() ?? []
+  }
+
+  /**
+   * Driver and helper for a fuel, bag, or catering stop.
+   * Steps fill the sim's service window. Parked crew stay in the cab and are omitted.
+   */
+  crewScene(): CrewScene {
+    const services = this.serviceClocks()
+    for (const clock of this.turnaroundClocks(services)) services.push(clock)
+    const scene = assembleCrew({
+      services,
+      catering: this.cateringPoses().map((pose) => ({
+        id: pose.id,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        phase: pose.phase,
+        phaseU: pose.phaseU,
+      })),
+      metersPerUnit: METERS_PER_CELL,
+      aircraftFor: (x, y) => this.aircraftAim(x, y),
+    })
+    for (const clock of this.paxClocks()) {
+      const sample = samplePax(clock)
+      scene.people.push(...sample.people)
+      scene.props.push(...sample.props)
+    }
+    for (const arrival of this.standArrivals()) {
+      standCrewPeople(arrival, METERS_PER_CELL, scene.people)
+      standProps(arrival, METERS_PER_CELL, scene.props)
+    }
+    return scene
+  }
+
+  /**
+   * Aircraft arriving on or sitting at a stand, timed for the marshaller,
+   * chocks and cones. Guiding starts a few cells out on the taxi-in; chocks
+   * and cones stay until pushback.
+   */
+  standArrivals(): StandArrival[] {
+    const out: StandArrival[] = []
+    for (const f of this.flights) {
+      if (!f.stand || f.craft === 'helo') continue
+      let t: number
+      if (f.phase === 'taxi_in') {
+        const d = Math.hypot(f.x - f.stand.c, f.y - f.stand.r)
+        if (d > STAND_TIMELINE.guideCells) continue
+        t = STAND_TIMELINE.taxi * (1 - d / STAND_TIMELINE.guideCells)
+      } else if (f.phase === 'deboard') t = STAND_TIMELINE.taxi + f.phaseTime
+      else if (f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') t = STAND_TIMELINE.settled
+      else continue
+      const spec = getAircraftSpec(f.airframeId || 'b738')
+      out.push({ id: f.id, x: f.x, y: f.y, heading: f.heading, lengthM: spec.lengthM, spanM: spec.spanM, t })
+    }
+    return out
+  }
+
+  /**
+   * The GPU cart, cleaning van and pushback tug behind the crew of a
+   * turnaround the logistics module is not already drawing. Same clocks as
+   * crewScene, so the crew always have their equipment under them.
+   */
+  turnaroundEquipment(): { id: string; kind: string; x: number; y: number; heading: number }[] {
+    const kinds: Partial<Record<CrewClock['service'], string>> = { cleaning: 'van', gpu: 'gpu', pushback: 'pushback_tug' }
+    const out: { id: string; kind: string; x: number; y: number; heading: number }[] = []
+    for (const clock of this.turnaroundClocks(this.serviceClocks())) {
+      const kind = kinds[clock.service]
+      if (kind) out.push({ id: clock.id, kind, x: clock.x, y: clock.y, heading: clock.heading })
+    }
+    return out
+  }
+
+  /** Logistics vehicles and legacy trucks currently on a service stop. */
+  private serviceClocks(): CrewClock[] {
+    const services: CrewClock[] = []
+    const ground = this.ground?.sim
+    if (ground) {
+      for (const job of ground.activeCrew()) {
+        services.push({
+          id: job.id,
+          service: job.service,
+          x: job.x,
+          y: job.y,
+          heading: job.heading,
+          start: job.start,
+          end: job.end,
+          now: ground.now,
+        })
+      }
+    }
+    for (const truck of this.trucks) {
+      const clock = this.legacyCrewClock(truck)
+      if (clock) services.push(clock)
+    }
+    return services
+  }
+
+  /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
+  bridgeExtend(flightId: string): number {
+    const flight = this.flights.find((item) => item.id === flightId)
+    if (!flight?.stand || flight.cargo || this.standPaxMode(flight.stand) !== 'jetway') return 0
+    if (flight.phase === 'servicing' || flight.phase === 'parked') return bridgeHold()
+    if (flight.phase !== 'deboard' && flight.phase !== 'board') return 0
+    return samplePax(this.paxClock(flight)).extend
+  }
+
+  /** Apron capsules stand down while the boarding picture draws these passengers. */
+  paxPicture(flightId: string): boolean {
+    const flight = this.flights.find((item) => item.id === flightId)
+    return !!flight && !flight.cargo && (flight.phase === 'deboard' || flight.phase === 'board')
+  }
+
+  private aircraftAim(x: number, y: number): AircraftAim | undefined {
+    let best: Flight | undefined
+    let bestD = 1.4
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.phase === 'gone' || flight.phase === 'hold') continue
+      const d = Math.hypot(flight.x - x, flight.y - y)
+      if (d < bestD) {
+        bestD = d
+        best = flight
+      }
+    }
+    if (!best) return undefined
+    const spec = getAircraftSpec(best.airframeId || 'b738')
+    return {
+      x: best.x,
+      y: best.y,
+      heading: best.heading,
+      lengthM: spec.lengthM,
+      spanM: spec.spanM,
+      wingAt: spec.wingAt,
+    }
+  }
+
+  /** Legacy bowser / cart / galley truck. The dwell it was given is the whole service. */
+  private legacyCrewClock(t: Truck): CrewClock | null {
+    if (t.returning || !(t.dwell > 0) || !(t.serviceFor && t.serviceFor > 0)) return null
+    let service: CrewClock['service'] | null = null
+    if (t.kind === 'fuel' && t.mission === 'fuel') service = 'fuel'
+    else if (t.kind === 'bags' && (t.mission === 'load' || t.mission === 'unload')) service = 'bags'
+    else if (t.kind === 'catering') service = 'catering'
+    if (!service) return null
+    const total = t.serviceFor
+    return {
+      id: t.id,
+      service,
+      x: t.x,
+      y: t.y,
+      heading: pathHeading(t.path),
+      start: 0,
+      end: total,
+      now: Math.min(total, Math.max(0, total - t.dwell)),
+    }
+  }
+
+  /**
+   * Cleaning, ground power, and the pushback tug when the logistics module
+   * has not already parked a vehicle on that job. The window is the flight
+   * phase the sim already uses.
+   */
+  private turnaroundClocks(existing: CrewClock[]): CrewClock[] {
+    const clocks: CrewClock[] = []
+    const has = (service: CrewClock['service'], x: number, y: number) =>
+      existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.cargo || flight.kind === 'military') continue
+      const pace = this.rampPace(flight.airframeId, false, flight.airline)
+      const door = this.paxDoor(flight)
+      const origin = { x: flight.x, y: flight.y, heading: flight.heading }
+      if (flight.phase === 'servicing') {
+        const end = 4 * pace
+        const now = Math.min(end, Math.max(0, flight.phaseTime))
+        if (!has('cleaning', flight.x, flight.y)) {
+          const at = placeLocal(origin, { x: door.x - 1.4, y: 0, z: door.z + Math.sign(door.z || 1) * 3.2 }, METERS_PER_CELL)
+          clocks.push({
+            id: `${flight.id}:clean`,
+            service: 'cleaning',
+            x: at.c,
+            y: at.r,
+            heading: flight.heading + Math.PI / 2,
+            start: 0,
+            end,
+            now,
+            aim: { x: 2.2, z: Math.sign(door.z || 1) * 2.4 },
+          })
+        }
+        if (!has('gpu', flight.x, flight.y)) {
+          const spec = getAircraftSpec(flight.airframeId || 'b738')
+          const at = placeLocal(origin, { x: spec.lengthM * 0.22, y: 0, z: door.z + Math.sign(door.z || 1) * 2.4 }, METERS_PER_CELL)
+          clocks.push({
+            id: `${flight.id}:gpu`,
+            service: 'gpu',
+            x: at.c,
+            y: at.r,
+            heading: flight.heading,
+            start: 0,
+            end,
+            now,
+            aim: { x: 1.6, z: -Math.sign(door.z || 1) * 2.2 },
+          })
+        }
+      }
+      if (flight.phase === 'pushback' && !has('pushback', flight.x, flight.y)) {
+        const spec = getAircraftSpec(flight.airframeId || 'b738')
+        const end = 2.8
+        const at = placeLocal(origin, { x: spec.lengthM * 0.5 + 4, y: 0, z: 0.4 }, METERS_PER_CELL)
+        clocks.push({
+          id: `${flight.id}:tug`,
+          service: 'pushback',
+          x: at.c,
+          y: at.r,
+          heading: flight.heading + Math.PI,
+          start: 0,
+          end,
+          now: Math.min(end, Math.max(0, flight.phaseTime)),
+          // Wing walker: tug-local metres to just outside the wingtip (the tug faces the aircraft).
+          aim: { x: 4 + spec.lengthM * spec.wingAt + spec.spanM * 0.15, z: spec.spanM / 2 + SERVICE_POINTS.wingWalkOut },
+        })
+      }
+    }
+    return clocks
+  }
+
+  private paxDoor(flight: Flight): PaxDoor {
+    const spec = getAircraftSpec(flight.airframeId || 'b738')
+    const side = this.paxSide(flight)
+    const door = spec.doors.find((item) => item.kind === 'pax' && item.side === side) ?? spec.doors.find((item) => item.kind === 'pax')
+    const t = door?.t ?? 0.16
+    const signed = door && door.side !== 0 ? door.side : side
+    return {
+      x: spec.lengthM * (0.5 - t),
+      z: signed * (spec.rx + 0.55),
+      sill: Math.max(2.5, spec.gear * 0.45 + 2.1),
+    }
+  }
+
+  private paxSide(flight: Flight): 1 | -1 {
+    if (!flight.stand) return 1
+    const hall = this.jetwayHall(flight.stand)
+    const gate = hall?.origin ?? this.nearestFit(flight.stand)
+    if (!gate) return 1
+    return bridgeMirror(flight.heading, flight.stand, gate)
+  }
+
+  private nearestFit(stand: { c: number; r: number }): { c: number; r: number } | null {
+    let best: { c: number; r: number } | null = null
+    let bestD = Infinity
+    for (const fit of this.fits) {
+      const d = Math.abs(fit.origin.c - stand.c) + Math.abs(fit.origin.r - stand.r)
+      if (d < bestD) {
+        bestD = d
+        best = fit.origin
+      }
+    }
+    return best
+  }
+
+  private paxMode(flight: Flight): PaxMode {
+    const mode = flight.stand ? this.standPaxMode(flight.stand) : 'walk'
+    if (mode === 'jetway') return 'bridge'
+    if (mode === 'bus') return 'bus'
+    return 'stairs'
+  }
+
+  private paxClocks(): PaxClock[] {
+    const clocks: PaxClock[] = []
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.cargo) continue
+      if (flight.phase !== 'deboard' && flight.phase !== 'board') continue
+      clocks.push(this.paxClock(flight))
+    }
+    return clocks
+  }
+
+  private paxClock(flight: Flight): PaxClock {
+    const leg = flight.phase === 'board' ? 'board' : 'deplane'
+    const mode = this.paxMode(flight)
+    const pace = this.rampPace(flight.airframeId, false, flight.airline)
+    const end =
+      leg === 'deplane'
+        ? (mode === 'bridge' ? 3.2 : mode === 'bus' ? 4.5 : 6) * pace
+        : (mode === 'bridge' ? (flight.boardingSlow ? 5 : 3.2) : flight.boardingSlow ? 9 : 5) * pace
+    const gate = this.paxGate(flight)
+    const bus = this.trucks.find((truck) => truck.kind === 'termbus' && truck.flightId === flight.id && !truck.returning)
+    const riding = mode === 'bus' && !!bus && !(bus.dwell > 0) && !(bus.preDwell > 0)
+    return {
+      id: flight.id,
+      mode,
+      leg,
+      start: 0,
+      end: Math.max(0.4, end),
+      now: Math.max(0, flight.phaseTime),
+      aircraft: { x: flight.x, y: flight.y, heading: flight.heading },
+      door: this.paxDoor(flight),
+      gate,
+      riding,
+      metersPerUnit: METERS_PER_CELL,
+    }
+  }
+
+  private paxGate(flight: Flight): { x: number; y: number } {
+    const depot = tilesOf(this.tiles, 'termbus')[0]
+    if (flight.stand && this.standPaxMode(flight.stand) === 'bus' && depot) return { x: depot.c, y: depot.r }
+    const hall = flight.stand ? this.jetwayHall(flight.stand) : null
+    const fit = hall?.origin ?? (flight.stand ? this.nearestFit(flight.stand) : null)
+    return fit ? { x: fit.c, y: fit.r } : { x: flight.x, y: flight.y }
   }
 
   /** Fuel, meals, and how many trucks are out. Null before the depot is built. */
@@ -9568,8 +10012,19 @@ export class Game {
     this.ground = createLogisticsAdapter(
       {
         addMoney: (amount, category) => this.postGroundMoney(amount, category),
-        playSound: (cue) => {
-          this.noteSound(soundForEvent({ type: cue }, 'logistics'))
+        playSound: (cue, standId) => {
+          let position: { x: number; y: number; z: number } | undefined = undefined;
+          if (standId) {
+            const parts = standId.split(',');
+            if (parts.length === 2) {
+              const c = Number(parts[0]);
+              const r = Number(parts[1]);
+              if (Number.isFinite(c) && Number.isFinite(r)) {
+                position = { x: c, y: r, z: 0 };
+              }
+            }
+          }
+          this.noteSound(soundForEvent({ type: cue, standId }, 'logistics'), position);
         },
         notify: (message, severity) => {
           this.pushNews(message, severity === 'warn' ? 'bad' : 'ok')
@@ -9675,13 +10130,13 @@ export class Game {
     return this.catering?.poses(kitchen) ?? []
   }
 
-  private noteSound(name: string | null) {
+  private noteSound(name: string | null, position?: { x: number; y: number; z: number }) {
     if (!name) return
     this.soundCues.push(name)
     if (this.soundCues.length > 24) this.soundCues.shift()
     if (typeof window === 'undefined') return
     try {
-      getAudio().playEvent(name)
+      getAudio().playEvent(name, { position })
     } catch {
       // Headless tests have no audio device.
     }
@@ -11166,7 +11621,7 @@ export class Game {
   private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const a = this.airline(airlineId)
     if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
-    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (!pool.length) return this.pickOperable(this.pickAircraftKind(airlineId), false)
     const level = this.fieldLevel()
     const research = this.researchUnlocked
@@ -11471,6 +11926,9 @@ export class Game {
     const a = this.airline(id)
     const r = this.readiness()
     const miss: string[] = []
+    const roster = rosterAirline(id)
+    if (roster && this.rosterAirport().size < unlockGate(roster).size) miss.push(`Field Lv${unlockGate(roster).size}+`)
+    if (roster?.type === 'heli' && !this.readiness().helipad) miss.push('helipad')
     if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
     if (!r.runway) miss.push('runway')
     if (a.req.heavyRunway && !r.heavyRunway) miss.push('heavy runway')
@@ -11545,7 +12003,7 @@ export class Game {
   contractCraftNeed(id: AirlineId): { label: string; met: boolean } | null {
     const a = this.airline(id)
     if (a.kind === 'cargo') return null
-    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (!pool.length) return null
     let need: StandClass = 'S'
     for (const af of pool) {
@@ -11570,6 +12028,7 @@ export class Game {
     const site = this.site ? LAND[this.site] : null
     // Light procedural regionals — keep the phone from always being the same six faces.
     if (
+      !ROSTER_LIVE &&
       this.signed.length >= 1 &&
       this.extraAirlines.filter((a) => a.procedural).length < 5 &&
       Math.random() < 0.4
@@ -11585,6 +12044,7 @@ export class Game {
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
       if (a.procedural && procSigned >= 3) return false
+      if (!this.rosterOpen(a.id)) return false
       if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
       // Start focus biases early letters (never hard-locks the other path).
@@ -12018,7 +12478,7 @@ export class Game {
       const slot: ScheduleSlot = {
         id: uid('slot'),
         airline: airlineId,
-        flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+        flightNo: `${rosterAirline(airlineId)?.code ?? a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
         eta,
         status: 'scheduled',
         delaySec: 0,
@@ -14561,9 +15021,11 @@ export class Game {
       if (mroJob.phase === 'in_bay') return `In MRO bay ${mroJob.bayId}`
       return `Taxiing back from MRO bay ${mroJob.bayId}`
     }
+    const atcHold = this.atcHoldLabel(f)
+    if (atcHold) return atcHold
     switch (f.phase) {
       case 'hold':
-        return 'Holding for a gate'
+        return f.goArounds ? `Holding after go-around ${f.goArounds}/${ATC_MAX_GO_AROUNDS}` : 'Holding for a gate'
       case 'approach':
         return `On approach → ${gate}${f.claimLane ? ` · claim ${f.claimLane}` : ''}`
       case 'landing':
@@ -15087,6 +15549,7 @@ export class Game {
       }
     }
     const cells = this.prefabRunway(v, klass)
+    const blocked = this.placementBlockReason('runway', cells, v, 'runway')
     if (
       cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') ||
       this.cellsBlocked(cells)
@@ -15097,12 +15560,12 @@ export class Game {
           : klass === 'short'
             ? 'Need a clear plot for the short strip (10×2). Regionals only.'
             : 'Need a clear plot for the runway. Hit Rotate if it hangs off.'
-      this.pushNews(tip, 'bad')
+      this.pushNews(blocked ?? tip, 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'runway')) {
-      this.pushNews('That strip sits inside runway clearance. Leave the shoulder empty.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15150,18 +15613,14 @@ export class Game {
       { c: v.c, r: v.r + 1 },
       { c: v.c + 1, r: v.r + 1 },
     ]
+    const blocked = this.placementBlockReason('terminal', cells, v, 'terminal shell')
     if (cells.some((p) => this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
-      this.pushNews('Need a clear 2×2 for the shell.', 'bad')
+      this.pushNews(blocked ?? 'Need a clear 2×2 for the shell.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
-      this.pushNews('That shell sits inside runway clearance.', 'bad')
-      this.emit()
-      return
-    }
-    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
-      this.pushNews('That shell sits inside a stand footprint.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15191,18 +15650,14 @@ export class Game {
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 3; c++) cells.push({ c: v.c + c, r: v.r + r })
     }
+    const blocked = this.placementBlockReason('terminal', cells, v, 'premade hall')
     if (cells.some((p) => !inBounds(p.c, p.r) || this.tile(p) !== 'grass') || this.cellsBlocked(cells)) {
-      this.pushNews('Need a clear 3×3 for the premade hall.', 'bad')
+      this.pushNews(blocked ?? 'Need a clear 3×3 for the premade hall.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, cells, 'terminal')) {
-      this.pushNews('That hall sits inside runway clearance.', 'bad')
-      this.emit()
-      return
-    }
-    if (placementHitsStand(this.tiles, cells, 'terminal', this.standClass, this.standScale)) {
-      this.pushNews('That hall sits inside a stand footprint.', 'bad')
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
@@ -15273,18 +15728,19 @@ export class Game {
     if (!id) return
     const spec = buildingById(id)
     if (!spec) return
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.siteAt(v)) {
+      this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    if (clearanceBlocks(this.tiles, [v], 'road')) {
-      this.pushNews(`${spec.name} sits inside runway clearance.`, 'bad')
+    const blocked = this.placementBlockReason(tileForLate(id), [v], v, spec.name)
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (placementHitsStand(this.tiles, [v], tileForLate(id), this.standClass, this.standScale)) {
-      this.pushNews(`${spec.name} sits inside a stand footprint.`, 'bad')
+    if (this.tile(v) !== 'grass') {
+      this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -15356,42 +15812,19 @@ export class Game {
         return
       }
     }
-    if (this.tile(v) !== 'grass' || this.siteAt(v)) {
-      this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+    if (this.siteAt(v)) {
+      this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    const foot = footprintBlock(this.tiles, building.tile, v)
-    if (foot) {
-      this.pushNews(
-        foot === 'road'
-          ? `${building.name} footprint crosses a road.`
-          : `${building.name} footprint leaves the map.`,
-        'bad',
-      )
+    const blocked = this.placementBlockReason(building.tile, [v], v, building.name)
+    if (blocked) {
+      this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (building.tile === 'stand') {
-      const why = standPlaceBlock(
-        this.tiles,
-        v,
-        standClassForTool(this.tool) ?? 'M',
-        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-        this.standClass,
-        this.standScale,
-      )
-      if (why) {
-        this.pushNews(why, 'bad')
-        this.emit()
-        return
-      }
-    } else if (clearanceBlocks(this.tiles, [v], building.tile)) {
-      this.pushNews(`${building.name} sits inside runway clearance. Taxiways can still cross.`, 'bad')
-      this.emit()
-      return
-    } else if (placementHitsStand(this.tiles, [v], building.tile, this.standClass, this.standScale)) {
-      this.pushNews(`${building.name} sits inside a stand footprint.`, 'bad')
+    if (this.tile(v) !== 'grass') {
+      this.pushNews('Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -15655,27 +16088,73 @@ export class Game {
     return late ? tileForLate(late) : null
   }
 
-  /** Red ghost when the stamp would pave a runway shoulder or a stand's wings. Taxi stays legal. */
+  /** Tiles, stand classes, and in-progress sites the collision rules can see. */
+  private worldInput() {
+    return {
+      tiles: this.tiles,
+      standClass: this.standClass,
+      standScale: this.standScale,
+      pending: this.sites.map((s) => ({
+        cells: s.cells,
+        tile: s.tile,
+        standClass: s.standClass,
+        standScale: s.standScale,
+      })),
+    }
+  }
+
+  /**
+   * Physical reason a stamp is illegal, or null when the geometry is clear.
+   * Cash, research, and "needs grass" stay with the caller.
+   */
+  placementBlockReason(tile: Tile, cells: Vec[], origin: Vec, name: string): string | null {
+    return placementReason(this.worldInput(), {
+      tile,
+      cells,
+      origin,
+      name,
+      standClass: tile === 'stand' ? (standClassForTool(this.tool) ?? 'M') : undefined,
+      standScale:
+        tile === 'stand'
+          ? standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5)
+          : undefined,
+    })
+  }
+
+  /** Every physical violation on the current field. Construction sites count as built. */
+  worldAudit(): WorldViolation[] {
+    return auditWorld(this.worldInput())
+  }
+
+  /** Sentence for an illegal ghost. Null when the stamp is geometrically legal. */
+  placementGhostReason(): string | null {
+    if (this.tool === 'clear' || this.tool === 'pan') return null
+    const tile = this.placementTile()
+    if (!tile || !this.hover) return null
+    const cells = this.ghostCells(this.hover)
+    if (!cells.length) return null
+    return this.placementBlockReason(tile, cells, this.hover, this.placementName(tile))
+  }
+
+  private placementName(tile: Tile): string {
+    const building = BUILDINGS.find((b) => b.tool === this.tool)
+    if (building) return building.name
+    const lateId = lateIdForTool(this.tool)
+    const lateName = lateId ? buildingById(lateId)?.name : undefined
+    if (lateName) return lateName
+    if (tile === 'runway') return 'runway'
+    return tile
+  }
+
+  /** Red ghost when the stamp would break a physical rule. Taxiways may still cross a shoulder. */
   ghostBlocked(cells: Vec[]): boolean {
     if (this.tool === 'clear') return false
     const tile = this.placementTile()
     if (!tile) return false
-    if (tile === 'runway') return clearanceBlocks(this.tiles, cells, 'runway')
-    if (tile === 'stand') {
-      if (!this.hover) return true
-      return (
-        standPlaceBlock(
-          this.tiles,
-          this.hover,
-          standClassForTool(this.tool) ?? 'M',
-          standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-          this.standClass,
-          this.standScale,
-        ) !== null
-      )
-    }
-    if (clearanceBlocks(this.tiles, cells, tile)) return true
-    return placementHitsStand(this.tiles, cells, tile, this.standClass, this.standScale)
+    if (tile === 'stand' && !this.hover) return true
+    if (!cells.length) return false
+    const origin = this.hover ?? cells[0]!
+    return this.placementBlockReason(tile, cells, origin, this.placementName(tile)) !== null
   }
 
   /** Geometry only — cash and unlocks do not tint the ghost. */
@@ -16295,6 +16774,8 @@ export class Game {
       return
     }
     if (!hasTower && this.groundBusy()) return
+    // Ground control: departures stuck at the hold line get a gap first.
+    if (this.atcDeparturesStarved()) return
     // Prefer holds that already reserved a stand — those were deadlocking
     // assignStand() because freeStands() treated the reservation as occupied.
     const held = this.flights.filter(
@@ -16341,34 +16822,7 @@ export class Game {
     for (const f of this.flights) {
       if (f.phase !== 'hold' || (f.craft ?? 'jet') !== 'jet') continue
       if (f.phaseTime < 95) continue
-      // Divert — free the stand, scrub the slot, ding heat.
-      this.missDivertedConnections(f)
-      if (f.stand) f.stand = null
-      f.path = []
-      f.phase = 'gone'
-      f.phaseTime = 0
-      this.noteCargoCancel(f)
-      if (f.scheduleId) {
-        const slot = this.schedule.find((s) => s.id === f.scheduleId)
-        if (slot) {
-          slot.status = 'cancelled'
-          slot.delayReason = 'hold timeout'
-        }
-      }
-      this.adjustHeat(f.airline, -4)
-      this.reputation = Math.max(0, this.reputation - 1)
-      this.noteDiplomacyCancel(f.airline, false)
-      this.pushNews(
-        `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
-        'bad',
-      )
-      this.raiseAlert({
-        key: 'event:inbound-failed',
-        severity: 'critical',
-        title: 'Inbound flight diverted',
-        detail: `${f.flightNo} held too long and went elsewhere. Free a stand or a runway slot.`,
-        event: true,
-      })
+      this.divertFlight(f, `${f.flightNo} diverted after long hold — gate freed, Standing dips.`)
     }
     void dt
   }
@@ -16401,6 +16855,275 @@ export class Game {
       if (Math.hypot(p.x - x, p.y - y) < R) n++
     }
     return n
+  }
+
+
+  // ── Ground traffic control ────────────────────────────────────────────
+
+  private atcRoleOf(f: Flight): AtcRole | null {
+    if ((f.craft ?? 'jet') !== 'jet') return null
+    switch (f.phase) {
+      case 'approach':
+      case 'landing':
+      case 'taxi_in':
+        return 'arrival'
+      case 'pushback':
+      case 'taxi_out':
+      case 'takeoff':
+        return 'departure'
+      case 'mx_taxi':
+      case 'mx_return':
+        return 'taxi'
+      default:
+        return null
+    }
+  }
+
+  /** Cell → runway strip ids, rebuilt when the layout changes. */
+  private atcStripCache: { tiles: Tile[][]; sig: string; map: Map<string, string[]> } | null = null
+  private atcRunwayMap(): Map<string, string[]> {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    const sig = strips.map((st) => `${st[0]?.c},${st[0]?.r}:${st.length}`).join('|')
+    if (this.atcStripCache && this.atcStripCache.tiles === this.tiles && this.atcStripCache.sig === sig) {
+      return this.atcStripCache.map
+    }
+    const map = new Map<string, string[]>()
+    strips.forEach((st, i) => {
+      const id = `rw${i}:${st[0]?.c},${st[0]?.r}`
+      for (const p of st) {
+        const k = `${p.c},${p.r}`
+        map.set(k, [...(map.get(k) ?? []), id])
+      }
+    })
+    this.atcStripCache = { tiles: this.tiles, sig, map }
+    return map
+  }
+
+  private atcRoute(path: readonly Vec[]): RouteCell[] {
+    const rmap = this.atcRunwayMap()
+    return path.map((p) => {
+      const c = Math.round(p.c)
+      const r = Math.round(p.r)
+      const key = `${c},${r}`
+      if (!inBounds(c, r)) return { key: `air:${key}`, kind: 'air', runways: [] }
+      const runways = this.tiles[r]?.[c] === 'runway' ? rmap.get(key) ?? [] : []
+      return { key, kind: runways.length ? 'runway' : 'ground', runways }
+    })
+  }
+
+  private atcRank(f: Flight): number {
+    if (f.phase === 'landing' && this.atc.holdsRunway(f.id)) return RIGHT_OF_WAY.vacating
+    if (f.phase === 'taxi_out' || f.phase === 'pushback') return RIGHT_OF_WAY.departure
+    return RIGHT_OF_WAY.taxi
+  }
+
+  /** Keep the controller in step with every jet's phase and path. */
+  tickAtc(step: number) {
+    this.atc.now = this.clock
+    this.atc.arbitrate()
+    const live = new Set<string>()
+    for (const f of this.flights) {
+      const role = f.phase === 'gone' ? null : this.atcRoleOf(f)
+      if (!role) continue
+      live.add(f.id)
+      if (f.phase === 'takeoff') continue
+      if (this.atcPaths.get(f.id) !== f.path) {
+        this.atcPaths.set(f.id, f.path)
+        this.atc.register(f.id, role, this.atcRoute(f.path), Math.max(0, Math.min(f.seg, f.path.length - 1)))
+      }
+    }
+    for (const id of this.atc.ids()) {
+      if (live.has(id)) continue
+      this.atc.release(id)
+      this.atcPaths.delete(id)
+      this.atcYields.delete(id)
+    }
+    // Safety net: break any wait cycle by making the weakest aircraft yield.
+    for (const cycle of this.atc.deadlocks()) {
+      const ranked = cycle
+        .map((id) => this.flights.find((f) => f.id === id))
+        .filter((f): f is Flight => !!f)
+        .sort((a, b) => this.atcRank(b) - this.atcRank(a))
+      const loser = ranked[0]
+      if (!loser) continue
+      const n = (this.atcYields.get(loser.id) ?? 0) + 1
+      this.atcYields.set(loser.id, n)
+      if (n <= 2) {
+        this.atc.yieldTo(loser.id)
+      } else if (loser.stand && (loser.phase === 'taxi_out' || loser.phase === 'pushback')) {
+        // Still gridlocked: tug the departure back onto its stand to clear the lane.
+        this.atc.release(loser.id)
+        this.atcPaths.delete(loser.id)
+        loser.x = loser.stand.c
+        loser.y = loser.stand.r
+        loser.path = [loser.stand]
+        loser.seg = 0
+        loser.t = 0
+        loser.phase = 'pushback'
+        loser.phaseTime = 0
+        this.atcYields.delete(loser.id)
+        this.pushNews(`${loser.flightNo} towed back to stand to clear a gridlock.`, 'bad')
+      } else {
+        this.atc.yieldTo(loser.id)
+      }
+      const spot = loser.path[loser.seg] ?? loser.stand
+      this.raiseAlert({
+        key: `event:atc-gridlock`,
+        severity: 'critical',
+        title: 'Taxiway gridlock',
+        detail: `${cycle.length} aircraft blocked each other. ${loser.flightNo} gave way. Add a second lane or a bypass here.`,
+        at: spot ? { view: 'apron', cells: [{ c: Math.round(spot.c), r: Math.round(spot.r) }] } : undefined,
+        event: true,
+      })
+    }
+    void step
+  }
+
+  /** followPath, capped at the furthest cell ground control has cleared. */
+  private atcFollow(f: Flight, speed: number, dt: number): boolean {
+    if (!this.atc.has(f.id) || this.atcPaths.get(f.id) !== f.path) return this.followPath(f, speed, dt)
+    const lim = this.atc.limit(f.id, this.atcRank(f))
+    let done: boolean
+    if (lim >= f.path.length - 1) {
+      done = this.followPath(f, speed, dt)
+    } else if (f.seg >= lim) {
+      // Holding position at the edge of the clearance.
+      f.t = 0
+      const here = f.path[Math.min(f.seg, f.path.length - 1)]
+      if (here) {
+        f.x = here.c
+        f.y = here.r
+      }
+      done = false
+    } else {
+      const proxy = { id: f.id, x: f.x, y: f.y, heading: f.heading, path: f.path.slice(0, lim + 1), seg: f.seg, t: f.t }
+      this.followPath(proxy, speed, dt)
+      f.x = proxy.x
+      f.y = proxy.y
+      f.heading = proxy.heading
+      f.seg = proxy.seg
+      f.t = proxy.seg >= lim ? 0 : proxy.t
+      done = false
+    }
+    this.atc.progress(f.id, Math.min(f.seg, f.path.length - 1), f.t > 0)
+    return done
+  }
+
+  /** Runway ids on the arrival's remaining path (empty once past the runway). */
+  private atcRunwaysAhead(f: Flight): string[] {
+    const route = this.atcRoute(f.path.slice(Math.max(0, f.seg), Math.max(0, f.seg) + 6))
+    const cell = route.find((c) => c.kind === 'runway')
+    return cell ? [...cell.runways] : []
+  }
+
+  /** The arrival is over the threshold within the next step: clearance is due now. */
+  private atcTouchdownDue(f: Flight, dist: number): boolean {
+    const next = f.path[f.seg + 1]
+    if (!next) return true
+    const route = this.atcRoute([next])
+    return route[0]?.kind === 'runway' || dist < 1.2
+  }
+
+  /** Runway not clear on short final: go around and come back, or divert at the cap. */
+  goAround(f: Flight) {
+    this.atc.offFinal(f.id)
+    this.atc.release(f.id)
+    this.atcPaths.delete(f.id)
+    f.goArounds = (f.goArounds ?? 0) + 1
+    const fuel = 260 + Math.round((AIRFRAMES[f.airframeId]?.seats ?? 150) * 1.2)
+    this.charge(fuel, 'penalties')
+    this.adjustHeat(f.airline, -0.6)
+    this.reputation = Math.max(0, this.reputation - 0.25)
+    if (f.scheduleId) {
+      const slot = this.schedule.find((s) => s.id === f.scheduleId)
+      if (slot) this.delaySlot(slot, 25, 'Go-around: runway not clear')
+    }
+    if (f.goArounds >= ATC_MAX_GO_AROUNDS) {
+      this.divertFlight(f, `${f.flightNo} diverted after ${f.goArounds} go-arounds — runway kept blocked.`)
+      return
+    }
+    f.phase = 'hold'
+    f.phaseTime = 0
+    f.path = []
+    f.seg = 0
+    f.t = 0
+    f.z = 9
+    this.pushNews(`${f.flightNo} go-around — runway not clear. Fuel ${moneyLeft(fuel)}.`, 'bad')
+    const rw = this.flights.find((x) => x.id !== f.id && this.atc.holdsRunway(x.id))
+    const spot = rw ? { c: Math.round(rw.x), r: Math.round(rw.y) } : null
+    this.raiseAlert({
+      key: 'event:atc-go-around',
+      severity: 'warning',
+      title: 'Go-around',
+      detail: `${f.flightNo} could not land: the runway or its exit was blocked. More exits or a second runway help.`,
+      at: spot ? { view: 'apron', cells: [spot] } : undefined,
+      event: true,
+    })
+  }
+
+  /** Send an inbound elsewhere: free the stand, scrub the slot, ding standing. */
+  divertFlight(f: Flight, news: string) {
+    this.atc.release(f.id)
+    this.atcPaths.delete(f.id)
+    this.missDivertedConnections(f)
+    if (f.stand) f.stand = null
+    f.path = []
+    f.phase = 'gone'
+    f.phaseTime = 0
+    this.noteCargoCancel(f)
+    if (f.scheduleId) {
+      const slot = this.schedule.find((s) => s.id === f.scheduleId)
+      if (slot) {
+        slot.status = 'cancelled'
+        slot.delayReason = 'diverted'
+      }
+    }
+    this.adjustHeat(f.airline, -4)
+    this.reputation = Math.max(0, this.reputation - 1)
+    this.noteDiplomacyCancel(f.airline, false)
+    this.pushNews(news, 'bad')
+    this.raiseAlert({
+      key: 'event:inbound-failed',
+      severity: 'critical',
+      title: 'Inbound flight diverted',
+      detail: `${f.flightNo} went elsewhere. Free a stand or a runway slot.`,
+      event: true,
+    })
+  }
+
+  /** Departures stuck at a hold line long enough that arrivals should wait in the stack. */
+  atcDeparturesStarved(): boolean {
+    return this.atc
+      .waiting()
+      .some((w) => w.reason === 'runway' && this.clock - w.since > ATC_DEPARTURE_STARVE_SEC)
+  }
+
+  /** Short label for an aircraft held by ground control, or null. */
+  atcHoldLabel(f: Flight): string | null {
+    const w = this.atc.waitFor(f.id)
+    if (!w || this.clock - w.since < 1.5) return null
+    if (w.reason === 'runway') return 'Holding short of the runway'
+    const other = w.blocker ? this.flights.find((x) => x.id === w.blocker) : null
+    return other ? `Holding for ${other.flightNo}` : 'Holding for traffic'
+  }
+
+  /** Long waits grouped by where they stand, for the alert stack. */
+  atcQueues(): { cell: Vec; count: number; runway: boolean; longest: number }[] {
+    const groups = new Map<string, { cell: Vec; count: number; runway: boolean; longest: number }>()
+    for (const w of this.atc.waiting()) {
+      const f = this.flights.find((x) => x.id === w.id)
+      if (!f) continue
+      const wait = this.clock - w.since
+      const blocker = w.blocker ? this.flights.find((x) => x.id === w.blocker) : null
+      const anchor = blocker && w.reason !== 'runway' ? blocker : f
+      const cell = { c: Math.round(anchor.x), r: Math.round(anchor.y) }
+      const k = w.reason === 'runway' ? `rw:${cell.c},${cell.r}` : `tx:${anchor.id}`
+      const g = groups.get(k) ?? { cell, count: 0, runway: w.reason === 'runway', longest: 0 }
+      g.count += 1
+      g.longest = Math.max(g.longest, wait)
+      groups.set(k, g)
+    }
+    return [...groups.values()]
   }
 
   followPath(
@@ -18481,6 +19204,7 @@ export class Game {
     this.crashCool = Math.max(0, this.crashCool - step)
 
     this.releaseFinishedMro()
+    this.tickAtc(step)
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
       f.phaseTime += step
@@ -18502,9 +19226,20 @@ export class Game {
         const dist = threshold ? Math.hypot(f.x - threshold.c, f.y - threshold.r) : 0
         const glide = clamp(0.35 + dist * 0.7, 0.35, 22)
         f.z = lerp(f.z, glide, 1 - Math.pow(0.18, step))
+        const runwaysAhead = this.atcRunwaysAhead(f)
+        if (runwaysAhead.length) {
+          this.atc.onFinal(f.id, runwaysAhead, dist / 1.85)
+          if (this.atcTouchdownDue(f, dist) && !this.atc.requestLanding(f.id, runwaysAhead)) {
+            this.goAround(f)
+            continue
+          }
+        }
         const arrived = this.followPath(f, 1.85, step)
         const onField = inBounds(Math.round(f.x), Math.round(f.y))
-        if (arrived || (onField && f.phaseTime > 10) || f.phaseTime > 36) {
+        if (
+          (arrived || (onField && f.phaseTime > 10) || f.phaseTime > 36) &&
+          (!runwaysAhead.length || this.atc.requestLanding(f.id, runwaysAhead))
+        ) {
           f.phase = 'landing'
           f.phaseTime = 0
           f.z = Math.min(f.z, 1.4)
@@ -18512,7 +19247,7 @@ export class Game {
       } else if (f.phase === 'landing') {
         f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
         if (this.checkCrash(f, 'landing')) continue
-        const arrived = this.followPath(f, 1.35, step)
+        const arrived = this.atcFollow(f, 1.35, step)
         const onStand = f.stand && Math.hypot(f.x - f.stand.c, f.y - f.stand.r) < 0.35
         if (onStand || arrived) {
           f.phase = 'taxi_in'
@@ -18522,7 +19257,7 @@ export class Game {
         f.z = 0.12
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.1, step)) {
+        } else if (this.atcFollow(f, 1.1, step)) {
           f.phase = 'deboard'
           f.phaseTime = 0
           this.beginServicing(f)
@@ -18624,7 +19359,7 @@ export class Game {
         f.z = 0.12
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.05, step)) {
+        } else if (this.atcFollow(f, 1.05, step)) {
           const bay = f.hangarBay
           if (bay) {
             f.x = bay.c
@@ -18668,7 +19403,7 @@ export class Game {
         f.z = 0.12
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.05, step)) {
+        } else if (this.atcFollow(f, 1.05, step)) {
           if (f.stand) {
             f.x = f.stand.c
             f.y = f.stand.r
@@ -18780,7 +19515,7 @@ export class Game {
         }
       } else if (f.phase === 'pushback') {
         // Short shove off the stand, then join the outbound taxi.
-        if (this.taxiRouteReady(f)) this.followPath(f, 0.55, step)
+        if (this.taxiRouteReady(f)) this.atcFollow(f, 0.55, step)
         if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
           if (out && !this.groundBusy()) {
@@ -18804,12 +19539,13 @@ export class Game {
       } else if (f.phase === 'taxi_out') {
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.2, step)) {
+        } else if (this.atcFollow(f, 1.2, step)) {
           f.phase = 'takeoff'
           f.phaseTime = 0
         }
       } else if (f.phase === 'takeoff') {
         if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
+        if (f.z > 1 || f.phaseTime > 3) this.atc.airborne(f.id)
         f.z += step * 0.9
         f.x += Math.cos(f.heading) * step * 2.6
         f.y += Math.sin(f.heading) * step * 2.6
@@ -18983,6 +19719,7 @@ export class Game {
             if (t.mission === 'ferry_dep') fl.waitingOn.paxIn = 0
           }
           t.dwell = 1.8
+          t.serviceFor = t.dwell
         } else if (t.kind === 'bags') {
           const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
           if (t.mission === 'unload') {
@@ -19000,6 +19737,7 @@ export class Game {
           } else {
             t.dwell = 2.2
           }
+          if (t.dwell > 0) t.serviceFor = t.dwell
         } else {
           t.dwell =
             t.kind === 'fuel'
@@ -19011,6 +19749,7 @@ export class Game {
               : t.kind === 'deice'
                 ? 3.2
                 : 2.2
+          if ((t.kind === 'fuel' || t.kind === 'catering') && t.dwell > 0) t.serviceFor = t.dwell
         }
       } else if (done && t.returning) {
         if (t.kind === 'citycargo') {
@@ -19136,6 +19875,7 @@ export class Game {
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     // At 5× the canvases keep drawing, but the HUD string updates about once a second.
     this.flushReputation(step)
+    this.achievements.check(this)
     this.uiAcc += step
     const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {

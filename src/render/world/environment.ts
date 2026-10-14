@@ -2,6 +2,7 @@
 import * as THREE from 'three'
 import { SIZE } from '../../game/types'
 import { SKY_LOOK } from '../look'
+import { SKY_PHOTOS, type SkyPhotoBlend, type SkyPhotoId } from './dayNight'
 import { instanced, trs } from './kit'
 import { hash2, rng } from './raster'
 import { CELL, tileAt, worldToCell, type WorldView } from './view'
@@ -11,7 +12,12 @@ export const PLOT_HALF = (SIZE * CELL) / 2
 export class SkyDome {
   readonly mesh: THREE.Mesh
   private mat: THREE.ShaderMaterial
+  /** Stand-in sampler until a panorama arrives (and on Low, where none load). */
+  private blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1)
+  private photos = new Map<SkyPhotoId, THREE.Texture>()
+  private photosOn = false
   constructor() {
+    this.blank.needsUpdate = true
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         top: { value: new THREE.Color(0x4f93d6) },
@@ -22,6 +28,12 @@ export class SkyDome {
         glow: { value: SKY_LOOK.sunGlow },
         glowPower: { value: SKY_LOOK.sunGlowPower },
         haze: { value: SKY_LOOK.horizonHaze },
+        photoA: { value: this.blank as THREE.Texture },
+        photoB: { value: this.blank as THREE.Texture },
+        horizonA: { value: 0.3 },
+        horizonB: { value: 0.3 },
+        photoMix: { value: 0 },
+        photoAmount: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec3 vDir;
@@ -38,17 +50,37 @@ export class SkyDome {
         uniform float glow;
         uniform float glowPower;
         uniform float haze;
+        uniform sampler2D photoA;
+        uniform sampler2D photoB;
+        uniform float horizonA;
+        uniform float horizonB;
+        uniform float photoMix;
+        uniform float photoAmount;
         varying vec3 vDir;
         float h(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+        // Panoramas are not 360° wide: mirror them once around the dome so there is no seam.
+        vec2 photoUv(vec3 d, float hz) {
+          float az = (atan(d.z, d.x) + 3.14159265) / 3.14159265;
+          float e = clamp(asin(clamp(d.y, -1.0, 1.0)) / 1.5707963, 0.0, 1.0);
+          return vec2(1.0 - abs(1.0 - az), hz + (1.0 - hz) * e);
+        }
         void main() {
+          vec3 d = normalize(vDir);
           float t = clamp(vDir.y * 1.6, 0.0, 1.0);
           vec3 c = mix(horizon, top, pow(t, 0.7));
+          if (photoAmount > 0.0) {
+            vec3 p = mix(texture2D(photoA, photoUv(d, horizonA)).rgb, texture2D(photoB, photoUv(d, horizonB)).rgb, photoMix);
+            // Below the horizon the procedural haze takes over; the ground and fog cover it anyway.
+            c = mix(c, p, photoAmount * smoothstep(-0.02, 0.05, d.y));
+          }
           // Pale haze hugging the horizon, then a soft halo around the sun.
-          c = mix(c, vec3(1.0), haze * (1.0 - smoothstep(0.0, 0.18, abs(vDir.y))));
-          float sun = max(dot(normalize(vDir), sunDir), 0.0);
-          c += sunColor * glow * (pow(sun, glowPower) + 0.25 * pow(sun, 3.0)) * (1.0 - stars);
+          // A white band over the night photo reads as grey smog, so it thins out after dark.
+          c = mix(c, vec3(1.0), haze * (1.0 - 0.8 * photoAmount * stars) * (1.0 - smoothstep(0.0, 0.18, abs(vDir.y))));
+          float sun = max(dot(d, sunDir), 0.0);
+          c += sunColor * glow * (1.0 - 0.6 * photoAmount) * (pow(sun, glowPower) + 0.25 * pow(sun, 3.0)) * (1.0 - stars);
           vec3 cell = floor(vDir * 220.0);
-          float s = step(0.9965, h(cell)) * stars * smoothstep(0.08, 0.4, vDir.y);
+          // The night panorama brings its own stars.
+          float s = step(0.9965, h(cell)) * stars * (1.0 - photoAmount) * smoothstep(0.08, 0.4, vDir.y);
           gl_FragColor = vec4(c + vec3(s), 1.0);
           #include <colorspace_fragment>
         }`,
@@ -68,12 +100,52 @@ export class SkyDome {
     if (sunDir) this.mat.uniforms.sunDir.value.set(sunDir.x, sunDir.y, sunDir.z)
     if (sunColor != null) this.mat.uniforms.sunColor.value.setHex(sunColor)
   }
+  /** Medium and High turn the panoramas on; the first call loads them. Low never fetches the JPEGs. */
+  setPhotos(on: boolean) {
+    this.photosOn = on
+    if (!on || this.photos.size || typeof document === 'undefined') return
+    const loader = new THREE.TextureLoader()
+    for (const id of Object.keys(SKY_PHOTOS) as SkyPhotoId[]) {
+      loader.load(SKY_PHOTOS[id].url, (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace
+        // No mipmaps: the azimuth wrap would pick the smallest level along a one-pixel seam.
+        tex.generateMipmaps = false
+        tex.minFilter = THREE.LinearFilter
+        tex.wrapS = THREE.ClampToEdgeWrapping
+        tex.wrapT = THREE.ClampToEdgeWrapping
+        tex.needsUpdate = true
+        this.photos.set(id, tex)
+      })
+    }
+  }
+  /** Crossfade the dome toward `blend`. Holds the procedural sky until both photos are loaded. */
+  setPhoto(blend: SkyPhotoBlend, amount: number) {
+    const u = this.mat.uniforms
+    const a = this.photos.get(blend.a)
+    const b = this.photos.get(blend.b)
+    if (!this.photosOn || !a || !b) {
+      u.photoAmount.value = 0
+      return
+    }
+    u.photoA.value = a
+    u.photoB.value = b
+    u.horizonA.value = SKY_PHOTOS[blend.a].horizon
+    u.horizonB.value = SKY_PHOTOS[blend.b].horizon
+    u.photoMix.value = blend.t
+    u.photoAmount.value = Math.max(0, Math.min(1, amount))
+  }
+  photoAmount(): number {
+    return this.mat.uniforms.photoAmount.value
+  }
   follow(cam: THREE.Vector3) {
     this.mesh.position.copy(cam)
   }
   dispose() {
     this.mesh.geometry.dispose()
     this.mat.dispose()
+    this.blank.dispose()
+    for (const tex of this.photos.values()) tex.dispose()
+    this.photos.clear()
   }
 }
 
@@ -365,54 +437,28 @@ export function tuftGeometry(): THREE.BufferGeometry {
 }
 
 /** Rain streaks in a box that follows the camera focus. */
+import { WeatherLayer } from '../weather/index'
+
+/** Rain streaks in a box that follows the camera focus. */
 export class Rain {
-  readonly lines: THREE.LineSegments
-  private pos: Float32Array
-  private vel: Float32Array
-  private mat: THREE.LineBasicMaterial
-  private n: number
-  constructor(n: number) {
-    this.n = Math.max(1, n)
-    this.pos = new Float32Array(this.n * 6)
-    this.vel = new Float32Array(this.n)
-    const rand = rng(5)
-    for (let i = 0; i < this.n; i++) {
-      const x = (rand() - 0.5) * 80
-      const y = rand() * 40
-      const z = (rand() - 0.5) * 80
-      this.pos.set([x, y, z, x + 0.1, y + 0.9, z + 0.05], i * 6)
-      this.vel[i] = 26 + rand() * 10
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3))
-    this.mat = new THREE.LineBasicMaterial({ color: 0xc8d4e0, transparent: true, opacity: 0.45, depthWrite: false })
-    this.lines = new THREE.LineSegments(g, this.mat)
-    this.lines.frustumCulled = false
-    this.lines.visible = false
-    this.lines.name = 'world-rain'
+  readonly lines: THREE.Group
+  private weatherLayer: WeatherLayer
+
+  constructor(_n: number) {
+    this.weatherLayer = new WeatherLayer()
+    this.lines = this.weatherLayer.group
+    this.lines.name = 'world-weather'
   }
   update(dt: number, amount: number, fx: number, fz: number) {
-    this.lines.visible = amount > 0.01
-    if (!this.lines.visible) return
-    this.mat.opacity = 0.25 + amount * 0.3
-    this.lines.position.set(fx, 0, fz)
-    const p = this.pos
-    const draw = Math.floor(this.n * amount)
-    for (let i = 0; i < draw; i++) {
-      const o = i * 6
-      const dy = this.vel[i] * dt
-      p[o + 1] -= dy
-      p[o + 4] -= dy
-      if (p[o + 1] < 0) {
-        p[o + 1] += 40
-        p[o + 4] += 40
-      }
-    }
-    this.lines.geometry.setDrawRange(0, draw * 2)
-    ;(this.lines.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true
+    this.weatherLayer.updateParticles(dt, 'none', 'clear', amount, fx, fz)
+  }
+  updateRich(dt: number, precipType: 'none' | 'snow' | 'freezing_rain' | 'rain', weather: string, amount: number, fx: number, fz: number) {
+    this.weatherLayer.updateParticles(dt, precipType, weather, amount, fx, fz)
+  }
+  get cover() {
+    return this.weatherLayer.cover
   }
   dispose() {
-    this.lines.geometry.dispose()
-    this.mat.dispose()
+    this.weatherLayer.dispose()
   }
 }

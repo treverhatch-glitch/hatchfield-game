@@ -155,21 +155,29 @@ describe('initWorldRender', () => {
     game.hallGuests = [g]
     game.routeGuest(g, 'security', game.hallOpenFor(fit))
     expect(g.route && g.route.length).toBeGreaterThan(1)
-    const near = camAt(hallFocus(game).x, hallFocus(game).z, 14)
+    // The crowd draws only what the camera sees, so aim at the guest once it has a spot.
+    let near = camAt(hallFocus(game).x, hallFocus(game).z, 14)
+    wr.update(game, near, 1 / 30)
+    near = camAt(g.wx ?? 0, g.wz ?? 0, 14)
     for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
-    const body = (['people-lod0', 'people-lod1', 'people-lod2', 'hall-guest-body']
-      .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
-      .find((mesh) => mesh && mesh.count > 0) ?? scene.getObjectByName('hall-guest-body')) as THREE.InstancedMesh
-    expect(body).toBeTruthy()
-    expect(body.count).toBeGreaterThan(0)
+    // The guest may cross a detail level while walking, so look the body mesh up each time.
+    const firstBody = (out: THREE.Matrix4) => {
+      const body = ['people-torso', 'people-torsoLo', 'hall-guest-body']
+        .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
+        .find((mesh) => mesh && mesh.count > 0)
+      expect(body).toBeTruthy()
+      body!.getMatrixAt(0, out)
+    }
     const a = new THREE.Matrix4()
     const b = new THREE.Matrix4()
-    body.getMatrixAt(0, a)
+    firstBody(a)
     for (let i = 0; i < 6; i++) {
       game.tick(0.3)
+      // Keep the camera on the guest: it can walk out of a fixed view before the last frame.
+      near = camAt(g.wx ?? 0, g.wz ?? 0, 14)
       wr.update(game, near, 1 / 30)
     }
-    body.getMatrixAt(0, b)
+    firstBody(b)
     expect(a.equals(b)).toBe(false)
     expect(g.lost).toBeFalsy()
     wr.dispose()
@@ -226,7 +234,7 @@ describe('initWorldRender', () => {
     wr.setTimeOfDay(12)
     wr.setWeather('storm')
     wr.update(game, cam, 1 / 60)
-    expect(scene.getObjectByName('world-rain')?.visible).toBe(true)
+    expect(scene.getObjectByName('world-weather')?.visible).toBe(true)
     wr.dispose()
   })
 

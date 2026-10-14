@@ -28,12 +28,18 @@ const SERVICE_START: Record<string, SoundEventName> = {
   loader: 'uld_loader_start', fuel: 'fuel_truck_start', catering: 'catering_lift_start',
   cleaning: 'truck_arrive', gpu: 'gpu_connect', boarding: 'boarding_start', bag_load: 'belt_loader_start',
   cargo_load: 'uld_loader_start', bag_offload: 'bag_tug_start', door_close: 'bus_doors', pushback: 'pushback_start',
+  deice: 'deice_spray_start', hangar: 'hangar_door_open', fire: 'fire_siren_start', bus: 'bus_engine_start',
+  fuel_hose: 'fuel_hose_start', cargo_dock: 'cargo_dock_door', tug: 'tug_engine_start',
+  catering_hydraulics: 'catering_hydraulics_start',
 };
 const SERVICE_DONE: Record<string, SoundEventName> = {
   deplane: 'bus_doors', bag_unload: 'belt_loader_stop', cargo_unload: 'uld_loader_stop',
   loader: 'uld_loader_stop', fuel: 'fuel_truck_stop', catering: 'catering_lift_stop',
   cleaning: 'bus_doors', gpu: 'gpu_disconnect', boarding: 'boarding_call', bag_load: 'belt_loader_stop',
   cargo_load: 'uld_loader_stop', bag_offload: 'bag_tug_stop', door_close: 'bus_doors', pushback: 'pushback_complete',
+  deice: 'deice_spray_stop', hangar: 'hangar_door_close', fire: 'fire_siren_stop', bus: 'bus_engine_stop',
+  fuel_hose: 'fuel_hose_stop', cargo_dock: 'cargo_dock_door', tug: 'tug_engine_stop',
+  catering_hydraulics: 'catering_hydraulics_stop',
 };
 
 /** #5 logistics. Keys are exactly `LogisticsEvent['type']`. */

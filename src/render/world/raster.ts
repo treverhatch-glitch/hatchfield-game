@@ -129,13 +129,16 @@ export function paintGrass(size: number, seed = 1): Raster {
   const dark = hexRgb(GROUND_LOOK.grassDark)
   const mid = hexRgb(GROUND_LOOK.grassMid)
   const dry = hexRgb(GROUND_LOOK.grassDry)
+  const worn = hexRgb(GROUND_LOOK.grassWorn)
   const mow = GROUND_LOOK.mowStripe
   r.fill((u, v) => {
     const n = fbm(u, v, 4, 4, seed)
     const d = fbm(u, v, 2, 2, seed + 9)
+    const patch = fbm(u, v, 2, 3, seed + 21)
     // Two mowing bands per tile with soft edges; seamless because the tile wraps at u = 0 / 1.
     const band = 1 + mow * Math.max(-1, Math.min(1, Math.sin(u * Math.PI * 2) * 4))
-    return shade(mix(mix(dark, mid, n * 1.3), dry, Math.max(0, d - 0.62) * 2.2), band)
+    const base = shade(mix(mix(dark, mid, n * 1.3), dry, Math.max(0, d - 0.62) * 2.2), band)
+    return mix(base, worn, Math.max(0, patch - 0.62) * 1.6)
   })
   const rand = rng(seed * 31 + 7)
   // Blade strokes: short vertical dashes, lighter tips.
@@ -180,24 +183,38 @@ export function paintAsphalt(size: number, seed = 2, base = 0x3b3e44): Raster {
       y += Math.sin(a)
     }
   }
+  // Fine grooves and rubber touchdown stains. Direction follows the texture tile.
+  const groove = hexRgb(0x2c2e32)
+  const step = Math.max(4, Math.round(size / 40))
+  for (let x = 0; x < size; x += step) r.rect(x, 0, 1, size, groove, 0.16)
+  const rubber = hexRgb(0x16181c)
+  for (const band of [0.18, 0.42, 0.7]) {
+    const y = Math.floor(band * size)
+    r.rect(0, y, size, Math.max(2, Math.round(size * 0.035)), rubber, 0.32)
+  }
   return r
 }
 
-/** Concrete apron slabs: a 2×2 slab grid per texture tile with sealed joints. */
+/** Concrete apron slabs with sealed joints. The grid repeats with the texture tile. */
 export function paintConcrete(size: number, seed = 3, base: number = GROUND_LOOK.concrete): Raster {
   const r = new Raster(size, size)
   const c0 = hexRgb(base)
+  const slabs = Math.max(2, GROUND_LOOK.slabCount)
   r.fill((u, v, x, y) => {
     const n = fbm(u, v, 6, 3, seed)
-    const slab = hash2(Math.floor(u * 2), Math.floor(v * 2), seed) * 0.08
+    const slab = hash2(Math.floor(u * slabs), Math.floor(v * slabs), seed) * 0.1
     const grain = hash2(x, y, seed + 1) - 0.5
-    return shade(c0, 0.88 + n * 0.14 + slab + grain * 0.06)
+    return shade(c0, 0.86 + n * 0.16 + slab + grain * 0.06)
   })
-  const joint = hexRgb(0x6e7276)
-  const lw = Math.max(1, Math.round(size / 128))
-  for (const p of [0, size / 2]) {
-    r.rect(p, 0, lw, size, joint, 0.85)
-    r.rect(0, p, size, lw, joint, 0.85)
+  const joint = hexRgb(GROUND_LOOK.joint)
+  const lip = hexRgb(0xd8dbde)
+  const lw = Math.max(1, Math.round(size / 96))
+  for (let s = 0; s < slabs; s++) {
+    const p = Math.floor((s * size) / slabs)
+    r.rect(p, 0, lw, size, joint, 0.92)
+    r.rect(0, p, size, lw, joint, 0.92)
+    r.rect(p + lw, 0, 1, size, lip, 0.4)
+    r.rect(0, p + lw, size, 1, lip, 0.4)
   }
   const rand = rng(seed * 7 + 1)
   // Oil / rubber stains.
@@ -211,6 +228,20 @@ export function paintConcrete(size: number, seed = 3, base: number = GROUND_LOOK
         if (d < 1) r.blend(Math.floor(cx + x), Math.floor(cy + y), hexRgb(0x5a5c60), (1 - d) * 0.25)
       }
     }
+  }
+  return r
+}
+
+/** Landside road asphalt: darker than taxiways, with a pair of wheel-track bands. */
+export function paintRoad(size: number, seed = 11): Raster {
+  const r = paintAsphalt(size, seed, GROUND_LOOK.roadAsphalt)
+  const wear = hexRgb(0x2a2c30)
+  const band = Math.max(2, Math.round(size * 0.055))
+  for (const t of [0.3, 0.7]) {
+    const y = Math.floor(t * size - band / 2)
+    r.rect(0, y, size, band, wear, 0.4)
+    const x = Math.floor(t * size - band / 2)
+    r.rect(x, 0, band, size, wear, 0.22)
   }
   return r
 }

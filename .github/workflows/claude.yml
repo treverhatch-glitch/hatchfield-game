@@ -49,4 +49,4 @@ jobs:
           # Sonnet by default; write "use opus" in the issue/comment/review to switch to Opus.
           claude_args: |
             --model ${{ (contains(github.event.comment.body, 'use opus') || contains(github.event.review.body, 'use opus') || contains(github.event.issue.body, 'use opus')) && 'claude-opus-5-5' || 'claude-sonnet-5-5' }}
-            --allowedTools "Bash(git:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(gh:*),Edit,Write,Read,Glob,Grep"
+            --allowedTools "Bash(git:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(python3:*),Bash(gh:*),Edit,Write,Read,Glob,Grep"

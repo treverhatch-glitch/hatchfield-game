@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { AIRCRAFT_LOOK } from '../look'
+import { bindLiveryUniforms, disposeLiveryTextures, hookLiveryMaterial, resolveLiveryAirline } from './liveryTex'
 import type { Livery } from './specs'
 
 const geos = new Map<string, THREE.BufferGeometry>()
@@ -15,12 +16,42 @@ export function sharedGeo(key: string, build: () => THREE.BufferGeometry): THREE
   return geo
 }
 
+let envMap: THREE.Texture | null = null
+let envScale = 1
+
+function applyEnv(mat: THREE.Material) {
+  const m = mat as THREE.MeshStandardMaterial
+  if (!m.isMeshStandardMaterial) return
+  if (m.userData.envBase === undefined) m.userData.envBase = m.envMapIntensity ?? 1
+  m.envMap = envMap
+  m.envMapIntensity = (m.userData.envBase as number) * envScale
+  m.needsUpdate = true
+}
+
+/** Reflection probe for every aircraft material (see env.ts). */
+export function setAircraftEnvMap(tex: THREE.Texture | null) {
+  envMap = tex
+  for (const mat of mats.values()) applyEnv(mat)
+}
+
+/** Dim reflections with the daylight so jets do not glow at night (0..1). */
+export function setAircraftEnvIntensity(k: number) {
+  const next = Math.max(0.04, Math.min(1, k))
+  if (Math.abs(next - envScale) < 0.01) return
+  envScale = next
+  for (const mat of mats.values()) {
+    const m = mat as THREE.MeshStandardMaterial
+    if (m.isMeshStandardMaterial && m.userData.envBase !== undefined) m.envMapIntensity = (m.userData.envBase as number) * envScale
+  }
+}
+
 export function sharedMat(key: string, build: () => THREE.Material): THREE.Material {
   let mat = mats.get(key)
   if (!mat) {
     mat = build()
     mat.name = key
     mats.set(key, mat)
+    if (envMap) applyEnv(mat)
   }
   return mat
 }
@@ -94,7 +125,7 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     case 'dark':
       return '#14181d'
     case 'glass':
-      return '#1a3c52'
+      return '#0c141c'
     case 'rubber':
       return '#1a1c1e'
     case 'navRed':
@@ -108,6 +139,19 @@ export function slotColor(slot: PaintSlot, livery: Livery): string {
     default:
       return '#888888'
   }
+}
+
+/** [metalness, roughness]: gloss paint, bare alloy, rubber, glazing. */
+const SLOT_PBR: Partial<Record<PaintSlot, [number, number]>> = {
+  body: [0.08, 0.34],
+  stripe: [0.08, 0.34],
+  tail: [0.08, 0.34],
+  belly: [0.1, 0.45],
+  wing: [0.25, 0.5],
+  metal: [0.45, 0.38],
+  dark: [0.4, 0.55],
+  glass: [0.2, 0.08],
+  rubber: [0, 0.92],
 }
 
 function isLamp(slot: PaintSlot): boolean {
@@ -129,6 +173,36 @@ export interface PaintedMesh extends THREE.Mesh {
  * Gear, lamps, and control surfaces stay Lambert so the close view does not compile a shader per part.
  * A bump map for panel lines cost about 3 FPS on SwiftShader, so the shell stays smooth.
  */
+/**
+ * Landing gear: physical material whose roughness and metalness come per vertex from a
+ * `pbr` attribute, so chrome pistons, rubber, painted struts and brakes share one draw.
+ * No livery hook: gear is never in airline paint.
+ */
+function pbrHook(mat: THREE.MeshStandardMaterial) {
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 pbr;\nvarying vec2 vPbr;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPbr = pbr;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPbr;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vPbr.x;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vPbr.y;')
+  }
+  mat.customProgramCacheKey = () => 'aircraft-gear-pbr'
+  return mat
+}
+
+export function gearMaterials(tier: 'low' | 'mid'): { opaque: THREE.Material; fade: THREE.Material } {
+  if (tier === 'low') return vertexMaterials('low', 'metal')
+  const opaque = sharedMat('vc:gear', () => pbrHook(new THREE.MeshStandardMaterial({ vertexColors: true, envMapIntensity: 1.2 })))
+  const fade = sharedMat('fade:vc:gear', () => {
+    const m = pbrHook(new THREE.MeshStandardMaterial({ vertexColors: true, envMapIntensity: 1.2 }))
+    m.transparent = true
+    return m
+  })
+  return { opaque, fade }
+}
+
 export function vertexMaterials(
   tier: 'low' | 'mid',
   finish: 'paint' | 'metal' = 'paint',
@@ -139,18 +213,24 @@ export function vertexMaterials(
   const mat = sharedMat(key, () => {
     if (unlit) return new THREE.MeshBasicMaterial({ vertexColors: true })
     // Nacelles stay Lambert so the close view compiles one physical shader, on the painted shell.
-    if (metal) return new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })
+    if (metal) return new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.38 })
     return new THREE.MeshStandardMaterial({
       vertexColors: true,
       metalness: AIRCRAFT_LOOK.paint.metalness,
       roughness: AIRCRAFT_LOOK.paint.roughness,
     })
   })
+  if (!mat.userData.liveryHook) {
+    hookLiveryMaterial(mat)
+    mat.userData.liveryHook = true
+  }
   const fade = sharedMat(`fade:${key}`, () => {
     const copy = mat.clone()
     copy.transparent = true
     copy.opacity = 1
     copy.depthWrite = true
+    hookLiveryMaterial(copy)
+    copy.userData.liveryHook = true
     return copy
   })
   return { opaque: mat, fade }
@@ -165,12 +245,12 @@ export function paintMesh(
 ): PaintedMesh {
   const color = slotColor(slot, livery)
   const unlit = tier === 'low' || isLamp(slot)
-  const key = `${unlit ? 'basic' : 'lambert'}:${slot}:${color}`
-  const mat = sharedMat(key, () =>
-    unlit
-      ? new THREE.MeshBasicMaterial({ color })
-      : new THREE.MeshLambertMaterial({ color, flatShading: true }),
-  )
+  const key = `${unlit ? 'basic' : 'pbr'}:${slot}:${color}`
+  const mat = sharedMat(key, () => {
+    if (unlit) return new THREE.MeshBasicMaterial({ color })
+    const [metalness, roughness] = SLOT_PBR[slot] ?? [0.08, 0.4]
+    return new THREE.MeshStandardMaterial({ color, metalness, roughness })
+  })
   mesh.userData.paint = color
   mesh.userData.slot = slot
   if (isLamp(slot)) mesh.frustumCulled = true
@@ -198,9 +278,9 @@ export function paintVertexMesh(
   mesh: THREE.Mesh,
   tier: 'low' | 'mid',
   kind: string,
-  finish: 'paint' | 'metal' = 'paint',
+  finish: 'paint' | 'metal' | 'gear' = 'paint',
 ): PaintedMesh {
-  const { opaque, fade } = vertexMaterials(tier, finish)
+  const { opaque, fade } = finish === 'gear' ? gearMaterials(tier) : vertexMaterials(tier, finish)
   const fadeMat = fade as THREE.Material & { opacity: number }
   mesh.material = opaque
   mesh.userData.opaqueMat = opaque
@@ -209,7 +289,9 @@ export function paintVertexMesh(
   mesh.userData.kind = kind
   mesh.userData.tier = tier
   mesh.onBeforeRender = () => {
-    if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
+    const current = mesh.material as THREE.Material
+    bindLiveryUniforms(current, resolveLiveryAirline(mesh.userData.airline as string | undefined))
+    if (current === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
   }
   return mesh as PaintedMesh
 }
@@ -224,6 +306,7 @@ export function disposeAircraftLibrary() {
   geos.clear()
   for (const mat of mats.values()) mat.dispose()
   mats.clear()
+  disposeLiveryTextures()
 }
 
 /**

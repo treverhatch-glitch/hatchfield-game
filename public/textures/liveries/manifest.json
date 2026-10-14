@@ -1,0 +1,42 @@
+{
+  "defaultQuality": "high",
+  "liveries": [
+    {
+      "id": "bushline_local",
+      "engine": "#F5E6C8",
+      "airlines": [
+        "bushline",
+        "bushline_local"
+      ]
+    },
+    {
+      "id": "zoomjet",
+      "engine": "#D5D8DC",
+      "airlines": [
+        "zoomjet"
+      ]
+    },
+    {
+      "id": "crown_pacific",
+      "engine": "#C5A059",
+      "airlines": [
+        "crown",
+        "crown_pacific"
+      ]
+    },
+    {
+      "id": "siam_breeze",
+      "engine": "#F7FBFA",
+      "airlines": [
+        "siam_breeze"
+      ]
+    },
+    {
+      "id": "northstar_cargo",
+      "engine": "#FFC107",
+      "airlines": [
+        "northstar_cargo"
+      ]
+    }
+  ]
+}

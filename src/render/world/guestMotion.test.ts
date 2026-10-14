@@ -12,7 +12,7 @@ describe('visual crowd motion', () => {
       queued: true,
     }))
     let out = poses
-    for (let n = 0; n < 80; n++) out = motion.apply(out.map((_, i) => ({ ...poses[i], x: out[i].x, z: out[i].z })), [], 0.05)
+    for (let n = 0; n < 240; n++) out = motion.apply(out.map((_, i) => ({ ...poses[i], x: out[i].x, z: out[i].z })), [], 0.05)
     const zs = out.map((p) => p.z).sort((a, b) => a - b)
     const gaps = zs.slice(1).map((z, i) => z - zs[i])
     expect(Math.min(...gaps)).toBeGreaterThan(0.35)

@@ -14,10 +14,27 @@
  * boarding still come from the sim's own hall model.
  */
 import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
-import type { BuildLayout, BuildZone, Door, Edge, Equip, Room, Tile } from '../terminalbuild/types.ts'
-import { PaxNav, type FacilityMetrics, type PaxEvent } from '../paxnav/index.ts'
+import type { BuildLayout, BuildZone, Door, Edge, Equip, EquipKind, Room, Tile } from '../terminalbuild/types.ts'
+import {
+  CrewNav,
+  PaxNav,
+  PAXNAV_TUNING,
+  feedbackReputation,
+  hashId as navHash,
+  type CrewRole,
+  type FacilityMetrics,
+  type GuestCard,
+  type GuestFeedback,
+  type GuestPurpose,
+  type PaxEvent,
+  type PaxWait,
+  type Signage,
+} from '../paxnav/index.ts'
+import type { HallQueue } from '../terminalplay/queues.ts'
+import type { HallNode } from './guests.ts'
+import { facilityBlockers } from '../terminalplay/facilities.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
-import { HALL_NAV_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
+import { HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
 import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
 
 type Zones = readonly (readonly (ZoneId | null)[])[]
@@ -34,6 +51,42 @@ export interface NavGuest {
   preview?: boolean
   /** Arrival connecting to another flight: stays airside, so it keeps the old hall figure. */
   transfer?: boolean
+  /** Fare persona (business / premium / family / budget): seeds the walker's purpose and family groups. */
+  tag?: string
+}
+
+/** Sim fare persona -> walker purpose. Family fares are leisure or family trips, so they roll. */
+const TAG_PURPOSE: Record<string, GuestPurpose | undefined> = {
+  business: 'business',
+  premium: 'business',
+  budget: 'budget',
+}
+
+/**
+ * Wayfinding a hall offers its walkers: placed sign items, info screens and
+ * kiosks as departure boards, and the prefab scheme's own signs everywhere.
+ */
+export function hallSignage(fit: { build?: BuildLayout; zones?: (string | null)[][]; items?: readonly unknown[]; signs?: number }): Signage {
+  const items = (fit.items ?? []) as PlacedItem[]
+  const zones = fit.zones ?? []
+  const cols = zones[0]?.length ?? 0
+  const rows = zones.length
+  const signs: Signage['signs'] = []
+  const boards: Signage['boards'] = []
+  let placed = 0
+  if (!fit.build && cols && rows) {
+    const cw = HALL_W / cols
+    const rh = HALL_D / rows
+    for (const it of items) {
+      const def = itemDef(it.def)
+      const spot = { x: (it.c + 0.5) * cw, z: (it.r + 0.5) * rh }
+      if (def?.signs) {
+        signs.push(spot)
+        placed += def.signs
+      } else if (HALL_NAV_TUNING.boardItems.includes(it.def)) boards.push(spot)
+    }
+  }
+  return { signs, boards, schemeSigns: Math.max(0, (fit.signs ?? 0) - placed) }
 }
 
 const PREFAB_ZONE: Record<ZoneId, BuildZone | null> = {
@@ -81,19 +134,25 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
     c: Math.min(cols - 1, Math.floor(((x + 0.5) * tileM) / cw)),
     r: Math.min(rows - 1, Math.floor(((y + 0.5) * tileM) / rh)),
   })
+  // Placed walls and belts fill their hall cell: no floor there, nothing stands on it.
+  const blocked = facilityBlockers(items)
   const tilesOf = new Map<string, Tile[]>()
   const zoneGrid: (BuildZone | null)[][] = []
+  const floor: boolean[][] = []
   for (let y = 0; y < h; y++) {
     const row: (BuildZone | null)[] = []
+    const floorRow: boolean[] = []
     for (let x = 0; x < w; x++) {
       const { c, r } = cellOf(x, y)
       const k = `${c},${r}`
       if (!tilesOf.has(k)) tilesOf.set(k, [])
       tilesOf.get(k)!.push({ x, y })
-      const z = zones[r]?.[c] ?? null
+      const z = blocked.has(k) ? null : (zones[r]?.[c] ?? null)
       row.push(z === 'toilets' ? toiletSide(zones, c, r) : z ? PREFAB_ZONE[z] : null)
+      floorRow.push(!blocked.has(k))
     }
     zoneGrid.push(row)
+    floor.push(floorRow)
   }
   const zoneAt = (t: Tile) => zoneGrid[t.y]?.[t.x] ?? null
   const landside = (t: Tile) => zoneAt(t) === 'checkin' || zoneAt(t) === 'landside'
@@ -226,7 +285,7 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
   return {
     w,
     h,
-    floor: Array.from({ length: h }, () => Array.from({ length: w }, () => true)),
+    floor,
     zones: zoneGrid,
     walls,
     doors,
@@ -288,6 +347,86 @@ export function hallClaimHall(fit: { build?: BuildLayout; zones?: (string | null
   return prefabClaimHall(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
 }
 
+/** Hall node each kind of queued kit reports under (badges, info panel). */
+const NODE_OF: Partial<Record<EquipKind, { node: HallNode; label: string }>> = {
+  checkin_desk: { node: 'checkin', label: 'Check-in' },
+  security_lane: { node: 'security', label: 'Security' },
+  toilet: { node: 'bathroom', label: 'Restrooms' },
+  shop_counter: { node: 'shop', label: 'Shops & food' },
+  gate_desk: { node: 'gate', label: 'Gate' },
+}
+
+/** Marked line length, metres. */
+function lineLength(line: readonly { x: number; z: number }[]): number {
+  let d = 0
+  for (let i = 1; i < line.length; i++) d += Math.hypot(line[i].x - line[i - 1].x, line[i].z - line[i - 1].z)
+  return d
+}
+
+/** Too slow for what the player built: a long wait for the next in line, or the line spilling past its floor marks. */
+export function isNavBottleneck(m: FacilityMetrics): boolean {
+  const limit = HALL_QUEUE_TUNING.bottleneckSec[m.kind]
+  if (limit == null) return false
+  if (m.estWaitSec >= limit) return true
+  return m.queueLength * PAXNAV_TUNING.queueSpacingM > lineLength(m.line) + PAXNAV_TUNING.queueSpacingM
+}
+
+/** Happiness change for one finished wait: a little for a quick one, a hit past tolerance. */
+export function waitMoodDelta(kind: EquipKind, waitSec: number): number {
+  const T = HALL_QUEUE_TUNING
+  const tol = T.toleranceSec[kind]
+  if (tol == null || !(waitSec >= 0)) return 0
+  if (waitSec < tol * 0.25) return T.quickMood
+  if (waitSec <= tol) return 0
+  return -Math.min(T.maxMoodHit, ((waitSec - tol) / 60) * T.moodPerMinOver)
+}
+
+/** One facility's live read, for overlays and the info panel. */
+export interface NavFacilityLoad {
+  id: string
+  kind: EquipKind
+  node: HallNode | null
+  queueLength: number
+  estWaitSec: number
+  avgWaitSec: number
+  bottleneck: boolean
+}
+
+/** A hall node's live queue: `HallQueue` plus the worst wait and where to pin its badge (hall metres). */
+export interface NavHallQueue extends HallQueue {
+  waitSec: number
+  at: { x: number; z: number }
+}
+
+/**
+ * Group per-facility metrics by hall node. Count is everyone standing in
+ * line; wait is the worst at that node; the badge sits at the back of the
+ * longest line. `ox` / `oz` move terminal metres to hall metres.
+ */
+export function navHallQueues(metrics: readonly FacilityMetrics[], ox = 0, oz = 0): NavHallQueue[] {
+  const rows = new Map<HallNode, { row: NavHallQueue; longest: number }>()
+  for (const m of metrics) {
+    const mark = NODE_OF[m.kind]
+    if (!mark || m.queueLength <= 0 || !m.line.length) continue
+    let entry = rows.get(mark.node)
+    if (!entry) {
+      entry = { row: { node: mark.node, label: mark.label, count: 0, bottleneck: false, waitSec: 0, at: { x: 0, z: 0 } }, longest: -1 }
+      rows.set(mark.node, entry)
+    }
+    const row = entry.row
+    row.count += m.queueLength
+    row.waitSec = Math.max(row.waitSec, m.estWaitSec)
+    row.bottleneck ||= isNavBottleneck(m)
+    if (m.queueLength > entry.longest) {
+      entry.longest = m.queueLength
+      // Back of the line, as far as the floor marks go.
+      const back = m.line[Math.min(m.line.length - 1, Math.round(m.queueLength * PAXNAV_TUNING.queueSpacingM))]
+      row.at = { x: back.x + ox, z: back.z + oz }
+    }
+  }
+  return [...rows.values()].map((e) => e.row)
+}
+
 /**
  * The active hall's walkers. `Game` calls `setHall`, `admit` and `tick`
  * every tick; the Terminal view reads `writePoses`, `origin` and `metrics`.
@@ -295,6 +434,12 @@ export function hallClaimHall(fit: { build?: BuildLayout; zones?: (string | null
 export class HallNav {
   private navObj: PaxNav | null = null
   private arr = new HallArrivals()
+  private crewObj = HallNav.newCrew()
+  private crewRev = -1
+  private waitsOut: PaxWait[] = []
+  private readAt = -Infinity
+  private loadRows: NavFacilityLoad[] = []
+  private queueRows: NavHallQueue[] = []
   private hall = ''
   private stamp = ''
   private shape = ''
@@ -309,13 +454,31 @@ export class HallNav {
   boarded = 0
   missed = 0
   stuck = 0
+  /** Missed walkers who finished at a rebooking desk. */
+  rebooked = 0
   /** Arrivals that reached a curb door and left. */
   left = 0
   /** Bumps whenever someone joins or leaves, so a renderer can re-read ids and colours. */
   roster = 0
+  /** Guest feedback since this hall's walk started (thoughts, misses, complaints, spend). */
+  feedback: GuestFeedback = emptyFeedback()
+  /** Reputation the walk has earned or lost and the sim has not taken yet. */
+  private repOwed = 0
+  private signKey = ''
+  /** Open family group per flight: leader id and places left. */
+  private openGroup = new Map<string, { leader: string; left: number }>()
 
   get nav(): PaxNav | null {
     return this.navObj
+  }
+
+  private static newCrew(): CrewNav {
+    return new CrewNav({ shiftSec: HALL_CREW_TUNING.shiftClockSec * HALL_NAV_TUNING.navSecPerClockSec })
+  }
+
+  /** Staff walking to, from and between their posts. */
+  get crew(): CrewNav {
+    return this.crewObj
   }
 
   /** Jet bridge to curb walkers. */
@@ -329,8 +492,13 @@ export class HallNav {
     return Boolean(n && n.nav.spawns.length && this.gates.length)
   }
 
-  /** Everyone walking: departures, then arrivals (pose order). */
+  /** Everyone walking: departures, then arrivals, then crew (pose order). */
   get count(): number {
+    return (this.navObj?.count ?? 0) + this.arr.count + this.crewObj.count
+  }
+
+  /** Passengers walking (departures and arrivals); crew not counted. */
+  get passengers(): number {
     return (this.navObj?.count ?? 0) + this.arr.count
   }
 
@@ -343,7 +511,13 @@ export class HallNav {
    * Point the walk at a hall. A new hall starts a fresh walk; a new `stamp`
    * (the sim's hall revision) re-reads the layout and everyone re-plans.
    */
-  setHall(hall: string, stamp: string, layout: () => BuildLayout | null, claim: () => ClaimHall | null = () => null) {
+  setHall(
+    hall: string,
+    stamp: string,
+    layout: () => BuildLayout | null,
+    claim: () => ClaimHall | null = () => null,
+    signage: () => Signage | null = () => null,
+  ) {
     if (hall === this.hall && stamp === this.stamp) return
     const next = layout()
     if (!next) {
@@ -354,16 +528,25 @@ export class HallNav {
       return
     }
     const claimHall = claim()
+    const signs = signage() ?? undefined
     // Many sim edits bump the revision without moving any kit; only re-plan on a real change.
     const shape = JSON.stringify(next) + JSON.stringify(claimHall)
+    const signKey = JSON.stringify(signs ?? null)
     if (hall !== this.hall || !this.navObj) {
       this.reset()
-      this.navObj = new PaxNav(next, { seed: HALL_NAV_TUNING.seed })
+      this.navObj = new PaxNav(next, { seed: HALL_NAV_TUNING.seed, guests: HALL_NAV_TUNING.guests, signage: signs })
       this.arr.setLayout(next, claimHall)
-    } else if (shape !== this.shape) {
-      this.navObj.setLayout(next)
-      this.arr.setLayout(next, claimHall)
+      this.crewObj.setGrid(this.navObj.nav, this.navObj.facilities)
+    } else {
+      if (shape !== this.shape) {
+        this.navObj.setLayout(next)
+        this.arr.setLayout(next, claimHall)
+        this.crewObj.setGrid(this.navObj.nav, this.navObj.facilities)
+        this.readAt = -Infinity
+      }
+      if (signKey !== this.signKey && signs) this.navObj.setSignage(signs)
     }
+    this.signKey = signKey
     this.hall = hall
     this.stamp = stamp
     this.shape = shape
@@ -405,6 +588,8 @@ export class HallNav {
         id: g.id,
         gate,
         departAt: this.navNow + Math.max(0, std - clock) * L,
+        purpose: g.tag ? TAG_PURPOSE[g.tag] : undefined,
+        groupOf: this.groupFor(g),
       })
       if (ok) {
         this.depOrder.push(g.id)
@@ -416,6 +601,24 @@ export class HallNav {
     for (const id of this.owned) if (!still.has(id)) this.owned.delete(id)
   }
 
+  /**
+   * Family fares on the same flight walk as one party: the first opens a
+   * group of a seeded size, the next ones join it until it is full.
+   */
+  private groupFor(g: NavGuest): string | undefined {
+    if (!this.navObj?.guests || g.tag !== 'family' || g.preview) return undefined
+    const T = HALL_NAV_TUNING.familyGroups
+    const open = this.openGroup.get(g.flightId)
+    if (open && open.left > 0 && this.navObj.has(open.leader)) {
+      open.left--
+      return open.leader
+    }
+    const h = navHash(g.id)
+    if ((h % 1000) / 1000 < T.share) this.openGroup.set(g.flightId, { leader: g.id, left: 1 + ((h >>> 10) % T.maxFollowers) })
+    else this.openGroup.delete(g.flightId)
+    return undefined
+  }
+
   /** Advance by `step` clock seconds (game speed already applied). */
   tick(step: number): PaxEvent[] {
     const nav = this.navObj
@@ -424,17 +627,37 @@ export class HallNav {
     this.navNow += dt
     nav.tick(dt, this.navNow)
     this.arr.tick(dt, this.navNow, nav)
+    this.crewObj.tick(dt, this.navNow)
+    if (this.crewObj.rev !== this.crewRev) {
+      this.crewRev = this.crewObj.rev
+      this.roster++
+    }
+    for (const w of nav.drainWaits()) this.waitsOut.push(w)
+    if (this.navNow - this.readAt >= HALL_QUEUE_TUNING.readEveryNavSec) this.readQueues()
     const events = nav.drainEvents()
     let gone: Set<string> | null = null
     for (const e of events) {
       if (e.kind === 'boarded') this.boarded++
       else if (e.kind === 'missed') this.missed++
+      else if (e.kind === 'rebooked') this.rebooked++
       else this.stuck++
-      if (e.kind !== 'stuck') {
+      // A guest who missed still walks to the rebooking desk.
+      if (e.kind !== 'stuck' && !nav.has(e.id)) {
         this.roster++
         ;(gone ??= new Set()).add(e.id)
       }
     }
+    const fb = nav.drainFeedback()
+    const f = this.feedback
+    f.satDelta += fb.satDelta
+    f.missed += fb.missed
+    f.rebooked += fb.rebooked
+    f.complaints += fb.complaints
+    f.leftQueue += fb.leftQueue
+    f.lost += fb.lost
+    f.outOfStock += fb.outOfStock
+    f.spent += fb.spent
+    this.repOwed += feedbackReputation(fb)
     if (gone) this.depOrder = this.depOrder.filter((id) => !gone.has(id))
     for (const e of this.arr.drainEvents()) {
       if (e.kind === 'left') {
@@ -445,10 +668,12 @@ export class HallNav {
     return events
   }
 
-  /** Id of the walker in pose slot `i` (departures first, then arrivals). */
+  /** Id of the walker in pose slot `i` (departures, then arrivals, then crew). */
   idAt(i: number): string {
     const nav = this.navObj
     const n = nav?.count ?? 0
+    const na = n + this.arr.count
+    if (i >= na) return this.crewObj.idAt(i - na)
     if (i >= n) return this.arr.idAt(i - n)
     // Spawned outside `admit` (tests, the smoke's waves): re-read the order once.
     if (this.depOrder.length !== n) this.depOrder = nav!.poses().map((p) => p.id)
@@ -457,7 +682,14 @@ export class HallNav {
 
   /** Slot `i` is an arriving passenger. */
   isArrival(i: number): boolean {
-    return i >= (this.navObj?.count ?? 0)
+    const n = this.navObj?.count ?? 0
+    return i >= n && i < n + this.arr.count
+  }
+
+  /** Crew role in slot `i`; null for a passenger. */
+  crewRole(i: number): CrewRole | null {
+    const na = (this.navObj?.count ?? 0) + this.arr.count
+    return i >= na ? this.crewObj.roleAt(i - na) : null
   }
 
   /** Hall-view metres of terminal (0, 0): the layout is centred on the hall origin. */
@@ -480,28 +712,113 @@ export class HallNav {
     return l ? (-l.h * BUILD_TUNING.tileMetres) / 2 : 0
   }
 
-  /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals. */
+  /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals, then crew. */
   writePoses(out: Float32Array): number {
     const n = this.navObj?.writePoses(out) ?? 0
-    return n + this.arr.writePoses(out, n)
+    const na = n + this.arr.writePoses(out, n)
+    return na + this.crewObj.writePoses(out, na)
   }
 
   metrics(): FacilityMetrics[] {
     return this.navObj?.metrics() ?? []
   }
 
+  /** Reputation the walk's guests earned or cost since the last call (sim 0–100 scale). */
+  takeReputation(): number {
+    const r = this.repOwed
+    this.repOwed = 0
+    return r
+  }
+
+  /** Guest card for a departing walker (traits, needs, thoughts), or null. */
+  guestCard(id: string): GuestCard | null {
+    return this.live ? (this.navObj?.guest(id) ?? null) : null
+  }
+
+  /** Mean satisfaction of the departing walkers now. */
+  satisfaction(): { avg: number; count: number } {
+    return this.navObj?.satisfaction() ?? { avg: 0, count: 0 }
+  }
+
+  /** Bubble flags per walker in pose order (departures, then arrivals with none). */
+  writeFlags(out: Uint8Array): number {
+    const n = this.navObj?.writeFlags(out) ?? 0
+    const m = Math.min(this.arr.count, out.length - n)
+    out.fill(0, n, n + m)
+    return n + m
+  }
+
+  /** Departing walker nearest a hall-view floor point (metres), within `maxM`. */
+  pickAt(hx: number, hz: number, maxM = 1): string | null {
+    if (!this.live) return null
+    return this.navObj?.pick(hx - this.originX, hz - this.originZ, maxM) ?? null
+  }
+
+  /** Waits that ended since the last drain (who, at which kit, how long). The sim turns them into mood. */
+  drainWaits(): PaxWait[] {
+    const out = this.waitsOut
+    this.waitsOut = []
+    return out
+  }
+
+  /** Per-facility live load at the last read (every `readEveryNavSec`). */
+  loads(): readonly NavFacilityLoad[] {
+    return this.loadRows
+  }
+
+  /** Live queues by hall node, hall metres, at the last read. Empty lines are left out. */
+  queues(): readonly NavHallQueue[] {
+    return this.queueRows
+  }
+
+  /** Facilities flagged as bottlenecks at the last read. */
+  get bottlenecks(): number {
+    let n = 0
+    for (const l of this.loadRows) if (l.bottleneck) n++
+    return n
+  }
+
+  private readQueues() {
+    this.readAt = this.navNow
+    const metrics = this.metrics()
+    this.loadRows = metrics.map((m) => ({
+      id: m.id,
+      kind: m.kind,
+      node: NODE_OF[m.kind]?.node ?? null,
+      queueLength: m.queueLength,
+      estWaitSec: m.estWaitSec,
+      avgWaitSec: m.avgWaitSec,
+      bottleneck: isNavBottleneck(m),
+    }))
+    this.queueRows = navHallQueues(metrics, this.originX, this.originZ)
+  }
+
   private reset() {
     this.navObj = null
     this.arr = new HallArrivals()
+    this.crewObj = HallNav.newCrew()
+    this.crewRev = -1
+    this.waitsOut = []
+    this.readAt = -Infinity
+    this.loadRows = []
+    this.queueRows = []
     this.seen.clear()
     this.owned.clear()
+    this.openGroup.clear()
     this.depOrder = []
     this.gates = []
     this.navNow = 0
     this.boarded = 0
     this.missed = 0
     this.stuck = 0
+    this.rebooked = 0
     this.left = 0
+    this.feedback = emptyFeedback()
+    this.signKey = ''
     this.roster++
   }
+}
+
+function emptyFeedback(): GuestFeedback {
+  return { satDelta: 0, missed: 0, rebooked: 0, complaints: 0, leftQueue: 0, lost: 0, outOfStock: 0, spent: 0 }
 }

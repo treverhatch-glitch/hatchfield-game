@@ -5,7 +5,8 @@ import { lerpHex, lightsFactor, simClockToHour, skyState, sunDirection } from '.
 import { applyDayNight, DAY_NIGHT_CYCLE } from './dayNight'
 import { fitShadow, groundFocus, pickLod, stepFade } from './lod'
 import { parseQuality, QUALITY, suggestQuality } from './quality'
-import { fbm, paintGrass, Raster, tileNoise } from './raster'
+import { GROUND_LOOK } from '../look'
+import { fbm, paintAsphalt, paintConcrete, paintGrass, paintRoad, Raster, tileNoise } from './raster'
 
 describe('day / night', () => {
   it('sim night matches lights-on hours', () => {
@@ -97,7 +98,8 @@ describe('quality presets', () => {
   it('parses and orders presets', () => {
     expect(parseQuality('high')).toBe('high')
     expect(parseQuality('medium')).toBe('med')
-    expect(parseQuality('ultra', 'low')).toBe('low')
+    expect(parseQuality('ultra', 'low')).toBe('ultra')
+    expect(parseQuality('nope', 'low')).toBe('low')
     expect(QUALITY.low.shadowMapSize).toBe(0)
     expect(QUALITY.med.shadowMapSize).toBeLessThan(QUALITY.high.shadowMapSize)
     expect(QUALITY.low.grassTufts).toBeLessThan(QUALITY.med.grassTufts)
@@ -148,6 +150,18 @@ describe('procedural textures', () => {
     expect(g).toBeGreaterThan(bl)
     expect(a.meanLuma()).toBeGreaterThan(50)
     expect(a.meanLuma()).toBeLessThan(170)
+  })
+
+  it('apron joints are darker than the slab, and roads are darker than taxiways', () => {
+    const concrete = paintConcrete(48, 3)
+    const luma = (px: number, py: number) => {
+      const [r, g, b] = concrete.get(px, py)
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+    expect(luma(0, 8)).toBeLessThan(luma(8, 8))
+    const road = paintRoad(32).meanLuma()
+    const taxi = paintAsphalt(32, 2, GROUND_LOOK.taxiAsphalt).meanLuma()
+    expect(road).toBeLessThan(taxi)
   })
 
   it('raster wraps writes for seamless stamps', () => {
