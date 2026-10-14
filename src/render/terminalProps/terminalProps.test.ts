@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, TERMINAL_ITEM_TO_PROP, TERMINAL_PROP_TYPES, TERMINAL_PROPS, terminalProp } from './index'
+import { buildTerminalExterior, buildTerminalHall, buildTerminalProps, MOVING_TRAYS, TERMINAL_ITEM_TO_PROP, TERMINAL_PROP_TYPES, TERMINAL_PROPS, terminalProp, trayPositions } from './index'
 import { MATERIALS } from './materials'
 
 describe('terminal props registry', () => {
@@ -41,5 +41,27 @@ describe('terminal props registry', () => {
   it('builds hall shell and exterior', () => {
     expect(buildTerminalHall({ width: 60, depth: 36, height: 9 }).children.length).toBeGreaterThan(8)
     expect(buildTerminalExterior({ width: 60, depth: 36, height: 9 }).children.length).toBeGreaterThan(8)
+  })
+  it('round 4: security lanes carry animated trays that stay on the rollers', () => {
+    for (const tracks of Object.values(MOVING_TRAYS)) {
+      for (const t of tracks ?? []) {
+        const lo = Math.min(t.x0, t.x1), hi = Math.max(t.x0, t.x1)
+        for (const time of [0, 1.7, 33, 999]) for (const x of trayPositions(t, time)) {
+          expect(x).toBeGreaterThanOrEqual(lo - 1e-6)
+          expect(x).toBeLessThanOrEqual(hi + 1e-6)
+        }
+      }
+    }
+    const g = buildTerminalProps([{ type: 'security_lane', x: 0, z: 0 }])
+    expect(g.getObjectByName('movingTrays')).toBeDefined()
+    expect(buildTerminalProps([{ type: 'gate_seating', x: 0, z: 0 }]).getObjectByName('movingTrays')).toBeUndefined()
+  })
+  it('round 4: check-in desks have staff and security lanes have officers', () => {
+    expect(terminalProp('checkin_row').parts.some((p) => p.mat === 'skin' || p.mat === 'skinDark')).toBe(true)
+    for (const t of ['security_lane', 'security_lane_ct'] as const) expect(terminalProp(t).parts.filter((p) => p.mat === 'vestYellow').length, t).toBeGreaterThanOrEqual(3)
+  })
+  it('round 4: hall has recessed doors on quality high only', () => {
+    expect(buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'high' }).getObjectByName('recessedDoors')).toBeDefined()
+    expect(buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'low' }).getObjectByName('recessedDoors')).toBeUndefined()
   })
 })
