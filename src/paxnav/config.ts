@@ -36,6 +36,8 @@ export const PAXNAV_TUNING = {
   needSlackSec: 10 * 60,
   /** Recent waits averaged into a facility's wait time. */
   waitWindow: 20,
+  /** Finished waits kept for `drainWaits` when nobody drains them. */
+  waitLogCap: 4096,
   /** Seconds before a passenger with nowhere to go tries again. */
   retrySec: 10,
   /** Cap on cell hops one passenger makes in one tick (guards huge dt). */
@@ -43,6 +45,20 @@ export const PAXNAV_TUNING = {
   /** Wear and slow service: worn kit serves slower, same curve as the flow model. */
   wornSlowdown: BUILD_TUNING.wornSlowdown,
 } as const
+
+/** Terminal crew on the passengers' grid (src/paxnav/crew.ts). Seconds are the same clock as `tick`. */
+export const CREW_TUNING = {
+  /** Staff on duty at each piece of kit. Kit not listed has no post. */
+  perPost: { checkin_desk: 1, security_lane: 2, gate_desk: 1, shop_counter: 1 } as Partial<Record<EquipKind, number>>,
+  /** Shift length: a relief walks in, then the one on duty walks out. */
+  shiftSec: 8 * 3600,
+  /** One cleaner loops the toilets per this many toilet blocks (rounded up). */
+  toiletsPerCleaner: 3,
+  /** Seconds a cleaner spends at each toilet block. */
+  cleanSec: 120,
+  /** Crew walk speed, m/s. */
+  walkMps: BUILD_TUNING.walkMps * 1.1,
+}
 
 /** Stops a passenger can make, and the kit that serves each. */
 export type StopKind = 'checkin' | 'security' | 'toilet' | 'food' | 'shop' | 'gate' | 'rebook'

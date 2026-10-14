@@ -193,7 +193,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout, hallSignage } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage, waitMoodDelta } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -5659,6 +5659,22 @@ export class Game {
       if (footprintOf(def) === 'belt') lines.push('Belt — nothing else can sit on this cell')
       return { title: def?.name ?? 'Facility', lines }
     }
+    if (this.hallNav.live) {
+      // The walk's real lines: count, worst wait, and whether the kit keeps up.
+      const live = this.hallNav.queues().find((q) => q.node === id)
+      const loads = this.hallNav.loads().filter((l) => l.node === id)
+      if (live || loads.length) {
+        const mins = Math.round((live?.waitSec ?? 0) / 60)
+        return {
+          title: live?.label ?? id,
+          lines: [
+            `${live?.count ?? 0} waiting at ${loads.length} ${loads.length === 1 ? 'point' : 'points'}`,
+            `Wait ~${mins} min`,
+            live?.bottleneck ? 'Bottleneck — add a lane, a desk, or a wider queue' : 'Line is moving',
+          ],
+        }
+      }
+    }
     const row = hallQueues(this.hallGuests).find((q) => q.node === id)
     if (!row) {
       const count = queueAtNode(this.hallGuests, id as HallNode)
@@ -7420,8 +7436,23 @@ export class Game {
       return this.showUps.find((p) => p.flightId === flightId || p.slotId === slot)?.std
     })
     this.hallNav.tick(step)
+    this.applyHallWaits()
     // Walk guests' thoughts, complaints and missed flights move reputation (eased in, like the hall's).
     this.queueReputation(this.hallNav.takeReputation())
+  }
+
+  /** Waits in the walk's real queues move the waiting guest's mood: quick service pleases, a long line stings. */
+  applyHallWaits() {
+    const waits = this.hallNav.drainWaits()
+    if (!waits.length) return
+    const byId = new Map<string, HallGuest>()
+    for (const g of this.hallGuests) if (!g.dead && !g.preview) byId.set(g.id, g)
+    for (const w of waits) {
+      const g = byId.get(w.id)
+      if (!g) continue
+      const delta = waitMoodDelta(w.kind, w.waitSec)
+      if (delta) g.happiness = Math.max(0, Math.min(100, g.happiness + delta))
+    }
   }
 
   tickHall(dt: number) {

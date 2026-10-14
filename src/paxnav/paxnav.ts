@@ -178,6 +178,14 @@ export const WALKER_LOST = 1
 export const WALKER_REBOOK = 2
 export const WALKER_UNHAPPY = 4
 
+/** One finished wait in a line: from joining it to stepping up to the desk. */
+export interface PaxWait {
+  id: string
+  facility: string
+  kind: EquipKind
+  waitSec: number
+}
+
 export interface PaxPose {
   id: string
   x: number
@@ -302,6 +310,7 @@ export class PaxNav {
   private agents: Agent[] = []
   private byId = new Map<string, Agent>()
   private events: PaxEvent[] = []
+  private waitLog: PaxWait[] = []
   private rng: PaxRng
   private tileM: number
   private now = 0
@@ -1273,6 +1282,9 @@ export class PaxNav {
       a.serviceLeft = this.serviceTime(a, f)
       a.lastWait = this.now - a.joinedAt
       st.waits.push(a.lastWait)
+      this.waitLog.push({ id: a.id, facility: f.id, kind: f.kind, waitSec: a.lastWait })
+      // Nobody draining: keep the newest only.
+      if (this.waitLog.length > PAXNAV_TUNING.waitLogCap) this.waitLog.splice(0, this.waitLog.length >> 1)
       if (st.waits.length > PAXNAV_TUNING.waitWindow) st.waits.shift()
     }
   }
@@ -1421,8 +1433,20 @@ export class PaxNav {
     return out
   }
 
+  /** Waits that ended (someone reached the desk) since the last drain. */
+  drainWaits(): PaxWait[] {
+    const out = this.waitLog
+    this.waitLog = []
+    return out
+  }
+
   get count(): number {
     return this.agents.length
+  }
+
+  /** Service points and lines on the current layout (crew posts, overlays). */
+  get facilities(): FacilitySet {
+    return this.fac
   }
 
   get layout(): BuildLayout {

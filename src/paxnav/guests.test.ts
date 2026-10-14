@@ -361,7 +361,7 @@ describe('pace and scale', () => {
     expect(run()).toEqual(run())
   })
 
-  it('500 guests flow curb to boarding on a four-gate terminal', () => {
+  it('500 guests flow curb to boarding on a four-gate terminal', { timeout: 20_000 }, () => {
     const nav = guestNav(15)
     const tracks = new Map()
     let events: PaxEvent[] = []

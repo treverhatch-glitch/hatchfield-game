@@ -14,20 +14,27 @@
  * boarding still come from the sim's own hall model.
  */
 import { BUILD_TUNING, ZONE_SIDE } from '../terminalbuild/config.ts'
-import type { BuildLayout, BuildZone, Door, Edge, Equip, Room, Tile } from '../terminalbuild/types.ts'
+import type { BuildLayout, BuildZone, Door, Edge, Equip, EquipKind, Room, Tile } from '../terminalbuild/types.ts'
 import {
+  CrewNav,
   PaxNav,
+  PAXNAV_TUNING,
   feedbackReputation,
   hashId as navHash,
+  type CrewRole,
   type FacilityMetrics,
   type GuestCard,
   type GuestFeedback,
   type GuestPurpose,
   type PaxEvent,
+  type PaxWait,
   type Signage,
 } from '../paxnav/index.ts'
+import type { HallQueue } from '../terminalplay/queues.ts'
+import type { HallNode } from './guests.ts'
+import { facilityBlockers } from '../terminalplay/facilities.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
-import { HALL_NAV_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
+import { HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
 import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
 
 type Zones = readonly (readonly (ZoneId | null)[])[]
@@ -127,19 +134,25 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
     c: Math.min(cols - 1, Math.floor(((x + 0.5) * tileM) / cw)),
     r: Math.min(rows - 1, Math.floor(((y + 0.5) * tileM) / rh)),
   })
+  // Placed walls and belts fill their hall cell: no floor there, nothing stands on it.
+  const blocked = facilityBlockers(items)
   const tilesOf = new Map<string, Tile[]>()
   const zoneGrid: (BuildZone | null)[][] = []
+  const floor: boolean[][] = []
   for (let y = 0; y < h; y++) {
     const row: (BuildZone | null)[] = []
+    const floorRow: boolean[] = []
     for (let x = 0; x < w; x++) {
       const { c, r } = cellOf(x, y)
       const k = `${c},${r}`
       if (!tilesOf.has(k)) tilesOf.set(k, [])
       tilesOf.get(k)!.push({ x, y })
-      const z = zones[r]?.[c] ?? null
+      const z = blocked.has(k) ? null : (zones[r]?.[c] ?? null)
       row.push(z === 'toilets' ? toiletSide(zones, c, r) : z ? PREFAB_ZONE[z] : null)
+      floorRow.push(!blocked.has(k))
     }
     zoneGrid.push(row)
+    floor.push(floorRow)
   }
   const zoneAt = (t: Tile) => zoneGrid[t.y]?.[t.x] ?? null
   const landside = (t: Tile) => zoneAt(t) === 'checkin' || zoneAt(t) === 'landside'
@@ -272,7 +285,7 @@ export function prefabNavLayout(zones: Zones, items: readonly PlacedItem[], tile
   return {
     w,
     h,
-    floor: Array.from({ length: h }, () => Array.from({ length: w }, () => true)),
+    floor,
     zones: zoneGrid,
     walls,
     doors,
@@ -334,6 +347,86 @@ export function hallClaimHall(fit: { build?: BuildLayout; zones?: (string | null
   return prefabClaimHall(fit.zones as Zones, (fit.items ?? []) as PlacedItem[])
 }
 
+/** Hall node each kind of queued kit reports under (badges, info panel). */
+const NODE_OF: Partial<Record<EquipKind, { node: HallNode; label: string }>> = {
+  checkin_desk: { node: 'checkin', label: 'Check-in' },
+  security_lane: { node: 'security', label: 'Security' },
+  toilet: { node: 'bathroom', label: 'Restrooms' },
+  shop_counter: { node: 'shop', label: 'Shops & food' },
+  gate_desk: { node: 'gate', label: 'Gate' },
+}
+
+/** Marked line length, metres. */
+function lineLength(line: readonly { x: number; z: number }[]): number {
+  let d = 0
+  for (let i = 1; i < line.length; i++) d += Math.hypot(line[i].x - line[i - 1].x, line[i].z - line[i - 1].z)
+  return d
+}
+
+/** Too slow for what the player built: a long wait for the next in line, or the line spilling past its floor marks. */
+export function isNavBottleneck(m: FacilityMetrics): boolean {
+  const limit = HALL_QUEUE_TUNING.bottleneckSec[m.kind]
+  if (limit == null) return false
+  if (m.estWaitSec >= limit) return true
+  return m.queueLength * PAXNAV_TUNING.queueSpacingM > lineLength(m.line) + PAXNAV_TUNING.queueSpacingM
+}
+
+/** Happiness change for one finished wait: a little for a quick one, a hit past tolerance. */
+export function waitMoodDelta(kind: EquipKind, waitSec: number): number {
+  const T = HALL_QUEUE_TUNING
+  const tol = T.toleranceSec[kind]
+  if (tol == null || !(waitSec >= 0)) return 0
+  if (waitSec < tol * 0.25) return T.quickMood
+  if (waitSec <= tol) return 0
+  return -Math.min(T.maxMoodHit, ((waitSec - tol) / 60) * T.moodPerMinOver)
+}
+
+/** One facility's live read, for overlays and the info panel. */
+export interface NavFacilityLoad {
+  id: string
+  kind: EquipKind
+  node: HallNode | null
+  queueLength: number
+  estWaitSec: number
+  avgWaitSec: number
+  bottleneck: boolean
+}
+
+/** A hall node's live queue: `HallQueue` plus the worst wait and where to pin its badge (hall metres). */
+export interface NavHallQueue extends HallQueue {
+  waitSec: number
+  at: { x: number; z: number }
+}
+
+/**
+ * Group per-facility metrics by hall node. Count is everyone standing in
+ * line; wait is the worst at that node; the badge sits at the back of the
+ * longest line. `ox` / `oz` move terminal metres to hall metres.
+ */
+export function navHallQueues(metrics: readonly FacilityMetrics[], ox = 0, oz = 0): NavHallQueue[] {
+  const rows = new Map<HallNode, { row: NavHallQueue; longest: number }>()
+  for (const m of metrics) {
+    const mark = NODE_OF[m.kind]
+    if (!mark || m.queueLength <= 0 || !m.line.length) continue
+    let entry = rows.get(mark.node)
+    if (!entry) {
+      entry = { row: { node: mark.node, label: mark.label, count: 0, bottleneck: false, waitSec: 0, at: { x: 0, z: 0 } }, longest: -1 }
+      rows.set(mark.node, entry)
+    }
+    const row = entry.row
+    row.count += m.queueLength
+    row.waitSec = Math.max(row.waitSec, m.estWaitSec)
+    row.bottleneck ||= isNavBottleneck(m)
+    if (m.queueLength > entry.longest) {
+      entry.longest = m.queueLength
+      // Back of the line, as far as the floor marks go.
+      const back = m.line[Math.min(m.line.length - 1, Math.round(m.queueLength * PAXNAV_TUNING.queueSpacingM))]
+      row.at = { x: back.x + ox, z: back.z + oz }
+    }
+  }
+  return [...rows.values()].map((e) => e.row)
+}
+
 /**
  * The active hall's walkers. `Game` calls `setHall`, `admit` and `tick`
  * every tick; the Terminal view reads `writePoses`, `origin` and `metrics`.
@@ -341,6 +434,12 @@ export function hallClaimHall(fit: { build?: BuildLayout; zones?: (string | null
 export class HallNav {
   private navObj: PaxNav | null = null
   private arr = new HallArrivals()
+  private crewObj = HallNav.newCrew()
+  private crewRev = -1
+  private waitsOut: PaxWait[] = []
+  private readAt = -Infinity
+  private loadRows: NavFacilityLoad[] = []
+  private queueRows: NavHallQueue[] = []
   private hall = ''
   private stamp = ''
   private shape = ''
@@ -373,6 +472,15 @@ export class HallNav {
     return this.navObj
   }
 
+  private static newCrew(): CrewNav {
+    return new CrewNav({ shiftSec: HALL_CREW_TUNING.shiftClockSec * HALL_NAV_TUNING.navSecPerClockSec })
+  }
+
+  /** Staff walking to, from and between their posts. */
+  get crew(): CrewNav {
+    return this.crewObj
+  }
+
   /** Jet bridge to curb walkers. */
   get arrivals(): HallArrivals {
     return this.arr
@@ -384,8 +492,13 @@ export class HallNav {
     return Boolean(n && n.nav.spawns.length && this.gates.length)
   }
 
-  /** Everyone walking: departures, then arrivals (pose order). */
+  /** Everyone walking: departures, then arrivals, then crew (pose order). */
   get count(): number {
+    return (this.navObj?.count ?? 0) + this.arr.count + this.crewObj.count
+  }
+
+  /** Passengers walking (departures and arrivals); crew not counted. */
+  get passengers(): number {
     return (this.navObj?.count ?? 0) + this.arr.count
   }
 
@@ -423,10 +536,13 @@ export class HallNav {
       this.reset()
       this.navObj = new PaxNav(next, { seed: HALL_NAV_TUNING.seed, guests: HALL_NAV_TUNING.guests, signage: signs })
       this.arr.setLayout(next, claimHall)
+      this.crewObj.setGrid(this.navObj.nav, this.navObj.facilities)
     } else {
       if (shape !== this.shape) {
         this.navObj.setLayout(next)
         this.arr.setLayout(next, claimHall)
+        this.crewObj.setGrid(this.navObj.nav, this.navObj.facilities)
+        this.readAt = -Infinity
       }
       if (signKey !== this.signKey && signs) this.navObj.setSignage(signs)
     }
@@ -511,6 +627,13 @@ export class HallNav {
     this.navNow += dt
     nav.tick(dt, this.navNow)
     this.arr.tick(dt, this.navNow, nav)
+    this.crewObj.tick(dt, this.navNow)
+    if (this.crewObj.rev !== this.crewRev) {
+      this.crewRev = this.crewObj.rev
+      this.roster++
+    }
+    for (const w of nav.drainWaits()) this.waitsOut.push(w)
+    if (this.navNow - this.readAt >= HALL_QUEUE_TUNING.readEveryNavSec) this.readQueues()
     const events = nav.drainEvents()
     let gone: Set<string> | null = null
     for (const e of events) {
@@ -545,10 +668,12 @@ export class HallNav {
     return events
   }
 
-  /** Id of the walker in pose slot `i` (departures first, then arrivals). */
+  /** Id of the walker in pose slot `i` (departures, then arrivals, then crew). */
   idAt(i: number): string {
     const nav = this.navObj
     const n = nav?.count ?? 0
+    const na = n + this.arr.count
+    if (i >= na) return this.crewObj.idAt(i - na)
     if (i >= n) return this.arr.idAt(i - n)
     // Spawned outside `admit` (tests, the smoke's waves): re-read the order once.
     if (this.depOrder.length !== n) this.depOrder = nav!.poses().map((p) => p.id)
@@ -557,7 +682,14 @@ export class HallNav {
 
   /** Slot `i` is an arriving passenger. */
   isArrival(i: number): boolean {
-    return i >= (this.navObj?.count ?? 0)
+    const n = this.navObj?.count ?? 0
+    return i >= n && i < n + this.arr.count
+  }
+
+  /** Crew role in slot `i`; null for a passenger. */
+  crewRole(i: number): CrewRole | null {
+    const na = (this.navObj?.count ?? 0) + this.arr.count
+    return i >= na ? this.crewObj.roleAt(i - na) : null
   }
 
   /** Hall-view metres of terminal (0, 0): the layout is centred on the hall origin. */
@@ -580,10 +712,11 @@ export class HallNav {
     return l ? (-l.h * BUILD_TUNING.tileMetres) / 2 : 0
   }
 
-  /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals. */
+  /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals, then crew. */
   writePoses(out: Float32Array): number {
     const n = this.navObj?.writePoses(out) ?? 0
-    return n + this.arr.writePoses(out, n)
+    const na = n + this.arr.writePoses(out, n)
+    return na + this.crewObj.writePoses(out, na)
   }
 
   metrics(): FacilityMetrics[] {
@@ -621,9 +754,54 @@ export class HallNav {
     return this.navObj?.pick(hx - this.originX, hz - this.originZ, maxM) ?? null
   }
 
+  /** Waits that ended since the last drain (who, at which kit, how long). The sim turns them into mood. */
+  drainWaits(): PaxWait[] {
+    const out = this.waitsOut
+    this.waitsOut = []
+    return out
+  }
+
+  /** Per-facility live load at the last read (every `readEveryNavSec`). */
+  loads(): readonly NavFacilityLoad[] {
+    return this.loadRows
+  }
+
+  /** Live queues by hall node, hall metres, at the last read. Empty lines are left out. */
+  queues(): readonly NavHallQueue[] {
+    return this.queueRows
+  }
+
+  /** Facilities flagged as bottlenecks at the last read. */
+  get bottlenecks(): number {
+    let n = 0
+    for (const l of this.loadRows) if (l.bottleneck) n++
+    return n
+  }
+
+  private readQueues() {
+    this.readAt = this.navNow
+    const metrics = this.metrics()
+    this.loadRows = metrics.map((m) => ({
+      id: m.id,
+      kind: m.kind,
+      node: NODE_OF[m.kind]?.node ?? null,
+      queueLength: m.queueLength,
+      estWaitSec: m.estWaitSec,
+      avgWaitSec: m.avgWaitSec,
+      bottleneck: isNavBottleneck(m),
+    }))
+    this.queueRows = navHallQueues(metrics, this.originX, this.originZ)
+  }
+
   private reset() {
     this.navObj = null
     this.arr = new HallArrivals()
+    this.crewObj = HallNav.newCrew()
+    this.crewRev = -1
+    this.waitsOut = []
+    this.readAt = -Infinity
+    this.loadRows = []
+    this.queueRows = []
     this.seen.clear()
     this.owned.clear()
     this.openGroup.clear()
