@@ -19,6 +19,10 @@ import { busDepot, railStation } from './transit'
 import { helipad, mro, nightHub } from './aviation'
 import { enrich, mergeStatic } from './detail'
 import { dressYard } from './yard'
+import { bayDressing, facadePolish } from './r7'
+
+/** Round 7: buildings vehicles use get bay decals, number boards, floods and facade polish. */
+const VEHICLE_BUILDINGS = new Set(['fuel', 'fuel_farm_iii', 'fire', 'cargo', 'kitchen', 'snack', 'bags', 'deice', 'termbus', 'xferbus', 'bus', 'hangar', 'hangar_w', 'hangar_j', 'mro'])
 import { bagSortR5, busStationR5, cargoR5, cateringR5, checkinHallR5, deiceR5, fireStationR5, fuelFarmR5, hangarR5, towerR5 } from './r5'
 import { fuelRail, oilTransfer, peopleMover, skywalk, travelator } from './links'
 import type { HotelClass, ParkTerm } from '../../game/types'
@@ -105,6 +109,10 @@ export function buildModel(id: string, opts: ModelOpts = {}): THREE.Group | null
   g.name = `model:${id}`
   fn(g, opts)
   enrich(g, id)
+  if (VEHICLE_BUILDINGS.has(id)) {
+    facadePolish(g, id)
+    bayDressing(g, id)
+  }
   if (opts.yardSeed !== undefined) dressYard(g, id, opts.yardSeed)
   if (!opts.noMerge) mergeStatic(g)
   return g
