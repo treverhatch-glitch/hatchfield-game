@@ -237,7 +237,11 @@ export function legGeometry(shape: LegShape): THREE.BufferGeometry {
     parts.push(cyl(sR * 1.12, Math.max(0.05, sR * 0.5), 18, C.link, T(0, yO, 0)))
     // Chrome piston down to the axle or bogie pivot.
     const pistonBot = beamY + (bogie ? sR * 0.4 : 0)
-    parts.push(cyl(sR * 0.72, yO - pistonBot, 16, C.chrome, T(0, (yO + pistonBot) / 2, 0)))
+    if (nose) {
+      parts.push(rod(V(0, yO, 0), V(-R * 0.7, pistonBot, 0), sR * 0.72, C.chrome, 12))
+    } else {
+      parts.push(cyl(sR * 0.72, yO - pistonBot, 16, C.chrome, T(0, (yO + pistonBot) / 2, 0)))
+    }
 
     // Drag brace (fore-aft) and side brace (inboard), each folding at a knee.
     const brace = (end: THREE.Vector3, r: number) => {
@@ -263,7 +267,9 @@ export function legGeometry(shape: LegShape): THREE.BufferGeometry {
       parts.push(...hose([V(-sR * 0.3, top, hz), V(-sR * 0.4, yO + 0.05, hz), V(-sR * 1.1, (yO + beamY) / 2, hz * 1.4), V(-sR * 0.6, beamY + R * 0.25, hz * 2)], Math.max(0.012, sR * 0.07)))
     }
 
-    const stations = wheelStations(kind, R)
+    // Nose strut rakes aft so the tyre sits behind the trunnion, like a real oleo.
+    const rake = nose ? R * 0.7 : 0
+    const stations = wheelStations(kind, R).map(([x, z]) => [x - rake, z] as [number, number])
     const w = R * (nose ? 0.6 : 0.7)
     if (bogie) {
       const xs = stations.map((st) => st[0])

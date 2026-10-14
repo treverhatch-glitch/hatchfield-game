@@ -454,7 +454,7 @@ export const MODEL_SPECS: Record<string, ModelSpec> = {
     wingHigh: true,
     rootChord: 2.6,
     tipChord: 1.45,
-    sweep: 2,
+    sweep: 0,
     dihedral: 2,
     thickness: 0.32,
     winglet: 'none',

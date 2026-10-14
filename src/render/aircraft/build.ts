@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
-import { cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, windowGeometry, wingGeometry } from './geom'
+import { bladeGeometry, cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftFamily, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, stabGeometry, windowGeometry, wingGeometry, wingletGeometry } from './geom'
 import type { LiveryBox } from './liveryUv'
 import { airlineLogoUrl } from './airlineLogo'
 import { selectLivery } from './airlineArt'
@@ -179,9 +179,10 @@ function enginePoints(frame: Frame): THREE.Vector3[] {
     return pts
   }
   if (eng.mount === 'rear') {
-    const x = tailX + spec.lengthM * 0.2
-    const y = centerY + spec.ry * 0.08
-    const z = spec.rx + eng.radius * 0.55
+    // High on the rear fuselage, ahead of the tail cone: CRJ, E-Jet, Citation.
+    const x = tailX + spec.lengthM * 0.22
+    const y = centerY + spec.ry * 0.38
+    const z = spec.rx + eng.radius * 0.42
     pts.push(new THREE.Vector3(x, y, z), new THREE.Vector3(x, y, -z))
     return pts
   }
@@ -192,7 +193,8 @@ function enginePoints(frame: Frame): THREE.Vector3[] {
     return pts
   }
   const semi = spec.spanM / 2
-  const fracs = eng.count === 4 ? [0.34, 0.68] : [0.4]
+  // Inboard pair for quads (747, A380, C-130). Narrowbody twins sit closer to the root than widebody twins.
+  const fracs = eng.count === 4 ? [0.25, 0.52] : [spec.spanM >= 55 ? 0.34 : 0.3]
   const tanSweep = Math.tan((spec.sweep * Math.PI) / 180)
   const tanDih = Math.tan((spec.dihedral * Math.PI) / 180)
   const fan = eng.kind !== 'turboprop'
@@ -233,7 +235,8 @@ function addFuselage(frame: Frame) {
   if (frame.tier === 'high') return
   const { spec } = frame
   const sides = fuselageSides(frame.tier)
-  const mesh = new THREE.Mesh(paintedLoftGeometry(spec.family, sides, fuselagePaint(frame.livery)))
+  const family = loftFamily(spec)
+  const mesh = new THREE.Mesh(paintedLoftGeometry(family, sides, fuselagePaint(frame.livery)))
   mesh.scale.set(spec.lengthM, spec.ry, spec.rx)
   mesh.position.set(0, frame.centerY, 0)
   mesh.name = 'fuselage'
@@ -244,8 +247,9 @@ function addFuselage(frame: Frame) {
     const hump = new THREE.Mesh(
       paintedLoftGeometry('hump', sides, { crown: top, body: top, belly: top }),
     )
-    hump.scale.set(spec.lengthM * 0.4, spec.ry * 0.52, spec.rx * 0.62)
-    hump.position.set(spec.lengthM * 0.16, frame.top - spec.ry * 0.05, 0)
+    // Forehead from the cockpit back to the wing, wide enough to blend into the tube.
+    hump.scale.set(spec.lengthM * 0.5, spec.ry * 0.48, spec.rx * 0.78)
+    hump.position.set(spec.lengthM * 0.2, frame.top - spec.ry * 0.12, 0)
     hump.name = 'hump'
     markLivery(addMesh(frame, hump, 'body', 'mesh', frame.tier === 'mid'), 'fuselage', fuselageBox(frame))
   }
@@ -285,18 +289,31 @@ function addWing(frame: Frame) {
     const semi = spec.spanM / 2
     const sweep = Math.tan((spec.sweep * Math.PI) / 180) * semi
     const lift = Math.tan((spec.dihedral * Math.PI) / 180) * semi
-    const height = spec.winglet === 'fence' ? 1.15 : spec.winglet === 'raked' ? 1.7 : 2.05
-    const lean = spec.winglet === 'raked' ? -0.7 : spec.winglet === 'blended' ? -0.35 : 0
-    const tipX = wingX + spec.rootChord / 2 - sweep - spec.tipChord * 0.45
-    for (const sign of [1, -1]) {
-      addBox(
-        frame,
-        [0.22, height, 0.55],
-        [tipX, wingY + lift + height * 0.45, sign * (semi - 0.15)],
-        'tail',
-        'mesh',
-        [0, 0, lean * sign],
-      )
+    const tipX = wingX + spec.rootChord / 2 - sweep - spec.tipChord * 0.42
+    const tipY = wingY + lift
+    if (spec.winglet === 'raked') {
+      const len = Math.max(2.4, spec.tipChord * 1.25)
+      const reach = Math.min(len * 0.38, semi * 0.06)
+      for (const sign of [1, -1] as const) {
+        const device = new THREE.Mesh(wingletGeometry('raked'))
+        device.scale.set(len, Math.max(0.14, spec.thickness * 0.4), sign * reach)
+        device.position.set(tipX + spec.tipChord * 0.05, tipY, sign * (semi - 0.02))
+        device.name = 'winglet'
+        addMesh(frame, device, 'tail', 'mesh')
+      }
+    } else {
+      const height = spec.winglet === 'fence'
+        ? Math.max(1.35, spec.tipChord * 0.95)
+        : Math.max(2.15, spec.tipChord * 1.3)
+      const chord = Math.max(0.55, spec.tipChord * 0.62)
+      const thick = Math.max(0.08, spec.thickness * 0.32)
+      for (const sign of [1, -1] as const) {
+        const device = new THREE.Mesh(wingletGeometry(spec.winglet))
+        device.scale.set(chord, height, thick)
+        device.position.set(tipX, tipY, sign * (semi - 0.06))
+        device.name = 'winglet'
+        addMesh(frame, device, 'tail', 'mesh')
+      }
     }
   }
 }
@@ -331,13 +348,11 @@ function addTail(frame: Frame) {
   }
   const stabY = spec.tail === 't' ? frame.spec.heightM - 0.12 : centerY + spec.ry * 0.2
   const stabChord = Math.max(0.8, spec.rootChord * 0.42)
-  addBox(
-    frame,
-    [stabChord, Math.max(0.08, spec.thickness * 0.22), spec.tailSpan],
-    [finX - chord * 0.15, stabY, 0],
-    'tail',
-    'mesh',
-  )
+  const stab = new THREE.Mesh(stabGeometry())
+  stab.scale.set(stabChord, Math.max(0.08, spec.thickness * 0.22), spec.tailSpan)
+  stab.position.set(finX - chord * 0.15, stabY, 0)
+  stab.name = 'stab'
+  addMesh(frame, stab, 'tail', 'mesh')
 }
 
 function addEngines(frame: Frame) {
@@ -465,7 +480,7 @@ function addPropBlades(
         ),
       )
     }
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial(), blades)
+    const mesh = new THREE.InstancedMesh(name === 'prop' ? bladeGeometry() : geo, new THREE.MeshBasicMaterial(), blades)
     matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix))
     mesh.instanceMatrix.needsUpdate = true
     const painted = paintMesh(mesh, 'dark', frame.livery, 'mesh', frame.tier)
@@ -677,7 +692,9 @@ function addGear(frame: Frame) {
   frame.group.userData.wheelbase = axle
   const mainZ = spec.family === 'helo'
     ? Math.max(spec.rx * 0.7, 0.55)
-    : Math.max(spec.rx * 0.95, spec.spanM * 0.07)
+    : spec.wingHigh
+      ? Math.max(spec.rx * 0.95, spec.spanM * 0.07)
+      : Math.max(spec.rx * 1.2, spec.spanM * 0.09)
 
   if (spec.family === 'helo') {
     mount(forwardX, mainZ, false)
@@ -1318,7 +1335,7 @@ function addLights(frame: Frame) {
   // Nose is +X and up is +Y, so starboard (right) is +Z and port (left) is -Z.
   lamp('navRed', [tipX, tipY, -(semi - radius * 0.5)], 'light', 'nav-port')
   lamp('navGreen', [tipX, tipY, semi - radius * 0.5], 'light', 'nav-starboard')
-  const fam = spec.family === 'rearjet' || spec.family === 'prop' || spec.family === 'point' ? spec.family : 'tube'
+  const fam = loftFamily(spec)
   const cone = loftStation(fam, 0.995)
   lamp('navWhite', [frame.tailX + spec.lengthM * 0.005, centerY + spec.ry * cone.dy, 0], 'light', 'nav-tail')
   lamp('navWhite', [tipX - spec.tipChord * 0.4, tipY + radius * 0.4, semi - radius * 0.6], 'strobe', 'strobe')

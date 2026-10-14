@@ -3,42 +3,43 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 import { AIRCRAFT_LOOK } from '../look'
 import { sharedGeo } from './pool'
 
-/** Normalized fuselage stations, nose t=0 → tail t=1, radius 0–1. */
+/**
+ * Normalized fuselage stations, nose t=0 → tail t=1, radius 0–1.
+ * Class sheets (turboprop, regional, narrowbody, widebody, jumbo, superjumbo,
+ * heli) set the silhouette. Meters stay on the real airframe, not the sheet.
+ */
 const PROFILES: Record<string, { t: number; r: number; dy?: number }[]> = {
-  // Airliner nose: elliptical, centreline drooping below the cabin axis.
-  // Tail cone: upswept belly so the APU sits high, like the real tailcone.
+  // Single-aisle and twin-aisle tube: drooped radome, cockpit brow, long
+  // parallel barrel, upswept tail cone with the APU high.
   tube: [
-    { t: 0, r: 0.02, dy: -0.2 },
-    { t: 0.004, r: 0.22, dy: -0.19 },
-    { t: 0.012, r: 0.38, dy: -0.17 },
-    { t: 0.025, r: 0.54, dy: -0.14 },
-    { t: 0.045, r: 0.71, dy: -0.1 },
-    { t: 0.07, r: 0.85, dy: -0.06 },
-    { t: 0.1, r: 0.94, dy: -0.03 },
-    { t: 0.13, r: 0.985, dy: -0.01 },
-    { t: 0.16, r: 1 },
-    { t: 0.72, r: 1 },
-    { t: 0.78, r: 0.92, dy: 0.06 },
-    { t: 0.84, r: 0.76, dy: 0.18 },
-    { t: 0.9, r: 0.56, dy: 0.34 },
-    { t: 0.95, r: 0.36, dy: 0.5 },
-    { t: 0.985, r: 0.2, dy: 0.6 },
-    { t: 1, r: 0.12, dy: 0.64 },
-  ],
-  rearjet: [
-    { t: 0, r: 0.02, dy: -0.2 },
-    { t: 0.006, r: 0.24, dy: -0.18 },
-    { t: 0.02, r: 0.46, dy: -0.15 },
-    { t: 0.045, r: 0.68, dy: -0.1 },
-    { t: 0.08, r: 0.86, dy: -0.05 },
-    { t: 0.12, r: 0.96, dy: -0.02 },
+    { t: 0, r: 0.015, dy: -0.24 },
+    { t: 0.008, r: 0.2, dy: -0.22 },
+    { t: 0.02, r: 0.4, dy: -0.16 },
+    { t: 0.04, r: 0.6, dy: -0.08 },
+    { t: 0.065, r: 0.78, dy: 0.02 },
+    { t: 0.095, r: 0.9, dy: 0.045 },
+    { t: 0.13, r: 0.98, dy: 0.01 },
     { t: 0.17, r: 1 },
-    { t: 0.56, r: 1 },
-    { t: 0.66, r: 0.88, dy: 0.08 },
-    { t: 0.76, r: 0.64, dy: 0.24 },
-    { t: 0.86, r: 0.42, dy: 0.42 },
-    { t: 0.94, r: 0.24, dy: 0.56 },
-    { t: 1, r: 0.12, dy: 0.62 },
+    { t: 0.73, r: 1 },
+    { t: 0.8, r: 0.9, dy: 0.05 },
+    { t: 0.86, r: 0.7, dy: 0.16 },
+    { t: 0.92, r: 0.44, dy: 0.32 },
+    { t: 0.97, r: 0.2, dy: 0.46 },
+    { t: 1, r: 0.06, dy: 0.54 },
+  ],
+  // Regional jet: sharper nose, long slender barrel, cone that the rear fans sit on.
+  rearjet: [
+    { t: 0, r: 0.01, dy: -0.14 },
+    { t: 0.012, r: 0.22, dy: -0.12 },
+    { t: 0.035, r: 0.48, dy: -0.06 },
+    { t: 0.07, r: 0.74, dy: 0.01 },
+    { t: 0.11, r: 0.92, dy: 0.03 },
+    { t: 0.16, r: 1 },
+    { t: 0.6, r: 1 },
+    { t: 0.7, r: 0.84, dy: 0.06 },
+    { t: 0.8, r: 0.58, dy: 0.18 },
+    { t: 0.9, r: 0.3, dy: 0.36 },
+    { t: 1, r: 0.06, dy: 0.48 },
   ],
   point: [
     { t: 0, r: 0.01 },
@@ -51,35 +52,56 @@ const PROFILES: Record<string, { t: number; r: number; dy?: number }[]> = {
     { t: 0.92, r: 0.22 },
     { t: 1, r: 0.08 },
   ],
+  // Turboprop: pointed nose, constant cabin, mild tail upsweep. Straight wing lives on the spec.
   prop: [
-    { t: 0, r: 0.12 },
-    { t: 0.04, r: 0.42 },
-    { t: 0.1, r: 0.78 },
-    { t: 0.18, r: 1 },
-    { t: 0.7, r: 1 },
-    { t: 0.82, r: 0.72 },
-    { t: 0.9, r: 0.4 },
-    { t: 0.96, r: 0.16 },
-    { t: 1, r: 0.05 },
+    { t: 0, r: 0.03, dy: -0.04 },
+    { t: 0.035, r: 0.28, dy: -0.03 },
+    { t: 0.08, r: 0.62, dy: -0.01 },
+    { t: 0.14, r: 0.9 },
+    { t: 0.2, r: 1 },
+    { t: 0.68, r: 1 },
+    { t: 0.78, r: 0.76, dy: 0.04 },
+    { t: 0.88, r: 0.4, dy: 0.12 },
+    { t: 0.95, r: 0.14, dy: 0.16 },
+    { t: 1, r: 0.03, dy: 0.18 },
   ],
+  // Helicopter: blunt cabin, then a long thin tail boom.
   helo: [
-    { t: 0, r: 0.16 },
-    { t: 0.06, r: 0.62 },
-    { t: 0.14, r: 0.95 },
-    { t: 0.28, r: 1 },
-    { t: 0.42, r: 0.78 },
-    { t: 0.54, r: 0.36 },
-    { t: 0.72, r: 0.16 },
-    { t: 1, r: 0.06 },
+    { t: 0, r: 0.2, dy: -0.02 },
+    { t: 0.04, r: 0.62 },
+    { t: 0.1, r: 0.94 },
+    { t: 0.2, r: 1 },
+    { t: 0.36, r: 0.98 },
+    { t: 0.46, r: 0.62, dy: 0.04 },
+    { t: 0.56, r: 0.28, dy: 0.06 },
+    { t: 0.72, r: 0.12, dy: 0.04 },
+    { t: 0.88, r: 0.08, dy: 0.02 },
+    { t: 1, r: 0.04 },
   ],
+  // 747 forehead: rises off the nose, holds a flat upper deck, blends off near the wing.
   hump: [
-    { t: 0, r: 0.12 },
-    { t: 0.1, r: 0.55 },
-    { t: 0.22, r: 0.9 },
-    { t: 0.46, r: 1 },
-    { t: 0.72, r: 0.82 },
-    { t: 0.88, r: 0.48 },
-    { t: 1, r: 0.16 },
+    { t: 0, r: 0.05, dy: -0.2 },
+    { t: 0.08, r: 0.42, dy: 0.02 },
+    { t: 0.18, r: 0.88, dy: 0.1 },
+    { t: 0.32, r: 1, dy: 0.06 },
+    { t: 0.55, r: 0.92 },
+    { t: 0.74, r: 0.55, dy: -0.06 },
+    { t: 0.9, r: 0.22, dy: -0.1 },
+    { t: 1, r: 0.04, dy: -0.12 },
+  ],
+  // Full-length double deck (A380): blunt level nose, tall barrel held aft, short upswept cone.
+  deck: [
+    { t: 0, r: 0.05, dy: 0.04 },
+    { t: 0.02, r: 0.32, dy: 0.06 },
+    { t: 0.05, r: 0.58, dy: 0.05 },
+    { t: 0.09, r: 0.82, dy: 0.02 },
+    { t: 0.14, r: 0.96 },
+    { t: 0.18, r: 1 },
+    { t: 0.8, r: 1 },
+    { t: 0.86, r: 0.88, dy: 0.04 },
+    { t: 0.92, r: 0.62, dy: 0.14 },
+    { t: 0.97, r: 0.28, dy: 0.26 },
+    { t: 1, r: 0.07, dy: 0.34 },
   ],
 }
 
@@ -405,6 +427,15 @@ export function windowGeometry(): THREE.BufferGeometry {
   return sharedGeo('window-oval', () => new THREE.CircleGeometry(0.5, 10))
 }
 
+/**
+ * Which loft to draw. A full-length double deck uses the deck stations.
+ * The 747 forehead stays a separate hump on the tube, so its livery box is unchanged.
+ */
+export function loftFamily(spec: { family: string; decks?: number; hump?: boolean }): string {
+  if (spec.decks === 2 && !spec.hump) return 'deck'
+  return spec.family
+}
+
 /** Loft radius and centreline offset at fraction t (0 nose, 1 tail), unit space. */
 export function loftStation(family: string, t: number): { r: number; dy: number } {
   const prof = PROFILES[family] ?? PROFILES.tube
@@ -439,6 +470,128 @@ export function spinnerConeGeometry(): THREE.BufferGeometry {
 /** Intake lip ring facing +X, ring radius 1, tube radius 0.07. */
 export function intakeLipGeometry(): THREE.BufferGeometry {
   return sharedGeo('intake-lip', () => new THREE.TorusGeometry(1, 0.07, 5, 20).rotateY(Math.PI / 2))
+}
+
+type WingletKind = 'fence' | 'blended' | 'raked'
+
+function pushQuad(out: number[], a: number[], b: number[], c: number[], d: number[]) {
+  out.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2])
+  out.push(a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2])
+}
+
+/** LE+, TE+, TE−, LE−. Vertical plates run up +Y; horizontal plates run out on Z. */
+function plateRing(le: number, te: number, span: number, half: number, vertical: boolean): number[][] {
+  if (vertical) {
+    return [
+      [le, span, half],
+      [te, span, half],
+      [te, span, -half],
+      [le, span, -half],
+    ]
+  }
+  return [
+    [le, half, span],
+    [te, half, span],
+    [te, -half, span],
+    [le, -half, span],
+  ]
+}
+
+function connectRings(out: number[], a: number[][], b: number[][], flip = false) {
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4
+    if (flip) pushQuad(out, a[i], a[j], b[j], b[i])
+    else pushQuad(out, a[i], b[i], b[j], a[j])
+  }
+}
+
+function capRing(out: number[], ring: number[][], flip: boolean) {
+  if (flip) pushQuad(out, ring[0], ring[3], ring[2], ring[1])
+  else pushQuad(out, ring[0], ring[1], ring[2], ring[3])
+}
+
+/**
+ * Unit wingtip device, scaled by the builder.
+ * Fence and blended: root at y = 0, tip at y = 1, LE toward +X, thickness ±0.5 on Z.
+ * Raked: root at z = 0, tip at z = side, sweeping aft (−X), thickness on Y.
+ */
+export function wingletGeometry(kind: WingletKind): THREE.BufferGeometry {
+  return sharedGeo(`winglet:${kind}`, () => {
+    const vertical = kind !== 'raked'
+    const secs = kind === 'fence'
+      ? [
+          { s: 0, le: 0.48, te: -0.42, h: 0.5 },
+          { s: 0.48, le: 0.08, te: -0.36, h: 0.32 },
+          { s: 1, le: -0.12, te: -0.32, h: 0.16 },
+        ]
+      : kind === 'blended'
+        ? [
+            { s: 0, le: 0.5, te: -0.48, h: 0.5 },
+            { s: 0.2, le: 0.26, te: -0.42, h: 0.36 },
+            { s: 0.55, le: -0.02, te: -0.38, h: 0.24 },
+            { s: 1, le: -0.34, te: -0.5, h: 0.12 },
+          ]
+        : [
+            { s: 0, le: 0.2, te: -0.42, h: 0.5 },
+            { s: 0.42, le: -0.18, te: -0.55, h: 0.32 },
+            { s: 1, le: -0.62, te: -0.82, h: 0.16 },
+          ]
+    const rings = secs.map((sec) => plateRing(sec.le, sec.te, sec.s, sec.h, vertical))
+    const pos: number[] = []
+    capRing(pos, rings[0], true)
+    for (let i = 0; i < rings.length - 1; i++) connectRings(pos, rings[i], rings[i + 1], false)
+    capRing(pos, rings[rings.length - 1], false)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/**
+ * Horizontal stabilizer. Chord 1 on X (LE +0.5), thickness 1 on Y, span 1 on Z.
+ * Swept tips move aft. Scaled per airframe; one mesh is shared.
+ */
+export function stabGeometry(): THREE.BufferGeometry {
+  return sharedGeo('stab', () => {
+    const sweep = 0.48
+    const tipChord = 0.42
+    const root = plateRing(0.5, -0.5, 0, 0.5, false)
+    const tipAt = (z: number) => {
+      const le = 0.5 - sweep * Math.sign(z || 1)
+      return plateRing(le, le - tipChord, z, 0.22, false)
+    }
+    const pos: number[] = []
+    connectRings(pos, root, tipAt(0.5), false)
+    connectRings(pos, root, tipAt(-0.5), true)
+    capRing(pos, tipAt(0.5), false)
+    capRing(pos, tipAt(-0.5), true)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/**
+ * Propeller blade centered on the hub matrix. Tip toward +Y, wider at the root.
+ * Extents match the unit box the blade replaces.
+ */
+export function bladeGeometry(): THREE.BufferGeometry {
+  return sharedGeo('prop-blade', () => {
+    const root = plateRing(0.5, -0.5, -0.5, 0.5, true)
+    const mid = plateRing(0.32, -0.32, 0.08, 0.36, true)
+    const tip = plateRing(0.12, -0.12, 0.5, 0.2, true)
+    const pos: number[] = []
+    capRing(pos, root, true)
+    connectRings(pos, root, mid, false)
+    connectRings(pos, mid, tip, false)
+    capRing(pos, tip, false)
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.computeVertexNormals()
+    return geo
+  })
 }
 
 /**

@@ -179,6 +179,16 @@ describe('aircraft model factory', () => {
     const pos = enginePoints(rear)[0]
     expect(pos.x).toBeLessThan(0)
     expect(Math.abs(pos.z)).toBeGreaterThan(getAircraftSpec('crj700').rx)
+    const crj = getAircraftSpec('crj700')
+    expect(pos.y).toBeGreaterThan(crj.gear + crj.ry + crj.ry * 0.25)
+
+    expect(names(mid(narrow)).has('winglet')).toBe(true)
+    expect(names(mid(prop)).has('winglet')).toBe(false)
+    const jumboZs = new Set(enginePoints(freighter).map((p) => Math.abs(p.z).toFixed(2)))
+    expect(jumboZs.size).toBe(2)
+    const narrowFrac = Math.abs(enginePoints(narrow)[0].z) / (getAircraftSpec('b738').spanM / 2)
+    expect(narrowFrac).toBeGreaterThan(0.26)
+    expect(narrowFrac).toBeLessThan(0.36)
 
     const wingPos = enginePoints(narrow)[0]
     expect(Math.abs(wingPos.z)).toBeGreaterThan(2)
