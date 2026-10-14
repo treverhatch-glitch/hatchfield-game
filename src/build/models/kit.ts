@@ -48,8 +48,30 @@ float hfNoise(vec2 p) {
  * base, macro colour drift, faint rain streaks, and roughness break-up. Pure
  * shader, so it costs nothing in draw calls and shares one program per variant.
  */
+let materialFx = true
+const weathered = new Set<THREE.MeshStandardMaterial>()
+/**
+ * Per-pixel material effects (procedural weathering + PBR env reflections) on
+ * every kit material. Off on Low/Medium: in software GL these two were most of
+ * the round-4 fragment cost. Toggling recompiles the kit programs once.
+ */
+export function setMaterialFx(on: boolean): void {
+  if (on === materialFx) return
+  materialFx = on
+  for (const m of weathered) m.needsUpdate = true
+  for (const m of envMats) {
+    m.envMap = on ? envTex : null
+    m.needsUpdate = true
+  }
+}
+export function getMaterialFx(): boolean {
+  return materialFx
+}
+
 function weather(m: THREE.MeshStandardMaterial): void {
+  weathered.add(m)
   m.onBeforeCompile = (sh) => {
+    if (!materialFx) return
     sh.vertexShader = WEATHER_VERT_HEAD + sh.vertexShader.replace(
       '#include <project_vertex>',
       '#include <project_vertex>\n  vHfW = (modelMatrix * vec4(transformed, 1.0)).xyz;',
@@ -69,7 +91,7 @@ function weather(m: THREE.MeshStandardMaterial): void {
   roughnessFactor = clamp(roughnessFactor * mix(0.82, 1.16, hfN), 0.04, 1.0);`,
       )
   }
-  m.customProgramCacheKey = () => 'hf-weather'
+  m.customProgramCacheKey = () => (materialFx ? 'hf-weather' : 'hf-plain')
 }
 
 let envTex: THREE.Texture | null = null
@@ -78,7 +100,7 @@ const envMats = new Set<THREE.MeshStandardMaterial>()
 export function setKitEnvironment(t: THREE.Texture | null): void {
   envTex = t
   for (const m of envMats) {
-    m.envMap = t
+    m.envMap = materialFx ? t : null
     m.needsUpdate = true
   }
 }
@@ -113,7 +135,7 @@ export function getNightLevel(): number {
 function dress(m: THREE.MeshStandardMaterial, o: MatOpts): void {
   if ((o.opacity ?? 1) >= 1 && (o.ei ?? 0) < 0.6) weather(m)
   m.envMapIntensity = (o.metal ?? 0.1) > 0.3 ? 0.9 : 0.45
-  if (envTex) m.envMap = envTex
+  if (envTex && materialFx) m.envMap = envTex
   envMats.add(m)
 }
 

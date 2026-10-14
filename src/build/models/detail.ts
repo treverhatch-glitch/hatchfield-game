@@ -337,6 +337,7 @@ function dressLot(
       arm.rotation.y = 0
       box(g, 0.32, 0.08, 0.16, M.frame(), x + ax, top + 3.92, z + az * 0)
       box(g, 0.26, 0.02, 0.12, head, x + ax, top + 3.9, z)
+      ;((g.userData.lamps ??= []) as number[][]).push([x + ax, top + 3.9, z])
       break
     }
   }

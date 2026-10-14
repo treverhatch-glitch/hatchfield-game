@@ -6,20 +6,20 @@
  */
 import * as THREE from 'three'
 import type { SizeTier } from '../../scale/types'
-import { bagSort, tiltTray } from './baggage'
-import { cargo } from './cargo'
-import { atcApproach, tower } from './control'
-import { fuelFarm, hydrant } from './fuel'
-import { hangar } from './hangar'
+import { tiltTray } from './baggage'
+import { atcApproach } from './control'
+import { hydrant } from './fuel'
 import { substation } from './power'
 import { guard, police, remoteScreening } from './security'
-import { depot, fireStation, kitchen, snack } from './services'
-import { checkinHall, concourse, pierII, prefabII, prestigeLandmark, satellite, securityHall } from './terminal'
+import { depot, snack } from './services'
+import { concourse, pierII, prefabII, prestigeLandmark, satellite, securityHall } from './terminal'
 import { hotel } from './hotel'
 import { parking } from './parking'
-import { busCurb, busDepot, railStation } from './transit'
-import { deicePad, helipad, mro, nightHub } from './aviation'
+import { busDepot, railStation } from './transit'
+import { helipad, mro, nightHub } from './aviation'
 import { enrich, mergeStatic } from './detail'
+import { dressYard } from './yard'
+import { bagSortR5, busStationR5, cargoR5, cateringR5, checkinHallR5, deiceR5, fireStationR5, fuelFarmR5, hangarR5, towerR5 } from './r5'
 import { fuelRail, oilTransfer, peopleMover, skywalk, travelator } from './links'
 import type { HotelClass, ParkTerm } from '../../game/types'
 
@@ -29,35 +29,37 @@ export interface ModelOpts {
   hangarTier?: SizeTier
   hotelClass?: HotelClass
   parkTerm?: ParkTerm
+  /** Lot key: when set, the yard gets its deterministic instanced clutter. */
+  yardSeed?: string
 }
 
 type Builder = (g: THREE.Group, o: ModelOpts) => void
 
 export const MODEL_BUILDERS: Record<string, Builder> = {
   // Map tiles
-  fuel: (g) => fuelFarm(g, false),
-  fire: (g) => fireStation(g),
+  fuel: (g) => fuelFarmR5(g),
+  fire: (g) => fireStationR5(g),
   police: (g) => police(g),
-  cargo: (g) => cargo(g),
+  cargo: (g) => cargoR5(g),
   guard: (g) => guard(g),
-  tower: (g) => tower(g),
-  hangar: (g, o) => hangar(g, o.hangarTier ?? 'small'),
-  hangar_w: (g) => hangar(g, 'wide'),
-  hangar_j: (g) => hangar(g, 'jumbo'),
+  tower: (g) => towerR5(g),
+  hangar: (g, o) => hangarR5(g, o.hangarTier ?? 'small'),
+  hangar_w: (g) => hangarR5(g, 'wide'),
+  hangar_j: (g) => hangarR5(g, 'jumbo'),
   snack: (g) => snack(g),
-  bags: (g) => bagSort(g),
-  kitchen: (g) => kitchen(g),
+  bags: (g) => bagSortR5(g),
+  kitchen: (g) => cateringR5(g),
   depot: (g) => depot(g),
   // Commissioned capstones (menu icons)
   substation: (g) => substation(g),
   hydrant: (g) => hydrant(g),
   tilt_tray: (g) => tiltTray(g),
-  fuel_farm_iii: (g) => fuelFarm(g, true),
+  fuel_farm_iii: (g) => fuelFarmR5(g, true),
   atc_approach: (g) => atcApproach(g),
   remote_screening: (g) => remoteScreening(g),
   // Terminal upgrades (menu icons)
   prefab_ii: (g) => prefabII(g),
-  checkin_hall: (g) => checkinHall(g),
+  checkin_hall: (g) => checkinHallR5(g),
   security_hall: (g) => securityHall(g),
   concourse: (g) => concourse(g),
   pier_ii: (g) => pierII(g),
@@ -72,13 +74,13 @@ export const MODEL_BUILDERS: Record<string, Builder> = {
   park_l: (g, o) => parking(g, 'park_l', o.parkTerm),
   park_g: (g, o) => parking(g, 'park_g', o.parkTerm),
   park_u: (g, o) => parking(g, 'park_u', o.parkTerm),
-  bus: (g) => busCurb(g),
+  bus: (g) => busStationR5(g),
   rail: (g) => railStation(g),
   termbus: (g) => busDepot(g, false),
   xferbus: (g) => busDepot(g, true),
   // Airside support
   helipad: (g) => helipad(g),
-  deice: (g) => deicePad(g),
+  deice: (g) => deiceR5(g),
   mro: (g) => mro(g),
   nighthub: (g) => nightHub(g),
   // Links
@@ -101,6 +103,7 @@ export function buildModel(id: string, opts: ModelOpts = {}): THREE.Group | null
   g.name = `model:${id}`
   fn(g, opts)
   enrich(g, id)
+  if (opts.yardSeed !== undefined) dressYard(g, id, opts.yardSeed)
   mergeStatic(g)
   return g
 }
