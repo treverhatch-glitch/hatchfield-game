@@ -8,11 +8,12 @@ const BASE = process.env.URL || 'http://127.0.0.1:45219/'
 const CHROME = process.env.PLAYWRIGHT_CHROME || '/usr/local/bin/google-chrome'
 const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl']
 const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, headless: true, args })
-const page = await browser.newPage({ viewport: { width: 1800, height: 1320 } })
+const page = await browser.newPage({ viewport: { width: 2400, height: 1700 } })
 page.on('pageerror', (err) => console.log('pageerror', err.message))
 await page.goto(`${BASE}scripts/bd-lineup.html`)
 await page.waitForFunction(() => (window as unknown as { __done?: boolean }).__done, null, { timeout: 120000 })
-await page.screenshot({ path: `${OUT}/bd-lineup.png`, fullPage: true })
+await page.waitForTimeout(1500)
+await page.screenshot({ path: `${OUT}/${process.env.LINEUP ?? 'bd-lineup2'}.png`, fullPage: true })
 await page.setViewportSize({ width: 1440, height: 900 })
 await page.goto(BASE, { waitUntil: 'domcontentloaded' })
 await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
@@ -51,8 +52,8 @@ if (cell) {
   await ev(`const g = window.__hatch; g.setTool('stand_w'); g.hover = { c: ${cell.c}, r: ${cell.r} }`)
   await page.waitForTimeout(1000)
   await page.screenshot({ path: `${OUT}/bd-stand-ghost.png` })
-  await ev(`const g = window.__hatch; g.setTool('substation' in {} ? 'pan' : 'fuel'); g.hover = { c: ${cell.c}, r: ${cell.r} }`)
+  await ev(`const g = window.__hatch; g.setTool('hangar_j'); g.hover = { c: ${cell.c}, r: ${cell.r} }`)
   await page.waitForTimeout(1000)
-  await page.screenshot({ path: `${OUT}/bd-ghost-fuel.png` })
+  await page.screenshot({ path: `${OUT}/bd-ghost-hangar-jumbo.png` })
 }
 await browser.close()
