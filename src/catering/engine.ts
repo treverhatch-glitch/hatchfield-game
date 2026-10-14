@@ -166,8 +166,10 @@ export class CateringEngine {
   }
 
   /** Advance to sim minute `now`. */
-  tick(now: number): void {
-    const dt = Math.max(0, now - this.now)
+  tick(minute: number): void {
+    // Time only moves forward. A stale or non-finite minute must not re-cook or stall the kitchen.
+    const now = Number.isFinite(minute) ? Math.max(this.now, minute) : this.now
+    const dt = now - this.now
     this.now = now
     this.produceMeals(dt)
     const day = Math.floor(now / 1440)
