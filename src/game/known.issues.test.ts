@@ -48,9 +48,9 @@ describe('known overnight fixes', () => {
     const before = game.fits.length
     game.cash += 500_000
     for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) game.tiles[14 + r][22 + c] = 'grass'
+      for (let c = 0; c < 3; c++) game.tiles[13 + r][22 + c] = 'grass'
     }
-    game.placePremade({ c: 22, r: 14 })
+    game.placePremade({ c: 22, r: 13 }) // clear of the second runway's shoulder
     expect(game.fits.length).toBe(before)
     const site = game.sites.at(-1)
     expect(site?.kind).toBe('premade')

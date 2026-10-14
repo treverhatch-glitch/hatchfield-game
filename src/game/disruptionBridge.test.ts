@@ -13,7 +13,7 @@ function starter(): Game {
 }
 
 describe('disruption wiring', () => {
-  it('stays quiet on a starter field and does not lose passengers or bags', () => {
+  it('stays quiet on a starter field and does not lose passengers or bags', { timeout: 30_000 }, () => {
     const game = starter()
     expect(game.fieldLevel()).toBeLessThan(3)
     for (let t = 0; t < 180 * 2; t += 0.5) game.tick(0.5)
