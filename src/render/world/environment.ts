@@ -437,54 +437,28 @@ export function tuftGeometry(): THREE.BufferGeometry {
 }
 
 /** Rain streaks in a box that follows the camera focus. */
+import { WeatherLayer } from '../weather/index'
+
+/** Rain streaks in a box that follows the camera focus. */
 export class Rain {
-  readonly lines: THREE.LineSegments
-  private pos: Float32Array
-  private vel: Float32Array
-  private mat: THREE.LineBasicMaterial
-  private n: number
-  constructor(n: number) {
-    this.n = Math.max(1, n)
-    this.pos = new Float32Array(this.n * 6)
-    this.vel = new Float32Array(this.n)
-    const rand = rng(5)
-    for (let i = 0; i < this.n; i++) {
-      const x = (rand() - 0.5) * 80
-      const y = rand() * 40
-      const z = (rand() - 0.5) * 80
-      this.pos.set([x, y, z, x + 0.1, y + 0.9, z + 0.05], i * 6)
-      this.vel[i] = 26 + rand() * 10
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3))
-    this.mat = new THREE.LineBasicMaterial({ color: 0xc8d4e0, transparent: true, opacity: 0.45, depthWrite: false })
-    this.lines = new THREE.LineSegments(g, this.mat)
-    this.lines.frustumCulled = false
-    this.lines.visible = false
-    this.lines.name = 'world-rain'
+  readonly lines: THREE.Group
+  private weatherLayer: WeatherLayer
+
+  constructor(_n: number) {
+    this.weatherLayer = new WeatherLayer()
+    this.lines = this.weatherLayer.group
+    this.lines.name = 'world-weather'
   }
   update(dt: number, amount: number, fx: number, fz: number) {
-    this.lines.visible = amount > 0.01
-    if (!this.lines.visible) return
-    this.mat.opacity = 0.25 + amount * 0.3
-    this.lines.position.set(fx, 0, fz)
-    const p = this.pos
-    const draw = Math.floor(this.n * amount)
-    for (let i = 0; i < draw; i++) {
-      const o = i * 6
-      const dy = this.vel[i] * dt
-      p[o + 1] -= dy
-      p[o + 4] -= dy
-      if (p[o + 1] < 0) {
-        p[o + 1] += 40
-        p[o + 4] += 40
-      }
-    }
-    this.lines.geometry.setDrawRange(0, draw * 2)
-    ;(this.lines.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true
+    this.weatherLayer.updateParticles(dt, 'none', 'clear', amount, fx, fz)
+  }
+  updateRich(dt: number, precipType: 'none' | 'snow' | 'freezing_rain' | 'rain', weather: string, amount: number, fx: number, fz: number) {
+    this.weatherLayer.updateParticles(dt, precipType, weather, amount, fx, fz)
+  }
+  get cover() {
+    return this.weatherLayer.cover
   }
   dispose() {
-    this.lines.geometry.dispose()
-    this.mat.dispose()
+    this.weatherLayer.dispose()
   }
 }

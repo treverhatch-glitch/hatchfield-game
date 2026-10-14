@@ -22,6 +22,12 @@ export const HALL_NAV_TUNING = {
   unknownLeadClockSec: 40,
   /** Seed for each hall's walker rolls (bags, needs, curb door). */
   seed: 204,
+  /** Walkers are guests: traits, needs, thoughts, groups, rebooking (src/paxnav/guests.ts). */
+  guests: true,
+  /** Family fares on one flight: share that walk as a party, and most followers behind the first. */
+  familyGroups: { share: 0.6, maxFollowers: 3 },
+  /** Placed items that count as departure boards for wayfinding. */
+  boardItems: ['info_screen', 'info_kiosk'] as readonly string[],
 }
 
 /**
@@ -83,6 +89,12 @@ export const HALL_CROWD_TUNING = {
   lodDistM: 55,
   /** Frustum test radius around a walker, metres. */
   cullRadiusM: 1.2,
+}
+
+/** Clicking a nav-grid walker in the Terminal view: ray height (mid body) and how close counts, metres. */
+export const HALL_WALKER_PICK = {
+  bodyY: 0.9,
+  radiusM: 0.7,
 }
 
 /**
