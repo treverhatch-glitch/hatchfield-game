@@ -34,6 +34,7 @@ import {
 } from '../scale/placeholders'
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
+import { syncStaffHousing } from './staffHousing.ts'
 import {
   initWorldRender,
   parseQuality,
@@ -190,6 +191,9 @@ export class World {
   service = new Map<string, THREE.Object3D>()
   cateringCrew = new Map<string, THREE.Group>()
   people = new Map<string, THREE.Mesh>()
+  housingGroup = new THREE.Group()
+  private housingMeshes = new Map<string, THREE.Group>()
+  private housingWalkers = new Map<string, THREE.Group>()
   private beltCubes: THREE.Mesh[] = []
   private beltPath: THREE.Vector3[] = []
   private beltRev = -1
@@ -284,8 +288,10 @@ export class World {
     this.scene.add(earth)
 
     this.gateGroup.name = 'gate-bridges'
+    this.housingGroup.name = 'staff-housing'
     this.scene.add(this.tilesGroup)
     this.scene.add(this.gateGroup)
+    this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
     this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
@@ -1914,6 +1920,14 @@ export class World {
       }
     }
     this.syncBeltBags(game)
+    syncStaffHousing(
+      this.housingGroup,
+      this.housingMeshes,
+      this.housingWalkers,
+      game.staffSites(),
+      game.staffWalkers(),
+      toWorld,
+    )
   }
 
   /** A few suitcases sliding the apron belt. The ledger stays aggregate. */
@@ -2183,6 +2197,7 @@ export class World {
     this.gateGroup.clear()
     disposeAircraftLibrary()
     this.wr.dispose()
+    syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
     const canvas = this.canvas
     canvas.removeEventListener('contextmenu', this.onContextMenu)

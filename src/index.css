@@ -1541,6 +1541,36 @@ button {
   font-size: 11px;
 }
 
+.staff-subs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-subs > button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.staff-subs > button[aria-expanded='true'] {
+  border-color: rgba(201, 162, 39, 0.65);
+}
+
+.staff-detail {
+  padding: 4px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.staff-detail p {
+  margin: 0;
+}
+
 /* Letters slide in from the left. Click a card to read it; extras sit in the inbox. */
 .letter-stack {
   position: absolute;
