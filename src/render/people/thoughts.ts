@@ -36,12 +36,14 @@ function texture(t: Thought): { map: THREE.Texture | null; aspect: number } {
 export class ThoughtLayer {
   readonly group = new THREE.Group()
   private live = new Map<string, { sprite: THREE.Sprite; until: number }>()
-  constructor() { this.group.name = 'people-thoughts' }
+  /** `unit` is world units per metre: bubble size and height scale with it. */
+  private readonly unit: number
+  constructor(unit = 1) { this.unit = unit; this.group.name = 'people-thoughts' }
   show(id: string, t: Thought, now: number): THREE.Sprite {
     this.hide(id)
     const { map, aspect } = texture(t)
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: false, transparent: true }))
-    sprite.scale.set(0.6 * aspect, 0.6, 1); sprite.renderOrder = 10
+    sprite.scale.set(0.6 * aspect * this.unit, 0.6 * this.unit, 1); sprite.renderOrder = 10
     sprite.userData = { agentId: id, thought: t }
     this.group.add(sprite)
     this.live.set(id, { sprite, until: now + (t.duration ?? 4) })
@@ -53,7 +55,7 @@ export class ThoughtLayer {
     for (const [id, e] of this.live) {
       const p = posOf(id)
       if (!p || now > e.until) { this.hide(id); continue }
-      e.sprite.position.set(p.x, p.y + 2.3, p.z)
+      e.sprite.position.set(p.x, p.y + 2.3 * this.unit, p.z)
     }
   }
   get count() { return this.live.size }
