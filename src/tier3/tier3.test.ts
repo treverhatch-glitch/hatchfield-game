@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { CARGO_PRODUCTS } from '../cargo/catalog.ts'
+import { tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import type { Flight, Vec } from '../game/types.ts'
 import {
@@ -342,14 +343,15 @@ describe('game wiring', () => {
     expect(game.sites.some((site) => site.tile === 'mro')).toBe(true)
     game.tickConstruction(30)
     expect(game.tile({ c: 2, r: 2 })).toBe('mro')
-    parked(game, { c: 12, r: 21 })
+    const stand = tilesOf(game.tiles, 'stand').sort((a, b) => a.r - b.r)[0]
+    parked(game, stand)
     game.mechanics = 8
-    // Stand lead-in runs south. The curb and nose spur are road, so the
-    // hangar joins the strip along the south taxi row and column 2.
-    for (let c = 2; c <= 12; c++) game.tiles[25][c] = 'taxi'
-    for (let r = 3; r <= 25; r++) game.tiles[r][2] = 'taxi'
+    // West of the strips: MRO at (2,2) joins the apron spine without paving the runway.
+    for (let c = 3; c <= 4; c++) game.tiles[2][c] = 'taxi'
+    for (let r = 2; r <= 22; r++) if (game.tiles[r][4] === 'grass') game.tiles[r][4] = 'taxi'
+    for (let c = 4; c <= 7; c++) if (game.tiles[22][c] === 'grass') game.tiles[22][c] = 'taxi'
     game.tickTier3(4)
-    expect(game.freeStands().some((stand) => stand.c === 12 && stand.r === 21)).toBe(false)
+    expect(game.freeStands().some((s) => s.c === stand.c && s.r === stand.r)).toBe(false)
     expect(game.tier3Snapshot().mro.occupied).toBe(1)
     const cashBefore = game.cash
     game.tickTier3(40)

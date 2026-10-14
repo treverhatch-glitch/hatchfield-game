@@ -57,6 +57,14 @@ export const SHORT_RUNWAY_WID = 2
 export const RUNWAY_PREFAB_COST = 38000
 export const RUNWAY_PREFAB_LEN = 14
 export const RUNWAY_PREFAB_WID = 2
+/**
+ * Obstacle-free cells beside a runway edge (across the strip) and past each
+ * threshold (along the strip). Buildings and stands may not sit here.
+ * Taxiways may cross the zone so two strips can still be linked.
+ * One cell is 22 m, so 2 cells is about a 44 m shoulder.
+ */
+export const RUNWAY_CLEARANCE_SIDE = 2
+export const RUNWAY_CLEARANCE_END = 2
 export const HEAVY_RUNWAY_COST = 72000
 export const HEAVY_RUNWAY_LEN = 20
 export const HEAVY_RUNWAY_WID = 3
