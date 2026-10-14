@@ -123,10 +123,80 @@ export const LIVERY = {
   hose: '#1e2226',
   // Lit (unlit-shaded) parts
   head: '#fff6d8',
+  reverse: '#f4f8ff',
   tail: '#e0281e',
   amber: '#ffa514',
   blue: '#2a6cff',
 } as const
+
+/**
+ * Surface texture per vertex (Round C). The vehicle shader picks a detail map by
+ * this id: paint and panels modulate the vertex colour, chevrons and the belt
+ * replace it.
+ */
+export const TEX = { none: 0, paint: 1, panel: 2, plate: 3, chevron: 4, belt: 5 } as const
+export type TexId = (typeof TEX)[keyof typeof TEX]
+
+function autoTex(hex: string, lit: boolean): TexId {
+  if (lit) return TEX.none
+  switch (hex) {
+    case LIVERY.gseYellow:
+    case LIVERY.arffRed:
+    case '#a81c18':
+      return TEX.paint
+    case LIVERY.white:
+      return TEX.panel
+    case LIVERY.diamond:
+    case LIVERY.steel:
+      return TEX.plate
+    case LIVERY.rubber:
+      return TEX.belt
+    default:
+      return TEX.none
+  }
+}
+
+const _n = new THREE.Vector3()
+const _ab = new THREE.Vector3()
+const _cb = new THREE.Vector3()
+
+/** Box-projected UVs in metres (one unit = 1 m), plus the texture id attribute. */
+function surface(geo: THREE.BufferGeometry, tex: TexId) {
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute
+  const n = pos.count
+  const uv = new Float32Array(n * 2)
+  const tid = new Float32Array(n).fill(tex)
+  const a = new THREE.Vector3()
+  const b = new THREE.Vector3()
+  const c = new THREE.Vector3()
+  for (let i = 0; i + 2 < n; i += 3) {
+    a.fromBufferAttribute(pos, i)
+    b.fromBufferAttribute(pos, i + 1)
+    c.fromBufferAttribute(pos, i + 2)
+    _cb.subVectors(c, b)
+    _ab.subVectors(a, b)
+    _n.crossVectors(_cb, _ab)
+    const ax = Math.abs(_n.x)
+    const ay = Math.abs(_n.y)
+    const az = Math.abs(_n.z)
+    for (let k = 0; k < 3; k++) {
+      const v = k === 0 ? a : k === 1 ? b : c
+      const o = (i + k) * 2
+      if (ay >= ax && ay >= az) {
+        uv[o] = v.x
+        uv[o + 1] = v.z
+      } else if (ax >= az) {
+        uv[o] = v.z
+        uv[o + 1] = v.y
+      } else {
+        uv[o] = v.x
+        uv[o + 1] = v.y
+      }
+    }
+  }
+  geo.setAttribute('uvm', new THREE.BufferAttribute(uv, 2))
+  geo.setAttribute('tid', new THREE.BufferAttribute(tid, 1))
+}
 
 export interface VPart {
   /** '' = static shell. Anything else is a named moving part for Round B. */
@@ -137,23 +207,23 @@ export interface VPart {
 
 /** Named moving parts each model exposes, for Round B rigs and tests. */
 export const MODEL_PARTS: Record<VehicleModel, readonly string[]> = {
-  fuel_tanker: ['wheels_front', 'wheels_rear', 'beacon', 'hose_reel', 'hose'],
-  hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose'],
+  fuel_tanker: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'beacon', 'hose_reel', 'hose', 'reverse'],
+  hydrant_cart: ['wheels_front', 'wheels_rear', 'beacon', 'lift_platform', 'hose_reel', 'hose', 'reverse'],
   baggage_train: ['wheels_front', 'wheels_rear', 'beacon', 'cart_1', 'cart_2'],
   baggage_cart: ['wheels_front', 'wheels_rear', 'curtain'],
-  belt_loader: ['wheels_front', 'wheels_rear', 'beacon', 'belt', 'belt_bags'],
-  catering_hilift: ['wheels_front', 'wheels_rear', 'beacon', 'scissor', 'box', 'deck'],
-  arff: ['wheels_front', 'wheels_rear', 'lightbar', 'roof_turret', 'bumper_turret', 'locker_doors'],
-  deice: ['wheels_front', 'wheels_rear', 'beacon', 'boom', 'basket'],
-  apron_bus: ['wheels_front', 'wheels_rear', 'beacon', 'doors'],
-  coach: ['wheels_front', 'wheels_rear', 'doors'],
-  box_truck: ['wheels_front', 'wheels_rear', 'rollup_door', 'tail_lift'],
-  van: ['wheels_front', 'wheels_rear', 'beacon'],
-  towbar_tug: ['wheels_front', 'wheels_rear', 'beacon', 'towbar'],
+  belt_loader: ['wheels_front', 'wheels_rear', 'beacon', 'belt', 'belt_bags', 'reverse'],
+  catering_hilift: ['wheels_front', 'wheels_rear', 'beacon', 'scissor', 'box', 'deck', 'reverse'],
+  arff: ['wheels_front', 'wheels_rear', 'wheels_rear_2', 'lightbar', 'roof_turret', 'bumper_turret', 'locker_doors', 'foam', 'reverse'],
+  deice: ['wheels_front', 'wheels_rear', 'beacon', 'boom', 'basket', 'spray', 'reverse'],
+  apron_bus: ['wheels_front', 'wheels_rear', 'beacon', 'doors', 'reverse'],
+  coach: ['wheels_front', 'wheels_rear', 'doors', 'reverse'],
+  box_truck: ['wheels_front', 'wheels_rear', 'rollup_door', 'tail_lift', 'reverse'],
+  van: ['wheels_front', 'wheels_rear', 'beacon', 'reverse'],
+  towbar_tug: ['wheels_front', 'wheels_rear', 'beacon', 'towbar', 'reverse'],
   towbarless_tug: ['wheels_front', 'wheels_rear', 'beacon', 'cradle'],
   gpu: ['wheels_front', 'wheels_rear', 'cable_reel'],
-  stairs: ['wheels_front', 'wheels_rear', 'beacon', 'stair', 'canopy'],
-  k_loader: ['wheels_front', 'wheels_rear', 'beacon', 'front_platform', 'rear_platform'],
+  stairs: ['wheels_front', 'wheels_rear', 'beacon', 'stair', 'canopy', 'reverse'],
+  k_loader: ['wheels_front', 'wheels_front_2', 'wheels_rear', 'wheels_rear_2', 'beacon', 'front_platform', 'rear_platform', 'reverse'],
   uld_dolly: ['wheels_front', 'wheels_rear', 'rollers'],
 }
 
@@ -165,6 +235,10 @@ class Kit {
   constructor(accent: string) {
     this.accent = accent
   }
+
+  /** Overrides the automatic texture pick for the next add() calls while set. */
+  tex: TexId | null = null
+  private axleAt = new Map<string, number>()
 
   add(geo: THREE.BufferGeometry, hex: string, x: number, y: number, z: number, name = '', lit = false, lay?: 'x' | 'z') {
     if (lay === 'z') geo.rotateX(Math.PI / 2)
@@ -182,6 +256,7 @@ class Kit {
       colors[i * 3 + 2] = _c.b
     }
     flat.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    surface(flat, this.tex ?? autoTex(hex, lit))
     this.parts.push({ name, lit, geo: flat })
   }
 
@@ -202,6 +277,12 @@ class Kit {
 
   /** One axle: two tyres, hubs and a tread ring. Doubles for rear truck axles. */
   axle(x: number, r: number, W: number, name: string, dual = false, inset = 0.06) {
+    // Each wheel axle is its own part so it can spin about its own centre.
+    if (name.startsWith('wheels')) {
+      const prev = this.axleAt.get(name)
+      if (prev !== undefined && Math.abs(prev - x) > 1e-6) name = `${name}_2`
+      this.axleAt.set(name, x)
+    }
     const tw = r * 0.62
     for (const s of [1, -1]) {
       const z = s * (W / 2 - tw / 2 - inset)
@@ -209,6 +290,11 @@ class Kit {
       this.cyl(LIVERY.hub, r * 0.52, tw * 1.04, x, r, z, 'z', name, 10)
       this.cyl(LIVERY.chassis, r * 0.18, tw * 1.1, x, r, z, 'z', name, 6)
       if (dual) this.cyl(LIVERY.tyre, r, tw * 0.9, x, r, z - s * tw * 0.98, 'z', name, 14)
+      // hub spokes so a spinning wheel reads
+      for (const rot of [0, Math.PI / 2]) {
+        const g = new THREE.BoxGeometry(r * 0.95, r * 0.12, tw * 1.08).rotateZ(rot)
+        this.add(g, LIVERY.chassis, x, r, z, name)
+      }
     }
     this.box(LIVERY.chassis, 0.14, 0.14, W - tw * 2, x, r, 0, name)
   }
@@ -242,20 +328,25 @@ class Kit {
 
   beacon(x: number, y: number, z = 0, name = 'beacon') {
     this.cyl(LIVERY.black, 0.1, 0.05, x, y + 0.025, z, undefined, name, 10)
-    this.cyl(LIVERY.amber, 0.08, 0.16, x, y + 0.13, z, undefined, name, 10, true)
+    // Dim dome plus a bright reflector half: rotating it reads as a sweeping beam.
+    this.cyl('#7a4a08', 0.08, 0.16, x, y + 0.13, z, undefined, name, 10, true)
+    this.add(new THREE.CylinderGeometry(0.085, 0.085, 0.17, 10, 1, false, 0, Math.PI * 0.8), LIVERY.amber, x, y + 0.13, z, name, true)
   }
 
   tail(x: number, y: number, W: number) {
     for (const s of [1, -1]) {
       this.box(LIVERY.tail, 0.04, 0.16, 0.24, x - 0.01, y, s * (W / 2 - 0.2), '', true)
       this.box(LIVERY.amber, 0.04, 0.1, 0.12, x - 0.01, y + 0.15, s * (W / 2 - 0.2), '', true)
+      this.box(LIVERY.reverse, 0.045, 0.1, 0.14, x - 0.015, y, s * (W / 2 - 0.42), 'reverse', true)
     }
   }
 
   /** Yellow/black chevrons across the rear face at x (facing -X). */
   chevrons(x: number, y0: number, h: number, W: number, n = 6) {
-    const bw = W / n
-    for (let i = 0; i < n; i++) this.box(i % 2 ? LIVERY.black : LIVERY.gseYellow, 0.03, h, bw, x - 0.015, y0 + h / 2, -W / 2 + bw * (i + 0.5))
+    void n
+    this.tex = TEX.chevron
+    this.box(LIVERY.gseYellow, 0.03, h, W, x - 0.015, y0 + h / 2, 0)
+    this.tex = null
   }
 
   /** Hazard stripe along both sides. */
@@ -376,8 +467,9 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.beacon(-L * 0.05, r + 1.58, -W / 2 + 0.45)
     // inclined belt with side rails (rises to the front)
     const bl = L * 1.0
-    const pitch = Math.atan2(H - (r + 0.9), bl * 0.9)
-    const by = (r + 0.85 + H - 0.1) / 2
+    const { pitch, by } = beltGeom(L, H)
+    // lift rams from the chassis up to the belt underside (static)
+    for (const f of [0.18, -0.12]) for (const s of [1, -1]) k.box(LIVERY.steel, 0.12, 0.6, 0.12, f * L, r + 0.6, W * 0.15 + s * 0.3)
     k.slab(LIVERY.chassis, bl * 0.96, 0.26, 0.82, 0, by - 0.2, W * 0.15, pitch, 'belt') // boom frame
     k.slab(LIVERY.rubber, bl * 0.98, 0.18, 0.76, 0, by, W * 0.15, pitch, 'belt')
     for (const s of [1, -1]) k.slab(LIVERY.steel, bl * 0.98, 0.3, 0.08, 0, by + 0.12, W * 0.15 + s * 0.42, pitch, 'belt')
@@ -416,9 +508,13 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(k.accent, bl * 1.002, 0.3, W * 1.005, bx, by0 + bh * 0.25, 0, 'box')
     k.box(LIVERY.steel, bl * 1.004, 0.05, W * 1.01, bx, H - 0.03, 0, 'box')
     k.box(LIVERY.steel, 0.04, bh * 0.85, W * 0.7, -L / 2 + 0.15 - 0.02, by0 + bh * 0.48, 0, 'box') // rear door
-    // folding front deck over the cab
-    k.box(LIVERY.diamond, 1.3, 0.08, W * 0.9, back + 0.5, H - 0.6, 0, 'deck')
-    for (const s of [1, -1]) k.box(LIVERY.gseYellow, 1.3, 0.05, 0.05, back + 0.5, H - 0.1, s * W * 0.43, 'deck')
+    // front deck hinged at the box floor; Round B/C folds it up for driving
+    const hx = back - 0.15
+    k.box(LIVERY.diamond, 1.3, 0.1, W * 0.9, hx + 0.65, by0 + 0.05, 0, 'deck')
+    for (const s of [1, -1]) {
+      k.box(LIVERY.gseYellow, 1.3, 0.05, 0.05, hx + 0.65, by0 + 1.05, s * W * 0.43, 'deck')
+      for (const f of [0.15, 1.2]) k.box(LIVERY.gseYellow, 0.05, 1.0, 0.05, hx + f, by0 + 0.55, s * W * 0.43, 'deck')
+    }
     k.chevrons(-L / 2 + 0.13, r * 0.3, 0.5, W)
     k.tail(-L / 2 + 0.13, r + 0.4, W)
   },
@@ -446,6 +542,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     // roof turret + bumper turret
     k.cyl(LIVERY.steel, 0.28, 0.3, back + 0.2, H + 0.18, 0, undefined, 'roof_turret')
     k.cyl(LIVERY.white, 0.09, 1.4, back + 0.9, H + 0.4, 0, 'x', 'roof_turret')
+    spray(k, back + 1.6, H + 0.4, 0, '#eef6ff', 'foam')
     k.cyl(LIVERY.steel, 0.14, 0.2, L / 2 + 0.2, r + 0.45, 0, undefined, 'bumper_turret')
     k.cyl(LIVERY.white, 0.06, 0.6, L / 2 + 0.45, r + 0.55, 0, 'x', 'bumper_turret')
     for (const s of [1, -1]) k.beacon(-L / 2 + 0.3, H + 0.02, s * (W / 2 - 0.2), 'lightbar')
@@ -473,6 +570,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.white, 1.0, 0.8, 1.1, L / 2 - 0.6, H - 0.4, 0, 'basket')
     k.box(LIVERY.glass, 1.02, 0.4, 1.12, L / 2 - 0.6, H - 0.3, 0, 'basket')
     k.box(LIVERY.chassis, 0.1, 0.1, 0.6, L / 2 - 0.05, H - 0.65, 0, 'basket') // nozzle
+    spray(k, L / 2, H - 0.65, 0, '#e9b54a', 'spray') // type I glycol is orange
     k.chevrons(-L / 2 + 0.1, r * 0.4, 0.5, W)
     k.tail(-L / 2 + 0.1, r + 0.5, W)
   },
@@ -647,7 +745,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.sideStripe(0, L, r, W, LIVERY.black, 0.1)
     // roller platforms
     const pl = L * 0.44
-    for (const [x, name, y] of [[L * 0.27, 'front_platform', r + 1.2], [-L * 0.24, 'rear_platform', r + 0.65]] as const) {
+    for (const [x, name, y] of [[L / 2 - 0.95 - pl / 2, 'front_platform', r + 1.2], [-L * 0.27, 'rear_platform', r + 0.65]] as const) {
       k.box(LIVERY.chassis, pl * 0.98, 0.3, W * 0.9, x, y - 0.22, 0, name) // deck frame
       k.box(LIVERY.diamond, pl, 0.24, W * 0.96, x, y, 0, name)
       for (let i = 0; i < 8; i++) k.cyl(LIVERY.steel, 0.07, W * 0.9, x - pl / 2 + pl * (i + 0.5) / 8, y + 0.14, 0, 'z', name, 6)
@@ -655,8 +753,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
       if (name === 'front_platform') for (const s of [1, -1]) k.slab(LIVERY.chassis, pl * 0.9, 0.1, 0.1, x, r + 0.7, s * W * 0.4, 0.15, name)
     }
     // operator cab on the front-left corner
-    k.box(LIVERY.gseYellow, 0.9, 0.9, 0.9, L / 2 - 0.45, H - 0.45, -W / 2 + 0.45, 'front_platform')
-    k.box(LIVERY.glass, 0.92, 0.5, 0.92, L / 2 - 0.45, H - 0.35, -W / 2 + 0.45, 'front_platform')
+    k.box(LIVERY.gseYellow, 0.9, 0.9, 0.9, L / 2 - 0.45, H - 0.45, -W / 2 + 0.45)
+    k.box(LIVERY.glass, 0.92, 0.5, 0.92, L / 2 - 0.45, H - 0.35, -W / 2 + 0.45)
     k.beacon(L / 2 - 0.45, H, -W / 2 + 0.45)
     k.chevrons(-L / 2, r - 0.1, 0.4, W, 8)
     k.tail(-L / 2, r + 0.3, W)
@@ -672,6 +770,32 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (const s of [1, -1]) k.box(LIVERY.gseYellow, 0.08, 0.2, 0.08, -L / 2 + 0.1, H + 0.05, s * W * 0.44, 'rollers')
     k.box(LIVERY.steel, 1.0, 0.05, 0.05, L / 2 + 0.1 - 0.5, r + 0.1, 0)
   },
+}
+
+/** Belt incline and centre height for the belt loader (shared with the Round B pivot). */
+export function beltGeom(L: number, H: number) {
+  const r = gseR
+  const lowY = r + 0.6
+  const highY = H - 0.1
+  const pitch = Math.atan2(highY - lowY, L * 0.9)
+  return { pitch, by: (lowY + highY) / 2, lowX: -L * 0.45, lowY }
+}
+
+/** Hinge of the catering front deck (x at the box front, y at the box floor). */
+export function cateringHinge(L: number) {
+  return { x: L / 2 - 2.0 - 0.15, y: 0.45 + 0.75 }
+}
+
+/** Particle cone: ~36 small blobs along +X from the nozzle, widening. */
+function spray(k: Kit, x: number, y: number, z: number, hex: string, name: string) {
+  let seed = 7
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  for (let i = 0; i < 36; i++) {
+    const d = 0.3 + (i / 36) * 4.2
+    const spread = 0.12 + d * 0.22
+    const s = 0.08 + d * 0.035
+    k.add(new THREE.IcosahedronGeometry(s, 0), hex, x + d, y - d * d * 0.05 + (rnd() - 0.5) * spread, z + (rnd() - 0.5) * spread, name)
+  }
 }
 
 /** Baggage cart: deck, frame posts, roof, side curtain, two axles. */
@@ -697,3 +821,25 @@ export function buildVehicleParts(model: VehicleModel, accent: string): VPart[] 
 }
 
 export const ALL_MODELS = Object.keys(MODEL_SIZE) as VehicleModel[]
+
+const centres = new Map<VehicleModel, Map<string, readonly [number, number, number]>>()
+
+/** Bounding-box centre of a named part in model metres (cached). Used as a spin pivot. */
+export function partCentre(model: VehicleModel, part: string): readonly [number, number, number] {
+  let byPart = centres.get(model)
+  if (!byPart) centres.set(model, (byPart = new Map()))
+  const hit = byPart.get(part)
+  if (hit) return hit
+  const box = new THREE.Box3()
+  const tmp = new THREE.Box3()
+  for (const p of buildVehicleParts(model, '#ffffff')) {
+    if (p.name === part) {
+      p.geo.computeBoundingBox()
+      box.union(tmp.copy(p.geo.boundingBox!))
+    }
+    p.geo.dispose()
+  }
+  const c = box.isEmpty() ? ([0, 0, 0] as const) : ([(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, (box.min.z + box.max.z) / 2] as const)
+  byPart.set(part, c)
+  return c
+}

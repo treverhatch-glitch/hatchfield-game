@@ -7,9 +7,11 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { VEHICLE_LOOK } from './look'
 import { buildVehicleParts, MODEL_SIZE, vehicleModel, type VehicleModel } from './vehicleModels'
-import { ANIM_PARTS, newPartPose, partMatrix, partPose } from './vehicleAnim'
+import { ANIM_PARTS, newPartPose, partMatrix, partPose, poseInput } from './vehicleAnim'
+import { applyVehicleSurface } from './vehicleSurface'
 
-export { ANIM_PARTS, deployOf, partPose, poseVehicleRig, serviceStateOf, truckDeploy } from './vehicleAnim'
+export { ANIM_PARTS, deployOf, partPose, poseInput, poseVehicleRig, serviceStateOf, truckDeploy, type PoseInput } from './vehicleAnim'
+export { setVehicleSurfaceTime, setVehicleWear } from './vehicleSurface'
 export { vehicleModel, MODEL_SIZE, MODEL_PARTS, ALL_MODELS, type VehicleModel } from './vehicleModels'
 
 const geos = new Map<string, THREE.BufferGeometry>()
@@ -18,7 +20,7 @@ let litMaterial: THREE.MeshBasicMaterial | null = null
 
 /** Lambert, not standard: a physical shader on every truck cost frames on SwiftShader. */
 function sharedMaterial(): THREE.MeshLambertMaterial {
-  material ??= new THREE.MeshLambertMaterial({ vertexColors: true })
+  material ??= applyVehicleSurface(new THREE.MeshLambertMaterial({ vertexColors: true }))
   return material
 }
 
@@ -192,6 +194,10 @@ export interface VehicleInstance {
   active?: boolean
   /** Sim clock in seconds for running parts (belts, turrets, flashing). */
   clock?: number
+  /** Distance driven, metres: wheel spin. */
+  odo?: number
+  /** Backing onto a stand: reverse lights. */
+  reversing?: boolean
 }
 
 export class VehicleFleet {
@@ -203,6 +209,7 @@ export class VehicleFleet {
   private dummy = new THREE.Object3D()
   private pose = newPartPose()
   private local = new THREE.Matrix4()
+  private input = poseInput()
 
   sync(list: readonly VehicleInstance[]) {
     const groups = new Map<string, VehicleInstance[]>()
@@ -289,13 +296,29 @@ export class VehicleFleet {
       this.dummy.rotation.set(0, item.yaw, 0)
       this.dummy.scale.setScalar(s)
       this.dummy.updateMatrix()
-      if (model && part && partPose(model, part, item.ext ?? 0, item.clock ?? 0, item.active ?? false, this.pose)) {
+      const inp = this.input
+      inp.ext = item.ext ?? 0
+      inp.clock = item.clock ?? 0
+      inp.active = item.active ?? false
+      inp.odo = item.odo ?? 0
+      inp.reversing = item.reversing ?? false
+      if (model && part && partPose(model, part, inp, this.pose)) {
         this.dummy.matrix.multiply(partMatrix(this.pose, this.local))
       }
       mesh!.setMatrixAt(i, this.dummy.matrix)
     })
     mesh.count = items.length
     mesh.instanceMatrix.needsUpdate = true
+    if (part === 'belt') {
+      let run = mesh.geometry.getAttribute('iRun') as THREE.InstancedBufferAttribute | undefined
+      if (!run || run.count < mesh.instanceMatrix.count) {
+        run = new THREE.InstancedBufferAttribute(new Float32Array(mesh.instanceMatrix.count), 1)
+        run.setUsage(THREE.DynamicDrawUsage)
+        mesh.geometry.setAttribute('iRun', run)
+      }
+      items.forEach((item, i) => run!.setX(i, (item.ext ?? 0) >= 0.999 ? 1 : 0))
+      run.needsUpdate = true
+    }
   }
 
   dispose() {

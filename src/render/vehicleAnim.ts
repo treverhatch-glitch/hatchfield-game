@@ -7,7 +7,7 @@
  * here allocates per call: callers pass `out` objects they own.
  */
 import * as THREE from 'three'
-import { MODEL_SIZE, type VehicleModel } from './vehicleModels'
+import { beltGeom, cateringHinge, MODEL_PARTS, MODEL_SIZE, partCentre, type VehicleModel } from './vehicleModels'
 
 export interface PartPose {
   /** Pivot in model metres. Rotation and scale happen about it. */
@@ -41,14 +41,31 @@ function reset(o: PartPose, px = 0, py = 0, pz = 0): PartPose {
   return o
 }
 
-/** Named parts each model animates. Everything else stays in the merged shell. */
-export const ANIM_PARTS: Partial<Record<VehicleModel, readonly string[]>> = {
+/** Inputs for one vehicle's part poses. */
+export interface PoseInput {
+  /** 0 stowed .. 1 deployed. */
+  ext: number
+  /** Sim clock, seconds. */
+  clock: number
+  /** Light bar / beacons running. */
+  active: boolean
+  /** Distance driven in metres; spins the wheels. */
+  odo: number
+  /** Backing onto the aircraft: reverse lights on. */
+  reversing: boolean
+}
+
+export function poseInput(ext = 0, clock = 0, active = false, odo = 0, reversing = false): PoseInput {
+  return { ext, clock, active, odo, reversing }
+}
+
+const SPECIFIC: Partial<Record<VehicleModel, readonly string[]>> = {
   fuel_tanker: ['hose_reel', 'hose'],
   hydrant_cart: ['lift_platform', 'hose_reel', 'hose'],
   belt_loader: ['belt', 'belt_bags'],
   catering_hilift: ['scissor', 'box', 'deck'],
-  arff: ['lightbar', 'roof_turret', 'bumper_turret', 'locker_doors'],
-  deice: ['boom', 'basket'],
+  arff: ['lightbar', 'roof_turret', 'bumper_turret', 'locker_doors', 'foam'],
+  deice: ['boom', 'basket', 'spray'],
   apron_bus: ['doors'],
   coach: ['doors'],
   box_truck: ['rollup_door', 'tail_lift'],
@@ -58,6 +75,14 @@ export const ANIM_PARTS: Partial<Record<VehicleModel, readonly string[]>> = {
   stairs: ['stair', 'canopy'],
   k_loader: ['front_platform', 'rear_platform'],
 }
+
+/** Shared moving parts: wheels spin, beacons rotate, reverse lights switch. */
+const SHARED = (name: string) => name.startsWith('wheels') || name === 'beacon' || name === 'reverse'
+
+/** Named parts each model animates. Everything else stays in the merged shell. */
+export const ANIM_PARTS = Object.fromEntries(
+  (Object.keys(MODEL_PARTS) as VehicleModel[]).map((m) => [m, [...MODEL_PARTS[m].filter(SHARED), ...(SPECIFIC[m] ?? [])]]),
+) as unknown as Record<VehicleModel, readonly string[]>
 
 export type ServiceState = 'drive' | 'dock' | 'work' | 'undock' | 'idle'
 
@@ -101,10 +126,29 @@ const _e = new THREE.Euler(0, 0, 0, 'YZX')
  * Pose for one part. Returns false when the part has no motion for this model
  * (the caller can use identity). `active` = beacons / light bar running.
  */
-export function partPose(model: VehicleModel, part: string, ext: number, clock: number, active: boolean, out: PartPose): boolean {
+export function partPose(model: VehicleModel, part: string, input: PoseInput, out: PartPose): boolean {
   const [L, H, W] = MODEL_SIZE[model]
+  const { ext, clock, active } = input
   const e = ext <= 0 ? 0 : ext >= 1 ? 1 : ext
   const working = e >= 0.999
+  if (part.startsWith('wheels')) {
+    const c = partCentre(model, part)
+    // Roll without slipping: angle = distance / radius (radius = axle height).
+    reset(out, c[0], c[1], 0).rz = -input.odo / Math.max(0.15, c[1])
+    return true
+  }
+  if (part === 'beacon') {
+    const c = partCentre(model, part)
+    reset(out, c[0], c[1], c[2])
+    out.ry = active ? clock * 9 : 0
+    if (!active) out.sx = out.sy = out.sz = 1
+    return true
+  }
+  if (part === 'reverse') {
+    reset(out)
+    if (!input.reversing) out.sx = out.sy = out.sz = 0.0001
+    return true
+  }
   switch (model) {
     case 'fuel_tanker':
     case 'hydrant_cart': {
@@ -126,9 +170,10 @@ export function partPose(model: VehicleModel, part: string, ext: number, clock: 
     }
     case 'belt_loader': {
       if (part !== 'belt' && part !== 'belt_bags') return false
-      const pitch = 0.1737
+      const g = beltGeom(L, H)
+      const pitch = g.pitch
       const rz = -pitch * 0.85 * (1 - e) + 0.1 * e
-      reset(out, -3.6, 1.1, 0).rz = rz
+      reset(out, g.lowX, g.lowY, 0).rz = rz
       if (part === 'belt_bags') {
         // Bags ride up the belt while it runs; hidden when stowed.
         if (!working) {
@@ -154,8 +199,12 @@ export function partPose(model: VehicleModel, part: string, ext: number, clock: 
         return true
       }
       if (part === 'deck') {
-        reset(out).ty = lift
-        out.tx = e * 0.9
+        // Folded up against the box front for driving, flat and bridging to the door when up.
+        const h = cateringHinge(L)
+        reset(out, h.x, h.y, 0)
+        out.rz = (1 - e) * (Math.PI / 2)
+        out.ty = lift
+        out.tx = e * 0.25
         return true
       }
       return false
@@ -179,6 +228,21 @@ export function partPose(model: VehicleModel, part: string, ext: number, clock: 
         reset(out, px, py, 0)
         out.rz = rz
         out.ry = ry
+        return true
+      }
+      if (part === 'spray') {
+        // Rides the boom tip; visible only while working, swirls on the clock.
+        partPose(model, 'basket', input, out)
+        if (!working) out.sx = out.sy = out.sz = 0.0001
+        else {
+          const nx = L / 2
+          const ny = H - 0.65
+          out.px = nx
+          out.py = ny
+          out.tx += 0
+          out.rx = clock * 7
+          out.sx = 0.85 + 0.15 * Math.sin(clock * 13)
+        }
         return true
       }
       if (part === 'basket') {
@@ -216,6 +280,15 @@ export function partPose(model: VehicleModel, part: string, ext: number, clock: 
       if (part === 'bumper_turret') {
         reset(out, L / 2 + 0.2, 1.07, 0)
         out.ry = spray ? 0.5 * Math.sin(clock * 0.9 + 1) : 0
+        return true
+      }
+      if (part === 'foam') {
+        partPose(model, 'roof_turret', input, out)
+        if (!spray) out.sx = out.sy = out.sz = 0.0001
+        else {
+          out.rx = clock * 6
+          out.sx = 0.9 + 0.1 * Math.sin(clock * 11)
+        }
         return true
       }
       if (part === 'locker_doors') {
@@ -276,10 +349,17 @@ export function partMatrix(p: PartPose, out: THREE.Matrix4): THREE.Matrix4 {
 const _pose = newPartPose()
 
 /** Pose every animated child of a vehicleRig() group in place. */
-export function poseVehicleRig(rig: THREE.Object3D, model: VehicleModel, ext: number, clock: number, active = false) {
+const _in = poseInput()
+
+export function poseVehicleRig(rig: THREE.Object3D, model: VehicleModel, ext: number, clock: number, active = false, odo = 0, reversing = false) {
+  _in.ext = ext
+  _in.clock = clock
+  _in.active = active
+  _in.odo = odo
+  _in.reversing = reversing
   for (const child of rig.children) {
     if (!child.name || child.name === 'body' || child.name === 'lights') continue
-    if (!partPose(model, child.name, ext, clock, active, _pose)) continue
+    if (!partPose(model, child.name, _in, _pose)) continue
     child.matrixAutoUpdate = false
     partMatrix(_pose, child.matrix)
     child.matrixWorldNeedsUpdate = true

@@ -40,7 +40,7 @@ import {
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
-import { deployOf, disposeVehicleLibrary, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
+import { deployOf, disposeVehicleLibrary, serviceStateOf, setVehicleSurfaceTime, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
 import { yardOffsets } from './vehicleYard.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from './world/dayNight'
@@ -206,6 +206,23 @@ export class World {
   private arrivalBefore = new Map<string, number>()
   private vehicleFleet = new VehicleFleet()
   private vehicleFrame: VehicleInstance[] = []
+  /** Render-side distance driven per vehicle id (metres), for wheel spin. Not saved. */
+  private odo = new Map<string, { x: number; z: number; m: number }>()
+
+  private odometer(id: string, x: number, z: number): number {
+    const o = this.odo.get(id)
+    if (!o) {
+      this.odo.set(id, { x, z, m: 0 })
+      return 0
+    }
+    const d = Math.hypot(x - o.x, z - o.z) / WORLD_PER_METER
+    // A jump (teleport / respawn) does not spin the wheels.
+    if (d < 25) o.m += d
+    o.x = x
+    o.z = z
+    if (this.odo.size > 4000) this.odo.clear()
+    return o.m
+  }
   private crewFigures = new CrewFigures(this.entGroup)
   people = new Map<string, THREE.Mesh>()
   housingGroup = new THREE.Group()
@@ -2000,7 +2017,8 @@ export class World {
         cargo: loaded ? (t.kind === 'bags' ? 'suitcases' : t.kind === 'citycargo' ? 'crates' : undefined) : undefined,
         cargoScale: loaded ? clamp(0.85 + Math.min(1.4, (t.cargoUnits ?? 0) / 80), 0.85, 1.35) : 1,
         ext,
-        active: t.kind === 'fire' ? !t.patrol && (ext > 0 || (moving && !t.returning)) : ext > 0,
+        active: t.kind === 'fire' ? !t.patrol && (ext > 0 || (moving && !t.returning)) : ext > 0 || moving,
+        odo: this.odometer(t.id, pos.x, pos.z),
         clock: game.clock,
       })
     }
@@ -2023,7 +2041,9 @@ export class World {
         yaw: -pose.heading,
         scale: WORLD_PER_METER,
         ext,
-        active: ext > 0,
+        active: ext > 0 || serviceStateOf(pose.phase, pose.u) === 'drive',
+        reversing: serviceStateOf(pose.phase, pose.u) === 'dock',
+        odo: this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER),
         clock: game.clock,
       })
     }
@@ -2046,6 +2066,7 @@ export class World {
       })
     }
     this.vehicleFleet.sync(this.vehicleFrame)
+    setVehicleSurfaceTime(game.clock)
 
     const seenP = new Set<string>()
     for (const p of game.people) {
