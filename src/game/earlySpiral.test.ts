@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   CASH_DEBT_FLOOR,
   EMERGENCY_REFUSE_FINE,
+  FIELD_TASK_FAIL_FINE,
   EMERGENCY_UNABLE_REP,
   LOAN_PRODUCTS,
   PAYROLL_SHORT_SLIDER_FLOOR,
@@ -240,6 +241,7 @@ describe('starter daily bills', () => {
     expect(game.dailyHoldingQuote()).toBeLessThan(800)
     expect(game.landsideUpkeep()).toBeGreaterThan(0)
     expect(game.landsideUpkeep()).toBeLessThan(900)
+    expect(FIELD_TASK_FAIL_FINE).toBe(500)
   })
 })
 
