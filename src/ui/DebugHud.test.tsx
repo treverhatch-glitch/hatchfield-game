@@ -16,6 +16,7 @@ describe('debug HUD recovery counter', () => {
         kind: 'aircraft',
         state: 'landing',
         step: 'repath',
+        reason: 'repath',
         detail: 'BU131 re-pathed while landing.',
       },
     ]

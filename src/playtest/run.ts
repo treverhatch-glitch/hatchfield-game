@@ -122,6 +122,7 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
     if (heldSpeed) {
       notes.push('Driver put the clock back to 5× after the persona touched the speed buttons.')
     }
+    notes.push(`recovery teleports: ${api.probe().teleports}`)
     return {
       persona: spec.id,
       label: spec.label,
@@ -314,6 +315,20 @@ function execute(api: PlayerCommands, intent: Intent, rng: () => number): Comman
   }
 }
 
+function recoveryStep(stuckId: string, probe: Probe): string | null {
+  const raw = stuckId.startsWith('flight:')
+    ? stuckId.slice('flight:'.length)
+    : stuckId.startsWith('cond:stuck:')
+      ? stuckId.slice('cond:stuck:'.length)
+      : stuckId
+  return probe.recoveries.find((row) => row.id === raw)?.step ?? null
+}
+
+function prevStep(rec: StuckRecord | undefined, step: string) {
+  if (!rec || step === 'none') return
+  rec.step = step
+}
+
 function trackStuck(
   openStuck: Map<string, StuckRecord>,
   pendingClear: Map<string, number>,
@@ -331,11 +346,14 @@ function trackStuck(
       openStuck.set(row.id, {
         id: row.id,
         detail: row.detail,
+        step: recoveryStep(row.id, probe) ?? 'none',
         firstClock: probe.clock,
         lastClock: probe.clock,
         recoveredClock: null,
       })
     }
+    const step = recoveryStep(row.id, probe)
+    if (step) prevStep(openStuck.get(row.id), step)
   }
   for (const [id, rec] of openStuck) {
     if (live.has(id)) continue

@@ -73,7 +73,7 @@ function renderPersona(persona: PersonaReport): string[] {
     lines.push('')
     const shown = persona.recovered.slice(0, 12)
     for (const row of shown) {
-      lines.push(`- ${row.detail} cleared at ${Math.round(row.recoveredClock ?? 0)}s`)
+      lines.push(`- ${row.detail} step=${row.step} cleared at ${Math.round(row.recoveredClock ?? 0)}s`)
     }
     if (persona.recovered.length > shown.length) {
       lines.push(`- … ${persona.recovered.length - shown.length} more`)

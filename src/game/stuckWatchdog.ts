@@ -38,6 +38,8 @@ export interface RecoveryLogEntry {
   kind: WatchKind
   state: string
   step: RecoveryStep
+  /** Tag written on the news line and the alert, e.g. `drive` or `cancel-refund`. */
+  reason: string
   detail: string
 }
 

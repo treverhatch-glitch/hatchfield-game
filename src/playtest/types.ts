@@ -58,6 +58,10 @@ export interface Probe {
   /** First aircraft that has touched down, if one is on the field right now. */
   landed: { id: string; flightNo: string; phase: string } | null
   stuck: { id: string; detail: string }[]
+  /** Newest watchdog resolutions, so a stall can name the step that cleared it. */
+  recoveries: { id: string; step: string }[]
+  /** Coordinate jumps the watchdog used. A player-visible run stays at 0. */
+  teleports: number
 }
 
 /**
@@ -128,6 +132,8 @@ export interface PersonaDecision {
 export interface StuckRecord {
   id: string
   detail: string
+  /** Watchdog resolution while the stall was open, or `none` when the phase just ended. */
+  step: string
   firstClock: number
   lastClock: number
   recoveredClock: number | null

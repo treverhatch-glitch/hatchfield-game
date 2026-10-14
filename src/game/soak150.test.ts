@@ -139,6 +139,7 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
       people: game.people.length,
       hallGuests: game.hallGuests.length,
       outstanding,
+      teleports: game.recoveryTeleports,
       flights: game.flights.length,
       trucks: game.trucks.length,
       flightsDone: game.flightsDone,
@@ -152,6 +153,7 @@ describe.skipIf(!RUN)('150-day headless soak', () => {
     expect(errors).toBe(0)
     expect(report.reachedDay).toBeGreaterThanOrEqual(DAYS)
     expect(outstanding).toEqual([])
+    expect(game.recoveryTeleports).toBe(0)
     expect(growth).toBeLessThanOrEqual(0.15)
   }, 1_140_000)
 })

@@ -62,6 +62,7 @@ describe('playtest report', () => {
     ]) {
       expect(markdown).toContain(heading)
     }
+    expect(markdown).toContain('step=none')
   })
 })
 
@@ -129,7 +130,16 @@ function samplePersona(): PersonaReport {
       { day: 1, cash: 12_000 },
     ],
     stuck: [],
-    recovered: [],
+    recovered: [
+      {
+        id: 'flight:sample',
+        detail: 'BU101 taxi_out for 12s',
+        step: 'none',
+        firstClock: 10,
+        lastClock: 22,
+        recoveredClock: 30,
+      },
+    ],
     consoleErrors: [],
     softlocks: [],
     satisfaction: [{ day: 1, guests: 2, avg: 66, fieldRating: 48 }],

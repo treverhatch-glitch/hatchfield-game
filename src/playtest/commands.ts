@@ -339,6 +339,11 @@ class GamePlayer implements PlayerCommands {
       guestHappiness: happiness,
       landed,
       stuck,
+      recoveries: game.recoveryLog.slice(0, 12).map((entry) => ({
+        id: entry.id,
+        step: entry.reason,
+      })),
+      teleports: game.recoveryTeleports,
     }
   }
 

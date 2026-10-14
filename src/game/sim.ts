@@ -1197,6 +1197,10 @@ export class Game {
   /** Recoveries logged by the ladder. The debug HUD reads the count. */
   recoveryCount = 0
   recoveryLog: RecoveryLogEntry[] = []
+  /** Coordinate jumps. Headless and off-screen only; the player path drives instead. */
+  recoveryTeleports = 0
+  /** Camera footprint in cells. Null until a renderer reports one (headless stays null). */
+  private recoveryView: { c: number; r: number; span: number } | null = null
   /** Corner debug readout. The shell turns it on in dev builds. */
   debugHud = false
   /** Headless soaks turn this off so the periodic save does not run. */
@@ -17396,7 +17400,7 @@ export class Game {
     const actions = this.stuckWatch.observe(this.stuckSamples(this.simMinutes()))
     if (!actions.length) return
     for (const action of actions) {
-      const detail = this.applyStuckRecovery(action)
+      const outcome = this.applyStuckRecovery(action)
       this.recoveryCount += 1
       this.recoveryLog.unshift({
         atMin: this.simMinutes(),
@@ -17405,10 +17409,19 @@ export class Game {
         kind: action.kind,
         state: action.state,
         step: action.step,
-        detail,
+        reason: outcome.reason,
+        detail: outcome.detail,
       })
       if (this.recoveryLog.length > STUCK_WATCH.logCap) this.recoveryLog.length = STUCK_WATCH.logCap
-      this.pushNews(detail, action.step === 'cancel' ? 'bad' : 'ok')
+      const line = `${outcome.detail} reason:${outcome.reason}`
+      this.pushNews(line, action.step === 'cancel' ? 'bad' : 'ok')
+      this.raiseAlert({
+        key: `event:recovery:${action.kind}:${action.id}`,
+        severity: action.step === 'cancel' ? 'warning' : 'info',
+        title: `${action.label} ${outcome.reason}`,
+        detail: line,
+        event: true,
+      })
     }
     this.emit()
   }
@@ -17478,6 +17491,22 @@ export class Game {
     return rolling && flight.path.length >= 2 && !this.taxiRouteReady(flight)
   }
 
+  /**
+   * Legal taxi or runway hold. The stuck alert counts phase time, so these
+   * seconds must not accumulate or a queued departure looks frozen.
+   */
+  private taxiHoldPaused(flight: Flight): boolean {
+    const wait = this.atc.waitFor(flight.id)
+    if (!wait || (wait.reason !== 'taxi' && wait.reason !== 'runway')) return false
+    const ageMin = Math.max(0, this.clock - wait.since) * SIM_MINUTES_PER_REAL_SECOND
+    if (ageMin >= STUCK_WATCH.authorizedHoldMin) return false
+    if (wait.blocker) {
+      const blocker = this.flights.find((other) => other.id === wait.blocker && other.phase !== 'gone')
+      if (!blocker || this.flightHardStuck(blocker)) return false
+    }
+    return true
+  }
+
   /** A live ground-control hold inside the legal window is progress, not a stall. */
   private holdIsAuthorized(flight: Flight, hard: ReadonlySet<string>): boolean {
     const wait = this.atc.waitFor(flight.id)
@@ -17505,26 +17534,42 @@ export class Game {
     return Math.round(value * 20) / 20
   }
 
-  private applyStuckRecovery(action: RecoveryAction): string {
+  private applyStuckRecovery(action: RecoveryAction): { detail: string; reason: string } {
     if (action.kind === 'vehicle') return this.applyStuckTruck(action)
     const flight = this.flights.find((item) => item.id === action.id)
-    if (!flight || flight.phase === 'gone') return `${action.label} already gone.`
+    if (!flight || flight.phase === 'gone') return { detail: `${action.label} already gone.`, reason: 'gone' }
     if (action.step === 'repath') {
       this.repathStuckFlight(flight)
-      return `${flight.flightNo} re-pathed while ${flight.phase.replace('_', ' ')}.`
+      return { detail: `${flight.flightNo} re-pathed while ${flight.phase.replace('_', ' ')}.`, reason: 'repath' }
     }
     if (action.step === 'release') {
       this.releaseStuckFlight(flight)
-      return `${flight.flightNo} reservation released.`
+      return { detail: `${flight.flightNo} reservation released.`, reason: 'release-reservation' }
     }
     if (action.step === 'teleport') {
-      const node = this.teleportStuckFlight(flight)
-      return node
-        ? `${flight.flightNo} teleported to ${node.c},${node.r}.`
-        : `${flight.flightNo} had no safe node to teleport to.`
+      if (this.driveStuckFlight(flight)) {
+        return {
+          detail: `${flight.flightNo} released and driving to the nearest open node.`,
+          reason: 'drive',
+        }
+      }
+      if (!this.recoveryOnScreen(flight.x, flight.y)) {
+        const node = this.teleportStuckFlight(flight)
+        if (node) {
+          this.recoveryTeleports += 1
+          return { detail: `${flight.flightNo} teleported to ${node.c},${node.r}.`, reason: 'teleport' }
+        }
+      }
+      return {
+        detail: `${flight.flightNo} stayed put — no open node to drive to.`,
+        reason: 'drive-failed',
+      }
     }
     const refund = this.cancelStuckFlight(flight)
-    return `${flight.flightNo} cancelled — refunded $${refund.toLocaleString('en-US')}.`
+    return {
+      detail: `${flight.flightNo} cancelled — refunded $${refund.toLocaleString('en-US')}.`,
+      reason: 'cancel-refund',
+    }
   }
 
   private repathStuckFlight(flight: Flight) {
@@ -17605,6 +17650,74 @@ export class Game {
     this.atcPaths.delete(flight.id)
   }
 
+  /** Renderer footprint. Headless runs never call this, so recovery stays off-screen. */
+  noteRecoveryView(c: number, r: number, span: number) {
+    if (!Number.isFinite(c) || !Number.isFinite(r) || !(span > 0)) {
+      this.recoveryView = null
+      return
+    }
+    this.recoveryView = { c, r, span }
+  }
+
+  private recoveryOnScreen(x: number, y: number): boolean {
+    const view = this.recoveryView
+    if (!view) return false
+    return Math.abs(x - view.c) <= view.span && Math.abs(y - view.r) <= view.span
+  }
+
+  /** Release the reservation and roll to a nearby pavement node. No coordinate jump. */
+  private driveStuckFlight(flight: Flight): boolean {
+    this.atc.release(flight.id)
+    this.atcPaths.delete(flight.id)
+    const from = { c: Math.round(flight.x), r: Math.round(flight.y) }
+    const goals = [...tilesOf(this.tiles, 'taxi'), ...tilesOf(this.tiles, 'stand'), ...tilesOf(this.tiles, 'runway')]
+    const near = goals
+      .filter((cell) => {
+        const dist = Math.abs(cell.c - from.c) + Math.abs(cell.r - from.r)
+        return dist > 0 && dist <= 8
+      })
+      .sort((a, b) => Math.abs(a.c - from.c) + Math.abs(a.r - from.r) - (Math.abs(b.c - from.c) + Math.abs(b.r - from.r)))
+      .slice(0, 12)
+    const hop = nearestPath(this.tiles, from, near, 'jet')
+    if (!hop || hop.length < 2 || !jetRouteOnGraph(this.tiles, hop)) return false
+    const out = flight.stand ? this.departurePath(flight) : null
+    let path = hop
+    if (out && out.length >= 2 && jetRouteOnGraph(this.tiles, out)) {
+      const end = hop[hop.length - 1]
+      let at = 0
+      let best = Number.POSITIVE_INFINITY
+      out.forEach((cell, index) => {
+        const dist = Math.abs(cell.c - end.c) + Math.abs(cell.r - end.r)
+        if (dist < best) {
+          best = dist
+          at = index
+        }
+      })
+      if (best <= 1) path = [...hop.slice(0, -1), ...out.slice(at)]
+    }
+    if (!jetRouteOnGraph(this.tiles, path)) return false
+    flight.path = path
+    flight.seg = 0
+    flight.t = 0
+    return true
+  }
+
+  private driveStuckTruck(truck: Truck): boolean {
+    const from = { c: Math.round(truck.x), r: Math.round(truck.y) }
+    const goal = truck.home ?? tilesOf(this.tiles, 'road')[0] ?? tilesOf(this.tiles, 'taxi')[0]
+    if (!goal) return false
+    const path = nearestPath(this.tiles, from, [goal], 'truck')
+    if (!path || path.length < 2) return false
+    truck.path = path
+    truck.seg = 0
+    truck.t = 0
+    truck.dwell = 0
+    truck.preDwell = 0
+    truck.returning = true
+    truck.flightId = null
+    return true
+  }
+
   private teleportStuckFlight(flight: Flight): Vec | null {
     const node = this.safeNodeFor(flight)
     if (!node) return null
@@ -17662,32 +17775,36 @@ export class Game {
     return candidates.find((cell) => !occupied.has(`${cell.c},${cell.r}`)) ?? candidates[0] ?? null
   }
 
-  private applyStuckTruck(action: RecoveryAction): string {
+  private applyStuckTruck(action: RecoveryAction): { detail: string; reason: string } {
     const truck = this.trucks.find((item) => item.id === action.id)
-    if (!truck) return `${action.label} already gone.`
+    if (!truck) return { detail: `${action.label} already gone.`, reason: 'gone' }
     if (action.step === 'repath') {
       this.repathStuckTruck(truck)
-      return `${action.label} re-pathed.`
+      return { detail: `${action.label} re-pathed.`, reason: 'repath' }
     }
     if (action.step === 'release') {
       truck.flightId = null
       truck.returning = true
-      return `${action.label} released from its stop.`
+      return { detail: `${action.label} released from its stop.`, reason: 'release-reservation' }
     }
     if (action.step === 'teleport') {
+      if (this.driveStuckTruck(truck)) {
+        return { detail: `${action.label} released and driving back.`, reason: 'drive' }
+      }
       const home = truck.home ?? tilesOf(this.tiles, 'taxi')[0] ?? tilesOf(this.tiles, 'road')[0]
-      if (home) {
+      if (home && !this.recoveryOnScreen(truck.x, truck.y)) {
         truck.x = home.c
         truck.y = home.r
         truck.path = [home]
         truck.seg = 0
         truck.t = 0
-        return `${action.label} teleported to ${home.c},${home.r}.`
+        this.recoveryTeleports += 1
+        return { detail: `${action.label} teleported to ${home.c},${home.r}.`, reason: 'teleport' }
       }
-      return `${action.label} had no safe node to teleport to.`
+      return { detail: `${action.label} stayed put — no road back.`, reason: 'drive-failed' }
     }
     this.trucks = this.trucks.filter((item) => item.id !== truck.id)
-    return `${action.label} removed — call cancelled.`
+    return { detail: `${action.label} removed — call cancelled.`, reason: 'cancel-refund' }
   }
 
   private repathStuckTruck(truck: Truck) {
@@ -17704,10 +17821,17 @@ export class Game {
     truck.preDwell = 0
   }
 
-  /** Nearby jets / trucks / apron walkers slow everyone — bad layouts jam. */
+  /**
+   * Nearby jets and trucks slow everyone — bad layouts jam.
+   * A departure taxiing out feels the apron crowd once, not once per passenger.
+   * A belt full of walkers used to freeze the taxi (congestion 10+). Arrivals
+   * still feel every nearby walker, so a turn does not finish early.
+   */
   congestionAt(x: number, y: number, selfId?: string): number {
     let n = 0
     const R = 1.15
+    const self = selfId ? this.flights.find((flight) => flight.id === selfId) : undefined
+    const departing = self?.phase === 'taxi_out'
     for (const f of this.flights) {
       if (f.id === selfId || f.phase === 'gone' || f.phase === 'hold') continue
       if (
@@ -17726,10 +17850,20 @@ export class Game {
       if (t.id === selfId) continue
       if (Math.hypot(t.x - x, t.y - y) < R) n++
     }
-    for (const p of this.people) {
-      if (p.id === selfId) continue
-      if (p.job !== 'arrive' && p.job !== 'board' && p.job !== 'mechanic') continue
-      if (Math.hypot(p.x - x, p.y - y) < R) n++
+    if (departing) {
+      for (const p of this.people) {
+        if (p.job !== 'arrive' && p.job !== 'board' && p.job !== 'mechanic') continue
+        if (Math.hypot(p.x - x, p.y - y) < R) {
+          n += 1
+          break
+        }
+      }
+    } else {
+      for (const p of this.people) {
+        if (p.id === selfId) continue
+        if (p.job !== 'arrive' && p.job !== 'board' && p.job !== 'mechanic') continue
+        if (Math.hypot(p.x - x, p.y - y) < R) n++
+      }
     }
     return n
   }
@@ -20095,7 +20229,9 @@ export class Game {
     this.tickAtc(step)
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
-      f.phaseTime += step
+      // A legal ground hold is progress. Counting it made a clear taxi look stuck.
+      const groundPhase = (STUCK_PHASES as readonly string[]).includes(f.phase)
+      if (!(groundPhase && this.taxiHoldPaused(f))) f.phaseTime += step
       if (f.craft === 'helo') {
         this.tickHelo(f, step)
         continue
