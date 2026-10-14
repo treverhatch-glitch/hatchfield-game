@@ -1,4 +1,5 @@
 import { cityLevyForGameDay } from '../core/bank.ts'
+import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import {
   BUDGET_BASE,
   DESK_STAFF_WAGE,
@@ -53,6 +54,62 @@ export function nextLoanBalance(balance: number, short: number, opened: number):
   const safeBalance = Number.isFinite(balance) && balance > 0 ? balance : 0
   const safeShort = Number.isFinite(short) && short > 0 ? short : 0
   return Math.max(0, Math.min(safeOpened * 2.1, safeBalance + safeShort))
+}
+
+/** Equal principal slice per loan tick so `opened` is repaid in `termDays` game days. */
+export function loanInstallment(
+  opened: number,
+  p: Pick<LoanProduct, 'every' | 'termDays'>,
+  daySeconds = REAL_SECONDS_PER_GAME_DAY,
+): number {
+  const safeOpened = Number.isFinite(opened) && opened > 0 ? opened : 0
+  const every = Number.isFinite(p.every) && p.every > 0 ? p.every : 0
+  const term = Number.isFinite(p.termDays) && p.termDays > 0 ? p.termDays : 0
+  if (!safeOpened || !every || !term) return 0
+  const ticks = Math.max(1, Math.floor((term * daySeconds) / every))
+  return Math.ceil(safeOpened / ticks)
+}
+
+export interface LoanTickSettlement {
+  /** Interest due this tick. */
+  interest: number
+  /** Principal installment due this tick (never more than the balance). */
+  installment: number
+  /** Cash taken: interest first, then principal. */
+  interestPaid: number
+  principalPaid: number
+  /** Due minus paid. Zero when the tick is covered. */
+  short: number
+  /** Balance after the tick: principal paid comes off, unpaid interest capitalizes (capped). */
+  balance: number
+}
+
+/**
+ * One loan tick. Cash below zero pays nothing; it is never reset upward.
+ * Unpaid interest capitalizes, a missed installment stays on the balance.
+ */
+export function settleLoanTick(
+  balance: number,
+  cash: number,
+  opened: number,
+  p: Pick<LoanProduct, 'rate' | 'interestFloor' | 'every' | 'termDays'>,
+): LoanTickSettlement {
+  const safeBalance = Number.isFinite(balance) && balance > 0 ? balance : 0
+  const available = Number.isFinite(cash) && cash > 0 ? cash : 0
+  const interest = safeBalance > 0 ? loanInterestDue(safeBalance, p.rate, p.interestFloor) : 0
+  const installment = Math.min(safeBalance, loanInstallment(opened, p))
+  const interestPaid = Math.min(interest, available)
+  const principalPaid = Math.min(installment, available - interestPaid)
+  const short = interest + installment - interestPaid - principalPaid
+  const after = nextLoanBalance(safeBalance - principalPaid, interest - interestPaid, opened)
+  return {
+    interest,
+    installment,
+    interestPaid,
+    principalPaid,
+    short,
+    balance: after < 0.5 ? 0 : after,
+  }
 }
 
 export function loansAvailable<T extends Pick<LoanProduct, 'minFieldLevel' | 'minRep'>>(

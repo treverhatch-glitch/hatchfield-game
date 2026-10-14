@@ -277,8 +277,10 @@ export interface LoanProduct {
   rate: number
   /** Floor cash interest per tick. */
   interestFloor: number
-  /** Sim-seconds between interest ticks. */
+  /** Sim-seconds between loan ticks (interest + principal installment). */
   every: number
+  /** Game days to repay the amount opened in equal principal installments. */
+  termDays: number
   /** Field level required to see / take this product. */
   minFieldLevel: number
   /** Soft reputation gate. */

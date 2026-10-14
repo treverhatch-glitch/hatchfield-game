@@ -114,12 +114,28 @@ export const BULLDOZE_REFUND = 0.4
 export const LOAN_PRINCIPAL = 45_000
 export const LOAN_FEE = 2_800
 /**
- * Floor interest every loan tick while open.
- * Cash pays max(this, ~1.2% of balance); unpaid shortfalls capitalize (capped ~2.1×).
+ * Each loan tick pays interest (max of the product floor and rate × balance) plus one
+ * equal principal installment, so the balance reaches zero after `termDays` game days.
+ * Only unpaid interest capitalizes (capped ~2.1×); a missed installment simply stays owed.
+ * Interest-only at a $1,250 floor every 55s (~$4.1k a game day on a $47.8k bridge) never
+ * shrank the balance and outran a starter field's margin (#192).
  */
-export const LOAN_INTEREST = 1_250
-/** Seconds between loan interest ticks (was 60 — tighter leash). */
-export const LOAN_INTEREST_EVERY = 55
+/** Debt floor for fines and bills: `charge()` never takes cash below this. */
+export const CASH_DEBT_FLOOR = -25_000
+/**
+ * A short payroll day trims the MX and security sliders by this step, but never below the
+ * floor. Security under 35% marks the field exposed (threats every few seconds), so the
+ * automatic cut stops above that line; going lower is the player's choice.
+ */
+export const PAYROLL_SHORT_SLIDER_STEP = 10
+export const PAYROLL_SHORT_SLIDER_FLOOR = 50
+/**
+ * Seconds of slip that cost a carrier the full per-delay Standing nick. A held slot is
+ * retried every few seconds while pavement is busy; each retry nudges later slots by a
+ * second or two, and charging the full nick for each nudge drained Standing ~10× faster
+ * than the actual delay (#192). The nick now scales with seconds actually added.
+ */
+export const DELAY_HEAT_REF_SEC = 15
 
 /** Multiple bank products — bigger loans cost more fees and need field level. */
 export const LOAN_PRODUCTS: LoanProduct[] = [
@@ -129,9 +145,10 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
     blurb: 'Starter cash for pavement. High rate, short leash.',
     principal: 25_000,
     fee: 1_400,
-    rate: 0.018,
-    interestFloor: 900,
+    rate: 0.004,
+    interestFloor: 110,
     every: 42,
+    termDays: 15,
     minFieldLevel: 1,
     minRep: 0,
   },
@@ -141,9 +158,10 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
     blurb: 'Classic growth wire. Balanced fee and rate.',
     principal: 45_000,
     fee: 2_800,
-    rate: 0.012,
-    interestFloor: 1_250,
+    rate: 0.003,
+    interestFloor: 150,
     every: 55,
+    termDays: 25,
     minFieldLevel: 1,
     minRep: 0,
   },
@@ -153,9 +171,10 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
     blurb: 'Second hall / jetway money. Needs Field Lv2.',
     principal: 90_000,
     fee: 7_500,
-    rate: 0.009,
-    interestFloor: 1_800,
+    rate: 0.0025,
+    interestFloor: 250,
     every: 70,
+    termDays: 40,
     minFieldLevel: 2,
     minRep: 35,
   },
@@ -165,9 +184,10 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
     blurb: 'Major capex. Needs Field Lv3 + reputation.',
     principal: 180_000,
     fee: 18_000,
-    rate: 0.007,
-    interestFloor: 2_800,
+    rate: 0.002,
+    interestFloor: 400,
     every: 85,
+    termDays: 60,
     minFieldLevel: 3,
     minRep: 55,
   },
@@ -177,9 +197,10 @@ export const LOAN_PRODUCTS: LoanProduct[] = [
     blurb: 'Endgame mega wire. Needs Field Lv4. Huge fee.',
     principal: 320_000,
     fee: 42_000,
-    rate: 0.0055,
-    interestFloor: 4_200,
+    rate: 0.0015,
+    interestFloor: 550,
     every: 100,
+    termDays: 90,
     minFieldLevel: 4,
     minRep: 70,
   },
@@ -1792,6 +1813,14 @@ export const TANKER_FEE = 6800
 /** Firefighting plane — refuel + hangar line MX. */
 export const TANKER_MX_FEE = 9200
 export const EMERGENCY_REFUSE_FINE = 2500
+/**
+ * Declining (or timing out) an emergency the field cannot host — no free stand, no hangar,
+ * dry farm — costs the fee and this much reputation, not the refuse fine. The starter field
+ * could not host ~2 in 3 of them and paid $2.5k, -4 rep and carrier Standing each (#192).
+ */
+export const EMERGENCY_UNABLE_REP = 1
+/** Standing the diverting carrier loses when we could not host it. */
+export const EMERGENCY_UNABLE_HEAT = 2
 /** Failed host after accepting — worse than a clean refuse. */
 export const EMERGENCY_FAIL_FINE = 4500
 /** Hub tier — denser slots after successful layovers. */

@@ -100,6 +100,7 @@ describe('first-session hint order', () => {
       'session-build',
       'session-desk',
       'session-depart',
+      'session-second',
     ])
     expect(nextSessionHint(blank)?.id).toBe('session-contract')
     expect(nextSessionHint(blank)?.title).toMatch(/starter field/i)
@@ -116,7 +117,19 @@ describe('first-session hint order', () => {
 
     const staffed = { ...tray, deskStaff: 1 }
     expect(nextSessionHint(staffed)?.id).toBe('session-depart')
-    expect(nextSessionHint({ ...staffed, flightsDone: 1 })).toBeNull()
+    const flown = { ...staffed, flightsDone: 1 }
+    expect(nextSessionHint(flown)?.id).toBe('session-second')
+    expect(nextSessionHint({ ...flown, signed: 2 })).toBeNull()
+  })
+
+  it('points the second letter at its red rows, and says so when it is all green', () => {
+    const flown = { ...blank, fieldUp: true, signed: 1, buildTrayOpened: true, deskStaff: 1, flightsDone: 1 }
+    expect(nextSessionHint(flown)?.title).toMatch(/on the way/i)
+    const red = nextSessionHint({ ...flown, offerWaiting: true, offerMissing: ['Police post', 'Bag sort'] })
+    expect(red?.id).toBe('session-second')
+    expect(red?.detail).toContain('Police post, Bag sort')
+    const green = nextSessionHint({ ...flown, offerWaiting: true, offerMissing: [] })
+    expect(green?.detail).toMatch(/every row is green/i)
   })
 
   it('skips steps the starter kit or a cargo start already finished', () => {
