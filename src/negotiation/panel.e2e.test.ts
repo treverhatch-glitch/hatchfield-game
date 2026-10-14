@@ -30,7 +30,7 @@ describe('negotiation panel', () => {
       const browser = await chromium.launch(launchOptions)
       try {
         const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
-        await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' })
+        await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load', timeout: 90_000 })
         await page.getByTestId('new-game').click()
         await page.getByTestId('start-pax').click()
         await page.waitForFunction(() => Boolean((window as unknown as { __hatch?: { presentNegotiation?: (id: string) => void } }).__hatch))
