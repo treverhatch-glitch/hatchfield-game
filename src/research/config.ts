@@ -23,12 +23,11 @@ export const SPEC_PENALTY = 1.5
 
 /**
  * Point costs by tier. The first node of a line is free so the category can open.
- * Every later tier is the same price. One careful lab (one desk, one chalkboard,
- * one bench, no researchers) then owns about a third of the tree at day 30 and
- * is still short of the last nodes at day 120. Extra rooms and researchers
- * spend the same costs faster.
+ * Each later tier costs more than the one before it. One careful lab (one desk,
+ * one chalkboard, one bench, no researchers) still owns about a third of the
+ * tree at day 30 and is short of the last nodes at day 120.
  */
-export const TIER_COSTS = [0, 52, 52, 52, 52, 52] as const
+export const TIER_COSTS = [0, 50, 52, 54, 56, 62] as const
 
 export const CATEGORIES = [
   { id: 'airfield', label: 'Airfield', unlockLevel: 1 },

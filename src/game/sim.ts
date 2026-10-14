@@ -5065,8 +5065,8 @@ export class Game {
   stripCapabilityLine(): string {
     const n = this.longestRunway()
     if (n <= 0) return 'Stamp a strip — short / regional / heavy'
-    const ok = jetAirframesFitting(n, this.researchUnlocked)
-    const no = jetAirframesBlocked(n, this.researchUnlocked)
+    const ok = jetAirframesFitting(n, this.researchGrants())
+    const no = jetAirframesBlocked(n, this.researchGrants())
     const okNames = ok
       .slice()
       .sort((a, b) => a.minRunway - b.minRunway)
@@ -12477,7 +12477,7 @@ export class Game {
 
   private pickOperable(preferred: AircraftKind, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const level = this.fieldLevel()
-    const research = this.researchUnlocked
+    const research = this.researchGrants()
     const runway = this.longestRunway()
     const accepts = (id: string) => this.scaleReport(id).ok
     const af = pickAirframe(preferred, runway, research, level, accepts)
@@ -12494,7 +12494,7 @@ export class Game {
       runway: this.longestRunway(),
       helipad: tilesOf(this.tiles, 'helipad').length > 0,
       fieldLevel: this.fieldLevel(),
-      research: this.researchUnlocked,
+      research: this.researchGrants(),
       standClasses: tilesOf(this.tiles, 'stand').map((s) => this.standClassAt(s)),
     }
   }
@@ -12650,7 +12650,7 @@ export class Game {
 
   signScaleContract(id: string) {
     if (this.contractId === id) return
-    const gate = canSignContract(id, this.fieldLevel(), this.researchUnlocked)
+    const gate = canSignContract(id, this.fieldLevel(), this.researchGrants())
     if (!gate.ok) {
       this.pushNews(gate.why, 'bad')
       this.emit()
@@ -12666,7 +12666,7 @@ export class Game {
   }
 
   upgradeTank() {
-    const gate = canUpgradeTank(this.tankTier, this.fieldLevel(), this.researchUnlocked)
+    const gate = canUpgradeTank(this.tankTier, this.fieldLevel(), this.researchGrants())
     if (!gate.ok || gate.next == null) {
       this.pushNews(gate.why, 'bad')
       this.emit()
@@ -12707,7 +12707,7 @@ export class Game {
   }
 
   upgradeBagSystem() {
-    const gate = canUpgradeBags(this.bagSystem, this.fieldLevel(), this.researchUnlocked)
+    const gate = canUpgradeBags(this.bagSystem, this.fieldLevel(), this.researchGrants())
     if (!gate.ok || !gate.next) {
       this.pushNews(gate.why, 'bad')
       this.emit()
@@ -12721,7 +12721,7 @@ export class Game {
   }
 
   buyPaxUnit(unit: PaxUnit) {
-    const gate = canBuyPax(unit, this.fieldLevel(), this.researchUnlocked)
+    const gate = canBuyPax(unit, this.fieldLevel(), this.researchGrants())
     if (!gate.ok) {
       this.pushNews(gate.why, 'bad')
       this.emit()
@@ -16923,7 +16923,7 @@ export class Game {
       this.emit()
       return
     }
-    const locked = placementBlock(this.tool, this.fieldLevel(), this.researchUnlocked)
+    const locked = placementBlock(this.tool, this.fieldLevel(), this.researchGrants())
     if (locked) {
       this.pushNews(locked, 'bad')
       this.emit()
@@ -19068,7 +19068,7 @@ export class Game {
     let af = pickAirframe(
       'military',
       this.longestRunway(),
-      this.researchUnlocked,
+      this.researchGrants(),
       level,
       (id) => sizeTierOf(id) === 'small' || this.scaleReport(id).ok,
     )
@@ -19081,7 +19081,7 @@ export class Game {
       const lighter = pickAirframe(
         'military',
         this.longestRunway(),
-        this.researchUnlocked.filter((id) => id !== 'mil_ramp'),
+        this.researchGrants().filter((id) => id !== 'mil_ramp'),
         level,
         (id) => sizeTierOf(id) === 'small' || this.scaleReport(id).ok,
       )
@@ -19172,7 +19172,7 @@ export class Game {
     const af = pickAirframe(
       'air_ambulance',
       this.longestRunway(),
-      this.researchUnlocked,
+      this.researchGrants(),
     )
     if (!af) {
       this.ambuCool = 30
@@ -19963,7 +19963,7 @@ export class Game {
     )
     if (pool.length) return pick(pool)
     return (
-      pickAirframe('air_ambulance', rw, this.researchUnlocked) ??
+      pickAirframe('air_ambulance', rw, this.researchGrants()) ??
       AIRFRAMES.at802 ??
       AIRFRAMES.citation
     )

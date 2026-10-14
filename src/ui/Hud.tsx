@@ -2237,7 +2237,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     </p>
                     <div className="row">
                       {FUEL_CONTRACTS.map((c) => {
-                        const gate = canSignContract(c.id, game.fieldLevel(), game.researchUnlocked)
+                        const gate = canSignContract(c.id, game.fieldLevel(), game.researchGrants())
                         return (
                           <button key={c.id} type="button" disabled={!gate.ok} onClick={() => game.signScaleContract(c.id)}>
                             {c.name} {money(c.sign)}
@@ -2255,7 +2255,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       <button
                         type="button"
                         onClick={() => game.upgradeTank()}
-                        disabled={!canUpgradeTank(game.tankTier, game.fieldLevel(), game.researchUnlocked).ok}
+                        disabled={!canUpgradeTank(game.tankTier, game.fieldLevel(), game.researchGrants()).ok}
                       >
                         Tank {TANK_TIERS[Math.min(2, game.tankTier)] ? `→ ${tankDef(game.tankTier === 3 ? 3 : ((game.tankTier + 1) as 2 | 3)).capacityLitres.toLocaleString('en-US')} L` : ''}
                       </button>
@@ -2282,13 +2282,13 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <div className="row">
                       <button
                         type="button"
-                        disabled={!canUpgradeBags(game.bagSystem, game.fieldLevel(), game.researchUnlocked).ok}
+                        disabled={!canUpgradeBags(game.bagSystem, game.fieldLevel(), game.researchGrants()).ok}
                         onClick={() => game.upgradeBagSystem()}
                       >
                         Upgrade bags
                       </button>
                       {(Object.keys(PAX_UNITS) as (keyof typeof PAX_UNITS)[]).map((id) => {
-                        const gate = canBuyPax(id, game.fieldLevel(), game.researchUnlocked)
+                        const gate = canBuyPax(id, game.fieldLevel(), game.researchGrants())
                         return (
                           <button key={id} type="button" disabled={!gate.ok} onClick={() => game.buyPaxUnit(id)}>
                             {PAX_UNITS[id].name} {money(PAX_UNITS[id].cost)}

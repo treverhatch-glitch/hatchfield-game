@@ -165,7 +165,7 @@ export function BuildTray({
   const [groupId, setGroupId] = useState(menu.groups[0]?.id ?? '')
   const group = menu.groups.find((row) => row.id === groupId) ?? menu.groups[0]
   if (!group) return null
-  const owned = new Set(game.researchUnlocked)
+  const owned = new Set(game.researchGrants())
   const treeOwned = new Set(game.researchTree.state.unlocked)
   return (
     <div className="build-sheet">

@@ -7,7 +7,10 @@ import type { ResearchState, RoomCounts } from './types.ts'
 import { RESEARCH_NODES, nodesInCategory } from './nodes.ts'
 
 describe('research tree', () => {
-  it('charges nothing for a category first node and a flat price after that', () => {
+  it('charges nothing for a category first node and more for each deeper tier', () => {
+    for (let i = 2; i < TIER_COSTS.length; i++) {
+      expect(TIER_COSTS[i]).toBeGreaterThan(TIER_COSTS[i - 1]!)
+    }
     for (const category of ['airfield', 'terminal', 'airside', 'landside', 'safety', 'retail'] as const) {
       const nodes = nodesInCategory(category)
       expect(nodes.map((node) => node.baseCost)).toEqual([...TIER_COSTS])
