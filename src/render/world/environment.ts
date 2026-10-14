@@ -132,6 +132,7 @@ export function buildLandscape(
   const groundGeo = frameGeometry(PLOT_HALF, 450, 1 / 6.4)
   const groundMat = new THREE.MeshLambertMaterial({ map: grass, color: tint?.ground ?? FARMLAND_GROUND })
   const ground = new THREE.Mesh(groundGeo, groundMat)
+  ground.name = 'world-farmland'
   ground.position.y = -0.06
   ground.receiveShadow = true
   group.add(ground)
@@ -175,6 +176,7 @@ export function buildLandscape(
   fieldGeo.computeVertexNormals()
   const fieldMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: grass, polygonOffset: true, polygonOffsetFactor: -1 })
   const fields = new THREE.Mesh(fieldGeo, fieldMat)
+  fields.name = 'world-fields'
   fields.receiveShadow = true
   group.add(fields)
   geos.push(fieldGeo)

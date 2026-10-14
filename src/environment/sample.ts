@@ -3,11 +3,12 @@
  *
  * Builds on the sim-clock sky (`src/render/world/daylight.ts`) and the map
  * demand calendar (`src/economy/seasons.ts`). Colour tints are uniform writes.
- * The low preset keeps those tints and drops fog-distance reshape plus apron
- * light pools. No extra meshes, lights, or particles.
+ * The low preset keeps the season tint and a lighter snow write, and drops
+ * fog-distance reshape plus apron light pools. No extra meshes or particles.
  */
 import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from '../economy/seasons.ts'
 import type { Weather } from '../game/types.ts'
+import { daylightFactor } from '../render/world/dayNight.ts'
 import {
   DAY_SECONDS,
   lerpHex,
@@ -23,6 +24,7 @@ import {
   GROUND_OPS,
   SEASON_PALETTES,
   SEASON_WEATHER,
+  SNOW,
   TIME_OF_DAY_DEMAND,
   type ClimateId,
   type GfxQuality,
@@ -250,13 +252,23 @@ export function seasonalExtras(quality: GfxQuality): boolean {
 }
 
 /**
+ * Winter snow on grass, 0–1. Other seasons stay clear.
+ * Callers skip this when a map brought its own ground (desert, coast).
+ */
+export function snowCover(day: number, quality: GfxQuality): number {
+  if (seasonAtDay(day).id !== 'winter') return 0
+  return quality === 'low' ? SNOW.lowCover : SNOW.cover
+}
+
+/**
  * Clock sky, then the season's palette. Does not add particles.
  * Fog distance changes only when `seasonalExtras` is on.
  */
 export function paintSky(hour: number, weather: Weather, day: number, quality: GfxQuality): SkyState {
   const sky = skyState(hour, weather)
   const { palette } = seasonAtDay(day)
-  const k = palette.amount
+  // Season colour is a daytime mix. Night keeps the dark sky; snow carries winter on the ground.
+  const k = palette.amount * (0.22 + 0.78 * daylightFactor(hour))
   sky.skyTop = lerpHex(sky.skyTop, palette.skyTop, k)
   sky.skyHorizon = lerpHex(sky.skyHorizon, palette.skyHorizon, k)
   sky.fogColor = sky.skyHorizon
@@ -271,9 +283,11 @@ export function paintSky(hour: number, weather: Weather, day: number, quality: G
   return sky
 }
 
-/** Plot grass tint. Null on low — one less material write, palette stays in the sky. */
-export function grassColor(day: number, quality: GfxQuality): number | null {
-  if (!seasonalExtras(quality)) return null
+/**
+ * Plot grass tint. One material write, so Low keeps it.
+ * Fog distance is the extra `seasonalExtras` still drops.
+ */
+export function grassColor(day: number, _quality: GfxQuality): number {
   return seasonAtDay(day).palette.grass
 }
 

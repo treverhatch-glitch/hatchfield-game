@@ -1,9 +1,18 @@
 import * as THREE from 'three'
-import { grassColor, nightLighting, paintSky } from '../../environment/index.ts'
+import { grassColor, nightLighting, paintSky, seasonAtDay, snowCover } from '../../environment/index.ts'
 import { GROUND_LOOK } from '../look'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
-import { lerpHex, simClockToHour, skyState, type SkyState } from './daylight'
+import { lerpHex, skyState, type SkyState } from './daylight'
+import {
+  airfieldLevels,
+  applyDayNight,
+  daylightFactor,
+  idleDayNight,
+  resolveHour,
+  type DayNightControl,
+  type DayNightSample,
+} from './dayNight'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './environment'
 import {
   apronMasts,
@@ -98,7 +107,14 @@ export class WorldRenderer {
   private builtRev = -1
   private bridgeCount = 0
   private hourOverride: number | null = null
+  /** Lighting-rig override. Photo mode uses `hourOverride` and leaves this in place. */
+  private dayNightControl: DayNightControl | null = null
+  /** Last frame's cycle sample. The light rig and vehicle/aircraft lamps read this. */
+  dayNightSample: DayNightSample = idleDayNight()
   private weatherOverride: Weather | null = null
+  private farmBase = 0xb8c8a8
+  private snowOn = false
+  private snowColor = new THREE.Color()
   private lite = false
   private flash = 0
   private state: SkyState = skyState(11)
@@ -186,6 +202,7 @@ export class WorldRenderer {
     this.root.add(this.lights.root)
     this.landscape = buildLandscape(this.tex.grass, q.trees)
     this.root.add(this.landscape.group)
+    this.rememberFarmBase()
     this.terrainKey = ''
     this.grass = new GrassRing(q.grassTufts)
     this.root.add(this.grass.mesh)
@@ -233,6 +250,16 @@ export class WorldRenderer {
 
   setTimeOfDay(hour: number | null) {
     this.hourOverride = hour
+  }
+
+  /**
+   * Day/night hook for the lighting rig and photo tools.
+   * `null` clears the hour override and the daylight/lights sample.
+   * A later `setTimeOfDay` only replaces the hour.
+   */
+  setDayNight(control: DayNightControl | null) {
+    this.dayNightControl = control
+    if (!control) this.hourOverride = null
   }
 
   setWeather(w: Weather | null) {
@@ -337,11 +364,29 @@ export class WorldRenderer {
     const focus = groundFocus(camPos, dir) ?? { x: camPos.x, z: camPos.z }
     const camDist = Math.hypot(camPos.x - focus.x, camPos.y, camPos.z - focus.z)
 
-    const hour = this.hourOverride ?? simClockToHour(view.clock ?? 0)
+    const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
-    const s = paintSky(hour, weather, day, this.quality)
-    const night = nightLighting(s.hour, s.lights, this.q.lightPools)
+    const s = applyDayNight(paintSky(hour, weather, day, this.quality), this.dayNightControl)
+    const night = nightLighting(s.hour, s.lights, this.q.lightPools && !this.lite)
+    const season = seasonAtDay(day)
+    const snow = view.mapDraw ? 0 : snowCover(day, this.quality)
+    this.dayNightSample = {
+      hour: s.hour,
+      daylight: this.dayNightControl?.daylight ?? daylightFactor(s.hour),
+      lights: s.lights,
+      windows: night.terminalWindows,
+      runwayEdge: night.runwayEdge,
+      taxiEdge: night.taxiEdge,
+      apron: night.apron,
+      apronPools: night.apronPools,
+      aircraft: night.runwayEdge,
+      headlights: night.runwayEdge,
+      snow,
+      ground: season.palette.ground,
+      grass: season.palette.grass,
+      seasonId: season.id,
+    }
     const draw = view.mapDraw
     if (draw && draw.skyAmount > 0) {
       const k = draw.skyAmount
@@ -394,25 +439,30 @@ export class WorldRenderer {
     const grassHex = grassColor(day, this.quality)
     for (const [k, m] of this.surfaceMats) {
       if (k === 'grass') {
-        if (grassHex == null) m.color.setScalar(s.wet > 0 ? 1 - s.wet * 0.22 : 1)
-        else {
-          // Season tint shifts the hue only: normalised so med/high grass is as bright as low,
-          // then eased toward white so a saturated palette does not turn the field lime.
-          m.color.setHex(grassHex)
-          m.color.multiplyScalar(1 / Math.max(1e-3, m.color.r, m.color.g, m.color.b))
-          m.color.lerp(WHITE, 1 - GROUND_LOOK.seasonTint)
-          if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.22)
-        }
+        // Season tint shifts the hue only: normalised so every preset stays as bright as the albedo,
+        // then eased toward white so a saturated palette does not turn the field lime.
+        m.color.setHex(grassHex)
+        m.color.multiplyScalar(1 / Math.max(1e-3, m.color.r, m.color.g, m.color.b))
+        m.color.lerp(WHITE, 1 - GROUND_LOOK.seasonTint)
+        if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.22)
       } else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
     this.paintPlot(draw ?? null)
+    this.paintSnow(snow, s.wet)
 
     const enclosed = view.view === 'apron'
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed)
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
     this.syncGuests(view, camera, step, showGuests, lite)
     this.syncPack(view, lite)
-    this.lights.update(step, night.apron, weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25, camDist)
+    this.lights.update(
+      step,
+      s.lights,
+      weather === 'storm' ? 1 : weather === 'rain' ? 0.6 : 0.25,
+      camDist,
+      airfieldLevels(this.dayNightSample),
+      this.quality === 'low',
+    )
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)
@@ -431,6 +481,7 @@ export class WorldRenderer {
     if (ground == null) {
       // Colour already holds the season tint and wetness from `update`; only clear the terrain glow.
       grass.emissive.setHex(0x000000)
+      grass.emissiveIntensity = 0
     } else {
       grass.color.setHex(ground)
       grass.emissive.setHex(ground)
@@ -441,6 +492,7 @@ export class WorldRenderer {
       if (ground == null) {
         tuft.color.setHex(0xffffff)
         tuft.emissive.setHex(0x000000)
+        tuft.emissiveIntensity = 0
       } else {
         tuft.color.setHex(ground)
         tuft.emissive.setHex(ground)
@@ -458,6 +510,68 @@ export class WorldRenderer {
     this.landscape?.group.removeFromParent()
     this.landscape = buildLandscape(this.tex.grass, this.q.trees, tint)
     this.root.add(this.landscape.group)
+    this.rememberFarmBase()
+  }
+
+  private rememberFarmBase() {
+    const farm = this.landscape?.group.getObjectByName('world-farmland')
+    if (farm instanceof THREE.Mesh && farm.material instanceof THREE.MeshLambertMaterial) {
+      this.farmBase = farm.material.color.getHex()
+    }
+  }
+
+  /**
+   * Winter snow is a colour and emissive write on grass. The green albedo
+   * would stay green from a multiply alone. Low uses a lighter `snowCover`
+   * and the same write — no extra mesh. Maps with their own ground pass 0.
+   */
+  private paintSnow(snow: number, wet: number) {
+    const grass = this.surfaceMats.get('grass')
+    const farm = this.landscape?.group.getObjectByName('world-farmland')
+    const fields = this.landscape?.group.getObjectByName('world-fields')
+    const farmMat = farm instanceof THREE.Mesh && farm.material instanceof THREE.MeshLambertMaterial ? farm.material : null
+    const fieldMat = fields instanceof THREE.Mesh && fields.material instanceof THREE.MeshLambertMaterial ? fields.material : null
+    const tuft = this.grass?.mesh.material
+    const tuftMat = tuft instanceof THREE.MeshLambertMaterial ? tuft : null
+    if (snow <= 0) {
+      if (!this.snowOn) return
+      this.snowOn = false
+      if (farmMat) {
+        farmMat.color.setHex(this.farmBase)
+        farmMat.emissive.setHex(0x000000)
+        farmMat.emissiveIntensity = 0
+      }
+      if (fieldMat) {
+        fieldMat.color.setHex(0xffffff)
+        fieldMat.emissive.setHex(0x000000)
+        fieldMat.emissiveIntensity = 0
+      }
+      return
+    }
+    this.snowOn = true
+    const wash = 1 - wet * 0.28
+    this.snowColor.setHex(0xe7eef2)
+    if (grass) {
+      grass.color.lerp(this.snowColor, snow)
+      grass.emissive.setHex(0xe4eef4)
+      grass.emissiveIntensity = 0.7 * snow * wash
+    }
+    if (farmMat) {
+      farmMat.color.setHex(this.farmBase)
+      farmMat.color.lerp(this.snowColor, snow)
+      farmMat.emissive.setHex(0xdfe7ee)
+      farmMat.emissiveIntensity = 0.55 * snow * wash
+    }
+    if (fieldMat) {
+      fieldMat.color.setHex(0xf4f7f8)
+      fieldMat.emissive.setHex(0xe7eef3)
+      fieldMat.emissiveIntensity = 0.62 * snow * wash
+    }
+    if (tuftMat && this.quality !== 'low') {
+      tuftMat.color.setHex(0xe7eef2)
+      tuftMat.emissive.setHex(0xf4f7fb)
+      tuftMat.emissiveIntensity = 0.5 * snow
+    }
   }
 
   /** Shadow pass every `shadowEvery` frames, or at once when the shadow box moves. */

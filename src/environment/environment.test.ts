@@ -10,6 +10,7 @@ import {
   environmentCaption,
   grassColor,
   groundOpsPace,
+  snowCover,
   holidayPeakHook,
   isNightHour,
   nightLighting,
@@ -79,11 +80,20 @@ describe('seasons', () => {
     expect((hot.sunColor >> 16) & 255).toBeGreaterThan((cold.sunColor >> 16) & 255)
     expect(hot.sunIntensity).toBeGreaterThan(cold.sunIntensity)
     expect(wet.skyTop).not.toBe(hot.skyTop)
+    const winterNight = paintSky(23, 'clear', 300, 'high')
+    const winterNoon = paintSky(12, 'clear', 300, 'high')
+    const luma = (hex: number) => ((hex >> 16) & 255) + ((hex >> 8) & 255) + (hex & 255)
+    expect(luma(winterNight.skyTop)).toBeLessThan(luma(winterNoon.skyTop) * 0.55)
+    expect(luma(winterNight.skyHorizon)).toBeLessThan(luma(winterNoon.skyHorizon))
     expect(grassColor(100, 'high')).toBe(summer.palette.grass)
     expect(grassColor(300, 'med')).toBe(winter.palette.grass)
+    expect(grassColor(300, 'low')).toBe(winter.palette.grass)
+    expect(snowCover(100, 'high')).toBe(0)
+    expect(snowCover(300, 'high')).toBeGreaterThan(snowCover(300, 'low'))
+    expect(snowCover(300, 'low')).toBeGreaterThan(0.5)
   })
 
-  it('drops fog reshape and grass tint on the low preset', () => {
+  it('drops fog reshape on the low preset and keeps the grass tint', () => {
     const day = 300
     const base = skyState(12, 'clear')
     const low = paintSky(12, 'clear', day, 'low')
@@ -92,8 +102,7 @@ describe('seasons', () => {
     expect(high.fogFar).toBeLessThan(base.fogFar)
     expect(low.sunColor).toBe(high.sunColor)
     expect(low.sunColor).not.toBe(base.sunColor)
-    expect(grassColor(day, 'low')).toBeNull()
-    expect(grassColor(day, 'high')).not.toBeNull()
+    expect(grassColor(day, 'low')).toBe(grassColor(day, 'high'))
     const storm = paintSky(12, 'storm', day, 'low')
     expect(storm.precip).toBe(1)
     expect(storm.lightning).toBe(true)

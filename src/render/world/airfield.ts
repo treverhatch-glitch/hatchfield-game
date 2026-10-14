@@ -3,6 +3,7 @@
  * points), apron flood masts with ground light pools, windsocks, jet bridges.
  */
 import * as THREE from 'three'
+import type { AirfieldLevels } from './dayNight'
 import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
@@ -22,6 +23,10 @@ export class AirfieldLights {
   private fixtures: THREE.InstancedMesh | null = null
   private glow: THREE.Points | null = null
   private glowMat: THREE.PointsMaterial
+  /** Base RGB and 0 = runway family / 1 = taxi family, so a hook can split them. */
+  private glowRGB: Float32Array | null = null
+  private glowGroup: Uint8Array | null = null
+  private glowSplit = false
   private fixMat: THREE.MeshBasicMaterial
   private mastHeads: THREE.InstancedMesh | null = null
   private headMat: THREE.MeshBasicMaterial
@@ -90,7 +95,13 @@ export class AirfieldLights {
       g.setAttribute('color', new THREE.BufferAttribute(col, 3))
       g.computeBoundingSphere()
       this.geos.push(g)
+      this.glowRGB = col.slice()
+      this.glowGroup = new Uint8Array(spots.length)
+      spots.forEach((s, i) => {
+        this.glowGroup![i] = s.kind === 'twCenter' || s.kind === 'twEdge' ? 1 : 0
+      })
       this.glow = new THREE.Points(g, this.glowMat)
+      this.glow.name = 'airfield-glow'
       this.glow.renderOrder = 5
       this.root.add(this.glow)
     }
@@ -144,22 +155,39 @@ export class AirfieldLights {
     this.root.add(g)
   }
 
-  /** `lights` 0..1 = night factor; `wind` 0..1 drives the windsock. */
-  update(dt: number, lights: number, wind: number, camDist: number) {
+  /**
+   * `lights` is the shared night factor. `parts` lets the day/night sample
+   * drive runway edge, taxi edge, and apron floods apart. `cheap` (Low) keeps
+   * one opacity write and skips the per-lamp colour rewrite.
+   */
+  update(dt: number, lights: number, wind: number, camDist: number, parts?: AirfieldLevels, cheap = false) {
     this.time += dt
-    const on = lights > 0.02
+    const runway = parts?.runway ?? lights
+    const taxi = parts?.taxi ?? lights
+    const apron = parts?.apron ?? lights
+    const edge = Math.max(runway, taxi)
+    const split = !cheap && Math.abs(runway - taxi) > 0.02
     if (this.glow) {
-      this.glow.visible = on
-      this.glowMat.opacity = Math.min(1, lights * 1.1)
-      // Keep glows readable when zoomed far out without blowing up close-ups.
+      this.glow.visible = edge > 0.02
       this.glowMat.size = THREE.MathUtils.clamp(camDist * 0.016, 0.9, 2.6)
+      if (split) {
+        this.glowMat.opacity = 1
+        this.writeGlow(runway, taxi)
+        this.glowSplit = true
+      } else {
+        if (this.glowSplit) {
+          this.writeGlow(1, 1)
+          this.glowSplit = false
+        }
+        this.glowMat.opacity = Math.min(1, edge * 1.1)
+      }
     }
-    const k = 0.45 + lights * 1.6
+    const k = 0.45 + edge * 1.6
     this.fixMat.color.setScalar(Math.min(1.6, k))
-    this.headMat.color.setRGB(0.54 + lights * 1.2, 0.54 + lights * 1.0, 0.5 + lights * 0.6)
+    this.headMat.color.setRGB(0.54 + apron * 1.2, 0.54 + apron * 1.0, 0.5 + apron * 0.6)
     if (this.pools) {
-      this.pools.visible = on
-      this.poolMat.opacity = lights * 0.5
+      this.pools.visible = apron > 0.02
+      this.poolMat.opacity = apron * 0.5
     }
     for (const g of this.socks) {
       const s = g.getObjectByName('sock')
@@ -167,6 +195,22 @@ export class AirfieldLights {
       s.rotation.y = 0.6 + Math.sin(this.time * 0.7) * 0.25 * (0.3 + wind)
       s.rotation.z = -0.9 * (1 - Math.min(1, wind + 0.15)) + Math.sin(this.time * 3.1) * 0.05 * wind
     }
+  }
+
+  /** Scale each glow by its family. Restores the baked colour when both factors are 1. */
+  private writeGlow(runway: number, taxi: number) {
+    if (!this.glow || !this.glowRGB || !this.glowGroup) return
+    const attr = this.glow.geometry.getAttribute('color') as THREE.BufferAttribute
+    const arr = attr.array as Float32Array
+    const base = this.glowRGB
+    const group = this.glowGroup
+    for (let i = 0; i < group.length; i++) {
+      const f = group[i] === 1 ? taxi : runway
+      arr[i * 3] = base[i * 3] * f
+      arr[i * 3 + 1] = base[i * 3 + 1] * f
+      arr[i * 3 + 2] = base[i * 3 + 2] * f
+    }
+    attr.needsUpdate = true
   }
 
   clear() {
@@ -180,6 +224,9 @@ export class AirfieldLights {
     this.mats.splice(4).forEach((m) => m.dispose())
     this.fixtures = null
     this.glow = null
+    this.glowRGB = null
+    this.glowGroup = null
+    this.glowSplit = false
     this.mastHeads = null
     this.pools = null
     this.socks = []
