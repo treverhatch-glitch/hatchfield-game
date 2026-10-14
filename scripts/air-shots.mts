@@ -22,8 +22,16 @@ const shots: [string, string][] = [
   ['air-gear-nose', '?view=stand&id=a321&rot=0.5&cam=0.42,0.04,0.2&look=0.3,0.03,0'],
   ['air-gear-retract', '?view=flaps&id=a321&gearT=0.45&rot=0&cam=0.05,-0.02,0.5&look=0,0.08,0'],
   ['air-gear-a321-main', '?view=stand&id=a321&rot=0&cam=0.12,0.03,0.22&look=-0.02,0.02,0'],
-  ['air-gear-c130', '?view=stand&id=c130&rot=0&cam=0.12,0.03,0.24&look=-0.02,0.02,0'],
+  ['air-gear-c130', '?view=stand&id=c130&rot=0&cam=0.16,0.04,0.5&look=0,0.05,0'],
   ['air-gear-atr72', '?view=stand&id=atr72&rot=0&cam=0.12,0.03,0.24&look=-0.02,0.02,0'],
+  ['air-under-b77w', '?view=stand&id=b77w&rot=0&cam=-0.04,0.012,0.13&look=0.0,0.05,0.02'],
+  ['air-under-a321', '?view=stand&id=a321&rot=0&cam=-0.04,0.014,0.14&look=0.0,0.06,0.02'],
+  ['air-under-nose', '?view=stand&id=a321&rot=0&cam=0.28,0.014,0.09&look=0.38,0.06,0'],
+  ['air-under-c130', '?view=stand&id=c130&rot=0&cam=-0.05,0.02,0.2&look=0,0.06,0.03'],
+  ['air-door-open', '?view=stand&id=a321&rot=0&cam=0.36,0.05,0.22&look=0.34,0.05,0'],
+  ['air-cargo-door-open', '?view=stand&id=b748f&rot=0.4&cam=0.3,0.08,0.45&look=0.1,0.05,0'],
+  ['air-wing-engine', '?view=stand&id=a321&rot=0&cam=0.12,0.03,0.3&look=0.02,0.05,0.12'],
+  ['air-wing-engine-b789', '?view=stand&id=b789&rot=0.6&cam=0.25,0.05,0.35&look=0.02,0.05,0.1'],
   ['air-night-stand', '?view=stand&id=b789&night=1'],
 ]
 const only = process.env.ONLY?.split(',')
