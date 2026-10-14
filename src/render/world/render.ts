@@ -38,7 +38,7 @@ import { actorsFrom, bubbleFor } from './guestActors'
 import { GuestMotion } from './guestMotion'
 import { fitShadow, groundFocus } from './lod'
 import { onPackReady, packArtEnabled, packImage, packTexture, setPackArt, shopLogoPaths, signIconPaths } from './packArt'
-import { QUALITY, type QualityLevel, type QualityPreset } from './quality'
+import { baseLevel, QUALITY, type QualityLevel, type QualityPreset } from './quality'
 import { kerbGeometry, paintGeometry, quadsGeometry, rectsGeometry, surfaceCells, type SurfaceKind } from './surfaces'
 import type { RoomPlan } from './rooms'
 import { createCrowd, type Crowd } from '../people/crowd'
@@ -196,7 +196,7 @@ export class WorldRenderer {
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
     this.tex = makeTextures(q.textureSize, q.anisotropy)
-    this.shared = makeTerminalShared(this.tex, q.level)
+    this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
       runway: this.tex.runway,
@@ -394,10 +394,10 @@ export class WorldRenderer {
     const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
-    let s = applyDayNight(paintSky(hour, weather, day, this.quality), this.dayNightControl)
+    let s = applyDayNight(paintSky(hour, weather, day, baseLevel(this.quality)), this.dayNightControl)
     const night = nightLighting(s.hour, s.lights, this.q.lightPools && !this.lite)
     const season = seasonAtDay(day)
-    const snow = view.mapDraw ? 0 : snowCover(day, this.quality)
+    const snow = view.mapDraw ? 0 : snowCover(day, baseLevel(this.quality))
     this.dayNightSample = {
       hour: s.hour,
       daylight: this.dayNightControl?.daylight ?? daylightFactor(s.hour),
@@ -466,7 +466,7 @@ export class WorldRenderer {
     this.scheduleShadow(fit)
 
     const wetK = 1 - s.wet * 0.28
-    const grassHex = grassColor(day, this.quality)
+    const grassHex = grassColor(day, baseLevel(this.quality))
     for (const [k, m] of this.surfaceMats) {
       if (k === 'grass') {
         // Season tint shifts the hue only: normalised so every preset stays as bright as the albedo,

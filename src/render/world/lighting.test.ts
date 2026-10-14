@@ -98,7 +98,8 @@ describe('quality presets', () => {
   it('parses and orders presets', () => {
     expect(parseQuality('high')).toBe('high')
     expect(parseQuality('medium')).toBe('med')
-    expect(parseQuality('ultra', 'low')).toBe('low')
+    expect(parseQuality('ultra', 'low')).toBe('ultra')
+    expect(parseQuality('nope', 'low')).toBe('low')
     expect(QUALITY.low.shadowMapSize).toBe(0)
     expect(QUALITY.med.shadowMapSize).toBeLessThan(QUALITY.high.shadowMapSize)
     expect(QUALITY.low.grassTufts).toBeLessThan(QUALITY.med.grassTufts)

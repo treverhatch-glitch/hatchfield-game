@@ -12,6 +12,7 @@ import {
   type LiverySlotName,
   type TextureQuality,
 } from './liveryFiles'
+import { LIVERY_KEY_SEP, disposeProcLiveries, procLiveryTextures } from './procLivery'
 
 export interface AirlineLiveryTex {
   fuselage: THREE.Texture
@@ -174,6 +175,16 @@ export function airlineLiveryTex(airline: string | undefined): AirlineLiveryTex 
   if (!airline || typeof document === 'undefined') return emptyTex()
   const hit = cache.get(airline)
   if (hit) return hit
+  if (airline.includes(LIVERY_KEY_SEP)) {
+    // Roster airline on a specific model: canvas plates, no manifest or fetch.
+    const drawn = procLiveryTextures(airline, readTextureQuality())
+    if (!drawn) return emptyTex()
+    cache.set(airline, drawn)
+    ready.add(`${airline}:fuselage`)
+    ready.add(`${airline}:tail`)
+    armLiveryShaders()
+    return drawn
+  }
   const created = emptyTex()
   cache.set(airline, created)
   void liveryIndex().then((index) => {
@@ -222,6 +233,7 @@ export function disposeLiveryTextures() {
   }
   for (const tex of engineTex.values()) tex.dispose()
   engineTex.clear()
+  disposeProcLiveries()
   cache.clear()
   manifest = null
   blank?.dispose()
