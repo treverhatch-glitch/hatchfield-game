@@ -9,8 +9,11 @@ import { cellCenter, HALL_D, HALL_W, itemDef, type PlacedItem } from '../game/te
 import { itemSize } from '../game/terminalKit'
 import { binFull } from '../game/litter'
 import { TRASH_CAN } from '../game/litterData'
+import { buildingSkinPhotos } from './world/buildingSkin'
+import { artTexture } from './world/textureRegistry'
 
-type Prim = 'box' | 'cyl' | 'cone' | 'ico'
+/** `belt` is a box whose top carries the conveyor photo, tiled along its length. */
+type Prim = 'box' | 'cyl' | 'cone' | 'ico' | 'belt'
 
 interface Part {
   prim: Prim
@@ -21,12 +24,23 @@ interface Part {
   color: string
 }
 
+/** Conveyor belts: dark rubber, with the conveyor photo on Medium and up. */
+const BELT = '#4a4e52'
+
 const p = (prim: Prim, size: Part['size'], pos: Part['pos'], color: string): Part => ({
   prim,
   size,
   pos,
   color,
 })
+
+/** Stainless divest table at the lane entry and a two-pod body scanner at the exit side. */
+const divestAndScanner = (halfW: number): Part[] => [
+  p('box', [1.1, 0.06, 0.6], [-halfW - 0.55, 0.82, -0.15], '#b8c0c8'),
+  p('box', [1.0, 0.78, 0.5], [-halfW - 0.55, 0.39, -0.15], '#6a7580'),
+  p('cyl', [0.7, 2.0, 0.7], [halfW + 0.2, 1.0, 0.45], '#dfe5ea'),
+  p('cyl', [0.72, 0.08, 0.72], [halfW + 0.2, 2.02, 0.45], '#3a8ec2'),
+]
 
 const counter = (color: string, awning: string): Part[] => [
   p('box', [2.6, 0.95, 1], [0, 0.48, 0.4], color),
@@ -97,7 +111,7 @@ export const KIT_MESH: Record<string, Part[]> = {
   ],
   checkin_belt: [
     p('box', [2.8, 0.92, 1.05], [0, 0.46, 0.15], '#a07850'),
-    p('box', [2.6, 0.08, 0.42], [0, 0.96, -0.42], '#2a2e32'),
+    p('belt', [2.6, 0.08, 0.42], [0, 0.96, -0.42], BELT),
     p('box', [0.55, 0.35, 0.4], [0.9, 1.15, 0.2], '#3a8ec2'),
     p('box', [0.08, 1.1, 0.9], [-1.45, 0.55, 0.2], '#d8dde4'),
     p('box', [0.08, 1.1, 0.9], [1.45, 0.55, 0.2], '#d8dde4'),
@@ -110,6 +124,8 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [0.1, 1.45, 0.1], [-0.7, 0.85, 0.55], '#d8dde4'),
     p('box', [0.1, 1.45, 0.1], [0.7, 0.85, 0.55], '#d8dde4'),
     p('box', [1.3, 0.22, 0.06], [0, 1.72, 0.55], '#f2c14a'),
+    // Divest table ahead of the X-ray, body scanner pod beside the arch.
+    ...divestAndScanner(1.6),
   ],
   security_medium: [
     p('box', [4.4, 0.08, 1.4], [0, 0.06, 0.15], '#1c1f24'),
@@ -118,6 +134,7 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [1.4, 0.1, 0.1], [0, 1.5, 0.5], '#d8dde4'),
     p('box', [0.1, 1.4, 0.1], [-0.65, 0.8, 0.5], '#d8dde4'),
     p('box', [0.1, 1.4, 0.1], [0.65, 0.8, 0.5], '#d8dde4'),
+    ...divestAndScanner(2.2),
   ],
   security_large: [
     p('box', [5.2, 0.08, 1.5], [0, 0.06, 0.1], '#1c1f24'),
@@ -127,6 +144,7 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [2.2, 0.1, 0.1], [0, 1.55, 0.55], '#d8dde4'),
     p('box', [0.1, 1.45, 0.1], [-1.05, 0.85, 0.55], '#d8dde4'),
     p('box', [0.1, 1.45, 0.1], [1.05, 0.85, 0.55], '#d8dde4'),
+    ...divestAndScanner(2.6),
   ],
   bag_drop: [
     p('box', [2.4, 0.9, 0.9], [0, 0.45, 0.2], '#a07850'),
@@ -181,7 +199,7 @@ export const KIT_MESH: Record<string, Part[]> = {
   ],
   checkin_express: [
     p('box', [3.6, 0.95, 1.05], [0, 0.48, 0.15], '#a07850'),
-    p('box', [3.4, 0.08, 0.42], [0, 0.98, -0.42], '#2a2e32'),
+    p('belt', [3.4, 0.08, 0.42], [0, 0.98, -0.42], BELT),
     p('box', [0.5, 0.32, 0.06], [-0.7, 1.18, 0.2], '#3a8ec2'),
     p('box', [0.5, 0.32, 0.06], [0.7, 1.18, 0.2], '#3a8ec2'),
   ],
@@ -202,7 +220,7 @@ export const KIT_MESH: Record<string, Part[]> = {
     p('box', [0.7, 0.9, 0.45], [2.4, 0.5, 0], '#a07850'),
   ],
   bag_system: [
-    p('box', [6.2, 0.28, 0.9], [0, 0.2, 0], '#2a2e32'),
+    p('belt', [6.2, 0.28, 0.9], [0, 0.2, 0], BELT),
     p('box', [6.2, 0.08, 0.2], [0, 0.36, 0.28], '#c9a227'),
     p('box', [1.2, 1.1, 0.8], [-2.4, 0.6, -0.7], '#8f9aa6'),
   ],
@@ -229,19 +247,30 @@ export function kitMeshKey(item: PlacedItem): string {
   return item.def === TRASH_CAN && binFull(item) ? 'trash_can_full' : item.def
 }
 
+/** Unit box with the UVs repeated along X so a 1 m-scaled belt shows several conveyor slats per metre of length. */
+function beltGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(1, 1, 1)
+  const uv = geo.getAttribute('uv') as THREE.BufferAttribute
+  for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 4)
+  return geo
+}
+
 const GEOS: Record<Prim, THREE.BufferGeometry> = {
   box: new THREE.BoxGeometry(1, 1, 1),
+  belt: beltGeometry(),
   cyl: new THREE.CylinderGeometry(0.5, 0.5, 1, 10),
   cone: new THREE.ConeGeometry(0.5, 1, 8),
   ico: new THREE.IcosahedronGeometry(0.5, 0),
 }
 
 const MATS = new Map<string, THREE.MeshLambertMaterial>()
-function mat(color: string): THREE.MeshLambertMaterial {
-  let m = MATS.get(color)
+function mat(color: string, prim: Prim = 'box'): THREE.MeshLambertMaterial {
+  const photo = prim === 'belt' && buildingSkinPhotos()
+  const key = photo ? `belt|${color}` : color
+  let m = MATS.get(key)
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, flatShading: true })
-    MATS.set(color, m)
+    m = new THREE.MeshLambertMaterial({ color: photo ? '#9a9ea2' : color, flatShading: true, map: photo ? artTexture('conveyor_belt') : null })
+    MATS.set(key, m)
   }
   return m
 }
@@ -331,7 +360,7 @@ export function buildKitInstances(placed: readonly KitPlacement[]): THREE.Group 
   }
   const group = new THREE.Group()
   for (const b of batches.values()) {
-    const mesh = new THREE.InstancedMesh(GEOS[b.prim], mat(b.color), b.mats.length)
+    const mesh = new THREE.InstancedMesh(GEOS[b.prim], mat(b.color, b.prim), b.mats.length)
     b.mats.forEach((m, i) => mesh.setMatrixAt(i, m))
     mesh.instanceMatrix.needsUpdate = true
     group.add(mesh)

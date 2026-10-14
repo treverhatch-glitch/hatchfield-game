@@ -292,3 +292,34 @@ describe('shared base body', () => {
     expect(partsFor(look, 2).map((p) => p.id)).toEqual(['block'])
   })
 })
+
+describe('work poses and blending', () => {
+  it('kneels low, lifts bags through a cycle and walks while signalling', () => {
+    expect(samplePose('kneel', 0.2, 0).drop).toBeGreaterThan(0.3)
+    const low = samplePose('lift', 0, 0).armL
+    const high = samplePose('lift', 0.5, 0).armL
+    expect(high - low).toBeGreaterThan(1.2)
+    const sig = samplePose('signal', 0.25, 1.4)
+    expect(sig.armRRaise).toBeGreaterThan(1.2)
+    expect(Math.abs(sig.legL)).toBeGreaterThan(0.2)
+  })
+
+  it('eases into a new pose instead of snapping', () => {
+    const r = new PeopleRenderer(new THREE.Group(), { capacity: 8 })
+    const agent: PeopleAgent = { id: 'k', look: crewLook('ground', 'k'), x: 0, y: 0, z: 0, yaw: 0, pose: 'idle', speed: 0 }
+    const torsoY = () => {
+      const mat = new THREE.Matrix4()
+      r.mesh('torso')!.getMatrixAt(0, mat)
+      return new THREE.Vector3().setFromMatrixPosition(mat).y
+    }
+    r.update([agent], null, 0.016)
+    const standing = torsoY()
+    r.update([{ ...agent, pose: 'kneel' }], null, 0.016)
+    const first = torsoY()
+    for (let i = 0; i < 40; i++) r.update([{ ...agent, pose: 'kneel' }], null, 0.016)
+    const settled = torsoY()
+    expect(settled).toBeLessThan(standing - 0.2)
+    // The first frame after the change is still close to standing.
+    expect(standing - first).toBeLessThan((standing - settled) * 0.2)
+  })
+})

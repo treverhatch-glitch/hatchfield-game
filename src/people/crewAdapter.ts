@@ -29,6 +29,9 @@ export function poseFor(kind: CrewKind | null, pose: CrewPose, look: PersonLook)
   return pose
 }
 
+/** Poses whose legs step: they need a ground speed for the stride. */
+const STRIDING: ReadonlySet<CrewPose> = new Set(['walk', 'carry', 'push', 'signal'])
+
 const looks = new Map<string, PersonLook>()
 const LOOK_CACHE_LIMIT = 2048
 
@@ -58,6 +61,6 @@ export function crewAgent(
     // Crew headings face +column; people meshes face +z.
     yaw: Math.PI / 2 - person.heading,
     pose: poseFor(look.crew, person.pose, look),
-    speed: person.pose === 'walk' ? CREW_WALK_SPEED : 0,
+    speed: STRIDING.has(person.pose) ? CREW_WALK_SPEED : 0,
   }
 }

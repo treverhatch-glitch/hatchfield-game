@@ -9,6 +9,7 @@ import { crewAgent } from '../../people/crewAdapter.ts'
 import { PeopleRenderer, type PeopleAgent } from '../../people/renderer.ts'
 import { WORLD_PER_METER } from '../aircraft/specs.ts'
 import { assignCrewLod, type CrewTier } from './lod.ts'
+import { LINE_LOOK } from '../../ramp/crewConfig.ts'
 
 export interface CrewDrawStats {
   full: number
@@ -31,6 +32,9 @@ function vest(role: CrewRole): number {
 
 const PROP_COLOR: Record<CrewProp['kind'], number> = {
   hose: 0x1f2937,
+  cable: 0x111111,
+  chock: 0xf5c400,
+  cone: 0xf97316,
   bar: 0xf5c400,
   belt: 0x4b5563,
   bag: 0x6a4328,
@@ -39,8 +43,20 @@ const PROP_COLOR: Record<CrewProp['kind'], number> = {
   stairs: 0xc5ced6,
 }
 
+const BAG_HEX = [0x2f4a6a, 0x6a4328, 0x7f1d1d, 0x1f2937, 0x065f46, 0x9a3412] as const
+
+/** Suitcases keep one colour from cart to hold; bin bags are black. */
+function bagColor(id: string): number {
+  if (id.endsWith(':binbag')) return 0x18181b
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return BAG_HEX[Math.abs(h) % BAG_HEX.length]
+}
+
 const _yaw = new THREE.Quaternion()
+const _tilt = new THREE.Quaternion()
 const _up = new THREE.Vector3(0, 1, 0)
+const _fwdAxis = new THREE.Vector3(0, 0, 1)
 const _pos = new THREE.Vector3()
 const _scale = new THREE.Vector3(WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
 const _person = new THREE.Matrix4()
@@ -165,15 +181,20 @@ export class CrewFigures {
         continue
       }
       if (n >= this.cap) continue
-      const long = prop.kind === 'bag' || prop.kind === 'cart' || prop.kind === 'lift' ? prop.length : prop.kind === 'stairs' ? 1.1 : Math.max(0.15, prop.length)
-      const tall = prop.kind === 'bag' ? 0.4 : prop.kind === 'cart' ? 0.7 : prop.kind === 'lift' ? 0.18 : prop.kind === 'stairs' ? prop.length : prop.kind === 'hose' || prop.kind === 'belt' ? 0.18 : 0.08
-      const wide = prop.kind === 'bag' ? 0.32 : prop.kind === 'belt' ? 0.55 : prop.kind === 'cart' ? 0.55 : prop.kind === 'lift' ? 1.3 : prop.kind === 'stairs' ? 2.4 : prop.kind === 'hose' ? 0.18 : 0.08
-      _pos.set(at.x, at.y, at.z)
+      const line = prop.kind === 'hose' ? LINE_LOOK.hoseWidth : prop.kind === 'cable' ? LINE_LOOK.cableWidth : 0
+      // Hose and cable segments overlap a little so the sagging run reads as one line.
+      const small = prop.kind === 'cone' ? 0.3 : prop.kind === 'chock' ? 0.22 : 0
+      const long = small ? (prop.kind === 'chock' ? prop.length : small) : prop.kind === 'bag' || prop.kind === 'cart' || prop.kind === 'lift' ? prop.length : prop.kind === 'stairs' ? 1.1 : line ? prop.length + line : Math.max(0.15, prop.length)
+      const tall = prop.kind === 'cone' ? 0.7 : prop.kind === 'chock' ? 0.2 : prop.kind === 'bag' ? 0.4 : prop.kind === 'cart' ? 0.7 : prop.kind === 'lift' ? 0.18 : prop.kind === 'stairs' ? prop.length : line ? line : prop.kind === 'belt' ? 0.18 : 0.08
+      const wide = small ? small : prop.kind === 'bag' ? 0.32 : prop.kind === 'belt' ? 0.55 : prop.kind === 'cart' ? 0.55 : prop.kind === 'lift' ? 1.3 : prop.kind === 'stairs' ? 2.4 : line ? line : 0.08
+      // Prop boxes are centred; a cone stands on the apron.
+      _pos.set(at.x, at.y + (prop.kind === 'cone' ? tall / 2 : 0) * WORLD_PER_METER, at.z)
       _yaw.setFromAxisAngle(_up, -prop.heading)
+      if (prop.pitch) _yaw.multiply(_tilt.setFromAxisAngle(_fwdAxis, prop.pitch))
       _scale.set(WORLD_PER_METER * long, WORLD_PER_METER * tall, WORLD_PER_METER * wide)
       _person.compose(_pos, _yaw, _scale)
       this.props.setMatrixAt(n, _person)
-      const hex = prop.kind === 'bag' ? (prop.fill > 0.6 ? 0x2f4a6a : 0x6a4328) : PROP_COLOR[prop.kind]
+      const hex = prop.kind === 'bag' ? bagColor(prop.id) : PROP_COLOR[prop.kind]
       this.props.setColorAt(n, _color.setHex(hex))
       n++
     }

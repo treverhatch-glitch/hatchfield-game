@@ -11,6 +11,7 @@ import {
   paintTerrazzo,
   type Raster,
 } from './raster'
+import { artTexture, GROUND_PHOTO } from './textureRegistry'
 
 export function rasterTexture(r: Raster, opts: { srgb?: boolean; anisotropy?: number; repeat?: boolean } = {}) {
   const tex = new THREE.DataTexture(r.data, r.w, r.h, THREE.RGBAFormat)
@@ -28,13 +29,13 @@ export function rasterTexture(r: Raster, opts: { srgb?: boolean; anisotropy?: nu
 }
 
 export interface WorldTextures {
-  grass: THREE.DataTexture
-  asphalt: THREE.DataTexture
-  runway: THREE.DataTexture
-  road: THREE.DataTexture
-  concrete: THREE.DataTexture
-  terrazzo: THREE.DataTexture
-  roof: THREE.DataTexture
+  grass: THREE.Texture
+  asphalt: THREE.Texture
+  runway: THREE.Texture
+  road: THREE.Texture
+  concrete: THREE.Texture
+  terrazzo: THREE.Texture
+  roof: THREE.Texture
   glow: THREE.DataTexture
   /** Wider falloff for the second bloom halo (Medium / High). */
   glowHalo: THREE.DataTexture
@@ -43,7 +44,11 @@ export interface WorldTextures {
   dispose(): void
 }
 
-export function makeTextures(size: number, anisotropy: number): WorldTextures {
+/**
+ * `photos` swaps the Gemini photo textures (shared, from the registry) in for the procedural
+ * ground, roof and terrazzo rasters. Off on Low and in Node, where the rasters stay.
+ */
+export function makeTextures(size: number, anisotropy: number, photos = false): WorldTextures {
   const a = { anisotropy }
   const t: Omit<WorldTextures, 'dispose'> = {
     grass: rasterTexture(paintGrass(size), a),
@@ -58,8 +63,16 @@ export function makeTextures(size: number, anisotropy: number): WorldTextures {
     pool: rasterTexture(paintGlow(64, 1.4), { srgb: false, repeat: false }),
     board: rasterTexture(paintBoard(64, 32), { repeat: false }),
   }
+  const out: Omit<WorldTextures, 'dispose'> = { ...t }
+  if (photos) {
+    for (const k of Object.keys(GROUND_PHOTO) as (keyof typeof GROUND_PHOTO)[]) {
+      const photo = artTexture(GROUND_PHOTO[k], anisotropy)
+      if (!photo) continue
+      out[k] = photo
+    }
+  }
   return {
-    ...t,
+    ...out,
     dispose() {
       for (const tex of Object.values(t)) tex.dispose()
     },

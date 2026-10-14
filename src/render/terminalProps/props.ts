@@ -63,6 +63,74 @@ function plant(scale = 1, pot = 'darkSteel'): Part[] {
   ]
 }
 
+// ---------- round 4: staff figures ----------
+type Look = { top: string; legs: string; skin: string; hair: string; vest?: boolean; cap?: string }
+const AGENT: Look[] = [
+  { top: 'lacquerBlue', legs: 'pantsNavy', skin: 'skin', hair: 'hair' },
+  { top: 'shirtWhite', legs: 'pantsNavy', skin: 'skinDark', hair: 'hair', cap: undefined },
+  { top: 'red', legs: 'pantsBlack', skin: 'skin', hair: 'hairBrown' },
+  { top: 'lacquerBlue', legs: 'pantsNavy', skin: 'skinDark', hair: 'hairBrown' },
+]
+const OFFICER: Look = { top: 'shirtNavy', legs: 'pantsBlack', skin: 'skin', hair: 'hair', vest: true, cap: 'navy' }
+/**
+ * Low-poly standing person, facing +Z, feet at y=0 (1.74 m). `arms` raised
+ * forward puts hands on a counter / screen in front. Seated drops the hips to stool height.
+ */
+function person(look: Look, opts: { arms?: 'side' | 'forward'; seated?: boolean } = {}): Part[] {
+  const sit = !!opts.seated
+  const hip = sit ? 0.66 : 0.92
+  const out: Part[] = []
+  // legs (seated: thighs forward + shins down)
+  for (const x of [-0.1, 0.1]) {
+    if (sit) {
+      out.push(box([0.13, 0.13, 0.42], [x, hip, 0.16], look.legs))
+      out.push(box([0.12, hip - 0.04, 0.13], [x, (hip - 0.04) / 2, 0.36], look.legs))
+      out.push(box([0.12, 0.07, 0.24], [x, 0.035, 0.42], 'black'))
+    } else {
+      out.push(cyl([0.14, hip - 0.06, 0.14], [x, (hip - 0.06) / 2 + 0.06, 0], look.legs))
+      out.push(box([0.12, 0.07, 0.26], [x, 0.035, 0.04], 'black'))
+    }
+  }
+  // torso, shoulders, neck, head, hair
+  out.push(box([0.4, 0.12, 0.24], [0, hip + 0.04, 0], look.legs))
+  out.push(cyl([0.38, 0.52, 0.24], [0, hip + 0.34, 0], look.top))
+  out.push(part('sphere', [0.46, 0.14, 0.26], [0, hip + 0.6, 0], look.top))
+  if (look.vest) {
+    out.push(box([0.4, 0.4, 0.27], [0, hip + 0.34, 0], 'vestYellow'))
+    out.push(box([0.2, 0.08, 0.01], [0, hip + 0.44, 0.14], 'signDark'))
+  } else out.push(box([0.06, 0.18, 0.01], [0, hip + 0.42, 0.125], look.top === 'shirtWhite' ? 'lacquerBlue' : 'shirtWhite'))
+  out.push(cyl([0.09, 0.08, 0.09], [0, hip + 0.7, 0], look.skin))
+  out.push(part('sphere', [0.2, 0.24, 0.22], [0, hip + 0.84, 0.01], look.skin))
+  out.push(part('sphere', [0.215, 0.14, 0.23], [0, hip + 0.92, -0.01], look.hair))
+  if (look.cap) {
+    out.push(cyl([0.23, 0.07, 0.23], [0, hip + 0.97, 0], look.cap))
+    out.push(box([0.18, 0.015, 0.1], [0, hip + 0.94, 0.13], 'black'))
+  }
+  // arms
+  for (const sx of [-1, 1]) {
+    if (opts.arms === 'forward') {
+      out.push(cyl([0.09, 0.3, 0.09], [sx * 0.24, hip + 0.44, 0.02], look.top, [0.2, 0, 0]))
+      out.push(cyl([0.08, 0.3, 0.08], [sx * 0.22, hip + 0.28, 0.17], look.top, [H * 0.95, 0, 0]))
+      out.push(part('sphere', [0.08, 0.08, 0.1], [sx * 0.2, hip + 0.28, 0.34], look.skin))
+    } else {
+      out.push(cyl([0.09, 0.56, 0.09], [sx * 0.25, hip + 0.3, 0], look.top, [0, 0, sx * 0.06]))
+      out.push(part('sphere', [0.08, 0.1, 0.08], [sx * 0.27, hip + 0.0, 0], look.skin))
+    }
+  }
+  return out
+}
+/** Retractable-belt stanchion with the belt cassette head and a ribbed base. */
+function beltPost(): Part[] {
+  return [
+    cyl([0.36, 0.03, 0.36], [0, 0.015, 0], 'chrome'),
+    cyl([0.3, 0.02, 0.3], [0, 0.035, 0], 'rubber'),
+    cyl([0.06, 0.88, 0.06], [0, 0.48, 0], 'chrome'),
+    cyl([0.1, 0.1, 0.1], [0, 0.96, 0], 'chrome'),
+    cyl([0.11, 0.02, 0.11], [0, 0.92, 0], 'hatchBlue'),
+    part('sphere', [0.08, 0.04, 0.08], [0, 1.02, 0], 'chrome'),
+  ]
+}
+
 // ---------- check-in ----------
 function checkinDesk(i: number): Part[] {
   const logo = `logo${i % 4}`
@@ -77,21 +145,39 @@ function checkinDesk(i: number): Part[] {
     ...place(monitor(0.48, 0.3), -0.35, -0.38, Math.PI, 1.3),
     box([0.3, 0.12, 0.25], [0.25, 1.15, -0.4], 'black'),
     box([0.42, 0.02, 0.14], [-0.35, 1.1, -0.3], 'black'),
-    // weigh scale + bag belt feeding to the back belt
-    box([0.9, 0.32, 0.8], [1.25, 0.16, -0.15], 'steel'),
-    box([0.86, 0.04, 0.76], [1.25, 0.34, -0.15], 'belt'),
-    box([0.24, 0.12, 0.04], [1.25, 0.6, 0.25], 'screenGreen'),
-    cyl([0.04, 0.3, 0.04], [1.25, 0.45, 0.25], 'chrome'),
-    box([0.9, 0.36, 0.02], [1.25, 0.18, 0.26], 'plate'),
-    // agent stool
-    cyl([0.4, 0.06, 0.4], [0, 0.65, -0.95], 'black'),
-    cyl([0.06, 0.6, 0.06], [0, 0.32, -0.95], 'chrome'),
-    cyl([0.5, 0.04, 0.5], [0, 0.02, -0.95], 'darkSteel'),
-    // overhead desk number + airline screen on logo wall
-    box([1.2, 0.68, 0.04], [0.3, 2.4, -1.66], 'black'),
-    box([1.12, 0.6, 0.01], [0.3, 2.4, -1.635], logo),
-    box([0.34, 0.2, 0.05], [-0.55, 2.4, -1.64], 'signDark'),
-    box([0.28, 0.12, 0.01], [-0.55, 2.4, -1.61], 'amber'),
+    // bag-drop weigh scale: stainless frame, powered belt with rollers, side
+    // guards, weight readout on a post, injection belt to the collector
+    box([0.9, 0.3, 0.86], [1.25, 0.15, -0.15], 'stainless'),
+    box([0.84, 0.035, 0.8], [1.25, 0.32, -0.15], 'belt'),
+    cyl([0.07, 0.84, 0.07], [1.25, 0.31, 0.25], 'chrome', [0, 0, H]),
+    cyl([0.07, 0.84, 0.07], [1.25, 0.31, -0.55], 'chrome', [0, 0, H]),
+    box([0.03, 0.22, 0.86], [0.81, 0.42, -0.15], 'brushed'),
+    box([0.03, 0.22, 0.86], [1.69, 0.42, -0.15], 'brushed'),
+    box([0.92, 0.3, 0.02], [1.25, 0.15, 0.285], 'plate'),
+    box([0.9, 0.025, 0.02], [1.25, 0.31, 0.29], 'signYellow'),
+    cyl([0.05, 0.62, 0.05], [1.66, 0.62, 0.22], 'chrome'),
+    box([0.3, 0.16, 0.07], [1.66, 1.0, 0.22], 'black', [-0.25, 0, 0]),
+    box([0.25, 0.1, 0.01], [1.66, 1.0, 0.26], 'screenGreen', [-0.25, 0, 0]),
+    box([0.9, 0.035, 0.6], [1.25, 0.5, -0.85], 'belt', [0.32, 0, 0]),
+    box([0.9, 0.12, 0.03], [1.25, 0.55, -0.56], 'rubber'),
+    // passenger-facing kit: customer display, card/boarding-pass reader, tag printer, desk number
+    box([0.3, 0.2, 0.03], [-0.35, 1.22, 0.06], 'black', [-0.35, 0, 0]),
+    box([0.26, 0.16, 0.005], [-0.35, 1.22, 0.08], 'kiosk', [-0.35, 0, 0]),
+    box([0.1, 0.05, 0.14], [0.1, 1.115, 0.05], 'black'),
+    box([0.06, 0.01, 0.06], [0.1, 1.145, 0.07], 'screenGreen'),
+    box([0.22, 0.16, 0.22], [0.52, 1.17, -0.35], 'greyPanel'),
+    box([0.04, 0.04, 0.12], [-0.79, 1.24, 0.1], 'chrome'),
+    box([0.22, 0.22, 0.02], [-0.79, 1.4, 0.12], `desk${(i % 4) + 1}`),
+    // anti-fatigue mat where the agent stands
+    box([1.0, 0.012, 0.6], [-0.2, 0.006, -0.8], 'rubber'),
+    // back-wall airline screen (slim bezel) with OPEN strip + desk number box
+    box([1.3, 0.76, 0.05], [0.3, 2.35, -1.66], 'black'),
+    box([1.22, 0.62, 0.01], [0.3, 2.39, -1.63], logo),
+    box([1.22, 0.1, 0.01], [0.3, 2.02, -1.63], 'deskOpen'),
+    box([0.34, 0.34, 0.06], [-0.6, 2.35, -1.64], 'signDark'),
+    box([0.28, 0.28, 0.01], [-0.6, 2.35, -1.605], `desk${(i % 4) + 1}`),
+    // agent standing at the counter, hands on the keyboard
+    ...place(person(AGENT[i % AGENT.length], { arms: 'forward' }), -0.2, -0.75),
   ]
 }
 function checkinRow(n = 4): Part[] {
@@ -110,18 +196,29 @@ function checkinRow(n = 4): Part[] {
   // logo wall: framed back panel, airline lightbox, overhead FIDS-style strip
   out.push(box([len + 0.4, 3.2, 0.25], [0.4, 1.6, -1.8], 'cream'))
   out.push(box([len + 0.5, 0.25, 0.35], [0.4, 3.3, -1.75], 'hatchBlue'))
-  out.push(box([len * 0.55, 0.5, 0.03], [0.4, 3.0, -1.61], 'sgnCheckin'))
+  out.push(box([len * 0.45, 0.27, 0.02], [0.4, 3.55, -0.84], 'sgnCheckin'))
   out.push(box([len + 0.4, 0.06, 0.06], [0.4, 3.0 - 0.3, -1.6], 'lamp'))
   // strip curtain opening where the belt exits
   out.push(box([0.9, 0.6, 0.3], [len / 2 + 0.55, 0.75, -1.15], 'darkSteel'))
   out.push(box([0.8, 0.5, 0.02], [len / 2 + 0.5, 0.7, -1.0], 'rubber'))
-  // serpentine queue in front
-  out.push(...queue(len - 1.2, 3, 1.1, 2.6))
+  // soffit over the desks with a hanging FIDS monitor per desk
+  out.push(box([len + 0.4, 0.3, 0.9], [0.4, 3.55, -1.3], 'lacquerWhite'))
+  out.push(box([len + 0.4, 0.04, 0.04], [0.4, 3.39, -0.86], 'ledBlue'))
+  for (let i = 0; i < n; i++) {
+    const x = (i - (n - 1) / 2) * pitch
+    out.push(cyl([0.03, 0.22, 0.03], [x - 0.2, 3.3, -0.95], 'chrome'), cyl([0.03, 0.22, 0.03], [x + 0.2, 3.3, -0.95], 'chrome'))
+    out.push(box([0.72, 0.42, 0.05], [x, 3.0, -0.95], 'black'), box([0.66, 0.36, 0.01], [x, 3.0, -0.92], 'fids'))
+  }
+  // serpentine queue in front with retractable-belt posts
+  out.push(...queue(len - 1.2, 3, 1.1, 2.6, beltPost))
+  // queue entry sign
+  out.push(cyl([0.06, 1.6, 0.06], [-(len - 1.2) / 2 - 0.6, 0.8, 2.6 + 3 * 1.1], 'chrome'))
+  out.push(box([0.5, 0.36, 0.03], [-(len - 1.2) / 2 - 0.6, 1.6, 2.6 + 3 * 1.1], 'sgnCheckin'))
   return out
 }
 
 /** Stanchion serpentine; w = lane length, lanes deep, posts at pitch. */
-function queue(w: number, lanes: number, gap: number, z0: number): Part[] {
+function queue(w: number, lanes: number, gap: number, z0: number, post: () => Part[] = stanchionPost): Part[] {
   const out: Part[] = []
   const nx = Math.max(2, Math.round(w / 1.8) + 1)
   const pitch = w / (nx - 1)
@@ -129,7 +226,7 @@ function queue(w: number, lanes: number, gap: number, z0: number): Part[] {
     const z = z0 + l * gap
     for (let i = 0; i < nx; i++) {
       const x = -w / 2 + i * pitch
-      out.push(...place(stanchionPost(), x, z))
+      out.push(...place(post(), x, z))
       if (i > 0) {
         // leave alternate end gaps to make a snake
         const open = (l % 2 === 0 && i === nx - 1) || (l % 2 === 1 && i === 1)
@@ -151,8 +248,19 @@ function xray(): Part[] {
     // tunnel housing
     box([2.2, 1.45, 1.1], [0, 0.73, 0], 'white'),
     box([2.25, 0.08, 1.15], [0, 1.48, 0], 'hatchBlue'),
-    box([0.85, 0.6, 0.02], [-1.11, 0.98, 0], 'rubber', [0, H, 0]),
-    box([0.85, 0.6, 0.02], [1.11, 0.98, 0], 'rubber', [0, H, 0]),
+    // lead curtain strips at both mouths
+    ...[-1.11, 1.11].flatMap((cx) => Array.from({ length: 6 }, (_, k) => box([0.02, 0.6, 0.13], [cx, 1.0, -0.33 + k * 0.132], 'rubber'))),
+    box([0.02, 0.06, 0.84], [-1.11, 1.32, 0], 'darkSteel'),
+    box([0.02, 0.06, 0.84], [1.11, 1.32, 0], 'darkSteel'),
+    // control panel with e-stop, warning labels, vent, casters, plinth shadow gap
+    box([0.4, 0.16, 0.06], [-0.75, 1.32, 0.56], 'darkSteel'),
+    cyl([0.07, 0.04, 0.07], [-0.65, 1.32, 0.6], 'red', [H, 0, 0]),
+    box([0.1, 0.04, 0.01], [-0.82, 1.32, 0.595], 'screenGreen'),
+    box([0.16, 0.16, 0.01], [0.75, 0.75, 0.556], 'signYellow'),
+    box([0.12, 0.08, 0.01], [0.95, 0.75, 0.556], 'red'),
+    cyl([0.3, 0.02, 0.3], [-0.5, 0.35, 0.556], 'darkSteel', [H, 0, 0]),
+    box([2.1, 0.06, 1.0], [0, 0.03, 0], 'darkSteel'),
+    ...[-0.9, 0.9].flatMap((x) => [-0.42, 0.42].map((z) => cyl([0.08, 0.06, 0.08], [x, 0.03, z], 'rubber', [H, 0, 0]))),
     box([2.15, 0.04, 0.7], [0, 0.72, 0], 'belt'),
     box([0.5, 0.06, 0.06], [0.6, 1.55, 0.35], 'screenRed'),
     box([0.5, 0.06, 0.06], [-0.6, 1.55, 0.35], 'screenGreen'),
@@ -168,12 +276,10 @@ function xray(): Part[] {
     ...place(monitor(0.5, 0.32), 0, -1.2, 0, 1.05),
     ...place(monitor(0.5, 0.32), 0.52, -1.2, 0, 1.05),
     ...place(chair('black'), 0.2, -1.65),
+    ...place(person(OFFICER, { arms: 'forward', seated: true }), 0.2, -1.62),
   ]
-  // trays riding through
-  for (const [x, m] of [[-2.4, 'bagBlack'], [-1.6, 'bagSilver'], [1.8, 'bagTeal'], [2.8, 'bagRed']] as const) {
-    out.push(box([0.55, 0.1, 0.4], [x, 0.85, 0], 'tray'))
-    out.push(box([0.4, 0.14, 0.26], [x, 0.95, 0], m))
-  }
+  // trays in flight are animated (see MOVING_TRAYS); one parked on the out-feed
+  out.push(box([0.55, 0.1, 0.4], [3.4, 0.85, 0], 'tray'), box([0.4, 0.14, 0.26], [3.4, 0.95, 0], 'bagRed'))
   return out
 }
 function archDetector(): Part[] {
@@ -214,7 +320,15 @@ function securityLane(): Part[] {
     out.push(box([12.6, 0.05, 0.06], [-0.4, 1.22, z], 'chrome'))
     for (let x = -6.6; x <= 5.8; x += 2.1) out.push(cyl([0.05, 1.2, 0.05], [x, 0.6, z], 'chrome'))
   }
-  out.push(...place(stanchionPost(), -6.4, 2.2), ...place(stanchionPost(), -6.4, 0.9))
+  out.push(...place(beltPost(), -6.4, 2.2), ...place(beltPost(), -6.4, 0.9))
+  // officers: divest helper, arch officer, scanner officer, bag-search at reclaim
+  out.push(...place(person(OFFICER), -4.75, 0.9, Math.PI))
+  out.push(...place(person(OFFICER), 1.0, 2.35, -H))
+  out.push(...place(person(OFFICER, { arms: 'forward' }), -1.4, 0.55, Math.PI))
+  out.push(...place(person(OFFICER, { arms: 'forward' }), 4.6, -0.75))
+  // lane floor: yellow edge lines + walk arrows
+  for (const z of [0.9, 2.3]) out.push(box([5.0, 0.004, 0.06], [-3.6, 0.003, z], 'signYellow'))
+  for (const x of [-5.6, -4.0, -2.4]) out.push(box([0.4, 0.004, 0.12], [x, 0.003, 1.6], 'white', [0, 0, 0]))
   return out
 }
 
@@ -568,6 +682,7 @@ function selfKiosk(): Part[] {
 function kioskBank(): Part[] {
   const out: Part[] = []
   for (let i = 0; i < 4; i++) out.push(...place(selfKiosk(), (i - 1.5) * 0.85, 0))
+  out.push(...place(person(AGENT[1]), 2.1, 0.5, -0.6))
   out.push(box([3.6, 0.5, 0.06], [0, 2.4, -0.2], 'sgnCheckin'), cyl([0.04, 0.6, 0.04], [-1.6, 2.85, -0.2], 'chrome'), cyl([0.04, 0.6, 0.04], [1.6, 2.85, -0.2], 'chrome'))
   return out
 }
@@ -726,10 +841,13 @@ function securityLaneCT(): Part[] {
   out.push(box([12.4, 0.32, 0.5], [-0.5, 0.17, -0.55], 'darkSteel'), box([12.4, 0.03, 0.44], [-0.5, 0.34, -0.55], 'belt'))
   for (const x of [-5, -2, 1.5, 4]) out.push(box([0.6, 0.07, 0.42], [x, 0.39, -0.55], 'tray'))
   // trays with bags in flight
-  for (const [x, m] of [[-5.1, 'bagBlack'], [-3.8, 'bagSilver'], [1.4, 'bagTeal'], [2.9, 'bagRed'], [2.0, 'navy']] as const) {
-    const z = x === 2.0 ? -0.95 : 0
-    out.push(box([0.6, 0.1, 0.42], [x, 0.9, z], 'tray'), box([0.42, 0.16, 0.28], [x, 1.02, z], m))
-  }
+  // in-flight trays are animated (MOVING_TRAYS); one held on the reject line
+  out.push(box([0.6, 0.1, 0.42], [2.0, 0.9, -0.95], 'tray'), box([0.42, 0.16, 0.28], [2.0, 1.02, -0.95], 'navy'))
+  // officers: divest helpers, CT operator at reject, scanner + arch officers
+  out.push(...place(person(OFFICER), -5.8, 1.0, Math.PI), ...place(person(OFFICER), -3.2, 1.0, Math.PI))
+  out.push(...place(person(OFFICER, { arms: 'forward' }), 3.4, -2.55))
+  out.push(...place(person(OFFICER, { arms: 'forward' }), -1.0, 1.35, Math.PI))
+  out.push(...place(person(OFFICER), 1.4, 3.15, -H))
   // people side: body scanner + arch, glass screens, lane light
   out.push(...place(bodyScanner(), -1.0, 2.4))
   out.push(...place(archDetector(), 1.4, 2.4))
@@ -894,4 +1012,21 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   shop_gondola: () => gondola(),
   shop_kiosk: shopKiosk,
   checkin_desk: checkinDeskSingle,
+}
+
+/**
+ * Animated tray tracks in prop-local metres: trays slide x0 → x1 at belt
+ * height y on line z, `n` trays evenly spaced, `speed` m/s.
+ */
+export interface TrayTrack { x0: number; x1: number; y: number; z: number; n: number; speed: number }
+export const MOVING_TRAYS: Partial<Record<TerminalPropType, TrayTrack[]>> = {
+  xray_machine: [{ x0: -3.0, x1: 3.2, y: 0.85, z: 0, n: 5, speed: 0.35 }],
+  security_lane: [
+    { x0: -3.0, x1: 3.2, y: 0.85, z: 0, n: 5, speed: 0.35 },
+    { x0: 4.2, x1: -4.2, y: 0.39, z: -0.7, n: 4, speed: 0.5 },
+  ],
+  security_lane_ct: [
+    { x0: -6.8, x1: 4.0, y: 0.9, z: 0, n: 7, speed: 0.4 },
+    { x0: 5.5, x1: -6.4, y: 0.39, z: -0.55, n: 5, speed: 0.55 },
+  ],
 }

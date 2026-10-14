@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
-import { cylinderSides, finGeometry, fuselageSides, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, windowGeometry, wingGeometry } from './geom'
+import { cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, windowGeometry, wingGeometry } from './geom'
 import type { LiveryBox } from './liveryUv'
 import { applyRosterLivery } from './procLivery'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
@@ -18,6 +18,8 @@ import {
   unitDisc,
   unitPlane,
   unitSphere,
+  sharedMat,
+  slotColor,
   type PaintedMesh,
   type PaintSlot,
 } from './pool'
@@ -406,6 +408,15 @@ function addEngines(frame: Frame) {
       ),
     )
     addInstances(frame, unitCylinder(sides), discs, 'dark', 'mesh', 'fan-disc')
+    if (fanPod) {
+      // Separate spinner cone on the fan face and a bright rolled intake lip.
+      const cones = pts.map((p) => compose(p.x + eng.length * 0.3, p.y, p.z, 0, 0, 0, eng.radius * 0.5, eng.radius * 0.3, eng.radius * 0.3))
+      const cone = addInstances(frame, spinnerConeGeometry(), cones, 'metal', 'mesh', 'spinner')
+      if (cone) cone.name = 'spinner'
+      const lips = pts.map((p) => compose(p.x + eng.length * 0.5, p.y, p.z, 0, 0, 0, eng.radius * 0.99, eng.radius * 0.99, eng.radius * 0.99))
+      const lip = addInstances(frame, intakeLipGeometry(), lips, 'metal', 'mesh', 'intake-lip')
+      if (lip) lip.name = 'intake-lip'
+    }
   }
   if (eng.kind === 'turboprop') addPropBlades(frame, pts, eng, 'prop')
 }
@@ -614,6 +625,23 @@ function addGear(frame: Frame) {
     const span = kind === 'bogie6' ? r * 5.6 : kind === 'bogie4' ? r * 3.4 : r * 2.4
     const wid = kind === 'single' ? r * 1.1 : r * 1.9
     const at = new THREE.Matrix4().makeTranslation(x, roof + 0.02 - spec.gear, z)
+    if (role === 'nose') {
+      // The nose skin curves up fast: sample it fore, aft and both sides of the well,
+      // then raise and tilt the plate so it sits on the skin instead of under it.
+      const s = (dx: number, dz: number) => skinUnderside(frame, x + dx, z + dz) ?? roof
+      const fwd = s(span / 2, 0)
+      const aft = s(-span / 2, 0)
+      const stbd = s(0, wid / 2)
+      const port = s(0, -wid / 2)
+      const lift = (fwd + aft + stbd + port) / 4
+      const pitch = Math.atan2(fwd - aft, span)
+      const roll = Math.atan2(port - stbd, wid)
+      at.compose(
+        new THREE.Vector3(x, Math.max(roof, lift) + 0.02 - spec.gear, z),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(roll, 0, pitch)),
+        new THREE.Vector3(1, 1, 1),
+      )
+    }
     bays.push(wellGeometry(span, wid).applyMatrix4(at))
     if (spec.family !== 'helo') bays.push(bayDoorsGeometry(span * 0.9, wid, Math.min(r * 1.5, legH * 0.45), Math.max(spec.rx, spec.ry)).applyMatrix4(at))
   }
@@ -1170,6 +1198,72 @@ function addHelo(frame: Frame) {
   }
 }
 
+let glowTex: THREE.DataTexture | null = null
+function glowTexture(): THREE.DataTexture {
+  if (glowTex) return glowTex
+  const n = 32
+  const data = new Uint8Array(n * n * 4)
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const d = Math.hypot(i - n / 2 + 0.5, j - n / 2 + 0.5) / (n / 2)
+      const a = Math.max(0, 1 - d) ** 2.2
+      const o = (j * n + i) * 4
+      data[o] = data[o + 1] = data[o + 2] = 255
+      data[o + 3] = Math.round(a * 255)
+    }
+  }
+  glowTex = new THREE.DataTexture(data, n, n)
+  glowTex.needsUpdate = true
+  return glowTex
+}
+
+/** Additive halo sprite on a nav lamp. Opacity follows the night lamp level (see lod.ts). */
+function lampGlow(color: string): THREE.Sprite {
+  const mat = sharedMat(`lamp-glow:${color}`, () => new THREE.SpriteMaterial({
+    map: glowTexture(),
+    color,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    opacity: 0,
+  })) as THREE.SpriteMaterial
+  const sprite = new THREE.Sprite(mat)
+  sprite.name = 'lamp-glow'
+  sprite.scale.setScalar(7)
+  sprite.userData.glow = true
+  sprite.raycast = () => {}
+  return sprite
+}
+
+/** Open forward hold door, under-wing fuel panel and nose GPU socket where round E trucks hook up. */
+function addServicePoints(frame: Frame) {
+  const { spec, tier, nose, centerY } = frame
+  if (tier !== 'mid' || spec.family === 'helo' || spec.lengthM < 20) return
+  const sideZ = spec.rx * 0.97
+  // Forward hold door, starboard, swung up on its top hinge (belt loader side).
+  const doorX = nose - spec.lengthM * 0.24
+  const dw = Math.min(1.8, spec.lengthM * 0.045)
+  const dh = Math.min(1.7, spec.ry * 0.7)
+  const sill = centerY - spec.ry * 0.25
+  addBox(frame, [dw, dh, 0.06], [doorX, sill - dh / 2, sideZ + 0.01], 'dark', 'mesh').name = 'hold-opening'
+  addBox(frame, [dw, dh, 0.06], [doorX, sill + 0.05, sideZ + dh * 0.45], 'body', 'mesh', [-1.25, 0, 0]).name = 'hold-door-open'
+  // Single-point fuel panel under each wing, at the span the fuel hose aims for.
+  const panelZ = Math.min(9, Math.max(3.6, spec.spanM * 0.18))
+  if (panelZ < spec.spanM / 2 - 0.5) {
+    for (const s of [1, -1]) {
+      const under = skinUnderside(frame, frame.wingX, s * panelZ) ?? frame.wingY - spec.thickness * 0.5
+      addBox(frame, [0.6, 0.05, 0.4], [frame.wingX, under - 0.02, s * panelZ], 'dark', 'mesh').name = 'fuel-panel'
+      addBox(frame, [0.14, 0.12, 0.14], [frame.wingX, under - 0.08, s * panelZ], 'stripe', 'mesh').name = 'fuel-coupling'
+    }
+  }
+  // External power socket on the lower nose, starboard of the nose gear.
+  const gx = nose - spec.lengthM * 0.1
+  const gz = spec.rx * 0.45
+  const belly = skinUnderside(frame, gx, gz) ?? centerY - spec.ry * 0.8
+  addBox(frame, [0.4, 0.04, 0.3], [gx, belly - 0.01, gz], 'dark', 'mesh').name = 'gpu-socket'
+  addBox(frame, [0.12, 0.1, 0.12], [gx, belly - 0.06, gz], 'stripe', 'mesh').name = 'gpu-plug'
+}
+
 function addLights(frame: Frame) {
   const { spec, wingY, centerY, top } = frame
   if (spec.family === 'helo') return
@@ -1184,6 +1278,7 @@ function addLights(frame: Frame) {
     mesh.name = name
     mesh.userData.baseScale = mesh.scale.x
     const painted = addMesh(frame, mesh, slot, kind === 'light' ? 'light' : kind)
+    if (kind === 'light' && frame.tier === 'mid') painted.add(lampGlow(slotColor(slot, frame.livery)))
     frame.lamps.push(painted)
     if (kind === 'strobe') frame.strobes.push(painted)
     if (kind === 'beacon') frame.beacons.push(painted)
@@ -1277,6 +1372,7 @@ export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): Built
     addControls(frame)
     addLogo(frame)
     addRealDoors(frame)
+    addServicePoints(frame)
     addRig(frame, frame.spec.engines.count ? enginePoints(frame) : [])
     addLights(frame)
   }
