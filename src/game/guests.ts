@@ -164,6 +164,15 @@ export interface HallGuest {
   premiumEscort?: boolean
   /** Used the premium check-in desk on the way in. */
   usedPremiumCheckin?: boolean
+  /**
+   * Day-one walker. Paces the curb-to-gate path only, and leaves once real
+   * passengers fill the hall. Not a queue, a fare, or a spend.
+   */
+  preview?: boolean
+  /** Metres to the side of the current path edge. Keeps a crowd from stacking. */
+  lane?: number
+  /** +1 toward the gate, -1 back toward check-in. Day-one walkers only. */
+  previewDir?: 1 | -1
 }
 
 /**

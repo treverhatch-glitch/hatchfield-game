@@ -1,0 +1,379 @@
+/*
+ * Cities: Skylines chrome on the trunk HUD.
+ * Layout only: a thin status strip, a centered category pill, and one side panel.
+ * Cash stays a 28px readout with the live +$/day forecast. Controls are unchanged.
+ */
+
+.hud .top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgb(15 23 42 / 0.88);
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(8px);
+  z-index: 24;
+}
+
+.hud .top .brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.hud .top .brand strong {
+  display: inline;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.hud .top .brand span {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud .top .stat {
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  border-radius: 0;
+  font-size: 11px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  color: #cbd5e1;
+}
+
+.hud .top button.stat:not(.cash-hero) {
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgb(30 41 59 / 0.85);
+  color: #e2e8f0;
+}
+
+.hud .top .speeds button,
+.hud .top .stat-speeds button {
+  width: auto;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.hud .top .speeds button.on,
+.hud .top .stat-speeds button.on {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #7dd3fc;
+}
+
+.hud .top .stat-speeds {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  gap: 2px;
+}
+
+.hud .cash-hero-wrap {
+  position: static;
+  flex: 0 0 auto;
+}
+
+.hud .cash-hero {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 6px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+}
+
+.hud .cash-hero .cash-amount {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #ffe08a;
+  text-shadow: 0 0 12px rgb(255 208 74 / 0.35);
+}
+
+.hud .cash-hero .cash-flow {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.hud .cash-menu {
+  position: fixed;
+  top: calc(var(--hud-top) + 6px);
+  left: 12px;
+  z-index: 50;
+  background: rgb(15 23 42 / 0.94);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 12px;
+}
+
+.hud .chrome {
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  pointer-events: none;
+  background: transparent;
+}
+
+.hud .chrome > * {
+  pointer-events: auto;
+}
+
+.hud .dock {
+  position: relative;
+  order: 2;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: max-content;
+  max-width: min(860px, 72vw);
+  background: rgb(15 23 42 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 18px;
+  padding: 6px 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.hud .build-menus {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin: 0;
+  gap: 4px;
+  scrollbar-width: thin;
+}
+
+.hud .build-menus button,
+.hud .dock .tools button {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: rgb(30 41 59 / 0.9);
+  color: #e2e8f0;
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.hud .build-menus button.on,
+.hud .dock .tools button.on,
+.hud .bottom-bar button.on {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #7dd3fc;
+}
+
+.hud .build-tray {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: min(860px, 78vw);
+  margin: 0;
+  padding: 8px 8px 6px;
+  background: rgb(15 23 42 / 0.88);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.32);
+  backdrop-filter: blur(10px);
+}
+
+.hud .dock .tools .tray-item {
+  width: 96px;
+  min-width: 96px;
+  min-height: 72px;
+  border-radius: 12px;
+  background: rgb(30 41 59 / 0.85);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  color: #f1f5f9;
+  text-transform: none;
+  letter-spacing: 0;
+  transition: transform 150ms ease-out, background 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.hud .dock .tools .tray-item:hover:not(.locked):not(.is-locked) {
+  transform: translateY(-6px) scale(1.06);
+  border-color: #38bdf8;
+  background: rgb(51 65 85 / 0.95);
+  z-index: 2;
+}
+
+.hud .dock .tools .tray-item.on {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #7dd3fc;
+}
+
+.hud .dock .hint {
+  margin: 4px 6px 0;
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud .bottom-bar {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.hud .bottom-bar button {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  background: transparent;
+  border: 0;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.hud .ticker {
+  flex: 1 1 80px;
+  min-width: 48px;
+  max-height: 18px;
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+}
+
+.hud .cash-chip {
+  font-size: 12px;
+  color: #ffe08a !important;
+}
+
+/* One side sheet. It stays off the apron and off the middle of the hall. */
+.hud .panel-rollout,
+.hud .chrome.has-panel .panel-rollout,
+.hud .chrome.pinned .panel-rollout,
+.hud .panel-rollout:focus-within {
+  position: fixed;
+  top: calc(var(--hud-top) + 44px);
+  right: 10px;
+  left: auto;
+  bottom: auto;
+  width: min(340px, 26vw);
+  max-height: min(68vh, calc(100vh - 130px));
+  margin: 0;
+  opacity: 1;
+  overflow: auto;
+  pointer-events: auto;
+  border-radius: 16px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(15 23 42 / 0.9);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(10px);
+  z-index: 40;
+  transition: none;
+}
+
+.hud .panel-head h2 {
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+}
+
+.hud .coach {
+  max-height: min(36vh, 320px);
+  background: rgb(15 23 42 / 0.9);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 16px;
+}
+
+.hud .map-goals {
+  left: 12px;
+  bottom: 96px;
+  width: min(220px, 22vw);
+  background: rgb(15 23 42 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+}
+
+.fees-toggle {
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(15 23 42 / 0.9);
+  color: #e2e8f0;
+}
+
+.fees-dock {
+  width: min(340px, 26vw);
+  background: rgb(15 23 42 / 0.9);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+}
+
+/* Hall sheet stays on the right edge, under the chip row, so the floor stays open. */
+.hall-build {
+  top: calc(var(--hud-top) + 44px);
+  right: 8px;
+  width: min(220px, 18vw);
+  max-height: min(42vh, 380px);
+  background: rgb(15 23 42 / 0.88);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+}
+
+.hall-chrome {
+  top: calc(var(--hud-top) + 8px);
+  left: 12px;
+  right: auto;
+  max-width: min(420px, 34vw);
+}
+
+.kit-bar {
+  left: 12px;
+  right: auto;
+  bottom: 78px;
+  transform: none;
+  width: max-content;
+  max-width: min(420px, 34vw);
+  align-items: flex-start;
+}
+
+.kit-tabs {
+  background: rgb(15 23 42 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 999px;
+}
+
+.kit-tabs button.on {
+  background: #38bdf8;
+  color: #0f172a;
+}
+
+.guest-card {
+  left: 12px;
+  bottom: 86px;
+  background: rgb(15 23 42 / 0.9);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+}
