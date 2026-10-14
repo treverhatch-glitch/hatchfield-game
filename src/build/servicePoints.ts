@@ -5,7 +5,7 @@
  * maps them through the building's real-world lot onto the tile grid.
  */
 import type { Tile, Vec } from '../game/types'
-import { CELL } from '../render/aircraft/specs'
+import { CELL, WORLD_PER_METER } from '../render/aircraft/specs'
 import { lotFrame, type Lot } from './footprints'
 
 export type PointKind = 'hose' | 'door' | 'bay' | 'dock' | 'kerb' | 'hangar_door' | 'pad'
@@ -35,9 +35,14 @@ export interface ServiceSpec {
 }
 
 const FRONT = CELL * 0.62
-/** Queue slots stepping outward along the approach lane, beyond the front edge. */
-const lane = (x: number, n = 4, z0 = FRONT) =>
-  Array.from({ length: n }, (_, i) => ({ x: x + (x >= 0 ? 1 : -1) * 0.0, z: z0 + 1.6 + i * 1.9 }))
+/**
+ * Model units per metre for a lot of `scale` cells (see ../fleet: mPerUnit).
+ * Round 6 lays every bay out in metres around the real vehicle sizes.
+ */
+const u = (m: number, scale: number) => (m * WORLD_PER_METER) / scale
+/** Queue slots stepping outward along the approach lane: one vehicle length + 2.5 m apart. */
+const lane = (x: number, n = 4, z0 = FRONT, step = 1.9) =>
+  Array.from({ length: n }, (_, i) => ({ x, z: z0 + Math.max(1.6, step * 0.6) + i * step }))
 
 const pts = (kind: PointKind, action: ServiceAction, heading: number, xs: number[], z: number, prefix = kind): LocalPoint[] =>
   xs.map((x, i) => ({ id: `${prefix}${i + 1}`, kind, x, z, heading, action }))
@@ -48,70 +53,71 @@ export const SERVICE_POINTS: Partial<Record<Tile, ServiceSpec>> = {
     points: pts('hose', 'refuel', Math.PI / 2, [-2.0, 2.0], 3.4),
     approach: { x: -4.2, z: FRONT },
     exit: { x: 4.2, z: FRONT },
-    queue: lane(-4.2),
+    queue: lane(-4.2, 4, FRONT, u(12.5, 3)),
   },
   bags: {
     serves: ['bags'],
-    points: pts('door', 'unload', Math.PI, [-2.2, 0, 2.2], 3.6),
+    points: pts('door', 'unload', Math.PI, [-2.2, 0, 2.2], 3.05),
     approach: { x: -4.0, z: FRONT + 0.6 },
     exit: { x: 4.0, z: FRONT + 0.6 },
-    queue: lane(-4.0),
+    queue: lane(-4.0, 4, FRONT, u(12.1, 2)),
   },
   kitchen: {
     serves: ['catering'],
-    points: pts('bay', 'load', Math.PI, [-1.8, 1.8], 2.6),
+    points: pts('bay', 'load', Math.PI, [1.4, 3.4], 1.8),
     approach: { x: -4.0, z: FRONT },
     exit: { x: 4.0, z: FRONT },
-    queue: lane(-4.0),
+    queue: lane(-4.0, 4, FRONT, u(11.1, 2)),
   },
   snack: {
     serves: ['catering'],
-    points: pts('bay', 'load', Math.PI / 2, [0], 2.8),
+    points: pts('bay', 'load', Math.PI / 2, [0], 3.75),
     approach: { x: -3.6, z: FRONT },
     exit: { x: 3.6, z: FRONT },
-    queue: lane(-3.6),
+    queue: lane(-3.6, 4, FRONT, u(11.1, 1)),
   },
   cargo: {
     serves: ['citycargo'],
-    points: pts('dock', 'backin', 0, [-3.0, -1.0, 1.0, 3.0], 3.3),
+    points: pts('dock', 'backin', 0, [-3.0, -1.0, 1.0, 3.0], 3.0),
     approach: { x: -4.4, z: FRONT + 0.8 },
     exit: { x: 4.4, z: FRONT + 0.8 },
-    queue: lane(-4.4),
+    queue: lane(-4.4, 4, FRONT + 0.8, u(11, 2)),
   },
   fire: {
     serves: ['fire'],
-    points: pts('bay', 'exit', 0, [-2.8, -0.6, 1.6], -0.4),
+    points: pts('bay', 'exit', 0, [-2.8, -0.6, 1.6], -0.9),
     approach: { x: -0.6, z: FRONT },
     exit: { x: -0.6, z: FRONT + 0.8 },
     queue: [],
   },
   deice: {
     serves: ['deice'],
-    points: pts('pad', 'spray', 0, [-3.2, 3.2], 1.4),
+    points: pts('pad', 'spray', 0, [-3.4, 3.4], 1.4),
     approach: { x: 0, z: FRONT },
     exit: { x: 0, z: FRONT },
-    queue: lane(0),
+    queue: lane(0, 4, FRONT, u(11.7, 3)),
   },
   termbus: {
     serves: ['termbus'],
-    points: pts('bay', 'park', Math.PI, [-2.8, 0, 2.8], 2.2),
+    points: pts('bay', 'park', Math.PI, [-2.8, 0, 2.8], 2.3),
     approach: { x: -4.0, z: FRONT },
     exit: { x: 4.0, z: FRONT },
-    queue: lane(-4.0),
+    queue: lane(-4.0, 4, FRONT, u(16.5, 2)),
   },
   xferbus: {
     serves: ['termbus'],
-    points: pts('bay', 'park', Math.PI, [-2.8, 0, 2.8], 2.2),
+    points: pts('bay', 'park', Math.PI, [-2.8, 0, 2.8], 2.3),
     approach: { x: -4.0, z: FRONT },
     exit: { x: 4.0, z: FRONT },
-    queue: lane(-4.0),
+    queue: lane(-4.0, 4, FRONT, u(16.5, 2)),
   },
   bus: {
     serves: ['coach'],
-    points: pts('kerb', 'board', Math.PI / 2, [-2.2, 2.2], -1.2),
-    approach: { x: -4.6, z: 0.2 },
-    exit: { x: 4.6, z: 0.2 },
-    queue: lane(-4.6, 2, 0.2),
+    // Sawtooth nose-in bays: coaches point at the island (heading π), side by side.
+    points: pts('kerb', 'board', Math.PI, [-1.6, 1.6], 1.45),
+    approach: { x: -4.6, z: FRONT },
+    exit: { x: 4.6, z: FRONT },
+    queue: lane(-4.6, 2, FRONT, u(14.9, 1)),
   },
   hangar: {
     serves: ['tow'],
@@ -119,7 +125,7 @@ export const SERVICE_POINTS: Partial<Record<Tile, ServiceSpec>> = {
     approach: { x: 0, z: FRONT + 1.5 },
     exit: { x: 0, z: FRONT + 1.5 },
     // Tow tugs wait their turn off to the side of the door apron.
-    queue: lane(3.4, 3, FRONT),
+    queue: lane(3.4, 3, FRONT, u(10.3, 3)),
   },
   mro: {
     serves: ['tow'],
@@ -129,7 +135,7 @@ export const SERVICE_POINTS: Partial<Record<Tile, ServiceSpec>> = {
     ],
     approach: { x: 0, z: FRONT + 1.5 },
     exit: { x: 0, z: FRONT + 1.5 },
-    queue: lane(4.0, 3, FRONT),
+    queue: lane(4.0, 3, FRONT, u(10.3, 1)),
   },
 }
 

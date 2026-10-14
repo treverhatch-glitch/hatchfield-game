@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { lotScale, mPerUnitY } from '../fleet'
 import { describe, expect, it } from 'vitest'
 import { ConstructionPiece } from '../construction'
 import { CELL } from './kit'
@@ -57,7 +58,8 @@ describe('building models', () => {
     expect(stats(buildModel('fuel_farm_iii')!).meshes).toBeGreaterThan(stats(buildModel('fuel')!).meshes)
     const small = stats(buildModel('hangar', { hangarTier: 'small' })!).size.y
     const jumbo = stats(buildModel('hangar', { hangarTier: 'jumbo' })!).size.y
-    expect(jumbo).toBeGreaterThan(small + 2)
+    // Compare real heights: the lots scale the models (small 3 cells, jumbo 5).
+    expect(jumbo * mPerUnitY(lotScale('hangar', 'jumbo'))).toBeGreaterThan(small * mPerUnitY(lotScale('hangar', 'small')) * 1.6)
   })
 
   it('ATC approach towers over the basic tower', () => {
