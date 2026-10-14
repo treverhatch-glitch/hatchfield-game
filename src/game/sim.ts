@@ -50,6 +50,7 @@ import {
   DIVERT_FEE_MAX,
   DIVERT_FEE_MIN,
   EMERGENCY_REFUSE_FINE,
+  EMERGENCY_TIMEOUT_FINE,
   EMERGENCY_UNABLE_HEAT,
   EMERGENCY_UNABLE_REP,
   CONTRACT_LETTER_DEADLINE,
@@ -57,6 +58,7 @@ import {
   FIELD_TASK_DEADLINE,
   FIRST_CONTRACT_LETTER_DEADLINE,
   FIELD_TASK_DEFS,
+  FIELD_TASK_DECLINE_HEAT,
   FIELD_TASK_FAIL_FINE,
   FIELD_TASK_HEAT_FAIL,
   FIELD_TASK_HEAT_OK,
@@ -1440,8 +1442,8 @@ export class Game {
   /** Field asks already paid for. A second Build click does not spend again. */
   private fieldAskSpent = new Set<string>()
   /**
-   * Letters the player put away. Keyed so a new ask (new id) can appear,
-   * while "Got it" on the same field letter does not bring it straight back.
+   * Letters the player put away with Later. Keyed so a new ask (new id) can appear,
+   * while Later on the same field letter does not bring it straight back.
    */
   ackedLetters: string[] = []
   /** Player chose to build the first field by hand, releasing the kit budget. */
@@ -2085,6 +2087,27 @@ export class Game {
     }
   }
 
+  /**
+   * Retire the open field ask now. A small Standing nick, no fine, and the
+   * usual cooldown — not the longer one a missed deadline uses.
+   */
+  declineFieldTask() {
+    const task = this.fieldTask
+    if (!task) return
+    const airline = this.airline(task.airline)
+    this.adjustHeat(task.airline, FIELD_TASK_DECLINE_HEAT)
+    this.fieldTask = null
+    this.fieldTaskCool = FIELD_TASK_COOL
+    this.pushNews(`Declined ${airline.name} — ${task.title}. A small Standing nick, no fine.`, 'ok')
+    this.emit()
+  }
+
+  /** Deadline and the fine the letter charges if the player leaves the ask to expire. */
+  fieldAskClockLine(): string {
+    if (!this.fieldTask) return ''
+    return `${Math.ceil(this.fieldTaskLeft())}s left · fine ${moneyLeft(FIELD_TASK_FAIL_FINE)} if left to expire`
+  }
+
   /** Set the letters the player is reading (open or hovered); their countdowns hold. */
   holdLetters(ids: Iterable<string>) {
     this.heldLetters = new Set(ids)
@@ -2264,15 +2287,11 @@ export class Game {
     return null
   }
 
-  /** Hide one letter. Got it on a field ask clears it so it cannot be paid twice. */
+  /** Hide one letter. Later leaves a field ask running; Decline is what retires it. */
   ackLetter(key: string) {
     if (!key || this.ackedLetters.includes(key)) return
     this.ackedLetters.push(key)
     if (this.ackedLetters.length > 40) this.ackedLetters.splice(0, this.ackedLetters.length - 40)
-    if (key.startsWith('field:') && this.fieldTask && key === `field:${this.fieldTask.id}`) {
-      this.fieldTask = null
-      this.fieldTaskCool = FIELD_TASK_COOL
-    }
     this.emit()
   }
 
@@ -4058,7 +4077,8 @@ export class Game {
     this.emit()
   }
 
-  buyLand(kind: SiteKind): boolean {
+  buyLand(kind: SiteKind, focus?: StartFocus): boolean {
+    if (focus) this.startFocus = focus
     const land = LAND[kind]
     if (this.cash < land.cost) {
       this.pushNews(`Cannot afford ${land.name}.`, 'bad')
@@ -6239,6 +6259,7 @@ export class Game {
     const prev = this.view
     this.view = view
     if (view === 'hall') {
+      this.focusHallForDesk()
       this.tool = 'pan'
       if (prev !== 'hall') {
         this.pushNews(
@@ -6351,6 +6372,38 @@ export class Game {
         row.bottleneck ? 'Bottleneck — add a lane, a desk, or a wider queue' : 'Line is moving',
       ],
     }
+  }
+
+  /** The selected tile is one of the halls on the field. */
+  private terminalHallSelected(): boolean {
+    const origin = this.selectedTerminalOrigin()
+    if (!origin) return false
+    return this.fits.some((fit) => fit.origin.c === origin.c && fit.origin.r === origin.r)
+  }
+
+  /**
+   * Services and the terminal view call this so a lone hall is selected.
+   * Several halls with nothing selected stay unselected.
+   */
+  focusHallForDesk(): 'ready' | 'none' | 'choose' {
+    if (!this.fits.length) return 'none'
+    if (this.terminalHallSelected()) return 'ready'
+    if (this.fits.length === 1) {
+      const only = this.fits[0]
+      if (!only) return 'none'
+      this.selectedTile = { c: only.origin.c, r: only.origin.r }
+      this.emit()
+      return 'ready'
+    }
+    return 'choose'
+  }
+
+  /** Copy for the furnish list when no hall is selected. */
+  hallFurnishNote(): string {
+    if (this.fits.length > 1 && !this.terminalHallSelected()) {
+      return 'Several halls are on the field. Select one before buying rooms.'
+    }
+    return 'Stamp a Premade hall or an empty Shell, then select it. Operations rooms are listed here. Shops are under Commercial. Lab rooms are under R&D. Weak security invites threats. Budget crowds wear restrooms and lanes — scrub or the street writes exposés.'
   }
 
   activeHall(): TerminalFit | null {
@@ -14416,9 +14469,11 @@ export class Game {
   }
 
   buyRoom(id: RoomId) {
+    if (!this.terminalHallSelected()) this.focusHallForDesk()
     const origin = this.selectedTerminalOrigin()
     if (!origin) {
-      this.pushNews('Select a terminal hall first.', 'bad')
+      this.pushNews(this.hallFurnishNote(), 'bad')
+      this.emit()
       return
     }
     const def = ROOMS.find((r) => r.id === id)
@@ -19896,7 +19951,7 @@ export class Game {
     if (this.pendingEmergency) {
       this.pendingEmergency.age += dt
       this.pendingEmergency.deadline -= dt
-      if (this.pendingEmergency.deadline <= 0) this.resolveEmergency('refuse')
+      if (this.pendingEmergency.deadline <= 0) this.expireEmergency()
       return
     }
     if (this.pendingThreat) return
@@ -20105,42 +20160,67 @@ export class Game {
       return
     }
 
-    // A field that cannot host it (no free stand, no hangar, dry farm) is not fined for saying so.
-    // The miss still shows: the fee is gone and the news names the gap to fix.
+    this.penalizeEmergency(e, 'refuse')
+    this.emit()
+  }
+
+  /** The ask ran out. Not a refuse: its own fine constant and its own news line. */
+  expireEmergency() {
+    const e = this.pendingEmergency
+    if (!e) return
+    this.pendingEmergency = null
+    this.emergencyCool = 55 + Math.random() * 45
+    this.penalizeEmergency(e, 'timeout')
+    this.emit()
+  }
+
+  /**
+   * Deliberate refuse and an unanswered timeout share the Standing math and the
+   * "could not host" exemption. The fine constant and the news line do not.
+   */
+  private penalizeEmergency(e: PendingEmergency, how: 'refuse' | 'timeout') {
     const gap = this.emergencyHostGap(e)
     if (gap) {
       this.reputation = Math.max(0, this.reputation - EMERGENCY_UNABLE_REP)
       if (e.kind === 'divert' && e.airline) this.adjustHeat(e.airline, -EMERGENCY_UNABLE_HEAT)
       this.pushNews(
-        `${e.kind === 'divert' ? 'Divert' : 'Firefighting plane'} went elsewhere — we could not host it (${gap}). Missed ${moneyLeft(e.fee)}.`,
+        how === 'timeout'
+          ? `Missed — no answer. ${e.kind === 'divert' ? 'Divert' : 'Firefighting plane'} went elsewhere — we could not host it (${gap}). Missed ${moneyLeft(e.fee)}.`
+          : `${e.kind === 'divert' ? 'Divert' : 'Firefighting plane'} went elsewhere — we could not host it (${gap}). Missed ${moneyLeft(e.fee)}.`,
         'bad',
       )
-      this.emit()
       return
     }
 
-    // Refuse / timeout — cleaner than a failed host, still hurts.
-    this.charge(EMERGENCY_REFUSE_FINE, 'emergency_refuse')
+    // Refuse and timeout both journal here. The dollars and the news line differ.
+    const fine = how === 'timeout' ? EMERGENCY_TIMEOUT_FINE : EMERGENCY_REFUSE_FINE
+    this.charge(fine, 'emergency_refuse')
     this.reputation = Math.max(0, this.reputation - 4)
     if (e.kind === 'divert' && e.airline) {
       this.adjustHeat(e.airline, -8)
       for (const id of this.signed) {
         if (id !== e.airline) this.adjustHeat(id, -1.4)
       }
-      this.pushNews(
-        `Refused divert — ${this.airline(e.airline).name} furious. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)}.`,
-        'bad',
-      )
     } else {
       for (const id of this.signed) this.adjustHeat(id, -1.8)
+    }
+    if (how === 'timeout') {
+      this.pushNews(`Missed — no answer. Fine ${moneyLeft(fine)}.`, 'bad')
+      return
+    }
+    if (e.kind === 'divert' && e.airline) {
       this.pushNews(
-        e.kind === 'tanker_mx'
-          ? `Refused firefighting plane (refuel+MX). Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — region cools.`
-          : `Refused firefighting plane refuel. Fine ${moneyLeft(EMERGENCY_REFUSE_FINE)} — carriers notice.`,
+        `Refused divert — ${this.airline(e.airline).name} furious. Fine ${moneyLeft(fine)}.`,
         'bad',
       )
+      return
     }
-    this.emit()
+    this.pushNews(
+      e.kind === 'tanker_mx'
+        ? `Refused firefighting plane (refuel+MX). Fine ${moneyLeft(fine)} — region cools.`
+        : `Refused firefighting plane refuel. Fine ${moneyLeft(fine)} — carriers notice.`,
+      'bad',
+    )
   }
 
   resolveThreat(choice: 'scramble' | 'ignore') {
@@ -20376,15 +20456,17 @@ export class Game {
           this.reputation = Math.max(0, Math.min(100, this.reputation + request.reputationOnAccept))
         }
         this.fieldXp += event.xp
-      } else if (event.type === 'refused' || event.type === 'expired') {
+      } else if (event.type === 'refused') {
         this.reputation = Math.max(0, Math.min(100, this.reputation + event.reputation))
         if (event.fine > 0) {
-          this.pushNews(
-            event.type === 'expired'
-              ? `Unanswered inbound request. Fine ${moneyLeft(event.fine)}.`
-              : `Refused an inbound request. Fine ${moneyLeft(event.fine)}.`,
-            'bad',
-          )
+          this.pushNews(`Refused an inbound request. Fine ${moneyLeft(event.fine)}.`, 'bad')
+        }
+      } else if (event.type === 'expired') {
+        this.reputation = Math.max(0, Math.min(100, this.reputation + event.reputation))
+        if (event.fine > 0) {
+          this.pushNews(`Missed — no answer. Fine ${moneyLeft(event.fine)}.`, 'bad')
+        } else if (event.reputation !== 0) {
+          this.pushNews('Missed — no answer.', 'bad')
         }
       } else if (event.type === 'declined') {
         this.pushNews('Walk-in waved off — the field cannot host that ask.', 'ok')

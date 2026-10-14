@@ -64,6 +64,8 @@ export interface PhoneWorld {
     blurb: string
     bonusText: string
     secondsLeft: number
+    /** Deadline and the fine if the ask is left to expire. */
+    clockLine: string
     buildLabel: string | null
     buildEnabled: boolean
   } | null
@@ -353,7 +355,8 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
         btn('build', field.buildLabel, { type: 'build-field' }, { primary: true, disabled: !field.buildEnabled }),
       )
     }
-    actions.push(btn('dismiss', 'Got it', { type: 'ack', key: `field:${field.id}` }))
+    actions.push(btn('decline', 'Decline', { type: 'decline-field' }))
+    actions.push(btn('later', 'Later', { type: 'ack', key: `field:${field.id}` }))
     const built = card({
       id: 'field',
       key: `field:${field.id}`,
@@ -362,7 +365,7 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       from: field.airlineName,
       title,
       preview: phonePreview(title),
-      body: `${field.blurb} · ${field.bonusText} if done`,
+      body: `${field.blurb} · ${field.bonusText} if done\n${field.clockLine}`,
       tone: 'ok',
       holdId: 'field',
       arrives: true,

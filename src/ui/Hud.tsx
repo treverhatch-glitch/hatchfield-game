@@ -215,17 +215,24 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     })
   }, [])
 
+  const focusHallDesk = (id: ManageTabId) => {
+    const sheet = sheetFor(id)
+    if (sheet === 'services' || sheet === 'research' || sheet === 'tycoon') game.focusHallForDesk()
+  }
+
   const togglePanel = (id: ManageTabId) => {
     const closing = manageTab === id
     setPanel(closing ? null : id)
     setChromePinned(!closing)
     game.setSidePanel(closing ? null : 'hud')
+    if (!closing) focusHallDesk(id)
   }
 
   /** Open a tab without accidental close when already selected. */
   const openPanel = (id: ManageTabId) => {
     setPanel(id)
     setChromePinned(true)
+    focusHallDesk(id)
     game.setSidePanel('hud')
   }
 
@@ -619,7 +626,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               kind: 'Field ask',
               from: game.airline(game.fieldTask.airline).name,
               title: `${game.airline(game.fieldTask.airline).name} · ${game.fieldTask.title}`,
-              blurb: `${game.fieldTask.blurb} · ${money(game.fieldTask.bonus)} if done`,
+              blurb: `${game.fieldTask.blurb} · ${money(game.fieldTask.bonus)} if done · ${game.fieldAskClockLine()}`,
               tone: 'ok',
               left: () => Math.ceil(game.fieldTaskLeft()),
             })
@@ -957,6 +964,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     ) : null}
                     {letter.id === 'field' && game.fieldTask ? (
                       <>
+                        <p className="muted" data-testid="field-expiry">
+                          {game.fieldAskClockLine()}
+                        </p>
                         {game.fieldAskOffer() ? (
                           <button
                             type="button"
@@ -970,13 +980,23 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         ) : null}
                         <button
                           type="button"
-                          data-testid="field-got-it"
+                          data-testid="field-decline"
+                          onClick={() => {
+                            game.declineFieldTask()
+                            setOpenLetter(null)
+                          }}
+                        >
+                          Decline
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="field-later"
                           onClick={() => {
                             game.ackLetter(`field:${game.fieldTask?.id ?? ''}`)
                             setOpenLetter(null)
                           }}
                         >
-                          Got it
+                          Later
                         </button>
                       </>
                     ) : null}
@@ -2319,11 +2339,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         <HallRoomList game={game} ids={HALL_ROOMS.services} />
                       </>
                     ) : (
-                      <p className="muted">
-                        Stamp a Premade hall or an empty Shell, then select it. Operations rooms
-                        are listed here. Shops are under Commercial. Lab rooms are under R&D. Weak
-                        security invites threats. Budget crowds wear restrooms and lanes — scrub or
-                        the street writes exposés.
+                      <p className="muted" data-testid="hall-furnish-note">
+                        {game.hallFurnishNote()}
                       </p>
                     )}
                   </section>
@@ -2672,7 +2689,11 @@ function HallRoomList({ game, ids }: { game: Game; ids: readonly string[] }) {
     : null
   const rooms = ROOMS.filter((room) => ids.includes(room.id))
   if (!origin) {
-    return <p className="muted">Select a hall, then buy these rooms.</p>
+    return (
+      <p className="muted" data-testid="hall-furnish-note">
+        {game.hallFurnishNote()}
+      </p>
+    )
   }
   return (
     <ul className="rooms">

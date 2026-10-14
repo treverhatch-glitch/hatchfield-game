@@ -87,12 +87,13 @@ function closeRequest(
   how: 'refused' | 'expired',
 ): InboundEvent {
   request.status = how
-  const fine = how === 'expired' ? 0 : request.fineOnRefuse
+  const timeoutFine = Number.isFinite(request.fineOnTimeout) ? request.fineOnTimeout : 0
+  const fine = how === 'expired' ? timeoutFine : request.fineOnRefuse
   const reputation = request.reputationOnRefuse
   state.reputation = clampRep(state.reputation + reputation)
   if (how === 'expired') state.stats.expired += 1
   else state.stats.refused += 1
-  ledger(state, -fine, how === 'expired' ? 'Unanswered inbound request' : 'Refused inbound request', {
+  ledger(state, -fine, how === 'expired' ? 'Missed — no answer' : 'Refused inbound request', {
     requestId: request.id,
   })
   return { type: how, requestId: request.id, fine, reputation }

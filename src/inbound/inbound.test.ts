@@ -6,6 +6,7 @@ import {
   DIVERT_FEE_MIN,
   EMERGENCY_FAIL_FINE,
   EMERGENCY_REFUSE_FINE,
+  EMERGENCY_TIMEOUT_FINE,
   GA_PARK_DAY_RATE,
   GA_PARK_FEE_MAX,
   GA_PARK_FEE_MIN,
@@ -208,19 +209,27 @@ describe('inbound requests', () => {
     expect(general.reputation).toBe(50)
   })
 
-  it('treats a missed deadline as a refuse', () => {
+  it('times out a missed inbound ask on its own path, without the refuse fine', () => {
+    expect(EMERGENCY_TIMEOUT_FINE).toBe(EMERGENCY_REFUSE_FINE)
     const state = createInboundState(1)
     const divert = spawnOffer(state, 'weather_divert')
+    expect(divert.fineOnTimeout).toBe(0)
+    expect(divert.fineOnRefuse).toBe(EMERGENCY_REFUSE_FINE)
     const events = tick(state, world(), DECISION_SEC)
     const expired = events.find((item) => item.type === 'expired' && item.requestId === divert.id)
     expect(expired).toMatchObject({ fine: 0 })
     expect(state.requests.find((item) => item.id === divert.id)?.status).toBe('expired')
+    expect(state.stats.refused).toBe(0)
+    expect(state.stats.expired).toBe(1)
+    expect(state.ledger.some((row) => row.reason === 'Missed — no answer')).toBe(false)
+    expect(state.ledger.some((row) => row.reason === 'Refused inbound request')).toBe(false)
 
     const gaState = createInboundState(1)
     const ga = spawnOffer(gaState, 'storage')
     const gaEvents = tick(gaState, world(), DECISION_SEC)
     const gaExpired = gaEvents.find((item) => item.type === 'expired' && item.requestId === ga.id)
     expect(gaExpired).toMatchObject({ fine: 0 })
+    expect(ga.fineOnTimeout).toBe(0)
   })
 
   it('fails an emergency the field cannot host and declines general traffic without a fine', () => {

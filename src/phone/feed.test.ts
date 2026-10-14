@@ -53,6 +53,7 @@ describe('phone feed', () => {
           blurb: 'Build a police post',
           bonusText: '$1,000',
           secondsLeft: 20,
+          clockLine: '20s left · fine $1,600 if left to expire',
           buildLabel: 'Build · $8,000 cost / $1,000 bonus',
           buildEnabled: false,
         },
@@ -60,7 +61,17 @@ describe('phone feed', () => {
     )
     expect(cards.map((card) => card.kind)).toEqual(['layover', 'field'])
     expect(cards.every((card) => card.tab === 'messages')).toBe(true)
-    expect(cards.find((card) => card.id === 'field')?.actions.map((action) => action.id)).toEqual(['build', 'dismiss'])
+    expect(cards.find((card) => card.id === 'field')?.actions.map((action) => action.id)).toEqual([
+      'build',
+      'decline',
+      'later',
+    ])
+    expect(cards.find((card) => card.id === 'field')?.actions.map((action) => action.label)).toEqual([
+      'Build · $8,000 cost / $1,000 bonus',
+      'Decline',
+      'Later',
+    ])
+    expect(cards.find((card) => card.id === 'field')?.body).toContain('fine $1,600 if left to expire')
     expect(cards.find((card) => card.id === 'field')?.actions[0]?.disabled).toBe(true)
     for (const kind of PHONE_EXCLUDED_KINDS) {
       expect(cards.some((card) => card.kind === kind)).toBe(false)

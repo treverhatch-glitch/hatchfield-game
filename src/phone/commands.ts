@@ -20,6 +20,7 @@ export function phoneHost(game: Game): PhoneCommandHost {
     acceptParking: () => game.acceptParking(),
     declineParking: () => game.declineParking(),
     buildFieldTask: () => game.buildFieldTask(),
+    declineFieldTask: () => game.declineFieldTask(),
     ackLetter: (key) => game.ackLetter(key),
     dismissAdvisor: (cardId) => game.standingAdvisor.dismissCard(cardId),
     emit: () => game.emit(),
@@ -66,6 +67,9 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
       return
     case 'build-field':
       host.buildFieldTask()
+      return
+    case 'decline-field':
+      host.declineFieldTask()
       return
     case 'ack':
       host.ackLetter(action.key)

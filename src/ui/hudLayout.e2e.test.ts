@@ -52,7 +52,8 @@ describe('HUD top band layout', () => {
           await page.getByTestId('start-pax').click()
           await page.waitForFunction(() => Boolean((window as unknown as { __hatch?: HatchProbe }).__hatch))
 
-          // The new-game card stamps the kit, so the coach no longer offers that button.
+          // The plot is empty until the coach kit is stamped. Layout checks run after that stamp.
+          await page.getByTestId('starter-kit-coach').click()
           await page.waitForFunction(
             () => !(window as unknown as { __hatch: HatchProbe }).__hatch.showStarterKit(),
           )

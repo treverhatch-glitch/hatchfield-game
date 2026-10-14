@@ -192,16 +192,36 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     }
 
     await backToApron()
-    const servicesMenu = page.getByTestId('menu-operations')
-    if (await servicesMenu.isVisible().catch(() => false)) {
-      await servicesMenu.click({ timeout: 4000 })
-      script.push('operations menu')
+    const openDesk = async (menuId: string, tabId: string, label: string) => {
+      const tab = page.getByTestId(tabId)
+      if (!(await tab.isVisible().catch(() => false))) {
+        const menu = page.getByTestId(menuId)
+        if (await menu.isVisible().catch(() => false)) {
+          await menu.click({ timeout: 4000 })
+          script.push(`open ${label} menu`)
+        }
+      }
+      if (await tab.isVisible().catch(() => false)) {
+        await tab.click({ timeout: 4000 })
+        script.push(`${label} tab`)
+        await page.waitForTimeout(300)
+        return true
+      }
+      return false
     }
-    const services = page.getByTestId('tab-services')
-    if (await services.isVisible().catch(() => false)) {
-      await services.click({ timeout: 4000 })
-      script.push('services tab')
-      await page.waitForTimeout(300)
+    if (await openDesk('menu-operations', 'tab-services', 'services')) {
+      const checkin = page.getByRole('button', { name: /Check-in/ })
+      if (!(await checkin.first().isVisible().catch(() => false))) {
+        couldNot.push({
+          command: 'buyRoom',
+          detail: 'Check-in was not on the services panel (no hall selected)',
+          count: 1,
+        })
+      }
+    } else {
+      couldNot.push({ command: 'buyRoom', detail: 'Services tab was not on screen', count: 1 })
+    }
+    if (await openDesk('menu-commercial', 'tab-shops', 'shops')) {
       for (const name of ['Hall food', 'Souvenirs']) {
         const button = page.getByRole('button', { name: new RegExp(name) })
         if (await button.first().isVisible().catch(() => false)) {
@@ -210,13 +230,13 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
         } else {
           couldNot.push({
             command: 'buyRoom',
-            detail: `${name} was not on the services panel (no hall selected)`,
+            detail: `${name} was not on the shops panel (no hall selected)`,
             count: 1,
           })
         }
       }
     } else {
-      couldNot.push({ command: 'buyRoom', detail: 'Services tab was not on screen', count: 1 })
+      couldNot.push({ command: 'buyRoom', detail: 'Shops tab was not on screen', count: 1 })
     }
     await shot(page, outDir, screenshots, '07-services')
 

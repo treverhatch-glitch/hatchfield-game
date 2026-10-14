@@ -25,7 +25,7 @@ export function LandScreen({
   const [hintsOn, setHintsOn] = useState(enableHints)
   const [mapId, setMapId] = useState(game.mapId)
   const buy = (kind: SiteKind, focus: StartFocus) => {
-    if (game.startChosenKit(kind, focus)) onBought()
+    if (game.buyLand(kind, focus)) onBought()
   }
 
   return (
@@ -39,8 +39,8 @@ export function LandScreen({
       </p>
       <h1>New game</h1>
       <p className="lede">
-        Pick a climate, then a starter kit. The kit stamps the field the moment you
-        buy the plot. Nothing else is built for you.
+        Pick a climate, then a starter kit. The coach offers that kit on the empty
+        plot. Stamp it before a lone runway spends the opening budget.
       </p>
       <label className="sandbox-toggle" title="The first-session hints stay hidden until Settings.">
         <input

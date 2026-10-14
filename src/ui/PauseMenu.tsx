@@ -24,7 +24,15 @@ const AUDIO_ROWS: { id: AudioBus; label: string }[] = [
 ]
 
 /** Side sheet. The field stays visible behind a light scrim, and the clock waits. */
-export function PauseMenu({ game, onQuit }: { game: Game; onQuit: () => void }) {
+export function PauseMenu({
+  game,
+  onQuit,
+  onNewGame,
+}: {
+  game: Game
+  onQuit: () => void
+  onNewGame?: () => void
+}) {
   const snap = useSyncExternalStore(pauseState.subscribe, pauseState.getSnapshot)
   const [, setRev] = useState(0)
   useEffect(() => {
@@ -72,6 +80,19 @@ export function PauseMenu({ game, onQuit }: { game: Game; onQuit: () => void }) 
             <button type="button" className="wide" data-testid="pause-settings" onClick={() => pauseState.showSettings('game')}>
               Settings
             </button>
+            {onNewGame ? (
+              <button
+                type="button"
+                className="wide"
+                data-testid="pause-new-game"
+                onClick={() => {
+                  pauseState.close()
+                  onNewGame()
+                }}
+              >
+                New game
+              </button>
+            ) : null}
             <button
               type="button"
               className="wide"
@@ -110,7 +131,7 @@ export function PauseMenu({ game, onQuit }: { game: Game; onQuit: () => void }) 
                 Controls
               </button>
             </div>
-            {snap.settingsTab === 'game' ? <GameSettings game={game} /> : <ControlsPanel />}
+            {snap.settingsTab === 'game' ? <GameSettings game={game} onNewGame={onNewGame} /> : <ControlsPanel />}
             <button type="button" className="wide" data-testid="pause-back" onClick={() => pauseState.back()}>
               Back
             </button>

@@ -7,7 +7,13 @@ import { loanProductLabel, payrollPreviewLabel, sandboxChoiceLabel } from './eco
 import {
   CONTRACT_FLEET,
   LAND,
+  EMERGENCY_REFUSE_FINE,
+  EMERGENCY_TIMEOUT_FINE,
+  FIELD_TASK_COOL,
+  FIELD_TASK_DECLINE_HEAT,
   FIELD_TASK_DEFS,
+  FIELD_TASK_FAIL_FINE,
+  FIELD_TASK_HEAT_FAIL,
   LOAN_PRODUCTS,
   money,
   POLICE_COST,
@@ -36,7 +42,7 @@ beforeEach(() => {
 })
 
 describe('field and info letters', () => {
-  it('clears a field ask on Got it, and does not show that same letter again', () => {
+  it('keeps a field ask after Later, and does not show that same letter again', () => {
     const game = fresh()
     const task: FieldTask = {
       id: 'ask-1',
@@ -49,12 +55,44 @@ describe('field and info letters', () => {
       age: 0,
     }
     game.fieldTask = task
+    expect(game.fieldAskClockLine()).toContain(`${FIELD_TASK_FAIL_FINE.toLocaleString('en-US')}`)
+    expect(game.fieldAskClockLine()).toMatch(/if left to expire/)
     expect(game.letterAcked('field:ask-1')).toBe(false)
     game.ackLetter('field:ask-1')
     expect(game.letterAcked('field:ask-1')).toBe(true)
-    expect(game.fieldTask).toBeNull()
-    expect(game.fieldTaskCool).toBeGreaterThan(0)
+    expect(game.fieldTask?.id).toBe('ask-1')
     expect(game.letterAcked('field:ask-2')).toBe(false)
+  })
+
+  it('declines a field ask now with a small Standing nick, no fine, and the usual cooldown', () => {
+    const game = fresh()
+    game.signed = ['northline']
+    game.fieldTask = {
+      id: 'ask-decline',
+      airline: 'northline',
+      kind: 'bathroom',
+      title: 'Restrooms',
+      blurb: 'Add a restroom',
+      bonus: 1000,
+      deadline: game.clock + 80,
+      age: 0,
+    }
+    const cash = game.cash
+    const rep = game.reputation
+    const standing = game.standingOf('northline')
+    game.declineFieldTask()
+    expect(game.fieldTask).toBeNull()
+    expect(game.fieldTaskCool).toBe(FIELD_TASK_COOL)
+    expect(game.cash).toBe(cash)
+    expect(game.reputation).toBe(rep)
+    const nick = standing - game.standingOf('northline')
+    expect(nick).toBeCloseTo(Math.abs(FIELD_TASK_DECLINE_HEAT) * game.airline('northline').heatSensitivity)
+    expect(nick).toBeGreaterThan(0)
+    expect(nick).toBeLessThan(Math.abs(FIELD_TASK_HEAT_FAIL))
+    expect(game.news[0]?.text ?? '').toMatch(/Declined Northline/)
+    expect(game.news[0]?.text ?? '').not.toMatch(/Fine/)
+    game.declineFieldTask()
+    expect(game.standingOf('northline')).toBeCloseTo(standing - nick)
   })
 })
 
@@ -316,6 +354,107 @@ describe('field ask build', () => {
     const def = FIELD_TASK_DEFS.find((d) => d.kind === 'police')!
     expect(def.bonus).toBe(12_500)
     expect(def.bonus).toBeGreaterThan(POLICE_COST)
+  })
+})
+
+describe('emergency timeout', () => {
+  it('bills a missed ask on the timeout fine and says so, and a refuse stays a refuse', () => {
+    expect(EMERGENCY_TIMEOUT_FINE).toBe(EMERGENCY_REFUSE_FINE)
+    const game = fresh('easy')
+    game.buildStarterKit()
+    game.signed = ['northline']
+    game.emergencyCool = 1e9
+    game.pendingEmergency = {
+      id: 'em-timeout',
+      kind: 'divert',
+      blurb: 'Weather divert',
+      fee: 5000,
+      age: 0,
+      deadline: 1,
+      airline: 'northline',
+      needs: { stand: true, fire: false, fuel: false, hangar: false, minRunway: 8 },
+    }
+    const cash = game.cash
+    const rep = game.reputation
+    game.tickEmergencies(1)
+    expect(game.pendingEmergency).toBeNull()
+    expect(game.cash).toBe(cash - EMERGENCY_TIMEOUT_FINE)
+    expect(game.reputation).toBe(rep - 4)
+    expect(game.news[0]?.text ?? '').toMatch(/^Missed — no answer/)
+    expect(game.news[0]?.text ?? '').not.toMatch(/Refused/)
+
+    game.pendingEmergency = {
+      id: 'em-refuse',
+      kind: 'divert',
+      blurb: 'Weather divert',
+      fee: 5000,
+      age: 0,
+      deadline: 20,
+      airline: 'northline',
+      needs: { stand: true, fire: false, fuel: false, hangar: false, minRunway: 8 },
+    }
+    const after = game.cash
+    game.resolveEmergency('refuse')
+    expect(game.cash).toBe(after - EMERGENCY_REFUSE_FINE)
+    expect(game.news[0]?.text ?? '').toMatch(/Refused divert/)
+  })
+
+  it('posts Missed — no answer when an inbound priority ask expires', () => {
+    const game = fresh('easy')
+    game.buildStarterKit()
+    game.scheduleAuto = false
+    game.schedule = []
+    game.spawnCool = 1e9
+    game.emergencyCool = 1e9
+    game.offerCool = 1e9
+    game.speed = 1
+    const offer = game.injectInbound('weather_divert')
+    expect(offer?.fine).toBe(EMERGENCY_REFUSE_FINE)
+    const cash = game.cash
+    game.tick(60)
+    expect(game.news.some((row) => row.text.startsWith('Missed — no answer'))).toBe(true)
+    expect(game.news.some((row) => row.text.startsWith('Missed — no answer') && /Fine/.test(row.text))).toBe(false)
+    expect(game.news.some((row) => row.text.startsWith('Refused an inbound'))).toBe(false)
+    expect(cash - game.cash).toBe(0)
+  })
+})
+
+describe('hall desk selection', () => {
+  it('selects the only hall so a room can be bought, and asks when several are unselected', () => {
+    const game = fresh('easy')
+    game.buildStarterKit()
+    game.selectedTile = { c: 0, r: 0 }
+    expect(game.selectedTerminalOrigin()).toBeNull()
+    expect(game.focusHallForDesk()).toBe('ready')
+    expect(game.selectedTerminalOrigin()).toEqual(game.fits[0]?.origin)
+    const before = game.activeHall()?.rooms.food ?? 0
+    game.buyRoom('food')
+    expect(game.activeHall()?.rooms.food).toBe(before + 1)
+
+    const first = game.fits[0]
+    if (!first) throw new Error('starter hall missing')
+    game.fits.push({
+      ...first,
+      origin: { c: 1, r: 1 },
+      rooms: { ...first.rooms },
+    })
+    game.selectedTile = { c: 0, r: 0 }
+    expect(game.focusHallForDesk()).toBe('choose')
+    expect(game.selectedTerminalOrigin()).toBeNull()
+    expect(game.hallFurnishNote()).toMatch(/Several halls/)
+    const cash = game.cash
+    game.buyRoom('souvenir')
+    expect(game.cash).toBe(cash)
+    expect(game.news[0]?.text ?? '').toMatch(/Several halls/)
+  })
+
+  it('selects the only hall when the terminal view opens', () => {
+    const game = fresh('easy')
+    game.buildStarterKit()
+    game.selectedTile = { c: 0, r: 0 }
+    game.setView('hall')
+    expect(game.view).toBe('hall')
+    expect(game.selectedTerminalOrigin()).toEqual(game.fits[0]?.origin)
   })
 })
 

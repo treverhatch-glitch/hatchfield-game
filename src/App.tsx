@@ -424,6 +424,10 @@ export default function App() {
       <PauseMenu
         game={game}
         onQuit={() => setScreen('title')}
+        onNewGame={() => {
+          game.beginNew(game.sandbox ? 'easy' : game.difficulty)
+          setScreen('title')
+        }}
       />
       <PriceWarCard game={game} />
     </div>

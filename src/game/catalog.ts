@@ -1859,6 +1859,12 @@ export const TANKER_FEE = 6800
 export const TANKER_MX_FEE = 9200
 export const EMERGENCY_REFUSE_FINE = 800
 /**
+ * Unanswered emergency. Same dollars as a deliberate refuse until a balance
+ * pass sets its own value. The path and the news line differ. An unanswered
+ * inbound card is $0; that cut already landed.
+ */
+export const EMERGENCY_TIMEOUT_FINE = EMERGENCY_REFUSE_FINE
+/**
  * Declining (or timing out) an emergency the field cannot host — no free stand, no hangar,
  * dry farm — costs the fee and this much reputation, not the refuse fine. The starter field
  * could not host ~2 in 3 of them and paid $2.5k, -4 rep and carrier Standing each (#192).
@@ -1901,6 +1907,8 @@ export const FIELD_TASK_COOL = 52
 export const FIELD_TASK_FAIL_FINE = 500
 export const FIELD_TASK_HEAT_OK = 4.5
 export const FIELD_TASK_HEAT_FAIL = -5.5
+/** Decline retires the ask now. A small Standing nick, no fine, the usual cooldown. */
+export const FIELD_TASK_DECLINE_HEAT = -1
 
 export type FieldTaskDef = {
   kind: import('./types').FieldTaskKind

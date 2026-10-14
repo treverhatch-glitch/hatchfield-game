@@ -59,6 +59,7 @@ A card with no countdown is marked Note. Line maintenance is spelled out.
 - Settings
   - Game — sound, graphics, hints, tip chips, back to title
   - Controls — rebinding
+- New game
 - Quit to title
 
 ## Build bar

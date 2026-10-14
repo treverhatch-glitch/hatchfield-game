@@ -26,6 +26,7 @@ export type PhoneAction =
   | { type: 'accept-parking' }
   | { type: 'decline-parking' }
   | { type: 'build-field' }
+  | { type: 'decline-field' }
   | { type: 'ack'; key: string }
   | { type: 'dismiss-advisor'; cardId: string }
 
@@ -89,6 +90,7 @@ export interface PhoneCommandHost {
   acceptParking(): void
   declineParking(): void
   buildFieldTask(): void
+  declineFieldTask(): void
   ackLetter(key: string): void
   dismissAdvisor(cardId: string): void
   emit(): void

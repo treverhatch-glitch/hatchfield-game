@@ -174,7 +174,7 @@ describe('inbound request edges', () => {
     // A card can only close by expiring when nobody answers; nothing is hosted.
     for (const r of closed) expect(['expired', 'pending', 'queued']).toContain(r.status)
     expect(state.visits).toHaveLength(0)
-    const fines = state.ledger.filter((row) => row.reason === 'Unanswered inbound request')
+    const fines = state.ledger.filter((row) => row.reason === 'Missed — no answer' || row.reason === 'Refused inbound request')
     expect(state.requests.some((r) => r.status === 'expired' && r.priority)).toBe(true)
     expect(fines).toHaveLength(0)
     expect(state.stats.expired).toBe(state.requests.filter((r) => r.status === 'expired').length)

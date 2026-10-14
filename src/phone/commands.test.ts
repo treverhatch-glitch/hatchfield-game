@@ -18,6 +18,7 @@ function host(): PhoneCommandHost {
     acceptParking: vi.fn(),
     declineParking: vi.fn(),
     buildFieldTask: vi.fn(),
+    declineFieldTask: vi.fn(),
     ackLetter: vi.fn(),
     dismissAdvisor: vi.fn(),
     emit: vi.fn(),
@@ -49,6 +50,8 @@ describe('phone commands', () => {
     dispatchPhoneAction(desk, { type: 'ack', key: 'field:ask-1' })
     dispatchPhoneAction(desk, { type: 'dismiss-advisor', cardId: 'advisor-standing-northline-1' })
     expect(desk.ackLetter).toHaveBeenCalledWith('field:ask-1')
+    dispatchPhoneAction(desk, { type: 'decline-field' })
+    expect(desk.declineFieldTask).toHaveBeenCalledOnce()
     expect(desk.dismissAdvisor).toHaveBeenCalledWith('advisor-standing-northline-1')
     expect(desk.emit).toHaveBeenCalledOnce()
   })

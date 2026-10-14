@@ -4,7 +4,7 @@ import type { Contract } from '../contracts/types.ts'
 
 export type WeatherKind = 'clear' | 'rain' | 'fog' | 'storm' | 'snow'
 
-/** Priority asks. Refusing or timing out posts the emergency refuse fine. */
+/** Priority asks. A deliberate refuse posts the refuse fine. Timing out posts the timeout fine. */
 export type PriorityKind =
   | 'weather_divert'
   | 'medical'
@@ -52,7 +52,7 @@ export interface InboundRequest {
   day: number
   /** Sim-second the decision card opens. */
   opensAt: number
-  /** Sim-second the card expires. Unanswered cards refuse themselves. */
+  /** Sim-second the card expires. Unanswered cards time out on their own. */
   deadline: number
   etaSec: number
   needs: ServiceNeeds
@@ -62,6 +62,8 @@ export interface InboundRequest {
   dailyFee: number
   stayDays: number
   fineOnRefuse: number
+  /** Charged when the card expires with no answer. Not the refuse fine. */
+  fineOnTimeout: number
   fineOnFail: number
   reputationOnAccept: number
   reputationOnRefuse: number

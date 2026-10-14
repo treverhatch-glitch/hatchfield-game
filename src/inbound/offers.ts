@@ -85,6 +85,7 @@ export function buildRequest(
     dailyFee: money.dailyFee,
     stayDays,
     fineOnRefuse: spec.priority ? EMERGENCY_REFUSE_FINE : 0,
+    fineOnTimeout: 0,
     fineOnFail: spec.priority ? EMERGENCY_FAIL_FINE : 0,
     reputationOnAccept: spec.priority ? 2 : 1,
     reputationOnRefuse: spec.priority ? -4 : 0,

@@ -114,6 +114,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
             blurb: field.blurb,
             bonusText: money(field.bonus),
             secondsLeft: Math.ceil(game.fieldTaskLeft()),
+            clockLine: game.fieldAskClockLine(),
             buildLabel: game.fieldAskOffer()?.text ?? null,
             buildEnabled: game.fieldAskOffer()?.enabled ?? false,
           }
