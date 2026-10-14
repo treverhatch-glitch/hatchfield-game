@@ -53,6 +53,8 @@ const DEF_TYPE: Record<string, FacilityType> = {
   newsagent: 'shop',
   wayfinding: 'sign',
   info_screen: 'sign',
+  departures_wall: 'sign',
+  gate_pylon: 'sign',
   boarding_desk: 'gate',
   wall: 'wall',
   bag_system: 'belt',

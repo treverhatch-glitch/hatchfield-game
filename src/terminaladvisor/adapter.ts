@@ -73,6 +73,8 @@ export const ITEM_EQUIP: Readonly<Record<string, EquipmentId>> = {
   restaurant: 'shop_unit',
   wayfinding: 'sign',
   info_screen: 'sign',
+  departures_wall: 'sign',
+  gate_pylon: 'sign',
   info_kiosk: 'sign',
 }
 
