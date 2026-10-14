@@ -400,7 +400,8 @@ export class WorldRenderer {
     }
     this.paintPlot(draw ?? null)
 
-    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus)
+    const enclosed = view.view === 'apron'
+    for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed)
     const showGuests = this.buildings.some((b) => b.lifeFade > 0.04)
     this.syncGuests(view, camera, step, showGuests, lite)
     this.syncPack(view, lite)

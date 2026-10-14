@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { blankView, rect, starterGame } from './fixtures'
+import { landsideSide } from './terminal'
 import { AIRCRAFT_VISUAL_SCALE, STAND_ENVELOPE, WORLD_PER_METER } from '../aircraft/specs'
 import {
   airsideOf,
@@ -93,6 +94,19 @@ describe('world layout', () => {
     expect(st.every((s) => s.jetway)).toBe(true)
     const bridges = jetBridges(game, st)
     expect(bridges).toHaveLength(2)
+    // Airside is the apron. The landside door is the opposite face, on the public road.
+    const [hall] = clusters(game, 'terminal')
+    expect(airsideOf(game, hall)).toBe('w')
+    expect(landsideSide(airsideOf(game, hall))).toBe('e')
+    const east = hall.cells.filter((p) => p.c === hall.maxC)
+    expect(east.some((p) => game.tile({ c: p.c + 1, r: p.r }) === 'road')).toBe(true)
+    // Each gate link leaves the facade that faces its stand, never the road side.
+    expect(bridges.every((b) => b.side !== 'e')).toBe(true)
+    for (const b of bridges) {
+      if (b.side === 'w') expect(b.stand.c).toBeLessThan(b.terminal.c)
+      if (b.side === 'n') expect(b.stand.r).toBeLessThan(b.terminal.r)
+      if (b.side === 's') expect(b.stand.r).toBeGreaterThan(b.terminal.r)
+    }
     for (const b of bridges) {
       // Cab ends up nearer the stand than the rotunda does.
       const sx = cellX(b.stand.c)

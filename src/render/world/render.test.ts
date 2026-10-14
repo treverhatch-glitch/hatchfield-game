@@ -90,8 +90,10 @@ describe('initWorldRender', () => {
     for (let i = 0; i < 30; i++) wr.update(game, near, 1 / 30)
     const s = wr.stats()
     expect(s.terminals[0].lod).toBe(0)
-    // Roof lifts off for the close-up cutaway.
-    expect(s.terminals[0].roof).toBe(0)
+    // Airport view keeps the roof and the walls up, even up close.
+    expect(game.view).toBe('apron')
+    expect(s.terminals[0].roof).toBe(1)
+    expect(s.terminals[0].wallsLowered).toBe(0)
     expect(s.meshes).toBeGreaterThan(farMeshes)
     const seated = scene.getObjectByName('people-static')
     expect(seated?.visible || seated?.parent?.visible).toBe(true)
@@ -113,8 +115,10 @@ describe('initWorldRender', () => {
     expect(scene.getObjectByName('room-walls')).toBeTruthy()
     expect(scene.getObjectByName('room-glass')).toBeTruthy()
     const near = camAt(hall.x, hall.z, 20)
+    game.view = 'hall'
     for (let i = 0; i < 40; i++) wr.update(game, near, 1 / 30)
     const t1 = wr.stats().terminals[0]
+    expect(t1.roof).toBe(0)
     expect(t1.wallsLowered).toBeGreaterThan(0)
     expect(t1.wallsLowered).toBeLessThan(t1.walls)
     wr.dispose()
