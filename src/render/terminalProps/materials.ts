@@ -16,6 +16,7 @@ import newsB64 from './tex/shop_news.b64.txt?raw'
 import burgerB64 from './tex/shop_burger.b64.txt?raw'
 import checkinB64 from './tex/checkin.b64.txt?raw'
 import securityB64 from './tex/security.b64.txt?raw'
+import { bigSign, brushedRough, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 
 export const GEMINI_TEX = {
   terrazzo: terrazzoB64,
@@ -136,12 +137,18 @@ export interface MatSpec {
   map?: () => THREE.Texture | null
   /** Use the map as emissive too (backlit screens and lightboxes). */
   glow?: boolean
+  /** Roughness map (linear). */
+  roughMap?: () => THREE.Texture | null
+  /** Clearcoat (polished floors, lacquer, car-paint-like panels). Uses MeshPhysicalMaterial. */
+  clearcoat?: number
+  /** Environment reflection strength (default 1). */
+  envI?: number
 }
 
 export const MATERIALS: Record<string, MatSpec> = {
   // structure and finishes
-  steel: { color: '#b9bec4', rough: 0.35, metal: 0.85 },
-  brushed: { color: '#d4d7da', rough: 0.25, metal: 0.95 },
+  steel: { color: '#b9bec4', rough: 0.35, metal: 0.85, roughMap: brushedRough },
+  brushed: { color: '#d4d7da', rough: 0.6, metal: 0.95, roughMap: brushedRough },
   chrome: { color: '#eceff2', rough: 0.12, metal: 1 },
   darkSteel: { color: '#2b2f35', rough: 0.5, metal: 0.6 },
   black: { color: '#15171a', rough: 0.6, metal: 0.2 },
@@ -151,8 +158,8 @@ export const MATERIALS: Record<string, MatSpec> = {
   white: { color: '#f2f1ec', rough: 0.4 },
   cream: { color: '#e9e2d2', rough: 0.55 },
   greyPanel: { color: '#8d939a', rough: 0.5, metal: 0.2 },
-  corian: { color: '#f6f5f1', rough: 0.2 },
-  granite: { color: '#34363a', rough: 0.25, metal: 0.1 },
+  corian: { color: '#f6f5f1', rough: 0.2, clearcoat: 0.5 },
+  granite: { color: '#34363a', rough: 0.25, metal: 0.1, clearcoat: 0.8 },
   oak: { color: '#b88a58', rough: 0.55 },
   walnut: { color: '#6a4528', rough: 0.5 },
   glass: { color: '#bfe3ee', rough: 0.05, metal: 0.1, opacity: 0.28 },
@@ -189,7 +196,33 @@ export const MATERIALS: Record<string, MatSpec> = {
   amber: { color: '#ffb000', emissive: '#ffb000', emissiveIntensity: 1.2 },
   // textured / signage
   terrazzo: { color: '#ffffff', rough: 0.25, map: () => geminiTexture('terrazzo', [1, 1]) },
-  fids: { color: '#ffffff', rough: 0.2, map: fidsTex, glow: true },
+  fids: { color: '#ffffff', rough: 0.2, map: () => fids2k() ?? fidsTex(), glow: true },
+  fidsArr: { color: '#ffffff', rough: 0.2, map: () => fids2k('ARRIVALS', '#8fd3ff'), glow: true },
+  // pass 2: high-res finishes (desktop tier)
+  floorTile: { color: '#ffffff', rough: 1, map: () => floorTile('color', [1, 1]), roughMap: () => floorTile('rough', [1, 1]), clearcoat: 0.35 },
+  carpet: { color: '#ffffff', rough: 0.95, map: () => carpet([2, 2]) },
+  slat: { color: '#ffffff', rough: 0.8, map: () => slats('color', [1, 1]) },
+  oakSlat: { color: '#c79a66', rough: 0.55 },
+  corrugated: { color: '#ffffff', rough: 0.35, metal: 0.8, map: () => corrugated([6, 1]) },
+  jbGlass: { color: '#5d8796', rough: 0.05, metal: 0.4, opacity: 0.55 },
+  bellows: { color: '#2a2c30', rough: 0.85 },
+  tileWhite: { color: '#ffffff', rough: 0.2, map: () => wallTile('#f2f2ee', [3, 2]), clearcoat: 0.6 },
+  tileTeal: { color: '#ffffff', rough: 0.2, map: () => wallTile('#4e8c86', [3, 2]), clearcoat: 0.6 },
+  mirror: { color: '#f4f6f8', rough: 0.02, metal: 1, envI: 1.5 },
+  stainless: { color: '#c9cdd1', rough: 0.3, metal: 1, roughMap: brushedRough },
+  lacquerBlue: { color: '#1f4e8c', rough: 0.25, clearcoat: 1 },
+  lacquerWhite: { color: '#f5f5f2', rough: 0.25, clearcoat: 1 },
+  led: { color: '#ffffff', emissive: '#dff0ff', emissiveIntensity: 3 },
+  ledWarm: { color: '#ffffff', emissive: '#ffd9a0', emissiveIntensity: 2.6 },
+  ledBlue: { color: '#4fa3ff', emissive: '#4fa3ff', emissiveIntensity: 2.2 },
+  kiosk: { color: '#ffffff', rough: 0.2, map: () => bigSign('Self check-in  ✈  Tap to start', '#0c3a6e', '#ffffff', 512, 768), glow: true },
+  sgnGateA12: { color: '#ffffff', map: () => bigSign('A12', '#ffcf00', '#111111', 512, 256), glow: true },
+  sgnGateA14: { color: '#ffffff', map: () => bigSign('A14', '#ffcf00', '#111111', 512, 256), glow: true },
+  sgnHatchBig: { color: '#ffffff', map: () => bigSign('HATCHFIELD', '#0e2240', '#ffffff', 2048, 256), glow: true },
+  sgnDepartures: { color: '#ffffff', map: () => bigSign('DEPARTURES  ✈', '#0e2240', '#ffcf00', 1024, 192), glow: true },
+  sgnArrivals: { color: '#ffffff', map: () => bigSign('ARRIVALS', '#0e2240', '#8fd3ff', 1024, 192), glow: true },
+  asphalt: { color: '#3a3c3f', rough: 0.92 },
+  apronConcrete: { color: '#a9a7a1', rough: 0.85 },
   sgnGates: { color: '#ffffff', map: () => signTex('Gates A1–A12  →', '#20252c', '#ffcf00', '✈'), glow: true },
   sgnBags: { color: '#ffffff', map: () => signTex('Baggage claim  ↓', '#20252c', '#ffcf00', '▤'), glow: true },
   sgnWC: { color: '#ffffff', map: () => signTex('Toilets   ←', '#20252c', '#ffcf00', 'WC'), glow: true },
@@ -241,7 +274,8 @@ export function material(key: string): THREE.MeshStandardMaterial {
   if (hit) return hit
   const s = MATERIALS[key] ?? MATERIALS.greyPanel
   const map = s.map?.() ?? null
-  const m = new THREE.MeshStandardMaterial({
+  const Ctor = s.clearcoat ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial
+  const m = new Ctor({
     color: s.color,
     roughness: s.rough ?? 0.6,
     metalness: s.metal ?? 0,
@@ -252,7 +286,13 @@ export function material(key: string): THREE.MeshStandardMaterial {
     transparent: s.opacity !== undefined,
     opacity: s.opacity ?? 1,
     depthWrite: s.opacity === undefined,
+    roughnessMap: s.roughMap?.() ?? null,
+    envMapIntensity: s.envI ?? 1,
   })
+  if (s.clearcoat && m instanceof THREE.MeshPhysicalMaterial) {
+    m.clearcoat = s.clearcoat
+    m.clearcoatRoughness = 0.12
+  }
   matCache.set(key, m)
   return m
 }

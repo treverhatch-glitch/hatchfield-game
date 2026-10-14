@@ -15,6 +15,7 @@ import { PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType } from './pro
 
 export { TERMINAL_PROP_TYPES, type TerminalPropType } from './props'
 export { buildTerminalHall, buildTerminalExterior, type HallSpec } from './shell'
+export { setupTerminalEnvironment } from './env'
 
 export interface PropEntry {
   type: TerminalPropType
@@ -78,6 +79,12 @@ export const TERMINAL_ITEM_TO_PROP: Readonly<Record<string, TerminalPropType>> =
   bin: 'bin',
   queue: 'stanchion_queue',
   stanchion: 'stanchion',
+  kiosk: 'kiosk_bank',
+  self_checkin: 'self_checkin_kiosk',
+  departures_wall: 'departures_wall',
+  gate_sign: 'gate_pylon',
+  jet_bridge: 'jet_bridge',
+  airbridge: 'jet_bridge',
 }
 
 export interface PropPlacement {
@@ -92,11 +99,11 @@ export interface PropPlacement {
 
 const GEOM: Record<Prim, () => THREE.BufferGeometry> = {
   box: () => new THREE.BoxGeometry(1, 1, 1),
-  cyl: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 20),
+  cyl: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
   cyl8: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
-  sphere: () => new THREE.SphereGeometry(0.5, 14, 10),
+  sphere: () => new THREE.SphereGeometry(0.5, 24, 16),
   cone: () => new THREE.ConeGeometry(0.5, 1, 12),
-  torus: () => new THREE.TorusGeometry(0.4, 0.1, 8, 24),
+  torus: () => new THREE.TorusGeometry(0.4, 0.1, 12, 36),
   plane: () => new THREE.PlaneGeometry(1, 1),
 }
 const geomCache = new Map<Prim, THREE.BufferGeometry>()
