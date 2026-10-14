@@ -9,6 +9,8 @@
  * TERMINAL_ITEM_TO_PROP below and docs/TERMINAL_PROPS.md.
  */
 import * as THREE from 'three'
+import { stationSocketTable } from '../socketLayout'
+import { mountSockets } from '../socketMount'
 import { footprint, type Part, type Prim } from './parts'
 import { material } from './materials'
 import { MOVING_TRAYS, PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType, type TrayTrack } from './props'
@@ -147,6 +149,17 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
   }
   const group = new THREE.Group()
   group.name = 'terminalProps'
+  for (const pl of placements) {
+    const table = stationSocketTable(pl.type)
+    if (!table) continue
+    const rig = new THREE.Group()
+    rig.name = `sockets:${pl.type}`
+    mountSockets(rig, table)
+    rig.position.set(pl.x, pl.y ?? 0, pl.z)
+    rig.rotation.y = pl.yaw ?? 0
+    if (pl.scale && pl.scale !== 1) rig.scale.setScalar(pl.scale)
+    group.add(rig)
+  }
   const moving = buildMovingTrays(placements, !!opts.shadows)
   if (moving) group.add(moving)
   for (const [key, mats] of buckets) {

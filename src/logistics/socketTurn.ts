@@ -44,3 +44,32 @@ export const STEP_LOCKS: Partial<Record<TurnStep, { from: string; to: string }>>
 
 /** Steps that slide a whole vehicle until its socket meets the aircraft socket. */
 export const VEHICLE_DOCKS = ['dock_belt', 'dock_catering', 'dock_stairs', 'hitch_tug'] as const
+
+/** Longest hop while an item is moving between two sockets. Longer than this is a teleport. */
+export const HANDOFF_STEP_M = 0.4
+
+/** One suitcase: check-in, the hold, then the carousel. */
+export const BAG_STEPS = [
+  'check_in',
+  'onto_belt',
+  'along_belt',
+  'onto_cart',
+  'cart_to_stand',
+  'onto_loader',
+  'up_to_hold',
+  'in_hold',
+  'out_of_hold',
+  'down_loader',
+  'onto_cart_return',
+  'cart_to_claim',
+  'onto_carousel',
+] as const
+
+export type BagStep = (typeof BAG_STEPS)[number]
+
+export const ULD_STEPS = ['on_dolly', 'dolly_to_loader', 'onto_loader', 'into_hold'] as const
+export const CATERING_STEPS = ['on_truck', 'to_lip', 'into_galley'] as const
+export const PAX_STEPS = ['board_hall', 'board_cab', 'board_door', 'deplane_door', 'deplane_cab', 'deplane_hall'] as const
+export const FUEL_STEPS = ['to_farm', 'fill', 'leave_farm'] as const
+
+export type FlowName = 'bag' | 'uld' | 'catering' | 'pax' | 'fuel'

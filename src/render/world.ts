@@ -1,5 +1,7 @@
 import { installAircraftEnvironment } from './aircraft/env'
 import * as THREE from 'three'
+import { FUEL_TILE_SOCKETS } from './socketLayout'
+import { mountSockets } from './socketMount'
 import { rosterPreviewLivery } from './aircraft/procLivery'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { releasePerfOverlay, retainPerfOverlay } from '../perf'
@@ -884,6 +886,7 @@ export class World {
       yard.position.y = 0.035
       yard.receiveShadow = true
       g.add(yard, tank, band)
+      mountSockets(g, FUEL_TILE_SOCKETS)
     } else if (tile === 'fire') {
       const body = new THREE.Mesh(skinBox(CELL * 0.75, 2.2, CELL * 0.7, SKIN_TILE_M.wall, WORLD_PER_METER), skinMaterial('fire_station', 'wall'))
       body.position.y = 1.1

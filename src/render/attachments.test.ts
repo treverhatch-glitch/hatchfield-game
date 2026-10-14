@@ -33,7 +33,7 @@ describe('attachment sockets', () => {
     expect(crew.getObjectByName('crew_hand_r')).toBeTruthy()
     expect(crew.getObjectByName('crew_hand_l')).toBeTruthy()
     const plane = aircraftSocketRig('b738')
-    for (const name of ['plane_fuel_port', 'plane_cargo_door_fwd', 'catering_door', 'plane_pax_door', 'plane_nose_gear']) {
+    for (const name of ['plane_fuel_port', 'plane_cargo_door_fwd', 'plane_hold', 'catering_door', 'galley_slot', 'plane_pax_door', 'plane_pax_sill', 'plane_nose_gear']) {
       expect(plane.getObjectByName(name), name).toBeTruthy()
     }
     const built = createAircraft('e175', { body: '#fff', stripe: '#123' })

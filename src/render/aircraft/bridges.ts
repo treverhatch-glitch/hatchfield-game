@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { bridgeSocketTable } from '../socketLayout'
+import { mountSockets } from '../socketMount'
 import { sharedMat, unitBox, unitCylinder } from './pool'
 import { aircraftWorldPerMeter, getAircraftSpec } from './specs'
 import { bridgeStops } from './stands'
@@ -48,5 +50,7 @@ export function createBridges(airframeId: string, side: 1 | -1 = 1): THREE.Group
     column.userData.side = side
     root.add(column)
   }
+  const sockets = bridgeSocketTable(spec, side)
+  if (Object.keys(sockets).length) mountSockets(root, sockets)
   return root
 }

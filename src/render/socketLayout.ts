@@ -6,7 +6,7 @@
  * Aircraft: +X nose, +Y up, +Z port.
  */
 import type { ModelSpec } from './aircraft/specs'
-import { doorBoxes } from './aircraft/stands'
+import { bridgeStops, doorBoxes } from './aircraft/stands'
 import { beltGeom, catenaryPoints, cateringHinge, lineAnchor, MODEL_SIZE, type VehicleModel } from './vehicleModels'
 
 export type SocketTable = Readonly<Record<string, readonly [number, number, number]>>
@@ -17,7 +17,7 @@ const tables = new Map<VehicleModel, SocketTable>()
 export function vehicleSocketTable(model: VehicleModel): SocketTable {
   const hit = tables.get(model)
   if (hit) return hit
-  const [L, H] = MODEL_SIZE[model]
+  const [L, H, W] = MODEL_SIZE[model]
   const sockets: Record<string, readonly [number, number, number]> = {
     dock: [L / 2, 0.2, 0],
   }
@@ -26,15 +26,52 @@ export function vehicleSocketTable(model: VehicleModel): SocketTable {
   if (model === 'belt_loader') {
     const g = beltGeom(L, H)
     const run = L * 0.9
-    sockets.belt_tip = [g.lowX + Math.cos(g.pitch) * run, g.lowY + Math.sin(g.pitch) * run, 0]
+    const z = W * 0.15
+    sockets.belt_low = [g.lowX, g.lowY + 0.2, z]
+    sockets.belt_tip = [g.lowX + Math.cos(g.pitch) * run, g.lowY + Math.sin(g.pitch) * run, z]
   }
   if (model === 'catering_hilift') {
     const h = cateringHinge(L)
     sockets.catering_lip = [h.x, h.y + 2.4, 0]
+    sockets.cart_slot = [h.x - 1.4, h.y + 0.45, 0]
   }
   if (model === 'stairs') sockets.stairs_top = [-L / 2 + 0.7, H - 0.8, 0]
   if (model === 'towbarless_tug') sockets.tug_hitch = [-L * 0.25, 0.3, 0]
   if (model === 'towbar_tug') sockets.tug_hitch = [L / 2 + 2.05, 0.47, 0]
+  if (model === 'baggage_cart') {
+    sockets.cart_bed = [0, 0.66, 0]
+    sockets.cart_hitch = [L / 2, 0.32, 0]
+  }
+  if (model === 'baggage_train') {
+    const r = 0.3
+    const tL = 2.9
+    const tx = L / 2 - tL / 2
+    const cL = 2.6
+    const cx = tx - tL / 2 - 0.35 - cL / 2
+    sockets.cart_bed = [cx, r + 0.46, 0]
+    sockets.train_hitch = [tx - tL / 2, r + 0.15, 0]
+  }
+  if (model === 'uld_dolly') {
+    sockets.dolly_deck = [0, H + 0.03, 0]
+    sockets.dolly_hitch = [L / 2 + 0.15, 0.3, 0]
+  }
+  if (model === 'k_loader') {
+    const r = 0.36
+    const pl = L * 0.44
+    const x = L / 2 - 0.95 - pl / 2
+    sockets.loader_deck = [x, r + 1.2 + 0.14, 0]
+  }
+  if (model === 'fuel_tanker') {
+    const r = 0.5
+    const cab = 2.3
+    const back = L / 2 - cab
+    const reelBay = 1.7
+    const tailGap = 0.28
+    const tl = back + L / 2 - tailGap - reelBay
+    const tx = -L / 2 + tailGap + tl / 2
+    const tr = Math.min(W * 0.46, (H - r - 0.4) / 2)
+    sockets.truck_fill = [tx, r + 0.4 + tr, -(tr + 0.04)]
+  }
   tables.set(model, sockets)
   return sockets
 }
@@ -55,7 +92,9 @@ export const CREW_SOCKETS: SocketTable = {
  */
 export function aircraftSocketTable(spec: ModelSpec): SocketTable {
   const boxes = doorBoxes(spec)
-  const pax = boxes.find((b) => (b.door.kind === 'pax' || b.door.kind === 'crew') && b.door.side !== 0)
+  const pax =
+    boxes.find((b) => (b.door.kind === 'pax' || b.door.kind === 'crew') && b.door.side > 0) ??
+    boxes.find((b) => (b.door.kind === 'pax' || b.door.kind === 'crew') && b.door.side !== 0)
   const service = boxes.find((b) => b.door.kind === 'service' && b.door.side !== 0) ?? pax
   const cargo =
     boxes.find((b) => b.door.kind === 'cargo' && b.door.t <= 0.5) ??
@@ -70,13 +109,100 @@ export function aircraftSocketTable(spec: ModelSpec): SocketTable {
   const at = (box: (typeof boxes)[number] | undefined, fallback: readonly [number, number, number]) =>
     box ? ([box.x, box.sillM + Math.min(1.1, box.h * 0.45), box.z] as const) : fallback
   const side: readonly [number, number, number] = [0, centerY, spec.rx + 0.2]
+  const tuck = (p: readonly [number, number, number], depth: number, drop = 0): readonly [number, number, number] => {
+    const s = Math.sign(p[2]) || 1
+    return [p[0], Math.max(0.4, p[1] - drop), p[2] - s * depth]
+  }
+  const cargoPoint = at(cargo, [nose - spec.lengthM * 0.35, centerY, spec.rx])
+  const servicePoint = at(service, side)
+  const paxPoint = at(pax, side)
+  const paxSill: readonly [number, number, number] = pax
+    ? [pax.x, pax.sillM, pax.z]
+    : [paxPoint[0], Math.max(0.4, paxPoint[1] - 1), paxPoint[2]]
   return {
     plane_fuel_port: [wingX, Math.max(1.2, wingY - 0.25), Math.max(spec.rx + 1.2, spec.spanM * 0.18)],
-    plane_cargo_door_fwd: at(cargo, [nose - spec.lengthM * 0.35, centerY, spec.rx]),
-    catering_door: at(service, side),
-    plane_pax_door: at(pax, side),
+    plane_cargo_door_fwd: cargoPoint,
+    plane_hold: tuck(cargoPoint, 0.65, 0.15),
+    catering_door: servicePoint,
+    galley_slot: tuck(servicePoint, 0.5, 0),
+    plane_pax_door: paxPoint,
+    plane_pax_sill: paxSill,
     plane_nose_gear: [noseX, Math.max(0.35, spec.gear * 0.22), 0],
   }
+}
+
+/** Cab mouth and terminal end of the first main-deck bridge, in airframe metres. */
+export function bridgeSocketTable(spec: ModelSpec, side: 1 | -1 = 1): SocketTable {
+  const stops = bridgeStops(spec)
+  const main = stops.find((s) => !s.upper) ?? stops[0]
+  if (!main) return {}
+  const skin = spec.rx + 0.2
+  const footZ = side * (skin + 1.6 + main.tunnelM)
+  return {
+    bridge_cab: [main.x, main.sillM + 0.02, side * (skin + 0.15)],
+    bridge_hall: [main.x, main.sillM + 0.02, footZ],
+  }
+}
+
+/** Single check-in desk. The drop is the weigh belt; belt_in is the injection end. */
+export const DESK_SOCKETS: SocketTable = {
+  desk_drop: [1.25, 0.52, -0.15],
+  belt_in: [1.25, 0.55, -0.9],
+}
+
+/** Four-desk row. Collector belt runs behind the counters to the curtain. */
+export function checkinRowSockets(n = 4): SocketTable {
+  const pitch = 2.3
+  const len = n * pitch + 0.6
+  const deskX = (0 - (n - 1) / 2) * pitch
+  const outX = len / 2 + 0.2
+  return {
+    desk_drop: [deskX + 1.25, 0.52, -0.15],
+    belt_in: [deskX + 1.25, 0.5, -1.15],
+    belt_out: [outX, 0.5, -1.15],
+    makeup_stop: [outX + 1.7, 0.66, -1.15],
+  }
+}
+
+/** Claim carousel. Feed is the back hood; the lip is the public straight run. */
+export const CAROUSEL_SOCKETS: SocketTable = {
+  carousel_feed: [-9 / 2 - 1.1, 0.55, 0],
+  carousel_lip: [0, 0.62, -1.6],
+  claim_stop: [0, 0.66, -3.3],
+}
+
+/** Apron-drive bridge prop: rotunda floor and the cab bellows. */
+export const JET_BRIDGE_PROP_SOCKETS: SocketTable = {
+  bridge_hall: [0, 3.6, 0.4],
+  bridge_cab: [0, 3.25, 17.6],
+}
+
+/** Fuel-farm tile, in the tile's own units (the tank outlet on the +X side). */
+export const FUEL_TILE_SOCKETS: SocketTable = {
+  farm_fill: [1.25, 0.55, 0],
+}
+
+/** Fuel farm in metres, for the handoff rig. The outlet is on the tank wall. */
+export const FARM_SOCKETS: SocketTable = {
+  farm_fill: [0, 1.45, 1.35],
+  farm_bay: [4.2, 2.05, 1.35],
+}
+
+/** Item lock points. The origin of each rig is this socket, so a lock sits the item on the station. */
+export const ITEM_SOCKETS: Record<string, SocketTable> = {
+  bag: { bag_rest: [0, 0, 0], bag_grip: [0, 0.32, 0.12] },
+  uld: { uld_lock: [0, 0, 0] },
+  catering_cart: { cart_deck: [0, 0, 0] },
+  passenger: { pax_feet: [0, 0, 0] },
+  coupler: { coupler_jaw: [0, 0, 0] },
+}
+
+export function stationSocketTable(type: string): SocketTable | null {
+  if (type === 'checkin_row') return checkinRowSockets()
+  if (type === 'checkin_desk') return DESK_SOCKETS
+  if (type === 'baggage_carousel') return CAROUSEL_SOCKETS
+  if (type === 'jet_bridge') return JET_BRIDGE_PROP_SOCKETS
+  return null
 }
 
 /**
