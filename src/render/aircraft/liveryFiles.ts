@@ -33,9 +33,22 @@ interface ManifestRow {
   id: string
   airlines?: string[]
   types?: string[]
+  /** False for roster plates. Those load with the first aircraft, not at boot. */
+  preload?: boolean
 }
 
 const LIVERY_ROWS = (manifest as { liveries?: ManifestRow[] }).liveries ?? []
+
+/** True when the manifest has a photographed plate for this airline id. */
+export function listedLivery(airline: string): boolean {
+  return LIVERY_ROWS.some((entry) => entry.id === airline || entry.airlines?.includes(airline))
+}
+
+/** Boot preload. Roster plates stay false so forty JPEGs are not decoded up front. */
+export function liveryPreload(airline: string): boolean {
+  const row = LIVERY_ROWS.find((entry) => entry.id === airline || entry.airlines?.includes(airline))
+  return row?.preload !== false
+}
 
 /** True when this photographed plate belongs on `modelId`. Airlines with no type list stay unrestricted. */
 export function jpegLiveryFits(airline: string, modelId: string): boolean {

@@ -8,7 +8,10 @@
         "bushline",
         "bushline_local"
       ],
-      "types": ["bn2", "dhc6"]
+      "types": [
+        "bn2",
+        "dhc6"
+      ]
     },
     {
       "id": "zoomjet",
@@ -16,7 +19,11 @@
       "airlines": [
         "zoomjet"
       ],
-      "types": ["a320neo", "b738", "b38m"]
+      "types": [
+        "a320neo",
+        "b738",
+        "b38m"
+      ]
     },
     {
       "id": "crown_pacific",
@@ -25,7 +32,10 @@
         "crown",
         "crown_pacific"
       ],
-      "types": ["a380", "b77w"]
+      "types": [
+        "a380",
+        "b77w"
+      ]
     },
     {
       "id": "siam_breeze",
@@ -33,7 +43,11 @@
       "airlines": [
         "siam_breeze"
       ],
-      "types": ["b789", "a321", "a359"]
+      "types": [
+        "b789",
+        "a321",
+        "a359"
+      ]
     },
     {
       "id": "northstar_cargo",
@@ -41,7 +55,504 @@
       "airlines": [
         "northstar_cargo"
       ],
-      "types": ["b752f", "b763f", "b748f"]
+      "types": [
+        "b752f",
+        "b763f",
+        "b748f"
+      ]
+    },
+    {
+      "id": "brisa",
+      "engine": "#d10777",
+      "airlines": [
+        "brisa"
+      ],
+      "types": [
+        "a320neo",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "zephyr_go",
+      "engine": "#90edc5",
+      "airlines": [
+        "zephyr_go"
+      ],
+      "types": [
+        "b738",
+        "b38m"
+      ],
+      "preload": false
+    },
+    {
+      "id": "tango_air",
+      "engine": "#1395c7",
+      "airlines": [
+        "tango_air"
+      ],
+      "types": [
+        "a320neo",
+        "b738",
+        "a21xlr"
+      ],
+      "preload": false
+    },
+    {
+      "id": "rio_sol",
+      "engine": "#f4cd05",
+      "airlines": [
+        "rio_sol"
+      ],
+      "types": [
+        "a320neo",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "andaman_hop",
+      "engine": "#087789",
+      "airlines": [
+        "andaman_hop"
+      ],
+      "types": [
+        "b738",
+        "b38m"
+      ],
+      "preload": false
+    },
+    {
+      "id": "mekong_express",
+      "engine": "#078b5a",
+      "airlines": [
+        "mekong_express"
+      ],
+      "types": [
+        "a320neo",
+        "b738",
+        "a21xlr"
+      ],
+      "preload": false
+    },
+    {
+      "id": "pampas_air",
+      "engine": "#1272a4",
+      "airlines": [
+        "pampas_air"
+      ],
+      "types": [
+        "a320neo",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "kiwi_wings",
+      "engine": "#4d2c71",
+      "airlines": [
+        "kiwi_wings"
+      ],
+      "types": [
+        "b738",
+        "b38m"
+      ],
+      "preload": false
+    },
+    {
+      "id": "aurora_nordic",
+      "engine": "#0f2c4f",
+      "airlines": [
+        "aurora_nordic"
+      ],
+      "types": [
+        "b789",
+        "a359",
+        "b77w"
+      ],
+      "preload": false
+    },
+    {
+      "id": "baltic_breeze",
+      "engine": "#16294e",
+      "airlines": [
+        "baltic_breeze"
+      ],
+      "types": [
+        "a359",
+        "b77w",
+        "a380"
+      ],
+      "preload": false
+    },
+    {
+      "id": "fjord_atlantic",
+      "engine": "#043050",
+      "airlines": [
+        "fjord_atlantic"
+      ],
+      "types": [
+        "b789",
+        "b77w",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "gulf_pearl",
+      "engine": "#561225",
+      "airlines": [
+        "gulf_pearl"
+      ],
+      "types": [
+        "b789",
+        "a359",
+        "b77w"
+      ],
+      "preload": false
+    },
+    {
+      "id": "himalaya_air",
+      "engine": "#a71725",
+      "airlines": [
+        "himalaya_air"
+      ],
+      "types": [
+        "a359",
+        "b77w",
+        "a380"
+      ],
+      "preload": false
+    },
+    {
+      "id": "indus_airways",
+      "engine": "#0d3d27",
+      "airlines": [
+        "indus_airways"
+      ],
+      "types": [
+        "b789",
+        "b77w",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "royal_sakura",
+      "engine": "#b3062d",
+      "airlines": [
+        "royal_sakura"
+      ],
+      "types": [
+        "b789",
+        "a359",
+        "b77w"
+      ],
+      "preload": false
+    },
+    {
+      "id": "seoul_star",
+      "engine": "#13376a",
+      "airlines": [
+        "seoul_star"
+      ],
+      "types": [
+        "a359",
+        "b77w",
+        "a380"
+      ],
+      "preload": false
+    },
+    {
+      "id": "celtic_isle",
+      "engine": "#0d4a35",
+      "airlines": [
+        "celtic_isle"
+      ],
+      "types": [
+        "b789",
+        "b77w",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "lotus_air",
+      "engine": "#31104d",
+      "airlines": [
+        "lotus_air"
+      ],
+      "types": [
+        "b789",
+        "a359",
+        "b77w"
+      ],
+      "preload": false
+    },
+    {
+      "id": "alpine_swift",
+      "engine": "#8f1719",
+      "airlines": [
+        "alpine_swift"
+      ],
+      "types": [
+        "atr72",
+        "dhc6"
+      ],
+      "preload": false
+    },
+    {
+      "id": "cityhopper",
+      "engine": "#6fc7e9",
+      "airlines": [
+        "cityhopper"
+      ],
+      "types": [
+        "crj700",
+        "e175"
+      ],
+      "preload": false
+    },
+    {
+      "id": "maple_coastal",
+      "engine": "#af191a",
+      "airlines": [
+        "maple_coastal"
+      ],
+      "types": [
+        "at802",
+        "e175",
+        "a223"
+      ],
+      "preload": false
+    },
+    {
+      "id": "outback_link",
+      "engine": "#b3320a",
+      "airlines": [
+        "outback_link"
+      ],
+      "types": [
+        "bn2",
+        "dhc6",
+        "pc12"
+      ],
+      "preload": false
+    },
+    {
+      "id": "savanna_air",
+      "engine": "#cf8f2f",
+      "airlines": [
+        "savanna_air"
+      ],
+      "types": [
+        "atr72",
+        "dhc6"
+      ],
+      "preload": false
+    },
+    {
+      "id": "kauri_air",
+      "engine": "#282830",
+      "airlines": [
+        "kauri_air"
+      ],
+      "types": [
+        "crj700",
+        "e175"
+      ],
+      "preload": false
+    },
+    {
+      "id": "borneo_wings",
+      "engine": "#2a5835",
+      "airlines": [
+        "borneo_wings"
+      ],
+      "types": [
+        "at802",
+        "e175",
+        "a223"
+      ],
+      "preload": false
+    },
+    {
+      "id": "dune_jet",
+      "engine": "#e6b86b",
+      "airlines": [
+        "dune_jet"
+      ],
+      "types": [
+        "bn2",
+        "dhc6",
+        "pc12"
+      ],
+      "preload": false
+    },
+    {
+      "id": "atlas_cargo",
+      "engine": "#fbc929",
+      "airlines": [
+        "atlas_cargo"
+      ],
+      "types": [
+        "b752f",
+        "b763f"
+      ],
+      "preload": false
+    },
+    {
+      "id": "ironclad_cargo",
+      "engine": "#282830",
+      "airlines": [
+        "ironclad_cargo"
+      ],
+      "types": [
+        "b763f",
+        "b748f"
+      ],
+      "preload": false
+    },
+    {
+      "id": "polar_freight",
+      "engine": "#314d6f",
+      "airlines": [
+        "polar_freight"
+      ],
+      "types": [
+        "b748f",
+        "an124"
+      ],
+      "preload": false
+    },
+    {
+      "id": "saharan_freight",
+      "engine": "#dbb785",
+      "airlines": [
+        "saharan_freight"
+      ],
+      "types": [
+        "b752f",
+        "b763f"
+      ],
+      "preload": false
+    },
+    {
+      "id": "volga_cargo",
+      "engine": "#942532",
+      "airlines": [
+        "volga_cargo"
+      ],
+      "types": [
+        "b763f",
+        "b748f"
+      ],
+      "preload": false
+    },
+    {
+      "id": "suncharter",
+      "engine": "#ed6d2d",
+      "airlines": [
+        "suncharter"
+      ],
+      "types": [
+        "b738",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "monarch_holidays",
+      "engine": "#334b91",
+      "airlines": [
+        "monarch_holidays"
+      ],
+      "types": [
+        "b38m",
+        "a21xlr",
+        "e195e2"
+      ],
+      "preload": false
+    },
+    {
+      "id": "pacific_isles",
+      "engine": "#092d4f",
+      "airlines": [
+        "pacific_isles"
+      ],
+      "types": [
+        "a320neo",
+        "b789"
+      ],
+      "preload": false
+    },
+    {
+      "id": "coral_coast",
+      "engine": "#f7706d",
+      "airlines": [
+        "coral_coast"
+      ],
+      "types": [
+        "b738",
+        "a321"
+      ],
+      "preload": false
+    },
+    {
+      "id": "harbor_heli",
+      "engine": "#122f54",
+      "airlines": [
+        "harbor_heli"
+      ],
+      "types": [
+        "aw139"
+      ],
+      "preload": false
+    },
+    {
+      "id": "island_heli",
+      "engine": "#f7ce29",
+      "airlines": [
+        "island_heli"
+      ],
+      "types": [
+        "s76"
+      ],
+      "preload": false
+    },
+    {
+      "id": "medevac_one",
+      "engine": "#d3cf05",
+      "airlines": [
+        "medevac_one"
+      ],
+      "types": [
+        "aw139",
+        "s76"
+      ],
+      "preload": false
+    },
+    {
+      "id": "rotorlink",
+      "engine": "#cd1513",
+      "airlines": [
+        "rotorlink"
+      ],
+      "types": [
+        "aw139"
+      ],
+      "preload": false
+    },
+    {
+      "id": "skyline_rescue",
+      "engine": "#18284b",
+      "airlines": [
+        "skyline_rescue"
+      ],
+      "types": [
+        "s76"
+      ],
+      "preload": false
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Band, DiplomacyTier } from '../diplomacy/types.ts'
 import type { Game } from '../game/sim.ts'
+import { AirlineMark } from './AirlineMark.tsx'
 import { PortraitFace } from './PortraitFace.tsx'
 import { ReactionCard } from './ReactionCard.tsx'
 
@@ -89,6 +90,7 @@ export function AirlinesDesk({ game }: { game: Game }) {
                     setCourting(false)
                   }}
                 >
+                  <AirlineMark id={card.id} color={card.livery[0]} />
                   <span className="dip-livery" style={{ background: card.livery[0], borderColor: card.livery[1] }} />
                   <span className="dip-name">{card.name}</span>
                   <span

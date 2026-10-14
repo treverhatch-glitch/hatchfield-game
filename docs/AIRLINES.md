@@ -13,6 +13,7 @@ The playable carriers are the roster in `src/airlines/roster.ts`, turned into ga
 - The planner stamps that airframe on the slot. Spawn keeps it. If no listed type can use the strip, stand, pad, field level, or research, the carrier does not send a letter. The Airlines panel names the gap. The cargo starter's freighter stand is Large so the 757 feeder (code D) can park on day one; a medium stand cannot take it.
 - The letter (HUD and phone) adds a capacity warning: `Your N stands host ~X turns/day; signed carriers already want Y; this adds Z`. Pads are counted for helicopter fleets. The line does not block Accept. X is stands (or pads) times `TURNS_PER_STAND_PER_DAY` (`180 / 20`). Y and Z use the existing 4-turn / 3-turn tier split.
 - No airframe id was renamed, so v4 saves load on the existing migration chain.
+- A carrier with a Gemini ref (`public/art/refs/airlines/<id>.jpg`) wears that plate, and only on the airframes in its fleet. The five Grok plates stay on their catalog ids and the types they were painted for. A carrier with no plate, or a flight on an airframe that plate does not cover, keeps the procedural paint. Logos sit on the tail and on the Airlines card; a missing file falls back to the carrier colour.
 
 ## Core Concepts
 

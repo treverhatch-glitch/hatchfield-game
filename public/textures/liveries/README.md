@@ -24,6 +24,10 @@ engine colour. Engines are not a texture file.
 | `siam_breeze` | — | white `#F7FBFA` |
 | `northstar_cargo` | — | yellow `#FFC107` |
 
+Roster carriers with a Gemini ref are added by `scripts/build-roster-liveries.py`.
+Each row's `types` are the airframes that carrier flies. `preload: false` keeps
+those plates off the boot fetch. The five base carriers have a logo only.
+
 Three.js flips Y, so the **top row of the JPEG is V = 1**. The plates are
 opaque. Nose is on the left of `fuselage.jpg` and the crown is the top.
 `tail.jpg` has the leading edge on the left and the tip at the top. A word

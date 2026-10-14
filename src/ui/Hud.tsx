@@ -5,6 +5,7 @@ import { LiveText } from './LiveText'
 import { ViewModeToggle } from './ViewModeToggle'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
+import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
@@ -1737,6 +1738,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             return (
                               <li key={a.id}>
                                 <b style={{ color: a.color }}>
+                                  <AirlineMark id={a.id} color={a.color} />
                                   {a.name}{' '}
                                   <span className="muted">
                                     {bizModelBlurb(a.bizModel)} · {personaBlurb(a.persona)}

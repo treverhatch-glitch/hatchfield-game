@@ -1222,6 +1222,27 @@ html[data-gfx='low'] .view-layer.dim {
   font-size: 12px;
 }
 
+.airline-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 3px;
+  background: #f4f7fb;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.airline-logo.fallback {
+  display: inline-block;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.dip-card .airline-logo {
+  width: 26px;
+  height: 26px;
+  margin-right: 0;
+}
+
 .airline-tiers .tier-block {
   margin-top: 10px;
   padding-top: 8px;

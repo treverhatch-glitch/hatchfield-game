@@ -99,7 +99,7 @@ export type PaintSlot =
 
 /** Cache key for everything a livery paints: body, cheatline, fin and scheme. */
 export function liveryKey(livery: Livery): string {
-  return `${livery.body}|${livery.stripe}|${livery.tail ?? ''}|${livery.scheme ?? 'twotone'}`
+  return `${livery.body}|${livery.stripe}|${livery.tail ?? ''}|${livery.scheme ?? 'twotone'}|${livery.airline ?? ''}`
 }
 
 function shade(hex: string, factor: number): string {

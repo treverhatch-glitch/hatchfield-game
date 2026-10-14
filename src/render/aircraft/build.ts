@@ -5,8 +5,9 @@ import { doorBoxes } from './stands'
 import { AIRCRAFT_LOOK } from '../look'
 import { cylinderSides, finGeometry, intakeLipGeometry, spinnerConeGeometry, fuselageSides, loftStation, nacelleGeometry, paintedLoftGeometry, smoothSphere, windowGeometry, wingGeometry } from './geom'
 import type { LiveryBox } from './liveryUv'
-import { jpegLiveryFits } from './liveryFiles'
-import { applyRosterLivery } from './procLivery'
+import { airlineLogoUrl } from './airlineLogo'
+import { selectLivery } from './airlineArt'
+import { listedLivery } from './liveryFiles'
 import { liveryPlateReady, resolveLiveryAirline } from './liveryTex'
 import { mergeStaticShell } from './merge'
 import { addRig, type RigSet } from './rig'
@@ -857,10 +858,34 @@ function addControls(frame: Frame) {
   }
 }
 
+function fileLogoMaterials(url: string): { opaque: THREE.Material; fade: THREE.Material } {
+  const opaque = sharedMat(`logo:file:${url}`, () => {
+    const map = new THREE.TextureLoader().load(url)
+    map.colorSpace = THREE.SRGBColorSpace
+    map.anisotropy = 4
+    return new THREE.MeshBasicMaterial({
+      map,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: true,
+    })
+  })
+  const fade = sharedMat(`fade:logo:file:${url}`, () => {
+    const copy = opaque.clone()
+    copy.transparent = true
+    copy.depthWrite = true
+    return copy
+  })
+  return { opaque, fade }
+}
+
 function addLogo(frame: Frame) {
   if (frame.tier !== 'mid') return
   const brand = resolveBrand(frame.livery)
-  const { opaque, fade } = logoMaterials(brand)
+  const airlineId = (frame.livery.airline ?? '').split('@')[0]
+  const logoUrl = airlineId && !listedLivery(airlineId) ? airlineLogoUrl(airlineId) : null
+  const { opaque, fade } =
+    logoUrl && typeof document !== 'undefined' ? fileLogoMaterials(logoUrl) : logoMaterials(brand)
   const place = (x: number, y: number, z: number, size: number) => {
     const mesh = new THREE.Mesh(unitPlane())
     mesh.scale.set(size, size, 1)
@@ -877,8 +902,10 @@ function addLogo(frame: Frame) {
     const fadeMat = fade as THREE.Material & { opacity: number }
     mesh.onBeforeRender = () => {
       const airline = resolveLiveryAirline(mesh.userData.airline as string | undefined)
-      // The fin already wears the tail plate. The initials decal would cover it.
-      mesh.visible = !airline || !liveryPlateReady(airline)
+      const id = airline?.split('@')[0]
+      // A photographed tail already carries the mark. Procedural fins keep the decal.
+      const photo = Boolean(id && listedLivery(id) && liveryPlateReady(id))
+      mesh.visible = !photo
       if (mesh.material === fadeMat) fadeMat.opacity = mesh.userData.lodOpacity as number
     }
     frame.group.add(mesh)
@@ -1351,13 +1378,7 @@ function addHeloLights(frame: Frame) {
 }
 
 function paintForAirframe(paint: Livery, modelId: string): Livery {
-  const next = applyRosterLivery(paint, modelId)
-  if (next.airline && !next.airline.includes('@') && !jpegLiveryFits(next.airline, modelId)) {
-    const rest = { ...next }
-    delete rest.airline
-    return rest
-  }
-  return next
+  return selectLivery(paint, modelId)
 }
 
 export function buildAircraft(spec: ModelSpec, tier: Tier, paint: Livery): BuiltLevel {

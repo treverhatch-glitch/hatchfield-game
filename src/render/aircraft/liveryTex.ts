@@ -24,6 +24,7 @@ interface LiveryEntry {
   id: string
   engine: string
   airlines: string[]
+  preload: boolean
 }
 
 interface LiveryIndex {
@@ -102,13 +103,14 @@ function parseIndex(raw: unknown): LiveryIndex {
       : []
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue
-    const rec = row as { id?: unknown; engine?: unknown; airlines?: unknown }
+    const rec = row as { id?: unknown; engine?: unknown; airlines?: unknown; preload?: unknown }
     if (typeof rec.id !== 'string') continue
     const airlines = Array.isArray(rec.airlines) ? rec.airlines.filter((id) => typeof id === 'string') : [rec.id]
     const entry: LiveryEntry = {
       id: rec.id,
       engine: typeof rec.engine === 'string' ? rec.engine : '#888888',
       airlines: airlines.length ? airlines : [rec.id],
+      preload: rec.preload !== false,
     }
     for (const id of entry.airlines) byAirline.set(id, entry)
     byAirline.set(entry.id, entry)
@@ -210,7 +212,7 @@ function preloadListedLiveries() {
   void liveryIndex().then((index) => {
     const seen = new Set<string>()
     for (const entry of index.byAirline.values()) {
-      if (seen.has(entry.id) || cache.has(entry.id)) continue
+      if (!entry.preload || seen.has(entry.id) || cache.has(entry.id)) continue
       seen.add(entry.id)
       const created = emptyTex()
       cache.set(entry.id, created)
