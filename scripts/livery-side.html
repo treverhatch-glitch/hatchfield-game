@@ -1,0 +1,58 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Turnaround liveries</title>
+<style>html,body{margin:0;background:#b7c3ce;overflow:hidden}canvas{display:block}</style></head>
+<body><script type="module">
+import * as THREE from 'three'
+import { MODEL_SIZE, vehicleRig, poseVehicleRig, setVehicleSurfaceTime } from '/src/render/vehicles.ts'
+
+const models = [
+  ['fuel_tanker', 'fuel', 0.85],
+  ['catering_hilift', 'catering', 0.72],
+  ['belt_loader', 'belt_loader', 0.65],
+  ['towbarless_tug', 'pushback_tug', 0.35],
+  ['apron_bus', 'pax_bus', 0],
+]
+const W = 1600, H = 900
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H)
+r.outputColorSpace = THREE.SRGBColorSpace
+r.toneMapping = THREE.ACESFilmicToneMapping
+r.toneMappingExposure = 1.05
+r.shadowMap.enabled = true
+r.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.appendChild(r.domElement)
+
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#c5d0da')
+scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.35))
+const sun = new THREE.DirectionalLight(0xfff4e4, 2.4)
+sun.position.set(-18, 28, 16)
+sun.castShadow = true
+sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.camera.left = sun.shadow.camera.bottom = -40
+sun.shadow.camera.right = sun.shadow.camera.top = 40
+scene.add(sun)
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 30), new THREE.MeshLambertMaterial({ color: '#8e949a' }))
+ground.rotation.x = -Math.PI / 2
+ground.receiveShadow = true
+scene.add(ground)
+
+let x = -28
+for (const [model, kind, ext] of models) {
+  const [L, Hh] = MODEL_SIZE[model]
+  const rig = vehicleRig(kind, '#2f7fd0')
+  rig.traverse((o) => { if (o.isMesh) o.castShadow = true })
+  poseVehicleRig(rig, model, ext, 4, ext > 0)
+  rig.position.set(x + L / 2, 0, 0)
+  scene.add(rig)
+  x += L + 3.2
+  void Hh
+}
+setVehicleSurfaceTime(4)
+const cam = new THREE.PerspectiveCamera(28, W / H, 0.1, 200)
+cam.position.set(8, 4.2, 22)
+cam.lookAt(6, 1.6, 0)
+r.render(scene, cam)
+// Photo maps decode after the first frame.
+setTimeout(() => { r.render(scene, cam); window.__done = true }, 1800)
+</script></body></html>

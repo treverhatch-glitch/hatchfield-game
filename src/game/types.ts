@@ -631,6 +631,9 @@ export interface Flight {
   inboundVisitId?: string
   /** Sim clock when this inbound visit frees the stand. */
   inboundReleaseAt?: number
+  /** A–F once the ground turn finishes. Empty while the turn is still open. */
+  turnGrade?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+  turnGradeNote?: string
 }
 
 /** Timed bag journey — aggregate units, not per-suitcase agents. */

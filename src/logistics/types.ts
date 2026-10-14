@@ -211,6 +211,12 @@ export interface LogisticsConfig {
    * Off by default so the timing tests keep their closed-form drive times.
    */
   traffic?: boolean | Partial<import('./traffic').TrafficConfig>
+  /**
+   * Service-point bays (see serviceFlow.ts). Vehicles queue at a busy hose,
+   * hold or building dock, and only the owned cap may be out at once.
+   * Off by default so timing tests keep their closed-form service times.
+   */
+  docks?: boolean | import('./serviceFlow').DockConfig
 }
 
 export interface TurnaroundNeeds {
@@ -257,6 +263,8 @@ export interface TurnaroundOptions {
   deferCatering?: boolean
   /** Flight that owns a reserved loader, so the dispatcher can still use that truck here. */
   flightId?: string
+  /** Callsign painted on the vehicle's task line, e.g. ZO116. */
+  callsign?: string
 }
 
 export type DelayCause =
@@ -287,7 +295,17 @@ export type LogisticsEvent =
   | { type: 'low_stock'; time: number; stock: 'fuel' | 'meals'; level: number }
   | { type: 'delivery_ordered'; time: number; litres: number; eta: number }
   | { type: 'delivery_arrived'; time: number; litres: number; vehicleId: string }
-  | { type: 'turnaround_complete'; time: number; standId: string; turnaroundId: string; delayMinutes: number; causes: DelayCause[] }
+  | {
+      type: 'turnaround_complete'
+      time: number
+      standId: string
+      turnaroundId: string
+      delayMinutes: number
+      causes: DelayCause[]
+      /** A–F for the turn. Present once the docking grade is scored. */
+      grade?: import('./serviceFlow').TurnGrade
+      gradeNote?: string
+    }
   | { type: 'money'; time: number; amount: number; category: MoneyCategory }
   | { type: 'vehicle_breakdown'; time: number; vehicleId: string; vehicle: VehicleType; node: string; condition: number; reason: 'wear' | 'event' }
   | { type: 'vehicle_repaired'; time: number; vehicleId: string; vehicle: VehicleType; inPlace: boolean }

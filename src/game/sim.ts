@@ -312,6 +312,7 @@ import {
 import { RIVAL, RivalAirport, type PlayerSnapshot, type Walkaway } from '../rival/index.ts'
 import { createLogisticsAdapter, needsFor } from '../logistics/index.ts'
 import type { LogisticsAdapter, LogisticsSim, TurnaroundResult } from '../logistics/index.ts'
+import { shownPhase } from '../logistics/serviceFlow.ts'
 import type { VehicleType } from '../logistics/types.ts'
 import {
   BAG_SYSTEMS,
@@ -9056,7 +9057,56 @@ export class Game {
 
   /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
   servicePoses() {
-    return this.ensureGround()?.sim.poses() ?? []
+    const poses = this.ensureGround()?.sim.poses() ?? []
+    return poses.map((pose) => this.placeServicePose(pose))
+  }
+
+  /**
+   * Slide a docking vehicle off the road node onto its hose, door, hold or bay.
+   * The logistics pose stays in cells; the offset is real metres.
+   */
+  private placeServicePose<T extends { x: number; y: number; heading: number; phase: string; u: number; dock?: { phase: 'idle' | 'route' | 'approach' | 'align' | 'service' | 'depart'; u: number; localX: number; localY: number; heading: number; owner: 'stand' | 'building'; standId: string | null } }>(
+    pose: T,
+  ): T & { drawX?: number; drawY?: number; drawHeading?: number } {
+    const dock = pose.dock
+    if (!dock) return pose
+    const h = dock.owner === 'stand' ? this.headingForStand(dock.standId) : 0
+    const c = Math.cos(h)
+    const s = Math.sin(h)
+    const dx = (dock.localX * c - dock.localY * s) / METERS_PER_CELL
+    const dy = (dock.localX * s + dock.localY * c) / METERS_PER_CELL
+    const shown = shownPhase(dock.phase, dock.u)
+    // x/y stay on the service road. drawX/drawY are the bay the mesh and the camera use.
+    return {
+      ...pose,
+      ...(shown ? { phase: shown.phase, u: shown.u } : {}),
+      drawX: pose.x + dx,
+      drawY: pose.y + dy,
+      drawHeading: h + dock.heading,
+    }
+  }
+
+  private headingForStand(standId: string | null): number {
+    if (!standId) return 0
+    const flight = this.flights.find((f) => f.groundTurn === standId && f.phase !== 'gone')
+    if (flight) return flight.heading
+    const [c, r] = standId.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return 0
+    const parked = this.flights.find((f) => f.stand && f.stand.c === c && f.stand.r === r && f.phase !== 'gone')
+    return parked?.heading ?? 0
+  }
+
+  /** Live or finished A–F grade for a flight the ground module is turning. */
+  liveTurnGrade(f: Flight): { grade: string; note: string } | null {
+    if (f.turnGrade) return { grade: f.turnGrade, note: f.turnGradeNote ?? '' }
+    if (!f.groundTurn) return null
+    return this.ensureGround()?.sim.turnGrade(f.groundTurn) ?? null
+  }
+
+  /** Metres the pushback tug has shoved this nose. The flight's own pushback path takes over after that. */
+  pushbackRollMetres(f: Flight): number {
+    if (!f.groundTurn || f.phase === 'pushback' || f.phase === 'taxi_out' || f.phase === 'takeoff') return 0
+    return this.ground?.sim.pushbackRoll(f.groundTurn) ?? 0
   }
 
   /**
@@ -9134,15 +9184,17 @@ export class Game {
     const services: CrewClock[] = []
     const ground = this.ground?.sim
     if (ground) {
+      const drawn = new Map(this.servicePoses().map((pose) => [pose.id, pose]))
       for (const job of ground.activeCrew()) {
         // Lav / water trucks run their hose from the cab: no walking crew yet.
         if (job.service === 'lav' || job.service === 'water') continue
+        const at = drawn.get(job.id)
         services.push({
           id: job.id,
           service: job.service,
-          x: job.x,
-          y: job.y,
-          heading: job.heading,
+          x: at?.drawX ?? job.x,
+          y: at?.drawY ?? job.y,
+          heading: at?.drawHeading ?? job.heading,
           start: job.start,
           end: job.end,
           now: ground.now,
@@ -10648,6 +10700,10 @@ export class Game {
         flight.posted.catering = true
         flight.caterLevel = 1
         flight.waitingOn.catering = false
+        if (result.grade) {
+          flight.turnGrade = result.grade
+          flight.turnGradeNote = result.gradeNote
+        }
         this.ensureDiplomacy().noteRamp(flight.id, result.delayMinutes, result.causes.includes('late_bags'))
       }
       if (result.delayMinutes <= 1) continue
@@ -10764,6 +10820,7 @@ export class Game {
         arrivingPax: pax,
         deferCatering: pax > 0,
         flightId: f.id,
+        callsign: f.flightNo,
         outboundCargoKg: Math.round(plan.tonnes * 1000),
       })
     } catch {

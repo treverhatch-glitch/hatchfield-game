@@ -152,6 +152,10 @@ export class CameraSession {
   step(dt: number, tracks: readonly Trackable[], layout: FieldLayout): CameraPose | null {
     if (this.mode !== 'follow' || !this.selection) return null
     const target = tracks.find((t) => t.id === this.selection?.id)
+    if (target && this.selection && target.label !== this.selection.label) {
+      this.selection = { ...this.selection, label: target.label, c: target.c, r: target.r, heading: target.heading }
+      this.publish()
+    }
     if (!target) {
       this.selection = null
       this.mode = 'free'

@@ -62,7 +62,18 @@ export interface FieldSnapshot {
     path: readonly { c: number; r: number }[]
     seg: number
   }[]
-  service: readonly { id: string; type: string; x: number; y: number; heading: number }[]
+  service: readonly {
+    id: string
+    type: string
+    x: number
+    y: number
+    heading: number
+    reason?: string
+    /** Bay position, when the truck has left the road centre to dock. */
+    drawX?: number
+    drawY?: number
+    drawHeading?: number
+  }[]
   catering: readonly { id: string; x: number; y: number; heading: number }[]
 }
 
@@ -115,11 +126,11 @@ export function tracksFrom(field: FieldSnapshot): Trackable[] {
     tracks.push({
       id: `service:${s.id}`,
       kind: 'vehicle',
-      label: vehicleLabel(s.type),
-      c: s.x,
-      r: s.y,
+      label: s.reason || vehicleLabel(s.type),
+      c: s.drawX ?? s.x,
+      r: s.drawY ?? s.y,
       altitude: 0,
-      heading: s.heading,
+      heading: s.drawHeading ?? s.heading,
     })
   }
   for (const c of field.catering) {

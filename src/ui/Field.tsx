@@ -37,7 +37,10 @@ export function Field({ game }: { game: Game }) {
       if (game.view !== 'apron') return
       if (game.tool === 'pan') {
         const hit = pickTrackable({ c: v.c, r: v.r }, tracksFrom(snapshotFrom(game)))
-        if (hit) cameraSession.select(hit)
+        if (hit) {
+          cameraSession.select(hit)
+          if (hit.kind === 'vehicle') cameraSession.startFollow()
+        }
       }
       game.clickTile(v)
     }

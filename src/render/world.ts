@@ -1927,9 +1927,10 @@ export class World {
       }
     }
     this.arrivalBefore.delete(f.id)
+    const shove = (game.pushbackRollMetres(f) * WORLD_PER_METER) / CELL
     return {
-      x: f.x,
-      y: f.y,
+      x: f.x - Math.cos(f.heading) * shove,
+      y: f.y - Math.sin(f.heading) * shove,
       alt: Math.max(0, f.z - 0.1),
       heading: f.heading,
       pitch: 0,
@@ -2043,7 +2044,8 @@ export class World {
       const pose = poses[i]
       // With apron traffic on, the sim already keeps bodies apart; only legacy poses get the yard fan-out.
       const off = pose.waiting === undefined ? yard[i] : { x: 0, z: 0 }
-      const pos = toWorld(pose.x, pose.y, 0)
+      const pos = toWorld(pose.drawX ?? pose.x, pose.drawY ?? pose.y, 0)
+      const yawHeading = pose.drawHeading ?? pose.heading
       const ext = deployOf(pose.phase, pose.u)
       const odo = this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER)
       this.vehicleFrame.push({
@@ -2053,14 +2055,14 @@ export class World {
         x: pos.x + off.x * WORLD_PER_METER,
         y: pos.y,
         z: pos.z + off.z * WORLD_PER_METER,
-        yaw: -pose.heading,
+        yaw: -yawHeading,
         scale: WORLD_PER_METER,
         ext,
         active: ext > 0 || serviceStateOf(pose.phase, pose.u) === 'drive',
         reversing: serviceStateOf(pose.phase, pose.u) === 'dock',
         odo,
         // heading is CCW in sim space and the render yaw is its negation, so steer flips sign too
-        steer: -this.steerOf(pose.id, pose.heading, odo, vehicleMeters(pose.type)[0] * 0.6),
+        steer: -this.steerOf(pose.id, yawHeading, odo, vehicleMeters(pose.type)[0] * 0.6),
         // cones only after dusk (they follow the same headlight level as the lamp pools)
         beams: (this.wr.dayNightSample?.headlights ?? 0) > 0.3 && (serviceStateOf(pose.phase, pose.u) === 'drive' || pose.waiting === true),
         clock: game.clock,

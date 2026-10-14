@@ -26,7 +26,9 @@ const uniforms = {
   uMean: { value: [0.75, 0.75, 0.75, 0.75, 0.75] },
   uTime: { value: 0 },
   uWear: { value: 1 },
+  uLivery: { value: white() as THREE.Texture },
 }
+let liveryStarted = false
 
 function base(): string {
   const env = (import.meta as unknown as { env?: { BASE_URL?: string } }).env
@@ -51,10 +53,36 @@ export function wantsHiResVehicleTextures(): boolean {
   }
 }
 
+function loadLivery() {
+  if (liveryStarted) return
+  liveryStarted = true
+  if (typeof window === 'undefined' || typeof fetch === 'undefined' || typeof document === 'undefined') return
+  fetch(`${base()}livery_atlas.jpg.b64`)
+    .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+    .then((b64) => {
+      const img = new Image()
+      img.onload = () => {
+        const tex = new THREE.Texture(img)
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping
+        tex.anisotropy = 8
+        tex.generateMipmaps = true
+        tex.minFilter = THREE.LinearMipmapLinearFilter
+        tex.needsUpdate = true
+        uniforms.uLivery.value = tex
+      }
+      img.src = `data:image/jpeg;base64,${b64.trim()}`
+    })
+    .catch(() => {
+      /* plain side colour */
+    })
+}
+
 function loadMaps(): THREE.Texture[] {
   if (maps) return maps
   maps = VEHICLE_TEXTURES.map(() => white())
   uniforms.uMaps.value = maps
+  loadLivery()
   if (typeof window === 'undefined' || typeof fetch === 'undefined' || typeof document === 'undefined') return maps
   const hi = wantsHiResVehicleTextures()
   VEHICLE_TEXTURES.forEach((name, i) => {
@@ -139,6 +167,7 @@ vObjY = position.y;
 `
 const FRAG_HEAD = /* glsl */ `
 uniform sampler2D uMaps[5];
+uniform sampler2D uLivery;
 uniform float uMean[5];
 uniform float uTime;
 uniform float uWear;
@@ -162,9 +191,10 @@ const FRAG_BODY = /* glsl */ `
   else if (id == 3) tex = texture2D(uMaps[2], vUvm / ${REPEAT[2].toFixed(2)}).rgb;
   else if (id == 4) tex = texture2D(uMaps[3], vUvm / ${REPEAT[3].toFixed(2)}).rgb;
   else if (id == 5) tex = texture2D(uMaps[4], (vUvm + vec2(vRun * uTime * 0.9, 0.0)) / ${REPEAT[4].toFixed(2)}).rgb;
-  if (id == 4 || id == 5) {
+  else if (id == 6) tex = texture2D(uLivery, vUvm).rgb;
+  if (id == 4 || id == 5 || id == 6) {
     diffuseColor.rgb = tex * (id == 5 ? 0.55 : 1.0);
-  } else if (id >= 1) {
+  } else if (id >= 1 && id <= 3) {
     float m = id == 1 ? uMean[0] : id == 2 ? uMean[1] : uMean[2];
     float l = dot(tex, vec3(0.2126, 0.7152, 0.0722)) / m;
     diffuseColor.rgb *= clamp(mix(1.0, l, 0.75), 0.55, 1.35);
@@ -188,9 +218,10 @@ export function applyVehicleSurface(mat: THREE.MeshLambertMaterial): THREE.MeshL
     shader.uniforms.uMean = uniforms.uMean
     shader.uniforms.uTime = uniforms.uTime
     shader.uniforms.uWear = uniforms.uWear
+    shader.uniforms.uLivery = uniforms.uLivery
     shader.vertexShader = VERT_HEAD + shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\n${VERT_BODY}`)
     shader.fragmentShader = FRAG_HEAD + shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>\n${FRAG_BODY}`)
   }
-  mat.customProgramCacheKey = () => 'vehicle-surface-v1'
+  mat.customProgramCacheKey = () => 'vehicle-surface-v2'
   return mat
 }

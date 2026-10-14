@@ -148,7 +148,9 @@ export const LIVERY = {
  * this id: paint and panels modulate the vertex colour, chevrons and the belt
  * replace it.
  */
-export const TEX = { none: 0, paint: 1, panel: 2, plate: 3, chevron: 4, belt: 5 } as const
+export const TEX = { none: 0, paint: 1, panel: 2, plate: 3, chevron: 4, belt: 5, livery: 6 } as const
+/** Cells across the shared side-livery atlas. */
+export const LIVERY_CELLS = 5
 export type TexId = (typeof TEX)[keyof typeof TEX]
 
 function autoTex(hex: string, lit: boolean): TexId {
@@ -420,6 +422,48 @@ class Kit {
     for (const s of [1, -1]) this.box(LIVERY.black, 0.4, 0.18, 0.02, x, y, s * (W / 2 + 0.012))
   }
 
+  /**
+   * Side sign from the shared livery atlas. +X is the nose, so the words
+   * read correctly when you stand on either side of the truck.
+   * `z` is how far outside the centreline the sign sits.
+   */
+  livery(cell: number, w: number, h: number, x: number, y: number, z: number, face: 1 | -1, name = '') {
+    const g = new THREE.PlaneGeometry(w, h)
+    if (face < 0) g.rotateY(Math.PI)
+    this.tex = TEX.livery
+    this.add(g, '#f4f5f6', x, y, face * Math.abs(z), name)
+    this.tex = null
+    const part = this.parts[this.parts.length - 1]!
+    const pos = part.geo.getAttribute('position')
+    const uv = part.geo.getAttribute('uvm') as THREE.BufferAttribute
+    let x0 = Infinity
+    let x1 = -Infinity
+    let y0 = Infinity
+    let y1 = -Infinity
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i)
+      const py = pos.getY(i)
+      if (px < x0) x0 = px
+      if (px > x1) x1 = px
+      if (py < y0) y0 = py
+      if (py > y1) y1 = py
+    }
+    const dx = Math.max(1e-4, x1 - x0)
+    const dy = Math.max(1e-4, y1 - y0)
+    for (let i = 0; i < pos.count; i++) {
+      let u = (pos.getX(i) - x0) / dx
+      const v = (pos.getY(i) - y0) / dy
+      if (face > 0) u = 1 - u
+      uv.setXY(i, (cell + 0.02 + u * 0.96) / LIVERY_CELLS, 0.02 + v * 0.96)
+    }
+  }
+
+  /** The same sign on both sides. */
+  liveryBoth(cell: number, w: number, h: number, x: number, y: number, z: number, name = '') {
+    this.livery(cell, w, h, x, y, z, 1, name)
+    this.livery(cell, w, h, x, y, z, -1, name)
+  }
+
   chassisRail(L: number, W: number, y: number, x = 0) {
     for (const s of [1, -1]) this.box(LIVERY.chassis, L, 0.22, 0.12, x, y, s * W * 0.32)
   }
@@ -484,6 +528,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const tr = Math.min(W * 0.46, (H - r - 0.4) / 2)
     const ty = r + 0.4 + tr
     k.add(new THREE.CapsuleGeometry(tr, tl - tr * 2, 6, 16).rotateZ(Math.PI / 2), LIVERY.white, tx, ty, 0)
+    k.liveryBoth(0, Math.min(tl * 0.42, 3.2), Math.min(tr * 0.85, 1.15), tx + tl * 0.06, ty, tr + 0.04)
     k.sideStripe(tx, tl * 0.9, ty - tr * 0.35, tr * 2, k.accent, 0.18)
     k.sideStripe(tx, tl * 0.9, ty + tr * 0.1, tr * 2, LIVERY.gseYellow, 0.08)
     // top walkway + rail + manholes
@@ -566,14 +611,15 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const r = gseR
     k.axle(L * 0.3, r, W, 'wheels_front')
     k.axle(-L * 0.3, r, W, 'wheels_rear')
-    k.rbox(LIVERY.gseYellow, L * 0.9, 0.5, W, 0, r + 0.15, 0, 0.06)
+    k.rbox(LIVERY.white, L * 0.9, 0.5, W, 0, r + 0.15, 0, 0.06)
     k.sideStripe(0, L * 0.9, r + 0.1, W, LIVERY.black, 0.08)
     // hi-vis reflective tape along chassis
     k.box('#f7f3a8', L * 0.7, 0.08, W + 0.03, 0, r + 0.42, 0)
+    k.liveryBoth(2, 2.4, 0.85, L * 0.22, r + 0.55, W / 2 + 0.03)
     // rounded side cab at mid-left
-    k.rbox(LIVERY.gseYellow, 1.4, 0.9, 0.9, -L * 0.05, r + 0.85, -W / 2 + 0.45, 0.1)
+    k.rbox(LIVERY.white, 1.4, 0.9, 0.9, -L * 0.05, r + 0.85, -W / 2 + 0.45, 0.1)
     k.box(LIVERY.glass, 1.2, 0.5, 0.92, -L * 0.05, r + 1.25, -W / 2 + 0.45)
-    k.rbox(LIVERY.gseYellow, 1.5, 0.06, 1.0, -L * 0.05, r + 1.55, -W / 2 + 0.45, 0.03)
+    k.rbox(LIVERY.white, 1.5, 0.06, 1.0, -L * 0.05, r + 1.55, -W / 2 + 0.45, 0.03)
     k.beacon(-L * 0.05, r + 1.58, -W / 2 + 0.45)
     // inclined belt with side rails (rises to the front)
     const bl = L * 1.0
@@ -631,6 +677,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const by0 = r + 0.75
     const bh = H - by0
     k.box(LIVERY.white, bl, bh, W, bx, by0 + bh / 2, 0, 'box')
+    k.liveryBoth(1, Math.min(bl * 0.55, 3.4), Math.min(bh * 0.42, 1.35), bx - bl * 0.08, by0 + bh * 0.62, W / 2 + 0.03, 'box')
     k.box(k.accent, bl * 1.002, 0.3, W * 1.005, bx, by0 + bh * 0.25, 0, 'box')
     k.box(LIVERY.steel, bl * 1.004, 0.05, W * 1.01, bx, H - 0.03, 0, 'box')
     k.box(LIVERY.steel, 0.04, bh * 0.85, W * 0.7, -L / 2 + 0.15 - 0.02, by0 + bh * 0.48, 0, 'box') // rear door
@@ -714,6 +761,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.glass, 0.04, bh * 0.7, W * 0.9, L / 2 + 0.01, fl + bh * 0.5, 0)
     k.box(LIVERY.glass, 0.04, bh * 0.7, W * 0.9, -L / 2 - 0.01, fl + bh * 0.5, 0)
     k.box(k.accent, L * 1.002, 0.25, W * 1.01, 0, fl + bh * 0.2, 0)
+    k.liveryBoth(4, 2.4, 0.55, L * 0.15, fl + 0.78, W / 2 + 0.045)
     // three double doors both sides
     for (const f of [-0.3, 0, 0.3]) for (const s of [1, -1]) k.box(LIVERY.glass, 1.4, bh * 0.82, 0.03, f * L, fl + bh * 0.45, s * (W / 2 + 0.01), 'doors')
     k.box(LIVERY.chassis, L * 0.6, 0.35, W * 0.6, 0, H + 0.17, 0) // roof AC pod
@@ -811,8 +859,9 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.axle(L * 0.33, r, W, 'wheels_front', false, 0.02)
     k.axle(-L * 0.3, r, W, 'wheels_rear', false, 0.02)
     // U-shaped chassis, open at the rear to take the nose gear
-    k.box(LIVERY.gseYellow, L * 0.45, 0.85, W * 0.95, L * 0.27, r + 0.15, 0)
-    for (const s of [1, -1]) k.box(LIVERY.gseYellow, L * 0.55, 0.85, W * 0.3, -L * 0.22, r + 0.15, s * W * 0.33)
+    k.box('#d5d8dc', L * 0.45, 0.85, W * 0.95, L * 0.27, r + 0.15, 0)
+    for (const s of [1, -1]) k.box('#d5d8dc', L * 0.55, 0.85, W * 0.3, -L * 0.22, r + 0.15, s * W * 0.33)
+    k.liveryBoth(3, 2.15, 0.62, -L * 0.18, r + 0.48, W * 0.5 + 0.02)
     k.box(LIVERY.black, 0.12, 0.3, W * 0.97, L / 2, r - 0.05, 0)
     k.box(LIVERY.diamond, L * 0.4, 0.04, W * 0.85, L * 0.27, r + 0.59, 0)
     // cradle / clamp in the U
@@ -820,7 +869,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     for (const s of [1, -1]) k.box(LIVERY.black, 0.4, 0.3, 0.12, -L * 0.25, r + 0.05, s * W * 0.15, 'cradle')
     // twin low cabs (front corner)
     k.box(LIVERY.glass, 1.2, 0.45, 1.0, L * 0.32, r + 0.85, -W * 0.28)
-    k.box(LIVERY.gseYellow, 1.3, 0.06, 1.1, L * 0.32, H - 0.03, -W * 0.28)
+    k.box('#d5d8dc', 1.3, 0.06, 1.1, L * 0.32, H - 0.03, -W * 0.28)
     k.beacon(L * 0.32, H, -W * 0.28)
     k.box('#f7f3a8', L * 0.35, 0.1, W * 0.96, L * 0.27, r + 0.7, 0) // hi-vis nose
     k.chevrons(L / 2 + 0.06, r - 0.1, 0.35, W * 0.95, 8)

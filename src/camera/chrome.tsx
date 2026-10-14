@@ -23,7 +23,7 @@ const buttonStyle = {
   padding: '6px 10px',
   font: '600 12px/1.2 "IBM Plex Sans", system-ui, sans-serif',
   boxShadow: '0 6px 16px rgba(0,0,0,0.28)',
-  maxWidth: 220,
+  maxWidth: 320,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap' as const,

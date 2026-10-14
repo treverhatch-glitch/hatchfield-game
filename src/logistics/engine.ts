@@ -3,6 +3,18 @@ import { sizeTierOf, vehicleCanServe } from '../scale/logic'
 import { needsFor } from './needs'
 import { RoadGraph } from './roads'
 import { ApronTraffic } from './traffic'
+import {
+  ServiceFlow,
+  anchorIdFor,
+  buildingAnchors,
+  gradeTurnaround,
+  serviceReason,
+  standAnchors,
+  standLabel,
+  taskLine,
+  type DockPhase,
+  type DockVisual,
+} from './serviceFlow'
 import type {
   DelayCause,
   FlightKind,
@@ -58,6 +70,10 @@ export interface VehiclePose {
   u: number
   /** Apron traffic: held up, yielding to another vehicle. */
   waiting?: boolean
+  /** Task line for the follow camera, e.g. "Refuel ZO116 at Stand 3 — on the job". */
+  reason?: string
+  /** Dock offset in the stand or building frame. Absent when the truck is just driving. */
+  dock?: DockVisual
 }
 
 /** A vehicle standing at an aircraft, with the sim clock for that service. */
@@ -114,6 +130,14 @@ export type VehiclePhase =
   | 'towed'
   | 'to_maintenance'
   | 'in_bay'
+  /** Waiting for a free bay. The docking module owns the queue order. */
+  | 'queued'
+  /** Backing into the bay: approach, then align. */
+  | 'docking'
+  /** Clearing the bay after the work. */
+  | 'departing'
+
+export type DockIntent = 'stand' | 'load' | 'drop' | 'stand-done' | 'load-done' | 'drop-done' | 'stand-to-drop' | null
 
 export interface VehicleState {
   id: string
@@ -137,6 +161,8 @@ export interface VehicleState {
   route?: string[] | null
   /** Sim-minute when the current drive started. */
   phaseStart?: number
+  /** Which bay the docking sequence is heading for. Null when docks are off. */
+  dockIntent: DockIntent
 }
 
 interface ServiceRequest {
@@ -242,6 +268,8 @@ export interface TurnaroundState {
   externalFlightId: string
   /** Fuel monitor grounded this departure, so the fuel service stays blocked. */
   fuelExternalHold: boolean
+  /** Callsign for the vehicle task line. Empty when the caller didn't pass one. */
+  callsign: string
 }
 
 export type LogisticsListener = (e: LogisticsEvent) => void
@@ -255,6 +283,8 @@ export class LogisticsSim {
   readonly roads: RoadGraph
   /** Apron traffic when config.traffic is set; null = closed-form drive times. */
   readonly traffic: ApronTraffic | null = null
+  /** Service-point bays when config.docks is set. Null keeps the old closed-form stops. */
+  readonly flow: ServiceFlow | null = null
   now = 0
   fuelLitres: number
   meals: number
@@ -297,6 +327,29 @@ export class LogisticsSim {
       this.stands.set(s.id, s)
     }
     if (config.traffic) this.traffic = new ApronTraffic(this.roads, config.edges, config.traffic === true ? {} : config.traffic)
+    if (config.docks) {
+      const dockCfg = config.docks === true ? {} : config.docks
+      const anchors = [
+        ...buildingAnchors(
+          {
+            fuel: config.fuelFarm.node,
+            kitchen: config.kitchen.node,
+            makeup: config.makeupNode,
+            cargo: config.cargoNode,
+            terminal: config.terminalNode,
+          },
+          dockCfg,
+        ),
+      ]
+      for (const s of config.stands) anchors.push(...standAnchors(s.id, 'M', 1, 1))
+      const caps: Record<string, number> = {}
+      for (const type of VEHICLE_TYPES) {
+        const owned = config.vehicles[type] ?? 0
+        const limit = dockCfg.fleetCap?.[type]
+        caps[type] = limit === undefined ? owned : Math.min(owned, Math.max(0, limit))
+      }
+      this.flow = new ServiceFlow(anchors, caps)
+    }
     this.fuelLitres = Math.min(config.fuelFarm.initialLitres, config.fuelFarm.capacityLitres)
     this.meals = Math.min(config.kitchen.initialMeals, config.kitchen.capacityMeals)
     for (const type of VEHICLE_TYPES) {
@@ -316,6 +369,7 @@ export class LogisticsSim {
           wear: Maintenance.freshWear(0),
           route: null,
           phaseStart: 0,
+          dockIntent: null,
         })
       }
     }
@@ -494,10 +548,13 @@ export class LogisticsSim {
       deferCatering: opts.deferCatering === true,
       cateringFeePosted: false,
       externalFlightId: opts.flightId ?? '',
+      callsign: opts.callsign ?? '',
       fuelExternalHold: false,
     }
     this.turnarounds.set(id, t)
     this.byStand.set(standId, id)
+    this.flow?.setBays(`stand:${standId}:fuel`, Math.max(1, needs.fuelPoints))
+    this.flow?.setBays(`stand:${standId}:catering`, needs.upperDeck ? 2 : 1)
 
     const enable = (s: ServiceKind, on: boolean): void => {
       if (on && needs.services.includes(s)) t.services[s] = 'blocked'
@@ -622,17 +679,75 @@ export class LogisticsSim {
       const u = Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
       if (traffic) traffic.place(v)
       const tp = traffic?.pose(v.id)
-      if (tp) return { id: v.id, type: v.type, x: tp.x, y: tp.y, heading: tp.heading, phase: v.phase, u, waiting: traffic!.waiting(v.id) }
-      const here = this.roads.at(v.node)
-      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: this.arrivalHeading(v), phase: v.phase, u }
-      if (!driving.has(v.phase) || !v.route || v.route.length < 2) {
-        return { id: v.id, type: v.type, ...parked }
-      }
-      const pts = v.route.map((id) => this.roads.at(id)).filter((n): n is NonNullable<typeof n> => Boolean(n))
-      if (pts.length < 2) return { id: v.id, type: v.type, ...parked }
-      const at = pointAlong(pts, u)
-      return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading, phase: v.phase, u }
+      const base = tp
+        ? { id: v.id, type: v.type, x: tp.x, y: tp.y, heading: tp.heading, phase: v.phase, u, waiting: traffic!.waiting(v.id) }
+        : this.roadPose(v, driving, u)
+      return this.withDock(v, base)
     })
+  }
+
+  private roadPose(v: VehicleState, driving: Set<VehiclePhase>, u: number): VehiclePose {
+    const here = this.roads.at(v.node)
+    const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: this.arrivalHeading(v), phase: v.phase, u }
+    if (!driving.has(v.phase) || !v.route || v.route.length < 2) {
+      return { id: v.id, type: v.type, ...parked }
+    }
+    const pts = v.route.map((id) => this.roads.at(id)).filter((n): n is NonNullable<typeof n> => Boolean(n))
+    if (pts.length < 2) return { id: v.id, type: v.type, ...parked }
+    const at = pointAlong(pts, u)
+    return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading, phase: v.phase, u }
+  }
+
+  /** Fold the docking pose and the task line onto a road pose. Driving trucks keep their route. */
+  private withDock(v: VehicleState, base: VehiclePose): VehiclePose {
+    const actor = this.flow?.actor(v.id)
+    if (!actor || actor.phase === 'idle') return base
+    const dockU = v.phase === 'servicing' || v.phase === 'loading' || v.phase === 'unloading' ? base.u : base.u
+    const visual = this.flow!.visual(v.id, actor.phase === 'service' ? dockU : base.u)
+    const reason = taskLine(actor.reason, actor.phase, actor.queueIndex)
+    if (!visual || (actor.phase === 'route' && actor.queueIndex === 0)) return { ...base, reason }
+    return { ...base, reason, dock: visual }
+  }
+
+  /** Task lines for the follow camera and the tests. */
+  tasks(): { id: string; phase: DockPhase; queueIndex: number; reason: string }[] {
+    return this.flow?.tasks() ?? []
+  }
+
+  /** Bays in service and the queue behind each point. */
+  dockReport() {
+    return this.flow?.throughput() ?? []
+  }
+
+  /** Live A–F grade for the aircraft on this stand. Null when that stand is empty. */
+  turnGrade(standId: string): { grade: string; note: string } | null {
+    const id = this.byStand.get(standId)
+    const t = id ? this.turnarounds.get(id) : undefined
+    if (!t) return null
+    const scheduled = Math.max(0, t.readyBy - t.startedAt)
+    const actual = (t.completedAt ?? this.now) - t.startedAt
+    const graded = gradeTurnaround({
+      scheduledMin: scheduled,
+      actualMin: actual,
+      queuedMin: this.flow?.queuedMinutes(t.id) ?? 0,
+    })
+    return { grade: graded.grade, note: graded.note }
+  }
+
+  /** Metres the tug has shoved this stand's nose. 0 when pushback is not on the job. */
+  pushbackRoll(standId: string): number {
+    if (!this.flow) return 0
+    for (const v of this.vehicles) {
+      const dock = this.flow.visual(v.id, this.phaseU(v))
+      if (dock && dock.standId === standId && dock.rollM > 0) return dock.rollM
+    }
+    return 0
+  }
+
+  private phaseU(v: VehicleState): number {
+    const start = v.phaseStart ?? this.now
+    const span = v.phaseEnd - start
+    return Number.isFinite(span) && span > EPS ? Math.min(1, Math.max(0, (this.now - start) / span)) : 1
   }
 
   /** Heading of the last drive, so a parked truck still faces the way it arrived. */
@@ -999,6 +1114,8 @@ export class LogisticsSim {
   private maybeReleaseLoader(t: TurnaroundState): void {
     if (!t.loaderVehicle) return
     if (!HOLD_SERVICES.every((s) => this.isDone(t, s))) return
+    // The gate may still order bags off. Pulling the belt away early costs a whole re-dock.
+    if (!t.gateClosed && t.bags.expected > 0) return
     const v = this.vehicles.find((x) => x.id === t.loaderVehicle)!
     this.maintenance?.onUse(v)
     const req = this.request(v)
@@ -1265,6 +1382,7 @@ export class LogisticsSim {
   /** Kitchen production, vehicle upkeep, boarding flow and wait accounting. */
   private advanceContinuous(dt: number): void {
     this.traffic?.step(this.vehicles, dt, this.now + dt)
+    this.flow?.accrue(dt)
     const k = this.config.kitchen
     const made = Math.min(k.capacityMeals - this.meals, (k.mealsPerHour * dt) / 60)
     if (made > 0) {
@@ -1392,17 +1510,31 @@ export class LogisticsSim {
       case 'to_source':
         if (!r) return this.idle(v)
         v.node = this.sourceNode(r)
+        if (this.holdForBay(v, r, 'load')) return
         this.beginLoading(v, r)
         return
       case 'loading':
         if (!r) return this.idle(v)
+        if (this.flow?.actor(v.id)?.phase === 'service') {
+          this.beginDepart(v, 'load-done')
+          return
+        }
         this.travel(v, 'to_stand', this.standNode(r))
         return
       case 'to_stand':
         if (!r) return this.idle(v)
         v.node = this.standNode(r)
         this.emit({ type: 'truck_arrive', time: this.now, vehicleId: v.id, vehicle: v.type, standId: r.standId })
+        if (this.holdForBay(v, r, 'stand')) return
         this.arriveAtStand(v, r)
+        return
+      case 'docking':
+        this.advanceDock(v, r)
+        return
+      case 'departing':
+        this.finishDepart(v, r)
+        return
+      case 'queued':
         return
       case 'servicing':
         if (!r) return this.idle(v)
@@ -1410,7 +1542,9 @@ export class LogisticsSim {
         return
       case 'to_dropoff': {
         v.node = r ? this.dropNode(r) : v.node
+        if (r && this.holdForBay(v, r, 'drop')) return
         v.phase = 'unloading'
+        v.phaseStart = this.now
         v.phaseEnd = this.now + (this.config.vehicleSpecs[v.type].dropMinutes ?? 1)
         return
       }
@@ -1422,14 +1556,128 @@ export class LogisticsSim {
           else if (r.service === 'cargo_unload') this.emit({ type: 'cargo_to_area', time: this.now, standId: r.standId, kg: n })
         }
         v.load = 0
+        const leavingBay =
+          this.flow?.actor(v.id)?.phase === 'service' ||
+          this.flow?.actor(v.id)?.phase === 'align' ||
+          this.flow?.actor(v.id)?.phase === 'approach'
         this.idle(v)
-        if (r) this.checkOutDone(r)
+        if (r && !leavingBay) this.checkOutDone(r)
         return
       }
       default:
         this.maintenance?.advance(v)
         return
     }
+  }
+
+  /** True when the vehicle is waiting on a bay instead of starting the work. */
+  private holdForBay(v: VehicleState, r: ServiceRequest, intent: 'stand' | 'load' | 'drop'): boolean {
+    if (!this.flow) return false
+    if (this.flow.actor(v.id)?.phase === 'service') return false
+    const place = intent === 'stand' ? 'stand' : intent === 'load' ? 'source' : 'drop'
+    const anchorId = anchorIdFor(r.standId, r.service, place)
+    if (!this.flow.anchor(anchorId)) return false
+    if (!this.flow.actor(v.id)) this.flow.markOut(v.id, v.type, this.jobReason(r, place), r.turnaroundId)
+    else {
+      const actor = this.flow.actor(v.id)!
+      this.flow.markOut(v.id, v.type, this.jobReason(r, place), actor.turnaroundId || r.turnaroundId)
+    }
+    v.dockIntent = intent
+    const got = this.flow.claim(v.id, anchorId)
+    if (got === 'queue') {
+      v.phase = 'queued'
+      v.phaseStart = this.now
+      v.phaseEnd = Infinity
+      return true
+    }
+    this.flow.enter(v.id, 'approach')
+    v.phase = 'docking'
+    v.phaseStart = this.now
+    v.phaseEnd = this.now + this.flow.timing.approachMin
+    return true
+  }
+
+  private advanceDock(v: VehicleState, r: ServiceRequest | undefined): void {
+    const actor = this.flow?.actor(v.id)
+    if (!this.flow || !actor) return this.idle(v)
+    if (actor.phase === 'approach') {
+      this.flow.enter(v.id, 'align')
+      v.phaseStart = this.now
+      v.phaseEnd = this.now + this.flow.timing.alignMin
+      return
+    }
+    this.flow.enter(v.id, 'service')
+    if (!r) return this.idle(v)
+    if (v.dockIntent === 'load') this.beginLoading(v, r)
+    else if (v.dockIntent === 'drop') {
+      v.phase = 'unloading'
+      v.phaseStart = this.now
+      v.phaseEnd = this.now + (this.config.vehicleSpecs[v.type].dropMinutes ?? 1)
+    } else this.arriveAtStand(v, r)
+  }
+
+  private beginDepart(v: VehicleState, intent: DockIntent): void {
+    if (!this.flow) return this.idle(v)
+    this.flow.beginDepart(v.id)
+    v.dockIntent = intent
+    v.phase = 'departing'
+    v.phaseStart = this.now
+    v.phaseEnd = this.now + this.flow.timing.departMin
+  }
+
+  private finishDepart(v: VehicleState, r: ServiceRequest | undefined): void {
+    const intent = v.dockIntent
+    // A full load drives on. An empty pickup just clears the bay.
+    if (intent === 'load-done' && r && this.flow && v.load > EPS) {
+      const next = this.flow.releaseBay(v.id)
+      v.dockIntent = null
+      this.travel(v, 'to_stand', this.standNode(r))
+      if (next) this.promote(next)
+      return
+    }
+    if (intent === 'stand-to-drop' && r && this.flow) {
+      const next = this.flow.releaseBay(v.id)
+      v.dockIntent = null
+      this.travel(v, 'to_dropoff', this.dropNode(r))
+      if (next) this.promote(next)
+      return
+    }
+    this.idle(v)
+    if (!r) return
+    // The job stays assigned through the pull-away, so the completion check
+    // has to run again once the vehicle is actually free.
+    if (intent === 'drop-done') this.checkOutDone(r)
+    else if ((intent === 'stand-done' || intent === 'load-done') && r.mode === 'in') this.checkInDone(r)
+  }
+
+  private promote(id: string): void {
+    const v = this.vehicles.find((x) => x.id === id)
+    if (!v || !this.flow) return
+    v.phase = 'docking'
+    v.phaseStart = this.now
+    v.phaseEnd = this.now + this.flow.timing.approachMin
+  }
+
+  private jobReason(r: ServiceRequest, place: 'stand' | 'source' | 'drop'): string {
+    const t = this.turnarounds.get(r.turnaroundId)
+    const callsign = t?.callsign ?? ''
+    if (place === 'source') {
+      const where =
+        r.service === 'fuel'
+          ? 'the fuel farm'
+          : r.service === 'catering'
+            ? 'the flight kitchen'
+            : r.service === 'bag_load'
+              ? 'bag makeup'
+              : r.service === 'boarding'
+                ? 'the terminal kerb'
+                : 'the cargo dock'
+      return serviceReason(r.service === 'fuel' ? 'fill' : r.service, callsign, where)
+    }
+    if (place === 'drop') {
+      return serviceReason('drop', callsign, r.service === 'cargo_unload' ? 'the cargo dock' : 'the terminal kerb')
+    }
+    return serviceReason(r.service, callsign, standLabel(r.standId))
   }
 
   private travel(v: VehicleState, phase: VehiclePhase, dest: string): void {
@@ -1471,12 +1719,21 @@ export class LogisticsSim {
   }
 
   private idle(v: VehicleState): void {
+    const phase = this.flow?.actor(v.id)?.phase
+    if (phase === 'service' || phase === 'align' || phase === 'approach') {
+      const intent: DockIntent = v.dockIntent === 'load' ? 'load-done' : v.dockIntent === 'drop' ? 'drop-done' : 'stand-done'
+      this.beginDepart(v, intent)
+      return
+    }
+    const next = this.flow?.release(v.id) ?? null
     v.phase = 'idle'
     v.phaseEnd = Infinity
     v.requestId = null
     v.serving = 0
     v.reserved = 0
     v.route = null
+    v.dockIntent = null
+    if (next) this.promote(next)
   }
 
   private beginLoading(v: VehicleState, r: ServiceRequest): void {
@@ -1651,10 +1908,16 @@ export class LogisticsSim {
       v.load = n
       v.serving = 0
       if (r.service === 'deplane') t.pax.deplaned += n
-      this.travel(v, 'to_dropoff', this.dropNode(r))
       if (r.done >= r.target - EPS && t.services[r.service] !== 'done') {
         this.finishService(t, r.service)
       }
+      // Pull off the stand bay before the drive to the kerb, so the next cart can dock.
+      const parked = this.flow?.actor(v.id)?.phase
+      if (parked === 'service' || parked === 'align' || parked === 'approach') {
+        this.beginDepart(v, 'stand-to-drop')
+        return
+      }
+      this.travel(v, 'to_dropoff', this.dropNode(r))
       return
     }
     // in: deliver into the aircraft.
@@ -1681,7 +1944,12 @@ export class LogisticsSim {
     const t = this.turnarounds.get(r.turnaroundId)!
     if (r.service === 'boarding') return this.checkBoardingDone(t)
     if (r.done >= this.targetOf(r) - EPS && r.inTransit <= EPS) {
-      if (this.vehicles.some((v) => v.requestId === r.id)) return
+      // A tug that already put its load on the aircraft may still be pulling off the bay.
+      // That pull-away is not more work, so it must not hold the service open.
+      const stillWorking = this.vehicles.some(
+        (v) => v.requestId === r.id && !(v.phase === 'departing' && (v.dockIntent === 'stand-done' || (v.dockIntent === 'load-done' && v.load <= EPS))),
+      )
+      if (stillWorking) return
       this.dropRequest(r)
       this.finishService(t, r.service)
     }
@@ -1747,6 +2015,11 @@ export class LogisticsSim {
       if (r.turnaroundId === t.id && !this.vehicles.some((v) => v.requestId === r.id)) this.dropRequest(r)
     }
     const delay = Math.max(0, t.completedAt - t.readyBy)
+    const graded = gradeTurnaround({
+      scheduledMin: Math.max(0, t.readyBy - t.startedAt),
+      actualMin: t.completedAt - t.startedAt,
+      queuedMin: this.flow?.queuedMinutes(t.id) ?? 0,
+    })
     if (delay > 0) {
       const paxWork = t.pax.arriving > 0 || t.pax.booked > 0
       if (paxWork && t.access !== 'bridge') t.causes.add('no_bridge')
@@ -1761,6 +2034,8 @@ export class LogisticsSim {
       turnaroundId: t.id,
       delayMinutes: delay,
       causes: delay > 0 ? [...t.causes].sort() : [],
+      grade: graded.grade,
+      gradeNote: graded.note,
     })
   }
 
@@ -1783,6 +2058,7 @@ export class LogisticsSim {
         let bestFit = -1
         for (const v of this.vehicles) {
           if (!r.vehicles.includes(v.type) || v.phase !== 'idle') continue
+          if (this.flow && !this.flow.canDispatch(v.type)) continue
           if (v.heldFor && v.heldFor !== t.externalFlightId) continue
           if (this.config.strictSizeTiers && !vehicleCanServe(v.type, sizeTierOf(t.needs.airframeId))) continue
           const fit = this.compatMult(r, v.type) * 10 - r.vehicles.indexOf(v.type)
@@ -1798,6 +2074,7 @@ export class LogisticsSim {
           break
         }
         best.requestId = r.id
+        this.flow?.markOut(best.id, best.type, this.jobReason(r, this.visitsSource(best, r) ? 'source' : 'stand'), t.id)
         if (!single) {
           best.reserved = Math.min(this.capacityFor(best, r), this.openAmount(r))
           r.reserved += best.reserved

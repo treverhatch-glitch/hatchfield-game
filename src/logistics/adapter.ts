@@ -81,6 +81,8 @@ export interface TurnaroundResult {
   standId: string
   delayMinutes: number
   causes: DelayCause[]
+  grade?: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+  gradeNote?: string
 }
 
 export function createLogisticsAdapter(
@@ -155,7 +157,13 @@ export function createLogisticsAdapter(
         break
       case 'turnaround_complete':
         done.add(e.standId)
-        completed.push({ standId: e.standId, delayMinutes: e.delayMinutes, causes: e.causes })
+        completed.push({
+          standId: e.standId,
+          delayMinutes: e.delayMinutes,
+          causes: e.causes,
+          grade: e.grade,
+          gradeNote: e.gradeNote,
+        })
         if (e.delayMinutes > 0) {
           host.notify?.(`Turnaround at ${e.standId} late by ${Math.round(e.delayMinutes)} min (${e.causes.join(', ') || 'slow service'})`, 'warn')
         }

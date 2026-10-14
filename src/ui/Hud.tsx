@@ -1832,6 +1832,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             : ` · ${airline.name}`}{' '}
                           {flight.flightNo}
                         </p>
+                        {game.liveTurnGrade(flight) ? (
+                          <p className="phase" data-testid="turn-grade">
+                            Turnaround {game.liveTurnGrade(flight)?.grade}
+                            {game.liveTurnGrade(flight)?.note ? ` — ${game.liveTurnGrade(flight)?.note}` : ''}
+                          </p>
+                        ) : null}
                         <p className="phase">
                           {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
                           {labelPhase(flight.phase, flight.craft)}

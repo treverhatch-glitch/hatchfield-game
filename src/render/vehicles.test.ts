@@ -66,6 +66,22 @@ describe('ground vehicle models', () => {
     expect(counts.size).toBeGreaterThan(ALL_MODELS.length - 3)
   })
 
+  it('paints a fictional side livery on each turnaround vehicle', () => {
+    const kinds = ['fuel_truck', 'catering_truck', 'belt_loader', 'pushback_tug', 'pax_bus'] as const
+    for (const kind of kinds) {
+      const model = vehicleModel(kind)
+      const geos = [vehicleGeometry(kind, '#3a7bd5')]
+      for (const part of MODEL_PARTS[model]) geos.push(vehiclePartGeometry(kind, '#3a7bd5', part))
+      let painted = 0
+      for (const geo of geos) {
+        const tid = geo.getAttribute('tid')
+        if (!tid) continue
+        for (let i = 0; i < tid.count; i++) if (tid.getX(i) === 6) painted++
+      }
+      expect(painted, kind).toBeGreaterThan(8)
+    }
+  })
+
   it('shares geometry per model and colour', () => {
     const before = vehicleLibrarySize()
     const a = vehicleGeometry('gpu', '#5b8c5a', [3.2, 1.6, 1.4])

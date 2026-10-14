@@ -160,6 +160,8 @@ export function buildLogisticsConfig(
   return {
     // Apron traffic: reserved parking slots + yield/wait so service vehicles never overlap.
     traffic: true,
+    // One farm bay and one kitchen bay, so a busy bank queues tankers and galley trucks.
+    docks: { fuelBays: 1, kitchenBays: 1, makeupBays: 2, cargoBays: 1, terminalBays: 2 },
     nodes,
     edges,
     depotNode: depotId,
