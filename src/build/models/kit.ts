@@ -504,7 +504,7 @@ function derivedMaps(name: string, img: CanvasImageSource & { width: number; hei
   if (photoDerived.has(name)) return photoDerived.get(name)!
   let out: { normal: THREE.Texture; rough: THREE.Texture } | null = null
   try {
-    const S = 512
+    const S = 1024 // round 8: desktop target, full-detail relief
     const c = document.createElement('canvas')
     c.width = c.height = S
     const ctx = c.getContext('2d', { willReadFrequently: true })

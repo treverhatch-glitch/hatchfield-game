@@ -17,17 +17,17 @@
   {
     "path": "public/art/textures/buildings/hangar_cladding.jpg",
     "b64": "public__art__textures__buildings__hangar_cladding.jpg.b64",
-    "nbytes": 180758
+    "nbytes": 651976
   },
   {
     "path": "public/art/textures/buildings/roof_membrane.jpg",
     "b64": "public__art__textures__buildings__roof_membrane.jpg.b64",
-    "nbytes": 98154
+    "nbytes": 395401
   },
   {
     "path": "public/art/textures/buildings/tank_steel.jpg",
     "b64": "public__art__textures__buildings__tank_steel.jpg.b64",
-    "nbytes": 116173
+    "nbytes": 630680
   },
   {
     "path": "public/art/textures/buildings/terminal_glass.jpg",
@@ -42,7 +42,7 @@
   {
     "path": "public/art/textures/buildings/warehouse_panels.jpg",
     "b64": "public__art__textures__buildings__warehouse_panels.jpg.b64",
-    "nbytes": 150023
+    "nbytes": 575864
   },
   {
     "path": "public/art/textures/buildings/airport_grass.jpg",

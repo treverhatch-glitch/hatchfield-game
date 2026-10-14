@@ -20,6 +20,10 @@ import { helipad, mro, nightHub } from './aviation'
 import { enrich, mergeStatic } from './detail'
 import { dressYard } from './yard'
 import { bayDressing, facadePolish } from './r7'
+import { architecture, softenBoxes } from './r8'
+
+/** Round 8: terminal-side models are owned by the terminal round and are left alone. */
+const R8_SKIP = /terminal|checkin|gate|pier|lounge|security/
 
 /** Round 7: buildings vehicles use get bay decals, number boards, floods and facade polish. */
 const VEHICLE_BUILDINGS = new Set(['fuel', 'fuel_farm_iii', 'fire', 'cargo', 'kitchen', 'snack', 'bags', 'deice', 'termbus', 'xferbus', 'bus', 'hangar', 'hangar_w', 'hangar_j', 'mro'])
@@ -114,6 +118,10 @@ export function buildModel(id: string, opts: ModelOpts = {}): THREE.Group | null
     bayDressing(g, id)
   }
   if (opts.yardSeed !== undefined) dressYard(g, id, opts.yardSeed)
+  if (!R8_SKIP.test(id)) {
+    architecture(g, id)
+    softenBoxes(g)
+  }
   if (!opts.noMerge) mergeStatic(g)
   return g
 }
