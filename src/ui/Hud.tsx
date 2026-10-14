@@ -379,7 +379,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           className={`stat${alerts.length ? ' alert' : ''}`}
           title={alerts.join(' · ') || 'No alerts'}
         >
-          {alerts.length ? alerts.slice(0, 2).join(' · ') : 'Clear'}
+          {alerts.length ? alerts.slice(0, 2).join(' · ') : 'No alerts'}
         </div>
         <div
           className="stat"
