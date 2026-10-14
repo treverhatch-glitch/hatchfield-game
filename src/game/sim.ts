@@ -1,3 +1,5 @@
+import { ServiceYard, type YardBuilding } from '../build/serviceYard'
+import { SERVICE_POINTS, type VehicleKind } from '../build/servicePoints'
 import { finiteAmount } from '../disruptions/engine.ts'
 import { footprintBlock } from './buildingFootprint.ts'
 import { chooseLot, lotCells, lotSize, type Lot } from '../build/footprints.ts'
@@ -1163,6 +1165,9 @@ export class Game {
   hangarScale: Record<string, SizeTier> = {}
   /** Anchor key → reserved lot. Buildings without one are grandfathered 1×1. */
   lots: Record<string, Lot> = {}
+  /** Per-building service points: docks, hoses, bays (render + throughput). */
+  yard = new ServiceYard()
+  private yardTick = 0
   private lastRailFlowing = false
   layoverOffer: LayoverOffer | null = null
   layoverOfferCool = 50
@@ -10156,6 +10161,18 @@ export class Game {
   }
 
   /** Door slide for one hangar. 0 is shut. The renderer ignores this when the camera is far. */
+  /** A line-MX aircraft is heading into / sitting in / leaving this hangar cell. */
+  hangarInUse(cellKey: string): boolean {
+    const [c, r] = cellKey.split(',').map(Number)
+    for (const f of this.flights) {
+      if (f.phase !== 'mx_taxi' && f.phase !== 'mx_bay' && f.phase !== 'mx_return') continue
+      const end = f.phase === 'mx_return' ? f.path[0] : f.path[f.path.length - 1]
+      if (end && Math.abs(end.c - c!) <= 1 && Math.abs(end.r - r!) <= 1) return true
+      if (Math.abs(Math.round(f.x) - c!) <= 1 && Math.abs(Math.round(f.y) - r!) <= 1) return true
+    }
+    return false
+  }
+
   mroDoorOpen(cellKey: string): number {
     let open = 0
     for (const job of this.tier3.activeJobs()) {
@@ -16545,6 +16562,7 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.dispatchFireTender(pad)
     this.noteCraft(af.kind)
     this.heloCool = demandInterval(75 + Math.random() * 40, this.fees)
     this.selectedFlight = this.selectedFlight ?? f.id
@@ -17172,6 +17190,7 @@ export class Game {
       ledger: [],
     }
     this.flights.push(f)
+    this.dispatchFireTender(stand)
     this.noteCraft('air_ambulance')
     this.ambuCool = 130 + Math.random() * 70
     this.pushNews(
@@ -17239,6 +17258,60 @@ export class Game {
       home: home ?? (path.length ? path[0] : null),
       cargoUnits,
     })
+    if (kind === 'fire' && start) {
+      const key = `${start.c},${start.r}`
+      const tr = this.trucks[this.trucks.length - 1]!
+      if (this.yard.serves(key, 'fire') && this.yard.depart(tr.id, 'fire', key)) this.yard.step(tr.id, 0)
+    }
+  }
+
+  /** Standby run: a tender rolls out of a free fire-station bay to meet the arrival, then returns. */
+  dispatchFireTender(target: Vec | null | undefined) {
+    if (!target) return
+    if (this.trucks.some((t) => t.kind === 'fire')) return
+    const stations = tilesOf(this.tiles, 'fire')
+    if (!stations.length) return
+    const path = nearestPath(this.tiles, stations[0]!, [target], 'truck')
+    if (!path || path.length < 2) return
+    this.spawnTruck('fire', null, path, 'patrol', stations[0])
+  }
+
+  /** Buildings with service points → the yard (anchor + lot). */
+  syncYard() {
+    const out: YardBuilding[] = []
+    for (let r = 0; r < this.tiles.length; r++) {
+      const row = this.tiles[r]!
+      for (let c = 0; c < row.length; c++) {
+        const tile = row[c]!
+        if (!SERVICE_POINTS[tile]) continue
+        const key = `${c},${r}`
+        out.push({ key, tile, anchor: { c, r }, lot: this.lots[key] ?? null })
+      }
+    }
+    this.yard.sync(out)
+  }
+
+  /** Hand a truck that reached its building to the yard (queue → dock → action → exit). */
+  yardArrive(t: Truck, at?: Vec | null): boolean {
+    const cell = at ?? t.home
+    if (!cell || t.kind === 'fire') return false
+    const key = `${cell.c},${cell.r}`
+    const kind = t.kind as VehicleKind
+    if (!this.yard.serves(key, kind)) {
+      this.syncYard()
+      if (!this.yard.serves(key, kind)) return false
+    }
+    const work =
+      t.kind === 'fuel' ? 2.6
+        : t.kind === 'bags' ? 1.6 + Math.min(2, (t.cargoUnits ?? 8) * 0.04)
+          : t.kind === 'catering' ? 2.8
+            : t.kind === 'citycargo' ? 2.2 + Math.min(2, (t.cargoUnits ?? 12) * 0.04)
+              : t.kind === 'deice' ? 2.2
+                : 1.8
+    if (!this.yard.arrive(t.id, kind, key, { c: t.x, r: t.y }, work)) return false
+    const j = this.yard.job(t.id)!
+    t.yard = { key, action: j.action, phase: j.phase, progress: 0, heading: j.heading, point: j.point }
+    return true
   }
 
   /** Storm/fog + De-ice ops research + stamped pad → glycol truck before pushback. */
@@ -19226,10 +19299,26 @@ export class Game {
       return false
     })
 
+    if (this.yardTick-- <= 0) {
+      this.yardTick = 20
+      this.syncYard()
+    }
     for (const t of this.trucks) {
       if (t.kind === 'contractor' || t.kind === 'delivery') {
         this.tickBuildTruck(t, step)
         continue
+      }
+      const ys = this.yard.step(t.id, step)
+      if (ys === 'hold') {
+        const j = this.yard.job(t.id)!
+        t.x = j.c
+        t.y = j.r
+        t.yard = { key: j.key, action: j.action, phase: j.phase, progress: j.progress, heading: j.heading, point: j.point }
+        continue
+      }
+      if (ys === 'released') {
+        t.yard = undefined
+        t.yardDone = true
       }
       // Makeup / farm bottom-load before rolling.
       if (t.preDwell > 0) {
@@ -19321,6 +19410,8 @@ export class Game {
             // Visible screen time at the post (Manor Lords handoff).
             t.dwell = 1.4 + Math.min(2.2, (t.cargoUnits ?? 12) * 0.04)
           } else if (t.mission === 'city_shed') {
+            if (!t.yardDone && this.yardArrive(t, t.path[t.path.length - 1])) continue
+            t.yardDone = false
             t.dwell = 1.6 + Math.min(2.5, (t.cargoUnits ?? 12) * 0.05)
           } else {
             t.dwell = 1.2
@@ -19365,6 +19456,8 @@ export class Game {
           if ((t.kind === 'fuel' || t.kind === 'catering') && t.dwell > 0) t.serviceFor = t.dwell
         }
       } else if (done && t.returning) {
+        if (!t.yardDone && this.yardArrive(t)) continue
+        t.yardDone = false
         if (t.kind === 'citycargo') {
           this.finishCityCargo(t)
           continue
@@ -19409,6 +19502,7 @@ export class Game {
         t.dwell = -99
       }
     }
+    for (const t of this.trucks) if (t.dwell === -99) this.yard.forget(t.id)
     this.trucks = this.trucks.filter((t) => t.dwell !== -99)
 
     for (const p of this.people) {
