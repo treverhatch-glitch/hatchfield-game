@@ -1,4 +1,5 @@
 import { finiteAmount } from '../disruptions/engine.ts'
+import { GroundControl, RIGHT_OF_WAY, type AtcRole, type RouteCell } from '../atc/groundControl.ts'
 import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
@@ -888,6 +889,9 @@ const FINANCING_CATEGORIES = new Set([
   'deposits',
 ])
 
+const ATC_MAX_GO_AROUNDS = 3
+const ATC_DEPARTURE_STARVE_SEC = 30
+
 export class Game {
   standingAdvisor: StandingAdvisor = new StandingAdvisor(
     new GameDiplomacyAdapter(
@@ -1127,6 +1131,11 @@ export class Game {
   branding: BrandingSave = defaultBranding()
   private ambience: AmbienceMixer | null = null
   crashCool = 8
+  /** Ground traffic control: taxi reservations and runway locks. */
+  atc = new GroundControl()
+  /** Path each aircraft was last cleared along (by identity). */
+  private atcPaths = new Map<string, Vec[]>()
+  private atcYields = new Map<string, number>()
   /** Real crash write-offs; the only source of crashFlight charges. */
   crashes = 0
   fireIncidentCool = 60
@@ -8705,6 +8714,21 @@ export class Game {
       })
     }
 
+    for (const q of this.atcQueues()) {
+      if (q.longest < this.atc.tune.longWaitSec) continue
+      raise({
+        key: q.runway ? `cond:atc-holdshort:${q.cell.c},${q.cell.r}` : `cond:atc-queue:${q.cell.c},${q.cell.r}`,
+        severity: q.count >= 3 || q.longest > 60 ? 'critical' : 'warning',
+        title: q.runway
+          ? `${q.count} departure${q.count === 1 ? '' : 's'} holding short`
+          : `Taxi queue: ${q.count} aircraft`,
+        detail: q.runway
+          ? `Waiting ${Math.round(q.longest)}s for the runway. Arrivals have right of way; a second runway or more exits clears it.`
+          : `Waiting ${Math.round(q.longest)}s behind traffic on a single lane. Add a parallel taxiway or a bypass.`,
+        at: { view: 'apron', cells: [q.cell] },
+      })
+    }
+
     const ground = this.ground?.snapshot()
     const farm = tilesOf(this.tiles, 'fuel')[0]
     if (ground && farm && ground.fuelLitres <= 0) {
@@ -14880,9 +14904,11 @@ export class Game {
       if (mroJob.phase === 'in_bay') return `In MRO bay ${mroJob.bayId}`
       return `Taxiing back from MRO bay ${mroJob.bayId}`
     }
+    const atcHold = this.atcHoldLabel(f)
+    if (atcHold) return atcHold
     switch (f.phase) {
       case 'hold':
-        return 'Holding for a gate'
+        return f.goArounds ? `Holding after go-around ${f.goArounds}/${ATC_MAX_GO_AROUNDS}` : 'Holding for a gate'
       case 'approach':
         return `On approach → ${gate}${f.claimLane ? ` · claim ${f.claimLane}` : ''}`
       case 'landing':
@@ -16631,6 +16657,8 @@ export class Game {
       return
     }
     if (!hasTower && this.groundBusy()) return
+    // Ground control: departures stuck at the hold line get a gap first.
+    if (this.atcDeparturesStarved()) return
     // Prefer holds that already reserved a stand — those were deadlocking
     // assignStand() because freeStands() treated the reservation as occupied.
     const held = this.flights.filter(
@@ -16677,34 +16705,7 @@ export class Game {
     for (const f of this.flights) {
       if (f.phase !== 'hold' || (f.craft ?? 'jet') !== 'jet') continue
       if (f.phaseTime < 95) continue
-      // Divert — free the stand, scrub the slot, ding heat.
-      this.missDivertedConnections(f)
-      if (f.stand) f.stand = null
-      f.path = []
-      f.phase = 'gone'
-      f.phaseTime = 0
-      this.noteCargoCancel(f)
-      if (f.scheduleId) {
-        const slot = this.schedule.find((s) => s.id === f.scheduleId)
-        if (slot) {
-          slot.status = 'cancelled'
-          slot.delayReason = 'hold timeout'
-        }
-      }
-      this.adjustHeat(f.airline, -4)
-      this.reputation = Math.max(0, this.reputation - 1)
-      this.noteDiplomacyCancel(f.airline, false)
-      this.pushNews(
-        `${f.flightNo} diverted after long hold — gate freed, Standing dips.`,
-        'bad',
-      )
-      this.raiseAlert({
-        key: 'event:inbound-failed',
-        severity: 'critical',
-        title: 'Inbound flight diverted',
-        detail: `${f.flightNo} held too long and went elsewhere. Free a stand or a runway slot.`,
-        event: true,
-      })
+      this.divertFlight(f, `${f.flightNo} diverted after long hold — gate freed, Standing dips.`)
     }
     void dt
   }
@@ -16737,6 +16738,275 @@ export class Game {
       if (Math.hypot(p.x - x, p.y - y) < R) n++
     }
     return n
+  }
+
+
+  // ── Ground traffic control ────────────────────────────────────────────
+
+  private atcRoleOf(f: Flight): AtcRole | null {
+    if ((f.craft ?? 'jet') !== 'jet') return null
+    switch (f.phase) {
+      case 'approach':
+      case 'landing':
+      case 'taxi_in':
+        return 'arrival'
+      case 'pushback':
+      case 'taxi_out':
+      case 'takeoff':
+        return 'departure'
+      case 'mx_taxi':
+      case 'mx_return':
+        return 'taxi'
+      default:
+        return null
+    }
+  }
+
+  /** Cell → runway strip ids, rebuilt when the layout changes. */
+  private atcStripCache: { tiles: Tile[][]; sig: string; map: Map<string, string[]> } | null = null
+  private atcRunwayMap(): Map<string, string[]> {
+    const strips = runwayStrips(this.tiles, MIN_RUNWAY)
+    const sig = strips.map((st) => `${st[0]?.c},${st[0]?.r}:${st.length}`).join('|')
+    if (this.atcStripCache && this.atcStripCache.tiles === this.tiles && this.atcStripCache.sig === sig) {
+      return this.atcStripCache.map
+    }
+    const map = new Map<string, string[]>()
+    strips.forEach((st, i) => {
+      const id = `rw${i}:${st[0]?.c},${st[0]?.r}`
+      for (const p of st) {
+        const k = `${p.c},${p.r}`
+        map.set(k, [...(map.get(k) ?? []), id])
+      }
+    })
+    this.atcStripCache = { tiles: this.tiles, sig, map }
+    return map
+  }
+
+  private atcRoute(path: readonly Vec[]): RouteCell[] {
+    const rmap = this.atcRunwayMap()
+    return path.map((p) => {
+      const c = Math.round(p.c)
+      const r = Math.round(p.r)
+      const key = `${c},${r}`
+      if (!inBounds(c, r)) return { key: `air:${key}`, kind: 'air', runways: [] }
+      const runways = this.tiles[r]?.[c] === 'runway' ? rmap.get(key) ?? [] : []
+      return { key, kind: runways.length ? 'runway' : 'ground', runways }
+    })
+  }
+
+  private atcRank(f: Flight): number {
+    if (f.phase === 'landing' && this.atc.holdsRunway(f.id)) return RIGHT_OF_WAY.vacating
+    if (f.phase === 'taxi_out' || f.phase === 'pushback') return RIGHT_OF_WAY.departure
+    return RIGHT_OF_WAY.taxi
+  }
+
+  /** Keep the controller in step with every jet's phase and path. */
+  tickAtc(step: number) {
+    this.atc.now = this.clock
+    this.atc.arbitrate()
+    const live = new Set<string>()
+    for (const f of this.flights) {
+      const role = f.phase === 'gone' ? null : this.atcRoleOf(f)
+      if (!role) continue
+      live.add(f.id)
+      if (f.phase === 'takeoff') continue
+      if (this.atcPaths.get(f.id) !== f.path) {
+        this.atcPaths.set(f.id, f.path)
+        this.atc.register(f.id, role, this.atcRoute(f.path), Math.max(0, Math.min(f.seg, f.path.length - 1)))
+      }
+    }
+    for (const id of this.atc.ids()) {
+      if (live.has(id)) continue
+      this.atc.release(id)
+      this.atcPaths.delete(id)
+      this.atcYields.delete(id)
+    }
+    // Safety net: break any wait cycle by making the weakest aircraft yield.
+    for (const cycle of this.atc.deadlocks()) {
+      const ranked = cycle
+        .map((id) => this.flights.find((f) => f.id === id))
+        .filter((f): f is Flight => !!f)
+        .sort((a, b) => this.atcRank(b) - this.atcRank(a))
+      const loser = ranked[0]
+      if (!loser) continue
+      const n = (this.atcYields.get(loser.id) ?? 0) + 1
+      this.atcYields.set(loser.id, n)
+      if (n <= 2) {
+        this.atc.yieldTo(loser.id)
+      } else if (loser.stand && (loser.phase === 'taxi_out' || loser.phase === 'pushback')) {
+        // Still gridlocked: tug the departure back onto its stand to clear the lane.
+        this.atc.release(loser.id)
+        this.atcPaths.delete(loser.id)
+        loser.x = loser.stand.c
+        loser.y = loser.stand.r
+        loser.path = [loser.stand]
+        loser.seg = 0
+        loser.t = 0
+        loser.phase = 'pushback'
+        loser.phaseTime = 0
+        this.atcYields.delete(loser.id)
+        this.pushNews(`${loser.flightNo} towed back to stand to clear a gridlock.`, 'bad')
+      } else {
+        this.atc.yieldTo(loser.id)
+      }
+      const spot = loser.path[loser.seg] ?? loser.stand
+      this.raiseAlert({
+        key: `event:atc-gridlock`,
+        severity: 'critical',
+        title: 'Taxiway gridlock',
+        detail: `${cycle.length} aircraft blocked each other. ${loser.flightNo} gave way. Add a second lane or a bypass here.`,
+        at: spot ? { view: 'apron', cells: [{ c: Math.round(spot.c), r: Math.round(spot.r) }] } : undefined,
+        event: true,
+      })
+    }
+    void step
+  }
+
+  /** followPath, capped at the furthest cell ground control has cleared. */
+  private atcFollow(f: Flight, speed: number, dt: number): boolean {
+    if (!this.atc.has(f.id) || this.atcPaths.get(f.id) !== f.path) return this.followPath(f, speed, dt)
+    const lim = this.atc.limit(f.id, this.atcRank(f))
+    let done: boolean
+    if (lim >= f.path.length - 1) {
+      done = this.followPath(f, speed, dt)
+    } else if (f.seg >= lim) {
+      // Holding position at the edge of the clearance.
+      f.t = 0
+      const here = f.path[Math.min(f.seg, f.path.length - 1)]
+      if (here) {
+        f.x = here.c
+        f.y = here.r
+      }
+      done = false
+    } else {
+      const proxy = { id: f.id, x: f.x, y: f.y, heading: f.heading, path: f.path.slice(0, lim + 1), seg: f.seg, t: f.t }
+      this.followPath(proxy, speed, dt)
+      f.x = proxy.x
+      f.y = proxy.y
+      f.heading = proxy.heading
+      f.seg = proxy.seg
+      f.t = proxy.seg >= lim ? 0 : proxy.t
+      done = false
+    }
+    this.atc.progress(f.id, Math.min(f.seg, f.path.length - 1), f.t > 0)
+    return done
+  }
+
+  /** Runway ids on the arrival's remaining path (empty once past the runway). */
+  private atcRunwaysAhead(f: Flight): string[] {
+    const route = this.atcRoute(f.path.slice(Math.max(0, f.seg), Math.max(0, f.seg) + 6))
+    const cell = route.find((c) => c.kind === 'runway')
+    return cell ? [...cell.runways] : []
+  }
+
+  /** The arrival is over the threshold within the next step: clearance is due now. */
+  private atcTouchdownDue(f: Flight, dist: number): boolean {
+    const next = f.path[f.seg + 1]
+    if (!next) return true
+    const route = this.atcRoute([next])
+    return route[0]?.kind === 'runway' || dist < 1.2
+  }
+
+  /** Runway not clear on short final: go around and come back, or divert at the cap. */
+  goAround(f: Flight) {
+    this.atc.offFinal(f.id)
+    this.atc.release(f.id)
+    this.atcPaths.delete(f.id)
+    f.goArounds = (f.goArounds ?? 0) + 1
+    const fuel = 260 + Math.round((AIRFRAMES[f.airframeId]?.seats ?? 150) * 1.2)
+    this.charge(fuel, 'penalties')
+    this.adjustHeat(f.airline, -0.6)
+    this.reputation = Math.max(0, this.reputation - 0.25)
+    if (f.scheduleId) {
+      const slot = this.schedule.find((s) => s.id === f.scheduleId)
+      if (slot) this.delaySlot(slot, 25, 'Go-around: runway not clear')
+    }
+    if (f.goArounds >= ATC_MAX_GO_AROUNDS) {
+      this.divertFlight(f, `${f.flightNo} diverted after ${f.goArounds} go-arounds — runway kept blocked.`)
+      return
+    }
+    f.phase = 'hold'
+    f.phaseTime = 0
+    f.path = []
+    f.seg = 0
+    f.t = 0
+    f.z = 9
+    this.pushNews(`${f.flightNo} go-around — runway not clear. Fuel ${moneyLeft(fuel)}.`, 'bad')
+    const rw = this.flights.find((x) => x.id !== f.id && this.atc.holdsRunway(x.id))
+    const spot = rw ? { c: Math.round(rw.x), r: Math.round(rw.y) } : null
+    this.raiseAlert({
+      key: 'event:atc-go-around',
+      severity: 'warning',
+      title: 'Go-around',
+      detail: `${f.flightNo} could not land: the runway or its exit was blocked. More exits or a second runway help.`,
+      at: spot ? { view: 'apron', cells: [spot] } : undefined,
+      event: true,
+    })
+  }
+
+  /** Send an inbound elsewhere: free the stand, scrub the slot, ding standing. */
+  divertFlight(f: Flight, news: string) {
+    this.atc.release(f.id)
+    this.atcPaths.delete(f.id)
+    this.missDivertedConnections(f)
+    if (f.stand) f.stand = null
+    f.path = []
+    f.phase = 'gone'
+    f.phaseTime = 0
+    this.noteCargoCancel(f)
+    if (f.scheduleId) {
+      const slot = this.schedule.find((s) => s.id === f.scheduleId)
+      if (slot) {
+        slot.status = 'cancelled'
+        slot.delayReason = 'diverted'
+      }
+    }
+    this.adjustHeat(f.airline, -4)
+    this.reputation = Math.max(0, this.reputation - 1)
+    this.noteDiplomacyCancel(f.airline, false)
+    this.pushNews(news, 'bad')
+    this.raiseAlert({
+      key: 'event:inbound-failed',
+      severity: 'critical',
+      title: 'Inbound flight diverted',
+      detail: `${f.flightNo} went elsewhere. Free a stand or a runway slot.`,
+      event: true,
+    })
+  }
+
+  /** Departures stuck at a hold line long enough that arrivals should wait in the stack. */
+  atcDeparturesStarved(): boolean {
+    return this.atc
+      .waiting()
+      .some((w) => w.reason === 'runway' && this.clock - w.since > ATC_DEPARTURE_STARVE_SEC)
+  }
+
+  /** Short label for an aircraft held by ground control, or null. */
+  atcHoldLabel(f: Flight): string | null {
+    const w = this.atc.waitFor(f.id)
+    if (!w || this.clock - w.since < 1.5) return null
+    if (w.reason === 'runway') return 'Holding short of the runway'
+    const other = w.blocker ? this.flights.find((x) => x.id === w.blocker) : null
+    return other ? `Holding for ${other.flightNo}` : 'Holding for traffic'
+  }
+
+  /** Long waits grouped by where they stand, for the alert stack. */
+  atcQueues(): { cell: Vec; count: number; runway: boolean; longest: number }[] {
+    const groups = new Map<string, { cell: Vec; count: number; runway: boolean; longest: number }>()
+    for (const w of this.atc.waiting()) {
+      const f = this.flights.find((x) => x.id === w.id)
+      if (!f) continue
+      const wait = this.clock - w.since
+      const blocker = w.blocker ? this.flights.find((x) => x.id === w.blocker) : null
+      const anchor = blocker && w.reason !== 'runway' ? blocker : f
+      const cell = { c: Math.round(anchor.x), r: Math.round(anchor.y) }
+      const k = w.reason === 'runway' ? `rw:${cell.c},${cell.r}` : `tx:${anchor.id}`
+      const g = groups.get(k) ?? { cell, count: 0, runway: w.reason === 'runway', longest: 0 }
+      g.count += 1
+      g.longest = Math.max(g.longest, wait)
+      groups.set(k, g)
+    }
+    return [...groups.values()]
   }
 
   followPath(
@@ -18817,6 +19087,7 @@ export class Game {
     this.crashCool = Math.max(0, this.crashCool - step)
 
     this.releaseFinishedMro()
+    this.tickAtc(step)
     for (const f of this.flights) {
       if (f.phase === 'gone') continue
       f.phaseTime += step
@@ -18838,9 +19109,20 @@ export class Game {
         const dist = threshold ? Math.hypot(f.x - threshold.c, f.y - threshold.r) : 0
         const glide = clamp(0.35 + dist * 0.7, 0.35, 22)
         f.z = lerp(f.z, glide, 1 - Math.pow(0.18, step))
+        const runwaysAhead = this.atcRunwaysAhead(f)
+        if (runwaysAhead.length) {
+          this.atc.onFinal(f.id, runwaysAhead, dist / 1.85)
+          if (this.atcTouchdownDue(f, dist) && !this.atc.requestLanding(f.id, runwaysAhead)) {
+            this.goAround(f)
+            continue
+          }
+        }
         const arrived = this.followPath(f, 1.85, step)
         const onField = inBounds(Math.round(f.x), Math.round(f.y))
-        if (arrived || (onField && f.phaseTime > 10) || f.phaseTime > 36) {
+        if (
+          (arrived || (onField && f.phaseTime > 10) || f.phaseTime > 36) &&
+          (!runwaysAhead.length || this.atc.requestLanding(f.id, runwaysAhead))
+        ) {
           f.phase = 'landing'
           f.phaseTime = 0
           f.z = Math.min(f.z, 1.4)
@@ -18848,7 +19130,7 @@ export class Game {
       } else if (f.phase === 'landing') {
         f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
         if (this.checkCrash(f, 'landing')) continue
-        const arrived = this.followPath(f, 1.35, step)
+        const arrived = this.atcFollow(f, 1.35, step)
         const onStand = f.stand && Math.hypot(f.x - f.stand.c, f.y - f.stand.r) < 0.35
         if (onStand || arrived) {
           f.phase = 'taxi_in'
@@ -18858,7 +19140,7 @@ export class Game {
         f.z = 0.12
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.1, step)) {
+        } else if (this.atcFollow(f, 1.1, step)) {
           f.phase = 'deboard'
           f.phaseTime = 0
           this.beginServicing(f)
@@ -18960,7 +19242,7 @@ export class Game {
         f.z = 0.12
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.05, step)) {
+        } else if (this.atcFollow(f, 1.05, step)) {
           const bay = f.hangarBay
           if (bay) {
             f.x = bay.c
@@ -19004,7 +19286,7 @@ export class Game {
         f.z = 0.12
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.05, step)) {
+        } else if (this.atcFollow(f, 1.05, step)) {
           if (f.stand) {
             f.x = f.stand.c
             f.y = f.stand.r
@@ -19116,7 +19398,7 @@ export class Game {
         }
       } else if (f.phase === 'pushback') {
         // Short shove off the stand, then join the outbound taxi.
-        if (this.taxiRouteReady(f)) this.followPath(f, 0.55, step)
+        if (this.taxiRouteReady(f)) this.atcFollow(f, 0.55, step)
         if (f.phaseTime > 2.8) {
           const out = this.departurePath(f)
           if (out && !this.groundBusy()) {
@@ -19140,12 +19422,13 @@ export class Game {
       } else if (f.phase === 'taxi_out') {
         if (!this.taxiRouteReady(f)) {
           this.holdForTaxi(f)
-        } else if (this.followPath(f, 1.2, step)) {
+        } else if (this.atcFollow(f, 1.2, step)) {
           f.phase = 'takeoff'
           f.phaseTime = 0
         }
       } else if (f.phase === 'takeoff') {
         if (f.phaseTime < 1.2 && this.checkCrash(f, 'takeoff')) continue
+        if (f.z > 1 || f.phaseTime > 3) this.atc.airborne(f.id)
         f.z += step * 0.9
         f.x += Math.cos(f.heading) * step * 2.6
         f.y += Math.sin(f.heading) * step * 2.6
