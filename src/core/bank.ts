@@ -224,8 +224,8 @@ export class Bank {
 export type FinancialPhase = 'early' | 'midgame'
 
 export const DAILY_PAYROLL_SHARE: Readonly<Record<FinancialPhase, number>> = {
-  early: 0.75,
-  midgame: 0.575,
+  early: 0.45,
+  midgame: 0.4,
 }
 
 /** Income-indexed daily payroll target used after the terminal's daily rollover. */

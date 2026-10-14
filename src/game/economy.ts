@@ -17,16 +17,28 @@ import type { BudgetKey, LoanProduct } from './types.ts'
  * Busy fields cost more to run — signed carriers, extra stands, and turn volume
  * scale ops payroll so mid/late game stays a money puzzle (capped).
  */
-export function fieldOpsMultiplier(signed: number, stands: number, flightsDone: number): number {
+/** Wage-bill cap once the field is level 3. Earlier levels stay at the lower cap. */
+export const FIELD_OPS_CAP = 1.65
+export const FIELD_OPS_EARLY_CAP = 1.25
+export const FIELD_OPS_EARLY_UNTIL_LEVEL = 3
+
+export function fieldOpsMultiplier(
+  signed: number,
+  stands: number,
+  flightsDone: number,
+  fieldLevel = FIELD_OPS_EARLY_UNTIL_LEVEL,
+): number {
   const s = Number.isFinite(signed) ? signed : 0
   const st = Number.isFinite(stands) ? stands : 0
   const f = Number.isFinite(flightsDone) ? flightsDone : 0
+  const level = Number.isFinite(fieldLevel) ? fieldLevel : FIELD_OPS_EARLY_UNTIL_LEVEL
   const load =
     1 +
     Math.max(0, s - 1) * 0.055 +
     Math.max(0, st - 2) * 0.04 +
     Math.min(0.35, Math.max(0, f) * 0.0035)
-  return Math.min(1.65, Math.max(1, load))
+  const cap = level < FIELD_OPS_EARLY_UNTIL_LEVEL ? FIELD_OPS_EARLY_CAP : FIELD_OPS_CAP
+  return Math.min(cap, Math.max(1, load))
 }
 
 /** Title checkbox. Off names the standard bank instead of a silent "off". */

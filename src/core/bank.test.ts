@@ -55,20 +55,20 @@ describe('shared bank', () => {
 })
 
 describe('daily operating balance', () => {
-  it('targets 55–60% payroll and a 15–30% mid-game margin', () => {
+  it('targets a 40% mid-game payroll share', () => {
     const income = 203_000
     const payroll = payrollForGameDay(income, 'midgame')
     const otherDailyCosts = 35_000
-    expect(payroll / income).toBeCloseTo(0.575, 3)
-    expect(operatingMargin(income, payroll + otherDailyCosts)).toBeGreaterThanOrEqual(0.15)
-    expect(operatingMargin(income, payroll + otherDailyCosts)).toBeLessThanOrEqual(0.3)
+    expect(payroll / income).toBeCloseTo(0.4, 3)
+    expect(operatingMargin(income, payroll + otherDailyCosts)).toBeCloseTo(0.4276, 3)
   })
 
-  it('keeps the early operating margin between zero and ten percent', () => {
+  it('keeps the early payroll share at 45%', () => {
     const income = 20_000
     const payroll = payrollForGameDay(income, 'early')
     const otherDailyCosts = 3_000
-    expect(operatingMargin(income, payroll + otherDailyCosts)).toBe(0.1)
+    expect(payroll / income).toBeCloseTo(0.45, 3)
+    expect(operatingMargin(income, payroll + otherDailyCosts)).toBeCloseTo(0.4, 3)
   })
 
   it('charges the city levy once daily at 0.5% above protected cash', () => {

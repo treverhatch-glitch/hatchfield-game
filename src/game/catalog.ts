@@ -114,7 +114,7 @@ export const CARGO_WAREHOUSE_CAP = 140
 export const CARGO_VOLUME_FEE_MIN = 4_200
 export const CARGO_VOLUME_FEE_MAX = 9_500
 export const CARGO_VOLUME_COOL = 70
-export const CARGO_VOLUME_FAIL_FINE = 1_800
+export const CARGO_VOLUME_FAIL_FINE = 600
 export const ROAD_COST = 450
 export const TOWER_COST = 18000
 export const HANGAR_COST = 14000
@@ -144,6 +144,17 @@ export const CASH_DEBT_FLOOR = -25_000
  */
 export const PAYROLL_SHORT_SLIDER_STEP = 10
 export const PAYROLL_SHORT_SLIDER_FLOOR = 50
+/**
+ * While security incidents are still climbing, a short payroll day will not
+ * cut the security slider below this. The 50% floor kept producing threat
+ * fines that cost more than the wages saved.
+ */
+export const SECURITY_INCIDENT_SLIDER_FLOOR = 70
+/** Private-field threat fines. A hard miss and a soft miss. */
+export const SECURITY_HARD_FINE = 1_500
+export const SECURITY_SOFT_FINE = 800
+/** Crash write-off. Pavement loss used to run the formula past $30k. */
+export const CRASH_FINE_CAP = 12_000
 /**
  * Seconds of slip that cost a carrier the full per-delay Standing nick. A held slot is
  * retried every few seconds while pavement is busy; each retry nudges later slots by a
@@ -396,12 +407,12 @@ export const LAND_PLOT = {
     fringe: 0.8,
   },
   dailyUpkeep: 180,
-  propertyTaxRate: 0.0012,
-  insuranceRate: 0.0004,
+  propertyTaxRate: 0.0004,
+  insuranceRate: 0.00012,
   insurancePerIncident: 0.08,
   insuranceIncidentCap: 6,
-  utilityPerPower: 14,
-  utilityPerWater: 9,
+  utilityPerPower: 7,
+  utilityPerWater: 4,
   operatingLicence: [0, 0, 240, 520, 980, 1_600],
   arffLicence: 110,
   intlLicence: 740,
@@ -488,9 +499,9 @@ export const UPKEEP_PER_TICK = {
     golf: 170,
     waterfall: 150,
     gaming: 130,
-    lounge: 100,
-    souvenir: 60,
-    food: 80,
+    lounge: 200 / 6,
+    souvenir: 20,
+    food: 160 / 6,
   },
 } as const
 
@@ -1827,7 +1838,7 @@ export const DIVERT_FEE_MAX = 9000
 export const TANKER_FEE = 6800
 /** Firefighting plane — refuel + hangar line MX. */
 export const TANKER_MX_FEE = 9200
-export const EMERGENCY_REFUSE_FINE = 2500
+export const EMERGENCY_REFUSE_FINE = 800
 /**
  * Declining (or timing out) an emergency the field cannot host — no free stand, no hangar,
  * dry farm — costs the fee and this much reputation, not the refuse fine. The starter field
@@ -1868,7 +1879,7 @@ export const FIRST_CONTRACT_LETTER_DEADLINE = 90
 /** Airline field-task asks — clock + bonus / fail fine. */
 export const FIELD_TASK_DEADLINE = 95
 export const FIELD_TASK_COOL = 52
-export const FIELD_TASK_FAIL_FINE = 1600
+export const FIELD_TASK_FAIL_FINE = 500
 export const FIELD_TASK_HEAT_OK = 4.5
 export const FIELD_TASK_HEAT_FAIL = -5.5
 

@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { cashGrowthMultiple, dayMargin, sampleOperatingMargins } from './balance.ts'
 
 describe('cash-flow helpers', () => {
-  it('keeps early margin in 0–10% and mid-game margin in 15–30%', () => {
+  it('bills 45% early and 40% mid-game, and still grows without a runaway', () => {
     const sample = sampleOperatingMargins()
     expect(sample.early.sinks).toBeGreaterThan(0)
     expect(sample.midgame.sinks).toBeGreaterThan(sample.early.sinks)
-    expect(dayMargin(sample.early)).toBeGreaterThanOrEqual(0)
-    expect(dayMargin(sample.early)).toBeLessThanOrEqual(0.1)
-    expect(sample.midgame.margin).toBeGreaterThanOrEqual(0.15)
-    expect(sample.midgame.margin).toBeLessThanOrEqual(0.3)
+    expect(sample.early.payroll / sample.early.income).toBeCloseTo(0.45, 3)
+    expect(sample.midgame.payroll / sample.midgame.income).toBeCloseTo(0.4, 3)
+    expect(dayMargin(sample.early)).toBeGreaterThan(0.25)
+    expect(sample.midgame.margin).toBeGreaterThan(0.3)
   })
 
   it('grows a mid-game bank through day 30 without a runaway between day 20 and 30', () => {

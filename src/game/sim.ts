@@ -20,6 +20,10 @@ import {
   DELAY_HEAT_REF_SEC,
   PAYROLL_SHORT_SLIDER_FLOOR,
   PAYROLL_SHORT_SLIDER_STEP,
+  SECURITY_INCIDENT_SLIDER_FLOOR,
+  SECURITY_HARD_FINE,
+  SECURITY_SOFT_FINE,
+  CRASH_FINE_CAP,
   BUILDINGS,
   CATER,
   CLEANING_FEE,
@@ -1023,6 +1027,8 @@ export class Game {
   /** Live ops events (strikes, outages, bird strikes, VIPs). Quiet for the first days. */
   opsEvents = new OpsEventRunner()
   securityIncidents = 0
+  /** Incident count at the last payroll close, so a rising week holds the security slider. */
+  private securityIncidentsAtPayroll = 0
   reputation = 40
   /** Smoothed 0–100 figure the reputation HUD reads. */
   reputationShown = 40
@@ -1519,6 +1525,7 @@ export class Game {
     this.cargoVolumeCool = 40
     this.loanNewsCool = 0
     this.securityIncidents = 0
+    this.securityIncidentsAtPayroll = 0
     this.reputation = 40
     this.reputationShown = 40
     this.reputationDrift = 0
@@ -5385,6 +5392,7 @@ export class Game {
       this.playtestYear.restore(s.playtestYear, this.paxServed)
       this.revenue = s.revenue
       this.securityIncidents = s.securityIncidents ?? 0
+      this.securityIncidentsAtPayroll = this.securityIncidents
       this.reputation = clampReputation(s.reputation ?? 40)
       this.reputationShown = this.reputation
       this.reputationDrift = 0
@@ -14216,6 +14224,7 @@ export class Game {
       this.signed.length,
       tilesOf(this.tiles, 'stand').length,
       this.flightsDone,
+      this.fieldLevel(),
     )
   }
 
@@ -15301,11 +15310,21 @@ export class Game {
       this.postJournal('payroll', paid, stamp)
     }
     this.reputation = Math.max(0, this.reputation - 4)
+    const incidentsRising = this.securityIncidents > this.securityIncidentsAtPayroll
+    const securityFloor = incidentsRising ? SECURITY_INCIDENT_SLIDER_FLOOR : PAYROLL_SHORT_SLIDER_FLOOR
     for (const key of ['maintenance', 'security'] as const) {
-      if (this.budgets[key] > PAYROLL_SHORT_SLIDER_FLOOR) {
-        this.budgets[key] = Math.max(PAYROLL_SHORT_SLIDER_FLOOR, this.budgets[key] - PAYROLL_SHORT_SLIDER_STEP)
+      const floor = key === 'security' ? securityFloor : PAYROLL_SHORT_SLIDER_FLOOR
+      if (this.budgets[key] > floor) {
+        this.budgets[key] = Math.max(floor, this.budgets[key] - PAYROLL_SHORT_SLIDER_STEP)
       }
     }
+    if (incidentsRising && this.budgets.security <= securityFloor) {
+      this.pushNews(
+        `Security held at ${this.budgets.security}%. Incidents are still rising, so payroll will not cut the lane further.`,
+        'bad',
+      )
+    }
+    this.securityIncidentsAtPayroll = this.securityIncidents
     this.pushNews(
       shown > 0
         ? `Payroll short ${moneyLeft(settlement.shortfall)} — paid ${moneyLeft(shown)} of ${moneyLeft(bill)}. Sliders cut, reputation dips.`
@@ -15468,7 +15487,7 @@ export class Game {
     const fire = this.budgetOf('fire') / 100
     const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
-    const fine = Math.round(baseFine * (1.4 - mitigate * 0.5))
+    const fine = Math.min(CRASH_FINE_CAP, Math.round(baseFine * (1.4 - mitigate * 0.5)))
     this.charge(fine)
     this.crashes += 1
     f.ledger.push({ label: `${f.flightNo} crash write-off`, amount: -fine })
@@ -19330,6 +19349,13 @@ export class Game {
       deadline: hard ? 18 : 24,
     }
     this.pushNews(`THREAT ALERT — decide now. ${this.pendingThreat.blurb}`, 'bad')
+    if (this.budgetOf('security') < SECURITY_INCIDENT_SLIDER_FLOOR) {
+      const preview = hard ? SECURITY_HARD_FINE : SECURITY_SOFT_FINE
+      this.pushNews(
+        `Security is ${Math.round(this.budgetOf('security'))}%. Ignoring this alert bills ${moneyLeft(preview)}. Raise the slider before it fires.`,
+        'bad',
+      )
+    }
     this.emit()
   }
 
@@ -19819,8 +19845,8 @@ export class Game {
           ? 18000
           : 9000
         : t.severity === 'hard'
-          ? 4000
-          : 2500
+          ? SECURITY_HARD_FINE
+          : SECURITY_SOFT_FINE
     if (t.severity === 'hard') {
       this.shockStock(
         'SECURITY FAILURE — threat reached a departure.',

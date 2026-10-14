@@ -164,7 +164,7 @@ describe('inbound request edges', () => {
     expect(whole.requests.length).toBeGreaterThan(0)
   })
 
-  it('expires every ignored card in turn and fines only the priority ones', () => {
+  it('expires every ignored card and does not fine an unanswered toast', () => {
     const field = world({ fieldLevel: 8 })
     const state = createInboundState(31)
     tick(state, field, SIM_DAY_SEC * 3)
@@ -175,9 +175,8 @@ describe('inbound request edges', () => {
     for (const r of closed) expect(['expired', 'pending', 'queued']).toContain(r.status)
     expect(state.visits).toHaveLength(0)
     const fines = state.ledger.filter((row) => row.reason === 'Unanswered inbound request')
-    const expiredPriority = state.requests.filter((r) => r.status === 'expired' && r.priority)
-    expect(fines).toHaveLength(expiredPriority.length)
-    expect(fines.every((row) => row.amount < 0)).toBe(true)
+    expect(state.requests.some((r) => r.status === 'expired' && r.priority)).toBe(true)
+    expect(fines).toHaveLength(0)
     expect(state.stats.expired).toBe(state.requests.filter((r) => r.status === 'expired').length)
     // Never more than one card open at a time.
     expect(state.requests.filter((r) => r.status === 'pending').length).toBeLessThanOrEqual(1)

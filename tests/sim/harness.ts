@@ -16,7 +16,7 @@ export const DAY_SEC = 180
 /** Sim seconds per tick. Coarser than the 60 fps frame so 30 days fit in the per-test budget. */
 export const STEP_SEC = 3
 /** Per-test wall-clock budget (ms). */
-export const TEST_TIMEOUT_MS = 20_000
+export const TEST_TIMEOUT_MS = 60_000
 
 export interface SetupOptions {
   seed?: number

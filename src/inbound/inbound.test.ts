@@ -113,7 +113,7 @@ function assertPads(state: InboundState, field: InboundWorld): void {
 describe('inbound requests', () => {
   it('uses the catalog fee and fine constants', () => {
     expect(TANKER_FEE).toBe(6800)
-    expect(EMERGENCY_REFUSE_FINE).toBe(2500)
+    expect(EMERGENCY_REFUSE_FINE).toBe(800)
     expect(MIL_LANDING).toBe(7800)
     expect(GA_PARK_DAY_RATE).toBe(380)
     expect(HOTEL_NIGHT_FEE).toBe(95)
@@ -213,7 +213,7 @@ describe('inbound requests', () => {
     const divert = spawnOffer(state, 'weather_divert')
     const events = tick(state, world(), DECISION_SEC)
     const expired = events.find((item) => item.type === 'expired' && item.requestId === divert.id)
-    expect(expired).toMatchObject({ fine: EMERGENCY_REFUSE_FINE })
+    expect(expired).toMatchObject({ fine: 0 })
     expect(state.requests.find((item) => item.id === divert.id)?.status).toBe('expired')
 
     const gaState = createInboundState(1)

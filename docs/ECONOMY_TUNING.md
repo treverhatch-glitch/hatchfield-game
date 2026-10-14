@@ -1,45 +1,52 @@
 # Economy tuning
 
-`docs/playtest/bots/economy_findings.md` is not in this tree. The numbers below are from `scripts/soak-personas.mts` (a 30-game-day headless run, speed 5, one-second ticks, seeded). One game day is 180 sim-seconds. Setup cash is what is left after standard city land and the starter kit ($7,000). Clearly profitable means day-30 cash is at least $10,000 above that setup and above zero. Bankrupt means day-30 cash is at or below zero.
+The playtester note is `docs/playtest/bots/economy_findings.md` (commit `e3482d6`). On current main a careful bot and a greedy bot both finished near −$21,000 even from a $168,000 start. Over 45 careful days the replay booked about $458,000 of penalties, about $2,440 a day of hall upkeep, about $2,290 a day of land holding, and about $1,730 a day of payroll. A short payroll day cut the security slider, which caused more threat fines.
 
-Payroll shares were not moved. Early days still bill 75% of operating income, and later days 57.5%, with the staffing floor as the minimum. Those rates stay in `src/core/bank.ts`.
+The numbers below are a rerun of `src/playtest/run.ts` (`TUNE_BOTS=1 npx vitest run src/playtest/economyTune.test.ts`). One sim day is 180 seconds. The driver ticks at 5×. Careful runs 45 days, greedy 60, chaotic 30. Chaotic is the sloppy clicker.
 
-## What the first passes showed
+## Baseline
 
-A careful player who refused every emergency and ignored every threat posted on the order of $200,000 of penalties over the month and finished near $0, with the cash minimum on the -$25,000 debt floor. Hosting only what the field can actually take, scrambling a threat when the cash is there, and drawing the $25,000 micro loan once still left that player at **$2,731** on day 30 (one payroll miss short of a clean month). A greedy player who took the biggest loan, signed everyone, and built the hotel, both parks, and rail finished on the debt floor.
+| Lever | Was | Now |
+| --- | ---: | ---: |
+| Private-field hard security fine | $4,000 | $1,500 |
+| Private-field soft security fine | $2,500 | $800 |
+| Airline task miss | $1,600 | $500 |
+| Cargo volume miss | $1,800 | $600 |
+| Refused emergency | $2,500 | $800 |
+| Expired inbound toast | $2,500 | $0 |
+| Missed-connection rebook | $2,400 | $700 |
+| Crash write-off | formula, about $36,000 on ruined pavement | capped at $12,000 |
+| Property tax | 0.0012 of assessed | 0.0004 |
+| Insurance | 0.0004 of assets | 0.00012 |
+| Power / water utility | $14 / $9 per load | $7 / $4 |
+| Food / souvenir / lounge upkeep | $480 / $360 / $600 a day | $160 / $120 / $200 |
+| Early payroll share | 75% of the day's income | 45% |
+| Mid-game payroll share | 57.5% | 40% |
+| Ops wage cap before field level 3 | 1.65 | 1.25 |
+
+Tax and insurance alone left a stamped starter at $1,115 a day of holding, and $780 of that was utilities. The utility rates above bring that starter bill to $719. Hall upkeep on the same field is $585. Both sit under the $800 and $900 aims.
+
+A short payroll day still trims maintenance down to 50%. Security stops at 70% while `securityIncidents` is higher than it was at the previous payroll close, and the news says the lane is being held. A threat that arrives with security under 70% names the fine in the alert, before the player ignores it.
+
+A one- or two-carrier field with no hotel, parking, or rail still pays 35% of building upkeep and bills 1.22× turn fees (`src/game/economyTuning.ts`). A third carrier, or a landside building, drops both. The bots above sign well past two carriers, so that relief is only the opening.
 
 ## Before
 
-Same personas, no small-field relief (`SMALL_FIELD_UPKEEP_FACTOR` 1, `SMALL_FIELD_FEE_FACTOR` 1).
+From `economy_findings.md`. Start cash $168,000. Careful is about day 45. Greedy is about day 60. Chaotic was not in that note.
 
-| Persona | Day-30 cash | Versus setup | Minimum | Loan still owed | Carriers | Flights | Payroll misses |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Careful | $2,731 | -$4,269 | -$25,000 | $0 | 2 | 62 | 17 |
-| Greedy | -$25,000 | -$32,000 | -$25,000 | $42,127 | 7 | 51 | 26 |
-| Chaotic | -$24,123 | -$31,123 | -$24,123 | $15,655 | 12 | 64 | 23 |
-
-Careful was solvent and not profitable. Greedy and chaotic were bankrupt.
+| Persona | End cash |
+| --- | ---: |
+| Careful | about −$21,000 |
+| Greedy | about −$18,400 |
 
 ## After
 
-Knobs in `src/game/economyTuning.ts`:
+Same personas, same seeds, after the cuts above.
 
-- A field with 1 or 2 carriers and no hotel, car park, or rail pays **35%** of building upkeep.
-- That same field bills **1.22×** turn fees (landing, passengers, bags, fuel, catering, retail, contracts).
-- A third carrier, or a hotel, park, or rail link, drops both. Payroll shares are unchanged.
+| Persona | Day 30 | End | Minimum | Carriers | Flights |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Careful (day 45) | $179,469 | $158,363 | $20,383 | 12 | 85 |
+| Greedy (day 60) | $7,829 | $2,602 | −$2,439 | 12 | 105 |
+| Chaotic / sloppy (day 30) | $3,332 | $3,332 | −$17,847 | 0 | 24 |
 
-| Persona | Day-30 cash | Versus setup | Minimum | Loan still owed | Carriers | Flights | Payroll misses |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Careful | $19,127 | +$12,127 | -$4,117 | $0 | 2 | 66 | 1 |
-| Greedy | -$13,656 | -$20,656 | -$21,005 | $39,613 | 6 | 57 | 27 |
-| Chaotic | -$10,482 | -$17,482 | -$25,000 | $35,606 | 8 | 42 | 23 |
-
-Careful is in the black by more than $10,000 over the post-kit cash, with a single payroll miss. Greedy still finishes in debt, with the loan open and payroll missed most days.
-
-## Personas
-
-Defined in `src/game/soakPersonas.test.ts`. The default `npm test` skips the soak. Run it with `npx tsx scripts/soak-personas.mts`.
-
-- **Careful.** Budgets at 80. At most two carriers. One micro loan ($25,000). Host an emergency only when the field can. Scramble a threat when cash covers it. Build a field ask only when the bonus covers the cost and the cash can spare it. No hotel, parking, or rail.
-- **Greedy.** Budgets at 100. Biggest loan on offer, every carrier, every emergency, every scramble. Hotel, both parks, and rail, and hires on a timer.
-- **Chaotic.** Seeded coin flips on contracts, loans, budgets, builds, and hires.
+Careful is in the black by day 30 and still there at day 45. Greedy stays near the waterline and spends time below zero. Chaotic falls to about −$18,000 and climbs back above zero by day 30.

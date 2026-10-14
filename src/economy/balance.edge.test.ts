@@ -78,10 +78,10 @@ describe('economy balance edges', () => {
   })
 
   it('pulls a hoarded bank and a modest one toward the same level instead of running away', () => {
-    const rich = projectCashFlow(10_000_000, 60, picture())
+    const rich = projectCashFlow(25_000_000, 60, picture())
     const modest = projectCashFlow(500_000, 60, picture())
     for (let i = 1; i < rich.length; i++) {
-      // The levy on cash above the floor outweighs a mid-game day once the bank is huge.
+      // At a 40% payroll share the 0.5% levy outweighs a mid-game day once cash is past about $17M.
       expect(rich[i]!).toBeLessThan(rich[i - 1]!)
       expect(modest[i]!).toBeGreaterThan(modest[i - 1]!)
       expect(rich[i]! - modest[i]!).toBeLessThan(rich[i - 1]! - modest[i - 1]!)

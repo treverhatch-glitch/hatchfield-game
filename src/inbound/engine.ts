@@ -87,7 +87,7 @@ function closeRequest(
   how: 'refused' | 'expired',
 ): InboundEvent {
   request.status = how
-  const fine = request.fineOnRefuse
+  const fine = how === 'expired' ? 0 : request.fineOnRefuse
   const reputation = request.reputationOnRefuse
   state.reputation = clampRep(state.reputation + reputation)
   if (how === 'expired') state.stats.expired += 1

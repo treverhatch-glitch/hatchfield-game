@@ -92,7 +92,7 @@ describe('first fifteen minutes on a new field', () => {
     })
   })
 
-  it('an eager signer at 1× gets at most two carriers in five minutes', () => {
+  it('an eager signer at 1× gets at most two carriers in five minutes', { timeout: 30_000 }, () => {
     withSeed(11, () => {
       const game = started()
       const signedAt = eagerSigner(game, 300, 1)

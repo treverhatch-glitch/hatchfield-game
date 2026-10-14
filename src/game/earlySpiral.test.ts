@@ -5,6 +5,7 @@ import {
   EMERGENCY_UNABLE_REP,
   LOAN_PRODUCTS,
   PAYROLL_SHORT_SLIDER_FLOOR,
+  SECURITY_INCIDENT_SLIDER_FLOOR,
 } from './catalog.ts'
 import { loanInstallment, settleLoanTick } from './economy.ts'
 import { Game } from './sim.ts'
@@ -173,6 +174,34 @@ describe('a short payroll day', () => {
     game.clock = 9 * 180 + 1
     game.tickPayroll(0)
     expect(game.budgets.security).toBe(30)
+  })
+
+  it('holds the security slider at 70% while incidents are still rising', () => {
+    const game = fresh()
+    game.buildStarterKit()
+    game.cash = -8_000
+    game.budgets.maintenance = 100
+    game.budgets.security = 100
+    game.securityIncidents = 1
+    for (let day = 1; day <= 8; day++) {
+      game.cash = Math.min(game.cash, -8_000)
+      game.securityIncidents += 1
+      game.clock = day * 180 + 1
+      game.tickPayroll(0)
+    }
+    expect(game.budgets.security).toBe(SECURITY_INCIDENT_SLIDER_FLOOR)
+    expect(game.budgets.maintenance).toBe(PAYROLL_SHORT_SLIDER_FLOOR)
+  })
+})
+
+describe('starter daily bills', () => {
+  it('keeps land holding under $800 a day and the hall under $900', () => {
+    const game = fresh()
+    game.buildStarterKit()
+    expect(game.dailyHoldingQuote()).toBeGreaterThan(0)
+    expect(game.dailyHoldingQuote()).toBeLessThan(800)
+    expect(game.landsideUpkeep()).toBeGreaterThan(0)
+    expect(game.landsideUpkeep()).toBeLessThan(900)
   })
 })
 

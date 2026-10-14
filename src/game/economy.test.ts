@@ -38,6 +38,8 @@ describe('economy', () => {
     expect(fieldOpsMultiplier(1, 2, 0)).toBe(1)
     expect(fieldOpsMultiplier(3, 4, 10)).toBeCloseTo(1 + 2 * 0.055 + 2 * 0.04 + 10 * 0.0035)
     expect(fieldOpsMultiplier(40, 40, 400)).toBe(1.65)
+    expect(fieldOpsMultiplier(40, 40, 400, 1)).toBe(1.25)
+    expect(fieldOpsMultiplier(40, 40, 400, 2)).toBe(1.25)
   })
 
   it('charges the interest floor and only capitalizes the unpaid short', () => {
@@ -264,9 +266,8 @@ describe('economy', () => {
     const midBill = payrollForGameDay(203_000, 'midgame', mid.payrollPreview())
     const other = 35_000
     const margin = operatingMargin(203_000, midBill + other)
-    expect(margin).toBeGreaterThanOrEqual(0.15)
-    expect(margin).toBeLessThanOrEqual(0.3)
-    expect(operatingMargin(20_000, payrollForGameDay(20_000, 'early') + 3_000)).toBeCloseTo(0.1)
+    expect(margin).toBeCloseTo(0.4276, 3)
+    expect(operatingMargin(20_000, payrollForGameDay(20_000, 'early') + 3_000)).toBeCloseTo(0.4)
     mid.tickPayroll(0)
     const afterMid = 500_000 + 203_000 - midBill
     expect(mid.cash).toBe(afterMid - cityLevy(afterMid))

@@ -66,7 +66,7 @@ export const TIGHT_TRANSFER_DEMAND = 1.8
 export const TIGHT_CROWD_PEAK = 1.55
 
 export const HOTEL_NIGHT_COST = 1_860
-export const REBOOK_FEE = 2_400
+export const REBOOK_FEE = 700
 /** Standing points lost per missed connecting passenger. */
 export const STANDING_HIT_PER_PAX = 3.2
 

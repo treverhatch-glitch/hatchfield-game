@@ -282,10 +282,8 @@ describe('daily upkeep', () => {
 
   it('keeps early and mid-game margins inside the finance bands', () => {
     const report = runHeadlessBalance()
-    expect(report.finances.early.margin).toBeGreaterThanOrEqual(0)
-    expect(report.finances.early.margin).toBeLessThanOrEqual(0.1)
-    expect(report.finances.midgame.margin).toBeGreaterThanOrEqual(0.15)
-    expect(report.finances.midgame.margin).toBeLessThanOrEqual(0.3)
-    expect(operatingMargin(20_000, payrollForGameDay(20_000, 'early') + 3_000)).toBeCloseTo(0.1)
+    expect(report.finances.early.margin).toBeCloseTo(0.4, 3)
+    expect(report.finances.midgame.margin).toBeGreaterThan(report.finances.early.margin)
+    expect(operatingMargin(20_000, payrollForGameDay(20_000, 'early') + 3_000)).toBeCloseTo(0.4)
   })
 })
