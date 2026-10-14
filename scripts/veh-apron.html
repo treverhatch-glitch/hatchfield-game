@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Vehicle Round B apron</title>
+<style>html,body{margin:0;background:#cfd9e2;overflow:hidden}canvas{display:block}</style></head>
+<body><script type="module">
+// Round B check: a busy stand served by the in-game VehicleFleet path, parts posed by ext/clock.
+import * as THREE from 'three'
+import { VehicleFleet } from '/src/render/vehicles.ts'
+import { createAircraft } from '/src/render/aircraft/index.ts'
+const W = innerWidth, H = innerHeight
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping
+r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap
+document.body.appendChild(r.domElement)
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#bcd0e2')
+scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.4))
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.6); sun.position.set(-30, 50, 25); sun.castShadow = true
+Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, far: 160 }); sun.shadow.mapSize.set(2048, 2048)
+scene.add(sun)
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshLambertMaterial({ color: '#8e9398' }))
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
+for (const [x, z, w, d] of [[0, 0, 70, 0.25], [0, -16, 70, 0.2], [0, 16, 70, 0.2]]) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: '#e8c33a' }))
+  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, z); scene.add(m)
+}
+const WPM = 1
+const plane = createAircraft('b738', { body: '#2f6f9a', stripe: '#e8eef5' })
+plane.traverse(o => { if (o.isMesh) o.castShadow = true })
+const box = new THREE.Box3().setFromObject(plane); const sz = box.getSize(new THREE.Vector3())
+plane.scale.setScalar(39.5 / Math.max(sz.x, sz.z)); scene.add(plane)
+const fleet = new VehicleFleet(); scene.add(fleet.root)
+// kind, x, z, yaw, phase offset (s), mode
+const SPOTS = [
+  ['stairs', 12, -4.2, Math.PI / 2, 0],
+  ['belt_loader', -9, 5.2, Math.PI / 2, 1.2],
+  ['cargo', 9, 6.8, Math.PI / 2, 2.2],
+  ['catering', -13, -6.2, -Math.PI / 2, 0.6],
+  ['fuel', 2, -12.5, 0, 1.6],
+  ['gpu', 17, 4, 0, 3],
+  ['pushback_tug', 24, 0, 0, 0.3],
+  ['termbus', 4, -24, 0, 2.6],
+  ['deice', -6, 18, Math.PI, 1.0],
+  ['fire', -34, -16, 0.5, 0, 'fire'],
+  ['tow', 30, 14, 0, 1.8],
+  ['citycargo', 22, -20, 0, 2.4],
+  ['coach', -26, -30, 0, 0.8],
+]
+const COLORS = { termbus: '#3d6a8a', coach: '#3d6a8a', fire: '#c8231e', catering: '#e07a3d', fuel: '#c9a227' }
+const ease = (x) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t) }
+const cam = new THREE.PerspectiveCamera(38, W / H, 0.5, 600)
+window.renderAt = (t) => {
+  const list = SPOTS.map(([kind, x, z, yaw, off, mode]) => {
+    const local = t - off
+    const ext = mode === 'fire' ? ease(local / 2) : ease(local / 2.5) * ease((11 - local) / 2.5)
+    return { kind, color: COLORS[kind] ?? '#2f7fd0', size: [8, 3, 2.5], x, y: 0, z, yaw, scale: WPM, ext, active: mode === 'fire' || ext > 0, clock: t }
+  })
+  // baggage train driving in
+  const bx = -48 + Math.min(t, 7) * 4.4
+  list.push({ kind: 'bags', color: '#2f7fd0', size: [9, 2, 1.6], x: bx, y: 0, z: 11, yaw: 0, scale: WPM, ext: 0, clock: t })
+  fleet.sync(list)
+  const a = -0.55 + t * 0.035
+  cam.position.set(Math.cos(a) * 58, 30, Math.sin(a) * 58 + 4); cam.lookAt(0, 2, 2)
+  r.render(scene, cam)
+}
+window.renderAt(Number(new URLSearchParams(location.search).get('t') ?? 6))
+window.__done = true
+</script></body></html>

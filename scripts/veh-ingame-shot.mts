@@ -67,5 +67,14 @@ await page.waitForTimeout(3000)
 await page.mouse.move(800, 500)
 for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(300) }
 await page.waitForTimeout(3000)
+// Close offer / airline / coach panels so the apron is clear.
+for (let pass = 0; pass < 3; pass++) {
+  for (const name of ['Refuse', 'Decline', 'Not now', 'Later', 'Dismiss', 'Got it', 'Close']) {
+    const btns = page.getByRole('button', { name, exact: true })
+    const n = await btns.count()
+    for (let i = 0; i < n; i++) await btns.nth(i).click({ timeout: 1500 }).catch(() => {})
+  }
+  await page.waitForTimeout(400)
+}
 await page.screenshot({ path: OUT })
 await browser.close()
