@@ -48,3 +48,16 @@ Merge notes worth eyeballing in the first manual pass:
 - Vehicles are instanced now (#226). Night headlights read light proxies built from each frame's vehicle instances. The baggage-tug / belt-loader bag bed from the old per-vehicle meshes is gone (cargo shows only on trucks).
 - Terminal (#215 on #224): ordinary room labels stay in the shared sign atlas; gate boards (with airline marks) and check-in / security wayfinding boards are separate planes named `gate-sign` / `wayfinding-sign`. Desk instancing draws granite counter tops; counter logo slots go to the airline logo meshes.
 - Glass partitions use #215's 0.9 opacity for the textured curtain wall.
+
+## Steps 8–9 — pack 6 skies
+
+| Step | Trunk commit | What |
+| --- | --- | --- |
+| 8 | `642305f` | `sky_{dawn,noon,dusk,night}.jpg` from `art/pack6-refs` → `public/textures/sky/`. `_pack6_b64` was never on trunk; refs and renders left on the art branch. |
+| 9 | `f05693b` | `SkyDome` crossfades two panoramas by sim hour. Tunables in `src/render/world/dayNight.ts`: `SKY_PHOTOS` (url + horizon row per photo), `SKY_PHOTO_FADES` (night→dawn 5.0–6.4, dawn→noon 7.2–9.2, noon→dusk 17.0–18.8, dusk→night 19.6–21.0), `SKY_PHOTO_WEATHER`. Low preset `skyPhotos: false` keeps the procedural dome and never loads the JPEGs. |
+
+The pack 6 images are 16:9 photos, not true equirects. The dome mirrors each one once around 360° (no seam) and maps the configured horizon row to the horizon. Checked in headless Chrome against the dome alone: the shader compiles, all four load, and noon / dusk / night look right. Not yet checked in a real game camera at a low angle. If a horizon looks off, tune `SKY_PHOTOS[*].horizon`.
+
+stopped after step 9
+
+Not done: step 10 (passenger / crew palettes from `ref_passengers.jpg` / `ref_crew_uniforms.jpg`), step 11 (#215 loose ends 1–2), step 12 (pack 3 textures, not provided).
