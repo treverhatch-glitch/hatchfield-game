@@ -145,7 +145,7 @@ describe('hall walkers (paxnav glue)', () => {
     game.tickHallNav(0.01)
     release(game, 1200, 'load')
     game.tickHallNav(0.001)
-    expect(game.hallNav.count).toBe(1200 + game.hallGuests.filter((g) => g.preview).length)
+    expect(game.hallNav.passengers).toBe(1200 + game.hallGuests.filter((g) => g.preview).length)
     const t0 = performance.now()
     const frames = 120
     for (let i = 0; i < frames; i++) game.tickHallNav(1 / 60)

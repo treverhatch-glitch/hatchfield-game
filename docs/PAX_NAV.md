@@ -161,3 +161,68 @@ Smoke: `npx tsx scripts/hall-nav-smoke.mts`. It starts Vite and runs the
 starter kit into the Terminal view. It takes a close shot, an arrivals close
 shot and a 1200-walker shot. Then it reports FPS, per-frame glue cost and draw
 stats, with the cap and cull on and then off, on the same camera.
+
+## Facilities, queues, mood and crew (issue #195)
+
+- **Placed walls and belts.** `prefabNavLayout` reads `facilityBlockers`
+  (`src/terminalplay`). A placed `wall` or `bag_system` fills its hall cell, so
+  those tiles get no floor and no zone. Walkers and crew go round them, and no
+  kit is put on them.
+- **Finished waits.** `PaxNav.drainWaits()` gives each wait that ended: who,
+  at which kit, and how long, from joining the line to reaching the desk.
+  `HallNav` collects them, and `Game.applyHallWaits` turns each one into a mood
+  change for that sim guest (`waitMoodDelta`):
+  - a wait under a quarter of the tolerance gives `quickMood`;
+  - a wait up to `toleranceSec` changes nothing;
+  - after that it costs `moodPerMinOver` per nav minute, capped at `maxMoodHit`.
+
+  Preview (day-one) walkers are skipped. The sim's own hall queue model still
+  runs as before; the walk adds the cost of the lines the player can see.
+- **Live queues and bottlenecks.** Every `readEveryNavSec`, `HallNav` reads
+  the facility metrics:
+  - `loads()` gives per facility the line length, expected and average wait,
+    and a `bottleneck` flag;
+  - `queues()` groups those by hall node (check-in, security, restrooms,
+    shops & food, gate), with the count, the worst wait and a badge spot at
+    the back of the longest line, in hall metres.
+
+  A facility is a bottleneck (`isNavBottleneck`) when someone joining now would
+  wait `bottleneckSec`, or its line has spilled past its floor marks. While the
+  walk is live:
+  - the hall's queue badges use `queues()`;
+  - the info panel (`facilityInfo` for a node) shows count, wait and the
+    bottleneck hint;
+  - a queue line's floor dots turn red while it is a bottleneck.
+
+  Tunables: `HALL_QUEUE_TUNING` (`src/game/hallNavData.ts`).
+- **Starter terminal pacing.** In a 16-day run of the starter kit with every
+  airline offer accepted, lines stay short on days 1–4. They grow once the
+  first airlines fill the hall (about day 5). Check-in and shops pass their
+  bottleneck wait around days 5–7. The kit, not a cap, decides when.
+- **Crew** (`src/paxnav/crew.ts`, `HallNav.crew`). Staff walk the same grid.
+  - Check-in agents, screeners (two per lane), gate agents and shop staff each
+    have a post behind their desk or in their lane, off every queue line.
+  - Staff before security come in from the curb, and staff after security from
+    a jet bridge door.
+  - At shift change (`HALL_CREW_TUNING.shiftClockSec`), a relief walks in. The
+    one on duty walks out only once the relief has arrived, so a post is never
+    left empty.
+  - Cleaners loop the toilet blocks.
+  - Layout edits walk the staff of removed kit out and bring new staff in for
+    new kit.
+  - Crew draw after passengers in the pose order (`HallNav.crewRole(i)`), in
+    uniform and with no bag. Tunables: `CREW_TUNING` (`src/paxnav/config.ts`).
+- **Determinism and saves.** Nothing in the walk or the crew rolls outside the
+  seeded RNG or fixed hashes, and none of it is saved. After a load the hall
+  opens staffed and walkers restart from the next released guests. The only
+  thing the walk writes back into the sim is guest happiness, through waits.
+- **Tests:** `src/game/hallPathing.test.ts` covers:
+  - placed walls;
+  - the queue read-out;
+  - 500 passengers through the starter hall, checked every tick;
+  - waits feeding mood;
+  - crew;
+  - determinism, save safety, and 1,300+ walkers.
+
+  `src/paxnav/crew.test.ts` covers posts, shift relief without wall crossing,
+  edits, cleaners and determinism.
