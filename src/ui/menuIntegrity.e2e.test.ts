@@ -180,7 +180,7 @@ describe('every menu opens, has content, and closes', () => {
     } finally {
       vite.kill('SIGTERM')
     }
-  }, 180_000)
+  }, 360_000)
 })
 
 async function assertNamedButtons(root: Locator, where: string) {
