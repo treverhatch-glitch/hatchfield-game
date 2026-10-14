@@ -8,17 +8,27 @@ describe('stamp cards', () => {
     expect(STAMP_HOVER_MS).toBe(400)
     const card = stampCard(toolStampInput('saf_blending', 1, 1, new Set()))
     expect(card.locked).toBe(true)
+    expect(card.badge).toEqual({ kind: 'field', label: 'Field level 8' })
     expect(card.sentence).toBe('Unlocks at Field level 8.')
     expect(card.link).toEqual({ tab: 'levels', anchor: 'level-8', label: 'Field level 8' })
     expect(card.price).not.toBe('Refund')
     expect(card.upkeep).toMatch(/day/)
   })
 
-  it('names the research node once the field level is met', () => {
+  it('wears the research node badge, including its name, even before the field level', () => {
     const early = stampCard(toolStampInput('stand_w', 1, 1, new Set()))
+    expect(early.badge).toEqual({ kind: 'research', label: 'Widebody ops', nodeId: 'widebody_ops' })
+    expect(early.sentence).toContain('Requires research: Widebody ops.')
     expect(early.sentence).toContain('Field level 4')
-    expect(early.sentence).toContain('Widebody ops')
-    expect(early.link?.tab).toBe('levels')
+    expect(early.link).toEqual({
+      tab: 'research',
+      anchor: 'research-node-widebody_ops',
+      label: 'Widebody ops',
+    })
+
+    const levelOnly = stampCard(toolStampInput('stand_w', 1, 1, new Set(['widebody_ops'])))
+    expect(levelOnly.badge).toEqual({ kind: 'field', label: 'Field level 4' })
+    expect(levelOnly.sentence).toBe('Unlocks at Field level 4.')
 
     const ready = stampCard(toolStampInput('stand_w', 4, 4, new Set()))
     expect(ready.locked).toBe(true)

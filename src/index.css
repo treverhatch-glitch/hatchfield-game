@@ -1579,6 +1579,19 @@ html[data-gfx='low'] .view-layer.dim {
   color: #f0c14a;
 }
 
+.lock-badge.research-badge {
+  position: static;
+  width: auto;
+  height: auto;
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #9ee0b0;
+}
+
 .lock-pad {
   width: 14px;
   height: 14px;
@@ -1632,8 +1645,13 @@ html[data-gfx='low'] .view-layer.dim {
   margin: 0;
 }
 
-.stamp-card .stamp-lock {
+.stamp-card .stamp-lock,
+.stamp-card .stamp-research {
   color: #f0c14a;
+}
+
+.stamp-card .stamp-research {
+  font-weight: 700;
 }
 
 .stamp-card button {

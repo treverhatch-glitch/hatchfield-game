@@ -27,6 +27,13 @@ export interface UnlockLink {
   label: string
 }
 
+export interface StampBadge {
+  kind: 'field' | 'research'
+  /** Field level text, or the research node's own name. */
+  label: string
+  nodeId?: string
+}
+
 export interface StampCard {
   name: string
   blurb: string
@@ -35,6 +42,8 @@ export interface StampCard {
   capacity: string
   noise: string
   locked: boolean
+  /** Research node when that is the gate; otherwise the field level. */
+  badge: StampBadge | null
   /** Exact gate, when the stamp is still locked. */
   sentence: string | null
   link: UnlockLink | null
@@ -87,13 +96,16 @@ export function stampCard(input: StampInput): StampCard {
   const researchShort = Boolean(node && !input.researchOwned)
   const locked = levelShort || researchShort
   const parts: string[] = []
-  if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
   if (researchShort && node) parts.push(`Requires research: ${node.name}.`)
+  if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
+  let badge: StampBadge | null = null
   let link: UnlockLink | null = null
-  if (levelShort) {
-    link = { tab: 'levels', anchor: `level-${need}`, label: `Field level ${need}` }
-  } else if (researchShort && node) {
+  if (researchShort && node) {
+    badge = { kind: 'research', label: node.name, nodeId: node.id }
     link = { tab: 'research', anchor: `research-node-${node.id}`, label: node.name }
+  } else if (levelShort) {
+    badge = { kind: 'field', label: `Field level ${need}` }
+    link = { tab: 'levels', anchor: `level-${need}`, label: `Field level ${need}` }
   }
   return {
     name: input.name,
@@ -103,6 +115,7 @@ export function stampCard(input: StampInput): StampCard {
     capacity: capacityOf(input.id),
     noise: noiseOf(input.blurb),
     locked,
+    badge,
     sentence: parts.length ? parts.join(' ') : null,
     link,
   }

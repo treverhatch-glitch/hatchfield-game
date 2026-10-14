@@ -63,7 +63,7 @@ A card with no countdown is marked Note. Line maintenance is spelled out.
 
 ## Build bar
 
-Bottom toolbar, then a named sub-tab row, then a thumbnail grid. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. Locked stamps stay in their sub-tab, greyed, with a padlock. The hover card (about 400 ms) shows price, upkeep, capacity, and noise, and names the exact gate: a field level, a research node, or both. Open on that card jumps to Field Levels or that node on the research desk. The bag belt and the guard post appear once.
+Bottom toolbar, then a named sub-tab row, then a thumbnail grid. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. Locked stamps stay in their sub-tab, greyed. A field-level lock wears a padlock. A stamp that needs a research node wears that node's name as its badge, and the hover card repeats the name. The card (about 400 ms) also shows price, upkeep, capacity, and noise. Open jumps to that research node, or to Field Levels when the only gate is the level. The bag belt and the guard post appear once.
 
 | Category | Sub-tabs |
 | --- | --- |
@@ -133,7 +133,7 @@ Move and Bulldoze sit beside the tabs. A hover tooltip names the item, the price
 
 ## Tooltips
 
-- Build stamps: a hover card after about 400 ms with price, upkeep, capacity, and noise. A locked stamp names the field level or the research node and links to it.
+- Build stamps: a hover card after about 400 ms with price, upkeep, capacity, and noise. A research lock shows that node's name on the stamp and again on the card. A field-level lock shows the padlock and the level.
 - Stamp cursor tooltip on the apron: site name and build progress
 - Kit tooltip in the hall
 - Button `title` attributes on speed, fees, cash, and menu groups

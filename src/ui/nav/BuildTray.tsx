@@ -65,6 +65,11 @@ function HoverCard({ card, onOpen }: { card: StampCard; onOpen: (link: UnlockLin
           <dd>{card.noise}</dd>
         </div>
       </dl>
+      {card.badge?.kind === 'research' ? (
+        <p className="stamp-research" data-testid="stamp-research">
+          {card.badge.label}
+        </p>
+      ) : null}
       {card.sentence ? <p className="stamp-lock">{card.sentence}</p> : null}
       {card.link ? (
         <button type="button" data-testid="stamp-unlock" onClick={() => onOpen(card.link!)}>
@@ -117,14 +122,22 @@ function StampSlot({
           else onUse()
         }}
       >
-        {card.locked ? (
-          <span className="lock-badge" data-testid={`lock-badge-${badgeId}`} aria-label="Locked">
+        {card.badge?.kind === 'research' ? (
+          <span
+            className="lock-badge research-badge"
+            data-testid={`research-badge-${card.badge.nodeId}`}
+            aria-label={card.badge.label}
+          >
+            {card.badge.label}
+          </span>
+        ) : card.locked ? (
+          <span className="lock-badge" data-testid={`lock-badge-${badgeId}`} aria-label={card.badge?.label ?? 'Locked'}>
             <LockMark />
           </span>
         ) : null}
         <TrayMark tool={mark} />
         <span className="tray-name">{name}</span>
-        <span className="tray-price">{card.locked ? 'Locked' : card.price}</span>
+        <span className="tray-price">{card.locked ? (card.badge?.label ?? 'Locked') : card.price}</span>
       </button>
       {open ? <HoverCard card={card} onOpen={onOpen} /> : null}
     </div>
@@ -228,6 +241,7 @@ function FurnishStamp({ game, entry }: { game: Game; entry: FurnishEntry }) {
     capacity: '—',
     noise: '—',
     locked: false,
+    badge: null,
     sentence: null,
     link: null,
   }
