@@ -144,6 +144,7 @@ import {
   RUNWAY_PREFAB_LEN,
   RUNWAY_PREFAB_WID,
   STAND_JETWAY_MULT,
+  standClassLabel,
   standClassRank,
   STARTER_KIT_COST,
   START_CASH,
@@ -207,6 +208,8 @@ import {
   STARTER_CAPACITY,
 } from './openingData.ts'
 import { nextSessionHint } from './sessionHints.ts'
+import { coolAfterSign, lettersSettled } from './contractPacing.ts'
+import { LETTER_PACING } from './contractPacingData.ts'
 import { AlertStack, type AlertFocus, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING, STUCK_PHASES } from './alertsData.ts'
 import { DISRUPTION_ALERT_PREFIX, disruptionToAlert } from '../disruptions/alertFeed.ts'
@@ -930,6 +933,8 @@ export class Game {
   signed: AirlineId[] = []
   offer: ContractOffer | null = null
   offerCool = 12
+  /** Clock at the last signature. Not saved; a restored field counts as settled. */
+  lastSignAt = -Infinity
   /** Letter ids open or hovered in the HUD; their countdowns pause. UI state, not saved. */
   private heldLetters = new Set<string>()
   mxOffer: MxOffer | null = null
@@ -1359,6 +1364,7 @@ export class Game {
     this.signed = []
     this.offer = null
     this.offerCool = 8
+    this.lastSignAt = -Infinity
     this.mxOffer = null
     this.mxOfferCool = 30
     this.mxSigned = []
@@ -8007,6 +8013,7 @@ export class Game {
       deskStaff: this.deskStaff,
       needsDesk: this.startFocus !== 'cargo' && this.fits.length > 0,
       flightsDone: this.flightsDone,
+      offerMissing: this.offer ? this.letterVerdict(this.offer.airline).missing : [],
     }
   }
 
@@ -11093,6 +11100,8 @@ export class Game {
       label: a.req.stands === 1 ? '1 stand' : `${a.req.stands} stands`,
       met: r.stands >= a.req.stands,
     })
+    const craft = this.contractCraftNeed(id)
+    if (craft) rows.push(craft)
     if (a.req.fuelContract) rows.push({ label: 'Fuel contract', met: r.fuelContract })
     if (a.req.fuelFarm) rows.push({ label: 'Fuel farm', met: r.fuelFarm })
     if (a.req.fire) rows.push({ label: 'Fire station', met: r.fire })
@@ -11103,6 +11112,8 @@ export class Game {
         label: a.req.security === 1 ? 'Security lane' : `Security ×${a.req.security}`,
         met: r.security >= a.req.security,
       })
+    } else if (a.kind === 'pax') {
+      rows.push({ label: 'No security lane needed', met: true })
     }
     if (a.req.bags) rows.push({ label: 'Bag sort', met: r.bags })
     if (a.req.snack) rows.push({ label: 'Snack bar', met: r.snack })
@@ -11113,8 +11124,46 @@ export class Game {
     return rows
   }
 
+  /** Top line of the letter: does the field qualify right now, and what is missing. */
+  letterVerdict(id: AirlineId): { met: boolean; label: string; missing: string[] } {
+    const missing = this.reqReport(id)
+      .filter((row) => !row.met)
+      .map((row) => row.label)
+    if (!missing.length) return { met: true, label: 'Qualifies now — every row is met', missing }
+    const head = missing.slice(0, 2).join(', ')
+    const more = missing.length > 2 ? ` +${missing.length - 2}` : ''
+    return { met: false, label: `Not ready — missing ${head}${more}`, missing }
+  }
+
+  /**
+   * Aircraft-size row for the letter: the metal the carrier sells and the
+   * stand class its biggest type needs. Null when the card names no fleet.
+   */
+  contractCraftNeed(id: AirlineId): { label: string; met: boolean } | null {
+    const a = this.airline(id)
+    if (a.kind === 'cargo') return null
+    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    if (!pool.length) return null
+    let need: StandClass = 'S'
+    for (const af of pool) {
+      const cls = standClassFor(af.kind)
+      if (standClassRank(cls) > standClassRank(need)) need = cls
+    }
+    const names = [...new Set(pool.map((af) => af.name))]
+    const shown = names.length > 2 ? `${names.slice(0, 2).join(' / ')} +${names.length - 2}` : names.join(' / ')
+    const met = tilesOf(this.tiles, 'stand').some((s) => this.standFitsClass(s, need))
+    return { label: `${shown} · ${standClassLabel(need)}+`, met }
+  }
+
   considerOffers() {
     if (this.offer || this.offerCool > 0) return
+    // A small book waits until its carriers are turning flights before the next one writes.
+    const settled = lettersSettled({
+      signed: this.signed.length,
+      flightsDone: this.flightsDone,
+      sinceSign: this.clock - this.lastSignAt,
+    })
+    if (!settled) return
     const site = this.site ? LAND[this.site] : null
     // Light procedural regionals — keep the phone from always being the same six faces.
     if (
@@ -11413,7 +11462,7 @@ export class Game {
 
   private clearWalkedOffer() {
     this.offer = null
-    this.offerCool = 48
+    this.offerCool = LETTER_PACING.afterWalk
     this.emit()
   }
 
@@ -11472,8 +11521,9 @@ export class Game {
     this.signed.push(id)
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.offer = null
-    // First carrier lands fast; later contracts space out so the field can breathe.
-    this.offerCool = this.signed.length <= 1 ? 55 + Math.random() * 25 : 85 + Math.random() * 40
+    // Each carrier on the books stretches the gap to the next letter.
+    this.offerCool = coolAfterSign(this.signed.length)
+    this.lastSignAt = this.clock
     this.spawnCool = Math.min(this.spawnCool, 4)
     this.reputation = Math.min(100, this.reputation + (a.procedural ? 5 : 8))
     this.grantFieldXp(12 + a.tier * 4, 'contract')
@@ -12059,7 +12109,7 @@ export class Game {
     const a = this.airline(this.offer.airline)
     this.negotiationBridge?.closePanel()
     this.offer = null
-    this.offerCool = 18
+    this.offerCool = LETTER_PACING.afterSnooze
     this.pushNews(`${a.name} letter set aside. They'll write again shortly.`, 'ok')
     this.emit()
   }
@@ -12069,7 +12119,7 @@ export class Game {
     const id = this.offer.airline
     const a = this.airline(id)
     this.offer = null
-    this.offerCool = 70
+    this.offerCool = LETTER_PACING.afterDecline
     this.adjustHeat(id, -2)
     this.pushNews(`${a.name} hung up. They may call again later.`, 'ok')
     this.emit()
@@ -12081,7 +12131,7 @@ export class Game {
     const a = this.airline(this.offer.airline)
     this.negotiationBridge?.closePanel()
     this.offer = null
-    this.offerCool = 55
+    this.offerCool = LETTER_PACING.afterExpire
     this.pushNews(`${a.name} contract letter expired unread.`, 'ok')
     this.emit()
   }
