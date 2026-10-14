@@ -133,7 +133,7 @@ export async function runOpeningCheck(outDir = OUT): Promise<string[]> {
     }
     await shot(page, outDir, '03-coach', shots)
 
-    await page.getByTestId('build-pavement').click()
+    await page.getByTestId('build-airfield').click()
     await page.getByTestId('tray-runway').click()
     const canvas = page.locator('canvas').first()
     const box = await canvas.boundingBox()

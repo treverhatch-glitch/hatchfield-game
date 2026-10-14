@@ -89,7 +89,8 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     await shot(page, outDir, screenshots, '02-route')
     await page.getByTestId('start-pax').click()
     script.push('passenger start')
-    // The new-game card stamps the kit. The coach no longer offers starter-kit-coach.
+    // The plot stays empty until the coach stamps the kit.
+    await page.getByTestId('starter-kit-coach').click({ timeout: 8000 })
     await page.waitForFunction(
       () => {
         const hatch = (window as unknown as { __hatch?: { showStarterKit?: () => boolean } }).__hatch
@@ -98,8 +99,8 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
       { timeout: 8000 },
     )
     await page.getByTestId('coach').waitFor({ state: 'visible', timeout: 8000 })
-    notes.push('Starter kit stamped by the new-game card. The coach no longer shows starter-kit-coach.')
-    script.push('starter kit stamped by the new-game card')
+    notes.push('Coach stamped the starter kit on the empty plot.')
+    script.push('starter kit stamped from the coach')
     await shot(page, outDir, screenshots, '03-field')
     await page.waitForTimeout(600)
     await shot(page, outDir, screenshots, '04-kit')
@@ -139,7 +140,7 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     } else {
       const peek = page.getByTestId('phone-peek')
       if (await peek.isVisible().catch(() => false)) {
-        await peek.click()
+        await peek.evaluate((el) => (el as HTMLButtonElement).click())
         script.push('open phone')
       }
       const card = page.getByTestId('phone-card-contract')
@@ -151,8 +152,12 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
         script.push('contract letter on the phone')
         await shot(page, outDir, screenshots, '05-contract')
         const sign = page.getByTestId('phone-action-contract-sign')
+        const fileSign = page.getByTestId('phone-action-contract-file-sign')
         if (await sign.isVisible().catch(() => false)) {
           await sign.click()
+          script.push('sign contract on the phone')
+        } else if (await fileSign.isVisible().catch(() => false)) {
+          await fileSign.click()
           script.push('sign contract on the phone')
         } else {
           couldNot.push({ command: 'acceptContract', detail: 'Phone contract card had no Sign button', count: 1 })
@@ -170,11 +175,13 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     }
 
     await backToApron()
-    const pavement = page.getByRole('button', { name: 'Pavement' })
-    if (await pavement.isVisible().catch(() => false)) {
-      await pavement.click({ timeout: 4000 })
-      script.push('open pavement tray')
-      const taxi = page.getByRole('button', { name: /Taxiway/ })
+    const airfield = page.getByTestId('build-airfield')
+    if (await airfield.isVisible().catch(() => false)) {
+      await airfield.click({ timeout: 4000 })
+      script.push('open airfield tray')
+      const taxiways = page.getByTestId('build-group-taxiways')
+      if (await taxiways.isVisible().catch(() => false)) await taxiways.click({ timeout: 4000 })
+      const taxi = page.getByTestId('tray-taxi')
       if (await taxi.isVisible().catch(() => false)) {
         await taxi.click({ timeout: 4000 })
         script.push('select taxiway')
@@ -188,7 +195,7 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
         couldNot.push({ command: 'stamp', detail: 'Taxiway was not in the build tray', count: 1 })
       }
     } else {
-      couldNot.push({ command: 'stamp', detail: 'Pavement tray was not on the apron', count: 1 })
+      couldNot.push({ command: 'stamp', detail: 'Airfield tray was not on the apron', count: 1 })
     }
 
     await backToApron()
@@ -221,7 +228,7 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     } else {
       couldNot.push({ command: 'buyRoom', detail: 'Services tab was not on screen', count: 1 })
     }
-    if (await openDesk('menu-commercial', 'tab-shops', 'shops')) {
+    if (await openDesk('menu-money', 'tab-commercial', 'shops')) {
       for (const name of ['Hall food', 'Souvenirs']) {
         const button = page.getByRole('button', { name: new RegExp(name) })
         if (await button.first().isVisible().catch(() => false)) {
