@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Building lineup</title>
+<style>html,body{margin:0;background:#cfd9e2;font-family:Inter,Arial,sans-serif}canvas{display:block}</style></head>
+<body><script type="module">
+import * as THREE from 'three'
+import { buildModel, MODEL_BUILDERS } from '/src/build/models/index.ts'
+const NAMES = { fuel:'Fuel farm', fire:'Fire station', police:'Police post', cargo:'Cargo shed', guard:'Guard post', tower:'Control tower', hangar:'Line hangar', hangar_w:'Wide hangar', hangar_j:'Jumbo hangar', snack:'Snack bar', bags:'Bag sort', kitchen:'Catering kitchen', depot:'Vehicle depot', substation:'Substation', hydrant:'Hydrant pit', tilt_tray:'Tilt-tray sort', fuel_farm_iii:'Fuel farm III', atc_approach:'ATC approach', remote_screening:'Remote screening' }
+const ids = Object.keys(MODEL_BUILDERS)
+const cols = 5, cw = 360, ch = 330
+const W = cols * cw, H = Math.ceil(ids.length / cols) * ch
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+r.setSize(W, H); r.setScissorTest(true); r.outputColorSpace = THREE.SRGBColorSpace
+r.toneMapping = THREE.ACESFilmicToneMapping; r.shadowMap.enabled = true
+document.body.appendChild(r.domElement)
+const label = document.createElement('canvas'); label.width = W; label.height = H
+label.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none'; document.body.appendChild(label)
+const lx = label.getContext('2d')
+ids.forEach((id, i) => {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(i % 2 ? '#d6e0e8' : '#cbd6df')
+  scene.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b6253, 1.4))
+  const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-6, 12, 9); key.castShadow = true
+  key.shadow.camera.left = key.shadow.camera.bottom = -8; key.shadow.camera.right = key.shadow.camera.top = 8; key.shadow.mapSize.set(1024,1024)
+  scene.add(key)
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: '#7a9a5a' }))
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
+  const m = buildModel(id); m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } }); scene.add(m)
+  const cam = new THREE.PerspectiveCamera(32, cw / (ch - 40), 0.1, 200)
+  cam.position.set(12, 11, 15); cam.lookAt(0, 2.2, 0)
+  const x = (i % cols) * cw, yTop = Math.floor(i / cols) * ch
+  const y = H - yTop - ch
+  r.setViewport(x, y + 40, cw, ch - 40); r.setScissor(x, y, cw, ch)
+  r.setClearColor('#f4f6f8'); r.clear(); r.render(scene, cam)
+  lx.fillStyle = '#1d2126'; lx.font = '600 20px Inter, Arial'; lx.textAlign = 'center'
+  lx.fillText(NAMES[id] || id, x + cw / 2, yTop + ch - 14)
+})
+window.__done = true
+</script></body></html>

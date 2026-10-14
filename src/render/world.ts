@@ -30,6 +30,7 @@ import { orbitFromLook } from '../camera/orbit.ts'
 import { previewAirframe } from '../scale/logic'
 import { ConstructionLayer } from '../build/construction'
 import { ghostify as ghostifyModel, ghostMaterials } from '../build/ghost'
+import { buildModel, standAircraftGhost } from '../build/models'
 import {
   addFuelRail,
   addHangar,
@@ -750,6 +751,11 @@ export class World {
   ): THREE.Group {
     const g = new THREE.Group()
     g.position.copy(pos)
+    const model = buildModel(tile, { hangarTier: opts.hangarTier })
+    if (model) {
+      g.add(...model.children)
+      return g
+    }
     if (tile === 'terminal') {
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.92, 3.4, CELL * 0.92),
@@ -1710,16 +1716,9 @@ export class World {
         mat,
       )
       pad.position.set(box.x, 0.14, box.z)
-      const fuse = new THREE.Mesh(
-        new THREE.BoxGeometry(
-          alongX ? box.depth * 0.72 : box.width * 0.16,
-          1.35,
-          alongX ? box.width * 0.16 : box.depth * 0.72,
-        ),
-        mat,
-      )
-      fuse.position.set(box.x, 0.9, box.z)
-      this.ghostGroup.add(pad, fuse)
+      const plane = standAircraftGhost(box.depth, box.width, mat, alongX)
+      plane.position.set(box.x, 0.14, box.z)
+      this.ghostGroup.add(pad, plane)
       return
     }
     for (const p of cells) {

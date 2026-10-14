@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import type * as THREE_NS from 'three'
 import { BUILDINGS } from '../game/catalog'
+import { hasModel } from '../build/models'
 import type { Tile } from '../game/types'
 
 export const THUMB_PX = 256 // rendered at 2x+ the tray size so icons stay crisp on HiDPI
@@ -25,8 +26,23 @@ const TOOL_TILE: Record<string, Tile | 'runway_strip' | 'apron' | 'taxi_strip'> 
   stand_l: 'apron',
 }
 
+/** Commissioned capstones without their own model borrow a family look. */
+const PROGRESSION_TILE: Record<string, string> = {
+  prefab_ii: 'terminal',
+  checkin_hall: 'terminal',
+  security_hall: 'remote_screening',
+  concourse: 'terminal',
+  pier_ii: 'terminal',
+  satellite: 'terminal',
+  prestige_landmark: 'terminal',
+  code_e: 'apron',
+  code_f: 'apron',
+}
+
 export function tileForItem(id: string): string | null {
   if (TOOL_TILE[id]) return TOOL_TILE[id]
+  if (hasModel(id)) return id
+  if (PROGRESSION_TILE[id]) return PROGRESSION_TILE[id]
   const def = BUILDINGS.find((b) => b.tool === id)
   return def ? def.tile : null
 }
@@ -51,6 +67,7 @@ function loadKit(): Promise<Kit | null> {
     try {
       const THREE = await import('three')
       const { World } = await import('../render/world')
+      const { buildModel } = await import('../build/models')
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = THUMB_PX
       const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true })
@@ -75,6 +92,8 @@ function loadKit(): Promise<Kit | null> {
       const proto = Object.create(World.prototype) as InstanceType<typeof World>
       const build = (tile: string): THREE_NS.Object3D | null => {
         if (tile === 'runway_strip' || tile === 'apron' || tile === 'taxi_strip') return slab(THREE, tile)
+        const own = buildModel(tile)
+        if (own) return own
         const g = proto.building(tile as Tile, new THREE.Vector3())
         return g.children.length ? g : null
       }
