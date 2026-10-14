@@ -199,10 +199,16 @@ export function buildNetwork(field: LandsideField): Network {
     frontage,
     entry,
     path,
-    lanes: approachLanes(path, drive),
-    curbStalls: frontage.length * LANDSIDE.stallsPerCurbCell,
+    lanes: approachLanes(path, drive) + uniq(field.curbLanes ?? []).length,
+    curbStalls:
+      frontage.length * LANDSIDE.stallsPerCurbCell +
+      uniq(field.busBays).length * LANDSIDE.stallsPerBusBay +
+      uniq(field.curbLanes ?? []).length * LANDSIDE.stallsPerCurbLane +
+      uniq(field.taxiRanks ?? []).length * LANDSIDE.stallsPerTaxiRank,
     parkSpaces: countParkSpaces(field.parks),
     busBays: uniq(field.busBays).length,
+    curbLanes: uniq(field.curbLanes ?? []).length,
+    taxiRanks: uniq(field.taxiRanks ?? []).length,
     door: nearestDoor(frontage, terminals),
     exit: exitPath(drive, path),
   }

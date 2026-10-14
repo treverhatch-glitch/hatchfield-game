@@ -121,8 +121,9 @@ import {
   HOTEL_META_EXPENSE,
   HOTEL_CLASS_EXPENSE,
   HOTEL_CLASS_FEE,
-  BUS_CURB_COST,
   BUS_EXPENSE,
+  CURB_LANE_EXPENSE,
+  TAXI_RANK_EXPENSE,
   BUS_FARE,
   CARPARK_SHORT_COST,
   CARPARK_LONG_COST,
@@ -669,7 +670,7 @@ import {
   spawnDeparturePax,
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
-import { LandsideTraffic, type LandsideView } from '../landside/index.ts'
+import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.ts'
 import { FUEL as FUEL_CHAIN, FuelChain, type FuelView } from '../fuel/index.ts'
 import {
   astar,
@@ -927,6 +928,14 @@ export type ApronInspect =
       model: string
       remaining: number
       total: number
+      blurb: string
+    }
+  | {
+      kind: 'curb'
+      title: string
+      /** Vehicles at the curb against the stalls that can serve them. */
+      loadLabel: string
+      pressure: number
       blurb: string
     }
 
@@ -2217,6 +2226,8 @@ export class Game {
       building.tile === 'park_g' ||
       building.tile === 'park_u' ||
       building.tile === 'bus' ||
+      building.tile === 'curb_lane' ||
+      building.tile === 'taxi_rank' ||
       building.tile === 'rail' ||
       building.tile === 'guard'
     const besidePavement =
@@ -4638,6 +4649,8 @@ export class Game {
       }
     }
     n += tilesOf(this.tiles, 'bus').length * BUS_EXPENSE
+    n += tilesOf(this.tiles, 'curb_lane').length * CURB_LANE_EXPENSE
+    n += tilesOf(this.tiles, 'taxi_rank').length * TAXI_RANK_EXPENSE
     if (this.hasRailStation()) n += tilesOf(this.tiles, 'rail').length * RAIL_EXPENSE
     // Hall amenities — furnished but empty still costs lights/staff.
     for (const fit of this.fits) {
@@ -4825,6 +4838,8 @@ export class Game {
       connectors: tilesOf(this.tiles, 'guard'),
       terminals: tilesOf(this.tiles, 'terminal'),
       busBays: tilesOf(this.tiles, 'bus'),
+      curbLanes: tilesOf(this.tiles, 'curb_lane'),
+      taxiRanks: tilesOf(this.tiles, 'taxi_rank'),
       parks: (['park_s', 'park_l', 'park_g', 'park_u'] as const).flatMap((kind) =>
         tilesOf(this.tiles, kind).map((cell) => ({ c: cell.c, r: cell.r, kind })),
       ),
@@ -15687,6 +15702,8 @@ export class Game {
       if (
         tile === 'road' ||
         tile === 'bus' ||
+        tile === 'curb_lane' ||
+        tile === 'taxi_rank' ||
         tile === 'rail' ||
         tile === 'park_s' ||
         tile === 'park_l' ||
@@ -15754,7 +15771,9 @@ export class Game {
   inspectAt(v: Vec): ApronInspect | null {
     const flight = this.nearestFlight(v, 2.2)
     if (flight) return this.inspectFlight(flight)
-    if (this.tile(v) === 'hangar') return this.inspectHangar(v)
+    const tile = this.tile(v)
+    if (tile === 'road' || tile === 'bus' || tile === 'curb_lane' || tile === 'taxi_rank') return this.inspectCurb(tile)
+    if (tile === 'hangar') return this.inspectHangar(v)
     // Nearby hangar tile (footprint feel).
     for (const d of [
       { c: 0, r: 0 },
@@ -15767,6 +15786,31 @@ export class Game {
       if (inBounds(p.c, p.r) && this.tile(p) === 'hangar') return this.inspectHangar(p)
     }
     return null
+  }
+
+  inspectCurb(tile: Tile): ApronInspect {
+    const view = this.landsideView()
+    const title =
+      tile === 'bus' ? 'Bus bay' : tile === 'curb_lane' ? 'Curb lane' : tile === 'taxi_rank' ? 'Taxi rank' : 'Curb'
+    const added =
+      tile === 'bus'
+        ? LANDSIDE.stallsPerBusBay
+        : tile === 'curb_lane'
+          ? LANDSIDE.stallsPerCurbLane
+          : tile === 'taxi_rank'
+            ? LANDSIDE.stallsPerTaxiRank
+            : 0
+    const busy = Number.isFinite(view.curbBusy) ? view.curbBusy : 0
+    return {
+      kind: 'curb',
+      title,
+      loadLabel: `${busy.toFixed(1)} / ${view.curbStalls}`,
+      pressure: view.pressure,
+      blurb:
+        added > 0
+          ? `Adds ${added} curb stalls. Load is vehicles at the curb against the stalls.`
+          : `Load is vehicles at the curb against ${view.curbStalls} stalls.`,
+    }
   }
 
   inspectFlight(f: Flight): ApronInspect {
@@ -16755,6 +16799,8 @@ export class Game {
       building.tile === 'park_g' ||
       building.tile === 'park_u' ||
       building.tile === 'bus' ||
+      building.tile === 'curb_lane' ||
+      building.tile === 'taxi_rank' ||
       building.tile === 'rail'
     if (isLandside) {
       const nearRoad = [
@@ -16830,7 +16876,11 @@ export class Game {
     } else if (building.tile === 'deice') {
       news = `De-ice pad online ($${DEICE_PAD_COST.toLocaleString()}). Glycol trucks roll in storm/fog.`
     } else if (building.tile === 'bus') {
-      news = `Bus curb online ($${BUS_CURB_COST.toLocaleString()}). Budget pax can ride in.`
+      news = `Bus bay open ($${stampCost.toLocaleString('en-US')}). It adds curb stalls and takes coaches off the lane.`
+    } else if (building.tile === 'curb_lane') {
+      news = `Curb lane open ($${stampCost.toLocaleString('en-US')}). Another lane of drop-off.`
+    } else if (building.tile === 'taxi_rank') {
+      news = `Taxi rank open ($${stampCost.toLocaleString('en-US')}). It adds curb stalls for the taxi queue.`
     } else if (building.tile === 'rail') {
       news = `Rail station open ($${RAIL_STATION_COST.toLocaleString()}). Business pax prefer the train.`
     } else if (building.tile === 'hangar') {

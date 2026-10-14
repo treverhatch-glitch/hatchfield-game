@@ -115,6 +115,36 @@ describe('capacity', () => {
     expect(extended.delaySec).toBeLessThan(short.delaySec)
   })
 
+  it('overruns the starter curb in a careful mid-game bank, and the three stamps add stalls', () => {
+    const mid = field({ departures: 4, paxPerDay: 1600 })
+    const bare = measure(mid)
+    expect(bare.pressure).toBeGreaterThan(1)
+    expect(bare.curbStalls).toBe(3 * LANDSIDE.stallsPerCurbCell)
+    const bay = measure(mid, buildNetwork({ ...mid, busBays: [{ c: 9, r: 6 }] }))
+    const lane = measure(mid, buildNetwork({ ...mid, curbLanes: [{ c: 8, r: 5 }] }))
+    const rank = measure(mid, buildNetwork({ ...mid, taxiRanks: [{ c: 8, r: 6 }] }))
+    expect(bay.curbStalls).toBe(bare.curbStalls + LANDSIDE.stallsPerBusBay)
+    expect(lane.curbStalls).toBe(bare.curbStalls + LANDSIDE.stallsPerCurbLane)
+    expect(lane.lanes).toBe(bare.lanes + 1)
+    expect(rank.curbStalls).toBe(bare.curbStalls + LANDSIDE.stallsPerTaxiRank)
+    expect(bay.pressure).toBeLessThan(bare.pressure)
+    expect(lane.pressure).toBeLessThan(bare.pressure)
+    expect(rank.pressure).toBeLessThan(bare.pressure)
+    const built = measure(
+      mid,
+      buildNetwork({
+        ...mid,
+        busBays: [{ c: 9, r: 6 }],
+        curbLanes: [{ c: 8, r: 5 }],
+        taxiRanks: [{ c: 8, r: 6 }],
+      }),
+    )
+    expect(built.pressure).toBeLessThan(1)
+    expect(built.busBays).toBe(1)
+    expect(built.curbLanes).toBe(1)
+    expect(built.taxiRanks).toBe(1)
+  })
+
   it('lets parking and a bus bay take cars and coaches off the curb', () => {
     const grown = field({ departures: 14, paxPerDay: 2400 })
     const bare = measure(grown)

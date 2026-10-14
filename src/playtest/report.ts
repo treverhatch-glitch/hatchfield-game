@@ -23,7 +23,7 @@ export function renderReport(report: PlaytestReport): string {
   lines.push(`Generated ${report.generatedAt}.`)
   lines.push('')
   lines.push(
-    `Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids, the Growth research tree, desk agents, and a curb reaction) and run at ${report.tuning.maxSpeed}×. One sim day is ${report.tuning.daySeconds}s. Tick dt is ${report.tuning.tickDt}s. Once the day-1 research trickle banks a whole point, each persona furnishes a research desk, then a chalkboard, then a lab bench, when the hall exists and cash covers the catalog price. When a tree node is affordable they buy the cheapest one. They hire desk agents until check-in and security are both staffed. Careful, when the curb pressure is over 1 and cash can cover it, adds a bus bay or one more approach lane instead of that day's expansion.`,
+    `Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids, the Growth research tree, desk agents, and a curb reaction) and run at ${report.tuning.maxSpeed}×. One sim day is ${report.tuning.daySeconds}s. Tick dt is ${report.tuning.tickDt}s. Once the day-1 research trickle banks a whole point, each persona furnishes a research desk, then a chalkboard, then a lab bench, when the hall exists and cash covers the catalog price. When a tree node is affordable they buy the cheapest one. They hire desk agents until check-in and security are both staffed. Careful, when the curb pressure is over 1 and cash can cover it, adds a bus bay, then a taxi rank, then a curb lane instead of that day's expansion.`,
   )
   lines.push('')
   lines.push('## Headless personas')
@@ -247,7 +247,7 @@ function renderSystems(persona: PersonaReport): string[] {
   if (books.checkinLines.length) lines.push(`Check-in: ${books.checkinLines.join(' · ')}`)
   if (books.securityLines.length) lines.push(`Security: ${books.securityLines.join(' · ')}`)
   lines.push(
-    `Curb: pressure ${round1(books.curbPressure)} (peak ${round1(persona.peaks.curbPressure)}), queue ${round1(books.curbQueue)} (peak ${round1(persona.peaks.curbQueue)}), delay ${Math.round(books.curbDelaySec)}s, lanes ${books.lanes}, bus bays ${books.busBays}.`,
+    `Curb: pressure ${round1(books.curbPressure)} (peak ${round1(persona.peaks.curbPressure)}), queue ${round1(books.curbQueue)} (peak ${round1(persona.peaks.curbQueue)}), delay ${Math.round(books.curbDelaySec)}s, lanes ${books.lanes}, bus bays ${books.busBays}, curb lanes ${books.curbLanes}, taxi ranks ${books.taxiRanks}.`,
   )
   lines.push(
     `Happiness peak ${persona.peaks.happiness == null ? '—' : persona.peaks.happiness}. Guest peak ${persona.peaks.guests}. Field-ask fines booked at the full rate: ${books.fieldAskFines}. Penalties total $${books.penaltyTotal.toLocaleString('en-US')}.`,

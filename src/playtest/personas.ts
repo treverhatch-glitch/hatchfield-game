@@ -89,7 +89,11 @@ export function carefulIntents(view: AirportView, memory: PersonaMemory): Person
   }
   if (view.day === next.builtOnDay) return { intents, memory: tree.memory }
   const built: PersonaMemory = { builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay }
-  if (view.curbPressure > 1 && view.cash > CURB_CASH_BUFFER && (view.busBays < 1 || view.lanes < 2)) {
+  if (
+    view.curbPressure > 1 &&
+    view.cash > CURB_CASH_BUFFER &&
+    (view.busBays < 1 || view.taxiRanks < 1 || view.curbLanes < 1)
+  ) {
     intents.push({ do: 'curb' })
     built.stampsToday += 1
     return { intents, memory: built }

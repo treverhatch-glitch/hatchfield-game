@@ -19,7 +19,13 @@ function TrayMark({ tool }: { tool: string }) {
         ? 'stand'
         : tool === 'clear'
           ? 'clear'
-          : tool.includes('hotel') || tool.startsWith('park') || tool === 'bus' || tool === 'rail' || tool === 'rail_link'
+          : tool.includes('hotel') ||
+            tool.startsWith('park') ||
+            tool === 'bus' ||
+            tool === 'curb_lane' ||
+            tool === 'taxi_rank' ||
+            tool === 'rail' ||
+            tool === 'rail_link'
             ? 'land'
             : 'ops'
   return (

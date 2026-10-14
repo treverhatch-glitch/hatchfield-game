@@ -156,6 +156,12 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
       progression: [],
     },
     {
+      id: 'curb',
+      label: 'Curb',
+      tools: ['bus', 'curb_lane', 'taxi_rank'],
+      progression: [],
+    },
+    {
       id: 'parking',
       label: 'Parking',
       tools: ['park_s', 'park_l', 'park_g', 'park_u'],
@@ -164,7 +170,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
     {
       id: 'transit',
       label: 'Transit',
-      tools: ['bus', 'rail', 'rail_link'],
+      tools: ['rail', 'rail_link'],
       progression: [],
     },
     {

@@ -8,7 +8,6 @@ import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
 import type { Difficulty, RoomId, SiteKind, Speed, StartFocus, Tool, Vec } from '../game/types.ts'
 import { SIZE } from '../game/types.ts'
-import { buildNetwork } from '../landside/network.ts'
 import { OPS_RP_PER_SEC } from '../research/config.ts'
 import { nodeCost, nodeState, roomRate as treeRoomRate } from '../research/logic.ts'
 import { RESEARCH_NODES as TREE_NODES, nodeById } from '../research/nodes.ts'
@@ -227,22 +226,21 @@ class GamePlayer implements PlayerCommands {
   relieveCurb(): CommandResult {
     const roads = tilesOf(this.game.tiles, 'road')
     if (!roads.length) return result(false, 'relieveCurb', 'no public road')
-    const buses = tilesOf(this.game.tiles, 'bus')
-    if (buses.length === 0) {
-      if (this.game.sites.some((site) => site.tool === 'bus')) {
-        return result(true, 'relieveCurb', 'bus bay already under construction')
+    const steps: { tool: Tool; have: number; label: string }[] = [
+      { tool: 'bus', have: tilesOf(this.game.tiles, 'bus').length, label: 'bus bay' },
+      { tool: 'taxi_rank', have: tilesOf(this.game.tiles, 'taxi_rank').length, label: 'taxi rank' },
+      { tool: 'curb_lane', have: tilesOf(this.game.tiles, 'curb_lane').length, label: 'curb lane' },
+    ]
+    for (const step of steps) {
+      if (step.have > 0) continue
+      if (this.game.sites.some((site) => site.tool === step.tool)) {
+        return result(true, 'relieveCurb', `${step.label} already under construction`)
       }
-      const placed = this.stampBeside(roads, 'bus')
+      const placed = this.stampBeside(roads, step.tool)
       if (placed) return placed
-      return result(false, 'relieveCurb', 'no grass on the road edge for a bus bay')
+      return result(false, 'relieveCurb', `no grass on the road edge for a ${step.label}`)
     }
-    if (this.game.sites.some((site) => site.tool === 'road')) {
-      return result(true, 'relieveCurb', 'approach lane already under construction')
-    }
-    const path = this.approachCells()
-    const placed = this.stampBeside(path.length ? path : roads, 'road')
-    if (placed) return placed
-    return result(false, 'relieveCurb', 'no grass beside the approach for another lane')
+    return result(true, 'relieveCurb', 'curb already has a bay, a rank, and a lane')
   }
 
   acceptBestShopBid(): CommandResult {
@@ -309,6 +307,8 @@ class GamePlayer implements PlayerCommands {
       curbDelaySec: finite(curb.delaySec),
       lanes: curb.lanes,
       busBays: curb.busBays,
+      curbLanes: curb.curbLanes,
+      taxiRanks: curb.taxiRanks,
     }
   }
 
@@ -457,6 +457,8 @@ class GamePlayer implements PlayerCommands {
       curbDelaySec: finite(curb.delaySec),
       lanes: curb.lanes,
       busBays: curb.busBays,
+      curbLanes: curb.curbLanes,
+      taxiRanks: curb.taxiRanks,
       yearReportPending: game.pendingYearReport() != null,
       flightsDone: game.flightsDone,
       activeFlights: game.flights.length,
@@ -521,21 +523,7 @@ class GamePlayer implements PlayerCommands {
     }
   }
 
-  private approachCells(): Vec[] {
-    const net = buildNetwork({
-      roads: tilesOf(this.game.tiles, 'road'),
-      connectors: tilesOf(this.game.tiles, 'guard'),
-      terminals: tilesOf(this.game.tiles, 'terminal'),
-      busBays: tilesOf(this.game.tiles, 'bus'),
-      parks: [],
-      rail: false,
-      paxPerDay: 0,
-      departures: 0,
-    })
-    return net.path
-  }
-
-  /** Widen the narrowest approach cell first. A bus bay can sit on any road edge. */
+  /** A curb stamp sits on any grass cell that touches the public road. */
   private stampBeside(anchors: Vec[], tool: Tool): CommandResult | null {
     const ranked = [...anchors].sort((a, b) => this.sideRoads(a) - this.sideRoads(b) || a.r - b.r || a.c - b.c)
     for (const anchor of ranked) {

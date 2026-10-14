@@ -58,7 +58,7 @@ export function LandsideOverlay({ game }: { game: Game }) {
                 const live = game.landsideView()
                 const missed = game.missedCheckIns
                 const withheld = Math.round(missed * game.fees.paxFee)
-                return `Arrivals ${one(live.arrivalsPerMin)}/min · road ${one(live.roadFlowPerMin)}/${one(live.laneFlowPerMin)} per min · curb ${one(live.curbBusy)}/${live.curbStalls} · queue ${one(live.queue)} · ${live.delaySec > 1 ? `${Math.round(live.delaySec)}s late` : 'on time'} · missed check-ins ${missed}${missed > 0 ? ` · $${withheld.toLocaleString('en-US')} passenger fees not collected` : ''}`
+                return `Arrivals ${one(live.arrivalsPerMin)}/min · road ${one(live.roadFlowPerMin)}/${one(live.laneFlowPerMin)} per min · curb load ${one(live.curbBusy)}/${live.curbStalls} · queue ${one(live.queue)} · ${live.delaySec > 1 ? `${Math.round(live.delaySec)}s late` : 'on time'} · missed check-ins ${missed}${missed > 0 ? ` · $${withheld.toLocaleString('en-US')} passenger fees not collected` : ''}`
               }}
             />
           </p>
@@ -81,8 +81,9 @@ export function LandsideOverlay({ game }: { game: Game }) {
             </div>
           </dl>
           <p className="landside-meta">
-            {view.lanes} lane{view.lanes === 1 ? '' : 's'} · {view.parkSpaces} parking stalls · pressure{' '}
-            {pct(view.pressure)}
+            {view.lanes} lane{view.lanes === 1 ? '' : 's'} · {view.busBays} bus bay{view.busBays === 1 ? '' : 's'} ·{' '}
+            {view.curbLanes} curb lane{view.curbLanes === 1 ? '' : 's'} · {view.taxiRanks} taxi rank
+            {view.taxiRanks === 1 ? '' : 's'} · {view.parkSpaces} parking stalls · pressure {pct(view.pressure)}
           </p>
           <ul className="landside-fixes">
             {view.fixes.map((line) => (

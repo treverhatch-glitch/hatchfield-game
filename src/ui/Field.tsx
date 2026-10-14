@@ -218,6 +218,18 @@ export function Field({ game }: { game: Game }) {
                 </label>
               </div>
             </>
+          ) : inspect.kind === 'curb' ? (
+            <>
+              <header>
+                <strong>{inspect.title}</strong>
+                <span className="muted">Landside</span>
+              </header>
+              <p className="inspect-line" data-testid="curb-load">
+                Curb load {inspect.loadLabel}
+              </p>
+              <p className="inspect-activity">{inspect.blurb}</p>
+              <p className="muted inspect-next">Pressure {Math.round(inspect.pressure * 100)}%</p>
+            </>
           ) : (
             <>
               <header>

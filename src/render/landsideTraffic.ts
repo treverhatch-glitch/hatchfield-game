@@ -175,6 +175,8 @@ export class LandsideLayer {
         curbFlowPerMin: 0,
         parkSpaces: 0,
         busBays: 0,
+        curbLanes: 0,
+        taxiRanks: 0,
         rail: false,
         arrivalsPerMin: 0,
         modes: { car: 0, taxi: 0, bus: 0, rail: 0 },

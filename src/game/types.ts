@@ -38,6 +38,10 @@ export type Tile =
   | 'park_u'
   | 'deice'
   | 'bus'
+  /** Extra drop-off lane beside the public road. Adds curb stalls. */
+  | 'curb_lane'
+  /** Taxi queue off the passenger curb. Adds curb stalls. */
+  | 'taxi_rank'
   | 'rail'
   /** Apron terminal-bus depot — ferries remote-stand pax. */
   | 'termbus'
@@ -124,6 +128,8 @@ export type Tool =
   | 'park_u'
   | 'deice'
   | 'bus'
+  | 'curb_lane'
+  | 'taxi_rank'
   | 'term_bus'
   | 'people_mover'
   | 'xfer_bus'

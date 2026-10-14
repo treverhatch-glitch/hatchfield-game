@@ -56,6 +56,8 @@ export interface AirportView {
   curbDelaySec: number
   lanes: number
   busBays: number
+  curbLanes: number
+  taxiRanks: number
   yearReportPending: boolean
   flightsDone: number
   activeFlights: number
@@ -113,7 +115,7 @@ export interface PlayerCommands {
   buyTree(id: string): CommandResult
   /** Hire one desk agent. Bodies cover check-in, security, and the gate. */
   hireDesk(): CommandResult
-  /** One bus bay, or one road cell on the narrowest part of the approach. */
+  /** One bus bay, then a taxi rank, then a curb lane. */
   relieveCurb(): CommandResult
   acceptBestShopBid(): CommandResult
   /** End-of-run books: cash categories, relations, queues, and the tree. */
@@ -270,6 +272,8 @@ export interface SystemsBooks {
   curbDelaySec: number
   lanes: number
   busBays: number
+  curbLanes: number
+  taxiRanks: number
 }
 
 export interface ResearchNodeRead {

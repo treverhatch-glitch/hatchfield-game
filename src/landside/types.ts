@@ -11,6 +11,10 @@ export interface LandsideField {
   connectors?: Cell[]
   terminals: Cell[]
   busBays: Cell[]
+  /** Extra drop-off lanes. Each one adds curb stalls and a lane of flow. */
+  curbLanes?: Cell[]
+  /** Taxi ranks. Each one adds curb stalls. */
+  taxiRanks?: Cell[]
   parks: { c: number; r: number; kind: ParkKind }[]
   /** True once a passenger rail station is open. Rail is a later mode. */
   rail: boolean
@@ -79,6 +83,8 @@ export interface LandsideView {
   curbFlowPerMin: number
   parkSpaces: number
   busBays: number
+  curbLanes: number
+  taxiRanks: number
   rail: boolean
   arrivalsPerMin: number
   modes: ModeSplit
@@ -111,6 +117,8 @@ export interface Network {
   curbStalls: number
   parkSpaces: number
   busBays: number
+  curbLanes: number
+  taxiRanks: number
   /** Nearest terminal cell, for people walking off a car. */
   door: Cell | null
   /**

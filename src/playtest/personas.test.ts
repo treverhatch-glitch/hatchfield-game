@@ -49,6 +49,8 @@ function board(partial: Partial<AirportView> = {}): AirportView {
     curbDelaySec: 0,
     lanes: 2,
     busBays: 1,
+    curbLanes: 1,
+    taxiRanks: 1,
     yearReportPending: false,
     flightsDone: 1,
     activeFlights: 1,
@@ -188,6 +190,18 @@ describe('playtest personas', () => {
 
     const clear = carefulIntents(board({ curbPressure: 0.4, busBays: 0, cash: 30_000, stands: 2 }), freshMemory())
     expect(clear.intents.some((intent) => intent.do === 'curb')).toBe(false)
+
+    const rank = carefulIntents(
+      board({ curbPressure: 1.3, busBays: 1, curbLanes: 1, taxiRanks: 0, cash: 30_000, stands: 4 }),
+      freshMemory(),
+    )
+    expect(rank.intents).toContainEqual({ do: 'curb' })
+
+    const built = carefulIntents(
+      board({ curbPressure: 1.3, busBays: 1, curbLanes: 1, taxiRanks: 1, cash: 30_000, stands: 4 }),
+      freshMemory(),
+    )
+    expect(built.intents.some((intent) => intent.do === 'curb')).toBe(false)
   })
 
   it('chaotic clicks are stable for a seed', () => {

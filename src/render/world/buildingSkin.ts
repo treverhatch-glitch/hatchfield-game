@@ -31,6 +31,8 @@ export const TILE_TARGET: Partial<Record<string, BuildingTargetId>> = {
   snack: 'kiosk',
   kitchen: 'catering_kitchen',
   bus: 'transit_station',
+  curb_lane: 'transit_station',
+  taxi_rank: 'transit_station',
   termbus: 'transit_station',
   rail: 'transit_station',
   xferbus: 'transit_station',

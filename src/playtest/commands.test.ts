@@ -238,5 +238,7 @@ function emptyBooks(): SystemsBooks {
     curbDelaySec: 0,
     lanes: 1,
     busBays: 1,
+    curbLanes: 0,
+    taxiRanks: 0,
   }
 }

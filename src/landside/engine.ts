@@ -29,6 +29,8 @@ interface Sample {
   curbStalls: number
   parkSpaces: number
   busBays: number
+  curbLanes: number
+  taxiRanks: number
 }
 
 interface Agent {
@@ -66,6 +68,8 @@ function emptyView(): LandsideView {
     curbFlowPerMin: 0,
     parkSpaces: 0,
     busBays: 0,
+    curbLanes: 0,
+    taxiRanks: 0,
     rail: false,
     arrivalsPerMin: 0,
     modes: { ...EMPTY_MODES },
@@ -173,6 +177,8 @@ export function measure(field: LandsideField, net: Network = buildNetwork(field)
     curbStalls: net.curbStalls,
     parkSpaces: net.parkSpaces,
     busBays: net.busBays,
+    curbLanes: net.curbLanes,
+    taxiRanks: net.taxiRanks,
   }
 }
 
@@ -196,7 +202,13 @@ function fixesFor(field: LandsideField, net: Network, sample: Sample): string[] 
     lines.push('Stamp parking so cars leave the curb instead of waiting on it.')
   }
   if (net.busBays <= 0 && LANDSIDE.share.bus > 0) {
-    lines.push('Add a bus bay. Without one, bus passengers arrive by taxi.')
+    lines.push(`Add a bus bay. It adds ${LANDSIDE.stallsPerBusBay} stalls and takes coaches off the curb.`)
+  }
+  if (net.curbLanes <= 0 && sample.pressure > 0.85) {
+    lines.push(`Add a curb lane. Each one adds ${LANDSIDE.stallsPerCurbLane} drop-off stalls.`)
+  }
+  if (net.taxiRanks <= 0 && sample.modes.taxi > 1) {
+    lines.push(`Add a taxi rank. Each one adds ${LANDSIDE.stallsPerTaxiRank} curb stalls.`)
   }
   if (!field.rail && sample.pressure > 0.85) {
     lines.push('A rail station, later, takes a share of arrivals off the road.')
@@ -316,7 +328,7 @@ export class LandsideTraffic {
     const late = this.delaySec > LANDSIDE.delayGraceSec
     const news =
       late && !this.wasLate
-        ? 'Curb queue — passengers are arriving late. Add a lane, a longer curb, parking, or a bus bay.'
+        ? 'Curb queue — passengers are arriving late. Add a curb lane, a taxi rank, or a bus bay.'
         : ''
     this.wasLate = late
     const lateBy = Math.max(0, this.delaySec - LANDSIDE.delayGraceSec)
@@ -340,6 +352,8 @@ export class LandsideTraffic {
       curbFlowPerMin: sample.curbVehPerMin,
       parkSpaces: net.parkSpaces,
       busBays: net.busBays,
+      curbLanes: net.curbLanes,
+      taxiRanks: net.taxiRanks,
       rail: field.rail,
       arrivalsPerMin: sample.arrivalsPerMin,
       modes: sample.modes,

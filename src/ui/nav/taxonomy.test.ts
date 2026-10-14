@@ -35,6 +35,8 @@ const EVERY_STAMP = {
   park_u: true,
   deice: true,
   bus: true,
+  curb_lane: true,
+  taxi_rank: true,
   term_bus: true,
   people_mover: true,
   xfer_bus: true,
@@ -83,6 +85,9 @@ describe('menu taxonomy', () => {
     expect(seen.get('airport_hotel')).toBe('landside')
     expect(seen.get('rail_link')).toBe('landside')
     expect(seen.get('road')).toBe('landside')
+    expect(seen.get('bus')).toBe('landside')
+    expect(seen.get('curb_lane')).toBe('landside')
+    expect(seen.get('taxi_rank')).toBe('landside')
     expect(seen.get('tower')).toBe('airfield')
     for (const menu of BUILD_MENUS) {
       expect(menu.groups.length).toBeGreaterThan(0)

@@ -1059,6 +1059,40 @@ export class World {
       )
       pole.position.set(CELL * 0.28, 1.1, CELL * 0.1)
       g.add(curb, shelter, pole)
+    } else if (tile === 'curb_lane') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.72),
+        new THREE.MeshLambertMaterial({ color: '#4a5158' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.05
+      pad.receiveShadow = true
+      const edge = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.92, 0.06, 0.12),
+        new THREE.MeshStandardMaterial({ color: '#e2c14a' }),
+      )
+      edge.position.set(0, 0.1, CELL * 0.28)
+      g.add(pad, edge)
+    } else if (tile === 'taxi_rank') {
+      const pad = new THREE.Mesh(
+        new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.7),
+        new THREE.MeshLambertMaterial({ color: '#3c4248' }),
+      )
+      pad.rotation.x = -Math.PI / 2
+      pad.position.y = 0.05
+      pad.receiveShadow = true
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(CELL * 0.7, 0.05, 0.28),
+        new THREE.MeshStandardMaterial({ color: '#f0c429' }),
+      )
+      stripe.position.set(0, 0.1, 0.2)
+      const shelter = new THREE.Mesh(
+        skinBox(CELL * 0.42, 1.3, 0.28, SKIN_TILE_M.wall, WORLD_PER_METER),
+        skinMaterial('transit_station', 'trim'),
+      )
+      shelter.position.set(0, 0.7, -CELL * 0.22)
+      shelter.castShadow = true
+      g.add(pad, stripe, shelter)
     } else if (tile === 'termbus') {
       const pad = new THREE.Mesh(
         new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95),

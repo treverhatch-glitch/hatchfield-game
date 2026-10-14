@@ -491,6 +491,8 @@ export const UPKEEP_PER_TICK = {
   carparkShort: 180,
   carparkLong: 240,
   bus: 160,
+  curbLane: 90,
+  taxiRank: 120,
   rail: 260,
   hall: {
     dayhotel: 240,
@@ -547,6 +549,8 @@ export const HOTEL_META_EXPENSE = [
 export const CARPARK_META_EXPENSE_SHORT = dailyUpkeep(UPKEEP_PER_TICK.carparkShort)
 export const CARPARK_META_EXPENSE_LONG = dailyUpkeep(UPKEEP_PER_TICK.carparkLong)
 export const BUS_EXPENSE = dailyUpkeep(UPKEEP_PER_TICK.bus)
+export const CURB_LANE_EXPENSE = dailyUpkeep(UPKEEP_PER_TICK.curbLane)
+export const TAXI_RANK_EXPENSE = dailyUpkeep(UPKEEP_PER_TICK.taxiRank)
 export const RAIL_EXPENSE = dailyUpkeep(UPKEEP_PER_TICK.rail)
 export const HOTEL_TILE_INCOME = 0
 /** Hall amenity upkeep per game day when furnished — idle spas and pools still cost. */
@@ -586,6 +590,10 @@ export function buildingUpkeepPerDay(tool: string): number {
       return PARK_EXPENSE.park_u.short
     case 'bus':
       return BUS_EXPENSE
+    case 'curb_lane':
+      return CURB_LANE_EXPENSE
+    case 'taxi_rank':
+      return TAXI_RANK_EXPENSE
     case 'rail':
       return RAIL_EXPENSE
     case 'mro':
@@ -598,6 +606,10 @@ export function buildingUpkeepPerDay(tool: string): number {
 }
 /** Landside curb — city buses drop departing pax. */
 export const BUS_CURB_COST = 8_500
+/** Extra drop-off lane. Adds curb stalls and a lane of flow. */
+export const CURB_LANE_COST = 4_500
+/** Taxi queue off the passenger curb. Adds curb stalls. */
+export const TAXI_RANK_COST = 6_500
 /** Rail station beside the city rail stub — needs City rail investment first. */
 export const RAIL_STATION_COST = 16_000
 /** Per-passenger fees when a guest actually uses the infra. */
@@ -1442,9 +1454,23 @@ export const BUILDINGS: BuildDef[] = [
   {
     tool: 'bus',
     tile: 'bus',
-    name: 'Bus curb',
+    name: 'Bus bay',
     cost: BUS_CURB_COST,
-    blurb: 'City bus stop on a road edge. Budget pax arrive here — missing curb angers them.',
+    blurb: 'City bus bay on a road edge. Adds curb stalls and takes coaches off the passenger curb.',
+  },
+  {
+    tool: 'curb_lane',
+    tile: 'curb_lane',
+    name: 'Curb lane',
+    cost: CURB_LANE_COST,
+    blurb: 'A second drop-off lane beside the public road. Adds curb stalls and another lane of flow.',
+  },
+  {
+    tool: 'taxi_rank',
+    tile: 'taxi_rank',
+    name: 'Taxi rank',
+    cost: TAXI_RANK_COST,
+    blurb: 'A marked rank for taxis on the road edge. Adds curb stalls for that queue.',
   },
   {
     tool: 'rail',
@@ -1560,7 +1586,9 @@ export const TOOL_LABEL: Record<Tool, string> = {
   park_g: 'Parking garage',
   park_u: 'Underground park',
   deice: 'De-ice',
-  bus: 'Bus',
+  bus: 'Bus bay',
+  curb_lane: 'Curb lane',
+  taxi_rank: 'Taxi rank',
   term_bus: 'Terminal bus',
   people_mover: 'People mover',
   xfer_bus: 'Transfer bus',

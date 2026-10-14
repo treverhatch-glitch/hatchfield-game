@@ -12,8 +12,19 @@ export const LANDSIDE = {
   carsPerLaneCell: 2,
   /** Vehicles per minute one lane can pass. */
   flowPerLanePerMin: 8,
-  /** Drop-off stalls on each road cell that touches the hall. */
-  stallsPerCurbCell: 2,
+  /**
+   * Drop-off stalls on each road cell that touches the hall.
+   * Three starter cells at this rate fill up once a careful field has a
+   * few stands and a day's passengers. The bus bay, curb lane, and taxi
+   * rank are what put the stalls back.
+   */
+  stallsPerCurbCell: 1,
+  /** Stalls a bus bay adds on top of taking coaches off the passenger curb. */
+  stallsPerBusBay: 2,
+  /** Stalls one extra curb lane adds. */
+  stallsPerCurbLane: 2,
+  /** Stalls one taxi rank adds. */
+  stallsPerTaxiRank: 2,
   /** Seconds a car or taxi sits while people get out, when the curb is clear. */
   dwellSec: 28,
   /** Seconds a city bus occupies its bay. */

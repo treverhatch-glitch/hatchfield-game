@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Game } from '../game/sim.ts'
 import type { Flight, Vec } from '../game/types.ts'
-import { openCurbFlow } from '../landside/index.ts'
+import { BUS_EXPENSE, CURB_LANE_EXPENSE, TAXI_RANK_EXPENSE } from '../game/catalog.ts'
+import { LANDSIDE, openCurbFlow } from '../landside/index.ts'
 import { LandsideOverlay } from '../ui/LandsideOverlay.tsx'
 
 function field(): Game {
@@ -126,6 +127,37 @@ describe('landside wiring', () => {
     const open = renderToStaticMarkup(<LandsideOverlay game={game} />)
     expect(open).toContain('missed check-ins')
     expect(html).toContain('landside-flow-toggle')
+  })
+
+  it('stamps a bus bay, a curb lane, and a taxi rank, and the panel shows curb load', () => {
+    const game = field()
+    game.tick(0.25)
+    const before = game.landsideUpkeep()
+    const bare = game.landsideView().curbStalls
+    expect(bare).toBeGreaterThan(0)
+    game.tiles[8][18] = 'bus'
+    game.tiles[9][18] = 'curb_lane'
+    game.tiles[10][18] = 'taxi_rank'
+    expect(game.landsideUpkeep()).toBe(before + BUS_EXPENSE + CURB_LANE_EXPENSE + TAXI_RANK_EXPENSE)
+    game.tick(0.25)
+    const view = game.landsideView()
+    expect(view.busBays).toBe(1)
+    expect(view.curbLanes).toBe(1)
+    expect(view.taxiRanks).toBe(1)
+    expect(view.curbStalls).toBe(
+      bare + LANDSIDE.stallsPerBusBay + LANDSIDE.stallsPerCurbLane + LANDSIDE.stallsPerTaxiRank,
+    )
+    game.setHover({ c: 17, r: 8 })
+    expect(game.hoverInspect?.kind).toBe('curb')
+    if (game.hoverInspect?.kind === 'curb') expect(game.hoverInspect.loadLabel).toContain('/')
+    game.cash = 80_000
+    game.tool = 'bus'
+    game.clickTile({ c: 16, r: 12 })
+    expect(game.sites.some((site) => site.tool === 'bus') || game.tile({ c: 16, r: 12 }) === 'bus').toBe(true)
+    game.openLandside(null)
+    const html = renderToStaticMarkup(<LandsideOverlay game={game} />)
+    expect(html).toContain('curb load')
+    expect(html).toContain('bus bay')
   })
 
   it('renders the click-open overlay with capacity and flow', () => {

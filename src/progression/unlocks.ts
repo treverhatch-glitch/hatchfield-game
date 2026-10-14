@@ -34,6 +34,8 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   park_l: 1,
   park_u: 1,
   bus: 1,
+  curb_lane: 1,
+  taxi_rank: 1,
   runway_short: 1,
   runway: 1,
   checkin: 1,
