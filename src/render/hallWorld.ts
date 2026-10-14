@@ -30,7 +30,13 @@ import {
   layoutItems,
   slotCenter,
 } from './hallKitMeshes'
+import { HALL_CAMERA } from './hallFrame'
 import { HallLitterLayer } from './hallLitter'
+
+/** A little bigger than the old 0.22×0.55 capsule so people read at the default camera. */
+const PAX_RADIUS = 0.3
+const PAX_LEN = 0.72
+const PAX_Y = PAX_RADIUS + PAX_LEN / 2
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
@@ -79,9 +85,9 @@ export class HallWorld {
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   pivot = new THREE.Vector3(0, 0, 0)
-  yaw = 0.55
-  pitch = 0.95
-  dist = 52
+  yaw = HALL_CAMERA.yaw
+  pitch = HALL_CAMERA.pitch
+  dist = HALL_CAMERA.dist
   dragging: 'orbit' | 'pan' | null = null
   lastX = 0
   lastY = 0
@@ -142,9 +148,10 @@ export class HallWorld {
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#1a2a32')
-    this.scene.fog = new THREE.Fog('#1a2a32', 40, 90)
+    // Start past the far wall so the shell stays solid instead of dissolving into fog.
+    this.scene.fog = new THREE.Fog('#1a2a32', 85, 150)
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200)
+    this.camera = new THREE.PerspectiveCamera(HALL_CAMERA.fov, 1, 0.1, 400)
     this.placeCam()
 
     this.scene.add(new THREE.HemisphereLight('#d0e8f8', '#2a3a40', 0.9))
@@ -598,7 +605,7 @@ export class HallWorld {
       let mesh = this.guests.get(g.id)
       if (!mesh) {
         mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.22, 0.55, 3, 6),
+          new THREE.CapsuleGeometry(PAX_RADIUS, PAX_LEN, 3, 6),
           new THREE.MeshLambertMaterial({ color: g.color }),
         )
         mesh.userData.guestId = g.id
@@ -606,7 +613,7 @@ export class HallWorld {
           new THREE.ConeGeometry(0.16, 0.42, 5),
           new THREE.MeshLambertMaterial({ color: '#e23b2f' }),
         )
-        pin.position.y = 1.15
+        pin.position.y = PAX_Y + 0.18
         mesh.add(pin)
         mesh.userData.pin = pin
         const carry = new THREE.Mesh(
@@ -645,9 +652,9 @@ export class HallWorld {
       const ox = next ? 0 : (slot % 4) * 0.42 - 0.6
       const oz = next ? 0 : Math.floor(slot / 4) * 0.42
       const desk = g.atBagDesk ? nodeWorld('claim') : null
-      mesh.position.set(
+        mesh.position.set(
         desk ? desk.x - 3.4 + (slot % 3) * 0.7 : a.x + (b.x - a.x) * t + ox,
-        0.55,
+        PAX_Y,
         desk ? desk.z + 2.4 : a.z + (b.z - a.z) * t + oz,
       )
       mesh.scale.y = 1
@@ -661,7 +668,7 @@ export class HallWorld {
         mesh.position.z += (sz - mesh.position.z) * k
         if (g.seated) {
           mesh.scale.y = 0.7
-          mesh.position.y = 0.42
+          mesh.position.y = PAX_Y * 0.76
         }
       }
       const pin = mesh.userData.pin as THREE.Mesh

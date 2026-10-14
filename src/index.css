@@ -427,6 +427,36 @@ button {
   font-size: 11px;
 }
 
+.hall-build > .hall-hide {
+  width: auto;
+  display: block;
+  margin: 0 0 8px auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* Hall entry folds the offer stack and the prefab card. These tabs bring them back. */
+.hall-side-tab {
+  position: fixed;
+  z-index: 43;
+  pointer-events: auto;
+  bottom: 132px;
+  background: rgba(10, 20, 16, 0.92);
+  color: #e7eee9;
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: 600 12px/1 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.hall-side-tab.left {
+  left: 16px;
+}
+
+.hall-side-tab.right {
+  right: 12px;
+}
+
 .zone-bar {
   display: flex;
   flex-wrap: wrap;
@@ -2745,6 +2775,7 @@ h1 {
 .shell.photo-mode .inspect-card,
 .shell.photo-mode .hall-chrome,
 .shell.photo-mode .hall-build,
+.shell.photo-mode .hall-side-tab,
 .shell.photo-mode .kit-bar,
 .shell.photo-mode .kit-tip,
 .shell.photo-mode .hall-alert,

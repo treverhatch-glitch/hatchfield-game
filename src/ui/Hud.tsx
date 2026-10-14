@@ -1,10 +1,16 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useState, useSyncExternalStore } from 'react'
 import { projectCash } from './cashForecast'
 import { LiveText } from './LiveText'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
+import {
+  foldHallSides,
+  hallSidesKey,
+  setHallLettersFolded,
+  subscribeHallSides,
+} from './hallSidePanels'
 import { loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 import { AIRFRAMES } from '../game/airframes'
@@ -270,6 +276,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   useEffect(() => {
     game.pokeTycoon()
   }, [game, panel])
+  const hallSides = useSyncExternalStore(subscribeHallSides, hallSidesKey, hallSidesKey)
+  const lettersFolded = game.view === 'hall' && hallSides[0] === '1'
+  useEffect(() => {
+    if (game.view === 'hall') foldHallSides()
+  }, [game.view])
   const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
   const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
   const menuTools = buildMenu
@@ -548,7 +559,17 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         </div>
       ) : null}
 
-      {game.inboundOffer() ? (
+      {game.view === 'hall' ? (
+        <button
+          type="button"
+          className="hall-side-tab left"
+          data-testid={lettersFolded ? 'reopen-letters' : 'hide-letters'}
+          onClick={() => setHallLettersFolded(!lettersFolded)}
+        >
+          {lettersFolded ? 'Letters' : 'Hide letters'}
+        </button>
+      ) : null}
+      {lettersFolded ? null : game.inboundOffer() ? (
         <aside className="inbound-panel" data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
           {(() => {
             const card = game.inboundOffer()
@@ -596,6 +617,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           onDismiss={() => game.dismissYearReport()}
         />
       ) : null}
+      {lettersFolded ? null : (
       <div
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
@@ -1029,6 +1051,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           )
         })()}
       </div>
+      )}
 
       <div
         className={`chrome${panel ? ' has-panel' : ''}${chromePinned ? ' pinned' : ''}`}

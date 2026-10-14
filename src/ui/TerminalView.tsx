@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { pngName, savePng } from '../camera/capture.ts'
 import { cameraSession } from '../camera/session.ts'
@@ -7,6 +7,12 @@ import { lockTip, unlockLevel } from '../progression/unlocks'
 import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
+import {
+  foldHallSides,
+  hallSidesKey,
+  setHallCardFolded,
+  subscribeHallSides,
+} from './hallSidePanels'
 import {
   GRID_C,
   GRID_R,
@@ -149,6 +155,12 @@ export function TerminalView({ game }: { game: Game }) {
   const [build, setBuild] = useState<HallBuildMode>(null)
   const [hover, setHover] = useState<HallHover | null>(null)
   const buildRef = useRef<HallBuildMode>(null)
+  const hallSides = useSyncExternalStore(subscribeHallSides, hallSidesKey, hallSidesKey)
+  const cardFolded = hallSides[1] === '1'
+
+  useEffect(() => {
+    if (game.view === 'hall') foldHallSides()
+  }, [game.view])
 
   useEffect(() => {
     buildRef.current = build
@@ -282,7 +294,25 @@ export function TerminalView({ game }: { game: Game }) {
       <KitTooltip build={build} hover={hover} />
       {game.view === 'hall'
         ? createPortal(
+            cardFolded ? (
+              <button
+                type="button"
+                className="hall-side-tab right"
+                data-testid="reopen-hall-card"
+                onClick={() => setHallCardFolded(false)}
+              >
+                Hall card
+              </button>
+            ) : (
             <aside className="hall-build" data-testid="hall-build">
+        <button
+          type="button"
+          className="hall-hide"
+          data-testid="hide-hall-card"
+          onClick={() => setHallCardFolded(true)}
+        >
+          Hide
+        </button>
         <div data-testid="prefab-ceilings">
           <strong>{prefab ? PREFAB_TIERS[tier].label : 'Custom hall'}</strong>
           <p>
@@ -407,7 +437,8 @@ export function TerminalView({ game }: { game: Game }) {
             }),
           )}
         </div>
-      </aside>,
+      </aside>
+            ),
               document.body,
             )
         : null}
