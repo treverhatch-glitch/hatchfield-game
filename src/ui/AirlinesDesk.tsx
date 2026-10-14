@@ -88,6 +88,9 @@ export function AirlinesDesk({ game }: { game: Game }) {
                     </button>
                     {open ? (
                       <div className="dip-sub" data-testid="airline-relation-detail">
+                        <p data-testid="relationship-fee">
+                          {game.wave3.feeLine(id)} · {game.wave3.slotLine(id)}
+                        </p>
                         <p>
                           {rel.unlock}
                           {rel.next ? ` · next ${rel.next.unlock} at ${rel.next.minScore}` : ''}
@@ -401,8 +404,10 @@ export function AirlinesDesk({ game }: { game: Game }) {
                     ) : null}
                     {menu === 'fees' ? (
                       <div className="dip-sub" data-testid="diplomacy-fees">
+                        <p data-testid="relationship-fee">{game.wave3.feeLine(card.id)}</p>
+                        <p className="muted">{game.wave3.slotLine(card.id)}</p>
                         <p>Published fee index {game.publishedFeeIndex.toFixed(2)}</p>
-                        <p className="muted">A rise hits Standing. Landing fees move with it.</p>
+                        <p className="muted">A rise hits Standing. Landing fees move with it. The relationship fee above is the only carrier multiplier.</p>
                         <div className="row letter-actions">
                           <button type="button" onClick={() => game.setPublishedFeeIndex(game.publishedFeeIndex - 0.01)}>
                             Cut 1%

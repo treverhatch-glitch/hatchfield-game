@@ -34,6 +34,11 @@ describe('readPhoneCards', () => {
     const letter = cards.find((card) => card.id === 'contract')
     expect(letter?.tab).toBe('messages')
     expect(letter?.actions.map((action) => action.id)).toEqual(['sign', 'decline', 'negotiate', 'later'])
+    expect(letter?.body).toContain('Relationship fee ×1.00')
+    expect(letter?.body).toContain('Extra slots · 0')
+    expect(letter?.lines?.map((line) => line.label)).toEqual(
+      expect.arrayContaining(['Relationship fee ×1.00 · Published', 'Extra slots · 0']),
+    )
     expect(cards.find((card) => card.id === 'contract-file')?.tab).toBe('contracts')
     const blob = JSON.stringify(cards)
     expect(blob).not.toContain('Hard threat')

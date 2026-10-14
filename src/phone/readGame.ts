@@ -49,9 +49,11 @@ export function readPhoneWorld(game: Game): PhoneWorld {
               label: `${row.met ? 'Met' : 'Missing'} · ${row.label}`,
               met: row.met,
             })),
-            terms: `Terms · landing ${money(offerAirline.landing)} · bags ${money(offerAirline.bags)}${
+            terms: `Terms · landing ${money(game.wave3.landingOffer(offer.airline, offerAirline.landing))} · bags ${money(offerAirline.bags)}${
               offerAirline.catering ? ` · catering ${money(offerAirline.catering)}` : ''
-            }`,
+            } · ${game.wave3.feeLine(offer.airline)} · ${game.wave3.slotLine(offer.airline)}`,
+            feeLine: game.wave3.feeLine(offer.airline),
+            slotLine: game.wave3.slotLine(offer.airline),
             capacity: game.letterCapacity(offer.airline),
           }
         : null,

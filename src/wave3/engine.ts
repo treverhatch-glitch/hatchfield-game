@@ -1,4 +1,5 @@
 import { ceoFor } from './ceo.ts'
+import { extraSlotLine, relationshipFeeLine } from './honesty.ts'
 import { nextTier, tierWantsLargerMetal, unlocksThrough } from './config.ts'
 import { contractShape, landingOffer } from './contracts.ts'
 import { fleetIdsFor, fleetLabel, metalAllowed } from './fleet.ts'
@@ -136,6 +137,17 @@ export class Wave3Engine {
 
   feeFactor(airlineId: string): number {
     return feeFactorFor(this.state.relations, airlineId)
+  }
+
+  /** The one relationship fee, with the tier name. */
+  feeLine(airlineId: string): string {
+    const rel = this.relation(airlineId)
+    return relationshipFeeLine(rel.feeMult, rel.label)
+  }
+
+  /** Timetable rows this tier adds once. Tier 1 is zero. */
+  slotLine(airlineId: string): string {
+    return extraSlotLine(this.relation(airlineId).extraSlots)
   }
 
   landingOffer(airlineId: string, published: number): number {

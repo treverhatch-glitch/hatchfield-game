@@ -614,6 +614,7 @@ import { DESK_TO_NODE, deskIdsForNode, foldResearchSave, WAVE3_TO_NODE } from '.
 import { categoryUnlocked, nodeCost, nodeState } from '../research/logic.ts'
 import { nodeById } from '../research/nodes.ts'
 import { Wave3Engine } from '../wave3/engine.ts'
+import { classifyTurn, relationshipLandingFactor } from '../wave3/honesty.ts'
 import { largestInFleet, metalAllowed } from '../wave3/fleet.ts'
 import {
   CONNECTIVITY_CATALOG,
@@ -1297,6 +1298,8 @@ export class Game {
   researchUnlocked: ResearchId[] = []
   /** Relationship scores and CEO cards. Research points live on the Growth tree. */
   wave3 = new Wave3Engine()
+  /** Flight and slot ids already scored, so a divert cannot also count as a departure. */
+  private wave3Noted = new Set<string>()
   /** The only research wallet. Desk projects and Wave 3 nodes are grants on this tree. */
   researchTree = new ResearchEngine()
 
@@ -1712,6 +1715,7 @@ export class Game {
     this.airlineLowAcc = {}
     this.researchUnlocked = []
     this.wave3 = new Wave3Engine()
+    this.wave3Noted.clear()
     this.researchTree = new ResearchEngine()
     this.researchPoints = 0
     this.resetPillar()
@@ -3038,10 +3042,6 @@ export class Game {
     }
   }
 
-  private diplomacyFeeFactor(airlineId: string): number {
-    return this.diplomacy?.feeFactor(airlineId) ?? 1
-  }
-
   private diplomacyCapacity(airlineId: string): number {
     return this.diplomacy?.capacityFactor(airlineId) ?? 1
   }
@@ -3079,6 +3079,24 @@ export class Game {
 
   private noteDiplomacyCancel(airlineId: string, excused: boolean) {
     this.diplomacy?.cancelFlight(airlineId, excused)
+  }
+
+  /** One relationship score. An excused weather cancel does not move it. */
+  private noteWave3(key: string, airlineId: string, kind: 'success' | 'delay' | 'cancel' | null) {
+    if (!kind || !airlineId || this.wave3Noted.has(key)) return
+    this.wave3Noted.add(key)
+    this.wave3.noteTurnaround(airlineId, kind)
+  }
+
+  /**
+   * Score a departure. Late means pushback after STD, or a turnaround grade
+   * of C or worse. Landing delaySec is not read here.
+   */
+  scoreWave3Turn(f: Flight): void {
+    if (f.kind === 'military' || f.kind === 'air_ambulance') return
+    const lateMin = f.std != null ? (this.clock - f.std) * GAME_MINUTES_PER_SIM_SECOND : 0
+    const grade = f.turnGrade ?? this.liveTurnGrade(f)?.grade ?? null
+    this.noteWave3(f.id, f.airline, classifyTurn({ grade, departureLateMin: lateMin }))
   }
 
   diplomacyRoster(): { id: string; name: string; band: string; standing: number }[] {
@@ -10312,6 +10330,7 @@ export class Game {
     )
     this.noteDiplomacyCancel(f.airline, false)
     this.noteCargoCancel(f)
+    this.noteWave3(f.id, f.airline, classifyTurn({ cancelled: true }))
   }
 
   /** Legacy bowser, once the farm has a load again. The depot module fuels its own turns. */
@@ -13800,7 +13819,9 @@ export class Game {
       'bad',
     )
     this.schedule = this.schedule.filter((x) => x.status !== 'cancelled' && x.status !== 'done')
-    this.noteDiplomacyCancel(s.airline, /weather|storm|fog/i.test(s.delayReason ?? ''))
+    const excused = /weather|storm|fog/i.test(s.delayReason ?? '')
+    this.noteDiplomacyCancel(s.airline, excused)
+    this.noteWave3(`slot:${s.id}`, s.airline, classifyTurn({ cancelled: true, excused }))
     this.emit()
   }
 
@@ -18624,6 +18645,7 @@ export class Game {
           this.grantFieldXp(6 + Math.min(8, Math.floor(f.pax / 40)), 'turnaround')
         }
         this.gradeDiplomacyTurn(f)
+        this.scoreWave3Turn(f)
         this.noteCargoDepart(f)
         this.pushNews(`${f.flightNo} lifted off the pad.`, 'good')
       }
@@ -19065,6 +19087,7 @@ export class Game {
     flight.phaseTime = 0
     flight.path = []
     this.noteCargoCancel(flight)
+    this.noteWave3(flight.id, flight.airline, classifyTurn({ cancelled: true }))
     return refund
   }
 
@@ -19402,6 +19425,7 @@ export class Game {
     this.adjustHeat(f.airline, -4)
     this.reputation = Math.max(0, this.reputation - 1)
     this.noteDiplomacyCancel(f.airline, false)
+    this.noteWave3(f.id, f.airline, classifyTurn({ diverted: true }))
     this.pushNews(news, 'bad')
     this.raiseAlert({
       key: 'event:inbound-failed',
@@ -19525,12 +19549,8 @@ export class Game {
       } else if (f.kind === 'air_ambulance') {
         this.earn(AIR_AMBULANCE_FEE, `${f.flightNo} ${f.airframeName}`, f)
       } else {
-        const relFee = this.wave3.feeFactor(f.airline)
-        const mult =
-          (AIRFRAMES[f.airframeId]?.landingMult ?? 1) *
-          this.landingFeeMult(f.airline) *
-          this.diplomacyFeeFactor(f.airline) *
-          relFee
+        const relFee = relationshipLandingFactor(this.wave3.feeFactor(f.airline))
+        const mult = (AIRFRAMES[f.airframeId]?.landingMult ?? 1) * this.landingFeeMult(f.airline) * relFee
         const base = Math.round(airline.landing * mult)
         this.earn(
           this.contractBill(f, this.listed(base, 'landingPerTonne'), 'landing', 'landing'),
@@ -19538,9 +19558,6 @@ export class Game {
           f,
           'landing_fees',
         )
-        const slot = f.scheduleId ? this.schedule.find((s) => s.id === f.scheduleId) : undefined
-        const delayMin = (slot?.delaySec ?? 0) * GAME_MINUTES_PER_SIM_SECOND
-        this.wave3.noteTurnaround(f.airline, delayMin > 15 ? 'delay' : 'success')
         const missed = Math.min(Math.max(0, Math.floor(f.pax)), this.curbFeeMisses)
         this.curbFeeMisses -= missed
         const paying = Math.max(0, f.pax - missed)
@@ -21955,6 +21972,7 @@ export class Game {
             if (slot) slot.status = 'done'
           }
           this.gradeDiplomacyTurn(f)
+          this.scoreWave3Turn(f)
           this.noteCargoDepart(f)
           this.pushNews(`${f.flightNo} airborne.`, 'ok')
           this.spawnCool = Math.min(this.spawnCool, 8)

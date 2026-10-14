@@ -1,8 +1,15 @@
 /**
- * Wave 3 tunables. These are a separate research-points currency and a
- * relationship contract rider. They do not replace catalog fees, RP_RATE_*,
- * or the economy module's balance table.
+ * Wave 3 tunables. Research points live on the Growth tree. This file is the
+ * relationship contract rider.
+ *
+ * Relationship money: Wave 3 owns the landing-fee factor (`feeMult`).
+ * Diplomacy keeps slot capacity (`capacityFactor`) and does not multiply the
+ * landing bill. Tier 1 `feeMult` is 1, and a neutral diplomacy discount is
+ * also 1, so a tier-1 neutral landing total matches the old stacked formula.
+ * Catalog fees, airframe multipliers, the published fee index, disruptions,
+ * and negotiated line percents are not relationship factors.
  */
+export const RELATION_FEE_OWNER = 'wave3' as const
 
 export const RELATION_MIN = -100
 export const RELATION_MAX = 100
@@ -12,14 +19,23 @@ export const BAND_HYSTERESIS = 5
 
 export const SCORE_ON_ACCEPT = 2
 export const SCORE_ON_DECLINE = -3
-/** On-time turnaround. A clean turn is worth more than a day of infrastructure. */
-export const SCORE_ON_SUCCESS = 2.5
 /**
- * A late turn. Careful fields still slip often; the carriers with fewer slips
- * are the ones that leave Published.
+ * On-time departure. One clean turn a day, with the contract kept, crosses
+ * Preferred inside PREFERRED_DAY_MIN..MAX even before the lounges count.
+ * A day of real delays does not. The 60-day careful bot is the served-field check.
  */
-export const SCORE_ON_DELAY = -2.15
-export const SCORE_ON_CANCEL = -6
+export const SCORE_ON_SUCCESS = 0.9
+/** A late pushback or a turnaround grade of C or worse. */
+export const SCORE_ON_DELAY = -0.55
+export const SCORE_ON_CANCEL = -4
+
+/** Departure is late this many game minutes past STD. Arrival delaySec is not a turnaround. */
+export const LATE_DEPARTURE_GAME_MIN = 15
+
+/** Clean turns a well-served carrier finishes in one game day. */
+export const CAREFUL_TURNS_PER_DAY = 3
+export const PREFERRED_DAY_MIN = 20
+export const PREFERRED_DAY_MAX = 30
 export const SCORE_ON_MISSED_ASK = -1
 /** Relation hit when a fine posts. The cash amount stays on the ledger. Once per posting, not per passenger. */
 export const SCORE_ON_FINE = -0.2
@@ -29,12 +45,12 @@ export const SCORE_ON_FINE = -0.2
  * Kept days, spare stands, lounges and gates add whether or not the last turn was late.
  * Delays, missed asks and fines subtract on their own. A strained ramp (too few stands) subtracts too.
  */
-export const SCORE_KEPT_PER_DAY = 0.22
-export const SCORE_CAPACITY = 0.45
-export const SCORE_CAPACITY_STRAIN = -0.35
-export const SCORE_PER_LOUNGE = 0.35
+export const SCORE_KEPT_PER_DAY = 0.08
+export const SCORE_CAPACITY = 0.16
+export const SCORE_CAPACITY_STRAIN = -0.12
+export const SCORE_PER_LOUNGE = 0.12
 export const LOUNGE_SCORE_CAP = 2
-export const SCORE_PER_GATE = 0.3
+export const SCORE_PER_GATE = 0.1
 export const GATE_SCORE_CAP = 2
 /** Stands per signed carrier before capacity counts as headroom. */
 export const CAPACITY_HEADROOM = 0.3

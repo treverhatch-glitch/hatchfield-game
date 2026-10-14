@@ -828,6 +828,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         {money(offerAirline.bags)}
                         {` · catering ${money(game.quotedCatering(offerAirline.id, Math.max(offerAirline.paxMin || 40, 1)))}`}
                       </p>
+                      <p className="muted" data-testid="relationship-fee">
+                        {game.wave3.feeLine(offerAirline.id)} · {game.wave3.slotLine(offerAirline.id)}
+                      </p>
                       {(() => {
                         const rel = game.wave3.relation(offerAirline.id)
                         return (

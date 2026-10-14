@@ -18,6 +18,10 @@ export interface PhoneContractOffer {
   terms: string
   /** Stand or pad capacity. A warning, not a requirement. */
   capacity?: string
+  /** Wave 3 relationship fee. The only carrier multiplier on the landing bill. */
+  feeLine?: string
+  /** Timetable rows this tier adds once. Zero at Published. */
+  slotLine?: string
 }
 
 export interface PhoneSignedRow {
@@ -121,6 +125,8 @@ export function emptyPhoneWorld(): PhoneWorld {
 
 function contractLines(offer: PhoneContractOffer): PhoneLine[] {
   const lines: PhoneLine[] = [{ label: offer.verdict, met: offer.verdictMet }]
+  if (offer.feeLine) lines.push({ label: offer.feeLine })
+  if (offer.slotLine) lines.push({ label: offer.slotLine })
   if (offer.capacity) lines.push({ label: offer.capacity })
   lines.push(...offer.requirements)
   return lines

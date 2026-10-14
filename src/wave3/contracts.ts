@@ -20,8 +20,9 @@ function tierRow(tier: ContractTier): (typeof CONTRACT_TIERS)[number] {
 }
 
 /**
- * Better fees and slots at higher relationship tiers.
- * The airframe list is the carrier's own fleet, copied, never extended.
+ * Better fees at higher relationship tiers, and a one-time timetable grant.
+ * The apron writes `extraSlots` when the day review sees the new tier.
+ * Tier 1 adds none. The airframe list is copied, never extended.
  */
 export function applyTierToTerms(terms: ContractTerms, tier: ContractTier): ContractTerms {
   const row = tierRow(tier)
