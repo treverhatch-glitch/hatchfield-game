@@ -11,9 +11,9 @@
 import * as THREE from 'three'
 import { footprint, type Part, type Prim } from './parts'
 import { material } from './materials'
-import { PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType } from './props'
+import { MOVING_TRAYS, PROP_BUILDERS, TERMINAL_PROP_TYPES, type TerminalPropType, type TrayTrack } from './props'
 
-export { TERMINAL_PROP_TYPES, type TerminalPropType } from './props'
+export { TERMINAL_PROP_TYPES, MOVING_TRAYS, type TerminalPropType, type TrayTrack } from './props'
 export { buildTerminalHall, buildTerminalExterior, type HallSpec } from './shell'
 export { setupTerminalEnvironment } from './env'
 export { capTerminalPropMetal } from './materials'
@@ -147,6 +147,8 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
   }
   const group = new THREE.Group()
   group.name = 'terminalProps'
+  const moving = buildMovingTrays(placements, !!opts.shadows)
+  if (moving) group.add(moving)
   for (const [key, mats] of buckets) {
     const [prim, mat] = key.split('|') as [Prim, string]
     const m = new THREE.InstancedMesh(geom(prim), material(mat), mats.length)
@@ -159,4 +161,73 @@ export function buildTerminalProps(placements: PropPlacement[], opts: { shadows?
     group.add(m)
   }
   return group
+}
+
+/** Pure: positions (prop-local x) of the trays on a track at time t seconds. */
+export function trayPositions(t: TrayTrack, time: number): number[] {
+  const len = Math.abs(t.x1 - t.x0)
+  const dir = Math.sign(t.x1 - t.x0) || 1
+  const out: number[] = []
+  for (let i = 0; i < t.n; i++) {
+    const d = (((time * t.speed + (i * len) / t.n) % len) + len) % len
+    out.push(t.x0 + dir * d)
+  }
+  return out
+}
+
+/**
+ * Trays (and the bags in them on forward tracks) sliding along the x-ray
+ * rollers and the return conveyor. Self-animating: the tray mesh updates the
+ * instance matrices in onBeforeRender, so no game loop wiring is needed.
+ */
+function buildMovingTrays(placements: PropPlacement[], shadows: boolean): THREE.Group | null {
+  type Slot = { item: THREE.Matrix4; track: TrayTrack }
+  const slots: Slot[] = []
+  for (const pl of placements) {
+    const tracks = MOVING_TRAYS[pl.type]
+    if (!tracks) continue
+    const item = new THREE.Matrix4().makeRotationY(pl.yaw ?? 0).setPosition(pl.x, pl.y ?? 0, pl.z)
+    if (pl.scale && pl.scale !== 1) item.multiply(new THREE.Matrix4().makeScale(pl.scale, pl.scale, pl.scale))
+    for (const track of tracks) slots.push({ item, track })
+  }
+  if (!slots.length) return null
+  const nTray = slots.reduce((s, x) => s + x.track.n, 0)
+  const nBag = slots.reduce((s, x) => s + (x.track.x1 > x.track.x0 ? x.track.n : 0), 0)
+  const trays = new THREE.InstancedMesh(geom('box'), material('tray'), nTray)
+  const bagMats = ['bagBlack', 'bagTeal', 'bagSilver', 'bagRed']
+  const bags = bagMats.map((m) => new THREE.InstancedMesh(geom('box'), material(m), Math.max(1, Math.ceil(nBag / bagMats.length))))
+  const g = new THREE.Group()
+  g.name = 'movingTrays'
+  trays.name = 'movingTrays|tray'
+  trays.frustumCulled = false
+  for (const b of bags) { b.frustumCulled = false; b.castShadow = shadows; g.add(b) }
+  trays.castShadow = shadows
+  g.add(trays)
+  const m = new THREE.Matrix4(), tmp = new THREE.Matrix4()
+  const sTray = new THREE.Vector3(0.56, 0.1, 0.4), sBag = new THREE.Vector3(0.4, 0.15, 0.27)
+  const qI = new THREE.Quaternion()
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0
+  const update = (time: number) => {
+    let ti = 0
+    const bi = bags.map(() => 0)
+    let bagK = 0
+    for (const { item, track } of slots) {
+      const xs = trayPositions(track, time)
+      const fwd = track.x1 > track.x0
+      for (const x of xs) {
+        tmp.compose(new THREE.Vector3(x, track.y, track.z), qI, sTray)
+        trays.setMatrixAt(ti++, m.copy(item).multiply(tmp))
+        if (fwd) {
+          const k = bagK++ % bags.length
+          tmp.compose(new THREE.Vector3(x, track.y + 0.12, track.z), qI, sBag)
+          bags[k].setMatrixAt(bi[k]++, m.copy(item).multiply(tmp))
+        }
+      }
+    }
+    trays.instanceMatrix.needsUpdate = true
+    bags.forEach((b, k) => { b.count = bi[k]; b.instanceMatrix.needsUpdate = true })
+  }
+  update(0)
+  trays.onBeforeRender = () => update(((typeof performance !== 'undefined' ? performance.now() : 0) - t0) / 1000)
+  return g
 }

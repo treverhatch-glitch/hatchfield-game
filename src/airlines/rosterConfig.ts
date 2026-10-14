@@ -44,11 +44,21 @@ export const UNLOCK_GATES: Record<Type, { size: number; reputation: number; repu
   regional: { size: 1, reputation: 25, reputationStep: 4 },
   budget: { size: 2, reputation: 40, reputationStep: 3 },
   charter: { size: 3, reputation: 50, reputationStep: 4 },
-  cargo: { size: 3, reputation: 55, reputationStep: 4 },
+  // The first freighter is a feeder a small field can earn (the old UPPS slot); heavies climb from there.
+  cargo: { size: 1, reputation: 20, reputationStep: 7 },
   flag: { size: 4, reputation: 65, reputationStep: 3 },
 }
 
 export const MAX_REPUTATION = 100
+
+/**
+ * Live game: new contract letters come from the roster. The 8 catalog
+ * carriers stay resolvable for existing contracts, saves and scenarios.
+ */
+export const ROSTER_LIVE = true
+
+/** Airport size (1 to 5) the live game reports for roster unlocks: field level, capped. */
+export const ROSTER_SIZE_CAP = 5
 
 export interface OfferProfile {
   /** Movements (arrival plus departure pairs) per week. */
