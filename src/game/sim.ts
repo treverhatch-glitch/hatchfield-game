@@ -575,6 +575,7 @@ import {
   type PassengerLink,
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import { assembleCrew, pathHeading, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
 import {
   commitPlot,
   dailySinks,
@@ -8711,6 +8712,90 @@ export class Game {
   /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
   servicePoses() {
     return this.ensureGround()?.sim.poses() ?? []
+  }
+
+  /**
+   * Driver and helper for a fuel, bag, or catering stop.
+   * Steps fill the sim's service window. Parked crew stay in the cab and are omitted.
+   */
+  crewScene(): CrewScene {
+    const services: CrewClock[] = []
+    const ground = this.ground?.sim
+    if (ground) {
+      for (const job of ground.activeCrew()) {
+        services.push({
+          id: job.id,
+          service: job.service,
+          x: job.x,
+          y: job.y,
+          heading: job.heading,
+          start: job.start,
+          end: job.end,
+          now: ground.now,
+        })
+      }
+    }
+    for (const truck of this.trucks) {
+      const clock = this.legacyCrewClock(truck)
+      if (clock) services.push(clock)
+    }
+    return assembleCrew({
+      services,
+      catering: this.cateringPoses().map((pose) => ({
+        id: pose.id,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        phase: pose.phase,
+        phaseU: pose.phaseU,
+      })),
+      metersPerUnit: METERS_PER_CELL,
+      aircraftFor: (x, y) => this.aircraftAim(x, y),
+    })
+  }
+
+  private aircraftAim(x: number, y: number): AircraftAim | undefined {
+    let best: Flight | undefined
+    let bestD = 1.4
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.phase === 'gone' || flight.phase === 'hold') continue
+      const d = Math.hypot(flight.x - x, flight.y - y)
+      if (d < bestD) {
+        bestD = d
+        best = flight
+      }
+    }
+    if (!best) return undefined
+    const spec = getAircraftSpec(best.airframeId || 'b738')
+    return {
+      x: best.x,
+      y: best.y,
+      heading: best.heading,
+      lengthM: spec.lengthM,
+      spanM: spec.spanM,
+      wingAt: spec.wingAt,
+    }
+  }
+
+  /** Legacy bowser / cart / galley truck. The dwell it was given is the whole service. */
+  private legacyCrewClock(t: Truck): CrewClock | null {
+    if (t.returning || !(t.dwell > 0) || !(t.serviceFor && t.serviceFor > 0)) return null
+    let service: CrewClock['service'] | null = null
+    if (t.kind === 'fuel' && t.mission === 'fuel') service = 'fuel'
+    else if (t.kind === 'bags' && (t.mission === 'load' || t.mission === 'unload')) service = 'bags'
+    else if (t.kind === 'catering') service = 'catering'
+    if (!service) return null
+    const total = t.serviceFor
+    return {
+      id: t.id,
+      service,
+      x: t.x,
+      y: t.y,
+      heading: pathHeading(t.path),
+      start: 0,
+      end: total,
+      now: Math.min(total, Math.max(0, total - t.dwell)),
+    }
   }
 
   /** Fuel, meals, and how many trucks are out. Null before the depot is built. */
@@ -18834,6 +18919,7 @@ export class Game {
           } else {
             t.dwell = 2.2
           }
+          if (t.dwell > 0) t.serviceFor = t.dwell
         } else {
           t.dwell =
             t.kind === 'fuel'
@@ -18845,6 +18931,7 @@ export class Game {
               : t.kind === 'deice'
                 ? 3.2
                 : 2.2
+          if ((t.kind === 'fuel' || t.kind === 'catering') && t.dwell > 0) t.serviceFor = t.dwell
         }
       } else if (done && t.returning) {
         if (t.kind === 'citycargo') {

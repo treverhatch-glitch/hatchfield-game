@@ -53,6 +53,25 @@ export interface VehiclePose {
   heading: number
 }
 
+/** A vehicle standing at an aircraft, with the sim clock for that service. */
+export interface ActiveCrew {
+  id: string
+  type: VehicleType
+  service: 'fuel' | 'bags' | 'catering'
+  x: number
+  y: number
+  heading: number
+  start: number
+  end: number
+}
+
+function crewServiceOf(type: VehicleType): ActiveCrew['service'] | null {
+  if (type === 'fuel_truck' || type === 'heavy_fuel_truck' || type === 'hydrant_dispenser') return 'fuel'
+  if (type === 'baggage_tug' || type === 'heavy_baggage_tug') return 'bags'
+  if (type === 'catering_truck' || type === 'highlift_catering') return 'catering'
+  return null
+}
+
 /**
  * How a vehicle-served job moves things.
  * - carry: vehicle keeps a load between jobs (fuel, meals) drawn from a global store.
@@ -574,7 +593,7 @@ export class LogisticsSim {
     const driving = new Set<VehiclePhase>(['to_source', 'to_stand', 'to_dropoff', 'to_maintenance', 'towed'])
     return this.vehicles.map((v) => {
       const here = this.roads.at(v.node)
-      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: 0 }
+      const parked = { x: here?.x ?? 0, y: here?.y ?? 0, heading: this.arrivalHeading(v) }
       if (!driving.has(v.phase) || !v.route || v.route.length < 2) {
         return { id: v.id, type: v.type, ...parked }
       }
@@ -586,6 +605,48 @@ export class LogisticsSim {
       const at = pointAlong(pts, u)
       return { id: v.id, type: v.type, x: at.x, y: at.y, heading: at.heading }
     })
+  }
+
+  /** Heading of the last drive, so a parked truck still faces the way it arrived. */
+  private arrivalHeading(v: VehicleState): number {
+    const route = v.route
+    if (!route || route.length < 2) return 0
+    const a = this.roads.at(route[route.length - 2])
+    const b = this.roads.at(route[route.length - 1])
+    if (!a || !b) return 0
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    if (dx * dx + dy * dy < 1e-8) return 0
+    return Math.atan2(dy, dx)
+  }
+
+  /**
+   * Vehicles currently working a fuel, bag, or catering job.
+   * `start` and `end` are the sim clock for that work. Crew steps fill this
+   * window; they do not add time.
+   */
+  activeCrew(): ActiveCrew[] {
+    const poseOf = new Map(this.poses().map((pose) => [pose.id, pose]))
+    const out: ActiveCrew[] = []
+    for (const v of this.vehicles) {
+      const started = v.phaseStart
+      if (v.phase !== 'servicing' || started === undefined || !Number.isFinite(v.phaseEnd) || !(v.phaseEnd > started)) continue
+      const service = crewServiceOf(v.type)
+      if (!service) continue
+      const pose = poseOf.get(v.id)
+      if (!pose) continue
+      out.push({
+        id: v.id,
+        type: v.type,
+        service,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        start: started,
+        end: v.phaseEnd,
+      })
+    }
+    return out
   }
 
   /** Requests still waiting for a vehicle. */
@@ -1399,6 +1460,7 @@ export class LogisticsSim {
   private arriveAtStand(v: VehicleState, r: ServiceRequest): void {
     const t = this.turnarounds.get(r.turnaroundId)!
     v.phase = 'servicing'
+    v.phaseStart = this.now
     if (r.mode === 'onsite') {
       if (r.service === 'loader') {
         t.loaderVehicle = v.id
@@ -1473,6 +1535,7 @@ export class LogisticsSim {
     const end = begin + v.serving / rate
     if (hold) t.loaderBusyUntil = end
     else t.doorBusyUntil = end
+    v.phaseStart = begin
     v.phaseEnd = end
   }
 

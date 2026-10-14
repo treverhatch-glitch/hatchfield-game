@@ -16,6 +16,8 @@ export interface CateringPose {
   heading: number
   liftHeight: number
   phase: CateringPhase
+  /** 0 at the start of `phase`, 1 at the end. Crew walk this, they do not jump. */
+  phaseU: number
   standId: string
   crew: CateringCrewPose[]
 }
@@ -112,6 +114,7 @@ export class CateringBridge {
         heading: Number.isFinite(heading) ? heading : 0,
         liftHeight: Number.isFinite(truck.liftHeight) ? truck.liftHeight : 0,
         phase,
+        phaseU: u,
         standId: galley?.standId ?? '',
         crew: truck.crew.map((c) => ({ id: c.id, role: c.role, at: c.at })),
       })
