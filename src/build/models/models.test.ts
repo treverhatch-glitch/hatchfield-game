@@ -9,11 +9,19 @@ const PLACEHOLDERS = ['substation', 'hydrant', 'tilt_tray', 'fuel_farm_iii', 'at
 function stats(g: THREE.Object3D) {
   const box = new THREE.Box3().setFromObject(g)
   const size = box.getSize(new THREE.Vector3())
+  // Static parts are merged per material; count the source parts and triangles.
   let meshes = 0
+  let tris = 0
+  let draws = 0
   g.traverse((o) => {
-    if ((o as THREE.Mesh).isMesh) meshes++
+    const m = o as THREE.Mesh
+    if (!m.isMesh) return
+    draws++
+    meshes += (m.userData.merged as number | undefined) ?? 1
+    const geo = m.geometry
+    tris += (geo.index ? geo.index.count : geo.attributes.position!.count) / 3
   })
-  return { box, size, meshes }
+  return { box, size, meshes, tris, draws }
 }
 
 describe('building models', () => {
@@ -38,8 +46,8 @@ describe('building models', () => {
     const aliases = new Set(['hotel']) // default class = hotel_biz
     for (const id of Object.keys(MODEL_BUILDERS)) {
       if (aliases.has(id)) continue
-      const { size, meshes } = stats(buildModel(id)!)
-      const key = `${size.x.toFixed(1)}|${size.y.toFixed(1)}|${size.z.toFixed(1)}|${meshes}`
+      const { size, tris } = stats(buildModel(id)!)
+      const key = `${size.x.toFixed(1)}|${size.y.toFixed(1)}|${size.z.toFixed(1)}|${tris}`
       expect(sig.has(key), `${id} matches ${sig.get(key)}`).toBe(false)
       sig.set(key, id)
     }
@@ -54,6 +62,16 @@ describe('building models', () => {
 
   it('ATC approach towers over the basic tower', () => {
     expect(stats(buildModel('atc_approach')!).size.y).toBeGreaterThan(stats(buildModel('tower')!).size.y)
+  })
+
+  it('round-4 detail pass: parapets, plant and lot dressing, merged into few draw calls', () => {
+    for (const id of Object.keys(MODEL_BUILDERS)) {
+      const { meshes, draws, tris } = stats(buildModel(id)!)
+      expect(meshes, id).toBeGreaterThanOrEqual(40)
+      expect(tris, id).toBeGreaterThan(800)
+      // Merging keeps draw calls well under the part count.
+      expect(draws, id).toBeLessThan(meshes / 2)
+    }
   })
 
   it('unknown ids fall through to the legacy builder', () => {
