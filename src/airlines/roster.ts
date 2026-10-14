@@ -35,7 +35,7 @@ export interface RosterAirline {
   secondary: string
   accent: string
   motif: TailMotif
-  /** Model ids from MODEL_SPECS. */
+  /** Model ids from MODEL_SPECS and AIRFRAMES. A roster carrier only flies these. */
   fleet: string[]
   /** Palette ref image, when the airline has one. */
   ref?: string

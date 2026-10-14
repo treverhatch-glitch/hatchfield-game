@@ -833,6 +833,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           />
                         )
                       })()}
+                      <p className="muted" data-testid="contract-capacity">
+                        {game.letterCapacity(offerAirline.id)}
+                      </p>
                       <ul className="req-list">
                         {(() => {
                           const verdict = game.letterVerdict(offerAirline.id)
@@ -2008,7 +2011,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                                   title={
                                     s.stolen
                                       ? `${s.flightNo} · slipped — emergency stole a gate · ${s.stand}`
-                                      : `${s.flightNo} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`
+                                      : `${s.flightNo}${s.model ? ` · ${s.model}` : ''} · ${Math.round(s.t)}s · ${s.stand} · ${s.runway}`
                                   }
                                   onClick={() => setSelSlot(s.id)}
                                 >
@@ -2100,6 +2103,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                                   {s.manual ? ' · manual' : ''}
                                   {' · '}
                                   {rw}/{stand}
+                                  {game.slotAircraftName(s) ? ` · ${game.slotAircraftName(s)}` : ''}
                                 </span>
                               </b>
                               <span className="muted">

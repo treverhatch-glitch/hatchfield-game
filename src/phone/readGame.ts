@@ -52,6 +52,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
             terms: `Terms · landing ${money(offerAirline.landing)} · bags ${money(offerAirline.bags)}${
               offerAirline.catering ? ` · catering ${money(offerAirline.catering)}` : ''
             }`,
+            capacity: game.letterCapacity(offer.airline),
           }
         : null,
     signed: game.signed.map((id) => signedRow(game, id)),

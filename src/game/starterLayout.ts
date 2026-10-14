@@ -189,7 +189,8 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
       label: preview.label,
       summary: preview.summary,
       terminal: null,
-      stands: [{ c: 12, r: 10, cls: 'M', access: 'remote' }],
+      // Large: the feeder freighter is a 757 (code D). A medium stand cannot take it.
+      stands: [{ c: 12, r: 10, cls: 'L', access: 'remote' }],
     }
   }
   return {

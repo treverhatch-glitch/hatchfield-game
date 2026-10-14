@@ -3,6 +3,17 @@
 This module provides pure data and logic for managing airlines, contracts, and requirements in Hatchfield.
 It is located in `src/airlines/`.
 
+## Live roster (45 carriers)
+
+The playable carriers are the roster in `src/airlines/roster.ts`, turned into game airlines by `src/game/rosterAirlines.ts`. Each carrier keeps a catalog template for fees, fines, and the negotiation seat band. The metal is its own.
+
+- Fleet ids are `AIRFRAMES` keys (`src/game/airframes.ts`) and `MODEL_SPECS` ids. A missing id is not swapped for a generic jet.
+- Seats on the Airlines card, the contract letter, and the spawned flight come from the chosen airframe's `paxMin`/`paxMax`. The template band stays only on the negotiation profile so fees do not move.
+- Stand class follows the airframe's ICAO code (A/B small, C medium, D/E/F large). Helicopters need a helipad. Runway cells are the airframe's `minRunway`. The card and the letter use the same line (`fleetCardLine`).
+- The planner stamps that airframe on the slot. Spawn keeps it. If no listed type can use the strip, stand, pad, field level, or research, the carrier does not send a letter. The Airlines panel names the gap. The cargo starter's freighter stand is Large so the 757 feeder (code D) can park on day one; a medium stand cannot take it.
+- The letter (HUD and phone) adds a capacity warning: `Your N stands host ~X turns/day; signed carriers already want Y; this adds Z`. Pads are counted for helicopter fleets. The line does not block Accept. X is stands (or pads) times `TURNS_PER_STAND_PER_DAY` (`180 / 20`). Y and Z use the existing 4-turn / 3-turn tier split.
+- No airframe id was renamed, so v4 saves load on the existing migration chain.
+
 ## Core Concepts
 
 - **Airline Tiers**: `regional`, `low-cost`, `full-service`, `flag-carrier`, `cargo`.

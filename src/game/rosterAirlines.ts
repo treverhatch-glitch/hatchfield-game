@@ -8,6 +8,7 @@
 import { ROSTER, rosterAirline, rosterByType, type AirlineType, type RosterAirline } from '../airlines/roster.ts'
 import { unlockGate } from '../airlines/rosterOffers.ts'
 import { AIRLINES } from './catalog.ts'
+import { fleetCardLine, fleetNeedsHeavyRunway, fleetSeatBand, resolvedAirframes } from './rosterMetal.ts'
 import type { Airline, AirlineBizModel, AirlinePersona } from './types.ts'
 
 interface Template {
@@ -41,24 +42,37 @@ const TYPE_LABEL: Record<AirlineType, string> = {
 /** Catalog ids: still resolvable, no longer sending new letters while the roster is live. */
 export const CATALOG_AIRLINE_IDS: ReadonlySet<string> = new Set(Object.keys(AIRLINES))
 
+/** Catalog seat band copied for negotiation only. Flights use the airframe, not this. */
+export function rosterFeeSeatBand(id: string): { paxMin: number; paxMax: number } | null {
+  const r = rosterAirline(id)
+  if (!r) return null
+  const t = ROSTER_TEMPLATE[r.type]
+  const rank = Math.max(0, rosterByType(r.type).findIndex((a) => a.id === r.id))
+  const base = AIRLINES[t.base[Math.min(rank, t.base.length - 1)]] ?? AIRLINES.northline
+  return { paxMin: t.paxMin ?? base.paxMin, paxMax: t.paxMax ?? base.paxMax }
+}
+
 function toGame(r: RosterAirline): Airline {
   const t = ROSTER_TEMPLATE[r.type]
   const rank = Math.max(0, rosterByType(r.type).findIndex((a) => a.id === r.id))
   const base = AIRLINES[t.base[Math.min(rank, t.base.length - 1)]] ?? AIRLINES.northline
   const gate = unlockGate(r)
+  const frames = resolvedAirframes(r.fleet)
+  const seats = fleetSeatBand(frames)
+  const fee = rosterFeeSeatBand(r.id)
   return {
     ...base,
-    req: { ...base.req },
+    req: { ...base.req, heavyRunway: frames.length ? fleetNeedsHeavyRunway(frames) : base.req.heavyRunway },
     id: r.id,
     name: r.name,
     color: r.primary,
     stripe: r.secondary,
     persona: t.persona ?? base.persona,
     bizModel: t.bizModel ?? base.bizModel,
-    paxMin: t.paxMin ?? base.paxMin,
-    paxMax: t.paxMax ?? base.paxMax,
+    paxMin: frames.length ? seats.paxMin : (fee?.paxMin ?? base.paxMin),
+    paxMax: frames.length ? seats.paxMax : (fee?.paxMax ?? base.paxMax),
     minRep: gate.reputation,
-    fleetBlurb: r.fleet.map((id) => id.toUpperCase()).join(' / '),
+    fleetBlurb: frames.length ? fleetCardLine(frames) : r.fleet.map((id) => id.toUpperCase()).join(' / '),
     blurb: `${TYPE_LABEL[r.type]} · ${r.code}. Talks once the field is size ${gate.size}+ with reputation ${gate.reputation}+.`,
   }
 }

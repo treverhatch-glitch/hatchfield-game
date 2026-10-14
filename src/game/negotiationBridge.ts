@@ -14,6 +14,7 @@ import type {
 } from '../negotiation/types.ts'
 import type { Airline } from './types.ts'
 import { AIRLINES as CATALOG } from './catalog.ts'
+import { rosterFeeSeatBand } from './rosterAirlines.ts'
 
 export interface NegotiationHost {
   day(): number
@@ -214,7 +215,11 @@ function profileFromTrunk(airline: Airline): AirlineProfile {
         : airline.persona === 'business'
           ? ['punctual', 'proud']
           : ['frugal', 'patient']
-  const seats = Math.max(40, Math.round((airline.paxMin + airline.paxMax) / 2) || 80)
+  // Roster fees stay on the catalog template band. The card and the flight use the airframe.
+  const feeBand = rosterFeeSeatBand(airline.id)
+  const paxMin = feeBand?.paxMin ?? airline.paxMin
+  const paxMax = feeBand?.paxMax ?? airline.paxMax
+  const seats = Math.max(40, Math.round((paxMin + paxMax) / 2) || 80)
   return {
     id: airline.id,
     name: airline.name,

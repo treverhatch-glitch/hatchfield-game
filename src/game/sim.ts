@@ -344,7 +344,6 @@ import {
   contractById,
   seedLitresFromLoads,
   sizeTierOf,
-  tierOpen,
   standClassForTool,
   standScaleForTool,
   tankDef,
@@ -614,6 +613,16 @@ import { rosterAirline } from '../airlines/roster.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
 import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
 import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines } from './rosterAirlines.ts'
+import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
+import {
+  airframeGap,
+  airframeStandClass,
+  easiestGap,
+  fleetCardLine,
+  isHeloAirframe,
+  resolvedAirframes,
+  type FieldFit,
+} from './rosterMetal.ts'
 import { standCrewPeople, standProps, type StandArrival } from '../ramp/standCrew.ts'
 import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
@@ -2529,9 +2538,13 @@ export class Game {
     return normalizeAirline(raw)
   }
 
-  /** Airframe ids a contract sells: catalog fleet, or the roster carrier's own (no helicopters on the jet flow). */
+  /**
+   * Airframe ids a contract sells. Catalog fleet, or the roster carrier's own,
+   * including helicopters. Undefined only when the carrier has no named fleet.
+   * An empty or unusable named fleet does not fall through to a generic jet.
+   */
   private contractFleet(id: AirlineId): readonly string[] | undefined {
-    return CONTRACT_FLEET[id] ?? rosterFleet(id)?.filter((m) => AIRFRAMES[m] && !AIRFRAMES[m].kind.startsWith('helo'))
+    return CONTRACT_FLEET[id] ?? rosterFleet(id)
   }
 
   fieldLevel(): FieldLevel {
@@ -12269,35 +12282,72 @@ export class Game {
     return { af: smaller, blocked: null }
   }
 
+  private fieldFit(): FieldFit {
+    return {
+      runway: this.longestRunway(),
+      helipad: tilesOf(this.tiles, 'helipad').length > 0,
+      fieldLevel: this.fieldLevel(),
+      research: this.researchUnlocked,
+      standClasses: tilesOf(this.tiles, 'stand').map((s) => this.standClassAt(s)),
+    }
+  }
+
+  /** Named metal for a catalog or roster carrier. Empty when the carrier has no fleet list. */
+  namedAirframes(id: AirlineId): Airframe[] {
+    return resolvedAirframes(this.contractFleet(id))
+  }
+
+  /** True when the carrier has no named fleet, or at least one listed type can operate. */
+  fleetHasOperable(id: AirlineId): boolean {
+    const fleet = this.contractFleet(id)
+    if (!fleet) return true
+    const frames = resolvedAirframes(fleet)
+    if (!frames.length) return false
+    const field = this.fieldFit()
+    return frames.some((af) => !airframeGap(af, field))
+  }
+
+  /** What the field is missing before any listed type can operate. Null when one can. */
+  fleetOperateGap(id: AirlineId): string | null {
+    const fleet = this.contractFleet(id)
+    if (!fleet) return null
+    return easiestGap(resolvedAirframes(fleet), this.fieldFit())
+  }
+
   /**
-   * Spawn the airplane the contract sold. A 9–19 seat carrier stays on that
-   * metal; a short pillar holds the slot instead of substituting a 737.
+   * Spawn the airplane the contract sold. A named fleet never falls through
+   * to a generic jet. A short pillar or a short strip holds the slot.
    */
   private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const a = this.airline(airlineId)
-    if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
     const fleet = this.contractFleet(a.id)
-    const pool = contractedAirframes(fleet, a.paxMin, a.paxMax).filter((af) =>
-      metalAllowed(fleet ?? [], af.id),
-    )
-    if (!pool.length) {
-      if (fleet && fleet.length) return { af: null, blocked: null }
+    if (!fleet) {
+      if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
       return this.pickOperable(this.pickAircraftKind(airlineId), false)
     }
-    const level = this.fieldLevel()
-    const research = this.researchUnlocked
-    const runway = this.longestRunway()
-    const fit = pool.filter(
-      (af) =>
-        metalAllowed(fleet ?? pool.map((row) => row.id), af.id) &&
-        (af.minRunway === 0 || runway >= af.minRunway) &&
-        (!af.research || research.includes(af.research)) &&
-        tierOpen(af.id, level, research) &&
-        this.scaleReport(af.id).ok,
-    )
+    const pool = resolvedAirframes(fleet).filter((af) => metalAllowed(fleet, af.id))
+    if (!pool.length) return { af: null, blocked: null }
+    const field = this.fieldFit()
+    const fit = pool.filter((af) => !airframeGap(af, field) && this.scaleReport(af.id).ok)
     if (fit.length) return { af: fit[Math.floor(Math.random() * fit.length)]!, blocked: null }
-    const raw = pool.find((af) => af.minRunway === 0 || runway >= af.minRunway) ?? pool[0]
+    const raw = pool.find((af) => !airframeGap(af, field)) ?? pool[0]
     return { af: null, blocked: raw ? this.scaleReport(raw.id) : null }
+  }
+
+  /** Keep the aircraft the planner already named when the field can still take it. */
+  private airframeForSlot(
+    slot: ScheduleSlot,
+    airlineId: AirlineId,
+    cargo: boolean,
+  ): { af: Airframe | null; blocked: PillarReport | null } {
+    const fleet = this.contractFleet(airlineId)
+    const pinned = slot.airframeId ? AIRFRAMES[slot.airframeId] : undefined
+    if (fleet && pinned && fleet.includes(pinned.id) && !airframeGap(pinned, this.fieldFit()) && this.scaleReport(pinned.id).ok) {
+      return { af: pinned, blocked: null }
+    }
+    const picked = this.pickForAirline(airlineId, cargo)
+    if (picked.af && fleet) slot.airframeId = picked.af.id
+    return picked
   }
 
   private scaleAdviceItems(): Advice[] {
@@ -12599,6 +12649,8 @@ export class Game {
     if (a.req.cargo && !r.cargo) miss.push('cargo shed')
     if (a.req.road && !r.road) miss.push('access road')
     if (a.req.tower && !r.tower) miss.push('control tower')
+    const gap = this.fleetOperateGap(id)
+    if (gap) miss.push(gap)
     return miss
   }
 
@@ -12651,23 +12703,36 @@ export class Game {
   }
 
   /**
-   * Aircraft-size row for the letter: the metal the carrier sells and the
-   * stand class its biggest type needs. Null when the card names no fleet.
+   * Aircraft row for the letter. Same names, seats, stand class, and runway
+   * as the Airlines card. Met only when every listed type can operate.
+   * Null when the carrier has no named fleet.
    */
   contractCraftNeed(id: AirlineId): { label: string; met: boolean } | null {
-    const a = this.airline(id)
-    if (a.kind === 'cargo') return null
-    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
-    if (!pool.length) return null
-    let need: StandClass = 'S'
-    for (const af of pool) {
-      const cls = standClassFor(af.kind)
-      if (standClassRank(cls) > standClassRank(need)) need = cls
+    const fleet = this.contractFleet(id)
+    if (!fleet) return null
+    const pool = resolvedAirframes(fleet)
+    if (!pool.length) return { label: 'Fleet not listed', met: false }
+    const field = this.fieldFit()
+    return { label: fleetCardLine(pool), met: pool.every((af) => !airframeGap(af, field)) }
+  }
+
+  /**
+   * Capacity warning for the open letter. Warns only — signing stays a player choice.
+   * Helicopter fleets count pads. Everyone else counts stands.
+   */
+  letterCapacity(id: AirlineId): string {
+    const frames = this.namedAirframes(id)
+    const heli = frames.length > 0 && frames.every((af) => isHeloAirframe(af))
+    const usesPad = (airlineId: AirlineId) => {
+      const theirs = this.namedAirframes(airlineId)
+      return theirs.length > 0 && theirs.every((af) => isHeloAirframe(af))
     }
-    const names = [...new Set(pool.map((af) => af.name))]
-    const shown = names.length > 2 ? `${names.slice(0, 2).join(' / ')} +${names.length - 2}` : names.join(' / ')
-    const met = tilesOf(this.tiles, 'stand').some((s) => this.standFitsClass(s, need))
-    return { label: `${shown} · ${standClassLabel(need)}+`, met }
+    const places = heli ? tilesOf(this.tiles, 'helipad').length : tilesOf(this.tiles, 'stand').length
+    const signedWant = this.signed.reduce((sum, sid) => {
+      if (usesPad(sid) !== heli) return sum
+      return sum + carrierTurnsWanted(this.airline(sid).tier)
+    }, 0)
+    return capacityWarning(places, signedWant, carrierTurnsWanted(this.airline(id).tier), heli ? 'pad' : 'stand')
   }
 
   considerOffers() {
@@ -12701,6 +12766,7 @@ export class Game {
       if (!this.rosterOpen(a.id)) return false
       if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
+      if (!this.fleetHasOperable(a.id)) return false
       // Start focus biases early letters (never hard-locks the other path).
       if (this.startFocus === 'cargo' && a.kind !== 'cargo' && this.signed.length < 1) {
         return false
@@ -13137,6 +13203,8 @@ export class Game {
     }
     if (n <= 0) return
     let eta = t
+    const planned = this.pickForAirline(airlineId, a.kind === 'cargo').af
+    const plannedId = planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null
     for (let i = 0; i < n; i++) {
       this.flightSeq += 1
       const slot: ScheduleSlot = {
@@ -13153,10 +13221,11 @@ export class Game {
         // Spread auto bank across every stamped strip.
         runwayPref: this.pickBalancedRunway(),
         claimLane: null,
+        airframeId: plannedId,
       }
       this.assignSlotClaimLane(slot)
       this.schedule.push(slot)
-      this.noteSlotBanked(slot)
+      if (!planned || !isHeloAirframe(planned)) this.noteSlotBanked(slot)
       eta += spacing * arrivalSpacingScale(eta, {
         nightBank: this.hasResearch('night_bank'),
         holidayPeak: this.holidayPeakHook,
@@ -13187,6 +13256,7 @@ export class Game {
     this.flightSeq += 1
     const eta = Math.max(this.clock + Math.max(8, inSeconds), this.leadGateClock(airlineId))
     const rw = this.pickBalancedRunway()
+    const planned = this.pickForAirline(airlineId, a.kind === 'cargo').af
     const slot: ScheduleSlot = {
       id: uid('slot'),
       airline: airlineId,
@@ -13200,10 +13270,11 @@ export class Game {
       standPref: null,
       runwayPref: rw,
       claimLane: null,
+      airframeId: planned?.id ?? resolvedAirframes(this.contractFleet(airlineId))[0]?.id ?? null,
     }
     this.assignSlotClaimLane(slot)
     this.schedule.push(slot)
-    this.noteSlotBanked(slot)
+    if (!planned || !isHeloAirframe(planned)) this.noteSlotBanked(slot)
     this.pushNews(
       `Manual slot ${a.name} ${this.flightSeq} in ${Math.round(eta - this.clock)}s${
         rw != null ? ` · ${this.runwayLabel(rw)}` : ''
@@ -13361,6 +13432,12 @@ export class Game {
     return `RW${pref + 1}`
   }
 
+  /** Aircraft name the planner, the card, and the letter share for this slot. */
+  slotAircraftName(slot: { airframeId?: string | null }): string {
+    if (!slot.airframeId) return ''
+    return AIRFRAMES[slot.airframeId]?.name ?? ''
+  }
+
   /** Day-strip window: slots in the next `horizon` sim-seconds. */
   plannerStrip(horizon = 120): {
     horizon: number
@@ -13372,6 +13449,7 @@ export class Game {
       status: ScheduleStatus
       stand: string
       runway: string
+      model: string
       stolen: boolean
     }[]
     /** Live emergency hosts painted as stolen capacity on the strip. */
@@ -13409,6 +13487,7 @@ export class Game {
           status: s.status,
           stand: s.standPref ? this.gateLabel(s.standPref) : 'auto',
           runway: this.runwayLabel(s.runwayPref),
+          model: this.slotAircraftName(s),
           stolen:
             /gate|stand|backlog|pavement/i.test(s.delayReason ?? '') &&
             hosts.length > 0 &&
@@ -17290,18 +17369,18 @@ export class Game {
 
     const airlineId = slot.airline
     const def = this.airline(airlineId)
-    const picked = this.pickForAirline(airlineId, def.kind === 'cargo')
+    const picked = this.airframeForSlot(slot, airlineId, def.kind === 'cargo')
     const af = picked.af
     if (!af) {
       const hint = picked.blocked?.hints[0]
-      this.delaySlot(slot, 20, hint ? 'Pillar short' : 'Strip too short')
-      this.pushNews(
-        hint
-          ? `${slot.flightNo} delayed — ${hint.fix}`
-          : `${slot.flightNo} delayed — strip ${this.longestRunway()}c can't take their metal.`,
-        'bad',
-      )
+      const why = hint?.fix ?? this.fleetOperateGap(airlineId) ?? `strip ${this.longestRunway()}c can't take their metal`
+      this.delaySlot(slot, 20, hint ? 'Pillar short' : why)
+      this.pushNews(`${slot.flightNo} delayed — ${why}.`, 'bad')
       this.spawnCool = 8
+      return
+    }
+    if (isHeloAirframe(af)) {
+      this.spawnContractHelo(slot, def, af)
       return
     }
     if (slot.runwayPref == null) slot.runwayPref = this.pickBalancedRunway()
@@ -17312,7 +17391,7 @@ export class Game {
       this.spawnCool = 4
       return
     }
-    const needCls = standClassFor(af.kind)
+    const needCls = airframeStandClass(af) ?? standClassFor(af.kind)
     const stand = this.assignStand(slot.standPref ?? null, needCls, airlineId, af.id)
     const route = stand ? this.landingRoute(stand, slot.runwayPref) : null
     if (!stand || !route) {
@@ -17394,6 +17473,53 @@ export class Game {
       `${def.name} ${f.flightNo}${late} · ${role} ${af.name} → ${gate}.`,
       slot.delaySec > 0 ? 'bad' : 'ok',
     )
+  }
+
+  /** A signed helicopter operator uses a pad and its own metal, not a generic jet. */
+  private spawnContractHelo(slot: ScheduleSlot, def: Airline, af: Airframe) {
+    const pad = this.freePads()[0]
+    if (!pad) {
+      this.delaySlot(slot, 20, 'Helipad')
+      this.pushNews(`${slot.flightNo} delayed — no helipad for ${af.name}.`, 'bad')
+      this.spawnCool = 8
+      return
+    }
+    const load = this.flightLoad(af, def.persona, false)
+    const f: Flight = {
+      id: uid('helo'),
+      airline: slot.airline,
+      flightNo: slot.flightNo,
+      airframeId: af.id,
+      airframeName: af.name,
+      pax: load.pax,
+      cargo: false,
+      craft: 'helo',
+      kind: af.kind,
+      phase: 'approach',
+      stand: pad,
+      x: pad.c + 5.5,
+      y: pad.r - 4.5,
+      z: 11,
+      heading: Math.atan2(pad.r - (pad.r - 4.5), pad.c - (pad.c + 5.5)),
+      path: [pad],
+      seg: 0,
+      t: 0,
+      holdAngle: 0,
+      posted: emptyPosted(),
+      waitingOn: emptyWaiting(),
+      phaseTime: 0,
+      ledger: [],
+      scheduleId: slot.id,
+      fuelLevel: load.fuelLevel,
+    }
+    this.flights.push(f)
+    this.noteCraft(af.kind)
+    slot.status = 'inbound'
+    slot.flightId = f.id
+    slot.airframeId = af.id
+    this.spawnCool = 12
+    this.selectedFlight = this.selectedFlight ?? f.id
+    this.pushNews(`${def.name} ${f.flightNo} · ${af.name} → pad ${pad.c},${pad.r}.`, 'ok')
   }
 
   trySpawnHelo() {

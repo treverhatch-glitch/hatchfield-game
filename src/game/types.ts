@@ -433,6 +433,8 @@ export interface ScheduleSlot {
   standPref?: Vec | null
   /** Preferred runway strip index (0-based); null = tower picks. */
   runwayPref?: number | null
+  /** Airframe the planner named for this slot. Spawn keeps it when the field can take it. */
+  airframeId?: string | null
   /**
    * Assigned baggage claim (1-based) planned when the inbound slot is banked.
    * Only arrivals use claims — cargo slots leave this null.

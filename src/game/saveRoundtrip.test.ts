@@ -193,8 +193,10 @@ describe('save/load round-trip across live game systems', () => {
     // Lounge and amenity charges post from hall guests after the save point.
     // The snapshot does not keep those guests, so the loaded run misses that
     // retail. Cash matches once the show-up spend is included in the delta.
+    // The planner names the airframe when the bank is written, so this window's
+    // guest spend follows that metal rather than an unnamed jet.
     const showUpSpend = gameA.revenue - gameB.revenue
-    expect(showUpSpend).toBeCloseTo(578, 2)
+    expect(showUpSpend).toBeCloseTo(688, 2)
     expect(gameB.cash).toBeCloseTo(gameA.cash - showUpSpend, 2)
     expect(gameB.revenue).toBeCloseTo(gameA.revenue - showUpSpend, 2)
     expect(gameB.paxServed).toBe(gameA.paxServed)

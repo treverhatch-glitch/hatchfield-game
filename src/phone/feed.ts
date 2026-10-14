@@ -16,6 +16,8 @@ export interface PhoneContractOffer {
   verdictMet: boolean
   requirements: PhoneLine[]
   terms: string
+  /** Stand or pad capacity. A warning, not a requirement. */
+  capacity?: string
 }
 
 export interface PhoneSignedRow {
@@ -115,6 +117,13 @@ export function emptyPhoneWorld(): PhoneWorld {
   }
 }
 
+function contractLines(offer: PhoneContractOffer): PhoneLine[] {
+  const lines: PhoneLine[] = [{ label: offer.verdict, met: offer.verdictMet }]
+  if (offer.capacity) lines.push({ label: offer.capacity })
+  lines.push(...offer.requirements)
+  return lines
+}
+
 /** Cards for the two tabs. Order is the order they render. */
 export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
   const cards: PhoneCard[] = []
@@ -134,7 +143,7 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       holdId: 'contract',
       arrives: true,
       secondsLeft: offer.secondsLeft,
-      lines: [{ label: offer.verdict, met: offer.verdictMet }, ...offer.requirements],
+      lines: contractLines(offer),
       actions: [
         btn('sign', 'Sign', { type: 'sign-contract' }, { primary: true }),
         btn('decline', 'Decline', { type: 'decline-contract' }),
@@ -156,7 +165,7 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       holdId: 'contract',
       arrives: false,
       secondsLeft: offer.secondsLeft,
-      lines: [{ label: offer.verdict, met: offer.verdictMet }, ...offer.requirements],
+      lines: contractLines(offer),
       actions: [
         btn('sign', 'Sign', { type: 'sign-contract' }, { primary: true }),
         btn('decline', 'Decline', { type: 'decline-contract' }),
