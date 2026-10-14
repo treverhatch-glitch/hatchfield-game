@@ -111,4 +111,54 @@ describe('diplomacy bridge', () => {
     const restored = again.diplomacyCards().find((row) => row.id === 'northline')
     expect(restored?.breakdown?.lines.some((line) => line.kind === 'fee_rise')).toBe(true)
   })
+
+  it('splits diplomacy spend, receipts, and legal bills off host fees', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.buyLand('city')
+    game.signed = ['northline']
+    game.speed = 1
+    game.tick(0.01)
+    const cash = game.cash
+    const host = game.bank.ledger().byCategory.host_fees ?? 0
+    const penalties = game.bank.ledger().byCategory.penalties ?? 0
+    const payroll = game.payrollCharged()
+    const result = game.diplomacyApologize('northline')
+    expect(result.ok).toBe(true)
+    expect(result.cost).toBeGreaterThan(0)
+    expect(game.bank.ledger().byCategory.diplomacy).toBe(-result.cost)
+    expect(game.bank.ledger().byCategory.host_fees ?? 0).toBe(host)
+    expect(game.bank.ledger().byCategory.penalties ?? 0).toBe(penalties)
+    expect(game.cash).toBeCloseTo(cash - result.cost, 5)
+    expect(game.cash).toBeCloseTo(game.bank.balance, 5)
+
+    const book = game as unknown as {
+      postDiplomacyMoney(amount: number, category: string): void
+    }
+    const mid = game.cash
+    const revenue = game.revenue
+    book.postDiplomacyMoney(1_000_000, 'diplomacy')
+    expect(game.bank.ledger().byCategory.diplomacy_income).toBe(1_000_000)
+    expect(game.bank.ledger().byCategory.host_fees ?? 0).toBe(host)
+    expect(game.cash).toBeCloseTo(mid + 1_000_000, 5)
+    expect(game.revenue).toBeCloseTo(revenue + 1_000_000, 5)
+    expect(game.payrollCharged()).toBe(payroll)
+
+    book.postDiplomacyMoney(-250, 'legal')
+    expect(game.bank.ledger().byCategory.legal).toBe(-250)
+    expect(game.bank.ledger().byCategory.penalties ?? 0).toBe(penalties)
+    expect(game.bank.ledger().byCategory.diplomacy).toBe(-result.cost)
+
+    book.postDiplomacyMoney(80, 'legal')
+    expect(game.bank.ledger().byCategory.refunds).toBe(80)
+    expect(game.cash).toBeCloseTo(game.bank.balance, 5)
+
+    const diplomacy = game.bank.ledger().byCategory.diplomacy
+    const drawer = game.cash
+    game.sandbox = true
+    book.postDiplomacyMoney(-100, 'diplomacy')
+    expect(game.bank.ledger().byCategory.diplomacy).toBe(diplomacy)
+    expect(game.cash).toBe(drawer)
+  })
 })

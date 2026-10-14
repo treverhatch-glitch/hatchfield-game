@@ -960,6 +960,7 @@ const FINANCING_CATEGORIES = new Set([
   'refunds',
   'deposits',
   'level_reward',
+  'diplomacy_income',
 ])
 
 const ATC_MAX_GO_AROUNDS = 3
@@ -2847,21 +2848,19 @@ export class Game {
     return this.diplomacy
   }
 
-  private postDiplomacyMoney(amount: number, _category: string) {
+  private postDiplomacyMoney(amount: number, category: string) {
+    if (!Number.isFinite(amount) || amount === 0) return
     if (amount > 0) {
       this.cash += amount
       this.revenue += amount
-      this.noteIncome(amount, 'host_fees')
+      this.noteIncome(amount, category === 'legal' ? 'refunds' : 'diplomacy_income')
       return
     }
-    if (amount < 0) {
-      const cost = -amount
-      this.noteExpense(cost)
-      if (!this.sandbox) {
-        this.cash -= cost
-        this.postJournal('penalties', cost, this.simMinutes(), 'diplomacy')
-      }
-    }
+    const cost = -amount
+    this.noteExpense(cost)
+    if (this.sandbox) return
+    this.cash -= cost
+    this.postJournal(category === 'legal' ? 'legal' : 'diplomacy', cost, this.simMinutes(), category)
   }
 
   private diplomacyContext() {
@@ -20534,7 +20533,7 @@ export class Game {
           }
           this.reputation = Math.max(0, Math.min(100, this.reputation + request.reputationOnAccept))
         }
-        this.fieldXp += event.xp
+        if (event.xp > 0) this.grantFieldXp(event.xp, 'inbound')
       } else if (event.type === 'refused') {
         this.reputation = Math.max(0, Math.min(100, this.reputation + event.reputation))
         if (event.fine > 0) {

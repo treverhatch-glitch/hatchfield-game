@@ -52,6 +52,10 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
     label: 'Host fees',
     why: 'Divert, military, and emergency host fees. Refusing a host does not collect this line.',
   },
+  diplomacy_income: {
+    label: 'Diplomacy receipts',
+    why: 'An airline co-funding an endeavor, or part of the cost back when they decline. This is not a host fee.',
+  },
   contract_fees: {
     label: 'Contracts',
     why: 'Signed-contract charges and tenant rent. The amount is the deal that was accepted.',
@@ -139,6 +143,14 @@ const COPY: Record<MoneyCategory, { label: string; why: string }> = {
   penalties: {
     label: 'Penalties',
     why: 'Other fines: abandon, overstay, fire, and breaches that are not a named shock, task, refuse, inbound, connection, cargo miss, or crash.',
+  },
+  diplomacy: {
+    label: 'Diplomacy',
+    why: 'Endeavors, incentives, apologies, mediation, and hub contracts. The price on the action is the amount posted.',
+  },
+  legal: {
+    label: 'Legal',
+    why: 'Lawsuit fees, damages, and settlements.',
   },
   security_shock: {
     label: 'Security shocks',

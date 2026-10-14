@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EMERGENCY_REFUSE_FINE } from './catalog.ts'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
+import { levelReward } from '../research/config.ts'
 import { Game } from './sim.ts'
 
 function field(): Game {
@@ -99,5 +100,26 @@ describe('inbound on the live field', () => {
     expect(game.inboundHasClearance()).toBe(true)
     expect(game.buyInboundClearance()).toBe(false)
     expect(game.cash).toBe(0)
+  })
+
+  it('posts the level reward and the news when inbound XP crosses a level', () => {
+    const game = field()
+    game.fieldXp = 89
+    const offer = game.injectInbound('fuel_low')
+    expect(offer?.priority).toBe(true)
+    const cash = game.cash
+    const revenue = game.revenue
+    const points = game.researchTree.points()
+    expect(game.acceptInbound(offer!.id)).toBe(true)
+    expect(game.fieldLevel()).toBe(2)
+    expect(game.bank.ledger().byCategory.level_reward).toBe(levelReward(2).cash)
+    expect(game.cash).toBe(cash + (offer?.reward ?? 0) + levelReward(2).cash)
+    expect(game.revenue).toBe(revenue + (offer?.reward ?? 0))
+    expect(game.cash).toBeCloseTo(game.bank.balance, 5)
+    expect(game.researchTree.points()).toBe(points + levelReward(2).rp)
+    expect(game.news.some((item) => /Field Level 2/.test(item.text))).toBe(true)
+    game.grantFieldXp(1)
+    expect(game.bank.ledger().byCategory.level_reward).toBe(levelReward(2).cash)
+    expect(game.cash).toBe(cash + (offer?.reward ?? 0) + levelReward(2).cash)
   })
 })
