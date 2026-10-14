@@ -103,7 +103,7 @@ Cities: Skylines keeps the HUD thin and puts the breakdown on the thing you clic
 
 The building panel is not an info view. Closing one does not clear the other.
 
-Relations (`a959aa3`): the Relations control on the Airlines desk toggles the submenu. Each signed carrier is a row with the score. Clicking the row opens the meter and the non-zero parts (fees, on-time, and the rest of `RELATION_PART_LABELS`). No signed carrier yet reads "No signed carriers yet. A kept contract is what starts the climb."
+Relations (`a959aa3`): the Relations control on the Airlines desk toggles the submenu. Each signed carrier is a row with the score. Clicking the row opens the meter, the relationship fee, the extra timetable slots that tier adds, and the non-zero parts (fees, on-time, and the rest of `RELATION_PART_LABELS`). That fee is the only carrier multiplier on the landing bill. No signed carrier yet reads "No signed carriers yet. A kept contract is what starts the climb."
 
 ## Info views
 
@@ -191,7 +191,7 @@ Left edge, desktop only. Three positions: peek (about 46 px of the bezel), flash
 - A new contract preview stays on the peek until the player opens the handset.
 - Click the peek to slide it out. Close returns to the peek. The handset does not take keyboard focus and does not block apron clicks.
 - Tabs: Contracts, Messages. Each shows a count. Clicking the open tab shuts that page without closing the handset ("Contracts closed" / "Messages closed").
-- A card has the kind, the sender, a countdown or the word Note, a title, the body, optional requirement lines, and the action buttons (Sign, Decline, and the others already on `PhoneAction`).
+- A card has the kind, the sender, a countdown or the word Note, a title, the body, optional requirement lines (including the relationship fee and the slot line on a contract), and the action buttons (Sign, Decline, and the others already on `PhoneAction`).
 - Swipe on the card body moves between cards. Buttons do not swipe.
 - While a card with a letter countdown is on the open tab, that letter's timer pauses (`holdLetters`).
 
