@@ -34,6 +34,7 @@ import type { HallQueue } from '../terminalplay/queues.ts'
 import type { HallNode } from './guests.ts'
 import { facilityBlockers } from '../terminalplay/facilities.ts'
 import { HALL_D, HALL_W, itemDef, type PlacedItem, type ZoneId } from './terminal.ts'
+import { openPointIds, type HiredPosts, type StaffPoint } from '../servicepoints/index.ts'
 import { HALL_CREW_TUNING, HALL_NAV_TUNING, HALL_QUEUE_TUNING, PREFAB_CLAIM_KIT, PREFAB_ROOM_KIT } from './hallNavData.ts'
 import { HallArrivals, type ClaimHall } from './hallArrivals.ts'
 
@@ -427,6 +428,45 @@ export function navHallQueues(metrics: readonly FacilityMetrics[], ox = 0, oz = 
   return [...rows.values()].map((e) => e.row)
 }
 
+/** Bundle security items: one included lane per server. Player-added lanes are not included. */
+export function includedSecurityLanes(items: readonly { def: string; bundle?: boolean }[]): number {
+  let n = 0
+  for (const it of items) {
+    if (!it.bundle) continue
+    const def = itemDef(it.def)
+    if (def?.room !== 'security' || def.servers <= 0) continue
+    n += def.servers
+  }
+  return n
+}
+
+/**
+ * Check-in desks and security lanes on the walk, in facility order.
+ * A bundle piece is part of the building. A kiosk serves itself.
+ */
+export function staffPoints(
+  facilities: readonly { id: string; kind: string }[],
+  items: readonly { def: string; bundle?: boolean }[],
+): StaffPoint[] {
+  const includedLanes = includedSecurityLanes(items)
+  let lane = 0
+  const out: StaffPoint[] = []
+  for (const f of facilities) {
+    if (f.kind === 'security_lane') {
+      out.push({ id: f.id, kind: 'security_lane', included: lane < includedLanes, automatic: false })
+      lane += 1
+    } else if (f.kind === 'checkin_desk') {
+      out.push({
+        id: f.id,
+        kind: 'checkin_desk',
+        included: f.id.startsWith('bundle-'),
+        automatic: f.id.includes('kiosk'),
+      })
+    }
+  }
+  return out
+}
+
 /**
  * The active hall's walkers. `Game` calls `setHall`, `admit` and `tick`
  * every tick; the Terminal view reads `writePoses`, `origin` and `metrics`.
@@ -465,6 +505,9 @@ export class HallNav {
   /** Reputation the walk has earned or lost and the sim has not taken yet. */
   private repOwed = 0
   private signKey = ''
+  /** Hired bodies on each post. Null until the sim says; then points follow it. */
+  private hired: HiredPosts | null = null
+  private staffItems: readonly { id: string; def: string; bundle?: boolean }[] = []
   /** Open family group per flight: leader id and places left. */
   private openGroup = new Map<string, { leader: string; left: number }>()
 
@@ -623,6 +666,7 @@ export class HallNav {
   tick(step: number): PaxEvent[] {
     const nav = this.navObj
     if (!nav || !(step > 0)) return []
+    this.applyStaffing(nav)
     const dt = step * HALL_NAV_TUNING.navSecPerClockSec
     this.navNow += dt
     nav.tick(dt, this.navNow)
@@ -712,11 +756,34 @@ export class HallNav {
     return l ? (-l.h * BUILD_TUNING.tileMetres) / 2 : 0
   }
 
+  /**
+   * Hired clerks and screeners, plus the placed items (bundle pieces are the
+   * building's own points). Applied on the next tick, before anyone is served.
+   */
+  setStaffPlan(hired: HiredPosts, items: readonly { id: string; def: string; bundle?: boolean }[]): void {
+    this.hired = hired
+    this.staffItems = items
+  }
+
   /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals, then crew. */
   writePoses(out: Float32Array): number {
     const n = this.navObj?.writePoses(out) ?? 0
     const na = n + this.arr.writePoses(out, n)
     return na + this.crewObj.writePoses(out, na)
+  }
+
+  /** Serve / queue byte per walker, same order as `writePoses`. 2 = being served. */
+  writePhases(out: Uint8Array): number {
+    const n = this.navObj?.writePhases(out) ?? 0
+    const total = Math.min(this.count, out.length)
+    for (let i = n; i < total; i++) out[i] = 0
+    return total
+  }
+
+  private applyStaffing(nav: PaxNav): void {
+    if (!this.hired) return
+    const points = staffPoints(nav.facilities.list, this.staffItems)
+    nav.setStaffing(openPointIds(points, this.hired))
   }
 
   metrics(): FacilityMetrics[] {

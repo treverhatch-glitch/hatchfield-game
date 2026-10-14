@@ -787,6 +787,38 @@ function cellsOf(zones: ZoneId[][], zone: ZoneId): { c: number; r: number }[] {
   return out
 }
 
+/**
+ * Prefab security pieces: the tier's lane, then small lanes until the
+ * published server count is placed. The last security cell stays the exit.
+ */
+function securityLaneSpots(
+  tier: 1 | 2 | 3,
+  zones: ZoneId[][],
+  spot: (def: ItemId, cell: { c: number; r: number } | undefined) => PlacedItem | null,
+): PlacedItem[] {
+  const cells = cellsOf(zones, 'security')
+  const laneCells = cells.slice(0, Math.max(0, cells.length - 1))
+  const out: PlacedItem[] = []
+  let left = PREFAB_TIERS[tier].servers
+  // The tier's own lane sits on the first security cell. Extra points sit
+  // toward the exit, so the cells in between stay free for the player.
+  let head = 0
+  let tail = laneCells.length - 1
+  const add = (def: ItemId, at: number) => {
+    if (left <= 0 || at < 0 || at >= laneCells.length) return
+    const placed = spot(def, laneCells[at])
+    if (placed) out.push(placed)
+    left -= Math.max(1, itemDef(def)?.servers ?? 1)
+  }
+  add(prefabSecurityItem(tier), head)
+  head += 1
+  while (left > 0 && tail >= head) {
+    add('security_small', tail)
+    tail -= 1
+  }
+  return out
+}
+
 export function schemeItems(tier: 1 | 2 | 3): PlacedItem[] {
   const zones = schemeZones(tier)
   const spot = (def: ItemId, cell: { c: number; r: number } | undefined): PlacedItem | null => {
@@ -810,7 +842,9 @@ export function schemeItems(tier: 1 | 2 | 3): PlacedItem[] {
     spot('checkin_belt', at('checkin', 2)),
     spot('queue_rail', at('checkin', 3)),
     spot('wayfinding', at('checkin', 4)),
-    spot(prefabSecurityItem(tier), at('security', 0)),
+    // One placed lane per published server, so the walk has a point for each.
+    // The primary piece is the tier's lane; small lanes fill the rest. All bundle.
+    ...securityLaneSpots(tier, zones, spot),
     spot('secure_exit', at('security', cellsOf(zones, 'security').length - 1)),
     spot('boarding_desk', at('gates', 0)),
     spot('seat_row', at('gates', 1)),

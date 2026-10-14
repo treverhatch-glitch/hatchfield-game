@@ -346,6 +346,8 @@ import {
   tickFuel,
 } from '../scale/logic.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
+import { extraOpenServers, serviceInfoLines, throughputOf, type PointLoad } from '../servicepoints/index.ts'
+import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
   advanceBagTags,
@@ -5795,7 +5797,16 @@ export class Game {
       ]
       if (footprintOf(def) === 'wall') lines.push('Solid wall — passengers walk around it')
       if (footprintOf(def) === 'belt') lines.push('Belt — nothing else can sit on this cell')
+      if (facility?.type === 'checkin' || facility?.type === 'security') {
+        lines.push(...this.servicePointLines(facility.type))
+      }
       return { title: def?.name ?? 'Facility', lines }
+    }
+    if (id === 'checkin' || id === 'security') {
+      return {
+        title: id === 'checkin' ? 'Check-in' : 'Security',
+        lines: this.servicePointLines(id),
+      }
     }
     if (this.hallNav.live) {
       // The walk's real lines: count, worst wait, and whether the kit keeps up.
@@ -7572,6 +7583,13 @@ export class Game {
       () => hallClaimHall(fit),
       () => hallSignage(fit),
     )
+    this.hallNav.setStaffPlan(
+      {
+        checkin: this.hallStaff.filter((s) => s.node === 'checkin' && s.stage === 0).length,
+        security: this.hallStaff.filter((s) => s.node === 'security' && s.stage === 0).length,
+      },
+      fit.items ?? [],
+    )
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
       if (f?.std != null) return f.std
@@ -8240,9 +8258,9 @@ export class Game {
         .filter((i) => String(i.def).startsWith('security'))
         .map((i) => i.wear),
     )
-    let servers = lane.servers
-    if (fast) servers = Math.min(lane.servers, 1)
-    else if (fastHere && lane.servers > 1) servers = lane.servers - 1
+    let servers = lane.servers + this.extraSecurityServers(fit)
+    if (fast) servers = Math.min(servers, 1)
+    else if (fastHere && servers > 1) servers = servers - 1
     let svc = slowedService(lane.serviceSec, wear)
     if (!this.staffedPost('security')) svc *= UNSTAFFED_LANE
     svc *= this.disruptions.screeningMultiplier() * this.opsEvents.screeningMultiplier()
@@ -10067,6 +10085,7 @@ export class Game {
   infoHotspots(): { id: string; label: string }[] {
     const spots: { id: string; label: string }[] = []
     if (this.fits.length) {
+      spots.push({ id: 'checkin', label: 'Check-in' })
       spots.push({ id: 'queue', label: 'Security' })
       spots.push({ id: 'lost', label: 'Lost passengers' })
       spots.push({ id: 'bags', label: 'Bags' })
@@ -10087,10 +10106,8 @@ export class Game {
   }
 
   infoLines(id: string): string[] {
-    if (id === 'queue') {
-      const q = this.securityQueueCount()
-      return [`${q} waiting at security`]
-    }
+    if (id === 'queue' || id === 'security') return this.servicePointLines('security')
+    if (id === 'checkin') return this.servicePointLines('checkin')
     if (id === 'lost') return [`${this.lostPaxCount()} lost in the hall`]
     if (id === 'bags') {
       const moving = this.flights.filter(
@@ -10829,6 +10846,53 @@ export class Game {
     }
     f.groundTurn = standId
     return true
+  }
+
+  /** Player-added lanes on a prefab, one open server per screener on the post. */
+  private extraSecurityServers(fit: TerminalFit | null): number {
+    if (!fit?.premade || fit.redesigned) return 0
+    let extra = 0
+    for (const it of fit.items ?? []) {
+      if (it.bundle) continue
+      const def = itemDef(it.def)
+      if (def?.room === 'security' && def.servers > 0) extra += def.servers
+    }
+    const hired = this.hallStaff.filter((s) => s.node === 'security' && s.stage === 0).length
+    return extraOpenServers(extra, hired)
+  }
+
+  /**
+   * Queue length and wait for each check-in desk or security lane.
+   * The walk's points when they are up; otherwise the hall count.
+   */
+  servicePointLines(node: 'checkin' | 'security'): string[] {
+    const kind = node === 'checkin' ? 'checkin_desk' : 'security_lane'
+    const label = node === 'checkin' ? 'Check-in' : 'Security'
+    const metrics = this.hallNav.live ? this.hallNav.metrics().filter((m) => m.kind === kind) : []
+    if (!metrics.length) {
+      const count = node === 'security' ? this.securityQueueCount() : queueAtNode(this.hallGuests, node)
+      return [`${count} waiting at ${label.toLowerCase()}`]
+    }
+    const scale = HALL_NAV_TUNING.navSecPerClockSec
+    const limit = (HALL_QUEUE_TUNING.bottleneckSec[kind] ?? 600) / scale
+    const loads: PointLoad[] = metrics.map((m) => ({
+      id: m.id,
+      kind: m.kind,
+      staffed: m.staffed,
+      queueLength: m.queueLength,
+      serving: m.serving,
+      serviceSec: m.serviceSec / scale,
+      estWaitSec: m.estWaitSec / scale,
+    }))
+    const info = loads.map((p) => ({
+      id: p.id,
+      kind: p.kind,
+      staffed: p.staffed,
+      queueLength: p.queueLength,
+      serving: p.serving,
+      waitSec: p.estWaitSec,
+    }))
+    return serviceInfoLines(label, info, throughputOf(loads, limit))
   }
 
   securityQueueCount(): number {

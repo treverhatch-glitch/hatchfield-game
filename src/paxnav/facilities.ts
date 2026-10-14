@@ -30,6 +30,11 @@ export interface Facility {
   lane: number
   /** Seconds per passenger, slowed by wear. */
   serviceSec: number
+  /**
+   * A clerk or officer is at this point. Closed points keep a queue but
+   * do not serve. Defaults open; the hall sets it from staffing.
+   */
+  staffed: boolean
 }
 
 const QUEUED_KIT: readonly EquipKind[] = ['checkin_desk', 'security_lane', 'gate_desk', 'toilet', 'shop_counter']
@@ -175,6 +180,7 @@ export function buildFacilities(g: NavGrid): FacilitySet {
       lineIdx: new Map(),
       lane,
       serviceSec: serviceSecOf(eq),
+      staffed: true,
     }
     const pen = lanePen.slice()
     if (lane >= 0) for (const c of cellsOfTile(g, eq)) pen[c] = 0

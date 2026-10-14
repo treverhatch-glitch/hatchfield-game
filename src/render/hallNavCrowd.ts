@@ -17,6 +17,7 @@ import * as THREE from 'three'
 import type { HallNav } from '../game/hallNav'
 import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
+import { servePose } from '../servicepoints/anim.ts'
 import { WALKER_LOST, WALKER_REBOOK } from '../paxnav/paxnav.ts'
 
 const SHIRTS = ['#2f6fb0', '#c0392b', '#2e8b57', '#d68910', '#7d3c98', '#34495e', '#e0e0e0', '#16a085', '#b03a7a', '#5d6d7e']
@@ -100,6 +101,11 @@ export class HallNavCrowd {
   private bag: THREE.InstancedMesh | null = null
   private mark: THREE.InstancedMesh | null = null
   private flags = new Uint8Array(0)
+  /** 2 = being served, 1 = in a queue, 0 = walking. Same order as poses. */
+  private phases = new Uint8Array(0)
+  private readonly handGeo = new THREE.BoxGeometry(0.16, 0.08, 0.22)
+  private readonly handMat = new THREE.MeshLambertMaterial({ color: '#f0d2b0' })
+  private hands: THREE.InstancedMesh | null = null
   private dots: THREE.InstancedMesh | null = null
   /** Instance slots in the meshes. */
   private cap = 0
@@ -149,6 +155,7 @@ export class HallNavCrowd {
     this.paintLines(nav)
     this.ensureWalkers(nav.count)
     const total = nav.writePoses(this.poses)
+    nav.writePhases(this.phases)
     if (nav.roster !== this.roster) this.recolour(nav, total)
     const ox = nav.originX
     const oz = nav.originZ
@@ -210,11 +217,14 @@ export class HallNavCrowd {
     const mark = this.mark!
     const mm = mark.instanceMatrix.array as Float32Array
     const mc = mark.instanceColor!.array as Float32Array
+    const hands = this.hands
+    const hmnd = hands ? (hands.instanceMatrix.array as Float32Array) : null
     nav.writeFlags(this.flags)
     const lod2 = camera ? T.lodDistM * T.lodDistM : Infinity
     let nh = 0
     let ng = 0
     let nm = 0
+    let nhand = 0
     for (let k = 0; k < capN; k++) {
       const i = visIdx[k]
       const x = poses[i * 4] + ox
@@ -223,7 +233,14 @@ export class HallNavCrowd {
       const bob = Math.abs(Math.sin(time * 7 + this.bobSeed[i])) * 0.03
       const sn = Math.sin(yaw)
       const cs = Math.cos(yaw)
-      writeYaw(bm, k, x, 0.65 + bob, z, sn, cs)
+      const serving = this.phases[i] === 2
+      const pose = serving ? servePose(time + this.bobSeed[i], 'serve') : servePose(0, 'other')
+      if (pose.lean > 0) writeLean(bm, k, x, 0.65 + bob, z, sn, cs, pose.lean)
+      else writeYaw(bm, k, x, 0.65 + bob, z, sn, cs)
+      if (serving && hmnd && pose.reach > 0) {
+        writeYaw(hmnd, nhand, x + sn * (0.34 + pose.reach), 1.05 + bob, z + cs * (0.34 + pose.reach), sn, cs)
+        nhand++
+      }
       const sh = this.shirtOf[i] * 3
       bc[k * 3] = this.shirts[sh]
       bc[k * 3 + 1] = this.shirts[sh + 1]
@@ -255,6 +272,13 @@ export class HallNavCrowd {
     this.flush(head, nh, true)
     this.flush(bag, ng, false)
     this.flush(mark, nm, true)
+    if (hands) {
+      hands.count = nhand
+      const im = hands.instanceMatrix
+      im.clearUpdateRanges()
+      im.addUpdateRange(0, nhand * 16)
+      im.needsUpdate = true
+    }
     st.marks = nm
     this.lastTotal = total
     st.bodies = capN
@@ -276,6 +300,9 @@ export class HallNavCrowd {
     this.bag?.dispose()
     this.mark?.dispose()
     this.dots?.dispose()
+    this.hands?.dispose()
+    this.handGeo.dispose()
+    this.handMat.dispose()
     this.bodyGeo.dispose()
     this.headGeo.dispose()
     this.bagGeo.dispose()
@@ -418,12 +445,16 @@ export class HallNavCrowd {
     this.visIdx = new Int32Array(cap)
     this.visD = new Float32Array(cap)
     this.flags = new Uint8Array(cap)
+    this.phases = new Uint8Array(cap)
     this.roster = -1
   }
 
   /** Instance slots: as many as get drawn (the cap bounds this, not the sim). */
   private ensureMeshes(n: number) {
-    if (this.cap >= n && this.body) return
+    if (this.cap >= n && this.body) {
+      this.ensureHands(n)
+      return
+    }
     for (const mesh of [this.body, this.head, this.bag, this.mark]) {
       mesh?.removeFromParent()
       mesh?.dispose()
@@ -447,10 +478,52 @@ export class HallNavCrowd {
     this.head = make(this.headGeo, this.headMat, 'hall-nav-head', true)
     this.bag = make(this.bagGeo, this.bagMat, 'hall-nav-bag', false)
     this.mark = make(this.markGeo, this.markMat, 'hall-nav-thought', true)
+    this.ensureHands(n)
+  }
+
+  /** One hand per drawn walker, shown only while that walker is being served. */
+  private ensureHands(n: number) {
+    if (this.hands && this.hands.instanceMatrix.count >= n) return
+    this.hands?.removeFromParent()
+    this.hands?.dispose()
+    const cap = Math.max(this.cap, n, 1)
+    const mesh = new THREE.InstancedMesh(this.handGeo, this.handMat, cap)
+    mesh.name = 'hall-nav-serve'
+    mesh.count = 0
+    mesh.frustumCulled = false
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    this.group.add(mesh)
+    this.hands = mesh
   }
 }
 
 /** Column-major translation + rotation about +Y into instance slot `k`, as `makeRotationY` then `setPosition`. */
+/**
+ * Same yaw as `writeYaw`, then a forward lean (rotation about local X).
+ * Lean 0 matches `writeYaw`.
+ */
+function writeLean(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number, lean: number) {
+  const sl = Math.sin(lean)
+  const cl = Math.cos(lean)
+  const o = k * 16
+  arr[o] = cs
+  arr[o + 1] = sn * sl
+  arr[o + 2] = -sn * cl
+  arr[o + 3] = 0
+  arr[o + 4] = 0
+  arr[o + 5] = cl
+  arr[o + 6] = sl
+  arr[o + 7] = 0
+  arr[o + 8] = sn
+  arr[o + 9] = -cs * sl
+  arr[o + 10] = cs * cl
+  arr[o + 11] = 0
+  arr[o + 12] = x
+  arr[o + 13] = y
+  arr[o + 14] = z
+  arr[o + 15] = 1
+}
+
 function writeYaw(arr: Float32Array, k: number, x: number, y: number, z: number, sn: number, cs: number) {
   const o = k * 16
   arr[o] = cs

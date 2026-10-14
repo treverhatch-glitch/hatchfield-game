@@ -20,6 +20,7 @@
  * complain; and a missed flight sends them to a rebooking desk. All of that
  * runs on each guest's staggered think step, not per frame.
  */
+import { SERVICE_POINT_TUNING } from '../servicepoints/config.ts'
 import { BUILD_TUNING } from '../terminalbuild/config.ts'
 import type { BuildLayout, EquipKind } from '../terminalbuild/types.ts'
 import { createPaxRng, type PaxRng } from '../pax/rng.ts'
@@ -222,6 +223,12 @@ export interface FacilityMetrics {
   longestWaitSec: number
   /** What someone joining now would wait, at the current service rate. */
   estWaitSec: number
+  /** A clerk or officer is working this point. */
+  staffed: boolean
+  /** Staffed, and someone is in line or at the desk. */
+  inUse: boolean
+  /** Seconds to serve one passenger at this point, on the walk's clock. */
+  serviceSec: number
   served: number
   /** Guests who gave up on this line. */
   leftQueue: number
@@ -690,20 +697,37 @@ export class PaxNav {
     return this.states.get(f.id)!
   }
 
-  /** Pick the facility that gets this passenger served soonest: walk time plus the line ahead. */
+  /**
+   * Pick the facility that gets this passenger served soonest: walk time plus
+   * the line ahead. A closed point is used only when every point of this kind
+   * is closed, so the queue still forms where the player can see it.
+   */
   private choose(a: Agent, kit: EquipKind, room: string | null, skip: Facility | null = null): Facility | null {
     let best: Facility | null = null
     let bestT = Infinity
+    let closed: Facility | null = null
+    let closedT = Infinity
     for (const f of this.fac.list) {
       if (f === skip || f.kind !== kit || f.layer !== a.layer || (room && f.roomId !== room)) continue
       const d = this.facField(f).dist[a.cell]
       if (!Number.isFinite(d)) continue
       const st = this.state(f)
       const t = (d * this.grid.cellM) / a.speed + (st.queue.length + st.incoming) * f.serviceSec
+      if (!f.staffed) {
+        if (t < closedT) {
+          closedT = t
+          closed = f
+        }
+        continue
+      }
       if (t < bestT) {
         bestT = t
         best = f
       }
+    }
+    if (!best && closed) {
+      best = closed
+      bestT = closedT
     }
     this.chosenT = bestT
     return best
@@ -1278,6 +1302,11 @@ export class PaxNav {
     const ahead = f.line[Math.max(0, i - (t > EPS ? 0 : 1))]
     if (ahead !== c0 || t > EPS) a.yaw = Math.atan2(cellX(g, ahead) - a.x, cellZ(g, ahead) - a.z)
     if (a.place === 0 && a.lineS <= EPS) {
+      // Nobody at the point: the passenger stays at the head of the line.
+      if (!f.staffed) {
+        a.phase = 'queue'
+        return
+      }
       a.phase = 'service'
       a.serviceLeft = this.serviceTime(a, f)
       a.lastWait = this.now - a.joinedAt
@@ -1605,6 +1634,7 @@ export class PaxNav {
       const waiting = st.queue.length - (serving ? 1 : 0)
       const front = st.queue[serving ? 1 : 0]
       const left = serving ? Math.max(0, st.queue[0].serviceLeft) : 0
+      const held = waiting > 0 || serving || st.incoming > 0
       return {
         id: f.id,
         kind: f.kind,
@@ -1614,7 +1644,10 @@ export class PaxNav {
         incoming: st.incoming,
         avgWaitSec: st.waits.length ? st.waits.reduce((s, w) => s + w, 0) / st.waits.length : 0,
         longestWaitSec: front?.joined ? this.now - front.joinedAt : 0,
-        estWaitSec: left + waiting * f.serviceSec,
+        estWaitSec: f.staffed ? left + waiting * f.serviceSec : held ? SERVICE_POINT_TUNING.unstaffedWaitSec : 0,
+        staffed: f.staffed,
+        inUse: f.staffed && (serving || waiting > 0),
+        serviceSec: f.serviceSec,
         served: st.served,
         leftQueue: st.left,
         stock: this.guests && f.kind === 'shop_counter' ? Math.floor(st.stock) : null,
@@ -1625,5 +1658,30 @@ export class PaxNav {
 
   metricsFor(id: string): FacilityMetrics | undefined {
     return this.metrics().find((m) => m.id === id)
+  }
+
+  /**
+   * Which points are staffed. `null` opens every point. A set opens only
+   * those ids; the rest keep their queue and do not serve. Layout changes
+   * rebuild the points open, so the caller sets this again after `setLayout`.
+   */
+  setStaffing(open: ReadonlySet<string> | null): void {
+    for (const f of this.fac.list) {
+      if (f.kind !== 'checkin_desk' && f.kind !== 'security_lane') continue
+      f.staffed = open ? open.has(f.id) : true
+    }
+  }
+
+  /**
+   * One byte per passenger in pose order: 2 being served, 1 in a queue, 0 otherwise.
+   * The renderer reads this for the serve animation. Returns how many were written.
+   */
+  writePhases(out: Uint8Array): number {
+    const n = Math.min(this.agents.length, out.length)
+    for (let i = 0; i < n; i++) {
+      const phase = this.agents[i].phase
+      out[i] = phase === 'service' ? 2 : phase === 'queue' ? 1 : 0
+    }
+    return n
   }
 }
