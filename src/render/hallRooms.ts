@@ -49,6 +49,33 @@ export function hallFitFor(info: TerminalInfo, pad = PAD_M): HallFit {
   return { scale, cx: c.x, cz: c.z }
 }
 
+export interface ShellBounds {
+  minX: number
+  maxX: number
+  minZ: number
+  maxZ: number
+}
+
+/**
+ * Outer walls that hug the room plan. The hall is wider than a square terminal,
+ * so a full-hall shell leaves an empty floor band beside the rooms.
+ */
+export function roomShellBounds(plan: RoomPlan, fit: HallFit, margin = 0.45): ShellBounds {
+  const a = apronToHall(plan.x0, plan.z0, fit)
+  const b = apronToHall(plan.x0 + plan.w * plan.size, plan.z0 + plan.h * plan.size, fit)
+  return {
+    minX: Math.min(a.x, b.x) - margin,
+    maxX: Math.max(a.x, b.x) + margin,
+    minZ: Math.min(a.z, b.z) - margin,
+    maxZ: Math.max(a.z, b.z) + margin,
+  }
+}
+
+/** The old zone boxes, carousel and columns stay only when the nine-room plan is off. */
+export function showLegacyHallFurniture(hasRoomPlan: boolean): boolean {
+  return !hasRoomPlan
+}
+
 export function apronToHall(x: number, z: number, fit: HallFit): { x: number; z: number } {
   return { x: (x - fit.cx) * fit.scale, z: (z - fit.cz) * fit.scale }
 }

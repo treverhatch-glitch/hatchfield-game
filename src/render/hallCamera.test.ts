@@ -60,7 +60,8 @@ describe('hall opening view', () => {
   it('frames the whole hall from a medium-close angle, with room to zoom in and out', () => {
     expect(HALL_CAM_DIST).toBeGreaterThan(HALL_CAM_MIN_DIST)
     expect(HALL_CAM_DIST).toBeLessThan(HALL_CAM_MAX_DIST)
-    expect(HALL_CAM_MIN_DIST).toBeGreaterThanOrEqual(18)
+    expect(HALL_CAM_MIN_DIST).toBeGreaterThanOrEqual(6)
+    expect(HALL_CAM_MIN_DIST).toBeLessThan(18)
     expect(HALL_CAM_MAX_DIST).toBeGreaterThanOrEqual(HALL_CAM_DIST + 30)
     expect(HALL_CAM_PITCH).toBeGreaterThan(0.4)
     expect(HALL_CAM_PITCH).toBeLessThan(0.75)
@@ -87,9 +88,9 @@ describe('hall opening view', () => {
     expect(standing).toBeGreaterThan(0.04)
     expect(standing).toBeLessThan(0.1)
 
-    // Closest zoom reads a group. One figure stays under about a fifth of the frame.
+    // Closest zoom reads one passenger. A figure fills more of the frame than a group shot.
     const close = figureSpan(HALL_CAM_MIN_DIST, 1.6)
-    expect(close).toBeGreaterThan(standing * 2)
-    expect(close).toBeLessThan(0.22)
+    expect(close).toBeGreaterThan(0.25)
+    expect(close).toBeLessThan(0.9)
   })
 })

@@ -25,9 +25,10 @@ function title(enableHints = true) {
 }
 
 describe('start menu', () => {
-  it('shows a chunky title, both starter kits, and start with hints off', () => {
+  it('shows the logo title, both starter kits, and start with hints off', () => {
     const html = title(true)
-    expect(html).toContain('HATCHFIELD')
+    expect(html).toContain('logo_hatchfield.jpg')
+    expect(html).toContain('alt="Hatchfield"')
     expect(html).toContain('game-title-idle')
     expect(html).toContain(STARTER_KITS.pax.label)
     expect(html).toContain(STARTER_KITS.cargo.label)

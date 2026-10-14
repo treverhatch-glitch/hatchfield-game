@@ -20,8 +20,8 @@ export const HALL_CAM_PITCH = 0.52
 /** Default distance that holds the 48×32 m shell inside a 3:2 frame. */
 export const HALL_CAM_DIST = 66
 export const HALL_CAM_FOV = 40
-/** Close enough to read a group, not so close that one figure fills the lens. */
-export const HALL_CAM_MIN_DIST = 24
+/** Close enough to read a passenger. Scroll back out for the whole hall. */
+export const HALL_CAM_MIN_DIST = 8
 /** Far enough to see the hall with apron around it. */
 export const HALL_CAM_MAX_DIST = 120
 /** Pulls the clip plane off the walls and counters. */
