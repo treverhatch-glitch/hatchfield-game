@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import type { Band, DiplomacyTier } from '../diplomacy/types.ts'
 import type { Game } from '../game/sim.ts'
+import { RELATION_MIN, RELATION_MAX } from '../wave3/config.ts'
+import { RELATION_PART_LABELS } from '../wave3/relations.ts'
+import type { RelationParts } from '../wave3/types.ts'
 import { AirlineMark } from './AirlineMark.tsx'
 import { PortraitFace } from './PortraitFace.tsx'
 import { ReactionCard } from './ReactionCard.tsx'
@@ -28,6 +31,8 @@ export function AirlinesDesk({ game }: { game: Game }) {
   const [tenureOpen, setTenureOpen] = useState(false)
   const [spatFigures, setSpatFigures] = useState(false)
   const [courting, setCourting] = useState(false)
+  const [relationsOpen, setRelationsOpen] = useState(false)
+  const [relationId, setRelationId] = useState<string | null>(null)
   const roster = game.diplomacyCards()
   const cards = roster.filter((card) => card.tier === tier)
   const nameOf = (id: string) => roster.find((card) => card.id === id)?.name ?? id
@@ -44,6 +49,84 @@ export function AirlinesDesk({ game }: { game: Game }) {
         {' · '}
         hotkey L
       </p>
+      <div className="dip-tabs">
+        <button
+          type="button"
+          className={relationsOpen ? 'on' : ''}
+          data-testid="airline-relations-open"
+          onClick={() => {
+            setRelationsOpen((open) => !open)
+            setRelationId(null)
+          }}
+        >
+          Relations
+        </button>
+      </div>
+      {relationsOpen ? (
+        <div className="dip-sub" data-testid="airline-relations">
+          {game.signed.length === 0 ? (
+            <p className="muted">No signed carriers yet. A kept contract is what starts the climb.</p>
+          ) : (
+            <ul className="dip-roster">
+              {game.signed.map((id) => {
+                const rel = game.wave3.relation(id)
+                const open = relationId === id
+                const span = RELATION_MAX - RELATION_MIN
+                const pct = Math.max(0, Math.min(100, ((rel.score - RELATION_MIN) / span) * 100))
+                const lines = (Object.keys(RELATION_PART_LABELS) as (keyof RelationParts)[]).filter(
+                  (key) => rel.parts[key] !== 0,
+                )
+                return (
+                  <li key={id}>
+                    <button type="button" className="dip-card" onClick={() => setRelationId(open ? null : id)}>
+                      <AirlineMark id={id} color={game.airline(id).color} />
+                      <span className="dip-name">{game.airline(id).name}</span>
+                      <span className="dip-band">
+                        T{rel.tier} {rel.label}
+                      </span>
+                      <span className="dip-trend">{rel.score > 0 ? `+${rel.score.toFixed(1)}` : rel.score.toFixed(1)}</span>
+                    </button>
+                    {open ? (
+                      <div className="dip-sub" data-testid="airline-relation-detail">
+                        <p>
+                          {rel.unlock}
+                          {rel.next ? ` · next ${rel.next.unlock} at ${rel.next.minScore}` : ''}
+                        </p>
+                        <div className="rel-meter" aria-hidden>
+                          <span style={{ width: `${pct}%` }} />
+                        </div>
+                        <ul className="dip-lines">
+                          {lines.map((key) => (
+                            <li key={key}>
+                              <span>{RELATION_PART_LABELS[key]}</span>
+                              <span>{rel.parts[key] > 0 ? `+${rel.parts[key].toFixed(1)}` : rel.parts[key].toFixed(1)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {rel.tier >= 2 ? (
+                          <p className="muted">
+                            More routes · {rel.extraSlots} extra
+                            {rel.routesGranted > 0 ? ` · ${rel.routesGranted} on the board` : ''}
+                          </p>
+                        ) : null}
+                        {rel.tier >= 4 ? (
+                          <p className="muted">Bigger aircraft · the largest type already in the fleet.</p>
+                        ) : null}
+                        {rel.tier >= 3 && !rel.hubAsked && game.airline(id).kind !== 'cargo' && !game.isHub(id) ? (
+                          <button type="button" className="on" onClick={() => game.openRelationHub(id)}>
+                            Hub request
+                          </button>
+                        ) : null}
+                        {rel.tier >= 5 ? <p>Exclusivity · they want the pier to themselves.</p> : null}
+                      </div>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
       <div className="dip-tabs" role="tablist">
         {TIERS.map((level) => (
           <button

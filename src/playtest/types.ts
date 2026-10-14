@@ -246,6 +246,12 @@ export interface DaySystems {
   wave3RoomRate: number
   /** RP/sec the Growth tree adds from lab furniture, not its own trickle. */
   treeRoomRate: number
+  /** Signed carriers at Preferred or better when this day opened. */
+  relationTier2: number
+  /** Signed carriers at Trusted or better when this day opened. */
+  relationTier3: number
+  /** Highest relationship score when this day opened. */
+  relationBest: number
 }
 
 export interface SystemsPeaks {
@@ -264,6 +270,11 @@ export interface RelationRead {
   band: string
   tier: number
   label: string
+  onTime: number
+  delayed: number
+  kept: number
+  missed: number
+  fines: number
 }
 
 export interface SystemsBooks {

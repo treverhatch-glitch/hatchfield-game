@@ -1,16 +1,48 @@
 import {
   BAND_HYSTERESIS,
+  CAPACITY_HEADROOM,
+  CAPACITY_STRAIN,
   CONTRACT_TIERS,
+  GATE_SCORE_CAP,
+  LOUNGE_SCORE_CAP,
   RELATION_MAX,
   RELATION_MIN,
+  SCORE_CAPACITY,
+  SCORE_CAPACITY_STRAIN,
+  SCORE_KEPT_PER_DAY,
   SCORE_ON_ACCEPT,
   SCORE_ON_CANCEL,
   SCORE_ON_DECLINE,
   SCORE_ON_DELAY,
+  SCORE_ON_FINE,
+  SCORE_ON_MISSED_ASK,
   SCORE_ON_SUCCESS,
+  SCORE_PER_GATE,
+  SCORE_PER_LOUNGE,
   type ContractTier,
 } from './config.ts'
-import type { RelationBand, RelationRow, RelationsState } from './types.ts'
+import type { RelationBand, RelationCounts, RelationParts, RelationSnapshot, RelationsState } from './types.ts'
+
+export const RELATION_PART_LABELS: Record<keyof RelationParts, string> = {
+  letter: 'Contracts',
+  onTime: 'On-time turns',
+  delay: 'Delays',
+  cancel: 'Cancellations',
+  kept: 'Kept contracts',
+  capacity: 'Stand capacity',
+  lounge: 'Lounges',
+  gate: 'Gates',
+  missed: 'Missed asks',
+  fine: 'Fines',
+}
+
+export interface RelationDayFacts {
+  day: number
+  signed: readonly string[]
+  stands: number
+  gates: number
+  lounges: number
+}
 
 export function emptyRelations(): RelationsState {
   return { rows: {} }
@@ -48,8 +80,40 @@ export function bandWithHysteresis(prev: RelationBand, score: number): RelationB
   return next
 }
 
-export function readRelation(state: RelationsState, airlineId: string): RelationRow {
-  return state.rows[airlineId] ?? { score: 0, band: 'neutral' }
+export function emptyParts(): RelationParts {
+  return { letter: 0, onTime: 0, delay: 0, cancel: 0, kept: 0, capacity: 0, lounge: 0, gate: 0, missed: 0, fine: 0 }
+}
+
+export function emptyCounts(): RelationCounts {
+  return { onTime: 0, delay: 0, cancel: 0, missed: 0, fine: 0, kept: 0 }
+}
+
+function blankRow(): RelationSnapshot {
+  return {
+    score: 0,
+    band: 'neutral',
+    parts: emptyParts(),
+    counts: emptyCounts(),
+    reviewedDay: -1,
+    routesGranted: 0,
+    hubAsked: false,
+    exclusiveNoted: false,
+  }
+}
+
+export function readRelation(state: RelationsState, airlineId: string): RelationSnapshot {
+  const row = state.rows[airlineId]
+  if (!row) return blankRow()
+  return {
+    score: row.score ?? 0,
+    band: row.band ?? 'neutral',
+    parts: { ...emptyParts(), ...row.parts },
+    counts: { ...emptyCounts(), ...row.counts },
+    reviewedDay: row.reviewedDay ?? -1,
+    routesGranted: row.routesGranted ?? 0,
+    hubAsked: row.hubAsked ?? false,
+    exclusiveNoted: row.exclusiveNoted ?? false,
+  }
 }
 
 export function shiftScore(state: RelationsState, airlineId: string, delta: number): RelationsState {
@@ -58,7 +122,46 @@ export function shiftScore(state: RelationsState, airlineId: string, delta: numb
   return {
     rows: {
       ...state.rows,
-      [airlineId]: { score, band: bandWithHysteresis(prev.band, score) },
+      [airlineId]: { ...prev, score, band: bandWithHysteresis(prev.band, score) },
+    },
+  }
+}
+
+function round3(n: number): number {
+  return Math.round(n * 1000) / 1000
+}
+
+function applyParts(
+  state: RelationsState,
+  airlineId: string,
+  entries: readonly (readonly [keyof RelationParts, number])[],
+  counts?: Partial<RelationCounts>,
+  reviewedDay?: number,
+): RelationsState {
+  const prev = readRelation(state, airlineId)
+  const requested = entries.reduce((sum, [, delta]) => sum + delta, 0)
+  const score = clampScore(prev.score + requested)
+  const applied = score - prev.score
+  const parts = { ...prev.parts }
+  const scale = requested !== 0 && applied !== requested ? applied / requested : 1
+  for (const [key, delta] of entries) parts[key] = round3(parts[key] + delta * scale)
+  const nextCounts = { ...prev.counts }
+  if (counts) {
+    for (const key of Object.keys(counts) as (keyof RelationCounts)[]) {
+      nextCounts[key] += counts[key] ?? 0
+    }
+  }
+  return {
+    rows: {
+      ...state.rows,
+      [airlineId]: {
+        ...prev,
+        score: round3(score),
+        band: bandWithHysteresis(prev.band, score),
+        parts,
+        counts: nextCounts,
+        reviewedDay: reviewedDay ?? prev.reviewedDay,
+      },
     },
   }
 }
@@ -84,7 +187,7 @@ export function noteLetter(
   airlineId: string,
   response: 'accept' | 'decline',
 ): RelationsState {
-  return shiftScore(state, airlineId, response === 'accept' ? SCORE_ON_ACCEPT : SCORE_ON_DECLINE)
+  return applyParts(state, airlineId, [['letter', response === 'accept' ? SCORE_ON_ACCEPT : SCORE_ON_DECLINE]])
 }
 
 export function noteTurnaround(
@@ -92,6 +195,47 @@ export function noteTurnaround(
   airlineId: string,
   kind: 'success' | 'delay' | 'cancel',
 ): RelationsState {
-  const delta = kind === 'success' ? SCORE_ON_SUCCESS : kind === 'delay' ? SCORE_ON_DELAY : SCORE_ON_CANCEL
-  return shiftScore(state, airlineId, delta)
+  if (kind === 'success') return applyParts(state, airlineId, [['onTime', SCORE_ON_SUCCESS]], { onTime: 1 })
+  if (kind === 'delay') return applyParts(state, airlineId, [['delay', SCORE_ON_DELAY]], { delay: 1 })
+  return applyParts(state, airlineId, [['cancel', SCORE_ON_CANCEL]], { cancel: 1 })
+}
+
+export function noteMissedAsk(state: RelationsState, airlineId: string): RelationsState {
+  return applyParts(state, airlineId, [['missed', SCORE_ON_MISSED_ASK]], { missed: 1 })
+}
+
+export function noteFine(state: RelationsState, airlineId: string): RelationsState {
+  return applyParts(state, airlineId, [['fine', SCORE_ON_FINE]], { fine: 1 })
+}
+
+/**
+ * End-of-day review. Kept contracts, spare stands, lounges and gates add.
+ * A strained ramp subtracts. The same day does not apply twice.
+ */
+export function reviewRelationDay(state: RelationsState, facts: RelationDayFacts): RelationsState {
+  let next = state
+  const carriers = Math.max(1, facts.signed.length)
+  const headroom = Math.max(0, facts.stands) / carriers
+  for (const airlineId of facts.signed) {
+    const prev = readRelation(next, airlineId)
+    if (prev.reviewedDay >= facts.day) continue
+    let capacity = 0
+    if (facts.stands > 0 && headroom >= CAPACITY_HEADROOM) capacity = SCORE_CAPACITY
+    else if (facts.stands <= 0 || headroom < CAPACITY_STRAIN) capacity = SCORE_CAPACITY_STRAIN
+    const lounges = Math.min(Math.max(0, facts.lounges), LOUNGE_SCORE_CAP) * SCORE_PER_LOUNGE
+    const gates = Math.min(Math.max(0, facts.gates), GATE_SCORE_CAP) * SCORE_PER_GATE
+    next = applyParts(
+      next,
+      airlineId,
+      [
+        ['kept', SCORE_KEPT_PER_DAY],
+        ['capacity', capacity],
+        ['lounge', lounges],
+        ['gate', gates],
+      ],
+      { kept: 1 },
+      facts.day,
+    )
+  }
+  return next
 }

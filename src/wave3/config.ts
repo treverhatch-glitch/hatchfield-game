@@ -12,25 +12,63 @@ export const BAND_HYSTERESIS = 5
 
 export const SCORE_ON_ACCEPT = 2
 export const SCORE_ON_DECLINE = -3
-export const SCORE_ON_SUCCESS = 0.25
-export const SCORE_ON_DELAY = -1.5
+/** On-time turnaround. A clean turn is worth more than a day of infrastructure. */
+export const SCORE_ON_SUCCESS = 2.5
+/**
+ * A late turn. Careful fields still slip often; the carriers with fewer slips
+ * are the ones that leave Published.
+ */
+export const SCORE_ON_DELAY = -2.15
 export const SCORE_ON_CANCEL = -6
+export const SCORE_ON_MISSED_ASK = -1
+/** Relation hit when a fine posts. The cash amount stays on the ledger. Once per posting, not per passenger. */
+export const SCORE_ON_FINE = -0.2
+
+/**
+ * Once a day, for each signed carrier.
+ * Kept days, spare stands, lounges and gates add whether or not the last turn was late.
+ * Delays, missed asks and fines subtract on their own. A strained ramp (too few stands) subtracts too.
+ */
+export const SCORE_KEPT_PER_DAY = 0.22
+export const SCORE_CAPACITY = 0.45
+export const SCORE_CAPACITY_STRAIN = -0.35
+export const SCORE_PER_LOUNGE = 0.35
+export const LOUNGE_SCORE_CAP = 2
+export const SCORE_PER_GATE = 0.3
+export const GATE_SCORE_CAP = 2
+/** Stands per signed carrier before capacity counts as headroom. */
+export const CAPACITY_HEADROOM = 0.3
+/** Below this, the ramp is strained and capacity pulls the score down. */
+export const CAPACITY_STRAIN = 0.15
 
 /**
  * Contract quality from the relationship score.
  * Fee multipliers apply on top of the published terms. Tier 1 is exactly 1,
  * so a new relationship does not move existing fees.
- * Tiers never add aircraft.
+ * Tiers never add aircraft. Each tier's `unlock` is the visible concession.
  */
 export const CONTRACT_TIERS = [
-  { tier: 1, minScore: -100, feeMult: 1, extraSlots: 0, penaltyMult: 1, label: 'Published' },
-  { tier: 2, minScore: 20, feeMult: 1.05, extraSlots: 1, penaltyMult: 1, label: 'Preferred' },
-  { tier: 3, minScore: 45, feeMult: 1.1, extraSlots: 2, penaltyMult: 0.95, label: 'Trusted' },
-  { tier: 4, minScore: 70, feeMult: 1.15, extraSlots: 3, penaltyMult: 0.9, label: 'Priority' },
-  { tier: 5, minScore: 90, feeMult: 1.22, extraSlots: 4, penaltyMult: 0.85, label: 'Flagship' },
+  { tier: 1, minScore: -100, feeMult: 1, extraSlots: 0, penaltyMult: 1, label: 'Published', unlock: 'Published schedule' },
+  { tier: 2, minScore: 20, feeMult: 1.05, extraSlots: 1, penaltyMult: 1, label: 'Preferred', unlock: 'More routes' },
+  { tier: 3, minScore: 45, feeMult: 1.1, extraSlots: 2, penaltyMult: 0.95, label: 'Trusted', unlock: 'Hub request' },
+  { tier: 4, minScore: 70, feeMult: 1.15, extraSlots: 3, penaltyMult: 0.9, label: 'Priority', unlock: 'Bigger aircraft' },
+  { tier: 5, minScore: 90, feeMult: 1.22, extraSlots: 4, penaltyMult: 0.85, label: 'Flagship', unlock: 'Exclusivity' },
 ] as const
 
 export type ContractTier = (typeof CONTRACT_TIERS)[number]['tier']
+
+export function unlocksThrough(tier: number): string[] {
+  return CONTRACT_TIERS.filter((row) => row.tier <= tier).map((row) => row.unlock)
+}
+
+export function nextTier(score: number): (typeof CONTRACT_TIERS)[number] | null {
+  return CONTRACT_TIERS.find((row) => row.minScore > score) ?? null
+}
+
+/** Priority and Flagship fly the largest type already in the closed fleet. */
+export function tierWantsLargerMetal(tier: number): boolean {
+  return CONTRACT_TIERS.some((row) => row.tier <= tier && row.unlock === 'Bigger aircraft')
+}
 
 /**
  * Passive research trickle from operations. Runs on day 1 with no staff and

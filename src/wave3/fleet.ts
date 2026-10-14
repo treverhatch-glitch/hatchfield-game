@@ -20,6 +20,18 @@ export function fleetIdsFor(airlineId: string, listed?: readonly string[]): stri
   return out
 }
 
+/** Largest type already in a closed fleet. Tiers never append a new id. */
+export function largestInFleet<T extends { seats: number; cargoHold: number; scale: number }>(fleet: readonly T[]): T {
+  let best = fleet[0]!
+  for (const af of fleet) {
+    const seats = af.seats - best.seats
+    if (seats > 0 || (seats === 0 && (af.cargoHold > best.cargoHold || (af.cargoHold === best.cargoHold && af.scale > best.scale)))) {
+      best = af
+    }
+  }
+  return best
+}
+
 /** A listed fleet is closed. Higher contract tiers do not add metal. */
 export function metalAllowed(fleet: readonly string[], airframeId: string): boolean {
   if (!fleet.length) return true

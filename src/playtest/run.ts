@@ -292,6 +292,7 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
       })
       const board = api.view()
       const pools = noteResearch(after.day)
+      const relations = api.books().relations
       days.push({
         day: after.day,
         checkinWaiting: board.checkinWaiting,
@@ -317,6 +318,9 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
         deskLabRate: pools.deskLabRate,
         wave3RoomRate: pools.wave3RoomRate,
         treeRoomRate: pools.treeRoomRate,
+        relationTier2: relations.filter((row) => row.tier >= 2).length,
+        relationTier3: relations.filter((row) => row.tier >= 3).length,
+        relationBest: relations[0]?.score ?? 0,
       })
       if (after.guestCount > peaks.guests) peaks.guests = after.guestCount
       if (after.guestHappiness != null && (peaks.happiness == null || after.guestHappiness > peaks.happiness)) {

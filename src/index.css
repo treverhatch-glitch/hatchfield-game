@@ -3478,6 +3478,20 @@ h1.game-title::after {
   padding: 4px 8px;
 }
 
+.rel-meter {
+  height: 6px;
+  margin: 6px 0;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rel-meter > span {
+  display: block;
+  height: 100%;
+  background: #d4a24c;
+}
+
 .dip-roster {
   list-style: none;
   margin: 0;

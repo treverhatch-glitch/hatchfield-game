@@ -337,6 +337,11 @@ class GamePlayer implements PlayerCommands {
           band: row.band,
           tier: row.tier,
           label: row.label,
+          onTime: row.counts.onTime,
+          delayed: row.counts.delay,
+          kept: row.counts.kept,
+          missed: row.counts.missed,
+          fines: row.counts.fine,
         }
       })
       .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))

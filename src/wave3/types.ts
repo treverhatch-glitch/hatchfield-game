@@ -2,9 +2,52 @@ import type { ContractTier, ResearchBranch } from './config.ts'
 
 export type RelationBand = 'hostile' | 'cold' | 'neutral' | 'warm' | 'partner'
 
+export interface RelationParts {
+  letter: number
+  onTime: number
+  delay: number
+  cancel: number
+  kept: number
+  capacity: number
+  lounge: number
+  gate: number
+  missed: number
+  fine: number
+}
+
+export interface RelationCounts {
+  onTime: number
+  delay: number
+  cancel: number
+  missed: number
+  fine: number
+  kept: number
+}
+
+/** Persisted row. Older saves only stored score and band. */
 export interface RelationRow {
   score: number
   band: RelationBand
+  parts?: RelationParts
+  counts?: RelationCounts
+  /** Last game day this signed carrier was reviewed. -1 until the first close. */
+  reviewedDay?: number
+  /** Extra routes already written onto the timetable for the current tier. */
+  routesGranted?: number
+  hubAsked?: boolean
+  exclusiveNoted?: boolean
+}
+
+/** Row after missing fields are filled in. */
+export interface RelationSnapshot {
+  score: number
+  band: RelationBand
+  parts: RelationParts
+  counts: RelationCounts
+  reviewedDay: number
+  routesGranted: number
+  hubAsked: boolean
+  exclusiveNoted: boolean
 }
 
 export interface RelationsState {

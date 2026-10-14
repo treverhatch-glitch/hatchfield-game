@@ -222,7 +222,7 @@ function emptyBooks(): SystemsBooks {
     sinks: [{ category: 'penalties', amount: -1600 }],
     fieldAskFines: 1,
     penaltyTotal: -1600,
-    relations: [{ id: 'bush', name: 'Bushline', score: 2, band: 'neutral', tier: 1, label: 'Published' }],
+    relations: [{ id: 'bush', name: 'Bushline', score: 2, band: 'neutral', tier: 1, label: 'Published', onTime: 0, delayed: 0, kept: 0, missed: 0, fines: 0 }],
     treePoints: 1,
     treeUnlocked: ['airfield-1'],
     wave3Points: 1,

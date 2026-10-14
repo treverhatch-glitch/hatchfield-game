@@ -606,7 +606,7 @@ import { DESK_TO_NODE, deskIdsForNode, foldResearchSave, WAVE3_TO_NODE } from '.
 import { categoryUnlocked, nodeCost, nodeState } from '../research/logic.ts'
 import { nodeById } from '../research/nodes.ts'
 import { Wave3Engine } from '../wave3/engine.ts'
-import { metalAllowed } from '../wave3/fleet.ts'
+import { largestInFleet, metalAllowed } from '../wave3/fleet.ts'
 import {
   CONNECTIVITY_CATALOG,
   LINK_MAINT_SAFE,
@@ -2104,6 +2104,7 @@ export class Game {
     if (this.clock >= t.deadline) {
       const a = this.airline(t.airline)
       this.charge(FIELD_TASK_FAIL_FINE, 'task_miss')
+      this.wave3.noteMissedAsk(t.airline)
       this.adjustHeat(t.airline, FIELD_TASK_HEAT_FAIL)
       this.reputation = Math.max(0, this.reputation - 1.5)
       this.pushNews(
@@ -2480,6 +2481,7 @@ export class Game {
       const j = this.cargoVolume
       const a = this.airline(j.airline)
       this.charge(CARGO_VOLUME_FAIL_FINE, 'cargo_miss')
+      this.wave3.noteMissedAsk(j.airline)
       this.adjustHeat(j.airline, -5)
       this.pushNews(
         `${a.name} volume missed — ${j.delivered}/${j.targetUnits}u. Fine ${moneyLeft(CARGO_VOLUME_FAIL_FINE)} · On-time dips.`,
@@ -3433,6 +3435,7 @@ export class Game {
     this.airlineBanUntil[id] = this.clock + banSecs
     this.airlineHeat[id] = Math.min(this.heatOf(id), this.banThreshold(id) - 2)
     this.charge(fine)
+    this.wave3.noteFine(id)
     if (this.layover?.airline === id) this.layover = null
     if (this.layoverOffer?.airline === id) this.layoverOffer = null
     if (this.hubOffer?.airline === id) this.hubOffer = null
@@ -3573,6 +3576,8 @@ export class Game {
     this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_ABANDON_THRESHOLD)
     this.forfeitAirlineDeposit(id)
     this.charge(ABANDON_FINE)
+    this.wave3.noteTurnaround(id, 'cancel')
+    this.wave3.noteFine(id)
     // Reverse persona unlocks — empty lounge / franchise leaves a scar.
     if (lost === 'brand_lounge') {
       const fit = this.activeHall() ?? this.fits[0]
@@ -5352,12 +5357,14 @@ export class Game {
   shockStock(reason: string, mult: number, fine: number) {
     if (!this.public) {
       this.charge(fine, 'security_shock')
+      this.wave3.noteFines(this.signed)
       this.pushNews(reason, 'bad')
       return
     }
     const before = this.sharePrice
     this.sharePrice = Math.max(1.5, Math.round(this.sharePrice * mult * 100) / 100)
     this.charge(fine, 'security_shock')
+    this.wave3.noteFines(this.signed)
     this.reputation = Math.max(0, this.reputation - 10)
     const paper = Math.round((this.sharePrice - before) * this.sharesOwned)
     this.pushNews(
@@ -10732,6 +10739,7 @@ export class Game {
     const count = connectingIndexes(this.hallBodyCount(f), share, f.id).length
     if (count <= 0) return
     this.applyMissedConnections(f.airline, count)
+    this.wave3.noteFine(f.airline)
     this.feedYearHub(0, count, 0)
   }
 
@@ -10743,6 +10751,7 @@ export class Game {
     this.hubLinks = this.hubLinks.filter((link) => this.clock < link.resolveAt)
     let made = 0
     let missed = 0
+    const fined = new Set<string>()
     for (const link of due) {
       const guest = this.hallGuests.find((g) => g.id === link.guestId)
       if (link.made) {
@@ -10760,6 +10769,10 @@ export class Game {
         continue
       }
       this.applyMissedConnection(link.airlineId)
+      if (!fined.has(link.airlineId)) {
+        this.wave3.noteFine(link.airlineId)
+        fined.add(link.airlineId)
+      }
       missed += 1
       // Left behind once and rebooked with the passenger. Never counted as loaded on the outbound.
       let bags = 0
@@ -12708,7 +12721,10 @@ export class Game {
     if (!pool.length) return { af: null, blocked: null }
     const field = this.fieldFit()
     const fit = pool.filter((af) => !airframeGap(af, field) && this.scaleReport(af.id).ok)
-    if (fit.length) return { af: fit[Math.floor(Math.random() * fit.length)]!, blocked: null }
+    if (fit.length) {
+      const chosen = this.wave3.prefersLargerMetal(airlineId) ? largestInFleet(fit) : fit[Math.floor(Math.random() * fit.length)]!
+      return { af: chosen, blocked: null }
+    }
     const raw = pool.find((af) => !airframeGap(af, field)) ?? pool[0]
     return { af: null, blocked: raw ? this.scaleReport(raw.id) : null }
   }
@@ -15761,11 +15777,80 @@ export class Game {
     return this.smallField() ? SMALL_FIELD_UPKEEP_FACTOR : 1
   }
 
+  /** Stands, gate rooms and lounges the daily relation review reads. */
+  private relationDayFacts(day: number) {
+    let gates = 0
+    let lounges = 0
+    for (const fit of this.fits) {
+      gates += fit.rooms.gate ?? 0
+      lounges += fit.rooms.lounge ?? 0
+    }
+    return {
+      day,
+      signed: this.signed,
+      stands: tilesOf(this.tiles, 'stand').length,
+      gates,
+      lounges,
+    }
+  }
+
+  /**
+   * Score the day that just closed, then hand out whatever the new tier
+   * unlocked. Route rows and the hub letter do not change fee or fine amounts.
+   */
+  private reviewAirlineRelations(completedDay: number) {
+    this.wave3.reviewDay(this.relationDayFacts(completedDay))
+    for (const id of this.signed) {
+      const due = this.wave3.routesDue(id)
+      if (due > 0) {
+        const before = this.schedule.length
+        this.seedScheduleForAirline(id, due)
+        if (this.schedule.length > before) {
+          this.wave3.noteRoutesGranted(id, due)
+          this.pushNews(
+            `${this.airline(id).name} opened ${due} more route${due === 1 ? '' : 's'} — ${this.wave3.relation(id).label}.`,
+            'good',
+          )
+        }
+      }
+      const rel = this.wave3.relation(id)
+      if (rel.tier >= 3 && !rel.hubAsked) this.offerRelationHub(id, false)
+      if (rel.tier >= 5 && !rel.exclusiveNoted) {
+        this.wave3.noteExclusive(id)
+        this.pushNews(`${this.airline(id).name} asked for exclusivity on the pier.`, 'good')
+      }
+    }
+  }
+
+  /** Hub letter at Trusted and above. The plaque fee stays the published minimum. */
+  openRelationHub(airlineId: string) {
+    this.offerRelationHub(airlineId, true)
+  }
+
+  private offerRelationHub(airlineId: string, announce: boolean) {
+    if (!this.signed.includes(airlineId)) return
+    const rel = this.wave3.relation(airlineId)
+    if (rel.tier < 3 || rel.hubAsked || this.isHub(airlineId) || this.hubOffer || this.isBanned(airlineId)) return
+    const a = this.airline(airlineId)
+    if (a.kind === 'cargo' || a.persona === 'military_gov') {
+      this.wave3.noteHubAsked(airlineId)
+      return
+    }
+    this.hubOffer = { airline: airlineId, age: 0, fee: HUB_FEE_MIN, deadline: 45 }
+    this.wave3.noteHubAsked(airlineId)
+    this.pushNews(
+      `${a.name} sent a Hub plaque letter — denser slots + brand lounge for ${moneyLeft(HUB_FEE_MIN)}.`,
+      'good',
+    )
+    if (announce) this.emit()
+  }
+
   /**
    * One game day: staffing floor or the income share, then the 0.5% city levy.
    * Landside upkeep is already a daily total (legacy tick × 6).
    */
   private closeOperatingDay(completedDay: number) {
+    this.reviewAirlineRelations(completedDay)
     this.settleDeposits(completedDay)
     const premiumBill = this.billPremiumUpkeep()
     if (premiumBill > 0 && !this.sandbox) {
@@ -16031,6 +16116,7 @@ export class Game {
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.min(CRASH_FINE_CAP, Math.round(baseFine * (1.4 - mitigate * 0.5)))
     this.charge(fine, 'crash_fine')
+    this.wave3.noteFine(f.airline)
     this.crashes += 1
     f.ledger.push({ label: `${f.flightNo} crash write-off`, amount: -fine })
     this.reputation = Math.max(0, this.reputation - (amb < 0.3 ? 14 : 8))
