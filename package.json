@@ -4,9 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/unpack-art.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/unpack-art.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "pretest": "node scripts/unpack-art.mjs",
+    "unpack-art": "node scripts/unpack-art.mjs",
     "test": "vitest run",
     "preview": "vite preview --host --port 45217",
     "playthrough": "tsx scripts/playthrough-wake.mts",

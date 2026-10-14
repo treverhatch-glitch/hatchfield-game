@@ -9,6 +9,8 @@ import { SurfaceLibrary, type LibraryMap } from '../materials/library'
 import { tileByPosition } from '../materials/pack1'
 import { AIRLINE_LOGOS, CARPET_ROOMS, TERRAZZO_ROOMS } from '../materials/pack4'
 import type { QualityLevel } from './quality'
+import { MATERIAL_TARGETS } from '../../build/materialTargets'
+import { tint as lighten } from './buildingSkin'
 import {
   BAG_COLORS,
   bake,
@@ -310,7 +312,8 @@ export class TerminalBuilding {
     const { cluster, edges, airside } = this.info
     const own = <T extends THREE.Material>(m: T) => (this.owned.mats.push(m), m)
     const shellM = own(new THREE.MeshLambertMaterial({ vertexColors: true }))
-    const roofM = own(new THREE.MeshLambertMaterial({ map: this.shared.textures.roof }))
+    // Roof tint from the terminal material target; the membrane photo or raster is the map.
+    const roofM = own(new THREE.MeshLambertMaterial({ map: this.shared.textures.roof, color: lighten(MATERIAL_TARGETS.terminal.roof) }))
 
     const slab: THREE.Matrix4[] = []
     const roofFrame: THREE.Matrix4[] = []

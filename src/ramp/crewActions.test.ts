@@ -170,8 +170,10 @@ describe('apron placement', () => {
     })
     const bags = loading.props.filter((prop) => prop.kind === 'bag')
     expect(bags).toHaveLength(3)
+    // One bag is lifted onto the belt foot while the one before it rides up to the hold.
     const moving = bags.filter((prop) => prop.fill > 0.05 && prop.fill < 0.95)
-    expect(moving).toHaveLength(1)
+    expect(moving.length).toBeGreaterThanOrEqual(1)
+    expect(moving.length).toBeLessThanOrEqual(2)
     expect(loading.props.some((prop) => prop.kind === 'belt')).toBe(true)
     expect(loading.props.some((prop) => prop.kind === 'cart')).toBe(true)
 
@@ -192,6 +194,43 @@ describe('apron placement', () => {
     expect(pushing.people.some((person) => person.role === 'walker')).toBe(true)
     const [a, b] = pumping.people
     expect(Math.hypot(a.c - b.c, a.r - b.r)).toBeGreaterThan(0.01)
+  })
+
+  it('hands each bag from the cart onto the belt and up to the hold', () => {
+    const spans = crewStepSpans('bags', 0, 10)
+    const work = spans.find((span) => span.id === 'work')!
+    const bagAt = (now: number) =>
+      assembleCrew({ services: [{ id: 'b', service: 'bags', x: 0, y: 0, heading: 0, start: 0, end: 10, now }], catering: [], metersPerUnit: 1 })
+        .props.find((prop) => prop.id === 'b:bag:0')
+    const start = bagAt(work.start + 1e-4)!
+    const top = bagAt(work.start + (work.end - work.start) * (1.45 / 3))!
+    expect(start.alt).toBeLessThan(1)
+    expect(top.alt).toBeGreaterThan(1.8)
+    // Gone once it is in the hold.
+    expect(bagAt(work.end - 1e-4)).toBeUndefined()
+  })
+
+  it('draws the fuel hose and the ground-power cable as sagging segments', () => {
+    const fuel = assembleCrew({ services: [{ id: 'f', service: 'fuel', x: 0, y: 0, heading: 0, start: 0, end: 10, now: 5 }], catering: [], metersPerUnit: 1 })
+    const hose = fuel.props.filter((prop) => prop.kind === 'hose')
+    expect(hose.length).toBeGreaterThan(3)
+    // The run lifts toward the wing coupling at the far end.
+    expect(hose[hose.length - 1].alt).toBeGreaterThan(hose[0].alt)
+    expect(hose.some((seg) => (seg.pitch ?? 0) > 0.05)).toBe(true)
+    const gpu = assembleCrew({ services: [{ id: 'g', service: 'gpu', x: 0, y: 0, heading: 0, start: 0, end: 10, now: 5 }], catering: [], metersPerUnit: 1 })
+    const cable = gpu.props.filter((prop) => prop.kind === 'cable')
+    expect(cable.length).toBeGreaterThan(3)
+    expect(Math.min(...cable.map((seg) => seg.alt))).toBeLessThan(0.4)
+  })
+
+  it('keeps the tug driver in the cab and sends the wing walker to the wingtip', () => {
+    const tip = { x: 18, z: 18.5 }
+    const scene = assembleCrew({ services: [{ id: 't', service: 'pushback', x: 0, y: 0, heading: 0, start: 0, end: 10, now: 5, aim: tip }], catering: [], metersPerUnit: 1 })
+    const driver = scene.people.find((person) => person.role === 'driver')!
+    const walker = scene.people.find((person) => person.role === 'walker')!
+    expect(driver.pose).toBe('seated')
+    expect(walker.pose).toBe('signal')
+    expect(Math.hypot(walker.c - tip.x, walker.r - tip.z)).toBeLessThan(0.5)
   })
 
   it('places a walked point back on the wing it was aimed at', () => {
