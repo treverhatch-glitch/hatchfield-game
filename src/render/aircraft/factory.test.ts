@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { AIRFRAMES } from '../../game/airframes'
+import { AIRCRAFT_LOOK } from '../look'
 import { resolveBrand } from './branding'
 import { loftGeometry, wingGeometry } from './geom'
 import { aircraftIsNight, CrossfadeLOD, setAircraftNight } from './lod'
@@ -218,6 +219,35 @@ describe('aircraft model factory', () => {
     expect(found).toBe(true)
     releaseAircraft(aircraft)
     releaseAircraft(other)
+  })
+
+  it('paints a white crown and grey wings on two-tone liveries, solid paint otherwise', () => {
+    const crownHex = new THREE.Color(AIRCRAFT_LOOK.crown)
+    const wingHex = new THREE.Color(AIRCRAFT_LOOK.wing)
+    const has = (root: THREE.Object3D, color: THREE.Color) => {
+      const colors = shell(root).geometry.getAttribute('color')
+      for (let i = 0; i < colors.count; i++) {
+        if (
+          Math.abs(colors.getX(i) - color.r) < 0.01 &&
+          Math.abs(colors.getY(i) - color.g) < 0.01 &&
+          Math.abs(colors.getZ(i) - color.b) < 0.01
+        ) {
+          return true
+        }
+      }
+      return false
+    }
+    const twoTone = createAircraft('a321', { ...LIVERY, tail: LIVERY.body })
+    const solid = createAircraft('a321', { ...LIVERY, scheme: 'solid' })
+    expect(has(twoTone, crownHex)).toBe(true)
+    expect(has(twoTone, wingHex)).toBe(true)
+    expect(has(solid, crownHex)).toBe(false)
+    expect(has(solid, wingHex)).toBe(false)
+    expect(shell(twoTone).geometry).not.toBe(shell(solid).geometry)
+    releaseAircraft(twoTone)
+    releaseAircraft(solid)
+    // Extra liveries grow the shared pool; start the budget test below from a clean pool.
+    disposeAircraftLibrary()
   })
 
   it('shares geometries and materials across instances', () => {

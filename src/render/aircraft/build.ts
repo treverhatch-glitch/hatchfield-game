@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { logoMaterials, resolveBrand } from './branding'
 import { doorBoxes } from './stands'
-import { cylinderSides, fuselageSides, loftGeometry, wingGeometry } from './geom'
+import { AIRCRAFT_LOOK } from '../look'
+import { cylinderSides, fuselageSides, paintedLoftGeometry, wingGeometry } from './geom'
 import { mergeStaticShell } from './merge'
 import {
   paintMesh,
@@ -196,18 +197,28 @@ function addFuselage(frame: Frame) {
   if (frame.tier === 'high') return
   const { spec } = frame
   const sides = fuselageSides(frame.tier)
-  const mesh = new THREE.Mesh(loftGeometry(spec.family, sides))
+  const mesh = new THREE.Mesh(paintedLoftGeometry(spec.family, sides, fuselagePaint(frame.livery)))
   mesh.scale.set(spec.lengthM, spec.ry, spec.rx)
   mesh.position.set(0, frame.centerY, 0)
   mesh.name = 'fuselage'
   addMesh(frame, mesh, 'body', 'mesh', frame.tier === 'mid')
   if (spec.hump) {
-    const hump = new THREE.Mesh(loftGeometry('hump', sides))
+    const top = fuselagePaint(frame.livery).crown
+    const hump = new THREE.Mesh(
+      paintedLoftGeometry('hump', sides, { crown: top, body: top, belly: top }),
+    )
     hump.scale.set(spec.lengthM * 0.4, spec.ry * 0.52, spec.rx * 0.62)
     hump.position.set(spec.lengthM * 0.16, frame.top - spec.ry * 0.05, 0)
     hump.name = 'hump'
     addMesh(frame, hump, 'body', 'mesh', frame.tier === 'mid')
   }
+}
+
+/** Crown, airline band and belly colours for the fuselage loft. */
+function fuselagePaint(livery: Livery): { crown: string; body: string; belly: string } {
+  const belly = `#${new THREE.Color(livery.body).multiplyScalar(AIRCRAFT_LOOK.bellyShade).getHexString()}`
+  const crown = livery.scheme === 'solid' ? livery.body : AIRCRAFT_LOOK.crown
+  return { crown, body: livery.body, belly }
 }
 
 function addWing(frame: Frame) {
@@ -219,7 +230,7 @@ function addWing(frame: Frame) {
       frame,
       [chord, spec.thickness, spec.spanM],
       [wingX, wingY, 0],
-      'body',
+      'wing',
       'mesh',
       undefined,
       false,
@@ -232,7 +243,7 @@ function addWing(frame: Frame) {
   )
   mesh.position.set(wingX, wingY, 0)
   mesh.name = 'wing'
-  addMesh(frame, mesh, 'body', 'mesh', true)
+  addMesh(frame, mesh, 'wing', 'mesh', true)
   if (spec.winglet !== 'none') {
     const semi = spec.spanM / 2
     const sweep = Math.tan((spec.sweep * Math.PI) / 180) * semi
@@ -576,7 +587,7 @@ function addControls(frame: Frame) {
       frame,
       [aileronChord, Math.max(0.05, spec.thickness * 0.18), aileronSpan],
       [wingX - spec.rootChord * 0.28 - sweep, wingY + lift, sign * semi * 0.72],
-      'body',
+      'wing',
       'control',
     )
     mesh.name = 'aileron'
@@ -785,7 +796,7 @@ function addHelo(frame: Frame) {
   const { spec, tier, centerY, nose, tailX } = frame
   if (tier !== 'high') {
     const sides = fuselageSides(tier === 'low' ? 'low' : 'mid')
-    const body = new THREE.Mesh(loftGeometry('helo', sides))
+    const body = new THREE.Mesh(paintedLoftGeometry('helo', sides, fuselagePaint(frame.livery)))
     body.scale.set(spec.lengthM, spec.ry, spec.rx)
     body.position.set(0, centerY, 0)
     body.name = 'fuselage'

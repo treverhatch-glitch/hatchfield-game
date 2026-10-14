@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { buildAircraft, createWindowMesh } from './build'
 import { getAircraftQuality, lodWeights } from './lod'
 import { bakeGeometry, bakeGroup } from './merge'
-import { releaseAircraft, sharedGeo, vertexMaterials } from './pool'
+import { liveryKey, releaseAircraft, sharedGeo, vertexMaterials } from './pool'
 import { getAircraftSpec, type Livery } from './specs'
 
 export interface ParkedPlane {
@@ -26,7 +26,7 @@ const _pos = new THREE.Vector3()
 
 function shellGeometry(airframeId: string, livery: Livery, tier: 'low' | 'mid'): THREE.BufferGeometry {
   const spec = getAircraftSpec(airframeId)
-  const key = `parked:${tier}:${spec.id}:${livery.body}:${livery.stripe}`
+  const key = `parked:${tier}:${spec.id}:${liveryKey(livery)}`
   return sharedGeo(key, () => {
     const built = buildAircraft(spec, tier, livery)
     const geometry = bakeGroup(built.group)
@@ -84,7 +84,7 @@ export class ParkedFleet {
   sync(planes: ParkedPlane[], camera: THREE.Camera) {
     const groups = new Map<string, ParkedPlane[]>()
     for (const plane of planes) {
-      const key = `${plane.airframeId}|${plane.livery.body}|${plane.livery.stripe}`
+      const key = `${plane.airframeId}|${liveryKey(plane.livery)}`
       const list = groups.get(key)
       if (list) list.push(plane)
       else groups.set(key, [plane])

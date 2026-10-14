@@ -10,10 +10,12 @@ import {
   disposeAircraftLibrary,
   bridgeMirror,
   bridgeYawToward,
+  liveryKey,
   loadAircraftQuality,
   ParkedFleet,
   releaseAircraft,
   setAircraftNight,
+  setAircraftQuality,
   aircraftWorldPerMeter,
   CELL,
   updateAircraft,
@@ -35,6 +37,7 @@ import {
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
+import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
 import {
   initWorldRender,
   parseQuality,
@@ -125,15 +128,8 @@ const CATER_MAST_M = 2.2
 function makeCateringRig(): THREE.Group {
   const g = new THREE.Group()
   const bodyL = wu(8.5)
-  const bodyH = wu(3.2)
   const bodyW = wu(2.5)
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(bodyL, bodyH, bodyW),
-    new THREE.MeshStandardMaterial({ color: '#e07a3d', roughness: 0.45 }),
-  )
-  body.position.y = bodyH / 2
-  body.castShadow = true
-  g.add(body)
+  g.add(vehicleMesh('catering_truck', '#e07a3d', vehicleMeters('catering_truck'), WORLD_PER_METER))
   const mastH = wu(CATER_MAST_M)
   const mast = new THREE.Mesh(
     new THREE.BoxGeometry(wu(0.18), mastH, wu(0.18)),
@@ -226,6 +222,7 @@ export class World {
   private onPointerUp!: (e: PointerEvent) => void
   private onWheel!: (e: WheelEvent) => void
   private onContextMenu!: (e: Event) => void
+  private onKeyDown!: (e: KeyboardEvent) => void
   /** True after pointerdown already stamped — blocks duplicate up/down fires. */
   private paintedThisGesture = false
   private lookAim = new THREE.Vector3()
@@ -406,6 +403,13 @@ export class World {
       this.dist = clamp(this.dist + e.deltaY * 0.06, MIN_DIST, MAX_DIST)
       this.placeCam()
     }
+    this.onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== GFX_CYCLE_KEY || e.repeat) return
+      e.preventDefault()
+      const order: QualityLevel[] = ['low', 'med', 'high']
+      this.setGraphicsQuality(order[(order.indexOf(this.wr.quality) + 1) % order.length])
+    }
+    window.addEventListener('keydown', this.onKeyDown)
     canvas.addEventListener('contextmenu', this.onContextMenu)
     canvas.addEventListener('pointerdown', this.onPointerDown)
     canvas.addEventListener('pointermove', this.onPointerMove)
@@ -471,6 +475,21 @@ export class World {
     this.dist = rig.dist
     this.pivot.set(rig.pivot.x, 0, rig.pivot.z)
     this.placeCam()
+  }
+
+  /**
+   * Graphics preset for ground, lights, shadows and aircraft detail. Saved for the next
+   * boot; MSAA is fixed with the WebGL context, so that part follows on reload.
+   * Bound to F8 here; a settings control can call this directly.
+   */
+  setGraphicsQuality(level: QualityLevel) {
+    this.wr.setQuality(level)
+    setAircraftQuality(level)
+    try {
+      globalThis.localStorage?.setItem(GFX_KEY, level)
+    } catch {
+      // Storage is unavailable in some private windows.
+    }
   }
 
   /** Photo mode. `null` follows the sim clock. */
@@ -1608,7 +1627,7 @@ export class World {
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
       if (game.standAccessAt(cell) === 'jetway') continue
       const paint = flightLivery(game, f)
-      const key = `${f.airframeId}|${paint.body}|${paint.stripe}`
+      const key = `${f.airframeId}|${liveryKey(paint)}`
       const list = groups.get(key)
       if (list) list.push(f)
       else groups.set(key, [f])
@@ -1709,19 +1728,10 @@ export class World {
                       : t.kind === 'delivery'
                         ? '#c47a3a'
                         : '#c45c26'
-        const [lenM, htM, widM] = vehicleMeters(t.kind)
-        const len = wu(lenM)
-        const ht = wu(htM)
-        const wid = wu(widM)
+        const size = vehicleMeters(t.kind)
+        const ht = wu(size[1])
         const g = new THREE.Group()
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(len, ht, wid),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.5 }),
-        )
-        body.position.y = ht / 2
-        body.castShadow = true
-        body.name = 'body'
-        g.add(body)
+        g.add(vehicleMesh(t.kind, color, size, WORLD_PER_METER))
         // Manor Lords-style visible load — crates on bag carts / city trucks.
         if (t.kind === 'bags' || t.kind === 'citycargo') {
           const crateH = wu(t.kind === 'citycargo' ? 1.2 : 0.7)
@@ -1805,13 +1815,7 @@ export class World {
         const ht = wu(htM)
         const wid = wu(widM)
         const g = new THREE.Group()
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(len, ht, wid),
-          new THREE.MeshStandardMaterial({ color, roughness: 0.45 }),
-        )
-        body.position.y = ht / 2
-        body.castShadow = true
-        g.add(body)
+        g.add(vehicleMesh(pose.type, color, [lenM, htM, widM], WORLD_PER_METER))
         if (pose.type === 'baggage_tug' || pose.type === 'belt_loader') {
           const bed = new THREE.Mesh(
             new THREE.BoxGeometry(wu(2.4), wu(0.25), wid),
@@ -2196,10 +2200,12 @@ export class World {
     this.parkedFleet.dispose()
     this.gateGroup.clear()
     disposeAircraftLibrary()
+    disposeVehicleLibrary()
     this.wr.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
     const canvas = this.canvas
+    window.removeEventListener('keydown', this.onKeyDown)
     canvas.removeEventListener('contextmenu', this.onContextMenu)
     canvas.removeEventListener('pointerdown', this.onPointerDown)
     canvas.removeEventListener('pointermove', this.onPointerMove)
@@ -2213,11 +2219,15 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
+const GFX_KEY = 'hatchfield-gfx'
+/** Cycles low → med → high. Function key, so it never collides with typing or camera keys. */
+const GFX_CYCLE_KEY = 'F8'
+
 /** Saved `hatchfield-gfx`, otherwise a guess (software GL starts on low). */
 function pickQuality(): QualityLevel {
   let saved: string | null = null
   try {
-    saved = globalThis.localStorage?.getItem('hatchfield-gfx') ?? null
+    saved = globalThis.localStorage?.getItem(GFX_KEY) ?? null
   } catch {
     saved = null
   }
@@ -2249,10 +2259,14 @@ const _quat = new THREE.Quaternion()
 const _scale = new THREE.Vector3()
 const _doorPos = new THREE.Vector3()
 
+const SOLID_PAINT = new Set<string>(['military', 'air_ambulance', 'helo_med', 'freighter', 'helo_exec'])
+
 function flightLivery(game: Game, f: Game['flights'][number]): Livery {
   const a = game.airline(f.airline)
   let body = a.color
   let stripe = a.stripe
+  // Airline fin over a white crown. Special kinds keep their solid paint below.
+  if (!SOLID_PAINT.has(f.kind)) return { body, stripe, tail: body, scheme: 'twotone' }
   if (f.kind === 'military') {
     body = f.airframeId === 'f15' ? '#2a3028' : '#3d4a32'
     stripe = f.airframeId === 'f15' ? '#8a9a6a' : '#c9a227'
@@ -2266,11 +2280,13 @@ function flightLivery(game: Game, f: Game['flights'][number]): Livery {
     body = '#1a3a4a'
     stripe = '#c9a227'
   }
-  return { body, stripe, tail: stripe }
+  return { body, stripe, tail: stripe, scheme: 'solid' }
 }
 
 function disposeObject(root: THREE.Object3D) {
   root.traverse((obj) => {
+    // Pooled vehicle shells outlive any one truck.
+    if (obj.userData.shared) return
     const mesh = obj as THREE.Mesh
     mesh.geometry?.dispose()
     const mat = mesh.material as THREE.Material | THREE.Material[] | undefined

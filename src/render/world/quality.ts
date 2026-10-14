@@ -77,7 +77,8 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     level: 'med',
     shadowMapSize: 1024,
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 1,
+    // Soft penumbra: same single shadow pass, wider PCF kernel.
+    shadowRadius: 2,
     pixelRatioCap: 1.25,
     msaa: true,
     shadowEvery: 2,
@@ -100,7 +101,7 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     shadowMapSize: 2048,
     // PCFSoftShadowMap was removed in three r18x; PCF + a blur radius is the soft option.
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 2.5,
+    shadowRadius: 3.5,
     pixelRatioCap: 2,
     msaa: true,
     shadowEvery: 1,
