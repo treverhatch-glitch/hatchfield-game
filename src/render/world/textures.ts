@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { GROUND_LOOK } from '../look'
+import { BLOOM_LOOK, GROUND_LOOK } from '../look'
 import {
   paintAsphalt,
   paintBoard,
@@ -34,6 +34,8 @@ export interface WorldTextures {
   terrazzo: THREE.DataTexture
   roof: THREE.DataTexture
   glow: THREE.DataTexture
+  /** Wider falloff for the second bloom halo (Medium / High). */
+  glowHalo: THREE.DataTexture
   pool: THREE.DataTexture
   board: THREE.DataTexture
   dispose(): void
@@ -48,7 +50,8 @@ export function makeTextures(size: number, anisotropy: number): WorldTextures {
     concrete: rasterTexture(paintConcrete(size), a),
     terrazzo: rasterTexture(paintTerrazzo(Math.min(size, 256)), a),
     roof: rasterTexture(paintRoof(Math.min(size, 256)), a),
-    glow: rasterTexture(paintGlow(64, 2.2), { srgb: false, repeat: false }),
+    glow: rasterTexture(paintGlow(64, BLOOM_LOOK.glowPower), { srgb: false, repeat: false }),
+    glowHalo: rasterTexture(paintGlow(64, BLOOM_LOOK.haloPower), { srgb: false, repeat: false }),
     pool: rasterTexture(paintGlow(64, 1.4), { srgb: false, repeat: false }),
     board: rasterTexture(paintBoard(64, 32), { repeat: false }),
   }

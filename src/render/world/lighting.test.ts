@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { Game } from '../../game/sim'
 import { lerpHex, lightsFactor, simClockToHour, skyState, sunDirection } from './daylight'
+import { applyDayNight, DAY_NIGHT_CYCLE } from './dayNight'
 import { fitShadow, groundFocus, pickLod, stepFade } from './lod'
 import { parseQuality, QUALITY, suggestQuality } from './quality'
 import { fbm, paintGrass, Raster, tileNoise } from './raster'
@@ -45,6 +46,18 @@ describe('day / night', () => {
     expect(fog.lights).toBeGreaterThan(0)
     expect(lerpHex(0x000000, 0xffffff, 0.5)).toBe(0x808080)
   })
+
+  it('day/night hooks scale the sun without mutating the clock sky', () => {
+    const noon = skyState(12)
+    const dim = applyDayNight(noon, { hour: null, daylight: 0, lights: 1 })
+    expect(dim.sunIntensity).toBeLessThan(noon.sunIntensity * 0.25)
+    expect(dim.lights).toBe(1)
+    expect(noon.lights).toBe(0)
+    const held = applyDayNight(noon, { hour: 21, daylight: null, lights: null })
+    expect(held).toBe(noon)
+    expect(DAY_NIGHT_CYCLE.sunriseHour).toBeLessThan(DAY_NIGHT_CYCLE.sunsetHour)
+    expect(DAY_NIGHT_CYCLE.daySeconds).toBe(180)
+  })
 })
 
 describe('LOD + shadows', () => {
@@ -69,6 +82,7 @@ describe('LOD + shadows', () => {
     const close = fitShadow(14, 3.3, 7.7, 1024)
     const far = fitShadow(150, 0, 0, 1024)
     expect(close.half).toBeLessThan(far.half)
+    expect(far.half).toBeLessThanOrEqual(88)
     const texel = (close.half * 2) / 1024
     expect(Math.abs(close.x / texel - Math.round(close.x / texel))).toBeLessThan(1e-6)
   })
@@ -94,6 +108,12 @@ describe('quality presets', () => {
     expect(QUALITY.low.animatedPeople).toBe(false)
     expect(QUALITY.low.thoughtBubbles).toBe(false)
     expect(QUALITY.low.crowdDetail).toBe(false)
+    expect(QUALITY.low.colorGrade).toBe(false)
+    expect(QUALITY.low.lightBloom).toBe(false)
+    expect(QUALITY.low.contactShadows).toBe(false)
+    expect(QUALITY.low.shadowMapSize).toBe(0)
+    expect(QUALITY.med.colorGrade).toBe(true)
+    expect(QUALITY.med.lightBloom).toBe(true)
     expect(QUALITY.med.animatedPeople).toBe(true)
     expect(QUALITY.high.crowdDetail).toBe(true)
     // r186 dropped PCFSoftShadowMap; high softens PCF with a radius instead.

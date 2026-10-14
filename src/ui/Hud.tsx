@@ -75,6 +75,15 @@ import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
 import { applyAudioSettings, audioSettings } from '../audio/prefs'
 import { type AudioBus } from '../features/settings/settings.ts'
+import {
+  chooseGraphicsQuality,
+  graphicsAuto,
+  graphicsNote,
+  graphicsQuality,
+  QUALITY_LABEL,
+  subscribeGraphicsQuality,
+  type QualityLevel,
+} from '../render/graphicsPrefs'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -256,13 +265,15 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
-  { id: 'settings', label: 'Settings', tip: 'Sound, hints, and game options' },
+  { id: 'settings', label: 'Settings', tip: 'Sound, graphics, hints, and game options' },
   { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
   { id: 'tycoon', label: 'Tycoon', tip: 'Shop bids, ad campaigns, awards, year report' },
   { id: 'rival', label: 'Rival', tip: 'Bellwater Intl — fees, roster, catchment' },
 ]
 
 export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
+  const [gfx, setGfx] = useState<QualityLevel>(graphicsQuality)
+  useEffect(() => subscribeGraphicsQuality(setGfx), [])
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panelPick, setPanel] = useState<PanelId>(null)
@@ -1533,6 +1544,25 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       </li>
                     ))}
                   </ul>
+                  <h3>Graphics</h3>
+                  <div className="gfx-quality" role="radiogroup" aria-label="Graphics quality">
+                    {(['low', 'med', 'high'] as const).map((level) => (
+                      <button
+                        key={level}
+                        type="button"
+                        role="radio"
+                        aria-checked={gfx === level}
+                        data-testid={`gfx-${level}`}
+                        className={gfx === level ? 'on' : ''}
+                        onClick={() => chooseGraphicsQuality(level)}
+                      >
+                        {QUALITY_LABEL[level]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="muted" data-testid="gfx-note">
+                    {graphicsNote(gfx, graphicsAuto())}
+                  </p>
                   <h3>Hints</h3>
                   <label className="sandbox-toggle">
                     <input

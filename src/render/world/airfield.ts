@@ -3,6 +3,7 @@
  * points), apron flood masts with ground light pools, windsocks, jet bridges.
  */
 import * as THREE from 'three'
+import { BLOOM_LOOK } from '../look'
 import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
@@ -21,7 +22,9 @@ export class AirfieldLights {
   readonly root = new THREE.Group()
   private fixtures: THREE.InstancedMesh | null = null
   private glow: THREE.Points | null = null
+  private halo: THREE.Points | null = null
   private glowMat: THREE.PointsMaterial
+  private haloMat: THREE.PointsMaterial
   private fixMat: THREE.MeshBasicMaterial
   private mastHeads: THREE.InstancedMesh | null = null
   private headMat: THREE.MeshBasicMaterial
@@ -44,6 +47,19 @@ export class AirfieldLights {
       sizeAttenuation: true,
       fog: false,
     })
+    this.haloMat = new THREE.PointsMaterial({
+      size: 1.5 * BLOOM_LOOK.haloSize,
+      map: textures.glowHalo,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      sizeAttenuation: true,
+      fog: false,
+      opacity: BLOOM_LOOK.haloOpacity,
+    })
+    this.glowMat.userData.noGrade = true
+    this.haloMat.userData.noGrade = true
     this.fixMat = new THREE.MeshBasicMaterial({ color: 0x777777 })
     this.headMat = new THREE.MeshBasicMaterial({ color: 0x8a8a80 })
     this.poolMat = new THREE.MeshBasicMaterial({
@@ -56,10 +72,10 @@ export class AirfieldLights {
       polygonOffset: true,
       polygonOffsetFactor: -4,
     })
-    this.mats.push(this.glowMat, this.fixMat, this.headMat, this.poolMat)
+    this.mats.push(this.glowMat, this.haloMat, this.fixMat, this.headMat, this.poolMat)
   }
 
-  build(spots: LightSpot[], masts: Mast[], runways: Runway[], withPools: boolean) {
+  build(spots: LightSpot[], masts: Mast[], runways: Runway[], withPools: boolean, bloom = false) {
     this.clear()
     this.count = spots.length
     const fixGeo = new THREE.CylinderGeometry(0.07, 0.09, 0.14, 6)
@@ -91,8 +107,15 @@ export class AirfieldLights {
       g.computeBoundingSphere()
       this.geos.push(g)
       this.glow = new THREE.Points(g, this.glowMat)
+      this.glow.name = 'airfield-glow'
       this.glow.renderOrder = 5
       this.root.add(this.glow)
+      if (bloom) {
+        this.halo = new THREE.Points(g, this.haloMat)
+        this.halo.name = 'airfield-bloom'
+        this.halo.renderOrder = 4
+        this.root.add(this.halo)
+      }
     }
     if (masts.length) {
       const pole = new THREE.CylinderGeometry(0.09, 0.14, 1, 6)
@@ -154,6 +177,11 @@ export class AirfieldLights {
       // Keep glows readable when zoomed far out without blowing up close-ups.
       this.glowMat.size = THREE.MathUtils.clamp(camDist * 0.016, 0.9, 2.6)
     }
+    if (this.halo) {
+      this.halo.visible = on
+      this.haloMat.opacity = Math.min(BLOOM_LOOK.haloOpacity, lights * BLOOM_LOOK.haloOpacity)
+      this.haloMat.size = (this.glowMat.size || 1.5) * BLOOM_LOOK.haloSize
+    }
     const k = 0.45 + lights * 1.6
     this.fixMat.color.setScalar(Math.min(1.6, k))
     this.headMat.color.setRGB(0.54 + lights * 1.2, 0.54 + lights * 1.0, 0.5 + lights * 0.6)
@@ -177,9 +205,10 @@ export class AirfieldLights {
     for (const g of this.geos) g.dispose()
     this.geos = []
     // Mast pole / windsock materials are rebuilt each layout.
-    this.mats.splice(4).forEach((m) => m.dispose())
+    this.mats.splice(5).forEach((m) => m.dispose())
     this.fixtures = null
     this.glow = null
+    this.halo = null
     this.mastHeads = null
     this.pools = null
     this.socks = []

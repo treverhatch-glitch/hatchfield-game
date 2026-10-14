@@ -3,6 +3,8 @@
  * Layout follows NODE_POS; rooms appear when furnished. Security is the visual choke.
  */
 import * as THREE from 'three'
+import { HALL_LIGHT } from './look'
+import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
 import { canvasToPng } from '../camera/capture.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import {
@@ -221,6 +223,7 @@ export class HallWorld {
     depthWrite: false,
   })
   private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+  private offGfx: () => void = () => {}
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -234,6 +237,8 @@ export class HallWorld {
     this.renderer.setPixelRatio(1)
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.applyHallGrade(graphicsQuality())
+    this.offGfx = subscribeGraphicsQuality((level) => this.applyHallGrade(level))
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color('#c5d0d8')
@@ -245,11 +250,11 @@ export class HallWorld {
     this.placeCam()
 
     // Lambert divides by pi, so the fill sits above 1 or the terrazzo reads as mud.
-    this.scene.add(new THREE.HemisphereLight('#f7fbff', '#e4d9c8', 1.45))
-    const sun = new THREE.DirectionalLight('#fff6e8', 1.7)
+    this.scene.add(new THREE.HemisphereLight(HALL_LIGHT.hemiSky, HALL_LIGHT.hemiGround, HALL_LIGHT.hemi))
+    const sun = new THREE.DirectionalLight(HALL_LIGHT.sun, HALL_LIGHT.sunI)
     sun.position.set(18, 42, 14)
     this.scene.add(sun)
-    this.scene.add(new THREE.AmbientLight('#fff8f0', 0.42))
+    this.scene.add(new THREE.AmbientLight(HALL_LIGHT.ambient, HALL_LIGHT.ambientI))
 
     const terrazzo = rasterTexture(paintTerrazzo(256), { anisotropy: 4 })
     this.terrazzo = terrazzo
@@ -1583,6 +1588,13 @@ export class HallWorld {
     }
   }
 
+  /** Medium and High use the same filmic curve as the apron. Low stays unmapped. */
+  private applyHallGrade(level: QualityLevel) {
+    const grade = level !== 'low'
+    this.renderer.toneMapping = grade ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping
+    this.renderer.toneMappingExposure = grade ? HALL_LIGHT.exposure : 1
+  }
+
   dispose() {
     const canvas = this.renderer.domElement
     canvas.removeEventListener('pointerdown', this.onDown)
@@ -1603,6 +1615,7 @@ export class HallWorld {
     this.floorMap.dispose()
     this.litter.dispose()
     this.navCrowd.dispose()
+    this.offGfx()
     this.renderer.dispose()
   }
 }

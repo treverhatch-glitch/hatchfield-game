@@ -40,8 +40,16 @@ export interface ShadowFit {
  * Close-up cameras get a tight shadow box (crisp contact shadows on props); wide
  * cameras get a big one. Snapping keeps the texel grid fixed in world space.
  */
-export function fitShadow(camDist: number, focusX: number, focusZ: number, mapSize: number): ShadowFit {
-  const half = Math.max(16, Math.min(200, camDist * 0.95))
+export function fitShadow(
+  camDist: number,
+  focusX: number,
+  focusZ: number,
+  mapSize: number,
+  reach = 0.62,
+): ShadowFit {
+  // Cap keeps the map on the camera's patch of airfield. A wide orbit used to
+  // stretch one shadow map across the whole plot and turn the penumbra to mush.
+  const half = Math.max(18, Math.min(88, camDist * reach))
   const texel = (half * 2) / Math.max(1, mapSize)
   return {
     half,

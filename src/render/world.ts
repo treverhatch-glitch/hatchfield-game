@@ -12,7 +12,6 @@ import {
   bridgeMirror,
   bridgeYawToward,
   liveryKey,
-  loadAircraftQuality,
   ParkedFleet,
   releaseAircraft,
   setAircraftNight,
@@ -42,13 +41,13 @@ import { syncStaffHousing } from './staffHousing.ts'
 import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
 import {
   initWorldRender,
-  parseQuality,
   QUALITY,
   REPLACED_TILES,
-  suggestQuality,
+  type DayNightSample,
   type QualityLevel,
   type WorldRender,
 } from './world/index'
+import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from './graphicsPrefs'
 import { standBox } from './world/layout'
 import { ROOF_Y } from './world/terminal'
 
@@ -244,6 +243,7 @@ export class World {
   private lastFrame = performance.now()
   /** Textured airfield, sky, and living terminals. See docs/GRAPHICS.md. */
   wr: WorldRender
+  private offGfx: () => void = () => {}
   private canvas: HTMLCanvasElement
   private onPointerDown!: (e: PointerEvent) => void
   private onPointerMove!: (e: PointerEvent) => void
@@ -259,7 +259,8 @@ export class World {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
     // Quality is picked before the context exists: MSAA cannot be switched off afterwards.
-    const quality = pickQuality()
+    const quality = graphicsQuality()
+    setAircraftQuality(quality)
     const preset = QUALITY[quality]
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -321,7 +322,6 @@ export class World {
     this.entGroup.add(this.parkedFleet.root)
     this.scene.add(this.ghostGroup)
     this.scene.add(this.siteGroup)
-    loadAircraftQuality()
     this.addPlotFence()
     this.addHorizon()
     this.bind(canvas)
@@ -329,6 +329,7 @@ export class World {
       renderer: this.renderer,
       sun: this.sun,
     })
+    this.offGfx = subscribeGraphicsQuality((level) => this.applyGraphicsQuality(level))
   }
 
   addPlotFence() {
@@ -511,18 +512,25 @@ export class World {
    * Bound to F8 here; a settings control can call this directly.
    */
   setGraphicsQuality(level: QualityLevel) {
-    this.wr.setQuality(level)
-    setAircraftQuality(level)
-    try {
-      globalThis.localStorage?.setItem(GFX_KEY, level)
-    } catch {
-      // Storage is unavailable in some private windows.
-    }
+    this.applyGraphicsQuality(level)
+    chooseGraphicsQuality(level)
   }
 
-  /** Photo mode. `null` follows the sim clock. */
+  /** Settings and F8. Aircraft detail follows the same preset. */
+  private applyGraphicsQuality(level: QualityLevel) {
+    if (this.wr.quality === level) return
+    this.wr.setQuality(level)
+    setAircraftQuality(level)
+  }
+
+  /** Photo mode. `null` follows the sim clock. Does not clear day/night overrides. */
   setTimeOfDay(hour: number | null) {
     this.wr.setTimeOfDay(hour)
+  }
+
+  /** Later day/night cycle. See `DayNightSample`. */
+  setDayNight(sample: DayNightSample | null) {
+    this.wr.setDayNight(sample)
   }
 
   /** Grab a PNG on the next `render`, while the drawing buffer is still current. */
@@ -2461,6 +2469,7 @@ export class World {
     this.gateGroup.clear()
     disposeAircraftLibrary()
     disposeVehicleLibrary()
+    this.offGfx()
     this.wr.dispose()
     syncStaffHousing(this.housingGroup, this.housingMeshes, this.housingWalkers, [], [], toWorld)
     this.releaseTiles()
@@ -2479,40 +2488,8 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n))
 }
 
-const GFX_KEY = 'hatchfield-gfx'
 /** Cycles low → med → high. Function key, so it never collides with typing or camera keys. */
 const GFX_CYCLE_KEY = 'F8'
-
-/** Saved `hatchfield-gfx`, otherwise a guess (software GL starts on low). */
-function pickQuality(): QualityLevel {
-  let saved: string | null = null
-  try {
-    saved = globalThis.localStorage?.getItem(GFX_KEY) ?? null
-  } catch {
-    saved = null
-  }
-  if (saved) return parseQuality(saved)
-  const nav = navigator as Navigator & { deviceMemory?: number }
-  return suggestQuality({
-    renderer: probeGpu(),
-    deviceMemory: nav.deviceMemory,
-    hardwareConcurrency: nav.hardwareConcurrency,
-  })
-}
-
-/** GPU name from a throwaway context, released at once so it never counts as a second canvas. */
-function probeGpu(): string {
-  try {
-    const gl = document.createElement('canvas').getContext('webgl2')
-    if (!gl) return ''
-    const dbg = gl.getExtension('WEBGL_debug_renderer_info')
-    const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : ''
-    gl.getExtension('WEBGL_lose_context')?.loseContext()
-    return gpu
-  } catch {
-    return ''
-  }
-}
 
 const _euler = new THREE.Euler()
 const _quat = new THREE.Quaternion()
