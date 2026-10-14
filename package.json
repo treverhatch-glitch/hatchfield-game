@@ -17,7 +17,8 @@
     "perf:bench": "tsx scripts/perf-bench.mts",
     "autoplay": "tsx scripts/autoplay-stabilize.mts",
     "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs",
-    "soak:150": "node scripts/soak-150.mjs"
+    "soak:150": "node scripts/soak-150.mjs",
+    "playtest:bots": "vitest run --config vitest.playtest.config.ts"
   },
   "dependencies": {
     "react": "^19.2.8",

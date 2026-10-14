@@ -35,9 +35,11 @@ function getGame(): Game {
 const game = getGame()
 const SCREEN_KEY = 'hatchfield-screen'
 
-// Dev-only probe for playtests (stripped from production builds).
-if (import.meta.env.DEV) {
-  game.debugHud = true
+// Dev builds always expose the sim and the debug HUD.
+// Production exposes the sim only for `?playtest=1`.
+const playtestSearch = `${globalThis.location?.search ?? ''}`
+if (import.meta.env.DEV) game.debugHud = true
+if (import.meta.env.DEV || playtestSearch.includes('playtest=1')) {
   ;(window as unknown as { __hatch?: Game }).__hatch = game
 }
 

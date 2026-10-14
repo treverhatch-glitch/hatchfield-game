@@ -1,0 +1,2409 @@
+{
+  "generatedAt": "2026-10-14T18:40:41.522Z",
+  "tuning": {
+    "tickDt": 0.25,
+    "actEverySec": 12,
+    "maxSpeed": 5,
+    "daySeconds": 180
+  },
+  "headless": [
+    {
+      "persona": "careful",
+      "label": "Careful",
+      "daysRequested": 45,
+      "daysRan": 45,
+      "difficulty": "standard",
+      "focus": "pax",
+      "sandbox": false,
+      "tickDt": 0.25,
+      "speed": 5,
+      "wallMs": 68021,
+      "ticks": 6480,
+      "timeToFirstLandingSec": 48.8,
+      "timeToFirstLandingDay": 0,
+      "firstLandingPhase": "landing",
+      "firstLandingFlight": "PDJ101",
+      "cashStart": 150000,
+      "cashEnd": -21490,
+      "cashCurve": [
+        {
+          "day": 0,
+          "cash": 55000
+        },
+        {
+          "day": 1,
+          "cash": 8685
+        },
+        {
+          "day": 2,
+          "cash": 2513
+        },
+        {
+          "day": 3,
+          "cash": 13554
+        },
+        {
+          "day": 4,
+          "cash": 8113
+        },
+        {
+          "day": 5,
+          "cash": 3688
+        },
+        {
+          "day": 6,
+          "cash": 1843
+        },
+        {
+          "day": 7,
+          "cash": 4691
+        },
+        {
+          "day": 8,
+          "cash": 3716
+        },
+        {
+          "day": 9,
+          "cash": 3640
+        },
+        {
+          "day": 10,
+          "cash": 3487
+        },
+        {
+          "day": 11,
+          "cash": -958
+        },
+        {
+          "day": 12,
+          "cash": 2180
+        },
+        {
+          "day": 13,
+          "cash": -2649
+        },
+        {
+          "day": 14,
+          "cash": -1903
+        },
+        {
+          "day": 15,
+          "cash": 3604
+        },
+        {
+          "day": 16,
+          "cash": 3718
+        },
+        {
+          "day": 17,
+          "cash": 1867
+        },
+        {
+          "day": 18,
+          "cash": -17802
+        },
+        {
+          "day": 19,
+          "cash": -12682
+        },
+        {
+          "day": 20,
+          "cash": -259
+        },
+        {
+          "day": 21,
+          "cash": -2812
+        },
+        {
+          "day": 22,
+          "cash": 3903
+        },
+        {
+          "day": 23,
+          "cash": 2912
+        },
+        {
+          "day": 24,
+          "cash": 3792
+        },
+        {
+          "day": 25,
+          "cash": 2134
+        },
+        {
+          "day": 26,
+          "cash": 4091
+        },
+        {
+          "day": 27,
+          "cash": 4102
+        },
+        {
+          "day": 28,
+          "cash": -2931
+        },
+        {
+          "day": 29,
+          "cash": 3580
+        },
+        {
+          "day": 30,
+          "cash": 3746
+        },
+        {
+          "day": 31,
+          "cash": 1654
+        },
+        {
+          "day": 32,
+          "cash": -21188
+        },
+        {
+          "day": 33,
+          "cash": -19673
+        },
+        {
+          "day": 34,
+          "cash": -21067
+        },
+        {
+          "day": 35,
+          "cash": -21067
+        },
+        {
+          "day": 36,
+          "cash": -21361
+        },
+        {
+          "day": 37,
+          "cash": -21637
+        },
+        {
+          "day": 38,
+          "cash": -21637
+        },
+        {
+          "day": 39,
+          "cash": -21637
+        },
+        {
+          "day": 40,
+          "cash": -21587
+        },
+        {
+          "day": 41,
+          "cash": -17581
+        },
+        {
+          "day": 42,
+          "cash": -18198
+        },
+        {
+          "day": 43,
+          "cash": -18954
+        },
+        {
+          "day": 44,
+          "cash": -19844
+        },
+        {
+          "day": 45,
+          "cash": -21490
+        }
+      ],
+      "stuck": [],
+      "recovered": [
+        {
+          "id": "flight:flt-jzhmal",
+          "detail": "PDJ117 taxi_out for 53s",
+          "firstClock": 712.5,
+          "lastClock": 725,
+          "recoveredClock": 740
+        },
+        {
+          "id": "cond:stuck:flt-jzhmal",
+          "detail": "PDJ117 stuck on the ground",
+          "firstClock": 725,
+          "lastClock": 726.25,
+          "recoveredClock": 741.25
+        },
+        {
+          "id": "flight:flt-i12clw",
+          "detail": "ZO109 taxi_out for 41s",
+          "firstClock": 1517.5,
+          "lastClock": 1518.75,
+          "recoveredClock": 1533.75
+        },
+        {
+          "id": "cond:stuck:flt-i12clw",
+          "detail": "ZO109 stuck on the ground",
+          "firstClock": 1518.75,
+          "lastClock": 1521.25,
+          "recoveredClock": 1536.25
+        },
+        {
+          "id": "flight:amb-zq7i9r",
+          "detail": "LIF165 taxi_out for 41s",
+          "firstClock": 3486.25,
+          "lastClock": 3487.5,
+          "recoveredClock": 3502.5
+        },
+        {
+          "id": "flight:flt-o8zjit",
+          "detail": "BNW168 taxi_out for 45s",
+          "firstClock": 4993.75,
+          "lastClock": 4998.75,
+          "recoveredClock": 5013.75
+        },
+        {
+          "id": "cond:stuck:flt-o8zjit",
+          "detail": "BNW168 stuck on the ground",
+          "firstClock": 4998.75,
+          "lastClock": 5001.25,
+          "recoveredClock": 5016.25
+        }
+      ],
+      "consoleErrors": [],
+      "softlocks": [],
+      "satisfaction": [
+        {
+          "day": 0,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 65
+        },
+        {
+          "day": 1,
+          "guests": 9,
+          "avg": 166.8,
+          "fieldRating": 76
+        },
+        {
+          "day": 2,
+          "guests": 8,
+          "avg": 94.5,
+          "fieldRating": 78
+        },
+        {
+          "day": 3,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 79
+        },
+        {
+          "day": 4,
+          "guests": 30,
+          "avg": 82.4,
+          "fieldRating": 78
+        },
+        {
+          "day": 5,
+          "guests": 4,
+          "avg": 49.4,
+          "fieldRating": 79
+        },
+        {
+          "day": 6,
+          "guests": 129,
+          "avg": 16.4,
+          "fieldRating": 73
+        },
+        {
+          "day": 7,
+          "guests": 187,
+          "avg": 45.2,
+          "fieldRating": 59
+        },
+        {
+          "day": 8,
+          "guests": 171,
+          "avg": 63.9,
+          "fieldRating": 57
+        },
+        {
+          "day": 9,
+          "guests": 192,
+          "avg": 54.1,
+          "fieldRating": 58
+        },
+        {
+          "day": 10,
+          "guests": 167,
+          "avg": 78.2,
+          "fieldRating": 60
+        },
+        {
+          "day": 11,
+          "guests": 167,
+          "avg": 79,
+          "fieldRating": 57
+        },
+        {
+          "day": 12,
+          "guests": 151,
+          "avg": 102.1,
+          "fieldRating": 56
+        },
+        {
+          "day": 13,
+          "guests": 139,
+          "avg": 140.1,
+          "fieldRating": 55
+        },
+        {
+          "day": 14,
+          "guests": 135,
+          "avg": 160.7,
+          "fieldRating": 54
+        },
+        {
+          "day": 15,
+          "guests": 124,
+          "avg": 178.1,
+          "fieldRating": 52
+        },
+        {
+          "day": 16,
+          "guests": 118,
+          "avg": 169.6,
+          "fieldRating": 54
+        },
+        {
+          "day": 17,
+          "guests": 98,
+          "avg": 203.6,
+          "fieldRating": 51
+        },
+        {
+          "day": 18,
+          "guests": 92,
+          "avg": 217,
+          "fieldRating": 50
+        },
+        {
+          "day": 19,
+          "guests": 74,
+          "avg": 258.5,
+          "fieldRating": 48
+        },
+        {
+          "day": 20,
+          "guests": 76,
+          "avg": 230.9,
+          "fieldRating": 47
+        },
+        {
+          "day": 21,
+          "guests": 61,
+          "avg": 280.7,
+          "fieldRating": 46
+        },
+        {
+          "day": 22,
+          "guests": 83,
+          "avg": 143.7,
+          "fieldRating": 47
+        },
+        {
+          "day": 23,
+          "guests": 57,
+          "avg": 202.4,
+          "fieldRating": 47
+        },
+        {
+          "day": 24,
+          "guests": 53,
+          "avg": 232.6,
+          "fieldRating": 47
+        },
+        {
+          "day": 25,
+          "guests": 47,
+          "avg": 253.7,
+          "fieldRating": 45
+        },
+        {
+          "day": 26,
+          "guests": 42,
+          "avg": 256.5,
+          "fieldRating": 45
+        },
+        {
+          "day": 27,
+          "guests": 12,
+          "avg": 341.1,
+          "fieldRating": 44
+        },
+        {
+          "day": 28,
+          "guests": 17,
+          "avg": 64.2,
+          "fieldRating": 47
+        },
+        {
+          "day": 29,
+          "guests": 5,
+          "avg": 43.5,
+          "fieldRating": 46
+        },
+        {
+          "day": 30,
+          "guests": 11,
+          "avg": 74.2,
+          "fieldRating": 44
+        },
+        {
+          "day": 31,
+          "guests": 17,
+          "avg": 102.6,
+          "fieldRating": 41
+        },
+        {
+          "day": 32,
+          "guests": 6,
+          "avg": 48.6,
+          "fieldRating": 37
+        },
+        {
+          "day": 33,
+          "guests": 1,
+          "avg": -201,
+          "fieldRating": 33
+        },
+        {
+          "day": 34,
+          "guests": 1,
+          "avg": -333,
+          "fieldRating": 28
+        },
+        {
+          "day": 35,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 36,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 37,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 38,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 39,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 40,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 41,
+          "guests": 12,
+          "avg": 70,
+          "fieldRating": 26
+        },
+        {
+          "day": 42,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 43,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 44,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 45,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        }
+      ],
+      "satisfactionAvg": 116.8,
+      "slowestTicks": [
+        {
+          "ms": 83.5,
+          "day": 0,
+          "clock": 13.8,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 48.7,
+          "day": 8,
+          "clock": 1491.3,
+          "flights": 2,
+          "guests": 197
+        },
+        {
+          "ms": 47.7,
+          "day": 7,
+          "clock": 1430,
+          "flights": 2,
+          "guests": 154
+        },
+        {
+          "ms": 47.7,
+          "day": 8,
+          "clock": 1506.3,
+          "flights": 2,
+          "guests": 215
+        },
+        {
+          "ms": 47.3,
+          "day": 8,
+          "clock": 1501.3,
+          "flights": 2,
+          "guests": 215
+        },
+        {
+          "ms": 46.6,
+          "day": 8,
+          "clock": 1566.3,
+          "flights": 2,
+          "guests": 225
+        },
+        {
+          "ms": 45.1,
+          "day": 11,
+          "clock": 1986.3,
+          "flights": 2,
+          "guests": 183
+        },
+        {
+          "ms": 44.9,
+          "day": 8,
+          "clock": 1505,
+          "flights": 2,
+          "guests": 215
+        }
+      ],
+      "couldNot": [],
+      "couldNotTotal": 0,
+      "built": {
+        "runway": 1,
+        "stands": 2,
+        "terminals": 9,
+        "snacks": 1,
+        "rooms": {
+          "checkin": 2,
+          "security": 2,
+          "gate": 2,
+          "bagclaim": 1,
+          "food": 2,
+          "souvenir": 1,
+          "bagdrop": 1,
+          "lounge": 1,
+          "bathroom": 2,
+          "golf": 0,
+          "waterfall": 0,
+          "gaming": 0,
+          "dayhotel": 0,
+          "spa": 0,
+          "pool": 0,
+          "rdesk": 0,
+          "rboard": 0,
+          "rmachine": 0
+        },
+        "shopUnits": 4,
+        "leasedShops": 4,
+        "signed": [
+          "air_regional_1",
+          "zoomjet",
+          "alpine_swift",
+          "air_lowcost_1",
+          "cityhopper",
+          "maple_coastal",
+          "outback_link",
+          "savanna_air",
+          "kauri_air",
+          "borneo_wings",
+          "dune_jet",
+          "air_cargo_1"
+        ],
+        "flightsDone": 76
+      },
+      "notes": []
+    },
+    {
+      "persona": "greedy",
+      "label": "Greedy expander",
+      "daysRequested": 60,
+      "daysRan": 60,
+      "difficulty": "standard",
+      "focus": "pax",
+      "sandbox": false,
+      "tickDt": 0.25,
+      "speed": 5,
+      "wallMs": 61221,
+      "ticks": 8640,
+      "timeToFirstLandingSec": 51.3,
+      "timeToFirstLandingDay": 0,
+      "firstLandingPhase": "landing",
+      "firstLandingFlight": "PDJ101",
+      "cashStart": 150000,
+      "cashEnd": -18424,
+      "cashCurve": [
+        {
+          "day": 0,
+          "cash": 55000
+        },
+        {
+          "day": 1,
+          "cash": 34650
+        },
+        {
+          "day": 2,
+          "cash": 6986
+        },
+        {
+          "day": 3,
+          "cash": 3404
+        },
+        {
+          "day": 4,
+          "cash": 6811
+        },
+        {
+          "day": 5,
+          "cash": 4768
+        },
+        {
+          "day": 6,
+          "cash": 7277
+        },
+        {
+          "day": 7,
+          "cash": 1651
+        },
+        {
+          "day": 8,
+          "cash": 2642
+        },
+        {
+          "day": 9,
+          "cash": 2944
+        },
+        {
+          "day": 10,
+          "cash": 8127
+        },
+        {
+          "day": 11,
+          "cash": 7224
+        },
+        {
+          "day": 12,
+          "cash": 7597
+        },
+        {
+          "day": 13,
+          "cash": -583
+        },
+        {
+          "day": 14,
+          "cash": -16828
+        },
+        {
+          "day": 15,
+          "cash": -15621
+        },
+        {
+          "day": 16,
+          "cash": -4836
+        },
+        {
+          "day": 17,
+          "cash": -1684
+        },
+        {
+          "day": 18,
+          "cash": 6093
+        },
+        {
+          "day": 19,
+          "cash": 7566
+        },
+        {
+          "day": 20,
+          "cash": 4687
+        },
+        {
+          "day": 21,
+          "cash": 3582
+        },
+        {
+          "day": 22,
+          "cash": 1899
+        },
+        {
+          "day": 23,
+          "cash": 3049
+        },
+        {
+          "day": 24,
+          "cash": -386
+        },
+        {
+          "day": 25,
+          "cash": 1494
+        },
+        {
+          "day": 26,
+          "cash": -5979
+        },
+        {
+          "day": 27,
+          "cash": -7140
+        },
+        {
+          "day": 28,
+          "cash": -11801
+        },
+        {
+          "day": 29,
+          "cash": -7934
+        },
+        {
+          "day": 30,
+          "cash": -12089
+        },
+        {
+          "day": 31,
+          "cash": -10544
+        },
+        {
+          "day": 32,
+          "cash": -9699
+        },
+        {
+          "day": 33,
+          "cash": -9108
+        },
+        {
+          "day": 34,
+          "cash": -5991
+        },
+        {
+          "day": 35,
+          "cash": -7874
+        },
+        {
+          "day": 36,
+          "cash": -11256
+        },
+        {
+          "day": 37,
+          "cash": -12549
+        },
+        {
+          "day": 38,
+          "cash": -13334
+        },
+        {
+          "day": 39,
+          "cash": -16606
+        },
+        {
+          "day": 40,
+          "cash": -15177
+        },
+        {
+          "day": 41,
+          "cash": -15888
+        },
+        {
+          "day": 42,
+          "cash": -17636
+        },
+        {
+          "day": 43,
+          "cash": -18342
+        },
+        {
+          "day": 44,
+          "cash": -18342
+        },
+        {
+          "day": 45,
+          "cash": -17690
+        },
+        {
+          "day": 46,
+          "cash": -14659
+        },
+        {
+          "day": 47,
+          "cash": -18564
+        },
+        {
+          "day": 48,
+          "cash": -18564
+        },
+        {
+          "day": 49,
+          "cash": -18344
+        },
+        {
+          "day": 50,
+          "cash": -18363
+        },
+        {
+          "day": 51,
+          "cash": -18363
+        },
+        {
+          "day": 52,
+          "cash": -15132
+        },
+        {
+          "day": 53,
+          "cash": -13637
+        },
+        {
+          "day": 54,
+          "cash": -13022
+        },
+        {
+          "day": 55,
+          "cash": -16407
+        },
+        {
+          "day": 56,
+          "cash": -17292
+        },
+        {
+          "day": 57,
+          "cash": -15858
+        },
+        {
+          "day": 58,
+          "cash": -17688
+        },
+        {
+          "day": 59,
+          "cash": -18424
+        },
+        {
+          "day": 60,
+          "cash": -18424
+        }
+      ],
+      "stuck": [],
+      "recovered": [
+        {
+          "id": "flight:flt-bhehk2",
+          "detail": "PDJ102 taxi_out for 41s",
+          "firstClock": 308.75,
+          "lastClock": 310,
+          "recoveredClock": 325
+        },
+        {
+          "id": "flight:amb-z8ebm0",
+          "detail": "LIF119 taxi_out for 43s",
+          "firstClock": 601.25,
+          "lastClock": 603.75,
+          "recoveredClock": 618.75
+        },
+        {
+          "id": "cond:stuck:amb-z8ebm0",
+          "detail": "LIF119 stuck on the ground",
+          "firstClock": 603.75,
+          "lastClock": 606.25,
+          "recoveredClock": 621.25
+        },
+        {
+          "id": "flight:flt-kgk4f9",
+          "detail": "ZO108 taxi_out for 58s",
+          "firstClock": 1340,
+          "lastClock": 1357.5,
+          "recoveredClock": 1372.5
+        },
+        {
+          "id": "cond:stuck:flt-kgk4f9",
+          "detail": "ZO108 stuck on the ground",
+          "firstClock": 1357.5,
+          "lastClock": 1358.75,
+          "recoveredClock": 1373.75
+        },
+        {
+          "id": "flight:amb-xo2rer",
+          "detail": "LIF132 taxi_out for 46s",
+          "firstClock": 1366.25,
+          "lastClock": 1372.5,
+          "recoveredClock": 1387.5
+        },
+        {
+          "id": "cond:stuck:amb-xo2rer",
+          "detail": "LIF132 stuck on the ground",
+          "firstClock": 1372.5,
+          "lastClock": 1373.75,
+          "recoveredClock": 1388.75
+        },
+        {
+          "id": "flight:amb-uzzgb7",
+          "detail": "LIF136 taxi_out for 64s",
+          "firstClock": 1547.5,
+          "lastClock": 1571.25,
+          "recoveredClock": 1586.25
+        },
+        {
+          "id": "cond:stuck:amb-uzzgb7",
+          "detail": "LIF136 stuck on the ground",
+          "firstClock": 1571.25,
+          "lastClock": 1573.75,
+          "recoveredClock": 1588.75
+        },
+        {
+          "id": "flight:flt-lv5ym6",
+          "detail": "ZO109 taxi_out for 63s",
+          "firstClock": 1686.25,
+          "lastClock": 1708.75,
+          "recoveredClock": 1723.75
+        },
+        {
+          "id": "cond:stuck:flt-lv5ym6",
+          "detail": "ZO109 stuck on the ground",
+          "firstClock": 1708.75,
+          "lastClock": 1711.25,
+          "recoveredClock": 1726.25
+        },
+        {
+          "id": "flight:flt-5kf4wb",
+          "detail": "ALS118 taxi_out for 45s",
+          "firstClock": 1750,
+          "lastClock": 1755,
+          "recoveredClock": 1770
+        },
+        {
+          "id": "cond:stuck:flt-5kf4wb",
+          "detail": "ALS118 stuck on the ground",
+          "firstClock": 1755,
+          "lastClock": 1756.25,
+          "recoveredClock": 1771.25
+        },
+        {
+          "id": "flight:amb-z6a4yh",
+          "detail": "LIF147 taxi_out for 64s",
+          "firstClock": 2478.75,
+          "lastClock": 2502.5,
+          "recoveredClock": 2517.5
+        },
+        {
+          "id": "cond:stuck:amb-z6a4yh",
+          "detail": "LIF147 stuck on the ground",
+          "firstClock": 2502.5,
+          "lastClock": 2503.75,
+          "recoveredClock": 2518.75
+        },
+        {
+          "id": "flight:flt-ghmhwb",
+          "detail": "SKC128 taxi_out for 59s",
+          "firstClock": 2776.25,
+          "lastClock": 2795,
+          "recoveredClock": 2810
+        },
+        {
+          "id": "cond:stuck:flt-ghmhwb",
+          "detail": "SKC128 stuck on the ground",
+          "firstClock": 2795,
+          "lastClock": 2796.25,
+          "recoveredClock": 2811.25
+        },
+        {
+          "id": "flight:amb-7rdqvh",
+          "detail": "LIF163 taxi_out for 65s",
+          "firstClock": 3317.5,
+          "lastClock": 3342.5,
+          "recoveredClock": 3357.5
+        },
+        {
+          "id": "cond:stuck:amb-7rdqvh",
+          "detail": "LIF163 stuck on the ground",
+          "firstClock": 3342.5,
+          "lastClock": 3343.75,
+          "recoveredClock": 3358.75
+        },
+        {
+          "id": "flight:flt-1u76iw",
+          "detail": "ZO158 taxi_out for 59s",
+          "firstClock": 3921.25,
+          "lastClock": 3940,
+          "recoveredClock": 3955
+        },
+        {
+          "id": "cond:stuck:flt-1u76iw",
+          "detail": "ZO158 stuck on the ground",
+          "firstClock": 3940,
+          "lastClock": 3941.25,
+          "recoveredClock": 3956.25
+        },
+        {
+          "id": "flight:amb-k1hn3h",
+          "detail": "LIF170 taxi_out for 48s",
+          "firstClock": 3947.5,
+          "lastClock": 3955,
+          "recoveredClock": 3970
+        },
+        {
+          "id": "cond:stuck:amb-k1hn3h",
+          "detail": "LIF170 stuck on the ground",
+          "firstClock": 3955,
+          "lastClock": 3956.25,
+          "recoveredClock": 3971.25
+        },
+        {
+          "id": "flight:flt-9evxjs",
+          "detail": "KAU161 taxi_out for 90s",
+          "firstClock": 4225,
+          "lastClock": 4275,
+          "recoveredClock": 4290
+        },
+        {
+          "id": "cond:stuck:flt-9evxjs",
+          "detail": "KAU161 stuck on the ground",
+          "firstClock": 4275,
+          "lastClock": 4276.25,
+          "recoveredClock": 4291.25
+        },
+        {
+          "id": "flight:amb-h3ldho",
+          "detail": "LIF173 taxi_out for 71s",
+          "firstClock": 4260,
+          "lastClock": 4291.25,
+          "recoveredClock": 4306.25
+        },
+        {
+          "id": "cond:stuck:amb-h3ldho",
+          "detail": "LIF173 stuck on the ground",
+          "firstClock": 4291.25,
+          "lastClock": 4293.75,
+          "recoveredClock": 4308.75
+        },
+        {
+          "id": "flight:flt-23m4zj",
+          "detail": "KAU162 taxi_out for 43s",
+          "firstClock": 4330,
+          "lastClock": 4332.5,
+          "recoveredClock": 4347.5
+        },
+        {
+          "id": "cond:stuck:flt-23m4zj",
+          "detail": "KAU162 stuck on the ground",
+          "firstClock": 4332.5,
+          "lastClock": 4333.75,
+          "recoveredClock": 4348.75
+        },
+        {
+          "id": "flight:amb-slgeml",
+          "detail": "LIF177 taxi_out for 51s",
+          "firstClock": 4452.5,
+          "lastClock": 4463.75,
+          "recoveredClock": 4478.75
+        },
+        {
+          "id": "cond:stuck:amb-slgeml",
+          "detail": "LIF177 stuck on the ground",
+          "firstClock": 4463.75,
+          "lastClock": 4466.25,
+          "recoveredClock": 4481.25
+        },
+        {
+          "id": "flight:flt-b6l7ip",
+          "detail": "KAU160 taxi_out for 41s",
+          "firstClock": 4511.25,
+          "lastClock": 4512.5,
+          "recoveredClock": 4527.5
+        }
+      ],
+      "consoleErrors": [],
+      "softlocks": [],
+      "satisfaction": [
+        {
+          "day": 0,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 65
+        },
+        {
+          "day": 1,
+          "guests": 8,
+          "avg": 152.3,
+          "fieldRating": 75
+        },
+        {
+          "day": 2,
+          "guests": 20,
+          "avg": 81.8,
+          "fieldRating": 76
+        },
+        {
+          "day": 3,
+          "guests": 5,
+          "avg": 98.2,
+          "fieldRating": 77
+        },
+        {
+          "day": 4,
+          "guests": 13,
+          "avg": 58.3,
+          "fieldRating": 73
+        },
+        {
+          "day": 5,
+          "guests": 5,
+          "avg": 64,
+          "fieldRating": 71
+        },
+        {
+          "day": 6,
+          "guests": 34,
+          "avg": 55.3,
+          "fieldRating": 73
+        },
+        {
+          "day": 7,
+          "guests": 88,
+          "avg": 85.8,
+          "fieldRating": 60
+        },
+        {
+          "day": 8,
+          "guests": 46,
+          "avg": 101.3,
+          "fieldRating": 61
+        },
+        {
+          "day": 9,
+          "guests": 64,
+          "avg": 86.9,
+          "fieldRating": 60
+        },
+        {
+          "day": 10,
+          "guests": 44,
+          "avg": 34.7,
+          "fieldRating": 61
+        },
+        {
+          "day": 11,
+          "guests": 56,
+          "avg": 70.4,
+          "fieldRating": 59
+        },
+        {
+          "day": 12,
+          "guests": 64,
+          "avg": 99.3,
+          "fieldRating": 61
+        },
+        {
+          "day": 13,
+          "guests": 48,
+          "avg": 87.7,
+          "fieldRating": 57
+        },
+        {
+          "day": 14,
+          "guests": 7,
+          "avg": 70.7,
+          "fieldRating": 49
+        },
+        {
+          "day": 15,
+          "guests": 31,
+          "avg": 63.6,
+          "fieldRating": 51
+        },
+        {
+          "day": 16,
+          "guests": 13,
+          "avg": 69.6,
+          "fieldRating": 56
+        },
+        {
+          "day": 17,
+          "guests": 14,
+          "avg": 73.7,
+          "fieldRating": 51
+        },
+        {
+          "day": 18,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 52
+        },
+        {
+          "day": 19,
+          "guests": 4,
+          "avg": 49.8,
+          "fieldRating": 47
+        },
+        {
+          "day": 20,
+          "guests": 9,
+          "avg": 86,
+          "fieldRating": 42
+        },
+        {
+          "day": 21,
+          "guests": 2,
+          "avg": 71.5,
+          "fieldRating": 41
+        },
+        {
+          "day": 22,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 44
+        },
+        {
+          "day": 23,
+          "guests": 17,
+          "avg": 59.8,
+          "fieldRating": 42
+        },
+        {
+          "day": 24,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 25,
+          "guests": 12,
+          "avg": 70,
+          "fieldRating": 44
+        },
+        {
+          "day": 26,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 37
+        },
+        {
+          "day": 27,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 34
+        },
+        {
+          "day": 28,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 27
+        },
+        {
+          "day": 29,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 30,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 31,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 32,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 33,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 34,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 35,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 36,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 37,
+          "guests": 3,
+          "avg": 70.8,
+          "fieldRating": 25
+        },
+        {
+          "day": 38,
+          "guests": 3,
+          "avg": 37.3,
+          "fieldRating": 26
+        },
+        {
+          "day": 39,
+          "guests": 3,
+          "avg": -11,
+          "fieldRating": 25
+        },
+        {
+          "day": 40,
+          "guests": 3,
+          "avg": -0.3,
+          "fieldRating": 25
+        },
+        {
+          "day": 41,
+          "guests": 3,
+          "avg": -1.7,
+          "fieldRating": 25
+        },
+        {
+          "day": 42,
+          "guests": 3,
+          "avg": 6,
+          "fieldRating": 25
+        },
+        {
+          "day": 43,
+          "guests": 3,
+          "avg": 2,
+          "fieldRating": 25
+        },
+        {
+          "day": 44,
+          "guests": 3,
+          "avg": -7,
+          "fieldRating": 25
+        },
+        {
+          "day": 45,
+          "guests": 3,
+          "avg": -41,
+          "fieldRating": 25
+        },
+        {
+          "day": 46,
+          "guests": 3,
+          "avg": -2,
+          "fieldRating": 25
+        },
+        {
+          "day": 47,
+          "guests": 3,
+          "avg": 2.4,
+          "fieldRating": 25
+        },
+        {
+          "day": 48,
+          "guests": 3,
+          "avg": -7,
+          "fieldRating": 25
+        },
+        {
+          "day": 49,
+          "guests": 3,
+          "avg": -4.2,
+          "fieldRating": 25
+        },
+        {
+          "day": 50,
+          "guests": 3,
+          "avg": -2,
+          "fieldRating": 25
+        },
+        {
+          "day": 51,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 52,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 53,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 54,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 55,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 56,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 57,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 58,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 59,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        },
+        {
+          "day": 60,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 25
+        }
+      ],
+      "satisfactionAvg": 48.1,
+      "slowestTicks": [
+        {
+          "ms": 40.7,
+          "day": 0,
+          "clock": 13.8,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 33.2,
+          "day": 36,
+          "clock": 6552.5,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 27.3,
+          "day": 9,
+          "clock": 1671.3,
+          "flights": 3,
+          "guests": 58
+        },
+        {
+          "ms": 25.5,
+          "day": 8,
+          "clock": 1586.3,
+          "flights": 2,
+          "guests": 53
+        },
+        {
+          "ms": 23.1,
+          "day": 8,
+          "clock": 1515,
+          "flights": 3,
+          "guests": 70
+        },
+        {
+          "ms": 22.2,
+          "day": 9,
+          "clock": 1741.3,
+          "flights": 2,
+          "guests": 47
+        },
+        {
+          "ms": 21.9,
+          "day": 8,
+          "clock": 1516.3,
+          "flights": 3,
+          "guests": 67
+        },
+        {
+          "ms": 21.3,
+          "day": 8,
+          "clock": 1585,
+          "flights": 2,
+          "guests": 53
+        }
+      ],
+      "couldNot": [
+        {
+          "command": "buyParcel",
+          "detail": "Parcel locked — reach Field Level 2 first.",
+          "count": 7
+        }
+      ],
+      "couldNotTotal": 7,
+      "built": {
+        "runway": 1,
+        "stands": 6,
+        "terminals": 9,
+        "snacks": 2,
+        "rooms": {
+          "checkin": 2,
+          "security": 2,
+          "gate": 3,
+          "bagclaim": 1,
+          "food": 3,
+          "souvenir": 3,
+          "bagdrop": 1,
+          "lounge": 1,
+          "bathroom": 2,
+          "golf": 0,
+          "waterfall": 0,
+          "gaming": 0,
+          "dayhotel": 0,
+          "spa": 0,
+          "pool": 0,
+          "rdesk": 0,
+          "rboard": 0,
+          "rmachine": 0
+        },
+        "shopUnits": 8,
+        "leasedShops": 2,
+        "signed": [
+          "air_regional_1",
+          "zoomjet",
+          "alpine_swift",
+          "air_lowcost_1",
+          "cityhopper",
+          "maple_coastal",
+          "outback_link",
+          "savanna_air",
+          "kauri_air",
+          "air_cargo_1",
+          "borneo_wings"
+        ],
+        "flightsDone": 57
+      },
+      "notes": []
+    },
+    {
+      "persona": "chaotic",
+      "label": "Chaotic random clicker",
+      "daysRequested": 30,
+      "daysRan": 30,
+      "difficulty": "standard",
+      "focus": "pax",
+      "sandbox": false,
+      "tickDt": 0.25,
+      "speed": 5,
+      "wallMs": 20090,
+      "ticks": 4320,
+      "timeToFirstLandingSec": 80,
+      "timeToFirstLandingDay": 0,
+      "firstLandingPhase": "landing",
+      "firstLandingFlight": "LIF102",
+      "cashStart": 150000,
+      "cashEnd": -323,
+      "cashCurve": [
+        {
+          "day": 0,
+          "cash": 75200
+        },
+        {
+          "day": 1,
+          "cash": 18428
+        },
+        {
+          "day": 2,
+          "cash": -1666
+        },
+        {
+          "day": 3,
+          "cash": -923
+        },
+        {
+          "day": 4,
+          "cash": -1519
+        },
+        {
+          "day": 5,
+          "cash": -2703
+        },
+        {
+          "day": 6,
+          "cash": 1176
+        },
+        {
+          "day": 7,
+          "cash": 465
+        },
+        {
+          "day": 8,
+          "cash": -555
+        },
+        {
+          "day": 9,
+          "cash": 824
+        },
+        {
+          "day": 10,
+          "cash": -4758
+        },
+        {
+          "day": 11,
+          "cash": -5560
+        },
+        {
+          "day": 12,
+          "cash": -3064
+        },
+        {
+          "day": 13,
+          "cash": -6429
+        },
+        {
+          "day": 14,
+          "cash": -10661
+        },
+        {
+          "day": 15,
+          "cash": -6627
+        },
+        {
+          "day": 16,
+          "cash": -769
+        },
+        {
+          "day": 17,
+          "cash": -611
+        },
+        {
+          "day": 18,
+          "cash": 516
+        },
+        {
+          "day": 19,
+          "cash": 920
+        },
+        {
+          "day": 20,
+          "cash": 1849
+        },
+        {
+          "day": 21,
+          "cash": 2945
+        },
+        {
+          "day": 22,
+          "cash": -20171
+        },
+        {
+          "day": 23,
+          "cash": -20165
+        },
+        {
+          "day": 24,
+          "cash": -16245
+        },
+        {
+          "day": 25,
+          "cash": -17262
+        },
+        {
+          "day": 26,
+          "cash": -18195
+        },
+        {
+          "day": 27,
+          "cash": -14136
+        },
+        {
+          "day": 28,
+          "cash": -10149
+        },
+        {
+          "day": 29,
+          "cash": -3607
+        },
+        {
+          "day": 30,
+          "cash": -323
+        }
+      ],
+      "stuck": [],
+      "recovered": [
+        {
+          "id": "flight:amb-psrkty",
+          "detail": "LIF114 taxi_out for 46s",
+          "firstClock": 1451.25,
+          "lastClock": 1457.5,
+          "recoveredClock": 1472.5
+        },
+        {
+          "id": "cond:stuck:amb-psrkty",
+          "detail": "LIF114 stuck on the ground",
+          "firstClock": 1457.5,
+          "lastClock": 1458.75,
+          "recoveredClock": 1473.75
+        }
+      ],
+      "consoleErrors": [],
+      "softlocks": [],
+      "satisfaction": [
+        {
+          "day": 0,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 65
+        },
+        {
+          "day": 1,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 65
+        },
+        {
+          "day": 2,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 58
+        },
+        {
+          "day": 3,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 54
+        },
+        {
+          "day": 4,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 48
+        },
+        {
+          "day": 5,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 46
+        },
+        {
+          "day": 6,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 7,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 8,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 9,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 10,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 11,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 12,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 13,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 14,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 15,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 16,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 17,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 18,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 19,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 20,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 21,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 45
+        },
+        {
+          "day": 22,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 43
+        },
+        {
+          "day": 23,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 24,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 25,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 26,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 27,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 28,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 29,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        },
+        {
+          "day": 30,
+          "guests": 0,
+          "avg": null,
+          "fieldRating": 42
+        }
+      ],
+      "satisfactionAvg": null,
+      "slowestTicks": [
+        {
+          "ms": 20,
+          "day": 0,
+          "clock": 63.8,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 19.3,
+          "day": 16,
+          "clock": 2902.5,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 14.6,
+          "day": 29,
+          "clock": 5230,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 10.8,
+          "day": 0,
+          "clock": 66.3,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 10,
+          "day": 26,
+          "clock": 4856.3,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 9.5,
+          "day": 23,
+          "clock": 4292.5,
+          "flights": 0,
+          "guests": 0
+        },
+        {
+          "ms": 8.9,
+          "day": 9,
+          "clock": 1767.5,
+          "flights": 1,
+          "guests": 0
+        },
+        {
+          "ms": 8.5,
+          "day": 26,
+          "clock": 4851.3,
+          "flights": 0,
+          "guests": 0
+        }
+      ],
+      "couldNot": [
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 5700.",
+          "count": 3
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Gate hold — short 6861.",
+          "count": 2
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Hall food — short 6027.",
+          "count": 2
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 3969.",
+          "count": 2
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 1874.",
+          "count": 2
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 2001.",
+          "count": 2
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 18845.",
+          "count": 2
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Airline lounge — short 22062.",
+          "count": 2
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 15795.",
+          "count": 2
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 15736.",
+          "count": 2
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Hall food — short 1921.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 3266.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 4866.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Security — short 6966.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 2566.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 2689.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Gate hold — short 1289.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Airline lounge — short 4800.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Souvenirs — short 3123.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Security — short 1169.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 3265.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Hall food — short 4265.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Gate hold — short 4300.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 3200.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Hall food — short 2600.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Check-in — short 2955.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 555.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 1578.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Check-in — short 7158.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 8858.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Airline lounge — short 10360.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 7160.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 8760.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 5560.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Check-in — short 2400.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Airline lounge — short 9764.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 6564.",
+          "count": 1
+        },
+        {
+          "command": "hireJanitor",
+          "detail": "Need hire janitor — short 8164.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Restrooms — short 2429.",
+          "count": 1
+        },
+        {
+          "command": "buyRoom",
+          "detail": "Need Check-in — short 13061.",
+          "count": 1
+        }
+      ],
+      "couldNotTotal": 89,
+      "built": {
+        "runway": 1,
+        "stands": 2,
+        "terminals": 9,
+        "snacks": 2,
+        "rooms": {
+          "checkin": 2,
+          "security": 2,
+          "gate": 3,
+          "bagclaim": 1,
+          "food": 2,
+          "souvenir": 2,
+          "bagdrop": 1,
+          "lounge": 1,
+          "bathroom": 3,
+          "golf": 0,
+          "waterfall": 0,
+          "gaming": 0,
+          "dayhotel": 0,
+          "spa": 0,
+          "pool": 0,
+          "rdesk": 0,
+          "rboard": 0,
+          "rmachine": 0
+        },
+        "shopUnits": 6,
+        "leasedShops": 3,
+        "signed": [],
+        "flightsDone": 25
+      },
+      "notes": [
+        "Driver put the clock back to 5× after the persona touched the speed buttons."
+      ]
+    }
+  ],
+  "browser": {
+    "ok": true,
+    "skipped": false,
+    "reason": "Opening played through the first landing.",
+    "wallMs": 120300,
+    "script": [
+      "open http://127.0.0.1:45991/?playtest=1",
+      "sandbox off",
+      "new game",
+      "passenger start",
+      "starter kit",
+      "open contract letter",
+      "accept contract",
+      "open pavement tray",
+      "select taxiway",
+      "click the field",
+      "services tab",
+      "terminal view",
+      "5x"
+    ],
+    "screenshots": [
+      "docs/playtest/bots/smoke/01-title.png",
+      "docs/playtest/bots/smoke/02-route.png",
+      "docs/playtest/bots/smoke/03-field.png",
+      "docs/playtest/bots/smoke/04-kit.png",
+      "docs/playtest/bots/smoke/05-contract.png",
+      "docs/playtest/bots/smoke/06-accepted.png",
+      "docs/playtest/bots/smoke/07-services.png",
+      "docs/playtest/bots/smoke/07b-hall.png",
+      "docs/playtest/bots/smoke/08-five-minutes.png"
+    ],
+    "timeToFirstLandingSec": 29.3,
+    "cashCurve": [
+      {
+        "day": 0,
+        "cash": 6300
+      },
+      {
+        "day": 1,
+        "cash": 3207
+      }
+    ],
+    "stuck": [],
+    "recovered": [],
+    "consoleErrors": [],
+    "softlocks": [],
+    "satisfaction": [
+      {
+        "day": 0,
+        "guests": 0,
+        "avg": null,
+        "fieldRating": 73
+      },
+      {
+        "day": 1,
+        "guests": 2,
+        "avg": 93.8,
+        "fieldRating": 79
+      }
+    ],
+    "satisfactionAvg": 93.8,
+    "slowestTicks": [
+      {
+        "ms": 16,
+        "day": 1,
+        "clock": 180.2,
+        "flights": 1,
+        "guests": 2
+      },
+      {
+        "ms": 14.1,
+        "day": 0,
+        "clock": 19.2,
+        "flights": 1,
+        "guests": 16
+      },
+      {
+        "ms": 12.3,
+        "day": 0,
+        "clock": 83.6,
+        "flights": 2,
+        "guests": 28
+      },
+      {
+        "ms": 11.1,
+        "day": 0,
+        "clock": 48.9,
+        "flights": 1,
+        "guests": 14
+      },
+      {
+        "ms": 9.6,
+        "day": 0,
+        "clock": 179.9,
+        "flights": 1,
+        "guests": 2
+      },
+      {
+        "ms": 9.4,
+        "day": 0,
+        "clock": 33,
+        "flights": 1,
+        "guests": 12
+      },
+      {
+        "ms": 8.9,
+        "day": 0,
+        "clock": 89.9,
+        "flights": 2,
+        "guests": 28
+      },
+      {
+        "ms": 8.7,
+        "day": 0,
+        "clock": 32.3,
+        "flights": 1,
+        "guests": 12
+      }
+    ],
+    "couldNot": [
+      {
+        "command": "buyRoom",
+        "detail": "Hall food was not on the services panel (no hall selected)",
+        "count": 1
+      },
+      {
+        "command": "buyRoom",
+        "detail": "Souvenirs was not on the services panel (no hall selected)",
+        "count": 1
+      }
+    ],
+    "clockEnd": 248.0243000000002,
+    "cashEnd": 3873,
+    "notes": [
+      "Sim clock reached 242s before the 90s wall cap (target 300s)."
+    ]
+  }
+}

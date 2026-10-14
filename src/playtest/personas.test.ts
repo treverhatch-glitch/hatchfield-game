@@ -1,0 +1,103 @@
+import { describe, expect, it } from 'vitest'
+import { freshMemory, carefulIntents, chaoticIntents, greedyIntents } from './personas.ts'
+import type { AirportView } from './types.ts'
+
+function board(partial: Partial<AirportView> = {}): AirportView {
+  return {
+    day: 1,
+    clock: 200,
+    cash: 40_000,
+    speed: 5,
+    hasLand: true,
+    kitAvailable: false,
+    kitCost: 48_000,
+    runway: 1,
+    stands: 2,
+    terminals: 9,
+    snacks: 0,
+    rooms: { food: 1, souvenir: 1, checkin: 2, security: 2, gate: 2 },
+    shopUnits: 2,
+    leasedShops: 0,
+    openShopBids: 0,
+    signed: [],
+    offer: null,
+    loanBalance: 0,
+    loans: [
+      { id: 'micro', label: 'Micro strip', principal: 25_000 },
+      { id: 'bridge', label: 'Bridge loan', principal: 45_000 },
+    ],
+    fieldLevel: 1,
+    fieldRating: 50,
+    satisfaction: 70,
+    guestCount: 4,
+    janitors: 0,
+    mechanics: 1,
+    researchPoints: 0,
+    nextResearch: null,
+    yearReportPending: false,
+    flightsDone: 1,
+    activeFlights: 1,
+    ...partial,
+  }
+}
+
+describe('playtest personas', () => {
+  it('careful buys land, stamps the kit, and only signs a letter that passes', () => {
+    const empty = carefulIntents(board({ hasLand: false, day: 0, clock: 0, cash: 150_000 }), freshMemory())
+    expect(empty.intents).toEqual([{ do: 'buyLand', kind: 'city' }])
+
+    const kit = carefulIntents(
+      board({ kitAvailable: true, cash: 55_000, runway: 0, stands: 0, terminals: 0 }),
+      freshMemory(),
+    )
+    expect(kit.intents.map((intent) => intent.do)).toContain('starterKit')
+
+    const met = carefulIntents(
+      board({ offer: { name: 'Bushline', met: true, missing: [], deadline: 40 } }),
+      freshMemory(),
+    )
+    expect(met.intents.some((intent) => intent.do === 'accept')).toBe(true)
+
+    const unmet = carefulIntents(
+      board({ offer: { name: 'Northline', met: false, missing: ['security ×2'], deadline: 20 } }),
+      freshMemory(),
+    )
+    expect(unmet.intents.some((intent) => intent.do === 'snooze')).toBe(true)
+    expect(unmet.intents.some((intent) => intent.do === 'accept')).toBe(false)
+  })
+
+  it('careful adds one expansion on a new day and then waits', () => {
+    const first = carefulIntents(board({ cash: 30_000, stands: 2 }), freshMemory())
+    expect(first.intents.some((intent) => intent.do === 'stamp' && intent.tool === 'stand')).toBe(true)
+    const again = carefulIntents(board({ cash: 30_000, stands: 2 }), first.memory)
+    expect(again.intents.some((intent) => intent.do === 'stamp')).toBe(false)
+  })
+
+  it('greedy takes the biggest loan and tries to sign whatever letter is open', () => {
+    const decision = greedyIntents(
+      board({
+        cash: 7_000,
+        offer: { name: 'Zoomjet', met: false, missing: ['bag sort'], deadline: 30 },
+      }),
+      freshMemory(),
+    )
+    expect(decision.intents).toContainEqual({ do: 'accept' })
+    expect(decision.intents).toContainEqual({ do: 'loan', id: 'bridge' })
+  })
+
+  it('chaotic clicks are stable for a seed', () => {
+    const rngA = sequence(4)
+    const rngB = sequence(4)
+    const a = chaoticIntents(board(), freshMemory(), rngA)
+    const b = chaoticIntents(board(), freshMemory(), rngB)
+    expect(a.intents).toEqual(b.intents)
+  })
+})
+
+function sequence(seed: number): () => number {
+  let n = seed
+  return () => {
+    n = (n * 17 + 3) % 100
+    return n / 100
+  }
+}
