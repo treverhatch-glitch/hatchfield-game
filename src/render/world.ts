@@ -42,6 +42,8 @@ import { syncStaffHousing } from './staffHousing.ts'
 import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
 import type { DayNightControl } from './world/dayNight'
+import { CrewFigures } from './crew/figures.ts'
+import { pathHeading } from '../ramp/present.ts'
 import {
   initWorldRender,
   QUALITY,
@@ -109,6 +111,25 @@ function wu(meters: number): number {
   return meters * WORLD_PER_METER
 }
 
+/** Grow or fold a jet bridge. The cab stays on the door; the tunnel reaches the terminal. */
+function applyBridge(root: THREE.Object3D, extend: number) {
+  const u = Math.min(1, Math.max(0, extend))
+  root.traverse((obj) => {
+    if (obj.name !== 'bridge-tunnel' && obj.name !== 'bridge-column') return
+    const rest = obj.userData.restScaleZ
+    const anchor = obj.userData.anchor
+    const side = obj.userData.side === -1 ? -1 : 1
+    if (typeof rest !== 'number' || typeof anchor !== 'number') return
+    obj.visible = u > 0.04
+    if (obj.name === 'bridge-tunnel') {
+      obj.scale.z = rest * Math.max(0.02, u)
+      obj.position.z = anchor + side * (obj.scale.z / 2)
+    } else {
+      obj.position.z = anchor + side * rest * u
+    }
+  })
+}
+
 /** Nearest terminal cell, or null when the stand is too far for a bridge. */
 function nearestTerminal(game: Game, stand: Vec): Vec | null {
   let best: Vec | null = null
@@ -140,12 +161,13 @@ function vehicleMeters(kind: string): [number, number, number] {
   return [4.5, 1.9, 1.8]
 }
 
-function crewSpot(at: 'cab' | 'ground' | 'lift' | 'galley', lift: number, helper: boolean): { x: number; y: number; z: number } {
-  const side = helper ? -1 : 1
-  if (at === 'cab') return { x: wu(2.4) * side, y: wu(1.7), z: wu(0.35) }
-  if (at === 'ground') return { x: wu(0.4) * side, y: wu(0.9), z: wu(1.7) }
-  if (at === 'lift') return { x: wu(-1.2) * side, y: wu(1.4 + lift * 2.6), z: wu(-1.6) }
-  return { x: wu(-2.0), y: wu(2.6 + lift * 0.6), z: wu(-1.9) }
+/** Smooth the scissor lift across the phase. The sim still flips the latch at the boundary. */
+function visualLift(phase: string, u: number, raw: number): number {
+  if (phase === 'lift_raise') return Math.min(1, Math.max(0, u))
+  if (phase === 'lift_lower') return Math.min(1, Math.max(0, 1 - u))
+  if (phase === 'carts_out' || phase === 'carts_in') return 1
+  if (phase === 'parking' || phase === 'crew_exit' || phase === 'crew_board') return 0
+  return raw
 }
 
 const CATER_MAST_M = 2.2
@@ -170,17 +192,6 @@ function makeCateringRig(): THREE.Group {
   platform.name = 'platform'
   platform.position.set(-bodyL * 0.28, wu(1.2), -bodyW * 0.55)
   g.add(platform)
-  const personR = wu(0.22)
-  const personL = wu(1.75 - 0.44)
-  for (const role of ['driver', 'helper'] as const) {
-    const cap = new THREE.Mesh(
-      new THREE.CapsuleGeometry(personR, personL, 3, 6),
-      new THREE.MeshLambertMaterial({ color: role === 'driver' ? '#1f3a5a' : '#6a4328' }),
-    )
-    cap.name = role
-    cap.castShadow = true
-    g.add(cap)
-  }
   return g
 }
 
@@ -215,6 +226,7 @@ export class World {
   trucks = new Map<string, THREE.Object3D>()
   service = new Map<string, THREE.Object3D>()
   cateringCrew = new Map<string, THREE.Group>()
+  private crewFigures = new CrewFigures(this.entGroup)
   people = new Map<string, THREE.Mesh>()
   housingGroup = new THREE.Group()
   private housingMeshes = new Map<string, THREE.Group>()
@@ -1806,7 +1818,10 @@ export class World {
         updateAircraft(mesh, pose.gearDown)
       }
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
-      const jetway = f.craft !== 'helo' && f.phase === 'parked' && game.standAccessAt(cell) === 'jetway'
+      const jetway =
+        f.craft !== 'helo' &&
+        (f.phase === 'deboard' || f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') &&
+        game.standAccessAt(cell) === 'jetway'
       const bridges = mesh.getObjectByName('bridges')
       if (jetway) {
         const term = nearestTerminal(game, cell)
@@ -1818,6 +1833,8 @@ export class World {
       } else if (bridges) {
         mesh.remove(bridges)
       }
+      const docked = mesh.getObjectByName('bridges')
+      if (docked) applyBridge(docked, game.bridgeExtend(f.id))
       mesh.scale.setScalar(game.selectedFlight === f.id ? 1.06 : 1)
     }
     this.stepClimbGhosts(
@@ -2036,10 +2053,11 @@ export class World {
         this.entGroup.add(mesh)
       }
       mesh.position.copy(toWorld(t.x, t.y, 0))
-      mesh.rotation.y = -Math.atan2(
-        (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.r ?? t.y) - t.y,
-        (t.path[Math.min(t.seg + 1, t.path.length - 1)]?.c ?? t.x) - t.x,
-      )
+      const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
+      const dx = (ahead?.c ?? t.x) - t.x
+      const dy = (ahead?.r ?? t.y) - t.y
+      const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
+      mesh.rotation.y = -heading
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
       const crate = mesh.getObjectByName('crate')
       if (crate) {
@@ -2132,18 +2150,13 @@ export class World {
       rig.rotation.y = -pose.heading
       const mast = rig.getObjectByName('mast')
       const platform = rig.getObjectByName('platform')
-      const h = wu(CATER_MAST_M) + pose.liftHeight * wu(2.4)
+      const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
+      const h = wu(CATER_MAST_M) + lift * wu(2.4)
       if (mast) {
         mast.scale.y = h / wu(CATER_MAST_M)
         mast.position.y = h / 2
       }
-      if (platform) platform.position.y = wu(1.2) + pose.liftHeight * wu(2.2)
-      for (const member of pose.crew) {
-        const cap = rig.getObjectByName(member.role)
-        if (!cap) continue
-        const spot = crewSpot(member.at, pose.liftHeight, member.role === 'helper')
-        cap.position.set(spot.x, spot.y, spot.z)
-      }
+      if (platform) platform.position.y = wu(1.2) + lift * wu(2.2)
     }
     for (const [id, m] of this.cateringCrew) {
       if (!seenC.has(id)) {
@@ -2155,6 +2168,7 @@ export class World {
 
     const seenP = new Set<string>()
     for (const p of game.people) {
+      if ((p.job === 'arrive' || p.job === 'board') && game.paxPicture(p.flightId)) continue
       seenP.add(p.id)
       let mesh = this.people.get(p.id)
       if (!mesh) {
@@ -2195,6 +2209,7 @@ export class World {
       }
     }
     this.syncBeltBags(game)
+    this.crewFigures.update(game.crewScene(), this.camera, dt, game.speed >= 5, (c, r, y) => toWorld(c, r, y))
     syncStaffHousing(
       this.housingGroup,
       this.housingMeshes,
@@ -2479,6 +2494,7 @@ export class World {
     this.climbOut.clear()
     this.arrivalBefore.clear()
     this.parkedFleet.dispose()
+    this.crewFigures.dispose()
     this.gateGroup.clear()
     disposeAircraftLibrary()
     disposeVehicleLibrary()

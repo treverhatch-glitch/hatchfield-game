@@ -163,7 +163,7 @@ import { clearanceBlocks } from './runwayClearance'
 import { footprintCells, placementHitsStand, standPlaceBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
-import { standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
+import { bridgeMirror, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
 import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
 import { terminals } from '../render/world/layout.ts'
@@ -578,6 +578,8 @@ import {
   type PassengerLink,
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
+import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
   commitPlot,
   dailySinks,
@@ -8753,6 +8755,264 @@ export class Game {
   /** Service vehicles on the apron. Empty until a vehicle depot and a fuel farm exist. */
   servicePoses() {
     return this.ensureGround()?.sim.poses() ?? []
+  }
+
+  /**
+   * Driver and helper for a fuel, bag, or catering stop.
+   * Steps fill the sim's service window. Parked crew stay in the cab and are omitted.
+   */
+  crewScene(): CrewScene {
+    const services: CrewClock[] = []
+    const ground = this.ground?.sim
+    if (ground) {
+      for (const job of ground.activeCrew()) {
+        services.push({
+          id: job.id,
+          service: job.service,
+          x: job.x,
+          y: job.y,
+          heading: job.heading,
+          start: job.start,
+          end: job.end,
+          now: ground.now,
+        })
+      }
+    }
+    for (const truck of this.trucks) {
+      const clock = this.legacyCrewClock(truck)
+      if (clock) services.push(clock)
+    }
+    for (const clock of this.turnaroundClocks(services)) services.push(clock)
+    const scene = assembleCrew({
+      services,
+      catering: this.cateringPoses().map((pose) => ({
+        id: pose.id,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        phase: pose.phase,
+        phaseU: pose.phaseU,
+      })),
+      metersPerUnit: METERS_PER_CELL,
+      aircraftFor: (x, y) => this.aircraftAim(x, y),
+    })
+    for (const clock of this.paxClocks()) {
+      const sample = samplePax(clock)
+      scene.people.push(...sample.people)
+      scene.props.push(...sample.props)
+    }
+    return scene
+  }
+
+  /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
+  bridgeExtend(flightId: string): number {
+    const flight = this.flights.find((item) => item.id === flightId)
+    if (!flight?.stand || flight.cargo || this.standPaxMode(flight.stand) !== 'jetway') return 0
+    if (flight.phase === 'servicing' || flight.phase === 'parked') return bridgeHold()
+    if (flight.phase !== 'deboard' && flight.phase !== 'board') return 0
+    return samplePax(this.paxClock(flight)).extend
+  }
+
+  /** Apron capsules stand down while the boarding picture draws these passengers. */
+  paxPicture(flightId: string): boolean {
+    const flight = this.flights.find((item) => item.id === flightId)
+    return !!flight && !flight.cargo && (flight.phase === 'deboard' || flight.phase === 'board')
+  }
+
+  private aircraftAim(x: number, y: number): AircraftAim | undefined {
+    let best: Flight | undefined
+    let bestD = 1.4
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.phase === 'gone' || flight.phase === 'hold') continue
+      const d = Math.hypot(flight.x - x, flight.y - y)
+      if (d < bestD) {
+        bestD = d
+        best = flight
+      }
+    }
+    if (!best) return undefined
+    const spec = getAircraftSpec(best.airframeId || 'b738')
+    return {
+      x: best.x,
+      y: best.y,
+      heading: best.heading,
+      lengthM: spec.lengthM,
+      spanM: spec.spanM,
+      wingAt: spec.wingAt,
+    }
+  }
+
+  /** Legacy bowser / cart / galley truck. The dwell it was given is the whole service. */
+  private legacyCrewClock(t: Truck): CrewClock | null {
+    if (t.returning || !(t.dwell > 0) || !(t.serviceFor && t.serviceFor > 0)) return null
+    let service: CrewClock['service'] | null = null
+    if (t.kind === 'fuel' && t.mission === 'fuel') service = 'fuel'
+    else if (t.kind === 'bags' && (t.mission === 'load' || t.mission === 'unload')) service = 'bags'
+    else if (t.kind === 'catering') service = 'catering'
+    if (!service) return null
+    const total = t.serviceFor
+    return {
+      id: t.id,
+      service,
+      x: t.x,
+      y: t.y,
+      heading: pathHeading(t.path),
+      start: 0,
+      end: total,
+      now: Math.min(total, Math.max(0, total - t.dwell)),
+    }
+  }
+
+  /**
+   * Cleaning, ground power, and the pushback tug when the logistics module
+   * has not already parked a vehicle on that job. The window is the flight
+   * phase the sim already uses.
+   */
+  private turnaroundClocks(existing: CrewClock[]): CrewClock[] {
+    const clocks: CrewClock[] = []
+    const has = (service: CrewClock['service'], x: number, y: number) =>
+      existing.some((job) => job.service === service && Math.hypot(job.x - x, job.y - y) < 2.5)
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.cargo || flight.kind === 'military') continue
+      const pace = this.rampPace(flight.airframeId, false, flight.airline)
+      const door = this.paxDoor(flight)
+      const origin = { x: flight.x, y: flight.y, heading: flight.heading }
+      if (flight.phase === 'servicing') {
+        const end = 4 * pace
+        const now = Math.min(end, Math.max(0, flight.phaseTime))
+        if (!has('cleaning', flight.x, flight.y)) {
+          const at = placeLocal(origin, { x: door.x - 1.4, y: 0, z: door.z + Math.sign(door.z || 1) * 3.2 }, METERS_PER_CELL)
+          clocks.push({
+            id: `${flight.id}:clean`,
+            service: 'cleaning',
+            x: at.c,
+            y: at.r,
+            heading: flight.heading + Math.PI / 2,
+            start: 0,
+            end,
+            now,
+            aim: { x: 2.2, z: Math.sign(door.z || 1) * 2.4 },
+          })
+        }
+        if (!has('gpu', flight.x, flight.y)) {
+          const spec = getAircraftSpec(flight.airframeId || 'b738')
+          const at = placeLocal(origin, { x: spec.lengthM * 0.22, y: 0, z: door.z + Math.sign(door.z || 1) * 2.4 }, METERS_PER_CELL)
+          clocks.push({
+            id: `${flight.id}:gpu`,
+            service: 'gpu',
+            x: at.c,
+            y: at.r,
+            heading: flight.heading,
+            start: 0,
+            end,
+            now,
+            aim: { x: 1.6, z: -Math.sign(door.z || 1) * 2.2 },
+          })
+        }
+      }
+      if (flight.phase === 'pushback' && !has('pushback', flight.x, flight.y)) {
+        const spec = getAircraftSpec(flight.airframeId || 'b738')
+        const end = 2.8
+        const at = placeLocal(origin, { x: spec.lengthM * 0.5 + 4, y: 0, z: 0.4 }, METERS_PER_CELL)
+        clocks.push({
+          id: `${flight.id}:tug`,
+          service: 'pushback',
+          x: at.c,
+          y: at.r,
+          heading: flight.heading + Math.PI,
+          start: 0,
+          end,
+          now: Math.min(end, Math.max(0, flight.phaseTime)),
+          aim: { x: -2.4, z: spec.spanM * 0.22 },
+        })
+      }
+    }
+    return clocks
+  }
+
+  private paxDoor(flight: Flight): PaxDoor {
+    const spec = getAircraftSpec(flight.airframeId || 'b738')
+    const side = this.paxSide(flight)
+    const door = spec.doors.find((item) => item.kind === 'pax' && item.side === side) ?? spec.doors.find((item) => item.kind === 'pax')
+    const t = door?.t ?? 0.16
+    const signed = door && door.side !== 0 ? door.side : side
+    return {
+      x: spec.lengthM * (0.5 - t),
+      z: signed * (spec.rx + 0.55),
+      sill: Math.max(2.5, spec.gear * 0.45 + 2.1),
+    }
+  }
+
+  private paxSide(flight: Flight): 1 | -1 {
+    if (!flight.stand) return 1
+    const hall = this.jetwayHall(flight.stand)
+    const gate = hall?.origin ?? this.nearestFit(flight.stand)
+    if (!gate) return 1
+    return bridgeMirror(flight.heading, flight.stand, gate)
+  }
+
+  private nearestFit(stand: { c: number; r: number }): { c: number; r: number } | null {
+    let best: { c: number; r: number } | null = null
+    let bestD = Infinity
+    for (const fit of this.fits) {
+      const d = Math.abs(fit.origin.c - stand.c) + Math.abs(fit.origin.r - stand.r)
+      if (d < bestD) {
+        bestD = d
+        best = fit.origin
+      }
+    }
+    return best
+  }
+
+  private paxMode(flight: Flight): PaxMode {
+    const mode = flight.stand ? this.standPaxMode(flight.stand) : 'walk'
+    if (mode === 'jetway') return 'bridge'
+    if (mode === 'bus') return 'bus'
+    return 'stairs'
+  }
+
+  private paxClocks(): PaxClock[] {
+    const clocks: PaxClock[] = []
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.cargo) continue
+      if (flight.phase !== 'deboard' && flight.phase !== 'board') continue
+      clocks.push(this.paxClock(flight))
+    }
+    return clocks
+  }
+
+  private paxClock(flight: Flight): PaxClock {
+    const leg = flight.phase === 'board' ? 'board' : 'deplane'
+    const mode = this.paxMode(flight)
+    const pace = this.rampPace(flight.airframeId, false, flight.airline)
+    const end =
+      leg === 'deplane'
+        ? (mode === 'bridge' ? 3.2 : mode === 'bus' ? 4.5 : 6) * pace
+        : (mode === 'bridge' ? (flight.boardingSlow ? 5 : 3.2) : flight.boardingSlow ? 9 : 5) * pace
+    const gate = this.paxGate(flight)
+    const bus = this.trucks.find((truck) => truck.kind === 'termbus' && truck.flightId === flight.id && !truck.returning)
+    const riding = mode === 'bus' && !!bus && !(bus.dwell > 0) && !(bus.preDwell > 0)
+    return {
+      id: flight.id,
+      mode,
+      leg,
+      start: 0,
+      end: Math.max(0.4, end),
+      now: Math.max(0, flight.phaseTime),
+      aircraft: { x: flight.x, y: flight.y, heading: flight.heading },
+      door: this.paxDoor(flight),
+      gate,
+      riding,
+      metersPerUnit: METERS_PER_CELL,
+    }
+  }
+
+  private paxGate(flight: Flight): { x: number; y: number } {
+    const depot = tilesOf(this.tiles, 'termbus')[0]
+    if (flight.stand && this.standPaxMode(flight.stand) === 'bus' && depot) return { x: depot.c, y: depot.r }
+    const hall = flight.stand ? this.jetwayHall(flight.stand) : null
+    const fit = hall?.origin ?? (flight.stand ? this.nearestFit(flight.stand) : null)
+    return fit ? { x: fit.c, y: fit.r } : { x: flight.x, y: flight.y }
   }
 
   /** Fuel, meals, and how many trucks are out. Null before the depot is built. */
@@ -18985,6 +19245,7 @@ export class Game {
             if (t.mission === 'ferry_dep') fl.waitingOn.paxIn = 0
           }
           t.dwell = 1.8
+          t.serviceFor = t.dwell
         } else if (t.kind === 'bags') {
           const fl = t.flightId ? this.flights.find((x) => x.id === t.flightId) : null
           if (t.mission === 'unload') {
@@ -19002,6 +19263,7 @@ export class Game {
           } else {
             t.dwell = 2.2
           }
+          if (t.dwell > 0) t.serviceFor = t.dwell
         } else {
           t.dwell =
             t.kind === 'fuel'
@@ -19013,6 +19275,7 @@ export class Game {
               : t.kind === 'deice'
                 ? 3.2
                 : 2.2
+          if ((t.kind === 'fuel' || t.kind === 'catering') && t.dwell > 0) t.serviceFor = t.dwell
         }
       } else if (done && t.returning) {
         if (t.kind === 'citycargo') {

@@ -2,7 +2,7 @@ export * from './types'
 export { needsFor, needsForAirframe, allNeeds, FUEL_DENSITY, UPLIFT_FRACTION, PAX_CARGO_FACTOR, FREIGHTER_CARGO_FACTOR } from './needs'
 export { RoadGraph } from './roads'
 export { LogisticsSim } from './engine'
-export type { VehicleState, VehiclePhase, TurnaroundState, ServiceStatus, LogisticsListener, PaxState, BagState } from './engine'
+export type { VehicleState, VehiclePhase, TurnaroundState, ServiceStatus, LogisticsListener, PaxState, BagState, ActiveCrew } from './engine'
 export {
   defaultConfig,
   DEFAULT_VEHICLE_SPECS,
