@@ -312,9 +312,9 @@ export function wingGeometry(
 }
 
 export function cylinderSides(tier: 'low' | 'mid' | 'high'): number {
-  if (tier === 'low') return 5
-  if (tier === 'mid') return 7
-  return 8
+  if (tier === 'low') return 8
+  if (tier === 'mid') return 12
+  return 18
 }
 
 export function fuselageSides(tier: 'low' | 'mid'): number {
@@ -423,4 +423,45 @@ export function loftStation(family: string, t: number): { r: number; dy: number 
 /** Smooth unit sphere for fairings and radomes. */
 export function smoothSphere(): THREE.BufferGeometry {
   return sharedGeo('sphere:smooth', () => new THREE.SphereGeometry(1, 14, 8))
+}
+
+/** Spinner cone, base radius 1 at x = 0, tip at x = 1 (+X forward). */
+export function spinnerConeGeometry(): THREE.BufferGeometry {
+  return sharedGeo('spinner-cone', () => {
+    const pts = [new THREE.Vector2(0.001, 0), new THREE.Vector2(1, 0), new THREE.Vector2(0.92, 0.3), new THREE.Vector2(0.78, 0.55), new THREE.Vector2(0.55, 0.78), new THREE.Vector2(0.28, 0.93), new THREE.Vector2(0.001, 1)]
+    // Lathe spins about +Y; turn the axis to +X so the tip points forward.
+    const cone = new THREE.LatheGeometry(pts, 14).rotateZ(-Math.PI / 2)
+    cone.computeVertexNormals()
+    return cone
+  })
+}
+
+/** Intake lip ring facing +X, ring radius 1, tube radius 0.07. */
+export function intakeLipGeometry(): THREE.BufferGeometry {
+  return sharedGeo('intake-lip', () => new THREE.TorusGeometry(1, 0.07, 5, 20).rotateY(Math.PI / 2))
+}
+
+/**
+ * Airfoil slab for flaps and slats in unit-box space: chord along X (rounded
+ * nose at +X, sharp trailing edge at -X), thickness along Y, span along Z.
+ */
+export function airfoilGeometry(): THREE.BufferGeometry {
+  return sharedGeo('airfoil-slab', () => {
+    const n = 10
+    const upper: THREE.Vector2[] = []
+    const lower: THREE.Vector2[] = []
+    for (let i = 0; i <= n; i++) {
+      const u = 1 - Math.cos((i / n) * Math.PI * 0.5)
+      // NACA-ish half thickness, peak near 30% chord; x = 0.5 at the nose.
+      const t = 0.5 * 5 * 0.2 * (0.2969 * Math.sqrt(u) - 0.126 * u - 0.3516 * u * u + 0.2843 * u ** 3 - 0.1036 * u ** 4) / 0.1
+      const x = 0.5 - u
+      upper.push(new THREE.Vector2(x, Math.max(0.01, t) * 1.05 + 0.04 * (1 - u)))
+      lower.push(new THREE.Vector2(x, -Math.max(0.01, t) * 0.75))
+    }
+    const shape = new THREE.Shape([...upper, ...lower.reverse().slice(1, -1)])
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false, curveSegments: 1 })
+    geo.translate(0, 0, -0.5)
+    geo.computeVertexNormals()
+    return geo
+  })
 }

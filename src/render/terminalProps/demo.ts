@@ -89,6 +89,21 @@ if (view === 'lineup') {
     cam.lookAt(22, 1.0, -14)
     cam.fov = 55
     cam.updateProjectionMatrix()
+  } else if (view === 'checkinClose') {
+    cam.position.set(-26.5, 2.2, -9.5)
+    cam.lookAt(-30, 1.5, -19)
+    cam.fov = 50
+    cam.updateProjectionMatrix()
+  } else if (view === 'securityClose') {
+    cam.position.set(17.5, 2.4, -17)
+    cam.lookAt(22.5, 0.9, -23.5)
+    cam.fov = 55
+    cam.updateProjectionMatrix()
+  } else if (view === 'doors') {
+    cam.position.set(22, 2.6, 19)
+    cam.lookAt(24, 1.8, 30)
+    cam.fov = 60
+    cam.updateProjectionMatrix()
   } else if (view === 'retail') {
     cam.position.set(-34, 2.6, 14)
     cam.lookAt(-38, 1.4, 22)

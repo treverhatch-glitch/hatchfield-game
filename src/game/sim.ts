@@ -579,6 +579,12 @@ import {
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
+import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
+import { rosterAirline } from '../airlines/roster.ts'
+import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
+import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
+import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines } from './rosterAirlines.ts'
+import { standCrewPeople, standProps, type StandArrival } from '../ramp/standCrew.ts'
 import { bridgeHold, samplePax, type PaxClock, type PaxDoor, type PaxMode } from '../ramp/paxFlow.ts'
 import {
   commitPlot,
@@ -649,6 +655,8 @@ import {
 import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
+import { AchievementTracker } from '../achievements/achievements.ts'
+import type { AchievementState } from '../achievements/types.ts'
 import type {
   AircraftKind,
   Airline,
@@ -999,6 +1007,8 @@ export class Game {
   ownedPlots: OwnedPlot[] = []
   /** On-site dorms, apartments, and the staff village. */
   staffHousing = new StaffHousingBridge()
+  /** Tracker for achievements and milestones */
+  achievements = new AchievementTracker()
   /** Optional outsourced pavement crew. Daily fee, faster repair. */
   maintenanceContract = false
   railLinked = false
@@ -2266,12 +2276,57 @@ export class Game {
     return craftRoleLabel(kind)
   }
 
-  /** Premade + live procedural regionals. */
+  /** Premade catalog, the 45-airline roster, live procedural regionals and negotiation carriers. */
   allAirlines(): Airline[] {
+    const roster = rosterGameAirlines().map((a) => normalizeAirline(a))
     // Negotiation-only carriers (Zoomjet etc.) resolve through airline(); list them so they can be signed.
-    const known = new Set([...airlineList(), ...this.extraAirlines].map((a) => a.id))
+    const known = new Set([...airlineList(), ...roster, ...this.extraAirlines].map((a) => a.id))
     const negotiated = NEGOTIATION_AIRLINES.filter((a) => !known.has(a.id)).map((a) => this.airline(a.id))
-    return [...airlineList(), ...this.extraAirlines, ...negotiated]
+    return [...airlineList(), ...roster, ...this.extraAirlines, ...negotiated]
+  }
+
+  /**
+   * Check-in desk signs, in desk order: signed passenger carriers, or while
+   * nobody is signed yet, the roster carriers currently open to this field.
+   */
+  deskBrands(): { id: string; name: string; code: string; primary: string; secondary: string }[] {
+    const key = `${this.signed.join(',')}|${this.reputation >> 2}|${this.hostedFieldLevel()}`
+    if (this.deskBrandCache?.key === key) return this.deskBrandCache.list
+    const brand = (id: AirlineId) => {
+      const a = this.airline(id)
+      const r = rosterAirline(id)
+      return { id, name: a.name, code: r?.code ?? a.name.slice(0, 3).toUpperCase(), primary: r?.primary ?? a.color, secondary: r?.secondary ?? a.stripe }
+    }
+    const signed = this.signed.filter((id) => this.airline(id).kind === 'pax')
+    const ids = signed.length ? signed : ROSTER_LIVE ? rosterGameAirlines().filter((a) => a.kind === 'pax' && this.rosterOpen(a.id)).slice(0, 6).map((a) => a.id) : []
+    const list = ids.map(brand)
+    this.deskBrandCache = { key, list }
+    return list
+  }
+
+  private deskBrandCache: { key: string; list: { id: string; name: string; code: string; primary: string; secondary: string }[] } | null = null
+
+  /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
+  panelAirlines(): Airline[] {
+    return this.allAirlines().filter((a) => !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(a.id) && !this.signed.includes(a.id)))
+  }
+
+  /** Airport size (1 to 5) and reputation, as the roster unlock table reads them. */
+  rosterAirport(): { size: number; reputation: number } {
+    return { size: Math.min(ROSTER_SIZE_CAP, this.hostedFieldLevel()), reputation: this.reputation }
+  }
+
+  /**
+   * Will this carrier write to us? Roster carriers need their size and
+   * reputation gate (helicopter operators also a helipad); while the roster
+   * is live, catalog carriers no longer send new letters.
+   */
+  rosterOpen(id: AirlineId): boolean {
+    const r = rosterAirline(id)
+    if (!r) return !(ROSTER_LIVE && CATALOG_AIRLINE_IDS.has(id))
+    if (!ROSTER_LIVE) return false
+    if (r.type === 'heli' && !this.readiness().helipad) return false
+    return isAirlineUnlocked(r, this.rosterAirport())
   }
 
   airline(id: AirlineId): Airline {
@@ -2340,9 +2395,15 @@ export class Game {
     }
     const raw =
       AIRLINES[id] ??
+      rosterGameAirline(id) ??
       this.extraAirlines.find((a) => a.id === id) ??
       AIRLINES.northline
     return normalizeAirline(raw)
+  }
+
+  /** Airframe ids a contract sells: catalog fleet, or the roster carrier's own (no helicopters on the jet flow). */
+  private contractFleet(id: AirlineId): readonly string[] | undefined {
+    return CONTRACT_FLEET[id] ?? rosterFleet(id)?.filter((m) => AIRFRAMES[m] && !AIRFRAMES[m].kind.startsWith('helo'))
   }
 
   fieldLevel(): FieldLevel {
@@ -3522,7 +3583,7 @@ export class Game {
   pickAircraftKind(airlineId: AirlineId): AircraftKind {
     const a = this.airline(airlineId)
     if (a.kind === 'cargo') return 'freighter'
-    const contracted = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const contracted = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (contracted.length) {
       const counts = new Map<AircraftKind, number>()
       for (const af of contracted) counts.set(af.kind, (counts.get(af.kind) ?? 0) + 1)
@@ -4913,6 +4974,7 @@ export class Game {
       tier3Sites: this.lateSites.map((site) => ({ ...site })),
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
+      achievements: this.achievements.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -5008,6 +5070,7 @@ export class Game {
       this.lateSites = restoreLateSites(s.tier3Sites, this.tiles)
       this.missedHotelNights = wholeNights(s.missedHotelNights ?? 0)
       this.crewHotelNights = wholeNights(s.crewHotelNights ?? 0)
+      if (s.achievements) this.achievements.load(s.achievements as AchievementState)
       // Migrate bare hotel tiles from older saves → business grade.
       for (const p of tilesOf(this.tiles, 'hotel')) {
         const k = `${p.c},${p.r}`
@@ -8832,6 +8895,73 @@ export class Game {
    * Steps fill the sim's service window. Parked crew stay in the cab and are omitted.
    */
   crewScene(): CrewScene {
+    const services = this.serviceClocks()
+    for (const clock of this.turnaroundClocks(services)) services.push(clock)
+    const scene = assembleCrew({
+      services,
+      catering: this.cateringPoses().map((pose) => ({
+        id: pose.id,
+        x: pose.x,
+        y: pose.y,
+        heading: pose.heading,
+        phase: pose.phase,
+        phaseU: pose.phaseU,
+      })),
+      metersPerUnit: METERS_PER_CELL,
+      aircraftFor: (x, y) => this.aircraftAim(x, y),
+    })
+    for (const clock of this.paxClocks()) {
+      const sample = samplePax(clock)
+      scene.people.push(...sample.people)
+      scene.props.push(...sample.props)
+    }
+    for (const arrival of this.standArrivals()) {
+      standCrewPeople(arrival, METERS_PER_CELL, scene.people)
+      standProps(arrival, METERS_PER_CELL, scene.props)
+    }
+    return scene
+  }
+
+  /**
+   * Aircraft arriving on or sitting at a stand, timed for the marshaller,
+   * chocks and cones. Guiding starts a few cells out on the taxi-in; chocks
+   * and cones stay until pushback.
+   */
+  standArrivals(): StandArrival[] {
+    const out: StandArrival[] = []
+    for (const f of this.flights) {
+      if (!f.stand || f.craft === 'helo') continue
+      let t: number
+      if (f.phase === 'taxi_in') {
+        const d = Math.hypot(f.x - f.stand.c, f.y - f.stand.r)
+        if (d > STAND_TIMELINE.guideCells) continue
+        t = STAND_TIMELINE.taxi * (1 - d / STAND_TIMELINE.guideCells)
+      } else if (f.phase === 'deboard') t = STAND_TIMELINE.taxi + f.phaseTime
+      else if (f.phase === 'servicing' || f.phase === 'board' || f.phase === 'parked') t = STAND_TIMELINE.settled
+      else continue
+      const spec = getAircraftSpec(f.airframeId || 'b738')
+      out.push({ id: f.id, x: f.x, y: f.y, heading: f.heading, lengthM: spec.lengthM, spanM: spec.spanM, t })
+    }
+    return out
+  }
+
+  /**
+   * The GPU cart, cleaning van and pushback tug behind the crew of a
+   * turnaround the logistics module is not already drawing. Same clocks as
+   * crewScene, so the crew always have their equipment under them.
+   */
+  turnaroundEquipment(): { id: string; kind: string; x: number; y: number; heading: number }[] {
+    const kinds: Partial<Record<CrewClock['service'], string>> = { cleaning: 'van', gpu: 'gpu', pushback: 'pushback_tug' }
+    const out: { id: string; kind: string; x: number; y: number; heading: number }[] = []
+    for (const clock of this.turnaroundClocks(this.serviceClocks())) {
+      const kind = kinds[clock.service]
+      if (kind) out.push({ id: clock.id, kind, x: clock.x, y: clock.y, heading: clock.heading })
+    }
+    return out
+  }
+
+  /** Logistics vehicles and legacy trucks currently on a service stop. */
+  private serviceClocks(): CrewClock[] {
     const services: CrewClock[] = []
     const ground = this.ground?.sim
     if (ground) {
@@ -8852,26 +8982,7 @@ export class Game {
       const clock = this.legacyCrewClock(truck)
       if (clock) services.push(clock)
     }
-    for (const clock of this.turnaroundClocks(services)) services.push(clock)
-    const scene = assembleCrew({
-      services,
-      catering: this.cateringPoses().map((pose) => ({
-        id: pose.id,
-        x: pose.x,
-        y: pose.y,
-        heading: pose.heading,
-        phase: pose.phase,
-        phaseU: pose.phaseU,
-      })),
-      metersPerUnit: METERS_PER_CELL,
-      aircraftFor: (x, y) => this.aircraftAim(x, y),
-    })
-    for (const clock of this.paxClocks()) {
-      const sample = samplePax(clock)
-      scene.people.push(...sample.people)
-      scene.props.push(...sample.props)
-    }
-    return scene
+    return services
   }
 
   /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
@@ -8993,7 +9104,8 @@ export class Game {
           start: 0,
           end,
           now: Math.min(end, Math.max(0, flight.phaseTime)),
-          aim: { x: -2.4, z: spec.spanM * 0.22 },
+          // Wing walker: tug-local metres to just outside the wingtip (the tug faces the aircraft).
+          aim: { x: 4 + spec.lengthM * spec.wingAt + spec.spanM * 0.15, z: spec.spanM / 2 + SERVICE_POINTS.wingWalkOut },
         })
       }
     }
@@ -11509,7 +11621,7 @@ export class Game {
   private pickForAirline(airlineId: AirlineId, cargo: boolean): { af: Airframe | null; blocked: PillarReport | null } {
     const a = this.airline(airlineId)
     if (cargo || a.kind === 'cargo') return this.pickOperable('freighter', true)
-    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (!pool.length) return this.pickOperable(this.pickAircraftKind(airlineId), false)
     const level = this.fieldLevel()
     const research = this.researchUnlocked
@@ -11814,6 +11926,9 @@ export class Game {
     const a = this.airline(id)
     const r = this.readiness()
     const miss: string[] = []
+    const roster = rosterAirline(id)
+    if (roster && this.rosterAirport().size < unlockGate(roster).size) miss.push(`Field Lv${unlockGate(roster).size}+`)
+    if (roster?.type === 'heli' && !this.readiness().helipad) miss.push('helipad')
     if (this.reputation < a.minRep) miss.push(`rep ${a.minRep}+`)
     if (!r.runway) miss.push('runway')
     if (a.req.heavyRunway && !r.heavyRunway) miss.push('heavy runway')
@@ -11888,7 +12003,7 @@ export class Game {
   contractCraftNeed(id: AirlineId): { label: string; met: boolean } | null {
     const a = this.airline(id)
     if (a.kind === 'cargo') return null
-    const pool = contractedAirframes(CONTRACT_FLEET[a.id], a.paxMin, a.paxMax)
+    const pool = contractedAirframes(this.contractFleet(a.id), a.paxMin, a.paxMax)
     if (!pool.length) return null
     let need: StandClass = 'S'
     for (const af of pool) {
@@ -11913,6 +12028,7 @@ export class Game {
     const site = this.site ? LAND[this.site] : null
     // Light procedural regionals — keep the phone from always being the same six faces.
     if (
+      !ROSTER_LIVE &&
       this.signed.length >= 1 &&
       this.extraAirlines.filter((a) => a.procedural).length < 5 &&
       Math.random() < 0.4
@@ -11928,6 +12044,7 @@ export class Game {
       if (this.signed.includes(a.id)) return false
       if (this.isBanned(a.id)) return false
       if (a.procedural && procSigned >= 3) return false
+      if (!this.rosterOpen(a.id)) return false
       if (!this.tierUnlocked(a.tier)) return false
       if (!this.meetsReq(a.id)) return false
       // Start focus biases early letters (never hard-locks the other path).
@@ -12361,7 +12478,7 @@ export class Game {
       const slot: ScheduleSlot = {
         id: uid('slot'),
         airline: airlineId,
-        flightNo: `${a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
+        flightNo: `${rosterAirline(airlineId)?.code ?? a.name.slice(0, 2).toUpperCase()}${this.flightSeq}`,
         eta,
         status: 'scheduled',
         delaySec: 0,
@@ -19758,6 +19875,7 @@ export class Game {
     // UI refresh — keep React off the hot path (was 0.12s sim ≈ 25 Hud renders/s at 3x).
     // At 5× the canvases keep drawing, but the HUD string updates about once a second.
     this.flushReputation(step)
+    this.achievements.check(this)
     this.uiAcc += step
     const uiEvery = this.speed >= 5 ? 2.8 : this.speed >= 3 ? 0.7 : 0.4
     if (this.uiAcc > uiEvery) {

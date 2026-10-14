@@ -275,12 +275,21 @@ export class CrossfadeLOD extends THREE.LOD {
     }
 
     // Glow grows a little at night but never past ~1.3x, so lamps stay small points on the tips.
+    const lamp_ = lamp
     const nightScale = 0.95 + lamp * 0.3
     for (const lamp of buckets.lamps) {
       const kind = lamp.userData.kind as string
       if (kind === 'strobe' || kind === 'beacon') continue
       const base = (lamp.userData.baseScale as number) || 1
       lamp.scale.setScalar(base * nightScale)
+      // Additive halo fades in with night; zero by day so it never washes the tips.
+      for (const child of lamp.children) {
+        if (child.userData.glow) {
+          const mat = (child as THREE.Sprite).material
+          mat.opacity = Math.max(0, (lamp_ - 0.2) / 0.8) * 0.85
+          child.visible = lamp_ > 0.2
+        }
+      }
     }
     const strobe = Math.pow(Math.max(0, Math.sin(now * 9)), 18)
     const beacon = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now * 5))

@@ -77,6 +77,7 @@ import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
+import { AchievementToast, type AchievementDef } from '../achievements'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -306,6 +307,15 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const site = game.site ? LAND[game.site] : null
   const offerAirline = game.offer ? game.airline(game.offer.airline) : null
   const mxAirline = game.mxOffer ? game.airline(game.mxOffer.airline) : null
+
+  const [newAchievements, setNewAchievements] = useState<AchievementDef[]>([])
+  useEffect(() => {
+    const unlocks = game.achievements.popUnlocks()
+    if (unlocks.length > 0) {
+      setNewAchievements(unlocks)
+    }
+  }, [game.achievements.state.unlocked, game])
+
   const layoverAirline = game.layoverOffer
     ? game.airline(game.layoverOffer.airline)
     : game.layover
@@ -365,6 +375,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
   return (
     <div className="hud">
+      <AchievementToast achievements={newAchievements} />
       {panel || buildMenu ? null : <GameTimetable game={game} menuOpen={false} />}
       <button
         type="button"
@@ -1710,7 +1721,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     const meta = AIRLINE_TIER_META[tier]
                     const unlocked = game.tierUnlocked(tier)
                     const carriers = game
-                      .allAirlines()
+                      .panelAirlines()
                       .filter((a) => a.tier === tier)
                       .sort((a, b) => a.name.localeCompare(b.name))
                     if (!carriers.length) return null

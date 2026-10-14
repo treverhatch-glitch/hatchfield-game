@@ -77,6 +77,8 @@ export class HallNavCrowd {
   /** Tunables; tests and the debug console may change them. */
   readonly tuning = { ...HALL_CROWD_TUNING }
   readonly stats: CrowdDrawStats = { walkers: 0, visible: 0, bodies: 0, heads: 0, bags: 0, instances: 0, marks: 0 }
+  /** Crew roles another layer draws as full figures (desk agents, officers); skipped here. */
+  skipRole: ((role: CrewRole | null) => boolean) | null = null
   private readonly bodyGeo = new THREE.CapsuleGeometry(0.2, 0.9, 2, 6)
   private readonly headGeo = new THREE.SphereGeometry(0.12, 7, 5)
   private readonly bagGeo = new THREE.BoxGeometry(0.34, 0.5, 0.22)
@@ -106,11 +108,13 @@ export class HallNavCrowd {
   private poses = new Float32Array(0)
   private bobSeed = new Float32Array(0)
   private hasBag = new Uint8Array(0)
+  private skip = new Uint8Array(0)
   private shirtOf = new Uint8Array(0)
   private skinOf = new Uint8Array(0)
   private visIdx = new Int32Array(0)
   private visD = new Float32Array(0)
   private roster = -1
+  private lastTotal = 0
   private lineRev = -1
   private lineNav: unknown = null
   /** Per queue line, in metrics order: kit kind, dot count, painted as a bottleneck. */
@@ -166,6 +170,7 @@ export class HallNavCrowd {
       const sphere = this.sphere
       sphere.radius = T.cullRadiusM
       for (let i = 0; i < total; i++) {
+        if (this.skip[i]) continue
         const x = poses[i * 4] + ox
         const z = poses[i * 4 + 2] + oz
         const dx = x - cx
@@ -181,10 +186,11 @@ export class HallNavCrowd {
       }
     } else {
       for (let i = 0; i < total; i++) {
-        visIdx[i] = i
-        visD[i] = 0
+        if (this.skip[i]) continue
+        visIdx[vis] = i
+        visD[vis] = 0
+        vis++
       }
-      vis = total
     }
     st.walkers = total
     st.visible = vis
@@ -250,11 +256,17 @@ export class HallNavCrowd {
     this.flush(bag, ng, false)
     this.flush(mark, nm, true)
     st.marks = nm
+    this.lastTotal = total
     st.bodies = capN
     st.heads = nh
     st.bags = ng
     st.instances = capN + nh + ng
     return capN
+  }
+
+  /** The pose buffer (stride 4, terminal metres) and walker count of the last sync, for layers drawn on top. */
+  lastPoses(): { poses: Float32Array; total: number } {
+    return { poses: this.poses, total: this.lastTotal }
   }
 
   dispose() {
@@ -331,6 +343,7 @@ export class HallNavCrowd {
       this.skinOf[i] = (h >>> 8) % SKINS.length
       this.bobSeed[i] = (h % 628) / 100
       this.hasBag[i] = !role && (h >>> 16) % 3 !== 0 ? 1 : 0
+      this.skip[i] = this.skipRole?.(role) ? 1 : 0
     }
   }
 
@@ -399,6 +412,7 @@ export class HallNavCrowd {
     this.poses = new Float32Array(cap * 4)
     this.bobSeed = new Float32Array(cap)
     this.hasBag = new Uint8Array(cap)
+    this.skip = new Uint8Array(cap)
     this.shirtOf = new Uint8Array(cap)
     this.skinOf = new Uint8Array(cap)
     this.visIdx = new Int32Array(cap)
