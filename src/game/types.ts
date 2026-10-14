@@ -687,6 +687,7 @@ export interface PendingEmergency {
  * mx:   hangar mechanic walk (people), not a truck
  */
 export type TruckMission =
+  | 'coach_run'
   | 'unload'
   | 'to_claim'
   | 'pickup'
@@ -726,6 +727,8 @@ export interface Truck {
     | 'citycargo'
     | 'contractor'
     | 'delivery'
+    /** Landside coach: drives in on the road, docks at a bus-station kerb bay, boards, leaves. */
+    | 'coach'
   flightId: string | null
   x: number
   y: number
@@ -1058,6 +1061,8 @@ export interface GameSnapshot {
   missedHotelNights?: number
   /** Crew waiting on the airport hotel. */
   crewHotelNights?: number
+  /** Service-yard throughput per building (round 4). Vehicles are transient. */
+  yard?: { served: Record<string, number> }
 }
 
 /** A placed building that is still a construction site. */

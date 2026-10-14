@@ -24,6 +24,7 @@ interface FxGame {
   trucks: readonly { id: string; x: number; y: number; yard?: YardPose }[]
   flights: readonly { id: string; phase: string; x: number; y: number; path: readonly { c: number; r: number }[] }[]
   yard: { spec(key: string): { points: { c: number; r: number }[] } | undefined }
+  tugPoses?: () => { id: string; flightId: string; key: string; phase: string; c: number; r: number; heading: number }[]
 }
 
 const M = {
@@ -64,9 +65,17 @@ function makeFx(action: string): THREE.Group {
   g.userData.action = action
   switch (action) {
     case 'refuel': {
-      const hose = new THREE.Mesh(unitCyl, M.hose)
+      // Sagging hose rebuilt as a tube when its reach changes; reel drum on the truck side.
+      const hose = new THREE.Mesh(new THREE.BufferGeometry(), M.hose)
       hose.name = 'hose'
+      hose.castShadow = true
       g.add(hose)
+      const reel = new THREE.Mesh(unitCyl, M.bar)
+      reel.name = 'reel'
+      reel.scale.set(wu(1.1), wu(0.8), wu(1.1))
+      reel.rotation.x = Math.PI / 2
+      reel.position.set(-wu(1.2), wu(1.3), 0)
+      g.add(reel)
       bx(g, M.glow, wu(0.5), wu(0.5), wu(0.5), 'nozzle')
       break
     }
@@ -155,26 +164,54 @@ export class ServiceFx {
       this.animate(g, y, t, toB, game, tr.x, tr.y)
     }
     for (const [id, g] of this.fx) if (!seen.has(id)) {
+      const hose = g.getObjectByName('hose') as THREE.Mesh | undefined
+      hose?.geometry.dispose()
       this.parent.remove(g)
       this.fx.delete(id)
     }
-    // Tow tugs pull line-MX aircraft into / out of the hangar.
+    // Tow tugs: yard vehicles at the hangar / MRO. They queue in the hangar's own
+    // lane while the door is busy, hook up and lead the aircraft while towing,
+    // then roll out the exit lane.
     const seenT = new Set<string>()
-    for (const f of game.flights) {
-      if (f.phase !== 'mx_taxi' && f.phase !== 'mx_return') continue
-      seenT.add(f.id)
-      let g = this.tugs.get(f.id)
+    const poses = game.tugPoses?.() ?? []
+    const byFlight = new Map(game.flights.map((f) => [f.id, f]))
+    for (const p of poses) {
+      seenT.add(p.id)
+      let g = this.tugs.get(p.id)
       if (!g) {
         g = makeTug()
-        this.tugs.set(f.id, g)
+        this.tugs.set(p.id, g)
         this.parent.add(g)
       }
-      const end = f.path[f.path.length - 1] ?? { c: f.x, r: f.y }
-      const dir = Math.atan2(end.r - f.y, end.c - f.x)
-      const lead = 0.42
-      g.position.copy(this.toWorld(f.x + Math.cos(dir) * lead, f.y + Math.sin(dir) * lead, 0))
-      // Tug faces the aircraft (towbar toward the nose gear).
-      g.rotation.y = -(dir + Math.PI)
+      const f = byFlight.get(p.flightId)
+      if (p.phase === 'work' && f && (f.phase === 'mx_taxi' || f.phase === 'mx_return')) {
+        const end = f.path[f.path.length - 1] ?? { c: f.x, r: f.y }
+        const dir = Math.atan2(end.r - f.y, end.c - f.x)
+        const lead = 0.42
+        g.position.copy(this.toWorld(f.x + Math.cos(dir) * lead, f.y + Math.sin(dir) * lead, 0))
+        // Tug faces the aircraft (towbar toward the nose gear).
+        g.rotation.y = -(dir + Math.PI)
+      } else {
+        g.position.copy(this.toWorld(p.c, p.r, 0))
+        g.rotation.y = -p.heading
+      }
+    }
+    // Saves without yard tugs (or tests): fall back to a tug leading each tow.
+    if (!game.tugPoses) {
+      for (const f of game.flights) {
+        if (f.phase !== 'mx_taxi' && f.phase !== 'mx_return') continue
+        seenT.add(f.id)
+        let g = this.tugs.get(f.id)
+        if (!g) {
+          g = makeTug()
+          this.tugs.set(f.id, g)
+          this.parent.add(g)
+        }
+        const end = f.path[f.path.length - 1] ?? { c: f.x, r: f.y }
+        const dir = Math.atan2(end.r - f.y, end.c - f.x)
+        g.position.copy(this.toWorld(f.x + Math.cos(dir) * 0.42, f.y + Math.sin(dir) * 0.42, 0))
+        g.rotation.y = -(dir + Math.PI)
+      }
     }
     for (const [id, g] of this.tugs) if (!seenT.has(id)) {
       this.parent.remove(g)
@@ -187,18 +224,28 @@ export class ServiceFx {
     const items = g.children.filter((o) => o.name === 'item')
     switch (y.action) {
       case 'refuel': {
-        // Hose from truck manifold back to the farm's hose stand (behind the bay).
-        // Hose from the truck's manifold to the farm's hose stand (toward the tanks).
-        const hose = g.getObjectByName('hose')!
+        // Hose pays out from the reel to the farm's hose stand (toward the tanks),
+        // sags under its own weight, and reels back in as the transfer finishes.
+        const hose = g.getObjectByName('hose') as THREE.Mesh
         const dir = toPoint ? new THREE.Vector3(toPoint.x, 0, toPoint.z) : new THREE.Vector3(-1, 0, 0)
-        const len = Math.min(dir.length() * 0.45, wu(14))
+        const full = THREE.MathUtils.clamp(dir.length() * 0.72, wu(8), wu(42))
+        const pay = p < 0.12 ? p / 0.12 : p > 0.9 ? Math.max(0.08, (1 - p) / 0.1) : 1
+        const len = full * pay
         dir.normalize()
-        const mid = dir.clone().multiplyScalar(len / 2)
-        hose.scale.set(wu(0.35), len, wu(0.35))
-        hose.position.set(mid.x, wu(1.0), mid.z)
-        hose.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
+        const key = Math.round(len / wu(0.5)) + ':' + Math.round(Math.atan2(dir.z, dir.x) * 40)
+        if (hose.userData.key !== key) {
+          hose.userData.key = key
+          const a = new THREE.Vector3(-wu(1.2), wu(1.3), 0)
+          const b = new THREE.Vector3(dir.x * len, wu(0.9), dir.z * len)
+          const mid = a.clone().lerp(b, 0.5)
+          mid.y = wu(0.15) // lies on the apron between truck and stand
+          const curve = new THREE.CatmullRomCurve3([a, a.clone().lerp(mid, 0.5).setY(wu(0.4)), mid, mid.clone().lerp(b, 0.5).setY(wu(0.35)), b])
+          hose.geometry.dispose()
+          hose.geometry = new THREE.TubeGeometry(curve, 28, wu(0.16), 7, false)
+        }
+        ;(g.getObjectByName('reel') as THREE.Mesh).rotation.y = -len / wu(0.6)
         const n = g.getObjectByName('nozzle')!
-        n.position.set(dir.x * len, wu(1.0), dir.z * len)
+        n.position.set(dir.x * len, wu(0.9), dir.z * len)
         n.scale.setScalar(0.7 + 0.3 * Math.sin(t * 8))
         break
       }

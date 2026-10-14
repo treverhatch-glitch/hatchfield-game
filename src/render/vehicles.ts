@@ -13,7 +13,7 @@ export type VehicleShape = 'truck' | 'tanker' | 'bus' | 'tug'
 /** Silhouette per vehicle kind. Unknown kinds read as a small van/truck. */
 export function vehicleShape(kind: string): VehicleShape {
   if (kind === 'fuel' || kind === 'fuel_truck' || kind === 'deice') return 'tanker'
-  if (kind === 'pax_bus' || kind === 'termbus') return 'bus'
+  if (kind === 'pax_bus' || kind === 'termbus' || kind === 'coach') return 'bus'
   if (kind === 'pushback_tug' || kind === 'baggage_tug' || kind === 'belt_loader' || kind === 'gpu') return 'tug'
   // Bag runs and city trucks carry their load on the roof line, so they keep a full-height body.
   return 'truck'
