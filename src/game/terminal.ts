@@ -39,6 +39,8 @@ export type ItemId =
   | 'plant'
   | 'art'
   | 'info_screen'
+  | 'departures_wall'
+  | 'gate_pylon'
   | 'info_kiosk'
   | 'fountain'
   | 'walkway'

@@ -9,6 +9,7 @@ import type { Game } from '../game/sim'
 import { registerHallTools } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
+import { WalkerCard, WalkerOnlyCard } from './WalkerCard'
 import {
   GRID_C,
   GRID_R,
@@ -481,8 +482,11 @@ export function TerminalView({ game }: { game: Game }) {
             </li>
             <li>{guest.clearedSec ? 'Cleared security' : 'Before security'}</li>
           </ul>
+          <WalkerCard game={game} id={guest.id} />
         </aside>
-      ) : null}
+      ) : (
+        <WalkerOnlyCard game={game} id={game.selectedGuest} />
+      )}
       {facility && !guest ? (
         <aside className="facility-card" data-testid="facility-card">
           <h2>{facility.title}</h2>

@@ -1,5 +1,7 @@
 import * as THREE from 'three'
+import { easeMotion, MOTION_RUNNING, type AircraftMotion } from './motion'
 import type { PaintedMesh } from './pool'
+import { poseRig, rigValue, type RigSet } from './rig'
 
 /**
  * Camera-to-aircraft distance in world units.
@@ -117,6 +119,8 @@ export interface LodBuckets {
   strobes: THREE.Object3D[]
   beacons: THREE.Object3D[]
   lamps: THREE.Object3D[]
+  /** Flaps, slats, reversers and door leaves. */
+  rigs?: RigSet[]
 }
 
 const _cam = new THREE.Vector3()
@@ -160,17 +164,27 @@ function applyMeshes(meshes: PaintedMesh[], weight: number, nearHigh: number) {
  * Distance crossfade. Subclasses THREE.LOD so the renderer calls `update`
  * every frame, but does not hard-switch levels (that pops).
  */
+function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a))
+}
+
 export class CrossfadeLOD extends THREE.LOD {
   wHigh = 0
   wMid = 1
   wLow = 0
   gearT = 1
+  steer = 0
+  lastHeading: number | null = null
   posed = false
   lastT = -1
   buckets: LodBuckets | null = null
   /** Builds window instances the first time this aircraft enters the high band. */
   requestWindows: (() => void) | null = null
   windowsReady = false
+  /** Eased motion actually drawn. */
+  motion: AircraftMotion = { ...MOTION_RUNNING }
+  spinAngle = 0
+  motionPosed = false
 
   constructor() {
     super()
@@ -215,19 +229,53 @@ export class CrossfadeLOD extends THREE.LOD {
     cullLamps(buckets.lamps, camera)
 
     const gearScale = Math.max(0.0001, this.gearT)
-    for (const gear of buckets.gears) gear.scale.y = gearScale
-
-    for (const spinner of buckets.spinners) {
-      if (spinner.name === 'rotor' || spinner.name === 'tail-rotor') {
-        const speed = spinner.name === 'tail-rotor' ? 22 : 11
-        if (spinner.name === 'tail-rotor') spinner.rotation.z = now * speed
-        else spinner.rotation.y = now * speed
-      } else {
-        spinner.rotation.x = now * (spinner.name === 'fan' ? 28 : 14)
+    // Nose-wheel steering follows the turn rate of the airframe.
+    const heading = this.parent?.rotation.y ?? 0
+    const yawRate = dt > 0 && this.lastHeading !== null ? wrapAngle(heading - this.lastHeading) / dt : 0
+    this.lastHeading = heading
+    this.steer += (THREE.MathUtils.clamp(yawRate * 2.2, -0.7, 0.7) - this.steer) * Math.min(1, dt * 6)
+    for (const gear of buckets.gears) {
+      if (gear.userData.bay) {
+        gear.visible = this.gearT > 0.03
+        continue
+      }
+      const retract = gear.userData.retract as { axis: 'x' | 'z'; angle: number } | undefined
+      if (retract) {
+        gear.rotation[retract.axis] = (1 - this.gearT) * retract.angle
+        gear.visible = this.gearT > 0.03
+        if (gear.userData.steer) gear.rotation.y = this.gearT > 0.98 ? this.steer : 0
+      } else if (!gear.userData.legs) {
+        gear.scale.y = gearScale
       }
     }
 
-    const nightScale = 0.85 + lamp * 0.7
+    const goal = (this.parent?.userData.motion as AircraftMotion | undefined) ?? MOTION_RUNNING
+    if (!this.motionPosed) {
+      Object.assign(this.motion, goal)
+      this.motionPosed = true
+    } else {
+      easeMotion(this.motion, goal, dt)
+    }
+    // Shut-down engines still windmill a little.
+    this.spinAngle += dt * (0.04 + this.motion.spool * 0.96)
+    const a = this.spinAngle
+    for (const spinner of buckets.spinners) {
+      if (spinner.name === 'rotor' || spinner.name === 'tail-rotor') {
+        if (spinner.name === 'tail-rotor') spinner.rotation.z = a * 22
+        else spinner.rotation.y = a * 11
+      } else {
+        spinner.rotation.x = a * (spinner.name === 'fan' ? 28 : 14)
+      }
+    }
+    if (buckets.rigs) {
+      for (const rig of buckets.rigs) {
+        if (rig.posed >= 0 && rig.mesh.parent && !rig.mesh.parent.visible) continue
+        poseRig(rig, rigValue(rig.kind, this.motion))
+      }
+    }
+
+    // Glow grows a little at night but never past ~1.3x, so lamps stay small points on the tips.
+    const nightScale = 0.95 + lamp * 0.3
     for (const lamp of buckets.lamps) {
       const kind = lamp.userData.kind as string
       if (kind === 'strobe' || kind === 'beacon') continue
@@ -238,11 +286,11 @@ export class CrossfadeLOD extends THREE.LOD {
     const beacon = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now * 5))
     for (const lamp of buckets.strobes) {
       const base = (lamp.userData.baseScale as number) || 1
-      lamp.scale.setScalar(base * nightScale * (0.7 + strobe * 1.15))
+      lamp.scale.setScalar(base * nightScale * (0.8 + strobe * 0.5))
     }
     for (const lamp of buckets.beacons) {
       const base = (lamp.userData.baseScale as number) || 1
-      lamp.scale.setScalar(base * nightScale * (0.75 + beacon * 0.45))
+      lamp.scale.setScalar(base * nightScale * (0.8 + beacon * 0.3))
     }
 
     const ail = Math.sin(now * 0.7) * 0.18

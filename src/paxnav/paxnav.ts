@@ -12,11 +12,49 @@
  *
  * Coordinates are terminal metres: x east, z south, tile (0,0) at 0,0, and
  * passengers always stand on the floor (y = 0).
+ *
+ * With `guests: true` every passenger is also a guest (src/paxnav/guests.ts):
+ * seeded traits set their pace, patience and taste; needs rise and pick the
+ * optional stops; first-timers get lost where signage is thin; thoughts move
+ * satisfaction; families walk as one group; long lines make people leave or
+ * complain; and a missed flight sends them to a rebooking desk. All of that
+ * runs on each guest's staggered think step, not per frame.
  */
 import { BUILD_TUNING } from '../terminalbuild/config.ts'
 import type { BuildLayout, EquipKind } from '../terminalbuild/types.ts'
 import { createPaxRng, type PaxRng } from '../pax/rng.ts'
-import { NEED_STOPS, PAXNAV_TUNING, STOP_KIT, type StopKind } from './config.ts'
+import { NEED_STOPS, PAXNAV_TUNING, REBOOK_KIT, STOP_KIT, type StopKind } from './config.ts'
+import {
+  GUEST_TUNING,
+  NEED_KEYS,
+  type AmenityStop,
+  type DecayNeed,
+  type GuestFlag,
+  type GuestPurpose,
+  type GuestTrait,
+  type NeedKey,
+  type ThoughtKey,
+} from './guestConfig.ts'
+import {
+  NEED_INDEX,
+  NO_SIGNAGE,
+  amenityScore,
+  anxietyFrom,
+  buildSignField,
+  decayNeeds,
+  hashId,
+  need,
+  patienceNow,
+  relieve,
+  rnd,
+  rollMind,
+  think,
+  type Activity,
+  type GuestThought,
+  type Mind,
+  type SignField,
+  type Signage,
+} from './guests.ts'
 import { computeField, type Field } from './field.ts'
 import {
   apronCells,
@@ -38,8 +76,19 @@ export interface SpawnSpec {
   departAt: number
   /** Has a bag to drop at check-in. Rolled from `checkinShare` when unset. */
   bags?: boolean
-  /** Stops wanted after security. Rolled from `needShare` when unset. */
+  /**
+   * Stops wanted after security. Rolled from `needShare` when unset; with
+   * guests on, unset means their needs pick stops as they go.
+   */
   needs?: NeedStop[]
+  /** Guests: why they fly. Rolled from the id when unset. */
+  purpose?: GuestPurpose
+  /** Guests: traits they have for sure (more may be rolled). */
+  flags?: GuestFlag[]
+  /** Guests: walk with this passenger's group (family, party). Ignored when the leader is gone, full, or a follower. */
+  groupOf?: string
+  /** Guests: starting need levels (0–1) instead of the rolled ones. */
+  startNeeds?: Partial<Record<DecayNeed, number>>
 }
 
 export type PaxPhase =
@@ -57,12 +106,77 @@ export type PaxPhase =
   | 'board'
   /** No way to the next stop the passenger cannot skip (security or gate). Retries, and re-plans on any edit. */
   | 'stuck'
+  /** Guests: lost, wandering a few cells before getting their bearings. */
+  | 'lost'
+  /** Guests: walking with their group's leader. */
+  | 'follow'
 
 export interface PaxEvent {
-  kind: 'boarded' | 'missed' | 'stuck'
+  /** `rebooked`: a guest who missed their flight finished at the rebooking desk and left. */
+  kind: 'boarded' | 'missed' | 'stuck' | 'rebooked'
   id: string
   at: number
 }
+
+/** Everything the guest card shows about one passenger. */
+export interface GuestCard {
+  id: string
+  purpose: GuestPurpose
+  traits: GuestTrait[]
+  /** 0 (fine) to 1 (urgent). */
+  needs: Record<NeedKey, number>
+  /** 0–100. */
+  satisfaction: number
+  spent: number
+  /** Oldest first. */
+  thoughts: GuestThought[]
+  phase: PaxPhase
+  /** Next stop they are making. */
+  stop: StopKind | null
+  facility: string | null
+  airside: boolean
+  lost: boolean
+  rebooking: boolean
+  /** Seconds in their current line, 0 when not in one. */
+  waitedSec: number
+  /** Group leader's id (themselves when leading), null when alone. */
+  leader: string | null
+  group: string[]
+  lostTimes: number
+  complaints: number
+  /** Walking pace on open floor, m/s (a group walks at its slowest member's). */
+  speedMps: number
+}
+
+/** Guest feedback since the last drain, for satisfaction and reputation. */
+export interface GuestFeedback {
+  /** Sum of satisfaction changes from thoughts. */
+  satDelta: number
+  missed: number
+  rebooked: number
+  complaints: number
+  leftQueue: number
+  lost: number
+  outOfStock: number
+  /** Cash spent at counters. */
+  spent: number
+}
+
+const noFeedback = (): GuestFeedback => ({
+  satDelta: 0,
+  missed: 0,
+  rebooked: 0,
+  complaints: 0,
+  leftQueue: 0,
+  lost: 0,
+  outOfStock: 0,
+  spent: 0,
+})
+
+/** `writeFlags` bits per walker. */
+export const WALKER_LOST = 1
+export const WALKER_REBOOK = 2
+export const WALKER_UNHAPPY = 4
 
 /** One finished wait in a line: from joining it to stepping up to the desk. */
 export interface PaxWait {
@@ -86,6 +200,10 @@ export interface PaxPose {
   place: number
   /** Past security. */
   airside: boolean
+  /** Guests: lost (or walking with a lost leader). Shows a thought bubble. */
+  lost: boolean
+  /** Guests: missed their flight, on the way to (or at) a rebooking desk. */
+  rebooking: boolean
 }
 
 export interface FacilityMetrics {
@@ -105,6 +223,10 @@ export interface FacilityMetrics {
   /** What someone joining now would wait, at the current service rate. */
   estWaitSec: number
   served: number
+  /** Guests who gave up on this line. */
+  leftQueue: number
+  /** Shop counters with guests on: units on the shelf. Null for other kit. */
+  stock: number | null
   /** Marked line, service point first, terminal metres. */
   line: { x: number; z: number }[]
 }
@@ -115,6 +237,8 @@ interface QueueState {
   incoming: number
   served: number
   waits: number[]
+  left: number
+  stock: number
 }
 
 interface Agent {
@@ -144,14 +268,37 @@ interface Agent {
   retryAt: number
   stuckSaid: boolean
   dead: boolean
+  /** Guest mind; null with guests off, and on followers (they share the leader's). */
+  m: Mind | null
+  /** Optional stops were given at spawn: needs do not add more. */
+  fixedNeeds: boolean
+  /** Missed the flight; heading for a rebooking desk. */
+  rebook: boolean
+  /** Out-of-stock visit at the current counter. */
+  oos: boolean
+  /** Wait at the line just served, seconds. */
+  lastWait: number
+  /** Group: the leader this follower walks behind. */
+  lead: Agent | null
+  /** Group: followers (leader only). */
+  group: Agent[] | null
+  /** Group leader's recent path: x, z, cell, layer per point (ring). */
+  trail: Float32Array | null
+  trailHead: number
+  trailN: number
 }
 
 const EPS = 1e-4
+const TRAIL_STRIDE = 4
 
 export interface PaxNavOptions {
   seed?: number
   /** Metres per build tile. Defaults to the build tools' tile. */
   tileMetres?: number
+  /** Passengers are guests with traits, needs, thoughts and groups. Off: plain walkers. */
+  guests?: boolean
+  /** Wayfinding signs and departure boards (guests only). */
+  signage?: Signage
 }
 
 export class PaxNav {
@@ -168,14 +315,31 @@ export class PaxNav {
   private tileM: number
   private now = 0
   private gateIds: string[] = []
+  private seed: number
+  /** Guests on: traits, needs, thoughts, groups. */
+  readonly guests: boolean
+  private signage: Signage
+  private signs!: SignField
+  /** Bodies per nav cell, recounted each tick (guests only). */
+  private dens = new Uint16Array(0)
+  private fb = noFeedback()
   /** Bumped on every `setLayout`. */
   revision = 0
 
   constructor(layout: BuildLayout, opts: PaxNavOptions = {}) {
-    this.rng = createPaxRng(opts.seed ?? 1)
+    this.seed = opts.seed ?? 1
+    this.rng = createPaxRng(this.seed)
     this.tileM = opts.tileMetres ?? BUILD_TUNING.tileMetres
+    this.guests = opts.guests === true
+    this.signage = opts.signage ?? NO_SIGNAGE
     this.rebuild(layout)
     this.ensureStates()
+  }
+
+  /** Wayfinding signs and departure boards changed. Cheap enough to call on any edit. */
+  setSignage(s: Signage): void {
+    this.signage = s
+    this.signs = buildSignField(this.grid, s)
   }
 
   // ---------------------------------------------------------------- layout
@@ -200,7 +364,7 @@ export class PaxNav {
     this.ensureStates()
     this.seatTaken.clear()
     for (const a of old) {
-      if (a.dead) continue
+      if (a.dead || a.lead) continue
       a.path = null
       a.seat = -1
       a.lineS = -1
@@ -244,7 +408,12 @@ export class PaxNav {
     }
     for (const st of this.states.values()) st.queue.forEach((a, i) => (a.place = i))
     for (const a of old) {
-      if (a.dead) continue
+      if (a.dead || a.lead) continue
+      // The old trail may run through new walls: the group closes up on the leader.
+      if (a.group) {
+        this.resetTrail(a)
+        for (const f of a.group) this.snapFollower(f, a)
+      }
       a.retryAt = this.now
       if (a.phase === 'service' && a.fac && a.place === 0) continue
       if (a.phase === 'seat' || a.phase === 'seated') a.phase = 'seat'
@@ -260,12 +429,24 @@ export class PaxNav {
     this.fac = buildFacilities(this.grid)
     this.fields.clear()
     this.gateIds = layout.rooms.filter((r) => r.kind === 'gate').map((r) => r.id)
+    this.signs = buildSignField(this.grid, this.signage)
+    this.dens = new Uint16Array(this.grid.gw * this.grid.gh)
     this.revision++
   }
 
   private ensureStates() {
     for (const f of this.fac.list) {
-      if (!this.states.has(f.id)) this.states.set(f.id, { kind: f.kind, queue: [], incoming: 0, served: 0, waits: [] })
+      if (!this.states.has(f.id)) {
+        this.states.set(f.id, {
+          kind: f.kind,
+          queue: [],
+          incoming: 0,
+          served: 0,
+          waits: [],
+          left: 0,
+          stock: GUEST_TUNING.stockCap,
+        })
+      }
     }
   }
 
@@ -325,14 +506,27 @@ export class PaxNav {
   spawn(spec: SpawnSpec): boolean {
     const g = this.grid
     if (!g.spawns.length || this.byId.has(spec.id)) return false
+    const lead = this.guests && spec.groupOf ? this.byId.get(spec.groupOf) : undefined
+    if (lead && !lead.lead && !lead.rebook && (lead.group?.length ?? 0) + 1 < GUEST_TUNING.groupMax) {
+      this.spawnFollower(spec, lead)
+      return true
+    }
     const r = this.rng
     const cell = g.spawns[Math.floor(r.next() * g.spawns.length) % g.spawns.length]
     const lat = Math.min(PAXNAV_TUNING.lateralM, g.cellM * 0.45)
     const ox = (r.next() * 2 - 1) * lat
     const oz = (r.next() * 2 - 1) * lat
     const bags = spec.bags ?? r.next() < PAXNAV_TUNING.checkinShare
-    const needs = spec.needs ?? NEED_STOPS.filter((n) => r.next() < PAXNAV_TUNING.needShare[n])
-    const speed = PAXNAV_TUNING.walkMps * (1 + (r.next() * 2 - 1) * PAXNAV_TUNING.walkSpread)
+    // Guests pick their optional stops from their needs on the way, unless told.
+    const needs = spec.needs ?? (this.guests ? [] : NEED_STOPS.filter((n) => r.next() < PAXNAV_TUNING.needShare[n]))
+    let speed = PAXNAV_TUNING.walkMps * (1 + (r.next() * 2 - 1) * PAXNAV_TUNING.walkSpread)
+    const m = this.guests ? rollMind(spec.id, this.seed, this.now, { purpose: spec.purpose, flags: spec.flags }) : null
+    if (m) {
+      speed *= m.fx.speed
+      for (const [k, v] of Object.entries(spec.startNeeds ?? {}) as [DecayNeed, number][]) {
+        if (Number.isFinite(v)) m.needs[NEED_INDEX[k]] = Math.max(0, Math.min(1, v))
+      }
+    }
     const stops: StopKind[] = [...(bags ? (['checkin'] as const) : []), 'security', ...needs, 'gate']
     const gate = this.gateIds.includes(spec.gate) ? spec.gate : (this.gateIds[0] ?? spec.gate)
     const a: Agent = {
@@ -361,11 +555,129 @@ export class PaxNav {
       retryAt: 0,
       stuckSaid: false,
       dead: false,
+      m,
+      fixedNeeds: spec.needs !== undefined,
+      rebook: false,
+      oos: false,
+      lastWait: 0,
+      lead: null,
+      group: null,
+      trail: null,
+      trailHead: 0,
+      trailN: 0,
     }
     this.agents.push(a)
     this.byId.set(a.id, a)
     this.plan(a)
     return true
+  }
+
+  /** A group member: walks behind the leader on the leader's own path, at the slowest member's pace. */
+  private spawnFollower(spec: SpawnSpec, lead: Agent) {
+    const m = rollMind(spec.id, this.seed, this.now, { purpose: spec.purpose ?? lead.m?.purpose, flags: spec.flags })
+    const speed = PAXNAV_TUNING.walkMps * m.fx.speed
+    const lat = Math.min(PAXNAV_TUNING.lateralM, this.grid.cellM * 0.45)
+    const st = { rs: hashId(spec.id) }
+    const f: Agent = {
+      ...lead,
+      id: spec.id,
+      ox: (rnd(st) * 2 - 1) * lat,
+      oz: (rnd(st) * 2 - 1) * lat,
+      speed,
+      stops: [],
+      phase: 'follow',
+      fac: null,
+      joined: false,
+      place: -1,
+      path: null,
+      lineS: -1,
+      seat: -1,
+      // Their own traits for the card; needs and thoughts are the leader's.
+      m,
+      lead,
+      group: null,
+      trail: null,
+      trailN: 0,
+    }
+    if (!lead.group) {
+      lead.group = []
+      lead.trail = new Float32Array(GUEST_TUNING.trailLen * TRAIL_STRIDE)
+      this.resetTrail(lead)
+    }
+    lead.group.push(f)
+    // The group walks at its slowest member's pace.
+    lead.speed = Math.min(lead.speed, speed)
+    this.snapFollower(f, lead)
+    this.agents.push(f)
+    this.byId.set(f.id, f)
+  }
+
+  // ---------------------------------------------------------------- groups
+
+  private resetTrail(a: Agent) {
+    if (!a.trail) return
+    a.trailHead = 0
+    a.trailN = 0
+    this.pushTrail(a)
+  }
+
+  private pushTrail(a: Agent) {
+    const t = a.trail!
+    const L = GUEST_TUNING.trailLen
+    a.trailHead = (a.trailHead + 1) % L
+    const o = a.trailHead * TRAIL_STRIDE
+    const c = cellAt(this.grid, a.x, a.z)
+    t[o] = a.x
+    t[o + 1] = a.z
+    // The cell the point is on (mid-step that can be the next cell, not `a.cell`).
+    t[o + 2] = c >= 0 ? c : a.cell
+    t[o + 3] = a.layer
+    a.trailN = Math.min(L, a.trailN + 1)
+  }
+
+  /** Leader: drop a trail point after moving a little or onto a new cell. */
+  private recordTrail(a: Agent) {
+    const t = a.trail!
+    const o = a.trailHead * TRAIL_STRIDE
+    const c = cellAt(this.grid, a.x, a.z)
+    if (t[o + 2] !== c || t[o + 3] !== a.layer || Math.hypot(t[o] - a.x, t[o + 1] - a.z) >= GUEST_TUNING.trailStepM) {
+      this.pushTrail(a)
+    }
+  }
+
+  /** Stand the follower on the leader's trail, `gap` metres per place behind. */
+  private snapFollower(f: Agent, lead: Agent) {
+    const t = lead.trail!
+    const L = GUEST_TUNING.trailLen
+    const want = (lead.group!.indexOf(f) + 1) * GUEST_TUNING.groupGapM
+    let px = lead.x
+    let pz = lead.z
+    let acc = 0
+    let o = lead.trailHead * TRAIL_STRIDE
+    for (let j = 0; j < lead.trailN; j++) {
+      o = ((lead.trailHead - j + L) % L) * TRAIL_STRIDE
+      acc += Math.hypot(t[o] - px, t[o + 1] - pz)
+      px = t[o]
+      pz = t[o + 1]
+      if (acc >= want) break
+    }
+    const cell = t[o + 2]
+    const g = this.grid
+    // Own sideways offset when it keeps them on the same cell; otherwise right on the path.
+    let x = t[o] + f.ox * 0.5
+    let z = t[o + 1] + f.oz * 0.5
+    if (cellAt(g, x, z) !== cell) {
+      x = t[o]
+      z = t[o + 1]
+    }
+    const dx = x - f.x
+    const dz = z - f.z
+    if (dx * dx + dz * dz > 1e-6) f.yaw = Math.atan2(dx, dz)
+    f.x = x
+    f.z = z
+    f.cell = cell
+    f.layer = t[o + 3]
+    f.rebook = lead.rebook
   }
 
   // ---------------------------------------------------------------- planning
@@ -379,11 +691,11 @@ export class PaxNav {
   }
 
   /** Pick the facility that gets this passenger served soonest: walk time plus the line ahead. */
-  private choose(a: Agent, kit: EquipKind, room: string | null): Facility | null {
+  private choose(a: Agent, kit: EquipKind, room: string | null, skip: Facility | null = null): Facility | null {
     let best: Facility | null = null
     let bestT = Infinity
     for (const f of this.fac.list) {
-      if (f.kind !== kit || f.layer !== a.layer || (room && f.roomId !== room)) continue
+      if (f === skip || f.kind !== kit || f.layer !== a.layer || (room && f.roomId !== room)) continue
       const d = this.facField(f).dist[a.cell]
       if (!Number.isFinite(d)) continue
       const st = this.state(f)
@@ -393,7 +705,16 @@ export class PaxNav {
         best = f
       }
     }
+    this.chosenT = bestT
     return best
+  }
+
+  /** Expected seconds to be served at the last facility `choose` returned. */
+  private chosenT = Infinity
+
+  private chooseFor(a: Agent, s: StopKind): Facility | null {
+    if (s === 'rebook') return this.choose(a, a.layer === AIR ? REBOOK_KIT.air : REBOOK_KIT.pre, null)
+    return this.choose(a, STOP_KIT[s], s === 'gate' ? a.gate : null)
   }
 
   /** Work out where to go next from the head of `stops`. */
@@ -403,11 +724,16 @@ export class PaxNav {
     a.place = -1
     a.lineS = -1
     a.path = null
+    let picked = false
     while (a.stops.length) {
       const s = a.stops[0]
       const open = this.boardOpen(a)
       if ((NEED_STOPS as readonly string[]).includes(s) && this.now + PAXNAV_TUNING.needSlackSec > open) {
         a.stops.shift()
+        continue
+      }
+      if (s === 'gate' && a.m && !a.fixedNeeds && !picked && this.now < open && this.pickAmenity(a)) {
+        picked = true
         continue
       }
       if (s === 'gate' && this.now < open) {
@@ -420,11 +746,18 @@ export class PaxNav {
         this.stick(a)
         return
       }
-      const f = this.choose(a, STOP_KIT[s], s === 'gate' ? a.gate : null)
+      const f = this.chooseFor(a, s)
       if (f) {
         a.fac = f
         this.state(f).incoming++
         a.phase = 'walk'
+        return
+      }
+      if (s === 'rebook') {
+        // No desk on their side: the airline rebooks them by phone and they leave.
+        this.say(a, 'rebooked')
+        this.fb.rebooked += 1 + (a.group?.length ?? 0)
+        this.remove(a, 'rebooked')
         return
       }
       // Check-in and the optional stops can be skipped; security and the gate cannot.
@@ -434,6 +767,301 @@ export class PaxNav {
       }
       this.stick(a)
       return
+    }
+  }
+
+  // ---------------------------------------------------------------- guests
+
+  /** Land a thought on a guest (a follower's land on their leader) and count it. */
+  private say(a: Agent, key: ThoughtKey, place?: string) {
+    const m = (a.lead ?? a).m
+    if (!m) return
+    this.fb.satDelta += think(m, key, this.now, place)
+  }
+
+  /** Seconds from now until boarding opens, less what the stops still ahead should take. */
+  private slack(a: Agent): number {
+    const T = GUEST_TUNING
+    let left = T.gateWalkSec
+    for (const s of a.stops) {
+      if (s === 'checkin' || s === 'security') {
+        if (a.fac && a.stops[0] === s) {
+          const st = this.state(a.fac)
+          left += T.stopBaseSec[s] + (a.joined ? a.place : st.queue.length) * a.fac.serviceSec
+        } else left += T.stopBaseSec[s]
+      } else if (s !== 'gate') left += T.amenityDwellSec
+    }
+    return this.boardOpen(a) - this.now - left
+  }
+
+  /**
+   * Needs pick the next optional stop, weighed against the time to boarding.
+   * Puts it ahead of the gate and returns true when one wins.
+   */
+  private pickAmenity(a: Agent): boolean {
+    const m = a.m!
+    if (a.layer !== AIR || a.rebook) return false
+    const slack = this.boardOpen(a) - this.now - GUEST_TUNING.gateWalkSec
+    let best: AmenityStop | null = null
+    let bestScore: number = GUEST_TUNING.pickMin
+    const avoid = m.avoidId && this.now < m.avoidUntil ? (this.fac.byId.get(m.avoidId) ?? null) : null
+    for (const s of NEED_STOPS) {
+      const f = this.choose(a, STOP_KIT[s], null, avoid)
+      if (!f) {
+        if (s !== 'shop' && (s === 'toilet' ? need(m, 'bladder') : need(m, 'hunger')) >= GUEST_TUNING.needThought) {
+          this.say(a, 'no_amenity', s)
+        }
+        continue
+      }
+      const sc = amenityScore(m, s, this.chosenT + GUEST_TUNING.amenityDwellSec, slack, PAXNAV_TUNING.needSlackSec)
+      if (sc > bestScore) {
+        bestScore = sc
+        best = s
+      }
+    }
+    if (!best) return false
+    a.stops.unshift(best)
+    return true
+  }
+
+  /** The guest's staggered think step: needs, anxiety, thoughts, impatience, getting lost, amenities. */
+  private thinkStep(a: Agent) {
+    const T = GUEST_TUNING
+    const m = a.m!
+    const now = this.now
+    const dt = now - m.lastThink
+    m.lastThink = now
+    m.thinkAt = now + T.thinkSec
+    const crowd = this.dens[a.cell] ?? 0
+    const act: Activity =
+      a.phase === 'queue' || a.phase === 'service' || a.phase === 'stuck'
+        ? 'queue'
+        : a.phase === 'seated'
+          ? a.seat >= 0
+            ? 'seated'
+            : 'queue'
+          : 'walk'
+    if (dt > 0) decayNeeds(m, dt, act, crowd)
+    const anx = a.rebook ? 0 : anxietyFrom(m, this.slack(a), this.signs.board[a.cell] === 1)
+    if (anx >= T.anxiousThought) this.say(a, 'anxious')
+    if (need(m, 'bladder') >= T.needThought) this.say(a, 'need_toilet')
+    if (need(m, 'hunger') >= T.needThought) this.say(a, 'hungry')
+    if (need(m, 'thirst') >= T.needThought) this.say(a, 'thirsty')
+    if (need(m, 'boredom') >= T.needThought) this.say(a, 'bored')
+    if (need(m, 'tired') >= T.needThought) this.say(a, 'tired')
+    if (crowd >= T.crowdThoughtPax) this.say(a, 'crowded')
+
+    // Impatience in a line.
+    if (a.joined && a.phase === 'queue' && a.fac) {
+      const f = a.fac
+      const wait = now - a.joinedAt
+      const p = patienceNow(m)
+      if (wait > p * T.queueLongShare && !m.saidLong) {
+        m.saidLong = true
+        this.say(a, 'queue_long')
+      }
+      if (wait > p * T.leaveShare) {
+        const s = a.stops[0]
+        const optional = s === 'toilet' || s === 'food' || s === 'shop'
+        if (optional) {
+          this.quitLine(a)
+          a.stops.shift()
+          this.plan(a)
+          return
+        }
+        // Somewhere else would serve them much sooner: walk over there.
+        const mine = a.place * f.serviceSec
+        const alt = s === 'rebook' ? null : this.choose(a, f.kind, s === 'gate' ? a.gate : null, f)
+        if (alt && this.chosenT < mine * 0.7) {
+          this.quitLine(a)
+          a.fac = alt
+          this.state(alt).incoming++
+          a.phase = 'walk'
+          return
+        }
+        if (wait > p * T.complainShare && !m.saidComplain) {
+          m.saidComplain = true
+          m.complaints++
+          this.fb.complaints++
+          this.say(a, 'complain')
+        }
+      }
+    }
+
+    // Lost: first-timers and the stressed, more so where signs are thin.
+    if (a.phase === 'walk' && !a.joined && a.fac) {
+      const p = ((T.lostPerMin * T.thinkSec) / 60) * m.fx.lost * (1 + anx) / this.signs.div[a.cell]
+      if (rnd(m) < p && this.startWander(a)) return
+    }
+
+    // Needs pick an amenity while there is time before boarding.
+    if (!a.fixedNeeds && a.stops[0] === 'gate' && (a.phase === 'seat' || a.phase === 'seated') && now < this.boardOpen(a)) {
+      if (this.pickAmenity(a)) {
+        if (a.seat >= 0) this.seatTaken.delete(a.seat)
+        a.seat = -1
+        a.path = null
+        this.plan(a)
+        return
+      }
+    }
+    // Standing at the gate and tired: look for a seat again.
+    if (a.phase === 'seated' && a.seat < 0 && need(m, 'tired') > 0.5) a.phase = 'seat'
+  }
+
+  /** Give up on a line. */
+  private quitLine(a: Agent) {
+    const f = a.fac
+    if (!f) return
+    this.state(f).left++
+    this.fb.leftQueue++
+    this.say(a, 'left_queue')
+    this.stepOffLine(a)
+    a.m!.saidLong = false
+    a.m!.saidComplain = false
+  }
+
+  /**
+   * Leave a facility, and if they were standing in its line (between two line
+   * cells), settle on the centre of the cell they are actually on so the next
+   * walk starts from a cell centre and never cuts a corner.
+   */
+  private stepOffLine(a: Agent) {
+    const inLine = a.lineS >= 0
+    this.leaveFacility(a)
+    if (!inLine) return
+    const g = this.grid
+    const c = cellAt(g, a.x, a.z)
+    if (c >= 0 && g.mask[c] & a.layer) {
+      a.cell = c
+      a.x = cellX(g, c)
+      a.z = cellZ(g, c)
+    }
+  }
+
+  /** Wander a few cells off the route (a dead end, a wrong turn, back the way they came). */
+  private startWander(a: Agent): boolean {
+    const g = this.grid
+    const m = a.m!
+    const [lo, hi] = GUEST_TUNING.wanderCells
+    const want = lo + Math.floor(rnd(m) * (hi - lo + 1))
+    const parent = new Map<number, number>([[a.cell, -1]])
+    const depth = new Map<number, number>([[a.cell, 0]])
+    const q = [a.cell]
+    const ring: number[] = []
+    for (let i = 0; i < q.length && i < 800; i++) {
+      const u = q[i]
+      const du = depth.get(u)!
+      if (du === want) {
+        ring.push(u)
+        continue
+      }
+      for (const s of [1, -1, g.gw, -g.gw]) {
+        const v = u + s
+        if (v < 0 || v >= g.mask.length || parent.has(v)) continue
+        if (Math.abs(s) === 1 && Math.floor(v / g.gw) !== Math.floor(u / g.gw)) continue
+        if (!moveOpen(g, u, v, a.layer)) continue
+        parent.set(v, u)
+        depth.set(v, du + 1)
+        q.push(v)
+      }
+    }
+    if (!ring.length) return false
+    const end = ring[Math.floor(rnd(m) * ring.length) % ring.length]
+    const path: number[] = []
+    for (let c = end; c !== a.cell; c = parent.get(c)!) path.push(c)
+    // Back to the centre of the cell they last stood on first: they may be mid-step.
+    path.push(a.cell)
+    a.path = path.reverse()
+    a.pathI = 0
+    a.phase = 'lost'
+    m.lostTimes++
+    this.fb.lost++
+    this.say(a, 'lost', a.stops[0])
+    return true
+  }
+
+  private stepLost(a: Agent, dt: number) {
+    const res = this.follow(a, null, dt)
+    if (res !== true) return
+    a.path = null
+    if (a.fac) a.phase = 'walk'
+    else this.plan(a)
+  }
+
+  /** Missed the flight: the group heads for a rebooking desk. */
+  private miss(a: Agent) {
+    const n = 1 + (a.group?.length ?? 0)
+    this.events.push({ kind: 'missed', id: a.id, at: this.now })
+    for (const f of a.group ?? []) this.events.push({ kind: 'missed', id: f.id, at: this.now })
+    this.fb.missed += n
+    this.say(a, 'missed')
+    this.stepOffLine(a)
+    if (a.seat >= 0) this.seatTaken.delete(a.seat)
+    a.seat = -1
+    a.path = null
+    a.rebook = true
+    a.stops = ['rebook']
+    a.phase = 'walk'
+    this.plan(a)
+  }
+
+  /** Bodies per cell for crowd pace and comfort. */
+  private countDensity() {
+    const d = this.dens
+    d.fill(0)
+    for (const a of this.agents) if (!a.dead && a.cell >= 0 && a.cell < d.length && d[a.cell] < 65535) d[a.cell]++
+  }
+
+  /** Walking pace now: their own speed, slowed where the floor is crowded (they give way). */
+  private pace(a: Agent): number {
+    if (!this.guests) return a.speed
+    const n = this.dens[a.cell] ?? 0
+    const T = GUEST_TUNING
+    if (n <= T.crowdCellPax) return a.speed
+    return a.speed * Math.max(T.crowdMinPace, T.crowdCellPax / n)
+  }
+
+  /** Seconds at the desk for this guest: group size, rebooking, and empty shelves. */
+  private serviceTime(a: Agent, f: Facility): number {
+    a.oos = false
+    if (!this.guests) return f.serviceSec
+    if (a.rebook) return GUEST_TUNING.rebookSec
+    const st = this.state(f)
+    if (f.kind === 'shop_counter') {
+      if (st.stock < 1) {
+        a.oos = true
+        return GUEST_TUNING.outOfStockSec
+      }
+      st.stock -= 1
+    }
+    const extra = a.group && f.kind !== 'toilet' && f.kind !== 'shop_counter' ? a.group.length * GUEST_TUNING.groupServiceShare : 0
+    return f.serviceSec * (1 + extra)
+  }
+
+  /** Guest side of finishing at a facility: needs, spending, thoughts. */
+  private served(a: Agent, f: Facility, s: StopKind) {
+    const m = a.m
+    if (!m) return
+    const T = GUEST_TUNING
+    m.saidLong = false
+    m.saidComplain = false
+    if ((s === 'checkin' || s === 'security') && a.lastWait < T.quickSec) this.say(a, 'quick')
+    if (s === 'toilet') {
+      relieve(m, 'toilet')
+      this.say(a, 'relief')
+    } else if (s === 'food' || s === 'shop') {
+      if (a.oos) {
+        this.fb.outOfStock++
+        this.say(a, 'out_of_stock')
+        m.avoidId = f.id
+        m.avoidUntil = this.now + T.outOfStockAvoidSec
+        return
+      }
+      relieve(m, s)
+      const cash = Math.round(T.spend[s] * m.fx.spend * (0.6 + rnd(m) * 0.8))
+      m.spent += cash
+      this.fb.spent += cash
+      this.say(a, s === 'food' ? 'tasty' : 'good_buy')
     }
   }
 
@@ -469,6 +1097,13 @@ export class PaxNav {
     a.dead = true
     this.byId.delete(a.id)
     if (kind) this.events.push({ kind, id: a.id, at: this.now })
+    // The group goes with the leader.
+    for (const f of a.group ?? []) {
+      if (f.dead) continue
+      f.dead = true
+      this.byId.delete(f.id)
+      if (kind) this.events.push({ kind, id: f.id, at: this.now })
+    }
   }
 
   // ---------------------------------------------------------------- tick
@@ -478,10 +1113,21 @@ export class PaxNav {
     this.now = now
     if (!(dt > 0)) return
     const close = PAXNAV_TUNING.gateCloseSec
+    const guests = this.guests
+    if (guests) {
+      this.countDensity()
+      this.restock(dt)
+    }
     for (const a of this.agents) {
       if (a.dead) continue
-      if (a.phase !== 'board' && now >= a.departAt - close) {
-        this.remove(a, 'missed')
+      if (a.lead) {
+        // Followers move after their leader (who is earlier in the list).
+        this.snapFollower(a, a.lead)
+        continue
+      }
+      if (a.phase !== 'board' && !a.rebook && now >= a.departAt - close) {
+        if (guests) this.miss(a)
+        else this.remove(a, 'missed')
         continue
       }
       switch (a.phase) {
@@ -512,9 +1158,22 @@ export class PaxNav {
             this.plan(a)
           }
           break
+        case 'lost':
+          this.stepLost(a, dt)
+          break
       }
+      if (a.dead || !a.m) continue
+      if (now >= a.m.thinkAt) this.thinkStep(a)
+      if (a.trail && !a.dead) this.recordTrail(a)
     }
     if (this.agents.some((a) => a.dead)) this.agents = this.agents.filter((a) => !a.dead)
+  }
+
+  private restock(dt: number) {
+    const add = (GUEST_TUNING.restockPerHour * dt) / 3600
+    for (const st of this.states.values()) {
+      if (st.kind === 'shop_counter' && st.stock < GUEST_TUNING.stockCap) st.stock = Math.min(GUEST_TUNING.stockCap, st.stock + add)
+    }
   }
 
   /** Queue distance (metres to the service point) of a cell for facility f. */
@@ -535,7 +1194,7 @@ export class PaxNav {
     const F = this.facField(f)
     const st = this.state(f)
     const spacing = PAXNAV_TUNING.queueSpacingM
-    let budget = a.speed * dt
+    let budget = (a.lineS >= 0 || a.joined ? a.speed : this.pace(a)) * dt
     if (a.lineS >= 0) {
       this.stepLine(a, f, budget)
       return
@@ -620,9 +1279,10 @@ export class PaxNav {
     if (ahead !== c0 || t > EPS) a.yaw = Math.atan2(cellX(g, ahead) - a.x, cellZ(g, ahead) - a.z)
     if (a.place === 0 && a.lineS <= EPS) {
       a.phase = 'service'
-      a.serviceLeft = f.serviceSec
-      st.waits.push(this.now - a.joinedAt)
-      this.waitLog.push({ id: a.id, facility: f.id, kind: f.kind, waitSec: this.now - a.joinedAt })
+      a.serviceLeft = this.serviceTime(a, f)
+      a.lastWait = this.now - a.joinedAt
+      st.waits.push(a.lastWait)
+      this.waitLog.push({ id: a.id, facility: f.id, kind: f.kind, waitSec: a.lastWait })
       // Nobody draining: keep the newest only.
       if (this.waitLog.length > PAXNAV_TUNING.waitLogCap) this.waitLog.splice(0, this.waitLog.length >> 1)
       if (st.waits.length > PAXNAV_TUNING.waitWindow) st.waits.shift()
@@ -649,7 +1309,14 @@ export class PaxNav {
     a.joined = false
     a.place = -1
     a.lineS = -1
-    a.stops.shift()
+    const s = a.stops.shift()
+    if (s === 'rebook') {
+      this.say(a, 'rebooked')
+      this.fb.rebooked += 1 + (a.group?.length ?? 0)
+      this.remove(a, 'rebooked')
+      return
+    }
+    if (s) this.served(a, f, s)
     if (f.kind === 'security_lane') a.layer = AIR
     if (f.kind === 'gate_desk') {
       a.phase = 'board'
@@ -661,7 +1328,7 @@ export class PaxNav {
   /** Follow a field (or an explicit cell path) toward its goal. Returns true on arrival. */
   private follow(a: Agent, F: Field | null, dt: number): boolean | 'lost' {
     const g = this.grid
-    let budget = a.speed * dt
+    let budget = this.pace(a) * dt
     for (let hop = 0; hop < PAXNAV_TUNING.maxHopsPerTick && budget > EPS; hop++) {
       let nxt: number
       if (a.path) {
@@ -703,6 +1370,7 @@ export class PaxNav {
     if (a.path) {
       a.path = null
       a.phase = 'seated'
+      this.say(a, 'nice_seats')
       return
     }
     // At the seats. Take this spot if it is free, else the nearest free one.
@@ -710,6 +1378,7 @@ export class PaxNav {
       a.seat = a.cell
       this.seatTaken.add(a.cell)
       a.phase = 'seated'
+      this.say(a, 'nice_seats')
       return
     }
     const path = this.pathToFreeSeat(a, F)
@@ -718,7 +1387,11 @@ export class PaxNav {
       this.seatTaken.add(a.seat)
       a.path = path
       a.pathI = 0
-    } else a.phase = 'seated' // Every seat taken: stand here.
+    } else {
+      // Every seat taken: stand here.
+      a.phase = 'seated'
+      this.say(a, 'no_seats')
+    }
   }
 
   /** Breadth-first over the gate floor to the closest free seat cell. */
@@ -806,7 +1479,106 @@ export class PaxNav {
       facility: a.fac?.id ?? null,
       place: a.joined ? a.place : -1,
       airside: a.layer === AIR,
+      lost: (a.lead ?? a).phase === 'lost',
+      rebooking: a.rebook,
     }))
+  }
+
+  /** Bits per walker in pose order (WALKER_LOST, WALKER_REBOOK, WALKER_UNHAPPY), for bubbles. No allocation. */
+  writeFlags(out: Uint8Array, offset = 0): number {
+    const n = Math.min(this.agents.length, out.length - offset)
+    for (let i = 0; i < n; i++) {
+      const a = this.agents[i]
+      const lead = a.lead ?? a
+      let b = 0
+      if (lead.phase === 'lost') b |= WALKER_LOST
+      if (lead.rebook) b |= WALKER_REBOOK
+      if (lead.m && lead.m.sat < 35) b |= WALKER_UNHAPPY
+      out[offset + i] = b
+    }
+    return n
+  }
+
+  /** Is this passenger still walking? */
+  has(id: string): boolean {
+    return this.byId.has(id)
+  }
+
+  /** Guest card for one passenger; null for plain walkers and unknown ids. */
+  guest(id: string): GuestCard | null {
+    const a = this.byId.get(id)
+    if (!a || !a.m) return null
+    const lead = a.lead ?? a
+    const mind = lead.m ?? a.m
+    const needs = {} as Record<NeedKey, number>
+    NEED_KEYS.forEach((k, i) => (needs[k] = mind.needs[i]))
+    const group = lead.group ? [lead.id, ...lead.group.filter((f) => !f.dead).map((f) => f.id)] : []
+    return {
+      id: a.id,
+      purpose: a.m.purpose,
+      traits: [...a.m.traits],
+      needs,
+      satisfaction: mind.sat,
+      spent: mind.spent,
+      thoughts: mind.thoughts.map((t) => ({ ...t })),
+      phase: a.phase,
+      stop: lead.stops[0] ?? null,
+      facility: lead.fac?.id ?? null,
+      airside: a.layer === AIR,
+      lost: lead.phase === 'lost',
+      rebooking: lead.rebook,
+      waitedSec: lead.joined ? this.now - lead.joinedAt : 0,
+      leader: group.length ? lead.id : null,
+      group,
+      lostTimes: mind.lostTimes,
+      complaints: mind.complaints,
+      speedMps: lead.speed,
+    }
+  }
+
+  /** Nearest walker to a floor point within `maxM` metres (click to inspect), else null. */
+  pick(x: number, z: number, maxM = 1): string | null {
+    let best: string | null = null
+    let bestD = maxM * maxM
+    for (const a of this.agents) {
+      const d = (a.x - x) ** 2 + (a.z - z) ** 2
+      if (d <= bestD) {
+        bestD = d
+        best = a.id
+      }
+    }
+    return best
+  }
+
+  /** Guest feedback since the last drain: satisfaction moved, misses, complaints, spend. */
+  drainFeedback(): GuestFeedback {
+    const out = this.fb
+    this.fb = noFeedback()
+    return out
+  }
+
+  /** Mean satisfaction (0–100) of the guests walking now, and how many. Followers count with their leader's mood. */
+  satisfaction(): { avg: number; count: number } {
+    let sum = 0
+    let n = 0
+    for (const a of this.agents) {
+      const m = (a.lead ?? a).m
+      if (!m) continue
+      sum += m.sat
+      n++
+    }
+    return { avg: n ? sum / n : 0, count: n }
+  }
+
+  /**
+   * Change a shop counter's shelf: positive is a restock run, negative takes
+   * stock away (a missed delivery). Returns the new stock, or null for other kit.
+   */
+  addStock(id: string, units: number): number | null {
+    const st = this.states.get(id)
+    if (!st || st.kind !== 'shop_counter' || !Number.isFinite(units)) return null
+    st.stock = Math.max(0, Math.min(GUEST_TUNING.stockCap, st.stock + units))
+    return st.stock
   }
 
   /**
@@ -844,6 +1616,8 @@ export class PaxNav {
         longestWaitSec: front?.joined ? this.now - front.joinedAt : 0,
         estWaitSec: left + waiting * f.serviceSec,
         served: st.served,
+        leftQueue: st.left,
+        stock: this.guests && f.kind === 'shop_counter' ? Math.floor(st.stock) : null,
         line: f.line.map((c) => ({ x: cellX(g, c), z: cellZ(g, c) })),
       }
     })

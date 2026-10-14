@@ -9,13 +9,14 @@ export type ColorBlindMode = 'none' | 'protanopia' | 'deuteranopia' | 'tritanopi
 export type OverlayId = 'pathfinding' | 'congestion' | 'zones' | 'noise' | 'utilities' | 'designAdvisor'
 
 /** Same buses as the audio engine categories. */
-export const AUDIO_BUSES = ['aircraft', 'vehicles', 'ambient', 'ambience', 'ui', 'sfx'] as const
+export const AUDIO_BUSES = ['aircraft', 'vehicles', 'buildings', 'ambient', 'ambience', 'ui', 'sfx'] as const
 export type AudioBus = (typeof AUDIO_BUSES)[number]
 export type BusVolume = Record<AudioBus, number>
 
 export const DEFAULT_BUS_VOLUME: BusVolume = {
   aircraft: 0.8,
   vehicles: 0.7,
+  buildings: 0.8,
   ambient: 0.5,
   ambience: 0.5,
   ui: 0.6,
