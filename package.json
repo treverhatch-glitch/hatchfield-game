@@ -11,8 +11,11 @@
     "preview": "vite preview --host --port 45217",
     "playthrough": "tsx scripts/playthrough-wake.mts",
     "perf:bench": "tsx scripts/perf-bench.mts",
-    "autoplay":"tsx scripts/autoplay-stabilize.mts",
-    "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs"
+    "autoplay": "tsx scripts/autoplay-stabilize.mts",
+    "playthrough:scripted": "node tests/scripted-playthrough/playthrough.mjs",
+    "prebuild": "node scripts/unpack-textures.mjs",
+    "predev": "node scripts/unpack-textures.mjs",
+    "pretest": "node scripts/unpack-textures.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
