@@ -16,4 +16,10 @@ describe('escape order', () => {
     expect(nextEscape({ ...idle, toolActive: true })).toBe('cancel-tool')
     expect(nextEscape(idle)).toBe('open-menu')
   })
+
+  it('closes an info view before the menu, and its numbers first', () => {
+    expect(nextEscape({ ...idle, infoDetailOpen: true, infoViewOpen: true })).toBe('close-info-detail')
+    expect(nextEscape({ ...idle, infoViewOpen: true })).toBe('close-info')
+    expect(nextEscape({ ...idle, toolActive: true, infoViewOpen: true })).toBe('cancel-tool')
+  })
 })

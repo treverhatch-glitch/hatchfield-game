@@ -7,6 +7,7 @@ import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { inputMap } from '../input/map.ts'
 import { toWorld, World } from '../render/world'
+import { mapViewSnapshot, openMapDetail } from '../info/session.ts'
 import { writeTipPoints, type TipPoint } from './tipScreen'
 import { releaseApronAudio, syncApronAudio } from '../audio/stage'
 import type { QualityLevel } from '../render/world/quality.ts'
@@ -43,6 +44,13 @@ export function Field({ game }: { game: Game }) {
         }
       }
       game.clickTile(v)
+      if (game.tool === 'pan') {
+        const active = mapViewSnapshot().active
+        const tile = game.tile(v)
+        const id = `${v.c},${v.r}`
+        if (tile === 'stand' && active === 'bays') openMapDetail(id)
+        if ((tile === 'mro' || tile === 'nighthub' || tile === 'tower') && active === 'power') openMapDetail(id)
+      }
     }
     world.onUserDrag = () => {
       cameraSession.noteDrag()

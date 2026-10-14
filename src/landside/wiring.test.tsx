@@ -4,7 +4,7 @@ import { Game } from '../game/sim.ts'
 import type { Flight, Vec } from '../game/types.ts'
 import { BUS_EXPENSE, CURB_LANE_EXPENSE, TAXI_RANK_EXPENSE } from '../game/catalog.ts'
 import { LANDSIDE, openCurbFlow } from '../landside/index.ts'
-import { LandsideOverlay } from '../ui/LandsideOverlay.tsx'
+import { LandsidePanel } from '../ui/LandsideOverlay.tsx'
 
 function field(): Game {
   const game = new Game()
@@ -122,11 +122,11 @@ describe('landside wiring', () => {
     expect(paid.at(-1)?.amount).toBeGreaterThan(0)
     expect(flight.ledger.some((line) => /missed check-in/.test(line.label))).toBe(true)
     expect(game.curbFeeMisses).toBe(game.missedCheckIns - misses)
-    const html = renderToStaticMarkup(<LandsideOverlay game={game} />)
-    game.openLandside(null)
-    const open = renderToStaticMarkup(<LandsideOverlay game={game} />)
-    expect(open).toContain('missed check-ins')
-    expect(html).toContain('landside-flow-toggle')
+    const html = renderToStaticMarkup(
+      <LandsidePanel game={game} focus={null} onClose={() => undefined} onSelect={() => undefined} />,
+    )
+    expect(html).toContain('missed check-ins')
+    expect(html).not.toContain('landside-flow-toggle')
   })
 
   it('stamps a bus bay, a curb lane, and a taxi rank, and the panel shows curb load', () => {
@@ -155,7 +155,9 @@ describe('landside wiring', () => {
     game.clickTile({ c: 16, r: 12 })
     expect(game.sites.some((site) => site.tool === 'bus') || game.tile({ c: 16, r: 12 }) === 'bus').toBe(true)
     game.openLandside(null)
-    const html = renderToStaticMarkup(<LandsideOverlay game={game} />)
+    const html = renderToStaticMarkup(
+      <LandsidePanel game={game} focus={null} onClose={() => undefined} onSelect={() => undefined} />,
+    )
     expect(html).toContain('curb load')
     expect(html).toContain('bus bay')
   })
@@ -163,12 +165,14 @@ describe('landside wiring', () => {
   it('renders the click-open overlay with capacity and flow', () => {
     const game = field()
     game.tick(0.2)
-    expect(renderToStaticMarkup(<LandsideOverlay game={game} />)).toContain('landside-flow-toggle')
-    game.openLandside(null)
-    const html = renderToStaticMarkup(<LandsideOverlay game={game} />)
+    const html = renderToStaticMarkup(
+      <LandsidePanel game={game} focus={null} onClose={() => undefined} onSelect={() => undefined} />,
+    )
     expect(html).toContain('data-testid="landside-flow"')
     expect(html).toContain('capacity')
     expect(html).toContain('flow')
     expect(html).toContain('Rail')
+    expect(html).toContain('Inputs:')
+    expect(html).not.toContain('landside-flow-toggle')
   })
 })

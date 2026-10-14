@@ -6,8 +6,7 @@ import { recordSimTick } from './perf/simSample'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
-import { LandsideOverlay } from './ui/LandsideOverlay'
-import { FuelOverlay } from './ui/FuelOverlay'
+import { InfoViews } from './ui/InfoViews'
 import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
 import { MenuFlyover } from './ui/MenuFlyover'
@@ -310,8 +309,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
   return (
     <>
       <Hud game={game} onNewGame={onNewGame} />
-      <LandsideOverlay game={game} />
-      <FuelOverlay game={game} />
+      <InfoViews game={game} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
       <FeedbackChrome />

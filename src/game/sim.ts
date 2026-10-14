@@ -4958,6 +4958,65 @@ export class Game {
   }
 
   /**
+   * Stand occupancy and the turnaround bay queue.
+   * Reads flights and, when logistics is already up, its dock report. Does not start it.
+   */
+  bayView(): {
+    stands: {
+      id: string
+      c: number
+      r: number
+      occupied: boolean
+      flightNo: string | null
+      phase: string | null
+      grade: string | null
+      gradeNote: string | null
+      inUse: number
+      queued: number
+      bays: number
+    }[]
+  } {
+    const docks = this.ground?.sim.dockReport() ?? []
+    const byStand = new Map<string, { inUse: number; queued: number; bays: number }>()
+    for (const row of docks) {
+      const cur = byStand.get(row.ownerId) ?? { inUse: 0, queued: 0, bays: 0 }
+      cur.inUse += row.inUse
+      cur.queued += row.queued
+      cur.bays += row.bays
+      byStand.set(row.ownerId, cur)
+    }
+    const stands = tilesOf(this.tiles, 'stand').map((cell) => {
+      const id = `${cell.c},${cell.r}`
+      const flight = this.flights.find(
+        (f) =>
+          f.stand?.c === cell.c &&
+          f.stand?.r === cell.r &&
+          f.phase !== 'gone' &&
+          f.phase !== 'approach' &&
+          f.phase !== 'landing' &&
+          f.phase !== 'hold' &&
+          f.phase !== 'takeoff',
+      )
+      const live = flight?.groundTurn ? (this.ground?.sim.turnGrade(flight.groundTurn) ?? null) : null
+      const dock = byStand.get(id) ?? { inUse: 0, queued: 0, bays: 0 }
+      return {
+        id,
+        c: cell.c,
+        r: cell.r,
+        occupied: Boolean(flight),
+        flightNo: flight?.flightNo ?? null,
+        phase: flight?.phase ?? null,
+        grade: flight?.turnGrade ?? live?.grade ?? null,
+        gradeNote: flight?.turnGradeNote || live?.note || null,
+        inUse: dock.inUse,
+        queued: dock.queued,
+        bays: dock.bays,
+      }
+    })
+    return { stands }
+  }
+
+  /**
    * Tankers and the pipeline occupy the public road. Stock and the bill stay
    * with the fuel contract; this only records the queue, the draw, and who is grounded.
    */
