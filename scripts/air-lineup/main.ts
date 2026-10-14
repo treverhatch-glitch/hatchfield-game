@@ -3,15 +3,17 @@
  * /scripts/air-lineup/?view=lineup|stand|flaps&night=1
  */
 import * as THREE from 'three'
-import { createAircraft, MODEL_SPECS, motionForPhase, setAircraftLamp, updateAircraft } from '../../src/render/aircraft/index'
+import { installAircraftEnvironment, setAircraftEnvIntensity, createAircraft, MODEL_SPECS, motionForPhase, setAircraftLamp, updateAircraft } from '../../src/render/aircraft/index'
 
 const q = new URLSearchParams(location.search)
 const view = q.get('view') ?? 'lineup'
 const night = q.get('night') === '1'
+if (night) queueMicrotask(() => setAircraftEnvIntensity(0.06))
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
 renderer.setSize(innerWidth, innerHeight)
 renderer.setPixelRatio(1)
 document.body.appendChild(renderer.domElement)
+installAircraftEnvironment(renderer)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(night ? '#0b1424' : '#a9c4dc')
 scene.add(new THREE.HemisphereLight(night ? '#334466' : '#ffffff', '#556655', night ? 0.6 : 1.6))

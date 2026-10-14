@@ -1,3 +1,4 @@
+import { setAircraftEnvIntensity } from '../aircraft/pool'
 import * as THREE from 'three'
 import { grassColor, nightLighting, paintSky, seasonAtDay, snowCover } from '../../environment/index.ts'
 import { gradeTree } from '../grade'
@@ -439,6 +440,7 @@ export class WorldRenderer {
     this.hemi.color.setHex(s.hemiSky)
     this.hemi.groundColor.setHex(s.hemiGround)
     this.hemi.intensity = s.hemiIntensity + this.flash * 1.2
+    setAircraftEnvIntensity((s.sunIntensity + s.hemiIntensity) / 3)
     this.ambient.intensity = s.ambient
     this.fog.color.setHex(s.fogColor)
     this.fog.near = s.fogNear

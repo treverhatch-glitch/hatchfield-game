@@ -1,3 +1,4 @@
+import { installAircraftEnvironment } from './aircraft/env'
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { PerfOverlay } from '../perf'
@@ -296,6 +297,8 @@ export class World {
     const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
+    // Sky reflections on aircraft paint, chrome and glass.
+    installAircraftEnvironment(this.renderer)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
     this.renderer.shadowMap.type = preset.shadowType
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping

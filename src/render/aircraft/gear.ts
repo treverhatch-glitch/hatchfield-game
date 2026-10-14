@@ -51,7 +51,7 @@ function paint(geo: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeome
   const n = g.getAttribute('position').count
   const col = new Float32Array(n * 3)
   const pbr = new Float32Array(n * 2)
-  const name = (Object.keys(C) as (keyof typeof C)[]).find((k) => C[k] === color) ?? 'link'
+  const name = (Object.keys(C) as string[]).find((k) => (C as Record<string, THREE.Color>)[k] === color) ?? 'link'
   const [ro, me] = PBR[name] ?? [0.5, 0.3]
   for (let i = 0; i < n; i++) {
     col[i * 3] = color.r
@@ -327,6 +327,52 @@ export function bayDoorsGeometry(len: number, wid: number, drop: number, rs = 3)
     parts.push(cyl(0.035, len * 0.9, 6, C.pin, T(0, -0.03, s * wid / 2, 0, 0, Math.PI / 2)))
     // Door actuator from the well wall to the door.
     parts.push(rod(V(0, -0.02, s * wid * 0.3), V(0, -drop * 0.55, zc), 0.025, C.chrome, 6))
+  }
+  return mergeGeometries(parts)!
+}
+
+const CAB = {
+  wall: new THREE.Color('#d9ccb5'),
+  floor: new THREE.Color('#5e5248'),
+  galley: new THREE.Color('#b8b2a8'),
+  light: new THREE.Color('#fff4dc'),
+  reveal: new THREE.Color('#3a3f44'),
+  frame: new THREE.Color('#c9ced3'),
+  seal: new THREE.Color('#202224'),
+}
+for (const [k, v] of Object.entries(CAB)) {
+  ;(C as Record<string, THREE.Color>)[`cab_${k}`] = v
+}
+Object.assign(PBR, {
+  cab_wall: [0.8, 0], cab_floor: [0.9, 0], cab_galley: [0.35, 0.4], cab_light: [0.3, 0],
+  cab_reveal: [0.7, 0.1], cab_frame: [0.3, 0.6], cab_seal: [0.9, 0],
+})
+
+/**
+ * Doorway seen with the leaf open, facing +Z with the skin at z = 0: a thick frame with a
+ * rubber seal, reveal walls giving the cut its depth, and a lit cabin glimpse behind
+ * (cream wall, galley panel, ceiling light strip, dark floor). Unshared.
+ */
+export function doorwayGeometry(w: number, h: number): THREE.BufferGeometry {
+  const d = 0.12
+  const f = Math.max(0.06, w * 0.08)
+  const parts = [
+    // Cabin glimpse at the back of the cut.
+    box(w, h * 0.78, 0.01, CAB.wall, T(0, h * 0.06, 0.005)),
+    box(w, h * 0.16, 0.012, CAB.floor, T(0, -h * 0.42, 0.006)),
+    box(w * 0.42, h * 0.5, 0.02, CAB.galley, T(-w * 0.18, 0, 0.012)),
+    box(w * 0.9, h * 0.035, 0.02, CAB.light, T(0, h * 0.43, 0.012)),
+    // Reveal walls: the skin's thickness around the opening.
+    box(0.02, h, d, CAB.reveal, T(w / 2, 0, d / 2)),
+    box(0.02, h, d, CAB.reveal, T(-w / 2, 0, d / 2)),
+    box(w, 0.02, d, CAB.reveal, T(0, h / 2, d / 2)),
+    box(w, 0.025, d, CAB.floor, T(0, -h / 2, d / 2)),
+  ]
+  // Raised frame with a dark seal just inside it.
+  for (const s of [1, -1]) {
+    parts.push(box(f, h + f * 2, 0.05, CAB.frame, T(s * (w / 2 + f / 2), 0, d + 0.015)))
+    parts.push(box(w + f * 2, f, 0.05, CAB.frame, T(0, s * (h / 2 + f / 2), d + 0.015)))
+    parts.push(box(0.025, h, 0.03, CAB.seal, T(s * (w / 2 - 0.012), 0, d + 0.005)))
   }
   return mergeGeometries(parts)!
 }
