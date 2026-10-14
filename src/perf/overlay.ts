@@ -4,6 +4,14 @@
  */
 import type * as THREE from 'three'
 import { FrameMeter, formatStats, readRenderStats } from './rendererStats'
+import { formatLodAdvice, loadLodScale, saveLodScale, type LodTuneInput } from './lodTune'
+
+declare global {
+  interface Window {
+    __lodTuneInput?: boolean
+    __lodScale?: number
+  }
+}
 
 /** Texture memory walks the scene, so refresh it at this interval, not per frame. */
 const REFRESH_MS = 500
@@ -18,6 +26,15 @@ export class PerfOverlay {
     if (e.key === 'F3') {
       e.preventDefault()
       this.setVisible(!this.visible)
+    } else if (e.key === '[' || e.key === ']') {
+      if (typeof window !== 'undefined') {
+        const storage = window.sessionStorage || window.localStorage
+        let scale = loadLodScale(storage)
+        scale += e.key === '[' ? -0.05 : 0.05
+        scale = Math.max(0.6, Math.min(1.8, Math.round(scale * 100) / 100))
+        saveLodScale(storage, scale)
+        window.__lodScale = scale
+      }
     }
   }
 
@@ -47,7 +64,23 @@ export class PerfOverlay {
     this.last = now
     if (!this.visible || !this.el || now - this.lastText < REFRESH_MS) return
     this.lastText = now
-    this.el.textContent = formatStats(this.meter.fps, this.meter.percentileMs(0.99), readRenderStats(renderer, scene))
+
+    const stats = readRenderStats(renderer, scene)
+    let text = formatStats(this.meter.fps, this.meter.percentileMs(0.99), stats)
+
+    if (typeof window !== 'undefined' && window.__lodTuneInput) {
+      const storage = window.sessionStorage || window.localStorage
+      const currentScale = window.__lodScale ?? loadLodScale(storage)
+      const input: LodTuneInput = {
+        fps: this.meter.fps,
+        drawCalls: stats.drawCalls,
+        triangles: stats.triangles,
+        currentScale
+      }
+      text += '\n' + formatLodAdvice(input)
+    }
+
+    this.el.textContent = text
   }
 
   dispose() {

@@ -1,3 +1,4 @@
+import { installAircraftEnvironment } from './aircraft/env'
 import * as THREE from 'three'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { PerfOverlay } from '../perf'
@@ -20,6 +21,7 @@ import {
   aircraftWorldPerMeter,
   CELL,
   updateAircraft,
+  motionForPhase,
   WORLD_PER_METER,
   type Livery,
   type ParkedPlane,
@@ -332,6 +334,8 @@ export class World {
     const pixelCap = quality === 'low' || quality === 'ultra' ? preset.pixelRatioCap : Math.min(preset.pixelRatioCap, 1.25)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap))
     this.renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
+    // Sky reflections on aircraft paint, chrome and glass.
+    installAircraftEnvironment(this.renderer)
     this.renderer.shadowMap.enabled = preset.shadowMapSize > 0
     this.renderer.shadowMap.type = preset.shadowType
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -1900,7 +1904,7 @@ export class World {
       if (pose.visible) {
         mesh.position.copy(toWorld(pose.x, pose.y, 0.04 + pose.alt))
         orientAircraft(mesh, pose.heading, pose.pitch)
-        updateAircraft(mesh, pose.gearDown)
+        updateAircraft(mesh, pose.gearDown, motionForPhase({ phase: f.phase, alt: pose.alt, gearDown: pose.gearDown }))
       }
       const cell = { c: Math.round(f.x), r: Math.round(f.y) }
       const jetway =
@@ -2065,7 +2069,7 @@ export class World {
       mesh.visible = true
       mesh.position.copy(toWorld(posed.x, posed.y, 0.04 + posed.alt))
       orientAircraft(mesh, posed.heading, posed.pitch)
-      updateAircraft(mesh, posed.gearDown)
+      updateAircraft(mesh, posed.gearDown, motionForPhase({ phase: 'takeoff', alt: posed.alt, gearDown: posed.gearDown }))
       const bridges = mesh.getObjectByName('bridges')
       if (bridges) mesh.remove(bridges)
       mesh.scale.setScalar(1)

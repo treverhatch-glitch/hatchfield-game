@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { buildAircraft, createWindowMesh } from './build'
 import { CrossfadeLOD, type LodBuckets } from './lod'
 import type { PaintedMesh } from './pool'
+import type { AircraftMotion } from './motion'
 import { aircraftWorldPerMeter, getAircraftSpec, type Livery, type ModelSpec } from './specs'
 
 export {
@@ -31,6 +32,8 @@ export {
   getAircraftSpec,
 } from './specs'
 export type { Livery, ModelSpec } from './specs'
+export { motionForPhase, MOTION_IDLE, MOTION_RUNNING } from './motion'
+export type { AircraftMotion } from './motion'
 
 const SKIP_MEASURE = new Set(['light', 'strobe', 'beacon'])
 
@@ -135,6 +138,7 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
     strobes: [...low.strobes, ...mid.strobes, ...high.strobes],
     beacons: [...low.beacons, ...mid.beacons, ...high.beacons],
     lamps: [...low.lamps, ...mid.lamps, ...high.lamps],
+    rigs: [...mid.rigs, ...high.rigs],
   }
   lod.requestWindows = () => {
     const mesh = createWindowMesh(spec, livery)
@@ -154,8 +158,9 @@ export function createAircraft(airframeId: string, livery: Livery): THREE.Group 
 }
 
 /** Gear state read by the LOD on the next rendered frame. */
-export function updateAircraft(root: THREE.Object3D, gearDown: boolean) {
+export function updateAircraft(root: THREE.Object3D, gearDown: boolean, motion?: AircraftMotion) {
   root.userData.gearDown = gearDown
+  if (motion) root.userData.motion = motion
 }
 
 export function specOf(root: THREE.Object3D): ModelSpec {
