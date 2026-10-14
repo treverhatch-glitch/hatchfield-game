@@ -118,7 +118,8 @@ export const SERVICE_POINTS: Partial<Record<Tile, ServiceSpec>> = {
     points: [{ id: 'door1', kind: 'hangar_door', x: 0, z: 0, heading: Math.PI, action: 'tow' }],
     approach: { x: 0, z: FRONT + 1.5 },
     exit: { x: 0, z: FRONT + 1.5 },
-    queue: [],
+    // Tow tugs wait their turn off to the side of the door apron.
+    queue: lane(3.4, 3, FRONT),
   },
   mro: {
     serves: ['tow'],
@@ -128,7 +129,7 @@ export const SERVICE_POINTS: Partial<Record<Tile, ServiceSpec>> = {
     ],
     approach: { x: 0, z: FRONT + 1.5 },
     exit: { x: 0, z: FRONT + 1.5 },
-    queue: [],
+    queue: lane(4.0, 3, FRONT),
   },
 }
 

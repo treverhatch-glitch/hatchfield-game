@@ -4901,6 +4901,7 @@ export class Game {
       tier3Sites: this.lateSites.map((site) => ({ ...site })),
       missedHotelNights: this.missedHotelNights,
       crewHotelNights: this.crewHotelNights,
+      yard: this.yard.save(),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
@@ -4932,6 +4933,9 @@ export class Game {
         })
       })
       this.cash = s.cash
+      this.yard = new ServiceYard()
+      this.yard.restore(s.yard)
+      this.tugJobs.clear()
       this.branding = (typeof s.branding === 'string' && deserializeBranding(s.branding)) || defaultBranding()
       this.difficulty = s.difficulty
       this.site = s.site
@@ -17291,6 +17295,97 @@ export class Game {
     this.yard.sync(out)
   }
 
+  private tugJobs = new Map<string, string>()
+  /**
+   * Tow tugs as yard vehicles at hangars / MRO: one tug per tow leg (in on
+   * mx_taxi, out on mx_return). If the door is busy the tug waits in the
+   * hangar's own queue lane; when the tow ends it rolls out the exit lane.
+   */
+  tickTugs(step: number) {
+    const want = new Map<string, string>()
+    for (const f of this.flights) {
+      if (!f.hangarBay || (f.phase !== 'mx_taxi' && f.phase !== 'mx_return')) continue
+      want.set(`tug:${f.id}:${f.phase === 'mx_taxi' ? 'in' : 'out'}`, `${f.hangarBay.c},${f.hangarBay.r}`)
+    }
+    for (const [id, key] of want) {
+      if (this.tugJobs.has(id)) continue
+      if (!this.yard.serves(key, 'tow')) this.syncYard()
+      if (!this.yard.serves(key, 'tow')) continue
+      const spec = this.yard.spec(key)!
+      const from = spec.queue[spec.queue.length - 1] ?? spec.approach
+      if (this.yard.arrive(id, 'tow', key, from, 900)) this.tugJobs.set(id, key)
+    }
+    for (const id of [...this.tugJobs.keys()]) {
+      if (!want.has(id)) this.yard.finishWork(id)
+      const r = this.yard.step(id, step)
+      if (r === 'released' || r === null) this.tugJobs.delete(id)
+    }
+  }
+
+  /** Live tow-tug yard poses (render: tugs queue, dock at the door, leave). */
+  tugPoses(): { id: string; flightId: string; key: string; phase: string; c: number; r: number; heading: number }[] {
+    const out: { id: string; flightId: string; key: string; phase: string; c: number; r: number; heading: number }[] = []
+    for (const [id, key] of this.tugJobs) {
+      const j = this.yard.job(id)
+      if (!j) continue
+      out.push({ id, flightId: id.split(':')[1] ?? '', key, phase: j.phase, c: j.c, r: j.r, heading: j.heading })
+    }
+    return out
+  }
+
+  private coachClock = 0
+  /**
+   * Landside coaches: every bus-station kerb keeps up to two coaches cycling.
+   * Each one starts a few blocks out on the road, drives the road network to the
+   * kerb, docks at a free bay (or queues on the approach lane), boards, and leaves.
+   */
+  tickCoaches() {
+    if (this.coachClock-- > 0) return
+    this.coachClock = 4
+    const kerbs = tilesOf(this.tiles, 'bus')
+    for (const k of kerbs.slice(0, 8)) {
+      const live = this.trucks.filter((t) => t.kind === 'coach' && t.home && t.home.c === k.c && t.home.r === k.r).length
+      if (live >= 2) continue
+      const near: Vec[] = []
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const v = { c: k.c + dc, r: k.r + dr }
+        if (this.tile(v) === 'road') near.push(v)
+      }
+      if (!near.length) continue
+      let start: Vec | null = null
+      let best = 0
+      for (let dr = -9; dr <= 9; dr++) {
+        for (let dc = -9; dc <= 9; dc++) {
+          const v = { c: k.c + dc, r: k.r + dr }
+          const d = Math.abs(dc) + Math.abs(dr)
+          if (d < 4 || d <= best || this.tile(v) !== 'road') continue
+          best = d
+          start = v
+        }
+      }
+      if (!start) continue
+      const path = nearestPath(this.tiles, start, near, 'truck')
+      if (!path || path.length < 2) continue
+      path.push({ c: k.c, r: k.r })
+      this.trucks.push({
+        id: uid('coach'),
+        kind: 'coach',
+        flightId: null,
+        x: start.c,
+        y: start.r,
+        path,
+        seg: 0,
+        t: 0,
+        returning: true,
+        dwell: 0,
+        preDwell: live ? 2.5 : 0,
+        patrol: false,
+        mission: 'coach_run',
+        home: { c: k.c, r: k.r },
+      })
+    }
+  }
+
   /** Hand a truck that reached its building to the yard (queue → dock → action → exit). */
   yardArrive(t: Truck, at?: Vec | null): boolean {
     const cell = at ?? t.home
@@ -17307,7 +17402,8 @@ export class Game {
           : t.kind === 'catering' ? 2.8
             : t.kind === 'citycargo' ? 2.2 + Math.min(2, (t.cargoUnits ?? 12) * 0.04)
               : t.kind === 'deice' ? 2.2
-                : 1.8
+                : t.kind === 'coach' ? 3.2
+                  : 1.8
     if (!this.yard.arrive(t.id, kind, key, { c: t.x, r: t.y }, work)) return false
     const j = this.yard.job(t.id)!
     t.yard = { key, action: j.action, phase: j.phase, progress: 0, heading: j.heading, point: j.point }
@@ -19302,7 +19398,9 @@ export class Game {
     if (this.yardTick-- <= 0) {
       this.yardTick = 20
       this.syncYard()
+      this.tickCoaches()
     }
+    this.tickTugs(step)
     for (const t of this.trucks) {
       if (t.kind === 'contractor' || t.kind === 'delivery') {
         this.tickBuildTruck(t, step)

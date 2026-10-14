@@ -55,6 +55,8 @@ export class ServiceYard {
   private sites = new Map<string, Site>()
   private jobs = new Map<string, YardJob>()
   private sig = ''
+  /** Served counts restored from a save, applied as each site comes back on sync. */
+  private restored = new Map<string, number>()
 
   /** Rebuild the building list (cheap when unchanged). Jobs at removed buildings are dropped. */
   sync(buildings: readonly YardBuilding[]) {
@@ -73,7 +75,7 @@ export class ServiceYard {
         spec,
         occ: old && old.occ.length === spec.points.length ? old.occ : spec.points.map(() => null),
         queue: old?.queue ?? [],
-        served: old?.served ?? 0,
+        served: old?.served ?? this.restored.get(b.key) ?? 0,
       })
     }
     this.sites = next
@@ -200,6 +202,42 @@ export class ServiceYard {
       return 'released'
     }
     return 'hold'
+  }
+
+  /** End a vehicle's work early (tow done) so it rolls out the exit lane. */
+  finishWork(vehicleId: string) {
+    const job = this.jobs.get(vehicleId)
+    if (!job) return
+    if (job.phase === 'queue') {
+      this.forget(vehicleId)
+      return
+    }
+    if (job.phase === 'approach' || job.phase === 'work') {
+      job.phase = 'exit'
+      job.t = 0
+      job.from = { c: job.c, r: job.r }
+    }
+  }
+
+  /** Persistent yard state: per-building throughput. Vehicles are transient and respawn. */
+  save(): { served: Record<string, number> } {
+    const served: Record<string, number> = {}
+    for (const [k, s] of this.sites) if (s.served > 0) served[k] = s.served
+    for (const [k, n] of this.restored) if (!(k in served) && n > 0) served[k] = n
+    return { served }
+  }
+
+  restore(data: { served?: Record<string, number> } | null | undefined) {
+    this.restored.clear()
+    const served = data?.served
+    if (!served || typeof served !== 'object') return
+    for (const [k, n] of Object.entries(served)) {
+      if (typeof n === 'number' && Number.isFinite(n) && n >= 0) this.restored.set(k, Math.floor(n))
+    }
+    for (const [k, s] of this.sites) {
+      const n = this.restored.get(k)
+      if (n != null) s.served = n
+    }
   }
 
   /** Drop a vehicle (despawned / cancelled). */
