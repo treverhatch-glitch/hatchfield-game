@@ -90,12 +90,15 @@ export class PeopleRenderer {
     return this.meshes.get(id)
   }
 
-  update(agents: readonly PeopleAgent[], camera: THREE.Camera, dt: number, lite = false): PeopleStats {
+  /** With no camera everyone is drawn, and detail comes from the caps alone. */
+  update(agents: readonly PeopleAgent[], camera: THREE.Camera | null, dt: number, lite = false): PeopleStats {
     const upm = this.unitsPerMeter
-    camera.updateMatrixWorld()
-    camera.getWorldPosition(this.cam)
-    this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
-    this.frustum.setFromProjectionMatrix(this.pv)
+    if (camera) {
+      camera.updateMatrixWorld()
+      camera.getWorldPosition(this.cam)
+      this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+      this.frustum.setFromProjectionMatrix(this.pv)
+    }
     this.sphere.radius = 1.6 * upm
 
     const n = agents.length
@@ -104,8 +107,8 @@ export class PeopleRenderer {
     for (let i = 0; i < n; i++) {
       const a = agents[i]
       this.sphere.center.set(a.x, a.y + 0.9 * upm, a.z)
-      visible[i] = this.frustum.intersectsSphere(this.sphere)
-      dist[i] = visible[i] ? this.cam.distanceTo(this.sphere.center) / upm : Infinity
+      visible[i] = camera ? this.frustum.intersectsSphere(this.sphere) : true
+      dist[i] = !visible[i] ? Infinity : camera ? this.cam.distanceTo(this.sphere.center) / upm : 0
     }
     const levels = assignPeopleLod(dist, lite, this.lod)
 
