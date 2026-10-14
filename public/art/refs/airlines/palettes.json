@@ -1,0 +1,325 @@
+{
+ "source": "Sampled from the Gemini livery refs (chromatic pixels, hue clustering). Hex = sRGB.",
+ "airlines": {
+  "alpine_swift": {
+   "name": "Alpine Swift",
+   "ref": "public/art/refs/airlines/alpine_swift.jpg",
+   "primary": "#8f1719",
+   "secondary": "#ca2727",
+   "accent": "#282830",
+   "description": "Red-led livery, red secondary, dark blue accent, white fuselage."
+  },
+  "andaman_hop": {
+   "name": "Andaman Hop",
+   "ref": "public/art/refs/airlines/andaman_hop.jpg",
+   "primary": "#087789",
+   "secondary": "#56d5cd",
+   "accent": "#282830",
+   "description": "Teal-led livery, teal secondary, dark blue accent, white fuselage."
+  },
+  "atlas_cargo": {
+   "name": "Atlas Cargo",
+   "ref": "public/art/refs/airlines/atlas_cargo.jpg",
+   "primary": "#fbc929",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Gold-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "aurora_nordic": {
+   "name": "Aurora Nordic",
+   "ref": "public/art/refs/airlines/aurora_nordic.jpg",
+   "primary": "#0f2c4f",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "baltic_breeze": {
+   "name": "Baltic Breeze",
+   "ref": "public/art/refs/airlines/baltic_breeze.jpg",
+   "primary": "#16294e",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "borneo_wings": {
+   "name": "Borneo Wings",
+   "ref": "public/art/refs/airlines/borneo_wings.jpg",
+   "primary": "#2a5835",
+   "secondary": "#b07032",
+   "accent": "#758a4d",
+   "description": "Dark green-led livery, orange secondary, green accent, white fuselage."
+  },
+  "brisa": {
+   "name": "Brisa",
+   "ref": "public/art/refs/airlines/brisa.jpg",
+   "primary": "#d10777",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Magenta-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "celtic_isle": {
+   "name": "Celtic Isle",
+   "ref": "public/art/refs/airlines/celtic_isle.jpg",
+   "primary": "#0d4a35",
+   "secondary": "#b09150",
+   "accent": "#282830",
+   "description": "Dark green-led livery, gold secondary, dark blue accent, white fuselage."
+  },
+  "cityhopper": {
+   "name": "Cityhopper",
+   "ref": "public/art/refs/airlines/cityhopper.jpg",
+   "primary": "#6fc7e9",
+   "secondary": "#124988",
+   "accent": "#282830",
+   "description": "Blue-led livery, blue secondary, dark blue accent, white fuselage."
+  },
+  "coral_coast": {
+   "name": "Coral Coast",
+   "ref": "public/art/refs/airlines/coral_coast.jpg",
+   "primary": "#f7706d",
+   "secondary": "#4ecac6",
+   "accent": "#0f8c93",
+   "description": "Red-led livery, teal secondary, teal accent, white fuselage."
+  },
+  "dune_jet": {
+   "name": "Dune Jet",
+   "ref": "public/art/refs/airlines/dune_jet.jpg",
+   "primary": "#e6b86b",
+   "secondary": "#17626c",
+   "accent": "#282830",
+   "description": "Orange-led livery, teal secondary, dark blue accent, white fuselage."
+  },
+  "fjord_atlantic": {
+   "name": "Fjord Atlantic",
+   "ref": "public/art/refs/airlines/fjord_atlantic.jpg",
+   "primary": "#043050",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "gulf_pearl": {
+   "name": "Gulf Pearl",
+   "ref": "public/art/refs/airlines/gulf_pearl.jpg",
+   "primary": "#561225",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark red-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "harbor_heli": {
+   "name": "Harbor Heli",
+   "ref": "public/art/refs/airlines/harbor_heli.jpg",
+   "primary": "#122f54",
+   "secondary": "#e95406",
+   "accent": "#4f6b8a",
+   "description": "Dark blue-led livery, orange secondary, blue accent, white fuselage."
+  },
+  "himalaya_air": {
+   "name": "Himalaya Air",
+   "ref": "public/art/refs/airlines/himalaya_air.jpg",
+   "primary": "#a71725",
+   "secondary": "#b62f15",
+   "accent": "#eb952b",
+   "description": "Red-led livery, red secondary, orange accent, white fuselage."
+  },
+  "indus_airways": {
+   "name": "Indus Airways",
+   "ref": "public/art/refs/airlines/indus_airways.jpg",
+   "primary": "#0d3d27",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark green-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "ironclad_cargo": {
+   "name": "Ironclad Cargo",
+   "ref": "public/art/refs/airlines/ironclad_cargo.jpg",
+   "primary": "#282830",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "island_heli": {
+   "name": "Island Heli",
+   "ref": "public/art/refs/airlines/island_heli.jpg",
+   "primary": "#f7ce29",
+   "secondary": "#098a90",
+   "accent": "#282830",
+   "description": "Gold-led livery, teal secondary, dark blue accent, white fuselage."
+  },
+  "kauri_air": {
+   "name": "Kauri Air",
+   "ref": "public/art/refs/airlines/kauri_air.jpg",
+   "primary": "#282830",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "kiwi_wings": {
+   "name": "Kiwi Wings",
+   "ref": "public/art/refs/airlines/kiwi_wings.jpg",
+   "primary": "#4d2c71",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Purple-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "lotus_air": {
+   "name": "Lotus Air",
+   "ref": "public/art/refs/airlines/lotus_air.jpg",
+   "primary": "#31104d",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Dark red-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "maple_coastal": {
+   "name": "Maple Coastal",
+   "ref": "public/art/refs/airlines/maple_coastal.jpg",
+   "primary": "#af191a",
+   "secondary": "#711313",
+   "accent": "#282830",
+   "description": "Red-led livery, red secondary, dark blue accent, white fuselage."
+  },
+  "medevac_one": {
+   "name": "Medevac One",
+   "ref": "public/art/refs/airlines/medevac_one.jpg",
+   "primary": "#d3cf05",
+   "secondary": "#b01215",
+   "accent": "#282830",
+   "description": "Gold-led livery, red secondary, dark blue accent, white fuselage."
+  },
+  "mekong_express": {
+   "name": "Mekong Express",
+   "ref": "public/art/refs/airlines/mekong_express.jpg",
+   "primary": "#078b5a",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Green-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "monarch_holidays": {
+   "name": "Monarch Holidays",
+   "ref": "public/art/refs/airlines/monarch_holidays.jpg",
+   "primary": "#334b91",
+   "secondary": "#8f6e2d",
+   "accent": "#282830",
+   "description": "Blue-led livery, gold secondary, dark blue accent, white fuselage."
+  },
+  "outback_link": {
+   "name": "Outback Link",
+   "ref": "public/art/refs/airlines/outback_link.jpg",
+   "primary": "#b3320a",
+   "secondary": "#e7d5b5",
+   "accent": "#282830",
+   "description": "Red-led livery, orange secondary, dark blue accent, white fuselage."
+  },
+  "pacific_isles": {
+   "name": "Pacific Isles",
+   "ref": "public/art/refs/airlines/pacific_isles.jpg",
+   "primary": "#092d4f",
+   "secondary": "#d33648",
+   "accent": "#2b658c",
+   "description": "Dark blue-led livery, red secondary, blue accent, white fuselage."
+  },
+  "pampas_air": {
+   "name": "Pampas Air",
+   "ref": "public/art/refs/airlines/pampas_air.jpg",
+   "primary": "#1272a4",
+   "secondary": "#8ab9d4",
+   "accent": "#282830",
+   "description": "Blue-led livery, blue secondary, dark blue accent, white fuselage."
+  },
+  "polar_freight": {
+   "name": "Polar Freight",
+   "ref": "public/art/refs/airlines/polar_freight.jpg",
+   "primary": "#314d6f",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "rio_sol": {
+   "name": "Rio Sol",
+   "ref": "public/art/refs/airlines/rio_sol.jpg",
+   "primary": "#f4cd05",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Gold-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "rotorlink": {
+   "name": "Rotorlink",
+   "ref": "public/art/refs/airlines/rotorlink.jpg",
+   "primary": "#cd1513",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Red-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "royal_sakura": {
+   "name": "Royal Sakura",
+   "ref": "public/art/refs/airlines/royal_sakura.jpg",
+   "primary": "#b3062d",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Red-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "saharan_freight": {
+   "name": "Saharan Freight",
+   "ref": "public/art/refs/airlines/saharan_freight.jpg",
+   "primary": "#dbb785",
+   "secondary": "#6e4f32",
+   "accent": "#282830",
+   "description": "Orange-led livery, orange secondary, dark blue accent, white fuselage."
+  },
+  "savanna_air": {
+   "name": "Savanna Air",
+   "ref": "public/art/refs/airlines/savanna_air.jpg",
+   "primary": "#cf8f2f",
+   "secondary": "#914f11",
+   "accent": "#282830",
+   "description": "Orange-led livery, orange secondary, dark blue accent, white fuselage."
+  },
+  "seoul_star": {
+   "name": "Seoul Star",
+   "ref": "public/art/refs/airlines/seoul_star.jpg",
+   "primary": "#13376a",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "skyline_rescue": {
+   "name": "Skyline Rescue",
+   "ref": "public/art/refs/airlines/skyline_rescue.jpg",
+   "primary": "#18284b",
+   "secondary": "#d2e80a",
+   "accent": "#282830",
+   "description": "Dark blue-led livery, green secondary, dark blue accent, white fuselage."
+  },
+  "suncharter": {
+   "name": "Suncharter",
+   "ref": "public/art/refs/airlines/suncharter.jpg",
+   "primary": "#ed6d2d",
+   "secondary": "#d54f6b",
+   "accent": "#282830",
+   "description": "Orange-led livery, red secondary, dark blue accent, white fuselage."
+  },
+  "tango_air": {
+   "name": "Tango Air",
+   "ref": "public/art/refs/airlines/tango_air.jpg",
+   "primary": "#1395c7",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Blue-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "volga_cargo": {
+   "name": "Volga Cargo",
+   "ref": "public/art/refs/airlines/volga_cargo.jpg",
+   "primary": "#942532",
+   "secondary": "#f0f0f0",
+   "accent": "#282830",
+   "description": "Red-led livery, white secondary, dark blue accent, white fuselage."
+  },
+  "zephyr_go": {
+   "name": "Zephyr Go",
+   "ref": "public/art/refs/airlines/zephyr_go.jpg",
+   "primary": "#90edc5",
+   "secondary": "#982ec9",
+   "accent": "#51108b",
+   "description": "Green-led livery, purple secondary, purple accent, white fuselage."
+  }
+ }
+}

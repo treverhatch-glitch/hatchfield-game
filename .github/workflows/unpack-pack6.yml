@@ -1,0 +1,29 @@
+name: Unpack pack6 refs
+on:
+  push:
+    branches: [art/pack6-refs]
+    paths:
+      - 'public/art/refs/pack6/_pack6_b64/**'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: art/pack6-refs
+      - name: Decode base64 sidecars to JPEGs
+        run: python3 public/art/refs/pack6/_pack6_b64/unpack.py
+      - name: Commit JPEGs if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/art/refs/pack6
+          if git diff --cached --quiet; then
+            echo "No JPEG changes"
+          else
+            git commit -m "Materialize pack6 JPEGs from base64 sidecars"
+            git push origin HEAD:art/pack6-refs
+          fi

@@ -193,7 +193,7 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
       </ul>
       <h3>Graphics</h3>
       <div className="gfx-quality" role="radiogroup" aria-label="Graphics quality">
-        {(['low', 'med', 'high'] as const).map((level) => (
+        {(['low', 'med', 'high', 'ultra'] as const).map((level) => (
           <button
             key={level}
             type="button"

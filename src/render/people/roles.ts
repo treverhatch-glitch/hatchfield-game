@@ -1,6 +1,8 @@
+import { crewLook, passengerLook } from '../../people/variants'
+import type { CrewKind, PersonLook, PersonPose } from '../../people/types'
+
 export type Role = 'passenger' | 'checkin' | 'security' | 'gate' | 'shop' | 'cleaner' | 'researcher'
 export type Pose = 'walk' | 'idle' | 'queue' | 'seated' | 'working'
-export const POSE_CODE: Record<Pose, number> = { walk: 0, idle: 1, queue: 2, seated: 3, working: 4 }
 
 /** Map sim state strings onto a pose. Unknown states fall back by role. */
 export function poseFor(role: Role, state: string | undefined, moving: boolean): Pose {
@@ -14,32 +16,48 @@ export function poseFor(role: Role, state: string | undefined, moving: boolean):
   return moving ? 'walk' : 'idle'
 }
 
-const hex = (h: number): [number, number, number] => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255]
-export const STAFF_LOOK: Record<Exclude<Role, 'passenger'>, { top: number; bottom: number; cap?: boolean }> = {
-  checkin: { top: 0x1f3a8a, bottom: 0x1e293b },
-  security: { top: 0x334155, bottom: 0x0f172a, cap: true },
-  gate: { top: 0xb91c1c, bottom: 0x1e293b },
-  shop: { top: 0x15803d, bottom: 0x3f3f46 },
-  cleaner: { top: 0xfacc15, bottom: 0x1e3a8a },
-  researcher: { top: 0xf1f5f9, bottom: 0x475569 },
-}
-const PAX_TOPS = [0xef4444, 0xf97316, 0xeab308, 0x22c55e, 0x14b8a6, 0x3b82f6, 0x8b5cf6, 0xec4899, 0xf5f5f4, 0x737373, 0x78350f, 0x0ea5e9, 0x65a30d, 0x9f1239]
-const PAX_BOTTOMS = [0x1e293b, 0x334155, 0x1d4ed8, 0x57534e, 0x0f172a, 0xa8a29e, 0x3f6212, 0x7c2d12]
-
-export function hashId(id: string | number): number {
-  const s = String(id); let h = 2166136261
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }
-  return h >>> 0
-}
-
-export interface Look { top: [number, number, number]; bottom: [number, number, number]; width: number; height: number; skin: number; phase: number; carry: 'none' | 'backpack' | 'rolling'; cap: boolean }
-export function lookFor(id: string | number, role: Role): Look {
-  const h = hashId(id), r = (k: number) => ((h >>> k) & 255) / 255
-  const width = 0.85 + r(3) * 0.4, height = 0.88 + r(11) * 0.2, skin = r(19), phase = r(5)
-  if (role !== 'passenger') {
-    const s = STAFF_LOOK[role]
-    return { top: hex(s.top), bottom: hex(s.bottom), width, height, skin, phase, carry: 'none', cap: !!s.cap }
+/** Hall poses onto the people module's poses. A rolling bag is pulled while walking. */
+export function personPose(pose: Pose, look: PersonLook): PersonPose {
+  switch (pose) {
+    case 'walk':
+      return look.carry === 'roller' ? 'bagPull' : look.carry === 'stroller' ? 'push' : 'walk'
+    case 'working':
+      return 'seated'
+    default:
+      return pose
   }
-  const c = r(23)
-  return { top: hex(PAX_TOPS[h % PAX_TOPS.length]), bottom: hex(PAX_BOTTOMS[(h >>> 8) % PAX_BOTTOMS.length]), width, height, skin, phase, carry: c < 0.35 ? 'rolling' : c < 0.7 ? 'backpack' : 'none', cap: false }
+}
+
+const AIRLINE = {
+  checkin: { primary: 0x1f3a8a, secondary: 0xf8fafc },
+  gate: { primary: 0xb91c1c, secondary: 0xf8fafc },
+} as const
+const CREW_FOR: Partial<Record<Role, CrewKind>> = { checkin: 'cabin', gate: 'cabin', security: 'security', cleaner: 'maintenance' }
+
+/**
+ * Terminal staff wear the crew uniforms; shop and R&D staff are people looks
+ * with fixed colours. Staff carry nothing.
+ */
+function staffLook(id: string, role: Exclude<Role, 'passenger'>): PersonLook {
+  const kind = CREW_FOR[role]
+  if (kind) {
+    const airline = role === 'checkin' || role === 'gate' ? AIRLINE[role] : undefined
+    const look = crewLook(kind, id, { airline })
+    // Desk staff have no suitcase; cleaners keep the coveralls but go bareheaded.
+    return { ...look, carry: 'none', hat: role === 'cleaner' ? 'none' : look.hat, key: `${look.key}.${role}` }
+  }
+  const base = passengerLook(id, { carry: 'none', outfit: 'casual', age: 'adult' })
+  const dress = role === 'shop'
+    ? { top: 0x15803d, bottom: 0x3f3f46, sleeves: false, accent: 0xf8fafc }
+    : { top: 0xf1f5f9, bottom: 0x475569, sleeves: true, accent: 0 }
+  return { ...base, ...dress, hat: 'none', shorts: false, jacket: 0, gear: [], backpack: false, carry: 'none', key: `${role}.${base.key}` }
+}
+
+/** Deterministic per id. `checked`: the passenger still has a checked bag to drop. */
+export function lookFor(id: string | number, role: Role, checked = false): PersonLook {
+  const sid = String(id)
+  if (role !== 'passenger') return staffLook(sid, role)
+  const base = passengerLook(sid)
+  if (checked && base.carry !== 'roller' && base.carry !== 'duffel') return passengerLook(sid, { carry: 'roller' })
+  return base
 }
