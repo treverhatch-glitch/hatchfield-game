@@ -12,6 +12,8 @@ describe('GameSettings', () => {
     expect(html).toContain('<span>All hints enabled</span>')
     expect(html).toContain('data-testid="settings-all-hints" checked=""')
     expect(html).toContain('Every advisor hint shows in the panel, bottom right.')
+    expect(html).toContain('data-testid="settings-tip-chips" checked=""')
+    expect(html).toContain('<span>Tip chips</span>')
   })
 
   it('shows All hints enabled checkbox unchecked when disabled and everything muted', () => {

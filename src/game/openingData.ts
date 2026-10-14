@@ -55,6 +55,15 @@ export function openingSpacingBonus(clock: number): number {
 /** Slots written when the first carrier signs inside the opening. */
 export const OPENING_FIRST_SLOTS = 2
 
+/** Seconds after the kit before the first letter can arrive. */
+export const FIRST_LETTER_COOL = 2
+
+/** The first slot sits this soon after the signature, before jitter. */
+export const FIRST_SLOT_GAP = 6
+
+/** Random 0..this added to the first slot so two new games are not identical. */
+export const FIRST_SLOT_JITTER = 4
+
 /**
  * Bags the claim belt will actually present.
  * A prefab uses its published bag ceiling. A custom hall uses stalls per room.

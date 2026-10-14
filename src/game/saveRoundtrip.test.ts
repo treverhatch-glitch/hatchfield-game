@@ -193,7 +193,7 @@ describe('save/load round-trip across live game systems', () => {
     // The snapshot does not keep those guests, so the loaded run misses that
     // retail. Cash matches once the show-up spend is included in the delta.
     const showUpSpend = gameA.revenue - gameB.revenue
-    expect(showUpSpend).toBeCloseTo(579, 2)
+    expect(showUpSpend).toBeCloseTo(474, 2)
     expect(gameB.cash).toBeCloseTo(gameA.cash - showUpSpend, 2)
     expect(gameB.revenue).toBeCloseTo(gameA.revenue - showUpSpend, 2)
     expect(gameB.paxServed).toBe(gameA.paxServed)

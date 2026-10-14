@@ -25,8 +25,7 @@ export function LandScreen({
   const [hintsOn, setHintsOn] = useState(enableHints)
   const [mapId, setMapId] = useState(game.mapId)
   const buy = (kind: SiteKind, focus: StartFocus) => {
-    game.startFocus = focus
-    if (game.buyLand(kind)) onBought()
+    if (game.startChosenKit(kind, focus)) onBought()
   }
 
   return (
