@@ -43,12 +43,14 @@ The earlier findings note, on the previous persona set, had careful and greedy b
 
 ## After
 
-Same persona file, after the cuts above.
+Same persona file, rerun after the cuts and after desk and Wave 3 research were folded into the Growth tree.
 
-| Persona | Day 30 | End | Minimum | Carriers | Flights |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Careful (day 45) | $183,906 | $158,936 | $13,900 | 12 | 87 |
-| Greedy (day 60) | $26,636 | $1,840 | −$924 | 12 | 105 |
-| Chaotic / sloppy (day 30) | $23,188 | $23,188 | $884 | 0 | 86 |
+| Persona | Day 30 | End | Minimum | Carriers | Flights | Task-miss lines |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Careful (day 45) | $126,852 | $183,534 | $9,109 | 5 | 110 | 50, totaling −$25,000 |
+| Greedy (day 60) | $38,857 | $7,511 | $99 | 11 | 147 | 54 still in the journal; the category total is −$33,000 |
+| Chaotic / sloppy (day 30) | $223,100 | $223,100 | $2,353 | 8 | 96 | 33, totaling −$16,500 |
 
-Careful is in the black by day 30 and still there at day 45. Greedy finishes just above zero and spends time below it. Chaotic falls to $884 and is back above $20,000 by day 30.
+Each booked task-miss line is $500 (`FIELD_TASK_FAIL_FINE`). Careful’s 50 lines are 50 × $500. The $1,600 unit and the −$16,952 ending in `rerun_oct15_0330.md` are that pre-cut run on `7776b7a`.
+
+Careful is in the black by day 30 and still there at day 45. Greedy stays lower and finishes at $7,511. Chaotic’s lowest daily sample is $2,353 and the day-30 cash is $223,100.
