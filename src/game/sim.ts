@@ -1249,6 +1249,8 @@ export class Game {
   private cargoNotes: Advice[] = []
   /** Recent sound names, for the apron audio cues. */
   soundCues: string[] = []
+  private cashChimeAt = -99
+  private alertChimeAt = -99
   private catering: CateringBridge | null = null
   private cargo: CargoBridge | null = null
   /** Airline letters, standing, and turnaround grades. Null until the clock runs. */
@@ -5349,6 +5351,10 @@ export class Game {
     this.noteIncome(amount, category)
     if (flight) flight.ledger.push({ label, amount })
     if (announce) this.pushNews(`${label}  +$${amount.toLocaleString('en-US')}`, 'good')
+    if (announce && this.clock - this.cashChimeAt >= 1.25) {
+      this.cashChimeAt = this.clock
+      this.noteSound('cash_in')
+    }
   }
 
   /** Walk-in traffic multiplier from the fee card. 1 at the published prices. */
@@ -8368,8 +8374,18 @@ export class Game {
 
   /** Raise an operational alert. Debounced by key inside the stack. */
   raiseAlert(input: AlertInput) {
+    const fresh = !this.alerts.active.some((a) => a.key === input.key)
     const before = this.alerts.rev
-    this.alerts.raise(input, this.clock)
+    const row = this.alerts.raise(input, this.clock)
+    if (
+      fresh &&
+      row &&
+      (input.severity === 'critical' || input.severity === 'warning') &&
+      this.clock - this.alertChimeAt >= 2.5
+    ) {
+      this.alertChimeAt = this.clock
+      this.noteSound('disruption')
+    }
     if (this.alerts.rev !== before) this.emit()
   }
 
@@ -11464,6 +11480,7 @@ export class Game {
       ? CONTRACT_LETTER_DEADLINE
       : FIRST_CONTRACT_LETTER_DEADLINE
     this.offer = { airline: negotiated, age: 0, deadline }
+    this.noteSound('contract_offer')
     const shown = this.airline(negotiated)
     const tag = shown.procedural && !ULCC_IDS.includes(shown.id) ? ' (regional)' : ''
     this.pushNews(
@@ -11609,6 +11626,7 @@ export class Game {
   presentNegotiation(id: string) {
     this.negotiationDesk().openNamed(id)
     this.offer = { airline: id, age: 0, deadline: 120 }
+    this.noteSound('contract_offer')
     this.emit()
   }
 
@@ -11780,6 +11798,7 @@ export class Game {
       `${a.name} (T${a.tier}) signed${a.procedural ? ' · filler' : ''}. Flights hit the timetable.${leadBit}${depositBit}`,
       'good',
     )
+    this.noteSound('contract_offer')
     this.refreshAdvice()
     this.emit()
   }

@@ -15,6 +15,7 @@ import { PriceWarCard } from './rival/PriceWarCard'
 import { PlaytestYearPanel } from './reports/PlaytestYearPanel'
 import { TitleScreen } from './ui/TitleScreen'
 import type { StartFocus } from './game/types'
+import { applyStoredAudio, bindUiClicks, preloadAudioClips } from './audio'
 
 /** Survive Vite HMR — a fresh `new Game()` was wiping the plot and bouncing to title. */
 function getGame(): Game {
@@ -290,6 +291,12 @@ export default function App() {
     writeScreen(s)
     setScreenState(s)
   }
+
+  useEffect(() => {
+    applyStoredAudio()
+    void preloadAudioClips()
+    return bindUiClicks()
+  }, [])
 
   // Keep screen aligned with game ownership; never dump a saved field to title.
   useEffect(() => {

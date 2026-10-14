@@ -14,7 +14,7 @@ class MockNode {
 }
 class MockGain extends MockNode { gain = new MockParam(); }
 class MockSource extends MockNode {
-  started = false; stoppedAt: number | null = null; frequency = new MockParam(); detune = new MockParam();
+  started = false; stoppedAt: number | null = null; frequency = new MockParam(); detune = new MockParam(); playbackRate = new MockParam();
   type = 'sine'; buffer: unknown = null; loop = false;
   start() { this.started = true; } stop(t = 0) { this.stoppedAt = t; }
 }

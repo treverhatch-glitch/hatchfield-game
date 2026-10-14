@@ -73,6 +73,8 @@ import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
+import { applyAudioSettings, audioSettings } from '../audio/prefs'
+import { type AudioBus } from '../features/settings/settings.ts'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -236,6 +238,15 @@ function TrayMark({ tool }: { tool: string }) {
   )
 }
 
+const AUDIO_ROWS: { id: AudioBus; label: string }[] = [
+  { id: 'aircraft', label: 'Jets' },
+  { id: 'vehicles', label: 'Vehicles' },
+  { id: 'ambient', label: 'Terminal' },
+  { id: 'ambience', label: 'Outdoors' },
+  { id: 'ui', label: 'Interface' },
+  { id: 'sfx', label: 'Effects' },
+]
+
 const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] = [
   { id: 'economy', label: 'Economy', tip: 'Cash, loans, parcels, IPO / HATCH' },
   { id: 'budget', label: 'Budget', tip: 'Ops payroll sliders and hiring' },
@@ -245,7 +256,7 @@ const INFO_MENUS: { id: Exclude<PanelId, null>; label: string; tip: string }[] =
   { id: 'airlines', label: 'Airlines', tip: 'Standing, letters, hubs · L' },
   { id: 'planner', label: 'Planner', tip: 'Timetable, stands, selected flight' },
   { id: 'services', label: 'Services', tip: 'Fuel, catering, hall furnish' },
-  { id: 'settings', label: 'Settings', tip: 'Hints and game options' },
+  { id: 'settings', label: 'Settings', tip: 'Sound, hints, and game options' },
   { id: 'premium', label: 'Premium', tip: 'Premium check-in, fast-track, VIP room' },
   { id: 'tycoon', label: 'Tycoon', tip: 'Shop bids, ad campaigns, awards, year report' },
   { id: 'rival', label: 'Rival', tip: 'Bellwater Intl — fees, roster, catchment' },
@@ -255,6 +266,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panelPick, setPanel] = useState<PanelId>(null)
+  const [audioMix, setAudioMix] = useState(() => audioSettings().get())
   // One panel at a time: an open hint list folds the HUD rollout away.
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
@@ -1458,6 +1470,69 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     New Game
                   </button>
                   <p className="muted">Back to the title. Start again from there, or continue this field.</p>
+                  <h3>Sound</h3>
+                  <label className="sandbox-toggle">
+                    <input
+                      type="checkbox"
+                      data-testid="settings-audio-mute"
+                      checked={audioMix.audioMuted}
+                      onChange={(e) => {
+                        const next = audioSettings().update((s) => ({ ...s, audioMuted: e.target.checked }))
+                        applyAudioSettings(next)
+                        setAudioMix(next)
+                      }}
+                    />
+                    <span>Mute</span>
+                  </label>
+                  <ul className="budgets" data-testid="settings-audio">
+                    <li>
+                      <label>
+                        <span>
+                          Master <span className="muted">{Math.round(audioMix.masterVolume * 100)}%</span>
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          data-testid="settings-audio-master"
+                          value={audioMix.masterVolume}
+                          onChange={(e) => {
+                            const masterVolume = Number(e.target.value)
+                            const next = audioSettings().update((s) => ({ ...s, masterVolume }))
+                            applyAudioSettings(next)
+                            setAudioMix(next)
+                          }}
+                        />
+                      </label>
+                    </li>
+                    {AUDIO_ROWS.map((row) => (
+                      <li key={row.id}>
+                        <label>
+                          <span>
+                            {row.label} <span className="muted">{Math.round(audioMix.busVolume[row.id] * 100)}%</span>
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            data-testid={`settings-audio-${row.id}`}
+                            value={audioMix.busVolume[row.id]}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+                              const next = audioSettings().update((s) => ({
+                                ...s,
+                                busVolume: { ...s.busVolume, [row.id]: value },
+                              }))
+                              applyAudioSettings(next)
+                              setAudioMix(next)
+                            }}
+                          />
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
                   <h3>Hints</h3>
                   <label className="sandbox-toggle">
                     <input
