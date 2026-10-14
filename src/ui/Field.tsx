@@ -54,7 +54,7 @@ export function Field({ game }: { game: Game }) {
       if (!cameraSession.frozen) live.setTimeOfDay(null)
     })
 
-    const gfxOrder: QualityLevel[] = ['low', 'med', 'high']
+    const gfxOrder: QualityLevel[] = ['low', 'med', 'high', 'ultra']
     const offPress = inputMap.onPress((id) => {
       if (id !== 'system.graphics') return
       const live = worldRef.current
