@@ -95,16 +95,16 @@ export interface DaylightKey {
 
 /** Tuned sun key over a cooler hemisphere. Noon is sun-led; night is a dim moon. */
 export const DAYLIGHT_KEYS: readonly DaylightKey[] = [
-  { h: 0, top: 0x0a1430, horizon: 0x1b2a4a, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x30406a, hemiI: 0.32, exposure: 1.15 },
-  { h: 5, top: 0x0f1c3c, horizon: 0x2c3658, sun: 0x8ea6d8, sunI: 0.16, hemi: 0x34446c, hemiI: 0.34, exposure: 1.15 },
-  { h: 6.5, top: 0x3c5a92, horizon: 0xe49a6c, sun: 0xffb27a, sunI: 1.35, hemi: 0x9aa8c8, hemiI: 0.62, exposure: 1.05 },
-  { h: 8, top: 0x5b98d4, horizon: 0xf2d2aa, sun: 0xffe2b8, sunI: 2.75, hemi: 0xc6daf0, hemiI: 0.82, exposure: 0.98 },
-  { h: 11, top: 0x3a7ec4, horizon: 0xd4e6f4, sun: 0xfff0c4, sunI: 3.4, hemi: 0xc5daf4, hemiI: 0.86, exposure: 1.0 },
-  { h: 16, top: 0x3a7ec4, horizon: 0xd0e2f0, sun: 0xffebbc, sunI: 3.25, hemi: 0xc5daf4, hemiI: 0.84, exposure: 1.0 },
-  { h: 18.2, top: 0x5a84c0, horizon: 0xf2b276, sun: 0xffb06a, sunI: 2.15, hemi: 0xc8bcb4, hemiI: 0.72, exposure: 0.98 },
-  { h: 19.3, top: 0x2c3c70, horizon: 0xd2745a, sun: 0xff8a5a, sunI: 0.8, hemi: 0x8a7aa0, hemiI: 0.52, exposure: 1.08 },
-  { h: 20.5, top: 0x0e1a3a, horizon: 0x2a3458, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x34446c, hemiI: 0.34, exposure: 1.15 },
-  { h: 24, top: 0x0a1430, horizon: 0x1b2a4a, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x30406a, hemiI: 0.32, exposure: 1.15 },
+  { h: 0, top: 0x060b1e, horizon: 0x111c33, sun: 0xa8c0ff, sunI: 0.12, hemi: 0x1a264a, hemiI: 0.28, exposure: 1.15 },
+  { h: 5, top: 0x080f26, horizon: 0x19284d, sun: 0xa8c0ff, sunI: 0.12, hemi: 0x203058, hemiI: 0.30, exposure: 1.15 },
+  { h: 6.5, top: 0x2a4474, horizon: 0xffa472, sun: 0xffce99, sunI: 1.45, hemi: 0x7c8ba8, hemiI: 0.58, exposure: 1.05 },
+  { h: 8, top: 0x4883c4, horizon: 0xffdec4, sun: 0xffebcc, sunI: 2.85, hemi: 0xb4cae6, hemiI: 0.78, exposure: 0.98 },
+  { h: 11, top: 0x4282cc, horizon: 0xe6f2fc, sun: 0xfff7e6, sunI: 3.6, hemi: 0xc0d8f8, hemiI: 0.90, exposure: 1.0 },
+  { h: 16, top: 0x4282cc, horizon: 0xe0eef8, sun: 0xfff4d9, sunI: 3.45, hemi: 0xc0d8f8, hemiI: 0.88, exposure: 1.0 },
+  { h: 18.2, top: 0x4b72aa, horizon: 0xffb784, sun: 0xffb87a, sunI: 2.25, hemi: 0xb8acb4, hemiI: 0.70, exposure: 0.98 },
+  { h: 19.3, top: 0x223060, horizon: 0xda684a, sun: 0xff8f5a, sunI: 0.9, hemi: 0x7a6a90, hemiI: 0.50, exposure: 1.08 },
+  { h: 20.5, top: 0x0a1430, horizon: 0x1a284d, sun: 0xa8c0ff, sunI: 0.14, hemi: 0x283864, hemiI: 0.32, exposure: 1.15 },
+  { h: 24, top: 0x060b1e, horizon: 0x111c33, sun: 0xa8c0ff, sunI: 0.12, hemi: 0x1a264a, hemiI: 0.28, exposure: 1.15 },
 ]
 
 /** Filmic grade applied after tone mapping, on Medium and High. */

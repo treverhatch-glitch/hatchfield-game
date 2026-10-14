@@ -41,7 +41,7 @@ import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
 import { syncStaffHousing } from './staffHousing.ts'
 import { disposeVehicleLibrary, vehicleMesh } from './vehicles.ts'
 import { VehicleHeadlights } from './vehicleLights.ts'
-import type { DayNightControl } from './world/dayNight'
+import type { DayNightControl } from '../lighting/dayNight'
 import { CrewFigures } from './crew/figures.ts'
 import { pathHeading } from '../ramp/present.ts'
 import {

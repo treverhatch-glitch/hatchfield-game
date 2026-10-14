@@ -4,7 +4,7 @@ import { gradeTree } from '../grade'
 import { GROUND_LOOK, LIGHT_LOOK } from '../look'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
-import { lerpHex, skyState, type SkyState } from './daylight'
+import { lerpHex, skyState, type SkyState } from '../../lighting/daylight'
 import {
   airfieldLevels,
   applyDayNight,
@@ -13,9 +13,10 @@ import {
   resolveHour,
   type DayNightControl,
   type DayNightSample,
-} from './dayNight'
+} from '../../lighting/dayNight'
 import { ContactShadows, contactSpots } from './contact'
-import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './environment'
+import { buildLandscape, GrassRing, Rain, type LandscapeTint } from './environment'
+import { SkyDome } from '../../lighting/skyDome'
 import {
   apronMasts,
   jetBridges,
@@ -428,7 +429,7 @@ export class WorldRenderer {
     this.fog.color.setHex(s.fogColor)
     this.fog.near = s.fogNear
     this.fog.far = s.fogFar
-    this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
+    this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor, s.hour)
     this.sky.follow(camPos)
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure

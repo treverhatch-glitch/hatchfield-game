@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Game } from '../game/sim.ts'
-import { skyState } from '../render/world/daylight.ts'
+import { skyState } from '../lighting/daylight.ts'
 import { SEASON_WEATHER } from './config.ts'
 import {
   arrivalDemand,

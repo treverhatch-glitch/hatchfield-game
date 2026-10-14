@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { simClockToHour } from '../render/world/daylight.ts'
+import { simClockToHour } from '../lighting/daylight.ts'
 import { cameraSession } from './session.ts'
 import { formatHour } from './space.ts'
 

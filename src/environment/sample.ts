@@ -1,14 +1,14 @@
 /**
  * Day/night and seasons for the field.
  *
- * Builds on the sim-clock sky (`src/render/world/daylight.ts`) and the map
+ * Builds on the sim-clock sky (`s../lighting/daylight.ts`) and the map
  * demand calendar (`src/economy/seasons.ts`). Colour tints are uniform writes.
  * The low preset keeps the season tint and a lighter snow write, and drops
  * fog-distance reshape plus apron light pools. No extra meshes or particles.
  */
 import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from '../economy/seasons.ts'
 import type { Weather } from '../game/types.ts'
-import { daylightFactor } from '../render/world/dayNight.ts'
+import { daylightFactor } from '../lighting/dayNight.ts'
 import {
   DAY_SECONDS,
   lerpHex,
@@ -17,7 +17,7 @@ import {
   skyState,
   smoothstep,
   type SkyState,
-} from '../render/world/daylight.ts'
+} from '../lighting/daylight.ts'
 import {
   CLIMATE_LABEL,
   DEMAND,

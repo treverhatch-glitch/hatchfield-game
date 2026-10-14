@@ -12,7 +12,7 @@ import { WorldRenderer, type WorldRenderOptions } from './render'
 
 export { QUALITY, parseQuality, suggestQuality, type QualityLevel, type QualityPreset } from './quality'
 export { REPLACED_TILES, WorldRenderer, type RendererLike, type WorldRenderOptions, type WorldRenderStats } from './render'
-export { simClockToHour, skyState, type SkyState } from './daylight'
+export { simClockToHour, skyState, type SkyState } from '../../lighting/daylight'
 export {
   applyDayNight,
   clockForHour,
@@ -24,7 +24,7 @@ export {
   type AirfieldLevels,
   type DayNightControl,
   type DayNightSample,
-} from './dayNight'
+} from '../../lighting/dayNight'
 export { QUALITY_LABEL } from './quality'
 export type { WorldView } from './view'
 export { terminals, type TerminalInfo } from './layout'

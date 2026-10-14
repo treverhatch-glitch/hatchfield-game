@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three'
 import { BLOOM_LOOK } from '../look'
-import type { AirfieldLevels } from './dayNight'
+import type { AirfieldLevels } from '../../lighting/dayNight'
 import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'

@@ -3,8 +3,8 @@
  * sim clock, a photo-mode override, or a future weather system can all drive it.
  * The light rig reads the painted sky, then `applyDayNight` in `dayNight.ts`.
  */
-import type { Weather } from '../../game/types'
-import { DAYLIGHT_KEYS, LIGHT_LOOK, type DaylightKey } from '../look'
+import type { Weather } from '../game/types'
+import { DAYLIGHT_KEYS, LIGHT_LOOK, type DaylightKey } from '../render/look'
 
 /** Sim day is 180 s; `Game.isNight()` is the last third. Map so night = 19:00–08:00. */
 export const DAY_SECONDS = 180

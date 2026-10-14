@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { simClockToHour } from '../render/world/daylight.ts'
+import { simClockToHour } from '../lighting/daylight.ts'
 import { cameraSession } from '../camera/session.ts'
 import type { Game } from '../game/sim.ts'
 import type { Speed } from '../game/types.ts'
