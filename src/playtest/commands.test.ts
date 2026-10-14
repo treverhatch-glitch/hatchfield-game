@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { START_CASH } from '../game/catalog.ts'
 import { createPlayer } from './commands.ts'
 import { assembleReport, renderReport } from './report.ts'
 import { PERSONAS, runHeadless } from './run.ts'
@@ -10,7 +11,7 @@ describe('player command API', () => {
     expect(api.setSandbox(false).ok).toBe(true)
     expect(api.beginNew('standard').ok).toBe(true)
     api.setFocus('pax')
-    expect(api.view().cash).toBe(150_000)
+    expect(api.view().cash).toBe(START_CASH.standard)
     expect(api.buyLand('city').ok).toBe(true)
     expect(api.buildStarterKit().ok).toBe(true)
     const view = api.view()
