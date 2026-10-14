@@ -1,126 +1,139 @@
 # Morning playtest — 15 Oct
 
-Measured on `d6aa69e5bb92deb70611c4e4f4a89fe3c54f2702` (`Hold stand, lounge and gate credit until a carrier has actually flown.`). No rules, prices, or relations weights were changed for this note.
+No rules, prices, or relations weights were changed for this note.
+
+The 90-day numbers are a headless rerun on `1c8c21c9131777ec90a7838dc2c2143526d0f76d` (`Show why connections miss, and let a late inbound catch its own turn.`), which also includes `207e6e3` (named service bays on airside buildings). Two commits landed on main while the first pass was being written. The screenshots are from a production build of the parent, `d6aa69e`, taken before those two commits. Treat the pictures as the opening of that build, and the tables as the later main.
 
 Headless Careful, Greedy, and Chaotic each ran **90 sim days**. One day is 180 sim seconds. The driver uses the player command API at **5×**, tick dt **0.25s**, and looks at the board every **12 sim seconds**. Difficulty is standard, focus is passengers, sandbox is off. Persona decision seeds are Careful `0x5eed`, Greedy `0x6eed`, Chaotic `0xc0a0`. The field’s own `Math.random` was left unseeded, so a rerun will not match these dollars. Nothing was still stuck, nothing NaN’d, and there were no console errors or softlocks.
 
-The browser pass is a production build (`vite build`, then `vite preview`) at **1×**. The timed session is the first **600 sim seconds** (10 minutes, about 3.3 game days) after the starter kit. Title, opening, research, Airlines Relations, and the fuel farm are from that session. The landing, apron, curb, building card, and livery frames were aimed on a second production opening of the same build, because the first pass could not point the camera. Those beats did happen inside the 600 seconds; the second opening is only there so the frame shows them. Livery close-ups are **posed** after that opening, one parked airframe per silhouette class, wearing a roster livery. They are not arrivals from the first 10 minutes.
+The browser pass is a production build at **1×**. The timed session is the first **600 sim seconds** (10 minutes, about 3.3 game days) after the starter kit. Title, opening, research, Airlines Relations, and the fuel farm are from that session. The landing, apron, curb, and building card were aimed on a second production opening of the same build, because the first pass could not point the camera. Those beats did happen inside the 600 seconds. Livery close-ups are **posed** after that opening, one parked airframe per silhouette class, in a roster livery. They are not arrivals from the first 10 minutes.
 
 ## Headless, 90 days
 
 | | Careful | Greedy | Chaotic |
 | --- | ---: | ---: | ---: |
-| Wall | 84s | 108s | 101s |
+| Wall | 103s | 110s | 87s |
 | Cash start | $168,000 | $168,000 | $168,000 |
-| Cash end | $285,909 | $4,202 | $971 |
-| Cash low | $5,855 day 3 | −$17,256 day 57 | $799 day 9 |
-| Field rating, day 90 | 76 | 56 | 45 |
-| Satisfaction avg | 71 | 67 | 67 |
-| Flights turned | 493 | 374 | 421 |
-| First landing | 43.8s PDJ101 | 42.5s PDJ101 | 80s LIF101 |
-| Stands / terminal rooms | 4 / 9 | 6 / 9 | 17 / 36 |
-| Shops leased | 5 / 5 | 8 / 8 | 6 / 58 |
-| Carriers signed | 10 | 27 | 17 |
+| Cash end | $562,139 | $7,348 | $4,864 |
+| Cash low | $4,106 day 1 | $190 day 76 | −$8,051 day 76 |
+| Field rating, day 90 | 69 | 58 | 27 |
+| Satisfaction avg | 66 | 68 | 55 |
+| Flights turned | 463 | 394 | 431 |
+| First landing | 40s PDJ101 | 43.8s PDJ101 | 80s LIF101 |
+| Stands / terminal rooms | 4 / 9 | 6 / 9 | 24 / 17 |
+| Shops leased | 5 / 5 | 8 / 8 | 4 / 58 |
+| Carriers signed | 10 | 28 | 11 |
 | Tree nodes bought | 62 | 62 | 62 |
-| Tree points left | 395 | 82 | 12,779 |
-| Could-not acts | 2 | 91 | 97 |
-| Recoveries (still stuck) | 6 (0) | 9 (0) | 6 (0) |
+| Tree points left | 380 | 150 | 17,160 |
+| Could-not acts | 1 | 275 | 101 |
+| Recoveries (still stuck) | 10 (0) | 18 (0) | 13 (0) |
 
-Cash and rating through the run:
+Cash and rating through the run. Day-1 cash is after the kit.
 
 | Day | Careful cash | Careful rating | Greedy cash | Greedy rating | Chaotic cash | Chaotic rating |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | $9,242 | 80 | $48,163 | 81 | $50,881 | 64 |
-| 3 | $5,855 | 87 | $29,218 | 86 | $2,589 | 75 |
-| 7 | $32,139 | 87 | $20,332 | 84 | $8,151 | 87 |
-| 14 | $62,127 | 84 | $7,030 | 78 | $6,368 | 82 |
-| 30 | $115,803 | 82 | $12,119 | 72 | $288,224 | 73 |
-| 60 | $179,840 | 78 | $5,060 | 49 | $20,931 | 55 |
-| 90 | $285,909 | 76 | $4,202 | 56 | $971 | 45 |
+| 1 | $4,106 | 77 | $48,464 | 80 | $50,497 | 64 |
+| 3 | $29,903 | 87 | $10,239 | 88 | $2,761 | 73 |
+| 7 | $29,159 | 73 | $7,368 | 72 | $7,805 | 87 |
+| 14 | $45,338 | 77 | $6,782 | 79 | $18,452 | 82 |
+| 30 | $164,133 | 84 | $7,276 | 68 | $30,464 | 76 |
+| 60 | $389,386 | 76 | $35,780 | 58 | $192,111 | 52 |
+| 90 | $562,139 | 69 | $7,348 | 58 | $4,864 | 27 |
 
-Day-1 cash is after the kit. Chaotic’s day-30 spike is loan and contract money; it does not stick. Greedy borrowed $365,000 and paid $279,353 back plus $69,897 interest. Chaotic borrowed the same $365,000. Careful did not take a loan.
+Greedy borrowed $365,000 and paid $302,748 back plus $75,672 interest. Chaotic borrowed $275,000. Careful took a $25,000 loan and paid it off ($26,400 plus $7,040 interest).
 
 ### Relations
 
-Tiers are counted on signed carriers at the end of day 90. “Preferred+” and “Trusted+” on the day rows below are cumulative (tier 2 or better, tier 3 or better).
+“Preferred+” and “Trusted+” are cumulative (tier 2 or better, tier 3 or better) at the start of that day.
 
 | Day | Careful best | Pref+ | Trust+ | Greedy best | Pref+ | Trust+ | Chaotic best | Pref+ | Trust+ |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 2.9 | 0 | 0 | 2.9 | 0 | 0 | 0 | 0 | 0 |
-| 30 | 22.8 | 1 | 0 | 24.3 | 1 | 0 | 10.6 | 0 | 0 |
-| 60 | 46.3 | 3 | 2 | 70.1 | 4 | 3 | 49.5 | 2 | 1 |
-| 90 | 73.1 | 5 | 3 | 97.7 | 10 | 4 | 96.1 | 6 | 3 |
+| 1 | 4.9 | 0 | 0 | 2.9 | 0 | 0 | 0 | 0 | 0 |
+| 30 | 28.0 | 1 | 0 | 32.2 | 1 | 0 | 4.5 | 0 | 0 |
+| 60 | 64.0 | 4 | 2 | 70.6 | 4 | 2 | 30.9 | 2 | 0 |
+| 90 | 79.2 | 5 | 4 | 97.2 | 9 | 3 | 82.3 | 5 | 2 |
 
-**Careful** ends with two Priority, one Trusted, two Preferred, five Published. Nobody reached Flagship.
+**Careful** ends two Priority, two Trusted, one Preferred, five Published. No Flagship. The five Published carriers are helicopters with no turns.
 
 | Carrier | Tier | Score | On time | Delayed | Kept | Fines |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Zoomjet | 4 Priority | 73.1 | 0 | 26 | 89 | 36 |
-| SkyCheap | 4 Priority | 71.3 | 0 | 14 | 75 | 22 |
-| Puddle Jumper Airlines | 3 Trusted | 63.7 | 3 | 37 | 90 | 47 |
-| Cityhopper | 2 Preferred | 42.2 | 0 | 17 | 70 | 26 |
-| Alpine Swift | 2 Preferred | 31.3 | 0 | 30 | 73 | 39 |
-| Harbor Heli | 1 Published | 19.2 | 0 | 0 | 88 | 11 |
-| Island Heli | 1 Published | 18.9 | 0 | 0 | 86 | 10 |
-| Medevac One | 1 Published | 18.5 | 0 | 0 | 83 | 9 |
-| Rotorlink | 1 Published | 18.0 | 0 | 0 | 81 | 9 |
-| Skyline Rescue | 1 Published | 17.4 | 0 | 0 | 78 | 9 |
+| Alpine Swift | 4 Priority | 79.2 | 0 | 22 | 88 | 21 |
+| Puddle Jumper Airlines | 4 Priority | 73.8 | 2 | 33 | 90 | 27 |
+| Zoomjet | 3 Trusted | 66.1 | 0 | 31 | 89 | 25 |
+| SkyCheap | 3 Trusted | 53.8 | 1 | 29 | 86 | 20 |
+| Cityhopper | 2 Preferred | 44.5 | 0 | 22 | 70 | 15 |
+| Harbor Heli | 1 Published | 17.1 | 0 | 0 | — | — |
+| Island Heli | 1 Published | 16.6 | 0 | 0 | — | — |
+| Medevac One | 1 Published | 16.2 | 0 | 0 | — | — |
+| Rotorlink | 1 Published | 15.5 | 0 | 0 | — | — |
+| Skyline Rescue | 1 Published | 15.1 | 0 | 0 | — | — |
 
-**Greedy** ends Flagship / two Priority / one Trusted / six Preferred, and 18 still Published. The Published list includes five helicopters with no turns, plus Pacific Isles −3.0, Coral Coast −4.2, and Prestige Air −7.2.
-
-| Carrier | Tier | Score | On time | Delayed |
-| --- | --- | ---: | ---: | ---: |
-| Puddle Jumper Airlines | 5 Flagship | 97.7 | 2 | 14 |
-| Zoomjet | 4 Priority | 88.7 | 0 | 10 |
-| Alpine Swift | 4 Priority | 76.2 | 0 | 10 |
-| SkyCheap | 3 Trusted | 50.4 | 1 | 6 |
-| Savanna Air | 2 Preferred | 33.9 | 0 | 5 |
-| Brisa | 2 Preferred | 25.7 | 1 | 3 |
-| Kauri Air | 2 Preferred | 25.4 | 0 | 4 |
-| Cityhopper | 2 Preferred | 24.2 | 0 | 3 |
-| Outback Link | 2 Preferred | 23.6 | 0 | 2 |
-| Borneo Wings | 2 Preferred | 22.6 | 0 | 4 |
-
-**Chaotic** ends Flagship / Priority / Trusted / three Preferred, and 12 Published. Prestige Air is Published at −12 with no turns. Brisa is Published at −6.1 with four kept days and no turns.
+**Greedy** ends Flagship, two Priority, six Preferred, 19 Published. No Trusted. The Published list includes the same five helicopters at 11–13 points with no turns.
 
 | Carrier | Tier | Score | On time | Delayed |
 | --- | --- | ---: | ---: | ---: |
-| Puddle Jumper Airlines | 5 Flagship | 96.1 | 0 | 22 |
-| Zoomjet | 4 Priority | 88.5 | 2 | 37 |
-| Alpine Swift | 3 Trusted | 55.1 | 0 | 11 |
-| Cityhopper | 2 Preferred | 37.6 | 1 | 5 |
-| SkyCheap | 2 Preferred | 28.8 | 0 | 5 |
-| Savanna Air | 2 Preferred | 20.0 | 0 | 3 |
+| Puddle Jumper Airlines | 5 Flagship | 97.2 | 2 | 12 |
+| Zoomjet | 4 Priority | 76.1 | 0 | 15 |
+| Alpine Swift | 4 Priority | 71.0 | 0 | 8 |
+| SkyCheap | 2 Preferred | 38.0 | 0 | 9 |
+| Cityhopper | 2 Preferred | 26.2 | 0 | 8 |
+| Savanna Air | 2 Preferred | 24.3 | 0 | 4 |
+| Kauri Air | 2 Preferred | 22.2 | 0 | 4 |
+| Prestige Air | 2 Preferred | 21.2 | 1 | 2 |
+| Tango Air | 2 Preferred | 20.9 | 1 | 4 |
 
-On-time turns are rare for everyone. Zoomjet’s Careful book is 0 on time and 26 delayed at Priority. Puddle Jumper’s Greedy book is 2 on time and 14 delayed at Flagship.
+**Chaotic** ends two Priority, three Preferred, six Published. No Trusted and no Flagship.
+
+| Carrier | Tier | Score | On time | Delayed |
+| --- | --- | ---: | ---: | ---: |
+| Zoomjet | 4 Priority | 82.3 | 2 | 37 |
+| Puddle Jumper Airlines | 4 Priority | 76.8 | 2 | 26 |
+| Alpine Swift | 2 Preferred | 30.0 | 0 | 5 |
+| SkyCheap | 2 Preferred | 28.8 | 0 | 3 |
+| Cityhopper | 2 Preferred | 27.5 | 0 | 8 |
+
+On-time turns are still rare. Careful’s Alpine Swift is 0 on time and 22 delayed at Priority. Greedy’s Puddle Jumper is 2 on time and 12 delayed at Flagship.
 
 ### Research
 
-All three bought the whole 62-node Growth tree, plus the desk nodes that were affordable (Careful 20, Greedy 22, Chaotic 20). Wave 3 research points stayed at 0. Careful’s lab is one desk, one board, one machine, and 395 tree points are left over. Greedy has 82 left. Chaotic furnished 8 desks, 18 boards, and 15 machines, finished the tree around day 38, and is holding **12,779** unspent tree points at day 90.
+All three bought the whole 62-node Growth tree, plus the desk nodes that were affordable (Careful 21, Greedy 22, Chaotic 20). Wave 3 research points stayed at 0. Careful’s lab is one desk, one board, one machine, with 380 tree points left. Greedy has 150 left. Chaotic furnished 14 desks, 18 boards, and 16 machines and is holding **17,160** unspent tree points.
 
 ### Penalties
 
-Penalty categories only. Field-ask fines posted at the full ask amount were **$0** for every persona. Amounts are cash out.
+Ledger categories. Amounts are cash out. Field-ask fines posted at the full ask amount were **$0**.
 
 | Category | Careful | Greedy | Chaotic |
 | --- | ---: | ---: | ---: |
-| Missed connection | $608,220 | $572,164 | $414,780 |
-| Penalties | $40,377 | $92,170 | $47,681 |
-| Emergency refuse | $36,800 | $46,800 | $45,200 |
-| Crash fine | $0 | $69,933 | $84,000 |
-| Security shock | $9,600 | $29,300 | $12,700 |
+| Missed connection | $99,280 | $120,900 | $24,180 |
+| Penalties | $64,704 | $51,258 | $26,266 |
+| Emergency refuse | $35,600 | $44,400 | $44,400 |
+| Crash fine | $0 | $48,000 | $60,000 |
+| Security shock | $14,400 | $35,000 | $14,300 |
 | Task miss | $0 | $0 | $0 |
 | Inbound fine | $0 | $0 | $0 |
 | Cargo miss | $0 | $0 | $0 |
-| **Penalty total** | **$694,997** | **$810,367** | **$604,361** |
+| **Penalty total** | **$213,984** | **$299,558** | **$169,146** |
 
-Missed connections are 88% of Careful’s penalty bill, 71% of Greedy’s, and 69% of Chaotic’s. Careful’s landing fees over the same 90 days were $829,846, so the connection bill is in the same league as the landing revenue.
+Of the `penalties` category, the portion whose label is a delay or a go-around is $35,404 Careful, $28,307 Greedy, $13,331 Chaotic. Refund labels were $0.
+
+Connections judged this run, and why a connection missed:
+
+| | Careful | Greedy | Chaotic |
+| --- | ---: | ---: | ---: |
+| Made | 383 | 358 | 170 |
+| Diverted | 54 | 65 | 13 |
+| Below minimum connect | 0 | 0 | 0 |
+| Passenger late to the gate | 0 | 0 | 0 |
+| Bag late | 0 | 0 | 0 |
+| Inbound delay, minutes | 338,766 | 309,460 | 126,779 |
+
+Every recorded miss is a divert. The connection clock on the inbounds that did make it is still measured in hundreds of thousands of minutes.
 
 ## Browser, first 10 minutes at 1×
 
-Production preview, sandbox off, passenger start, starter kit, opening contract accepted. Clock at the end of the timed session: **600.7s**. Cash **$68,106**. Field rating **76 Solid**. Flights turned: **7**. One carrier signed: Puddle Jumper Airlines, score **+0.36**, tier **1 Published**. Desk research points: **32**. Growth-tree points: **0**. No page errors.
+Production preview of `d6aa69e`, sandbox off, passenger start, starter kit, opening contract accepted. Clock at the end of the timed session: **600.7s**. Cash **$68,106**. Field rating **76 Solid**. Flights turned: **7**. One carrier signed: Puddle Jumper Airlines, score **+0.36**, tier **1 Published**. Desk research points: **32**. Growth-tree points: **0**. No page errors.
 
-In that timed session the first landing was PDJ101 (CRJ-700) at **20.7s**, cash $34,157, rating 72. A serviced turn was on the apron at **52.7s** (one aircraft in deboard/service/board, two turnaround pieces, two trucks on a flight). The curb had **14** cars and taxis, all stopped or queued, by **40.7s**.
+In that timed session the first landing was PDJ101 (CRJ-700) at **20.7s**, cash $34,157, rating 72. A serviced turn was on the apron at **52.7s** (one aircraft in deboard, service, or board; two turnaround pieces; two trucks on a flight). The curb had **14** cars and taxis, all stopped or queued, by **40.7s**.
 
 ### Opening
 
@@ -130,13 +143,13 @@ In that timed session the first landing was PDJ101 (CRJ-700) at **20.7s**, cash 
 
 ### First landing
 
-The framed shot is a second opening: PDJ101, an ATR 72, on short final at 18.6s with the gear down. The timed session’s first landing was the same flight number on a CRJ-700 at 20.7s.
+The framed shot is a second opening of the same build: PDJ101, an ATR 72, on short final at 18.6s with the gear down. The timed session’s first landing was the same flight number on a CRJ-700 at 20.7s.
 
 ![First landing](morning_oct15/first-landing.png)
 
 ### Busy apron
 
-Second opening, 43.6s: a turn on stand with a fuel tanker and a bag tug assigned (two trucks on the flight). The timed session’s first serviced turn was at 52.7s.
+Second opening, 43.6s: a turn on stand with a fuel tanker and a bag tug assigned. The timed session’s first serviced turn was at 52.7s. This frame is from before the named service-bay meshes.
 
 ![Apron with service vehicles](morning_oct15/apron-service.png)
 
@@ -154,19 +167,19 @@ Growth → Research tree, at the end of the 600 seconds. The tree shows 0 points
 
 ### Airlines Relations
 
-Airlines → Letters → Relations, same session. One signed carrier. Puddle Jumper is Published at about +0.4, with the day’s parts listed (on-time, kept days, spare stands, delays, fines).
+Airlines → Letters → Relations, same session. One signed carrier. Puddle Jumper is Published at about +0.4.
 
 ![Airlines Relations](morning_oct15/airline-relations.png)
 
 ### Fuel farm
 
-The fuel panel open on the starter farm during the timed session. The delivery line was waiting on cash while the cash bar showed about $68,000 and the tank read empty.
+The fuel panel on the starter farm during the timed session. The delivery line was waiting on cash while the cash bar showed about $68,000 and the tank read empty.
 
 ![Fuel farm](morning_oct15/fuel-farm.png)
 
 ### Building info card
 
-Medium stand, status Working. Throughput, bays, upkeep, and staff stay behind the row until opened. Captured on the second opening, on a stand that was turning an aircraft.
+Medium stand, status Working. Throughput, bays, upkeep, and staff stay behind the row until opened.
 
 ![Building info card](morning_oct15/building-card.png)
 
@@ -190,12 +203,12 @@ Posed parked airframes after the opening, not traffic from the first 10 minutes.
 
 ## Top 5 fun / feel
 
-1. **The schedule is late, and the relationship still climbs.** Across 90 days the flying carriers are almost all delays. Careful’s Zoomjet is 0 on time and 26 delayed and ends Priority. Greedy’s Puddle Jumper is 2 on time and 14 delayed and ends Flagship. Kept days and the building do the climbing. A flagship carrier does not feel like an airline you run well.
+1. **A late airline still becomes the important one.** On-time turns stay in the single digits. Careful’s Alpine Swift is 0 on time and 22 delayed and ends Priority at 79. Greedy’s Puddle Jumper is 2 on time and 12 delayed and ends Flagship at 97. Kept days carry the tier. The ladder does not feel like a reward for running the ramp on time.
 
-2. **The penalty you pay is not the penalty you can see.** Missed connections are $414k–$608k and most of the fine bill. Crash fines show up only for Greedy and Chaotic. Field-ask fines are $0. The apron, the stand card, and the curb never point at the connection bill, which is large enough to rival landing fees.
+2. **The connection bill got a reason, and the reason is “the inbound diverted.”** On this main, missed-connection cash is $99k / $121k / $24k, and the new tally records 54, 65, and 13 diverts. Minimum-connect, late-passenger, and late-bag misses are all zero. The inbounds that do connect still carry 127k–339k minutes of delay. The opening hour we shot never surfaces that tally: the stand card says Working, and the relations card shows one Published carrier at +0.4.
 
-3. **Careful gets rich. Building does not.** Everyone is under $10k within a few days of a $168k start. Careful then climbs to $286k and holds a 76 rating by doing less. Greedy finishes at $4,202 after loans, with the rating down at 56. Chaotic stamps 36 terminal rooms and 58 shopfronts, leases 6 of them, and finishes at $971 with a 45 rating. The fun loop of “place more airport” is how the other two go broke.
+3. **Careful gets rich. The other two end the quarter near zero, and Chaotic’s rating falls off.** Careful finishes at $562,139 with a 69. Greedy finishes at $7,348 with a 58 after a $365k loan. Chaotic finishes at $4,864 with a **27**, having stamped 24 stands and 58 shopfronts and leased 4 of them. The first day already drops Careful to $4,106. Placing more airport is still how you stop having a business.
 
-4. **Research is empty, then finished.** At 10 minutes the Growth tree has 0 points and every node locked, while 32 desk points sit somewhere else. By day 38–80 all three personas have bought all 62 tree nodes. Chaotic then stockpiles 12,779 points on a lab of 8 desks, 18 boards, and 15 machines. There is no middle stretch where research is the thing you are working on.
+4. **Research is empty at minute 10 and finished well before day 90.** The Growth tree in the opening shows 0 points and locked nodes, while 32 desk points sit on the other pool. All three personas then buy all 62 tree nodes. Chaotic is left holding 17,160 points on 14 desks, 18 boards, and 16 machines. There is no stretch where research is the thing you are still working on.
 
-5. **The picture and the books describe different airports.** At one minute the curb is a line of cars, and at 10 minutes it still is, but the 90-day curb pressure never goes above 0.8 and the scored curb queue stays 0. Five helicopter carriers sit on Careful’s relations list for 78–88 days with zero flights. The stand card says Working and hides throughput, bays, upkeep, and staff until you open each row. What you watch in the first hour is not what the day-90 numbers say was wrong.
+5. **What you see in the first hour is not what the day-90 book calls the problem.** The curb is a line of cars at one minute and still a line at ten, but the 90-day curb pressure never becomes the story. Five helicopter carriers sit on the relations list with zero flights and stay Published in the teens. The fuel panel in that first session shows a delivery waiting on cash next to a $68k balance and an empty tank. The field looks busy. The money says the misses are diverts, the rating is sliding, and the tree is already done.
