@@ -344,6 +344,7 @@ import {
   schemeSigns,
   schemeZones,
   slowedService,
+  zoneCellBlocked,
   type ItemId,
   type PlacedItem,
   type ZoneId,
@@ -10124,13 +10125,14 @@ export class Game {
     return true
   }
 
-  paintHallCell(c: number, r: number, zone: ZoneId) {
+  paintHallCell(c: number, r: number, zone: ZoneId): boolean {
     const fit = this.activeHall()
-    if (!fit) return
+    if (!fit) return false
     if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
     const row = fit.zones[r]
-    if (!row || c < 0 || c >= row.length) return
-    if (row[c] === zone) return
+    if (!row || c < 0 || c >= row.length) return false
+    if (zoneCellBlocked((fit.items ?? []) as PlacedItem[], c, r)) return false
+    if (row[c] === zone) return true
     const wasPrefab = fit.premade && !fit.redesigned
     row[c] = zone
     if (wasPrefab) {
@@ -10152,6 +10154,7 @@ export class Game {
     this.hallRev++
     this.refreshAdvice()
     this.emit()
+    return true
   }
 
   placeHallItem(id: ItemId) {
