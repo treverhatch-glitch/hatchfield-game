@@ -1,0 +1,9 @@
+{
+  "flightNo": "ZO116",
+  "airline": "zoomjet",
+  "klass": "board",
+  "airframeId": "a320neo",
+  "pax": 160,
+  "ledger": [{ "label": "ZO116 landing", "amount": 680 }],
+  "note": "Zoomjet boarding with passengers still on the books and nobody walking or riding a bus. The board phase cannot finish on its own inside a few field seconds."
+}

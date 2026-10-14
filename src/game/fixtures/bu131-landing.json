@@ -1,0 +1,9 @@
+{
+  "flightNo": "BU131",
+  "airline": "bushline",
+  "klass": "landing",
+  "airframeId": "dhc6",
+  "pax": 16,
+  "ledger": [{ "label": "BU131 landing", "amount": 2800 }],
+  "note": "Bushline arrival held on the runway. The exit cell is occupied by a taxi-out aircraft whose path leaves the taxiway graph, the landing stall seen on ambient bushline flights."
+}

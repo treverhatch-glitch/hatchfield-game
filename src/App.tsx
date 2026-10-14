@@ -35,6 +35,7 @@ const SCREEN_KEY = 'hatchfield-screen'
 
 // Dev-only probe for playtests (stripped from production builds).
 if (import.meta.env.DEV) {
+  game.debugHud = true
   ;(window as unknown as { __hatch?: Game }).__hatch = game
 }
 
@@ -203,6 +204,8 @@ function hudSnapshot(): string {
         game.inboundHasClearance() ? 1 : 0,
         game.apronFocus.length,
         game.alerts.rev,
+        game.recoveryCount,
+        game.debugHud ? 1 : 0,
         game.hintPrefs.muted.join(','),
         game.hintPrefs.allEnabled ? 1 : 0,
         game.enableHintsAtStart ? 1 : 0,

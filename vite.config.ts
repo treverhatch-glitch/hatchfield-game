@@ -13,5 +13,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/sim/**/*.test.ts'],
     setupFiles: ['src/test/setup.ts'],
+    // The 150-day soak measures heap after GC. Workers do not inherit --expose-gc.
+    ...(process.env.SOAK_150 === '1'
+      ? { execArgv: ['--expose-gc'], fileParallelism: false, maxWorkers: 1 }
+      : {}),
   },
 })
