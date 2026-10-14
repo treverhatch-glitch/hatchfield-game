@@ -160,19 +160,22 @@ describe('initWorldRender', () => {
     wr.update(game, near, 1 / 30)
     near = camAt(g.wx ?? 0, g.wz ?? 0, 14)
     for (let i = 0; i < 4; i++) wr.update(game, near, 1 / 30)
-    const body = (['people-torso', 'hall-guest-body']
-      .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
-      .find((mesh) => mesh && mesh.count > 0) ?? scene.getObjectByName('hall-guest-body')) as THREE.InstancedMesh
-    expect(body).toBeTruthy()
-    expect(body.count).toBeGreaterThan(0)
+    // The guest may cross a detail level while walking, so look the body mesh up each time.
+    const firstBody = (out: THREE.Matrix4) => {
+      const body = ['people-torso', 'people-torsoLo', 'hall-guest-body']
+        .map((name) => scene.getObjectByName(name) as THREE.InstancedMesh | undefined)
+        .find((mesh) => mesh && mesh.count > 0)
+      expect(body).toBeTruthy()
+      body!.getMatrixAt(0, out)
+    }
     const a = new THREE.Matrix4()
     const b = new THREE.Matrix4()
-    body.getMatrixAt(0, a)
+    firstBody(a)
     for (let i = 0; i < 6; i++) {
       game.tick(0.3)
       wr.update(game, near, 1 / 30)
     }
-    body.getMatrixAt(0, b)
+    firstBody(b)
     expect(a.equals(b)).toBe(false)
     expect(g.lost).toBeFalsy()
     wr.dispose()

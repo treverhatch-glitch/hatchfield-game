@@ -20,7 +20,7 @@ export function poseFor(role: Role, state: string | undefined, moving: boolean):
 export function personPose(pose: Pose, look: PersonLook): PersonPose {
   switch (pose) {
     case 'walk':
-      return look.carry === 'roller' ? 'bagPull' : 'walk'
+      return look.carry === 'roller' ? 'bagPull' : look.carry === 'stroller' ? 'push' : 'walk'
     case 'working':
       return 'seated'
     default:
@@ -46,11 +46,11 @@ function staffLook(id: string, role: Exclude<Role, 'passenger'>): PersonLook {
     // Desk staff have no suitcase; cleaners keep the coveralls but go bareheaded.
     return { ...look, carry: 'none', hat: role === 'cleaner' ? 'none' : look.hat, key: `${look.key}.${role}` }
   }
-  const base = passengerLook(id, { carry: 'none' })
+  const base = passengerLook(id, { carry: 'none', outfit: 'casual', age: 'adult' })
   const dress = role === 'shop'
     ? { top: 0x15803d, bottom: 0x3f3f46, sleeves: false, accent: 0xf8fafc }
     : { top: 0xf1f5f9, bottom: 0x475569, sleeves: true, accent: 0 }
-  return { ...base, ...dress, hat: 'none', backpack: false, carry: 'none', key: `${role}.${base.key}` }
+  return { ...base, ...dress, hat: 'none', shorts: false, jacket: 0, gear: [], backpack: false, carry: 'none', key: `${role}.${base.key}` }
 }
 
 /** Deterministic per id. `checked`: the passenger still has a checked bag to drop. */

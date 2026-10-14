@@ -103,11 +103,9 @@ export function AlertStackView({ game }: { game: Game }) {
           </span>
           <span style={{ display: 'block', opacity: 0.85 }}>{a.detail}</span>
           <span style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            {a.at && a.at.cells.length ? (
-              <button type="button" data-testid={`alert-pan-${a.key}`} onClick={() => game.panToAlert(a.id)} style={btn}>
-                Pan to problem
-              </button>
-            ) : null}
+            <button type="button" data-testid={`alert-pan-${a.key}`} onClick={() => game.panToAlert(a.id)} style={btn}>
+              Pan to problem
+            </button>
             {a.key.startsWith(DISRUPTION_ALERT_PREFIX) ? (
               <button
                 type="button"

@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { createCrewMesh, createPassengerMesh } from './api.ts'
 import { PeopleRenderer, type PeopleAgent } from './renderer.ts'
 import { CREW_KINDS } from './types.ts'
-import { crewLook, groupLooks, passengerLook } from './variants.ts'
+import { crewLook, passengerLook } from './variants.ts'
 
 const qs = new URLSearchParams(location.search)
 const N = Number(qs.get('n') ?? 2500)
@@ -28,23 +28,27 @@ if (view === 'lineup') {
   // Crew and passenger gallery, close up.
   CREW_KINDS.forEach((kind, i) => {
     const g = createCrewMesh(kind, i + 1, { pose: kind === 'marshaller' ? 'wave' : 'idle' })
-    g.position.set(-5.4 + i * 1.8, 0, 0)
+    g.position.set(-5.4 + i * 1.8, 0, -0.6)
     scene.add(g)
   })
-  const poses = ['walk', 'bagPull', 'queue', 'idle', 'seated', 'reach'] as const
-  poses.forEach((pose, i) => {
-    const g = createPassengerMesh(`gallery${i}`, { pose, carry: pose === 'bagPull' ? 'roller' : undefined, phase: 0.2 })
-    g.position.set(-4.5 + i * 1.8, 0, 2.6)
+  // Passengers: outfits, ages and luggage on the same base body.
+  const gallery = [
+    { seed: 'g1', outfit: 'casual', pose: 'walk' },
+    { seed: 'g2', outfit: 'business', pose: 'bagPull', carry: 'roller' },
+    { seed: 'g3', outfit: 'tourist', pose: 'idle', carry: 'none' },
+    { seed: 'g4', outfit: 'casual', pose: 'queue', age: 'elder' },
+    { seed: 'g5', outfit: 'casual', pose: 'walk', age: 'kid' },
+    { seed: 'g6', outfit: 'casual', pose: 'push', carry: 'stroller' },
+    { seed: 'g7', outfit: 'tourist', pose: 'seated', carry: 'duffel' },
+  ] as const
+  gallery.forEach((spec, i) => {
+    const { seed, ...opts } = spec
+    const g = createPassengerMesh(seed, { ...opts, phase: 0.2 })
+    g.position.set(-5.4 + i * 1.8, 0, 2.4)
     scene.add(g)
   })
-  const fam = groupLooks('demo-family', 5, 3)
-  fam.forEach((m, i) => {
-    const g = createPassengerMesh(`fam${i}`, { age: m.look.age, pose: 'walk', phase: i * 0.13 })
-    g.position.set(-3 + m.slot.x * 1.3 + 2, 0, 5.4 + m.slot.z)
-    scene.add(g)
-  })
-  camera.position.set(0, 2.4, 11)
-  camera.lookAt(0, 1.0, 1.5)
+  camera.position.set(0, 1.9, 9.5)
+  camera.lookAt(0, 0.95, 0.8)
 } else {
   const kinds = CREW_KINDS
   for (let i = 0; i < N; i++) {

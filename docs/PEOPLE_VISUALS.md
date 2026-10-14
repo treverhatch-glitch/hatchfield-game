@@ -26,3 +26,20 @@ Not measured on an RTX 4070 Super: no GPU in CI, so the 60 fps target there is u
 
 Views: `view=lineup` (close-up gallery of every crew kind, poses, a family), `view=close` (street level, 2,500 people), `view=wide` (zoomed out).
 Screenshots are not committed: the CI session could not copy them into the repo. Regenerate them from the demo page.
+
+## Shared base body (rebuild)
+Passengers and crew are one body (`parts.ts`): about 1.75 m, head about 1/7.4 of height, tapered torso, arms and legs, hands, shoes. Crew are the same body plus clothing and gear parts, not a separate model.
+- Variety: height, build (`width`), age (`kid | teen | adult | elder`: kids get bigger heads, elders stoop), skin, hair (`short | long | bun | none`), outfits `casual | business | tourist`.
+- Luggage: roller, backpack, duffel, cart, stroller (pushed with the `push` pose).
+- Crew gear: pilot/cabin caps and jackets, hi-vis vest or jacket (`outer`), headset, ear defenders, lanyard badge, boots (a colour flag; shoes carry a short ankle cuff).
+- **Matching the reference sheets**: `outfits.ts` is the data table (`CREW_OUTFITS`, `PASSENGER_OUTFITS`) of outfit, accessory and colour per role. Edit it, and `parts.ts` for shapes, when the Gemini sheets land in `public/art/refs/people/`. No sheets were on the branch when this was built, so the figures start from the #231 colours.
+- Mesh budget: symmetric parts (arms, legs, hands, shoes) share one instanced mesh for both sides; mid detail is three meshes (`torsoLo` with arms, `headLo`, `legLo`).
+
+### Budget, 1,300 walkers (`budget.test.ts`, camera at street level, 1 in 12 crew)
+| | draws | triangles |
+|---|---|---|
+| #231 blocky figures | 26 | 58,372 |
+| shared base body | 27 | 57,107 |
+Draw calls are bounded by the number of part meshes and do not grow with headcount. One more draw than before comes from the richer variant set.
+
+Screenshots: `docs/devlog/media/people-lineup.png`, `people-hall-crowd.png`, `people-hall-crowd-wide.png` (regenerate with `scripts/people-shots.mts` while `npm run dev -- --port 45218` runs).

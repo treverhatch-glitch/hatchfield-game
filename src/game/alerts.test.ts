@@ -144,6 +144,15 @@ describe('alerts on the game', () => {
     expect(game.camGoal?.view).toBe('hall')
   })
 
+  it('panToAlert ignores an alert without an at focus gracefully', () => {
+    const game = new Game()
+    const row = game.alerts.raise(cash, game.clock)
+    expect(row?.at).toBeUndefined()
+    game.panToAlert(row!.id)
+    // No crash, and focus stays default
+    expect(game.camGoal).toBeNull()
+  })
+
   it('clears over-capacity after an expansion and a dismiss stays quiet', () => {
     const game = started()
     game.speed = 1
