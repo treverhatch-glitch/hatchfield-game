@@ -8,6 +8,8 @@ import * as KIT from '/src/build/models/kit.ts'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 const Q = new URLSearchParams(location.search)
 const NIGHT = Q.get('night') === '1'
+const YARD = Q.get('yard') === '1'
+const LAMPS = Q.get('lamps') !== '0'
 const NAMES = { fuel:'Fuel farm', fire:'Fire station', police:'Police post', cargo:'Cargo shed', guard:'Guard post', tower:'Control tower', hangar:'Line hangar', hangar_w:'Wide hangar', hangar_j:'Jumbo hangar', snack:'Snack bar', bags:'Bag sort', kitchen:'Catering kitchen', depot:'Vehicle depot', substation:'Substation', hydrant:'Hydrant pit', tilt_tray:'Tilt-tray sort', fuel_farm_iii:'Fuel farm III', atc_approach:'ATC approach', remote_screening:'Remote screening', prefab_ii:'Prefab II', checkin_hall:'Check-in hall', security_hall:'Security hall', concourse:'Concourse', pier_ii:'Pier II', satellite:'Satellite', prestige_landmark:'Prestige landmark', hotel_inn:'Airport inn', hotel_biz:'Business hotel', hotel_resort:'Airport resort', park_s:'Small lot', park_l:'Large lot', park_g:'Parking garage', park_u:'Underground park', bus:'Bus curb', rail:'Rail station', termbus:'Terminal bus depot', xferbus:'Transfer bus depot', helipad:'Helipad', deice:'De-ice pad', mro:'MRO hangar', nighthub:'Cargo night hub', fuel_rail:'Fuel rail', oil:'Oil transfer', travelator:'Travelator', skywalk:'Skywalk', mover:'People mover' }
 const ids = Q.get('ids') ? Q.get('ids').split(',') : Object.keys(MODEL_BUILDERS).filter((id) => id !== 'hotel')
 const cols = Number(Q.get('cols') || 8), cw = Number(Q.get('cw') || 300), ch = Number(Q.get('ch') || 280)
@@ -31,7 +33,8 @@ function draw() { lx.clearRect(0, 0, W, H); ids.forEach((id, i) => {
   scene.add(key)
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: '#7a9a5a' }))
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground)
-  const m = buildModel(id); m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } }); scene.add(m)
+  const m = buildModel(id, YARD ? { yardSeed: '5,5' } : {});
+  if (NIGHT && LAMPS) for (const [x, y, z] of (m.userData.lamps || [])) { const l = new THREE.PointLight('#ffd9a0', 26, 16, 1.6); l.position.set(x, y - 0.15, z); scene.add(l) } m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true } }); scene.add(m)
   const cam = new THREE.PerspectiveCamera(32, cw / (ch - 40), 0.1, 200)
   const bs = new THREE.Box3().setFromObject(m).getBoundingSphere(new THREE.Sphere())
   const dist = bs.radius / Math.sin(THREE.MathUtils.degToRad(16)) * 1.02
