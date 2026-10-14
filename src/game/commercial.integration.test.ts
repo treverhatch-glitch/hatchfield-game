@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ABANDON_FINE } from './catalog.ts'
+import { SMALL_FIELD_FEE_FACTOR } from './economyTuning.ts'
 import { Game } from './sim.ts'
 import type { Flight } from './types.ts'
 
@@ -141,10 +142,12 @@ describe('commercial live sim', () => {
       game.beginServicing(flight)
       const landing = game.bank.ledger().entries.filter((entry) => entry.category === 'landing_fees')
       const pax = game.bank.ledger().entries.filter((entry) => entry.category === 'passenger_fees')
-      expect(landing.map((entry) => entry.amount)).toContain(10_400)
-      expect(pax.map((entry) => entry.amount)).toContain(960)
-      expect(game.cash).toBe(before + 10_400 + 960)
-      expect(flight.ledger.some((line) => line.amount === 960)).toBe(true)
+      const landingFee = Math.round(10_400 * SMALL_FIELD_FEE_FACTOR)
+      const paxFee = Math.round(960 * SMALL_FIELD_FEE_FACTOR)
+      expect(landing.map((entry) => entry.amount)).toContain(landingFee)
+      expect(pax.map((entry) => entry.amount)).toContain(paxFee)
+      expect(game.cash).toBe(before + landingFee + paxFee)
+      expect(flight.ledger.some((line) => line.amount === paxFee)).toBe(true)
     })
   })
 

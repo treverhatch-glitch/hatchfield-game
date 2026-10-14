@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FUEL, GA_PARK_DAY_RATE } from './catalog.ts'
+import { SMALL_FIELD_FEE_FACTOR } from './economyTuning.ts'
 import { Game } from './sim.ts'
 import { landingCharge, serviceCharge } from '../commercial/live.ts'
 import { SERVICE_IDS } from '../negotiation/index.ts'
@@ -141,9 +142,11 @@ describe('negotiated terms on the live sim', () => {
     const landingFactor = 1 + landingPct / 100
     const paxFactor = 1 + paxPct / 100
     const parkingFactor = 0.6
-    const expectedLanding = Math.round(landingCharge(7400, 'standard', false) * landingFactor)
-    const expectedPax = Math.round(landingCharge(40 * 12, 'standard', false) * paxFactor)
+    const negotiatedLanding = Math.round(landingCharge(7400, 'standard', false) * landingFactor)
+    const negotiatedPax = Math.round(landingCharge(40 * 12, 'standard', false) * paxFactor)
     const expectedParking = Math.round(serviceCharge(GA_PARK_DAY_RATE, 'standard', false) * parkingFactor)
+    const expectedLanding = Math.round(negotiatedLanding * SMALL_FIELD_FEE_FACTOR)
+    const expectedPax = Math.round(negotiatedPax * SMALL_FIELD_FEE_FACTOR)
     expect(flight.ledger.map((line) => line.amount)).toEqual(
       expect.arrayContaining([expectedLanding, expectedPax, expectedParking]),
     )
@@ -158,8 +161,8 @@ describe('negotiated terms on the live sim', () => {
     expect(day.entries.filter((entry) => entry.category === 'parking_fees').map((entry) => entry.amount)).toContain(
       expectedParking,
     )
-    expect(expectedLanding).toBe(Math.round(7400 * 1.25))
-    expect(expectedPax).not.toBe(Math.round(480 * 1.25))
+    expect(negotiatedLanding).toBe(Math.round(7400 * 1.25))
+    expect(negotiatedPax).not.toBe(Math.round(480 * 1.25))
   })
 
   it('applies a fuel-discount freebie on the fuel line', () => {
@@ -193,7 +196,8 @@ describe('negotiated terms on the live sim', () => {
       },
       'fuel',
     )
-    const expected = Math.round(serviceCharge(FUEL.apex.pump, 'standard', false) * factor)
+    const negotiated = Math.round(serviceCharge(FUEL.apex.pump, 'standard', false) * factor)
+    const expected = Math.round(negotiated * SMALL_FIELD_FEE_FACTOR)
     expect(factor).toBeCloseTo(0.85)
     expect(flight.ledger.some((line) => line.amount === expected)).toBe(true)
     const day = game.bank.ledgerForGameDay(0)

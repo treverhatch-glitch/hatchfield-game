@@ -7,8 +7,8 @@ import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlinesDesk } from './AirlinesDesk'
 import { DiplomacyLetters } from './DiplomacyLetters'
-import { loanAmountLabel, loanDeskRows, loanProductLabel, payrollPreviewLabel, payrollPreviewTitle } from '../game/economy.ts'
-import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
+import { loanAmountLabel, loanDeskRows, loanDrawLabel, loanFeeForAmount, loanProductLabel, payrollPreviewLabel } from '../game/economy.ts'
+import { financeBreakdown } from '../game/financeBreakdown.ts'
 import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
@@ -915,9 +915,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <>
                       <p className="muted">
                         Terms · landing {money(offerAirline.landing)} · bags {money(offerAirline.bags)}
-                        {offerAirline.catering
-                          ? ` · catering ${money(offerAirline.catering)}`
-                          : ''}
+                        {` · catering ${money(game.quotedCatering(offerAirline.id, Math.max(offerAirline.paxMin || 40, 1)))}`}
                       </p>
                       <ul className="req-list">
                         {(() => {
@@ -1218,9 +1216,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       <p
                         className="muted eco-line"
                         data-testid="budget-payroll"
-                        title={payrollPreviewTitle(REAL_SECONDS_PER_GAME_DAY)}
+                        title={game.payrollChargeTitle()}
                       >
-                        {payrollPreviewLabel(game.payrollPreview(), money)}
+                        {payrollPreviewLabel(game.payrollCharged(), money)}
                         {game.fieldOpsMult() > 1.05
                           ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                           : ''}{' '}
@@ -1311,6 +1309,26 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <p className="muted">
                       Pax/day {game.paxPerDay || game.dayPax} · cargo/day {game.cargoPerDay || game.dayCargo}
                     </p>
+                    <section data-testid="finance-breakdown">
+                      <h3>Ledger</h3>
+                      {financeBreakdown(game.bank.ledger()).length ? (
+                        financeBreakdown(game.bank.ledger()).map((line) => (
+                          <p
+                            key={line.category}
+                            className="muted eco-line"
+                            data-testid={`finance-line-${line.category}`}
+                            title={line.why}
+                          >
+                            {line.label} {money(line.amount)}{' '}
+                            <span className="why" title={line.why}>
+                              why
+                            </span>
+                          </p>
+                        ))
+                      ) : (
+                        <p className="muted">No ledger lines yet. Opening cash is the balance, not a charge.</p>
+                      )}
+                    </section>
                     </>
                     ) : null}
                     {ecoTab === 'loans' ? (
@@ -1326,7 +1344,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           : 'No open loan — pick a product (bigger = higher fee, needs Field Level).'}
                       </p>
                       <label className="loan-amount" data-testid="loan-amount">
-                        <span>{loanAmountLabel(loanAmount)}</span>
+                        <span>{loanAmountLabel(loanAmount, loanFeeForAmount(loanAmount))}</span>
                         <input
                           type="range"
                           min={25_000}
@@ -1334,10 +1352,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           step={5_000}
                           value={loanAmount}
                           aria-label="Loan amount"
-                          aria-valuetext={money(loanAmount)}
+                          aria-valuetext={loanAmountLabel(loanAmount, loanFeeForAmount(loanAmount))}
                           onChange={(e) => setLoanAmount(Number(e.target.value))}
                         />
-                        <output>{money(loanAmount)}</output>
+                        <output>{money(loanAmount + loanFeeForAmount(loanAmount))}</output>
                       </label>
                       <div className="loan-grid">
                         {loanDeskRows(LOAN_PRODUCTS).map((p) => {
@@ -1356,15 +1374,25 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                               }
                               onClick={() => game.takeLoanProduct(p.id)}
                             >
-                              {loanProductLabel(p)}
+                              {active
+                                ? `${p.label} · owe ${money(game.loanBalance)}`
+                                : loanProductLabel(p)}
                               {!open ? ' · locked' : ''}
                             </button>
                           )
                         })}
                       </div>
                       <div className="row">
+                        <button
+                          type="button"
+                          data-testid="loan-draw"
+                          disabled={game.loanBalance > 0}
+                          onClick={() => game.drawLoan(loanAmount)}
+                        >
+                          {loanDrawLabel(loanAmount, loanFeeForAmount(loanAmount))}
+                        </button>
                         <button type="button" onClick={() => game.repayLoan()}>
-                          Pay loan
+                          Pay loan{game.loanBalance > 0 ? ` ${money(game.loanBalance)}` : ''}
                         </button>
                         <button type="button" onClick={() => game.buyParcel()}>
                           {parcelButtonLabel(game)}
@@ -1481,9 +1509,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   <p
                     className="muted"
                     data-testid="budget-payroll"
-                    title={payrollPreviewTitle(REAL_SECONDS_PER_GAME_DAY)}
+                    title={game.payrollChargeTitle()}
                   >
-                    {payrollPreviewLabel(game.payrollPreview(), money)}
+                    {payrollPreviewLabel(game.payrollCharged(), money)}
                     {game.fieldOpsMult() > 1.05
                       ? ` · field load ×${game.fieldOpsMult().toFixed(2)}`
                       : ''}{' '}

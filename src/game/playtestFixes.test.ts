@@ -36,7 +36,7 @@ beforeEach(() => {
 })
 
 describe('field and info letters', () => {
-  it('keeps a field ask after Got it, and does not show that same letter again', () => {
+  it('clears a field ask on Got it, and does not show that same letter again', () => {
     const game = fresh()
     const task: FieldTask = {
       id: 'ask-1',
@@ -52,7 +52,8 @@ describe('field and info letters', () => {
     expect(game.letterAcked('field:ask-1')).toBe(false)
     game.ackLetter('field:ask-1')
     expect(game.letterAcked('field:ask-1')).toBe(true)
-    expect(game.fieldTask?.id).toBe('ask-1')
+    expect(game.fieldTask).toBeNull()
+    expect(game.fieldTaskCool).toBeGreaterThan(0)
     expect(game.letterAcked('field:ask-2')).toBe(false)
   })
 })

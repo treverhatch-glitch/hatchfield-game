@@ -67,10 +67,11 @@ describe('live hub links', () => {
 
     game.fieldXp = 1_600
     expect(game.fieldLevel()).toBe(7)
+    const built = game.bank.ledger().byCategory.construction ?? 0
     game.placeSingle(cell)
     expect(game.sites).toHaveLength(1)
     expect(game.cash).toBe(900_000 - CONNECTIVITY_CATALOG.people_mover.cost)
-    expect(game.bank.ledger().byCategory.construction).toBe(-CONNECTIVITY_CATALOG.people_mover.cost)
+    expect(game.bank.ledger().byCategory.construction).toBe(built - CONNECTIVITY_CATALOG.people_mover.cost)
 
     game.tick(20)
     expect(game.tile(cell)).toBe('mover')
@@ -115,11 +116,12 @@ describe('live hub links', () => {
 
     const offer = game.linkRepairOffer()
     expect(offer?.mode).toBe('people_mover')
+    const built = game.bank.ledger().byCategory.construction ?? 0
     game.repairLink('people_mover')
     expect(game.linkStopped('people_mover')).toBe(false)
     expect(game.connectionLink()).toBe('people_mover')
     expect(game.cash).toBe(before - CONNECTIVITY_CATALOG.people_mover.repairCost)
-    expect(game.bank.ledger().byCategory.construction).toBe(-CONNECTIVITY_CATALOG.people_mover.repairCost)
+    expect(game.bank.ledger().byCategory.construction).toBe(built - CONNECTIVITY_CATALOG.people_mover.repairCost)
     expect(game.lostPaxCount()).toBe(0)
     expect(game.bagsLost).toBe(0)
   })
@@ -134,10 +136,11 @@ describe('live hub links', () => {
     game.fieldXp = 420
     expect(game.fieldLevel()).toBe(4)
     const cash = game.cash
+    const built = game.bank.ledger().byCategory.construction ?? 0
     expect(game.placeHallItem('walkway')).toBeUndefined()
     expect(game.fits[0].items?.some((item) => item.def === 'walkway')).toBe(true)
     expect(game.cash).toBe(cash - CONNECTIVITY_CATALOG.moving_walkway.cost)
-    expect(game.bank.ledger().byCategory.construction).toBe(-CONNECTIVITY_CATALOG.moving_walkway.cost)
+    expect(game.bank.ledger().byCategory.construction).toBe(built - CONNECTIVITY_CATALOG.moving_walkway.cost)
     expect(game.connectionLink()).toBe('walkway')
     expect(game.walkwayCoverMetres()).toBe(CONNECTIVITY_CATALOG.moving_walkway.lengthMetres)
 

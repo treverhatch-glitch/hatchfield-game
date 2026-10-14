@@ -49,4 +49,14 @@ describe('live negotiated fees', () => {
     terms.termMonths = 24
     expect(liveDailyMargin(quote, terms, 14, 1)).toBe(liveDailyMargin(quote, terms, 14, 1))
   })
+
+  it('changes the daily margin when the contract length changes', () => {
+    const margins = ([6, 12, 24] as const).map((termMonths) => {
+      const terms = blankTerms()
+      terms.termMonths = termMonths
+      return liveDailyMargin(quote, terms, 14, 1)
+    })
+    expect(margins[0]).toBeGreaterThan(margins[1])
+    expect(margins[1]).toBeGreaterThan(margins[2])
+  })
 })
