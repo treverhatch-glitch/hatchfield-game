@@ -47,6 +47,25 @@ if (await starter.isVisible().catch(() => false)) await starter.click()
 await page.getByRole('button', { name: new RegExp(`^${speed}$`) }).click().catch(() => {})
 await page.waitForTimeout(3000)
 
+// Fixed camera path: the same held keys on the same schedule every run, so tiers compare.
+// Driven through the real camera.pan*/zoom bindings; no game internals needed.
+const PATH: Array<[string, number]> = [
+  ['KeyW', 1500], ['KeyD', 1500], ['Minus', 1000], ['KeyS', 1500], ['KeyA', 1500], ['Equal', 1000],
+]
+const followPath = arg('path', 'on') === 'on'
+const pathDone = (async () => {
+  if (!followPath) return
+  const end = Date.now() + seconds * 1000
+  while (Date.now() < end) {
+    for (const [code, ms] of PATH) {
+      if (Date.now() >= end) return
+      await page.keyboard.down(code)
+      await page.waitForTimeout(ms)
+      await page.keyboard.up(code)
+    }
+  }
+})()
+
 const fps = await page.evaluate(
   new Function(
     'ms',
@@ -61,14 +80,22 @@ const fps = await page.evaluate(
         else {
           d.sort((a, b) => a - b)
           const sum = d.reduce((a, b) => a + b, 0)
-          resolve({ avg: Math.round((d.length * 10000) / sum) / 10, p99Ms: Math.round(d[Math.floor(d.length * 0.99)] * 10) / 10, frames: d.length })
+          const p99 = d[Math.min(d.length - 1, Math.floor(d.length * 0.99))]
+          resolve({
+            avg: Math.round((d.length * 10000) / sum) / 10,
+            min: Math.round(10000 / d[d.length - 1]) / 10,
+            low1: Math.round(10000 / p99) / 10,
+            p99Ms: Math.round(p99 * 10) / 10,
+            frames: d.length,
+          })
         }
       }
       requestAnimationFrame(step)
     })`,
-  ) as (ms: number) => Promise<{ avg: number; p99Ms: number; frames: number }>,
+  ) as (ms: number) => Promise<{ avg: number; min: number; low1: number; p99Ms: number; frames: number }>,
   seconds * 1000,
 )
+await pathDone
 const overlay = await page.getByTestId('perf-overlay').textContent().catch(() => null)
 const result = { quality, speed, gpu: useGpu, fps, overlay, errors }
 console.log(JSON.stringify(result))
