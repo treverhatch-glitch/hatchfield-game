@@ -3431,3 +3431,165 @@ h1.game-title::after {
   flex-direction: column;
   gap: 2px;
 }
+
+/* Curb capacity panel. Sits on the right so the approach stays visible. */
+.landside-dock {
+  position: absolute;
+  top: calc(var(--hud-top) + 8px);
+  right: 12px;
+  z-index: 24;
+  width: min(320px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.landside-dock > * {
+  pointer-events: auto;
+}
+
+.landside-dock > button {
+  background: rgba(12, 22, 28, 0.9);
+  color: #e7eee9;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: 700 12px sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.landside-dock > button.on {
+  background: #c9a227;
+  color: #1a1408;
+}
+
+.landside-panel {
+  width: 100%;
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  background: rgba(10, 20, 16, 0.94);
+  color: #e7eee9;
+  border: 1px solid rgba(201, 162, 39, 0.4);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.landside-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.landside-panel h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.landside-panel .ghost {
+  background: transparent;
+  color: #e7eee9;
+  border: 1px solid rgba(231, 238, 233, 0.25);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.landside-summary,
+.landside-meta {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d5e0d8;
+}
+
+.landside-modes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.landside-modes div {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.landside-modes dt {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9eb0a0;
+}
+
+.landside-modes dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.landside-fixes,
+.landside-segments {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.landside-fixes li {
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0 0 4px;
+}
+
+.landside-segments li {
+  margin: 0 0 8px;
+}
+
+.landside-segments button {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #e7eee9;
+  border: 0;
+  padding: 0;
+  font: 11px/1.35 sans-serif;
+}
+
+.landside-segments .swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-top: 3px;
+  flex: none;
+}
+
+.landside-segments .bar {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.landside-segments .bar span {
+  display: block;
+  height: 100%;
+}
+
+.landside-segments li[data-focused='true'] button {
+  color: #f0c14a;
+}
+
+.landside-segments .empty {
+  color: #9eb0a0;
+  font-size: 12px;
+}

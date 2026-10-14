@@ -6,6 +6,7 @@ import { recordSimTick } from './perf/simSample'
 import { Game } from './game/sim'
 import { Field } from './ui/Field'
 import { Hud } from './ui/Hud'
+import { LandsideOverlay } from './ui/LandsideOverlay'
 import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
 import { MenuFlyover } from './ui/MenuFlyover'
@@ -214,6 +215,10 @@ function hudSnapshot(): string {
         game.hintPrefs.allEnabled ? 1 : 0,
         game.enableHintsAtStart ? 1 : 0,
         game.sidePanel,
+        game.landsideOpen ? 1 : 0,
+        game.landsideFocus ?? '',
+        Math.round(game.landsideView().delaySec),
+        Math.round(game.landsideView().queue),
         game.playtestYear.rev,
         game.hallOverloaded ? 1 : 0,
         game.sites.length,
@@ -295,6 +300,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
   return (
     <>
       <Hud game={game} onNewGame={onNewGame} />
+      <LandsideOverlay game={game} />
       <OfferPanel game={game} />
       <OwnerChrome game={game} />
       <FeedbackChrome />

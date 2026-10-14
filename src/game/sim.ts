@@ -651,6 +651,7 @@ import {
   spawnDeparturePax,
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
+import { LandsideTraffic, type LandsideView } from '../landside/index.ts'
 import {
   astar,
   farmBesidePavement,
@@ -1089,6 +1090,11 @@ export class Game {
   hallStaff: HallStaff[] = []
   /** Recent landside touchpoints (exits / day rooms / park cues) for usage meters. */
   landsideUses = 0
+  /** Capacity model for the public curb. Rendering reads the snapshot. */
+  private landsideTraffic = new LandsideTraffic()
+  landsideOpen = false
+  landsideFocus: string | null = null
+  private landsideNewsCool = 0
   /** Passenger landside fees collected since last payroll window (HUD). */
   landsideFeeWindow = 0
   /** Planner filter: null = all banks; 0..n-1 = that strip; -1 = tower-auto only. */
@@ -1494,6 +1500,10 @@ export class Game {
     this.reputation = 40
     this.reputationShown = 40
     this.reputationDrift = 0
+    this.landsideTraffic.reset()
+    this.landsideOpen = false
+    this.landsideFocus = null
+    this.landsideNewsCool = 0
     this.loanBalance = 0
     this.loanProductId = null
     this.loanPrincipal = 0
@@ -4569,6 +4579,67 @@ export class Game {
     this.landsideUses += n
   }
 
+  /** Last curb snapshot. The renderer and the side panel both read this. */
+  landsideView(): LandsideView {
+    return this.landsideTraffic.snapshot()
+  }
+
+  /**
+   * Click-open the capacity panel.
+   * A null cell toggles it. The same road cell again closes it.
+   */
+  openLandside(cell: { c: number; r: number } | null) {
+    if (!cell) {
+      this.landsideOpen = !this.landsideOpen
+      this.emit()
+      return
+    }
+    const id = `${cell.c},${cell.r}`
+    if (this.landsideOpen && this.landsideFocus === id) {
+      this.landsideOpen = false
+      this.landsideFocus = null
+    } else {
+      this.landsideOpen = true
+      this.landsideFocus = id
+    }
+    this.emit()
+  }
+
+  closeLandside() {
+    if (!this.landsideOpen) return
+    this.landsideOpen = false
+    this.landsideFocus = null
+    this.emit()
+  }
+
+  /**
+   * Roads and the curb have a capacity. Over it, cars queue and passengers
+   * step out late, which nudges reputation. Fees and upkeep stay as they are.
+   */
+  private tickLandside(dt: number) {
+    const view = this.landsideTraffic.tick(dt, {
+      roads: tilesOf(this.tiles, 'road'),
+      connectors: tilesOf(this.tiles, 'guard'),
+      terminals: tilesOf(this.tiles, 'terminal'),
+      busBays: tilesOf(this.tiles, 'bus'),
+      parks: (['park_s', 'park_l', 'park_g', 'park_u'] as const).flatMap((kind) =>
+        tilesOf(this.tiles, kind).map((cell) => ({ c: cell.c, r: cell.r, kind })),
+      ),
+      rail: this.hasRailStation(),
+      paxPerDay: Math.max(0, this.paxPerDay, this.dayPax),
+      departures: this.flights.reduce(
+        (n, f) => n + (f.phase === 'gone' || f.cargo || f.kind === 'freighter' ? 0 : 1),
+        0,
+      ),
+    })
+    if (view.satisfactionDelta !== 0) this.queueReputation(view.satisfactionDelta)
+    this.landsideNewsCool = Math.max(0, this.landsideNewsCool - dt)
+    if (view.news && this.landsideNewsCool <= 0) {
+      this.pushNews(view.news, 'bad')
+      this.landsideNewsCool = 90
+    }
+  }
+
   runwayStripCount(): number {
     return runwayStrips(this.tiles, MIN_RUNWAY).length
   }
@@ -5301,6 +5372,9 @@ export class Game {
       this.emergencyCool = 45
       this.analystCool = 40
       this.flights = []
+      this.landsideTraffic.reset()
+      this.landsideOpen = false
+      this.landsideFocus = null
       this.trucks = []
       this.people = []
       this.hallGuests = []
@@ -15187,6 +15261,17 @@ export class Game {
       const tile = this.tile(v)
       if (tile === 'fuel') this.toggleInfo('fuel')
       else if (tile === 'bags') this.toggleInfo('bags')
+      if (
+        tile === 'road' ||
+        tile === 'bus' ||
+        tile === 'rail' ||
+        tile === 'park_s' ||
+        tile === 'park_l' ||
+        tile === 'park_g' ||
+        tile === 'park_u'
+      ) {
+        this.openLandside(v)
+      }
       if (tile === 'terminal') {
         this.enterHallAt(v)
         return
@@ -19728,6 +19813,7 @@ export class Game {
     this.offerCool = Math.max(0, this.offerCool - step * (1 + this.tycoonAirlineInterest()))
     this.congNewsCool = Math.max(0, this.congNewsCool - step)
     this.tickCityCargo(step)
+    this.tickLandside(step)
     this.tickConstruction(step)
     this.tickCatering(step)
     this.tickGround(step)
