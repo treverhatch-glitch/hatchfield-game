@@ -57,6 +57,12 @@ export type Tile =
   | 'fuel_rail'
   /** Unloads a fuel train into the tank farm. */
   | 'oil'
+  /** Late-game airport hotel (transfer and crew nights). */
+  | 'late_hotel'
+  /** Late-game rail link station. Demand bonus once the build finishes. */
+  | 'late_rail'
+  /** Sustainable aviation fuel blending plant. */
+  | 'saf'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -131,6 +137,9 @@ export type Tool =
   | 'travelator'
   | 'skywalk'
   | 'mover'
+  | 'airport_hotel'
+  | 'rail_link'
+  | 'saf_blending'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -1020,6 +1029,12 @@ export interface GameSnapshot {
   disruptions?: string
   /** Year-end disruption, hub, and award counters. Missing on older saves. */
   playtestYear?: PlaytestYearSave
+  /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
+  tier3Sites?: { id: 'airport_hotel' | 'rail_link' | 'saf_blending'; c: number; r: number; elapsedDays: number }[]
+  /** Missed-connection guests waiting on the airport hotel. */
+  missedHotelNights?: number
+  /** Crew waiting on the airport hotel. */
+  crewHotelNights?: number
 }
 
 /** A placed building that is still a construction site. */

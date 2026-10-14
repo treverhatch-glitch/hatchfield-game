@@ -1361,7 +1361,8 @@ button {
   color: #1a1406;
 }
 
-.tray-item.locked {
+.tray-item.locked,
+.tray-item.is-locked {
   opacity: 0.55;
 }
 
