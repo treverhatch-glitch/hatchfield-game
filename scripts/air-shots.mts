@@ -32,6 +32,8 @@ const shots: [string, string][] = [
   ['air-cargo-door-open', '?view=stand&id=b748f&rot=0.4&cam=0.3,0.08,0.45&look=0.1,0.05,0'],
   ['air-wing-engine', '?view=stand&id=a321&rot=0&cam=0.12,0.03,0.3&look=0.02,0.05,0.12'],
   ['air-wing-engine-b789', '?view=stand&id=b789&rot=0.6&cam=0.25,0.05,0.35&look=0.02,0.05,0.1'],
+  ['air-door-open-b789', '?view=stand&id=b789&rot=0.35&cam=0.38,0.06,0.2&look=0.36,0.06,0'],
+  ['air-chrome-gear', '?view=stand&id=a321&rot=0&cam=-0.02,0.02,0.1&look=-0.02,0.03,0.04'],
   ['air-night-stand', '?view=stand&id=b789&night=1'],
 ]
 const only = process.env.ONLY?.split(',')
@@ -41,6 +43,8 @@ for (const [name, query] of shots) {
   page.on('pageerror', (e) => console.error(name, e.message))
   await page.goto(BASE + query)
   await page.waitForFunction('window.__ready === true', null, { timeout: 600000 })
+  // Doors ease open over a couple of seconds: let them finish before the capture.
+  if (name.includes('door')) await page.waitForTimeout(3000)
   await page.screenshot({ path: `${OUT}/${name}.png` })
   console.log('saved', name)
   await page.close()
