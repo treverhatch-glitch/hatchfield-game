@@ -8,16 +8,25 @@ type MenuId = 'commute' | 'housing' | 'crew'
 /**
  * Headlines stay qualitative. Minutes, percents, beds, and money open on click.
  */
-export function StaffHousingPanel({ game }: { game: Game }) {
+export function StaffHousingPanel({
+  game,
+  focus,
+}: {
+  game: Game
+  focus?: 'housing' | 'commute' | 'morale'
+}) {
   const [open, setOpen] = useState<MenuId | null>(null)
   const panel = game.staffPanel()
   const toggle = (id: MenuId) => setOpen((cur) => (cur === id ? null : id))
+  const show = (id: MenuId) => (focus ? focus === (id === 'crew' ? 'morale' : id) : open === id)
+  const allow = (id: MenuId) => (focus ? show(id) : true)
 
   return (
     <section data-testid="staff-panel">
       <h3>Staff housing</h3>
       <p className="muted">Crew commute in until a house stands on an expansion plot.</p>
       <div className="staff-subs">
+        {allow('commute') && !focus ? (
         <button
           type="button"
           aria-expanded={open === 'commute'}
@@ -27,7 +36,8 @@ export function StaffHousingPanel({ game }: { game: Game }) {
           Commute
           <span className="muted">{panel.commuteSummary}</span>
         </button>
-        {open === 'commute' ? (
+        ) : null}
+        {show('commute') || (focus === 'commute') ? (
           <div className="staff-detail" data-testid="staff-commute-detail">
             <p>
               {panel.commute.minutes} min · {panel.commute.reliabilityPct}% on time ·{' '}
@@ -44,6 +54,7 @@ export function StaffHousingPanel({ game }: { game: Game }) {
           </div>
         ) : null}
 
+        {allow('housing') && !focus ? (
         <button
           type="button"
           aria-expanded={open === 'housing'}
@@ -53,7 +64,8 @@ export function StaffHousingPanel({ game }: { game: Game }) {
           Housing
           <span className="muted">{panel.housingSummary}</span>
         </button>
-        {open === 'housing' ? (
+        ) : null}
+        {show('housing') || focus === 'housing' ? (
           <div className="staff-detail" data-testid="staff-housing-detail">
             <p>
               {panel.housing.housed} housed / {panel.housing.beds} beds · upkeep{' '}
@@ -90,6 +102,7 @@ export function StaffHousingPanel({ game }: { game: Game }) {
           </div>
         ) : null}
 
+        {allow('crew') && !focus ? (
         <button
           type="button"
           aria-expanded={open === 'crew'}
@@ -99,7 +112,8 @@ export function StaffHousingPanel({ game }: { game: Game }) {
           Crew
           <span className="muted">{panel.crewSummary}</span>
         </button>
-        {open === 'crew' ? (
+        ) : null}
+        {show('crew') || focus === 'morale' ? (
           <div className="staff-detail" data-testid="staff-crew-detail">
             <p>
               Morale {panel.crew.moralePct}% · retention {panel.crew.retentionPct}% · hire −

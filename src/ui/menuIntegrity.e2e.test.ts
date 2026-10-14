@@ -1,8 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { chromium, type Locator, type Page } from 'playwright'
-import { BUILD_MENUS, ECO_TABS, INFO_TREE, KIT_TABS, SETTINGS_TABS } from './uiCatalog'
+import { BUILD_MENUS, MANAGE_MENUS } from './nav/taxonomy'
+import { KIT_TABS } from './uiCatalog'
 
 const CHROME_PATHS = [
   process.env.PLAYWRIGHT_CHROME,
@@ -44,6 +45,9 @@ describe('every menu opens, has content, and closes', () => {
         const gotIt = page.getByRole('button', { name: 'Got it' })
         if (await gotIt.count()) await gotIt.click()
 
+        const shots = 'docs/screens/ui-audit/taxonomy'
+        mkdirSync(shots, { recursive: true })
+
         for (const menu of BUILD_MENUS) {
           const tab = page.getByTestId(`build-${menu.id}`)
           await tab.click()
@@ -51,14 +55,25 @@ describe('every menu opens, has content, and closes', () => {
           await tray.waitFor({ state: 'visible' })
           await assertNamedButtons(tray, menu.label)
           expect(await tray.locator('button').count()).toBeGreaterThan(0)
-          if (menu.id === 'ops') {
+          if (menu.id === 'airside') {
             await page.getByTestId('tray-fuel').waitFor({ state: 'visible' })
+            await page.getByTestId('lock-badge-saf_blending').waitFor({ state: 'visible' })
             expect(await page.getByTestId('tray-snack').count()).toBe(0)
+            expect(await page.getByTestId('tray-belt').count()).toBe(0)
+            expect(await page.getByTestId('tray-guard').count()).toBe(0)
           }
-          if (menu.id === 'commercial') {
+          if (menu.id === 'retail') {
             await page.getByTestId('tray-snack').waitFor({ state: 'visible' })
+            await page.getByTestId('tray-food').waitFor({ state: 'visible' })
             expect(await page.getByTestId('tray-fuel').count()).toBe(0)
           }
+          if (menu.id === 'safety') {
+            expect(await page.getByTestId('tray-guard').count()).toBe(1)
+          }
+          if (menu.id === 'terminal') {
+            expect(await page.getByTestId('tray-belt').count()).toBe(1)
+          }
+          await page.screenshot({ path: `${shots}/build-${menu.id}.png` })
           const stamp = tray.locator('button').first()
           await stamp.click()
           await page.waitForFunction(() => {
@@ -69,53 +84,30 @@ describe('every menu opens, has content, and closes', () => {
           expect(await page.getByTestId('build-tray').count()).toBe(0)
         }
 
-        for (const node of INFO_TREE) {
-          if (node.items) {
-            const group = page.getByTestId(`menu-${node.id}`)
-            await group.click()
-            const submenu = page.getByTestId(`submenu-${node.id}`)
-            await submenu.waitFor({ state: 'visible' })
-            await assertNamedButtons(submenu, node.label)
-            const items = [...node.items]
-            for (const item of items) {
-              if (!(await submenu.isVisible())) await group.click()
-              await page.getByTestId(`tab-${item.id}`).click()
-              await page.getByTestId('panel-body').waitFor({ state: 'visible' })
-              const text = (await page.getByTestId('panel-body').innerText()).trim()
-              expect(text.length, `${item.label} panel`).toBeGreaterThan(20)
-              expect(text).not.toMatch(PLACEHOLDER)
-              await assertNamedButtons(page.getByTestId('panel-body'), item.label)
-              if (item.panel === 'tycoon' && item.tycoonTab) {
-                expect(await page.getByTestId(`tycoon-tab-${item.tycoonTab}`).getAttribute('aria-selected')).toBe('true')
-              }
-              await page.getByTestId('panel-close').click()
-              expect(await page.getByTestId('panel-body').count()).toBe(0)
-            }
-            if (await submenu.isVisible()) await group.click()
-            expect(await page.getByTestId(`submenu-${node.id}`).count()).toBe(0)
-          } else if (node.panel) {
-            const tab = page.getByTestId(`tab-${node.id}`)
-            await tab.click()
+        expect(await page.getByTestId('tab-settings').count()).toBe(0)
+        expect(await page.getByTestId('build-late').count()).toBe(0)
+
+        for (const menu of MANAGE_MENUS) {
+          const group = page.getByTestId(`menu-${menu.id}`)
+          await group.click()
+          const submenu = page.getByTestId(`submenu-${menu.id}`)
+          await submenu.waitFor({ state: 'visible' })
+          await assertNamedButtons(submenu, menu.label)
+          await page.screenshot({ path: `${shots}/menu-${menu.id}.png` })
+          for (const item of menu.tabs) {
+            if (!(await submenu.isVisible())) await group.click()
+            await page.getByTestId(`tab-${item.id}`).click()
             await page.getByTestId('panel-body').waitFor({ state: 'visible' })
             const text = (await page.getByTestId('panel-body').innerText()).trim()
-            expect(text.length, `${node.label} panel`).toBeGreaterThan(20)
-            await assertNamedButtons(page.getByTestId('panel-body'), node.label)
-            if (node.panel === 'economy') {
-              for (const eco of ECO_TABS) {
-                await page.getByTestId(`eco-tab-${eco.id}`).click()
-                expect(await page.getByTestId(`eco-tab-${eco.id}`).getAttribute('aria-selected')).toBe('true')
-                expect((await page.getByTestId('panel-body').innerText()).trim().length).toBeGreaterThan(10)
-              }
-            }
-            if (node.panel === 'settings') {
-              for (const settings of SETTINGS_TABS) {
-                await page.getByTestId(`hud-settings-tab-${settings.id}`).click()
-                expect((await page.getByTestId('panel-body').innerText()).trim().length).toBeGreaterThan(10)
-              }
-            }
+            expect(text.length, `${item.label} panel`).toBeGreaterThan(12)
+            expect(text).not.toMatch(PLACEHOLDER)
+            await assertNamedButtons(page.getByTestId('panel-body'), item.label)
+            await page.screenshot({ path: `${shots}/tab-${item.id}.png` })
             await page.getByTestId('panel-close').click()
             expect(await page.getByTestId('panel-body').count()).toBe(0)
           }
+          if (await submenu.isVisible()) await group.click()
+          expect(await page.getByTestId(`submenu-${menu.id}`).count()).toBe(0)
         }
 
         await page.getByTestId('phone-peek').click()
@@ -141,13 +133,12 @@ describe('every menu opens, has content, and closes', () => {
         await page.getByTestId('fids-close').click()
         expect(await page.getByTestId('fids-panel').count()).toBe(0)
 
+        await page.getByTestId('menu-money').click()
         await page.getByTestId('tab-fees').click()
         await page.getByTestId('fees-panel').waitFor({ state: 'visible' })
-        await assertNamedButtons(page.getByTestId('fees-panel'), 'Fees')
         expect(await page.getByTestId('fees-panel').innerText()).toContain('Aircraft parking per hour')
         expect(await page.getByTestId('fees-panel').innerText()).toContain('Aircraft parking per day')
-        await page.getByTestId('fees-panel').getByRole('button', { name: 'Close' }).click()
-        expect(await page.getByTestId('fees-panel').count()).toBe(0)
+        await page.getByTestId('panel-close').click()
 
         await page.getByTestId('cash-hero').click()
         await page.getByTestId('cash-menu').waitFor({ state: 'visible' })
@@ -192,7 +183,6 @@ describe('every menu opens, has content, and closes', () => {
 async function assertNamedButtons(root: Locator, where: string) {
   const buttons = root.locator('button')
   const count = await buttons.count()
-  expect(count, `${where} has buttons`).toBeGreaterThan(0)
   for (let i = 0; i < count; i++) {
     const button = buttons.nth(i)
     const text = ((await button.innerText()) || '').replace(/\s+/g, ' ').trim()

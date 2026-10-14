@@ -74,8 +74,6 @@ import { environmentCaption, seasonAtClock } from '../environment/index.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import { inputMap } from '../input/map'
 import { pauseState } from './pauseState'
-import { GameSettings } from './PauseMenu'
-import { ControlsPanel } from './ControlsPanel'
 import type { AirlineTier, BudgetKey, Speed, Tool } from '../game/types'
 import { RivalPanel } from '../rival/RivalPanel.tsx'
 import { LineChart } from './LineChart'
@@ -85,17 +83,18 @@ import { FeesPanel } from './FeesPanel'
 import { TycoonPanel, YearReportCard } from '../tycoon/TycoonPanel.tsx'
 import type { TycoonTab } from '../tycoon/types.ts'
 import { StaffHousingPanel } from './StaffHousingPanel'
-import { AchievementToast, type AchievementDef } from '../achievements'
+import { ACHIEVEMENTS, AchievementToast, type AchievementDef } from '../achievements'
+import { liveBubbles } from '../feedback/stage'
 import { DebugHud } from './DebugHud'
+import { HALL_ROOMS } from './uiCatalog'
+import { requestKit } from './nav/kitFocus'
 import {
   BUILD_MENUS,
-  ECO_TABS,
-  HALL_ROOMS,
-  INFO_TREE,
-  panelHeading,
-  type EcoTab,
-  type PanelId,
-} from './uiCatalog'
+  headingFor,
+  MANAGE_MENUS,
+  sheetFor,
+  type ManageTabId,
+} from './nav/taxonomy'
 
 function parcelButtonLabel(game: Game): string {
   const offer = game.nextParcelOffer()
@@ -157,11 +156,12 @@ function TrayMark({ tool }: { tool: string }) {
 export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
   const [selSlot, setSelSlot] = useState<string | null>(null)
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
-  const [panelPick, setPanel] = useState<PanelId | null>(null)
+  const [panelPick, setPanel] = useState<ManageTabId | null>(null)
   const [infoGroup, setInfoGroup] = useState<string | null>(null)
   const [growthFocus, setGrowthFocus] = useState<string | null>(null)
   // One panel at a time: an open hint list folds the HUD rollout away.
-  const panel = game.sidePanel === 'hints' ? null : panelPick
+  const manageTab = game.sidePanel === 'hints' ? null : panelPick
+  const panel = manageTab ? sheetFor(manageTab) : null
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [hoverLetter, setHoverLetter] = useState<string | null>(null)
   // Desktop reads those letters on the phone, which holds them itself.
@@ -172,12 +172,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   }, [game, openLetter, hoverLetter, desktopPhone])
   useEffect(() => () => game.holdLetters([]), [game])
   const [chromePinned, setChromePinned] = useState(false)
-  const [ecoTab, setEcoTab] = useState<EcoTab>('overview')
+  const ecoTab =
+    manageTab === 'income' ||
+    manageTab === 'expenses' ||
+    manageTab === 'loans' ||
+    manageTab === 'charts' ||
+    manageTab === 'overview'
+      ? manageTab
+      : 'overview'
   const [loanAmount, setLoanAmount] = useState(25_000)
   const [tycoonTab, setTycoonTab] = useState<TycoonTab>('shops')
   const [inboxOpen, setInboxOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
-  const [feesOpen, setFeesOpen] = useState(false)
   const [boardsOpen, setBoardsOpen] = useState(fidsIsOpen)
   useEffect(() => subscribeFids(setBoardsOpen), [])
   // Terminal view folds the apron cards. A peek belongs to the view it was opened in.
@@ -188,7 +194,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     setHallPeek((cur) => (cur?.view === game.view && cur.id === id ? null : { view: game.view, id }))
   const pendingYear = game.pendingYearReport()?.year ?? null
   const [yearShown, setYearShown] = useState<number | null>(null)
-  if (panel === 'tycoon' && pendingYear !== yearShown) {
+  if (manageTab === 'commercial' && pendingYear !== yearShown) {
     setYearShown(pendingYear)
     if (pendingYear != null) setTycoonTab('year')
   }
@@ -197,9 +203,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   }, [game, panel])
   const forecast = projectCash(game.cash, game.incomeRate(), game.dailyOperatingCharges())
   const flowLabel = `${forecast.dailyNet > 0 ? '+' : ''}${money(forecast.dailyNet)}/day`
-  const menuTools = buildMenu
-    ? (BUILD_MENUS.find((m) => m.id === buildMenu)?.tools ?? [])
-    : []
+  const buildEntry = buildMenu ? BUILD_MENUS.find((m) => m.id === buildMenu) : undefined
+  const menuTools = buildEntry?.tools ?? []
   const flight = game.flights.find((f) => f.id === game.selectedFlight) ?? game.flights[0]
   const airline = flight ? game.airline(flight.airline) : null
   const origin = game.selectedTerminalOrigin()
@@ -236,25 +241,26 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     return inputMap.onPress((id) => {
       if (id !== 'view.airlines') return
       setPanel((cur) => {
-        if (cur === 'airlines') {
+        if (cur === 'roster') {
           setChromePinned(false)
           return null
         }
         setChromePinned(true)
-        return 'airlines'
+        setInfoGroup('airlines')
+        return 'roster'
       })
     })
   }, [])
 
-  const togglePanel = (id: Exclude<PanelId, null>) => {
-    const closing = panel === id
+  const togglePanel = (id: ManageTabId) => {
+    const closing = manageTab === id
     setPanel(closing ? null : id)
     setChromePinned(!closing)
     game.setSidePanel(closing ? null : 'hud')
   }
 
   /** Open a tab without accidental close when already selected. */
-  const openPanel = (id: Exclude<PanelId, null>) => {
+  const openPanel = (id: ManageTabId) => {
     setPanel(id)
     setChromePinned(true)
     game.setSidePanel('hud')
@@ -291,25 +297,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       >
         Boards
       </button>
-      <button
-        type="button"
-        className={`fees-toggle${feesOpen ? ' on' : ''}`}
-        title="Landing, passenger, and service prices"
-        data-testid="tab-fees"
-        onClick={() => setFeesOpen((open) => !open)}
-      >
-        Fees
-      </button>
       {boardsOpen ? <BoardPanel source={game} onClose={() => setFidsOpen(false)} /> : null}
-      {feesOpen ? (
-        <FeesPanel
-          fees={game.fees}
-          depositTier={game.depositTier}
-          onFee={(key, value) => game.setFee(key, value)}
-          onTier={(tier) => game.setDepositTier(tier)}
-          onClose={() => setFeesOpen(false)}
-        />
-      ) : null}
       <header className="top" data-testid="stats-bar" ref={topBar}>
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
@@ -374,8 +362,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 type="button"
                 onClick={() => {
                   setCashOpen(false)
-                  setEcoTab('overview')
-                  openPanel('economy')
+                  setInfoGroup('money')
+                  openPanel('overview')
                 }}
               >
                 Open books
@@ -427,8 +415,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           <button
             type="button"
             className="stat cash top-cash"
-            title="Open Economy · HATCH"
-            onClick={() => openPanel('economy')}
+            title="Open Money · HATCH"
+            onClick={() => openPanel('overview')}
           >
             HATCH ${game.sharePrice.toFixed(2)}
           </button>
@@ -1083,7 +1071,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         {panel ? (
           <div className="panel-rollout" data-panel={panel}>
             <div className="panel-head">
-              <h2>{panel ? panelHeading(panel, tycoonTab) : ''}</h2>
+              <h2>{manageTab ? headingFor(manageTab) : ''}</h2>
               <button
                 type="button"
                 className="ghost"
@@ -1105,21 +1093,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   >
                     {moneySummaryLine(forecast, money)}
                   </p>
-                  <div className="eco-tabs" role="tablist">
-                    {ECO_TABS.map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={ecoTab === tab.id}
-                        className={ecoTab === tab.id ? 'on' : ''}
-                        data-testid={`eco-tab-${tab.id}`}
-                        onClick={() => setEcoTab(tab.id)}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
                   {ecoTab === 'income' ? (
                     <section data-testid="eco-income">
                       <h3>Income</h3>
@@ -1432,7 +1405,19 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </>
               ) : null}
 
-              {panel === 'settings' ? <HudSettings game={game} onNewGame={onNewGame} /> : null}
+              {panel === 'fees' ? (
+                <FeesPanel
+                  fees={game.fees}
+                  depositTier={game.depositTier}
+                  onFee={(key, value) => game.setFee(key, value)}
+                  onTier={(tier) => game.setDepositTier(tier)}
+                  onClose={() => {
+                    setPanel(null)
+                    setChromePinned(false)
+                    game.setSidePanel(null)
+                  }}
+                />
+              ) : null}
 
               {panel === 'budget' ? (
                 <section data-testid="budget-panel">
@@ -1604,7 +1589,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
               {panel === 'specialize' ? <SpecTree game={game} /> : null}
 
-              {panel === 'rnd' ? <ResearchPanel game={game} /> : null}
+              {manageTab === 'research' ? <ResearchPanel game={game} /> : null}
 
               {panel === 'rival' ? (
                 rival ? (
@@ -1617,13 +1602,45 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 )
               ) : null}
 
-              {panel === 'airlines' ? (
+              {manageTab === 'letters' ? <AirlinesDesk game={game} /> : null}
+              {manageTab === 'hubs' ? (
+                <section data-testid="hubs-panel">
+                  <h3>Hubs</h3>
+                  {game.signed.some((id) => game.isHub(id)) ? (
+                    <ul className="airlines">
+                      {game.signed
+                        .filter((id) => game.isHub(id))
+                        .map((id) => (
+                          <li key={id}>
+                            <b>{game.airline(id).name}</b>
+                            <span className="muted">Based here</span>
+                          </li>
+                        ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No hub yet. A signed carrier can base aircraft here.</p>
+                  )}
+                </section>
+              ) : null}
+              {manageTab === 'negotiation' ? (
+                <section data-testid="negotiation-desk">
+                  <h3>Negotiation</h3>
+                  <p className="muted">
+                    {game.offer
+                      ? `${game.airline(game.offer.airline).name} has an open offer.`
+                      : 'No offer on the table. A letter opens one.'}
+                  </p>
+                  <button type="button" onClick={() => game.openNegotiationPanel()} disabled={!game.offer}>
+                    Open negotiation
+                  </button>
+                </section>
+              ) : null}
+              {manageTab === 'roster' ? (
                 <>
-                <AirlinesDesk game={game} />
                 <section className="inbound-contracts" data-testid="contracts-panel">
                   <h3>Contracts</h3>
                   <p className="muted eco-line">
-                    Guard {game.milAgreement ? 'agreement signed' : 'agreement is under Management → Budget'}
+                    Guard {game.milAgreement ? 'agreement signed' : 'agreement is under Money → Payroll'}
                     {' · '}
                     clearance {game.inboundHasClearance() ? 'held' : money(CLEARANCE_LICENCE_COST)}
                   </p>
@@ -1705,7 +1722,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           .map((id) => SPEC_PATHS.find((p) => p.id === id)?.label ?? id)
                           .join(', ')}`
                       : ''}
-                    . Open R&D → Specializations for the trees. Paths mix: capstone +50% and site upkeep +10% after
+                    . Open Growth → Specializations for the trees. Paths mix: capstone +50% and site upkeep +10% after
                     the first.
                   </p>
                   {([1, 2, 3, 4, 5] as AirlineTier[]).map((tier) => {
@@ -1792,7 +1809,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </>
               ) : null}
 
-              {panel === 'planner' ? (
+              {manageTab === 'stands' ? (
+                <section data-testid="stands-panel">
+                  <h3>Stands</h3>
+                  <p className="muted">{game.campusLine()}</p>
+                  <p className="muted">
+                    {tilesOf(game.tiles, 'stand').length} stands · {game.jetwayCount()} jetway · {game.freeStands().length}{' '}
+                    free. Remote or jetway is chosen on the Airfield menu.
+                  </p>
+                </section>
+              ) : null}
+
+              {manageTab === 'planner' ? (
                 <>
                   <section>
                     <h3>Selected flight</h3>
@@ -2120,12 +2148,19 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {panel === 'premium' ? <PremiumPanel game={game} /> : null}
-              {panel === 'tycoon' ? (
+              {manageTab === 'commercial' || manageTab === 'awards' ? (
                 <>
                   <TycoonPanel
                     view={game.tycoonView()}
                     cash={game.cash}
-                    tab={tycoonTab === 'year' && !game.pendingYearReport() ? 'shops' : tycoonTab}
+                    showTabs={manageTab === 'commercial'}
+                    tab={
+                      manageTab === 'awards'
+                        ? 'awards'
+                        : tycoonTab === 'year' && !game.pendingYearReport()
+                          ? 'shops'
+                          : tycoonTab
+                    }
                     formatMoney={money}
                     onTab={setTycoonTab}
                     onAccept={(unitId, bidId) => game.acceptTenantBid(unitId, bidId)}
@@ -2136,7 +2171,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       setTycoonTab('shops')
                     }}
                   />
-                  {(tycoonTab === 'year' && !game.pendingYearReport() ? 'shops' : tycoonTab) === 'shops' ? (
+                  {manageTab === 'commercial' &&
+                  (tycoonTab === 'year' && !game.pendingYearReport() ? 'shops' : tycoonTab) === 'shops' ? (
                     <section>
                       <h3>Hall shops</h3>
                       <p className="muted">Food, retail, and lounge rooms inside the selected hall.</p>
@@ -2145,7 +2181,45 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   ) : null}
                 </>
               ) : null}
-              {panel === 'staff' ? <StaffHousingPanel game={game} /> : null}
+              {manageTab === 'staff' ? <StaffHousingPanel game={game} focus="housing" /> : null}
+              {manageTab === 'commute' ? <StaffHousingPanel game={game} focus="commute" /> : null}
+              {manageTab === 'morale' ? <StaffHousingPanel game={game} focus="morale" /> : null}
+              {manageTab === 'thoughts' ? (
+                <section data-testid="thoughts-panel">
+                  <h3>Passenger thoughts</h3>
+                  <p className="muted">Icons sit over the hall. A quiet field has nothing to say.</p>
+                  {liveBubbles().length === 0 ? (
+                    <p className="muted">No passenger is speaking right now.</p>
+                  ) : (
+                    <ul className="airlines">
+                      {liveBubbles().map((bubble) => (
+                        <li key={bubble.passengerId}>
+                          <b>{bubble.icon === 'queue' ? 'Queue' : bubble.icon === 'prices' ? 'Prices' : 'Delight'}</b>
+                          <span className="muted">{bubble.passengerId}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ) : null}
+              {manageTab === 'achievements' ? (
+                <section data-testid="achievements-panel">
+                  <h3>Achievements</h3>
+                  <ul className="airlines">
+                    {Object.values(ACHIEVEMENTS).map((item) => {
+                      const unlocked = game.achievements.state.unlocked[item.id]
+                      return (
+                        <li key={item.id}>
+                          <b>
+                            {item.name} <span className="muted">{unlocked ? '· earned' : '· still ahead'}</span>
+                          </b>
+                          <span className="muted">{item.description}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              ) : null}
 
               {panel === 'services' ? (
                 <>
@@ -2380,7 +2454,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       </button>
                     </>
                   ) : null}
-                  {buildMenu === 'stands' ? (
+                  {buildMenu === 'airfield' ? (
                     <>
                       <button
                         type="button"
@@ -2417,11 +2491,17 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           type="button"
                           className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' is-locked' : ''}`}
                           data-testid={`late-stamp-${lateId}`}
-                          title={researchLocked && researchLink ? `Requires research: ${researchLink.label}.` : undefined}
+                          title={
+                            researchLocked && researchLink
+                              ? `Requires research: ${researchLink.label}.`
+                              : spec
+                                ? lockTip(spec.name, spec.fieldLevel, spec.purpose)
+                                : lateStampLabel(lateId)
+                          }
                           onClick={() => {
                             if (researchLink && (fieldLocked || researchLocked)) {
                               setGrowthFocus(researchLink.nodeId)
-                              openPanel('growth')
+                              openPanel('research')
                               return
                             }
                             game.toggleInfo(`late:${lateId}`)
@@ -2430,6 +2510,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         >
                           <TrayMark tool={t} />
                           <span className="tray-name">{lateStampLabel(lateId)}</span>
+                          {locked && spec ? (
+                            <span className="tray-price" data-testid={`lock-badge-${lateId}`}>
+                              Field level {spec.fieldLevel}
+                            </span>
+                          ) : null}
                         </button>
                       )
                     }
@@ -2464,7 +2549,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         onClick={() => {
                           if (researchLink && (fieldLocked || researchLocked)) {
                             setGrowthFocus(researchLink.nodeId)
-                            openPanel('growth')
+                            openPanel('research')
                             return
                           }
                           game.setTool(t)
@@ -2481,7 +2566,25 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       </button>
                     )
                   })}
-                  {PROGRESSION_BUILDABLES.filter((row) => row.menu === buildMenu).map((row) => {
+                  {(buildEntry?.furnish ?? []).map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="tray-item"
+                      data-testid={`tray-${entry.id}`}
+                      title={game.fits.length ? `Open the hall kit · ${entry.label}` : 'Place a hall first'}
+                      onClick={() => {
+                        const hall = game.fits[0]
+                        if (!hall) return
+                        requestKit(entry.kit)
+                        game.selectHall(hall)
+                      }}
+                    >
+                      <TrayMark tool={entry.id} />
+                      <span className="tray-name">{entry.label}</span>
+                    </button>
+                  ))}
+                  {PROGRESSION_BUILDABLES.filter((row) => buildEntry?.progression.includes(row.id)).map((row) => {
                     const need = unlockLevel(row.id)
                     const researchLink = game.researchTree.linkFor(row.id)
                     const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
@@ -2506,7 +2609,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         onClick={() => {
                           if (researchLink && (fieldLocked || researchLocked)) {
                             setGrowthFocus(researchLink.nodeId)
-                            openPanel('growth')
+                            openPanel('research')
                             return
                           }
                           game.commission(row.id)
@@ -2610,105 +2713,66 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             </div>
 
             <div className="bar-cluster info-menus">
-              {INFO_TREE.map((node) => {
-                if (node.id === 'economy') {
-                  return (
-                    <button
-                      key={node.id}
-                      type="button"
-                      className={`cash-chip${panel === 'economy' ? ' on' : ''}`}
-                      title={node.tip}
-                      aria-label="Economy"
-                      data-testid="tab-economy"
-                      onClick={() => {
-                        setInfoGroup(null)
-                        if (panel === 'economy') togglePanel('economy')
-                        else openPanel('economy')
-                      }}
-                    >
-                      <LiveText read={() => money(game.cash)} />
-                    </button>
-                  )
-                }
-                if (node.items) {
-                  const open = infoGroup === node.id
-                  const active = node.items.some((item) => item.panel === panel)
-                  return (
-                    <div key={node.id} className="info-group">
-                      <button
-                        type="button"
-                        className={open || active ? 'on' : ''}
-                        title={node.tip}
-                        aria-expanded={open}
-                        data-testid={`menu-${node.id}`}
-                        onClick={() => setInfoGroup(open ? null : node.id)}
-                      >
-                        {node.label}
-                        {node.id === 'commercial' && game.pendingYearReport() ? ' •' : ''}
-                      </button>
-                      {open ? (
-                        <div className="info-sub" data-testid={`submenu-${node.id}`} role="menu">
-                          {node.items.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              role="menuitem"
-                              className={
-                                panel === item.panel &&
-                                (item.tycoonTab == null || tycoonTab === item.tycoonTab)
-                                  ? 'on'
-                                  : ''
-                              }
-                              title={item.tip}
-                              data-testid={`tab-${item.id}`}
-                              onClick={() => {
-                                if (item.tycoonTab) setTycoonTab(item.tycoonTab)
-                                const same =
-                                  panel === item.panel &&
-                                  (item.tycoonTab == null || tycoonTab === item.tycoonTab)
-                                if (same) togglePanel(item.panel)
-                                else openPanel(item.panel)
-                                setInfoGroup(null)
-                              }}
-                            >
-                              {item.label}
-                            </button>
-                          ))}
-                          {node.id === 'commercial' && game.pendingYearReport() ? (
-                            <button
-                              type="button"
-                              role="menuitem"
-                              data-testid="tab-year"
-                              onClick={() => {
-                                setTycoonTab('year')
-                                openPanel('tycoon')
-                                setInfoGroup(null)
-                              }}
-                            >
-                              Year report
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                }
+              {MANAGE_MENUS.map((menu) => {
+                const open = infoGroup === menu.id
+                const active = menu.tabs.some((item) => item.id === manageTab)
                 return (
-                  <button
-                    key={node.id}
-                    type="button"
-                    className={panel === node.panel ? 'on' : ''}
-                    title={node.tip}
-                    data-testid={`tab-${node.id}`}
-                    onClick={() => {
-                      setInfoGroup(null)
-                      if (!node.panel) return
-                      if (panel === node.panel) togglePanel(node.panel)
-                      else openPanel(node.panel)
-                    }}
-                  >
-                    {node.label}
-                  </button>
+                  <div key={menu.id} className="info-group">
+                    <button
+                      type="button"
+                      className={open || active ? 'on' : ''}
+                      title={menu.tip}
+                      aria-expanded={open}
+                      data-testid={`menu-${menu.id}`}
+                      onClick={() => setInfoGroup(open ? null : menu.id)}
+                    >
+                      {menu.label}
+                      {menu.id === 'money' ? (
+                        <>
+                          {' · '}
+                          <LiveText read={() => money(game.cash)} />
+                        </>
+                      ) : null}
+                      {menu.id === 'growth' && game.pendingYearReport() ? ' •' : ''}
+                    </button>
+                    {open ? (
+                      <div className="info-sub" data-testid={`submenu-${menu.id}`} role="menu">
+                        {menu.tabs.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            className={manageTab === item.id ? 'on' : ''}
+                            title={item.tip}
+                            data-testid={`tab-${item.id}`}
+                            onClick={() => {
+                              if (item.id === 'commercial') setTycoonTab('shops')
+                              if (item.id === 'awards') setTycoonTab('awards')
+                              if (manageTab === item.id) togglePanel(item.id)
+                              else openPanel(item.id)
+                              setInfoGroup(null)
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                        {menu.id === 'growth' && game.pendingYearReport() ? (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            data-testid="tab-year"
+                            onClick={() => {
+                              setTycoonTab('year')
+                              openPanel('commercial')
+                              setInfoGroup(null)
+                            }}
+                          >
+                            Year report
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 )
               })}
             </div>
@@ -2805,29 +2869,3 @@ function HallRoomList({ game, ids }: { game: Game; ids: readonly string[] }) {
   )
 }
 
-function HudSettings({ game, onNewGame }: { game: Game; onNewGame?: () => void }) {
-  const [tab, setTab] = useState<'game' | 'controls'>('game')
-  return (
-    <section data-testid="settings-panel">
-      <div className="settings-tabs">
-        <button
-          type="button"
-          className={tab === 'game' ? 'on' : ''}
-          data-testid="hud-settings-tab-game"
-          onClick={() => setTab('game')}
-        >
-          Game
-        </button>
-        <button
-          type="button"
-          className={tab === 'controls' ? 'on' : ''}
-          data-testid="hud-settings-tab-controls"
-          onClick={() => setTab('controls')}
-        >
-          Controls
-        </button>
-      </div>
-      {tab === 'game' ? <GameSettings game={game} onNewGame={onNewGame} /> : <ControlsPanel />}
-    </section>
-  )
-}

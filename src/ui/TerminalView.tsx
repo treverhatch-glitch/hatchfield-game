@@ -28,6 +28,7 @@ import {
 import { refundFor } from '../game/terminalKit'
 import type { KitCategory } from '../game/terminalKitData'
 import { KIT_TABS } from './uiCatalog'
+import { subscribeKit, takeKitRequest } from './nav/kitFocus'
 
 /** Slim build bar for the terminal kit. Cards close once the item is placed. */
 function KitBar({
@@ -40,6 +41,14 @@ function KitBar({
   setBuild: (mode: HallBuildMode) => void
 }) {
   const [tab, setTab] = useState<KitCategory | null>(null)
+  useEffect(() => {
+    const apply = () => {
+      const next = takeKitRequest()
+      if (next) setTab(next)
+    }
+    apply()
+    return subscribeKit(apply)
+  }, [])
   const cards = tab ? ITEMS.filter((i) => i.category === tab) : []
   const placing = build?.kind === 'place' ? itemDef(build.def) : null
   return (

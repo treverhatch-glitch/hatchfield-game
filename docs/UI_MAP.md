@@ -1,6 +1,6 @@
 # Hatchfield UI map
 
-Player-facing surfaces, as they sit after the integrity pass. The build trays and the bottom-bar tree are the arrays in `src/ui/uiCatalog.ts`. A headless walk of every tab and submenu lives in `src/ui/menuIntegrity.e2e.test.ts`.
+Player-facing surfaces. The build trays and the five manage menus are `src/ui/nav/taxonomy.ts`. Each apron tool and each manage panel is listed there once. A headless walk of every tab and sub-tab, with screenshots, lives in `src/ui/menuIntegrity.e2e.test.ts`.
 
 Labels are title case. Short forms that were doing real work now say the work: Operations, Specializations, Campaigns, Runway, Maintenance hangar, Small / Medium / Wide / Jumbo stand.
 
@@ -27,7 +27,7 @@ Labels are title case. Short forms that were doing real work now say the work: O
 - Field level
 - Reputation
 - Free gates and holding
-- HATCH price — only after listing; opens Economy
+- HATCH price — only after listing; opens Money → Overview
 - Runway condition, security, hall count, runway count
 - Weather
 
@@ -49,13 +49,9 @@ Desktop only (viewport at least 801 px wide). A peek on the left edge opens the 
 
 A card with no countdown is marked Note. Line maintenance is spelled out.
 
-## Fees
+## System menu
 
-Corner toggle **Fees**. Commercial prices: landing, passenger, aircraft parking per hour, aircraft parking per day, fuel markup, catering, bags, cleaning, de-icing, pushback, ground power, lavatory and water, reduced-mobility assistance, cargo, helicopter landing, car parks, hotel. Deposit tier on the next signature. Close returns to the field.
-
-## Pause
-
-**Menu** opens a side sheet. The field stays visible and the clock waits.
+**Menu**, or Esc when nothing else is open, holds the clock and opens the system sheet. The field stays visible. Settings and save/load are only here.
 
 - Resume
 - Save
@@ -67,46 +63,27 @@ Corner toggle **Fees**. Commercial prices: landing, passenger, aircraft parking 
 
 ## Build bar
 
-Pick a category, then a stamp. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp.
+Pick a category, then a stamp. Click the category again to close the tray. **Select** leaves stamp mode. **Facing east–west / north–south** rotates the stamp. There is no Late category. SAF blending, the airport hotel, and the rail link sit in their real trays with a Field level badge until they unlock. The bag belt and the guard post appear once.
 
-| Category | Stamps |
+| Category | What it holds |
 | --- | --- |
-| Pavement | Short runway, Runway, Heavy runway, Taxiway, Access road, Helipad, De-ice pad |
-| Stands | Small stand, Medium stand, Wide stand, Jumbo stand. Remote bay / Jetway gate toggles sit on this category. |
-| Terminal | Premade hall, Terminal shell, Terminal bus depot, People mover, Transfer bus, Skywalk, Travelator, Pier skywalk, Pier mover. Later halls (Prefab II, Check-in hall, Security hall, Concourse, Pier II, Satellite) join this tray as the field levels. |
-| Operations | Fuel farm, Fuel rail, Oil station, SAF blending, Catering kitchen, Vehicle depot, Bag sort, Bag belt, Fire station, Police post, Cargo shed, Guard post, Control tower, Line hangar, Wide hangar, Jumbo hangar, Maintenance hangar, Cargo night hub. Later ops (Substation, Hydrant pit, Tilt-tray sort, Fuel farm III, ATC approach, Remote screening) join this tray. |
-| Commercial | Snack bar, Airport inn, Business hotel, Airport resort, Airport hotel |
-| Landside | Small lot, Large lot, Parking garage, Underground park, Bus curb, Rail station, Rail link station. Short-term / Long-term toggles sit on this category. Prestige landmark joins this tray. |
-| Bulldoze | Bulldoze (refunds 40%) |
+| Airfield | Runways, taxiway, stands, helipad, de-icing, tower. Remote bay / Jetway gate toggles sit here. Later: jet bridge, Code E, Code F, triple jet bridge, ATC approach. |
+| Terminal | Halls, bag belt, walkways, people mover, terminal bus, transfer bus. Check-in, security, and gates open the hall kit. Later halls: Prefab II, check-in hall, security hall, concourse, Pier II, satellite, remote screening. |
+| Airside Ops | Fuel, fuel rail, oil, SAF blending, ground-vehicle depot, catering, baggage hall, cargo, hangars, maintenance hangar, night hub. Later: hydrant, substation, tilt-tray sort, fuel farm III. |
+| Safety & Security | Fire station, police post, guard post. |
+| Landside | Roads, parking, bus, rail, rail link, hotels. Short-term / Long-term toggles sit here. |
+| Retail & Comfort | Snack bar, plus Food, Shops, Lounges, and Decor, which open the hall kit. Prestige landmark joins this tray. |
+| Tools | Bulldoze (refunds 40%). |
 
-Fuel, the fuel rail, the oil station, and SAF blending are operations. The snack bar and the hotels are commercial. The bag belt and the guard post are operations only — they are not repeated under Terminal or Landside.
+## Manage bar
 
-## Bottom bar
+Five menus, one submenu each. The second click on an open sub-tab closes the panel. The Money button also shows the cash figure.
 
-Speed: Pause, 1×, 3×, 5×. Airport / Terminal switches the view. The ticker is recent announcements.
-
-Info buttons open one side panel. A group opens a submenu first; the second click on an open item closes the panel.
-
-- **Economy** (cash chip) — Overview, Income, Expenses, Loans, Charts. Cash, parcels, loans, maintenance contract, rail, car parks, hotel buy, HATCH exchange.
-- **Operations**
-  - Services — fuel desk, catering desk, power, bags, vehicles, hall operations rooms (check-in, security, gate hold, bag claim, bag drop, restrooms), scrub
-  - Planner — selected flight and the flight planner. Phone copy points here when nobody has signed.
-- **Commercial**
-  - Shops — tenant bids, plus hall shops (hall food, souvenirs, lounge, indoor golf, waterfall court, gaming den, airside day rooms, massage spa, airside pool)
-  - Premium — premium check-in, fast-track, VIP room
-  - Campaigns — paid advertising
-  - Awards — yearly awards
-  - Year report — only while a year report is waiting
-- **Management**
-  - Staff — commute, housing, crew morale
-  - Budget — operations payroll, mechanic / janitor / desk hiring, military host agreement, maintenance / security / cleaning / fire / ambulance sliders
-- **R&D**
-  - Research — research points, hire researcher, lab rooms (research desk, chalkboard, lab bench), unlocks
-  - Branches — passenger, cargo, efficiency, and prestige research, plus the carrier card
-  - Specializations — hub, low-cost, cargo, and luxury trees
-- **Airlines** — standing desk (Standing, Contract, Demand, Fees, Contact, Rivals) and contracts
-- **Rival** — Bellwater Intl fees, roster, catchment
-- **Settings** — Game, Controls (same pages as the pause sheet)
+- **Money** — Overview, Income, Expenses, Loans, Charts, Fees, Payroll. Fees are the commercial prices (landing, passenger, both aircraft-parking rates, and the rest). Payroll is the old budget desk: hiring, the guard agreement, and the operations sliders.
+- **Airlines** — Roster, Letters, Hubs, Rival, Negotiation.
+- **Operations** — Planner, Stands, Services, Premium.
+- **People** — Staff, Commute, Morale, Thoughts. Thoughts lists the passenger icons currently on the field.
+- **Growth** — Research (desk, lab rooms, and the passenger / cargo / efficiency / prestige branches), Specializations, Commercial (shop bids and campaigns), Awards, Achievements. A year report appears here only while one is waiting.
 
 ## Offers, letters, and goals
 

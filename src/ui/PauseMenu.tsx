@@ -40,8 +40,8 @@ export function PauseMenu({ game, onQuit }: { game: Game; onQuit: () => void }) 
     <div className="pause-layer" data-testid="pause-menu">
       <button type="button" className="pause-scrim" aria-label="Resume" onClick={() => pauseState.close()} />
       <aside className="pause-sheet">
-        <h2>{snap.page === 'settings' ? 'Settings' : 'Paused'}</h2>
-        <p className="muted">The clock is held. The field stays in view.</p>
+        <h2>{snap.page === 'settings' ? 'Settings' : 'System'}</h2>
+        <p className="muted">Esc holds the clock. Save, load, and settings live here. The field stays in view.</p>
         {snap.page === 'main' ? (
           <div className="pause-actions">
             <button type="button" className="wide on" data-testid="pause-resume" onClick={() => pauseState.close()}>

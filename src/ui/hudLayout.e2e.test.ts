@@ -59,7 +59,7 @@ describe('HUD top band layout', () => {
           expect(await page.getByTestId('starter-kit-coach').count()).toBe(0)
           expect(await page.getByTestId('starter-kit-dock').count()).toBe(0)
           await page.getByTestId('coach').waitFor({ state: 'visible' })
-          await expectNoOverlap(page, ['coach', 'photo-mode', 'info-strip', 'tab-fees'], viewport)
+          await expectNoOverlap(page, ['coach', 'photo-mode', 'info-strip', 'menu-money'], viewport)
 
           // Widest chip row: a hall is down, and Connections / Links show from Field Lv 3.
           await page.evaluate(() => {
@@ -84,7 +84,7 @@ describe('HUD top band layout', () => {
           )
           await expectNoOverlap(
             page,
-            [...chipIds, 'flow-toggle', 'info-panel', 'coach', 'photo-mode', 'tab-fees'],
+            [...chipIds, 'flow-toggle', 'info-panel', 'coach', 'photo-mode', 'menu-money'],
             viewport,
           )
           // The chips are their own row: none of them overlaps the coach either.

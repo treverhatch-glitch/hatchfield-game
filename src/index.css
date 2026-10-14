@@ -2911,6 +2911,15 @@ h1.game-title::after {
   background: #c9a227;
 }
 
+.panel-body .fees-dock {
+  position: static;
+  top: auto;
+  right: auto;
+  width: auto;
+  max-height: none;
+  box-shadow: none;
+}
+
 .fees-dock {
   position: absolute;
   top: calc(var(--hud-top) + 44px);

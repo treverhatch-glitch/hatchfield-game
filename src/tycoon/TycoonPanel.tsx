@@ -79,6 +79,7 @@ export function TycoonPanel({
   view,
   cash,
   tab,
+  showTabs = true,
   formatMoney,
   onTab,
   onAccept,
@@ -89,6 +90,7 @@ export function TycoonPanel({
   view: TycoonView
   cash: number
   tab: TycoonTab
+  showTabs?: boolean
   formatMoney: (n: number) => string
   onTab: (tab: TycoonTab) => void
   onAccept: (unitId: string, bidId: string) => void
@@ -105,6 +107,7 @@ export function TycoonPanel({
   const demand = view.demandMultiplier
   return (
     <div data-testid="tycoon-panel">
+      {showTabs ? (
       <div className="tycoon-tabs" role="tablist">
         {tabs.map((item) => (
           <button
@@ -120,6 +123,7 @@ export function TycoonPanel({
           </button>
         ))}
       </div>
+      ) : null}
       <p className="muted">
         Prestige {view.prestige}
         {demand > 1 ? ` · demand ×${demand.toFixed(2)}` : ''}
