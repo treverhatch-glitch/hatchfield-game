@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { rosterPreviewLivery } from './aircraft/procLivery'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { PerfOverlay } from '../perf'
 import { inBounds } from '../game/path'
@@ -1812,8 +1813,17 @@ export class World {
       seen.add(f.id)
       let mesh = this.jets.get(f.id)
       const paint = flightLivery(game, f)
+      const paintKey = liveryKey(paint)
+      if (mesh && mesh.userData.paintKey !== paintKey) {
+        // Roster preview (or any repaint) changed the livery: rebuild this airframe.
+        this.entGroup.remove(mesh)
+        releaseAircraft(mesh)
+        this.jets.delete(f.id)
+        mesh = undefined
+      }
       if (!mesh) {
         mesh = createAircraft(f.airframeId || 'b738', paint)
+        mesh.userData.paintKey = paintKey
         this.jets.set(f.id, mesh)
         this.entGroup.add(mesh)
       }
@@ -2453,6 +2463,8 @@ const _doorPos = new THREE.Vector3()
 const SOLID_PAINT = new Set<string>(['military', 'air_ambulance', 'helo_med', 'freighter', 'helo_exec'])
 
 function flightLivery(game: Game, f: Game['flights'][number]): Livery {
+  const preview = rosterPreviewLivery(f.airframeId)
+  if (preview && !SOLID_PAINT.has(f.kind)) return preview
   const a = game.airline(f.airline)
   let body = a.color
   let stripe = a.stripe

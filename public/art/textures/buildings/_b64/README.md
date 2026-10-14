@@ -5,18 +5,9 @@ textures (`public/art/textures/buildings/*.jpg`, 1024 px sRGB, repeat-wrapped
 in `src/build/models/kit.ts` → `tmat`) live here as base64, same pattern as
 `public/art/refs/pack6/_pack6_b64/`.
 
-Unpack (from the repo root):
-
-```sh
-python3 public/art/textures/buildings/_b64/unpack.py
-# or
-node scripts/unpack-textures.mjs
-```
-
-`npm run build`, `npm run dev` and `npm test` run `scripts/unpack-textures.mjs`
-first. It never fails: if Python/base64 data is missing or corrupt it prints a
-warning and the game falls back to plain colours (tmat only applies a map
-once the photo has loaded, so a missing file is harmless in the browser and
-skipped entirely in Node/vitest).
+Unpacked at build time by `scripts/unpack-art.mjs` (Node, no Python), which `npm run dev`,
+`npm run build` and `npm test` run first (`predev`/`prebuild`/`pretest`). It is idempotent and never
+fails: bad or missing data only warns and the game keeps flat colours. Run it by hand with
+`npm run unpack-art`. Textures load through `src/render/world/textureRegistry.ts`.
 
 Sources: Gemini textures (`assets/gemini/textures/*.jpeg`) resized to 1024 px.
