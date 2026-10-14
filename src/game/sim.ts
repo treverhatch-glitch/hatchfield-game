@@ -8266,6 +8266,9 @@ export class Game {
         this.missedFlights += 1
       }
     }
+    for (const g of this.hallGuests) {
+      if (g.happiness < 0 || g.happiness > 100) g.happiness = Math.max(0, Math.min(100, g.happiness))
+    }
     // Sample layover happiness into the active contract.
     if (this.layover) {
       const transfers = this.hallGuests.filter(
@@ -11840,6 +11843,7 @@ export class Game {
 
   serveNode(g: HallGuest, open: Set<HallNode>) {
     const n = g.node
+    try {
     if (n === 'info') {
       g.patience = Math.min(100, g.patience + 8)
       g.happiness += 2
@@ -12182,6 +12186,10 @@ export class Game {
       g.dead = true
       this.paxServed += 1
       this.queueReputation(g.happiness >= 55 ? 0.35 : 0.1)
+    }
+    } finally {
+      // Hall mood adds (lounge, spa, pool, and the rest) have no per-visit ceiling.
+      g.happiness = Math.max(0, Math.min(100, g.happiness))
     }
   }
 

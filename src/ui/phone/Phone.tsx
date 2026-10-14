@@ -37,6 +37,8 @@ export function Phone({ game, desktop }: { game: Game; desktop?: boolean }) {
 
   useEffect(() => {
     if (!show || !shell.flashKey) return
+    // A contract preview stays on the peek until the player opens the phone.
+    if (shell.flashKey.startsWith('contract:')) return
     const timer = window.setTimeout(() => setShell((cur) => phoneDismissFlash(cur)), FLASH_MS)
     return () => window.clearTimeout(timer)
   }, [show, shell.flashKey])

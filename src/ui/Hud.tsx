@@ -14,7 +14,7 @@ import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
 import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
 import type { UnlockLink } from './nav/stampFacts.ts'
 import { useDesktop } from './phone/useDesktop.ts'
-import { phoneOwnsLetter } from '../phone/logic.ts'
+import { letterOnStack } from '../phone/logic.ts'
 import { loanAmountLabel, loanDeskRows, loanDrawLabel, loanFeeForAmount, loanProductLabel, payrollPreviewLabel } from '../game/economy.ts'
 import { financeBreakdown } from '../game/financeBreakdown.ts'
 import { AIRFRAMES } from '../game/airframes'
@@ -767,7 +767,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
           }
           if (desktopPhone) {
             for (let i = letters.length - 1; i >= 0; i--) {
-              if (phoneOwnsLetter(letters[i].id)) letters.splice(i, 1)
+              if (!letterOnStack(letters[i].id, true)) letters.splice(i, 1)
             }
           }
           if (!letters.length) return null

@@ -9,6 +9,7 @@ import {
   phoneClose,
   phoneDismissFlash,
   phoneOpen,
+  letterOnStack,
   phoneOwnsLetter,
   phonePreview,
   phoneSetTab,
@@ -122,5 +123,12 @@ describe('what stays off the phone', () => {
     expect(phoneOwnsLetter('advisor-standing-northline-10')).toBe(true)
     expect(phoneOwnsLetter('threat')).toBe(false)
     expect(phoneOwnsLetter('emergency')).toBe(false)
+  })
+
+  it('keeps the contract letter on the stack while the phone still owns it', () => {
+    expect(letterOnStack('contract', true)).toBe(true)
+    expect(letterOnStack('field', true)).toBe(false)
+    expect(letterOnStack('threat', true)).toBe(true)
+    expect(letterOnStack('field', false)).toBe(true)
   })
 })

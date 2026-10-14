@@ -105,7 +105,24 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
     await shot(page, outDir, screenshots, '04-kit')
 
     const letter = page.getByTestId('contract-letter')
-    const letterShown = await letter.waitFor({ state: 'visible', timeout: 12_000 }).then(() => true).catch(() => false)
+    const preview = page.getByTestId('phone-preview')
+    const deadline = Date.now() + 20_000
+    let letterShown = false
+    let previewShown = false
+    while (Date.now() < deadline && !(letterShown && previewShown)) {
+      if (!letterShown) letterShown = await letter.isVisible().catch(() => false)
+      if (!previewShown) previewShown = await preview.isVisible().catch(() => false)
+      if (letterShown && previewShown) break
+      await page.waitForTimeout(200)
+    }
+    if (previewShown) script.push('phone preview flashed')
+    if (!letterShown || !previewShown) {
+      couldNot.push({
+        command: 'acceptContract',
+        detail: `contract letter within 20s: stack ${letterShown ? 'yes' : 'no'}, phone preview ${previewShown ? 'yes' : 'no'}`,
+        count: 1,
+      })
+    }
     if (letterShown) {
       await letter.locator('.letter-tab').click()
       script.push('open contract letter')

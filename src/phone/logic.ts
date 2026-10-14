@@ -68,6 +68,16 @@ export function phoneOwnsLetter(id: string): boolean {
   return OWNED_LETTER_IDS.has(id) || id.startsWith('advisor-standing-')
 }
 
+/**
+ * Desktop reads phone-owned letters on the handset. The contract letter stays
+ * on the stack as well, and the phone still flashes its preview.
+ */
+export function letterOnStack(id: string, desktopPhone: boolean): boolean {
+  if (!desktopPhone) return true
+  if (id === 'contract') return true
+  return !phoneOwnsLetter(id)
+}
+
 export function arrivalKeys(cards: readonly Pick<PhoneCard, 'key' | 'arrives'>[]): string[] {
   const keys: string[] = []
   for (const card of cards) if (card.arrives && !keys.includes(card.key)) keys.push(card.key)
