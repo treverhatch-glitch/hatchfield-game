@@ -201,7 +201,7 @@ Money = picture. If cash moves and nothing on screen did, the loop is wrong.
 | Contracts (fuel, catering brands) | Sign fee | Unlocks carriers |
 | Payroll (ops budgets) | Per game day | 75% early / 57.5% mid-game income target, with staffing floor |
 | Landside + amenity upkeep | Per game day | Idle buildings bleed |
-| Loan interest | Ticking | **Multi-product bank** — Micro → Sovereign; fee rises with principal; one loan at a time; see [PROGRESSION.md](./PROGRESSION.md) |
+| Loan interest | Ticking | **Multi-product bank** — Micro → Sovereign; fee rises with principal; one loan at a time; each tick pays interest plus an equal principal installment so the loan clears in `termDays` (bridge: 25 game days); a short tick pays what cash covers, never lifts negative cash, and only unpaid interest capitalizes; see [PROGRESSION.md](./PROGRESSION.md) |
 | Scramble / fines / bans / abandon | Events | Security + Standing failures |
 | Research / hire (mechanics, janitors, researchers, desk) | Instant | Bodies must work for RP / scrub / MX |
 
