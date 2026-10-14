@@ -1,6 +1,7 @@
 /** Sky dome, outer landscape (fields, trees, fence), near grass detail ring, rain. */
 import * as THREE from 'three'
 import { SIZE } from '../../game/types'
+import { SKY_LOOK } from '../look'
 import { instanced, trs } from './kit'
 import { hash2, rng } from './raster'
 import { CELL, tileAt, worldToCell, type WorldView } from './view'
@@ -16,6 +17,11 @@ export class SkyDome {
         top: { value: new THREE.Color(0x4f93d6) },
         horizon: { value: new THREE.Color(0xc4ddf0) },
         stars: { value: 0 },
+        sunDir: { value: new THREE.Vector3(0, 1, 0) },
+        sunColor: { value: new THREE.Color(0xfff1d8) },
+        glow: { value: SKY_LOOK.sunGlow },
+        glowPower: { value: SKY_LOOK.sunGlowPower },
+        haze: { value: SKY_LOOK.horizonHaze },
       },
       vertexShader: /* glsl */ `
         varying vec3 vDir;
@@ -27,11 +33,20 @@ export class SkyDome {
         uniform vec3 top;
         uniform vec3 horizon;
         uniform float stars;
+        uniform vec3 sunDir;
+        uniform vec3 sunColor;
+        uniform float glow;
+        uniform float glowPower;
+        uniform float haze;
         varying vec3 vDir;
         float h(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
         void main() {
           float t = clamp(vDir.y * 1.6, 0.0, 1.0);
           vec3 c = mix(horizon, top, pow(t, 0.7));
+          // Pale haze hugging the horizon, then a soft halo around the sun.
+          c = mix(c, vec3(1.0), haze * (1.0 - smoothstep(0.0, 0.18, abs(vDir.y))));
+          float sun = max(dot(normalize(vDir), sunDir), 0.0);
+          c += sunColor * glow * (pow(sun, glowPower) + 0.25 * pow(sun, 3.0)) * (1.0 - stars);
           vec3 cell = floor(vDir * 220.0);
           float s = step(0.9965, h(cell)) * stars * smoothstep(0.08, 0.4, vDir.y);
           gl_FragColor = vec4(c + vec3(s), 1.0);
@@ -46,10 +61,12 @@ export class SkyDome {
     this.mesh.frustumCulled = false
     this.mesh.name = 'world-sky'
   }
-  set(top: number, horizon: number, stars: number) {
+  set(top: number, horizon: number, stars: number, sunDir?: { x: number; y: number; z: number }, sunColor?: number) {
     this.mat.uniforms.top.value.setHex(top)
     this.mat.uniforms.horizon.value.setHex(horizon)
     this.mat.uniforms.stars.value = stars
+    if (sunDir) this.mat.uniforms.sunDir.value.set(sunDir.x, sunDir.y, sunDir.z)
+    if (sunColor != null) this.mat.uniforms.sunColor.value.setHex(sunColor)
   }
   follow(cam: THREE.Vector3) {
     this.mesh.position.copy(cam)

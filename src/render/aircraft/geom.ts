@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
+import { AIRCRAFT_LOOK } from '../look'
 import { sharedGeo } from './pool'
 
 /** Normalized fuselage stations, nose t=0 → tail t=1, radius 0–1. */
@@ -127,9 +129,43 @@ export function loftGeometry(family: string, sides: number): THREE.BufferGeometr
       pushTri(positions, 0.51, 0, 0, nose[b], nose[b + 1], nose[b + 2], nose[a], nose[a + 1], nose[a + 2])
       pushTri(positions, -0.51, 0, 0, tail[a], tail[a + 1], tail[a + 2], tail[b], tail[b + 1], tail[b + 2])
     }
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    const soup = new THREE.BufferGeometry()
+    soup.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    // Weld the rings so the normals are smooth: a round skin from few sides, at no draw cost.
+    const geo = mergeVertices(soup)
+    soup.dispose()
     geo.computeVertexNormals()
+    return geo
+  })
+}
+
+/**
+ * Loft with the livery baked into vertex colours, one colour per triangle so the
+ * split stays crisp: crown above `crownLine`, airline colour below, a darker belly.
+ */
+export function paintedLoftGeometry(
+  family: string,
+  sides: number,
+  paint: { crown: string; body: string; belly: string },
+): THREE.BufferGeometry {
+  const key = `loft:${family}:${sides}:${paint.crown}:${paint.body}:${paint.belly}`
+  return sharedGeo(key, () => {
+    const geo = loftGeometry(family, sides).toNonIndexed()
+    const pos = geo.getAttribute('position')
+    const colors = new Float32Array(pos.count * 3)
+    const crown = new THREE.Color(paint.crown)
+    const body = new THREE.Color(paint.body)
+    const belly = new THREE.Color(paint.belly)
+    for (let i = 0; i < pos.count; i += 3) {
+      const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3
+      const c = y > AIRCRAFT_LOOK.crownLine ? crown : y > AIRCRAFT_LOOK.bellyLine ? body : belly
+      for (let k = 0; k < 3; k++) {
+        colors[(i + k) * 3] = c.r
+        colors[(i + k) * 3 + 1] = c.g
+        colors[(i + k) * 3 + 2] = c.b
+      }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
     return geo
   })
 }
@@ -209,5 +245,5 @@ export function cylinderSides(tier: 'low' | 'mid' | 'high'): number {
 }
 
 export function fuselageSides(tier: 'low' | 'mid'): number {
-  return tier === 'low' ? 5 : 8
+  return AIRCRAFT_LOOK.fuselageSides[tier]
 }
