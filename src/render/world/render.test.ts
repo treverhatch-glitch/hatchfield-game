@@ -8,6 +8,7 @@ import { fieldDraw } from '../../maps/index'
 import { bake } from './kit'
 import { paintGeometry, quadsGeometry } from './surfaces'
 import { cellX, cellZ } from './view'
+import { contactSpots } from './contact'
 
 function legacyScene() {
   const scene = new THREE.Scene()
@@ -69,6 +70,11 @@ describe('initWorldRender', () => {
     expect(renderer.shadowMap.enabled).toBe(true)
     expect(renderer.shadowMap.type).toBe(THREE.PCFShadowMap)
     expect(sun.castShadow).toBe(true)
+    expect(scene.getObjectByName('world-contact')).toBeTruthy()
+    expect(scene.getObjectByName('airfield-bloom')).toBeTruthy()
+    expect(s.contacts).toBeGreaterThan(0)
+    expect(contactSpots(game).length).toBe(s.contacts)
+    expect(s.colorGrade).toBe(true)
     // No extra lights were added; the legacy trio is driven instead.
     expect(scene.children.filter((o) => o instanceof THREE.Light)).toHaveLength(3)
     wr.dispose()
@@ -202,6 +208,15 @@ describe('initWorldRender', () => {
     expect(renderer.shadowMap.enabled).toBe(false)
     expect(sun.castShadow).toBe(false)
     expect(wr.stats().grassTufts).toBe(0)
+    expect(wr.stats().colorGrade).toBe(false)
+    expect(wr.stats().lightBloom).toBe(false)
+    expect(wr.stats().contacts).toBe(0)
+    expect(scene.getObjectByName('airfield-bloom')).toBeUndefined()
+    expect(scene.getObjectByName('world-contact')?.visible).toBe(false)
+    wr.setDayNight({ hour: 12, daylight: 0, lights: 1 })
+    wr.update(game, cam, 1 / 60)
+    expect(wr.stats().lights).toBe(1)
+    expect(sun.intensity).toBeLessThan(0.5)
     wr.setTimeOfDay(12)
     wr.setWeather('storm')
     wr.update(game, cam, 1 / 60)

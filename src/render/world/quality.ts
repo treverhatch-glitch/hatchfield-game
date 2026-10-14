@@ -46,6 +46,17 @@ export interface QualityPreset {
   thoughtBubbles: boolean
   /** Local avoidance, queue lines and doorway tokens. Visual only — the sim path is unchanged. */
   crowdDetail: boolean
+  /**
+   * Shadow box as a fraction of camera distance, then clamped so the map
+   * covers the view instead of the whole airfield.
+   */
+  shadowReach: number
+  /** Second, wider glow on airfield lights. Low keeps the single soft sprite. */
+  lightBloom: boolean
+  /** Baked contact discs under terminals and stands. Off on Low. */
+  contactShadows: boolean
+  /** Filmic grade in the material shader. Off on Low: no extra fragment work. */
+  colorGrade: boolean
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
@@ -72,13 +83,18 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     animatedPeople: false,
     thoughtBubbles: false,
     crowdDetail: false,
+    shadowReach: 0.55,
+    lightBloom: false,
+    // One blended disc is a large fill on software GL. Medium and High draw it.
+    contactShadows: false,
+    colorGrade: false,
   },
   med: {
     level: 'med',
     shadowMapSize: 1024,
     shadowType: THREE.PCFShadowMap,
     // Soft penumbra: same single shadow pass, wider PCF kernel.
-    shadowRadius: 2,
+    shadowRadius: 2.5,
     pixelRatioCap: 1.25,
     msaa: true,
     shadowEvery: 2,
@@ -95,13 +111,17 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     animatedPeople: true,
     thoughtBubbles: true,
     crowdDetail: true,
+    shadowReach: 0.58,
+    lightBloom: true,
+    contactShadows: true,
+    colorGrade: true,
   },
   high: {
     level: 'high',
     shadowMapSize: 2048,
     // PCFSoftShadowMap was removed in three r18x; PCF + a blur radius is the soft option.
     shadowType: THREE.PCFShadowMap,
-    shadowRadius: 3.5,
+    shadowRadius: 4,
     pixelRatioCap: 2,
     msaa: true,
     shadowEvery: 1,
@@ -118,7 +138,17 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     animatedPeople: true,
     thoughtBubbles: true,
     crowdDetail: true,
+    shadowReach: 0.7,
+    lightBloom: true,
+    contactShadows: true,
+    colorGrade: true,
   },
+}
+
+export const QUALITY_LABEL: Record<QualityLevel, string> = {
+  low: 'Low',
+  med: 'Medium',
+  high: 'High',
 }
 
 export function parseQuality(v: unknown, fallback: QualityLevel = 'med'): QualityLevel {

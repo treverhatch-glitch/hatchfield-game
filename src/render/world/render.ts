@@ -1,9 +1,12 @@
 import * as THREE from 'three'
 import { grassColor, nightLighting, paintSky } from '../../environment/index.ts'
-import { GROUND_LOOK } from '../look'
+import { gradeTree } from '../grade'
+import { GROUND_LOOK, LIGHT_LOOK } from '../look'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
 import { lerpHex, simClockToHour, skyState, type SkyState } from './daylight'
+import { applyDayNight, type DayNightSample } from './dayNight'
+import { ContactShadows, contactSpots } from './contact'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './environment'
 import {
   apronMasts,
@@ -59,6 +62,9 @@ export interface WorldRenderStats {
   meshes: number
   instances: number
   shadowMapSize: number
+  contacts: number
+  lightBloom: boolean
+  colorGrade: boolean
 }
 
 /** Tiles this layer redraws; the legacy World should skip (or hide) its own meshes for these. */
@@ -86,7 +92,9 @@ export class WorldRenderer {
   private tex!: WorldTextures
   private shared!: TerminalShared
   private surfaceMats = new Map<SurfaceKind, THREE.MeshLambertMaterial>()
-  private paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
+  private paintMat: THREE.MeshLambertMaterial | null = null
+  private contacts = new ContactShadows()
+  private dayNight: DayNightSample | null = null
   private staticGroup = new THREE.Group()
   private staticGeos: THREE.BufferGeometry[] = []
   private bridgeMats: THREE.Material[] = []
@@ -127,6 +135,7 @@ export class WorldRenderer {
     this.root.name = 'world-render'
     this.packSigns.name = 'pack-signs'
     this.root.add(this.staticGroup)
+    this.root.add(this.contacts.mesh)
     this.root.add(this.packSigns)
 
     const found = { dir: opts.sun ?? null, hemi: null as THREE.HemisphereLight | null, amb: null as THREE.AmbientLight | null }
@@ -143,8 +152,8 @@ export class WorldRenderer {
     if (!this.sun.target.parent) scene.add(this.sun.target)
     this.sun.shadow.camera.near = 1
     this.sun.shadow.camera.far = 340
-    this.sun.shadow.bias = -0.0006
-    this.sun.shadow.normalBias = 0.03
+    this.sun.shadow.bias = LIGHT_LOOK.shadowBias
+    this.sun.shadow.normalBias = LIGHT_LOOK.shadowNormalBias
 
     this.prevFog = scene.fog
     this.prevBackground = scene.background
@@ -166,6 +175,8 @@ export class WorldRenderer {
   private applyQuality(first = false) {
     const q = this.q
     if (!first) this.disposeContent()
+    this.paintMat?.dispose()
+    this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
     this.tex = makeTextures(q.textureSize, q.anisotropy)
     this.shared = makeTerminalShared(this.tex)
     const surf: Record<SurfaceKind, THREE.Texture> = {
@@ -198,6 +209,7 @@ export class WorldRenderer {
     this.builtRev = -1
     this.hallCrowd?.dispose()
     this.hallCrowd = new HallCrowd(this.root, this.shared.people)
+    if (q.colorGrade) gradeTree(this.root)
   }
 
   private applyShadows() {
@@ -233,6 +245,16 @@ export class WorldRenderer {
 
   setTimeOfDay(hour: number | null) {
     this.hourOverride = hour
+  }
+
+  /**
+   * Day/night cycle hook. Null releases the hour and the daylight / lights
+   * overrides. A sample with only `hour` matches `setTimeOfDay`.
+   */
+  setDayNight(sample: DayNightSample | null) {
+    this.dayNight = sample
+    if (sample == null) this.hourOverride = null
+    else if (sample.hour != null) this.hourOverride = sample.hour
   }
 
   setWeather(w: Weather | null) {
@@ -292,7 +314,7 @@ export class WorldRenderer {
       this.staticGroup.add(mesh)
     }
     const paints = [...rws.flatMap(runwayPaint), ...taxiPaint(view), ...standPaint(st), ...roadPaint(view)]
-    if (paints.length) {
+    if (paints.length && this.paintMat) {
       const geo = paintGeometry(paints)
       this.staticGeos.push(geo)
       const mesh = new THREE.Mesh(geo, this.paintMat)
@@ -301,7 +323,8 @@ export class WorldRenderer {
       this.staticGroup.add(mesh)
     }
     const spots = [...rws.flatMap((r) => runwayLightSpots(r)), ...taxiLightSpots(view)]
-    this.lights.build(spots, apronMasts(st), rws, this.q.lightPools)
+    this.lights.build(spots, apronMasts(st), rws, this.q.lightPools, this.q.lightBloom)
+    this.contacts.sync(this.q.contactShadows ? contactSpots(view) : [])
 
     const bridges = jetBridges(view, st)
     this.bridgeCount = bridges.length
@@ -322,6 +345,7 @@ export class WorldRenderer {
       this.staticGroup.add(b.root)
     })
     this.applyShadows()
+    if (this.q.colorGrade) gradeTree(this.staticGroup)
   }
 
   update(view: WorldView, camera: THREE.Camera, dt: number) {
@@ -340,7 +364,7 @@ export class WorldRenderer {
     const hour = this.hourOverride ?? simClockToHour(view.clock ?? 0)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
-    const s = paintSky(hour, weather, day, this.quality)
+    let s = paintSky(hour, weather, day, this.quality)
     const night = nightLighting(s.hour, s.lights, this.q.lightPools)
     const draw = view.mapDraw
     if (draw && draw.skyAmount > 0) {
@@ -358,7 +382,8 @@ export class WorldRenderer {
       }
     }
     this.syncTerrain(draw?.terrain ?? null)
-    this.state = s
+    this.state = applyDayNight(s, this.dayNight)
+    s = this.state
     if (s.lightning && Math.random() < step * 0.25) this.flash = 1
     this.flash = Math.max(0, this.flash - step * 5)
 
@@ -376,7 +401,7 @@ export class WorldRenderer {
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure
 
-    const fit = fitShadow(camDist, focus.x, focus.z, Math.max(1, this.q.shadowMapSize))
+    const fit = fitShadow(camDist, focus.x, focus.z, Math.max(1, this.q.shadowMapSize), this.q.shadowReach)
     const sc = this.sun.shadow.camera
     if (sc.right !== fit.half) {
       sc.left = -fit.half
@@ -507,6 +532,9 @@ export class WorldRenderer {
       meshes,
       instances,
       shadowMapSize: this.sun.castShadow ? this.q.shadowMapSize : 0,
+      contacts: this.contacts.mesh.visible ? this.contacts.mesh.count : 0,
+      lightBloom: this.q.lightBloom,
+      colorGrade: this.q.colorGrade,
     }
   }
 
@@ -687,13 +715,15 @@ export class WorldRenderer {
     this.grass.mesh.removeFromParent()
     this.rain.dispose()
     this.rain.lines.removeFromParent()
+    this.contacts.sync([])
     disposeTerminalShared(this.shared)
     this.tex.dispose()
   }
 
   dispose() {
     this.disposeContent()
-    this.paintMat.dispose()
+    this.paintMat?.dispose()
+    this.contacts.dispose()
     this.sky.dispose()
     this.root.removeFromParent()
     for (const l of this.ownLights) l.removeFromParent()
