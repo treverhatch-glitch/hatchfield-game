@@ -17,6 +17,8 @@ export const ALERT_TUNING = {
   lowCash: 5000,
   /** The stack shows this many entries; the rest wait their turn behind the counter. */
   visible: 4,
+  /** Dismissed over-capacity hint stays off the corner for this long. */
+  capacityCoolSec: 90,
 } as const
 
 /** Phases where a jet should keep moving. */

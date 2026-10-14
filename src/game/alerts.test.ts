@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { AlertStack, type AlertInput } from './alerts.ts'
 import { ALERT_TUNING } from './alertsData.ts'
+import { spawnHallGuest } from './guests.ts'
 import { Game } from './sim.ts'
 
 const fuel: AlertInput = {
@@ -130,6 +131,9 @@ describe('alerts on the game', () => {
 
   it('an over-capacity hall raises an alert that pans into the hall', () => {
     const game = started()
+    const fit = game.fits[0]
+    fit.capGuests = 0
+    game.hallGuests.push(spawnHallGuest('keep-full', 'depart', 'budget'))
     game.markHallOverloaded()
     for (let i = 0; i < 20; i++) game.tick(0.05 * 4)
     const row = game.alerts.active.find((a) => a.key.startsWith('cond:hall-full:'))
@@ -138,6 +142,49 @@ describe('alerts on the game', () => {
     expect(game.view).toBe('hall')
     expect(game.advisorCells.length).toBeGreaterThan(0)
     expect(game.camGoal?.view).toBe('hall')
+  })
+
+  it('clears over-capacity after an expansion and a dismiss stays quiet', () => {
+    const game = started()
+    game.speed = 1
+    const fit = game.fits[0]
+    fit.capGuests = 0
+    game.hallGuests.push(spawnHallGuest('crowd', 'depart', 'budget'))
+    game.markHallOverloaded()
+    game.tick(0.3)
+    expect(game.hallOverloaded).toBe(true)
+    fit.capGuests = 80
+    game.tick(0.3)
+    expect(game.hallOverloaded).toBe(false)
+    expect(game.advice.some((a) => a.id === 'over-capacity')).toBe(false)
+
+    fit.capGuests = 0
+    game.markHallOverloaded()
+    game.dismissCapacityHint()
+    expect(game.visibleHints().some((a) => a.id === 'over-capacity')).toBe(false)
+    game.tick(0.3)
+    expect(game.hallOverloaded).toBe(true)
+    expect(game.visibleHints().some((a) => a.id === 'over-capacity')).toBe(false)
+  })
+
+  it('upgrading the prefab recalculates the cap and clears the hint when the crowd fits', () => {
+    const game = started()
+    game.cash = 500_000
+    game.fieldXp = 420
+    const fit = game.fits[0]
+    const before = fit.capGuests ?? 40
+    const hallId = game.hallKey(fit)
+    for (let i = 0; i < before + 1; i++) {
+      game.hallGuests.push(spawnHallGuest(`crowd-${i}`, 'depart', 'budget', { hallId }))
+    }
+    game.markHallOverloaded()
+    expect(game.advice.some((a) => a.id === 'over-capacity')).toBe(true)
+    game.upgradeHall()
+    expect(fit.tier).toBe(2)
+    expect(fit.capGuests).toBeGreaterThan(before)
+    expect(game.hallOverloaded).toBe(false)
+    expect(game.advice.some((a) => a.id === 'over-capacity')).toBe(false)
+    expect(game.alerts.active.some((a) => a.key.startsWith('cond:hall-full'))).toBe(false)
   })
 
   it('dismissing from the game removes the row', () => {
