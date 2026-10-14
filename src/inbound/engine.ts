@@ -253,7 +253,7 @@ export function tick(
   dtSec: number,
   policy?: OfferPolicy,
 ): InboundEvent[] {
-  if (!(dtSec > 0)) return []
+  if (!(dtSec > 0) || !Number.isFinite(dtSec)) return []
   const events: InboundEvent[] = []
   const end = state.clock + dtSec
   while (state.clock < end - 1e-9) {
