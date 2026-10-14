@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
 import { DEFAULT_BUDGETS } from './catalog.ts'
 import { SAVE_KEY, type TerminalFit, type CaterBrand, type RoomId } from './types.ts'
+import { SAVE_SCHEMA_VERSION, serialize, storedData } from '../features/save/index.ts'
 import { InboundBridge } from './inboundBridge.ts'
 
 function withSeed<T>(seed: number, fn: () => T): T {
@@ -233,7 +234,7 @@ describe('save/load round-trip across live game systems', () => {
 
     const raw = localStorage.getItem(SAVE_KEY)!
     expect(raw).toBeTruthy()
-    const oldSnap = JSON.parse(raw) as Record<string, unknown>
+    const oldSnap = storedData(raw) as Record<string, unknown>
 
     // Strip newer/optional fields to simulate an old save
     delete oldSnap.pillar
@@ -248,7 +249,10 @@ describe('save/load round-trip across live game systems', () => {
     delete oldSnap.caterBrand
     delete oldSnap.cargoWarehouse
 
-    localStorage.setItem(SAVE_KEY, JSON.stringify(oldSnap))
+    localStorage.setItem(
+      SAVE_KEY,
+      serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => oldSnap, restore() {} }, 0),
+    )
 
     const loadedGame = new Game()
     expect(loadedGame.load()).toBe(true)

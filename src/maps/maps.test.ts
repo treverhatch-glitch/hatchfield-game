@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from '../economy/seasons'
 import { SAVE_KEY } from '../game/types'
+import { SAVE_SCHEMA_VERSION, serialize, storedData } from '../features/save/index.ts'
 import { Game } from '../game/sim'
 import {
   accrueChallenges,
@@ -166,10 +167,13 @@ describe('map goals and winter feed', () => {
 
     const raw = localStorage.getItem(SAVE_KEY)
     expect(raw).toBeTruthy()
-    const snap = JSON.parse(raw ?? '{}') as { mapId?: string; mapChallenges?: unknown }
+    const snap = storedData(raw ?? '{}') as { mapId?: string; mapChallenges?: unknown }
     delete snap.mapId
     delete snap.mapChallenges
-    localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
+    localStorage.setItem(
+      SAVE_KEY,
+      serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => snap, restore() {} }, 0),
+    )
     const older = new Game()
     expect(older.load()).toBe(true)
     expect(older.mapId).toBe('temperate')

@@ -1,17 +1,34 @@
 /**
- * Versioned save/load with migrations, plus a compact shareable layout code.
+ * Versioned save/load with a migration chain and a compact shareable layout code.
  * The sim owns the actual state shape; it registers a SaveAdapter.
+ * `openSave` migrates older schema versions, then a validator repairs or flags fields.
  */
 
 export const SAVE_FORMAT = 'hatchfield-save'
 
 export interface SaveEnvelope<T = unknown> {
   format: typeof SAVE_FORMAT
+  /** Schema version of `data`. Older versions run through the migration chain. */
   version: number
   savedAt: number
   checksum: string
   data: T
 }
+
+/** A field the validator rewrote, or a field too damaged to guess. */
+export interface SaveIssue {
+  path: string
+  kind: 'repaired' | 'flagged'
+  message: string
+}
+
+export interface OpenedSave<T> {
+  envelope: SaveEnvelope<T>
+  issues: SaveIssue[]
+}
+
+/** Runs after migrations. May return a repaired copy and a list of issues. */
+export type SaveValidator = (data: unknown) => { data: unknown; issues: SaveIssue[] }
 
 /** Implemented by the sim: snapshot to plain JSON and restore from it. */
 export interface SaveAdapter<T> {
@@ -76,6 +93,69 @@ export function load<T>(adapter: SaveAdapter<T>, text: string, migrations: Recor
   const env = deserialize<T>(text, adapter.version, migrations)
   adapter.restore(env.data)
   return env
+}
+
+export function isSaveEnvelope(value: unknown): value is SaveEnvelope {
+  if (!value || typeof value !== 'object') return false
+  const env = value as Partial<SaveEnvelope>
+  return env.format === SAVE_FORMAT && typeof env.version === 'number' && typeof env.checksum === 'string' && 'data' in env
+}
+
+/** Payload of a stored save. Envelope saves return `data`; older raw snapshots return themselves. */
+export function storedData(text: string): unknown {
+  const parsed = JSON.parse(text) as unknown
+  return isSaveEnvelope(parsed) ? parsed.data : parsed
+}
+
+const passThrough: SaveValidator = (data) => ({ data, issues: [] })
+
+function finish<T>(version: number, savedAt: number, data: unknown, issues: SaveIssue[]): OpenedSave<T> {
+  return {
+    envelope: {
+      format: SAVE_FORMAT,
+      version,
+      savedAt,
+      checksum: fnv1a(stableStringify(data)),
+      data: data as T,
+    },
+    issues,
+  }
+}
+
+/**
+ * Parses, migrates to `targetVersion`, then validates.
+ * Checksum mismatches and future versions still throw. Field damage is repaired or flagged.
+ */
+export function openSave<T>(
+  text: string,
+  targetVersion: number,
+  migrations: Record<number, Migration> = {},
+  validate: SaveValidator = passThrough,
+): OpenedSave<T> {
+  const env = deserialize<unknown>(text, targetVersion, migrations)
+  const checked = validate(env.data)
+  return finish(targetVersion, env.savedAt, checked.data, checked.issues)
+}
+
+/**
+ * Loads either a versioned envelope or a pre-envelope snapshot.
+ * Unversioned JSON is the apron-save-v25 shape: already the current document, so it is validated and not migrated.
+ */
+export function readStoredSave<T>(
+  text: string,
+  targetVersion: number,
+  migrations: Record<number, Migration> = {},
+  validate: SaveValidator = passThrough,
+): OpenedSave<T> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text) as unknown
+  } catch {
+    throw new SaveError('save is not valid JSON')
+  }
+  if (isSaveEnvelope(parsed)) return openSave(text, targetVersion, migrations, validate)
+  const checked = validate(parsed)
+  return finish(targetVersion, 0, checked.data, checked.issues)
 }
 
 /** Key/value store so saves work with localStorage, IndexedDB wrappers or tests. */

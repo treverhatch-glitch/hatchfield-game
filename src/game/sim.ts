@@ -655,6 +655,14 @@ import {
 import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
+import {
+  readStoredSave,
+  SAVE_MIGRATIONS,
+  SAVE_SCHEMA_VERSION,
+  serialize,
+  validateAirportSave,
+  type SaveIssue,
+} from '../features/save/index.ts'
 import { AchievementTracker } from '../achievements/achievements.ts'
 import type { AchievementState } from '../achievements/types.ts'
 import type {
@@ -1213,6 +1221,8 @@ export class Game {
     entries: { key: string; cells: { c: number; r: number }[]; plan: RoomPlan }[]
   } | null = null
   news: News[] = []
+  /** Repairs and flags from the last load. A flagged field means that load was refused. */
+  lastSaveIssues: SaveIssue[] = []
   selectedFlight: string | null = null
   selectedTile: Vec | null = null
   selectedGuest: string | null = null
@@ -1647,6 +1657,7 @@ export class Game {
     this.paxPerDay = 0
     this.cargoPerDay = 0
     // Drop the previous field so a refresh on the route screen cannot resume it.
+    this.lastSaveIssues = []
     try {
       localStorage.removeItem(SAVE_KEY)
     } catch {
@@ -4977,7 +4988,10 @@ export class Game {
       achievements: this.achievements.save(),
     }
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(snap))
+      localStorage.setItem(
+        SAVE_KEY,
+        serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => snap, restore() {} }, Date.now()),
+      )
     } catch {
       /* ignore */
     }
@@ -4990,8 +5004,12 @@ export class Game {
   load(): boolean {
     const raw = localStorage.getItem(SAVE_KEY)
     if (!raw) return false
+    this.lastSaveIssues = []
     try {
-      const s = JSON.parse(raw) as GameSnapshot
+      const opened = readStoredSave<GameSnapshot>(raw, SAVE_SCHEMA_VERSION, SAVE_MIGRATIONS, validateAirportSave)
+      this.lastSaveIssues = opened.issues
+      if (opened.issues.some((issue) => issue.kind === 'flagged')) return false
+      const s = opened.envelope.data
       this.tiles = s.tiles
       this.fits = (s.terminalFits ?? []).map((f) => {
         const rooms = { ...emptyRooms(), ...(f.rooms ?? {}) }
