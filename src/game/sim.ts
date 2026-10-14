@@ -15281,7 +15281,7 @@ export class Game {
         : f.phase === 'mx_bay' || f.phase === 'mx_taxi' || f.phase === 'mx_return'
           ? 'In hangar MX loop'
           : f.posted.mx
-            ? 'Line MX done'
+            ? 'Line maintenance done'
             : undefined,
     }
   }
@@ -15312,7 +15312,7 @@ export class Game {
       total,
       blurb:
         occ.phase === 'mx_bay'
-          ? `Line MX in progress · ${Math.ceil(left)}s left`
+          ? `Line maintenance in progress · ${Math.ceil(left)}s left`
           : occ.phase === 'mx_taxi'
             ? 'Taxiing in for maintenance'
             : occ.phase === 'mx_return'
@@ -18695,7 +18695,7 @@ export class Game {
       color: '#7a9bb8',
       job: 'mechanic',
       itinerary: [],
-      label: 'Line MX',
+      label: 'Line maintenance',
       wantBag: false,
       wantFood: false,
       wantGift: false,

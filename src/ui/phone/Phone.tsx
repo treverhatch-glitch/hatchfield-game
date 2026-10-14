@@ -231,7 +231,7 @@ function kindLabel(kind: string): string {
     case 'layover-live':
       return 'Layover live'
     case 'mx-signed':
-      return 'Line MX'
+      return 'Line maintenance'
     case 'hub-signed':
       return 'Hub'
     case 'signed':
@@ -269,7 +269,7 @@ function PhoneCardView({
         ) : card.secondsLeft != null ? (
           <span className="phone-timer">{Math.ceil(card.secondsLeft)}s</span>
         ) : (
-          <span className="phone-timer">info</span>
+          <span className="phone-timer">Note</span>
         )}
       </header>
       <h3>{card.title}</h3>

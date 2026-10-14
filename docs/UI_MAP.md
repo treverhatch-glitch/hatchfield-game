@@ -35,6 +35,20 @@ Labels are title case. Short forms that were doing real work now say the work: O
 
 Opened from the cash figure. Live income, daily charges (payroll, upkeep, holding), and the projected balance. Click the figure again to close.
 
+## Boards
+
+Corner toggle **Boards**. Split-flap departures and arrivals. Tabs: Departures, Arrivals. Close returns to the field. An empty board says “No movements on the board.”
+
+## Phone
+
+Desktop only (viewport at least 801 px wide). A peek on the left edge opens the handset.
+
+- **Contracts** — signed contracts
+- **Messages** — letters, with Sign / Decline and the other actions on the card
+- **Close** — back to the peek
+
+A card with no countdown is marked Note. Line maintenance is spelled out.
+
 ## Fees
 
 Corner toggle **Fees**. Commercial prices: landing, passenger, aircraft parking per hour, aircraft parking per day, fuel markup, catering, bags, cleaning, de-icing, pushback, ground power, lavatory and water, reduced-mobility assistance, cargo, helicopter landing, car parks, hotel. Deposit tier on the next signature. Close returns to the field.
@@ -94,10 +108,10 @@ Info buttons open one side panel. A group opens a submenu first; the second clic
 - **Rival** — Bellwater Intl fees, roster, catchment
 - **Settings** — Game, Controls (same pages as the pause sheet)
 
-## Phone, letters, and goals
+## Offers, letters, and goals
 
-- **Phone** — inbound offer card (`inbound-offer`). Accept or Refuse. It is the call the planner mentions.
-- **Letters** — contract, layover, hub, maintenance, security, and emergency cards on the left
+- **Inbound offer** — traffic or priority card (`inbound-offer`). Accept or Refuse. On a desktop the same letters also land on the phone, and the card shifts right while the handset is open so both stay clickable.
+- **Letters** — contract, layover, hub, maintenance, security, and emergency cards on the left. A card with no countdown is marked Note.
 - **Diplomacy letters** — airline proposals with accept, counter, and decline
 - **Goals** — field goals beside the apron, from the feedback layer
 - **Coach** — first-hour steps. Got it dismisses the card

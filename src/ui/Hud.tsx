@@ -553,7 +553,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       {game.inboundOffer() && (!inHall || peek === 'offer') ? (
         <aside
           className={`inbound-panel${game.showCoach() && !inHall ? ' beside-coach' : ''}`}
-          aria-label="Phone"
+          aria-label="Inbound offer"
           data-testid="inbound-offer" data-request-id={game.inboundOffer()?.id}>
           {(() => {
             const card = game.inboundOffer()
@@ -561,7 +561,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             return (
               <div className="inbound-card">
                 <header>
-                  <span className="kind">Phone · {card.priority ? 'Priority' : 'Traffic'}</span>
+                  <span className="kind">{card.priority ? 'Priority' : 'Traffic'}</span>
                   <LiveText className="timer" read={() => `${Math.ceil(game.inboundOffer()?.secondsLeft ?? 0)}s`} />
                 </header>
                 <h3>{card.title}</h3>
@@ -825,7 +825,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   {letter.left != null ? (
                     <LiveText className="letter-timer" read={() => `${letter.left?.() ?? 0}s`} />
                   ) : (
-                    <span className="letter-timer">info</span>
+                    <span className="letter-timer">Note</span>
                   )}
                 </button>
                 <div className="letter-body">

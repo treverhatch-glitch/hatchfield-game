@@ -306,6 +306,17 @@
   .phone-dock[data-state='open'] ~ .letter-stack {
     left: 342px;
   }
+
+  /* The handset owns the left edge. The offer card moves aside so its buttons stay clickable. */
+  .hud:has(.phone-dock[data-state='flash']) .inbound-panel,
+  .hud:has(.phone-dock[data-state='flash']) .inbound-panel.beside-coach {
+    left: 222px;
+  }
+
+  .hud:has(.phone-dock[data-state='open']) .inbound-panel,
+  .hud:has(.phone-dock[data-state='open']) .inbound-panel.beside-coach {
+    left: 342px;
+  }
 }
 
 @media (max-width: 800px) {
