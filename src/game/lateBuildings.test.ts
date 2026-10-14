@@ -76,6 +76,7 @@ describe('late building stamps', () => {
     expect(game.lateSites).toHaveLength(0)
     expect(game.news[0]?.text).toMatch(/road edge/)
 
+    game.researchTree.state.unlocked.push('landside-6')
     game.clickTile({ c: 15, r: 1 })
     expect(game.lateSites).toEqual([{ id: 'airport_hotel', c: 15, r: 1, elapsedDays: 0 }])
     expect(game.tile({ c: 15, r: 1 })).toBe('late_hotel')
@@ -99,6 +100,7 @@ describe('late building stamps', () => {
 
     game.fieldXp = LATE_FIELD_XP[7]
     game.cash = 5_000_000
+    game.researchTree.state.unlocked.push('landside-6')
     game.setTool('airport_hotel')
     game.clickTile({ c: 15, r: 1 })
     game.noteCrewHotelNights(3)
@@ -148,6 +150,7 @@ describe('late building stamps', () => {
     expect(game.lateSites).toHaveLength(0)
     expect(game.tile({ c: 17, r: 0 })).toBe('grass')
     expect(game.tile({ c: 16, r: 0 })).toBe('road')
+    game.researchTree.state.unlocked.push('spec-green-1')
     game.clickTile({ c: 17, r: 0 })
     expect(game.tile({ c: 17, r: 0 })).toBe('saf')
     expect(safFuelCost(900, 4, game.lateSites)).toBe(3_888)

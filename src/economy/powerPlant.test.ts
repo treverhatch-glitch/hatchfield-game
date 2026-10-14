@@ -44,6 +44,7 @@ function lateField(): Game {
   game.buildStarterKit()
   game.fieldXp = 420
   game.researchUnlocked = ['night_bank', 'deice', 'stand_class', 'heavy_pack', 'mro_hangar', 'cargo_night_hub']
+  game.researchTree.state.unlocked.push('airside-5', 'airside-6')
   game.cash = 500_000
   game.tiles[23][11] = 'taxi'
   game.tiles[23][13] = 'taxi'

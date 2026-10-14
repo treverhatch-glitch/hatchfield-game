@@ -337,6 +337,7 @@ describe('game wiring', () => {
 
     game.fieldXp = 700
     game.researchUnlocked = ['night_bank', 'deice', 'stand_class', 'heavy_pack', 'mro_hangar', 'cargo_night_hub']
+    game.researchTree.state.unlocked.push('airside-5')
     game.cash = 400_000
     game.tool = 'mro'
     game.placeSingle({ c: 2, r: 2 })

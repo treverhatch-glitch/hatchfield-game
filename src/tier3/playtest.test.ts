@@ -41,6 +41,7 @@ describe('tier III multi-day run', () => {
       'cargo_night_hub',
     ]
     game.cash = 2_000_000
+    game.researchTree.state.unlocked.push('airside-3', 'airside-5', 'airside-6')
     game.mechanics = 20
     game.fuelLoads = 40
     game.tankLitres = 200_000

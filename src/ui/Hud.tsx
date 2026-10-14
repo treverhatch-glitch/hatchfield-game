@@ -64,6 +64,7 @@ import { capstoneCost, SPEC_PATHS } from '../progression/specializations'
 import { SpecTree } from './SpecTree'
 import { CeoCardView } from './wave3/CeoCard'
 import { ResearchPanel } from './wave3/ResearchPanel'
+import { ResearchTree } from './research/ResearchTree'
 import { lockTip, PROGRESSION_BUILDABLES, unlockLevel } from '../progression/unlocks'
 import { lateIdForTool, lateStampLabel } from '../game/lateBuildings.ts'
 import { buildingById } from '../tier3plus/index.ts'
@@ -158,6 +159,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const [buildMenu, setBuildMenu] = useState<string | null>(null)
   const [panelPick, setPanel] = useState<PanelId | null>(null)
   const [infoGroup, setInfoGroup] = useState<string | null>(null)
+  const [growthFocus, setGrowthFocus] = useState<string | null>(null)
   // One panel at a time: an open hint list folds the HUD rollout away.
   const panel = game.sidePanel === 'hints' ? null : panelPick
   const [openLetter, setOpenLetter] = useState<string | null>(null)
@@ -1493,6 +1495,24 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </section>
               ) : null}
 
+              {panel === 'growth' ? (
+                <ResearchTree
+                  key={growthFocus ?? 'growth'}
+                  state={game.researchTree.state}
+                  fieldLevel={game.fieldLevel()}
+                  ratePerSec={game.researchTree.rate(
+                    {
+                      desk: game.labGear().desks,
+                      board: game.labGear().boards,
+                      machine: game.labGear().machines,
+                    },
+                    game.site != null,
+                  )}
+                  focusId={growthFocus}
+                  onUnlock={(id) => game.buyResearchNode(id)}
+                />
+              ) : null}
+
               {panel === 'research' ? (
                 <section>
                   <h3>Research desk</h3>
@@ -2359,14 +2379,23 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     const lateId = lateIdForTool(t)
                     if (lateId) {
                       const spec = buildingById(lateId)
-                      const locked = Boolean(spec && game.lateFieldLevel() < spec.fieldLevel)
+                      const researchLink = game.researchTree.linkFor(lateId)
+                      const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
+                      const fieldLocked = Boolean(spec && game.lateFieldLevel() < spec.fieldLevel)
+                      const locked = fieldLocked || researchLocked
                       return (
                         <button
                           key={t}
                           type="button"
                           className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' is-locked' : ''}`}
                           data-testid={`late-stamp-${lateId}`}
+                          title={researchLocked && researchLink ? `Requires research: ${researchLink.label}.` : undefined}
                           onClick={() => {
+                            if (researchLink && (fieldLocked || researchLocked)) {
+                              setGrowthFocus(researchLink.nodeId)
+                              openPanel('growth')
+                              return
+                            }
                             game.toggleInfo(`late:${lateId}`)
                             if (!locked) game.setTool(t)
                           }}
@@ -2380,14 +2409,20 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     const cost = toolCost(t)
                     const name = def?.name ?? TOOL_LABEL[t]
                     const need = unlockLevel(t)
-                    const locked = t !== 'clear' && game.fieldLevel() < need
+                    const researchLink = game.researchTree.linkFor(t)
+                    const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
+                    const fieldLocked = t !== 'clear' && game.fieldLevel() < need
+                    const locked = fieldLocked || researchLocked
                     const upkeep = def?.upkeepPerDay ?? 0
+                    const researchTip = researchLocked && researchLink ? `Requires research: ${researchLink.label}.` : ''
                     const tip =
                       t === 'clear'
                         ? 'Bulldoze — refunds 40% of the stamp.'
-                        : locked
-                          ? lockTip(name, need, def?.blurb)
-                          : (def?.blurb ?? TOOL_LABEL[t])
+                        : fieldLocked
+                          ? `${lockTip(name, need, def?.blurb)} ${researchTip}`.trim()
+                          : researchTip
+                            ? `${def?.blurb ?? TOOL_LABEL[t]} ${researchTip}`
+                            : (def?.blurb ?? TOOL_LABEL[t])
                     const priceTip = locked
                       ? tip
                       : cost != null
@@ -2398,14 +2433,21 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         key={t}
                         type="button"
                         className={`tray-item${game.tool === t ? ' on' : ''}${locked ? ' locked' : ''}`}
-                        onClick={() => game.setTool(t)}
+                        onClick={() => {
+                          if (researchLink && (fieldLocked || researchLocked)) {
+                            setGrowthFocus(researchLink.nodeId)
+                            openPanel('growth')
+                            return
+                          }
+                          game.setTool(t)
+                        }}
                         title={priceTip}
                         data-testid={`tray-${t}`}
                       >
                         <TrayMark tool={t} />
                         <span className="tray-name">{name}</span>
                         <span className="tray-price">
-                          {locked ? `Lv ${need}` : cost != null ? money(cost) : 'Refund'}
+                          {fieldLocked ? `Lv ${need}` : researchLocked ? 'Research' : cost != null ? money(cost) : 'Refund'}
                         </span>
                         {upkeep > 0 ? <span className="tray-upkeep">${upkeep}/day</span> : null}
                       </button>
@@ -2413,13 +2455,17 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                   })}
                   {PROGRESSION_BUILDABLES.filter((row) => row.menu === buildMenu).map((row) => {
                     const need = unlockLevel(row.id)
-                    const locked = game.fieldLevel() < need
+                    const researchLink = game.researchTree.linkFor(row.id)
+                    const researchLocked = researchLink != null && !game.researchTree.owns(researchLink.nodeId)
+                    const fieldLocked = game.fieldLevel() < need
+                    const locked = fieldLocked || researchLocked
                     const cost = capstoneCost(row.cost, game.specPaths, row.id)
-                    const tip = locked
-                      ? lockTip(row.name, need, row.blurb)
+                    const researchTip = researchLocked && researchLink ? `Requires research: ${researchLink.label}.` : ''
+                    const tip = fieldLocked
+                      ? `${lockTip(row.name, need, row.blurb)} ${researchTip}`.trim()
                       : `${row.blurb}${row.cost > 0 ? ` ${money(cost)}` : ''}${
                           row.upkeepPerDay > 0 ? ` · $${row.upkeepPerDay}/day` : ''
-                        }`
+                        } ${researchTip}`.trim()
                     return (
                       <button
                         key={row.id}
@@ -2429,12 +2475,19 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         }`}
                         title={tip}
                         data-testid={`tray-${row.id}`}
-                        onClick={() => game.commission(row.id)}
+                        onClick={() => {
+                          if (researchLink && (fieldLocked || researchLocked)) {
+                            setGrowthFocus(researchLink.nodeId)
+                            openPanel('growth')
+                            return
+                          }
+                          game.commission(row.id)
+                        }}
                       >
                         <TrayMark tool={row.id} />
                         <span className="tray-name">{row.name}</span>
                         <span className="tray-price">
-                          {locked ? `Lv ${need}` : row.cost > 0 ? money(cost) : 'Select'}
+                          {fieldLocked ? `Lv ${need}` : researchLocked ? 'Research' : row.cost > 0 ? money(cost) : 'Select'}
                         </span>
                         {row.upkeepPerDay > 0 ? (
                           <span className="tray-upkeep">${row.upkeepPerDay}/day</span>

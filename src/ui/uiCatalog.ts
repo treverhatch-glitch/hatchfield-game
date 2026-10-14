@@ -11,6 +11,7 @@ export type PanelId =
   | 'economy'
   | 'budget'
   | 'research'
+  | 'growth'
   | 'rnd'
   | 'specialize'
   | 'airlines'
@@ -210,6 +211,19 @@ export const INFO_TREE: InfoNode[] = [
         label: 'Specializations',
         tip: 'Hub, low-cost, cargo, and luxury trees',
         panel: 'specialize',
+      },
+    ],
+  },
+  {
+    id: 'growth',
+    label: 'Growth',
+    tip: 'Field level, category research, and specialisations',
+    items: [
+      {
+        id: 'research-tree',
+        label: 'Research tree',
+        tip: 'One tree per build category, with research-point costs',
+        panel: 'growth',
       },
     ],
   },

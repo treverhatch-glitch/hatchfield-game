@@ -28,6 +28,7 @@ describe('building footprints', () => {
     game.beginNew('easy')
     game.buyLand('city')
     game.cash = 500_000
+    game.researchTree.state.unlocked.push('airfield-5')
     game.tiles[5][6] = 'road'
     game.tool = 'tower'
     game.placeSingle({ c: 5, r: 5 })

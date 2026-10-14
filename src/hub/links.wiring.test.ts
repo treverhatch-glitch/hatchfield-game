@@ -67,6 +67,7 @@ describe('live hub links', () => {
 
     game.fieldXp = 1_600
     expect(game.fieldLevel()).toBe(7)
+    game.researchTree.state.unlocked.push('terminal-6')
     game.placeSingle(cell)
     expect(game.sites).toHaveLength(1)
     expect(game.cash).toBe(900_000 - CONNECTIVITY_CATALOG.people_mover.cost)

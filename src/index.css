@@ -3593,3 +3593,130 @@ h1.game-title::after {
   color: #9eb0a0;
   font-size: 12px;
 }
+
+.rtree-body {
+  display: grid;
+  grid-template-columns: 168px 1fr 220px;
+  gap: 12px;
+  align-items: start;
+}
+
+.rtree-cats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rtree-cats button {
+  width: 100%;
+  text-align: left;
+}
+
+.rtree-lane {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 8px;
+}
+
+.rtree-step {
+  display: flex;
+  align-items: center;
+}
+
+.rtree-line {
+  width: 18px;
+  height: 2px;
+  background: rgba(201, 162, 39, 0.7);
+  display: block;
+}
+
+.rtree-branch {
+  width: 72px;
+  font-size: 11px;
+  color: #c9a227;
+}
+
+.rtree-node {
+  width: 92px;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  background: #14241c;
+  border: 2px solid #3d5348;
+  border-radius: 10px;
+  color: #e8eef4;
+}
+
+.rtree-node.is-owned {
+  border-color: #3dba7a;
+}
+
+.rtree-node.is-available {
+  border-color: #7eb6ff;
+}
+
+.rtree-node.is-locked {
+  opacity: 0.55;
+}
+
+.rtree-node.is-selected {
+  box-shadow: 0 0 0 2px #c9a227;
+}
+
+.rtree-ring {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+}
+
+.rtree-node.is-owned .rtree-ring {
+  background: #3dba7a;
+  border-color: #3dba7a;
+}
+
+.rtree-node.is-available .rtree-ring {
+  border-color: #7eb6ff;
+}
+
+.rtree-name {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.rtree-cost {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #2a3330;
+  color: #9eb0a0;
+}
+
+.rtree-cost.is-open {
+  background: #1d4d32;
+  color: #b6f0cf;
+}
+
+.rtree-card h3 {
+  margin: 0 0 6px;
+}
+
+.rtree-foot {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+@media (max-width: 800px) {
+  .rtree-body {
+    grid-template-columns: 1fr;
+  }
+}

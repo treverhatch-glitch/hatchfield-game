@@ -5,6 +5,7 @@ import type { TycoonState } from '../tycoon/types.ts'
 import type { PlaytestYearSave } from '../reports/book.ts'
 import type { StaffHousingSave } from '../staffhousing/types.ts'
 import type { BuildLayout } from '../terminalbuild/types.ts'
+import type { ResearchState } from '../research/types.ts'
 import type { Wave3State } from '../wave3/types.ts'
 
 export const SIZE = 32
@@ -942,6 +943,8 @@ export interface GameSnapshot {
   researchUnlocked?: ResearchId[]
   /** Wave 3 relationship scores and specialization research. Missing on older saves. */
   wave3?: Wave3State
+  /** Development-tree research points and owned nodes. Missing on older saves. */
+  researchTree?: ResearchState
   /** Wear on the people mover and the airside transfer bus. */
   linkWear?: { mover: number; bus: number }
   /** True when that link is stopped after a breakdown. */

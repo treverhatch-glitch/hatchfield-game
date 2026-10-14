@@ -110,6 +110,7 @@ describe('ground logistics wiring', () => {
 
     game.fieldXp = 90
     expect(game.fieldLevel()).toBe(2)
+    game.researchTree.state.unlocked.push('airside-3')
     game.setTool('depot')
     game.placeSingle(cell!)
     expect(game.sites).toHaveLength(1)

@@ -584,6 +584,7 @@ import {
   type GatePoint,
   type Movement,
 } from '../hub/index.ts'
+import { ResearchEngine } from '../research/engine.ts'
 import { Wave3Engine } from '../wave3/engine.ts'
 import { metalAllowed } from '../wave3/fleet.ts'
 import {
@@ -1212,6 +1213,8 @@ export class Game {
   researchUnlocked: ResearchId[] = []
   /** Relationship scores, CEO cards, and the specialization research currency. */
   wave3 = new Wave3Engine()
+  /** Development tree. Separate from the catalog research desk. */
+  researchTree = new ResearchEngine()
   /** Signed volume contract. Apex on the old desk counts when this is empty. */
   contractId: string | null = null
   tankTier: 1 | 2 | 3 = 1
@@ -1597,6 +1600,7 @@ export class Game {
     this.researchPoints = 0
     this.researchUnlocked = []
     this.wave3 = new Wave3Engine()
+    this.researchTree = new ResearchEngine()
     this.resetPillar()
     this.layoverOffer = null
     this.layoverOfferCool = 50
@@ -2620,6 +2624,12 @@ export class Game {
       this.emit()
       return false
     }
+    const researchNeed = this.researchTree.blockReason(id)
+    if (researchNeed) {
+      this.pushNews(researchNeed, 'bad')
+      this.emit()
+      return false
+    }
     if (id === 'prefab_ii') {
       if ((this.fits[0]?.tier ?? 1) !== 1) {
         this.pushNews('Prefab II is already in place.', 'ok')
@@ -3066,10 +3076,16 @@ export class Game {
     const afterLate = this.lateFieldLevel()
     if (after > before) {
       const meta = after <= 5 ? AIRLINE_TIER_META[after as AirlineTier] : undefined
+      const payouts = this.researchTree.claimNewLevels(after)
+      const paid = payouts.reduce((sum, row) => sum + row.cash, 0)
+      if (paid > 0) this.cash += paid
+      const lump = payouts.length
+        ? ` +$${paid.toLocaleString('en-US')} and ${payouts.reduce((sum, row) => sum + row.rp, 0)} RP.`
+        : ''
       this.pushNews(
         meta
-          ? `Field Level ${after} — ${meta.label} carriers will start calling.`
-          : `Field Level ${after} — hub links open.`,
+          ? `Field Level ${after} — ${meta.label} carriers will start calling.${lump}`
+          : `Field Level ${after} — hub links open.${lump}`,
         'good',
       )
     }
@@ -3647,6 +3663,13 @@ export class Game {
     }
     if (this.wave3.points() < node.cost) return { ok: false, why: `Need ${node.cost} research points.` }
     return { ok: true, why: node.name }
+  }
+
+  buyResearchNode(id: string) {
+    const result = this.researchTree.buy(id, this.fieldLevel())
+    this.pushNews(result.ok ? `Research: ${result.why}` : result.why, result.ok ? 'good' : 'bad')
+    this.emit()
+    return result.ok
   }
 
   buyWave3(id: string) {
@@ -5090,6 +5113,7 @@ export class Game {
       researchPoints: this.researchPoints,
       researchUnlocked: this.researchUnlocked,
       wave3: this.wave3.save(),
+      researchTree: this.researchTree.save(),
       missedConnections: this.missedConnections,
       linkWear: this.linkWear,
       linkDown: this.linkDown,
@@ -5284,6 +5308,7 @@ export class Game {
       this.researchPoints = s.researchPoints ?? 0
       this.researchUnlocked = s.researchUnlocked ?? []
       this.wave3.load(s.wave3)
+      this.researchTree.load(s.researchTree, this.fieldLevel())
       this.missedConnections = s.missedConnections ?? 0
       this.linkWear = {
         mover: Number.isFinite(s.linkWear?.mover) ? s.linkWear!.mover : 0,
@@ -15977,6 +16002,12 @@ export class Game {
         this.emit()
         return
       }
+      const researchNeed = this.researchTree.blockReason('runway_heavy')
+      if (researchNeed) {
+        this.pushNews(researchNeed, 'bad')
+        this.emit()
+        return
+      }
     }
     const cells = this.prefabRunway(v, klass)
     const blocked = this.placementBlockReason('runway', cells, v, 'runway')
@@ -16191,6 +16222,12 @@ export class Game {
       this.emit()
       return
     }
+    const researchNeed = this.researchTree.blockReason(id)
+    if (researchNeed) {
+      this.pushNews(researchNeed, 'bad')
+      this.emit()
+      return
+    }
     const before = this.cash
     if (!this.spend(gated.cost, spec.name)) return
     const paid = before - this.cash
@@ -16220,6 +16257,12 @@ export class Game {
     const needLevel = Math.max(building.minFieldLevel ?? 1, unlockLevel(building.tool))
     if (this.fieldLevel() < needLevel) {
       this.pushNews(`${building.name} needs Field level ${needLevel}.`, 'bad')
+      this.emit()
+      return
+    }
+    const treeNeed = this.researchTree.blockReason(building.tool)
+    if (treeNeed) {
+      this.pushNews(treeNeed, 'bad')
       this.emit()
       return
     }
@@ -19933,6 +19976,7 @@ export class Game {
     // Day 1 specialization points. No staff and no rooms required.
     const gear = this.labGear()
     this.wave3.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines })
+    this.researchTree.tick(step, true, { desk: gear.desks, board: gear.boards, machine: gear.machines })
     this.tickDeskStaff(step)
     this.tickAirlineRelations(step)
     this.tickSchedule(step)

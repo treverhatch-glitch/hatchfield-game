@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { payrollForGameDay } from '../core/bank.ts'
 import { LAND_PLOT } from './catalog.ts'
+import { levelReward } from '../research/config.ts'
 import { cityLevy } from './economy.ts'
 import { BAG_SYSTEMS, PAX_UNITS } from '../scale/data.ts'
 import { Game } from './sim.ts'
@@ -26,7 +27,7 @@ describe('land plots in the sim', () => {
     expect(offer?.locked).toBe(false)
     expect(game.buyParcel()).toBe(true)
     expect(game.parcels).toBe(2)
-    expect(game.cash).toBe(before - (offer?.price ?? 0))
+    expect(game.cash).toBe(before + levelReward(2).cash - (offer?.price ?? 0))
     expect(game.buyPlot(game.ownedPlots[1]!.id)).toBe(false)
   })
 

@@ -102,6 +102,8 @@ describe('UI catalog', () => {
     expect(parentOf('research')).toBe('rd')
     expect(parentOf('branches')).toBe('rd')
     expect(parentOf('specialize')).toBe('rd')
+    expect(parentOf('research-tree')).toBe('growth')
+    expect(INFO_TREE.find((node) => node.id === 'growth')?.items?.[0]?.label).toBe('Research tree')
     expect(parentOf('services')).toBe('operations')
     expect(parentOf('shops')).toBe('commercial')
     expect(parentOf('premium')).toBe('commercial')
