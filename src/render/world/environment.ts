@@ -91,15 +91,29 @@ export function frameGeometry(inner: number, outer: number, uvScale: number): TH
   return g
 }
 
+export interface LandscapeTint {
+  ground: number
+  fields: readonly number[]
+  trees: readonly number[]
+}
+
+const FARMLAND_GROUND = 0xb8c8a8
+const FARMLAND_FIELDS = [0x8a9a4a, 0xa89a58, 0x5d7f3a, 0x7a8f4c, 0x9a8a5a]
+const FARMLAND_TREES = [0x2f6a2e, 0x3d7a34, 0x4a8a3a, 0x2a5a30]
+
 /** Patchwork farmland + trees around the plot, and a perimeter fence. */
-export function buildLandscape(grass: THREE.Texture, trees: number): { group: THREE.Group; dispose: () => void } {
+export function buildLandscape(
+  grass: THREE.Texture,
+  trees: number,
+  tint?: LandscapeTint | null,
+): { group: THREE.Group; dispose: () => void } {
   const group = new THREE.Group()
   group.name = 'world-landscape'
   const geos: THREE.BufferGeometry[] = []
   const mats: THREE.Material[] = []
 
   const groundGeo = frameGeometry(PLOT_HALF, 450, 1 / 6.4)
-  const groundMat = new THREE.MeshLambertMaterial({ map: grass, color: 0xb8c8a8 })
+  const groundMat = new THREE.MeshLambertMaterial({ map: grass, color: tint?.ground ?? FARMLAND_GROUND })
   const ground = new THREE.Mesh(groundGeo, groundMat)
   ground.position.y = -0.06
   ground.receiveShadow = true
@@ -109,7 +123,7 @@ export function buildLandscape(grass: THREE.Texture, trees: number): { group: TH
 
   // Field patches: vertex-coloured quads in rings outside the plot.
   const rand = rng(99)
-  const fieldCols = [0x8a9a4a, 0xa89a58, 0x5d7f3a, 0x7a8f4c, 0x9a8a5a]
+  const fieldCols = tint?.fields?.length ? tint.fields : FARMLAND_FIELDS
   const pos: number[] = []
   const col: number[] = []
   const c = new THREE.Color()
@@ -160,7 +174,7 @@ export function buildLandscape(grass: THREE.Texture, trees: number): { group: TH
   mats.push(trunkM, crownM)
   const tm: THREE.Matrix4[] = []
   const tc: number[] = []
-  const greens = [0x2f6a2e, 0x3d7a34, 0x4a8a3a, 0x2a5a30]
+  const greens = tint?.trees?.length ? tint.trees : FARMLAND_TREES
   let guard = 0
   while (tm.length < trees && guard++ < trees * 20) {
     const a = rand() * Math.PI * 2
