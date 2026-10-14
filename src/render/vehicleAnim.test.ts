@@ -184,3 +184,17 @@ describe('Round D steering', () => {
   })
 })
 
+
+describe('Round E stand service lines', () => {
+  it('fuel grounding cable leads the hose; GPU cable and lav/water hoses pay out with deploy', () => {
+    expect(lift('fuel_tanker', 'grounding', 0).sz).toBeLessThan(0.05)
+    expect(lift('fuel_tanker', 'grounding', 0.7).sz).toBe(1)
+    expect(lift('fuel_tanker', 'hose', 0.7).sz).toBeCloseTo(0.7)
+    expect(lift('gpu', 'cable', 0).sz).toBeLessThan(0.05)
+    expect(lift('gpu', 'cable', 1).sz).toBe(1)
+    for (const m of ['lavatory_truck', 'water_truck'] as const) {
+      expect(lift(m, 'hose', 1).sz).toBe(1)
+      expect(lift(m, 'hose_reel', 1).rz).toBeLessThan(-1)
+    }
+  })
+})
