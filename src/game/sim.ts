@@ -1,4 +1,5 @@
 import { finiteAmount } from '../disruptions/engine.ts'
+import { footprintBlock } from './buildingFootprint.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
 import {
@@ -14987,6 +14988,17 @@ export class Game {
     }
     if (this.tile(v) !== 'grass' || this.siteAt(v)) {
       this.pushNews(this.siteAt(v) ? 'Already a construction site.' : 'Needs grass.', 'bad')
+      this.emit()
+      return
+    }
+    const foot = footprintBlock(this.tiles, building.tile, v)
+    if (foot) {
+      this.pushNews(
+        foot === 'road'
+          ? `${building.name} footprint crosses a road.`
+          : `${building.name} footprint leaves the map.`,
+        'bad',
+      )
       this.emit()
       return
     }

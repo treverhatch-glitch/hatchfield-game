@@ -686,7 +686,7 @@ export class World {
       body.castShadow = true
       body.receiveShadow = true
       const roof = new THREE.Mesh(
-        new THREE.BoxGeometry(CELL * 1.02, 0.18, CELL * 1.02),
+        new THREE.BoxGeometry(CELL * 0.96, 0.18, CELL * 0.96),
         new THREE.MeshStandardMaterial({ color: '#2f6f9a', roughness: 0.5 }),
       )
       roof.position.y = 3.5
@@ -828,17 +828,20 @@ export class World {
       mesh.receiveShadow = true
       g.add(mesh)
     } else if (tile === 'tower') {
+      // Round cab stays inside the cell. The keep-out in buildingFootprint
+      // refuses a stamp whose neighbours are roads, so the shaft cannot sit on one.
+      const cabR = CELL * 0.42
       const shaft = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.55, 0.9, 5.2, 8),
+        new THREE.CylinderGeometry(cabR * 0.45, cabR * 0.72, CELL * 0.55, 10),
         new THREE.MeshStandardMaterial({ color: '#cfd8e3' }),
       )
-      shaft.position.y = 2.6
+      shaft.position.y = CELL * 0.28
       shaft.castShadow = true
       const cab = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.3, 1.1, 1.1, 8),
+        new THREE.CylinderGeometry(cabR, cabR * 0.86, CELL * 0.12, 12),
         new THREE.MeshStandardMaterial({ color: '#2f6f9a', metalness: 0.3 }),
       )
-      cab.position.y = 5.4
+      cab.position.y = CELL * 0.58
       g.add(shaft, cab)
     } else if (tile === 'hangar') {
       addHangar(g, opts.hangarTier ?? 'small')
@@ -1254,7 +1257,7 @@ export class World {
         new THREE.BoxGeometry(CELL * 0.7, 0.12, CELL * 0.45),
         new THREE.MeshStandardMaterial({ color: '#c9a227', metalness: 0.3 }),
       )
-      canopy.position.set(0, 2.4, CELL * 0.4)
+      canopy.position.set(0, 2.4, CELL * 0.22)
       const crown = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.78, 0.45, CELL * 0.68),
         new THREE.MeshStandardMaterial({
@@ -1304,13 +1307,13 @@ export class World {
       new THREE.BoxGeometry(CELL * 0.5, 1.6, CELL * 0.22),
       new THREE.MeshStandardMaterial({ color: '#8a9088', roughness: 0.4 }),
     )
-    entry.position.set(0, 0.9, CELL * 0.42)
+    entry.position.set(0, 0.9, CELL * 0.34)
     entry.castShadow = true
     const canopy = new THREE.Mesh(
       new THREE.BoxGeometry(CELL * 0.62, 0.1, CELL * 0.35),
       new THREE.MeshStandardMaterial({ color: '#2f6f9a' }),
     )
-    canopy.position.set(0, 1.85, CELL * 0.48)
+    canopy.position.set(0, 1.85, CELL * 0.28)
     g.add(body, roof, entry, canopy)
     for (let floor = 0; floor < 3; floor++) {
       for (const dx of [-1.15, 0, 1.15]) {
