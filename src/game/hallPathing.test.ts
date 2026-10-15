@@ -5,11 +5,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { ShowUpPlan } from '../pax/showup.ts'
-import { AIR, LANE, PRE, PAXNAV_TUNING, cellAt, cellsOfTile, moveOpen, type FacilityMetrics, type NavGrid, type PaxWait } from '../paxnav/index.ts'
+import { AIR, LANE, PRE, PAXNAV_TUNING, cellAt, cellsOfTile, moveOpen, type FacilityMetrics, type GuestMood, type NavGrid, type PaxWait } from '../paxnav/index.ts'
 import { facilityBlockers, facilitiesFromItems } from '../terminalplay/facilities.ts'
 import { spawnHallGuest } from './guests.ts'
 import { HallNav, isNavBottleneck, navHallQueues, prefabClaimHall, prefabNavLayout, waitMoodDelta } from './hallNav.ts'
-import { HALL_QUEUE_TUNING } from './hallNavData.ts'
+import { HALL_MOOD_LINK, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { PLAY_TUNING } from '../terminalplay/config.ts'
 import { HALL_D, HALL_W, schemeItems, schemeZones, type PlacedItem } from './terminal.ts'
 import { Game } from './sim.ts'
@@ -291,9 +291,21 @@ describe('waits feed satisfaction', () => {
       seen.push(...out)
       return out
     }
+    // Thoughts carry onto the fare too (HALL_MOOD_LINK); waits are weighted 0 there, so the two never double up.
+    const moods: GuestMood[] = []
+    const drainMood = game.hallNav.drainMood.bind(game.hallNav)
+    game.hallNav.drainMood = () => {
+      const out = drainMood()
+      moods.push(...out)
+      return out
+    }
     for (let i = 0; i < 1500; i++) game.tickHallNav(0.05)
     const expected = new Map<string, number>()
     for (const w of seen) expected.set(w.id, (expected.get(w.id) ?? 70) + waitMoodDelta(w.kind, w.waitSec))
+    for (const m of moods) {
+      const weight = HALL_MOOD_LINK.weight[m.key] ?? 0
+      if (weight) expected.set(m.id, (expected.get(m.id) ?? 70) + m.delta * weight)
+    }
     expect(seen.some((w) => waitMoodDelta(w.kind, w.waitSec) < 0)).toBe(true)
     expect(seen.some((w) => waitMoodDelta(w.kind, w.waitSec) > 0)).toBe(true)
     let hurt = 0
