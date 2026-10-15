@@ -21370,6 +21370,7 @@ export class Game {
       this.standSize[key] = migrated.size
       this.standRung[key] = migrated.rung
       if (legacyFitting(migrated)) this.attachBoughtBridge(key)
+      else this.standAccess[key] = 'remote'
     }
   }
 
