@@ -4,6 +4,7 @@ import type { Game } from '../game/sim.ts'
 import { RELATION_MIN, RELATION_MAX } from '../wave3/config.ts'
 import { RELATION_PART_LABELS } from '../wave3/relations.ts'
 import type { RelationParts } from '../wave3/types.ts'
+import { HubSection } from './hub/HubPanels.tsx'
 import { AirlineMark } from './AirlineMark.tsx'
 import { PortraitFace } from './PortraitFace.tsx'
 import { ReactionCard } from './ReactionCard.tsx'
@@ -98,6 +99,7 @@ export function AirlinesDesk({ game }: { game: Game }) {
                         <div className="rel-meter" aria-hidden>
                           <span style={{ width: `${pct}%` }} />
                         </div>
+                        <HubSection game={game} id={id} />
                         <ul className="dip-lines">
                           {lines.map((key) => (
                             <li key={key}>

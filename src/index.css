@@ -3626,6 +3626,54 @@ h1.game-title::after {
   padding: 2px 0;
 }
 
+.hub-profile {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hub-tier {
+  margin: 0;
+  font-weight: 650;
+}
+
+.hub-lines,
+.hub-rows {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hub-lines li {
+  display: grid;
+  grid-template-columns: 1em 1fr auto;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.hub-lines li[data-status='ok'] {
+  color: #d6ead8;
+}
+
+.hub-lines li[data-status='waiting'],
+.hub-lines li[data-status='missing'] {
+  opacity: 0.85;
+}
+
+.hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hub-actions button:disabled {
+  opacity: 0.55;
+}
+
 .dip-ladder {
   margin: 6px 0 0;
   padding-left: 18px;

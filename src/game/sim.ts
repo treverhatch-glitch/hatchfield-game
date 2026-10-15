@@ -647,7 +647,9 @@ import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
 import { rosterAirline } from '../airlines/roster.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
 import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
-import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines } from './rosterAirlines.ts'
+import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines, rosterType } from './rosterAirlines.ts'
+import { checklistFromFacts, readHubTiers } from './hubProgress.ts'
+import type { HubTier } from '../hubprogress/config.ts'
 import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
 import {
   airframeGap,
@@ -1354,6 +1356,8 @@ export class Game {
   hubOffer: HubOffer | null = null
   hubOfferCool = 80
   hubAirlines: AirlineId[] = []
+  /** Accepted hub tier per carrier. Unsigned and untouched carriers stay at Station. */
+  hubTiers: Record<string, HubTier> = {}
   parkingOffer: ParkingOffer | null = null
   parkingCool = 65
   /** Day-rate cool for independent parked GA. */
@@ -1746,6 +1750,7 @@ export class Game {
     this.hubOffer = null
     this.hubOfferCool = 80
     this.hubAirlines = []
+    this.hubTiers = {}
     this.parkingOffer = null
     this.parkingCool = 65
     this.parkRateCool = 0
@@ -3163,6 +3168,46 @@ export class Game {
 
   diplomacyCards() {
     return this.diplomacy?.cards() ?? []
+  }
+
+  /** Checklist for one carrier. Desk lines wait until the allocator exports leases. */
+  hubCarrierView(id: string) {
+    const airline = this.airline(id)
+    const rel = this.wave3.relation(id)
+    const card = this.diplomacyCards().find((row) => row.id === id)
+    const engine = this.diplomacy?.adapter.engine
+    const recorded = Boolean(engine?.relation(id))
+    const holder = engine?.state.hubAirlineId ?? null
+    const view = checklistFromFacts({
+      id,
+      name: airline.name,
+      signed: this.signed.includes(id),
+      rosterType: rosterType(id) ?? null,
+      kind: airline.kind,
+      bizModel: airline.bizModel,
+      storedTier: this.hubTiers[id],
+      contractTier: rel.tier,
+      onTime: rel.counts.onTime,
+      delay: rel.counts.delay,
+      cancel: rel.counts.cancel,
+      keptDays: rel.counts.kept,
+      diplomacyBand: card?.band.band,
+      hubBlockers: recorded && engine ? engine.hubBlockers(id) : undefined,
+      stands: tilesOf(this.tiles, 'stand').length,
+      pads: tilesOf(this.tiles, 'helipad').length,
+      connectionMin: minimumConnectionTime(this.hubFacilities()),
+      primaryHolderId: holder,
+      primaryHolderName: holder ? (engine?.relation(holder)?.name ?? this.airline(holder).name) : null,
+    })
+    return { id, name: airline.name, type: view.type, checklist: view.checklist }
+  }
+
+  hubChecklistFor(id: string) {
+    return this.hubCarrierView(id).checklist
+  }
+
+  hubCarrierViews() {
+    return this.signed.map((id) => this.hubCarrierView(id))
   }
 
   diplomacyQuote(proposalId: string, ticks: import('../diplomacy/types.ts').CounterLineKey[]) {
@@ -5718,6 +5763,7 @@ export class Game {
       linkExplanation: this.linkExplanation,
       hubLinksBuilt: this.hubLinksBuilt,
       hubAirlines: this.hubAirlines,
+      hubTiers: this.hubTiers,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
@@ -5939,6 +5985,7 @@ export class Game {
       this.tier3 = Tier3Session.restore(s.tier3)
       this.powerPlantTier = s.powerPlantTier === 2 || s.powerPlantTier === 3 ? s.powerPlantTier : 1
       this.hubAirlines = s.hubAirlines ?? []
+      this.hubTiers = readHubTiers(s.hubTiers)
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
       // The save wins; older saves fall back to the settings mirror, then to defaults.

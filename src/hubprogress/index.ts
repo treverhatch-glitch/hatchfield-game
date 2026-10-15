@@ -28,6 +28,8 @@ export {
   type LeaseKey,
 } from './config.ts'
 
+export { hubProgressRows, hubShowcase, hubStatusNote, type HubProgressRow, type HubShowcase } from './present.ts'
+
 export {
   emptyHubFacilities,
   hubChecklist,

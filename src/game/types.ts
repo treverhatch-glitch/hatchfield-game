@@ -983,6 +983,8 @@ export interface GameSnapshot {
   /** Connecting passengers who missed the onward flight. */
   missedConnections?: number
   hubAirlines?: AirlineId[]
+  /** Accepted hub tier per carrier. Missing on older saves. */
+  hubTiers?: Record<string, string>
   layoverWins?: Record<string, number>
   hotelLevel?: number
   carParkShort?: boolean

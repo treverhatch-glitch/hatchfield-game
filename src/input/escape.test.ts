@@ -35,4 +35,10 @@ describe('escape order', () => {
     expect(nextEscape({ ...idle, infoViewOpen: true, flightCardOpen: true })).toBe('close-info')
     expect(nextEscape({ ...idle, toolActive: true, flightCardOpen: true })).toBe('cancel-tool')
   })
+
+  it('closes the hub profile after the flight card and before the menu', () => {
+    expect(nextEscape({ ...idle, hubProfileOpen: true })).toBe('close-hub-profile')
+    expect(nextEscape({ ...idle, flightCardOpen: true, hubProfileOpen: true })).toBe('close-flight-card')
+    expect(nextEscape({ ...idle, infoViewOpen: true, hubProfileOpen: true })).toBe('close-info')
+  })
 })

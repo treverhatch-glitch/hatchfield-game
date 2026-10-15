@@ -7,6 +7,7 @@ import { PremiumPanel } from './PremiumPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
+import { HubProgress } from './hub/HubPanels.tsx'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
 import { AlertStackView } from './isolated/AlertStack.tsx'
@@ -1592,25 +1593,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {manageTab === 'letters' ? <AirlinesDesk game={game} /> : null}
-              {manageTab === 'hubs' ? (
-                <section data-testid="hubs-panel">
-                  <h3>Hubs</h3>
-                  {game.signed.some((id) => game.isHub(id)) ? (
-                    <ul className="airlines">
-                      {game.signed
-                        .filter((id) => game.isHub(id))
-                        .map((id) => (
-                          <li key={id}>
-                            <b>{game.airline(id).name}</b>
-                            <span className="muted">Based here</span>
-                          </li>
-                        ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">No hub yet. A signed carrier can base aircraft here.</p>
-                  )}
-                </section>
-              ) : null}
+              {manageTab === 'hubs' ? <HubProgress game={game} /> : null}
               {manageTab === 'negotiation' ? (
                 <section data-testid="negotiation-desk">
                   <h3>Negotiation</h3>
