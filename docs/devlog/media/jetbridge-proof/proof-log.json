@@ -5,8 +5,8 @@
     "bridges": 1
   },
   "moves": [],
-  "target": "flt-ffhmvy",
-  "stairFlight": "flt-v6s3cr",
+  "target": "flt-pgchqj",
+  "stairFlight": "flt-t6f1zb",
   "stand": {
     "c": 11,
     "r": 6
@@ -18,795 +18,1056 @@
   "board": [
     {
       "frame": 0,
-      "clock": 60.62,
+      "clock": 56.92,
       "phase": "board",
-      "phaseTime": 6.43,
+      "phaseTime": 6.13,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 1,
-      "clock": 60.92,
+      "clock": 57.39,
       "phase": "board",
-      "phaseTime": 6.73,
+      "phaseTime": 6.6,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 2,
-      "clock": 61.22,
+      "clock": 57.69,
       "phase": "board",
-      "phaseTime": 7.03,
+      "phaseTime": 6.9,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 3,
-      "clock": 61.49,
+      "clock": 58.06,
       "phase": "board",
-      "phaseTime": 7.3,
+      "phaseTime": 7.27,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 4,
-      "clock": 61.79,
+      "clock": 58.36,
       "phase": "board",
-      "phaseTime": 7.6,
+      "phaseTime": 7.57,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 5,
-      "clock": 62.09,
+      "clock": 58.66,
       "phase": "board",
-      "phaseTime": 7.9,
+      "phaseTime": 7.87,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 6,
-      "clock": 62.39,
+      "clock": 58.96,
       "phase": "board",
-      "phaseTime": 8.2,
+      "phaseTime": 8.17,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 7,
-      "clock": 62.69,
+      "clock": 59.22,
       "phase": "board",
-      "phaseTime": 8.5,
+      "phaseTime": 8.43,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 8,
-      "clock": 62.99,
+      "clock": 59.52,
       "phase": "board",
-      "phaseTime": 8.8,
+      "phaseTime": 8.73,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 9,
-      "clock": 63.29,
+      "clock": 59.82,
       "phase": "board",
-      "phaseTime": 9.1,
+      "phaseTime": 9.03,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 10,
-      "clock": 63.59,
+      "clock": 60.12,
       "phase": "board",
-      "phaseTime": 9.4,
+      "phaseTime": 9.33,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 11,
-      "clock": 63.89,
+      "clock": 60.42,
       "phase": "board",
-      "phaseTime": 9.7,
+      "phaseTime": 9.63,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 12,
-      "clock": 64.19,
+      "clock": 60.72,
       "phase": "board",
-      "phaseTime": 10,
+      "phaseTime": 9.93,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 13,
-      "clock": 64.49,
+      "clock": 61.02,
       "phase": "board",
-      "phaseTime": 10.3,
+      "phaseTime": 10.23,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 14,
-      "clock": 64.79,
+      "clock": 61.29,
       "phase": "board",
-      "phaseTime": 10.6,
+      "phaseTime": 10.5,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 15,
-      "clock": 65.09,
+      "clock": 61.59,
       "phase": "board",
-      "phaseTime": 10.9,
+      "phaseTime": 10.8,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 16,
-      "clock": 65.39,
+      "clock": 61.89,
       "phase": "board",
-      "phaseTime": 11.2,
+      "phaseTime": 11.1,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 17,
-      "clock": 65.69,
+      "clock": 62.19,
       "phase": "board",
-      "phaseTime": 11.5,
+      "phaseTime": 11.4,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 18,
-      "clock": 65.99,
+      "clock": 62.49,
       "phase": "board",
-      "phaseTime": 11.8,
+      "phaseTime": 11.7,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 19,
-      "clock": 66.29,
+      "clock": 62.79,
       "phase": "board",
-      "phaseTime": 12.1,
+      "phaseTime": 12,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 20,
-      "clock": 66.59,
+      "clock": 63.09,
       "phase": "board",
-      "phaseTime": 12.4,
+      "phaseTime": 12.3,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 21,
-      "clock": 66.89,
+      "clock": 63.39,
       "phase": "board",
-      "phaseTime": 12.7,
+      "phaseTime": 12.6,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 22,
-      "clock": 67.16,
+      "clock": 63.66,
       "phase": "board",
-      "phaseTime": 12.97,
+      "phaseTime": 12.87,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 23,
-      "clock": 67.51,
+      "clock": 63.96,
       "phase": "board",
-      "phaseTime": 13.32,
+      "phaseTime": 13.17,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 24,
-      "clock": 67.81,
+      "clock": 64.26,
       "phase": "board",
-      "phaseTime": 13.62,
+      "phaseTime": 13.47,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 25,
-      "clock": 68.11,
+      "clock": 64.56,
       "phase": "board",
-      "phaseTime": 13.92,
+      "phaseTime": 13.77,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 26,
-      "clock": 68.41,
+      "clock": 64.86,
       "phase": "board",
-      "phaseTime": 14.22,
+      "phaseTime": 14.07,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 27,
-      "clock": 68.71,
+      "clock": 65.12,
       "phase": "board",
-      "phaseTime": 14.52,
+      "phaseTime": 14.33,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 28,
-      "clock": 69.01,
+      "clock": 65.39,
       "phase": "board",
-      "phaseTime": 14.82,
+      "phaseTime": 14.6,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 29,
-      "clock": 69.31,
+      "clock": 65.69,
       "phase": "board",
-      "phaseTime": 15.12,
+      "phaseTime": 14.9,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 30,
-      "clock": 69.61,
+      "clock": 65.99,
       "phase": "board",
-      "phaseTime": 15.42,
+      "phaseTime": 15.2,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 31,
-      "clock": 69.91,
+      "clock": 66.29,
       "phase": "board",
-      "phaseTime": 15.72,
+      "phaseTime": 15.5,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 32,
-      "clock": 70.14,
+      "clock": 66.59,
       "phase": "board",
-      "phaseTime": 15.95,
+      "phaseTime": 15.8,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 33,
-      "clock": 70.44,
+      "clock": 66.87,
       "phase": "board",
-      "phaseTime": 16.25,
+      "phaseTime": 16.08,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 34,
-      "clock": 70.74,
+      "clock": 67.17,
       "phase": "board",
-      "phaseTime": 16.55,
+      "phaseTime": 16.38,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 35,
-      "clock": 71.04,
+      "clock": 67.41,
       "phase": "board",
-      "phaseTime": 16.85,
+      "phaseTime": 16.62,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 36,
-      "clock": 71.34,
+      "clock": 67.71,
       "phase": "board",
-      "phaseTime": 17.15,
+      "phaseTime": 16.92,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 37,
-      "clock": 71.64,
+      "clock": 68.01,
       "phase": "board",
-      "phaseTime": 17.45,
+      "phaseTime": 17.22,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 38,
-      "clock": 71.94,
+      "clock": 68.31,
       "phase": "board",
-      "phaseTime": 17.75,
+      "phaseTime": 17.52,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 39,
-      "clock": 72.24,
+      "clock": 68.61,
       "phase": "board",
-      "phaseTime": 18.05,
+      "phaseTime": 17.82,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 40,
-      "clock": 72.54,
+      "clock": 68.91,
       "phase": "board",
-      "phaseTime": 18.35,
+      "phaseTime": 18.12,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 41,
-      "clock": 72.84,
+      "clock": 69.21,
       "phase": "board",
-      "phaseTime": 18.65,
+      "phaseTime": 18.42,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 42,
-      "clock": 73.14,
+      "clock": 69.51,
       "phase": "board",
-      "phaseTime": 18.95,
+      "phaseTime": 18.72,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 43,
-      "clock": 73.44,
+      "clock": 69.77,
       "phase": "board",
-      "phaseTime": 19.25,
+      "phaseTime": 18.98,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": null,
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 44,
-      "clock": 73.74,
+      "clock": 70.07,
       "phase": "board",
-      "phaseTime": 19.55,
+      "phaseTime": 19.28,
       "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:approach"
+      "otherPhase": "pc12:approach",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     }
   ],
   "retract": [
     {
       "frame": 0,
-      "clock": 99.78,
+      "clock": 98.01,
       "phase": "board",
-      "phaseTime": 45.59,
-      "extend": 0.944,
+      "phaseTime": 47.22,
+      "extend": 1,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 1,
-      "clock": 99.83,
+      "clock": 98.05,
       "phase": "board",
-      "phaseTime": 45.64,
-      "extend": 0.887,
+      "phaseTime": 47.26,
+      "extend": 0.944,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 2,
-      "clock": 99.87,
+      "clock": 98.1,
       "phase": "board",
-      "phaseTime": 45.68,
-      "extend": 0.831,
+      "phaseTime": 47.31,
+      "extend": 0.887,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 3,
-      "clock": 99.93,
+      "clock": 98.14,
       "phase": "board",
-      "phaseTime": 45.74,
-      "extend": 0.766,
+      "phaseTime": 47.35,
+      "extend": 0.831,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 4,
-      "clock": 99.97,
+      "clock": 98.19,
       "phase": "board",
-      "phaseTime": 45.78,
-      "extend": 0.709,
+      "phaseTime": 47.4,
+      "extend": 0.775,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 5,
-      "clock": 100.02,
+      "clock": 98.23,
       "phase": "board",
-      "phaseTime": 45.83,
-      "extend": 0.653,
+      "phaseTime": 47.44,
+      "extend": 0.719,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 6,
-      "clock": 100.06,
+      "clock": 98.28,
       "phase": "board",
-      "phaseTime": 45.87,
-      "extend": 0.597,
+      "phaseTime": 47.49,
+      "extend": 0.662,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 7,
-      "clock": 100.11,
+      "clock": 98.32,
       "phase": "board",
-      "phaseTime": 45.92,
-      "extend": 0.541,
+      "phaseTime": 47.53,
+      "extend": 0.606,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 8,
-      "clock": 100.15,
+      "clock": 98.37,
       "phase": "board",
-      "phaseTime": 45.96,
-      "extend": 0.484,
+      "phaseTime": 47.58,
+      "extend": 0.55,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 9,
-      "clock": 100.2,
+      "clock": 98.41,
       "phase": "board",
-      "phaseTime": 46.01,
-      "extend": 0.428,
+      "phaseTime": 47.62,
+      "extend": 0.494,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 10,
-      "clock": 100.24,
+      "clock": 98.46,
       "phase": "board",
-      "phaseTime": 46.05,
-      "extend": 0.372,
+      "phaseTime": 47.67,
+      "extend": 0.437,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 11,
-      "clock": 100.29,
+      "clock": 98.51,
       "phase": "board",
-      "phaseTime": 46.1,
-      "extend": 0.316,
+      "phaseTime": 47.72,
+      "extend": 0.372,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 12,
-      "clock": 100.33,
+      "clock": 98.56,
       "phase": "board",
-      "phaseTime": 46.14,
-      "extend": 0.259,
+      "phaseTime": 47.77,
+      "extend": 0.313,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 13,
-      "clock": 100.38,
+      "clock": 98.6,
       "phase": "board",
-      "phaseTime": 46.19,
-      "extend": 0.203,
+      "phaseTime": 47.81,
+      "extend": 0.256,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 14,
-      "clock": 100.42,
+      "clock": 98.65,
       "phase": "board",
-      "phaseTime": 46.23,
-      "extend": 0.147,
+      "phaseTime": 47.86,
+      "extend": 0.2,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 15,
-      "clock": 100.47,
+      "clock": 98.69,
       "phase": "board",
-      "phaseTime": 46.28,
-      "extend": 0.091,
+      "phaseTime": 47.9,
+      "extend": 0.144,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 16,
-      "clock": 100.51,
+      "clock": 98.74,
       "phase": "board",
-      "phaseTime": 46.32,
-      "extend": 0.034,
+      "phaseTime": 47.95,
+      "extend": 0.088,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 17,
-      "clock": 100.55,
+      "clock": 98.78,
+      "phase": "board",
+      "phaseTime": 47.99,
+      "extend": 0.031,
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": true,
+      "fading": 0,
+      "cabShown": true
+    },
+    {
+      "frame": 18,
+      "clock": 98.83,
       "phase": "pushback",
       "phaseTime": 0.01,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
-      "frame": 18,
-      "clock": 100.59,
+      "frame": 19,
+      "clock": 98.87,
       "phase": "pushback",
       "phaseTime": 0.06,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:landing"
-    },
-    {
-      "frame": 19,
-      "clock": 100.64,
-      "phase": "pushback",
-      "phaseTime": 0.1,
-      "extend": 0,
-      "stairs": 0,
-      "otherPhase": "cl415:landing"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 20,
-      "clock": 100.69,
+      "clock": 98.92,
+      "phase": "pushback",
+      "phaseTime": 0.11,
+      "extend": 0,
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
+    },
+    {
+      "frame": 21,
+      "clock": 98.96,
       "phase": "pushback",
       "phaseTime": 0.15,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
-      "frame": 21,
-      "clock": 100.74,
+      "frame": 22,
+      "clock": 99.01,
       "phase": "pushback",
       "phaseTime": 0.2,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
-    },
-    {
-      "frame": 22,
-      "clock": 100.78,
-      "phase": "pushback",
-      "phaseTime": 0.24,
-      "extend": 0,
-      "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 23,
-      "clock": 100.82,
+      "clock": 99.06,
       "phase": "pushback",
-      "phaseTime": 0.28,
+      "phaseTime": 0.25,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 24,
-      "clock": 100.87,
+      "clock": 99.11,
       "phase": "pushback",
-      "phaseTime": 0.33,
+      "phaseTime": 0.29,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 25,
-      "clock": 100.91,
+      "clock": 99.15,
       "phase": "pushback",
-      "phaseTime": 0.37,
+      "phaseTime": 0.34,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 26,
-      "clock": 100.96,
+      "clock": 99.2,
       "phase": "pushback",
-      "phaseTime": 0.42,
+      "phaseTime": 0.38,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:taxi_in"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 27,
-      "clock": 101.01,
+      "clock": 99.24,
       "phase": "pushback",
-      "phaseTime": 0.47,
+      "phaseTime": 0.43,
       "extend": 0,
       "stairs": 0,
-      "otherPhase": "cl415:deboard"
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 28,
-      "clock": 101.06,
+      "clock": 99.29,
       "phase": "pushback",
-      "phaseTime": 0.52,
+      "phaseTime": 0.48,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 29,
-      "clock": 101.1,
+      "clock": 99.34,
       "phase": "pushback",
-      "phaseTime": 0.56,
+      "phaseTime": 0.53,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 30,
-      "clock": 101.15,
+      "clock": 99.38,
       "phase": "pushback",
-      "phaseTime": 0.61,
+      "phaseTime": 0.57,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 31,
-      "clock": 101.28,
+      "clock": 99.42,
       "phase": "pushback",
-      "phaseTime": 0.74,
+      "phaseTime": 0.61,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 32,
-      "clock": 101.43,
+      "clock": 99.46,
       "phase": "pushback",
-      "phaseTime": 0.89,
+      "phaseTime": 0.64,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 33,
-      "clock": 101.59,
+      "clock": 99.61,
       "phase": "pushback",
-      "phaseTime": 1.05,
+      "phaseTime": 0.79,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 34,
-      "clock": 101.77,
+      "clock": 99.78,
       "phase": "pushback",
-      "phaseTime": 1.23,
+      "phaseTime": 0.97,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 35,
-      "clock": 101.92,
+      "clock": 99.96,
       "phase": "pushback",
-      "phaseTime": 1.38,
+      "phaseTime": 1.14,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 36,
-      "clock": 102.07,
+      "clock": 100.14,
       "phase": "pushback",
-      "phaseTime": 1.53,
+      "phaseTime": 1.33,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 37,
-      "clock": 102.22,
+      "clock": 100.29,
       "phase": "pushback",
-      "phaseTime": 1.68,
+      "phaseTime": 1.48,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 38,
-      "clock": 102.36,
+      "clock": 100.47,
       "phase": "pushback",
-      "phaseTime": 1.82,
+      "phaseTime": 1.65,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 39,
-      "clock": 102.49,
+      "clock": 100.62,
       "phase": "pushback",
-      "phaseTime": 1.95,
+      "phaseTime": 1.8,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 40,
-      "clock": 102.62,
+      "clock": 100.77,
       "phase": "pushback",
-      "phaseTime": 2.08,
+      "phaseTime": 1.95,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     },
     {
       "frame": 41,
-      "clock": 102.8,
+      "clock": 100.92,
       "phase": "pushback",
-      "phaseTime": 2.26,
+      "phaseTime": 2.11,
       "extend": 0,
-      "stairs": 1,
-      "otherPhase": "cl415:deboard"
+      "stairs": 0,
+      "otherPhase": "pc12:landing",
+      "bridged": false,
+      "fading": 0,
+      "cabShown": true
     }
   ],
   "stairCraft": {
     "x": 11,
     "y": 6,
     "heading": 0,
-    "af": "atr72"
+    "af": "e175"
   },
   "soldBack": [
     0,
@@ -815,327 +1076,435 @@
   "stairs": [
     {
       "frame": 0,
-      "clock": 200.87,
+      "clock": 194.02,
+      "phase": "deboard",
+      "phaseTime": 0.42,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 1,
+      "clock": 194.09,
       "phase": "deboard",
       "phaseTime": 0.5,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 1,
-      "clock": 200.94,
-      "phase": "deboard",
-      "phaseTime": 0.58,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 2,
-      "clock": 201.02,
+      "clock": 194.17,
+      "phase": "deboard",
+      "phaseTime": 0.57,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 3,
+      "clock": 194.24,
       "phase": "deboard",
       "phaseTime": 0.65,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 3,
-      "clock": 201.09,
-      "phase": "deboard",
-      "phaseTime": 0.73,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 4,
-      "clock": 201.17,
+      "clock": 194.32,
+      "phase": "deboard",
+      "phaseTime": 0.72,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 5,
+      "clock": 194.39,
       "phase": "deboard",
       "phaseTime": 0.8,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 5,
-      "clock": 201.24,
-      "phase": "deboard",
-      "phaseTime": 0.88,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 6,
-      "clock": 201.31,
+      "clock": 194.47,
+      "phase": "deboard",
+      "phaseTime": 0.87,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 7,
+      "clock": 194.54,
       "phase": "deboard",
       "phaseTime": 0.95,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 7,
-      "clock": 201.38,
-      "phase": "deboard",
-      "phaseTime": 1.01,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 8,
-      "clock": 201.45,
+      "clock": 194.62,
       "phase": "deboard",
-      "phaseTime": 1.09,
+      "phaseTime": 1.02,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 9,
-      "clock": 201.53,
+      "clock": 194.69,
       "phase": "deboard",
-      "phaseTime": 1.16,
+      "phaseTime": 1.1,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 10,
-      "clock": 201.6,
+      "clock": 194.77,
       "phase": "deboard",
-      "phaseTime": 1.24,
+      "phaseTime": 1.17,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 11,
-      "clock": 201.68,
+      "clock": 194.84,
+      "phase": "deboard",
+      "phaseTime": 1.25,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 12,
+      "clock": 194.91,
       "phase": "deboard",
       "phaseTime": 1.31,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 12,
-      "clock": 201.77,
-      "phase": "deboard",
-      "phaseTime": 1.4,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 13,
-      "clock": 201.84,
+      "clock": 194.99,
       "phase": "deboard",
-      "phaseTime": 1.48,
+      "phaseTime": 1.39,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 14,
-      "clock": 201.92,
+      "clock": 195.06,
       "phase": "deboard",
-      "phaseTime": 1.55,
+      "phaseTime": 1.46,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 15,
-      "clock": 201.99,
+      "clock": 195.13,
       "phase": "deboard",
-      "phaseTime": 1.63,
+      "phaseTime": 1.53,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 16,
-      "clock": 202.05,
+      "clock": 195.21,
       "phase": "deboard",
-      "phaseTime": 1.69,
+      "phaseTime": 1.61,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 17,
-      "clock": 202.13,
+      "clock": 195.27,
       "phase": "deboard",
-      "phaseTime": 1.76,
+      "phaseTime": 1.67,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 18,
-      "clock": 202.2,
+      "clock": 195.35,
       "phase": "deboard",
-      "phaseTime": 1.84,
+      "phaseTime": 1.75,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 19,
-      "clock": 202.28,
+      "clock": 195.42,
       "phase": "deboard",
-      "phaseTime": 1.91,
+      "phaseTime": 1.82,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 20,
-      "clock": 202.35,
+      "clock": 195.5,
       "phase": "deboard",
-      "phaseTime": 1.99,
+      "phaseTime": 1.9,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 21,
-      "clock": 202.42,
+      "clock": 195.57,
+      "phase": "deboard",
+      "phaseTime": 1.97,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 22,
+      "clock": 195.64,
       "phase": "deboard",
       "phaseTime": 2.05,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 22,
-      "clock": 202.49,
-      "phase": "deboard",
-      "phaseTime": 2.13,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 23,
-      "clock": 202.57,
+      "clock": 195.72,
       "phase": "deboard",
-      "phaseTime": 2.2,
+      "phaseTime": 2.12,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 24,
-      "clock": 202.64,
+      "clock": 195.79,
       "phase": "deboard",
-      "phaseTime": 2.28,
+      "phaseTime": 2.19,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 25,
-      "clock": 202.72,
+      "clock": 195.86,
       "phase": "deboard",
-      "phaseTime": 2.35,
+      "phaseTime": 2.26,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 26,
-      "clock": 202.79,
+      "clock": 195.94,
       "phase": "deboard",
-      "phaseTime": 2.43,
+      "phaseTime": 2.34,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 27,
-      "clock": 202.87,
+      "clock": 196.01,
       "phase": "deboard",
-      "phaseTime": 2.51,
+      "phaseTime": 2.41,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 28,
-      "clock": 202.95,
+      "clock": 196.09,
       "phase": "deboard",
-      "phaseTime": 2.58,
+      "phaseTime": 2.49,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 29,
-      "clock": 203.02,
+      "clock": 196.16,
       "phase": "deboard",
-      "phaseTime": 2.66,
+      "phaseTime": 2.57,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 30,
-      "clock": 203.09,
+      "clock": 196.24,
+      "phase": "deboard",
+      "phaseTime": 2.64,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 31,
+      "clock": 196.31,
       "phase": "deboard",
       "phaseTime": 2.72,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 31,
-      "clock": 203.17,
-      "phase": "deboard",
-      "phaseTime": 2.8,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 32,
-      "clock": 203.23,
+      "clock": 196.39,
+      "phase": "deboard",
+      "phaseTime": 2.79,
+      "extend": 0,
+      "stairs": 1,
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
+    },
+    {
+      "frame": 33,
+      "clock": 196.46,
       "phase": "deboard",
       "phaseTime": 2.87,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
-    },
-    {
-      "frame": 33,
-      "clock": 203.31,
-      "phase": "deboard",
-      "phaseTime": 2.95,
-      "extend": 0,
-      "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 34,
-      "clock": 203.39,
+      "clock": 196.54,
       "phase": "deboard",
-      "phaseTime": 3.02,
+      "phaseTime": 2.94,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     },
     {
       "frame": 35,
-      "clock": 203.46,
+      "clock": 196.61,
       "phase": "deboard",
-      "phaseTime": 3.1,
+      "phaseTime": 3.01,
       "extend": 0,
       "stairs": 1,
-      "otherPhase": null
+      "otherPhase": null,
+      "bridged": false,
+      "fading": 0,
+      "cabShown": false
     }
   ],
   "errors": []

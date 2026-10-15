@@ -3,6 +3,9 @@
 // and the script only changes sim speed and the camera while it waits.
 //   jetbridge-board.mp4   bridge docked on a boarding airliner, camera orbits, then pans to the stair stand
 //   jetbridge-retract.mp4 doors close, the bridge pulls back, then the tug pushes
+//   starter-stairs.mp4    bridge sold back, the next airliner boards on mobile stairs
+// Every frame carries a readout from the drawn scene: phase, bridge extend, and
+// whether the fuselage is on opaque materials while the bridge is out.
 import { chromium, type Page } from 'playwright'
 import { createServer } from 'vite'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -110,19 +113,58 @@ try {
 }
 console.log('boarding', JSON.stringify(await page.evaluate('({ target: window.__jb.target, stand: window.__jb.stand, moves: window.__jb.moves })')))
 
-type Sample = { clock: number; phase: string; phaseTime: number; extend: number; stairs: number; otherPhase: string | null }
+type Sample = {
+  clock: number
+  phase: string
+  phaseTime: number
+  extend: number
+  stairs: number
+  otherPhase: string | null
+  bridged: boolean
+  fading: number
+  cabShown: boolean
+}
+// Reads the drawn aircraft: the bridged flag the LOD sees, and how many visible
+// fuselage meshes are on a transparent fade material. Writes the same line on screen.
 const sampleJs = `(() => {
   const g = window.__hatch
+  const w = window.__world
   const f = g.flights.find((x) => x.id === window.__jb.target)
   const o = g.flights.find((x) => x.stand && x.stand.c === window.__jb.other.c && x.stand.r === window.__jb.other.r && x.phase !== 'gone')
-  return {
+  const mesh = f && w.jets.get(f.id)
+  const lod = mesh && mesh.getObjectByName('lod')
+  let fading = 0
+  if (lod && lod.buckets) {
+    const b = lod.buckets
+    for (const [group, list] of [[b.lowGroup, b.low], [b.midGroup, b.mid], [b.highGroup, b.high]]) {
+      if (!group.visible) continue
+      for (const m of list) if (m.visible && m.material === m.userData.fadeMat) fading++
+    }
+  }
+  const root = w.wr.staticGroup.getObjectByName('jet-bridges')
+  const apron = root && window.__jb.stand && root.children.find((c) => c.name === 'apron-bridge' && c.userData.stand.c === window.__jb.stand.c && c.userData.stand.r === window.__jb.stand.r)
+  const cab = apron && apron.getObjectByName('bridge-cab')
+  const s = {
     clock: +g.clock.toFixed(2),
     phase: f ? f.phase : 'gone',
     phaseTime: f ? +f.phaseTime.toFixed(2) : 0,
     extend: +g.bridgeExtendAt(window.__jb.stand).toFixed(3),
     stairs: g.crewScene().props.filter((p) => p.kind === 'stairs').length,
     otherPhase: o ? o.airframeId + ':' + o.phase : null,
+    bridged: !!(mesh && mesh.userData.bridged),
+    fading,
+    cabShown: !!(cab && cab.visible && apron.visible),
   }
+  let el = document.getElementById('jb-readout')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'jb-readout'
+    el.style.cssText = 'position:fixed;left:50%;top:132px;transform:translateX(-50%);z-index:99999;pointer-events:none;font:600 13px ui-monospace,monospace;color:#e8f4ff;background:rgba(8,16,28,.78);padding:5px 10px;border-radius:6px;white-space:nowrap'
+    document.body.appendChild(el)
+  }
+  const access = g.boughtBridges(window.__jb.stand) > 0 ? 'bridge extend ' + s.extend.toFixed(2) + (s.cabShown ? ' · cab drawn' : '') : 'no bridge · stairs ' + s.stairs
+  el.textContent = (f ? f.airframeId + ' ' : '') + s.phase + ' ' + s.phaseTime.toFixed(1) + 's · ' + access + ' · fuselage ' + (s.fading ? s.fading + ' fading' : 'opaque') + (s.bridged ? ' (bridge hold)' : '')
+  return s
 })()`
 
 /** The drawn bridge pieces, from the live scene graph. */
@@ -213,8 +255,9 @@ for (let i = 0; i < boardFrames; i++) {
   }
   await camera(page, pivot, yaw, pitch, dist)
   await page.waitForTimeout(60)
+  const s = (await page.evaluate(sampleJs)) as Sample
   await page.screenshot({ path: `${boardDir}/frame-${String(i).padStart(3, '0')}.png` })
-  boardLog.push({ frame: i, ...((await page.evaluate(sampleJs)) as Sample) })
+  boardLog.push({ frame: i, ...s })
 }
 await encode(boardDir, 3, `${out}/jetbridge-board.mp4`)
 console.log('board clip', boardLog[0], boardLog[boardLog.length - 1])
@@ -243,8 +286,8 @@ for (let i = 0; i < retractFrames; i++) {
   const u = i / (retractFrames - 1)
   await camera(page, quarter, sideYaw + 0.3 - u * 0.2, 0.78, Math.max(48, reach * 2.1))
   await page.waitForTimeout(60)
-  await page.screenshot({ path: `${retractDir}/frame-${String(i).padStart(3, '0')}.png` })
   const s = (await page.evaluate(sampleJs)) as Sample
+  await page.screenshot({ path: `${retractDir}/frame-${String(i).padStart(3, '0')}.png` })
   retractLog.push({ frame: i, ...s })
   if (s.phase === 'pushback' && s.phaseTime > 0.6) await page.evaluate('window.__hatch.speed = 0.5')
 }
@@ -266,7 +309,7 @@ await page.evaluate(`(() => {
     const airliner = (x) => !x.cargo && !x.ga && x.kind !== 'military' && ['narrowbody', 'regional', 'widebody'].includes(x.kind)
     const f = g.flights.find((x) => airliner(x) && x.stand && STANDS.some((s) => s.c === x.stand.c && s.r === x.stand.r) && (x.phase === 'deboard' || x.phase === 'board'))
     const stairs = g.crewScene().props.some((p) => p.kind === 'stairs')
-    if (f && stairs) { g.speed = 0.25; window.__jb.stairsReady = true; window.__jb.stairFlight = f.id; window.__jb.bridgeTarget = window.__jb.target; window.__jb.target = f.id; clearInterval(poll) }
+    if (f && stairs) { g.speed = 0.25; window.__jb.stairsReady = true; window.__jb.stairFlight = f.id; window.__jb.bridgeStand = window.__jb.stand; window.__jb.stand = f.stand; window.__jb.bridgeTarget = window.__jb.target; window.__jb.target = f.id; clearInterval(poll) }
   }, 30)
 })()`)
 await page.waitForFunction('window.__jb.stairsReady', null, { timeout: 600_000, polling: 100 })
@@ -286,8 +329,9 @@ for (let i = 0; i < stairFrames; i++) {
   const u = i / (stairFrames - 1)
   await camera(page, stairAt, stairYaw - 0.7 + u * 1.4, 0.5, 26)
   await page.waitForTimeout(60)
+  const s = (await page.evaluate(sampleJs)) as Sample
   await page.screenshot({ path: `${stairDir}/frame-${String(i).padStart(3, '0')}.png` })
-  stairLog.push({ frame: i, ...((await page.evaluate(sampleJs)) as Sample) })
+  stairLog.push({ frame: i, ...s })
 }
 await encode(stairDir, 3, `${out}/starter-stairs.mp4`)
 console.log('stairs clip', stairCraft, stairLog[0], stairLog[stairLog.length - 1])
@@ -297,4 +341,11 @@ writeFileSync(
   JSON.stringify({ bought, moves: await page.evaluate('window.__jb.moves'), target: await page.evaluate('window.__jb.bridgeTarget'), stairFlight: await page.evaluate('window.__jb.stairFlight'), stand, other, board: boardLog, retract: retractLog, stairCraft, soldBack: await page.evaluate('window.__jb.soldBack'), stairs: stairLog, errors }, null, 2),
 )
 console.log('wrote', out, 'pageerrors', errors)
-await finish(0)
+const boarding = boardLog.filter((s) => s.phase === 'board')
+const broken = [
+  ...boarding.filter((s) => s.extend < 1 || !s.bridged || s.fading > 0 || !s.cabShown).map((s) => `board ${s.frame}`),
+  ...retractLog.filter((s) => s.extend > 0 && (!s.bridged || s.fading > 0)).map((s) => `retract ${s.frame}`),
+  ...stairLog.filter((s) => s.stairs < 1 || s.cabShown || s.bridged).map((s) => `stairs ${s.frame}`),
+]
+console.log('checks', { boardFrames: boarding.length, retractFrames: retractLog.length, stairFrames: stairLog.length, broken })
+await finish(broken.length || !boarding.length ? 1 : 0)
