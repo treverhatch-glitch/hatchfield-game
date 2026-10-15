@@ -261,6 +261,25 @@ describe('feedback chrome', () => {
     expect(goals).toContain('width:40%')
     expect(goals).toContain('Reward $5,000')
 
+    const reputation = renderToStaticMarkup(
+      <MilestoneStack
+        goals={[
+          {
+            id: 'reputation_60',
+            title: 'Reputation 60',
+            detail: 'Carriers notice a well-run field.',
+            value: 55.20799999999992,
+            target: 60,
+            ratio: 55.20799999999992 / 60,
+            rewardText: '$6,000',
+          },
+        ]}
+        paid={[]}
+      />,
+    )
+    expect(reputation).toContain('55/60')
+    expect(reputation).not.toContain('55.207')
+
     const toast = renderToStaticMarkup(<EffectToasts toasts={[{ id: 't1', text: 'Security wait 6m to 2m' }]} />)
     expect(toast).toContain('Security wait 6m to 2m')
     expect(toast).toContain('data-testid="effect-toast"')

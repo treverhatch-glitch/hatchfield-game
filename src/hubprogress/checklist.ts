@@ -304,7 +304,7 @@ function connectionLine(type: HubArchetype, minutes: number | null): ChecklistLi
   return {
     id: 'connection',
     label,
-    detail: `${minutes} min (need ${CONNECTION_WINDOW_MIN})`,
+    detail: `${Math.round(minutes)} min (need ${CONNECTION_WINDOW_MIN})`,
     status: ok ? 'ok' : 'missing',
   }
 }

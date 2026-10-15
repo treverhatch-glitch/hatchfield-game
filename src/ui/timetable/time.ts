@@ -1,14 +1,13 @@
+import { faceClockLabel, faceDayIndex } from '../../core/faceClock.ts'
 import type { IcaoCode, TtWindow } from './types'
 
 /** Sim seconds → "HH:MM" on the 24h face of a day of `dayLength` seconds. */
 export function clockLabel(t: number, dayLength = 180): string {
-  const tod = ((t % dayLength) + dayLength) % dayLength
-  const mins = Math.floor((tod / dayLength) * 1440)
-  return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
+  return faceClockLabel(t, dayLength)
 }
 
 export function dayIndex(t: number, dayLength = 180): number {
-  return Math.floor(t / dayLength) + 1
+  return faceDayIndex(t, dayLength)
 }
 
 /** Sim seconds per in-game hour. */

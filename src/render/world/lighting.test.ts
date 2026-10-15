@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { Game } from '../../game/sim'
-import { lerpHex, lightsFactor, moonDirection, simClockToHour, skyState, sunDirection } from './daylight'
+import { capReadableFog, FOG_READABLE, lerpHex, lightsFactor, moonDirection, simClockToHour, skyState, sunDirection } from './daylight'
 import { applyDayNight, DAY_NIGHT_CYCLE } from './dayNight'
 import { fitShadow, groundFocus, pickLod, stepFade } from './lod'
 import { parseQuality, QUALITY, suggestQuality } from './quality'
@@ -64,7 +64,12 @@ describe('day / night', () => {
     expect(storm.precip).toBe(1)
     expect(storm.lightning).toBe(true)
     expect(storm.wet).toBe(1)
-    expect(fog.fogFar).toBeLessThan(clear.fogFar / 2)
+    expect(fog.fogFar).toBeLessThan(clear.fogFar)
+    expect(fog.fogFar).toBeGreaterThanOrEqual(FOG_READABLE.far)
+    expect(fog.fogNear).toBeGreaterThanOrEqual(FOG_READABLE.near)
+    expect(skyState(12, 'rain').fogFar).toBeGreaterThanOrEqual(FOG_READABLE.far)
+    expect(skyState(12, 'storm').fogNear).toBeGreaterThanOrEqual(FOG_READABLE.near)
+    expect(capReadableFog(18, 70).fogFar).toBe(FOG_READABLE.far)
     expect(fog.lights).toBeGreaterThan(0)
     expect(lerpHex(0x000000, 0xffffff, 0.5)).toBe(0x808080)
   })

@@ -22,6 +22,8 @@ export const HALL_CAM_DIST = 66
 export const HALL_CAM_FOV = 40
 /** Close enough to read a passenger. Scroll back out for the whole hall. */
 export const HALL_CAM_MIN_DIST = 8
+/** Follow camera settles here so a selected passenger fills the view. */
+export const HALL_FOLLOW_DIST = 20
 /** Far enough to see the hall with apron around it. */
 export const HALL_CAM_MAX_DIST = 120
 /**

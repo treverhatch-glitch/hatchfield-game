@@ -6,6 +6,7 @@ import { pickTrackable } from '../camera/pick.ts'
 import { cameraSession } from '../camera/session.ts'
 import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
+import { apronForward, apronRight } from '../camera/pan.ts'
 import { inputMap } from '../input/map.ts'
 import { toWorld, World } from '../render/world'
 import { mapViewSnapshot, openMapDetail } from '../info/session.ts'
@@ -96,8 +97,8 @@ export function Field({ game }: { game: Game }) {
             game.diplomacyTourSeconds = Math.max(0, game.diplomacyTourSeconds - dt)
           } else if (!cameraSession.following) {
             const speed = 28 * dt
-            const fx = (inputMap.analog('camera.panRight') - inputMap.analog('camera.panLeft')) * speed
-            const fy = (inputMap.analog('camera.panBack') - inputMap.analog('camera.panForward')) * speed
+            const fx = apronRight(inputMap.analog('camera.panRight'), inputMap.analog('camera.panLeft')) * speed
+            const fy = apronForward(inputMap.analog('camera.panForward'), inputMap.analog('camera.panBack')) * speed
             if (fx || fy) w.nudgePan(fx, fy)
             const yaw = (inputMap.analog('camera.rotateLeft') - inputMap.analog('camera.rotateRight')) * 1.4 * dt
             if (yaw) w.nudgeYaw(yaw)

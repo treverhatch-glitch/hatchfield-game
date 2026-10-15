@@ -570,6 +570,7 @@ import {
   SIM_MINUTES_PER_REAL_SECOND,
   SimClock,
 } from '../core/clock.ts'
+import { formatFaceDate } from '../core/faceClock.ts'
 import {
   TycoonEngine,
   type CampaignKind,
@@ -14363,6 +14364,15 @@ export class Game {
     return this.hallGuests.filter((g) => !g.dead && g.lost).length
   }
 
+  /**
+   * Passengers in the terminal the player can see. The nav walk keeps them
+   * after the old hall-guest list drops boarded people.
+   */
+  terminalPaxCount(): number {
+    if (this.hallNav.live) return this.hallNav.passengers
+    return this.hallGuests.filter((g) => !g.dead && !g.preview).length
+  }
+
   /** Drop a departure wave at the doors so the lane can be watched. */
   demoHallCrowd(n = 8) {
     const fit = this.activeHall() ?? this.fits[0]
@@ -27029,10 +27039,5 @@ export function formatClock(seconds: number): string {
 
 /** Day length is the 180s cycle. Clock reads as a 24h face inside that day. */
 export function formatSimDate(seconds: number): string {
-  const day = Math.floor(seconds / 180) + 1
-  const tod = ((seconds % 180) + 180) % 180
-  const mins = Math.floor((tod / 180) * 24 * 60)
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return `Day ${day} · ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  return formatFaceDate(seconds)
 }

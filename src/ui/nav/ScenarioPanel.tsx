@@ -1,3 +1,4 @@
+import { formatPanelNumber } from '../../core/formatNumber.ts'
 import { scenarioById, scenarioDeadline, scenarioRuleLines, type ScenarioRun } from '../../scenarios/schedule.ts'
 import { SCENARIOS } from '../../scenarios/templates.ts'
 
@@ -26,7 +27,7 @@ export function ScenarioPanel({ game }: { game: ScenarioPanelGame }) {
           {active.name} · {run.status}
           {active.goal.kind === 'net_zero'
             ? ''
-            : ` · ${run.progress} / ${active.goal.target}`}
+            : ` · ${formatPanelNumber(run.progress)} / ${formatPanelNumber(active.goal.target)}`}
           {running ? ` · window ends day ${scenarioDeadline(run, active.goal)}` : ''}
         </p>
       ) : (

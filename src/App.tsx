@@ -170,6 +170,7 @@ function hudSnapshot(): string {
         game.flights[0]?.phase,
         game.flights[0]?.airframeId,
         game.hallGuests.length,
+        game.hallNav.passengers,
         game.fits.length,
         game.mechanics,
         game.runwayCondition,

@@ -3,6 +3,7 @@ import type { Celebration } from '../celebrations.ts'
 import { burstConfetti, stepConfetti, type ConfettiPiece } from '../confetti.ts'
 import { liveFeedback } from '../live.ts'
 import type { FeedbackView } from '../session.ts'
+import { formatPanelNumber } from '../../core/formatNumber.ts'
 import type { GoalView } from '../milestones.ts'
 import './feedback.css'
 
@@ -27,7 +28,7 @@ export function MilestoneStack({
           <header>
             <strong>{goal.title}</strong>
             <span>
-              {Math.min(goal.value, goal.target)}/{goal.target}
+              {formatPanelNumber(Math.min(goal.value, goal.target))}/{formatPanelNumber(goal.target)}
             </span>
           </header>
           <div className="feedback-bar" data-testid={`milestone-bar-${goal.id}`}>

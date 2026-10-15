@@ -10,7 +10,8 @@
  * light pools, headlight pools, and per-lamp glow rewrites.
  */
 import type { Weather } from '../../game/types'
-import { DAY_SECONDS, lerpHex, simClockToHour, smoothstep, type SkyState } from './daylight'
+import { faceHour } from '../../core/faceClock'
+import { DAY_SECONDS, lerpHex, smoothstep, type SkyState } from './daylight'
 
 export const DAY_NIGHT_CYCLE = {
   /** Sun clears the horizon. Matches the dawn ramp in `lightsFactor`. */
@@ -38,13 +39,13 @@ export const DAY_NIGHT = {
 
 /** Rig values a full-night override blends toward. Matches the midnight key. */
 export const NIGHT_FLOOR = {
-  sunIntensity: 0.16,
-  hemiIntensity: 0.32,
-  exposure: 1.15,
-  sunColor: 0x8ea6d8,
-  hemiSky: 0x30406a,
-  hemiGround: 0x1a2418,
-  ambient: 0.24,
+  sunIntensity: 0.045,
+  hemiIntensity: 0.08,
+  exposure: 0.62,
+  sunColor: 0x6a7ca8,
+  hemiSky: 0x12182c,
+  hemiGround: 0x0c100e,
+  ambient: 0.045,
   stars: 1,
 } as const
 
@@ -178,8 +179,9 @@ export function idleDayNight(): DayNightSample {
 export const FIXED_DAY_HOUR = 11
 
 /**
- * Photo-mode hour wins, then an explicit control hour, then the clock.
- * `cycle` false holds late morning so the field stays in daylight.
+ * Photo-mode hour wins, then an explicit control hour, then the face clock
+ * the HUD reads. `cycle` false holds late morning so the field stays in daylight.
+ * Gameplay night stays on `simClockToHour`; this path is the sky only.
  */
 export function resolveHour(
   clock: number,
@@ -190,7 +192,7 @@ export function resolveHour(
   if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
   if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
   if (!cycle) return FIXED_DAY_HOUR
-  return simClockToHour(clock)
+  return faceHour(clock)
 }
 
 /** Same precedence as `resolveHour`. Kept so older call sites stay on one resolver. */

@@ -15,6 +15,18 @@ export function simClockToHour(clock: number): number {
   return (19 + ((p - 2 / 3) / (1 / 3)) * 13) % 24
 }
 
+/**
+ * Closest the fog is allowed to sit. Weather still tints the sky; it must not
+ * swallow the apron at a normal zoom on Low or Medium.
+ */
+export const FOG_READABLE = { near: 180, far: 460 } as const
+
+export function capReadableFog(near: number, far: number): { fogNear: number; fogFar: number } {
+  const fogFar = Math.max(FOG_READABLE.far, far)
+  const fogNear = Math.min(Math.max(FOG_READABLE.near, near), fogFar * 0.55)
+  return { fogNear, fogFar }
+}
+
 export interface SkyState {
   hour: number
   /** Unit vector pointing from the ground toward the sun (or moon at night). */
@@ -155,8 +167,8 @@ export function skyState(hour: number, weather: Weather = 'clear'): SkyState {
     skyHorizon: k.horizon,
     fogColor: k.horizon,
     // Light aerial haze: the far field and farmland soften into the horizon colour.
-    fogNear: 150,
-    fogFar: 600,
+    fogNear: 240,
+    fogFar: 780,
     exposure: k.exposure,
     lights,
     stars: starsFactor(hour),
@@ -172,8 +184,8 @@ export function skyState(hour: number, weather: Weather = 'clear'): SkyState {
     s.fogColor = s.skyHorizon
     s.sunIntensity *= storm ? 0.22 : 0.45
     s.hemiIntensity *= storm ? 0.75 : 0.9
-    s.fogNear = storm ? 40 : 70
-    s.fogFar = storm ? 190 : 260
+    s.fogNear = storm ? 120 : 160
+    s.fogFar = storm ? 320 : 420
     s.wet = storm ? 1 : 0.75
     s.precip = storm ? 1 : 0.6
     s.lightning = storm
@@ -183,10 +195,13 @@ export function skyState(hour: number, weather: Weather = 'clear'): SkyState {
     s.skyHorizon = lerpHex(s.skyHorizon, 0xc6cfd6, 0.8)
     s.fogColor = s.skyHorizon
     s.sunIntensity *= 0.55
-    s.fogNear = 18
-    s.fogFar = 150
+    s.fogNear = 40
+    s.fogFar = 220
     s.wet = 0.3
     s.lights = Math.max(s.lights, 0.6)
   }
+  const fog = capReadableFog(s.fogNear, s.fogFar)
+  s.fogNear = fog.fogNear
+  s.fogFar = fog.fogFar
   return s
 }

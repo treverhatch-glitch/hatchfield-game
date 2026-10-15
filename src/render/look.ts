@@ -148,10 +148,10 @@ export const SKY_LOOK = {
 export const LIGHT_LOOK = {
   /** Ground bounce under the hemisphere, day and night. */
   hemiGroundDay: 0x6e8a4e,
-  hemiGroundNight: 0x1a2418,
+  hemiGroundNight: 0x0c100e,
   /** Ambient lift. Kept small so the sun still owns the shading. */
   ambientDay: 0.08,
-  ambientNight: 0.22,
+  ambientNight: 0.045,
   shadowBias: -0.00045,
   shadowNormalBias: 0.04,
 } as const
@@ -183,16 +183,16 @@ export const SUN_DISC = {
 
 /** Tuned sun key over a cooler hemisphere. Noon is sun-led; night is a dim moon. */
 export const DAYLIGHT_KEYS: readonly DaylightKey[] = [
-  { h: 0, top: 0x0a1430, horizon: 0x1b2a4a, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x30406a, hemiI: 0.32, exposure: 1.15 },
-  { h: 5, top: 0x0f1c3c, horizon: 0x2c3658, sun: 0x8ea6d8, sunI: 0.16, hemi: 0x34446c, hemiI: 0.34, exposure: 1.15 },
+  { h: 0, top: 0x03060f, horizon: 0x0c1424, sun: 0x6a7ca8, sunI: 0.045, hemi: 0x12182c, hemiI: 0.08, exposure: 0.62 },
+  { h: 5, top: 0x050a16, horizon: 0x101828, sun: 0x6a7ca8, sunI: 0.05, hemi: 0x141c30, hemiI: 0.09, exposure: 0.64 },
   { h: 6.5, top: 0x4a4e86, horizon: 0xff8a4e, sun: 0xff8c48, sunI: 1.45, hemi: 0xc4a090, hemiI: 0.62, exposure: 1.04 },
   { h: 8, top: 0x5b98d4, horizon: 0xf2d2aa, sun: 0xffe2b8, sunI: 2.75, hemi: 0xc6daf0, hemiI: 0.82, exposure: 0.98 },
   { h: 11, top: 0x3a7ec4, horizon: 0xd4e6f4, sun: 0xfff0c4, sunI: 3.4, hemi: 0xc5daf4, hemiI: 0.86, exposure: 1.0 },
   { h: 16, top: 0x3a7ec4, horizon: 0xd0e2f0, sun: 0xffebbc, sunI: 3.25, hemi: 0xc5daf4, hemiI: 0.84, exposure: 1.0 },
   { h: 18.2, top: 0x6a5a98, horizon: 0xff9450, sun: 0xff7a38, sunI: 2.05, hemi: 0xd0a898, hemiI: 0.7, exposure: 0.98 },
   { h: 19.3, top: 0x3a3058, horizon: 0xe06848, sun: 0xff7040, sunI: 0.85, hemi: 0xa08090, hemiI: 0.5, exposure: 1.06 },
-  { h: 20.5, top: 0x0e1a3a, horizon: 0x2a3458, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x34446c, hemiI: 0.34, exposure: 1.15 },
-  { h: 24, top: 0x0a1430, horizon: 0x1b2a4a, sun: 0x8ea6d8, sunI: 0.18, hemi: 0x30406a, hemiI: 0.32, exposure: 1.15 },
+  { h: 20.5, top: 0x050a16, horizon: 0x101828, sun: 0x6a7ca8, sunI: 0.05, hemi: 0x141c30, hemiI: 0.09, exposure: 0.64 },
+  { h: 24, top: 0x03060f, horizon: 0x0c1424, sun: 0x6a7ca8, sunI: 0.045, hemi: 0x12182c, hemiI: 0.08, exposure: 0.62 },
 ]
 
 /** Filmic grade applied after tone mapping, on Medium and High. */

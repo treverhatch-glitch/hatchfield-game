@@ -570,6 +570,8 @@ export class HallNav {
   private gates: string[] = []
   /** Departure ids in PaxNav's pose order, so colours follow people without reading `poses()`. */
   private depOrder: string[] = []
+  /** Reused by `locate` so a follow camera does not allocate every frame. */
+  private poseScratch = new Float32Array(256 * 4)
   /** Nav seconds since this hall's walk started. */
   navNow = 0
   boarded = 0
@@ -954,10 +956,28 @@ export class HallNav {
     return n + m
   }
 
-  /** Departing walker nearest a hall-view floor point (metres), within `maxM`. */
+  /** Walker nearest a hall-view floor point (metres), within `maxM`. Departures, then arrivals. */
   pickAt(hx: number, hz: number, maxM = 1): string | null {
     if (!this.live) return null
-    return this.navObj?.pick(hx - this.originX, hz - this.originZ, maxM) ?? null
+    const lx = hx - this.originX
+    const lz = hz - this.originZ
+    return this.navObj?.pick(lx, lz, maxM) ?? this.arr.pick(lx, lz, maxM)
+  }
+
+  /** Hall-view metres of a passenger (departures and arrivals). Null when they have left. */
+  locate(id: string): { x: number; z: number } | null {
+    if (!this.live || !id) return null
+    const pax = this.passengers
+    if (pax <= 0) return null
+    if (this.poseScratch.length < pax * 4) this.poseScratch = new Float32Array(pax * 4)
+    this.writePoses(this.poseScratch)
+    const ox = this.originX
+    const oz = this.originZ
+    for (let i = 0; i < pax; i++) {
+      if (this.idAt(i) !== id) continue
+      return { x: this.poseScratch[i * 4] + ox, z: this.poseScratch[i * 4 + 2] + oz }
+    }
+    return null
   }
 
   /** Waits that ended since the last drain (who, at which kit, how long). The sim turns them into mood. */
