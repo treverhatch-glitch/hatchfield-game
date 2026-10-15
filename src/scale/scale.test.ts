@@ -116,7 +116,8 @@ describe('fuel supply', () => {
     state.tankTier = 3
     const locked = field({ tiles, fieldLevel: 5, research: ['rail_fuel'], legacyFuel: false })
     expect(railLink(locked, true).flowing).toBe(false)
-    expect(tickFuel(locked, state, 60, 50_000).delivered).toBe(0)
+    expect(tickFuel(locked, state, 60, 50_000)).toMatchObject({ method: 'road', railFlowing: false })
+    state.litres = 0
     expect(railHints(locked).map((h) => h.id)).toEqual(expect.arrayContaining(['rail-line', 'rail-station']))
 
     paint(tiles, 2, 1, 'oil')

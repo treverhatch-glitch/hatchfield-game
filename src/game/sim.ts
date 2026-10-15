@@ -13163,9 +13163,6 @@ export class Game {
       return this.ground
     const prev = this.ground?.snapshot()
     const cap = tankDef(this.tankTier).capacityLitres
-    if (this.tankLitres <= 0 && this.fuelLoads > 0) {
-      this.tankLitres = Math.min(cap, seedLitresFromLoads(this.fuelLoads))
-    }
     const config = buildLogisticsConfig(
       this.tiles,
       this.standAccess,
@@ -13224,8 +13221,10 @@ export class Game {
     this.ground.sim.bindFuelStock({
       get: () => this.tankLitres,
       set: (litres) => {
+        const before = this.tankLitres
         const next = Math.min(tankDef(this.tankTier).capacityLitres, Math.max(0, litres))
         this.tankLitres = Number.isFinite(next) ? next : 0
+        if (this.contractId && this.tankLitres < before) this.termUpliftLitres += before - this.tankLitres
       },
     })
     this.groundRev = rev
