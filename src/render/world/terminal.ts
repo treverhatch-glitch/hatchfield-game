@@ -15,6 +15,7 @@ import { MATERIAL_TARGETS } from '../../build/materialTargets'
 import { tint as lighten } from './buildingSkin'
 import { exteriorTexture } from './exteriorArt'
 import { landingTexture } from './landingArt'
+import { trackWindowGlow, windowGlowTexture } from './nightArt'
 import {
   BAG_COLORS,
   bake,
@@ -306,6 +307,13 @@ export class TerminalBuilding {
     tileByPosition(this.glassMat, shared.surfaces.repeatFor('glass'))
     this.skyMat = own(this.glassMat.clone())
     this.skyMat.opacity = 0.18
+    const windows = windowGlowTexture(0)
+    if (windows) {
+      this.glassMat.emissiveMap = windows
+      this.glassMat.emissive.setHex(0xffffff)
+      this.glassMat.emissiveIntensity = 0
+      trackWindowGlow(this.glassMat)
+    }
     this.buildShell(opts.index)
     this.buildProps()
     this.buildRooms(opts.index)
@@ -1187,7 +1195,7 @@ export class TerminalBuilding {
     }
     this.glassMat.opacity = enclosed ? 1 : 0.3 + night * 0.22
     this.glassMat.depthWrite = enclosed
-    this.glassMat.emissiveIntensity = night * 1.05
+    this.glassMat.emissiveIntensity = this.glassMat.emissiveMap ? night * 1.15 : night * 1.05
     this.skyMat.opacity = enclosed ? 0.92 : 0.18 * this.roofFade
     this.skyMat.emissiveIntensity = night * 0.25
   }

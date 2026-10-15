@@ -10,6 +10,8 @@ import type { AirfieldLevels } from './dayNight'
 import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
+import { landingTexture } from './landingArt'
+import { fadeFloodPool } from './nightArt'
 import { CELL } from './view'
 
 /** Apron flood wash: centre distance from the mast and size (across, along), world units. */
@@ -76,9 +78,10 @@ export class AirfieldLights {
     this.fixMat = new THREE.MeshBasicMaterial({ color: 0x777777 })
     this.lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
     this.headMat = new THREE.MeshBasicMaterial({ color: 0x8a8a80 })
+    const flood = landingTexture('apron_flood_glow')
     this.poolMat = new THREE.MeshBasicMaterial({
-      map: textures.pool,
-      color: 0xffd9a0,
+      map: flood ?? textures.pool,
+      color: flood ? 0xffffff : 0xffd9a0,
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -86,6 +89,7 @@ export class AirfieldLights {
       polygonOffset: true,
       polygonOffsetFactor: -4,
     })
+    if (flood) fadeFloodPool(this.poolMat)
     this.mats.push(this.glowMat, this.haloMat, this.fixMat, this.lensMat, this.headMat, this.poolMat)
   }
 

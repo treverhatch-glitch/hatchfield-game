@@ -137,6 +137,7 @@ Wired:
 - Tree and bush sprite sheets as crossed cards. Chainlink on the perimeter fence, with the black holes discarded.
 - Dawn, noon, dusk, night, overcast, and storm skies on the dome. The mirror fold is feathered so a non-wrapping panorama does not show a hard seam. Rain and fog use the overcast plate while the sun is up. A storm uses the storm plate. Overnight rain and fog stay on the night plate.
 - The noon HDRI hint (`lighting/hdri_hint_noon.jpeg`) is a sun and hemisphere colour reference only. It is not a skybox.
+- Night: `window_glow` is the emissive mask on terminal glass and building walls (one copy per face, not a repeating tile). `apron_flood_glow` is the pool under the flood masts, faded at the edges. `nav_light_sprites` are additive billboards on the red, green, white, and beacon lamps. All three stay at 2048.
 - Terminal glass and the airport-hotel tower use the elevation plates once per face.
 - Queue tape on the belt barriers. Carousel belt on the claim carousel.
 

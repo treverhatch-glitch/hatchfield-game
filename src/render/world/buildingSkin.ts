@@ -10,6 +10,7 @@ import { MATERIAL_TARGETS, SKIN_TILE_M, YARD_TEXTURE, type BuildingTargetId } fr
 import { artTexture, photoTexturesEnabled, type ArtTextureId } from './textureRegistry'
 import { exteriorTexture, type ExteriorArtId } from './exteriorArt'
 import { landingTexture } from './landingArt'
+import { trackWindowGlow, windowGlowTarget, windowGlowTexture } from './nightArt'
 import type { QualityLevel } from './quality'
 
 export type SkinPart = 'wall' | 'roof' | 'trim' | 'door'
@@ -94,6 +95,15 @@ export function skinMaterial(target: BuildingTargetId, part: SkinPart, extra: TH
   const color = extra.color ?? t[part]
   const m = new THREE.MeshStandardMaterial({ roughness, map, ...extra, color: map ? tint(String(color instanceof THREE.Color ? `#${color.getHexString()}` : color), 0.35) : color })
   m.name = `skin:${target}:${part}`
+  if (part === 'wall' && windowGlowTarget(target)) {
+    const glow = windowGlowTexture(1)
+    if (glow) {
+      m.emissiveMap = glow
+      m.emissive = new THREE.Color(0xffffff)
+      m.emissiveIntensity = 0
+      trackWindowGlow(m)
+    }
+  }
   return m
 }
 
@@ -175,7 +185,46 @@ export function tankUv(geo: THREE.CylinderGeometry, tileM: number, worldPerMeter
   return geo
 }
 
-/** Shorthand: a box with metre UVs. */
+/**
+ * A second UV, 0–1 across each face. The window mask is not a seamless tile,
+ * so it uses this channel instead of the metre repeat.
+ */
+export function faceUv(geo: THREE.BufferGeometry, w: number, h: number, d: number): THREE.BufferGeometry {
+  const pos = geo.getAttribute('position')
+  let nor = geo.getAttribute('normal')
+  if (!nor) {
+    geo.computeVertexNormals()
+    nor = geo.getAttribute('normal')
+  }
+  const uv = new Float32Array(pos.count * 2)
+  for (let i = 0; i < pos.count; i++) {
+    const ax = Math.abs(nor.getX(i))
+    const ay = Math.abs(nor.getY(i))
+    const az = Math.abs(nor.getZ(i))
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const z = pos.getZ(i)
+    let u: number
+    let v: number
+    if (ay >= ax && ay >= az) {
+      u = x / w + 0.5
+      v = z / d + 0.5
+    } else if (ax >= az) {
+      u = z / d + 0.5
+      v = y / h + 0.5
+    } else {
+      u = x / w + 0.5
+      v = y / h + 0.5
+    }
+    uv[i * 2] = u
+    uv[i * 2 + 1] = v
+  }
+  geo.setAttribute('uv1', new THREE.BufferAttribute(uv, 2))
+  return geo
+}
+
+/** Shorthand: a box with metre UVs, plus a once-per-face window UV. */
 export function skinBox(w: number, h: number, d: number, tileM: number = SKIN_TILE_M.wall, worldPerMeter = 1): THREE.BoxGeometry {
-  return metreUv(new THREE.BoxGeometry(w, h, d), tileM, worldPerMeter) as THREE.BoxGeometry
+  const geo = metreUv(new THREE.BoxGeometry(w, h, d), tileM, worldPerMeter) as THREE.BoxGeometry
+  return faceUv(geo, w, h, d) as THREE.BoxGeometry
 }

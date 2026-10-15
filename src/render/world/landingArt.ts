@@ -32,6 +32,9 @@ export const LANDING_FILES = {
   sky_overcast: 'sky/overcast.jpeg',
   sky_storm: 'sky/storm.jpeg',
   hdri_hint_noon: 'lighting/hdri_hint_noon.jpeg',
+  window_glow: 'lighting/window_glow.jpeg',
+  apron_flood_glow: 'lighting/apron_flood_glow.jpeg',
+  nav_light_sprites: 'lighting/nav_light_sprites.jpeg',
 } as const
 
 export type LandingId = keyof typeof LANDING_FILES
@@ -63,6 +66,9 @@ export const LANDING_NATIVE: Record<LandingId, { w: number; h: number }> = {
   sky_overcast: { w: 2912, h: 1440 },
   sky_storm: { w: 2912, h: 1440 },
   hdri_hint_noon: { w: 2912, h: 1440 },
+  window_glow: { w: 2048, h: 2048 },
+  apron_flood_glow: { w: 2048, h: 2048 },
+  nav_light_sprites: { w: 2048, h: 2048 },
 }
 
 const CLAMP: ReadonlySet<LandingId> = new Set([
@@ -75,6 +81,9 @@ const CLAMP: ReadonlySet<LandingId> = new Set([
   'sky_overcast',
   'sky_storm',
   'hdri_hint_noon',
+  'window_glow',
+  'apron_flood_glow',
+  'nav_light_sprites',
   'terminal_facade',
   'hotel_facade',
   'threshold_metal',

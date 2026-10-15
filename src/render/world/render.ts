@@ -19,6 +19,7 @@ import {
   type DayNightSample,
 } from './dayNight'
 import { tintNoonLights } from './noonHint'
+import { setWindowGlow } from './nightArt'
 import { ContactShadows, contactSpots } from './contact'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type LandscapeTint } from './environment'
 import {
@@ -613,6 +614,7 @@ export class WorldRenderer {
     )
 
     const enclosed = view.view === 'apron'
+    setWindowGlow(night.terminalWindows)
     for (const b of this.buildings) b.update(camPos, step, this.q.lodScale, night.terminalWindows, focus, enclosed, camera)
     const feed = isFidsSource(view)
       ? view

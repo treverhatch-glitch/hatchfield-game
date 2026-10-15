@@ -76,6 +76,7 @@ import { setFidsOpen } from '../fids/open'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
 import { HOTEL_WALL, PARK_PAINT, SKIN_TILE_M } from '../build/materialTargets'
+import { paintWindow } from './world/nightArt'
 import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './world/airsideMass'
 import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass, addHydrantPit, addRailStation } from './world/massPass3'
 import { helipadTurnOnPad } from './world/padHeli'
@@ -1013,15 +1014,17 @@ export class World {
         new THREE.MeshStandardMaterial({ color: '#2f6f9a', roughness: 0.5 }),
       )
       roof.position.y = 3.5
+      const glassMat = new THREE.MeshStandardMaterial({
+        color: '#7ec3e8',
+        emissive: '#1a3a55',
+        emissiveIntensity: 0.2,
+        roughness: 0.12,
+        metalness: 0.4,
+      })
+      paintWindow(glassMat)
       const glass = new THREE.Mesh(
         new THREE.BoxGeometry(CELL * 0.78, 1.1, 0.08),
-        new THREE.MeshStandardMaterial({
-          color: '#7ec3e8',
-          emissive: '#1a3a55',
-          emissiveIntensity: 0.2,
-          roughness: 0.12,
-          metalness: 0.4,
-        }),
+        glassMat,
       )
       glass.position.set(0, 1.6, CELL * 0.46)
       g.add(body, roof, glass)
@@ -1372,13 +1375,15 @@ export class World {
         new THREE.MeshStandardMaterial({ color: accent }),
       )
       boothRoof.position.set(-CELL * 0.22, 1.7, boothZ)
+      const windowMat = new THREE.MeshStandardMaterial({
+        color: '#7ec3e8',
+        emissive: '#1a3a55',
+        emissiveIntensity: 0.2,
+      })
+      paintWindow(windowMat)
       const window = new THREE.Mesh(
         new THREE.BoxGeometry(0.55, 0.45, 0.06),
-        new THREE.MeshStandardMaterial({
-          color: '#7ec3e8',
-          emissive: '#1a3a55',
-          emissiveIntensity: 0.2,
-        }),
+        windowMat,
       )
       window.position.set(-CELL * 0.22, 1.05, boothZ + 0.56)
       const boom = new THREE.Mesh(
