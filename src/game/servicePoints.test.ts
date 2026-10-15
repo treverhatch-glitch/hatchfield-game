@@ -281,7 +281,7 @@ describe('service point source of truth', () => {
 
     sync(game)
     const live = game.buildingCard()
-    expect(live?.note).toBeUndefined()
+    expect(live?.note).toMatch(/^Security forecast:/)
     expect(live?.hire).toBe(false)
 
     const custom = field()
@@ -292,7 +292,7 @@ describe('service point source of truth', () => {
     custom.selectFacility('security')
     sync(custom)
     const card = custom.buildingCard()
-    expect(card?.note).toBeUndefined()
+    expect(card?.note).toMatch(/^Security forecast:/)
     expect(card?.hire).toBe(true)
     expect(card?.bays.some((bay) => bay.limit === CLOSED_NO_STAFF_LINE)).toBe(true)
     expect(card?.why).toContain(CLOSED_NO_STAFF_LINE)
