@@ -46,6 +46,7 @@ export const MONEY_CATEGORIES = [
   'cargo_miss',
   'crash_fine',
   'city_levy',
+  'civic_programs',
   'share_purchases',
   'staff_hiring',
 ] as const

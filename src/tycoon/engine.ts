@@ -122,6 +122,12 @@ export class TycoonEngine {
     return this.state.pendingReport
   }
 
+  /** Civic votes and other late-game systems may add to the same capped prestige score. */
+  addPrestige(amount: number) {
+    if (!Number.isFinite(amount) || amount <= 0) return
+    this.state.prestige = Math.min(PRESTIGE_CAP, this.state.prestige + Math.round(amount))
+  }
+
   view(day: number): TycoonView {
     const active = this.activeCampaigns(day)
     return {

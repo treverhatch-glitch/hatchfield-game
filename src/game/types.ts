@@ -1,5 +1,6 @@
 import type { InboundState } from '../inbound/types.ts'
 import type { EconomyState } from '../economy/types.ts'
+import type { CouncilState } from '../council/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
 import type { Tier3PlusId } from '../tier3plus/types.ts'
 import type { PremiumState } from '../premium/types.ts'
@@ -1164,6 +1165,8 @@ export interface GameSnapshot {
   deskLeases?: { pointId: string; kind: string; airlineId: string; mode: string }[]
   /** Shop leases, ad campaigns, and awards. Missing on older saves. */
   tycoon?: TycoonState
+  /** Late-game regional requests, standing, and recorded council votes. */
+  council?: CouncilState
   /** Bellwater Intl rival sim. */
   rival?: string
   /** Late-game disruption engine. Missing on older saves. The alert stack shows the card. */
