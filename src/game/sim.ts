@@ -694,7 +694,7 @@ import {
   readHubVehicleLeases,
   type HubDedicatedCounts,
 } from './hubProgress.ts'
-import { FERRY_GAP_DAYS, HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, NUDGE_FIELD_CAP, NUDGE_GAP_DAYS, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
+import { FERRY_GAP_DAYS, HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, NUDGE_DESK_ASK, NUDGE_FIELD_CAP, NUDGE_GAP_DAYS, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
 import {
   assignSentences,
   leaseCell,
@@ -1568,6 +1568,8 @@ export class Game {
   hubFerryDay: Record<string, number> = {}
   hubDeepLinkTick = 0
   hubDeepLinkAirline = ''
+  /** Bumps when a warmth text should open the Airlines hub tab. Not saved. */
+  hubRelationsTick = 0
   /** Test override for the one Accept roll. Null uses the holder, tier, and day. */
   hubRivalRoll: number | null = null
   parkingOffer: ParkingOffer | null = null
@@ -2030,6 +2032,7 @@ export class Game {
     this.hubFerryDay = {}
     this.hubDeepLinkTick = 0
     this.hubDeepLinkAirline = ''
+    this.hubRelationsTick = 0
     this.hubRivalRoll = null
     this.parkingOffer = null
     this.parkingCool = 65
@@ -4306,6 +4309,21 @@ export class Game {
       out.push({ id: lease.id, kind: 'vehicle', label: VEHICLE_ROLE_LABEL[lease.role] })
     }
     return out
+  }
+
+  /** Desk ids, lease ids, and truck roles already named to this carrier. */
+  dedicatedAssetLabels(airlineId: string): string[] {
+    const kindName = { lounge: 'Lounge', gate: 'Gate', hangar: 'Hangar' } as const
+    const desks = this.dedicatedDesks
+      .filter((row) => row.airlineId === airlineId)
+      .map((row) => `Desk ${row.deskId}`)
+    const leases = this.hubLeases
+      .filter((row) => row.airlineId === airlineId)
+      .map((row) => `${kindName[row.kind]} ${row.id}`)
+    const vehicles = this.hubVehicleLeases
+      .filter((row) => row.airlineId === airlineId)
+      .map((row) => VEHICLE_ROLE_LABEL[row.role])
+    return [...desks, ...leases, ...vehicles]
   }
 
   assignPoints(kind: AssignKind, role?: VehicleRole): {
@@ -19203,10 +19221,14 @@ export class Game {
       if (!step) continue
       if (this.hubNudgeSilenced.some((row) => row.airlineId === id && row.step === step.id)) continue
       const tier = HUB_TIER_LABEL[list.next]
+      const text =
+        step.id === 'desk'
+          ? `${NUDGE_DESK_ASK} Toward ${tier}.`
+          : `${this.airline(id).name}: ${step.label} would move you toward ${tier}.`
       this.hubNudges.push({
         airlineId: id,
         step: step.id,
-        text: `${this.airline(id).name}: ${step.label} would move you toward ${tier}.`,
+        text,
       })
       this.hubNudgeLast[id] = day
       this.hubNudgesSent += 1
@@ -19228,8 +19250,9 @@ export class Game {
     this.emit()
   }
 
-  /** Phone text opens the Airlines desk on this carrier. */
+  /** Phone text opens the Airlines hub tab and still records the desk ask. */
   openAirlinesFromPhone(airlineId: string) {
+    this.hubRelationsTick += 1
     this.openAirlines(airlineId)
   }
 

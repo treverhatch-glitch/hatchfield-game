@@ -9,6 +9,7 @@ import { GameTimetable } from './timetable/GameTimetable'
 import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
+import { AirlinesHub } from './hub/AirlinesHub.tsx'
 import { HubAssign, HubProgress } from './hub/HubPanels.tsx'
 import { openHubProfile } from './hub/session.ts'
 import { AssignPanel } from './hub/AssignPanel.tsx'
@@ -265,6 +266,14 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     const id = game.airlineDeskAsk?.airlineId || game.hubDeepLinkAirline
     if (id) openHubProfile(id)
   }, [game.hubDeepLinkTick, game])
+
+  const relationsAsk = game.hubRelationsTick
+  useEffect(() => {
+    if (relationsAsk <= 0) return
+    setChromePinned(true)
+    setInfoGroup('airlines')
+    openPanel('relations')
+  }, [relationsAsk, game])
 
   const openUnlock = (link: UnlockLink) => {
     setUnlockFocus(link.anchor)
@@ -1650,6 +1659,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {manageTab === 'letters' ? <AirlinesDesk game={game} /> : null}
+              {manageTab === 'relations' ? <AirlinesHub game={game} /> : null}
               {manageTab === 'hubs' ? <HubProgress game={game} /> : null}
               {manageTab === 'negotiation' ? (
                 <section data-testid="negotiation-desk">
