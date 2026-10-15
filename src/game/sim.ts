@@ -12816,14 +12816,15 @@ export class Game {
   }
 
   /**
-   * Hold passenger and slot fees while fuel is not on the wing.
-   * A farm that can still fuel this departure hands them straight back, so a
-   * working fuel contract does not sit without the fee. A short farm keeps them.
+   * A working farm has not cancelled the turn. Posting a cancel-refund and
+   * reversing it on the next fuel tick filled the ledger once per flight.
+   * The penalty line is written only when the farm is actually empty, and
+   * a real cancel still refunds through `refundUnflownFees`.
    */
   private settleUnflownFees(f: Flight) {
     if (!this.unflownFeesOpen(f)) return
+    if (!this.fuelOutage(f)) return
     this.refundUnflownFees(f)
-    if (!this.fuelOutage(f)) this.releaseUnflownFees(f)
   }
 
   /** Fuel is not on the wing yet, so passenger and slot fees are not the airline's to keep. */
