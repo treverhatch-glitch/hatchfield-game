@@ -84,6 +84,8 @@ export type Tile =
   | 'late_landmark'
   /** Cargo hub II or the cold store. Which one is read from the late site on the cell. */
   | 'late_cargo'
+  /** Raised public viewing deck with visible plane-spotter crowds. */
+  | 'spotters_deck'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -177,6 +179,7 @@ export type Tool =
   | 'quiet_hall'
   | 'cargo_hub_ii'
   | 'cold_store'
+  | 'spotters_deck'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -1167,7 +1170,7 @@ export interface GameSnapshot {
   disruptions?: string
   /** Year-end disruption, hub, and award counters. Missing on older saves. */
   playtestYear?: PlaytestYearSave
-  /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
+  /** Placed late buildings (hotel, rail link, SAF, landmarks, cargo, spotters). Missing on older saves. */
   economy?: EconomyState
   tier3Sites?: { id: Tier3PlusId; c: number; r: number; elapsedDays: number }[]
   /** Missed-connection guests waiting on the airport hotel. */

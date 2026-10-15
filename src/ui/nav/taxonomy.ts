@@ -189,6 +189,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
         'art_concourse',
         'grand_arrivals_hall',
         'quiet_hall',
+        'spotters_deck',
       ],
       progression: [],
     },

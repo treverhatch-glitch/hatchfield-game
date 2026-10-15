@@ -65,6 +65,7 @@ const EVERY_STAMP = {
   art_concourse: true,
   grand_arrivals_hall: true,
   quiet_hall: true,
+  spotters_deck: true,
   cargo_hub_ii: true,
   cold_store: true,
   clear: true,

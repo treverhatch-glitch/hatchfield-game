@@ -110,7 +110,8 @@ export function walkableFor(
     tile === 'late_hotel' ||
     tile === 'late_rail' ||
     tile === 'late_landmark' ||
-    tile === 'late_cargo'
+    tile === 'late_cargo' ||
+    tile === 'spotters_deck'
   )
 }
 

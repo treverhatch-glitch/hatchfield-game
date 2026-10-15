@@ -49,6 +49,21 @@ export const catalog: readonly Tier3PlusBuilding[] = [
     purpose: 'Satisfies green airline demand',
     catch: 'Fuel cost +8%',
   },
+  {
+    id: 'spotters_deck',
+    kind: 'spotters',
+    name: 'Spotters deck',
+    fieldLevel: 8,
+    cost: 145_000,
+    dailyUpkeep: 1_600,
+    buildDays: 0,
+    dailyIncome: 3_200,
+    prestigeItems: 1,
+    crowdSize: 18,
+    unique: true,
+    purpose: 'Daily visitor income and +1 prestige',
+    catch: 'One deck per airport; upkeep is paid every day',
+  },
 ]
 
 const landmarks: readonly LandmarkBuilding[] = PRESTIGE_LANDMARKS.map((row) => ({
