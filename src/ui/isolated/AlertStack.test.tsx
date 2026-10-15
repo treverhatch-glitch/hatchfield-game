@@ -4,7 +4,7 @@ import { Game } from '../../game/sim.ts'
 import { AlertStackView } from './AlertStack.tsx'
 
 describe('AlertStackView', () => {
-  it('shows at most two critical alerts and folds the rest', () => {
+  it('shows critical and warning on the bottom-right dock and leaves info off it', () => {
     const game = new Game()
     game.raiseAlert({
       key: 'cond:fuel-out',
@@ -20,11 +20,11 @@ describe('AlertStackView', () => {
     expect(html).toContain('class="alert-dock"')
     expect(html).toContain('data-testid="alert-stack"')
     expect(html).toContain('data-severity="critical"')
-    expect(html).not.toContain('data-severity="warning"')
+    expect(html).toContain('data-severity="warning"')
     expect(html).toContain('Critical')
+    expect(html).toContain('Warning')
     expect(html).toContain('Fuel farm is empty')
-    expect(html).toContain('1 folded')
-    expect(html).not.toContain('Cash is low')
+    expect(html).toContain('Cash is low')
     expect(html).not.toContain('VIP visit')
     expect(html).not.toContain('data-severity="info"')
     expect(html).toContain('data-testid="alert-cond:fuel-out"')
