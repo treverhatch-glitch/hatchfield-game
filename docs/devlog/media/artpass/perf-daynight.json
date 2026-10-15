@@ -1,0 +1,12 @@
+{
+  "quality": "high",
+  "speed": "5x",
+  "gpu": true,
+  "fps": {
+    "avg": 9,
+    "p99Ms": 133.4,
+    "frames": 73
+  },
+  "overlay": "9 fps  115.8 ms  (p99 419.9 ms)\ndraws 127   tris 84.8k\ngeos 200   tex 95 (~470.9 MB)\npax 28   vehicles 6   aircraft 1\nsim 0.0 ms",
+  "errors": []
+}
