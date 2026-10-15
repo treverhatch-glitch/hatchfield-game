@@ -16,6 +16,7 @@ import { AssignPanel } from './hub/AssignPanel.tsx'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
+import { FieldGoals } from '../feedback/ui/FeedbackChrome.tsx'
 import { LeftDock, type DockTab } from './layout/LeftDock.tsx'
 import { RelationsTab } from './layout/RelationsTab.tsx'
 import { AlertStackView } from './isolated/AlertStack.tsx'
@@ -591,6 +592,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         onTab={setDockTab}
         phone={<Phone game={game} desktop={desktopPhone} openSignal={phoneOpenSignal} embedded />}
         airlines={<RelationsTab game={game} />}
+        goals={<FieldGoals />}
         building={
           building ? (
             <BuildingPanel

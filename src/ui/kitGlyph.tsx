@@ -1,4 +1,6 @@
-/** Build-menu marks for the service props that wear a concept plate. */
+import { StampIcon } from './nav/stampIcons.tsx'
+
+/** Build-menu marks. Service props that wear a concept plate get a drawn mark; the rest get a stamp icon. */
 export function KitGlyph({ id }: { id: string }) {
   if (id === 'bag_drop') {
     return (
@@ -32,5 +34,5 @@ export function KitGlyph({ id }: { id: string }) {
       </svg>
     )
   }
-  return null
+  return <StampIcon id={id} className="kit-glyph" />
 }

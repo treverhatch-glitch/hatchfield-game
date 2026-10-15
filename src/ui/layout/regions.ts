@@ -15,10 +15,12 @@ export const HUD_VIEWPORTS = [
 export const REGION = {
   top: 52,
   info: 36,
-  build: 108,
+  build: 152,
   dock: 300,
   inspector: 340,
+  chips: 36,
   alertH: 148,
+  queue: 28,
   gap: 8,
 } as const
 
@@ -55,9 +57,11 @@ function box(id: string, x: number, y: number, w: number, h: number): Box {
 
 /** Apron HUD. The open timetable uses `sheet`, between the dock and the inspector. */
 export function apronPanels(width: number, height: number, band = REGION.top + REGION.info): Box[] {
-  const { build, dock, inspector, alertH, gap } = REGION
+  const { build, dock, inspector, chips, alertH, queue, gap } = REGION
   const dockBox = box('dock', gap, band + gap, dock, height - band - gap * 2)
-  const alerts = box('alerts', width - inspector - gap, band + gap, inspector, alertH)
+  const chipRow = box('chips', width - inspector - gap, band, inspector, chips)
+  const alerts = box('alerts', width - inspector - gap, chipRow.y + chips + gap, inspector, alertH)
+  const queueChip = box('queue', width - inspector - gap, alerts.y + alertH + gap, inspector, queue)
   const buildBox = box(
     'build',
     dockBox.x + dockBox.w + gap,
@@ -68,9 +72,9 @@ export function apronPanels(width: number, height: number, band = REGION.top + R
   const inspectorBox = box(
     'inspector',
     width - inspector - gap,
-    alerts.y + alerts.h + gap,
+    queueChip.y + queue + gap,
     inspector,
-    buildBox.y - (alerts.y + alerts.h + gap) - gap,
+    buildBox.y - (queueChip.y + queue + gap) - gap,
   )
   const sheet = box(
     'sheet',
@@ -81,7 +85,9 @@ export function apronPanels(width: number, height: number, band = REGION.top + R
   )
   return [
     box('top', 0, 0, width, band),
+    chipRow,
     alerts,
+    queueChip,
     inspectorBox,
     buildBox,
     dockBox,
@@ -92,7 +98,7 @@ export function apronPanels(width: number, height: number, band = REGION.top + R
 /** Terminal view. The build menu is centered in the middle band, clear of the dock. */
 export function hallPanels(width: number, height: number): Box[] {
   const apron = apronPanels(width, height)
-  const keep = new Set(['top', 'info', 'alerts', 'build', 'dock'])
+  const keep = new Set(['top', 'chips', 'alerts', 'queue', 'build', 'dock'])
   const middle = apron.find((item) => item.id === 'sheet')!
   const interior = box('interior', middle.x, middle.y, middle.w, 72)
   return [...apron.filter((item) => keep.has(item.id)), interior]

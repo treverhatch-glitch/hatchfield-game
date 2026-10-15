@@ -127,9 +127,9 @@ const KNOWN: Record<string, ReactElement> = {
   wallpaper: <path d="M8 6 H24 V26 H8 Z M8 12 H24 M8 18 H24" fill="none" stroke="currentColor" strokeWidth="1.6" />,
 }
 
-export function StampIcon({ id, kind }: { id: string; kind?: string }) {
+export function StampIcon({ id, kind, className = 'tray-ico' }: { id: string; kind?: string; className?: string }) {
   return (
-    <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden data-icon={id} data-kind={kind}>
+    <svg className={className} viewBox="0 0 32 32" aria-hidden data-icon={id} data-kind={kind}>
       {KNOWN[id] ?? monogram(id)}
     </svg>
   )

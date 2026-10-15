@@ -146,7 +146,7 @@ describe('phone feed', () => {
           summary: 'Landing · ask 4.20 · theirs 5.10',
           open: true,
         },
-        diplomacy: [{ id: 'p1', airline: 'Coastal Hop', text: 'Coastal Hop proposes a master contract: 14 flights a week.', kind: 'flights' }],
+        diplomacy: [{ id: 'p1', airline: 'Coastal Hop', text: 'Coastal Hop proposes a master contract: 14 flights a week.', kind: 'contract' }],
         priceWar: { headline: 'Bellwater cuts fees', detail: 'Walk-in is sliding.', actions: [{ id: 'hold', label: 'Hold fees' }] },
       }),
     )

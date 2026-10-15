@@ -19,6 +19,7 @@ export function LeftDock({
   phone,
   airlines,
   building,
+  goals,
   queued,
 }: {
   tab: DockTab
@@ -26,18 +27,21 @@ export function LeftDock({
   phone: ReactNode
   airlines: ReactNode
   building: ReactNode
+  /** Field goals. Shown above the closed phone and under the timetable note. */
+  goals?: ReactNode
   queued?: string | null
 }) {
   return (
     <div className="left-dock" data-testid="left-dock" data-hud-panel="dock" data-tab={tab}>
       <div className="left-dock-body">
-        <div className="left-dock-pane" hidden={tab !== 'phone'}>{phone}</div>
-        {tab === 'airlines' ? airlines : null}
         {tab === 'timetable' ? (
           <p className="left-dock-note" data-testid="timetable-dock-note">
             The timetable is open above the build bar.
           </p>
         ) : null}
+        {goals && (tab === 'phone' || tab === 'timetable') ? <div className="left-dock-goals">{goals}</div> : null}
+        <div className="left-dock-pane left-dock-phone" hidden={tab !== 'phone'}>{phone}</div>
+        {tab === 'airlines' ? airlines : null}
         {tab === 'building' ? building : null}
       </div>
       {queued ? (

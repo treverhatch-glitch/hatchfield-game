@@ -827,7 +827,12 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
   }
 
   for (const letter of world.diplomacy) {
-    const title = letter.kind === 'flights' ? `${letter.airline} proposes a master contract` : `${letter.airline} · ${letter.kind}`
+    const title =
+      letter.kind === 'contract'
+        ? `${letter.airline} proposes a master contract`
+        : letter.kind === 'flights'
+          ? `${letter.airline} wants more flights on the master contract`
+          : `${letter.airline} · ${letter.kind.replace(/_/g, ' ')}`
     const built = card({
       id: `diplomacy-${letter.id}`,
       key: `diplomacy:${letter.id}`,
