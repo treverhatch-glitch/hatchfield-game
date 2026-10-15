@@ -128,6 +128,8 @@ export const NUDGE_GAP_DAYS = 4
 export const NUDGE_FIELD_CAP = 3
 /** Same cap. The desk-lease notes use this name. */
 export const NUDGE_DAY_CAP = NUDGE_FIELD_CAP
+/** Desk ask on a warmth text. The tier name is still appended so the step stays obvious. */
+export const NUDGE_DESK_ASK = "We'd love a dedicated desk pair — interested?"
 
 /** Days between maintenance ferries once a hub carrier holds a hangar bay. */
 export const FERRY_GAP_DAYS = 3

@@ -15,7 +15,7 @@ export function phoneHost(game: Game): PhoneCommandHost {
     declineLayover: () => game.declineLayover(),
     acceptHub: () => game.acceptHub(),
     declineHub: () => game.declineHub(),
-    openAirlines: (airlineId) => game.openAirlines(airlineId),
+    openAirlines: (airlineId) => game.openAirlinesFromPhone(airlineId),
     openAssignScreen: (airlineId) => game.openAssignScreen(airlineId),
     laterNudge: (airlineId) => game.laterHubNudge(airlineId),
     declineNudge: (airlineId) => game.declineHubNudge(airlineId),
