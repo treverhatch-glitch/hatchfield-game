@@ -1418,7 +1418,6 @@ export class HallWorld {
       this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
       const crew = this.navCrowd.lastPoses()
       this.serviceFx.lanePlates = game.lanePlates()
-      this.serviceFx.restock = game.supplyCartPoses()
       this.serviceFx.sync(game.hallNav, game.clock, this.camera, game.deskBrands(), crew.poses, crew.total)
     }
     this.syncHallLeases(game)

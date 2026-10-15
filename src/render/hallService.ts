@@ -11,7 +11,7 @@
  *   check-in and security line, rebuilt when the layout changes;
  * - staff: desk agents and security officers drawn as full uniformed figures
  *   (shared people renderer, its LOD) at the posts the sim staffs. An
- *   unstaffed desk stays empty. Stores runners walk in as catering staff.
+ *   unstaffed desk stays empty.
  *
  * Everything is instanced; one draw per part type however many desks.
  */
@@ -24,11 +24,7 @@ import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
 import { crewLook } from '../people/variants.ts'
 import type { CrewKind, PersonLook } from '../people/types.ts'
 import { NEUTRAL_DESK_BRAND } from '../checkin/config.ts'
-import type { SupplyCartPose } from '../catering/supplyPath.ts'
 import { HALL_SERVICE_LOOK as L, TAPE_COLOR } from './hallServiceConfig'
-
-/** Restock phases that happen inside the hall. The depot, the drive and the screening are off-screen. */
-const RESTOCK_INDOOR: ReadonlySet<SupplyCartPose['phase']> = new Set(['trolley_to_shop', 'shelving', 'returning'])
 
 /** What a desk sign shows. */
 export interface DeskBrand {
@@ -179,8 +175,6 @@ export class HallServiceFx {
   private readonly signGeo = new THREE.PlaneGeometry(L.signW, L.signH)
   private readonly signBack = new THREE.MeshLambertMaterial({ color: '#2a2e33' })
   private readonly staff: PeopleRenderer
-  /** Stores runners from the sim. Drawn as catering staff walking to the shop's stock door, with no cart. */
-  restock: readonly SupplyCartPose[] = []
   private readonly agents: PeopleAgent[] = []
   private readonly looks = new Map<string, PersonLook>()
   private readonly lastPos = new Map<string, { x: number; z: number }>()
@@ -458,30 +452,6 @@ export class HallServiceFx {
           speed: speed > 0.2 ? Math.min(1.6, speed) : 0,
         })
       }
-    }
-    for (const r of this.restock) {
-      if (out.length >= L.maxStaff) break
-      if (!RESTOCK_INDOOR.has(r.phase)) continue
-      const id = `restock:${r.id}`
-      const was = this.lastPos.get(id)
-      const speed = was && dt > 0 ? Math.hypot(r.x - was.x, r.z - was.z) / dt : 0
-      if (was) {
-        was.x = r.x
-        was.z = r.z
-      } else this.lastPos.set(id, { x: r.x, z: r.z })
-      let look = this.looks.get(id)
-      if (!look) this.looks.set(id, (look = crewLook('catering', id)))
-      const shelving = r.phase === 'shelving' && r.docked
-      out.push({
-        id,
-        look,
-        x: r.x,
-        y: 0,
-        z: r.z,
-        yaw: r.yaw,
-        pose: shelving ? 'lift' : speed > 0.2 ? 'walk' : 'idle',
-        speed: speed > 0.2 ? Math.min(1.6, speed) : 0,
-      })
     }
     this.staff.update(out, camera, dt)
     this.stats.staff = out.length
