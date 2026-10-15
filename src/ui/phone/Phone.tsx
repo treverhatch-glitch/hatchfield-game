@@ -23,7 +23,17 @@ import './phone.css'
 const SWIPE_PX = 48
 const FLASH_MS = 4500
 
-export function Phone({ game, desktop, openSignal = 0 }: { game: Game; desktop?: boolean; openSignal?: number }) {
+export function Phone({
+  game,
+  desktop,
+  openSignal = 0,
+  embedded = false,
+}: {
+  game: Game
+  desktop?: boolean
+  openSignal?: number
+  embedded?: boolean
+}) {
   const detected = useDesktop()
   const show = desktop ?? detected
   const cards = show ? readPhoneCards(game) : []
@@ -66,6 +76,7 @@ export function Phone({ game, desktop, openSignal = 0 }: { game: Game; desktop?:
       onClose={() => setShell((cur) => phoneClose(cur))}
       onTab={(tab) => setShell((cur) => phoneSetTab(cur, tab))}
       onSwipe={(direction) => setShell((cur) => phoneSwipe(cur, direction))}
+      embedded={embedded}
       onAction={(action) => dispatchPhoneAction(phoneHost(game), action)}
     />
   )
@@ -75,6 +86,7 @@ export function PhoneView({
   cards,
   shell,
   belowCoach = false,
+  embedded = false,
   onOpen,
   onClose,
   onTab,
@@ -84,6 +96,7 @@ export function PhoneView({
   cards: PhoneCard[]
   shell: PhoneShell
   belowCoach?: boolean
+  embedded?: boolean
   onOpen: () => void
   onClose: () => void
   onTab: (tab: PhoneTab) => void
@@ -93,9 +106,20 @@ export function PhoneView({
   const preview = !shell.open ? flashPreview(cards, shell.flashKey) : null
   const page = cards.filter((card) => card.tab === shell.tab)
   const state = shell.open ? 'open' : shell.flashKey ? 'flash' : 'peek'
+  const urgentKey = page
+    .filter((card) => card.kind === 'negotiation' || card.kind === 'diplomacy' || card.kind === 'price-war')
+    .map((card) => card.id)
+    .join('|')
+  useEffect(() => {
+    if (!embedded || !shell.open || !urgentKey) return
+    const node = document.querySelector<HTMLElement>(
+      '[data-testid^="phone-action-negotiation-"], [data-testid^="phone-action-diplomacy-"], [data-testid^="phone-action-price-war-"]',
+    )
+    node?.scrollIntoView({ block: 'nearest' })
+  }, [embedded, shell.open, urgentKey])
 
   return (
-    <div className={`phone-dock${belowCoach ? ' below-coach' : ''}`} data-testid="phone" data-state={state}>
+    <div className={`phone-dock${belowCoach ? ' below-coach' : ''}${embedded ? ' embedded' : ''}`} data-testid="phone" data-state={state} data-hud-panel="phone">
       <div className={`phone-device is-${state}`}>
         {shell.open ? (
           <div className="phone-bezel">
@@ -301,6 +325,7 @@ function PhoneCardView({
               className={button.primary ? 'primary' : ''}
               disabled={button.disabled}
               data-testid={`phone-action-${card.id}-${button.id}`}
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => onAction(button.action)}
             >
               {button.label}

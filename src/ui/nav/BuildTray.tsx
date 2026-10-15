@@ -9,6 +9,7 @@ import { buildingById } from '../../tier3plus/index.ts'
 import { requestKit } from './kitFocus.ts'
 import { siteHasWater } from '../../fuel/barge.ts'
 import { stampCard, toolStampInput, type StampCard, type UnlockLink } from './stampFacts.ts'
+import { StampIcon } from './stampIcons.tsx'
 import { groupsForView, STAMP_HOVER_MS, type BuildMenu, type FurnishEntry } from './taxonomy.ts'
 
 const HALL_MARKS = new Set(['premade', 'terminal', 'prefab_ii', 'satellite', 'concourse', 'pier_ii'])
@@ -34,22 +35,7 @@ function TrayMark({ tool }: { tool: string }) {
             isLandmarkId(tool)
             ? 'land'
             : 'ops'
-  return (
-    <svg className="tray-ico" data-kind={kind} viewBox="0 0 32 32" aria-hidden>
-      {kind === 'strip' ? <rect x="3" y="13" width="26" height="6" rx="1" fill="currentColor" /> : null}
-      {kind === 'path' ? <path d="M6 24 L16 8 L26 24" fill="none" stroke="currentColor" strokeWidth="2.4" /> : null}
-      {kind === 'stand' ? <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" strokeWidth="2.4" /> : null}
-      {kind === 'clear' ? <path d="M8 8 L24 24 M24 8 L8 24" stroke="currentColor" strokeWidth="2.4" /> : null}
-      {kind === 'hall' ? (
-        <>
-          <rect x="3" y="10" width="16" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
-          <rect x="19" y="13" width="10" height="6" fill="currentColor" />
-        </>
-      ) : null}
-      {kind === 'land' ? <rect x="6" y="10" width="20" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /> : null}
-      {kind === 'ops' ? <rect x="8" y="8" width="16" height="16" rx="2" fill="currentColor" /> : null}
-    </svg>
-  )
+  return <StampIcon id={tool} kind={kind} />
 }
 
 function LockMark() {

@@ -54,7 +54,7 @@ describe('HintPanel', () => {
     expect(hint).toContain('left:16px')
     expect(hint).not.toContain('bottom:')
     expect(hint).toContain('data-testid="hint-badge"')
-    expect(dock).toContain('class="alert-dock"')
+    expect(dock).toContain('alert-dock')
     expect(dock).toContain('Cash is low')
     expect(PHONE_EXCLUDED_KINDS).toContain('hint')
     expect(hint).not.toContain('data-testid="phone')

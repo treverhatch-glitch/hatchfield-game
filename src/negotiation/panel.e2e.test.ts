@@ -35,36 +35,39 @@ describe('negotiation panel', () => {
         await page.getByTestId('start-pax').click()
         await page.waitForFunction(() => Boolean((window as unknown as { __hatch?: { presentNegotiation?: (id: string) => void } }).__hatch))
         await page.evaluate(() => {
-          ;(window as unknown as { __hatch: { presentNegotiation: (id: string) => void } }).__hatch.presentNegotiation('harbor')
+          const game = (window as unknown as { __hatch: { presentNegotiation: (id: string) => void; openNegotiationPanel: () => void } }).__hatch
+          game.presentNegotiation('harbor')
+          game.openNegotiationPanel()
         })
-        const panel = page.getByTestId('negotiation-panel')
-        await panel.waitFor({ state: 'visible' })
-        const box = await panel.boundingBox()
+        await page.getByTestId('dock-tab-phone').click()
+        const peek = page.getByTestId('phone-peek')
+        if (await peek.count()) await peek.click()
+        const messages = page.getByTestId('phone-tab-messages')
+        if ((await messages.getAttribute('aria-selected')) !== 'true') await messages.click()
+        if (await page.getByTestId('phone-tab-shut').count()) await messages.click()
+        const card = page.getByTestId('phone-card-negotiation')
+        await card.waitFor({ state: 'visible' })
+        expect(await page.getByTestId('negotiation-panel').count()).toBe(0)
+        const box = await card.boundingBox()
         const viewport = page.viewportSize()
         expect(box).toBeTruthy()
         expect(viewport).toBeTruthy()
         if (!box || !viewport) return
-        expect(box.width).toBeLessThan(viewport.width * 0.5)
-        expect(box.x).toBeGreaterThan(viewport.width * 0.45)
+        expect(box.x + box.width).toBeLessThan(viewport.width * 0.45)
         const hit = await page.evaluate(() => {
-          const layer = document.querySelector('[data-testid="negotiation-layer"]')
-          const sheet = document.querySelector('[data-testid="negotiation-panel"]')
-          const spot = document.elementFromPoint(80, 460)
-          const layerStyle = layer ? getComputedStyle(layer).pointerEvents : ''
+          const spot = document.elementFromPoint(viewportCenter(), 460)
           return {
-            layerStyle,
-            inPanel: Boolean(sheet && spot && sheet.contains(spot)),
+            inPhone: Boolean(spot?.closest('[data-testid="phone"]')),
             canvas: Boolean(document.querySelector('canvas.field')),
           }
+          function viewportCenter() {
+            return Math.round(window.innerWidth * 0.62)
+          }
         })
-        expect(hit.layerStyle).toBe('none')
-        expect(hit.inPanel).toBe(false)
+        expect(hit.inPhone).toBe(false)
         expect(hit.canvas).toBe(true)
-        await page.getByTestId('negotiation-close').click()
-        await page.waitForFunction(() => {
-          const sheet = document.querySelector('[data-testid="negotiation-panel"]')
-          return !sheet
-        })
+        await page.getByTestId('phone-action-negotiation-close').click()
+        await page.waitForFunction(() => !document.querySelector('[data-testid="phone-card-negotiation"]'))
         expect(await page.locator('canvas.field').count()).toBeGreaterThan(0)
       } finally {
         await browser.close()

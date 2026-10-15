@@ -13,8 +13,6 @@ import { MenuFlyover } from './ui/MenuFlyover'
 import { TerminalView } from './ui/TerminalView'
 import { shownWorld } from './render/viewCue'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
-import { OfferPanel } from './negotiation/OfferPanel'
-import { PriceWarCard } from './rival/PriceWarCard'
 import { PlaytestYearPanel } from './reports/PlaytestYearPanel'
 import { TitleScreen } from './ui/TitleScreen'
 import { PlayInput } from './ui/PlayInput'
@@ -320,7 +318,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
     <>
       <Hud game={game} onNewGame={onNewGame} />
       <InfoViews game={game} />
-      <OfferPanel game={game} />
+      {/* Offer and counter live on the phone. The sheet no longer covers the apron. */}
       <OwnerChrome game={game} />
       <FeedbackChrome />
       <PlaytestYearMount game={game} />
@@ -467,7 +465,7 @@ export default function App() {
           setScreen('title')
         }}
       />
-      <PriceWarCard game={game} />
+      {/* Price war, master contracts, and the year report arrive as phone messages. */}
     </div>
   )
 }

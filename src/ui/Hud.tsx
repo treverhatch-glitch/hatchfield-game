@@ -16,6 +16,8 @@ import { AssignPanel } from './hub/AssignPanel.tsx'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
+import { LeftDock, type DockTab } from './layout/LeftDock.tsx'
+import { RelationsTab } from './layout/RelationsTab.tsx'
 import { AlertStackView } from './isolated/AlertStack.tsx'
 import { BuildTray } from './nav/BuildTray.tsx'
 import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
@@ -133,6 +135,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const panel = manageTab ? sheetFor(manageTab) : null
   const [openLetter, setOpenLetter] = useState<string | null>(null)
   const [phoneOpenSignal, setPhoneOpenSignal] = useState(0)
+  const [dockTab, setDockTab] = useState<DockTab>('phone')
   const [hoverLetter, setHoverLetter] = useState<string | null>(null)
   // Desktop reads those letters on the phone, which holds them itself.
   const desktopPhone = useDesktop()
@@ -277,6 +280,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     setChromePinned(true)
     setInfoGroup('airlines')
     openPanel('relations')
+    setDockTab('airlines')
   }, [relationsAsk, game])
 
   const openUnlock = (link: UnlockLink) => {
@@ -297,6 +301,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   }, [manageTab])
 
   const building = game.buildingCard()
+  const buildingName = building?.name ?? ''
+  const [dockBuilding, setDockBuilding] = useState('')
+  if (buildingName && buildingName !== dockBuilding) {
+    setDockBuilding(buildingName)
+    setDockTab('building')
+  }
   const ticker = game.news.slice(0, 5)
   const xp = game.fieldXpToNext()
   const standing = game.avgStanding()
@@ -309,13 +319,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     <div className="hud">
       <ApronFlightCard game={game} />
       <AssignPanel game={game} />
-      <BuildingPanel
-        card={building}
-        onClose={() => game.closeBuilding()}
-        onHire={building?.hire ? () => game.hireDeskStaff() : undefined}
-        onAction={(id) => game.buildingCardAction(id)}
-        onPreview={(id) => game.previewStandRow(id)}
-      />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
       <GameTimetable
@@ -323,6 +326,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         menuOpen={!!buildMenu}
         plannerOpen={manageTab === 'planner'}
         onFuel={() => openPanel('services')}
+        forceOpen={dockTab === 'timetable'}
+        onForceClose={() => setDockTab('phone')}
       />
       <button
         type="button"
@@ -334,7 +339,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         Boards
       </button>
       {boardsOpen ? <BoardPanel source={game} onClose={() => setFidsOpen(false)} /> : null}
-      <header className="top" data-testid="stats-bar" ref={topBar}>
+      <header className="top" data-testid="stats-bar" data-hud-panel="top" ref={topBar}>
         <div className="brand">
           <strong>{game.branding.airportName}</strong>
           <span>
@@ -574,14 +579,32 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         </div>
       ) : null}
 
-      {!panel && game.pendingYearReport() ? (
+      {!panel && !desktopPhone && game.pendingYearReport() ? (
         <YearReportCard
           report={game.pendingYearReport()!}
           formatMoney={money}
           onDismiss={() => game.dismissYearReport()}
         />
       ) : null}
-      <Phone game={game} desktop={desktopPhone} openSignal={phoneOpenSignal} />
+      <LeftDock
+        tab={dockTab}
+        onTab={setDockTab}
+        phone={<Phone game={game} desktop={desktopPhone} openSignal={phoneOpenSignal} embedded />}
+        airlines={<RelationsTab game={game} />}
+        building={
+          building ? (
+            <BuildingPanel
+              card={building}
+              onClose={() => game.closeBuilding()}
+              onHire={building.hire ? () => game.hireDeskStaff() : undefined}
+              onAction={(id) => game.buildingCardAction(id)}
+              onPreview={(id) => game.previewStandRow(id)}
+            />
+          ) : (
+            <p className="left-dock-note">Select a building on the field.</p>
+          )
+        }
+      />
       <AlertStackView game={game} />
       {levelUp != null ? (
         <LevelUpCard
@@ -602,7 +625,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         aria-label="Incoming letters"
         data-testid="letter-stack"
       >
-        <DiplomacyLetters game={game} />
+        {desktopPhone ? null : <DiplomacyLetters game={game} />}
         {(() => {
           type Letter = {
             id: string
@@ -790,6 +813,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               from: 'Operations',
               title: fuelOut.title,
               blurb: fuelOut.detail,
+              tone: 'bad',
+              left: null,
+            })
+          }
+          const fire = game.alerts.ranked().find((alert) => alert.severity === 'critical' && /fire/i.test(alert.key + alert.title))
+          if (fire && fire.key !== 'cond:fuel-out') {
+            letters.push({
+              id: 'fire',
+              kind: 'Fire',
+              from: 'Operations',
+              title: fire.title,
+              blurb: fire.detail,
               tone: 'bad',
               left: null,
             })
@@ -1129,7 +1164,21 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       </div>
 
       <HubAssign game={game} />
+      {panel && game.selectedFlight ? (
+        <button
+          type="button"
+          className="inspector-queue"
+          data-testid="inspector-queue"
+          onClick={() => {
+            setPanel(null)
+            setChromePinned(false)
+          }}
+        >
+          Flight card waiting
+        </button>
+      ) : null}
       <div
+        data-hud-panel="build"
         className={`chrome${panel ? ' has-panel' : ''}${chromePinned ? ' pinned' : ''}`}
         onMouseLeave={() => {
           if (!chromePinned) return

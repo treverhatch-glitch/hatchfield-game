@@ -1,7 +1,6 @@
 import type { CSSProperties, MouseEvent } from 'react'
 import type { Game } from '../../game/sim.ts'
 import type { Alert } from '../../game/alerts.ts'
-import { ALERT_TUNING } from '../../game/alertsData.ts'
 import { DISRUPTION_ALERT_PREFIX } from '../../disruptions/alertFeed.ts'
 import { AlertMarks } from '../alerts/AlertMark.tsx'
 
@@ -49,28 +48,31 @@ function AlertDock({ game }: { game: Game }) {
   const stack = game.alerts
   const rows = stack.ranked().filter(isStackAlert)
   if (!rows.length) return null
-  const worst = rows[0].severity
-  if (stack.minimised) {
+  const critical = rows.filter((row) => row.severity === 'critical')
+  const folded = rows.length - Math.min(2, critical.length)
+  const worst = critical[0]?.severity ?? rows[0].severity
+  if (stack.minimised || critical.length === 0) {
     return (
       <button
         type="button"
         className="alert-dock alert-dock-min"
-        data-testid="alert-counter"
+        data-testid={critical.length === 0 ? 'alert-stack' : 'alert-counter'}
         onClick={() => game.minimiseAlerts(false)}
         title="Show alerts"
         style={{ borderColor: SEV_COLOR[worst] }}
       >
         {SEV_LABEL[worst]} · {rows.length}
+        {critical.length === 0 ? ` · ${rows[0].title}` : folded > 0 ? ` · ${folded} folded` : ''}
       </button>
     )
   }
-  const shown = rows.slice(0, ALERT_TUNING.visible)
+  const shown = critical.slice(0, 2)
   return (
-    <div className="alert-dock" data-testid="alert-stack">
+    <div className="alert-dock" data-testid="alert-stack" data-hud-panel="alerts">
       <div className="alert-dock-head">
         <span>
-          Alerts · {rows.length}
-          {rows.length > shown.length ? ` (${rows.length - shown.length} more)` : ''}
+          Alerts · {shown.length}
+          {folded > 0 ? ` · ${folded} folded` : ''}
         </span>
         <button
           type="button"

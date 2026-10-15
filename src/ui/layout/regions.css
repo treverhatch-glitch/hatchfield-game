@@ -1,0 +1,322 @@
+/*
+ * Fixed HUD regions. Sizes match REGION in regions.ts.
+ * Left dock, bottom build bar, right inspector, top-right alerts.
+ * One panel occupies a region. The rest wait on a tab or the queue chip.
+ */
+
+.hud {
+  --region-top: 52px;
+  --region-info: 36px;
+  --region-build: 108px;
+  --region-dock: 300px;
+  --region-inspector: 340px;
+  --region-gap: 8px;
+}
+
+.left-dock {
+  position: absolute;
+  left: var(--region-gap);
+  top: calc(var(--hud-top) + 44px);
+  bottom: var(--region-gap);
+  width: var(--region-dock);
+  z-index: 34;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  min-height: 0;
+}
+
+.left-dock > * {
+  pointer-events: auto;
+}
+
+.hud:has(.coach:not(.is-chip)) .left-dock {
+  top: calc(var(--hud-top) + 212px);
+}
+
+.hud:has([data-testid='hint-panel']) .coach.is-chip {
+  left: calc(var(--region-gap) + 150px);
+}
+
+.hud:has([data-testid='hint-panel'][data-open='1']) .coach:not(.is-chip) {
+  display: none;
+}
+
+.left-dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.left-dock-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.left-dock-pane[hidden] {
+  display: none;
+}
+
+.left-dock-note {
+  margin: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.left-dock-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.left-dock-tabs button {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(15 23 42 / 0.92);
+  color: #e2e8f0;
+  padding: 6px 4px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.left-dock-tabs button.on {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #7dd3fc;
+}
+
+.hud .coach {
+  left: var(--region-gap);
+  top: calc(var(--hud-top) + 44px);
+  width: var(--region-dock);
+  max-height: 160px;
+  z-index: 35;
+}
+
+.hud .coach.is-chip {
+  top: calc(var(--hud-top) + 8px);
+  width: auto;
+  max-height: none;
+}
+
+.owner-chrome [data-testid='hint-panel'] {
+  left: var(--region-gap) !important;
+  top: calc(var(--hud-top) + 8px) !important;
+  width: auto !important;
+  max-width: var(--region-dock);
+  max-height: 200px;
+  overflow: auto;
+  z-index: 36 !important;
+}
+
+.hud:has([data-testid='hint-panel'][data-open='1']) .left-dock {
+  top: calc(var(--hud-top) + 212px);
+}
+
+.hud .chrome {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  bottom: var(--region-gap);
+  width: auto;
+  z-index: 35;
+}
+
+.hud .dock {
+  width: 100%;
+  max-width: none;
+}
+
+.hud .bottom-bar,
+.hud .view-cluster,
+.hud .info-menus {
+  position: relative;
+  z-index: 6;
+}
+
+.hud .info-sub {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  flex-direction: column;
+  min-width: 148px;
+  background: rgb(15 23 42 / 0.96);
+}
+
+.hud .tt-root,
+.hud .tt-root[data-open='1'] {
+  left: calc(var(--region-dock) + var(--region-gap) * 3);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  bottom: calc(var(--region-build) + var(--region-gap));
+  width: auto;
+  z-index: 28;
+}
+
+.hud:has(.tt-root[data-open='1']) .phone-dock,
+.hud:has(.tt-root[data-open='1']) .alert-dock {
+  top: auto;
+  bottom: auto;
+}
+
+.hud .alert-dock {
+  top: calc(var(--hud-top) + var(--region-gap));
+  right: var(--region-gap);
+  bottom: auto;
+  width: var(--region-inspector);
+  max-height: 148px;
+  z-index: 32;
+}
+
+.hud .flight-card,
+.hud .assign-panel,
+.hud .panel-rollout,
+.hud .chrome.has-panel .panel-rollout,
+.hud .chrome.pinned .panel-rollout,
+.hud .panel-rollout:focus-within {
+  top: calc(var(--hud-top) + 164px) !important;
+  right: var(--region-gap) !important;
+  left: auto !important;
+  bottom: calc(var(--region-build) + var(--region-gap)) !important;
+  width: var(--region-inspector) !important;
+  max-height: none !important;
+}
+
+.hud:has(.chrome.has-panel) .flight-card,
+.hud:has(.chrome.has-panel) .assign-panel,
+.hud:has(.chrome.has-panel) .info-panel,
+.hud:has(.assign-panel) .flight-card,
+.hud:has(.tt-root[data-open='1']) .info-panel {
+  display: none;
+}
+
+.inspector-queue {
+  position: absolute;
+  top: calc(var(--hud-top) + 156px);
+  right: calc(var(--region-inspector) + var(--region-gap) * 2);
+  z-index: 33;
+  pointer-events: auto;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: rgb(15 23 42 / 0.92);
+  color: #e2e8f0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.hud .phone-dock.embedded,
+.hud:has(.tt-root[data-open='1']) .left-dock .phone-dock.embedded {
+  position: relative;
+  inset: auto;
+  left: auto;
+  right: auto;
+  top: auto;
+  bottom: auto;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  transform: none;
+  z-index: 1;
+}
+
+.hud .phone-dock.embedded .phone-device,
+.hud .phone-dock.embedded .phone-device.is-open,
+.hud .phone-dock.embedded .phone-device.is-flash,
+.hud .phone-dock.embedded .phone-device.is-peek {
+  transform: none;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.hud .phone-dock.embedded .phone-bezel,
+.hud .phone-dock.embedded .phone-screen {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.phone-actions {
+  position: relative;
+  z-index: 2;
+}
+
+.phone-actions button {
+  position: relative;
+  z-index: 2;
+}
+
+.hall-wrap .interior-bar {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  top: calc(var(--hud-top) + 48px);
+  z-index: 30;
+  width: max-content;
+  max-width: min(760px, calc(100vw - var(--region-dock) - var(--region-inspector) - 64px));
+  align-items: center;
+}
+
+.interior-bar .kit-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.interior-bar .tray-ico {
+  width: 16px;
+  height: 16px;
+}
+
+.relations-tab {
+  padding: 8px;
+  color: #e7eee9;
+  font-size: 13px;
+}
+
+.relations-tab button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  margin-bottom: 4px;
+  background: rgb(15 23 42 / 0.9);
+  color: #e2e8f0;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.hud .building-panel {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  top: auto;
+  width: 100%;
+  max-height: none;
+  z-index: 1;
+}
+
+.hud .info-views {
+  max-width: calc(100vw - var(--region-dock) - var(--region-inspector) - 48px);
+}
+
+.info-panel {
+  max-height: min(240px, 28vh);
+  overflow: auto;
+}

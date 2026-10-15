@@ -168,6 +168,20 @@ export interface PhoneWorld {
   }[]
   rivalNotes: { id: string; name: string; text: string }[]
   nudges: { airlineId: string; airlineName: string; step: string; text: string }[]
+  negotiation: {
+    airlineName: string
+    note: string
+    pitch: string | null
+    summary: string
+    open: boolean
+  } | null
+  diplomacy: { id: string; airline: string; text: string; kind: string }[]
+  priceWar: {
+    headline: string
+    detail: string
+    actions: { id: 'match' | 'hold' | 'promote'; label: string }[]
+  } | null
+  yearReport: { year: number; summary: string } | null
 }
 
 function card(partial: PhoneCard): PhoneCard | null {
@@ -210,6 +224,10 @@ export function emptyPhoneWorld(): PhoneWorld {
     advisor: [],
     rivalNotes: [],
     nudges: [],
+    negotiation: null,
+    diplomacy: [],
+    priceWar: null,
+    yearReport: null,
   }
 }
 
@@ -783,5 +801,98 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
     if (built) cards.push(built)
   }
 
-  return cards
+  const negotiation = world.negotiation
+  if (negotiation) {
+    const title = `${negotiation.airlineName} offer and counter`
+    const built = card({
+      id: 'negotiation',
+      key: `negotiation:${negotiation.airlineName}`,
+      tab: 'messages',
+      kind: 'negotiation',
+      from: negotiation.airlineName,
+      title,
+      preview: phonePreview(title),
+      body: [negotiation.pitch, negotiation.note, negotiation.summary].filter(Boolean).join('\n'),
+      tone: 'good',
+      arrives: true,
+      secondsLeft: null,
+      actions: [
+        btn('accept', 'Sign', { type: 'sign-contract' }, { primary: true, disabled: !negotiation.open }),
+        btn('counter', 'Counter', { type: 'counter-negotiation' }, { disabled: !negotiation.open }),
+        btn('walk', 'Walk away', { type: 'decline-contract' }, { disabled: !negotiation.open }),
+        btn('close', 'Close', { type: 'close-negotiation' }),
+      ],
+    })
+    if (built) cards.push(built)
+  }
+
+  for (const letter of world.diplomacy) {
+    const title = letter.kind === 'flights' ? `${letter.airline} proposes a master contract` : `${letter.airline} · ${letter.kind}`
+    const built = card({
+      id: `diplomacy-${letter.id}`,
+      key: `diplomacy:${letter.id}`,
+      tab: 'messages',
+      kind: 'diplomacy',
+      from: letter.airline,
+      title,
+      preview: phonePreview(letter.text || title),
+      body: letter.text,
+      tone: 'good',
+      arrives: true,
+      secondsLeft: null,
+      actions: [
+        btn('accept', 'Accept', { type: 'answer-diplomacy', letterId: letter.id, choice: 'accept' }, { primary: true }),
+        btn('counter', 'Counter', { type: 'answer-diplomacy', letterId: letter.id, choice: 'counter' }),
+        btn('decline', 'Decline', { type: 'answer-diplomacy', letterId: letter.id, choice: 'decline' }),
+      ],
+    })
+    if (built) cards.push(built)
+  }
+
+  const war = world.priceWar
+  if (war) {
+    const built = card({
+      id: 'price-war',
+      key: `price-war:${war.headline}`,
+      tab: 'messages',
+      kind: 'price-war',
+      from: 'Bellwater',
+      title: war.headline,
+      preview: phonePreview(war.headline),
+      body: war.detail,
+      tone: 'warn',
+      arrives: true,
+      secondsLeft: null,
+      actions: war.actions.map((action) =>
+        btn(action.id, action.label, { type: 'price-war', choice: action.id }, { primary: action.id === 'match' }),
+      ),
+    })
+    if (built) cards.push(built)
+  }
+
+  const year = world.yearReport
+  if (year) {
+    const title = `Year ${year.year} report`
+    const built = card({
+      id: 'year-report',
+      key: `year:${year.year}`,
+      tab: 'messages',
+      kind: 'year',
+      from: 'Accounts',
+      title,
+      preview: phonePreview(title),
+      body: year.summary,
+      tone: 'ok',
+      arrives: true,
+      secondsLeft: null,
+      actions: [btn('dismiss', 'Dismiss', { type: 'dismiss-year' }, { primary: true })],
+    })
+    if (built) cards.push(built)
+  }
+
+  // Offers the player has to answer sit at the top of Messages, inside the dock.
+  const urgent = new Set(['contract', 'negotiation', 'diplomacy', 'price-war', 'council'])
+  const front = cards.filter((item) => item.tab === 'messages' && urgent.has(item.kind))
+  const rest = cards.filter((item) => !(item.tab === 'messages' && urgent.has(item.kind)))
+  return [...front, ...rest]
 }

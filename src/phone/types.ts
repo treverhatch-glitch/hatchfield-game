@@ -47,6 +47,11 @@ export type PhoneAction =
   | { type: 'host-emergency' }
   | { type: 'refuse-emergency' }
   | { type: 'vote-council'; requestId: string; choiceId: CouncilChoiceId }
+  | { type: 'counter-negotiation' }
+  | { type: 'close-negotiation' }
+  | { type: 'answer-diplomacy'; letterId: string; choice: 'accept' | 'decline' | 'counter' }
+  | { type: 'price-war'; choice: 'match' | 'hold' | 'promote' }
+  | { type: 'dismiss-year' }
 
 export interface PhoneButton {
   id: string
@@ -127,5 +132,10 @@ export interface PhoneCommandHost {
   hostEmergency(): void
   refuseEmergency(): void
   voteCouncil(requestId: string, choiceId: CouncilChoiceId): void
+  counterNegotiation(): void
+  closeNegotiationPanel(): void
+  answerDiplomacy(letterId: string, choice: 'accept' | 'decline' | 'counter'): void
+  respondToPriceWar(choice: 'match' | 'hold' | 'promote'): void
+  dismissYearReport(): void
   emit(): void
 }

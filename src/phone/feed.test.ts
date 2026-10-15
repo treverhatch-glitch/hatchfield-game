@@ -137,6 +137,23 @@ describe('phone feed', () => {
     expect(season[0]?.body).toContain('Summer getaway')
     expect(season[0]?.body).toContain('Next: Autumn')
     expect(season[0]?.actions[0]?.action).toEqual({ type: 'ack', key: 'season:temperate:summer:0' })
+    const offer = buildPhoneFeed(
+      world({
+        negotiation: {
+          airlineName: 'Coastal Hop',
+          note: 'They want a lower landing fee.',
+          pitch: 'A master contract for the season.',
+          summary: 'Landing · ask 4.20 · theirs 5.10',
+          open: true,
+        },
+        diplomacy: [{ id: 'p1', airline: 'Coastal Hop', text: 'Coastal Hop proposes a master contract: 14 flights a week.', kind: 'flights' }],
+        priceWar: { headline: 'Bellwater cuts fees', detail: 'Walk-in is sliding.', actions: [{ id: 'hold', label: 'Hold fees' }] },
+      }),
+    )
+    expect(offer.map((card) => card.kind)).toEqual(['negotiation', 'diplomacy', 'price-war'])
+    expect(offer[0]?.actions.map((action) => action.label)).toEqual(['Sign', 'Counter', 'Walk away', 'Close'])
+    expect(offer[1]?.title).toContain('master contract')
+    expect(offer[1]?.actions[0]?.action).toEqual({ type: 'answer-diplomacy', letterId: 'p1', choice: 'accept' })
     for (const kind of PHONE_EXCLUDED_KINDS) {
       expect(cards.some((card) => card.kind === kind)).toBe(false)
     }

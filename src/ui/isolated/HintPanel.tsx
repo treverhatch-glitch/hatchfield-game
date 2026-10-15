@@ -29,6 +29,7 @@ export function HintPanel({ game }: { game: Game }) {
   return (
     <div
       data-testid="hint-panel"
+      data-open={open ? '1' : '0'}
       style={{
         pointerEvents: 'auto',
         position: 'absolute',
