@@ -31,6 +31,8 @@ import { bake, type BakePiece } from './world/kit'
 import { paintTerrazzo } from './world/raster'
 import { rasterTexture } from './world/textures'
 import type { Game } from '../game/sim'
+import { isAssignKind } from '../hubprogress/assign.ts'
+import { syncLeaseMarks, type LeaseMark } from './leaseBadge.ts'
 import {
   cellCenter,
   GRID_C,
@@ -175,6 +177,8 @@ export class HallWorld {
   readonly navCrowd = new HallNavCrowd()
   /** Check-in and security interiors: desk signs, bag scales, X-ray trays, queue barriers, staff figures. */
   readonly serviceFx = new HallServiceFx()
+  /** Lounge badges. Click opens the dedicate picker. */
+  readonly leaseGroup = new THREE.Group()
   /** Walkers drawn last frame (tests, perf probes). */
   navDrawn = 0
   /** Routes, heat, and advisor marks. Hidden unless the player asks or a note is focused. */
@@ -339,7 +343,9 @@ export class HallWorld {
     this.scene.add(this.figures.group)
     this.scene.add(this.navCrowd.group)
     this.navCrowd.skipRole = HallServiceFx.drawsRole
+    this.leaseGroup.name = 'hall-lease-marks'
     this.scene.add(this.serviceFx.group)
+    this.scene.add(this.leaseGroup)
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
@@ -430,6 +436,13 @@ export class HallWorld {
       return
     }
     this.aim(e)
+    const assignHit = this.assignHit()
+    if (assignHit) {
+      const { kind, id } = assignHit
+      if (this.game.assignBulk && (kind === 'desk' || kind === 'gate')) this.game.toggleAssignSelection(kind, id)
+      else this.game.openAssign(kind, id)
+      return
+    }
     const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
     const queueHits = this.ray.intersectObjects(this.queueGroup.children, true)
     const roomHits = this.ray.intersectObjects(this.roomGroup.children, true)
@@ -497,6 +510,36 @@ export class HallWorld {
       if (id) break
     }
     this.game.selectGuest(id)
+  }
+
+  private assignHit(): { kind: 'desk' | 'lane' | 'gate' | 'lounge' | 'hangar' | 'vehicle'; id: string } | null {
+    const hits = this.ray.intersectObjects([...this.serviceFx.pickTargets(), ...this.leaseGroup.children], true)
+    for (const hit of hits) {
+      let obj: THREE.Object3D | null = hit.object
+      while (obj) {
+        const kind = obj.userData.assignKind
+        const id = obj.userData.assignId
+        if (isAssignKind(kind) && typeof id === 'string' && id) return { kind, id }
+        obj = obj.parent
+      }
+    }
+    return null
+  }
+
+  private syncHallLeases(game: Game) {
+    const marks: LeaseMark[] = game.hallLoungeMarks().map((row) => ({
+      key: row.id,
+      x: -6 + row.index * 1.6,
+      y: 0.02,
+      z: 3.2,
+      primary: row.primary,
+      code: row.code,
+      lay: 'upright',
+      span: 0.7,
+      kind: 'lounge',
+      id: row.id,
+    }))
+    syncLeaseMarks(this.leaseGroup, marks)
   }
 
   private aim(e: PointerEvent) {
@@ -1777,8 +1820,10 @@ export class HallWorld {
       // so the airline sign is painted here from the sim's desk list.
       this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
       const crew = this.navCrowd.lastPoses()
+      this.serviceFx.lanePlates = game.lanePlates()
       this.serviceFx.sync(game.hallNav, game.clock, this.camera, game.deskBrands(), crew.poses, crew.total)
     }
+    this.syncHallLeases(game)
     this.supply.sync(game.supplyCartPoses())
     this.syncLuggage(game)
     this.syncOverlay(game)

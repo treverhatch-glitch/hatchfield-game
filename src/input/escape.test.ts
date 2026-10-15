@@ -47,4 +47,10 @@ describe('escape order', () => {
     expect(nextEscape({ ...idle, flightCardOpen: true, hubProfileOpen: true })).toBe('close-flight-card')
     expect(nextEscape({ ...idle, infoViewOpen: true, hubProfileOpen: true })).toBe('close-info')
   })
+
+  it('closes the assign panel after the flight card and before the hub profile', () => {
+    expect(nextEscape({ ...idle, assignOpen: true })).toBe('close-assign')
+    expect(nextEscape({ ...idle, flightCardOpen: true, assignOpen: true })).toBe('close-flight-card')
+    expect(nextEscape({ ...idle, assignOpen: true, hubProfileOpen: true })).toBe('close-assign')
+  })
 })

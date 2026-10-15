@@ -3668,6 +3668,41 @@ h1.game-title::after {
   padding: 2px 0;
 }
 
+.assign-panel {
+  pointer-events: auto;
+  position: absolute;
+  top: calc(var(--hud-top) + 8px);
+  right: 16px;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  z-index: 32;
+  background: rgba(10, 20, 16, 0.94);
+  border: 1px solid rgba(201, 162, 39, 0.5);
+  border-radius: 10px;
+  padding: 12px;
+  color: #e7eee9;
+}
+
+.assign-panel .hub-lines li {
+  display: block;
+}
+
+.assign-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 2px;
+  border: 2px solid;
+  vertical-align: -1px;
+}
+
+.assign-copy p {
+  margin: 2px 0 0 18px;
+  font-size: 12px;
+}
+
 .hub-profile {
   margin-top: 8px;
   padding-top: 6px;

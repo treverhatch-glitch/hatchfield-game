@@ -122,10 +122,22 @@ function signTexture(brand: DeskBrand): THREE.Texture | null {
   ctx.fillRect(0, 0, 512, 144)
   ctx.fillStyle = brand.secondary
   ctx.fillRect(0, 118, 512, 26)
+  const dedicated = brand.id !== 'neutral'
   ctx.fillStyle = '#ffffff'
-  ctx.font = 'bold 56px system-ui, sans-serif'
   ctx.textBaseline = 'middle'
-  ctx.fillText(brand.name.length > 16 ? brand.name.slice(0, 15) + '…' : brand.name, 24, 58)
+  if (dedicated) {
+    ctx.beginPath()
+    ctx.arc(56, 58, 36, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = brand.primary
+    ctx.font = 'bold 20px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(brand.code.slice(0, 3), 56, 60)
+  }
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'left'
+  ctx.font = 'bold 56px system-ui, sans-serif'
+  ctx.fillText(brand.name.length > 16 ? brand.name.slice(0, 15) + '…' : brand.name, dedicated ? 108 : 24, 58)
   ctx.font = 'bold 30px system-ui, sans-serif'
   ctx.textAlign = 'right'
   ctx.fillText(brand.code, 488, 58)
@@ -152,6 +164,13 @@ export class HallServiceFx {
   private readonly scales: THREE.InstancedMesh
   private readonly signGroup = new THREE.Group()
   private readonly signTex = new Map<string, THREE.Texture | null>()
+  /** Security lanes. A dedicated lane wears the carrier colour. Empty leaves lanes unplated. */
+  lanePlates: { id: string; primary: string; secondary: string; code: string }[] = []
+
+  /** Desk signs and lane plates. The hall raycasts these. */
+  pickTargets(): THREE.Object3D[] {
+    return this.signGroup.children
+  }
   private readonly signGeo = new THREE.PlaneGeometry(L.signW, L.signH)
   private readonly signBack = new THREE.MeshLambertMaterial({ color: '#2a2e33' })
   private readonly staff: PeopleRenderer
@@ -202,7 +221,7 @@ export class HallServiceFx {
     this.group.visible = nav.live
     if (!nav.live) return this.stats
     const pn = nav.nav
-    const key = brands.map((b) => b.id).join(',')
+    const key = `${brands.map((b) => b.id).join(',')}|${this.lanePlates.map((row) => `${row.id}:${row.code}`).join(',')}`
     if (pn !== this.nav || (pn && pn.revision !== this.rev) || key !== this.brandKey) {
       this.nav = pn
       this.rev = pn?.revision ?? -1
@@ -225,7 +244,10 @@ export class HallServiceFx {
     const oz = nav.originZ
     this.desks = []
     this.lanes = []
-    for (const s of this.signGroup.children) (s as THREE.Mesh).material && disposeMat((s as THREE.Mesh).material as THREE.Material)
+    this.signGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (mesh.material) disposeMat(mesh.material as THREE.Material)
+    })
     this.signGroup.clear()
     let posts = 0
     let tape = 0
@@ -236,8 +258,12 @@ export class HallServiceFx {
       if (f.kind === 'checkin_desk') {
         const brand = brands[this.desks.length] ?? NEUTRAL_DESK_BRAND
         this.desks.push({ id: f.id, ...sp, brand, served: f.served, serving: f.serving, slideAt: -Infinity })
-        if (brand) this.addSign(sp, brand)
-      } else this.lanes.push({ id: f.id, ...sp, phase: hashPhase(f.id), busy: f.serving })
+        if (brand) this.addSign(sp, brand, f.id)
+      } else {
+        this.lanes.push({ id: f.id, ...sp, phase: hashPhase(f.id), busy: f.serving })
+        const plate = this.lanePlates.find((row) => row.id === f.id)
+        if (plate) this.addLanePlate(sp, f.id, plate)
+      }
       // Barriers either side of the marked line, tape between neighbouring posts on the same side.
       const line = f.line.map((pt) => ({ x: pt.x + ox, z: pt.z + oz }))
       const pts = barrierPosts(line)
@@ -282,7 +308,32 @@ export class HallServiceFx {
     this.stats.posts = posts
   }
 
-  private addSign(sp: { px: number; pz: number; dx: number; dz: number }, brand: DeskBrand) {
+  private addLanePlate(
+    sp: { px: number; pz: number; dx: number; dz: number },
+    id: string,
+    plate: { primary: string; secondary: string; code: string },
+  ) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.8, 0.05),
+      new THREE.MeshBasicMaterial({ color: plate.primary, toneMapped: false }),
+    )
+    mesh.name = `lane-plate:${id}`
+    mesh.position.set(sp.px + sp.dx * 1.1, 1.35, sp.pz + sp.dz * 1.1)
+    mesh.rotation.y = Math.atan2(-sp.dx, -sp.dz)
+    mesh.userData.assignKind = 'lane'
+    mesh.userData.assignId = id
+    if (plate.code !== 'ANY') {
+      const badge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.26, 0.02),
+        new THREE.MeshBasicMaterial({ color: plate.secondary, toneMapped: false }),
+      )
+      badge.position.set(0, 0.52, 0.04)
+      mesh.add(badge)
+    }
+    this.signGroup.add(mesh)
+  }
+
+  private addSign(sp: { px: number; pz: number; dx: number; dz: number }, brand: DeskBrand, deskId: string) {
     let tex = this.signTex.get(brand.id)
     if (tex === undefined) {
       tex = signTexture(brand)
@@ -297,6 +348,8 @@ export class HallServiceFx {
     back.position.copy(face.position)
     back.rotation.y = face.rotation.y + Math.PI
     face.userData.brand = brand.id
+    face.userData.assignKind = 'desk'
+    face.userData.assignId = deskId
     this.signGroup.add(face, back)
   }
 

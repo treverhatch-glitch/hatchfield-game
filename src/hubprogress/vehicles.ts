@@ -40,6 +40,22 @@ export function groundVehicleId(type: string, index: number): string {
   return `${type}-${index}`
 }
 
+export function parseGroundVehicleId(id: string): { type: string; index: number } | null {
+  const cut = id.lastIndexOf('-')
+  if (cut <= 0) return null
+  const type = id.slice(0, cut)
+  const index = Number(id.slice(cut + 1))
+  if (!type || !Number.isInteger(index) || index < 1) return null
+  return { type, index }
+}
+
+export function roleOfType(type: string): VehicleRole | null {
+  for (const role of VEHICLE_ROLES) {
+    if ((VEHICLE_ROLE_TYPES[role] as readonly string[]).includes(type)) return role
+  }
+  return null
+}
+
 export function vehicleNeedFor(type: HubArchetype, tier: HubOfferTier): Partial<Record<VehicleRole, number>> {
   const out: Partial<Record<VehicleRole, number>> = {}
   const ceiling = HUB_TIERS.indexOf(tier)

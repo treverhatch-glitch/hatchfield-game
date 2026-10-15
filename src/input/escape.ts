@@ -9,6 +9,7 @@ export type EscapeStep =
   | 'close-info-detail'
   | 'close-info'
   | 'close-flight-card'
+  | 'close-assign'
   | 'close-hub-profile'
   | 'close-schedule'
   | 'open-menu'
@@ -20,6 +21,7 @@ export function nextEscape(state: {
   infoDetailOpen?: boolean
   infoViewOpen?: boolean
   flightCardOpen?: boolean
+  assignOpen?: boolean
   hubProfileOpen?: boolean
   schedulePillOpen?: boolean
 }): EscapeStep {
@@ -29,6 +31,7 @@ export function nextEscape(state: {
   if (state.infoDetailOpen) return 'close-info-detail'
   if (state.infoViewOpen) return 'close-info'
   if (state.flightCardOpen) return 'close-flight-card'
+  if (state.assignOpen) return 'close-assign'
   if (state.hubProfileOpen) return 'close-hub-profile'
   if (state.schedulePillOpen) return 'close-schedule'
   return 'open-menu'

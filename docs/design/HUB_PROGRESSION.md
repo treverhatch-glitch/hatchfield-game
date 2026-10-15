@@ -1,10 +1,11 @@
 # Hub progression
 
-Accepted additions, Oct 15. Trever confirmed three pieces. This note is the build spec for those three. Nudge texts and the assign screen stay **Review** and are not this ticket. Higher-tier carriers stay stricter and pay the larger `HUB_OFFER_FEE`. The unique benefit is still the one archetype perk in §4. This note does not add a second perk list.
+Accepted additions, Oct 15. Trever confirmed dedicated turnaround vehicles, earned tiers, roster rivalries, and the assign screen. This note is the build spec for those four. Nudge texts stay **Review**. Higher-tier carriers stay stricter and pay the larger `HUB_OFFER_FEE`. The unique benefit is still the one archetype perk in §4. This note does not add a second perk list.
 
 1. Dedicated turnaround vehicles. The player assigns a tug, a belt loader, a catering truck, or a fuel truck from the fleet they already field, in that carrier's livery. It serves only that carrier. The relationship rises on the same dedicated lease credit. Some carriers require the set before a higher tier. Taking the truck out of the common pool is the flexibility cost.
 2. No automatic hub status. Station is the signed floor, not a hub. Every tier above it is earned by holding the current tier for `MIN_DAYS_AT_TIER` and by the existing on-time sample, then accepted on the phone offer. The sim never writes Focus, Base, Hub, or Primary except in `acceptHub`.
 3. Rivalries. Becoming a base, a hub, or the primary hub for one carrier upsets the rivals named in the roster. Their relationship drops. They may refuse a new contract or cut a route. They may move to Bellwater Intl, the off-map airport, which shows up in the news and on the phone. The offer card says "Accepting will anger Y and Z" before the player accepts.
+4. Assign screen. Clicking a desk, a lane, a gate, a lounge, a hangar bay, or a turnaround vehicle opens a side panel titled "Dedicate to airline…". The picker names the relationship effect, any rival penalty, and the flexibility cost before the player commits. A bulk mode paints several desks or several stands and assigns that set at once. The airline profile lists everything dedicated to that carrier, with an unassign button on each row. An unmet checklist line links to the picker for that missing kind. In the world, a dedicated point wears the airline colour and a small badge.
 
 Hub progression is a per-airline ladder on top of the relationship score and the diplomacy bands. It does not replace them. Dedicating a desk, a lane, a gate, a lounge, a hangar bay, a fuel hook, or a turnaround vehicle is a relationship lever: it raises the score, and some carriers will not sign or climb until that piece of the airport is theirs. A tier above Station is never applied by the sim. The airline offers it. The player accepts. Decline does not climb. Counter stays out of this design.
 
@@ -18,9 +19,9 @@ These shipped after the first draft (`894858d`). This note does not ask for them
 | Checklist on the Airlines desk | `20e829d` | `HubSection` under the relations meter, and the Hubs sheet (`HubProgress`, `manageTab === 'hubs'` in `src/ui/Hud.tsx`). Both sit outside the phone. |
 | Phone offers | `5c85795`, `38a6a70` | Focus, Base, Hub, and Primary. `src/phone/readGame.ts` sets `acceptDisabled` unless `list.eligible && list.next === tier`. `src/phone/feed.ts` renders Accept (`accept-hub`) and Decline (`decline-hub`). |
 | Lounge, gate, hangar leases | `457b4d1` | `hubLeases` on `Game`. The profile can dedicate those three. Daily credit is the `dedicated` relation part, capped by `LEASE_SCORE_CAP`. A gating release warns for `TIER_DROP_WARNING_DAYS`, then drops one tier. |
-| Desk and lane still waiting | `20e829d` | The desk button stays `disabled`. Its title is `ALLOCATOR_WAIT` ("Waiting on the desk allocator"). Lane lines use the same sentence. |
+| Desk and lane checklist lines | `20e829d` | Desk and lane lines stay `ALLOCATOR_WAIT` ("Waiting on the desk allocator") until `leasesFor` exists. The assign screen can still lock a desk or a lane. That lock does not flip the line to passing. |
 
-Desk and lane counts stay at zero. `src/checkin/allocate.ts` brands a desk for an open window (`DedicatedLock`, `allocate`). That is window paint. It is not `leasesFor`. Desk and lane rows wait for that export. Lounge, gate, and hangar leases already live on `hubLeases`. Turnaround vehicles are a sibling list, `hubVehicleLeases`, because the fleet is a count the player already owns. They are not a second desk table, and they do not wait on the desk allocator.
+Desk and lane checklist counts stay unmet while `deskAllocator` is false. `src/checkin/allocate.ts` already brands a locked desk (`DedicatedLock`, `allocate`) from `Game.dedicatedDesks`. That list is the one desk table. The assign screen locks a specific desk id on it. It does not add a second desk table, and it does not export `leasesFor`. A lane lock is `dedicatedLanes` on `Game`, a sibling row the hall can paint, until the allocator exports `leasesFor`. It is not a hub desk table and it does not pass the lane line. Lounge, gate, and hangar leases already live on `hubLeases`. Turnaround vehicles are `hubVehicleLeases`. They are not a second desk table.
 
 ## Open questions for Trever
 
@@ -34,7 +35,8 @@ Still open. Do not build them from this note:
 
 1. Is a gap of 4 game days per airline, and a field cap of 3 nudge texts a day, the right rate limit?
 5. Decline silences nudges for that warmth step only. The next step may still text. Later does not silence anything.
-6. The assign screen as a second side panel. Vehicle assign for this ticket is a button on the airline profile, the same place as lounge, gate, and hangar.
+
+The assign screen in §5 is accepted and is this ticket. Vehicle, lounge, gate, and hangar buttons on the profile stay. The screen is the picker those clicks open.
 
 The playable names are the 45-carrier roster in `src/airlines/roster.ts` (`docs/AIRLINES.md`). Fees and facility asks still copy a catalog template through `ROSTER_TEMPLATE` in `src/game/rosterAirlines.ts`.
 
@@ -344,7 +346,7 @@ Airlines → a carrier opens the card that already exists. Add a Hub section und
 └────────────────────────────────────────────────┘
 ```
 
-**Dedicate a desk** is disabled, with that sentence, until the allocator exports `requestLease`. Lounge, gate, and hangar buttons are already live. Tug, belt loader, catering truck, and fuel truck buttons sit beside them. A button with no spare unit is disabled and says so.
+**Dedicate a desk** opens the assign picker. The checklist line under it still reads **Waiting on the desk allocator** and does not pass. Lounge, gate, and hangar buttons stay live. Tug, belt loader, catering truck, and fuel truck buttons sit beside them. A button with no spare unit is disabled and says so. Under the buttons, the profile lists every desk, lane, gate, lounge, hangar bay, and vehicle dedicated to this carrier. Each row has Unassign.
 
 ### Hub progress
 
@@ -413,45 +415,56 @@ Copy, one line each. The voice is the carrier, the ask is the next line.
 └────────────────────────────────────────────┘
 ```
 
-### Assign screen — Review
+### Assign screen — Accepted
 
-A Cities-style side panel. The apron stays visible. Esc closes it before the pause sheet, in the same place as the flight card. It is the only place a lease mode is written, and it writes through `requestLease` / `releaseLease`. The Airlines desk reads the result. It does not keep its own copy.
+A Cities-style side panel. The apron stays visible. It is not a modal. Esc closes it after the flight card and before the hub profile, and before the pause sheet. The Airlines desk reads the same rows the panel writes. It does not keep a second copy.
 
-One airline at a time. Rows are the points that can be leased: check-in desks, security lanes, gates, lounges, hangar bays, and turnaround vehicles. Each row shows the current mode for this airline: Common, Preferred, or Dedicated. The player sets the mode on that row.
+Clicking a desk, a security lane, a gate (a stand tile), a lounge, a hangar or heavy-check bay, or a turnaround vehicle opens the panel on that point. The title is **Dedicate to airline…**. The player picks a signed carrier. Before Dedicate, the panel shows three sentences:
 
-This screen stays unbuilt. This ticket assigns vehicles from the airline profile. When the screen is built, a locked row stays locked and shows the reason in the row:
-
-| Reason | When |
+| Sentence | What it says |
 | --- | --- |
-| Waiting on the desk allocator | Desks, lanes, and vehicles, until `leasesFor` exists. This is the row the player sees today. |
-| Unstaffed | No clerk on the post. |
-| Not built | The stand, lounge, bay, pad, or depot is not on the field. |
-| Dedicated to Gulf Pearl | Another carrier already holds it dedicated. |
-| No spare tug | The common pool has no free unit of that type. A depot grants `DEPOT_GRANT`. Another unit is a `VEHICLE_CATALOG` purchase. |
-| Kiosk | A flag will not take a kiosk in place of a desk. Budget and regional may. |
-| Wrong airframe | `vehicleCanServe` refuses it. A jumbo wants the heavy tug, the hi-lift, or the hydrant dispenser. |
+| Relationship | A lounge, gate, hangar bay, or vehicle pays `SCORE_PER_LEASE.dedicated` (0.08) per day on the `dedicated` part, capped by `LEASE_SCORE_CAP` (1.6). A desk or a lane says the lock is stored and the checklist still waits on the desk allocator, so this click does not add that score and does not pass the line. |
+| Rival | **No rival hit for the lease.** A lease does not roll backlash. If the next offer is Base, Hub, or Primary, the same anger and spared sentences from §3 follow, so the player sees who Accepting that rung will anger. |
+| Flexibility | **Serves only {name}. Taken out of the common pool.** A desk below Preferred still pays the existing `CHECKIN_ALLOC.dedicatedFee`. Preferred and Trusted waive it. A lane, a building, and a vehicle add no second bill. |
+
+A point another carrier already holds says **Dedicated to {name}** and Dedicate stays off. Kiosk desks stay locked out. A missing spare vehicle says **No spare {role}**.
+
+**Bulk.** A paint control on the panel. The player clicks several desks, or several stands, then one Dedicate assigns that set to the chosen carrier. Desks and stands only. Mixing the two clears the earlier set. A point already dedicated is skipped. One news line names the count.
+
+**Profile.** The carrier card lists every live dedication (desk, lane, gate, lounge, hangar bay, vehicle) with Unassign. Unassign uses the existing release for that row. A gating release still opens the 30-day warning.
+
+**Checklist.** An unmet or waiting line that names a desk, lane, stand, pier, lounge, hangar, ramp, fuel hook, or vehicle is a link. It opens this panel filtered to that kind. Relation, band, on-time, tenure, and the connection window are not links. A desk or lane link does not mark the line ok.
+
+**Where the write goes.**
+
+| Click | Store | Checklist |
+| --- | --- | --- |
+| Desk | `dedicatedDesks`, one specific desk id. The next-free lock on the check-in card stays. | Still waiting |
+| Lane | `dedicatedLanes` until `leasesFor` exists | Still waiting |
+| Gate, lounge, hangar bay | `hubLeases`, that building id | Counts, as today |
+| Vehicle | `hubVehicleLeases`, that unit | Counts, as today |
+
+Common / Preferred / Dedicated as three modes on every row stays out. This ticket is dedicate and unassign. Preferred desk credit still waits on the allocator.
 
 ```
-┌ Assign · Gulf Pearl ─────────────────────── × ┐
-│ Common    Preferred    Dedicated              │
-│                                                │
-│ Desks                                          │
-│  A2    Dedicated                         [··]  │
-│  A4    Common                            [··]  │
-│  K1    Locked · Kiosk                          │
-│                                                │
-│ Vehicles                                       │
-│  Tug 3      Dedicated · in their colours [··]  │
-│  Belt 1     Preferred                    [··]  │
-│  Hi-lift    Locked · No spare hi-lift          │
-│  Bowser 2   Common                       [··]  │
-│                                                │
-│ Gates, lounges, hangar bays follow the         │
-│ same three modes.                              │
-└────────────────────────────────────────────────┘
+┌ Dedicate to airline… ──────────────── × ┐
+│ Stand 12,4                             │
+│                                        │
+│ Gulf Pearl                             │
+│  +0.08 per day on Dedicated leases,    │
+│  capped at 1.6.                        │
+│  No rival hit for the lease.           │
+│  Accepting will anger Zephyr Go and    │
+│  Tango Air (-8).                       │
+│  Serves only Gulf Pearl. Taken out of  │
+│  the common pool.                      │
+│  [ Dedicate ]                          │
+│                                        │
+│ [ Paint desks and stands ]             │
+└────────────────────────────────────────┘
 ```
 
-The Airlines home is the Letters desk and the Hubs sheet, both outside the phone. Relationship and the fee line are already on the relation card. Hub level, the checklist, and the reward preview are already `HubSection`. Still to add on that card, when this review is accepted: the named rivals for the next rung, and the dedicated infrastructure this carrier already holds (read from `leasesFor`, including vehicles). The assign screen is the editor. The Hubs sheet stays the list.
+The Airlines home is the Letters desk and the Hubs sheet, both outside the phone. Relationship and the fee line are already on the relation card. Hub level, the checklist, and the reward preview are already `HubSection`. The anger sentence is already on the profile. The dedicated list is the inventory. The assign screen is the editor. The Hubs sheet stays the list.
 
 ### Phone offer
 
@@ -475,18 +488,18 @@ Decline is the diplomacy decline. It does not delete the leases they already hav
 
 ### In-world markers
 
-A dedicated or preferred point wears the airline colour. No new mesh in the first building pass. A decal or a standing sign is enough.
+A dedicated point wears the airline colour and a small badge with the carrier code. No new mesh family. A plate or a tint on what is already drawn is enough. Preferred stripes stay out of this ticket.
 
 | Place | Marker |
 | --- | --- |
-| Desk or lane | A plate in their colour on the sign that `hallService` already draws for a desk. Preferred is a thin stripe. Dedicated is a full plate. |
-| Gate | The stand highlight uses their colour while the lease holds. The flight card already names the stand. |
-| Lounge door | Their name on the door the hall already has. |
-| Hangar bay and fuel | A small apron decal at the bay or the hook. |
-| Helipad | The pad ring in their colour. |
-| Turnaround vehicle | Preferred is a stripe in roster `primary`. Dedicated is a `primary` body and a `secondary` stripe. The truck they already have. No new mesh. |
+| Desk | The sign `hallService` already paints from `deskBrands()`, plus a badge on that plate. |
+| Lane | A plate in roster `primary` and a code badge. An undedicated lane keeps a neutral plate so it can be clicked. |
+| Gate | A plate on the stand tile in their colour, and a code badge. |
+| Lounge | A badge in the hall for each built lounge room, in their colour once dedicated. |
+| Hangar bay | A plate on the hangar or heavy-check tile, and a code badge. |
+| Turnaround vehicle | The truck they already have, body tinted roster `primary`, plus a small code badge. No new vehicle mesh. |
 
-Clicking the marker opens the profile at that lease. It does not open a second card. Walker cards in the hall stay guest cards.
+Clicking the marker opens this assign panel on that point. It does not open a second card. Walker cards in the hall stay guest cards.
 
 ```mermaid
 flowchart LR
@@ -593,15 +606,14 @@ Each phase is one ticket. Later phases do not start by rewriting an earlier file
 | 2 | Desk leases | Call the allocator's `leasesFor` / `requestLease` / `releaseLease` once they exist. If the export is missing, phase 1 behaviour stays. A test doubles the allocator. | Queue math, hiring, `StaffPoint` fields the allocator owns, a desk map in the hub module |
 | 3 | Other leases | Shipped for lounge, gate, and hangar bay, `457b4d1`. Fuel hook, helipad, and the turnaround vehicle are the accepted vehicle ticket. Credit posts as a relationship part `dedicated`, capped by `LEASE_SCORE_CAP`. | A second fee multiplier, a second upkeep line |
 | 4 | Offers | Shipped, `5c85795` and `38a6a70`. Phone card for Focus, Base, Hub, Primary. Accept stays disabled until the checklist is complete. Tenure, on-time as a send gate, and the anger sentence are this ticket. | Rewriting `hubBlockers`, a counter button |
-| 5 | Profile UI | Shipped in part, `20e829d`, plus lounge, gate, and hangar buttons in `457b4d1`. Vehicle buttons are this ticket. The assign screen stays unbuilt. | Walker cards, a modal |
-| 6 | Markers | Colour plates on desks, stands, pads, lounge doors, and a livery stripe on a dedicated vehicle. Click opens the profile. | New aircraft, new staff meshes, new vehicle meshes |
+| 5 | Profile UI | Shipped in part, `20e829d`, plus lounge, gate, and hangar buttons in `457b4d1`, plus vehicle buttons. This ticket adds the dedicated list, unassign, and checklist links. | Walker cards, a modal |
+| 6 | Markers | This ticket. Colour and a code badge on a dedicated desk, lane, stand, lounge, hangar bay, and vehicle. Click opens the assign panel. | New aircraft, new staff meshes, new vehicle meshes |
 
-Still review. Do not build these from this note.
+Still review. Do not build this from this note.
 
 | Piece | What it adds | What it does not do |
 | --- | --- | --- |
 | Nudge texts | One phone text per warmth step, under `NUDGE_GAP_DAYS` and `NUDGE_DAY_CAP`. | A second offer, a fee, a nag after Decline |
-| Assign screen | The side panel that calls `requestLease`. | A modal, a private copy of the leases |
 
 Phase 2 is blocked on the desk allocator's export, not on its internal schedule. Desk lines stay unmet, so a flag carrier cannot be accepted into Hub until the desks exist. A cargo carrier can, once the hangar, the ramp, the fuel hook or dedicated fuel truck, the sort window, the tenure, and the on-time sample are met. Choosing a hub is a trade: the perk and the bank, against the rivals who lose score, routes, or the field.
 
@@ -617,4 +629,5 @@ Phase 2 is blocked on the desk allocator's export, not on its internal schedule.
 - Brisa at Base is ineligible without a dedicated tug and eligible with one. A tug dedicated to a carrier who did not ask for it still adds dedicated credit and does not clear a waiting desk line.
 - A letter does not send until the carrier has held the current tier for `MIN_DAYS_AT_TIER` and the on-time sample passes. Accept is the only write of a tier above Station.
 - Accept on a Hub offer for Gulf Pearl says "Accepting will anger Zephyr Go and Tango Air" before the button is used. Seoul Star is on the card as spared. A relocate roll above standing 42 becomes a trim. A refused rival cannot sign a new contract for 30 days. The contract they hold stays.
-- Nudge texts stay unbuilt. The assign screen stays unbuilt.
+- Clicking a stand opens "Dedicate to airline…" with the relationship sentence, "No rival hit for the lease.", and the flexibility sentence. Dedicating two stands in one paint assigns both. Unassign clears the row. A desk lock does not change the waiting checklist line. A dedicated stand's mark uses the carrier colour and code.
+- Nudge texts stay unbuilt.

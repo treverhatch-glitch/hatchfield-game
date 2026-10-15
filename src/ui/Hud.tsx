@@ -11,6 +11,7 @@ import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
 import { HubAssign, HubProgress } from './hub/HubPanels.tsx'
 import { showHubProfile } from './hub/session.ts'
+import { AssignPanel } from './hub/AssignPanel.tsx'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
@@ -282,6 +283,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   return (
     <div className="hud">
       <ApronFlightCard game={game} />
+      <AssignPanel game={game} />
       <BuildingPanel
         card={building}
         onClose={() => game.closeBuilding()}

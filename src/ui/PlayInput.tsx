@@ -38,6 +38,7 @@ export function PlayInput({ game }: { game: Game }) {
           infoDetailOpen: view.detail || linesOpen || menuOpen,
           infoViewOpen: view.active != null,
           flightCardOpen: isFlightCardOpen(),
+          assignOpen: game.assignPick != null || game.assignBulk,
           hubProfileOpen: isHubProfileOpen(),
           schedulePillOpen: schedulePillEscape(),
         })
@@ -66,7 +67,8 @@ export function PlayInput({ game }: { game: Game }) {
           if (view.active === 'traffic') game.closeLandside()
           if (view.active === 'fuel') game.closeFuelFarm()
           closeMapView()
-        } else if (step === 'close-flight-card') closeFlightCard()
+        }         else if (step === 'close-flight-card') closeFlightCard()
+        else if (step === 'close-assign') game.closeAssign()
         else if (step === 'close-hub-profile') closeHubProfile()
         else if (step === 'close-schedule') setSchedulePill(false)
         else pauseState.openMenu()
