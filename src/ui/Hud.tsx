@@ -84,7 +84,6 @@ import { lateIdForTool } from '../game/lateBuildings.ts'
 import { tilesOf } from '../game/path'
 import { CLEARANCE_LICENCE_COST } from '../inbound/data.ts'
 import { environmentCaption, seasonAtClock } from '../environment/index.ts'
-import { formatPanelNumber } from '../core/formatNumber.ts'
 import { formatSimDate, type Game } from '../game/sim'
 import { inputMap } from '../input/map'
 import { pauseState } from './pauseState'
@@ -159,12 +158,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const [boardsOpen, setBoardsOpen] = useState(fidsIsOpen)
   useEffect(() => subscribeFids(setBoardsOpen), [])
   // Terminal view folds the apron cards. A peek belongs to the view it was opened in.
-  const [hallPeek, setHallPeek] = useState<{ view: string; id: 'coach' | 'offer' | 'map' } | null>(null)
-  const [climateOpen, setClimateOpen] = useState(false)
+  const [hallPeek, setHallPeek] = useState<{ view: string; id: 'coach' } | null>(null)
   const [coachOpen, setCoachOpen] = useState(false)
   const inHall = game.view === 'hall'
   const peek = hallPeek?.view === game.view ? hallPeek.id : null
-  const openPeek = (id: 'coach' | 'offer' | 'map') =>
+  const openPeek = (id: 'coach') =>
     setHallPeek((cur) => (cur?.view === game.view && cur.id === id ? null : { view: game.view, id }))
   const pendingYear = game.pendingYearReport()?.year ?? null
   const [yearShown, setYearShown] = useState<number | null>(null)
@@ -413,42 +411,13 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <div className="stat clock-climate" title="One day is a 180-second cycle">
           <LiveText testId="hud-clock" read={() => formatSimDate(game.clock)} />
           {game.site ? (
-          <div className="climate-dock">
-            <button
-              type="button"
-              className={`stat climate-chip${climateOpen || peek === 'map' ? ' on' : ''}`}
-              data-testid="climate-chip"
-              aria-expanded={inHall ? peek === 'map' : climateOpen}
-              title={`${game.mapSummary().name}. ${game.mapSummary().season}`}
-              onClick={() => {
-                if (inHall) openPeek('map')
-                else setClimateOpen((open) => !open)
-              }}
+            <span
+              className="climate-line"
+              data-testid="climate-line"
+              title={`${game.mapSummary().name}. ${game.mapSummary().blurb}`}
             >
-              Climate: {game.mapSummary().region}
-            </button>
-            {(inHall ? peek === 'map' : climateOpen) ? (
-              <aside className="map-goals" data-testid="map-goals" aria-label="Climate goals">
-                <div className="map-goals-head">
-                  <strong>Climate: {game.mapSummary().region}</strong>
-                  <span>{game.mapSummary().season}</span>
-                </div>
-                <ul>
-                  {game.mapGoalCards().map((goal) => (
-                    <li key={goal.id} data-testid={`goal-${goal.id}`} data-done={goal.done ? '1' : '0'}>
-                      <span className="mark">{goal.done ? '✓' : '·'}</span>
-                      <span>
-                        {goal.title}{' '}
-                        <em>
-                          {formatPanelNumber(Math.min(goal.value, goal.target))}/{formatPanelNumber(goal.target)}
-                        </em>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </aside>
-            ) : null}
-          </div>
+              {game.mapSummary().region} · {game.mapSummary().season}
+            </span>
           ) : null}
         </div>
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
@@ -531,16 +500,6 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               onClick={() => openPeek('coach')}
             >
               First hour
-            </button>
-          ) : null}
-          {game.site ? (
-            <button
-              type="button"
-              data-testid="peek-map"
-              className={peek === 'map' ? 'on' : ''}
-              onClick={() => openPeek('map')}
-            >
-              Climate: {game.mapSummary().region}
             </button>
           ) : null}
         </div>
@@ -2040,6 +1999,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               {panel === 'council' ? (
                 <CouncilPanel
                   view={game.councilView()}
+                  missions={game.seasonMissions()}
                   onVote={(requestId, choiceId) => game.answerCouncilRequest(requestId, choiceId)}
                 />
               ) : null}

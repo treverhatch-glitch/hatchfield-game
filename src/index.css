@@ -3167,67 +3167,11 @@ h1.game-title::after {
   position: relative;
 }
 
-.climate-dock {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.climate-chip {
-  cursor: pointer;
-}
-
-.map-goals {
-  position: absolute;
-  top: calc(100% + 96px);
-  left: 0;
-  bottom: auto;
-  width: min(240px, 78vw);
-  z-index: 30;
-  pointer-events: auto;
-  background: rgba(10, 20, 16, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.map-goals-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: baseline;
-  margin-bottom: 4px;
-}
-
-.map-goals-head span,
-.map-goals em {
-  color: #b7c4b8;
-  font-style: normal;
+.climate-line {
   font-size: 11px;
-}
-
-.map-goals ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.map-goals li {
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-  font-size: 12px;
-  line-height: 1.35;
-  margin: 3px 0;
-}
-
-.map-goals li[data-done='1'] {
-  color: #d7e7c8;
-}
-
-.map-goals .mark {
-  width: 12px;
-  color: #c9a227;
+  line-height: 1.2;
+  color: #b7c4b8;
+  letter-spacing: 0.02em;
 }
 
 .route-cards {

@@ -9,7 +9,8 @@ export {
   seasonOn,
   temperateMap,
 } from './calendar'
-export { accrueChallenges, challengeCards } from './challenges'
+export { accrueChallenges, challengeCards, seasonMissionBoard } from './challenges'
+export type { SeasonMissionBoard } from './challenges'
 export {
   climateAlert,
   climateCaption,

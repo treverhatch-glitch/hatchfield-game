@@ -31,6 +31,7 @@ const MESSAGE_KINDS = new Set([
   'threat',
   'emergency',
   'council',
+  'season',
 ])
 
 /** Letter-stack ids that move onto the phone on desktop, including threat and divert. */

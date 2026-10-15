@@ -339,16 +339,6 @@
   padding: 0;
 }
 
-.hud .map-goals {
-  left: 0;
-  bottom: auto;
-  top: calc(100% + 96px);
-  width: min(240px, 70vw);
-  background: rgb(15 23 42 / 0.86);
-  border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: 16px;
-}
-
 .fees-toggle {
   border-radius: 999px;
   border: 1px solid rgb(255 255 255 / 0.14);

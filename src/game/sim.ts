@@ -668,11 +668,13 @@ import {
   parseMapId,
   passengerFactor,
   rollMapWeather,
+  seasonMissionBoard,
   seasonOn,
   weatherTitle,
   winterForecast,
   type ChallengeCard,
   type MapDraw,
+  type SeasonMissionBoard,
   type MapId,
   type WinterOpsReading,
 } from '../maps/index.ts'
@@ -1452,6 +1454,10 @@ export class Game {
   /** Snow sample pushed into winter ops, when that module is installed. */
   winterOps: WinterOpsReading | null = null
   private mapClimateKey = ''
+  /** Last season key observed. The first one does not ping the phone. */
+  private seasonMissionSeen = ''
+  /** Phone card for the season that just began. Empty until a later season starts. */
+  private seasonMissionPing = ''
   payrollCool = 30
   /** Completed game days already billed. Payroll and the city levy close once per day. */
   payrollDay = 0
@@ -2039,6 +2045,8 @@ export class Game {
     this.mapChallenges = {}
     this.winterOps = null
     this.mapClimateKey = ''
+    this.seasonMissionSeen = ''
+    this.seasonMissionPing = ''
     this.payrollCool = 30
     this.payrollDay = 0
     this.playtestYear.reset(0)
@@ -2255,6 +2263,8 @@ export class Game {
       this.mapId = next
       if (!this.site) this.mapChallenges = {}
       this.mapClimateKey = ''
+      this.seasonMissionSeen = ''
+      this.seasonMissionPing = ''
       this.economy?.engine.setCalendar(demandCalendar(this.mapId))
       this.refreshWinter()
     }
@@ -2296,6 +2306,27 @@ export class Game {
     return challengeCards(this.mapId, this.mapChallenges)
   }
 
+  /** Current season only. The next season is a single preview line. */
+  seasonMissions(): SeasonMissionBoard {
+    return seasonMissionBoard(this.mapId, this.gameDay(), this.mapChallenges)
+  }
+
+  /**
+   * Phone card for a season that started after the first one observed.
+   * Dismissed cards stay off the handset.
+   */
+  seasonMissionNotice(): { key: string; seasonName: string; titles: string[]; nextLine: string } | null {
+    const key = this.seasonMissionPing
+    if (!key || this.letterAcked(key)) return null
+    const board = this.seasonMissions()
+    return {
+      key,
+      seasonName: board.seasonName,
+      titles: board.missions.map((mission) => mission.title),
+      nextLine: board.nextLine,
+    }
+  }
+
   mapSummary(): { name: string; region: string; season: string; blurb: string } {
     const map = mapById(this.mapId)
     const season = seasonOn(map, this.gameDay())
@@ -2312,22 +2343,35 @@ export class Game {
     this.winterOps = feedWinterOps(winterForecast(this.mapId, this.gameDay(), this.weather))
   }
 
+  /** True when this call is a later season, not the first one seen on the field. */
+  private noteSeasonMissions(): boolean {
+    if (!this.site) return false
+    const map = mapById(this.mapId)
+    const season = seasonOn(map, this.gameDay())
+    if (!season) return false
+    const year = Math.floor(this.gameDay() / Math.max(1, map.yearLengthDays))
+    const key = `season:${this.mapId}:${season.id}:${year}`
+    if (key === this.seasonMissionSeen) return false
+    const first = this.seasonMissionSeen === ''
+    this.seasonMissionSeen = key
+    if (first) return false
+    this.seasonMissionPing = key
+    return true
+  }
+
   private noteMapClimate() {
     this.refreshWinter()
+    const seasonChanged = this.noteSeasonMissions()
     if (this.mapId === 'temperate' || !this.site) return
     const binding = environmentBinding(this.mapId, this.gameDay())
     const key = `${binding.season.id}|${binding.activeHolidays.map((holiday) => holiday.id).join(',')}`
     if (key === this.mapClimateKey) return
     const first = this.mapClimateKey === ''
     this.mapClimateKey = key
-    if (first) return
+    if (first || seasonChanged) return
     const holiday = binding.activeHolidays.map((item) => item.name).join(' and ')
-    this.pushNews(
-      holiday
-        ? `${binding.season.name} · ${holiday} peak on the board.`
-        : `${binding.season.name} has started.`,
-      'ok',
-    )
+    if (!holiday) return
+    this.pushNews(`${binding.season.name} · ${holiday} peak on the board.`, 'ok')
   }
 
   private noteMapGoals(pax: number) {
@@ -7928,6 +7972,8 @@ export class Game {
       this.mapChallenges = s.mapChallenges ?? {}
       this.winterOps = null
       this.mapClimateKey = ''
+      this.seasonMissionSeen = ''
+      this.seasonMissionPing = ''
       this.sandbox = s.sandbox ?? false
       this.sites = s.sites ?? []
       this.diplomacy = null

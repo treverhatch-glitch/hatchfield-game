@@ -149,6 +149,12 @@ export interface PhoneWorld {
       disabled: boolean
     }[]
   } | null
+  seasonMission: {
+    key: string
+    seasonName: string
+    titles: string[]
+    nextLine: string
+  } | null
   threat: { title: string; blurb: string; secondsLeft: number } | null
   emergency: { title: string; blurb: string; secondsLeft: number } | null
   advisor: {
@@ -196,6 +202,7 @@ export function emptyPhoneWorld(): PhoneWorld {
     warn: null,
     inbound: null,
     council: null,
+    seasonMission: null,
     threat: null,
     emergency: null,
     advisor: [],
@@ -658,6 +665,29 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
           { primary: choice.id === 'full', disabled: choice.disabled },
         ),
       ),
+    })
+    if (built) cards.push(built)
+  }
+
+  const seasonMission = world.seasonMission
+  if (seasonMission) {
+    const title = `${seasonMission.seasonName} missions`
+    const list = seasonMission.titles.length
+      ? seasonMission.titles.map((name) => `· ${name}`).join('\n')
+      : 'No missions this season.'
+    const built = card({
+      id: 'season-mission',
+      key: seasonMission.key,
+      tab: 'messages',
+      kind: 'season',
+      from: 'Airport Council',
+      title,
+      preview: phonePreview(seasonMission.titles.length ? seasonMission.titles.join(', ') : title),
+      body: `${list}\n${seasonMission.nextLine}`,
+      tone: 'ok',
+      arrives: true,
+      secondsLeft: null,
+      actions: [btn('dismiss', 'Dismiss', { type: 'ack', key: seasonMission.key })],
     })
     if (built) cards.push(built)
   }

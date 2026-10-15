@@ -3,10 +3,12 @@ import { DEFAULT_DEMAND_CALENDAR, demandAtDay } from '../economy/seasons'
 import { SAVE_KEY } from '../game/types'
 import { SAVE_SCHEMA_VERSION, serialize, storedData } from '../features/save/index.ts'
 import { Game } from '../game/sim'
+import { readPhoneCards } from '../phone/readGame.ts'
 import {
   accrueChallenges,
   challengeCards,
   demandCalendar,
+  seasonMissionBoard,
   DESERT_HEAT,
   engineDerate,
   environmentBinding,
@@ -179,5 +181,61 @@ describe('map goals and winter feed', () => {
     expect(older.mapId).toBe('temperate')
     expect(older.mapGoalCards()).toHaveLength(3)
     expect(parseMapId('nope')).toBe('temperate')
+  })
+
+  it('shows only the current season on the mission board', () => {
+    const spring = seasonMissionBoard('temperate', 10, {})
+    expect(spring.seasonName).toBe('Spring')
+    expect(spring.missions).toEqual([])
+    expect(spring.nextLine).toBe('Next: Summer · Summer getaway')
+
+    const summer = seasonMissionBoard('temperate', 130, { summer_bank: 500 })
+    expect(summer.missions.map((mission) => mission.id)).toEqual(['summer_bank'])
+    expect(summer.missions[0]?.done).toBe(true)
+    expect(summer.nextLine).toBe('Next: Autumn')
+
+    const winter = seasonMissionBoard('temperate', 300, {})
+    expect(winter.missions.map((mission) => mission.title)).toEqual(['Winter holidays', 'Snow ops'])
+    expect(winter.nextLine).toBe('Next: Spring')
+
+    const hot = seasonMissionBoard('tropical', 50, {})
+    expect(hot.missions.map((mission) => mission.id)).toEqual(['songkran_bank', 'lunar_bank'])
+    expect(hot.nextLine).toBe('Next: Monsoon · Ride the rains')
+
+    const rains = seasonMissionBoard('tropical', 150, {})
+    expect(rains.missions.map((mission) => mission.id)).toEqual(['monsoon_ops'])
+    expect(rains.missions.some((mission) => mission.id === 'songkran_bank')).toBe(false)
+
+    const heat = seasonMissionBoard('desert', 180, {})
+    expect(heat.missions.map((mission) => mission.id)).toEqual(['hajj_bank', 'heat_ops'])
+    expect(heat.missions.some((mission) => mission.id === 'eid_bank')).toBe(false)
+  })
+
+  it('delivers a new season on the phone and leaves the news ticker alone', () => {
+    const game = new Game()
+    game.sandbox = false
+    game.beginNew('easy')
+    game.setMap('temperate')
+    expect(game.buyLand('city')).toBe(true)
+    game.speed = 1
+    game.clock = 0
+    game.tick(0.01)
+    expect(game.seasonMissionNotice()).toBeNull()
+    expect(readPhoneCards(game).some((card) => card.kind === 'season')).toBe(false)
+
+    game.clock = 90 * 180
+    game.news = []
+    game.tick(0.01)
+    const notice = game.seasonMissionNotice()
+    expect(notice?.seasonName).toBe('Summer')
+    expect(notice?.titles).toEqual(['Summer getaway'])
+    expect(notice?.nextLine).toBe('Next: Autumn')
+    const card = readPhoneCards(game).find((item) => item.kind === 'season')
+    expect(card).toMatchObject({ from: 'Airport Council', title: 'Summer missions', arrives: true })
+    expect(card?.actions[0]?.action).toEqual({ type: 'ack', key: notice?.key })
+    expect(game.news.some((item) => /has started|Summer getaway|missions/i.test(item.text))).toBe(false)
+    game.ackLetter(notice?.key ?? '')
+    expect(game.seasonMissionNotice()).toBeNull()
+    expect(readPhoneCards(game).some((item) => item.kind === 'season')).toBe(false)
   })
 })

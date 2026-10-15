@@ -116,6 +116,27 @@ describe('phone feed', () => {
       { type: 'vote-council', requestId: 'surface-access', choiceId: 'decline' },
     ])
     expect(council[0]?.actions[0]?.primary).toBe(true)
+    const season = buildPhoneFeed(
+      world({
+        seasonMission: {
+          key: 'season:temperate:summer:0',
+          seasonName: 'Summer',
+          titles: ['Summer getaway'],
+          nextLine: 'Next: Autumn',
+        },
+      }),
+    )
+    expect(season[0]).toMatchObject({
+      id: 'season-mission',
+      kind: 'season',
+      tab: 'messages',
+      from: 'Airport Council',
+      title: 'Summer missions',
+      arrives: true,
+    })
+    expect(season[0]?.body).toContain('Summer getaway')
+    expect(season[0]?.body).toContain('Next: Autumn')
+    expect(season[0]?.actions[0]?.action).toEqual({ type: 'ack', key: 'season:temperate:summer:0' })
     for (const kind of PHONE_EXCLUDED_KINDS) {
       expect(cards.some((card) => card.kind === kind)).toBe(false)
     }

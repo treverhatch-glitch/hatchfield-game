@@ -233,7 +233,7 @@ Branch `cursor/fuel-farm-depot-9acb`. Trever's fuel-farm notes, after the Gemini
 - Tanks sit inside grass earth berms. Two tankers park under a steel loading canopy with black hoses. A ground decal carries tire tracks and stains.
 - The flat yellow fuel-tile ring is gone. The pad uses painted lane markings (edge lines, a dashed center, stop bars) on a dark asphalt rectangle.
 - Trucks drive one way. `farm_entry` and `farm_exit` are opposite ends of the loading lane. The delivery path enters on one road cell and leaves on another, and the docked tanker faces entry toward exit. Test: `drives the tanker in one gate and out the other`.
-- Climate and season goals are a collapsible chip under the clock, labeled `Climate: Temperate` (the region name). The open list sits below the info strip. The phone stays bottom-left. Hints are a top-left collapsible badge. First Hour stays expanded only while the starter kit is offered, then collapses to a chip.
+- The seasonal goals card is off the main HUD. The status bar keeps a small climate line, `Temperate · Spring`. Current-season missions sit on the Airport Council board as Seasonal missions, with one next-season preview line. A new season arrives as a phone message. The phone stays bottom-left. Hints are a top-left collapsible badge. First Hour stays expanded only while the starter kit is offered, then collapses to a chip.
 
 ## Gate
 

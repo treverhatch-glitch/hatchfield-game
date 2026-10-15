@@ -1,20 +1,49 @@
+import type { SeasonMissionBoard } from '../maps/index.ts'
 import type { CouncilChoiceId, CouncilView } from './types.ts'
 
 function money(value: number): string {
   return `$${Math.round(value).toLocaleString('en-US')}`
 }
 
+function SeasonalMissions({ board }: { board: SeasonMissionBoard }) {
+  return (
+    <section data-testid="seasonal-missions">
+      <h3>Seasonal missions</h3>
+      <p className="muted">{board.seasonName}</p>
+      {board.missions.length ? (
+        <ul className="airlines">
+          {board.missions.map((mission) => (
+            <li key={mission.id} data-testid={`mission-${mission.id}`} data-done={mission.done ? '1' : '0'}>
+              {mission.title} · {mission.value}/{mission.target}
+              {mission.done ? ' · done' : ''}
+              <span className="muted"> {mission.detail}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">No missions this season.</p>
+      )}
+      <p className="muted" data-testid="next-season">
+        {board.nextLine}
+      </p>
+    </section>
+  )
+}
+
 export function CouncilPanel({
   view,
+  missions,
   onVote,
 }: {
   view: CouncilView
+  missions: SeasonMissionBoard
   onVote: (requestId: string, choiceId: CouncilChoiceId) => void
 }) {
   if (!view.unlocked) {
     return (
       <section data-testid="council-panel">
         <h3>Airport Council</h3>
+        <SeasonalMissions board={missions} />
         <p className="muted">
           Opens at Field Level {view.unlockFieldLevel}. Regional requests and public votes begin in normal late play.
         </p>
@@ -24,6 +53,7 @@ export function CouncilPanel({
 
   return (
     <section data-testid="council-panel">
+      <SeasonalMissions board={missions} />
       <p className="muted">
         Standing {view.standing}/100 · airport prestige {view.prestige}. Standing and existing award prestige add to
         every vote; this does not spend or change field XP.

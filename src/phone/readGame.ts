@@ -249,6 +249,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
         : null,
     inbound: inboundPhone(game),
     council: councilPhone(game),
+    seasonMission: game.seasonMissionNotice(),
     threat: game.pendingThreat
       ? {
           title: game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security alert',
