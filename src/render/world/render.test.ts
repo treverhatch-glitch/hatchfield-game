@@ -499,3 +499,20 @@ describe('pack signs', () => {
     expect(host.packSigns.children).toHaveLength(0)
   })
 })
+
+describe('terminal rebuilds', () => {
+  it('releases the brand material each terminal took, so map changes do not grow the logo list', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
+    const game = starterGame()
+    const cam = camAt(0, 0, 150)
+    const waiting = () => (wr as unknown as { shared: { surfaces: { logoWait: unknown[] } } }).shared.surfaces.logoWait.length
+    wr.update(game, cam, 1 / 60)
+    const first = waiting()
+    for (let i = 0; i < 5; i++) {
+      game.bumpMap()
+      wr.update(game, cam, 1 / 60)
+    }
+    expect(waiting()).toBe(first)
+  })
+})

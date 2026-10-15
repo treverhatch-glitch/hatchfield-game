@@ -578,6 +578,7 @@ export class TerminalBuilding {
       band.rotation.y = yaw
       band.name = 'prefab-band'
       this.owned.mats.push(band.material)
+      this.owned.geos.push(band.geometry)
       this.shell.add(band)
       const stub = new THREE.Mesh(
         new THREE.BoxGeometry(m(0.7), m(0.4), m(2.4)),
@@ -587,6 +588,7 @@ export class TerminalBuilding {
       stub.rotation.y = yaw
       stub.name = 'prefab-stub'
       this.owned.mats.push(stub.material)
+      this.owned.geos.push(stub.geometry)
       this.shell.add(stub)
     }
     airEdges.forEach((e, i) => {
@@ -1260,7 +1262,10 @@ export class TerminalBuilding {
     for (const t of this.signTextures) t.dispose()
     this.signTextures = []
     this.shared.surfaces.unwatch(this.floorMat)
-    for (const mat of this.owned.mats) this.shared.surfaces.unwatch(mat)
+    for (const mat of this.owned.mats) {
+      this.shared.surfaces.unwatch(mat)
+      this.shared.surfaces.releaseLogo(mat)
+    }
     for (const g of this.owned.geos) g.dispose()
     for (const m of this.owned.mats) m.dispose()
     this.root.traverse((o) => {
