@@ -978,6 +978,10 @@ export interface GameSnapshot {
     spotInbound?: SpotInbound | null
     termUpliftLitres?: number
     spotCool?: number
+    /** Fuel-supplier standing. Missing on older saves. */
+    supplierStanding?: Record<string, number>
+    /** Spot index fraction. Missing on older saves. */
+    fuelIndex?: number
     fleet: Record<string, number>
     bagSystem: 'carts' | 'sorter' | 'bhs'
     desks: number

@@ -83,10 +83,10 @@ export function readPhoneWorld(game: Game): PhoneWorld {
     fuelSpot: game.spotOffer
       ? {
           flightNo: game.spotOffer.flightNo,
-          supplier: SPOT_OFFER.supplier,
+          supplier: game.spotOffer.supplier ?? SPOT_OFFER.supplier,
           litres: SPOT_OFFER.tankerLitres,
-          perLitre: SPOT_OFFER.perLitre,
-          bill: Math.round(SPOT_OFFER.tankerLitres * SPOT_OFFER.perLitre),
+          perLitre: game.spotOffer.perLitre ?? SPOT_OFFER.perLitre,
+          bill: Math.round(SPOT_OFFER.tankerLitres * (game.spotOffer.perLitre ?? SPOT_OFFER.perLitre)),
           leadMinutes: SPOT_OFFER.leadMinutes,
           secondsLeft: Math.max(0, Math.ceil(game.spotOffer.expiresAt - game.clock)),
         }
@@ -97,7 +97,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
       return {
         id: def.id,
         name: def.name,
-        perLitre: def.wholesalePerLitre,
+        perLitre: game.termUnitPrice(def.id),
         bandLitres: termBandLitres(def.id),
         drawnLitres: Math.round(game.termUpliftLitres),
       }

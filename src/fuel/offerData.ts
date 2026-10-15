@@ -31,6 +31,11 @@ export interface SpotOffer {
   flightId: string
   /** Sim clock when the card closes. */
   expiresAt: number
+  /** Supplier who called. Missing on older saves; the Apex rack is the fallback. */
+  supplierId?: string
+  supplier?: string
+  /** Frozen $/L, including the index and that supplier's differential. */
+  perLitre?: number
 }
 
 export interface SpotInbound {
@@ -39,6 +44,8 @@ export interface SpotInbound {
   /** Game minutes still to the farm. Zero means it is at the gate. */
   minutesLeft: number
   waitNoted: boolean
+  /** Who called. Missing on older saves. */
+  supplier?: string
 }
 
 /** The wing bill still reads a brand. Trunk and Mega use the Kiln pump table. */

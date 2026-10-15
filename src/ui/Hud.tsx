@@ -2161,16 +2161,18 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                         const contract = contractById(game.contractId)
                         if (contract) {
                           const band = termBandLitres(contract.id)
-                          return `${contract.name} · $${contract.wholesalePerLitre.toFixed(3)}/L · band ${Math.round(game.termUpliftLitres).toLocaleString('en-US')} / ${band.toLocaleString('en-US')} L today`
+                          return `${contract.name} · $${game.termUnitPrice(contract.id).toFixed(3)}/L · band ${Math.round(game.termUpliftLitres).toLocaleString('en-US')} / ${band.toLocaleString('en-US')} L today`
                         }
                         if (game.spotInbound) {
-                          return `Spot · ${SPOT_OFFER.supplier} tanker on the road · ${game.spotInbound.litres.toLocaleString('en-US')} L`
+                          return `Spot · ${game.spotInbound.supplier ?? SPOT_OFFER.supplier} tanker on the road · ${game.spotInbound.litres.toLocaleString('en-US')} L`
                         }
                         if (game.spotOffer) {
-                          return `Spot offer · ${game.spotOffer.flightNo} · ${SPOT_OFFER.supplier} $${SPOT_OFFER.perLitre.toFixed(3)}/L`
+                          const price = game.spotOffer.perLitre ?? SPOT_OFFER.perLitre
+                          return `Spot offer · ${game.spotOffer.flightNo} · ${game.spotOffer.supplier ?? SPOT_OFFER.supplier} $${price.toFixed(3)}/L`
                         }
+                        const quote = game.quoteSpot()
                         return game.fuelBrand
-                          ? `${FUEL[game.fuelBrand].name} · spot $${SPOT_OFFER.perLitre.toFixed(3)}/L · no term`
+                          ? `${FUEL[game.fuelBrand].name} · spot $${quote.perLitre.toFixed(3)}/L · no term`
                           : 'No carrier. A spot tanker or a term keeps fuel on the wing.'
                       })()}
                     </p>
@@ -2197,10 +2199,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             key={c.id}
                             type="button"
                             disabled={!gate.ok || signed}
-                            title={gate.ok ? `$${c.wholesalePerLitre.toFixed(3)} per litre` : gate.why}
+                            title={gate.ok ? `$${game.termUnitPrice(c.id).toFixed(3)} per litre` : gate.why}
                             onClick={() => game.signScaleContract(c.id)}
                           >
-                            {c.name} {money(c.sign)} · ${c.wholesalePerLitre.toFixed(3)}/L
+                            {c.name} {money(c.sign)} · ${game.termUnitPrice(c.id).toFixed(3)}/L
                             {!gate.ok ? ` · ${gate.why}` : ''}
                           </button>
                         )

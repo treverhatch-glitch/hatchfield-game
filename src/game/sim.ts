@@ -751,6 +751,14 @@ import { FUEL as FUEL_CHAIN, FuelChain, type DeliveryRead, type FuelView } from 
 import { SPOT_OFFER, brandForContract, termBandLitres, type SpotInbound, type SpotOffer } from '../fuel/offerData.ts'
 import { HYDRANT_CARD, liveHydrantStands, standDrawsHydrant } from '../fuel/hydrant.ts'
 import {
+  clampStanding,
+  leadSupplier,
+  nextFuelIndex,
+  rackSpotPerLitre,
+  SUPPLIER_STANDING,
+  termPerLitre,
+} from '../fuel/standing.ts'
+import {
   astar,
   farmBesidePavement,
   hasBeltNetwork,
@@ -1386,6 +1394,10 @@ export class Game {
   termUpliftLitres = 0
   /** Sim seconds before another spot card. */
   spotCool = 0
+  /** Standing points per fuel supplier. Not the airline diplomacy track. */
+  supplierStanding: Record<string, number> = {}
+  /** Spot index as a fraction of the rack price. Terms do not use it. */
+  fuelIndex = 0
   tankTier: 1 | 2 | 3 = 1
   tankLitres = 0
   fuelSupply: FuelSupply = 'road'
@@ -5884,7 +5896,7 @@ export class Game {
       mode: this.fuelSupply === 'rail' ? 'pipeline' : 'tanker',
       tankerLitres: contract?.tankerLitres ?? 0,
       leadMinutes: contract?.leadMinutes ?? 0,
-      wholesalePerLitre: contract?.wholesalePerLitre ?? 0,
+      wholesalePerLitre: contract ? this.termUnitPrice(contract.id) : 0,
       cash: this.cash,
       truckDrawPerMin: truckLitres / windowMin,
       hydrantDrawPerMin: hydrantLitres / windowMin,
@@ -6442,6 +6454,8 @@ export class Game {
         spotInbound: this.spotInbound,
         termUpliftLitres: this.termUpliftLitres,
         spotCool: this.spotCool,
+        supplierStanding: this.supplierStanding,
+        fuelIndex: this.fuelIndex,
         fleet: this.scaleFleet,
         bagSystem: this.bagSystem,
         desks: this.paxDesks,
@@ -6655,6 +6669,8 @@ export class Game {
       this.spotInbound = s.pillar?.spotInbound ?? null
       this.termUpliftLitres = s.pillar?.termUpliftLitres ?? 0
       this.spotCool = s.pillar?.spotCool ?? 0
+      this.supplierStanding = { ...(s.pillar?.supplierStanding ?? {}) }
+      this.fuelIndex = s.pillar?.fuelIndex ?? 0
       this.scaleFleet = (s.pillar?.fleet ?? {}) as Partial<Record<VehicleType, number>>
       this.bagSystem = s.pillar?.bagSystem ?? 'carts'
       this.paxDesks = s.pillar?.desks ?? 2
@@ -13826,6 +13842,8 @@ export class Game {
     this.spotInbound = null
     this.termUpliftLitres = 0
     this.spotCool = 0
+    this.supplierStanding = {}
+    this.fuelIndex = 0
     this.tankTier = 1
     this.powerPlantTier = 1
     this.tankLitres = 0
@@ -14031,7 +14049,13 @@ export class Game {
     const result = tickFuel(this.pillarField(), state, minutes, this.cash)
     this.roadMinutes = state.roadMinutes
     this.tankLitres = state.litres
-    if (result.paid > 0) this.charge(result.paid, 'fuel_purchase')
+    let paid = result.paid
+    if (result.delivered > 0 && result.paid > 0 && this.contractId) {
+      const base = contractById(this.contractId)?.wholesalePerLitre ?? 0
+      const unit = this.termUnitPrice(this.contractId)
+      if (base > 0) paid = result.paid * (unit / base)
+    }
+    if (paid > 0) this.charge(paid, 'fuel_purchase')
     if (result.delivered > 0) {
       this.fuelLoads += loadsFromLitres(result.delivered)
       this.fuelJustDelivered = true
@@ -14060,9 +14084,11 @@ export class Game {
     }
     if (this.spotOffer && this.clock >= this.spotOffer.expiresAt) {
       const name = this.spotOffer.flightNo
+      const supplier = this.spotOffer.supplier ?? SPOT_OFFER.supplier
+      this.noteFuelStanding(this.spotOffer.supplierId ?? 'apex_local', SUPPLIER_STANDING.ignoredShortage)
       this.spotOffer = null
       this.spotCool = SPOT_OFFER.coolSeconds
-      this.pushNews(`${name} stays grounded once the tank is empty. The Apex rack offer expired.`, 'bad')
+      this.pushNews(`${name} stays grounded once the tank is empty. The ${supplier} offer expired.`, 'bad')
       return
     }
     if (!this.spotOffer && !this.spotInbound && this.spotCool <= 0) this.maybeRefreshSpot()
@@ -14073,11 +14099,37 @@ export class Game {
     const needy = this.flights.find((f) => f.phase !== 'gone' && !f.posted.fuel && this.departureNeedsFuel(f))
     const short = this.tankLitres < LITRES_PER_LEGACY_LOAD || (this.fuelLoads < 1 && Boolean(needy))
     if (!short) return
+    const quote = this.quoteSpot()
     this.spotOffer = {
       flightNo: needy?.flightNo ?? 'the next departure',
       flightId: needy?.id ?? '',
       expiresAt: this.clock + SPOT_OFFER.deadlineSeconds,
+      supplierId: quote.supplierId,
+      supplier: quote.supplier,
+      perLitre: quote.perLitre,
     }
+  }
+
+  /** Highest standing calls. Ties stay with the first supplier, Apex. */
+  quoteSpot(): { supplierId: string; supplier: string; perLitre: number } {
+    const lead = leadSupplier(this.supplierStanding, FUEL_CONTRACTS)
+    const supplier = lead.id === 'apex_local' ? SPOT_OFFER.supplier : lead.name
+    return {
+      supplierId: lead.id,
+      supplier,
+      perLitre: rackSpotPerLitre(this.fuelIndex, this.supplierStanding[lead.id] ?? 0),
+    }
+  }
+
+  termUnitPrice(id: string): number {
+    const def = contractById(id)
+    if (!def) return 0
+    return termPerLitre(def.wholesalePerLitre, this.supplierStanding[id] ?? 0)
+  }
+
+  private noteFuelStanding(id: string, delta: number) {
+    if (!id || delta === 0) return
+    this.supplierStanding[id] = clampStanding((this.supplierStanding[id] ?? 0) + delta)
   }
 
   /** Accept puts one road tanker on the clock. Litres land in tankLitres, nowhere else. */
@@ -14094,16 +14146,23 @@ export class Game {
       return
     }
     if (!this.fuelBrand) this.fuelBrand = 'apex'
+    const quote = this.spotOffer
+      ? {
+          supplier: this.spotOffer.supplier ?? SPOT_OFFER.supplier,
+          perLitre: this.spotOffer.perLitre ?? this.quoteSpot().perLitre,
+        }
+      : this.quoteSpot()
     this.spotInbound = {
       litres: SPOT_OFFER.tankerLitres,
-      perLitre: SPOT_OFFER.perLitre,
+      perLitre: quote.perLitre,
       minutesLeft: SPOT_OFFER.leadMinutes,
       waitNoted: false,
+      supplier: quote.supplier,
     }
     this.spotOffer = null
-    const bill = Math.round(SPOT_OFFER.tankerLitres * SPOT_OFFER.perLitre)
+    const bill = Math.round(SPOT_OFFER.tankerLitres * quote.perLitre)
     this.pushNews(
-      `Apex rack tanker on the road. ${SPOT_OFFER.tankerLitres.toLocaleString('en-US')} L at $${SPOT_OFFER.perLitre.toFixed(3)}/L ($${bill.toLocaleString('en-US')}).`,
+      `${quote.supplier} tanker on the road. ${SPOT_OFFER.tankerLitres.toLocaleString('en-US')} L at $${quote.perLitre.toFixed(3)}/L ($${bill.toLocaleString('en-US')}).`,
       'ok',
     )
     this.emit()
@@ -14112,9 +14171,11 @@ export class Game {
   declineSpot() {
     if (!this.spotOffer) return
     const name = this.spotOffer.flightNo
+    const supplier = this.spotOffer.supplier ?? SPOT_OFFER.supplier
+    this.noteFuelStanding(this.spotOffer.supplierId ?? 'apex_local', SUPPLIER_STANDING.ignoredShortage)
     this.spotOffer = null
     this.spotCool = SPOT_OFFER.coolSeconds
-    this.pushNews(`${name} stays grounded once the tank is empty. The Apex rack offer is closed.`, 'bad')
+    this.pushNews(`${name} stays grounded once the tank is empty. The ${supplier} offer is closed.`, 'bad')
     this.emit()
   }
 
@@ -14122,9 +14183,11 @@ export class Game {
   dropFuelTerm() {
     const def = contractById(this.contractId)
     if (!def) return
+    this.noteFuelStanding(def.id, SUPPLIER_STANDING.brokeTerm)
     this.contractId = null
     this.termUpliftLitres = 0
-    this.pushNews(`Dropped ${def.name}. Spot tankers are on the phone.`, 'ok')
+    const standing = this.supplierStanding[def.id] ?? 0
+    this.pushNews(`Dropped ${def.name}. Standing is ${standing}. Spot tankers are on the phone.`, 'ok')
     this.emit()
   }
 
@@ -14166,15 +14229,21 @@ export class Game {
     const band = termBandLitres(def.id)
     if (band <= 0) return
     const stamp = (completedDay + 1) * SIM_MINUTES_PER_GAME_DAY - 1
+    const unit = this.termUnitPrice(def.id)
     if (uplift + 1e-6 < band) {
-      const bill = (band - uplift) * def.wholesalePerLitre * SPOT_OFFER.shortfallFraction
+      const bill = (band - uplift) * unit * SPOT_OFFER.shortfallFraction
       if (!(bill > 0)) return
-      this.charge(bill, 'fuel_purchase', stamp, 'Term shortfall')
+      const taken = this.charge(bill, 'fuel_purchase', stamp, 'Term shortfall')
+      this.noteFuelStanding(
+        def.id,
+        taken + 1e-6 >= bill ? SUPPLIER_STANDING.paidShortfall : SUPPLIER_STANDING.ignoredShortage,
+      )
       this.pushNews(`Term shortfall — ${def.name}. Fly more, or drop back to spot.`, 'bad')
       return
     }
+    this.noteFuelStanding(def.id, SUPPLIER_STANDING.tookBand)
     const extra = uplift - band
-    const premium = Math.max(0, SPOT_OFFER.perLitre - def.wholesalePerLitre)
+    const premium = Math.max(0, rackSpotPerLitre(this.fuelIndex, 0) - unit)
     const bill = extra * premium
     if (!(bill > 0)) return
     this.charge(bill, 'fuel_purchase', stamp, 'Term overage')
@@ -14210,8 +14279,9 @@ export class Game {
     this.clearSpot()
     this.termUpliftLitres = 0
     const band = termBandLitres(id)
+    const unit = this.termUnitPrice(id)
     this.pushNews(
-      `Signed ${def.name}. ${def.tankerLitres.toLocaleString('en-US')} L road tankers at $${def.wholesalePerLitre.toFixed(3)}/L. Band ${band.toLocaleString('en-US')} L a day.`,
+      `Signed ${def.name}. ${def.tankerLitres.toLocaleString('en-US')} L road tankers at $${unit.toFixed(3)}/L. Band ${band.toLocaleString('en-US')} L a day.`,
       'ok',
     )
     this.emit()
@@ -17304,6 +17374,7 @@ export class Game {
   private closeOperatingDay(completedDay: number) {
     this.settleHubLeaseWarnings(completedDay)
     this.settleTermShortfall(completedDay)
+    this.fuelIndex = nextFuelIndex(this.fuelIndex)
     this.reviewAirlineRelations(completedDay)
     this.settleDeposits(completedDay)
     const premiumBill = this.billPremiumUpkeep()
@@ -17823,7 +17894,7 @@ export class Game {
     if (contract) {
       const band = termBandLitres(contract.id)
       const drawn = Math.round(this.termUpliftLitres).toLocaleString('en-US')
-      return `${litres} L · ${contract.name} · $${contract.wholesalePerLitre.toFixed(3)}/L · band ${drawn}/${band.toLocaleString('en-US')}`
+      return `${litres} L · ${contract.name} · $${this.termUnitPrice(contract.id).toFixed(3)}/L · band ${drawn}/${band.toLocaleString('en-US')}`
     }
     if (this.spotInbound) return `${litres} L · Spot · Apex rack tanker on the road`
     return `${litres} L · Spot · ${SPOT_OFFER.supplier} $${SPOT_OFFER.perLitre.toFixed(3)}/L`
