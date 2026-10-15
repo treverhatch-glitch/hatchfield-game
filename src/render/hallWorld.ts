@@ -213,6 +213,7 @@ export class HallWorld {
   private interiorPose = ''
   private fadeCamKey = ''
   private hotspotSig = ''
+  private overlaySig = ''
   private readonly apronCamPos = new THREE.Vector3()
   private readonly routeCache = new Map<string, { x: number; z: number }[] | null>()
   private terminalTextures: WorldTextures | null = null
@@ -1697,10 +1698,13 @@ export class HallWorld {
   syncOverlay(game: Game) {
     const show = game.showFlows
     const marks = game.advisorCells
+    const fit = game.activeHall()
+    const sig = overlaySignature(game, show, marks, fit)
+    if (sig === this.overlaySig) return
+    this.overlaySig = sig
     this.clearOverlay()
     this.overlay.visible = show || marks.length > 0
     if (!this.overlay.visible) return
-    const fit = game.activeHall()
     const zones = fit?.zones ?? []
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
@@ -1857,6 +1861,10 @@ export class HallWorld {
     const sig = items.map((item) => `${item.id}@${item.c},${item.r}r${item.rot ?? 0}`).join(';')
     if (sig !== this.walkSig) {
       this.walkSig = sig
+      for (const slat of this.walkSlats) {
+        slat.mesh.geometry.dispose()
+        ;(slat.mesh.material as THREE.Material).dispose()
+      }
       this.walkGroup.clear()
       this.walkSlats = []
       const cols = fit?.zones?.[0]?.length || GRID_C
@@ -2059,4 +2067,27 @@ export class HallWorld {
     this.figMats.clear()
     this.renderer.dispose()
   }
+}
+
+/** Everything the flow overlay draws from. Empty when the overlay is hidden. */
+export function overlaySignature(
+  game: Game,
+  show: boolean,
+  marks: readonly { c: number; r: number }[],
+  fit: ReturnType<Game['activeHall']>,
+): string {
+  if (!show && !marks.length) return ''
+  const zones = fit?.zones ?? []
+  const parts = [
+    show ? 'flows' : 'marks',
+    `${zones[0]?.length ?? 0}x${zones.length}`,
+    marks.map((cell) => `${cell.c},${cell.r}`).join(';'),
+  ]
+  if (show) {
+    parts.push(String(fit?.signs ?? 0), [...game.hallOpen()].join(','))
+    for (const g of game.hallGuests) {
+      if (!g.dead) parts.push(`${g.node}>${g.path.join('>')}`)
+    }
+  }
+  return parts.join('|')
 }
