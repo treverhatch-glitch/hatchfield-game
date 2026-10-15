@@ -11,6 +11,7 @@ import {
   paintTerrazzo,
   type Raster,
 } from './raster'
+import { groundTexture, type GroundArtId } from './groundArt'
 import { artTexture, GROUND_PHOTO } from './textureRegistry'
 
 export function rasterTexture(r: Raster, opts: { srgb?: boolean; anisotropy?: number; repeat?: boolean } = {}) {
@@ -41,16 +42,27 @@ export interface WorldTextures {
   glowHalo: THREE.DataTexture
   pool: THREE.DataTexture
   board: THREE.DataTexture
+  /** Weathered paint on runway, taxi and stand markings. Null in Node. */
+  markings: THREE.Texture | null
   dispose(): void
 }
 
+const GROUND_PLATE: Partial<Record<keyof typeof GROUND_PHOTO, GroundArtId>> = {
+  grass: 'grass',
+  asphalt: 'tarmac',
+  runway: 'tarmac',
+  road: 'tarmac',
+  concrete: 'concrete',
+}
+
 /**
- * `photos` swaps the Gemini photo textures (shared, from the registry) in for the procedural
- * ground, roof and terrazzo rasters. Off on Low and in Node, where the rasters stay.
+ * Procedural rasters stay for Node and as a stand-in. In the browser the full-res
+ * ground plates replace grass, tarmac and concrete. `photos` still swaps the older
+ * building-pack shots onto roof and terrazzo. Plate size follows texture quality only.
  */
 export function makeTextures(size: number, anisotropy: number, photos = false): WorldTextures {
   const a = { anisotropy }
-  const t: Omit<WorldTextures, 'dispose'> = {
+  const t = {
     grass: rasterTexture(paintGrass(size), a),
     asphalt: rasterTexture(paintAsphalt(size, 2, GROUND_LOOK.taxiAsphalt), a),
     runway: rasterTexture(paintAsphalt(size, 8, GROUND_LOOK.runwayAsphalt), a),
@@ -63,9 +75,19 @@ export function makeTextures(size: number, anisotropy: number, photos = false): 
     pool: rasterTexture(paintGlow(64, 1.4), { srgb: false, repeat: false }),
     board: rasterTexture(paintBoard(64, 32), { repeat: false }),
   }
-  const out: Omit<WorldTextures, 'dispose'> = { ...t }
+  const out: Omit<WorldTextures, 'dispose' | 'markings'> = { ...t }
+  const usedPlate = new Set<string>()
+  for (const k of Object.keys(GROUND_PLATE) as (keyof typeof GROUND_PLATE)[]) {
+    const id = GROUND_PLATE[k]
+    if (!id) continue
+    const plate = groundTexture(id, anisotropy)
+    if (!plate) continue
+    out[k] = plate
+    usedPlate.add(k)
+  }
   if (photos) {
     for (const k of Object.keys(GROUND_PHOTO) as (keyof typeof GROUND_PHOTO)[]) {
+      if (usedPlate.has(k)) continue
       const photo = artTexture(GROUND_PHOTO[k], anisotropy)
       if (!photo) continue
       out[k] = photo
@@ -73,6 +95,7 @@ export function makeTextures(size: number, anisotropy: number, photos = false): 
   }
   return {
     ...out,
+    markings: groundTexture('markings', anisotropy),
     dispose() {
       for (const tex of Object.values(t)) tex.dispose()
     },

@@ -158,13 +158,15 @@ export const PAINT_RGB: Record<PaintColor, number> = {
   L: 0xc97816,
 }
 
-/** Paint rectangles → one vertex-coloured mesh. */
-export function paintGeometry(list: readonly Paint[], y = 0.035): THREE.BufferGeometry {
+/** Paint rectangles → one vertex-coloured mesh, with world UVs for the paint plate. */
+export function paintGeometry(list: readonly Paint[], y = 0.035, tile = GROUND_LOOK.paintTile): THREE.BufferGeometry {
   const pos = new Float32Array(list.length * 4 * 3)
   const col = new Float32Array(list.length * 4 * 3)
   const nor = new Float32Array(list.length * 4 * 3)
+  const uvs = new Float32Array(list.length * 4 * 2)
   const idx: number[] = []
   const c = new THREE.Color()
+  const span = tile > 0 ? tile : 1
   list.forEach((p, i) => {
     c.setHex(PAINT_RGB[p.color], THREE.SRGBColorSpace)
     const corners = [
@@ -184,6 +186,8 @@ export function paintGeometry(list: readonly Paint[], y = 0.035): THREE.BufferGe
       col[o + 1] = c.g
       col[o + 2] = c.b
       nor[o + 1] = 1
+      uvs[(i * 4 + k) * 2] = x / span
+      uvs[(i * 4 + k) * 2 + 1] = z / span
     })
     const b = i * 4
     idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3)
@@ -192,6 +196,7 @@ export function paintGeometry(list: readonly Paint[], y = 0.035): THREE.BufferGe
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
   g.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
   g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
   g.setIndex(idx)
   g.computeBoundingSphere()
   return g

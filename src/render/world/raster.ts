@@ -263,6 +263,38 @@ export function paintRoof(size: number, seed = 5): Raster {
   return r
 }
 
+/**
+ * Weathered runway paint. Low-frequency waves tile; chips wrap at the edge.
+ * Vertex colour tints this white plate yellow, red or white on the marking mesh.
+ */
+export function paintMarkings(size: number, seed = 8): Raster {
+  const r = new Raster(size, size)
+  const base = hexRgb(0xf4f5f3)
+  const chip = hexRgb(0xb7bcc2)
+  const grit = hexRgb(0x8e949b)
+  r.fill((u, v, x, y) => {
+    const n = fbm(u, v, 4, 3, seed)
+    const brush = 0.5 + 0.5 * Math.sin(v * Math.PI * 2 * 36)
+    const grain = hash2(x, y, seed) - 0.5
+    return shade(base, 0.9 + n * 0.1 + (brush - 0.5) * 0.045 + grain * 0.055)
+  })
+  const rand = rng(seed * 11 + 3)
+  const chips = Math.round(size * 0.35)
+  for (let i = 0; i < chips; i++) {
+    const x = Math.floor(rand() * size)
+    const y = Math.floor(rand() * size)
+    const rad = 1 + Math.floor(rand() * Math.max(2, size / 180))
+    const tone = rand() < 0.7 ? chip : grit
+    for (let dy = -rad; dy <= rad; dy++) {
+      for (let dx = -rad; dx <= rad; dx++) {
+        if (dx * dx + dy * dy > rad * rad) continue
+        r.blend(x + dx, y + dy, tone, 0.38)
+      }
+    }
+  }
+  return r
+}
+
 /** Radial falloff used for light glows and ground light pools (alpha channel). */
 export function paintGlow(size: number, power = 2): Raster {
   const r = new Raster(size, size)

@@ -420,6 +420,9 @@ describe('geometry builders', () => {
     ])
     expect(g.getAttribute('position').count).toBe(8)
     expect(g.getAttribute('color').getX(4)).toBeGreaterThan(g.getAttribute('color').getY(4))
+    const uv = g.getAttribute('uv')
+    const p = g.getAttribute('position')
+    expect(uv.getX(0)).toBeCloseTo(p.getX(0) / 1.6)
   })
 
   it('outer ground frame leaves the plot uncovered and faces up', () => {

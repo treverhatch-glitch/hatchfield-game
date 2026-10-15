@@ -70,6 +70,20 @@ export const GROUND_LOOK = {
   kerb: 0xc8cbcf,
   kerbH: 0.08,
   kerbW: 0.2,
+  /** Metres one copy of the runway-paint plate covers. */
+  paintTile: 1.6,
+  /**
+   * Multiply on the full-res ground plates. Roads stay a touch darker than
+   * taxi tarmac so the landside strip still reads. White leaves the plate alone.
+   */
+  surfaceTint: {
+    grass: 0xffffff,
+    runway: 0xffffff,
+    taxi: 0xffffff,
+    apron: 0xffffff,
+    road: 0xc2beb6,
+    pad: 0xd8dadc,
+  },
 } as const
 
 /** Sky dome extras. The dome is a horizon → mid → zenith gradient plus this halo. */

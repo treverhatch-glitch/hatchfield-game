@@ -203,12 +203,17 @@ export class WorldRenderer {
   private applyQuality(first = false) {
     const q = this.q
     if (!first) this.disposeContent()
-    this.paintMat?.dispose()
-    this.paintMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2 })
     this.hatchMat?.dispose()
     const chevron = photoTexturesEnabled(q.level) ? artTexture('chevron_stripe', q.anisotropy) : null
     this.hatchMat = chevron ? new THREE.MeshLambertMaterial({ map: chevron, polygonOffset: true, polygonOffsetFactor: -3 }) : null
     this.tex = makeTextures(q.textureSize, q.anisotropy, photoTexturesEnabled(q.level))
+    this.paintMat?.dispose()
+    this.paintMat = new THREE.MeshLambertMaterial({
+      map: this.tex.markings ?? undefined,
+      vertexColors: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+    })
     this.shared = makeTerminalShared(this.tex, baseLevel(q.level))
     const surf: Record<SurfaceKind, THREE.Texture> = {
       grass: this.tex.grass,
@@ -221,7 +226,11 @@ export class WorldRenderer {
     for (const k of Object.keys(surf) as SurfaceKind[]) {
       this.surfaceMats.set(
         k,
-        new THREE.MeshLambertMaterial({ map: surf[k], vertexColors: true, color: k === 'pad' ? 0xd8dadc : 0xffffff }),
+        new THREE.MeshLambertMaterial({
+          map: surf[k],
+          vertexColors: true,
+          color: GROUND_LOOK.surfaceTint[k],
+        }),
       )
     }
     this.lights = new AirfieldLights(this.tex)

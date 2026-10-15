@@ -6,7 +6,7 @@ import { applyDayNight, DAY_NIGHT_CYCLE } from './dayNight'
 import { fitShadow, groundFocus, pickLod, stepFade } from './lod'
 import { parseQuality, QUALITY, suggestQuality } from './quality'
 import { GROUND_LOOK } from '../look'
-import { fbm, paintAsphalt, paintConcrete, paintGrass, paintRoad, Raster, tileNoise } from './raster'
+import { fbm, paintAsphalt, paintConcrete, paintGrass, paintMarkings, paintRoad, Raster, tileNoise } from './raster'
 
 describe('day / night', () => {
   it('sim night matches lights-on hours', () => {
@@ -162,6 +162,14 @@ describe('procedural textures', () => {
     const road = paintRoad(32).meanLuma()
     const taxi = paintAsphalt(32, 2, GROUND_LOOK.taxiAsphalt).meanLuma()
     expect(road).toBeLessThan(taxi)
+  })
+
+  it('runway paint is a light weathered plate', () => {
+    const a = paintMarkings(32, 8)
+    const b = paintMarkings(32, 8)
+    expect(Array.from(a.data)).toEqual(Array.from(b.data))
+    expect(a.meanLuma()).toBeGreaterThan(170)
+    expect(a.meanLuma()).toBeLessThan(250)
   })
 
   it('raster wraps writes for seamless stamps', () => {
