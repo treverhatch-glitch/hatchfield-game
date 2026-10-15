@@ -15,6 +15,7 @@ describe('hub tier offers', () => {
   it('sends Focus from the relationship gate and keeps the fee string singular', () => {
     const game = new Game()
     standing(game, 'brisa', 25, 14)
+    game.hubTierSince.brisa = -7
     game.openRelationHub('brisa')
     expect(game.hubOffer).toMatchObject({ airline: 'brisa', tier: 'focus', fee: 4_000 })
     const card = readPhoneCards(game).find((row) => row.kind === 'hub')
@@ -47,8 +48,12 @@ describe('hub tier offers', () => {
     for (const id of ['atlas_cargo', 'polar_freight']) {
       standing(game, id, 95)
       game.hubTiers[id] = 'hub'
+      game.hubTierSince[id] = -40
       game.hubDedicated[id] = { hangars: 1, fuel: 1, ramp: 1 }
+      game.scaleFleet.fuel_truck = (game.scaleFleet.fuel_truck ?? 0) + 1
+      expect(game.dedicateHubVehicle(id, 'fuelTruck')).toBe(true)
     }
+    game.hubRivalRoll = 1
     const holder = game.airline('atlas_cargo').name
     game.hubOffer = { airline: 'atlas_cargo', age: 0, fee: 22_000, deadline: 45, tier: 'primary' }
     const first = readPhoneCards(game).find((row) => row.kind === 'hub')
@@ -57,6 +62,11 @@ describe('hub tier offers', () => {
     game.acceptHub()
     expect(game.hubTiers.atlas_cargo).toBe('primary')
 
+    game.wave3.state.relations.rows.polar_freight = {
+      score: 95,
+      band: 'partner',
+      counts: { onTime: 20, delay: 0, cancel: 0, missed: 0, fine: 0, kept: 30 },
+    }
     game.hubOffer = { airline: 'polar_freight', age: 0, fee: 22_000, deadline: 45, tier: 'primary' }
     const second = readPhoneCards(game).find((row) => row.kind === 'hub')
     expect(second?.actions.find((action) => action.label === 'Accept')?.disabled).toBe(true)

@@ -23,17 +23,23 @@ function hubPhoneOffer(game: Game, airlineName: string): NonNullable<PhoneWorld[
   if (!offer) return null
   const tier = offer.tier ?? 'hub'
   const list = game.hubChecklistFor(offer.airline)
+  const anger = game.hubAngerPreview(offer.airline)
+  const lines = list.lines.map((line) => ({
+    label: line.detail && line.detail !== line.label ? `${line.label} · ${line.detail}` : line.label,
+    met: line.status === 'ok',
+  }))
+  if (anger.spared) lines.push({ label: anger.spared, met: true })
+  if (anger.anger) lines.push({ label: anger.anger, met: true })
   return {
     airlineName,
     tierLabel: HUB_TIER_LABEL[tier],
     feeText: money(offer.fee),
     secondsLeft: Math.ceil(offer.deadline),
     body: list.rewards[0] ?? 'The next step on their ladder.',
-    lines: list.lines.map((line) => ({
-      label: line.detail && line.detail !== line.label ? `${line.label} · ${line.detail}` : line.label,
-      met: line.status === 'ok',
-    })),
+    lines,
     acceptDisabled: !(list.eligible && list.next === tier),
+    anger: anger.anger,
+    spared: anger.spared,
   }
 }
 
@@ -188,6 +194,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
               .join(' · ')}. Standing ≤${HEAT_WARN_THRESHOLD} warns; ≤${HEAT_ABANDON_THRESHOLD} and they abandon.`,
           }
         : null,
+    rivalNotes: game.hubRivalPhone.filter((note) => !game.letterAcked(`rival:${note.id}`)),
     advisor: game.standingAdvisor.activeCards.map((note) => ({
       id: note.id,
       airlineName: game.airline(note.airlineId).name,

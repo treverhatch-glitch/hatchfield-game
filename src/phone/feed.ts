@@ -80,6 +80,9 @@ export interface PhoneWorld {
     body: string
     lines: PhoneLine[]
     acceptDisabled: boolean
+    /** Shown above Accept. Empty when this rung has no rivals on the field. */
+    anger?: string
+    spared?: string
   } | null
   mxOffer: { airlineName: string; payoutText: string; secondsLeft: number } | null
   parking: {
@@ -117,6 +120,7 @@ export interface PhoneWorld {
     daysToLeave: number
     causes: string
   }[]
+  rivalNotes: { id: string; name: string; text: string }[]
 }
 
 function card(partial: PhoneCard): PhoneCard | null {
@@ -150,6 +154,7 @@ export function emptyPhoneWorld(): PhoneWorld {
     cargo: null,
     warn: null,
     advisor: [],
+    rivalNotes: [],
   }
 }
 
@@ -367,7 +372,7 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       from: hub.airlineName,
       title,
       preview: phonePreview(title),
-      body: `${hub.feeText}. ${hub.body}`,
+      body: [hub.anger, hub.spared, `${hub.feeText}. ${hub.body}`].filter((line) => line).join('\n'),
       tone: 'good',
       arrives: true,
       secondsLeft: hub.secondsLeft,
@@ -376,6 +381,25 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
         btn('sign', 'Accept', { type: 'accept-hub' }, { primary: true, disabled: hub.acceptDisabled }),
         btn('decline', 'Decline', { type: 'decline-hub' }),
       ],
+    })
+    if (built) cards.push(built)
+  }
+
+  for (const note of world.rivalNotes) {
+    const title = `${note.name} left for Bellwater`
+    const built = card({
+      id: `rival-${note.id}`,
+      key: `rival:${note.id}`,
+      tab: 'messages',
+      kind: 'rival',
+      from: note.name,
+      title,
+      preview: phonePreview(note.text),
+      body: note.text,
+      tone: 'bad',
+      arrives: true,
+      secondsLeft: null,
+      actions: [btn('dismiss', 'Dismiss', { type: 'ack', key: `rival:${note.id}` })],
     })
     if (built) cards.push(built)
   }

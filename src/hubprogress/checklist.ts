@@ -16,17 +16,22 @@ import {
   DESK_ASK,
   HUB_TIERS,
   HUB_TIER_GATE,
+  HUB_TIER_LABEL,
   KIOSK_ARCHETYPES,
   LEASE_KEY_ORDER,
   LEASE_NEED,
+  MIN_DAYS_AT_TIER,
   PERK_AT,
   TIER_REWARDS,
+  VEHICLE_ROLES,
   type HubArchetype,
   type HubBand,
   type HubOfferTier,
   type HubTier,
   type LeaseKey,
+  type VehicleRole,
 } from './config.ts'
+import { VEHICLE_ROLE_LABEL, vehicleNeedFor } from './vehicles.ts'
 
 export interface HubCarrier {
   id: string
@@ -75,6 +80,10 @@ export interface HubFacilities {
   /** Airline id holding Primary hub, if any. */
   primaryHolderId: string | null
   primaryHolderName: string | null
+  /** Game days already spent on the stored tier. */
+  daysAtTier: number
+  /** Dedicated turnaround vehicles, by role. */
+  vehicles: Partial<Record<VehicleRole, number>>
 }
 
 export type LineStatus = 'ok' | 'missing' | 'waiting'
@@ -121,6 +130,8 @@ export function emptyHubFacilities(): HubFacilities {
     dedicatedLanes: 0,
     primaryHolderId: null,
     primaryHolderName: null,
+    daysAtTier: 0,
+    vehicles: {},
   }
 }
 
@@ -207,7 +218,7 @@ function haveFacility(world: HubFacilities, key: LeaseKey, tier: HubOfferTier): 
     case 'pier':
       return world.pier
     case 'fuel':
-      return world.fuel
+      return world.fuel + (world.vehicles.fuelTruck ?? 0)
     case 'hangar':
       return world.hangars
     case 'ramp':
@@ -273,6 +284,21 @@ function onTimeLine(rate: number, days: number, needRate: number, needDays: numb
   }
 }
 
+function tenureLine(current: HubTier, have: number, need: number): ChecklistLine {
+  const safe = Number.isFinite(have) ? Math.max(0, Math.floor(have)) : 0
+  return {
+    id: 'tenure',
+    label: `Days at ${HUB_TIER_LABEL[current]}`,
+    detail: `${safe} / ${need} days`,
+    status: safe >= need ? 'ok' : 'missing',
+  }
+}
+
+function vehicleLine(role: VehicleRole, have: number, need: number): ChecklistLine {
+  const noun = VEHICLE_ROLE_LABEL[role]
+  return countLine(`veh-${role}`, `Dedicated ${noun}`, have, need, false)
+}
+
 function connectionLine(type: HubArchetype, minutes: number | null): ChecklistLine {
   const label = type === 'cargo' ? 'Sort window' : 'Connection window'
   if (minutes == null || !Number.isFinite(minutes)) {
@@ -329,6 +355,9 @@ function nextAskLabels(type: HubArchetype, tier: HubOfferTier): readonly string[
     facilityLabel(type, after, key, needs[key] ?? 0),
   )
   if (asksConnection(type, after)) labels.push(type === 'cargo' ? 'Sort window' : 'Connection window')
+  for (const role of VEHICLE_ROLES) {
+    if ((vehicleNeedFor(type, after)[role] ?? 0) > 0) labels.push(`Dedicated ${VEHICLE_ROLE_LABEL[role]}`)
+  }
   return labels
 }
 
@@ -337,6 +366,7 @@ function offerLines(airline: HubCarrier, world: HubFacilities, tier: HubOfferTie
   const lines: ChecklistLine[] = [relationLine(airline.contractTier, gate.minTier)]
   if (airline.diplomacyBand) lines.push(bandLine(airline.diplomacyBand, bandNeeded(airline.type, tier)))
   lines.push(onTimeLine(airline.onTimeRate, airline.onTimeDays, gate.onTime, gate.days))
+  lines.push(tenureLine(airline.tier, world.daysAtTier, MIN_DAYS_AT_TIER[tier]))
 
   const needs = leasesNeeded(airline.type, tier)
   for (const key of LEASE_KEY_ORDER) {
@@ -346,6 +376,11 @@ function offerLines(airline: HubCarrier, world: HubFacilities, tier: HubOfferTie
     lines.push(countLine(key, facilityLabel(airline.type, tier, key, need), haveFacility(world, key, tier), need, waiting))
   }
   if (asksConnection(airline.type, tier)) lines.push(connectionLine(airline.type, world.connectionMin))
+  const vehicles = vehicleNeedFor(airline.type, tier)
+  for (const role of VEHICLE_ROLES) {
+    const need = vehicles[role] ?? 0
+    if (need > 0) lines.push(vehicleLine(role, world.vehicles[role] ?? 0, need))
+  }
   if (tier === 'primary') lines.push(...primaryLines(airline, world))
   return lines
 }

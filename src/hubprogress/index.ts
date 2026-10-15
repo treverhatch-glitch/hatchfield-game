@@ -12,6 +12,12 @@ export {
   HUB_TIERS,
   HUB_TIER_GATE,
   HUB_TIER_LABEL,
+  MIN_DAYS_AT_TIER,
+  RIVAL_BACKLASH,
+  RIVAL_REFUSE_DAYS,
+  RIVAL_TRIM_DAYS,
+  VEHICLE_NEED,
+  VEHICLE_ROLES,
   KIOSK_ARCHETYPES,
   LEASE_KEY_ORDER,
   LEASE_NEED,
@@ -27,7 +33,29 @@ export {
   type HubOfferTier,
   type HubTier,
   type LeaseKey,
+  type VehicleRole,
 } from './config.ts'
+
+export { angerSentence, backlashRoll, planBacklash, sparedSentence, type BacklashHit, type BacklashPlan, type RivalEffect } from './backlash.ts'
+
+export {
+  dedicateVehicleLabel,
+  firstSpare,
+  groundVehicleId,
+  isVehicleRole,
+  liveVehicleLeases,
+  releaseVehicleLabel,
+  spareIndex,
+  vehicleAskMet,
+  vehicleBlock,
+  vehicleCounts,
+  vehicleLeaseId,
+  vehicleNeedFor,
+  vehicleReleaseBreaks,
+  VEHICLE_ROLE_LABEL,
+  VEHICLE_ROLE_TYPES,
+  type VehicleLease,
+} from './vehicles.ts'
 
 export { hubProgressRows, hubShowcase, hubStatusNote, type HubProgressRow, type HubShowcase } from './present.ts'
 

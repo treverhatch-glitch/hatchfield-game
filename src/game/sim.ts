@@ -664,6 +664,7 @@ import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
 import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
 import { rosterAirline } from '../airlines/roster.ts'
+import { RIVAL_NAME } from '../rival/config.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
 import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
 import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines, rosterType } from './rosterAirlines.ts'
@@ -671,12 +672,15 @@ import {
   checklistFromFacts,
   readHubDedicated,
   readHubLeaseWarnings,
+  readHubDayMap,
   readHubLeases,
   readHubOffered,
   readHubTiers,
+  readHubVehicleLeases,
   type HubDedicatedCounts,
 } from './hubProgress.ts'
-import { HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, TIER_DROP_WARNING_DAYS, type HubOfferTier, type HubTier } from '../hubprogress/config.ts'
+import { HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
+import { backlashRoll, planBacklash, type BacklashPlan } from '../hubprogress/backlash.ts'
 import {
   dedicateBlock,
   dedicateLabel,
@@ -691,6 +695,19 @@ import {
   type FacilityLease,
   type FacilityLeaseKind,
 } from '../hubprogress/leases.ts'
+import {
+  dedicateVehicleLabel,
+  firstSpare,
+  groundVehicleId,
+  liveVehicleLeases,
+  releaseVehicleLabel,
+  vehicleAskMet,
+  vehicleBlock,
+  vehicleCounts,
+  vehicleLeaseId,
+  vehicleReleaseBreaks,
+  type VehicleLease,
+} from '../hubprogress/vehicles.ts'
 import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
 import {
   airframeGap,
@@ -1439,6 +1456,18 @@ export class Game {
   hubLeaseWarnings: Record<string, { tier: HubTier; untilDay: number }> = {}
   /** Tiers a letter has already been sent for. A decline does not clear the leases. */
   hubOffered: Record<string, HubOfferTier[]> = {}
+  /** Game day the stored tier started. Missing means today, so an old save still waits. */
+  hubTierSince: Record<string, number> = {}
+  /** Tugs, belt loaders, catering trucks, and fuel trucks named to one carrier. */
+  hubVehicleLeases: VehicleLease[] = []
+  /** Game day a rival will next consider a new contract. */
+  hubRivalRefuse: Record<string, number> = {}
+  /** Game day a rival may be seeded onto the board again. */
+  hubRivalQuiet: Record<string, number> = {}
+  /** Phone notes for a carrier who left for Bellwater. */
+  hubRivalPhone: { id: string; name: string; text: string }[] = []
+  /** Test override for the one Accept roll. Null uses the holder, tier, and day. */
+  hubRivalRoll: number | null = null
   parkingOffer: ParkingOffer | null = null
   parkingCool = 65
   /** Day-rate cool for independent parked GA. */
@@ -1856,6 +1885,12 @@ export class Game {
     this.hubLeases = []
     this.hubLeaseWarnings = {}
     this.hubOffered = {}
+    this.hubTierSince = {}
+    this.hubVehicleLeases = []
+    this.hubRivalRefuse = {}
+    this.hubRivalQuiet = {}
+    this.hubRivalPhone = []
+    this.hubRivalRoll = null
     this.parkingOffer = null
     this.parkingCool = 65
     this.parkRateCool = 0
@@ -3639,6 +3674,8 @@ export class Game {
       connectionMin: minimumConnectionTime(this.hubFacilities()),
       primaryHolderId: holder,
       primaryHolderName: holder ? (engine?.relation(holder)?.name ?? this.airline(holder).name) : null,
+      daysAtTier: Math.max(0, this.gameDay() - (this.hubTierSince[id] ?? this.gameDay())),
+      vehicles: vehicleCounts(this.liveHubVehicles(id)),
     })
     return { id, name: airline.name, type: view.type, checklist: view.checklist }
   }
@@ -3690,7 +3727,7 @@ export class Game {
     const id = this.hubLeaseTargets()[kind].find((row) => !taken.has(row))
     if (!id) return false
     this.hubLeases.push({ id, kind, airlineId })
-    this.clearHubLeaseWarning(airlineId)
+    this.clearHubLeaseWarning(airlineId, false)
     this.pushNews(`${this.airline(airlineId).name} dedicated ${dedicateLabel(kind).replace('Dedicate ', '')}.`, 'good')
     this.emit()
     return true
@@ -3740,6 +3777,174 @@ export class Game {
     return `${HUB_TIER_LABEL[warning.tier]} falls in ${left} days`
   }
 
+  /** Spare tugs, belt loaders, catering trucks, and fuel trucks, and the ones this carrier holds. */
+  hubVehicleChoices(airlineId: string): {
+    role: VehicleRole
+    label: string
+    blocked: string | null
+    held: { id: string; label: string }[]
+  }[] {
+    const fleet = this.fleetNow()
+    const live = this.liveHubVehicles()
+    return VEHICLE_ROLES.map((role) => {
+      const held = live.filter((lease) => lease.airlineId === airlineId && lease.role === role)
+      return {
+        role,
+        label: dedicateVehicleLabel(role),
+        blocked: vehicleBlock(role, firstSpare(role, fleet, live) != null),
+        held: held.map((lease) => ({ id: lease.id, label: releaseVehicleLabel(role) })),
+      }
+    })
+  }
+
+  /** Assign one spare unit to this carrier. It leaves the common pool. */
+  dedicateHubVehicle(airlineId: string, role: VehicleRole): boolean {
+    if (!this.signed.includes(airlineId)) return false
+    this.dropMissingHubVehicles()
+    const spare = firstSpare(role, this.fleetNow(), this.liveHubVehicles())
+    if (!spare) return false
+    const paint = rosterAirline(airlineId)
+    this.hubVehicleLeases.push({
+      id: vehicleLeaseId(spare.type, spare.index),
+      role,
+      type: spare.type,
+      airlineId,
+      primary: paint?.primary ?? '#888888',
+      secondary: paint?.secondary ?? '#f0f0f0',
+    })
+    this.stampHubVehicleLeases()
+    this.clearHubLeaseWarning(airlineId, true)
+    this.pushNews(`${this.airline(airlineId).name} dedicated a ${dedicateVehicleLabel(role).replace('Dedicate a ', '')}.`, 'good')
+    this.emit()
+    return true
+  }
+
+  releaseHubVehicle(airlineId: string, leaseId: string): boolean {
+    const lease = this.hubVehicleLeases.find((row) => row.id === leaseId && row.airlineId === airlineId)
+    if (!lease) return false
+    this.hubVehicleLeases = this.hubVehicleLeases.filter((row) => row.id !== leaseId)
+    this.stampHubVehicleLeases()
+    const haveAfter = this.liveHubVehicles(airlineId).filter((row) => row.role === lease.role).length
+    const tier = this.hubTiers[airlineId] ?? 'station'
+    const type = this.hubCarrierView(airlineId).type
+    if (vehicleReleaseBreaks(type, tier, lease.role, haveAfter) && this.hubLeaseWarnings[airlineId]?.tier !== tier) {
+      this.hubLeaseWarnings[airlineId] = { tier, untilDay: this.gameDay() + TIER_DROP_WARNING_DAYS }
+      this.pushNews(
+        `${this.airline(airlineId).name} has ${TIER_DROP_WARNING_DAYS} days before ${HUB_TIER_LABEL[tier]} falls.`,
+        'bad',
+      )
+    }
+    this.pushNews(`${this.airline(airlineId).name} released the ${releaseVehicleLabel(lease.role).replace('Release the ', '')}.`, 'ok')
+    this.emit()
+    return true
+  }
+
+  /** Anger sentence for the next Base, Hub, or Primary offer. Empty at Focus and below. */
+  hubAngerPreview(airlineId: string): BacklashPlan {
+    const next = this.hubChecklistFor(airlineId).next
+    if (!next) return { anger: '', spared: '', hit: [] }
+    return planBacklash({
+      holderId: airlineId,
+      tier: next,
+      signed: this.signed
+        .filter((id) => id !== airlineId)
+        .map((id) => ({ id, name: this.airline(id).name, standing: this.standingOf(id) })),
+      roll: 1,
+      poachStandingMax: RIVAL.poachStandingMax,
+    })
+  }
+
+  private liveHubVehicles(airlineId?: string): VehicleLease[] {
+    return liveVehicleLeases(this.hubVehicleLeases, this.fleetNow()).filter(
+      (lease) => airlineId == null || lease.airlineId === airlineId,
+    )
+  }
+
+  private dropMissingHubVehicles() {
+    const fleet = this.fleetNow()
+    const live = new Set(liveVehicleLeases(this.hubVehicleLeases, fleet).map((lease) => lease.id))
+    const gone = this.hubVehicleLeases.filter((lease) => !live.has(lease.id))
+    if (!gone.length) return
+    this.hubVehicleLeases = this.hubVehicleLeases.filter((lease) => live.has(lease.id))
+    this.stampHubVehicleLeases()
+    for (const lease of gone) {
+      const haveAfter = this.liveHubVehicles(lease.airlineId).filter((row) => row.role === lease.role).length
+      const tier = this.hubTiers[lease.airlineId] ?? 'station'
+      const type = this.hubCarrierView(lease.airlineId).type
+      if (vehicleReleaseBreaks(type, tier, lease.role, haveAfter) && this.hubLeaseWarnings[lease.airlineId]?.tier !== tier) {
+        this.hubLeaseWarnings[lease.airlineId] = { tier, untilDay: this.gameDay() + TIER_DROP_WARNING_DAYS }
+      }
+    }
+  }
+
+  private stampHubVehicleLeases() {
+    const sim = this.ground?.sim
+    if (!sim) return
+    const live = this.liveHubVehicles()
+    for (const vehicle of sim.vehicles) {
+      const lease = live.find((row) => groundVehicleId(row.type, Number(row.id.split(':')[2])) === vehicle.id)
+      vehicle.leaseAirline = lease?.airlineId ?? null
+    }
+  }
+
+  private rivalRefuses(airlineId: string): boolean {
+    return (this.hubRivalRefuse[airlineId] ?? 0) > this.gameDay()
+  }
+
+  private applyHubBacklash(holderId: string, tier: HubOfferTier) {
+    if (tier === 'focus') return
+    const roll = this.hubRivalRoll ?? backlashRoll(holderId, tier, this.gameDay())
+    const plan = planBacklash({
+      holderId,
+      tier,
+      signed: this.signed
+        .filter((id) => id !== holderId)
+        .map((id) => ({ id, name: this.airline(id).name, standing: this.standingOf(id) })),
+      roll,
+      poachStandingMax: RIVAL.poachStandingMax,
+    })
+    const diplomacyPrimary = tier === 'primary' && Boolean(this.diplomacy?.adapter.engine.relation(holderId))
+    for (const row of plan.hit) {
+      if (!diplomacyPrimary) this.wave3.shiftRelation(row.airlineId, row.score)
+      if (row.effect === 'relocate') {
+        this.moveRivalToBellwater(row.airlineId, row.name)
+        continue
+      }
+      if (row.effect === 'trim') {
+        this.trimRivalRoutes(row.airlineId, tier === 'primary' ? 2 : 1)
+        this.pushNews(`${row.name} cut a rotation.`, 'bad')
+      } else if (row.effect === 'refuse') {
+        this.hubRivalRefuse[row.airlineId] = this.gameDay() + RIVAL_REFUSE_DAYS
+        this.pushNews(`${row.name} will not take a new deal for ${RIVAL_REFUSE_DAYS} days.`, 'bad')
+      } else {
+        this.pushNews(`${row.name} is angry about the hub. Relationship ${row.score}.`, 'bad')
+      }
+    }
+  }
+
+  private trimRivalRoutes(airlineId: string, count: number) {
+    let left = count
+    for (const slot of this.schedule) {
+      if (left <= 0) break
+      if (slot.airline !== airlineId) continue
+      if (slot.status !== 'scheduled' && slot.status !== 'delayed') continue
+      slot.status = 'cancelled'
+      slot.delayReason = 'rival'
+      left -= 1
+    }
+    this.hubRivalQuiet[airlineId] = this.gameDay() + RIVAL_TRIM_DAYS
+  }
+
+  private moveRivalToBellwater(airlineId: string, name: string) {
+    const carrier = this.airline(airlineId)
+    this.ensureRival()
+    this.noteRivalWalkaway(carrier, 'hub rivalry')
+    this.loseAirlineToRival(airlineId)
+    const text = `${name} moved to ${RIVAL_NAME}.`
+    this.pushNews(text, 'bad')
+    this.hubRivalPhone.push({ id: `${airlineId}:${this.gameDay()}`, name, text })
+  }
+
   /** Half of each dedicated lounge room's daily upkeep. The full room bill still posts. */
   hubLoungeShare(): number {
     const rate = HALL_AMENITY_EXPENSE.lounge ?? 0
@@ -3768,7 +3973,7 @@ export class Game {
     )
   }
 
-  private clearHubLeaseWarning(airlineId: string) {
+  private clearHubLeaseWarning(airlineId: string, includeVehicles: boolean) {
     const warning = this.hubLeaseWarnings[airlineId]
     if (!warning) return
     const type = this.hubCarrierView(airlineId).type
@@ -3777,7 +3982,8 @@ export class Game {
       pier: this.facilityCount(airlineId, 'gate'),
       hangar: this.facilityCount(airlineId, 'hangar'),
     })
-    if (met) delete this.hubLeaseWarnings[airlineId]
+    const trucks = !includeVehicles || vehicleAskMet(type, warning.tier, vehicleCounts(this.liveHubVehicles(airlineId)))
+    if (met && trucks) delete this.hubLeaseWarnings[airlineId]
   }
 
   /** A demolished building drops its lease and can open the same warning. Weather does not. */
@@ -3793,12 +3999,14 @@ export class Game {
 
   private settleHubLeaseWarnings(completedDay: number) {
     this.dropMissingHubLeases()
+    this.dropMissingHubVehicles()
     for (const [id, warning] of Object.entries(this.hubLeaseWarnings)) {
       if (completedDay < warning.untilDay) continue
       if ((this.hubTiers[id] ?? 'station') === warning.tier) {
         const next = tierBelow(this.hubCarrierView(id).type, warning.tier)
         if (next === 'station') delete this.hubTiers[id]
         else this.hubTiers[id] = next
+        this.hubTierSince[id] = this.gameDay()
         this.pushNews(`${this.airline(id).name} lost ${HUB_TIER_LABEL[warning.tier]}.`, 'bad')
       }
       delete this.hubLeaseWarnings[id]
@@ -6521,6 +6729,11 @@ export class Game {
       hubLeases: this.hubLeases,
       hubLeaseWarnings: this.hubLeaseWarnings,
       hubOffered: this.hubOffered,
+      hubTierSince: this.hubTierSince,
+      hubVehicleLeases: this.hubVehicleLeases,
+      hubRivalRefuse: this.hubRivalRefuse,
+      hubRivalQuiet: this.hubRivalQuiet,
+      hubRivalPhone: this.hubRivalPhone,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
       hintPrefs: this.hintPrefs,
@@ -6764,6 +6977,18 @@ export class Game {
       this.hubLeases = readHubLeases(s.hubLeases)
       this.hubLeaseWarnings = readHubLeaseWarnings(s.hubLeaseWarnings)
       this.hubOffered = readHubOffered(s.hubOffered) as Record<string, HubOfferTier[]>
+      this.hubTierSince = readHubDayMap(s.hubTierSince)
+      this.hubVehicleLeases = readHubVehicleLeases(s.hubVehicleLeases)
+      this.hubRivalRefuse = readHubDayMap(s.hubRivalRefuse)
+      this.hubRivalQuiet = readHubDayMap(s.hubRivalQuiet)
+      this.hubRivalPhone = Array.isArray(s.hubRivalPhone)
+        ? s.hubRivalPhone.flatMap((row) => {
+            if (!row || typeof row !== 'object') return []
+            const src = row as { id?: unknown; name?: unknown; text?: unknown }
+            if (typeof src.id !== 'string' || typeof src.name !== 'string' || typeof src.text !== 'string') return []
+            return [{ id: src.id, name: src.name, text: src.text }]
+          })
+        : []
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
       // The save wins; older saves fall back to the settings mirror, then to defaults.
@@ -12173,6 +12398,7 @@ export class Game {
       },
     })
     this.groundRev = rev
+    this.stampHubVehicleLeases()
     if (first) {
       this.groundAnnounced = true
       this.pushNews('Vehicle depot online. Service trucks run the turnarounds from here.', 'good')
@@ -12822,6 +13048,7 @@ export class Game {
         deferCatering: pax > 0,
         flightId: f.id,
         callsign: f.flightNo,
+        airlineId: f.airline,
         outboundCargoKg: Math.round(plan.tonnes * 1000),
       })
     } catch {
@@ -14873,6 +15100,11 @@ export class Game {
       this.emit()
       return
     }
+    if (this.rivalRefuses(this.offer.airline)) {
+      this.pushNews(`${this.airline(this.offer.airline).name} refused. The last hub angered them.`, 'bad')
+      this.emit()
+      return
+    }
     const id = this.offer.airline
     const name = this.airline(id).name
     const miss = this.missingReq(id)
@@ -14972,6 +15204,11 @@ export class Game {
   acceptOffer() {
     if (!this.offer) return
     const id = this.offer.airline
+    if (this.rivalRefuses(id)) {
+      this.pushNews(`${this.airline(id).name} refused. The last hub angered them.`, 'bad')
+      this.emit()
+      return
+    }
     const gate = this.checkinSignReport(id)
     if (!gate.ok) {
       const note = `${id}|${gate.line}`
@@ -14985,6 +15222,7 @@ export class Game {
     this.checkinBlockNote = ''
     const a = this.airline(id)
     this.signed.push(id)
+    this.hubTierSince[id] = this.gameDay()
     this.wave3.noteLetter(id, 'accept')
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.offer = null
@@ -15036,6 +15274,7 @@ export class Game {
 
   seedScheduleForAirline(airlineId: AirlineId, count: number) {
     if (this.isBanned(airlineId)) return
+    if ((this.hubRivalQuiet[airlineId] ?? 0) > this.gameDay()) return
     // A freighter (or any metal the stands cannot take) must not occupy the bank.
     // One unfit slot at the head cascades every passenger flight behind it.
     if (!this.airlineParkable(airlineId)) return
@@ -15878,6 +16117,8 @@ export class Game {
       return
     }
     this.hubTiers[o.airline] = tier
+    this.hubTierSince[o.airline] = this.gameDay()
+    this.applyHubBacklash(o.airline, tier)
     this.hubOffer = null
     this.hubOfferCool = 90
     if ((tier === 'hub' || tier === 'primary') && !this.hubAirlines.includes(o.airline)) {
@@ -17322,7 +17563,7 @@ export class Game {
     }
     const dedicated: Record<string, number> = {}
     for (const id of this.signed) {
-      const credit = leaseCredit(this.liveHubLeases(id).length)
+      const credit = leaseCredit(this.liveHubLeases(id).length + this.liveHubVehicles(id).length)
       if (credit > 0) dedicated[id] = credit
     }
     return {
@@ -17379,6 +17620,9 @@ export class Game {
     const band = list.lines.find((line) => line.id === 'band')
     if (relation?.status !== 'ok') return
     if (band && band.status !== 'ok') return
+    if (list.lines.find((line) => line.id === 'tenure')?.status !== 'ok') return
+    if (list.lines.find((line) => line.id === 'onTime')?.status !== 'ok') return
+    if (this.rivalRefuses(airlineId)) return
     const offered = this.hubOffered[airlineId] ?? []
     if (!announce && offered.includes(tier)) return
     const fee = HUB_OFFER_FEE[tier]

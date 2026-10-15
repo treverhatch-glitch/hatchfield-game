@@ -12,6 +12,7 @@ import {
   noteFine,
   noteLetter,
   noteMissedAsk,
+  shiftScore,
   noteTurnaround,
   readRelation,
   reviewRelationDay,
@@ -40,6 +41,11 @@ export class Wave3Engine {
       ...this.state,
       research: { ...this.state.research, animSeconds: this.state.research.animSeconds + extra },
     }
+  }
+
+  shiftRelation(airlineId: string, delta: number): void {
+    if (!airlineId || !Number.isFinite(delta) || delta === 0) return
+    this.state = { ...this.state, relations: shiftScore(this.state.relations, airlineId, delta) }
   }
 
   noteLetter(airlineId: string, response: 'accept' | 'decline'): void {

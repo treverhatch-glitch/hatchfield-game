@@ -24,6 +24,7 @@ const MESSAGE_KINDS = new Set([
   'warn',
   'advisor',
   'message',
+  'rival',
 ])
 
 /** Letter-stack ids that move onto the phone on desktop. Emergencies and threats stay off it. */

@@ -28,7 +28,7 @@ function carrier(over: Partial<HubCarrier> & Pick<HubCarrier, 'id' | 'type'>): H
 }
 
 function world(over: Partial<HubFacilities> = {}): HubFacilities {
-  return { ...emptyHubFacilities(), ...over }
+  return { ...emptyHubFacilities(), daysAtTier: 40, ...over }
 }
 
 function ids(lines: { id: string }[]): string[] {
@@ -146,7 +146,7 @@ describe('hub checklist', () => {
         onTimeRate: 0.9,
         onTimeDays: 30,
       }),
-      world({ hangars: 1, fuel: 1, ramp: 1, connectionMin: 40 }),
+      world({ hangars: 1, fuel: 1, ramp: 1, connectionMin: 40, vehicles: { fuelTruck: 1 } }),
     )
     expect(hub.next).toBe('hub')
     expect(ids(hub.lines)).not.toContain('lounge')
@@ -215,6 +215,7 @@ describe('hub checklist', () => {
       lounges: 1,
       pier: 8,
       fuel: 1,
+      vehicles: { tug: 1, belt: 1, catering: 1 },
     })
     const hers = hubChecklist(gulf, ready)
     expect(hers.next).toBe('primary')
@@ -248,7 +249,7 @@ describe('hub checklist', () => {
   it('leaves a budget carrier without a lounge line at Hub', () => {
     const list = hubChecklist(
       carrier({ id: 'brisa', type: 'budget', tier: 'base', contractTier: 4, diplomacyBand: 'partner', onTimeRate: 0.95, onTimeDays: 30 }),
-      world({ deskAllocator: true, dedicatedDesks: 4, stands: 6 }),
+      world({ deskAllocator: true, dedicatedDesks: 4, stands: 6, vehicles: { tug: 1 } }),
     )
     expect(list.next).toBe('hub')
     expect(ids(list.lines)).not.toContain('lounge')

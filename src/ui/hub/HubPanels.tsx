@@ -65,6 +65,30 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
         <button type="button" data-testid="hub-dedicate-desk" disabled title={ALLOCATOR_WAIT}>
           Dedicate a desk
         </button>
+        {list.next === 'base' || list.next === 'hub' || list.next === 'primary' ? (
+          <p className="muted" data-testid="hub-anger">
+            {game.hubAngerPreview(id).anger || 'No signed rival is angry about this step.'}
+            {game.hubAngerPreview(id).spared ? ` ${game.hubAngerPreview(id).spared}` : ''}
+          </p>
+        ) : null}
+        {game.hubVehicleChoices(id).map((choice) => (
+          <span key={choice.role}>
+            <button
+              type="button"
+              data-testid={`hub-dedicate-${choice.role}`}
+              disabled={choice.blocked != null}
+              title={choice.blocked ?? undefined}
+              onClick={() => game.dedicateHubVehicle(id, choice.role)}
+            >
+              {choice.label}
+            </button>
+            {choice.held.map((held) => (
+              <button key={held.id} type="button" data-testid={`hub-release-${choice.role}`} onClick={() => game.releaseHubVehicle(id, held.id)}>
+                {held.label}
+              </button>
+            ))}
+          </span>
+        ))}
         {game.hubFacilityChoices(id).map((choice) => (
           <span key={choice.kind}>
             <button

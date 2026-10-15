@@ -266,6 +266,8 @@ export interface TurnaroundOptions {
   flightId?: string
   /** Callsign painted on the vehicle's task line, e.g. ZO116. */
   callsign?: string
+  /** Carrier this turn belongs to. A dedicated truck serves only this id. */
+  airlineId?: string
 }
 
 export type DelayCause =

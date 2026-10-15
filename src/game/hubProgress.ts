@@ -9,11 +9,14 @@ import {
   hubChecklist,
   HUB_TIERS,
   isFacilityLeaseKind,
+  isVehicleRole,
   type FacilityLease,
   type HubArchetype,
   type HubBand,
   type HubChecklist,
   type HubTier,
+  type VehicleLease,
+  type VehicleRole,
 } from '../hubprogress/index.ts'
 
 export interface HubFieldFacts {
@@ -47,6 +50,9 @@ export interface HubFieldFacts {
   connectionMin: number | null
   primaryHolderId: string | null
   primaryHolderName: string | null
+  /** Days already held at the stored tier. */
+  daysAtTier: number
+  vehicles: Partial<Record<VehicleRole, number>>
 }
 
 export function isHubTier(value: unknown): value is HubTier {
@@ -126,6 +132,34 @@ export function readHubLeaseWarnings(raw: unknown): Record<string, { tier: HubTi
   return out
 }
 
+export function readHubVehicleLeases(raw: unknown): VehicleLease[] {
+  if (!Array.isArray(raw)) return []
+  const out: VehicleLease[] = []
+  const seen = new Set<string>()
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const src = row as Record<string, unknown>
+    const id = typeof src.id === 'string' ? src.id : ''
+    const airlineId = typeof src.airlineId === 'string' ? src.airlineId : ''
+    const type = typeof src.type === 'string' ? src.type : ''
+    const primary = typeof src.primary === 'string' ? src.primary : '#888888'
+    const secondary = typeof src.secondary === 'string' ? src.secondary : '#f0f0f0'
+    if (!id || !airlineId || !type || !isVehicleRole(src.role) || seen.has(id)) continue
+    seen.add(id)
+    out.push({ id, airlineId, type, role: src.role, primary, secondary })
+  }
+  return out
+}
+
+export function readHubDayMap(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, number> = {}
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === 'number' && Number.isFinite(value)) out[id] = Math.floor(value)
+  }
+  return out
+}
+
 export function readHubTiers(raw: unknown): Record<string, HubTier> {
   if (!raw || typeof raw !== 'object') return {}
   const out: Record<string, HubTier> = {}
@@ -163,6 +197,8 @@ export function checklistFromFacts(facts: HubFieldFacts): { type: HubArchetype; 
   facilities.connectionMin = facts.connectionMin
   facilities.primaryHolderId = facts.primaryHolderId
   facilities.primaryHolderName = facts.primaryHolderName
+  facilities.daysAtTier = Math.max(0, Math.floor(facts.daysAtTier))
+  facilities.vehicles = facts.vehicles
   const checklist = hubChecklist(
     {
       id: facts.id,

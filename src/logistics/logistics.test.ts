@@ -278,6 +278,34 @@ describe('stock and money', () => {
     expect(sim.profit).toBeCloseTo(sim.ledger.fuelSales + sim.ledger.cateringFees - sim.ledger.vehicleUpkeep)
   })
 
+  it('keeps a leased fuel truck off another carrier and still bills a quiet day', () => {
+    const cfg = defaultConfig({ vehicles: { fuel_truck: 1, pushback_tug: 1 } })
+    const quiet = new LogisticsSim(cfg)
+    const perDay = Object.entries(cfg.vehicles).reduce(
+      (sum, [type, count]) => sum + (count ?? 0) * cfg.vehicleSpecs[type as keyof typeof cfg.vehicleSpecs].upkeepPerDay,
+      0,
+    )
+    quiet.tick(1440)
+    expect(quiet.ledger.vehicleUpkeep).toBeCloseTo(perDay)
+    const leased = quiet.vehicles.find((vehicle) => vehicle.type === 'fuel_truck')
+    expect(leased).toBeTruthy()
+    if (leased) leased.leaseAirline = 'atlas_cargo'
+    quiet.tick(1440)
+    expect(quiet.ledger.vehicleUpkeep).toBeCloseTo(perDay * 2)
+
+    const other = new LogisticsSim(defaultConfig({ vehicles: { gpu: 1 } }))
+    const truck = other.vehicles.find((vehicle) => vehicle.type === 'gpu')!
+    truck.leaseAirline = 'atlas_cargo'
+    other.startTurnaround('stand-2', 'a320neo', 90, { airlineId: 'gulf_pearl' })
+    expect(truck.requestId).toBeNull()
+
+    const own = new LogisticsSim(defaultConfig({ vehicles: { gpu: 1 } }))
+    const ours = own.vehicles.find((vehicle) => vehicle.type === 'gpu')!
+    ours.leaseAirline = 'atlas_cargo'
+    own.startTurnaround('stand-2', 'a320neo', 90, { airlineId: 'atlas_cargo' })
+    expect(ours.requestId).not.toBeNull()
+  })
+
   it('kitchen produces meals up to capacity and charges cost', () => {
     const base = defaultConfig()
     const sim = new LogisticsSim({ ...base, kitchen: { ...base.kitchen, initialMeals: 2900 } })

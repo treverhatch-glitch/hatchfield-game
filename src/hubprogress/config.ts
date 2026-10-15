@@ -92,6 +92,37 @@ export const CONNECTION_AT: Partial<Record<HubArchetype, readonly HubOfferTier[]
   cargo: ['hub'],
 }
 
+/** Days the current tier must already have been held before the next letter. */
+export const MIN_DAYS_AT_TIER = {
+  focus: 7,
+  base: 14,
+  hub: 21,
+  primary: 30,
+} as const
+
+export const VEHICLE_ROLES = ['tug', 'belt', 'catering', 'fuelTruck'] as const
+
+export type VehicleRole = (typeof VEHICLE_ROLES)[number]
+
+/** Hard vehicle gates. A missing key means that archetype has no vehicle line at that tier. */
+export const VEHICLE_NEED: Partial<
+  Record<HubArchetype, Partial<Record<HubOfferTier, Partial<Record<VehicleRole, number>>>>>
+> = {
+  budget: { base: { tug: 1 } },
+  flag: { hub: { tug: 1, belt: 1, catering: 1 } },
+  cargo: { hub: { fuelTruck: 1 } },
+}
+
+/** Rival hit on Accept. Primary's score matches hub_rival and is not stacked on it. */
+export const RIVAL_BACKLASH = {
+  base: { score: -4, months: 6, refuse: 0.1, trim: 0, relocate: 0 },
+  hub: { score: -8, months: 9, refuse: 0.25, trim: 0.2, relocate: 0.1 },
+  primary: { score: -15, months: 12, refuse: 0.4, trim: 0.35, relocate: 0.25 },
+} as const
+
+export const RIVAL_REFUSE_DAYS = 30
+export const RIVAL_TRIM_DAYS = 14
+
 export const HUB_OFFER_FEE = { focus: 4_000, base: 8_000, hub: 14_000, primary: 22_000 } as const
 export const TIER_DROP_WARNING_DAYS = 30
 /** Share of one lounge room's daily upkeep the airline pays while the lease holds. */

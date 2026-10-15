@@ -1010,6 +1010,16 @@ export interface GameSnapshot {
   >
   /** Hub-tier letters already sent. Missing on older saves. */
   hubOffered?: Record<string, string[]>
+  /** Game day the stored tier started. */
+  hubTierSince?: Record<string, number>
+  /** Dedicated turnaround vehicles. */
+  hubVehicleLeases?: { id: string; role: string; type: string; airlineId: string; primary: string; secondary: string }[]
+  /** Game day a rival will consider a new contract again. */
+  hubRivalRefuse?: Record<string, number>
+  /** Game day a rival may be seeded again. */
+  hubRivalQuiet?: Record<string, number>
+  /** Phone notes for a move to Bellwater. */
+  hubRivalPhone?: { id: string; name: string; text: string }[]
   /** Lounge, gate, and hangar leases by building id. Missing on older saves. */
   hubLeases?: { id: string; kind: string; airlineId: string }[]
   /** Day a stored tier falls if a gating lease stays released. */

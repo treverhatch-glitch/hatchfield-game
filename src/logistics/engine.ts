@@ -155,6 +155,8 @@ export interface VehicleState {
   reserved: number
   /** Cargo module hold. Dispatcher skips this truck for every other flight. */
   heldFor: string | null
+  /** Hub lease. The truck serves only this carrier. Null stays in the common pool. */
+  leaseAirline: string | null
   /** Condition, wear and breakdown state (maintenance). */
   wear: WearState
   /** Service-road nodes for the drive in progress. */
@@ -270,6 +272,8 @@ export interface TurnaroundState {
   fuelExternalHold: boolean
   /** Callsign for the vehicle task line. Empty when the caller didn't pass one. */
   callsign: string
+  /** Carrier the turn belongs to. Empty when the caller didn't pass one. */
+  airlineId: string
 }
 
 export type LogisticsListener = (e: LogisticsEvent) => void
@@ -371,6 +375,7 @@ export class LogisticsSim {
           serving: 0,
           reserved: 0,
           heldFor: null,
+          leaseAirline: null,
           wear: Maintenance.freshWear(0),
           route: null,
           phaseStart: 0,
@@ -554,6 +559,7 @@ export class LogisticsSim {
       cateringFeePosted: false,
       externalFlightId: opts.flightId ?? '',
       callsign: opts.callsign ?? '',
+      airlineId: opts.airlineId ?? '',
       fuelExternalHold: false,
     }
     this.turnarounds.set(id, t)
@@ -2084,6 +2090,7 @@ export class LogisticsSim {
           if (!r.vehicles.includes(v.type) || v.phase !== 'idle') continue
           if (this.flow && !this.flow.canDispatch(v.type)) continue
           if (v.heldFor && v.heldFor !== t.externalFlightId) continue
+          if (v.leaseAirline && v.leaseAirline !== t.airlineId) continue
           if (this.config.strictSizeTiers && !vehicleCanServe(v.type, sizeTierOf(t.needs.airframeId))) continue
           const fit = this.compatMult(r, v.type) * 10 - r.vehicles.indexOf(v.type)
           const tt = this.tripMinutes(v, r, dest)
