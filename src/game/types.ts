@@ -1126,6 +1126,8 @@ export interface GameSnapshot {
   premium?: PremiumState
   /** Check-in desks locked to one airline. Missing on older saves. */
   dedicatedDesks?: { deskId: string; airlineId: AirlineId }[]
+  /** Security lanes named to one airline. Missing on older saves. The hub line still waits. */
+  dedicatedLanes?: { laneId: string; airlineId: string }[]
   /** Shop leases, ad campaigns, and awards. Missing on older saves. */
   tycoon?: TycoonState
   /** Bellwater Intl rival sim. */

@@ -682,6 +682,13 @@ import {
   type HubDedicatedCounts,
 } from './hubProgress.ts'
 import { HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
+import {
+  assignSentences,
+  leaseCell,
+  readLaneLocks,
+  type AssignKind,
+  type AssignSentences,
+} from '../hubprogress/assign.ts'
 import { backlashRoll, planBacklash, type BacklashPlan } from '../hubprogress/backlash.ts'
 import {
   dedicateBlock,
@@ -702,12 +709,16 @@ import {
   firstSpare,
   groundVehicleId,
   liveVehicleLeases,
+  parseGroundVehicleId,
   releaseVehicleLabel,
+  roleOfType,
   vehicleAskMet,
   vehicleBlock,
   vehicleCounts,
   vehicleLeaseId,
   vehicleReleaseBreaks,
+  VEHICLE_ROLE_LABEL,
+  VEHICLE_ROLE_TYPES,
   type VehicleLease,
 } from '../hubprogress/vehicles.ts'
 import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
@@ -1492,6 +1503,15 @@ export class Game {
   showUps: ShowUpPlan[] = []
   /** Common desks the player locked to one airline. They stay branded and are never shared. */
   dedicatedDesks: { deskId: string; airlineId: AirlineId }[] = []
+  /** Security lanes named to one airline. The checklist still waits on the desk allocator. */
+  dedicatedLanes: { laneId: string; airlineId: string }[] = []
+  /** Open dedicate picker. Not saved. */
+  assignPick: { kind: AssignKind; id: string; role?: VehicleRole } | null = null
+  /** Paint several desks, or several stands, then assign them together. Not saved. */
+  assignBulk = false
+  assignSelection: { kind: 'desk' | 'gate'; id: string }[] = []
+  /** Bulk assign posts one news line instead of one per stand. */
+  private leaseAnnounce = true
   /** Last under-desk refusal, so a held letter does not reprint the news every tick. */
   private checkinBlockNote = ''
   /** Seeded mix and leads. The hall stamps these onto the entrance cap. */
@@ -1830,6 +1850,10 @@ export class Game {
     this.deskStaffCool = 0
     this.hallStaff = []
     this.dedicatedDesks = []
+    this.dedicatedLanes = []
+    this.assignPick = null
+    this.assignBulk = false
+    this.assignSelection = []
     this.premium = createPremiumState()
     this.landsideUses = 0
     this.landsideFeeWindow = 0
@@ -3015,35 +3039,16 @@ export class Game {
   }
 
   /**
-   * Lock the next free common desk to this airline. Below Preferred it costs
-   * the dedicated fee. Preferred and Trusted waive it. A kiosk cannot be locked.
+   * Lock a common desk to this airline. A desk id locks that desk.
+   * Without one, the next free common desk is locked.
+   * Below Preferred it costs the dedicated fee. Preferred and Trusted waive it.
+   * A kiosk cannot be locked.
    */
-  dedicateDesk(airlineId: string): boolean {
+  dedicateDesk(airlineId: string, deskId?: string): boolean {
+    const ok = this.commitDesk(airlineId, deskId)
+    if (!ok) return false
     const name = this.airline(airlineId).name
-    const alloc = this.checkinAllocation()
-    const desks = this.checkinDesks()
-    const staffed = new Map(desks.map((desk) => [desk.id, desk.staffed]))
-    const free = alloc.desks.filter((row) => row.mode !== 'kiosk' && row.mode !== 'dedicated')
-    free.sort((a, b) => {
-      const as = staffed.get(a.deskId) ? 0 : 2
-      const bs = staffed.get(b.deskId) ? 0 : 2
-      const ag = a.mode === 'general' ? 0 : 1
-      const bg = b.mode === 'general' ? 0 : 1
-      return as + ag - (bs + bg)
-    })
-    const pick = free[0]
-    if (!pick) {
-      this.pushNews(`No desk free to lock for ${name}.`, 'bad')
-      this.emit()
-      return false
-    }
     const tier = this.wave3.relation(airlineId).tier
-    if (tier < CHECKIN_ALLOC.preferredTier) {
-      if (!this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${name}`)) return false
-    }
-    this.dedicatedDesks.push({ deskId: pick.deskId, airlineId })
-    this.checkinCache = null
-    this.deskBrandCache = null
     const perk =
       tier >= CHECKIN_ALLOC.trustedTier
         ? `${name} keeps a faster desk — Trusted, no fee.`
@@ -3052,6 +3057,50 @@ export class Game {
           : `${name} keeps this desk.`
     this.pushNews(perk, 'ok')
     this.emit()
+    return true
+  }
+
+  private commitDesk(airlineId: string, deskId?: string, quiet = false): boolean {
+    const name = this.airline(airlineId).name
+    const alloc = this.checkinAllocation()
+    const desks = this.checkinDesks()
+    const staffed = new Map(desks.map((desk) => [desk.id, desk.staffed]))
+    let pick: (typeof alloc.desks)[number] | undefined
+    if (deskId) {
+      const row = alloc.desks.find((item) => item.deskId === deskId)
+      if (!row || row.mode === 'kiosk' || row.mode === 'dedicated') {
+        if (!quiet) {
+          this.pushNews(row?.mode === 'kiosk' ? 'A kiosk cannot be locked.' : `No desk free to lock for ${name}.`, 'bad')
+          this.emit()
+        }
+        return false
+      }
+      pick = row
+    } else {
+      const free = alloc.desks.filter((row) => row.mode !== 'kiosk' && row.mode !== 'dedicated')
+      free.sort((a, b) => {
+        const as = staffed.get(a.deskId) ? 0 : 2
+        const bs = staffed.get(b.deskId) ? 0 : 2
+        const ag = a.mode === 'general' ? 0 : 1
+        const bg = b.mode === 'general' ? 0 : 1
+        return as + ag - (bs + bg)
+      })
+      pick = free[0]
+      if (!pick) {
+        if (!quiet) {
+          this.pushNews(`No desk free to lock for ${name}.`, 'bad')
+          this.emit()
+        }
+        return false
+      }
+    }
+    const tier = this.wave3.relation(airlineId).tier
+    if (tier < CHECKIN_ALLOC.preferredTier) {
+      if (!this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${name}`)) return false
+    }
+    this.dedicatedDesks.push({ deskId: pick.deskId, airlineId })
+    this.checkinCache = null
+    this.deskBrandCache = null
     return true
   }
 
@@ -3065,6 +3114,35 @@ export class Game {
     this.pushNews('Desk released. It returns to common use.', 'ok')
     this.emit()
     return true
+  }
+
+  /** Name one security lane to this carrier. The hub lane line still waits on the allocator. */
+  dedicateLane(airlineId: string, laneId: string): boolean {
+    if (!laneId || !this.securityLanes().some((lane) => lane.id === laneId)) return false
+    if (this.dedicatedLanes.some((row) => row.laneId === laneId)) return false
+    this.dedicatedLanes.push({ laneId, airlineId })
+    this.pushNews(`${this.airline(airlineId).name} keeps this lane.`, 'ok')
+    this.emit()
+    return true
+  }
+
+  releaseLane(laneId: string): boolean {
+    const next = this.dedicatedLanes.filter((row) => row.laneId !== laneId)
+    if (next.length === this.dedicatedLanes.length) return false
+    this.dedicatedLanes = next
+    this.pushNews('Lane released. It returns to common use.', 'ok')
+    this.emit()
+    return true
+  }
+
+  private securityLanes(): { id: string }[] {
+    const nav = this.hallNav.nav
+    if (!nav) return []
+    const out: { id: string }[] = []
+    for (const facility of nav.facilities.list) {
+      if (facility.kind === 'security_lane') out.push({ id: facility.id })
+    }
+    return out
   }
 
   /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
@@ -3752,16 +3830,19 @@ export class Game {
    * Name the next free lounge, gate, or hangar bay to this carrier.
    * The building stays the player's. An unasked lease still pays the daily credit.
    */
-  dedicateHubFacility(airlineId: string, kind: FacilityLeaseKind): boolean {
+  dedicateHubFacility(airlineId: string, kind: FacilityLeaseKind, leaseId?: string): boolean {
     if (!this.signed.includes(airlineId)) return false
     this.dropMissingHubLeases()
     const taken = new Set(this.hubLeases.map((lease) => lease.id))
-    const id = this.hubLeaseTargets()[kind].find((row) => !taken.has(row))
+    const targets = this.hubLeaseTargets()[kind]
+    const id = leaseId ? (targets.includes(leaseId) && !taken.has(leaseId) ? leaseId : undefined) : targets.find((row) => !taken.has(row))
     if (!id) return false
     this.hubLeases.push({ id, kind, airlineId })
     this.clearHubLeaseWarning(airlineId, false)
-    this.pushNews(`${this.airline(airlineId).name} dedicated ${dedicateLabel(kind).replace('Dedicate ', '')}.`, 'good')
-    this.emit()
+    if (this.leaseAnnounce) {
+      this.pushNews(`${this.airline(airlineId).name} dedicated ${dedicateLabel(kind).replace('Dedicate ', '')}.`, 'good')
+      this.emit()
+    }
     return true
   }
 
@@ -3830,11 +3911,16 @@ export class Game {
   }
 
   /** Assign one spare unit to this carrier. It leaves the common pool. */
-  dedicateHubVehicle(airlineId: string, role: VehicleRole): boolean {
+  dedicateHubVehicle(airlineId: string, role: VehicleRole, unit?: { type: string; index: number }): boolean {
     if (!this.signed.includes(airlineId)) return false
     this.dropMissingHubVehicles()
-    const spare = firstSpare(role, this.fleetNow(), this.liveHubVehicles())
+    const fleet = this.fleetNow()
+    const live = this.liveHubVehicles()
+    const spare = unit ?? firstSpare(role, fleet, live)
     if (!spare) return false
+    if (!(VEHICLE_ROLE_TYPES[role] as readonly string[]).includes(spare.type)) return false
+    if (spare.index > Math.floor(fleet[spare.type] ?? 0)) return false
+    if (live.some((lease) => lease.id === vehicleLeaseId(spare.type, spare.index))) return false
     const paint = rosterAirline(airlineId)
     this.hubVehicleLeases.push({
       id: vehicleLeaseId(spare.type, spare.index),
@@ -3884,6 +3970,291 @@ export class Game {
       roll: 1,
       poachStandingMax: RIVAL.poachStandingMax,
     })
+  }
+
+  /** Relationship, rival, and flexibility sentences for the dedicate picker. */
+  assignPreview(airlineId: string, kind: AssignKind): AssignSentences {
+    const plan = this.hubAngerPreview(airlineId)
+    const tier = this.wave3.relation(airlineId).tier
+    const feeNote =
+      kind === 'desk' && tier < CHECKIN_ALLOC.preferredTier
+        ? `Below Preferred this desk costs $${CHECKIN_ALLOC.dedicatedFee.toLocaleString('en-US')}.`
+        : null
+    return assignSentences({
+      airlineName: this.airline(airlineId).name,
+      kind,
+      anger: plan.anger,
+      spared: plan.spared,
+      feeNote,
+    })
+  }
+
+  openAssign(kind: AssignKind, id = '', role?: VehicleRole) {
+    this.assignPick = { kind, id, role }
+    this.emit()
+  }
+
+  closeAssign() {
+    if (!this.assignPick && !this.assignBulk && this.assignSelection.length === 0) return
+    this.assignPick = null
+    this.assignBulk = false
+    this.assignSelection = []
+    this.emit()
+  }
+
+  toggleAssignBulk() {
+    this.assignBulk = !this.assignBulk
+    if (!this.assignBulk) this.assignSelection = []
+    if (this.assignBulk && !this.assignPick) this.assignPick = { kind: 'gate', id: '' }
+    this.emit()
+  }
+
+  toggleAssignSelection(kind: 'desk' | 'gate', id: string) {
+    if (this.assignSelection.some((row) => row.kind !== kind)) this.assignSelection = []
+    const at = this.assignSelection.findIndex((row) => row.kind === kind && row.id === id)
+    if (at >= 0) this.assignSelection.splice(at, 1)
+    else this.assignSelection.push({ kind, id })
+    this.assignPick = { kind, id: '' }
+    this.assignBulk = true
+    this.emit()
+  }
+
+  /**
+   * Dedicate the open point, or every painted desk or stand, to this carrier.
+   * Returns how many rows were newly locked.
+   */
+  applyAssign(airlineId: string): number {
+    if (!this.signed.includes(airlineId)) return 0
+    if (this.assignBulk && this.assignSelection.length > 0) {
+      const kind = this.assignSelection[0]!.kind
+      const ids = this.assignSelection.filter((row) => row.kind === kind).map((row) => row.id)
+      const n = this.dedicateMany(airlineId, kind, ids)
+      this.assignSelection = []
+      return n
+    }
+    const pick = this.assignPick
+    if (!pick?.id) return 0
+    return this.dedicateOne(airlineId, pick.kind, pick.id) ? 1 : 0
+  }
+
+  unassignDedicated(airlineId: string, kind: AssignKind, id: string): boolean {
+    if (kind === 'desk') {
+      const lock = this.dedicatedDesks.find((row) => row.deskId === id && row.airlineId === airlineId)
+      if (!lock) return false
+      return this.releaseDesk(id)
+    }
+    if (kind === 'lane') {
+      const lock = this.dedicatedLanes.find((row) => row.laneId === id && row.airlineId === airlineId)
+      if (!lock) return false
+      return this.releaseLane(id)
+    }
+    if (kind === 'vehicle') return this.releaseHubVehicle(airlineId, id)
+    if (kind === 'lounge' || kind === 'gate' || kind === 'hangar') return this.releaseHubLease(airlineId, id)
+    return false
+  }
+
+  dedicatedHoldings(airlineId: string): { id: string; kind: AssignKind; label: string }[] {
+    const out: { id: string; kind: AssignKind; label: string }[] = []
+    const alloc = this.hallNav.live ? this.checkinAllocation() : null
+    for (const lock of this.dedicatedDesks) {
+      if (lock.airlineId !== airlineId) continue
+      const index = alloc ? alloc.desks.findIndex((row) => row.deskId === lock.deskId) : -1
+      out.push({ id: lock.deskId, kind: 'desk', label: index >= 0 ? `Desk ${index + 1}` : 'Desk' })
+    }
+    this.securityLanes().forEach((lane, index) => {
+      const lock = this.dedicatedLanes.find((row) => row.laneId === lane.id && row.airlineId === airlineId)
+      if (lock) out.push({ id: lane.id, kind: 'lane', label: `Lane ${index + 1}` })
+    })
+    for (const lease of this.liveHubLeases(airlineId)) {
+      const cell = leaseCell(lease.id)
+      const where = cell ? `${cell.c},${cell.r}` : lease.id
+      const label = lease.kind === 'lounge' ? `Lounge ${where}` : lease.kind === 'gate' ? `Stand ${where}` : `Hangar ${where}`
+      out.push({ id: lease.id, kind: lease.kind, label })
+    }
+    for (const lease of this.liveHubVehicles(airlineId)) {
+      out.push({ id: lease.id, kind: 'vehicle', label: VEHICLE_ROLE_LABEL[lease.role] })
+    }
+    return out
+  }
+
+  assignPoints(kind: AssignKind, role?: VehicleRole): {
+    id: string
+    label: string
+    holderId: string | null
+    holderName: string | null
+    blocked: string | null
+  }[] {
+    if (kind === 'desk') return this.deskAssignPoints()
+    if (kind === 'lane') return this.laneAssignPoints()
+    if (kind === 'vehicle') return this.vehicleAssignPoints(role)
+    return this.facilityAssignPoints(kind)
+  }
+
+  /** Plates for dedicated stands, hangars, and lounges. The renderer places them. */
+  apronLeaseMarks(): { key: string; kind: AssignKind; id: string; c: number; r: number; ox: number; oz: number; primary: string; code: string }[] {
+    const out: { key: string; kind: AssignKind; id: string; c: number; r: number; ox: number; oz: number; primary: string; code: string }[] = []
+    for (const lease of this.liveHubLeases()) {
+      const cell = leaseCell(lease.id)
+      if (!cell) continue
+      const paint = this.airlineBrand(lease.airlineId)
+      out.push({
+        key: lease.id,
+        kind: lease.kind,
+        id: lease.id,
+        c: cell.c,
+        r: cell.r,
+        ox: lease.kind === 'lounge' ? cell.index * 1.4 : 0,
+        oz: 0,
+        primary: paint.primary,
+        code: paint.code,
+      })
+    }
+    return out
+  }
+
+  /** One badge per built lounge, neutral until a carrier holds it. */
+  hallLoungeMarks(): { id: string; primary: string; code: string; index: number }[] {
+    return this.hubLeaseTargets().lounge.map((id, index) => {
+      const lease = this.hubLeases.find((row) => row.id === id)
+      if (!lease) return { id, primary: '#5c6770', code: '·', index }
+      const paint = this.airlineBrand(lease.airlineId)
+      return { id, primary: paint.primary, code: paint.code, index }
+    })
+  }
+
+  /** Every security lane. Dedicated lanes wear the carrier colour. */
+  lanePlates(): { id: string; primary: string; secondary: string; code: string }[] {
+    return this.securityLanes().map((lane) => {
+      const lock = this.dedicatedLanes.find((row) => row.laneId === lane.id)
+      if (!lock) return { id: lane.id, primary: '#5c6770', secondary: '#e7ebef', code: 'ANY' }
+      const paint = this.airlineBrand(lock.airlineId)
+      return { id: lane.id, primary: paint.primary, secondary: paint.secondary, code: paint.code }
+    })
+  }
+
+  /** Livery for a ground vehicle id (`pushback_tug-1`), when that unit is dedicated. */
+  vehiclePaint(groundId: string): { primary: string; secondary: string; code: string } | null {
+    const parsed = parseGroundVehicleId(groundId)
+    if (!parsed) return null
+    const lease = this.liveHubVehicles().find((row) => row.type === parsed.type && row.id === vehicleLeaseId(parsed.type, parsed.index))
+    if (!lease) return null
+    const paint = this.airlineBrand(lease.airlineId)
+    return { primary: paint.primary, secondary: paint.secondary, code: paint.code }
+  }
+
+  private dedicateMany(airlineId: string, kind: 'desk' | 'gate', ids: string[]): number {
+    let n = 0
+    this.leaseAnnounce = false
+    for (const id of ids) {
+      const ok = kind === 'desk' ? this.commitDesk(airlineId, id, true) : this.dedicateHubFacility(airlineId, 'gate', id)
+      if (ok) n += 1
+    }
+    this.leaseAnnounce = true
+    if (n > 0) {
+      const noun = kind === 'desk' ? (n === 1 ? 'desk' : 'desks') : n === 1 ? 'stand' : 'stands'
+      this.pushNews(`${this.airline(airlineId).name} dedicated ${n} ${noun}.`, 'good')
+      this.emit()
+    }
+    return n
+  }
+
+  private dedicateOne(airlineId: string, kind: AssignKind, id: string): boolean {
+    if (kind === 'desk') return this.dedicateDesk(airlineId, id)
+    if (kind === 'lane') return this.dedicateLane(airlineId, id)
+    if (kind === 'lounge' || kind === 'gate' || kind === 'hangar') return this.dedicateHubFacility(airlineId, kind, id)
+    if (kind === 'vehicle') {
+      const parsed = parseGroundVehicleId(id)
+      const role = parsed ? roleOfType(parsed.type) : null
+      if (!parsed || !role) return false
+      return this.dedicateHubVehicle(airlineId, role, parsed)
+    }
+    return false
+  }
+
+  private holderName(id: string | null): string | null {
+    return id ? this.airline(id).name : null
+  }
+
+  private deskAssignPoints() {
+    if (!this.hallNav.live) return []
+    const alloc = this.checkinAllocation()
+    return alloc.desks.map((row, index) => {
+      const lock = this.dedicatedDesks.find((item) => item.deskId === row.deskId)
+      const kiosk = row.mode === 'kiosk'
+      return {
+        id: row.deskId,
+        label: kiosk ? `Kiosk ${index + 1}` : `Desk ${index + 1}`,
+        holderId: lock?.airlineId ?? null,
+        holderName: this.holderName(lock?.airlineId ?? null),
+        blocked: kiosk ? 'Kiosk' : null,
+      }
+    })
+  }
+
+  private laneAssignPoints() {
+    return this.securityLanes().map((lane, index) => {
+      const lock = this.dedicatedLanes.find((row) => row.laneId === lane.id)
+      return {
+        id: lane.id,
+        label: `Lane ${index + 1}`,
+        holderId: lock?.airlineId ?? null,
+        holderName: this.holderName(lock?.airlineId ?? null),
+        blocked: null,
+      }
+    })
+  }
+
+  private facilityAssignPoints(kind: 'gate' | 'lounge' | 'hangar') {
+    const leases = this.liveHubLeases()
+    return this.hubLeaseTargets()[kind].map((id) => {
+      const lease = leases.find((row) => row.id === id)
+      const cell = leaseCell(id)
+      const where = cell ? `${cell.c},${cell.r}` : id
+      const label = kind === 'lounge' ? `Lounge ${where}` : kind === 'gate' ? `Stand ${where}` : `Hangar ${where}`
+      return {
+        id,
+        label,
+        holderId: lease?.airlineId ?? null,
+        holderName: this.holderName(lease?.airlineId ?? null),
+        blocked: null,
+      }
+    })
+  }
+
+  private vehicleAssignPoints(role?: VehicleRole) {
+    const fleet = this.fleetNow()
+    const live = this.liveHubVehicles()
+    const roles = role ? [role] : [...VEHICLE_ROLES]
+    const out: { id: string; label: string; holderId: string | null; holderName: string | null; blocked: string | null }[] = []
+    for (const item of roles) {
+      for (const type of VEHICLE_ROLE_TYPES[item]) {
+        const owned = Math.floor(fleet[type] ?? 0)
+        for (let index = 1; index <= owned; index++) {
+          const id = groundVehicleId(type, index)
+          const lease = live.find((row) => row.id === vehicleLeaseId(type, index))
+          out.push({
+            id,
+            label: `${VEHICLE_ROLE_LABEL[item]} ${index}`,
+            holderId: lease?.airlineId ?? null,
+            holderName: this.holderName(lease?.airlineId ?? null),
+            blocked: null,
+          })
+        }
+      }
+    }
+    return out
+  }
+
+  private nearestServiceUnit(v: Vec): string | null {
+    if (!this.ground) return null
+    let best: { id: string; d: number } | null = null
+    for (const pose of this.servicePoses()) {
+      const x = pose.drawX ?? pose.x
+      const y = pose.drawY ?? pose.y
+      const d = Math.hypot(x - v.c, y - v.r)
+      if (d <= 0.45 && (!best || d < best.d)) best = { id: pose.id, d }
+    }
+    return best?.id ?? null
   }
 
   private liveHubVehicles(airlineId?: string): VehicleLease[] {
@@ -5139,6 +5510,10 @@ export class Game {
     this.hydrantArm = false
     this.resetPillar()
     this.dedicatedDesks = []
+    this.dedicatedLanes = []
+    this.assignPick = null
+    this.assignBulk = false
+    this.assignSelection = []
     this.janitors = 0
     this.hallJanitors = []
     this.seatBooks.clear()
@@ -6728,6 +7103,7 @@ export class Game {
       researchers: this.researchers,
       deskStaff: this.deskStaff,
       dedicatedDesks: this.dedicatedDesks.map((row) => ({ deskId: row.deskId, airlineId: row.airlineId })),
+      dedicatedLanes: this.dedicatedLanes.map((row) => ({ laneId: row.laneId, airlineId: row.airlineId })),
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -6955,6 +7331,7 @@ export class Game {
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
       this.dedicatedDesks = (s.dedicatedDesks ?? []).map((row) => ({ deskId: row.deskId, airlineId: row.airlineId }))
+      this.dedicatedLanes = readLaneLocks(s.dedicatedLanes)
       this.premium = restorePremium(s.premium)
       this.hallStaff = []
       this.public = s.public ?? false
@@ -18867,10 +19244,25 @@ export class Game {
       return
     }
     this.selectedTile = v
+    const tile = this.tile(v)
+    if (this.tool === 'pan' && this.assignBulk && tile === 'stand') {
+      this.toggleAssignSelection('gate', gateLeaseId(v.c, v.r))
+      return
+    }
+    if (this.tool === 'pan' && !this.assignBulk && tile === 'stand') {
+      this.openAssign('gate', gateLeaseId(v.c, v.r))
+    } else if (this.tool === 'pan' && !this.assignBulk && (tile === 'hangar' || tile === 'mro')) {
+      this.openAssign('hangar', hangarLeaseId(v.c, v.r))
+    } else if (this.tool === 'pan' && !this.assignBulk && tile !== 'terminal' && tile !== 'fuel' && tile !== 'bags') {
+      const unit = this.nearestServiceUnit(v)
+      if (unit) {
+        this.openAssign('vehicle', unit)
+        return
+      }
+    }
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
     if (this.tool === 'pan') {
-      const tile = this.tile(v)
       this.selectedBuilding = tile && isBuildingTile(tile) ? `${v.c},${v.r}` : null
       const late = this.lateSites.find((site) => site.c === v.c && site.r === v.r)
       if (late) {

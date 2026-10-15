@@ -5,6 +5,7 @@ import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import { releasePerfOverlay, retainPerfOverlay } from '../perf'
 import { inBounds } from '../game/path'
 import { standEntry } from '../game/standFoot'
+import { syncLeaseMarks, type LeaseMark } from './leaseBadge.ts'
 import type { Game } from '../game/sim'
 import { SIZE } from '../game/types'
 import type { HotelClass, ParkTerm, Tile, Vec } from '../game/types'
@@ -270,6 +271,9 @@ export class World {
   tilesGroup = new THREE.Group()
   /** Bought progression buildings. Kept off the tile grid so apron docks stay where they are. */
   progressionGroup = new THREE.Group()
+  /** Airline colour plates and code badges on dedicated stands, bays, and trucks. */
+  leaseGroup = new THREE.Group()
+  private vehicleBadges: LeaseMark[] = []
   private progressionSig = ''
   entGroup = new THREE.Group()
   ghostGroup = new THREE.Group()
@@ -438,8 +442,10 @@ export class World {
     this.gateGroup.name = 'gate-bridges'
     this.housingGroup.name = 'staff-housing'
     this.progressionGroup.name = 'progression-buildings'
+    this.leaseGroup.name = 'lease-marks'
     this.scene.add(this.tilesGroup)
     this.scene.add(this.progressionGroup)
+    this.scene.add(this.leaseGroup)
     this.scene.add(this.gateGroup)
     this.scene.add(this.housingGroup)
     this.scene.add(this.entGroup)
@@ -832,6 +838,27 @@ export class World {
       g.position.copy(toWorld(c, r, 0.05))
       this.progressionGroup.add(g)
     }
+  }
+
+  /** Colour plates on dedicated stands and hangars, plus a badge over a leased truck. */
+  private syncLeaseBadges(game: Game) {
+    const marks: LeaseMark[] = game.apronLeaseMarks().map((row) => {
+      const pos = toWorld(row.c, row.r, 0.14)
+      return {
+        key: row.key,
+        x: pos.x + row.ox,
+        y: pos.y,
+        z: pos.z + row.oz,
+        primary: row.primary,
+        code: row.code,
+        lay: 'flat',
+        span: CELL * 0.34,
+        kind: row.kind,
+        id: row.id,
+      }
+    })
+    marks.push(...this.vehicleBadges)
+    syncLeaseMarks(this.leaseGroup, marks)
   }
 
   /** Stand class and jetway links can change without a map revision. */
@@ -1851,6 +1878,7 @@ export class World {
     this.syncPadHelicopters(game)
 
     this.vehicleFrame.length = 0
+    this.vehicleBadges = []
     for (const t of game.trucks) {
       const color = truckColor(t.kind)
       const size = vehicleMeters(t.kind)
@@ -1893,9 +1921,25 @@ export class World {
       const yawHeading = pose.drawHeading ?? pose.heading
       const ext = deployOf(pose.phase, pose.u)
       const odo = this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER)
+      const paint = game.vehiclePaint(pose.id)
+      if (paint) {
+        const badgeAt = toWorld(pose.drawX ?? pose.x, pose.drawY ?? pose.y, 2.4)
+        this.vehicleBadges.push({
+          key: `veh:${pose.id}`,
+          x: badgeAt.x,
+          y: badgeAt.y,
+          z: badgeAt.z,
+          primary: paint.primary,
+          code: paint.code,
+          lay: 'upright',
+          span: 1.1,
+          kind: 'vehicle',
+          id: pose.id,
+        })
+      }
       this.vehicleFrame.push({
         kind: pose.type,
-        color: serviceColor(pose.type),
+        color: paint?.primary ?? serviceColor(pose.type),
         size: vehicleMeters(pose.type),
         x: pos.x + off.x * WORLD_PER_METER,
         y: pos.y,
@@ -2289,6 +2333,7 @@ export class World {
     perfEnd('world.tiles', t)
     t = perfStart()
     this.syncEntities(game, dt)
+    this.syncLeaseBadges(game)
     perfEnd('world.entities', t)
     t = perfStart()
     this.syncSites(game)

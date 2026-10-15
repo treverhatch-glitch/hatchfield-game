@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Game } from '../../game/sim.ts'
-import { ALLOCATOR_WAIT, HUB_TIER_LABEL } from '../../hubprogress/config.ts'
+import { HUB_TIER_LABEL } from '../../hubprogress/config.ts'
+import { checklistAssignTarget } from '../../hubprogress/assign.ts'
 import { hubProgressRows, hubShowcase } from '../../hubprogress/present.ts'
 import { hubProfileSnapshot, openHubProfile, subscribeHubProfile } from './session.ts'
 
@@ -28,13 +29,22 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
         <span style={{ width: `${width}%` }} />
       </div>
       <ul className="hub-lines">
-        {list.lines.map((line) => (
-          <li key={line.id} data-status={line.status} data-testid={`hub-line-${line.id}`}>
-            <span aria-hidden>{mark(line.status)}</span>
-            <span>{line.label}</span>
-            <span className="muted">{line.detail}</span>
-          </li>
-        ))}
+        {list.lines.map((line) => {
+          const target = line.status === 'ok' ? null : checklistAssignTarget(line.id)
+          return (
+            <li key={line.id} data-status={line.status} data-testid={`hub-line-${line.id}`}>
+              <span aria-hidden>{mark(line.status)}</span>
+              {target ? (
+                <button type="button" data-testid={`hub-missing-${line.id}`} onClick={() => game.openAssign(target.kind, '', target.role)}>
+                  {line.label}
+                </button>
+              ) : (
+                <span>{line.label}</span>
+              )}
+              <span className="muted">{line.detail}</span>
+            </li>
+          )
+        })}
       </ul>
       {nextLabel ? (
         <div data-testid="hub-rewards">
@@ -61,8 +71,27 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
       <p className="muted" data-testid="hub-showcase-next">
         Next: {showcase.next}
       </p>
+      <ul className="hub-lines" data-testid="hub-dedicated">
+        {game.dedicatedHoldings(id).length === 0 ? (
+          <li>
+            <span />
+            <span className="muted">Nothing dedicated yet.</span>
+            <span />
+          </li>
+        ) : (
+          game.dedicatedHoldings(id).map((row, index) => (
+            <li key={`${row.kind}:${row.id}`}>
+              <span />
+              <span>{row.label}</span>
+              <button type="button" data-testid={`hub-unassign-${row.kind}-${index}`} onClick={() => game.unassignDedicated(id, row.kind, row.id)}>
+                Unassign
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
       <div className="hub-actions">
-        <button type="button" data-testid="hub-dedicate-desk" disabled title={ALLOCATOR_WAIT}>
+        <button type="button" data-testid="hub-dedicate-desk" onClick={() => game.openAssign('desk', '')}>
           Dedicate a desk
         </button>
         {list.next === 'base' || list.next === 'hub' || list.next === 'primary' ? (
