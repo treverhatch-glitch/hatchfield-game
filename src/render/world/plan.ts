@@ -3,7 +3,7 @@
  * where every instanced prop and person goes. Pure data, deterministic per layout.
  */
 import { DIR_VEC, type Dir, type TerminalInfo } from './layout'
-import { rng } from './raster'
+import { rng } from '../../game/mulberry.ts'
 import { navPath, planRooms, pointInRoom, type RoomKind, type RoomPlan } from './rooms'
 import { CELL, cellX, cellZ } from './view'
 

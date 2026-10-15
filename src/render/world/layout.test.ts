@@ -18,11 +18,11 @@ import {
   stands,
   taxiLightSpots,
   taxiLinkVisible,
-  roadKerbs,
   roadPaint,
   taxiPaint,
   terminals,
 } from './layout'
+import { roadKerbs } from './kerbs'
 import { CELL, cellX, cellZ } from './view'
 import { CELL as LEGACY_CELL, toWorld } from '../world'
 

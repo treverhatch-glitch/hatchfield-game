@@ -22,7 +22,6 @@ import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './
 import {
   apronMasts,
   jetBridges,
-  roadKerbs,
   roadPaint,
   runwayLightSpots,
   runwayPaint,
@@ -54,6 +53,7 @@ import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBui
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
 import { makeTextures, type WorldTextures } from './textures'
 import { apronPrefabTier } from './progressionBuildings'
+import { roadKerbs } from './kerbs'
 import { worldToCell, type WorldView } from './view'
 
 /** Minimal renderer surface we touch, so tests can pass a stub. */

@@ -3,7 +3,7 @@
  * where they are going; this polyline is how they get there without crossing a wall.
  */
 import type { HallNode } from './guests.ts'
-import { rng } from '../render/world/raster.ts'
+import { rng } from './mulberry.ts'
 import {
   HALL_NODE_ROOM,
   STERILE_ROOMS,
