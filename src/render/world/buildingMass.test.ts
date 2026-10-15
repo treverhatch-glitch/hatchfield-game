@@ -150,7 +150,7 @@ describe('concept building massing', () => {
     expect(named(fuel, 'sign:FUEL')).toHaveLength(1)
     expect(fuel.getObjectByName('fuel-berm')).toBeTruthy()
     expect(fuel.getObjectByName('fuel-yard-decal')).toBeTruthy()
-    expect(fuel.getObjectByName('canopy-tanker')).toBeTruthy()
+    expect(fuel.getObjectByName('canopy-tanker')).toBeFalsy()
     const entry = fuel.getObjectByName('farm_entry')
     const exit = fuel.getObjectByName('farm_exit')
     expect(entry).toBeTruthy()
