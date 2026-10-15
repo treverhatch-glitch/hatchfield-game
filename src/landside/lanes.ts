@@ -187,8 +187,11 @@ export function buildLanes(net: Network): LaneGeometry | null {
   const lat = laneOffsets()
   const curbLane = LANDSIDE.lanesEachWay - 1
   const turn = !net.edgeExit
+  // The semicircle sits this far short of the kerb so a bus body stays on the asphalt.
+  const insetSamples = turn ? Math.min(forwardCount - 2, Math.max(0, Math.round(LANDSIDE.loopInsetM / step))) : 0
+  const kept = forwardCount - insetSamples
   const turnSteps = turn ? Math.max(8, Math.ceil(Math.PI * lat[curbLane])) : 0
-  const count = turn ? forwardCount * 2 + turnSteps - 1 : forwardCount
+  const count = turn ? kept * 2 + turnSteps - 1 : forwardCount
   const px = new Float64Array(count)
   const py = new Float64Array(count)
   const nx = new Float64Array(count)
@@ -200,14 +203,14 @@ export function buildLanes(net: Network): LaneGeometry | null {
     nx[i] = n.x
     ny[i] = n.y
   }
-  for (let i = 0; i < forwardCount; i++) put(i, fp[i], ft[i])
+  for (let i = 0; i < kept; i++) put(i, fp[i], ft[i])
   if (turn) {
-    const o = fp[forwardCount - 1]
-    const t0 = ft[forwardCount - 1]
-    for (let j = 1; j < turnSteps; j++) put(forwardCount - 1 + j, o, rot(t0, -sign * (Math.PI * j) / turnSteps))
-    const backStart = forwardCount - 1 + turnSteps
-    for (let j = 0; j < forwardCount; j++) {
-      const src = forwardCount - 1 - j
+    const o = fp[kept - 1]
+    const t0 = ft[kept - 1]
+    for (let j = 1; j < turnSteps; j++) put(kept - 1 + j, o, rot(t0, -sign * (Math.PI * j) / turnSteps))
+    const backStart = kept - 1 + turnSteps
+    for (let j = 0; j < kept; j++) {
+      const src = kept - 1 - j
       put(backStart + j, fp[src], { x: -ft[src].x, y: -ft[src].y })
     }
   }
@@ -238,8 +241,8 @@ export function buildLanes(net: Network): LaneGeometry | null {
     cum,
     curbLane,
     layby: lat.length - 1,
-    forwardEnd: forwardCount - 1,
-    backStart: turn ? forwardCount - 1 + turnSteps : -1,
+    forwardEnd: kept - 1,
+    backStart: turn ? kept - 1 + turnSteps : -1,
     step,
     cells: spine,
   }

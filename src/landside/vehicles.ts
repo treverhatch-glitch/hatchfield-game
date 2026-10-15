@@ -112,10 +112,8 @@ interface Road {
 const KINDS: VehicleKind[] = ['car', 'taxi', 'bus']
 const WIDEST_HALF = Math.max(...Object.values(LANDSIDE.bodies).map((body) => body.widthM / 2))
 const SWEEP_MARGIN_M = 0.1
-/** Most a body turns off its lane, radians. Longer bodies turn less so the tail stays in its lane. */
-const MAX_YAW = 0.3
-/** Sideways sweep of a body's end while it changes lane or pulls in, metres. */
-const MAX_SWEEP_M = 0.6
+/** A curve tighter than this, metres, takes the extra bumper gap. */
+const CURVE_GAP_RADIUS_M = 25
 /**
  * A lane change or pull-out within this share of its length is done. A pull-out
  * ends exactly at the layby gap behind the next stall, so it would otherwise
@@ -134,20 +132,25 @@ function smoothstep(p: number): number {
   return t * t * (3 - 2 * t)
 }
 
-/** Derivative of {@link smoothstep} with respect to p. Zero at both ends, so a lane change starts and finishes straight. */
-function smoothstepDeriv(p: number): number {
-  const t = clamp(p, 0, 1)
-  return 6 * t * (1 - t)
-}
-
 function wrap(a: number): number {
   return Math.atan2(Math.sin(a), Math.cos(a))
 }
 
 /** Bumper-to-bumper gap `car` keeps behind the vehicle ahead in `lane`. Stalls in the layby pack closer. */
 function followGap(road: Road, car: Vehicle, lane: number): number {
-  if (lane === road.geo.layby) return LANDSIDE.minGapM
-  return Math.max(LANDSIDE.minGapM, LANDSIDE.followBodyLengths * car.half * 2)
+  const base =
+    lane === road.geo.layby
+      ? LANDSIDE.minGapM
+      : Math.max(LANDSIDE.minGapM, LANDSIDE.followBodyLengths * car.half * 2)
+  const radii = road.radius[lane]
+  if (!radii) return base
+  const reach = (car.half * 2 + base) / road.geo.step
+  const lo = Math.max(0, Math.floor(car.x))
+  const hi = Math.min(radii.length - 1, Math.ceil(car.x + reach))
+  let tight = Infinity
+  for (let i = lo; i <= hi; i++) if (radii[i] < tight) tight = radii[i]
+  if (!Number.isFinite(tight) || tight > CURVE_GAP_RADIUS_M) return base
+  return base + LANDSIDE.curveGapM
 }
 
 function lengthOf(kind: VehicleKind): number {
@@ -597,21 +600,17 @@ export class LandsideFleet {
       return
     }
 
+    // Heading is the direction the body just moved, which is the path tangent
+    // through a lane change, a pull-out, and the loop. It slews, so it cannot flip.
     const lat = latOf(road, car)
     const after = place(road, car.x, lat)
     const dx = after.x - before.x
     const dy = after.y - before.y
-    const tangent = headingAt(geo, car.x, lat)
-    let steer = 0
-    if (car.mode !== 'lane' && car.moveLen > 0.5) {
-      // Nose follows the S-curve: it yaws into the new lane through the middle and is straight again at the end.
-      const delta = geo.lat[car.lane] - geo.lat[car.from]
-      steer = Math.atan2(delta * smoothstepDeriv(car.p), car.moveLen)
-    } else if (Math.hypot(dx, dy) > 0.02) {
-      steer = wrap(Math.atan2(dy, dx) - tangent)
+    if (Math.hypot(dx, dy) > 0.02) {
+      const desired = Math.atan2(dy, dx)
+      const maxStep = LANDSIDE.maxYawRate * h
+      car.heading += clamp(wrap(desired - car.heading), -maxStep, maxStep)
     }
-    const limit = car.mode === 'lane' ? Math.min(MAX_YAW, MAX_SWEEP_M / car.half) : MAX_YAW
-    car.heading = tangent + clamp(steer, -limit, limit)
   }
 
   /** Sample by which the vehicle must be settled in the curb lane, or Infinity. */

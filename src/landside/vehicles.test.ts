@@ -182,6 +182,7 @@ describe('landside vehicles', () => {
     const field = stamped({ departures: 14, paxPerDay: 2400 })
     const wrapA = (a: number) => Math.atan2(Math.sin(a), Math.cos(a))
     let leaned = 0
+    let noseIn = 0
     let maxTurnStep = 0
     let arcSamples = 0
     const prev = new Map<string, { heading: number; r: number }>()
@@ -190,6 +191,8 @@ describe('landside vehicles', () => {
         const was = prev.get(car.id)
         prev.set(car.id, { heading: car.heading, r: car.r })
         if (car.r > 2 && car.r < 10 && Math.abs(Math.cos(car.heading)) > 0.08 && Math.abs(Math.sin(car.heading)) > 0.9) leaned++
+        // About 17° or more off the lane line: the nose is leading into the lane, not sliding.
+        if (car.r > 2 && car.r < 10 && Math.abs(Math.cos(car.heading)) > 0.3 && Math.abs(Math.sin(car.heading)) > 0.85) noseIn++
         if (!was || car.r < 10.5 || was.r < 10.5) continue
         const step = Math.abs(wrapA(car.heading - was.heading))
         maxTurnStep = Math.max(maxTurnStep, step)
@@ -197,6 +200,7 @@ describe('landside vehicles', () => {
       }
     }
     expect(leaned, 'lane changes yaw the nose').toBeGreaterThan(20)
+    expect(noseIn, 'lane changes point well into the new lane').toBeGreaterThan(10)
     expect(arcSamples, 'the U-turn is crossed in more than one pose').toBeGreaterThan(20)
     expect(maxTurnStep, 'no heading snap on the U-turn').toBeLessThan(0.45)
   })

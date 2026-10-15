@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LANDSIDE } from './config.ts'
-import { buildLanes, indexAt, laneMetres, laneOffsets, laneOpenAt, pointAt } from './lanes.ts'
+import { buildLanes, headingAt, indexAt, laneMetres, laneOffsets, laneOpenAt, pointAt } from './lanes.ts'
 import { starterField } from './fixtures.test-util.ts'
 import { buildNetwork, cellId } from './network.ts'
 import type { Cell } from './types.ts'
@@ -58,6 +58,27 @@ describe('public road lanes', () => {
     // The U-turn is a half circle at the curb-lane offset. The inner lane closes for it.
     const arc = laneMetres(geo, curb, geo.backStart) - laneMetres(geo, curb, geo.forwardEnd)
     expect(arc).toBeCloseTo(Math.PI * geo.lat[curb], 0)
+    // A bus on that circle stays on the asphalt, short of the painted end bar at 0.42 of a cell.
+    const bus = LANDSIDE.bodies.bus
+    const endBar = 12 + 0.42
+    let busSouth = 0
+    for (let i = geo.forwardEnd; i <= geo.backStart; i++) {
+      const p = pointAt(geo, i, geo.lat[curb])
+      const h = headingAt(geo, i, geo.lat[curb])
+      const hy = Math.sin(h) * (bus.lengthM / 2)
+      const wy = Math.cos(h) * (bus.widthM / 2)
+      for (const [sx, sy] of [
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
+      ] as const) {
+        const y = (p.y + sy * hy + sx * wy) / LANDSIDE.cellM
+        busSouth = Math.max(busSouth, y)
+        expect(y, `bus corner at sample ${i}`).toBeLessThan(endBar - 0.08)
+      }
+    }
+    expect(busSouth).toBeGreaterThan(12)
     expect(laneOpenAt(geo, 0, geo.forwardEnd + 2)).toBe(false)
     expect(laneOpenAt(geo, curb, geo.forwardEnd + 2)).toBe(true)
     expect(laneOpenAt(geo, 0, geo.backStart)).toBe(true)

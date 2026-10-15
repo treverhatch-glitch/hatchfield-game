@@ -85,13 +85,32 @@ export const LANDSIDE = {
   accelMps2: 2,
   decelMps2: 4,
   /** Sideways acceleration drivers accept in a turn, m/s². Sets U-turn and corner speed. */
-  turnLatAccelMps2: 2.5,
-  /** Distance a lane change takes at speed, metres. Long enough that the S-curve is a steer, not a sideways slide. */
-  laneChangeM: 28,
+  turnLatAccelMps2: 1.5,
+  /**
+   * Distance a lane change takes at speed, metres. Short enough that the
+   * nose yaws into the new lane. A 28 m change kept a bus within about 10°
+   * of the lane line, which reads as a sideways slide.
+   */
+  laneChangeM: 12,
   /** Shortest lane change, metres. A car stops this far before the end of its lane. */
   laneChangeMinM: 6,
   /** Seconds of travel a lane change takes, between the two lengths above. */
-  laneChangeSec: 5,
+  laneChangeSec: 2,
+  /**
+   * How far inside the end of the road the U-turn centre sits, metres.
+   * The curb-lane semicircle is only as wide as the two curb lanes. A bus
+   * on that arc reaches about 9 m from the centre, which meets the end kerb
+   * when the centre is the last cell's middle. This inset keeps that body
+   * on the pavement.
+   */
+  loopInsetM: 4,
+  /**
+   * Fastest a drawn vehicle may yaw to follow its path, radians per second.
+   * High enough to track the loop. Low enough that heading cannot flip in one step.
+   */
+  maxYawRate: 1.6,
+  /** Extra bumper gap on a tight radius, metres, so cars on the loop do not sit on each other. */
+  curveGapM: 2,
   /** Start heading for the curb lane this far before the stall or the U-turn, metres. */
   prepM: 50,
   /** Shortest and longest pull into or out of a stall, metres. */
