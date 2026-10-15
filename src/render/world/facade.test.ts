@@ -39,16 +39,21 @@ describe('terminal facade openings', () => {
     const built = new TerminalBuilding(info, shared, { density: 1, walkersPerCell: 0, index: 0 })
     const entrance = facadeOpenings(info).find((o) => o.kind === 'entrance')
     expect(entrance).toBeTruthy()
-    const curtain = built.root.getObjectByName('terminal-curtain') as THREE.Mesh
-    expect(curtain).toBeInstanceOf(THREE.Mesh)
-    const pos = curtain.geometry.getAttribute('position')
+    const curtains: THREE.Mesh[] = []
+    built.root.traverse((obj) => {
+      if (obj.name.startsWith('terminal-curtain-') && obj instanceof THREE.Mesh) curtains.push(obj)
+    })
+    expect(curtains.length).toBeGreaterThan(0)
     const limit = ENTRANCE_W * 0.2
     const head = FLOOR_Y + DOOR_H * 0.55
     let inDoor = 0
-    for (let i = 0; i < pos.count; i++) {
-      const dx = pos.getX(i) - entrance!.x
-      const dz = pos.getZ(i) - entrance!.z
-      if (Math.hypot(dx, dz) < limit && pos.getY(i) < head) inDoor++
+    for (const curtain of curtains) {
+      const pos = curtain.geometry.getAttribute('position')
+      for (let i = 0; i < pos.count; i++) {
+        const dx = pos.getX(i) - entrance!.x
+        const dz = pos.getZ(i) - entrance!.z
+        if (Math.hypot(dx, dz) < limit && pos.getY(i) < head) inDoor++
+      }
     }
     expect(inDoor).toBe(0)
     built.dispose()
