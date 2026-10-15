@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { dailyEmissions, netZeroProgress, offsetCost } from './carbon';
+import {
+  CarbonBook,
+  buildingEmissions,
+  dailyEmissions,
+  flightEmission,
+  netZeroProgress,
+  offsetCost,
+} from './carbon';
 import {
   GROUND_OPS_KG_PER_DAY_PER_MW,
   KG_CO2_PER_LTO,
@@ -183,5 +190,78 @@ describe('offsetCost', () => {
 
   it('handles negative tonnage safely', () => {
     expect(offsetCost(-5)).toBe(0);
+  });
+});
+
+describe('CarbonBook', () => {
+  it('keeps per-flight and per-building emissions in the daily audit', () => {
+    const book = new CarbonBook();
+    book.recordFlight({
+      id: 'f1',
+      flightNo: 'HF101',
+      aircraft: 'Boeing 737-800',
+      aircraftClass: 'narrowbody',
+      safBlend: 0,
+    });
+    book.recordFlight({
+      id: 'f1',
+      flightNo: 'HF101',
+      aircraft: 'Boeing 737-800',
+      aircraftClass: 'narrowbody',
+      safBlend: 0,
+    });
+    const day = book.closeDay(1, [
+      { id: 'terminal:1,1', type: 'terminal' },
+      { id: 'fuel:2,2', type: 'fuel' },
+      { id: 'road:3,3', type: 'road' },
+    ]);
+
+    expect(day.flights).toHaveLength(1);
+    expect(day.flights[0].kg).toBe(2500);
+    expect(day.buildings.map((row) => row.label)).toEqual(['Terminal', 'Fuel farm']);
+    expect(day.buildingKg).toBe(300);
+    expect(day.totalKg).toBe(2800);
+  });
+
+  it('applies SAF to each flight and exposes configured building rows', () => {
+    expect(flightEmission({
+      id: 'f2',
+      flightNo: 'HF202',
+      aircraft: 'A320',
+      aircraftClass: 'narrowbody',
+      safBlend: 0.5,
+    }).kg).toBe(1500);
+    expect(buildingEmissions([{ id: 'mro:4,4', type: 'mro' }])).toEqual([
+      { id: 'mro:4,4', type: 'mro', label: 'MRO hangar', kg: 260 },
+    ]);
+  });
+
+  it('completes and restores Green Pioneer after a tracked day is fully offset', () => {
+    const book = new CarbonBook();
+    expect(book.startGreenPioneer(3, 40)).toBe(true);
+    book.recordFlight({
+      id: 'f3',
+      flightNo: 'HF303',
+      aircraft: 'E175',
+      aircraftClass: 'regional',
+      safBlend: 0,
+    });
+    book.closeDay(4, []);
+    expect(book.view().greenPioneer?.status).toBe('running');
+    book.purchaseOffsets(0.8, 4);
+    expect(book.view().greenPioneer?.status).toBe('met');
+
+    const restored = CarbonBook.restore(JSON.parse(JSON.stringify(book.save())));
+    expect(restored.view().greenPioneer?.status).toBe('met');
+    expect(restored.view().netTonnes).toBe(0);
+  });
+
+  it('loads an older save with no carbon state as an empty compatible book', () => {
+    expect(CarbonBook.restore(undefined).view()).toMatchObject({
+      daysTracked: 0,
+      totalEmissionsTonnes: 0,
+      offsetsTonnes: 0,
+      greenPioneer: null,
+    });
   });
 });

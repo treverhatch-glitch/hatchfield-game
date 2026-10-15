@@ -298,6 +298,18 @@ import { POWER_PLANT_CAPACITY, calculatePower } from '../economy/power.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant.ts'
 import { MRO_BAYS, MRO_POWER_DEMAND, MRO_TECHS_REQUIRED, NIGHT_BANK_SLOTS, NIGHT_HUB_POWER_DEMAND } from '../tier3/config.ts'
 import {
+  CarbonBook,
+  offsetCost,
+  type BuildingEmissionInput,
+  type CarbonView,
+} from '../sustainability/carbon.ts'
+import {
+  BUILDING_KG_CO2_PER_DAY,
+  SAF_BLEND_WITH_PLANT,
+  type AircraftClass as CarbonAircraftClass,
+} from '../sustainability/data.ts'
+import { SCENARIOS } from '../scenarios/templates.ts'
+import {
   GROUND_CREW_PER_DEPOT,
   mroInfoLines,
   mroRoute,
@@ -1227,6 +1239,8 @@ export class Game {
   shelfCool = 0
   /** Open info-view submenu. Hotspots stay drawn either way. */
   infoOpen: string | null = null
+  /** Completed-flight and building carbon day book. UI reads its structured view. */
+  carbon = new CarbonBook()
   private fuelHoldNoted = new Set<string>()
   caterBrand: CaterBrand | null = null
   mealSold = false
@@ -1881,6 +1895,7 @@ export class Game {
     this.bagReleaseAt.clear()
     this.shelfCool = 0
     this.infoOpen = null
+    this.carbon = new CarbonBook()
     this.fuelHoldNoted.clear()
     this.caterBrand = null
     this.mealSold = false
@@ -7569,6 +7584,7 @@ export class Game {
       crewHotelNights: this.crewHotelNights,
       achievements: this.achievements.save(),
       scenario: this.scenarioRun ? { ...this.scenarioRun } : undefined,
+      carbon: this.carbon.save(),
     }
     try {
       const now = Date.now()
@@ -7691,6 +7707,7 @@ export class Game {
       this.parkTerms = s.parkTerms ?? {}
       this.hotelClass = s.hotelClass ?? {}
       this.lateSites = restoreLateSites(s.tier3Sites, this.tiles)
+      this.carbon = CarbonBook.restore(s.carbon)
       this.missedHotelNights = wholeNights(s.missedHotelNights ?? 0)
       this.crewHotelNights = wholeNights(s.crewHotelNights ?? 0)
       if (s.achievements) this.achievements.load(s.achievements as AchievementState)
@@ -8200,6 +8217,14 @@ export class Game {
 
   /** Pax and freight cleared when a turnaround finishes — feeds the day charts. */
   noteTurn(f: Flight) {
+    const frame = AIRFRAMES[f.airframeId]
+    this.carbon.recordFlight({
+      id: f.id,
+      flightNo: f.flightNo,
+      aircraft: f.airframeName || frame?.name || f.airframeId,
+      aircraftClass: this.carbonAircraftClass(f),
+      safBlend: this.hasOpenSafPlant() ? SAF_BLEND_WITH_PLANT : 0,
+    })
     if (!(f.cargo || f.kind === 'freighter')) this.dayPax += Math.max(0, f.pax)
     if (f.cargo || f.kind === 'freighter') {
       const hold = AIRFRAMES[f.airframeId]?.cargoHold
@@ -8207,6 +8232,88 @@ export class Game {
     }
     const pax = f.cargo || f.kind === 'freighter' ? 0 : Math.max(0, f.pax)
     this.noteMapGoals(pax)
+  }
+
+  private carbonAircraftClass(f: Flight): CarbonAircraftClass {
+    const frame = AIRFRAMES[f.airframeId]
+    const fuel = frame?.fuelLoad ?? 0
+    if (f.craft === 'helo' || fuel <= 2) return 'small'
+    if (f.kind === 'regional') return 'regional'
+    if (f.kind === 'narrowbody') return 'narrowbody'
+    if (fuel >= 100 || frame?.scale != null && frame.scale >= 1.65) return 'jumbo'
+    if (f.kind === 'widebody' || fuel >= 30) return 'widebody'
+    return 'narrowbody'
+  }
+
+  private hasOpenSafPlant(): boolean {
+    return this.lateSites.some((site) => {
+      if (site.id !== 'saf_blending') return false
+      const building = buildingById(site.id)
+      return building != null && site.elapsedDays >= building.buildDays
+    })
+  }
+
+  private carbonBuildings(): BuildingEmissionInput[] {
+    const rows: BuildingEmissionInput[] = []
+    const terminals = new Set(this.fits.map((fit) => `${fit.origin.c},${fit.origin.r}`))
+    for (const id of terminals) rows.push({ id: `terminal:${id}`, type: 'terminal' })
+    for (let r = 0; r < this.tiles.length; r++) {
+      for (let c = 0; c < this.tiles[r].length; c++) {
+        const type = this.tiles[r][c]
+        if (type === 'terminal' || !(BUILDING_KG_CO2_PER_DAY[type] > 0)) continue
+        if (type === 'late_hotel' || type === 'late_rail' || type === 'saf') {
+          const late = this.lateSites.find((site) => site.c === c && site.r === r)
+          if (!late || !isOpen(late)) continue
+        }
+        rows.push({ id: `${type}:${c},${r}`, type })
+      }
+    }
+    return rows
+  }
+
+  carbonView(): CarbonView {
+    return this.carbon.view(this.carbonBuildings())
+  }
+
+  startGreenPioneer(): boolean {
+    const scenario = SCENARIOS.find((row) => row.id === 'green-pioneer')
+    if (!scenario || !this.carbon.startGreenPioneer(this.gameDay(), scenario.goal.byDay)) {
+      this.pushNews('Green Pioneer is already running or complete.', 'bad')
+      this.emit()
+      return false
+    }
+    this.pushNews(
+      `Green Pioneer started — reach net-zero by day ${this.carbonView().greenPioneer!.deadlineDay}.`,
+      'ok',
+    )
+    this.emit()
+    return true
+  }
+
+  buyCarbonOffsets(): boolean {
+    const view = this.carbonView()
+    if (!(view.outstandingTonnes > 0)) {
+      this.pushNews(
+        view.daysTracked ? 'Carbon book is already net-zero.' : 'Close one operating day before buying offsets.',
+        'ok',
+      )
+      this.emit()
+      return false
+    }
+    const tonnes = view.outstandingTonnes
+    const cost = Math.ceil(offsetCost(tonnes))
+    if (!this.spend(cost, 'carbon offsets')) return false
+    const before = view.greenPioneer?.status
+    this.carbon.purchaseOffsets(tonnes, this.gameDay())
+    const after = this.carbonView().greenPioneer?.status
+    this.pushNews(
+      after === 'met' && before !== 'met'
+        ? `Green Pioneer met — ${tonnes.toFixed(2)} t offset for $${cost.toLocaleString('en-US')}.`
+        : `${tonnes.toFixed(2)} t carbon offsets bought for $${cost.toLocaleString('en-US')}.`,
+      'good',
+    )
+    this.emit()
+    return true
   }
 
   /** Hourly book for the economy charts. One in-game hour is 7.5 sim-seconds. */
@@ -8220,6 +8327,14 @@ export class Game {
       const closedDay = Math.floor(this.dayMark / day)
       const closedPax = this.dayPax
       const profit = this.dayIncome - this.dayExpense
+      const carbonBefore = this.carbonView().greenPioneer?.status
+      this.carbon.closeDay(closedDay, this.carbonBuildings())
+      const carbonAfter = this.carbonView().greenPioneer?.status
+      if (carbonAfter === 'met' && carbonBefore !== 'met') {
+        this.pushNews('Green Pioneer met — airport operations are net-zero.', 'good')
+      } else if (carbonAfter === 'missed' && carbonBefore !== 'missed') {
+        this.pushNews('Green Pioneer missed — the net-zero window closed.', 'bad')
+      }
       this.paxPerDay = closedPax
       this.cargoPerDay = this.dayCargo
       paxSnap = this.paxPerDay
@@ -13122,6 +13237,7 @@ export class Game {
     }
     if (tilesOf(this.tiles, 'fuel').length) spots.push({ id: 'fuel', label: 'Fuel farm' })
     spots.push({ id: 'power', label: 'Power' })
+    spots.push({ id: 'carbon', label: 'CO₂' })
     if (tilesOf(this.tiles, 'mro').length) spots.push({ id: 'mro', label: 'Maintenance' })
     if (tilesOf(this.tiles, 'nighthub').length) spots.push({ id: 'nighthub', label: 'Night hub' })
     else if (!this.fits.length && tilesOf(this.tiles, 'bags').length) {
@@ -13171,6 +13287,14 @@ export class Game {
       ]
       if (offer.upkeepPerDay > 0) lines.push(`Upkeep $${offer.upkeepPerDay.toLocaleString('en-US')} / day`)
       return lines
+    }
+    if (id === 'carbon') {
+      const carbon = this.carbonView()
+      return [
+        `${carbon.totalEmissionsTonnes.toFixed(2)} t tracked emissions`,
+        `${carbon.offsetsTonnes.toFixed(2)} t offsets`,
+        `${carbon.netTonnes.toFixed(2)} t net`,
+      ]
     }
     if (id.startsWith('tower:')) {
       const key = id.slice('tower:'.length)
