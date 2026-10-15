@@ -37,16 +37,17 @@ await page.waitForFunction(call(`return Boolean(window.__world && window.__hatch
 
 const aim = await page.evaluate(call(`
   const w = window.__world
-  const aim = w.wr.terminalAim()
+  const g = window.__hatch
+  g.setSpeed(1)
+  let steps = 0
+  while ((g.flights || []).length < 1 && steps < 400) { g.tick(0.5); steps++ }
+  const building = w.wr.buildings && w.wr.buildings[0]
+  const aim = (w.wr.terminalAim && w.wr.terminalAim()) || (building && building.center)
   if (aim) { w.pivot.x = aim.x; w.pivot.z = aim.z }
   w.yaw = 0.4
   w.pitch = 0.55
   w.dist = 140
   w.placeCam()
-  const g = window.__hatch
-  g.setSpeed(1)
-  let steps = 0
-  while ((g.flights || []).length < 1 && steps < 400) { g.tick(0.5); steps++ }
   return { flights: (g.flights || []).length, steps, dist: w.dist, aim }
 `))
 console.log('aim', JSON.stringify(aim))
@@ -69,6 +70,25 @@ await page.evaluate(call(`
   w.placeCam()
 `))
 await page.waitForTimeout(1500)
+const lodFar = await page.evaluate(call(`
+  const root = window.__world.scene || window.__world.wr.scene
+  const found = []
+  const walk = (obj) => {
+    if (!obj) return
+    if (obj.name === 'lod' && obj.buckets) {
+      found.push({
+        high: !!obj.buckets.highGroup.visible,
+        mid: !!obj.buckets.midGroup.visible,
+        low: !!obj.buckets.lowGroup.visible,
+      })
+    }
+    for (const child of obj.children || []) walk(child)
+  }
+  walk(window.__world.scene)
+  if (!found.length && window.__world.wr && window.__world.wr.scene) walk(window.__world.wr.scene)
+  return { dist: window.__world.dist, lod: found.slice(0, 4) }
+`))
+console.log('lod-far', JSON.stringify(lodFar))
 await page.screenshot({ path: `${OUT}/after-max-zoom.png` })
 
 const sample = await page.evaluate(call(`

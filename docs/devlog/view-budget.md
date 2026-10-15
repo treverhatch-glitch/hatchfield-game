@@ -10,19 +10,21 @@ Reference desktop in `docs/PERF_BUDGET.md` is an i7-14700KF and RTX 4070 Super a
 
 Starter passenger kit, graphics high, apron orbit at distance 280 (the far cap):
 
-**1.9 fps** on SwiftShader. Logged once, and the preset stayed high.
+**about 3–4 fps** on SwiftShader (samples 3.9, 3.6, and 3.2). Logged only, and the preset stayed high. At that distance main draws the cheap aircraft shell. This change keeps the high and mid meshes.
 
 ## Stills
 
-Same new game, graphics high.
+Retaken from the running game after the rebase onto main (terminal round 5 and the later landings). Same new game, graphics high. Before is current main without this change. After is this branch.
 
 | | |
 | --- | --- |
 | Before, max zoom | ![Before](media/view-budget/before-max-zoom.png) |
+| Before, distance 140 | ![Before mid](media/view-budget/before-mid-zoom.png) |
+| Before, roof seated | ![Before roof](media/view-budget/before-roof.png) |
 | After, max zoom | ![After wide](media/view-budget/after-max-zoom.png) |
 | After, distance 140 | ![After mid](media/view-budget/after-mid-zoom.png) |
 
-Distance 140 used to sit in the cheap aircraft band. The fuselage, gear, and engines stay on the full mesh there. The cheap silhouette only replaces the body past 8000 world units, which the orbit never reaches. Vehicles use that same distance.
+Distance 140 used to sit in the cheap aircraft band. The before still at that distance is the cheap shell. The after still keeps the fuselage, gear, and engines on the full mesh. The cheap silhouette only replaces the body past 8000 world units, which the orbit never reaches. Vehicles use that same distance.
 
 | Entering | Leaving |
 | --- | --- |

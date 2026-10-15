@@ -3,7 +3,7 @@
  * Usage: npx tsx scripts/view-budget-clip.mts
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const OUT = 'docs/devlog/media/view-budget'
@@ -83,17 +83,26 @@ const shot = async (name: 'enter' | 'leave') => {
 }
 
 await page.evaluate(call(`window.__hatch.askView('hall')`))
-for (let i = 0; i < 8; i++) await shot('enter')
+for (let i = 0; i < 8; i++) {
+  await shot('enter')
+  await page.waitForTimeout(180)
+}
 await page.waitForFunction(call(`return window.__hatch.view === 'hall' && !window.__hatch.viewCue`), null, { timeout: 8000 })
 await page.waitForTimeout(500)
 await page.screenshot({ path: `${OUT}/after-hall.png` })
 console.log('hall', 'saved')
 
 await page.evaluate(call(`window.__hatch.askView('apron')`))
-for (let i = 0; i < 8; i++) await shot('leave')
+for (let i = 0; i < 8; i++) {
+  await shot('leave')
+  await page.waitForTimeout(180)
+}
 await page.waitForFunction(call(`return window.__hatch.view === 'apron' && !window.__hatch.viewCue`), null, { timeout: 8000 })
 
 await browser.close()
+
+copyFileSync(`${FRAMES}/03-enter.png`, `${OUT}/transition-enter.png`)
+copyFileSync(`${FRAMES}/03-leave.png`, `${OUT}/transition-leave.png`)
 
 execFileSync(
   'ffmpeg',

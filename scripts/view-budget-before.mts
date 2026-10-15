@@ -31,7 +31,23 @@ if (await coach.count()) await coach.click()
 await page.waitForFunction(call(`return Boolean(window.__world && window.__hatch.fits && window.__hatch.fits.length)`), null, { timeout: 20000 })
 await page.evaluate(call(`
   const w = window.__world
-  w.nudgeZoom(800)
+  const g = window.__hatch
+  g.setSpeed(1)
+  let steps = 0
+  while ((g.flights || []).length < 1 && steps < 400) { g.tick(0.5); steps++ }
+  const b = w.wr.buildings && w.wr.buildings[0]
+  const aim = b && b.center
+  if (aim) { w.pivot.x = aim.x; w.pivot.z = aim.z }
+  w.yaw = 0.4
+  w.pitch = 0.55
+  w.dist = 140
+  w.placeCam()
+`))
+await page.waitForTimeout(700)
+await page.screenshot({ path: `${OUT}/before-mid-zoom.png` })
+await page.evaluate(call(`
+  const w = window.__world
+  w.dist = 280
   w.placeCam()
 `))
 await page.waitForTimeout(800)
@@ -47,6 +63,35 @@ const sample = await page.evaluate(call(`
     requestAnimationFrame(step)
   })
 `))
+const lodFar = await page.evaluate(call(`
+  const found = []
+  const walk = (obj) => {
+    if (!obj) return
+    if (obj.name === 'lod' && obj.buckets) {
+      found.push({
+        high: !!obj.buckets.highGroup.visible,
+        mid: !!obj.buckets.midGroup.visible,
+        low: !!obj.buckets.lowGroup.visible,
+      })
+    }
+    for (const child of obj.children || []) walk(child)
+  }
+  walk(window.__world.scene)
+  return { dist: window.__world.dist, lod: found.slice(0, 4) }
+`))
+console.log('lod-far', JSON.stringify(lodFar))
 await page.screenshot({ path: `${OUT}/before-max-zoom.png` })
+await page.evaluate(call(`
+  const w = window.__world
+  const b = w.wr.buildings && w.wr.buildings[0]
+  const aim = b && b.center
+  if (aim) { w.pivot.x = aim.x; w.pivot.z = aim.z }
+  w.yaw = 0.55
+  w.pitch = 0.85
+  w.dist = 72
+  w.placeCam()
+`))
+await page.waitForTimeout(400)
+await page.screenshot({ path: `${OUT}/before-roof.png` })
 console.log(JSON.stringify(sample))
 await browser.close()
