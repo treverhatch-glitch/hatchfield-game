@@ -211,13 +211,6 @@ export class SettingsStore {
   }
 }
 
-let sharedStore: SettingsStore | undefined
-
-/** One store for audio, graphics prefs, and the day/night cycle switch. */
-export function sharedSettings(): SettingsStore {
-  return (sharedStore ??= new SettingsStore())
-}
-
 export function readDayNightCycle(store: SettingsStore = sharedSettings()): boolean {
   return store.get().dayNightCycle
 }

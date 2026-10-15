@@ -29,8 +29,6 @@ export interface WorldView {
   tiles: Tile[][]
   mapRev: number
   clock?: number
-  /** False holds the sun at late morning. Missing means the cycle runs. */
-  dayNightCycle?: boolean
   weather?: Weather
   /** Set by a non-default map. Missing or null keeps today's sky and farmland. */
   mapDraw?: MapDraw | null

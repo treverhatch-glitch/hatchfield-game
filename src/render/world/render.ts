@@ -12,7 +12,7 @@ import {
   applyDayNight,
   daylightFactor,
   idleDayNight,
-  resolvePlayHour,
+  resolveHour,
   SKY_PHOTO_WEATHER,
   skyPhotoBlend,
   type DayNightControl,

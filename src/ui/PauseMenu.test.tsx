@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { audioSettings } from '../audio/prefs.ts'
+import { readDayNightCycle } from '../features/settings/settings.ts'
 import { Game } from '../game/sim.ts'
 import { GameSettings } from './PauseMenu.tsx'
 import { newGameHintPrefs } from '../game/hints.ts'
@@ -58,8 +59,8 @@ describe('GameSettings', () => {
     const game = new Game()
     game.setDayNightCycle(true)
     const on = renderToStaticMarkup(<GameSettings game={game} />)
-    expect(on).toContain('data-testid="settings-day-night-cycle" checked=""')
-    expect(on).toContain('The sun moves from dawn to night.')
+    expect(on).toContain('data-testid="settings-day-night" checked=""')
+    expect(on).toContain('Day/night cycle: On')
 
     game.sandbox = true
     game.beginNew('easy')
@@ -69,9 +70,9 @@ describe('GameSettings', () => {
     expect(game.dayNightCycle).toBe(false)
     expect(readDayNightCycle()).toBe(false)
     const off = renderToStaticMarkup(<GameSettings game={game} />)
-    expect(off).toContain('data-testid="settings-day-night-cycle"')
-    expect(off).not.toContain('data-testid="settings-day-night-cycle" checked=""')
-    expect(off).toContain('Held at late morning')
+    expect(off).toContain('data-testid="settings-day-night"')
+    expect(off).not.toContain('data-testid="settings-day-night" checked=""')
+    expect(off).toContain('Fixed daytime')
 
     game.beginNew('easy')
     expect(game.dayNightCycle).toBe(false)

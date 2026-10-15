@@ -92,6 +92,17 @@ export function lightsFactor(hour: number): number {
   return 1 - smoothstep(7.4, 8.2, h)
 }
 
+/**
+ * 1 when the sky should be a star field, 0 once the sun disc is up.
+ * Narrower than `lightsFactor`, so sunrise and sunset keep a visible sun
+ * while the runway lights are still on. True night stays at 1, so the moon disc remains.
+ */
+export function starsFactor(hour: number): number {
+  const h = ((hour % 24) + 24) % 24
+  if (h >= 12) return smoothstep(SUN_DISC.duskStart, SUN_DISC.duskEnd, h)
+  return 1 - smoothstep(SUN_DISC.dawnStart, SUN_DISC.dawnEnd, h)
+}
+
 function unit(v: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
   const l = Math.hypot(v.x, v.y, v.z) || 1
   return { x: v.x / l, y: v.y / l, z: v.z / l }

@@ -107,7 +107,17 @@ async function show(page: Page, day: number, hour: number, yaw: number, cycle = 
     }) as (arg: { stamp: number; yaw: number; cycle: boolean }) => void,
     { stamp: clock, yaw, cycle },
   )
-  await page.waitForTimeout(500)
+  const want = cycle ? hour : 11
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(200)
+    const hourNow = await page.evaluate(
+      call(`
+        const s = window.__world && window.__world.wr && window.__world.wr.dayNightSample
+        return s ? s.hour : null
+      `),
+    )
+    if (typeof hourNow === 'number' && Math.abs(hourNow - want) < 0.35) return
+  }
 }
 
 const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, headless: true, args })

@@ -193,21 +193,14 @@ export function resolveHour(
   return simClockToHour(clock)
 }
 
-/**
- * Hour the renderer paints. A photo override or a day/night control hour still
- * wins when the cycle is off, so camera tools keep working. Otherwise the
- * cycle-off switch holds `DAY_NIGHT.hold`.
- */
+/** Same precedence as `resolveHour`. Kept so older call sites stay on one resolver. */
 export function resolvePlayHour(
   clock: number,
   hourOverride: number | null,
   control: DayNightControl | null,
   cycleOn = true,
 ): number {
-  if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
-  if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
-  if (!cycleOn) return DAY_NIGHT.hold
-  return simClockToHour(clock)
+  return resolveHour(clock, hourOverride, control, cycleOn)
 }
 
 export type SkyPhotoId = 'dawn' | 'noon' | 'dusk' | 'night'
