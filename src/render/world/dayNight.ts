@@ -12,6 +12,7 @@
 import type { Weather } from '../../game/types'
 import { faceHour } from '../../core/faceClock'
 import { DAY_SECONDS, lerpHex, smoothstep, type SkyState } from './daylight'
+import { landingSkyUrl } from './landingArt'
 
 export const DAY_NIGHT_CYCLE = {
   /** Sun clears the horizon. Matches the dawn ramp in `lightsFactor`. */
@@ -212,10 +213,10 @@ export type SkyPhotoId = 'dawn' | 'noon' | 'dusk' | 'night'
  * that sits on the horizon; everything above it stretches up to the zenith.
  */
 export const SKY_PHOTOS: Record<SkyPhotoId, { url: string; horizon: number }> = {
-  dawn: { url: '/textures/sky/sky_dawn.jpg', horizon: 0.2 },
-  noon: { url: '/textures/sky/sky_noon.jpg', horizon: 0.3 },
-  dusk: { url: '/textures/sky/sky_dusk.jpg', horizon: 0.08 },
-  night: { url: '/textures/sky/sky_night.jpg', horizon: 0.05 },
+  dawn: { url: landingSkyUrl('sky_dawn'), horizon: 0.34 },
+  noon: { url: landingSkyUrl('sky_noon'), horizon: 0.32 },
+  dusk: { url: landingSkyUrl('sky_dusk'), horizon: 0.3 },
+  night: { url: landingSkyUrl('sky_night'), horizon: 0.25 },
 }
 
 /** Crossfade windows in sim hours, in clock order. Outside a window the last photo holds. */

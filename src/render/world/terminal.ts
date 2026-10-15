@@ -14,6 +14,7 @@ import type { QualityLevel } from './quality'
 import { MATERIAL_TARGETS } from '../../build/materialTargets'
 import { tint as lighten } from './buildingSkin'
 import { exteriorTexture } from './exteriorArt'
+import { landingTexture } from './landingArt'
 import {
   BAG_COLORS,
   bake,
@@ -64,7 +65,6 @@ import { deskHeaderTexture, fidsBoardTexture, signPanelMaterial, wayfindingSheet
 import { departuresBoardTexture, GATE_SIGN, stampWayfindingLogo, wayfindingTexture, type WorldTextures } from './textures'
 import { WORLD_PER_METER } from '../aircraft/specs'
 import { buildHiDetailProps, buildInteriorDressing, hiDetailOn, hiDetailOwns } from './terminalHiDetail'
-import { HALL_NEAR_DIST } from '../hallCamera'
 import { setNearPropDetail } from '../terminalProps'
 import { CELL, cellX, cellZ } from './view'
 import { facadeOpenings } from './facade'
@@ -119,14 +119,16 @@ export function makeTerminalShared(textures: WorldTextures, quality: QualityLeve
   surfaces.loadInteriorFloors(quality)
   const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
     new THREE.MeshLambertMaterial({ color, ...extra })
+  const queue = landingTexture('queue_tape')
+  const belt = landingTexture('carousel_belt')
   const palette: Record<string, THREE.Material> = {
     desk: lambert(0x3d5a74),
     deskTop: lambert(0xe9e4da),
     screen: new THREE.MeshBasicMaterial({ color: 0x6ec6ff }),
     dark: lambert(0x2a2f36),
-    rubber: lambert(0x15171a),
+    rubber: belt ? lambert(0xffffff, { map: belt }) : lambert(0x15171a),
     chrome: lambert(0xb8c0c8),
-    tape: lambert(0xc0392b),
+    tape: queue ? lambert(0xffffff, { map: queue }) : lambert(0xc0392b),
     seat: lambert(0x2f5f8a),
     board: signPanelMaterial(fidsBoardTexture() ?? fids.textures.departures ?? departuresBoardTexture() ?? textures.board, 0x071422),
     machine: lambert(0x8f9aa6),
@@ -288,18 +290,19 @@ export class TerminalBuilding {
     shared.surfaces.watch(this.floorMat)
     tileByPosition(this.floorMat, shared.surfaces.repeatFor('terrazzo'))
     const curtain = exteriorTexture('curtain')
+    const facade = landingTexture('terminal_facade')
     this.glassMat = own(
       new THREE.MeshLambertMaterial({
         color: 0xffffff,
-        map: curtain ?? shared.surfaces.maps.glass,
+        map: facade ?? curtain ?? shared.surfaces.maps.glass,
         transparent: true,
-        opacity: 0.82,
-        depthWrite: false,
+        opacity: facade ? 0.97 : 0.82,
+        depthWrite: Boolean(facade),
         emissive: 0xffc070,
         emissiveIntensity: 0,
       }),
     )
-    if (!curtain) shared.surfaces.watch(this.glassMat)
+    if (!facade && !curtain) shared.surfaces.watch(this.glassMat)
     tileByPosition(this.glassMat, shared.surfaces.repeatFor('glass'))
     this.skyMat = own(this.glassMat.clone())
     this.skyMat.opacity = 0.18
@@ -370,11 +373,13 @@ export class TerminalBuilding {
     // Curtain walls on every exterior side. Openings match facadeOpenings so the
     // landside door and the airside gates are the same holes in both views.
     const glassPos: number[] = []
+    const glassUv: number[] = []
     const glassIdx: number[] = []
     const quad = (ax: number, az: number, bx: number, bz: number, y0: number, y1: number) => {
       if (y1 - y0 < m(0.05)) return
       const b = glassPos.length / 3
       glassPos.push(ax, y0, az, bx, y0, bz, ax, y1, az, bx, y1, bz)
+      glassUv.push(0, 0, 1, 0, 0, 1, 1, 1)
       glassIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2)
     }
     const openings = facadeOpenings(this.info)
@@ -442,6 +447,7 @@ export class TerminalBuilding {
 
     const glassGeo = new THREE.BufferGeometry()
     glassGeo.setAttribute('position', new THREE.Float32BufferAttribute(glassPos, 3))
+    glassGeo.setAttribute('uv', new THREE.Float32BufferAttribute(glassUv, 2))
     glassGeo.setIndex(glassIdx)
     glassGeo.computeVertexNormals()
     this.owned.geos.push(glassGeo)
@@ -1136,7 +1142,7 @@ export class TerminalBuilding {
     this.poseKey = pose
 
     this.lod = pickLod(this.lod, dist, TERMINAL_LOD.map((t) => t * lodScale))
-    const close = this.lod === 0 && dist < ROOF_CUTAWAY * lodScale
+    const close = dist < ROOF_CUTAWAY
     // Hall view only: close and above the roof lifts it off. Airport view stays enclosed.
     const cut = !enclosed && close && camPos.y > ROOF_Y + m(1.5)
     const aboveCeiling = camPos.y > ROOF_Y - m(0.2)
@@ -1151,8 +1157,8 @@ export class TerminalBuilding {
       this.propFade = 0
       this.lifeFade = 0
     } else {
-      this.propTarget = this.lod <= 1 ? 1 : 0
-      this.lifeTarget = this.lod === 0 ? 1 : 0
+      this.propTarget = 1
+      this.lifeTarget = 1
       this.propFade = stepFade(this.propFade, this.propTarget, dt, 3)
       this.lifeFade = stepFade(this.lifeFade, this.lifeTarget, dt, 3)
     }
@@ -1163,7 +1169,7 @@ export class TerminalBuilding {
     this.roof.position.y = lift * lift * m(4)
     applyFade(this.props, this.propMats, this.propFade)
     applyFade(this.props, this.wallMats, this.propFade)
-    this.detail.visible = !enclosed && this.lod === 0 && this.propFade > 0.2
+    this.detail.visible = !enclosed && this.propFade > 0.2
     if (this.glassWallMat) this.glassWallMat.opacity = 0.9 * this.propFade
     if (!this.nearCut && this.propFade < 0.001) this.snapWallsFull()
     else if (this.propFade > 0 && (this.nearCut || !this.wallsFull())) this.stepWalls(camPos, look, dt)

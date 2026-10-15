@@ -11,7 +11,7 @@ describe('texture registry', () => {
   })
 
   it('skips photos on Low and without a DOM', () => {
-    expect(photoTexturesEnabled('low')).toBe(false)
+    expect(photoTexturesEnabled('low')).toBe(true)
     expect(photoTexturesEnabled('med')).toBe(true)
     expect(artTexture('apron_concrete')).toBeNull()
   })

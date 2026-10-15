@@ -119,3 +119,42 @@ Requested, and still not playable. Research lists exist; the live tree does not 
 | 404 | 2 | 2026-10-14 | `e3f619ea` | `claude/finance-screen-*`, `tmp/pr265` | NEEDS-WORK. |
 | 334 | 1 | 2026-10-14 | `a3325450` | `design/vision-expansion` | NEEDS-WORK. Docs only. |
 | 689–880 | 1–439 | 2026-10-13/14 | various | `grok/*`, `cursor/simcore-*`, `cursor/hud-starter-kit-562d`, `preview-dist`, `trunk-snapshot`, media clips | NEEDS-PORT was declined. Prototypes, not a replay. |
+
+---
+
+# P1 art landing record
+
+## P1 art landing
+
+Branch `cursor/art-landing-p1-9acb`. Lands after the P0 sound fix (#94) and beside the building port (#92). Those branches' files were not edited.
+
+Pack is stored at full resolution under `public/art/textures/landing/` (textures, terrain, sky). Nothing in the loader resamples those JPEGs.
+
+Wired:
+
+- Runway paint, wet asphalt, and the threshold plate on the runway and apron. Dirt shoulders along the runway edges.
+- Seasonal ground: spring and summer use spring grass, autumn uses autumn grass, winter or deep snow uses snow grass. Apron and paved surfaces swap to snow or wet asphalt. Farmland and the river use their own plates.
+- Tree and bush sprite sheets as crossed cards. Chainlink on the perimeter fence, with the black holes discarded.
+- Dawn, noon, dusk, and night skies on the dome. The mirror fold is feathered so a non-wrapping panorama does not show a hard seam.
+- Terminal glass and the airport-hotel tower use the elevation plates once per face.
+- Queue tape on the belt barriers. Carousel belt on the claim carousel.
+
+Interiors: PR #74 is already on main (starter newsagent, second toilet, claim bench). Every terminal prop type is placed in the hall dressing, and that dressing stays visible at every camera distance. Roof cutaway is still distance-only.
+
+Quality: every graphics tier keeps the photo set (skies, foliage, props, colour grade, bloom, contact shadows). Shadow maps still step 1024 / 2048 / 4096 / 8192 so a software GL view can open. People draw-call budget was left as it was.
+
+Gaps still flat: `docs/playtest/ART_GAPS.md`.
+
+Gate, preview, and fast-forward of `main` are recorded below when they finish.
+
+## Gate
+
+Pending.
+
+## Preview
+
+Pending. Deploy target is Cloudflare Pages branch `progress` only.
+
+## Main
+
+Pending.

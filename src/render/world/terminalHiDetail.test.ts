@@ -10,11 +10,11 @@ import { TERMINAL_PROP_TYPES } from '../terminalProps'
 import type { Prop } from './plan'
 
 describe('terminal hi-detail props', () => {
-  it('only High and Ultra swap in detailed models', () => {
+  it('keeps detailed models at every graphics tier', () => {
     expect(hiDetailOn('high')).toBe(true)
     expect(hiDetailOn('ultra')).toBe(true)
-    expect(hiDetailOn('med')).toBe(false)
-    expect(hiDetailOn('low')).toBe(false)
+    expect(hiDetailOn('med')).toBe(true)
+    expect(hiDetailOn('low')).toBe(true)
     expect(hiDetailOwns('xray', false)).toBe(false)
     expect(hiDetailOwns('xray', true)).toBe(true)
     expect(hiDetailOwns('awning', true)).toBe(true)
@@ -41,7 +41,7 @@ describe('terminal hi-detail props', () => {
     const squares = plan.rooms.rooms.map((r) => r.squares.join(','))
     const g = buildInteriorDressing(plan.rooms, 0.45, 0.1)
     expect(g.name).toBe('interior-dressing')
-    expect(g.userData.nearDetail).toBe(true)
+    expect(g.userData.nearDetail).toBeUndefined()
     const anchors = g.userData.anchors as Record<string, { x: number; z: number }>
     expect(anchors.arrivals).toBeTruthy()
     expect(anchors.claim).toBeTruthy()
@@ -49,8 +49,10 @@ describe('terminal hi-detail props', () => {
     expect(anchors.office).toBeTruthy()
     expect(anchors.gadget).toBeTruthy()
     expect(anchors.food).toBeTruthy()
+    const types = new Set(g.userData.types as string[])
+    for (const type of TERMINAL_PROP_TYPES) expect(types.has(type), type).toBe(true)
     setNearPropDetail(g, false)
-    expect(g.visible).toBe(false)
+    expect(g.visible).toBe(true)
     expect(plan.rooms.rooms.map((r) => r.squares.join(','))).toEqual(squares)
   })
 })

@@ -125,15 +125,15 @@ describe('pack 6 sky photos', () => {
     for (const photo of Object.values(SKY_PHOTOS)) {
       expect(photo.horizon).toBeGreaterThanOrEqual(0)
       expect(photo.horizon).toBeLessThan(1)
-      expect(photo.url).toMatch(/^\/textures\/sky\/sky_\w+\.jpg$/)
+      expect(photo.url).toMatch(/^\/art\/textures\/landing\/sky\/(dawn|noon|dusk|night)\.jpeg$/)
     }
   })
 
-  it('Low keeps the procedural dome', () => {
-    expect(QUALITY.low.skyPhotos).toBe(false)
+  it('keeps the procedural dome until photos are turned on', () => {
+    expect(QUALITY.low.skyPhotos).toBe(true)
     expect(QUALITY.med.skyPhotos).toBe(true)
     const sky = new SkyDome()
-    sky.setPhotos(QUALITY.low.skyPhotos)
+    sky.setPhotos(false)
     sky.setPhoto(skyPhotoBlend(12), 1)
     expect(sky.photoAmount()).toBe(0)
     sky.dispose()

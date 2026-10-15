@@ -19,7 +19,7 @@ import {
   type DayNightSample,
 } from './dayNight'
 import { ContactShadows, contactSpots } from './contact'
-import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeTint } from './environment'
+import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type LandscapeTint } from './environment'
 import {
   apronMasts,
   jetBridges,
@@ -34,6 +34,7 @@ import {
   taxiLightSpots,
   taxiPaint,
   terminals,
+  type Runway,
 } from './layout'
 import { posesFrom, HallCrowd } from './hallCrowd'
 import { bubbleAnchorY, ThoughtBubbleLayer } from '../../feedback/render/bubbles.ts'
@@ -52,6 +53,7 @@ import { boardSnapshot, isFidsSource } from '../../fids/project'
 import { objectIsFidsBoard } from '../../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
+import { landingTexture, seasonApronId, seasonGrassId, seasonPavedId } from './landingArt'
 import { propTexture } from './propArt'
 import { benchGeometry, binGeometry, curbFurniture } from './apronProps'
 import { instanced } from './kit'
@@ -159,6 +161,10 @@ export class WorldRenderer {
   private camDir = new THREE.Vector3()
   private background = new THREE.Color()
   private terrainKey = ''
+  private groundKey = ''
+  private landscapeArt: LandscapeArt | null = null
+  private thresholdMat: THREE.MeshLambertMaterial | null = null
+  private shoulderMat: THREE.MeshLambertMaterial | null = null
 
   constructor(scene: THREE.Scene, quality: QualityLevel, opts: WorldRenderOptions = {}) {
     this.scene = scene
@@ -240,7 +246,25 @@ export class WorldRenderer {
     }
     this.lights = new AirfieldLights(this.tex)
     this.root.add(this.lights.root)
-    this.landscape = buildLandscape(this.tex.grass, q.trees)
+    this.thresholdMat?.dispose()
+    this.shoulderMat?.dispose()
+    const threshold = landingTexture('threshold_metal', q.anisotropy)
+    const shoulder = landingTexture('dirt_shoulder', q.anisotropy)
+    this.thresholdMat = threshold
+      ? new THREE.MeshLambertMaterial({ map: threshold, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -4 })
+      : null
+    this.shoulderMat = shoulder
+      ? new THREE.MeshLambertMaterial({ map: shoulder, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -1 })
+      : null
+    this.landscapeArt = {
+      farmland: landingTexture('farmland', q.anisotropy),
+      water: landingTexture('water_river', q.anisotropy),
+      trees: landingTexture('tree_sprites', q.anisotropy),
+      bushes: landingTexture('bush_sprites', q.anisotropy),
+    }
+    this.groundKey = ''
+    this.applySeasonPlates('spring', 0, 0)
+    this.landscape = buildLandscape(this.tex.grass, q.trees, null, this.landscapeArt)
     this.root.add(this.landscape.group)
     this.terrainKey = ''
     this.grass = new GrassRing(q.grassTufts)
@@ -361,6 +385,24 @@ export class WorldRenderer {
       mesh.receiveShadow = true
       mesh.name = 'surface-stand-pad'
       this.staticGroup.add(mesh)
+    }
+    for (const rw of rws) {
+      if (this.thresholdMat) {
+        const geo = photoQuads(thresholdRects(rw), 0.02)
+        this.staticGeos.push(geo)
+        const mesh = new THREE.Mesh(geo, this.thresholdMat)
+        mesh.receiveShadow = true
+        mesh.name = 'surface-threshold'
+        this.staticGroup.add(mesh)
+      }
+      if (this.shoulderMat) {
+        const geo = photoQuads(shoulderRects(rw), 0.007, 8)
+        this.staticGeos.push(geo)
+        const mesh = new THREE.Mesh(geo, this.shoulderMat)
+        mesh.receiveShadow = true
+        mesh.name = 'surface-shoulder'
+        this.staticGroup.add(mesh)
+      }
     }
     const paints = [...rws.flatMap(runwayPaint), ...taxiPaint(view), ...standPaint(st), ...roadPaint(view)]
     if (paints.length && this.paintMat) {
@@ -534,26 +576,37 @@ export class WorldRenderer {
     this.scheduleShadow(fit)
 
     const wetK = 1 - s.wet * 0.28
+    this.applySeasonPlates(season.id, snow, s.wet)
     const grassHex = grassColor(day, baseLevel(this.quality))
     for (const [k, m] of this.surfaceMats) {
+      const landing = Boolean((m.map as THREE.Texture | null)?.userData?.landing)
       if (k === 'grass') {
         // Season tint shifts the hue only: normalised so every preset stays as bright as the albedo,
         // then eased toward white so a saturated palette does not turn the field lime.
-        m.color.setHex(grassHex)
-        m.color.multiplyScalar(1 / Math.max(1e-3, m.color.r, m.color.g, m.color.b))
-        m.color.lerp(WHITE, 1 - GROUND_LOOK.seasonTint)
-        if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.22)
-      } else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
+        if (landing) {
+          m.color.setHex(0xffffff)
+          if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.15)
+        } else {
+          m.color.setHex(grassHex)
+          m.color.multiplyScalar(1 / Math.max(1e-3, m.color.r, m.color.g, m.color.b))
+          m.color.lerp(WHITE, 1 - GROUND_LOOK.seasonTint)
+          if (s.wet > 0) m.color.multiplyScalar(1 - s.wet * 0.22)
+        }
+      } else if (landing) m.color.setScalar(s.wet > 0 ? 1 - s.wet * 0.12 : 1)
+      else m.color.setScalar(wetK * (k === 'pad' ? 0.85 : k === 'road' ? 0.75 : 1))
     }
     this.paintPlot(draw ?? null)
+    const farm = this.landscape?.group.getObjectByName('world-farmland')
+    const fields = this.landscape?.group.getObjectByName('world-fields')
+    const tuft = this.grass?.mesh.material
     this.rain.cover.paintSnow(
       snow,
       s.wet,
       this.quality,
       this.surfaceMats.get('grass'),
-      this.landscape?.group.getObjectByName('world-farmland') instanceof THREE.Mesh ? (this.landscape?.group.getObjectByName('world-farmland') as THREE.Mesh).material as THREE.MeshLambertMaterial : undefined,
-      this.landscape?.group.getObjectByName('world-fields') instanceof THREE.Mesh ? (this.landscape?.group.getObjectByName('world-fields') as THREE.Mesh).material as THREE.MeshLambertMaterial : undefined,
-      this.grass?.mesh.material instanceof THREE.MeshLambertMaterial ? this.grass.mesh.material : undefined
+      farm instanceof THREE.Mesh ? (farm.material as THREE.MeshLambertMaterial) : undefined,
+      fields instanceof THREE.Mesh ? (fields.material as THREE.MeshLambertMaterial) : undefined,
+      tuft instanceof THREE.MeshLambertMaterial ? tuft : undefined,
     )
 
     const enclosed = view.view === 'apron'
@@ -617,6 +670,42 @@ export class WorldRenderer {
     }
   }
 
+  /** Swap landing plates when the season, snow, or rain changes. Files stay full size. */
+  private applySeasonPlates(seasonId: string, snow: number, wet: number) {
+    const winter = snow > 0.35 || seasonId === 'winter' ? 1 : 0
+    const wetBit = wet > 0.15 ? 1 : 0
+    const key = `${seasonId}|${winter}|${wetBit}`
+    if (key === this.groundKey) return
+    this.groundKey = key
+    const anisotropy = this.q.anisotropy
+    const assign = (mat: THREE.Material | undefined, tex: THREE.Texture | null) => {
+      if (!(mat instanceof THREE.MeshLambertMaterial) || !tex) return
+      mat.map = tex
+      mat.needsUpdate = true
+    }
+    assign(this.surfaceMats.get('grass'), landingTexture(seasonGrassId(seasonId, snow), anisotropy))
+    const apron = landingTexture(seasonApronId(seasonId, snow), anisotropy)
+    assign(this.surfaceMats.get('apron'), apron)
+    assign(this.surfaceMats.get('pad'), apron)
+    assign(this.surfaceMats.get('runway'), landingTexture(seasonPavedId(seasonId, snow, wet), anisotropy))
+    if (winter || wetBit) {
+      const plate = landingTexture(winter ? 'snow_asphalt' : 'wet_asphalt', anisotropy)
+      assign(this.surfaceMats.get('taxi'), plate)
+      assign(this.surfaceMats.get('road'), plate)
+    } else if (this.tex) {
+      assign(this.surfaceMats.get('taxi'), this.tex.asphalt)
+      assign(this.surfaceMats.get('road'), this.tex.road)
+    }
+    assign(this.shoulderMat ?? undefined, landingTexture(winter ? 'snow_grass' : 'dirt_shoulder', anisotropy))
+    const farm = landingTexture(winter ? 'snow_grass' : 'farmland', anisotropy)
+    if (farm && this.landscape) {
+      for (const name of ['world-farmland', 'world-fields']) {
+        const mesh = this.landscape.group.getObjectByName(name)
+        if (mesh instanceof THREE.Mesh) assign(mesh.material as THREE.Material, farm)
+      }
+    }
+  }
+
   /** Swap the outer farmland when a map brings its own ground colours. */
   private syncTerrain(tint: LandscapeTint | null) {
     const key = tint ? `${tint.ground}|${tint.fields.join(',')}|${tint.trees.join(',')}` : ''
@@ -624,7 +713,7 @@ export class WorldRenderer {
     this.terrainKey = key
     this.landscape?.dispose()
     this.landscape?.group.removeFromParent()
-    this.landscape = buildLandscape(this.tex.grass, this.q.trees, tint)
+    this.landscape = buildLandscape(this.tex.grass, this.q.trees, tint, this.landscapeArt)
     this.root.add(this.landscape.group)
   }
 
@@ -920,6 +1009,8 @@ export class WorldRenderer {
     this.disposeContent()
     this.paintMat?.dispose()
     this.hatchMat?.dispose()
+    this.thresholdMat?.dispose()
+    this.shoulderMat?.dispose()
     this.contacts.dispose()
     this.kerbMat.dispose()
     this.sky.dispose()
@@ -930,6 +1021,81 @@ export class WorldRenderer {
     this.scene.fog = this.prevFog
     this.scene.background = this.prevBackground
   }
+}
+
+function photoQuads(rects: readonly { x: number; z: number; w: number; d: number }[], y: number, uvSize = 0): THREE.BufferGeometry {
+  const pos = new Float32Array(rects.length * 4 * 3)
+  const uvs = new Float32Array(rects.length * 4 * 2)
+  const col = new Float32Array(rects.length * 4 * 3)
+  const idx: number[] = []
+  rects.forEach((rect, n) => {
+    const x0 = rect.x - rect.w / 2
+    const z0 = rect.z - rect.d / 2
+    const corners: [number, number][] = [
+      [x0, z0],
+      [x0 + rect.w, z0],
+      [x0 + rect.w, z0 + rect.d],
+      [x0, z0 + rect.d],
+    ]
+    const base = n * 4
+    corners.forEach(([x, z], i) => {
+      const v = base + i
+      pos[v * 3] = x
+      pos[v * 3 + 1] = y
+      pos[v * 3 + 2] = z
+      if (uvSize > 0) {
+        uvs[v * 2] = x / uvSize
+        uvs[v * 2 + 1] = z / uvSize
+      } else {
+        uvs[v * 2] = i === 1 || i === 2 ? 1 : 0
+        uvs[v * 2 + 1] = i >= 2 ? 1 : 0
+      }
+      col[v * 3] = 1
+      col[v * 3 + 1] = 1
+      col[v * 3 + 2] = 1
+    })
+    idx.push(base, base + 3, base + 1, base + 1, base + 3, base + 2)
+  })
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  g.computeBoundingSphere()
+  return g
+}
+
+function thresholdRects(rw: Runway): { x: number; z: number; w: number; d: number }[] {
+  const depth = Math.min(5.5, rw.length * 0.12)
+  if (rw.axis === 'h') {
+    const z = (rw.z0 + rw.z1) / 2
+    return [
+      { x: rw.x0 + depth / 2, z, w: depth, d: rw.width },
+      { x: rw.x1 - depth / 2, z, w: depth, d: rw.width },
+    ]
+  }
+  const x = (rw.x0 + rw.x1) / 2
+  return [
+    { x, z: rw.z0 + depth / 2, w: rw.width, d: depth },
+    { x, z: rw.z1 - depth / 2, w: rw.width, d: depth },
+  ]
+}
+
+function shoulderRects(rw: Runway): { x: number; z: number; w: number; d: number }[] {
+  const band = 2.2
+  if (rw.axis === 'h') {
+    const x = (rw.x0 + rw.x1) / 2
+    return [
+      { x, z: rw.z0 - band / 2, w: rw.length, d: band },
+      { x, z: rw.z1 + band / 2, w: rw.length, d: band },
+    ]
+  }
+  const z = (rw.z0 + rw.z1) / 2
+  return [
+    { x: rw.x0 - band / 2, z, w: band, d: rw.length },
+    { x: rw.x1 + band / 2, z, w: band, d: rw.length },
+  ]
 }
 
 function decalSprite(img: HTMLImageElement, x: number, y: number, z: number, size: number): THREE.Sprite {

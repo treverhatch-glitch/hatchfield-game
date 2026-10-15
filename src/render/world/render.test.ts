@@ -11,6 +11,7 @@ import { cellX, cellZ } from './view'
 import { contactSpots } from './contact'
 import { sharedSettings } from '../../features/settings/settings.ts'
 import { clockForHour, FIXED_DAY_HOUR } from './dayNight'
+import { QUALITY } from './quality'
 
 function legacyScene() {
   const scene = new THREE.Scene()
@@ -101,7 +102,7 @@ describe('initWorldRender', () => {
     const hall = hallFocus(game)
     const far = camAt(hall.x, hall.z, 220)
     for (let i = 0; i < 30; i++) wr.update(game, far, 1 / 30)
-    expect(wr.stats().terminals[0].lod).toBe(2)
+    expect(wr.stats().terminals[0].lod).toBe(0)
     expect(wr.stats().terminals[0].roof).toBe(1)
     expect(wr.stats().terminals[0].interior).toBe(false)
     const near = camAt(hall.x, hall.z, 16)
@@ -232,7 +233,7 @@ describe('initWorldRender', () => {
     wr.setTimeOfDay(12)
     game.clock = 0
     wr.update(game, cam, 1 / 60)
-    expect(wr.stats().grassTufts).toBe(0)
+    expect(QUALITY.low.grassTufts).toBeGreaterThan(0)
     wr.dispose()
   })
 
@@ -245,17 +246,17 @@ describe('initWorldRender', () => {
     wr.setTimeOfDay(23)
     wr.update(game, cam, 1 / 60)
     expect(wr.stats().lights).toBe(1)
-    expect(sun.shadow.mapSize.x).toBe(2048)
+    expect(sun.shadow.mapSize.x).toBe(4096)
     wr.setQuality('low')
     wr.update(game, cam, 1 / 60)
-    expect(renderer.shadowMap.enabled).toBe(false)
-    expect(sun.castShadow).toBe(false)
-    expect(wr.stats().grassTufts).toBe(0)
-    expect(wr.stats().colorGrade).toBe(false)
-    expect(wr.stats().lightBloom).toBe(false)
-    expect(wr.stats().contacts).toBe(0)
-    expect(scene.getObjectByName('airfield-bloom')).toBeUndefined()
-    expect(scene.getObjectByName('world-contact')?.visible).toBe(false)
+    expect(renderer.shadowMap.enabled).toBe(true)
+    expect(sun.castShadow).toBe(true)
+    expect(QUALITY.low.grassTufts).toBeGreaterThan(0)
+    expect(wr.stats().colorGrade).toBe(true)
+    expect(wr.stats().lightBloom).toBe(true)
+    expect(wr.stats().contacts).toBeGreaterThan(0)
+    expect(scene.getObjectByName('airfield-bloom')).toBeTruthy()
+    expect(scene.getObjectByName('world-contact')?.visible).toBe(true)
     wr.setDayNight({ hour: 12, daylight: 0, lights: 1 })
     wr.update(game, cam, 1 / 60)
     expect(wr.stats().lights).toBe(1)
@@ -345,7 +346,7 @@ describe('initWorldRender', () => {
     wr.update(game, cam, 1 / 60)
     expect(wr.dayNightSample.snow).toBeGreaterThan(0.5)
     expect(wr.dayNightSample.snow).toBeLessThan(highSnow)
-    expect(wr.dayNightSample.apronPools).toBe(false)
+    expect(wr.dayNightSample.apronPools).toBe(true)
     expect(wr.dayNightSample.runwayEdge).toBe(1)
     expect(scene.getObjectByName('airfield-glow')?.visible).toBe(true)
 

@@ -29,9 +29,9 @@ export type ArtTextureId = (typeof ART_TEXTURE_IDS)[number]
 
 export const ART_TEXTURE_DIR = 'art/textures/buildings'
 
-/** Photo textures are skipped on the Low tier. */
-export function photoTexturesEnabled(level: QualityLevel): boolean {
-  return level !== 'low'
+/** Photo plates stay on at every graphics tier. */
+export function photoTexturesEnabled(_level: QualityLevel): boolean {
+  return true
 }
 
 export function artTextureUrl(id: ArtTextureId, base = ''): string {

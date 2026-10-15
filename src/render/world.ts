@@ -1228,8 +1228,9 @@ export class World {
     )
     plinth.position.y = 0.1
     plinth.receiveShadow = true
+    // Default box UVs (0–1). The hotel plate is one elevation, not a 4 m tile.
     const tower = new THREE.Mesh(
-      skinBox(CELL * 0.62, 5.2, CELL * 0.5, SKIN_TILE_M.wall, WORLD_PER_METER),
+      new THREE.BoxGeometry(CELL * 0.62, 5.2, CELL * 0.5),
       skinMaterial('hotel', 'wall', { color: HOTEL_WALL.airport }),
     )
     tower.position.y = 2.8

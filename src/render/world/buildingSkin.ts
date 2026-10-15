@@ -9,6 +9,7 @@ import * as THREE from 'three'
 import { MATERIAL_TARGETS, SKIN_TILE_M, YARD_TEXTURE, type BuildingTargetId } from '../../build/materialTargets'
 import { artTexture, photoTexturesEnabled, type ArtTextureId } from './textureRegistry'
 import { exteriorTexture, type ExteriorArtId } from './exteriorArt'
+import { landingTexture } from './landingArt'
 import type { QualityLevel } from './quality'
 
 export type SkinPart = 'wall' | 'roof' | 'trim' | 'door'
@@ -73,6 +74,10 @@ function photo(id: ArtTextureId | null): THREE.Texture | null {
 }
 
 function exteriorMap(target: BuildingTargetId, part: SkinPart): THREE.Texture | null {
+  if (part === 'wall' && state.photos) {
+    if (target === 'terminal') return landingTexture('terminal_facade', state.anisotropy) ?? exteriorTexture('curtain', state.anisotropy)
+    if (target === 'hotel') return landingTexture('hotel_facade', state.anisotropy)
+  }
   const id = EXTERIOR[target]?.[part]
   return id ? exteriorTexture(id, state.anisotropy) : null
 }

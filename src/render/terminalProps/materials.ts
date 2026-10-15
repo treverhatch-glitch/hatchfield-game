@@ -19,6 +19,7 @@ import securityB64 from './tex/security.b64.txt?raw'
 import { deskHeaderTexture, fidsBoardTexture, wayfindingSheetTexture } from '../signage/load'
 import { counterSheetTexture } from './counterArt'
 import { interiorTexture } from './interiorTex'
+import { landingTexture } from '../world/landingArt'
 import { bigSign, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 import { attachBuildingMaterial } from '../reflections'
 
@@ -288,7 +289,7 @@ export const MATERIALS: Record<string, MatSpec> = {
   intWall: { color: '#ffffff', rough: 0.55, map: () => interiorTexture('wall_panel_cream', [1, 1]) },
   intStall: { color: '#5c6268', rough: 0.45, metal: 0.25, map: () => interiorTexture('wall_stall', [1, 1]) },
   intCounter: { color: '#ffffff', rough: 0.4, metal: 0.45, map: () => interiorTexture('brushed_steel', [2, 1]), clearcoat: 0.15 },
-  intBelt: { color: '#2a2c30', rough: 0.85, map: () => interiorTexture('belt_claim', [4, 1]) },
+  intBelt: { color: '#ffffff', rough: 0.85, map: () => landingTexture('carousel_belt') ?? interiorTexture('belt_claim', [4, 1]) },
   intOffice: { color: '#243454', rough: 0.8, map: () => interiorTexture('office_panel', [1, 1]) },
   intJet: { color: '#c6cacf', rough: 0.4, metal: 0.55, map: () => interiorTexture('jetbridge_panel', [2, 1]) },
   intWood: { color: '#ffffff', rough: 0.55, map: () => interiorTexture('oak_veneer', [2, 2]) },
