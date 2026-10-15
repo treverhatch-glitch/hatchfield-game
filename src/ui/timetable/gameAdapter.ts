@@ -1,4 +1,6 @@
 import { AIRFRAMES } from '../../game/airframes'
+import { PLANNED_TURN_SEC } from '../../pax/showup'
+import { checkInGhost, isIntlKind } from './checkInGhost'
 import { tilesOf } from '../../game/path'
 import type { Game } from '../../game/sim'
 import type { AircraftKind, Flight, ScheduleSlot, Vec } from '../../game/types'
@@ -100,6 +102,8 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     const stand = flight?.stand ?? slot.standPref ?? null
     const onFrom = slot.eta + TAXI
     const onTo = onFrom + turnFor(icao, flight?.kind)
+    const pax = (al as { kind?: string }).kind !== 'cargo'
+    const ghost = pax ? checkInGhost(slot.eta + PLANNED_TURN_SEC, flight ? isIntlKind(flight.kind) : false) : null
     const status: TtFlight['status'] =
       slot.status === 'cancelled' ? 'cancelled' : slot.status === 'done' ? 'done' : slot.status
     const shared = {
@@ -119,6 +123,8 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
       runwayId: slot.runwayPref != null ? rwId(slot.runwayPref) : null,
       manual: slot.manual,
       movable: slot.status === 'scheduled' || slot.status === 'delayed',
+      checkInFrom: ghost?.from ?? null,
+      checkInTo: ghost?.to ?? null,
     }
     return [
       {

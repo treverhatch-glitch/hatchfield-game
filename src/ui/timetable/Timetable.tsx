@@ -43,6 +43,7 @@ export function Timetable({
   const [conflictsOnly, setConflictsOnly] = useState(false)
   const [codeFilter, setCodeFilter] = useState('')
   const [query, setQuery] = useState('')
+  const [checkIn, setCheckIn] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
   const [swapFrom, setSwapFrom] = useState<string | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -242,6 +243,9 @@ export function Timetable({
               aria-label="Flight number"
               onChange={(e) => setQuery(e.target.value)}
             />
+            <button type="button" className={checkIn ? 'on' : ''} onClick={() => setCheckIn((v) => !v)}>
+              Check-in
+            </button>
           </div>
           {swapFrom ? (
             <p className="tt-hint">Pick another flight to swap stands with · <button type="button" onClick={() => setSwapFrom(null)}>Cancel</button></p>
@@ -275,6 +279,15 @@ export function Timetable({
                             const bufWidth = frac(span.from + buf, span) - frac(span.from, span)
                             return (
                               <div key={f.id} className="tt-barwrap">
+                                {checkIn && f.checkInFrom != null && f.checkInTo != null ? (
+                                  <i
+                                    className="tt-checkin"
+                                    style={{
+                                      left: `${Math.max(0, frac(f.checkInFrom, span)) * 100}%`,
+                                      width: `${Math.max(0, frac(f.checkInTo, span) - Math.max(0, frac(f.checkInFrom, span))) * 100}%`,
+                                    }}
+                                  />
+                                ) : null}
                                 <i
                                   className="tt-buffer"
                                   data-tight={b.buffer ? '1' : '0'}

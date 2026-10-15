@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
+import { checkInCloseMin, checkInGhost, LEISURE_LEAD_GAME_MIN } from './checkInGhost'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
@@ -127,6 +128,21 @@ function bare(over: Partial<TtFlight> = {}): TtFlight {
     ...over,
   }
 }
+
+describe('check-in ghost', () => {
+  it('draws leisure open through the domestic or international close', () => {
+    const std = 110
+    expect(clockLabel(std)).toBe('14:40')
+    const domestic = checkInGhost(std, false)
+    expect(clockLabel(domestic.from)).toBe('11:40')
+    expect(clockLabel(domestic.to)).toBe('14:10')
+    expect(domestic.from).toBeCloseTo(std - LEISURE_LEAD_GAME_MIN / GAME_MINUTES_PER_SIM_SECOND, 5)
+    const intl = checkInGhost(std, true)
+    expect(clockLabel(intl.to)).toBe('13:55')
+    expect(checkInCloseMin(true)).toBe(45)
+    expect(checkInCloseMin(false)).toBe(30)
+  })
+})
 
 describe('clash and buffer', () => {
   const stand = { id: '1,1', label: 'G1', icao: 'C' as const }

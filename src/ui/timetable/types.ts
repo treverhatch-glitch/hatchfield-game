@@ -62,6 +62,10 @@ export interface TtFlight {
   services?: string[]
   /** Whether the player can still move it. */
   movable: boolean
+  /** Hall show-up open, sim seconds. Drawn only while Check-in is on. */
+  checkInFrom?: number | null
+  /** Check-in close, sim seconds. */
+  checkInTo?: number | null
 }
 
 export interface TtStand {
