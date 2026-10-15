@@ -53,7 +53,7 @@ export interface Settings {
   busVolume: BusVolume
   /**
    * Day/night cycle. On follows the sim clock (sun, moon, sky, field lights).
-   * Off holds the field at late morning. Menus, including the ones being
+   * Off holds the field at noon. Menus, including the ones being
    * rebuilt elsewhere, bind this field. It persists with the rest of Settings.
    */
   dayNightCycle: boolean

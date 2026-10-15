@@ -124,7 +124,6 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
       <p className="muted" data-testid="gfx-note">
         {graphicsNote(gfx, graphicsAuto())}
       </p>
-      <h3>Day and night</h3>
       <label className="sandbox-toggle">
         <input
           type="checkbox"
@@ -137,10 +136,10 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
         />
         <span>Day/night cycle: {audioMix.dayNightCycle ? 'On' : 'Off'}</span>
       </label>
-      <p className="muted">
+      <p className="muted" data-testid="settings-day-night-note">
         {audioMix.dayNightCycle
-          ? 'Sun, moon, sky and the field lights follow the clock. Sunrise and sunset run warm.'
-          : 'Fixed daytime. The clock still runs, and the apron stays at late morning.'}
+          ? 'On. The sun, moon, and field lights follow the clock.'
+          : 'Off. Always day. The clock still runs, and a photo hour still wins while the camera is frozen.'}
       </p>
       <h3>Hints</h3>
       <label className="sandbox-toggle">

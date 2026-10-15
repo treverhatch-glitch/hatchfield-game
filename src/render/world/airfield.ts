@@ -232,8 +232,9 @@ export class AirfieldLights {
     this.fixMat.color.setScalar(Math.min(1.6, k))
     this.headMat.color.setRGB(0.54 + apron * 1.2, 0.54 + apron * 1.0, 0.5 + apron * 0.6)
     if (this.pools) {
-      this.pools.visible = apron > 0.02
-      this.poolMat.opacity = apron * 0.42
+      const poolsOn = parts?.pools !== false && apron > 0.02
+      this.pools.visible = poolsOn
+      this.poolMat.opacity = poolsOn ? apron * 0.42 : 0
     }
     for (const g of this.socks) {
       const s = g.getObjectByName('sock')

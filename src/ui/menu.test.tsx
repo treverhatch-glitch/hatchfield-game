@@ -85,6 +85,7 @@ describe('start menu', () => {
       />,
     )
     expect(off).toContain('Day/night cycle: Off')
+    expect(off).toContain('Always day')
     expect(off).not.toContain('data-testid="settings-day-night" checked=""')
     game.setDayNightCycle(true)
   })

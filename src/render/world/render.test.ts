@@ -268,7 +268,7 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
-  it('holds late morning when the day/night cycle is off, and still honours a photo hour', () => {
+  it('holds noon when the day/night cycle is off, and still honours a photo hour', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
     const game = starterGame()
@@ -368,7 +368,7 @@ describe('initWorldRender', () => {
     wr.dispose()
   })
 
-  it('holds late morning when the cycle is off, and a photo hour still wins', () => {
+  it('holds noon when the cycle is off, and a photo hour still wins', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
     const cam = camAt(0, 0, 80)
@@ -380,6 +380,12 @@ describe('initWorldRender', () => {
       expect(wr.dayNightSample.lights).toBe(0)
       expect(wr.dayNightSample.runwayEdge).toBe(0)
       expect(sun.intensity).toBeGreaterThan(2)
+      night.weather = 'storm'
+      wr.update(night, cam, 1 / 60)
+      expect(wr.dayNightSample.hour).toBeCloseTo(FIXED_DAY_HOUR)
+      expect(wr.dayNightSample.lights).toBe(0)
+      expect(wr.dayNightSample.apronPools).toBe(false)
+      night.weather = 'clear'
       wr.setTimeOfDay(19)
       wr.update(night, cam, 1 / 60)
       expect(wr.dayNightSample.hour).toBeCloseTo(19)
@@ -403,8 +409,11 @@ describe('initWorldRender', () => {
     const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
     const game = starterGame()
     game.speed = 5
+    wr.setTimeOfDay(23)
     wr.update(game, camAt(0, 0, 30), 1 / 60)
     expect(sun.castShadow).toBe(false)
+    expect(wr.dayNightSample.apron).toBe(1)
+    expect(wr.dayNightSample.apronPools).toBe(true)
     wr.dispose()
   })
 

@@ -500,16 +500,23 @@ export class WorldRenderer {
     const focus = groundFocus(camPos, dir) ?? { x: camPos.x, z: camPos.z }
     const camDist = Math.hypot(camPos.x - focus.x, camPos.y, camPos.z - focus.z)
 
-    const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl, sharedSettings().get().dayNightCycle)
+    const cycleOn = sharedSettings().get().dayNightCycle
+    const explicitHour = this.dayNightControl?.hour != null && Number.isFinite(this.dayNightControl.hour)
+    // Off holds noon with the lamps out. A photo hour or an explicit control hour still wins.
+    const control = !cycleOn && this.hourOverride == null && !explicitHour
+      ? { hour: 12, daylight: 1, lights: 0 }
+      : this.dayNightControl
+    const hour = resolveHour(view.clock ?? 0, this.hourOverride, control, cycleOn)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
-    let s = applyDayNight(paintSky(hour, weather, day, baseLevel(this.quality)), this.dayNightControl)
-    const night = nightLighting(s.hour, s.lights, this.q.lightPools && !this.lite)
+    let s = applyDayNight(paintSky(hour, weather, day, baseLevel(this.quality)), control)
+    // 5× drops shadows, grass, and walkers. Mast flood pools stay; Low still skips them.
+    const night = nightLighting(s.hour, s.lights, this.q.lightPools)
     const season = seasonAtDay(day)
     const snow = view.mapDraw ? 0 : snowCover(day, baseLevel(this.quality))
     this.dayNightSample = {
       hour: s.hour,
-      daylight: this.dayNightControl?.daylight ?? daylightFactor(s.hour),
+      daylight: control?.daylight ?? daylightFactor(s.hour),
       lights: s.lights,
       windows: night.terminalWindows,
       runwayEdge: night.runwayEdge,
@@ -558,7 +565,7 @@ export class WorldRenderer {
     this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
     // Climate maps paint their own sky, so the photo gives way as their tint comes in.
     const photoAmount = (SKY_PHOTO_WEATHER[weather] ?? 1) * (1 - (draw?.skyAmount ?? 0))
-    const skyBlend = skyPhotoBlend(s.hour, this.dayNightControl?.daylight, weather)
+    const skyBlend = skyPhotoBlend(s.hour, control?.daylight, weather)
     tintNoonLights(s, skyBlend, weather)
     this.sky.setPhoto(skyBlend, photoAmount)
     this.sky.follow(camPos)

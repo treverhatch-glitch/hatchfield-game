@@ -1692,7 +1692,7 @@ export class Game {
   /** Hint switches for this game. Saved, and mirrored to settings. */
   hintPrefs: HintPrefs = newGameHintPrefs()
   /**
-   * Sun cycle. Off holds the field at late morning. The switch lives in
+   * Sun cycle. Off holds the field at noon. The switch lives in
    * settings (GameSettings). A loaded airport must not write this back.
    */
   dayNightCycle = readDayNightCycle()
@@ -11636,7 +11636,7 @@ export class Game {
     }
   }
 
-  /** Settings and the title screen. Off holds the sun at late morning. */
+  /** Settings and the title screen. Off holds the sun at noon. */
   setDayNightCycle(on: boolean) {
     const next = on !== false
     this.dayNightCycle = next

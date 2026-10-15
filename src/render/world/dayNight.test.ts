@@ -67,7 +67,7 @@ describe('day/night hooks', () => {
     expect(morning.sunIntensity).toBeGreaterThan(night.sunIntensity * 20)
   })
 
-  it('holds late morning when the cycle is off, and still lets a photo hour win', () => {
+  it('holds noon when the cycle is off, and still lets a photo hour win', () => {
     expect(resolvePlayHour(0, null, null, false)).toBe(DAY_NIGHT.hold)
     expect(resolvePlayHour(clockForHour(4, 23), null, null, false)).toBe(DAY_NIGHT.hold)
     expect(resolvePlayHour(0, 18.5, null, false)).toBe(18.5)
