@@ -1,6 +1,6 @@
 # Terminal interior rebuild plan
 
-Status: plan only. No game code changes with this document.
+Status: plan, with owner and producer decisions D1–D6 recorded below. WP1 (hall picture gutted, one metre scale) is the first code package and has landed.
 Owner decision being executed: Trever, Oct 15, 8:06 PM. Gut the terminal interior and rebuild it with one scale, real flows and two stories.
 Playtest items covered: 3, 5, 33, 34, 35, 36, 37, 38 and 46 from the Oct 15 list. Item 39 (pause) is covered too, because a requirement below depends on it.
 Based on `main` at `68fde433`, with the audit folded in. PR [#119](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/119) (bag-drop kiosk, claim carousel and passport booth plates) is part of that base. Its props are kept assets at real metres (sections 2 and 4.4). Passport control is for international arrivals only (section 4.3).
@@ -21,6 +21,20 @@ Related: [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) (floor-ready schema), [TERMI
 | D4 | **Walkers become the truth.** The passengers you see decide boarding, missed flights and mood. The sim's hidden hall model (`tickHall`, which boards by setting `dead` with no gate-desk queue, audit §4) is retired. | Approve. The audit reaches the same conclusion: one stop list, not a second graph. | This fixes "placed fittings don't work" at the root. Balance moves, so the 30-day and 150-day soaks are the check. |
 | D5 | **Gemini assets.** `bag_drop_kiosk`, `baggage_claim_carousel` and `passport_control` are on `main` in `public/art/textures/concepts/` (PR #119, merged at `68fde433`, loaded by `src/render/servicePlates.ts`). They are kept assets (section 2) and need no decision. `terminal_multistory`, `security`, `checkin_desk` and `gate_seats` are still missing. | Commit the missing four to the same folder and add them to `SERVICE_PLATES` before WP4. | WP4 and WP6 screenshot checks compare against these. Until they land, `public/art/refs/pack6/` is the target for those four. |
 | D6 | **Apron unit.** The apron stays at `WORLD_PER_METER = 0.45`. The terminal is authored in metres and shown in the airport view under a single root scale node. | Approve. Moving the whole game to 1 unit = 1 m is a separate project. | Inside Terminal view, 1 unit = 1 m. Outside it, there is exactly one scale node, and the scale-audit test enforces that. |
+
+## Decisions recorded (15 Oct)
+
+The producer decided D2 through D6. The owner picked S1 for D1 when WP1 restarted. WP1 does not implement the later packages.
+
+| # | Status | What later packages own |
+| --- | --- | --- |
+| D1 | Approved: S1. The starter is 1 story and keeps arrivals apart from departures on one level. S2 is the mid-game upgrade. | WP2 writes `split1f` as the starter and `stacked2f` as the upgrade. WP1 draws the existing 1-story hall at real metres and adds no story code. |
+| D2 | Approved. Starter footprint is 4×2 cells (88×44 m). | WP2 moves the stamp. WP1 stays on the existing 8×5 walk (48×32 m) and does not move the apron stamp. |
+| D3 | Approved. Old saves rebuild their interiors and refund player-bought fittings at purchase price. | WP2, save schema 5→6. Not in WP1. |
+| D4 | Approved. Walking passengers are the authority. | WP3 retires `tickHall` boarding. Not in WP1. |
+| D5 | Approved. Commit `terminal_multistory`, `security`, `checkin_desk` and `gate_seats` into `public/art/textures/concepts/` and add them to `SERVICE_PLATES` before WP4. | Those four files are not in the tree. Until they land, `public/art/refs/pack6/` is the target. The three plates already on main stay at native 2752×1536 and are not downscaled. |
+| D6 | Approved. The apron stays at `WORLD_PER_METER = 0.45`. Terminal view is 1 unit = 1 m. | WP1: no node under `hall-root` has a scale other than 1. The single airport-view `terminal-root` node is the WP4 scale audit (v2). |
+| #125 | Superseded by WP1. Its real-size list (`HALL_REAL_SIZE`) is kept, but at scale 1, not its 0.9 floor. | `src/render/scaleAudit.test.ts` pins each listed prop's real footprint. |
 
 Why S1 is recommended over a 2-story starter:
 
