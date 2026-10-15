@@ -60,6 +60,10 @@ export interface VehicleRead {
   r: number
   heading: number
   state: VehicleState
+  /** Lane index on the loop: through lanes from the median out, then the drop-off layby. */
+  lane: number
+  /** Metres per second. */
+  speed: number
 }
 
 export interface PassengerRead {

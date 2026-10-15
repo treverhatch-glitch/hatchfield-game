@@ -1,11 +1,12 @@
 /**
- * Draws the landside snapshot: cars on the approach, people stepping out,
- * and a capacity tint while the curb panel is open.
+ * Draws the landside snapshot: vehicles on the public-road lanes, people
+ * stepping out, and a capacity tint while the curb panel is open.
+ * Vehicles and people are instanced, a few draw calls however long the queue.
  * The sim never imports this file.
  */
 import * as THREE from 'three'
 import { CELL, WORLD_PER_METER } from './aircraft/specs.ts'
-import { pressureColor, type LandsideView, type VehicleKind } from '../landside/index.ts'
+import { LANDSIDE, pressureColor, type LandsideView, type VehicleKind } from '../landside/index.ts'
 import { SIZE } from '../game/types.ts'
 
 /** Same ground mapping as the apron: cell column is +X, cell row is +Z. */
@@ -13,110 +14,156 @@ function atCell(c: number, r: number, y = 0): THREE.Vector3 {
   return new THREE.Vector3((c - (SIZE - 1) / 2) * CELL, y, (r - (SIZE - 1) / 2) * CELL)
 }
 
-const CAR: Record<VehicleKind, { length: number; width: number; height: number; color: string }> = {
-  car: { length: 4.6, width: 1.8, height: 1.45, color: '#3d6ea8' },
-  taxi: { length: 4.6, width: 1.8, height: 1.45, color: '#f0c14a' },
-  bus: { length: 12, width: 2.5, height: 3.1, color: '#1f6b4a' },
-}
-
+const HEIGHT_M: Record<VehicleKind, number> = { car: 1.45, taxi: 1.45, bus: 3.1 }
+const KIND_COLOR: Partial<Record<VehicleKind, string>> = { taxi: '#f0c14a', bus: '#1f6b4a' }
 const CAR_COLORS = ['#3d6ea8', '#c45c4a', '#d8d2c4', '#2c3338', '#6a4a7a']
+const PEOPLE_COLORS = ['#e6d3b3', '#c48a62']
+const KINDS: VehicleKind[] = ['car', 'taxi', 'bus']
 
-function carBody(kind: VehicleKind, color: string): THREE.Group {
-  const spec = CAR[kind]
-  const group = new THREE.Group()
-  group.scale.setScalar(WORLD_PER_METER)
-  const paint = new THREE.MeshLambertMaterial({ color })
-  const glass = new THREE.MeshLambertMaterial({ color: '#9ec4d4' })
-  const body = new THREE.Mesh(new THREE.BoxGeometry(spec.length, spec.height * 0.45, spec.width), paint)
-  body.position.set(0, spec.height * 0.28, 0)
-  body.castShadow = true
-  group.add(body)
-  const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(spec.length * (kind === 'bus' ? 0.86 : 0.48), spec.height * 0.42, spec.width * 0.88),
-    glass,
-  )
-  cabin.position.set(kind === 'bus' ? 0 : -spec.length * 0.06, spec.height * 0.68, 0)
-  group.add(cabin)
-  if (kind === 'taxi') {
-    const sign = new THREE.Mesh(
-      new THREE.BoxGeometry(0.45, 0.16, 0.22),
-      new THREE.MeshLambertMaterial({ color: '#1a1a1a' }),
-    )
-    sign.position.set(0, spec.height * 0.95, 0)
-    group.add(sign)
-  }
-  return group
+function hash(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return Math.abs(h)
 }
 
-function personMesh(color: string): THREE.Mesh {
-  const mesh = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.22 * WORLD_PER_METER, 1.15 * WORLD_PER_METER, 3, 6),
-    new THREE.MeshLambertMaterial({ color }),
+/** One instanced part. Grows by doubling; geometry and material live as long as the pool. */
+class Pool {
+  mesh: THREE.InstancedMesh
+  private capacity = 16
+  private readonly parent: THREE.Group
+  private readonly geometry: THREE.BufferGeometry
+  private readonly material: THREE.Material
+  private readonly tinted: boolean
+  private readonly shadow: boolean
+
+  constructor(parent: THREE.Group, geometry: THREE.BufferGeometry, material: THREE.Material, tinted: boolean, shadow: boolean) {
+    this.parent = parent
+    this.geometry = geometry
+    this.material = material
+    this.tinted = tinted
+    this.shadow = shadow
+    this.mesh = this.build()
+  }
+
+  private build(): THREE.InstancedMesh {
+    const mesh = new THREE.InstancedMesh(this.geometry, this.material, this.capacity)
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    if (this.tinted) mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3)
+    mesh.castShadow = this.shadow
+    mesh.frustumCulled = false
+    mesh.count = 0
+    mesh.visible = false
+    this.parent.add(mesh)
+    return mesh
+  }
+
+  reserve(n: number): void {
+    if (n <= this.capacity) return
+    while (this.capacity < n) this.capacity *= 2
+    this.parent.remove(this.mesh)
+    this.mesh.dispose()
+    this.mesh = this.build()
+  }
+
+  commit(n: number): void {
+    this.mesh.count = n
+    this.mesh.visible = n > 0
+    this.mesh.instanceMatrix.needsUpdate = true
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true
+  }
+
+  dispose(): void {
+    this.parent.remove(this.mesh)
+    this.mesh.dispose()
+    this.geometry.dispose()
+    this.material.dispose()
+  }
+}
+
+interface Fleet {
+  body: Pool
+  cabin: Pool
+  sign: Pool | null
+}
+
+function fleetFor(parent: THREE.Group, kind: VehicleKind): Fleet {
+  const { lengthM: length, widthM: width } = LANDSIDE.bodies[kind]
+  const height = HEIGHT_M[kind]
+  const bus = kind === 'bus'
+  const body = new THREE.BoxGeometry(length, height * 0.45, width).translate(0, height * 0.28, 0)
+  const cabin = new THREE.BoxGeometry(length * (bus ? 0.86 : 0.48), height * 0.42, width * 0.88).translate(
+    bus ? 0 : -length * 0.06,
+    height * 0.68,
+    0,
   )
-  mesh.castShadow = true
-  return mesh
+  return {
+    body: new Pool(parent, body, new THREE.MeshLambertMaterial({ color: '#ffffff' }), true, true),
+    cabin: new Pool(parent, cabin, new THREE.MeshLambertMaterial({ color: '#9ec4d4' }), false, false),
+    sign:
+      kind === 'taxi'
+        ? new Pool(
+            parent,
+            new THREE.BoxGeometry(0.45, 0.16, 0.22).translate(0, height * 0.95, 0),
+            new THREE.MeshLambertMaterial({ color: '#1a1a1a' }),
+            false,
+            false,
+          )
+        : null,
+  }
 }
 
 export class LandsideLayer {
   readonly group = new THREE.Group()
-  private cars = new Map<string, THREE.Group>()
-  private people = new Map<string, THREE.Mesh>()
+  private fleets = new Map<VehicleKind, Fleet>()
+  private people: Pool | null = null
   private tiles = new Map<string, THREE.Mesh>()
   private tileGeo: THREE.PlaneGeometry | null = null
+  private readonly matrix = new THREE.Matrix4()
+  private readonly turn = new THREE.Quaternion()
+  private readonly up = new THREE.Vector3(0, 1, 0)
+  private readonly scale = new THREE.Vector3(WORLD_PER_METER, WORLD_PER_METER, WORLD_PER_METER)
+  private readonly color = new THREE.Color()
 
   sync(view: LandsideView, open: boolean, focus: string | null): void {
-    const seenCars = new Set<string>()
-    for (const vehicle of view.vehicles) {
-      seenCars.add(vehicle.id)
-      let mesh = this.cars.get(vehicle.id)
-      if (!mesh) {
-        const color =
-          vehicle.kind === 'car'
-            ? CAR_COLORS[this.cars.size % CAR_COLORS.length]
-            : CAR[vehicle.kind].color
-        mesh = carBody(vehicle.kind, color)
-        mesh.name = vehicle.id
-        this.cars.set(vehicle.id, mesh)
-        this.group.add(mesh)
+    for (const kind of KINDS) {
+      const list = view.vehicles.filter((vehicle) => vehicle.kind === kind)
+      let fleet = this.fleets.get(kind)
+      if (!fleet && !list.length) continue
+      if (!fleet) {
+        fleet = fleetFor(this.group, kind)
+        this.fleets.set(kind, fleet)
       }
-      const pos = atCell(vehicle.c, vehicle.r, 0)
-      mesh.position.copy(pos)
-      mesh.rotation.y = -vehicle.heading
-      mesh.visible = true
-    }
-    for (const [id, mesh] of this.cars) {
-      if (seenCars.has(id)) continue
-      this.group.remove(mesh)
-      mesh.traverse((obj) => {
-        const m = obj as THREE.Mesh
-        m.geometry?.dispose()
-        const mat = m.material
-        if (Array.isArray(mat)) mat.forEach((item) => item.dispose())
-        else mat?.dispose()
+      const parts = [fleet.body, fleet.cabin, fleet.sign].filter((part): part is Pool => part != null)
+      for (const part of parts) part.reserve(list.length)
+      list.forEach((vehicle, i) => {
+        this.turn.setFromAxisAngle(this.up, -vehicle.heading)
+        this.matrix.compose(atCell(vehicle.c, vehicle.r, 0), this.turn, this.scale)
+        for (const part of parts) part.mesh.setMatrixAt(i, this.matrix)
+        this.color.set(KIND_COLOR[kind] ?? CAR_COLORS[hash(vehicle.id) % CAR_COLORS.length])
+        fleet.body.mesh.setColorAt(i, this.color)
       })
-      this.cars.delete(id)
+      for (const part of parts) part.commit(list.length)
     }
 
-    const seenPeople = new Set<string>()
-    for (const person of view.passengers) {
-      seenPeople.add(person.id)
-      let mesh = this.people.get(person.id)
-      if (!mesh) {
-        mesh = personMesh(person.id.length % 2 ? '#e6d3b3' : '#c48a62')
-        this.people.set(person.id, mesh)
-        this.group.add(mesh)
-      }
-      const pos = atCell(person.c, person.r, 0.95 * WORLD_PER_METER)
-      mesh.position.copy(pos)
-      mesh.rotation.y = -person.heading
+    if (view.passengers.length && !this.people) {
+      this.people = new Pool(
+        this.group,
+        new THREE.CapsuleGeometry(0.22, 1.15, 3, 6).translate(0, 0.95, 0),
+        new THREE.MeshLambertMaterial({ color: '#ffffff' }),
+        true,
+        true,
+      )
     }
-    for (const [id, mesh] of this.people) {
-      if (seenPeople.has(id)) continue
-      this.group.remove(mesh)
-      mesh.geometry.dispose()
-      const mat = mesh.material
-      if (!Array.isArray(mat)) mat.dispose()
-      this.people.delete(id)
+    if (this.people) {
+      const people = this.people
+      people.reserve(view.passengers.length)
+      view.passengers.forEach((person, i) => {
+        this.turn.setFromAxisAngle(this.up, -person.heading)
+        this.matrix.compose(atCell(person.c, person.r, 0), this.turn, this.scale)
+        people.mesh.setMatrixAt(i, this.matrix)
+        people.mesh.setColorAt(i, this.color.set(PEOPLE_COLORS[hash(person.id) % PEOPLE_COLORS.length]))
+      })
+      people.commit(view.passengers.length)
     }
 
     this.syncOverlay(view, open, focus)
@@ -193,6 +240,19 @@ export class LandsideLayer {
       false,
       null,
     )
+    for (const fleet of this.fleets.values()) {
+      fleet.body.dispose()
+      fleet.cabin.dispose()
+      fleet.sign?.dispose()
+    }
+    this.fleets.clear()
+    this.people?.dispose()
+    this.people = null
+    for (const tile of this.tiles.values()) {
+      this.group.remove(tile)
+      ;(tile.material as THREE.Material).dispose()
+    }
+    this.tiles.clear()
     this.tileGeo?.dispose()
     this.tileGeo = null
     this.group.removeFromParent()

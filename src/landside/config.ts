@@ -3,9 +3,11 @@
  * and how many late arrivals miss check-in live here so the curb can be
  * retuned without touching fees or upkeep.
  *
- * This is a capacity model: each road lane and curb stall has a number.
- * It is not a street-level traffic sim. The cars that are drawn still have
- * to enter at the map edge, dwell, and leave forward.
+ * Two layers share these numbers. The capacity model gives each road lane
+ * and curb stall a number and drives pressure, delay and missed check-ins.
+ * The drawn vehicles are bodies on the lanes: they arrive at the city's
+ * real rate, keep their gap, change lane to reach the curb, stop at a free
+ * stall, bay, rank or lot, and leave round the loop.
  */
 export const LANDSIDE = {
   /** Vehicles one lane can hold on a single 22 m road cell. */
@@ -65,8 +67,37 @@ export const LANDSIDE = {
   laybyWidthM: 2.5,
   /** Approach speed, metres per second. */
   speedMps: 6,
-  /** Gap between queued cars along the approach, metres. */
-  queueGapM: 8,
+  /** Body of each vehicle kind, metres. Gaps and stalls are measured from these. */
+  bodies: {
+    car: { lengthM: 4.6, widthM: 1.8 },
+    taxi: { lengthM: 4.6, widthM: 1.8 },
+    bus: { lengthM: 12, widthM: 2.5 },
+  },
+  /** Bumper-to-bumper gap a stopped vehicle keeps, metres. */
+  minGapM: 2,
+  /** Extra following gap per metre-per-second of the follower, seconds. Used for merges. */
+  headwaySec: 1,
+  accelMps2: 2,
+  decelMps2: 4,
+  /** Sideways acceleration drivers accept in a turn, m/s². Sets U-turn and corner speed. */
+  turnLatAccelMps2: 2.5,
+  /** Distance a lane change takes at speed, metres. */
+  laneChangeM: 18,
+  /** Shortest lane change, metres. A car stops this far before the end of its lane. */
+  laneChangeMinM: 6,
+  /** Seconds of travel a lane change takes, between the two lengths above. */
+  laneChangeSec: 3,
+  /** Start heading for the curb lane this far before the stall or the U-turn, metres. */
+  prepM: 50,
+  /** Shortest and longest pull into or out of a stall, metres. */
+  pullMinM: 4,
+  pullMaxM: 10,
+  /** Speed while pulling into or out of a stall, metres per second. */
+  pullSpeedMps: 3,
+  /** Seconds a car stops at a car park entrance before it drives in. */
+  parkGateSec: 3,
+  /** Vehicle step, seconds. A longer tick is split into steps of this size. */
+  substepSec: 0.25,
   /** Lateness below this does not move satisfaction. */
   delayGraceSec: 15,
   /** Reputation points per second of lateness, per sim-second. */
@@ -87,8 +118,6 @@ export const LANDSIDE = {
   maxFrameJumpM: 7,
   /** How fast the meters chase a new load, seconds. */
   smoothSec: 6,
-  /** Cars drawn on the approach. The capacity math stays aggregate. */
-  visualCap: 14,
   /** Passengers who step out of one car, taxi, or bus. */
   alight: { car: 1, taxi: 1, bus: 3 },
   /** Seconds a passenger walks from the door to the hall. */

@@ -194,10 +194,9 @@ describe('capacity', () => {
     expect(pressureColor(1.4)).toBe('#d35a4a')
   })
 
-  it('does not teleport a car: they enter at the edge, dwell, and leave forward', () => {
+  it('does not teleport a car: they enter at the map edge, dwell, and leave round the loop', () => {
     const sim = new LandsideTraffic()
     const seen = new Map<string, { c: number; r: number }>()
-    const entry = { c: 7, r: 0 }
     let sawStop = false
     let sawLeave = false
     let dwelling: string[] = []
@@ -210,12 +209,12 @@ describe('capacity', () => {
       for (const car of view.vehicles) {
         const prev = seen.get(car.id)
         if (!prev) {
-          const fromEdge = Math.hypot((car.c - entry.c) * LANDSIDE.cellM, (car.r - entry.r) * LANDSIDE.cellM)
-          expect(fromEdge).toBeLessThanOrEqual(cap + 1e-6)
+          // New cars appear at or beyond the north edge of the map, on the road.
+          expect(car.r * LANDSIDE.cellM).toBeLessThanOrEqual(-0.5 * LANDSIDE.cellM + cap + 1e-6)
+          expect(Math.abs(car.c - 7) * LANDSIDE.cellM).toBeLessThan(LANDSIDE.cellM / 2)
         } else {
           const hop = Math.hypot((car.c - prev.c) * LANDSIDE.cellM, (car.r - prev.r) * LANDSIDE.cellM)
           expect(hop).toBeLessThanOrEqual(cap + 1e-6)
-          expect(car.r).toBeGreaterThanOrEqual(prev.r - 1e-6)
         }
         if (car.state === 'stop') sawStop = true
         if (car.state === 'leave') sawLeave = true

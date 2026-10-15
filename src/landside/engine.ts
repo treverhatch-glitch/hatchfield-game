@@ -1,22 +1,16 @@
 import { LANDSIDE } from './config.ts'
 import { buildNetwork, cellId } from './network.ts'
-import type {
-  Cell,
-  LandsideField,
-  LandsideView,
-  ModeSplit,
-  Network,
-  PassengerRead,
-  SegmentRead,
-  VehicleKind,
-  VehicleRead,
-  VehicleState,
-} from './types.ts'
+import type { LandsideField, LandsideView, ModeSplit, Network, SegmentRead } from './types.ts'
+import { LandsideFleet } from './vehicles.ts'
 
 interface Sample {
   arrivalsPerMin: number
   modes: ModeSplit
   roadVehPerMin: number
+  /** City vehicles per minute by kind, the ones that are drawn. Fuel tankers are not. */
+  carVehPerMin: number
+  taxiVehPerMin: number
+  busVehPerMin: number
   curbVehPerMin: number
   laneFlowPerMin: number
   curbServicePerMin: number
@@ -31,26 +25,6 @@ interface Sample {
   busBays: number
   curbLanes: number
   taxiRanks: number
-}
-
-interface Agent {
-  id: string
-  kind: VehicleKind
-  /** Metres from the city end. Increases through the curb and the exit. */
-  metres: number
-  state: VehicleState
-  dwell: number
-  dropped: boolean
-}
-
-interface Walker {
-  id: string
-  fromC: number
-  fromR: number
-  toC: number
-  toR: number
-  /** Seconds since they stepped out. */
-  age: number
 }
 
 const EMPTY_MODES: ModeSplit = { car: 0, taxi: 0, bus: 0, rail: 0 }
@@ -168,6 +142,9 @@ export function measure(field: LandsideField, net: Network = buildNetwork(field)
     arrivalsPerMin: arrivals,
     modes: { ...modes, bus: busPax, taxi: taxiPax },
     roadVehPerMin,
+    carVehPerMin: carVeh,
+    taxiVehPerMin: taxiVeh,
+    busVehPerMin: busVeh,
     curbVehPerMin,
     laneFlowPerMin,
     curbServicePerMin,
@@ -220,34 +197,6 @@ function fixesFor(field: LandsideField, net: Network, sample: Sample): string[] 
   return lines
 }
 
-function poseAt(path: Cell[], metres: number): { c: number; r: number; heading: number } {
-  if (!path.length) return { c: 0, r: 0, heading: 0 }
-  if (path.length === 1) return { c: path[0].c, r: path[0].r, heading: 0 }
-  const hop = LANDSIDE.cellM
-  const max = (path.length - 1) * hop
-  const clamped = Math.max(0, Math.min(max, metres))
-  const i = Math.min(path.length - 2, Math.floor(clamped / hop))
-  const t = (clamped - i * hop) / hop
-  const a = path[i]
-  const b = path[i + 1]
-  return {
-    c: a.c + (b.c - a.c) * t,
-    r: a.r + (b.r - a.r) * t,
-    heading: Math.atan2(b.r - a.r, b.c - a.c),
-  }
-}
-
-function kindFor(index: number, sample: Sample): VehicleKind {
-  const total = sample.roadVehPerMin
-  if (!(total > 0)) return 'car'
-  const car = Math.max(0, sample.modes.car) / LANDSIDE.paxPerCar / total
-  const taxi = Math.max(0, sample.modes.taxi) / LANDSIDE.paxPerTaxi / total
-  const x = (index * 0.618033988749) % 1
-  if (x < car) return 'car'
-  if (x < car + taxi) return 'taxi'
-  return sample.modes.bus > 0 ? 'bus' : 'taxi'
-}
-
 function segmentsFor(net: Network, sample: Sample, queue: number, curbBusy: number): SegmentRead[] {
   const approach = new Set(net.path.map(cellId))
   const front = new Set(net.frontage.map(cellId))
@@ -290,8 +239,10 @@ function segmentsFor(net: Network, sample: Sample, queue: number, curbBusy: numb
 }
 
 /**
- * Capacity-based landside traffic.
- * The tick updates load, queues, and the few cars the player can see.
+ * Landside traffic: the capacity model plus the vehicles that are drawn.
+ * Pressure, delay and missed check-ins come from {@link measure}. The drawn
+ * vehicles arrive at the same per-kind rates and use the real stalls, but
+ * never feed back into the numbers.
  * Rendering reads {@link LandsideTraffic.snapshot} and does not feed back.
  */
 export class LandsideTraffic {
@@ -299,10 +250,7 @@ export class LandsideTraffic {
   private delaySec = 0
   private curbBusy = 0
   private wasLate = false
-  private agents: Agent[] = []
-  private walkers: Walker[] = []
-  private route: Cell[] = []
-  private nextId = 1
+  private fleet = new LandsideFleet()
   private view: LandsideView = emptyView()
 
   reset(): void {
@@ -310,10 +258,7 @@ export class LandsideTraffic {
     this.delaySec = 0
     this.curbBusy = 0
     this.wasLate = false
-    this.agents = []
-    this.walkers = []
-    this.route = []
-    this.nextId = 1
+    this.fleet.reset()
     this.view = emptyView()
   }
 
@@ -340,13 +285,15 @@ export class LandsideTraffic {
       : 0
     const missShare = late ? Math.min(LANDSIDE.missShareCap, lateBy * LANDSIDE.missPerLateSec) : 0
     const missedCheckIns = sample.arrivalsPerMin * (dt / 60) * missShare
-    this.stepAgents(dt, net, sample)
-    const vehicles = this.agents.flatMap((agent) => this.readAgent(agent))
-    const passengers = this.readWalkers()
+    this.fleet.step(dt, field, net, {
+      car: sample.carVehPerMin,
+      taxi: sample.taxiVehPerMin,
+      bus: sample.busVehPerMin,
+    })
     this.view = {
       segments: segmentsFor(net, sample, this.queue, this.curbBusy),
-      vehicles,
-      passengers,
+      vehicles: this.fleet.vehicles(),
+      passengers: this.fleet.passengers(),
       lanes: net.lanes,
       laneFlowPerMin: sample.laneFlowPerMin,
       roadFlowPerMin: sample.roadVehPerMin,
@@ -371,171 +318,6 @@ export class LandsideTraffic {
       focusId: null,
     }
     return this.view
-  }
-
-  private stepAgents(dt: number, net: Network, sample: Sample): void {
-    const approach = net.path
-    const exit = net.exit.length > 0 ? net.exit : approach.slice(-1)
-    if (approach.length < 2 || exit.length < 2 || !(sample.arrivalsPerMin > 0) || dt <= 0) {
-      this.agents = []
-      this.walkers = []
-      this.route = []
-      return
-    }
-    const route = approach.slice(0, -1).concat(exit)
-    this.route = route
-    const cellM = LANDSIDE.cellM
-    const end = (route.length - 1) * cellM
-    const curbStart = (approach.length - 1) * cellM
-    const front = new Set(net.frontage.map(cellId))
-    let curbEnd = curbStart
-    for (let i = approach.length - 1; i < route.length; i++) {
-      if (!front.has(cellId(route[i]))) break
-      curbEnd = i * cellM
-    }
-    const slow = sample.pressure > 1 ? 1 / sample.pressure : 1
-    const step = LANDSIDE.speedMps * slow * dt
-    const gap = LANDSIDE.queueGapM
-    const stallCount = Math.max(1, Math.min(net.curbStalls, LANDSIDE.visualCap))
-    const stalls: number[] = []
-    for (let i = 0; i < stallCount; i++) stalls.push(Math.max(curbStart, curbEnd - i * gap))
-
-    const nearestIn = this.agents.reduce(
-      (min, agent) => (agent.state === 'leave' ? min : Math.min(min, agent.metres)),
-      Infinity,
-    )
-    if (this.agents.length < LANDSIDE.visualCap && (nearestIn === Infinity || nearestIn >= gap)) {
-      this.agents.push({
-        id: `curb-${this.nextId++}`,
-        kind: kindFor(this.nextId, sample),
-        metres: 0,
-        state: 'drive',
-        dwell: 0,
-        dropped: false,
-      })
-    }
-
-    const taken = new Set<number>()
-    const ordered = [...this.agents].sort((a, b) => b.metres - a.metres)
-    let ahead = Infinity
-    for (const agent of ordered) {
-      if (agent.state === 'leave') {
-        agent.metres = Math.min(end, agent.metres + step)
-        ahead = agent.metres
-        continue
-      }
-      if (agent.state === 'stop') {
-        agent.dwell -= dt
-        const held = stalls.findIndex((stall) => Math.abs(stall - agent.metres) < gap * 0.5)
-        if (held >= 0) taken.add(held)
-        if (agent.dwell <= 0) {
-          agent.state = 'leave'
-          agent.metres = Math.min(end, agent.metres + step)
-          if (held >= 0) taken.delete(held)
-        }
-        ahead = agent.metres
-        continue
-      }
-      let stall = -1
-      for (let i = 0; i < stalls.length; i++) {
-        if (taken.has(i) || stalls[i] + 0.2 < agent.metres) continue
-        if (stall < 0 || stalls[i] > stalls[stall]) stall = i
-      }
-      if (stall >= 0) taken.add(stall)
-      const stopAt = stall >= 0 ? stalls[stall] : null
-      const follow = Number.isFinite(ahead) ? ahead - gap : Infinity
-      if (stopAt == null) {
-        if (follow > agent.metres + 0.05) {
-          agent.metres = Math.min(agent.metres + step, follow)
-          agent.state = 'drive'
-        } else {
-          agent.state = 'queue'
-        }
-        ahead = agent.metres
-        continue
-      }
-      const room = Math.min(stopAt, follow)
-      if (room <= agent.metres + 0.05) {
-        agent.state = 'queue'
-        ahead = agent.metres
-        continue
-      }
-      const next = Math.min(agent.metres + step, room)
-      agent.metres = Math.max(agent.metres, next)
-      if (agent.metres >= stopAt - 0.15 && stopAt - agent.metres <= step + 0.15) {
-        agent.metres = stopAt
-        agent.state = 'stop'
-        agent.dwell = agent.kind === 'bus' ? LANDSIDE.busDwellSec : LANDSIDE.dwellSec
-        if (!agent.dropped) {
-          agent.dropped = true
-          this.dropPassengers(agent, net)
-        }
-      } else if (room - agent.metres <= 0.05) {
-        agent.state = 'queue'
-      } else {
-        agent.state = 'drive'
-      }
-      ahead = agent.metres
-    }
-    this.agents = this.agents.filter((agent) => agent.state !== 'leave' || agent.metres < end - 0.05)
-    this.stepWalkers(dt)
-  }
-
-  private dropPassengers(agent: Agent, net: Network): void {
-    const pose = poseAt(this.route, agent.metres)
-    const door = net.door
-    const count = LANDSIDE.alight[agent.kind]
-    const toC = door ? door.c : pose.c
-    const toR = door ? door.r : pose.r
-    for (let n = 0; n < count; n++) {
-      const f = (n + 1) / (count + 1)
-      this.walkers.push({
-        id: `${agent.id}-p${n}`,
-        fromC: pose.c + (toC - pose.c) * 0.12,
-        fromR: pose.r + (toR - pose.r) * 0.12 + (f - 0.5) * 0.18,
-        toC,
-        toR,
-        age: 0,
-      })
-    }
-  }
-
-  private stepWalkers(dt: number): void {
-    const next: Walker[] = []
-    const stay = LANDSIDE.walkSec + LANDSIDE.dwellSec * 0.45
-    for (const walker of this.walkers) {
-      walker.age += dt
-      if (walker.age < stay) next.push(walker)
-    }
-    this.walkers = next
-  }
-
-  private readAgent(agent: Agent): VehicleRead[] {
-    const pose = poseAt(this.route, agent.metres)
-    return [
-      {
-        id: agent.id,
-        kind: agent.kind,
-        c: pose.c,
-        r: pose.r,
-        heading: pose.heading,
-        state: agent.state,
-      },
-    ]
-  }
-
-  private readWalkers(): PassengerRead[] {
-    return this.walkers.map((walker) => {
-      const t = Math.min(1, walker.age / LANDSIDE.walkSec)
-      const c = walker.fromC + (walker.toC - walker.fromC) * t
-      const r = walker.fromR + (walker.toR - walker.fromR) * t
-      return {
-        id: walker.id,
-        c,
-        r,
-        heading: Math.atan2(walker.toR - walker.fromR, walker.toC - walker.fromC),
-      }
-    })
   }
 }
 
