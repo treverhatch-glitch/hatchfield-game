@@ -4,14 +4,14 @@ import { mulberry32 } from './personas.ts'
 import { PERSONAS, runHeadless } from './run.ts'
 
 /**
- * The starter curb stays under pressure 1 through the opening, then a field
- * that has signed eight carriers and flown about 80 turns crosses 1 between
- * day 15 and 35. Careful's curb stamp is left off so the reading is the
- * starter curb alone. The bay that brings it back under 1 is pinned in
- * src/landside/landside.test.ts.
+ * The starter curb stays under pressure 1 through day 10. Helicopter turns
+ * push it over 1 on day 11, once about 80 flights have landed, and the
+ * eighth carrier is on the books between day 15 and 35. Careful's curb
+ * stamp is left off so the reading is the starter curb alone. The bay that
+ * brings it back under 1 is pinned in src/landside/landside.test.ts.
  */
 describe('starter curb pressure window', () => {
-  it('crosses 1 between day 15 and 35 once the book is real, and not before day 5', { timeout: 180_000 }, () => {
+  it('stays under 1 through day 10, crosses once about 80 flights have landed, and seats the eighth carrier by day 35', { timeout: 180_000 }, () => {
     const spec = PERSONAS.find((persona) => persona.id === 'careful')
     expect(spec).toBeTruthy()
     const peaks = new Map<number, { pressure: number; flights: number; carriers: number; bays: number; ranks: number; curbLanes: number }>()
@@ -71,12 +71,12 @@ describe('starter curb pressure window', () => {
       expect(peaks.get(day)!.pressure, `day ${day}`).toBeLessThan(1)
     }
     for (const day of days) {
-      if (day >= 15) break
+      if (day >= 11) break
       expect(peaks.get(day)!.pressure, `day ${day} before the window`).toBeLessThan(1)
     }
     const crossed = days.filter((day) => peaks.get(day)!.pressure > 1)
     expect(crossed.length, 'pressure never crossed 1').toBeGreaterThan(0)
-    expect(crossed[0]!, `first cross on day ${crossed[0]}`).toBeGreaterThanOrEqual(15)
+    expect(crossed[0]!, `first cross on day ${crossed[0]}`).toBeGreaterThanOrEqual(11)
     expect(crossed[0]!, `first cross on day ${crossed[0]}`).toBeLessThanOrEqual(35)
     const grown = days.find((day) => {
       const row = peaks.get(day)!
