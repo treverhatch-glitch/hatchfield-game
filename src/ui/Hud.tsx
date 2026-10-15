@@ -409,10 +409,9 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             </div>
           ) : null}
         </div>
-        <div className="stat" title="One day is a 180-second cycle">
+        <div className="stat clock-climate" title="One day is a 180-second cycle">
           <LiveText testId="hud-clock" read={() => formatSimDate(game.clock)} />
-        </div>
-        {game.site ? (
+          {game.site ? (
           <div className="climate-dock">
             <button
               type="button"
@@ -449,7 +448,8 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               </aside>
             ) : null}
           </div>
-        ) : null}
+          ) : null}
+        </div>
         <SpeedButtons game={game} speed={game.speed} className="speeds stat-speeds" />
         <FieldBadge
           progress={xp}

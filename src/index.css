@@ -3159,6 +3159,14 @@ h1.game-title::after {
   line-height: 1.4;
 }
 
+.clock-climate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  position: relative;
+}
+
 .climate-dock {
   position: relative;
   display: flex;
@@ -3171,7 +3179,7 @@ h1.game-title::after {
 
 .map-goals {
   position: absolute;
-  top: calc(100% + 110px);
+  top: calc(100% + 40px);
   left: 0;
   bottom: auto;
   width: min(240px, 78vw);
