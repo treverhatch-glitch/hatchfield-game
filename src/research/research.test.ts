@@ -106,7 +106,7 @@ describe('research tree', () => {
         onUnlock: () => {},
       }),
     )
-    expect(short).toContain('Need 50 more RP')
+    expect(short).toContain(`Need ${TIER_COSTS[1]} more RP`)
     expect(short).toContain('Available')
     expect(short).not.toContain('data-testid="research-lock"')
     expect(short).toContain('data-state="locked"')
@@ -136,19 +136,21 @@ describe('research tree', () => {
     expect(engine.points()).toBe(2)
   })
 
-  it('paces one lab to about a third of the tree by day 30 and the rest after day 120', () => {
-    const careful = playDays(30, { desk: 1, board: 1, machine: 1 }, 0)
-    const share30 = careful / RESEARCH_NODES.length
-    expect(share30).toBeGreaterThanOrEqual(0.25)
-    expect(share30).toBeLessThanOrEqual(0.35)
-    expect(playDays(22, { desk: 1, board: 1, machine: 1 }, 0)).toBeLessThan(RESEARCH_NODES.length)
-    const share120 = playDays(120, { desk: 1, board: 1, machine: 1 }, 0) / RESEARCH_NODES.length
-    expect(share120).toBeGreaterThanOrEqual(0.9)
-    expect(share120).toBeLessThan(1)
-    expect(playDays(150, { desk: 1, board: 1, machine: 1 }, 0)).toBe(RESEARCH_NODES.length)
-    const staffed = playDays(30, { desk: 2, board: 2, machine: 2 }, 2)
-    expect(staffed / RESEARCH_NODES.length).toBeGreaterThan(share30)
-    expect(playDays(60, { desk: 2, board: 2, machine: 2 }, 2)).toBe(RESEARCH_NODES.length)
+  it('paces a careful lab to about 60% by day 90 and the rest after day 150', () => {
+    const rooms = { desk: 1, board: 1, machine: 1 }
+    const day90 = playDays(90, rooms, 0, CAREFUL_FLIGHT_RP)
+    const share90 = day90 / RESEARCH_NODES.length
+    expect(share90).toBeGreaterThanOrEqual(0.6)
+    expect(share90).toBeLessThanOrEqual(0.7)
+    expect(playDays(150, rooms, 0, CAREFUL_FLIGHT_RP)).toBeLessThan(RESEARCH_NODES.length)
+    expect(playDays(210, rooms, 0, CAREFUL_FLIGHT_RP)).toBe(RESEARCH_NODES.length)
+    const staffed = playDays(90, { desk: 2, board: 2, machine: 2 }, 2, CAREFUL_FLIGHT_RP)
+    expect(staffed).toBeGreaterThan(day90)
+    const focused = specDepths(playState(90, rooms, 0, CAREFUL_FLIGHT_RP))
+    const deepest = Math.max(...focused)
+    const others = focused.filter((depth) => depth > 0).length
+    expect(deepest).toBeGreaterThanOrEqual(3)
+    expect(others).toBeLessThanOrEqual(2)
   })
 
   it('links a locked build item to its node', () => {
@@ -160,11 +162,18 @@ describe('research tree', () => {
   })
 })
 
+/**
+ * Research points a careful airport's turns were adding on top of the lab,
+ * about four flights a day. The bot run is the check; this keeps the curve honest.
+ */
+const CAREFUL_FLIGHT_RP = 12
+
 /** Field level 4, so every category is open and points are the only limit. Buys the cheapest node whenever it is affordable. */
-function playDays(days: number, rooms: RoomCounts, staff: number): number {
+function playState(days: number, rooms: RoomCounts, staff: number, flightPerDay = 0): ResearchState {
   let state: ResearchState = emptyResearchState()
   for (let day = 0; day < days; day++) {
     state = accrue(state, RESEARCH_DAY_SEC, rooms, true, staff)
+    if (flightPerDay > 0) state = { ...state, points: state.points + flightPerDay }
     while (true) {
       const open = RESEARCH_NODES.filter((node) => nodeState(state, node, 4) === 'available').sort(
         (a, b) => nodeCost(state, a) - nodeCost(state, b) || a.id.localeCompare(b.id),
@@ -176,5 +185,15 @@ function playDays(days: number, rooms: RoomCounts, staff: number): number {
       state = bought.state
     }
   }
-  return state.unlocked.length
+  return state
+}
+
+function playDays(days: number, rooms: RoomCounts, staff: number, flightPerDay = 0): number {
+  return playState(days, rooms, staff, flightPerDay).unlocked.length
+}
+
+function specDepths(state: ResearchState): number[] {
+  return ['cargo', 'green', 'hub', 'lowcost', 'premium'].map(
+    (branch) => state.unlocked.filter((id) => id.startsWith(`spec-${branch}-`)).length,
+  )
 }

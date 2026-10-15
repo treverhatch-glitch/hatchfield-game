@@ -150,7 +150,7 @@ Growth → Research tree is the development tree. One wallet. Points trickle fro
 - A category column, then one lane, then a detail card. Specialisations are five lanes under the charter node.
 - A line joins a node to the previous node in its lane. That line is the prerequisite.
 - Categories and their field levels: Airfield 1, Terminal 1, Airside Ops 2, Landside 2, Safety & Security 3, Retail & Comfort 3, Specialisations 4. A shut category stays in the list with a padlock and `Lv N`. It is not removed.
-- Tier 1 of a line is free. Later tiers cost 50, 52, 54, 56, 62 points and require the previous node. A second specialisation branch costs 1.5× after the first pick.
+- Tier 1 of a line is free. Later tiers cost 76, 86, 96, 100, 114 points and require the previous node. A second specialisation branch costs 1.5× after the first pick.
 
 ### Node states
 
