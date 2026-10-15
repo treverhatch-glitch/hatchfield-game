@@ -106,7 +106,12 @@ export function buildAirport(opts: SetupOptions = {}): Game {
   if (opts.fieldXp) g.grantFieldXp(opts.fieldXp)
   g.cash = opts.cash ?? 150_000
   g.speed = 1
-  for (const id of opts.airlines ?? ['northline']) {
+  const airlines = opts.airlines ?? ['northline']
+  if (airlines.length > 1) {
+    g.paxDesks = 16
+    g.paxKiosks = 4
+  }
+  for (const id of airlines) {
     g.offer = { airline: id, age: 0, deadline: 36 }
     g.acceptOffer()
   }

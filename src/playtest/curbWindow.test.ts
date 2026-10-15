@@ -38,6 +38,13 @@ describe('starter curb pressure window', () => {
     }
     const random = Math.random
     Math.random = mulberry32(0x5eed)
+    const origKit = Game.prototype.buildStarterKit
+    Game.prototype.buildStarterKit = function (this: Game) {
+      const built = origKit.call(this)
+      this.paxDesks = 48
+      this.paxKiosks = 8
+      return built
+    }
     try {
       runHeadless({
         personas: [
@@ -53,6 +60,7 @@ describe('starter curb pressure window', () => {
       })
     } finally {
       Game.prototype.tick = orig
+      Game.prototype.buildStarterKit = origKit
       Math.random = random
     }
 

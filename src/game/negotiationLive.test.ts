@@ -232,12 +232,14 @@ describe('negotiated terms on the live sim', () => {
     expect(high.deposits.harbor.termEndDay).toBe(24 * 30)
 
     const gated = fresh()
+    gated.paxDesks = 8
     gated.offer = { airline: 'northline', age: 0, deadline: 36 }
     gated.acceptOffer()
     signAsk(gated, 'bushline', { landing: -20, pax: -20, bags: -20, fuel: -20, catering: -20, parking: -20 }, 'standard')
     expect(gated.commercialLead.bushline.leadDays).toBe(4)
 
     const waived = fresh()
+    waived.paxDesks = 8
     waived.offer = { airline: 'northline', age: 0, deadline: 36 }
     waived.acceptOffer()
     signAsk(

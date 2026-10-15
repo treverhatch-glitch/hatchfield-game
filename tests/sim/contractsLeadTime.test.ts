@@ -9,6 +9,7 @@ describe('contract lead time', () => {
     expectHealthy(runDays(g, 2))
 
     // A second carrier signs mid-run; it gets a lead before its first flight.
+    g.paxDesks = 8
     g.offer = { airline: 'harbor', age: 0, deadline: 36 }
     g.acceptOffer()
     const gate = g.leadGateClock('harbor')

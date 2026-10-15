@@ -412,6 +412,7 @@ describe('departure show-up', () => {
       game.startFocus = 'pax'
       game.offer = { airline: 'northline', age: 0, deadline: 36 }
       game.acceptOffer()
+      game.paxDesks = 8
       game.offer = { airline: 'harbor', age: 0, deadline: 36 }
       game.acceptOffer()
       const seen = new Set<string>()

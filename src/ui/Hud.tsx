@@ -875,6 +875,15 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                             </li>
                           )
                         })()}
+                        {(() => {
+                          const desks = game.checkinSignReport(offerAirline.id)
+                          if (!desks.line) return null
+                          return (
+                            <li data-met={desks.ok ? '1' : '0'} data-testid="contract-desks">
+                              {desks.ok ? 'Met' : 'Missing'} · {desks.line}
+                            </li>
+                          )
+                        })()}
                         {game.reqReport(offerAirline.id).map((row) => (
                           <li key={row.label} data-met={row.met ? '1' : '0'}>
                             {row.met ? 'Met' : 'Missing'} · {row.label}
@@ -893,6 +902,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                           type="button"
                           className="on"
                           data-testid="contract-accept"
+                          title={
+                            offerAirline && !game.checkinSignReport(offerAirline.id).ok
+                              ? game.checkinSignReport(offerAirline.id).line
+                              : undefined
+                          }
                           onClick={() => game.acceptNegotiation()}
                         >
                           Accept

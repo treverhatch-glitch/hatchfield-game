@@ -39,6 +39,7 @@ describe('rival on the live field', () => {
     expect(game.signed).toContain('bushline')
     expect(game.rivalPanel()?.roster.some((c) => c.id === 'bushline')).toBe(false)
 
+    game.paxDesks = 8
     game.offer = { airline: 'northline', age: 0, deadline: 36 }
     game.acceptOffer()
     game.abandonAirline('northline', 'heat')

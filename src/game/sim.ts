@@ -377,7 +377,17 @@ import {
   throughputOf,
   type PointLoad,
 } from '../servicepoints/index.ts'
-import { CHECKIN_ALLOC, NEUTRAL_DESK_BRAND, allocate, type Allocation, type CheckinDesk, type CheckinFlight } from '../checkin/index.ts'
+import {
+  CHECKIN_ALLOC,
+  NEUTRAL_DESK_BRAND,
+  allocate,
+  carrierPeakPaxPerMin,
+  checkinSignGate,
+  type Allocation,
+  type CheckinDesk,
+  type CheckinFlight,
+  type CheckinSignGate,
+} from '../checkin/index.ts'
 import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type Reading } from '../buildinginfo/index.ts'
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -1418,6 +1428,8 @@ export class Game {
   showUps: ShowUpPlan[] = []
   /** Common desks the player locked to one airline. They stay branded and are never shared. */
   dedicatedDesks: { deskId: string; airlineId: AirlineId }[] = []
+  /** Last under-desk refusal, so a held letter does not reprint the news every tick. */
+  private checkinBlockNote = ''
   /** Seeded mix and leads. The hall stamps these onto the entrance cap. */
   private paxAdapter: PaxShowUpAdapter = createPaxShowUpAdapter(0x5382)
   /** Flights that have left the field. The boarding call stays up until those passengers are aboard or miss. */
@@ -2818,6 +2830,82 @@ export class Game {
     if (share.short > 0) return 'Check-in open · short of desks'
     if (desks) return `Check-in open · ${desks}`
     return 'Check-in open · general desks'
+  }
+
+  /** Common, dedicated, and kiosk desks, and whose sign is live. */
+  checkinModeLine(): string {
+    const alloc = this.checkinAllocation()
+    if (!alloc.desks.length) return 'No check-in desks'
+    const body = alloc.desks
+      .map((row) => {
+        if (row.mode === 'kiosk') return 'Kiosk · any airline'
+        const who = row.airlineId ? this.airline(row.airlineId).name : 'free'
+        if (row.mode === 'dedicated') return `Dedicated · ${who}`
+        return `Common · ${who}`
+      })
+      .join('; ')
+    return alloc.reason ? `${body}; ${alloc.reason}` : body
+  }
+
+  /**
+   * Passenger contract versus open desks and kiosks.
+   * Staffed common desks, and a dedicated desk already given to this carrier,
+   * are what the walk can serve. Scale-desk purchases count only for the desks
+   * the hall has not already opened.
+   */
+  checkinSignReport(id: AirlineId): CheckinSignGate {
+    const airline = this.airline(id)
+    if (airline.kind !== 'pax') {
+      return checkinSignGate({ kind: airline.kind, peakPaxPerMin: 0, openDesks: 0, kiosks: 0, label: airline.name })
+    }
+    let peak = 0
+    for (const sid of this.signed) {
+      if (sid === id) continue
+      peak += this.carrierCheckinPeak(sid)
+    }
+    peak += this.carrierCheckinPeak(id)
+    const cap = this.checkinCapacityFor(id)
+    return checkinSignGate({
+      kind: 'pax',
+      peakPaxPerMin: peak,
+      openDesks: cap.desks,
+      kiosks: cap.kiosks,
+      label: airline.name,
+    })
+  }
+
+  private carrierCheckinPeak(id: AirlineId): number {
+    return carrierPeakPaxPerMin(
+      this.airline(id).kind,
+      this.namedAirframes(id).map((frame) => frame.id),
+    )
+  }
+
+  private checkinCapacityFor(airlineId: AirlineId): { desks: number; kiosks: number } {
+    const desks = this.checkinDesks()
+    if (!desks.length) return { desks: Math.max(0, this.paxDesks), kiosks: Math.max(0, this.paxKiosks) }
+    const alloc = this.checkinAllocation()
+    const byId = new Map(alloc.desks.map((row) => [row.deskId, row]))
+    let openCommon = 0
+    let openDedicatedHere = 0
+    let openHallDesks = 0
+    let kiosks = 0
+    for (const desk of desks) {
+      if (!desk.staffed) continue
+      if (desk.kiosk) {
+        kiosks += 1
+        continue
+      }
+      openHallDesks += 1
+      const row = byId.get(desk.id)
+      if (row?.mode === 'dedicated' && row.airlineId === airlineId) openDedicatedHere += 1
+      else if (row?.mode !== 'dedicated') openCommon += 1
+    }
+    const extra = Math.max(0, Math.floor(this.paxDesks) - openHallDesks)
+    return {
+      desks: openCommon + openDedicatedHere + extra,
+      kiosks: Math.max(kiosks, Math.max(0, Math.floor(this.paxKiosks))),
+    }
   }
 
   /** Lock and release buttons for the check-in building card. */
@@ -14792,6 +14880,17 @@ export class Game {
   acceptOffer() {
     if (!this.offer) return
     const id = this.offer.airline
+    const gate = this.checkinSignReport(id)
+    if (!gate.ok) {
+      const note = `${id}|${gate.line}`
+      if (this.checkinBlockNote !== note) {
+        this.checkinBlockNote = note
+        this.pushNews(gate.line, 'bad')
+      }
+      this.emit()
+      return
+    }
+    this.checkinBlockNote = ''
     const a = this.airline(id)
     this.signed.push(id)
     this.wave3.noteLetter(id, 'accept')

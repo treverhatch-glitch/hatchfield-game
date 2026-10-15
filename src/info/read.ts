@@ -18,6 +18,7 @@ export function readMapView(game: Game, id: MapViewId): InfoViewModel {
       game.servicePointLines('checkin'),
       game.servicePointLines('security'),
       tilesOf(game.tiles, 'terminal'),
+      game.checkinModeLine(),
     )
   }
   if (id === 'bays') return baysModel(game.bayView().stands)

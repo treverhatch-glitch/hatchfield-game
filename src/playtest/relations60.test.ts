@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Game } from '../game/sim.ts'
 import { mulberry32 } from './personas.ts'
 import { PERSONAS, runHeadless } from './run.ts'
 
@@ -8,10 +9,18 @@ describe('careful relations over 60 days', () => {
     expect(spec).toBeTruthy()
     const random = Math.random
     Math.random = mulberry32(0x5eed)
+    const origKit = Game.prototype.buildStarterKit
+    Game.prototype.buildStarterKit = function (this: Game) {
+      const built = origKit.call(this)
+      this.paxDesks = 8
+      this.paxKiosks = 2
+      return built
+    }
     let report: ReturnType<typeof runHeadless>[number]
     try {
       ;[report] = runHeadless({ personas: [{ ...spec!, days: 60 }] })
     } finally {
+      Game.prototype.buildStarterKit = origKit
       Math.random = random
     }
     const at = (day: number) => report.days.find((row) => row.day === day)

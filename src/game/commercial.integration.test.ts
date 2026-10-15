@@ -26,6 +26,7 @@ function field(): Game {
   game.startFocus = 'pax'
   expect(game.buyLand('city')).toBe(true)
   game.buildStarterKit()
+  game.paxDesks = 8
   return game
 }
 

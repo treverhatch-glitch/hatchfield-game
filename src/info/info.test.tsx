@@ -111,7 +111,7 @@ describe('info views', () => {
       }),
     })
     const queues = readMapView(game, 'queues')
-    expect(queues.scores.map((score) => score.id)).toEqual(['checkin-wait', 'security-wait'])
+    expect(queues.scores.map((score) => score.id)).toEqual(['checkin-wait', 'security-wait', 'checkin-modes'])
     const bays = readMapView(game, 'bays')
     expect(bays.details.length).toBeGreaterThan(0)
     const airfield = readMapView(game, 'airfield')

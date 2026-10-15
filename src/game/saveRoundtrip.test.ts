@@ -75,6 +75,7 @@ function buildNonTrivialGame(): Game {
   // 3. Contracts & Signed Airlines
   game.offer = { airline: 'northline', age: 0, deadline: 36 }
   game.acceptOffer()
+  game.paxDesks = 8
   game.offer = { airline: 'harbor', age: 0, deadline: 36 }
   game.acceptOffer()
   game.contractId = 'shell'

@@ -25,6 +25,8 @@ function started(): Game {
   game.startFocus = 'pax'
   game.buyLand('city')
   game.buildStarterKit()
+  game.paxDesks = 16
+  game.paxKiosks = 4
   return game
 }
 
@@ -35,8 +37,9 @@ function eagerSigner(game: Game, realSec: number, speed: Speed) {
   const dt = 0.5
   for (let t = 0; t < realSec; t += dt) {
     if (game.offer) {
+      const before = game.signed.length
       game.acceptOffer()
-      signedAt.push(game.clock)
+      if (game.signed.length > before) signedAt.push(game.clock)
     }
     game.tick(dt)
   }

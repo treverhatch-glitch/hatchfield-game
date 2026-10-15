@@ -244,6 +244,8 @@ describe('roster fleets', () => {
     const capacity = phone?.lines?.find((row) => row.label === line)
     expect(capacity).toBeTruthy()
     expect(capacity?.met).toBeUndefined()
+    game.paxDesks = 80
+    game.paxKiosks = 8
     game.acceptOffer()
     expect(game.signed).toContain(next.id)
   })

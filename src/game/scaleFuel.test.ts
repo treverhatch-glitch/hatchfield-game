@@ -132,6 +132,7 @@ describe('scale fuel stays in step with bowser loads', () => {
       game.tiles[27][c] = 'runway'
     }
     game.reputation = 90
+    game.paxDesks = 6
     game.offer = { airline: 'summit', age: 0, deadline: 40 }
     game.acceptOffer()
     game.schedule = []

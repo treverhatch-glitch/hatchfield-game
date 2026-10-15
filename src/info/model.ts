@@ -130,6 +130,7 @@ export function queuesModel(
   checkinLines: readonly string[],
   securityLines: readonly string[],
   terminals: readonly { c: number; r: number }[],
+  deskLine = '',
 ): InfoViewModel {
   const checkin = parseServicePointLines('checkin', checkinLines)
   const security = parseServicePointLines('security', securityLines)
@@ -145,6 +146,12 @@ export function queuesModel(
     scores: [
       queueScore('Check-in', 'checkin-wait', checkin.points, checkin.waiting),
       queueScore('Security', 'security-wait', security.points, security.waiting),
+      {
+        id: 'checkin-modes',
+        label: 'Check-in desks',
+        value: deskLine.trim() || 'No check-in desks',
+        why: 'Inputs: each desk mode (common, dedicated, or kiosk) and the live sign on that desk.',
+      },
     ],
     details: points.map((point) => ({
       id: `${point.kind}-${point.index}`,
