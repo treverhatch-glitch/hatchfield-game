@@ -43,9 +43,20 @@ Corner toggle **Boards**. Split-flap departures and arrivals. Tabs: Departures, 
 
 Desktop only (viewport at least 801 px wide). A peek on the left edge opens the handset.
 
-- **Contracts** — signed contracts
-- **Messages** — letters, with Sign / Decline and the other actions on the card
+- **Contracts** — signed contracts. An open offer is also filed here.
+- **Messages** — letters, with Sign / Decline / Later and the other actions on the card
 - **Close** — back to the peek
+
+Contract actions use one id on the message and on the filed copy:
+
+| Button | Test id | Action |
+| --- | --- | --- |
+| Sign | `phone-action-contract-sign` | `sign-contract` |
+| Decline | `phone-action-contract-decline` | `decline-contract` |
+| Negotiate | `phone-action-contract-negotiate` | `negotiate-contract` |
+| Later | `phone-action-contract-later` | `later-contract` |
+
+The message card is `phone-card-contract`. The filed copy is `phone-card-contract-file`. `phone-action-contract-file-sign` is not used. Inbound Accept / Refuse are `phone-action-inbound-accept` and `phone-action-inbound-refuse`. Council votes are `phone-action-council-full`, `phone-action-council-compromise`, and `phone-action-council-decline`. Each button also sets `data-phone-action` to the action type.
 
 A card with no countdown is marked Note. Line maintenance is spelled out.
 

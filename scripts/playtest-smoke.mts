@@ -154,9 +154,11 @@ export async function runSmoke(outDir: string): Promise<BrowserReport> {
         const sign = page.getByTestId('phone-action-contract-sign')
         const fileSign = page.getByTestId('phone-action-contract-file-sign')
         if (await sign.isVisible().catch(() => false)) {
+          await sign.scrollIntoViewIfNeeded()
           await sign.click()
           script.push('sign contract on the phone')
         } else if (await fileSign.isVisible().catch(() => false)) {
+          await fileSign.scrollIntoViewIfNeeded()
           await fileSign.click()
           script.push('sign contract on the phone')
         } else {

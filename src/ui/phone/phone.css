@@ -4,8 +4,9 @@
   position: absolute;
   left: 0;
   top: auto;
-  bottom: 16px;
-  height: min(340px, 36vh);
+  /* Clear the build bar. A handset on the bottom edge clips Sign onto the field. */
+  bottom: 148px;
+  height: min(340px, calc(100vh - 228px));
   width: 320px;
   z-index: 33;
   pointer-events: none;
@@ -14,7 +15,8 @@
 
 .phone-dock.below-coach {
   top: auto;
-  bottom: 16px;
+  bottom: 148px;
+  height: min(280px, calc(100vh - 228px));
 }
 
 .phone-device {
@@ -267,6 +269,11 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: 6px;
+  background: #12201a;
 }
 
 .phone-actions button,

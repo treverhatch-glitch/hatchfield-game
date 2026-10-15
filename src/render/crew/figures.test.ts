@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
+import { WORLD_PER_METER } from '../aircraft/specs.ts'
 import { CrewFigures } from './figures.ts'
 import type { CrewScene } from '../../ramp/present.ts'
 
@@ -27,5 +28,33 @@ describe('crew figures', () => {
     expect(lite.dots).toBe(1)
     figures.dispose()
     expect(parent.children).toHaveLength(0)
+  })
+
+  it('keeps a close figure at adult height', () => {
+    const parent = new THREE.Group()
+    const figures = new CrewFigures(parent)
+    const camera = new THREE.PerspectiveCamera()
+    camera.position.set(0, 2, 5)
+    const toWorld = (c: number, _r: number, y: number) => new THREE.Vector3(c, y, 0)
+    figures.update(scene([person('close', 0)]), camera, 0.016, false, toWorld)
+    parent.updateMatrixWorld(true)
+    const box = new THREE.Box3()
+    const tmp = new THREE.Box3()
+    const m = new THREE.Matrix4()
+    figures.group.traverse((obj) => {
+      const mesh = obj as THREE.InstancedMesh
+      if (!mesh.isInstancedMesh || mesh.count < 1 || !mesh.name.startsWith('people-')) return
+      mesh.geometry.computeBoundingBox()
+      for (let i = 0; i < mesh.count; i++) {
+        mesh.getMatrixAt(i, m)
+        m.premultiply(mesh.matrixWorld)
+        tmp.copy(mesh.geometry.boundingBox!).applyMatrix4(m)
+        box.union(tmp)
+      }
+    })
+    const metres = (box.max.y - box.min.y) / WORLD_PER_METER
+    expect(metres).toBeGreaterThan(1.55)
+    expect(metres).toBeLessThan(2.05)
+    figures.dispose()
   })
 })

@@ -109,6 +109,27 @@ describe('ground vehicle models', () => {
     disposeVehicleRig(rig)
   })
 
+  it('keeps the fuel cab clear of the tank so the tanker is one vehicle', async () => {
+    const { buildVehicleParts, fuelTankLayout } = await import('./vehicleModels')
+    const [L, H, W] = MODEL_SIZE.fuel_tanker
+    const lay = fuelTankLayout(L, H, W)
+    expect(lay.cabRear - lay.tankNose).toBeGreaterThan(2.2)
+    const parts = buildVehicleParts('fuel_tanker', '#c9a227')
+    const cab = new THREE.Box3()
+    const tank = new THREE.Box3()
+    const tmp = new THREE.Box3()
+    for (const p of parts) {
+      p.geo.computeBoundingBox()
+      if (p.name === 'cab') cab.union(tmp.copy(p.geo.boundingBox!))
+      if (p.name === 'tank') tank.union(tmp.copy(p.geo.boundingBox!))
+      p.geo.dispose()
+    }
+    expect(cab.isEmpty()).toBe(false)
+    expect(tank.isEmpty()).toBe(false)
+    expect(cab.intersectsBox(tank)).toBe(false)
+    expect(cab.min.x - tank.max.x).toBeGreaterThan(1.2)
+  })
+
   it('reads placard text left to right from the outside of both sides', () => {
     for (const kind of PLACARD_KINDS) {
       const model = vehicleModel(kind)
