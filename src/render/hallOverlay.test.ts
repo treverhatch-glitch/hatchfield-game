@@ -18,7 +18,7 @@ describe('hall flow overlay signature', () => {
     const fit = game.activeHall()
     expect(overlaySignature(game, false, [], fit)).toBe('')
     const g = spawnHallGuest('walk', 'depart', 'budget', { hallId: fit ? game.hallKey(fit) : undefined })
-    g.path = ['curb', 'checkin']
+    g.path = ['entrance', 'checkin']
     game.hallGuests.push(g)
     const a = overlaySignature(game, true, [], fit)
     expect(overlaySignature(game, true, [], fit)).toBe(a)
