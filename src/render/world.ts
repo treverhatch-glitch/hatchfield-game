@@ -47,6 +47,7 @@ import {
 } from '../scale/placeholders'
 import type { SizeTier } from '../scale/types'
 import { addMroMesh, addNightHubMesh } from '../tier3/meshes.ts'
+import { LiveTurnaround, type TurnaroundStand, type TurnaroundTruck } from './liveTurnaround.ts'
 import { syncStaffHousing } from './staffHousing.ts'
 import { deployOf, disposeVehicleLibrary, serviceStateOf, setVehicleSurfaceTime, truckDeploy, VehicleFleet, vehicleSize, type VehicleInstance } from './vehicles.ts'
 import { LandsideLayer } from './landsideTraffic.ts'
@@ -184,6 +185,43 @@ function grassBeside(game: Game, anchors: readonly Tile[], used: Set<string>): V
 /** Pier massing once Prefab II is the live prefab hall. Tier 1 keeps the plain terminal block. */
 function prefabTier(game: Game): 1 | 2 | 3 {
   return apronPrefabTier(game.fits)
+}
+
+function turnaroundStands(game: Game): TurnaroundStand[] {
+  const stands: TurnaroundStand[] = []
+  for (const arrival of game.standArrivals()) {
+    const flight = game.flights.find((item) => item.id === arrival.id)
+    const pos = toWorld(arrival.x, arrival.y, 0)
+    const phase = flight?.phase
+    stands.push({
+      id: arrival.id,
+      airframeId: flight?.airframeId || 'b738',
+      x: pos.x,
+      y: pos.y,
+      z: pos.z,
+      heading: arrival.heading,
+      t: arrival.t,
+      servicing: phase === 'deboard' || phase === 'servicing' || phase === 'board',
+      nose: arrival.lengthM / 2,
+      noseGear: arrival.lengthM * 0.38,
+      semiSpan: arrival.spanM / 2,
+      tail: -arrival.lengthM / 2,
+    })
+  }
+  return stands
+}
+
+function turnaroundTrucks(frame: readonly { id?: string; kind: string; x: number; y: number; z: number; yaw: number; ext?: number; active?: boolean }[]): TurnaroundTruck[] {
+  return frame.map((item, index) => ({
+    id: item.id ?? `${item.kind}:${index}`,
+    kind: item.kind,
+    x: item.x,
+    y: item.y,
+    z: item.z,
+    yaw: item.yaw,
+    ext: item.ext ?? 0,
+    moving: item.active === true && (item.ext ?? 0) < 0.45,
+  }))
 }
 
 export function toWorld(c: number, r: number, y = 0): THREE.Vector3 {
@@ -337,6 +375,7 @@ export class World {
     return st.s
   }
   private crewFigures = new CrewFigures(this.entGroup)
+  private liveTurn = new LiveTurnaround(this.entGroup)
   people = new Map<string, THREE.Mesh>()
   housingGroup = new THREE.Group()
   private housingMeshes = new Map<string, THREE.Group>()
@@ -1945,6 +1984,7 @@ export class World {
       const ext = truckDeploy(atStop, t.dwell, t.serviceFor)
       const moving = !atStop || t.returning
       this.vehicleFrame.push({
+        id: t.id,
         kind: t.kind,
         color,
         size,
@@ -1991,6 +2031,7 @@ export class World {
         })
       }
       this.vehicleFrame.push({
+        id: pose.id,
         kind: pose.type,
         color: paint?.primary ?? game.hubVehicleColor(pose.id) ?? serviceColor(pose.type),
         size: vehicleMeters(pose.type),
@@ -2042,6 +2083,7 @@ export class World {
       const pos = toWorld(pose.x, pose.y, 0)
       const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
       this.vehicleFrame.push({
+        id: pose.id,
         kind: 'catering_truck',
         color: '#e07a3d',
         size: vehicleMeters('catering_truck'),
@@ -2061,6 +2103,7 @@ export class World {
       const docking = pose.phase === 'dock' || pose.phase === 'queue'
       const odo = this.odometer(pose.id, pos.x, pos.z)
       this.vehicleFrame.push({
+        id: pose.id,
         kind: pose.kind === 'bag_cart' ? 'cart' : 'catering_truck',
         color: pose.kind === 'bag_cart' ? '#c4b7a6' : '#e07a3d',
         size: vehicleMeters(pose.kind === 'bag_cart' ? 'cart' : 'catering_truck'),
@@ -2083,6 +2126,7 @@ export class World {
     for (const eq of game.turnaroundEquipment()) {
       const pos = toWorld(eq.x, eq.y, 0)
       this.vehicleFrame.push({
+        id: eq.id,
         kind: eq.kind,
         color: serviceColor(eq.kind),
         size: vehicleMeters(eq.kind),
@@ -2150,6 +2194,7 @@ export class World {
     }
     this.syncBeltBags(game)
     this.crewFigures.update(game.crewScene(), this.camera, dt, game.speed >= 5, (c, r, y) => toWorld(c, r, y))
+    this.liveTurn.sync(turnaroundStands(game), turnaroundTrucks(this.vehicleFrame), game.clock, this.camera, dt, game.speed >= 5)
     syncStaffHousing(
       this.housingGroup,
       this.housingMeshes,
@@ -2495,6 +2540,7 @@ export class World {
     this.infoTint.dispose()
     this.parkedFleet.dispose()
     this.crewFigures.dispose()
+    this.liveTurn.dispose()
     this.gateGroup.clear()
     disposeAircraftLibrary()
     disposeVehicleLibrary()

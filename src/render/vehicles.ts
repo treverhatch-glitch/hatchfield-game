@@ -230,6 +230,8 @@ export function vehicleMesh(kind: string, color: string, size: readonly [number,
 }
 
 export interface VehicleInstance {
+  /** Stable sim id, when the pose came from a truck or a service job. */
+  id?: string
   kind: string
   color: string
   size: readonly [number, number, number]
