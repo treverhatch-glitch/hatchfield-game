@@ -44,6 +44,13 @@ export function pack4Url(file: string, root = PACK4_DIR): string {
   return `${base}/${file}`
 }
 
-/** Halls take terrazzo. Gates and offices take the grey carpet. */
-export const TERRAZZO_ROOMS = ['checkin', 'security', 'airside', 'shops', 'lab'] as const
-export const CARPET_ROOMS = ['gate', 'office'] as const
+/** Check-in, the concourse, and the lab keep terrazzo. */
+export const TERRAZZO_ROOMS = ['checkin', 'airside', 'lab'] as const
+/** Gate holdrooms take the Gemini gate carpet. */
+export const CARPET_ROOMS = ['gate'] as const
+/** Offices keep the grey carpet from the earlier art pass. */
+export const OFFICE_CARPET_ROOMS = ['office'] as const
+/** Security lanes take the pale sand rubber. */
+export const RUBBER_ROOMS = ['security'] as const
+/** Shops take the ash plank floor. */
+export const PLANK_ROOMS = ['shops'] as const

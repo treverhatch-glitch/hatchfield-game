@@ -136,7 +136,7 @@ function checkinDesk(i: number): Part[] {
   const logo = `logo${i % 4}`
   return [
     // counter body + granite top + bag-drop step
-    box([1.6, 1.05, 0.7], [0, 0.525, -0.2], 'corian'),
+    box([1.6, 1.05, 0.7], [0, 0.525, -0.2], 'oak'),
     box([1.64, 0.04, 0.78], [0, 1.07, -0.2], 'granite'),
     box([1.5, 0.12, 0.02], [0, 0.85, 0.16], 'lacquerBlue'),
     box([1.56, 0.02, 0.02], [0, 0.06, 0.16], 'ledBlue'),
@@ -298,7 +298,7 @@ function archDetector(): Part[] {
   ]
 }
 function securityLane(): Part[] {
-  const out: Part[] = [...place(xray(), 0, 0)]
+  const out: Part[] = [box([14.2, 0.012, 6.2], [-0.4, 0.004, 0.3], 'intRubber'), ...place(xray(), 0, 0)]
   // divesting tables (rear) with tray stacks
   for (const x of [-4.2, -5.3]) {
     out.push(box([1.0, 0.82, 0.7], [x, 0.41, 0], 'corian'), box([1.04, 0.03, 0.74], [x, 0.84, 0], 'brushed'))
@@ -336,18 +336,18 @@ function securityLane(): Part[] {
 // ---------- shops ----------
 type ShopKind = 'coffee' | 'dutyfree' | 'news' | 'fastfood'
 const SHOP: Record<ShopKind, { sign: string; lb: string; accent: string; floor: string }> = {
-  coffee: { sign: 'sgnCoffee', lb: 'lbCoffee', accent: 'walnut', floor: 'oak' },
-  dutyfree: { sign: 'sgnDuty', lb: 'lbDuty', accent: 'black', floor: 'granite' },
-  news: { sign: 'sgnNews', lb: 'lbNews', accent: 'red', floor: 'greyPanel' },
-  fastfood: { sign: 'sgnBurger', lb: 'lbBurger', accent: 'red', floor: 'cream' },
+  coffee: { sign: 'sgnCoffee', lb: 'lbCoffee', accent: 'walnut', floor: 'intPlank' },
+  dutyfree: { sign: 'sgnDuty', lb: 'lbDuty', accent: 'black', floor: 'intPlank' },
+  news: { sign: 'sgnNews', lb: 'lbNews', accent: 'red', floor: 'intPlank' },
+  fastfood: { sign: 'sgnBurger', lb: 'lbBurger', accent: 'red', floor: 'intPlank' },
 }
 function shopShell(kind: ShopKind, w = 8, d = 6, h = 4): Part[] {
   const s = SHOP[kind]
   const out: Part[] = [
     box([w, 0.02, d], [0, 0.01, -d / 2], s.floor),
-    box([w, h, 0.2], [0, h / 2, -d], 'cream'),
-    box([0.25, h, d], [-w / 2, h / 2, -d / 2], 'cream'),
-    box([0.25, h, d], [w / 2, h / 2, -d / 2], 'cream'),
+    box([w, h, 0.2], [0, h / 2, -d], 'intWall'),
+    box([0.25, h, d], [-w / 2, h / 2, -d / 2], 'intWall'),
+    box([0.25, h, d], [w / 2, h / 2, -d / 2], 'intWall'),
     // fascia + illuminated sign. The wordmark is a plane facing +Z so the letters stay left to right.
     box([w + 0.3, 0.9, 0.35], [0, h - 0.45, 0.05], s.accent),
     part('plane', [w * 0.62, 0.55, 0.02], [0, h - 0.45, 0.28], s.sign),
@@ -379,7 +379,7 @@ function shelfUnit(goods: string[], w = 1.8): Part[] {
   }
   return out
 }
-function counterUnit(len: number, top = 'granite', face = 'walnut'): Part[] {
+function counterUnit(len: number, top = 'granite', face = 'brushed'): Part[] {
   return [
     box([len, 1.0, 0.7], [0, 0.5, 0], face),
     box([len + 0.06, 0.05, 0.76], [0, 1.03, 0], top),
@@ -403,7 +403,7 @@ function shop(kind: ShopKind): Part[] {
       out.push(box([1.6, 0.9, 0.9], [x, 0.45, -2.8], 'black'), box([1.5, 0.35, 0.8], [x, 1.08, -2.8], 'glass'))
       for (let i = 0; i < 4; i++) out.push(box([0.18, 0.24, 0.12], [x - 0.5 + i * 0.33, 1.02, -2.8], i % 2 ? 'goodsA' : 'goodsB'))
     }
-    out.push(...place(counterUnit(2, 'granite', 'black'), -3, -1.4, H))
+    out.push(...place(counterUnit(2, 'granite', 'brushed'), -3, -1.4, H))
     out.push(box([0.6, 1.7, 0.1], [0, 0.85, -1.2], 'lbDuty'))
     out.push(...place(gondola(['bottle', 'goodsA', 'bottle', 'goodsB']), 0, -4.2))
   } else if (kind === 'news') {
@@ -415,11 +415,11 @@ function shop(kind: ShopKind): Part[] {
     out.push(box([1.4, 2.0, 0.7], [3.1, 1.0, -5.4], 'darkSteel'), box([1.3, 1.8, 0.02], [3.1, 1.05, -5.04], 'glass'))
     for (let k = 0; k < 4; k++) for (let i = 0; i < 6; i++) out.push(cyl([0.07, 0.22, 0.07], [2.6 + i * 0.2, 0.4 + k * 0.45, -5.2], i % 2 ? 'bagTeal' : 'red'))
     out.push(box([1.4, 0.04, 0.6], [3.1, 2.05, -5.4], 'lampCool'))
-    out.push(...place(counterUnit(1.8, 'corian', 'red'), 2.4, -1.6))
+    out.push(...place(counterUnit(1.8, 'corian', 'brushed'), 2.4, -1.6))
     out.push(...place(gondola(['goodsC', 'red', 'goodsD', 'signYellow']), -1.2, -3.0))
     out.push(box([0.4, 0.3, 0.3], [2.4, 1.2, -1.6], 'black'))
   } else {
-    out.push(...place(counterUnit(5.6, 'brushed', 'red'), 0, -2.6))
+    out.push(...place(counterUnit(5.6, 'brushed', 'brushed'), 0, -2.6))
     for (let i = 0; i < 3; i++) out.push(...place(monitor(0.3, 0.22), -1.8 + i * 1.8, -2.45, 0, 1.2))
     // kitchen line behind
     out.push(box([6.6, 0.95, 0.8], [0, 0.48, -5.3], 'brushed'), box([6.6, 0.6, 0.6], [0, 2.6, -5.4], 'steel'))
@@ -429,6 +429,47 @@ function shop(kind: ShopKind): Part[] {
     for (let i = 0; i < 4; i++) out.push(part('sphere', [0.14, 0.08, 0.14], [-1 + i * 0.3, 1.1, -2.5], 'bun'))
     out.push(box([0.6, 1.8, 0.4], [3.4, 0.9, -1.0], 'signYellow'), box([0.5, 0.5, 0.02], [3.4, 1.3, -0.79], 'screen'))
   }
+  return out
+}
+
+/** Glass counter of phones and small boxes. Origin on the floor, front +Z. */
+function glassCase(w = 1.4): Part[] {
+  const out: Part[] = [
+    box([w, 0.72, 0.52], [0, 0.36, 0], 'white'),
+    box([w + 0.02, 0.04, 0.56], [0, 0.74, 0], 'brushed'),
+    box([w - 0.06, 0.36, 0.46], [0, 0.96, 0], 'glass'),
+  ]
+  const n = Math.max(3, Math.floor(w / 0.22))
+  const mats = ['black', 'goodsC', 'white', 'red']
+  for (let i = 0; i < n; i++) out.push(box([0.1, 0.16, 0.02], [(i - (n - 1) / 2) * 0.2, 0.86, 0], mats[i % mats.length]))
+  return out
+}
+
+/**
+ * Airside gadget shop from the shop_gadget sheet: oak plank floor, cream
+ * walls, white island cases, a brushed-steel checkout.
+ */
+function shopGadget(): Part[] {
+  const w = 7.4
+  const d = 5.6
+  const h = 3.2
+  const out: Part[] = [
+    box([w, 0.02, d], [0, 0.01, -d / 2], 'intPlank'),
+    box([w, h, 0.14], [0, h / 2, -d], 'intWall'),
+    box([0.14, h, d], [-w / 2, h / 2, -d / 2], 'intWall'),
+    box([0.14, h, d], [w / 2, h / 2, -d / 2], 'intWall'),
+    box([w, 0.42, 0.18], [0, h - 0.22, 0.02], 'white'),
+    part('plane', [2.4, 0.28, 0.02], [0, h - 0.22, 0.14], 'sgnGadget'),
+    box([w, 0.04, 0.08], [0, h - 0.48, 0.08], 'ledWarm'),
+    box([2.2, 2.35, 0.04], [-2.4, 1.2, 0.02], 'glass'),
+    box([2.2, 2.35, 0.04], [2.4, 1.2, 0.02], 'glass'),
+  ]
+  for (const x of [-3.6, -1.2, 1.2, 3.6]) out.push(box([0.06, 2.4, 0.08], [x, 1.2, 0.02], 'brushed'))
+  for (const x of [-2.2, -0.7, 0.8, 2.3]) out.push(...place(glassCase(1.25), x, -4.85))
+  out.push(...place(glassCase(1.7), -1.4, -2.7))
+  out.push(...place(glassCase(1.7), 0.5, -2.7))
+  out.push(...place(counterUnit(1.7, 'white', 'intCounter'), 2.55, -1.15, -H))
+  for (let x = -2.4; x <= 2.4; x += 1.6) out.push(cyl([0.16, 0.04, 0.16], [x, h - 0.04, -2.4], 'lamp'))
   return out
 }
 
@@ -446,18 +487,43 @@ function cafeTable(seats = 4): Part[] {
   for (const y of yaws) out.push(...place(chair('oak'), Math.sin(y) * 0.62, Math.cos(y) * 0.62, y + Math.PI))
   return out
 }
+/** White top, brushed pedestal, dark chairs. Food-court seating only. */
+function foodTable(): Part[] {
+  const out: Part[] = [
+    box([0.86, 0.04, 0.86], [0, 0.74, 0], 'white'),
+    cyl([0.06, 0.7, 0.06], [0, 0.36, 0], 'brushed'),
+    cyl([0.26, 0.03, 0.26], [0, 0.02, 0], 'brushed'),
+  ]
+  for (const y of [0, H, Math.PI, -H]) out.push(...place(chair('black', 'brushed'), Math.sin(y) * 0.62, Math.cos(y) * 0.62, y + Math.PI))
+  return out
+}
+
+/**
+ * Food court from the food_court sheet: terrazzo floor, four brushed-steel
+ * stalls with menu boards, white tables, baffle ceiling.
+ */
 function foodCourt(): Part[] {
-  const out: Part[] = []
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) out.push(...place(cafeTable(r === 1 ? 2 : 4), (c - 1.5) * 2.4, (r - 1) * 2.4))
-  // long communal bench along the back with high table
-  out.push(box([8.4, 1.05, 0.7], [0, 0.525, -4.0], 'intCounter'), box([8.6, 0.05, 0.8], [0, 1.07, -4.0], 'granite'))
-  for (let i = 0; i < 9; i++) out.push(cyl([0.38, 0.05, 0.38], [-3.8 + i * 0.95, 0.75, -3.35], 'leather'), cyl([0.05, 0.72, 0.05], [-3.8 + i * 0.95, 0.37, -3.35], 'chrome'))
+  const w = 9.2
+  const out: Part[] = [
+    box([w, 0.02, 7.4], [0, 0.01, -0.6], 'intFloor'),
+    box([w, 2.8, 0.12], [0, 1.4, -4.3], 'intWall'),
+    box([0.12, 2.8, 7.2], [-w / 2, 1.4, -0.7], 'intWall'),
+    box([0.12, 2.8, 7.2], [w / 2, 1.4, -0.7], 'intWall'),
+  ]
   const menus = ['sgnGrill', 'sgnNoodle', 'sgnBrew', 'sgnGrab'] as const
-  for (let i = 0; i < menus.length; i++) out.push(box([1.85, 0.62, 0.04], [-2.85 + i * 1.9, 2.15, -4.32], menus[i]))
-  out.push(box([7.7, 0.12, 0.04], [0, 2.55, -4.32], 'signDark'))
-  for (const x of [-4.6, 4.6]) out.push(...place(plant(1.1, 'walnut'), x, 3.2))
-  out.push(...place(binUnit(), 4.6, -2.6, -H))
-  for (let x = -3.6; x <= 3.6; x += 2.4) out.push(cyl([0.5, 0.6, 0.5], [x, 3.1, 0], 'amber'), cyl([0.01, 1.3, 0.01], [x, 4.0, 0], 'black'))
+  for (let i = 0; i < menus.length; i++) {
+    const x = -3.3 + i * 2.2
+    out.push(
+      box([2.0, 1.05, 0.62], [x, 0.52, -3.55], 'intCounter'),
+      box([2.05, 0.045, 0.68], [x, 1.07, -3.52], 'white'),
+      box([1.7, 0.55, 0.04], [x, 2.05, -4.16], menus[i]),
+      box([1.85, 0.05, 0.04], [x, 1.65, -4.16], 'ledWarm'),
+    )
+  }
+  for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) out.push(...place(foodTable(), (c - 1) * 2.5, 0.15 + r * 2.15))
+  for (let i = 0; i < 4; i++) out.push(box([w - 0.8, 0.08, 0.42], [0, 3.05, -2.8 + i * 1.45], 'intCeiling'))
+  for (const x of [-2.4, 0, 2.4]) out.push(cyl([0.16, 0.05, 0.16], [x, 2.55, -0.4], 'lamp'), cyl([0.02, 0.45, 0.02], [x, 2.8, -0.4], 'brushed'))
+  out.push(...place(binUnit(), 4.0, 1.6, -H))
   return out
 }
 
@@ -746,38 +812,47 @@ function jetBridge(): Part[] {
   for (const [z0, z1, w, h] of segs) {
     const L = z1 - z0, zc = (z0 + z1) / 2, y = fy + 1.4 + zc * slope
     const tilt = -Math.atan(slope)
-    out.push(box([w, h, L], [0, y, zc], 'corrugated', [tilt, 0, 0]))
-    out.push(box([w + 0.06, 0.12, L], [0, y + h / 2 + 0.05, zc], 'lacquerWhite', [tilt, 0, 0]))
-    out.push(box([w + 0.06, 0.18, L], [0, y - h / 2 - 0.07, zc], 'darkSteel', [tilt, 0, 0]))
-    out.push(box([0.05, h * 0.72, 0.08], [w / 2 + 0.03, y + 0.05, zc - L * 0.28], 'intJet', [tilt, 0, 0]))
-    out.push(box([0.05, h * 0.72, 0.08], [-w / 2 - 0.03, y + 0.05, zc - L * 0.28], 'intJet', [tilt, 0, 0]))
-    out.push(box([0.05, h * 0.72, 0.08], [w / 2 + 0.03, y + 0.05, zc + L * 0.28], 'intJet', [tilt, 0, 0]))
-    out.push(box([0.05, h * 0.72, 0.08], [-w / 2 - 0.03, y + 0.05, zc + L * 0.28], 'intJet', [tilt, 0, 0]))
-    if (z0 < 3) {
-      out.push(
-        ...markNear([
-          box([w - 0.45, 0.04, L - 0.7], [0, y - h / 2 + 0.16, zc], 'intCarpet', [tilt, 0, 0]),
-          box([0.04, 0.05, L - 0.9], [w / 2 - 0.28, y - h / 2 + 0.72, zc], 'chrome', [tilt, 0, 0]),
-          box([0.04, 0.05, L - 0.9], [-(w / 2 - 0.28), y - h / 2 + 0.72, zc], 'chrome', [tilt, 0, 0]),
-        ]),
-      )
-    }
-    out.push(box([0.02, 0.9, L - 0.6], [w / 2 + 0.01, y + 0.2, zc], 'jbGlass', [tilt, 0, 0]))
-    out.push(box([0.02, 0.9, L - 0.6], [-w / 2 - 0.01, y + 0.2, zc], 'jbGlass', [tilt, 0, 0]))
-    out.push(box([0.03, 0.05, L], [w / 2 + 0.03, y - 0.4, zc], 'hatchBlue', [tilt, 0, 0]))
-    out.push(box([0.03, 0.05, L], [-w / 2 - 0.03, y - 0.4, zc], 'hatchBlue', [tilt, 0, 0]))
+    const deck = y - h / 2
+    // Open top so the hall camera reads the runner. Walls keep the silhouette.
+    out.push(box([w, 0.1, L], [0, deck + 0.05, zc], 'darkSteel', [tilt, 0, 0]))
+    out.push(box([0.1, h * 0.9, L], [w / 2 - 0.05, y, zc], 'corrugated', [tilt, 0, 0]))
+    out.push(box([0.1, h * 0.9, L], [-(w / 2 - 0.05), y, zc], 'corrugated', [tilt, 0, 0]))
+    out.push(box([0.14, 0.08, L], [w / 2 - 0.07, y + h * 0.42, zc], 'lacquerWhite', [tilt, 0, 0]))
+    out.push(box([0.14, 0.08, L], [-(w / 2 - 0.07), y + h * 0.42, zc], 'lacquerWhite', [tilt, 0, 0]))
+    out.push(box([1.15, 0.03, L - 0.25], [0, deck + 0.12, zc], 'intRunner', [tilt, 0, 0]))
+    out.push(
+      ...markNear([
+        box([0.04, 0.05, L - 0.5], [w / 2 - 0.32, deck + 0.9, zc], 'chrome', [tilt, 0, 0]),
+        box([0.04, 0.05, L - 0.5], [-(w / 2 - 0.32), deck + 0.9, zc], 'chrome', [tilt, 0, 0]),
+      ]),
+    )
+    out.push(box([0.05, h * 0.55, 0.08], [w / 2 + 0.02, y + 0.05, zc - L * 0.28], 'intJet', [tilt, 0, 0]))
+    out.push(box([0.05, h * 0.55, 0.08], [-w / 2 - 0.02, y + 0.05, zc - L * 0.28], 'intJet', [tilt, 0, 0]))
+    out.push(box([0.02, 0.7, L - 0.8], [w / 2 + 0.02, y + 0.15, zc], 'jbGlass', [tilt, 0, 0]))
+    out.push(box([0.02, 0.7, L - 0.8], [-(w / 2 + 0.02), y + 0.15, zc], 'jbGlass', [tilt, 0, 0]))
+    out.push(box([0.03, 0.05, L], [w / 2 + 0.04, deck + 0.35, zc], 'hatchBlue', [tilt, 0, 0]))
+    out.push(box([0.03, 0.05, L], [-(w / 2 + 0.04), deck + 0.35, zc], 'hatchBlue', [tilt, 0, 0]))
   }
-  // cab, rotated slightly to meet the door, with bellows + canopy + lit sign
+  // Cab is open on top. The aircraft door closes the far end of the runner.
   const cz = 16.0, cy = fy + 1.0
+  const deck = cy - 1.28
   out.push(
-    box([3.4, 2.7, 2.6], [0, cy, cz], 'lacquerWhite'),
-    box([3.0, 2.4, 0.5], [0, cy, cz + 1.5], 'bellows'),
-    box([3.2, 0.12, 0.6], [0, cy + 1.3, cz + 1.6], 'bellows'),
-    box([0.02, 1.0, 1.8], [1.71, cy + 0.3, cz], 'jbGlass'),
-    box([0.02, 1.0, 1.8], [-1.71, cy + 0.3, cz], 'jbGlass'),
-    box([1.6, 0.3, 0.02], [0, cy + 1.05, cz - 1.31], 'sgnGateA12'),
-    box([0.3, 0.12, 0.12], [1.5, cy + 1.45, cz + 1.0], 'amber'),
-    box([3.4, 0.06, 0.06], [0, cy - 1.32, cz + 1.3], 'ledWarm'),
+    box([3.2, 0.1, 2.5], [0, deck, cz], 'darkSteel'),
+    box([0.12, 2.4, 2.5], [1.54, cy - 0.05, cz], 'lacquerWhite'),
+    box([0.12, 2.4, 2.5], [-1.54, cy - 0.05, cz], 'lacquerWhite'),
+    box([3.05, 2.4, 0.1], [0, cy - 0.05, cz - 1.2], 'lacquerWhite'),
+    box([1.15, 0.03, 2.0], [0, deck + 0.08, cz], 'intRunner'),
+    box([1.55, 2.1, 0.08], [0, deck + 1.1, cz + 1.12], 'jbDoor'),
+    box([0.48, 0.36, 0.02], [0.05, deck + 1.45, cz + 1.17], 'jbGlass'),
+    box([0.08, 0.18, 0.05], [0.52, deck + 1.05, cz + 1.17], 'chrome'),
+    box([1.9, 0.08, 0.08], [0, deck + 2.16, cz + 1.12], 'brushed'),
+    box([3.0, 2.3, 0.4], [0, cy, cz + 1.48], 'bellows'),
+    box([3.15, 0.12, 0.45], [0, cy + 1.2, cz + 1.55], 'bellows'),
+    box([0.02, 0.85, 1.5], [1.62, cy + 0.15, cz], 'jbGlass'),
+    box([0.02, 0.85, 1.5], [-1.62, cy + 0.15, cz], 'jbGlass'),
+    box([1.6, 0.3, 0.02], [0, cy + 0.95, cz - 1.16], 'sgnGateA12'),
+    box([0.3, 0.12, 0.12], [1.4, cy + 1.25, cz + 0.7], 'amber'),
+    box([2.8, 0.05, 0.05], [0, deck + 0.04, cz + 1.05], 'ledWarm'),
   )
   // drive column (wheel bogie) under tunnel B
   const dz = 12.6, dy = fy + 1.4 + dz * slope - 1.4
@@ -840,7 +915,7 @@ function divestStation(n: number): Part[] {
 
 /** Automated tray return lane (ATRS) with CT scanner gantry, 4 divest stations, reject line, recompose bench. */
 function securityLaneCT(): Part[] {
-  const out: Part[] = []
+  const out: Part[] = [box([16.2, 0.012, 7.4], [-0.4, 0.004, 0.4], 'intRubber')]
   for (let i = 0; i < 4; i++) out.push(...place(divestStation(i), -6.4 + i * 1.3, 0))
   // CT scanner: deep housing with ring gantry face and lead curtains
   out.push(box([2.6, 1.7, 1.4], [-0.6, 0.85, 0], 'lacquerWhite'), box([2.64, 0.12, 1.44], [-0.6, 1.76, 0], 'lacquerBlue'))
@@ -881,7 +956,7 @@ function securityLaneCT(): Part[] {
 /** Specialty coffee counter: espresso machine with group heads, grinders, tiered pastry case, till, menu boards. */
 function cafeCounter(): Part[] {
   const out: Part[] = [
-    box([4.4, 1.0, 0.75], [0, 0.5, 0], 'walnut'),
+    box([4.4, 1.0, 0.75], [0, 0.5, 0], 'brushed'),
     box([4.46, 0.05, 0.82], [0, 1.03, 0], 'granite'),
     box([4.4, 0.1, 0.02], [0, 0.07, 0.38], 'ledWarm'),
     ...Array.from({ length: 11 }, (_, i) => box([0.06, 0.86, 0.03], [-2.0 + i * 0.4, 0.5, 0.385], 'oakSlat')),
@@ -954,7 +1029,7 @@ function checkinDeskSingle(): Part[] {
 /** Food-court stall sized to the plan kiosk. `sign` is a generic menu band, not a brand. */
 function menuCounter(sign: string): Part[] {
   return [
-    box([1.08, 0.92, 0.5], [0, 0.46, 0], 'intCounter'),
+    box([1.08, 0.92, 0.5], [0, 0.46, 0], 'intWood'),
     box([1.12, 0.045, 0.56], [0, 0.94, 0.02], 'granite'),
     box([0.86, 0.38, 0.02], [0, 1.26, 0.2], sign),
     box([0.9, 0.035, 0.02], [0, 1.48, 0.2], 'ledWarm'),
@@ -1006,7 +1081,7 @@ function armchair(): Part[] {
 /** Lounge seating for the airside room. Carpet, sofas, chairs, a wood screen. */
 function loungeCluster(): Part[] {
   return [
-    box([4.4, 0.015, 3.2], [0, 0.008, 0], 'intCarpet'),
+    box([4.4, 0.015, 3.2], [0, 0.008, 0], 'intWood'),
     ...place(sofa(1.8), -0.85, -0.85),
     ...place(sofa(1.5), 0.85, 0.7, Math.PI),
     ...place(armchair(), -1.55, 0.55, 0.5),
@@ -1026,7 +1101,7 @@ function staffOffice(): Part[] {
     const x = (i - 1) * 1.35
     out.push(
       box([1.2, 1.15, 0.05], [x, 0.7, -0.95], 'intOffice'),
-      box([1.1, 0.72, 0.58], [x, 0.36, -0.45], 'intOffice'),
+      box([1.1, 0.72, 0.58], [x, 0.36, -0.45], 'intWood'),
       box([1.14, 0.03, 0.62], [x, 0.74, -0.45], 'corian'),
       ...place(monitor(0.4, 0.24), x, -0.55, 0, 0.95),
       ...place(chair('seatGrey'), x, 0.2, Math.PI),
@@ -1059,6 +1134,7 @@ export const TERMINAL_PROP_TYPES = [
   'shop_dutyfree',
   'shop_news',
   'shop_fastfood',
+  'shop_gadget',
   'food_court',
   'cafe_table',
   'gate_seating',
@@ -1108,6 +1184,7 @@ export const PROP_BUILDERS: Record<TerminalPropType, () => Part[]> = {
   shop_dutyfree: () => shop('dutyfree'),
   shop_news: () => shop('news'),
   shop_fastfood: () => shop('fastfood'),
+  shop_gadget: shopGadget,
   food_court: foodCourt,
   cafe_table: () => cafeTable(4),
   gate_seating: gateSeating,

@@ -19,7 +19,7 @@ import securityB64 from './tex/security.b64.txt?raw'
 import { deskHeaderTexture, fidsBoardTexture, wayfindingSheetTexture } from '../signage/load'
 import { counterSheetTexture } from './counterArt'
 import { interiorTexture } from './interiorTex'
-import { bigSign, brushedRough, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
+import { bigSign, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 import { attachBuildingMaterial } from '../reflections'
 
 export const GEMINI_TEX = {
@@ -151,20 +151,20 @@ export interface MatSpec {
 
 export const MATERIALS: Record<string, MatSpec> = {
   // structure and finishes
-  steel: { color: '#b9bec4', rough: 0.35, metal: 0.85, roughMap: brushedRough },
-  brushed: { color: '#d4d7da', rough: 0.6, metal: 0.95, roughMap: brushedRough },
-  chrome: { color: '#eceff2', rough: 0.12, metal: 1 },
+  steel: { color: '#ffffff', rough: 0.4, metal: 0.55, map: () => interiorTexture('brushed_steel', [2, 2]) },
+  brushed: { color: '#ffffff', rough: 0.45, metal: 0.5, map: () => interiorTexture('brushed_steel', [2, 2]) },
+  chrome: { color: '#ffffff', rough: 0.38, metal: 0.45, map: () => interiorTexture('brushed_steel', [2, 2]) },
   darkSteel: { color: '#2b2f35', rough: 0.5, metal: 0.6 },
   black: { color: '#15171a', rough: 0.6, metal: 0.2 },
   rubber: { color: '#1c1d1f', rough: 0.9, metal: 0 },
   belt: { color: '#3a3a3a', rough: 0.8, metal: 0.1, map: () => geminiTexture('belt', [2, 1]) },
   plate: { color: '#c8ccd0', rough: 0.4, metal: 0.8, map: () => geminiTexture('plate', [2, 2]) },
   white: { color: '#f2f1ec', rough: 0.4 },
-  cream: { color: '#e9e2d2', rough: 0.55 },
+  cream: { color: '#ffffff', rough: 0.55, map: () => interiorTexture('wall_panel_cream', [1, 1]) },
   greyPanel: { color: '#8d939a', rough: 0.5, metal: 0.2 },
   corian: { color: '#f6f5f1', rough: 0.2, clearcoat: 0.5 },
   granite: { color: '#34363a', rough: 0.25, metal: 0.1, clearcoat: 0.8 },
-  oak: { color: '#b88a58', rough: 0.55 },
+  oak: { color: '#ffffff', rough: 0.55, map: () => interiorTexture('oak_veneer', [2, 2]) },
   walnut: { color: '#6a4528', rough: 0.5 },
   glass: { color: '#bfe3ee', rough: 0.05, metal: 0.1, opacity: 0.28 },
   glassTint: { color: '#7fb6c8', rough: 0.05, metal: 0.3, opacity: 0.4 },
@@ -213,7 +213,7 @@ export const MATERIALS: Record<string, MatSpec> = {
   tileWhite: { color: '#ffffff', rough: 0.2, map: () => wallTile('#f2f2ee', [3, 2]), clearcoat: 0.6 },
   tileTeal: { color: '#ffffff', rough: 0.2, map: () => wallTile('#4e8c86', [3, 2]), clearcoat: 0.6 },
   mirror: { color: '#f4f6f8', rough: 0.02, metal: 1, envI: 1.5 },
-  stainless: { color: '#c9cdd1', rough: 0.3, metal: 1, roughMap: brushedRough },
+  stainless: { color: '#ffffff', rough: 0.4, metal: 0.55, map: () => interiorTexture('brushed_steel', [2, 2]) },
   lacquerBlue: { color: '#1f4e8c', rough: 0.25, clearcoat: 1 },
   lacquerWhite: { color: '#f5f5f2', rough: 0.25, clearcoat: 1 },
   led: { color: '#ffffff', emissive: '#dff0ff', emissiveIntensity: 3 },
@@ -283,15 +283,21 @@ export const MATERIALS: Record<string, MatSpec> = {
   // concept interior plates (arrivals, claim, food court, lounge, restrooms, office, jet bridge)
   intFloor: { color: '#d8d0c4', rough: 0.35, map: () => interiorTexture('floor_terrazzo', [2, 2]), clearcoat: 0.35 },
   intRestroomFloor: { color: '#c4c2bc', rough: 0.4, map: () => interiorTexture('floor_restroom', [2, 2]), clearcoat: 0.25 },
-  intCarpet: { color: '#303848', rough: 0.95, map: () => interiorTexture('floor_carpet', [2, 2]) },
-  intTile: { color: '#f2f2ee', rough: 0.25, map: () => interiorTexture('wall_tile', [2, 2]), clearcoat: 0.45 },
-  intWall: { color: '#e8e2d4', rough: 0.55, map: () => interiorTexture('wall_panel', [1, 1]) },
+  intCarpet: { color: '#ffffff', rough: 0.95, map: () => interiorTexture('gate_carpet', [2, 2]) },
+  intTile: { color: '#ffffff', rough: 0.25, map: () => interiorTexture('restroom_tile', [2, 2]), clearcoat: 0.45 },
+  intWall: { color: '#ffffff', rough: 0.55, map: () => interiorTexture('wall_panel_cream', [1, 1]) },
   intStall: { color: '#5c6268', rough: 0.45, metal: 0.25, map: () => interiorTexture('wall_stall', [1, 1]) },
-  intCounter: { color: '#ece8e0', rough: 0.35, map: () => interiorTexture('counter_front', [1, 1]), clearcoat: 0.2 },
+  intCounter: { color: '#ffffff', rough: 0.4, metal: 0.45, map: () => interiorTexture('brushed_steel', [2, 1]), clearcoat: 0.15 },
   intBelt: { color: '#2a2c30', rough: 0.85, map: () => interiorTexture('belt_claim', [4, 1]) },
   intOffice: { color: '#243454', rough: 0.8, map: () => interiorTexture('office_panel', [1, 1]) },
   intJet: { color: '#c6cacf', rough: 0.4, metal: 0.55, map: () => interiorTexture('jetbridge_panel', [2, 1]) },
-  intWood: { color: '#8a623e', rough: 0.55, map: () => interiorTexture('lounge_wood', [1, 2]) },
+  intWood: { color: '#ffffff', rough: 0.55, map: () => interiorTexture('oak_veneer', [2, 2]) },
+  intRubber: { color: '#ffffff', rough: 0.92, map: () => interiorTexture('security_rubber', [3, 3]) },
+  intPlank: { color: '#ffffff', rough: 0.62, map: () => interiorTexture('shop_plank', [2, 2]) },
+  intRunner: { color: '#ffffff', rough: 0.94, map: () => interiorTexture('jet_runner', [1, 4]) },
+  intCeiling: { color: '#ffffff', rough: 0.72, map: () => interiorTexture('ceiling_baffle', [3, 1]) },
+  jbDoor: { color: '#f4f1ea', rough: 0.5, map: () => interiorTexture('wall_panel_cream', [1, 2]) },
+  sgnGadget: { color: '#ffffff', map: () => signTex('GADGETS', '#1a2744', '#f4f1ea', '', 1024, 256), glow: true },
   sgnGrill: { color: '#ffffff', map: () => signTex('GRILL', '#c45a28', '#fff6e8', '', 1024, 256), glow: true },
   sgnNoodle: { color: '#ffffff', map: () => signTex('NOODLES', '#1d4e4a', '#fff6e8', '', 1024, 256), glow: true },
   sgnBrew: { color: '#ffffff', map: () => signTex('BREW', '#5a3a22', '#f3e2c4', '', 1024, 256), glow: true },
