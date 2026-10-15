@@ -5159,6 +5159,7 @@ export class Game {
       rail: this.hasRailStation(),
       paxPerDay: Math.max(0, this.paxPerDay, this.dayPax),
       extraVehPerMin: this.fuelRoadLoad,
+      turns: this.flightsDone,
       departures: this.flights.reduce(
         (n, f) => n + (f.phase === 'gone' || f.cargo || f.kind === 'freighter' ? 0 : 1),
         0,

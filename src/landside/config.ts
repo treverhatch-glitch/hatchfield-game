@@ -83,6 +83,18 @@ export const LANDSIDE = {
   perPaxPerDay: 0.004,
   /** Extra passengers per minute for each live departure. */
   perDeparture: 1.2,
+  /**
+   * Turns the starter curb can absorb before the city crowds it.
+   * One runway only keeps a couple of jets on the ramp, so live departures
+   * alone never fill three stalls. The passengers show up once the book
+   * is real: past this many completed turns, each further turn adds
+   * `perTurn` passengers a minute. A careful field crosses pressure 1
+   * between day 15 and 35, after about 80 flights and eight carriers,
+   * and not in the first five days. One bus bay brings that bank back under 1.
+   */
+  turnAllowance: 52,
+  /** Passengers per minute for each completed turn past `turnAllowance`. */
+  perTurn: 0.2,
 } as const
 
 export type ParkKind = keyof typeof LANDSIDE.parkSpaces

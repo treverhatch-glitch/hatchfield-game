@@ -21,6 +21,12 @@ export interface LandsideField {
   paxPerDay: number
   /** Live passenger departures. Pressure grows with this. */
   departures: number
+  /**
+   * Passenger turns the runway has already completed.
+   * The starter curb absorbs the opening book. Once the field has flown
+   * a real bank, the city sends more people than three stalls can drop.
+   */
+  turns?: number
   /** Extra vehicles per minute on the approach, such as a fuel tanker. They do not use the curb. */
   extraVehPerMin?: number
 }

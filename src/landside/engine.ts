@@ -95,10 +95,13 @@ export function arrivalRate(field: LandsideField): number {
   if (!field.terminals.length || !field.roads.length) return 0
   const pax = clamp01(field.paxPerDay)
   const departures = clamp01(field.departures)
+  const turns = clamp01(field.turns ?? 0)
+  const extraTurns = Math.max(0, turns - LANDSIDE.turnAllowance)
   return (
     LANDSIDE.baseArrivalsPerMin +
     pax * LANDSIDE.perPaxPerDay +
-    departures * LANDSIDE.perDeparture
+    departures * LANDSIDE.perDeparture +
+    extraTurns * LANDSIDE.perTurn
   )
 }
 

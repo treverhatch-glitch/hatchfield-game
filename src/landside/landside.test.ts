@@ -115,6 +115,22 @@ describe('capacity', () => {
     expect(extended.delaySec).toBeLessThan(short.delaySec)
   })
 
+  it('keeps the opening book on the starter curb and overruns it once the bank has flown', () => {
+    const bank = { departures: 2, paxPerDay: 160 }
+    const early = measure(field({ ...bank, turns: 8 }))
+    const beforeWindow = measure(field({ ...bank, turns: 44 }))
+    const grownField = field({ ...bank, turns: 82 })
+    const grown = measure(grownField)
+    expect(early.pressure, `early ${early.pressure}`).toBeLessThan(1)
+    expect(beforeWindow.pressure, `44 turns ${beforeWindow.pressure}`).toBeLessThan(1)
+    expect(early.curbStalls).toBe(3)
+    expect(grown.pressure, `82 turns ${grown.pressure}`).toBeGreaterThan(1)
+    const bay = measure(grownField, buildNetwork({ ...grownField, busBays: [{ c: 9, r: 6 }] }))
+    expect(bay.busBays).toBe(1)
+    expect(bay.pressure, `bay ${bay.pressure}`).toBeLessThan(1)
+    expect(bay.pressure).toBeLessThan(grown.pressure)
+  })
+
   it('overruns the starter curb in a careful mid-game bank, and the three stamps add stalls', () => {
     const mid = field({ departures: 4, paxPerDay: 1600 })
     const bare = measure(mid)
