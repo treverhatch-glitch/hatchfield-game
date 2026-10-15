@@ -126,6 +126,8 @@ export const RIVAL_TRIM_DAYS = 14
 /** One nudge per airline per gap, and this many new texts per game day. */
 export const NUDGE_GAP_DAYS = 4
 export const NUDGE_FIELD_CAP = 3
+/** Desk ask on a warmth text. The tier name is still appended so the step stays obvious. */
+export const NUDGE_DESK_ASK = "We'd love a dedicated desk pair — interested?"
 
 /** Days between maintenance ferries once a hub carrier holds a hangar bay. */
 export const FERRY_GAP_DAYS = 3

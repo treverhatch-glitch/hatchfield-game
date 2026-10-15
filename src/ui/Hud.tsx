@@ -8,8 +8,9 @@ import { GameTimetable } from './timetable/GameTimetable'
 import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
+import { AirlinesHub } from './hub/AirlinesHub.tsx'
 import { HubAssign, HubProgress } from './hub/HubPanels.tsx'
-import { showHubProfile } from './hub/session.ts'
+import { showHubAssign, showHubProfile } from './hub/session.ts'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
@@ -245,12 +246,29 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     game.setSidePanel('hud')
   }
 
-  useEffect(() => {
-    if (game.hubDeepLinkTick <= 0) return
+  const [linkSeen, setLinkSeen] = useState(0)
+  const [assignSeen, setAssignSeen] = useState(0)
+  if (game.hubDeepLinkTick > linkSeen) {
+    setLinkSeen(game.hubDeepLinkTick)
     setInfoGroup('airlines')
-    openPanel('hubs')
-    if (game.hubDeepLinkAirline) showHubProfile(game.hubDeepLinkAirline)
-  }, [game.hubDeepLinkTick])
+    setPanel('relations')
+    setChromePinned(true)
+  }
+  if (game.hubAssignTick > assignSeen) {
+    setAssignSeen(game.hubAssignTick)
+    setInfoGroup('airlines')
+    setPanel('relations')
+    setChromePinned(true)
+  }
+  useEffect(() => {
+    if (game.hubDeepLinkTick <= 0 || !game.hubDeepLinkAirline) return
+    showHubProfile(game.hubDeepLinkAirline)
+  }, [game.hubDeepLinkTick, game.hubDeepLinkAirline])
+  useEffect(() => {
+    if (game.hubAssignTick <= 0 || !game.hubDeepLinkAirline) return
+    showHubProfile(game.hubDeepLinkAirline)
+    showHubAssign(game.hubDeepLinkAirline)
+  }, [game.hubAssignTick, game.hubDeepLinkAirline])
 
   const openUnlock = (link: UnlockLink) => {
     setUnlockFocus(link.anchor)
@@ -1634,6 +1652,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
               ) : null}
 
               {manageTab === 'letters' ? <AirlinesDesk game={game} /> : null}
+              {manageTab === 'relations' ? <AirlinesHub game={game} /> : null}
               {manageTab === 'hubs' ? <HubProgress game={game} /> : null}
               {manageTab === 'negotiation' ? (
                 <section data-testid="negotiation-desk">

@@ -1,6 +1,6 @@
 # Hub progression
 
-Accepted additions, Oct 15. Trever confirmed three pieces. This note is the build spec for those three. Nudge texts and the assign screen stay **Review** and are not this ticket. Higher-tier carriers stay stricter and pay the larger `HUB_OFFER_FEE`. The unique benefit is still the one archetype perk in §4. This note does not add a second perk list.
+Accepted additions, Oct 15. Trever confirmed three pieces. This note is the build spec for those three. The Airlines hub and the warmth-text jump to the desk assign panel are accepted and built. The fuller lease editor (lanes, stands, lounges, hangars, and world badges in one picker) stays **Review**. Higher-tier carriers stay stricter and pay the larger `HUB_OFFER_FEE`. The unique benefit is still the one archetype perk in §4. This note does not add a second perk list.
 
 1. Dedicated turnaround vehicles. The player assigns a tug, a belt loader, a catering truck, or a fuel truck from the fleet they already field, in that carrier's livery. It serves only that carrier. The relationship rises on the same dedicated lease credit. Some carriers require the set before a higher tier. Taking the truck out of the common pool is the flexibility cost.
 2. No automatic hub status. Station is the signed floor, not a hub. Every tier above it is earned by holding the current tier for `MIN_DAYS_AT_TIER` and by the existing on-time sample, then accepted on the phone offer. The sim never writes Focus, Base, Hub, or Primary except in `acceptHub`.
@@ -30,11 +30,15 @@ Accepted with this note, and built from it:
 3. The backlash ladder in §3 stands (−4 / −8 / −15, with those chances). Allies named in the roster are spared. The offer card shows the anger sentence before Accept.
 4. A dedicated vehicle is an existing fleet unit, painted from roster `primary` / `secondary`, taken out of the common pool, and still billed `DEFAULT_VEHICLE_SPECS[type].upkeepPerDay`. Dedicating does not add a second upkeep line.
 
+Accepted with the warmth texts, and built:
+
+1. One nudge per airline per `NUDGE_GAP_DAYS` (4), and `NUDGE_FIELD_CAP` (3) new texts per game day.
+5. Decline silences that warmth step only. The next step may still text. Later drops the card and does not silence the step, so the same step can return after the gap.
+6. The phone Assign button opens the desk assign panel (`HubAssign`: Common, Preferred, Dedicated). Vehicle, lounge, gate, and hangar buttons stay on the airline profile.
+
 Still open. Do not build them from this note:
 
-1. Is a gap of 4 game days per airline, and a field cap of 3 nudge texts a day, the right rate limit?
-5. Decline silences nudges for that warmth step only. The next step may still text. Later does not silence anything.
-6. The assign screen as a second side panel. Vehicle assign for this ticket is a button on the airline profile, the same place as lounge, gate, and hangar.
+- The fuller assign screen that writes lanes, stands, lounges, hangars, and vehicles through one `requestLease` picker, with world badges. Desk rows on today's panel are the check-in list. They are not that picker.
 
 The playable names are the 45-carrier roster in `src/airlines/roster.ts` (`docs/AIRLINES.md`). Fees and facility asks still copy a catalog template through `ROSTER_TEMPLATE` in `src/game/rosterAirlines.ts`.
 
@@ -370,46 +374,32 @@ Now: preferred desk A2 · overnight stand G4 · no lounge
 Next: brand the east lounge · two more desks
 ```
 
-### Nudge texts — Review
+### Nudge texts
 
-A nudge is a rate-limited text on the phone. It is not an offer and it does not spend a fee. As the airline warms up it points at the next unmet checklist line, for example "request dedicated desks", and it offers a way to the Airlines desk or the assign screen.
+A nudge is a rate-limited text on the phone Messages tab. It is not an offer and it does not spend a fee. Phone tabs stay Contracts and Messages. When a signed carrier has an unmet hard checklist line, the daily review sends one text that names that step. Relation, band, on-time, tenure, the signed floor, and primary-slot lines are skipped. A desk step uses `NUDGE_DESK_ASK` ("We'd love a dedicated desk pair — interested?") and still names the next hub tier. Other steps name the carrier and the line.
 
-A warmth step is one crossing on the wave 3 ladder while they are signed: Preferred, Trusted, Priority, Flagship (`CONTRACT_TIERS` in `src/wave3/config.ts`). Each crossing may send one text. The text names the next unmet hard line for the rung that crossing opens. If that line is already met, no text. Station and a repeated day on the same label do not text.
-
-Rate limit, proposed:
+Rate limit, shipped as `NUDGE_GAP_DAYS` and `NUDGE_FIELD_CAP`:
 
 - At most one nudge per airline per 4 game days.
-- At most 3 nudge texts per game day, across every airline.
-- If the day is already full, that step waits for the next day with room. It is still one text for that step, not a second nag.
+- At most 3 new nudge texts per game day, across every airline.
+- One open card per airline. If the day is already full, that carrier waits for a later day with room.
 
-Decline silences the nudge for that step. `decline-hub` on the Focus offer means Brisa does not send the Focus nudge again. The next warmth step may still text. Later does not silence anything. Later is an ack, the same shape as the other phone laters.
-
-Buttons, proposed phone actions, not built:
+Decline records `{ airlineId, step }` and drops the card. That step does not text again. The next unmet step may still text. Later only drops the card. The same step can return after the gap.
 
 | Button | What it does |
 | --- | --- |
-| Open Airlines tab | Opens the Letters desk (`view.airlines`, hotkey L) on that carrier. Outside the phone. |
-| Open assign screen | Opens the assign side panel for that carrier. |
-| Later | Acks the text. Does not decline the offer. |
-
-Copy, one line each. The voice is the carrier, the ask is the next line.
-
-| Carrier | Step | Text |
-| --- | --- | --- |
-| Brisa | Preferred, toward Focus | "We can make this a focus city. Tag a desk for us." |
-| Brisa | Trusted, toward Base | "Request dedicated desks. Two of them, and a tug in our colours, and we will overnight." |
-| Gulf Pearl | Priority, toward Hub | "The east pier is still everyone else's. Dedicated desks, a lounge, and our own trucks." |
-| Gulf Pearl | Flagship, toward Primary | "One hub. The pier, the fuel hook, and we will bring the big type." |
-| Atlas Cargo | Trusted, toward Base | "No desks. A night ramp and a bowser in our colours." |
+| Airlines | Opens the Airlines hub tab on that carrier and folds the handset. |
+| Assign | Opens the desk assign panel for that carrier and folds the handset. |
+| Later | Drops the card. Does not silence the step. |
+| Decline | Silences that step. |
 
 ```
 ┌ Phone · Messages ──────────────────────────┐
-│ Brisa · 12s                                │
-│ "Request dedicated desks. Two of them,     │
-│  and a tug in our colours."                │
-│  [ Open Airlines tab ]                     │
-│  [ Open assign screen ]                    │
-│  [ Later ]                                 │
+│ Brisa · warmth                             │
+│ "We'd love a dedicated desk pair —         │
+│  interested? Toward Focus city."           │
+│  [ Airlines ]  [ Assign ]                  │
+│  [ Later ]     [ Decline ]                 │
 └────────────────────────────────────────────┘
 ```
 
@@ -419,7 +409,7 @@ A Cities-style side panel. The apron stays visible. Esc closes it before the pau
 
 One airline at a time. Rows are the points that can be leased: check-in desks, security lanes, gates, lounges, hangar bays, and turnaround vehicles. Each row shows the current mode for this airline: Common, Preferred, or Dedicated. The player sets the mode on that row.
 
-This screen stays unbuilt. This ticket assigns vehicles from the airline profile. When the screen is built, a locked row stays locked and shows the reason in the row:
+The desk-only panel is built (`HubAssign`). This fuller screen stays unbuilt. Vehicles, lounges, gates, and hangars are still buttons on the airline profile. When the fuller screen is built, a locked row stays locked and shows the reason in the row:
 
 | Reason | When |
 | --- | --- |
@@ -451,7 +441,7 @@ This screen stays unbuilt. This ticket assigns vehicles from the airline profile
 └────────────────────────────────────────────────┘
 ```
 
-The Airlines home is the Letters desk and the Hubs sheet, both outside the phone. Relationship and the fee line are already on the relation card. Hub level, the checklist, and the reward preview are already `HubSection`. Still to add on that card, when this review is accepted: the named rivals for the next rung, and the dedicated infrastructure this carrier already holds (read from `leasesFor`, including vehicles). The assign screen is the editor. The Hubs sheet stays the list.
+The Airlines hub is its own Airlines-menu tab (`relations`, label "Airlines hub"), outside the phone. It lists every signed carrier: relationship and the one fee line, hub tier, the checklist, the reward preview, rivals, and dedicated assets (`dedicatedDesks`, `hubLeases`, `hubVehicleLeases`). The Hubs sheet stays the short progress list. Letters stays standing and diplomacy. The desk assign panel is the editor for check-in desks. The fuller lease editor stays review.
 
 ### Phone offer
 
@@ -563,9 +553,9 @@ export const VEHICLE_NEED = {
   cargo: { hub: { fuelTruck: 1 } },
 } as const
 
-/** One nudge per airline per gap, and a field cap per game day. Review only. */
+/** One nudge per airline per gap, and a field cap per game day. Shipped as NUDGE_FIELD_CAP. */
 export const NUDGE_GAP_DAYS = 4
-export const NUDGE_DAY_CAP = 3
+export const NUDGE_FIELD_CAP = 3
 
 /** Rival hit on Accept. Primary's score matches hub_rival and is not stacked on it. */
 export const RIVAL_BACKLASH = {
@@ -593,15 +583,16 @@ Each phase is one ticket. Later phases do not start by rewriting an earlier file
 | 2 | Desk leases | Call the allocator's `leasesFor` / `requestLease` / `releaseLease` once they exist. If the export is missing, phase 1 behaviour stays. A test doubles the allocator. | Queue math, hiring, `StaffPoint` fields the allocator owns, a desk map in the hub module |
 | 3 | Other leases | Shipped for lounge, gate, and hangar bay, `457b4d1`. Fuel hook, helipad, and the turnaround vehicle are the accepted vehicle ticket. Credit posts as a relationship part `dedicated`, capped by `LEASE_SCORE_CAP`. | A second fee multiplier, a second upkeep line |
 | 4 | Offers | Shipped, `5c85795` and `38a6a70`. Phone card for Focus, Base, Hub, Primary. Accept stays disabled until the checklist is complete. Tenure, on-time as a send gate, and the anger sentence are this ticket. | Rewriting `hubBlockers`, a counter button |
-| 5 | Profile UI | Shipped in part, `20e829d`, plus lounge, gate, and hangar buttons in `457b4d1`. Vehicle buttons are this ticket. The assign screen stays unbuilt. | Walker cards, a modal |
+| 5 | Profile UI | Shipped in part, `20e829d`, plus lounge, gate, and hangar buttons in `457b4d1`. The Airlines hub tab lists every signed carrier. Desk assign is `HubAssign`. The fuller lease editor stays review. | Walker cards, a modal |
 | 6 | Markers | Colour plates on desks, stands, pads, lounge doors, and a livery stripe on a dedicated vehicle. Click opens the profile. | New aircraft, new staff meshes, new vehicle meshes |
 
 Still review. Do not build these from this note.
 
 | Piece | What it adds | What it does not do |
 | --- | --- | --- |
-| Nudge texts | One phone text per warmth step, under `NUDGE_GAP_DAYS` and `NUDGE_DAY_CAP`. | A second offer, a fee, a nag after Decline |
-| Assign screen | The side panel that calls `requestLease`. | A modal, a private copy of the leases |
+| Full assign screen | One side panel that writes lanes, stands, lounges, hangars, and vehicles through `requestLease`, with world badges. | A modal, a private copy of the leases, a second desk table |
+
+Warmth texts are built. They are phone messages under `NUDGE_GAP_DAYS` and `NUDGE_FIELD_CAP`. They are not a second offer and they do not spend a fee. Decline silences that step. The desk assign panel already on the field is what Assign opens.
 
 Phase 2 is blocked on the desk allocator's export, not on its internal schedule. Desk lines stay unmet, so a flag carrier cannot be accepted into Hub until the desks exist. A cargo carrier can, once the hangar, the ramp, the fuel hook or dedicated fuel truck, the sort window, the tenure, and the on-time sample are met. Choosing a hub is a trade: the perk and the bank, against the rivals who lose score, routes, or the field.
 
@@ -617,4 +608,4 @@ Phase 2 is blocked on the desk allocator's export, not on its internal schedule.
 - Brisa at Base is ineligible without a dedicated tug and eligible with one. A tug dedicated to a carrier who did not ask for it still adds dedicated credit and does not clear a waiting desk line.
 - A letter does not send until the carrier has held the current tier for `MIN_DAYS_AT_TIER` and the on-time sample passes. Accept is the only write of a tier above Station.
 - Accept on a Hub offer for Gulf Pearl says "Accepting will anger Zephyr Go and Tango Air" before the button is used. Seoul Star is on the card as spared. A relocate roll above standing 42 becomes a trim. A refused rival cannot sign a new contract for 30 days. The contract they hold stays.
-- Nudge texts stay unbuilt. The assign screen stays unbuilt.
+- A warmth text for a desk step contains `NUDGE_DESK_ASK` and the next hub tier. Airlines opens the Airlines hub. Assign opens the desk assign panel. Later can return after 4 days. Decline silences that step. The field cap is 3. The phone still has only Contracts and Messages.

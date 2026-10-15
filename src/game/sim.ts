@@ -684,8 +684,9 @@ import {
   readHubVehicleLeases,
   type HubDedicatedCounts,
 } from './hubProgress.ts'
-import { FERRY_GAP_DAYS, HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, NUDGE_FIELD_CAP, NUDGE_GAP_DAYS, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
+import { FERRY_GAP_DAYS, HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, NUDGE_DESK_ASK, NUDGE_FIELD_CAP, NUDGE_GAP_DAYS, RIVAL_REFUSE_DAYS, RIVAL_TRIM_DAYS, TIER_DROP_WARNING_DAYS, VEHICLE_ROLES, type HubOfferTier, type HubTier, type VehicleRole } from '../hubprogress/config.ts'
 import { backlashRoll, planBacklash, type BacklashPlan } from '../hubprogress/backlash.ts'
+import { VEHICLE_ROLE_LABEL } from '../hubprogress/vehicles.ts'
 import {
   dedicateBlock,
   dedicateLabel,
@@ -1523,6 +1524,10 @@ export class Game {
   hubFerryDay: Record<string, number> = {}
   hubDeepLinkTick = 0
   hubDeepLinkAirline = ''
+  /** Bumps when a warmth text opens the desk assign panel. Not saved. */
+  hubAssignTick = 0
+  /** Bumps when a phone button should fold the handset. Not saved. */
+  phoneFold = 0
   /** Test override for the one Accept roll. Null uses the holder, tier, and day. */
   hubRivalRoll: number | null = null
   parkingOffer: ParkingOffer | null = null
@@ -1958,6 +1963,8 @@ export class Game {
     this.hubFerryDay = {}
     this.hubDeepLinkTick = 0
     this.hubDeepLinkAirline = ''
+    this.hubAssignTick = 0
+    this.phoneFold = 0
     this.hubRivalRoll = null
     this.parkingOffer = null
     this.parkingCool = 65
@@ -18444,10 +18451,14 @@ export class Game {
       if (!step) continue
       if (this.hubNudgeSilenced.some((row) => row.airlineId === id && row.step === step.id)) continue
       const tier = HUB_TIER_LABEL[list.next]
+      const text =
+        step.id === 'desk'
+          ? `${NUDGE_DESK_ASK} Toward ${tier}.`
+          : `${this.airline(id).name}: ${step.label} would move you toward ${tier}.`
       this.hubNudges.push({
         airlineId: id,
         step: step.id,
-        text: `${this.airline(id).name}: ${step.label} would move you toward ${tier}.`,
+        text,
       })
       this.hubNudgeLast[id] = day
       this.hubNudgesSent += 1
@@ -18469,11 +18480,37 @@ export class Game {
     this.emit()
   }
 
-  /** Phone text opens the Airlines sheet on this carrier. */
+  /** Phone text opens the Airlines hub on this carrier and folds the handset. */
   openAirlinesFromPhone(airlineId: string) {
     this.hubDeepLinkAirline = airlineId
     this.hubDeepLinkTick += 1
+    this.phoneFold += 1
+    this.setSidePanel('hud')
     this.emit()
+  }
+
+  /** Phone text opens the desk assign panel for this carrier and folds the handset. */
+  openAssignFromPhone(airlineId: string) {
+    this.hubDeepLinkAirline = airlineId
+    this.hubAssignTick += 1
+    this.phoneFold += 1
+    this.setSidePanel('hud')
+    this.emit()
+  }
+
+  /** Desks, building leases, and trucks already named to this carrier. */
+  dedicatedAssetLabels(airlineId: string): string[] {
+    const kindName = { lounge: 'Lounge', gate: 'Gate', hangar: 'Hangar' } as const
+    const desks = this.dedicatedDesks
+      .filter((row) => row.airlineId === airlineId)
+      .map((row) => `Desk ${row.deskId}`)
+    const leases = this.hubLeases
+      .filter((row) => row.airlineId === airlineId)
+      .map((row) => `${kindName[row.kind]} ${row.id}`)
+    const vehicles = this.hubVehicleLeases
+      .filter((row) => row.airlineId === airlineId)
+      .map((row) => VEHICLE_ROLE_LABEL[row.role])
+    return [...desks, ...leases, ...vehicles]
   }
 
   /** Hub and Primary carriers with a named MRO bay ferry an aircraft in for a check. */
