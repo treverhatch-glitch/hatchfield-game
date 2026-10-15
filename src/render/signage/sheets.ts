@@ -61,6 +61,23 @@ export const WAYFINDING_CROPS = {
 
 export type WayfindingPanel = keyof typeof WAYFINDING_CROPS
 
+/**
+ * Batch 11 banners. These replace the matching crop on the old sheet.
+ * Arrivals, departures, and exit stay on WAYFINDING_SHEET: there is no
+ * banner for them in the store.
+ */
+export const DEDICATED_WAYFINDING: Partial<Record<WayfindingPanel, SignSheet>> = {
+  gates: { file: 'wayfinding_gates.jpg', w: 3168, h: 1344, fill: '#2a2f36' },
+  checkin: { file: 'wayfinding_checkin.jpg', w: 3168, h: 1344, fill: '#2a2f36' },
+  security: { file: 'wayfinding_security.jpg', w: 3584, h: 1184, fill: '#2a2f36' },
+  baggage: { file: 'wayfinding_baggage.jpg', w: 3584, h: 1184, fill: '#2a2f36' },
+  toilets: { file: 'wayfinding_restrooms.jpg', w: 3168, h: 1344, fill: '#2a2f36' },
+}
+
+export function fullBleed(sheet: SignSheet): SignCrop {
+  return { x: 0, y: 0, w: sheet.w, h: sheet.h }
+}
+
 export const FIDS_SHEET: SignSheet = {
   file: 'fids_departures_board.jpg',
   w: 2752,

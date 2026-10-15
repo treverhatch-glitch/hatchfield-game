@@ -6,10 +6,12 @@
 import * as THREE from 'three'
 import { parseTextureQuality, TEXTURE_QUALITY_KEY, type TextureQuality } from '../aircraft/liveryFiles'
 import {
+  DEDICATED_WAYFINDING,
   DESK_HEADER_CROPS,
   DESK_HEADER_SHEET,
   FIDS_CROP,
   FIDS_SHEET,
+  fullBleed,
   SIGNAGE_DIR,
   SIGNAGE_LONG_SIDE,
   WAYFINDING_CROPS,
@@ -99,8 +101,16 @@ export function deskHeaderTexture(n: number): THREE.Texture | null {
   return signageTexture(DESK_HEADER_SHEET, crop)
 }
 
+/** Dedicated Batch 11 banner when one exists; otherwise the old sheet crop. */
+export function wayfindingSource(panel: WayfindingPanel): { sheet: SignSheet; crop: SignCrop } {
+  const dedicated = DEDICATED_WAYFINDING[panel]
+  if (dedicated) return { sheet: dedicated, crop: fullBleed(dedicated) }
+  return { sheet: WAYFINDING_SHEET, crop: WAYFINDING_CROPS[panel] }
+}
+
 export function wayfindingSheetTexture(panel: WayfindingPanel): THREE.Texture | null {
-  return signageTexture(WAYFINDING_SHEET, WAYFINDING_CROPS[panel])
+  const source = wayfindingSource(panel)
+  return signageTexture(source.sheet, source.crop)
 }
 
 export function fidsBoardTexture(): THREE.Texture | null {

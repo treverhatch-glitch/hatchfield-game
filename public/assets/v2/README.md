@@ -1,6 +1,6 @@
 # Asset pack v2 (binaries live on Drive)
 
-The GitHub connector used by the Grok assets worker can only commit text, so the raster pack is not in git yet.
+The GitHub connector used by the Grok assets worker can only commit text, so most of the raster pack is not in git yet. The Batch 11 wayfinding banners and pictogram tiles are committed under `signage/`.
 
 1. Download `hatchfield_assets_v2.zip` from the Hatchfield Drive assets folder.
 2. Copy the zip's `pack/*` into this folder (`public/assets/v2/`).
