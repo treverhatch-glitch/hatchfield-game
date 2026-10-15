@@ -7,7 +7,7 @@ import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
 import type { PlaytestYearSave } from '../reports/book.ts'
 import type { StaffHousingSave } from '../staffhousing/types.ts'
-import type { BuildLayout } from '../terminalbuild/types.ts'
+import type { BuildLayout, InteriorEdit } from '../terminalbuild/types.ts'
 import type { ResearchState } from '../research/types.ts'
 import type { Wave3State } from '../wave3/types.ts'
 import type { SpotInbound, SpotOffer } from '../fuel/offerData.ts'
@@ -922,6 +922,11 @@ export interface TerminalFit {
   redesigned?: boolean
   /** Built from scratch with walls, floors, and zones (src/terminalbuild). Prefab halls leave this unset. */
   build?: BuildLayout
+  /**
+   * Walls, doors, paint, and rooms the player added in Terminal view.
+   * Merged onto the walk layout. Missing on older saves.
+   */
+  interior?: InteriorEdit
 }
 
 export interface GameSnapshot {

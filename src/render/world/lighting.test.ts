@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { Game } from '../../game/sim'
 import { capReadableFog, FOG_READABLE, lerpHex, lightsFactor, moonDirection, simClockToHour, skyState, sunDirection } from './daylight'
-import { applyDayNight, DAY_NIGHT_CYCLE } from './dayNight'
+import { applyDayNight, DAY_NIGHT, DAY_NIGHT_CYCLE } from './dayNight'
 import { fitShadow, groundFocus, pickLod, stepFade } from './lod'
 import { parseQuality, QUALITY, suggestQuality } from './quality'
 import { GROUND_LOOK } from '../look'
@@ -84,6 +84,10 @@ describe('day / night', () => {
     expect(held).toBe(noon)
     expect(DAY_NIGHT_CYCLE.sunriseHour).toBeLessThan(DAY_NIGHT_CYCLE.sunsetHour)
     expect(DAY_NIGHT_CYCLE.daySeconds).toBe(180)
+    // Lamp window is later than the sun-on-the-horizon pair. They stay separate.
+    expect(DAY_NIGHT_CYCLE.sunriseHour).toBeGreaterThan(DAY_NIGHT.sunrise)
+    expect(DAY_NIGHT_CYCLE.sunsetHour).toBeGreaterThan(DAY_NIGHT.sunset)
+    expect(DAY_NIGHT.daySeconds).toBe(DAY_NIGHT_CYCLE.daySeconds)
   })
 })
 

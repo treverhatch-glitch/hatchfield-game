@@ -382,6 +382,17 @@
   align-items: flex-start;
 }
 
+.interior-bar {
+  top: calc(var(--hud-top) + 52px);
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: max-content;
+  max-width: min(720px, 70vw);
+}
+
 .kit-tabs {
   background: rgb(15 23 42 / 0.86);
   border: 1px solid rgb(255 255 255 / 0.1);

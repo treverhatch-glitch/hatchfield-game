@@ -6,12 +6,12 @@
  * "before security" / "after security" (see config.ts labels).
  */
 
-export type BuildZone = 'landside' | 'checkin' | 'security' | 'airside' | 'gates' | 'baggage' | 'retail'
+export type BuildZone = 'landside' | 'checkin' | 'security' | 'airside' | 'gates' | 'baggage' | 'retail' | 'office'
 
 /** Which side of the security line a zone sits on. Retail takes the side it is walked from. */
 export type ZoneSide = 'landside' | 'security' | 'airside' | 'staff' | 'either'
 
-export type RoomKind = 'checkin' | 'security' | 'gate' | 'bagmakeup' | 'retail' | 'toilets'
+export type RoomKind = 'checkin' | 'security' | 'gate' | 'bagmakeup' | 'retail' | 'toilets' | 'lounge' | 'office'
 
 export type EquipKind =
   | 'checkin_desk'
@@ -22,6 +22,7 @@ export type EquipKind =
   | 'seat'
   | 'shop_counter'
   | 'toilet'
+  | 'office_desk'
 
 /**
  * A tile edge. `E` is the east side of (x, y), `S` the south side.
@@ -33,6 +34,8 @@ export interface Edge {
   y: number
   dir: 'E' | 'S'
   floor?: number
+  /** Wall paint id from the interior catalog. Omitted means the plain wall. */
+  finish?: string
 }
 
 /**
@@ -104,6 +107,28 @@ export interface BuildLayout {
   equipment: Equip[]
   /** Stairs, escalators, and lifts. Empty on a 1-story hall. */
   verticals?: Vertical[]
+  /**
+   * Floor paint per tile, same shape as `floor`. Omitted means the hall terrazzo.
+   * Ids are the Gemini interior plates (see FLOOR_PAINTS).
+   */
+  floorPaint?: (string | null)[][]
+}
+
+/**
+ * Player edits inside a shell. Merged onto the hall layout for the walk.
+ * Pieces omit `floor` to mean floor 0. The game only enables floor 0.
+ */
+export interface InteriorEdit {
+  walls: Edge[]
+  doors: Door[]
+  /** Edge keys removed from the base layout (an erased interior or security wall). */
+  removed: string[]
+  floorPaint: { x: number; y: number; paint: string; floor?: number }[]
+  wallPaint: { x: number; y: number; dir: 'E' | 'S'; paint: string; floor?: number }[]
+  /** Zone painted under a room. Null clears. */
+  zones: { x: number; y: number; zone: BuildZone | null; floor?: number }[]
+  rooms: Room[]
+  equipment: Equip[]
 }
 
 export interface Tile {

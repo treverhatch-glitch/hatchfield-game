@@ -14,8 +14,21 @@ import { faceHour } from '../../core/faceClock'
 import { DAY_SECONDS, lerpHex, smoothstep, type SkyState } from './daylight'
 import { landingSkyUrl } from './landingArt'
 
+/**
+ * Two sunrise/sunset pairs, on purpose. Do not collapse them.
+ *
+ * `DAY_NIGHT_CYCLE` (7.4 / 19.4) is the field-light window. It matches
+ * `lightsFactor`: runway edge, taxi edge, apron floods, and lamps finish
+ * their ramp on these hours.
+ *
+ * `DAY_NIGHT` (6.4 / 19.2) is the sun on the horizon. Sky photos use it.
+ * The sun is up before the lamps go out, and the lamps come on as the sun
+ * meets the horizon again.
+ *
+ * `daySeconds` on both is `DAY_SECONDS` (180). That length stays put.
+ */
 export const DAY_NIGHT_CYCLE = {
-  /** Sun clears the horizon. Matches the dawn ramp in `lightsFactor`. */
+  /** Field lights finish going out. Matches the dawn ramp in `lightsFactor`. */
   sunriseHour: 7.4,
   /** Field lights finish coming on. Matches the dusk ramp in `lightsFactor`. */
   sunsetHour: 19.4,
@@ -24,18 +37,18 @@ export const DAY_NIGHT_CYCLE = {
 } as const
 
 export const DAY_NIGHT = {
-  /** Sun clears the horizon. */
+  /** Sun clears the horizon. Earlier than the lamp window in `DAY_NIGHT_CYCLE`. */
   sunrise: 6.4,
-  /** Sun meets the horizon again. */
+  /** Sun meets the horizon again. Earlier than the lamp window in `DAY_NIGHT_CYCLE`. */
   sunset: 19.2,
   daySeconds: DAY_SECONDS,
   /** Hours used by the dawn / noon / dusk / night screenshots. */
   shots: { dawn: 6.6, noon: 12, dusk: 19, night: 23 },
   /**
-   * Late morning. The cycle-off switch holds the sun here:
-   * noon sky, lights out, no golden-hour cast.
+   * Noon. Graphics → Day/night cycle Off holds the sun here:
+   * full daylight, lamps out. A photo hour still replaces it.
    */
-  hold: 11,
+  hold: 12,
 } as const
 
 /** Rig values a full-night override blends toward. Matches the midnight key. */
@@ -89,6 +102,8 @@ export interface AirfieldLevels {
   runway: number
   taxi: number
   apron: number
+  /** Mast ground pools. False hides them. Omitted leaves them on the apron factor. */
+  pools?: boolean
 }
 
 function clamp01(n: number): number {
@@ -176,12 +191,12 @@ export function idleDayNight(): DayNightSample {
   }
 }
 
-/** Late morning. The cycle toggle pins the field here when it is off. */
-export const FIXED_DAY_HOUR = 11
+/** Noon. The cycle toggle pins the field here when it is off. */
+export const FIXED_DAY_HOUR = 12
 
 /**
  * Photo-mode hour wins, then an explicit control hour, then the face clock
- * the HUD reads. `cycle` false holds late morning so the field stays in daylight.
+ * the HUD reads. `cycle` false holds noon so the field stays in daylight.
  * Gameplay night stays on `simClockToHour`; this path is the sky only.
  */
 export function resolveHour(
@@ -286,6 +301,6 @@ export function skyPhotoBlend(hour: number, daylight?: number | null, weather?: 
   return time
 }
 
-export function airfieldLevels(sample: Pick<DayNightSample, 'runwayEdge' | 'taxiEdge' | 'apron'>): AirfieldLevels {
-  return { runway: sample.runwayEdge, taxi: sample.taxiEdge, apron: sample.apron }
+export function airfieldLevels(sample: Pick<DayNightSample, 'runwayEdge' | 'taxiEdge' | 'apron' | 'apronPools'>): AirfieldLevels {
+  return { runway: sample.runwayEdge, taxi: sample.taxiEdge, apron: sample.apron, pools: sample.apronPools }
 }
