@@ -2,6 +2,7 @@ import { setAircraftEnvIntensity } from '../aircraft/pool'
 import * as THREE from 'three'
 import { grassColor, nightLighting, paintSky, seasonAtDay, snowCover } from '../../environment/index.ts'
 import { gradeTree } from '../grade'
+import { sharedSettings } from '../../features/settings/settings.ts'
 import { GROUND_LOOK, LIGHT_LOOK } from '../look'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
@@ -435,7 +436,7 @@ export class WorldRenderer {
     const focus = groundFocus(camPos, dir) ?? { x: camPos.x, z: camPos.z }
     const camDist = Math.hypot(camPos.x - focus.x, camPos.y, camPos.z - focus.z)
 
-    const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl)
+    const hour = resolveHour(view.clock ?? 0, this.hourOverride, this.dayNightControl, sharedSettings().get().dayNightCycle)
     const weather = this.weatherOverride ?? view.weather ?? 'clear'
     const day = Math.floor(Math.max(0, view.clock ?? 0) / 180)
     let s = applyDayNight(paintSky(hour, weather, day, baseLevel(this.quality)), this.dayNightControl)

@@ -9,6 +9,8 @@ import { bake } from './kit'
 import { paintGeometry, quadsGeometry } from './surfaces'
 import { cellX, cellZ } from './view'
 import { contactSpots } from './contact'
+import { sharedSettings } from '../../features/settings/settings.ts'
+import { clockForHour, FIXED_DAY_HOUR } from './dayNight'
 
 function legacyScene() {
   const scene = new THREE.Scene()
@@ -249,6 +251,28 @@ describe('initWorldRender', () => {
     wr.update(game, cam, 1 / 60)
     expect(scene.getObjectByName('world-weather')?.visible).toBe(true)
     wr.dispose()
+  })
+
+  it('holds late morning when the day/night cycle is off, and still honours a photo hour', () => {
+    const { scene, sun } = legacyScene()
+    const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
+    const game = starterGame()
+    const cam = camAt(0, 0, 80)
+    sharedSettings().update((s) => ({ ...s, dayNightCycle: false }))
+    try {
+      wr.setDayNight(null)
+      game.clock = clockForHour(2, 23)
+      wr.update(game, cam, 1 / 60)
+      expect(wr.dayNightSample.hour).toBeCloseTo(FIXED_DAY_HOUR)
+      expect(wr.dayNightSample.lights).toBe(0)
+      expect(wr.dayNightSample.windows).toBe(0)
+      wr.setTimeOfDay(23)
+      wr.update(game, cam, 1 / 60)
+      expect(wr.dayNightSample.lights).toBe(1)
+    } finally {
+      sharedSettings().update((s) => ({ ...s, dayNightCycle: true }))
+      wr.dispose()
+    }
   })
 
   it('lights the terminal before the field at dusk, and snows the grass in winter', () => {

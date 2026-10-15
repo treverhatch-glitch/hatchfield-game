@@ -6,6 +6,7 @@ import {
   daylightFactor,
   DAY_NIGHT,
   NIGHT_FLOOR,
+  FIXED_DAY_HOUR,
   resolveHour,
   SKY_PHOTO_FADES,
   SKY_PHOTOS,
@@ -50,6 +51,8 @@ describe('day/night hooks', () => {
     expect(resolveHour(0, 15, { hour: 23 })).toBe(15)
     expect(resolveHour(0, null, { hour: 23 })).toBe(23)
     expect(resolveHour(0, null, null)).toBe(8)
+    expect(resolveHour(0, null, null, false)).toBe(FIXED_DAY_HOUR)
+    expect(resolveHour(0, 23, null, false)).toBe(23)
   })
 })
 

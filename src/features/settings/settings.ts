@@ -51,6 +51,12 @@ export interface Settings {
   /** Master mute. Category sliders stay put so unmuting restores the mix. */
   audioMuted: boolean
   busVolume: BusVolume
+  /**
+   * Day/night cycle. On follows the sim clock (sun, moon, sky, field lights).
+   * Off holds the field at late morning. Menus, including the ones being
+   * rebuilt elsewhere, bind this field. It persists with the rest of Settings.
+   */
+  dayNightCycle: boolean
 }
 
 export const GRAPHICS_PRESETS: Record<QualityPreset, Omit<GraphicsSettings, 'preset'>> = {
@@ -73,6 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.8,
   audioMuted: false,
   busVolume: { ...DEFAULT_BUS_VOLUME },
+  dayNightCycle: true,
 }
 
 /** Overlay palettes: good -> warn -> bad -> path -> highlight, chosen to stay distinct per mode. */
@@ -128,7 +135,15 @@ export function sanitizeSettings(raw: unknown): Settings {
     masterVolume: num(r.masterVolume, d.masterVolume, 0, 1),
     audioMuted: bool(r.audioMuted, d.audioMuted),
     busVolume,
+    dayNightCycle: bool(r.dayNightCycle, d.dayNightCycle),
   }
+}
+
+let shared: SettingsStore | undefined
+
+/** One store for the pause menu, the audio mix, and the lighting rig. */
+export function sharedSettings(): SettingsStore {
+  return (shared ??= new SettingsStore())
 }
 
 export function applyPreset(s: Settings, preset: QualityPreset): Settings {

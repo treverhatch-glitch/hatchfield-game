@@ -2,13 +2,11 @@
  * Settings sliders → the audio engine. Volumes live in the shared settings
  * store so a reload keeps the mix.
  */
-import { AUDIO_BUSES, SettingsStore, type Settings } from '../features/settings/settings.ts';
+import { AUDIO_BUSES, sharedSettings, type Settings, type SettingsStore } from '../features/settings/settings.ts';
 import { getAudio, type Category } from './engine';
 
-let store: SettingsStore | undefined;
-
 export function audioSettings(): SettingsStore {
-  return (store ??= new SettingsStore());
+  return sharedSettings();
 }
 
 export function applyAudioSettings(s: Settings): void {

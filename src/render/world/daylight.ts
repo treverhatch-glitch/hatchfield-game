@@ -92,23 +92,40 @@ export function lightsFactor(hour: number): number {
   return 1 - smoothstep(7.4, 8.2, h)
 }
 
+function unit(v: { x: number; y: number; z: number }): { x: number; y: number; z: number } {
+  const l = Math.hypot(v.x, v.y, v.z) || 1
+  return { x: v.x / l, y: v.y / l, z: v.z / l }
+}
+
+/**
+ * Moon arc from 20:00 to 06:00. Rises in the east, sets in the west,
+ * opposite the sun's south bias. One directional light follows it, so
+ * night does not pay for a second shadow map.
+ */
+export function moonDirection(hour: number): { x: number; y: number; z: number } {
+  const h = ((hour % 24) + 24) % 24
+  const t = h >= 20 ? (h - 20) / 10 : (h + 4) / 10
+  const a = t * Math.PI
+  const elev = Math.max(0.22, Math.sin(a)) * 0.95
+  return unit({
+    x: Math.cos(a) * Math.cos(elev),
+    y: Math.sin(elev),
+    z: -0.28 * Math.cos(elev),
+  })
+}
+
 export function sunDirection(hour: number): { x: number; y: number; z: number } {
   const h = ((hour % 24) + 24) % 24
   const day = h >= 6 && h <= 20
-  if (!day) {
-    // Moon: high in the south-west, steady so night shadows don't swing.
-    const v = { x: -0.35, y: 0.82, z: 0.45 }
-    const l = Math.hypot(v.x, v.y, v.z)
-    return { x: v.x / l, y: v.y / l, z: v.z / l }
-  }
+  if (!day) return moonDirection(h)
   const a = ((h - 6) / 14) * Math.PI
   const elev = Math.max(0.12, Math.sin(a)) * 1.05
   // East (+x) in the morning, west (−x) in the evening, a little south (+z).
-  const x = Math.cos(a) * Math.cos(elev)
-  const z = 0.35 * Math.cos(elev)
-  const y = Math.sin(elev)
-  const l = Math.hypot(x, y, z)
-  return { x: x / l, y: y / l, z: z / l }
+  return unit({
+    x: Math.cos(a) * Math.cos(elev),
+    y: Math.sin(elev),
+    z: 0.35 * Math.cos(elev),
+  })
 }
 
 export function skyState(hour: number, weather: Weather = 'clear'): SkyState {
