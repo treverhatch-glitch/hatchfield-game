@@ -44,7 +44,7 @@ const PROP_COLOR: Record<CrewProp['kind'], number> = {
   stairs: 0xc5ced6,
 }
 
-const BAG_HEX = [0x2f4a6a, 0x6a4328, 0x7f1d1d, 0x1f2937, 0x065f46, 0x9a3412] as const
+export const BAG_HEX = [0x2f4a6a, 0x6a4328, 0x7f1d1d, 0x1f2937, 0x065f46, 0x9a3412] as const
 
 /** Suitcases keep one colour from cart to hold; bin bags are black. */
 function bagColor(id: string): number {
