@@ -107,6 +107,16 @@ function fuelRailStamp(id: string): string | null {
   return null
 }
 
+function fuelPipeStamp(id: string): string | null {
+  if (id === 'fuel_pipe') {
+    return 'Research the fuel pipeline. Paint the pipe to the map edge, then put the receipt manifold on that pipe, beside the farm.'
+  }
+  if (id === 'manifold') {
+    return 'Research the fuel pipeline. Put the receipt manifold on the pipe, beside the farm.'
+  }
+  return null
+}
+
 /**
  * Hover-card copy. A locked stamp names the field level, the research node, or both,
  * and points at that row in Growth.
@@ -123,11 +133,13 @@ export function stampCard(input: StampInput): StampCard {
   const deskShort = Boolean(node && !input.researchOwned)
   const locked = levelShort || treeShort || deskShort
   const fuelRail = fuelRailStamp(input.id)
+  const fuelPipe = fuelPipeStamp(input.id)
+  const fuelLine = fuelRail ?? fuelPipe
   const hydrant = hydrantStamp(input.id)
   const hydrantShort = Boolean(hydrant && !input.researchOwned)
   const parts: string[] = []
   if (hydrantShort && hydrant) parts.push(hydrant)
-  else if (treeShort && fuelRail) parts.push(fuelRail)
+  else if (treeShort && fuelLine) parts.push(fuelLine)
   else if (treeShort && treeLink) parts.push(`Requires research: ${treeLink.label}.`)
   else if (deskShort && node) parts.push(`Requires research: ${node.name}.`)
   if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
@@ -137,7 +149,7 @@ export function stampCard(input: StampInput): StampCard {
     badge = { kind: 'research', label: 'Hydrant', nodeId: 'airside-1' }
     link = { tab: 'research', anchor: 'research-node-airside-1', label: 'Hydrant' }
   } else if (treeShort && tree) {
-    const label = fuelRail ? 'Fuel rail' : tree.name
+    const label = fuelRail ? 'Fuel rail' : fuelPipe ? 'Fuel pipeline' : tree.name
     badge = { kind: 'research', label, nodeId: tree.id }
     link = { tab: 'research', anchor: `research-node-${tree.id}`, label }
   } else if (!treeLink && deskShort && node) {

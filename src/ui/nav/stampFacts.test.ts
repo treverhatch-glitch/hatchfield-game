@@ -78,6 +78,13 @@ describe('stamp cards', () => {
     expect(oil.sentence).toContain('beside the farm')
     expect(oil.sentence).not.toContain('Night bank')
     expect(night.badge).toEqual({ kind: 'research', label: 'Night bank', nodeId: 'airside-6' })
+    const pipe = stampCard(toolStampInput('fuel_pipe', 5, 5, new Set()))
+    const manifold = stampCard(toolStampInput('manifold', 5, 5, new Set()))
+    expect(pipe.badge).toEqual({ kind: 'research', label: 'Fuel pipeline', nodeId: 'airside-7' })
+    expect(pipe.sentence).toContain('Paint the pipe')
+    expect(pipe.sentence).toContain('receipt manifold')
+    expect(manifold.badge?.label).toBe('Fuel pipeline')
+    expect(manifold.sentence).toContain('beside the farm')
   })
 
   it('names the hydrant research on the pit, then the field level once that research is owned', () => {

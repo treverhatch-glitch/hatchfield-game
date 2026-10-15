@@ -63,7 +63,7 @@ export function classifyPhoneKind(kind: string): PhoneTab | null {
   if (kind === 'offer' || kind === 'signed' || kind === 'mx-signed' || kind === 'hub-signed' || kind === 'fuel-signed') {
     return 'contracts'
   }
-  if (kind === 'fuel-spot') return 'messages'
+  if (kind === 'fuel-spot' || kind === 'pipeline-hold') return 'messages'
   if (kind === 'contract' || kind === 'message' || MESSAGE_KINDS.has(kind)) return 'messages'
   return null
 }

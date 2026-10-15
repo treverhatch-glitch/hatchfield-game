@@ -160,9 +160,9 @@ export interface RailLink {
  * Fuel moves when a rail cell on the station's line touches the map edge
  * and the oil transfer station sits against the tank farm.
  */
-export function railLink(field: FieldSnapshot, researchUnlocked: boolean): RailLink {
-  const rails = cellsOf(field.tiles, 'fuel_rail')
-  const stations = cellsOf(field.tiles, 'oil')
+function lineLink(field: FieldSnapshot, line: Tile, stationTile: Tile, researchUnlocked: boolean): RailLink {
+  const rails = cellsOf(field.tiles, line)
+  const stations = cellsOf(field.tiles, stationTile)
   const farms = cellsOf(field.tiles, 'fuel')
   const station = stations[0] ?? null
   const railKeys = new Set(rails.map((p) => keyOf(p.c, p.r)))
@@ -194,6 +194,16 @@ export function railLink(field: FieldSnapshot, researchUnlocked: boolean): RailL
     touchesFarm,
     flowing: unlocked && stationOnLine && reachesEdge && touchesFarm,
   }
+}
+
+/** Fuel moves when rail on the oil station's line touches the map edge and the station sits against the farm. */
+export function railLink(field: FieldSnapshot, researchUnlocked: boolean): RailLink {
+  return lineLink(field, 'fuel_rail', 'oil', researchUnlocked)
+}
+
+/** Same rule as rail: pipe to the map edge, receipt manifold on that pipe, manifold against the farm. */
+export function pipeLink(field: FieldSnapshot, researchUnlocked: boolean): RailLink {
+  return lineLink(field, 'fuel_pipe', 'manifold', researchUnlocked)
 }
 
 function componentLinks(field: FieldSnapshot, tile: Tile, need: SizeTier): boolean {
@@ -606,7 +616,8 @@ export function pillarReport(field: FieldSnapshot, state: PillarState, airframeI
   }
   if (demand.supply === 'rail') {
     const link = railLink(field, field.research.includes('rail_fuel'))
-    if (!link.flowing) {
+    const pipe = pipeLink(field, field.research.includes('pipeline_fuel'))
+    if (!link.flowing && !pipe.flowing) {
       hints.push(
         hint(
           'rail-flow',
@@ -730,6 +741,8 @@ export function placementBlock(
     hangar_j: { fieldLevel: HANGAR_OFFERS.jumbo.fieldLevel, research: null, name: HANGAR_OFFERS.jumbo.name },
     fuel_rail: { fieldLevel: LINK_OFFERS.fuel_rail.fieldLevel, research: null, name: LINK_OFFERS.fuel_rail.name },
     oil: { fieldLevel: LINK_OFFERS.oil.fieldLevel, research: null, name: LINK_OFFERS.oil.name },
+    fuel_pipe: { fieldLevel: LINK_OFFERS.fuel_pipe.fieldLevel, research: null, name: LINK_OFFERS.fuel_pipe.name },
+    manifold: { fieldLevel: LINK_OFFERS.manifold.fieldLevel, research: null, name: LINK_OFFERS.manifold.name },
     travelator: { fieldLevel: LINK_OFFERS.travelator.fieldLevel, research: null, name: LINK_OFFERS.travelator.name },
     skywalk: { fieldLevel: LINK_OFFERS.skywalk.fieldLevel, research: null, name: LINK_OFFERS.skywalk.name },
     mover: { fieldLevel: LINK_OFFERS.mover.fieldLevel, research: null, name: LINK_OFFERS.mover.name },
@@ -817,6 +830,8 @@ export interface UpkeepCounts {
   hangars: Record<SizeTier, number>
   fuelRail: number
   oil: number
+  fuelPipe: number
+  manifold: number
   travelator: number
   skywalk: number
   mover: number
@@ -844,6 +859,8 @@ export function pillarUpkeep(state: PillarState, counts: UpkeepCounts): number {
   n += counts.jumboStands * STAND_OFFERS.jumbo.upkeepPerDay
   n += counts.fuelRail * LINK_OFFERS.fuel_rail.upkeepPerDay
   n += counts.oil * LINK_OFFERS.oil.upkeepPerDay
+  n += counts.fuelPipe * LINK_OFFERS.fuel_pipe.upkeepPerDay
+  n += counts.manifold * LINK_OFFERS.manifold.upkeepPerDay
   n += counts.travelator * LINK_OFFERS.travelator.upkeepPerDay
   n += counts.skywalk * LINK_OFFERS.skywalk.upkeepPerDay
   n += counts.mover * LINK_OFFERS.mover.upkeepPerDay
@@ -872,14 +889,17 @@ export function tickFuel(
   const capacity = tankDef(state.tankTier).capacityLitres
   const room = Math.max(0, capacity - state.litres)
   if (room <= 0) return none
-  if (state.supply === 'rail') {
-    const link = railLink(field, field.research.includes('rail_fuel'))
-    if (!link.flowing) return { ...none, method: 'rail' }
+  if (state.supply === 'rail' || state.supply === 'pipeline') {
+    const link =
+      state.supply === 'rail'
+        ? railLink(field, field.research.includes('rail_fuel'))
+        : pipeLink(field, field.research.includes('pipeline_fuel'))
+    if (!link.flowing || state.lineHeld) return { ...none, method: state.supply }
     const litres = Math.min(room, (contract.railLitresPerHour * gameMinutes) / 60)
     const paid = litres * contract.wholesalePerLitre
-    if (paid > cash + 1e-6) return { ...none, method: 'rail', waitingOnCash: true }
+    if (paid > cash + 1e-6) return { ...none, method: state.supply, waitingOnCash: true }
     state.litres += litres
-    return { delivered: litres, paid, method: 'rail', railFlowing: true, waitingOnCash: false }
+    return { delivered: litres, paid, method: state.supply, railFlowing: state.supply === 'rail', waitingOnCash: false }
   }
   state.roadMinutes += gameMinutes
   if (state.roadMinutes + 1e-6 < contract.leadMinutes) return { ...none, method: 'road' }

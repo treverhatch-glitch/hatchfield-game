@@ -46,6 +46,8 @@ export interface SpotInbound {
   waitNoted: boolean
   /** Who called. Missing on older saves. */
   supplier?: string
+  /** Bought during a pipeline hold. Arrives even while a term is signed. */
+  outage?: boolean
 }
 
 /** The wing bill still reads a brand. Trunk and Mega use the Kiln pump table. */

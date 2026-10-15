@@ -48,7 +48,7 @@ export const SPEC_PENALTY = 1.5
  * one chalkboard, one bench, no researchers) finishes the tree around day 70–90
  * when it buys the cheapest open node as points allow. See docs/RESEARCH.md.
  */
-export const TIER_COSTS = [0, 26, 38, 54, 76, 108] as const
+export const TIER_COSTS = [0, 26, 38, 54, 76, 108, 154] as const
 
 export const CATEGORIES = [
   { id: 'airfield', label: 'Airfield', unlockLevel: 1 },
