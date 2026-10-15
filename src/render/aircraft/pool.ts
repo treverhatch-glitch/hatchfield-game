@@ -311,13 +311,16 @@ export function disposeAircraftLibrary() {
 
 /**
  * Detach an aircraft without disposing shared geometries or materials.
- * Instanced meshes still release their own instance buffers.
+ * Instanced meshes still release their own instance buffers, and meshes
+ * marked `ownGeo` free the geometry that was merged for this airframe only.
  */
 export function releaseAircraft(root: THREE.Object3D) {
   root.traverse((obj) => {
     obj.onBeforeRender = () => {}
     if ((obj as THREE.InstancedMesh).isInstancedMesh) {
       ;(obj as THREE.InstancedMesh).dispose()
+    } else if (obj.userData.ownGeo && (obj as THREE.Mesh).isMesh) {
+      ;(obj as THREE.Mesh).geometry.dispose()
     }
   })
   root.removeFromParent()

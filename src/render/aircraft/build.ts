@@ -739,6 +739,7 @@ function addGear(frame: Frame) {
     bays.forEach((g) => g.dispose())
     const mesh = paintVertexMesh(new THREE.Mesh(merged), 'mid', 'mesh', 'gear')
     mesh.name = 'bay-doors'
+    mesh.userData.ownGeo = true
     bay.add(mesh)
     frame.meshes.push(mesh)
     gear.add(bay)
@@ -793,6 +794,7 @@ function addRealDoors(frame: Frame) {
   if (parts.length) {
     const mesh = paintVertexMesh(new THREE.Mesh(mergeGeometries(parts)!), 'mid', 'mesh', 'gear')
     mesh.name = 'doorways'
+    mesh.userData.ownGeo = true
     parts.forEach((g) => g.dispose())
     frame.group.add(mesh)
     frame.meshes.push(mesh)
