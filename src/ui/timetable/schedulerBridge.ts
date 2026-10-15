@@ -2,7 +2,8 @@
  * The timetable reads windows, buffers, and the offer preview from src/contracts.
  * It does not keep a second copy of those numbers.
  */
-import { DEFAULT_AIRFRAMES, DEFAULT_MTT, type SizeClass } from '../../contracts/airframes'
+import { DEFAULT_AIRFRAMES, DEFAULT_MTT } from '../../contracts/airframes'
+import type { SizeClass } from '../../contracts/types'
 import { makeOffer, timeWindow } from '../../contracts/contracts'
 import { previewOffer, type HourLight } from '../../contracts/preview'
 import { DEFAULT_SCHEDULER_OPTIONS } from '../../contracts/scheduler'

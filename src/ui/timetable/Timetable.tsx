@@ -92,7 +92,9 @@ export function Timetable({
     if (!(hud instanceof HTMLElement)) return
     if (shown) hud.style.setProperty('--tt-h', `${height}px`)
     else hud.style.removeProperty('--tt-h')
-    return () => hud.style.removeProperty('--tt-h')
+    return () => {
+      hud.style.removeProperty('--tt-h')
+    }
   }, [shown, height])
 
   const day = adapter.dayLength
