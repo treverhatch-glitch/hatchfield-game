@@ -3116,6 +3116,12 @@ export class Game {
     return actions
   }
 
+  /** Every building-card row click lands here. */
+  buildingCardAction(id: string): void {
+    if (/^(rung|pit|fitbuy|fitdrop):/.test(id)) this.standCardAction(id)
+    else this.checkinAction(id)
+  }
+
   /** Building-panel and flight-card action. `dedicate:<airline>` or `release:<desk>`. */
   checkinAction(id: string): void {
     if (id.startsWith('dedicate:')) this.dedicateDesk(id.slice('dedicate:'.length))
