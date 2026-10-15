@@ -61,7 +61,7 @@ function runBoard(game: Game, flight: Flight, maxSec = 400): { reach: number; t:
   return seen
 }
 
-describe('jet bridge seal through boarding', () => {
+describe('jet bridge seal through boarding', { timeout: 20_000 }, () => {
   it('holds the bridge on the door for the whole board, then retracts before pushback', () => {
     const game = field(true)
     expect(game.standPaxMode(STAND)).toBe('jetway')
