@@ -6,6 +6,7 @@ import { WORLD_PER_METER } from '../aircraft/specs'
 import { propTexture } from './propArt'
 import { discardDark, landingTexture, spritePlane, SPRITE_GRID } from './landingArt'
 import { SKY_PHOTOS, type SkyPhotoBlend, type SkyPhotoId } from './dayNight'
+import { loadNoonHint } from './noonHint'
 import { instanced, trs } from './kit'
 import { hash2, rng } from './raster'
 import { CELL, tileAt, worldToCell, type WorldView } from './view'
@@ -116,7 +117,9 @@ export class SkyDome {
   /** Medium and High turn the panoramas on; the first call loads them. Low never fetches the JPEGs. */
   setPhotos(on: boolean) {
     this.photosOn = on
-    if (!on || this.photos.size || typeof document === 'undefined') return
+    if (!on || typeof document === 'undefined') return
+    loadNoonHint()
+    if (this.photos.size) return
     const loader = new THREE.TextureLoader()
     for (const id of Object.keys(SKY_PHOTOS) as SkyPhotoId[]) {
       loader.load(SKY_PHOTOS[id].url, (tex) => {

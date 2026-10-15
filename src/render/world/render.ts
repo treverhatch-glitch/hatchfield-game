@@ -18,6 +18,7 @@ import {
   type DayNightControl,
   type DayNightSample,
 } from './dayNight'
+import { tintNoonLights } from './noonHint'
 import { ContactShadows, contactSpots } from './contact'
 import { buildLandscape, GrassRing, Rain, SkyDome, type LandscapeArt, type LandscapeTint } from './environment'
 import {
@@ -556,7 +557,9 @@ export class WorldRenderer {
     this.sky.set(s.skyTop, s.skyHorizon, s.stars, s.sunDir, s.sunColor)
     // Climate maps paint their own sky, so the photo gives way as their tint comes in.
     const photoAmount = (SKY_PHOTO_WEATHER[weather] ?? 1) * (1 - (draw?.skyAmount ?? 0))
-    this.sky.setPhoto(skyPhotoBlend(s.hour, this.dayNightControl?.daylight), photoAmount)
+    const skyBlend = skyPhotoBlend(s.hour, this.dayNightControl?.daylight, weather)
+    tintNoonLights(s, skyBlend, weather)
+    this.sky.setPhoto(skyBlend, photoAmount)
     this.sky.follow(camPos)
     this.scene.background = this.background.setHex(s.skyHorizon)
     if (this.renderer) this.renderer.toneMappingExposure = s.exposure

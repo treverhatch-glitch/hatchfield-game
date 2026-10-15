@@ -11,6 +11,7 @@ import {
   resolveHour,
   resolvePlayHour,
   SKY_PHOTO_FADES,
+  SKY_PHOTO_WEATHER,
   SKY_PHOTOS,
   skyPhotoBlend,
 } from './dayNight'
@@ -121,11 +122,23 @@ describe('pack 6 sky photos', () => {
     expect(skyPhotoBlend(12, 1)).toEqual({ a: 'noon', b: 'noon', t: 0 })
   })
 
+  it('rain and fog take the overcast plate, and a storm takes the storm plate', () => {
+    expect(skyPhotoBlend(12, null, 'rain')).toEqual({ a: 'overcast', b: 'overcast', t: 0 })
+    expect(skyPhotoBlend(12, null, 'fog')).toEqual({ a: 'overcast', b: 'overcast', t: 0 })
+    expect(skyPhotoBlend(12, null, 'storm')).toEqual({ a: 'storm', b: 'storm', t: 0 })
+    expect(skyPhotoBlend(12, null, 'clear')).toEqual({ a: 'noon', b: 'noon', t: 0 })
+    expect(skyPhotoBlend(23, null, 'rain')).toEqual({ a: 'night', b: 'night', t: 0 })
+    expect(skyPhotoBlend(23, null, 'storm')).toEqual({ a: 'storm', b: 'storm', t: 0 })
+    expect(SKY_PHOTO_WEATHER.rain).toBe(1)
+    expect(SKY_PHOTO_WEATHER.storm).toBe(1)
+  })
+
   it('every photo has a horizon row inside the image', () => {
     for (const photo of Object.values(SKY_PHOTOS)) {
       expect(photo.horizon).toBeGreaterThanOrEqual(0)
       expect(photo.horizon).toBeLessThan(1)
-      expect(photo.url).toMatch(/^\/art\/textures\/landing\/sky\/(dawn|noon|dusk|night)\.jpeg$/)
+      expect(photo.url).toMatch(/^\/art\/textures\/landing\/sky\/(dawn|noon|dusk|night|overcast|storm)\.jpeg$/)
+      expect(photo.url).not.toContain('hdri')
     }
   })
 

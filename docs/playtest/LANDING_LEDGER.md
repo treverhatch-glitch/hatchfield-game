@@ -135,7 +135,8 @@ Wired:
 - Runway paint, wet asphalt, and the threshold plate on the runway and apron. Dirt shoulders along the runway edges.
 - Seasonal ground: spring and summer use spring grass, autumn uses autumn grass, winter or deep snow uses snow grass. Apron and paved surfaces swap to snow or wet asphalt. Farmland and the river use their own plates.
 - Tree and bush sprite sheets as crossed cards. Chainlink on the perimeter fence, with the black holes discarded.
-- Dawn, noon, dusk, and night skies on the dome. The mirror fold is feathered so a non-wrapping panorama does not show a hard seam.
+- Dawn, noon, dusk, night, overcast, and storm skies on the dome. The mirror fold is feathered so a non-wrapping panorama does not show a hard seam. Rain and fog use the overcast plate while the sun is up. A storm uses the storm plate. Overnight rain and fog stay on the night plate.
+- The noon HDRI hint (`lighting/hdri_hint_noon.jpeg`) is a sun and hemisphere colour reference only. It is not a skybox.
 - Terminal glass and the airport-hotel tower use the elevation plates once per face.
 - Queue tape on the belt barriers. Carousel belt on the claim carousel.
 

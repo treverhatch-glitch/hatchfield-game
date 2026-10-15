@@ -29,6 +29,9 @@ export const LANDING_FILES = {
   sky_noon: 'sky/noon.jpeg',
   sky_dusk: 'sky/dusk.jpeg',
   sky_night: 'sky/night.jpeg',
+  sky_overcast: 'sky/overcast.jpeg',
+  sky_storm: 'sky/storm.jpeg',
+  hdri_hint_noon: 'lighting/hdri_hint_noon.jpeg',
 } as const
 
 export type LandingId = keyof typeof LANDING_FILES
@@ -57,6 +60,9 @@ export const LANDING_NATIVE: Record<LandingId, { w: number; h: number }> = {
   sky_noon: { w: 2912, h: 1440 },
   sky_dusk: { w: 2912, h: 1440 },
   sky_night: { w: 2912, h: 1440 },
+  sky_overcast: { w: 2912, h: 1440 },
+  sky_storm: { w: 2912, h: 1440 },
+  hdri_hint_noon: { w: 2912, h: 1440 },
 }
 
 const CLAMP: ReadonlySet<LandingId> = new Set([
@@ -66,6 +72,9 @@ const CLAMP: ReadonlySet<LandingId> = new Set([
   'sky_noon',
   'sky_dusk',
   'sky_night',
+  'sky_overcast',
+  'sky_storm',
+  'hdri_hint_noon',
   'terminal_facade',
   'hotel_facade',
   'threshold_metal',
@@ -80,8 +89,8 @@ export function landingArtUrl(id: LandingId, base = ''): string {
   return `${prefix}${LANDING_DIR}/${LANDING_FILES[id]}`
 }
 
-/** Absolute URL the sky dome loads. */
-export function landingSkyUrl(id: 'sky_dawn' | 'sky_noon' | 'sky_dusk' | 'sky_night'): string {
+/** Absolute URL the sky dome loads. The noon HDRI hint is not a dome plate. */
+export function landingSkyUrl(id: 'sky_dawn' | 'sky_noon' | 'sky_dusk' | 'sky_night' | 'sky_overcast' | 'sky_storm'): string {
   return `/${LANDING_DIR}/${LANDING_FILES[id]}`
 }
 
