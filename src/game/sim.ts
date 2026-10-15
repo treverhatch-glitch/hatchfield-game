@@ -19402,6 +19402,57 @@ export class Game {
     return this.economy
   }
 
+  /**
+   * True when a wander follows the rest of a jet's roll.
+   * One shared cell is a crossing. Ten cells along the remaining roll, and
+   * already beside the jet, is pacing the departure.
+   */
+  private wanderPacesRoll(path: readonly { c: number; r: number }[]): boolean {
+    const rolling = this.flights.filter(
+      (f) =>
+        (f.craft ?? 'jet') === 'jet' &&
+        (f.phase === 'pushback' || f.phase === 'taxi_out' || f.phase === 'takeoff'),
+    )
+    for (const jet of rolling) {
+      const rest = jet.path.slice(Math.max(0, jet.seg))
+      if (rest.length < 2) continue
+      let along = 0
+      let besideNow = false
+      for (const cell of path) {
+        if (Math.hypot(cell.c - jet.x, cell.r - jet.y) < 1.15) besideNow = true
+        for (const step of rest) {
+          if (Math.hypot(step.c - cell.c, step.r - cell.r) <= 1) {
+            along += 1
+            break
+          }
+        }
+        if (along >= 10 && besideNow) return true
+      }
+    }
+    return false
+  }
+
+  /** Two cells away from the nearest rolling jet, so a wander leaves the strip. */
+  private stepOffRoll(from: { c: number; r: number }): { c: number; r: number }[] | null {
+    const jet = this.flights.find(
+      (f) =>
+        (f.craft ?? 'jet') === 'jet' &&
+        (f.phase === 'pushback' || f.phase === 'taxi_out' || f.phase === 'takeoff'),
+    )
+    if (!jet) return null
+    const signR = from.r >= jet.y ? 1 : -1
+    const signC = from.c >= jet.x ? 1 : -1
+    const goals = [
+      { c: from.c, r: from.r + signR * 2 },
+      { c: from.c + signC * 2, r: from.r },
+    ]
+    for (const goal of goals) {
+      const path = astar(this.tiles, from, goal, 'mechanic')
+      if (path && path.length > 1) return path
+    }
+    return null
+  }
+
   tickMaintenance(dt: number) {
     const strips = runwayStrips(this.tiles, MIN_RUNWAY)
     if (!strips.length) return
@@ -19458,13 +19509,18 @@ export class Game {
         ]
         if (!goals.length) continue
         const g = pick(goals)
-        const path = astar(
-          this.tiles,
-          { c: Math.round(p.x), r: Math.round(p.y) },
-          g,
-          'mechanic',
-        )
-        if (path) {
+        const from = { c: Math.round(p.x), r: Math.round(p.y) }
+        let path = astar(this.tiles, from, g, 'mechanic')
+        // A faster bag claim releases arriving guests sooner and moves this
+        // shared draw. The unlucky wander followed the rest of the roll and
+        // stretched the strip lock without any headway change. Keep the draw.
+        // A path that paces the remaining roll steps two cells off the jet
+        // instead of walking the strip or standing on it.
+        if (path && this.wanderPacesRoll(path)) {
+          const stepped = this.stepOffRoll(from)
+          if (stepped && !this.wanderPacesRoll(stepped)) path = stepped
+        }
+        if (path && path.length > 1) {
           p.path = path
           p.seg = 0
           p.t = 0
