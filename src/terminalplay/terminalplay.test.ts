@@ -4,7 +4,7 @@ import type { Flight } from '../game/types.ts'
 import { itemDef, type PlacedItem, type ZoneId } from '../game/terminal.ts'
 import { placementCheck } from '../game/terminalKit.ts'
 import { isBottleneck, PLAY_TUNING } from './config.ts'
-import { facilitiesFromItems, facilityBlockers, placeholderRoute } from './facilities.ts'
+import { facilitiesFromItems, facilityBlockers } from './facilities.ts'
 import { findFootprint, footprintReason, footprintSpec, stampFrom } from './footprints.ts'
 import { queueAnchor, slotsAlong, standingInQueue } from './lines.ts'
 import { collisionReason } from './place.ts'
@@ -45,22 +45,6 @@ describe('facility interface for pathing', () => {
     expect(desk?.z).toBeTypeOf('number')
     expect(facilities.find((f) => f.type === 'scanner')?.capacity).toBe(1)
     expect(facilities.find((f) => f.type === 'seat')?.capacity).toBe(4)
-
-    const route = placeholderRoute(facilities).map((f) => f.type)
-    expect(route).toEqual([
-      'entrance',
-      'checkin',
-      'bag_drop',
-      'security',
-      'scanner',
-      'restroom',
-      'food',
-      'shop',
-      'seat',
-      'gate',
-    ])
-    expect(route).not.toContain('wall')
-    expect(route).not.toContain('belt')
 
     const blocked = facilityBlockers(items)
     expect(blocked.has('3,0')).toBe(true)

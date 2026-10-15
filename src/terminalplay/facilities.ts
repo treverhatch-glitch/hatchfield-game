@@ -2,7 +2,7 @@
  * Facilities the terminal pathing layer reads.
  * This file does not move passengers. The live walk (entrance → boarding) is
  * src/paxnav via src/game/hallNav.ts, which reads `facilityBlockers` for the
- * prefab nav grid. `placeholderRoute` stays as the plain stop order.
+ * prefab nav grid. The old plain stop order (`placeholderRoute`) is gone.
  */
 import { cellCenter, itemDef, type PlacedItem } from '../game/terminal.ts'
 import { blockedCellKeys } from './place.ts'
@@ -62,20 +62,6 @@ const DEF_TYPE: Record<string, FacilityType> = {
   walkway: 'belt',
 }
 
-/** Passenger stops, in visit order. Walls, belts, and signs are not stops. */
-const ROUTE_ORDER: FacilityType[] = [
-  'entrance',
-  'checkin',
-  'bag_drop',
-  'security',
-  'scanner',
-  'restroom',
-  'food',
-  'shop',
-  'seat',
-  'gate',
-]
-
 export function facilityType(def: string): FacilityType | null {
   return DEF_TYPE[def] ?? null
 }
@@ -116,13 +102,4 @@ export function facilitiesFromItems(
 /** Cells the nav grid never walks: walls and belts (see `prefabNavLayout`). */
 export function facilityBlockers(items: readonly { def: string; c: number; r: number }[]): Set<string> {
   return blockedCellKeys(items)
-}
-
-/**
- * Straight list of stops: doors, check-in, bag drop, security, airside
- * restroom / food / shop, seats, gate. Ignores walls; the walk uses the nav grid.
- */
-export function placeholderRoute(facilities: readonly TerminalFacility[]): TerminalFacility[] {
-  const stops = facilities.filter((f) => ROUTE_ORDER.includes(f.type))
-  return [...stops].sort((a, b) => ROUTE_ORDER.indexOf(a.type) - ROUTE_ORDER.indexOf(b.type))
 }

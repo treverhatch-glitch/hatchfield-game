@@ -1,0 +1,27 @@
+{
+  "tip": "Xavier JensenMood: Content (72)Top need: Hungry (44%)⚡ That was quick",
+  "note": "Security forecast: 4% loaded, about 0 min wait.",
+  "stats": {
+    "walkers": 151,
+    "visible": 138,
+    "bodies": 138,
+    "heads": 0,
+    "bags": 0,
+    "instances": 138,
+    "marks": 0,
+    "tuning": {
+      "maxVisible": 0,
+      "drawDistM": 1000000,
+      "lodDistM": 1000000,
+      "nearDistM": 1000000,
+      "nearCap": 4096,
+      "cullRadiusM": 1.2
+    }
+  },
+  "fps": {
+    "min": 17.14448995142392,
+    "avg": 18.37205976532408
+  },
+  "walkers": 151,
+  "errors": []
+}
