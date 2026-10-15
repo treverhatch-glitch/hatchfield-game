@@ -7,6 +7,7 @@ import { capstoneCost } from '../../progression/specializations.ts'
 import { PROGRESSION_BUILDABLES } from '../../progression/unlocks.ts'
 import { buildingById } from '../../tier3plus/index.ts'
 import { requestKit } from './kitFocus.ts'
+import { siteHasWater } from '../../fuel/barge.ts'
 import { stampCard, toolStampInput, type StampCard, type UnlockLink } from './stampFacts.ts'
 import { STAMP_HOVER_MS, type BuildMenu, type FurnishEntry } from './taxonomy.ts'
 
@@ -185,7 +186,7 @@ export function BuildTray({
         ))}
       </div>
       <div className="tools build-tray" data-testid="build-tray">
-        {group.tools.map((tool) => (
+        {group.tools.filter((tool) => tool !== 'berth' || siteHasWater(game.site)).map((tool) => (
           <ToolStamp key={tool} game={game} tool={tool} owned={owned} treeOwned={treeOwned} onOpen={onOpen} />
         ))}
         {(group.furnish ?? []).map((entry) => (

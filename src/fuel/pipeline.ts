@@ -32,9 +32,9 @@ export function pipelineIntervalMinutes(): number {
 }
 
 /** A closed line or a held batch pays the road term. */
-export function supplyCut(supply: 'road' | 'rail' | 'pipeline', open: boolean): number {
+export function supplyCut(supply: 'road' | 'rail' | 'pipeline' | 'barge', open: boolean): number {
   if (!open) return 0
-  if (supply === 'rail') return PIPELINE.railDifferential
+  if (supply === 'rail' || supply === 'barge') return PIPELINE.railDifferential
   if (supply === 'pipeline') return PIPELINE.differential
   return 0
 }

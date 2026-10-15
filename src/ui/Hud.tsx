@@ -29,6 +29,7 @@ import { AIRFRAMES } from '../game/airframes'
 import type { StandingAdvisorCard } from '../game/standingAdvisor.ts'
 import { canUpgradePower, powerPlantOffer } from '../economy/powerPlant'
 import { SPOT_OFFER, termBandLitres } from '../fuel/offerData'
+import { siteHasWater } from '../fuel/barge'
 import { BAG_SYSTEMS, FUEL_CONTRACTS, PAX_UNITS, TANK_TIERS, VEHICLE_OFFERS } from '../scale/data'
 import { canBuyPax, canBuyVehicle, canSignContract, canUpgradeBags, canUpgradeTank, contractById, tankDef } from '../scale/logic'
 import {
@@ -2037,6 +2038,11 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       <button type="button" data-testid="fuel-supply-pipeline" onClick={() => game.setFuelSupply('pipeline')}>
                         Pipeline
                       </button>
+                      {siteHasWater(game.site) ? (
+                        <button type="button" data-testid="fuel-supply-barge" onClick={() => game.setFuelSupply('barge')}>
+                          Barge
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => game.upgradeTank()}

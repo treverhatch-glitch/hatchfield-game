@@ -1,4 +1,5 @@
 import type { ResearchId, StandClass, Tile, Vec } from '../game/types'
+import { bargeLeadMinutes, bargeParcelLitres } from '../fuel/barge.ts'
 import { VEHICLE_CATALOG } from '../logistics/defaults'
 import type { VehicleType } from '../logistics/types'
 import {
@@ -617,7 +618,8 @@ export function pillarReport(field: FieldSnapshot, state: PillarState, airframeI
   if (demand.supply === 'rail') {
     const link = railLink(field, field.research.includes('rail_fuel'))
     const pipe = pipeLink(field, field.research.includes('pipeline_fuel'))
-    if (!link.flowing && !pipe.flowing) {
+    const berth = cellsOf(field.tiles, 'berth').some((p) => p.r === 0)
+    if (!link.flowing && !pipe.flowing && !berth) {
       hints.push(
         hint(
           'rail-flow',
@@ -743,6 +745,7 @@ export function placementBlock(
     oil: { fieldLevel: LINK_OFFERS.oil.fieldLevel, research: null, name: LINK_OFFERS.oil.name },
     fuel_pipe: { fieldLevel: LINK_OFFERS.fuel_pipe.fieldLevel, research: null, name: LINK_OFFERS.fuel_pipe.name },
     manifold: { fieldLevel: LINK_OFFERS.manifold.fieldLevel, research: null, name: LINK_OFFERS.manifold.name },
+    berth: { fieldLevel: LINK_OFFERS.berth.fieldLevel, research: null, name: LINK_OFFERS.berth.name },
     travelator: { fieldLevel: LINK_OFFERS.travelator.fieldLevel, research: null, name: LINK_OFFERS.travelator.name },
     skywalk: { fieldLevel: LINK_OFFERS.skywalk.fieldLevel, research: null, name: LINK_OFFERS.skywalk.name },
     mover: { fieldLevel: LINK_OFFERS.mover.fieldLevel, research: null, name: LINK_OFFERS.mover.name },
@@ -832,6 +835,7 @@ export interface UpkeepCounts {
   oil: number
   fuelPipe: number
   manifold: number
+  berth: number
   travelator: number
   skywalk: number
   mover: number
@@ -861,6 +865,7 @@ export function pillarUpkeep(state: PillarState, counts: UpkeepCounts): number {
   n += counts.oil * LINK_OFFERS.oil.upkeepPerDay
   n += counts.fuelPipe * LINK_OFFERS.fuel_pipe.upkeepPerDay
   n += counts.manifold * LINK_OFFERS.manifold.upkeepPerDay
+  n += counts.berth * LINK_OFFERS.berth.upkeepPerDay
   n += counts.travelator * LINK_OFFERS.travelator.upkeepPerDay
   n += counts.skywalk * LINK_OFFERS.skywalk.upkeepPerDay
   n += counts.mover * LINK_OFFERS.mover.upkeepPerDay
@@ -900,6 +905,16 @@ export function tickFuel(
     if (paid > cash + 1e-6) return { ...none, method: state.supply, waitingOnCash: true }
     state.litres += litres
     return { delivered: litres, paid, method: state.supply, railFlowing: state.supply === 'rail', waitingOnCash: false }
+  }
+  if (state.supply === 'barge') {
+    state.bargeMinutes = (state.bargeMinutes ?? 0) + gameMinutes
+    if (!state.berthOpen || state.bargeMinutes + 1e-6 < bargeLeadMinutes()) return { ...none, method: 'barge' }
+    const litres = Math.min(room, bargeParcelLitres(contract.railLitresPerHour))
+    const paid = litres * contract.wholesalePerLitre
+    if (paid > cash + 1e-6) return { ...none, method: 'barge', waitingOnCash: true }
+    state.bargeMinutes = 0
+    state.litres += litres
+    return { delivered: litres, paid, method: 'barge', railFlowing: false, waitingOnCash: false }
   }
   state.roadMinutes += gameMinutes
   if (state.roadMinutes + 1e-6 < contract.leadMinutes) return { ...none, method: 'road' }

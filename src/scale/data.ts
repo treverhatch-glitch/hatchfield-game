@@ -1,4 +1,5 @@
 import type { ResearchId } from '../game/types'
+import { BARGE } from '../fuel/barge.ts'
 import { PIPELINE } from '../fuel/pipeline.ts'
 import type { VehicleType } from '../logistics/types'
 import type { BagSystemId, PaxUnit, SizeTier } from './types'
@@ -499,6 +500,13 @@ export const LINK_OFFERS = {
     research: 'pipeline_fuel' as ResearchId,
     cost: 0,
     upkeepPerDay: PIPELINE.manifoldUpkeepPerDay,
+  },
+  berth: {
+    name: 'Barge berth',
+    fieldLevel: 5,
+    research: 'rail_fuel' as ResearchId,
+    cost: BARGE.berthCost,
+    upkeepPerDay: BARGE.berthUpkeepPerDay,
   },
   travelator: {
     name: 'Travelator',

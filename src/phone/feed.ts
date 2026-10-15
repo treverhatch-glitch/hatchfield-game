@@ -46,6 +46,10 @@ export interface PhonePipelineHold {
   body: string
 }
 
+export interface PhoneBargeEmpty {
+  body: string
+}
+
 export interface PhoneFuelSigned {
   id: string
   name: string
@@ -60,6 +64,7 @@ export interface PhoneWorld {
   fuelSpot: PhoneFuelSpot | null
   fuelSigned: PhoneFuelSigned | null
   pipelineHold: PhonePipelineHold | null
+  bargeEmpty: PhoneBargeEmpty | null
   mxSigned: PhoneSignedRow[]
   hubs: PhoneSignedRow[]
   layoverOffer: {
@@ -150,6 +155,7 @@ export function emptyPhoneWorld(): PhoneWorld {
     fuelSpot: null,
     fuelSigned: null,
     pipelineHold: null,
+    bargeEmpty: null,
     mxSigned: [],
     hubs: [],
     layoverOffer: null,
@@ -287,6 +293,26 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       arrives: true,
       secondsLeft: hold.secondsLeft,
       actions: [btn('pipeline-spot', 'Buy one spot truck', { type: 'order-pipeline-spot' }, { primary: true })],
+    })
+    if (built) cards.push(built)
+  }
+
+  const barge = world.bargeEmpty
+  if (barge) {
+    const title = 'Berth empty'
+    const built = card({
+      id: 'barge-empty',
+      key: 'barge-empty',
+      tab: 'messages',
+      kind: 'barge-empty',
+      from: 'Fuel farm',
+      title,
+      preview: phonePreview(title),
+      body: barge.body,
+      tone: 'warn',
+      arrives: true,
+      secondsLeft: null,
+      actions: [btn('barge-spot', 'Buy one spot truck', { type: 'order-barge-spot' }, { primary: true })],
     })
     if (built) cards.push(built)
   }

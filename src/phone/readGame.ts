@@ -13,6 +13,7 @@ import {
 import type { Game } from '../game/sim.ts'
 import { SPOT_OFFER, termBandLitres } from '../fuel/offerData.ts'
 import { PIPELINE } from '../fuel/pipeline.ts'
+import { BARGE } from '../fuel/barge.ts'
 import { GAME_MINUTES_PER_SECOND } from '../scale/data.ts'
 import { contractById } from '../scale/logic.ts'
 import { buildPhoneFeed } from './feed.ts'
@@ -106,6 +107,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
             body: PIPELINE.card,
           }
         : null,
+    bargeEmpty: game.bargeEmpty() ? { body: BARGE.card } : null,
     fuelSigned: (() => {
       const def = contractById(game.contractId)
       if (!def) return null

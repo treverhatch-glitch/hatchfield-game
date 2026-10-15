@@ -107,6 +107,11 @@ function fuelRailStamp(id: string): string | null {
   return null
 }
 
+function berthStamp(id: string): string | null {
+  if (id !== 'berth') return null
+  return 'Research Fuel rail. Stamp the berth on the river edge of a riverside plot. Inland fields have no river.'
+}
+
 function fuelPipeStamp(id: string): string | null {
   if (id === 'fuel_pipe') {
     return 'Research the fuel pipeline. Paint the pipe to the map edge, then put the receipt manifold on that pipe, beside the farm.'
@@ -134,7 +139,7 @@ export function stampCard(input: StampInput): StampCard {
   const locked = levelShort || treeShort || deskShort
   const fuelRail = fuelRailStamp(input.id)
   const fuelPipe = fuelPipeStamp(input.id)
-  const fuelLine = fuelRail ?? fuelPipe
+  const fuelLine = fuelRail ?? fuelPipe ?? berthStamp(input.id)
   const hydrant = hydrantStamp(input.id)
   const hydrantShort = Boolean(hydrant && !input.researchOwned)
   const parts: string[] = []
@@ -149,7 +154,7 @@ export function stampCard(input: StampInput): StampCard {
     badge = { kind: 'research', label: 'Hydrant', nodeId: 'airside-1' }
     link = { tab: 'research', anchor: 'research-node-airside-1', label: 'Hydrant' }
   } else if (treeShort && tree) {
-    const label = fuelRail ? 'Fuel rail' : fuelPipe ? 'Fuel pipeline' : tree.name
+    const label = fuelRail || berthStamp(input.id) ? 'Fuel rail' : fuelPipe ? 'Fuel pipeline' : tree.name
     badge = { kind: 'research', label, nodeId: tree.id }
     link = { tab: 'research', anchor: `research-node-${tree.id}`, label }
   } else if (!treeLink && deskShort && node) {

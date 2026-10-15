@@ -781,6 +781,7 @@ import {
   termPerLitre,
 } from '../fuel/standing.ts'
 import { PIPELINE, pipelineIntervalMinutes, qualityHoldMinutes, supplyCut } from '../fuel/pipeline.ts'
+import { BARGE, bargeLeadMinutes, bargeParcelLitres, cellOnWater, cellPlotId, siteHasWater } from '../fuel/barge.ts'
 import {
   astar,
   farmBesidePavement,
@@ -1431,7 +1432,10 @@ export class Game {
   pipelineHoldMinutes = 0
   /** Game minutes of open flow before the next hold. */
   pipelineCoolMinutes = pipelineIntervalMinutes()
+  /** Game minutes already waited on the barge parcel. */
+  bargeMinutes = 0
   private lastPipelineFlowing = false
+  private lastBargeEmpty = false
   tankTier: 1 | 2 | 3 = 1
   tankLitres = 0
   fuelSupply: FuelSupply = 'road'
@@ -6154,22 +6158,28 @@ export class Game {
       else truckLitres += need
       flights.push({ id: f.id, litres: need, departAt: f.fuelHeldSince ?? this.clock })
     }
+    const onBarge = this.fuelSupply === 'barge'
+    const bargeOpen = onBarge && this.berthIsOpen()
     this.fuelChain.observe({
       capacityLitres: cap,
       litres: this.tankLitres,
-      mode: this.fuelSupply === 'road' ? 'tanker' : 'pipeline',
-      tankerLitres: contract?.tankerLitres ?? 0,
-      leadMinutes: contract?.leadMinutes ?? 0,
+      mode: this.fuelSupply === 'road' || onBarge ? 'tanker' : 'pipeline',
+      tankerLitres: onBarge
+        ? bargeOpen
+          ? bargeParcelLitres(contract?.railLitresPerHour ?? 0)
+          : 0
+        : (contract?.tankerLitres ?? 0),
+      leadMinutes: onBarge ? (bargeOpen ? bargeLeadMinutes() : 0) : (contract?.leadMinutes ?? 0),
       wholesalePerLitre: contract ? this.termUnitPrice(contract.id) : 0,
       cash: this.cash,
       truckDrawPerMin: truckLitres / windowMin,
       hydrantDrawPerMin: hydrantLitres / windowMin,
-      pipelinePerMin: contract ? contract.railLitresPerHour / 60 : 0,
+      pipelinePerMin: onBarge ? 0 : contract ? contract.railLitresPerHour / 60 : 0,
       roads: tilesOf(this.tiles, 'road'),
       connectors: tilesOf(this.tiles, 'guard'),
       farms: tilesOf(this.tiles, 'fuel'),
       flights,
-      roadMinutes: this.roadMinutes,
+      roadMinutes: onBarge ? this.bargeMinutes : this.roadMinutes,
       justDelivered: this.fuelJustDelivered,
       pipelineFlowing:
         this.fuelSupply === 'rail'
@@ -6718,6 +6728,7 @@ export class Game {
         fuelIndex: this.fuelIndex,
         pipelineHoldMinutes: this.pipelineHoldMinutes,
         pipelineCoolMinutes: this.pipelineCoolMinutes,
+        bargeMinutes: this.bargeMinutes,
         fleet: this.scaleFleet,
         bagSystem: this.bagSystem,
         desks: this.paxDesks,
@@ -6945,6 +6956,7 @@ export class Game {
       this.fuelIndex = s.pillar?.fuelIndex ?? 0
       this.pipelineHoldMinutes = s.pillar?.pipelineHoldMinutes ?? 0
       this.pipelineCoolMinutes = s.pillar?.pipelineCoolMinutes ?? pipelineIntervalMinutes()
+      this.bargeMinutes = s.pillar?.bargeMinutes ?? 0
       this.scaleFleet = (s.pillar?.fleet ?? {}) as Partial<Record<VehicleType, number>>
       this.bagSystem = s.pillar?.bagSystem ?? 'carts'
       this.paxDesks = s.pillar?.desks ?? 2
@@ -14290,7 +14302,9 @@ export class Game {
     this.fuelIndex = 0
     this.pipelineHoldMinutes = 0
     this.pipelineCoolMinutes = pipelineIntervalMinutes()
+    this.bargeMinutes = 0
     this.lastPipelineFlowing = false
+    this.lastBargeEmpty = false
     this.tankTier = 1
     this.powerPlantTier = 1
     this.tankLitres = 0
@@ -14316,6 +14330,8 @@ export class Game {
       supply: this.fuelSupply,
       roadMinutes: this.roadMinutes,
       lineHeld: this.fuelSupply === 'pipeline' && this.pipelineHoldMinutes > 0,
+      bargeMinutes: this.bargeMinutes,
+      berthOpen: this.berthIsOpen(),
       fleet: { ...this.scaleFleet },
       bagSystem: this.bagSystem,
       desks: this.paxDesks,
@@ -14483,6 +14499,7 @@ export class Game {
       oil: tilesOf(this.tiles, 'oil').length,
       fuelPipe: tilesOf(this.tiles, 'fuel_pipe').length,
       manifold: tilesOf(this.tiles, 'manifold').length,
+      berth: tilesOf(this.tiles, 'berth').length,
       travelator: tilesOf(this.tiles, 'travelator').length,
       skywalk: Math.max(0, tilesOf(this.tiles, 'skywalk').length - this.hubStampCount('skywalk', 'skywalk')),
       mover: Math.max(0, tilesOf(this.tiles, 'mover').length - this.hubStampCount('people_mover', 'mover')),
@@ -14513,6 +14530,7 @@ export class Game {
     const state = this.pillarState()
     const result = tickFuel(this.pillarField(), state, minutes, this.cash)
     this.roadMinutes = state.roadMinutes
+    this.bargeMinutes = state.bargeMinutes ?? this.bargeMinutes
     this.tankLitres = state.litres
     let paid = result.paid
     if (result.delivered > 0 && result.paid > 0 && this.contractId) {
@@ -14537,6 +14555,9 @@ export class Game {
     }
     this.lastRailFlowing = result.railFlowing
     this.lastPipelineFlowing = pipeFlowing
+    const bargeEmpty = this.bargeEmpty()
+    if (bargeEmpty && !this.lastBargeEmpty) this.pushNews(BARGE.card, 'bad')
+    this.lastBargeEmpty = bargeEmpty
     this.tickSpotDelivery(minutes)
   }
 
@@ -14600,11 +14621,25 @@ export class Game {
     return Math.round(Math.max(0.001, base + cut) * 1000) / 1000
   }
 
-  /** Rail differential while the spur is connected. Pipeline differential while the manifold is open. */
+  /** Rail differential while the spur is connected. Pipeline differential while the manifold is open. Barge uses the rail cut. */
   private supplyLineOpen(): boolean {
     if (this.fuelSupply === 'rail') return railLink(this.pillarField(), this.hasResearch('rail_fuel')).flowing
     if (this.fuelSupply === 'pipeline') return this.pipelineManifoldOpen()
+    if (this.fuelSupply === 'barge') return this.berthIsOpen()
     return false
+  }
+
+  /** A berth on an owned river-edge cell. Inland cells and inland fields do not count. */
+  berthIsOpen(): boolean {
+    if (!siteHasWater(this.site)) return false
+    return tilesOf(this.tiles, 'berth').some(
+      (p) => cellOnWater(p.c, p.r, this.site) && this.ownedPlots.some((plot) => plot.id === cellPlotId(p.c, p.r)),
+    )
+  }
+
+  /** The lead has passed and no berth is open, so the parcel cannot land. */
+  bargeEmpty(): boolean {
+    return this.fuelSupply === 'barge' && !this.berthIsOpen() && this.bargeMinutes + 1e-6 >= bargeLeadMinutes()
   }
 
   /** Connected pipe, and the batch is not in a quality hold. */
@@ -14808,8 +14843,18 @@ export class Game {
   }
 
   setFuelSupply(supply: FuelSupply) {
+    if (supply === 'barge' && !siteHasWater(this.site)) {
+      this.pushNews('This field has no river. Barges do not call here.', 'bad')
+      this.emit()
+      return
+    }
     if (supply === 'rail' && !this.hasResearch('rail_fuel')) {
       this.pushNews('Research Fuel rail first. The trains still need a line and a station.', 'bad')
+      this.emit()
+      return
+    }
+    if (supply === 'barge' && !this.hasResearch('rail_fuel')) {
+      this.pushNews('Research Fuel rail first. The berth still has to sit on the river.', 'bad')
       this.emit()
       return
     }
@@ -14820,7 +14865,16 @@ export class Game {
     }
     this.fuelSupply = supply
     this.roadMinutes = 0
-    const label = supply === 'rail' ? 'Fuel supply set to rail.' : supply === 'pipeline' ? 'Fuel supply set to pipeline.' : 'Fuel supply set to road tankers.'
+    this.bargeMinutes = 0
+    this.lastBargeEmpty = false
+    const label =
+      supply === 'rail'
+        ? 'Fuel supply set to rail.'
+        : supply === 'pipeline'
+          ? 'Fuel supply set to pipeline.'
+          : supply === 'barge'
+            ? 'Fuel supply set to barge.'
+            : 'Fuel supply set to road tankers.'
     this.pushNews(label, 'ok')
     this.emit()
   }
@@ -14829,6 +14883,38 @@ export class Game {
   orderPipelineSpot() {
     if (this.pipelineHoldMinutes <= 0) {
       this.pushNews('The pipeline is flowing. A spot truck is not on the card.', 'ok')
+      this.emit()
+      return
+    }
+    if (this.spotInbound) return
+    if (tilesOf(this.tiles, 'fuel').length === 0) {
+      this.pushNews('Build a fuel farm first.', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.fuelBrand) this.fuelBrand = 'apex'
+    const quote = this.quoteSpot()
+    this.spotOffer = null
+    this.spotInbound = {
+      litres: SPOT_OFFER.tankerLitres,
+      perLitre: quote.perLitre,
+      minutesLeft: SPOT_OFFER.leadMinutes,
+      waitNoted: false,
+      supplier: quote.supplier,
+      outage: true,
+    }
+    const bill = Math.round(SPOT_OFFER.tankerLitres * quote.perLitre)
+    this.pushNews(
+      `Spot truck ordered. ${SPOT_OFFER.tankerLitres.toLocaleString('en-US')} L at $${quote.perLitre.toFixed(3)}/L ($${bill.toLocaleString('en-US')}).`,
+      'ok',
+    )
+    this.emit()
+  }
+
+  /** One spot truck while the berth is empty. A signed term stays signed. */
+  orderBargeSpot() {
+    if (!this.bargeEmpty()) {
+      this.pushNews('A barge parcel is still on the way.', 'ok')
       this.emit()
       return
     }
@@ -20040,6 +20126,19 @@ export class Game {
       })
       if (!beside) {
         this.pushNews('Oil station needs the fuel farm or the fuel rail beside it.', 'bad')
+        this.emit()
+        return
+      }
+    }
+    if (this.tool === 'berth') {
+      if (!siteHasWater(this.site)) {
+        this.pushNews('This field has no river.', 'bad')
+        this.emit()
+        return
+      }
+      const owned = this.ownedPlots.some((plot) => plot.id === cellPlotId(v.c, v.r))
+      if (!cellOnWater(v.c, v.r, this.site) || !owned) {
+        this.pushNews('The berth has to sit on a plot that touches the river.', 'bad')
         this.emit()
         return
       }

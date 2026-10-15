@@ -33,6 +33,7 @@ export type PhoneAction =
   | { type: 'decline-fuel-spot' }
   | { type: 'drop-fuel-term' }
   | { type: 'order-pipeline-spot' }
+  | { type: 'order-barge-spot' }
 
 export interface PhoneButton {
   id: string
@@ -101,5 +102,6 @@ export interface PhoneCommandHost {
   declineFuelSpot(): void
   dropFuelTerm(): void
   orderPipelineSpot(): void
+  orderBargeSpot(): void
   emit(): void
 }

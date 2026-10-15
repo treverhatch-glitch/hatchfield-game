@@ -6,7 +6,7 @@ export type SizeTier = 'small' | 'wide' | 'jumbo'
 
 export type BagSystemId = 'carts' | 'sorter' | 'bhs'
 
-export type FuelSupply = 'road' | 'rail' | 'pipeline'
+export type FuelSupply = 'road' | 'rail' | 'pipeline' | 'barge'
 
 export type PaxUnit = 'desk' | 'kiosk' | 'bagdrop' | 'scanner' | 'egate'
 
@@ -27,6 +27,10 @@ export interface PillarState {
   roadMinutes: number
   /** Pipeline batch is held. The line stays connected and moves no litres. */
   lineHeld?: boolean
+  /** Game minutes already waited on the barge parcel. */
+  bargeMinutes?: number
+  /** A berth is stamped on an owned river plot. */
+  berthOpen?: boolean
   fleet: Partial<Record<VehicleType, number>>
   bagSystem: BagSystemId
   desks: number

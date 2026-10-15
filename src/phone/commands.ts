@@ -27,6 +27,7 @@ export function phoneHost(game: Game): PhoneCommandHost {
     declineFuelSpot: () => game.declineSpot(),
     dropFuelTerm: () => game.dropFuelTerm(),
     orderPipelineSpot: () => game.orderPipelineSpot(),
+    orderBargeSpot: () => game.orderBargeSpot(),
     emit: () => game.emit(),
   }
 }
@@ -93,6 +94,9 @@ export function dispatchPhoneAction(host: PhoneCommandHost, action: PhoneAction)
       return
     case 'order-pipeline-spot':
       host.orderPipelineSpot()
+      return
+    case 'order-barge-spot':
+      host.orderBargeSpot()
       return
     default: {
       const never: never = action

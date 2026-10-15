@@ -24,6 +24,19 @@ export function addFuelRail(g: THREE.Group) {
   addFuelRailMass(g)
 }
 
+/** A short quay. The barge ties up on the river side of the cell. */
+export function addBerth(g: THREE.Group) {
+  const deck = new THREE.Mesh(metreUv(new THREE.BoxGeometry(CELL * 0.92, 0.16, CELL * 0.55), 4, WORLD_PER_METER), yardMaterial('gravel'))
+  deck.position.set(0, 0.12, -CELL * 0.1)
+  deck.receiveShadow = true
+  const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.7, 8), metal('#d7dee6'))
+  bollard.position.set(-CELL * 0.28, 0.5, CELL * 0.16)
+  const bollard2 = bollard.clone()
+  bollard2.position.x = CELL * 0.28
+  mountSign(g, 'BERTH', { w: 1.1, h: 0.24, x: 0, y: 1.1, z: CELL * 0.05 }, '#1f3b57', '#f4f7fa')
+  g.add(deck, bollard, bollard2)
+}
+
 /** One pipe along the cell. Distinct from the twin fuel-rail runs. */
 export function addFuelPipe(g: THREE.Group) {
   const pad = new THREE.Mesh(metreUv(new THREE.BoxGeometry(CELL * 0.94, 0.06, CELL * 0.28), 4, WORLD_PER_METER), yardMaterial('gravel'))

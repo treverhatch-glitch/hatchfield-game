@@ -118,7 +118,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
     {
       id: 'fuel',
       label: 'Fuel',
-      tools: ['fuel', 'fuel_rail', 'oil', 'fuel_pipe', 'manifold', 'saf_blending'],
+      tools: ['fuel', 'fuel_rail', 'oil', 'fuel_pipe', 'manifold', 'berth', 'saf_blending'],
       progression: ['hydrant', 'fuel_farm_iii'],
     },
     {

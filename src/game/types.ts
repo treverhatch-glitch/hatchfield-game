@@ -70,6 +70,8 @@ export type Tile =
   | 'fuel_pipe'
   /** Receipt manifold. Pipeline flow needs this on the pipe, beside the farm. */
   | 'manifold'
+  /** Barge berth. Only on the river edge of a riverside plot. */
+  | 'berth'
   /** Late-game airport hotel (transfer and crew nights). */
   | 'late_hotel'
   /** Late-game rail link station. Demand bonus once the build finishes. */
@@ -154,6 +156,7 @@ export type Tool =
   | 'oil'
   | 'fuel_pipe'
   | 'manifold'
+  | 'berth'
   | 'travelator'
   | 'skywalk'
   | 'mover'
@@ -982,11 +985,13 @@ export interface GameSnapshot {
     contractId: string | null
     tankTier: 1 | 2 | 3
     litres: number
-    supply: 'road' | 'rail' | 'pipeline'
+    supply: 'road' | 'rail' | 'pipeline' | 'barge'
     /** Game minutes left on a pipeline quality hold. Missing on older saves. */
     pipelineHoldMinutes?: number
     /** Game minutes of open flow before the next hold. Missing on older saves. */
     pipelineCoolMinutes?: number
+    /** Game minutes already waited on a barge parcel. Missing on older saves. */
+    bargeMinutes?: number
     roadMinutes: number
     spotOffer?: SpotOffer | null
     spotInbound?: SpotInbound | null

@@ -1393,6 +1393,14 @@ export const BUILDINGS: BuildDef[] = [
     blurb: 'Takes the pipeline into the tank farm. Place it on the pipe, beside the farm. $520/day.',
   },
   {
+    tool: 'berth',
+    tile: 'berth',
+    name: LINK_OFFERS.berth.name,
+    cost: LINK_OFFERS.berth.cost,
+    minFieldLevel: 5,
+    blurb: 'A barge berth on the river edge. One rail-day of fuel, six game hours out. Inland fields have no river.',
+  },
+  {
     tool: 'travelator',
     tile: 'travelator',
     name: LINK_OFFERS.travelator.name,
@@ -1600,6 +1608,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   oil: 'Oil station',
   fuel_pipe: 'Fuel pipeline',
   manifold: 'Receipt manifold',
+  berth: 'Barge berth',
   travelator: 'Travelator',
   skywalk: 'Pier skywalk',
   mover: 'Pier mover',

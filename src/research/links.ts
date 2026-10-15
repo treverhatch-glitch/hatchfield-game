@@ -28,6 +28,7 @@ export const BUILD_LINKS: Readonly<Record<string, string>> = {
   oil: 'airside-6',
   fuel_pipe: 'airside-7',
   manifold: 'airside-7',
+  berth: 'airside-6',
   security_hall: 'safety-4',
   hotel_biz: 'landside-2',
   rail: 'landside-5',
