@@ -58,6 +58,7 @@ describe('HUD regions in the browser', () => {
     const vite = spawn('npx', ['vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
       shell: true,
+      detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     try {
@@ -73,6 +74,8 @@ describe('HUD regions in the browser', () => {
         for (const viewport of HUD_VIEWPORTS) {
           const at = `${viewport.width}x${viewport.height}`
           const page = await browser.newPage({ viewport })
+          // Cold Vite transforms and SwiftShader scene builds run past Playwright's 30 s default on a loaded VM.
+          page.setDefaultTimeout(90_000)
           await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle' })
           await page.evaluate(() => localStorage.clear())
           await page.reload({ waitUntil: 'networkidle' })
@@ -148,7 +151,8 @@ describe('HUD regions in the browser', () => {
         await browser.close()
       }
     } finally {
-      vite.kill('SIGTERM')
+      // Kill the whole group: `shell: true` makes vite a grandchild that outlives a plain kill and holds the port.
+      if (vite.pid) process.kill(-vite.pid, 'SIGTERM')
     }
   }, 300_000)
 })
