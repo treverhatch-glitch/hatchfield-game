@@ -1,6 +1,6 @@
 # Hatchfield UI spec
 
-Desktop HUD for the airport. This is the implementable description of the chrome that is already on `main` (baseline `1c8c21c`), plus the remaining Cities: Skylines gaps written as G5 tickets. Do not rebuild the surfaces listed under [Shipped, leave it](#shipped-leave-it).
+Desktop HUD for the airport. This is the implementable description of the chrome on `main`. G5-1 through G5-7 are shipped. G5-8 and G5-9 are the remaining tickets. Do not rebuild the surfaces listed under [Shipped, leave it](#shipped-leave-it).
 
 Cities: Skylines 1 and 2 are the reference for how panels open, how an info view tints the map, how a milestone bar shows what the next bit of XP unlocks, and how a development tree shows cost, prerequisites, and locked nodes. The video notes in the UI research are opinion: the model did not see the frames, and one pass described Factorio. Use the patterns in this file, not those corner maps.
 
@@ -9,7 +9,7 @@ Desktop only. The layout target is 1920×1080. There is no phone-width layout to
 ## Rules
 
 1. The centre of the screen stays clear for the apron. Chrome sits on the edges.
-2. A second click on the open tab or subsection closes it. No blocking modal over the field. Esc follows `nextEscape`: close the pause sheet, release a captured camera, cancel the stamp, close the info-view Numbers panel, close the info view, and only then open the pause sheet. It does not close the manage panel or the handset.
+2. A second click on the open tab or subsection closes it. No blocking modal over the field. Esc follows `nextEscape`: close the pause sheet, release a captured camera, cancel the stamp, close info numbers (hotspot lines, then the More menu, then the map Numbers panel), close the info view, close the flight card, and only then open the pause sheet. It does not close the manage panel or the handset.
 3. Detailed numbers live in a click-open submenu. A chip, a legend swatch, or a roster row may show a name, a status word, or one headline figure. The breakdown opens on click.
 4. The handset peeks from the left edge. A new contract or message flashes a short preview, then the handset slides out on click. It has two tabs and full cards with actions.
 5. Hints and tip chips stay off the handset. They already do (`PHONE_EXCLUDED_KINDS` includes `hint` and `tip`). Do not route them through it.
@@ -19,15 +19,17 @@ Tunables stay in config (`src/research/config.ts`, `src/info/config.ts`, `src/ga
 
 ## Shipped, leave it
 
-Described below as it works. Tickets may extend a file; they may not replace the taxonomy, the dock, the build bar, the five info views, the building panel, the handset, or the Airlines relations submenu.
+Described below as it works. Tickets may extend a file; they may not replace the taxonomy, the dock, the build bar, the six info views, the More menu, the flight card, the alert pins, the building panel, the handset, or the Airlines relations submenu.
 
 | Surface | Where | Landed as |
 | --- | --- | --- |
 | Chrome taxonomy, alert dock, build bar, research badges | `src/ui/nav/taxonomy.ts`, `src/ui/nav/BuildTray.tsx`, `src/ui/isolated/AlertStack.tsx` | PR #15 era |
-| Info-view bar: Traffic, Queues, Bays, Power, Fuel | `src/ui/InfoViews.tsx`, `src/info/` | `287d068` |
+| Info-view bar: Traffic, Queues, Bays, Airfield, Power, Fuel, plus More | `src/ui/InfoViews.tsx`, `src/info/` | `287d068`, Airfield and More with G5-3 |
 | Left building panel, bay limits, click-open subsections | `src/ui/BuildingPanel.tsx`, `src/buildinginfo/` | `68a42cc` |
 | Handset: Contracts and Messages | `src/ui/phone/`, `src/phone/` | phone v1 |
 | Relations score in a click-open Airlines submenu | `src/ui/AirlinesDesk.tsx` | `a959aa3` |
+| Flight card for the selected flight | `src/ui/inspector/FlightCard.tsx` | G5-5 |
+| Critical alert pin on the first cell | `src/ui/alerts/AlertMark.tsx` | G5-6 |
 
 Menu labels are title case. The only menu tree is `taxonomy.ts`. A tool and a manage tab are each listed once. `src/ui/nav/taxonomy.test.ts` and `src/ui/menuIntegrity.e2e.test.ts` keep it that way.
 
@@ -37,14 +39,14 @@ Menu labels are title case. The only menu tree is `taxonomy.ts`. A tool and a ma
 
 | Edge | What sits there |
 | --- | --- |
-| Top bar | Airport name and plot, Menu, Title, cash with the daily flow, clock, speed, field badge (level, XP bar, research points), Standing, reputation, the status chip, season and weather, free gates and holding, HATCH price after listing, a quiet vitals line (strip, runway, security, halls). |
-| Under the top bar, full width | Ground-stock line on the left, the older hotspot chips in the centre, passenger-flow toggle on the right (`OwnerChrome` `info-strip`). |
-| Under that, centred | The five info-view pills. One legend hangs under the selected pill. |
+| Top bar | Airport name and plot, Menu, Title, cash with the daily flow, clock, speed, field badge (level, XP bar, the next unlock line, research points), Standing, reputation, the status chip, season and weather, free gates and holding, HATCH price after listing, a quiet vitals line (strip, runway, security, halls). |
+| Under the top bar, full width | Ground-stock line on the left, passenger-flow toggle on the right (`OwnerChrome` `info-strip`). Hotspot labels are not on this strip. |
+| Under that, centred | The six info-view pills and More. One legend hangs under the selected pill. |
 | Left edge | Handset peek. Map goals and the first-hour coach sit above it. The building panel is inset to `left: 56px` so the peek stays clickable. |
 | Left, mid | Letter stack (contracts, layovers, hubs, maintenance, security, emergencies) and diplomacy prospect tabs. |
-| Right | Manage panel when a group is open. Hall kit when a hall is open. |
+| Right | Manage panel when a group is open. Hall kit when a hall is open. The flight card, about 320 px, when a flight is selected and the card is open. It sits above the alert dock. |
 | Bottom centre | Build bar: categories, then one sub-tab row, then the stamp grid. |
-| Bottom right | Alert dock, above the build bar. Hint badge shares this corner and must not cover the dock (G5-7). |
+| Bottom right | Alert dock, above the build bar. When the dock has rows, the hint badge sits above it. When the dock is empty, the hint badge keeps its rest place. A critical alert with a cell also pins that cell. |
 
 Cash opens a forecast (`cash-menu`): live income, daily charges, the seven-day balance, and Open books, which is Money → Overview. Click the cash figure again to close it.
 
@@ -99,6 +101,9 @@ Cities: Skylines keeps the HUD thin and puts the breakdown on the thing you clic
 | A research node | The card on the right of the tree | Cost, state, what it unlocks, the Unlock button. |
 | A build stamp, after 400 ms | Hover card: price, upkeep, capacity, noise, the lock sentence | The Open link jumps to Field Levels or the research node. |
 | A guest in the hall | Walker card | Needs, thoughts, satisfaction. |
+| A flight on the apron | Right-edge flight card | Airline, aircraft, stand, turnaround by service, delay reason, connections, and the ledger. Planner shows the same lines. |
+| More on the info bar | The hotspot list | `infoLines` for that hotspot, in the Numbers panel. |
+| A critical alert pin | The same pan as the dock card | Warning and info alerts have no pin. |
 | Menu | Pause sheet | Settings pages. |
 
 The building panel is not an info view. Closing one does not clear the other.
@@ -107,7 +112,7 @@ Relations (`a959aa3`): the Relations control on the Airlines desk toggles the su
 
 ## Info views
 
-One overlay at a time. Esc closes it. The pills are Traffic, Queues, Bays, Power, Fuel (`MAP_VIEWS`). Desktop only, and hidden inside a hall.
+One overlay at a time. Esc closes it. The pills are Traffic, Queues, Bays, Airfield, Power, Fuel (`MAP_VIEWS`), then More. Desktop only, and hidden inside a hall.
 
 Picking a pill desaturates the reading toward green / amber / red (`HEAT` in `src/info/config.ts`). Tint opacity is 0.42, 0.62 on the hot cells, so aircraft stay readable. Traffic does not tint cells; it uses the landside ribbons. The legend under the pill is the colour key plus the short scores. Each score's `title` and tooltip name the inputs.
 
@@ -116,26 +121,25 @@ Picking a pill desaturates the reading toward green / amber / red (`HEAT` in `sr
 | Traffic | Under 70% | 70–100% | Over capacity | Pressure, arrivals, queue, delay | Landside segments and the curb fixes |
 | Queues | Wait under 45 s | Wait under 2 min | Long wait | Check-in and security wait | The queue rows |
 | Bays | Idle | In use | Bay queue | In use against the bay count | Per-stand lines |
+| Airfield | Spare movements | Bank over 70% | Contracts over capacity | Movements, arrival gap | Contract load against the strips. Tint sits on the runway cells. |
 | Power | Spare capacity | Load over 70% | At or over capacity | Capacity and demand | The power lines |
 | Fuel | Stock comfortable | Quarter to two thirds | Under a quarter | Tank level | The fuel-farm panel (low stock is the hot end) |
 
 Owner rule for anything added later: a new figure goes in the Numbers panel, not on the pill and not on the top bar. The short scores already on the legend stay; they are the headline, and each one already explains itself on hover.
 
-Hotspot labels that are not already a map pill live in More on that same bar: Check-in, Security, Lost passengers, Bags, Shops, and, from field level 3, Connections and Links. Maintenance and Night hub appear when those buildings exist. Fuel farm and Power stay on the pills only. Choosing a More item opens its `infoLines` in the Numbers panel. The ground-stock line and the flow toggle stay on the strip. A visible critical alert with a cell draws one pin on that cell; warning and info alerts do not.
+More sits on that same bar. It lists the hotspot labels that are not already a map pill: Check-in, Security, Lost passengers, Bags, Shops, and, from field level 3, Connections and Links. Maintenance and Night hub appear when those buildings exist. Fuel farm and Power stay on the pills only. Choosing a More item opens its `infoLines` in the Numbers panel, not in a second centred card. The ground-stock line and the flow toggle stay on the strip. A visible critical alert with a cell draws one pin on the first cell; clicking the pin pans the same way the dock card does. Warning and info alerts do not pin.
 
 ## Milestone bar and XP
 
 Cities: Skylines 1 puts a milestone bar on the HUD. It fills as the city grows, and the milestone list shows what each step unlocks, including the steps you have not reached. Cities: Skylines 2 spends the same idea as an XP bar into a development tree. Hatchfield uses both: the field badge is the bar, Field Levels is the milestone list, and the research tree is where points are spent.
 
-The badge (`FieldBadge`) shows `Field Lv N` (or `Field Lv 10 · P2` after level 10), a 4 px fill, and the research-point count. The fill is `fieldProgress(xp).pct` between `FIELD_LEVEL_XP[level]` and the next rung. Clicking the badge opens Growth → Field Levels. It does not open the research tree.
+The badge (`FieldBadge`) shows `Field Lv N` (or `Field Lv 10 · P2` after level 10), a 4 px fill, the research-point count, and one muted line of what the next rung opens (`nextUnlockLine`). The fill is `fieldProgress(xp).pct` between `FIELD_LEVEL_XP[level]` and the next rung. The line names up to three unlocks from `unlocksAtLevel(level + 1)` and appends `+N` for the rest. At level 10 it names the next prestige star. At max prestige the line is empty. Clicking the badge opens Growth → Field Levels. It does not open the research tree. The level-up card is unchanged.
 
 Rungs (`FIELD_LEVEL_XP`): 1 at 0, 2 at 90, 3 at 220, 4 at 420, 5 at 700, then 1100, 1600, 2300, 3200, 4500 for levels 6–10. After level 10, five prestige stars are 2000 XP apart. XP comes from turnarounds, cargo, contracts, loans, parcels, and hosted emergencies. It does not come from idle time.
 
 Field Levels lists every level, marks the current one, and names the stamps and research-desk nodes that open there (`unlocksAtLevel`). A level with nothing new says "No new stamp at this level."
 
 When the level changes, a card sits on the left, under the top bar, and does not cover the apron. It lists what just unlocked and has Open Progression (scrolls to `level-N`) and Close.
-
-What the bar does not do yet, and Cities does: while the fill is moving, the badge does not name the stamps the next rung will open. The player only sees that list after the level-up, or by opening Field Levels. That preview is G5-1.
 
 ## Growth tree
 
@@ -156,11 +160,11 @@ Growth → Research tree is the development tree. One wallet. Points trickle fro
 | --- | --- | --- | --- |
 | Owned | The id is in `state.unlocked` | Green border, filled ring, no button | "Owned" and the cost already paid |
 | Available | Category is open and every `requires` id is owned | Blue border, open ring, cost highlighted | Unlock, or `Need N more RP (~D days)` when short |
-| Locked | Category is shut, or a prerequisite is missing | Grey, padlock, cost still shown | The button reads Locked and stays disabled |
+| Locked | Category is shut, or a prerequisite is missing | Grey, padlock, cost still shown | The button reads Locked and stays disabled. Under the state line, `lockCopy` names the gate. |
 
 Locked nodes stay on the lane. Do not hide them, and do not skip ahead: `buyNode` refuses a locked id.
 
-Cities: Skylines 2 also says, on the locked node, which prerequisite is missing. This tree shows the padlock and the word Locked, and the category button shows the level, but the card does not name the previous node or the field level. That sentence is G5-2. The strings already exist on the buy path: "Needs Field Level N." and "Research the previous step first."
+A locked card says why. Category shut → `Needs Field Level N.` Prerequisite missing → `Research {previous node name} first.` Owned and available return null, so a node that is only short of points still shows `Need N more RP`. The button stays disabled and still reads Locked.
 
 Clicking a locked build stamp's Open link scrolls to `research-node-{id}` on this tree.
 
@@ -207,7 +211,7 @@ Separate. `HintPanel` is a bottom-right badge of advisor hints. Tip chips sit ne
 
 Bottom right, above the build bar (`alert-dock`). Critical and warning only. Info notes stay in the sim and off the dock. Clicking the card pans the camera. Pan to problem, Apply fix (disruptions), Ignore, and Dismiss stay on the card; the last three do not pan by themselves. The stack can minimise to `Critical · N` or `Warning · N`. Empty dock renders nothing.
 
-The top bar still has a separate status chip. It joins up to two of: hard threat, emergency, standing low, holding, apron jam, security queue, lost passengers, power, loan short, disruption titles. With none of those, it reads **No alerts** (the tooltip already said that; the visible word was "Clear"). The chip does not pan and has no severity colour beyond a CSS class. It is not the dock. G5-4 stops it repeating a row the dock is already showing.
+The top bar still has a separate status chip. It can name a hard threat, an emergency, standing low, holding, an apron jam, a security queue, lost passengers, power, a loan short, and disruption titles. It drops a phrase when a critical or warning dock row already covers that condition (power brown-out, a disruption title, a security queue when a queue alert is up, a fuel line the dock shows). Holding, standing low, the emergency letter, and the threat stay, because the dock does not raise them. With nothing left, it reads **No alerts**. Clicking the chip scrolls to the letter when the first phrase is a letter, and otherwise expands the dock when the dock has rows. The chip never creates a phone card. It does not pan and has no severity colour beyond a CSS class. It is not the dock.
 
 Emergencies and threats are letters on the left stack. The handset refuses kinds `alert`, `emergency`, and `threat`. That is the current code, not the decision below.
 
@@ -233,9 +237,11 @@ G5-8 is that playtest. It has no code.
 
 ## G5 tickets
 
-Remaining HUD deltas against the Cities reference. Each one is small enough to land alone. Do not start G5-9 before G5-1.
+G5-1 through G5-7 are done. G5-8 is the handset playtest. G5-9 waits until that note exists.
 
 ### G5-1 — Next unlocks on the XP bar
+
+**Done.** The field badge names the next rung while the bar fills. See [Milestone bar and XP](#milestone-bar-and-xp).
 
 Cities shows the coming milestone's unlocks while the bar fills, not only after the fanfare.
 
@@ -245,7 +251,9 @@ Cities shows the coming milestone's unlocks while the bar fills, not only after 
 
 ### G5-2 — Locked research card names the gate
 
-Cities: Skylines 2 prints the missing prerequisite on the locked node. The lane already draws the line; the card does not say why.
+**Done.** A locked card names the field level or the missing node. See [Node states](#node-states).
+
+Cities: Skylines 2 prints the missing prerequisite on the locked node. The lane already draws the line; the card now says why.
 
 - **Files:** `src/research/logic.ts`, `src/ui/research/ResearchTree.tsx`, `src/research/research.test.ts`.
 - **Build:** Add `lockCopy(state, node, fieldLevel): string | null`. Category shut → `Needs Field Level N.` Prerequisite missing → `Research {previous node name} first.` Owned and available return null. The card shows that sentence under the state line when the node is locked. The button stays disabled and still reads Locked.
@@ -253,13 +261,17 @@ Cities: Skylines 2 prints the missing prerequisite on the locked node. The lane 
 
 ### G5-3 — One info menu
 
-Cities has one info-view list. Hatchfield has the five map pills and a second hotspot row (Check-in, Security, Lost passengers, Bags, Shops, Connections, Links, Fuel farm, Power, Maintenance, Night hub) plus the passenger-flow toggle.
+**Done.** One bar holds the six map pills and More. See [Info views](#info-views).
+
+Cities has one info-view list. The hotspot labels (Check-in, Security, Lost passengers, Bags, Shops, Connections, Links, Fuel farm, Power, Maintenance, Night hub) used to be a second row. Fuel farm and Power are pills. The rest are in More. The passenger-flow toggle stays on the strip.
 
 - **Files:** `src/ui/InfoViews.tsx`, `src/ui/infoViews.css`, `src/ui/isolated/OwnerChrome.tsx`, `src/info/types.ts` if a view id is added, `src/ui/infoViews.e2e.test.ts`.
-- **Build:** Keep Traffic, Queues, Bays, Power, and Fuel as the map pills. Move the hotspot labels that are not already a map pill into one More menu on that same bar. Choosing one opens its `infoLines` in the existing Numbers panel, not in a second centred card. Fuel farm and Power do not appear twice. The ground-stock line and the flow toggle stay on the strip; they are not pills.
-- **Accept:** With a hall placed, one `info-view-bar` contains the five pills and More. More includes Check-in and, at field level 3, Connections. Opening More → Bags shows the bag lines and no second `info-panel` from `OwnerChrome`. Esc closes it. The e2e shot for each map pill still shows a legend whose score tooltips start with "Inputs:".
+- **Build:** Keep Traffic, Queues, Bays, Airfield, Power, and Fuel as the map pills. Move the hotspot labels that are not already a map pill into one More menu on that same bar. Choosing one opens its `infoLines` in the existing Numbers panel, not in a second centred card. Fuel farm and Power do not appear twice. The ground-stock line and the flow toggle stay on the strip; they are not pills.
+- **Accept:** With a hall placed, one `info-view-bar` contains the six pills and More. More includes Check-in and, at field level 3, Connections. Opening More → Bags shows the bag lines and no second `info-panel` from `OwnerChrome`. Esc closes it. The e2e shot for each map pill still shows a legend whose score tooltips start with "Inputs:".
 
 ### G5-4 — Status chip stops repeating the dock
+
+**Done.** The chip drops a phrase the dock is already showing. See [Alert dock (shipped)](#alert-dock-shipped).
 
 The top-bar chip is a second alert list with no pan and no severity.
 
@@ -269,7 +281,9 @@ The top-bar chip is a second alert list with no pan and no severity.
 
 ### G5-5 — Flight card off the Planner tab
 
-Cities opens an inspector on the thing you clicked. The selected flight is inside Operations → Planner.
+**Done.** A selected flight opens a right-edge card. Planner still shows that flight. See [How panels open](#how-panels-open).
+
+Cities opens an inspector on the thing you clicked. The selected flight used to live only inside Operations → Planner.
 
 - **Files:** `src/ui/Hud.tsx` (the Selected flight block), a new `src/ui/inspector/FlightCard.tsx` that only moves that markup.
 - **Build:** Clicking a flight on the apron opens a right-edge card, about 320 px, with the same status lines the Planner block already shows. Esc or a second click closes it. Opening Planner still shows the same flight. The card does not cover the alert dock: it sits above the dock, or the dock shifts left of it while the card is open.
@@ -277,13 +291,17 @@ Cities opens an inspector on the thing you clicked. The selected flight is insid
 
 ### G5-6 — Critical alert marks the cell
 
-Cities pins a problem icon on the building. The dock pans, and the apron itself shows nothing.
+**Done.** A visible critical alert with a cell pins that cell. See [Info views](#info-views).
+
+Cities pins a problem icon on the building. The dock pans, and the pin does the same pan.
 
 - **Files:** `src/ui/isolated/AlertStack.tsx` or a sibling `src/ui/alerts/AlertMark.tsx`, `src/index.css`.
 - **Build:** For each visible critical alert that has `at.cells`, draw one marker at the first cell. Clicking the marker calls the same `panToAlert` as the card. Warning alerts do not mark. Info alerts do not mark. The marker is not a letter and not a phone card.
 - **Accept:** A critical alert with a cell renders one marker. A warning with a cell does not. Clicking the marker and clicking the card both call pan. Dismissing the alert removes the marker.
 
 ### G5-7 — Hints sit clear of the dock
+
+**Done.** With dock rows, the hint badge sits above the dock. See [Screen](#screen).
 
 Both the hint badge and the alert dock use the bottom-right corner.
 
@@ -300,7 +318,7 @@ No code. Run the playtest in [Undecided](#undecided-alerts-and-emergencies-on-th
 
 ### G5-9 — Find a stamp
 
-Later. Cities players added Find It because the build bar got long. Not before the tickets above.
+Later. Cities players added Find It because the build bar got long. Not before the G5-8 playtest note exists.
 
 - **Files:** `src/ui/nav/BuildTray.tsx`, `src/ui/nav/taxonomy.ts` only if a label is missing.
 - **Build:** A filter at the right of the open tray. It matches stamp names in the current category. Locked stamps stay in the results, still grey, still with their badge. Esc clears the filter before it closes the tray.
