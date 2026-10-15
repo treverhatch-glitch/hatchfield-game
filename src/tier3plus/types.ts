@@ -10,7 +10,7 @@ export type LandmarkId =
 
 export type CargoLateId = 'cargo_hub_ii' | 'cold_store'
 
-export type Tier3PlusId = 'airport_hotel' | 'rail_link' | 'saf_blending' | LandmarkId | CargoLateId
+export type Tier3PlusId = 'airport_hotel' | 'rail_link' | 'saf_blending' | 'spotters_deck' | LandmarkId | CargoLateId
 
 interface BuildingBase {
   id: Tier3PlusId
@@ -27,6 +27,8 @@ interface BuildingBase {
   purpose: string
   /** The downside that keeps it from being free money. */
   catch: string
+  /** Only one of this building may be placed. */
+  unique?: boolean
 }
 
 export interface HotelBuilding extends BuildingBase {
@@ -83,7 +85,24 @@ export interface LandmarkBuilding extends BuildingBase {
   runwayClearM: number
 }
 
-export type Tier3PlusBuilding = HotelBuilding | RailBuilding | SafBuilding | LandmarkBuilding | CargoLateBuilding
+export interface SpottersDeckBuilding extends BuildingBase {
+  id: 'spotters_deck'
+  kind: 'spotters'
+  /** Gate receipts earned once per game day. */
+  dailyIncome: number
+  /** Prestige amenities exposed to airline diplomacy. Does not grant field XP. */
+  prestigeItems: number
+  /** Decorative visitors shown on the raised deck. */
+  crowdSize: number
+}
+
+export type Tier3PlusBuilding =
+  | HotelBuilding
+  | RailBuilding
+  | SafBuilding
+  | LandmarkBuilding
+  | CargoLateBuilding
+  | SpottersDeckBuilding
 
 /** A placed site. Open/building is derived from elapsed days and the catalog timer. */
 export interface BuildSite {

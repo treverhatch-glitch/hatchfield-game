@@ -860,6 +860,7 @@ import {
   landmarkDemandModifier,
   landmarkRatingPoints,
   placeBuilding,
+  prestigeItems as latePrestigeItems,
 } from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
@@ -3772,7 +3773,7 @@ export class Game {
     let food = 0
     let lounge = 0
     let family = 0
-    let prestige = 0
+    let prestige = latePrestigeItems(this.lateSites)
     for (const fit of this.fits) {
       food += fit.rooms.food ?? 0
       lounge += fit.rooms.lounge ?? 0
@@ -6530,6 +6531,13 @@ export class Game {
   /** Which late building stands on this cell, or null. The renderer picks a mesh from it. */
   lateIdAt(c: number, r: number): string | null {
     return this.lateSites.find((row) => row.c === c && row.r === r)?.id ?? null
+  }
+
+  spotterCrowdAt(c: number, r: number): number {
+    const site = this.lateSites.find((row) => row.c === c && row.r === r && row.id === 'spotters_deck')
+    if (!site || !isOpen(site)) return 0
+    const spec = buildingById(site.id)
+    return spec?.kind === 'spotters' ? spec.crowdSize : 0
   }
 
   lateMeshSig(): string {
@@ -21421,6 +21429,11 @@ export class Game {
     const landmarkNeed = landmarkRefusal(id, this.prestigeStars(), this.lateSites)
     if (landmarkNeed) {
       this.pushNews(landmarkNeed, 'bad')
+      this.emit()
+      return
+    }
+    if (spec.unique && this.lateSites.some((site) => site.id === id)) {
+      this.pushNews(`${spec.name} is unique — only one can be built.`, 'bad')
       this.emit()
       return
     }

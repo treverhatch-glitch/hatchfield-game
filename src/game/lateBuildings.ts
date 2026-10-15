@@ -39,6 +39,7 @@ const TILE_OF: Record<Tier3PlusId, Tile> = {
   quiet_hall: 'late_landmark',
   cargo_hub_ii: 'late_cargo',
   cold_store: 'late_cargo',
+  spotters_deck: 'spotters_deck',
 }
 
 export function lateIdForTool(tool: string): Tier3PlusId | null {
@@ -157,7 +158,11 @@ export function lateCatalogLines(id: Tier3PlusId, fieldLevel: number, placed: nu
   } else if (spec.kind === 'saf') {
     lines.push(`Fuel cost +${Math.round((spec.fuelCostMultiplier - 1) * 100)}%`)
     lines.push(spec.satisfiesGreen ? 'Meets green airline demand' : 'Does not meet green airline demand')
+  } else if (spec.kind === 'spotters') {
+    lines.push(`${money(spec.dailyIncome)} visitor income per day`)
+    lines.push(`+${spec.prestigeItems} prestige · ${spec.crowdSize} visible spotters`)
   }
+  if (spec.unique) lines.push('Unique — one per airport')
   lines.push(spec.purpose, spec.catch)
   if (placed > 0) lines.push(`${placed} on the field`)
   return lines

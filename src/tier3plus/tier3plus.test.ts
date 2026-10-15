@@ -8,9 +8,10 @@ import {
   greenDemandSatisfied,
   isOpen,
   placeBuilding,
+  prestigeItems,
   tickBuildProgress,
 } from './index.ts'
-import type { BuildSite, HotelBuilding, RailBuilding, SafBuilding } from './index.ts'
+import type { BuildSite, HotelBuilding, RailBuilding, SafBuilding, SpottersDeckBuilding } from './index.ts'
 
 function hotelSpec(): HotelBuilding {
   const spec = buildingById('airport_hotel')
@@ -30,6 +31,12 @@ function safSpec(): SafBuilding {
   return spec
 }
 
+function spottersSpec(): SpottersDeckBuilding {
+  const spec = buildingById('spotters_deck')
+  if (spec?.kind !== 'spotters') throw new Error('spotters deck missing')
+  return spec
+}
+
 function placed(id: BuildSite['id'], level: number): BuildSite {
   const result = placeBuilding(id, level)
   if (!result.ok) throw new Error(result.reason)
@@ -37,8 +44,13 @@ function placed(id: BuildSite['id'], level: number): BuildSite {
 }
 
 describe('late-game building catalog', () => {
-  it('lists the three table buildings with their field level, price, and upkeep', () => {
-    expect(catalog.map((building) => building.id)).toEqual(['airport_hotel', 'rail_link', 'saf_blending'])
+  it('lists the late buildings with their field level, price, and upkeep', () => {
+    expect(catalog.map((building) => building.id)).toEqual([
+      'airport_hotel',
+      'rail_link',
+      'saf_blending',
+      'spotters_deck',
+    ])
 
     const hotel = hotelSpec()
     expect(hotel.name).toBe('Airport hotel')
@@ -66,6 +78,15 @@ describe('late-game building catalog', () => {
     expect(saf.dailyUpkeep).toBe(4_000)
     expect(saf.fuelCostMultiplier).toBe(1.08)
     expect(saf.satisfiesGreen).toBe(true)
+
+    const spotters = spottersSpec()
+    expect(spotters.fieldLevel).toBe(8)
+    expect(spotters.cost).toBeGreaterThan(0)
+    expect(spotters.dailyUpkeep).toBeGreaterThan(0)
+    expect(spotters.dailyIncome).toBeGreaterThan(spotters.dailyUpkeep)
+    expect(spotters.prestigeItems).toBe(1)
+    expect(spotters.crowdSize).toBeGreaterThanOrEqual(12)
+    expect(spotters.unique).toBe(true)
   })
 
   it('refuses an order below the field level and quotes the sticker price when it allows one', () => {
@@ -80,6 +101,10 @@ describe('late-game building catalog', () => {
     expect(placeBuilding('rail_link', 8)).toEqual({
       ok: false,
       reason: 'Rail link station unlocks at Field Level 9.',
+    })
+    expect(placeBuilding('spotters_deck', 7)).toEqual({
+      ok: false,
+      reason: 'Spotters deck unlocks at Field Level 8.',
     })
 
     const hotel = placeBuilding('airport_hotel', 7)
@@ -124,6 +149,20 @@ describe('build progress', () => {
 })
 
 describe('daily P&L', () => {
+  it('earns admission income, pays upkeep, and contributes prestige without field XP', () => {
+    const spec = spottersSpec()
+    const site = placed('spotters_deck', spec.fieldLevel)
+    const report = dailyPnL([site])
+    expect(report.lines[0]).toMatchObject({
+      income: spec.dailyIncome,
+      upkeep: spec.dailyUpkeep,
+      net: spec.dailyIncome - spec.dailyUpkeep,
+      note: 'Visitor deck open — +1 prestige',
+    })
+    expect(prestigeItems([site])).toBe(1)
+    expect(prestigeItems([site, site])).toBe(2)
+  })
+
   it('charges the full hotel upkeep when every room is empty', () => {
     const hotel = hotelSpec()
     const report = dailyPnL([placed('airport_hotel', 7)])
