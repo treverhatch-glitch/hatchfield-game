@@ -1,8 +1,9 @@
 /**
  * Deterministic starter kits. One fixed stamp per start focus.
- * Passenger and hybrid share the hall and jetways; hybrid adds a police post.
- * Cargo has no passenger hall. None of them is random.
+ * Passenger and hybrid share the hall and two concrete stands; hybrid adds a police post.
+ * Cargo has no passenger hall. None of them is random. No kit fits a jet bridge.
  */
+import type { StandRung, StandSize } from '../stands/types.ts'
 import type { StandAccess, StandClass, StartFocus, Tile, Vec } from './types'
 import { SIZE } from './types'
 
@@ -11,6 +12,8 @@ export interface StarterStand {
   r: number
   cls: StandClass
   access: StandAccess
+  size: StandSize
+  rung: StandRung
 }
 
 export interface StarterKitPreview {
@@ -33,7 +36,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
   pax: {
     focus: 'pax',
     label: 'Passenger-focused starter kit',
-    summary: 'Hall curb on the public road, two jetway stands facing the gates, one runway linked by taxiway.',
+    summary: 'Hall curb on the public road, two concrete stands facing the gates, one runway linked by taxiway.',
     includes: [
       'One 14×2 runway with a clearance shoulder',
       'Taxiway linking the strip to the stands, plus a mid-strip exit',
@@ -41,7 +44,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
       'Staffed check-in desk, self-service kiosk, and spare desk cells',
       'Two security lanes, with empty lane cells beside them',
       'Gate seats, café counter, newsagent, toilets, claim belt, and wayfinding',
-      'Jet bridges, bag-sort bays, fuel bays, guard, and a cargo shed',
+      'Two concrete stands, bag-sort bays, fuel bays, guard, and a cargo shed',
     ],
   },
   cargo: {
@@ -58,9 +61,9 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
   hybrid: {
     focus: 'hybrid',
     label: 'Hybrid starter kit',
-    summary: 'Passenger hall and jetways, plus a police post on the freight road. Day passengers, night freight.',
+    summary: 'Passenger hall and two concrete stands, plus a police post on the freight road. Day passengers, night freight.',
     includes: [
-      'Passenger hall, curb, and two jetway stands',
+      'Passenger hall, curb, and two concrete stands',
       'Same hall as the passenger kit: desks, kiosk, lanes, shop, claim, wayfinding',
       'Guard, cargo shed, and a police post',
       'One runway with a taxiway to the stands and a mid-strip exit',
@@ -193,8 +196,8 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
       label: preview.label,
       summary: preview.summary,
       terminal: null,
-      // Large: the feeder freighter is a 757 (code D). A medium stand cannot take it.
-      stands: [{ c: 12, r: 10, cls: 'L', access: 'remote' }],
+      // Large: the feeder freighter is a 757 (code D). Heavy slab (code F) still takes it.
+      stands: [{ c: 12, r: 10, cls: 'L', access: 'remote', size: 'heavy', rung: 2 }],
     }
   }
   return {
@@ -203,8 +206,8 @@ export function stampStarterKit(tiles: Tile[][], focus: StartFocus): StarterStam
     summary: preview.summary,
     terminal: { ...PAX_TERMINAL },
     stands: [
-      { c: 11, r: 6, cls: 'M', access: 'jetway' },
-      { c: 11, r: 12, cls: 'M', access: 'jetway' },
+      { c: 11, r: 6, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
+      { c: 11, r: 12, cls: 'M', access: 'remote', size: 'narrow', rung: 1 },
     ],
   }
 }

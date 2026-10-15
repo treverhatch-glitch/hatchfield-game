@@ -65,7 +65,7 @@ describe('initWorldRender', () => {
     wr.update(game, camAt(0, 0, 150), 1 / 60)
     const s = wr.stats()
     expect(s.terminals).toHaveLength(1)
-    expect(s.jetBridges).toBe(2)
+    expect(s.jetBridges).toBe(0)
     expect(s.airfieldLights).toBeGreaterThan(100)
     expect(s.terminals[0].staff).toBeGreaterThan(10)
     expect(earth.visible).toBe(false)

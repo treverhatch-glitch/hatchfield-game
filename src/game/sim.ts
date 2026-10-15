@@ -5335,7 +5335,12 @@ export class Game {
       const key = `${stand.c},${stand.r}`
       this.standClass[key] = stand.cls
       this.standAccess[key] = stand.access
-      this.recordStand(key, { cls: stand.cls, access: stand.access })
+      this.recordStand(key, {
+        cls: stand.cls,
+        access: stand.access,
+        size: stand.size,
+        rung: stand.rung,
+      })
     }
 
     if (!kit.terminal) {
@@ -5725,16 +5730,9 @@ export class Game {
 
   standAccessAt(stand: Vec | null): StandAccess {
     if (!stand) return 'remote'
+    if (this.hasFitting(stand, 'jet_bridge')) return 'jetway'
     const k = `${stand.c},${stand.r}`
-    if (this.standAccess[k]) return this.standAccess[k]
-    // Grandfather older saves: proximity used to mean jetway.
-    if (!this.fits.length) return 'remote'
-    let bestD = JETWAY_RANGE + 1
-    for (const f of this.fits) {
-      const d = Math.abs(f.origin.c - stand.c) + Math.abs(f.origin.r - stand.r)
-      if (d < bestD) bestD = d
-    }
-    return bestD <= JETWAY_RANGE ? 'jetway' : 'remote'
+    return this.standAccess[k] === 'jetway' ? 'jetway' : 'remote'
   }
 
   /** How this stand moves pax this turn — jetway / terminal bus / walk. */
@@ -7136,6 +7134,7 @@ export class Game {
       this.fittings = readFittings(s.fittings)
       this.hangarScale = s.hangarScale ?? {}
       this.migrateMissingStands()
+      this.promoteLegacyBridges()
       this.contractId = s.pillar?.contractId ?? null
       this.tankTier = s.pillar?.tankTier ?? 1
       this.tankLitres = s.pillar?.litres ?? seedLitresFromLoads(s.fuelLoads)
@@ -20625,8 +20624,6 @@ export class Game {
       building.tile === 'park_u'
     ) {
       news = `${building.name} (${this.parkTerm}-term) open.`
-    } else if (building.tile === 'stand' && this.standAccessMode === 'jetway') {
-      news = `${building.name} + jetway open.`
     } else if (building.tile === 'stand') {
       news = `${building.name} remote bay open.`
     } else if (building.tile === 'guard') {
@@ -20677,7 +20674,7 @@ export class Game {
       news,
       tool: this.tool,
       standClass: building.tile === 'stand' ? standCls : undefined,
-      standAccess: building.tile === 'stand' ? (freshStand ? 'remote' : this.standAccessMode) : undefined,
+      standAccess: building.tile === 'stand' ? 'remote' : undefined,
       standScale: building.tile === 'stand' ? (standScale ?? undefined) : undefined,
       standSize: standAlias?.size,
       standRung: standAlias?.rung,
@@ -20726,17 +20723,6 @@ export class Game {
         this.standRung[key] = migrated.rung
       }
     }
-    if (!this.standSize[key]) return
-    const bridge =
-      rec.access === 'jetway' ||
-      (rec.access == null &&
-        rec.cls != null &&
-        migrateStand({
-          cls: rec.cls,
-          scale: rec.scale,
-          hallNear: this.hallNearStand(key),
-        }).jetBridge)
-    if (bridge) this.grantLegacyBridge(key)
   }
 
   private hallNearStand(key: string): boolean {
@@ -20750,18 +20736,10 @@ export class Game {
     return best <= JETWAY_RANGE
   }
 
-  private grantLegacyBridge(key: string) {
-    const [c, r] = key.split(',').map(Number)
-    if (!Number.isFinite(c) || !Number.isFinite(r)) return
-    const host = hostKey('stand', c, r)
-    const list = this.fittings[host] ?? []
-    if (list.some((item) => item.id === 'jet_bridge')) return
-    this.fittings[host] = [...list, { id: 'jet_bridge', granted: 'legacy' }]
-  }
-
   /**
    * Old saves have class and scale only. Fill size and rung once.
    * A stand that already has a size is not migrated again.
+   * A jetway on that first fill becomes a bought bridge, same as a reload.
    */
   migrateMissingStands() {
     for (const stand of tilesOf(this.tiles, 'stand')) {
@@ -20776,9 +20754,45 @@ export class Game {
       })
       this.standSize[key] = migrated.size
       this.standRung[key] = migrated.rung
-      const fit = legacyFitting(migrated)
-      if (fit) this.grantLegacyBridge(key)
+      if (legacyFitting(migrated)) this.attachBoughtBridge(key)
     }
+  }
+
+  /**
+   * An old jetway, a proximity jetway, or a `granted: 'legacy'` bridge becomes
+   * a bought jet bridge. No charge and no refund on the way in. A remote stand
+   * with no bridge stays that way, including one the player already cleared.
+   */
+  private promoteLegacyBridges() {
+    for (const [host, list] of Object.entries(this.fittings)) {
+      if (!list.some((item) => item.id === 'jet_bridge' && item.granted)) continue
+      this.fittings[host] = list.map((item) =>
+        item.id === 'jet_bridge' ? { id: 'jet_bridge' } : item,
+      )
+    }
+    for (const stand of tilesOf(this.tiles, 'stand')) {
+      const key = `${stand.c},${stand.r}`
+      const host = hostKey('stand', stand.c, stand.r)
+      const list = this.fittings[host] ?? []
+      if (list.some((item) => item.id === 'jet_bridge')) {
+        this.standAccess[key] = 'jetway'
+        continue
+      }
+      const access = this.standAccess[key]
+      const inherited = access === 'jetway' || (access == null && this.hallNearStand(key))
+      if (!inherited) continue
+      this.attachBoughtBridge(key)
+    }
+  }
+
+  private attachBoughtBridge(key: string) {
+    const [c, r] = key.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return
+    const host = hostKey('stand', c, r)
+    const list = this.fittings[host] ?? []
+    if (list.some((item) => item.id === 'jet_bridge')) return
+    this.fittings[host] = [...list, { id: 'jet_bridge' }]
+    this.standAccess[key] = 'jetway'
   }
 
   /** Painted box. A stored size uses the rung footprint. Only the heavy pad grows. */

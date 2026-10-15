@@ -389,11 +389,11 @@ The migration keeps every aircraft that can park today able to park tomorrow. It
 | Class L, scale wide | heavy | 1, widebody slab | E |
 | Class L, scale jumbo, or L with no scale | heavy | 2, heavy slab | F |
 
-A stored `jetway`, or a grandfathered hall within 8 cells, writes `jet_bridge` with `granted: 'legacy'`. No charge, and the upkeep starts. A remote stand gains no bridge.
+A stored `jetway`, or a grandfathered hall within 8 cells, writes a bought `jet_bridge` (no `granted` flag). No charge on the way in, and the upkeep starts. Removing it later refunds 40%, the same as a bridge bought on the card. A remote stand gains no bridge. A new kit stamps its stands with a surface rung and no attachment.
 
 If the save has researched `hydrant_fuel`, every existing stand gains `hydrant_pit` with `granted: 'legacy'`. That preserves today's "the whole field is on the hydrant" behavior for old fields. New stands placed after the load do not get a pit. The player can remove a legacy pit. The research flag on its own no longer changes a stand that has no pit. This is the migration fuel ticket 6 needs, and it should land with that ticket so the two do not fight.
 
-The starter kit's two stands are class M. They migrate to narrow concrete and the first jet still fits. The kit price is unchanged in this note.
+The starter kit's two stands are class M, stamped as narrow concrete with no jet bridge. They still take the first jet. The kit price is unchanged in this note. An old save that already had those jetways keeps them as bought bridges.
 
 Tests for the migration ticket: every id in `REAL_AIRFRAMES` is accepted by the migrated stand that accepts it today, and rejected by the one that rejects it today. Helicopters still fail a fixed-wing stand. A fixture with no `standScale` on an L stand still accepts `a380`.
 

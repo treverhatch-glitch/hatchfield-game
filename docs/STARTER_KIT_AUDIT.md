@@ -29,7 +29,7 @@ Ceilings stay the published Prefab I numbers (`STARTER_CAPACITY`): 46 passengers
 
 ### Passenger starter and Prefab I
 
-The stamp is a 3×3 hall, curb on column 17, two medium jetway stands, bag belts, a bag hall, fuel farm, cargo shed, guard, fire station, tower, and a snack bar.
+The stamp is a 3×3 hall, curb on column 17, two medium concrete stands, bag belts, a bag hall, fuel farm, cargo shed, guard, fire station, tower, and a snack bar. The stands start with no jet bridge.
 
 | Must-have | Before | After |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ The stamp is a 3×3 hall, curb on column 17, two medium jetway stands, bag belts
 | Claim belt | Carousel and bag hall | Same, plus the bench |
 | Lounge | Count of 1, no empty pier marked for it | Count of 1, and it is a lease target. Pier-end cells stay empty |
 | Staff office | Apron office cell only | Unchanged. Cubicles come from the high-detail dressing |
-| Jet bridge | Both stands jetway | Unchanged. Interior is the landed bridge mesh |
+| Jet bridge | Both stands jetway | Narrow concrete, no attachment. Buy the bridge on the stand card. Walk-out boarding still runs |
 | Check-in + wayfinding | Doors, one desk, one kiosk, queue rail, two signs | Same pieces. Apron keeps the last desk slot empty and adds a kiosk off the security lane |
 | Common-use / dedicated | Five check-in cells unused, with no note | Those cells are named spare desks. Branding runs on the one placed desk |
 | Kiosk | Hall only | Hall kiosk, plus an apron kiosk on check-in cells that do not face security |
@@ -50,7 +50,7 @@ The stamp is a 3×3 hall, curb on column 17, two medium jetway stands, bag belts
 
 ### Hybrid starter
 
-Same hall and the same gaps as the passenger kit, plus a police post on the freight road. Same jetway stands and the same service bays. The menu line now names desks, kiosk, lanes, shop, claim, and wayfinding.
+Same hall and the same gaps as the passenger kit, plus a police post on the freight road. Same concrete stands, no bridge fitted, and the same service bays. The menu line now names desks, kiosk, lanes, shop, claim, and wayfinding.
 
 ### Cargo starter
 
@@ -75,7 +75,7 @@ Apron shell (`planTerminal`):
 - Check-in cells that do not face the screening door get a self-service kiosk off that lane
 - The shop cell gets a second restroom
 
-The starter fit already had `rooms.lounge = 1`. That room is a lease target on main (`dedicateHubFacility`), and both jetway stands are gate-lease targets. Nothing new is pre-leased.
+The starter fit already had `rooms.lounge = 1`. That room is a lease target on main (`dedicateHubFacility`), and both concrete stands are gate-lease targets. Nothing new is pre-leased.
 
 ## Slots left open
 

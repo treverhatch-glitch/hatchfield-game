@@ -131,6 +131,7 @@ describe('hall doorway routes', () => {
     const tiedStand = { c: 10, r: 14 }
     if (!game.tiles[tiedStand.r]) game.tiles[tiedStand.r] = []
     game.tiles[tiedStand.r][tiedStand.c] = 'stand'
+    game.standAccess[`${tiedStand.c},${tiedStand.r}`] = 'jetway'
 
     const choice1 = game.jetwayHall(tiedStand)
     expect(choice1).toBe(hall1)

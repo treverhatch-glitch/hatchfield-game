@@ -40,16 +40,10 @@ describe('stand migration acceptance', () => {
     expect(standAllows(migrated.size, migrated.rung, 'a380', REAL_AIRFRAMES.a380.icao)).toBe(true)
   })
 
-  it('writes a legacy jet bridge only when the old record was a jetway', () => {
-    expect(legacyFitting(migrateStand({ cls: 'M', access: 'jetway' }))).toEqual({
-      id: 'jet_bridge',
-      granted: 'legacy',
-    })
+  it('writes a bought jet bridge only when the old record was a jetway', () => {
+    expect(legacyFitting(migrateStand({ cls: 'M', access: 'jetway' }))).toEqual({ id: 'jet_bridge' })
     expect(legacyFitting(migrateStand({ cls: 'M', access: 'remote', hallNear: true }))).toBeNull()
-    expect(legacyFitting(migrateStand({ cls: 'M', hallNear: true }))).toEqual({
-      id: 'jet_bridge',
-      granted: 'legacy',
-    })
+    expect(legacyFitting(migrateStand({ cls: 'M', hallNear: true }))).toEqual({ id: 'jet_bridge' })
     expect(legacyFitting(migrateStand({ cls: 'M', hallNear: false }))).toBeNull()
   })
 })

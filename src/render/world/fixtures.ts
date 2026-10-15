@@ -2,7 +2,7 @@ import { Game } from '../../game/sim'
 import { SIZE, type Tile } from '../../game/types'
 import type { WorldView } from './view'
 
-/** The real pax starter kit (runway, taxi spine, 3×3 hall, two jetway stands). */
+/** The real pax starter kit (runway, taxi spine, 3×3 hall, two concrete stands). */
 export function starterGame(): Game {
   const game = new Game()
   game.sandbox = false

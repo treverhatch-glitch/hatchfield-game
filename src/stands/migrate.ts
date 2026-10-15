@@ -33,9 +33,10 @@ export function migrateStand(legacy: LegacyStand): MigratedStand {
   return { size: 'narrow', rung: 1, jetBridge }
 }
 
+/** A bought bridge for an old jetway. No grant flag, so a later remove refunds it. */
 export function legacyFitting(migrated: MigratedStand): Fitting | null {
   if (!migrated.jetBridge) return null
-  return { id: 'jet_bridge', granted: 'legacy' }
+  return { id: 'jet_bridge' }
 }
 
 const SIZES = new Set<StandSize>(['light', 'narrow', 'heavy'])

@@ -85,7 +85,7 @@ describe('starter capacity', () => {
     expect(fit.rooms.bagclaim).toBe(STARTER_CAPACITY.bagClaim)
     expect(fit.capGuests).toBe(STARTER_CAPACITY.paxCap)
     expect(fit.bagAllowance).toBe(STARTER_CAPACITY.bagAllowance)
-    // Two jetway stands on the kit.
+    // Two concrete stands on the kit. The jet bridge is bought later.
     const stands = game.tiles.flat().filter((t) => t === 'stand')
     expect(stands).toHaveLength(STARTER_CAPACITY.gates)
     expect(game.landsideCapacity()).toBe(STARTER_CAPACITY.curbStalls)

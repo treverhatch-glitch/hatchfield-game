@@ -138,7 +138,7 @@ describe('ground logistics wiring', () => {
 
   it('builds a service-road graph and runs the turnaround through the module', () => {
     const game = field()
-    // Depot and kitchen sit on grass beside the fuel farm so the service graph reaches the jetway.
+    // Depot and kitchen sit on grass beside the fuel farm so the service graph reaches the stand.
     game.tiles[5][6] = 'depot'
     game.tiles[5][5] = 'kitchen'
     game.bumpMap()
@@ -146,7 +146,7 @@ describe('ground logistics wiring', () => {
     expect(config).toBeTruthy()
     const roads = new RoadGraph(config!.nodes, config!.edges)
     expect(roads.distance(config!.depotNode, '11,6')).toBeLessThan(Infinity)
-    expect(config!.stands.find((s) => s.id === '11,6')?.access).toBe('bridge')
+    expect(config!.stands.find((s) => s.id === '11,6')?.access).toBe('stairs')
     expect(roads.route(config!.depotNode, '11,6').length).toBeGreaterThan(2)
 
     const f = parked(game, { c: 11, r: 6 })

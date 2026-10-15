@@ -91,8 +91,13 @@ describe('world layout', () => {
 
   it('starter kit: stands, jet bridges, masts, taxi lights', () => {
     const game = starterGame()
+    const bare = stands(game)
+    expect(bare.length).toBe(2)
+    expect(bare.every((s) => s.jetway)).toBe(false)
+    expect(jetBridges(game, bare)).toHaveLength(0)
+    game.standAccess['11,6'] = 'jetway'
+    game.standAccess['11,12'] = 'jetway'
     const st = stands(game)
-    expect(st.length).toBe(2)
     expect(st.every((s) => s.jetway)).toBe(true)
     const bridges = jetBridges(game, st)
     expect(bridges).toHaveLength(2)
