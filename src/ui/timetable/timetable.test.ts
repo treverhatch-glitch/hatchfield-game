@@ -225,6 +225,17 @@ describe('game schedule adapter', () => {
     expect(game.schedule[0].standPref).toBeNull()
   })
 
+  it('labels a leased stand and refuses another airline', () => {
+    const { a, game } = setup()
+    game.hubLeases = [{ id: 'stand:4,4', kind: 'gate', airlineId: 'sky' }]
+    const row = a.stands().find((s) => s.id === '4,4')
+    expect(row?.leaseAirline).toBe('SKY')
+    a.pinStand('s2:arr', '4,4')
+    expect(game.schedule[1].standPref).toEqual({ c: 6, r: 4 })
+    a.pinStand('s1:arr', '4,4')
+    expect(game.schedule[0].standPref).toEqual({ c: 4, r: 4 })
+  })
+
   it('snaps a drag back to the hard window', () => {
     const { a, game } = setup()
     const reach = gameMinToSim(SCHEDULE.hardWindowMin)

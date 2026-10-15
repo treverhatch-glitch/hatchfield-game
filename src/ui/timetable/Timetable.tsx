@@ -264,8 +264,13 @@ export function Timetable({
                     {g.icao === 'none' ? <h4>Tower</h4> : null}
                     {g.rows.map((row, ri) => (
                       <div key={row.stand?.id ?? `none-${ri}`} className="tt-row" data-stand={row.stand?.id ?? ''}>
-                        <span className="tt-label" title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}>
+                        <span
+                          className="tt-label"
+                          title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}
+                          style={row.stand?.leaseColor ? { boxShadow: `inset 3px 0 0 ${row.stand.leaseColor}` } : undefined}
+                        >
                           {row.stand ? row.stand.label : ri === 0 ? 'Tower' : ''}
+                          {row.stand?.leaseAirline ? <small> · {row.stand.leaseAirline}</small> : null}
                         </span>
                         <div className="tt-lane">
                           {grid}
