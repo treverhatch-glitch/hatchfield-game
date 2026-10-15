@@ -28,7 +28,7 @@ The first sampled day with 4 or more people waiting at check-in was day 21 for C
 
 ## Idle soak
 
-`npm run soak:150` on the starter kit, auto timetable, no rendering: **431** flights in 150 days. Heap growth **14.7%** (cap 15%). Coordinate jumps **0**. Outstanding stalls empty. That is back above the 330-flight line. The 48-second shared headway on the previous tip of main finished 331.
+`npm run soak:150` on the starter kit, auto timetable, no rendering, farm stocked the way that harness keeps the rack from running dry: **426** flights in 150 days. Heap growth **13.2%** (cap 15%). Coordinate jumps **0**. Outstanding stalls empty. That is back above the 330-flight line. The 48-second shared headway on the previous tip of main finished 331.
 
 ## What the runway tests show
 

@@ -23,7 +23,7 @@ Spawn-to-lock lead on the approach: 7.05 seconds. The aircraft is airborne for t
 
 `runwayArrivalGapSec` is 14 + 14 + 4 = **32 seconds on every strip**. A second strip does not shrink that gap. It runs its own bank. The seeder picks the quieter linked strip first, then pushes an ETA only when that strip already has a slot inside the gap.
 
-A day is 180 sim seconds. One strip books `floor((180 + 32) / 32) = 6` turns, 12 movements. The retired 150-second gap booked 2 turns, 4 movements. Twelve is three times four. Two linked strips book 24 movements. On one strip the seeder steps by that gap, and overnight the step stretches by at most 1.4 (about 45 seconds), which stays under the 76-second two-stand interval. A second strip keeps the shorter commercial step so the next flight can use the other strip. The 150-day idle soak on this gap finished 431 flights, heap growth 14.7%, jumps 0.
+A day is 180 sim seconds. One strip books `floor((180 + 32) / 32) = 6` turns, 12 movements. The retired 150-second gap booked 2 turns, 4 movements. Twelve is three times four. Two linked strips book 24 movements. On one strip the seeder steps by that gap, and overnight the step stretches by at most 1.4 (about 45 seconds), which stays under the 76-second two-stand interval. A second strip keeps the shorter commercial step so the next flight can use the other strip. The 150-day idle soak on this gap finished 426 flights, heap growth 13.2%, jumps 0.
 
 ## Opening
 
@@ -51,13 +51,13 @@ On seed `0x5171`, speed 5, 0.25-second steps, eight days:
 
 | Field | Completed flights | Diverts |
 | --- | ---: | ---: |
-| One strip, starter plus two grass stands (four stands), Harbor | 18 | 0 |
-| One strip, six grass stands, Harbor and Northline | 17 | 0 |
-| Two linked strips, same six stands and airlines | 27 | 0 |
+| One strip, starter plus two grass stands (four stands), Harbor | more than 15 | 0 |
+| One strip, six stands four cells apart, Harbor and Northline | 17 | 0 |
+| Two linked strips, same six stands and airlines | 25 | 1 |
 
-The 150-second gap turned 15 flights in eight days on the four-stand shape of that seed. Eighteen is more. It is not 45. After the opening, the night closure (no night-bank research) and a turnaround longer than the 32-second hole are what leave stands idle. A remote stand boards on foot, and a busy apron holds pushback until the board limit. Those are player-side constraints. The runway is no longer the thing that caps the day at four movements.
+The farm is stocked in that harness. The starter tank is one load, and the spot offer expires, so an unstocked field grounds the bank for lack of fuel rather than lack of runway. The 150-second gap turned 15 flights in eight days on the four-stand shape of that seed. The stocked four-stand field finishes more than that. It does not finish 45. After the opening, the night closure (no night-bank research) and a turnaround longer than the 32-second hole are what leave stands idle. A remote stand boards on foot, and a busy apron holds pushback until the board limit. Those are player-side constraints.
 
-The opening headway is shared, so the first ten minutes look alike on one strip and on two. After it, the two-strip field's extra completions are at least 1.6 times the one-strip field's (`src/game/runwayCapacity.test.ts`).
+The opening headway is shared, so the first ten minutes look alike on one strip and on two. After it, the two-strip field completed 16 and the one-strip field completed 10 (`src/game/runwayCapacity.test.ts`).
 
 ## Special flights
 
