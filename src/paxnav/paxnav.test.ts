@@ -477,3 +477,23 @@ describe('scale', () => {
     for (const p of nav.poses()) expect(p.y).toBe(0)
   })
 })
+
+describe('common-use check-in', () => {
+  it('sends a passenger to their airline or a general desk, never another airline', () => {
+    const nav = new PaxNav(bigTerminal(), { seed: 3 })
+    const desks = nav.metrics().filter((row) => row.kind === 'checkin_desk').map((row) => row.id)
+    expect(desks.length).toBeGreaterThan(2)
+    nav.setDeskPlan([
+      { id: desks[0]!, airlineId: 'harbor', general: false },
+      { id: desks[1]!, airlineId: 'northline', general: false },
+      { id: desks[2]!, airlineId: null, general: true },
+    ])
+    expect(nav.spawn({ id: 'harbor-pax', gate: 'g1', departAt: 100000, bags: true, airlineId: 'harbor' })).toBe(true)
+    expect(nav.spawn({ id: 'north-pax', gate: 'g1', departAt: 100000, bags: true, airlineId: 'northline' })).toBe(true)
+    const at = (id: string) => nav.poses().find((pose) => pose.id === id)?.facility
+    expect([desks[0], desks[2]]).toContain(at('harbor-pax'))
+    expect(at('harbor-pax')).not.toBe(desks[1])
+    expect([desks[1], desks[2]]).toContain(at('north-pax'))
+    expect(at('north-pax')).not.toBe(desks[0])
+  })
+})

@@ -62,6 +62,8 @@ export interface BuildingCard {
   note?: string
   /** A desk or lane is closed until someone is hired onto the post. */
   hire?: boolean
+  /** Lock or release a check-in desk. Empty when this building has none. */
+  actions?: { id: string; label: string }[]
 }
 
 export interface Reading {
@@ -90,6 +92,13 @@ export interface Reading {
   queueKind?: 'passengers' | 'vehicles' | 'none'
   /** Shown as its own line. The walk-paused estimate uses this. */
   note?: string
+  /**
+   * Headline limit that is not a single bay's kit. Check-in uses this for
+   * `short of desks` while the desks themselves are still working.
+   */
+  alert?: string
+  /** Player actions. Check-in uses these to lock and release a desk. */
+  actions?: readonly { id: string; label: string }[]
 }
 
 const STATUS_LABEL: Record<BuildingStatus, string> = {
@@ -214,6 +223,9 @@ export function buildingCard(reading: Reading): BuildingCard {
   if (reading.closed) {
     status = 'closed'
     why = 'Still building'
+  } else if (reading.alert) {
+    status = 'limited'
+    why = reading.alert
   } else if (equipment) {
     status = 'limited'
     why = `${equipment.label} idle: ${equipment.limit}`
@@ -231,7 +243,7 @@ export function buildingCard(reading: Reading): BuildingCard {
   const queueKind = reading.queueKind ?? 'none'
   const queueLength = reading.closed ? 0 : Math.max(0, Math.floor(finite(reading.queueLength)))
   const queueWhy = queueExplanation(queueKind, reading.closed)
-  const bottleneckWhy = bottleneckExplanation(status, why, equipment, short, staffAssigned, staffNeeded)
+  const bottleneckWhy = bottleneckExplanation(status, why, equipment, short, staffAssigned, staffNeeded, reading.alert)
 
   return {
     id: reading.id,
@@ -264,10 +276,16 @@ export function buildingCard(reading: Reading): BuildingCard {
     staffWhy: 'Inputs: bodies assigned on this building against the crew the plan calls for. Zero bodies idle every bay.',
     bottleneckText: why,
     bottleneckWhy,
-    icons: reading.closed ? [] : iconsFor(bays, inputs, staffAssigned, staffNeeded),
+    icons: deskIcons(reading, reading.closed ? [] : iconsFor(bays, inputs, staffAssigned, staffNeeded)),
     note: reading.note,
     hire: bays.some((bay) => bay.limit === CLOSED_NO_STAFF_LINE),
+    actions: reading.actions?.map((action) => ({ id: action.id, label: action.label })),
   }
+}
+
+function deskIcons(reading: Reading, icons: BottleneckIcon[]): BottleneckIcon[] {
+  if (reading.closed || !reading.alert || icons.some((icon) => icon.id === 'desks')) return icons
+  return [{ id: 'desks', badge: 'desks', why: reading.alert }, ...icons]
 }
 
 function queueExplanation(kind: 'passengers' | 'vehicles' | 'none', closed: boolean | undefined): string {
@@ -284,8 +302,10 @@ function bottleneckExplanation(
   short: number,
   staffAssigned: number,
   staffNeeded: number,
+  alert?: string,
 ): string {
   if (status === 'closed') return 'Inputs: construction is not finished, so the building is closed.'
+  if (alert) return `Inputs: ${alert}. Overlapping check-in windows need more staffed desks.`
   if (equipment) return `Inputs: ${why}. That is the first bay whose kit or crew is missing.`
   if (short > 0) return `Inputs: ${staffAssigned} assigned against ${staffNeeded} needed. The shortfall is the bottleneck.`
   if (status === 'idle') return 'Inputs: no bay is in use. Nothing is asking this building to work.'

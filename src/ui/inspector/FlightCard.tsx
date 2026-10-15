@@ -42,6 +42,7 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
   const aircraft = flight.airframeName || game.aircraftLabel(flight.kind)
   const stand = (flight.craft ?? 'jet') === 'jet' ? game.gateLabel(flight.stand) : 'Helipad'
   const airlineName = flight.ga ? 'Independent GA' : airline.name
+  const checkin = game.checkinLine(flight)
   return (
     <div className="flight">
       <p className="fn" style={{ color: titleColor(flight, airline.color) }}>
@@ -69,6 +70,12 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
           <dt>Connections</dt>
           <dd data-testid="flight-connections">{connections}</dd>
         </div>
+        {checkin ? (
+          <div>
+            <dt>Check-in</dt>
+            <dd data-testid="flight-checkin">{checkin}</dd>
+          </div>
+        ) : null}
       </dl>
       {grade ? (
         <p className="phase" data-testid="turn-grade">

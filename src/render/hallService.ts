@@ -22,6 +22,7 @@ import type { CrewRole } from '../paxnav/crew.ts'
 import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
 import { crewLook } from '../people/variants.ts'
 import type { CrewKind, PersonLook } from '../people/types.ts'
+import { NEUTRAL_DESK_BRAND } from '../checkin/config.ts'
 import { HALL_SERVICE_LOOK as L, TAPE_COLOR } from './hallServiceConfig'
 
 /** What a desk sign shows. */
@@ -233,7 +234,7 @@ export class HallServiceFx {
       const sp = servicePoint(f, ox, oz)
       if (!sp) continue
       if (f.kind === 'checkin_desk') {
-        const brand = brands.length ? brands[this.desks.length % brands.length] : null
+        const brand = brands[this.desks.length] ?? NEUTRAL_DESK_BRAND
         this.desks.push({ id: f.id, ...sp, brand, served: f.served, serving: f.serving, slideAt: -Infinity })
         if (brand) this.addSign(sp, brand)
       } else this.lanes.push({ id: f.id, ...sp, phase: hashPhase(f.id), busy: f.serving })

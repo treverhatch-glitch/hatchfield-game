@@ -273,6 +273,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         card={building}
         onClose={() => game.closeBuilding()}
         onHire={building?.hire ? () => game.hireDeskStaff() : undefined}
+        onAction={(id) => game.checkinAction(id)}
       />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />

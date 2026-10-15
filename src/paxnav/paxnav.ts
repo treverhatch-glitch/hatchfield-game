@@ -90,6 +90,16 @@ export interface SpawnSpec {
   groupOf?: string
   /** Guests: starting need levels (0–1) instead of the rolled ones. */
   startNeeds?: Partial<Record<DecayNeed, number>>
+  /** Check-in airline. Unset keeps the old "any desk" choice. */
+  airlineId?: string
+}
+
+/** One check-in desk's airline, as the sim allocated it. General desks have a null airline. */
+export interface CheckinDeskPlan {
+  id: string
+  airlineId: string | null
+  /** A common desk or kiosk that any airline may use. */
+  general: boolean
 }
 
 export type PaxPhase =
@@ -261,6 +271,8 @@ interface Agent {
   stops: StopKind[]
   gate: string
   departAt: number
+  /** Check-in airline. Unset: any open desk. */
+  airlineId?: string
   phase: PaxPhase
   fac: Facility | null
   joined: boolean
@@ -332,6 +344,8 @@ export class PaxNav {
   private fb = noFeedback()
   /** Bumped on every `setLayout`. */
   revision = 0
+  /** Check-in desks an airline may use. Null keeps every desk open to everyone. */
+  private deskPlan: Map<string, CheckinDeskPlan> | null = null
 
   constructor(layout: BuildLayout, opts: PaxNavOptions = {}) {
     this.seed = opts.seed ?? 1
@@ -549,6 +563,7 @@ export class PaxNav {
       stops,
       gate,
       departAt: spec.departAt,
+      airlineId: spec.airlineId,
       phase: 'walk',
       fac: null,
       joined: false,
@@ -709,6 +724,7 @@ export class PaxNav {
     let closedT = Infinity
     for (const f of this.fac.list) {
       if (f === skip || f.kind !== kit || f.layer !== a.layer || (room && f.roomId !== room)) continue
+      if (!this.deskOpenTo(f, a)) continue
       const d = this.facField(f).dist[a.cell]
       if (!Number.isFinite(d)) continue
       const st = this.state(f)
@@ -735,6 +751,18 @@ export class PaxNav {
 
   /** Expected seconds to be served at the last facility `choose` returned. */
   private chosenT = Infinity
+
+  /**
+   * A branded desk serves that airline. A general desk or kiosk serves anyone.
+   * No plan, or a passenger with no airline, keeps the old any-desk choice.
+   */
+  private deskOpenTo(f: Facility, a: Agent): boolean {
+    if (f.kind !== 'checkin_desk' || !this.deskPlan || !a.airlineId) return true
+    const row = this.deskPlan.get(f.id)
+    if (!row) return false
+    if (row.airlineId && row.airlineId === a.airlineId) return true
+    return row.general && !row.airlineId
+  }
 
   private chooseFor(a: Agent, s: StopKind): Facility | null {
     if (s === 'rebook') return this.choose(a, a.layer === AIR ? REBOOK_KIT.air : REBOOK_KIT.pre, null)
@@ -1683,6 +1711,29 @@ export class PaxNav {
    * those ids; the rest keep their queue and do not serve. Layout changes
    * rebuild the points open, so the caller sets this again after `setLayout`.
    */
+  /**
+   * Check-in desks the sim has allocated. `null` clears the filter.
+   * A passenger already walking to a desk their airline cannot use picks again.
+   * Someone being served is left to finish.
+   */
+  setDeskPlan(rows: readonly CheckinDeskPlan[] | null): void {
+    if (!rows) {
+      this.deskPlan = null
+      return
+    }
+    const map = new Map<string, CheckinDeskPlan>()
+    for (const row of rows) map.set(row.id, row)
+    this.deskPlan = map
+    for (const a of this.agents) {
+      if (a.dead || a.lead || !a.airlineId || a.stops[0] !== 'checkin') continue
+      if (!a.fac || a.phase === 'service') continue
+      if (this.deskOpenTo(a.fac, a)) continue
+      this.leaveFacility(a)
+      a.path = null
+      this.plan(a)
+    }
+  }
+
   setStaffing(open: ReadonlySet<string> | null): void {
     for (const f of this.fac.list) {
       if (f.kind !== 'checkin_desk' && f.kind !== 'security_lane') continue

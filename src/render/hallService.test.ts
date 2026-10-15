@@ -53,6 +53,15 @@ describe('check-in and security interiors', () => {
     expect(fx.stats.desks).toBe(2)
     const signs = fx.group.getObjectByName('hall-desk-signs')!.children.filter((c) => c.name.startsWith('desk-sign:'))
     expect(signs.map((s) => s.userData.brand)).toEqual(['a', 'b'])
+    const third = () => [
+      facility('d1', 'checkin_desk', line(8)),
+      facility('d2', 'checkin_desk', line(8).map((p) => ({ x: p.x + 4, z: p.z }))),
+      facility('d3', 'checkin_desk', line(8).map((p) => ({ x: p.x + 8, z: p.z }))),
+    ]
+    const idle = new HallServiceFx()
+    idle.sync(fakeNav(third), 0, null, brands)
+    const idleSigns = idle.group.getObjectByName('hall-desk-signs')!.children.filter((c) => c.name.startsWith('desk-sign:'))
+    expect(idleSigns.map((s) => s.userData.brand)).toEqual(['a', 'b', 'neutral'])
     expect(fx.stats.bags).toBe(0)
     serving = true
     fx.sync(nav, 1, null, brands)

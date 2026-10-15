@@ -139,4 +139,28 @@ describe('building card', () => {
     expect(card.hire).toBe(true)
     expect(card.why).toBe('Bay 1 idle: closed: no staff')
   })
+
+  it('says short of desks even while the desks are working', () => {
+    const card = buildingCard({
+      id: 'checkin',
+      name: 'Check-in',
+      plan: 'checkin',
+      upkeepPerDay: 0,
+      demand: 1,
+      queueLength: 3,
+      queueKind: 'passengers',
+      alert: 'short of desks',
+      bays: [
+        { label: 'Desk 1 · Harbor Air', inUse: true },
+        { label: 'Kiosk · any airline', inUse: true },
+      ],
+      actions: [{ id: 'dedicate:harbor', label: 'Lock a desk to Harbor Air · $2,000' }],
+    })
+    expect(card.status).toBe('limited')
+    expect(card.why).toBe('short of desks')
+    expect(card.bottleneckText).toBe('short of desks')
+    expect(card.bays.map((bay) => bay.line)).toEqual(['Desk 1 · Harbor Air · in use', 'Kiosk · any airline · in use'])
+    expect(card.icons[0]).toMatchObject({ id: 'desks', why: 'short of desks' })
+    expect(card.actions?.[0]?.id).toBe('dedicate:harbor')
+  })
 })

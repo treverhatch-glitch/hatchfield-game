@@ -1768,10 +1768,9 @@ export class HallWorld {
       this.navCrowd.group.visible = false
       this.serviceFx.group.visible = false
       this.navDrawn = 0
-    } else if (this.roomPlan) {
-      this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
-      this.serviceFx.group.visible = false
     } else {
+      // The room plan has its own counters. The walk still owns the queue,
+      // so the airline sign is painted here from the sim's desk list.
       this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
       const crew = this.navCrowd.lastPoses()
       this.serviceFx.sync(game.hallNav, game.clock, this.camera, game.deskBrands(), crew.poses, crew.total)

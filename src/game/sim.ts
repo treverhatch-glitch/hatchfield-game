@@ -206,7 +206,7 @@ import {
 import { adviseHall, type Advice } from './advisor.ts'
 import { liveHallAdvice } from '../terminaladvisor/adapter.ts'
 import { buildAdvice, buildAlerts } from './terminalBuildBridge.ts'
-import { HallNav, hallClaimHall, hallNavLayout, hallSignage, openCheckinCount, openSecurityCount, waitMoodDelta } from './hallNav.ts'
+import { HallNav, hallClaimHall, hallNavLayout, hallSignage, openCheckinCount, openSecurityCount, staffPoints, waitMoodDelta } from './hallNav.ts'
 import { buildUpkeepPerDay, type EditResult } from '../terminalbuild/index.ts'
 import {
   hintKind,
@@ -372,10 +372,12 @@ import {
   CLOSED_NO_STAFF_LINE,
   SERVICE_POINT_TUNING,
   WALK_PAUSED_LINE,
+  openPointIds,
   serviceInfoLines,
   throughputOf,
   type PointLoad,
 } from '../servicepoints/index.ts'
+import { CHECKIN_ALLOC, NEUTRAL_DESK_BRAND, allocate, type Allocation, type CheckinDesk, type CheckinFlight } from '../checkin/index.ts'
 import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type Reading } from '../buildinginfo/index.ts'
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
@@ -1383,6 +1385,8 @@ export class Game {
   schedule: ScheduleSlot[] = []
   /** Per-slot departure show-up. Passengers release before the aircraft exists. */
   showUps: ShowUpPlan[] = []
+  /** Common desks the player locked to one airline. They stay branded and are never shared. */
+  dedicatedDesks: { deskId: string; airlineId: AirlineId }[] = []
   /** Seeded mix and leads. The hall stamps these onto the entrance cap. */
   private paxAdapter: PaxShowUpAdapter = createPaxShowUpAdapter(0x5382)
   /** Flights that have left the field. The boarding call stays up until those passengers are aboard or miss. */
@@ -1711,6 +1715,7 @@ export class Game {
     this.deskStaff = 0
     this.deskStaffCool = 0
     this.hallStaff = []
+    this.dedicatedDesks = []
     this.premium = createPremiumState()
     this.landsideUses = 0
     this.landsideFeeWindow = 0
@@ -2619,25 +2624,249 @@ export class Game {
   }
 
   /**
-   * Check-in desk signs, in desk order: signed passenger carriers, or while
-   * nobody is signed yet, the roster carriers currently open to this field.
+   * One sign per check-in desk, in the same order the hall paints them.
+   * A desk with no airline is the neutral sign. The renderer does not choose.
    */
   deskBrands(): { id: string; name: string; code: string; primary: string; secondary: string }[] {
-    const key = `${this.signed.join(',')}|${this.reputation >> 2}|${this.hostedFieldLevel()}`
+    const alloc = this.checkinAllocation()
+    const key = alloc.desks.map((row) => `${row.deskId}:${row.airlineId ?? 'neutral'}`).join('|')
     if (this.deskBrandCache?.key === key) return this.deskBrandCache.list
-    const brand = (id: AirlineId) => {
-      const a = this.airline(id)
-      const r = rosterAirline(id)
-      return { id, name: a.name, code: r?.code ?? a.name.slice(0, 3).toUpperCase(), primary: r?.primary ?? a.color, secondary: r?.secondary ?? a.stripe }
-    }
-    const signed = this.signed.filter((id) => this.airline(id).kind === 'pax')
-    const ids = signed.length ? signed : ROSTER_LIVE ? rosterGameAirlines().filter((a) => a.kind === 'pax' && this.rosterOpen(a.id)).slice(0, 6).map((a) => a.id) : []
-    const list = ids.map(brand)
+    const list = alloc.desks.map((row) => (row.airlineId ? this.airlineBrand(row.airlineId) : { ...NEUTRAL_DESK_BRAND }))
     this.deskBrandCache = { key, list }
     return list
   }
 
+  private airlineBrand(id: AirlineId): { id: string; name: string; code: string; primary: string; secondary: string } {
+    const a = this.airline(id)
+    const r = rosterAirline(id)
+    return {
+      id,
+      name: a.name,
+      code: r?.code ?? a.name.slice(0, 3).toUpperCase(),
+      primary: r?.primary ?? a.color,
+      secondary: r?.secondary ?? a.stripe,
+    }
+  }
+
   private deskBrandCache: { key: string; list: { id: string; name: string; code: string; primary: string; secondary: string }[] } | null = null
+  private checkinCache: { key: string; alloc: Allocation } | null = null
+
+  /** Desks in paint order, and whether each one can serve. */
+  private checkinDesks(): CheckinDesk[] {
+    const nav = this.hallNav.nav
+    const fit = this.activeHall()
+    if (!nav || !fit) return []
+    const points = staffPoints(nav.facilities.list, fit.items ?? [])
+    const open = openPointIds(points, {
+      checkin: this.onPostCount('checkin'),
+      security: this.onPostCount('security'),
+    })
+    const byId = new Map(points.map((point) => [point.id, point]))
+    const out: CheckinDesk[] = []
+    for (const facility of nav.facilities.list) {
+      if (facility.kind !== 'checkin_desk') continue
+      const point = byId.get(facility.id)
+      out.push({
+        id: facility.id,
+        staffed: open.has(facility.id),
+        kiosk: Boolean(point?.automatic),
+      })
+    }
+    return out
+  }
+
+  /** Passenger flights that can take a desk. Cargo, GA and emergency do not. */
+  private checkinFlights(): CheckinFlight[] {
+    const seen = new Set<string>()
+    const out: CheckinFlight[] = []
+    for (const plan of this.showUps) {
+      if (plan.closed || !plan.airlineId || !Number.isFinite(plan.std)) continue
+      const flight = plan.flightId ? this.flights.find((row) => row.id === plan.flightId) : undefined
+      if (flight && !this.flightTakesDesk(flight)) continue
+      const id = plan.flightId ?? `slot:${plan.slotId}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      if (plan.flightId) seen.add(plan.flightId)
+      seen.add(`slot:${plan.slotId}`)
+      out.push({
+        id,
+        airlineId: plan.airlineId,
+        std: plan.std,
+        pax: Math.max(plan.tags?.length ?? 0, flight?.pax ?? 0),
+        longHaul: Boolean(plan.intl) || (flight ? isIntlKind(flight.kind) : false),
+      })
+    }
+    for (const flight of this.flights) {
+      if (seen.has(flight.id) || !this.flightTakesDesk(flight)) continue
+      if (flight.scheduleId && seen.has(`slot:${flight.scheduleId}`)) continue
+      const gone =
+        flight.phase === 'pushback' ||
+        flight.phase === 'taxi_out' ||
+        flight.phase === 'takeoff' ||
+        flight.phase === 'gone'
+      if (gone) continue
+      out.push({
+        id: flight.id,
+        airlineId: flight.airline,
+        std: flight.std ?? this.clock + 60,
+        pax: flight.pax,
+        longHaul: isIntlKind(flight.kind),
+      })
+    }
+    return out
+  }
+
+  private flightTakesDesk(flight: Flight): boolean {
+    if (flight.cargo || flight.ga) return false
+    return flight.kind === 'regional' || flight.kind === 'narrowbody' || flight.kind === 'widebody'
+  }
+
+  /** Common-use assignment for this clock. Cached until the windows, desks or locks move. */
+  checkinAllocation(): Allocation {
+    const desks = this.checkinDesks()
+    const flights = this.checkinFlights()
+    const locks = this.dedicatedDesks.map((lock) => ({
+      deskId: lock.deskId,
+      airlineId: lock.airlineId,
+      serviceShare:
+        this.wave3.relation(lock.airlineId).tier >= CHECKIN_ALLOC.trustedTier ? CHECKIN_ALLOC.trustedServiceShare : 1,
+    }))
+    let key = this.clock.toFixed(3)
+    for (const desk of desks) key += `|${desk.id}:${desk.staffed ? 1 : 0}:${desk.kiosk ? 1 : 0}`
+    for (const flight of flights) {
+      key += `|${flight.id}:${flight.airlineId}:${flight.std}:${flight.pax}:${flight.longHaul ? 1 : 0}`
+    }
+    for (const lock of locks) key += `|${lock.deskId}=${lock.airlineId}:${lock.serviceShare}`
+    if (this.checkinCache?.key === key) return this.checkinCache.alloc
+    const alloc = allocate({ now: this.clock, flights, desks, locks })
+    this.checkinCache = { key, alloc }
+    return alloc
+  }
+
+  private checkinRows(alloc: Allocation): { id: string; airlineId: string | null; general: boolean; serviceShare: number }[] {
+    return alloc.desks.map((row) => ({
+      id: row.deskId,
+      airlineId: row.airlineId,
+      general: row.mode === 'general' || row.mode === 'kiosk',
+      serviceShare: row.serviceShare,
+    }))
+  }
+
+  /** Bay label for one desk, numbered in paint order. */
+  private checkinBayLabel(alloc: Allocation, deskId: string): string | undefined {
+    const index = alloc.desks.findIndex((row) => row.deskId === deskId)
+    if (index < 0) return undefined
+    const row = alloc.desks[index]
+    if (!row) return undefined
+    if (row.mode === 'kiosk') return 'Kiosk · any airline'
+    const who = row.airlineId ? this.airline(row.airlineId).name : 'general'
+    return `Desk ${index + 1} · ${who}`
+  }
+
+  /**
+   * Flight-card line. Null for cargo, GA and emergency. An open window names
+   * the desks, or says the hall is short.
+   */
+  checkinLine(flight: Flight): string | null {
+    if (!this.flightTakesDesk(flight)) return null
+    const alloc = this.checkinAllocation()
+    const share = alloc.flights.find(
+      (row) => row.flightId === flight.id || (flight.scheduleId != null && row.flightId === `slot:${flight.scheduleId}`),
+    )
+    if (!share) return null
+    if (!share.open) return 'Check-in closed'
+    const nums = share.desks
+      .map((id) => alloc.desks.findIndex((row) => row.deskId === id) + 1)
+      .filter((n) => n > 0)
+    const desks = nums.length ? `desks ${nums.join(', ')}` : ''
+    if (share.short > 0 && desks) return `Check-in open · ${desks} · short of desks`
+    if (share.short > 0) return 'Check-in open · short of desks'
+    if (desks) return `Check-in open · ${desks}`
+    return 'Check-in open · general desks'
+  }
+
+  /** Lock and release buttons for the check-in building card. */
+  private checkinActions(alloc: Allocation): { id: string; label: string }[] {
+    const ids = new Set<string>()
+    for (const id of this.signed) if (this.airline(id).kind === 'pax') ids.add(id)
+    for (const flight of alloc.flights) if (flight.open) ids.add(flight.airlineId)
+    for (const lock of this.dedicatedDesks) ids.add(lock.airlineId)
+    const actions: { id: string; label: string }[] = []
+    for (const id of [...ids].sort()) {
+      const tier = this.wave3.relation(id).tier
+      const perk =
+        tier >= CHECKIN_ALLOC.trustedTier
+          ? 'Trusted — faster, no fee'
+          : tier >= CHECKIN_ALLOC.preferredTier
+            ? 'Preferred — no fee'
+            : `$${CHECKIN_ALLOC.dedicatedFee.toLocaleString('en-US')}`
+      actions.push({ id: `dedicate:${id}`, label: `Lock a desk to ${this.airline(id).name} · ${perk}` })
+    }
+    for (const lock of this.dedicatedDesks) {
+      const label = this.checkinBayLabel(alloc, lock.deskId) ?? 'Desk'
+      actions.push({ id: `release:${lock.deskId}`, label: `Release ${label}` })
+    }
+    return actions
+  }
+
+  /** Building-panel and flight-card action. `dedicate:<airline>` or `release:<desk>`. */
+  checkinAction(id: string): void {
+    if (id.startsWith('dedicate:')) this.dedicateDesk(id.slice('dedicate:'.length))
+    else if (id.startsWith('release:')) this.releaseDesk(id.slice('release:'.length))
+  }
+
+  /**
+   * Lock the next free common desk to this airline. Below Preferred it costs
+   * the dedicated fee. Preferred and Trusted waive it. A kiosk cannot be locked.
+   */
+  dedicateDesk(airlineId: string): boolean {
+    const name = this.airline(airlineId).name
+    const alloc = this.checkinAllocation()
+    const desks = this.checkinDesks()
+    const staffed = new Map(desks.map((desk) => [desk.id, desk.staffed]))
+    const free = alloc.desks.filter((row) => row.mode !== 'kiosk' && row.mode !== 'dedicated')
+    free.sort((a, b) => {
+      const as = staffed.get(a.deskId) ? 0 : 2
+      const bs = staffed.get(b.deskId) ? 0 : 2
+      const ag = a.mode === 'general' ? 0 : 1
+      const bg = b.mode === 'general' ? 0 : 1
+      return as + ag - (bs + bg)
+    })
+    const pick = free[0]
+    if (!pick) {
+      this.pushNews(`No desk free to lock for ${name}.`, 'bad')
+      this.emit()
+      return false
+    }
+    const tier = this.wave3.relation(airlineId).tier
+    if (tier < CHECKIN_ALLOC.preferredTier) {
+      if (!this.spend(CHECKIN_ALLOC.dedicatedFee, `Dedicated desk · ${name}`)) return false
+    }
+    this.dedicatedDesks.push({ deskId: pick.deskId, airlineId })
+    this.checkinCache = null
+    this.deskBrandCache = null
+    const perk =
+      tier >= CHECKIN_ALLOC.trustedTier
+        ? `${name} keeps a faster desk — Trusted, no fee.`
+        : tier >= CHECKIN_ALLOC.preferredTier
+          ? `${name} keeps this desk — Preferred, no fee.`
+          : `${name} keeps this desk.`
+    this.pushNews(perk, 'ok')
+    this.emit()
+    return true
+  }
+
+  /** The desk goes back to common use on the next assignment. */
+  releaseDesk(deskId: string): boolean {
+    const next = this.dedicatedDesks.filter((row) => row.deskId !== deskId)
+    if (next.length === this.dedicatedDesks.length) return false
+    this.dedicatedDesks = next
+    this.checkinCache = null
+    this.deskBrandCache = null
+    this.pushNews('Desk released. It returns to common use.', 'ok')
+    this.emit()
+    return true
+  }
 
   /** Airlines panel: everything except catalog carriers we never signed while the roster is live. */
   panelAirlines(): Airline[] {
@@ -4337,6 +4566,7 @@ export class Game {
     this.standAccess = {}
     this.standAccessMode = 'remote'
     this.resetPillar()
+    this.dedicatedDesks = []
     this.janitors = 0
     this.hallJanitors = []
     this.seatBooks.clear()
@@ -5917,6 +6147,7 @@ export class Game {
       janitors: this.janitors,
       researchers: this.researchers,
       deskStaff: this.deskStaff,
+      dedicatedDesks: this.dedicatedDesks.map((row) => ({ deskId: row.deskId, airlineId: row.airlineId })),
       public: this.public,
       sharePrice: this.sharePrice,
       sharesOwned: this.sharesOwned,
@@ -6123,6 +6354,7 @@ export class Game {
       this.janitors = s.janitors ?? 0
       this.researchers = s.researchers ?? 0
       this.deskStaff = s.deskStaff ?? 0
+      this.dedicatedDesks = (s.dedicatedDesks ?? []).map((row) => ({ deskId: row.deskId, airlineId: row.airlineId }))
       this.premium = restorePremium(s.premium)
       this.hallStaff = []
       this.public = s.public ?? false
@@ -8718,6 +8950,7 @@ export class Game {
       },
       fit.items ?? [],
     )
+    this.hallNav.setDeskPlan(this.checkinRows(this.checkinAllocation()))
     this.hallNav.setShopStock(this.foodShelf, this.shopShelf)
     this.hallNav.admit(this.hallGuests, this.clock, (flightId) => {
       const f = this.flights.find((x) => x.id === flightId)
@@ -17362,6 +17595,7 @@ export class Game {
     const hired = this.hallStaff.filter((s) => s.node === node && onPostNow(s.stage)).length
     if (!metrics.length) {
       const waiting = node === 'security' ? this.securityQueueCount() : queueAtNode(this.hallGuests, node)
+      const alloc = node === 'checkin' && this.hallNav.live ? this.checkinAllocation() : null
       return {
         id: node,
         name,
@@ -17381,6 +17615,8 @@ export class Game {
           },
         ],
         note: this.hallNav.live ? undefined : WALK_PAUSED_LINE,
+        alert: alloc?.reason ?? undefined,
+        actions: alloc ? this.checkinActions(alloc) : undefined,
       }
     }
     const scale = HALL_NAV_TUNING.navSecPerClockSec
@@ -17395,9 +17631,12 @@ export class Game {
       estWaitSec: m.estWaitSec / scale,
     }))
     const throughput = throughputOf(loads, limit)
+    const alloc = node === 'checkin' ? this.checkinAllocation() : null
     const bays: BayInput[] = loads.map((point) => {
       const busy = point.staffed && (point.serving || point.queueLength > 0)
+      const label = alloc ? this.checkinBayLabel(alloc, point.id) : undefined
       return {
+        label,
         inUse: busy,
         limit: point.staffed ? undefined : CLOSED_NO_STAFF_LINE,
         icon: point.staffed ? undefined : 'staff',
@@ -17417,6 +17656,8 @@ export class Game {
       queueLength: throughput.queueLength,
       queueKind: 'passengers',
       bays,
+      alert: alloc?.reason ?? undefined,
+      actions: alloc ? this.checkinActions(alloc) : undefined,
     }
   }
 

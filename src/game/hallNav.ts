@@ -60,6 +60,8 @@ export interface NavGuest {
    * walk's own roll. A carry-on bank can be sent straight at security.
    */
   bags?: boolean
+  /** Airline this departure is checking in with. */
+  airlineId?: string
 }
 
 /** Sim fare persona -> walker purpose. Family fares are leisure or family trips, so they roll. */
@@ -589,6 +591,10 @@ export class HallNav {
   private staffItems: readonly { id: string; def: string; bundle?: boolean }[] = []
   /** Open family group per flight: leader id and places left. */
   private openGroup = new Map<string, { leader: string; left: number }>()
+  /** Check-in allocation. Empty until the sim says; then the walk filters desks. */
+  private deskPlanSet = false
+  private deskRows: { id: string; airlineId: string | null; general: boolean; serviceShare: number }[] = []
+  private deskPace = new Map<string, number>()
 
   get nav(): PaxNav | null {
     return this.navObj
@@ -729,6 +735,7 @@ export class HallNav {
         purpose: g.tag ? TAG_PURPOSE[g.tag] : undefined,
         groupOf: this.groupFor(g),
         bags: g.bags,
+        airlineId: g.airlineId,
       })
       if (ok) {
         this.depOrder.push(g.id)
@@ -861,6 +868,17 @@ export class HallNav {
     this.staffItems = items
   }
 
+  /**
+   * Branded desks for this moment. Applied before anyone is admitted, so a
+   * passenger released on this tick already walks to their airline.
+   */
+  setDeskPlan(rows: readonly { id: string; airlineId: string | null; general: boolean; serviceShare: number }[]): void {
+    this.deskPlanSet = true
+    this.deskRows = rows.slice()
+    this.deskPace = new Map(rows.map((row) => [row.id, row.serviceShare]))
+    if (this.navObj) this.applyStaffing(this.navObj)
+  }
+
   /** x, y, z, yaw per walker (stride 4), terminal metres: departures, then arrivals, then crew. */
   writePoses(out: Float32Array): number {
     const n = this.navObj?.writePoses(out) ?? 0
@@ -876,24 +894,35 @@ export class HallNav {
     return total
   }
 
-  /** Kiosk service time is a share of the desk, recomputed from the equipment so it does not compound. */
-  private applyKioskPace(nav: PaxNav): void {
-    const share = SERVICE_POINT_TUNING.kioskServiceShare
-    if (!(share > 0) || share > 1) return
+  /**
+   * Kiosk time and a Trusted dedicated desk are shares of the base service
+   * time, recomputed each tick so they do not compound.
+   */
+  private applyDeskPace(nav: PaxNav): void {
+    const kioskShare = SERVICE_POINT_TUNING.kioskServiceShare
     for (const eq of nav.layout.equipment) {
       if (eq.kind !== 'checkin_desk') continue
-      const it = itemForDesk(eq.id, this.staffItems)
-      if (!it || !isKioskDef(it.def)) continue
       const facility = nav.facilities.byId.get(eq.id)
-      if (facility) facility.serviceSec = serviceSecOf(eq) * share
+      if (!facility) continue
+      let sec = serviceSecOf(eq)
+      const it = itemForDesk(eq.id, this.staffItems)
+      if (it && isKioskDef(it.def) && kioskShare > 0 && kioskShare <= 1) sec *= kioskShare
+      const trusted = this.deskPace.get(eq.id)
+      if (trusted != null && trusted > 0 && trusted < 1) sec *= trusted
+      facility.serviceSec = sec
     }
   }
 
   private applyStaffing(nav: PaxNav): void {
-    this.applyKioskPace(nav)
-    if (!this.hired) return
-    const points = staffPoints(nav.facilities.list, this.staffItems)
-    nav.setStaffing(openPointIds(points, this.hired))
+    this.applyDeskPace(nav)
+    if (this.hired) {
+      const points = staffPoints(nav.facilities.list, this.staffItems)
+      nav.setStaffing(openPointIds(points, this.hired))
+    }
+    if (!this.deskPlanSet) return
+    nav.setDeskPlan(
+      this.deskRows.map((row) => ({ id: row.id, airlineId: row.airlineId, general: row.general })),
+    )
   }
 
   metrics(): FacilityMetrics[] {

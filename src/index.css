@@ -539,6 +539,24 @@ button {
   font: 700 12px sans-serif;
 }
 
+.building-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.building-action {
+  width: auto;
+  padding: 4px 8px;
+  background: transparent;
+  color: #e7eee9;
+  border: 1px solid rgba(201, 162, 39, 0.55);
+  border-radius: 6px;
+  font: 600 12px sans-serif;
+  text-align: left;
+}
+
 .building-icons {
   display: flex;
   flex-wrap: wrap;

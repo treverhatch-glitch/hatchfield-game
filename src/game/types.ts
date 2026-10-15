@@ -1084,6 +1084,8 @@ export interface GameSnapshot {
   feeStandingApplied?: number
   /** Premium check-in, fast-track lanes, and the VIP room. */
   premium?: PremiumState
+  /** Check-in desks locked to one airline. Missing on older saves. */
+  dedicatedDesks?: { deskId: string; airlineId: AirlineId }[]
   /** Shop leases, ad campaigns, and awards. Missing on older saves. */
   tycoon?: TycoonState
   /** Bellwater Intl rival sim. */
