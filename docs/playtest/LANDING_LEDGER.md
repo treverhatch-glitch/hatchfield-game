@@ -19,7 +19,7 @@ Land one at a time: rebase onto latest main, green `npm run gate`, fast-forward 
 | P1 | Spotters deck | #84 | MERGED | `b67c52b4`, gate `6779e61c` |
 | P1 | Airport Council | #85 | MERGED | `0f006656`, gate `c17f68ab` |
 | P1 | Carbon / Green Pioneer | #87 | MERGED | `b6de09c9`, gate `4bd73e2f` |
-| P1 | Dead buys (fire bell, bridges, flag, apron light) | J46 | BUILDING | New agent. `scrambleSec` still unread by `tickFireRisk` |
+| P1 | Dead buys (fire bell, bridges, flag, apron light) | J46 `cursor/fitting-honesty-c298` | MERGED | `74580a1b`. Quick gate `e218574e` (2980 tests, 30-day soak, Careful bot) on this patch, then rebased onto the phone routes with no fitting-file change. Bell scales the fine, reputation hit, and drill line. Flag is paint. Extra bridges shorten boarding. The mast is drawn only when bought. |
 | P1 | Hub stand lease enforce + Heavy class | J47 | BUILDING | New agent. `assignStand` / `swapStands` |
 | P1 | Noon hold when the day/night cycle is off | #98 `cursor/j36-daynight-cycle-4799` | MERGED | `7a85bce8`. One settings switch, under Graphics. Off holds noon, lamps out. A photo hour still wins. The original branch tip was not replayed |
 | P2 | Fold Ops wallet into Growth | J48 | QUEUED | After the late-build wave settles |
@@ -59,6 +59,7 @@ Land one at a time: rebase onto latest main, green `npm run gate`, fast-forward 
 | Carbon book and Green Pioneer | `b6de09c9` | `4bd73e2f` | CO₂ info view is in the info bar, not a second OwnerChrome panel. |
 | Vision expansion design note | `3a37ffa5` | `08b868e2` | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. Quick gate was recorded for `418a8d6b` before the art-pack rebase. |
 | Graphics day/night noon hold (PR #98) | `7a85bce8` | contained in `75e985c5` | Existing settings switch, under Graphics. Off holds noon with lamps out. Flood pools stay on at 5×. No second store. The old branch tip was not replayed. |
+| Fitting honesty (J46) | `74580a1b` | `e218574e` | Fire bell, flag, extra jet bridges, and apron light match their cards. No new ledger line. 2980 tests, 30-day soak, Careful bot. Phone-route commits landed during the gate and did not change the fitting files. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
