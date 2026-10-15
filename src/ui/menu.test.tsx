@@ -13,30 +13,34 @@ beforeEach(() => {
 function title(enableHints = true) {
   return renderToStaticMarkup(
     <TitleScreen
+      game={new Game()}
+      section="home"
+      onSection={() => {}}
       sandbox={false}
       onSandboxChange={() => {}}
       enableHints={enableHints}
       onEnableHintsChange={() => {}}
       onNewGame={() => {}}
-      onChooseKit={() => {}}
       onContinue={() => {}}
     />,
   )
 }
 
 describe('start menu', () => {
-  it('shows the logo title, both starter kits, and start with hints off', () => {
+  it('shows the logo title, the rail, and start with hints off', () => {
     const html = title(true)
     expect(html).toContain('logo_hatchfield.jpg')
     expect(html).toContain('alt="Hatchfield"')
     expect(html).toContain('game-title-idle')
-    expect(html).toContain(STARTER_KITS.pax.label)
-    expect(html).toContain(STARTER_KITS.cargo.label)
-    expect(html).toContain(STARTER_KITS.pax.includes[0])
-    expect(html).toContain(STARTER_KITS.cargo.includes[0])
+    expect(html).toContain('New Game')
+    expect(html).toContain('Load Game')
+    expect(html).toContain('Settings')
+    expect(html).toContain('Credits')
+    expect(html).toContain('>Quit<')
     expect(html).toContain('Start with hints off')
     expect(html).toContain('data-testid="hints-off-toggle"')
     expect(html).toContain('data-testid="new-game"')
+    expect(html).toContain('data-testid="menu-tab-load"')
     // Hints stay on until the player checks the box.
     expect(html).toContain('data-testid="enable-hints-toggle" checked=""')
     expect(html).not.toContain('data-testid="hints-off-toggle" checked=""')
@@ -62,8 +66,13 @@ describe('new-game sheet', () => {
         onEnableHintsChange={() => {}}
         onBought={() => {}}
         onBack={() => {}}
+        onContinue={() => {}}
+        onNavigate={() => {}}
       />,
     )
+    expect(html).toContain('Free play')
+    expect(html).toContain('Island Hop')
+    expect(html).toContain('data-testid="new-scenario-free"')
     expect(html).toContain(STARTER_KITS.pax.label)
     expect(html).toContain(STARTER_KITS.cargo.label)
     expect(html).toContain(STARTER_KITS.pax.includes[2])

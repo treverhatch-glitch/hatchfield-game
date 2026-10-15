@@ -19,6 +19,7 @@ import { TitleScreen } from './ui/TitleScreen'
 import { PlayInput } from './ui/PlayInput'
 import { PauseMenu } from './ui/PauseMenu'
 import { pauseState } from './ui/pauseState'
+import type { MenuSection } from './ui/menu/sections'
 import type { StartFocus } from './game/types'
 import { applyStoredAudio, bindUiClicks, preloadAudioClips } from './audio'
 import { tickLiveFeedback } from './feedback/live.ts'
@@ -322,6 +323,7 @@ function PlayChrome({ onNewGame }: { onNewGame: () => void }) {
 
 export default function App() {
   const [screen, setScreenState] = useState<Screen>(() => bootScreen())
+  const [section, setSection] = useState<MenuSection>('home')
 
   const setScreen = (s: Screen) => {
     writeScreen(s)
@@ -384,6 +386,9 @@ export default function App() {
         <div className="menu-scrim" aria-hidden="true" />
         {screen === 'title' ? (
           <TitleScreen
+            game={game}
+            section={section}
+            onSection={setSection}
             sandbox={game.sandbox}
             onSandboxChange={(on) => {
               game.sandbox = on
@@ -392,7 +397,6 @@ export default function App() {
             enableHints={game.enableHintsAtStart}
             onEnableHintsChange={setEnableHints}
             onNewGame={() => openNewGame('pax')}
-            onChooseKit={openNewGame}
             onContinue={() => {
               if (game.load()) setScreen('play')
             }}
@@ -403,7 +407,17 @@ export default function App() {
             enableHints={game.enableHintsAtStart}
             onEnableHintsChange={setEnableHints}
             onBought={() => setScreen('play')}
-            onBack={() => setScreen('title')}
+            onBack={() => {
+              setSection('home')
+              setScreen('title')
+            }}
+            onContinue={() => {
+              if (game.load()) setScreen('play')
+            }}
+            onNavigate={(next) => {
+              setSection(next)
+              setScreen('title')
+            }}
           />
         )}
       </div>
@@ -422,9 +436,13 @@ export default function App() {
       />
       <PauseMenu
         game={game}
-        onQuit={() => setScreen('title')}
+        onQuit={() => {
+          setSection('home')
+          setScreen('title')
+        }}
         onNewGame={() => {
           game.beginNew(game.sandbox ? 'easy' : game.difficulty)
+          setSection('home')
           setScreen('title')
         }}
       />

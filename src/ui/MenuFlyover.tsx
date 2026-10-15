@@ -94,6 +94,8 @@ export function MenuFlyover() {
     let last = performance.now()
     let t = 0
     let signed = false
+    const reduce =
+      typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
     const live = game
     const loop = (now: number) => {
       if (stopped || !world) return
@@ -110,10 +112,12 @@ export function MenuFlyover() {
         console.error('menu flyover tick', err)
       }
       live.camGoal = null
-      // Same family of shot as the apron camera, drifting so the field reads as a flyover.
-      world.yaw = 0.45 + t * 0.07
-      world.pitch = 0.58 + Math.sin(t * 0.11) * 0.04
-      world.dist = 86 + Math.sin(t * 0.08) * 8
+      // Slow orbit. Reduced motion holds the opening frame.
+      if (!reduce) {
+        world.yaw = 0.45 + t * 0.04
+        world.pitch = 0.56 + Math.sin(t * 0.08) * 0.03
+        world.dist = 98 + Math.sin(t * 0.05) * 6
+      }
       world.placeCam()
       try {
         world.render(live)

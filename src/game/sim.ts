@@ -816,9 +816,11 @@ import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import {
   readStoredSave,
+  rotateAutosave,
   SAVE_MIGRATIONS,
   SAVE_SCHEMA_VERSION,
   serialize,
+  touchAutosave,
   validateAirportSave,
   type SaveIssue,
 } from '../features/save/index.ts'
@@ -7000,10 +7002,18 @@ export class Game {
       scenario: this.scenarioRun ? { ...this.scenarioRun } : undefined,
     }
     try {
+      const now = Date.now()
+      rotateAutosave(this.gameDay())
       localStorage.setItem(
         SAVE_KEY,
-        serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => snap, restore() {} }, Date.now()),
+        serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => snap, restore() {} }, now),
       )
+      touchAutosave({
+        savedAt: now,
+        gameDay: this.gameDay(),
+        cash: this.cash,
+        airport: this.branding.airportName || 'Hatchfield',
+      })
     } catch {
       /* ignore */
     }
