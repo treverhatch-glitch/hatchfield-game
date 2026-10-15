@@ -2,10 +2,10 @@ import { clampToWindow } from './time'
 import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand } from './types'
 
 /**
- * Shape the timetable expects from the upcoming src/contracts module
- * (branch grok/contracts, design doc "Airline Contracts & Scheduling").
- * It is structural on purpose: contracts can satisfy it directly or through a
- * one-file shim, and the dock never imports src/contracts.
+ * Turns contract movements into timetable rows.
+ * The live game builds those movements in gameAdapter and reads windows,
+ * buffers, and the offer preview from src/contracts through schedulerBridge.
+ * This file stays a mapper: it does not copy scheduler numbers.
  */
 export interface ContractMovement {
   id: string
@@ -36,6 +36,15 @@ export interface ContractMovement {
   depRunwayId?: string | null
   /** Paired rotation id: arr and dep with the same rotation share one stand bar. */
   rotationId?: string
+  airlineId?: string
+  stripe?: string
+  /** When set, overrides the status-based movable flag. Departures stay locked. */
+  movable?: boolean
+  manual?: boolean
+  checkInFrom?: number | null
+  checkInTo?: number | null
+  terminal?: string
+  traffic?: TtFlight['traffic']
 }
 
 export interface ContractsSource {
@@ -82,11 +91,17 @@ export function contractsAdapter(src: ContractsSource): TimetableAdapter {
       aircraft: m.aircraft,
       runwayId: (m.direction === 'dep' ? m.depRunwayId ?? m.runwayId : m.runwayId) ?? null,
       depRunwayId: m.depRunwayId ?? null,
-      manual: false,
+      manual: m.manual ?? false,
       contractId: m.contractId,
       turnTarget: m.turnTarget,
       services: m.services,
-      movable: m.status === 'scheduled' || m.status === 'delayed',
+      movable: m.movable ?? (m.status === 'scheduled' || m.status === 'delayed'),
+      airlineId: m.airlineId,
+      stripe: m.stripe,
+      checkInFrom: m.checkInFrom ?? null,
+      checkInTo: m.checkInTo ?? null,
+      terminal: m.terminal,
+      traffic: m.traffic,
     }
   }
   const idMap = new Map<string, string>()

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_MTT } from '../../contracts/airframes'
+import { timeWindow } from '../../contracts/contracts'
+import { DEFAULT_SCHEDULER_OPTIONS } from '../../contracts/scheduler'
 import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { checkInCloseMin, checkInGhost, LEISURE_LEAD_GAME_MIN } from './checkInGhost'
 import { fuelFooterLine } from './fuelFooter'
@@ -6,6 +9,8 @@ import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
 import { axisTicks, barNote, boardRows, buildGantt, filterFlights, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
+import { manualSlotLabel } from './manualSlot'
+import { capacityPreview, contractSlotWindow } from './schedulerBridge'
 import type { TtFlight } from './types'
 import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { schedulePillEscape, setSchedulePill, setSchedulePlanner, sheetShown } from './scheduleSheet'
@@ -43,6 +48,13 @@ describe('clock face', () => {
       bare({ id: 'b:arr', airlineName: 'Bushline', flightNo: 'BU2', color: '#6b8f3a', time: 20, onStandFrom: 20, onStandTo: 25 }),
     ]
     expect(filterFlights(rows, { airline: 'Northline' }).map((f) => f.flightNo)).toEqual(['NO1'])
+    const tagged = [
+      bare({ id: 'c:arr', flightNo: 'CG1', status: 'delayed', terminal: 'T2', traffic: 'cargo' }),
+      bare({ id: 'g:arr', flightNo: 'GA1', status: 'scheduled', terminal: 'Apron', traffic: 'ga' }),
+    ]
+    expect(filterFlights(tagged, { status: 'delayed' }).map((f) => f.flightNo)).toEqual(['CG1'])
+    expect(filterFlights(tagged, { terminal: 'T2' }).map((f) => f.flightNo)).toEqual(['CG1'])
+    expect(filterFlights(tagged, { traffic: 'ga' }).map((f) => f.flightNo)).toEqual(['GA1'])
     expect(rows[0].stripe).toBe('#e8eef5')
     const many = Array.from({ length: 20 }, (_, i) =>
       bare({ id: `n${i}:arr`, flightNo: `N${i}`, time: i, onStandFrom: i, onStandTo: i + 0.4 }),
@@ -88,6 +100,17 @@ describe('one schedule sheet', () => {
 })
 
 describe('schedule turn config', () => {
+  it('reads the hard window and the stand buffer from the scheduler', () => {
+    expect(SCHEDULE.standBufferMin).toBe(DEFAULT_SCHEDULER_OPTIONS.standBufferMin)
+    expect(SCHEDULE.hardWindowMin).toBe(timeWindow(0).hardMin)
+    expect(SCHEDULE.turnMin.narrow).toBe(DEFAULT_MTT.narrow)
+    expect(SCHEDULE.turnMin.heavy).toBe(DEFAULT_MTT.super)
+    const band = contractSlotWindow(150, 180)
+    expect(band.source).toBe('contract')
+    expect(band.start).toBeCloseTo(150 - gameMinToSim(timeWindow(0).hardMin), 5)
+    expect(band.end).toBeCloseTo(150 + gameMinToSim(timeWindow(0).hardMin), 5)
+  })
+
   it('keeps a narrowbody turn inside 35–45 game minutes', () => {
     expect(SCHEDULE.turnMin.narrow).toBeGreaterThanOrEqual(35)
     expect(SCHEDULE.turnMin.narrow).toBeLessThanOrEqual(45)
@@ -205,7 +228,9 @@ describe('game schedule adapter', () => {
     expect(s2.pinned).toBe(true)
     expect(s2.standLabel).toBe('G6')
     expect(s2.window).toEqual(hardWindow(150, 100))
+    expect(s2.window?.source).toBe('contract')
     expect(s2.onStandTo - s2.onStandFrom).toBeCloseTo(turnSimSec('narrow'), 5)
+    expect(a.source).toBe('Contracts')
   })
 
   it('lists every stand in one group, with the tower lane first', () => {
@@ -452,5 +477,26 @@ describe('multiple runways', () => {
     expect(a.caps.runway).toBe(true)
     a.setRunway('r1:dep', 'R09L')
     expect(set).toEqual(['m2', 'R09L'])
+  })
+})
+
+describe('offer preview and manual slot labels', () => {
+  it('colours a day of hours from previewOffer and stays empty with no arrivals', () => {
+    const empty = capacityPreview([], [{ id: 's', label: 'T1 G1', icao: 'C' }], [{ id: 'rw0', index: 0, label: 'RW1', hourlyCap: 20 }], 180)
+    expect(empty.hours).toEqual([])
+    const one = capacityPreview(
+      [bare({ time: 90, flightNo: 'HF100', airlineId: 'hatch', icao: 'C', traffic: 'pax' })],
+      [{ id: 's', label: 'T1 G1', icao: 'C' }],
+      [{ id: 'rw0', index: 0, label: 'RW1', hourlyCap: 30 }],
+      180,
+    )
+    expect(one.hours).toHaveLength(24)
+    expect(one.hours.every((h) => h.light === 'green' || h.light === 'amber' || h.light === 'red')).toBe(true)
+  })
+
+  it('does not call a free airline banned', () => {
+    expect(manualSlotLabel('Northline', false)).toBe('+ Northline')
+    expect(manualSlotLabel('Northline', false)).not.toMatch(/banned/i)
+    expect(manualSlotLabel('Northline', true)).toMatch(/banned/i)
   })
 })

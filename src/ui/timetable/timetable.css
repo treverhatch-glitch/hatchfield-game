@@ -1,16 +1,31 @@
-/* Timetable dock — collapsed pill by default, never wider than ~half the screen. */
+/* Timetable dock. Collapsed it is a pill. Open, it clears the phone and the Planner sheet. */
 .tt-root {
   position: absolute;
-  left: 56px;
+  left: 72px;
   right: 16px;
   bottom: 72px;
   z-index: 22;
   pointer-events: none;
-  font-size: 11px;
+  font-size: 13px;
   color: #e2e8f0;
 }
+.hud .tt-root[data-hud-part='timetable'] {
+  left: 72px;
+}
 .tt-root[data-open='1'] {
-  z-index: 34;
+  z-index: 36;
+}
+.hud .tt-root[data-open='1'][data-planner='1'] {
+  right: min(372px, 30vw);
+}
+/* The phone sits in the band above the open sheet, so it cannot cover the board or take its clicks. */
+.hud:has(.tt-root[data-open='1']) .phone-dock {
+  top: calc(var(--hud-top, 52px) + 64px);
+  bottom: calc(88px + var(--tt-h, 320px));
+}
+.hud:has(.tt-root[data-open='1']) .phone-device {
+  min-height: 0;
+  height: 100%;
 }
 .tt-root > * {
   pointer-events: auto;
@@ -46,16 +61,27 @@
 .tt-dock {
   position: relative;
   width: 100%;
-  height: 360px;
-  max-height: 360px;
+  min-height: 160px;
   margin-bottom: 0;
   display: flex;
   flex-direction: column;
-  background: rgb(15 23 42 / 0.86);
+  background: rgb(15 23 42 / 0.9);
   backdrop-filter: blur(10px);
   border: 1px solid rgb(255 255 255 / 0.1);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.tt-resize {
+  position: absolute;
+  top: -5px;
+  left: 18%;
+  right: 18%;
+  height: 10px;
+  border-radius: 6px;
+  background: rgb(226 232 240 / 0.35);
+  cursor: ns-resize;
+  z-index: 6;
+  pointer-events: auto;
 }
 .tt-head {
   display: flex;
@@ -101,6 +127,8 @@
 }
 .tt-body {
   overflow: auto;
+  flex: 1;
+  min-height: 0;
   padding: 4px 8px 8px;
 }
 .tt-empty {
@@ -117,7 +145,7 @@
 .tt-row {
   display: flex;
   align-items: stretch;
-  height: 20px;
+  height: 28px;
   margin: 2px 0;
 }
 .tt-row-axis {
@@ -130,7 +158,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.8;
-  line-height: 20px;
+  line-height: 28px;
 }
 .tt-lane {
   position: relative;
@@ -227,11 +255,39 @@
 }
 .tt-checkin {
   position: absolute;
-  bottom: 1px;
-  height: 3px;
-  background: rgb(125 211 252 / 0.7);
+  top: 3px;
+  bottom: 3px;
+  height: auto;
+  background: rgb(125 211 252 / 0.2);
+  border: 1px dashed rgb(186 230 253 / 0.95);
+  border-radius: 3px;
   pointer-events: none;
   z-index: 1;
+}
+.tt-offer {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 2px 0 6px;
+}
+.tt-offer span {
+  margin-right: 6px;
+  opacity: 0.7;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.tt-offer i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #4ade80;
+}
+.tt-offer i[data-light='amber'] {
+  background: #fbbf24;
+}
+.tt-offer i[data-light='red'] {
+  background: #f87171;
 }
 .tt-buffer {
   position: absolute;
@@ -299,29 +355,70 @@
 .tt-board {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 16px;
+  font-size: 14px;
 }
 .tt-board table {
   border-collapse: collapse;
   width: 100%;
+  font-size: 14px;
   font-family: 'IBM Plex Mono', ui-monospace, monospace;
 }
 .tt-board caption {
   text-align: left;
-  font-weight: 600;
+  font-weight: 650;
+  font-size: 14px;
   color: #fbbf24;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 .tt-board th {
   text-align: left;
   font-weight: 500;
   opacity: 0.6;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .tt-board td,
 .tt-board th {
-  padding: 1px 4px;
-  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+  height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  white-space: nowrap;
 }
+.tt-code {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.tt-airline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tt-board .airline-logo {
+  width: 22px;
+  height: 22px;
+  margin-right: 0;
+  flex: none;
+}
+.tt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+}
+.tt-status i {
+  font-style: normal;
+  width: 14px;
+  text-align: center;
+}
+.tt-status-scheduled { color: #4ade80; }
+.tt-status-delayed { color: #fbbf24; }
+.tt-status-inbound { color: #60a5fa; }
+.tt-status-on_stand { color: #22d3ee; }
+.tt-status-departing { color: #c084fc; }
+.tt-status-done { color: #94a3b8; }
+.tt-status-cancelled { color: #f87171; }
 .tt-board tr[data-sel='1'] td {
   background: rgb(56 189 248 / 0.18);
 }
@@ -401,8 +498,15 @@
   margin: 4px 0 0;
 }
 @media (max-width: 900px) {
+  .tt-root {
+    left: 56px;
+    right: 8px;
+  }
+  .tt-board {
+    grid-template-columns: 1fr;
+  }
   .tt-dock {
-    width: calc(100vw - 16px);
+    width: 100%;
   }
   .tt-card {
     left: auto;

@@ -1,6 +1,7 @@
-import { gameMinToSim, SCHEDULE } from './scheduleConfig'
+import { DEFAULT_SCHEDULER_OPTIONS } from '../../contracts/scheduler'
+import { gameMinToSim } from './scheduleConfig'
 import { clockLabel, durationLabel, hourSecs, standFits } from './time'
-import type { IcaoCode, TtFlight, TtRunway, TtStand } from './types'
+import type { IcaoCode, TtFlight, TtRunway, TtStand, TtTraffic } from './types'
 
 export interface GanttBar {
   flight: TtFlight
@@ -79,6 +80,9 @@ export interface FlightFilter {
   code?: string
   query?: string
   conflictIds?: Set<string>
+  status?: string
+  terminal?: string
+  traffic?: string
 }
 
 /** Hide bars that miss the airline, code, flight number, or conflict filter. */
@@ -87,6 +91,9 @@ export function filterFlights(flights: TtFlight[], filter: FlightFilter): TtFlig
   return flights.filter((f) => {
     if (filter.airline && f.airlineName !== filter.airline) return false
     if (filter.code && f.icao !== filter.code) return false
+    if (filter.status && f.status !== filter.status) return false
+    if (filter.terminal && (f.terminal ?? 'Apron') !== filter.terminal) return false
+    if (filter.traffic && (f.traffic ?? 'pax') !== filter.traffic) return false
     if (q && !f.flightNo.toLowerCase().includes(q)) return false
     if (filter.conflictsOnly && filter.conflictIds && !filter.conflictIds.has(f.id)) return false
     return true
@@ -122,7 +129,7 @@ export function buildGantt(flights: TtFlight[], stands: TtStand[], span: ViewSpa
   }
   const toBars = (list: TtFlight[], stand: TtStand | null): GanttBar[] => {
     const sorted = [...list].sort((a, b) => a.onStandFrom - b.onStandFrom)
-    const bufferSec = gameMinToSim(SCHEDULE.standBufferMin)
+    const bufferSec = gameMinToSim(DEFAULT_SCHEDULER_OPTIONS.standBufferMin)
     return sorted.map((f, i) => {
       const prev = sorted[i - 1]
       const next = sorted[i + 1]
@@ -175,9 +182,9 @@ export function barNote(bar: GanttBar, dayLength = 180): string | null {
     return 'This stand cannot take this aircraft.'
   }
   if (bar.buffer && bar.gapSec != null && bar.gapSec >= 0) {
-    return `Tight: the next turn starts ${durationLabel(bar.gapSec, dayLength)} later, inside the ${SCHEDULE.standBufferMin}m buffer.`
+    return `Tight: the next turn starts ${durationLabel(bar.gapSec, dayLength)} later, inside the ${DEFAULT_SCHEDULER_OPTIONS.standBufferMin}m buffer.`
   }
-  if (bar.buffer) return `Tight: inside the ${SCHEDULE.standBufferMin}m stand buffer.`
+  if (bar.buffer) return `Tight: inside the ${DEFAULT_SCHEDULER_OPTIONS.standBufferMin}m stand buffer.`
   return null
 }
 
@@ -287,10 +294,14 @@ export interface BoardRow {
   est: string | null
   flightNo: string
   airline: string
+  airlineId: string
   color: string
   stand: string
   status: string
+  statusKey: TtFlight['status']
   late: boolean
+  terminal: string
+  traffic: TtFlight['traffic']
 }
 
 const STATUS_TEXT: Record<TtFlight['status'], string> = {
@@ -333,10 +344,14 @@ export function boardRows(
         est: late ? clockLabel(f.time, dayLength) : null,
         flightNo: f.flightNo,
         airline: f.airlineName,
+        airlineId: f.airlineId ?? '',
         color: f.color,
         stand: f.standLabel,
         status,
+        statusKey: f.status,
         late,
+        terminal: f.terminal ?? 'Apron',
+        traffic: (f.traffic ?? 'pax') as TtTraffic,
       }
     })
 }

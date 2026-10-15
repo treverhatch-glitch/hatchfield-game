@@ -6,6 +6,7 @@ import { ViewModeToggle } from './ViewModeToggle'
 import { PremiumPanel } from './PremiumPanel.tsx'
 import { OpsWalletPanel } from './OpsWalletPanel.tsx'
 import { GameTimetable } from './timetable/GameTimetable'
+import { manualSlotLabel } from './timetable/manualSlot'
 import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
@@ -1924,11 +1925,22 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                       </button>
                     </div>
                     <div className="row">
-                      {game.signed.slice(0, 3).map((id) => (
-                        <button key={id} type="button" onClick={() => game.addManualSlot(id, 18)}>
-                          +{game.airline(id).name.slice(0, 6)}
-                        </button>
-                      ))}
+                      {game.signed.slice(0, 3).map((id) => {
+                        const banned = game.isBanned(id)
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            data-testid={`manual-slot-${id}`}
+                            disabled={banned}
+                            onClick={() => {
+                              if (!game.isBanned(id)) game.addManualSlot(id, 18)
+                            }}
+                          >
+                            {manualSlotLabel(game.airline(id).name, banned)}
+                          </button>
+                        )
+                      })}
                     </div>
                   </section>
                 </>

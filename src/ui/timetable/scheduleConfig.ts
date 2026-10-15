@@ -1,26 +1,31 @@
 /**
- * Schedule-chart tunables, in game minutes.
- * One sim second is `GAME_MINUTES_PER_SIM_SECOND` (8) game minutes.
- * The chart reads these. The hall show-up clock stays `PLANNED_TURN_SEC`.
+ * Face of the scheduler numbers the chart still names.
+ * The values come from `timeWindow`, `DEFAULT_MTT`, and `DEFAULT_SCHEDULER_OPTIONS`.
+ * The hall show-up clock stays `PLANNED_TURN_SEC`.
  */
+import { DEFAULT_MTT } from '../../contracts/airframes'
+import { timeWindow } from '../../contracts/contracts'
+import { DEFAULT_SCHEDULER_OPTIONS } from '../../contracts/scheduler'
 import type { AircraftKind } from '../../game/types'
 import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import type { IcaoCode } from './types'
 
+const windowDefaults = timeWindow(0)
+
 export const SCHEDULE = {
-  /** Full turn on stand. Narrowbody sits in the 35–45 minute reference band. */
+  /** Full turn on stand. Same minutes as the scheduler minimum turnaround. */
   turnMin: {
-    narrow: 40,
-    wide: 75,
-    heavy: 110,
-    regional: 30,
+    narrow: DEFAULT_MTT.narrow,
+    wide: DEFAULT_MTT.wide,
+    heavy: DEFAULT_MTT.super,
+    regional: DEFAULT_MTT.regional,
   },
-  /** Amber hatch after a bar. The next turn inside it is tight, not a clash. */
-  standBufferMin: 10,
+  /** Amber hatch after a bar. The scheduler's stand buffer, not a local copy. */
+  standBufferMin: DEFAULT_SCHEDULER_OPTIONS.standBufferMin,
   /** Free drag, in game minutes, around the banked time. */
-  softWindowMin: 20,
+  softWindowMin: windowDefaults.softMin,
   /** Past this, a drag snaps back. */
-  hardWindowMin: 60,
+  hardWindowMin: windowDefaults.hardMin,
   /** Face step for a time nudge. Replaces the ±10 sim-second planner buttons. */
   dragStepMin: 16,
 } as const

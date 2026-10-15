@@ -9,6 +9,9 @@ export type IcaoCode = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
 
 export type TtDirection = 'arr' | 'dep'
 
+/** Passenger, cargo, or general aviation (charter and rotor). */
+export type TtTraffic = 'pax' | 'cargo' | 'ga'
+
 export type TtStatus =
   | 'scheduled'
   | 'delayed'
@@ -30,6 +33,8 @@ export interface TtWindow {
 export interface TtFlight {
   id: string
   flightNo: string
+  /** Roster id, when the row came from a signed carrier. Logos use it. */
+  airlineId?: string
   airlineName: string
   color: string
   /** Livery stripe. A thin edge so two similar blues still separate. */
@@ -62,10 +67,13 @@ export interface TtFlight {
   services?: string[]
   /** Whether the player can still move it. */
   movable: boolean
-  /** Hall show-up open, sim seconds. Drawn only while Check-in is on. */
+  /** Hall show-up open, sim seconds. Drawn as a ghost bar on the timeline. */
   checkInFrom?: number | null
   /** Check-in close, sim seconds. */
   checkInTo?: number | null
+  /** Hall name parsed from the stand label, or Apron. */
+  terminal?: string
+  traffic?: TtTraffic
 }
 
 export interface TtStand {

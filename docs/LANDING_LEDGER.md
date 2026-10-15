@@ -11,6 +11,7 @@ Order below is the old producer note. A row there is not a license to jump the p
 | P1 | Full-resolution art landing: runway and apron plates, seasonal terrain and foliage, six skies plus the noon light hint, terminal and hotel facades, interior props. Gap list in `docs/playtest/ART_GAPS.md` | `cursor/art-landing-p1-9acb` | quick PASS, 2953 tests, 30-day soak, Careful bot, on `296990215af6`, then rebased. `docs/devlog/gate/296990215af65c3fa3bfb8db0fe8e3aa1a2bda1e.md` | wrangler `--branch progress` did not upload: `CLOUDFLARE_API_TOKEN` unset. Stills in `docs/devlog/media/landing/` |
 | P1 | Graphics day/night cycle holds noon, and apron flood pools stay on at 5× | `7a85bce864bfc7de5bc4719f46673a8955e0d01a` | quick, this landing | `progress` after deploy |
 | P1 | Fuel-farm depot matches the Gemini render (earth berms, canopy tankers, tire-track decal, painted lanes) and the HUD no longer stacks the climate card, phone, and hints | `9d01bf49768e72ba0e2d57f3077cfc6c82ef635d` | quick PASS on `14ae7aaf` (2977 tests, 30-day soak, Careful bot), then rebased onto `d1051d84`. `docs/devlog/gate/14ae7aaf4d32cb79a60d2204cec12fe1a0569bbc.md` | wrangler `--branch progress` did not upload: `CLOUDFLARE_API_TOKEN` unset. Stills in `docs/devlog/media/fuel-farm/` |
+| P1 | Schedule board reads contract windows, buffers, and the offer preview. Board and Timeline dock, clear of Planner and the phone | this landing | quick, this landing | `progress` after deploy |
 
 ## P1 notes
 

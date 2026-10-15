@@ -1,12 +1,12 @@
 import { AIRFRAMES } from '../../game/airframes'
-import { PLANNED_TURN_SEC } from '../../pax/showup'
-import { checkInGhost, isIntlKind } from './checkInGhost'
 import { tilesOf } from '../../game/path'
 import type { Game } from '../../game/sim'
 import type { AircraftKind, Flight, ScheduleSlot, Vec } from '../../game/types'
-import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
+import { checkInGhost, isIntlKind } from './checkInGhost'
+import { contractsAdapter, type ContractMovement } from './contractsAdapter'
+import { contractSlotWindow, turnTargetSec } from './schedulerBridge'
 import { clampToWindow, hourSecs, standFits } from './time'
-import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand, TtWindow } from './types'
+import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand, TtTraffic, TtWindow } from './types'
 
 /**
  * The thin slice of Game the timetable needs. Keeping it structural means tests
@@ -34,14 +34,9 @@ export type ScheduleGame = Pick<
 
 export const DAY_LENGTH = 180
 
-/** Hard drag window around the banked ETA. Past it, the bar snaps back. */
-export function hardWindow(anchor: number, now: number): TtWindow {
-  const reach = gameMinToSim(SCHEDULE.hardWindowMin)
-  return {
-    start: Math.max(now + 6, anchor - reach),
-    end: anchor + reach,
-    source: 'tower',
-  }
+/** Contract hard band around the banked ETA. Past it, the bar snaps back. `now` is not part of the band. */
+export function hardWindow(anchor: number, _now: number): TtWindow {
+  return contractSlotWindow(anchor, DAY_LENGTH)
 }
 const TAXI = 6
 
@@ -69,7 +64,17 @@ export function icaoForAirframe(id: string | null | undefined, kind?: AircraftKi
 }
 
 function turnFor(icao: IcaoCode, kind?: AircraftKind): number {
-  return turnSimSec(turnBand(icao, kind))
+  return turnTargetSec(icao, kind)
+}
+
+function terminalOf(label: string): string {
+  return label.match(/^T\d+/)?.[0] ?? 'Apron'
+}
+
+function trafficOf(kind: string | undefined, airlineKind?: string, biz?: string): TtTraffic {
+  if (airlineKind === 'cargo' || kind === 'freighter' || biz === 'cargo') return 'cargo'
+  if (biz === 'charter' || kind === 'helo_med' || kind === 'helo_exec' || kind === 'air_ambulance') return 'ga'
+  return 'pax'
 }
 
 /** Game runway strip index ↔ timetable runway id. */
@@ -96,36 +101,48 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     return towerWindow(s, game.clock, anchors.get(s.id))
   }
 
-  const slotRows = (slot: ScheduleSlot): TtFlight[] => {
+  const slotMovements = (slot: ScheduleSlot): ContractMovement[] => {
     const al = game.airline(slot.airline)
     const flight = slot.flightId ? game.flights.find((f) => f.id === slot.flightId) : undefined
     const icao = flight ? icaoForAirframe(flight.airframeId, flight.kind) : 'C'
     const stand = flight?.stand ?? slot.standPref ?? null
+    const turn = turnFor(icao, flight?.kind)
     const onFrom = slot.eta + TAXI
-    const onTo = onFrom + turnFor(icao, flight?.kind)
-    const pax = (al as { kind?: string }).kind !== 'cargo'
-    const ghost = pax ? checkInGhost(slot.eta + PLANNED_TURN_SEC, flight ? isIntlKind(flight.kind) : false) : null
+    const onTo = onFrom + turn
+    const standLabel = stand ? game.gateLabel(stand) : 'Tower'
+    const airlineKind = 'kind' in al ? al.kind : undefined
+    const biz = 'bizModel' in al ? al.bizModel : undefined
+    const pax = airlineKind !== 'cargo' && biz !== 'cargo'
+    const ghost = pax ? checkInGhost(onTo, flight ? isIntlKind(flight.kind) : false) : null
     const status: TtFlight['status'] =
       slot.status === 'cancelled' ? 'cancelled' : slot.status === 'done' ? 'done' : slot.status
+    const win = windowOf(slot)
+    const stripe = 'stripe' in al && typeof al.stripe === 'string' ? al.stripe : undefined
     const shared = {
+      contractId: slot.id,
       flightNo: slot.flightNo,
       airlineName: al.name,
+      airlineId: slot.airline,
       color: al.color,
-      stripe: 'stripe' in al && typeof (al as { stripe?: string }).stripe === 'string' ? (al as { stripe?: string }).stripe : undefined,
-      onStandFrom: onFrom,
-      onStandTo: onTo,
-      delaySec: slot.delaySec,
-      delayReason: slot.delayReason,
+      stripe,
+      windowStart: win.start,
+      windowEnd: win.end,
       standId: stand ? key(stand) : null,
-      standLabel: stand ? game.gateLabel(stand) : 'Tower',
-      pinned: !!slot.standPref,
+      standLabel,
+      standPinned: !!slot.standPref,
       icao,
       aircraft: flight?.airframeName ?? 'TBA',
+      turnTarget: turn,
+      services: [] as string[],
+      delaySec: slot.delaySec,
+      delayReason: slot.delayReason,
       runwayId: slot.runwayPref != null ? rwId(slot.runwayPref) : null,
       manual: slot.manual,
-      movable: slot.status === 'scheduled' || slot.status === 'delayed',
       checkInFrom: ghost?.from ?? null,
       checkInTo: ghost?.to ?? null,
+      terminal: terminalOf(standLabel),
+      traffic: trafficOf(flight?.kind, airlineKind, biz),
+      rotationId: slot.id,
     }
     return [
       {
@@ -133,15 +150,14 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         id: `${slot.id}:arr`,
         direction: 'arr',
         time: slot.eta,
-        window: windowOf(slot),
         status,
+        movable: status === 'scheduled' || status === 'delayed',
       },
       {
         ...shared,
         id: `${slot.id}:dep`,
         direction: 'dep',
         time: onTo + TAXI,
-        window: null,
         status: status === 'inbound' ? 'scheduled' : status,
         movable: false,
       },
@@ -166,7 +182,10 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         flightNo: f.flightNo,
         airlineName: al.name,
         color: al.color,
-      stripe: 'stripe' in al && typeof (al as { stripe?: string }).stripe === 'string' ? (al as { stripe?: string }).stripe : undefined,
+        stripe: 'stripe' in al && typeof al.stripe === 'string' ? al.stripe : undefined,
+        airlineId: f.airline,
+        terminal: terminalOf(game.gateLabel(f.stand)),
+        traffic: trafficOf(f.kind, 'kind' in al ? al.kind : undefined, 'bizModel' in al ? al.bizModel : undefined),
         direction: 'dep',
         time: leaving ? game.clock : to + TAXI,
         onStandFrom: from,
@@ -190,7 +209,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
   const slotOf = (id: string) => game.schedule.find((s) => s.id === id.replace(/:(arr|dep)$/, ''))
 
   return {
-    source: 'Tower bank',
+    source: 'Contracts',
     caps: { move: true, pin: true, swap: true, pullBump: true, cancel: true, runway: true },
     dayLength: DAY_LENGTH,
     now: () => game.clock,
@@ -206,6 +225,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         return rows
       }
       const linked = new Set<string>()
+      const movements: ContractMovement[] = []
       for (const s of game.schedule) {
         if (s.status === 'done' && !s.flightId) continue
         if (s.flightId) linked.add(s.flightId)
@@ -214,9 +234,22 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
           if (flight) out.push(...groundRows(flight))
           continue
         }
-        out.push(...stamp(slotRows(s), s.id))
+        movements.push(...slotMovements(s))
       }
       for (const f of game.flights) if (!linked.has(f.id)) out.push(...groundRows(f))
+      const scheduled = contractsAdapter({
+        dayLength: DAY_LENGTH,
+        now: () => game.clock,
+        movements: () => movements,
+        stands: () => [],
+        runways: () => [],
+        reschedule: () => null,
+        assignStand: () => {},
+      }).flights()
+      for (const row of scheduled) {
+        const slotId = row.id.replace(/:(arr|dep)$/, '')
+        out.push(...stamp([row], slotId))
+      }
       return out
     },
     stands(): TtStand[] {
