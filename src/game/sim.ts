@@ -18338,7 +18338,7 @@ export class Game {
     const risk = clamp(0.22 - stations * 0.08 - firePct * 0.15, 0.02, 0.28)
     if (Math.random() > risk) return
     if (firePct >= 0.65 && stations > 0) {
-      this.pushNews('ARFF drilled a hot brake — crews ready, no damage.', 'ok')
+      this.pushNews(`ARFF drilled a hot brake — scramble ${this.scrambleSec()}s, no damage.`, 'ok')
       return
     }
     const fine = Math.round(5000 + (1 - firePct) * 12000)
@@ -18347,10 +18347,11 @@ export class Game {
     if (this.public) {
       this.sharePrice = Math.max(1.5, Math.round((this.sharePrice * (0.9 + firePct * 0.05)) * 100) / 100)
     }
+    const scramble = this.scrambleSec()
     this.pushNews(
       firePct < 0.25
-        ? `APRON FIRE — skeleton ARFF. Fine ${moneyLeft(fine)}. Fund fire crews.`
-        : `Hot brake incident. Thin fire budget cost ${moneyLeft(fine)}.`,
+        ? `APRON FIRE — skeleton ARFF. Scramble ${scramble}s. Fine ${moneyLeft(fine)}. Fund fire crews.`
+        : `Hot brake incident. Scramble ${scramble}s. Thin fire budget cost ${moneyLeft(fine)}.`,
       'bad',
     )
   }
@@ -18493,7 +18494,8 @@ export class Game {
       const tier: SizeTier = scale === 'jumbo' || scale === 'wide' ? scale : 'small'
       const tool = tier === 'jumbo' ? 'hangar_j' : tier === 'wide' ? 'hangar_w' : 'hangar'
       const row = BUILDINGS.find((b) => b.tool === tool)
-      return { name: row?.name ?? 'Hangar', upkeep: row?.upkeepPerDay ?? 0, tier, plan: 'hangar' }
+      const upkeep = (row?.upkeepPerDay ?? 0) + this.fittingUpkeepAt(hostKey('hangar', v.c, v.r))
+      return { name: row?.name ?? 'Hangar', upkeep, tier, plan: 'hangar' }
     }
     if (tile === 'hotel') {
       const cls = this.hotelClass[key] ?? 'business'
@@ -18541,9 +18543,10 @@ export class Game {
             : tile === 'travelator'
               ? CONNECTIVITY_CATALOG.moving_walkway
               : null
+    const fittingBill = tile === 'fire' ? this.fittingUpkeepAt(hostKey('fire', v.c, v.r)) : 0
     return {
       name: row?.name ?? link?.name ?? tile,
-      upkeep: row?.upkeepPerDay || link?.upkeepPerDay || 0,
+      upkeep: (row?.upkeepPerDay || link?.upkeepPerDay || 0) + fittingBill,
       tier: 'small',
       plan: tile,
     }
@@ -18620,10 +18623,21 @@ export class Game {
       return this.attachVehicleQueue({ ...base, demand, staffAssigned: this.crewOn(fleet, types) })
     }
     if (tile === 'hangar') {
+      const section = this.hostFittingSection('hangar', v)
       return this.attachVehicleQueue({
         ...base,
         demand: this.hangarOccupant(v) ? 1 : 0,
         staffAssigned: this.mechanics,
+        note: `Line MX ${this.hangarMxFor(v).toFixed(1)}s on this bay.`,
+        sections: section ? [section] : undefined,
+      })
+    }
+    if (tile === 'fire') {
+      const section = this.hostFittingSection('fire', v)
+      return this.attachVehicleQueue({
+        ...base,
+        note: `Scramble ${this.scrambleSec()}s. Drive time unchanged.`,
+        sections: section ? [section] : undefined,
       })
     }
     if (tile === 'terminal') {
@@ -19048,7 +19062,7 @@ export class Game {
       }
     }
     const left = Math.max(0, (occ.mxEndsAt ?? this.clock) - this.clock)
-    const total = Math.max(1, occ.mxDuration ?? this.hangarMxDuration())
+    const total = Math.max(1, occ.mxDuration ?? this.hangarMxFor(occ.hangarBay))
     return {
       kind: 'hangar',
       title: 'Hangar bay',
@@ -20372,7 +20386,26 @@ export class Game {
   /** Fittings the card offers. Later tickets append rows here. */
   private shownFittingIds(host: FittingHost): FittingId[] {
     if (host === 'stand') return ['jet_bridge', 'gpu_pca', 'apron_light', 'deice_outlet', 'flag']
+    if (host === 'fire') return ['alarm_bell']
+    if (host === 'hangar') return ['line_office']
     return []
+  }
+
+  /** Scramble at the station. A bell shortens it. The drive is unchanged. */
+  scrambleSec(): number {
+    for (const [key, list] of Object.entries(this.fittings)) {
+      const parsed = parseHostKey(key)
+      if (parsed?.host === 'fire' && list.some((item) => item.id === 'alarm_bell')) return Math.round(45 * 0.8)
+    }
+    return 45
+  }
+
+  /** Line MX for one bay. An office on that bay shortens the work. */
+  private hangarMxFor(bay: Vec | null | undefined): number {
+    const base = this.hangarMxDuration()
+    if (!bay) return base
+    const office = (this.fittings[hostKey('hangar', bay.c, bay.r)] ?? []).some((item) => item.id === 'line_office')
+    return office ? base * 0.9 : base
   }
 
   private hasFitting(stand: Vec | null, id: FittingId): boolean {
@@ -20523,26 +20556,41 @@ export class Game {
     return true
   }
 
-  private standFittingSection(v: Vec): CardSection | null {
-    const key = `${v.c},${v.r}`
-    if (!this.standSize[key] || this.standRung[key] == null) return null
-    const host = hostKey('stand', v.c, v.r)
+  private fittingRows(host: FittingHost, v: Vec): CardSection['rows'][number][] {
+    const key = hostKey(host, v.c, v.r)
     const rows: CardSection['rows'][number][] = []
-    for (const id of this.shownFittingIds('stand')) {
-      const ask = this.fittingAsk('stand', v.c, v.r, id)
+    for (const id of this.shownFittingIds(host)) {
+      const ask = this.fittingAsk(host, v.c, v.r, id)
       const refusal = fittingRefusal(ask)
       const price = id === 'jet_bridge' && ask.size ? jetBridgeCost(ask.size) : fittingDef(id).cost
       const def = fittingDef(id)
       const priced = `$${price.toLocaleString('en-US')}`
       rows.push({
-        id: `fitbuy:${host}:${id}`,
+        id: `fitbuy:${key}:${id}`,
         label: refusal ?? `${def.name} · ${def.socket} · ${priced}`,
         disabled: refusal != null,
       })
       if (ask.count > 0) {
-        rows.push({ id: `fitdrop:${host}:${id}`, label: `Remove ${def.name.toLowerCase()}`, disabled: false })
+        rows.push({
+          id: `fitdrop:${key}:${id}`,
+          label: `Remove ${def.name.toLowerCase()} · ${def.socket}`,
+          disabled: false,
+        })
       }
     }
+    return rows
+  }
+
+  private hostFittingSection(host: FittingHost, v: Vec): CardSection | null {
+    const rows = this.fittingRows(host, v)
+    if (!rows.length) return null
+    return { id: 'attachments', title: 'Attachments', rows }
+  }
+
+  private standFittingSection(v: Vec): CardSection | null {
+    const key = `${v.c},${v.r}`
+    if (!this.standSize[key] || this.standRung[key] == null) return null
+    const rows = this.fittingRows('stand', v)
     const pit = progressionBuildable('hydrant')
     const pitRefusal = this.hydrantRefusal(v)
     const pitCost = pit?.cost ?? 0
@@ -24620,7 +24668,7 @@ export class Game {
           }
           f.phase = 'mx_bay'
           f.phaseTime = 0
-          f.mxDuration = this.hangarMxDuration()
+          f.mxDuration = this.hangarMxFor(bay)
           f.mxEndsAt = this.clock + f.mxDuration
           this.pushNews(
             `${f.flightNo} in hangar bay — MX ~${Math.ceil(f.mxDuration)}s.`,

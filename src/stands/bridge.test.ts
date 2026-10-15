@@ -28,7 +28,7 @@ describe('jet bridge attachment', () => {
     const drop = section?.rows.find((row) => row.id.startsWith('fitdrop:'))
     expect(buy?.label).toBe('This stand already has a bridge.')
     expect(buy?.disabled).toBe(true)
-    expect(drop?.label).toBe('Remove jet bridge')
+    expect(drop?.label).toBe('Remove jet bridge · bridge_cab')
     const before = game.cash
     expect(game.standCardAction(drop!.id)).toBeUndefined()
     expect(game.cash).toBe(before)

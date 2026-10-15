@@ -58,6 +58,19 @@ try {
   await page.screenshot({ path: `${OUT}/${phase}-stand-card.png` })
   const panel = page.locator('[data-testid=building-panel]')
   if (await panel.count()) await panel.screenshot({ path: `${OUT}/${phase}-panel.png` })
+  if (phase === 'phase6') {
+    await page.evaluate(() => {
+      const g = (
+        window as unknown as {
+          __hatch: { tool: string; clickTile: (v: { c: number; r: number }) => void }
+        }
+      ).__hatch
+      g.tool = 'pan'
+      g.clickTile({ c: 19, r: 8 })
+    })
+    await page.waitForTimeout(300)
+    if (await panel.count()) await panel.screenshot({ path: `${OUT}/${phase}-fire.png` })
+  }
 } finally {
   await browser.close()
 }
