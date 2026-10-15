@@ -3,22 +3,22 @@
 Status: plan only. No game code changes with this document.
 Owner decision being executed: Trever, Oct 15, 8:06 PM. Gut the terminal interior and rebuild it with one scale, real flows and two stories.
 Playtest items covered: 3, 5, 33, 34, 35, 36, 37, 38 and 46 from the Oct 15 list. Item 39 (pause) is covered too, because a requirement below depends on it.
-Based on `main` at `68fde433`.
+Based on `main` at `68fde433`, with the audit folded in.
 
-`docs/playtest/TERMINAL_AUDIT_OCT15.md` (agent bc-cf7345e0) was not on `main` or on any pushed branch when this was written. Every finding below comes from reading the code. If that audit lands later, the WP1 agent folds any extra findings into the delete list in section 2 before starting.
+Audit: [TERMINAL_AUDIT_OCT15.md](../playtest/TERMINAL_AUDIT_OCT15.md) (agent bc-cf7345e0, PR [#118](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/118)), which lands on `main` together with this plan. It cites every finding to a file and line on `e06b38be`. Section 1 summarises it with the audit section number (§) and adds what this plan's own code read found. The work packages in section 11 follow the audit's run order (section 12 maps them).
 
 Related: [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) (floor-ready schema), [TERMINAL_INTERIOR_BUILD.md](./TERMINAL_INTERIOR_BUILD.md) (Prison Architect editor), [STAND_UPGRADES.md](./STAND_UPGRADES.md) (stands and bridges), [../STARTER_KIT_AUDIT.md](../STARTER_KIT_AUDIT.md) (what the starter kit has to contain).
 
 ---
 
-## 0. Owner decisions (answer these before WP3 starts)
+## 0. Owner decisions (D1–D3 before WP2 starts, D4 before WP3, D5 before WP4)
 
 | # | Decision | Recommendation | What it changes |
 | --- | --- | --- | --- |
 | D1 | **Starter story count.** Option S1: a 1-story starter that already separates arrivals from departures, with a 2-story upgrade in mid-game. Option S2: the starter ships 2-story. | **S1, then the S2 upgrade.** | One data file and one config value (`STARTER_TERMINAL`). The code is the same either way: every work package builds two-floor support. |
-| D2 | **Starter footprint.** It goes from the 3×3 apron stamp (66×66 m) to 4×2 cells (88×44 m), with the long side facing the apron. | Approve. | Two code-C contact stands need about 40 m each of facade. 66 m fits only one and a half. The starter stamp's stands and roads shift. This touches Batch D's road work. |
+| D2 | **Starter footprint.** It goes from the 3×3 apron stamp (66×66 m) to 4×2 cells (88×44 m), with the long side facing the apron. | Approve. | Two code-C contact stands need about 40 m each of facade. 66 m fits only one and a half. The starter stamp's stands and roads shift. This touches Batch D's road work. WP2 makes the change. |
 | D3 | **Old saves.** The terminal interior is rebuilt on load. Player-bought fittings are refunded at purchase price, with a phone note. | Approve. | Without it, saves from before the rebuild need a fresh start. |
-| D4 | **Walkers become the truth.** The passengers you see decide boarding, missed flights and mood. The sim's hidden hall model is retired. | Approve. | This fixes "placed fittings don't work" at the root. Balance moves, so the 30-day and 150-day soaks are the check. |
+| D4 | **Walkers become the truth.** The passengers you see decide boarding, missed flights and mood. The sim's hidden hall model (`tickHall`, which boards by setting `dead` with no gate-desk queue, audit §4) is retired. | Approve. The audit reaches the same conclusion: one stop list, not a second graph. | This fixes "placed fittings don't work" at the root. Balance moves, so the 30-day and 150-day soaks are the check. |
 | D5 | **Gemini assets.** `bag_drop_kiosk`, `baggage_claim_carousel` and `passport_control` are on `main` in `public/art/textures/concepts/` (commit `f3ea5f90`, loaded by `src/render/servicePlates.ts`). `terminal_multistory`, `security`, `checkin_desk` and `gate_seats` are still missing. | Commit the missing four to the same folder and add them to `SERVICE_PLATES` before WP4. | WP4 and WP6 screenshot checks compare against these. Until they land, `public/art/refs/pack6/` is the target for those four. |
 | D6 | **Apron unit.** The apron stays at `WORLD_PER_METER = 0.45`. The terminal is authored in metres and shown in the airport view under a single root scale node. | Approve. Moving the whole game to 1 unit = 1 m is a separate project. | Inside Terminal view, 1 unit = 1 m. Outside it, there is exactly one scale node, and the scale-audit test enforces that. |
 
@@ -32,58 +32,71 @@ Why S1 is recommended over a 2-story starter:
 
 ---
 
-## 1. What is wrong today (root causes found in code)
+## 1. What is wrong today (root causes)
 
-| Playtest item | Root cause | Where |
-| --- | --- | --- |
-| 3, 34: mixed scales, tiny props | Four coordinate systems are stacked in one view. The apron uses 22 m cells at `WORLD_PER_METER` 0.45. The hall is a fixed 48×32 m frame (`HALL_W` / `HALL_D`) with 6 m zone cells. The editor uses 4 m build tiles. `hallFitFor` squeezes each apron terminal into the 48×32 m frame with a variable `fit.scale`. High-detail props are then shrunk again to fit cells (`fitScale` in `terminalHiDetail.ts`, and `hallKitDetail.ts`). | `src/render/hallRooms.ts`, `src/game/terminal.ts`, `src/render/world/terminalHiDetail.ts`, `src/render/hallKitDetail.ts`, `src/terminalbuild/config.ts` |
-| 3: people at different sizes | There are three people paths in the hall. Baked figures use `PERSON_SCALE` and `hallGuestScale(fit)`. Walkers use `PeopleRenderer`. Service staff use `HallServiceFx`. | `src/render/world/hallCrowd.ts`, `src/render/hallNavCrowd.ts`, `src/render/hallService.ts` |
-| 33: security split across two rooms, backwards desk, no proper entrance | `planTerminal` chooses rooms per apron cell. Security is "the middle cell of depth row 1", with shop cells on both sides. The hall scheme `SCHEME_I` paints a security row six cells wide, places lanes in separate cells, and keeps "the last security cell" as an exit nobody walks. Desk yaw comes from the apron `airside` direction, not from the hall's own entrance. | `src/render/world/plan.ts` (`zoneFor`, `planTerminal`), `src/game/terminal.ts` (`SCHEME_I`, `securityLaneSpots`) |
-| 35: passengers at game start | `seedDayOneCrowd()` spawns 12 preview guests on a new game. `planTerminal` also places static `pax` and `seated` people in every cell. | `src/game/sim.ts` (`seedDayOneCrowd`, `tickPreviewGuest`, `retireDayOneCrowd`), `src/render/world/plan.ts` |
-| 36: jet bridge indoors | `HallWorld.placeJetBridge` builds a `jet_bridge` prop at the hard-coded east "jetway door" of the hall box. `buildInteriorDressing` also places a `jet_bridge` dressing. | `src/render/hallWorld.ts` (`placeJetBridge`, east-wall gap), `src/render/world/terminalHiDetail.ts` |
-| 37: yellow vehicle indoors | Two non-fitting layers draw vehicles in the hall: `SupplyCartLayer` (stores carts) and the bridge dressing. Confirm which one with a screenshot in WP4. Both leave the interior root. | `src/render/supplyCart.ts`, `src/render/hallWorld.ts` |
-| 38: security kit inside a shop | The back-office cell is cut out of a shop cell and gets an `xray` "R&D test rig". `HI_DETAIL_KIND` maps `xray` to `xray_machine`, and `kiosk` in shop cells to `menu_counter`. So the burger shop shows screening kit. | `src/render/world/plan.ts` (backoffice branch), `src/render/world/terminalHiDetail.ts` |
-| 5: placed fittings don't work | The walk you see (`paxnav`) is only a picture. "Fares, ratings and boarding still come from the sim's own hall model" (`HallNode` graph in `game/guests.ts`, with counts in `TerminalFit.rooms`). Fittings placed in Terminal view go into a nine-room plan in hall metres (`terminalplay/footprints.ts`), which is not the layout the walkers read. | `src/game/hallNav.ts`, `src/terminalplay/*`, `src/game/sim.ts` hall guests |
-| 46: inspector not live, no panel for security | `buildinginfo/card.ts` covers apron buildings only. Interior kit gets hover tooltips (`KitTooltip`, `WalkerTooltip`), not a selected-item card. Nothing subscribes to the sim tick. | `src/buildinginfo/*`, `src/ui/TerminalView.tsx` |
-| 39: pause doesn't stop the screener | X-ray trays and several hall loops animate from `performance.now()`, not the sim clock. | `src/render/terminalProps/index.ts` (trays `onBeforeRender`), `src/render/hallWorld.ts` (lines ~535, 932, 1261, 1945, 2036, 2058) |
+The short version, from the audit: two buildings are drawn in one camera. The walk, the queues and the starter kit live on an 8×5 zone grid in real metres (48×32 m). The picture is the 3×3 apron terminal, authored at `WORLD_PER_METER` 0.45 units per metre, scaled into that box by `hallFitFor`, then dressed with every prop in the catalog. People, desks, security and the jet bridge each come from a different layer, which is why they disagree about size, facing and room.
+
+| Item | Root cause | Audit | Where |
+| --- | --- | --- | --- |
+| 3, 34 | **Two buildings at once.** `hallFitFor` gives `fit.scale ≈ 1.003` for the 29.7-unit-wide 3×3, so one world unit is about one hall metre. A real metre inside the picture is therefore 0.45 hall metres, while walkers stay at real metres. That 2.2× ratio is the giant next to the tiny person. | §1 | `src/render/hallRooms.ts:47-59`, `src/render/hallWorld.ts:1244` |
+| 3 | **People at several sizes.** Baked `TerminalBuilding` people stand about 0.79 m (`PERSON_SCALE` × `fit.scale`). `HallFigureBatch` doorway figures shrunk by `hallGuestScale` are about 0.63–0.73 m. `HallNavCrowd` capsules are 1.60–1.77 m, and its near `PeopleRenderer` swap is 1.75 m. `HallServiceFx` staff are 1.75 m. Officers baked into the `security_lane` and x-ray prop meshes come out around 0.40 m. | §1 | `src/render/world/terminal.ts:92-96`, `hallRooms.ts:126-131`, `src/render/hallNavCrowd.ts:342, 513`, `src/render/hallWorld.ts:1325-1424`, `src/render/terminalProps/props.ts:79-104` |
+| 3, 34 | **Props shrunk twice.** Plan props are placed at `WORLD_PER_METER`. Hi-detail props are `fitScale`d (floored at 0.35) and then × 0.45. The dressing caps them again at 0.48. The one metre-scale kit renderer (`hallKitMeshes` / `hallKitDetail`), which is the only path that shows the round 5 desks near real size, is hidden whenever the room plan exists. | §1 | `src/render/world/terminalHiDetail.ts:61-93, 256`, `hallRooms.ts:113-116` |
+| 34 | **Catalog dump.** `planTerminal` adds a second full set of check-in, security, shop and gate props, ceiling lights and baked people. `buildInteriorDressing` places every `TERMINAL_PROP_TYPES` entry, and `terminalHiDetail.test.ts:52-53` asserts that every type is present. Types missing from `preferred` (`xray_machine`, `body_scanner`, `seat_row` and others) fall back into check-in. | §2 | `src/render/world/plan.ts:149-252`, `terminalHiDetail.ts:195-258` |
+| 33 | **Security in two places.** Prefab I places its two lanes at opposite ends of the six-cell security row (`securityLaneSpots`, with the middle left empty). The outer lane sits near x = −22 m, outside the fitted 3×3 (about ±15 m), at the same end as the entrance. Departures pick the nearest staffed lane, so they queue in an empty band and never enter the room with the x-ray. A second "security" exists too: the x-ray rig in the staff-only lab. | §3 | `src/game/terminal.ts:790-818`, `src/game/hallNav.ts:137-145`, `plan.ts:232` |
+| 33 | **Small, backwards desk.** The plan counters face `yawAir + π`, with airside to the west, so they face the road. The small desk is the dressing's single `checkin_desk` at ≤ 0.48 × 0.45, about a fifth of real size, yawed along the room's long axis. The round 5 `checkin_pair` never replaces the counters in this view. | §3 | `plan.ts:165-168`, `terminalHiDetail.ts:249-257` |
+| 36 | **Jet bridge indoors.** The dressing sends `jet_bridge` to room kind `airside`, which is the landside third of each gate cell, with an outside nudge of 0. So it lands on the interior strip. `dockAirsideBridge` builds a second bridge 2.2 m outside the facade door, which is the right place but a duplicate. | §3 | `terminalHiDetail.ts:226, 255`, `src/render/world/rooms.ts:163`, `hallWorld.ts:977-1012` |
+| 37 | **Yellow vehicle indoors.** Not covered by the audit. From this plan's read, the candidates are `SupplyCartLayer` (stores carts drawn in the hall) or a vehicle piece of the bridge dressing. WP1 identifies it from a screenshot, and both leave the hall. | — | `src/render/supplyCart.ts`, `hallWorld.ts` |
+| 38 | **Security kit in Runway Burger.** The burger is `shop_fastfood`. It exists only because the dressing assigns it to the shops room and packs every other shop type into the same room. The neighbouring security cell gets a 14.2 m `security_lane` (x-ray, arch, scanner, four baked officers) plus the plan's own x-ray and arch. Placements are not clipped to rooms, and the shop shell is open, so the scanner reads as part of the burger. | §3 | `terminalHiDetail.ts:213, 240-258`, `props.ts:300-371` |
+| 35 | **Passengers at start.** `buildStarterKit` calls `seedDayOneCrowd`, which pushes 12 preview guests (`preview`, `clearedSec`). `HallNav.admit` spawns them onto the live walk. `planTerminal` also bakes static people. | §4 | `src/game/sim.ts:6060, 10547`, `hallNav.ts:747-752` |
+| 5 | **Placed fittings never draw.** `commitHallItem` saves the piece to `fit.items` and bumps `hallRev`, and the walk rebuilds. But `rebuildRooms` returns early when the 3×3 room plan exists, so no mesh and no pick box is created. Even on the legacy path: `prefabNavLayout` moves placed lanes onto fixed `laneSpots`; `PREFAB_ROOM_KIT` has no `bagclaim`; `secure_exit`, `queue_rail` and wayfinding have no room; `includedSecurityLanes` counts only bundle lanes, so a placed lane stays shut until a spare officer is assigned; `hallBaseLayout` ignores `fit.items` once `fit.build` exists. | §5 | `hallWorld.ts:1147-1150`, `hallNav.ts:182-211, 355-357, 458-466`, `src/game/hallNavData.ts:150-158`, `src/servicepoints/points.ts:37-44` |
+| 46 | **Inspector not live, no security panel.** The hall card is `game.buildingCard()`, re-rendered only when `hudSnapshot` changes. That snapshot holds aggregates (passenger count, `hallRev`, the security queue count) but not `hallNav.metrics()` per lane, so the card catches up only on the 2 s tree cadence. Interior meshes carry no `userData.facilityId`, so clicking a lane, scanner, desk or the burger selects nothing. Other `item:` picks get stub cards (demand 0, one idle bay). `facilityInfo` is built but never read. | §6 | `src/App.tsx:125-208, 283-285`, `hallWorld.ts:644-666`, `sim.ts:8810-8847, 20662-20749` |
+| Flow | **Two passenger engines.** PaxNav draws the walk. The hall graph (`tickHall`, `game/guests.ts`, `hallRoute.ts`) still ticks fares, bags and boarding. The sim boards a passenger by setting `dead` at the gate node when the flight calls, or earlier, with no gate-desk queue. Bag drop is folded into check-in on both engines. The day-one path never visits a toilet. `standPaxMode` returns `jetway`, `bus` or `walk`, but that only changes a thought string and a timing number. Arrivals always step off at the jet-bridge door. | §4 | `sim.ts:15756-15764, 10761-10763, 6399-6408`, `src/game/hallArrivals.ts:302-315` |
+| 39 | **Pause doesn't stop the screener.** Found in this plan's read, not the audit. X-ray trays and several hall loops animate from `performance.now()`. | — | `src/render/terminalProps/index.ts` (trays `onBeforeRender`), `hallWorld.ts` (lines ~535, 932, 1261, 1945, 2036, 2058) |
 
 ---
 
 ## 2. Delete and keep
 
-### Delete (the WP that removes each one is in brackets)
+### Delete
+
+Brackets show when a piece stops being used and when its file is removed. WP1 switches the hall camera off the old layers without deleting files. WP4 deletes them once the new renderer draws the layout.
 
 | Path | What goes | Why |
 | --- | --- | --- |
-| `src/render/world/plan.ts` | `planTerminal` interior props, `people`, `walkers`, `zoneFor` cell zoning, the backoffice/R&D xray. Keep only an exterior footprint read, if the exterior shell still needs one. [WP4] | Cell-based fake interior (33, 35, 38) |
-| `src/render/world/terminalHiDetail.ts` | Whole file: `HI_DETAIL_KIND`, `buildHiDetailProps`, `buildInteriorDressing` (arrivals sign, lounge cluster, office cubicles, jet-bridge dressing). [WP4] | Shrunk props and leftover decoration (3, 34, 36) |
-| `src/render/world/hallCrowd.ts`, the `PERSON_SCALE` / `SEATED_SCALE` exports in `src/render/world/terminal.ts` | Second people path. [WP4] | One people renderer (3) |
-| `src/render/hallRooms.ts` | `hallFitFor`, `apronToHall`, `hallToApron`, `hallGuestScale`, `poseOnPlan`. Move `matchTerminal` and `stampAnchor` (used by `sim.ts`) to `src/game/terminalMatch.ts`. [WP4] | The variable apron-to-hall scale (3) |
-| `src/render/hallKitDetail.ts`, `src/render/hallKitMeshes.ts` | Per-item fit-scaled meshes. The catalog renders `terminalProps` builders at scale 1 instead. [WP4] | Shrunk desks (3, 33) |
-| `src/render/hallWorld.ts` | Hard-coded hall box walls (west curb gap, east jetway gap), `placeJetBridge`, `TerminalBuilding` children in the hall, room meshes from `NODE_POS`, every `performance.now()` animation. Camera and picking move to `src/render/interior/`. [WP4] | 34, 36, 39 |
-| `src/render/supplyCart.ts` in the hall | Removed from the interior scene. Stores restock becomes a staff walk to the shop's stock door. [WP4] | 37 |
-| `src/terminalplay/` (all) | Footprints in hall metres, nine-room plan, lines, place, queues. [WP4] | Replaced by the catalog and the editor (5) |
-| `src/game/terminal.ts` | `SCHEME_I/II/III`, `GRID_C`, `GRID_R`, `HALL_W`, `HALL_D`, `cellCenter`, `schemeItems`, `prefabBundle`, `PREFAB_I_OPEN`, `securityLaneSpots`, `zoneCellBlocked`. Service times, costs and upkeep move into the fitting catalog first. [WP3 moves the numbers, WP4 deletes] | 6 m cell scheme (33) |
-| `src/game/hallNav.ts` | Prefab-to-4 m-tile conversion (painted zones read as a build layout). [WP3] | Walkers read the real layout |
-| `src/game/sim.ts` | `seedDayOneCrowd`, `tickPreviewGuest`, `retireDayOneCrowd`, `preview` guests, and the `HallNode` hall-guest walk (`armGuestRoute`, the node routing). Aggregate fares and ratings read walker outcomes instead. [WP3] | 35, 5 |
-| `src/game/guests.ts` | `NODE_POS`, `HALL_EDGES` and node routing. Keep the `PaxTag` colours and labels. [WP3] | One passenger model |
-| `src/game/shellFloor.ts` | `FloorExtra` zone-column growth. The shell grows in whole apron cells through the layout instead. [WP4] | 6 m cell scheme |
-| Tests on deleted code | `src/render/hallRooms.test.ts`, `hallKitDetail.test.ts`, `hallKitMeshes.test.ts`, `world/plan.test.ts`, `world/rooms.test.ts`, `world/terminalHiDetail.test.ts`, `terminalplay/terminalplay.test.ts`, `game/starterInterior.test.ts`, `game/shellFloor.test.ts`, `game/hallPathing.test.ts`. Rewrite, against the new model, the parts of `hallNav.test.ts`, `hallNavGuests.test.ts`, `hallArrivals.test.ts`, `opening.test.ts`, `servicePoints.test.ts`, `litter.test.ts`, `shellExpand.test.ts` and `playtestFixes.test.ts` that test real behaviour. [the WP that deletes the source] | |
+| `src/render/hallWorld.ts` | `syncInterior` embedding `TerminalBuilding` under `interiorGroup` with `fit.scale`; the `rebuildRooms` early return; `HallFigureBatch` / `buildFigure`; every `performance.now()` animation [WP1]. Hard-coded hall box walls, concourse columns, the hidden `BEFORE` / `AFTER SECURITY` labels, the legacy zone floor, and `dockAirsideBridge` (replaced by PR #114 sockets) [WP4]. Camera and picking move to `src/render/interior/` [WP4]. | 3, 5, 34, 36, 39 |
+| `src/render/world/plan.ts` | `planTerminal` as an interior: zones, props, baked people, decorative walker routes. Not drawn in the hall from WP1; the interior parts are deleted in WP4. Keep an exterior footprint read only if the airport-view shell still needs it. | 33, 35, 38 |
+| `src/render/world/terminalHiDetail.ts` and `terminalHiDetail.test.ts` | The whole file, including `buildInteriorDressing`, `HI_DETAIL_KIND` and the "every prop type" assertion. Not drawn from WP1; deleted in WP4. | 34, 36, 38 |
+| `src/render/hallRooms.ts` | `hallGuestScale` and `poseOnPlan` [WP1]; `hallFitFor`, `apronToHall`, `hallToApron` [WP4]. `matchTerminal` and `stampAnchor` move to `src/game/terminalMatch.ts` [WP4]. | 3 |
+| `src/render/hallKitDetail.ts`, `src/render/hallKitMeshes.ts` | These become the interim metre-scale kit renderer in WP1, with no `fitScale` shrink below 1. They are replaced by `src/render/interior/fittings.ts` and deleted in WP4. | 3, 5, 33 |
+| `src/render/terminalProps/props.ts` | The baked `person()` officers inside `security_lane` and the x-ray models. Staff are drawn by `HallServiceFx` through `PeopleRenderer` on the lane's staff sockets [WP1]. | 3 |
+| `src/render/supplyCart.ts` in the hall | Removed from the hall scene. Stores restock becomes a staff walk to the shop's stock door [WP1]. | 37 |
+| `src/game/sim.ts` | `seedDayOneCrowd`, `tickPreviewGuest`, `retireDayOneCrowd`, `preview` guests [WP1]. `tickHall` node routing, boarding by setting `dead`, and the thought-only `standPaxMode` [WP3]. | 35, flow |
+| `src/game/guests.ts`, `src/game/hallRoute.ts` | `NODE_POS`, `HALL_EDGES`, node routing and the doorway polylines. Keep the `PaxTag` colours and labels [WP3]. | One passenger model |
+| `src/game/terminal.ts` | `SCHEME_I/II/III`, `GRID_C`, `GRID_R`, `HALL_W`, `HALL_D`, `cellCenter`, `schemeItems`, `prefabBundle`, `PREFAB_I_OPEN`, `securityLaneSpots`, `zoneCellBlocked`. The nav stops reading them in WP2; they are deleted in WP4. `ItemDef` prices, wear, upkeep and service times stay, and the catalog reads them. | 33 |
+| `src/game/hallNav.ts`, `src/game/hallNavData.ts` | `prefabNavLayout`, `laneSpots`, `PREFAB_ROOM_KIT`, the bundle-only `includedSecurityLanes`, and the `hallBaseLayout` early return that ignores `fit.items` [WP2]. | 5, 33 |
+| `src/terminalplay/` | The nine-room plan, lines, place and queues. The `FOOTPRINTS` numbers move into the catalog in WP2; the folder is deleted in WP4. | 5 |
+| `src/game/shellFloor.ts` | `FloorExtra` zone-column growth. The shell grows in whole apron cells through the layout instead [WP4]. | 6 m cell scheme |
+| Tests on deleted code | `hallRooms.test.ts`, `hallKitDetail.test.ts`, `hallKitMeshes.test.ts`, `world/plan.test.ts`, `world/rooms.test.ts`, `world/terminalHiDetail.test.ts`, `terminalplay/terminalplay.test.ts`, `game/starterInterior.test.ts`, `game/shellFloor.test.ts`, `game/hallPathing.test.ts` go in the WP that deletes their source. The real-behaviour parts of `hallNav.test.ts`, `hallNavGuests.test.ts`, `hallArrivals.test.ts`, `opening.test.ts`, `servicePoints.test.ts`, `litter.test.ts`, `shellExpand.test.ts` and `playtestFixes.test.ts` are rewritten against the new model in the same WP. | |
+
+Out of scope: `src/render/world/hallCrowd.ts` and `PERSON_SCALE` draw low-quality guests on the apron, not in the hall (audit §1). They stay until a separate apron-people pass.
 
 ### Keep and reuse
 
 | System | Path | How it is used |
 | --- | --- | --- |
-| Queues and service points | `src/servicepoints/*`, queue logic in `src/paxnav/paxnav.ts` | Every fitting that serves someone is a service point: desk, kiosk, bag drop, BP podium, lane, gate desk, shop counter, WC, lift. |
-| Prison Architect editor | `src/terminalbuild/*` (`layout.ts`, `interior.ts`, `validate.ts`, `grid.ts`, `floors.ts`), `src/render/interiorBuild.ts`, `src/ui/InteriorBar.tsx` | Foundation, walls, doors, zones and floor paint stay. Equipment becomes fittings with real footprints. Stairs, escalator and lift tools are added. |
-| P1 passenger AI | `src/paxnav/guests.ts`, `guestConfig.ts`, `guestNames.ts`, `guestGlance.ts`, `crew.ts` | Names, traits, moods, needs, families, rebooking. Needs now pick stops from stage options (section 5). |
-| Round 5 desks and staff art | `src/render/terminalProps/*` (`props.ts`, `parts.ts`, `shell.ts`, `interiorTex.ts`), `src/people/*`, `assets/people/originals/*` | Builders are already in metres with the origin at the floor centre. Render them at scale 1. Keep the `rbox` bevel prim and the two-desk check-in bank. |
-| People renderer | `src/people/renderer.ts` (`PeopleRenderer`) | The only renderer for passengers, staff and crew indoors. |
+| Queues and service points | `src/servicepoints/*`, queue logic in `src/paxnav/paxnav.ts` | Every fitting that serves someone is a service point: desk, kiosk, bag drop, BP podium, lane, gate desk, shop counter, WC, lift. One server at a time, with marked lines. |
+| Editor and kit catalog | `commitHallItem` (`sim.ts:15331-15370`), `src/game/terminalKit.ts`, `src/game/terminalKitData.ts`, `ItemDef` in `src/game/terminal.ts`, and `src/terminalbuild/*` (`layout.ts`, `interior.ts`, `validate.ts`, `grid.ts`, `floors.ts`), `src/render/interiorBuild.ts`, `src/ui/InteriorBar.tsx` | The editor writes the same layout the walk and the renderer read. Foundation, walls, doors, zones and floor paint stay. Kit items become fittings with real footprints. Stairs, escalator and lift tools are added. |
+| P1 passenger AI | `src/paxnav/guests.ts`, `guestConfig.ts`, `guestNames.ts`, `guestGlance.ts`, `crew.ts`, `src/game/hallArrivals.ts` | Names, traits, moods, needs, families, lost passengers, rebooking, and the arrival walk. One stop list (section 4.3), not a second graph. |
+| Round 5 desks and staff art | `src/render/terminalProps/*` (`checkinDesk` / `checkin_pair`, the `rbox` prim, `parts.ts`, `shell.ts`, `interiorTex.ts`), `src/people/*`, `assets/people/originals/*` | Builders are already in metres with the origin at the floor centre. Render them at scale 1. The low-poly counters and the 0.48-capped `checkin_desk` copy go. |
+| People | `src/people/renderer.ts` (`PeopleRenderer`), driven by `src/render/hallNavCrowd.ts` | `PeopleRenderer` is the only body, at `unitsPerMeter = 1`, for passengers, staff and crew indoors. `HallNavCrowd` stays as the crowd driver and LOD manager. Its far capsule LOD is allowed only at the same height range, and the scale audit checks it. |
+| Service effects | `src/render/hallService.ts` (`HallServiceFx`) | Belts, scales, trays and desk/lane staff, driven by fitting sockets. Animation reads `animSec`. |
+| Live metrics | `hallNav.metrics()` | The inspector's data source (WP5). |
 | Phone feed | `src/phone/*` | Blocking findings and "terminal ready" notes go to the phone. No modals. |
-| Stand and jet-bridge upgrade | `src/stands/*`, PR [#114](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/114) (`src/render/aircraft/bridges.ts`, `src/render/world/airfield.ts`) | The bridge roots on the terminal facade socket. The new layout publishes those sockets from its gate-head doors (section 6). |
+| Stand and jet-bridge upgrade | `src/stands/*`, PR [#114](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/114) (`src/render/aircraft/bridges.ts`, `src/render/world/airfield.ts`) | The bridge roots on the terminal facade socket. The new layout publishes those sockets from its gate-head doors (section 7). |
 | Advisor reference | `src/terminaladvisor/*` | Untouched. Its multi-floor model already matches. |
 | Interior textures | `public/art/textures/interiors/*`, `public/art/textures/signage/*` | Floor and wall paint, desk headers, wayfinding. |
 | Gemini concept plates | `public/art/textures/concepts/*`, `SERVICE_PLATES` in `src/assets/manifest.ts`, `src/render/servicePlates.ts`, the bag-drop, carousel and passport-booth builders in `terminalProps/props.ts` | These are the visual targets for `bag_drop`, `claim_carousel` and `passport_booth`. The props move into the catalog. Their hooks in `hallKitMeshes.ts` and `terminalHiDetail.ts` go when those files are deleted. |
+| Dev showroom | `src/render/terminalProps/demo.ts`, `terminal-props.html` | Kept as a prop viewer. Not part of the game scene. |
 
 ---
 
@@ -192,7 +205,7 @@ Each stage holds the fitting kinds that can serve it, the side mask an agent car
 interface Fitting { id: string; kind: FittingKind; x: number; y: number; floor: number; rot: 0|1|2|3; wear: number; staffed?: boolean; gateId?: string }
 ```
 
-The catalog (`src/terminalbuild/fittings.ts`) is data. For each kind it holds: footprint, height, clearance in front, the rooms it may go in, the stage it serves, service time, servers, staff, cost, upkeep, wear rate, the prop builder, and the inspector fields. Costs and service times move over from `EQUIP_SPEC` and `ItemDef` (`src/game/terminal.ts`). Values for new kinds are proposed in WP1 and reviewed in its PR.
+The catalog (`src/terminalbuild/fittings.ts`) is data. For each kind it holds: footprint, height, clearance in front, the rooms it may go in, the stage it serves, service time, servers, staff, cost, upkeep, wear rate, the prop builder, and the inspector fields. Prices, wear, upkeep, outlet specs and service times are read from `ItemDef` / `KIT_ITEMS` (`src/game/terminal.ts`, `src/game/terminalKitData.ts`) and `EQUIP_SPEC`, never forked. Footprints start from `FOOTPRINTS` (`src/terminalplay/footprints.ts`). Values for new kinds are proposed in WP2 and reviewed in its PR.
 
 | Kind | Footprint w × d (m) | Height (m) | Audit range, height (m) | Room | Prop builder (`terminalProps`) |
 | --- | --- | --- | --- | --- | --- |
@@ -355,7 +368,7 @@ S2 upper floor (departures, +5.0 m), 88 m x 44 m, 2 m per character
 | Arrivals hall | 0 | x 0–56, y 26–44 | Meeters, café slot. Exit `X` from claim at x 34–40. Curb doors at x 30–36. |
 | Staff | 0 | x 40–88, y 14–26 | R&D, office, plant, staff WC. |
 
-Both layouts are hand-written data files: `src/terminalbuild/starter/split1f.ts` and `src/terminalbuild/starter/stacked2f.ts`. A dump script, `scripts/terminal-layout-dump.mts`, prints these exact grids from the data. WP1 checks the printout against this section.
+Both layouts are hand-written data files: `src/terminalbuild/starter/split1f.ts` and `src/terminalbuild/starter/stacked2f.ts`. A dump script, `scripts/terminal-layout-dump.mts`, prints these exact grids from the data. WP2 checks the printout against this section.
 
 ---
 
@@ -384,7 +397,7 @@ Code lives in `src/paxnav`. It stays pure and deterministic.
    | `bus` | The `gate_apron` door, then bus loads (capacity from the vehicle) |
    | `bridge` | `gate_head`, `g` door, `gate_bridge` door, then the PR #114 bridge to the aircraft door |
 
-   The boarding method is read from the stand (`src/stands`). It is never stored on the gate.
+   The boarding method is read from the stand (`src/stands`). It is never stored on the gate. Until WP6 adds stairs and bus meshes, each method is a socket with a real route and duration, not a thought string on an instant despawn (audit §4).
 7. **Arrivals.** At `DEPLANE`, agents spawn at the aircraft door, at the deplane rate in `BUILD_TUNING.deboardGapSec`. They walk the method's route to an `arrivals_in` door or a sterile gate-head stair. At `CLAIM`, a passenger waits at the carousel until the flight's `onClaim` counter passes their bag sequence number. Then they take the `exit` door to the curb.
 8. **Spawning.** Agents exist only for booked flights. Departures spawn at `CURB_IN` across the show-up window before STD. Arrivals spawn at `DEPLANE`. Nothing exists before the first flight's show-up window, and there is no preview crowd.
 9. **Authority (D4).** Each agent's outcome is reported to the sim: boarded, missed, satisfaction, and spend. Fares, ratings, missed-flight penalties and shop revenue read those outcomes. The 150-day soak keeps its speed because paxnav is O(1) per agent per tick. WP3 records soak wall time against `main`, and more than 25% slower fails the gate.
@@ -411,7 +424,7 @@ Inbound:  aircraft -> carts -> BAG SORT -> apron belt -> bag_in port -> claim fe
 
 ## 8. Inspector, pause and start state
 
-- **Inspector (item 46).** A new pure model, `src/ui/inspector/fittingCard.ts`, and a view, `src/ui/inspector/FittingCard.tsx`. Every `FittingKind` has an inspector entry in the catalog. A test fails if one is missing. The card shows: name, status (working, no staff, worn out, not connected, closed), queue now, average wait over the last hour, served today, throughput per minute against capacity, wear, upkeep per day, staff, and the stage or flow it serves. Actions are staff or unstaff, repair, move, and sell. The card subscribes to a `terminalVersion` counter that the sim bumps each tick, throttled to 4 Hz with `useSyncExternalStore`. It never reads a one-time snapshot. Selecting a walker shows the existing P1 glance in the same right-hand inspector slot. Batch B's rule of one inspector at a time applies.
+- **Inspector (item 46).** A new pure model, `src/ui/inspector/fittingCard.ts`, and a view, `src/ui/inspector/FittingCard.tsx`. Every `FittingKind` has an inspector entry in the catalog. A test fails if one is missing. The card shows: name, status (working, no staff, worn out, not connected, closed), queue now, average wait over the last hour, served today, throughput per minute against capacity, wear, upkeep per day, staff, and the stage or flow it serves. Actions are staff or unstaff, repair, move, and sell. The card reads `hallNav.metrics()` per fitting and subscribes to a `terminalVersion` counter that the sim bumps each tick, throttled to 4 Hz with `useSyncExternalStore`. It never reads `hudSnapshot` aggregates or a one-time snapshot (audit §6). Every interior mesh carries `userData.facilityId`. Selecting a walker shows the existing P1 glance in the same right-hand inspector slot. Batch B's rule of one inspector at a time applies.
 - **Pause (item 39).** A new file, `src/render/interior/animClock.ts`. The sim advances `animSec` by `dt × speed`, which is 0 while paused. Every interior animation reads `animSec`: trays, belts, carousel, escalator steps, doors, people. A Vitest source scan fails on `performance.now` or `Date.now` anywhere under `src/render/interior/` or `src/render/terminalProps/`.
 - **Start state (item 35).** The new-game seed builds the starter layout with zero agents. The first agent appears when the first booked flight's show-up window opens.
 
@@ -437,112 +450,144 @@ Inbound:  aircraft -> carts -> BAG SORT -> apron belt -> bag_in port -> claim fe
 
 ## 10. Acceptance tests mapped to playtest items
 
-| Item | Automated test (new file) | Screenshot check |
-| --- | --- | --- |
-| 3: one scale | `src/render/interior/scaleAudit.test.ts`. Builds every catalog kind and a person through `PeopleRenderer`. Checks the `Box3` against the catalog range and the footprint against the catalog footprint (±5%). No node under the interior root has a scale other than 1. Under the airport view, `terminal-root` is the only scaled node. | Close-up of a person beside a desk, a scanner and a gate seat. Crew and passengers look the same height. |
-| 5: fittings work | `src/terminalbuild/placeEveryFitting.test.ts`. For every kind: place it in a valid room on S1, run a headless walk, and the fitting serves at least one agent (or moves one bag) within 30 sim minutes. The UI e2e places a desk and sees status "Working" plus a served count above 0. | Before and after placing a third desk and a third lane. The queue visibly splits. |
-| 33: starter layout | `src/terminalbuild/starter.test.ts`. Curb entrance and exit doors exist. Each desk's front faces the nearest curb entrance within 45°. Desk footprint is 2.0 m. Exactly one security room, and every departure path crosses it once. The R&D room exists. Arrival and departure paths are both valid. Ceilings are within ±10% of `STARTER_CAPACITY`. | S1 overview from above. Check-in hall from the entrance doors. Security room from the BP podiums. |
-| 34: no floating objects, no clutter | `src/render/interior/orphanMesh.test.ts`. Every mesh under the interior root maps back to a layout piece (floor, wall, door, fitting, belt, person). No bounding box sits above `ROOF_H_M`. Belt meshes appear only on belt tiles. | Wide shot at High and at Ultra: no dark object above the roof, no stray belt bar. |
-| 35: no passengers at start | `src/game/noPaxBeforeFirstFlight.test.ts`. New game: agent count is 0 every tick until the first show-up window opens, then it rises above 0. | Day 0 terminal at game start, empty. |
-| 36: no indoor jet bridge | `orphanMesh.test.ts` allow-list: no `jet_bridge` kind indoors. `src/terminalbuild/sockets.test.ts`: bridge sockets sit on facade `gate_bridge` doors. | Facade with a bought bridge rooted on the outside wall. Interior with no bridge. |
-| 37: no vehicles indoors | `orphanMesh.test.ts`: no vehicle model indoors. | Same interior shot. |
-| 38: security only in security | `src/terminalbuild/validate.test.ts`. A room-rule finding blocks a security-kit placement outside a security room. The S1 and S2 data contain no security kit outside security. | Inside the airside and landside food units. |
-| 46: live inspector for every fitting | `src/ui/inspector/FittingCard.test.tsx`. Every kind renders a card. Advancing the sim changes the queue and served text without reselecting. | Two frames 1 game minute apart on a security lane card, showing different numbers. |
-| 39: pause freezes everything | `src/render/interior/animClock.test.ts` plus the source scan. While paused, tray, belt, carousel, escalator and people transforms don't change across 60 frames. | Two frames 2 s apart while paused. They are identical. |
-| Flow rules | `src/paxnav/stages.test.ts`: departures visit the stages in order. `arrivals.test.ts`: no arrival cell ever has `LANE` or `AIR`. `vertical.test.ts`: `step_free` agents use only lifts, and escalators are one-way. `src/game/bagFlow.test.ts`: bags run from desk to `bag_out`, and from `bag_in` to claim, on S1 and S2. | n/a |
+| Item | Automated test (new file) | Screenshot check | WP |
+| --- | --- | --- | --- |
+| 3: one scale | `scaleAudit.test.ts`. v1 (WP1): every hall person, including capsule LOD and staff, is 1.55–1.95 m; every `terminalProps` type drawn in the hall is within its catalog height range; no node under the hall root has a scale other than 1. v2 (WP4): adds catalog footprints (±5%) and checks that `terminal-root` is the only scaled node in the airport view. | Close-up of a person beside a desk, a scanner and a gate seat. Crew, officers and passengers look the same height. | WP1, WP4 |
+| 5: fittings appear and work | WP1: `hallKitPlacement.test.ts`, a placed desk, lane, toilet and bench each produce a mesh and a pick box. WP4: `src/terminalbuild/placeEveryFitting.test.ts`, every kind placed in a valid room on S1 serves at least one agent (or moves one bag) within 30 sim minutes, plus a UI e2e: place a desk, see status "Working" and a served count above 0. | Before and after placing a third desk and a third lane. The queue visibly splits. | WP1, WP4 |
+| 33: starter layout | `src/terminalbuild/starter.test.ts`. Curb entrance and exit doors exist. Each desk's front faces the nearest curb entrance within 45°. Desk footprint is 2.0 m. Exactly one security room holds every lane, and every departure path crosses it once. The R&D room exists. Arrival and departure paths are both valid. Ceilings are within ±10% of `STARTER_CAPACITY`. Plus a nav trace: the entrance queue reaches both lanes. | S1 overview from above. Check-in hall from the entrance doors. Security room from the BP podiums. | WP2 |
+| 34: no leftovers, no floating objects | `orphanMesh.test.ts`. v1 (WP1): nothing from `planTerminal`, `buildInteriorDressing` or `TerminalBuilding` is under the hall root. v2 (WP4): every mesh maps back to a layout piece (floor, wall, door, fitting, belt, person); no bounding box sits above `ROOF_H_M`; belt meshes appear only on belt tiles. | Wide shot at High and at Ultra: no dark object above the roof, no stray belt bar, no catalog dump. | WP1, WP4 |
+| 35: no passengers at start | `src/game/noPaxBeforeFirstFlight.test.ts`. New game: agent count is 0 every tick until the first show-up window opens, then it rises above 0. | Day 0 terminal at game start, empty. | WP1 |
+| 36: no indoor jet bridge | `orphanMesh.test.ts`: no `jet_bridge` kind under the hall interior. `src/terminalbuild/sockets.test.ts`: bridge sockets sit on facade `gate_bridge` doors. | Facade with a bought bridge rooted on the outside wall. Interior with no bridge. | WP1, WP4 |
+| 37: no vehicles indoors | `orphanMesh.test.ts`: no vehicle model under the hall interior. | Same interior shot. | WP1 |
+| 38: security only in security | WP1: no shop room contains a security prop. WP2: `validate.test.ts`, a room-rule finding blocks a security-kit placement outside a security room, and the S1 and S2 data hold no security kit outside security. | Inside the airside and landside food units. | WP1, WP2 |
+| 46: live inspector for every fitting | `src/ui/inspector/FittingCard.test.tsx`. Every fitting kind renders a card. Advancing the walk changes the queue and served text while the panel is open, without reselecting. Clicking a lane mesh selects that lane's id. | Two frames 1 game minute apart on a security lane card, showing different numbers. | WP5 |
+| 39: pause freezes everything | `animClock.test.ts` plus a source scan. While paused, tray, belt, carousel, escalator and people transforms don't change across 60 frames. The scan fails on `performance.now` or `Date.now` in hall render code. | Two frames 2 s apart while paused. They are identical. | WP1 |
+| Flow rules | `src/paxnav/stages.test.ts`: a traced departure hits every stage or a named skip, and boarding requires a gate-desk service. `arrivals.test.ts`: no arrival cell ever has `LANE` or `AIR`, and arrivals hit claim then the exit. `src/game/bagFlow.test.ts`: bags run from desk to `bag_out` and from `bag_in` to claim. `boardingMethod.test.ts`: stairs, bus and bridge each give a different route and duration. `vertical.test.ts` (WP6): `step_free` agents use only lifts, and escalators are one-way. | n/a | WP3, WP6 |
 
 ---
 
 ## 11. Work packages
 
-These run in order, one cloud agent each, on Cursor's default models. Each WP is a PR into `main` (or into the playtest trunk, if the merge captain prefers), with `npm run gate` green and the gate summary pasted. Screenshots go to `docs/devlog/media/terminal-rebuild/wpN-*.png` and are taken by a script based on `scripts/terminal-r5-ingame.mts`. Every WP keeps the game playable at merge.
+These run in order, one cloud agent each, on Cursor's default models. The order follows the audit's runs: the size bug and the extra security room go first, the flow and the editor next, two floors last. Each WP is a PR into `main` (or into the playtest trunk, if the merge captain prefers), with `npm run gate` green and the gate summary pasted. Screenshots go to `docs/devlog/media/terminal-rebuild/wpN-*.png` and are taken by a script based on `scripts/terminal-r5-ingame.mts`. Every WP leaves the game playable.
 
-### WP1: Scale, catalog and layout data (no visible change)
+### WP1: Gut the hall picture and get to one scale (audit runs 1 and 6)
 
-- **Depends on:** nothing. It can run alongside Batches A, B and D.
-- **Files (new):** `src/terminalbuild/scale.ts`, `fittings.ts`, `stages.ts`, `sockets.ts`, `starter/split1f.ts`, `starter/stacked2f.ts`, `scripts/terminal-layout-dump.mts`. Tests: `scale.test.ts`, `fittings.test.ts`, `starter.test.ts` (data parts), `stages.test.ts` (graph validation), `sockets.test.ts`.
-- **Files (edit):** `src/terminalbuild/types.ts` (adds `version`, `tileM`, `floors`, `Fitting`, `BeltRun`, `Port`, sides, door kinds), `config.ts` (per-m² prices, `STARTER_TERMINAL`), `floors.ts` (`ENABLED_STORIES = 2`), `validate.ts` (stage reachability, side and room rules, belt-to-port rules), `index.ts`.
-- **Gate:** `npm run gate`. The dump script output matches the grids in section 5. Every catalog kind has a footprint, a height range, a prop builder (or `new` with a placeholder box at the right size), and an inspector entry.
-- **Screenshots:** none. Commit the dump output as `docs/devlog/media/terminal-rebuild/wp1-layout-dump.txt`.
+- **Depends on:** nothing. It can run alongside fix-plan Batches B and D.
+- **Does:**
+  - Stop embedding `TerminalBuilding` / `planTerminal` and the dressing under `interiorGroup` in the hall camera, and stop the `fit.scale` parenting.
+  - Remove the `rebuildRooms` early return, so the hall draws the walk's own layout through the metre-scale kit path: `hallKitMeshes`, and `hallKitDetail` with real size for every type and no `fitScale` shrink below 1. This one change makes placed kit appear and gives the hall one coordinate system, while still on the 8×5 layout.
+  - People: `HallNavCrowd` plus `PeopleRenderer` only. Delete `HallFigureBatch` / `buildFigure` and `hallGuestScale`. Take the baked officers out of the `security_lane` and x-ray models; `HallServiceFx` draws them.
+  - Delete `seedDayOneCrowd`, `tickPreviewGuest`, `retireDayOneCrowd` and `preview` guests.
+  - Take `SupplyCartLayer` and any vehicle out of the hall scene.
+  - Add `src/render/interior/animClock.ts`. The sim advances `animSec` by `dt × speed`, which is 0 while paused, and trays and hall loops read it.
+- **Files:** `src/render/hallWorld.ts`, `hallRooms.ts`, `hallKitDetail.ts`, `hallKitMeshes.ts`, `hallNavCrowd.ts`, `hallService.ts`, `terminalProps/props.ts`, `terminalProps/index.ts`, `src/game/sim.ts` (day-one crowd and `animSec`). New: `src/render/interior/animClock.ts`, `scaleAudit.test.ts` (v1), `orphanMesh.test.ts` (v1), `hallKitPlacement.test.ts`, `animClock.test.ts`, `src/game/noPaxBeforeFirstFlight.test.ts`. Edit `opening.test.ts`, `playtestFixes.test.ts` and `hallNavGuests.test.ts` wherever they assert the preview crowd.
+- **Done when:** one person height (about 1.75 m) in the hall. No baked crowd, no catalog dump, no indoor bridge, no vehicle. A placed desk, lane, toilet and bench appears where it was put. No passengers at start. Pause freezes the hall.
+- **Gate:** `npm run gate`, including the perf and people draw-call budget tests.
+- **Screenshots:** starter hall overview at High and Ultra, a person beside a desk, a placed lane, the shop interior, two paused frames.
+- **Items:** 3, 34, 35, 36, 37, 38, 39, and the "draws" half of 5.
 
-### WP2: Multi-floor stage walk (headless)
+### WP2: Layout document, starter instance, nav reads it, saves (audit run 2)
 
-- **Depends on:** WP1.
-- **Files (edit):** `src/paxnav/grid.ts` (per-floor cells, `ARR` and `STAFF` bits, links), `paxnav.ts` (stage stepping, Dial flow fields, mobility classes, side changes only at lanes and exits), `config.ts` (link speeds, lift car, escalator headway), `guests.ts` (needs feed the `*_FREE` stages).
-- **Files (new):** `src/paxnav/stages.ts`, `arrivals.ts`, `vertical.ts`. Tests: `stages.test.ts`, `arrivals.test.ts`, `vertical.test.ts`, `starterWalk.test.ts`. The last one checks that S1 and S2 each push 46 departures and 46 arrivals through with no stuck agent after 4 nav hours, and lift queues form only when step-free demand exceeds the car.
-- **Gate:** `npm run gate`, plus the paxnav perf check: 400 agents on S2 under 2 ms per tick in Node.
-- **Screenshots:** optional heatmap PNG from `scripts/paxnav-heatmap.mts`.
+- **Depends on:** WP1, plus decisions D1, D2 and D3.
+- **Does:**
+  - Add the data model from section 4: 1 m tiles, floors, sides, door kinds, fittings with sockets and empty sockets (the growth slots), belts and ports, and the stage list as data.
+  - Build the fitting catalog on `ItemDef` / `KIT_ITEMS` plus the `FOOTPRINTS` numbers. The catalog adds only geometry, side, stage, prop and inspector fields; prices are not forked.
+  - Write the `split1f` and `stacked2f` data files.
+  - Replace `SCHEME_I` / `zoneFor` / `prefabNavLayout` as the nav input. `commitHallItem` writes fittings onto the layout, and the WP1 kit renderer reads layout fittings.
+  - Save schema 5 to 6 migration (section 9). Move the starter stamp to 4×2 cells.
+- **Files (new):** `src/terminalbuild/scale.ts`, `fittings.ts`, `stages.ts`, `sockets.ts`, `migrate.ts`, `starter/split1f.ts`, `starter/stacked2f.ts`, `scripts/terminal-layout-dump.mts`. Tests: `scale.test.ts`, `fittings.test.ts`, `starter.test.ts`, `validate.test.ts` additions, `sockets.test.ts`, `migrate.test.ts`, plus fixtures in `src/features/save/fixtures/`.
+- **Files (edit):** `src/terminalbuild/types.ts`, `config.ts` (per-m² prices, `STARTER_TERMINAL`), `floors.ts`, `validate.ts`, `index.ts`; `src/game/hallNav.ts`, `hallNavData.ts`, `types.ts` (`TerminalFit.layout`), `sim.ts` (`decorateFit`, `buildStarterKit`, `commitHallItem`); `src/game/starterLayout.ts` (4×2 stamp); `src/features/save/schema.ts`; `src/render/hallKitMeshes.ts` and `hallKitDetail.ts` (read fittings).
+- **Done when:** security is one room, both lanes sit in it, and the entrance queue reaches them. The dump script prints the section 5 grids. Old saves load and run 1 day.
+- **Gate:** `npm run gate`, and the 30-day soak completes at least as many flights as `main`.
+- **Screenshots:** S1 overview, check-in from the entrance, the security room. Commit the dump output as `wp2-layout-dump.txt`.
+- **Items:** 33, 38 (room rules).
 
-### WP3: Sim wiring, bags, start state and saves
+### WP3: One flow graph, one passenger model, bags (audit run 3)
 
-- **Depends on:** WP2, D3 and D4 answered, PR #114 merged. If Batch D's bag sort move has not landed, connect to the current bag hall building.
-- **Files (edit):**
-  - `src/game/sim.ts`: delete `seedDayOneCrowd`, `tickPreviewGuest`, `retireDayOneCrowd` and the `HallNode` guest walk. Spawn from booked flights only. Read walker outcomes.
-  - `src/game/hallNav.ts`: read `fit.layout` and drop the prefab conversion.
-  - `src/game/luggage.ts`: port transit legs.
-  - `src/game/types.ts`: `TerminalFit.layout`.
-  - `src/game/guests.ts`: drop `NODE_POS` routing.
-  - `src/game/terminal.ts`: move service numbers into `fittings.ts`.
-  - `src/features/save/schema.ts`: version 6.
-  - The logistics bag socket hookup in `src/logistics/adapter.ts`.
-  - The PR #114 socket source in `src/render/world/airfield.ts`, which reads `terminalSockets`.
-  - The starter stamp moves to 4×2 cells, wherever the starter kit is stamped (`src/game/sim.ts` new-game seed and the `scenarios` data).
-- **Files (new):** `src/terminalbuild/migrate.ts`, `src/game/terminalMatch.ts`. Tests: `src/game/noPaxBeforeFirstFlight.test.ts`, `src/game/bagFlow.test.ts`, `src/terminalbuild/migrate.test.ts`, and fixture saves in `src/features/save/fixtures/`.
-- **Gate:** `npm run gate`. The 30-day soak shows completed flights at least equal to `main`, and soak wall time no more than 25% above `main`. Bot playtest `--quick` is green. Rewrite or delete the old tests listed in section 2 that this WP's deletions break.
-- **Screenshots:** game start with an empty terminal (item 35). The old renderer still draws in this WP, fed by the new walkers.
+- **Depends on:** WP2, plus decision D4. The bag sockets connect to Batch D's bag sort if it has landed, otherwise to the current bag hall.
+- **Does:**
+  - PaxNav walks the stage data (section 6). Bag drop is its own stage, toilets are a real stop, and the gate-desk queue is required before boarding.
+  - Retire the `tickHall` graph. Boarded, missed, satisfaction and spend come from walkers, and boarding by setting `dead` goes.
+  - The boarding method comes from the stand as a route plus a duration on the boarding socket: stairs walk, bus with load capacity, or bridge. Arrivals come off the same method, from a bus or stairs door as well as the bridge.
+  - Claim waits on the bag sequence number. `BagBook` gets the port transit legs, and `bag_out` / `bag_in` sockets go to logistics.
+- **Files:** `src/paxnav/paxnav.ts`, `config.ts`, `guests.ts`; new `src/paxnav/stages.ts`, `arrivals.ts`. `src/game/sim.ts` (`tickHall`, `openDepartingGuest`, `standPaxMode`, gate boarding), `hallNav.ts`, `hallArrivals.ts`, `guests.ts`, `hallRoute.ts`, `luggage.ts`, `src/logistics/adapter.ts`. Tests: `stages.test.ts`, `arrivals.test.ts`, `boardingMethod.test.ts`, `src/game/bagFlow.test.ts`, `starterWalk.test.ts` (S1 pushes 46 departures and 46 arrivals with no stuck agent).
+- **Done when:** a traced departure hits every stage or a named skip. Arrivals hit claim, then the exit, and never touch security. Stand access changes the path, not just the thought.
+- **Gate:** `npm run gate`. The 30-day soak completes at least as many flights as `main`, with wall time no more than 25% above `main`. Bot playtest `--quick` is green.
+- **Screenshots:** gate-desk queue at boarding, a bus-stand departure leaving through the apron door, arrivals at the carousel.
+- **Items:** flow rules, and the "serves" half of 5.
 
-### WP4: One renderer at one scale
+### WP4: One renderer from the layout, editor on sockets (audit runs 4 and 6)
 
-- **Depends on:** WP3.
-- **Files (new):** `src/render/interior/`:
-  - `InteriorView.ts`: scene and camera, moved from `hallWorld.ts`.
-  - `shell.ts`: floors, walls, doors and glazing per floor from the layout, reusing `terminalProps/shell.ts` and `interiorBuild.ts`.
-  - `fittings.ts`: catalog kind to `terminalProps` builder at scale 1, instanced per kind.
-  - `people.ts`: `PeopleRenderer` only, with y taken from the floor or the link progress.
-  - `floors.ts`: active floor, floors above hidden, floor below dimmed.
-  - `animClock.ts`, `picking.ts`.
-  - Tests: `scaleAudit.test.ts`, `orphanMesh.test.ts`, `animClock.test.ts`.
-- **Files (edit):** `src/ui/TerminalView.tsx` (mount `InteriorView`, floor pill "Ground / Upper" in a corner that never covers the hall), `src/render/world/terminal.ts` (exterior shell from the layout footprint, `terminal-root` single scale), `src/render/terminalProps/index.ts` (trays read `animSec`).
-- **Files (delete):** everything marked [WP4] in section 2, with its tests.
-- **Gate:** `npm run gate`, including the perf and people draw-call budget tests with no regression against `main`. Record the S1 interior draw-call count at Ultra in the PR.
-- **Screenshots:**
-  - S1 overview at High and Ultra.
-  - Check-in from the entrance, with a person beside a desk.
-  - The security room, showing one room and both lanes.
-  - The inside of each food and shop unit (item 38).
-  - The facade with no indoor bridge (items 36 and 37).
-  - Two paused frames (item 39).
-  - Compare against `public/art/refs/pack6/ref_terminal_props.jpg`, `ref_security_lane.jpg`, and the Gemini plates if D5 has landed.
+- **Depends on:** WP3, and PR #114 merged.
+- **Does:**
+  - Add `src/render/interior/`:
+    - `InteriorView.ts`: scene and camera, moved from `hallWorld.ts`.
+    - `shell.ts`: floors, walls, doors and glazing from the layout, reusing `terminalProps/shell.ts` and `interiorBuild.ts`.
+    - `fittings.ts`: `terminalProps` builders at scale 1, instanced per kind, with the round 5 desks on the check-in sockets.
+    - `people.ts`: the `HallNavCrowd` driver.
+    - `picking.ts`.
+  - The editor (`src/terminalbuild/interior.ts` `placeFitting`, `src/ui/InteriorBar.tsx` palette from the catalog) places on sockets and footprints.
+  - The facade bridge comes from `terminalSockets` through PR #114's rotunda.
+  - Delete everything marked [WP4] in section 2, with its tests.
+- **Files:** as listed, plus `src/ui/TerminalView.tsx` and `src/render/world/terminal.ts` (exterior shell from the layout footprint, `terminal-root` single scale). Tests: `placeEveryFitting.test.ts`, `scaleAudit.test.ts` v2, `orphanMesh.test.ts` v2, and an editor e2e (place a desk, see it serve, sell it, get the refund).
+- **Done when:** a placed lane, desk, toilet and bench appears where it was put and serves. The starter hall matches the flow with no catalog leftovers.
+- **Gate:** `npm run gate`, with no draw-call budget regression against `main`. Record the S1 interior draw-call count at Ultra in the PR.
+- **Screenshots:** S1 at High and Ultra, a third desk and lane placed with the queue splitting, the facade bridge on the outside wall. Compare against `public/art/refs/pack6/` and the Gemini plates (D5).
+- **Items:** 5, 33, 34, 36.
 
-### WP5: Editor fittings, verticals and the live inspector
+### WP5: Live inspector for every fitting (audit run 5)
 
-- **Depends on:** WP4.
-- **Files (edit):** `src/terminalbuild/interior.ts` (`placeFitting` with footprint, rotation, floor and room rules; `placeVertical`; `placeBelt`; `placePort`), `layout.ts`, `src/ui/InteriorBar.tsx` (fitting palette from the catalog with icons; a stairs, escalator and lift tool, enabled only when `stories === 2`), `src/render/interior/picking.ts`.
-- **Files (new):** `src/ui/inspector/fittingCard.ts`, `FittingCard.tsx`, `src/game/terminalVersion.ts` (tick counter store). Tests: `src/terminalbuild/placeEveryFitting.test.ts`, `src/ui/inspector/FittingCard.test.tsx`, plus an editor e2e that places a desk, sees it serve, sells it and gets the refund.
+- **Depends on:** WP4. Use Batch B's right-hand inspector slot if it has landed.
+- **Does:** add `src/ui/inspector/fittingCard.ts` (pure model) and `FittingCard.tsx`. The card subscribes with `useSyncExternalStore` to `hallNav.metrics()` through a `terminalVersion` counter that the sim bumps each tick, throttled to 4 Hz. Every fitting kind has a card with the fields in section 8. Meshes carry `userData.facilityId = fitting.id`, so clicking a lane shows that lane. `facilityInfo` is merged into the card. Walker selection uses the same slot.
+- **Files:** new `src/ui/inspector/fittingCard.ts`, `FittingCard.tsx`, `src/game/terminalVersion.ts`; edit `src/render/interior/picking.ts`, `src/ui/BuildingPanel.tsx`, `src/App.tsx` (stop routing hall cards through `hudSnapshot`), `src/game/sim.ts` (`facilityReading`, `queueReading`). Tests: `FittingCard.test.tsx`, `fittingCard.test.ts`.
+- **Done when:** the queue length moves while the panel is open. Every fitting kind, security included, has a real card.
 - **Gate:** `npm run gate`.
-- **Screenshots:** the inspector on a security lane, two frames 1 game minute apart. A third desk and a third lane placed, with the queue splitting (item 5). The inspector on a bag drop, a lift and a carousel (item 46).
+- **Screenshots:** a security lane card, two frames 1 game minute apart; cards for a bag drop, a carousel and a gate desk.
+- **Items:** 46.
 
-### WP6: The 2-story upgrade, visual targets and acceptance pass
+### WP6: Two floors, stand-access meshes and the acceptance pass (audit run 7, plus the 2-story ask)
 
-- **Depends on:** WP5 and D1. If D1 picks S2, this WP only flips `STARTER_TERMINAL` and sets the starter price.
-- **Files (edit):** `src/progression/unlocks.ts` and `src/levelgates/*` (unlock "Upper floor" at the mid-game gate), `src/terminalbuild/config.ts` (upgrade build cost and upkeep, plus proposed vertical prices: escalator $220k plus $60/day, stairs $40k plus $5/day, lift $120k plus $30/day), `src/render/interior/shell.ts` and `src/render/materials/*` (finishes matched to the Gemini plates).
-- **Files (new):** `docs/playtest/TERMINAL_REBUILD_ACCEPTANCE.md`, with before and after shots for items 3, 5, 33, 34, 35, 36, 37, 38, 39 and 46. Update [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) and [TERMINAL_INTERIOR_BUILD.md](./TERMINAL_INTERIOR_BUILD.md) to the shipped state.
+- **Depends on:** WP5 and D1. If D1 picks a 2-story starter, run this WP's nav and vertical half before WP4 instead, as WP3b.
+- **Does:**
+  - Multi-floor nav (section 6): per-floor grids, `ARR` and `STAFF` bits, links, Dial flow fields, `step_free` agents, the lift as a service point.
+  - Stairs, escalator and lift fittings and editor tools, enabled when `stories === 2`.
+  - A floor view: "Ground / Upper" pill, floors above hidden, floor below dimmed.
+  - The upper-floor upgrade unlock and prices. Proposed: escalator $220k plus $60/day, stairs $40k plus $5/day, lift $120k plus $30/day.
+  - Stairs and bus meshes on the boarding sockets, with remote-stand arrivals walking in from the bus door.
+  - `docs/playtest/TERMINAL_REBUILD_ACCEPTANCE.md`, with before and after shots for every item.
+  - Update `INTERIOR_EDITOR.md` and `TERMINAL_INTERIOR_BUILD.md` to the shipped state.
+- **Files:** `src/paxnav/grid.ts`, `paxnav.ts`, `config.ts`; new `src/paxnav/vertical.ts`; `src/terminalbuild/interior.ts`, `floors.ts`, `config.ts`; `src/render/interior/floors.ts`, `fittings.ts`; `src/ui/TerminalView.tsx`, `InteriorBar.tsx`; `src/progression/unlocks.ts`, `src/levelgates/*`; `src/render/materials/*`. Tests: `vertical.test.ts`, `starterWalk.test.ts` (S2 case), plus a paxnav perf check (400 agents on S2 under 2 ms per tick in Node).
+- **Done when:** the S2 upgrade can be bought and lived in. Arrivals descend a sterile stair to claim and never meet departures.
 - **Gate:** `npm run gate`. The merge captain then runs `npm run gate -- --full` (150-day soak, every bot persona, browser smoke) before Trever re-checks.
-- **Screenshots:** the upgrade bought on S1, with floor 1 slab and verticals. The S2 upper and ground floors, each lived in. A passenger riding the escalator. Arrivals descending a sterile stair. Side by side with Gemini `terminal_multistory`.
+- **Screenshots:** the upgrade bought on S1; S2 upper and ground floors in use; a passenger on the escalator; side by side with Gemini `terminal_multistory`.
+- **Items:** the acceptance pass for 3, 5, 33–39 and 46.
 
 ---
 
-## 12. How this fits the Oct 15 fix plan
+## 12. How this fits the audit and the Oct 15 fix plan
+
+| Audit run | This plan | Difference |
+| --- | --- | --- |
+| 1: hall camera, nav people only | WP1 | WP1 also un-hides the metre-scale kit path, so the hall is not an empty box between WP1 and WP4. It also does the day-one crowd, pause and indoor-vehicle fixes. |
+| 2: layout document and starter instance | WP2 | Adds floors, sides, 1 m tiles, the stage list as data, the two starter layouts, save migration and the 4×2 stamp. |
+| 3: shared flow graph | WP3 | The hall graph is retired rather than shared (D4). Adds bag ports and claim timing. |
+| 4: editor writes sockets, renderer instances them | WP4 | Adds the `src/render/interior/` module and the PR #114 socket source. |
+| 5: inspector on `hallNav.metrics()` | WP5 | Same. |
+| 6: delete the dressing pass and legacy layers | Split: WP1 stops using them, WP4 deletes the files | Dead code goes once the new renderer replaces it, rather than in a separate final run. |
+| 7 (optional): stairs and bus meshes | WP6 | Combined with the 2-story work. |
+
+Fix-plan batches:
 
 - **Batch C** (items 3, 5, 33, 34, 36, 37, 38) is replaced by WP1–WP6. Don't run Batch C.
-- **Batch A:** items 35 and 39 are owned by WP3 and WP4. If Batch A lands first, those WPs keep its tests and remove any interim code.
-- **Batch B:** item 4 (centred build bar) and the one-inspector rule stay with Batch B. WP5's card uses Batch B's right-hand inspector slot.
-- **Batch D:** the bag sort beside the terminal, the guard post and roads stay with Batch D. WP3 publishes the `bag_out` and `bag_in` sockets Batch D connects to, and the 4×2 starter stamp (D2) is agreed with Batch D before WP3.
-- **PR [#114](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/114):** must merge before WP3. WP3 switches its socket source to `terminalSockets`.
+- **Batch A:** items 35 and 39 move to WP1. Batch A keeps its other items (1, 12, 16, 22, 29).
+- **Batch B:** item 4 (centred build bar) and the one-inspector rule stay with Batch B. WP5's card uses Batch B's right-hand slot.
+- **Batch D:** the bag sort beside the terminal, the guard post and roads stay with Batch D. WP2 publishes the sockets and WP3 connects bags to them. The 4×2 starter stamp (D2) is agreed with Batch D before WP2.
+- **PR [#114](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/114):** must merge before WP4. WP4 switches its socket source to `terminalSockets`.
 
 ## 13. Risks
 
 - **Balance shift when walkers become authoritative (D4).** Mitigation: WP3's soak comparison against `main`, and the bot playtest.
-- **Soak runtime.** Mitigation: Dial flow-field caching and the WP2 perf check. WP3 fails above +25% wall time.
-- **Starter stamp change (D2) touches apron layout tests.** Mitigation: agree it with Batch D. WP3 owns the stamp edit.
-- **WP3 and WP4 are the largest packages.** If an agent runs long, split at the natural seam and push the working half: WP3 into sim wiring and saves/bags, WP4 into shell and fittings and people/floors.
+- **Soak runtime.** Mitigation: Dial flow-field caching and the WP6 perf check. WP3 fails above +25% wall time.
+- **WP1's interim picture runs on the old 8×5 layout until WP2.** It is deliberately small, mostly switching layers off and un-hiding the metre-scale kit path. No new renderer code is written there that WP4 throws away.
+- **Starter stamp change (D2) touches apron layout tests.** Mitigation: agree it with Batch D. WP2 owns the stamp edit.
+- **WP3 and WP6 are the largest packages.** If an agent runs long, split at the natural seam and push the working half: WP3 into the flow graph and boarding methods, then bags; WP6 into floors and verticals, then stand-access meshes and the acceptance pass.
