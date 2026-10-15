@@ -5,10 +5,9 @@
 import * as THREE from 'three'
 import { HALL_LIGHT } from './look'
 import { graphicsQuality, subscribeGraphicsQuality, type QualityLevel } from './graphicsPrefs'
-import { buildHallDetail } from './hallKitDetail'
-import { buildTerminalProps, capTerminalPropMetal, setNearPropDetail } from './terminalProps'
-import { SupplyCartLayer } from './supplyCart'
+import { buildHallDetail, hallItemProp, hallPickMesh, hallPropAllowed } from './hallKitDetail'
 import { hiDetailOn } from './world/terminalHiDetail'
+import { readAnimSec } from './interior/animClock'
 import { canvasToPng } from '../camera/capture.ts'
 import { zoomToCursorShift } from '../camera/zoom.ts'
 import { inputMap } from '../input/map.ts'
@@ -25,7 +24,6 @@ import {
   HALL_CAM_NEAR,
   HALL_CAM_PITCH,
   HALL_CAM_YAW,
-  HALL_NEAR_DIST,
   HALL_OCCLUDE_M,
 } from './hallCamera'
 import { HALL_EDGES, NODE_POS, type HallNode } from '../game/guests'
@@ -59,42 +57,22 @@ import {
 } from './hallKitMeshes'
 import { HallLitterLayer } from './hallLitter'
 import { HallNavCrowd } from './hallNavCrowd'
-import { HallFigureBatch, type FigureDraw } from './hallFigures'
 import { releasePerfOverlay, retainPerfOverlay } from '../perf'
 import { HallServiceFx } from './hallService'
 import { HALL_WALKER_PICK } from '../game/hallNavData.ts'
 import type { HallNav } from '../game/hallNav'
 import { BUILD_TUNING, type Edge, type RoomKind } from '../terminalbuild/index.ts'
-import { WORLD_PER_METER } from './aircraft/specs'
-import {
-  apronToHall,
-  hallFitFor,
-  hallGuestScale,
-  hallToApron,
-  matchTerminal,
-  poseOnPlan,
-  shellHallBounds,
-  showLegacyHallFurniture,
-  stampAnchor,
-  type HallFit,
-} from './hallRooms'
-import { facadeOpenings, outwardYaw } from './world/facade'
-import { terminals } from './world/layout'
-import { QUALITY, baseLevel } from './world/quality'
-import { boardSnapshot, isFidsSource } from '../fids/project'
+import { showLegacyHallFurniture } from './hallRooms'
+import { QUALITY } from './world/quality'
 import { setFidsOpen } from '../fids/open'
 import { objectIsFidsBoard } from '../fids/stage'
-import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './world/terminal'
 import type { RoomPlan } from './world/rooms'
-import { makeTextures, type WorldTextures } from './world/textures'
 import { hallQueues, type HallQueue } from '../terminalplay/queues'
 import { footprintHit, footprintSpec, stampFrom } from '../terminalplay/footprints'
 import { cellCenterInFloor, cellInFloor } from '../game/shellFloor.ts'
 import { hallBaseLayout } from '../game/hallNav.ts'
 import { dragRect, nearestEdge, tileAtPoint, tilesInRect, wallRun } from '../terminalbuild/interior.ts'
 import { interiorEditSig, roomContains, syncInteriorEdit, syncInteriorGhost } from './interiorBuild.ts'
-import { queueAnchor, queueOrder, slotsAlong, standingInQueue, type QueueSlot } from '../terminalplay/lines'
-import { PLAY_TUNING } from '../terminalplay/config'
 
 /** Hall build mode, driven by the terminal kit bar. */
 export type HallBuildMode =
@@ -126,20 +104,6 @@ export interface HallHover {
 function nodeWorld(id: HallNode): THREE.Vector3 {
   const p = NODE_POS[id]
   return new THREE.Vector3((p.x - 0.5) * HALL_W, 0, (p.y - 0.5) * HALL_D)
-}
-
-const FIGURE_SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
-const FIGURE_TROUSERS = ['#f2e2c4', '#6ea2e0', '#8fbf7a', '#d08a62', '#c9b59a', '#e8eef4']
-
-function guestSalt(id: string): number {
-  let h = 2166136261
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619)
-  return h >>> 0
-}
-
-/** Lateral offset so walkers on the same edge don't stack into one blob. */
-function guestLane(id: string): number {
-  return ((guestSalt(id) % 5) - 2) * 0.72
 }
 
 /** Living-interior floor tints. These multiply the terrazzo; they are not the zone paint. */
@@ -193,8 +157,7 @@ export class HallWorld {
   private drawA: { x: number; y: number } | null = null
   private drawB: { x: number; y: number } | null = null
   private drawHit = new THREE.Vector3()
-  guestGroup = new THREE.Group()
-  /** Departures and arrivals from the hall's PaxNav. Stand in for the old hall figures while live. */
+  /** Departures and arrivals from the hall's PaxNav. */
   readonly navCrowd = new HallNavCrowd()
   /** Check-in and security interiors: desk signs, bag scales, X-ray trays, queue barriers, staff figures. */
   readonly serviceFx = new HallServiceFx()
@@ -207,38 +170,23 @@ export class HallWorld {
   /** Queue, lost, bag, and shop markers. Always drawn. Numbers open on click. */
   hotspotGroup = new THREE.Group()
   bagGroup = new THREE.Group()
-  guests = new Map<string, THREE.Object3D>()
-  /** Legs, arms, torso, head, and carry-on: five instanced meshes for every guest. */
-  readonly figures = new HallFigureBatch()
   private perfOverlay = retainPerfOverlay()
-  private readonly figBag = new THREE.BoxGeometry(0.22, 0.32, 0.14)
-  private readonly figPin = new THREE.ConeGeometry(0.09, 0.26, 6)
-  private readonly figSnack = new THREE.BoxGeometry(0.1, 0.12, 0.1)
-  private readonly figMats = new Map<string, THREE.Material>()
   private beforeLabel!: THREE.Mesh
   private afterLabel!: THREE.Mesh
-    private beltCubes: THREE.Mesh[] = []
+  private beltCubes: THREE.Mesh[] = []
   private claimCubes: THREE.Mesh[] = []
   private sortCubes: THREE.Mesh[] = []
   private deskCubes: THREE.Mesh[] = []
   private luggageBuilt = false
   roomHash = ''
-  /** Apron terminal drawn inside the hall: rooms, plaster, glass, signs, desks. */
+  /** Metre-scale hall. Nothing under this node is scaled away from 1. */
+  readonly hallRoot = new THREE.Group()
+  /** Kept empty. The apron terminal picture is not parented into the hall. */
   private interiorGroup = new THREE.Group()
-  private interior: TerminalBuilding | null = null
-  private interiorFit: HallFit | null = null
   private roomPlan: RoomPlan | null = null
-  private interiorKey = ''
-  private interiorMs = 0
-  /** Last hall-camera pose passed into the interior. A match plus a settled building skips the step. */
-  private interiorPose = ''
   private fadeCamKey = ''
   private hotspotSig = ''
   private overlaySig = ''
-  private readonly apronCamPos = new THREE.Vector3()
-  private readonly routeCache = new Map<string, { x: number; z: number }[] | null>()
-  private terminalTextures: WorldTextures | null = null
-  private terminalShared: TerminalShared | null = null
   private floor: THREE.Mesh
   /** Shared polished-floor map. Room slabs tint it; they do not own it. */
   private terrazzo: THREE.Texture
@@ -259,7 +207,6 @@ export class HallWorld {
   private followSnapDist = false
   /** Instanced food, seat, and decor meshes. Rebuilt with the room hash. */
   kitGroup = new THREE.Group()
-  private supply = new SupplyCartLayer()
   private walkGroup = new THREE.Group()
   private walkSig = ''
   private walkSlats: { mesh: THREE.Mesh; originX: number; originZ: number; rot: number }[] = []
@@ -279,6 +226,8 @@ export class HallWorld {
   /** Passenger under the cursor (client pixels), or null. Drives the hover tooltip. */
   onWalkerHover: ((hover: { id: string; sx: number; sy: number } | null) => void) | null = null
   private walkerHover: { id: string; sx: number; sy: number } | null = null
+  /** Presentation seconds, advanced one frame at a time. Camera ease only. */
+  private presentSec = 0
   private hoverAt = 0
   private hover: HallHover | null = null
   private queueGroup = new THREE.Group()
@@ -302,8 +251,6 @@ export class HallWorld {
       depthWrite: false,
     }),
   )
-  private fidsAt = 0
-  private frameQueues = new Map<string, QueueSlot>()
   private frameLines: { node: HallNode; x: number; z: number; x2: number; z2: number }[] = []
   private floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private offGfx: () => void = () => {}
@@ -363,46 +310,45 @@ export class HallWorld {
     this.floor.rotation.x = -Math.PI / 2
     this.floor.position.y = 0
     this.floor.receiveShadow = true
-    this.scene.add(this.floor)
+    this.hallRoot.name = 'hall-root'
+    this.scene.add(this.hallRoot)
+    this.hallRoot.add(this.floor)
 
     const before = this.makeLabel('BEFORE SECURITY', '#8ee0a8')
     before.position.set(-HALL_W * 0.28, 0.08, -HALL_D * 0.42)
     before.rotation.x = -Math.PI / 2
     this.beforeLabel = before
-    this.scene.add(before)
+    this.hallRoot.add(before)
     const after = this.makeLabel('AFTER SECURITY', '#7ec3e8')
     after.position.set(HALL_W * 0.28, 0.08, -HALL_D * 0.42)
     after.rotation.x = -Math.PI / 2
     this.afterLabel = after
-    this.scene.add(after)
+    this.hallRoot.add(after)
 
-    this.scene.add(this.roomGroup)
+    this.hallRoot.add(this.roomGroup)
     this.interiorEdit.name = 'interior-edit'
-    this.scene.add(this.interiorEdit)
-    this.scene.add(this.interiorGhost)
+    this.hallRoot.add(this.interiorEdit)
+    this.hallRoot.add(this.interiorGhost)
     this.interiorGroup.name = 'hall-rooms'
-    this.scene.add(this.interiorGroup)
+    this.hallRoot.add(this.interiorGroup)
     this.zoneTint.visible = false
-    this.scene.add(this.zoneTint)
-    this.scene.add(this.kitGroup)
-    this.scene.add(this.supply.counters)
-    this.scene.add(this.supply.group)
-    this.scene.add(this.walkGroup)
-    this.scene.add(this.litter.group)
-    this.scene.add(this.guestGroup)
-    this.scene.add(this.figures.group)
-    this.scene.add(this.navCrowd.group)
+    this.hallRoot.add(this.zoneTint)
+    this.kitGroup.name = 'hall-kit'
+    this.hallRoot.add(this.kitGroup)
+    this.hallRoot.add(this.walkGroup)
+    this.hallRoot.add(this.litter.group)
+    this.hallRoot.add(this.navCrowd.group)
     this.navCrowd.skipRole = HallServiceFx.drawsRole
     this.leaseGroup.name = 'hall-lease-marks'
-    this.scene.add(this.serviceFx.group)
-    this.scene.add(this.leaseGroup)
+    this.hallRoot.add(this.serviceFx.group)
+    this.hallRoot.add(this.leaseGroup)
     this.overlay.visible = false
     this.scene.add(this.overlay)
     this.scene.add(this.hotspotGroup)
     this.scene.add(this.queueGroup)
     this.ghostPlate.visible = false
     this.scene.add(this.ghostPlate)
-    this.scene.add(this.bagGroup)
+    this.hallRoot.add(this.bagGroup)
 
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointermove', this.onMove)
@@ -545,8 +491,8 @@ export class HallWorld {
       this.setWalkerHover(null)
       return
     }
-    const now = performance.now()
-    if (now - this.hoverAt < HALL_WALKER_PICK.hoverEveryMs) return
+    const now = this.presentSec
+    if (now - this.hoverAt < HALL_WALKER_PICK.hoverEveryMs / 1000) return
     this.hoverAt = now
     const id = this.pickWalker(e.clientX, e.clientY)
     this.setWalkerHover(id ? { id, sx: e.clientX, sy: e.clientY } : null)
@@ -639,13 +585,10 @@ export class HallWorld {
     }
     const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
     const queueHits = this.ray.intersectObjects(this.queueGroup.children, true)
-    const roomHits = this.ray.intersectObjects(this.roomGroup.children, true)
-    const bodyHits = this.ray.intersectObject(this.figures.torso, false)
-    const hits = this.ray.intersectObjects(this.guestGroup.children, true)
+    const roomHits = this.ray.intersectObjects([...this.roomGroup.children, ...this.kitGroup.children], true)
     const spot = spotHits[0]
-    const person = bodyHits[0] && (!hits[0] || bodyHits[0].distance <= hits[0].distance) ? bodyHits[0] : hits[0]
     // Nav-grid walkers are instanced: pick the one nearest where the ray crosses body height.
-    if (!person && this.game.hallNav.live) {
+    if (this.game.hallNav.live) {
       const r = this.ray.ray
       const t = Math.abs(r.direction.y) > 1e-6 ? (HALL_WALKER_PICK.bodyY - r.origin.y) / r.direction.y : -1
       const id = t > 0 ? this.game.hallNav.pickAt(r.origin.x + r.direction.x * t, r.origin.z + r.direction.z * t, HALL_WALKER_PICK.radiusM) : null
@@ -655,7 +598,7 @@ export class HallWorld {
       }
     }
     const fidsHit = this.ray.intersectObjects(this.interiorGroup.children, true).find((hit) => objectIsFidsBoard(hit.object))
-    if (fidsHit && (!person || fidsHit.distance <= person.distance)) {
+    if (fidsHit) {
       setFidsOpen(true)
       return
     }
@@ -667,7 +610,7 @@ export class HallWorld {
       }
       return false
     })
-    if (facilityHit && (!person || facilityHit.distance <= person.distance)) {
+    if (facilityHit) {
       let obj: THREE.Object3D | null = facilityHit.object
       while (obj) {
         if (typeof obj.userData.facilityId === 'string') {
@@ -677,7 +620,7 @@ export class HallWorld {
         obj = obj.parent
       }
     }
-    if (spot && (!person || spot.distance <= person.distance)) {
+    if (spot) {
       let obj: THREE.Object3D | null = spot.object
       while (obj) {
         if (typeof obj.userData.infoId === 'string') {
@@ -687,23 +630,7 @@ export class HallWorld {
         obj = obj.parent
       }
     }
-    let id: string | null = null
-    const body = bodyHits[0]
-    if (body && (!hits[0] || body.distance <= hits[0].distance)) {
-      id = this.figures.guestId(body.instanceId ?? -1)
-    }
-    for (const hit of id ? [] : hits) {
-      let obj: THREE.Object3D | null = hit.object
-      while (obj) {
-        if (typeof obj.userData.guestId === 'string') {
-          id = obj.userData.guestId
-          break
-        }
-        obj = obj.parent
-      }
-      if (id) break
-    }
-    this.game.selectGuest(id)
+    this.game.selectGuest(null)
   }
 
   private assignHit(): { kind: 'desk' | 'lane' | 'gate' | 'lounge' | 'hangar' | 'vehicle'; id: string } | null {
@@ -755,30 +682,6 @@ export class HallWorld {
     return cellCenterInFloor(c, r, this.game?.activeHall()?.floorExtra, cols, rows)
   }
 
-  /** Grow the pick floor and pull the camera back when the shell is larger than the stamp. */
-  private frameShell(bounds: { minX: number; maxX: number; minZ: number; maxZ: number }) {
-    this.shellBounds = bounds
-    const minX = Math.min(bounds.minX, -HALL_W / 2)
-    const maxX = Math.max(bounds.maxX, HALL_W / 2)
-    const minZ = Math.min(bounds.minZ, -HALL_D / 2)
-    const maxZ = Math.max(bounds.maxZ, HALL_D / 2)
-    const w = maxX - minX + 8
-    const d = maxZ - minZ + 8
-    this.floor.geometry.dispose()
-    this.floor.geometry = new THREE.PlaneGeometry(w, d)
-    this.floor.position.x = (minX + maxX) / 2
-    this.floor.position.z = (minZ + maxZ) / 2
-    const span = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ)
-    const base = Math.max(HALL_W, HALL_D) - 2.2
-    const grow = Math.max(1, span / base)
-    this.maxDist = Math.max(HALL_CAM_MAX_DIST, HALL_CAM_DIST * grow * 1.15)
-    if (grow > 1.05) this.dist = Math.min(this.maxDist, HALL_CAM_DIST * grow)
-    const fog = this.scene.fog as THREE.Fog
-    fog.near = 120 * grow
-    fog.far = 240 * grow
-    this.placeCam()
-  }
-
   /** Snap the cursor to a hall cell and re-check the placement. */
   private trackHover(e: PointerEvent) {
     const game = this.game
@@ -803,7 +706,7 @@ export class HallWorld {
         const placeDef = this.build.kind === 'place' ? this.build.def : null
         const moveDef = this.build.kind === 'move' ? this.build.def : null
         const footDef = placeDef ?? (moveId ? moveDef : null)
-        const useFoot = Boolean(footDef && footprintSpec(footDef) && this.roomPlan && this.interiorFit)
+        const useFoot = Boolean(footDef && footprintSpec(footDef) && this.roomPlan)
         const stamped = footprintHit(items, hit.x, hit.z) as PlacedItem | null
         const cellTarget = loose[loose.length - 1] ?? (picking ? (inCell[inCell.length - 1] ?? null) : null)
         next = {
@@ -848,7 +751,7 @@ export class HallWorld {
       return
     }
     if (this.build.kind === 'place') {
-      const foot = footprintSpec(this.build.def) && this.roomPlan && this.interiorFit
+      const foot = footprintSpec(this.build.def) && this.roomPlan
       const placed = foot
         ? game.placeHallFootprint(this.build.def, hover.hx, hover.hz, this.build.rot)
         : game.placeHallItemAt(this.build.def, hover.c, hover.r, this.build.rot)
@@ -857,7 +760,7 @@ export class HallWorld {
       if (!this.build.itemId) {
         if (hover.target) this.onMovePick?.(hover.target.id, hover.target.def)
       } else {
-        const foot = Boolean(this.build.def && footprintSpec(this.build.def) && this.roomPlan && this.interiorFit)
+        const foot = Boolean(this.build.def && footprintSpec(this.build.def) && this.roomPlan)
         const moved = foot
           ? game.moveHallFootprint(this.build.itemId, hover.hx, hover.hz, this.build.rot)
           : game.moveHallItem(this.build.itemId, hover.c, hover.r, this.build.rot)
@@ -903,7 +806,7 @@ export class HallWorld {
     const items = (game.activeHall()?.items ?? []) as PlacedItem[]
     const carried = mode.kind === 'move' ? mode.itemId : null
     const rot = mode.kind === 'move' || mode.kind === 'place' ? mode.rot : 0
-    const stamp = footprintSpec(def) && this.roomPlan && this.interiorFit ? stampFrom(def, hover.hx, hover.hz, rot) : null
+    const stamp = footprintSpec(def) && this.roomPlan ? stampFrom(def, hover.hx, hover.hz, rot) : null
     const loadItems = carried ? items.filter((it) => it.id !== carried) : items
     const start = Math.min(3, cellLoad(loadItems, hover.c, hover.r))
     const at = stamp
@@ -920,7 +823,9 @@ export class HallWorld {
     this.ghost.rotation.y = (rot * Math.PI) / 2
     this.ghost.visible = true
     if (stamp) {
-      this.ghostPlate.scale.set(stamp.w, 1, stamp.d)
+      this.ghostPlate.geometry.dispose()
+      this.ghostPlate.geometry = new THREE.BoxGeometry(Math.max(0.2, stamp.w), 0.08, Math.max(0.2, stamp.d))
+      this.ghostPlate.scale.set(1, 1, 1)
       this.ghostPlate.position.set(stamp.hx, 0.16, stamp.hz)
       ;(this.ghostPlate.material as THREE.MeshBasicMaterial).color.set(color)
       this.ghostPlate.visible = true
@@ -942,8 +847,8 @@ export class HallWorld {
 
   /** Ease the pivot toward the last "Show me" / "Pan to problem" hall cell. */
   private easeToGoal(game: Game) {
-    const now = performance.now()
-    const dt = this.goalFrame ? Math.min(0.1, (now - this.goalFrame) / 1000) : 0
+    const now = this.presentSec
+    const dt = this.goalFrame ? Math.min(0.1, now - this.goalFrame) : 0
     this.goalFrame = now
     const g = game.camGoal
     if (g && g.view === 'hall' && g.seq !== this.goalSeq) {
@@ -987,42 +892,10 @@ export class HallWorld {
     }
   }
 
-  /** High / Ultra: a detailed jet bridge on the airside gate door. Kept out of roomGroup so its shared materials survive rebuilds. */
-  private jetBridge: THREE.Group | null = null
-  private placeJetBridge(x: number, z: number, yaw = 0) {
-    if (!hiDetailOn(graphicsQuality())) return
-    if (!this.jetBridge) {
-      capTerminalPropMetal(0.4)
-      this.jetBridge = buildTerminalProps([{ type: 'jet_bridge', x: 0, z: 0, yaw: Math.PI / 2 }])
-      this.jetBridge.name = 'hall-jet-bridge'
-      this.scene.add(this.jetBridge)
-    }
-    this.jetBridge.rotation.y = yaw
-    const out = 2.2
-    this.jetBridge.position.set(x + Math.cos(yaw) * out, 0, z - Math.sin(yaw) * out)
-    this.jetBridge.visible = true
-    setNearPropDetail(this.jetBridge, this.dist <= HALL_NEAR_DIST)
-  }
-
   private box(w: number, h: number, d: number, color: string, x: number, y: number, z: number, mat?: THREE.Material) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat ?? new THREE.MeshLambertMaterial({ color }))
     mesh.position.set(x, y, z)
     this.roomGroup.add(mesh)
-  }
-
-  /**
-   * Dock the hall's jet bridge on the same airside bay the exterior uses.
-   * The curtain wall itself is the TerminalBuilding shell, already in the hall frame.
-   */
-  private dockAirsideBridge() {
-    const building = this.interior
-    const fit = this.interiorFit
-    if (!building || !fit) return
-    const gates = facadeOpenings(building.info).filter((o) => o.kind === 'gate')
-    if (!gates.length) return
-    const opening = gates[Math.floor(gates.length / 2)]
-    const hall = apronToHall(opening.x, opening.z, fit)
-    this.placeJetBridge(hall.x, hall.z, outwardYaw(opening.side))
   }
 
   /** Zone boxes, the carousel and the old columns draw only when the room plan is off. */
@@ -1083,8 +956,7 @@ export class HallWorld {
     const eastHalf = (HALL_D - door) / 2
     this.box(t, h, eastHalf, wall, halfW, y, -halfD + eastHalf / 2 - 1.2)
     this.box(t, h, eastHalf * 0.72, wall, halfW, y, eastGapZ + door / 2 + (eastHalf * 0.72) / 2)
-    this.placeJetBridge(halfW, eastGapZ)
-    // Cornice only — no roof slab.
+    // Cornice only — no roof slab. The jet bridge stays on the apron.
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, -halfD)
     this.box(HALL_W + 0.6, 0.18, 0.5, '#e7eee9', 0, h, halfD)
     // Columns down the concourse, clear of the doors and the centre walk.
@@ -1142,7 +1014,6 @@ export class HallWorld {
     const hash = `${open}|${choke}|${fit?.tier ?? 0}|${paint}|${stuff}|${walk}|${rooms}`
     if (hash === this.roomHash) return
     this.roomHash = hash
-    if (this.jetBridge) this.jetBridge.visible = false
     this.roomGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       if (mesh.geometry) mesh.geometry.dispose()
@@ -1153,15 +1024,7 @@ export class HallWorld {
     this.roomGroup.clear()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    const hasRooms = this.roomPlan != null && this.interiorFit != null
-    if (hasRooms) this.dockAirsideBridge()
-    else this.buildShell(zones as ZoneId[][], nav, false)
-
-    if (hasRooms) {
-      this.clearKit()
-      this.applyRoomLayer()
-      return
-    }
+    this.buildShell(zones as ZoneId[][], nav, false)
 
     const cw = HALL_W / cols
     const rh = HALL_D / rows
@@ -1195,22 +1058,16 @@ export class HallWorld {
     }
     this.fadeCamKey = ''
 
-    const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows)
+    const laid = layoutItems((fit?.items ?? []) as PlacedItem[], cols, rows).filter(({ item }) =>
+      hallPropAllowed(item.def, zones[item.r]?.[item.c] ?? null),
+    )
     for (const { item: it, x, z } of laid) {
-      if (hasKitMesh(it.def)) continue
+      if (hasKitMesh(it.def) || hallItemProp(it.def)) continue
       const worn = it.wear >= 55 ? '#8a5a4a' : (ROOM_COLOR[it.def as HallNode] ?? '#e8eef2')
       const tall = String(it.def).includes('security') ? 1.5 : 0.7
       this.box(1.4, tall, 1.1, worn, x, tall / 2 + 0.05, z)
     }
-    for (const { item: it, x, z } of laid) {
-      const pick = new THREE.Mesh(
-        new THREE.BoxGeometry(1.8, 1.6, 1.4),
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-      )
-      pick.position.set(x, 0.9, z)
-      pick.userData.facilityId = `item:${it.id}`
-      this.roomGroup.add(pick)
-    }
+    for (const { item: it, x, z } of laid) this.roomGroup.add(hallPickMesh(it, x, z))
     this.clearKit()
     if (hiDetailOn(graphicsQuality())) {
       const { group, rest } = buildHallDetail(laid, cols, rows)
@@ -1225,436 +1082,15 @@ export class HallWorld {
   }
 
   /**
-   * Draw the active hall's planTerminal rooms in the hall frame.
-   * Decorative walkers stay at 0; the sim's hallGuests are the crowd.
+   * The apron terminal picture is not drawn in the hall.
+   * The walk's layout is the picture, in metres, under hall-root.
    */
-  private syncInterior(game: Game) {
-    const hall = game.activeHall()
-    const origin = hall?.origin ?? null
-    const hit = matchTerminal(terminals(game), origin)
-    const span = hit ? `${hit.info.cluster.maxC - hit.info.cluster.minC}x${hit.info.cluster.maxR - hit.info.cluster.minR}` : ''
-    const key = hit ? `${game.mapRev}|${hit.index}|${hit.info.cluster.minC},${hit.info.cluster.minR}|${span}` : ''
-    if (key !== this.interiorKey) {
-      this.interiorKey = key
-      this.clearInterior()
-      this.routeCache.clear()
-      if (hit) {
-        if (!this.terminalShared) {
-          this.terminalTextures = makeTextures(64, 4)
-          this.terminalShared = makeTerminalShared(this.terminalTextures, baseLevel(graphicsQuality()))
-        }
-        const anchor = hall?.origin ? stampAnchor(hall.origin, hall.premade) : undefined
-        const fit = hallFitFor(hit.info, undefined, anchor)
-        this.frameShell(shellHallBounds(hit.info, fit))
-        const building = new TerminalBuilding(hit.info, this.terminalShared, {
-          density: 1,
-          walkersPerCell: 0,
-          index: hit.index,
-        })
-        building.root.position.set(-fit.cx, 0, -fit.cz)
-        building.propFade = 1
-        building.lifeFade = 1
-        this.interiorGroup.scale.setScalar(fit.scale)
-        this.interiorGroup.position.y = -FLOOR_Y * fit.scale
-        this.interiorGroup.add(building.root)
-        this.interior = building
-        this.interiorFit = fit
-        this.roomPlan = building.rooms
-        this.interiorPose = ''
-      }
-    }
-    this.stepInterior()
-  }
-
-  /** Cutaway follows the hall camera, pulled in so near walls drop. The shell stays: it is the exterior. */
-  private stepInterior() {
-    const building = this.interior
-    const fit = this.interiorFit
-    if (!building || !fit) return
-    const now = performance.now()
-    const dt = this.interiorMs ? Math.min(0.05, (now - this.interiorMs) / 1000) : 0.016
-    this.interiorMs = now
-    const cam = this.camera.position
-    const local = hallToApron(cam.x, cam.z, fit)
-    let x = local.x
-    let z = local.z
-    const dx = x - building.center.x
-    const dz = z - building.center.z
-    const flat = Math.hypot(dx, dz) || 1
-    const maxFlat = 10
-    if (flat > maxFlat) {
-      x = building.center.x + (dx / flat) * maxFlat
-      z = building.center.z + (dz / flat) * maxFlat
-    }
-    const y = Math.max(cam.y / fit.scale, ROOF_Y + WORLD_PER_METER * 2)
-    const ceilingY = (ROOF_Y - FLOOR_Y) * fit.scale
-    const ceiling = cam.y < ceilingY
-    const pose = `${x.toFixed(2)}|${y.toFixed(2)}|${z.toFixed(2)}|${ceiling ? 1 : 0}`
-    if (pose === this.interiorPose && building.settled()) return
-    this.interiorPose = pose
-    this.apronCamPos.set(x, y, z)
-    building.ceilingForce = ceiling
-    building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false, this.camera)
-    if (this.jetBridge) setNearPropDetail(this.jetBridge, this.dist <= HALL_NEAR_DIST)
-  }
-
-  private clearInterior() {
-    this.interior?.dispose()
-    this.interior = null
-    this.interiorFit = null
-    this.roomPlan = null
-    this.interiorGroup.clear()
+  private syncInterior() {
     this.interiorGroup.scale.set(1, 1, 1)
-    this.interiorGroup.position.y = 0
+    this.interiorGroup.position.set(0, 0, 0)
+    if (this.roomPlan) this.roomPlan = null
   }
 
-  /** Rooms, walls and walker count for the fitted interior. Null until a hall has a terminal. */
-  interiorCounts() {
-    const counts = this.interior?.counts() ?? null
-    return counts ? { ...counts, figures: this.guests.size } : null
-  }
-
-  private sharedMat(kind: 'lambert' | 'basic', color: string, glow = 0): THREE.Material {
-    const key = `${kind}|${color}|${glow}`
-    const hit = this.figMats.get(key)
-    if (hit) return hit
-    const mat =
-      kind === 'basic'
-        ? new THREE.MeshBasicMaterial({ color, fog: false })
-        : new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: glow })
-    this.figMats.set(key, mat)
-    return mat
-  }
-
-  /** Head, torso, arms, and two legs. Geometries and clothing materials are shared. */
-  private buildFigure(id: string, color: string): THREE.Group {
-    const root = new THREE.Group()
-    root.userData.guestId = id
-    const salt = guestSalt(id)
-    const skin = FIGURE_SKINS[salt % FIGURE_SKINS.length]
-    const trousers = FIGURE_TROUSERS[(salt >>> 4) % FIGURE_TROUSERS.length]
-
-    const left = new THREE.Group()
-    left.position.set(-0.11, 0.86, 0)
-    const leftLeg = new THREE.Object3D()
-    leftLeg.position.y = -0.43
-    left.add(leftLeg)
-    root.add(left)
-
-    const right = new THREE.Group()
-    right.position.set(0.11, 0.86, 0)
-    const rightLeg = new THREE.Object3D()
-    rightLeg.position.y = -0.43
-    right.add(rightLeg)
-    root.add(right)
-    root.userData.leftLeg = left
-    root.userData.rightLeg = right
-    root.userData.legL = leftLeg
-    root.userData.legR = rightLeg
-
-    const torso = new THREE.Object3D()
-    torso.position.y = 1.13
-    root.add(torso)
-    root.userData.torso = torso
-    const armL = new THREE.Group()
-    armL.position.set(-0.27, 1.38, 0)
-    const armMeshL = new THREE.Object3D()
-    armMeshL.position.y = -0.24
-    armL.add(armMeshL)
-    root.add(armL)
-    const armR = new THREE.Group()
-    armR.position.set(0.27, 1.38, 0)
-    const armMeshR = new THREE.Object3D()
-    armMeshR.position.y = -0.24
-    armR.add(armMeshR)
-    root.add(armR)
-    root.userData.leftArm = armL
-    root.userData.rightArm = armR
-    root.userData.armL = armMeshL
-    root.userData.armR = armMeshR
-
-    const head = new THREE.Object3D()
-    head.position.y = 1.58
-    root.add(head)
-    root.userData.head = head
-    root.userData.shirtColor = new THREE.Color(color)
-    root.userData.trouserColor = new THREE.Color(trousers)
-    root.userData.skinColor = new THREE.Color(skin)
-
-    const build = 0.9 + (salt % 6) * 0.025
-    const width = 0.9 + ((salt >>> 8) % 5) * 0.04
-    root.userData.bodyH = build
-    root.userData.bodyW = width
-    const luggage = (salt >>> 16) % 5
-    root.userData.luggage = luggage === 0 ? 'none' : luggage < 3 ? 'roller' : 'backpack'
-    const pin = new THREE.Mesh(this.figPin, this.sharedMat('lambert', '#e23b2f', 0.2))
-    pin.position.y = 1.98
-    root.add(pin)
-    root.userData.pin = pin
-
-    const carry = new THREE.Object3D()
-    if (root.userData.luggage === 'backpack') {
-      carry.position.set(0, 1.22, -0.22)
-      carry.scale.set(1.15, 0.75, 0.5)
-    } else {
-      carry.position.set(0.36, 0.36, 0.16)
-    }
-    root.add(carry)
-    root.userData.carry = carry
-    const bags = ['#1f2937', '#7f1d1d', '#1e3a8a', '#065f46', '#9a3412']
-    root.userData.bagColor = new THREE.Color(bags[salt % bags.length])
-
-    const checked = new THREE.Mesh(this.figBag, this.sharedMat('basic', '#ffb703'))
-    checked.position.set(-0.32, 0.22, 0.04)
-    root.add(checked)
-    root.userData.checked = checked
-
-    const snack = new THREE.Mesh(this.figSnack, this.sharedMat('lambert', '#f4efe4', 0.15))
-    snack.position.set(0.28, 1.08, 0.16)
-    root.add(snack)
-    root.userData.snack = snack
-    return root
-  }
-
-  private disposeFigure(root: THREE.Object3D) {
-    root.traverse((obj) => {
-      const sprite = obj as THREE.Sprite
-      if (!sprite.isSprite) return
-      const mat = sprite.material
-      mat.map?.dispose()
-      mat.dispose()
-    })
-  }
-
-  syncGuests(game: Game) {
-    // Departures and arrivals on the live walk are the nav-grid crowd (one
-    // queue per desk or lane, plus the serve pose). Doorway figures stay for
-    // everyone the walk does not draw, so the two pictures do not stack.
-    const nav = game.hallNav
-    const routed = this.roomPlan != null && this.interiorFit != null
-    const drawn = nav.live
-      ? game.hallGuests.filter((g) => g.job !== 'depart' && !nav.drawsArrival(g.id))
-      : game.hallGuests
-    const live = new Set(drawn.map((g) => g.id))
-    for (const [id, mesh] of this.guests) {
-      if (!live.has(id)) {
-        this.guestGroup.remove(mesh)
-        this.disposeFigure(mesh)
-        this.guests.delete(id)
-      }
-    }
-    const pile = new Map<string, number>()
-    const figureDraws: FigureDraw[] = []
-    const zones = game.activeHall()?.zones ?? []
-    const cols = zones[0]?.length || GRID_C
-    const rows = zones.length || GRID_R
-    for (const g of drawn) {
-      if (g.releaseAt != null && g.releaseAt > game.clock) continue
-      let mesh = this.guests.get(g.id)
-      if (!mesh) {
-        mesh = this.buildFigure(g.id, g.color)
-        this.guests.set(g.id, mesh)
-        this.guestGroup.add(mesh)
-      }
-      const node = g.path.length ? g.path[Math.min(g.seg, g.path.length - 1)] : g.node
-      const next = g.path.length && g.seg < g.path.length - 1 ? g.path[g.seg + 1] : null
-      const a = nodeWorld(node)
-      const b = next ? nodeWorld(next) : a
-      const t = next ? g.t : 0
-      const key = `${node}:${next ?? ''}`
-      const slot = pile.get(key) ?? 0
-      pile.set(key, slot + 1)
-      const pose =
-        routed && this.roomPlan && this.interiorFit
-          ? poseOnPlan(
-              this.roomPlan,
-              {
-                id: g.id,
-                node,
-                job: g.job,
-                clearedSec: g.clearedSec,
-                wx: g.wx,
-                wz: g.wz,
-                t: g.t,
-                wyaw: g.wyaw,
-                route: g.route,
-              },
-              next,
-              this.routeCache,
-            )
-          : null
-      let x = a.x + (b.x - a.x) * t
-      let z = a.z + (b.z - a.z) * t
-      if (pose && this.interiorFit) {
-        const hall = apronToHall(pose.x, pose.z, this.interiorFit)
-        x = hall.x
-        z = hall.z
-        if (next && !pose.fromSim) {
-          const lane = (g.lane ?? guestLane(g.id)) * 0.28
-          x += -Math.cos(pose.yaw) * lane
-          z += Math.sin(pose.yaw) * lane
-        }
-        mesh.rotation.y = pose.yaw + (g.previewDir === -1 ? Math.PI : 0)
-      } else if (next) {
-        const dx = b.x - a.x
-        const dz = b.z - a.z
-        const len = Math.hypot(dx, dz) || 1
-        const lane = g.lane ?? guestLane(g.id)
-        x += (-dz / len) * lane
-        z += (dx / len) * lane
-        mesh.rotation.y = Math.atan2(dx, dz) + (g.previewDir === -1 ? Math.PI : 0)
-      } else {
-        x += (slot % 4) * 0.48 - 0.72
-        z += Math.floor(slot / 4) * 0.48
-      }
-      const queued = this.frameQueues.get(g.id)
-      if (queued) {
-        x = queued.x
-        z = queued.z
-        mesh.rotation.y = queued.yaw
-      }
-      const desk = g.atBagDesk ? nodeWorld('claim') : null
-      mesh.position.set(desk ? desk.x - 3.4 + (slot % 3) * 0.7 : x, 0, desk ? desk.z + 2.4 : z)
-      const figure = this.interiorFit ? hallGuestScale(this.interiorFit) : 1
-      const bodyH = (mesh.userData.bodyH as number) || 1
-      const bodyW = (mesh.userData.bodyW as number) || 1
-      mesh.scale.set(figure * bodyW, figure * bodyH, figure * bodyW)
-      if (g.meal) {
-        // Walk the tray from the counter to the booked seat, then sit: lower and squat.
-        const seat = this.cellPos(g.meal.c, g.meal.r, cols, rows)
-        const sx = seat.x + (g.meal.slot % 2) * 0.9 - 0.45
-        const sz = seat.z + Math.floor(g.meal.slot / 2) * 0.9 - 0.45
-        const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
-        mesh.position.x += (sx - mesh.position.x) * k
-        mesh.position.z += (sz - mesh.position.z) * k
-        if (g.seated) mesh.scale.y = figure * bodyH * 0.72
-      }
-      const walking = Boolean(next) && !g.seated
-      const phase = (guestSalt(g.id) % 628) / 100
-      const swing = walking ? Math.sin(game.clock * 6.5 + phase) * 0.65 : Math.sin(game.clock * 1.25 + phase) * 0.08
-      const left = mesh.userData.leftLeg as THREE.Object3D
-      const right = mesh.userData.rightLeg as THREE.Object3D
-      left.rotation.x = swing
-      right.rotation.x = -swing
-      const leftArm = mesh.userData.leftArm as THREE.Object3D | undefined
-      const rightArm = mesh.userData.rightArm as THREE.Object3D | undefined
-      if (leftArm && rightArm) {
-        leftArm.rotation.x = -swing * 0.65
-        rightArm.rotation.x = swing * 0.65
-      }
-      mesh.position.y = Math.abs(Math.sin(game.clock * (walking ? 6.5 : 1.25) + phase)) * (walking ? 0.045 : 0.012)
-      const pin = mesh.userData.pin as THREE.Mesh
-      pin.visible = Boolean(g.lost)
-      const checked = mesh.userData.checked as THREE.Mesh
-      checked.visible = Boolean(g.hasChecked)
-      const snack = mesh.userData.snack as THREE.Mesh
-      snack.visible = Boolean(g.snack)
-      if (g.snack) snack.scale.set(g.snack.kind === 'meal' ? 1.8 : 1, g.snack.kind === 'meal' ? 0.6 : 1, 1)
-      this.syncBubble(mesh, g.thought)
-      mesh.updateWorldMatrix(true, true)
-      figureDraws.push({
-        id: g.id,
-        legL: mesh.userData.legL as THREE.Object3D,
-        legR: mesh.userData.legR as THREE.Object3D,
-        armL: mesh.userData.armL as THREE.Object3D,
-        armR: mesh.userData.armR as THREE.Object3D,
-        torso: mesh.userData.torso as THREE.Object3D,
-        head: mesh.userData.head as THREE.Object3D,
-        carry: mesh.userData.carry as THREE.Object3D,
-        showCarry: g.carryOn !== false && mesh.userData.luggage !== 'none',
-        bag: mesh.userData.bagColor as THREE.Color,
-        shirt: mesh.userData.shirtColor as THREE.Color,
-        trousers: mesh.userData.trouserColor as THREE.Color,
-        skin: mesh.userData.skinColor as THREE.Color,
-      })
-    }
-    this.figures.write(figureDraws)
-  }
-
-  /** Walls and counters that sit in the lens fade instead of clipping the frame. */
-  private fadeNearShell() {
-    const cam = this.camera.position
-    const key = `${cam.x.toFixed(2)}|${cam.y.toFixed(2)}|${cam.z.toFixed(2)}`
-    if (key === this.fadeCamKey) return
-    this.fadeCamKey = key
-    const limit = HALL_OCCLUDE_M
-    this.roomGroup.traverse((obj) => {
-      const mesh = obj as THREE.Mesh
-      if (!mesh.isMesh) return
-      const geo = mesh.geometry as THREE.BoxGeometry
-      const h = geo.parameters?.height ?? 0
-      if (h < 0.5) return
-      const mat = mesh.material as THREE.MeshLambertMaterial
-      if (!mat || Array.isArray(mat) || !('opacity' in mat)) return
-      const d = mesh.position.distanceTo(cam)
-      if (d < limit) {
-        const opacity = Math.max(0.05, (d - HALL_CAM_NEAR) / (limit - HALL_CAM_NEAR))
-        mat.transparent = true
-        mat.opacity = opacity
-        mat.depthWrite = opacity > 0.85
-      } else if (mat.opacity !== 1 || mat.transparent) {
-        mat.opacity = 1
-        mat.transparent = false
-        mat.depthWrite = true
-      }
-    })
-  }
-
-  /** Wish line while they leave an empty counter. */
-  private syncBubble(mesh: THREE.Object3D, thought: string) {
-    const show = thought.startsWith('wish they') || thought.startsWith('Lost-bag')
-    let sprite = mesh.userData.bubble as THREE.Sprite | undefined
-    if (!show) {
-      if (sprite) sprite.visible = false
-      return
-    }
-    if (!sprite) {
-      const mat = new THREE.SpriteMaterial({ transparent: true, depthWrite: false })
-      sprite = new THREE.Sprite(mat)
-      sprite.position.set(0, 2.15, 0)
-      sprite.scale.set(2.8, 0.75, 1)
-      mesh.add(sprite)
-      mesh.userData.bubble = sprite
-    }
-    if (mesh.userData.bubbleText !== thought) {
-      const c = document.createElement('canvas')
-      c.width = 512
-      const ctx = c.getContext('2d')!
-      ctx.font = '700 36px sans-serif'
-      const words = thought.split(' ')
-      const lines: string[] = []
-      let line = ''
-      for (const word of words) {
-        const next = line ? `${line} ${word}` : word
-        if (ctx.measureText(next).width > 470 && line) {
-          lines.push(line)
-          line = word
-        } else line = next
-      }
-      if (line) lines.push(line)
-      const shown = lines.slice(0, 3)
-      c.height = 56 + shown.length * 52
-      ctx.font = '700 36px sans-serif'
-      ctx.fillStyle = 'rgba(255,255,255,0.94)'
-      ctx.fillRect(8, 10, 496, c.height - 20)
-      ctx.strokeStyle = '#1a2a32'
-      ctx.lineWidth = 6
-      ctx.strokeRect(8, 10, 496, c.height - 20)
-      ctx.fillStyle = '#1a2a32'
-      ctx.textAlign = 'center'
-      shown.forEach((row, i) => ctx.fillText(row, 256, 52 + i * 46))
-      const tex = new THREE.CanvasTexture(c)
-      tex.colorSpace = THREE.SRGBColorSpace
-      const mat = sprite.material as THREE.SpriteMaterial
-      mat.map?.dispose()
-      mat.map = tex
-      mat.needsUpdate = true
-      mesh.userData.bubbleText = thought
-      sprite.scale.set(3.4, 0.62 + shown.length * 0.42, 1)
-      sprite.position.y = 1.9 + shown.length * 0.28
-    }
-    sprite.visible = true
-  }
 
   private clearHotspots() {
     this.hotspotGroup.traverse((obj) => {
@@ -1668,32 +1104,11 @@ export class HallWorld {
   }
 
   /**
-   * People who have reached a desk stand in a spaced line. The badge count
-   * is the same set, painted red once it is long enough to be a bottleneck.
+   * Queue lines are the walk's own lines. The fitted apron plan no longer
+   * places a second set of people in the hall.
    */
-  private buildFrameQueues(game: Game) {
-    this.frameQueues.clear()
+  private buildFrameQueues(_game: Game) {
     this.frameLines = []
-    const plan = this.roomPlan
-    const fit = this.interiorFit
-    if (!plan || !fit) return
-    const items = game.activeHall()?.items ?? []
-    const nodes: HallNode[] = ['checkin', 'security', 'bathroom', 'food', 'shop', 'gate']
-    for (const node of nodes) {
-      const people = queueOrder(
-        game.hallGuests.filter((g) => standingInQueue(g, node, game.clock)),
-      )
-      if (!people.length) continue
-      const anchor = queueAnchor(plan, fit, items, node)
-      if (!anchor) continue
-      const slots = slotsAlong(anchor, people.length, PLAY_TUNING.queueSpacingM)
-      people.forEach((g, i) => {
-        const slot = slots[i]
-        if (slot) this.frameQueues.set(g.id, slot)
-      })
-      const tail = slots[slots.length - 1]
-      if (tail) this.frameLines.push({ node, x: anchor.x, z: anchor.z, x2: tail.x, z2: tail.z })
-    }
   }
 
   /** Queue counts float over the desks. Red means the line is a bottleneck. */
@@ -1952,18 +1367,43 @@ export class HallWorld {
     }
   }
 
+  /** Walls and counters that sit in the lens fade instead of clipping the frame. */
+  private fadeNearShell() {
+    const cam = this.camera.position
+    const key = `${cam.x.toFixed(2)}|${cam.y.toFixed(2)}|${cam.z.toFixed(2)}`
+    if (key === this.fadeCamKey) return
+    this.fadeCamKey = key
+    const limit = HALL_OCCLUDE_M
+    this.roomGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (!mesh.isMesh) return
+      const geo = mesh.geometry as THREE.BoxGeometry
+      const h = geo.parameters?.height ?? 0
+      if (h < 0.5) return
+      const mat = mesh.material as THREE.MeshLambertMaterial
+      if (!mat || Array.isArray(mat) || !('opacity' in mat)) return
+      const d = mesh.position.distanceTo(cam)
+      if (d < limit) {
+        const opacity = Math.max(0.05, (d - HALL_CAM_NEAR) / (limit - HALL_CAM_NEAR))
+        mat.transparent = true
+        mat.opacity = opacity
+        mat.depthWrite = opacity > 0.85
+      } else if (mat.opacity !== 1 || mat.transparent) {
+        mat.opacity = 1
+        mat.transparent = false
+        mat.depthWrite = true
+      }
+    })
+  }
+
   render(game: Game) {
     this.game = game
-    if (this.terminalShared && isFidsSource(game)) {
-      const now = performance.now()
-      const dt = this.fidsAt ? Math.min(0.05, (now - this.fidsAt) / 1000) : 0
-      this.fidsAt = now
-      this.terminalShared.fids.tick(dt, boardSnapshot(game))
-    }
+    // Camera ease and hover keep moving while the sim is paused. Trays and belts read animSec.
+    this.presentSec += 1 / 60
     perfFrame()
     let t = perfStart()
     this.resize()
-    this.syncInterior(game)
+    this.syncInterior()
     this.rebuildRooms(game)
     syncInteriorEdit(this.interiorEdit, game.activeHall()?.interior, interiorEditSig(game.activeHall()?.interior), this.interiorSig)
     this.syncZoneTint(game)
@@ -1971,9 +1411,7 @@ export class HallWorld {
     else this.easeToGoal(game)
     this.syncWalkways(game)
     this.buildFrameQueues(game)
-    this.syncGuests(game)
-    // The room plan keeps its own counters. The walk's crowd still stands in
-    // those queues, so a staffed desk shows the line and the serve pose.
+    // The walk's crowd stands in the real queues, so a staffed desk shows the line and the serve pose.
     const walk = game.hallNav.live
     if (!walk) {
       this.navCrowd.group.visible = false
@@ -1985,10 +1423,10 @@ export class HallWorld {
       this.navDrawn = this.navCrowd.sync(game.hallNav, game.clock, this.camera)
       const crew = this.navCrowd.lastPoses()
       this.serviceFx.lanePlates = game.lanePlates()
+      this.serviceFx.restock = game.supplyCartPoses()
       this.serviceFx.sync(game.hallNav, game.clock, this.camera, game.deskBrands(), crew.poses, crew.total)
     }
     this.syncHallLeases(game)
-    this.supply.sync(game.supplyCartPoses())
     this.syncLuggage(game)
     this.syncOverlay(game)
     this.syncHotspots(game)
@@ -2046,7 +1484,7 @@ export class HallWorld {
         }
       }
     }
-    const phase = (performance.now() / 900) % 1
+    const phase = (readAnimSec() / 0.9) % 1
     this.walkSlats.forEach((slat, index) => {
       const along = (((phase + index / 4) % 1) - 0.5) * 4.6
       slat.mesh.position.x = slat.originX + Math.cos(slat.rot) * along
@@ -2068,7 +1506,7 @@ export class HallWorld {
     this.bagGroup.visible = true
     if (!this.luggageBuilt) this.buildLuggage()
     const motion = game.luggageMotion()
-    const spin = (motion.phase + performance.now() * 0.00012) % 1
+    const spin = (motion.phase + readAnimSec() * 0.12) % 1
     const checkin = nodeWorld('checkin')
     const bay = new THREE.Vector3(checkin.x - 6.2, 0, checkin.z + 4.4)
     const screen = new THREE.Vector3(
@@ -2140,12 +1578,10 @@ export class HallWorld {
     label.rotation.x = -Math.PI / 2
     this.bagGroup.add(label)
 
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(2.15, 0.16, 8, 28),
-      new THREE.MeshLambertMaterial({ color: '#3a4550' }),
-    )
-    ring.rotation.x = Math.PI / 2
-    ring.scale.set(1, 0.55, 1)
+    const ringGeo = new THREE.TorusGeometry(2.15, 0.16, 8, 28)
+    ringGeo.rotateX(Math.PI / 2)
+    ringGeo.scale(1, 0.55, 1)
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshLambertMaterial({ color: '#3a4550' }))
     ring.position.set(claim.x, 0.28, claim.z)
     this.bagGroup.add(ring)
 
@@ -2259,12 +1695,6 @@ export class HallWorld {
     this.clearKit()
     syncInteriorEdit(this.interiorEdit, undefined, 'dispose', this.interiorSig)
     syncInteriorGhost(this.interiorGhost, null, null, null)
-    if (this.jetBridge) for (const c of this.jetBridge.children) (c as THREE.InstancedMesh).dispose?.()
-    this.clearInterior()
-    if (this.terminalShared) disposeTerminalShared(this.terminalShared)
-    this.terminalTextures?.dispose()
-    this.terminalShared = null
-    this.terminalTextures = null
     for (const tex of this.queueTex.values()) tex.dispose()
     this.queueTex.clear()
     this.ghostMat.dispose()
@@ -2275,11 +1705,8 @@ export class HallWorld {
     this.litter.dispose()
     this.navCrowd.dispose()
     this.serviceFx.dispose()
-    this.figures.dispose()
     releasePerfOverlay()
     this.offGfx()
-    for (const mat of this.figMats.values()) mat.dispose()
-    this.figMats.clear()
     this.renderer.dispose()
   }
 }

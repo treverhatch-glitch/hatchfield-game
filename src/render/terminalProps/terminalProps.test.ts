@@ -57,9 +57,11 @@ describe('terminal props registry', () => {
     expect(g.getObjectByName('movingTrays')).toBeDefined()
     expect(buildTerminalProps([{ type: 'gate_seating', x: 0, z: 0 }]).getObjectByName('movingTrays')).toBeUndefined()
   })
-  it('round 4: check-in desks have staff and security lanes have officers', () => {
+  it('round 4: check-in desks have staff; security officers come from HallServiceFx, not the lane model', () => {
     expect(terminalProp('checkin_row').parts.some((p) => p.mat === 'skin' || p.mat === 'skinDark')).toBe(true)
-    for (const t of ['security_lane', 'security_lane_ct'] as const) expect(terminalProp(t).parts.filter((p) => p.mat === 'vestYellow').length, t).toBeGreaterThanOrEqual(3)
+    for (const t of ['security_lane', 'security_lane_ct', 'body_scanner'] as const) {
+      expect(terminalProp(t).parts.filter((p) => p.mat === 'vestYellow').length, t).toBe(0)
+    }
   })
   it('round 4: hall has recessed doors on quality high only', () => {
     expect(buildTerminalHall({ width: 60, depth: 36, height: 9, quality: 'high' }).getObjectByName('recessedDoors')).toBeDefined()

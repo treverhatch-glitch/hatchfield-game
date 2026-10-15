@@ -8,7 +8,7 @@ const CHROME_PATHS = [process.env.PLAYWRIGHT_CHROME, '/usr/bin/google-chrome', '
 )
 
 describe('hall restock screens', () => {
-  it('shows the cart docked at the counter and the out-of-stock chip', async () => {
+  it('shows the restock runner at the counter, no cart indoors, and the out-of-stock chip', async () => {
     const port = 46241
     const vite = spawn(process.execPath, [viteBin(), '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
       cwd: process.cwd(),
@@ -87,10 +87,12 @@ describe('hall restock screens', () => {
             dist: hall.dist,
             cam: [cam.x, cam.y, cam.z],
             names: hall.scene.children.map((c) => c.name),
-            carts: hall.scene.getObjectByName('supply-carts')?.children.length ?? 0,
+            carts: hall.scene.getObjectByName('supply-carts') ? 1 : 0,
+            staff: hall.serviceFx.stats.staff,
           }
         }, docked!)
-        expect(aimed.carts).toBeGreaterThan(0)
+        expect(aimed.carts).toBe(0)
+        expect(aimed.staff).toBeGreaterThan(0)
         expect(aimed.dist).toBe(9)
         await page.waitForTimeout(250)
         mkdirSync('docs/screens/g1', { recursive: true })
@@ -136,6 +138,7 @@ interface HallCam {
   placeCam: () => void
   camera: { position: { x: number; y: number; z: number } }
   scene: { children: { name: string }[]; getObjectByName: (name: string) => { children: unknown[] } | undefined }
+  serviceFx: { stats: { staff: number } }
 }
 
 function viteBin(): string {

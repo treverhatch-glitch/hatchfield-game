@@ -27,6 +27,19 @@ import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
 import { crewLook, passengerLook } from '../people/variants.ts'
 import type { PersonLook } from '../people/types.ts'
 
+/** Capsule LOD height scale: 0.94 + (hash % 6) * 0.02. */
+export const CAPSULE_SCALE_MIN = 0.94
+export const CAPSULE_SCALE_MAX = 1.04
+/** Head centre, in metres, before the per-person scale. */
+export const CAPSULE_HEAD_CENTER_M = 1.58
+/** Head sphere radius, in metres, before the per-person scale. */
+export const CAPSULE_HEAD_RADIUS_M = 0.12
+
+/** Standing height of the far capsule, head top above the floor. */
+export function capsuleStandingM(scale: number): number {
+  return (CAPSULE_HEAD_CENTER_M + CAPSULE_HEAD_RADIUS_M) * scale
+}
+
 /** Far limbs, one colour per sheet: business, tourist, family, backpacker. */
 const SHIRTS = ['#2d3748', '#ed8936', '#2c5282', '#2f855a']
 const SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
@@ -92,7 +105,7 @@ export class HallNavCrowd {
   private readonly bodyGeo = walkerBodyGeo()
   private readonly legGeo = walkerLegGeo()
   private readonly armGeo = walkerArmGeo()
-  private readonly headGeo = new THREE.SphereGeometry(0.12, 8, 6)
+  private readonly headGeo = new THREE.SphereGeometry(CAPSULE_HEAD_RADIUS_M, 8, 6)
   private readonly bagGeo = walkerBagGeo()
   private readonly dotGeo = new THREE.CircleGeometry(0.16, 10)
   private readonly bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff })
@@ -339,7 +352,7 @@ export class HallNavCrowd {
         }
         continue
       }
-      writeYawScale(hm, nh, x, 1.58 * h + bob, z, sn, cs, h, h)
+      writeYawScale(hm, nh, x, CAPSULE_HEAD_CENTER_M * h + bob, z, sn, cs, h, h)
       const sk = this.skinOf[i] * 3
       hc[nh * 3] = this.skins[sk]
       hc[nh * 3 + 1] = this.skins[sk + 1]
@@ -510,7 +523,7 @@ export class HallNavCrowd {
       const luggage = (h >>> 16) % 5
       const bag = role ? 0 : luggage === 0 ? 0 : luggage < 3 ? 1 : 2
       this.bagKind[i] = role ? 0 : purpose === 'budget' ? 2 : purpose === 'business' ? 1 : bag
-      this.heightOf[i] = 0.94 + (h % 6) * 0.02
+      this.heightOf[i] = CAPSULE_SCALE_MIN + (h % 6) * ((CAPSULE_SCALE_MAX - CAPSULE_SCALE_MIN) / 5)
       this.widthOf[i] = 0.9 + ((h >>> 4) % 5) * 0.04
       this.trouserOf[i] = role ? (h >>> 12) % 3 : (h >>> 12) % TROUSERS.length
       this.skip[i] = this.skipRole?.(role) ? 1 : 0

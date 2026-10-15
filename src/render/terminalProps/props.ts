@@ -277,7 +277,6 @@ function xray(): Part[] {
     ...place(monitor(0.5, 0.32), 0, -1.2, 0, 1.05),
     ...place(monitor(0.5, 0.32), 0.52, -1.2, 0, 1.05),
     ...place(chair('black'), 0.2, -1.65),
-    ...place(person(OFFICER, { arms: 'forward', seated: true }), 0.2, -1.62),
   ]
   // trays in flight are animated (see MOVING_TRAYS); one parked on the out-feed
   out.push(box([0.55, 0.1, 0.4], [3.4, 0.85, 0], 'tray'), box([0.4, 0.14, 0.26], [3.4, 0.95, 0], 'bagRed'))
@@ -322,11 +321,7 @@ function securityLane(): Part[] {
     for (let x = -6.6; x <= 5.8; x += 2.1) out.push(cyl([0.05, 1.2, 0.05], [x, 0.6, z], 'chrome'))
   }
   out.push(...place(beltPost(), -6.4, 2.2), ...place(beltPost(), -6.4, 0.9))
-  // officers: divest helper, arch officer, scanner officer, bag-search at reclaim
-  out.push(...place(person(OFFICER), -4.75, 0.9, Math.PI))
-  out.push(...place(person(OFFICER), 1.0, 2.35, -H))
-  out.push(...place(person(OFFICER, { arms: 'forward' }), -1.4, 0.55, Math.PI))
-  out.push(...place(person(OFFICER, { arms: 'forward' }), 4.6, -0.75))
+  // Officers stand on the lane sockets. HallServiceFx draws them with PeopleRenderer.
   // lane floor: yellow edge lines + walk arrows
   for (const z of [0.9, 2.3]) out.push(box([5.0, 0.004, 0.06], [-3.6, 0.003, z], 'signYellow'))
   for (const x of [-5.6, -4.0, -2.4]) out.push(box([0.4, 0.004, 0.12], [x, 0.003, 1.6], 'white', [0, 0, 0]))
@@ -949,11 +944,7 @@ function securityLaneCT(): Part[] {
   // trays with bags in flight
   // in-flight trays are animated (MOVING_TRAYS); one held on the reject line
   out.push(box([0.6, 0.1, 0.42], [2.0, 0.9, -0.95], 'tray'), box([0.42, 0.16, 0.28], [2.0, 1.02, -0.95], 'navy'))
-  // officers: divest helpers, CT operator at reject, scanner + arch officers
-  out.push(...place(person(OFFICER), -5.8, 1.0, Math.PI), ...place(person(OFFICER), -3.2, 1.0, Math.PI))
-  out.push(...place(person(OFFICER, { arms: 'forward' }), 3.4, -2.55))
-  out.push(...place(person(OFFICER, { arms: 'forward' }), -1.0, 1.35, Math.PI))
-  out.push(...place(person(OFFICER), 1.4, 3.15, -H))
+  // Officers stand on the lane sockets. HallServiceFx draws them with PeopleRenderer.
   // people side: body scanner + arch, glass screens, lane light
   out.push(...place(bodyScanner(), -1.0, 2.4))
   out.push(...place(archDetector(), 1.4, 2.4))
