@@ -13632,6 +13632,16 @@ export class Game {
     }
   }
 
+  /** Litres still owed to today's departures that have not fuelled yet. */
+  bankUpliftLitres(): number {
+    let litres = 0
+    for (const f of this.flights) {
+      if (f.phase === 'gone' || f.posted.fuel || !this.departureNeedsFuel(f)) continue
+      litres += this.fuelNeedLitres(f)
+    }
+    return litres
+  }
+
   /** Cargo terminal clock matches the ramp: one sim-second is eight game minutes. */
   tier3Snapshot() {
     return this.tier3.snapshot()

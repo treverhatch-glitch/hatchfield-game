@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Game } from './sim.ts'
 import { contractById, emptyPillar, tickFuel } from '../scale/logic.ts'
 import type { FieldSnapshot } from '../scale/types.ts'
-import type { Tile } from './types.ts'
+import type { Flight, Tile } from './types.ts'
 
 function field(): Game {
   const game = new Game()
@@ -73,5 +73,17 @@ describe('fuel review fixes', () => {
     const result = tickFuel(snap, state, lead + 1, 5_000_000)
     expect(result.method).toBe('road')
     expect(result.delivered).toBeGreaterThan(0)
+  })
+
+  it('shows the bank uplift still owed, not the litres already drawn', () => {
+    const game = field()
+    const flight = (id: string, fuel: boolean, phase: Flight['phase']) =>
+      ({ id, airframeId: 'crj700', phase, posted: { fuel } }) as unknown as Flight
+    game.flights = [flight('a', false, 'parked'), flight('b', true, 'parked'), flight('c', false, 'gone')]
+    game.termUpliftLitres = 50_000
+    const one = game.bankUpliftLitres()
+    expect(one).toBeGreaterThan(0)
+    game.flights.push(flight('d', false, 'parked'))
+    expect(game.bankUpliftLitres()).toBe(one * 2)
   })
 })
