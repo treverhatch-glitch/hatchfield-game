@@ -13,44 +13,24 @@ function field(focus: 'pax' | 'cargo' | 'hybrid' = 'pax'): Game {
 }
 
 describe('day-one hall crowd', () => {
-  it('seeds walking passengers when the passenger starter kit lands', () => {
-    const game = field('pax')
-    const crowd = game.hallGuests.filter((g) => g.preview)
-    expect(crowd.length).toBeGreaterThanOrEqual(8)
-    const colors = new Set(crowd.map((g) => g.color))
-    expect(colors.size).toBeGreaterThanOrEqual(8)
-    // High-vis orange and amber read as flying dots from the airport camera.
-    for (const color of colors) expect(['#ffb703', '#fb923c', '#f97316', '#e23b2f']).not.toContain(color)
-    for (const g of crowd) {
-      expect(g.clearedSec).toBe(true)
-      expect(g.path[0]).toBe('entrance')
-      expect(g.path).toContain('security')
-      expect(g.path.at(-1)).toBe('gate')
-      expect(g.seg).toBeGreaterThanOrEqual(0)
-      expect(g.seg).toBeLessThan(g.path.length - 1)
+  it('seeds no preview passengers on a new game', () => {
+    for (const focus of ['pax', 'hybrid', 'cargo'] as const) {
+      expect(field(focus).hallGuests.filter((g) => g.preview), focus).toHaveLength(0)
     }
-    const cash = game.cash
-    const reputation = game.reputation
-    const served = game.paxServed
-    const before = crowd.map((g) => ({ seg: g.seg, t: g.t }))
-    game.tickHall(1.2)
-    expect(game.hallGuests.filter((g) => g.preview).length).toBe(crowd.length)
-    expect(game.cash).toBe(cash)
-    expect(game.reputation).toBe(reputation)
-    expect(game.paxServed).toBe(served)
-    expect(crowd.some((g, i) => g.t !== before[i].t || g.seg !== before[i].seg)).toBe(true)
   })
 
-  it('seeds the same crowd for a hybrid kit and none for cargo', () => {
-    expect(field('hybrid').hallGuests.filter((g) => g.preview).length).toBeGreaterThanOrEqual(8)
-    expect(field('cargo').hallGuests).toHaveLength(0)
-  })
-
-  it('steps aside once real passengers are in the hall', () => {
+  it('an old save’s preview crowd steps aside once real passengers are in the hall', () => {
     const game = field()
+    const hallId = game.hallKey(game.fits[0])
+    for (let i = 0; i < 12; i++) {
+      const g = spawnHallGuest(`day1-preview-${i}`, 'depart', 'budget', { hallId })
+      g.preview = true
+      g.releaseAt = undefined
+      game.hallGuests.push(g)
+    }
     expect(game.hallGuests.some((g) => g.preview)).toBe(true)
     for (let i = 0; i < 8; i++) {
-      const g = spawnHallGuest(`real-${i}`, 'depart', 'budget', { hallId: game.hallKey(game.fits[0]) })
+      const g = spawnHallGuest(`real-${i}`, 'depart', 'budget', { hallId })
       g.releaseAt = undefined
       g.clearedSec = true
       g.node = 'food'
