@@ -291,7 +291,6 @@ import {
 import { buildSeconds } from './construction.ts'
 import { buildLogisticsConfig, delayFix, FUEL_OUTAGE_SLOT_SEC, groundCauseLine } from './logisticsBridge.ts'
 import { CateringBridge, cateringCue } from './cateringBridge.ts'
-import { fuelShortfall } from '../catering/fuelOutage.ts'
 import { cogsFor, stockoutChip, type HallCounterKind } from '../catering/hallShelf.ts'
 import { CargoBridge } from './cargoBridge.ts'
 import { POWER_PLANT_CAPACITY, calculatePower } from '../economy/power.ts'
@@ -9785,10 +9784,7 @@ export class Game {
 
   private flightBoardingCall(g: HallGuest): boolean {
     const f = this.linkedFlight(g)
-    if (f) {
-      if (this.departureShortOfFuel(f)) return false
-      return this.phaseIsBoarding(f.phase)
-    }
+    if (f) return this.phaseIsBoarding(f.phase)
     return this.departedFlights.has(g.flightId)
   }
 
@@ -12344,27 +12340,6 @@ export class Game {
   }
 
   /**
-   * This departure cannot lift with the litres on hand.
-   * Earlier departures keep a full load; a later one does not collect a slot fee
-   * while the farm is already spoken for.
-   */
-  private departureShortOfFuel(f: Flight): boolean {
-    if (!this.departureNeedsFuel(f) || f.posted.fuel) return false
-    if (this.fuelOutage(f)) return true
-    const litres = this.groundSnapshot() ? this.tankLitres : this.fuelOnHand() ? 1_000_000 : 0
-    const demands = []
-    for (const other of this.flights) {
-      if (other.phase === 'gone' || other.posted.fuel || !this.departureNeedsFuel(other)) continue
-      demands.push({
-        flightId: other.id,
-        litres: this.fuelNeedLitres(other),
-        departAt: other.fuelHeldSince ?? this.clock,
-      })
-    }
-    return fuelShortfall(litres, demands).groundedIds.includes(f.id)
-  }
-
-  /**
    * Pushback gate. An empty farm holds the aircraft.
    * Any other ramp gap may release once the safety timer runs out, with a Standing hit.
    */
@@ -12479,7 +12454,7 @@ export class Game {
   private settleUnflownFees(f: Flight) {
     if (!this.unflownFeesOpen(f)) return
     this.refundUnflownFees(f)
-    if (!this.departureShortOfFuel(f)) this.releaseUnflownFees(f)
+    if (!this.fuelOutage(f)) this.releaseUnflownFees(f)
   }
 
   /** Fuel is not on the wing yet, so passenger and slot fees are not the airline's to keep. */
@@ -12508,7 +12483,7 @@ export class Game {
 
   /** Hall spend while this departure cannot leave. 1 when the tank can still fuel it. */
   private groundedRetailFactor(flight: Flight | null | undefined): number {
-    if (!flight || !this.departureShortOfFuel(flight)) return 1
+    if (!flight || !this.fuelOutage(flight)) return 1
     return GROUNDED_RETAIL_TAPER
   }
 
@@ -15015,11 +14990,6 @@ export class Game {
     desperate = false,
   ): { ok: boolean; why?: string } {
     if (pay <= 0) return { ok: true }
-    const retailFactor = this.groundedRetailFactor(this.linkedFlight(g))
-    if (retailFactor !== 1) {
-      pay = Math.round(pay * retailFactor)
-      if (!(pay > 0)) return { ok: true }
-    }
     const pref = g.prefs[kind] ?? 0
     const floor = 0.28 + this.specMods().tenantPref
     if (!desperate && pref < floor) {
@@ -15368,9 +15338,7 @@ export class Game {
     if (n === 'gate' && g.job === 'depart') {
       g.thought = 'At the gate'
       const called = this.flightBoardingCall(g)
-      const linked = this.linkedFlight(g)
-      const grounded = Boolean(linked && this.departureShortOfFuel(linked))
-      const early = !grounded && !g.showUp && g.needs.hunger < 40 && g.needs.bladder < 40
+      const early = !g.showUp && g.needs.hunger < 40 && g.needs.bladder < 40
       if (called || early) {
         g.needs.boarding = 0
         g.dead = true

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { GROUNDED_RETAIL_TAPER } from './economyTuning.ts'
-import { spawnHallGuest } from './guests.ts'
 import { FUEL_OUTAGE_SLOT_SEC } from './logisticsBridge.ts'
 import { Game } from './sim.ts'
 import type { Flight, Vec } from './types.ts'
@@ -136,26 +135,13 @@ describe('grounded flight fares', () => {
     expect(game.cash - before).toBe(Math.round(owed + other))
   })
 
-  it('tapers hall spend while the flight is grounded and leaves a fueled turn alone', () => {
+  it('tapers apron retail while the flight is grounded and leaves a fueled turn alone', () => {
     const game = field()
     const dry = parked(game, { c: 11, r: 6 })
-    const guest = spawnHallGuest(dry.id, 'depart', 'business', { airlineId: dry.airline })
-    guest.wallet = 400
-    guest.prefs.food = 1
-    game.hallGuests.push(guest)
-    const price = 40
-    const bought = game.tryGuestPay(guest, price, 'food', true)
-    expect(bought.ok).toBe(true)
-    expect(guest.spent).toBe(Math.round(price * GROUNDED_RETAIL_TAPER))
-    expect(guest.spent).toBeLessThan(price)
-
+    const factor = (game as unknown as { groundedRetailFactor(f: Flight | null): number }).groundedRetailFactor(dry)
+    expect(factor).toBe(GROUNDED_RETAIL_TAPER)
+    expect(factor).toBeLessThan(1)
     dry.posted.fuel = true
-    const fueled = spawnHallGuest(dry.id, 'depart', 'business', { airlineId: dry.airline })
-    fueled.wallet = 400
-    fueled.prefs.food = 1
-    game.hallGuests.push(fueled)
-    const full = game.tryGuestPay(fueled, price, 'food', true)
-    expect(full.ok).toBe(true)
-    expect(fueled.spent).toBe(price)
+    expect((game as unknown as { groundedRetailFactor(f: Flight | null): number }).groundedRetailFactor(dry)).toBe(1)
   })
 })
