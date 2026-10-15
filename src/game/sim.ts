@@ -22454,7 +22454,10 @@ export class Game {
         id: truck.id,
         kind: 'vehicle',
         state: truck.mission,
-        token: `${truck.mission}|${this.stuckPos(truck.x)}|${this.stuckPos(truck.y)}|${truck.seg}|${this.stuckPos(truck.t)}`,
+        // Thousandths of the path parameter. Cell rounding alone called a bowser
+        // frozen while it crept through walk-out passengers, and the ladder
+        // deleted it before the pump.
+        token: `${truck.mission}|${this.stuckPos(truck.x)}|${this.stuckPos(truck.y)}|${truck.seg}|${Math.round(truck.t * 1000)}`,
         nowMin,
         label: `${truck.kind} ${truck.mission}`,
       })
@@ -24684,8 +24687,10 @@ export class Game {
     for (const stand of free) {
       const key = `${stand.c},${stand.r}`
       if (guardKey.has(key)) continue
-      if (this.standAccess[key] === 'remote') remote += 1
-      else contact += 1
+      // A bridge is contact. So is a walk-out stand beside a hall. A bay
+      // with no hall in range is the remote pad.
+      if (this.standAccessAt(stand) === 'jetway' || this.hallNearStand(key)) contact += 1
+      else remote += 1
     }
     const snap = this.groundSnapshot()
     const simFuel =
