@@ -79,6 +79,25 @@ describe('stamp cards', () => {
     expect(oil.sentence).not.toContain('Night bank')
     expect(night.badge).toEqual({ kind: 'research', label: 'Night bank', nodeId: 'airside-6' })
   })
+
+  it('names the hydrant research on the pit, then the field level once that research is owned', () => {
+    const locked = stampCard(toolStampInput('hydrant', 5, 5, new Set()))
+    expect(locked.locked).toBe(true)
+    expect(locked.badge).toEqual({ kind: 'research', label: 'Hydrant', nodeId: 'airside-1' })
+    expect(locked.sentence).toContain('Research the hydrant system')
+    expect(locked.sentence).toContain('Stamp the pit on a stand')
+    expect(locked.link).toEqual({
+      tab: 'research',
+      anchor: 'research-node-airside-1',
+      label: 'Hydrant',
+    })
+    const level = stampCard(toolStampInput('hydrant', 1, 1, new Set(['hydrant_fuel'])))
+    expect(level.badge).toEqual({ kind: 'field', label: 'Field level 5' })
+    expect(level.sentence).toBe('Unlocks at Field level 5.')
+    const open = stampCard(toolStampInput('hydrant', 5, 5, new Set(['hydrant_fuel'])))
+    expect(open.locked).toBe(false)
+    expect(open.badge).toBeNull()
+  })
 })
 
 describe('field level unlocks', () => {

@@ -26,8 +26,10 @@ export interface LogisticsBuildOptions {
   fleet?: Partial<Record<VehicleType, number>>
   capacityLitres?: number
   initialLitres?: number
-  /** Hydrant pits on stands once that research is owned. */
+  /** Every stand is a hydrant. Tests use this. The game passes `hydrantStands` instead. */
   hydrant?: boolean
+  /** Stand ids with a pit and a dispenser. Ignored when `hydrant` is true. */
+  hydrantStands?: readonly string[]
   /** Big jets refuse trucks below their tier. */
   strict?: boolean
 }
@@ -142,7 +144,9 @@ export function buildLogisticsConfig(
       const id = `${s.c},${s.r}`
       const link = standAccess[id]
       const access: RampAccess = link === 'jetway' ? 'bridge' : hasTermBus ? 'remote' : 'stairs'
-      return { id, node: id, hydrant: Boolean(options.hydrant), access }
+      const listed = options.hydrantStands ?? []
+      const hydrant = Boolean(options.hydrant) || listed.includes(id)
+      return { id, node: id, hydrant, access }
     })
 
   const vehicles: Partial<Record<VehicleType, number>> = {}

@@ -788,7 +788,8 @@ export class World {
    * its anchor so the docks already on the field are not rebuilt or shifted.
    */
   private syncProgressionBuildings(game: Game) {
-    const sig = `${game.mapRev}|${game.progressionBuilt.join(',')}`
+    const pits = Object.keys(game.standPits).sort().join(';')
+    const sig = `${game.mapRev}|${game.progressionBuilt.join(',')}|${pits}`
     if (sig === this.progressionSig) return
     this.progressionSig = sig
     const geos = new Set<THREE.BufferGeometry>()
@@ -819,7 +820,15 @@ export class World {
     place('tilt_tray', addTiltTray, ['cargo', 'bags'])
     place('atc_approach', addAtcApproach, ['tower'])
     place('remote_screening', addRemoteScreening, ['bus', 'termbus'])
-    place('hydrant', addHydrantPit, ['stand', 'fuel'])
+    for (const key of Object.keys(game.standPits)) {
+      const [c, r] = key.split(',').map(Number)
+      if (!Number.isFinite(c) || !Number.isFinite(r)) continue
+      const g = new THREE.Group()
+      g.name = `hydrant:${key}`
+      addHydrantPit(g)
+      g.position.copy(toWorld(c, r, 0.05))
+      this.progressionGroup.add(g)
+    }
   }
 
   /** Stand class and jetway links can change without a map revision. */

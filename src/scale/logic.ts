@@ -440,6 +440,18 @@ export function railHints(field: FieldSnapshot): ScaleHint[] {
 }
 
 /** Why this airframe cannot turn here. Empty when the whole pillar matches. */
+/** Jumbo uplift wants a pit on a jumbo stand, not a pit somewhere else on the field. */
+function jumboStandHasPit(field: FieldSnapshot): boolean {
+  const pits = field.standPits ?? {}
+  for (const [key, scale] of Object.entries(field.standScale)) {
+    if (scale === 'jumbo' && pits[key]) return true
+  }
+  for (const [key, cls] of Object.entries(field.standClass)) {
+    if (cls === 'L' && field.standScale[key] == null && pits[key]) return true
+  }
+  return false
+}
+
 export function pillarReport(field: FieldSnapshot, state: PillarState, airframeId: string): PillarReport {
   const tier = sizeTierOf(airframeId)
   const demand = SIZE_TIERS[tier]
@@ -580,6 +592,15 @@ export function pillarReport(field: FieldSnapshot, state: PillarState, airframeI
         'Hydrant system missing',
         'Jumbo fuel is pumped from the farm through hydrant pits, not a bowser.',
         'Research the hydrant system.',
+      ),
+    )
+  } else if (demand.hydrant && !jumboStandHasPit(field)) {
+    hints.push(
+      hint(
+        'hydrant-pit',
+        'Hydrant pit missing',
+        'Jumbo fuel is pumped through a pit on that stand. Research alone does not turn the bowser off.',
+        'Stamp a hydrant pit on the stand.',
       ),
     )
   }

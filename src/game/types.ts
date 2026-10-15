@@ -1022,6 +1022,8 @@ export interface GameSnapshot {
   standClass?: Record<string, StandClass>
   /** Stand tile key "c,r" → remote hardstand vs jetway gate. */
   standAccess?: Record<string, StandAccess>
+  /** Stand tile key "c,r" that has a hydrant pit. Missing on older saves. */
+  standPits?: Record<string, true>
   /** Stand key → small / wide / jumbo. Missing L stands stay jumbo for older saves. */
   standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   /** Hangar key → bay size. Missing hangars stay small. */

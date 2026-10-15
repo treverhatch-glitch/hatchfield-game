@@ -45,6 +45,8 @@ export interface FieldSnapshot {
   hangarScale: Record<string, SizeTier>
   /** Apex / Kiln already signed on the old fuel desk. Counts as a small contract. */
   legacyFuel: boolean
+  /** Stand key "c,r" that has a hydrant pit. Missing on older callers. */
+  standPits?: Readonly<Record<string, true>>
 }
 
 export interface PillarReport {

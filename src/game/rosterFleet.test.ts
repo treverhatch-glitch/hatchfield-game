@@ -83,6 +83,7 @@ function capableField(): Game {
   game.standClass['20,22'] = 'L'
   game.standScale['20,22'] = 'jumbo'
   game.standAccess['20,22'] = 'jetway'
+  game.standPits['20,22'] = true
   game.tiles[30][2] = 'helipad'
   const paint = (tile: 'travelator' | 'skywalk' | 'mover', cells: [number, number][]) => {
     for (const [c, r] of cells) game.tiles[r][c] = tile

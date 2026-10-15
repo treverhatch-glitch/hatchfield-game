@@ -57,6 +57,7 @@ function jumboField(): Game {
   game.standClass['20,22'] = 'L'
   game.standScale['20,22'] = 'jumbo'
   game.standAccess['20,22'] = 'jetway'
+  game.standPits['20,22'] = true
   const paint = (tile: 'travelator' | 'skywalk' | 'mover', cells: [number, number][]) => {
     for (const [c, r] of cells) game.tiles[r][c] = tile
   }

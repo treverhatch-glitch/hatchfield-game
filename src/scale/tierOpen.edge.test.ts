@@ -81,6 +81,7 @@ function fullJumboSetup(): { field: FieldSnapshot; state: PillarState } {
     standAccess: { '4,2': 'jetway' },
     hangarScale,
     legacyFuel: false,
+    standPits: { '4,2': true },
   }
 
   const s: PillarState = {
@@ -228,6 +229,15 @@ describe('jumbo pillar gating edge tests', () => {
     const report = pillarReport(field, state, 'a380')
     expect(report.ok).toBe(false)
     expect(report.hints.some((h) => h.id === 'tank-jumbo')).toBe(true)
+  })
+
+  it('fails jumbo if the jumbo stand has no hydrant pit', () => {
+    const { field, state } = fullJumboSetup()
+    field.standPits = {}
+    const report = pillarReport(field, state, 'a380')
+    expect(report.ok).toBe(false)
+    expect(report.hints.some((h) => h.id === 'hydrant-pit')).toBe(true)
+    expect(report.hints.some((h) => h.id === 'hydrant')).toBe(false)
   })
 
   it('fails jumbo if hydrant system research is missing', () => {

@@ -243,6 +243,7 @@ function ready(tier: SizeTier): { field: FieldSnapshot; state: PillarState } {
       research: research as FieldSnapshot['research'],
       standScale,
       standAccess: { '4,2': 'jetway' },
+      standPits: tier === 'jumbo' ? { '4,2': true } : {},
       hangarScale,
       legacyFuel: false,
     }),

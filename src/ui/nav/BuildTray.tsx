@@ -301,7 +301,7 @@ function ProgressStamp({
       badgeId={row.id}
       mark={row.id}
       name={row.name}
-      selected={game.progressionBuilt.includes(row.id)}
+      selected={row.id === 'hydrant' ? game.hydrantArm : game.progressionBuilt.includes(row.id)}
       card={card}
       onOpen={onOpen}
       onUse={() => game.commission(row.id)}

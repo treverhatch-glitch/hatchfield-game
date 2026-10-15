@@ -739,6 +739,7 @@ import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.
 import { CART_TUNING, CartYard, type CartPose } from '../carts/index.ts'
 import { FUEL as FUEL_CHAIN, FuelChain, type DeliveryRead, type FuelView } from '../fuel/index.ts'
 import { SPOT_OFFER, brandForContract, termBandLitres, type SpotInbound, type SpotOffer } from '../fuel/offerData.ts'
+import { HYDRANT_CARD, liveHydrantStands, standDrawsHydrant } from '../fuel/hydrant.ts'
 import {
   astar,
   farmBesidePavement,
@@ -1191,6 +1192,10 @@ export class Game {
   standAccess: Record<string, StandAccess> = {}
   /** Build toggle — next stand stamp is jetway (expensive) or remote. */
   standAccessMode: StandAccess = 'remote'
+  /** Stand key "c,r" that has a hydrant pit. Research alone does not set this. */
+  standPits: Record<string, true> = {}
+  /** Tray arm: the next stand click sinks a pit. */
+  hydrantArm = false
   janitors = 0
   janitorCool = 0
   /** Janitors walking the halls — sweep litter, empty cans, service WCs. One per hire. */
@@ -1729,6 +1734,8 @@ export class Game {
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
+    this.standPits = {}
+    this.hydrantArm = false
     this.janitors = 0
     this.janitorCool = 0
     this.hallJanitors = []
@@ -3188,6 +3195,25 @@ export class Game {
       this.pushNews('Jet bridge armed — stamp a stand to attach one gate.', 'ok')
       this.emit()
       return true
+    }
+    if (id === 'hydrant') {
+      if (!this.hasResearch('hydrant_fuel')) {
+        this.pushNews('Research the hydrant system. Then stamp the pit on a stand.', 'bad')
+        this.emit()
+        return false
+      }
+      this.hydrantArm = !this.hydrantArm
+      const rowCost = progressionBuildable('hydrant')
+      const price = (rowCost?.cost ?? 0).toLocaleString('en-US')
+      const upkeep = (rowCost?.upkeepPerDay ?? 0).toLocaleString('en-US')
+      this.pushNews(
+        this.hydrantArm
+          ? `Hydrant pit armed — click a stand. $${price}, upkeep $${upkeep}/day.`
+          : 'Hydrant pit put away.',
+        'ok',
+      )
+      this.emit()
+      return this.hydrantArm
     }
     if (!row) {
       this.pushNews(`${name} is not a buildable.`, 'bad')
@@ -4748,6 +4774,8 @@ export class Game {
     this.standClass = {}
     this.standAccess = {}
     this.standAccessMode = 'remote'
+    this.standPits = {}
+    this.hydrantArm = false
     this.resetPillar()
     this.dedicatedDesks = []
     this.janitors = 0
@@ -5530,8 +5558,11 @@ export class Game {
       }).upkeepDay
     }
     for (const id of this.progressionBuilt) {
+      if (id === 'hydrant') continue
       n += progressionBuildable(id)?.upkeepPerDay ?? 0
     }
+    const pit = progressionBuildable('hydrant')
+    if (pit) n += Object.keys(this.standPits).length * pit.upkeepPerDay
     n += this.specMods().upkeepPerDay
     return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
@@ -5746,16 +5777,19 @@ export class Game {
     const minutes = gameMinutes(step)
     const contract = contractById(this.contractId)
     const cap = tankDef(this.tankTier).capacityLitres
-    let pending = 0
     const flights: { id: string; litres: number; departAt: number }[] = []
+    const windowMin = FUEL_CHAIN.upliftWindowMin
+    const dispensers = this.scaleFleet.hydrant_dispenser ?? 0
+    let truckLitres = 0
+    let hydrantLitres = 0
     for (const f of this.flights) {
       if (f.phase === 'gone' || f.posted.fuel || !this.departureNeedsFuel(f)) continue
       const need = this.fuelNeedLitres(f)
-      pending += need
+      const key = f.stand ? `${f.stand.c},${f.stand.r}` : null
+      if (standDrawsHydrant(key, this.standPits, dispensers)) hydrantLitres += need
+      else truckLitres += need
       flights.push({ id: f.id, litres: need, departAt: f.fuelHeldSince ?? this.clock })
     }
-    const perMin = pending / FUEL_CHAIN.upliftWindowMin
-    const hydrant = this.hasResearch('hydrant_fuel')
     this.fuelChain.observe({
       capacityLitres: cap,
       litres: this.tankLitres,
@@ -5764,8 +5798,8 @@ export class Game {
       leadMinutes: contract?.leadMinutes ?? 0,
       wholesalePerLitre: contract?.wholesalePerLitre ?? 0,
       cash: this.cash,
-      truckDrawPerMin: hydrant ? 0 : perMin,
-      hydrantDrawPerMin: hydrant ? perMin : 0,
+      truckDrawPerMin: truckLitres / windowMin,
+      hydrantDrawPerMin: hydrantLitres / windowMin,
       pipelinePerMin: contract ? contract.railLitresPerHour / 60 : 0,
       roads: tilesOf(this.tiles, 'road'),
       connectors: tilesOf(this.tiles, 'guard'),
@@ -6307,6 +6341,7 @@ export class Game {
       hotelClass: this.hotelClass,
       standClass: this.standClass,
       standAccess: this.standAccess,
+      standPits: this.standPits,
       standScale: this.standScale,
       hangarScale: this.hangarScale,
       pillar: {
@@ -6493,7 +6528,11 @@ export class Game {
       this.fieldXp = s.fieldXp ?? Math.min(700, this.flightsDone * 8 + this.signed.length * 20)
       this.specPaths = (s.specPaths ?? []).filter((id): id is SpecPath => isSpecPath(id))
       this.specNodes = (s.specNodes ?? []).filter((id) => isSpecNode(id))
-      this.progressionBuilt = (s.progressionBuilt ?? []).filter((id) => Boolean(progressionBuildable(id)))
+      this.progressionBuilt = (s.progressionBuilt ?? []).filter(
+        (id) => id !== 'hydrant' && Boolean(progressionBuildable(id)),
+      )
+      this.standPits = { ...(s.standPits ?? {}) }
+      this.hydrantArm = false
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
       this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
@@ -7154,6 +7193,7 @@ export class Game {
   }
 
   setTool(tool: Tool) {
+    this.hydrantArm = false
     // Outdoor stamps only work on the apron — kick you outside smoothly.
     if (
       this.view === 'hall' &&
@@ -11954,7 +11994,7 @@ export class Game {
         fleet: this.scaleFleet,
         capacityLitres: cap,
         initialLitres: Math.min(cap, Math.max(0, this.tankLitres)),
-        hydrant: this.hasResearch('hydrant_fuel'),
+        hydrantStands: liveHydrantStands(this.standPits, this.scaleFleet.hydrant_dispenser ?? 0),
         strict: true,
       },
     )
@@ -13738,6 +13778,7 @@ export class Game {
       fieldLevel: this.fieldLevel(),
       research: this.researchGrants(),
       tiles: this.tiles,
+      standPits: this.standPits,
       standScale: this.standScale,
       standClass: this.standClass,
       standAccess: this.standAccess,
@@ -17612,6 +17653,7 @@ export class Game {
         {
           ...base,
           demand: this.standOccupied(v) ? 1 : 0,
+          note: this.standFuelNote(v),
           staffAssigned: this.crewOn(fleet, [
             'pushback_tug',
             'heavy_tug',
@@ -17665,6 +17707,14 @@ export class Game {
       return this.attachVehicleQueue({ ...base, demand, staffAssigned: this.deskStaff })
     }
     return this.attachVehicleQueue(base)
+  }
+
+  /** Stand card: hydrant only when this stand has a pit and a dispenser exists. */
+  private standFuelNote(v: Vec): string {
+    const key = `${v.c},${v.r}`
+    if (!this.standPits[key]) return HYDRANT_CARD.bowser
+    if ((this.scaleFleet.hydrant_dispenser ?? 0) > 0) return HYDRANT_CARD.hydrant
+    return HYDRANT_CARD.short
   }
 
   /** One line on the farm card: litres, who supplies them, and the band. */
@@ -17857,8 +17907,48 @@ export class Game {
     }
   }
 
+  /** Sink one pit on the stand under the cursor. Research and field level still gate it. */
+  stampHydrantPit(v: Vec) {
+    const row = progressionBuildable('hydrant')
+    const name = row?.name ?? 'Hydrant pit'
+    if (this.tile(v) !== 'stand') {
+      this.pushNews('A hydrant pit goes on a stand.', 'bad')
+      this.emit()
+      return
+    }
+    const key = `${v.c},${v.r}`
+    if (this.standPits[key]) {
+      this.pushNews('This stand already has a pit.', 'ok')
+      this.emit()
+      return
+    }
+    const need = unlockLevel('hydrant')
+    if (this.fieldLevel() < need) {
+      this.pushNews(`${name} needs Field level ${need}.`, 'bad')
+      this.emit()
+      return
+    }
+    if (!this.hasResearch('hydrant_fuel')) {
+      this.hydrantArm = false
+      this.pushNews('Research the hydrant system. Then stamp the pit on a stand.', 'bad')
+      this.emit()
+      return
+    }
+    if (!this.spend(row?.cost ?? 0, name)) return
+    this.standPits[key] = true
+    this.bumpMap()
+    this.ensureGround()
+    const upkeep = (row?.upkeepPerDay ?? 0).toLocaleString('en-US')
+    this.pushNews(`${name} open. Upkeep $${upkeep}/day.`, 'good')
+    this.emit()
+  }
+
   clickTile(v: Vec) {
     if (!inBounds(v.c, v.r)) return
+    if (this.hydrantArm) {
+      this.stampHydrantPit(v)
+      return
+    }
     this.selectedTile = v
     this.selectedFlight = this.nearestFlight(v)?.id ?? this.selectedFlight
 
@@ -18248,8 +18338,14 @@ export class Game {
     }
     if (tile === 'stand' && at) {
       const scale = this.standScale[`${at.c},${at.r}`]
-      if (scale === 'wide') return Math.round(STAND_OFFERS.wide.cost * BULLDOZE_REFUND)
-      if (scale === 'jumbo') return Math.round(STAND_OFFERS.jumbo.cost * BULLDOZE_REFUND)
+      const pit = this.standPits[`${at.c},${at.r}`] ? (progressionBuildable('hydrant')?.cost ?? 0) : 0
+      const base =
+        scale === 'wide'
+          ? STAND_OFFERS.wide.cost
+          : scale === 'jumbo'
+            ? STAND_OFFERS.jumbo.cost
+            : (BUILDINGS.find((x) => x.tile === tile)?.cost ?? 0)
+      if (scale === 'wide' || scale === 'jumbo' || pit > 0) return Math.round((base + pit) * BULLDOZE_REFUND)
     }
     if (tile === 'hotel' && at) {
       const cls = this.hotelClass[`${at.c},${at.r}`] ?? 'business'
@@ -18571,6 +18667,7 @@ export class Game {
       delete this.hotelClass[`${v.c},${v.r}`]
       delete this.standClass[`${v.c},${v.r}`]
       delete this.standAccess[`${v.c},${v.r}`]
+      delete this.standPits[`${v.c},${v.r}`]
       delete this.standScale[`${v.c},${v.r}`]
       delete this.hubLinksBuilt[`${v.c},${v.r}`]
       delete this.hangarScale[`${v.c},${v.r}`]

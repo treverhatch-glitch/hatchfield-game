@@ -221,7 +221,7 @@ export const PROGRESSION_BUILDABLES: readonly ProgressionBuildable[] = [
     menu: 'ops',
     cost: 40_000,
     upkeepPerDay: 480,
-    blurb: 'Fuel hydrant at the stand. Trucks stay on the farm.',
+    blurb: 'Stamp a pit on a stand. That stand fuels by hydrant once a dispenser is on the fleet.',
   },
   {
     id: 'pier_ii',

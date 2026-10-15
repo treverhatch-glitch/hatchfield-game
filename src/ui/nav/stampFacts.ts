@@ -92,6 +92,11 @@ function upkeepLabel(perDay: number): string {
  * Fuel rail and the oil station share the Night bank node. The badge names
  * the fuel research, the line, and the station. Night hub keeps the node name.
  */
+function hydrantStamp(id: string): string | null {
+  if (id !== 'hydrant') return null
+  return 'Research the hydrant system. Stamp the pit on a stand.'
+}
+
 function fuelRailStamp(id: string): string | null {
   if (id === 'fuel_rail') {
     return 'Research Fuel rail. Paint the line to the map edge, then put the oil station on that line.'
@@ -118,14 +123,20 @@ export function stampCard(input: StampInput): StampCard {
   const deskShort = Boolean(node && !input.researchOwned)
   const locked = levelShort || treeShort || deskShort
   const fuelRail = fuelRailStamp(input.id)
+  const hydrant = hydrantStamp(input.id)
+  const hydrantShort = Boolean(hydrant && !input.researchOwned)
   const parts: string[] = []
-  if (treeShort && fuelRail) parts.push(fuelRail)
+  if (hydrantShort && hydrant) parts.push(hydrant)
+  else if (treeShort && fuelRail) parts.push(fuelRail)
   else if (treeShort && treeLink) parts.push(`Requires research: ${treeLink.label}.`)
   else if (deskShort && node) parts.push(`Requires research: ${node.name}.`)
   if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
   let badge: StampBadge | null = null
   let link: UnlockLink | null = null
-  if (treeShort && tree) {
+  if (hydrantShort) {
+    badge = { kind: 'research', label: 'Hydrant', nodeId: 'airside-1' }
+    link = { tab: 'research', anchor: 'research-node-airside-1', label: 'Hydrant' }
+  } else if (treeShort && tree) {
     const label = fuelRail ? 'Fuel rail' : tree.name
     badge = { kind: 'research', label, nodeId: tree.id }
     link = { tab: 'research', anchor: `research-node-${tree.id}`, label }
@@ -175,6 +186,7 @@ export function toolStampInput(
   const cost = late?.cost ?? progression?.cost ?? def?.cost ?? known
   const upkeep = late?.dailyUpkeep ?? progression?.upkeepPerDay ?? def?.upkeepPerDay ?? 0
   const tree = linkFor(id)
+  const researchId = id === 'hydrant' ? 'hydrant_fuel' : (def?.research ?? null)
   return {
     id,
     name,
@@ -183,8 +195,8 @@ export function toolStampInput(
     upkeepPerDay: upkeep,
     fieldLevel,
     lateLevel,
-    researchId: def?.research ?? null,
-    researchOwned: def?.research ? owned.has(def.research) : true,
+    researchId,
+    researchOwned: researchId ? owned.has(researchId) : true,
     treeNodeId: tree?.nodeId ?? null,
     treeOwned: tree ? treeUnlocked.has(tree.nodeId) : true,
   }
