@@ -3,7 +3,8 @@ import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
-import { axisTicks, boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
+import { axisTicks, barNote, boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
+import type { TtFlight } from './types'
 import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
 
@@ -64,6 +65,59 @@ describe('schedule turn config', () => {
     expect(turnBand('E', 'widebody')).toBe('wide')
     expect(turnBand('F')).toBe('heavy')
     expect(turnSimSec('narrow')).toBeLessThan(10)
+  })
+})
+
+function bare(over: Partial<TtFlight> = {}): TtFlight {
+  return {
+    id: 'a:arr',
+    flightNo: 'A1',
+    airlineName: 'A',
+    color: '#fff',
+    direction: 'arr',
+    time: 10,
+    onStandFrom: 10,
+    onStandTo: 15,
+    window: null,
+    status: 'scheduled',
+    delaySec: 0,
+    delayReason: null,
+    standId: '1,1',
+    standLabel: 'G1',
+    pinned: true,
+    icao: 'C',
+    aircraft: 'A320',
+    runwayId: null,
+    manual: true,
+    movable: true,
+    ...over,
+  }
+}
+
+describe('clash and buffer', () => {
+  const stand = { id: '1,1', label: 'G1', icao: 'C' as const }
+  const barsOf = (flights: TtFlight[]) => buildGantt(flights, [stand], { from: 0, to: 80 })[0].rows[0].bars
+
+  it('flags a 5-minute gap as amber and not red', () => {
+    const gap = gameMinToSim(5)
+    const bars = barsOf([
+      bare(),
+      bare({ id: 'b:arr', flightNo: 'B2', onStandFrom: 15 + gap, onStandTo: 20 + gap, time: 15 + gap }),
+    ])
+    expect(bars[0].conflict).toBe(false)
+    expect(bars[0].buffer).toBe(true)
+    expect(barNote(bars[0])).toContain('5m')
+    expect(barNote(bars[0])).toContain(`${SCHEDULE.standBufferMin}m`)
+  })
+
+  it('flags an overlap as red', () => {
+    const bars = barsOf([
+      bare(),
+      bare({ id: 'b:arr', flightNo: 'B2', onStandFrom: 14, onStandTo: 19, time: 14 }),
+    ])
+    expect(bars.every((b) => b.conflict)).toBe(true)
+    expect(bars[0].buffer).toBe(false)
+    expect(barNote(bars[0])).toMatch(/^Clash/)
   })
 })
 

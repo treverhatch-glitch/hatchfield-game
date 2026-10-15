@@ -1,11 +1,17 @@
-import { clockLabel, hourSecs, standFits } from './time'
+import { gameMinToSim, SCHEDULE } from './scheduleConfig'
+import { clockLabel, durationLabel, hourSecs, standFits } from './time'
 import type { IcaoCode, TtFlight, TtRunway, TtStand } from './types'
 
 export interface GanttBar {
   flight: TtFlight
   left: number
   width: number
+  /** Overlap or a stand that cannot take the aircraft. */
   conflict: boolean
+  /** Next turn starts inside the stand buffer, and does not overlap. */
+  buffer: boolean
+  /** Seconds until the next turn on this stand. Negative when they overlap. */
+  gapSec: number | null
 }
 export interface GanttRow {
   stand: TtStand | null
@@ -95,15 +101,30 @@ export function buildGantt(flights: TtFlight[], stands: TtStand[], span: ViewSpa
   }
   const toBars = (list: TtFlight[], stand: TtStand | null): GanttBar[] => {
     const sorted = [...list].sort((a, b) => a.onStandFrom - b.onStandFrom)
+    const bufferSec = gameMinToSim(SCHEDULE.standBufferMin)
     return sorted.map((f, i) => {
       const prev = sorted[i - 1]
       const next = sorted[i + 1]
+      const gapAfter = next ? next.onStandFrom - f.onStandTo : null
+      const gapBefore = prev ? f.onStandFrom - prev.onStandTo : null
       const overlap =
-        !!stand && ((prev && prev.onStandTo > f.onStandFrom) || (next && next.onStandFrom < f.onStandTo))
+        !!stand && ((gapBefore != null && gapBefore < 0) || (gapAfter != null && gapAfter < 0))
       const tooSmall = !!stand && !standFits(stand.icao, f.icao)
+      const tight =
+        !!stand &&
+        !overlap &&
+        ((gapAfter != null && gapAfter >= 0 && gapAfter < bufferSec) ||
+          (gapBefore != null && gapBefore >= 0 && gapBefore < bufferSec))
       const l = Math.max(0, frac(f.onStandFrom, span))
       const r = Math.min(1, frac(f.onStandTo, span))
-      return { flight: f, left: l, width: Math.max(0.004, r - l), conflict: overlap || tooSmall }
+      return {
+        flight: f,
+        left: l,
+        width: Math.max(0.004, r - l),
+        conflict: overlap || tooSmall,
+        buffer: tight,
+        gapSec: gapAfter,
+      }
     })
   }
   const groups: GanttGroup[] = []
@@ -122,6 +143,21 @@ export function buildGantt(flights: TtFlight[], stands: TtStand[], span: ViewSpa
     .map((s) => ({ stand: s, bars: toBars(byStand.get(s.id) ?? [], s) }))
   if (rows.length) groups.push({ icao: 'stands', rows })
   return groups
+}
+
+/** Popover sentence for a red clash or an amber buffer. */
+export function barNote(bar: GanttBar, dayLength = 180): string | null {
+  if (bar.conflict) {
+    if (bar.gapSec != null && bar.gapSec < 0) {
+      return `Clash: overlaps the next turn by ${durationLabel(-bar.gapSec, dayLength)}.`
+    }
+    return 'This stand cannot take this aircraft.'
+  }
+  if (bar.buffer && bar.gapSec != null && bar.gapSec >= 0) {
+    return `Tight: the next turn starts ${durationLabel(bar.gapSec, dayLength)} later, inside the ${SCHEDULE.standBufferMin}m buffer.`
+  }
+  if (bar.buffer) return `Tight: inside the ${SCHEDULE.standBufferMin}m stand buffer.`
+  return null
 }
 
 function rotationKey(f: TtFlight): string {

@@ -207,6 +207,20 @@
 .tt-bar[data-conflict='1'] {
   box-shadow: inset 0 0 0 2px #ef4444;
 }
+.tt-buffer {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: repeating-linear-gradient(45deg, rgb(148 163 184 / 0.35) 0 3px, transparent 3px 6px);
+  pointer-events: none;
+  z-index: 1;
+}
+.tt-buffer[data-tight='1'] {
+  background: repeating-linear-gradient(45deg, rgb(251 191 36 / 0.75) 0 3px, rgb(251 191 36 / 0.12) 3px 6px);
+}
+.tt-root .tight {
+  color: #fbbf24;
+}
 .tt-bar em {
   font-style: normal;
   color: #fde68a;

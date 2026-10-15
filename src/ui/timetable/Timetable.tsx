@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react'
-import { axisTicks, boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type RunwayLaneModel, type ViewSpan } from './layout'
+import { axisTicks, barNote, boardRows, buildGantt, frac, hourTicks, pxToSec, runwayLanes, runwayOf, viewSpan, type GanttBar, type RunwayLaneModel, type ViewSpan } from './layout'
+import { gameMinToSim, SCHEDULE } from './scheduleConfig'
 import { clampToWindow, clockLabel, dayIndex, durationLabel, hourSecs, standFits } from './time'
 import type { TimetableAdapter, TtFlight } from './types'
 import './timetable.css'
@@ -203,8 +204,19 @@ export function Timetable({
                             const f = b.flight
                             const off = preview(f)
                             const showBand = f.window && (sel === f.id || drag?.id === f.id)
+                            const buf = gameMinToSim(SCHEDULE.standBufferMin)
+                            const bufLeft = frac(f.onStandTo + off, span)
+                            const bufWidth = frac(span.from + buf, span) - frac(span.from, span)
                             return (
                               <div key={f.id} className="tt-barwrap">
+                                <i
+                                  className="tt-buffer"
+                                  data-tight={b.buffer ? '1' : '0'}
+                                  style={{
+                                    left: `${Math.max(0, bufLeft) * 100}%`,
+                                    width: `${Math.max(0, bufWidth) * 100}%`,
+                                  }}
+                                />
                                 {showBand && f.window ? (
                                   <i
                                     className="tt-window"
@@ -287,6 +299,7 @@ export function Timetable({
             <FlightCard
               adapter={adapter}
               flight={selFlight}
+              note={barNote(gantt.flatMap((g) => g.rows.flatMap((r) => r.bars)).find((b) => b.flight.id === selFlight.id) ?? emptyBar(selFlight), day)}
               stands={stands}
               runways={runwayList}
               onSwap={() => setSwapFrom(selFlight.id)}
@@ -297,6 +310,10 @@ export function Timetable({
       )}
     </div>
   )
+}
+
+function emptyBar(flight: TtFlight): GanttBar {
+  return { flight, left: 0, width: 0, conflict: false, buffer: false, gapSec: null }
 }
 
 function RunwayLane({
@@ -413,6 +430,7 @@ function RunwayLane({
 function FlightCard({
   adapter,
   flight: f,
+  note,
   stands,
   runways,
   onSwap,
@@ -420,6 +438,7 @@ function FlightCard({
 }: {
   adapter: TimetableAdapter
   flight: TtFlight
+  note: string | null
   stands: ReturnType<TimetableAdapter['stands']>
   runways: ReturnType<TimetableAdapter['runways']>
   onSwap: () => void
@@ -486,16 +505,17 @@ function FlightCard({
         <dt>Status</dt>
         <dd>{f.status.replace('_', ' ')}</dd>
       </dl>
+      {note ? <p className={note.startsWith('Clash') || note.startsWith('This stand') ? 'late' : 'tight'}>{note}</p> : null}
       {f.movable ? (
         <>
           <div className="tt-actions">
             {adapter.caps.pullBump ? (
               <>
-                <button type="button" onClick={() => adapter.pull(f.id)}>
-                  Pull
+                <button type="button" onClick={() => adapter.pull(f.id)} title="Pulling ahead of another turn dips that queue's standing">
+                  Pull · queue standing
                 </button>
-                <button type="button" onClick={() => adapter.bump(f.id)}>
-                  Bump
+                <button type="button" onClick={() => adapter.bump(f.id)} title="A bump dips this carrier's standing">
+                  Bump · standing
                 </button>
               </>
             ) : null}
@@ -505,8 +525,8 @@ function FlightCard({
               </button>
             ) : null}
             {adapter.caps.cancel ? (
-              <button type="button" className="danger" onClick={() => adapter.cancel(f.id)}>
-                Cancel
+              <button type="button" className="danger" onClick={() => adapter.cancel(f.id)} title="Cancelling hits standing. A banked turn costs more than a manual one.">
+                Cancel · standing
               </button>
             ) : null}
           </div>
