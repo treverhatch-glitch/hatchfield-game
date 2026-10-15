@@ -3,7 +3,7 @@
 Status: plan only. No game code changes with this document.
 Owner decision being executed: Trever, Oct 15, 8:06 PM. Gut the terminal interior and rebuild it with one scale, real flows and two stories.
 Playtest items covered: 3, 5, 33, 34, 35, 36, 37, 38 and 46 from the Oct 15 list. Item 39 (pause) is covered too, because a requirement below depends on it.
-Based on `main` at `dc1aa0fd`.
+Based on `main` at `68fde433`.
 
 `docs/playtest/TERMINAL_AUDIT_OCT15.md` (agent bc-cf7345e0) was not on `main` or on any pushed branch when this was written. Every finding below comes from reading the code. If that audit lands later, the WP1 agent folds any extra findings into the delete list in section 2 before starting.
 
@@ -19,7 +19,7 @@ Related: [INTERIOR_EDITOR.md](./INTERIOR_EDITOR.md) (floor-ready schema), [TERMI
 | D2 | **Starter footprint.** It goes from the 3×3 apron stamp (66×66 m) to 4×2 cells (88×44 m), with the long side facing the apron. | Approve. | Two code-C contact stands need about 40 m each of facade. 66 m fits only one and a half. The starter stamp's stands and roads shift. This touches Batch D's road work. |
 | D3 | **Old saves.** The terminal interior is rebuilt on load. Player-bought fittings are refunded at purchase price, with a phone note. | Approve. | Without it, saves from before the rebuild need a fresh start. |
 | D4 | **Walkers become the truth.** The passengers you see decide boarding, missed flights and mood. The sim's hidden hall model is retired. | Approve. | This fixes "placed fittings don't work" at the root. Balance moves, so the 30-day and 150-day soaks are the check. |
-| D5 | **Gemini assets.** `terminal_multistory`, `security`, `checkin_desk`, `bag_drop_kiosk` and `gate_seats` are not in the repo. Commit them to `public/art/refs/terminal_rebuild/`. | Upload them before WP4. | WP4 and WP6 screenshot checks compare against these. Until they land, `public/art/refs/pack6/` is the target. |
+| D5 | **Gemini assets.** `bag_drop_kiosk`, `baggage_claim_carousel` and `passport_control` are on `main` in `public/art/textures/concepts/` (commit `f3ea5f90`, loaded by `src/render/servicePlates.ts`). `terminal_multistory`, `security`, `checkin_desk` and `gate_seats` are still missing. | Commit the missing four to the same folder and add them to `SERVICE_PLATES` before WP4. | WP4 and WP6 screenshot checks compare against these. Until they land, `public/art/refs/pack6/` is the target for those four. |
 | D6 | **Apron unit.** The apron stays at `WORLD_PER_METER = 0.45`. The terminal is authored in metres and shown in the airport view under a single root scale node. | Approve. Moving the whole game to 1 unit = 1 m is a separate project. | Inside Terminal view, 1 unit = 1 m. Outside it, there is exactly one scale node, and the scale-audit test enforces that. |
 
 Why S1 is recommended over a 2-story starter:
@@ -83,6 +83,7 @@ Why S1 is recommended over a 2-story starter:
 | Stand and jet-bridge upgrade | `src/stands/*`, PR [#114](https://cursor.com/codebase/hatchtag/hatchfield-game/pull/114) (`src/render/aircraft/bridges.ts`, `src/render/world/airfield.ts`) | The bridge roots on the terminal facade socket. The new layout publishes those sockets from its gate-head doors (section 6). |
 | Advisor reference | `src/terminaladvisor/*` | Untouched. Its multi-floor model already matches. |
 | Interior textures | `public/art/textures/interiors/*`, `public/art/textures/signage/*` | Floor and wall paint, desk headers, wayfinding. |
+| Gemini concept plates | `public/art/textures/concepts/*`, `SERVICE_PLATES` in `src/assets/manifest.ts`, `src/render/servicePlates.ts`, the bag-drop, carousel and passport-booth builders in `terminalProps/props.ts` | These are the visual targets for `bag_drop`, `claim_carousel` and `passport_booth`. The props move into the catalog. Their hooks in `hallKitMeshes.ts` and `terminalHiDetail.ts` go when those files are deleted. |
 
 ---
 
@@ -152,8 +153,10 @@ Stages are data (`src/terminalbuild/stages.ts`). A passenger walks the stages in
 DEPARTURE
  CURB_IN -> LANDSIDE_FREE* -> CHECKIN -> BAG_DROP? -> SECURITY -> AIRSIDE_FREE* -> GATE_HOLD -> GATE_QUEUE -> BOARD(stairs|bus|bridge)
 ARRIVAL
- DEPLANE(stairs|bus|bridge) -> ARR_CORRIDOR -> ARR_FREE*? -> CLAIM? -> EXIT -> LANDSIDE_FREE* -> CURB_OUT
+ DEPLANE(stairs|bus|bridge) -> ARR_CORRIDOR -> PASSPORT? -> ARR_FREE*? -> CLAIM? -> EXIT -> LANDSIDE_FREE* -> CURB_OUT
 ```
+
+`PASSPORT` is an optional stage that runs only on international flights, served by a `passport_booth` (concept plate `passport_control`). The starter has none, and its slot is the claim hall's east wall. A matching outbound `EMIGRATION` stage after security is reserved in the graph but turned off until international departures exist.
 
 | Stage | Served by | Skip rule | Side |
 | --- | --- | --- | --- |
@@ -195,7 +198,7 @@ The catalog (`src/terminalbuild/fittings.ts`) is data. For each kind it holds: f
 | --- | --- | --- | --- | --- | --- |
 | `checkin_desk` (desk, agent space, weigh belt, takeaway belt) | 2.0 × 2.6 | 1.1 counter, 2.4 header | 1.0–1.2 counter | checkin | `checkin_desk` (round 5 bank) |
 | `checkin_kiosk` | 0.6 × 0.6, plus 1.2 clearance | 1.6 | 1.4–1.8 | checkin, landside | `self_checkin_kiosk` |
-| `bag_drop` (self bag drop) | 1.6 × 2.4 | 1.6 | 1.3–1.8 | checkin | new; target: Gemini `bag_drop_kiosk` |
+| `bag_drop` (self bag drop) | 1.6 × 2.4 | 1.6 | 1.3–1.8 | checkin | bag-drop kiosk builder (`f3ea5f90`); target: Gemini `bag_drop_kiosk` |
 | `queue_rail` (per 1 m of rail) | 1.0 × 0.3 | 1.0 | 0.9–1.1 | checkin, security, gates | `stanchion_queue` |
 | `bp_podium` (boarding-pass e-gate) | 1.0 × 2.0 | 1.1 | 1.0–1.6 | security | new |
 | `security_lane` (divest, x-ray, scanner, recompose) | 4.0 × 10.0 | 2.3 scanner, 1.9 x-ray | 1.8–2.5 | security | `security_lane_ct`, `body_scanner`, `divest_station`; target: Gemini `security` |
@@ -205,7 +208,8 @@ The catalog (`src/terminalbuild/fittings.ts`) is data. For each kind it holds: f
 | `shop_counter` | 4.0 × 1.0 | 1.1 | 1.0–1.2 | retail | `shop_*`, `cafe_counter`, `menu_*` |
 | `cafe_table` (4 seats) | 1.6 × 1.6 | 0.75 | 0.7–0.8 | retail (food) | `cafe_table` |
 | `wc_block` (per cubicle, with basins) | 1.0 × 1.6 | 2.1 partition | 1.9–2.3 | toilets | `restroom_block`, `restroom_stall` |
-| `claim_carousel` (flat plate, small) | 16.0 × 4.0 | 0.45 | 0.4–0.6 | claim | `baggage_carousel` |
+| `claim_carousel` (flat plate, small) | 16.0 × 4.0 | 0.45 | 0.4–0.6 | claim | `baggage_carousel`; target: Gemini `baggage_claim_carousel` |
+| `passport_booth` (2 officers) | 2.4 × 2.0 | 1.2 desk, 2.2 screen | 1.1–1.3 desk | claim, arrivals | passport booth bank (`f3ea5f90`); target: Gemini `passport_control` |
 | `belt` (per 1 m) | 1.0 × 0.8 | 0.7 | 0.6–0.8 | checkin, bagroom, claim | conveyor `belt` prim |
 | `belt_incline` (5 m rise) | 0.8 × 14.0 | 0 to 5.0 | n/a | shaft | new |
 | `bag_port` (wall) | 1.2 on a facade edge | 1.0 opening | n/a | facade | new |
