@@ -25,7 +25,20 @@ describe('hub profile panel', () => {
     expect(html).toContain('data-testid="hub-dedicate-lounge"')
     expect(html).toContain('data-testid="hub-dedicate-gate"')
     expect(html).toContain('data-testid="hub-dedicate-hangar"')
+    expect(html).toContain('No lounge is built')
     expect(html).toContain('data-testid="hub-showcase"')
+
+    game.fits.push({
+      origin: { c: 4, r: 4 },
+      rooms: { lounge: 1 },
+      premade: true,
+      wearBath: 0,
+      wearSec: 0,
+    } as Game['fits'][number])
+    const built = renderToStaticMarkup(<HubSection game={game} id="brisa" />)
+    const lounge = built.match(/<button[^>]*data-testid="hub-dedicate-lounge"[^>]*>/)?.[0] ?? ''
+    expect(lounge).not.toContain('disabled')
+    expect(built).toContain('Dedicate a lounge')
   })
 
   it('lists signed carriers with Primary hub pinned, and leaves the apron card as the only overlay', () => {

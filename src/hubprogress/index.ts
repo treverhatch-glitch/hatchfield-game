@@ -16,6 +16,7 @@ export {
   LEASE_KEY_ORDER,
   LEASE_NEED,
   LEASE_SCORE_CAP,
+  LOUNGE_COFUND_SHARE,
   PERK,
   PERK_AT,
   SCORE_PER_LEASE,
@@ -29,6 +30,24 @@ export {
 } from './config.ts'
 
 export { hubProgressRows, hubShowcase, hubStatusNote, type HubProgressRow, type HubShowcase } from './present.ts'
+
+export {
+  dedicateBlock,
+  dedicateLabel,
+  facilityAskMet,
+  FACILITY_LEASE_KINDS,
+  gateLeaseId,
+  hangarLeaseId,
+  isFacilityLeaseKind,
+  leaseAskKey,
+  leaseCredit,
+  loungeLeaseId,
+  releaseBreaksTier,
+  releaseLabel,
+  tierBelow,
+  type FacilityLease,
+  type FacilityLeaseKind,
+} from './leases.ts'
 
 export {
   emptyHubFacilities,

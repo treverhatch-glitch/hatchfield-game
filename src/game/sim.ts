@@ -655,8 +655,30 @@ import { rosterAirline } from '../airlines/roster.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
 import { ROSTER_LIVE, ROSTER_SIZE_CAP } from '../airlines/rosterConfig.ts'
 import { CATALOG_AIRLINE_IDS, rosterFleet, rosterGameAirline, rosterGameAirlines, rosterType } from './rosterAirlines.ts'
-import { checklistFromFacts, readHubDedicated, readHubOffered, readHubTiers, type HubDedicatedCounts } from './hubProgress.ts'
-import { HUB_OFFER_FEE, HUB_TIER_LABEL, type HubOfferTier, type HubTier } from '../hubprogress/config.ts'
+import {
+  checklistFromFacts,
+  readHubDedicated,
+  readHubLeaseWarnings,
+  readHubLeases,
+  readHubOffered,
+  readHubTiers,
+  type HubDedicatedCounts,
+} from './hubProgress.ts'
+import { HUB_OFFER_FEE, HUB_TIER_LABEL, LOUNGE_COFUND_SHARE, TIER_DROP_WARNING_DAYS, type HubOfferTier, type HubTier } from '../hubprogress/config.ts'
+import {
+  dedicateBlock,
+  dedicateLabel,
+  facilityAskMet,
+  gateLeaseId,
+  hangarLeaseId,
+  leaseCredit,
+  loungeLeaseId,
+  releaseBreaksTier,
+  releaseLabel,
+  tierBelow,
+  type FacilityLease,
+  type FacilityLeaseKind,
+} from '../hubprogress/leases.ts'
 import { capacityWarning, carrierTurnsWanted } from './letterCapacity.ts'
 import {
   airframeGap,
@@ -1376,6 +1398,10 @@ export class Game {
   hubTiers: Record<string, HubTier> = {}
   /** Lounge, gate, hangar, fuel, pad, and ramp counts dedicated to a carrier. Not desks. */
   hubDedicated: Record<string, HubDedicatedCounts> = {}
+  /** Lounge rooms, stands, and hangar bays named to one carrier. Not desks. */
+  hubLeases: FacilityLease[] = []
+  /** Stored tier, and the game day it falls if the released lease is still a gate. */
+  hubLeaseWarnings: Record<string, { tier: HubTier; untilDay: number }> = {}
   /** Tiers a letter has already been sent for. A decline does not clear the leases. */
   hubOffered: Record<string, HubOfferTier[]> = {}
   parkingOffer: ParkingOffer | null = null
@@ -1785,6 +1811,8 @@ export class Game {
     this.hubAirlines = []
     this.hubTiers = {}
     this.hubDedicated = {}
+    this.hubLeases = []
+    this.hubLeaseWarnings = {}
     this.hubOffered = {}
     this.parkingOffer = null
     this.parkingCool = 65
@@ -3446,6 +3474,7 @@ export class Game {
     const storedPrimary = Object.entries(this.hubTiers).find(([, tier]) => tier === 'primary')?.[0] ?? null
     const holder = engine?.state.hubAirlineId ?? storedPrimary
     const dedicated = this.hubDedicated[id] ?? {}
+    const leased = this.liveHubLeases(id)
     const view = checklistFromFacts({
       id,
       name: airline.name,
@@ -3464,10 +3493,10 @@ export class Game {
       stands: tilesOf(this.tiles, 'stand').length,
       pads: tilesOf(this.tiles, 'helipad').length,
       overnight: dedicated.overnight ?? 0,
-      lounges: dedicated.lounges ?? 0,
-      hangars: dedicated.hangars ?? 0,
+      lounges: (dedicated.lounges ?? 0) + leased.filter((lease) => lease.kind === 'lounge').length,
+      hangars: (dedicated.hangars ?? 0) + leased.filter((lease) => lease.kind === 'hangar').length,
       fuel: dedicated.fuel ?? 0,
-      pier: dedicated.pier ?? 0,
+      pier: (dedicated.pier ?? 0) + leased.filter((lease) => lease.kind === 'gate').length,
       ramp: dedicated.ramp ?? 0,
       dedicatedPads: dedicated.pads ?? null,
       connectionMin: minimumConnectionTime(this.hubFacilities()),
@@ -3483,6 +3512,160 @@ export class Game {
 
   hubCarrierViews() {
     return this.signed.map((id) => this.hubCarrierView(id))
+  }
+
+  /** Lounge rooms, stands, and hangar or heavy-check bays that can take a name. */
+  private hubLeaseTargets(): Record<FacilityLeaseKind, string[]> {
+    const lounge: string[] = []
+    for (const fit of this.fits) {
+      const count = fit.rooms.lounge ?? 0
+      for (let index = 0; index < count; index++) lounge.push(loungeLeaseId(fit.origin.c, fit.origin.r, index))
+    }
+    return {
+      lounge,
+      gate: tilesOf(this.tiles, 'stand').map((cell) => gateLeaseId(cell.c, cell.r)),
+      hangar: tilesOf(this.tiles, ['hangar', 'mro']).map((cell) => hangarLeaseId(cell.c, cell.r)),
+    }
+  }
+
+  /** Leases whose building is still on the field. A missing building does not count. */
+  private liveHubLeases(airlineId?: string): FacilityLease[] {
+    const targets = this.hubLeaseTargets()
+    const live = new Set<string>([...targets.lounge, ...targets.gate, ...targets.hangar])
+    return this.hubLeases.filter((lease) => live.has(lease.id) && (airlineId == null || lease.airlineId === airlineId))
+  }
+
+  private facilityCount(airlineId: string, kind: FacilityLeaseKind): number {
+    const stored = this.hubDedicated[airlineId]
+    const extra =
+      kind === 'lounge' ? (stored?.lounges ?? 0) : kind === 'hangar' ? (stored?.hangars ?? 0) : (stored?.pier ?? 0)
+    return extra + this.liveHubLeases(airlineId).filter((lease) => lease.kind === kind).length
+  }
+
+  /**
+   * Name the next free lounge, gate, or hangar bay to this carrier.
+   * The building stays the player's. An unasked lease still pays the daily credit.
+   */
+  dedicateHubFacility(airlineId: string, kind: FacilityLeaseKind): boolean {
+    if (!this.signed.includes(airlineId)) return false
+    this.dropMissingHubLeases()
+    const taken = new Set(this.hubLeases.map((lease) => lease.id))
+    const id = this.hubLeaseTargets()[kind].find((row) => !taken.has(row))
+    if (!id) return false
+    this.hubLeases.push({ id, kind, airlineId })
+    this.clearHubLeaseWarning(airlineId)
+    this.pushNews(`${this.airline(airlineId).name} dedicated ${dedicateLabel(kind).replace('Dedicate ', '')}.`, 'good')
+    this.emit()
+    return true
+  }
+
+  /**
+   * Take the name off one building. Does not clear the selected flight or a walker.
+   * A lease that gates the stored tier opens the 30-day warning.
+   */
+  releaseHubLease(airlineId: string, leaseId: string): boolean {
+    const lease = this.hubLeases.find((row) => row.id === leaseId && row.airlineId === airlineId)
+    if (!lease) return false
+    this.hubLeases = this.hubLeases.filter((row) => row.id !== leaseId)
+    const haveAfter = this.facilityCount(airlineId, lease.kind)
+    this.noteHubLeaseGap(airlineId, lease.kind, haveAfter)
+    const noun = lease.kind === 'lounge' ? 'lounge' : lease.kind === 'gate' ? 'gate' : 'hangar bay'
+    this.pushNews(`${this.airline(airlineId).name} released the ${noun}.`, 'ok')
+    this.emit()
+    return true
+  }
+
+  hubFacilityChoices(airlineId: string): {
+    kind: FacilityLeaseKind
+    label: string
+    blocked: string | null
+    held: { id: string; label: string }[]
+  }[] {
+    const targets = this.hubLeaseTargets()
+    const live = this.liveHubLeases()
+    const taken = new Set(live.map((lease) => lease.id))
+    return (['lounge', 'gate', 'hangar'] as const).map((kind) => {
+      const built = targets[kind]
+      const held = live.filter((lease) => lease.airlineId === airlineId && lease.kind === kind)
+      return {
+        kind,
+        label: dedicateLabel(kind),
+        blocked: dedicateBlock(kind, built.length, built.filter((id) => !taken.has(id)).length),
+        held: held.map((lease) => ({ id: lease.id, label: releaseLabel(kind, lease.id, held.length) })),
+      }
+    })
+  }
+
+  hubLeaseWarningText(airlineId: string): string | null {
+    const warning = this.hubLeaseWarnings[airlineId]
+    if (!warning) return null
+    const left = Math.max(0, warning.untilDay - this.gameDay())
+    return `${HUB_TIER_LABEL[warning.tier]} falls in ${left} days`
+  }
+
+  /** Half of each dedicated lounge room's daily upkeep. The full room bill still posts. */
+  hubLoungeShare(): number {
+    const rate = HALL_AMENITY_EXPENSE.lounge ?? 0
+    const share = Math.round(rate * LOUNGE_COFUND_SHARE)
+    if (share <= 0) return 0
+    let rooms = 0
+    const live = this.liveHubLeases()
+    for (const fit of this.fits) {
+      const billed = Math.min(3, fit.rooms.lounge ?? 0)
+      const prefix = `lounge:${fit.origin.c},${fit.origin.r}:`
+      const held = live.filter((lease) => lease.kind === 'lounge' && lease.id.startsWith(prefix)).length
+      rooms += Math.min(billed, held)
+    }
+    return rooms * share
+  }
+
+  private noteHubLeaseGap(airlineId: string, kind: FacilityLeaseKind, haveAfter: number) {
+    const tier = this.hubTiers[airlineId] ?? 'station'
+    const type = this.hubCarrierView(airlineId).type
+    if (!releaseBreaksTier(type, tier, kind, haveAfter)) return
+    if (this.hubLeaseWarnings[airlineId]?.tier === tier) return
+    this.hubLeaseWarnings[airlineId] = { tier, untilDay: this.gameDay() + TIER_DROP_WARNING_DAYS }
+    this.pushNews(
+      `${this.airline(airlineId).name} has ${TIER_DROP_WARNING_DAYS} days before ${HUB_TIER_LABEL[tier]} falls.`,
+      'bad',
+    )
+  }
+
+  private clearHubLeaseWarning(airlineId: string) {
+    const warning = this.hubLeaseWarnings[airlineId]
+    if (!warning) return
+    const type = this.hubCarrierView(airlineId).type
+    const met = facilityAskMet(type, warning.tier, {
+      lounge: this.facilityCount(airlineId, 'lounge'),
+      pier: this.facilityCount(airlineId, 'gate'),
+      hangar: this.facilityCount(airlineId, 'hangar'),
+    })
+    if (met) delete this.hubLeaseWarnings[airlineId]
+  }
+
+  /** A demolished building drops its lease and can open the same warning. Weather does not. */
+  private dropMissingHubLeases() {
+    const live = new Set<string>(Object.values(this.hubLeaseTargets()).flat())
+    const gone = this.hubLeases.filter((lease) => !live.has(lease.id))
+    if (!gone.length) return
+    this.hubLeases = this.hubLeases.filter((lease) => live.has(lease.id))
+    for (const lease of gone) {
+      this.noteHubLeaseGap(lease.airlineId, lease.kind, this.facilityCount(lease.airlineId, lease.kind))
+    }
+  }
+
+  private settleHubLeaseWarnings(completedDay: number) {
+    this.dropMissingHubLeases()
+    for (const [id, warning] of Object.entries(this.hubLeaseWarnings)) {
+      if (completedDay < warning.untilDay) continue
+      if ((this.hubTiers[id] ?? 'station') === warning.tier) {
+        const next = tierBelow(this.hubCarrierView(id).type, warning.tier)
+        if (next === 'station') delete this.hubTiers[id]
+        else this.hubTiers[id] = next
+        this.pushNews(`${this.airline(id).name} lost ${HUB_TIER_LABEL[warning.tier]}.`, 'bad')
+      }
+      delete this.hubLeaseWarnings[id]
+    }
   }
 
   diplomacyQuote(proposalId: string, ticks: import('../diplomacy/types.ts').CounterLineKey[]) {
@@ -6180,6 +6363,8 @@ export class Game {
       hubAirlines: this.hubAirlines,
       hubTiers: this.hubTiers,
       hubDedicated: this.hubDedicated,
+      hubLeases: this.hubLeases,
+      hubLeaseWarnings: this.hubLeaseWarnings,
       hubOffered: this.hubOffered,
       layoverWins: this.layoverWins,
       coachDismissed: this.coachDismissed,
@@ -6411,6 +6596,8 @@ export class Game {
       this.hubAirlines = s.hubAirlines ?? []
       this.hubTiers = readHubTiers(s.hubTiers)
       this.hubDedicated = readHubDedicated(s.hubDedicated)
+      this.hubLeases = readHubLeases(s.hubLeases)
+      this.hubLeaseWarnings = readHubLeaseWarnings(s.hubLeaseWarnings)
       this.hubOffered = readHubOffered(s.hubOffered) as Record<string, HubOfferTier[]>
       this.layoverWins = s.layoverWins ?? {}
       this.coachDismissed = s.coachDismissed ?? this.flightsDone >= 1
@@ -16901,12 +17088,18 @@ export class Game {
       gates += fit.rooms.gate ?? 0
       lounges += fit.rooms.lounge ?? 0
     }
+    const dedicated: Record<string, number> = {}
+    for (const id of this.signed) {
+      const credit = leaseCredit(this.liveHubLeases(id).length)
+      if (credit > 0) dedicated[id] = credit
+    }
     return {
       day,
       signed: this.signed,
       stands: tilesOf(this.tiles, 'stand').length,
       gates,
       lounges,
+      dedicated,
     }
   }
 
@@ -16969,6 +17162,7 @@ export class Game {
    * Landside upkeep is already a daily total (legacy tick × 6).
    */
   private closeOperatingDay(completedDay: number) {
+    this.settleHubLeaseWarnings(completedDay)
     this.settleTermShortfall(completedDay)
     this.reviewAirlineRelations(completedDay)
     this.settleDeposits(completedDay)
@@ -17005,6 +17199,8 @@ export class Game {
         )
       : 0
     if (beltBill > 0) this.charge(beltBill, 'building_upkeep', stamp)
+    const loungeShare = this.hubLoungeShare()
+    if (loungeShare > 0) this.earn(loungeShare, 'Airline lounge share', undefined, 'host_fees', false)
     this.ageLinks()
     const netLand = fees - upkeep
     const useRate = this.landsideUsageRate()

@@ -94,6 +94,8 @@ export const CONNECTION_AT: Partial<Record<HubArchetype, readonly HubOfferTier[]
 
 export const HUB_OFFER_FEE = { focus: 4_000, base: 8_000, hub: 14_000, primary: 22_000 } as const
 export const TIER_DROP_WARNING_DAYS = 30
+/** Share of one lounge room's daily upkeep the airline pays while the lease holds. */
+export const LOUNGE_COFUND_SHARE = 0.5
 export const CONNECTION_WINDOW_MIN = 45
 export const BUDGET_TURN_TARGET_MIN = 25
 

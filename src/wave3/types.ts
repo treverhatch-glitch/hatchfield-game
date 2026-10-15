@@ -11,6 +11,8 @@ export interface RelationParts {
   capacity: number
   lounge: number
   gate: number
+  /** Daily credit from dedicated lounges, gates, and hangar bays. */
+  dedicated: number
   missed: number
   fine: number
 }

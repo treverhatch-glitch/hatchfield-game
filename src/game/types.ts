@@ -1006,6 +1006,10 @@ export interface GameSnapshot {
   >
   /** Hub-tier letters already sent. Missing on older saves. */
   hubOffered?: Record<string, string[]>
+  /** Lounge, gate, and hangar leases by building id. Missing on older saves. */
+  hubLeases?: { id: string; kind: string; airlineId: string }[]
+  /** Day a stored tier falls if a gating lease stays released. */
+  hubLeaseWarnings?: Record<string, { tier: string; untilDay: number }>
   layoverWins?: Record<string, number>
   hotelLevel?: number
   carParkShort?: boolean

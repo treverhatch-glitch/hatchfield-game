@@ -65,16 +65,35 @@ export function HubProfile({ game, id }: { game: Game; id: string }) {
         <button type="button" data-testid="hub-dedicate-desk" disabled title={ALLOCATOR_WAIT}>
           Dedicate a desk
         </button>
-        <button type="button" data-testid="hub-dedicate-lounge" disabled>
-          Dedicate a lounge
-        </button>
-        <button type="button" data-testid="hub-dedicate-gate" disabled>
-          Dedicate a gate
-        </button>
-        <button type="button" data-testid="hub-dedicate-hangar" disabled>
-          Dedicate a hangar bay
-        </button>
+        {game.hubFacilityChoices(id).map((choice) => (
+          <span key={choice.kind}>
+            <button
+              type="button"
+              data-testid={`hub-dedicate-${choice.kind}`}
+              disabled={choice.blocked != null}
+              title={choice.blocked ?? undefined}
+              onClick={() => game.dedicateHubFacility(id, choice.kind)}
+            >
+              {choice.label}
+            </button>
+            {choice.held.map((held) => (
+              <button
+                key={held.id}
+                type="button"
+                data-testid={`hub-release-${choice.kind}`}
+                onClick={() => game.releaseHubLease(id, held.id)}
+              >
+                {held.label}
+              </button>
+            ))}
+          </span>
+        ))}
       </div>
+      {game.hubLeaseWarningText(id) ? (
+        <p className="muted" data-testid="hub-tier-warning">
+          {game.hubLeaseWarningText(id)}
+        </p>
+      ) : null}
     </section>
   )
 }

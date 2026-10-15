@@ -8,6 +8,8 @@ import {
   emptyHubFacilities,
   hubChecklist,
   HUB_TIERS,
+  isFacilityLeaseKind,
+  type FacilityLease,
   type HubArchetype,
   type HubBand,
   type HubChecklist,
@@ -90,6 +92,36 @@ export function readHubOffered(raw: unknown): Record<string, string[]> {
     if (!Array.isArray(row)) continue
     const tiers = row.filter((tier): tier is string => typeof tier === 'string' && (OFFER_TIERS as readonly string[]).includes(tier))
     if (tiers.length) out[id] = tiers
+  }
+  return out
+}
+
+export function readHubLeases(raw: unknown): FacilityLease[] {
+  if (!Array.isArray(raw)) return []
+  const out: FacilityLease[] = []
+  const seen = new Set<string>()
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const src = row as Record<string, unknown>
+    const id = typeof src.id === 'string' ? src.id : ''
+    const airlineId = typeof src.airlineId === 'string' ? src.airlineId : ''
+    if (!id || !airlineId || !isFacilityLeaseKind(src.kind) || seen.has(id)) continue
+    seen.add(id)
+    out.push({ id, airlineId, kind: src.kind })
+  }
+  return out
+}
+
+export function readHubLeaseWarnings(raw: unknown): Record<string, { tier: HubTier; untilDay: number }> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, { tier: HubTier; untilDay: number }> = {}
+  for (const [id, row] of Object.entries(raw as Record<string, unknown>)) {
+    if (!row || typeof row !== 'object') continue
+    const src = row as Record<string, unknown>
+    const untilDay = src.untilDay
+    if (!isHubTier(src.tier) || src.tier === 'station') continue
+    if (typeof untilDay !== 'number' || !Number.isFinite(untilDay)) continue
+    out[id] = { tier: src.tier, untilDay: Math.max(0, Math.floor(untilDay)) }
   }
   return out
 }

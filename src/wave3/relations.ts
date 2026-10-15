@@ -33,6 +33,7 @@ export const RELATION_PART_LABELS: Record<keyof RelationParts, string> = {
   capacity: 'Stand capacity',
   lounge: 'Lounges',
   gate: 'Gates',
+  dedicated: 'Dedicated leases',
   missed: 'Missed asks',
   fine: 'Fines',
 }
@@ -43,6 +44,8 @@ export interface RelationDayFacts {
   stands: number
   gates: number
   lounges: number
+  /** Capped dedicated-lease credit per airline. Same review as lounges and gates. */
+  dedicated?: Readonly<Record<string, number>>
 }
 
 export function emptyRelations(): RelationsState {
@@ -82,7 +85,19 @@ export function bandWithHysteresis(prev: RelationBand, score: number): RelationB
 }
 
 export function emptyParts(): RelationParts {
-  return { letter: 0, onTime: 0, delay: 0, cancel: 0, kept: 0, capacity: 0, lounge: 0, gate: 0, missed: 0, fine: 0 }
+  return {
+    letter: 0,
+    onTime: 0,
+    delay: 0,
+    cancel: 0,
+    kept: 0,
+    capacity: 0,
+    lounge: 0,
+    gate: 0,
+    dedicated: 0,
+    missed: 0,
+    fine: 0,
+  }
 }
 
 export function emptyCounts(): RelationCounts {
@@ -227,6 +242,7 @@ export function reviewRelationDay(state: RelationsState, facts: RelationDayFacts
     else if (turns > 0 && (facts.stands <= 0 || headroom < CAPACITY_STRAIN)) capacity = SCORE_CAPACITY_STRAIN
     const lounges = Math.min(Math.max(0, facts.lounges), LOUNGE_SCORE_CAP) * SCORE_PER_LOUNGE * scale
     const gates = Math.min(Math.max(0, facts.gates), GATE_SCORE_CAP) * SCORE_PER_GATE * scale
+    const dedicated = Math.max(0, facts.dedicated?.[airlineId] ?? 0)
     next = applyParts(
       next,
       airlineId,
@@ -235,6 +251,7 @@ export function reviewRelationDay(state: RelationsState, facts: RelationDayFacts
         ['capacity', capacity],
         ['lounge', lounges],
         ['gate', gates],
+        ['dedicated', dedicated],
       ],
       { kept: 1 },
       facts.day,
