@@ -87,7 +87,7 @@ describe('massing pass 3 sockets', () => {
       const g = build(building)
       expect(named(g, 'sign:').length, building).toBeGreaterThan(0)
       signFacesFront(g)
-      const cap = building.startsWith('hotel') ? 260 : 220
+      const cap = building.startsWith('hotel') ? 260 : building === 'rail' ? 420 : building === 'helipad' ? 360 : 220
       expect(meshTriangleCount(g), building).toBeLessThanOrEqual(cap)
       const box = new THREE.Box3().setFromObject(g)
       expect(box.min.x, building).toBeGreaterThan(-CELL * 0.62)
@@ -100,6 +100,18 @@ describe('massing pass 3 sockets', () => {
         expect(mark.position.z, id).toBeCloseTo(bay.at[2], 2)
         const socket = g.getObjectByName(id)
         expect(socket?.position.toArray(), id).toEqual([bay.at[0], bay.at[1], bay.at[2]])
+        if (building === 'rail') {
+          const train = g.getObjectByName(`train:${id}`)
+          expect(train, id).toBeTruthy()
+          expect(train!.position.x).toBeCloseTo(bay.at[0], 2)
+          expect(train!.position.z).toBeCloseTo(bay.at[2], 2)
+        }
+        if (building === 'helipad' && id === 'pad') {
+          const heli = g.getObjectByName('heli:pad')
+          expect(heli).toBeTruthy()
+          expect(heli!.position.x).toBeCloseTo(bay.at[0], 2)
+          expect(heli!.position.z).toBeCloseTo(bay.at[2], 2)
+        }
         if (!bay.vehicle) continue
         const { widthAlongX } = dockLands(bay.vehicle, bay.at)
         const geo = mark.geometry as THREE.PlaneGeometry

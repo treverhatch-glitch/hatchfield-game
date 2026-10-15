@@ -132,7 +132,54 @@ export function addBusStation(g: THREE.Group) {
   g.add(pad, curb, canopy, bench, glassPane)
 }
 
-/** Rail hall, a platform, and two track slots. No train model docks yet. */
+/** A short train on one track socket. Low boxes so both slots stay cheap. */
+function addTrackTrain(g: THREE.Group, id: string, z: number) {
+  const at = MASS3_SOCKETS.rail[id]!.at
+  const root = new THREE.Group()
+  root.name = `train:${id}`
+  root.position.set(at[0], 0.36, z)
+  const cream = new THREE.MeshStandardMaterial({ color: '#e7e1d4', roughness: 0.55 })
+  const red = new THREE.MeshStandardMaterial({ color: '#9c2b2b', roughness: 0.5 })
+  const glassM = glass()
+  const steel = new THREE.MeshStandardMaterial({ color: '#3a4148', roughness: 0.4, metalness: 0.35 })
+  const loco = box(2.15, 0.85, 0.48, cream, 1.35, 0.55, 0)
+  const cab = box(0.85, 0.55, 0.46, cream, 0.45, 1.15, 0)
+  const nose = box(0.35, 0.42, 0.4, red, 2.35, 0.4, 0)
+  const car = box(3.15, 0.78, 0.48, cream, -1.55, 0.52, 0)
+  const windows = box(2.4, 0.28, 0.5, glassM, -1.55, 0.72, 0)
+  const cabGlass = box(0.7, 0.28, 0.48, glassM, 0.45, 1.22, 0)
+  for (const x of [1.7, 0.7, -0.7, -2.4]) root.add(box(0.45, 0.22, 0.52, steel, x, 0.08, 0))
+  root.add(loco, cab, nose, car, windows, cabGlass)
+  g.add(root)
+}
+
+/** Helicopter parked on the pad socket. Blades are two slabs, not a disc. */
+function addPadHeli(g: THREE.Group) {
+  const at = MASS3_SOCKETS.helipad.pad!.at
+  const root = new THREE.Group()
+  root.name = 'heli:pad'
+  root.position.set(at[0], 0.22, at[2])
+  const white = new THREE.MeshStandardMaterial({ color: '#e8eef4', roughness: 0.45 })
+  const dark = new THREE.MeshStandardMaterial({ color: '#2c343c', roughness: 0.5 })
+  const body = box(1.35, 0.42, 0.48, white, 0.15, 0.38, 0)
+  const nose = box(0.4, 0.28, 0.4, glass(), 0.85, 0.4, 0)
+  const boom = box(1.15, 0.1, 0.1, dark, -0.95, 0.42, 0)
+  const fin = box(0.08, 0.32, 0.22, dark, -1.5, 0.58, 0)
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.35, 6), dark)
+  mast.position.set(0.15, 0.78, 0)
+  const bladeA = box(2.2, 0.03, 0.1, dark, 0.15, 0.96, 0)
+  const bladeB = box(0.1, 0.03, 2.2, dark, 0.15, 0.98, 0)
+  const tailRotor = box(0.04, 0.28, 0.06, dark, -1.5, 0.58, 0.14)
+  for (const s of [-1, 1]) {
+    root.add(box(1.15, 0.04, 0.05, dark, 0.1, 0.06, s * 0.22))
+    root.add(box(0.05, 0.22, 0.05, dark, 0.35, 0.16, s * 0.18))
+    root.add(box(0.05, 0.22, 0.05, dark, -0.25, 0.16, s * 0.18))
+  }
+  root.add(body, nose, boom, fin, mast, bladeA, bladeB, tailRotor)
+  g.add(root)
+}
+
+/** Rail hall, a platform, and a train on each track socket. */
 export function addRailStation(g: THREE.Group) {
   const span = CELL * 0.58
   const depth = CELL * 0.34
@@ -151,9 +198,10 @@ export function addRailStation(g: THREE.Group) {
   const pane = box(span * 0.55, 0.55, 0.05, glass(), 0, 1.7, front + 0.04)
   const platform = box(CELL * 0.88, 0.22, CELL * 0.42, skinMaterial('transit_station', 'wall'), 0, 0.16, 1.85)
   const railMat = skinMaterial('transit_station', 'trim', { metalness: 0.4, color: '#c5ced6' })
-  for (const tz of [1.15, 2.55]) {
-    g.add(box(CELL * 0.82, 0.06, 0.06, railMat, -0.28, 0.3, tz))
-    g.add(box(CELL * 0.82, 0.06, 0.06, railMat, 0.28, 0.3, tz))
+  for (const [id, tz] of [['track1', 1.15], ['track2', 2.55]] as const) {
+    g.add(box(CELL * 0.82, 0.06, 0.06, railMat, 0, 0.3, tz - 0.22))
+    g.add(box(CELL * 0.82, 0.06, 0.06, railMat, 0, 0.3, tz + 0.22))
+    addTrackTrain(g, id, tz)
   }
   const canopy = box(CELL * 0.7, 0.08, CELL * 0.5, skinMaterial('transit_station', 'roof'), 0, 2.55, 1.85)
   for (const x of [-CELL * 0.28, CELL * 0.28]) g.add(box(0.12, 2.3, 0.12, railMat, x, 1.25, 1.85))
@@ -192,6 +240,7 @@ export function addHelipad(g: THREE.Group) {
     { pad: { w: CELL * 0.48, d: CELL * 0.48 }, bowser: { w: 1.6, d: 2.2 } },
     '#c9a227',
   )
+  addPadHeli(g)
   g.add(pad, ring, bar, cross, pole, sock, cabinet, cap)
 }
 

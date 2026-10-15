@@ -2,7 +2,7 @@
 
 Pass 3 bays. Each row is a `service-bay:<id>` mark on the mesh and a socket of the same id. Positions are local to the building, in world units. A vehicle listed here docks nose-first: its `dock` socket meets the bay.
 
-`socket defined, no vehicle yet` means the bay is on the mesh and in `MASS3_SOCKETS`, and no ground-vehicle model stops there.
+The rail train and the helipad helicopter are static props parked on those sockets. They are not fleet vehicles, so they do not take a `dock` socket in the ground-vehicle table.
 
 | Building | Bay | Vehicle |
 | --- | --- | --- |
@@ -10,8 +10,8 @@ Pass 3 bays. Each row is a `service-bay:<id>` mark on the mesh and a socket of t
 | Catering kitchen | `1`, `2` | `catering_hilift` |
 | Bag sort | `1`, `2`, `3` | `baggage_train` |
 | Bus station | `1`, `2` | `coach` |
-| Rail station | `track1`, `track2` | socket defined, no vehicle yet |
-| Helipad | `pad` | socket defined, no vehicle yet |
+| Rail station | `track1`, `track2` | train (`train:track1`, `train:track2`) |
+| Helipad | `pad` | helicopter (`heli:pad`) |
 | Helipad | `bowser` | `fuel_tanker` |
 | Airport inn | `drop` | `coach` |
 | Airport inn | `service` | `van` |

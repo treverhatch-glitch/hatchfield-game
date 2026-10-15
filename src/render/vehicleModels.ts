@@ -640,6 +640,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.box(LIVERY.black, tl * 0.55, 0.06, tr * 2 + 0.025, tx, ty - tr * 0.55 - 0.09, 0, 'tank')
     k.box(LIVERY.chassis, 1.8, 0.5, W * 1.0, tx, r + 0.25, 0)
     k.box(LIVERY.chassis, 0.1, 0.38, W * 0.78, -L / 2 + 0.16, r * 0.7, 0) // underride
+    k.box('#b42318', 0.04, 0.32, 0.32, -L / 2 + 0.08, r + 1.15, 0) // rear placard
     k.chevrons(-L / 2, r * 0.4, 0.5, W)
     k.tail(-L / 2, r + 0.5, W)
   },
@@ -675,6 +676,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.axle(tx - 0.85, r, W, 'wheels_rear')
     k.rbox(LIVERY.gseYellow, tL, 0.55, W, tx, r + 0.2, 0, 0.08)
     k.rbox(LIVERY.gseYellow, 1.0, 0.45, W * 0.9, tx + 0.85, r + 0.68, 0, 0.1) // rounded hood
+    k.cyl(LIVERY.black, 0.16, 0.04, tx + 0.55, r + 0.92, 0, 'z') // steering wheel
     k.box('#f7f3a8', tL * 0.7, 0.08, W + 0.02, tx, r + 0.48, 0) // hi-vis
     k.box(LIVERY.black, 0.1, 0.3, W * 1.02, L / 2, r + 0.05, 0)
     k.box(LIVERY.black, 0.5, 0.5, 0.5, tx - 0.4, r + 0.75, 0) // seat
@@ -731,6 +733,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
       k.add(rung, LIVERY.chassis, 0, by, W * 0.15, 'belt')
     }
     k.slab(LIVERY.rubber, bl * 0.98, 0.12, 0.62, 0, by, W * 0.15, pitch, 'belt')
+    k.box(LIVERY.diamond, 0.7, 0.06, 0.45, -L * 0.05, r + 0.48, -W / 2 + 0.2) // operator step
     // belt rollers along the boom (read as moving conveyor)
     for (let i = 0; i < 7; i++) {
       const f = (i / 6 - 0.5) * bl * 0.9
@@ -784,6 +787,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.liveryBoth(1, Math.min(bl * 0.55, 3.4), Math.min(bh * 0.42, 1.35), bx - bl * 0.08, by0 + bh * 0.62, W / 2 + 0.03, 'box')
     k.box(k.accent, bl * 1.002, 0.3, W * 1.005, bx, by0 + bh * 0.25, 0, 'box')
     k.rbox(LIVERY.white, bl * 0.96, 0.16, W * 0.92, bx, H - 0.02, 0, 0.06, 'box')
+    k.box(LIVERY.steel, 0.4, 0.14, 0.3, bx + bl * 0.2, H + 0.06, 0, 'box') // roof vent
     k.box(LIVERY.steel, 0.06, bh * 0.82, W * 0.72, -L / 2 + 0.12, by0 + bh * 0.48, 0, 'box') // rear door
     k.box('#c5ccd2', 0.02, bh * 0.7, W * 0.55, -L / 2 + 0.16, by0 + bh * 0.5, 0, 'box')
     // front deck hinged at the box floor; Round B/C folds it up for driving
@@ -831,6 +835,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.cyl(LIVERY.steel, 0.14, 0.2, L / 2 + 0.2, r + 0.45, 0, undefined, 'bumper_turret')
     k.cyl(LIVERY.white, 0.06, 0.6, L / 2 + 0.45, r + 0.55, 0, 'x', 'bumper_turret')
     for (const s of [1, -1]) k.beacon(-L / 2 + 0.3, H + 0.02, s * (W / 2 - 0.2), 'lightbar')
+    k.box(LIVERY.diamond, 0.55, 0.08, W * 0.45, L / 2 + 0.06, r + 0.2, 0) // bumper step
     k.chevrons(-L / 2 + 0.05, r * 0.5, 0.6, W, 8)
     k.tail(-L / 2 + 0.05, r + 0.6, W)
   },
@@ -846,6 +851,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const tr = Math.min(W * 0.4, 0.72)
     const tankY = r + 0.55 + tr
     k.add(new THREE.CapsuleGeometry(tr, Math.max(0.3, tl - tr * 2), 4, 14).rotateZ(Math.PI / 2), LIVERY.white, tx, tankY, 0)
+    k.box('#9ec4de', 0.03, tr * 0.55, 0.14, tx + tl * 0.15, tankY, tr + 0.02) // sight glass
     k.liveryBoth(LIVERY_CELL.deice, 2.15, 0.6, tx, tankY + tr * 0.15, tr + 0.04)
     k.sideStripe(tx, tl * 0.85, tankY - tr * 0.35, tr * 2, k.accent, 0.16)
     k.sideStripe(tx, tl * 0.85, tankY + tr * 0.05, tr * 2, '#3fa8d6', 0.08)
@@ -926,6 +932,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
       k.box(LIVERY.black, 0.4, 0.06, 0.06, L / 2 + 0.15, H - 0.5, s * (W / 2 + 0.05))
       k.box(LIVERY.black, 0.08, 0.5, 0.18, L / 2 + 0.35, H - 0.8, s * (W / 2 + 0.05))
     }
+    k.box(LIVERY.white, L * 0.38, 0.2, W * 0.4, -L * 0.04, H + 0.08, 0) // roof pod, clear of the apron bus
     k.tail(-L / 2 - 0.01, fl + 0.6, W)
   },
 
@@ -1046,6 +1053,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     // twin low cabs (front corner)
     k.box(LIVERY.glass, 1.2, 0.45, 1.0, L * 0.32, r + 0.85, -W * 0.28)
     k.box('#d5d8dc', 1.3, 0.06, 1.1, L * 0.32, H - 0.03, -W * 0.28)
+    k.box(LIVERY.glass, 1.0, 0.38, 0.85, L * 0.26, r + 0.72, W * 0.22)
+    k.box('#d5d8dc', 1.1, 0.05, 0.95, L * 0.26, r + 0.94, W * 0.22)
     for (const dx of [-0.55, 0.55]) k.box(LIVERY.black, 0.05, 0.55, 0.05, L * 0.32 + dx, r + 0.7, -W * 0.28)
     k.beacon(L * 0.32, H, -W * 0.28)
     k.box('#f7f3a8', L * 0.35, 0.1, W * 0.96, L * 0.27, r + 0.7, 0) // hi-vis nose
@@ -1076,6 +1085,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.cyl(LIVERY.steel, 0.04, 0.7, L / 2 - 0.05, r + 0.04, 0, 'x') // tow tongue, kept inside the footprint
     k.chevrons(-L / 2 + L * 0.07 - 0.03, r + 0.2, 0.25, W * 0.95, 4)
     k.box(LIVERY.amber, 0.12, 0.08, 0.12, -L * 0.3, H + 0.04, 0, '', true)
+    k.cyl(LIVERY.chassis, 0.07, 0.28, -L * 0.22, H + 0.12, W * 0.18, undefined) // exhaust stack
+    k.box('#1c242c', 0.04, 0.42, 0.36, L / 2 - 0.04, r + 0.72, 0) // control panel
   },
 
   stairs(k, L, H, W) {
@@ -1083,7 +1094,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.axle(L * 0.33, r, W, 'wheels_front')
     k.axle(-L * 0.3, r, W, 'wheels_rear')
     k.chassisRail(L * 0.96, W, r + 0.12)
-    const back = k.cab(L, W, r + 0.2, 1.9, 1.7, LIVERY.white)
+    const back = k.cab(L, W, r + 0.2, 1.9, 1.7, LIVERY.white, { rake: 0.32 })
     const sl = back + L / 2 - 0.2
     const sx = -L / 2 + sl / 2 + 0.1
     const pitch = Math.atan2(H - 0.8 - (r + 0.6), sl * 0.95)
@@ -1104,6 +1115,7 @@ const BUILDERS: Record<VehicleModel, Builder> = {
       k.box(LIVERY.gseYellow, 0.06, 0.06, W * 0.76, -L / 2 + 0.2, H - 0.05, 0, 'canopy')
     }
     k.box(k.accent, 1.3, 0.08, W * 0.85, -L / 2 + 0.7, H, 0, 'canopy')
+    k.box(LIVERY.gseYellow, 0.04, 0.72, W * 0.62, -L / 2 + 0.18, H - 0.42, 0, 'canopy')
     k.box('#f7f3a8', sl * 0.6, 0.08, W + 0.02, sx, r + 0.5, 0) // hi-vis
     k.liveryBoth(LIVERY_CELL.stairs, 1.2, 0.36, L / 2 - 1.0, r + 0.95, W / 2 + 0.04)
     k.chevrons(-L / 2 + 0.1, r * 0.4, 0.4, W)
@@ -1239,7 +1251,12 @@ function cart(k: Kit, cx: number, cL: number, W: number, H: number, name: string
   k.box(LIVERY.chassis, cL, 0.1, W, cx, r + 0.2, 0, name)
   for (const fx of [-0.48, 0.48]) for (const s of [1, -1]) k.box(LIVERY.steel, 0.05, H - r - 0.25, 0.05, cx + fx * cL, (H + r + 0.25) / 2, s * (W / 2 - 0.03), name)
   k.box(LIVERY.steel, cL, 0.05, W, cx, H - 0.03, 0, name)
-  k.box('#2f4a6a', cL * 0.96, (H - r - 0.3) * 0.8, 0.03, cx, r + 0.3 + (H - r - 0.3) * 0.4, -W / 2 + 0.02, name || 'curtain')
+  // Open cage: three rails a side, not a solid curtain. The part stays named curtain.
+  for (const t of [0.28, 0.52, 0.76]) {
+    const y = r + 0.32 + (H - r - 0.4) * t
+    k.box(LIVERY.steel, cL * 0.9, 0.045, 0.045, cx, y, -W / 2 + 0.04, name || 'curtain')
+    k.box(LIVERY.steel, cL * 0.9, 0.045, 0.045, cx, y, W / 2 - 0.04, name || 'curtain')
+  }
   // bags
   const bags = ['#6a5340', '#2f4a6a', '#8c2f2f', '#3e5a3a', '#55595f']
   for (let i = 0; i < 5; i++) k.box(bags[i], cL * 0.17, 0.42, W * 0.55, cx - cL * 0.4 + i * cL * 0.2, r + 0.46, W * 0.1, name)
