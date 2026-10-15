@@ -19,9 +19,11 @@ describe('hub profile panel', () => {
     expect(html).toContain('data-testid="hub-profile"')
     expect(html).toContain('data-testid="hub-rewards"')
     expect(html).toContain('If you accept Focus city')
-    expect(html).toContain('Waiting on the desk allocator')
+    expect(html).toContain('0 / 1')
     expect(html).toContain('data-testid="hub-dedicate-desk"')
-    expect(html).toContain('disabled')
+    expect(html).toContain('data-testid="hub-open-assign"')
+    const desk = html.match(/<button[^>]*data-testid="hub-dedicate-desk"[^>]*>/)?.[0] ?? ''
+    expect(desk).not.toContain('disabled')
     expect(html).toContain('data-testid="hub-dedicate-lounge"')
     expect(html).toContain('data-testid="hub-dedicate-gate"')
     expect(html).toContain('data-testid="hub-dedicate-hangar"')

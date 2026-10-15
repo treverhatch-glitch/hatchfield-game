@@ -160,6 +160,10 @@ export interface PlayerCommands {
   tick(dt: number): void
   view(): AirportView
   probe(): Probe
+  /** Hub-tier letters already sent. A decline still counts. */
+  hubOffersSent(): number
+  /** Signed carriers and the gate that is still open. */
+  hubLadderNote(): string
 }
 
 export type Intent =

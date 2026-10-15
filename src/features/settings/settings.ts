@@ -51,7 +51,11 @@ export interface Settings {
   /** Master mute. Category sliders stay put so unmuting restores the mix. */
   audioMuted: boolean
   busVolume: BusVolume
-  /** False holds the apron at late morning. The sun cycle is on by default. */
+  /**
+   * Day/night cycle. On follows the sim clock (sun, moon, sky, field lights).
+   * Off holds the field at late morning. Menus, including the ones being
+   * rebuilt elsewhere, bind this field. It persists with the rest of Settings.
+   */
   dayNightCycle: boolean
 }
 
@@ -133,6 +137,13 @@ export function sanitizeSettings(raw: unknown): Settings {
     busVolume,
     dayNightCycle: bool(r.dayNightCycle, d.dayNightCycle),
   }
+}
+
+let shared: SettingsStore | undefined
+
+/** One store for the pause menu, the audio mix, and the lighting rig. */
+export function sharedSettings(): SettingsStore {
+  return (shared ??= new SettingsStore())
 }
 
 export function applyPreset(s: Settings, preset: QualityPreset): Settings {

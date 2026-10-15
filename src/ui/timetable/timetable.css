@@ -334,6 +334,18 @@
 .tt-root .muted {
   opacity: 0.6;
 }
+.tt-fuel {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 4px 8px 8px;
+  text-align: left;
+  background: transparent !important;
+  border: none !important;
+  opacity: 0.85;
+}
+.tt-fuel.short {
+  color: #fbbf24;
+}
 .tt-card {
   position: absolute;
   right: 8px;

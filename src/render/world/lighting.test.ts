@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import { Game } from '../../game/sim'
-import { lerpHex, lightsFactor, simClockToHour, skyState, sunDirection } from './daylight'
+import { lerpHex, lightsFactor, moonDirection, simClockToHour, skyState, sunDirection } from './daylight'
 import { applyDayNight, DAY_NIGHT_CYCLE } from './dayNight'
 import { fitShadow, groundFocus, pickLod, stepFade } from './lod'
 import { parseQuality, QUALITY, suggestQuality } from './quality'
@@ -33,6 +33,27 @@ describe('day / night', () => {
     // Morning sun in the east (+x), evening in the west.
     expect(sunDirection(8).x).toBeGreaterThan(0)
     expect(sunDirection(18).x).toBeLessThan(0)
+  })
+
+  it('walks the moon east to west and keeps sunrise and sunset warmer than noon', () => {
+    const rise = moonDirection(21)
+    const set = moonDirection(4)
+    expect(rise.x).toBeGreaterThan(0.2)
+    expect(set.x).toBeLessThan(-0.2)
+    expect(rise.y).toBeGreaterThan(0.2)
+    expect(set.y).toBeGreaterThan(0.2)
+    expect(moonDirection(0).y).toBeGreaterThan(rise.y)
+    expect(Math.hypot(rise.x, rise.y, rise.z)).toBeCloseTo(1)
+    expect(Math.hypot(sunDirection(2).x, sunDirection(2).y, sunDirection(2).z)).toBeCloseTo(1)
+    const red = (hex: number) => (hex >> 16) & 255
+    const blue = (hex: number) => hex & 255
+    const dawn = skyState(6.6)
+    const dusk = skyState(18.6)
+    const noon = skyState(12)
+    expect(red(dawn.sunColor)).toBeGreaterThan(blue(dawn.sunColor) + 40)
+    expect(red(dusk.sunColor)).toBeGreaterThan(blue(dusk.sunColor) + 40)
+    expect(noon.sunIntensity).toBeGreaterThan(dawn.sunIntensity)
+    expect(dawn.fogColor).not.toBe(noon.fogColor)
   })
 
   it('weather darkens, fogs, wets, and lights the field', () => {

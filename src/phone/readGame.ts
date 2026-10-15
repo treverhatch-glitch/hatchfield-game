@@ -18,6 +18,7 @@ import { GAME_MINUTES_PER_SECOND } from '../scale/data.ts'
 import { contractById } from '../scale/logic.ts'
 import { buildPhoneFeed } from './feed.ts'
 import type { PhoneCard } from './types.ts'
+import { effectLabel } from '../hubprogress/backlash.ts'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import type { PhoneWorld } from './feed.ts'
 
@@ -32,7 +33,9 @@ function hubPhoneOffer(game: Game, airlineName: string): NonNullable<PhoneWorld[
     met: line.status === 'ok',
   }))
   if (anger.spared) lines.push({ label: anger.spared, met: true })
-  if (anger.anger) lines.push({ label: anger.anger, met: true })
+  for (const row of anger.hit) {
+    lines.push({ label: `${row.name} ${row.score} · ${effectLabel(row.effect, row.intensity)}`, met: row.effect === 'score' })
+  }
   return {
     airlineName,
     tierLabel: HUB_TIER_LABEL[tier],
@@ -206,6 +209,12 @@ export function readPhoneWorld(game: Game): PhoneWorld {
           }
         : null,
     rivalNotes: game.hubRivalPhone.filter((note) => !game.letterAcked(`rival:${note.id}`)),
+    nudges: game.hubNudges.map((row) => ({
+      airlineId: row.airlineId,
+      airlineName: game.airline(row.airlineId).name,
+      step: row.step,
+      text: row.text,
+    })),
     advisor: game.standingAdvisor.activeCards.map((note) => ({
       id: note.id,
       airlineName: game.airline(note.airlineId).name,

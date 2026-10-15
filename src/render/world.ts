@@ -1898,7 +1898,7 @@ export class World {
       const odo = this.odometer(pose.id, pos.x + off.x * WORLD_PER_METER, pos.z + off.z * WORLD_PER_METER)
       this.vehicleFrame.push({
         kind: pose.type,
-        color: serviceColor(pose.type),
+        color: game.hubVehicleColor(pose.id) ?? serviceColor(pose.type),
         size: vehicleMeters(pose.type),
         x: pos.x + off.x * WORLD_PER_METER,
         y: pos.y,

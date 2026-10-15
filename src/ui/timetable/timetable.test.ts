@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { checkInCloseMin, checkInGhost, LEISURE_LEAD_GAME_MIN } from './checkInGhost'
+import { fuelFooterLine } from './fuelFooter'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
 import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
@@ -129,6 +130,20 @@ function bare(over: Partial<TtFlight> = {}): TtFlight {
   }
 }
 
+describe('fuel footer', () => {
+  it('matches the tank and names a short day', () => {
+    const line = fuelFooterLine({
+      upliftLitres: 18400,
+      tankLitres: 80000,
+      tankCapacity: 120000,
+      supplier: 'Apex Local',
+    })
+    expect(line.text).toBe('Bank uplift 18,400 L · tank 80,000 / 120,000 L · Apex Local')
+    expect(line.short).toBe(false)
+    expect(fuelFooterLine({ upliftLitres: 90000, tankLitres: 80000, tankCapacity: 120000, supplier: 'Apex Local' }).short).toBe(true)
+  })
+})
+
 describe('check-in ghost', () => {
   it('draws leisure open through the domestic or international close', () => {
     const std = 110
@@ -223,6 +238,17 @@ describe('game schedule adapter', () => {
     expect(game.schedule[0].standPref).toEqual({ c: 6, r: 4 })
     a.pinStand('s1:arr', null)
     expect(game.schedule[0].standPref).toBeNull()
+  })
+
+  it('labels a leased stand and refuses another airline', () => {
+    const { a, game } = setup()
+    game.hubLeases = [{ id: 'stand:4,4', kind: 'gate', airlineId: 'sky' }]
+    const row = a.stands().find((s) => s.id === '4,4')
+    expect(row?.leaseAirline).toBe('SKY')
+    a.pinStand('s2:arr', '4,4')
+    expect(game.schedule[1].standPref).toEqual({ c: 6, r: 4 })
+    a.pinStand('s1:arr', '4,4')
+    expect(game.schedule[0].standPref).toEqual({ c: 4, r: 4 })
   })
 
   it('snaps a drag back to the hard window', () => {

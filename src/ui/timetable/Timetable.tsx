@@ -29,11 +29,17 @@ export function Timetable({
   menuOpen = false,
   plannerOpen = false,
   defaultOpen = false,
+  fuelLine = null,
+  fuelShort = false,
+  onFuel,
 }: {
   adapter: TimetableAdapter
   menuOpen?: boolean
   plannerOpen?: boolean
   defaultOpen?: boolean
+  fuelLine?: string | null
+  fuelShort?: boolean
+  onFuel?: () => void
 }) {
   const [pillOpen, setPillOpen] = useState(defaultOpen)
   const [tab, setTab] = useState<Tab>('stands')
@@ -264,8 +270,13 @@ export function Timetable({
                     {g.icao === 'none' ? <h4>Tower</h4> : null}
                     {g.rows.map((row, ri) => (
                       <div key={row.stand?.id ?? `none-${ri}`} className="tt-row" data-stand={row.stand?.id ?? ''}>
-                        <span className="tt-label" title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}>
+                        <span
+                          className="tt-label"
+                          title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}
+                          style={row.stand?.leaseColor ? { boxShadow: `inset 3px 0 0 ${row.stand.leaseColor}` } : undefined}
+                        >
                           {row.stand ? row.stand.label : ri === 0 ? 'Tower' : ''}
+                          {row.stand?.leaseAirline ? <small> · {row.stand.leaseAirline}</small> : null}
                         </span>
                         <div className="tt-lane">
                           {grid}
@@ -375,6 +386,18 @@ export function Timetable({
             ) : null}
           </div>
 
+          {fuelLine ? (
+            <button
+              type="button"
+              className={`tt-fuel${fuelShort ? ' short' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onFuel?.()
+              }}
+            >
+              {fuelLine}
+            </button>
+          ) : null}
           {selFlight ? (
             <FlightCard
               adapter={adapter}

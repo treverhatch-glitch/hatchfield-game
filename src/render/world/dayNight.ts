@@ -174,10 +174,22 @@ export function idleDayNight(): DayNightSample {
   }
 }
 
-/** Photo-mode hour wins; otherwise the control hour; otherwise the sim clock. */
-export function resolveHour(clock: number, hourOverride: number | null, control: DayNightControl | null): number {
+/** Late morning. The cycle toggle pins the field here when it is off. */
+export const FIXED_DAY_HOUR = 11
+
+/**
+ * Photo-mode hour wins, then an explicit control hour, then the clock.
+ * `cycle` false holds late morning so the field stays in daylight.
+ */
+export function resolveHour(
+  clock: number,
+  hourOverride: number | null,
+  control: DayNightControl | null,
+  cycle = true,
+): number {
   if (hourOverride != null && Number.isFinite(hourOverride)) return hourOverride
   if (control?.hour != null && Number.isFinite(control.hour)) return control.hour
+  if (!cycle) return FIXED_DAY_HOUR
   return simClockToHour(clock)
 }
 

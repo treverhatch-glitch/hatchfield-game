@@ -123,6 +123,13 @@ export const RIVAL_BACKLASH = {
 export const RIVAL_REFUSE_DAYS = 30
 export const RIVAL_TRIM_DAYS = 14
 
+/** One nudge per airline per gap, and this many new texts per game day. */
+export const NUDGE_GAP_DAYS = 4
+export const NUDGE_FIELD_CAP = 3
+
+/** Days between maintenance ferries once a hub carrier holds a hangar bay. */
+export const FERRY_GAP_DAYS = 3
+
 export const HUB_OFFER_FEE = { focus: 4_000, base: 8_000, hub: 14_000, primary: 22_000 } as const
 export const TIER_DROP_WARNING_DAYS = 30
 /** Share of one lounge room's daily upkeep the airline pays while the lease holds. */

@@ -17,6 +17,7 @@ const MESSAGE_KINDS = new Set([
   'layover',
   'layover-live',
   'hub',
+  'hub-nudge',
   'mx',
   'parking',
   'field',

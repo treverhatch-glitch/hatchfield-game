@@ -75,6 +75,9 @@ export interface TtStand {
   icao: IcaoCode
   /** Game-side class letter (S/M/L) when present. */
   gameClass?: string
+  /** Airline that holds a dedicated gate lease on this stand. */
+  leaseAirline?: string | null
+  leaseColor?: string | null
 }
 
 export interface TtRunway {

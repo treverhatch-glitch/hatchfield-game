@@ -77,7 +77,12 @@ export class SkyDome {
           // A white band over the night photo reads as grey smog, so it thins out after dark.
           c = mix(c, vec3(1.0), haze * (1.0 - 0.8 * photoAmount * stars) * (1.0 - smoothstep(0.0, 0.18, abs(vDir.y))));
           float sun = max(dot(d, sunDir), 0.0);
-          c += sunColor * glow * (1.0 - 0.6 * photoAmount) * (pow(sun, glowPower) + 0.25 * pow(sun, 3.0)) * (1.0 - stars);
+          float disc = pow(sun, glowPower);
+          float halo = 0.25 * pow(sun, 3.0);
+          // After dusk the same direction is the moon: a tighter, cooler disc.
+          float moon = pow(sun, glowPower * 2.2);
+          c += sunColor * glow * (1.0 - 0.55 * photoAmount) * (disc + halo) * (1.0 - stars);
+          c += sunColor * glow * 0.85 * moon * stars;
           vec3 cell = floor(vDir * 220.0);
           // The night panorama brings its own stars.
           float s = step(0.9965, h(cell)) * stars * (1.0 - photoAmount) * smoothstep(0.08, 0.4, vDir.y);

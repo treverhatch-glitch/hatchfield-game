@@ -31,15 +31,40 @@ describe('backlash plan', () => {
       roll: 0.05,
       poachStandingMax: 42,
     })
-    expect(low.anger).toBe('Accepting will anger Zephyr Go and Tango Air (-8).')
+    expect(low.anger).toContain('Zephyr Go -6.7')
+    expect(low.anger).toContain('Tango Air -2.9')
+    expect(low.anger).not.toContain('Seoul Star')
     expect(low.spared).toContain('Seoul Star')
     expect(low.hit.find((row) => row.airlineId === 'zephyr_go')?.effect).toBe('relocate')
     expect(low.hit.find((row) => row.airlineId === 'tango_air')?.effect).toBe('trim')
-    expect(low.hit.every((row) => row.score === RIVAL_BACKLASH.hub.score)).toBe(true)
+    expect(low.hit.find((row) => row.airlineId === 'zephyr_go')?.score).toBe(-6.7)
+    expect(low.hit.find((row) => row.airlineId === 'tango_air')?.score).toBe(-2.9)
+    expect(low.hit.every((row) => row.score !== RIVAL_BACKLASH.hub.score)).toBe(true)
 
     const calm = planBacklash({ holderId: 'gulf_pearl', tier: 'focus', signed, roll: 0, poachStandingMax: 42 })
     expect(calm.anger).toBe('')
     expect(calm.hit).toEqual([])
+  })
+
+  it('scales a negative rival harder than a happy one, and a fierce pair harder still', () => {
+    const plan = planBacklash({
+      holderId: 'gulf_pearl',
+      tier: 'primary',
+      signed: [
+        { id: 'aurora_nordic', name: 'Aurora Nordic', standing: 76 },
+        { id: 'zephyr_go', name: 'Zephyr Go', standing: -15 },
+      ],
+      roll: 0.5,
+      poachStandingMax: 42,
+    })
+    const aurora = plan.hit.find((row) => row.airlineId === 'aurora_nordic')
+    const zephyr = plan.hit.find((row) => row.airlineId === 'zephyr_go')
+    expect(aurora?.intensity).toBe('fierce')
+    expect(aurora?.effect).toBe('score')
+    expect(zephyr?.effect).toBe('relocate')
+    expect(Math.abs(aurora?.score ?? 0)).toBeLessThan(15)
+    expect(Math.abs(zephyr?.score ?? 0)).toBeGreaterThan(Math.abs(aurora?.score ?? 0))
+    expect(Math.abs(zephyr?.score ?? 0)).toBeGreaterThan(15)
   })
 
   it('builds the anger sentence for one name and for three', () => {

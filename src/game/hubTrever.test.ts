@@ -29,7 +29,7 @@ describe('dedicated vehicles, tenure, and rival hubs', () => {
     game.hubTiers.brisa = 'focus'
     game.hubTierSince.brisa = -20
     expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'veh-tug')?.status).toBe('ok')
-    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe('Waiting on the desk allocator')
+    expect(game.hubChecklistFor('brisa').lines.find((line) => line.id === 'desk')?.detail).toBe('0 / 2')
     game.clock = 180
     game.tickPayroll(0)
     expect(game.wave3.relation('brisa').parts.dedicated).toBe(0.08)
@@ -53,15 +53,20 @@ describe('dedicated vehicles, tenure, and rival hubs', () => {
     game.sandbox = true
     for (const id of ['gulf_pearl', 'zephyr_go', 'tango_air', 'seoul_star']) standing(game, id, 80)
     game.hubTiers.gulf_pearl = 'base'
+    game.hubRivalRoll = 1
     const preview = game.hubAngerPreview('gulf_pearl')
-    expect(preview.anger).toContain('Accepting will anger')
-    expect(preview.anger).toContain(game.airline('zephyr_go').name)
-    expect(preview.anger).toContain(game.airline('tango_air').name)
+    const zephyr = game.airline('zephyr_go').name
+    const tango = game.airline('tango_air').name
+    expect(preview.anger).toContain(`${zephyr} -2.9`)
+    expect(preview.anger).toContain(`${tango} -2.9`)
+    expect(preview.anger).toContain('absorbs it')
+    expect(preview.anger).not.toContain(game.airline('seoul_star').name)
     expect(preview.spared).toContain(game.airline('seoul_star').name)
     game.hubOffer = { airline: 'gulf_pearl', age: 0, fee: 14_000, deadline: 45, tier: 'hub' }
     const card = readPhoneCards(game).find((row) => row.kind === 'hub')
-    expect(card?.body).toContain('Accepting will anger')
+    expect(card?.body).toContain(`${zephyr} -2.9`)
     expect(card?.body).toContain(game.airline('seoul_star').name)
+    expect(card?.lines?.some((line) => line.label.includes(`${zephyr} -2.9`))).toBe(true)
     expect(card?.actions.find((action) => action.label === 'Accept')?.disabled).toBe(true)
 
     const cargo = new Game()
@@ -91,7 +96,7 @@ describe('dedicated vehicles, tenure, and rival hubs', () => {
     const before = cargo.wave3.relation('polar_freight').score
     cargo.acceptHub()
     expect(cargo.hubTiers.atlas_cargo).toBe('hub')
-    expect(cargo.wave3.relation('polar_freight').score).toBe(before - 8)
+    expect(cargo.wave3.relation('polar_freight').score).toBeCloseTo(before - 8.7, 5)
     expect(cargo.schedule.find((slot) => slot.id === 'slot-polar')?.status).toBe('cancelled')
     expect(cargo.seedScheduleForAirline('polar_freight', 1)).toBeUndefined()
     expect(cargo.schedule.filter((slot) => slot.airline === 'polar_freight' && slot.status === 'scheduled')).toHaveLength(0)

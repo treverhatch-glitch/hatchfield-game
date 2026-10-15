@@ -29,6 +29,29 @@ export function openHubProfile(id: string) {
   emit()
 }
 
+/** Phone and the HUD button open the checklist. They do not toggle it shut. */
+export function showHubProfile(id: string) {
+  profileId = id
+  emit()
+}
+
+let assignAirline: string | null = null
+
+export function hubAssignSnapshot(): string {
+  return assignAirline ?? ''
+}
+
+export function openHubAssign(id: string) {
+  assignAirline = assignAirline === id ? null : id
+  emit()
+}
+
+export function closeHubAssign() {
+  if (assignAirline == null) return
+  assignAirline = null
+  emit()
+}
+
 export function closeHubProfile() {
   if (profileId == null) return
   profileId = null
@@ -37,5 +60,6 @@ export function closeHubProfile() {
 
 export function resetHubProfile() {
   profileId = null
+  assignAirline = null
   emit()
 }

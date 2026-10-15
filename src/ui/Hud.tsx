@@ -8,7 +8,8 @@ import { GameTimetable } from './timetable/GameTimetable'
 import { setSchedulePlanner } from './timetable/scheduleSheet'
 import { AirlineMark } from './AirlineMark'
 import { AirlinesDesk } from './AirlinesDesk'
-import { HubProgress } from './hub/HubPanels.tsx'
+import { HubAssign, HubProgress } from './hub/HubPanels.tsx'
+import { showHubProfile } from './hub/session.ts'
 import { HUB_TIER_LABEL } from '../hubprogress/config.ts'
 import { DiplomacyLetters } from './DiplomacyLetters'
 import { Phone } from './phone/Phone.tsx'
@@ -244,6 +245,13 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
     game.setSidePanel('hud')
   }
 
+  useEffect(() => {
+    if (game.hubDeepLinkTick <= 0) return
+    setInfoGroup('airlines')
+    openPanel('hubs')
+    if (game.hubDeepLinkAirline) showHubProfile(game.hubDeepLinkAirline)
+  }, [game.hubDeepLinkTick])
+
   const openUnlock = (link: UnlockLink) => {
     setUnlockFocus(link.anchor)
     if (link.anchor.startsWith('research-node-')) setGrowthFocus(link.anchor.slice('research-node-'.length))
@@ -282,7 +290,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
-      <GameTimetable game={game} menuOpen={!!buildMenu} plannerOpen={manageTab === 'planner'} />
+      <GameTimetable
+        game={game}
+        menuOpen={!!buildMenu}
+        plannerOpen={manageTab === 'planner'}
+        onFuel={() => openPanel('services')}
+      />
       <button
         type="button"
         className={`fids-toggle${boardsOpen ? ' on' : ''}`}
@@ -1118,6 +1131,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         })()}
       </div>
 
+      <HubAssign game={game} />
       <div
         className={`chrome${panel ? ' has-panel' : ''}${chromePinned ? ' pinned' : ''}`}
         onMouseLeave={() => {
@@ -2315,6 +2329,19 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                 </ul>
               )}
             </div>
+
+            <button
+              type="button"
+              className="bar-cluster"
+              data-testid="hud-airlines"
+              title="Airlines and hub progress"
+              onClick={() => {
+                setInfoGroup('airlines')
+                openPanel('hubs')
+              }}
+            >
+              Airlines
+            </button>
 
             <div className="bar-cluster info-menus">
               {MANAGE_MENUS.map((menu) => {

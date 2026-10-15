@@ -29,6 +29,7 @@ export type ScheduleGame = Pick<
   | 'setSlotStandPref'
   | 'cycleSlotRunway'
   | 'scheduleForRunway'
+  | 'hubLeases'
 >
 
 export const DAY_LENGTH = 180
@@ -219,9 +220,19 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
       return out
     },
     stands(): TtStand[] {
+      const leases = game.hubLeases ?? []
       return standVecs().map((v) => {
         const cls = game.standClassAt(v)
-        return { id: key(v), label: game.gateLabel(v), icao: STAND_ICAO[cls] ?? 'E', gameClass: cls }
+        const lease = leases.find((row) => row.kind === 'gate' && row.id === `stand:${v.c},${v.r}`)
+        const holder = lease ? game.airline(lease.airlineId) : null
+        return {
+          id: key(v),
+          label: game.gateLabel(v),
+          icao: STAND_ICAO[cls] ?? 'E',
+          gameClass: cls,
+          leaseAirline: holder?.name ?? null,
+          leaseColor: holder?.color ?? null,
+        }
       })
     },
     runways(): TtRunway[] {
@@ -256,6 +267,8 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         const icao = flight ? icaoForAirframe(flight.airframeId, flight.kind) : 'C'
         const standIcao = STAND_ICAO[game.standClassAt(unkey(standId))] ?? 'E'
         if (!standFits(standIcao, icao)) return
+        const leased = (game.hubLeases ?? []).find((row) => row.kind === 'gate' && row.id === `stand:${standId}`)
+        if (leased && leased.airlineId !== s.airline) return
       }
       game.setSlotStandPref(s.id, standId ? unkey(standId) : null)
     },
