@@ -848,11 +848,18 @@ export function schemeItems(tier: 1 | 2 | 3): PlacedItem[] {
     spot('secure_exit', at('security', cellsOf(zones, 'security').length - 1)),
     spot('boarding_desk', at('gates', 0)),
     spot('seat_row', at('gates', 1)),
+    spot('wayfinding', at('gates', 3)),
+    // Shop and claim bench. Flight screens stay off the bundle: their comfort
+    // reaches the security row in this hall and blunts a missed premium screen.
+    // Wayfinding plus the apron departure boards are the FIDS. Indices skip
+    // the cells tests and the follow-up slots still need (see PREFAB_I_OPEN).
+    spot('newsagent', at('gates', 7)),
     spot('claim_carousel', at('arrivals', 0)),
     spot('bag_system', at('arrivals', 1)),
+    spot('bench', at('arrivals', 3)),
     spot('toilet', at('toilets', 0)),
+    spot('toilet', at('toilets', 1)),
     spot('cafe', at('retail', 0)),
-    spot('wayfinding', at('gates', 3)),
   ].filter((x): x is PlacedItem => Boolean(x))
   const seen = new Set<string>()
   return list.filter((it) => {
@@ -866,6 +873,32 @@ export function schemeItems(tier: 1 | 2 | 3): PlacedItem[] {
 export function prefabBundle(): PlacedItem[] {
   return schemeItems(1)
 }
+
+/**
+ * Tier I cells the prefab leaves empty.
+ * Check-in gaps are spare desk positions. Common-use branding and dedicated
+ * locks already run on the desks that are placed. These cells stay empty so
+ * the opening bank is still one staffed desk and one kiosk.
+ * Security gaps are spare lanes. Filling them would add servers past the
+ * published ceiling.
+ * The pier-end gaps sit beside the one lounge room the kit already counts,
+ * so a carrier can lease that lounge without the pier starting full.
+ * The retail cell is the player's first shop stamp.
+ */
+export const PREFAB_I_OPEN: readonly { c: number; r: number; slot: string }[] = [
+  { c: 5, r: 0, slot: 'common-use desk' },
+  { c: 0, r: 1, slot: 'common-use desk' },
+  { c: 1, r: 1, slot: 'dedicated desk' },
+  { c: 2, r: 1, slot: 'dedicated desk' },
+  { c: 3, r: 1, slot: 'airline desk' },
+  { c: 1, r: 2, slot: 'security lane' },
+  { c: 2, r: 2, slot: 'security lane' },
+  { c: 3, r: 2, slot: 'security lane' },
+  { c: 7, r: 3, slot: 'lounge' },
+  { c: 6, r: 4, slot: 'lounge' },
+  { c: 7, r: 4, slot: 'lounge' },
+  { c: 3, r: 4, slot: 'player retail' },
+]
 
 export function prefabSecurityItem(tier: 1 | 2 | 3): ItemId {
   if (tier === 2) return 'security_medium'

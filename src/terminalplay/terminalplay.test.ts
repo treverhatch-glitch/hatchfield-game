@@ -96,7 +96,7 @@ describe('terminal placement collision', () => {
     expect(game.placeHallItemAt('bag_drop', 1, 0, 0)).toBe(false)
     expect(game.placeHallItemAt('newsagent', 2, 4, 0)).toBe(true)
     expect(game.placeHallItemAt('scanner', 1, 2, 0)).toBe(true)
-    const shop = game.fits[0].items?.find((it) => it.def === 'newsagent')
+    const shop = game.fits[0].items?.find((it) => it.def === 'newsagent' && !it.bundle)
     expect(shop).toBeTruthy()
     expect(game.moveHallItem(shop!.id, 4, 3, 1)).toBe(false)
     expect(game.moveHallItem(shop!.id, 5, 4, 1)).toBe(true)

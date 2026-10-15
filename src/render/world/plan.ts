@@ -152,13 +152,15 @@ export function planTerminal(
     if (zone === 'checkin') {
       // The hall in front of security keeps a clear central lane to the screening doorway.
       const facesSecurity = zoneAt.get(`${c + A.dc},${r + A.dr}`) === 'security'
-      const slots = facesSecurity
+      const full = facesSecurity
         ? density >= 1
           ? [-2.3, -1.15, 1.15, 2.3]
           : [-1.6, 1.6]
         : density >= 1
           ? [-1.95, -0.65, 0.65, 1.95]
           : [-0.9, 0.9]
+      // The end slot stays empty for a common-use or dedicated desk.
+      const slots = full.slice(0, -1)
       for (const u of slots) {
         prop('counter', u, 0.35, yawAir + Math.PI)
         prop('monitor', u, 0.28, yawAir + Math.PI)
@@ -168,6 +170,8 @@ export function planTerminal(
         if (rand() < 0.45) person('pax', u + (rand() - 0.5) * 0.4, -0.95, yawAir)
       }
       if (!facesSecurity) prop('belt', 0, 1.3, yawAir)
+      // Self check-in, off the lane that leads to security.
+      if (!facesSecurity && density >= 1) prop('kiosk', 2.35, -0.35, yawAir + Math.PI, 1)
       if (!wcPlaced) {
         prop('wc', -2.5, 2.25, yawAir)
         wcPlaced = true
@@ -208,6 +212,7 @@ export function planTerminal(
       }
       prop('planter', 2.5, -2.4)
       prop('planter', -2.5, -2.4)
+      prop('wc', -2.15, 1.7, yawAir)
       prop('bin', 2.4, 2.3)
       prop('bag', 0.2, 1.7, yawAir)
     } else if (zone === 'backoffice') {

@@ -38,7 +38,10 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
       'One 14×2 runway with a clearance shoulder',
       'Taxiway linking the strip to the stands, plus a mid-strip exit',
       'Terminal rotated so the curb faces the road and the gates face the stands',
-      'Jet bridges, bags, fuel, guard, and a cargo shed',
+      'Staffed check-in desk, self-service kiosk, and spare desk cells',
+      'Two security lanes, with empty lane cells beside them',
+      'Gate seats, café counter, newsagent, toilets, claim belt, and wayfinding',
+      'Jet bridges, bag-sort bays, fuel bays, guard, and a cargo shed',
     ],
   },
   cargo: {
@@ -58,6 +61,7 @@ export const STARTER_KITS: Record<StartFocus, StarterKitPreview> = {
     summary: 'Passenger hall and jetways, plus a police post on the freight road. Day passengers, night freight.',
     includes: [
       'Passenger hall, curb, and two jetway stands',
+      'Same hall as the passenger kit: desks, kiosk, lanes, shop, claim, wayfinding',
       'Guard, cargo shed, and a police post',
       'One runway with a taxiway to the stands and a mid-strip exit',
       'Landside road stays off the hall footprint',
