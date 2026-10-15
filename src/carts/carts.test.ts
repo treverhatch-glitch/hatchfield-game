@@ -219,3 +219,23 @@ describe('named model sockets', () => {
     }
   })
 })
+
+describe('a bulldozed socket', () => {
+  it('drops a shipment no cart can reach and keeps one already on the road', () => {
+    const sim = yard()
+    sim.setFleet(1, 1)
+    sim.postOutbound('HB9', 10, '11,6')
+    sim.postCatering('cat:HB9', 2, '11,6')
+    expect(sim.isOpen('cat:HB9')).toBe(true)
+    sim.setSites([
+      { id: 'checkin', role: 'checkin', x: 0, y: 0, sockets: [DROP] },
+      { id: 'sort', role: 'sort', x: 40, y: 0, sockets: [MAKEUP] },
+      { id: 'claim', role: 'claim', x: 40, y: 36, sockets: [CLAIM] },
+      { id: '11,6', role: 'stand', x: 90, y: 0, sockets: [BELT, DOOR] },
+    ])
+    until(sim, () => !sim.isOpen('cat:HB9') && sim.delivered('outbound') === 10)
+    expect(sim.isOpen('cat:HB9')).toBe(false)
+    expect(sim.finishedAt('cat:HB9', 'catering_door')).toBe(false)
+    expect(sim.delivered('outbound')).toBe(10)
+  })
+})

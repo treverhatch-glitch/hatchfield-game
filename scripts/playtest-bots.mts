@@ -1,7 +1,8 @@
 /**
  * npm run playtest:bots [-- --quick]
  * Headless personas, then a Playwright pass over the production build.
- * Writes docs/playtest/bots/report.md and report.json.
+ * Writes docs/playtest/bots/report.md and report.json (quick runs write to the
+ * temp directory instead, so the gate leaves the tree clean).
  *
  * --quick (PLAYTEST_QUICK=1) runs the Careful persona for 15 days only and
  * skips the browser smoke and the opening check. The full command runs every
@@ -11,6 +12,7 @@
  */
 import { execSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'vitest'
@@ -21,8 +23,9 @@ import { runOpeningCheck } from './opening-check.mts'
 import { runSmoke } from './playtest-smoke.mts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const outDir = join(root, 'docs/playtest/bots')
 const quick = process.env.PLAYTEST_QUICK === '1'
+// Quick runs are a gate check, so they stay out of the tracked report.
+const outDir = quick ? join(tmpdir(), 'hatchfield-bots-quick') : join(root, 'docs/playtest/bots')
 const QUICK_DAYS = 15
 
 function skippedBrowser(reason: string): BrowserReport {
@@ -91,4 +94,24 @@ test('bot playtest writes a report', async () => {
   writeFileSync(join(outDir, 'report.md'), renderReport(report))
   console.log(`wrote ${join(outDir, 'report.md')}`)
   if (openingError) throw new Error(openingError)
+  const failures = botFailures(report.headless, quick ? null : browser)
+  if (failures.length) throw new Error(`Bot playtest found problems:\n${failures.join('\n')}`)
 })
+
+function botFailures(
+  runs: { persona: string; softlocks: string[]; consoleErrors: string[]; nanFlags?: string[]; daysRan: number; daysRequested: number }[],
+  browser: BrowserReport | null,
+): string[] {
+  const out: string[] = []
+  for (const run of runs) {
+    for (const line of run.softlocks) out.push(`${run.persona}: softlock — ${line}`)
+    for (const line of run.consoleErrors) out.push(`${run.persona}: error — ${line}`)
+    for (const line of run.nanFlags ?? []) out.push(`${run.persona}: NaN — ${line}`)
+    if (run.daysRan < run.daysRequested) out.push(`${run.persona}: stopped on day ${run.daysRan} of ${run.daysRequested}`)
+  }
+  if (browser && (browser.skipped || !browser.ok)) {
+    out.push(`browser smoke: ${browser.skipped ? `skipped (${browser.reason ?? 'no reason'})` : 'failed'}`)
+    for (const line of browser.consoleErrors) out.push(`browser: error — ${line}`)
+  }
+  return out
+}

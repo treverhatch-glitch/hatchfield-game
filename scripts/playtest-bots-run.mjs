@@ -3,7 +3,8 @@
  *
  * Vitest rejects unknown flags, so --quick is peeled off here and handed to
  * scripts/playtest-bots.mts as PLAYTEST_QUICK. --quick runs the Careful
- * persona for 15 days and skips the browser smoke.
+ * persona for 15 days and skips the browser smoke. Without the flag the run
+ * is full, even if PLAYTEST_QUICK is exported in the shell.
  */
 import { spawnSync } from 'node:child_process'
 
@@ -24,7 +25,7 @@ const result = spawnSync(
     stdio: 'inherit',
     env: {
       ...process.env,
-      PLAYTEST_QUICK: quick ? '1' : process.env.PLAYTEST_QUICK ?? '',
+      PLAYTEST_QUICK: quick ? '1' : '0',
     },
   },
 )

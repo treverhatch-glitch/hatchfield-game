@@ -3088,7 +3088,7 @@ export class Game {
     const extra = Math.max(0, Math.floor(this.paxDesks) - openHallDesks)
     return {
       desks: openCommon + openDedicatedHere + extra,
-      kiosks: Math.max(kiosks, Math.max(0, Math.floor(this.paxKiosks))),
+      kiosks: kiosks + Math.max(0, Math.floor(this.paxKiosks)),
     }
   }
 
@@ -3114,6 +3114,12 @@ export class Game {
       actions.push({ id: `release:${lock.deskId}`, label: `Release ${label}` })
     }
     return actions
+  }
+
+  /** Every building-card row click lands here. */
+  buildingCardAction(id: string): void {
+    if (/^(rung|pit|fitbuy|fitdrop):/.test(id)) this.standCardAction(id)
+    else this.checkinAction(id)
   }
 
   /** Building-panel and flight-card action. `dedicate:<airline>` or `release:<desk>`. */
@@ -3944,6 +3950,9 @@ export class Game {
     const dedicated = this.hubDedicated[id] ?? {}
     const leased = this.liveHubLeases(id)
     const desks = this.liveDeskLeases(id)
+    const standLeases = leased.filter((lease) => lease.kind === 'gate')
+    const pitStands = standLeases.filter((lease) => this.standPits[lease.id.slice('stand:'.length)] != null).length
+    const fuelTrucks = this.liveHubVehicles(id).filter((lease) => lease.role === 'fuelTruck').length
     return {
       id,
       name: airline.name,
@@ -3961,12 +3970,12 @@ export class Game {
       hubBlockers: recorded && engine ? engine.hubBlockers(id) : undefined,
       stands: tilesOf(this.tiles, 'stand').length,
       pads: tilesOf(this.tiles, 'helipad').length,
-      overnight: dedicated.overnight ?? 0,
+      overnight: (dedicated.overnight ?? 0) + standLeases.length,
       lounges: (dedicated.lounges ?? 0) + leased.filter((lease) => lease.kind === 'lounge').length,
       hangars: (dedicated.hangars ?? 0) + leased.filter((lease) => lease.kind === 'hangar').length,
-      fuel: dedicated.fuel ?? 0,
-      pier: (dedicated.pier ?? 0) + leased.filter((lease) => lease.kind === 'gate').length,
-      ramp: dedicated.ramp ?? 0,
+      fuel: (dedicated.fuel ?? 0) + fuelTrucks + pitStands,
+      pier: (dedicated.pier ?? 0) + standLeases.length,
+      ramp: (dedicated.ramp ?? 0) + standLeases.length,
       dedicatedPads: dedicated.pads ?? null,
       dedicatedDesks: desks.filter((row) => row.kind === 'desk' && row.mode === 'dedicated').length,
       preferredDesks: desks.filter((row) => row.kind === 'desk' && row.mode === 'preferred').length,
@@ -4478,6 +4487,18 @@ export class Game {
     }
   }
 
+  /** A carrier that leaves gives back its tier and every lease, so trucks and Primary free up. */
+  private releaseHubCarrier(id: string) {
+    delete this.hubTiers[id]
+    delete this.hubTierSince[id]
+    delete this.hubLeaseWarnings[id]
+    delete this.hubOffered[id]
+    this.hubLeases = this.hubLeases.filter((lease) => lease.airlineId !== id)
+    this.hubVehicleLeases = this.hubVehicleLeases.filter((lease) => lease.airlineId !== id)
+    this.hubNudges = this.hubNudges.filter((row) => row.airlineId !== id)
+    this.stampHubVehicleLeases()
+  }
+
   private stampHubVehicleLeases() {
     const sim = this.ground?.sim
     if (!sim) return
@@ -4548,7 +4569,7 @@ export class Game {
 
   /** Half of each dedicated lounge room's daily upkeep. The full room bill still posts. */
   hubLoungeShare(): number {
-    const rate = HALL_AMENITY_EXPENSE.lounge ?? 0
+    const rate = (HALL_AMENITY_EXPENSE.lounge ?? 0) * siteUpkeepMultiplier(this.specPaths.length) * this.upkeepRelief()
     const share = Math.round(rate * LOUNGE_COFUND_SHARE)
     if (share <= 0) return 0
     let rooms = 0
@@ -4741,6 +4762,7 @@ export class Game {
     }
     if (this.signed.includes(id)) return
     this.signed.push(id)
+    this.hubTierSince[id] = this.gameDay()
     if (this.airlineHeat[id] == null) this.airlineHeat[id] = 70
     this.pullCarrierFromRival(id, rel.name)
     this.seedScheduleForAirline(id, 3)
@@ -5088,6 +5110,7 @@ export class Game {
     this.diplomacy?.noteLeft(id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+    this.releaseHubCarrier(id)
     delete this.airlineReward[id]
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
@@ -5266,6 +5289,7 @@ export class Game {
     this.pushNews(result.text, result.won ? 'good' : 'bad')
     if (result.won && !this.signed.includes(id)) {
       this.signed.push(id)
+      this.hubTierSince[id] = this.gameDay()
       if (this.airlineHeat[id] == null) this.airlineHeat[id] = 64
       this.seedScheduleForAirline(id, 2)
     }
@@ -5281,6 +5305,7 @@ export class Game {
     this.diplomacy?.noteLeft(id)
     this.mxSigned = this.mxSigned.filter((x) => x !== id)
     this.hubAirlines = this.hubAirlines.filter((x) => x !== id)
+    this.releaseHubCarrier(id)
     delete this.airlineReward[id]
     delete this.airlineWarned[id]
     delete this.airlineLowAcc[id]
@@ -6889,6 +6914,7 @@ export class Game {
     let scheduled = 0
     for (const slot of this.schedule) {
       if (slot.status !== 'scheduled' && slot.status !== 'delayed' && slot.status !== 'inbound') continue
+      if (this.slotUsesPad(slot)) continue
       // One turn is the arrival and the departure that must clear before the next ETA.
       if (slot.eta >= start - RUNWAY_LATE_SLACK_SEC && slot.eta < end) scheduled += 2
     }
@@ -7701,6 +7727,7 @@ export class Game {
       this.hubLeaseWarnings = readHubLeaseWarnings(s.hubLeaseWarnings)
       this.hubOffered = readHubOffered(s.hubOffered) as Record<string, HubOfferTier[]>
       this.hubTierSince = readHubDayMap(s.hubTierSince)
+      for (const id of this.signed) this.hubTierSince[id] ??= this.gameDay()
       this.hubVehicleLeases = readHubVehicleLeases(s.hubVehicleLeases)
       this.hubRivalRefuse = readHubDayMap(s.hubRivalRefuse)
       this.hubRivalQuiet = readHubDayMap(s.hubRivalQuiet)
@@ -13143,9 +13170,6 @@ export class Game {
       return this.ground
     const prev = this.ground?.snapshot()
     const cap = tankDef(this.tankTier).capacityLitres
-    if (this.tankLitres <= 0 && this.fuelLoads > 0) {
-      this.tankLitres = Math.min(cap, seedLitresFromLoads(this.fuelLoads))
-    }
     const config = buildLogisticsConfig(
       this.tiles,
       this.standAccess,
@@ -13204,8 +13228,10 @@ export class Game {
     this.ground.sim.bindFuelStock({
       get: () => this.tankLitres,
       set: (litres) => {
+        const before = this.tankLitres
         const next = Math.min(tankDef(this.tankTier).capacityLitres, Math.max(0, litres))
         this.tankLitres = Number.isFinite(next) ? next : 0
+        if (this.contractId && this.tankLitres < before) this.termUpliftLitres += before - this.tankLitres
       },
     })
     this.groundRev = rev
@@ -13411,18 +13437,21 @@ export class Game {
   /** Bag-loaded: the outbound cart has finished its dock at belt_low. */
   private outboundCartClear(flightId: string): boolean {
     if (!this.cartPosted.has(`out:${flightId}`)) return true
-    return this.cartYard.finishedAt(flightId, 'belt_low')
+    return this.cartYard.finishedAt(flightId, 'belt_low') || !this.cartYard.isOpen(flightId)
   }
 
   /** Bag-delivered: the inbound cart has finished its dock at claim_stop. */
   private inboundCartClear(flightId: string): boolean {
     if (!this.cartPosted.has(`in:${flightId}`)) return true
-    return this.cartYard.finishedAt(`in:${flightId}`, 'claim_stop')
+    return this.cartYard.finishedAt(`in:${flightId}`, 'claim_stop') || !this.cartYard.isOpen(`in:${flightId}`)
   }
 
   /** Catering-done: the hi-lift has finished its dock at catering_door. */
   private cateringCartClear(flightId: string): boolean {
-    if (this.cartPosted.has(`cat:${flightId}`)) return this.cartYard.finishedAt(`cat:${flightId}`, 'catering_door')
+    if (this.cartPosted.has(`cat:${flightId}`)) {
+      const id = `cat:${flightId}`
+      return this.cartYard.finishedAt(id, 'catering_door') || !this.cartYard.isOpen(id)
+    }
     const galley = this.catering?.engine.galley(flightId)
     if (!galley || galley.cartsRequired <= 0) return true
     const flight = this.flights.find((f) => f.id === flightId)
@@ -13608,6 +13637,16 @@ export class Game {
     } catch {
       return 8_000
     }
+  }
+
+  /** Litres still owed to today's departures that have not fuelled yet. */
+  bankUpliftLitres(): number {
+    let litres = 0
+    for (const f of this.flights) {
+      if (f.phase === 'gone' || f.posted.fuel || !this.departureNeedsFuel(f)) continue
+      litres += this.fuelNeedLitres(f)
+    }
+    return litres
   }
 
   /** Cargo terminal clock matches the ramp: one sim-second is eight game minutes. */
@@ -16296,6 +16335,7 @@ export class Game {
       this.emit()
       return
     }
+    if (this.signRefused(id)) return
     const bridge = this.negotiationDesk()
     const session = bridge.desk.session
     if (!session || session.status !== 'open' || session.airlineId !== id) {
@@ -16384,14 +16424,8 @@ export class Game {
     if (!profile.id) return
   }
 
-  acceptOffer() {
-    if (!this.offer) return
-    const id = this.offer.airline
-    if (this.rivalRefuses(id)) {
-      this.pushNews(`${this.airline(id).name} refused. The last hub angered them.`, 'bad')
-      this.emit()
-      return
-    }
+  /** Desk and pad refusals. Accept runs this before the negotiation desk books anything. */
+  private signRefused(id: string): boolean {
     const gate = this.checkinSignReport(id)
     if (!gate.ok) {
       const note = `${id}|${gate.line}`
@@ -16400,7 +16434,7 @@ export class Game {
         this.pushNews(gate.line, 'bad')
       }
       this.emit()
-      return
+      return true
     }
     this.checkinBlockNote = ''
     // Soft asks (police, a snack bar) still sign — the tower holds the slot.
@@ -16408,8 +16442,20 @@ export class Game {
     if (this.carrierNeedsPad(id) && !this.readiness().helipad) {
       this.pushNews(`${this.airline(id).name} will not sign yet — still need ${HELIPAD_NEED}.`, 'bad')
       this.emit()
+      return true
+    }
+    return false
+  }
+
+  acceptOffer() {
+    if (!this.offer) return
+    const id = this.offer.airline
+    if (this.rivalRefuses(id)) {
+      this.pushNews(`${this.airline(id).name} refused. The last hub angered them.`, 'bad')
+      this.emit()
       return
     }
+    if (this.signRefused(id)) return
     if (this.signed.includes(id)) {
       this.offer = null
       this.offerCool = coolAfterSign(this.signed.length)
@@ -17498,7 +17544,7 @@ export class Game {
     this.hubOfferCool = Math.max(0, this.hubOfferCool - dt)
     if (this.hubOffer) {
       this.hubOffer.age += dt
-      this.hubOffer.deadline -= dt
+      if (!this.letterHeld('hub')) this.hubOffer.deadline -= dt
       if (this.hubOffer.deadline <= 0) this.expireHub()
     }
   }
@@ -18975,11 +19021,22 @@ export class Game {
     if (!tier) return
     const relation = list.lines.find((line) => line.id === 'relation')
     const band = list.lines.find((line) => line.id === 'band')
-    if (relation?.status !== 'ok') return
-    if (band && band.status !== 'ok') return
-    if (list.lines.find((line) => line.id === 'tenure')?.status !== 'ok') return
-    if (list.lines.find((line) => line.id === 'onTime')?.status !== 'ok') return
-    if (this.rivalRefuses(airlineId)) return
+    const tenure = list.lines.find((line) => line.id === 'tenure')
+    const onTime = list.lines.find((line) => line.id === 'onTime')
+    const gate = [relation, band, tenure, onTime].find((line) => line && line.status !== 'ok')
+    const blocked = relation?.status !== 'ok' || tenure?.status !== 'ok' || onTime?.status !== 'ok' || Boolean(gate)
+    if (blocked || this.rivalRefuses(airlineId)) {
+      if (announce) {
+        const why = gate
+          ? `${a.name}: ${gate.detail || gate.label}`
+          : this.rivalRefuses(airlineId)
+            ? `${a.name} is holding off while a rival objects.`
+            : `${a.name} is not ready for ${HUB_TIER_LABEL[tier]}.`
+        this.pushNews(why, 'bad')
+        this.emit()
+      }
+      return
+    }
     const offered = this.hubOffered[airlineId] ?? []
     if (!announce && offered.includes(tier)) return
     const fee = HUB_OFFER_FEE[tier]
@@ -20268,6 +20325,16 @@ export class Game {
     return best
   }
 
+  /** Cash paid for fittings on a host. Granted legacy bridges were free. */
+  private paidFittings(host: string, size?: StandSize): number {
+    let paid = 0
+    for (const item of this.fittings[host] ?? []) {
+      if (item.granted === 'legacy') continue
+      paid += item.id === 'jet_bridge' && size ? jetBridgeCost(size) : fittingDef(item.id).cost
+    }
+    return paid
+  }
+
   refundFor(tile: Tile, at?: Vec): number {
     if (tile === 'grass') return 0
     if (tile === 'runway') {
@@ -20281,11 +20348,23 @@ export class Game {
     if (tile === 'terminal') return Math.round(TERMINAL_COST * BULLDOZE_REFUND * 0.25)
     if (tile === 'hangar' && at) {
       const scale = this.hangarScale[`${at.c},${at.r}`] ?? 'small'
-      return Math.round(HANGAR_OFFERS[scale].cost * BULLDOZE_REFUND)
+      return Math.round((HANGAR_OFFERS[scale].cost + this.paidFittings(hostKey('hangar', at.c, at.r))) * BULLDOZE_REFUND)
+    }
+    if (tile === 'fire' && at) {
+      const b = BUILDINGS.find((x) => x.tile === tile)
+      return Math.round(((b?.cost ?? 0) + this.paidFittings(hostKey('fire', at.c, at.r))) * BULLDOZE_REFUND)
     }
     if (tile === 'stand' && at) {
-      const scale = this.standScale[`${at.c},${at.r}`]
-      const pit = this.standPits[`${at.c},${at.r}`] ? (progressionBuildable('hydrant')?.cost ?? 0) : 0
+      const key = `${at.c},${at.r}`
+      const scale = this.standScale[key]
+      const pit = this.standPits[key] ? (progressionBuildable('hydrant')?.cost ?? 0) : 0
+      const size = this.standSize[key]
+      const rung = this.standRung[key]
+      if (size && rung != null) {
+        let paid = pit + this.paidFittings(hostKey('stand', at.c, at.r), size)
+        for (let step = 0; step <= rung; step++) paid += rungStepCost(size, step as StandRung)
+        return Math.round(paid * BULLDOZE_REFUND)
+      }
       const base =
         scale === 'wide'
           ? STAND_OFFERS.wide.cost
@@ -21290,6 +21369,7 @@ export class Game {
       this.standSize[key] = migrated.size
       this.standRung[key] = migrated.rung
       if (legacyFitting(migrated)) this.attachBoughtBridge(key)
+      else this.standAccess[key] = 'remote'
     }
   }
 

@@ -27,6 +27,10 @@ describe('surface rungs', () => {
     expect(standAllows('light', 0, 'bn2', REAL_AIRFRAMES.bn2.icao)).toBe(true)
     expect(game.standFitsAirframe({ c: 2, r: 2 }, 'bn2')).toBe(true)
     expect(game.standFitsAirframe({ c: 2, r: 2 }, 'citation')).toBe(false)
+    for (const id of ['dhc6', 'pc12', 'at802'] as const) {
+      expect(standAllows('light', 0, id, REAL_AIRFRAMES[id].icao)).toBe(true)
+      expect(game.standFitsAirframe({ c: 2, r: 2 }, id)).toBe(true)
+    }
     expect(game.buyStandRung('2,2')).toBe(true)
     expect(game.standRung['2,2']).toBe(1)
     expect(game.cash).toBe(200_000 - 2_000)

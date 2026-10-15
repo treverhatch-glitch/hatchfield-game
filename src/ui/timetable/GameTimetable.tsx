@@ -28,7 +28,7 @@ export function GameTimetable({
   const adapter = useMemo(() => gameScheduleAdapter(game), [game])
   const open = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('timetable') === '1'
   const fuel = fuelFooterLine({
-    upliftLitres: game.termUpliftLitres,
+    upliftLitres: game.bankUpliftLitres(),
     tankLitres: game.tankLitres,
     tankCapacity: tankDef(game.tankTier).capacityLitres,
     supplier: supplierName(game),

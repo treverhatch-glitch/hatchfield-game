@@ -899,12 +899,15 @@ export function tickFuel(
       state.supply === 'rail'
         ? railLink(field, field.research.includes('rail_fuel'))
         : pipeLink(field, field.research.includes('pipeline_fuel'))
-    if (!link.flowing || state.lineHeld) return { ...none, method: state.supply }
-    const litres = Math.min(room, (contract.railLitresPerHour * gameMinutes) / 60)
-    const paid = litres * contract.wholesalePerLitre
-    if (paid > cash + 1e-6) return { ...none, method: state.supply, waitingOnCash: true }
-    state.litres += litres
-    return { delivered: litres, paid, method: state.supply, railFlowing: state.supply === 'rail', waitingOnCash: false }
+    if (state.lineHeld) return { ...none, method: state.supply }
+    if (link.flowing) {
+      const litres = Math.min(room, (contract.railLitresPerHour * gameMinutes) / 60)
+      const paid = litres * contract.wholesalePerLitre
+      if (paid > cash + 1e-6) return { ...none, method: state.supply, waitingOnCash: true }
+      state.litres += litres
+      return { delivered: litres, paid, method: state.supply, railFlowing: state.supply === 'rail', waitingOnCash: false }
+    }
+    // A line that is not laid yet still has the term's road tankers behind it.
   }
   if (state.supply === 'barge') {
     state.bargeMinutes = (state.bargeMinutes ?? 0) + gameMinutes

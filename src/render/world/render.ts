@@ -870,6 +870,12 @@ export class WorldRenderer {
 
   private clearPackSigns() {
     this.packSigns.traverse((o) => {
+      if ((o as THREE.Sprite).isSprite) {
+        const sprite = o as THREE.Sprite
+        sprite.material.map?.dispose()
+        sprite.material.dispose()
+        return
+      }
       const mesh = o as THREE.Mesh
       mesh.geometry?.dispose()
       const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
