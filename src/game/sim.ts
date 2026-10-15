@@ -7529,10 +7529,14 @@ export class Game {
     this.walletNudged.add(view.nextBuy)
     const node = techNode(view.nextBuy)
     if (!node) return
-    this.pushNews(
-      `Ops wallet: ${view.points} RP banked. ${node.name} is ready in Growth > Ops wallet.`,
-      'good',
-    )
+    // A fixed id keeps this automatic line off the random stream that seeded runs share.
+    this.news.unshift({
+      id: `n-wallet-${this.walletNudged.size}`,
+      text: `Ops wallet: ${view.points} RP banked. ${node.name} is ready in Growth > Ops wallet.`,
+      tone: 'good',
+      age: 0,
+    })
+    this.news = this.news.slice(0, 10)
   }
 
   private groundIncomeCategory(category: string): MoneyCategory {
