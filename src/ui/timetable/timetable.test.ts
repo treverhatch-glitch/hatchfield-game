@@ -284,6 +284,71 @@ describe('game schedule adapter', () => {
     expect(game.schedule[0].eta).toBeLessThan(200)
   })
 
+  it('refuses an A380 pin on a D-rung heavy stand and says why', () => {
+    const { a, game } = setup()
+    game.standSize['6,4'] = 'heavy'
+    game.standRung['6,4'] = 0
+    game.flights.push({ id: 'heavy', airframeId: 'a380', kind: 'widebody' } as (typeof game.flights)[number])
+    game.schedule[0].flightId = 'heavy'
+    const why = a.pinStand('s1:arr', '6,4')
+    expect(why).toMatch(/code D/)
+    expect(game.schedule[0].standPref).toBeNull()
+  })
+
+  it('refuses a 737 on asphalt and a Citation on grass', () => {
+    const { a, game } = setup()
+    game.standSize['4,4'] = 'narrow'
+    game.standRung['4,4'] = 0
+    game.flights.push({ id: 'narrow', airframeId: 'b738', kind: 'narrowbody' } as (typeof game.flights)[number])
+    game.schedule[0].flightId = 'narrow'
+    expect(a.pinStand('s1:arr', '4,4')).toMatch(/concrete|asphalt/i)
+    expect(game.schedule[0].standPref).toBeNull()
+
+    game.standSize['4,4'] = 'light'
+    game.standRung['4,4'] = 0
+    game.flights[0] = { id: 'cite', airframeId: 'citation', kind: 'air_ambulance' } as (typeof game.flights)[number]
+    game.schedule[0].flightId = 'cite'
+    expect(a.pinStand('s1:arr', '4,4')).toMatch(/grass/i)
+    expect(game.schedule[0].standPref).toBeNull()
+  })
+
+  it('refuses a swap that breaks a lease or a size', () => {
+    const { a, game } = setup()
+    a.pinStand('s1:arr', '4,4')
+    game.hubLeases = [{ id: 'stand:4,4', kind: 'gate', airlineId: 'sky' }]
+    expect(a.swapStands('s1:arr', 's2:arr')).toMatch(/leased/)
+    expect(game.schedule[0].standPref).toEqual({ c: 4, r: 4 })
+    expect(game.schedule[1].standPref).toEqual({ c: 6, r: 4 })
+
+    game.hubLeases = []
+    game.standSize['4,4'] = 'heavy'
+    game.standRung['4,4'] = 0
+    game.standSize['6,4'] = 'heavy'
+    game.standRung['6,4'] = 2
+    game.flights.push(
+      { id: 'heavy', airframeId: 'a380', kind: 'widebody' } as (typeof game.flights)[number],
+      { id: 'narrow', airframeId: 'b738', kind: 'narrowbody' } as (typeof game.flights)[number],
+    )
+    game.schedule[0].flightId = 'heavy'
+    game.schedule[0].standPref = { c: 6, r: 4 }
+    game.schedule[1].flightId = 'narrow'
+    game.schedule[1].standPref = { c: 4, r: 4 }
+    expect(a.swapStands('s1:arr', 's2:arr')).toMatch(/code D/)
+    expect(game.schedule[0].standPref).toEqual({ c: 6, r: 4 })
+    expect(game.schedule[1].standPref).toEqual({ c: 4, r: 4 })
+  })
+
+  it('refuses a pin on a closed or reserved stand', () => {
+    const { a, game } = setup()
+    game.closedStandKeys = () => new Set(['4,4'])
+    expect(a.pinStand('s1:arr', '4,4')).toMatch(/closed/)
+    expect(game.schedule[0].standPref).toBeNull()
+    game.closedStandKeys = () => new Set()
+    game.reservedStandKeys = () => new Set(['4,4'])
+    expect(a.pinStand('s1:arr', '4,4')).toMatch(/reserved/)
+    expect(game.schedule[0].standPref).toBeNull()
+  })
+
   it('pins, swaps, pulls, bumps, cancels', () => {
     const { a, game } = setup()
     a.pinStand('s1:arr', '4,4')

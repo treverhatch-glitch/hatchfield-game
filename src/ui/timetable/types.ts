@@ -118,8 +118,10 @@ export interface TimetableAdapter {
   runways(): TtRunway[]
   /** Move a flight to a sim time; adapter clamps into the window. Returns applied time. */
   moveTo(id: string, time: number): number | null
-  pinStand(id: string, standId: string | null): void
-  swapStands(a: string, b: string): void
+  /** Pin a stand. Returns the refusal sentence, or null when the pin landed. */
+  pinStand(id: string, standId: string | null): string | null
+  /** Swap two stands. Returns the refusal sentence, or null when the swap landed. */
+  swapStands(a: string, b: string): string | null
   pull(id: string): void
   bump(id: string): void
   cancel(id: string): void

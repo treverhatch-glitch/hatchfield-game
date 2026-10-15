@@ -68,6 +68,7 @@ export function Timetable({
   const [sel, setSel] = useState<string | null>(null)
   const [swapFrom, setSwapFrom] = useState<string | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
+  const [pinNote, setPinNote] = useState<string | null>(null)
   const [, tick] = useState(0)
   const dragRef = useRef<Drag | null>(null)
   const plannerTick = plannerOpen ? 1 : 0
@@ -161,7 +162,7 @@ export function Timetable({
   const onBarDown = (e: RPointerEvent<HTMLDivElement>, f: TtFlight) => {
     e.stopPropagation()
     if (swapFrom && swapFrom !== f.id) {
-      adapter.swapStands(swapFrom, f.id)
+      setPinNote(adapter.swapStands(swapFrom, f.id))
       setSwapFrom(null)
       setSel(f.id)
       return
@@ -201,7 +202,7 @@ export function Timetable({
       if (adapter.caps.pin && Math.abs(d.dy) > 8) {
         const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-stand]')
         const standId = hit?.getAttribute('data-stand') || null
-        adapter.pinStand(f.id, standId)
+        setPinNote(adapter.pinStand(f.id, standId))
       }
     }
     setSel(f.id)
@@ -534,8 +535,10 @@ export function Timetable({
               adapter={adapter}
               flight={selFlight}
               note={barNote(gantt.flatMap((g) => g.rows.flatMap((r) => r.bars)).find((b) => b.flight.id === selFlight.id) ?? emptyBar(selFlight), day)}
+              pinNote={pinNote}
               stands={stands}
               runways={runwayList}
+              onPinNote={setPinNote}
               onSwap={() => setSwapFrom(selFlight.id)}
               onClose={() => setSel(null)}
             />
@@ -554,16 +557,20 @@ function FlightCard({
   adapter,
   flight: f,
   note,
+  pinNote,
   stands,
   runways,
+  onPinNote,
   onSwap,
   onClose,
 }: {
   adapter: TimetableAdapter
   flight: TtFlight
   note: string | null
+  pinNote: string | null
   stands: ReturnType<TimetableAdapter['stands']>
   runways: ReturnType<TimetableAdapter['runways']>
+  onPinNote: (reason: string | null) => void
   onSwap: () => void
   onClose: () => void
 }) {
@@ -628,6 +635,11 @@ function FlightCard({
         <dt>Status</dt>
         <dd>{f.status.replace('_', ' ')}</dd>
       </dl>
+      {pinNote ? (
+        <p className="late" data-testid="tt-pin-reason">
+          {pinNote}
+        </p>
+      ) : null}
       {note ? <p className={note.startsWith('Clash') || note.startsWith('This stand') ? 'late' : 'tight'}>{note}</p> : null}
       {f.movable ? (
         <>
@@ -656,7 +668,7 @@ function FlightCard({
           {adapter.caps.pin ? (
             <div className="tt-actions">
               <span className="muted">Pin:</span>
-              <button type="button" className={!f.pinned ? 'on' : ''} onClick={() => adapter.pinStand(f.id, null)}>
+              <button type="button" className={!f.pinned ? 'on' : ''} onClick={() => onPinNote(adapter.pinStand(f.id, null))}>
                 Auto
               </button>
               {fits.slice(0, 8).map((s) => (
@@ -664,7 +676,7 @@ function FlightCard({
                   type="button"
                   key={s.id}
                   className={f.pinned && f.standId === s.id ? 'on' : ''}
-                  onClick={() => adapter.pinStand(f.id, s.id)}
+                  onClick={() => onPinNote(adapter.pinStand(f.id, s.id))}
                 >
                   {s.label}
                 </button>

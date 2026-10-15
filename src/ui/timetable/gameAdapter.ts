@@ -2,10 +2,12 @@ import { AIRFRAMES } from '../../game/airframes'
 import { tilesOf } from '../../game/path'
 import type { Game } from '../../game/sim'
 import type { AircraftKind, Flight, ScheduleSlot, Vec } from '../../game/types'
+import { REAL_AIRFRAMES } from '../../render/aircraft/realworld'
+import { footprintLetter, standRefusal } from '../../stands/index'
 import { checkInGhost, isIntlKind } from './checkInGhost'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { contractSlotWindow, turnTargetSec } from './schedulerBridge'
-import { clampToWindow, hourSecs, standFits } from './time'
+import { clampToWindow, hourSecs } from './time'
 import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand, TtTraffic, TtWindow } from './types'
 
 /**
@@ -30,6 +32,10 @@ export type ScheduleGame = Pick<
   | 'cycleSlotRunway'
   | 'scheduleForRunway'
   | 'hubLeases'
+  | 'standSize'
+  | 'standRung'
+  | 'closedStandKeys'
+  | 'reservedStandKeys'
 >
 
 export const DAY_LENGTH = 180
@@ -85,6 +91,47 @@ const key = (v: Vec) => `${v.c},${v.r}`
 const unkey = (s: string): Vec => {
   const [c, r] = s.split(',').map(Number)
   return { c, r }
+}
+
+/** Painted letter. Size and rung win. A class-only stand keeps the old S/M/L map. */
+function paintedLetter(game: ScheduleGame, stand: Vec): IcaoCode {
+  const id = key(stand)
+  const size = game.standSize[id]
+  const rung = game.standRung[id]
+  if (size && rung != null) return footprintLetter(size, rung)
+  return STAND_ICAO[game.standClassAt(stand)] ?? 'E'
+}
+
+function aircraftOf(game: ScheduleGame, slot: ScheduleSlot): { airframeId?: string; icao: IcaoCode } {
+  const flight = slot.flightId ? game.flights.find((f) => f.id === slot.flightId) : undefined
+  const airframeId = flight?.airframeId ?? slot.airframeId ?? undefined
+  const real = airframeId ? REAL_AIRFRAMES[airframeId] : undefined
+  if (real && real.icao !== 'H') return { airframeId, icao: real.icao }
+  if (real?.icao === 'H') return { airframeId, icao: 'A' }
+  const kind = flight?.kind ?? (airframeId ? AIRFRAMES[airframeId]?.kind : undefined)
+  return { airframeId, icao: flight || airframeId ? icaoForAirframe(airframeId, kind) : 'C' }
+}
+
+/** Fit, lease, closed, and reserved. The sentence is what the timetable shows. */
+function refusalFor(game: ScheduleGame, slot: ScheduleSlot, standId: string): string | null {
+  const stand = unkey(standId)
+  const craft = aircraftOf(game, slot)
+  const id = key(stand)
+  const size = game.standSize[id]
+  const rung = game.standRung[id]
+  const real = craft.airframeId ? REAL_AIRFRAMES[craft.airframeId] : undefined
+  const lease = (game.hubLeases ?? []).find((row) => row.kind === 'gate' && row.id === `stand:${standId}`)
+  return standRefusal({
+    airlineId: slot.airline,
+    leaseAirlineId: lease?.airlineId ?? null,
+    closed: game.closedStandKeys().has(standId),
+    reserved: game.reservedStandKeys().has(standId),
+    size,
+    rung,
+    airframeId: real ? craft.airframeId : undefined,
+    aircraftIcao: real?.icao ?? craft.icao,
+    standLetter: paintedLetter(game, stand),
+  })
 }
 
 export function towerWindow(slot: ScheduleSlot, now: number, anchor?: number): TtWindow {
@@ -261,7 +308,7 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
         return {
           id: key(v),
           label: game.gateLabel(v),
-          icao: STAND_ICAO[cls] ?? 'E',
+          icao: paintedLetter(game, v),
           gameClass: cls,
           leaseAirline: holder?.name ?? null,
           leaseColor: holder?.color ?? null,
@@ -294,25 +341,28 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     },
     pinStand(id, standId) {
       const s = slotOf(id)
-      if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+      if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return null
       if (standId) {
-        const flight = s.flightId ? game.flights.find((f) => f.id === s.flightId) : undefined
-        const icao = flight ? icaoForAirframe(flight.airframeId, flight.kind) : 'C'
-        const standIcao = STAND_ICAO[game.standClassAt(unkey(standId))] ?? 'E'
-        if (!standFits(standIcao, icao)) return
-        const leased = (game.hubLeases ?? []).find((row) => row.kind === 'gate' && row.id === `stand:${standId}`)
-        if (leased && leased.airlineId !== s.airline) return
+        const why = refusalFor(game, s, standId)
+        if (why) return why
       }
       game.setSlotStandPref(s.id, standId ? unkey(standId) : null)
+      return null
     },
     swapStands(a, b) {
       const sa = slotOf(a)
       const sb = slotOf(b)
-      if (!sa || !sb) return
+      if (!sa || !sb) return 'Unknown flight.'
       const pa = sa.standPref ?? null
       const pb = sb.standPref ?? null
+      if (!pa || !pb) return 'Both flights need a stand.'
+      const aWhy = refusalFor(game, sa, key(pb))
+      if (aWhy) return aWhy
+      const bWhy = refusalFor(game, sb, key(pa))
+      if (bWhy) return bWhy
       game.setSlotStandPref(sa.id, pb)
       game.setSlotStandPref(sb.id, pa)
+      return null
     },
     pull: (id) => {
       const s = slotOf(id)

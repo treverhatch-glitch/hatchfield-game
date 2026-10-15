@@ -1,4 +1,5 @@
 import { SIZE, type Flight, type ScheduleSlot, type Tile, type Vec } from '../../game/types'
+import type { StandRung, StandSize } from '../../stands/types'
 import type { ScheduleGame } from './gameAdapter'
 
 /** Minimal stand-in for Game used by timetable tests and the screenshot harness. */
@@ -50,6 +51,10 @@ export function makeFakeGame(opts: { clock?: number; strips?: number } = {}) {
       g.schedule.find((x) => x.id === id)!.standPref = v
       log.push(`pin ${id} ${v ? `${v.c},${v.r}` : 'auto'}`)
     },
+    standSize: {} as Record<string, StandSize>,
+    standRung: {} as Record<string, StandRung>,
+    closedStandKeys: () => new Set<string>(),
+    reservedStandKeys: () => new Set<string>(),
   }
   const slot = (id: string, airline: string, eta: number, extra: Partial<ScheduleSlot> = {}): ScheduleSlot => {
     const s: ScheduleSlot = {

@@ -1,7 +1,8 @@
+import { standRefusal } from '../stands/eligibility.ts'
 import { airframeInfo, standFits } from './airframes.ts'
 import { evaluateFlags, slotKey, withDefaults } from './scheduler.ts'
 import { MIN_PER_DAY } from './seasons.ts'
-import type { Contract, Infrastructure, ScheduleState, SchedulerOptions, SlotInstance } from './types.ts'
+import type { Contract, Infrastructure, ScheduleState, SchedulerOptions, SlotInstance, StandDef } from './types.ts'
 
 /** Standing cost per week for each flight sitting in the hard band (doc §5, open question: standing vs cash). */
 export const OFF_WINDOW_STANDING_PER_WEEK = 1
@@ -73,14 +74,32 @@ export function setCancelled(state: ScheduleState, slotId: string, cancelled: bo
   return { ok: true, state: commit(state, slots, ctx), zone: 'none', standingCostPerWeek: 0 }
 }
 
-/** Pin a flight to a stand. Refused if the stand isn't built or is too small; clashes are allowed and flagged. */
+function claimRefusal(
+  stand: StandDef,
+  airlineId: string,
+  airframeId: string,
+  airframes: Parameters<typeof airframeInfo>[0],
+): string | null {
+  const cls = airframeInfo(airframes, airframeId).sizeClass
+  return standRefusal({
+    airlineId,
+    leaseAirlineId: stand.leaseAirlineId,
+    closed: stand.closed,
+    reserved: stand.reserved,
+    sizeClassFits: standFits(stand.sizeClass, cls),
+    standId: stand.id,
+    aircraftSizeClass: cls,
+  })
+}
+
+/** Pin a flight to a stand. Refused if the stand isn't built, is leased, closed, reserved, or too small. Clashes are allowed and flagged. */
 export function pinStand(state: ScheduleState, slotId: string, standId: string, ctx: Ctx): AdjustResult {
   const s = find(state, slotId)
   if (!s) return { ok: false, state, reason: 'unknown slot' }
   const st = ctx.infra.stands.find((x) => x.id === standId)
   if (!st) return { ok: false, state, reason: 'unknown stand' }
-  const cls = airframeInfo(withDefaults(ctx.options).airframes, s.airframeId).sizeClass
-  if (!standFits(st.sizeClass, cls)) return { ok: false, state, reason: `stand ${standId} too small for ${cls}` }
+  const reason = claimRefusal(st, s.airlineId, s.airframeId, withDefaults(ctx.options).airframes)
+  if (reason) return { ok: false, state, reason }
   const slots = state.slots.map((x) => x.id === slotId ? { ...x, standId, standPinned: true } : x)
   return { ok: true, state: commit(state, slots, ctx), zone: 'none', standingCostPerWeek: 0 }
 }
@@ -98,7 +117,7 @@ export function unpinTime(state: ScheduleState, slotId: string, ctx: Ctx): Adjus
   return { ok: true, state: commit(state, slots, ctx), zone: 'none', standingCostPerWeek: 0 }
 }
 
-/** Swap two flights' stands; both must fit. Both become stand-pinned. */
+/** Swap two flights' stands. Both must fit, and neither lease may exclude the other airline. Both become stand-pinned. */
 export function swapStands(state: ScheduleState, aId: string, bId: string, ctx: Ctx): AdjustResult {
   const a = find(state, aId)
   const b = find(state, bId)
@@ -108,8 +127,10 @@ export function swapStands(state: ScheduleState, aId: string, bId: string, ctx: 
   const sa = def(a.standId)
   const sb = def(b.standId)
   if (!sa || !sb) return { ok: false, state, reason: 'both flights need a stand' }
-  if (!standFits(sb.sizeClass, airframeInfo(o.airframes, a.airframeId).sizeClass)) return { ok: false, state, reason: `stand ${sb.id} too small for ${a.id}` }
-  if (!standFits(sa.sizeClass, airframeInfo(o.airframes, b.airframeId).sizeClass)) return { ok: false, state, reason: `stand ${sa.id} too small for ${b.id}` }
+  const aReason = claimRefusal(sb, a.airlineId, a.airframeId, o.airframes)
+  if (aReason) return { ok: false, state, reason: aReason }
+  const bReason = claimRefusal(sa, b.airlineId, b.airframeId, o.airframes)
+  if (bReason) return { ok: false, state, reason: bReason }
   const slots = state.slots.map((x) => x.id === aId ? { ...x, standId: sb.id, standPinned: true } : x.id === bId ? { ...x, standId: sa.id, standPinned: true } : x)
   return { ok: true, state: commit(state, slots, ctx), zone: 'none', standingCostPerWeek: 0 }
 }

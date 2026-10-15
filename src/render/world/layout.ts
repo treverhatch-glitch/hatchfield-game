@@ -5,7 +5,7 @@
  */
 import type { StandClass, Tile, Vec } from '../../game/types'
 import { aircraftWorldPerMeter, getAircraftSpec } from '../aircraft/specs'
-import { bridgeDockMeters, envelopeLetter, envelopeWorld, standPreviewId } from '../aircraft/stands'
+import { bridgeDockMeters, envelopeLetter, envelopeWorld, standPreviewId, type IcaoCode } from '../aircraft/stands'
 import { CELL, cellX, cellZ, tileAt, type WorldView } from './view'
 
 export type Dir = 'n' | 's' | 'e' | 'w'
@@ -653,9 +653,9 @@ export interface StandBox {
   depthAlongX: boolean
 }
 
-/** Class limit box in world units, oriented to the lead-in. */
-export function standBox(s: StandInfo): StandBox {
-  const env = envelopeWorld(envelopeLetter(s.cls, s.scale))
+/** Class limit box in world units, oriented to the lead-in. A letter overrides the S/M/L scale. */
+export function standBox(s: StandInfo & { letter?: IcaoCode }): StandBox {
+  const env = envelopeWorld(s.letter ?? envelopeLetter(s.cls, s.scale))
   const depthAlongX = DIR_VEC[s.entry].dc !== 0
   return {
     x: cellX(s.c),
@@ -664,6 +664,27 @@ export function standBox(s: StandInfo): StandBox {
     depth: env.depth,
     depthAlongX,
   }
+}
+
+/**
+ * Ghost box for a stand tool. The letter is the placement letter (size + rung),
+ * so a code D hardstand is not drawn as the code F box of class L.
+ */
+export function previewStandBox(
+  spec: { cls: StandClass; scale?: 'small' | 'wide' | 'jumbo' | null; letter: IcaoCode },
+  at: { c: number; r: number },
+  entry: Dir,
+  jetway: boolean,
+): StandBox {
+  return standBox({
+    c: at.c,
+    r: at.r,
+    cls: spec.cls,
+    scale: spec.scale ?? undefined,
+    letter: spec.letter,
+    jetway,
+    entry,
+  })
 }
 
 function halfExtents(box: StandBox): { halfX: number; halfZ: number } {

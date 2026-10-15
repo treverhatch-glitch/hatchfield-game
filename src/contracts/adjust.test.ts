@@ -107,6 +107,26 @@ describe('player adjustments', () => {
     expect(r.state.slots[1].standId).toBe(a.standId)
     expect(r.state.slots.every((x) => x.standPinned)).toBe(true)
   })
+  it('swap and pin refuse a stand leased to another airline', () => {
+    const infra = {
+      ...INFRA,
+      stands: INFRA.stands.map((stand) => (stand.id === 'N2' ? { ...stand, leaseAirlineId: 'hub' } : stand)),
+    }
+    const st = fresh()
+    const pinned = pinStand(st, id('n'), 'N2', { contracts: [c], infra })
+    expect(pinned.ok).toBe(false)
+    if (!pinned.ok) expect(pinned.reason).toMatch(/leased/)
+
+    const parked = {
+      ...st,
+      slots: st.slots.map((slot) =>
+        slot.id === id('n') ? { ...slot, standId: 'N1', airlineId: 'rival' } : slot.id === id('w') ? { ...slot, standId: 'N2' } : slot,
+      ),
+    }
+    const swapped = swapStands(parked, id('n'), id('w'), { contracts: [c], infra })
+    expect(swapped.ok).toBe(false)
+    if (!swapped.ok) expect(swapped.reason).toMatch(/leased|too small/)
+  })
   it('swap needs both flights on a stand', () => {
     const st = fresh()
     const noStand = { ...st, slots: st.slots.map((x) => x.id === id('n') ? { ...x, standId: null } : x) }

@@ -134,8 +134,14 @@ export function contractsAdapter(src: ContractsSource): TimetableAdapter {
       if (!m) return null
       return src.reschedule(m.id, clampToWindow(time, { start: m.windowStart, end: m.windowEnd, source: 'contract' }))
     },
-    pinStand: (id, standId) => src.assignStand(real(id), standId),
-    swapStands: (a, b) => src.swapStands?.(real(a), real(b)),
+    pinStand: (id, standId) => {
+      src.assignStand(real(id), standId)
+      return null
+    },
+    swapStands: (a, b) => {
+      src.swapStands?.(real(a), real(b))
+      return null
+    },
     pull: (id) => src.pull?.(real(id)),
     bump: (id) => src.bump?.(real(id)),
     cancel: (id) => src.cancel?.(real(id)),

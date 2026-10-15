@@ -139,6 +139,10 @@ export interface StandDef {
   sizeClass: SizeClass
   contact: boolean
   pier?: string
+  /** Hub lease holder. Other airlines are refused. */
+  leaseAirlineId?: string | null
+  closed?: boolean
+  reserved?: boolean
 }
 
 export interface RunwayDef {

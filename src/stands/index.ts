@@ -21,6 +21,7 @@ export {
   fittingDef,
   FLAG_CLOTH,
   footprintLetter,
+  standServiceTier,
   hostKey,
   jetBridgeCost,
   jetBridgeUpkeep,
@@ -33,7 +34,9 @@ export {
   scrambleSeconds,
   usableBridgeDoors,
 } from './catalog.ts'
-export { letterOf, standAllows } from './fit.ts'
+export { letterOf, standAllowReason, standAllows } from './fit.ts'
+export { standRefusal } from './eligibility.ts'
+export type { StandClaim } from './eligibility.ts'
 export { rungRefusal, upgradeLabel } from './gates.ts'
 export { fittingRefusal } from './attach.ts'
 export type { FittingAsk } from './attach.ts'

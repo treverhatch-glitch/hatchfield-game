@@ -51,6 +51,16 @@ export function footprintLetter(size: StandSize, rung: StandRung): 'A' | 'B' | '
   return 'C'
 }
 
+/**
+ * Service-bay tier. A code D hardstand is not a jumbo slab.
+ * Widebody slab is wide. Heavy slab is jumbo. Light and narrow stay small.
+ */
+export function standServiceTier(size: StandSize, rung: StandRung): 'small' | 'wide' | 'jumbo' {
+  if (size === 'heavy' && rung >= 2) return 'jumbo'
+  if (size === 'heavy' && rung === 1) return 'wide'
+  return 'small'
+}
+
 export function rungUpkeep(size: StandSize, rung: StandRung): number {
   return RUNG_UPKEEP[size][rung]
 }

@@ -176,10 +176,10 @@ import {
   TERMINAL_COST,
 } from './catalog'
 import { hangarFootprintCells } from './buildingFootprint'
-import { footprintCells, footprintCellsForLetter, standGrowBlock } from './standFoot'
+import { footprintCellsForLetter, standGrowBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
-import { bridgeMirror, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
+import { bridgeMirror, envelopeLetter, standAccepts, standLetter, wingDiscsClash } from '../render/aircraft/stands'
 import { legRoute, pointAlong, polylineLength } from './hallRoute.ts'
 import { planTerminal, terminalPlanSeed } from '../render/world/plan.ts'
 import { terminals } from '../render/world/layout.ts'
@@ -411,7 +411,8 @@ import {
   tankDef,
   tickFuel,
 } from '../scale/logic.ts'
-import { aliasSize, boardingDoorScale, FITTINGS, fittingDef, fittingRefusal, fireDrillLine, fireDrillStanding, fireFine, fireReputationHit, FLAG_CLOTH, footprintLetter, hostKey, jetBridgeCost, jetBridgeUpkeep, legacyFitting, migrateStand, parseHostKey, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, SCRAMBLE_BELL, scrambleNote, scrambleSeconds, standAllows, upgradeLabel, usableBridgeDoors } from '../stands/index.ts'
+import { aliasSize, boardingDoorScale, FITTINGS, fittingDef, fittingRefusal, fireDrillLine, fireDrillStanding, fireFine, fireReputationHit, FLAG_CLOTH, footprintLetter, hostKey, jetBridgeCost, jetBridgeUpkeep, legacyFitting, migrateStand, parseHostKey, readFittings, readStandRungs, readStandSizes, RUNG_LABEL, rungRefusal, rungStepCost, rungUpkeep, SCRAMBLE_BELL, scrambleNote, scrambleSeconds, standAllows, standRefusal, standServiceTier, upgradeLabel, usableBridgeDoors } from '../stands/index.ts'
+import { REAL_AIRFRAMES, type IcaoCode } from '../render/aircraft/realworld.ts'
 import type { Fitting, FittingHost, FittingId, StandRung, StandSize } from '../stands/types.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import {
@@ -17502,17 +17503,19 @@ export class Game {
     const key = (v: Vec) => `${v.c},${v.r}`
     const cur = s.standPref ? key(s.standPref) : null
     const idx = cur ? stands.findIndex((st) => key(st) === cur) : -1
-    const nextIdx = idx + 1
-    if (nextIdx >= stands.length) {
-      s.standPref = null
-      this.pushNews(`${s.flightNo} stand → tower auto.`, 'ok')
-    } else {
-      s.standPref = { ...stands[nextIdx] }
-      this.pushNews(
-        `${s.flightNo} stand → ${this.gateLabel(s.standPref)}.`,
-        'ok',
-      )
+    const ask = { airlineId: s.airline, airframeId: s.airframeId }
+    for (let step = 1; step <= stands.length; step++) {
+      const nextIdx = idx + step
+      if (nextIdx >= stands.length) break
+      const next = stands[nextIdx]!
+      if (this.standClaimRefusal(next, ask)) continue
+      s.standPref = { ...next }
+      this.pushNews(`${s.flightNo} stand → ${this.gateLabel(s.standPref)}.`, 'ok')
+      this.emit()
+      return
     }
+    s.standPref = null
+    this.pushNews(`${s.flightNo} stand → tower auto.`, 'ok')
     this.emit()
   }
 
@@ -17526,6 +17529,16 @@ export class Game {
       )
       if (!hit) {
         this.pushNews('That stand is gone.', 'bad')
+        this.emit()
+        return
+      }
+      const flight = s.flightId ? this.flights.find((f) => f.id === s.flightId) : undefined
+      const why = this.standClaimRefusal(hit, {
+        airlineId: s.airline,
+        airframeId: flight?.airframeId || s.airframeId,
+      })
+      if (why) {
+        this.pushNews(`${s.flightNo} not pinned — ${why}`, 'bad')
         this.emit()
         return
       }
@@ -20255,7 +20268,14 @@ export class Game {
       const cls = this.standClass[key]
       const size = this.standSize[key]
       const rung = this.standRung[key]
-      const tier: SizeTier = scale === 'wide' || scale === 'jumbo' ? scale : cls === 'L' ? 'jumbo' : 'small'
+      const tier: SizeTier =
+        size && rung != null
+          ? standServiceTier(size, rung)
+          : scale === 'wide' || scale === 'jumbo'
+            ? scale
+            : cls === 'L'
+              ? 'jumbo'
+              : 'small'
       const name =
         size === 'light' && rung === 0
           ? 'Light stand'
@@ -22119,7 +22139,7 @@ export class Game {
       return
     }
     const standCls: StandClass = standClassForTool(this.tool) ?? 'M'
-    const jumboOpen = this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
+    const jumboOpen = this.jumboStandOpen()
     const standScale = standScaleForTool(this.tool, jumboOpen)
     const standAlias = building.tile === 'stand' ? aliasSize(this.tool, jumboOpen) : null
     const hangarScale = hangarScaleForTool(this.tool)
@@ -22221,8 +22241,7 @@ export class Game {
       this.standSize[key] = rec.size
       this.standRung[key] = rec.rung
     } else {
-      const jumbo = this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
-      const alias = rec.tool ? aliasSize(rec.tool, jumbo) : null
+      const alias = rec.tool ? aliasSize(rec.tool, this.jumboStandOpen()) : null
       if (alias) {
         this.standSize[key] = alias.size
         this.standRung[key] = alias.rung
@@ -22754,6 +22773,41 @@ export class Game {
     return standClassRank(this.standClassAt(stand)) >= standClassRank(need)
   }
 
+  /** Gate keys an ops event has closed. */
+  closedStandKeys(): ReadonlySet<string> {
+    return this.opsEvents.closedGates()
+  }
+
+  /** Gate keys tied up by a maintenance job. */
+  reservedStandKeys(): ReadonlySet<string> {
+    return this.tier3.tiedStandKeys()
+  }
+
+  /**
+   * Fit, lease, closed, and reserved. Wing clearance stays with standFitsAirframe.
+   * A leased stand is refused unless the asking airline holds it.
+   */
+  private standClaimRefusal(
+    stand: Vec,
+    ask: { airlineId?: string | null; airframeId?: string | null },
+  ): string | null {
+    const key = `${stand.c},${stand.r}`
+    const lease = this.hubLeases.find((row) => row.kind === 'gate' && row.id === gateLeaseId(stand.c, stand.r))
+    const airframeId = ask.airframeId && REAL_AIRFRAMES[ask.airframeId] ? ask.airframeId : undefined
+    const spec = airframeId ? REAL_AIRFRAMES[airframeId] : undefined
+    return standRefusal({
+      airlineId: ask.airlineId,
+      leaseAirlineId: lease?.airlineId ?? null,
+      closed: this.closedStandKeys().has(key),
+      reserved: this.reservedStandKeys().has(key),
+      size: this.standSize[key],
+      rung: this.standRung[key],
+      airframeId,
+      aircraftIcao: spec?.icao,
+      standLetter: this.standIcao(stand),
+    })
+  }
+
   /**
    * ICAO fit: S/M/L map to B/C/F. Helicopters are not sent through that map.
    * The wingspan disc must also miss other parked aircraft and the terminal.
@@ -22794,14 +22848,22 @@ export class Game {
     return !wingDiscsClash(stand, spec.spanM, others, blocks)
   }
 
-  /** Class and scale of the stand tool, or null when the tool is not a stand. */
-  standPreview(): { cls: StandClass; scale: SizeTier | null } | null {
-    const cls = standClassForTool(this.tool)
+  /** Heavy slab (code F) is open. A locked jumbo tool stays on the widebody slab. */
+  private jumboStandOpen(): boolean {
+    return this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
+  }
+
+  /**
+   * Class, scale, and painted letter of the stand tool.
+   * The letter comes from size and rung, so a code D hardstand is not drawn as code F.
+   */
+  standPreview(): { cls: StandClass; scale: SizeTier | null; letter: IcaoCode } | null {
+    const alias = aliasSize(this.tool, this.jumboStandOpen())
+    const cls = alias?.cls ?? standClassForTool(this.tool)
     if (!cls) return null
-    return {
-      cls,
-      scale: standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-    }
+    const scale = standScaleForTool(this.tool, this.jumboStandOpen())
+    const letter = alias ? footprintLetter(alias.size, alias.rung) : envelopeLetter(cls, scale)
+    return { cls, scale, letter }
   }
 
   /** Tile the current tool would stamp, or null for pan / inspect. */
@@ -22836,16 +22898,15 @@ export class Game {
    * Cash, research, and "needs grass" stay with the caller.
    */
   placementBlockReason(tile: Tile, cells: Vec[], origin: Vec, name: string): string | null {
-    const jumbo = this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
-    const alias = tile === 'stand' ? aliasSize(this.tool, jumbo) : null
+    const preview = tile === 'stand' ? this.standPreview() : null
     return placementReason(this.worldInput(), {
       tile,
       cells,
       origin,
       name,
-      standClass: tile === 'stand' ? (standClassForTool(this.tool) ?? 'M') : undefined,
-      standScale: tile === 'stand' ? standScaleForTool(this.tool, jumbo) : undefined,
-      standLetter: alias ? footprintLetter(alias.size, alias.rung) : undefined,
+      standClass: preview?.cls,
+      standScale: preview?.scale ?? undefined,
+      standLetter: preview?.letter,
       hangarScale: tile === 'hangar' ? (hangarScaleForTool(this.tool) ?? 'small') : undefined,
     })
   }
@@ -22929,15 +22990,8 @@ export class Game {
     if (this.tool === 'hangar' || this.tool === 'hangar_w' || this.tool === 'hangar_j') {
       return hangarFootprintCells(hover, hangarScaleForTool(this.tool) ?? 'small')
     }
-    const standCls = standClassForTool(this.tool)
-    if (standCls) {
-      return footprintCells(
-        this.tiles,
-        hover,
-        standCls,
-        standScaleForTool(this.tool, this.hasResearch('heavy_pack') && this.fieldLevel() >= 5),
-      )
-    }
+    const preview = this.standPreview()
+    if (preview) return footprintCellsForLetter(this.tiles, hover, preview.letter)
     return [hover]
   }
 
@@ -23162,7 +23216,7 @@ export class Game {
       if (eta == null) continue
       // No stand means the arrival cannot spawn. Holding the departure here
       // keeps that stand full, so the overdue slot never moves.
-      if (!this.assignStand()) continue
+      if (this.freeStands().length === 0) continue
       const lockAt = eta + ARRIVAL_LOCK_LEAD_SEC
       if (lockAt < this.clock + DEPARTURE_OCCUPANCY_SEC) return false
     }
@@ -23221,7 +23275,9 @@ export class Game {
     airlineId?: AirlineId,
     airframeId?: string,
   ): Vec | null {
-    let free = this.freeStands()
+    let free = this.freeStands().filter(
+      (s) => this.standClaimRefusal(s, { airlineId, airframeId }) == null,
+    )
     if (airframeId) free = free.filter((s) => this.standFitsAirframe(s, airframeId))
     else if (need) free = free.filter((s) => this.standFitsClass(s, need))
     if (airlineId) {
@@ -23488,7 +23544,7 @@ export class Game {
       return theirs == null || theirs === approachStrip
     }).length
     // No gate, or a final already up on this strip — slip an overbooked bank, otherwise wait.
-    if (onThis >= 1 || (this.groundBusy() && !this.assignStand())) {
+    if (onThis >= 1 || (this.groundBusy() && this.freeStands().length === 0)) {
       if (!this.runwayOverbooked()) {
         this.spawnCool = Math.max(this.spawnCool, 1.5)
         return
@@ -23569,14 +23625,21 @@ export class Game {
     if (!stand || !route) {
       const anyFree = this.freeStands().length > 0
       const hosts = this.stolenHosts()
+      const leaseBlocked =
+        anyFree &&
+        this.freeStands().every(
+          (s) => this.standClaimRefusal(s, { airlineId, airframeId: af.id })?.includes('leased') === true,
+        )
       const reason =
         !anyFree && hosts.length
           ? 'Gate stolen (emergency)'
-          : anyFree
-            ? 'Stand class short'
-            : 'No gate / path'
+          : leaseBlocked
+            ? 'Stand leased'
+            : anyFree
+              ? 'Stand class short'
+              : 'No gate / path'
       // Wrong stand size is this flight's problem. Cascading it holds every passenger turn behind an aircraft that can never park.
-      if (reason === 'Stand class short') {
+      if (reason === 'Stand class short' || reason === 'Stand leased') {
         const other = this.openSchedule().find(
           (s) =>
             s.id !== slot.id &&
@@ -23591,7 +23654,9 @@ export class Game {
           return
         }
         this.pushNews(
-          `${slot.flightNo} needs ${standClassLabel(needCls)}+ — class or path missing.`,
+          reason === 'Stand leased'
+            ? `${slot.flightNo} holding — that stand is leased to another airline.`
+            : `${slot.flightNo} needs ${standClassLabel(needCls)}+ — class or path missing.`,
           'bad',
         )
         return
@@ -25802,7 +25867,7 @@ export class Game {
   /** One-shot divert landing — not a banked timetable slot. */
   private spawnEmergencyDivert(airline: AirlineId): boolean {
     if (this.isBanned(airline)) return false
-    if (this.groundBusy() && !this.assignStand()) return false
+    if (this.groundBusy() && this.freeStands().length === 0) return false
     const af = this.pickForAirline(airline, this.airline(airline).kind === 'cargo').af
     if (!af) return false
     const stand = this.assignStand(null, undefined, airline, af.id)
@@ -25874,7 +25939,7 @@ export class Game {
 
   /** Firefighting plane — refuel-only or refuel + hangar MX. */
   private spawnEmergencyTanker(mx: boolean): boolean {
-    if (this.groundBusy() && !this.assignStand()) return false
+    if (this.groundBusy() && this.freeStands().length === 0) return false
     const af = this.pickAirtankerFrame()
     if (!af) return false
     const stand = this.assignStand(null, undefined, undefined, af.id)

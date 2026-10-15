@@ -72,7 +72,7 @@ import {
 import { chooseGraphicsQuality, graphicsQuality, subscribeGraphicsQuality } from './graphicsPrefs'
 import { aircraftReflectionsFor, prepareBuildingReflections } from './reflections'
 import { beatZoom, clearCameraBeat, peekCameraBeat } from '../feedback/beat.ts'
-import { standBox } from './world/layout'
+import { previewStandBox } from './world/layout'
 import { setFidsOpen } from '../fids/open'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
@@ -1597,7 +1597,7 @@ export class World {
     const cells = game.ghostCells(h)
     const ready = game.ghostReady(cells)
     const preview = game.standPreview()
-    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}|${preview ? `${preview.cls}${preview.scale ?? ''}` : ''}|${ready ? 1 : 0}`
+    const next = `${game.tool}|${game.facing}|${h ? `${h.c},${h.r}` : ''}|${game.mapRev}|${preview ? `${preview.cls}${preview.scale ?? ''}${preview.letter}` : ''}|${ready ? 1 : 0}`
     if (next === this.ghostHash) return
     this.ghostHash = next
     this.clearGhost()
@@ -1658,14 +1658,7 @@ export class World {
       const spec = game.standPreview()
       if (!spec) return
       const entry = standEntry(game.tiles, game.hover.c, game.hover.r)
-      const box = standBox({
-        c: game.hover.c,
-        r: game.hover.r,
-        cls: spec.cls,
-        scale: spec.scale ?? undefined,
-        jetway: game.standAccessMode === 'jetway',
-        entry,
-      })
+      const box = previewStandBox(spec, game.hover, entry, game.standAccessMode === 'jetway')
       const alongX = box.depthAlongX
       const pad = new THREE.Mesh(
         new THREE.BoxGeometry(alongX ? box.depth : box.width, 0.16, alongX ? box.width : box.depth),
