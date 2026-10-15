@@ -84,6 +84,44 @@ describe('hall capacity forecast (src/throughput on the live walk)', () => {
     expect(three.utilisation).toBeLessThan(one.utilisation / 2)
   })
 
+  it('reads five people at a desk as 45 an hour', () => {
+    expect(HALL_CAPACITY_TUNING.planWindowNavSec).toBe(400)
+    const five = hallForecast('checkin', [
+      point('checkin_desk', { id: 'belt-0', serviceSec: 75, queueLength: 4, serving: true }),
+      point('checkin_desk', { id: 'belt-1', serviceSec: 75 }),
+    ])!
+    expect(five.committed).toBe(5)
+    const paxPerHr = (5 * 3600) / HALL_CAPACITY_TUNING.planWindowNavSec
+    expect(paxPerHr).toBe(45)
+    expect(five.utilisation).toBeCloseTo(45 / (2 * (3600 / 75)), 5)
+  })
+
+  it('counts a staffed bag drop on the walk and does not also count it as a desk', () => {
+    const desk = point('checkin_desk', { id: 'belt-0', serviceSec: 75, queueLength: 4, serving: true })
+    const drop = point('checkin_desk', { id: 'drop-1-0', serviceSec: 75 })
+    const asDesks = hallForecast('checkin', [desk, drop])!
+    const withDrop = hallForecast('checkin', [desk, drop], [{ id: 'drop-1', def: 'bag_drop' }])!
+    expect(withDrop.committed).toBe(5)
+    expect(withDrop.utilisation).toBeCloseTo(asDesks.utilisation, 5)
+    expect(withDrop.waitMinutes).toBeGreaterThan(asDesks.waitMinutes)
+    const kiosk = point('checkin_desk', { id: 'kiosk-0', serviceSec: 75 })
+    const withKiosk = hallForecast('checkin', [desk, kiosk], [{ id: 'kiosk', def: 'kiosk' }])!
+    const kioskAsDesk = hallForecast('checkin', [desk, kiosk])!
+    expect(withKiosk.utilisation).toBeCloseTo(kioskAsDesk.utilisation, 5)
+    expect(withKiosk.waitMinutes).toBeCloseTo(kioskAsDesk.waitMinutes, 5)
+  })
+
+  it('leaves a closed bag drop out of the mix', () => {
+    const desk = point('checkin_desk', { id: 'belt-0', serviceSec: 75, queueLength: 4, serving: true })
+    const closed = point('checkin_desk', { id: 'drop-1-0', staffed: false, serviceSec: 75 })
+    const forecast = hallForecast('checkin', [desk, closed], [{ id: 'drop-1', def: 'bag_drop' }])!
+    const onlyDesk = hallForecast('checkin', [desk])!
+    expect(forecast.openPoints).toBe(1)
+    expect(forecast.totalPoints).toBe(2)
+    expect(forecast.utilisation).toBeCloseTo(onlyDesk.utilisation, 5)
+    expect(forecast.waitMinutes).toBeCloseTo(onlyDesk.waitMinutes, 5)
+  })
+
   it('shows on the live security card of the starter hall', () => {
     const game = field()
     game.tickHallNav(0.01)
@@ -92,6 +130,43 @@ describe('hall capacity forecast (src/throughput on the live walk)', () => {
     const card = game.buildingCard()
     expect(game.hallNav.live).toBe(true)
     expect(card?.note ?? '').toMatch(/^Security forecast:/)
+  })
+
+  it('reads a bag drop placed on the starter walk', () => {
+    const game = field()
+    const fit = game.activeHall()!
+    const taken = new Set((fit.items ?? []).map((it) => `${it.c},${it.r}`))
+    let spot: { c: number; r: number } | null = null
+    for (let r = 0; r < (fit.zones ?? []).length && !spot; r++) {
+      const row = fit.zones?.[r] ?? []
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] === 'checkin' && !taken.has(`${c},${r}`)) {
+          spot = { c, r }
+          break
+        }
+      }
+    }
+    expect(spot).toBeTruthy()
+    fit.items!.push({ id: 'drop-1', def: 'bag_drop', c: spot!.c, r: spot!.r, wear: 0, bundle: false })
+    game.hallRev++
+    game.tickHallNav(0.01)
+    const metrics = game.hallNav.metrics()
+    const drop = metrics.find((m) => m.id.startsWith('drop-1'))
+    expect(drop?.kind).toBe('checkin_desk')
+    expect(drop?.staffed).toBe(true)
+    const queued = metrics.map((m) =>
+      m.kind === 'checkin_desk'
+        ? { ...m, queueLength: m.id === drop!.id ? 4 : 0, serving: m.id === drop!.id, incoming: 0 }
+        : m,
+    )
+    const withDrop = hallForecast('checkin', queued, fit.items ?? [])!
+    const asDesks = hallForecast('checkin', queued)!
+    expect(withDrop.committed).toBe(5)
+    expect(withDrop.utilisation).toBeCloseTo(asDesks.utilisation, 5)
+    expect(withDrop.waitMinutes).toBeGreaterThan(asDesks.waitMinutes)
+    game.view = 'hall'
+    game.selectFacility('checkin')
+    expect(game.buildingCard()?.note ?? '').toMatch(/^Check-in forecast:/)
   })
 })
 
@@ -111,6 +186,12 @@ describe('walker thoughts reach the fare', () => {
     game.applyHallMood()
     game.hallNav.drainMood = real
     expect(g.happiness).toBeCloseTo(70 - 3 * (HALL_MOOD_LINK.weight.lost ?? 0), 5)
+    expect(HALL_MOOD_LINK.weight.crowded).toBe(0.2)
+    expect(HALL_MOOD_LINK.weight.no_seats).toBe(0.2)
+    expect(HALL_MOOD_LINK.weight.lost).toBe(0.6)
     expect(HALL_MOOD_LINK.weight.queue_long).toBeUndefined()
+    expect(HALL_MOOD_LINK.weight.quick).toBeUndefined()
+    expect(HALL_MOOD_LINK.weight.good_buy).toBeUndefined()
+    expect(HALL_MOOD_LINK.weight.missed).toBeUndefined()
   })
 })
