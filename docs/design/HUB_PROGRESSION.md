@@ -1,10 +1,12 @@
 # Hub progression
 
-Changes for review, Oct 15 09:30.
+Accepted additions, Oct 15. Trever confirmed three pieces. This note is the build spec for those three. Nudge texts and the assign screen stay **Review** and are not this ticket. Higher-tier carriers stay stricter and pay the larger `HUB_OFFER_FEE`. The unique benefit is still the one archetype perk in §4. This note does not add a second perk list.
 
-Status: sections marked **Review** are design only. No code in this note. Trever, Oct 2026. Hub gameplay stops here until this write-up is accepted. Higher-tier carriers stay stricter and pay the larger `HUB_OFFER_FEE`. The unique benefit is still the one archetype perk in §4. This review does not add a second perk list.
+1. Dedicated turnaround vehicles. The player assigns a tug, a belt loader, a catering truck, or a fuel truck from the fleet they already field, in that carrier's livery. It serves only that carrier. The relationship rises on the same dedicated lease credit. Some carriers require the set before a higher tier. Taking the truck out of the common pool is the flexibility cost.
+2. No automatic hub status. Station is the signed floor, not a hub. Every tier above it is earned by holding the current tier for `MIN_DAYS_AT_TIER` and by the existing on-time sample, then accepted on the phone offer. The sim never writes Focus, Base, Hub, or Primary except in `acceptHub`.
+3. Rivalries. Becoming a base, a hub, or the primary hub for one carrier upsets the rivals named in the roster. Their relationship drops. They may refuse a new contract or cut a route. They may move to Bellwater Intl, the off-map airport, which shows up in the news and on the phone. The offer card says "Accepting will anger Y and Z" before the player accepts.
 
-Hub progression is a per-airline ladder on top of the relationship score and the diplomacy bands. It does not replace them. Dedicating a desk, a lane, a gate, a lounge, a hangar bay, a fuel hook, or a turnaround vehicle is a relationship lever: it raises the score, and some carriers will not sign or climb until that piece of the airport is theirs. A tier above Station is never applied by the sim. The airline offers it. The player accepts.
+Hub progression is a per-airline ladder on top of the relationship score and the diplomacy bands. It does not replace them. Dedicating a desk, a lane, a gate, a lounge, a hangar bay, a fuel hook, or a turnaround vehicle is a relationship lever: it raises the score, and some carriers will not sign or climb until that piece of the airport is theirs. A tier above Station is never applied by the sim. The airline offers it. The player accepts. Decline does not climb. Counter stays out of this design.
 
 ## Already on main
 
@@ -15,18 +17,24 @@ These shipped after the first draft (`894858d`). This note does not ask for them
 | Checklist data | `84db44f` | `src/hubprogress/`. `hubChecklist`, `LEASE_NEED`, `ALLOCATOR_WAIT`. |
 | Checklist on the Airlines desk | `20e829d` | `HubSection` under the relations meter, and the Hubs sheet (`HubProgress`, `manageTab === 'hubs'` in `src/ui/Hud.tsx`). Both sit outside the phone. |
 | Phone offers | `5c85795`, `38a6a70` | Focus, Base, Hub, and Primary. `src/phone/readGame.ts` sets `acceptDisabled` unless `list.eligible && list.next === tier`. `src/phone/feed.ts` renders Accept (`accept-hub`) and Decline (`decline-hub`). |
-| Dedicate stays off | `20e829d` | Desk, lounge, gate, and hangar buttons are `disabled`. The desk button title is `ALLOCATOR_WAIT` ("Waiting on the desk allocator"). |
+| Lounge, gate, hangar leases | `457b4d1` | `hubLeases` on `Game`. The profile can dedicate those three. Daily credit is the `dedicated` relation part, capped by `LEASE_SCORE_CAP`. A gating release warns for `TIER_DROP_WARNING_DAYS`, then drops one tier. |
+| Desk and lane still waiting | `20e829d` | The desk button stays `disabled`. Its title is `ALLOCATOR_WAIT` ("Waiting on the desk allocator"). Lane lines use the same sentence. |
 
-Desk and lane counts stay at zero. `src/checkin/allocate.ts` brands a desk for an open window (`DedicatedLock`, `allocate`). That is window paint. It is not the hub lease table. Hub progression still has one assignment table: the allocator lease API (`leasesFor`, `requestLease`, `releaseLease`), when that export exists. Vehicles, gates, lounges, hangar bays, and fuel hooks are rows in that same table. The hub module does not keep a second one.
+Desk and lane counts stay at zero. `src/checkin/allocate.ts` brands a desk for an open window (`DedicatedLock`, `allocate`). That is window paint. It is not `leasesFor`. Desk and lane rows wait for that export. Lounge, gate, and hangar leases already live on `hubLeases`. Turnaround vehicles are a sibling list, `hubVehicleLeases`, because the fleet is a count the player already owns. They are not a second desk table, and they do not wait on the desk allocator.
 
 ## Open questions for Trever
 
+Accepted with this note, and built from it:
+
+2. Vehicle hard gates in §1 stand. A budget Base wants one dedicated tug. A flag Hub wants a tug, a belt loader, and a catering truck. A cargo Hub wants one dedicated fuel truck. Regional, charter, and heli get score credit only.
+3. The backlash ladder in §3 stands (−4 / −8 / −15, with those chances). Allies named in the roster are spared. The offer card shows the anger sentence before Accept.
+4. A dedicated vehicle is an existing fleet unit, painted from roster `primary` / `secondary`, taken out of the common pool, and still billed `DEFAULT_VEHICLE_SPECS[type].upkeepPerDay`. Dedicating does not add a second upkeep line.
+
+Still open. Do not build them from this note:
+
 1. Is a gap of 4 game days per airline, and a field cap of 3 nudge texts a day, the right rate limit?
-2. Vehicle hard gates, as proposed in §1: a budget Base wants one dedicated tug; a flag Hub wants a tug, a belt loader, and a hi-lift; a cargo Hub wants one dedicated bowser or hydrant dispenser. Regional, charter, and heli get score credit only. Confirm or cut.
-3. The backlash ladder in §3 (−4 / −8 / −15, with the chances in that table) is the trade-off below Primary. Allies stay spared, matching `requestHub`. Confirm the chances before any roll is coded.
-4. A dedicated vehicle is an existing fleet unit, painted from roster `primary` / `secondary`, taken out of the common pool, and still billed `DEFAULT_VEHICLE_SPECS[type].upkeepPerDay` on a quiet day. Confirm that dedicating does not add a second upkeep line.
-5. Decline silences nudges for that warmth step only. The next step may still text. Later does not silence anything. Confirm.
-6. The Airlines home is the existing Letters desk and Hubs sheet, outside the phone. The assign screen is a second side panel. Confirm that, rather than a new shell.
+5. Decline silences nudges for that warmth step only. The next step may still text. Later does not silence anything.
+6. The assign screen as a second side panel. Vehicle assign for this ticket is a button on the airline profile, the same place as lounge, gate, and hangar.
 
 The playable names are the 45-carrier roster in `src/airlines/roster.ts` (`docs/AIRLINES.md`). Fees and facility asks still copy a catalog template through `ROSTER_TEMPLATE` in `src/game/rosterAirlines.ts`.
 
@@ -64,7 +72,7 @@ Three lease modes, same on every kind:
 - **Preferred.** That airline goes first when it has a passenger, a turn, or a truck due. Others may use the slack. Half credit.
 - **Dedicated.** Only that airline. Full credit. An idle dedicated desk still costs its staff and upkeep. An idle dedicated vehicle still costs its daily upkeep. Nothing is free.
 
-### Turnaround vehicles — Review
+### Turnaround vehicles — Accepted
 
 A dedicated vehicle is a unit the player already fields. It is not a new mesh and not a free truck. The common pool is the GSE fleet: `DEPOT_GRANT` in `src/scale/data.ts` is added once for each depot tile (`tilesOf(tiles, 'depot')` in `src/game/path.ts`, applied in `src/scale/logic.ts`), and further units are purchases from `VEHICLE_CATALOG` in `src/logistics/defaults.ts`. Dedicating one takes it out of that pool.
 
@@ -85,7 +93,7 @@ Upkeep while idle. The bill is the one already on the spec: `DEFAULT_VEHICLE_SPE
 
 Score. One vehicle is one lease on the same daily review as a desk. Credit is `SCORE_PER_LEASE` (preferred 0.04, dedicated 0.08), inside the same `LEASE_SCORE_CAP` of 1.6. Four dedicated trucks are 0.32. They do not get a private cap.
 
-Hard gates, proposed, not in `LEASE_NEED` yet. A line that is not a gate can still be dedicated for the small daily credit.
+Hard gates, in `VEHICLE_NEED`. A line that is not a gate can still be dedicated for the small daily credit. The player assigns from the airline profile. The button is disabled, with the reason, when the common pool has no spare unit of a type that fills the role.
 
 | Archetype | Tier | Vehicle hard gate |
 | --- | --- | --- |
@@ -144,15 +152,15 @@ interface PointLease {
 }
 ```
 
-A vehicle `pointId` is minted by the allocator when a fleet unit is dedicated (`veh:pushback_tug:3`). The fleet today is a count per `VehicleType`, not a list of named trucks. The hub module does not invent those ids.
+A vehicle id is minted when the player dedicates a spare unit (`veh:pushback_tug:3`). The fleet stays a count per `VehicleType`. The id is the count index, not a new truck. `leaseAirline` on the ground vehicle is that carrier. The dispatcher skips the unit unless the turn's airline is the holder. A turn with no airline does not borrow it.
 
 Hub progression will call, once the allocator exports them:
 
-- `leasesFor(airlineId)` for the checklist. Every kind.
-- `requestLease(pointId, airlineId, mode)` from the profile and from the assign screen. Refuse when the point is unstaffed, already dedicated to someone else, or not built. For a vehicle, also refuse when no spare unit of that type is in the pool, or when `vehicleCanServe` says it cannot work that airframe.
-- `releaseLease(pointId)` from the same control. A released vehicle returns to the common count.
+- `leasesFor(airlineId)` for desks and lanes.
+- `requestLease(pointId, airlineId, mode)` for desks and lanes. Refuse when the point is unstaffed, already dedicated to someone else, or not built.
+- `releaseLease(pointId)` from the same control.
 
-Until those functions exist, desk, lane, and vehicle lines on the checklist read **Waiting on the desk allocator** and do not pass. Do not invent a second assignment table in the hub module. `src/checkin/allocate.ts` may later read dedicated desk rows from this table. It does not become a second writer. Gates, lounges, hangar bays, and fuel hooks are rows here too, because those buildings already have ids. They wait on the same three functions.
+Until those functions exist, desk and lane lines on the checklist read **Waiting on the desk allocator** and do not pass. Do not invent a desk assignment table in the hub module. `src/checkin/allocate.ts` may later read dedicated desk rows. It does not become a second writer. Vehicle lines do not use that sentence. They pass when `hubVehicleLeases` holds a live unit of that role.
 
 A premium check-in or fast-track lane is a legal `pointId` if the allocator agrees to tag it. The premium upkeep in `PREMIUM_ITEMS` still applies.
 
@@ -204,9 +212,18 @@ Demands: one dedicated helipad, a fuel hook, optionally one preferred desk. Rewa
 
 ## 3. Hub tiers
 
-Five tiers. Station is free on signature. Each step above is an offer the airline sends and the player accepts. Warmth alone does not set a tier, `isBase`, or `isHub`. Falling through a hard gate warns for 30 days, then drops one tier. Relationship score and diplomacy band are gates into the offer. They are not the tier names.
+Five tiers. Station is the signed floor. It is not hub status, and it is not an offer. Each step above is an offer the airline sends only after the player has held the current tier for `MIN_DAYS_AT_TIER` and the on-time sample in `HUB_TIER_GATE` is long enough and high enough. The player accepts on the phone. Warmth alone does not set a tier, `isBase`, or `isHub`. Falling through a hard gate warns for 30 days, then drops one tier and the tenure clock starts again. Relationship score and diplomacy band are gates into the offer. They are not the tier names.
 
-### Rival backlash ladder — Review
+`HUB_TIER_GATE.days` is the on-time sample length. It is not the time spent at the tier. Tenure is `MIN_DAYS_AT_TIER`, stored as `hubTierSince` (the game day the current tier started). A missing stamp counts as today, so an older save does not skip the wait. The checklist line is `tenure`. `offerNextHubTier` does not send the letter until `tenure` and `onTime` are both ok, in addition to the relationship line and the band line when one exists. Accept stays disabled until every line is ok. No other path writes a tier above Station.
+
+| Next offer | Days already held at the current tier |
+| --- | --- |
+| Focus city | 7 at Station |
+| Base | 14 at Focus, or at Station when that archetype skips Focus |
+| Hub | 21 at Base |
+| Primary hub | 30 at Hub |
+
+### Rival backlash ladder — Accepted
 
 Becoming a base, a hub, or the primary hub is a trade-off. Named rivals take a score hit, and they may refuse a new deal, trim rotations, or move to Bellwater. The player sees that on the offer card before Accept lights.
 
@@ -220,15 +237,19 @@ Proposed ladder. Primary keeps the existing −15. Base and Hub are new modifier
 | Hub | −8 | 9 | 25% | 20% drop 1 rotation | 10% |
 | Primary | −15 | 12 | 40% | 35% drop 1 or 2 rotations | 25% |
 
-Who is named. The set is `rivalsOf`, plus any other signed carrier of the same roster `AirlineType` who is not an active alliance partner (`alliesOf`). An ally is spared at every rung, the same skip `requestHub` already uses. The card lists each name. An ally is listed as spared, not hit.
+Who is named. Pairs and alliances are roster data in `src/airlines/rivals.ts`. They are not computed from diplomacy `rivalScore`, and this ticket does not edit `src/diplomacy`. A signed carrier in a rival pair with the holder is hit. A signed carrier in the same alliance is listed as spared and is not hit. Gulf Pearl's rivals include Zephyr Go and Tango Air. Seoul Star shares Gulf Pearl's alliance and is spared. An unsigned rival is not on the card.
 
-One roll on Accept, not every day.
+Primary and the diplomacy hub grant. When the holder has a diplomacy relation, `acceptHub` still calls `requestHub`, and that path still writes `hub_rival` (−15, 12 months). The roster score hit is not applied again on top of it. Refuse, trim, and relocate still run from the roster plan. When the holder has no diplomacy relation, the roster score hit of −15 is the wave 3 `shiftScore`, and `requestHub` is not called. Base and Hub always use the wave 3 score hit. They do not write a diplomacy modifier.
+
+The months column is the diplomacy `hub_rival` duration, and it applies only when `requestHub` writes that modifier. The wave 3 score hit for Base and Hub is immediate and does not expire on a clock. On-time days can earn it back. It is not a second diplomacy modifier.
+
+One roll on Accept, not every day. The roll is a pure function of the holder, the tier, and the game day, so a test can force refuse, trim, or relocate.
 
 - Refuse blocks a new contract or a new tier offer from that rival for 30 days. The contract they already hold stays.
 - Trim drops one daily rotation at Hub, and one or two at Primary, for 14 days. This is smaller than the hostile departure, which cuts capacity to 70%.
 - Relocate uses the Bellwater poach path in `src/rival` (`RIVAL_NAME` is Bellwater Intl). It fires only when that rival's standing is at or below `RIVAL.poachStandingMax` (42). A happier rival turns the relocate roll into a trim instead. Bellwater does not steal a content carrier just because someone else climbed.
 
-The warning sits on the phone offer, above Accept, including while Accept is still disabled:
+The warning sits on the phone offer, above Accept, including while Accept is still disabled. The sentence is the trade-off: `Accepting will anger Zephyr Go and Tango Air.` An alliance partner is a second line, `Seoul Star is an alliance partner and is spared.` Focus city has no anger line. Base, Hub, and Primary do.
 
 ```
 ┌ Phone · Messages ──────────────────────────┐
@@ -236,10 +257,8 @@ The warning sits on the phone offer, above Accept, including while Accept is sti
 │  ✓ Priority standing                       │
 │  · Desks 1/4                               │
 │                                            │
-│ Rivals if you accept                       │
-│  Zephyr Go · −8 · may cut a rotation       │
-│  Tango Air · −8 · may refuse the next deal │
-│  Seoul Star · alliance · spared           │
+│ Accepting will anger Zephyr Go and Tango Air. │
+│ Seoul Star is an alliance partner and is spared. │
 │                                            │
 │  [ Accept ]  [ Decline ]                   │
 │  Accept stays disabled until every         │
@@ -255,7 +274,7 @@ The warning sits on the phone offer, above Accept, including while Accept is sti
 | Hub | Priority (score 70). | Partner, or Warm if they are cargo. | 6 stands or a dedicated ramp. On-time 88%. Connection or sort window inside 45 game-minutes. Branded lounge, or a dedicated hangar bay for cargo. 2 dedicated desks and 1 fast-track lane for passenger flags. A flag also wants 1 tug, 1 belt loader, and 1 hi-lift. A cargo carrier also wants 1 dedicated bowser or dispenser. | Transfer passengers or a night sort. Revenue share. Denser slots. This is today's plaque letter, extended with the checklist. Named rivals take −8. |
 | Primary hub | Flagship (score 90). | Partner, and `hubBlockers` clear. | 8 stands on one pier, or the cargo ramp exclusive at night. On-time 90%. Lounge or sort hall. 4 dedicated desks, 1 dedicated lane, a fuel hook. The Hub vehicle set still holds. One Primary hub on the field. | Exclusive airframe (the largest type already in their fleet). Rival −15, the top rung of the backlash ladder, which is today's hub grant. Transfer share and the fee multiplier stay the Flagship `feeMult`. Do not stack a second fee multiplier. |
 
-Stricter at each step: more gates, a tighter on-time rate, then a lounge, then slots that are actually theirs, then dedicated desks, lanes, and the vehicle set that archetype asked for. Rewards grow the same way: a rotation, then overnight aircraft, then transfers and a revenue share, then an exclusive type. The vehicle counts are the §1 hard gates. They are not in `LEASE_NEED` yet.
+Stricter at each step: more days at the current tier, a tighter on-time rate, then a lounge, then slots that are actually theirs, then dedicated desks, lanes, and the vehicle set that archetype asked for. Rewards grow the same way: a rotation, then overnight aircraft, then transfers and a revenue share, then an exclusive type. The vehicle counts are `VEHICLE_NEED`. A flag at Primary still needs the Hub vehicle set. A dedicated fuel truck counts toward the fuel-hook line. It does not add a second fuel ask.
 
 Cargo swaps the passenger lines. Desks and lanes become ramp doors and a sort hall. The lounge line is absent. Heli swaps stands for pads and drops the lounge, the lane, and the transfer reward. Budget drops the lounge until Hub, and Hub for a budget carrier is a large base with a fee promise, not a connection bank. The tier names stay so the profile reads the same way for every airline.
 
@@ -325,7 +344,7 @@ Airlines → a carrier opens the card that already exists. Add a Hub section und
 └────────────────────────────────────────────────┘
 ```
 
-**Dedicate a desk** is disabled, with that sentence, until the allocator exports `requestLease`. Other dedicate buttons (pad, lounge, gate, hangar, fuel) can enable earlier.
+**Dedicate a desk** is disabled, with that sentence, until the allocator exports `requestLease`. Lounge, gate, and hangar buttons are already live. Tug, belt loader, catering truck, and fuel truck buttons sit beside them. A button with no spare unit is disabled and says so.
 
 ### Hub progress
 
@@ -400,7 +419,7 @@ A Cities-style side panel. The apron stays visible. Esc closes it before the pau
 
 One airline at a time. Rows are the points that can be leased: check-in desks, security lanes, gates, lounges, hangar bays, and turnaround vehicles. Each row shows the current mode for this airline: Common, Preferred, or Dedicated. The player sets the mode on that row.
 
-A locked row stays locked and shows the reason in the row:
+This screen stays unbuilt. This ticket assigns vehicles from the airline profile. When the screen is built, a locked row stays locked and shows the reason in the row:
 
 | Reason | When |
 | --- | --- |
@@ -436,7 +455,7 @@ The Airlines home is the Letters desk and the Hubs sheet, both outside the phone
 
 ### Phone offer
 
-The existing hub plaque letter is the Hub offer. The same card shape carries Focus, Base, and Primary. These four cards are already on main. Contracts stay the Contracts tab. A tier offer is a message with requirement lines, the rival warning from §3, and two actions. Accept stays disabled until the checklist is complete. That gate is already wired.
+The existing hub plaque letter is the Hub offer. The same card shape carries Focus, Base, and Primary. These four cards are already on main. Contracts stay the Contracts tab. A tier offer is a message with requirement lines, the rival sentence from §3, and two actions. Accept stays disabled until the checklist is complete, including tenure, on-time, and any vehicle gate. The anger sentence is on the card even while Accept is disabled. It is not itself a checklist line, so it does not keep Accept off.
 
 ```
 ┌ Phone · Messages ───────────────┐
@@ -526,21 +545,29 @@ export const PERK = {
 } as const
 ```
 
-Proposed additions. Not in `src/hubprogress/config.ts`. Do not land them until this review is accepted.
+Land these with the three accepted pieces. Nudge numbers stay here as a proposal and do not land until that review is accepted.
 
 ```ts
-/** Hard vehicle gates. A missing key means that archetype has no vehicle line. */
+/** Days the current tier must already have been held before the next letter. */
+export const MIN_DAYS_AT_TIER = {
+  focus: 7,
+  base: 14,
+  hub: 21,
+  primary: 30,
+} as const
+
+/** Hard vehicle gates. A missing key means that archetype has no vehicle line at that tier. */
 export const VEHICLE_NEED = {
   budget: { base: { tug: 1 } },
   flag: { hub: { tug: 1, belt: 1, catering: 1 } },
   cargo: { hub: { fuelTruck: 1 } },
 } as const
 
-/** One nudge per airline per gap, and a field cap per game day. */
+/** One nudge per airline per gap, and a field cap per game day. Review only. */
 export const NUDGE_GAP_DAYS = 4
 export const NUDGE_DAY_CAP = 3
 
-/** Rival hit on Accept. Primary matches today's hub_rival. */
+/** Rival hit on Accept. Primary's score matches hub_rival and is not stacked on it. */
 export const RIVAL_BACKLASH = {
   base: { score: -4, months: 6, refuse: 0.1, trim: 0, relocate: 0 },
   hub: { score: -8, months: 9, refuse: 0.25, trim: 0.2, relocate: 0.1 },
@@ -563,22 +590,20 @@ Each phase is one ticket. Later phases do not start by rewriting an earlier file
 | --- | --- | --- | --- |
 | 0 | This note | `docs/design/HUB_PROGRESSION.md` | Code |
 | 1 | Checklist data | Shipped, `84db44f`. `src/hubprogress/config.ts` and `hubChecklist`. Desk and lane lines return waiting. | `src/diplomacy`, the allocator |
-| 2 | Desk leases | Call the allocator's `leasesFor` / `requestLease` / `releaseLease` once they exist. If the export is missing, phase 1 behaviour stays. A test doubles the allocator. Vehicles are rows in this same table, not a later table. | Queue math, hiring, `StaffPoint` fields the allocator owns, a second assignment map |
-| 3 | Other leases | Gate, pier, lounge brand, hangar bay, fuel hook, helipad, turnaround vehicle. Each is an id the sim already has, or a fleet unit id the allocator mints. Credit posts as a relationship part `dedicated`, capped by `LEASE_SCORE_CAP`. | A second fee multiplier, a second upkeep line |
-| 4 | Offers | Shipped, `5c85795` and `38a6a70`. Phone card for Focus, Base, Hub, Primary. Accept stays disabled until the checklist is complete. The rival warning on that card is not shipped. | Rewriting `hubBlockers` |
-| 5 | Profile UI | Shipped in part, `20e829d`. Checklist, preview, showcase, Hubs sheet. Dedicate stays disabled. The assign screen, the rivals block, and the dedicated-infrastructure list are not shipped. | Walker cards, a modal |
+| 2 | Desk leases | Call the allocator's `leasesFor` / `requestLease` / `releaseLease` once they exist. If the export is missing, phase 1 behaviour stays. A test doubles the allocator. | Queue math, hiring, `StaffPoint` fields the allocator owns, a desk map in the hub module |
+| 3 | Other leases | Shipped for lounge, gate, and hangar bay, `457b4d1`. Fuel hook, helipad, and the turnaround vehicle are the accepted vehicle ticket. Credit posts as a relationship part `dedicated`, capped by `LEASE_SCORE_CAP`. | A second fee multiplier, a second upkeep line |
+| 4 | Offers | Shipped, `5c85795` and `38a6a70`. Phone card for Focus, Base, Hub, Primary. Accept stays disabled until the checklist is complete. Tenure, on-time as a send gate, and the anger sentence are this ticket. | Rewriting `hubBlockers`, a counter button |
+| 5 | Profile UI | Shipped in part, `20e829d`, plus lounge, gate, and hangar buttons in `457b4d1`. Vehicle buttons are this ticket. The assign screen stays unbuilt. | Walker cards, a modal |
 | 6 | Markers | Colour plates on desks, stands, pads, lounge doors, and a livery stripe on a dedicated vehicle. Click opens the profile. | New aircraft, new staff meshes, new vehicle meshes |
 
-Review only. Do not build these until Trever accepts this note. They are not the next ticket.
+Still review. Do not build these from this note.
 
 | Piece | What it adds | What it does not do |
 | --- | --- | --- |
-| Vehicle leases | The turnaround-vehicle row, the hard gates in `VEHICLE_NEED`, idle upkeep from `DEFAULT_VEHICLE_SPECS`. | A new fleet, a new colour table, a second lease map |
 | Nudge texts | One phone text per warmth step, under `NUDGE_GAP_DAYS` and `NUDGE_DAY_CAP`. | A second offer, a fee, a nag after Decline |
 | Assign screen | The side panel that calls `requestLease`. | A modal, a private copy of the leases |
-| Rival backlash | The Base and Hub hits, the chances, the warning on the offer card. Primary stays −15. | A rewrite of `hubBlockers` or of `src/rival` |
 
-Phase 2 is blocked on the desk allocator's export, not on its internal schedule. The four review pieces wait on Trever. They are not a licence to keep building. Phase 4's desk lines stay unmet until phase 2, so a flag carrier cannot be accepted into Hub until the desks exist. Until a vehicle line exists, a cargo carrier still can, because their shipped checklist has no desks.
+Phase 2 is blocked on the desk allocator's export, not on its internal schedule. Desk lines stay unmet, so a flag carrier cannot be accepted into Hub until the desks exist. A cargo carrier can, once the hangar, the ramp, the fuel hook or dedicated fuel truck, the sort window, the tenure, and the on-time sample are met. Choosing a hub is a trade: the perk and the bank, against the rivals who lose score, routes, or the field.
 
 ### Tests the build tickets owe
 
@@ -588,6 +613,8 @@ Phase 2 is blocked on the desk allocator's export, not on its internal schedule.
 - Atlas Cargo never shows a lounge line. Harbor Heli never shows a pier.
 - Releasing a dedicated desk starts the 30-day warning and does not clear `selectedFlight` or a walker card.
 - The relationship fee string stays a single `feeMult`. The dedicated part shows under the existing parts list.
-- A dedicated tug is absent from another airline's turn, and its upkeep still posts on a day with no turn.
-- Brisa's Trusted crossing sends one nudge, and it names the dedicated desks. A fourth nudge that day waits until tomorrow. Decline on the Focus offer sends nothing further for Focus. The Trusted text can still arrive.
-- Accept on a Base offer names the rivals and the −4 before the button is used. An alliance partner is on the card as spared. A relocate roll above standing 42 becomes a trim.
+- A dedicated tug is absent from another airline's turn, and its upkeep still posts on a day with no turn. Dedicating does not add a second upkeep line.
+- Brisa at Base is ineligible without a dedicated tug and eligible with one. A tug dedicated to a carrier who did not ask for it still adds dedicated credit and does not clear a waiting desk line.
+- A letter does not send until the carrier has held the current tier for `MIN_DAYS_AT_TIER` and the on-time sample passes. Accept is the only write of a tier above Station.
+- Accept on a Hub offer for Gulf Pearl says "Accepting will anger Zephyr Go and Tango Air" before the button is used. Seoul Star is on the card as spared. A relocate roll above standing 42 becomes a trim. A refused rival cannot sign a new contract for 30 days. The contract they hold stays.
+- Nudge texts stay unbuilt. The assign screen stays unbuilt.
