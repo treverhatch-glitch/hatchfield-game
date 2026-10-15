@@ -12,7 +12,7 @@ export {
   TIER3_MIN_FIELD_LEVEL,
 } from './config.ts'
 export type { BaySize } from './config.ts'
-export { mroInfoLines, nightHubInfoLines } from './info.ts'
+export { cargoLateInfoLines, mroInfoLines, nightHubInfoLines } from './info.ts'
 export { addMroMesh, addNightHubMesh, MESH_TRIANGLE_BUDGET, meshTriangleCount } from './meshes.ts'
 export { bayAccepts, baySizeForAirframe, pickBay } from './mro.ts'
 export { machinePose, mroRoute, poseForPhase, stepTaxiMachine } from './taxi.ts'

@@ -298,6 +298,7 @@ import {
   mroInfoLines,
   mroRoute,
   mroUnlock,
+  cargoLateInfoLines,
   nightHubInfoLines,
   nightHubUnlock,
   poseForPhase,
@@ -823,6 +824,7 @@ import {
   lateCatalogLines,
   lateIdForTool,
   lateSiteLines,
+  cargoLateRefusal,
   landmarkRefusal,
   railDemandScale,
   restoreLateSites,
@@ -3760,7 +3762,7 @@ export class Game {
         prestigeItems: prestige,
         exclusivePier: 0,
         nightSlots: (this.hasResearch('night_bank') ? 1 : 0) + this.specMods().nightSlots,
-        coldChainRooms: 0,
+        coldChainRooms: this.coldChainRooms(),
         cargoFacilities: tilesOf(this.tiles, 'cargo').length,
         incentiveDealActive: 0,
         hubDepartures: this.hubAirlines.length,
@@ -7997,7 +7999,7 @@ export class Game {
   /** Operations wallet: the points, the nine branches, and what each node does in the airport. */
   opsWallet(): WalletView {
     const engine = this.ensureEconomy().engine
-    return walletView(engine.state, this.hostedFieldLevel(), this.sandbox)
+    return walletView(engine.state, this.lateFieldLevel(), this.sandbox)
   }
 
   hasOpsTech(id: string): boolean {
@@ -8008,7 +8010,7 @@ export class Game {
   buyOpsTech(id: string): boolean {
     const adapter = this.ensureEconomy()
     const state = adapter.engine.state
-    const refusal = walletRefusal(id, state, this.hostedFieldLevel(), this.sandbox)
+    const refusal = walletRefusal(id, state, this.lateFieldLevel(), this.sandbox)
     if (refusal) {
       this.pushNews(refusal, 'bad')
       this.emit()
@@ -13009,7 +13011,12 @@ export class Game {
     if (id.startsWith('late-site:')) {
       const [c, r] = id.slice('late-site:'.length).split(',').map(Number)
       const index = this.lateSites.findIndex((site) => site.c === c && site.r === r)
-      return lateSiteLines(this.lateSites, index, this.hotelNightDemand())
+      const site = this.lateSites[index]
+      const lines = lateSiteLines(this.lateSites, index, this.hotelNightDemand())
+      if (site && isOpen(site) && (site.id === 'cargo_hub_ii' || site.id === 'cold_store')) {
+        lines.push(...cargoLateInfoLines(site.id, this.tier3.snapshot()))
+      }
+      return lines
     }
     if (id.startsWith('late:')) {
       const lateId = lateIdForTool(id.slice('late:'.length))
@@ -13666,7 +13673,21 @@ export class Game {
     return [
       ...tilesOf(this.tiles, 'mro').map((cell) => ({ id: `${cell.c},${cell.r}`, kind: 'mro' as const })),
       ...tilesOf(this.tiles, 'nighthub').map((cell) => ({ id: `${cell.c},${cell.r}`, kind: 'night_hub' as const })),
+      ...this.lateSites.flatMap((site): Tier3Building[] => {
+        if (!isOpen(site)) return []
+        if (site.id === 'cargo_hub_ii') return [{ id: `${site.c},${site.r}`, kind: 'hub_ii' as const }]
+        if (site.id === 'cold_store') return [{ id: `${site.c},${site.r}`, kind: 'cold_store' as const }]
+        return []
+      }),
     ]
+  }
+
+  /** Chilled rooms the open cold stores count as. Diplomacy's cold-chain ask reads this. */
+  coldChainRooms(): number {
+    return this.lateSites.reduce((sum, site) => {
+      const spec = buildingById(site.id)
+      return spec?.kind === 'cargo' && isOpen(site) ? sum + spec.coldRooms : sum
+    }, 0)
   }
 
   /**
@@ -19245,7 +19266,8 @@ export class Game {
     if (!this.economy) {
       this.economy = createEconomyAdapter(
         {
-          getFieldLevel: () => this.hostedFieldLevel(),
+          // The hosted ladder stops at 5, which would keep every tier-4 economy node out of reach.
+          getFieldLevel: () => this.lateFieldLevel(),
           isAirportOperational: () => this.flightsDone > 0 || this.signed.length > 0,
           getAbsoluteDay: () => Math.floor(this.clock / 180),
           getStaffPools: () => ({
@@ -21006,6 +21028,23 @@ export class Game {
       this.emit()
       return
     }
+    const cargoNeed = cargoLateRefusal(
+      id,
+      tilesOf(this.tiles, 'nighthub').length > 0,
+      (techId) => this.hasOpsTech(techId),
+      this.lateSites,
+    )
+    if (cargoNeed) {
+      this.pushNews(cargoNeed, 'bad')
+      this.emit()
+      return
+    }
+    const landmarkNeed = landmarkRefusal(id, this.prestigeStars(), this.lateSites)
+    if (landmarkNeed) {
+      this.pushNews(landmarkNeed, 'bad')
+      this.emit()
+      return
+    }
     if (id === 'saf_blending') {
       if (!farmBesidePavement(this.tiles, v)) {
         this.pushNews('SAF blending needs taxi, stand, runway, or road beside it.', 'bad')
@@ -21020,12 +21059,6 @@ export class Game {
     const researchNeed = this.researchTree.blockReason(id)
     if (researchNeed) {
       this.pushNews(researchNeed, 'bad')
-      this.emit()
-      return
-    }
-    const landmarkNeed = landmarkRefusal(id, this.prestigeStars(), this.lateSites)
-    if (landmarkNeed) {
-      this.pushNews(landmarkNeed, 'bad')
       this.emit()
       return
     }

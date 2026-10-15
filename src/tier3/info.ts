@@ -36,3 +36,21 @@ export function nightHubInfoLines(snap: Tier3Snapshot): string[] {
     `Upkeep ${dollars(hub.upkeepPerDay)} / day`,
   ]
 }
+
+/** Click-open lines for the two cargo late buildings, read from the live night-wave state. */
+export function cargoLateInfoLines(id: 'cargo_hub_ii' | 'cold_store', snap: Tier3Snapshot): string[] {
+  if (id === 'cargo_hub_ii') {
+    const hub = snap.hubII
+    return [
+      `Crew ${hub.groundCrewAssigned} / ${hub.groundCrewRequired} after the night hub is staffed`,
+      `Boost ${Math.round(hub.effect * 100)}% of full: handling, storage and three more freighter slots`,
+      `Last wave ${snap.nightHub.bankTonnes.toFixed(0)} t on ${snap.nightHub.flights} freighters`,
+    ]
+  }
+  const cold = snap.coldChain
+  return [
+    `${cold.rooms} chilled ${cold.rooms === 1 ? 'room' : 'rooms'}`,
+    `Night wave pays +${Math.round(cold.premium * 100)}% at full power`,
+    `Premium earned ${dollars(cold.revenue)}`,
+  ]
+}

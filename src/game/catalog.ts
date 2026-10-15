@@ -1654,6 +1654,8 @@ export const TOOL_LABEL: Record<Tool, string> = {
   art_concourse: 'Art concourse',
   grand_arrivals_hall: 'Grand arrivals hall',
   quiet_hall: 'Quiet hall',
+  cargo_hub_ii: 'Cargo hub II',
+  cold_store: 'Cold store',
   clear: 'Bulldoze',
 }
 

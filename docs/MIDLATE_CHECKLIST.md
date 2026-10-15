@@ -65,8 +65,8 @@ Late buildings use `lateFieldLevel()`, which follows the same XP through FL9 (3,
 | Code F tray row | PLAYABLE as a bill | `code_f` at FL8 (`src/progression/unlocks.ts` `9d2e1ec`) is a commission: cash and daily upkeep. It does not place a stand. The stand is `stand_l`. |
 | MARS stands | SIM ONLY | `mars_stands` in `src/content/research_tier5.ts` `4a49a28`. That list is not imported by the live tree. `StandClass` is only S, M, and L. |
 | Cargo hub | PLAYABLE | Night hub stamp `nighthub` at FL4, opened by `airside-6` (`src/tier3/unlock.ts`). Cargo spec nodes add the rest. |
-| Cargo hub II | SIM ONLY | `cargo_hub_ii` in `src/content/buildings_tier3.ts` `0501c63`. The file says it has no sim wiring and no UI. |
-| Cold chain | SIM ONLY | Economy node “Cold-Chain & Express Hub” never unlocks (`src/economy/techTree.ts` `6205cb9`). Diplomacy reads `coldChainRooms: 0` in `src/game/sim.ts`. No cold-chain building. |
+| Cargo hub II | PLAYABLE | Build > Airside ops > Bags/Cargo > Cargo hub II (`src/tier3plus/catalog.ts`, wave logic in `src/tier3/session.ts`, mesh in `src/render/world/cargoLate.ts`). Needs a night hub on the field. Adds three freighter slots and more handling and storage to the night wave, scaled by its 30-strong ground crew and power. |
+| Cold chain | PLAYABLE | Cold store on the same tray, behind the economy node Cold-Chain & Express Hub (buy it in Growth > Ops wallet). Pays +20% on every night wave at full power and counts as chilled rooms for the diplomacy cold-chain ask. |
 | MRO | PLAYABLE | Stamp `mro` at FL4. `airside-5` grants `mro_hangar`. Jobs run in `src/tier3/session.ts`. The economy income bonus `maintenance.mroIncome` stays off because that tech node is never bought. |
 | Hotel | PLAYABLE | Hall stamps `hotel_inn`, `hotel_biz`, `hotel_resort`, and the late `airport_hotel` at FL7 (`src/tier3plus/catalog.ts` `4a2bae1`, landside research `landside-6`). |
 | Rail link | PLAYABLE | `rail_link` at FL9 in that catalog, and the rail station stamp `rail` (`landside-5`). |
