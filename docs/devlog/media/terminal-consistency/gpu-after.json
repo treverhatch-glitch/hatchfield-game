@@ -1,0 +1,39 @@
+{
+  "tag": "after",
+  "focus": {
+    "x": -4.95,
+    "z": -64.35000000000001,
+    "n": 9
+  },
+  "gpuClose": {
+    "calls": 88,
+    "triangles": 129925,
+    "lines": 4,
+    "points": 882,
+    "terminals": [
+      {
+        "lod": 0,
+        "roof": 1,
+        "props": 162,
+        "people": 83,
+        "walkers": 0,
+        "staff": 22,
+        "seated": 45,
+        "bags": 0,
+        "rooms": 9,
+        "doors": 10,
+        "walls": 33,
+        "wallsLowered": 0,
+        "interior": false
+      }
+    ],
+    "interiorNamed": 86,
+    "dist": 36
+  },
+  "gpuWide": {
+    "calls": 124,
+    "triangles": 124578,
+    "dist": 92
+  },
+  "errors": []
+}

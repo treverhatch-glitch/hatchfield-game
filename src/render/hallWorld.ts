@@ -72,13 +72,12 @@ import {
   hallToApron,
   matchTerminal,
   poseOnPlan,
-  roomShellBounds,
   showLegacyHallFurniture,
   type HallFit,
 } from './hallRooms'
+import { facadeOpenings, outwardYaw } from './world/facade'
 import { terminals } from './world/layout'
 import { baseLevel } from './world/quality'
-import { PACK1_REPEAT_M, tileByPosition } from './materials/pack1'
 import { boardSnapshot, isFidsSource } from '../fids/project'
 import { setFidsOpen } from '../fids/open'
 import { objectIsFidsBoard } from '../fids/stage'
@@ -751,18 +750,7 @@ export class HallWorld {
     }
   }
 
-  private watchedShell: THREE.Material[] = []
-
-  private releaseShellMats() {
-    const surfaces = this.terminalShared?.surfaces
-    for (const mat of this.watchedShell) {
-      surfaces?.unwatch(mat)
-      surfaces?.releaseLogo(mat)
-    }
-    this.watchedShell = []
-  }
-
-  /** High / Ultra: a detailed jet bridge docked outside the east jetway door. Kept out of roomGroup so its shared materials survive rebuilds. */
+  /** High / Ultra: a detailed jet bridge on the airside gate door. Kept out of roomGroup so its shared materials survive rebuilds. */
   private jetBridge: THREE.Group | null = null
   private placeJetBridge(x: number, z: number, yaw = 0) {
     if (!hiDetailOn(graphicsQuality())) return
@@ -786,73 +774,18 @@ export class HallWorld {
   }
 
   /**
-   * Walls around the fitted rooms, with a door on the west side.
-   * The full 48 m hall is wider than the square terminal, so the shell follows the rooms.
+   * Dock the hall's jet bridge on the same airside bay the exterior uses.
+   * The curtain wall itself is the TerminalBuilding shell, already in the hall frame.
    */
-  /** Cream wall panels on the fitted shell. Repeat is in metres (this view is). */
-  private shellWallMat(): THREE.Material {
-    const map = this.terminalShared?.surfaces.maps.wall
-    const mat = new THREE.MeshLambertMaterial({ color: map ? 0xffffff : 0xd5ddd8, map: map ?? null })
-    if (map && this.terminalShared) {
-      tileByPosition(mat, PACK1_REPEAT_M.wall)
-      this.terminalShared.surfaces.watch(mat)
-      this.watchedShell.push(mat)
-    }
-    return mat
-  }
-
-  private buildFittedShell() {
-    const plan = this.roomPlan
+  private dockAirsideBridge() {
+    const building = this.interior
     const fit = this.interiorFit
-    if (!plan || !fit) return
-    const b = roomShellBounds(plan, fit)
-    const h = 3.15
-    const t = 0.38
-    const y = h / 2
-    const width = b.maxX - b.minX
-    const depth = b.maxZ - b.minZ
-    const cx = (b.minX + b.maxX) / 2
-    const cz = (b.minZ + b.maxZ) / 2
-    const door = 3.2
-    const side = Math.max(0.4, (depth - door) / 2)
-    this.box(width + t, h, t, '#d5ddd8', cx, y, b.minZ, this.shellWallMat())
-    this.box(width + t, h, t, '#d5ddd8', cx, y, b.maxZ, this.shellWallMat())
-    this.box(t, h, depth, '#d5ddd8', b.maxX, y, cz, this.shellWallMat())
-    this.box(t, h, side, '#d5ddd8', b.minX, y, b.minZ + side / 2, this.shellWallMat())
-    this.box(t, h, side, '#d5ddd8', b.minX, y, b.maxZ - side / 2, this.shellWallMat())
-    this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.minZ)
-    this.box(width + 0.6, 0.18, 0.5, '#e7eee9', cx, h, b.maxZ)
-    this.brandMark(b.minX - 0.04, 2.15, cz)
-    const gates = plan.rooms.filter((room) => room.kind === 'gate')
-    let gate: (typeof gates)[number] | undefined
-    for (const room of gates) if (!gate || room.squares.length > gate.squares.length) gate = room
-    if (gate) {
-      const hall = apronToHall(gate.x, gate.z, fit)
-      const midX = (b.minX + b.maxX) / 2
-      const midZ = (b.minZ + b.maxZ) / 2
-      const dx = hall.x - midX
-      const dz = hall.z - midZ
-      if (Math.abs(dx) >= Math.abs(dz)) {
-        const dir = dx < 0 ? -1 : 1
-        this.placeJetBridge(dir < 0 ? b.minX : b.maxX, hall.z, dir < 0 ? Math.PI : 0)
-      } else {
-        const dir = dz < 0 ? -1 : 1
-        this.placeJetBridge(hall.x, dir < 0 ? b.minZ : b.maxZ, dir > 0 ? -Math.PI / 2 : Math.PI / 2)
-      }
-    }
-  }
-
-  /** Hatchfield mark on the landside face, above the door. */
-  private brandMark(x: number, y: number, z: number) {
-    const surfaces = this.terminalShared?.surfaces
-    if (!surfaces) return
-    const mat = surfaces.brandMaterial()
-    this.watchedShell.push(mat)
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), mat)
-    mesh.position.set(x, y, z)
-    mesh.rotation.y = -Math.PI / 2
-    mesh.name = 'hatchfield-logo'
-    this.roomGroup.add(mesh)
+    if (!building || !fit) return
+    const gates = facadeOpenings(building.info).filter((o) => o.kind === 'gate')
+    if (!gates.length) return
+    const opening = gates[Math.floor(gates.length / 2)]
+    const hall = apronToHall(opening.x, opening.z, fit)
+    this.placeJetBridge(hall.x, hall.z, outwardYaw(opening.side))
   }
 
   /** Zone boxes, the carousel and the old columns draw only when the room plan is off. */
@@ -973,7 +906,6 @@ export class HallWorld {
     if (hash === this.roomHash) return
     this.roomHash = hash
     if (this.jetBridge) this.jetBridge.visible = false
-    this.releaseShellMats()
     this.roomGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       if (mesh.geometry) mesh.geometry.dispose()
@@ -985,7 +917,7 @@ export class HallWorld {
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
     const hasRooms = this.roomPlan != null && this.interiorFit != null
-    if (hasRooms) this.buildFittedShell()
+    if (hasRooms) this.dockAirsideBridge()
     else this.buildShell(zones as ZoneId[][], nav, false)
 
     if (hasRooms) {
@@ -1081,7 +1013,6 @@ export class HallWorld {
         building.root.position.set(-fit.cx, 0, -fit.cz)
         building.propFade = 1
         building.lifeFade = 1
-        this.hideTerminalShell(building)
         this.interiorGroup.scale.setScalar(fit.scale)
         this.interiorGroup.position.y = -FLOOR_Y * fit.scale
         this.interiorGroup.add(building.root)
@@ -1094,21 +1025,7 @@ export class HallWorld {
     this.stepInterior()
   }
 
-  private hideTerminalShell(building: TerminalBuilding) {
-    const shell = building.root.getObjectByName('terminal-shell')
-    const roof = building.root.getObjectByName('terminal-roof-group')
-    if (shell) {
-      shell.visible = true
-      const keep = new Set(['terminal-floor', 'terminal-carpet', 'terminal-office-carpet', 'terminal-rubber', 'terminal-plank'])
-      for (const child of shell.children) {
-        if (child.name === 'terminal-ceiling') continue
-        child.visible = keep.has(child.name)
-      }
-    }
-    if (roof) roof.visible = false
-  }
-
-  /** Cutaway follows the hall camera, pulled in so near walls drop. */
+  /** Cutaway follows the hall camera, pulled in so near walls drop. The shell stays: it is the exterior. */
   private stepInterior() {
     const building = this.interior
     const fit = this.interiorFit
@@ -1137,7 +1054,6 @@ export class HallWorld {
     this.apronCamPos.set(x, y, z)
     building.ceilingForce = ceiling
     building.update(this.apronCamPos, dt, 1, 0, { x: building.center.x, z: building.center.z }, false, this.camera)
-    this.hideTerminalShell(building)
     if (this.jetBridge) setNearPropDetail(this.jetBridge, this.dist <= HALL_NEAR_DIST)
   }
 

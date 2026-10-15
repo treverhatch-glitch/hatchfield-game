@@ -48,6 +48,16 @@ function stubRenderer(): RendererLike & { ratio: number } {
   }
 }
 
+/** True when the object and every ancestor will be submitted. */
+function drawn(obj: THREE.Object3D | undefined | null): boolean {
+  let node = obj ?? null
+  while (node) {
+    if (!node.visible) return false
+    node = node.parent
+  }
+  return obj != null
+}
+
 function camAt(x: number, z: number, dist: number) {
   const cam = new THREE.PerspectiveCamera(46, 16 / 9, 0.1, 500)
   cam.position.set(x + dist * 0.5, dist * 0.7, z + dist * 0.5)
@@ -84,7 +94,7 @@ describe('initWorldRender', () => {
     expect(scene.getObjectByName('world-render')).toBeUndefined()
   })
 
-  it('zooming in brings the interior + crowd in, zooming out drops them', () => {
+  it('keeps the airport terminal closed when the camera comes in close', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
     const game = starterGame()
@@ -93,23 +103,23 @@ describe('initWorldRender', () => {
     for (let i = 0; i < 30; i++) wr.update(game, far, 1 / 30)
     expect(wr.stats().terminals[0].lod).toBe(2)
     expect(wr.stats().terminals[0].roof).toBe(1)
-    const farMeshes = wr.stats().meshes
+    expect(wr.stats().terminals[0].interior).toBe(false)
     const near = camAt(hall.x, hall.z, 16)
     for (let i = 0; i < 30; i++) wr.update(game, near, 1 / 30)
     const s = wr.stats()
     expect(s.terminals[0].lod).toBe(0)
-    // Airport view keeps the roof and the walls up, even up close.
+    // Airport view stays closed: roof on, interior meshes left out of the render list.
     expect(game.view).toBe('apron')
     expect(s.terminals[0].roof).toBe(1)
     expect(s.terminals[0].wallsLowered).toBe(0)
-    expect(s.meshes).toBeGreaterThan(farMeshes)
+    expect(s.terminals[0].interior).toBe(false)
     const seated = scene.getObjectByName('people-static')
-    expect(seated?.visible || seated?.parent?.visible).toBe(true)
+    expect(drawn(seated)).toBe(false)
     expect(s.grassTufts).toBeGreaterThan(0)
     wr.dispose()
   })
 
-  it('interior walls stand when zoomed out and cut away on the camera side up close', () => {
+  it('leaves interior walls out of the closed shell and cuts them away in terminal view', () => {
     const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'med', { renderer: stubRenderer(), sun })
     const game = starterGame()
@@ -120,12 +130,15 @@ describe('initWorldRender', () => {
     expect(t0.rooms).toBe(9)
     expect(t0.walls).toBeGreaterThan(8)
     expect(t0.wallsLowered).toBe(0)
+    expect(t0.interior).toBe(false)
     expect(scene.getObjectByName('room-walls')).toBeTruthy()
     expect(scene.getObjectByName('room-glass')).toBeTruthy()
-    // Full height is one merged mesh. The instanced set waits for the cutaway.
-    expect(scene.getObjectByName('room-walls-static')?.visible).toBe(true)
-    expect(scene.getObjectByName('room-glass-static')?.visible).toBe(true)
-    expect(scene.getObjectByName('room-walls')?.visible).toBe(false)
+    expect(scene.getObjectByName('terminal-curtain')).toBeTruthy()
+    // The merged walls exist, but the closed shell does not draw them.
+    expect(drawn(scene.getObjectByName('room-walls-static'))).toBe(false)
+    expect(drawn(scene.getObjectByName('room-glass-static'))).toBe(false)
+    expect(drawn(scene.getObjectByName('terminal-curtain'))).toBe(true)
+    expect(drawn(scene.getObjectByName('terminal-roof'))).toBe(true)
     const near = camAt(hall.x, hall.z, 20)
     game.view = 'hall'
     for (let i = 0; i < 40; i++) wr.update(game, near, 1 / 30)
@@ -152,6 +165,7 @@ describe('initWorldRender', () => {
       const { scene, sun } = legacyScene()
     const wr = initWorldRender(scene, 'high', { renderer: stubRenderer(), sun })
     const game = starterGame()
+    game.view = 'hall'
     game.spawnCool = 999
     const fit = game.fits[0]
     const g = spawnHallGuest('walk', 'depart', 'budget', { hallId: game.hallKey(fit) })

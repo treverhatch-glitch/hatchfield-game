@@ -1,5 +1,5 @@
 import type { TowerTier } from './data';
-import { TOWER_BASE_CAPACITY, TOWER_TIER_MAP } from './data';
+import { TOWER_BASE_CAPACITY, TOWER_III_UPGRADE, TOWER_TIER_MAP } from './data';
 
 export function normalizeTowerTier(tier: TowerTier | string | number): number {
   const key = String(tier);
@@ -62,4 +62,28 @@ export function towerUpgradeAdvice(
     utilization,
     reason,
   };
+}
+
+export interface TowerIIIUpgradeGate {
+  towerPlaced: boolean;
+  fieldLevel: number;
+  hasApproachControl: boolean;
+  alreadyBuilt: boolean;
+}
+
+export function canBuildTowerIII(gate: TowerIIIUpgradeGate): { ok: boolean; why: string } {
+  if (!gate.towerPlaced) return { ok: false, why: 'Click a placed control tower.' };
+  if (gate.alreadyBuilt) {
+    return { ok: false, why: 'Tower III is already operating at this airport.' };
+  }
+  if (gate.fieldLevel < TOWER_III_UPGRADE.minFieldLevel) {
+    return {
+      ok: false,
+      why: `Needs Field level ${TOWER_III_UPGRADE.minFieldLevel}.`,
+    };
+  }
+  if (!gate.hasApproachControl) {
+    return { ok: false, why: 'Commission ATC approach first.' };
+  }
+  return { ok: true, why: 'Ready to build.' };
 }

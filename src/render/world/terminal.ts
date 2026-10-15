@@ -1,7 +1,8 @@
 /**
- * Living terminal: glazed curtain walls + skylight roof so the interior reads from
- * the default orbit camera, staffed counters / security / gates / shops as instanced
- * props, seated passengers, and walkers pulling luggage at the nearest LOD.
+ * One terminal shell for both views. Airport view draws it closed: curtain wall,
+ * roof, and fascia only. Terminal view is the same mesh with the roof cut away,
+ * so the interior perimeter is that curtain wall. Counters, rooms, and the crowd
+ * are children that the closed view leaves out of the render list.
  */
 import * as THREE from 'three'
 import { clusterCenter, clusterRadius, DIR_VEC, type TerminalInfo } from './layout'
@@ -66,6 +67,7 @@ import { buildHiDetailProps, buildInteriorDressing, hiDetailOn, hiDetailOwns } f
 import { HALL_NEAR_DIST } from '../hallCamera'
 import { setNearPropDetail } from '../terminalProps'
 import { CELL, cellX, cellZ } from './view'
+import { facadeOpenings } from './facade'
 import {
   DESK_KINDS,
   hiddenKey,
@@ -203,6 +205,8 @@ export class TerminalBuilding {
   propFade = 0
   lifeFade = 0
   private shell = new THREE.Group()
+  /** Room floors and the ceiling. Hidden in the closed airport view. */
+  private interiorFloors = new THREE.Group()
   private roof = new THREE.Group()
   /** Split-flap boards and wayfinding signs. Clicking a board opens the panel. */
   readonly fidsGroup = new THREE.Group()
@@ -262,6 +266,8 @@ export class TerminalBuilding {
     this.root.name = `terminal-${opts.index}`
     this.pier = opts.pier === true
     this.shell.name = 'terminal-shell'
+    this.interiorFloors.name = 'terminal-interior'
+    this.shell.add(this.interiorFloors)
     this.roof.name = 'terminal-roof-group'
     this.detail.name = 'props-detail'
     this.props.add(this.detail)
@@ -361,14 +367,17 @@ export class TerminalBuilding {
       if ((p.c * 7 + p.r * 3) % 4 === 0) hvac.push(trs(x - CELL / 2 + rim / 2, ROOF_Y + m(0.16), z, 0, m(1.6), m(0.9), m(2.2)))
     }
 
-    // Curtain walls on every exterior side.
+    // Curtain walls on every exterior side. Openings match facadeOpenings so the
+    // landside door and the airside gates are the same holes in both views.
     const glassPos: number[] = []
     const glassIdx: number[] = []
     const quad = (ax: number, az: number, bx: number, bz: number, y0: number, y1: number) => {
+      if (y1 - y0 < m(0.05)) return
       const b = glassPos.length / 3
       glassPos.push(ax, y0, az, bx, y0, bz, ax, y1, az, bx, y1, bz)
       glassIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2)
     }
+    const openings = facadeOpenings(this.info)
     for (const e of edges) {
       const v = DIR_VEC[e.side]
       const cx = cellX(e.c) + v.dc * CELL * 0.5
@@ -378,14 +387,26 @@ export class TerminalBuilding {
       const h = CELL / 2
       // Wind so the front face looks outward; single-sided glass halves the overdraw.
       const flip = e.side === 'n' || e.side === 'e' ? -1 : 1
-      quad(cx - flip * tx * h, cz - flip * tz * h, cx + flip * tx * h, cz + flip * tz * h, FLOOR_Y, GLASS_TOP)
+      const hole = openings.find((o) => o.c === e.c && o.r === e.r && o.side === e.side)
+      const gap = hole ? Math.min(h * 0.92, hole.width / 2) : 0
+      const span = (s0: number, s1: number, y0: number, y1: number) => {
+        quad(cx + flip * tx * h * s0, cz + flip * tz * h * s0, cx + flip * tx * h * s1, cz + flip * tz * h * s1, y0, y1)
+      }
+      if (gap > m(0.3)) {
+        const g = gap / h
+        const head = FLOOR_Y + DOOR_H
+        span(-1, -g, FLOOR_Y, GLASS_TOP)
+        span(g, 1, FLOOR_Y, GLASS_TOP)
+        span(-g, g, head, GLASS_TOP)
+      } else span(-1, 1, FLOOR_Y, GLASS_TOP)
       for (let k = 0; k <= 4; k++) {
         const o = -h + (k * CELL) / 4
+        if (gap > m(0.3) && Math.abs(o) < gap - m(0.05)) continue
         mullions.push(trs(cx + tx * o, FLOOR_Y, cz + tz * o, 0, m(0.12), GLASS_TOP - FLOOR_Y, m(0.12)))
       }
       const yaw = tx ? 0 : Math.PI / 2
       mullions.push(trs(cx, m(2.35), cz, yaw, CELL, m(0.08), m(0.12)))
-      mullions.push(trs(cx, FLOOR_Y, cz, yaw, CELL, m(0.16), m(0.18)))
+      if (!(gap > m(0.3))) mullions.push(trs(cx, FLOOR_Y, cz, yaw, CELL, m(0.16), m(0.18)))
       fascia.push(trs(cx + v.dc * m(0.2), GLASS_TOP, cz + v.dr * m(0.2), yaw, CELL + m(0.3), ROOF_Y + m(0.22) - GLASS_TOP, m(0.45)))
       // Landside drop-off canopy.
       if (e.side === landsideSide(airside)) {
@@ -425,6 +446,7 @@ export class TerminalBuilding {
     glassGeo.computeVertexNormals()
     this.owned.geos.push(glassGeo)
     const glass = new THREE.Mesh(glassGeo, this.glassMat)
+    glass.name = 'terminal-curtain'
     glass.renderOrder = 2
     this.shell.add(glass)
 
@@ -633,7 +655,7 @@ export class TerminalBuilding {
       this.owned.geos.push(geo)
       mesh.receiveShadow = true
       mesh.name = name
-      this.shell.add(mesh)
+      this.interiorFloors.add(mesh)
     }
     const ceilGeo = roomFloorGeometry(rp, ROOF_Y - m(0.12), { flat: true })
     const ceilMat = new THREE.MeshLambertMaterial({
@@ -648,7 +670,7 @@ export class TerminalBuilding {
       const ceiling = new THREE.Mesh(ceilGeo, ceilMat)
       this.owned.geos.push(ceilGeo)
       ceiling.name = 'terminal-ceiling'
-      this.shell.add(ceiling)
+      this.interiorFloors.add(ceiling)
       this.ceiling = ceiling
     } else ceilGeo.dispose()
 
@@ -1088,7 +1110,8 @@ export class TerminalBuilding {
 
   /**
    * Per frame: LOD pick from camera distance, fades, walkers, night glow.
-   * `enclosed` is the airport view: the roof stays on and the walls stay up.
+   * `enclosed` is the airport view: roof on, and the interior is not rendered.
+   * Terminal view passes false so the same shell opens (roof cutaway, rooms in).
    * A still camera with settled fades skips the rebuild. Off-screen rooms drop
    * their signs and desks; the merged walls stay one draw.
    */
@@ -1103,7 +1126,7 @@ export class TerminalBuilding {
   ) {
     const look = focus ?? { x: this.center.x, z: this.center.z }
     const dist = Math.max(0, camPos.distanceTo(this.center) - this.radius * 0.5)
-    const near = dist <= HALL_NEAR_DIST * WORLD_PER_METER
+    const near = !enclosed && dist <= HALL_NEAR_DIST * WORLD_PER_METER
     if (near !== this.nearShown) {
       this.nearShown = near
       setNearPropDetail(this.props, near)
@@ -1120,31 +1143,46 @@ export class TerminalBuilding {
     if (this.ceiling) this.ceiling.visible = this.ceilingForce || !aboveCeiling
     this.nearCut = !enclosed && close
     this.roofTarget = cut ? 0 : 1
-    this.propTarget = this.lod <= 1 ? 1 : 0
-    this.lifeTarget = this.lod === 0 ? 1 : 0
+    // Closed airport frames drop props, agents, and room floors out of the render list.
+    this.interiorFloors.visible = !enclosed
+    if (enclosed) {
+      this.propTarget = 0
+      this.lifeTarget = 0
+      this.propFade = 0
+      this.lifeFade = 0
+    } else {
+      this.propTarget = this.lod <= 1 ? 1 : 0
+      this.lifeTarget = this.lod === 0 ? 1 : 0
+      this.propFade = stepFade(this.propFade, this.propTarget, dt, 3)
+      this.lifeFade = stepFade(this.lifeFade, this.lifeTarget, dt, 3)
+    }
     this.roofFade = stepFade(this.roofFade, this.roofTarget, dt, 1.1)
     applyFade(this.roof, this.roofMats, this.roofFade)
     // Lift as it fades so the cutaway reads as the roof coming off, not blinking out.
     const lift = 1 - this.roofFade
     this.roof.position.y = lift * lift * m(4)
-    this.skyMat.opacity = 0.18 * this.roofFade
-    this.propFade = stepFade(this.propFade, this.propTarget, dt, 3)
-    this.lifeFade = stepFade(this.lifeFade, this.lifeTarget, dt, 3)
     applyFade(this.props, this.propMats, this.propFade)
     applyFade(this.props, this.wallMats, this.propFade)
-    this.detail.visible = this.lod === 0 && this.propFade > 0.2
+    this.detail.visible = !enclosed && this.lod === 0 && this.propFade > 0.2
     if (this.glassWallMat) this.glassWallMat.opacity = 0.9 * this.propFade
     if (!this.nearCut && this.propFade < 0.001) this.snapWallsFull()
     else if (this.propFade > 0 && (this.nearCut || !this.wallsFull())) this.stepWalls(camPos, look, dt)
     this.syncWallMode()
     applyFade(this.life, this.lifeMats, this.lifeFade)
     this.time += dt
-    if (this.lifeFade > 0) this.stepWalkers(this.time)
-    if (this.propFade > 0.001) this.cullInterior(camera)
+    if (!enclosed && this.lifeFade > 0) this.stepWalkers(this.time)
+    if (!enclosed && this.propFade > 0.001) this.cullInterior(camera)
     this.floorMat.emissiveIntensity = night * 0.32
-    // Curtain wall reads as lit rooms once the sun is down. Day stays at the clear 0.3.
-    this.glassMat.opacity = 0.3 + night * 0.22
+    // Closed: the curtain plate is the wall, so it does not draw as see-through glass.
+    // Open: day stays clear so the cutaway reads through the perimeter.
+    if (this.glassMat.transparent === enclosed) {
+      this.glassMat.transparent = !enclosed
+      this.glassMat.needsUpdate = true
+    }
+    this.glassMat.opacity = enclosed ? 1 : 0.3 + night * 0.22
+    this.glassMat.depthWrite = enclosed
     this.glassMat.emissiveIntensity = night * 1.05
+    this.skyMat.opacity = enclosed ? 0.92 : 0.18 * this.roofFade
     this.skyMat.emissiveIntensity = night * 0.25
   }
 
@@ -1255,6 +1293,8 @@ export class TerminalBuilding {
       doors: this.plan.rooms.doors.length,
       walls: this.plan.rooms.walls.length,
       wallsLowered: this.wallSets.reduce((n, s) => n + s.walls.filter((w) => w.h < WALL_LOW + 0.2).length, 0),
+      /** False when the airport view has culled rooms, props, and agents. */
+      interior: this.props.visible || this.life.visible || this.interiorFloors.visible,
     }
   }
 
