@@ -22,7 +22,7 @@ Land one at a time: rebase onto latest main, green `npm run gate`, fast-forward 
 | P1 | Dead buys (fire bell, bridges, flag, apron light) | J46 `cursor/fitting-honesty-c298` | MERGED | `74580a1b`. Quick gate `e218574e` (2980 tests, 30-day soak, Careful bot) on this patch, then rebased onto the phone routes with no fitting-file change. Bell scales the fine, reputation hit, and drill line. Flag is paint. Extra bridges shorten boarding. The mast is drawn only when bought. |
 | P1 | Hub stand lease enforce + Heavy class | J47 | BUILDING | New agent. `assignStand` / `swapStands` |
 | P1 | Noon hold when the day/night cycle is off | #98 `cursor/j36-daynight-cycle-4799` | MERGED | `7a85bce8`. One settings switch, under Graphics. Off holds noon, lamps out. A photo hour still wins. The original branch tip was not replayed |
-| P1 | Schedule board: contract windows, Board and Timeline | `cursor/schedule-board-9241` | MERGED | `0b47ea5f`. Windows, buffers, and the offer preview come from `src/contracts`. List is arrivals and departures. Timeline is by stand. Planner and the phone stay off the sheet. Quick gate, this landing |
+| P1 | Schedule board: contract windows, Board and Timeline | `cursor/schedule-board-9241` | MERGED | `ab5953ed`. Windows, buffers, and the offer preview come from `src/contracts`. List is arrivals and departures. Timeline is by stand. Planner and the phone stay off the sheet. Quick gate, this landing |
 | P2 | Fold Ops wallet into Growth | J48 | QUEUED | After the late-build wave settles |
 | P2 | Buildings rounds 4–9 + aircraft pass 5 | #92 draft `cursor/buildings-r9-fuel-hangars-ca46` | BUILDING | Earlier port `8c0e21d6` is on main. The PR is still a draft (`ba10b642` is a merge plus the preview-stills commit). Do not land it until it is ready |
 | P2 | Interior editor | `5ac6f43e` | MERGED | Sims-style editor inside the terminal shell. Gate record `75e985c5` (2962 tests, soak end cash $4,619,736). J49's research doc stays queued until `docs/design/INTERIOR_EDITOR.md` exists |
@@ -61,7 +61,7 @@ Land one at a time: rebase onto latest main, green `npm run gate`, fast-forward 
 | Vision expansion design note | `3a37ffa5` | `08b868e2` | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. Quick gate was recorded for `418a8d6b` before the art-pack rebase. |
 | Graphics day/night noon hold (PR #98) | `7a85bce8` | contained in `75e985c5` | Existing settings switch, under Graphics. Off holds noon with lamps out. Flood pools stay on at 5×. No second store. The old branch tip was not replayed. |
 | Fitting honesty (J46) | `74580a1b` | `e218574e` | Fire bell, flag, extra jet bridges, and apron light match their cards. No new ledger line. 2980 tests, 30-day soak, Careful bot. Phone-route commits landed during the gate and did not change the fitting files. |
-| Schedule board | this landing | this landing | Contract windows, buffers, and offer preview. Board and Timeline. Stills in `docs/devlog/media/schedule-board/`. |
+| Schedule board | `ab5953ed` | this landing | Contract windows, buffers, and offer preview. Board and Timeline. Stills in `docs/devlog/media/schedule-board/`. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
