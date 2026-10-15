@@ -89,6 +89,20 @@ function upkeepLabel(perDay: number): string {
 }
 
 /**
+ * Fuel rail and the oil station share the Night bank node. The badge names
+ * the fuel research, the line, and the station. Night hub keeps the node name.
+ */
+function fuelRailStamp(id: string): string | null {
+  if (id === 'fuel_rail') {
+    return 'Research Fuel rail. Paint the line to the map edge, then put the oil station on that line.'
+  }
+  if (id === 'oil') {
+    return 'Research Fuel rail. Put the oil station on the line, beside the farm.'
+  }
+  return null
+}
+
+/**
  * Hover-card copy. A locked stamp names the field level, the research node, or both,
  * and points at that row in Growth.
  */
@@ -103,15 +117,18 @@ export function stampCard(input: StampInput): StampCard {
   const node = input.researchId ? RESEARCH_NODES.find((row) => row.id === input.researchId) : undefined
   const deskShort = Boolean(node && !input.researchOwned)
   const locked = levelShort || treeShort || deskShort
+  const fuelRail = fuelRailStamp(input.id)
   const parts: string[] = []
-  if (treeShort && treeLink) parts.push(`Requires research: ${treeLink.label}.`)
+  if (treeShort && fuelRail) parts.push(fuelRail)
+  else if (treeShort && treeLink) parts.push(`Requires research: ${treeLink.label}.`)
   else if (deskShort && node) parts.push(`Requires research: ${node.name}.`)
   if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
   let badge: StampBadge | null = null
   let link: UnlockLink | null = null
   if (treeShort && tree) {
-    badge = { kind: 'research', label: tree.name, nodeId: tree.id }
-    link = { tab: 'research', anchor: `research-node-${tree.id}`, label: tree.name }
+    const label = fuelRail ? 'Fuel rail' : tree.name
+    badge = { kind: 'research', label, nodeId: tree.id }
+    link = { tab: 'research', anchor: `research-node-${tree.id}`, label }
   } else if (!treeLink && deskShort && node) {
     badge = { kind: 'research', label: node.name, nodeId: node.id }
     link = { tab: 'research', anchor: `research-node-${node.id}`, label: node.name }

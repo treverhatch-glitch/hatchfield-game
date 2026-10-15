@@ -64,6 +64,21 @@ describe('stamp cards', () => {
     const hotelLocked = stampCard(toolStampInput('airport_hotel', 7, 7, new Set()))
     expect(hotelLocked.badge).toEqual({ kind: 'research', label: 'Airport hotel', nodeId: 'landside-6' })
   })
+
+  it('names Fuel rail on the rail and the oil station, and leaves Night bank on the night hub', () => {
+    const rail = stampCard(toolStampInput('fuel_rail', 1, 1, new Set()))
+    const oil = stampCard(toolStampInput('oil', 1, 1, new Set()))
+    const night = stampCard(toolStampInput('nighthub', 1, 1, new Set()))
+    expect(rail.badge).toEqual({ kind: 'research', label: 'Fuel rail', nodeId: 'airside-6' })
+    expect(rail.sentence).toContain('Research Fuel rail')
+    expect(rail.sentence).toContain('map edge')
+    expect(rail.sentence).toContain('oil station')
+    expect(rail.sentence).not.toContain('Night bank')
+    expect(oil.badge?.label).toBe('Fuel rail')
+    expect(oil.sentence).toContain('beside the farm')
+    expect(oil.sentence).not.toContain('Night bank')
+    expect(night.badge).toEqual({ kind: 'research', label: 'Night bank', nodeId: 'airside-6' })
+  })
 })
 
 describe('field level unlocks', () => {
