@@ -374,18 +374,6 @@ async function primeAirline(page: Page, rec: Recorder) {
   await rec.hold(2000)
 }
 
-function onRow(r: number, c0: number, c1: number) {
-  return `window.__hatch.flights.some((f) => f.phase !== 'gone' && f.phase !== 'hold' && Math.round(f.y) === ${r} && Math.round(f.x) >= ${c0} && Math.round(f.x) <= ${c1})`
-}
-
-async function frameJet(page: Page, r: number, c0: number, c1: number) {
-  await hatch(
-    page,
-    `const f = g.flights.find((x) => x.phase !== 'gone' && x.phase !== 'hold' && Math.round(x.y) === ${r} && Math.round(x.x) >= ${c0} && Math.round(x.x) <= ${c1});
-     if (f) g.focusAt({ view: 'apron', cells: [{ c: Math.round(f.x), r: Math.round(f.y) }] })`,
-  )
-}
-
 async function goArounds(page: Page) {
   return page.evaluate(`window.__hatch.flights.reduce((n, f) => n + (f.goArounds || 0), 0) + (window.__hatch.goArounds || 0)`)
 }
