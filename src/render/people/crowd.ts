@@ -21,6 +21,8 @@ export interface CrowdAgent {
   bagsDropped?: boolean
   /** optional walk speed m/s, scales stride rate */
   speed?: number
+  /** Existing fare tag or guest purpose. Colours the look; does not change the walk. */
+  purpose?: string
 }
 export interface CrowdOptions {
   /** Instances per body part mesh; one person uses several parts. */
@@ -57,7 +59,7 @@ export function createCrowd(scene: THREE.Object3D, opts: CrowdOptions = {}): Cro
   let camera = opts.camera ?? null
   let time = 0
 
-  const looks = new Map<string, { look: PersonLook; checked: boolean }>()
+  const looks = new Map<string, { look: PersonLook; checked: boolean; purpose?: string }>()
   const positions = new Map<string, THREE.Vector3>()
   const stats: CrowdStats = { visible: 0, lod: [0, 0, 0], culled: 0, thoughts: 0, drawCalls: 0 }
   const out: PeopleAgent[] = []
@@ -77,7 +79,10 @@ export function createCrowd(scene: THREE.Object3D, opts: CrowdOptions = {}): Cro
       pp.set(x, y, z)
       const checked = (a.bagIds?.length ?? 0) > 0 && !a.bagsDropped && !CHECKED_DONE.test((a.state ?? '').toLowerCase())
       let entry = looks.get(id)
-      if (!entry || entry.checked !== checked) { entry = { look: lookFor(id, a.role, checked), checked }; looks.set(id, entry) }
+      if (!entry || entry.checked !== checked || entry.purpose !== a.purpose) {
+        entry = { look: lookFor(id, a.role, checked, a.purpose), checked, purpose: a.purpose }
+        looks.set(id, entry)
+      }
       const pose = poseFor(a.role, a.state, moving)
       out.push({
         id, look: entry.look, x, y, z, yaw: a.heading,

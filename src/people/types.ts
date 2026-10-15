@@ -1,9 +1,22 @@
 export type AgeClass = 'adult' | 'teen' | 'kid' | 'elder'
 export type HairStyle = 'none' | 'short' | 'long' | 'bun'
 export type HatKind = 'none' | 'cap' | 'beanie' | 'sunhat' | 'pilotCap' | 'helmet' | 'beret' | 'securityCap'
-export type CarryKind = 'none' | 'roller' | 'duffel' | 'cart' | 'stroller'
-/** Clothing family. Passengers pick one of the first three; crew are 'uniform'. */
-export type OutfitKind = 'casual' | 'business' | 'tourist' | 'uniform'
+export type CarryKind = 'none' | 'roller' | 'duffel' | 'cart' | 'stroller' | 'briefcase'
+/** Clothing family. Adults wear a sheet outfit; kids stay casual; crew are 'uniform'. */
+export type OutfitKind = 'casual' | 'business' | 'tourist' | 'family' | 'backpacker' | 'uniform'
+/**
+ * Finished reference sheet wired to an existing purpose or post.
+ * Premium fares use pax_business. There is no separate sim role.
+ */
+export type SheetId =
+  | 'pax_business'
+  | 'pax_tourist'
+  | 'pax_family'
+  | 'pax_backpacker'
+  | 'crew_ramp'
+  | 'crew_security'
+  | 'crew_checkin'
+  | 'crew_fueler'
 /** Worn accessories that ride on the shared body. */
 export type GearKind = 'headset' | 'earDefenders' | 'lanyard' | 'boots'
 
@@ -84,4 +97,6 @@ export interface PersonLook {
   /** Walk phase offset 0..1 so crowds do not step in unison. */
   phase: number
   crew: CrewKind | null
+  /** Reference sheet this look was coloured from. Null for kids and unspecialised crew. */
+  sheet: SheetId | null
 }

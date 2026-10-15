@@ -25,6 +25,8 @@ export interface GuestActor {
   bagsDropped: boolean
   hasChecked: boolean
   thought: string
+  /** Existing fare tag, when the sim guest has one. */
+  purpose?: string
 }
 
 interface RawGuest {
@@ -39,6 +41,7 @@ interface RawGuest {
   hasChecked?: boolean
   serviceLeft?: number
   node?: string
+  tag?: string
 }
 
 const QUEUE = /queue|waiting|lane|scanner|carousel|stuck before|no security/i
@@ -71,6 +74,7 @@ export function actorsFrom(view: object): GuestActor[] {
       bagsDropped: Boolean(g.bagsDropped),
       hasChecked: Boolean(g.hasChecked),
       thought,
+      purpose: g.tag,
     })
   }
   return out

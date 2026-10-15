@@ -3,5 +3,6 @@ export { PeopleRenderer, type PeopleAgent, type PeopleRendererOptions, type Peop
 export { assignPeopleLod, lodForDistance, type PeopleLod } from './lod.ts'
 export { InstancePool } from './pool.ts'
 export { advancePhase, samplePose, strideRate, type JointPose } from './pose.ts'
-export { crewLook, followSlot, groupLooks, passengerLook, type GroupMember } from './variants.ts'
-export { CREW_KINDS, PERSON_POSES, type CrewKind, type PersonLook, type PersonPose } from './types.ts'
+export { checkinLook, crewLook, followSlot, groupLooks, passengerLook, type GroupMember } from './variants.ts'
+export { MAPPED_SHEETS, peopleOriginalPath, peopleSheetEdge, sheetForCrewKind, sheetForPost, sheetForPurpose } from './sheets.ts'
+export { CREW_KINDS, PERSON_POSES, type CrewKind, type PersonLook, type PersonPose, type SheetId } from './types.ts'

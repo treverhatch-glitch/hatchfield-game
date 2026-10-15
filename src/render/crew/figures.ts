@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three'
 import type { CrewProp, CrewScene } from '../../ramp/present.ts'
-import type { CrewRole } from '../../ramp/crewConfig.ts'
+import type { CrewRole, CrewService } from '../../ramp/crewConfig.ts'
 import { crewAgent } from '../../people/crewAdapter.ts'
 import { PeopleRenderer, type PeopleAgent } from '../../people/renderer.ts'
 import { WORLD_PER_METER } from '../aircraft/specs.ts'
@@ -23,9 +23,10 @@ const HI_VIS_B = 0xf97316
 const WALKER = 0x16a34a
 const PAX = 0x2563eb
 
-function vest(role: CrewRole): number {
+function vest(role: CrewRole, service: CrewService): number {
   if (role === 'pax') return PAX
   if (role === 'walker') return WALKER
+  if (service === 'fuel') return 0xe53e3e
   if (role === 'driver') return HI_VIS
   return HI_VIS_B
 }
@@ -134,7 +135,7 @@ export class CrewFigures {
       _yaw.setFromAxisAngle(_up, -row.person.heading)
       _person.compose(_pos, _yaw, _scale)
       this.dots.setMatrixAt(dots, _person)
-      this.dots.setColorAt(dots, _color.setHex(vest(row.person.role)))
+      this.dots.setColorAt(dots, _color.setHex(vest(row.person.role, row.person.service)))
       dots++
     }
     this.people.update(agents, camera, dt, lite)

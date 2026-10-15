@@ -53,11 +53,14 @@ function staffLook(id: string, role: Exclude<Role, 'passenger'>): PersonLook {
   return { ...base, ...dress, hat: 'none', shorts: false, jacket: 0, gear: [], backpack: false, carry: 'none', key: `${role}.${base.key}` }
 }
 
-/** Deterministic per id. `checked`: the passenger still has a checked bag to drop. */
-export function lookFor(id: string | number, role: Role, checked = false): PersonLook {
+/**
+ * Deterministic per id. `checked`: the passenger still has a checked bag to drop.
+ * `purpose` is an existing fare tag or guest purpose (business, leisure, family, budget, premium).
+ */
+export function lookFor(id: string | number, role: Role, checked = false, purpose?: string): PersonLook {
   const sid = String(id)
   if (role !== 'passenger') return staffLook(sid, role)
-  const base = passengerLook(sid)
-  if (checked && base.carry !== 'roller' && base.carry !== 'duffel') return passengerLook(sid, { carry: 'roller' })
+  const base = passengerLook(sid, { purpose })
+  if (checked && base.carry !== 'roller' && base.carry !== 'duffel') return passengerLook(sid, { purpose, carry: 'roller' })
   return base
 }

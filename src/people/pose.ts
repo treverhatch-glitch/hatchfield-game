@@ -121,7 +121,8 @@ export function samplePose(pose: PersonPose, phase: number, speedMps: number, ou
       out.legL = s * WALK.legSwing * amp
       out.legR = -out.legL
       out.armL = -s * WALK.armSwing * amp
-      out.armR = -0.55
+      // Right hand back and down, on the roller grip (arm-local hand socket).
+      out.armR = 0.42
       out.bob = Math.abs(c) * 0.03 * amp
       out.lean = 0.1
       break

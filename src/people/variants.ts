@@ -1,14 +1,20 @@
 import { BAG_COLORS, BODY, ELDER_HAIR, HAIR_COLORS, PAX_RATES, SKIN_TONES } from './config.ts'
-import { CREW_OUTFITS, PASSENGER_OUTFITS, resolveTone } from './outfits.ts'
+import { CHECKIN_BLAZER, CHECKIN_SCARF, CHECKIN_SHIRT, CHECKIN_TROUSERS, CREW_OUTFITS, PASSENGER_OUTFITS, resolveTone } from './outfits.ts'
 import { makeRng, pick } from './rng.ts'
-import type { AgeClass, CrewKind, GearKind, HairStyle, HatKind, OutfitKind, PersonLook } from './types.ts'
+import { sheetForCrewKind } from './sheets.ts'
+import type { AgeClass, CrewKind, GearKind, HairStyle, HatKind, OutfitKind, PersonLook, SheetId } from './types.ts'
 
 export interface PassengerOptions {
   age?: AgeClass
   /** Forces the carried item; otherwise rolled from the seed. */
   carry?: PersonLook['carry']
-  /** Forces the clothing family; otherwise rolled from the seed. */
+  /** Forces the clothing family; otherwise rolled from the seed or the purpose. */
   outfit?: Exclude<OutfitKind, 'uniform'>
+  /**
+   * Existing sim purpose or fare tag: business, premium, leisure, family, budget.
+   * Premium wears the business suit. Does not add a sim role.
+   */
+  purpose?: string
 }
 
 export interface CrewOptions {
@@ -16,9 +22,17 @@ export interface CrewOptions {
   airline?: { primary: number; secondary?: number }
 }
 
+const PURPOSE_OUTFIT: Record<string, Exclude<OutfitKind, 'uniform'>> = {
+  business: 'business',
+  premium: 'business',
+  leisure: 'tourist',
+  family: 'family',
+  budget: 'backpacker',
+}
+
 function keyOf(look: Omit<PersonLook, 'key'>): string {
   return [
-    look.crew ?? 'pax', look.age, look.outfit, look.skin.toString(16), look.hair, look.hairColor.toString(16), look.hat,
+    look.sheet ?? look.crew ?? 'pax', look.age, look.outfit, look.skin.toString(16), look.hair, look.hairColor.toString(16), look.hat,
     look.hatColor.toString(16), look.top.toString(16), look.bottom.toString(16), look.jacket.toString(16),
     look.shorts ? 's' : '-', look.backpack ? 'b' : '-', look.carry, look.gear.join('+'),
   ].join('.')
@@ -26,6 +40,15 @@ function keyOf(look: Omit<PersonLook, 'key'>): string {
 
 function finish(look: Omit<PersonLook, 'key'>): PersonLook {
   return { ...look, key: keyOf(look) }
+}
+
+function sheetOf(outfit: OutfitKind, crew: CrewKind | null): SheetId | null {
+  if (crew) return sheetForCrewKind(crew)
+  if (outfit === 'business') return 'pax_business'
+  if (outfit === 'tourist') return 'pax_tourist'
+  if (outfit === 'family') return 'pax_family'
+  if (outfit === 'backpacker') return 'pax_backpacker'
+  return null
 }
 
 /** Height, build, head size and stoop for an age. */
@@ -40,20 +63,21 @@ function bodyFor(rng: () => number, age: AgeClass): Pick<PersonLook, 'height' | 
 }
 
 function rollOutfit(rng: () => number): Exclude<OutfitKind, 'uniform'> {
-  const kinds = ['casual', 'business', 'tourist'] as const
+  const kinds = ['business', 'tourist', 'family', 'backpacker'] as const
   let r = rng() * kinds.reduce((sum, k) => sum + PASSENGER_OUTFITS[k].weight, 0)
   for (const k of kinds) {
     r -= PASSENGER_OUTFITS[k].weight
     if (r <= 0) return k
   }
-  return 'casual'
+  return 'tourist'
 }
 
 export function passengerLook(seed: string | number, opts: PassengerOptions = {}): PersonLook {
   const rng = makeRng(`pax:${seed}`)
   const age: AgeClass = opts.age ?? (rng() < PAX_RATES.elder ? 'elder' : 'adult')
   const kidlike = age === 'kid'
-  const outfit = kidlike ? 'casual' : (opts.outfit ?? rollOutfit(rng))
+  const fromPurpose = opts.purpose ? PURPOSE_OUTFIT[opts.purpose] : undefined
+  const outfit = kidlike ? 'casual' : (opts.outfit ?? fromPurpose ?? rollOutfit(rng))
   const o = PASSENGER_OUTFITS[outfit]
   const bald = (age === 'adult' || age === 'elder') && rng() < PAX_RATES.bald
   const long = rng() < PAX_RATES.longHair
@@ -64,16 +88,31 @@ export function passengerLook(seed: string | number, opts: PassengerOptions = {}
   const hat: HatKind = kidlike ? (hatRoll < 0.1 ? 'beanie' : 'none') : o.hats.length && hatRoll < o.hat ? hatPick : 'none'
   const carryRoll = rng()
   let carry: PersonLook['carry'] = 'none'
-  if (!kidlike) {
+  if (!kidlike && outfit !== 'business') {
     const r = PAX_RATES
     if (carryRoll < r.roller) carry = 'roller'
     else if (carryRoll < r.roller + r.duffel) carry = 'duffel'
     else if (carryRoll < r.roller + r.duffel + r.cart) carry = 'cart'
-    else if (carryRoll < r.roller + r.duffel + r.cart + r.stroller && age === 'adult') carry = 'stroller'
+    else if (carryRoll < r.roller + r.duffel + r.cart + r.stroller && age === 'adult' && outfit !== 'backpacker') carry = 'stroller'
   }
+  if (outfit === 'business' && !opts.carry) carry = carryRoll < 0.55 ? 'briefcase' : 'roller'
   if (opts.carry) carry = opts.carry
   const backpackRoll = rng()
-  const backpack = kidlike ? backpackRoll < 0.5 : carry !== 'cart' && carry !== 'stroller' && backpackRoll < PAX_RATES.backpack
+  let backpack = kidlike ? backpackRoll < 0.5 : carry !== 'cart' && carry !== 'stroller' && backpackRoll < PAX_RATES.backpack
+  let shorts = !kidlike && o.shorts > 0 && rng() < o.shorts
+  if (outfit === 'backpacker') {
+    backpack = true
+    if (!opts.carry && (carry === 'cart' || carry === 'stroller' || carry === 'roller')) carry = carryRoll < 0.45 ? 'duffel' : 'none'
+  }
+  if (outfit === 'business') {
+    backpack = false
+    shorts = false
+  }
+  if (outfit === 'tourist') shorts = true
+  if (outfit === 'family') {
+    backpack = false
+    shorts = false
+  }
   const body = bodyFor(rng, age)
   const jacket = o.jackets.length ? pick(rng, o.jackets) : 0
   const gear: GearKind[] = o.gear.filter(() => rng() < 0.5)
@@ -84,17 +123,17 @@ export function passengerLook(seed: string | number, opts: PassengerOptions = {}
     hair,
     hairColor: age === 'elder' ? pick(rng, ELDER_HAIR) : pick(rng, HAIR_COLORS),
     hat,
-    hatColor: pick(rng, o.tops),
+    hatColor: outfit === 'tourist' ? 0xf7fafc : pick(rng, o.tops),
     top: pick(rng, o.tops),
     bottom: pick(rng, o.bottoms),
     shoes: pick(rng, o.shoes),
     sleeves: jacket !== 0 || rng() < o.sleeves,
-    shorts: !kidlike && o.shorts > 0 && rng() < o.shorts,
+    shorts,
     jacket,
     backpack,
-    backpackColor: pick(rng, BAG_COLORS),
+    backpackColor: outfit === 'backpacker' ? 0x3f6212 : pick(rng, BAG_COLORS),
     carry,
-    carryColor: pick(rng, BAG_COLORS),
+    carryColor: outfit === 'business' ? 0x1a202c : pick(rng, BAG_COLORS),
     vest: 0,
     wands: false,
     accent: o.ties.length ? pick(rng, o.ties) : 0,
@@ -103,6 +142,7 @@ export function passengerLook(seed: string | number, opts: PassengerOptions = {}
     ...body,
     phase: rng(),
     crew: null,
+    sheet: sheetOf(outfit, null),
   })
 }
 
@@ -138,6 +178,29 @@ export function crewLook(kind: CrewKind, seed: string | number, opts: CrewOption
     ...body,
     phase: rng(),
     crew: kind,
+    sheet: sheetForCrewKind(kind),
+  })
+}
+
+/** Check-in desk agent: navy blazer, white shirt, red scarf, badge. Same body as cabin crew. */
+export function checkinLook(seed: string | number): PersonLook {
+  const { key: _dropped, ...look } = crewLook('cabin', seed, { airline: { primary: CHECKIN_SHIRT, secondary: CHECKIN_BLAZER } })
+  return finish({
+    ...look,
+    top: CHECKIN_SHIRT,
+    bottom: CHECKIN_TROUSERS,
+    jacket: CHECKIN_BLAZER,
+    accent: CHECKIN_SCARF,
+    hat: 'none',
+    hatColor: CHECKIN_BLAZER,
+    shoes: 0x1a202c,
+    carry: 'none',
+    backpack: false,
+    vest: 0,
+    gear: ['lanyard'],
+    gearColor: CHECKIN_BLAZER,
+    hair: 'bun',
+    sheet: 'crew_checkin',
   })
 }
 
@@ -160,7 +223,7 @@ export function groupLooks(seed: string | number, size: number, kids = 0): Group
     const side = i % 2 === 0 ? -1 : 1
     const ring = Math.ceil(i / 2)
     out.push({
-      look: passengerLook(`${seed}:${i}`, { age }),
+      look: passengerLook(`${seed}:${i}`, { age, outfit: isKid ? 'casual' : 'family' }),
       slot: i === 0 ? { x: 0, z: 0 } : { x: side * (0.6 + 0.25 * ring) * (isKid ? 0.8 : 1), z: -0.5 * ring },
       isLead: i === 0,
     })
@@ -182,7 +245,6 @@ export function followSlot(
 ): { x: number; z: number } {
   const cos = Math.cos(lead.heading)
   const sin = Math.sin(lead.heading)
-  // heading 0 faces +z; slot.x is to the right.
   const tx = lead.x + slot.x * cos + slot.z * sin
   const tz = lead.z - slot.x * sin + slot.z * cos
   let dx = tx - current.x

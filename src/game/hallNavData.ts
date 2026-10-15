@@ -87,6 +87,12 @@ export const HALL_CROWD_TUNING = {
   drawDistM: 140,
   /** Past this distance, metres, walkers drop the head and bag and draw as a body only. */
   lodDistM: 55,
+  /**
+   * Inside this distance, metres, the nearest `nearCap` walkers use the shared
+   * low-poly body (sheet outfit and props). Farther walkers stay the cheap limbs.
+   */
+  nearDistM: 22,
+  nearCap: 96,
   /** Frustum test radius around a walker, metres. */
   cullRadiusM: 1.2,
 }

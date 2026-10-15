@@ -31,7 +31,7 @@ describe('people budget', () => {
   })
 })
 
-// Baseline from the #231 blocky figures in this exact scene: 26 draws, 58,372 triangles.
-// Check-in and catering turn on two accessory meshes (peaked-cap family and a jacket)
-// that this camera's near band did not already have. Draws stay fixed with headcount.
-const BUDGET = { draws: 29, triangles: 58372 }
+// Same camera on current main, before this pass: 29 draws, 57,199 triangles, ~2.13 ms.
+// Sheet props add the briefcase mesh (30 draws) and 59,051 triangles (~2.00 ms).
+// Triangles stay inside 5% of 57,199.
+const BUDGET = { draws: 30, triangles: 60059 }

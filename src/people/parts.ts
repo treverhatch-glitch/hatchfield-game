@@ -34,6 +34,12 @@ export interface PartDef {
 
 const BOTH_ARMS = ['armL', 'armR'] as const
 const BOTH_LEGS = ['legL', 'legR'] as const
+/**
+ * Right-hand socket. The arm joint is the named attachment; the grip is the
+ * hand mesh centre, local (0, -0.62, 0). Carried bags are built in this frame
+ * so the handle stays in the hand while the arm moves.
+ */
+export const HAND_SOCKET = 'armR' as const
 
 function box(w: number, h: number, d: number, x = 0, y = 0, z = 0): THREE.BufferGeometry {
   return new THREE.BoxGeometry(w, h, d).translate(x, y, z)
@@ -183,7 +189,7 @@ export const PART_DEFS: readonly PartDef[] = [
   },
   // Tie, scarf or stripe: deep enough to clear a jacket front.
   { id: 'accent', attach: 'upper', lods: NEAR, when: (l) => l.accent !== 0, color: (l) => l.accent, build: () => join([box(0.05, 0.3, 0.04, 0, 1.25, 0.13)]) },
-  { id: 'backpack', attach: 'upper', lods: NEAR, when: (l) => l.backpack, color: (l) => l.backpackColor, build: () => join([box(0.3, 0.4, 0.14, 0, 1.2, -0.18), box(0.2, 0.16, 0.04, 0, 1.12, -0.27)]) },
+  { id: 'backpack', attach: 'upper', lods: NEAR, when: (l) => l.backpack, color: (l) => l.backpackColor, build: () => join([box(0.36, 0.5, 0.18, 0, 1.18, -0.2), box(0.22, 0.18, 0.05, 0, 1.08, -0.31), box(0.06, 0.42, 0.04, -0.16, 1.22, -0.1), box(0.06, 0.42, 0.04, 0.16, 1.22, -0.1)]) },
   // Gear. Headsets and ear defenders ride on the head, badges on the chest.
   {
     id: 'headset',
@@ -230,16 +236,42 @@ export const PART_DEFS: readonly PartDef[] = [
   },
   // Marshaller wands ride on the hands.
   { id: 'wand', attach: BOTH_ARMS, lods: NEAR, when: (l) => l.wands, color: () => 0xff5a00, build: () => join([box(0.035, 0.035, 0.5, 0, -0.62, 0.2)]) },
-  // Luggage hangs off the root.
+  // Luggage hangs off the right-hand socket (arm local, grip at the hand).
   {
     id: 'roller',
-    attach: 'root',
+    attach: HAND_SOCKET,
     lods: NEAR,
     when: (l) => l.carry === 'roller',
     color: (l) => l.carryColor,
-    build: () => join([box(0.34, 0.5, 0.2, 0.3, 0.32, -0.5), box(0.3, 0.12, 0.01, 0.3, 0.35, -0.605), box(0.025, 0.42, 0.025, 0, 0, 0).rotateX(0.36).translate(0.3, 0.76, -0.4)], (i) => (i < 2 ? 0xffffff : 0x666666)),
+    build: () =>
+      join(
+        [
+          box(0.34, 0.5, 0.22, 0.05, -1.19, 0.14),
+          box(0.3, 0.1, 0.012, 0.05, -1.16, 0.255),
+          box(0.02, 0.46, 0.02, 0.02, -0.9, 0.06),
+          box(0.05, 0.05, 0.06, 0, -0.62, 0),
+          new THREE.CylinderGeometry(0.045, 0.045, 0.04, 6).rotateZ(Math.PI / 2).translate(-0.08, -1.4, 0.05),
+          new THREE.CylinderGeometry(0.045, 0.045, 0.04, 6).rotateZ(Math.PI / 2).translate(0.16, -1.4, 0.05),
+        ],
+        (i) => (i < 2 ? 0xffffff : 0x4b5563),
+      ),
   },
-  { id: 'duffel', attach: 'root', lods: NEAR, when: (l) => l.carry === 'duffel', color: (l) => l.carryColor, build: () => join([box(0.5, 0.26, 0.26, 0.36, 0.3, 0.02), box(0.3, 0.02, 0.02, 0.36, 0.5, 0.02)]) },
+  {
+    id: 'duffel',
+    attach: HAND_SOCKET,
+    lods: NEAR,
+    when: (l) => l.carry === 'duffel',
+    color: (l) => l.carryColor,
+    build: () => join([box(0.42, 0.22, 0.22, 0.04, -0.78, 0.02), box(0.02, 0.16, 0.02, 0.02, -0.68, 0.02)]),
+  },
+  {
+    id: 'briefcase',
+    attach: HAND_SOCKET,
+    lods: NEAR,
+    when: (l) => l.carry === 'briefcase',
+    color: (l) => l.carryColor,
+    build: () => join([box(0.34, 0.26, 0.1, 0.02, -0.74, 0.04), box(0.16, 0.03, 0.02, 0.02, -0.6, 0.04)], (i) => (i === 0 ? 0xffffff : 0x9ca3af)),
+  },
   {
     id: 'cart',
     attach: 'root',
@@ -273,7 +305,7 @@ export const PART_DEFS: readonly PartDef[] = [
     attach: 'root',
     lods: [2],
     when: any,
-    color: (l) => (l.vest ? l.vest : l.top),
+    color: (l) => l.vest || l.jacket || l.top,
     build: () => join([box(0.42, 0.8, 0.26, 0, 1.2, 0), box(0.34, 0.8, 0.22, 0, 0.4, 0)], (i) => (i === 0 ? 0xffffff : 0x555566)),
   },
 ]

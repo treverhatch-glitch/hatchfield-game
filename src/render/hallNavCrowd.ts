@@ -7,6 +7,8 @@
  *
  * Drawing is cheap however many people the sim walks:
  * - walkers outside the camera frustum or past `drawDistM` are not drawn;
+ * - inside `nearDistM`, the nearest `nearCap` use the shared low-poly body;
+ * - between that and `lodDistM` they are cheap limbs, head and bag;
  * - past `lodDistM` they draw as a body only (no head, no bag);
  * - at most `maxVisible` are drawn, nearest first.
  * None of this touches the sim: everyone still walks, queues and counts.
@@ -20,8 +22,12 @@ import type { CrewRole } from '../paxnav/crew.ts'
 import { HALL_CROWD_TUNING } from '../game/hallNavData.ts'
 import { servePose } from '../servicepoints/anim.ts'
 import { WALKER_LOST, WALKER_REBOOK } from '../paxnav/paxnav.ts'
+import { PeopleRenderer, type PeopleAgent } from '../people/renderer.ts'
+import { crewLook, passengerLook } from '../people/variants.ts'
+import type { PersonLook } from '../people/types.ts'
 
-const SHIRTS = ['#2f6fb0', '#c0392b', '#2e8b57', '#d68910', '#7d3c98', '#34495e', '#e0e0e0', '#16a085', '#b03a7a', '#5d6d7e']
+/** Far limbs, one colour per sheet: business, tourist, family, backpacker. */
+const SHIRTS = ['#2d3748', '#ed8936', '#2c5282', '#2f855a']
 const SKINS = ['#f6d2b0', '#e0ac69', '#c68642', '#8d5524', '#6b3f2a', '#ffe0c2']
 /** Queue line dots, by the kit the line leads to. */
 const LINE_COLOR: Record<string, string> = {
@@ -36,11 +42,11 @@ const BOTTLENECK_COLOR = '#e23b2f'
 /** Crew uniforms by role, after the passenger shirts in the palette. */
 const CREW_ROLES: readonly CrewRole[] = ['agent', 'screener', 'gate', 'retail', 'cleaner']
 const CREW_SHIRTS: Record<CrewRole, string> = {
-  agent: '#1e3a8a',
-  screener: '#1c1917',
+  agent: '#1a365d',
+  screener: '#63b3ed',
   gate: '#b91c1c',
-  retail: '#166534',
-  cleaner: '#eab308',
+  retail: '#15803d',
+  cleaner: '#c9d43a',
 }
 const TROUSERS = ['#1e293b', '#334155', '#1d4ed8', '#57534e', '#3f6212', '#7c2d12', '#111827']
 /** Body centre height, for the frustum test. */
@@ -99,6 +105,11 @@ export class HallNavCrowd {
   private readonly markRebook = palette(['#ff8c1a'])
   private readonly markSad = palette(['#e0413a'])
   private readonly shirts = palette([...SHIRTS, ...CREW_ROLES.map((r) => CREW_SHIRTS[r])])
+  private readonly people: PeopleRenderer
+  private readonly detailCap: number
+  private readonly lookCache = new Map<string, PersonLook>()
+  private readonly detail: PeopleAgent[] = []
+  private lastTime = 0
   private readonly skins = palette(SKINS)
   private readonly trousers = palette(TROUSERS)
   private body: THREE.InstancedMesh | null = null
@@ -120,6 +131,8 @@ export class HallNavCrowd {
   private walkCap = 0
   private poses = new Float32Array(0)
   private bobSeed = new Float32Array(0)
+  /** 1 business, 2 family, 3 budget, 0 leisure or unknown. */
+  private purposeOf = new Uint8Array(0)
   /** 0 none, 1 roller, 2 backpack. */
   private bagKind = new Uint8Array(0)
   private heightOf = new Float32Array(0)
@@ -148,6 +161,8 @@ export class HallNavCrowd {
 
   constructor() {
     this.group.name = 'hall-nav-crowd'
+    this.detailCap = this.tuning.nearCap
+    this.people = new PeopleRenderer(this.group, { capacity: this.detailCap })
   }
 
   /**
@@ -238,6 +253,10 @@ export class HallNavCrowd {
     const hmnd = hands ? (hands.instanceMatrix.array as Float32Array) : null
     nav.writeFlags(this.flags)
     const lod2 = camera ? T.lodDistM * T.lodDistM : Infinity
+    const near2 = camera ? T.nearDistM * T.nearDistM : -1
+    const dt = this.frameDt(time)
+    this.detail.length = 0
+    let nearLeft = Math.min(T.nearCap, this.detailCap)
     let nh = 0
     let ng = 0
     let nm = 0
@@ -258,16 +277,37 @@ export class HallNavCrowd {
       const legSwing = wave * (walking ? 0.55 : 0.07)
       const pose = serving ? servePose(time + this.bobSeed[i], 'serve') : servePose(0, 'other')
       const bodyY = 0.65 * h + bob
-      if (pose.lean > 0) writeLean(bm, k, x, bodyY, z, sn, cs, pose.lean, w, h)
+      const close = nearLeft > 0 && visD[k] <= near2
+      if (close) {
+        nearLeft--
+        writeYawScale(bm, k, x, bodyY, z, sn, cs, 0, 0)
+        for (const slot of [k * 2, k * 2 + 1]) {
+          writeLimb(lm, slot, x, bodyY, z, sn, cs, 0, 0, 0)
+          writeLimb(am, slot, x, bodyY, z, sn, cs, 0, 0, 0)
+        }
+        const id = nav.idAt(i) || String(i)
+        this.detail.push({
+          id,
+          look: this.lookFor(id, nav.crewRole(i), this.purposeOf[i] ?? 0),
+          x,
+          y: 0,
+          z,
+          yaw,
+          pose: serving ? 'reach' : this.phases[i] === 1 ? 'queue' : 'walk',
+          speed: walking ? 1.25 : 0,
+        })
+      } else if (pose.lean > 0) writeLean(bm, k, x, bodyY, z, sn, cs, pose.lean, w, h)
       else writeYawScale(bm, k, x, bodyY, z, sn, cs, w, h)
       const hipY = 0.86 * h + bob
       const shoulderY = 1.34 * h + bob
       const side = 0.13 * w
       const armX = 0.24 * w
-      for (const s of [1, -1] as const) {
-        const slot = k * 2 + (s > 0 ? 0 : 1)
-        writeLimb(lm, slot, x + cs * side * s, hipY, z - sn * side * s, sn, cs, s * legSwing, w, h)
-        writeLimb(am, slot, x + cs * armX * s, shoulderY, z - sn * armX * s, sn, cs, -s * legSwing * 0.85, w, h)
+      if (!close) {
+        for (const s of [1, -1] as const) {
+          const slot = k * 2 + (s > 0 ? 0 : 1)
+          writeLimb(lm, slot, x + cs * side * s, hipY, z - sn * side * s, sn, cs, s * legSwing, w, h)
+          writeLimb(am, slot, x + cs * armX * s, shoulderY, z - sn * armX * s, sn, cs, -s * legSwing * 0.85, w, h)
+        }
       }
       const sh = this.shirtOf[i] * 3
       const tr = this.trouserOf[i] * 3
@@ -282,11 +322,22 @@ export class HallNavCrowd {
         lc[slot * 3 + 1] = this.trousers[tr + 1]
         lc[slot * 3 + 2] = this.trousers[tr + 2]
       }
-      if (serving && hmnd && pose.reach > 0) {
+      if (!close && serving && hmnd && pose.reach > 0) {
         writeYaw(hmnd, nhand, x + sn * (0.34 + pose.reach), 1.05 * h + bob, z + cs * (0.34 + pose.reach), sn, cs)
         nhand++
       }
-      if (visD[k] > lod2) continue
+      if (close || visD[k] > lod2) {
+        const flFar = this.flags[i]
+        if (flFar && visD[k] <= lod2) {
+          const col = flFar & WALKER_LOST ? this.markLost : flFar & WALKER_REBOOK ? this.markRebook : this.markSad
+          writeYaw(mm, nm, x, 2.15 + bob, z, 0, 1)
+          mc[nm * 3] = col[0]
+          mc[nm * 3 + 1] = col[1]
+          mc[nm * 3 + 2] = col[2]
+          nm++
+        }
+        continue
+      }
       writeYawScale(hm, nh, x, 1.58 * h + bob, z, sn, cs, h, h)
       const sk = this.skinOf[i] * 3
       hc[nh * 3] = this.skins[sk]
@@ -319,6 +370,7 @@ export class HallNavCrowd {
     this.flush(head, nh, true)
     this.flush(bag, ng, false)
     this.flush(mark, nm, true)
+    this.people.update(this.detail, camera ?? null, dt)
     if (hands) {
       hands.count = nhand
       const im = hands.instanceMatrix
@@ -340,7 +392,37 @@ export class HallNavCrowd {
     return { poses: this.poses, total: this.lastTotal }
   }
 
+  private frameDt(time: number): number {
+    const dt = this.lastTime > 0 ? Math.min(0.05, Math.max(0, time - this.lastTime)) : 1 / 60
+    this.lastTime = time
+    return dt
+  }
+
+  /** Sheet look for a walker. Passengers follow the purpose the sim already rolled. */
+  private lookFor(id: string, role: CrewRole | null, purpose: number): PersonLook {
+    const key = `${role ?? 'pax'}:${purpose}:${id}`
+    const hit = this.lookCache.get(key)
+    if (hit) return hit
+    if (this.lookCache.size > 2048) this.lookCache.clear()
+    const named = purpose === 1 ? 'business' : purpose === 2 ? 'family' : purpose === 3 ? 'budget' : 'leisure'
+    let look: PersonLook
+    if (role === 'agent') look = crewLook('checkin', id)
+    else if (role === 'screener') look = crewLook('security', id)
+    else if (role === 'gate') look = crewLook('cabin', id, { airline: { primary: 0xb91c1c, secondary: 0xf8fafc } })
+    else if (role === 'cleaner') {
+      const base = crewLook('maintenance', id)
+      look = { ...base, hat: 'none', carry: 'none', key: `cleaner.${base.key}` }
+    } else if (role === 'retail') {
+      const base = passengerLook(id, { carry: 'none', outfit: 'casual', age: 'adult' })
+      look = { ...base, top: 0x15803d, bottom: 0x3f3f46, sleeves: false, hat: 'none', shorts: false, jacket: 0, backpack: false, sheet: null, key: `shop.${base.key}` }
+    } else look = passengerLook(id, { purpose: named })
+    this.lookCache.set(key, look)
+    return look
+  }
+
   dispose() {
+    this.people.dispose()
+    this.lookCache.clear()
     this.group.removeFromParent()
     this.body?.dispose()
     this.legs?.dispose()
@@ -415,13 +497,18 @@ export class HallNavCrowd {
   private recolour(nav: HallNav, count: number) {
     this.roster = nav.roster
     for (let i = 0; i < count; i++) {
-      const h = hash(nav.idAt(i) || String(i))
+      const id = nav.idAt(i) || String(i)
+      const h = hash(id)
       const role = nav.crewRole(i)
-      this.shirtOf[i] = role ? SHIRTS.length + CREW_ROLES.indexOf(role) : h % SHIRTS.length
+      const purpose = nav.guestCard?.(id)?.purpose
+      this.purposeOf[i] = purpose === 'business' ? 1 : purpose === 'family' ? 2 : purpose === 'budget' ? 3 : 0
+      const fromPurpose = purpose === 'business' ? 0 : purpose === 'family' ? 2 : purpose === 'budget' ? 3 : purpose === 'leisure' ? 1 : h % SHIRTS.length
+      this.shirtOf[i] = role ? SHIRTS.length + CREW_ROLES.indexOf(role) : fromPurpose
       this.skinOf[i] = (h >>> 8) % SKINS.length
       this.bobSeed[i] = (h % 628) / 100
       const luggage = (h >>> 16) % 5
-      this.bagKind[i] = role ? 0 : luggage === 0 ? 0 : luggage < 3 ? 1 : 2
+      const bag = role ? 0 : luggage === 0 ? 0 : luggage < 3 ? 1 : 2
+      this.bagKind[i] = role ? 0 : purpose === 'budget' ? 2 : purpose === 'business' ? 1 : bag
       this.heightOf[i] = 0.94 + (h % 6) * 0.02
       this.widthOf[i] = 0.9 + ((h >>> 4) % 5) * 0.04
       this.trouserOf[i] = role ? (h >>> 12) % 3 : (h >>> 12) % TROUSERS.length
@@ -500,6 +587,7 @@ export class HallNavCrowd {
     this.skip = new Uint8Array(cap)
     this.shirtOf = new Uint8Array(cap)
     this.skinOf = new Uint8Array(cap)
+    this.purposeOf = new Uint8Array(cap)
     this.visIdx = new Int32Array(cap)
     this.visD = new Float32Array(cap)
     this.flags = new Uint8Array(cap)

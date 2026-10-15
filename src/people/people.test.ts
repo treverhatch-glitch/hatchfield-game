@@ -8,9 +8,11 @@ import { InstancePool } from './pool.ts'
 import { advancePhase, samplePose, strideRate } from './pose.ts'
 import { PeopleRenderer, type PeopleAgent } from './renderer.ts'
 import { CREW_KINDS, PERSON_POSES } from './types.ts'
-import { PART_DEFS, partGeometry, partsFor } from './parts.ts'
-import { CREW_OUTFITS, PASSENGER_OUTFITS } from './outfits.ts'
-import { crewLook, followSlot, groupLooks, passengerLook } from './variants.ts'
+import { emitPerson, HAND_SOCKET, PART_DEFS, partGeometry, partsFor } from './parts.ts'
+import { CHECKIN_BLAZER, CHECKIN_SCARF, CHECKIN_SHIRT, FUEL_RED, HI_VIS_YELLOW, PASSENGER_OUTFITS, SECURITY_SHIRT, CREW_OUTFITS } from './outfits.ts'
+import { checkinLook, crewLook, followSlot, groupLooks, passengerLook } from './variants.ts'
+import { MAPPED_SHEETS, peopleOriginalPath, peopleSheetEdge, sheetForCrewKind, sheetForPost, sheetForPurpose } from './sheets.ts'
+import { existsSync } from 'node:fs'
 
 describe('variants', () => {
   it('is deterministic per seed and varied across seeds', () => {
@@ -26,7 +28,7 @@ describe('variants', () => {
     expect(new Set(looks.map((l) => l.hair))).toEqual(new Set(['none', 'short', 'long', 'bun']))
     expect(new Set(looks.map((l) => l.hat)).size).toBeGreaterThanOrEqual(4)
     expect(looks.some((l) => l.backpack)).toBe(true)
-    expect(new Set(looks.map((l) => l.carry))).toEqual(new Set(['none', 'roller', 'duffel', 'cart', 'stroller']))
+    expect(new Set(looks.map((l) => l.carry))).toEqual(new Set(['none', 'roller', 'duffel', 'cart', 'stroller', 'briefcase']))
   })
 
   it('gives every crew kind a distinct uniform', () => {
@@ -38,7 +40,8 @@ describe('variants', () => {
     expect(crewLook('marshaller', 1).wands).toBe(true)
     expect(crewLook('ground', 1).vest).not.toBe(0)
     expect(crewLook('pilot', 1).vest).toBe(0)
-    expect(crewLook('checkin', 1).jacket).not.toBe(0)
+    expect(crewLook('checkin', 1).sheet).toBe('crew_checkin')
+    expect(crewLook('checkin', 1).jacket).toBe(CHECKIN_BLAZER)
     expect(crewLook('checkin', 1).hat).toBe('none')
     expect(crewLook('catering', 1).hat).toBe('cap')
     expect(crewLook('catering', 1).vest).toBe(0)
@@ -125,7 +128,7 @@ describe('poses', () => {
   it('has a distinct shape for every pose', () => {
     const shapes = new Set(PERSON_POSES.map((p) => JSON.stringify(samplePose(p, 0.3, 1))))
     expect(shapes.size).toBe(PERSON_POSES.length)
-    expect(samplePose('bagPull', 0.3, 1).armR).toBeLessThan(0)
+    expect(samplePose('bagPull', 0.3, 1).armR).toBeGreaterThan(0)
     expect(samplePose('seated', 0, 0).drop).toBeGreaterThan(0)
   })
 })
@@ -264,13 +267,15 @@ describe('shared base body', () => {
     expect(ages.has('elder')).toBe(true)
   })
 
-  it('rolls casual, business and tourist outfits', () => {
+  it('rolls the four sheet outfits for adults and keeps kids casual', () => {
     const looks = Array.from({ length: 400 }, (_, i) => passengerLook(i, { age: 'adult' }))
-    expect(new Set(looks.map((l) => l.outfit))).toEqual(new Set(['casual', 'business', 'tourist']))
-    expect(looks.filter((l) => l.outfit === 'business').every((l) => l.jacket !== 0)).toBe(true)
-    expect(looks.some((l) => l.outfit === 'tourist' && l.shorts)).toBe(true)
-    expect(looks.filter((l) => l.outfit === 'casual').every((l) => l.jacket === 0)).toBe(true)
-    expect(Object.keys(PASSENGER_OUTFITS)).toHaveLength(3)
+    expect(new Set(looks.map((l) => l.outfit))).toEqual(new Set(['business', 'tourist', 'family', 'backpacker']))
+    expect(looks.filter((l) => l.outfit === 'business').every((l) => l.jacket !== 0 && !l.shorts && !l.backpack)).toBe(true)
+    expect(looks.filter((l) => l.outfit === 'tourist').every((l) => l.shorts)).toBe(true)
+    expect(looks.filter((l) => l.outfit === 'backpacker').every((l) => l.backpack && !l.shorts)).toBe(true)
+    expect(looks.filter((l) => l.outfit === 'family').every((l) => !l.shorts && l.jacket === 0)).toBe(true)
+    expect(passengerLook('kid', { age: 'kid' }).outfit).toBe('casual')
+    expect(Object.keys(PASSENGER_OUTFITS)).toHaveLength(5)
   })
 
   it('adds crew gear to the same body from the role table', () => {
@@ -296,6 +301,103 @@ describe('shared base body', () => {
     const look = passengerLook('m', { carry: 'roller' })
     expect(partsFor(look, 1).map((p) => p.id).sort()).toEqual(['headLo', 'legLo', 'torsoLo'])
     expect(partsFor(look, 2).map((p) => p.id)).toEqual(['block'])
+  })
+})
+
+describe('sheet looks', () => {
+  it('maps each finished type onto an existing purpose or post', () => {
+    expect(sheetForPurpose('business')).toBe('pax_business')
+    expect(sheetForPurpose('premium')).toBe('pax_business')
+    expect(sheetForPurpose('leisure')).toBe('pax_tourist')
+    expect(sheetForPurpose('family')).toBe('pax_family')
+    expect(sheetForPurpose('budget')).toBe('pax_backpacker')
+    expect(sheetForCrewKind('ground')).toBe('crew_ramp')
+    expect(sheetForCrewKind('security')).toBe('crew_security')
+    expect(sheetForCrewKind('fuel')).toBe('crew_fueler')
+    expect(sheetForPost('checkin')).toBe('crew_checkin')
+    expect(sheetForPost('agent')).toBe('crew_checkin')
+    expect(sheetForPost('screener')).toBe('crew_security')
+    expect(MAPPED_SHEETS).toHaveLength(8)
+  })
+
+  it('resolves each mapped type to its look', () => {
+    const business = passengerLook('biz', { purpose: 'business' })
+    expect(business.sheet).toBe('pax_business')
+    expect(business.jacket).not.toBe(0)
+    expect(business.backpack).toBe(false)
+    expect(business.carry === 'briefcase' || business.carry === 'roller').toBe(true)
+
+    const tourist = passengerLook('hol', { purpose: 'leisure' })
+    expect(tourist.sheet).toBe('pax_tourist')
+    expect(tourist.shorts).toBe(true)
+    expect(tourist.hat === 'sunhat' || tourist.hat === 'none').toBe(true)
+
+    const family = passengerLook('fam', { purpose: 'family' })
+    expect(family.sheet).toBe('pax_family')
+    expect(family.shorts).toBe(false)
+    expect(family.jacket).toBe(0)
+
+    const pack = passengerLook('pack', { purpose: 'budget' })
+    expect(pack.sheet).toBe('pax_backpacker')
+    expect(pack.backpack).toBe(true)
+    expect(partsFor(pack, 0).map((p) => p.id)).toContain('backpack')
+
+    const ramp = crewLook('ground', 'ramp')
+    expect(ramp.sheet).toBe('crew_ramp')
+    expect(ramp.vest).toBe(HI_VIS_YELLOW)
+    expect(ramp.hat).toBe('cap')
+    expect(partsFor(ramp, 0).map((p) => p.id)).toEqual(expect.arrayContaining(['outer', 'earDefenders', 'hatCap']))
+
+    const security = crewLook('security', 'sec')
+    expect(security.sheet).toBe('crew_security')
+    expect(security.top).toBe(SECURITY_SHIRT)
+    expect(security.hat).toBe('securityCap')
+    expect(security.vest).toBe(0)
+
+    const desk = checkinLook('desk')
+    expect(desk.sheet).toBe('crew_checkin')
+    expect(desk.jacket).toBe(CHECKIN_BLAZER)
+    expect(desk.top).toBe(CHECKIN_SHIRT)
+    expect(desk.accent).toBe(CHECKIN_SCARF)
+    expect(desk.hat).toBe('none')
+    expect(desk.carry).toBe('none')
+
+    const fuel = crewLook('fuel', 'fuel')
+    expect(fuel.sheet).toBe('crew_fueler')
+    expect(fuel.top).toBe(FUEL_RED)
+    expect(fuel.vest).toBe(HI_VIS_YELLOW)
+    expect(fuel.hat).toBe('helmet')
+    expect(fuel.hatColor).toBe(0xf7fafc)
+  })
+
+  it('keeps full-res sheets off the boot path and scales a sample by texture quality', () => {
+    for (const id of MAPPED_SHEETS) expect(existsSync(peopleOriginalPath(id))).toBe(true)
+    expect(peopleSheetEdge('low')).toBe(320)
+    expect(peopleSheetEdge('med')).toBe(640)
+    expect(peopleSheetEdge('high')).toBe(1280)
+    expect(peopleOriginalPath('pax_business').startsWith('assets/')).toBe(true)
+  })
+
+  it('holds a roller by the hand socket with the wheels on the ground', () => {
+    const look = passengerLook('pull', { carry: 'roller', outfit: 'business' })
+    const roller = PART_DEFS.find((p) => p.id === 'roller')!
+    expect(roller.attach).toBe(HAND_SOCKET)
+    const geo = partGeometry(roller)
+    geo.computeBoundingBox()
+    const grip = new THREE.Vector3(0, -0.62, 0)
+    expect(geo.boundingBox!.distanceToPoint(grip)).toBeLessThan(0.08)
+    const joints = samplePose('bagPull', 0.2, 1.3)
+    let world: THREE.Matrix4 | null = null
+    emitPerson(look, 0, joints, 0, 0, 0, 0, 1, (def, matrix) => {
+      if (def.id === 'roller') world = matrix.clone()
+    })
+    expect(world).not.toBeNull()
+    const box = geo.boundingBox!.clone().applyMatrix4(world!)
+    expect(box.min.y).toBeGreaterThan(-0.08)
+    expect(box.min.y).toBeLessThan(0.15)
+    const hand = grip.clone().applyMatrix4(world!)
+    expect(hand.y).toBeGreaterThan(0.55)
+    expect(hand.y).toBeLessThan(1.15)
   })
 })
 
