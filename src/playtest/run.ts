@@ -323,6 +323,8 @@ function runPersona(spec: PersonaSpec, log: (line: string) => void): PersonaRepo
         relationTier2: relations.filter((row) => row.tier >= 2).length,
         relationTier3: relations.filter((row) => row.tier >= 3).length,
         relationBest: relations[0]?.score ?? 0,
+        fieldLevel: board.fieldLevel,
+        prestigeStars: board.prestigeStars,
       })
       if (after.guestCount > peaks.guests) peaks.guests = after.guestCount
       if (after.guestHappiness != null && (peaks.happiness == null || after.guestHappiness > peaks.happiness)) {

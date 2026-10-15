@@ -27,6 +27,7 @@ function board(partial: Partial<AirportView> = {}): AirportView {
       { id: 'bridge', label: 'Bridge loan', principal: 45_000 },
     ],
     fieldLevel: 1,
+    prestigeStars: 0,
     fieldRating: 50,
     satisfaction: 70,
     guestCount: 4,

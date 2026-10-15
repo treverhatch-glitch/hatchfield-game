@@ -29,6 +29,8 @@ export interface AirportView {
   loanBalance: number
   loans: { id: string; label: string; principal: number }[]
   fieldLevel: number
+  /** Prestige stars after field level 10. */
+  prestigeStars: number
   fieldRating: number
   /** Mean hall happiness, 0–100. Null when the hall is empty. */
   satisfaction: number | null
@@ -252,6 +254,10 @@ export interface DaySystems {
   relationTier3: number
   /** Highest relationship score when this day opened. */
   relationBest: number
+  /** Field level when this day opened. */
+  fieldLevel: number
+  /** Prestige stars when this day opened. */
+  prestigeStars: number
 }
 
 export interface SystemsPeaks {

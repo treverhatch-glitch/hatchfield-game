@@ -534,6 +534,7 @@ class GamePlayer implements PlayerCommands {
         principal: loan.principal,
       })),
       fieldLevel: game.fieldLevel(),
+      prestigeStars: game.prestigeStars(),
       fieldRating: game.fieldRating(),
       satisfaction: happiness,
       guestCount: guests.length,
