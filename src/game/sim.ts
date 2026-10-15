@@ -703,6 +703,7 @@ import {
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.ts'
+import { CART_TUNING, CartYard, type CartPose } from '../carts/index.ts'
 import { FUEL as FUEL_CHAIN, FuelChain, type FuelView } from '../fuel/index.ts'
 import {
   astar,
@@ -1186,6 +1187,9 @@ export class Game {
   private curbMissedFrac = 0
   /** Road tankers and the pipeline. Rendering and the farm panel read the snapshot. */
   private fuelChain = new FuelChain()
+  /** Bag carts and catering trucks between named sockets. Rendering reads the snapshot. */
+  private cartYard = new CartYard()
+  private cartPosted = new Set<string>()
   fuelOpen = false
   private fuelRoadLoad = 0
   private fuelJustDelivered = false
@@ -11398,6 +11402,14 @@ export class Game {
     return services?.cargo_load !== undefined
   }
 
+  /**
+   * Bag carts and catering trucks on a socket leg.
+   * Coordinates are metres. The renderer places the mesh; it does not choose the path.
+   */
+  cartPoses(): CartPose[] {
+    return this.cartYard.snapshot()
+  }
+
   /** Crew and scissor-lift poses for the catering trucks. */
   cateringPoses() {
     const kitchen = tilesOf(this.tiles, 'kitchen')[0] ?? tilesOf(this.tiles, 'depot')[0] ?? null
@@ -11422,6 +11434,79 @@ export class Game {
 
   private noteCargoCancel(f: Flight) {
     this.cargo?.cancel(f.id)
+  }
+
+  /**
+   * Check-in drop to the sort, sort to the belt loader, loader back to claim,
+   * and the kitchen to the aircraft door. Cart count and bay use limit the rate.
+   */
+  private tickCarts(step: number) {
+    if (!(step > 0) || !this.site) return
+    const sites = this.cartSites()
+    if (!sites.some((site) => site.role === 'stand')) return
+    this.cartYard.setSites(sites)
+    const depots = tilesOf(this.tiles, 'depot').length
+    this.cartYard.setFleet(
+      CART_TUNING.bagCarts + depots * CART_TUNING.bagCartsPerDepot,
+      CART_TUNING.cateringTrucks + depots * CART_TUNING.cateringTrucksPerDepot,
+    )
+    const live = new Set<string>()
+    for (const f of this.flights) {
+      if (f.phase === 'gone' || f.cargo) continue
+      const stand = f.stand ? `${f.stand.c},${f.stand.r}` : f.groundTurn
+      if (!stand) continue
+      live.add(f.id)
+      const units = Math.max(0, Math.round(f.bagUnits ?? 0), Math.round(f.bagsDeposited ?? 0))
+      if (units > 0 && (f.bagStage === 'outbound_sort' || f.bagStage === 'load_aircraft')) {
+        const key = `out:${f.id}`
+        if (!this.cartPosted.has(key)) {
+          this.cartPosted.add(key)
+          this.cartYard.postOutbound(f.id, units, stand)
+        }
+      }
+      if (
+        units > 0 &&
+        (f.bagStage === 'unload_aircraft' || f.bagStage === 'inbound_sort' || f.bagStage === 'deliver_claim')
+      ) {
+        const key = `in:${f.id}`
+        if (!this.cartPosted.has(key)) {
+          this.cartPosted.add(key)
+          this.cartYard.postInbound(`in:${f.id}`, units, stand)
+        }
+      }
+      const galley = this.catering?.engine.galley(f.id)
+      if (galley && galley.cartsRequired > 0) {
+        const key = `cat:${f.id}`
+        if (!this.cartPosted.has(key)) {
+          this.cartPosted.add(key)
+          this.cartYard.postCatering(`cat:${f.id}`, galley.cartsRequired, stand)
+        }
+      }
+    }
+    for (const key of [...this.cartPosted]) {
+      const id = key.slice(key.indexOf(':') + 1)
+      if (!live.has(id)) this.cartPosted.delete(key)
+    }
+    this.cartYard.tick(step)
+  }
+
+  private cartSites() {
+    const sites: { id: string; role: 'checkin' | 'sort' | 'claim' | 'kitchen' | 'stand'; x: number; y: number }[] = []
+    const metre = METERS_PER_CELL
+    const terminal = tilesOf(this.tiles, 'terminal')[0]
+    const bags = tilesOf(this.tiles, 'bags')[0]
+    const kitchen = tilesOf(this.tiles, 'kitchen')[0] ?? tilesOf(this.tiles, 'depot')[0]
+    if (terminal) sites.push({ id: 'checkin', role: 'checkin', x: terminal.c * metre, y: terminal.r * metre })
+    const sortAt = bags ?? terminal
+    if (sortAt) {
+      sites.push({ id: 'sort', role: 'sort', x: sortAt.c * metre, y: sortAt.r * metre })
+      sites.push({ id: 'claim', role: 'claim', x: sortAt.c * metre + 8, y: sortAt.r * metre })
+    }
+    if (kitchen) sites.push({ id: 'kitchen', role: 'kitchen', x: kitchen.c * metre, y: kitchen.r * metre })
+    for (const stand of tilesOf(this.tiles, 'stand')) {
+      sites.push({ id: `${stand.c},${stand.r}`, role: 'stand', x: stand.c * metre, y: stand.r * metre })
+    }
+    return sites
   }
 
   /** Book galleys, feed the fuel check, and post shop money into the one ledger. */
@@ -21802,6 +21887,7 @@ export class Game {
     this.tickConstruction(step)
     this.pushShelfEdits()
     this.tickCatering(step)
+    this.tickCarts(step)
     this.tickGround(step)
     this.tickCargo(step)
     this.tickTier3(step)

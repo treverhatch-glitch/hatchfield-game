@@ -235,6 +235,7 @@ function vehicleMeters(kind: string): [number, number, number] {
   if (kind === 'uld_loader') return [8, 2.4, 2.6]
   if (kind === 'gpu') return [3.2, 1.6, 1.4]
   if (kind === 'baggage_tug' || kind === 'bags') return [7.2, 1.7, 1.55]
+  if (kind === 'cart' || kind === 'baggage_cart') return [3, 1.7, 1.55]
   if (kind === 'belt_loader') return [6.2, 1.8, 1.6]
   if (kind === 'pushback_tug') return [5.4, 1.65, 2.15]
   return [4.5, 1.9, 1.8]
@@ -1890,7 +1891,34 @@ export class World {
       })
     }
 
+    const cartPoses = game.cartPoses()
+    const doorStands = new Set(
+      game
+        .cateringPoses()
+        .filter(
+          (pose) =>
+            pose.phase !== 'driving_to_stand' &&
+            pose.phase !== 'driving_to_kitchen' &&
+            pose.phase !== 'loading_at_kitchen' &&
+            pose.phase !== 'unloading_at_kitchen',
+        )
+        .map((pose) => pose.standId),
+    )
+    const rollingCatering = new Set(
+      cartPoses
+        .filter((pose) => pose.kind === 'catering_truck' && (pose.phase === 'path' || pose.phase === 'queue' || pose.lockedTo === 'cart_slot'))
+        .map((pose) => pose.standId),
+    )
     for (const pose of game.cateringPoses()) {
+      if (
+        rollingCatering.has(pose.standId) &&
+        (pose.phase === 'driving_to_stand' ||
+          pose.phase === 'driving_to_kitchen' ||
+          pose.phase === 'loading_at_kitchen' ||
+          pose.phase === 'unloading_at_kitchen')
+      ) {
+        continue
+      }
       const pos = toWorld(pose.x, pose.y, 0)
       const lift = visualLift(pose.phase, pose.phaseU, pose.liftHeight)
       this.vehicleFrame.push({
@@ -1904,6 +1932,30 @@ export class World {
         scale: WORLD_PER_METER,
         ext: lift,
         active: lift > 0,
+        clock: game.clock,
+      })
+    }
+    for (const pose of cartPoses) {
+      if (pose.kind === 'catering_truck' && doorStands.has(pose.standId) && pose.lockedTo === 'catering_door') continue
+      const pos = toWorld((pose.x * WORLD_PER_METER) / CELL, (pose.y * WORLD_PER_METER) / CELL, 0)
+      const docking = pose.phase === 'dock' || pose.phase === 'queue'
+      const odo = this.odometer(pose.id, pos.x, pos.z)
+      this.vehicleFrame.push({
+        kind: pose.kind === 'bag_cart' ? 'cart' : 'catering_truck',
+        color: pose.kind === 'bag_cart' ? '#c4b7a6' : '#e07a3d',
+        size: vehicleMeters(pose.kind === 'bag_cart' ? 'cart' : 'catering_truck'),
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        yaw: -pose.heading,
+        scale: WORLD_PER_METER,
+        cargo: pose.kind === 'bag_cart' && pose.load > 0 ? 'suitcases' : undefined,
+        ext: pose.kind === 'catering_truck' && pose.phase === 'dock' ? pose.u : 0,
+        active: pose.phase === 'path' || pose.load > 0,
+        reversing: docking,
+        odo,
+        steer: -this.steerOf(pose.id, pose.heading, odo, 2),
+        beams: (this.wr.dayNightSample?.headlights ?? 0) > 0.3 && pose.phase === 'path',
         clock: game.clock,
       })
     }
