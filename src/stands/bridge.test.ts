@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { BULLDOZE_REFUND } from '../game/catalog.ts'
 import { Game } from '../game/sim.ts'
+import { dockedJetBridge, jetBridges, stands } from '../render/world/layout.ts'
+import { cellX, cellZ } from '../render/world/view.ts'
 import { hostKey, jetBridgeCost, jetBridgeUpkeep } from './catalog.ts'
 
 function field(): Game {
@@ -39,6 +41,31 @@ describe('jet bridge attachment', () => {
     expect(game.fittings[host]).toEqual([{ id: 'jet_bridge' }])
     const drop = card(game, 11, 6)?.rows.find((row) => row.id.startsWith('fitdrop:'))
     expect(drop?.label).toBe('Remove jet bridge · bridge_cab')
+  })
+
+  it('roots a bought bridge on the terminal and leaves a fresh stand bridgeless', () => {
+    const game = field()
+    const stand = { c: 11, r: 6 }
+    expect(jetBridges(game, stands(game))).toHaveLength(0)
+    expect(game.bridgeExtendAt(stand)).toBe(0)
+    expect(game.buyFitting(hostKey('stand', 11, 6), 'jet_bridge')).toBe(true)
+    const bridges = jetBridges(game, stands(game))
+    expect(bridges).toHaveLength(1)
+    const bridge = bridges[0]
+    expect(bridge).toBeTruthy()
+    const rootToTerm = Math.hypot(bridge!.root.x - cellX(bridge!.terminal.c), bridge!.root.z - cellZ(bridge!.terminal.r))
+    const rootToStand = Math.hypot(bridge!.root.x - cellX(bridge!.stand.c), bridge!.root.z - cellZ(bridge!.stand.r))
+    expect(rootToTerm).toBeLessThan(rootToStand)
+    expect(game.bridgeExtendAt(stand)).toBe(0)
+    const shut = dockedJetBridge(bridge!, 0)
+    const open = dockedJetBridge(bridge!, 1)
+    expect(shut.root.x).toBeCloseTo(bridge!.root.x)
+    expect(shut.root.z).toBeCloseTo(bridge!.root.z)
+    expect(open.cab.x).toBeCloseTo(bridge!.cab.x)
+    expect(open.cab.z).toBeCloseTo(bridge!.cab.z)
+    expect(Math.hypot(shut.cab.x - shut.root.x, shut.cab.z - shut.root.z)).toBeLessThan(
+      Math.hypot(open.cab.x - open.root.x, open.cab.z - open.root.z),
+    )
   })
 
   it('boards a new game on the walk-out path', () => {

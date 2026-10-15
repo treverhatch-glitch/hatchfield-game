@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { BLOOM_LOOK, PROP_LOOK } from '../look'
 import { propTexture } from './propArt'
 import type { AirfieldLevels } from './dayNight'
-import type { JetBridge, LightKind, LightSpot, Mast, Runway } from './layout'
+import { dockedJetBridge, type JetBridge, type LightKind, type LightSpot, type Mast, type Runway } from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
 import { landingTexture } from './landingArt'
@@ -289,50 +289,126 @@ export class AirfieldLights {
   }
 }
 
-/** Telescoping apron-drive bridge: rotunda, two tunnel sections, drive bogie, cab, bellows. */
+interface BridgePart {
+  name: string
+  kind: 'box' | 'rotunda'
+  x: number
+  y: number
+  z: number
+  yaw: number
+  sx: number
+  sy: number
+  sz: number
+  slot: 'body' | 'dark' | 'glass' | 'stripe' | 'rotunda'
+}
+
+/** Telescoping parts along a root→cab span. The rotunda stays on the root. */
+function bridgeParts(b: JetBridge): BridgePart[] {
+  const dx = b.cab.x - b.root.x
+  const dz = b.cab.z - b.root.z
+  const len = Math.hypot(dx, dz)
+  const yaw = Math.atan2(dx, dz)
+  const ux = dx / (len || 1)
+  const uz = dz / (len || 1)
+  const at = (t: number) => ({ x: b.root.x + ux * t, z: b.root.z + uz * t })
+  const cabH = b.cabH
+  const cabW = b.cabW
+  const baseY = Math.max(0.35, b.cabY - cabH / 2)
+  const span = Math.max(1.4, len - 1.2)
+  const out: BridgePart[] = []
+  const rot = at(0.35)
+  out.push({ name: 'bridge-rotunda', kind: 'rotunda', x: rot.x, y: 0, z: rot.z, yaw: 0, sx: 1, sy: 1, sz: 1, slot: 'rotunda' })
+  if (baseY > 1.5) {
+    out.push({ name: 'bridge-riser', kind: 'box', x: rot.x, y: 0, z: rot.z, yaw: 0, sx: 0.4, sy: baseY, sz: 0.4, slot: 'dark' })
+  }
+  const inner = at(0.7 + span * 0.3)
+  const outer = at(0.7 + span * 0.72)
+  out.push({ name: 'bridge-tunnel-a', kind: 'box', x: inner.x, y: baseY, z: inner.z, yaw, sx: cabW * 0.92, sy: cabH * 0.86, sz: span * 0.6, slot: 'body' })
+  out.push({ name: 'bridge-tunnel-b', kind: 'box', x: outer.x, y: baseY - 0.04, z: outer.z, yaw, sx: cabW, sy: cabH * 0.92, sz: span * 0.5, slot: 'body' })
+  out.push({ name: 'bridge-stripe-a', kind: 'box', x: inner.x, y: baseY - cabH * 0.42, z: inner.z, yaw, sx: cabW * 0.98, sy: 0.05, sz: span * 0.58, slot: 'stripe' })
+  out.push({ name: 'bridge-stripe-b', kind: 'box', x: outer.x, y: baseY - cabH * 0.46, z: outer.z, yaw, sx: cabW * 1.02, sy: 0.05, sz: span * 0.48, slot: 'stripe' })
+  for (const s of [-1, 1] as const) {
+    const wx = -uz * s * cabW * 0.52
+    const wz = ux * s * cabW * 0.52
+    out.push({
+      name: s > 0 ? 'bridge-glass-p' : 'bridge-glass-s',
+      kind: 'box',
+      x: inner.x + wx,
+      y: baseY + cabH * 0.5,
+      z: inner.z + wz,
+      yaw,
+      sx: 0.02,
+      sy: cabH * 0.22,
+      sz: span * 0.55,
+      slot: 'glass',
+    })
+  }
+  const cab = at(Math.max(0.4, len - 0.45))
+  out.push({
+    name: 'bridge-cab',
+    kind: 'box',
+    x: cab.x,
+    y: baseY - 0.04,
+    z: cab.z,
+    yaw,
+    sx: cabW * 1.15,
+    sy: cabH,
+    sz: Math.min(1.1, span * 0.35),
+    slot: 'body',
+  })
+  out.push({
+    name: 'bridge-bellows',
+    kind: 'box',
+    x: cab.x + ux * 0.45,
+    y: baseY,
+    z: cab.z + uz * 0.45,
+    yaw,
+    sx: cabW,
+    sy: cabH * 0.9,
+    sz: 0.18,
+    slot: 'dark',
+  })
+  const col = at(Math.max(1.2, len * 0.72))
+  out.push({ name: 'bridge-col-a', kind: 'box', x: col.x - uz * 0.25, y: 0, z: col.z + ux * 0.25, yaw, sx: 0.12, sy: baseY, sz: 0.12, slot: 'dark' })
+  out.push({ name: 'bridge-col-b', kind: 'box', x: col.x + uz * 0.25, y: 0, z: col.z - ux * 0.25, yaw, sx: 0.12, sy: baseY, sz: 0.12, slot: 'dark' })
+  out.push({
+    name: 'bridge-bogie',
+    kind: 'box',
+    x: col.x,
+    y: 0,
+    z: col.z,
+    yaw: yaw + Math.PI / 2,
+    sx: Math.max(0.7, cabW),
+    sy: 0.22,
+    sz: 0.3,
+    slot: 'dark',
+  })
+  return out
+}
+
+function applyBridgePart(mesh: THREE.Object3D, part: BridgePart) {
+  mesh.position.set(part.x, part.y, part.z)
+  mesh.rotation.set(0, part.yaw, 0)
+  mesh.scale.set(part.sx, part.sy, part.sz)
+}
+
+/**
+ * Slide the cab from the terminal socket toward the door.
+ * The rotunda stays on the socket stored when the bridge was built.
+ */
+export function poseApronBridge(group: THREE.Object3D, extend: number) {
+  const full = group.userData.bridge as JetBridge | undefined
+  if (!full) return
+  const posed = dockedJetBridge(full, extend)
+  for (const part of bridgeParts(posed)) {
+    const mesh = group.getObjectByName(part.name)
+    if (mesh) applyBridgePart(mesh, part)
+  }
+}
+
+/** Telescoping apron-drive bridge: rotunda on the terminal, tunnel, drive bogie, cab, bellows. */
 export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): { group: THREE.Group; mats: THREE.Material[] } {
   const group = new THREE.Group()
-  const body: THREE.Matrix4[] = []
-  const dark: THREE.Matrix4[] = []
-  const glass: THREE.Matrix4[] = []
-  const stripe: THREE.Matrix4[] = []
-  const rotunda: THREE.Matrix4[] = []
-  for (const b of list) {
-    const dx = b.cab.x - b.root.x
-    const dz = b.cab.z - b.root.z
-    const len = Math.hypot(dx, dz)
-    const yaw = Math.atan2(dx, dz)
-    const ux = dx / (len || 1)
-    const uz = dz / (len || 1)
-    const at = (t: number) => ({ x: b.root.x + ux * t, z: b.root.z + uz * t })
-    const cabH = b.cabH
-    const cabW = b.cabW
-    const baseY = Math.max(0.35, b.cabY - cabH / 2)
-    const span = Math.max(1.4, len - 1.2)
-    rotunda.push(trs(b.root.x + ux * 0.35, 0, b.root.z + uz * 0.35, 0, 1, 1, 1))
-    // Riser when the door sits above the rotunda.
-    if (baseY > 1.5) dark.push(trs(b.root.x + ux * 0.35, 0, b.root.z + uz * 0.35, 0, 0.4, baseY, 0.4))
-    const inner = at(0.7 + span * 0.3)
-    const outer = at(0.7 + span * 0.72)
-    body.push(trs(inner.x, baseY, inner.z, yaw, cabW * 0.92, cabH * 0.86, span * 0.6))
-    body.push(trs(outer.x, baseY - 0.04, outer.z, yaw, cabW, cabH * 0.92, span * 0.5))
-    stripe.push(trs(inner.x, baseY - cabH * 0.42, inner.z, yaw, cabW * 0.98, 0.05, span * 0.58))
-    stripe.push(trs(outer.x, baseY - cabH * 0.46, outer.z, yaw, cabW * 1.02, 0.05, span * 0.48))
-    // Window strips both sides.
-    for (const s of [-1, 1]) {
-      const wx = -uz * s * cabW * 0.52
-      const wz = ux * s * cabW * 0.52
-      glass.push(trs(inner.x + wx, baseY + cabH * 0.5, inner.z + wz, yaw, 0.02, cabH * 0.22, span * 0.55))
-    }
-    const cab = at(len - 0.45)
-    body.push(trs(cab.x, baseY - 0.04, cab.z, yaw, cabW * 1.15, cabH, Math.min(1.1, span * 0.35)))
-    dark.push(trs(cab.x + ux * 0.45, baseY, cab.z + uz * 0.45, yaw, cabW, cabH * 0.9, 0.18))
-    // Drive column + bogie under the outer section.
-    const col = at(Math.max(1.2, len * 0.72))
-    dark.push(trs(col.x - uz * 0.25, 0, col.z + ux * 0.25, yaw, 0.12, baseY, 0.12))
-    dark.push(trs(col.x + uz * 0.25, 0, col.z - ux * 0.25, yaw, 0.12, baseY, 0.12))
-    dark.push(trs(col.x, 0, col.z, yaw + Math.PI / 2, Math.max(0.7, cabW), 0.22, 0.3))
-  }
   const ribs = propTexture('corrugation')
   if (ribs) ribs.repeat.set(3, 14)
   const bodyM = new THREE.MeshLambertMaterial(ribs ? { color: PROP_LOOK.bridge, map: ribs } : { color: PROP_LOOK.bridge })
@@ -340,19 +416,26 @@ export function buildJetBridges(list: JetBridge[], beam: THREE.BufferGeometry): 
   const glassM = new THREE.MeshBasicMaterial({ color: 0x9cc8e6 })
   const rotM = new THREE.MeshLambertMaterial({ color: 0xaab2bb })
   const stripeM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.bridgeStripe })
+  const mats = { body: bodyM, dark: darkM, glass: glassM, stripe: stripeM, rotunda: rotM }
   const rotGeo = new THREE.CylinderGeometry(0.55, 0.55, 1.6, 12)
   rotGeo.translate(0, 0.8 + 0.22, 0)
-  if (list.length) {
-    const meshes = [
-      instanced(beam, bodyM, body),
-      instanced(beam, darkM, dark),
-      instanced(beam, glassM, glass),
-      instanced(rotGeo, rotM, rotunda),
-      instanced(beam, stripeM, stripe),
-    ]
-    meshes[0].castShadow = true
-    meshes[3].castShadow = true
-    group.add(...meshes)
+  for (const b of list) {
+    const bridge = new THREE.Group()
+    bridge.name = 'apron-bridge'
+    bridge.userData.bridge = b
+    bridge.userData.stand = b.stand
+    const pivot = new THREE.Object3D()
+    pivot.name = 'bridge-pivot'
+    pivot.position.set(b.root.x, 0, b.root.z)
+    bridge.add(pivot)
+    for (const part of bridgeParts(b)) {
+      const mesh = new THREE.Mesh(part.kind === 'rotunda' ? rotGeo : beam, mats[part.slot])
+      mesh.name = part.name
+      mesh.castShadow = part.slot === 'body' || part.slot === 'rotunda'
+      applyBridgePart(mesh, part)
+      bridge.add(mesh)
+    }
+    group.add(bridge)
   }
   group.userData.geos = [rotGeo]
   return { group, mats: [bodyM, darkM, glassM, rotM, stripeM] }

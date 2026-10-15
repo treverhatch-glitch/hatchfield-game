@@ -192,7 +192,7 @@ export interface StandInfo {
   jetway: boolean
   /** Side the aircraft taxis in from (lead-in line starts there). */
   entry: Dir
-  /** Bought bridges. A jetway with none listed still draws one. */
+  /** Bought bridges. Zero draws none — the stand stays on stairs. */
   bridges?: number
   /** Apron mast is drawn only when this is true. */
   lit?: boolean
@@ -254,12 +254,36 @@ export interface JetBridge {
   cabW: number
 }
 
-/** Nearest terminal facade for each jetway stand within `range` cells. */
+/** Parked cab sits this far off the rotunda, in world units. */
+const BRIDGE_PARKED_REACH = 1.6
+
+/**
+ * The rotunda stays on the terminal socket. `extend` 0 parks the cab beside it.
+ * `extend` 1 puts the cab on the design aircraft's door.
+ */
+export function dockedJetBridge(bridge: JetBridge, extend: number): JetBridge {
+  const u = Math.min(1, Math.max(0, extend))
+  const dx = bridge.cab.x - bridge.root.x
+  const dz = bridge.cab.z - bridge.root.z
+  const full = Math.hypot(dx, dz)
+  if (!(full > 1e-4)) return bridge
+  const parked = Math.min(BRIDGE_PARKED_REACH, full)
+  const reach = parked + (full - parked) * u
+  const k = reach / full
+  return {
+    ...bridge,
+    cab: { x: bridge.root.x + dx * k, z: bridge.root.z + dz * k },
+  }
+}
+
+/** Nearest terminal facade for each stand that has bought a jet bridge, within `range` cells. */
 export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBridge[] {
   const terms = clusters(view, 'terminal')
   const out: JetBridge[] = []
   for (const s of list) {
     if (!s.jetway) continue
+    const copies = Math.max(0, Math.floor(s.bridges ?? 0))
+    if (copies < 1) continue
     let best: { cell: Vec; side: Dir; d: number } | null = null
     for (const cl of terms) {
       for (const e of exteriorEdges(view, cl)) {
@@ -316,7 +340,6 @@ export function jetBridges(view: WorldView, list: StandInfo[], range = 6): JetBr
       cabH: Math.max(0.65, (dock?.h ?? 1.7) * wu),
       cabW: Math.max(0.55, (dock?.w ?? 1.55) * wu),
     }
-    const copies = Math.max(1, s.bridges ?? 1)
     for (let i = 0; i < copies; i++) out.push(fanBridge(built, i, copies))
   }
   return out

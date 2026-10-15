@@ -45,6 +45,16 @@ describe('boarding pictures', () => {
     expect(done.people).toEqual([])
   })
 
+  it('walks bridge passengers from the terminal gate toward the door', () => {
+    const sample = samplePax(clock('bridge', 'board', 0.2))
+    expect(sample.step).toBe('walk')
+    const lead = sample.people[0]
+    expect(lead).toBeTruthy()
+    const gateD = Math.hypot(lead!.c - 14, lead!.r - 8)
+    const craftD = Math.hypot(lead!.c - 11, lead!.r - 6)
+    expect(gateD).toBeLessThan(craftD)
+  })
+
   it('retracts the bridge only after boarding', () => {
     expect(samplePax(clock('bridge', 'board', 1)).extend).toBe(1)
     expect(samplePax(clock('bridge', 'board', 9.5)).extend).toBeLessThan(0.5)

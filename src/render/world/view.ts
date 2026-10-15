@@ -43,6 +43,8 @@ export interface WorldView {
   standFlagColor?: (v: Vec) => string | null
   /** Jet bridges bought on this stand. */
   boughtBridges?: (v: Vec) => number
+  /** 0 parks the jet bridge on the terminal. 1 docks the cab on the aircraft. */
+  bridgeExtendAt?: (stand: Vec) => number
   fits?: { origin: Vec; rooms?: Partial<Record<string, number>>; tier?: 1 | 2 | 3; premade?: boolean; redesigned?: boolean }[]
   deskStaff?: number
   /** Airport view keeps the terminal roof on. Hall view may cut it away. */

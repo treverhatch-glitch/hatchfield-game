@@ -98,6 +98,9 @@ describe('world layout', () => {
     expect(jetBridges(game, bare)).toHaveLength(0)
     game.standAccess['11,6'] = 'jetway'
     game.standAccess['11,12'] = 'jetway'
+    expect(jetBridges(game, stands(game))).toHaveLength(0)
+    game.fittings['stand:11,6'] = [{ id: 'jet_bridge' }]
+    game.fittings['stand:11,12'] = [{ id: 'jet_bridge' }]
     const st = stands(game)
     expect(st.every((s) => s.jetway)).toBe(true)
     const bridges = jetBridges(game, st)

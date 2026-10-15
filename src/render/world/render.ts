@@ -5,7 +5,7 @@ import { gradeTree } from '../grade'
 import { sharedSettings } from '../../features/settings/settings.ts'
 import { GROUND_LOOK, LIGHT_LOOK } from '../look'
 import type { Weather } from '../../game/types'
-import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
+import { AirfieldLights, buildJetBridges, poseApronBridge, setBridgeNight } from './airfield'
 import { capReadableFog, lerpHex, skyState, type SkyState } from './daylight'
 import {
   airfieldLevels,
@@ -663,10 +663,23 @@ export class WorldRenderer {
       airfieldLevels(this.dayNightSample),
       this.quality === 'low',
     )
+    this.poseJetBridges(view)
     setBridgeNight(this.bridgeMats, s.lights)
     if (this.lite) this.grass.mesh.visible = false
     else this.grass.update(view, focus.x, focus.z, camDist, step, view.mapRev)
     this.rain.updateRich(step, s.precip > 0 ? (snow > 0 ? 'snow' : 'rain') : 'none', weather, s.precip, focus.x, focus.z)
+  }
+
+  /** Park every bought bridge on its terminal socket, then reach toward a docked aircraft. */
+  private poseJetBridges(view: WorldView) {
+    const root = this.staticGroup.getObjectByName('jet-bridges')
+    if (!root) return
+    for (const child of root.children) {
+      if (child.name !== 'apron-bridge') continue
+      const stand = child.userData.stand as { c: number; r: number } | undefined
+      const extend = stand && view.bridgeExtendAt ? view.bridgeExtendAt(stand) : 0
+      poseApronBridge(child, extend)
+    }
   }
 
   /**

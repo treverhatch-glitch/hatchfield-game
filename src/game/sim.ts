@@ -12453,6 +12453,21 @@ export class Game {
     return samplePax(this.paxClock(flight)).extend
   }
 
+  /**
+   * How far this stand's bridge has reached. 0 parks it on the terminal.
+   * 1 docks the cab on the aircraft. A stand with no bought bridge stays at 0.
+   */
+  bridgeExtendAt(stand: Vec | null): number {
+    if (!stand || this.boughtBridges(stand) < 1) return 0
+    let best = 0
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.stand.c !== stand.c || flight.stand.r !== stand.r) continue
+      const reach = this.bridgeExtend(flight.id)
+      if (reach > best) best = reach
+    }
+    return best
+  }
+
   /** Apron capsules stand down while the boarding picture draws these passengers. */
   paxPicture(flightId: string): boolean {
     const flight = this.flights.find((item) => item.id === flightId)

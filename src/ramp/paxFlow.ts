@@ -123,6 +123,29 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
 }
 
+/**
+ * Terminal end of the bridge, in aircraft metres.
+ * A hall that sits on the aircraft itself keeps a short stub off the door.
+ */
+function bridgeFarPoint(clock: PaxClock, door: PaxDoor): { x: number; y: number; z: number } {
+  const origin = clock.aircraft
+  const m = clock.metersPerUnit
+  const dx = (clock.gate.x - origin.x) * m
+  const dy = (clock.gate.y - origin.y) * m
+  const h = origin.heading
+  const fx = Math.cos(h)
+  const fy = Math.sin(h)
+  const lx = -Math.sin(h)
+  const ly = Math.cos(h)
+  const x = dx * fx + dy * fy
+  const z = dx * lx + dy * ly
+  if (Math.hypot(x - door.x, z - door.z) < 1.5) {
+    const s = Math.sign(door.z || 1)
+    return { x: door.x, y: door.sill, z: door.z + s * 9 }
+  }
+  return { x, y: door.sill, z }
+}
+
 /** One passenger's slice of the walk, staggered so they do not stack. */
 function walkerU(stepU: number, index: number): number | null {
   const start = (index / PAX_STREAM) * 0.62
@@ -155,8 +178,7 @@ export function samplePax(clock: PaxClock): PaxSample {
   const origin = clock.aircraft
   const door = clock.door
   const sill = door.sill
-  const tunnel = 9
-  const bridgeFar = { x: door.x, y: sill, z: door.z + Math.sign(door.z || 1) * tunnel }
+  const bridgeFar = bridgeFarPoint(clock, door)
   const stairFoot = { x: door.x - 0.4, y: 0, z: door.z + Math.sign(door.z || 1) * 1.6 }
   const stairTop = { x: door.x, y: sill, z: door.z }
   const apron = { x: door.x - 1.2, y: 0, z: door.z + Math.sign(door.z || 1) * 14 }
