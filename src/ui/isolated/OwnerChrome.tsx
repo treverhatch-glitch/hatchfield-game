@@ -4,6 +4,7 @@ import { useHudBandVar } from '../hudBand.ts'
 import { LiveText } from '../LiveText.tsx'
 import { AlertStackView } from './AlertStack.tsx'
 import { HintPanel } from './HintPanel.tsx'
+import { offsetCost, type CarbonView } from '../../sustainability/carbon.ts'
 
 /**
  * Isolated chrome for the flow overlay, the hint panel, alerts, and build tooltips.
@@ -131,12 +132,20 @@ export function OwnerChrome({ game }: { game: Game }) {
             padding: '8px 12px',
             font: '13px sans-serif',
             minWidth: 220,
+            maxHeight: 'min(70vh, 620px)',
+            overflowY: 'auto',
             pointerEvents: 'auto',
           }}
         >
-          {game.infoLines(game.infoOpen).map((line) => (
-            <div key={line}>{line}</div>
-          ))}
+          {game.infoOpen === 'carbon' ? (
+            <CarbonInfoView
+              view={game.carbonView()}
+              onStart={() => game.startGreenPioneer()}
+              onOffset={() => game.buyCarbonOffsets()}
+            />
+          ) : (
+            game.infoLines(game.infoOpen).map((line) => <div key={line}>{line}</div>)
+          )}
           {game.infoOpen === 'links' && game.linkRepairOffer() ? (
             <button
               type="button"
@@ -232,6 +241,75 @@ export function OwnerChrome({ game }: { game: Game }) {
         </div>
       )}
     </div>
+  )
+}
+
+function CarbonInfoView({
+  view,
+  onStart,
+  onOffset,
+}: {
+  view: CarbonView
+  onStart(): void
+  onOffset(): void
+}) {
+  const flights = view.currentFlights.length ? view.currentFlights : (view.latestDay?.flights ?? [])
+  const buildings = view.buildings
+  const goal = view.greenPioneer
+  const buttonStyle = {
+    marginTop: 8,
+    background: '#f0c14a',
+    color: '#1a2a32',
+    border: 0,
+    borderRadius: 6,
+    padding: '4px 8px',
+    font: '700 12px sans-serif',
+  }
+  return (
+    <section data-testid="carbon-info-view">
+      <strong>Carbon</strong>
+      <div>{view.totalEmissionsTonnes.toFixed(2)} t tracked emissions</div>
+      <div>{view.offsetsTonnes.toFixed(2)} t offsets</div>
+      <div>{view.netTonnes.toFixed(2)} t net</div>
+      <div style={{ opacity: 0.72 }}>{view.daysTracked} operating days tracked</div>
+      <h4 style={{ margin: '8px 0 2px' }}>Flights {view.currentFlights.length ? 'today' : 'latest day'}</h4>
+      {flights.length ? (
+        flights.map((flight) => (
+          <div key={flight.id} data-testid={`carbon-flight-${flight.id}`}>
+            {flight.flightNo} · {flight.aircraft} · {(flight.kg / 1000).toFixed(2)} t
+            {flight.safBlend > 0 ? ` · SAF ${(flight.safBlend * 100).toFixed(0)}%` : ''}
+          </div>
+        ))
+      ) : (
+        <div style={{ opacity: 0.72 }}>No completed flights in the book.</div>
+      )}
+      <h4 style={{ margin: '8px 0 2px' }}>Buildings today</h4>
+      {buildings.length ? (
+        buildings.map((building) => (
+          <div key={building.id} data-testid={`carbon-building-${building.id}`}>
+            {building.label} · {(building.kg / 1000).toFixed(2)} t/day
+          </div>
+        ))
+      ) : (
+        <div style={{ opacity: 0.72 }}>No emitting buildings open.</div>
+      )}
+      <h4 style={{ margin: '8px 0 2px' }}>Green Pioneer</h4>
+      {goal ? (
+        <div data-testid="green-pioneer-status">
+          {goal.status} · day {goal.startedDay}–{goal.deadlineDay}
+        </div>
+      ) : (
+        <button type="button" data-testid="start-green-pioneer" onClick={onStart} style={buttonStyle}>
+          Start 40-day net-zero goal
+        </button>
+      )}
+      {view.outstandingTonnes > 0 ? (
+        <button type="button" data-testid="buy-carbon-offsets" onClick={onOffset} style={buttonStyle}>
+          Offset {view.outstandingTonnes.toFixed(2)} t · $
+          {Math.ceil(offsetCost(view.outstandingTonnes)).toLocaleString('en-US')}
+        </button>
+      ) : null}
+    </section>
   )
 }
 

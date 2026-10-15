@@ -5,6 +5,7 @@ import type { TycoonState } from '../tycoon/types.ts'
 import type { PlaytestYearSave } from '../reports/book.ts'
 import type { StaffHousingSave } from '../staffhousing/types.ts'
 import type { BuildLayout } from '../terminalbuild/types.ts'
+import type { CarbonSave } from '../sustainability/carbon.ts'
 
 export const SIZE = 32
 export const SAVE_KEY = 'apron-save-v25'
@@ -1056,6 +1057,8 @@ export interface GameSnapshot {
   crewHotelNights?: number
   /** Achievement tracking state. */
   achievements?: any
+  /** Carbon day book, offsets, and Green Pioneer run. Missing on older saves. */
+  carbon?: CarbonSave
 }
 
 /** A placed building that is still a construction site. */
