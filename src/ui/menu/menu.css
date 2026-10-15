@@ -1,0 +1,558 @@
+/* Title and pause. A glass rail on the live field. Desktop first. */
+
+.menu-scrim {
+  background:
+    linear-gradient(90deg, rgba(6, 10, 16, 0.72) 0%, rgba(6, 10, 16, 0.42) 340px, rgba(6, 10, 16, 0.12) 720px, rgba(6, 10, 16, 0.02) 100%),
+    linear-gradient(180deg, rgba(6, 10, 16, 0.28), transparent 18%, transparent 78%, rgba(6, 10, 16, 0.38));
+}
+
+.hf-shell {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 320px minmax(440px, 740px);
+  gap: 22px;
+  align-items: stretch;
+  padding: 28px 36px;
+  overflow: auto;
+  pointer-events: none;
+}
+
+.hf-shell > * {
+  pointer-events: auto;
+}
+
+.hf-rail,
+.hf-stage {
+  background: rgba(7, 12, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px 0 rgba(230, 197, 106, 0.35),
+    0 18px 50px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px) saturate(1.15);
+}
+
+.hf-rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 18px 16px 14px;
+}
+
+.hf-stage {
+  align-self: start;
+  max-height: 100%;
+  overflow: auto;
+  padding: 22px 22px 26px;
+  color: #e8eef4;
+  animation: hf-rise 0.28s ease;
+}
+
+.hf-brand {
+  margin-bottom: 16px;
+}
+
+.hf-kicker {
+  margin: 0 0 8px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #e6c56a;
+}
+
+.hf-shell .game-title-idle,
+.hf-pause .game-title-idle {
+  animation: none;
+}
+
+.hf-shell h1.game-title,
+.hf-pause h1.game-title {
+  margin: 0;
+  transform: none;
+  transform-style: flat;
+}
+
+.hf-logo-plate {
+  width: fit-content;
+  padding: 4px;
+  background: #f4efe4;
+  border-radius: 12px;
+}
+
+.hf-shell h1.game-title img,
+.hf-pause h1.game-title img {
+  width: 248px;
+  background: transparent;
+  border-radius: 8px;
+  mix-blend-mode: multiply;
+}
+
+.hf-shell h1.game-title::after,
+.hf-pause h1.game-title::after {
+  display: none;
+}
+
+.hf-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hf-nav button {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #d5deea;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.011em;
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease;
+}
+
+.hf-nav button.on,
+.hf-nav button[aria-current='page'] {
+  color: #f6f1e4;
+  background: linear-gradient(90deg, rgba(230, 197, 106, 0.2), transparent 78%);
+  box-shadow: inset 2px 0 0 #e6c56a;
+}
+
+.hf-nav button:hover {
+  transform: translateX(4px);
+  color: #fff;
+}
+
+.hf-nav button:focus-visible,
+.hf-stage button:focus-visible,
+.hf-stage input:focus-visible {
+  outline: 2px solid #e6c56a;
+  outline-offset: 2px;
+}
+
+.hf-nav button.hf-quit {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #8ea0b5;
+}
+
+.hf-foot {
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.hf-foot .sandbox-toggle,
+.hf-stage .sandbox-toggle {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  margin-top: 0;
+  padding: 10px 2px;
+  color: #c5d0dc;
+  font-size: 13px;
+}
+
+.hf-stage h2,
+.hf-pause h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  text-transform: none;
+  color: #f4efe4;
+}
+
+.hf-muted,
+.hf-stage .muted,
+.hf-pause .muted {
+  color: #93a3b5;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.hf-stage .lede,
+.hf-home .lede {
+  margin: 8px 0 0;
+  max-width: 42em;
+  color: #d5deea;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.hf-summary {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+  color: #e6c56a;
+}
+
+.hf-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #d7e7c8;
+}
+
+.hf-back {
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #e6c56a;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.hf-back:hover {
+  color: #fff;
+}
+
+.hf-stage .menu-label {
+  margin: 18px 0 8px;
+  color: #e6c56a;
+}
+
+.hf-stage .map-card,
+.hf-stage .route-card,
+.hf-stage .hybrid-link,
+.hf-choice {
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.hf-stage .map-card:hover,
+.hf-stage .route-card:hover,
+.hf-stage .hybrid-link:hover,
+.hf-choice:hover {
+  transform: translateY(-2px);
+  border-color: rgba(230, 197, 106, 0.75);
+}
+
+.hf-stage .map-card.on,
+.hf-choice.on {
+  border-color: #e6c56a;
+  box-shadow: inset 2px 0 0 #e6c56a;
+}
+
+.hf-stage .route-card.primary {
+  background: #e6c56a;
+  color: #1c1608;
+  border-color: #e6c56a;
+}
+
+.hf-stage .route-card.primary p,
+.hf-stage .route-card.primary em,
+.hf-stage .route-card.primary ul {
+  color: #2a220c;
+}
+
+.hf-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hf-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hf-choice strong {
+  font-size: 13px;
+}
+
+.hf-choice span {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #b7c4d4;
+}
+
+.hf-choice.wide {
+  grid-column: 1 / -1;
+  width: auto;
+  margin-top: 0;
+}
+
+.hf-rules {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #b7c4d4;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.hf-slots {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hf-slot {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hf-thumb {
+  width: 112px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
+
+.hf-thumb-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  background:
+    linear-gradient(160deg, rgba(125, 196, 232, 0.35), transparent 42%),
+    linear-gradient(180deg, #1a2836, #101820);
+  color: #f4efe4;
+}
+
+.hf-thumb-fallback b {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+}
+
+.hf-thumb-fallback i {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e6c56a;
+}
+
+.hf-slot-body strong {
+  display: block;
+  font-size: 14px;
+}
+
+.hf-slot-body p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #d5deea;
+}
+
+.hf-slot-actions,
+.hf-save-as,
+.hf-rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.hf-slot-actions button,
+.hf-save-as button,
+.hf-rename button,
+.hf-stage button.wide,
+.hf-pause button.wide {
+  appearance: none;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: #e8eef4;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
+.hf-slot-actions button.primary,
+.hf-save-as button {
+  background: #e6c56a;
+  color: #1c1608;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.hf-slot-actions button.danger {
+  color: #ffb4ae;
+  border-color: rgba(224, 122, 114, 0.5);
+}
+
+.hf-slot-actions span {
+  font-size: 12px;
+  color: #ffb4ae;
+}
+
+.hf-stage input[type='text'],
+.hf-pause input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #e8eef4;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.hf-stage .gfx-quality button,
+.hf-pause .gfx-quality button,
+.hf-stage .settings-tabs button,
+.hf-pause .settings-tabs button {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8eef4;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.hf-stage .settings-tabs button.on,
+.hf-pause .settings-tabs button.on,
+.hf-stage .gfx-quality button.on,
+.hf-pause .gfx-quality button.on {
+  background: #e6c56a;
+  color: #1c1608;
+  border-color: transparent;
+}
+
+.hf-stage h3,
+.hf-pause h3 {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e6c56a;
+  font-weight: 600;
+}
+
+.hf-credits p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+  max-width: 40em;
+}
+
+.hf-credits .hf-kicker {
+  margin-top: 16px;
+}
+
+/* Pause keeps the apron. The rail is the menu. */
+.pause-scrim {
+  background: linear-gradient(90deg, rgba(6, 10, 16, 0.45), rgba(6, 10, 16, 0.12) 560px, rgba(6, 10, 16, 0.02) 78%);
+}
+
+.hf-pause {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  width: auto;
+  max-height: none;
+  top: 0;
+  left: 0;
+  height: 100%;
+  padding: 22px 0 22px 22px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  overflow: visible;
+  pointer-events: none;
+  color: #e8eef4;
+}
+
+.hf-pause .hf-rail,
+.hf-pause .hf-stage {
+  pointer-events: auto;
+}
+
+.hf-pause .hf-rail {
+  width: 280px;
+  min-height: 0;
+  max-height: calc(100vh - 44px);
+  overflow: auto;
+}
+
+.hf-pause .hf-word {
+  margin: 0 0 14px;
+  font-size: 28px;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  color: #f4efe4;
+}
+
+.hf-pause .hf-stage {
+  width: min(560px, calc(100vw - 340px));
+  max-height: calc(100vh - 44px);
+}
+
+.hf-pause .hf-nav button.hf-quiet {
+  font-size: 14px;
+  color: #8ea0b5;
+}
+
+@keyframes hf-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-stage,
+  .hf-shell .game-title-idle,
+  .hf-pause .game-title-idle {
+    animation: none;
+  }
+
+  .hf-nav button,
+  .hf-stage .map-card,
+  .hf-stage .route-card,
+  .hf-choice {
+    transition: none;
+  }
+
+  .hf-nav button:hover,
+  .hf-stage .map-card:hover,
+  .hf-stage .route-card:hover,
+  .hf-choice:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .hf-shell {
+    grid-template-columns: 280px minmax(320px, 1fr);
+    padding: 16px;
+  }
+}

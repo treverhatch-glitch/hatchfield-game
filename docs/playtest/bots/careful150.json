@@ -1,0 +1,348 @@
+{
+  "daysRan": 150,
+  "cashStart": 168000,
+  "cashEnd": 1747034,
+  "flights": 499,
+  "signed": [
+    "air_regional_1"
+  ],
+  "stands": 6,
+  "runway": 2,
+  "treeNodes": 63,
+  "fieldLevel": 8,
+  "prestigeStars": 0,
+  "first": [
+    [
+      "FL1",
+      0
+    ],
+    [
+      "FL2",
+      8
+    ],
+    [
+      "FL3",
+      15
+    ],
+    [
+      "FL4",
+      25
+    ],
+    [
+      "FL5",
+      38
+    ],
+    [
+      "FL6",
+      56
+    ],
+    [
+      "FL7",
+      79
+    ],
+    [
+      "FL8",
+      111
+    ]
+  ],
+  "curve": [
+    {
+      "day": 0,
+      "fl": 1,
+      "stars": 0,
+      "tree": 0
+    },
+    {
+      "day": 1,
+      "fl": 1,
+      "stars": 0,
+      "tree": 1
+    },
+    {
+      "day": 10,
+      "fl": 2,
+      "stars": 0,
+      "tree": 10
+    },
+    {
+      "day": 20,
+      "fl": 3,
+      "stars": 0,
+      "tree": 20
+    },
+    {
+      "day": 30,
+      "fl": 4,
+      "stars": 0,
+      "tree": 30
+    },
+    {
+      "day": 40,
+      "fl": 5,
+      "stars": 0,
+      "tree": 40
+    },
+    {
+      "day": 50,
+      "fl": 5,
+      "stars": 0,
+      "tree": 50
+    },
+    {
+      "day": 60,
+      "fl": 6,
+      "stars": 0,
+      "tree": 57
+    },
+    {
+      "day": 70,
+      "fl": 6,
+      "stars": 0,
+      "tree": 62
+    },
+    {
+      "day": 80,
+      "fl": 7,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 90,
+      "fl": 7,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 100,
+      "fl": 7,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 110,
+      "fl": 7,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 120,
+      "fl": 8,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 130,
+      "fl": 8,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 140,
+      "fl": 8,
+      "stars": 0,
+      "tree": 63
+    },
+    {
+      "day": 150,
+      "fl": 8,
+      "stars": 0,
+      "tree": 63
+    }
+  ],
+  "softlocks": [],
+  "errors": [],
+  "run": {
+    "label": "Careful",
+    "persona": "careful",
+    "daysRan": 150,
+    "cashStart": 168000,
+    "cashEnd": 1747034,
+    "cashDay30": 274564,
+    "cashDay60": 716335,
+    "cashDay90": 1115256,
+    "flights": 499,
+    "flightsPerDay": 3.3,
+    "flightDiverts": 4,
+    "connectionDiverts": 0,
+    "goArounds": 0,
+    "missedConnectionCash": 0,
+    "curbCrossDay": 21,
+    "curbPeak": 3,
+    "fuelGroundings": 0,
+    "firstGroundingDay": null,
+    "groundingWarnings": [
+      "Signed Apex Local. 36,000 L road tankers at $0.020/L. Band 80,000 L a day.",
+      "Research: Fuel farm"
+    ],
+    "treeCompleteDay": 71,
+    "preferredDay": 23,
+    "trustedDay": 41,
+    "hubTier": "station",
+    "hubTierDay": 1,
+    "fuelPurchase": 37696,
+    "spotPurchase": 0,
+    "termPurchase": 37696,
+    "fuelPurchasePerDay": 251,
+    "spotPurchasePerDay": 0,
+    "runway": 2,
+    "stands": 6,
+    "researchers": 1,
+    "treeNodes": 63,
+    "signed": [
+      "air_regional_1"
+    ],
+    "fieldLevel": 8,
+    "prestigeStars": 0,
+    "penaltyTotal": -100762,
+    "judged": 218,
+    "missed": 0,
+    "softlocks": [],
+    "errors": [],
+    "marks": [
+      {
+        "day": 0,
+        "cash": 73000,
+        "flights": 0,
+        "tree": 0,
+        "runway": 0,
+        "stands": 0,
+        "curb": 0,
+        "researchers": 0,
+        "field": 1,
+        "stars": 0
+      },
+      {
+        "day": 1,
+        "cash": 2423,
+        "flights": 1,
+        "tree": 1,
+        "runway": 1,
+        "stands": 3,
+        "curb": 0.4,
+        "researchers": 1,
+        "field": 1,
+        "stars": 0
+      },
+      {
+        "day": 15,
+        "cash": 106562,
+        "flights": 47,
+        "tree": 15,
+        "runway": 1,
+        "stands": 4,
+        "curb": 0.4,
+        "researchers": 1,
+        "field": 3,
+        "stars": 0
+      },
+      {
+        "day": 30,
+        "cash": 274564,
+        "flights": 102,
+        "tree": 30,
+        "runway": 2,
+        "stands": 6,
+        "curb": 1.1,
+        "researchers": 1,
+        "field": 4,
+        "stars": 0
+      },
+      {
+        "day": 45,
+        "cash": 491802,
+        "flights": 151,
+        "tree": 45,
+        "runway": 2,
+        "stands": 6,
+        "curb": 0.8,
+        "researchers": 1,
+        "field": 5,
+        "stars": 0
+      },
+      {
+        "day": 60,
+        "cash": 716335,
+        "flights": 201,
+        "tree": 57,
+        "runway": 2,
+        "stands": 6,
+        "curb": 1.1,
+        "researchers": 1,
+        "field": 6,
+        "stars": 0
+      },
+      {
+        "day": 75,
+        "cash": 916761,
+        "flights": 250,
+        "tree": 63,
+        "runway": 2,
+        "stands": 6,
+        "curb": 1.4,
+        "researchers": 1,
+        "field": 6,
+        "stars": 0
+      },
+      {
+        "day": 90,
+        "cash": 1115256,
+        "flights": 301,
+        "tree": 63,
+        "runway": 2,
+        "stands": 6,
+        "curb": 1.7,
+        "researchers": 1,
+        "field": 7,
+        "stars": 0
+      },
+      {
+        "day": 105,
+        "cash": 1286553,
+        "flights": 350,
+        "tree": 63,
+        "runway": 2,
+        "stands": 6,
+        "curb": 2,
+        "researchers": 1,
+        "field": 7,
+        "stars": 0
+      },
+      {
+        "day": 120,
+        "cash": 1465193,
+        "flights": 400,
+        "tree": 63,
+        "runway": 2,
+        "stands": 6,
+        "curb": 2.3,
+        "researchers": 1,
+        "field": 8,
+        "stars": 0
+      },
+      {
+        "day": 135,
+        "cash": 1614116,
+        "flights": 451,
+        "tree": 63,
+        "runway": 2,
+        "stands": 6,
+        "curb": 2.6,
+        "researchers": 1,
+        "field": 8,
+        "stars": 0
+      },
+      {
+        "day": 150,
+        "cash": 1747034,
+        "flights": 499,
+        "tree": 63,
+        "runway": 2,
+        "stands": 6,
+        "curb": 3,
+        "researchers": 1,
+        "field": 8,
+        "stars": 0
+      }
+    ]
+  }
+}

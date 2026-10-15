@@ -1,7 +1,9 @@
 /** Sky dome, outer landscape (fields, trees, fence), near grass detail ring, rain. */
 import * as THREE from 'three'
 import { SIZE } from '../../game/types'
-import { SKY_LOOK } from '../look'
+import { PROP_LOOK, SKY_LOOK } from '../look'
+import { WORLD_PER_METER } from '../aircraft/specs'
+import { propTexture } from './propArt'
 import { SKY_PHOTOS, type SkyPhotoBlend, type SkyPhotoId } from './dayNight'
 import { instanced, trs } from './kit'
 import { hash2, rng } from './raster'
@@ -290,12 +292,22 @@ export function buildLandscape(
     group.add(tr, cr)
   }
 
-  // Perimeter fence: posts + a faint mesh band.
+  // Perimeter fence: posts, chain-link, and three barbed strands.
   const e = PLOT_HALF + 2.2
-  const post = new THREE.BoxGeometry(0.08, 1.6, 0.08)
-  post.translate(0, 0.8, 0)
-  const postM = new THREE.MeshLambertMaterial({ color: 0x9aa2aa })
-  const meshM = new THREE.MeshBasicMaterial({ color: 0xc8d0d8, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
+  const post = new THREE.BoxGeometry(0.08, 1.85, 0.08)
+  post.translate(0, 0.925, 0)
+  const postM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.chainlink })
+  const link = propTexture('chainlink')
+  if (link) link.repeat.set(Math.max(1, Math.round((e * 2) / (3 * WORLD_PER_METER))), 1)
+  const meshM = new THREE.MeshLambertMaterial({
+    color: PROP_LOOK.chainlink,
+    ...(link ? { map: link } : {}),
+    transparent: true,
+    alphaTest: link ? 0.4 : 0,
+    opacity: link ? 1 : 0.22,
+    side: THREE.DoubleSide,
+    depthWrite: Boolean(link),
+  })
   geos.push(post)
   mats.push(postM, meshM)
   const pm: THREE.Matrix4[] = []
@@ -316,6 +328,20 @@ export function buildLandscape(
     m.rotation.y = yaw
     group.add(m)
   }
+  const wireGeo = new THREE.BoxGeometry(1, 1, 1)
+  const wireM = new THREE.MeshLambertMaterial({ color: PROP_LOOK.wire })
+  geos.push(wireGeo)
+  mats.push(wireM)
+  const wires: THREE.Matrix4[] = []
+  for (const [x, z, yaw] of [
+    [0, -e, 0],
+    [0, e, 0],
+    [-e, 0, Math.PI / 2],
+    [e, 0, Math.PI / 2],
+  ] as const) {
+    for (let s = 0; s < 3; s++) wires.push(trs(x, 1.58 + s * 0.07, z, yaw, e * 2, 0.015, 0.015))
+  }
+  group.add(instanced(wireGeo, wireM, wires))
   return {
     group,
     dispose() {

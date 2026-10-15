@@ -775,7 +775,7 @@ import { CART_TUNING, CartYard, resolveSocket, type CartPose, type CartSite, typ
 import { aircraftSocketTable, apronCartSockets, CAROUSEL_SOCKETS, checkinRowSockets } from '../render/socketLayout.ts'
 import { FUEL as FUEL_CHAIN, FuelChain, type DeliveryRead, type FuelView } from '../fuel/index.ts'
 import { SPOT_OFFER, brandForContract, termBandLitres, type SpotInbound, type SpotOffer } from '../fuel/offerData.ts'
-import { HYDRANT_CARD, liveHydrantStands, standDrawsHydrant } from '../fuel/hydrant.ts'
+import { HYDRANT_CARD, liveHydrantStands, standDrawsHydrant, writeHydrantPit } from '../fuel/hydrant.ts'
 import {
   clampStanding,
   leadSupplier,
@@ -817,9 +817,11 @@ import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import {
   readStoredSave,
+  rotateAutosave,
   SAVE_MIGRATIONS,
   SAVE_SCHEMA_VERSION,
   serialize,
+  touchAutosave,
   validateAirportSave,
   type SaveIssue,
 } from '../features/save/index.ts'
@@ -7007,10 +7009,18 @@ export class Game {
       scenario: this.scenarioRun ? { ...this.scenarioRun } : undefined,
     }
     try {
+      const now = Date.now()
+      rotateAutosave(this.gameDay())
       localStorage.setItem(
         SAVE_KEY,
-        serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => snap, restore() {} }, Date.now()),
+        serialize({ version: SAVE_SCHEMA_VERSION, snapshot: () => snap, restore() {} }, now),
       )
+      touchAutosave({
+        savedAt: now,
+        gameDay: this.gameDay(),
+        cash: this.cash,
+        airport: this.branding.airportName || 'Hatchfield',
+      })
     } catch {
       /* ignore */
     }
@@ -19273,6 +19283,26 @@ export class Game {
     }
   }
 
+  /**
+   * Attachment hook. Writes standPits only and does not charge.
+   * The stand attachment collects or refunds its own price, then calls this.
+   * Fuel, the ramp, and the stand note keep reading standPits.
+   * Returns false when the cell is not a stand. A stand already in the
+   * requested state returns true and does not emit again.
+   */
+  setHydrantPit(c: number, r: number, on: boolean): boolean {
+    if (this.tile({ c, r }) !== 'stand') return false
+    if (!writeHydrantPit(this.standPits, `${c},${r}`, on)) return true
+    this.bumpMap()
+    this.ensureGround()
+    this.emit()
+    return true
+  }
+
+  hydrantPitOn(c: number, r: number): boolean {
+    return this.standPits[`${c},${r}`] === true
+  }
+
   /** Sink one pit on the stand under the cursor. Research and field level still gate it. */
   stampHydrantPit(v: Vec) {
     const row = progressionBuildable('hydrant')
@@ -19301,7 +19331,7 @@ export class Game {
       return
     }
     if (!this.spend(row?.cost ?? 0, name)) return
-    this.standPits[key] = true
+    writeHydrantPit(this.standPits, key, true)
     this.bumpMap()
     this.ensureGround()
     const upkeep = (row?.upkeepPerDay ?? 0).toLocaleString('en-US')
@@ -20044,7 +20074,7 @@ export class Game {
       delete this.hotelClass[`${v.c},${v.r}`]
       delete this.standClass[`${v.c},${v.r}`]
       delete this.standAccess[`${v.c},${v.r}`]
-      delete this.standPits[`${v.c},${v.r}`]
+      writeHydrantPit(this.standPits, `${v.c},${v.r}`, false)
       delete this.standScale[`${v.c},${v.r}`]
       delete this.standSize[`${v.c},${v.r}`]
       delete this.standRung[`${v.c},${v.r}`]
@@ -21053,7 +21083,9 @@ export class Game {
 
   /** Old saves that predate standPits and already researched hydrants keep a pit on each stand. */
   private grantLegacyPits() {
-    for (const stand of tilesOf(this.tiles, 'stand')) this.standPits[`${stand.c},${stand.r}`] = true
+    for (const stand of tilesOf(this.tiles, 'stand')) {
+      writeHydrantPit(this.standPits, `${stand.c},${stand.r}`, true)
+    }
   }
 
   private standUpgradeSection(v: Vec): CardSection | null {

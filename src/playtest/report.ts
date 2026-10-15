@@ -23,7 +23,7 @@ export function renderReport(report: PlaytestReport): string {
   lines.push(`Generated ${report.generatedAt}.`)
   lines.push('')
   lines.push(
-    `Headless bots use the player command API (new game, land, starter kit, tile stamps, hall rooms, contract letters, loans, shop bids, the Growth research tree, desk agents, and a curb reaction) and run at ${report.tuning.maxSpeed}×. One sim day is ${report.tuning.daySeconds}s. Tick dt is ${report.tuning.tickDt}s. Once the day-1 research trickle banks a whole point, each persona furnishes a research desk, then a chalkboard, then a lab bench, when the hall exists and cash covers the catalog price. When a tree node is affordable they buy the cheapest one. They hire desk agents until check-in and security are both staffed. Careful, when the curb pressure is over 1 and cash can cover it, adds a bus bay, then a taxi rank, then a curb lane instead of that day's expansion.`,
+    `Headless bots use the player command API (new game, land, starter kit, the Apex Local fuel term, tile stamps, hall rooms, contract letters, loans, shop bids, the Growth research tree, desk agents, and a curb reaction) and run at ${report.tuning.maxSpeed}×. One sim day is ${report.tuning.daySeconds}s. Tick dt is ${report.tuning.tickDt}s. Once the day-1 research trickle banks a whole point, each persona furnishes a research desk, then a chalkboard, then a lab bench, when the hall exists and cash covers the catalog price. Careful and Greedy then hire one researcher. When a tree node is affordable they buy the cheapest one. They hire desk agents until check-in and security are both staffed. Careful and Greedy, once cash is above three times the stamp and the airfield says Over the runway or curb or stand pressure is above 1, build a second runway and two more stands. Careful, when that expansion is not affordable and the curb pressure is over 1, adds a bus bay, then a taxi rank, then a curb lane instead of that day's other stamp.`,
   )
   lines.push('')
   lines.push('## Headless personas')
@@ -43,6 +43,13 @@ function renderPersona(persona: PersonaReport): string[] {
   lines.push(
     `${persona.difficulty} / ${persona.focus}, sandbox off. Requested ${persona.daysRequested} sim days, ran ${persona.daysRan}. ${persona.ticks} ticks in ${Math.round(persona.wallMs / 100) / 10}s wall.`,
   )
+  const ops = persona.ops
+  if (ops) {
+    lines.push('')
+    lines.push(
+      `Flights ${persona.built.flightsDone} (${ops.flightsPerDay}/day). Diverts ${ops.flightDiverts} (connection diverts ${ops.connectionDiverts}). Go-arounds ${ops.goArounds}. Missed-connection cash ${signedDollars(ops.missedConnectionCash)}. Curb crossed 1 on day ${ops.curbCrossDay ?? '—'}. Fuel groundings ${ops.fuelGroundings}${ops.firstGroundingDay == null ? '' : ` (first day ${ops.firstGroundingDay})`}. Tree complete day ${ops.treeCompleteDay ?? '—'}. Preferred day ${ops.preferredDay ?? '—'}, Trusted day ${ops.trustedDay ?? '—'}. Hub checklist ${ops.hubTier}${ops.hubTierDay == null ? '' : ` from day ${ops.hubTierDay}`}.`,
+    )
+  }
   lines.push('')
   lines.push('#### Time to first landing')
   lines.push('')
@@ -277,6 +284,11 @@ function renderSystems(persona: PersonaReport): string[] {
   }
   lines.push('')
   return lines
+}
+
+function signedDollars(n: number): string {
+  const body = Math.abs(n).toLocaleString('en-US')
+  return n < 0 ? `-$${body}` : `$${body}`
 }
 
 function round1(n: number): number {

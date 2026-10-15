@@ -52,6 +52,9 @@ import { boardSnapshot, isFidsSource } from '../../fids/project'
 import { objectIsFidsBoard } from '../../fids/stage'
 import { disposeTerminalShared, FLOOR_Y, makeTerminalShared, ROOF_Y, TerminalBuilding, type TerminalShared } from './terminal'
 import { artTexture, photoTexturesEnabled } from './textureRegistry'
+import { propTexture } from './propArt'
+import { benchGeometry, binGeometry, curbFurniture } from './apronProps'
+import { instanced } from './kit'
 import { makeTextures, type WorldTextures } from './textures'
 import { apronPrefabTier } from './progressionBuildings'
 import { roadKerbs } from './kerbs'
@@ -122,6 +125,7 @@ export class WorldRenderer {
   private staticGroup = new THREE.Group()
   private staticGeos: THREE.BufferGeometry[] = []
   private bridgeMats: THREE.Material[] = []
+  private propMats: THREE.Material[] = []
   private buildings: TerminalBuilding[] = []
   private lights!: AirfieldLights
   private landscape: { group: THREE.Group; dispose: () => void } | null = null
@@ -205,8 +209,8 @@ export class WorldRenderer {
     const q = this.q
     if (!first) this.disposeContent()
     this.hatchMat?.dispose()
-    const chevron = photoTexturesEnabled(q.level) ? artTexture('chevron_stripe', q.anisotropy) : null
-    this.hatchMat = chevron ? new THREE.MeshLambertMaterial({ map: chevron, polygonOffset: true, polygonOffsetFactor: -3 }) : null
+    const hatchMap = propTexture('hatch', q.anisotropy) ?? (photoTexturesEnabled(q.level) ? artTexture('chevron_stripe', q.anisotropy) : null)
+    this.hatchMat = hatchMap ? new THREE.MeshLambertMaterial({ map: hatchMap, polygonOffset: true, polygonOffsetFactor: -3 }) : null
     this.tex = makeTextures(q.textureSize, q.anisotropy, photoTexturesEnabled(q.level))
     this.paintMat?.dispose()
     this.paintMat = new THREE.MeshLambertMaterial({
@@ -326,6 +330,8 @@ export class WorldRenderer {
     }
     for (const m of this.bridgeMats) m.dispose()
     this.bridgeMats = []
+    for (const m of this.propMats) m.dispose()
+    this.propMats = []
     for (const b of this.buildings) b.dispose()
     this.buildings = []
 
@@ -408,6 +414,20 @@ export class WorldRenderer {
       this.buildings.push(b)
       this.staticGroup.add(b.root)
     })
+    const dress = curbFurniture(view)
+    for (const [name, matrices, geo] of [
+      ['apron-benches', dress.benches, benchGeometry()],
+      ['apron-bins', dress.bins, binGeometry()],
+    ] as const) {
+      this.staticGeos.push(geo)
+      if (!matrices.length) continue
+      const mat = new THREE.MeshLambertMaterial({ vertexColors: true })
+      this.propMats.push(mat)
+      const mesh = instanced(geo, mat, matrices)
+      mesh.castShadow = true
+      mesh.name = name
+      this.staticGroup.add(mesh)
+    }
     this.applyShadows()
     if (this.q.colorGrade) gradeTree(this.staticGroup)
   }
@@ -872,6 +892,8 @@ export class WorldRenderer {
     this.staticGroup.clear()
     for (const m of this.bridgeMats) m.dispose()
     this.bridgeMats = []
+    for (const m of this.propMats) m.dispose()
+    this.propMats = []
     for (const m of this.surfaceMats.values()) m.dispose()
     this.surfaceMats.clear()
     this.lights.dispose()

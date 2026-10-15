@@ -1,6 +1,6 @@
 /** Pause sheet. Opening it does not change the clock speed; the play loop skips ticks. */
 
-export type PausePage = 'main' | 'settings'
+export type PausePage = 'main' | 'settings' | 'load' | 'save'
 export type SettingsTab = 'game' | 'controls'
 
 export interface PauseSnap {
@@ -44,6 +44,14 @@ class PauseState {
 
   showSettings(tab: SettingsTab = 'game') {
     this.replace({ open: true, page: 'settings', settingsTab: tab, note: '' })
+  }
+
+  showLoad() {
+    this.replace({ open: true, page: 'load', settingsTab: this.snap.settingsTab, note: '' })
+  }
+
+  showSave() {
+    this.replace({ open: true, page: 'save', settingsTab: this.snap.settingsTab, note: '' })
   }
 
   setTab(tab: SettingsTab) {

@@ -79,6 +79,17 @@ export interface AirportView {
   fuelTerm: string | null
   /** Cash to sign the first term (Apex Local). */
   fuelSignCost: number
+  /** Open phone spot card. Null when the rack is quiet. */
+  spotOffer: { flightNo: string; secondsLeft: number } | null
+  /** Airfield sheet reads "Over the runway". */
+  runwayOver: boolean
+  /** Occupied stands plus aircraft holding with no stand, divided by stands. */
+  standPressure: number
+  /** Medium stand stamp. */
+  standCost: number
+  /** One researcher, after staff-hire scaling. */
+  researcherCost: number
+  researchers: number
   /** The open airline field ask, when one Build or Decline can answer it. */
   fieldAsk: {
     kind: FieldTaskKind
@@ -156,6 +167,10 @@ export interface PlayerCommands {
   books(): SystemsBooks
   /** Read-only snapshot of the three research pools. Does not buy or tick. */
   researchPools(): ResearchPools
+  /** Order the open Apex spot tanker. Refuses when no card is up. */
+  acceptSpot(): CommandResult
+  /** Hire one researcher. The hall has to exist. */
+  hireResearcher(): CommandResult
   dismissYearReport(): CommandResult
   tick(dt: number): void
   view(): AirportView
@@ -164,6 +179,12 @@ export interface PlayerCommands {
   hubOffersSent(): number
   /** Signed carriers and the gate that is still open. */
   hubLadderNote(): string
+  /** Cheap board read for fuel holds, the spot card, and the news tape. */
+  pulse(): FieldPulse
+  /** Highest hub-checklist tier among signed carriers. */
+  hubReached(): { tier: string; rank: number }
+  /** End-of-run counts that live on the ledger and the connection tally. */
+  tallyOps(): LedgerOps
 }
 
 export type Intent =
@@ -190,6 +211,8 @@ export type Intent =
   | { do: 'speed'; speed: Speed }
   | { do: 'dismissYear' }
   | { do: 'fuelTerm' }
+  | { do: 'spotAccept' }
+  | { do: 'researcher' }
   | { do: 'nothing' }
 
 export interface PersonaMemory {
@@ -282,6 +305,12 @@ export interface DaySystems {
   fieldLevel: number
   /** Prestige stars when this day opened. */
   prestigeStars: number
+  /** Turns completed when this day opened. */
+  flightsDone: number
+  runway: number
+  stands: number
+  /** Airfield sheet said "Over the runway" when this day opened. */
+  runwayOver: boolean
 }
 
 export interface SystemsPeaks {
@@ -395,6 +424,67 @@ export interface ResearchBuy {
   cost: number
 }
 
+/** Per-tick facts that do not belong on the full HUD snapshot. */
+export interface FieldPulse {
+  curbPressure: number
+  fuelHeldIds: string[]
+  news: { id: string; text: string }[]
+  alerts: { key: string; title: string; detail: string }[]
+  spotOffer: { flightNo: string } | null
+}
+
+/** Ledger and connection totals read once at the end of a run. */
+export interface LedgerOps {
+  goArounds: number
+  missedConnectionCash: number
+  connectionDiverts: number
+  /** Fuel-purchase cash actually taken. Positive dollars. */
+  fuelPurchase: number
+  spotPurchase: number
+  termPurchase: number
+}
+
+/**
+ * How a persona treats fuel, the second strip, and the lab.
+ * The tip policy matches the bots that signed a term and never hired.
+ */
+export interface PersonaPolicy {
+  fuel: 'term' | 'spot-accept' | 'spot-ignore'
+  expand: boolean
+  researcher: boolean
+}
+
+/** Counts the rerun table reads off a finished headless run. */
+export interface RunOps {
+  flightsPerDay: number
+  /** Inbound flights whose news line said they diverted. */
+  flightDiverts: number
+  /** Connecting passengers tagged divert. */
+  connectionDiverts: number
+  goArounds: number
+  missedConnectionCash: number
+  /** First sim day the curb pressure was observed above 1. */
+  curbCrossDay: number | null
+  curbPeak: number
+  fuelGroundings: number
+  firstGroundingDay: number | null
+  /** Fuel copy on screen before the first grounding. The grounding line itself is not a warning. */
+  groundingWarnings: string[]
+  treeCompleteDay: number | null
+  cashDay30: number | null
+  cashDay60: number | null
+  cashDay90: number | null
+  preferredDay: number | null
+  trustedDay: number | null
+  hubTier: string
+  hubTierDay: number | null
+  fuelPurchase: number
+  spotPurchase: number
+  termPurchase: number
+  fuelPurchasePerDay: number
+  spotPurchasePerDay: number
+}
+
 export interface PersonaReport {
   persona: 'careful' | 'greedy' | 'chaotic'
   label: string
@@ -441,6 +531,7 @@ export interface PersonaReport {
   nanFlags: string[]
   researchBuys: ResearchBuy[]
   research: ResearchPools
+  ops: RunOps
 }
 
 export interface BrowserReport {

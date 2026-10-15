@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { Game } from '../game/sim.ts'
 import { mulberry32 } from './personas.ts'
-import { PERSONAS, runHeadless } from './run.ts'
+import { TIP_PERSONAS, runHeadless } from './run.ts'
 
 describe('careful relations over 60 days', () => {
   it('reaches Preferred by day 30 and Trusted by day 60', { timeout: 240_000 }, () => {
-    const spec = PERSONAS.find((persona) => persona.id === 'careful')
+    // Relation band on the tip policy (Apex term, one strip, no researcher).
+    // The live policy that adds a strip is measured in careful150, not here.
+    const spec = TIP_PERSONAS.find((persona) => persona.id === 'careful')
     expect(spec).toBeTruthy()
     const random = Math.random
     Math.random = mulberry32(0x5eed)

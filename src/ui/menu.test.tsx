@@ -13,30 +13,34 @@ beforeEach(() => {
 function title(enableHints = true) {
   return renderToStaticMarkup(
     <TitleScreen
+      game={new Game()}
+      section="home"
+      onSection={() => {}}
       sandbox={false}
       onSandboxChange={() => {}}
       enableHints={enableHints}
       onEnableHintsChange={() => {}}
       onNewGame={() => {}}
-      onChooseKit={() => {}}
       onContinue={() => {}}
     />,
   )
 }
 
 describe('start menu', () => {
-  it('shows the logo title, both starter kits, and start with hints off', () => {
+  it('shows the logo title, the rail, and start with hints off', () => {
     const html = title(true)
     expect(html).toContain('logo_hatchfield.jpg')
     expect(html).toContain('alt="Hatchfield"')
     expect(html).toContain('game-title-idle')
-    expect(html).toContain(STARTER_KITS.pax.label)
-    expect(html).toContain(STARTER_KITS.cargo.label)
-    expect(html).toContain(STARTER_KITS.pax.includes[0])
-    expect(html).toContain(STARTER_KITS.cargo.includes[0])
+    expect(html).toContain('New Game')
+    expect(html).toContain('Load Game')
+    expect(html).toContain('Settings')
+    expect(html).toContain('Credits')
+    expect(html).toContain('>Quit<')
     expect(html).toContain('Start with hints off')
     expect(html).toContain('data-testid="hints-off-toggle"')
     expect(html).toContain('data-testid="new-game"')
+    expect(html).toContain('data-testid="menu-tab-load"')
     // Hints stay on until the player checks the box.
     expect(html).toContain('data-testid="enable-hints-toggle" checked=""')
     expect(html).not.toContain('data-testid="hints-off-toggle" checked=""')
@@ -48,23 +52,41 @@ describe('start menu', () => {
     expect(html).not.toContain('data-testid="enable-hints-toggle" checked=""')
   })
 
-  it('offers the day and night cycle, checked until the player turns it off', () => {
-    expect(title()).toContain('data-testid="day-night-cycle-toggle" checked=""')
-    const off = renderToStaticMarkup(
+  it('offers the day and night cycle on the settings stage', () => {
+    const game = new Game()
+    game.setDayNightCycle(true)
+    const on = renderToStaticMarkup(
       <TitleScreen
+        game={game}
+        section="settings"
+        onSection={() => {}}
         sandbox={false}
         onSandboxChange={() => {}}
         enableHints
         onEnableHintsChange={() => {}}
-        dayNightCycle={false}
         onNewGame={() => {}}
-        onChooseKit={() => {}}
         onContinue={() => {}}
       />,
     )
-    expect(off).toContain('Day and night cycle')
-    expect(off).toContain('data-testid="day-night-cycle-toggle"')
-    expect(off).not.toContain('data-testid="day-night-cycle-toggle" checked=""')
+    expect(on).toContain('data-testid="settings-day-night" checked=""')
+    expect(on).toContain('Day/night cycle: On')
+    game.setDayNightCycle(false)
+    const off = renderToStaticMarkup(
+      <TitleScreen
+        game={game}
+        section="settings"
+        onSection={() => {}}
+        sandbox={false}
+        onSandboxChange={() => {}}
+        enableHints
+        onEnableHintsChange={() => {}}
+        onNewGame={() => {}}
+        onContinue={() => {}}
+      />,
+    )
+    expect(off).toContain('Day/night cycle: Off')
+    expect(off).not.toContain('data-testid="settings-day-night" checked=""')
+    game.setDayNightCycle(true)
   })
 })
 
@@ -81,8 +103,13 @@ describe('new-game sheet', () => {
         onEnableHintsChange={() => {}}
         onBought={() => {}}
         onBack={() => {}}
+        onContinue={() => {}}
+        onNavigate={() => {}}
       />,
     )
+    expect(html).toContain('Free play')
+    expect(html).toContain('Island Hop')
+    expect(html).toContain('data-testid="new-scenario-free"')
     expect(html).toContain(STARTER_KITS.pax.label)
     expect(html).toContain(STARTER_KITS.cargo.label)
     expect(html).toContain(STARTER_KITS.pax.includes[2])

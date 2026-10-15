@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { PERSONAS, runHeadless } from './run.ts'
+import { summarizeRun } from './summary.ts'
 
 /**
  * Reachability check for the mid/late checklist. Not part of `npm test`.
@@ -49,8 +50,10 @@ describe.skipIf(!enabled)('careful bot to day 150', () => {
       softlocks: report.softlocks,
       errors: report.consoleErrors,
     }
-    writeFileSync('/tmp/careful-150.json', JSON.stringify(summary, null, 2))
-    console.log(`CAREFUL150 ${JSON.stringify(summary)}`)
+    const packed = { ...summary, run: summarizeRun(report) }
+    writeFileSync('/tmp/careful-150.json', JSON.stringify(packed, null, 2))
+    writeFileSync(new URL('../../docs/playtest/bots/careful150.json', import.meta.url), JSON.stringify(packed, null, 2))
+    console.log(`CAREFUL150 ${JSON.stringify(packed)}`)
     expect(report.consoleErrors).toEqual([])
     expect(report.daysRan).toBeGreaterThanOrEqual(150)
   }, 900_000)

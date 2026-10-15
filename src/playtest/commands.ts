@@ -3,7 +3,17 @@
  * Bot modules import this file and nothing from the renderer.
  */
 import type { MoneyCategory } from '../core/bank.ts'
-import { MIN_RUNWAY, RESEARCH_NODES, RUNWAY_PREFAB_COST, STARTER_KIT_COST, FIELD_TASK_FAIL_FINE, DESK_STAFF_HIRE, HELIPAD_COST } from '../game/catalog.ts'
+import {
+  MIN_RUNWAY,
+  RESEARCH_NODES,
+  STARTER_KIT_COST,
+  FIELD_TASK_FAIL_FINE,
+  DESK_STAFF_HIRE,
+  HELIPAD_COST,
+  RESEARCHER_HIRE,
+  RUNWAY_PREFAB_COST,
+  STAND_COST,
+} from '../game/catalog.ts'
 import { runwayStrips, tilesOf } from '../game/path.ts'
 import { Game } from '../game/sim.ts'
 import { ALERT_TUNING, STUCK_PHASES } from '../game/alertsData.ts'
@@ -15,7 +25,16 @@ import { RESEARCH_NODES as TREE_NODES, nodeById } from '../research/nodes.ts'
 import { FUEL_CONTRACTS } from '../scale/data.ts'
 import { queueAtNode } from '../terminalplay/queues.ts'
 import { techNode } from '../wave3/research.ts'
-import type { AirportView, CommandResult, PlayerCommands, Probe, ResearchPools, SystemsBooks } from './types.ts'
+import type {
+  AirportView,
+  CommandResult,
+  FieldPulse,
+  LedgerOps,
+  PlayerCommands,
+  Probe,
+  ResearchPools,
+  SystemsBooks,
+} from './types.ts'
 
 const FINE_CATEGORIES = [
   'penalties',
@@ -52,6 +71,15 @@ function result(ok: boolean, command: string, detail: string): CommandResult {
 
 function finite(n: number): number {
   return Number.isFinite(n) ? n : 0
+}
+
+/** Occupied bays plus aircraft holding without a stand, over the stand count. */
+function standPressure(game: Game): number {
+  const stands = game.bayView().stands
+  if (!stands.length) return 0
+  const occupied = stands.filter((stand) => stand.occupied).length
+  const holding = game.flights.filter((flight) => flight.phase === 'hold' && !flight.stand).length
+  return (occupied + holding) / stands.length
 }
 
 function fieldAskView(game: Game): AirportView['fieldAsk'] {
@@ -112,6 +140,22 @@ class GamePlayer implements PlayerCommands {
     this.game.signScaleContract('apex_local')
     const ok = this.game.contractId === 'apex_local' && before !== 'apex_local'
     return result(ok, 'signFuelTerm', ok ? 'Apex Local' : this.latest('fuel term did not sign'))
+  }
+
+  acceptSpot(): CommandResult {
+    if (!this.game.spotOffer) return result(false, 'acceptSpot', 'no spot card')
+    const flight = this.game.spotOffer.flightNo
+    const before = this.game.spotInbound
+    this.game.acceptSpot()
+    const ok = this.game.spotInbound != null && before == null
+    return result(ok, 'acceptSpot', ok ? flight : this.latest('spot tanker did not order'))
+  }
+
+  hireResearcher(): CommandResult {
+    const before = this.game.researchers
+    this.game.hireResearcher()
+    const ok = this.game.researchers > before
+    return result(ok, 'hireResearcher', ok ? `#${this.game.researchers}` : this.latest('researcher not hired'))
   }
 
   chooseFreehand(): CommandResult {
@@ -654,7 +698,77 @@ class GamePlayer implements PlayerCommands {
       activeFlights: game.flights.length,
       fuelTerm: game.contractId,
       fuelSignCost: FUEL_CONTRACTS.find((row) => row.id === 'apex_local')?.sign ?? 0,
+      spotOffer: game.spotOffer
+        ? {
+            flightNo: game.spotOffer.flightNo,
+            secondsLeft: Math.max(0, Math.ceil(game.spotOffer.expiresAt - game.clock)),
+          }
+        : null,
+      runwayOver: game.runwayLoad().overbooked,
+      standPressure: standPressure(game),
+      standCost: STAND_COST,
+      researcherCost: game.staffHireCost(RESEARCHER_HIRE),
+      researchers: game.researchers,
       fieldAsk: fieldAskView(game),
+    }
+  }
+
+  pulse(): FieldPulse {
+    const game = this.game
+    return {
+      curbPressure: finite(game.landsideView().pressure),
+      fuelHeldIds: game.flights.filter((flight) => flight.fuelHeld).map((flight) => flight.id),
+      news: game.news.map((item) => ({ id: item.id, text: item.text })),
+      alerts: game.alerts.active.map((alert) => ({
+        key: alert.key,
+        title: alert.title,
+        detail: alert.detail,
+      })),
+      spotOffer: game.spotOffer ? { flightNo: game.spotOffer.flightNo } : null,
+    }
+  }
+
+  hubReached(): { tier: string; rank: number } {
+    const order = ['station', 'focus', 'base', 'hub', 'primary']
+    let tier = 'none'
+    let rank = -1
+    for (const id of this.game.signed) {
+      const current = this.game.hubChecklistFor(id).current
+      const next = order.indexOf(current)
+      if (next > rank) {
+        rank = next
+        tier = current
+      }
+    }
+    return { tier, rank }
+  }
+
+  tallyOps(): LedgerOps {
+    const game = this.game
+    const ledger = game.bank.ledger()
+    let goArounds = 0
+    let missedConnectionCash = 0
+    let fuelPurchase = 0
+    let spotPurchase = 0
+    let termPurchase = 0
+    for (const entry of ledger.entries) {
+      if (entry.meta.unpaid || !(entry.amount < 0)) continue
+      const label = entry.meta.label ?? ''
+      if (/go-around/i.test(label)) goArounds += 1
+      if (entry.category === 'missed_connection') missedConnectionCash += entry.amount
+      if (entry.category !== 'fuel_purchase') continue
+      const spent = Math.abs(entry.amount)
+      fuelPurchase += spent
+      if (/spot/i.test(label)) spotPurchase += spent
+      else termPurchase += spent
+    }
+    return {
+      goArounds,
+      missedConnectionCash: Math.round(missedConnectionCash),
+      connectionDiverts: game.connectionTally.divert,
+      fuelPurchase: Math.round(fuelPurchase),
+      spotPurchase: Math.round(spotPurchase),
+      termPurchase: Math.round(termPurchase),
     }
   }
 
