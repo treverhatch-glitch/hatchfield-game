@@ -61,7 +61,7 @@ export interface SafBuilding extends BuildingBase {
 export interface CargoLateBuilding extends BuildingBase {
   id: CargoLateId
   kind: 'cargo'
-  /** Economy-wallet node that must be owned before the building can be ordered. */
+  /** Legacy field. Late research gates live on the Growth tree. */
   requiresTech: string | null
   /** Chilled rooms this building counts as. Zero for the hub. */
   coldRooms: number

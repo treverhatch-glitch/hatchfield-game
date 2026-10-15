@@ -264,7 +264,6 @@ export type ManageSheet =
   | 'research'
   | 'levels'
   | 'specialize'
-  | 'wallet'
   | 'tycoon'
   | 'council'
   | 'achievements'
@@ -296,7 +295,6 @@ export type ManageTabId =
   | 'research'
   | 'levels'
   | 'specializations'
-  | 'wallet'
   | 'achievements'
 
 export interface ManageTab {
@@ -368,12 +366,11 @@ export const MANAGE_MENUS: readonly ManageMenu[] = [
   {
     id: 'growth',
     label: 'Growth',
-    tip: 'Research tree, field levels, specializations, ops wallet, and achievements',
+    tip: 'Research tree, field levels, specializations, and achievements',
     tabs: [
       { id: 'research', label: 'Research tree', tip: 'Research points, the lab, and branch trees', sheet: 'research' },
       { id: 'levels', label: 'Field Levels', tip: 'What each field level unlocks', sheet: 'levels' },
       { id: 'specializations', label: 'Specializations', tip: 'Hub, low-cost, cargo, and luxury trees', sheet: 'specialize' },
-      { id: 'wallet', label: 'Ops wallet', tip: 'Operations points and the nine upgrade branches they buy', sheet: 'wallet' },
       { id: 'achievements', label: 'Achievements', tip: 'Milestones already reached, and yearly awards', sheet: 'achievements' },
     ],
   },

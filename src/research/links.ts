@@ -24,6 +24,7 @@ export const BUILD_LINKS: Readonly<Record<string, string>> = {
   hangar_w: 'airside-4',
   mro: 'airside-5',
   nighthub: 'airside-6',
+  cold_store: 'spec-cargo-2',
   fuel_rail: 'airside-6',
   oil: 'airside-6',
   fuel_pipe: 'airside-7',

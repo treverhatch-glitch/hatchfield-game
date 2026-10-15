@@ -113,7 +113,7 @@ const cargoLate: readonly CargoLateBuilding[] = [
     buildDays: COLD_STORE.buildDays,
     purpose: COLD_STORE.purpose,
     catch: COLD_STORE.catch,
-    requiresTech: COLD_STORE.techId,
+    requiresTech: null,
     coldRooms: COLD_STORE.rooms,
   },
 ]

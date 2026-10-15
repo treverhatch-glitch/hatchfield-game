@@ -66,8 +66,8 @@ Late buildings use `lateFieldLevel()`, which follows the same XP through FL9 (3,
 | MARS stands | SIM ONLY | `mars_stands` in `src/content/research_tier5.ts` `4a49a28`. That list is not imported by the live tree. `StandClass` is only S, M, and L. |
 | Cargo hub | PLAYABLE | Night hub stamp `nighthub` at FL4, opened by `airside-6` (`src/tier3/unlock.ts`). Cargo spec nodes add the rest. |
 | Cargo hub II | PLAYABLE | Build > Airside ops > Bags/Cargo > Cargo hub II (`src/tier3plus/catalog.ts`, wave logic in `src/tier3/session.ts`, mesh in `src/render/world/cargoLate.ts`). Needs a night hub on the field. Adds three freighter slots and more handling and storage to the night wave, scaled by its 30-strong ground crew and power. |
-| Cold chain | PLAYABLE | Cold store on the same tray, behind the economy node Cold-Chain & Express Hub (buy it in Growth > Ops wallet). Pays +20% on every night wave at full power and counts as chilled rooms for the diplomacy cold-chain ask. |
-| MRO | PLAYABLE | Stamp `mro` at FL4. `airside-5` grants `mro_hangar`. Jobs run in `src/tier3/session.ts`. The economy income bonus `maintenance.mroIncome` stays off because that tech node is never bought. |
+| Cold chain | PLAYABLE | Cold store on the same tray, behind Night freight on the Growth tree. Pays +20% on every night wave at full power and counts as chilled rooms for the diplomacy cold-chain ask. |
+| MRO | PLAYABLE | Stamp `mro` at FL4. `airside-5` grants `mro_hangar` and the hangar income bonus (`maintenance.t4`). Jobs run in `src/tier3/session.ts`. |
 | Hotel | PLAYABLE | Hall stamps `hotel_inn`, `hotel_biz`, `hotel_resort`, and the late `airport_hotel` at FL7 (`src/tier3plus/catalog.ts` `4a2bae1`, landside research `landside-6`). |
 | Rail link | PLAYABLE | `rail_link` at FL9 in that catalog, and the rail station stamp `rail` (`landside-5`). |
 | Tower | PLAYABLE | Control tower stamp, research `airfield-5`. |
@@ -91,7 +91,7 @@ Tier III rows that are data only (`pier_iii`, garage, remote screening, de-icing
 | Item | Status | Evidence |
 | --- | --- | --- |
 | Growth tree, including spec branches | PLAYABLE | `src/research/nodes.ts` `5b91d76` and `src/ui/research/ResearchTree.tsx`. Costs are 0 / 26 / 38 / 54 / 76 / 108 (`src/research/config.ts`, `docs/RESEARCH.md`). The careful bot finished all 62 nodes on day 90. |
-| Economy tech tree | PLAYABLE (partly) | Growth > Ops wallet (`src/ui/OpsWalletPanel.tsx`, `src/economy/wallet.ts`). Nodes the sim reads (`src/economy/wiring.ts` `LIVE_TECH`) and their prerequisites can be bought; the rest are held back so points are not spent on nothing. Solar array and battery bank appear on the apron. Economy state is saved. |
+| Economy tech tree | FOLDED | The Ops wallet is not a second research pot. Live nodes (`src/economy/wiring.ts` `LIVE_TECH`) are granted by the Growth tree (`src/research/opsFold.ts`). A saved Ops balance is moved into that wallet on load. Solar array and battery bank still appear on the apron. |
 | Research tier 4 and 5 lists | SIM ONLY | `src/content/research_tier4.ts` and `research_tier5.ts` `4a49a28`. Tests check the ids. The live tree does not import them. Prerequisites are old desk ids. |
 | Hub connections and banks | PLAYABLE | From FL3 (`src/hub/share.ts`). `buildBanks` (`src/hub/banks.ts` `6205cb9`) feeds `tickHubConnections`. The flight card and the info views name Connections and Links. |
 | Hub-tier checklist | PLAYABLE | Airlines desk and the Hubs sheet (`src/ui/hub/HubPanels.tsx`, `20e829d`). Progress, the next tier’s rewards, and a common-use showcase are on the card. Desk and lane lines stay on “Waiting on the desk allocator” until a lease exists, and dedicating a desk stays disabled. |

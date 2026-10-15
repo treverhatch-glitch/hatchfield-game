@@ -33,18 +33,21 @@ describe('cargo hub II and cold store in the live game', () => {
     expect(game.news[0]?.text).toMatch(/night hub/)
   })
 
-  it('holds the cold store until the wallet node is owned, then builds and counts rooms', () => {
+  it('holds the cold store until Night freight is researched, then builds and counts rooms', () => {
     const game = field()
     game.tiles[10]![10] = 'nighthub'
+    game.tiles[2]![13] = 'road'
+    game.tiles[2]![14] = 'grass'
+    game.tiles[2]![15] = 'grass'
+    game.tiles[2]![16] = 'road'
     stamp(game, 'cold_store', 14, 2)
     expect(game.lateSites).toHaveLength(0)
-    expect(game.news[0]?.text).toMatch(/Ops wallet/)
+    expect(game.news[0]?.text).toMatch(/Night freight/)
 
-    game.sandbox = true
-    for (const id of ['cargo.t1', 'cargo.t2', 'safety_security.t1', 'safety_security.t2', 'safety_security.t3', 'cargo.t3', 'cargo.t4']) {
-      game.buyOpsTech(id)
-    }
-    game.sandbox = false
+    game.researchPoints = 400
+    expect(game.buyResearchNode('spec-charter')).toBe(true)
+    expect(game.buyResearchNode('spec-cargo-1')).toBe(true)
+    expect(game.buyResearchNode('spec-cargo-2')).toBe(true)
     expect(game.hasOpsTech('cargo.t4')).toBe(true)
     stamp(game, 'cold_store', 15, 2)
     expect(game.lateSites).toHaveLength(1)

@@ -1,5 +1,5 @@
 /**
- * Apron pieces that appear once the Ops wallet buys them: a solar array
+ * Apron pieces that appear once the Growth tree grants them: a solar array
  * (sustainability.t1) and a battery bank (sustainability.t2). Boxes only.
  */
 import * as THREE from 'three'

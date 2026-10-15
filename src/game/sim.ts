@@ -643,8 +643,7 @@ import {
   type EconomyAdapter,
 } from '../economy/adapter.ts'
 import type { EconomySnapshot, EconomyState, PowerLoad, PowerPlantTier } from '../economy/types.ts'
-import { techNode } from '../economy/techTree.ts'
-import { restoreEconomyState, walletRefusal, walletView, type WalletView } from '../economy/wallet.ts'
+import { restoreEconomyState, walletView, type WalletView } from '../economy/wallet.ts'
 import {
   arrivalSpacingScale,
   bankTarget,
@@ -713,6 +712,7 @@ import { OPS_RP_PER_SEC, CATEGORIES, FLIGHT_RP, FLIGHT_RP_PER_50_PAX, NIGHT_FREI
 import { ResearchEngine } from '../research/engine.ts'
 import { researchMods } from '../research/effects.ts'
 import { DESK_TO_NODE, deskIdsForNode, foldResearchSave, WAVE3_TO_NODE } from '../research/legacy.ts'
+import { OPS_LIVE_TO_NODE, foldOpsWallet, growthNodeForOpsTech } from '../research/opsFold.ts'
 import { categoryUnlocked, nodeCost, nodeState } from '../research/logic.ts'
 import { nodeById } from '../research/nodes.ts'
 import { Wave3Engine } from '../wave3/engine.ts'
@@ -1490,8 +1490,6 @@ export class Game {
   private economy: EconomyAdapter | null = null
   private economyState: EconomyState | null = null
   private economyView: EconomySnapshot | null = null
-  private walletNudged = new Set<string>()
-  private walletNudgeDue = false
   branding: BrandingSave = defaultBranding()
   private ambience: AmbienceMixer | null = null
   crashCool = 8
@@ -7901,6 +7899,7 @@ export class Game {
       this.researchUnlocked = (folded.researchUnlocked as ResearchId[] | undefined) ?? []
       this.wave3.load(foldedWave)
       this.researchTree.load(foldedTree, this.fieldLevel())
+      this.foldOpsWalletIntoTree()
       this.noteTreeGrants()
       if (legacyPits && this.hasResearch('hydrant_fuel')) this.grantLegacyPits()
       this.missedConnections = s.missedConnections ?? 0
@@ -8210,7 +8209,7 @@ export class Game {
     return this.economyView
   }
 
-  /** Operations wallet: the points, the nine branches, and what each node does in the airport. */
+  /** Economy tech sheet. Its research balance is swept into the Growth tree. */
   opsWallet(): WalletView {
     const engine = this.ensureEconomy().engine
     return walletView(engine.state, this.lateFieldLevel(), this.sandbox)
@@ -8218,46 +8217,64 @@ export class Game {
 
   hasOpsTech(id: string): boolean {
     const owned = this.economyState?.unlockedTech ?? this.economyView?.state.unlockedTech ?? []
-    return owned.includes(id)
+    if (owned.includes(id)) return true
+    const nodeId = growthNodeForOpsTech(id)
+    return nodeId ? this.researchTree.owns(nodeId) : false
   }
 
+  /**
+   * Old callers asked the Ops wallet to spend its own points. The same id now
+   * buys the Growth node that replaced it, out of the one research wallet.
+   */
   buyOpsTech(id: string): boolean {
-    const adapter = this.ensureEconomy()
-    const state = adapter.engine.state
-    const refusal = walletRefusal(id, state, this.lateFieldLevel(), this.sandbox)
-    if (refusal) {
-      this.pushNews(refusal, 'bad')
+    const nodeId = growthNodeForOpsTech(id)
+    if (!nodeId) {
+      this.pushNews('Nothing in the airport reads that upgrade.', 'bad')
       this.emit()
       return false
     }
-    const node = techNode(id)
-    if (!node) return false
-    if (state.researchPoints < node.costRp) state.researchPoints = node.costRp
-    if (!adapter.unlockTech(id)) {
-      this.pushNews(`${node.name} could not be unlocked.`, 'bad')
-      this.emit()
-      return false
-    }
-    this.pushNews(`Ops wallet: ${node.name} owned. ${node.description}`, 'good')
-    this.emit()
-    return true
+    return this.buyResearchNode(nodeId)
   }
 
-  /** One nudge per node, the first time its points and prerequisites line up. */
-  private nudgeOpsWallet(): void {
-    const view = this.opsWallet()
-    if (!view.nextBuy || this.walletNudged.has(view.nextBuy)) return
-    this.walletNudged.add(view.nextBuy)
-    const node = techNode(view.nextBuy)
-    if (!node) return
-    // A fixed id keeps this automatic line off the random stream that seeded runs share.
-    this.news.unshift({
-      id: `n-wallet-${this.walletNudged.size}`,
-      text: `Ops wallet: ${view.points} RP banked. ${node.name} is ready in Growth > Ops wallet.`,
-      tone: 'good',
-      age: 0,
+  /** Saved Ops points and already-owned live tech move onto the Growth tree once. */
+  private foldOpsWalletIntoTree(): void {
+    const economy = this.economyState
+    if (!economy) return
+    const folded = foldOpsWallet(this.researchTree.state, {
+      researchPoints: economy.researchPoints,
+      researchProgress: economy.researchProgress,
+      unlockedTech: economy.unlockedTech,
     })
-    this.news = this.news.slice(0, 10)
+    this.researchTree.state = folded.tree
+    economy.researchPoints = 0
+    economy.researchProgress = 0
+  }
+
+  /** Growth nodes that replaced a live economy tech keep that tech's effect. */
+  private mirrorOpsTechFromGrowth(): void {
+    const engine = this.economy?.engine
+    if (!engine) return
+    let changed = false
+    for (const [techId, nodeId] of Object.entries(OPS_LIVE_TO_NODE)) {
+      if (!this.researchTree.owns(nodeId)) continue
+      if (engine.state.unlockedTech.includes(techId)) continue
+      engine.state.unlockedTech.push(techId)
+      changed = true
+    }
+    if (changed && this.economyState) this.economyState.unlockedTech = [...engine.state.unlockedTech]
+  }
+
+  /** The economy engine still accrues a private balance. It is not a second wallet. */
+  private discardOpsResearchPot(): void {
+    const engine = this.economy?.engine
+    if (!engine) return
+    if (engine.state.researchPoints === 0 && engine.state.researchProgress === 0) return
+    engine.state.researchPoints = 0
+    engine.state.researchProgress = 0
+    if (this.economyState) {
+      this.economyState.researchPoints = 0
+      this.economyState.researchProgress = 0
+    }
   }
 
   private groundIncomeCategory(category: string): MoneyCategory {
@@ -20019,9 +20036,6 @@ export class Game {
           onEconomySnapshot: (snapshot) => {
             this.economyView = snapshot
           },
-          onEconomyEvent: (event) => {
-            if (event.type === 'research_earned') this.walletNudgeDue = true
-          },
         },
         { initialState: this.economyState ?? undefined },
       )
@@ -21936,12 +21950,7 @@ export class Game {
       this.emit()
       return
     }
-    const cargoNeed = cargoLateRefusal(
-      id,
-      tilesOf(this.tiles, 'nighthub').length > 0,
-      (techId) => this.hasOpsTech(techId),
-      this.lateSites,
-    )
+    const cargoNeed = cargoLateRefusal(id, tilesOf(this.tiles, 'nighthub').length > 0, this.lateSites)
     if (cargoNeed) {
       this.pushNews(cargoNeed, 'bad')
       this.emit()
@@ -26748,11 +26757,10 @@ export class Game {
     this.clock += step
     this.scanAlerts(step)
     this.simClock.advanceRealSeconds(dt, this.speed)
+    this.ensureEconomy()
+    this.mirrorOpsTechFromGrowth()
     this.ensureEconomy().tick(step * SIM_MINUTES_PER_REAL_SECOND)
-    if (this.walletNudgeDue) {
-      this.walletNudgeDue = false
-      this.nudgeOpsWallet()
-    }
+    this.discardOpsResearchPot()
     this.tickAmbience(dt)
     this.sampleEconomy(step)
     this.spawnCool = Math.max(0, this.spawnCool - step)

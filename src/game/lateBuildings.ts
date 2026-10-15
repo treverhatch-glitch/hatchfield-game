@@ -7,7 +7,8 @@
  * stay queued. Until that module exists, nothing fills the queue except the hook.
  */
 import { money } from './catalog.ts'
-import { LATE_OPS_TECH, NEEDS_NIGHT_HUB } from '../tier3plus/cargoConfig.ts'
+import { linkFor } from '../research/links.ts'
+import { NEEDS_NIGHT_HUB } from '../tier3plus/cargoConfig.ts'
 import { inBounds } from './path.ts'
 import {
   buildingById,
@@ -54,15 +55,12 @@ export function isLandmarkId(id: string): boolean {
 export function cargoLateRefusal(
   id: Tier3PlusId,
   hasNightHub: boolean,
-  hasTech: (techId: string) => boolean,
   placed: readonly LatePlacement[],
 ): string | null {
   const spec = buildingById(id)
   if (spec?.kind !== 'cargo') return null
   if (placed.some((site) => site.id === id)) return `${spec.name} is one per airport.`
   if (NEEDS_NIGHT_HUB.has(id) && !hasNightHub) return `${spec.name} needs a cargo night hub on the field first.`
-  const tech = LATE_OPS_TECH[id]
-  if (tech && !hasTech(tech.id)) return `${spec.name} needs ${tech.name} from Growth > Ops wallet.`
   return null
 }
 
@@ -142,7 +140,8 @@ export function lateCatalogLines(id: Tier3PlusId, fieldLevel: number, placed: nu
     lines.push(`${spec.buildDays}-day build`)
   } else if (spec.kind === 'cargo') {
     lines.push('Needs a cargo night hub on the field')
-    if (spec.requiresTech) lines.push(`Needs ${LATE_OPS_TECH[spec.id]?.name ?? spec.requiresTech} from the Ops wallet`)
+    const research = linkFor(spec.id)
+    if (research) lines.push(`Requires research: ${research.label}.`)
     lines.push(`${spec.buildDays}-day build · one per airport`)
   } else if (spec.kind === 'landmark') {
     lines.push(
