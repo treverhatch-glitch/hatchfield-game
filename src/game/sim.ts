@@ -6914,6 +6914,7 @@ export class Game {
     let scheduled = 0
     for (const slot of this.schedule) {
       if (slot.status !== 'scheduled' && slot.status !== 'delayed' && slot.status !== 'inbound') continue
+      if (this.slotUsesPad(slot)) continue
       // One turn is the arrival and the departure that must clear before the next ETA.
       if (slot.eta >= start - RUNWAY_LATE_SLACK_SEC && slot.eta < end) scheduled += 2
     }
