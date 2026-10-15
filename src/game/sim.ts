@@ -16358,7 +16358,6 @@ export class Game {
   counterNegotiation() {
     const session = this.negotiationBridge?.desk.session
     if (!session || session.status !== 'open') return
-    if (this.offer && this.signRefused(this.offer.airline)) return
     const result = this.negotiationDesk().counter()
     if (result.outcome === 'signed') this.acceptOffer()
     else if (result.outcome === 'walked') this.clearWalkedOffer()
@@ -16425,7 +16424,7 @@ export class Game {
     if (!profile.id) return
   }
 
-  /** Desk and pad refusals. Runs before the negotiation desk books anything. */
+  /** Desk and pad refusals. Accept runs this before the negotiation desk books anything. */
   private signRefused(id: string): boolean {
     const gate = this.checkinSignReport(id)
     if (!gate.ok) {
