@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { GAME_MINUTES_PER_SIM_SECOND } from '../../pax/showup'
 import { contractsAdapter, type ContractMovement } from './contractsAdapter'
 import { makeFakeGame } from './fakeGame'
-import { gameScheduleAdapter, icaoForAirframe, TOWER_HOLD, TOWER_PULL } from './gameAdapter'
+import { gameScheduleAdapter, hardWindow, icaoForAirframe } from './gameAdapter'
 import { axisTicks, boardRows, buildGantt, hourTicks, pxToSec, runwayBuckets, runwayLanes, runwayOf, viewSpan } from './layout'
-import { SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
+import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
 import { clampToWindow, clockLabel, durationLabel, standFits } from './time'
 
 describe('clock face', () => {
@@ -85,7 +85,7 @@ describe('game schedule adapter', () => {
     const s2 = rows.find((r) => r.id === 's2:arr')!
     expect(s2.pinned).toBe(true)
     expect(s2.standLabel).toBe('G6')
-    expect(s2.window).toEqual({ start: 150 - TOWER_PULL, end: 150 + TOWER_HOLD, source: 'tower' })
+    expect(s2.window).toEqual(hardWindow(150, 100))
     expect(s2.onStandTo - s2.onStandFrom).toBeCloseTo(turnSimSec('narrow'), 5)
   })
 
@@ -98,14 +98,35 @@ describe('game schedule adapter', () => {
     expect(groups[0].rows[0].bars[0].flight.flightNo).toBe('SK1')
   })
 
-  it('moveTo clamps into the window and maps to pull/bump', () => {
+  it('moveTo clamps into the hard window and maps to pull/bump', () => {
     const { a, log, game } = setup()
+    const reach = gameMinToSim(SCHEDULE.hardWindowMin)
     a.moveTo('s1:arr', 500)
-    expect(game.schedule[0].eta).toBe(130 + TOWER_HOLD)
+    expect(game.schedule[0].eta).toBeCloseTo(130 + reach, 5)
     a.moveTo('s1:arr', 0)
-    expect(game.schedule[0].eta).toBe(106)
+    expect(game.schedule[0].eta).toBeCloseTo(130 - reach, 5)
     expect(log[0]).toMatch(/^bump s1/)
     expect(log[1]).toMatch(/^pull s1/)
+  })
+
+  it('pins a fitting stand and refuses one the aircraft does not fit', () => {
+    const { a, game } = setup()
+    game.flights.push({ id: 'heavy', airframeId: 'a380', kind: 'widebody' } as (typeof game.flights)[number])
+    game.schedule[0].flightId = 'heavy'
+    a.pinStand('s1:arr', '4,4')
+    expect(game.schedule[0].standPref).toBeNull()
+    a.pinStand('s1:arr', '6,4')
+    expect(game.schedule[0].standPref).toEqual({ c: 6, r: 4 })
+    a.pinStand('s1:arr', null)
+    expect(game.schedule[0].standPref).toBeNull()
+  })
+
+  it('snaps a drag back to the hard window', () => {
+    const { a, game } = setup()
+    const reach = gameMinToSim(SCHEDULE.hardWindowMin)
+    a.moveTo('s1:arr', 10_000)
+    expect(game.schedule[0].eta).toBeCloseTo(130 + reach, 5)
+    expect(game.schedule[0].eta).toBeLessThan(200)
   })
 
   it('pins, swaps, pulls, bumps, cancels', () => {

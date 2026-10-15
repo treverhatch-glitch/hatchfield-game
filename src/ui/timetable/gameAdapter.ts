@@ -2,8 +2,8 @@ import { AIRFRAMES } from '../../game/airframes'
 import { tilesOf } from '../../game/path'
 import type { Game } from '../../game/sim'
 import type { AircraftKind, Flight, ScheduleSlot, Vec } from '../../game/types'
-import { turnBand, turnSimSec } from './scheduleConfig'
-import { clampToWindow, hourSecs } from './time'
+import { gameMinToSim, SCHEDULE, turnBand, turnSimSec } from './scheduleConfig'
+import { clampToWindow, hourSecs, standFits } from './time'
 import type { IcaoCode, TimetableAdapter, TtFlight, TtRunway, TtStand, TtWindow } from './types'
 
 /**
@@ -30,10 +30,16 @@ export type ScheduleGame = Pick<
 >
 
 export const DAY_LENGTH = 180
-/** Tower can pull a slot this far ahead of its banked ETA (sim seconds). */
-export const TOWER_PULL = 30
-/** Tower lets you hold a slot this far after its banked ETA before it reads as a miss. */
-export const TOWER_HOLD = 45
+
+/** Hard drag window around the banked ETA. Past it, the bar snaps back. */
+export function hardWindow(anchor: number, now: number): TtWindow {
+  const reach = gameMinToSim(SCHEDULE.hardWindowMin)
+  return {
+    start: Math.max(now + 6, anchor - reach),
+    end: anchor + reach,
+    source: 'tower',
+  }
+}
 const TAXI = 6
 
 const STAND_ICAO: Record<string, IcaoCode> = { S: 'C', M: 'E', L: 'F' }
@@ -75,11 +81,7 @@ const unkey = (s: string): Vec => {
 
 export function towerWindow(slot: ScheduleSlot, now: number, anchor?: number): TtWindow {
   const base = anchor ?? slot.eta - slot.delaySec
-  return {
-    start: Math.max(now + 6, base - TOWER_PULL),
-    end: Math.max(now + 6, base + TOWER_HOLD),
-    source: 'tower',
-  }
+  return hardWindow(base, now)
 }
 
 export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
@@ -240,7 +242,14 @@ export function gameScheduleAdapter(game: ScheduleGame): TimetableAdapter {
     },
     pinStand(id, standId) {
       const s = slotOf(id)
-      if (s) game.setSlotStandPref(s.id, standId ? unkey(standId) : null)
+      if (!s || (s.status !== 'scheduled' && s.status !== 'delayed')) return
+      if (standId) {
+        const flight = s.flightId ? game.flights.find((f) => f.id === s.flightId) : undefined
+        const icao = flight ? icaoForAirframe(flight.airframeId, flight.kind) : 'C'
+        const standIcao = STAND_ICAO[game.standClassAt(unkey(standId))] ?? 'E'
+        if (!standFits(standIcao, icao)) return
+      }
+      game.setSlotStandPref(s.id, standId ? unkey(standId) : null)
     },
     swapStands(a, b) {
       const sa = slotOf(a)

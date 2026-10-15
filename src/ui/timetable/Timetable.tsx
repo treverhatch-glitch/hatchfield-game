@@ -10,8 +10,10 @@ const ZOOMS = [6, 12, 24] as const
 interface Drag {
   id: string
   startX: number
+  startY: number
   widthPx: number
   dx: number
+  dy: number
   moved: boolean
 }
 
@@ -73,7 +75,15 @@ export function Timetable({
       return
     }
     const lane = (e.currentTarget.parentElement as HTMLElement | null)?.getBoundingClientRect()
-    const d: Drag = { id: f.id, startX: e.clientX, widthPx: lane?.width ?? 600, dx: 0, moved: false }
+    const d: Drag = {
+      id: f.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      widthPx: lane?.width ?? 600,
+      dx: 0,
+      dy: 0,
+      moved: false,
+    }
     dragRef.current = d
     setDrag(d)
     e.currentTarget.setPointerCapture?.(e.pointerId)
@@ -82,17 +92,25 @@ export function Timetable({
     const d = dragRef.current
     if (!d || d.id !== f.id) return
     const dx = e.clientX - d.startX
-    const next = { ...d, dx, moved: d.moved || Math.abs(dx) > 3 }
+    const dy = e.clientY - d.startY
+    const next = { ...d, dx, dy, moved: d.moved || Math.abs(dx) > 3 || Math.abs(dy) > 8 }
     dragRef.current = next
     setDrag(next)
   }
-  const onBarUp = (f: TtFlight) => {
+  const onBarUp = (e: RPointerEvent<HTMLDivElement>, f: TtFlight) => {
     const d = dragRef.current
     dragRef.current = null
     setDrag(null)
     if (!d || d.id !== f.id) return
-    if (d.moved && f.movable && adapter.caps.move) {
-      adapter.moveTo(f.id, f.time + pxToSec(d.dx, d.widthPx, span))
+    if (d.moved && f.movable) {
+      if (adapter.caps.move && Math.abs(d.dx) > 3) {
+        adapter.moveTo(f.id, f.time + pxToSec(d.dx, d.widthPx, span))
+      }
+      if (adapter.caps.pin && Math.abs(d.dy) > 8) {
+        const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-stand]')
+        const standId = hit?.getAttribute('data-stand') || null
+        adapter.pinStand(f.id, standId)
+      }
     }
     setSel(f.id)
   }
@@ -174,7 +192,7 @@ export function Timetable({
                   <div key={g.icao} className="tt-group">
                     {g.icao === 'none' ? <h4>Tower</h4> : null}
                     {g.rows.map((row, ri) => (
-                      <div key={row.stand?.id ?? `none-${ri}`} className="tt-row">
+                      <div key={row.stand?.id ?? `none-${ri}`} className="tt-row" data-stand={row.stand?.id ?? ''}>
                         <span className="tt-label" title={row.stand ? `Takes up to Code ${row.stand.icao}` : ''}>
                           {row.stand ? row.stand.label : ri === 0 ? 'Tower' : ''}
                         </span>
@@ -208,7 +226,7 @@ export function Timetable({
                                   }}
                                   onPointerDown={(e) => onBarDown(e, f)}
                                   onPointerMove={(e) => onBarMove(e, f)}
-                                  onPointerUp={() => onBarUp(f)}
+                                  onPointerUp={(e) => onBarUp(e, f)}
                                   title={`${f.flightNo} ${clockLabel(f.time + off, day)}`}
                                 >
                                   {f.pinned ? '📌' : ''}
