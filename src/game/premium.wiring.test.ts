@@ -61,6 +61,21 @@ describe('premium screening on the field', () => {
     expect(economy.premiumScreen).toBe('general')
   })
 
+  it('opens fast-track II when the Growth tree has scanner lanes', () => {
+    const game = field()
+    game.fieldXp = 1_100
+    game.cash = 100_000
+    expect(game.fieldLevel()).toBe(6)
+    expect(game.hasCtScanners()).toBe(false)
+    expect(game.buyPremium('fast_track_2')).toBe(false)
+
+    game.researchTree.state.unlocked.push('safety-4')
+    expect(game.hasResearch('ct_lanes')).toBe(true)
+    expect(game.hasCtScanners()).toBe(true)
+    expect(game.buyPremium('fast_track_2')).toBe(true)
+    expect(game.premium.built.some((row) => row.itemId === 'fast_track_2')).toBe(true)
+  })
+
   it('drops happiness when premium passengers have no lane, and uses the VIP room when it is built', () => {
     const missed = field()
     const guest = atSecurity(missed, 'premium', 'premium')

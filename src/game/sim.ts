@@ -15964,6 +15964,8 @@ export class Game {
   }
 
   hasCtScanners(): boolean {
+    // Growth node safety-4 grants ct_lanes. The economy tech id is a second wallet the sheet never spends.
+    if (this.hasResearch('ct_lanes')) return true
     const unlocked = this.economyState?.unlockedTech ?? this.economyView?.state.unlockedTech ?? []
     return unlocked.includes(CT_TECH_ID)
   }

@@ -60,7 +60,7 @@ Late buildings use `lateFieldLevel()`, which follows the same XP through FL9 (3,
 | RFID bags | PLAYABLE | `retail-2`, then the $28,000 RFID line after the centre is paid. Connect time drops to 25 game-minutes. Same file. |
 | Low-cost fit-out | PLAYABLE | Spec branch in `src/ui/SpecTree.tsx` `4833711` and Growth nodes `spec-lowcost-*` (`src/research/nodes.ts` `5b91d76`). Path points arrive at field levels 6, 8, and 10. |
 | Premium fit-out | PLAYABLE | Same spec tree, plus the premium sheet (`src/ui/PremiumPanel.tsx` `7f1f1c7`): premium check-in at FL3, fast-track I at FL4, fast-track III and the VIP room at FL8 (`src/premium/data.ts`). |
-| Fast-track lane II | SIM ONLY | The lane is on that sheet at FL6 and asks for CT scanners. `hasCtScanners()` only accepts economy tech `safety_security.t2` (`src/game/sim.ts`). The player wallet is the Growth tree. `safety-4` grants `ct_lanes` and never sets that tech id, and `unlockTech` is never called from the game. |
+| Fast-track lane II | PLAYABLE | The lane is on the premium sheet at FL6. `hasCtScanners()` is true when Growth node `safety-4` has granted `ct_lanes`, and still true for economy tech `safety_security.t2` (`src/game/sim.ts`). The card says whether CT scanners are online. |
 | Code F stand | PLAYABLE | Jumbo stamp `stand_l` is in the stand tray. `standIcao` returns F for jumbo and legacy L (`src/game/sim.ts` `d31f542`). Airfield research `airfield-3` and field level 5. |
 | Code F tray row | PLAYABLE as a bill | `code_f` at FL8 (`src/progression/unlocks.ts` `9d2e1ec`) is a commission: cash and daily upkeep. It does not place a stand. The stand is `stand_l`. |
 | MARS stands | SIM ONLY | `mars_stands` in `src/content/research_tier5.ts` `4a49a28`. That list is not imported by the live tree. `StandClass` is only S, M, and L. |
@@ -108,8 +108,7 @@ Tier III rows that are data only (`pier_iii`, garage, remote screening, de-icing
 
 These exist in the sim and a normal game does not unlock or show them.
 
-1. Fast-track lane II. `hasCtScanners()` should also accept Growth grant `ct_lanes`.
-2. Scenarios. An opt-in list on the Field Levels sheet, started by the player. A new game must not apply Island Hop’s `noLandPlots` by itself.
+1. Scenarios. An opt-in list on the Field Levels sheet, started by the player. A new game must not apply Island Hop’s `noLandPlots` by itself.
 
 Left alone on purpose:
 
