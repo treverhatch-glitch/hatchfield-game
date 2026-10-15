@@ -10,6 +10,8 @@ import {
   runwayMovementCapacity,
   runwayOverbooked,
 } from '../atc/capacity.ts'
+import { TOWER_BASE_CAPACITY, TOWER_III_UPGRADE } from '../airside/data.ts'
+import { canBuildTowerIII } from '../airside/tower.ts'
 import { auditWorld, placementReason, type WorldViolation } from './worldRules.ts'
 import type { DisruptionHost, DisruptionId, DisruptionWorld, FlightBank } from '../disruptions/types.ts'
 import { DisruptionBridge } from './disruptionBridge.ts'
@@ -1253,6 +1255,8 @@ export class Game {
   specNodes: string[] = []
   /** Commissioned progression stamps (check-in hall, hydrant, landmark, …). */
   progressionBuilt: string[] = []
+  /** Placed tower cell keys carrying the Tower III approach-control fit. */
+  towerIII = new Set<string>()
   parcels = 1
   /** Owned expansion plots. Empty until the city or factory site is bought. */
   ownedPlots: OwnedPlot[] = []
@@ -1907,6 +1911,7 @@ export class Game {
     this.specPaths = []
     this.specNodes = []
     this.progressionBuilt = []
+    this.towerIII.clear()
     this.parcels = 1
     this.ownedPlots = []
     this.staffHousing.reset()
@@ -6570,6 +6575,7 @@ export class Game {
     }
     const pit = progressionBuildable('hydrant')
     if (pit) n += Object.keys(this.standPits).length * pit.upkeepPerDay
+    n += this.towerIII.size * TOWER_III_UPGRADE.upkeepPerDay
     n += this.specMods().upkeepPerDay
     return Math.round(n * siteUpkeepMultiplier(this.specPaths.length))
   }
@@ -7402,6 +7408,7 @@ export class Game {
       specPaths: this.specPaths,
       specNodes: this.specNodes,
       progressionBuilt: this.progressionBuilt,
+      towerIII: [...this.towerIII],
       parcels: this.parcels,
       ownedPlots: this.ownedPlots,
       staffHousing: this.staffHousing.save(),
@@ -7636,6 +7643,12 @@ export class Game {
       const legacyPits = s.standPits == null
       this.standPits = { ...(s.standPits ?? {}) }
       this.hydrantArm = false
+      this.towerIII = new Set(
+        (s.towerIII ?? []).filter((key) => {
+          const [c, r] = key.split(',').map(Number)
+          return inBounds(c, r) && this.tiles[r]?.[c] === 'tower'
+        }),
+      )
       this.extraAirlines = (s.extraAirlines ?? []).map((a) => normalizeAirline(a as Airline))
       this.parcels = s.parcels ?? 1
       this.ownedPlots = this.site ? restoreOwned(s.ownedPlots, this.parcels, LAND_PLOT) : []
@@ -13056,6 +13069,26 @@ export class Game {
       if (offer.upkeepPerDay > 0) lines.push(`Upkeep $${offer.upkeepPerDay.toLocaleString('en-US')} / day`)
       return lines
     }
+    if (id.startsWith('tower:')) {
+      const key = id.slice('tower:'.length)
+      const fitted = this.towerIII.has(key)
+      const hasApproach = this.progressionBuilt.includes(TOWER_III_UPGRADE.prerequisite)
+      const gate = this.towerIIIGate(key)
+      return [
+        fitted ? 'Tower III · approach control' : hasApproach ? 'Tower II · approach control' : 'Control tower I',
+        `ATC runway capacity ${
+          fitted
+            ? TOWER_III_UPGRADE.movementsPerHour
+            : TOWER_BASE_CAPACITY[hasApproach ? 2 : 1]
+        } movements/hr`,
+        fitted
+          ? `+${TOWER_III_UPGRADE.maxInboundBonus} simultaneous approach · ${TOWER_III_UPGRADE.spawnIntervalSeconds}s sequencing`
+          : gate.why,
+        fitted
+          ? `Upkeep $${TOWER_III_UPGRADE.upkeepPerDay.toLocaleString('en-US')} / day`
+          : `Tower III $${TOWER_III_UPGRADE.cost.toLocaleString('en-US')} · $${TOWER_III_UPGRADE.upkeepPerDay.toLocaleString('en-US')} / day`,
+      ]
+    }
     if (id === 'mro') return mroInfoLines(this.tier3.snapshot())
     if (id === 'nighthub') return nightHubInfoLines(this.tier3.snapshot())
     if (id === 'retail') {
@@ -13192,6 +13225,47 @@ export class Game {
     if (!this.spend(cost, 'supply runner', 'construction')) return false
     this.ensureCatering().engine.addRunner()
     this.pushNews('Second supply runner. The cart starts from the back-of-house dock.', 'good')
+    this.emit()
+    return true
+  }
+
+  private towerIIIGate(key: string) {
+    const [c, r] = key.split(',').map(Number)
+    return canBuildTowerIII({
+      towerPlaced: inBounds(c, r) && this.tiles[r]?.[c] === 'tower',
+      fieldLevel: this.fieldLevel(),
+      hasApproachControl: this.progressionBuilt.includes(TOWER_III_UPGRADE.prerequisite),
+      alreadyBuilt: this.towerIII.size > 0,
+    })
+  }
+
+  towerIIIUpgradeOffer(): { ok: boolean; why: string; cost: number } | null {
+    const id = this.infoOpen
+    if (!id?.startsWith('tower:')) return null
+    const gate = this.towerIIIGate(id.slice('tower:'.length))
+    return { ...gate, cost: TOWER_III_UPGRADE.cost }
+  }
+
+  buyTowerIII(): boolean {
+    const id = this.infoOpen
+    if (!id?.startsWith('tower:')) {
+      this.pushNews('Click a placed control tower to buy Tower III.', 'bad')
+      this.emit()
+      return false
+    }
+    const key = id.slice('tower:'.length)
+    const gate = this.towerIIIGate(key)
+    if (!gate.ok) {
+      this.pushNews(gate.why, 'bad')
+      this.emit()
+      return false
+    }
+    if (!this.spend(TOWER_III_UPGRADE.cost, TOWER_III_UPGRADE.name)) return false
+    this.towerIII.add(key)
+    this.pushNews(
+      `Tower III online — ${TOWER_III_UPGRADE.movementsPerHour} movements/hr and tighter approach sequencing. Upkeep $${TOWER_III_UPGRADE.upkeepPerDay.toLocaleString('en-US')}/day.`,
+      'good',
+    )
     this.emit()
     return true
   }
@@ -20203,6 +20277,7 @@ export class Game {
       }
       if (tile === 'fuel') this.openFuelFarm()
       else if (tile === 'bags') this.toggleInfo('bags')
+      else if (tile === 'tower') this.toggleInfo(`tower:${v.c},${v.r}`)
       if (
         tile === 'road' ||
         tile === 'bus' ||
@@ -20965,6 +21040,7 @@ export class Game {
       delete this.fittings[hostKey('hangar', v.c, v.r)]
       delete this.hubLinksBuilt[`${v.c},${v.r}`]
       delete this.hangarScale[`${v.c},${v.r}`]
+      this.towerIII.delete(`${v.c},${v.r}`)
     }
     this.bumpMap()
     this.ensureGround()
@@ -22597,6 +22673,7 @@ export class Game {
     const strips = this.runwayStripCount()
     let n = 1 + Math.min(6, Math.max(1, strips))
     if (this.hasResearch('stand_class')) n += 1
+    if (this.towerIII.size > 0) n += TOWER_III_UPGRADE.maxInboundBonus
     n += this.specInboundBonus()
     // Extra terminal campuses — one more simultaneous approach each (cap 2).
     if (this.fits.length >= 2) n += Math.min(2, this.fits.length - 1)
@@ -22956,7 +23033,11 @@ export class Game {
     this.noteSpawnLateness(slot)
     slot.status = 'inbound'
     slot.flightId = f.id
-    this.spawnCool = tilesOf(this.tiles, 'tower').length ? 10 : 14
+    this.spawnCool = this.towerIII.size
+      ? TOWER_III_UPGRADE.spawnIntervalSeconds
+      : tilesOf(this.tiles, 'tower').length
+        ? 10
+        : 14
     this.selectedFlight = this.selectedFlight ?? f.id
     const role = craftRoleLabel(af.kind)
     const late = slot.delaySec > 0 ? ` (${Math.round(slot.delaySec)}s late)` : ''

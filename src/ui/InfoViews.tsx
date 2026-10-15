@@ -235,6 +235,18 @@ function LinesPanel({ game, id, onClose }: { game: Game; id: string; onClose: ()
             {repair.label}
           </button>
         ) : null}
+        {id.startsWith('tower:') && game.towerIIIUpgradeOffer() ? (
+          <button
+            type="button"
+            data-testid="upgrade-tower-iii"
+            disabled={!game.towerIIIUpgradeOffer()!.ok}
+            onClick={() => game.buyTowerIII()}
+          >
+            {game.towerIIIUpgradeOffer()!.ok
+              ? `Build Tower III $${game.towerIIIUpgradeOffer()!.cost.toLocaleString('en-US')}`
+              : 'Tower III unavailable'}
+          </button>
+        ) : null}
       </aside>
     </div>
   )
