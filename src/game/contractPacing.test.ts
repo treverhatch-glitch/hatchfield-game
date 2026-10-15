@@ -140,6 +140,18 @@ describe('first fifteen minutes on a new field', () => {
   })
 })
 
+describe('a carrier already on the books', () => {
+  it('does not sign them a second time', () => {
+    const game = started()
+    game.offer = { airline: 'northline', age: 0, deadline: 36 }
+    game.acceptOffer()
+    game.offer = { airline: 'northline', age: 0, deadline: 36 }
+    game.acceptOffer()
+    expect(game.signed.filter((id) => id === 'northline')).toHaveLength(1)
+    expect(game.news.some((n) => n.text.includes('already on the books'))).toBe(true)
+  })
+})
+
 describe('the letter says what it needs', () => {
   it('lists stands, aircraft size, and security, with a qualifies line', () => {
     const game = started()

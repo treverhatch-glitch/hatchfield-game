@@ -15484,6 +15484,13 @@ export class Game {
       this.emit()
       return
     }
+    if (this.signed.includes(id)) {
+      this.offer = null
+      this.offerCool = coolAfterSign(this.signed.length)
+      this.pushNews(`${this.airline(id).name} is already on the books.`, 'ok')
+      this.emit()
+      return
+    }
     const a = this.airline(id)
     this.signed.push(id)
     this.hubTierSince[id] = this.gameDay()

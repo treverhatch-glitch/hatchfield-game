@@ -229,7 +229,7 @@ export class StandingAdvisor {
       }
     }
 
-    for (const id of signed) {
+    for (const id of new Set(signed)) {
       const ep = this.getEpisode(id)
       const currentStanding = this.adapter.getStanding(id)
       const abandonThreshold = this.adapter.getAbandonThreshold(id)
