@@ -252,7 +252,7 @@ function LinesPanel({ game, id, onClose }: { game: Game; id: string; onClose: ()
           >
             {game.towerIIIUpgradeOffer()!.ok
               ? `Build Tower III $${game.towerIIIUpgradeOffer()!.cost.toLocaleString('en-US')}`
-              : 'Tower III unavailable'}
+              : game.towerIIIUpgradeOffer()!.why}
           </button>
         ) : null}
       </aside>
