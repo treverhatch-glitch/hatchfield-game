@@ -1,0 +1,115 @@
+{
+  "sha": "0776a1b84f0ec373c90d5fabf0cc43fc21cc4725",
+  "shortSha": "0776a1b84f0e",
+  "mode": "quick",
+  "ok": false,
+  "node": "v22.14.0",
+  "dirty": [],
+  "startedAt": "2026-10-15T20:16:52.288Z",
+  "finishedAt": "2026-10-15T20:33:11.039Z",
+  "durationMs": 978751,
+  "soakDays": 30,
+  "testCounts": {
+    "filesPassed": 479,
+    "filesFailed": 1,
+    "filesSkipped": 6,
+    "files": 486,
+    "passed": 3104,
+    "failed": 1,
+    "skipped": 9,
+    "total": 3114
+  },
+  "soak": null,
+  "steps": [
+    {
+      "id": "node",
+      "status": "pass",
+      "durationMs": 0,
+      "exitCode": 0,
+      "command": "process.version",
+      "detail": "v22.14.0 (>= 22.12)",
+      "tail": ""
+    },
+    {
+      "id": "npm-ci",
+      "status": "pass",
+      "durationMs": 2211,
+      "exitCode": 0,
+      "command": "npm ci",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "unpack-art",
+      "status": "pass",
+      "durationMs": 36,
+      "exitCode": 0,
+      "command": "/exec-daemon/node scripts/unpack-art.mjs",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "tsc",
+      "status": "pass",
+      "durationMs": 14955,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/typescript/bin/tsc -b",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "oxlint",
+      "status": "pass",
+      "durationMs": 598,
+      "exitCode": 0,
+      "command": "/exec-daemon/node node_modules/oxlint/bin/oxlint",
+      "detail": "",
+      "tail": ""
+    },
+    {
+      "id": "vitest",
+      "status": "fail",
+      "durationMs": 960935,
+      "exitCode": 1,
+      "command": "/exec-daemon/node node_modules/vitest/vitest.mjs run --maxWorkers=2",
+      "detail": "3104 passed, 1 failed, 9 skipped (486 files)",
+      "tail": "RUN  v5.0.4 /workspace\n\n ❯ tests/sim/inboundRequests30d.test.ts (1 test | 1 failed) 9546ms\n   ❯ inbound requests, 30 days (1)\n     × walk-in and priority asks come and go without wedging the field 9544ms\n\n Test Files  1 failed | 479 passed | 6 skipped (486)\n      Tests  1 failed | 3104 passed | 9 skipped (3114)\n   Start at  20:17:10\n   Duration  960.55s (tests 95%, import 4%, transform 1%)\n\n    Isolate  486 workers spawned · ~79ms startup each (spawn + environment, per file)\n             at least ~19.16s faster with isolate: false — reuses workers across files instead of one per file\n\n\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  tests/sim/inboundRequests30d.test.ts > inbound requests, 30 days > walk-in and priority asks come and go without wedging the field\nAssertionError: stuck vehicles: flt-3dx7vb: expected 1 to be less than or equal to 0\n ❯ expectHealthy tests/sim/harness.ts:222:67\n    220|   expect(m.lostPaxPeak, 'lost pax').toBeLessThanOrEqual(bounds.maxLost…\n    221|   expect(m.bagsLost, 'lost bags').toBeLessThanOrEqual(bounds.maxLostBa…\n    222|   expect(m.stuck.length, `stuck vehicles: ${m.stuck.join(', ')}`).toBe…\n       |                                                                   ^\n    223|     bounds.maxStuck ?? 0,\n    224|   )\n ❯ tests/sim/inboundRequests30d.test.ts:35:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯"
+    },
+    {
+      "id": "vite-build",
+      "status": "skip",
+      "durationMs": 0,
+      "exitCode": null,
+      "command": "",
+      "detail": "not run",
+      "tail": ""
+    },
+    {
+      "id": "soak",
+      "status": "skip",
+      "durationMs": 0,
+      "exitCode": null,
+      "command": "",
+      "detail": "not run",
+      "tail": ""
+    },
+    {
+      "id": "draw-budgets",
+      "status": "skip",
+      "durationMs": 0,
+      "exitCode": null,
+      "command": "",
+      "detail": "not run",
+      "tail": ""
+    },
+    {
+      "id": "playtest-bots",
+      "status": "skip",
+      "durationMs": 0,
+      "exitCode": null,
+      "command": "",
+      "detail": "not run",
+      "tail": ""
+    }
+  ]
+}
