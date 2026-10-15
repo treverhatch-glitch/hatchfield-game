@@ -12,7 +12,7 @@ export function ViewModeToggle({ game }: { game: Game }) {
         type="button"
         data-testid="view-airport"
         className={game.view === 'apron' ? 'on' : ''}
-        onClick={() => game.setView('apron')}
+        onClick={() => game.askView('apron')}
       >
         Airport
       </button>
@@ -21,7 +21,7 @@ export function ViewModeToggle({ game }: { game: Game }) {
         data-testid="view-terminal"
         className={game.view === 'hall' ? 'on' : ''}
         title="Roof off. Build and walk the interior."
-        onClick={() => game.setView('hall')}
+        onClick={() => game.askView('hall')}
       >
         Terminal
       </button>

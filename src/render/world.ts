@@ -30,6 +30,8 @@ import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
 import { zoomToCursorShift } from '../camera/zoom.ts'
+import { APRON_MAX_DIST, noteMaxZoomFrame } from './viewBudget'
+import { TRANSITION_SEC, beginCue, clearCue, cueCanSkip, sectionWeights } from './viewCue'
 import {
   addBerth,
   addFuelPipe,
@@ -116,7 +118,7 @@ export { CELL }
 
 /** Closest hall view. The interior cutaway engages below about 54. */
 const MIN_DIST = 12
-const MAX_DIST = 280
+const MAX_DIST = APRON_MAX_DIST
 const MIN_PITCH = 0.28
 const MAX_PITCH = 1.35
 
@@ -266,6 +268,13 @@ export class World {
   yaw = 0.72
   pitch = 0.68
   dist = 88
+  private cueKind: 'apron' | 'hall' | '' = ''
+  private cueT = 0
+  private cueFromDist = 88
+  private cueFromPivot = new THREE.Vector3()
+  private savedApronDist = 88
+  private savedPivot = new THREE.Vector3()
+  private liveGame: Game | null = null
   dragging: 'orbit' | 'pan' | 'pending' | 'paint' | null = null
   lastX = 0
   lastY = 0
@@ -503,6 +512,11 @@ export class World {
   bind(canvas: HTMLCanvasElement) {
     this.onContextMenu = (e) => e.preventDefault()
     this.onPointerDown = (e: PointerEvent) => {
+      const live = this.liveGame
+      if (live?.viewCue && cueCanSkip()) {
+        live.setView(live.viewCue)
+        return
+      }
       // The player grabbed the camera: stop easing toward a "Show me" target.
       this.goalTo = null
       const tool = this.getTool()
@@ -2293,7 +2307,10 @@ export class World {
     perfFrame()
     let t = perfStart()
     this.resize()
+    this.liveGame = game
     this.easeToGoal(game, dt)
+    this.applyViewCue(game, Math.min(0.05, dt))
+    noteMaxZoomFrame(Math.min(0.05, dt), this.dist >= MAX_DIST - 0.5)
     this.applyCelebrationBeat()
     this.applyPerfMode(game)
     this.rebuildTiles(game)
@@ -2329,6 +2346,51 @@ export class World {
     }
     if (perf.syncGpu) this.renderer.getContext().finish()
     perfEnd('world.gl', t)
+  }
+
+  /**
+   * Roof and wall beat. The sim view changes when the beat finishes.
+   * A click or key after a short grace calls setView and this snaps.
+   */
+  private applyViewCue(game: Game, dt: number) {
+    const cue = game.viewCue
+    if (!cue) {
+      if (this.cueKind) {
+        this.wr.setShellCue(null)
+        if (this.cueKind === 'apron') {
+          this.dist = clamp(this.savedApronDist, MIN_DIST, MAX_DIST)
+          this.pivot.copy(this.savedPivot)
+          this.placeCam()
+        }
+        this.cueKind = ''
+        this.cueT = 0
+        clearCue()
+      }
+      return
+    }
+    if (this.cueKind !== cue) {
+      this.cueKind = cue
+      this.cueT = 0
+      this.cueFromDist = this.dist
+      this.cueFromPivot.copy(this.pivot)
+      if (cue === 'hall') {
+        this.savedApronDist = this.dist
+        this.savedPivot.copy(this.pivot)
+      }
+      beginCue(cue)
+    }
+    this.cueT = Math.min(1, this.cueT + dt / TRANSITION_SEC)
+    const u = this.cueT * this.cueT * (3 - 2 * this.cueT)
+    const aim = this.wr.terminalAim()
+    const toDist = cue === 'hall' ? 48 : this.savedApronDist
+    const toX = cue === 'hall' && aim ? aim.x : this.savedPivot.x
+    const toZ = cue === 'hall' && aim ? aim.z : this.savedPivot.z
+    this.dist = clamp(this.cueFromDist + (toDist - this.cueFromDist) * u, MIN_DIST, MAX_DIST)
+    this.pivot.x = this.cueFromPivot.x + (toX - this.cueFromPivot.x) * u
+    this.pivot.z = this.cueFromPivot.z + (toZ - this.cueFromPivot.z) * u
+    this.placeCam()
+    this.wr.setShellCue(sectionWeights(cue === 'hall' ? 'enter' : 'leave', this.cueT))
+    if (this.cueT >= 1) game.setView(cue)
   }
 
   private beatSeen = ''

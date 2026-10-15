@@ -1713,6 +1713,8 @@ export class Game {
   readonly hallNav = new HallNav()
   private secSeq = 1
   view: 'apron' | 'hall' = 'apron'
+  /** Player asked to change view. The renderer plays the beat, then calls setView. */
+  viewCue: 'apron' | 'hall' | null = null
   spawnCool = 8
   heloCool = 22
   /** Gap between signed helicopter spawns. Does not hold the runway. */
@@ -8785,6 +8787,7 @@ export class Game {
       tool !== 'premade' &&
       tool !== 'terminal'
     ) {
+      this.viewCue = null
       this.view = 'apron'
     }
     this.tool = tool
@@ -8813,7 +8816,24 @@ export class Game {
     return this.speed < 5
   }
 
+  /** Ask for the roof beat. setView still switches at once for tests and saves. */
+  askView(view: 'apron' | 'hall') {
+    if (view === 'hall' && !this.fits.length) {
+      this.pushNews('Stamp a Premade hall or empty Shell outside first.', 'bad')
+      this.emit()
+      return
+    }
+    if (this.viewCue) {
+      this.setView(view)
+      return
+    }
+    if (view === this.view) return
+    this.viewCue = view
+    this.emit()
+  }
+
   setView(view: 'apron' | 'hall') {
+    this.viewCue = null
     if (view === 'hall' && !this.fits.length) {
       this.pushNews('Stamp a Premade hall or empty Shell outside first.', 'bad')
       this.emit()
@@ -8845,11 +8865,11 @@ export class Game {
       this.emit()
       return
     }
-    this.setView('hall')
+    this.askView('hall')
   }
 
   exitHall() {
-    if (this.view === 'hall') this.setView('apron')
+    if (this.view === 'hall') this.askView('apron')
   }
 
   /**
@@ -9794,7 +9814,7 @@ export class Game {
   /** Focus a campus hall (from HUD chips or pan-click). */
   selectHall(fit: TerminalFit) {
     this.selectedTile = { ...fit.origin }
-    this.setView('hall')
+    this.askView('hall')
   }
 
   /** Hall bodies one flight seeds. Jetway turns are quick — more bodies linger and spend. Walkers are rushed. */

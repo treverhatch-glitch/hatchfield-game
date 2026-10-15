@@ -11,6 +11,7 @@ import { bindLiveHud, hudTreeVersion, subscribeHudTree } from './ui/liveHud'
 import { LandScreen } from './ui/LandScreen'
 import { MenuFlyover } from './ui/MenuFlyover'
 import { TerminalView } from './ui/TerminalView'
+import { shownWorld } from './render/viewCue'
 import { OwnerChrome } from './ui/isolated/OwnerChrome'
 import { OfferPanel } from './negotiation/OfferPanel'
 import { PriceWarCard } from './rival/PriceWarCard'
@@ -289,10 +290,11 @@ function CanvasLayers() {
   // on each HUD tick. The hall chrome subscribes only while that view is open.
   useSyncExternalStore(
     subscribeChrome,
-    () => (game.view === 'hall' ? chromeSnapshot() : game.view),
+    () => `${shownWorld(game.view, game.viewCue)}|${game.view === 'hall' ? chromeSnapshot() : game.view}`,
     () => 'apron',
   )
   const view = game.view
+  const shown = shownWorld(view, game.viewCue)
   // The hall is a second WebGL context. On SwiftShader that context switch
   // shows up in the compositor even while the canvas is hidden, so it stays
   // unmounted until the player opens Terminal, then it stays warm.
@@ -300,11 +302,11 @@ function CanvasLayers() {
   if (view === 'hall' && !hallLive) setHallLive(true)
   return (
     <>
-      <div className={`view-layer ${view === 'apron' ? 'live' : 'dim'}`}>
+      <div className={`view-layer ${shown === 'apron' ? 'live' : 'dim'}`}>
         <Field game={game} />
       </div>
       {hallLive ? (
-        <div className={`view-layer ${view === 'hall' ? 'live' : 'dim'}`}>
+        <div className={`view-layer ${shown === 'hall' ? 'live' : 'dim'}`}>
           <TerminalView game={game} />
         </div>
       ) : null}

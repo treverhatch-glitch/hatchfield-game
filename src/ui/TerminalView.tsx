@@ -10,6 +10,7 @@ import { registerHallTools } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
 import { GUEST_GLANCE } from '../paxnav/guestConfig.ts'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
+import { shownWorld } from '../render/viewCue'
 import { WalkerCard, WalkerOnlyCard } from './WalkerCard'
 import {
   GRID_C,
@@ -269,7 +270,7 @@ export function TerminalView({ game }: { game: Game }) {
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      if (game.view === 'hall') {
+      if (shownWorld(game.view, game.viewCue) === 'hall') {
         const w = worldRef.current
         if (w) {
           const speed = 18 * dt
