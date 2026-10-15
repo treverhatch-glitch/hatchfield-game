@@ -1,7 +1,8 @@
 /**
  * npm run playtest:bots [-- --quick]
  * Headless personas, then a Playwright pass over the production build.
- * Writes docs/playtest/bots/report.md and report.json.
+ * Writes docs/playtest/bots/report.md and report.json (quick runs write to the
+ * temp directory instead, so the gate leaves the tree clean).
  *
  * --quick (PLAYTEST_QUICK=1) runs the Careful persona for 15 days only and
  * skips the browser smoke and the opening check. The full command runs every
@@ -11,6 +12,7 @@
  */
 import { execSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'vitest'
@@ -21,8 +23,9 @@ import { runOpeningCheck } from './opening-check.mts'
 import { runSmoke } from './playtest-smoke.mts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const outDir = join(root, 'docs/playtest/bots')
 const quick = process.env.PLAYTEST_QUICK === '1'
+// Quick runs are a gate check, so they stay out of the tracked report.
+const outDir = quick ? join(tmpdir(), 'hatchfield-bots-quick') : join(root, 'docs/playtest/bots')
 const QUICK_DAYS = 15
 
 function skippedBrowser(reason: string): BrowserReport {
