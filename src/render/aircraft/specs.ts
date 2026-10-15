@@ -36,6 +36,18 @@ export const CELL = METERS_PER_CELL * WORLD_PER_METER
 export const WING_GAP_M = 4.5
 
 /**
+ * Apron jet bridge cab at the door, meters. The bellows face stops `gapM`
+ * off the skin, so nothing of the bridge sits inside the fuselage.
+ */
+export const BRIDGE_CAB_M = {
+  gapM: 0.12,
+  bellowsM: 0.4,
+  depthM: 2.6,
+  /** Cab is this much taller than the doorway, split above and below it. */
+  headroomM: 0.5,
+} as const
+
+/**
  * Painted stand limit, real meters, before AIRCRAFT_VISUAL_SCALE.
  * Width is across the wings. Depth is nose to tail.
  * Width already holds the ICAO wingtip clearance (code A/B 3 m, C 4.5 m, D–F 7.5 m)

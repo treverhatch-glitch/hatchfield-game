@@ -616,6 +616,8 @@ export interface Flight {
   /** Sim-clock scheduled departure. Show-up is keyed to this, not to boarding. */
   std?: number
   boardingSlow?: boolean
+  /** Board `phaseTime` when the doors closed and the jet bridge began to retract. */
+  bridgeShutAt?: number | null
   /** GA: clock when leave was requested; must depart by parkLeaveBy. */
   parkLeaveRequestedAt?: number | null
   /** GA parking — must depart by this clock or fine. */

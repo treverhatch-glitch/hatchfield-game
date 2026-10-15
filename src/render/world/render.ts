@@ -691,7 +691,8 @@ export class WorldRenderer {
       if (child.name !== 'apron-bridge') continue
       const stand = child.userData.stand as { c: number; r: number } | undefined
       const extend = stand && view.bridgeExtendAt ? view.bridgeExtendAt(stand) : 0
-      poseApronBridge(child, extend)
+      const craft = stand && extend > 0 ? (view.bridgeAircraftAt?.(stand) ?? null) : null
+      poseApronBridge(child, extend, craft)
     }
   }
 

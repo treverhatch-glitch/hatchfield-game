@@ -38,26 +38,19 @@ describe('boarding pictures', () => {
     const walking = samplePax(clock('bridge', 'deplane', 6))
     expect(walking.extend).toBe(1)
     expect(walking.step).toBe('walk')
-    expect(walking.people.length).toBeGreaterThan(0)
-    expect(walking.people.every((person) => person.alt > 2)).toBe(true)
     const done = samplePax(clock('bridge', 'deplane', 10))
     expect(done.extend).toBe(1)
     expect(done.people).toEqual([])
   })
 
-  it('walks bridge passengers from the terminal gate toward the door', () => {
-    const sample = samplePax(clock('bridge', 'board', 0.2))
-    expect(sample.step).toBe('walk')
-    const lead = sample.people[0]
-    expect(lead).toBeTruthy()
-    const gateD = Math.hypot(lead!.c - 14, lead!.r - 8)
-    const craftD = Math.hypot(lead!.c - 11, lead!.r - 6)
-    expect(gateD).toBeLessThan(craftD)
+  it('keeps bridge passengers inside the enclosed tunnel', () => {
+    for (const leg of ['deplane', 'board'] as const) {
+      for (let t = 0; t <= 10; t += 0.5) expect(samplePax(clock('bridge', leg, t)).people).toEqual([])
+    }
   })
 
-  it('retracts the bridge only after boarding', () => {
-    expect(samplePax(clock('bridge', 'board', 1)).extend).toBe(1)
-    expect(samplePax(clock('bridge', 'board', 9.5)).extend).toBeLessThan(0.5)
+  it('holds the bridge on the door for the whole board, even past the picture window', () => {
+    for (const t of [0, 1, 5, 9.5, 10, 40]) expect(samplePax(clock('bridge', 'board', t)).extend).toBe(1)
   })
 
   it('walks stair passengers up to the sill and back down without a jump', () => {

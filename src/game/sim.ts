@@ -741,8 +741,9 @@ import {
   type PassengerLink,
 } from '../connectivity/index.ts'
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
+import type { BridgeCraft } from '../render/world/view.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
-import { SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
+import { BRIDGE_RETRACT_SEC, SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
 import { rosterAirline } from '../airlines/roster.ts'
 import { RIVAL_NAME } from '../rival/config.ts'
 import { isAirlineUnlocked, unlockGate } from '../airlines/rosterOffers.ts'
@@ -1178,6 +1179,9 @@ function defaultBranding(): BrandingSave {
     presetId: preset.id,
   }
 }
+
+/** Phases where the aircraft sits on the stand and a bought bridge may reach it. */
+const BRIDGE_PHASES: ReadonlySet<Phase> = new Set<Phase>(['deboard', 'servicing', 'parked', 'board'])
 
 const FINANCING_CATEGORIES = new Set([
   'loan_proceeds',
@@ -12464,13 +12468,56 @@ export class Game {
     return services
   }
 
-  /** Jet bridge reach, 0 retracted and 1 docked. Other phases keep the bridge shut. */
+  /**
+   * Jet bridge reach, 0 retracted and 1 docked. It stays docked through the
+   * whole board and pulls back only once the push is cleared.
+   */
   bridgeExtend(flightId: string): number {
     const flight = this.flights.find((item) => item.id === flightId)
     if (!flight?.stand || flight.cargo || this.standPaxMode(flight.stand) !== 'jetway') return 0
     if (flight.phase === 'servicing' || flight.phase === 'parked') return bridgeHold()
-    if (flight.phase !== 'deboard' && flight.phase !== 'board') return 0
+    if (flight.phase === 'board') {
+      if (flight.bridgeShutAt == null) return bridgeHold()
+      const left = 1 - (flight.phaseTime - flight.bridgeShutAt) / BRIDGE_RETRACT_SEC
+      return Math.min(1, Math.max(0, left))
+    }
+    if (flight.phase !== 'deboard') return 0
     return samplePax(this.paxClock(flight)).extend
+  }
+
+  /** The aircraft a stand's bridge docks on, posed where the renderer draws it. */
+  bridgeAircraftAt(stand: Vec | null): BridgeCraft | null {
+    if (!stand || this.boughtBridges(stand) < 1) return null
+    let best: Flight | null = null
+    let bestReach = -1
+    for (const flight of this.flights) {
+      if (!flight.stand || flight.stand.c !== stand.c || flight.stand.r !== stand.r) continue
+      if (flight.cargo || (flight.craft ?? 'jet') !== 'jet') continue
+      if (!BRIDGE_PHASES.has(flight.phase)) continue
+      const reach = this.bridgeExtend(flight.id)
+      if (reach > bestReach) {
+        bestReach = reach
+        best = flight
+      }
+    }
+    if (!best) return null
+    const shove = this.pushbackRollMetres(best) / METERS_PER_CELL
+    return {
+      airframeId: best.airframeId || 'b738',
+      x: best.x - Math.cos(best.heading) * shove,
+      y: best.y - Math.sin(best.heading) * shove,
+      heading: best.heading,
+    }
+  }
+
+  /**
+   * True once a bought bridge is off the door. The first call after the push
+   * is cleared starts the retract; pushback waits for it.
+   */
+  private bridgeClear(f: Flight): boolean {
+    if (!f.stand || f.cargo || this.boughtBridges(f.stand) < 1 || this.standPaxMode(f.stand) !== 'jetway') return true
+    if (f.bridgeShutAt == null) f.bridgeShutAt = f.phaseTime
+    return f.phaseTime - f.bridgeShutAt >= BRIDGE_RETRACT_SEC
   }
 
   /**
@@ -25772,6 +25819,7 @@ export class Game {
   }
 
   beginBoarding(f: Flight) {
+    f.bridgeShutAt = null
     if (!f.stand || f.cargo) return
     const fit = this.roomsAt(f.stand)
     const planned = Boolean(
@@ -27388,13 +27436,13 @@ export class Game {
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
           const ramp = this.rampCall(f, f.phaseTime > boardLimit + 80)
-          if (
+          const cleared =
             deiceOk &&
             ramp !== 'hold' &&
             (this.departureMayEnterStrip(f) ||
               (this.runwayOverbooked() && f.phaseTime > boardLimit + 4)) &&
             (!this.groundBusy() || f.phaseTime > boardLimit + 4)
-          ) {
+          if (cleared && this.bridgeClear(f)) {
             if (ramp === 'short') {
               this.adjustHeat(f.airline, -1.2)
               this.pushNews(
@@ -27413,6 +27461,7 @@ export class Game {
             this.settleOutboundBags(f, true)
             f.phase = 'pushback'
             f.phaseTime = 0
+            f.bridgeShutAt = null
             if (f.stand) {
               f.path = this.pushbackPath(f.stand, f.heading)
               f.seg = 0
@@ -27421,7 +27470,7 @@ export class Game {
             if (Math.random() < 0.35) {
               this.pushNews(`${f.flightNo} pushback — clear the alley.`, 'ok')
             }
-          } else if (f.phaseTime > boardLimit + 6 && deiceOk && this.runwayOverbooked()) {
+          } else if (!cleared && f.phaseTime > boardLimit + 6 && deiceOk && this.runwayOverbooked()) {
             const next = this.openSchedule()[0]
             if (next && Math.random() < step * 0.35) {
               this.delaySlot(next, 8, 'Departure blocked')

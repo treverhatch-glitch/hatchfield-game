@@ -7,12 +7,23 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { BLOOM_LOOK, PROP_LOOK } from '../look'
 import { propTexture } from './propArt'
 import type { AirfieldLevels } from './dayNight'
-import { dockedJetBridge, type JetBridge, type LightKind, type LightSpot, type Mast, type Runway } from './layout'
+import { aircraftWorldPerMeter, BRIDGE_CAB_M } from '../aircraft/specs'
+import {
+  DIR_VEC,
+  dockedJetBridge,
+  dockToAircraft,
+  reachJetBridge,
+  type JetBridge,
+  type LightKind,
+  type LightSpot,
+  type Mast,
+  type Runway,
+} from './layout'
 import { instanced, trs } from './kit'
 import type { WorldTextures } from './textures'
 import { landingTexture } from './landingArt'
 import { fadeFloodPool } from './nightArt'
-import { CELL } from './view'
+import { CELL, type BridgeCraft } from './view'
 
 /** Apron flood wash: centre distance from the mast and size (across, along), world units. */
 export const FLOOD_REACH = CELL * 0.42
@@ -289,7 +300,7 @@ export class AirfieldLights {
   }
 }
 
-interface BridgePart {
+export interface BridgePart {
   name: string
   kind: 'box' | 'rotunda'
   x: number
@@ -302,31 +313,48 @@ interface BridgePart {
   slot: 'body' | 'dark' | 'glass' | 'stripe' | 'rotunda'
 }
 
-/** Telescoping parts along a root→cab span. The rotunda stays on the root. */
-function bridgeParts(b: JetBridge): BridgePart[] {
-  const dx = b.cab.x - b.root.x
-  const dz = b.cab.z - b.root.z
-  const len = Math.hypot(dx, dz)
+/** Rotunda centre sits this far out from the facade, world units. Its radius is 0.55. */
+const ROTUNDA_OUT = 0.6
+
+/**
+ * Telescoping parts. The rotunda stands just off the facade. The bellows face
+ * lands on `b.cab`, the cab sits behind it facing `b.cabFace`, and the tunnel
+ * runs from the rotunda into the cab.
+ */
+export function bridgeParts(b: JetBridge): BridgePart[] {
+  const n = DIR_VEC[b.side]
+  const rot = { x: b.root.x + n.dc * ROTUNDA_OUT, z: b.root.z + n.dr * ROTUNDA_OUT }
+  const wu = aircraftWorldPerMeter()
+  const bellowsD = BRIDGE_CAB_M.bellowsM * wu
+  const cabD = BRIDGE_CAB_M.depthM * wu
+  const ax = b.cab.x - b.root.x
+  const az = b.cab.z - b.root.z
+  const al = Math.hypot(ax, az) || 1
+  const face = b.cabFace ?? { x: ax / al, z: az / al }
+  const faceYaw = Math.atan2(face.x, face.z)
+  const cab = { x: b.cab.x - face.x * (bellowsD + cabD / 2), z: b.cab.z - face.z * (bellowsD + cabD / 2) }
+  const bel = { x: b.cab.x - face.x * (bellowsD / 2), z: b.cab.z - face.z * (bellowsD / 2) }
+  const dx = cab.x - rot.x
+  const dz = cab.z - rot.z
+  const len = Math.max(0.2, Math.hypot(dx, dz))
   const yaw = Math.atan2(dx, dz)
-  const ux = dx / (len || 1)
-  const uz = dz / (len || 1)
-  const at = (t: number) => ({ x: b.root.x + ux * t, z: b.root.z + uz * t })
+  const ux = dx / len
+  const uz = dz / len
+  const at = (t: number) => ({ x: rot.x + ux * t, z: rot.z + uz * t })
   const cabH = b.cabH
   const cabW = b.cabW
   const baseY = Math.max(0.35, b.cabY - cabH / 2)
-  const span = Math.max(1.4, len - 1.2)
   const out: BridgePart[] = []
-  const rot = at(0.35)
   out.push({ name: 'bridge-rotunda', kind: 'rotunda', x: rot.x, y: 0, z: rot.z, yaw: 0, sx: 1, sy: 1, sz: 1, slot: 'rotunda' })
   if (baseY > 1.5) {
     out.push({ name: 'bridge-riser', kind: 'box', x: rot.x, y: 0, z: rot.z, yaw: 0, sx: 0.4, sy: baseY, sz: 0.4, slot: 'dark' })
   }
-  const inner = at(0.7 + span * 0.3)
-  const outer = at(0.7 + span * 0.72)
-  out.push({ name: 'bridge-tunnel-a', kind: 'box', x: inner.x, y: baseY, z: inner.z, yaw, sx: cabW * 0.92, sy: cabH * 0.86, sz: span * 0.6, slot: 'body' })
-  out.push({ name: 'bridge-tunnel-b', kind: 'box', x: outer.x, y: baseY - 0.04, z: outer.z, yaw, sx: cabW, sy: cabH * 0.92, sz: span * 0.5, slot: 'body' })
-  out.push({ name: 'bridge-stripe-a', kind: 'box', x: inner.x, y: baseY - cabH * 0.42, z: inner.z, yaw, sx: cabW * 0.98, sy: 0.05, sz: span * 0.58, slot: 'stripe' })
-  out.push({ name: 'bridge-stripe-b', kind: 'box', x: outer.x, y: baseY - cabH * 0.46, z: outer.z, yaw, sx: cabW * 1.02, sy: 0.05, sz: span * 0.48, slot: 'stripe' })
+  const inner = at(len * 0.3)
+  const outer = at(len * 0.725)
+  out.push({ name: 'bridge-tunnel-a', kind: 'box', x: inner.x, y: baseY, z: inner.z, yaw, sx: cabW * 0.92, sy: cabH * 0.86, sz: len * 0.6, slot: 'body' })
+  out.push({ name: 'bridge-tunnel-b', kind: 'box', x: outer.x, y: baseY - 0.04, z: outer.z, yaw, sx: cabW, sy: cabH * 0.92, sz: len * 0.55, slot: 'body' })
+  out.push({ name: 'bridge-stripe-a', kind: 'box', x: inner.x, y: baseY - cabH * 0.42, z: inner.z, yaw, sx: cabW * 0.98, sy: 0.05, sz: len * 0.58, slot: 'stripe' })
+  out.push({ name: 'bridge-stripe-b', kind: 'box', x: outer.x, y: baseY - cabH * 0.46, z: outer.z, yaw, sx: cabW * 1.02, sy: 0.05, sz: len * 0.53, slot: 'stripe' })
   for (const s of [-1, 1] as const) {
     const wx = -uz * s * cabW * 0.52
     const wz = ux * s * cabW * 0.52
@@ -339,36 +367,35 @@ function bridgeParts(b: JetBridge): BridgePart[] {
       yaw,
       sx: 0.02,
       sy: cabH * 0.22,
-      sz: span * 0.55,
+      sz: len * 0.55,
       slot: 'glass',
     })
   }
-  const cab = at(Math.max(0.4, len - 0.45))
   out.push({
     name: 'bridge-cab',
     kind: 'box',
     x: cab.x,
     y: baseY - 0.04,
     z: cab.z,
-    yaw,
+    yaw: faceYaw,
     sx: cabW * 1.15,
-    sy: cabH,
-    sz: Math.min(1.1, span * 0.35),
+    sy: cabH + 0.04,
+    sz: cabD,
     slot: 'body',
   })
   out.push({
     name: 'bridge-bellows',
     kind: 'box',
-    x: cab.x + ux * 0.45,
-    y: baseY,
-    z: cab.z + uz * 0.45,
-    yaw,
+    x: bel.x,
+    y: baseY + cabH * 0.05,
+    z: bel.z,
+    yaw: faceYaw,
     sx: cabW,
     sy: cabH * 0.9,
-    sz: 0.18,
+    sz: bellowsD,
     slot: 'dark',
   })
-  const col = at(Math.max(1.2, len * 0.72))
+  const col = at(len * 0.72)
   out.push({ name: 'bridge-col-a', kind: 'box', x: col.x - uz * 0.25, y: 0, z: col.z + ux * 0.25, yaw, sx: 0.12, sy: baseY, sz: 0.12, slot: 'dark' })
   out.push({ name: 'bridge-col-b', kind: 'box', x: col.x + uz * 0.25, y: 0, z: col.z - ux * 0.25, yaw, sx: 0.12, sy: baseY, sz: 0.12, slot: 'dark' })
   out.push({
@@ -393,13 +420,23 @@ function applyBridgePart(mesh: THREE.Object3D, part: BridgePart) {
 }
 
 /**
+ * Where the bridge is drawn for this reach. With an aircraft on the stand the
+ * cab drives to that airframe's door; a bridge with no door there stays parked.
+ */
+export function posedApronBridge(full: JetBridge, extend: number, craft?: BridgeCraft | null): JetBridge {
+  if (!craft) return dockedJetBridge(full, extend)
+  const target = dockToAircraft(full, craft)
+  return target ? reachJetBridge(full, target, extend) : dockedJetBridge(full, 0)
+}
+
+/**
  * Slide the cab from the terminal socket toward the door.
  * The rotunda stays on the socket stored when the bridge was built.
  */
-export function poseApronBridge(group: THREE.Object3D, extend: number) {
+export function poseApronBridge(group: THREE.Object3D, extend: number, craft?: BridgeCraft | null) {
   const full = group.userData.bridge as JetBridge | undefined
   if (!full) return
-  const posed = dockedJetBridge(full, extend)
+  const posed = posedApronBridge(full, extend, craft)
   for (const part of bridgeParts(posed)) {
     const mesh = group.getObjectByName(part.name)
     if (mesh) applyBridgePart(mesh, part)

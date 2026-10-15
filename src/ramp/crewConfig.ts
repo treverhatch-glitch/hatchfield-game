@@ -167,6 +167,12 @@ export const LINE_LOOK = {
 /** Passengers drawn for one bridge, stair, or bus transfer. */
 export const PAX_STREAM = 4
 
+/**
+ * Sim seconds for a bought jet bridge to pull back off the door once boarding
+ * is closed. Pushback waits for it. 7.5 sim seconds is one game hour.
+ */
+export const BRIDGE_RETRACT_SEC = 0.8
+
 /** Catering-module phases that happen at the aircraft, in order. */
 export const CATER_STAND_PHASES = [
   'parking',

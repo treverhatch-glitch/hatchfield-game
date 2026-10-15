@@ -10,21 +10,21 @@ export type PaxMode = 'bridge' | 'stairs' | 'bus'
 export type PaxLeg = 'deplane' | 'board'
 
 export interface PaxStepShare {
-  id: 'extend' | 'walk' | 'retract' | 'ride' | 'clear'
+  id: 'extend' | 'walk' | 'ride' | 'clear'
   share: number
 }
 
-/** Bridge stays docked between deplane and board. It retracts only after boarding. */
+/**
+ * Bridge stays docked from the end of its extend through the whole board.
+ * The sim pulls it back once the push is cleared (`BRIDGE_RETRACT_SEC`).
+ */
 export const PAX_SHARES: Record<PaxMode, Record<PaxLeg, readonly PaxStepShare[]>> = {
   bridge: {
     deplane: [
       { id: 'extend', share: 0.24 },
       { id: 'walk', share: 0.76 },
     ],
-    board: [
-      { id: 'walk', share: 0.78 },
-      { id: 'retract', share: 0.22 },
-    ],
+    board: [{ id: 'walk', share: 1 }],
   },
   stairs: {
     deplane: [
@@ -123,29 +123,6 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
 }
 
-/**
- * Terminal end of the bridge, in aircraft metres.
- * A hall that sits on the aircraft itself keeps a short stub off the door.
- */
-function bridgeFarPoint(clock: PaxClock, door: PaxDoor): { x: number; y: number; z: number } {
-  const origin = clock.aircraft
-  const m = clock.metersPerUnit
-  const dx = (clock.gate.x - origin.x) * m
-  const dy = (clock.gate.y - origin.y) * m
-  const h = origin.heading
-  const fx = Math.cos(h)
-  const fy = Math.sin(h)
-  const lx = -Math.sin(h)
-  const ly = Math.cos(h)
-  const x = dx * fx + dy * fy
-  const z = dx * lx + dy * ly
-  if (Math.hypot(x - door.x, z - door.z) < 1.5) {
-    const s = Math.sign(door.z || 1)
-    return { x: door.x, y: door.sill, z: door.z + s * 9 }
-  }
-  return { x, y: door.sill, z }
-}
-
 /** One passenger's slice of the walk, staggered so they do not stack. */
 function walkerU(stepU: number, index: number): number | null {
   const start = (index / PAX_STREAM) * 0.62
@@ -156,7 +133,8 @@ function walkerU(stepU: number, index: number): number | null {
 
 /**
  * Bridge, mobile stairs, or apron bus. `extend` docks the bridge or the stair
- * truck. Passengers are omitted while they are inside the cabin or the bus.
+ * truck. Passengers are omitted while they are inside the cabin, the bus, or
+ * the enclosed bridge tunnel.
  */
 export function samplePax(clock: PaxClock): PaxSample {
   const end = clock.end > clock.start ? clock.end : clock.start + 1e-6
@@ -165,11 +143,8 @@ export function samplePax(clock: PaxClock): PaxSample {
   const { span, u } = spanAt(spans, now, end)
   const boarding = clock.leg === 'board'
   let extend = 0
-  if (clock.mode === 'bridge') {
-    if (span.id === 'extend') extend = u
-    else if (span.id === 'retract') extend = 1 - u
-    else extend = 1
-  } else if (span.id === 'extend') extend = u
+  if (clock.mode === 'bridge') extend = span.id === 'extend' ? u : 1
+  else if (span.id === 'extend') extend = u
   else if (span.id === 'clear') extend = 1 - u
   else extend = 1
 
@@ -178,7 +153,6 @@ export function samplePax(clock: PaxClock): PaxSample {
   const origin = clock.aircraft
   const door = clock.door
   const sill = door.sill
-  const bridgeFar = bridgeFarPoint(clock, door)
   const stairFoot = { x: door.x - 0.4, y: 0, z: door.z + Math.sign(door.z || 1) * 1.6 }
   const stairTop = { x: door.x, y: sill, z: door.z }
   const apron = { x: door.x - 1.2, y: 0, z: door.z + Math.sign(door.z || 1) * 14 }
@@ -198,7 +172,7 @@ export function samplePax(clock: PaxClock): PaxSample {
   }
 
   const gateWalk = clock.mode === 'bus' && span.id === 'extend' && boarding && !clock.riding
-  if ((span.id !== 'walk' && !gateWalk) || clock.riding) {
+  if ((span.id !== 'walk' && !gateWalk) || clock.riding || clock.mode === 'bridge') {
     return { step: span.id, extend, people, props }
   }
 
@@ -221,29 +195,20 @@ export function samplePax(clock: PaxClock): PaxSample {
     }
     // 0 is outside the aircraft, 1 is in the doorway.
     const along = boarding ? t : 1 - t
-    let local = { x: door.x, y: sill, z: door.z }
-    if (clock.mode === 'bridge') {
+    let local: { x: number; y: number; z: number }
+    if (along <= 0.72) {
+      const p = along / 0.72
       local = {
-        x: lerp(bridgeFar.x, door.x, along),
-        y: sill,
-        z: lerp(bridgeFar.z, door.z, along),
+        x: lerp(apron.x, stairFoot.x, p),
+        y: 0,
+        z: lerp(apron.z, stairFoot.z, p),
       }
     } else {
-      const climb = along > 0.72
-      if (!climb) {
-        const p = along / 0.72
-        local = {
-          x: lerp(apron.x, stairFoot.x, p),
-          y: 0,
-          z: lerp(apron.z, stairFoot.z, p),
-        }
-      } else {
-        const p = (along - 0.72) / 0.28
-        local = {
-          x: lerp(stairFoot.x, stairTop.x, p),
-          y: lerp(0, sill, p),
-          z: lerp(stairFoot.z, stairTop.z, p),
-        }
+      const p = (along - 0.72) / 0.28
+      local = {
+        x: lerp(stairFoot.x, stairTop.x, p),
+        y: lerp(0, sill, p),
+        z: lerp(stairFoot.z, stairTop.z, p),
       }
     }
     const at = placeLocal(origin, local, clock.metersPerUnit)
