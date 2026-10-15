@@ -23774,6 +23774,26 @@ export class Game {
     return best
   }
 
+  /**
+   * Taxi cells off the runway's end, keyed to the threshold cell they face.
+   * A departure holding here waits in line with the strip, not on the side row an arrival vacates by.
+   */
+  private behindThreshold(line: readonly Vec[], thresholds: readonly Vec[]): Map<string, { hold: Vec; onto: Vec }> {
+    const out = new Map<string, { hold: Vec; onto: Vec }>()
+    if (line.length < 2) return out
+    const horizontal =
+      Math.abs(line[line.length - 1].c - line[0].c) >= Math.abs(line[line.length - 1].r - line[0].r)
+    const lo = horizontal ? Math.min(line[0].c, line[line.length - 1].c) : Math.min(line[0].r, line[line.length - 1].r)
+    for (const t of thresholds) {
+      const along = horizontal ? t.c : t.r
+      const step = along === lo ? -1 : 1
+      const o = horizontal ? { c: t.c + step, r: t.r } : { c: t.c, r: t.r + step }
+      if (!inBounds(o.c, o.r) || this.tiles[o.r][o.c] !== 'taxi') continue
+      out.set(`${o.c},${o.r}`, { hold: o, onto: t })
+    }
+    return out
+  }
+
   /** Departure taxis to a threshold and rolls the strip. It does not enter on the arrival's exit. */
   private departureViaThreshold(f: Flight): Vec[] | null {
     if (!f.stand) return null
@@ -23781,9 +23801,24 @@ export class Game {
     const index = this.flightStrip(f)
     const line = (index != null && strips[index]) || strips[0]
     if (!line) return null
-    const taxi = nearestPath(this.tiles, f.stand, this.thresholdCells(line), 'jet')
-    if (!taxi || taxi.length < 2) return null
-    const touch = taxi[taxi.length - 1]!
+    const thresholds = this.thresholdCells(line)
+    const behind = this.behindThreshold(line, thresholds)
+    let taxi: Vec[] | null = null
+    let touch: Vec | null = null
+    if (behind.size) {
+      const hold = nearestPath(this.tiles, f.stand, [...behind.values()].map((pair) => pair.hold), 'jet')
+      const end = hold?.[hold.length - 1]
+      const onto = end ? behind.get(`${end.c},${end.r}`)?.onto : undefined
+      if (hold && hold.length >= 2 && onto) {
+        taxi = [...hold, onto]
+        touch = onto
+      }
+    }
+    if (!taxi || !touch) {
+      taxi = nearestPath(this.tiles, f.stand, thresholds, 'jet')
+      if (!taxi || taxi.length < 2) return null
+      touch = taxi[taxi.length - 1]!
+    }
     const merged = taxi.map((p) => ({ ...p }))
     for (const p of [...this.approachTo(line, touch)].reverse()) {
       const last = merged[merged.length - 1]
@@ -24368,6 +24403,7 @@ export class Game {
       }
       return
     }
+    if (this.exitRouteOccupied(route, f.id)) return
     const inbound = this.armApproach(route)
     f.stand = stand
     f.path = inbound.path
@@ -24384,6 +24420,33 @@ export class Game {
         'ok',
       )
     }
+  }
+
+  /**
+   * Another jet sits on the ground the arrival rolls after the runway. Ground control
+   * would refuse the landing at the threshold, so the arrival keeps circling instead of
+   * flying an approach it has to abandon.
+   */
+  private exitRouteOccupied(route: readonly Vec[], self: string): boolean {
+    const first = route.findIndex((p) => this.tiles[Math.round(p.r)]?.[Math.round(p.c)] === 'runway')
+    if (first < 0) return false
+    let i = first
+    while (i < route.length && this.tiles[Math.round(route[i].r)]?.[Math.round(route[i].c)] === 'runway') i++
+    const exit = new Set<string>()
+    for (; i < route.length; i++) {
+      const p = route[i]
+      if (this.tiles[Math.round(p.r)]?.[Math.round(p.c)] === 'runway') break
+      exit.add(`${Math.round(p.c)},${Math.round(p.r)}`)
+    }
+    if (!exit.size) return false
+    const ground = STUCK_PHASES as readonly string[]
+    return this.flights.some(
+      (o) =>
+        o.id !== self &&
+        (o.craft ?? 'jet') === 'jet' &&
+        ground.includes(o.phase) &&
+        exit.has(`${Math.round(o.x)},${Math.round(o.y)}`),
+    )
   }
 
   /** Abort ancient holds so reserved gates and inbound slots free up. */
