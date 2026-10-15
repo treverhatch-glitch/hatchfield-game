@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { penetration, type Body } from '../bodies/index.ts'
 import { LANDSIDE } from './config.ts'
 import { LandsideTraffic, measure } from './engine.ts'
 import { starterField } from './fixtures.test-util.ts'
@@ -6,51 +7,27 @@ import type { Cell, LandsideField, VehicleRead } from './types.ts'
 
 const M = LANDSIDE.cellM
 
-interface Box {
-  x: number
-  y: number
-  ux: number
-  uy: number
-  hl: number
-  hw: number
-}
-
-function box(car: VehicleRead): Box {
-  const body = LANDSIDE.bodies[car.kind]
+function body(car: VehicleRead): Body {
+  const size = LANDSIDE.bodies[car.kind]
   return {
+    id: car.id,
+    owner: 'landside',
+    kind: car.kind,
     x: car.c * M,
     y: car.r * M,
-    ux: Math.cos(car.heading),
-    uy: Math.sin(car.heading),
-    hl: body.lengthM / 2,
-    hw: body.widthM / 2,
+    heading: car.heading,
+    halfLength: size.lengthM / 2,
+    halfWidth: size.widthM / 2,
+    speed: car.speed,
   }
-}
-
-/** Separating-axis depth of two oriented rectangles, metres. Zero or less means apart. */
-function depth(a: Box, b: Box): number {
-  const axes = [
-    [a.ux, a.uy],
-    [-a.uy, a.ux],
-    [b.ux, b.uy],
-    [-b.uy, b.ux],
-  ]
-  let least = Infinity
-  for (const [nx, ny] of axes) {
-    const ra = a.hl * Math.abs(a.ux * nx + a.uy * ny) + a.hw * Math.abs(-a.uy * nx + a.ux * ny)
-    const rb = b.hl * Math.abs(b.ux * nx + b.uy * ny) + b.hw * Math.abs(-b.uy * nx + b.ux * ny)
-    const d = Math.abs((b.x - a.x) * nx + (b.y - a.y) * ny)
-    least = Math.min(least, ra + rb - d)
-  }
-  return least
 }
 
 function worstOverlap(cars: VehicleRead[]): { depth: number; pair: string } {
   let worst = { depth: 0, pair: '' }
-  const boxes = cars.map(box)
-  for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      const d = depth(boxes[i], boxes[j])
+  const bodies = cars.map(body)
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const d = penetration(bodies[i], bodies[j])
       if (d > worst.depth) worst = { depth: d, pair: `${cars[i].id}/${cars[j].id}` }
     }
   }
@@ -213,6 +190,88 @@ describe('landside vehicles', () => {
     }
     const passed = [...lanes.values()].filter((seq) => seq.join(',').includes('1,0,1,2'))
     expect(passed.length).toBeGreaterThan(0)
+  })
+
+  it('follows by at least a body length in the through lanes, buses and taxis included', { timeout: 60_000 }, () => {
+    const lengthOf = (car: VehicleRead) => LANDSIDE.bodies[car.kind].lengthM
+    for (const field of [stamped({ departures: 14, paxPerDay: 2400 }), starterField({ departures: 14, paxPerDay: 2400 })]) {
+      const sim = new LandsideTraffic()
+      let pairs = 0
+      let closest = { short: Infinity, at: '' }
+      for (let t = 0; t < 1200 * 4; t++) {
+        const straight = sim.tick(0.25, field).vehicles.filter(
+          (car) => car.lane < 2 && car.r > 0.5 && car.r < 11.5 && Math.abs(Math.sin(car.heading)) > 0.999,
+        )
+        for (const a of straight) {
+          for (const b of straight) {
+            const dir = Math.sign(Math.sin(a.heading))
+            if (a === b || a.lane !== b.lane || Math.sign(Math.sin(b.heading)) !== dir) continue
+            if (Math.abs(a.c - b.c) > 0.05) continue
+            const ahead = (b.r - a.r) * dir * M
+            if (ahead <= 0) continue
+            const gap = ahead - lengthOf(a) / 2 - lengthOf(b) / 2
+            const want = Math.max(LANDSIDE.minGapM, LANDSIDE.followBodyLengths * lengthOf(a))
+            if (gap < want * 3) pairs++
+            if (gap - want < closest.short) closest = { short: gap - want, at: `${a.id} behind ${b.id} at ${t / 4}s` }
+          }
+        }
+      }
+      expect(pairs).toBeGreaterThan(50)
+      expect(closest.short, closest.at).toBeGreaterThanOrEqual(-0.02)
+      expect(closest.short).toBeLessThan(1)
+    }
+  })
+
+  it('never drives through a stopped bus: cars behind it in its lane wait, others pass in the next lane', () => {
+    const sim = new LandsideTraffic()
+    const field = stamped({ departures: 14, paxPerDay: 2400 })
+    const along = (car: VehicleRead) => car.r * Math.sign(Math.sin(car.heading))
+    let before = new Map<string, VehicleRead>()
+    let queued = 0
+    let passed = 0
+    for (let t = 0; t < 1800 * 4; t++) {
+      const now = new Map(sim.tick(0.25, field).vehicles.map((car) => [car.id, car]))
+      for (const bus of now.values()) {
+        const was = before.get(bus.id)
+        if (bus.kind !== 'bus' || !was || was.speed > 0.05 || bus.speed > 0.05) continue
+        for (const car of now.values()) {
+          const prev = before.get(car.id)
+          if (car === bus || !prev || Math.abs(Math.sin(car.heading)) < 0.99) continue
+          if (Math.sign(Math.sin(car.heading)) !== Math.sign(Math.sin(bus.heading))) continue
+          const wasBehind = along(prev) < along(was)
+          const isAhead = along(car) > along(bus)
+          if (car.lane === bus.lane && prev.lane === was.lane) {
+            expect(wasBehind && isAhead, `${car.id} through stopped ${bus.id} at ${t / 4}s`).toBe(false)
+            if (wasBehind && (along(bus) - along(car)) * M < 20) queued++
+          } else if (wasBehind && isAhead) {
+            passed++
+          }
+        }
+      }
+      before = now
+    }
+    expect(queued).toBeGreaterThan(0)
+    expect(passed).toBeGreaterThan(0)
+  })
+
+  it('keeps vehicles leaving every ten minutes for two hours, so merges and pull-outs never lock', { timeout: 60_000 }, () => {
+    for (const [name, field] of [
+      ['stamped', stamped({ departures: 14, paxPerDay: 2400 })],
+      ['stamped with a car park', stamped({ departures: 14, paxPerDay: 2400, parks: [{ c: 16, r: 6, kind: 'park_s' }] })],
+      ['jammed starter', starterField({ departures: 14, paxPerDay: 2400 })],
+    ] as const) {
+      const sim = new LandsideTraffic()
+      let live = new Set<string>()
+      let gone = 0
+      for (let t = 0; t < 7200 * 4; t++) {
+        const now = new Set(sim.tick(0.25, field).vehicles.map((car) => car.id))
+        for (const id of live) if (!now.has(id)) gone++
+        live = now
+        if ((t + 1) % (600 * 4)) continue
+        expect(gone, `${name}: exits in the 10 minutes to ${(t + 1) / 240} min`).toBeGreaterThan(20)
+        gone = 0
+      }
+    }
   })
 
   it('treats bays, ranks and car parks as places to go', () => {

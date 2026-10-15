@@ -116,6 +116,14 @@ const SWEEP_MARGIN_M = 0.1
 const MAX_YAW = 0.3
 /** Sideways sweep of a body's end while it changes lane or pulls in, metres. */
 const MAX_SWEEP_M = 0.6
+/**
+ * A lane change or pull-out within this share of its length is done. A pull-out
+ * ends exactly at the layby gap behind the next stall, so it would otherwise
+ * stop a rounding error short and keep holding the layby.
+ */
+const MOVE_DONE = 1e-3
+/** A follower parks exactly on the gap it needs, so a merge test on that gap allows this much rounding. */
+const GAP_TOLERANCE_M = 0.01
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n))
@@ -128,6 +136,12 @@ function smoothstep(p: number): number {
 
 function wrap(a: number): number {
   return Math.atan2(Math.sin(a), Math.cos(a))
+}
+
+/** Bumper-to-bumper gap `car` keeps behind the vehicle ahead in `lane`. Stalls in the layby pack closer. */
+function followGap(road: Road, car: Vehicle, lane: number): number {
+  if (lane === road.geo.layby) return LANDSIDE.minGapM
+  return Math.max(LANDSIDE.minGapM, LANDSIDE.followBodyLengths * car.half * 2)
 }
 
 function lengthOf(kind: VehicleKind): number {
@@ -509,10 +523,20 @@ export class LandsideFleet {
     for (const k of occupies(road, car)) {
       const lead = last[k]
       if (!lead) continue
-      const lx = xAt(road, k, sAt(road, k, lead.x) - lead.half - car.half - L.minGapM)
+      const lx = xAt(road, k, sAt(road, k, lead.x) - lead.half - car.half - followGap(road, car, k))
       if (lx < limX) {
         limX = lx
         leadV = lead.v
+      }
+    }
+    const merger = car.mode === 'lane' && m === curb && m > 0 ? last[m - 1] : null
+    if (merger && this.waitingToMerge(road, merger)) {
+      // Zipper: leave the stopped merger a gap if this car can still stop short of it.
+      const lx = xAt(road, m, sAt(road, m, merger.x) - merger.half - car.half - followGap(road, car, m))
+      const room = sAt(road, m, lx) - s
+      if (lx < limX && room >= (car.v * car.v) / (2 * L.decelMps2)) {
+        limX = lx
+        leadV = 0
       }
     }
     if (limX < Infinity) {
@@ -555,7 +579,7 @@ export class LandsideFleet {
           car.dwell = dwellFor(car.kind, slot)
           if (!slot.park) this.drop(road, car)
         }
-      } else if (car.p >= 1) {
+      } else if (car.p >= 1 - MOVE_DONE) {
         car.mode = 'lane'
         car.from = car.lane
         car.p = 1
@@ -589,6 +613,15 @@ export class LandsideFleet {
     return need
   }
 
+  /** True when `other` sits stopped at its merge line, waiting for a gap into the curb lane. */
+  private waitingToMerge(road: Road, other: Vehicle): boolean {
+    if (other.mode !== 'lane' || other.lane >= road.geo.curbLane || other.v >= 0.5) return false
+    const need = this.needX(road, other)
+    if (need === Infinity) return false
+    const lane = other.lane
+    return sAt(road, lane, this.stopX(road, other, need)) - sAt(road, lane, other.x) <= 1
+  }
+
   /** Where the vehicle must stop if nothing changes. */
   private stopX(road: Road, car: Vehicle, need: number): number {
     const { geo } = road
@@ -600,7 +633,8 @@ export class LandsideFleet {
       return car.slot ? car.slot.x : this.holdX(road, car)
     }
     if (car.lane < curb && need < Infinity) {
-      return xAt(road, car.lane, sAt(road, car.lane, need) - LANDSIDE.laneChangeMinM)
+      // Front bumper on the line, so a long body waiting to merge is still on the straight and does not swing into the curb lane.
+      return xAt(road, car.lane, sAt(road, car.lane, need) - LANDSIDE.laneChangeMinM - car.half)
     }
     return Infinity
   }
@@ -674,13 +708,13 @@ export class LandsideFleet {
     const lead = last[target]
     if (lead) {
       const gap = sAt(road, target, lead.x) - lead.half - (s + car.half)
-      if (gap < L.minGapM + Math.max(0, car.v - lead.v) * L.headwaySec) return false
+      if (gap < followGap(road, car, target) + Math.max(0, car.v - lead.v) * L.headwaySec - GAP_TOLERANCE_M) return false
     }
     for (let j = i + 1; j < cars.length; j++) {
       const back = cars[j]
       if (!occupies(road, back).includes(target)) continue
       const gap = s - car.half - (sAt(road, target, back.x) + back.half)
-      if (gap < L.minGapM + back.v * L.headwaySec) return false
+      if (gap < followGap(road, back, target) + back.v * L.headwaySec - GAP_TOLERANCE_M) return false
       break
     }
     return true
@@ -817,7 +851,7 @@ export class LandsideFleet {
         if (occupies(road, other).includes(lane) && (!first || other.x < first.x)) first = other
       }
       const room = first ? sAt(road, lane, first.x) - first.half : Infinity
-      const gap = room - L.minGapM
+      const gap = room - Math.max(L.minGapM, L.followBodyLengths * half * 2)
       if (gap < 0) continue
       const leadV = first ? first.v : L.speedMps
       const v = Math.min(L.speedMps, Math.sqrt(leadV * leadV + 2 * L.decelMps2 * gap))

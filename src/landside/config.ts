@@ -73,8 +73,13 @@ export const LANDSIDE = {
     taxi: { lengthM: 4.6, widthM: 1.8 },
     bus: { lengthM: 12, widthM: 2.5 },
   },
-  /** Bumper-to-bumper gap a stopped vehicle keeps, metres. */
+  /** Bumper-to-bumper gap between stalls in the drop-off layby, and the floor for any gap, metres. */
   minGapM: 2,
+  /**
+   * In a through lane a follower stays at least this many of its own body lengths
+   * behind the vehicle ahead, stopped or moving. Merges and pull-outs need the same gap.
+   */
+  followBodyLengths: 1,
   /** Extra following gap per metre-per-second of the follower, seconds. Used for merges. */
   headwaySec: 1,
   accelMps2: 2,
