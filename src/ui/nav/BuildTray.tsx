@@ -9,7 +9,7 @@ import { buildingById } from '../../tier3plus/index.ts'
 import { requestKit } from './kitFocus.ts'
 import { siteHasWater } from '../../fuel/barge.ts'
 import { stampCard, toolStampInput, type StampCard, type UnlockLink } from './stampFacts.ts'
-import { STAMP_HOVER_MS, type BuildMenu, type FurnishEntry } from './taxonomy.ts'
+import { groupsForView, STAMP_HOVER_MS, type BuildMenu, type FurnishEntry } from './taxonomy.ts'
 
 function TrayMark({ tool }: { tool: string }) {
   const kind = tool.includes('runway')
@@ -164,15 +164,16 @@ export function BuildTray({
   menu: BuildMenu
   onOpen: (link: UnlockLink) => void
 }) {
-  const [groupId, setGroupId] = useState(menu.groups[0]?.id ?? '')
-  const group = menu.groups.find((row) => row.id === groupId) ?? menu.groups[0]
+  const shown = groupsForView(menu, game.view === 'hall' ? 'hall' : 'apron')
+  const [groupId, setGroupId] = useState(shown[0]?.id ?? '')
+  const group = shown.find((row) => row.id === groupId) ?? shown[0]
   if (!group) return null
   const owned = new Set(game.researchGrants())
   const treeOwned = new Set(game.researchTree.state.unlocked)
   return (
     <div className="build-sheet">
       <div className="build-subtabs" data-testid="build-subtabs" role="tablist">
-        {menu.groups.map((row) => (
+        {shown.map((row) => (
           <button
             key={row.id}
             type="button"

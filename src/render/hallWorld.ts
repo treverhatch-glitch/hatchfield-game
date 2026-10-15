@@ -36,7 +36,6 @@ import type { Game } from '../game/sim'
 import { isAssignKind } from '../hubprogress/assign.ts'
 import { syncLeaseMarks, type LeaseMark } from './leaseBadge.ts'
 import {
-  cellCenter,
   GRID_C,
   GRID_R,
   HALL_D,
@@ -74,7 +73,9 @@ import {
   hallToApron,
   matchTerminal,
   poseOnPlan,
+  shellHallBounds,
   showLegacyHallFurniture,
+  stampAnchor,
   type HallFit,
 } from './hallRooms'
 import { facadeOpenings, outwardYaw } from './world/facade'
@@ -88,6 +89,7 @@ import type { RoomPlan } from './world/rooms'
 import { makeTextures, type WorldTextures } from './world/textures'
 import { hallQueues, type HallQueue } from '../terminalplay/queues'
 import { footprintHit, footprintSpec, stampFrom } from '../terminalplay/footprints'
+import { cellCenterInFloor, cellInFloor } from '../game/shellFloor.ts'
 import { queueAnchor, queueOrder, slotsAlong, standingInQueue, type QueueSlot } from '../terminalplay/lines'
 import { PLAY_TUNING } from '../terminalplay/config'
 
@@ -169,6 +171,8 @@ export class HallWorld {
   yaw = HALL_CAM_YAW
   pitch = HALL_CAM_PITCH
   dist = HALL_CAM_DIST
+  maxDist = HALL_CAM_MAX_DIST
+  shellBounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null
   dragging: 'orbit' | 'pan' | null = null
   lastX = 0
   lastY = 0
@@ -434,7 +438,7 @@ export class HallWorld {
   /** Positive delta pulls back. Keyboard and triggers pass a distance; the wheel scales it. */
   nudgeZoom(delta: number) {
     this.followSnapDist = false
-    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
+    this.dist = Math.min(this.maxDist, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
     this.placeCam()
   }
 
@@ -444,7 +448,7 @@ export class HallWorld {
     const before = this.floorAt(clientX, clientY)
     const bx = before?.x ?? 0
     const bz = before?.z ?? 0
-    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
+    this.dist = Math.min(this.maxDist, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
     this.placeCam()
     const after = before ? this.floorAt(clientX, clientY) : null
     const shift = zoomToCursorShift(before ? { x: bx, z: bz } : null, after ? { x: after.x, z: after.z } : null)
@@ -663,6 +667,35 @@ export class HallWorld {
     return { cols: zones[0]?.length || GRID_C, rows: zones.length || GRID_R }
   }
 
+  /** Zone-cell centre. Expanded shells keep the original cells and add wings. */
+  private cellPos(c: number, r: number, cols: number, rows: number): { x: number; z: number } {
+    return cellCenterInFloor(c, r, this.game?.activeHall()?.floorExtra, cols, rows)
+  }
+
+  /** Grow the pick floor and pull the camera back when the shell is larger than the stamp. */
+  private frameShell(bounds: { minX: number; maxX: number; minZ: number; maxZ: number }) {
+    this.shellBounds = bounds
+    const minX = Math.min(bounds.minX, -HALL_W / 2)
+    const maxX = Math.max(bounds.maxX, HALL_W / 2)
+    const minZ = Math.min(bounds.minZ, -HALL_D / 2)
+    const maxZ = Math.max(bounds.maxZ, HALL_D / 2)
+    const w = maxX - minX + 8
+    const d = maxZ - minZ + 8
+    this.floor.geometry.dispose()
+    this.floor.geometry = new THREE.PlaneGeometry(w, d)
+    this.floor.position.x = (minX + maxX) / 2
+    this.floor.position.z = (minZ + maxZ) / 2
+    const span = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ)
+    const base = Math.max(HALL_W, HALL_D) - 2.2
+    const grow = Math.max(1, span / base)
+    this.maxDist = Math.max(HALL_CAM_MAX_DIST, HALL_CAM_DIST * grow * 1.15)
+    if (grow > 1.05) this.dist = Math.min(this.maxDist, HALL_CAM_DIST * grow)
+    const fog = this.scene.fog as THREE.Fog
+    fog.near = 120 * grow
+    fog.far = 240 * grow
+    this.placeCam()
+  }
+
   /** Snap the cursor to a hall cell and re-check the placement. */
   private trackHover(e: PointerEvent) {
     const game = this.game
@@ -672,9 +705,13 @@ export class HallWorld {
     const { cols, rows } = this.zoneGrid()
     let next: HallHover | null = null
     if (this.ray.ray.intersectPlane(this.floorPlane, hit)) {
-      const c = Math.floor(((hit.x + HALL_W / 2) / HALL_W) * cols)
-      const r = Math.floor(((hit.z + HALL_D / 2) / HALL_D) * rows)
-      if (c >= 0 && r >= 0 && c < cols && r < rows) {
+      const cell = cellInFloor(hit.x, hit.z, game.activeHall()?.floorExtra, cols, rows)
+      const c = cell.c
+      const r = cell.r
+      const box = this.shellBounds
+      const onShell = box != null && hit.x >= box.minX && hit.x <= box.maxX && hit.z >= box.minZ && hit.z <= box.maxZ
+      const onHall = hit.x >= -HALL_W / 2 && hit.x < HALL_W / 2 && hit.z >= -HALL_D / 2 && hit.z < HALL_D / 2
+      if ((onHall || onShell) && c >= 0 && r >= 0 && c < cols && r < rows) {
         const items = (game.activeHall()?.items ?? []) as PlacedItem[]
         const inCell = items.filter((i) => i.c === c && i.r === r)
         const loose = inCell.filter((i) => !i.bundle)
@@ -819,7 +856,7 @@ export class HallWorld {
     if (g && g.view === 'hall' && g.seq !== this.goalSeq) {
       this.goalSeq = g.seq
       const { cols, rows } = this.zoneGrid()
-      this.goalTo = cellCenter(g.c, g.r, cols, rows)
+      this.goalTo = this.cellPos(g.c, g.r, cols, rows)
     }
     if (!this.goalTo) return
     const k = 1 - Math.exp(-dt * 6)
@@ -1042,7 +1079,7 @@ export class HallWorld {
       for (let c = 0; c < zones[r].length; c++) {
         const z = zones[r][c] as ZoneId | null
         if (!z) continue
-        const pos = cellCenter(c, r, cols, rows)
+        const pos = this.cellPos(c, r, cols, rows)
         const geo = new THREE.PlaneGeometry(cw - 0.04, rh - 0.04)
         geo.rotateX(-Math.PI / 2)
         floorGeos.push(geo)
@@ -1099,9 +1136,11 @@ export class HallWorld {
    * Decorative walkers stay at 0; the sim's hallGuests are the crowd.
    */
   private syncInterior(game: Game) {
-    const origin = game.activeHall()?.origin ?? null
+    const hall = game.activeHall()
+    const origin = hall?.origin ?? null
     const hit = matchTerminal(terminals(game), origin)
-    const key = hit ? `${game.mapRev}|${hit.index}|${hit.info.cluster.minC},${hit.info.cluster.minR}` : ''
+    const span = hit ? `${hit.info.cluster.maxC - hit.info.cluster.minC}x${hit.info.cluster.maxR - hit.info.cluster.minR}` : ''
+    const key = hit ? `${game.mapRev}|${hit.index}|${hit.info.cluster.minC},${hit.info.cluster.minR}|${span}` : ''
     if (key !== this.interiorKey) {
       this.interiorKey = key
       this.clearInterior()
@@ -1111,7 +1150,9 @@ export class HallWorld {
           this.terminalTextures = makeTextures(64, 4)
           this.terminalShared = makeTerminalShared(this.terminalTextures, baseLevel(graphicsQuality()))
         }
-        const fit = hallFitFor(hit.info)
+        const anchor = hall?.origin ? stampAnchor(hall.origin, hall.premade) : undefined
+        const fit = hallFitFor(hit.info, undefined, anchor)
+        this.frameShell(shellHallBounds(hit.info, fit))
         const building = new TerminalBuilding(hit.info, this.terminalShared, {
           density: 1,
           walkersPerCell: 0,
@@ -1387,7 +1428,7 @@ export class HallWorld {
       mesh.scale.set(figure * bodyW, figure * bodyH, figure * bodyW)
       if (g.meal) {
         // Walk the tray from the counter to the booked seat, then sit: lower and squat.
-        const seat = cellCenter(g.meal.c, g.meal.r, cols, rows)
+        const seat = this.cellPos(g.meal.c, g.meal.r, cols, rows)
         const sx = seat.x + (g.meal.slot % 2) * 0.9 - 0.45
         const sz = seat.z + Math.floor(g.meal.slot / 2) * 0.9 - 0.45
         const k = g.meal.walkSec > 0 ? 1 - g.meal.walk / g.meal.walkSec : 1
@@ -1691,13 +1732,14 @@ export class HallWorld {
     this.zoneTint.clear()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    const cw = HALL_W / cols
-    const rh = HALL_D / rows
+    const extra = fit?.floorExtra
+    const cw = extra && extra.baseCols ? HALL_W / extra.baseCols : HALL_W / cols
+    const rh = extra && extra.baseRows ? HALL_D / extra.baseRows : HALL_D / rows
     for (let r = 0; r < zones.length; r++) {
       for (let c = 0; c < (zones[r]?.length ?? 0); c++) {
         const z = zones[r][c] as ZoneId | null
         if (!z) continue
-        const pos = cellCenter(c, r, cols, rows)
+        const pos = this.cellPos(c, r, cols, rows)
         const tile = new THREE.Mesh(
           new THREE.PlaneGeometry(cw - 0.12, rh - 0.12),
           new THREE.MeshBasicMaterial({
@@ -1733,7 +1775,7 @@ export class HallWorld {
     const rows = zones.length || GRID_R
     if (marks.length) {
       for (const cell of marks) {
-        const pos = cellCenter(cell.c, cell.r, cols, rows)
+        const pos = this.cellPos(cell.c, cell.r, cols, rows)
         const tile = new THREE.Mesh(
           new THREE.BoxGeometry(HALL_W / cols - 0.05, 0.12, HALL_D / rows - 0.05),
           new THREE.MeshBasicMaterial({ color: '#f0c14a', transparent: true, opacity: 0.85 }),

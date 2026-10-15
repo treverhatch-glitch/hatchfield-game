@@ -442,7 +442,6 @@ import {
   laneStats,
   GRID_C,
   GRID_R,
-  HALL_D,
   HALL_W,
   lookaheadDepth,
   needsMaintenance,
@@ -488,11 +487,19 @@ import {
   type PlacementCheck,
 } from './terminalKit.ts'
 import { KIT_TUNING, SEAT_NODES } from './terminalKitData.ts'
+import {
+  apronGrowth,
+  cellInFloor,
+  extraForGrowth,
+  extraSame,
+  growZoneGrid,
+  hallsTouched,
+} from './shellFloor.ts'
 import { facilitiesFromItems } from '../terminalplay/facilities.ts'
 import { findFootprint, footprintReason, footprintSpec, stampFrom } from '../terminalplay/footprints.ts'
 import { footprintOf } from '../terminalplay/place.ts'
 import { hallQueues, queueAtNode } from '../terminalplay/queues.ts'
-import { hallFitFor, matchTerminal } from '../render/hallRooms.ts'
+import { hallFitFor, matchTerminal, stampAnchor } from '../render/hallRooms.ts'
 import {
   binFull,
   cellAt,
@@ -8627,12 +8634,12 @@ export class Game {
       this.tool = 'pan'
       if (prev !== 'hall') {
         this.pushNews(
-          'Inside the terminal — prefab ceilings are on the card. Paint a zone or upgrade the shell. H or Apron to leave.',
+          'Inside the terminal — the kit bar is rooms, desks, and shops. The shell is built on the apron. H or Apron to leave.',
           'ok',
         )
       }
     } else if (prev !== 'apron') {
-      this.pushNews('Back on the apron — build runways, stands, and outside kit here.', 'ok')
+      this.pushNews('Back on the apron — build and expand the terminal shell here. Interior kit stays inside.', 'ok')
     }
     this.emit()
   }
@@ -14940,7 +14947,7 @@ export class Game {
     if (!plan) return null
     const hit = matchTerminal(terminals(this), hall.origin ?? null)
     if (!hit) return null
-    return { plan, fit: hallFitFor(hit.info) }
+    return { plan, fit: hallFitFor(hit.info, undefined, stampAnchor(hall.origin, hall.premade)) }
   }
 
   /**
@@ -15031,9 +15038,7 @@ export class Game {
     const zones = hall?.zones?.length ? hall.zones : hall?.premade ? prefabZones() : blankZones()
     const cols = zones[0]?.length || GRID_C
     const rows = zones.length || GRID_R
-    const c = Math.max(0, Math.min(cols - 1, Math.floor(((hx + HALL_W / 2) / HALL_W) * cols)))
-    const r = Math.max(0, Math.min(rows - 1, Math.floor(((hz + HALL_D / 2) / HALL_D) * rows)))
-    return { c, r }
+    return cellInFloor(hx, hz, hall?.floorExtra, cols, rows)
   }
 
   /** A free spot for this piece, used by tests and the first-fit helpers. */
@@ -21184,6 +21189,20 @@ export class Game {
     } else if (site.kind === 'runway') {
       for (const p of site.cells) this.tiles[p.r][p.c] = 'runway'
       this.pushNews(site.news ?? `${site.name} open.`, 'good')
+    } else if (site.kind === 'expand') {
+      const origin = site.origin ?? site.cells[0]
+      const fit = origin ? this.fits.find((f) => f.origin.c === origin.c && f.origin.r === origin.r) : undefined
+      for (const p of site.cells) this.tiles[p.r][p.c] = 'terminal'
+      if (fit) {
+        this.extendShellFloor(fit)
+        this.selectedTile = fit.origin
+      }
+      this.pushNews(
+        fit
+          ? `${this.hallLabel(fit)} shell extended — the interior floor grew with it.`
+          : 'Shell extended.',
+        'good',
+      )
     } else if (site.kind === 'terminal' || site.kind === 'premade') {
       const origin = site.origin ?? site.cells[0]
       for (const p of site.cells) this.tiles[p.r][p.c] = 'terminal'
@@ -21458,8 +21477,27 @@ export class Game {
       this.emit()
       return
     }
-    if (!this.spend(TERMINAL_COST, 'terminal shell')) {
+    const touched = hallsTouched(this.tiles, cells, this.fits)
+    if (touched.length > 1) {
+      this.pushNews('That shell would join two terminals. Leave a gap.', 'bad')
       this.emit()
+      return
+    }
+    const host = touched.length === 1 ? this.fits[touched[0]] : null
+    if (!this.spend(TERMINAL_COST, host ? 'terminal expansion' : 'terminal shell')) {
+      this.emit()
+      return
+    }
+    if (host) {
+      this.enqueueBuild({
+        kind: 'expand',
+        cells,
+        tile: 'terminal',
+        cost: TERMINAL_COST,
+        name: 'terminal expansion',
+        tool: 'terminal',
+        origin: host.origin,
+      })
       return
     }
     this.enqueueBuild({
@@ -21471,6 +21509,61 @@ export class Game {
       tool: 'terminal',
       origin: v,
     })
+  }
+
+  /** Append bare floor where the apron shell grew past its original stamp. */
+  private extendShellFloor(fit: TerminalFit) {
+    const cluster = this.terminalClusterAt(fit.origin)
+    if (!cluster) return
+    let minC = Infinity
+    let maxC = -Infinity
+    let minR = Infinity
+    let maxR = -Infinity
+    for (const p of cluster) {
+      minC = Math.min(minC, p.c)
+      maxC = Math.max(maxC, p.c)
+      minR = Math.min(minR, p.r)
+      maxR = Math.max(maxR, p.r)
+    }
+    if (!fit.zones?.length) fit.zones = fit.premade ? prefabZones() : blankZones()
+    const baseCols = fit.floorExtra?.baseCols ?? fit.zones[0]?.length ?? GRID_C
+    const baseRows = fit.floorExtra?.baseRows ?? fit.zones.length ?? GRID_R
+    const next = extraForGrowth(apronGrowth(fit.origin, fit.premade, { minC, maxC, minR, maxR }), baseCols, baseRows, fit.premade)
+    if (extraSame(fit.floorExtra, next)) return
+    const grown = growZoneGrid(fit.zones as (ZoneId | null)[][], (fit.items ?? []) as PlacedItem[], fit.floorExtra, next)
+    const shiftC = next.left - (fit.floorExtra?.left ?? 0)
+    const shiftR = next.top - (fit.floorExtra?.top ?? 0)
+    fit.zones = grown.zones
+    fit.items = grown.items
+    if (shiftC || shiftR) {
+      for (const bit of fit.litter ?? []) {
+        bit.c += shiftC
+        bit.r += shiftR
+      }
+    }
+    fit.floorExtra = next
+    this.hallRev++
+  }
+
+  private terminalClusterAt(seed: Vec): Vec[] | null {
+    if (this.tile(seed) !== 'terminal') return null
+    const seen = new Set<string>()
+    const out: Vec[] = []
+    const stack: Vec[] = [seed]
+    while (stack.length) {
+      const p = stack.pop()!
+      const key = `${p.c},${p.r}`
+      if (seen.has(key) || this.tile(p) !== 'terminal') continue
+      seen.add(key)
+      out.push(p)
+      stack.push(
+        { c: p.c + 1, r: p.r },
+        { c: p.c - 1, r: p.r },
+        { c: p.c, r: p.r + 1 },
+        { c: p.c, r: p.r - 1 },
+      )
+    }
+    return out
   }
 
   placePremade(v: Vec) {

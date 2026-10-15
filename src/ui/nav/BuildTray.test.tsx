@@ -37,4 +37,22 @@ describe('BuildTray lock badges', () => {
     expect(fuel).not.toContain('Night bank')
     expect(fuel).not.toContain('research-badge-rail_fuel')
   })
+
+  it('hides interior kit stamps while the player is on the apron', () => {
+    const game = new Game()
+    const terminal = renderToStaticMarkup(
+      <BuildTray game={game} menu={BUILD_MENUS.find((row) => row.id === 'terminal')!} onOpen={() => {}} />,
+    )
+    expect(terminal).toContain('data-testid="tray-terminal"')
+    expect(terminal).not.toContain('data-testid="tray-checkin"')
+    expect(terminal).not.toContain('data-testid="tray-security"')
+    expect(terminal).not.toContain('data-testid="build-group-gates"')
+    const retail = renderToStaticMarkup(
+      <BuildTray game={game} menu={BUILD_MENUS.find((row) => row.id === 'retail')!} onOpen={() => {}} />,
+    )
+    expect(retail).toContain('data-testid="tray-snack"')
+    expect(retail).not.toContain('data-testid="tray-food"')
+    expect(retail).not.toContain('data-testid="tray-shops"')
+    expect(retail).not.toContain('data-testid="build-group-lounges"')
+  })
 })

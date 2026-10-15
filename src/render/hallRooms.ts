@@ -7,7 +7,7 @@ import { legRoute, legTargetKind, pointAlong, seededRand, type RouteGuest } from
 import { HALL_D, HALL_W } from '../game/terminal'
 import { clusterCenter, type TerminalInfo } from './world/layout'
 import { pointInRoom, type RoomPlan } from './world/rooms'
-import { CELL } from './world/view'
+import { CELL, cellX, cellZ } from './world/view'
 import { HALL_FIGURE_M } from './hallCamera'
 
 /** Inset so room walls sit inside the hall shell instead of z-fighting it. */
@@ -39,14 +39,53 @@ export function matchTerminal(
   return { info: list[0], index: 0 }
 }
 
-export function hallFitFor(info: TerminalInfo, pad = PAD_M): HallFit {
+/**
+ * Fit the shell into the hall. Without an anchor the whole cluster is scaled
+ * into the 48×32 m box. An anchor keeps the original stamp's scale and centre,
+ * so cells added on the apron stick out as extra floor instead of shrinking.
+ */
+export function hallFitFor(
+  info: TerminalInfo,
+  pad = PAD_M,
+  anchor?: { cx: number; cz: number; basisW: number; basisD: number },
+): HallFit {
+  const inset = pad ?? PAD_M
   const w = (info.cluster.maxC - info.cluster.minC + 1) * CELL
   const d = (info.cluster.maxR - info.cluster.minR + 1) * CELL
   const c = clusterCenter(info.cluster)
-  const spanW = Math.max(CELL, w)
-  const spanD = Math.max(CELL, d)
-  const scale = Math.min((HALL_W - pad * 2) / spanW, (HALL_D - pad * 2) / spanD)
-  return { scale, cx: c.x, cz: c.z }
+  const spanW = Math.max(CELL, anchor?.basisW ?? w)
+  const spanD = Math.max(CELL, anchor?.basisD ?? d)
+  const scale = Math.min((HALL_W - inset * 2) / spanW, (HALL_D - inset * 2) / spanD)
+  return { scale, cx: anchor?.cx ?? c.x, cz: anchor?.cz ?? c.z }
+}
+
+/** Centre and size of the stamp the player first placed. Later tiles grow past this. */
+export function stampAnchor(origin: { c: number; r: number }, premade: boolean): { cx: number; cz: number; basisW: number; basisD: number } {
+  const n = premade ? 3 : 2
+  const maxC = origin.c + n - 1
+  const maxR = origin.r + n - 1
+  return {
+    cx: (cellX(origin.c) + cellX(maxC)) / 2,
+    cz: (cellZ(origin.r) + cellZ(maxR)) / 2,
+    basisW: n * CELL,
+    basisD: n * CELL,
+  }
+}
+
+/** Shell footprint in hall metres for a fit that already has a scale and centre. */
+export function shellHallBounds(info: TerminalInfo, fit: HallFit): { minX: number; maxX: number; minZ: number; maxZ: number } {
+  const x0 = cellX(info.cluster.minC) - CELL / 2
+  const x1 = cellX(info.cluster.maxC) + CELL / 2
+  const z0 = cellZ(info.cluster.minR) - CELL / 2
+  const z1 = cellZ(info.cluster.maxR) + CELL / 2
+  const a = apronToHall(x0, z0, fit)
+  const b = apronToHall(x1, z1, fit)
+  return {
+    minX: Math.min(a.x, b.x),
+    maxX: Math.max(a.x, b.x),
+    minZ: Math.min(a.z, b.z),
+    maxZ: Math.max(a.z, b.z),
+  }
 }
 
 export interface ShellBounds {

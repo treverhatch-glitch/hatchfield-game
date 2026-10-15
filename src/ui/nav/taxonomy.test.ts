@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PROGRESSION_BUILDABLES } from '../../progression/unlocks'
 import type { Tool } from '../../game/types'
-import { BUILD_MENUS, MANAGE_MENUS, STAMP_HOVER_MS, type ManageTabId } from './taxonomy'
+import { BUILD_MENUS, groupsForView, MANAGE_MENUS, STAMP_HOVER_MS, type ManageTabId } from './taxonomy'
 
 /** Every stamp except Select. A missing key fails the type-check. */
 const EVERY_STAMP = {
@@ -126,6 +126,27 @@ describe('menu taxonomy', () => {
       }
     }
     expect([...seen.keys()].sort()).toEqual(PROGRESSION_BUILDABLES.map((row) => row.id).sort())
+  })
+
+  it('keeps interior kit off the apron and apron tools out of the hall', () => {
+    const terminal = BUILD_MENUS.find((menu) => menu.id === 'terminal')!
+    const retail = BUILD_MENUS.find((menu) => menu.id === 'retail')!
+    const apron = [...groupsForView(terminal, 'apron'), ...groupsForView(retail, 'apron')]
+    expect(apron.flatMap((group) => group.furnish ?? []).map((row) => row.id)).toEqual([])
+    expect(apron.some((group) => group.id === 'gates' || group.id === 'shops' || group.id === 'lounges')).toBe(false)
+    expect(apron.some((group) => group.tools.includes('terminal'))).toBe(true)
+    expect(apron.some((group) => group.tools.includes('snack'))).toBe(true)
+    const hall = [...groupsForView(terminal, 'hall'), ...groupsForView(retail, 'hall')]
+    expect(hall.flatMap((group) => group.tools)).toEqual([])
+    expect(hall.flatMap((group) => group.furnish ?? []).map((row) => row.id)).toEqual([
+      'checkin',
+      'security',
+      'gates',
+      'food',
+      'shops',
+      'lounges',
+      'decor',
+    ])
   })
 
   it('lists every manage panel once, two levels deep', () => {

@@ -881,6 +881,18 @@ export interface TerminalFit {
   tier?: 1 | 2 | 3
   /** Painted floor. Null cells are bare shell. */
   zones?: (string | null)[][]
+  /**
+   * Zone cells added outside the original hall when the apron shell grows.
+   * Missing on older saves: the floor is still the 48×32 m box.
+   */
+  floorExtra?: {
+    left: number
+    right: number
+    top: number
+    bottom: number
+    baseCols: number
+    baseRows: number
+  }
   items?: {
     id: string
     def: string
@@ -1198,7 +1210,7 @@ export interface GameSnapshot {
 /** A placed building that is still a construction site. */
 export interface BuildSite {
   id: string
-  kind: 'single' | 'runway' | 'terminal' | 'premade'
+  kind: 'single' | 'runway' | 'terminal' | 'premade' | 'expand'
   cells: Vec[]
   tile: Tile
   cost: number

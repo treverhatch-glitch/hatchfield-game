@@ -41,6 +41,18 @@ export interface BuildMenu {
   furnish: readonly FurnishEntry[]
 }
 
+/** Airport view stamps the shell and the airfield. Terminal view stamps rooms and kit. */
+export function groupsForView(menu: BuildMenu, view: 'apron' | 'hall'): BuildGroup[] {
+  if (view === 'hall') {
+    return menu.groups
+      .filter((group) => (group.furnish?.length ?? 0) > 0)
+      .map((group) => ({ ...group, tools: [], progression: [] }))
+  }
+  return menu.groups
+    .filter((group) => group.tools.length > 0 || group.progression.length > 0)
+    .map((group) => ({ ...group, furnish: undefined }))
+}
+
 function menu(
   id: BuildMenuId,
   label: string,
