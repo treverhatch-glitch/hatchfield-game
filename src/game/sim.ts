@@ -4720,12 +4720,13 @@ export class Game {
     return Math.max(6, Math.round(units * this.rivalDemandFactor()))
   }
 
-  private applyRivalLoad<T extends { pax: number; bagUnits: number }>(load: T, cargo: boolean): T {
+  private applyRivalLoad<T extends { pax: number; bagUnits: number }>(load: T, cargo: boolean, paxMax = 0): T {
     if (cargo || load.pax <= 0) return load
     const factor = this.rivalDemandFactor()
+    const scaled = Math.max(1, Math.round(load.pax * factor))
     return {
       ...load,
-      pax: Math.max(1, Math.round(load.pax * factor)),
+      pax: paxMax > 0 ? Math.min(paxMax, scaled) : scaled,
       bagUnits: load.bagUnits > 0 ? Math.max(1, Math.round(load.bagUnits * factor)) : 0,
     }
   }
@@ -20826,7 +20827,7 @@ export class Game {
       return
     }
     const approach = this.armApproach(route)
-    const load = this.applyRivalLoad(this.flightLoad(af, def.persona, def.kind === 'cargo'), def.kind === 'cargo')
+    const load = this.applyRivalLoad(this.flightLoad(af, def.persona, def.kind === 'cargo'), def.kind === 'cargo', af.paxMax)
     const gate = this.gateLabel(stand)
     const f: Flight = {
       id: uid('flt'),
@@ -22968,7 +22969,7 @@ export class Game {
     const call = `${a.name.slice(0, 2).toUpperCase()}D${this.flightSeq}`
     const inbound = this.armApproach(route)
     const cargoLoad = a.kind === 'cargo' || af.kind === 'freighter'
-    const load = this.applyRivalLoad(this.flightLoad(af, a.persona, cargoLoad), cargoLoad)
+    const load = this.applyRivalLoad(this.flightLoad(af, a.persona, cargoLoad), cargoLoad, af.paxMax)
     const f: Flight = {
       id: uid('div'),
       airline,
