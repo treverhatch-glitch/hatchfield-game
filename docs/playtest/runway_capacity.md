@@ -34,10 +34,10 @@ The first sampled day with 4 or more people waiting at check-in was day 21 for C
 
 Booked movements on one strip are 12 a day. The retired 150-second gap booked 4. That is the 3× figure. Live completions are lower. See `docs/atc/RUNWAY_CAPACITY.md`.
 
-On seed `0x5171`, eight days:
+On seed `0x5171`, eight days, farm stocked so an empty rack is not the bottleneck:
 
-- One strip and four stands, Harbor only: 18 flights, 0 runway diverts. The 150-second gap turned 15 on this seed.
-- Two linked strips against one, six stands, Harbor and Northline: 27 and 17 flights across the whole eight days. The opening headway is shared, so both fields turn alike until minute ten. After it, the two-strip field's extra completions are at least 1.6× the one-strip field's.
+- One strip and four stands, Harbor only: more than the 15 flights the 150-second gap turned, 0 runway diverts.
+- Two linked strips against one, six stands four cells apart, Harbor and Northline: 25 and 17 flights. One runway divert on the two-strip field. The opening headway is shared. After it, the two-strip field completed 16 flights and the one-strip field completed 10, which is 1.6×.
 
 Guard and ambulance, same seed, starter kit plus a hangar stand, eight days, auto timetable:
 
