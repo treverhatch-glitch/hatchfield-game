@@ -9,7 +9,7 @@
  * Writes docs/devlog/gate/<sha>.json and .md for the commit it ran against.
  */
 import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -20,7 +20,7 @@ const unknown = args.filter((arg) => !known.has(arg))
 
 if (args.includes('--help') && unknown.length === 0) {
   console.log('Usage: npm run gate -- [--full] [--no-install]')
-  console.log('  default   Node >= 22, npm ci, unpack-art, tsc, oxlint, vitest, vite build,')
+  console.log('  default   Node >= 22.12, npm ci, unpack-art, tsc, oxlint, vitest, vite build,')
   console.log('            30-day soak, perf/people draw-call budgets, Careful bots (15 days)')
   console.log('  --full    150-day soak and the full bot playtest')
   console.log('  --no-install  skip npm ci')
@@ -231,6 +231,11 @@ function renderMarkdown(summary) {
   lines.push('')
   lines.push(`- Mode: ${summary.mode}`)
   lines.push(`- Commit: \`${summary.sha}\``)
+  lines.push(
+    summary.dirty?.length
+      ? `- Tree: dirty — ${summary.dirty.length} uncommitted path(s): ${summary.dirty.slice(0, 8).join(', ')}${summary.dirty.length > 8 ? ', …' : ''}`
+      : '- Tree: clean',
+  )
   lines.push(`- Node: ${summary.node}`)
   lines.push(`- Started: ${summary.startedAt}`)
   lines.push(`- Finished: ${summary.finishedAt}`)
@@ -299,10 +304,17 @@ function writeReports(summary) {
 
 async function main() {
   const startedAt = new Date()
+  // The gate picks soak length and bot mode itself; an exported value must not override it.
+  delete process.env.SOAK_150
+  delete process.env.PLAYTEST_QUICK
   const sha = await git(['rev-parse', 'HEAD'])
+  const dirty = (await git(['status', '--porcelain']))
+    .split('\n')
+    .map((line) => line.replace(/^\s*\S{1,2}\s+/, '').trim())
+    .filter((path) => path && !path.startsWith('docs/devlog/gate/') && !path.startsWith('docs/playtest/bots/'))
   const shortSha = sha ? sha.slice(0, 12) : 'unknown'
   const nodeVersion = process.version
-  const major = Number(process.versions.node.split('.')[0])
+  const [major, minor] = process.versions.node.split('.').map(Number)
   const planned = [
     'node',
     'npm-ci',
@@ -318,7 +330,7 @@ async function main() {
 
   console.log(`[gate] ${mode} on ${shortSha} (node ${nodeVersion})`)
 
-  const nodeOk = Number.isFinite(major) && major >= 22
+  const nodeOk = Number.isFinite(major) && (major > 22 || (major === 22 && minor >= 12))
   push({
     id: 'node',
     status: nodeOk ? 'pass' : 'fail',
@@ -326,8 +338,8 @@ async function main() {
     exitCode: nodeOk ? 0 : 1,
     command: 'process.version',
     detail: nodeOk
-      ? `${nodeVersion} (>= 22)`
-      : `${nodeVersion} is too old. Hatchfield's gate needs Node.js 22 or newer — Vitest 5 does not run on Node 20. Install Node 22 and run npm run gate again.`,
+      ? `${nodeVersion} (>= 22.12)`
+      : `${nodeVersion} is too old. Hatchfield's gate needs Node.js 22.12 or newer — Vite 8 and TypeScript 6 need it, and Vitest 5 does not run on Node 20. Install Node 22.12+ and run npm run gate again.`,
     tail: '',
     testCounts: null,
     soak: null,
@@ -385,6 +397,21 @@ async function main() {
     })
     failed = step.status !== 'pass'
   }
+  const missingBudgets = BUDGET_TESTS.filter((file) => !existsSync(join(root, file)))
+  if (!failed && missingBudgets.length) {
+    push({
+      id: 'draw-budgets',
+      status: 'fail',
+      durationMs: 0,
+      exitCode: 1,
+      command: 'vitest run <budget tests>',
+      detail: `missing budget test file(s): ${missingBudgets.join(', ')}`,
+      tail: '',
+      testCounts: null,
+      soak: null,
+    })
+    failed = true
+  }
   if (!failed) {
     const step = await runStep('draw-budgets', process.execPath, [
       'node_modules/vitest/vitest.mjs',
@@ -411,6 +438,7 @@ async function main() {
     mode,
     ok: steps.every((step) => step.status === 'pass'),
     node: nodeVersion,
+    dirty,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
