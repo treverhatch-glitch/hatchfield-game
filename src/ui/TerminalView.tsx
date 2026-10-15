@@ -8,6 +8,7 @@ import { NODE_POS, paxTagColor, paxTagLabel } from '../game/guests'
 import type { Game } from '../game/sim'
 import { registerHallTools } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
+import { sharedSettings } from '../features/settings/settings.ts'
 import { GUEST_GLANCE } from '../paxnav/guestConfig.ts'
 import { HallWorld, type HallBuildMode, type HallHover } from '../render/hallWorld'
 import { shownWorld } from '../render/viewCue'
@@ -273,7 +274,7 @@ export function TerminalView({ game }: { game: Game }) {
       if (shownWorld(game.view, game.viewCue) === 'hall') {
         const w = worldRef.current
         if (w) {
-          const speed = 18 * dt
+          const speed = 18 * sharedSettings().get().cameraSpeed * dt
           const fx = (inputMap.analog('camera.panRight') - inputMap.analog('camera.panLeft')) * speed
           const fy = (inputMap.analog('camera.panBack') - inputMap.analog('camera.panForward')) * speed
           if (fx || fy) w.nudgePan(fx, fy)

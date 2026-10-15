@@ -9,6 +9,7 @@ import { FIELD_LAYOUT } from '../camera/layout.ts'
 import type { ApronInspect, Game } from '../game/sim'
 import { apronForward, apronRight } from '../camera/pan.ts'
 import { inputMap } from '../input/map.ts'
+import { sharedSettings } from '../features/settings/settings.ts'
 import { toWorld, World } from '../render/world'
 import { mapViewSnapshot, openMapDetail } from '../info/session.ts'
 import { writeTipPoints, type TipPoint } from './tipScreen'
@@ -145,7 +146,7 @@ export function Field({ game }: { game: Game }) {
             w.nudgePan(Math.sin(now / 900) * 10 * dt, 5 * dt)
             game.diplomacyTourSeconds = Math.max(0, game.diplomacyTourSeconds - dt)
           } else if (!game.viewCue && !cameraSession.following) {
-            const speed = 28 * dt
+            const speed = 28 * sharedSettings().get().cameraSpeed * dt
             const fx = apronRight(inputMap.analog('camera.panRight'), inputMap.analog('camera.panLeft')) * speed
             const fy = apronForward(inputMap.analog('camera.panForward'), inputMap.analog('camera.panBack')) * speed
             if (fx || fy) w.nudgePan(fx, fy)
