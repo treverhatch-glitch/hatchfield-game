@@ -186,6 +186,28 @@ export const THOUGHT_BUBBLES: Record<string, string> = {
 
 export const LIVERIES_JSON = "/assets/liveries/liveries.json";
 
+/**
+ * Gemini concept plates for bag drop, baggage claim, and passport control.
+ * Files stay at the size they were generated (2752×1536). Nothing resamples them.
+ */
+export const SERVICE_PLATES = {
+  bag_drop_kiosk: "/art/textures/concepts/bag_drop_kiosk.jpeg",
+  baggage_claim: "/art/textures/concepts/baggage_claim_carousel.jpeg",
+  passport_control: "/art/textures/concepts/passport_control.jpeg",
+} as const;
+
+export type ServicePlateId = keyof typeof SERVICE_PLATES;
+
+/** Native frame. The loader never scales below this. */
+export const SERVICE_PLATE_NATIVE = { w: 2752, h: 1536 } as const;
+
+/** Byte length of the committed JPEG. A downscale fails this. */
+export const SERVICE_PLATE_BYTES: Record<ServicePlateId, number> = {
+  bag_drop_kiosk: 1913677,
+  baggage_claim: 2103531,
+  passport_control: 3353056,
+};
+
 /** Every asset path in the manifest. */
 export function allAssetPaths(): string[] {
   return [
@@ -194,6 +216,7 @@ export function allAssetPaths(): string[] {
     ...Object.values(SHOP_LOGOS),
     ...Object.values(LIVERIES).map((l) => l.tailDecal),
     ...Object.values(THOUGHT_BUBBLES),
+    ...Object.values(SERVICE_PLATES),
     LIVERIES_JSON,
   ];
 }

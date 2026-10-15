@@ -49,6 +49,8 @@ describe('terminal hi-detail props', () => {
     expect(anchors.office).toBeTruthy()
     expect(anchors.gadget).toBeTruthy()
     expect(anchors.food).toBeTruthy()
+    expect(anchors.bagdrop).toBeTruthy()
+    expect(anchors.passport).toBeTruthy()
     const types = new Set(g.userData.types as string[])
     for (const type of TERMINAL_PROP_TYPES) expect(types.has(type), type).toBe(true)
     setNearPropDetail(g, false)

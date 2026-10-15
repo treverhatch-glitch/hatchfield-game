@@ -7,8 +7,8 @@ export const ROOMS: RoomDef[] = [
   { id: 'shops', label: 'Shops', side: 'either', flow: 'both', color: '#e0c04a', needs: ['shop_unit'] },
   { id: 'food', label: 'Food court', side: 'either', flow: 'both', color: '#e0a04a', needs: ['shop_unit', 'seat'] },
   { id: 'restrooms', label: 'Restrooms', side: 'either', flow: 'both', color: '#3a9a8a', needs: ['toilet'] },
-  { id: 'immigration', label: 'Passport control', side: 'after', flow: 'arrivals', color: '#b05a8a', needs: ['passport_booth'] },
-  { id: 'bagclaim', label: 'Baggage claim', side: 'before', flow: 'arrivals', color: '#e08a3c', needs: ['carousel'] },
+  { id: 'immigration', label: 'Passport control', side: 'after', flow: 'arrivals', color: '#b05a8a', needs: ['passport_booth'], plate: 'passport_control' },
+  { id: 'bagclaim', label: 'Baggage claim', side: 'before', flow: 'arrivals', color: '#e08a3c', needs: ['carousel'], plate: 'baggage_claim' },
   { id: 'arrivals', label: 'Arrivals hall', side: 'before', flow: 'arrivals', color: '#f0b070', needs: ['sign'] },
   { id: 'baghall', label: 'Baggage hall (staff)', side: 'staff', flow: 'none', color: '#6b6b6b', needs: ['belt'] },
   { id: 'offices', label: 'Offices', side: 'staff', flow: 'none', color: '#8c8c8c', needs: ['desk'] },
@@ -16,6 +16,13 @@ export const ROOMS: RoomDef[] = [
   { id: 'corridor', label: 'Walkway', side: 'either', flow: 'both', color: '#d0d0d0', needs: [] },
 ];
 export function roomDef(id: string): RoomDef | undefined { return ROOMS.find((r) => r.id === id); }
+
+/** Equipment that wears a service-plate decal. Ids match SERVICE_PLATES. */
+export const EQUIP_PLATE: Partial<Record<EquipmentId, 'bag_drop_kiosk' | 'baggage_claim' | 'passport_control'>> = {
+  bagdrop: 'bag_drop_kiosk',
+  carousel: 'baggage_claim',
+  passport_booth: 'passport_control',
+}
 
 /** Equipment throughput (pax/hr per unit) used by the "too few desks" checks. */
 export const EQUIP_RATE: Partial<Record<EquipmentId, number>> = {

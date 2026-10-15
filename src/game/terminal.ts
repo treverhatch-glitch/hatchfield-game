@@ -31,6 +31,7 @@ export type ItemId =
   | 'restaurant'
   | 'wayfinding'
   | 'bag_drop'
+  | 'passport_booth'
   | 'scanner'
   | 'wall'
   | 'newsagent'

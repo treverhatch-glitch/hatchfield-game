@@ -2800,6 +2800,19 @@ html[data-gfx='low'] .view-layer.dim {
   color: #b7c4b8;
 }
 
+.kit-glyph {
+  width: 32px;
+  height: 22px;
+  color: #e7c56a;
+  display: block;
+}
+
+.item-menu .kit-glyph {
+  width: 28px;
+  height: 18px;
+  float: right;
+}
+
 .kit-card:hover:not(:disabled) {
   transform: translateY(-4px);
   border-color: #c9a227;

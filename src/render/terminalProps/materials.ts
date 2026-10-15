@@ -20,6 +20,7 @@ import { deskHeaderTexture, fidsBoardTexture, wayfindingSheetTexture } from '../
 import { counterSheetTexture } from './counterArt'
 import { interiorTexture } from './interiorTex'
 import { landingTexture } from '../world/landingArt'
+import { servicePlateTexture } from '../servicePlates'
 import { bigSign, carpet, corrugated, fids2k, floorTile, slats, wallTile } from './hiq'
 import { attachBuildingMaterial } from '../reflections'
 
@@ -296,6 +297,10 @@ export const MATERIALS: Record<string, MatSpec> = {
   intRubber: { color: '#ffffff', rough: 0.92, map: () => interiorTexture('security_rubber', [3, 3]) },
   intPlank: { color: '#ffffff', rough: 0.62, map: () => interiorTexture('shop_plank', [2, 2]) },
   intRunner: { color: '#ffffff', rough: 0.94, map: () => interiorTexture('jet_runner', [1, 4]) },
+  // Full-res Gemini plates. The file is not resized; the mesh is the decal.
+  plateBagDrop: { color: '#ffffff', rough: 0.28, map: () => servicePlateTexture('bag_drop_kiosk'), glow: true },
+  plateClaim: { color: '#ffffff', rough: 0.28, map: () => servicePlateTexture('baggage_claim'), glow: true },
+  platePassport: { color: '#ffffff', rough: 0.28, map: () => servicePlateTexture('passport_control'), glow: true },
   intCeiling: { color: '#ffffff', rough: 0.72, map: () => interiorTexture('ceiling_baffle', [3, 1]) },
   jbDoor: { color: '#f4f1ea', rough: 0.5, map: () => interiorTexture('wall_panel_cream', [1, 2]) },
   sgnGadget: { color: '#ffffff', map: () => signTex('GADGETS', '#1a2744', '#f4f1ea', '', 1024, 256), glow: true },

@@ -65,6 +65,8 @@ export const ITEM_EQUIP: Readonly<Record<string, EquipmentId>> = {
   seat_row: 'seat',
   bench: 'seat',
   claim_carousel: 'carousel',
+  bag_drop: 'bagdrop',
+  passport_booth: 'passport_booth',
   bag_system: 'belt',
   toilet: 'toilet',
   toilet_plus: 'toilet',

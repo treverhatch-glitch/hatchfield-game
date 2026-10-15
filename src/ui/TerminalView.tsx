@@ -29,6 +29,7 @@ import {
 import { refundFor } from '../game/terminalKit'
 import type { KitCategory } from '../game/terminalKitData'
 import { KIT_TABS } from './uiCatalog'
+import { KitGlyph } from './kitGlyph'
 import { InteriorBar } from './InteriorBar'
 import { subscribeKit, takeKitRequest } from './nav/kitFocus'
 
@@ -119,11 +120,12 @@ function KitBar({
                   setTab(null)
                   setBuild({ kind: 'place', def: item.id, rot: 0 })
                 }}
-              >
-                <strong>{item.name}</strong>
-                <span>{locked ? `Lv ${need}` : money(item.cost)}</span>
-                <span>${item.upkeep}/day</span>
-              </button>
+                >
+                  <KitGlyph id={item.id} />
+                  <strong>{item.name}</strong>
+                  <span>{locked ? `Lv ${need}` : money(item.cost)}</span>
+                  <span>${item.upkeep}/day</span>
+                </button>
             )
           })}
         </div>
@@ -436,6 +438,7 @@ export function TerminalView({ game }: { game: Game }) {
                     setBuild({ kind: 'place', def: item.id, rot: 0 })
                   }}
                 >
+                  <KitGlyph id={item.id} />
                   <span>{item.name}</span>
                   <span>
                     {locked ? `FL${need}` : money(item.cost)} · ${item.upkeep}/day

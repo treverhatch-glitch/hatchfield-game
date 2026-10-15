@@ -283,6 +283,22 @@ export const KIT_ITEMS: ItemDef[] = [
     size: 4,
   },
   {
+    id: 'passport_booth',
+    name: 'Passport control',
+    blurb: 'Three booths for an international arrival. Officers and the glass are on the daily bill.',
+    zones: ['arrivals'],
+    servers: 1,
+    queueCap: 8,
+    serviceSec: 2,
+    cost: 14_000,
+    upkeep: 45,
+    staff: 1,
+    minFieldLevel: 1,
+    wearPerUse: 0.3,
+    category: 'rooms',
+    size: 4,
+  },
+  {
     id: 'scanner',
     name: 'Security scanner',
     blurb: 'An extra X-ray and walk-through. Adds a server on the secure line.',
@@ -345,4 +361,5 @@ export const KIT_PATCHES: Partial<Record<string, Partial<ItemDef>>> = {
   toilet: { category: 'rooms' },
   wayfinding: { category: 'rooms' },
   bag_system: { category: 'rooms' },
+  claim_carousel: { category: 'rooms', size: 4 },
 }

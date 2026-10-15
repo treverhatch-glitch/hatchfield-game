@@ -83,6 +83,7 @@ export const UNLOCK_LEVEL: Readonly<Record<string, number>> = {
   fountain: 1,
   trash_can: 1,
   bag_drop: 1,
+  passport_booth: 1,
   scanner: 1,
   wall: 1,
   newsagent: 1,
