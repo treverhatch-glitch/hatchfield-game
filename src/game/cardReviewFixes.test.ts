@@ -51,4 +51,14 @@ describe('building card review fixes', () => {
     expect(desk?.desk.dealFor('harbor')).toBeUndefined()
     expect(game.cash).toBe(cash)
   })
+
+  it('adds a bought kiosk on top of the hall kiosk', () => {
+    const game = field()
+    for (let i = 0; i < 200; i += 1) game.tick(0.5)
+    const host = game as unknown as { checkinCapacityFor(id: string): { desks: number; kiosks: number } }
+    const before = host.checkinCapacityFor('northline').kiosks
+    expect(before).toBeGreaterThan(0)
+    game.paxKiosks += 1
+    expect(host.checkinCapacityFor('northline').kiosks).toBe(before + 1)
+  })
 })

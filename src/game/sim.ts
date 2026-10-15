@@ -3088,7 +3088,7 @@ export class Game {
     const extra = Math.max(0, Math.floor(this.paxDesks) - openHallDesks)
     return {
       desks: openCommon + openDedicatedHere + extra,
-      kiosks: Math.max(kiosks, Math.max(0, Math.floor(this.paxKiosks))),
+      kiosks: kiosks + Math.max(0, Math.floor(this.paxKiosks)),
     }
   }
 
