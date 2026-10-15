@@ -16,6 +16,7 @@ Re-check 15 Oct, after `bc-28657062` ("Land tower, spotters, council, carbon PRs
 | Airport Council | `0f006656` | `c17f68ab` | Airlines > Council. Civic spend is `civic_programs` (`331c757d`). |
 | Carbon book and Green Pioneer | `b6de09c9` | `4bd73e2f` | CO₂ info view is in the info bar, not a second OwnerChrome panel. |
 | Vision expansion design note | `3a37ffa5` | `08b868e2` | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. Quick gate was recorded for `418a8d6b` before the art-pack rebase. |
+| Graphics day/night noon hold (PR #98) | `7a85bce864bfc7de5bc4719f46673a8955e0d01a` | this landing | Existing settings switch, under Graphics. Off holds noon with lamps out. Flood pools stay on at 5×. No second store. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
@@ -59,7 +60,7 @@ Valuable ideas that are too far behind, or that would fight a landed system. Not
 
 | Branch | Why |
 | --- | --- |
-| `cursor/j36-daynight-cycle-4799` (PR #98) | Noon hold in graphics settings, plus edits to `GameSettings.tsx`. `bc-c2f61850` is landing it. Left alone. |
+| `cursor/j36-daynight-cycle-4799` (PR #98) | Landed as the noon hold on the existing settings switch. No second store. Apron flood pools stay on at 5×. |
 | `claude/finance-screen-18359518024439908719`, `tmp/pr265` | `FinanceScreen` from an older economy panel. Main's wallet and finance card are newer. 404 commits behind. |
 | `claude/issue-228-20261014-1515` | Connections, hotels, and stranded passengers as a 3k-line branch. Hub connections on main overlap it. 340 behind. |
 | `claude/issue-195-*` | Guest traits and terminal pathing from before the hall-nav rewrite. |
@@ -91,7 +92,7 @@ Requested, and still not playable. Research lists exist; the live tree does not 
 
 | Behind | Ahead | Date | Tip | Branch | Subject |
 | --- | --- | --- | --- | --- | --- |
-| 23 | 18 | 2026-10-15 | `40ceab79` | `cursor/j36-daynight-cycle-4799` | NEEDS-WORK. Graphics noon hold. PR #98. |
+| 23 | 18 | 2026-10-15 | `40ceab79` | `cursor/j36-daynight-cycle-4799` | LANDED. Noon hold on the settings switch. PR #98. |
 | 23 | 3 | 2026-10-15 | `dec4156f` | `cursor/land-airport-council-2f8f` | SUPERSEDED by `c17f68ab`. |
 | 41 | 3 | 2026-10-15 | `95f0b760` | `cursor/art-landing-p1-9acb` | LEAVE. Art agent. |
 | 83 | 11 | 2026-10-15 | `1cdd7111` | `cursor/day-night-playtest-4799` | SUPERSEDED. |
