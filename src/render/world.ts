@@ -1830,11 +1830,14 @@ export class World {
     for (const t of game.trucks) {
       const color = truckColor(t.kind)
       const size = vehicleMeters(t.kind)
-      const pos = toWorld(t.x, t.y, 0)
+      const docked = game.truckApronDraw(t)
+      const drawX = docked?.x ?? t.x
+      const drawY = docked?.y ?? t.y
+      const pos = toWorld(drawX, drawY, 0)
       const ahead = t.path[Math.min(t.seg + 1, t.path.length - 1)]
       const dx = (ahead?.c ?? t.x) - t.x
       const dy = (ahead?.r ?? t.y) - t.y
-      const heading = Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path)
+      const heading = docked?.heading ?? (Math.hypot(dx, dy) > 0.08 ? Math.atan2(dy, dx) : pathHeading(t.path))
       const loaded = Boolean(t.cargoUnits && t.cargoUnits > 0)
       const atStop = !t.returning && t.seg >= t.path.length - 1
       const ext = truckDeploy(atStop, t.dwell, t.serviceFor)
@@ -1865,7 +1868,7 @@ export class World {
     for (let i = 0; i < poses.length; i++) {
       const pose = poses[i]
       // With apron traffic on, the sim already keeps bodies apart; only legacy poses get the yard fan-out.
-      const off = pose.waiting === undefined ? yard[i] : { x: 0, z: 0 }
+      const off = pose.pinned || pose.waiting !== undefined ? { x: 0, z: 0 } : yard[i]
       const pos = toWorld(pose.drawX ?? pose.x, pose.drawY ?? pose.y, 0)
       const yawHeading = pose.drawHeading ?? pose.heading
       const ext = deployOf(pose.phase, pose.u)

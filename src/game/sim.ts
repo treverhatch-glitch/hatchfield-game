@@ -743,6 +743,7 @@ import {
 import { METERS_PER_CELL } from '../render/aircraft/specs.ts'
 import type { BridgeCraft } from '../render/world/view.ts'
 import { assembleCrew, pathHeading, placeLocal, type AircraftAim, type CrewClock, type CrewScene } from '../ramp/present.ts'
+import { dockBlend, lerpAngle, reservedSpots, spotForType } from '../ramp/serviceSpots.ts'
 import { BRIDGE_RETRACT_SEC, SERVICE_POINTS, STAND_TIMELINE } from '../ramp/crewConfig.ts'
 import { rosterAirline } from '../airlines/roster.ts'
 import { RIVAL_NAME } from '../rival/config.ts'
@@ -12275,9 +12276,9 @@ export class Game {
    * Slide a docking vehicle off the road node onto its hose, door, hold or bay.
    * The logistics pose stays in cells; the offset is real metres.
    */
-  private placeServicePose<T extends { x: number; y: number; heading: number; phase: string; u: number; dock?: { phase: 'idle' | 'route' | 'approach' | 'align' | 'service' | 'depart'; u: number; localX: number; localY: number; heading: number; owner: 'stand' | 'building'; standId: string | null } }>(
+  private placeServicePose<T extends { x: number; y: number; heading: number; phase: string; u: number; type?: string; dock?: { phase: 'idle' | 'route' | 'approach' | 'align' | 'service' | 'depart'; u: number; localX: number; localY: number; heading: number; owner: 'stand' | 'building'; standId: string | null } }>(
     pose: T,
-  ): T & { drawX?: number; drawY?: number; drawHeading?: number } {
+  ): T & { drawX?: number; drawY?: number; drawHeading?: number; pinned?: boolean } {
     const dock = pose.dock
     if (!dock) return pose
     const h = dock.owner === 'stand' ? this.headingForStand(dock.standId) : 0
@@ -12287,6 +12288,25 @@ export class Game {
     const dy = (dock.localX * s + dock.localY * c) / METERS_PER_CELL
     // Hose, lift and belt deploy only at an aircraft. A farm or kitchen load keeps its own phase.
     const shown = dock.owner === 'stand' ? shownPhase(dock.phase, dock.u) : null
+    const flight = dock.owner === 'stand' ? this.flightOnStand(dock.standId) : null
+    const role = spotForType(pose.type)
+    if (flight && role && dock.phase !== 'idle' && dock.phase !== 'route') {
+      const spots = reservedSpots(flight.airframeId || 'b738', {
+        x: flight.x,
+        y: flight.y,
+        heading: flight.heading || 0,
+      })
+      const spot = spots[role]
+      const w = dockBlend(dock.phase, dock.u)
+      return {
+        ...pose,
+        ...(shown ? { phase: shown.phase, u: shown.u } : {}),
+        pinned: true,
+        drawX: pose.x + (spot.x - pose.x) * w,
+        drawY: pose.y + (spot.y - pose.y) * w,
+        drawHeading: lerpAngle(pose.heading, spot.heading, w),
+      }
+    }
     // x/y stay on the service road. drawX/drawY are the bay the mesh and the camera use.
     return {
       ...pose,
@@ -12294,6 +12314,52 @@ export class Game {
       drawX: pose.x + dx,
       drawY: pose.y + dy,
       drawHeading: h + dock.heading,
+    }
+  }
+
+  private flightOnStand(standId: string | null): Flight | null {
+    if (!standId) return null
+    const byTurn = this.flights.find((f) => f.groundTurn === standId && f.phase !== 'gone' && f.stand)
+    if (byTurn) return byTurn
+    const [c, r] = standId.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return null
+    return this.flights.find((f) => f.stand && f.stand.c === c && f.stand.r === r && f.phase !== 'gone') ?? null
+  }
+
+  /**
+   * Draw pose for a legacy bowser or bag truck that is at its airframe socket.
+   * The path still ends on the stand cell. x/y here are the reserved spot.
+   */
+  truckApronDraw(t: Truck): { x: number; y: number; heading: number } | null {
+    const role = t.kind === 'fuel' ? 'fuel' : t.kind === 'bags' ? 'bags' : null
+    if (!role) return null
+    if (role === 'fuel' && t.mission !== 'fuel') return null
+    if (role === 'bags' && t.mission !== 'load' && t.mission !== 'unload') return null
+    const flight = t.flightId ? this.flights.find((f) => f.id === t.flightId) : undefined
+    if (!flight?.stand || flight.phase === 'gone') return null
+    if (Math.hypot(flight.x - flight.stand.c, flight.y - flight.stand.r) > 0.85) return null
+    const stand = flight.stand
+    const onStand = (v: { c: number; r: number } | undefined) => !!v && v.c === stand.c && v.r === stand.r
+    let w = 0
+    if (!t.returning && t.seg >= t.path.length - 1 && onStand(t.path[t.path.length - 1])) w = 1
+    else if (!t.returning && t.path.length >= 2 && t.seg === t.path.length - 2 && onStand(t.path[t.path.length - 1])) w = Math.min(1, Math.max(0, t.t))
+    else if (t.returning && t.seg === 0 && onStand(t.path[0])) w = 1 - Math.min(1, Math.max(0, t.t))
+    if (!(w > 0)) return null
+    const spots = reservedSpots(flight.airframeId || 'b738', {
+      x: flight.x,
+      y: flight.y,
+      heading: flight.heading || 0,
+    })
+    const spot = spots[role]
+    const a = t.path[Math.min(t.seg, Math.max(0, t.path.length - 1))]
+    const b = t.path[Math.min(t.seg + 1, Math.max(0, t.path.length - 1))]
+    const dx = (b?.c ?? t.x) - (a?.c ?? t.x)
+    const dy = (b?.r ?? t.y) - (a?.r ?? t.y)
+    const along = Math.hypot(dx, dy) > 0.02 ? Math.atan2(dy, dx) : pathHeading(t.path)
+    return {
+      x: t.x + (spot.x - t.x) * w,
+      y: t.y + (spot.y - t.y) * w,
+      heading: lerpAngle(along, spot.heading, w),
     }
   }
 
@@ -12524,12 +12590,13 @@ export class Game {
     else if (t.kind === 'catering') service = 'catering'
     if (!service) return null
     const total = t.serviceFor
+    const drawn = this.truckApronDraw(t)
     return {
       id: t.id,
       service,
-      x: t.x,
-      y: t.y,
-      heading: pathHeading(t.path),
+      x: drawn?.x ?? t.x,
+      y: drawn?.y ?? t.y,
+      heading: drawn?.heading ?? pathHeading(t.path),
       start: 0,
       end: total,
       now: Math.min(total, Math.max(0, total - t.dwell)),

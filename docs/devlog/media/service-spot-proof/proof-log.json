@@ -1,0 +1,188 @@
+{
+  "errors": [],
+  "crj700": {
+    "spawned": {
+      "trucks": [
+        "bags:unload@10",
+        "fuel:fuel@5"
+      ]
+    },
+    "bagFrames": 20,
+    "fuelFrames": 12,
+    "fuel": {
+      "airframe": "crj700",
+      "phase": "servicing",
+      "hold": "fuel",
+      "hoses": 1,
+      "fuelOff": 0.543,
+      "bagOff": null,
+      "apartM": null,
+      "fuelYaw": 2.102,
+      "bagYaw": null,
+      "fuelDraw": {
+        "x": 11.277378893172312,
+        "y": 6.466870740993754,
+        "heading": 2.501592653589793
+      },
+      "bagDraw": null,
+      "stand": {
+        "c": 11,
+        "r": 6
+      },
+      "heading": 0.4
+    },
+    "bags": {
+      "airframe": "crj700",
+      "phase": "servicing",
+      "hold": "bags",
+      "hoses": 1,
+      "fuelOff": 0.543,
+      "bagOff": 0.762,
+      "apartM": 24.88,
+      "fuelYaw": 2.102,
+      "bagYaw": 1.962,
+      "fuelDraw": {
+        "x": 11.277378893172312,
+        "y": 6.466870740993754,
+        "heading": 2.501592653589793
+      },
+      "bagDraw": {
+        "x": 10.238620205039355,
+        "y": 6.0203003457136735,
+        "heading": -3.9215926535897934
+      },
+      "stand": {
+        "c": 11,
+        "r": 6
+      },
+      "heading": 0.4
+    },
+    "log": [
+      {
+        "phase": "servicing",
+        "phaseTime": 0.3,
+        "trucks": [
+          "bags:unload seg 0/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 0/4 dwell 0.0 ext 0.00"
+        ]
+      },
+      {
+        "phase": "servicing",
+        "phaseTime": 0.5,
+        "trucks": [
+          "bags:unload seg 0/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 0/4 dwell 0.0 ext 0.00"
+        ]
+      },
+      {
+        "phase": "servicing",
+        "phaseTime": 1.2,
+        "trucks": [
+          "bags:unload seg 2/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 0/4 dwell 0.0 ext 0.00"
+        ]
+      },
+      {
+        "phase": "servicing",
+        "phaseTime": 4,
+        "trucks": [
+          "bags:unload seg 7/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 4/4 dwell 2.3 ext 0.48"
+        ]
+      },
+      {
+        "phase": "servicing",
+        "phaseTime": 4.5,
+        "trucks": [
+          "bags:unload seg 8/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 4/4 dwell 23.8 ext 1.00"
+        ]
+      }
+    ]
+  },
+  "b738": {
+    "spawned": {
+      "trucks": [
+        "bags:unload@10",
+        "fuel:fuel@5"
+      ]
+    },
+    "bagFrames": 20,
+    "fuelFrames": 12,
+    "fuel": {
+      "airframe": "b738",
+      "phase": "servicing",
+      "hold": "fuel",
+      "hoses": 1,
+      "fuelOff": 0.691,
+      "bagOff": null,
+      "apartM": null,
+      "fuelYaw": 3.042,
+      "bagYaw": null,
+      "fuelDraw": {
+        "x": 11.016984814794126,
+        "y": 6.691244418831153,
+        "heading": -2.8415926535897933
+      },
+      "bagDraw": null,
+      "stand": {
+        "c": 11,
+        "r": 6
+      },
+      "heading": 0.4
+    },
+    "bags": {
+      "airframe": "b738",
+      "phase": "servicing",
+      "hold": "bags",
+      "hoses": 1,
+      "fuelOff": 0.691,
+      "bagOff": 0.732,
+      "apartM": 22.47,
+      "fuelYaw": 3.042,
+      "bagYaw": 0.88,
+      "fuelDraw": {
+        "x": 11.016984814794126,
+        "y": 6.691244418831153,
+        "heading": -2.8415926535897933
+      },
+      "bagDraw": {
+        "x": 11.730824235472744,
+        "y": 5.960962309213882,
+        "heading": 1.2800000000000002
+      },
+      "stand": {
+        "c": 11,
+        "r": 6
+      },
+      "heading": 0.4
+    },
+    "log": [
+      {
+        "phase": "servicing",
+        "phaseTime": 0.3,
+        "trucks": [
+          "bags:unload seg 0/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 0/4 dwell 0.0 ext 0.00"
+        ]
+      },
+      {
+        "phase": "servicing",
+        "phaseTime": 3,
+        "trucks": [
+          "bags:unload seg 5/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 2/4 dwell 0.0 ext 0.00"
+        ]
+      },
+      {
+        "phase": "servicing",
+        "phaseTime": 4.5,
+        "trucks": [
+          "bags:unload seg 8/9 dwell 0.0 ext 0.00",
+          "fuel:fuel seg 4/4 dwell 23.8 ext 1.00"
+        ]
+      }
+    ]
+  },
+  "broken": []
+}
