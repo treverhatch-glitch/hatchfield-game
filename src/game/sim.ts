@@ -24565,7 +24565,16 @@ export class Game {
         if (!walkers && !bus) return true
       }
       // Past the boarding cap with nobody left to board: the strip wait is a stall, not a queue.
-      if (outbound && waiting <= 0 && flight.phaseTime > this.boardCap(flight)) return true
+      // A board still loading its outbound cart, or pulling its bridge back, is working, not stalled.
+      if (
+        outbound &&
+        waiting <= 0 &&
+        flight.phaseTime > this.boardCap(flight) &&
+        flight.bridgeShutAt == null &&
+        this.outboundCartClear(flight.id)
+      ) {
+        return true
+      }
     }
     const rolling =
       flight.phase === 'taxi_in' ||
