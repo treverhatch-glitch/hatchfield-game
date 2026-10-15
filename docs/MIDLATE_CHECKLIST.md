@@ -81,7 +81,7 @@ Late buildings use `lateFieldLevel()`, which follows the same XP through FL9 (3,
 | SAF blending | PLAYABLE | `saf_blending` at FL8 (`src/tier3plus/catalog.ts`). Research `spec-green-1`. Raises the fuel bill and green demand. |
 | Military apron | PLAYABLE | Hangar-side hardstands within ramp range, taxi to the strip, and away from a close passenger jetway. `safety-5` grants `mil_ramp` (C-5). `milRampLine()` explains the pads. There is no apron stamp. |
 | Landmark commission | PLAYABLE as a bill | `prestige_landmark` at FL10. Cash and upkeep. It does not place a set piece. |
-| Landmark set | SIM ONLY | Observation tower, museum, sky garden, art concourse, grand arrivals, quiet hall in `buildings_tier3.ts`. No placement. |
+| Landmark set | PLAYABLE | Build > Landside > Landmarks: observation tower, aviation museum, sky garden, art concourse, grand arrivals hall, quiet hall (`src/tier3plus/catalog.ts` from `buildings_tier3.ts`, meshes in `src/render/world/landmarks.ts`). Field level from the late ladder (now reaches 10), prestige stars where the table says, one per airport. Door income, demand and rating bonuses once open. City approval is not modelled. |
 | Spotters deck | MISSING | `docs/DESIGN_PASS.md` §12 (`78d868c`) is an idea called Spotter Reputation. No feature by that name. The closest data row is the unwired observation tower. |
 
 Tier III rows that are data only (`pier_iii`, garage, remote screening, de-icing apron II, business and resort hotels, fuel farm III, satellite) stay out of the tray. Putting them on the commission button would charge upkeep for effects the sim does not run.

@@ -80,6 +80,7 @@ import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass
 import { helipadTurnOnPad } from './world/padHeli'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
+import { addLandmark, animateLandmarkPart } from './world/landmarks'
 import { addBatteryBank, addSolarArray } from './world/opsTechBuildings'
 import {
   addAtcApproach,
@@ -783,6 +784,7 @@ export class World {
             parkTerm: game.parkTerms[key],
             hangarTier: game.hangarScale[key],
             lateOpen: game.lateOpenAt(c, r),
+            lateId: game.lateIdAt(c, r),
             terminalTier: pierTier,
           })
           built.userData.cellKey = key
@@ -952,6 +954,7 @@ export class World {
       parkTerm?: ParkTerm
       hangarTier?: SizeTier
       lateOpen?: boolean
+      lateId?: string | null
       terminalTier?: 1 | 2 | 3
     } = {},
   ): THREE.Group {
@@ -1169,6 +1172,9 @@ export class World {
     } else if (tile === 'late_rail') {
       if (opts.lateOpen === false) this.addRailScaffold(g)
       else this.addLateRail(g)
+    } else if (tile === 'late_landmark') {
+      if (opts.lateOpen === false) this.addRailScaffold(g)
+      else addLandmark(g, opts.lateId ?? null)
     } else if (tile === 'saf') {
       this.addSafPlant(g)
     }
@@ -2299,6 +2305,10 @@ export class World {
     const moving = !game.linkStopped('people_mover')
     const t = performance.now() / 1000
     this.tilesGroup.traverse((obj) => {
+      if (obj.name.startsWith('landmark-')) {
+        animateLandmarkPart(obj, t)
+        return
+      }
       if (obj.name !== 'pod') return
       const home = typeof obj.userData.home === 'number' ? obj.userData.home : 0
       obj.position.x = moving ? home + Math.sin(t * 1.3) * CELL * 0.22 : home

@@ -1,10 +1,12 @@
-export { buildingById, catalog } from './catalog.ts'
+export { buildingById, catalog, landmarkCatalog } from './catalog.ts'
 export {
   dailyPnL,
   demandModifier,
   fuelMultiplier,
   greenDemandSatisfied,
   isOpen,
+  landmarkDemandModifier,
+  landmarkRatingPoints,
   placeBuilding,
   tickBuildProgress,
 } from './tick.ts'
@@ -14,6 +16,8 @@ export type {
   DailyPnL,
   HotelBuilding,
   HotelNight,
+  LandmarkBuilding,
+  LandmarkId,
   PlaceRefusal,
   PlaceResult,
   PlacedBuilding,

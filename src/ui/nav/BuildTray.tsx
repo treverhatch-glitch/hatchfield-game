@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BUILDINGS, TOOL_LABEL } from '../../game/catalog.ts'
 import type { Tool } from '../../game/types.ts'
-import { lateIdForTool, lateStampLabel } from '../../game/lateBuildings.ts'
+import { isLandmarkId, lateIdForTool, lateStampLabel } from '../../game/lateBuildings.ts'
 import type { Game } from '../../game/sim.ts'
 import { capstoneCost } from '../../progression/specializations.ts'
 import { PROGRESSION_BUILDABLES } from '../../progression/unlocks.ts'
@@ -26,7 +26,8 @@ function TrayMark({ tool }: { tool: string }) {
             tool === 'curb_lane' ||
             tool === 'taxi_rank' ||
             tool === 'rail' ||
-            tool === 'rail_link'
+            tool === 'rail_link' ||
+            isLandmarkId(tool)
             ? 'land'
             : 'ops'
   return (
@@ -214,7 +215,7 @@ function ToolStamp({
   onOpen: (link: UnlockLink) => void
 }) {
   const lateId = lateIdForTool(tool)
-  const input = toolStampInput(tool, game.fieldLevel(), game.lateFieldLevel(), owned, treeOwned)
+  const input = toolStampInput(tool, game.fieldLevel(), game.lateFieldLevel(), owned, treeOwned, game.prestigeStars())
   if (lateId) {
     const spec = buildingById(lateId)
     input.name = lateStampLabel(lateId)

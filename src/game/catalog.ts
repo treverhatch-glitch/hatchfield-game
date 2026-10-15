@@ -338,7 +338,7 @@ export function fieldProgress(xp: number): FieldProgress {
 }
 
 /** Same rungs as FIELD_LEVEL_XP through FL9. Hotel needs 7, SAF blending 8, rail link 9. */
-export const LATE_FIELD_XP = [0, 0, 90, 220, 420, 700, 1_100, 1_600, 2_300, 3_200] as const
+export const LATE_FIELD_XP = [0, 0, 90, 220, 420, 700, 1_100, 1_600, 2_300, 3_200, 4_500] as const
 
 
 /** Field level used by late buildings. Levels 1–5 match `fieldLevelFromXp`. */
@@ -1648,6 +1648,12 @@ export const TOOL_LABEL: Record<Tool, string> = {
   airport_hotel: 'Hotel',
   rail_link: 'Rail link',
   saf_blending: 'SAF',
+  observation_tower: 'Observation tower',
+  aviation_museum: 'Aviation museum',
+  sky_garden: 'Sky garden',
+  art_concourse: 'Art concourse',
+  grand_arrivals_hall: 'Grand arrivals hall',
+  quiet_hall: 'Quiet hall',
   clear: 'Bulldoze',
 }
 

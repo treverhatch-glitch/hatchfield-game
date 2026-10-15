@@ -823,6 +823,7 @@ import {
   lateCatalogLines,
   lateIdForTool,
   lateSiteLines,
+  landmarkRefusal,
   railDemandScale,
   restoreLateSites,
   safFuelCost,
@@ -830,7 +831,14 @@ import {
   wholeNights,
   type LatePlacement,
 } from './lateBuildings.ts'
-import { buildingById, fuelMultiplier, isOpen, placeBuilding } from '../tier3plus/index.ts'
+import {
+  buildingById,
+  fuelMultiplier,
+  isOpen,
+  landmarkDemandModifier,
+  landmarkRatingPoints,
+  placeBuilding,
+} from '../tier3plus/index.ts'
 import type { HotelNight } from '../tier3plus/index.ts'
 import { SANDBOX_CASH, SAVE_KEY, SIZE, type AirlineId, type AirlineTier } from './types'
 import {
@@ -4982,7 +4990,7 @@ export class Game {
       wearScore * 0.2 +
       secScore * 0.14 -
       incidents * 1.2
-    return clamp(Math.round(raw), 0, 100)
+    return clamp(Math.round(raw + landmarkRatingPoints(this.lateSites)), 0, 100)
   }
 
   /** Whole-number reputation the HUD shows. Eased, never outside 0–100. */
@@ -6411,7 +6419,7 @@ export class Game {
     if (!this.hasBusCurb() && !this.hasRailStation() && !this.hasShortParking() && !this.hasHotelBeds()) {
       m *= 0.92
     }
-    const rail = railDemandScale(this.lateSites)
+    const rail = railDemandScale(this.lateSites) * landmarkDemandModifier(this.lateSites)
     return m * this.rivalWalkInFactor() * this.tycoonDemand() * rail
   }
 
@@ -6439,6 +6447,11 @@ export class Game {
     const site = this.lateSites.find((row) => row.c === c && row.r === r)
     if (!site) return true
     return isOpen(site)
+  }
+
+  /** Which late building stands on this cell, or null. The renderer picks a mesh from it. */
+  lateIdAt(c: number, r: number): string | null {
+    return this.lateSites.find((row) => row.c === c && row.r === r)?.id ?? null
   }
 
   lateMeshSig(): string {
@@ -20879,6 +20892,14 @@ export class Game {
     this.crewHotelNights = Math.max(0, this.crewHotelNights - bookedCrew)
   }
 
+  private metresToNearestRunway(v: Vec): number {
+    let best = Infinity
+    for (const run of tilesOf(this.tiles, 'runway')) {
+      best = Math.min(best, Math.hypot(run.c - v.c, run.r - v.r) * METERS_PER_CELL)
+    }
+    return best
+  }
+
   placeLate(v: Vec) {
     const id = lateIdForTool(this.tool)
     if (!id) return
@@ -20922,6 +20943,20 @@ export class Game {
       this.pushNews(researchNeed, 'bad')
       this.emit()
       return
+    }
+    const landmarkNeed = landmarkRefusal(id, this.prestigeStars(), this.lateSites)
+    if (landmarkNeed) {
+      this.pushNews(landmarkNeed, 'bad')
+      this.emit()
+      return
+    }
+    if (spec.kind === 'landmark' && spec.runwayClearM > 0) {
+      const nearest = this.metresToNearestRunway(v)
+      if (nearest < spec.runwayClearM) {
+        this.pushNews(`${spec.name} needs ${spec.runwayClearM} m clear of the runway. This cell is ${Math.round(nearest)} m away.`, 'bad')
+        this.emit()
+        return
+      }
     }
     if (!this.spend(gated.cost, spec.name, 'construction', 'tier3plus')) return
     this.tiles[v.r]![v.c] = tileForLate(id)

@@ -59,6 +59,12 @@ const EVERY_STAMP = {
   airport_hotel: true,
   rail_link: true,
   saf_blending: true,
+  observation_tower: true,
+  aviation_museum: true,
+  sky_garden: true,
+  art_concourse: true,
+  grand_arrivals_hall: true,
+  quiet_hall: true,
   clear: true,
 } as const satisfies Record<Exclude<Tool, 'pan' | 'stand_s' | 'stand' | 'stand_w' | 'stand_l'>, true>
 
@@ -86,6 +92,8 @@ describe('menu taxonomy', () => {
     expect(seen.get('snack')).toBe('retail')
     expect(seen.get('airport_hotel')).toBe('landside')
     expect(seen.get('rail_link')).toBe('landside')
+    expect(seen.get('observation_tower')).toBe('landside')
+    expect(seen.get('quiet_hall')).toBe('landside')
     expect(seen.get('road')).toBe('landside')
     expect(seen.get('bus')).toBe('landside')
     expect(seen.get('curb_lane')).toBe('landside')

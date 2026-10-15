@@ -1,10 +1,12 @@
 import { buildingById } from './catalog.ts'
+import { LANDMARK_RATING_CAP_POINTS } from './landmarkConfig.ts'
 import type {
   BuildProgress,
   BuildSite,
   DailyPnL,
   HotelBuilding,
   HotelNight,
+  LandmarkBuilding,
   PlaceResult,
   PnLLine,
   Tier3PlusBuilding,
@@ -57,6 +59,34 @@ export function demandModifier(sites: readonly BuildSite[]): number {
   return 1 + (Number.isFinite(bonus) && bonus > 0 ? bonus : 0)
 }
 
+/** Passenger demand multiplier from open landmarks. Bonuses add; each landmark counts once. */
+export function landmarkDemandModifier(sites: readonly BuildSite[]): number {
+  let bonus = 0
+  for (const site of openLandmarks(sites)) bonus += site.demandBonus
+  return 1 + (Number.isFinite(bonus) && bonus > 0 ? bonus : 0)
+}
+
+/** Field-rating points (0..100 scale) the open landmarks add, capped. */
+export function landmarkRatingPoints(sites: readonly BuildSite[]): number {
+  let points = 0
+  for (const site of openLandmarks(sites)) points += site.ratingBonus * 100
+  if (!Number.isFinite(points) || points <= 0) return 0
+  return Math.min(LANDMARK_RATING_CAP_POINTS, points)
+}
+
+function openLandmarks(sites: readonly BuildSite[]): LandmarkBuilding[] {
+  const seen = new Set<string>()
+  const out: LandmarkBuilding[] = []
+  for (const site of sites) {
+    if (seen.has(site.id) || !isOpen(site)) continue
+    const spec = buildingById(site.id)
+    if (spec?.kind !== 'landmark') continue
+    seen.add(site.id)
+    out.push(spec)
+  }
+  return out
+}
+
 /** Fuel-cost multiplier from an open SAF plant. A second plant does not stack. */
 export function fuelMultiplier(sites: readonly BuildSite[]): number {
   let multiplier = 1
@@ -106,6 +136,11 @@ export function dailyPnL(sites: readonly BuildSite[], night: HotelNight = EMPTY_
       transfers = booked.transfersLeft
       crew = booked.crewLeft
       lines.push(booked.line)
+      continue
+    }
+    if (spec.kind === 'landmark') {
+      const door = dollars(spec.visitorsPerDay * spec.ticketUsd)
+      lines.push(openLine(spec, door, spec.dailyUpkeep, 0, 0, 0, 0, openNote(spec)))
       continue
     }
     lines.push(openLine(spec, 0, spec.dailyUpkeep, 0, 0, 0, 0, openNote(spec)))
@@ -184,6 +219,11 @@ function openLine(
 }
 
 function openNote(spec: Tier3PlusBuilding): string {
+  if (spec.kind === 'landmark') {
+    return spec.ticketUsd > 0
+      ? `${spec.visitorsPerDay} visitors a day at ${dollars(spec.ticketUsd)} dollars each`
+      : `${spec.visitorsPerDay} visitors a day, no ticket`
+  }
   if (spec.kind === 'rail') return `+${Math.round(spec.demandBonus * 100)}% demand`
   if (spec.kind === 'saf') {
     const premium = Math.round((spec.fuelCostMultiplier - 1) * 100)

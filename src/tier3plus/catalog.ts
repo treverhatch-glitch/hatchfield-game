@@ -1,4 +1,6 @@
-import type { Tier3PlusBuilding, Tier3PlusId } from './types.ts'
+import { PRESTIGE_LANDMARKS } from '../content/buildings_tier3.ts'
+import { LANDMARK_RUNWAY_CLEAR_M, LANDMARK_TICKET_USD } from './landmarkConfig.ts'
+import type { LandmarkBuilding, LandmarkId, Tier3PlusBuilding, Tier3PlusId } from './types.ts'
 
 /**
  * Late-game building table (Tier III and Prestige).
@@ -48,7 +50,29 @@ export const catalog: readonly Tier3PlusBuilding[] = [
   },
 ]
 
-const BY_ID = new Map<string, Tier3PlusBuilding>(catalog.map((building) => [building.id, building]))
+const landmarks: readonly LandmarkBuilding[] = PRESTIGE_LANDMARKS.map((row) => ({
+  id: row.id as LandmarkId,
+  kind: 'landmark',
+  name: row.name,
+  fieldLevel: row.unlockFL,
+  cost: row.cost,
+  dailyUpkeep: row.upkeepPerDay,
+  buildDays: row.buildDays,
+  purpose: row.purpose,
+  catch: row.catch,
+  unlockPrestigeStars: row.unlockPrestigeStars,
+  visitorsPerDay: row.effects.touristFootfallPerDay ?? 0,
+  ticketUsd: LANDMARK_TICKET_USD[row.id as LandmarkId] ?? 0,
+  demandBonus: row.effects.demandBonus ?? 0,
+  ratingBonus: row.effects.ratingBonus ?? 0,
+  runwayClearM: LANDMARK_RUNWAY_CLEAR_M[row.id as LandmarkId] ?? 0,
+}))
+
+export const landmarkCatalog = landmarks
+
+const BY_ID = new Map<string, Tier3PlusBuilding>(
+  [...catalog, ...landmarks].map((building) => [building.id, building]),
+)
 
 export function buildingById(id: Tier3PlusId | string): Tier3PlusBuilding | undefined {
   return BY_ID.get(id)

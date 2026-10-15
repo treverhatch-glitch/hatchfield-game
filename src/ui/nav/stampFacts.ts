@@ -60,6 +60,8 @@ export interface StampInput {
   fieldLevel: number
   /** Late buildings compare against this wider ladder. */
   lateLevel?: number
+  /** Prestige stars held. Landmarks compare against their own star gate. */
+  prestigeStars?: number
   researchId?: ResearchId | null
   researchOwned?: boolean
   /** Cities research-tree node, when this stamp is on the build-link table. */
@@ -77,6 +79,7 @@ function capacityOf(id: string): string {
   if (RUNWAY_FOOT[id]) return RUNWAY_FOOT[id]
   const late = buildingById(id)
   if (late?.kind === 'hotel') return `${late.rooms} rooms`
+  if (late?.kind === 'landmark') return `${late.visitorsPerDay} visitors/day`
   return '—'
 }
 
@@ -131,12 +134,14 @@ export function stampCard(input: StampInput): StampCard {
   const late = buildingById(input.id)
   const levelNow = late ? (input.lateLevel ?? input.fieldLevel) : input.fieldLevel
   const levelShort = need > 1 && levelNow < need
+  const starNeed = late?.kind === 'landmark' ? late.unlockPrestigeStars : 0
+  const starShort = !levelShort && starNeed > (input.prestigeStars ?? 0)
   const tree = input.treeNodeId ? treeNodeById(input.treeNodeId) : undefined
   const treeLink = tree ? linkFor(input.id) : null
   const treeShort = Boolean(tree && treeLink && !input.treeOwned)
   const node = input.researchId ? RESEARCH_NODES.find((row) => row.id === input.researchId) : undefined
   const deskShort = Boolean(node && !input.researchOwned)
-  const locked = levelShort || treeShort || deskShort
+  const locked = levelShort || starShort || treeShort || deskShort
   const fuelRail = fuelRailStamp(input.id)
   const fuelPipe = fuelPipeStamp(input.id)
   const fuelLine = fuelRail ?? fuelPipe ?? berthStamp(input.id)
@@ -148,6 +153,7 @@ export function stampCard(input: StampInput): StampCard {
   else if (treeShort && treeLink) parts.push(`Requires research: ${treeLink.label}.`)
   else if (deskShort && node) parts.push(`Requires research: ${node.name}.`)
   if (levelShort) parts.push(`Unlocks at Field level ${need}.`)
+  if (starShort) parts.push(`Needs ${starNeed} prestige ${starNeed === 1 ? 'star' : 'stars'} past Field level 10.`)
   let badge: StampBadge | null = null
   let link: UnlockLink | null = null
   if (hydrantShort) {
@@ -163,6 +169,9 @@ export function stampCard(input: StampInput): StampCard {
   } else if (levelShort) {
     badge = { kind: 'field', label: `Field level ${need}` }
     link = { tab: 'levels', anchor: `level-${need}`, label: `Field level ${need}` }
+  } else if (starShort) {
+    badge = { kind: 'field', label: `${starNeed} prestige ${starNeed === 1 ? 'star' : 'stars'}` }
+    link = { tab: 'levels', anchor: 'level-10', label: 'Prestige stars' }
   }
   return {
     name: input.name,
@@ -184,6 +193,7 @@ export function toolStampInput(
   lateLevel: number,
   owned: ReadonlySet<string>,
   treeUnlocked: ReadonlySet<string> = new Set(),
+  prestigeStars = 0,
 ): StampInput {
   const late = buildingById(id)
   const def = BUILDINGS.find((row) => row.tool === id)
@@ -212,6 +222,7 @@ export function toolStampInput(
     upkeepPerDay: upkeep,
     fieldLevel,
     lateLevel,
+    prestigeStars,
     researchId,
     researchOwned: researchId ? owned.has(researchId) : true,
     treeNodeId: tree?.nodeId ?? null,

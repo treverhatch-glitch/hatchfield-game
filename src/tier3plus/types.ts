@@ -1,6 +1,14 @@
 /** Late buildings from the Tier III / Prestige table. Pure data — no sim types. */
 
-export type Tier3PlusId = 'airport_hotel' | 'rail_link' | 'saf_blending'
+export type LandmarkId =
+  | 'observation_tower'
+  | 'aviation_museum'
+  | 'sky_garden'
+  | 'art_concourse'
+  | 'grand_arrivals_hall'
+  | 'quiet_hall'
+
+export type Tier3PlusId = 'airport_hotel' | 'rail_link' | 'saf_blending' | LandmarkId
 
 interface BuildingBase {
   id: Tier3PlusId
@@ -45,7 +53,25 @@ export interface SafBuilding extends BuildingBase {
   satisfiesGreen: boolean
 }
 
-export type Tier3PlusBuilding = HotelBuilding | RailBuilding | SafBuilding
+/** Prestige landmark. Visitors pay at the door; the rest is rating and demand. One per airport. */
+export interface LandmarkBuilding extends BuildingBase {
+  id: LandmarkId
+  kind: 'landmark'
+  /** Prestige stars the player must already hold. 0 means Field Level alone unlocks it. */
+  unlockPrestigeStars: number
+  /** Non-flying visitors drawn each game day while open. */
+  visitorsPerDay: number
+  /** Dollars each visitor pays. Zero means the landmark earns nothing at the door. */
+  ticketUsd: number
+  /** Added to passenger demand once open. 0.02 means +2%. */
+  demandBonus: number
+  /** Added to the field rating on a 0..1 scale once open. 0.01 is one rating point. */
+  ratingBonus: number
+  /** Metres of clear ground to the nearest runway tile. Zero means no rule. */
+  runwayClearM: number
+}
+
+export type Tier3PlusBuilding = HotelBuilding | RailBuilding | SafBuilding | LandmarkBuilding
 
 /** A placed site. Open/building is derived from elapsed days and the catalog timer. */
 export interface BuildSite {

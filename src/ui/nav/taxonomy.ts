@@ -179,6 +179,19 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
       tools: ['hotel_inn', 'hotel_biz', 'hotel_resort', 'airport_hotel'],
       progression: [],
     },
+    {
+      id: 'landmarks',
+      label: 'Landmarks',
+      tools: [
+        'observation_tower',
+        'aviation_museum',
+        'sky_garden',
+        'art_concourse',
+        'grand_arrivals_hall',
+        'quiet_hall',
+      ],
+      progression: [],
+    },
   ]),
   menu('retail', 'Retail & Comfort', [
     {

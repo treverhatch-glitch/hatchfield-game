@@ -118,6 +118,7 @@ export const BUILDING_PLANS: Record<string, BuildingPlan> = {
   security: { staff: 1, unit: 'pax/min', alwaysOn: false, bays: [open(8)] },
   nighthub: { staff: 12, unit: 't/min', alwaysOn: false, bays: [open(1), open(1), open(1), open(1)] },
   late_hotel: { staff: 2, unit: 'rooms', alwaysOn: true, bays: [open(1)] },
+  late_landmark: { staff: 2, unit: 'visitors', alwaysOn: true, bays: [open(1)] },
   late_rail: { staff: 1, unit: 'services', alwaysOn: true, bays: [open(1)] },
   saf: { staff: 1, unit: 'L/min', alwaysOn: true, bays: [open(1)] },
 }

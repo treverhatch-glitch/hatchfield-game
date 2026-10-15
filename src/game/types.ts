@@ -1,6 +1,7 @@
 import type { InboundState } from '../inbound/types.ts'
 import type { EconomyState } from '../economy/types.ts'
 import type { Tier3Save } from '../tier3/types.ts'
+import type { Tier3PlusId } from '../tier3plus/types.ts'
 import type { PremiumState } from '../premium/types.ts'
 import type { TycoonState } from '../tycoon/types.ts'
 import type { PlaytestYearSave } from '../reports/book.ts'
@@ -79,6 +80,8 @@ export type Tile =
   | 'late_rail'
   /** Sustainable aviation fuel blending plant. */
   | 'saf'
+  /** Tier III prestige landmark. Which one is read from the late site on the cell. */
+  | 'late_landmark'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -164,6 +167,12 @@ export type Tool =
   | 'airport_hotel'
   | 'rail_link'
   | 'saf_blending'
+  | 'observation_tower'
+  | 'aviation_museum'
+  | 'sky_garden'
+  | 'art_concourse'
+  | 'grand_arrivals_hall'
+  | 'quiet_hall'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -1150,7 +1159,7 @@ export interface GameSnapshot {
   playtestYear?: PlaytestYearSave
   /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
   economy?: EconomyState
-  tier3Sites?: { id: 'airport_hotel' | 'rail_link' | 'saf_blending'; c: number; r: number; elapsedDays: number }[]
+  tier3Sites?: { id: Tier3PlusId; c: number; r: number; elapsedDays: number }[]
   /** Missed-connection guests waiting on the airport hotel. */
   missedHotelNights?: number
   /** Crew waiting on the airport hotel. */

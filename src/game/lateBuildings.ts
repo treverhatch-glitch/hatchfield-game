@@ -30,10 +30,31 @@ const TILE_OF: Record<Tier3PlusId, Tile> = {
   airport_hotel: 'late_hotel',
   rail_link: 'late_rail',
   saf_blending: 'saf',
+  observation_tower: 'late_landmark',
+  aviation_museum: 'late_landmark',
+  sky_garden: 'late_landmark',
+  art_concourse: 'late_landmark',
+  grand_arrivals_hall: 'late_landmark',
+  quiet_hall: 'late_landmark',
 }
 
 export function lateIdForTool(tool: string): Tier3PlusId | null {
-  if (tool === 'airport_hotel' || tool === 'rail_link' || tool === 'saf_blending') return tool
+  return Object.hasOwn(TILE_OF, tool) ? (tool as Tier3PlusId) : null
+}
+
+export function isLandmarkId(id: string): boolean {
+  return buildingById(id)?.kind === 'landmark'
+}
+
+/** Why a landmark cannot be ordered yet, or null. Stars come from the XP bar. */
+export function landmarkRefusal(id: Tier3PlusId, stars: number, placed: readonly LatePlacement[]): string | null {
+  const spec = buildingById(id)
+  if (spec?.kind !== 'landmark') return null
+  if (stars < spec.unlockPrestigeStars) {
+    const n = spec.unlockPrestigeStars
+    return `${spec.name} needs ${n} prestige ${n === 1 ? 'star' : 'stars'}. You hold ${stars}.`
+  }
+  if (placed.some((site) => site.id === id)) return `${spec.name} is one per airport.`
   return null
 }
 
@@ -99,7 +120,18 @@ export function lateCatalogLines(id: Tier3PlusId, fieldLevel: number, placed: nu
   } else if (spec.kind === 'rail') {
     lines.push(`+${Math.round(spec.demandBonus * 100)}% demand once open`)
     lines.push(`${spec.buildDays}-day build`)
-  } else {
+  } else if (spec.kind === 'landmark') {
+    lines.push(
+      spec.unlockPrestigeStars > 0
+        ? `Needs ${spec.unlockPrestigeStars} prestige ${spec.unlockPrestigeStars === 1 ? 'star' : 'stars'}`
+        : 'No prestige star needed',
+    )
+    lines.push(`${spec.visitorsPerDay} visitors a day${spec.ticketUsd > 0 ? ` at ${money(spec.ticketUsd)}` : ', no ticket'}`)
+    if (spec.demandBonus > 0) lines.push(`+${Math.round(spec.demandBonus * 100)}% passenger demand once open`)
+    if (spec.ratingBonus > 0) lines.push(`+${Math.round(spec.ratingBonus * 100)} field rating once open`)
+    if (spec.runwayClearM > 0) lines.push(`Keep ${spec.runwayClearM} m from any runway`)
+    lines.push(`${spec.buildDays}-day build · one per airport`)
+  } else if (spec.kind === 'saf') {
     lines.push(`Fuel cost +${Math.round((spec.fuelCostMultiplier - 1) * 100)}%`)
     lines.push(spec.satisfiesGreen ? 'Meets green airline demand' : 'Does not meet green airline demand')
   }
@@ -133,6 +165,9 @@ export function lateSiteLines(
       lines.push(`${line.occupiedRooms} occupied · ${line.emptyRooms} empty`)
       lines.push(`${line.transferRooms} transfer · ${line.crewRooms} crew`)
     }
+  }
+  if (spec.kind === 'landmark' && progress?.phase === 'open' && line) {
+    lines.push(`${line.income >= line.upkeep ? 'Door take covers upkeep' : 'Door take is short of upkeep'}`)
   }
   if (spec.kind === 'rail' && progress?.phase === 'open') {
     lines.push(`Demand ×${demandModifier(sites).toFixed(2)}`)
