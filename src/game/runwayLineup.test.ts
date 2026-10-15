@@ -42,6 +42,22 @@ describe('starter runway lineup', () => {
     }
   })
 
+  it('sends the next arrival to the other exit when the near one has a jet on it', () => {
+    const game = starter()
+    const stand = stands(game)[0]!
+    const open = game.landingRoute(stand)!
+    expect(open.some((p) => p.r === 25)).toBe(true)
+    expect(open.some((p) => p.r === 28)).toBe(false)
+    game.flights.push({ id: 'blk', phase: 'taxi_in', x: 12, y: 25, craft: 'jet' } as unknown as Flight)
+    const alt = game.landingRoute(stand)!
+    const exitAt = alt.findIndex((p) => p.r === 28 && game.tiles[p.r]?.[p.c] === 'taxi')
+    expect(exitAt).toBeGreaterThan(0)
+    const vacate = alt.slice(exitAt)
+    expect(vacate.filter((p) => p.r === 28).length).toBeGreaterThan(3)
+    expect(vacate.some((p) => game.tiles[p.r]?.[p.c] === 'runway')).toBe(false)
+    expect(alt[0]).toEqual(open[0])
+  })
+
   it('keeps an arrival in the stack while a jet sits on the ground it would roll after landing', () => {
     const game = starter()
     const stand = stands(game)[0]!

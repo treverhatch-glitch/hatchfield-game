@@ -1,5 +1,5 @@
 import { finiteAmount } from '../disruptions/engine.ts'
-import { GroundControl, RIGHT_OF_WAY, type AtcRole, type RouteCell } from '../atc/groundControl.ts'
+import { ATC_TUNING, GroundControl, RIGHT_OF_WAY, type AtcRole, type RouteCell } from '../atc/groundControl.ts'
 import {
   ARRIVAL_LOCK_LEAD_SEC,
   DEPARTURE_OCCUPANCY_SEC,
@@ -1539,6 +1539,8 @@ export class Game {
   private operableStripCache: { rev: number; indexes: number[] } | null = null
   /** Path each aircraft was last cleared along (by identity). */
   private atcPaths = new Map<string, Vec[]>()
+  /** Arrivals already sent to the other exit. One switch, so the path does not flap. */
+  private exitSwitched = new Set<string>()
   private atcYields = new Map<string, number>()
   /** Clock when a departure began waiting at the hold line for the next arrival. */
   private holeHoldSince = new Map<string, number>()
@@ -23751,29 +23753,124 @@ export class Game {
       if (!line) continue
       const exits = this.rapidExitCells(line)
       if (!exits.length) continue
-      let exit = exits[0]!
-      let dist = Infinity
-      for (const cell of exits) {
-        const d = Math.abs(cell.c - stand.c) + Math.abs(cell.r - stand.r)
-        if (d < dist) {
-          dist = d
-          exit = cell
+      const ranked = [...exits].sort((a, b) => this.exitScore(a, stand) - this.exitScore(b, stand))
+      let merged: Vec[] | null = null
+      for (const exit of ranked) {
+        const off = nearestPath(this.tiles, exit, [stand], 'jet', (c, r) => this.tiles[r]?.[c] !== 'runway')
+        if (!off || off.length < 2) continue
+        const touch = this.runwayBeside(exit, line)
+        if (!touch) continue
+        const approach = this.approachTo(line, touch)
+        const built = [...approach]
+        for (const p of off) {
+          const last = built[built.length - 1]
+          if (!last || last.c !== p.c || last.r !== p.r) built.push(p)
         }
+        if (!jetRouteOnGraph(this.tiles, built)) continue
+        merged = built
+        break
       }
-      const off = nearestPath(this.tiles, exit, [stand], 'jet')
-      if (!off || off.length < 2) continue
-      const touch = this.runwayBeside(exit, line)
-      if (!touch) continue
-      const merged = this.approachTo(line, touch)
-      for (const p of off) {
-        const last = merged[merged.length - 1]
-        if (!last || last.c !== p.c || last.r !== p.r) merged.push(p)
-      }
-      if (!jetRouteOnGraph(this.tiles, merged)) continue
+      if (!merged) continue
       if (runwayPref != null && i === runwayPref) return merged
       if (!best || merged.length < best.length) best = merged
     }
     return best
+  }
+
+  /** Nearer exits win. An exit row that already has a jet on it waits behind a free one. */
+  private exitScore(cell: Vec, stand: Vec): number {
+    const dist = Math.abs(cell.c - stand.c) + Math.abs(cell.r - stand.r)
+    return dist + (this.exitRowBusy(cell) ? 1000 : 0)
+  }
+
+  /** Another jet is on this exit's row, close enough to be rolling off the same taxiway. */
+  private exitRowBusy(cell: Vec): boolean {
+    return this.flights.some((f) => {
+      if (f.phase === 'gone' || f.phase === 'hold' || f.phase === 'approach') return false
+      return Math.round(f.y) === cell.r && Math.abs(Math.round(f.x) - cell.c) <= 8
+    })
+  }
+
+  /**
+   * While the arrival is still on the approach, send it to a free exit if the
+   * one it was given now has a jet on it. The inbound leg stays; only the
+   * vacate changes, and it joins at a cell the aircraft is already flying toward.
+   */
+  private retargetClearExit(f: Flight) {
+    if (!f.stand || this.exitSwitched.has(f.id)) return
+    if (f.phase !== 'approach' && f.phase !== 'landing') return
+    const hereC = Math.round(f.x)
+    const hereR = Math.round(f.y)
+    const onRunway = inBounds(hereC, hereR) && this.tiles[hereR]?.[hereC] === 'runway'
+    if (f.phase === 'approach' && onRunway) return
+    if (f.phase === 'landing' && !onRunway) return
+    const route = this.landingRoute(f.stand, this.flightStrip(f))
+    if (!route || route.length < 2) return
+    const current = this.vacateRow(f.path)
+    const next = this.vacateRow(route)
+    // Only leave an exit that has a jet on it, and only for a free one.
+    // A clear exit stays chosen so a later tick cannot pull the arrival back.
+    if (current == null || next == null || current === next) return
+    if (!this.exitRowOccupied(current) || this.exitRowOccupied(next)) return
+    let tail: Vec[]
+    if (!onRunway) {
+      let join = -1
+      let routeAt = 0
+      let best = Infinity
+      for (let i = f.seg; i < f.path.length; i++) {
+        const p = f.path[i]!
+        for (let k = 0; k < route.length; k++) {
+          const d = Math.abs(route[k]!.c - p.c) + Math.abs(route[k]!.r - p.r)
+          if (d < best) {
+            best = d
+            join = i
+            routeAt = k
+          }
+        }
+        if (best === 0) break
+      }
+      if (join < 0 || best > 1) return
+      tail = [...f.path.slice(f.seg, join), ...route.slice(routeAt)]
+    } else {
+      let at = 0
+      let best = Infinity
+      for (let i = 0; i < route.length; i++) {
+        const d = Math.abs(route[i]!.c - f.x) + Math.abs(route[i]!.r - f.y)
+        if (d < best) {
+          best = d
+          at = i
+        }
+      }
+      if (best > 1.5) return
+      tail = route.slice(at)
+    }
+    if (tail.length < 2) return
+    if (this.vacateRow(tail) == null || this.vacateRow(tail) === this.vacateRow(f.path.slice(f.seg))) return
+    this.exitSwitched.add(f.id)
+    f.path = tail
+    f.seg = 0
+    f.t = 0
+  }
+
+  /** A jet is on this taxi row, so the next arrival should use the other exit. */
+  private exitRowOccupied(row: number): boolean {
+    return this.flights.some((o) => {
+      if (o.phase === 'gone' || o.phase === 'hold' || o.phase === 'approach') return false
+      const c = Math.round(o.x)
+      const r = Math.round(o.y)
+      return r === row && this.tiles[r]?.[c] === 'taxi'
+    })
+  }
+
+  /** First taxi row after the landing roll. Inbound grass before the strip does not count. */
+  private vacateRow(path: readonly Vec[]): number | null {
+    const firstRunway = path.findIndex((p) => this.tiles[Math.round(p.r)]?.[Math.round(p.c)] === 'runway')
+    if (firstRunway < 0) return null
+    for (let i = firstRunway + 1; i < path.length; i++) {
+      const p = path[i]!
+      if (this.tiles[Math.round(p.r)]?.[Math.round(p.c)] !== 'runway') return Math.round(p.r)
+    }
+    return null
   }
 
   /**
@@ -25095,9 +25192,9 @@ export class Game {
     return done
   }
 
-  /** Runway ids on the arrival's remaining path (empty once past the runway). */
+  /** Runway ids still ahead on the arrival's path. */
   private atcRunwaysAhead(f: Flight): string[] {
-    const route = this.atcRoute(f.path.slice(Math.max(0, f.seg), Math.max(0, f.seg) + 6))
+    const route = this.atcRoute(f.path.slice(Math.max(0, f.seg)))
     const cell = route.find((c) => c.kind === 'runway')
     return cell ? [...cell.runways] : []
   }
@@ -27381,6 +27478,7 @@ export class Game {
         f.z = 9
         f.heading = f.holdAngle + Math.PI / 2
       } else if (f.phase === 'approach') {
+        this.retargetClearExit(f)
         const threshold =
           f.path.find((p) => inBounds(Math.round(p.c), Math.round(p.r))) ??
           f.path[f.path.length - 1]
@@ -27389,7 +27487,8 @@ export class Game {
         f.z = lerp(f.z, glide, 1 - Math.pow(0.18, step))
         const runwaysAhead = this.atcRunwaysAhead(f)
         if (runwaysAhead.length) {
-          this.atc.onFinal(f.id, runwaysAhead, dist / 1.85)
+          // A cleared approach owns the runway for the whole inbound, not just the last few seconds.
+          this.atc.onFinal(f.id, runwaysAhead, Math.min(dist / 1.85, ATC_TUNING.finalWindowSec - 0.5))
           if (this.atcTouchdownDue(f, dist) && !this.atc.requestLanding(f.id, runwaysAhead)) {
             this.goAround(f)
             continue
@@ -27406,6 +27505,7 @@ export class Game {
           f.z = Math.min(f.z, 1.4)
         }
       } else if (f.phase === 'landing') {
+        this.retargetClearExit(f)
         f.z = lerp(f.z, 0.15, 1 - Math.pow(0.05, step))
         if (this.checkCrash(f, 'landing')) continue
         const arrived = this.atcFollow(f, 1.35, step)
