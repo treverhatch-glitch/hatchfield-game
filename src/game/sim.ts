@@ -8224,8 +8224,8 @@ export class Game {
   }
 
   /**
-   * Old callers asked the Ops wallet to spend its own points. The same id now
-   * buys the Growth node that replaced it, out of the one research wallet.
+   * Old callers spent a separate operations research balance. The same id now
+   * buys the Growth node that replaced it, out of the one research balance.
    */
   buyOpsTech(id: string): boolean {
     const nodeId = growthNodeForOpsTech(id)
