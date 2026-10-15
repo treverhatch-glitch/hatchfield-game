@@ -1,0 +1,16 @@
+# Landing ledger
+
+Order is the producer queue. A row lands only after the rows above it are on `main`.
+
+| Priority | Change | Commit | Gate | Preview |
+| --- | --- | --- | --- | --- |
+| P0 | Resume play audio on the first canvas or key gesture | `6fba6893` | quick, recorded on main before this port | production, not this preview |
+| P1 | Building rounds 4–9 (fuel farm, real-size hangars, truck-fit bays, rounded non-terminal buildings) plus aircraft pass 5 logic, with jumbo spawn gated by airline size and relationship growth | `8c0e21d699afefa9c636f4de6fa2751eb63e2584` | quick PASS, 2943 tests, 30-day soak, Careful bot. `docs/devlog/gate/8c0e21d699afefa9c636f4de6fa2751eb63e2584.md` | `progress` branch preview, filled in after deploy |
+
+## P1 notes
+
+- Fresh port onto main. Main’s `skinMaterial` path and Gemini exterior plates stay. The passenger terminal was not edited by this port.
+- Aircraft pass 5 (787 nose gear, flaps and slats, engines with spinners) was already on main as `e367f14`. Size class, stand fit, the 45 liveries, turnaround service points, sound hooks, and airline fleet lists are unchanged.
+- Spawn rule: a catalog tier of 2 or below never draws wide or jumbo metal. A jumbo such as the A380 stays off the ramp until the relationship reaches Bigger aircraft (tier 4), while a smaller type in that fleet still flies. Tests: `fleet growth gates jumbo spawn` and `schedules a commuter for Bushline and holds Crown’s A380 until the relationship grows`.
+- Full-quality meshes and plates. No new LOD downgrade and no new triangle cap was added to force a cheaper model.
+- Stills: `docs/devlog/media/buildings-r9/` and `docs/devlog/media/fleet-growth/small-vs-large-fleet.png`.
