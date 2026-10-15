@@ -80,12 +80,9 @@ describe('belt deck', () => {
       const mesh = obj as THREE.Mesh
       if (!mesh.isMesh) return
       mesh.geometry.computeBoundingBox()
-      const local = new THREE.Vector3()
-      mesh.geometry.boundingBox!.getSize(local)
       const box = mesh.geometry.boundingBox!.clone()
       box.applyMatrix4(mesh.matrixWorld)
-      const thin = [local.x, local.y, local.z].filter((v) => v < 0.12).length
-      const kind = mesh.geometry.type === 'PlaneGeometry' ? 'deck' : thin >= 2 ? 'rail' : 'roller'
+      const kind = mesh.name === 'belt-deck' ? 'deck' : mesh.name === 'belt-rail' ? 'rail' : 'roller'
       boxes.push({ kind, box })
     })
     return boxes
@@ -109,8 +106,11 @@ describe('belt deck', () => {
     const rollers = boxes.filter((row) => row.kind === 'roller')
     expect(decks.length).toBeGreaterThan(0)
     expect(rollers.length).toBeGreaterThan(0)
-    for (const deck of decks) expect((deck.box.min.y + deck.box.max.y) / 2).toBeCloseTo(BELT_SURFACE_Y, 2)
-    for (const roller of rollers) expect(roller.box.max.y).toBeLessThan(BELT_SURFACE_Y)
+    for (const deck of decks) {
+      expect(deck.box.max.y).toBeCloseTo(BELT_SURFACE_Y, 2)
+      expect(deck.box.max.y - deck.box.min.y).toBeGreaterThan(0.1)
+    }
+    for (const roller of rollers) expect(roller.box.max.y).toBeLessThan(decks[0].box.min.y)
   })
 
   it('keeps bend rails on their own arm instead of crossing into an X', () => {
@@ -139,6 +139,13 @@ describe('belt deck', () => {
       }
     }
     expect(crossed).toBe(0)
+    let joined = 0
+    for (let i = 0; i < rails.length; i++) {
+      for (let j = i + 1; j < rails.length; j++) {
+        if (!rails[i].box.clone().intersect(rails[j].box).isEmpty()) joined += 1
+      }
+    }
+    expect(joined).toBe(1)
   })
 
   it('runs the deck along the belt, including north-south runs and bends', () => {

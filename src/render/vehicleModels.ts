@@ -569,6 +569,23 @@ export const GPU_RISE = 1.0
 export const SERVICE_RISE = 0.6
 const gseR = 0.3
 
+/** Metres of dark bay between the fuel cab's rear face and the tank nose. */
+export const FUEL_REEL_BAY_M = 2.6
+const FUEL_CAB_LEN_M = 2.3
+const FUEL_TAIL_GAP_M = 0.28
+
+/** Cab rear, tank capsule and hose-bay centre for the fuel tanker. Shared with the fill socket. */
+export function fuelTankLayout(L: number, H: number, W: number) {
+  const r = 0.5
+  const cabRear = L / 2 - FUEL_CAB_LEN_M
+  const reelBay = FUEL_REEL_BAY_M
+  const tl = cabRear + L / 2 - FUEL_TAIL_GAP_M - reelBay
+  const tx = -L / 2 + FUEL_TAIL_GAP_M + tl / 2
+  const tr = Math.min(W * 0.46, (H - r - 0.4) / 2)
+  const tankNose = tx + tl / 2
+  return { r, cabRear, reelBay, tl, tx, tr, ty: r + 0.4 + tr, tankNose, reelX: tankNose + reelBay / 2 }
+}
+
 const BUILDERS: Record<VehicleModel, Builder> = {
   fuel_tanker(k, L, H, W) {
     const r = truckR
@@ -576,20 +593,12 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.axle(-L * 0.18, r, W, 'wheels_rear', true)
     k.axle(-L * 0.32, r, W, 'wheels_rear', true)
     k.chassisRail(L * 0.96, W, r + 0.15)
-    const back = k.cab(L, W, r + 0.2, 2.3, 2.3, LIVERY.white, { part: 'cab', rake: 0.42 })
+    const lay = fuelTankLayout(L, H, W)
+    const { reelBay, tl, tx, tr, ty, tankNose, reelX } = lay
+    k.cab(L, W, r + 0.2, 2.3, FUEL_CAB_LEN_M, LIVERY.white, { part: 'cab', rake: 0.42 })
     k.fleetNo(L / 2 - 1.1, r + 0.85, W)
     // Door placard. A box, not a Mesh with the arguments swapped.
     k.box('#b42318', 0.02, 0.22, 0.22, L / 2 - 1.15, r + 1.15, W / 2 + 0.02, 'cab')
-    // Leave a bay between the cab and the tank for the hose reel. Capsule caps
-    // already bulge outward along +X / -X; extra hemispheres would flip inward.
-    const reelBay = 1.7
-    const tailGap = 0.28
-    const tl = back + L / 2 - tailGap - reelBay
-    const tx = -L / 2 + tailGap + tl / 2
-    const tr = Math.min(W * 0.46, (H - r - 0.4) / 2)
-    const ty = r + 0.4 + tr
-    const tankNose = tx + tl / 2
-    const reelX = tankNose + reelBay / 2
     const reelY = r + 1.15
     const reelZ = W * 0.45 + 0.22
     k.add(new THREE.CapsuleGeometry(tr, tl - tr * 2, 6, 16).rotateZ(Math.PI / 2), LIVERY.white, tx, ty, 0, 'tank')
@@ -605,7 +614,8 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     const fax = (-L * 0.18 - L * 0.32) / 2
     for (const s of [1, -1]) {
       k.box(LIVERY.white, 2.05, 0.2, 0.38, fax, r * 2 + 0.12, s * (W / 2 - 0.04), 'tank')
-      k.box(LIVERY.white, 1.15, 0.16, 0.32, L * 0.33, r * 2 + 0.06, s * (W / 2 - 0.06), 'tank')
+      // Front wheels sit under the cab. A white skirt here read as a second cab.
+      k.box(LIVERY.chassis, 1.15, 0.16, 0.32, L * 0.33, r * 2 + 0.06, s * (W / 2 - 0.06), 'cab')
     }
     // top walkway + rail + manholes
     k.box(LIVERY.diamond, tl * 0.7, 0.05, 0.6, tx, ty + tr, 0, 'tank')
@@ -617,8 +627,9 @@ const BUILDERS: Record<VehicleModel, Builder> = {
     k.cyl(LIVERY.steel, 0.04, 2.55, lx, 1.85, lz - 0.18, undefined, 'tank', 8)
     k.cyl(LIVERY.steel, 0.04, 2.55, lx, 1.85, lz + 0.18, undefined, 'tank', 8)
     for (let i = 0; i < 8; i++) k.cyl(LIVERY.steel, 0.022, 0.4, lx, 0.7 + i * 0.3, lz, 'z', 'tank', 8)
-    // pump cabinet in the bay behind the cab, coil on the service side
-    k.box(LIVERY.steel, 1.35, 1.4, W * 0.9, reelX, r + 0.95, 0)
+    // Dark bay the full gap, so the white tank cannot read as a second cab.
+    k.box(LIVERY.chassis, reelBay * 0.78, 1.55, W * 0.88, reelX, r + 0.95, 0)
+    k.cyl(LIVERY.chassis, tr * 0.55, 0.12, tankNose - 0.02, ty, 0, 'x', 'tank')
     k.box('#2a3036', 1.05, 1.05, 0.06, reelX, r + 1.05, W * 0.38)
     k.box(LIVERY.chassis, 0.85, 0.62, 0.04, reelX, r + 1.05, W * 0.45 + 0.02)
     // Torus lies in XY (hole along Z) so the coil faces the side. Do not yaw it edge-on.

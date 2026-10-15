@@ -7,7 +7,7 @@
  */
 import { WORLD_PER_METER, type ModelSpec } from './aircraft/specs'
 import { bridgeStops, doorBoxes } from './aircraft/stands'
-import { beltGeom, CABLE_M, catenaryPoints, cateringHinge, GPU_RISE, lineAnchor, MODEL_SIZE, SERVICE_RISE, type VehicleModel } from './vehicleModels'
+import { beltGeom, CABLE_M, catenaryPoints, cateringHinge, fuelTankLayout, GPU_RISE, lineAnchor, MODEL_SIZE, SERVICE_RISE, type VehicleModel } from './vehicleModels'
 
 export type SocketTable = Readonly<Record<string, readonly [number, number, number]>>
 
@@ -112,15 +112,8 @@ export function vehicleSocketTable(model: VehicleModel): SocketTable {
     sockets.clean_door = [-L * 0.05, r + 0.85, W / 2]
   }
   if (model === 'fuel_tanker') {
-    const r = 0.5
-    const cab = 2.3
-    const back = L / 2 - cab
-    const reelBay = 1.7
-    const tailGap = 0.28
-    const tl = back + L / 2 - tailGap - reelBay
-    const tx = -L / 2 + tailGap + tl / 2
-    const tr = Math.min(W * 0.46, (H - r - 0.4) / 2)
-    sockets.truck_fill = [tx, r + 0.4 + tr, -(tr + 0.04)]
+    const lay = fuelTankLayout(L, H, W)
+    sockets.truck_fill = [lay.tx, lay.ty, -(lay.tr + 0.04)]
   }
   tables.set(model, sockets)
   return sockets

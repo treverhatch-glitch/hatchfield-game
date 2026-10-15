@@ -1,22 +1,24 @@
 /**
  * Apron belt tile. The deck runs from the cell centre out to every side that
  * joins another belt cell, so a bend or a north-south run is still one belt.
- * The deck is the surface bags ride. It stays a flat lit grey: the conveyor
- * photo averages near black and read as a hole between the shorter rollers.
+ * The deck is a raised box: a lit top, darker sides, bags on the top.
+ * At a bend the inner rails meet in an L. They do not run through each other.
  */
 import * as THREE from 'three'
 import { CELL } from './aircraft/specs'
 import type { BeltArms } from './beltRuns'
 
-/** Top of the belt deck, world units. Bags rest here. */
-export const BELT_SURFACE_Y = 0.12
-const ROLLER_Y = 0.04
-const RAIL_Y = BELT_SURFACE_Y + 0.05
+/** Top of the belt deck, world units. About 0.8 m. Bags rest here. */
+export const BELT_SURFACE_Y = 0.36
+const DECK_THICK = 0.16
+const ROLLER_Y = 0.05
+const RAIL_H = 0.07
+const RAIL_Y = BELT_SURFACE_Y + RAIL_H / 2
 const WIDTH = CELL * 0.42
 const RAIL_OFF = CELL * 0.14
 /** Neighbouring arms overlap past the cell edge so the seam cannot read as a gap. */
 const REACH = CELL * 0.5 + 0.25
-/** Corner square. A bend arm starts here so its rails stay off the other arm. */
+/** Corner square. A straight-through rail starts here so it stays off the other arm. */
 const JOINT = WIDTH / 2
 
 /** How far an arm runs from the cell centre. A bend starts at the joint; a straight run starts at the centre. */
@@ -42,8 +44,31 @@ export function deckSides(arms: BeltArms | undefined): (keyof BeltArms)[] {
   return out
 }
 
+/** Local Z of the rail that turns into the other arm. Null on a straight run. */
+function innerRailZ(arm: (typeof SIDES)[number], sides: (keyof BeltArms)[]): number | null {
+  const theta = Math.atan2(-arm.z, arm.x)
+  const c = Math.cos(theta)
+  const s = Math.sin(theta)
+  for (const other of SIDES) {
+    if (!sides.includes(other.arm) || other.arm === arm.arm) continue
+    if (other.x === arm.x || other.z === arm.z) continue
+    const localZ = other.x * s + other.z * c
+    if (Math.abs(localZ) < 0.5) continue
+    return Math.sign(localZ) * RAIL_OFF
+  }
+  return null
+}
+
 export function addBeltDeck(g: THREE.Group, arms: BeltArms | undefined) {
-  const deckMat = new THREE.MeshStandardMaterial({ color: '#8e9aa3', roughness: 0.55, metalness: 0.08 })
+  const sideMat = new THREE.MeshStandardMaterial({ color: '#1c2328', roughness: 0.86, metalness: 0.02 })
+  const topMat = new THREE.MeshStandardMaterial({
+    color: '#e4eef3',
+    emissive: '#8ea4b0',
+    emissiveIntensity: 0.55,
+    roughness: 0.38,
+    metalness: 0.08,
+  })
+  const deckMats = [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]
   const railMat = new THREE.MeshStandardMaterial({ color: '#c9a227', emissive: '#5a4810', emissiveIntensity: 0.25, roughness: 0.45 })
   const rollerMat = new THREE.MeshStandardMaterial({ color: '#5a6a78', metalness: 0.35, roughness: 0.4 })
   const sides = deckSides(arms)
@@ -51,37 +76,44 @@ export function addBeltDeck(g: THREE.Group, arms: BeltArms | undefined) {
   const span = beltArmRange(bend)
   const len = span.to - span.from
   const mid = (span.from + span.to) / 2
-  const deckGeo = new THREE.PlaneGeometry(len, WIDTH)
+  const deckY = BELT_SURFACE_Y - DECK_THICK / 2
+  const deckGeo = new THREE.BoxGeometry(len, DECK_THICK, WIDTH)
   const rollerGeo = new THREE.BoxGeometry(len, 0.05, CELL * 0.18)
-  const railGeo = new THREE.BoxGeometry(len, 0.08, 0.06)
   let armIndex = 0
   for (const side of SIDES) {
     if (!sides.includes(side.arm)) continue
     const arm = new THREE.Group()
     arm.rotation.y = Math.atan2(-side.z, side.x)
-    const deck = new THREE.Mesh(deckGeo, deckMat)
+    const deck = new THREE.Mesh(deckGeo, deckMats)
     deck.name = 'belt-deck'
-    deck.rotation.x = -Math.PI / 2
     // A millimetre of stagger so the overlap has one winner and does not z-fight to a crack.
-    deck.position.set(mid, BELT_SURFACE_Y + armIndex * 0.001, 0)
+    deck.position.set(mid, deckY + armIndex * 0.001, 0)
+    deck.castShadow = true
     deck.receiveShadow = true
-    const railA = new THREE.Mesh(railGeo, railMat)
-    railA.name = 'belt-rail'
-    railA.position.set(mid, RAIL_Y, -RAIL_OFF)
-    const railB = new THREE.Mesh(railGeo, railMat)
-    railB.name = 'belt-rail'
-    railB.position.set(mid, RAIL_Y, RAIL_OFF)
+    arm.add(deck)
+    const innerZ = bend ? innerRailZ(side, sides) : null
+    for (const z of [-RAIL_OFF, RAIL_OFF]) {
+      const inner = innerZ !== null && Math.sign(z) === Math.sign(innerZ)
+      const from = inner ? RAIL_OFF : span.from
+      const railLen = span.to - from
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(railLen, RAIL_H, 0.06), railMat)
+      rail.name = 'belt-rail'
+      rail.position.set((from + span.to) / 2, RAIL_Y, z)
+      rail.castShadow = true
+      arm.add(rail)
+    }
     const roller = new THREE.Mesh(rollerGeo, rollerMat)
+    roller.name = 'belt-roller'
     roller.position.set(mid, ROLLER_Y, 0)
-    arm.add(deck, railA, railB, roller)
+    arm.add(roller)
     g.add(arm)
     armIndex += 1
   }
   if (bend) {
-    const joint = new THREE.Mesh(new THREE.PlaneGeometry(WIDTH, WIDTH), deckMat)
+    const joint = new THREE.Mesh(new THREE.BoxGeometry(WIDTH, DECK_THICK, WIDTH), deckMats)
     joint.name = 'belt-deck'
-    joint.rotation.x = -Math.PI / 2
-    joint.position.y = BELT_SURFACE_Y + 0.004
+    joint.position.y = deckY + 0.004
+    joint.castShadow = true
     joint.receiveShadow = true
     g.add(joint)
   }
