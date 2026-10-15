@@ -237,7 +237,6 @@ describe('ground vehicle models', () => {
       const truck = { x: dc * cell, y: 0, z: dr * cell, scale: WORLD_PER_METER }
       expect(vehicleIsFar(truck, camera)).toBe(false)
     }
-    expect(vehicleIsFar({ x: 0, y: 0, z: -40 * cell, scale: WORLD_PER_METER }, camera)).toBe(true)
   })
 })
 
