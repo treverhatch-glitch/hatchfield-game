@@ -282,7 +282,12 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
       />
       <DebugHud game={game} />
       <AchievementToast achievements={newAchievements} />
-      <GameTimetable game={game} menuOpen={!!buildMenu} plannerOpen={manageTab === 'planner'} />
+      <GameTimetable
+        game={game}
+        menuOpen={!!buildMenu}
+        plannerOpen={manageTab === 'planner'}
+        onFuel={() => openPanel('services')}
+      />
       <button
         type="button"
         className={`fids-toggle${boardsOpen ? ' on' : ''}`}

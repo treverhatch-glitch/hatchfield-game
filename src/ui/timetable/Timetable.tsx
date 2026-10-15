@@ -29,11 +29,17 @@ export function Timetable({
   menuOpen = false,
   plannerOpen = false,
   defaultOpen = false,
+  fuelLine = null,
+  fuelShort = false,
+  onFuel,
 }: {
   adapter: TimetableAdapter
   menuOpen?: boolean
   plannerOpen?: boolean
   defaultOpen?: boolean
+  fuelLine?: string | null
+  fuelShort?: boolean
+  onFuel?: () => void
 }) {
   const [pillOpen, setPillOpen] = useState(defaultOpen)
   const [tab, setTab] = useState<Tab>('stands')
@@ -380,6 +386,18 @@ export function Timetable({
             ) : null}
           </div>
 
+          {fuelLine ? (
+            <button
+              type="button"
+              className={`tt-fuel${fuelShort ? ' short' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onFuel?.()
+              }}
+            >
+              {fuelLine}
+            </button>
+          ) : null}
           {selFlight ? (
             <FlightCard
               adapter={adapter}
