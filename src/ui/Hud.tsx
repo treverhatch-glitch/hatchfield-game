@@ -13,6 +13,7 @@ import { AlertStackView } from './isolated/AlertStack.tsx'
 import { BuildTray } from './nav/BuildTray.tsx'
 import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
 import { StatusChip } from './StatusChip.tsx'
+import { ApronFlightCard, FlightCard } from './inspector/FlightCard.tsx'
 import { dockHasRows, runStatusChipAction, statusChipFromGame } from './statusChip.ts'
 import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
 import type { UnlockLink } from './nav/stampFacts.ts'
@@ -263,6 +264,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
 
   return (
     <div className="hud">
+      <ApronFlightCard game={game} />
       <BuildingPanel
         card={building}
         onClose={() => game.closeBuilding()}
@@ -1813,90 +1815,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     <h3>Selected flight</h3>
                     <p className="muted">Fleet today: {game.fleetMixLine()}</p>
                     {flight && airline ? (
-                      <div className="flight">
-                        <p
-                          className="fn"
-                          style={{
-                            color:
-                              flight.kind === 'military'
-                                ? '#8a9a6a'
-                                : flight.kind === 'air_ambulance' || flight.kind === 'helo_med'
-                                  ? '#b33a2a'
-                                  : flight.kind === 'freighter'
-                                    ? '#c97816'
-                                    : airline.color,
-                          }}
-                        >
-                          {game.roleLabel(flight.kind)}
-                          {flight.kind === 'military' ||
-                          flight.kind === 'helo_med' ||
-                          flight.kind === 'air_ambulance' ||
-                          flight.kind === 'helo_exec'
-                            ? ''
-                            : ` · ${airline.name}`}{' '}
-                          {flight.flightNo}
-                        </p>
-                        {game.liveTurnGrade(flight) ? (
-                          <p className="phase" data-testid="turn-grade">
-                            Turnaround {game.liveTurnGrade(flight)?.grade}
-                            {game.liveTurnGrade(flight)?.note ? ` — ${game.liveTurnGrade(flight)?.note}` : ''}
-                          </p>
-                        ) : null}
-                        <p className="phase">
-                          {flight.airframeName || game.aircraftLabel(flight.kind)} ·{' '}
-                          {labelPhase(flight.phase, flight.craft)}
-                          {flight.pax > 0
-                            ? ` · ${flight.pax} pax`
-                            : flight.cargo
-                              ? ' · freight'
-                              : ''}
-                          {(flight.craft ?? 'jet') === 'jet'
-                            ? ` · ${game.gateLabel(flight.stand)}`
-                            : ' · helipad'}
-                          {flight.ga && flight.phase === 'parked'
-                            ? flight.parkLeaveRequestedAt && flight.parkLeaveBy
-                              ? ` · LEAVE WINDOW ${Math.max(0, Math.round(flight.parkLeaveBy - game.clock))}s`
-                              : ` · parked ${Math.round(flight.phaseTime)}s / ask ~${flight.parkStaySec ?? '?'}s`
-                            : ''}
-                        </p>
-                        {flight.ga && flight.phase === 'parked' ? (
-                          <button
-                            type="button"
-                            className="wide"
-                            onClick={() => game.releaseGa(flight.id)}
-                          >
-                            {flight.parkLeaveRequestedAt
-                              ? 'Release (manual departure)'
-                              : 'Release early'}
-                          </button>
-                        ) : null}
-                        <p className="muted">
-                          Needs{' '}
-                          {flight.craft === 'helo'
-                            ? 'helipad'
-                            : `${AIRFRAMES[flight.airframeId]?.minRunway ?? '?'}c strip`}
-                          {' · '}
-                          size ×{(AIRFRAMES[flight.airframeId]?.scale ?? 1).toFixed(2)} · field{' '}
-                          {game.stripCapabilityLine()}
-                          {flight.waitingOn.deice
-                            ? ' · waiting de-ice'
-                            : flight.posted.deiced
-                              ? ' · de-iced'
-                              : ''}
-                        </p>
-                        <ul className="ledger">
-                          {flight.ledger.length === 0 ? (
-                            <li>Nothing posted yet — wait until the picture earns it.</li>
-                          ) : (
-                            flight.ledger.map((row, i) => (
-                              <li key={i}>
-                                {row.label}
-                                <b>{money(row.amount)}</b>
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      </div>
+                      <FlightCard game={game} flight={flight} />
                     ) : (
                       <p className="muted">
                         No flights until an airline signs. Meet their checklist, then answer the
@@ -2658,36 +2577,6 @@ const SpeedButtons = memo(function SpeedButtons({
     </div>
   )
 })
-
-function labelPhase(phase: string, craft?: string): string {
-  if (craft === 'helo') {
-    const helo: Record<string, string> = {
-      approach: 'Hover in',
-      landing: 'Settling',
-      servicing: 'On pad',
-      takeoff: 'Lifting',
-    }
-    return helo[phase] ?? phase
-  }
-  const map: Record<string, string> = {
-    hold: 'Holding',
-    approach: 'On approach',
-    landing: 'Landing',
-    taxi_in: 'Taxi in',
-    deboard: 'Deboarding',
-    servicing: 'Servicing',
-    mx_taxi: 'Taxi to hangar',
-    mx_bay: 'Hangar MX',
-    mx_return: 'Return from hangar',
-    board: 'Boarding',
-    pushback: 'Pushback',
-    parked: 'Parked (GA)',
-    taxi_out: 'Taxi out',
-    takeoff: 'Takeoff',
-    gone: 'Airborne',
-  }
-  return map[phase] ?? phase
-}
 
 /** Hide a node that still owes its cash build cost so the tree can charge it. */
 function researchTreeState(game: Game) {

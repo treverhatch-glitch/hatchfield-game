@@ -13,6 +13,7 @@ import { writeTipPoints, type TipPoint } from './tipScreen'
 import { writeAlertPoints, type AlertPoint } from './alerts/alertScreen'
 import { criticalAlertMarks } from './alerts/marks'
 import { ALERT_TUNING } from '../game/alertsData.ts'
+import { syncFlightCardClick } from './inspector/flightCard.ts'
 import { releaseApronAudio, syncApronAudio } from '../audio/stage'
 import type { QualityLevel } from '../render/world/quality.ts'
 
@@ -47,7 +48,9 @@ export function Field({ game }: { game: Game }) {
           if (hit.kind === 'vehicle') cameraSession.startFollow()
         }
       }
+      const beforeFlight = game.selectedFlight
       game.clickTile(v)
+      syncFlightCardClick(game, v, beforeFlight)
       if (game.tool === 'pan') {
         const active = mapViewSnapshot().active
         const tile = game.tile(v)

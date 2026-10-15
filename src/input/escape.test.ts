@@ -29,4 +29,10 @@ describe('escape order', () => {
     expect(numbersToClose({ infoLinesOpen: false, infoMenuOpen: false, infoDetailOpen: true })).toBe('detail')
     expect(numbersToClose({ infoLinesOpen: false, infoMenuOpen: false, infoDetailOpen: false })).toBeNull()
   })
+
+  it('closes the flight card after info views and before the menu', () => {
+    expect(nextEscape({ ...idle, flightCardOpen: true })).toBe('close-flight-card')
+    expect(nextEscape({ ...idle, infoViewOpen: true, flightCardOpen: true })).toBe('close-info')
+    expect(nextEscape({ ...idle, toolActive: true, flightCardOpen: true })).toBe('cancel-tool')
+  })
 })

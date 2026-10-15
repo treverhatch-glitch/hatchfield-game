@@ -6,6 +6,7 @@ import type { Speed } from '../game/types.ts'
 import { moreMenuSnapshot, setMoreMenu } from '../info/moreMenu.ts'
 import { closeMapDetail, closeMapView, mapViewSnapshot } from '../info/session.ts'
 import { nextEscape, numbersToClose } from '../input/escape.ts'
+import { closeFlightCard, isFlightCardOpen, syncFlightCardClick } from './inspector/flightCard.ts'
 import { cancelHallTool, hallToolActive, rotateHallTool } from '../input/hallTools.ts'
 import { inputMap } from '../input/map.ts'
 import { pauseState } from './pauseState.ts'
@@ -34,6 +35,7 @@ export function PlayInput({ game }: { game: Game }) {
           toolActive: hallToolActive() || game.tool !== 'pan',
           infoDetailOpen: view.detail || linesOpen || menuOpen,
           infoViewOpen: view.active != null,
+          flightCardOpen: isFlightCardOpen(),
         })
         if (step === 'close-menu') pauseState.close()
         else if (step === 'release-camera') cameraSession.noteEscape()
@@ -60,7 +62,8 @@ export function PlayInput({ game }: { game: Game }) {
           if (view.active === 'traffic') game.closeLandside()
           if (view.active === 'fuel') game.closeFuelFarm()
           closeMapView()
-        } else pauseState.openMenu()
+        } else if (step === 'close-flight-card') closeFlightCard()
+        else pauseState.openMenu()
         return
       }
       if (id === 'tool.rotate') {
@@ -90,7 +93,10 @@ export function PlayInput({ game }: { game: Game }) {
         return
       }
       if (id === 'ui.select' && game.hover && game.view === 'apron') {
-        game.clickTile(game.hover)
+        const hover = game.hover
+        const before = game.selectedFlight
+        game.clickTile(hover)
+        syncFlightCardClick(game, hover, before)
       }
     })
   }, [game])
