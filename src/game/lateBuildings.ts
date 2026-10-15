@@ -30,10 +30,16 @@ const TILE_OF: Record<Tier3PlusId, Tile> = {
   airport_hotel: 'late_hotel',
   rail_link: 'late_rail',
   saf_blending: 'saf',
+  spotters_deck: 'spotters_deck',
 }
 
 export function lateIdForTool(tool: string): Tier3PlusId | null {
-  if (tool === 'airport_hotel' || tool === 'rail_link' || tool === 'saf_blending') return tool
+  if (
+    tool === 'airport_hotel' ||
+    tool === 'rail_link' ||
+    tool === 'saf_blending' ||
+    tool === 'spotters_deck'
+  ) return tool
   return null
 }
 
@@ -99,10 +105,14 @@ export function lateCatalogLines(id: Tier3PlusId, fieldLevel: number, placed: nu
   } else if (spec.kind === 'rail') {
     lines.push(`+${Math.round(spec.demandBonus * 100)}% demand once open`)
     lines.push(`${spec.buildDays}-day build`)
-  } else {
+  } else if (spec.kind === 'saf') {
     lines.push(`Fuel cost +${Math.round((spec.fuelCostMultiplier - 1) * 100)}%`)
     lines.push(spec.satisfiesGreen ? 'Meets green airline demand' : 'Does not meet green airline demand')
+  } else {
+    lines.push(`${money(spec.dailyIncome)} visitor income per day`)
+    lines.push(`+${spec.prestigeItems} prestige · ${spec.crowdSize} visible spotters`)
   }
+  if (spec.unique) lines.push('Unique — one per airport')
   lines.push(spec.purpose, spec.catch)
   if (placed > 0) lines.push(`${placed} on the field`)
   return lines

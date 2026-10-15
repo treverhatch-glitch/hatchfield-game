@@ -82,6 +82,15 @@ export function greenDemandSatisfied(sites: readonly BuildSite[]): boolean {
   })
 }
 
+/** Prestige amenities supplied by open late buildings. This is not field XP. */
+export function prestigeItems(sites: readonly BuildSite[]): number {
+  return sites.reduce((total, site) => {
+    if (!isOpen(site)) return total
+    const spec = buildingById(site.id)
+    return total + (spec?.kind === 'spotters' ? spec.prestigeItems : 0)
+  }, 0)
+}
+
 /**
  * Income and upkeep for one game day.
  * Hotel upkeep is the full daily amount whether or not a room sold.
@@ -106,6 +115,10 @@ export function dailyPnL(sites: readonly BuildSite[], night: HotelNight = EMPTY_
       transfers = booked.transfersLeft
       crew = booked.crewLeft
       lines.push(booked.line)
+      continue
+    }
+    if (spec.kind === 'spotters') {
+      lines.push(openLine(spec, dollars(spec.dailyIncome), spec.dailyUpkeep, 0, 0, 0, 0, openNote(spec)))
       continue
     }
     lines.push(openLine(spec, 0, spec.dailyUpkeep, 0, 0, 0, 0, openNote(spec)))
@@ -189,6 +202,7 @@ function openNote(spec: Tier3PlusBuilding): string {
     const premium = Math.round((spec.fuelCostMultiplier - 1) * 100)
     return `Green airline demand met — fuel cost +${premium}%`
   }
+  if (spec.kind === 'spotters') return `Visitor deck open — +${spec.prestigeItems} prestige`
   return spec.purpose
 }
 

@@ -63,6 +63,7 @@ import { standBox } from './world/layout'
 import { ROOF_Y } from './world/terminal'
 import { metreUv, photoMaterial, setBuildingSkinQuality, skinBox, skinMaterial, tankUv, yardMaterial } from './world/buildingSkin'
 import { HOTEL_WALL, SKIN_TILE_M } from '../build/materialTargets'
+import { addSpottersDeck } from './spottersDeck.ts'
 
 interface ClimbOut {
   airframeId: string
@@ -675,6 +676,7 @@ export class World {
             parkTerm: game.parkTerms[key],
             hangarTier: game.hangarScale[key],
             lateOpen: game.lateOpenAt(c, r),
+            spotterCrowd: game.spotterCrowdAt(c, r),
           })
           built.userData.cellKey = key
           this.tilesGroup.add(built)
@@ -770,6 +772,7 @@ export class World {
       parkTerm?: ParkTerm
       hangarTier?: SizeTier
       lateOpen?: boolean
+      spotterCrowd?: number
     } = {},
   ): THREE.Group {
     const g = new THREE.Group()
@@ -1127,6 +1130,8 @@ export class World {
       else this.addLateRail(g)
     } else if (tile === 'saf') {
       this.addSafPlant(g)
+    } else if (tile === 'spotters_deck') {
+      addSpottersDeck(g, opts.spotterCrowd ?? 0)
     }
     return g
   }

@@ -65,6 +65,8 @@ export type Tile =
   | 'late_rail'
   /** Sustainable aviation fuel blending plant. */
   | 'saf'
+  /** Raised public viewing deck with visible plane-spotter crowds. */
+  | 'spotters_deck'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -142,6 +144,7 @@ export type Tool =
   | 'airport_hotel'
   | 'rail_link'
   | 'saf_blending'
+  | 'spotters_deck'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -1048,8 +1051,13 @@ export interface GameSnapshot {
   disruptions?: string
   /** Year-end disruption, hub, and award counters. Missing on older saves. */
   playtestYear?: PlaytestYearSave
-  /** Placed late buildings (hotel, rail link, SAF). Missing on older saves. */
-  tier3Sites?: { id: 'airport_hotel' | 'rail_link' | 'saf_blending'; c: number; r: number; elapsedDays: number }[]
+  /** Placed late buildings. Missing on older saves. */
+  tier3Sites?: {
+    id: 'airport_hotel' | 'rail_link' | 'saf_blending' | 'spotters_deck'
+    c: number
+    r: number
+    elapsedDays: number
+  }[]
   /** Missed-connection guests waiting on the airport hotel. */
   missedHotelNights?: number
   /** Crew waiting on the airport hotel. */

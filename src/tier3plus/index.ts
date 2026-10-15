@@ -6,6 +6,7 @@ export {
   greenDemandSatisfied,
   isOpen,
   placeBuilding,
+  prestigeItems,
   tickBuildProgress,
 } from './tick.ts'
 export type {
@@ -20,6 +21,7 @@ export type {
   PnLLine,
   RailBuilding,
   SafBuilding,
+  SpottersDeckBuilding,
   Tier3PlusBuilding,
   Tier3PlusId,
 } from './types.ts'

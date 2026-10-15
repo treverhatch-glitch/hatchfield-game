@@ -164,7 +164,7 @@ const BUILD_MENUS: { id: string; label: string; tools: Tool[] }[] = [
   {
     id: 'late',
     label: 'Late',
-    tools: ['airport_hotel', 'rail_link', 'saf_blending'],
+    tools: ['airport_hotel', 'spotters_deck', 'rail_link', 'saf_blending'],
   },
   {
     id: 'bulldoze',

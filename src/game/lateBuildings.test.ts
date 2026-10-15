@@ -160,6 +160,34 @@ describe('late building stamps', () => {
     expect(game.infoLines('late-site:17,0').join(' ')).toMatch(/Green airline demand met/)
   })
 
+  it('opens a unique Spotters deck with visible crowds, prestige, and daily gate income', () => {
+    const game = field()
+    const spec = buildingById('spotters_deck')
+    if (spec?.kind !== 'spotters') throw new Error('spotters deck missing')
+    game.fieldXp = LATE_FIELD_XP[8]
+    const xp = game.fieldXp
+    game.setTool('spotters_deck')
+    game.clickTile({ c: 15, r: 1 })
+
+    expect(game.lateSites).toEqual([{ id: 'spotters_deck', c: 15, r: 1, elapsedDays: 0 }])
+    expect(game.tile({ c: 15, r: 1 })).toBe('spotters_deck')
+    expect(game.spotterCrowdAt(15, 1)).toBe(spec.crowdSize)
+    expect(game.fieldXp).toBe(xp)
+    expect(game.infoLines('late:spotters_deck').join(' ')).toMatch(
+      /\$3,200 visitor income per day.*\+1 prestige.*18 visible spotters.*Unique/,
+    )
+
+    closeDays(game, 1)
+    expect(tier3(game, 'landside_fees').at(-1)?.amount).toBe(spec.dailyIncome)
+    expect(tier3(game, 'building_upkeep').at(-1)?.amount).toBe(-spec.dailyUpkeep)
+    expect(game.fieldXp).toBe(xp)
+
+    game.setTool('spotters_deck')
+    game.clickTile({ c: 15, r: 2 })
+    expect(game.lateSites).toHaveLength(1)
+    expect(game.news[0]?.text).toMatch(/unique/)
+  })
+
   it('saves and reloads the site, then refunds a bulldoze through the ledger', () => {
     const game = field()
     game.fieldXp = LATE_FIELD_XP[9]

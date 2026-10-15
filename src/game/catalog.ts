@@ -1551,6 +1551,7 @@ export const TOOL_LABEL: Record<Tool, string> = {
   airport_hotel: 'Hotel',
   rail_link: 'Rail link',
   saf_blending: 'SAF',
+  spotters_deck: 'Spotters deck',
   clear: 'Clear',
 }
 
