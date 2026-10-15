@@ -426,7 +426,7 @@ export function itemThroughput(def: ItemDef): number {
 }
 
 /**
- * Prefab security tuning. Crowd avoidance stays unwired until after playtest.
+ * Prefab security tuning. The live walk's crowd give-way is PaxNav's (`crowdCellPax`, `crowdMinPace`); the social-force `Crowd` only steers the airport-view overlay.
  * A worn-out lane runs at most ×1.5 (wear 100), not ×2. A janitor still matters.
  */
 export const WORN_LANE_DIVISOR = 200
