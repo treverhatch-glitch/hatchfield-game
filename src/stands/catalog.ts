@@ -39,7 +39,7 @@ export const SIZE_LABEL: Record<StandSize, string> = {
 
 /** ICAO letter the rung accepts, before the bush and asphalt lists. */
 export const RUNG_LETTER: Record<StandSize, readonly ['A' | 'B' | 'C' | 'D' | 'E' | 'F', 'A' | 'B' | 'C' | 'D' | 'E' | 'F', 'A' | 'B' | 'C' | 'D' | 'E' | 'F']> = {
-  light: ['A', 'B', 'B'],
+  light: ['B', 'B', 'B'],
   narrow: ['C', 'C', 'C'],
   heavy: ['D', 'E', 'F'],
 }
