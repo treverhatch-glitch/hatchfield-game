@@ -442,6 +442,20 @@ export const STAND_OFFERS: Record<'small' | 'wide' | 'jumbo', BuildOffer> = {
   },
 }
 
+/**
+ * Door clearance for each hangar tier. Span and tail are the design aircraft
+ * (A320, A350-900, A380). The lot is the cell count the mesh is built across.
+ */
+export const HANGAR_DESIGN: Record<SizeTier, { spanM: number; tailM: number; lot: number }> = {
+  small: { spanM: 35.8, tailM: 11.8, lot: 3 },
+  wide: { spanM: 64.8, tailM: 17.1, lot: 4 },
+  jumbo: { spanM: 79.8, tailM: 24.1, lot: 5 },
+}
+
+/** Metres of clearance each side of the span, and above the tail. */
+export const HANGAR_SIDE_CLEAR_M = 1
+export const HANGAR_HEAD_CLEAR_M = 1
+
 export const HANGAR_OFFERS: Record<SizeTier, BuildOffer> = {
   small: {
     id: 'hangar',

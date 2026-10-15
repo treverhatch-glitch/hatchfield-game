@@ -173,6 +173,7 @@ import {
   TERMBUS_COST,
   TERMINAL_COST,
 } from './catalog'
+import { hangarFootprintCells } from './buildingFootprint'
 import { footprintCells, footprintCellsForLetter, standGrowBlock } from './standFoot'
 import { stampStarterKit } from './starterLayout'
 import { getAircraftSpec } from '../render/aircraft/specs'
@@ -20400,8 +20401,23 @@ export class Game {
     return this.sites.find((s) => s.cells.some((c) => c.c === v.c && c.r === v.r))
   }
 
+  /** Grass inside a built hangar's lot. The anchor cell is the hangar tile itself. */
+  hangarLotClaims(p: Vec): boolean {
+    const tiles = this.tiles
+    for (let r = 0; r < tiles.length; r++) {
+      const row = tiles[r]
+      if (!row) continue
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== 'hangar' || (c === p.c && r === p.r)) continue
+        const tier = this.hangarScale[`${c},${r}`] ?? 'small'
+        if (hangarFootprintCells({ c, r }, tier).some((q) => q.c === p.c && q.r === p.r)) return true
+      }
+    }
+    return false
+  }
+
   cellsBlocked(cells: Vec[]): boolean {
-    return cells.some((p) => this.siteAt(p))
+    return cells.some((p) => this.siteAt(p) || this.hangarLotClaims(p))
   }
 
   enqueueBuild(site: Omit<BuildSite, 'id' | 'elapsed' | 'duration' | 'warned' | 'vanArrived' | 'delivered' | 'crewSpawned'> & Partial<BuildSite>) {
@@ -21079,19 +21095,21 @@ export class Game {
         return
       }
     }
-    if (this.siteAt(v)) {
+    const hangarTier = building.tile === 'hangar' ? (hangarScaleForTool(this.tool) ?? 'small') : null
+    const lot = hangarTier ? hangarFootprintCells(v, hangarTier) : [v]
+    if (lot.some((p) => this.siteAt(p))) {
       this.pushNews('Already a construction site.', 'bad')
       this.emit()
       return
     }
-    const blocked = this.placementBlockReason(building.tile, [v], v, building.name)
+    const blocked = this.placementBlockReason(building.tile, lot, v, building.name)
     if (blocked) {
       this.pushNews(blocked, 'bad')
       this.emit()
       return
     }
-    if (this.tile(v) !== 'grass') {
-      this.pushNews('Needs grass.', 'bad')
+    if (lot.some((p) => this.tile(p) !== 'grass' || this.hangarLotClaims(p))) {
+      this.pushNews(hangarTier ? 'The hangar lot needs open grass.' : 'Needs grass.', 'bad')
       this.emit()
       return
     }
@@ -21281,7 +21299,7 @@ export class Game {
     }
     this.enqueueBuild({
       kind: 'single',
-      cells: [v],
+      cells: lot,
       tile: building.tile,
       cost: stampCost,
       name: building.name,
@@ -21879,6 +21897,7 @@ export class Game {
       standClass: tile === 'stand' ? (standClassForTool(this.tool) ?? 'M') : undefined,
       standScale: tile === 'stand' ? standScaleForTool(this.tool, jumbo) : undefined,
       standLetter: alias ? footprintLetter(alias.size, alias.rung) : undefined,
+      hangarScale: tile === 'hangar' ? (hangarScaleForTool(this.tool) ?? 'small') : undefined,
     })
   }
 
@@ -21957,6 +21976,9 @@ export class Game {
         for (let c = 0; c < 3; c++) cells.push({ c: hover.c + c, r: hover.r + r })
       }
       return cells
+    }
+    if (this.tool === 'hangar' || this.tool === 'hangar_w' || this.tool === 'hangar_j') {
+      return hangarFootprintCells(hover, hangarScaleForTool(this.tool) ?? 'small')
     }
     const standCls = standClassForTool(this.tool)
     if (standCls) {

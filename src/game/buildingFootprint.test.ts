@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { footprintBlock, footprintCells } from './buildingFootprint.ts'
+import { footprintBlock, footprintCells, hangarFootprintCells } from './buildingFootprint.ts'
 import { Game } from './sim.ts'
 import type { Tile } from './types.ts'
 import { SIZE } from './types.ts'
@@ -12,6 +12,17 @@ describe('building footprints', () => {
   it('gives the round tower a 3×3 keep-out and leaves a road as one cell', () => {
     expect(footprintCells('tower', { c: 4, r: 5 })).toHaveLength(9)
     expect(footprintCells('road', { c: 4, r: 5 })).toEqual([{ c: 4, r: 5 }])
+  })
+
+  it('reserves a real hangar lot, anchor first, and blocks a road inside it', () => {
+    expect(hangarFootprintCells({ c: 10, r: 10 }, 'small')).toHaveLength(9)
+    expect(hangarFootprintCells({ c: 10, r: 10 }, 'small')[0]).toEqual({ c: 10, r: 10 })
+    expect(hangarFootprintCells({ c: 8, r: 8 }, 'wide')).toHaveLength(16)
+    expect(hangarFootprintCells({ c: 8, r: 8 }, 'jumbo')).toHaveLength(25)
+    const tiles = blank()
+    tiles[10][11] = 'road'
+    expect(footprintBlock(tiles, 'hangar', { c: 10, r: 10 }, 'small')).toBe('road')
+    expect(footprintBlock(tiles, 'hangar', { c: 14, r: 14 }, 'small')).toBeNull()
   })
 
   it('blocks a tower whose keep-out covers a road and allows open grass', () => {

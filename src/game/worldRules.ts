@@ -49,6 +49,8 @@ export interface Stamp {
   standClass?: StandClass
   standScale?: StandScale | null
   standLetter?: IcaoCode
+  /** Hangar lot. Omitted stamps use the line-hangar (small) keep-out. */
+  hangarScale?: StandScale
 }
 
 export interface AuditInput {
@@ -312,7 +314,7 @@ function legacyReason(surface: Surface, stamp: Stamp): string | null {
     )
     if (why) return why
   }
-  const foot = footprintBlock(surface.tiles, stamp.tile, stamp.origin)
+  const foot = footprintBlock(surface.tiles, stamp.tile, stamp.origin, stamp.hangarScale)
   if (foot === 'road') return `${name} footprint crosses a road.`
   if (foot === 'edge') return `${name} footprint leaves the map.`
   if (stamp.tile !== 'stand' && clearanceBlocks(surface.tiles, stamp.cells, stamp.tile)) {

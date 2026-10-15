@@ -16,55 +16,136 @@ function wall(target: Parameters<typeof skinMaterial>[0], part: Parameters<typeo
   return skinMaterial(target, part)
 }
 
-/** Tank farm: bund, pump house, and a fill bay on the +X outlet. */
+function based(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+  mesh.position.set(x, y + h / 2, z)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  return mesh
+}
+
+function pipe(g: THREE.Group, a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material) {
+  const len = a.distanceTo(b)
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, Math.max(len, 0.05), 8), mat)
+  mesh.position.copy(a).add(b).multiplyScalar(0.5)
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize())
+  mesh.castShadow = true
+  g.add(mesh)
+}
+
+/**
+ * Tank farm from building-visuals-r9 (fuelFarmR5): five domed tanks in a bund,
+ * a pipe rack, a pump house, and a loading gantry. Tank shells keep the Gemini
+ * tank plate. The fill socket stays on the +X outlet the fuel hose already uses.
+ */
 export function addFuelFarm(g: THREE.Group) {
-  const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.96, CELL * 0.96), 4, WORLD_PER_METER), yardMaterial('gravel'))
+  const shell = skinMaterial('fuel_farm', 'wall', { metalness: 0.35 })
+  const roof = skinMaterial('fuel_farm', 'roof')
+  const trim = skinMaterial('fuel_farm', 'trim')
+  const bandMat = new THREE.MeshStandardMaterial({ color: '#2d6a4f', roughness: 0.4, metalness: 0.2 })
+  const steel = new THREE.MeshStandardMaterial({ color: '#8b949e', roughness: 0.4, metalness: 0.55 })
+  const dark = new THREE.MeshStandardMaterial({ color: '#3a4048', roughness: 0.45, metalness: 0.5 })
+  const concrete = new THREE.MeshStandardMaterial({ color: '#c9c6bf', roughness: 0.82 })
+  const bundMat = new THREE.MeshStandardMaterial({ color: '#a8a397', roughness: 0.95 })
+
+  const yard = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92), 4, WORLD_PER_METER), yardMaterial('gravel'))
   yard.rotation.x = -Math.PI / 2
-  yard.position.y = 0.03
+  yard.position.y = 0.04
   yard.receiveShadow = true
-  const tank = new THREE.Mesh(
-    tankUv(new THREE.CylinderGeometry(1.1, 1.1, 2.4, 12), SKIN_TILE_M.tank, WORLD_PER_METER),
-    skinMaterial('fuel_farm', 'wall', { metalness: 0.35 }),
-  )
-  tank.name = 'fuel-tank'
-  tank.position.set(0, 1.2, 0)
-  tank.castShadow = true
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.12, 0.18, 12, 1, true), wall('fuel_farm', 'trim'))
-  band.position.y = 2.05
-  const spare = new THREE.Mesh(
-    tankUv(new THREE.CylinderGeometry(0.85, 0.85, 2.1, 12), SKIN_TILE_M.tank, WORLD_PER_METER),
-    skinMaterial('fuel_farm', 'wall', { metalness: 0.35 }),
-  )
-  spare.position.set(-0.15, 1.05, -2.55)
-  spare.castShadow = true
-  const spareBand = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.88, 0.14, 12, 1, true), wall('fuel_farm', 'trim'))
-  spareBand.position.set(-0.15, 1.85, -2.55)
-  const pump = new THREE.Mesh(skinBox(1.7, 1.45, 1.35, SKIN_TILE_M.wall, WORLD_PER_METER), wall('fuel_farm', 'wall'))
-  pump.position.set(-2.55, 0.75, 0.35)
-  pump.castShadow = true
-  const pumpRoof = new THREE.Mesh(skinBox(1.85, 0.1, 1.5, SKIN_TILE_M.roof, WORLD_PER_METER), wall('fuel_farm', 'roof'))
-  pumpRoof.position.set(-2.55, 1.52, 0.35)
-  const bundH = 0.42
-  const bundMat = wall('fuel_farm', 'trim')
-  const bund = (w: number, d: number, x: number, z: number) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, bundH, d), bundMat)
-    mesh.position.set(x, bundH / 2, z)
-    return mesh
-  }
-  // Bund opens on +X so the tanker can reach the outlet.
-  const walls = [
-    bund(CELL * 0.72, 0.12, -0.7, -CELL * 0.4),
-    bund(CELL * 0.72, 0.12, -0.7, CELL * 0.28),
-    bund(0.12, CELL * 0.62, -CELL * 0.4, -0.4),
+  g.add(yard)
+
+  const bw = 8.6
+  const bd = 5.6
+  const bz = -1.6
+  g.add(based(bw, 0.5, 0.18, bundMat, 0, 0.12, bz - bd / 2))
+  g.add(based(bw, 0.5, 0.18, bundMat, 0, 0.12, bz + bd / 2))
+  g.add(based(0.18, 0.5, bd, bundMat, -bw / 2, 0.12, bz))
+  g.add(based(0.18, 0.5, bd, bundMat, bw / 2, 0.12, bz))
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(bw - 0.4, 0.04, bd - 0.4), new THREE.MeshStandardMaterial({ color: '#9c9789', roughness: 1 }))
+  floor.position.set(0, 0.14, bz)
+  floor.receiveShadow = true
+  g.add(floor)
+
+  const tanks: [number, number, number, number, string?][] = [
+    [-2.85, -2.9, 1.35, 3.0],
+    [0, -2.9, 1.35, 3.0, 'fuel-tank'],
+    [2.85, -2.9, 1.35, 3.0],
+    [-2.6, -0.1, 0.8, 2.0],
+    [-0.6, -0.1, 0.7, 1.6],
   ]
-  const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 10), wall('fuel_farm', 'door'))
+  for (const [x, z, r, h, name] of tanks) {
+    const body = new THREE.Mesh(tankUv(new THREE.CylinderGeometry(r, r, h, 18), SKIN_TILE_M.tank, WORLD_PER_METER), shell)
+    body.position.set(x, 0.3 + h / 2, z)
+    body.castShadow = true
+    if (name) body.name = name
+    const phi = Math.PI * 0.16
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 5, 0, Math.PI * 2, 0, phi), shell)
+    dome.position.set(x, 0.3 + h - r * Math.cos(phi), z)
+    dome.castShadow = true
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.12, 18), bandMat)
+    band.position.set(x, 0.3 + h * 0.8, z)
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(r * 0.96, 0.03, 4, 18), dark)
+    rail.rotation.x = Math.PI / 2
+    rail.position.set(x, 0.3 + h + 0.18, z)
+    g.add(body, dome, band, rail)
+    if (name) {
+      for (let i = 0; i < 6; i++) {
+        const a = 0.4 + i * 0.45
+        const step = based(0.32, 0.05, 0.2, dark, x + Math.cos(a) * (r + 0.12), 0.3 + (h / 6) * i, z + Math.sin(a) * (r + 0.12))
+        step.rotation.y = -a
+        g.add(step)
+      }
+    }
+  }
+
+  const yel = new THREE.MeshStandardMaterial({ color: '#d4a017', roughness: 0.4, metalness: 0.45 })
+  for (const x of [-3.6, -1.8, 0, 1.8]) {
+    g.add(based(0.08, 0.9, 0.08, dark, x, 0.12, 0.9))
+    g.add(based(0.08, 0.9, 0.08, dark, x, 0.12, 1.3))
+    g.add(based(0.08, 0.06, 0.5, dark, x, 1.0, 1.1))
+  }
+  pipe(g, new THREE.Vector3(-3.8, 1.1, 0.95), new THREE.Vector3(2.6, 1.1, 0.95), 0.06, yel)
+  pipe(g, new THREE.Vector3(-3.8, 1.1, 1.15), new THREE.Vector3(2.6, 1.1, 1.15), 0.05, steel)
+  for (const [x, z, r] of tanks) {
+    pipe(g, new THREE.Vector3(x, 0.5, z + (r as number)), new THREE.Vector3(x, 1.1, 0.95), 0.045, steel)
+  }
+
+  g.add(based(2.0, 1.7, 1.6, concrete, 3.2, 0.12, 0.4))
+  g.add(based(2.15, 0.1, 1.75, roof, 3.2, 1.82, 0.4))
+  const window = new THREE.Mesh(
+    new THREE.BoxGeometry(0.7, 0.4, 0.06),
+    new THREE.MeshStandardMaterial({ color: '#9ec4de', roughness: 0.15, metalness: 0.2 }),
+  )
+  window.position.set(3.2, 1.35, 1.22)
+  g.add(window)
+
+  g.add(based(1.4, 0.7, 0.8, bandMat, 0, 0.12, 2.1))
+  const valve = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.035, 6, 14), new THREE.MeshStandardMaterial({ color: '#c8231e', roughness: 0.4, metalness: 0.3 }))
+  valve.position.set(0, 0.95, 2.1)
+  valve.rotation.x = Math.PI / 2
+  g.add(valve)
+
+  const gantryY = 2.35
+  g.add(based(6.4, 0.08, 1.7, roof, 0, gantryY, 3.35))
+  for (const x of [-2.8, 2.8]) {
+    g.add(based(0.1, gantryY, 0.1, steel, x, 0.12, 2.6))
+    g.add(based(0.1, gantryY, 0.1, steel, x, 0.12, 4.1))
+  }
+  for (const x of [-2, 2]) {
+    g.add(based(0.32, 1.45, 0.32, bandMat, x, 0.12, 2.35))
+    pipe(g, new THREE.Vector3(x, 1.5, 2.4), new THREE.Vector3(x, 1.9, 3.05), 0.06, dark)
+  }
+
+  // Outlet the locked farm_fill socket hoses into. The socket itself does not move.
+  const reel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 10), trim)
   reel.rotation.z = Math.PI / 2
-  reel.position.set(1.55, 0.7, 0.35)
-  const hose = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.55, 0.08), wall('fuel_farm', 'trim'))
-  hose.position.set(1.55, 0.4, 0.15)
-  mountSign(g, 'FUEL', { w: 1.2, h: 0.28, x: -2.55, y: 1.7, z: 1.15 }, '#2a3038', '#f4f7fa')
-  mountServiceBay(g, 'fill', 1.6, 2.2, 2.7, 0.15, '#d7a21a')
-  g.add(yard, tank, band, spare, spareBand, pump, pumpRoof, reel, hose, ...walls)
+  reel.position.set(1.25, 0.55, 0)
+  g.add(reel)
+
+  g.add(based(0.55, 0.4, 0.04, new THREE.MeshStandardMaterial({ color: '#c8231e' }), -3.0, 0.2, bz + bd / 2 + 0.12))
+  mountSign(g, 'FUEL', { w: 1.5, h: 0.34, x: 0, y: gantryY + 0.28, z: 4.22 }, '#2d6a4f', '#ffffff')
+  // One loading court: wide enough for a fuel tanker (10 m × 2.5 m) under the gantry.
+  mountServiceBay(g, 'fill', 1.4, 4.6, 0, 3.4, '#d7a21a')
   mountSockets(g, FUEL_TILE_SOCKETS)
 }
 

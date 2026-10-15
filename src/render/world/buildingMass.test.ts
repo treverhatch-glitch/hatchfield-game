@@ -1,10 +1,13 @@
 import { existsSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
+import { HANGAR_DESIGN, HANGAR_HEAD_CLEAR_M, HANGAR_SIDE_CLEAR_M } from '../../scale/data'
 import { addCargoShed, addControlTower, addDeicePad, addFireStation, addFuelFarm } from './airsideMass'
 import { addFuelRail, addHangar, addOilStation, addPeopleMover, addSkywalk, addTravelator } from '../../scale/placeholders'
+import { hangarClearsDesign, hangarOpeningM } from './hangarMass'
+import { MODEL_SIZE } from '../vehicleModels'
 import { addMroMesh, addNightHubMesh, MESH_TRIANGLE_BUDGET, meshTriangleCount } from '../../tier3/meshes'
-import { CELL } from '../aircraft/specs'
+import { CELL, WORLD_PER_METER } from '../aircraft/specs'
 import { FUEL_TILE_SOCKETS } from '../socketLayout'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './apronBuildings'
 import { addAtcApproach, addPrefabPier, addRemoteScreening, addSubstation, addTiltTray } from './progressionBuildings'
@@ -36,13 +39,19 @@ describe('concept building massing', () => {
       addHangar(g, tier)
       expect(named(g, 'sign:').length, tier).toBe(1)
       expect(named(g, 'service-dock').length, tier).toBe(1)
+      expect(named(g, 'hangar-leaf').length, tier).toBeGreaterThanOrEqual(4)
       const mats: string[] = []
       g.traverse((o) => {
         const m = (o as THREE.Mesh).material as THREE.Material | undefined
         if (m?.name) mats.push(m.name)
       })
       expect(mats).toEqual(expect.arrayContaining(['skin:hangar:wall', 'skin:hangar:roof', 'skin:hangar:door']))
-      expect(meshTriangleCount(g), tier).toBeLessThanOrEqual(220)
+      expect(meshTriangleCount(g), tier).toBeLessThanOrEqual(2800)
+      expect(hangarClearsDesign(tier), tier).toBe(true)
+      const design = HANGAR_DESIGN[tier]
+      const open = hangarOpeningM(tier)
+      expect(open.widthM, tier).toBeGreaterThanOrEqual(design.spanM + HANGAR_SIDE_CLEAR_M * 2)
+      expect(open.heightM, tier).toBeGreaterThanOrEqual(design.tailM + HANGAR_HEAD_CLEAR_M)
       signFacesFront(g)
     }
   })
@@ -131,10 +140,16 @@ describe('concept building massing', () => {
     const fuel = new THREE.Group()
     addFuelFarm(fuel)
     const tank = fuel.getObjectByName('fuel-tank')!
-    expect(tank.position.toArray()).toEqual([0, 1.2, 0])
-    expect(fuel.getObjectByName('service-bay:fill')).toBeTruthy()
+    expect(tank.position.toArray()).toEqual([0, 1.8, -2.9])
+    const bay = fuel.getObjectByName('service-bay:fill') as THREE.Mesh
+    expect(bay).toBeTruthy()
+    const [tankerL, , tankerW] = MODEL_SIZE.fuel_tanker
+    const geo = bay.geometry as THREE.PlaneGeometry
+    expect(geo.parameters.width).toBeGreaterThanOrEqual(tankerW * WORLD_PER_METER * 0.9)
+    expect(geo.parameters.height).toBeGreaterThanOrEqual(tankerL * WORLD_PER_METER * 0.9)
     expect(named(fuel, 'sign:FUEL')).toHaveLength(1)
-    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(320)
+    expect(fuel.children.filter((c) => c.name === 'fuel-tank' || (c as THREE.Mesh).geometry?.type === 'CylinderGeometry').length).toBeGreaterThan(4)
+    expect(meshTriangleCount(fuel)).toBeLessThanOrEqual(4500)
     const fire = new THREE.Group()
     addFireStation(fire)
     expect(fire.getObjectByName('service-bay:1')).toBeTruthy()
