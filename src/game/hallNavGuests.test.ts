@@ -48,6 +48,13 @@ describe('hall walkers are guests', () => {
     // Clicking the floor where a walker stands picks them.
     const p = walkers[0]
     expect(game.hallNav.pickAt(p.x + game.hallNav.originX, p.z + game.hallNav.originZ)).toBe(p.id)
+    const at = game.hallNav.locate(p.id)
+    expect(at?.x).toBeCloseTo(p.x + game.hallNav.originX)
+    expect(at?.z).toBeCloseTo(p.z + game.hallNav.originZ)
+    const walking = game.hallNav.passengers
+    expect(walking).toBeGreaterThan(0)
+    game.hallGuests = []
+    expect(game.terminalPaxCount()).toBe(walking)
   })
 
   it('family fares on one flight walk as parties', () => {

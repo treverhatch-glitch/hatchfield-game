@@ -6,7 +6,7 @@ import { sharedSettings } from '../../features/settings/settings.ts'
 import { GROUND_LOOK, LIGHT_LOOK } from '../look'
 import type { Weather } from '../../game/types'
 import { AirfieldLights, buildJetBridges, setBridgeNight } from './airfield'
-import { lerpHex, skyState, type SkyState } from './daylight'
+import { capReadableFog, lerpHex, skyState, type SkyState } from './daylight'
 import {
   airfieldLevels,
   applyDayNight,
@@ -491,8 +491,9 @@ export class WorldRenderer {
       s.hemiGround = lerpHex(s.hemiGround, draw.ground, k)
       s.sunIntensity *= draw.sunScale
       if (draw.fogScale > 0) {
-        s.fogFar = Math.max(70, s.fogFar * draw.fogScale)
-        s.fogNear = Math.max(12, Math.min(s.fogNear, s.fogFar * 0.45))
+        const fog = capReadableFog(s.fogNear, s.fogFar * draw.fogScale)
+        s.fogFar = fog.fogFar
+        s.fogNear = fog.fogNear
       }
     }
     this.syncTerrain(draw?.terrain ?? null)

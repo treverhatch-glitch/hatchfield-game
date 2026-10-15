@@ -10,6 +10,7 @@ import { buildTerminalProps, capTerminalPropMetal, setNearPropDetail } from './t
 import { SupplyCartLayer } from './supplyCart'
 import { hiDetailOn } from './world/terminalHiDetail'
 import { canvasToPng } from '../camera/capture.ts'
+import { zoomToCursorShift } from '../camera/zoom.ts'
 import { inputMap } from '../input/map.ts'
 import { perf, perfEnd, perfFrame, perfStart } from '../core/perf'
 import {
@@ -20,6 +21,7 @@ import {
   HALL_CAM_LOOK_Z,
   HALL_CAM_MAX_DIST,
   HALL_CAM_MIN_DIST,
+  HALL_FOLLOW_DIST,
   HALL_CAM_NEAR,
   HALL_CAM_PITCH,
   HALL_CAM_YAW,
@@ -229,6 +231,12 @@ export class HallWorld {
   private downX = 0
   private downY = 0
   private ray = new THREE.Raycaster()
+  private zoomScratch = new THREE.Vector3()
+  private proj = new THREE.Vector3()
+  private poseBuf = new Float32Array(256 * 4)
+  /** Passenger the camera is easing toward. Cleared by pan, orbit, or a lost id. */
+  followId: string | null = null
+  private followSnapDist = false
   /** Instanced food, seat, and decor meshes. Rebuilt with the room hash. */
   kitGroup = new THREE.Group()
   private supply = new SupplyCartLayer()
@@ -382,6 +390,7 @@ export class HallWorld {
     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     // The player grabbed the camera: stop easing toward a "Show me" target.
     this.goalTo = null
+    this.followId = null
     // Middle/right = orbit; left-drag = pan (WASD also pans).
     if (e.button === 1 || e.button === 2) this.dragging = 'orbit'
     else this.dragging = e.shiftKey ? 'orbit' : 'pan'
@@ -408,6 +417,7 @@ export class HallWorld {
   }
 
   nudgePan(rightAmt: number, forwardAmt: number) {
+    this.followId = null
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw))
     const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))
     this.pivot.addScaledVector(right, rightAmt)
@@ -416,13 +426,105 @@ export class HallWorld {
   }
 
   nudgeYaw(delta: number) {
+    this.followId = null
     this.yaw += delta
     this.placeCam()
   }
 
   /** Positive delta pulls back. Keyboard and triggers pass a distance; the wheel scales it. */
   nudgeZoom(delta: number) {
+    this.followSnapDist = false
     this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
+    this.placeCam()
+  }
+
+  /** Scroll zoom. The floor point under the cursor stays put. */
+  zoomToward(clientX: number, clientY: number, delta: number) {
+    this.followSnapDist = false
+    const before = this.floorAt(clientX, clientY)
+    const bx = before?.x ?? 0
+    const bz = before?.z ?? 0
+    this.dist = Math.min(HALL_CAM_MAX_DIST, Math.max(HALL_CAM_MIN_DIST, this.dist + delta))
+    this.placeCam()
+    const after = before ? this.floorAt(clientX, clientY) : null
+    const shift = zoomToCursorShift(before ? { x: bx, z: bz } : null, after ? { x: after.x, z: after.z } : null)
+    if (shift.x !== 0 || shift.z !== 0) {
+      this.pivot.x += shift.x
+      this.pivot.z += shift.z
+      this.placeCam()
+    }
+  }
+
+  /** Follow a selected passenger. Pass the same id again to let go. */
+  setFollow(id: string | null) {
+    if (!id || this.followId === id) {
+      this.followId = null
+      return
+    }
+    this.followId = id
+    this.goalTo = null
+    this.followSnapDist = true
+  }
+
+  private floorAt(clientX: number, clientY: number): THREE.Vector3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const w = rect.width || 1
+    const h = rect.height || 1
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / w) * 2 - 1,
+      -((clientY - rect.top) / h) * 2 + 1,
+    )
+    this.ray.setFromCamera(ndc, this.camera)
+    return this.ray.ray.intersectPlane(this.floorPlane, this.zoomScratch)
+  }
+
+  /** Walker nearest the click in screen space, departures and arrivals. Crew are skipped. */
+  private pickWalker(e: PointerEvent): string | null {
+    const game = this.game
+    if (!game?.hallNav.live) return null
+    const nav = game.hallNav
+    const pax = nav.passengers
+    if (pax <= 0) return null
+    if (this.poseBuf.length < pax * 4) this.poseBuf = new Float32Array(pax * 4)
+    nav.writePoses(this.poseBuf)
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const ox = nav.originX
+    const oz = nav.originZ
+    const limit = HALL_WALKER_PICK.screenPx * HALL_WALKER_PICK.screenPx
+    let best: string | null = null
+    let bestD = limit
+    for (let i = 0; i < pax; i++) {
+      this.proj.set(this.poseBuf[i * 4] + ox, HALL_WALKER_PICK.bodyY, this.poseBuf[i * 4 + 2] + oz)
+      this.proj.project(this.camera)
+      if (this.proj.z < -1 || this.proj.z > 1) continue
+      const sx = (this.proj.x * 0.5 + 0.5) * rect.width + rect.left
+      const sy = (-this.proj.y * 0.5 + 0.5) * rect.height + rect.top
+      const d = (sx - e.clientX) ** 2 + (sy - e.clientY) ** 2
+      if (d > bestD) continue
+      const id = nav.idAt(i)
+      if (!id) continue
+      bestD = d
+      best = id
+    }
+    return best
+  }
+
+  private easeFollow() {
+    const id = this.followId
+    const game = this.game
+    if (!id || !game) return
+    const at = game.hallNav.locate(id)
+    if (!at) {
+      this.followId = null
+      return
+    }
+    const k = 0.22
+    this.pivot.x += (at.x - this.pivot.x) * k
+    this.pivot.z += (at.z - this.pivot.z) * k
+    if (this.followSnapDist) {
+      this.dist += (HALL_FOLLOW_DIST - this.dist) * k
+      if (Math.abs(this.dist - HALL_FOLLOW_DIST) < 0.35) this.followSnapDist = false
+    }
     this.placeCam()
   }
 
@@ -441,6 +543,11 @@ export class HallWorld {
       const { kind, id } = assignHit
       if (this.game.assignBulk && (kind === 'desk' || kind === 'gate')) this.game.toggleAssignSelection(kind, id)
       else this.game.openAssign(kind, id)
+      return
+    }
+    const walked = this.pickWalker(e)
+    if (walked) {
+      this.game.selectGuest(walked)
       return
     }
     const spotHits = this.ray.intersectObjects(this.hotspotGroup.children, true)
@@ -696,7 +803,7 @@ export class HallWorld {
     if (!inputMap.wheelMatches(e.deltaY)) return
     e.preventDefault()
     const step = Math.max(0.02, this.dist * 0.0012)
-    this.nudgeZoom(e.deltaY * step)
+    this.zoomToward(e.clientX, e.clientY, e.deltaY * step)
   }
 
   private goalSeq = 0
@@ -1724,7 +1831,8 @@ export class HallWorld {
     this.syncInterior(game)
     this.rebuildRooms(game)
     this.syncZoneTint(game)
-    this.easeToGoal(game)
+    if (this.followId) this.easeFollow()
+    else this.easeToGoal(game)
     this.syncWalkways(game)
     this.buildFrameQueues(game)
     this.syncGuests(game)
@@ -1757,7 +1865,7 @@ export class HallWorld {
     t = perfStart()
     this.renderer.render(this.scene, this.camera)
     this.perfOverlay.update(this.renderer, this.scene, {
-      passengers: game.hallGuests.length,
+      passengers: game.terminalPaxCount(),
       vehicles: game.trucks.length + game.servicePoses().length + game.cateringPoses().length,
       aircraft: game.flights.length,
     })

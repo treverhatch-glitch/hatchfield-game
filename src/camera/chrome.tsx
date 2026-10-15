@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { simClockToHour } from '../render/world/daylight.ts'
+import { faceHour } from '../core/faceClock.ts'
 import { cameraSession } from './session.ts'
 import { formatHour } from './space.ts'
 
@@ -76,7 +76,7 @@ export function CameraChrome({
             data-testid="photo-mode"
             title="Photo mode (P)"
             style={buttonStyle}
-            onClick={() => cameraSession.togglePhoto(simClockToHour(clockOf()))}
+            onClick={() => cameraSession.togglePhoto(faceHour(clockOf()))}
           >
             P
           </button>

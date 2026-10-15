@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { simClockToHour } from '../render/world/daylight.ts'
+import { faceHour } from '../core/faceClock.ts'
 import { cameraSession } from '../camera/session.ts'
 import type { Game } from '../game/sim.ts'
 import type { Speed } from '../game/types.ts'
@@ -84,7 +84,7 @@ export function PlayInput({ game }: { game: Game }) {
         return
       }
       if (id === 'view.photo') {
-        cameraSession.togglePhoto(simClockToHour(game.clock))
+        cameraSession.togglePhoto(faceHour(game.clock))
         return
       }
       if (id === 'view.flows') {

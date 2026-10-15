@@ -32,6 +32,7 @@ import { arrivalPose, finalStraight, orientAircraft, takeoffPose, takeoffTimelin
 import { canvasToPng } from '../camera/capture.ts'
 import { inputMap } from '../input/map.ts'
 import { orbitFromLook } from '../camera/orbit.ts'
+import { zoomToCursorShift } from '../camera/zoom.ts'
 import { previewAirframe } from '../scale/logic'
 import {
   addBerth,
@@ -348,6 +349,7 @@ export class World {
   ndc = new THREE.Vector2()
   ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   hit = new THREE.Vector3()
+  private zoomScratch = new THREE.Vector3()
   sun: THREE.DirectionalLight
   onHover: (v: Vec | null) => void = () => {}
   onClick: (v: Vec, shift: boolean) => void = () => {}
@@ -574,7 +576,7 @@ export class World {
         this.onFollowZoom(e.deltaY)
         return
       }
-      this.nudgeZoom(e.deltaY * 0.06)
+      this.zoomToward(e.clientX, e.clientY, e.deltaY * 0.06)
     }
     canvas.addEventListener('contextmenu', this.onContextMenu)
     canvas.addEventListener('pointerdown', this.onPointerDown)
@@ -607,6 +609,34 @@ export class World {
     if (this.followHeld) return
     this.dist = clamp(this.dist + delta, MIN_DIST, MAX_DIST)
     this.placeCam()
+  }
+
+  /** Scroll zoom. The ground point under the cursor stays put. */
+  zoomToward(clientX: number, clientY: number, delta: number) {
+    if (this.followHeld) return
+    const before = this.groundAt(clientX, clientY)
+    const bx = before?.x ?? 0
+    const bz = before?.z ?? 0
+    this.dist = clamp(this.dist + delta, MIN_DIST, MAX_DIST)
+    this.placeCam()
+    const after = before ? this.groundAt(clientX, clientY) : null
+    const shift = zoomToCursorShift(before ? { x: bx, z: bz } : null, after ? { x: after.x, z: after.z } : null)
+    if (shift.x !== 0 || shift.z !== 0) {
+      this.pivot.x += shift.x
+      this.pivot.z += shift.z
+      this.placeCam()
+    }
+  }
+
+  /** Ground point under a screen pixel. Uses its own scratch vector so `pick` stays intact. */
+  private groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const w = rect.width || 1
+    const h = rect.height || 1
+    this.ndc.x = ((clientX - rect.left) / w) * 2 - 1
+    this.ndc.y = -((clientY - rect.top) / h) * 2 + 1
+    this.ray.setFromCamera(this.ndc, this.camera)
+    return this.ray.ray.intersectPlane(this.ground, this.zoomScratch)
   }
 
   /** Live orbit (or chase) pose, used to seed a smooth follow. */

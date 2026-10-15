@@ -88,13 +88,28 @@ export function WalkerCard({ game, id }: { game: Game; id: string }) {
 }
 
 /** A guest card for a walker the hall model no longer lists (e.g. rebooking after a missed flight). */
-export function WalkerOnlyCard({ game, id }: { game: Game; id: string | null }) {
-  const card = id ? game.hallNav.guestCard(id) : null
-  if (!card) return null
+export function WalkerOnlyCard({
+  game,
+  id,
+  onFollow,
+}: {
+  game: Game
+  id: string | null
+  onFollow?: (id: string) => void
+}) {
+  if (!id) return null
+  const card = game.hallNav.guestCard(id)
+  const walking = card ? null : game.hallNav.locate(id)
+  if (!card && !walking) return null
   return (
     <aside className="guest-card" data-testid="guest-card">
       <h2>Passenger</h2>
-      <WalkerBody card={card} />
+      {card ? <WalkerBody card={card} /> : <p className="muted">Walking the terminal</p>}
+      {onFollow ? (
+        <button type="button" data-testid="guest-follow" onClick={() => onFollow(id)}>
+          Follow
+        </button>
+      ) : null}
     </aside>
   )
 }

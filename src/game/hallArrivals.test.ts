@@ -224,6 +224,7 @@ describe('crowd drawing never changes the sim', () => {
     cam.lookAt(0, 0, 0)
     cam.updateMatrixWorld()
     crowd.tuning.maxVisible = 0
+    crowd.tuning.nearDistM = 0
     crowd.tuning.lodDistM = 1e6
     const all = crowd.sync(nav, 0, cam)
     expect(crowd.stats.heads).toBe(all)

@@ -646,6 +646,8 @@ export interface Flight {
   fuelHeld?: boolean
   /** Sim-clock when the empty-farm hold started. Past the slot, the flight is cancelled. */
   fuelHeldSince?: number
+  /** Passenger and slot fees already returned because the departure was fuel-dry. */
+  unflownRefunded?: number
   /** One-shot emergency host (divert / tanker) occupying a banked gate. */
   emergencyHost?: boolean
   hostKind?: EmergencyKind

@@ -722,6 +722,19 @@ export class HallArrivals {
     return this.agents[i]?.id ?? ''
   }
 
+  /** Arrival nearest a layout-metre point, within `maxM`. */
+  pick(x: number, z: number, maxM = 1): string | null {
+    let best: string | null = null
+    let bestD = maxM * maxM
+    for (const a of this.agents) {
+      const d = (a.x - x) ** 2 + (a.z - z) ** 2
+      if (d > bestD) continue
+      bestD = d
+      best = a.id
+    }
+    return best
+  }
+
   /** x, y(=0), z, yaw per arrival into `out` (stride 4) from slot `from`. Returns how many were written. */
   writePoses(out: Float32Array, from = 0): number {
     const n = Math.max(0, Math.min(this.agents.length, Math.floor(out.length / 4) - from))
