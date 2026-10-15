@@ -2,7 +2,7 @@
 
 Seed 1. Default new game: easy, city plot, passenger starter kit, hints off, speed 1. The script accepts a letter only when the desk gate says the hall can clear it. It does not buy desks, lanes, or a bigger hall, and it does not run a bot persona.
 
-The choke is the live walk's check-in or security flag. Someone joining now would wait `HALL_QUEUE_TUNING.bottleneckSec`, or the line has spilled its floor marks. The day-one pacing crowd does not raise that flag.
+The choke is the live walk's check-in or security flag. Someone joining now would wait `HALL_QUEUE_TUNING.bottleneckSec`, or the line has spilled its floor marks. There is no day-one pacing crowd any more (terminal rebuild WP1). The hall stays empty until the first show-up window opens.
 
 ## Result
 
@@ -18,7 +18,7 @@ The choke is the live walk's check-in or security flag. Someone joining now woul
 
 Re-run: `npx vitest run src/game/starterBottleneck.test.ts`
 
-Desks at 12 a minute let Zoomjet sign beside the regional. The first red line is day 6 at clock 1066. Both starter exits are in use, so the first flagged queue is 3 people and the wait is 446 nav seconds. The bowser loading beside the farm, one cell off the tank, is what moved the earlier day-6 mark (clock 932); the second carrier brings it forward from the day-7 mark that bowser change produced on its own.
+Desks at 12 a minute let Zoomjet sign beside the regional. The first red line is day 6 at clock 1066. Both starter exits are in use, so the first flagged queue is 3 people and the wait is 446 nav seconds. The bowser loading beside the farm, one cell off the tank, is what moved the earlier day-6 mark (clock 932); the second carrier brings it forward from the day-7 mark that bowser change produced on its own. Terminal rebuild WP1's animation clock does not draw from `Math.random`.
 
 ## What changed
 
