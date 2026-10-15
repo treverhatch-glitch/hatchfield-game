@@ -23,7 +23,7 @@ Spawn-to-lock lead on the approach: 7.05 seconds. The aircraft is airborne for t
 
 `runwayArrivalGapSec` is 14 + 14 + 4 = **32 seconds on every strip**. A second strip does not shrink that gap. It runs its own bank. The seeder picks the quieter linked strip first, then pushes an ETA only when that strip already has a slot inside the gap.
 
-A day is 180 sim seconds. One strip books `floor((180 + 32) / 32) = 6` turns, 12 movements. The retired 150-second gap booked 2 turns, 4 movements. Twelve is three times four. Two linked strips book 24 movements. On one strip the seeder steps by that gap, and overnight the step stretches by at most 1.4 (about 45 seconds), which stays under the 76-second two-stand interval. A second strip keeps the shorter commercial step so the next flight can use the other strip. The 150-day idle soak on this gap finished 426 flights, heap growth 13.2%, jumps 0.
+A day is 180 sim seconds. One strip books `floor((180 + 32) / 32) = 6` turns, 12 movements. The retired 150-second gap booked 2 turns, 4 movements. Twelve is three times four. Two linked strips book 24 movements. On one strip the seeder steps by that gap, and overnight the step stretches by at most 1.4 (about 45 seconds), which stays under the 76-second two-stand interval. A second strip keeps the shorter commercial step so the next flight can use the other strip. The 150-day idle soak on this gap finished 426 flights, heap growth 13.7%, jumps 0.
 
 ## Opening
 
