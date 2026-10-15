@@ -1,6 +1,8 @@
 # Landing ledger
 
-Order is the producer queue. A row lands only after the rows above it are on `main`.
+Merge priority lives in `docs/playtest/LANDING_LEDGER.md`. This file is the building-port record only.
+
+Order below is the old producer note. A row there is not a license to jump the playtest ledger.
 
 | Priority | Change | Commit | Gate | Preview |
 | --- | --- | --- | --- | --- |

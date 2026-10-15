@@ -2,9 +2,51 @@
 
 Merge-captain pass against `origin/main` at `4bd73e2` (15 Oct 2026). Inventory: 367 remote tips, 242 already reachable from main, 125 tips with commits not in main. Branches were not deleted.
 
-`docs/LANDING_LEDGER.md` is a separate producer queue (play audio, then the building-port P1). This file is the captain's classification of everything still off main.
+This file is the merge-priority source of truth. `docs/LANDING_LEDGER.md` keeps the building-port note and defers here. The classification below is the earlier tip inventory; the table in this section wins when they disagree.
 
-Re-check 15 Oct, after `bc-28657062` ("Land tower, spotters, council, carbon PRs") went idle with no branch of its own: PR #86 and #83 through #87 are already on main (hub `8acaaded`, Tower III `6dc29b60`, Spotters `b67c52b4`, Council `0f006656`, carbon `b6de09c9`). They were not landed again. PR #98 is in flight with `bc-c2f61850` and was left alone.
+Re-check 15 Oct, tip `75e985c5`. PR #98 is on main as `7a85bce8`. PR #99 is on main through `76be176f`. PR #92 is still a draft. PR #10 is never merged.
+
+## Priority order
+
+Status codes: QUEUED · BUILDING · GATE · READY · MERGED · BLOCKED · SUPERSEDED · NEVER.
+
+Land one at a time: rebase onto latest main, green `npm run gate`, fast-forward main, push, then close the PR with the landed SHAs.
+
+| P | Item | Branch / PR | Status | Notes |
+| --- | --- | --- | --- | --- |
+| P0 | Audio unlock on the first canvas or key gesture | #94 `cursor/audio-play-fix-4b1c` | MERGED | `6fba6893`, gate `01441c86` |
+| P1 | Grounded slot fees / frozen-ramp honesty | J40 #97 | MERGED | `1dd1eaa1`, `afddf1a7`, gate `17b79615` |
+| P1 | Spotters deck | #84 | MERGED | `b67c52b4`, gate `6779e61c` |
+| P1 | Airport Council | #85 | MERGED | `0f006656`, gate `c17f68ab` |
+| P1 | Carbon / Green Pioneer | #87 | MERGED | `b6de09c9`, gate `4bd73e2f` |
+| P1 | Dead buys (fire bell, bridges, flag, apron light) | J46 | BUILDING | New agent. `scrambleSec` still unread by `tickFireRisk` |
+| P1 | Hub stand lease enforce + Heavy class | J47 | BUILDING | New agent. `assignStand` / `swapStands` |
+| P1 | Noon hold when the day/night cycle is off | #98 `cursor/j36-daynight-cycle-4799` | MERGED | `7a85bce8`. One settings switch, under Graphics. Off holds noon, lamps out. A photo hour still wins. The original branch tip was not replayed |
+| P2 | Fold Ops wallet into Growth | J48 | QUEUED | After the late-build wave settles |
+| P2 | Buildings rounds 4–9 + aircraft pass 5 | #92 draft `cursor/buildings-r9-fuel-hangars-ca46` | BUILDING | Earlier port `8c0e21d6` is on main. The PR is still a draft (`ba10b642` is a merge plus the preview-stills commit). Do not land it until it is ready |
+| P2 | Interior editor | `5ac6f43e` | MERGED | Sims-style editor inside the terminal shell. Gate record `75e985c5` (2962 tests, soak end cash $4,619,736). J49's research doc stays queued until `docs/design/INTERIOR_EDITOR.md` exists |
+| P2 | P1 art (runway, terrain, skies, night lights) | #99 `cursor/art-landing-p1-9acb` | MERGED | On main through `bd8ba671`, `737e92b4`, `03137b2b`, `6fedc5f8`, `20a45987`, gate record `76be176f` |
+| P2 | This ledger | J51 | MERGED | This file |
+| P2 | Second carrier / FL ceiling | J41 | QUEUED | After the playtest freeze call |
+| P2 | Combined stability bot run | J43 | BUILDING | Post-merge bot run |
+| P2 | Showcase saves | J44 | QUEUED | After the GPT stack and Sonnet land |
+| — | Tower III | #83 | MERGED | `6dc29b60`, gate `446809c8`. Unlock text `b9f7e607` |
+| — | Cart-wait + starter fleet | #93 / J37 | MERGED | `120c4c4f`, gate `005e4d39`. 8 bag / 2 catering |
+| — | Day/night sunrise + switch | #88 | MERGED | `48ef2888`, gate `f686f9e2` |
+| — | Terminal shell + airport cull | #95 | MERGED | `02f4d316`, gate `bf506f52` |
+| — | Cargo hub II + cold store | #91 | MERGED | `ca85ba90`, gate `9576a227` |
+| — | Visual bug batch | #96 | MERGED | `28f53b73`, gate `06fc4e09` |
+| — | Airlines hub tab | #86 | MERGED | `8acaaded` |
+| — | Vehicle bake-off | #10 `experiment/vehicle-bakeoff` | NEVER | Obsolete experiment. Do not merge |
+
+### Rules
+
+1. Honesty and bug fixes before new features.
+2. Merge one PR at a time: rebase on latest main, green `npm run gate`, fast-forward main, push.
+3. New features keep building but slot by priority. They do not jump the queue.
+4. Never present renders as in the game unless they are on main.
+5. Agents hand off to the merge captain and this ledger. Origin cloud tokens often lack merge scope, so the captain fast-forwards main and closes the PR with the landed SHAs.
+6. PR #10 is NEVER.
 
 ## Landed on main this pass
 
@@ -16,7 +58,7 @@ Re-check 15 Oct, after `bc-28657062` ("Land tower, spotters, council, carbon PRs
 | Airport Council | `0f006656` | `c17f68ab` | Airlines > Council. Civic spend is `civic_programs` (`331c757d`). |
 | Carbon book and Green Pioneer | `b6de09c9` | `4bd73e2f` | CO₂ info view is in the info bar, not a second OwnerChrome panel. |
 | Vision expansion design note | `3a37ffa5` | `08b868e2` | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. Quick gate was recorded for `418a8d6b` before the art-pack rebase. |
-| Graphics day/night noon hold (PR #98) | `7a85bce864bfc7de5bc4719f46673a8955e0d01a` | this landing | Existing settings switch, under Graphics. Off holds noon with lamps out. Flood pools stay on at 5×. No second store. |
+| Graphics day/night noon hold (PR #98) | `7a85bce8` | contained in `75e985c5` | Existing settings switch, under Graphics. Off holds noon with lamps out. Flood pools stay on at 5×. No second store. The old branch tip was not replayed. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
@@ -24,7 +66,10 @@ Also already on main, landed by other agents while this pass was in flight (not 
 | --- | --- | --- |
 | Airlines hub tab (PR #86) | `8acaaded` | Relations tab. A parallel port on `cursor/land-airlines-hub-2f8f` was not pushed. |
 | Play audio resume (PR #94) | `6fba689` | First canvas or key gesture. |
-| Building rounds 4–9 and aircraft pass 5 | `8c0e21d` | Port by the building agent. See `docs/LANDING_LEDGER.md`. |
+| Building rounds 4–9 and aircraft pass 5 | `8c0e21d` | Earlier port is on main. PR #92 is still a draft. |
+| Cart-wait and starter bag fleet (PR #93 / J37) | `120c4c4f` | Gate `005e4d39`. |
+| Cargo hub II and cold store (PR #91) | `ca85ba90` | Gate `9576a227`. |
+| Interior editor | `5ac6f43e` | Gate record `75e985c5`. |
 | Terminal shell culling | `02f4d31` | One shell, interior culled in airport view. |
 | Grounded slot-fee refunds | `1dd1eaa` / `afddf1a` | Gate `17b7961`. |
 | Weather and night readability | `28f53b7` | Gate `06fc4e0`. |
@@ -46,7 +91,9 @@ Main already has the behaviour, or a later port replaced the branch. Tips stay o
 | `cursor/in-game-phone-7d48`, `cursor/service-points-7c46`, `cursor/fast-start-tips-7233`, `cursor/stuck-watchdog-bc99`, `cursor/phase1-feedback-7df2`, `claude/issue-249-achievements-13677513883996795250`, `claude/issue-250-perf-overlay-lod-17011630364752362590`, `claude/alert-actions-6482532934734159270`, `claude/audit-hints-2574178790039750137` | Phone, service points, tips, soak watchdog, feedback, achievements, perf overlay, and alert pan are on main. |
 | `cursor/honest-ledger-1810`, `cursor/local-gate-5147` | Wallet ledger and `scripts/gate.mjs` on main are newer. |
 | `cursor/ground-traffic-control`, `pr256`, `try236` | `src/atc/groundControl.ts` is on main. |
-| `experiment/vehicle-bakeoff` | PR #10, marked do not merge. |
+| `experiment/vehicle-bakeoff` | PR #10. NEVER. Obsolete experiment. Do not merge. |
+| `cursor/j36-daynight-cycle-4799` | PR #98. Noon hold is on main as `7a85bce8`. The old tip `40ceab79` was not replayed. |
+| `cursor/art-landing-p1-9acb` | PR #99. Art pack is on main through `76be176f`. |
 | `building-visuals`, `bv`, `building-visuals-r9`, `hangar-tiers`, `pr258`, `tmp/pr258`, `tmp/pr258merge`, `rescue/building-visuals-abc65b4`, `aircraft-visuals-5`, `rescue/vehicle-visuals-f-33ff1bc` | Ported onto main as `8c0e21d`. Old tips left in place. |
 | `terminal-visuals-r4`, `terminal-visuals-r5`, `t4` | Shared terminal shell is on main (`02f4d31`). Older hall rounds were not replayed. |
 | `claude/issue-229-*`, `claude/issue-231-*`, `claude/issue-232-*`, `p241`, `p6`, `art/pack6-refs`, `mergetest`, `tmp/pr240`, `fix239`, `m239`, `pr239` | People, airline roster, and quality tiers were redone on main. |
@@ -60,11 +107,10 @@ Valuable ideas that are too far behind, or that would fight a landed system. Not
 
 | Branch | Why |
 | --- | --- |
-| `cursor/j36-daynight-cycle-4799` (PR #98) | Landed as the noon hold on the existing settings switch. No second store. Apron flood pools stay on at 5×. |
 | `claude/finance-screen-18359518024439908719`, `tmp/pr265` | `FinanceScreen` from an older economy panel. Main's wallet and finance card are newer. 404 commits behind. |
 | `claude/issue-228-20261014-1515` | Connections, hotels, and stranded passengers as a 3k-line branch. Hub connections on main overlap it. 340 behind. |
 | `claude/issue-195-*` | Guest traits and terminal pathing from before the hall-nav rewrite. |
-| `cursor/art-wire-c08d`, `cursor/art-landing-p1-9acb` | Art-agent work (night glow, art wiring). Not rebased by this captain. |
+| `cursor/art-wire-c08d` | Art wiring tip. PR #99's landing pack is already on main. |
 | `grok/lategame`, `cursor/connectivity-hub-0588`, `cursor/simcore-*`, `cursor/hud-starter-kit-562d`, `head-sim-suite-562d-*`, `cursor/audit-playtest-562d-scripted150-*` | Old trunks and prototypes. The playtest trunk's useful tests are already on main. |
 
 ## NEEDS-PORT
@@ -92,9 +138,9 @@ Requested, and still not playable. Research lists exist; the live tree does not 
 
 | Behind | Ahead | Date | Tip | Branch | Subject |
 | --- | --- | --- | --- | --- | --- |
-| 23 | 18 | 2026-10-15 | `40ceab79` | `cursor/j36-daynight-cycle-4799` | LANDED. Noon hold on the settings switch. PR #98. |
+| 23 | 18 | 2026-10-15 | `40ceab79` | `cursor/j36-daynight-cycle-4799` | SUPERSEDED. Noon hold is `7a85bce8`. PR #98. |
 | 23 | 3 | 2026-10-15 | `dec4156f` | `cursor/land-airport-council-2f8f` | SUPERSEDED by `c17f68ab`. |
-| 41 | 3 | 2026-10-15 | `95f0b760` | `cursor/art-landing-p1-9acb` | LEAVE. Art agent. |
+| 41 | 3 | 2026-10-15 | `95f0b760` | `cursor/art-landing-p1-9acb` | SUPERSEDED. Art pack is on main through `76be176f`. PR #99. |
 | 83 | 11 | 2026-10-15 | `1cdd7111` | `cursor/day-night-playtest-4799` | SUPERSEDED. |
 | 92 | 3 | 2026-10-15 | `393d4b37` | `cursor/hub-playtest-db11` | SUPERSEDED. |
 | 105 | 2 | 2026-10-15 | `41cf04dc` | `cursor/hub-airlines-db11` | SUPERSEDED. |
@@ -106,7 +152,7 @@ Requested, and still not playable. Research lists exist; the live tree does not 
 | 290 | 1 | 2026-10-14 | `84125a0f` | `cursor/in-game-phone-7d48` | SUPERSEDED. |
 | 290 | 1 | 2026-10-14 | `c7595766` | `cursor/service-points-7c46` | SUPERSEDED. |
 | 294 | 1 | 2026-10-14 | `504407cb` | `cursor/phase1-feedback-7df2` | SUPERSEDED. |
-| 294 | 1 | 2026-10-14 | `916a9dc4` | `experiment/vehicle-bakeoff` | SUPERSEDED. PR #10. |
+| 294 | 1 | 2026-10-14 | `916a9dc4` | `experiment/vehicle-bakeoff` | NEVER. PR #10. |
 | 294 | 1 | 2026-10-14 | `f263c807` | `cursor/stuck-watchdog-bc99` | SUPERSEDED. |
 | 294 | 1 | 2026-10-14 | `fad2f355` | `cursor/fast-start-tips-7233` | SUPERSEDED. |
 | 322 | 1 | 2026-10-15 | `315325ca` | `cursor/carbon-tracking-d8b6` | SUPERSEDED by `b6de09c9`. PR #87. |
