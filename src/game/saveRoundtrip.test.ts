@@ -198,8 +198,10 @@ describe('save/load round-trip across live game systems', () => {
     // guest spend follows that metal rather than an unnamed jet. The amount
     // also moved when an open security lane stopped being slowed on top of the
     // walk's own staffing, so the continuous run clears a different bank.
+    // A hall till now draws the unit before it charges, and puts the unit back
+    // when the wallet cannot pay, so one phantom $18 sale no longer lands.
     const showUpSpend = gameA.revenue - gameB.revenue
-    expect(showUpSpend).toBeCloseTo(651, 2)
+    expect(showUpSpend).toBeCloseTo(633, 2)
     expect(gameB.cash).toBeCloseTo(gameA.cash - showUpSpend, 2)
     expect(gameB.revenue).toBeCloseTo(gameA.revenue - showUpSpend, 2)
     expect(gameB.paxServed).toBe(gameA.paxServed)

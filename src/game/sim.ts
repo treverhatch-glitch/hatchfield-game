@@ -15135,7 +15135,12 @@ export class Game {
     })
     if (!candidates.length) return
     // Prefer lower tier first, then cheaper landing; sprinkle procs after one major.
+    const padReady = this.readiness().helipad
     candidates.sort((a, b) => {
+      // A pad-less helicopter may still write, but it must not crowd out a carrier that can fly.
+      const aGrounded = this.carrierNeedsPad(a.id) && !padReady ? 1 : 0
+      const bGrounded = this.carrierNeedsPad(b.id) && !padReady ? 1 : 0
+      if (aGrounded !== bGrounded) return aGrounded - bGrounded
       if (this.startFocus === 'cargo' || this.startFocus === 'hybrid') {
         if (a.kind === 'cargo' && b.kind !== 'cargo') return -1
         if (b.kind === 'cargo' && a.kind !== 'cargo') return 1
@@ -15472,9 +15477,10 @@ export class Game {
       return
     }
     this.checkinBlockNote = ''
-    const miss = this.missingReq(id)
-    if (miss.length) {
-      this.pushNews(`${this.airline(id).name} will not sign yet — still need ${miss.join(', ')}.`, 'bad')
+    // Soft asks (police, a snack bar) still sign — the tower holds the slot.
+    // A helicopter with no pad can never leave the ground, so the letter stays open.
+    if (this.carrierNeedsPad(id) && !this.readiness().helipad) {
+      this.pushNews(`${this.airline(id).name} will not sign yet — still need ${HELIPAD_NEED}.`, 'bad')
       this.emit()
       return
     }
