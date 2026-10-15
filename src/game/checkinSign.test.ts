@@ -25,9 +25,17 @@ describe('check-in contract demand', () => {
     game.acceptOffer()
     expect(game.signed).toEqual(['northline'])
 
-    // Two small peaks are 28. Two desks at 12 plus the kiosk at 6 clear 30.
+    // Day-0 Zoomjet letter: two small peaks are 28. Two desks at 12 plus the kiosk at 6 clear 30.
+    const zoom = game.checkinSignReport('zoomjet')
+    expect(zoom.peak).toBe(28)
+    expect(zoom.capacity).toBe(30)
+    expect(zoom.ok).toBe(true)
+    expect(zoom.line).toContain('Zoomjet')
+
     game.offer = { airline: 'harbor', age: 0, deadline: 36 }
-    expect(game.checkinSignReport('harbor').ok).toBe(true)
+    const harbor = game.checkinSignReport('harbor')
+    expect(harbor.ok).toBe(true)
+    expect(harbor.capacity).toBe(30)
     game.acceptOffer()
     expect(game.signed).toContain('harbor')
 

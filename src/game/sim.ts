@@ -3316,7 +3316,14 @@ export class Game {
 
   private checkinCapacityFor(airlineId: AirlineId): { desks: number; kiosks: number } {
     const desks = this.checkinDesks()
-    if (!desks.length) return { desks: Math.max(0, this.paxDesks), kiosks: Math.max(0, this.paxKiosks) }
+    if (!desks.length) {
+      // The walk is not built yet. The prefab kiosk is already on the floor,
+      // so the day-0 letter counts it with the scale desks.
+      return {
+        desks: Math.max(0, this.paxDesks),
+        kiosks: Math.max(0, this.paxKiosks) + this.placedCheckinKiosks(),
+      }
+    }
     const nav = this.hallNav.nav
     const fit = this.activeHall()
     const included = new Set<string>()
@@ -3358,6 +3365,18 @@ export class Game {
       desks: bundleForAirline + playerForAirline + phantom + scaleExtra,
       kiosks: kiosks + Math.max(0, Math.floor(this.paxKiosks)),
     }
+  }
+
+  /** Self-serve check-in pieces already on the hall floor. */
+  private placedCheckinKiosks(): number {
+    const fit = this.activeHall()
+    let n = 0
+    for (const it of fit?.items ?? []) {
+      const def = itemDef(it.def)
+      if (!def || def.room !== 'checkin' || def.servers <= 0 || def.staff > 0) continue
+      n += def.servers
+    }
+    return n
   }
 
   /** Lock and release buttons for the check-in building card. */
