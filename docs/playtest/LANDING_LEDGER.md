@@ -26,7 +26,7 @@ Land one at a time: rebase onto latest main, green `npm run gate`, fast-forward 
 | P1 | View budget: full exterior detail, hall shadows, roof transition | #110 `cursor/view-budget-transition-f2da` | GATE | After J47. Quick gate `686d68c9` (2990 tests, 30-day soak, Careful bot), then rebased onto the schedule board with no view-budget source change. No fps step-down. Max-zoom fps is a log only. Do not fast-forward while J47 is BUILDING |
 | P2 | Fold Ops wallet into Growth | J48 | QUEUED | After the late-build wave settles |
 | P2 | Buildings rounds 4–9 + aircraft pass 5 | #92 draft `cursor/buildings-r9-fuel-hangars-ca46` | BUILDING | Earlier port `8c0e21d6` is on main. The PR is still a draft (`ba10b642` is a merge plus the preview-stills commit). Do not land it until it is ready |
-| P2 | Interior editor | `5ac6f43e` | MERGED | Sims-style editor inside the terminal shell. Gate record `75e985c5` (2962 tests, soak end cash $4,619,736). J49's research doc stays queued until `docs/design/INTERIOR_EDITOR.md` exists |
+| P2 | Interior editor | `5ac6f43e` | MERGED | Sims-style editor inside the terminal shell. Gate record `75e985c5` (2962 tests, soak end cash $4,619,736). J49 docs are done: `docs/design/INTERIOR_EDITOR.md` and `docs/design/TERMINAL_INTERIOR_BUILD.md` are on main |
 | P2 | P1 art (runway, terrain, skies, night lights) | #99 `cursor/art-landing-p1-9acb` | MERGED | On main through `bd8ba671`, `737e92b4`, `03137b2b`, `6fedc5f8`, `20a45987`, gate record `76be176f` |
 | P2 | This ledger | J51 | MERGED | This file |
 | P2 | Second carrier / FL ceiling | J41 | QUEUED | After the playtest freeze call |
