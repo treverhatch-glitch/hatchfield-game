@@ -81,11 +81,12 @@ describe('catering wiring', () => {
     const galley = game.galleyFor(f.id)
     expect(galley?.status).toBe('waiting')
     expect(galley?.standId).toBe('11,6')
-    game.tick(5)
-    game.tick(5)
+    // The meal fee waits until the hi-lift has finished at catering_door.
+    let fees = 0
+    for (let i = 0; i < 24 && fees <= 0; i++) game.tick(5)
     expect(game.galleyFor(f.id)?.status === 'complete' || game.galleyFor(f.id)?.status === 'short').toBe(true)
     expect(game.cateringPoses().length === 0 || game.cateringPoses().every((p) => p.crew.length === 2)).toBe(true)
-    const fees = game.groundBooks.cateringFees
+    fees = game.groundBooks.cateringFees
     expect(fees).toBeGreaterThan(0)
     game.tick(5)
     expect(game.groundBooks.cateringFees).toBe(fees)

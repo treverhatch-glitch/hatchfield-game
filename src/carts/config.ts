@@ -29,16 +29,6 @@ export const CART_TUNING = {
   bagUnitsPerCart: 40,
   /** Galley loads one hi-lift carries. */
   cateringLoadsPerTruck: 4,
-  /** Socket offsets in metres from the building or stand origin. */
-  offsets: {
-    desk_drop: { x: 0, y: 1 },
-    belt_out: { x: 2, y: 0 },
-    makeup_stop: { x: 0, y: 3 },
-    claim_stop: { x: 0, y: -4 },
-    cart_slot: { x: 3, y: 0 },
-    belt_low: { x: 6, y: 8 },
-    catering_door: { x: 8, y: -6 },
-  },
 } as const
 
 export type CartTuning = {
@@ -59,13 +49,4 @@ export type CartTuning = {
   queueGapM: number
   bagUnitsPerCart: number
   cateringLoadsPerTruck: number
-  offsets: {
-    desk_drop: { x: number; y: number }
-    belt_out: { x: number; y: number }
-    makeup_stop: { x: number; y: number }
-    claim_stop: { x: number; y: number }
-    cart_slot: { x: number; y: number }
-    belt_low: { x: number; y: number }
-    catering_door: { x: number; y: number }
-  }
 }

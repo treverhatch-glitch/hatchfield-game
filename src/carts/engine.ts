@@ -1,4 +1,5 @@
 import { CART_TUNING, type CartTuning } from './config.ts'
+import type { CartSocket } from './sockets.ts'
 
 /**
  * Point-to-point bag carts and catering trucks.
@@ -15,9 +16,11 @@ export type CartSiteRole = 'checkin' | 'sort' | 'claim' | 'kitchen' | 'stand'
 export interface CartSite {
   id: string
   role: CartSiteRole
-  /** Metres. */
+  /** Metres. The building or stand origin. Sockets are not offsets from here. */
   x: number
   y: number
+  /** Named mesh sockets in world metres. A missing name means that leg cannot start. */
+  sockets?: readonly CartSocket[]
 }
 
 export interface CartPose {
@@ -98,6 +101,11 @@ function finite(n: number, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+function flightOf(shipmentId: string): string {
+  if (shipmentId.startsWith('in:') || shipmentId.startsWith('cat:')) return shipmentId.slice(shipmentId.indexOf(':') + 1)
+  return shipmentId
+}
+
 function bayCount(n: number): number {
   const v = Math.floor(finite(n, 1))
   return v < 1 ? 1 : v
@@ -118,17 +126,23 @@ export class CartYard {
   private readonly deliveredUnits = { outbound: 0, inbound: 0, catering: 0 }
   /** Shipment ids that were done on the previous tick. One tick of grace keeps socketsOf readable. */
   private readonly finished = new Set<string>()
+  /** Sockets where a cart has finished its dock. Kept until the flight leaves. */
+  private readonly arrived = new Map<string, Set<string>>()
 
   constructor(tuning: CartTuning = CART_TUNING) {
     this.config = {
       ...tuning,
       bays: { ...tuning.bays },
-      offsets: { ...tuning.offsets },
     }
   }
 
   setSites(sites: readonly CartSite[]): void {
-    this.sites = sites.filter((site) => Number.isFinite(site.x) && Number.isFinite(site.y))
+    this.sites = []
+    for (const site of sites) {
+      if (!Number.isFinite(site.x) || !Number.isFinite(site.y)) continue
+      const sockets = (site.sockets ?? []).filter((socket) => socket.name && Number.isFinite(socket.x) && Number.isFinite(socket.y))
+      this.sites.push({ ...site, sockets })
+    }
   }
 
   /** Idle vehicles are added or removed. A cart already on a leg keeps it. */
@@ -154,6 +168,39 @@ export class CartYard {
   /** Sockets a shipment has locked to, in order. */
   socketsOf(shipmentId: string): string[] {
     return this.handoffs.filter((row) => row.shipmentId === shipmentId).map((row) => row.socket)
+  }
+
+  /** True after the cart has finished its dock at this named socket. Locking on is not enough. */
+  finishedAt(shipmentId: string, socket: string): boolean {
+    return this.arrived.get(shipmentId)?.has(socket) ?? false
+  }
+
+  /** Shipments still on the yard, including one that finished and is waiting for retireDone. */
+  openIds(): string[] {
+    return this.shipments.map((shipment) => shipment.id)
+  }
+
+  /** True when every named socket that leg needs is on a site. */
+  canAccept(kind: 'outbound' | 'inbound' | 'catering', standId: string): boolean {
+    if (kind === 'catering') return Boolean(this.socketAt('kitchen', 'cart_slot') && this.socketAt('stand', 'catering_door', standId))
+    if (kind === 'inbound') return Boolean(this.socketAt('stand', 'belt_low', standId) && this.socketAt('claim', 'claim_stop'))
+    return Boolean(this.socketAt('checkin', 'desk_drop') && this.socketAt('sort', 'makeup_stop') && this.socketAt('stand', 'belt_low', standId))
+  }
+
+  /**
+   * Drop shipments that are still undone once their flight has left or been cancelled.
+   * A finished shipment stays put: retireDone folds it into the delivered total.
+   */
+  cancelGone(live: ReadonlySet<string>): void {
+    for (let i = this.shipments.length - 1; i >= 0; i--) {
+      const shipment = this.shipments[i]
+      if (!shipment || shipment.done) continue
+      if (live.has(flightOf(shipment.id))) continue
+      this.dropUndone(shipment.id)
+    }
+    for (const id of [...this.arrived.keys()]) {
+      if (!live.has(flightOf(id))) this.arrived.delete(id)
+    }
   }
 
   delivered(kind: 'outbound' | 'inbound' | 'catering'): number {
@@ -283,18 +330,59 @@ export class CartYard {
   }
 
   private parkFor(kind: Vehicle['kind']): Point {
-    if (kind === 'catering_truck') return this.point('kitchen', 'cart_slot') ?? { x: 0, y: 0 }
-    return this.point('sort', 'makeup_stop') ?? { x: 0, y: 0 }
+    if (kind === 'catering_truck') return this.socketAt('kitchen', 'cart_slot') ?? { x: 0, y: 0 }
+    return this.socketAt('sort', 'makeup_stop') ?? { x: 0, y: 0 }
   }
 
-  private point(role: CartSiteRole, socket: keyof CartTuning['offsets'], standId?: string): Point | null {
+  /** World point of a named mesh socket. No tile-centre fallback. */
+  private socketAt(role: CartSiteRole, name: string, standId?: string): Point | null {
     const site =
       role === 'stand'
         ? this.sites.find((row) => row.role === 'stand' && row.id === standId)
         : this.sites.find((row) => row.role === role)
-    if (!site) return null
-    const offset = this.config.offsets[socket]
-    return { x: site.x + offset.x, y: site.y + offset.y }
+    const hit = site?.sockets?.find((socket) => socket.name === name)
+    if (!hit) return null
+    return { x: hit.x, y: hit.y }
+  }
+
+  /** Pull an undone shipment off the yard and free any cart that was carrying it. */
+  private dropUndone(id: string): void {
+    const at = this.shipments.findIndex((shipment) => shipment.id === id)
+    const shipment = at >= 0 ? this.shipments[at] : undefined
+    if (!shipment || shipment.done) return
+    this.shipments.splice(at, 1)
+    this.finished.delete(id)
+    this.arrived.delete(id)
+    for (let i = this.handoffs.length - 1; i >= 0; i--) {
+      if (this.handoffs[i]?.shipmentId === id) this.handoffs.splice(i, 1)
+    }
+    for (const vehicle of this.vehicles) {
+      if (vehicle.trip?.shipmentId !== id) continue
+      const bay = vehicle.bay ?? (vehicle.phase === 'queue' ? this.bayOf(vehicle) : '')
+      this.releaseBay(vehicle)
+      vehicle.trip = null
+      vehicle.phase = 'idle'
+      vehicle.aim = 'from'
+      vehicle.u = 0
+      vehicle.queueIndex = 0
+      vehicle.dockLeft = 0
+      const park = this.parkFor(vehicle.kind)
+      vehicle.x = park.x
+      vehicle.y = park.y
+      if (bay) this.reindex(bay)
+    }
+  }
+
+  private markFinished(vehicle: Vehicle): void {
+    const trip = vehicle.trip
+    if (!trip) return
+    const socket = vehicle.aim === 'from' ? trip.fromName : trip.toName
+    let done = this.arrived.get(trip.shipmentId)
+    if (!done) {
+      done = new Set()
+      this.arrived.set(trip.shipmentId, done)
+    }
+    done.add(socket)
   }
 
   private dispatch(): void {
@@ -330,8 +418,8 @@ export class CartYard {
   private makeTrip(shipment: Shipment, leg: CartLeg, units: number): Trip | null {
     const standId = shipment.standId
     if (leg === 'drop_to_sort') {
-      const from = this.point('checkin', 'desk_drop')
-      const to = this.point('sort', 'makeup_stop')
+      const from = this.socketAt('checkin', 'desk_drop')
+      const to = this.socketAt('sort', 'makeup_stop')
       if (!from || !to) return null
       return {
         shipmentId: shipment.id,
@@ -348,8 +436,8 @@ export class CartYard {
       }
     }
     if (leg === 'sort_to_loader') {
-      const from = this.point('sort', 'makeup_stop')
-      const to = this.point('stand', 'belt_low', standId)
+      const from = this.socketAt('sort', 'makeup_stop')
+      const to = this.socketAt('stand', 'belt_low', standId)
       if (!from || !to) return null
       return {
         shipmentId: shipment.id,
@@ -366,8 +454,8 @@ export class CartYard {
       }
     }
     if (leg === 'loader_to_claim') {
-      const from = this.point('stand', 'belt_low', standId)
-      const to = this.point('claim', 'claim_stop')
+      const from = this.socketAt('stand', 'belt_low', standId)
+      const to = this.socketAt('claim', 'claim_stop')
       if (!from || !to) return null
       return {
         shipmentId: shipment.id,
@@ -383,8 +471,8 @@ export class CartYard {
         standId,
       }
     }
-    const from = this.point('kitchen', 'cart_slot')
-    const to = this.point('stand', 'catering_door', standId)
+    const from = this.socketAt('kitchen', 'cart_slot')
+    const to = this.socketAt('stand', 'catering_door', standId)
     if (!from || !to) return null
     return {
       shipmentId: shipment.id,
@@ -531,6 +619,7 @@ export class CartYard {
 
   private finishDock(vehicle: Vehicle): void {
     const trip = vehicle.trip
+    this.markFinished(vehicle)
     this.releaseBay(vehicle)
     if (!trip) {
       vehicle.phase = 'idle'

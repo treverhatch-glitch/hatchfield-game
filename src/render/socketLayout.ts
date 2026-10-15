@@ -13,6 +13,28 @@ export type SocketTable = Readonly<Record<string, readonly [number, number, numb
 
 const tables = new Map<VehicleModel, SocketTable>()
 
+/**
+ * Belt and catering points the turnaround reads. Pure numbers: building the
+ * mesh here would burn Math.random inside Three's ids and desync a seeded run.
+ */
+export function apronCartSockets(model: 'belt_loader' | 'catering_hilift'): SocketTable {
+  if (model === 'belt_loader') {
+    const [L, H, W] = MODEL_SIZE[model]
+    const g = beltGeom(L, H)
+    const run = L * 0.9
+    const z = W * 0.15
+    return {
+      belt_low: [g.lowX, g.lowY + 0.2, z],
+      belt_tip: [g.lowX + Math.cos(g.pitch) * run, g.lowY + Math.sin(g.pitch) * run, z],
+    }
+  }
+  const h = cateringHinge(MODEL_SIZE[model][0])
+  return {
+    catering_lip: [h.x, h.y + 2.4, 0],
+    cart_slot: [h.x - 1.4, h.y + 0.45, 0],
+  }
+}
+
 /** Named points on one vehicle, in model metres. `dock` is the nose reference. */
 export function vehicleSocketTable(model: VehicleModel): SocketTable {
   const hit = tables.get(model)
@@ -23,18 +45,7 @@ export function vehicleSocketTable(model: VehicleModel): SocketTable {
   }
   const hose = lineAnchor(model, 'hose')
   if (hose) sockets.hose_reel_out = [hose[0], hose[1], hose[2]]
-  if (model === 'belt_loader') {
-    const g = beltGeom(L, H)
-    const run = L * 0.9
-    const z = W * 0.15
-    sockets.belt_low = [g.lowX, g.lowY + 0.2, z]
-    sockets.belt_tip = [g.lowX + Math.cos(g.pitch) * run, g.lowY + Math.sin(g.pitch) * run, z]
-  }
-  if (model === 'catering_hilift') {
-    const h = cateringHinge(L)
-    sockets.catering_lip = [h.x, h.y + 2.4, 0]
-    sockets.cart_slot = [h.x - 1.4, h.y + 0.45, 0]
-  }
+  if (model === 'belt_loader' || model === 'catering_hilift') Object.assign(sockets, apronCartSockets(model))
   if (model === 'stairs') {
     sockets.stairs_top = [-L / 2 + 0.7, H - 0.8, 0]
     const r = 0.42

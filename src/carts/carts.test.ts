@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { CART_TUNING, CartYard, type CartTuning } from './index.ts'
+import { apronCartSockets, vehicleSocketTable } from '../render/socketLayout.ts'
+import { CART_TUNING, CartYard, resolveSocket, type CartSocket, type CartTuning } from './index.ts'
 
 function tuning(over: Partial<CartTuning> = {}): CartTuning {
   return {
     ...CART_TUNING,
     ...over,
     bays: { ...CART_TUNING.bays, ...over.bays },
-    offsets: { ...CART_TUNING.offsets, ...over.offsets },
   }
 }
+
+const DROP: CartSocket = { name: 'desk_drop', x: 2, y: 4 }
+const MAKEUP: CartSocket = { name: 'makeup_stop', x: 50, y: 6 }
+const CLAIM: CartSocket = { name: 'claim_stop', x: 48, y: 20 }
+const SLOT: CartSocket = { name: 'cart_slot', x: 4, y: 44 }
+const BELT: CartSocket = { name: 'belt_low', x: 140, y: 12 }
+const DOOR: CartSocket = { name: 'catering_door', x: 155, y: -12 }
 
 function yard(over: Partial<CartTuning> = {}): CartYard {
   const sim = new CartYard(
@@ -22,11 +29,11 @@ function yard(over: Partial<CartTuning> = {}): CartYard {
     }),
   )
   sim.setSites([
-    { id: 'checkin', role: 'checkin', x: 0, y: 0 },
-    { id: 'sort', role: 'sort', x: 40, y: 0 },
-    { id: 'claim', role: 'claim', x: 40, y: 36 },
-    { id: 'kitchen', role: 'kitchen', x: 0, y: 40 },
-    { id: '11,6', role: 'stand', x: 90, y: 0 },
+    { id: 'checkin', role: 'checkin', x: 0, y: 0, sockets: [DROP] },
+    { id: 'sort', role: 'sort', x: 40, y: 0, sockets: [MAKEUP] },
+    { id: 'claim', role: 'claim', x: 40, y: 36, sockets: [CLAIM] },
+    { id: 'kitchen', role: 'kitchen', x: 0, y: 40, sockets: [SLOT] },
+    { id: '11,6', role: 'stand', x: 90, y: 0, sockets: [BELT, DOOR] },
   ])
   return sim
 }
@@ -110,5 +117,105 @@ describe('socket cart handoffs', () => {
     expect(sim.delivered('outbound')).toBe(0)
     expect(sim.delivered('catering')).toBe(0)
     expect(sim.snapshot()).toEqual([])
+  })
+
+  it('keeps bag-loaded, bag-delivered and catering-done shut until the cart finishes at the named socket', () => {
+    const idle = yard()
+    idle.setFleet(0, 0)
+    idle.postOutbound('HB1', 10, '11,6')
+    idle.postInbound('in:HB1', 10, '11,6')
+    idle.postCatering('cat:HB1', 2, '11,6')
+    idle.tick(30)
+    expect(idle.finishedAt('HB1', 'belt_low')).toBe(false)
+    expect(idle.finishedAt('in:HB1', 'claim_stop')).toBe(false)
+    expect(idle.finishedAt('cat:HB1', 'catering_door')).toBe(false)
+
+    const sim = yard()
+    sim.setFleet(1, 1)
+    sim.postOutbound('HB1', 10, '11,6')
+    sim.postInbound('in:HB1', 10, '11,6')
+    sim.postCatering('cat:HB1', 2, '11,6')
+    let dockedAtDoor = false
+    let finishedWhileDocking = false
+    until(sim, () => {
+      const pose = sim.snapshot().find((row) => row.lockedTo === 'catering_door' && row.phase === 'dock')
+      if (pose) {
+        dockedAtDoor = Math.hypot(pose.x - DOOR.x, pose.y - DOOR.y) < 0.05
+        if (pose.u < 0.99 && sim.finishedAt('cat:HB1', 'catering_door')) finishedWhileDocking = true
+      }
+      const belt = sim.snapshot().find((row) => row.lockedTo === 'belt_low' && row.phase === 'dock' && row.leg === 'sort_to_loader')
+      if (belt && belt.u < 0.99) expect(sim.finishedAt('HB1', 'belt_low')).toBe(false)
+      return sim.finishedAt('HB1', 'belt_low') && sim.finishedAt('in:HB1', 'claim_stop') && sim.finishedAt('cat:HB1', 'catering_door')
+    })
+    expect(dockedAtDoor).toBe(true)
+    expect(finishedWhileDocking).toBe(false)
+    expect(Math.hypot(DOOR.x - (90 + 8), DOOR.y - (0 - 6))).toBeGreaterThan(1)
+  })
+
+  it('cancels an undone shipment when the flight is gone and leaves a finished one for retireDone', () => {
+    const sim = yard()
+    sim.setFleet(1, 0)
+    sim.postOutbound('stay', 10, '11,6')
+    sim.postOutbound('leave', 10, '11,6')
+    sim.tick(0.5)
+    expect(sim.openIds()).toContain('leave')
+    sim.cancelGone(new Set(['stay']))
+    expect(sim.openIds()).not.toContain('leave')
+    expect(sim.snapshot().some((pose) => pose.standId === '11,6' && pose.load > 0 && !sim.openIds().includes('stay'))).toBe(false)
+    expect(sim.delivered('outbound')).toBe(0)
+    until(sim, () => sim.delivered('outbound') === 10)
+    expect(sim.openIds()).toContain('stay')
+    sim.cancelGone(new Set())
+    expect(sim.openIds()).toContain('stay')
+    expect(sim.delivered('outbound')).toBe(10)
+    sim.tick(0.25)
+    sim.tick(0.25)
+    expect(sim.openIds()).not.toContain('stay')
+    expect(sim.delivered('outbound')).toBe(10)
+    sim.tick(5)
+    expect(sim.delivered('outbound')).toBe(10)
+  })
+
+  it('does not invent a socket from a tile-centre offset when the name is missing', () => {
+    const sim = yard()
+    sim.setSites([
+      { id: 'checkin', role: 'checkin', x: 0, y: 0, sockets: [DROP] },
+      { id: 'sort', role: 'sort', x: 40, y: 0, sockets: [MAKEUP] },
+      { id: '11,6', role: 'stand', x: 90, y: 0, sockets: [] },
+    ])
+    sim.setFleet(1, 0)
+    expect(sim.canAccept('outbound', '11,6')).toBe(false)
+    sim.postOutbound('HB1', 10, '11,6')
+    sim.tick(10)
+    expect(sim.finishedAt('HB1', 'belt_low')).toBe(false)
+    expect(sim.snapshot()).toEqual([])
+  })
+})
+
+describe('named model sockets', () => {
+  it('resolves a mesh socket by name and ignores an unknown name', () => {
+    const table = {
+      catering_door: [8, 3, -2] as const,
+      belt_low: [1, 0.4, 4] as const,
+    }
+    expect(resolveSocket(table, 'catering_door', { x: 100, y: 40, heading: 0 })).toEqual({
+      name: 'catering_door',
+      x: 108,
+      y: 38,
+    })
+    expect(resolveSocket(table, 'belt_low', { x: 100, y: 40, heading: Math.PI / 2 })).toEqual({
+      name: 'belt_low',
+      x: 96,
+      y: 41,
+    })
+    expect(resolveSocket(table, 'cart_slot', { x: 100, y: 40 })).toBeNull()
+  })
+
+  it('uses the belt and catering points from the vehicle mesh', () => {
+    for (const model of ['belt_loader', 'catering_hilift'] as const) {
+      const pure = apronCartSockets(model)
+      const mesh = vehicleSocketTable(model)
+      for (const name of Object.keys(pure)) expect(mesh[name]).toEqual(pure[name])
+    }
   })
 })

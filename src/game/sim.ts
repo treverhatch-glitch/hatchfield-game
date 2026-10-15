@@ -765,7 +765,8 @@ import {
 } from './pax'
 import { clampReputation, smoothReputation, takeReputationDrift } from './reputation'
 import { LANDSIDE, LandsideTraffic, type LandsideView } from '../landside/index.ts'
-import { CART_TUNING, CartYard, type CartPose } from '../carts/index.ts'
+import { CART_TUNING, CartYard, resolveSocket, type CartPose, type CartSite, type CartSocket } from '../carts/index.ts'
+import { aircraftSocketTable, apronCartSockets, CAROUSEL_SOCKETS, checkinRowSockets } from '../render/socketLayout.ts'
 import { FUEL as FUEL_CHAIN, FuelChain, type DeliveryRead, type FuelView } from '../fuel/index.ts'
 import { SPOT_OFFER, brandForContract, termBandLitres, type SpotInbound, type SpotOffer } from '../fuel/offerData.ts'
 import { HYDRANT_CARD, liveHydrantStands, standDrawsHydrant } from '../fuel/hydrant.ts'
@@ -7912,11 +7913,17 @@ export class Game {
   /**
    * A full cart is loaded. A short cart holds the departure until the board
    * window ends, then the missing bags are offloaded instead of counted as loaded.
+   * Bag-loaded waits until the bag cart has finished at the belt socket.
    */
   private settleOutboundBags(f: Flight, releasing: boolean): boolean {
     if (f.cargo) return true
     const need = f.bagUnits ?? 0
     if (need <= 0) return true
+    if (!this.outboundCartClear(f.id)) {
+      f.waitingOn.bagsLoad = true
+      f.posted.bagsLoad = false
+      return false
+    }
     const have = f.bagsDeposited ?? 0
     const book = this.ensureBagBook(f)
     if (this.outboundBagsFull(f)) {
@@ -12526,9 +12533,20 @@ export class Game {
   /**
    * Check-in drop to the sort, sort to the belt loader, loader back to claim,
    * and the kitchen to the aircraft door. Cart count and bay use limit the rate.
+   * A flight that has left drops any shipment that is still undone.
    */
   private tickCarts(step: number) {
     if (!(step > 0) || !this.site) return
+    const live = new Set<string>()
+    for (const f of this.flights) {
+      if (f.phase === 'gone' || f.cargo) continue
+      if (f.stand || f.groundTurn) live.add(f.id)
+    }
+    this.cartYard.cancelGone(live)
+    for (const key of [...this.cartPosted]) {
+      const id = key.slice(key.indexOf(':') + 1)
+      if (!live.has(id)) this.cartPosted.delete(key)
+    }
     const sites = this.cartSites()
     if (!sites.some((site) => site.role === 'stand')) return
     this.cartYard.setSites(sites)
@@ -12537,14 +12555,25 @@ export class Game {
       CART_TUNING.bagCarts + depots * CART_TUNING.bagCartsPerDepot,
       CART_TUNING.cateringTrucks + depots * CART_TUNING.cateringTrucksPerDepot,
     )
-    const live = new Set<string>()
     for (const f of this.flights) {
-      if (f.phase === 'gone' || f.cargo) continue
+      if (!live.has(f.id)) continue
       const stand = f.stand ? `${f.stand.c},${f.stand.r}` : f.groundTurn
       if (!stand) continue
-      live.add(f.id)
       const units = Math.max(0, Math.round(f.bagUnits ?? 0), Math.round(f.bagsDeposited ?? 0))
-      if (units > 0 && (f.bagStage === 'outbound_sort' || f.bagStage === 'load_aircraft')) {
+      // Bags are checked while the aircraft is still inbound. Start the cart then,
+      // and also whenever the sort or the loader is the live stage.
+      const turning =
+        f.phase === 'approach' ||
+        f.phase === 'landing' ||
+        f.phase === 'taxi_in' ||
+        f.phase === 'hold' ||
+        f.phase === 'deboard' ||
+        f.phase === 'servicing' ||
+        f.phase === 'board' ||
+        f.phase === 'parked'
+      const outboundOpen =
+        f.bagStage === 'outbound_sort' || f.bagStage === 'load_aircraft' || (turning && !f.posted.bagsLoad)
+      if (units > 0 && outboundOpen && this.cartYard.canAccept('outbound', stand)) {
         const key = `out:${f.id}`
         if (!this.cartPosted.has(key)) {
           this.cartPosted.add(key)
@@ -12553,7 +12582,8 @@ export class Game {
       }
       if (
         units > 0 &&
-        (f.bagStage === 'unload_aircraft' || f.bagStage === 'inbound_sort' || f.bagStage === 'deliver_claim')
+        (f.bagStage === 'unload_aircraft' || f.bagStage === 'inbound_sort' || f.bagStage === 'deliver_claim') &&
+        this.cartYard.canAccept('inbound', stand)
       ) {
         const key = `in:${f.id}`
         if (!this.cartPosted.has(key)) {
@@ -12562,7 +12592,7 @@ export class Game {
         }
       }
       const galley = this.catering?.engine.galley(f.id)
-      if (galley && galley.cartsRequired > 0) {
+      if (galley && galley.cartsRequired > 0 && this.cartYard.canAccept('catering', stand)) {
         const key = `cat:${f.id}`
         if (!this.cartPosted.has(key)) {
           this.cartPosted.add(key)
@@ -12570,30 +12600,143 @@ export class Game {
         }
       }
     }
-    for (const key of [...this.cartPosted]) {
-      const id = key.slice(key.indexOf(':') + 1)
-      if (!live.has(id)) this.cartPosted.delete(key)
-    }
     this.cartYard.tick(step)
   }
 
-  private cartSites() {
-    const sites: { id: string; role: 'checkin' | 'sort' | 'claim' | 'kitchen' | 'stand'; x: number; y: number }[] = []
+  /** Bag-loaded: the outbound cart has finished its dock at belt_low. */
+  private outboundCartClear(flightId: string): boolean {
+    if (!this.cartPosted.has(`out:${flightId}`)) return true
+    return this.cartYard.finishedAt(flightId, 'belt_low')
+  }
+
+  /** Bag-delivered: the inbound cart has finished its dock at claim_stop. */
+  private inboundCartClear(flightId: string): boolean {
+    if (!this.cartPosted.has(`in:${flightId}`)) return true
+    return this.cartYard.finishedAt(`in:${flightId}`, 'claim_stop')
+  }
+
+  /** Catering-done: the hi-lift has finished its dock at catering_door. */
+  private cateringCartClear(flightId: string): boolean {
+    if (this.cartPosted.has(`cat:${flightId}`)) return this.cartYard.finishedAt(`cat:${flightId}`, 'catering_door')
+    const galley = this.catering?.engine.galley(flightId)
+    if (!galley || galley.cartsRequired <= 0) return true
+    const flight = this.flights.find((f) => f.id === flightId)
+    const stand = flight?.stand ? `${flight.stand.c},${flight.stand.r}` : flight?.groundTurn
+    if (!stand || !this.cartYard.canAccept('catering', stand)) return true
+    return false
+  }
+
+  /** True while this truck's step is waiting for the cart to finish at its socket. */
+  private truckWaitsForCart(t: Truck): boolean {
+    if (!t.flightId) return false
+    if (t.kind === 'bags' && t.mission === 'load') return !this.outboundCartClear(t.flightId)
+    if (t.kind === 'bags' && t.mission === 'to_claim') return !this.inboundCartClear(t.flightId)
+    if (t.kind === 'catering' && !t.returning) return !this.cateringCartClear(t.flightId)
+    return false
+  }
+
+  private cartSites(): CartSite[] {
+    const sites: CartSite[] = []
     const metre = METERS_PER_CELL
     const terminal = tilesOf(this.tiles, 'terminal')[0]
     const bags = tilesOf(this.tiles, 'bags')[0]
-    const kitchen = tilesOf(this.tiles, 'kitchen')[0] ?? tilesOf(this.tiles, 'depot')[0]
-    if (terminal) sites.push({ id: 'checkin', role: 'checkin', x: terminal.c * metre, y: terminal.r * metre })
+    const kitchen = tilesOf(this.tiles, 'kitchen')[0] ?? tilesOf(this.tiles, 'snack')[0] ?? tilesOf(this.tiles, 'depot')[0]
+    const checkin = checkinRowSockets()
+    if (terminal) {
+      const origin = { x: terminal.c * metre, y: terminal.r * metre, heading: 0 }
+      sites.push({
+        id: 'checkin',
+        role: 'checkin',
+        x: origin.x,
+        y: origin.y,
+        sockets: this.meshSockets(checkin, ['desk_drop'], origin),
+      })
+    }
     const sortAt = bags ?? terminal
     if (sortAt) {
-      sites.push({ id: 'sort', role: 'sort', x: sortAt.c * metre, y: sortAt.r * metre })
-      sites.push({ id: 'claim', role: 'claim', x: sortAt.c * metre + 8, y: sortAt.r * metre })
+      const origin = { x: sortAt.c * metre, y: sortAt.r * metre, heading: 0 }
+      sites.push({
+        id: 'sort',
+        role: 'sort',
+        x: origin.x,
+        y: origin.y,
+        sockets: this.meshSockets(checkin, ['makeup_stop'], origin),
+      })
+      sites.push({
+        id: 'claim',
+        role: 'claim',
+        x: origin.x,
+        y: origin.y,
+        sockets: this.meshSockets(CAROUSEL_SOCKETS, ['claim_stop'], origin),
+      })
     }
-    if (kitchen) sites.push({ id: 'kitchen', role: 'kitchen', x: kitchen.c * metre, y: kitchen.r * metre })
+    if (kitchen) {
+      const origin = { x: kitchen.c * metre, y: kitchen.r * metre, heading: 0 }
+      sites.push({
+        id: 'kitchen',
+        role: 'kitchen',
+        x: origin.x,
+        y: origin.y,
+        sockets: this.meshSockets(apronCartSockets('catering_hilift'), ['cart_slot'], origin),
+      })
+    }
+    const belt = apronCartSockets('belt_loader')
     for (const stand of tilesOf(this.tiles, 'stand')) {
-      sites.push({ id: `${stand.c},${stand.r}`, role: 'stand', x: stand.c * metre, y: stand.r * metre })
+      const parked = this.flights.find((f) => f.stand && f.stand.c === stand.c && f.stand.r === stand.r && f.phase !== 'gone')
+      const spec = getAircraftSpec(parked?.airframeId || 'b738')
+      const onStand =
+        parked != null && Math.hypot(parked.x - stand.c, parked.y - stand.r) < 0.8
+      const origin = onStand
+        ? { x: parked.x * metre, y: parked.y * metre, heading: parked.heading ?? 0 }
+        : { x: stand.c * metre, y: stand.r * metre, heading: 0 }
+      const aircraft = aircraftSocketTable(spec)
+      const sockets = [
+        resolveSocket(aircraft, 'catering_door', origin),
+        this.beltLowSocket(origin, aircraft, belt),
+      ].filter((socket): socket is CartSocket => socket != null)
+      sites.push({
+        id: `${stand.c},${stand.r}`,
+        role: 'stand',
+        x: stand.c * metre,
+        y: stand.r * metre,
+        sockets,
+      })
     }
     return sites
+  }
+
+  private meshSockets(
+    table: Readonly<Record<string, readonly [number, number, number]>>,
+    names: readonly string[],
+    origin: { x: number; y: number; heading?: number },
+  ): CartSocket[] {
+    const out: CartSocket[] = []
+    for (const name of names) {
+      const hit = resolveSocket(table, name, origin)
+      if (hit) out.push(hit)
+    }
+    return out
+  }
+
+  /** Belt loader parked so belt_tip meets the aircraft cargo door. The cart docks at belt_low. */
+  private beltLowSocket(
+    origin: { x: number; y: number; heading?: number },
+    aircraft: Readonly<Record<string, readonly [number, number, number]>>,
+    belt: Readonly<Record<string, readonly [number, number, number]>>,
+  ): CartSocket | null {
+    const door = resolveSocket(aircraft, 'plane_cargo_door_fwd', origin) ?? resolveSocket(aircraft, 'plane_hold', origin)
+    const tip = belt.belt_tip
+    if (!door || !tip) return resolveSocket(belt, 'belt_low', origin)
+    const heading = origin.heading ?? 0
+    const fx = Math.cos(heading)
+    const fy = Math.sin(heading)
+    const rx = -Math.sin(heading)
+    const ry = Math.cos(heading)
+    return resolveSocket(belt, 'belt_low', {
+      x: door.x - (tip[0] * fx + tip[2] * rx),
+      y: door.y - (tip[0] * fy + tip[2] * ry),
+      heading,
+    })
   }
 
   /** Book galleys, feed the fuel check, and post shop money into the one ledger. */
@@ -12627,7 +12770,7 @@ export class Game {
       }
       if (event.type === 'catering_done') {
         const flight = this.flights.find((f) => f.id === event.flightId)
-        if (flight?.groundTurn) {
+        if (flight?.groundTurn && this.cateringCartClear(flight.id)) {
           flight.caterLevel = 1
           flight.waitingOn.catering = false
           this.ground?.sim.releaseExternalCatering(flight.groundTurn)
@@ -12637,6 +12780,7 @@ export class Game {
     for (const f of this.flights) {
       if (!f.groundTurn || f.phase === 'gone' || f.posted.catering) continue
       if (!cat.engine.isCateringDone(f.id)) continue
+      if (!this.cateringCartClear(f.id)) continue
       f.caterLevel = 1
       f.waitingOn.catering = false
       this.ground?.sim.releaseExternalCatering(f.groundTurn)
@@ -16370,6 +16514,7 @@ export class Game {
       }
       return false
     }
+    if (!f.cargo && !this.outboundCartClear(f.id)) return false
     f.path = out
     f.seg = 0
     f.t = 0
@@ -22060,6 +22205,7 @@ export class Game {
           'ok',
         )
       } else if (t.mission === 'to_claim' && !f.cargo) {
+        if (!this.inboundCartClear(f.id)) return
         this.setBagStage(f, 'on_claim')
         t.cargoUnits = 0
         this.pushNews(
@@ -22085,6 +22231,7 @@ export class Game {
       )
     }
     if (t.kind === 'catering' && !f.posted.catering && this.caterBrand) {
+      if (!this.cateringCartClear(f.id)) return
       f.posted.catering = true
       f.caterLevel = 1
       f.waitingOn.catering = false
@@ -23664,7 +23811,10 @@ export class Game {
           (f.waitingOn.fuel && !f.posted.fuel) ||
           (f.waitingOn.catering && !f.posted.catering)
         const pace = this.rampPace(f.airframeId, Boolean(f.cargo || f.kind === 'freighter'), f.airline)
-        if ((!waiting && f.phaseTime > 4 * pace) || f.phaseTime > Math.min(36, 22 * pace)) {
+        if (
+          this.cateringCartClear(f.id) &&
+          ((!waiting && f.phaseTime > 4 * pace) || f.phaseTime > Math.min(36, 22 * pace))
+        ) {
           f.waitingOn.bags = false
           f.waitingOn.fuel = false
           f.waitingOn.catering = false
@@ -23847,7 +23997,7 @@ export class Game {
           f.boardingSlow = false
         }
         if (f.phaseTime > 3) this.ensureDeice(f)
-        if (boardReady || f.phaseTime > boardLimit) {
+        if (this.outboundCartClear(f.id) && (boardReady || f.phaseTime > boardLimit)) {
           const deiceOk =
             this.ensureDeice(f) || f.phaseTime > boardLimit + 14
           // Pushback beat — tug-out before the taxi bank clears.
@@ -24011,6 +24161,10 @@ export class Game {
       if (t.dwell > 0) {
         t.dwell -= step
         if (t.dwell <= 0 && t.kind === 'bags' && t.mission === 'to_claim' && t.returning) {
+          if (this.truckWaitsForCart(t)) {
+            t.dwell = 0.25
+            continue
+          }
           // Finished inbound sort dwell — inject onto assigned claim.
           this.finishTruck(t)
           if (this.retargetBagsTruck(t)) continue
@@ -24022,6 +24176,10 @@ export class Game {
           continue
         }
         if (t.dwell <= 0 && !t.returning) {
+          if (this.truckWaitsForCart(t)) {
+            t.dwell = 0.25
+            continue
+          }
           this.finishTruck(t)
           const from = { c: Math.round(t.x), r: Math.round(t.y) }
           if (t.kind === 'termbus') {
@@ -24152,6 +24310,10 @@ export class Game {
           continue
         }
         if (t.kind === 'bags' && t.mission === 'to_claim') {
+          if (this.truckWaitsForCart(t)) {
+            t.dwell = 0.25
+            continue
+          }
           this.finishTruck(t) // inject onto assigned claim
           if (this.retargetBagsTruck(t)) continue
           t.dwell = -99
