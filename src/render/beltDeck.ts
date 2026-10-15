@@ -40,9 +40,12 @@ export function addBeltDeck(g: THREE.Group, arms: BeltArms | undefined) {
   const rollerMat = new THREE.MeshStandardMaterial({ color: '#5a6a78', metalness: 0.35, roughness: 0.4 })
   const half = CELL * 0.46
   const deckGeo = metreUv(new THREE.PlaneGeometry(half, WIDTH), SKIN_TILE_M.conveyor, WORLD_PER_METER)
-  const railGeo = new THREE.BoxGeometry(half, 0.08, 0.06)
   const rollerGeo = new THREE.BoxGeometry(half * 0.8, 0.06, CELL * 0.18)
   const sides = deckSides(arms)
+  const bend = sides.some((s) => s === 'n' || s === 's') && sides.some((s) => s === 'e' || s === 'w')
+  // On a bend the rails start at the joint so they do not cross the other arm's belt.
+  const railFrom = bend ? RAIL_OFF : 0
+  const railGeo = new THREE.BoxGeometry(half - railFrom, 0.08, 0.06)
   for (const side of SIDES) {
     if (!sides.includes(side.arm)) continue
     const arm = new THREE.Group()
@@ -51,16 +54,17 @@ export function addBeltDeck(g: THREE.Group, arms: BeltArms | undefined) {
     deck.rotation.x = -Math.PI / 2
     deck.position.set(half / 2, DECK_Y, 0)
     deck.receiveShadow = true
+    const railX = (railFrom + half) / 2
     const railA = new THREE.Mesh(railGeo, railMat)
-    railA.position.set(half / 2, RAIL_Y, -RAIL_OFF)
+    railA.position.set(railX, RAIL_Y, -RAIL_OFF)
     const railB = new THREE.Mesh(railGeo, railMat)
-    railB.position.set(half / 2, RAIL_Y, RAIL_OFF)
+    railB.position.set(railX, RAIL_Y, RAIL_OFF)
     const roller = new THREE.Mesh(rollerGeo, rollerMat)
     roller.position.set(half / 2, ROLLER_Y, 0)
     arm.add(deck, railA, railB, roller)
     g.add(arm)
   }
-  if (sides.some((s) => s === 'n' || s === 's') && sides.some((s) => s === 'e' || s === 'w')) {
+  if (bend) {
     const joint = new THREE.Mesh(metreUv(new THREE.PlaneGeometry(WIDTH, WIDTH), SKIN_TILE_M.conveyor, WORLD_PER_METER), deckMat)
     joint.rotation.x = -Math.PI / 2
     joint.position.y = DECK_Y + 0.002
