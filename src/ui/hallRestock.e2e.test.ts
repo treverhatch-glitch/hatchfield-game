@@ -102,8 +102,8 @@ describe('hall restock screens', () => {
           game.shopShelf = 0
           if (game.infoOpen !== 'retail') game.toggleInfo('retail')
         })
-        await page.getByTestId('info-panel').waitFor({ state: 'visible' })
-        expect(await page.getByTestId('info-panel').innerText()).toMatch(/Out of stock, restock run \d+ s away/)
+        await page.getByTestId('info-view-panel').waitFor({ state: 'visible' })
+        expect(await page.getByTestId('info-view-panel').innerText()).toMatch(/Out of stock, restock run \d+ s away/)
         await page.screenshot({ path: 'docs/screens/g1/out-of-stock.png' })
       } finally {
         await browser.close()
