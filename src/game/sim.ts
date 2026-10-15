@@ -30,6 +30,8 @@ import {
   SECURITY_INCIDENT_SLIDER_FLOOR,
   SECURITY_HARD_FINE,
   SECURITY_SOFT_FINE,
+  SECURITY_PUBLIC_HARD_FINE,
+  SECURITY_PUBLIC_SOFT_FINE,
   CRASH_FINE_CAP,
   BUILDINGS,
   CATER,
@@ -3492,7 +3494,7 @@ export class Game {
     const fine = wasHub ? LAYOVER_BAN_FINE + 4000 : LAYOVER_BAN_FINE
     this.airlineBanUntil[id] = this.clock + banSecs
     this.airlineHeat[id] = Math.min(this.heatOf(id), this.banThreshold(id) - 2)
-    this.charge(fine)
+    this.charge(fine, 'penalties', this.simMinutes(), 'Carrier ban')
     this.wave3.noteFine(id)
     if (this.layover?.airline === id) this.layover = null
     if (this.layoverOffer?.airline === id) this.layoverOffer = null
@@ -3502,7 +3504,7 @@ export class Game {
       this.pushNews(`${a.name} pulled the Hub plaque after the ban.`, 'bad')
     }
     this.pushNews(
-      `${a.name} banned you for ${banSecs}s (${reason}). Fine ${moneyLeft(fine)}.`,
+      `${a.name} banned you for ${banSecs}s (${reason}). Fine ${moneyLeft(fine)}. Raise their Standing before the ban ends.`,
       'bad',
     )
     this.reputation = Math.max(0, this.reputation - (wasHub ? 10 : 6))
@@ -3633,7 +3635,7 @@ export class Game {
     delete this.airlineLowAcc[id]
     this.airlineHeat[id] = Math.min(this.heatOf(id), HEAT_ABANDON_THRESHOLD)
     this.forfeitAirlineDeposit(id)
-    this.charge(ABANDON_FINE)
+    this.charge(ABANDON_FINE, 'penalties', this.simMinutes(), 'Carrier walked away')
     this.wave3.noteTurnaround(id, 'cancel')
     this.wave3.noteFine(id)
     // Reverse persona unlocks — empty lounge / franchise leaves a scar.
@@ -3682,7 +3684,7 @@ export class Game {
     }
     const perkBit = lost ? ` Lost ${REWARD_LABEL[lost]}.` : ''
     this.pushNews(
-      `${a.name} abandoned the field (${reason}). Fine ${moneyLeft(ABANDON_FINE)}.${perkBit}`,
+      `${a.name} abandoned the field (${reason}). Fine ${moneyLeft(ABANDON_FINE)}.${perkBit} Win Standing back, then sign them again.`,
       'bad',
     )
     this.reputation = Math.max(0, this.reputation - (lost ? 11 : 8))
@@ -5480,19 +5482,20 @@ export class Game {
 
   shockStock(reason: string, mult: number, fine: number) {
     if (!this.public) {
-      this.charge(fine, 'security_shock')
+      this.charge(fine, 'security_shock', this.simMinutes(), reason)
       this.wave3.noteFines(this.signed)
       this.pushNews(reason, 'bad')
       return
     }
     const before = this.sharePrice
     this.sharePrice = Math.max(1.5, Math.round(this.sharePrice * mult * 100) / 100)
-    this.charge(fine, 'security_shock')
+    this.charge(fine, 'security_shock', this.simMinutes(), reason)
     this.wave3.noteFines(this.signed)
     this.reputation = Math.max(0, this.reputation - 10)
     const paper = Math.round((this.sharePrice - before) * this.sharesOwned)
+    const fineBit = fine > 0 ? ` Fine ${moneyLeft(fine)}.` : ''
     this.pushNews(
-      `${reason} HATCH $${before.toFixed(2)} → $${this.sharePrice.toFixed(2)} (${paper < 0 ? '' : '+'}${moneyLeft(paper)} on your stake). Fine ${moneyLeft(fine)}.`,
+      `${reason} HATCH $${before.toFixed(2)} → $${this.sharePrice.toFixed(2)} (${paper < 0 ? '' : '+'}${moneyLeft(paper)} on your stake).${fineBit}`,
       'bad',
     )
     this.startMission(mult < 0.7 ? 'restore_trust' : 'secure_the_line')
@@ -12627,12 +12630,12 @@ export class Game {
     g.happiness -= 12
     g.thought = 'Security pulled me — breach'
     this.securityIncidents += 1
-    this.charge(1800)
+    this.charge(1800, 'penalties', this.simMinutes(), 'Security breach')
     this.reputation = Math.max(0, this.reputation - 2)
     const aid = this.guestAirlineId(g)
     if (aid) this.adjustHeat(aid, -3)
     this.pushNews(
-      `Secure-zone breach — fine $1,800. Uncleared pax cannot walk airside.`,
+      `Secure-zone breach — fine $1,800. Staff the security lane before passengers walk airside.`,
       'bad',
     )
   }
@@ -14879,10 +14882,10 @@ export class Game {
       }
       if (this.clock >= f.parkLeaveBy) {
         if (!this.releaseGa(f.id, true)) {
-          this.charge(GA_OVERSTAY_FINE)
+          this.charge(GA_OVERSTAY_FINE, 'penalties', this.simMinutes(), 'Parking overstay')
           this.reputation = Math.max(0, this.reputation - 3)
           this.pushNews(
-            `${f.flightNo} overstayed parking — fine ${moneyLeft(GA_OVERSTAY_FINE)}. Stand blocked.`,
+            `${f.flightNo} overstayed parking — fine ${moneyLeft(GA_OVERSTAY_FINE)}. Release parking or turn auto schedule on.`,
             'bad',
           )
           f.parkLeaveBy = this.clock + 28
@@ -16516,7 +16519,7 @@ export class Game {
       return
     }
     const fine = Math.round(5000 + (1 - firePct) * 12000)
-    this.charge(fine)
+    this.charge(fine, 'penalties', this.simMinutes(), 'Apron fire')
     this.reputation = Math.max(0, this.reputation - (firePct < 0.3 ? 8 : 4))
     if (this.public) {
       this.sharePrice = Math.max(1.5, Math.round((this.sharePrice * (0.9 + firePct * 0.05)) * 100) / 100)
@@ -16549,7 +16552,7 @@ export class Game {
     const baseFine = 18000 + Math.round((100 - this.runwayCondition) * 220)
     const mitigate = 0.45 + amb * 0.3 + fire * 0.25
     const fine = Math.min(CRASH_FINE_CAP, Math.round(baseFine * (1.4 - mitigate * 0.5)))
-    this.charge(fine, 'crash_fine')
+    this.charge(fine, 'crash_fine', this.simMinutes(), 'Crash write-off')
     this.wave3.noteFine(f.airline)
     this.crashes += 1
     f.ledger.push({ label: `${f.flightNo} crash write-off`, amount: -fine })
@@ -16567,19 +16570,19 @@ export class Game {
       this.weather === 'clear' ? '' : ` ${this.weatherLabel()} + soft pavement.`
     if (this.public) {
       this.shockStock(
-        `CRASH on ${moment}${weatherBit} Runway ${Math.round(this.runwayCondition)}%.`,
+        `CRASH on ${moment}${weatherBit} Runway ${Math.round(this.runwayCondition)}%. Fund maintenance and resurface the runway. The write-off is already on the crash line.`,
         amb < 0.35 ? 0.5 : 0.62,
-        fine,
+        0,
       )
     } else {
       this.pushNews(
-        `CRASH on ${moment}.${weatherBit} Fine ${moneyLeft(fine)}. Ambulances ${Math.round(amb * 100)}% · fire ${Math.round(fire * 100)}%.`,
+        `CRASH on ${moment}.${weatherBit} Fine ${moneyLeft(fine)}. Ambulances ${Math.round(amb * 100)}% · fire ${Math.round(fire * 100)}%. Fund maintenance and resurface the runway.`,
         'bad',
       )
     }
     if (amb < 0.2) {
       this.pushNews('No medics on call — city hospital bill piles on. Fund ambulances.', 'bad')
-      this.charge(4000)
+      this.charge(4000, 'penalties', this.simMinutes(), 'No medics')
     } else if (amb >= 0.8) {
       this.reputation = Math.min(100, this.reputation + 2)
       this.pushNews('Ambulance crews pulled survivors fast — softens the headline.', 'ok')
@@ -19360,7 +19363,7 @@ export class Game {
     }
     const refund = this.cancelStuckFlight(flight)
     return {
-      detail: `${flight.flightNo} cancelled — refunded $${refund.toLocaleString('en-US')}.`,
+      detail: `${flight.flightNo} cancelled — refunded $${refund.toLocaleString('en-US')} of the fees already taken. Clear the taxi or add a stand so the next arrival is not stuck.`,
       reason: 'cancel-refund',
     }
   }
@@ -19510,7 +19513,8 @@ export class Game {
 
   private cancelStuckFlight(flight: Flight): number {
     const collected = flight.ledger.reduce((sum, line) => sum + (line.amount > 0 ? line.amount : 0), 0)
-    const refund = collected > 0 ? Math.round(collected) : STUCK_WATCH.minRefund
+    const raw = collected > 0 ? Math.round(collected) : STUCK_WATCH.minRefund
+    const refund = Math.min(STUCK_WATCH.maxRefund, raw)
     this.charge(refund, 'penalties', this.simMinutes(), 'Cancel refund')
     this.atc.release(flight.id)
     this.atcPaths.delete(flight.id)
@@ -20916,7 +20920,7 @@ export class Game {
     }
     this.pushNews(`THREAT ALERT — decide now. ${this.pendingThreat.blurb}`, 'bad')
     if (this.budgetOf('security') < SECURITY_INCIDENT_SLIDER_FLOOR) {
-      const preview = hard ? SECURITY_HARD_FINE : SECURITY_SOFT_FINE
+      const preview = this.threatFine(hard)
       this.pushNews(
         `Security is ${Math.round(this.budgetOf('security'))}%. Ignoring this alert bills ${moneyLeft(preview)}. Raise the slider before it fires.`,
         'bad',
@@ -20962,7 +20966,7 @@ export class Game {
   }
 
   private failEmergencyHost(e: PendingEmergency, why: string) {
-    this.charge(EMERGENCY_FAIL_FINE)
+    this.charge(EMERGENCY_FAIL_FINE, 'penalties', this.simMinutes(), 'Failed emergency host')
     this.reputation = Math.max(0, this.reputation - 7)
     this.runwayCondition = Math.max(20, this.runwayCondition - 3)
     // Chaos — next fire risk sooner; carriers lose trust across the board.
@@ -21367,7 +21371,7 @@ export class Game {
 
     // Refuse and timeout both journal here. The dollars and the news line differ.
     const fine = how === 'timeout' ? EMERGENCY_TIMEOUT_FINE : EMERGENCY_REFUSE_FINE
-    this.charge(fine, 'emergency_refuse')
+    this.charge(fine, 'emergency_refuse', this.simMinutes(), how === 'timeout' ? 'Emergency timed out' : 'Refused emergency')
     this.reputation = Math.max(0, this.reputation - 4)
     if (e.kind === 'divert' && e.airline) {
       this.adjustHeat(e.airline, -8)
@@ -21378,22 +21382,28 @@ export class Game {
       for (const id of this.signed) this.adjustHeat(id, -1.8)
     }
     if (how === 'timeout') {
-      this.pushNews(`Missed — no answer. Fine ${moneyLeft(fine)}.`, 'bad')
+      this.pushNews(`Missed — no answer. Fine ${moneyLeft(fine)}. Answer the card when the field can host it.`, 'bad')
       return
     }
     if (e.kind === 'divert' && e.airline) {
       this.pushNews(
-        `Refused divert — ${this.airline(e.airline).name} furious. Fine ${moneyLeft(fine)}.`,
+        `Refused divert — ${this.airline(e.airline).name} furious. Fine ${moneyLeft(fine)}. Accept the next one if a stand is free.`,
         'bad',
       )
       return
     }
     this.pushNews(
       e.kind === 'tanker_mx'
-        ? `Refused firefighting plane (refuel+MX). Fine ${moneyLeft(fine)} — region cools.`
-        : `Refused firefighting plane refuel. Fine ${moneyLeft(fine)} — carriers notice.`,
+        ? `Refused firefighting plane (refuel+MX). Fine ${moneyLeft(fine)}. Keep a hangar and a mechanic if you want the fee instead.`
+        : `Refused firefighting plane refuel. Fine ${moneyLeft(fine)}. A fuel farm with stock takes the fee instead.`,
       'bad',
     )
+  }
+
+  /** What ignoring this alarm will bill. A listed field pays more, and the preview uses the same number. */
+  private threatFine(hard: boolean): number {
+    if (this.public) return hard ? SECURITY_PUBLIC_HARD_FINE : SECURITY_PUBLIC_SOFT_FINE
+    return hard ? SECURITY_HARD_FINE : SECURITY_SOFT_FINE
   }
 
   resolveThreat(choice: 'scramble' | 'ignore') {
@@ -21430,23 +21440,16 @@ export class Game {
 
     this.securityIncidents += 1
     if (this.mission?.goal === 'noIncident') this.mission.progress = 0
-    const fine =
-      this.public
-        ? t.severity === 'hard'
-          ? 18000
-          : 9000
-        : t.severity === 'hard'
-          ? SECURITY_HARD_FINE
-          : SECURITY_SOFT_FINE
+    const fine = this.threatFine(t.severity === 'hard')
     if (t.severity === 'hard') {
       this.shockStock(
-        'SECURITY FAILURE — threat reached a departure.',
+        'SECURITY FAILURE — threat reached a departure. Add a security lane and raise the security budget.',
         this.public ? 0.55 : 1,
         fine,
       )
     } else {
       this.shockStock(
-        'Suspicious bag story hits the wire.',
+        'Suspicious bag story hits the wire. Scramble the next alarm, or raise the security budget.',
         this.public ? 0.82 : 1,
         fine,
       )

@@ -338,6 +338,20 @@ class GamePlayer implements PlayerCommands {
     for (const key of Object.keys(penaltyBreakdown) as (keyof typeof penaltyBreakdown)[]) {
       penaltyBreakdown[key] = Math.round(penaltyBreakdown[key])
     }
+    const sourceMap = new Map<string, { category: string; label: string; amount: number; count: number }>()
+    for (const entry of ledger.entries) {
+      if (entry.meta.unpaid || !(entry.amount < 0)) continue
+      if (!(FINE_CATEGORIES as readonly string[]).includes(entry.category)) continue
+      const label = entry.meta.label?.trim() || '(unlabeled)'
+      const key = `${entry.category}\0${label}`
+      const row = sourceMap.get(key) ?? { category: entry.category, label, amount: 0, count: 0 }
+      row.amount += entry.amount
+      row.count += 1
+      sourceMap.set(key, row)
+    }
+    const penaltySources = [...sourceMap.values()]
+      .map((row) => ({ ...row, amount: Math.round(row.amount) }))
+      .sort((a, b) => a.amount - b.amount || a.category.localeCompare(b.category))
     const tally = game.connectionTally
     const ids = new Set<string>(game.signed)
     for (const id of Object.keys(game.wave3.state.relations.rows)) ids.add(id)
@@ -365,6 +379,7 @@ class GamePlayer implements PlayerCommands {
       fieldAskFines,
       penaltyTotal,
       penaltyBreakdown,
+      penaltySources,
       connections: {
         made: tally.made,
         belowMct: tally.belowMct,

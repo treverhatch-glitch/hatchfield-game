@@ -289,6 +289,8 @@ export interface SystemsBooks {
     refunds: number
     other: number
   }
+  /** Paid fine lines, grouped by category and ledger label. Amounts are negative. */
+  penaltySources: { category: string; label: string; amount: number; count: number }[]
   /** Connections judged this run, by why they made or missed. */
   connections: {
     made: number

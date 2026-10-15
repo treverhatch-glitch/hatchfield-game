@@ -153,8 +153,17 @@ export const SECURITY_INCIDENT_SLIDER_FLOOR = 70
 /** Private-field threat fines. A hard miss and a soft miss. */
 export const SECURITY_HARD_FINE = 1_500
 export const SECURITY_SOFT_FINE = 800
-/** Crash write-off. Pavement loss used to run the formula past $30k. */
-export const CRASH_FINE_CAP = 12_000
+/**
+ * Listed field. Higher than the private fine, so the tape hurts, but not
+ * twelve times higher. One hard headline must not be the month's profit.
+ */
+export const SECURITY_PUBLIC_HARD_FINE = 3_000
+export const SECURITY_PUBLIC_SOFT_FINE = 1_600
+/**
+ * Crash write-off. The formula used to clear $30k, then a $12k cap still let
+ * a handful of crashes erase a careless field by themselves.
+ */
+export const CRASH_FINE_CAP = 4_000
 /**
  * Seconds of slip that cost a carrier the full per-delay Standing nick. A held slot is
  * retried every few seconds while pavement is busy; each retry nudges later slots by a

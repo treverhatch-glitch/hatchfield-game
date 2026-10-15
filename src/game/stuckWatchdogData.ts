@@ -22,6 +22,11 @@ export const STUCK_WATCH = {
   authorizedHoldMin: 240,
   /** Airport pays at least this when a cancelled flight collected no fees. */
   minRefund: 400,
+  /**
+   * Fees already taken are paid back, up to this. A stuck widebody used to
+   * refund the whole turn and pin a congested field to the floor.
+   */
+  maxRefund: 2_500,
   /** How many recovery lines the debug log keeps. */
   logCap: 40,
   /**

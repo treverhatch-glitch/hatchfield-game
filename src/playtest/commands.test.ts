@@ -223,6 +223,7 @@ function emptyBooks(): SystemsBooks {
     fieldAskFines: 1,
     penaltyTotal: -1600,
     penaltyBreakdown: { missedConnections: 0, delays: 0, refunds: 0, other: -1600 },
+    penaltySources: [{ category: 'penalties', label: '(unlabeled)', amount: -1600, count: 1 }],
     connections: { made: 0, belowMct: 0, paxLate: 0, bagLate: 0, divert: 0, judged: 0, delayMin: 0, availableMin: 0, bagMin: 0 },
     relations: [{ id: 'bush', name: 'Bushline', score: 2, band: 'neutral', tier: 1, label: 'Published', onTime: 0, delayed: 0, kept: 0, missed: 0, fines: 0 }],
     treePoints: 1,
