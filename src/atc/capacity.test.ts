@@ -8,7 +8,7 @@ import {
 } from './capacity.ts'
 
 describe('runway movement capacity', () => {
-  it('spaces one strip so the previous departure clears before the next arrival', () => {
+  it('spaces one strip so the previous landing can roll clear', () => {
     expect(runwayArrivalGapSec(1)).toBe(RUNWAY_TURN_SEC)
     expect(runwayArrivalGapSec(2)).toBe(RUNWAY_TURN_SEC / 2)
     expect(runwayArrivalGapSec(0)).toBe(RUNWAY_TURN_SEC)
@@ -20,7 +20,11 @@ describe('runway movement capacity', () => {
     const turns = Math.floor((REAL_SECONDS_PER_GAME_DAY + gap - 1e-9) / gap)
     expect(one).toBe(turns * 2)
     expect(one).toBeGreaterThanOrEqual(4)
-    expect(runwayMovementCapacity(2, 32)).toBe(2)
+    // A window shorter than the two-strip gap fits the opening turn only.
+    expect(runwayMovementCapacity(2, RUNWAY_TURN_SEC / 2 - 1)).toBe(2)
+    // Night stretches the gap by at most 1.4. That must stay inside the
+    // two-stand interval measured on the idle soak, or a gate sits empty.
+    expect(RUNWAY_TURN_SEC * 1.4).toBeLessThan(76)
     expect(runwayOverbooked(one, one)).toBe(false)
     expect(runwayOverbooked(one + 1, one)).toBe(true)
     expect(runwayOverbooked(Number.NaN, one)).toBe(false)

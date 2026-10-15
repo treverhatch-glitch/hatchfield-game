@@ -1,15 +1,19 @@
 import { REAL_SECONDS_PER_GAME_DAY } from '../core/clock.ts'
 
 /**
- * Sim-seconds from one arrival's ETA until that aircraft's departure has
- * cleared the strip on a single runway with a starter-kit turn (walk-on
- * boarding, one taxiway). A second strip halves the gap.
+ * Sim-seconds between arrivals on one strip. A second strip halves the gap.
  *
- * Measured on the starter field: the arrival is on the runway again for its
- * departure about 130–140s after it spawned. Scheduling tighter than that puts
- * the next short final on top of the previous takeoff roll.
+ * This is how long the strip stays busy for one landing to roll clear, not
+ * the full gate turn. The same aircraft is back for its own departure about
+ * 130–140s after it spawned, and the starter kit has two stands, so the next
+ * arrival is already on short final while the first is at the gate. Spacing
+ * the bank by that whole turn leaves a stand empty.
+ *
+ * The night demand curve stretches this gap by at most 1.4. The headway stays
+ * inside the interval two stands already turn (about one completed flight
+ * every 76s on the idle soak) so the timetable does not idle a gate.
  */
-export const RUNWAY_TURN_SEC = 150
+export const RUNWAY_TURN_SEC = 48
 
 /**
  * A due slot may sit this far past its ETA while the strip finishes the
@@ -24,7 +28,7 @@ export const RUNWAY_LATE_SLACK_SEC = 4
  */
 export const RUNWAY_GENTLE_SLIP_SEC = 2
 
-/** Arrival-to-arrival gap that leaves the previous departure time to clear. */
+/** Arrival-to-arrival gap that lets the previous landing roll clear the strip. */
 export function runwayArrivalGapSec(strips: number): number {
   const lanes = Math.max(1, Math.floor(Number.isFinite(strips) ? strips : 1))
   return RUNWAY_TURN_SEC / lanes

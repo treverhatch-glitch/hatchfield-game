@@ -230,6 +230,7 @@ import {
   FIRST_LETTER_COOL,
   FIRST_SLOT_GAP,
   FIRST_SLOT_JITTER,
+  OPENING_ARRIVAL_GAP_SEC,
   OPENING_FIRST_SLOTS,
   OPENING_SEC,
   openingSlotCap,
@@ -374,6 +375,7 @@ import { buildingCard, isBuildingTile, type BayInput, type BuildingCard, type Re
 import { HALL_NAV_TUNING, HALL_QUEUE_TUNING } from './hallNavData.ts'
 import { bagWorkDuration, describeBagStage } from './bags'
 import {
+  BAG_RECORD_SEC,
   advanceBagTags,
   advanceScreen,
   checkedPieceCount,
@@ -1073,6 +1075,8 @@ export class Game {
   private bagShow: LuggageMotion | null = null
   private bagBooks = new Map<string, BagBook>()
   private bagTags: BagTag[] = []
+  /** Clock time after which an orphaned tag can be dropped. */
+  private bagReleaseAt = new Map<string, number>()
   shelfCool = 0
   /** Open info-view submenu. Hotspots stay drawn either way. */
   infoOpen: string | null = null
@@ -1594,6 +1598,7 @@ export class Game {
     this.bagShow = null
     this.bagBooks.clear()
     this.bagTags = []
+    this.bagReleaseAt.clear()
     this.shelfCool = 0
     this.infoOpen = null
     this.fuelHoldNoted.clear()
@@ -5816,6 +5821,7 @@ export class Game {
       this.bagsMishandled = s.bagsMishandled ?? 0
       this.bagBooks.clear()
       this.bagTags = []
+      this.bagReleaseAt.clear()
       this.bagShow = null
       this.caterBrand = s.caterBrand ?? null
       this.mealSold = s.mealSold
@@ -7146,13 +7152,30 @@ export class Game {
     }
     this.bagTags = this.bagTags.filter((tag) => {
       const owner = this.hallGuests.find((g) => g.id === tag.ownerPassengerId)
-      if (owner?.dead) return false
-      if (!tag.picked && !tag.fault) {
-        const flight = this.flights.find((item) => item.id === tag.flightId)
-        const live = flight != null && flight.phase !== 'gone'
-        if (!live && !owner) return false
+      if (owner?.dead) {
+        this.bagReleaseAt.delete(tag.id)
+        return false
       }
-      return true
+      const flight = this.flights.find((item) => item.id === tag.flightId)
+      const connect = tag.connectFlightId
+        ? this.flights.find((item) => item.id === tag.connectFlightId)
+        : undefined
+      const live =
+        owner != null ||
+        (flight != null && flight.phase !== 'gone') ||
+        (connect != null && connect.phase !== 'gone')
+      if (live) {
+        this.bagReleaseAt.delete(tag.id)
+        return true
+      }
+      let until = this.bagReleaseAt.get(tag.id)
+      if (until == null) {
+        until = this.clock + BAG_RECORD_SEC
+        this.bagReleaseAt.set(tag.id, until)
+      }
+      if (this.clock < until) return true
+      this.bagReleaseAt.delete(tag.id)
+      return false
     })
   }
 
@@ -13980,7 +14003,9 @@ export class Game {
     // gap from every open ETA, including ones already past the opening, so a
     // later batch cannot land on top of them.
     const openingLimit = a.kind === 'cargo' ? null : openingSlotCap(this.clock)
-    const physicalGap = runwayArrivalGapSec(Math.max(1, this.runwayStripCount()))
+    const stripGap = runwayArrivalGapSec(Math.max(1, this.runwayStripCount()))
+    const physicalGap =
+      this.clock < OPENING_SEC ? Math.max(stripGap, OPENING_ARRIVAL_GAP_SEC) : stripGap
     const gate = this.leadGateClock(airlineId)
     if (gate > t) t = gate
     const inOpeningBank = t < OPENING_SEC
@@ -18449,7 +18474,11 @@ export class Game {
     )
   }
 
-  /** True when `self` can take the strip without cutting off an arrival or another roll. */
+  /**
+   * True when `self` can take the strip without cutting off an arrival or a
+   * takeoff roll. Pushback and taxi to the hold line are not strip time — holding
+   * a second stand for them parks a gate that could be turning.
+   */
   private departureMayEnterStrip(self: Flight): boolean {
     if (this.arrivalOnApproach()) return false
     if (
@@ -18458,12 +18487,11 @@ export class Game {
     ) {
       return false
     }
-    return !this.flights.some(
-      (f) =>
-        f !== self &&
-        (f.craft ?? 'jet') === 'jet' &&
-        (['landing', 'pushback', 'taxi_out', 'takeoff'] as Phase[]).includes(f.phase),
-    )
+    return !this.flights.some((f) => {
+      if (f === self || (f.craft ?? 'jet') !== 'jet') return false
+      if (this.atc.holdsRunway(f.id)) return true
+      return f.phase === 'takeoff' && f.phaseTime < 4
+    })
   }
 
   freeStands(): Vec[] {

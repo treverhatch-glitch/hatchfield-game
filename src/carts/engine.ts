@@ -114,6 +114,10 @@ export class CartYard {
   private nextOrder = 1
   private bagFleet = 0
   private cateringFleet = 0
+  /** Done shipments already folded into the delivered totals. */
+  private readonly deliveredUnits = { outbound: 0, inbound: 0, catering: 0 }
+  /** Shipment ids that were done on the previous tick. One tick of grace keeps socketsOf readable. */
+  private readonly finished = new Set<string>()
 
   constructor(tuning: CartTuning = CART_TUNING) {
     this.config = {
@@ -153,7 +157,7 @@ export class CartYard {
   }
 
   delivered(kind: 'outbound' | 'inbound' | 'catering'): number {
-    let n = 0
+    let n = this.deliveredUnits[kind]
     for (const shipment of this.shipments) {
       if (shipment.kind !== kind || !shipment.done) continue
       n += shipment.units
@@ -192,12 +196,38 @@ export class CartYard {
   tick(dt: number): void {
     const step = finite(dt)
     if (!(step > 0)) return
+    this.retireDone()
     this.dispatch()
     for (const vehicle of this.vehicles) {
       if (vehicle.phase === 'idle') continue
       this.consume(vehicle, step)
     }
     this.dispatch()
+  }
+
+  /**
+   * Drop a shipment the tick after it finishes. The delivered total keeps the
+   * units, and the socket list stays through the tick that observed it.
+   */
+  private retireDone(): void {
+    const drop: string[] = []
+    for (let i = this.shipments.length - 1; i >= 0; i--) {
+      const shipment = this.shipments[i]
+      if (!shipment || !shipment.done) continue
+      if (!this.finished.has(shipment.id)) {
+        this.finished.add(shipment.id)
+        continue
+      }
+      this.deliveredUnits[shipment.kind] += shipment.units
+      this.finished.delete(shipment.id)
+      drop.push(shipment.id)
+      this.shipments.splice(i, 1)
+    }
+    if (!drop.length) return
+    const gone = new Set(drop)
+    for (let i = this.handoffs.length - 1; i >= 0; i--) {
+      if (gone.has(this.handoffs[i]?.shipmentId ?? '')) this.handoffs.splice(i, 1)
+    }
   }
 
   private post(id: string, kind: Shipment['kind'], units: number, standId: string): void {

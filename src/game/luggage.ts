@@ -122,6 +122,13 @@ export interface BagTag {
   releaseAt: number
 }
 
+/**
+ * How long a tag stays after its passenger and both flights have left.
+ * A connection check still reads the record once the guest has walked out.
+ * Past this, a long soak does not keep every suitcase from the first day.
+ */
+export const BAG_RECORD_SEC = 1200
+
 /** How many checked bags this passenger type drops. One record each. */
 export function checkedPieceCount(tag: 'budget' | 'business' | 'family' | 'premium'): number {
   return tag === 'premium' || tag === 'family' ? 2 : 1

@@ -32,7 +32,7 @@ function slot(id: string, eta: number): ScheduleSlot {
 }
 
 describe('runway bank', () => {
-  it('spaces a single-runway bank so the previous departure can clear', () => {
+  it('spaces a single-runway bank by the strip headway', () => {
     const game = field()
     game.clock = 700
     game.schedule = []

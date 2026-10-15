@@ -44,6 +44,13 @@ export function openingSlotCap(clock: number): number | null {
   return 4
 }
 
+/**
+ * Arrival gap during the opening. The prefab security line is sized for one
+ * turn at a time. After this window the strip headway is tighter, because
+ * two stands are working and the player can expand the hall.
+ */
+export const OPENING_ARRIVAL_GAP_SEC = 150
+
 /** Extra seconds between slots while the opening bank is still thin. */
 export function openingSpacingBonus(clock: number): number {
   if (clock >= OPENING_SEC) return 0
