@@ -65,6 +65,8 @@ const EVERY_STAMP = {
   art_concourse: true,
   grand_arrivals_hall: true,
   quiet_hall: true,
+  cargo_hub_ii: true,
+  cold_store: true,
   clear: true,
 } as const satisfies Record<Exclude<Tool, 'pan' | 'stand_s' | 'stand' | 'stand_w' | 'stand_l'>, true>
 

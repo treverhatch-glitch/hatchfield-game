@@ -8,7 +8,9 @@ export type LandmarkId =
   | 'grand_arrivals_hall'
   | 'quiet_hall'
 
-export type Tier3PlusId = 'airport_hotel' | 'rail_link' | 'saf_blending' | LandmarkId
+export type CargoLateId = 'cargo_hub_ii' | 'cold_store'
+
+export type Tier3PlusId = 'airport_hotel' | 'rail_link' | 'saf_blending' | LandmarkId | CargoLateId
 
 interface BuildingBase {
   id: Tier3PlusId
@@ -53,6 +55,16 @@ export interface SafBuilding extends BuildingBase {
   satisfiesGreen: boolean
 }
 
+/** Cargo hub II and the cold store. Both extend the night hub's freighter wave. */
+export interface CargoLateBuilding extends BuildingBase {
+  id: CargoLateId
+  kind: 'cargo'
+  /** Economy-wallet node that must be owned before the building can be ordered. */
+  requiresTech: string | null
+  /** Chilled rooms this building counts as. Zero for the hub. */
+  coldRooms: number
+}
+
 /** Prestige landmark. Visitors pay at the door; the rest is rating and demand. One per airport. */
 export interface LandmarkBuilding extends BuildingBase {
   id: LandmarkId
@@ -71,7 +83,7 @@ export interface LandmarkBuilding extends BuildingBase {
   runwayClearM: number
 }
 
-export type Tier3PlusBuilding = HotelBuilding | RailBuilding | SafBuilding | LandmarkBuilding
+export type Tier3PlusBuilding = HotelBuilding | RailBuilding | SafBuilding | LandmarkBuilding | CargoLateBuilding
 
 /** A placed site. Open/building is derived from elapsed days and the catalog timer. */
 export interface BuildSite {

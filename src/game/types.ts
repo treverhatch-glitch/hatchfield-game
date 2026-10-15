@@ -82,6 +82,8 @@ export type Tile =
   | 'saf'
   /** Tier III prestige landmark. Which one is read from the late site on the cell. */
   | 'late_landmark'
+  /** Cargo hub II or the cold store. Which one is read from the late site on the cell. */
+  | 'late_cargo'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -173,6 +175,8 @@ export type Tool =
   | 'art_concourse'
   | 'grand_arrivals_hall'
   | 'quiet_hall'
+  | 'cargo_hub_ii'
+  | 'cold_store'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5

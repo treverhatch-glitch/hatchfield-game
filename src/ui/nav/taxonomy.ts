@@ -130,7 +130,7 @@ export const BUILD_MENUS: readonly BuildMenu[] = [
     {
       id: 'bags',
       label: 'Bags/Cargo',
-      tools: ['bags', 'cargo'],
+      tools: ['bags', 'cargo', 'cargo_hub_ii', 'cold_store'],
       progression: ['tilt_tray'],
     },
     {

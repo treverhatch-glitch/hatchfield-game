@@ -19,6 +19,9 @@ export const LIVE_TECH: Readonly<Record<string, LiveTech>> = {
   'safety_security.t2': {
     shows: 'CT scanners come online. Fast-track lane II opens on the Premium sheet.',
   },
+  'cargo.t4': {
+    shows: 'Cold store opens on Build > Airside ops > Bags/Cargo. Chilled rooms lift every night freighter wave.',
+  },
   'maintenance.t4': {
     shows: 'Hangar MRO: every heavy check pays 15% more.',
   },

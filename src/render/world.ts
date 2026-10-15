@@ -80,6 +80,7 @@ import { addBagSort, addBusStation, addCateringKitchen, addHelipad, addHotelMass
 import { helipadTurnOnPad } from './world/padHeli'
 import { addDepotBuilding, addGuardBuilding, addPoliceBuilding } from './world/apronBuildings'
 import { mountDock, mountSign } from './world/buildingSign'
+import { addCargoLate, animateCargoPart } from './world/cargoLate'
 import { addLandmark, animateLandmarkPart } from './world/landmarks'
 import { addBatteryBank, addSolarArray } from './world/opsTechBuildings'
 import {
@@ -1172,6 +1173,9 @@ export class World {
     } else if (tile === 'late_rail') {
       if (opts.lateOpen === false) this.addRailScaffold(g)
       else this.addLateRail(g)
+    } else if (tile === 'late_cargo') {
+      if (opts.lateOpen === false) this.addRailScaffold(g)
+      else addCargoLate(g, opts.lateId ?? null)
     } else if (tile === 'late_landmark') {
       if (opts.lateOpen === false) this.addRailScaffold(g)
       else addLandmark(g, opts.lateId ?? null)
@@ -2307,6 +2311,10 @@ export class World {
     this.tilesGroup.traverse((obj) => {
       if (obj.name.startsWith('landmark-')) {
         animateLandmarkPart(obj, t)
+        return
+      }
+      if (obj.name.startsWith('cargo2-')) {
+        animateCargoPart(obj, t)
         return
       }
       if (obj.name !== 'pod') return

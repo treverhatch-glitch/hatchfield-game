@@ -7,6 +7,13 @@ import {
   CURFEW_FINE_TIGHT,
   CURFEW_HEAT_RELAXED,
   CURFEW_HEAT_TIGHT,
+  COLD_STORE_NIGHT_PREMIUM,
+  COLD_STORE_POWER_DEMAND,
+  HUB_II_GROUND_CREW,
+  HUB_II_HANDLING_SCALE,
+  HUB_II_POWER_DEMAND,
+  HUB_II_STORAGE_SCALE,
+  NIGHT_BANK_SLOTS_HUB_II,
   MRO_POWER_DEMAND,
   MRO_TAXI_MINUTES,
   MRO_TECH_BONUS,
@@ -24,6 +31,7 @@ import {
   planNightBank,
   runNightBank,
 } from './nightHub.ts'
+import { COLD_STORE } from '../tier3plus/cargoConfig.ts'
 import type {
   MroCandidate,
   MroJob,
@@ -76,6 +84,9 @@ export class Tier3Session {
   private powerDemand = 0
   private powerCapacity = 0
   private handlingTonnes = 0
+  private coldRevenue = 0
+  private hubIIEffect = 0
+  private hubIICrewAssigned = 0
   private curfewRelaxed = false
   private throughput = new Map<string, number>()
 
@@ -134,9 +145,17 @@ export class Tier3Session {
     const hubOn = nightHubUnlock(ctx).ok
     const mros = this.buildings.filter((building) => building.kind === 'mro')
     const hubs = this.buildings.filter((building) => building.kind === 'night_hub')
+    const hubIIs = hubs.length ? this.buildings.filter((building) => building.kind === 'hub_ii') : []
+    const colds = hubs.length ? this.buildings.filter((building) => building.kind === 'cold_store') : []
     const staffBuildings: StaffBuildingInput[] = [
       ...mros.map((building) => ({ id: building.id, role: 'maintenance_tech' as const, required: MRO_TECHS_REQUIRED })),
       ...hubs.map((building) => ({ id: building.id, role: 'ground_crew' as const, required: NIGHT_HUB_GROUND_CREW })),
+      ...hubIIs.map((building) => ({
+        id: building.id,
+        role: 'ground_crew' as const,
+        required: HUB_II_GROUND_CREW,
+        priority: -1,
+      })),
     ]
     const staff = calculateStaff({
       pools: ctx.staffPools,
@@ -151,12 +170,14 @@ export class Tier3Session {
       .filter((row) => row.role === 'maintenance_tech')
       .reduce((sum, row) => sum + row.assigned, 0)
     this.crewAssigned = staff.allocations
-      .filter((row) => row.role === 'ground_crew')
+      .filter((row) => row.role === 'ground_crew' && hubs.some((building) => building.id === row.buildingId))
       .reduce((sum, row) => sum + row.assigned, 0)
 
     const loads = [{ id: 'site', demand: Math.max(0, finiteNumber(ctx.otherPowerDemand ?? 0)) }]
     for (const building of mros) loads.push({ id: building.id, demand: MRO_POWER_DEMAND })
     for (const building of hubs) loads.push({ id: building.id, demand: NIGHT_HUB_POWER_DEMAND })
+    for (const building of hubIIs) loads.push({ id: building.id, demand: HUB_II_POWER_DEMAND })
+    for (const building of colds) loads.push({ id: building.id, demand: COLD_STORE_POWER_DEMAND })
     const power = calculatePower(
       ctx.powerTier,
       loads,
@@ -168,6 +189,14 @@ export class Tier3Session {
     this.powerCapacity = finiteNumber(power.capacity)
     const powerRate = finiteNumber(power.throughputMultiplier)
     this.curfewRelaxed = ctx.curfewRelaxed
+    this.hubIICrewAssigned = staff.allocations
+      .filter((row) => hubIIs.some((building) => building.id === row.buildingId))
+      .reduce((sum, row) => sum + row.assigned, 0)
+    this.hubIIEffect = hubIIs.length
+      ? finiteNumber(
+          hubIIs.reduce((sum, building) => sum + (this.throughput.get(building.id) ?? 0), 0) / hubIIs.length,
+        ) * powerRate
+      : 0
     this.handlingTonnes = hubs.reduce((sum, hub) => {
       return sum + nightHandlingTonnes(this.throughput.get(hub.id) ?? 0, powerRate)
     }, 0)
@@ -206,9 +235,13 @@ export class Tier3Session {
       let flights = 0
       let noise = 0
       let cash = 0
-      for (const hub of hubs) {
-        const handling = nightHandlingTonnes(this.throughput.get(hub.id) ?? 0, powerRate)
-        const planned = planNightBank(defaultNightSlots(), nightHubStorageTonnes(), handling)
+      for (const [index, hub] of hubs.entries()) {
+        const boost = index === 0 ? this.hubIIEffect : 0
+        const handling =
+          nightHandlingTonnes(this.throughput.get(hub.id) ?? 0, powerRate) * (1 + (HUB_II_HANDLING_SCALE - 1) * boost)
+        const storage = nightHubStorageTonnes() * (1 + (HUB_II_STORAGE_SCALE - 1) * boost)
+        const slots = boost > 0 ? [...defaultNightSlots(), ...NIGHT_BANK_SLOTS_HUB_II] : defaultNightSlots()
+        const planned = planNightBank(slots, storage, handling)
         const wave = runNightBank(hub.id, ctx.nightIndex, planned)
         shipped += wave.shippedTonnes
         flights += wave.flights
@@ -222,6 +255,12 @@ export class Tier3Session {
       if (revenue > 0) {
         this.nightRevenue += revenue
         postings.push({ amount: revenue, label: 'Night hub freighter wave' })
+        const premium = colds.length ? COLD_STORE_NIGHT_PREMIUM * powerRate : 0
+        const chilled = roundMoney(revenue * premium)
+        if (chilled > 0) {
+          this.coldRevenue += chilled
+          postings.push({ amount: chilled, label: 'Cold-chain premium' })
+        }
       }
       const fineRate = ctx.curfewRelaxed ? CURFEW_FINE_RELAXED : CURFEW_FINE_TIGHT
       const fine = roundMoney(this.nightNoise * fineRate)
@@ -282,6 +321,19 @@ export class Tier3Session {
         groundCrewRequired: hubs * NIGHT_HUB_GROUND_CREW,
         curfewRelaxed: this.curfewRelaxed,
       },
+      hubII: {
+        built: this.buildings.filter((building) => building.kind === 'hub_ii').length,
+        groundCrewAssigned: this.hubIICrewAssigned,
+        groundCrewRequired:
+          this.buildings.filter((building) => building.kind === 'hub_ii').length * HUB_II_GROUND_CREW,
+        effect: this.hubIIEffect,
+      },
+      coldChain: {
+        built: this.buildings.filter((building) => building.kind === 'cold_store').length,
+        rooms: this.buildings.filter((building) => building.kind === 'cold_store').length * COLD_STORE.rooms,
+        premium: COLD_STORE_NIGHT_PREMIUM,
+        revenue: this.coldRevenue,
+      },
     }
   }
 
@@ -296,6 +348,7 @@ export class Tier3Session {
       nightNoise: this.nightNoise,
       bankTonnes: this.bankTonnes,
       bankFlights: this.bankFlights,
+      coldRevenue: this.coldRevenue,
       jobs: this.jobs.map((job) => ({ ...job })),
     }
   }
@@ -312,6 +365,7 @@ export class Tier3Session {
     session.nightNoise = finiteNumber(saved.nightNoise)
     session.bankTonnes = finiteNumber(saved.bankTonnes)
     session.bankFlights = finiteNumber(saved.bankFlights)
+    session.coldRevenue = finiteNumber(saved.coldRevenue ?? 0)
     session.jobs = (saved.jobs ?? []).map((job) => ({ ...job }))
     return session
   }

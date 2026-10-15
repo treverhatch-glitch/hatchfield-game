@@ -215,7 +215,7 @@ function ToolStamp({
   onOpen: (link: UnlockLink) => void
 }) {
   const lateId = lateIdForTool(tool)
-  const input = toolStampInput(tool, game.fieldLevel(), game.lateFieldLevel(), owned, treeOwned, game.prestigeStars())
+  const input = toolStampInput(tool, game.fieldLevel(), game.lateFieldLevel(), owned, treeOwned, game.prestigeStars(), (techId) => game.hasOpsTech(techId))
   if (lateId) {
     const spec = buildingById(lateId)
     input.name = lateStampLabel(lateId)
