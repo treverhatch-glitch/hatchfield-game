@@ -1030,6 +1030,12 @@ export interface GameSnapshot {
   standPits?: Record<string, true>
   /** Stand key → small / wide / jumbo. Missing L stands stay jumbo for older saves. */
   standScale?: Record<string, 'small' | 'wide' | 'jumbo'>
+  /** Stand key → light / narrow / heavy. Missing on older saves; load fills it from class. */
+  standSize?: Record<string, 'light' | 'narrow' | 'heavy'>
+  /** Stand key → surface rung 0..2. Missing on older saves. */
+  standRung?: Record<string, 0 | 1 | 2>
+  /** Host key "stand:c,r" → fittings. Hydrant pits stay on standPits. */
+  fittings?: Record<string, { id: string; granted?: 'legacy' }[]>
   /** Hangar key → bay size. Missing hangars stay small. */
   hangarScale?: Record<string, 'small' | 'wide' | 'jumbo'>
   janitors?: number
@@ -1141,6 +1147,8 @@ export interface BuildSite {
   standClass?: StandClass
   standAccess?: StandAccess
   standScale?: 'small' | 'wide' | 'jumbo'
+  standSize?: 'light' | 'narrow' | 'heavy'
+  standRung?: 0 | 1 | 2
   hangarScale?: 'small' | 'wide' | 'jumbo'
   hotelClass?: HotelClass
   parkTerm?: ParkTerm

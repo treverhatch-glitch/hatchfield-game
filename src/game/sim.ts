@@ -367,6 +367,8 @@ import {
   tankDef,
   tickFuel,
 } from '../scale/logic.ts'
+import { aliasSize, hostKey, legacyFitting, migrateStand, readFittings, readStandRungs, readStandSizes } from '../stands/index.ts'
+import type { Fitting, StandRung, StandSize } from '../stands/types.ts'
 import type { BagSystemId, FuelSupply, PaxUnit, PillarReport, PillarState, SizeTier } from '../scale/types.ts'
 import {
   CLOSED_NO_STAFF_LINE,
@@ -1410,6 +1412,12 @@ export class Game {
   scannerLanes = 1
   eGates = 0
   standScale: Record<string, SizeTier> = {}
+  /** Stand key → light / narrow / heavy. Written beside class so old saves still park. */
+  standSize: Record<string, StandSize> = {}
+  /** Stand key → surface rung. Absent keys are filled once on load. */
+  standRung: Record<string, StandRung> = {}
+  /** Fittings by host key. A hydrant pit is not stored here. */
+  fittings: Record<string, Fitting[]> = {}
   hangarScale: Record<string, SizeTier> = {}
   private lastRailFlowing = false
   layoverOffer: LayoverOffer | null = null
@@ -1759,6 +1767,9 @@ export class Game {
     this.standAccess = {}
     this.standAccessMode = 'remote'
     this.standPits = {}
+    this.standSize = {}
+    this.standRung = {}
+    this.fittings = {}
     this.hydrantArm = false
     this.janitors = 0
     this.janitorCool = 0
@@ -4875,6 +4886,9 @@ export class Game {
     this.standAccess = {}
     this.standAccessMode = 'remote'
     this.standPits = {}
+    this.standSize = {}
+    this.standRung = {}
+    this.fittings = {}
     this.hydrantArm = false
     this.resetPillar()
     this.dedicatedDesks = []
@@ -4954,6 +4968,7 @@ export class Game {
       const key = `${stand.c},${stand.r}`
       this.standClass[key] = stand.cls
       this.standAccess[key] = stand.access
+      this.recordStand(key, { cls: stand.cls, access: stand.access })
     }
 
     if (!kit.terminal) {
@@ -6443,6 +6458,9 @@ export class Game {
       standAccess: this.standAccess,
       standPits: this.standPits,
       standScale: this.standScale,
+      standSize: this.standSize,
+      standRung: this.standRung,
+      fittings: this.fittings,
       hangarScale: this.hangarScale,
       pillar: {
         contractId: this.contractId,
@@ -6659,7 +6677,11 @@ export class Game {
       this.standClass = s.standClass ?? {}
       this.standAccess = s.standAccess ?? {}
       this.standScale = s.standScale ?? {}
+      this.standSize = readStandSizes(s.standSize)
+      this.standRung = readStandRungs(s.standRung)
+      this.fittings = readFittings(s.fittings)
       this.hangarScale = s.hangarScale ?? {}
+      this.migrateMissingStands()
       this.contractId = s.pillar?.contractId ?? null
       this.tankTier = s.pillar?.tankTier ?? 1
       this.tankLitres = s.pillar?.litres ?? seedLitresFromLoads(s.fuelLoads)
@@ -18720,6 +18742,16 @@ export class Game {
       if (site.standClass) this.standClass[key] = site.standClass
       if (site.standAccess) this.standAccess[key] = site.standAccess
       if (site.standScale) this.standScale[key] = site.standScale
+      if (site.tile === 'stand') {
+        this.recordStand(key, {
+          cls: site.standClass,
+          scale: site.standScale,
+          access: site.standAccess,
+          tool: site.tool,
+          size: site.standSize,
+          rung: site.standRung,
+        })
+      }
       if (site.hangarScale) this.hangarScale[key] = site.hangarScale
       if (site.tool === 'people_mover') this.hubLinksBuilt[key] = 'people_mover'
       else if (site.tool === 'xfer_bus') this.hubLinksBuilt[key] = 'xferbus'
@@ -18839,6 +18871,11 @@ export class Game {
       delete this.standAccess[`${v.c},${v.r}`]
       delete this.standPits[`${v.c},${v.r}`]
       delete this.standScale[`${v.c},${v.r}`]
+      delete this.standSize[`${v.c},${v.r}`]
+      delete this.standRung[`${v.c},${v.r}`]
+      delete this.fittings[hostKey('stand', v.c, v.r)]
+      delete this.fittings[hostKey('fire', v.c, v.r)]
+      delete this.fittings[hostKey('hangar', v.c, v.r)]
       delete this.hubLinksBuilt[`${v.c},${v.r}`]
       delete this.hangarScale[`${v.c},${v.r}`]
     }
@@ -19379,6 +19416,92 @@ export class Game {
           : undefined,
       origin: v,
     })
+  }
+
+  /**
+   * Write size and rung beside the old keys. An existing size is left alone,
+   * so a rung the player already bought is not pushed back up on reload.
+   */
+  private recordStand(
+    key: string,
+    rec: {
+      cls?: StandClass
+      scale?: 'small' | 'wide' | 'jumbo'
+      access?: StandAccess
+      tool?: string
+      size?: StandSize
+      rung?: StandRung
+    },
+  ) {
+    if (this.standSize[key]) return
+    if (rec.size && rec.rung != null) {
+      this.standSize[key] = rec.size
+      this.standRung[key] = rec.rung
+    } else {
+      const jumbo = this.hasResearch('heavy_pack') && this.fieldLevel() >= 5
+      const alias = rec.tool ? aliasSize(rec.tool, jumbo) : null
+      if (alias) {
+        this.standSize[key] = alias.size
+        this.standRung[key] = alias.rung
+      } else if (rec.cls) {
+        const migrated = migrateStand({ cls: rec.cls, scale: rec.scale, access: rec.access })
+        this.standSize[key] = migrated.size
+        this.standRung[key] = migrated.rung
+      }
+    }
+    if (!this.standSize[key]) return
+    const bridge =
+      rec.access === 'jetway' ||
+      (rec.access == null &&
+        rec.cls != null &&
+        migrateStand({
+          cls: rec.cls,
+          scale: rec.scale,
+          hallNear: this.hallNearStand(key),
+        }).jetBridge)
+    if (bridge) this.grantLegacyBridge(key)
+  }
+
+  private hallNearStand(key: string): boolean {
+    const [c, r] = key.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r) || !this.fits.length) return false
+    let best = JETWAY_RANGE + 1
+    for (const fit of this.fits) {
+      const d = Math.abs(fit.origin.c - c) + Math.abs(fit.origin.r - r)
+      if (d < best) best = d
+    }
+    return best <= JETWAY_RANGE
+  }
+
+  private grantLegacyBridge(key: string) {
+    const [c, r] = key.split(',').map(Number)
+    if (!Number.isFinite(c) || !Number.isFinite(r)) return
+    const host = hostKey('stand', c, r)
+    const list = this.fittings[host] ?? []
+    if (list.some((item) => item.id === 'jet_bridge')) return
+    this.fittings[host] = [...list, { id: 'jet_bridge', granted: 'legacy' }]
+  }
+
+  /**
+   * Old saves have class and scale only. Fill size and rung once.
+   * A stand that already has a size is not migrated again.
+   */
+  migrateMissingStands() {
+    for (const stand of tilesOf(this.tiles, 'stand')) {
+      const key = `${stand.c},${stand.r}`
+      if (this.standSize[key]) continue
+      const access = this.standAccess[key]
+      const migrated = migrateStand({
+        cls: this.standClass[key],
+        scale: this.standScale[key],
+        access,
+        hallNear: access == null && this.hallNearStand(key),
+      })
+      this.standSize[key] = migrated.size
+      this.standRung[key] = migrated.rung
+      const fit = legacyFitting(migrated)
+      if (fit) this.grantLegacyBridge(key)
+    }
   }
 
   /** Wide stands are code E. Legacy L stands with no scale stay code F. */
