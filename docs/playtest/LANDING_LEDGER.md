@@ -15,7 +15,7 @@ Re-check 15 Oct, after `bc-28657062` ("Land tower, spotters, council, carbon PRs
 | Spotters deck | `b67c52b4` | `6779e61c` | Added beside landmarks and cargo hub II. Stamp is on Landside > Landmarks. |
 | Airport Council | `0f006656` | `c17f68ab` | Airlines > Council. Civic spend is `civic_programs` (`331c757d`). |
 | Carbon book and Green Pioneer | `b6de09c9` | `4bd73e2f` | CO₂ info view is in the info bar, not a second OwnerChrome panel. |
-| Vision expansion design note | `d0ed02df` | this pass | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. |
+| Vision expansion design note | `3a37ffa5` | `08b868e2` | `docs/design/VISION_EXPANSION.md`. Proposal only. Approved docs still win where they disagree. Quick gate was recorded for `418a8d6b` before the art-pack rebase. |
 
 Also already on main, landed by other agents while this pass was in flight (not replayed):
 
