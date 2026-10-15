@@ -122,7 +122,8 @@ describe('HUD regions in the browser', () => {
 
           // Terminal: the build menu is centred and clear of the dock and the top band.
           await page.getByTestId('view-terminal').click()
-          await page.getByTestId('interior-bar').waitFor({ state: 'visible' })
+          // Building the hall scene takes tens of seconds under SwiftShader while the rest of the suite runs.
+          await page.getByTestId('interior-bar').waitFor({ state: 'visible', timeout: 120_000 })
           const boxes = await expectApart(page, `${at} terminal`)
           const menu = boxes.find((item) => item.id === 'interior')!
           expect(Math.abs(menu.x + menu.w / 2 - viewport.width / 2), `interior bar centre at ${at}`).toBeLessThan(4)
