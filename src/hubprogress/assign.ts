@@ -1,6 +1,6 @@
 /**
- * Copy and targets for the dedicate picker. Pure. The sim writes the rows
- * through the desk allocator for desks and lanes.
+ * Copy and targets for the dedicate picker. Pure. The sim writes desk and
+ * lane rows through DeskLease.
  */
 import { LEASE_SCORE_CAP, SCORE_PER_LEASE, VEHICLE_ROLES, type VehicleRole } from './config.ts'
 import { isVehicleRole } from './vehicles.ts'
