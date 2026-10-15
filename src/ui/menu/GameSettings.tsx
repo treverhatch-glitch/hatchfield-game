@@ -127,8 +127,8 @@ export function GameSettings({ game, onNewGame }: { game: Game; onNewGame?: () =
           data-testid="settings-day-night"
           checked={audioMix.dayNightCycle}
           onChange={(e) => {
-            const next = audioSettings().update((s) => ({ ...s, dayNightCycle: e.target.checked }))
-            setAudioMix(next)
+            game.setDayNightCycle(e.target.checked)
+            setAudioMix(audioSettings().get())
           }}
         />
         <span>Day/night cycle: {audioMix.dayNightCycle ? 'On' : 'Off'}</span>

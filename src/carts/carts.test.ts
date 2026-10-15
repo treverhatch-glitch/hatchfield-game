@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { apronCartSockets, vehicleSocketTable } from '../render/socketLayout.ts'
-import { CART_TUNING, CartYard, resolveSocket, type CartSocket, type CartTuning } from './index.ts'
+import { CART_TUNING, CartYard, cartDepotFix, cartWaitLine, resolveSocket, type CartSocket, type CartTuning } from './index.ts'
 
 function tuning(over: Partial<CartTuning> = {}): CartTuning {
   return {
@@ -106,6 +106,39 @@ describe('socket cart handoffs', () => {
 
     expect(pair).toBeLessThan(solo)
     expect(waited).toBeGreaterThan(pair)
+  })
+
+  it('covers four opening stands with the starter bag fleet and names the next wait', () => {
+    expect(CART_TUNING.bagCarts).toBe(8)
+    expect(CART_TUNING.bagCartsPerDepot).toBe(2)
+    expect(CART_TUNING.cateringTrucks).toBe(2)
+    expect(cartWaitLine('bag')).toBe('Waiting on bag cart')
+    expect(cartWaitLine('catering')).toBe('Waiting on catering')
+    expect(cartDepotFix('Vehicle depot')).toBe('Build → Vehicle depot')
+    expect(cartDepotFix(null)).toBe('')
+
+    const open = yard()
+    open.setFleet(CART_TUNING.bagCarts, CART_TUNING.cateringTrucks)
+    for (let i = 0; i < 4; i++) open.postOutbound(`open-${i}`, 10, '11,6')
+    open.tick(0.05)
+    expect(open.waits().filter((wait) => wait.kind === 'bag')).toEqual([])
+
+    const over = yard()
+    over.setFleet(CART_TUNING.bagCarts, 0)
+    for (let i = 0; i < CART_TUNING.bagCarts + 1; i++) over.postOutbound(`over-${i}`, 10, '11,6')
+    over.tick(0.05)
+    expect(over.waits().filter((wait) => wait.kind === 'bag' && wait.why === 'no_cart')).toEqual([
+      expect.objectContaining({ flightId: `over-${CART_TUNING.bagCarts}`, leg: 'out' }),
+    ])
+
+    const galley = yard()
+    galley.setFleet(0, 1)
+    galley.postCatering('cat:A', 1, '11,6')
+    galley.postCatering('cat:B', 1, '11,6')
+    galley.tick(0.05)
+    expect(galley.waits()).toEqual([
+      expect.objectContaining({ flightId: 'B', kind: 'catering', leg: 'door', why: 'no_cart' }),
+    ])
   })
 
   it('moves nothing when there is no cart', () => {

@@ -1,6 +1,7 @@
-import { PRESTIGE_LANDMARKS } from '../content/buildings_tier3.ts'
+import { PRESTIGE_LANDMARKS, TIER3_BUILDINGS } from '../content/buildings_tier3.ts'
+import { COLD_STORE } from './cargoConfig.ts'
 import { LANDMARK_RUNWAY_CLEAR_M, LANDMARK_TICKET_USD } from './landmarkConfig.ts'
-import type { LandmarkBuilding, LandmarkId, Tier3PlusBuilding, Tier3PlusId } from './types.ts'
+import type { CargoLateBuilding, LandmarkBuilding, LandmarkId, Tier3PlusBuilding, Tier3PlusId } from './types.ts'
 
 /**
  * Late-game building table (Tier III and Prestige).
@@ -68,10 +69,44 @@ const landmarks: readonly LandmarkBuilding[] = PRESTIGE_LANDMARKS.map((row) => (
   runwayClearM: LANDMARK_RUNWAY_CLEAR_M[row.id as LandmarkId] ?? 0,
 }))
 
+const hubRow = TIER3_BUILDINGS.find((row) => row.id === 'cargo_hub_ii')
+const cargoLate: readonly CargoLateBuilding[] = [
+  ...(hubRow
+    ? [
+        {
+          id: 'cargo_hub_ii',
+          kind: 'cargo',
+          name: hubRow.name,
+          fieldLevel: hubRow.unlockFL,
+          cost: hubRow.cost,
+          dailyUpkeep: hubRow.upkeepPerDay,
+          buildDays: hubRow.buildDays,
+          purpose: hubRow.purpose,
+          catch: hubRow.catch,
+          requiresTech: null,
+          coldRooms: 0,
+        } satisfies CargoLateBuilding,
+      ]
+    : []),
+  {
+    id: 'cold_store',
+    kind: 'cargo',
+    name: 'Cold store',
+    fieldLevel: COLD_STORE.fieldLevel,
+    cost: COLD_STORE.cost,
+    dailyUpkeep: COLD_STORE.dailyUpkeep,
+    buildDays: COLD_STORE.buildDays,
+    purpose: COLD_STORE.purpose,
+    catch: COLD_STORE.catch,
+    requiresTech: COLD_STORE.techId,
+    coldRooms: COLD_STORE.rooms,
+  },
+]
+
 export const landmarkCatalog = landmarks
 
 const BY_ID = new Map<string, Tier3PlusBuilding>(
-  [...catalog, ...landmarks].map((building) => [building.id, building]),
+  [...catalog, ...landmarks, ...cargoLate].map((building) => [building.id, building]),
 )
 
 export function buildingById(id: Tier3PlusId | string): Tier3PlusBuilding | undefined {

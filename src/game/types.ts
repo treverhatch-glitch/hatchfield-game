@@ -82,6 +82,8 @@ export type Tile =
   | 'saf'
   /** Tier III prestige landmark. Which one is read from the late site on the cell. */
   | 'late_landmark'
+  /** Cargo hub II or the cold store. Which one is read from the late site on the cell. */
+  | 'late_cargo'
 
 /** How a hall guest reached (or will leave) the airport. */
 export type ArriveMode =
@@ -173,6 +175,8 @@ export type Tool =
   | 'art_concourse'
   | 'grand_arrivals_hall'
   | 'quiet_hall'
+  | 'cargo_hub_ii'
+  | 'cold_store'
   | 'clear'
 
 export type Speed = 0 | 1 | 3 | 5
@@ -1088,6 +1092,8 @@ export interface GameSnapshot {
   coachDismissed?: boolean
   /** Hint switches (All hints enabled + muted kinds). Missing on older saves. */
   hintPrefs?: { allEnabled: boolean; muted: string[] }
+  /** Sun cycle recorded at save time. Load ignores it and keeps the settings switch. */
+  dayNightCycle?: boolean
   /** Tip chips (stuck-state notes, once each). Missing on older saves — chips start on. */
   tipChips?: { enabled: boolean; spent: string[]; open: string[] }
   /** First-session "open the build tray" step. Missing on older saves. */

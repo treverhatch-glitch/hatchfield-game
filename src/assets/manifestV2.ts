@@ -176,36 +176,46 @@ export const PBR_V2: Record<string, PbrSet> = {
   }
 };
 
-/** 512x256 wayfinding signs, key = `${type}_${style}`, style yellow_black | white_grey. */
+const signPlate = (file: string): string => `/assets/v2/signage/${file}`;
+
+/**
+ * Gemini Batch 11 banners at native size. Each category has one plate, so both
+ * style keys share it. Shops and food share the shops-and-dining banner.
+ * There is no lost-bag plate; those keys use the baggage claim banner.
+ */
 export const SIGNS_V2: Record<string, string> = {
-  "checkin_yellow_black": "/assets/v2/signage/sign_checkin_yellow_black.webp",
-  "checkin_white_grey": "/assets/v2/signage/sign_checkin_white_grey.webp",
-  "security_yellow_black": "/assets/v2/signage/sign_security_yellow_black.webp",
-  "security_white_grey": "/assets/v2/signage/sign_security_white_grey.webp",
-  "gates_yellow_black": "/assets/v2/signage/sign_gates_yellow_black.webp",
-  "gates_white_grey": "/assets/v2/signage/sign_gates_white_grey.webp",
-  "baggage_reclaim_yellow_black": "/assets/v2/signage/sign_baggage_reclaim_yellow_black.webp",
-  "baggage_reclaim_white_grey": "/assets/v2/signage/sign_baggage_reclaim_white_grey.webp",
-  "shops_yellow_black": "/assets/v2/signage/sign_shops_yellow_black.webp",
-  "shops_white_grey": "/assets/v2/signage/sign_shops_white_grey.webp",
-  "food_yellow_black": "/assets/v2/signage/sign_food_yellow_black.webp",
-  "food_white_grey": "/assets/v2/signage/sign_food_white_grey.webp",
-  "restrooms_yellow_black": "/assets/v2/signage/sign_restrooms_yellow_black.webp",
-  "restrooms_white_grey": "/assets/v2/signage/sign_restrooms_white_grey.webp",
-  "lost_bag_yellow_black": "/assets/v2/signage/sign_lost_bag_yellow_black.webp",
-  "lost_bag_white_grey": "/assets/v2/signage/sign_lost_bag_white_grey.webp"
+  "checkin_yellow_black": signPlate("sign_checkin.webp"),
+  "checkin_white_grey": signPlate("sign_checkin.webp"),
+  "security_yellow_black": signPlate("sign_security.webp"),
+  "security_white_grey": signPlate("sign_security.webp"),
+  "gates_yellow_black": signPlate("sign_gates.webp"),
+  "gates_white_grey": signPlate("sign_gates.webp"),
+  "baggage_reclaim_yellow_black": signPlate("sign_baggage_reclaim.webp"),
+  "baggage_reclaim_white_grey": signPlate("sign_baggage_reclaim.webp"),
+  "shops_yellow_black": signPlate("sign_shops_dining.webp"),
+  "shops_white_grey": signPlate("sign_shops_dining.webp"),
+  "food_yellow_black": signPlate("sign_shops_dining.webp"),
+  "food_white_grey": signPlate("sign_shops_dining.webp"),
+  "restrooms_yellow_black": signPlate("sign_restrooms.webp"),
+  "restrooms_white_grey": signPlate("sign_restrooms.webp"),
+  "lost_bag_yellow_black": signPlate("sign_baggage_reclaim.webp"),
+  "lost_bag_white_grey": signPlate("sign_baggage_reclaim.webp")
 };
 
-/** 256x256 yellow-on-black pictograms. */
+/**
+ * Pictogram tiles cut from the Batch 11 set, in queue order:
+ * toilets, baggage, gates, check-in, security, cafe, shops.
+ * There is no lost-bag tile; that key uses the baggage tile.
+ */
 export const PICTOGRAMS_V2: Record<string, string> = {
-  "checkin": "/assets/v2/signage/pictogram_checkin.webp",
-  "security": "/assets/v2/signage/pictogram_security.webp",
-  "gates": "/assets/v2/signage/pictogram_gates.webp",
-  "baggage_reclaim": "/assets/v2/signage/pictogram_baggage_reclaim.webp",
-  "shops": "/assets/v2/signage/pictogram_shops.webp",
-  "food": "/assets/v2/signage/pictogram_food.webp",
-  "restrooms": "/assets/v2/signage/pictogram_restrooms.webp",
-  "lost_bag": "/assets/v2/signage/pictogram_lost_bag.webp"
+  "checkin": signPlate("pictogram_checkin.webp"),
+  "security": signPlate("pictogram_security.webp"),
+  "gates": signPlate("pictogram_gates.webp"),
+  "baggage_reclaim": signPlate("pictogram_baggage_reclaim.webp"),
+  "shops": signPlate("pictogram_shops.webp"),
+  "food": signPlate("pictogram_food.webp"),
+  "restrooms": signPlate("pictogram_restrooms.webp"),
+  "lost_bag": signPlate("pictogram_baggage_reclaim.webp")
 };
 
 /** 512x512 shop logos (placeholders). */

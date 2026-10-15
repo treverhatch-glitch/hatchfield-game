@@ -3,12 +3,19 @@
  * engine does not grow its own magic numbers.
  */
 export const CART_TUNING = {
-  /** Carts on the field before any depot is built. */
-  bagCarts: 2,
-  /** Hi-lifts on the field before any depot is built. */
-  cateringTrucks: 1,
-  /** Each vehicle depot adds this many of each. */
-  bagCartsPerDepot: 1,
+  /**
+   * Carts on the field before any depot is built.
+   * Eight is the fleet that previously cleared a four-stand opening week
+   * (the old two starter carts plus six depots). The prefab's two stands,
+   * and two more with no depot, each have a cart. A ninth simultaneous load
+   * waits, so growing stands without a depot is what strains the fleet.
+   * See docs/playtest/cart_starter.md.
+   */
+  bagCarts: 8,
+  /** Hi-lifts on the field before any depot is built. Two stands can load at once. */
+  cateringTrucks: 2,
+  /** Each vehicle depot adds this many bag carts. One depot covers another pair of stands. */
+  bagCartsPerDepot: 2,
   cateringTrucksPerDepot: 1,
   /** Bays that can load or unload at once. Loader and door counts are per stand. */
   bays: {

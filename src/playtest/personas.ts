@@ -19,6 +19,20 @@ export const TIP_POLICY: PersonaPolicy = { fuel: 'term', expand: false, research
 /** Live bots: second strip and two stands when the field is over, plus one researcher. */
 export const LIVE_POLICY: PersonaPolicy = { fuel: 'term', expand: true, researcher: true }
 
+/** Cart waits outrank the other counts the board already shows. */
+function cartIsTop(view: AirportView): boolean {
+  if (view.cartWaits <= 0) return false
+  const others = [view.runwayDeferred, view.checkinWaiting, view.securityWaiting, view.curbQueue]
+  return view.cartWaits > Math.max(0, ...others)
+}
+
+/** One depot a day, once cart-wait is the largest bottleneck and the stamp is open. */
+function wantsCartDepot(view: AirportView, memory: PersonaMemory): boolean {
+  if ((memory.depotOnDay ?? -1) === view.day) return false
+  if (!cartIsTop(view) || !view.depotOpen || view.depotBuilding) return false
+  return view.cash >= view.depotCost + CAREFUL_CASH_BUFFER
+}
+
 /** Second strip once the airfield is deferring demand and the till clears the stamp plus a reserve. */
 function wantsSecondStrip(view: AirportView): boolean {
   return (
@@ -159,7 +173,12 @@ export function carefulIntents(
     if (heli.do === 'stamp') {
       return {
         intents,
-        memory: { builtOnDay: view.day, stampsToday: next.stampsToday + 1, treeOnDay: next.treeOnDay },
+        memory: {
+          builtOnDay: view.day,
+          stampsToday: next.stampsToday + 1,
+          treeOnDay: next.treeOnDay,
+          depotOnDay: next.depotOnDay ?? -1,
+        },
       }
     }
   } else if (view.offer) {
@@ -175,22 +194,51 @@ export function carefulIntents(
   const tree = takeTree(view, next, true)
   if (tree.intent) intents.push(tree.intent)
   if (needsDesk(view, CAREFUL_CASH_BUFFER)) intents.push({ do: 'desk' })
+  if (wantsCartDepot(view, next)) {
+    intents.push({ do: 'stamp', tool: 'depot' })
+    return {
+      intents,
+      memory: {
+        builtOnDay: view.day,
+        stampsToday: next.stampsToday + 1,
+        treeOnDay: tree.memory.treeOnDay,
+        depotOnDay: view.day,
+      },
+    }
+  }
   // Deferred demand can show up after the day's other stamp. Read the airfield
   // figure on every decision, including a day that already built something else.
   if (policy.expand && wantsSecondStrip(view)) {
     intents.push({ do: 'stamp', tool: 'runway' })
     return {
       intents,
-      memory: { builtOnDay: view.day, stampsToday: next.stampsToday + 1, treeOnDay: tree.memory.treeOnDay },
+      memory: {
+        builtOnDay: view.day,
+        stampsToday: next.stampsToday + 1,
+        treeOnDay: tree.memory.treeOnDay,
+        depotOnDay: next.depotOnDay ?? -1,
+      },
     }
   }
   const lab = nextLabRoom(view)
   if (lab) {
     intents.push({ do: 'room', id: lab })
-    return { intents, memory: withTree({ builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay }, view, false) }
+    return {
+      intents,
+      memory: withTree(
+        { builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay, depotOnDay: next.depotOnDay ?? -1 },
+        view,
+        false,
+      ),
+    }
   }
   if (view.day === next.builtOnDay) return { intents, memory: tree.memory }
-  const built: PersonaMemory = { builtOnDay: view.day, stampsToday: next.stampsToday, treeOnDay: tree.memory.treeOnDay }
+  const built: PersonaMemory = {
+    builtOnDay: view.day,
+    stampsToday: next.stampsToday,
+    treeOnDay: tree.memory.treeOnDay,
+    depotOnDay: next.depotOnDay ?? -1,
+  }
   if (policy.expand) {
     const expand = expansionStamp(view, CAREFUL_PRESSURE_STANDS)
     if (expand) {
@@ -213,7 +261,7 @@ export function carefulIntents(
     if (micro) intents.push({ do: 'loan', id: micro.id })
     return { intents, memory: built }
   }
-  if (view.cash > 22_000 && view.stands < CAREFUL_STANDS) {
+  if (view.cash > 22_000 && view.stands < CAREFUL_STANDS && !cartIsTop(view)) {
     intents.push({ do: 'stamp', tool: 'stand' })
     built.stampsToday += 1
     return { intents, memory: built }

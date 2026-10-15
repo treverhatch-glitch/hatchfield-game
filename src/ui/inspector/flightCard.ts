@@ -1,3 +1,4 @@
+import { BAG_CART_WAIT, CATERING_CART_WAIT } from '../../carts/cause.ts'
 import type { HallGuest } from '../../game/guests.ts'
 import type { Flight, ScheduleSlot, Tile, Vec } from '../../game/types.ts'
 
@@ -62,9 +63,15 @@ const PAST_DEBOARD = new Set([
 
 const PAST_BOARD = new Set(['pushback', 'taxi_out', 'takeoff', 'gone'])
 
-function flagProgress(id: string, label: string, posted: boolean, waiting: boolean): ServiceProgress {
+function flagProgress(
+  id: string,
+  label: string,
+  posted: boolean,
+  waiting: boolean,
+  waitingDetail = 'Waiting',
+): ServiceProgress {
   if (posted) return { id, label, state: 'done', detail: 'Done' }
-  if (waiting) return { id, label, state: 'waiting', detail: 'Waiting' }
+  if (waiting) return { id, label, state: 'waiting', detail: waitingDetail }
   return { id, label, state: 'idle', detail: 'Not started' }
 }
 
@@ -79,13 +86,31 @@ function countProgress(
   return { id, label, state: 'idle', detail: 'Not started' }
 }
 
+export interface CartServiceHold {
+  bagsIn?: boolean
+  bagsOut?: boolean
+  catering?: boolean
+}
+
 /** One line per turnaround service, from the flight's posted and waiting flags. */
-export function serviceProgress(flight: Flight): ServiceProgress[] {
+export function serviceProgress(flight: Flight, hold: CartServiceHold = {}): ServiceProgress[] {
   return [
-    flagProgress('bags', 'Bags in', flight.posted.bags, flight.waitingOn.bags),
-    flagProgress('bagsLoad', 'Bags out', flight.posted.bagsLoad, flight.waitingOn.bagsLoad),
+    flagProgress('bags', 'Bags in', flight.posted.bags, flight.waitingOn.bags || Boolean(hold.bagsIn), hold.bagsIn ? BAG_CART_WAIT : 'Waiting'),
+    flagProgress(
+      'bagsLoad',
+      'Bags out',
+      flight.posted.bagsLoad,
+      flight.waitingOn.bagsLoad || Boolean(hold.bagsOut),
+      hold.bagsOut ? BAG_CART_WAIT : 'Waiting',
+    ),
     flagProgress('fuel', 'Fuel', flight.posted.fuel, flight.waitingOn.fuel),
-    flagProgress('catering', 'Catering', flight.posted.catering, flight.waitingOn.catering),
+    flagProgress(
+      'catering',
+      'Catering',
+      flight.posted.catering,
+      flight.waitingOn.catering || Boolean(hold.catering),
+      hold.catering ? CATERING_CART_WAIT : 'Waiting',
+    ),
     flagProgress('mx', 'Line MX', flight.posted.mx, flight.waitingOn.mx),
     flagProgress('deice', 'De-ice', flight.posted.deiced, flight.waitingOn.deice),
     countProgress('paxOut', 'Deboard', flight.waitingOn.paxOut, PAST_DEBOARD.has(flight.phase)),

@@ -36,7 +36,10 @@ function namedAirline(flight: Flight): boolean {
 export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
   const airline = game.airline(flight.airline)
   const grade = game.liveTurnGrade(flight)
-  const services = serviceProgress(flight)
+  const hold = game.cartServiceHold(flight.id)
+  const services = serviceProgress(flight, hold)
+  const cartCause = game.cartCause(flight.id)
+  const cartHint = cartCause ? game.cartDepotHint() : ''
   const delay = flightDelaySummary(flight, game.schedule)
   const connections = flightConnectionSummary(flight, game.hallGuests, game.flights)
   const aircraft = flight.airframeName || game.aircraftLabel(flight.kind)
@@ -104,6 +107,12 @@ export function FlightCard({ game, flight }: { game: Game; flight: Flight }) {
         size ×{(AIRFRAMES[flight.airframeId]?.scale ?? 1).toFixed(2)} · field {game.stripCapabilityLine()}
         {flight.waitingOn.deice ? ' · waiting de-ice' : flight.posted.deiced ? ' · de-iced' : ''}
       </p>
+      {cartCause ? (
+        <p className="phase" data-testid="flight-cart-cause">
+          {cartCause}
+          {cartHint ? ` · ${cartHint}` : ''}
+        </p>
+      ) : null}
       <ul className="flight-services" data-testid="flight-services">
         {services.map((row) => (
           <li key={row.id} data-service={row.id} data-state={row.state}>

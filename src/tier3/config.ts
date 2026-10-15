@@ -89,3 +89,24 @@ export const CURFEW_HEAT_TIGHT = -0.6
 
 /** Box meshes for both buildings stay under this. FPS is already tight. */
 export const MESH_TRIANGLE_BUDGET = 180
+
+/**
+ * Cargo hub II. Bought as a late building and only works beside a night hub.
+ * The crew comes from the same ground-crew pool as the hub, hub first.
+ */
+/** Ground-handling share of the table's 60 staff. The session's road commute caps all crews at 45, so this plus the hub's 12 must fit. */
+export const HUB_II_GROUND_CREW = 30
+export const HUB_II_POWER_DEMAND = 70
+/** Handling and storage multipliers on the night hub at full crew. A short crew earns a share. */
+export const HUB_II_HANDLING_SCALE = 2.25
+export const HUB_II_STORAGE_SCALE = 1.5
+/** Extra freighter slots the hub II adds to a wave, after the base slots. */
+export const NIGHT_BANK_SLOTS_HUB_II: readonly NightSlotDef[] = [
+  { id: 'bank-5', airframeId: 'b763f', tonnes: 40 },
+  { id: 'bank-6', airframeId: 'b763f', tonnes: 40 },
+  { id: 'bank-7', airframeId: 'b748f', tonnes: 100 },
+]
+
+/** Cold store. Chilled rooms lift what the night wave pays, scaled by power. */
+export const COLD_STORE_POWER_DEMAND = 55
+export const COLD_STORE_NIGHT_PREMIUM = 0.2

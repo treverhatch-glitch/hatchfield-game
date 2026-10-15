@@ -7,6 +7,7 @@
  * stay queued. Until that module exists, nothing fills the queue except the hook.
  */
 import { money } from './catalog.ts'
+import { LATE_OPS_TECH, NEEDS_NIGHT_HUB } from '../tier3plus/cargoConfig.ts'
 import { inBounds } from './path.ts'
 import {
   buildingById,
@@ -36,6 +37,8 @@ const TILE_OF: Record<Tier3PlusId, Tile> = {
   art_concourse: 'late_landmark',
   grand_arrivals_hall: 'late_landmark',
   quiet_hall: 'late_landmark',
+  cargo_hub_ii: 'late_cargo',
+  cold_store: 'late_cargo',
 }
 
 export function lateIdForTool(tool: string): Tier3PlusId | null {
@@ -44,6 +47,22 @@ export function lateIdForTool(tool: string): Tier3PlusId | null {
 
 export function isLandmarkId(id: string): boolean {
   return buildingById(id)?.kind === 'landmark'
+}
+
+/** Why the hub II or cold store cannot be ordered yet, or null. */
+export function cargoLateRefusal(
+  id: Tier3PlusId,
+  hasNightHub: boolean,
+  hasTech: (techId: string) => boolean,
+  placed: readonly LatePlacement[],
+): string | null {
+  const spec = buildingById(id)
+  if (spec?.kind !== 'cargo') return null
+  if (placed.some((site) => site.id === id)) return `${spec.name} is one per airport.`
+  if (NEEDS_NIGHT_HUB.has(id) && !hasNightHub) return `${spec.name} needs a cargo night hub on the field first.`
+  const tech = LATE_OPS_TECH[id]
+  if (tech && !hasTech(tech.id)) return `${spec.name} needs ${tech.name} from Growth > Ops wallet.`
+  return null
 }
 
 /** Why a landmark cannot be ordered yet, or null. Stars come from the XP bar. */
@@ -120,6 +139,10 @@ export function lateCatalogLines(id: Tier3PlusId, fieldLevel: number, placed: nu
   } else if (spec.kind === 'rail') {
     lines.push(`+${Math.round(spec.demandBonus * 100)}% demand once open`)
     lines.push(`${spec.buildDays}-day build`)
+  } else if (spec.kind === 'cargo') {
+    lines.push('Needs a cargo night hub on the field')
+    if (spec.requiresTech) lines.push(`Needs ${LATE_OPS_TECH[spec.id]?.name ?? spec.requiresTech} from the Ops wallet`)
+    lines.push(`${spec.buildDays}-day build · one per airport`)
   } else if (spec.kind === 'landmark') {
     lines.push(
       spec.unlockPrestigeStars > 0

@@ -23,6 +23,16 @@ export interface CartSite {
   sockets?: readonly CartSocket[]
 }
 
+/** A shipment that could roll and has no free cart. */
+export interface CartWait {
+  flightId: string
+  kind: 'bag' | 'catering'
+  /** Outbound belt, inbound claim, or the galley door. */
+  leg: 'out' | 'in' | 'door'
+  standId: string
+  why: 'no_cart'
+}
+
 export interface CartPose {
   id: string
   kind: 'bag_cart' | 'catering_truck'
@@ -183,6 +193,33 @@ export class CartYard {
   /** Shipments still on the yard, including one that finished and is waiting for retireDone. */
   openIds(): string[] {
     return this.shipments.map((shipment) => shipment.id)
+  }
+
+  /**
+   * Shipments that still have units and no idle cart to take them.
+   * A cart already pathing, queued, or docked is on the job and is not a wait.
+   */
+  waits(): CartWait[] {
+    const out: CartWait[] = []
+    for (const shipment of this.shipments) {
+      if (shipment.done) continue
+      const room = shipment.units - shipment.moved - shipment.reserved
+      if (room <= 0) continue
+      const legs = this.legsOf(shipment.kind)
+      const leg = legs[shipment.stage]
+      if (!leg || !this.makeTrip(shipment, leg, 1)) continue
+      const vehicleKind = shipment.kind === 'catering' ? 'catering_truck' : 'bag_cart'
+      const idle = this.vehicles.some((vehicle) => vehicle.kind === vehicleKind && vehicle.phase === 'idle')
+      if (idle) continue
+      out.push({
+        flightId: flightOf(shipment.id),
+        kind: shipment.kind === 'catering' ? 'catering' : 'bag',
+        leg: shipment.kind === 'catering' ? 'door' : shipment.kind === 'inbound' ? 'in' : 'out',
+        standId: shipment.standId,
+        why: 'no_cart',
+      })
+    }
+    return out
   }
 
   /** True when every named socket that leg needs is on a site. */
