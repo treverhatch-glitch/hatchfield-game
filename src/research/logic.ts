@@ -47,6 +47,23 @@ export function nodeCost(state: ResearchState, node: ResearchNode): number {
   return Math.ceil(node.baseCost * SPEC_PENALTY)
 }
 
+/**
+ * Why a locked card cannot be bought. Category gate first, then the missing
+ * previous node. Owned and available nodes (including a shortfall of points) return null.
+ */
+export function lockCopy(state: ResearchState, node: ResearchNode, fieldLevel: number): string | null {
+  if (nodeState(state, node, fieldLevel) !== 'locked') return null
+  if (!categoryUnlocked(node.category, fieldLevel)) {
+    const row = CATEGORIES.find((item) => item.id === node.category)
+    return `Needs Field Level ${row?.unlockLevel ?? 1}.`
+  }
+  for (const req of node.requires) {
+    if (state.unlocked.includes(req)) continue
+    return `Research ${nodeById(req)?.name ?? req} first.`
+  }
+  return null
+}
+
 export function nodeState(state: ResearchState, node: ResearchNode, fieldLevel: number): NodeState {
   if (state.unlocked.includes(node.id)) return 'owned'
   if (!categoryUnlocked(node.category, fieldLevel)) return 'locked'

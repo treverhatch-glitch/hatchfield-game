@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CATEGORIES, SPEC_BRANCHES } from '../../research/config.ts'
-import { nodeCost, nodeState, shortfallCopy } from '../../research/logic.ts'
+import { lockCopy, nodeCost, nodeState, shortfallCopy } from '../../research/logic.ts'
 import { RESEARCH_NODES, nodesInCategory } from '../../research/nodes.ts'
 import type { ResearchNode, ResearchState } from '../../research/types.ts'
 
@@ -26,6 +26,7 @@ export function ResearchTree({
   const selectedState = selected ? nodeState(state, selected, fieldLevel) : 'locked'
   const selectedCost = selected ? nodeCost(state, selected) : 0
   const needCopy = selected && selectedState === 'available' ? shortfallCopy(state.points, selectedCost, ratePerSec) : null
+  const lockedCopy = selected && selectedState === 'locked' ? lockCopy(state, selected, fieldLevel) : null
 
   return (
     <section className="rtree" data-testid="research-tree">
@@ -76,6 +77,11 @@ export function ResearchTree({
                 {' · '}
                 {selectedCost === 0 ? 'Free' : `${selectedCost} RP`}
               </p>
+              {lockedCopy ? (
+                <p className="muted" data-testid="research-lock">
+                  {lockedCopy}
+                </p>
+              ) : null}
               {selectedState === 'owned' ? null : (
                 <button
                   type="button"

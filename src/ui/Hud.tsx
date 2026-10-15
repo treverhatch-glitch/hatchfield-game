@@ -12,6 +12,8 @@ import { Phone } from './phone/Phone.tsx'
 import { AlertStackView } from './isolated/AlertStack.tsx'
 import { BuildTray } from './nav/BuildTray.tsx'
 import { FieldBadge, LevelUpCard } from './nav/FieldBadge.tsx'
+import { StatusChip } from './StatusChip.tsx'
+import { dockHasRows, runStatusChipAction, statusChipFromGame } from './statusChip.ts'
 import { FieldLevelsPanel } from './nav/FieldLevelsPanel.tsx'
 import type { UnlockLink } from './nav/stampFacts.ts'
 import { useDesktop } from './phone/useDesktop.ts'
@@ -253,19 +255,10 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
   const ticker = game.news.slice(0, 5)
   const xp = game.fieldXpToNext()
   const standing = game.avgStanding()
-  const alerts: string[] = []
-  if (game.pendingThreat) alerts.push(game.pendingThreat.severity === 'hard' ? 'Hard threat' : 'Security')
-  if (game.pendingEmergency) alerts.push('Emergency')
-  if (game.warnedAirlines().length) alerts.push('Standing low')
-  if (holding) alerts.push(`${holding} holding`)
-  if (game.apronJamLine()) alerts.push('Apron jam')
-  if (game.securityQueueCount() >= 3) alerts.push('Security queue')
-  if (game.lostPaxCount() > 0) alerts.push('Lost pax')
   const power = game.powerReport()
-  if (power.brownout) alerts.push('Power')
   const powerGate = canUpgradePower(game.powerPlantTier, game.fieldLevel())
-  if (game.loanBalance > game.loanOpened && game.loanOpened > 0) alerts.push('Loan short')
-  for (const item of game.disruptionFeed()) alerts.push(item.title)
+  const chipPhrases = statusChipFromGame(game)
+  const chipDock = dockHasRows(game)
 
   return (
     <div className="hud">
@@ -375,12 +368,20 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         <div className="stat" data-testid="reputation-stat" title="Public reputation, 0 to 100">
           Rep <LiveText read={() => `${game.reputationDisplay()}%`} />
         </div>
-        <div
-          className={`stat${alerts.length ? ' alert' : ''}`}
-          title={alerts.join(' · ') || 'No alerts'}
-        >
-          {alerts.length ? alerts.slice(0, 2).join(' · ') : 'No alerts'}
-        </div>
+        <StatusChip
+          phrases={chipPhrases}
+          dockHasRows={chipDock}
+          onAct={(target) =>
+            runStatusChipAction(target, {
+              openLetter: setOpenLetter,
+              scrollLetter: (id) => {
+                const node = document.getElementById(`letter-${id}`) ?? document.getElementById('letter-stack')
+                node?.scrollIntoView({ block: 'nearest' })
+              },
+              expandDock: () => game.minimiseAlerts(false),
+            })
+          }
+        />
         <div
           className="stat"
           title={
@@ -593,6 +594,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
         />
       ) : null}
       <div
+        id="letter-stack"
         className={`letter-stack${game.showCoach() ? ' below-coach' : ''}${game.inboundOffer() ? ' below-inbound' : ''}`}
         aria-label="Incoming letters"
         data-testid="letter-stack"
@@ -792,6 +794,7 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
             return (
               <article
                 key={letter.id}
+                id={`letter-${letter.id}`}
                 className={`letter${open ? ' open' : ''} tone-${letter.tone}${letter.live ? ' live' : ''}`}
                 onMouseEnter={() => setHoverLetter(letter.id)}
                 onMouseLeave={() => setHoverLetter((cur) => (cur === letter.id ? null : cur))}

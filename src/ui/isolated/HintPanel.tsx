@@ -3,6 +3,7 @@ import { money, STARTER_KIT_COST } from '../../game/catalog.ts'
 import { starterKitPreview } from '../../game/starterLayout.ts'
 import type { Game } from '../../game/sim.ts'
 import { severityOf, worstSeverity, type HintSeverity } from '../../game/hints.ts'
+import { dockAnchor, hintBadgeBottom } from './hintAnchor.ts'
 
 const SEV_COLOR: Record<HintSeverity, string> = {
   blocker: '#e0574a',
@@ -26,14 +27,17 @@ export function HintPanel({ game }: { game: Game }) {
   const open = game.sidePanel === 'hints'
   if (!hints.length) return null
   const worst = worstSeverity(hints) ?? 'tip'
+  const anchor = dockAnchor(game)
+  const bottom = hintBadgeBottom(anchor)
   return (
     <div
       data-testid="hint-panel"
+      data-bottom={bottom}
       style={{
         pointerEvents: 'auto',
         position: 'absolute',
         right: 12,
-        bottom: 120,
+        bottom,
         width: open ? 300 : 'auto',
         display: 'flex',
         flexDirection: 'column',

@@ -1,4 +1,10 @@
-import { BUILDINGS, MAX_FIELD_LEVEL, RESEARCH_NODES, TOOL_LABEL } from '../../game/catalog.ts'
+import {
+  BUILDINGS,
+  MAX_FIELD_LEVEL,
+  RESEARCH_NODES,
+  TOOL_LABEL,
+  type FieldProgress,
+} from '../../game/catalog.ts'
 import { PROGRESSION_BUILDABLES, unlockLevel } from '../../progression/unlocks.ts'
 import { buildingById } from '../../tier3plus/index.ts'
 import { BUILD_MENUS } from './taxonomy.ts'
@@ -46,6 +52,28 @@ export function unlocksAtLevel(level: number): LevelUnlock[] {
     rows.push({ id: node.id, name: node.name, kind: 'research' })
   }
   return rows
+}
+
+/** Names shown on the XP bar. The rest collapse to `+N`. */
+export const NEXT_UNLOCK_CAP = 3
+
+export function formatUnlockNames(names: readonly string[], cap = NEXT_UNLOCK_CAP): string {
+  if (names.length === 0) return ''
+  const shown = names.slice(0, cap)
+  const extra = names.length - shown.length
+  return extra > 0 ? `${shown.join(' · ')} +${extra}` : shown.join(' · ')
+}
+
+/**
+ * What the next bit of XP opens. Levels 1–9 name `unlocksAtLevel(level + 1)`.
+ * Level 10 names the next prestige star. Max prestige is a blank line.
+ */
+export function nextUnlockLine(progress: FieldProgress): string {
+  if (progress.level >= MAX_FIELD_LEVEL) {
+    if (progress.nextLabel === 'max') return ''
+    return `Prestige star ${progress.nextLabel}`
+  }
+  return formatUnlockNames(unlocksAtLevel(progress.level + 1).map((row) => row.name))
 }
 
 export function fieldLevels(): number[] {

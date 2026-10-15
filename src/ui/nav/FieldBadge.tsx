@@ -1,6 +1,6 @@
 import type { FieldProgress } from '../../game/catalog.ts'
 import { LiveText } from '../LiveText.tsx'
-import { unlocksAtLevel } from './levelUnlocks.ts'
+import { nextUnlockLine, unlocksAtLevel } from './levelUnlocks.ts'
 
 /** Toolbar badge: field level, XP bar, and the research-points counter. */
 export function FieldBadge({
@@ -15,6 +15,7 @@ export function FieldBadge({
   onOpen: () => void
 }) {
   const pct = Math.round(progress.pct * 100)
+  const next = nextUnlockLine(progress)
   return (
     <button
       type="button"
@@ -28,6 +29,11 @@ export function FieldBadge({
         <span className="xp-fill" style={{ width: `${pct}%` }} />
       </span>
       <LiveText className="field-rp" testId="research-points" read={points} />
+      {next ? (
+        <span className="field-next" data-testid="field-next">
+          {next}
+        </span>
+      ) : null}
     </button>
   )
 }

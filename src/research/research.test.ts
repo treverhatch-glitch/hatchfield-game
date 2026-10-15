@@ -1,8 +1,11 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { ResearchTree } from '../ui/research/ResearchTree.tsx'
 import { OPS_RP_PER_SEC, RESEARCH_DAY_SEC, ROOM_RP_PER_SEC, SPEC_PENALTY, STAFF_ROOM_BOOST, TIER_COSTS } from './config.ts'
 import { ResearchEngine } from './engine.ts'
 import { linkFor } from './links.ts'
-import { accrue, buyNode, emptyResearchState, nodeCost, nodeState, researchRate, shortfallCopy } from './logic.ts'
+import { accrue, buyNode, emptyResearchState, lockCopy, nodeCost, nodeState, researchRate, shortfallCopy } from './logic.ts'
 import type { ResearchState, RoomCounts } from './types.ts'
 import { RESEARCH_NODES, nodesInCategory } from './nodes.ts'
 
@@ -59,6 +62,55 @@ describe('research tree', () => {
   it('says how many days the shortfall takes at the current rate', () => {
     expect(shortfallCopy(0, 3, OPS_RP_PER_SEC)).toBe('Need 3 more RP (~2 days)')
     expect(shortfallCopy(3, 3, OPS_RP_PER_SEC)).toBeNull()
+  })
+
+  it('names the field level when Airside is shut, and the previous node once the category is open', () => {
+    const state = emptyResearchState()
+    const airside = nodesInCategory('airside')
+    const first = airside[0]!
+    const next = airside[1]!
+    expect(lockCopy(state, first, 1)).toBe('Needs Field Level 2.')
+    expect(lockCopy(state, next, 1)).toBe('Needs Field Level 2.')
+    expect(lockCopy(state, next, 2)).toBe(`Research ${first.name} first.`)
+    expect(first.name).toBe('Fuel farm')
+    const owned = buyNode(state, first.id, 2).state
+    expect(lockCopy(owned, first, 2)).toBeNull()
+    expect(nodeState(owned, next, 2)).toBe('available')
+    expect(lockCopy(owned, next, 2)).toBeNull()
+  })
+
+  it('shows the missing gate on a locked card and the point shortfall on an available one', () => {
+    const shut = renderToStaticMarkup(
+      createElement(ResearchTree, {
+        state: emptyResearchState(),
+        fieldLevel: 1,
+        ratePerSec: OPS_RP_PER_SEC,
+        focusId: 'airside-1',
+        onUnlock: () => {},
+      }),
+    )
+    expect(shut).toContain('Needs Field Level 2.')
+    expect(shut).toContain('data-testid="research-lock"')
+    expect(shut).toContain('data-testid="research-node-airside-1"')
+    expect(shut).toContain('data-testid="research-node-airside-2"')
+    expect(shut).toContain('data-state="locked"')
+    expect(shut).toContain('>Locked<')
+
+    const open = buyNode(emptyResearchState(), 'airside-1', 2).state
+    const short = renderToStaticMarkup(
+      createElement(ResearchTree, {
+        state: open,
+        fieldLevel: 2,
+        ratePerSec: OPS_RP_PER_SEC,
+        focusId: 'airside-2',
+        onUnlock: () => {},
+      }),
+    )
+    expect(short).toContain('Need 50 more RP')
+    expect(short).toContain('Available')
+    expect(short).not.toContain('data-testid="research-lock"')
+    expect(short).toContain('data-state="locked"')
+    expect(short).not.toContain('>Locked<')
   })
 
   it('opens specialisations at mid-game and prices the other branches higher', () => {
