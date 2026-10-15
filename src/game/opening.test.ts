@@ -6,6 +6,8 @@ import {
   openingSlotCap,
   openingSpacingBonus,
   STARTER_CAPACITY,
+  STARTER_WAVE,
+  starterDepartureCount,
 } from './openingData.ts'
 import { nextSessionHint, SESSION_ORDER, type SessionState } from './sessionHints.ts'
 import { Game } from './sim.ts'
@@ -65,6 +67,10 @@ describe('starter capacity', () => {
     expect(openingSlotCap(OPENING_SEC)).toBeNull()
     expect(openingSpacingBonus(0)).toBeGreaterThan(0)
     expect(openingSpacingBonus(OPENING_SEC)).toBe(0)
+    expect(starterDepartureCount(0)).toBe(STARTER_WAVE.opening)
+    expect(starterDepartureCount(OPENING_SEC)).toBe(STARTER_WAVE.opening)
+    expect(starterDepartureCount(OPENING_SEC + 24)).toBe(STARTER_WAVE.full)
+    expect(STARTER_WAVE.full).toBeGreaterThan(STARTER_WAVE.opening)
     expect(claimHoldUnits(true, STARTER_CAPACITY.bagAllowance, 1)).toBe(88)
     expect(claimHoldUnits(true, 140, 1)).toBe(140)
     expect(claimHoldUnits(false, 0, 1)).toBe(80)

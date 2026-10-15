@@ -105,6 +105,7 @@ export function readPhoneWorld(game: Game): PhoneWorld {
   const cargoAirline = cargo ? game.airline(cargo.airline) : null
   const warned = game.warnedAirlines()
   const warnKey = `warn:${warned.slice().sort().join(',')}`
+  const signGate = offer ? game.checkinSignReport(offer.airline) : null
 
   const world: PhoneWorld = {
     contract:
@@ -118,10 +119,14 @@ export function readPhoneWorld(game: Game): PhoneWorld {
             secondsLeft: Math.ceil(offer.deadline),
             verdict: game.letterVerdict(offer.airline).label,
             verdictMet: game.letterVerdict(offer.airline).met,
-            requirements: game.reqReport(offer.airline).map((row) => ({
-              label: `${row.met ? 'Met' : 'Missing'} · ${row.label}`,
-              met: row.met,
-            })),
+            requirements: [
+              ...(signGate?.line ? [{ label: signGate.line, met: signGate.ok }] : []),
+              ...game.reqReport(offer.airline).map((row) => ({
+                label: `${row.met ? 'Met' : 'Missing'} · ${row.label}`,
+                met: row.met,
+              })),
+            ],
+            signBlocked: Boolean(signGate && !signGate.ok),
             terms: `Terms · landing ${money(game.wave3.landingOffer(offer.airline, offerAirline.landing))} · bags ${money(offerAirline.bags)}${
               offerAirline.catering ? ` · catering ${money(offerAirline.catering)}` : ''
             } · ${game.wave3.feeLine(offer.airline)} · ${game.wave3.slotLine(offer.airline)}`,

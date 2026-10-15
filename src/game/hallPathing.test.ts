@@ -130,7 +130,7 @@ describe('queue read-out', () => {
     const rows = navHallQueues(
       [
         metric({ id: 'a', kind: 'checkin_desk', queueLength: 2, estWaitSec: 200 }),
-        metric({ id: 'b', kind: 'checkin_desk', queueLength: 5, estWaitSec: 450, line: [{ x: 0, z: 0 }, { x: 0, z: 1 }, { x: 0, z: 2 }, { x: 0, z: 3 }, { x: 0, z: 4 }] }),
+        metric({ id: 'b', kind: 'checkin_desk', queueLength: 5, estWaitSec: 300, line: [{ x: 0, z: 0 }, { x: 0, z: 1 }, { x: 0, z: 2 }, { x: 0, z: 3 }, { x: 0, z: 4 }] }),
         metric({ id: 'c', kind: 'security_lane', queueLength: 0 }),
         metric({ id: 'd', kind: 'toilet', queueLength: 1, estWaitSec: HALL_QUEUE_TUNING.bottleneckSec.toilet! }),
       ],
@@ -139,7 +139,7 @@ describe('queue read-out', () => {
     )
     const ci = rows.find((r) => r.node === 'checkin')!
     expect(ci.count).toBe(7)
-    expect(ci.waitSec).toBe(450)
+    expect(ci.waitSec).toBe(300)
     expect(ci.bottleneck).toBe(false)
     expect(ci.at).toEqual({ x: 10, z: 24 })
     // Empty lines are not shown.

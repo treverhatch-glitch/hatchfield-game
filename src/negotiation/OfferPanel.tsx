@@ -49,6 +49,17 @@ export function OfferPanel({ game }: { game: Game }) {
           </header>
           {panel.pitch ? <p className="negotiation-pitch">{panel.pitch}</p> : null}
           <p className="negotiation-note">{panel.note}</p>
+          {game.offer
+            ? (() => {
+                const desks = game.checkinSignReport(game.offer.airline)
+                if (!desks.line || desks.ok) return null
+                return (
+                  <p className="negotiation-note" data-testid="negotiation-desks">
+                    {desks.line}
+                  </p>
+                )
+              })()
+            : null}
           <div className="negotiation-meters">
             <span data-testid="negotiation-mood" data-mood={panel.mood.toFixed(3)} title="Mood">
               {panel.face}

@@ -1829,6 +1829,16 @@ export function Hud({ game, onNewGame }: { game: Game; onNewGame?: () => void })
                     {tilesOf(game.tiles, 'stand').length} stands · {game.jetwayCount()} jetway · {game.freeStands().length}{' '}
                     free. A jet bridge is bought on the stand card.
                   </p>
+                  <p data-testid="hall-carrier-headroom">{game.hallHeadroomLine()}</p>
+                  {(() => {
+                    const hall = game.hallExpandOffer()
+                    if (!hall) return null
+                    return (
+                      <button type="button" data-testid="expand-hall" onClick={() => game.commission(hall.id)}>
+                        {hall.label} · {money(hall.cost)}
+                      </button>
+                    )
+                  })()}
                 </section>
               ) : null}
 

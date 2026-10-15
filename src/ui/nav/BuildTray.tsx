@@ -11,6 +11,8 @@ import { siteHasWater } from '../../fuel/barge.ts'
 import { stampCard, toolStampInput, type StampCard, type UnlockLink } from './stampFacts.ts'
 import { groupsForView, STAMP_HOVER_MS, type BuildMenu, type FurnishEntry } from './taxonomy.ts'
 
+const HALL_MARKS = new Set(['premade', 'terminal', 'prefab_ii', 'satellite', 'concourse', 'pier_ii'])
+
 function TrayMark({ tool }: { tool: string }) {
   const kind = tool.includes('runway')
     ? 'strip'
@@ -20,7 +22,9 @@ function TrayMark({ tool }: { tool: string }) {
         ? 'stand'
         : tool === 'clear'
           ? 'clear'
-          : tool.includes('hotel') ||
+          : HALL_MARKS.has(tool)
+            ? 'hall'
+            : tool.includes('hotel') ||
             tool.startsWith('park') ||
             tool === 'bus' ||
             tool === 'curb_lane' ||
@@ -31,11 +35,17 @@ function TrayMark({ tool }: { tool: string }) {
             ? 'land'
             : 'ops'
   return (
-    <svg className="tray-ico" viewBox="0 0 32 32" aria-hidden>
+    <svg className="tray-ico" data-kind={kind} viewBox="0 0 32 32" aria-hidden>
       {kind === 'strip' ? <rect x="3" y="13" width="26" height="6" rx="1" fill="currentColor" /> : null}
       {kind === 'path' ? <path d="M6 24 L16 8 L26 24" fill="none" stroke="currentColor" strokeWidth="2.4" /> : null}
       {kind === 'stand' ? <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" strokeWidth="2.4" /> : null}
       {kind === 'clear' ? <path d="M8 8 L24 24 M24 8 L8 24" stroke="currentColor" strokeWidth="2.4" /> : null}
+      {kind === 'hall' ? (
+        <>
+          <rect x="3" y="10" width="16" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="2" />
+          <rect x="19" y="13" width="10" height="6" fill="currentColor" />
+        </>
+      ) : null}
       {kind === 'land' ? <rect x="6" y="10" width="20" height="12" rx="1" fill="none" stroke="currentColor" strokeWidth="2" /> : null}
       {kind === 'ops' ? <rect x="8" y="8" width="16" height="16" rx="2" fill="currentColor" /> : null}
     </svg>
@@ -95,6 +105,7 @@ function StampSlot({
   name,
   selected,
   card,
+  note,
   onUse,
   onOpen,
 }: {
@@ -104,6 +115,8 @@ function StampSlot({
   name: string
   selected: boolean
   card: StampCard
+  /** Carrier headroom, shown on the stamp itself. */
+  note?: string
   onUse: () => void
   onOpen: (link: UnlockLink) => void
 }) {
@@ -145,6 +158,11 @@ function StampSlot({
         ) : null}
         <TrayMark tool={mark} />
         <span className="tray-name">{name}</span>
+        {note ? (
+          <span className="tray-note" data-testid={`tray-note-${badgeId}`}>
+            {note}
+          </span>
+        ) : null}
         <span className="tray-price">{card.locked ? (card.badge?.label ?? 'Locked') : card.price}</span>
       </button>
       {open ? <HoverCard card={card} onOpen={onOpen} /> : null}
@@ -298,12 +316,15 @@ function ProgressStamp({
   input.cost = cost
   input.upkeepPerDay = row.upkeepPerDay
   const card = stampCard(input)
+  const headroom = game.hallBuyLine(row.id)
+  if (headroom) card.capacity = headroom
   return (
     <StampSlot
       testId={`tray-${row.id}`}
       badgeId={row.id}
       mark={row.id}
       name={row.name}
+      note={headroom || undefined}
       selected={row.id === 'hydrant' ? game.hydrantArm : game.progressionBuilt.includes(row.id)}
       card={card}
       onOpen={onOpen}

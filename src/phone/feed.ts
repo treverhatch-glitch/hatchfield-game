@@ -18,6 +18,8 @@ export interface PhoneContractOffer {
   terms: string
   /** Stand or pad capacity. A warning, not a requirement. */
   capacity?: string
+  /** True when desks, lanes, and the hall cannot clear this signature. */
+  signBlocked?: boolean
   /** Wave 3 relationship fee. The only carrier multiplier on the landing bill. */
   feeLine?: string
   /** Timetable rows this tier adds once. Zero at Published. */
@@ -212,11 +214,16 @@ export function emptyPhoneWorld(): PhoneWorld {
 }
 
 function contractLines(offer: PhoneContractOffer): PhoneLine[] {
-  const lines: PhoneLine[] = [{ label: offer.verdict, met: offer.verdictMet }]
+  const blocked = offer.requirements.filter((row) => row.met === false)
+  const rest = offer.requirements.filter((row) => row.met !== false)
+  const lines: PhoneLine[] = [
+    ...blocked,
+    { label: offer.verdict, met: offer.verdictMet },
+  ]
   if (offer.feeLine) lines.push({ label: offer.feeLine })
   if (offer.slotLine) lines.push({ label: offer.slotLine })
   if (offer.capacity) lines.push({ label: offer.capacity })
-  lines.push(...offer.requirements)
+  lines.push(...rest)
   return lines
 }
 
@@ -241,7 +248,7 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       secondsLeft: offer.secondsLeft,
       lines: contractLines(offer),
       actions: [
-        btn('sign', 'Sign', { type: 'sign-contract' }, { primary: true }),
+        btn('sign', 'Sign', { type: 'sign-contract' }, { primary: true, disabled: Boolean(offer.signBlocked) }),
         btn('decline', 'Decline', { type: 'decline-contract' }),
         btn('negotiate', 'Negotiate', { type: 'negotiate-contract' }),
         btn('later', 'Later', { type: 'later-contract' }),
@@ -263,7 +270,7 @@ export function buildPhoneFeed(world: PhoneWorld): PhoneCard[] {
       secondsLeft: offer.secondsLeft,
       lines: contractLines(offer),
       actions: [
-        btn('sign', 'Sign', { type: 'sign-contract' }, { primary: true }),
+        btn('sign', 'Sign', { type: 'sign-contract' }, { primary: true, disabled: Boolean(offer.signBlocked) }),
         btn('decline', 'Decline', { type: 'decline-contract' }),
         btn('negotiate', 'Negotiate', { type: 'negotiate-contract' }),
         btn('later', 'Later', { type: 'later-contract' }),

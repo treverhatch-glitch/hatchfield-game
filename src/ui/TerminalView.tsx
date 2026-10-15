@@ -400,6 +400,7 @@ export function TerminalView({ game }: { game: Game }) {
               {PREFAB_TIERS[nextTier].paxCap} pax · {Math.round(PREFAB_TIERS[nextTier].servers / PREFAB_TIERS[nextTier].serviceSec * 60)}
               /min · upkeep ${PREFAB_TIERS[nextTier].upkeepDay}/day
             </span>
+            <span data-testid="hall-upgrade-headroom">{game.hallHeadroomLine()}</span>
           </button>
         ) : (
           <p className="muted">Place bigger items to raise a custom hall.</p>

@@ -265,6 +265,7 @@ import {
   openingSlotCap,
   openingSpacingBonus,
   STARTER_CAPACITY,
+  starterDepartureCount,
 } from './openingData.ts'
 import {
   dismissTip as dismissTipId,
@@ -431,6 +432,9 @@ import {
   NEUTRAL_DESK_BRAND,
   allocate,
   carrierPeakPaxPerMin,
+  carrierPlant,
+  carrierRoomPhrase,
+  checkinCapacityPerMin,
   checkinSignGate,
   type Allocation,
   type CheckinDesk,
@@ -472,6 +476,7 @@ import {
   lookaheadDepth,
   needsMaintenance,
   overCapMultiplier,
+  PREFAB_TIERS,
   prefabZones,
   schemeItems,
   schemeLabel,
@@ -3196,13 +3201,88 @@ export class Game {
     }
     peak += this.carrierCheckinPeak(id)
     const cap = this.checkinCapacityFor(id)
+    const hall = this.hallRung()
     return checkinSignGate({
       kind: 'pax',
       peakPaxPerMin: peak,
       openDesks: cap.desks,
       kiosks: cap.kiosks,
       label: airline.name,
+      openLanes: this.securityServers(),
+      bundleLanes: hall.bundleLanes,
+      hallTier: hall.tier,
+      premade: hall.premade,
     })
+  }
+
+  /** Premade rung the carrier cap reads. A custom hall has no rung bonus. */
+  private hallRung(): { tier: 1 | 2 | 3; premade: boolean; bundleLanes: number } {
+    const fit = this.activeHall()
+    const tier: 1 | 2 | 3 = fit?.tier === 2 || fit?.tier === 3 ? fit.tier : 1
+    const premade = Boolean(fit?.premade && !fit.redesigned)
+    return { tier, premade, bundleLanes: premade ? PREFAB_TIERS[tier].servers : this.securityServers(fit) }
+  }
+
+  /** Desks, extra lanes, and the hall rung, for a carrier that owns no dedicated desk. */
+  hallCarrierPlant(airlineId = '__headroom__') {
+    const cap = this.checkinCapacityFor(airlineId)
+    const hall = this.hallRung()
+    return carrierPlant({
+      checkinPerMin: checkinCapacityPerMin(cap.desks, cap.kiosks),
+      openLanes: this.securityServers(),
+      bundleLanes: hall.bundleLanes,
+      hallTier: hall.tier,
+      premade: hall.premade,
+    })
+  }
+
+  /** What the next hall rung would clear, using today's desks and any lanes the rung itself adds. */
+  private hallAtTier(tier: 2 | 3) {
+    const now = this.hallCarrierPlant()
+    return carrierPlant({
+      checkinPerMin: now.checkinPerMin,
+      openLanes: Math.max(this.securityServers(), PREFAB_TIERS[tier].servers),
+      bundleLanes: PREFAB_TIERS[tier].servers,
+      hallTier: tier,
+      premade: true,
+    })
+  }
+
+  /** Stand and build copy: how many carriers fit, and what the next hall opens. */
+  hallHeadroomLine(): string {
+    const fit = this.activeHall()
+    const now = this.hallCarrierPlant()
+    if (!fit) return 'Stamp a terminal first.'
+    if (!fit.premade || fit.redesigned) return `${carrierRoomPhrase(now.slots)}. Place bigger items to raise a custom hall.`
+    const tier: 1 | 2 | 3 = fit.tier === 2 || fit.tier === 3 ? fit.tier : 1
+    if (tier >= 3) return `${carrierRoomPhrase(now.slots)}.`
+    const next = (tier + 1) as 2 | 3
+    const name = next === 2 ? 'Prefab II' : 'Prefab III'
+    return `${carrierRoomPhrase(now.slots)}. ${name} opens ${this.hallAtTier(next).slots}.`
+  }
+
+  /** Build-menu capacity line for a hall rung. Empty for every other stamp. */
+  hallBuyLine(id: string): string {
+    if (id !== 'prefab_ii' && id !== 'satellite') return ''
+    const target: 2 | 3 = id === 'satellite' ? 3 : 2
+    const now = this.hallCarrierPlant()
+    return `${this.hallAtTier(target).slots} carriers · now ${now.slots}`
+  }
+
+  /** The bigger-hall buy, when this shell still has a rung above it. */
+  hallExpandOffer(): { id: 'prefab_ii' | 'satellite'; label: string; cost: number; line: string } | null {
+    const fit = this.activeHall()
+    if (!fit?.premade || fit.redesigned) return null
+    const tier: 1 | 2 | 3 = fit.tier === 2 || fit.tier === 3 ? fit.tier : 1
+    if (tier >= 3) return null
+    const next = (tier + 1) as 2 | 3
+    const row = PREFAB_TIERS[next]
+    return {
+      id: next === 2 ? 'prefab_ii' : 'satellite',
+      label: row.label,
+      cost: row.upgradeCost,
+      line: this.hallHeadroomLine(),
+    }
   }
 
   private carrierCheckinPeak(id: AirlineId): number {
@@ -9972,10 +10052,14 @@ export class Game {
 
   private visualDepartureCount(f: Flight): number {
     const mode = this.standPaxMode(f.stand)
-    return Math.max(
+    const visual = Math.max(
       6,
       Math.min(18, Math.round(f.pax / (mode === 'jetway' ? 5.5 : mode === 'bus' ? 6.5 : 7.5))),
     )
+    const fit = (f.stand ? this.roomsAt(f.stand) : null) ?? this.fits[0] ?? null
+    if (!fit || !fit.premade || fit.redesigned || (fit.tier ?? 1) !== 1) return visual
+    const std = f.std ?? this.clock + PLANNED_TURN_SEC
+    return Math.max(visual, starterDepartureCount(std))
   }
 
   private entranceReleaseTimes(hallId: string, exceptSlot?: string): number[] {
@@ -9995,7 +10079,8 @@ export class Game {
     if (!fit) return
     const std = slot.eta + PLANNED_TURN_SEC
     const hallId = this.hallKey(fit)
-    const drawn = this.composeDeparture(12, std, false, a.persona, fit, hallId)
+    const starter = Boolean(fit.premade && !fit.redesigned && (fit.tier ?? 1) === 1)
+    const drawn = this.composeDeparture(starter ? starterDepartureCount(std) : 12, std, false, a.persona, fit, hallId)
     this.showUps.push({
       slotId: slot.id,
       std,
@@ -14902,7 +14987,18 @@ export class Game {
     if (!this.spend(cost, `prefab tier ${next}`)) return
     fit.tier = next
     fit.zones = schemeZones(next)
-    fit.items = schemeItems(next)
+    const kept = (fit.items ?? []).filter((it) => !it.bundle)
+    const bundled = schemeItems(next)
+    const taken = new Set(bundled.map((it) => `${it.c},${it.r}`))
+    for (const extra of kept) {
+      const def = itemDef(extra.def)
+      const zone = fit.zones[extra.r]?.[extra.c]
+      const key = `${extra.c},${extra.r}`
+      if (!def || !zone || !def.zones.includes(zone) || taken.has(key)) continue
+      bundled.push({ ...extra })
+      taken.add(key)
+    }
+    fit.items = bundled
     fit.signs = schemeSigns(next)
     if (next === 2) {
       fit.rooms.security = Math.max(fit.rooms.security, 3)
@@ -14923,7 +15019,7 @@ export class Game {
     this.hallRev++
     this.refreshAdvice()
     this.pushNews(
-      `${schemeLabel(next)} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher.`,
+      `${schemeLabel(next)} — ${fit.capGuests} passengers, security ${Math.round(fit.secPerMin ?? 0)}/min, bags ${fit.bagAllowance}. Upkeep is higher. ${this.hallHeadroomLine()}`,
       'good',
     )
     this.emit()

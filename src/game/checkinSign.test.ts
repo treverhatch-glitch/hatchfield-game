@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { TOWER_III_UPGRADE } from '../airside/data.ts'
+import { buildPhoneFeed } from '../phone/feed.ts'
+import { readPhoneWorld } from '../phone/readGame.ts'
 import { TIER3_BUILDINGS } from '../content/buildings_tier3.ts'
+import { emptyInterior } from '../terminalbuild/interior.ts'
 import { ATC_MAX_GO_AROUNDS, GO_AROUND_STANDING_HIT } from './catalog.ts'
 import { STARTER_CAPACITY } from './openingData.ts'
 import { Game } from './sim.ts'
@@ -70,6 +73,102 @@ describe('check-in contract demand', () => {
     game.hireDeskStaff()
     game.tickHallNav(0)
     expect(game.securityServers()).toBe(3)
+  })
+
+  it('a third carrier needs another desk or lane, and the letter says why', () => {
+    const game = starter()
+    game.offer = { airline: 'northline', age: 0, deadline: 36 }
+    game.acceptOffer()
+    game.placeHallItem('checkin_belt')
+    game.tickHallNav(0)
+    game.offer = { airline: 'harbor', age: 0, deadline: 36 }
+    expect(game.checkinSignReport('harbor').ok).toBe(true)
+    game.acceptOffer()
+    expect(game.signed).toEqual(['northline', 'harbor'])
+
+    game.offer = { airline: 'brisa', age: 0, deadline: 36 }
+    const blocked = game.checkinSignReport('brisa')
+    expect(blocked.ok).toBe(false)
+    expect(blocked.slots).toBe(2)
+    expect(blocked.line).toContain('expand the hall')
+    expect(blocked.line).toContain('Add check-in desks')
+    game.acceptOffer()
+    expect(game.signed).not.toContain('brisa')
+
+    const phone = buildPhoneFeed(readPhoneWorld(game)).find((card) => card.id === 'contract')
+    const reason = phone?.lines?.find((row) => row.label.includes('expand the hall'))
+    expect(reason?.met).toBe(false)
+    expect(phone?.actions.find((button) => button.id === 'sign')?.disabled).toBe(true)
+
+    for (let i = 0; i < 6 && !game.checkinSignReport('brisa').ok; i++) {
+      game.placeHallItem('checkin_belt')
+      game.hireDeskStaff()
+      game.tickHallNav(0)
+    }
+    const desks = game.checkinSignReport('brisa')
+    expect(desks.ok).toBe(true)
+    expect(desks.slots).toBeGreaterThanOrEqual(3)
+    expect(desks.capacity).toBeGreaterThan(blocked.capacity)
+  })
+
+  it('a security lane or a bigger hall also clears the third carrier', () => {
+    const lane = starter()
+    lane.offer = { airline: 'northline', age: 0, deadline: 36 }
+    lane.acceptOffer()
+    lane.placeHallItem('checkin_belt')
+    lane.tickHallNav(0)
+    lane.offer = { airline: 'harbor', age: 0, deadline: 36 }
+    lane.acceptOffer()
+    lane.offer = { airline: 'brisa', age: 0, deadline: 36 }
+    expect(lane.checkinSignReport('brisa').ok).toBe(false)
+    lane.placeHallItem('security_small')
+    lane.hireDeskStaff()
+    lane.tickHallNav(0)
+    expect(lane.securityServers()).toBeGreaterThan(2)
+    expect(lane.checkinSignReport('brisa').ok).toBe(true)
+    lane.acceptOffer()
+    expect(lane.signed).toContain('brisa')
+
+    const hall = starter()
+    hall.offer = { airline: 'northline', age: 0, deadline: 36 }
+    hall.acceptOffer()
+    hall.placeHallItem('checkin_belt')
+    hall.tickHallNav(0)
+    hall.offer = { airline: 'harbor', age: 0, deadline: 36 }
+    hall.acceptOffer()
+    hall.offer = { airline: 'brisa', age: 0, deadline: 36 }
+    const before = hall.checkinSignReport('brisa')
+    expect(before.ok).toBe(false)
+    const fit = hall.fits[0]
+    fit.interior = emptyInterior()
+    fit.interior.foundation = [{ x: 2, y: 1, floor: 0 }]
+    fit.interior.equipment = [{ id: 'e1', kind: 'checkin_desk', x: 3, y: 1, wear: 0, floor: 0 }]
+    hall.fieldXp = 220
+    expect(hall.hallExpandOffer()?.id).toBe('prefab_ii')
+    expect(hall.hallBuyLine('prefab_ii')).toContain('now 2')
+    hall.upgradeHall()
+    hall.tickHallNav(0)
+    expect(hall.fits[0].tier).toBe(2)
+    expect(hall.fits[0].interior?.foundation?.[0]?.floor).toBe(0)
+    expect(hall.fits[0].interior?.equipment?.[0]?.floor).toBe(0)
+    const after = hall.checkinSignReport('brisa')
+    expect(after.ok).toBe(true)
+    expect(after.capacity).toBeGreaterThan(before.capacity)
+    expect(after.slots).toBeGreaterThanOrEqual(3)
+    hall.acceptOffer()
+    expect(hall.signed).toContain('brisa')
+
+    hall.offer = { airline: 'zephyr_go', age: 0, deadline: 36 }
+    const fourth = hall.checkinSignReport('zephyr_go')
+    expect(fourth.ok).toBe(false)
+    expect(fourth.line).toContain('expand the hall')
+    hall.fieldXp = 2300
+    hall.upgradeHall()
+    hall.tickHallNav(0)
+    expect(hall.fits[0].tier).toBe(3)
+    expect(hall.checkinSignReport('zephyr_go').ok).toBe(true)
+    expect(hall.checkinSignReport('zephyr_go').slots).toBeGreaterThanOrEqual(4)
+    expect(hall.fits[0].secPerMin).toBeGreaterThan(60)
   })
 })
 

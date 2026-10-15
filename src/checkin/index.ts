@@ -1,5 +1,6 @@
 export { CHECKIN_ALLOC, NEUTRAL_DESK_BRAND } from './config.ts'
 export { carrierPeakPaxPerMin, checkinCapacityPerMin, checkinSignGate, type CheckinSignGate } from './signGate.ts'
+export { HALL_CARRIER_SLOTS, LANE_CARRIER_PER_MIN, carrierPlant, carrierRoomPhrase, type CarrierPlant } from './carrierCap.ts'
 export {
   allocate,
   desksNeeded,
